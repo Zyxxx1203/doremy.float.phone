@@ -7,3 +7,4 @@ export * from "./storage";
 export * from "./template";
 export * from "./bridge";
 export * from "./engine";
+export * from "./avatar";

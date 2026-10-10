@@ -35,6 +35,7 @@ import {
 } from "./perception";
 import { notifyDeviceAction, runDeviceAction } from "./device-action";
 import { renderWidgetHtml } from "./widget/template";
+import { canGenerateAvatar, generateWidgetAvatar } from "./widget/avatar";
 import { loadWidgetConfig, saveWidgetData, loadWidgetData } from "./widget/storage";
 import { syncWidgetToNative } from "./widget/bridge";
 import {
@@ -879,11 +880,19 @@ async function executePhoneWidgetTool(call: ToolCall, context?: ToolExecutionCon
     const character = loadCharacters().find(item => item.id === context.characterId);
     const userName = resolveUserIdentity(context.characterId, context.appId)?.name || "用户";
 
+    // 配了生图且用户开了开关时，顺带换一张配当前状态的头像。
+    // 失败/没配都静默沿用旧头像——不能因为头像让「留话」整体失败。
+    let avatar = loadWidgetData()?.avatar ?? "";
+    if (config.useGeneratedAvatar && canGenerateAvatar() && character) {
+        const generated = await generateWidgetAvatar(character, status, text, context.signal);
+        if (generated) avatar = generated;
+    }
+
     saveWidgetData({
         characterId: context.characterId,
         text,
         status,
-        avatar: loadWidgetData()?.avatar ?? "",
+        avatar,
         updatedAt: new Date().toISOString(),
         source: "tool",
     });

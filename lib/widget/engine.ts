@@ -16,7 +16,7 @@ import { simpleLLMCall } from "../api-helpers";
 import { loadCharacters } from "../character-storage";
 import { loadApiConfigs, resolveAuxiliaryApiConfig, resolveUserIdentity } from "../settings-storage";
 import { loadWidgetAutoLastRun, loadWidgetConfig, loadWidgetData, markWidgetAutoRun, saveWidgetData } from "./storage";
-import { fallbackColorFor } from "./template";
+import { canGenerateAvatar, generateWidgetAvatar } from "./avatar";
 import type { WidgetData } from "./types";
 
 /** 自动生成的一句话最大长度：桌面上放不下长文。 */
@@ -93,12 +93,21 @@ export async function runWidgetAutoGenerate(): Promise<boolean> {
     if (!line) return false;
     // 先记号，再写数据：生成可能要十几秒，期间不能被重复触发
     markWidgetAutoRun();
+
+    // 配了生图且用户开了开关时，顺手换一张配当前状态的头像。
+    // 失败/没配都静默沿用旧头像——头像只是锦上添花，
+    // 绝不能因为它让「换一句话」这件事整体失败。
+    let avatar = loadWidgetData()?.avatar ?? "";
+    if (config.useGeneratedAvatar && canGenerateAvatar()) {
+      const generated = await generateWidgetAvatar(character, line.status, line.text);
+      if (generated) avatar = generated;
+    }
+
     saveWidgetData({
       characterId: character.id,
       text: line.text,
       status: line.status,
-      // 自动生成不主动配图（生图很慢，且用户可能没配）——沿用上一次的头像
-      avatar: loadWidgetData()?.avatar ?? "",
+      avatar,
       updatedAt: new Date().toISOString(),
       source: "auto",
     });
@@ -109,5 +118,3 @@ export async function runWidgetAutoGenerate(): Promise<boolean> {
   }
 }
 
-/** 供渲染降级头像色用（转发模板里的实现，保持单一出处）。 */
-export { fallbackColorFor };
