@@ -1584,7 +1584,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
 
             {wizStep === 1 ? (
               <div className="rb-wiz-page">
-                <p className="rb-wiz-intro">联动的作用：当 iPhone 发来某个信号时，自动执行你安排好的动作。开始前先确认数据管道已接通。</p>
+                <p className="rb-wiz-intro">联动的作用：当某个信号出现时，自动执行你安排好的动作。信号可以由小手机自己产生（安卓：电量、网络、位置、定时……），也可以由快捷指令从外面传进来（iOS）。</p>
                 {ready ? (
                   <div className="rb-wiz-ok">✓ 云端存储已连接，这一步自动完成</div>
                 ) : (
@@ -1593,7 +1593,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                     <p className="rb-help">前往「设置 → 数据管理 → 云端备份」填写 Supabase 项目地址与密钥。现实桥与云端备份共用同一个存储空间，无需重复配置。</p>
                   </>
                 )}
-                <p className="rb-hint">iPhone 那头还需要一个负责上传数据的快捷指令；如果还没创建，下一步会给你指引。</p>
+                <p className="rb-hint">如果你用安卓，「本机桥」里的感知与定时会自己产生信号，不需要任何外部工具；用 iPhone 才需要一条上传数据的快捷指令。</p>
               </div>
             ) : null}
 
@@ -1646,7 +1646,10 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                 </div>
               </>
             ) : (
-              <p className="rb-help">还没收到过信号。回上一步照教程创建快捷指令，并在 iPhone 上手动运行一次。</p>
+              <p className="rb-help">
+              还没收到过信号。安卓的话，去「设置 → 感知」把它打开，信号就会自己来了；
+              也可以直接在下框手动填信号名。iPhone 则回上一步照教程建快捷指令。
+            </p>
             )}
             <button type="button" className="rb-btn ghost" disabled={syncing || !ready} onClick={() => void syncNow()}>
               {syncing ? "正在刷新…" : "刚发了测试数据？点此刷新"}
