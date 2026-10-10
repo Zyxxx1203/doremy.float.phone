@@ -90,6 +90,22 @@ class MainActivity : AppCompatActivity() {
     /** 日历桥：让角色看见用户的真实日程，也能把纪念日写进系统日历（边界说明见 CalendarBridge）。 */
     private val calendar by lazy { CalendarBridge(this) }
 
+    /** 位置桥：让角色知道用户大概在哪儿（只前台取点、坐标降精度，边界见 LocationBridge）。 */
+    private val locationBridge by lazy { LocationBridge(this) }
+
+    /**
+     * 定位权限的申请结果回调。
+     *
+     * 与活动识别、日历同一套路：权限由网页主动申请，壳只记结果，
+     * 由网页轮询 hasLocationPermission() 决定下一步——壳不替网页做判断，
+     * 与位置桥「只读、零判断」的边界保持一致。
+     */
+    private val locationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ ->
+        // 结果由 hasLocationPermission() 实时查询，这里不需要额外动作
+    }
+
     /**
      * 日历权限（读/写）的申请结果回调。
      *
@@ -691,6 +707,59 @@ class MainActivity : AppCompatActivity() {
         /** 日历能力与授权状态。 */
         @JavascriptInterface
         fun getCalendarCapabilities(): String = calendar.capabilitiesJson()
+
+        // ── 位置桥（角色知道你在哪儿）────
+        // 只前台取点、坐标降精度到约 110 米、地名只到区/街道级。
+        // 刻意不申请后台定位权限——采样本来就只在 App 活着时发生。
+
+        /** 定位能力与授权状态（含「系统定位开关有没有开」）。 */
+        @JavascriptInterface
+        fun getLocationCapabilities(): String = locationBridge.capabilitiesJson()
+
+        /** 是否已授予定位权限（粗略或精确任一即可）。 */
+        @JavascriptInterface
+        fun hasLocationPermission(): Boolean = locationBridge.hasAny()
+
+        /**
+         * 申请定位权限。
+         *
+         * 返回 true 表示「现在就已授权」，false 表示弹出了系统对话框、
+         * 结果要稍后由 hasLocationPermission() 轮询确认——申请是异步的，
+         * 不能同步拿到结果。
+         */
+        @JavascriptInterface
+        fun requestLocationPermission(): Boolean {
+            if (locationBridge.hasAny()) return true
+            val needed = mutableListOf<String>()
+            if (!locationBridge.hasFine()) needed.add(Manifest.permission.ACCESS_FINE_LOCATION)
+            if (!locationBridge.hasCoarse()) needed.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            if (needed.isEmpty()) return true
+            runCatching { locationPermissionLauncher.launch(needed.toTypedArray()) }
+            return false
+        }
+
+        /**
+         * 读当前大概位置（JSON；读不到返回空对象）。
+         *
+         * 同步返回缓存值：定位本身是异步的，网页按采样周期先 refresh 再读。
+         */
+        @JavascriptInterface
+        fun readLocation(): String = locationBridge.readJson().toString()
+
+        /**
+         * 主动取一次实时位置（一次性，不是持续追踪）。
+         *
+         * 网页在采样时调：光靠「最后已知位置」可能拿到几小时前的坐标，
+         * 说「到了公司」就错了。结果落进缓存，随后的 readLocation 能读到。
+         */
+        @JavascriptInterface
+        fun refreshLocation() {
+            locationBridge.refresh()
+        }
+
+        /** 位置桥内部状态（诊断面板用，不含具体坐标）。 */
+        @JavascriptInterface
+        fun getLocationDiagnostics(): String = locationBridge.diagnosticsJson()
 
         /** 本机支持哪些设备动作（含授权状态）。 */
         @JavascriptInterface

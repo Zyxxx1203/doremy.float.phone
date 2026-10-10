@@ -5,7 +5,7 @@
 // 与 lib/shell-call-overlay.ts 同一套路：非壳环境一律安全降级为 no-op，
 // 老版 APK 没有这些方法时也返回「不可用」而不是抛错，调用方无需分支判断。
 
-import type { AppUsageEntry, PerceptionCapability } from "./types";
+import type { AppUsageEntry, LocationDiagnostics, LocationSnapshot, PerceptionCapability } from "./types";
 
 type PerceptionBridgeLike = {
   getPerceptionSnapshot?: () => string;
@@ -14,6 +14,12 @@ type PerceptionBridgeLike = {
   hasStepPermission?: () => boolean;
   requestStepPermission?: () => boolean;
   readUsageStats?: (maxEntries: number) => string;
+  getLocationCapabilities?: () => string;
+  hasLocationPermission?: () => boolean;
+  requestLocationPermission?: () => boolean;
+  readLocation?: () => string;
+  refreshLocation?: () => void;
+  getLocationDiagnostics?: () => string;
 };
 
 function bridge(): PerceptionBridgeLike | null {
@@ -127,6 +133,112 @@ export function supportsUsageStats(): boolean {
   return typeof bridge()?.readUsageStats === "function";
 }
 
+/** 位置桥上报的能力与授权状态（老壳/浏览器返回空对象）。 */
+export type LocationCapabilities = {
+  /** 壳能不能读位置（这个版本都行） */
+  location?: boolean;
+  /** 定位权限给没给 */
+  locationGranted?: boolean;
+  /** 是否拿到了精确档（false 但 locationGranted 为 true = 只有粗略定位） */
+  locationFineGranted?: boolean;
+  /** 系统定位总开关有没有开着 */
+  locationServiceOn?: boolean;
+  /** 原生手里有没有新鲜缓存 */
+  locationCached?: boolean;
+};
+
+export function readLocationCapabilities(): LocationCapabilities {
+  try {
+    const raw = bridge()?.getLocationCapabilities?.();
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as LocationCapabilities;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/** 壳是否提供位置读取（老 APK 没有）。 */
+export function supportsLocation(): boolean {
+  return typeof bridge()?.readLocation === "function";
+}
+
+/** 定位权限是否已授予（老壳不支持该接口时返回 false）。 */
+export function hasLocationPermission(): boolean {
+  try {
+    return bridge()?.hasLocationPermission?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 申请定位权限。
+ *
+ * 返回 true 表示「现在就可以用了」（已授权），false 表示弹出了系统对话框、
+ * 结果要稍后由 hasLocationPermission() 轮询确认——申请是异步的。
+ * 老壳没有这个接口时同样返回 false 并提示需更新。
+ */
+export function requestLocationPermission(): boolean {
+  try {
+    return bridge()?.requestLocationPermission?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+/** 壳是否提供定位权限申请接口（老 APK 没有）。 */
+export function supportsLocationPermission(): boolean {
+  return typeof bridge()?.requestLocationPermission === "function";
+}
+
+/**
+ * 读当前位置。
+ *
+ * 未授权、定位开关关着、壳不支持、读不到，一律返回 null——调用方据此
+ * 说「读不到」，绝不返回一个假坐标（角色会当真，比不说更糟）。
+ */
+export function readLocation(): LocationSnapshot | null {
+  try {
+    const raw = bridge()?.readLocation?.();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<LocationSnapshot>;
+    const lat = Number(parsed?.lat);
+    const lon = Number(parsed?.lon);
+    // 0,0 是几内亚湾海面，不是用户的位置——原生的空对象不该被当成坐标
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) return null;
+    return {
+      lat,
+      lon,
+      accuracy: Number.isFinite(Number(parsed?.accuracy)) ? Number(parsed?.accuracy) : 0,
+      place: typeof parsed?.place === "string" ? parsed.place : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 请壳主动取一次实时位置（一次性，不是持续追踪）。 */
+export function refreshLocation(): void {
+  try {
+    bridge()?.refreshLocation?.();
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 读位置桥的内部状态（诊断面板用）。读不到返回 null。 */
+export function readLocationDiagnostics(): LocationDiagnostics | null {
+  try {
+    const raw = bridge()?.getLocationDiagnostics?.();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LocationDiagnostics;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 壳如实上报的可用能力表。
  *
@@ -138,6 +250,10 @@ export function supportsUsageStats(): boolean {
 export type NativePerceptionCapabilities = Partial<Record<PerceptionCapability, boolean>> & {
   /** 是否已授予「使用情况访问」权限（与 usageStats 的「支不支持」是两回事） */
   usageStatsGranted?: boolean;
+  /** 是否已授予定位权限（与 location 的「支不支持」是两回事） */
+  locationGranted?: boolean;
+  /** 系统定位总开关有没有开着（权限给了但开关关着同样读不到） */
+  locationServiceOn?: boolean;
 };
 
 export function readNativeCapabilities(): NativePerceptionCapabilities {

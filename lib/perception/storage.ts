@@ -131,6 +131,11 @@ export type PerceptionRuntimeState = {
   lastReturnSignalAt: number;
   /** 每个角色上次调用「查看TA的手机」的时刻：characterId → 毫秒 */
   lastQueryAt: Record<string, number>;
+  /** 上次已知位置的坐标（用来判断「是不是换了个地方」）；null = 还没读到过 */
+  lastLat: number;
+  lastLon: number;
+  /** 上次位置的地名（供「离开某地」文案用；空串 = 当时也没拿到名字） */
+  lastPlace: string;
 };
 
 const EMPTY_STATE: PerceptionRuntimeState = {
@@ -148,6 +153,9 @@ const EMPTY_STATE: PerceptionRuntimeState = {
   awaySince: 0,
   lastReturnSignalAt: 0,
   lastQueryAt: {},
+  lastLat: Number.NaN,
+  lastLon: Number.NaN,
+  lastPlace: "",
 };
 
 export function loadPerceptionState(): PerceptionRuntimeState {
@@ -187,6 +195,9 @@ const EMPTY_STATUS: PerceptionStatusSnapshot = {
   foregroundApp: "",
   foregroundMinutes: 0,
   steps: -1,
+  // 旧缓存没有位置字段，合并后必须是 null 而不是 undefined：
+  // 描述函数会判空，undefined 会一路漏到界面文案里。
+  location: null,
   // 旧缓存里没有这个字段（这次才加），合并后必须还是个数组——
   // 否则 describeTopUsage 遍历时会在 undefined 上炸。
   appUsage: [],

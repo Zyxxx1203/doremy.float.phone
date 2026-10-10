@@ -313,7 +313,9 @@ class PerceptionBridge(private val context: Context) {
         .put("foregroundApp", true)
         .put("steps", Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
         .put("returnToPhone", true)
-        .put("location", false)
+        // 位置已接通（见 LocationBridge）：能读就报能读，授权态另报——
+        // 混为一谈会让用户以为手机不支持、从而放弃授权。
+        .put("location", true)
         .put("calendar", false)
         .put("contacts", false)
         // usageStats 现在是真接通了（见 usageStatsJson）：能读就报能读。

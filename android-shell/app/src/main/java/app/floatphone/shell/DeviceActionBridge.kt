@@ -412,6 +412,7 @@ class DeviceActionBridge(private val context: Context) {
                 .setData(Uri.parse("package:${context.packageName}"))
             "dnd" -> Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
             "usage_stats" -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+            "location" -> Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
             "accessibility" -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
             "battery" -> Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
             "app_details" -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)

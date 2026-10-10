@@ -162,6 +162,25 @@ export type PerceptionStatusSnapshot = {
   steps: number;
   /** 今天各应用使用时长（按时长降序，最多 12 条）；空数组 = 未授权或读不到 */
   appUsage: AppUsageEntry[];
+  /**
+   * 当前位置。null = 未授权 / 定位开关关着 / 读不到。
+   *
+   * 坐标已由原生降精度到约 110 米，地名只到区/街道级——「到了哪一片」
+   * 足够角色说句自然的话，指认门牌不是这个功能要的东西。
+   */
+  location: LocationSnapshot | null;
+};
+
+/** 一次位置读取的结果（已降精度）。 */
+export type LocationSnapshot = {
+  /** 纬度（约 110 米精度） */
+  lat: number;
+  /** 经度（约 110 米精度） */
+  lon: number;
+  /** 定位精度（米），0 = 未知 */
+  accuracy: number;
+  /** 粗粒度地名（区/街道级）；空串 = 反查没成功，坐标仍可用 */
+  place: string;
 };
 
 /** 诊断面板用的一次性状态快照。 */
@@ -189,4 +208,23 @@ export type PerceptionDiagnostics = {
   unmatchedSignals: number;
   /** 实时读一次今天各应用使用时长（诊断面板展示「角色能读到什么」）。 */
   appUsage: AppUsageEntry[];
+  /** 实时读一次当前位置（null = 读不到）。 */
+  location: LocationSnapshot | null;
+  /** 位置桥的内部状态（取点次数、最近失败原因）。 */
+  locationDiagnostics: LocationDiagnostics | null;
+};
+
+/** 位置桥上报的内部状态（诊断用，不含具体坐标）。 */
+export type LocationDiagnostics = {
+  /** 是否正有一次取点在进行 */
+  fixing?: boolean;
+  /** 累计成功取点次数 */
+  fixCount?: number;
+  /** 原生手里有没有缓存值 */
+  hasCache?: boolean;
+  /** 缓存年龄（毫秒），-1 = 没有缓存 */
+  cacheAgeMs?: number;
+  /** 最近一次失败原因（空串 = 没记到失败） */
+  lastError?: string;
+};
 };

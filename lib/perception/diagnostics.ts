@@ -4,7 +4,13 @@
 // 设置面板「感知 → 诊断」直接消费这里，不需要自己拼装。
 
 import { isWithinPushQuietHours } from "../push-client";
-import { hasPerceptionBridge, readNativeCapabilities, readUsageStats } from "./bridge";
+import {
+  hasPerceptionBridge,
+  readLocation,
+  readLocationDiagnostics,
+  readNativeCapabilities,
+  readUsageStats,
+} from "./bridge";
 import { isPerceptionRunning } from "./engine";
 import { isCapabilityEnabled, loadPerceptionConfig, loadPerceptionState, loadPerceptionStatus } from "./storage";
 import {
@@ -39,6 +45,8 @@ export function readPerceptionDiagnostics(): PerceptionDiagnostics {
     lastSnapshot: state.lastSnapshot,
     status: loadPerceptionStatus(),
     appUsage: readUsageStats(12),
+    location: readLocation(),
+    locationDiagnostics: readLocationDiagnostics(),
     hourlyUsed: windowFresh ? state.hourCount : 0,
     hourlyLimit: config.hourlyLimit,
     unmatchedSignals: state.unmatchedSignals,
@@ -97,6 +105,15 @@ export function buildCapabilityRows(): CapabilityRow[] {
     // 使用统计：能力已接通，但需要特殊权限（去系统设置手动开），卡在这一环
     if (id === "usageStats" && nativeSupported && native.usageStatsGranted !== true) {
       missingRequirement = "需要「使用情况访问」权限（系统设置里手动开）";
+    }
+    // 定位：两层前置，且必须分开报——「权限给了但定位开关关着」是最容易
+    // 被漏掉的一种（用户会以为权限都给了怎么还读不到）。
+    if (id === "location" && nativeSupported) {
+      if (native.locationGranted !== true) {
+        missingRequirement = "需要位置权限";
+      } else if (native.locationServiceOn !== true) {
+        missingRequirement = "系统定位开关没开";
+      }
     }
     return {
       id,

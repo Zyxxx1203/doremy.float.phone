@@ -115,6 +115,9 @@ export function filterStatusBySwitches(
   if (!isCapabilityEnabled(config, "usageStats")) {
     out.appUsage = [];
   }
+  if (!isCapabilityEnabled(config, "location")) {
+    out.location = null;
+  }
   return out;
 }
 
@@ -161,6 +164,8 @@ export function describeStatusByFocus(status: PerceptionStatusSnapshot, focus?: 
   } else if (key === "usage" || key === "usageStats" || key === "使用时长" || key === "屏幕使用时间") {
     const usage = describeTopUsage(status.appUsage);
     if (usage) parts.push(usage);
+  } else if (key === "location" || key === "位置" || key === "地点") {
+    if (status.location?.place) parts.push(`现在在${status.location.place}附近`);
   } else {
     return describeStatus(status);
   }

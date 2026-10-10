@@ -31,7 +31,13 @@ import {
   type PerceptionLogEntry,
 } from "@/lib/perception";
 import { clearCloudStatus } from "@/lib/perception/cloud-sync";
-import { hasStepPermission, requestStepPermission } from "@/lib/perception/bridge";
+import {
+  hasLocationPermission,
+  hasStepPermission,
+  readLocationCapabilities,
+  requestLocationPermission,
+  requestStepPermission,
+} from "@/lib/perception/bridge";
 import { describeStatus, filterStatusBySwitches } from "@/lib/perception/describe";
 
 const CAP_ICONS: Record<PerceptionCapability, typeof Battery> = {
@@ -112,6 +118,18 @@ export function PerceptionSettings({ onNotice }: { onNotice?: (msg: string) => v
       if (id === "steps" && row?.nativeSupported && !hasStepPermission()) {
         const immediate = requestStepPermission();
         onNotice?.(immediate ? "步数已可用" : "请在系统弹窗里允许「身体活动」权限，允许后步数才会生效");
+      }
+      // 定位同理：在用户明确打开它的这一刻申请。这里只申请前台权限，
+      // 刻意不碰后台定位——采样只发生在 App 活着的时候，没必要多要一档。
+      if (id === "location" && row?.nativeSupported && !hasLocationPermission()) {
+        const immediate = requestLocationPermission();
+        onNotice?.(immediate
+          ? "位置已可用"
+          : "请在系统弹窗里允许位置权限，允许后位置才会生效");
+      } else if (id === "location" && readLocationCapabilities().locationServiceOn === false) {
+        // 权限有、开关没开：明确说这一句，否则用户会对着「已开启」的开关
+        // 等一个永远不来的信号。
+        onNotice?.("定位权限已有，但系统的定位开关没开——在快捷开关里打开即可");
       }
     }
   }, [update, onNotice]);

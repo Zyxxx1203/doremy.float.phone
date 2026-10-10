@@ -22,7 +22,17 @@ import { isWithinPushQuietHours } from "../push-client";
 import { processBridgeItem } from "../reality-bridge/engine";
 import type { BridgeItem } from "../reality-bridge/types";
 import { ensureShellOverlayListener, subscribeShellOverlayEvents } from "../shell-call-overlay";
-import { hasPerceptionBridge, readAppLabel, readPerceptionSnapshot, readUsageStats, supportsUsageStats, type AppUsageEntry } from "./bridge";
+import {
+  hasPerceptionBridge,
+  readAppLabel,
+  readLocation,
+  readPerceptionSnapshot,
+  readUsageStats,
+  refreshLocation,
+  supportsLocation,
+  supportsUsageStats,
+  type AppUsageEntry,
+} from "./bridge";
 import { syncPerceptionToCloud } from "./cloud-sync";
 import {
   appendPerceptionLog,
@@ -190,6 +200,17 @@ async function sampleOnce(): Promise<void> {
   // 因为用户可能一直停在同一个应用、不再产生新事件，靠事件驱动会永远等不到。
   await checkDwell(config.appDwellMinutes, state);
 
+  // ── 位置 ──
+  // 只在开启时才取：位置权限是敏感授权，用户没开就不该有任何定位调用。
+  // 取点用 refreshLocation（一次性），再读缓存——「最后已知位置」可能是
+  // 几小时前的，拿它说「到了公司」会错。
+  let location = null as ReturnType<typeof readLocation>;
+  if (supportsLocation() && isCapabilityEnabled(config, "location")) {
+    refreshLocation();
+    location = readLocation();
+    await checkLocationChange(location, state);
+  }
+
   // ── 设备状态缓存 ──
   // 供三处读取：聊天时的按需注入、角色主动调用「查看TA的手机」、云端同步。
   // 存在这里而不是各消费方自己去原生取，是为了让它们读到同一份「此刻一致」的状态，
@@ -216,6 +237,7 @@ async function sampleOnce(): Promise<void> {
       : 0,
     steps: snapshot.steps,
     appUsage,
+    location,
   });
 
   // ── 云端同步（默认关）──
@@ -245,6 +267,85 @@ async function checkDwell(thresholdMinutes: number, state: PerceptionRuntimeStat
   // 等条件恢复后还能补上——否则用户白天关了、晚上打开，这段停留就永远丢了。
   if (delivered) state.dwellReported = pkg;
 }
+
+/** 两个坐标之间的大致距离（米）。用等距圆柱近似——几百米到几公里量级足够。 */
+function roughDistanceMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const R = 6371000;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1) * Math.cos(toRad((lat1 + lat2) / 2));
+  return Math.sqrt(dLat * dLat + dLon * dLon) * R;
+}
+
+/**
+ * 「换了个地方」判定。
+ *
+ * 只在**移动得足够远**时报一条，不报「现在在 X」这种持续状态——
+ * 位置一直不变就一直是同一个值，按采样周期报会在一天里反复触发
+ * 同类消息，像仪表盘而不是「角色察觉到什么」。
+ *
+ * 两个阈值配合：
+ *   · 距离阈值（500 米）：小于这个距离的坐标抖动（GPS 漂移、在楼里挪动）
+ *     不算换地方。同一栋楼里从客厅走到卧室不该触发。
+ *   · 首次只建立基准：装好 App 那一刻不该报「你到了某某区」，那本来
+ *     就是用户在的地方，没有信息量。
+ *
+ * 定居之后地名可能变（比如从「朝阳区」到「海淀区」），文案优先用新地名。
+ */
+async function checkLocationChange(
+  location: ReturnType<typeof readLocation>,
+  state: PerceptionRuntimeState,
+): Promise<void> {
+  if (!location) return;
+
+  const hasBaseline = Number.isFinite(state.lastLat) && Number.isFinite(state.lastLon);
+  if (!hasBaseline) {
+    state.lastLat = location.lat;
+    state.lastLon = location.lon;
+    state.lastPlace = location.place;
+    return;
+  }
+
+  const distance = roughDistanceMeters(state.lastLat, state.lastLon, location.lat, location.lon);
+  if (distance < LOCATION_MOVE_METERS) {
+    // 没走远，但地名可能刚反查出来（首次为空）：补上，供下次离开时用
+    if (!state.lastPlace && location.place) state.lastPlace = location.place;
+    return;
+  }
+
+  const from = state.lastPlace;
+  const to = location.place;
+  // 文案：拿到地名就说地名，拿不到就只说「换了个地方」——
+  // 编一个地名比不说更糟，角色会把编出来的地名当真。
+  const payload = from && to
+    ? `从${from}到了${to}`
+    : to
+      ? `到了${to}`
+      : from
+        ? `离开了${from}`
+        : "";
+
+  // 无论有没有投递成功都更新基准：位置确实变了，下次比较该基于新坐标。
+  // 这与停留上报不同（那边被拦下不标记，等条件恢复补上）——位置信号
+  // 补发没有意义（人早走了，「到了公司」过两小时再发只会让人困惑）。
+  state.lastLat = location.lat;
+  state.lastLon = location.lon;
+  state.lastPlace = location.place;
+
+  await emitSignal({
+    capability: "location",
+    type: "到达新位置",
+    payload,
+  }, state);
+}
+
+/** 判定「换了个地方」的最小距离（米）。 */
+const LOCATION_MOVE_METERS = 500;
 
 /** 前台应用变化：只更新基准，不在这里上报（判断统一在 checkDwell）。 */
 function onForegroundApp(pkg: string): void {
