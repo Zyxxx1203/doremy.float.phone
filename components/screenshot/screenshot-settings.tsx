@@ -16,7 +16,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Camera, Loader2, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
 
-
 import { Toggle } from "@/components/ui/form";
 import { loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import { isShellEnvironment as isShell, openAccessibilitySettings } from "@/lib/shell-call-overlay";
@@ -309,9 +308,6 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
             </button>
           </div>
         </div>
-
-        {/* 诊断：该弹没弹/截不到时，这里是唯一能定位问题的地方 */}
-        <ScreenshotDiagnosticsPanel onNotice={onNotice} />
 
         {/* 最近记录：让用户能亲眼回查 */}
         <div>
