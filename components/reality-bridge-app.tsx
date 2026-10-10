@@ -40,6 +40,7 @@ import { isValidShortcutEmailAddress, shortcutEmailSubjectTag } from "@/lib/shor
 import { readPerceptionDiagnostics } from "@/lib/perception";
 import { RESERVED_INTERNAL_TOOL_NAMES } from "@/lib/internal-capability-storage";
 import { DEVICE_ACTION_LABEL, loadDeviceActionConfig, TOGGLEABLE_ACTIONS, hasDeviceActionBridge } from "@/lib/device-action";
+import { BRIDGE_APP_ACTION_LABEL, type BridgeAppActionId } from "@/lib/reality-bridge/app-actions";
 import { getEnabledTools } from "@/lib/tool-storage";
 
 type TabId = "main" | "history";
@@ -226,6 +227,7 @@ const SCREEN_CHAT_SHORTCUT_URL = "https://www.icloud.com/shortcuts/d0ce177469a34
 function ruleIcon(rule: BridgeRule) {
   if (rule.schedule) return RB_ICON_CLOCK;
   const a = rule.actions ?? {};
+  if (a.appAction) return RB_ICON_HISTORY;
   if (a.chat) return RB_ICON_CHAT;
   if (a.card) return RB_ICON_CARD;
   if (a.memory || a.timeline) return RB_ICON_BOOK;
@@ -496,6 +498,10 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     if (a.shortcut) {
       const shortcutName = shortcutActions.find(item => item.id === a.shortcut?.actionId)?.name;
       parts.push(shortcutName ? `执行「${shortcutName}」` : "执行快捷动作");
+    }
+    if (a.appAction) {
+      const label = BRIDGE_APP_ACTION_LABEL[a.appAction.action as BridgeAppActionId];
+      parts.push(label ? `让${charName(a.appAction.characterId)}${label}` : "写进其它 APP");
     }
     if (a.deviceAction) {
       const label = DEVICE_ACTION_LABEL[a.deviceAction.action as keyof typeof DEVICE_ACTION_LABEL];
@@ -1168,12 +1174,14 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
               <>
                   <div className="rb-chipbar">
                     <div className="rb-chips">
+                      {/* 分区标签带平台角标：快捷动作/查询/速聊都是 iPhone 快捷指令路线，
+                          安卓用户点了只会白忙——必须一眼看出来，不能靠读说明才发现。 */}
                       <button type="button" className={`rb-chip${mainSec === "overview" ? " active" : ""}`} onClick={() => setMainSec("overview")}>概览</button>
-                      <button type="button" className={`rb-chip${mainSec === "android" ? " active" : ""}`} onClick={() => setMainSec("android")}>本机桥</button>
+                      <button type="button" className={`rb-chip${mainSec === "android" ? " active" : ""}`} onClick={() => setMainSec("android")}>本机桥<em>安卓</em></button>
                       <button type="button" className={`rb-chip${mainSec === "rules" ? " active" : ""}`} onClick={() => setMainSec("rules")}>联动</button>
-                      <button type="button" className={`rb-chip${mainSec === "shortcuts" ? " active" : ""}`} onClick={() => setMainSec("shortcuts")}>快捷动作</button>
-                      <button type="button" className={`rb-chip${mainSec === "queries" ? " active" : ""}`} onClick={() => setMainSec("queries")}>查询</button>
-                      <button type="button" className={`rb-chip${mainSec === "screen" ? " active" : ""}`} onClick={() => setMainSec("screen")}>速聊</button>
+                      <button type="button" className={`rb-chip${mainSec === "shortcuts" ? " active" : ""}`} onClick={() => setMainSec("shortcuts")}>快捷动作<em>iOS</em></button>
+                      <button type="button" className={`rb-chip${mainSec === "queries" ? " active" : ""}`} onClick={() => setMainSec("queries")}>查询<em>iOS</em></button>
+                      <button type="button" className={`rb-chip${mainSec === "screen" ? " active" : ""}`} onClick={() => setMainSec("screen")}>速聊<em>iOS</em></button>
                     </div>
                   </div>
 
@@ -2006,6 +2014,52 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                     <p className="rb-help">还没打开「操作设备」总开关，这条联动会执行失败——去「设置 → 操作设备」打开。</p>
                   ) : deviceActionCfg.actions[editing.actions.deviceAction.action as keyof typeof deviceActionCfg.actions] !== true ? (
                     <p className="rb-help">「{DEVICE_ACTION_LABEL[editing.actions.deviceAction.action as keyof typeof DEVICE_ACTION_LABEL]}」这个动作还没在「设置 → 操作设备」里单独打开。</p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            {/* 写进小手机内的 APP：以角色身份在朋友圈/日记里留下东西。
+                与「告诉一个角色」不同——那个是给角色消息，这个是角色自己发东西，
+                用户能在对应 APP 里直接看到。 */}
+            <div className="rb-action">
+              <label className="rb-check">
+                <input type="checkbox" checked={!!editing.actions.appAction}
+                  onChange={event => setEditing({
+                    ...editing,
+                    actions: {
+                      ...editing.actions,
+                      appAction: event.target.checked
+                        ? { action: "moment", characterId: characters[0]?.id ?? "" }
+                        : undefined,
+                    },
+                  })} />
+                在其它 APP 里留下东西
+              </label>
+              {editing.actions.appAction ? (
+                <div className="rb-action-body grid2">
+                  <select value={editing.actions.appAction.action}
+                    onChange={event => setEditing({
+                      ...editing,
+                      actions: { ...editing.actions, appAction: { ...editing.actions.appAction!, action: event.target.value } },
+                    })}>
+                    {(Object.keys(BRIDGE_APP_ACTION_LABEL) as BridgeAppActionId[]).map(id => (
+                      <option key={id} value={id}>{BRIDGE_APP_ACTION_LABEL[id]}</option>
+                    ))}
+                  </select>
+                  <select value={editing.actions.appAction.characterId ?? characters[0]?.id ?? ""}
+                    onChange={event => setEditing({
+                      ...editing,
+                      actions: { ...editing.actions, appAction: { ...editing.actions.appAction!, characterId: event.target.value } },
+                    })}>
+                    {characters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  {editing.actions.appAction.action === "diary" ? (
+                    <input value={editing.actions.appAction.title ?? ""} maxLength={80} placeholder="日记标题（可留空）"
+                      onChange={event => setEditing({
+                        ...editing,
+                        actions: { ...editing.actions, appAction: { ...editing.actions.appAction!, title: event.target.value } },
+                      })} />
                   ) : null}
                 </div>
               ) : null}

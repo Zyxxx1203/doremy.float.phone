@@ -294,7 +294,25 @@
   -webkit-overflow-scrolling: touch;
 }
 .rb-chips::-webkit-scrollbar { display: none; }
-.rb-chips .rb-chip { flex: 0 0 auto; min-width: 62px; padding-left: 10px; padding-right: 10px; }
+.rb-chips .rb-chip {
+  flex: 0 0 auto;
+  min-width: 62px;
+  padding-left: 10px;
+  padding-right: 10px;
+  gap: 4px;
+}
+/* 平台角标：安卓/iOS 专属分区才带，通用分区不带 */
+.rb-chip em {
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: rgba(23, 23, 28, 0.08);
+  color: var(--rb-sub);
+}
+.rb-chip.active em { background: var(--rb-acc-soft); color: var(--rb-acc); }
 .rb-chip {
   display: inline-flex;
   align-items: center;
