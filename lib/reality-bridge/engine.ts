@@ -23,7 +23,6 @@ import { sendBrowserNotification } from "../browser-notification";
 import { dispatchChatMessageNotice } from "../chat-notification-events";
 import { createShortcutCommand } from "../shortcut-command-client";
 import { runDeviceAction } from "../device-action";
-import { runBridgeAppAction } from "./app-actions";
 import {
   REALITY_BRIDGE_DATA_EVENT,
   type BridgeFeedEntry,
@@ -273,15 +272,6 @@ async function runActions(rule: BridgeRule, item: BridgeItem, text: string): Pro
     } catch (err) {
       done.push(`调用「${toolName}」失败：${(err instanceof Error ? err.message : String(err)).slice(0, 80)}`);
     }
-  }
-  if (actions.appAction?.action) {
-    const outcome = runBridgeAppAction(
-      actions.appAction.action,
-      actions.appAction.characterId || actions.chat?.characterId || actions.memory?.characterId,
-      expandBridgeMacros(text, actions.appAction.characterId),
-      actions.appAction.title,
-    );
-    done.push(outcome.ok ? `小手机·${outcome.message}` : `小手机写入失败：${outcome.reason}`);
   }
   if (actions.outbox?.type) {
     const { config, ready } = bridgeConnection();

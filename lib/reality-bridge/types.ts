@@ -49,10 +49,6 @@ export type BridgeRuleActions = {
    *  args 里的字符串值支持 {payload}/{type} 占位；characterId 可选，决定
    *  「写入记忆」这类需要角色上下文的工具以谁的身份执行（缺省跟随 chat 动作的角色）。 */
   tool?: { name: string; args?: Record<string, unknown>; characterId?: string };
-  /** 写进小手机内的其它 APP（朋友圈、日记）。
-   *  与上面各项的区别：那些是「通知角色」「记进记忆」，这条是**以角色身份
-   *  在小手机里发东西**——用户在对应 APP 里能直接看到，像角色真的用了手机。 */
-  appAction?: { action: string; characterId?: string; title?: string };
 };
 
 export type BridgeRule = {
