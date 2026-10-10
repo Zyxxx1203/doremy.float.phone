@@ -358,8 +358,47 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         }
     };
 
+    /**
+     * 滚动位置记忆。
+     *
+     * 原来的实现是「每次切页都滚到顶」——从列表点进某个卡片、看完返回，
+     * 列表又回到最上面，想接着看下一个得重新往下翻。设置页的卡片多
+     * （尤其 Connections 那一屏），这个体验很伤。
+     *
+     * 现在的规则：
+     *   · 离开主菜单时记下滚动位置；
+     *   · 回到主菜单时恢复它；
+     *   · 进入任何子页本身仍然从顶部开始（那是新内容，从头看才对）。
+     *
+     * 只记「主菜单」这一处的滚动位置，不给每个子页各存一份——
+     * 用户抱怨的正是「点开卡片退回列表跳顶」，子页之间的来回很少见，
+     * 存多了反而会出现「莫名停在半路」的困惑。
+     */
+    const mainScrollRef = useRef(0);
+
     useLayoutEffect(() => {
-        pageBodyRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+        const body = pageBodyRef.current;
+        if (!body) return;
+        if (currentPage === "main") {
+            // 回到主菜单：恢复到离开时的位置
+            body.scrollTo({ top: mainScrollRef.current, left: 0, behavior: "auto" });
+        } else {
+            // 进子页：新内容，从头看
+            body.scrollTo({ top: 0, left: 0, behavior: "auto" });
+        }
+    }, [currentPage]);
+
+    // 「记位置」交给这个 effect 的 cleanup：它在下次 effect 执行之前跑，
+    // 那时 DOM 还没换，读到的仍是刚才那一屏的真实滚动位置。
+    //
+    // 这样各条进子页的入口（卡片、FeaturedCard、事件跳转）都不必自己记一笔，
+    // 也就不会漏掉某个入口。
+    useEffect(() => {
+        if (currentPage !== "main") return;
+        const body = pageBodyRef.current;
+        return () => {
+            if (body) mainScrollRef.current = body.scrollTop;
+        };
     }, [currentPage]);
 
     // Check for pending mascot navigation mode on mount (stored by desktop-shell)

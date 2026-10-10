@@ -931,10 +931,18 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                 <button
                   type="button"
                   className="rb-add"
-                  disabled={mainSec === "android" || (mainSec === "screen" && Boolean(screenChat.characterId))}
-                  aria-label={mainSec === "android" ? "本机能力在设置里配置" : mainSec === "rules" ? "新建联动" : mainSec === "shortcuts" ? "新建快捷动作" : mainSec === "queries" ? "新建数据项" : screenChat.characterId ? "屏幕速聊已配置" : "配置屏幕速聊"}
+                  // 「本机安卓桥」那一屏没有可新建的东西（配置都在设置里），
+                  // 但不再把它禁掉——用户打开现实桥十有八九就是想建联动，
+                  // 一个灰掉的＋只会让他以为「这里没有新建入口」。
+                  // 现在任何一屏的＋都能点：安卓桥那屏直接带他去新建联动。
+                  disabled={mainSec === "screen" && Boolean(screenChat.characterId)}
+                  aria-label={mainSec === "shortcuts" ? "新建快捷动作" : mainSec === "queries" ? "新建数据项" : mainSec === "screen" ? (screenChat.characterId ? "屏幕速聊已配置" : "配置屏幕速聊") : "新建联动"}
                   onClick={() => {
-                    if (mainSec === "android") return;
+                    if (mainSec === "android") {
+                      setMainSec("rules");
+                      openRuleEditor(newRule(), false);
+                      return;
+                    }
                     if (mainSec === "rules") openRuleEditor(newRule(), false);
                     else if (mainSec === "shortcuts") openShortcutEditor(newShortcutAction(), false);
                     else if (mainSec === "queries") openDataItemEditor(newDataItem(), false);
@@ -1073,6 +1081,23 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
 
                       <div className="rb-hint" style={{ padding: "12px 4px 0" }}>
                         想让角色在<b>离线时</b>也能知道你的状态？去「设置 → 感知」打开「同步状态到我的云端」。
+                      </div>
+
+                      {/* 这一屏原本只讲「本机能力在哪配」，于是很多人逛完就走，
+                          完全没发现右侧还有「自动联动」这一套。这里补一个明确的去处。 */}
+                      <div className="rb-grid" style={{ marginTop: 12 }}>
+                        <div className="rb-rcard" onClick={() => setMainSec("rules")}>
+                          <div className="rb-rtop">
+                            <span className="rb-icchip">{RB_ICON_BROADCAST}</span>
+                            <span className="rb-type">下一步</span>
+                          </div>
+                          <b>去创建自动联动</b>
+                          <p className="rb-rsum">收到某个信号时自动做一件事（写进聊天、记进记忆、触发快捷动作……）</p>
+                          <div className="rb-rfoot">
+                            <span className="rb-rstate">共 {rules.length} 条联动</span>
+                            <span className="rb-link">去「自动联动」→</span>
+                          </div>
+                        </div>
                       </div>
                     </>
                   ) : null}
