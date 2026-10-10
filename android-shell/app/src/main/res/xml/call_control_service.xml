@@ -14,10 +14,6 @@
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows|flagIncludeNotImportantViews"
     android:canRetrieveWindowContent="true"
-    <!-- 截屏能力开关。缺这一行，系统会在 takeScreenshot() 时直接拒绝，
-         报的正是 "Services don't have the capability of taking the screenshot"。
-         这是 Android 11+ 取屏的硬性前提，与本服务的无障碍实例绑定，
-         必须在 XML 里声明——代码里补不出来。 -->
     android:canTakeScreenshot="true"
     android:description="@string/accessibility_service_description"
     android:notificationTimeout="200"
