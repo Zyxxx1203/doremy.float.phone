@@ -1216,7 +1216,7 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
     {
         id: PERCEPTION_READ_CAPABILITY_ID,
         name: "查看TA的手机",
-        description: "看一眼{{user}}此刻真实手机的状态（电量、网络、正在用的应用、步数、今天各应用用了多久）。只读，不会改变任何东西。",
+        description: "看一眼{{user}}此刻真实手机的状态（电量、网络、正在用的应用、步数、今天各应用用了多久、大致位置、最近一觉）。只读，不会改变任何东西。位置与睡眠需要 TA 单独开启。",
         enabled: false,
         mode: "auto",
         createdAt: 0,
@@ -1664,7 +1664,7 @@ const PERCEPTION_READ_PARAMETER_SCHEMA = JSON.stringify({
     properties: {
         focus: {
             type: "string",
-            description: "可选，只看某一类：battery=电量与充电，network=网络，app=正在用什么应用，steps=步数，usage=今天各应用用了多久。不填返回全部。",
+            description: "可选，只看某一类：battery=电量与充电，network=网络，app=正在用什么应用，steps=步数，usage=今天各应用用了多久，location=大致位置，sleep=最近一觉。不填返回全部。",
         },
     },
 });
@@ -1685,13 +1685,21 @@ const PERCEPTION_READ_USAGE_GUIDE = [
     "- 不要把它念成统计报告（「微信 43 分钟、B站 36 分钟」这种）。它只是一个线索：",
     "  比如发现 TA 刷了太久，可以顺口说一句；没事别主动翻。",
     "",
+    "关于位置（focus=location）与睡眠（focus=sleep）：",
+    "- 这两项都是 TA 主动开启的能力，读不到就是没开或没授权，如实说读不到，不要猜。",
+    "- 位置只到「区/街道」这一级（约百米量级），不是精确坐标；TA 在什么具体楼栋你并不知道。",
+    "- 睡眠只有时长与起止，没有深睡浅睡分期。",
+    "- 这两项**不是让你盯着 TA** 的：知道 TA 在外面、知道 TA 昨天没睡好，是为了该关心时关心一句；",
+    "  不要报点（「你现在在朝阳区」「你昨晚 11 点 40 睡的」），也别拿它追问行踪。TA 关掉开关，你就该当没这个能力。",
+    "",
     "参数：",
-    "- focus (string, 可选): 只看某一类；battery=电量与充电，network=网络，app=正在用什么应用，steps=步数，usage=今天各应用用了多久。不填返回全部。",
+    "- focus (string, 可选): 只看某一类；battery=电量与充电，network=网络，app=正在用什么应用，steps=步数，usage=今天各应用用了多久，location=大致位置，sleep=最近一觉。不填返回全部。",
     "",
     "示例：",
     "[执行动作:查看TA的手机({})]",
     '[执行动作:查看TA的手机({"focus":"battery"})]',
     '[执行动作:查看TA的手机({"focus":"usage"})]',
+    '[执行动作:查看TA的手机({"focus":"sleep"})]',
     "",
     "这是只读动作，不会改变 TA 手机上的任何东西。如果某项读不到，说明缺少对应权限或壳版本过低，不要编造。",
 ].join("\n");

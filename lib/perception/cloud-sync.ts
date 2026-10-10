@@ -16,7 +16,7 @@
 import { bridgeConnection } from "../reality-bridge/storage";
 import { putObject, removeObject } from "../cloud-backup/storage-client";
 import { loadPerceptionConfig, loadPerceptionStatus } from "./storage";
-import { describeStatus } from "./describe";
+import { describeStatus, filterStatusBySwitches } from "./describe";
 
 /** 云端快照的存储路径（与快捷指令的 bridge-state 同目录，便于统一清理）。 */
 export const PERCEPTION_CLOUD_PATH = "bridge-state/perception.json";
@@ -40,7 +40,10 @@ export type PerceptionCloudPayload = {
 export function buildCloudPayload(): PerceptionCloudPayload | null {
   const status = loadPerceptionStatus();
   if (!status.at) return null;
-  const summary = describeStatus(status);
+  // 必须过开关过滤。云端同步是状态快照的第三条消费路径（另外两条是
+  // 聊天注入与角色主动查询），漏掉它就等于「关了位置/睡眠开关，
+  // 这两个字段仍会被写进 summary 传到云端」——开关就形同虚设了。
+  const summary = describeStatus(filterStatusBySwitches(status, loadPerceptionConfig()));
   if (!summary) return null;
   return {
     at: status.at,
@@ -85,7 +88,8 @@ export function readLocalStatusForOffline(): string {
   if (!status.at) return "";
   const ms = Date.now() - new Date(status.at).getTime();
   if (!Number.isFinite(ms) || ms > 6 * 60 * 60 * 1000) return "";
-  const summary = describeStatus(status);
+  // 与云端同步同理：这段文字会进离线快照，也必须尊重用户的关闭开关。
+  const summary = describeStatus(filterStatusBySwitches(status, loadPerceptionConfig()));
   if (!summary) return "";
   return `你上次留意到 TA 手机的状态：${summary}。`;
 }

@@ -115,8 +115,9 @@ export function describeStatus(status: PerceptionStatusSnapshot): string {
  * 按用户的逐能力开关过滤状态。
  *
  * 关键：用户关掉「位置」不只是不想收到通知，也是不想让角色看见。
- * 所以「注入」和「主动查询」两条路径都必须过这道过滤，把关闭项清空，
- * 而不是原样返回——否则开关就形同虚设。
+ * 所以**每一条**读状态的路径都必须过这道过滤，把关闭项清空，而不是
+ * 原样返回——否则开关就形同虚设。目前有三条：聊天注入、角色主动查询、
+ * 云端同步（含离线快照的本机注入）。
  */
 export function filterStatusBySwitches(
   status: PerceptionStatusSnapshot,
