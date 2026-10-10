@@ -4,7 +4,7 @@ import { useEffect } from "react";
 
 import { bgSetTimeout } from "@/lib/bg-timer";
 import { hydrateKvDb } from "@/lib/kv-db";
-import { processBridgeItem, runDueScheduledRules } from "@/lib/reality-bridge/engine";
+import { processBridgeItem, runDueDelayedTasks, runDueScheduledRules } from "@/lib/reality-bridge/engine";
 import { bridgeConnection, loadBridgeSettings, pullBridgeInbox } from "@/lib/reality-bridge/storage";
 
 export const REALITY_BRIDGE_FEED_UPDATED_EVENT = "reality-bridge-feed-updated";
@@ -23,8 +23,9 @@ async function pollOnce(force = false): Promise<number> {
     // 放在 ready 判断之前，是为了让「只想每天早上说句早安」的用户
     // ——压根没配 Supabase 的那种——也能用上定时。
     const { config, ready } = bridgeConnection();
+    // 定时联动与延迟补执行都是纯本地能力，与云端无关。
     if (!ready) {
-      const localFired = await runDueScheduledRules();
+      const localFired = (await runDueScheduledRules()) + (await runDueDelayedTasks());
       if (localFired > 0 && typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent(REALITY_BRIDGE_FEED_UPDATED_EVENT));
       }
@@ -34,7 +35,7 @@ async function pollOnce(force = false): Promise<number> {
     for (const item of items) {
       await processBridgeItem(item);
     }
-    const fired = await runDueScheduledRules();
+    const fired = (await runDueScheduledRules()) + (await runDueDelayedTasks());
     if ((items.length > 0 || fired > 0) && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent(REALITY_BRIDGE_FEED_UPDATED_EVENT));
     }

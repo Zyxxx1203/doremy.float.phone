@@ -504,10 +504,14 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     if (a.outbox) parts.push("回传到 iPhone");
     if (a.broadcast) parts.push("转发给其他 APP");
     const summary = parts.length ? parts.join("、") : (schedule ? "什么都不做" : "只是收下来看看");
+    const delay = Number(rule.delayMinutes) || 0;
+    const withDelay = delay > 0 ? `延后 ${delay} 分钟` : "";
     const cooldown = Number(rule.cooldownMinutes) || 0;
-    if (cooldown <= 0) return summary;
+    if (cooldown <= 0) return withDelay ? `${summary}（${withDelay}执行）` : summary;
     const label = cooldown % 60 === 0 ? `${cooldown / 60} 小时` : `${cooldown} 分钟`;
-    return `${summary}（${label}内只触发一次）`;
+    return withDelay
+      ? `${summary}（${withDelay}执行，${label}内只触发一次）`
+      : `${summary}（${label}内只触发一次）`;
   }, [charName, shortcutActions]);
 
   const uploadUrl = `${config.url || "https://你的项目.supabase.co"}/storage/v1/object/${CLOUD_BACKUP_BUCKET}/bridge-inbox/[文件名].json`;
@@ -1731,6 +1735,21 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
               </select>
             </label>
             <p className="rb-hint">短时间反复收到同一信号（比如一小时内多次打开某个 APP）时，间隔内的重复消息只存档，不再打扰角色。</p>
+            <label>延迟执行
+              <select
+                value={editing.delayMinutes ?? 0}
+                onChange={event => setEditing({ ...editing, delayMinutes: Number(event.target.value) || 0 })}
+              >
+                <option value={0}>立刻执行</option>
+                <option value={1}>1 分钟后</option>
+                <option value={5}>5 分钟后</option>
+                <option value={10}>10 分钟后</option>
+                <option value={30}>30 分钟后</option>
+                <option value={60}>1 小时后</option>
+                <option value={180}>3 小时后</option>
+              </select>
+            </label>
+            <p className="rb-hint">设了延迟就不会当场执行，而是到点再做（例如发现你熬夜，十分钟后再提醒）。小手机开着或后台保活时到点即执行；完全关闭期间到点的，下次打开时补上。</p>
             </div>
             ) : null}
 

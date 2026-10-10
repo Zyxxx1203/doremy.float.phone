@@ -40,6 +40,11 @@ import {
   markBridgeRuleRun,
   mergeBridgeRuleRuns,
 } from "./storage";
+import {
+  enqueueDelayedTask,
+  loadDelayedTasks,
+  saveDelayedTasks,
+} from "./delayed-queue";
 
 const BRIDGE_SOURCE = { id: "reality_bridge", name: "现实桥" };
 
@@ -417,6 +422,23 @@ export async function processBridgeItem(item: BridgeItem): Promise<BridgeFeedEnt
       markBridgeRuleRun(rule.id);
       const text = await processText(rule, item);
       if (text !== item.payload) entry.processed = text.slice(0, 2000);
+      const delay = Math.max(0, Number(rule.delayMinutes) || 0);
+      if (delay > 0) {
+        // 延迟执行：加工结果先存起来，到点直接用它，不再加工一次
+        // （否则「AI 先处理」会在延迟前后各跑一遍模型，结果还可能不一样）。
+        const task = enqueueDelayedTask({
+          ruleId: rule.id,
+          ruleName: rule.name,
+          item,
+          text,
+          delayMinutes: delay,
+        });
+        if (task) {
+          entry.actions.push(`${delay} 分钟后执行（已排队）`);
+          continue;
+        }
+        entry.actions.push("延迟排队失败，已改为立刻执行");
+      }
       entry.actions.push(...await runActions(rule, item, text));
     } catch (err) {
       entry.error = err instanceof Error ? err.message : String(err);
@@ -432,6 +454,65 @@ export async function processBridgeItem(item: BridgeItem): Promise<BridgeFeedEnt
   if (rules.length === 0 && entry.actions.length === 0) entry.actions.push("仅存档（无匹配规则）");
   appendBridgeFeed(entry);
   return entry;
+}
+
+/**
+ * 跑一遍到点的延迟任务。调度器每轮调用一次。
+ *
+ * 规则在排队后被删掉或停用时不再执行，但会记一条流水说明——
+ * 静默丢掉会让用户以为「延迟功能坏了」，说清原因他才好排查。
+ *
+ * @returns 本次真正执行的任务数
+ */
+export async function runDueDelayedTasks(): Promise<number> {
+  const tasks = loadDelayedTasks();
+  if (tasks.length === 0) return 0;
+  const now = Date.now();
+  const due = tasks.filter(task => task.dueAt <= now);
+  if (due.length === 0) return 0;
+  // 先摘出来再执行：执行可能很慢（触发 LLM），期间不能让它们被重复判定
+  saveDelayedTasks(tasks.filter(task => task.dueAt > now));
+
+  let fired = 0;
+  for (const task of due) {
+    const rule = loadBridgeRules().find(item => item.id === task.ruleId);
+    if (!rule || !rule.enabled) {
+      appendBridgeFeed({
+        id: task.id,
+        type: task.item.type,
+        payload: task.item.payload.slice(0, 2000),
+        rules: [task.ruleName],
+        actions: [rule ? "规则已停用，延迟任务取消" : "规则已删除，延迟任务取消"],
+        receivedAt: new Date().toISOString(),
+      });
+      continue;
+    }
+    try {
+      const actions = await runActions(rule, task.item, task.text);
+      appendBridgeFeed({
+        id: task.id,
+        type: task.item.type,
+        payload: task.item.payload.slice(0, 2000),
+        processed: task.text !== task.item.payload ? task.text.slice(0, 2000) : undefined,
+        rules: [rule.name],
+        actions: actions.length > 0 ? actions : ["延迟执行"],
+        receivedAt: new Date().toISOString(),
+      });
+      fired += 1;
+    } catch (err) {
+      appendBridgeFeed({
+        id: task.id,
+        type: task.item.type,
+        payload: task.item.payload.slice(0, 2000),
+        rules: [rule.name],
+        actions: [],
+        error: err instanceof Error ? err.message : String(err),
+        receivedAt: new Date().toISOString(),
+      });
+      console.warn("[现实桥] 延迟任务执行失败", rule.name, err);
+    }
+  }
+  return fired;
 }
 
 // ── 定时触发 ──
