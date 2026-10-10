@@ -10,13 +10,14 @@
 // 所以这里的 requestCheckIn 返回 Promise，等原生把用户的选择回推过来。
 
 import { ensureShellOverlayListener, subscribeShellOverlayEvents } from "../shell-call-overlay";
-import type { CheckInCapabilities, CheckInOutcome } from "./types";
+import type { CheckInCapabilities, CheckInDiagnostics, CheckInOutcome } from "./types";
 
 type CheckInBridgeLike = {
   getCheckInCapabilities?: () => string;
   prepareCheckIn?: () => boolean;
   stopCheckIn?: () => void;
   requestCheckIn?: (characterId: string, name: string, avatar: string) => void;
+  getCheckInDiagnostics?: () => string;
 };
 
 function bridge(): CheckInBridgeLike | null {
@@ -39,6 +40,18 @@ export function readCheckInCapabilities(): CheckInCapabilities {
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return {};
+  }
+}
+
+/** 读查岗浮层的内部状态（诊断面板用）。读不到返回 null。 */
+export function readCheckInDiagnostics(): CheckInDiagnostics | null {
+  try {
+    const raw = bridge()?.getCheckInDiagnostics?.();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CheckInDiagnostics;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
   }
 }
 

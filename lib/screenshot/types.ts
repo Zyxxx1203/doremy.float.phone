@@ -37,6 +37,46 @@ export type ScreenshotCaptureResult =
     }
   | { ok: false; reason: string };
 
+/** 截屏桥的内部状态快照（诊断用，不含任何画面内容）。 */
+export type ScreenshotDiagnostics = {
+  supported?: boolean;
+  accessibilityOn?: boolean;
+  ready?: boolean;
+  capturing?: boolean;
+  /** 最近一次失败描述（空串 = 没记到失败） */
+  lastError?: string;
+  /** 最近一次截屏时刻；0 = 从未截过 */
+  lastCaptureAt?: number;
+  lastCaptureOk?: boolean;
+  /** 最近一次截屏的补充说明（尺寸体积或失败原因） */
+  lastCaptureNote?: string;
+  captureCount?: number;
+};
+
+/** 查岗浮层的内部状态快照（诊断用）。 */
+export type CheckInDiagnostics = {
+  /** 浮窗权限是否已授予 */
+  canDraw?: boolean;
+  /** 服务是否在运行 */
+  running?: boolean;
+  /** 壳自己认知的前后台 */
+  hostInForeground?: boolean;
+  /** 是否有活动实例 */
+  hasInstance?: boolean;
+  /** 窗口是否真的挂上了 */
+  windowAdded?: boolean;
+  /** 窗口是否可见 */
+  windowVisible?: boolean;
+  /** 是否正有一张图等着用户决定 */
+  awaitingDecision?: boolean;
+  /** 最近一次失败描述 */
+  lastError?: string;
+  lastShowAt?: number;
+  showCount?: number;
+  /** 嵌一层截屏桥的状态 */
+  screenshot?: ScreenshotDiagnostics;
+};
+
 /** 原生上报的查岗能力与状态。 */
 export type CheckInCapabilities = {
   /** 系统版本够不够（Android 11+） */

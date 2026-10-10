@@ -79,6 +79,55 @@ object ScreenshotBridge {
         .put("ready", canCapture())
         .toString()
 
+    // ── 诊断留痕 ────────────────────────────────────────────
+    //
+    // 截屏这条链路上「点了没反应」最难查：系统 API 全是回调式，失败分支又被
+    // 兜底吞掉，用户只看得到「什么都没发生」。这里把关键节点记下来，
+    // 设置页的诊断面板直接读，不必连 USB 调试。
+    //
+    // 只记状态与尺寸，**绝不记画面内容**——留痕里不会出现任何截图数据。
+
+    /** 最近一次失败原因（空串 = 没记到失败）。 */
+    @Volatile
+    private var lastError: String = ""
+
+    /** 最近一次截屏的时刻（毫秒）；0 = 从未截过。 */
+    @Volatile
+    private var lastCaptureAt: Long = 0L
+
+    /** 最近一次截屏是否成功。 */
+    @Volatile
+    private var lastCaptureOk: Boolean = false
+
+    /** 最近一次截屏的补充说明（成功记尺寸体积，失败记原因）。 */
+    @Volatile
+    private var lastCaptureNote: String = ""
+
+    /** 累计截屏次数（成功 + 失败）。 */
+    @Volatile
+    private var captureCount: Int = 0
+
+    private fun recordFailure(where: String, reason: String) {
+        lastError = "$where: $reason"
+        lastCaptureAt = System.currentTimeMillis()
+        lastCaptureOk = false
+        lastCaptureNote = reason
+        captureCount += 1
+    }
+
+    /** 诊断快照：截屏桥的内部状态，给设置页的「诊断」面板读。 */
+    fun diagnosticsJson(): String = JSONObject()
+        .put("supported", Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+        .put("accessibilityOn", service != null)
+        .put("ready", canCapture())
+        .put("capturing", capturing)
+        .put("lastError", lastError)
+        .put("lastCaptureAt", lastCaptureAt)
+        .put("lastCaptureOk", lastCaptureOk)
+        .put("lastCaptureNote", lastCaptureNote)
+        .put("captureCount", captureCount)
+        .toString()
+
     /**
      * 发起一次截屏。
      *
@@ -95,12 +144,22 @@ object ScreenshotBridge {
 
         captureBitmap { bitmap, error ->
             if (bitmap == null) {
-                publish(JSONObject().put("ok", false).put("reason", error ?: "截屏失败"))
+                val reason = error ?: "截屏失败"
+                recordFailure("capture", reason)
+                publish(JSONObject().put("ok", false).put("reason", reason))
                 return@captureBitmap
             }
             encodeAndPublish(bitmap)
         }
         return JSONObject().put("ok", true).put("accepted", true)
+    }
+
+    /** 记住一次成功的截屏（尺寸与体积，不含画面）。 */
+    private fun recordSuccess(width: Int, height: Int, bytes: Int) {
+        lastCaptureAt = System.currentTimeMillis()
+        lastCaptureOk = true
+        lastCaptureNote = "${width}×${height} · ${bytes / 1024} KB"
+        captureCount += 1
     }
 
     /**
@@ -180,6 +239,7 @@ object ScreenshotBridge {
             } finally {
                 runCatching { png.close() }
             }
+            recordSuccess(bitmap.width, bitmap.height, bytes.size)
             publish(
                 JSONObject()
                     .put("ok", true)
@@ -189,7 +249,9 @@ object ScreenshotBridge {
                     .put("base64", Base64.encodeToString(bytes, Base64.NO_WRAP)),
             )
         } catch (e: Throwable) {
-            publish(JSONObject().put("ok", false).put("reason", e.message ?: "处理屏幕画面失败"))
+            val reason = e.message ?: "处理屏幕画面失败"
+            recordFailure("encode", reason)
+            publish(JSONObject().put("ok", false).put("reason", reason))
         }
     }
 

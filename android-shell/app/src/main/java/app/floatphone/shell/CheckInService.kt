@@ -161,6 +161,62 @@ class CheckInService : Service() {
             .put("accessibilityOn", ScreenshotBridge.isAccessibilityOn())
             .put("canDraw", liveInstance != null || running)
             .toString()
+
+        // ── 诊断留痕 ────────────────────────────────────────
+        //
+        // 「该弹没弹」是浮层类功能最难查的故障。它可能卡在四道关：权限没给 →
+        // 服务没起来 → 窗口没挂上 → 截图失败。没有留痕，用户只能描述成
+        // 「没反应」，排查全靠猜。这里把每一道关的结果记下来。
+        //
+        // 只记状态与原因，**绝不记画面内容**。
+
+        /** 最近一次失败描述（空串 = 没记到失败）。 */
+        @Volatile
+        private var lastError: String = ""
+
+        /** 最近一次弹出浮层的时刻；0 = 从未弹过。 */
+        @Volatile
+        private var lastShowAt: Long = 0L
+
+        /** 累计弹出次数。 */
+        @Volatile
+        private var showCount: Int = 0
+
+        private fun recordError(where: String, error: Throwable) {
+            lastError = "$where: ${error.javaClass.simpleName}: ${error.message}"
+        }
+
+        private fun recordError(where: String, reason: String) {
+            lastError = "$where: $reason"
+        }
+
+        /**
+         * 浮层内部状态快照，给设置页的「诊断」面板读。
+         *
+         * 排查顺序与状态一一对应：
+         *   canDraw false      → 权限没给，系统不允许画浮层（最先要看的）
+         *   running false      → 服务没起来（多半是开启时 App 不在前台，被系统拒了）
+         *   hasInstance false  → 服务在跑但没有实例
+         *   windowAdded false  → 窗口没挂上（见 lastError）
+         */
+        fun diagnosticsJson(context: Context): String {
+            val instance = liveInstance
+            return runCatching {
+                JSONObject()
+                    .put("canDraw", canDraw(context))
+                    .put("running", running)
+                    .put("hostInForeground", hostInForeground)
+                    .put("hasInstance", instance != null)
+                    .put("windowAdded", instance?.rootView != null)
+                    .put("windowVisible", instance?.rootView?.visibility == View.VISIBLE)
+                    .put("awaitingDecision", instance?.pendingBitmap != null)
+                    .put("lastError", lastError)
+                    .put("lastShowAt", lastShowAt)
+                    .put("showCount", showCount)
+                    .put("screenshot", JSONObject(ScreenshotBridge.diagnosticsJson()))
+                    .toString()
+            }.getOrDefault("{}")
+        }
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -225,6 +281,8 @@ class CheckInService : Service() {
      * 完全不知道发生了什么。先给个「正在截屏」的即时反馈，体感才不突兀。
      */
     private fun showCheckIn(characterId: String, name: String, avatar: String) {
+        lastShowAt = System.currentTimeMillis()
+        showCount += 1
         pendingCharacterId = characterId
         pendingBitmap?.recycle()
         pendingBitmap = null
@@ -241,7 +299,9 @@ class CheckInService : Service() {
             main.post {
                 if (bitmap == null) {
                     // 截不到图就直接如实收场：不弹一张没有内容的浮层让用户干等
-                    publishResult(accepted = false, reason = error ?: "截屏失败", reply = consumeReplyText())
+                    val reason = error ?: "截屏失败"
+                    recordError("capture", reason)
+                    publishResult(accepted = false, reason = reason, reply = consumeReplyText())
                     hideWindow()
                     return@post
                 }
@@ -522,6 +582,7 @@ class CheckInService : Service() {
                 }
                 layoutParams = params
                 runCatching { windowManager.addView(view, params) }
+                    .onFailure { recordError("addView", it) }
             } else {
                 view.visibility = View.VISIBLE
             }

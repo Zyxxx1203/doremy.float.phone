@@ -908,6 +908,14 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun getCheckInCapabilities(): String = CheckInService.capabilitiesJson()
 
+        /** 截屏桥的内部状态快照（诊断面板用，不含任何画面内容）。 */
+        @JavascriptInterface
+        fun getScreenshotDiagnostics(): String = ScreenshotBridge.diagnosticsJson()
+
+        /** 查岗浮层的内部状态快照（诊断面板用）。 */
+        @JavascriptInterface
+        fun getCheckInDiagnostics(): String = CheckInService.diagnosticsJson(this@MainActivity)
+
         /**
          * 预热查岗服务。用户开启查岗时（App 在前台）调用，让服务常驻待命——
          * Android 12+ 禁止后台启动前台服务，而查岗正是后台触发，必须先暖好。

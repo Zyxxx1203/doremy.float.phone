@@ -11,11 +11,12 @@
 // 非壳环境或老 APK 一律安全降级，调用方无需分支判断。
 
 import { ensureShellOverlayListener, subscribeShellOverlayEvents } from "../shell-call-overlay";
-import type { ScreenshotCapabilities, ScreenshotCaptureResult } from "./types";
+import type { ScreenshotCapabilities, ScreenshotCaptureResult, ScreenshotDiagnostics } from "./types";
 
 type ScreenshotBridgeLike = {
   getScreenshotCapabilities?: () => string;
   captureScreenshot?: () => string;
+  getScreenshotDiagnostics?: () => string;
 };
 
 function bridge(): ScreenshotBridgeLike | null {
@@ -27,6 +28,21 @@ function bridge(): ScreenshotBridgeLike | null {
 /** 壳是否提供截屏桥（老 APK 没有）。 */
 export function hasScreenshotBridge(): boolean {
   return typeof bridge()?.captureScreenshot === "function";
+}
+
+/**
+ * 读截屏桥的内部状态（诊断面板用）。壳不支持或读失败都返回 null，
+ * 面板据此显示「当前版本不支持」，而不是抓一堆 undefined 去猜。
+ */
+export function readScreenshotDiagnostics(): ScreenshotDiagnostics | null {
+  try {
+    const raw = bridge()?.getScreenshotDiagnostics?.();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ScreenshotDiagnostics;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
