@@ -13,7 +13,7 @@
 // 挂载方式与 PerceptionSettings / SystemCalendarSettings 一致：
 // 直接渲染内容，不套 PageShell、不收 onBack。
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, CircleDot, Loader2, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
 
 import { Toggle } from "@/components/ui/form";
@@ -23,12 +23,14 @@ import { isShellEnvironment as isShell, openAccessibilitySettings } from "@/lib/
 import {
   captureAndStoreScreenshot,
   clearAllScreenshots,
+  deleteScreenshotRecord,
   flushPendingUserShot,
   hasScreenshotBallBridge,
   hasScreenshotBridge,
   loadScreenshotConfig,
   loadScreenshotRecords,
   prepareScreenshotBall,
+  readBallHasImage,
   readScreenshotCapabilities,
   saveScreenshotConfig,
   setScreenshotBallStyle,
@@ -74,6 +76,18 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
   const [records, setRecords] = useState<ScreenshotRecord[]>(() => loadScreenshotRecords());
   const [busy, setBusy] = useState(false);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
+
+  // 球外观的自定义输入。色号与透明度分开持有：改透明度不该让用户重填色号。
+  const [colorInput, setColorInput] = useState(() => {
+    const hex = loadScreenshotConfig().ballColor.replace(/^#/, "");
+    return `#${hex.slice(-6).toUpperCase()}`;
+  });
+  const [alphaPercent, setAlphaPercent] = useState(() => {
+    const hex = loadScreenshotConfig().ballColor.replace(/^#/, "");
+    return hex.length === 8 ? Math.round((parseInt(hex.slice(0, 2), 16) / 255) * 100) : 90;
+  });
+  const [ballHasImage, setBallHasImage] = useState(() => readBallHasImage());
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = useCallback(() => {
     setConfig(loadScreenshotConfig());
@@ -181,6 +195,13 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
     setThumbs({});
     refresh();
     onNotice?.("已清空全部截屏记录");
+  }, [onNotice, refresh]);
+
+  /** 删单张：连同媒体库里的图一起删，不留下无人引用的图片占存储。 */
+  const doDeleteOne = useCallback(async (id: string) => {
+    await deleteScreenshotRecord(id);
+    refresh();
+    onNotice?.("已删除这张截屏");
   }, [onNotice, refresh]);
 
   /**
@@ -365,10 +386,12 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
                   onChange={e => updateBallStyle({ ballText: e.target.value.slice(0, 4) })}
                 />
               </div>
+              {/* 颜色：快捷色板 + 自己填色号 + 透明度。
+                  只给色板满足不了「我要 #3A7BD5 的 60%」这种需求。 */}
               <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
                 <div className="menu-label-group">
                   <span className="menu-label">颜色</span>
-                  <span className="menu-desc">点一下立刻换，不用重开开关</span>
+                  <span className="menu-desc">点色板立刻换，或自己填色号</span>
                 </div>
                 <div className="menu-right" style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                   {BALL_COLORS.map(item => {
@@ -393,6 +416,90 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
                     );
                   })}
                 </div>
+              </div>
+
+              {/* 色号输入：填满 6 位才下发，避免敲到一半球乱跳色。 */}
+              <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
+                <div className="menu-label-group">
+                  <span className="menu-label">色号</span>
+                  <span className="menu-desc">十六进制，可带 #。透明度用下面的滑条调</span>
+                </div>
+                <input
+                  className="per-field-input"
+                  style={{ maxWidth: 110, fontFamily: "ui-monospace, monospace" }}
+                  value={colorInput}
+                  placeholder="#5B7CFA"
+                  maxLength={7}
+                  spellCheck={false}
+                  aria-label="悬浮球色号"
+                  onChange={e => {
+                    const next = e.target.value;
+                    setColorInput(next);
+                    // 只在填满 6 位十六进制时才下发：否则每敲一个字符都换一次色，
+                    // 球会在屏幕上乱跳
+                    const hex = next.replace(/^#/, "");
+                    if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+                      updateBallStyle({ ballColor: `#${alphaHex}${hex.toUpperCase()}` });
+                    }
+                  }}
+                />
+              </div>
+
+              {/* 透明度：与色号分开，改透明度不必重填色号。 */}
+              <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
+                <div className="menu-label-group">
+                  <span className="menu-label">透明度</span>
+                  <span className="menu-desc">当前 {Math.round(alphaFromPercent(alphaPercent) * 100 / 255)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={10}
+                  max={100}
+                  value={alphaPercent}
+                  style={{ maxWidth: 140, width: 140 }}
+                  aria-label="悬浮球透明度"
+                  onChange={e => {
+                    const pct = Number(e.target.value);
+                    setAlphaPercent(pct);
+                    const rgb = config.ballColor.replace(/^#/, "").slice(-6).toUpperCase();
+                    updateBallStyle({ ballColor: `#${alphaFromPercent(pct)}${rgb}` });
+                  }}
+                />
+              </div>
+
+              {/* 上传图片：球面直接用自己的图，不再叠字。 */}
+              <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
+                <div className="menu-label-group">
+                  <span className="menu-label">自定义图片</span>
+                  <span className="menu-desc">
+                    {ballHasImage ? "已用上传的图片当球面" : "不设就用上面的纯色圆点"}
+                  </span>
+                </div>
+                <div className="menu-right" style={{ display: "flex", gap: 6 }}>
+                  <button
+                    type="button"
+                    className="ui-btn ui-btn-outline"
+                    onClick={() => imageInputRef.current?.click()}
+                  >
+                    上传
+                  </button>
+                  {ballHasImage ? (
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn-outline"
+                      onClick={() => { updateBallStyle({}, ""); setBallHasImage(false); onNotice?.("已清除自定义图片"); }}
+                    >
+                      清除
+                    </button>
+                  ) : null}
+                </div>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={e => void handleImagePick(e)}
+                />
               </div>
               <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
                 <div className="menu-label-group">
@@ -605,6 +712,15 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
                       {item.width}×{item.height} · {formatBytes(item.bytes)}
                     </span>
                   </div>
+                  <button
+                    type="button"
+                    className="ui-btn ui-btn-outline"
+                    style={{ flex: "0 0 auto", padding: "6px 10px" }}
+                    aria-label="删除这张截屏"
+                    onClick={() => void doDeleteOne(item.id)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
               ))}
               <div className="per-actions">

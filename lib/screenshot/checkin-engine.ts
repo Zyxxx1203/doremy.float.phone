@@ -16,6 +16,7 @@
 //    免得角色误以为用户拒绝、做出委屈的反应。
 
 import { pushChatMessage, loadChatSessions, loadCharacters } from "../chat-storage";
+import { recordUserShot } from "./engine";
 import { requestBackgroundChatReply } from "../follow-up-service";
 import { storeMediaBase64 } from "../media-cache-storage";
 import {
@@ -174,6 +175,14 @@ export async function deliverUserShot(outcome: CheckInOutcome): Promise<{ ok: bo
     if (outcome.reply) {
       pushChatMessage({ sessionId, role: "user", content: outcome.reply });
     }
+    // 同时记进「最近截屏」列表：用户想回查刚才截了什么时，
+    // 那张图必须和查岗截的一视同仁地出现在列表里。
+    void recordUserShot({
+      base64: outcome.base64,
+      width: outcome.width,
+      height: outcome.height,
+      bytes: outcome.bytes,
+    }).catch(() => undefined);
     const stored = await storeMediaBase64(outcome.base64, "image/png");
     pushChatMessage({
       sessionId,

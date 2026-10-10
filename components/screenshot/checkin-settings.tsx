@@ -28,11 +28,10 @@ import {
 } from "@/lib/screenshot";
 import { isShellEnvironment as isShell } from "@/lib/shell-call-overlay";
 
-const INTERVAL_PRESETS: Array<{ label: string; min: number; max: number }> = [
-  { label: "30~90 分", min: 30, max: 90 },
-  { label: "1~3 小时", min: 60, max: 180 },
-  { label: "3~6 小时", min: 180, max: 360 },
-];
+/** 每日上限与间隔的允许范围，与 lib/screenshot/checkin-config.ts 里的钳制保持一致。 */
+const MIN_ALLOWED = 5;
+const MAX_ALLOWED = 720;
+const DAILY_ALLOWED = 20;
 
 export function CheckInSettings({ onNotice }: { onNotice?: (msg: string) => void }) {
   const [configs, setConfigs] = useState<CheckInConfigMap>(() => loadCheckInConfig());
@@ -115,11 +114,7 @@ export function CheckInSettings({ onNotice }: { onNotice?: (msg: string) => void
       <div className="per-note is-warn" style={{ padding: "0 var(--ui-padding, 16px)", marginBottom: 10 }}>
         <div style={{ fontWeight: 600 }}>它会先截屏给你看，你点头才发给它</div>
         <div style={{ marginTop: 6, lineHeight: 1.65 }}>
-          到点时截当前屏幕，弹出浮层问你给不给看——<b>你不在小手机里也能处理</b>，
-          而且浮层里带一个回复框，顺手就能跟它说句话。
-          点「不给」这张图当场丢弃，从来没有离开过这台设备；点「给它看」，
-          它才会以一张图片的形式进聊天，角色看到后自然会点评。
-          每个角色单独设置，默认关闭。
+          到点截屏 → 弹浮层问你 → 你点了才发。点「不给」当场丢弃，图没离开过本机。
         </div>
       </div>
 
@@ -155,44 +150,58 @@ export function CheckInSettings({ onNotice }: { onNotice?: (msg: string) => void
 
                 {enabled && (
                   <>
+                    {/* 间隔：两个直接输入的分钟数，不再给固定档位——
+                        「我要 47 分钟」这种需求给按钮满足不了。 */}
                     <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
                       <div className="menu-label-group">
-                        <span className="menu-label">间隔</span>
-                        <span className="menu-desc">随机取值，不做固定节拍——那样像定时器，不像人</span>
+                        <span className="menu-label">间隔（分钟）</span>
+                        <span className="menu-desc">
+                          在这个范围里随机取，不做固定节拍
+                        </span>
                       </div>
-                      <div className="menu-right" style={{ display: "flex", gap: 6 }}>
-                        {INTERVAL_PRESETS.map(preset => (
-                          <button
-                            key={preset.label}
-                            type="button"
-                            className="ui-btn ui-btn-outline"
-                            style={{ opacity: min === preset.min && max === preset.max ? 1 : 0.55 }}
-                            onClick={() => patch(character.id, { minMinutes: preset.min, maxMinutes: preset.max })}
-                          >
-                            {preset.label}
-                          </button>
-                        ))}
+                      <div className="menu-right" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <input
+                          className="per-field-input"
+                          style={{ width: 62 }}
+                          type="number"
+                          inputMode="numeric"
+                          min={MIN_ALLOWED}
+                          max={MAX_ALLOWED}
+                          value={min}
+                          aria-label="间隔下限（分钟）"
+                          onChange={e => patch(character.id, { minMinutes: Number(e.target.value) })}
+                        />
+                        <span className="menu-desc">~</span>
+                        <input
+                          className="per-field-input"
+                          style={{ width: 62 }}
+                          type="number"
+                          inputMode="numeric"
+                          min={MIN_ALLOWED}
+                          max={MAX_ALLOWED}
+                          value={max}
+                          aria-label="间隔上限（分钟）"
+                          onChange={e => patch(character.id, { maxMinutes: Number(e.target.value) })}
+                        />
                       </div>
                     </div>
 
-                    <div className="menu-item" style={{ cursor: "default" }}>
+                    <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
                       <div className="menu-label-group">
-                        <span className="menu-label">每天最多</span>
+                        <span className="menu-label">每天最多（次）</span>
                         <span className="menu-desc">到上限就停，不会没完没了</span>
                       </div>
-                      <div className="menu-right" style={{ display: "flex", gap: 6 }}>
-                        {[1, 3, 5].map(n => (
-                          <button
-                            key={n}
-                            type="button"
-                            className="ui-btn ui-btn-outline"
-                            style={{ opacity: limit === n ? 1 : 0.55 }}
-                            onClick={() => patch(character.id, { dailyLimit: n })}
-                          >
-                            {n} 次
-                          </button>
-                        ))}
-                      </div>
+                      <input
+                        className="per-field-input"
+                        style={{ width: 62 }}
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={DAILY_ALLOWED}
+                        value={limit}
+                        aria-label="每天最多查岗次数"
+                        onChange={e => patch(character.id, { dailyLimit: Number(e.target.value) })}
+                      />
                     </div>
 
                     <div className="menu-item" style={{ cursor: "default" }}>
