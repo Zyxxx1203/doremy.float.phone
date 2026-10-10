@@ -22,7 +22,7 @@ import { isWithinPushQuietHours } from "../push-client";
 import { processBridgeItem } from "../reality-bridge/engine";
 import type { BridgeItem } from "../reality-bridge/types";
 import { ensureShellOverlayListener, subscribeShellOverlayEvents } from "../shell-call-overlay";
-import { hasPerceptionBridge, readAppLabel, readPerceptionSnapshot } from "./bridge";
+import { hasPerceptionBridge, readAppLabel, readPerceptionSnapshot, readUsageStats, supportsUsageStats, type AppUsageEntry } from "./bridge";
 import { syncPerceptionToCloud } from "./cloud-sync";
 import {
   appendPerceptionLog,
@@ -197,6 +197,13 @@ async function sampleOnce(): Promise<void> {
   const dwellLabel = state.dwellPackage
     ? (readAppLabel(state.dwellPackage) || state.dwellPackage)
     : "";
+  // 使用统计只随快照缓存，不单独产生信号：
+  // 「今天用了多久」是一个持续累积的量，按阈值报会在一天里反复触发同类消息，
+  // 更像仪表盘而不是「角色察觉到什么」。让角色在需要时（注入或主动查询）
+  // 自己去看这份缓存即可。
+  const appUsage = supportsUsageStats() && isCapabilityEnabled(config, "usageStats")
+    ? readUsageStats(12)
+    : ([] as AppUsageEntry[]);
   savePerceptionStatus({
     at: new Date().toISOString(),
     batteryPercent: percent,
@@ -208,6 +215,7 @@ async function sampleOnce(): Promise<void> {
       ? Math.max(0, Math.floor((Date.now() - state.dwellSince) / 60000))
       : 0,
     steps: snapshot.steps,
+    appUsage,
   });
 
   // ── 云端同步（默认关）──

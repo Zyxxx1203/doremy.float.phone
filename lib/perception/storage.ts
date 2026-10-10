@@ -187,6 +187,9 @@ const EMPTY_STATUS: PerceptionStatusSnapshot = {
   foregroundApp: "",
   foregroundMinutes: 0,
   steps: -1,
+  // 旧缓存里没有这个字段（这次才加），合并后必须还是个数组——
+  // 否则 describeTopUsage 遍历时会在 undefined 上炸。
+  appUsage: [],
 };
 
 /** 读最近一次采样的设备状态。从未采样过时 at 为空串。 */

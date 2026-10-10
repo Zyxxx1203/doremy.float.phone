@@ -4,7 +4,6 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.RemoteInput
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -15,6 +14,10 @@ import android.os.IBinder
 import android.util.Base64
 import android.webkit.CookieManager
 import androidx.core.app.NotificationCompat
+// RemoteInput 必须用 androidx 版：NotificationCompat.Action.addRemoteInput()
+// 收的是 androidx.core.app.RemoteInput，与框架的 android.app.RemoteInput
+// 是两个类型（同名不同源），混用会直接编译失败。
+import androidx.core.app.RemoteInput
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request

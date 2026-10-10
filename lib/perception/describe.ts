@@ -31,6 +31,25 @@ function describeNetwork(type: string, metered: boolean): string {
 }
 
 /**
+ * 把「今天用得最久的几个应用」说成人话。
+ *
+ * 三条取舍：
+ *  · 只说前 3 个——全列出来会变成屏幕使用报告；
+ *  · 少于 10 分钟的不提——那种多半是系统组件，提了是噪声；
+ *  · 说成「今天在微信 43 分钟」这种顺口的话，
+ *    不写「应用使用时长统计：微信 43min」这种报表腔。
+ */
+function describeTopUsage(appUsage: PerceptionStatusSnapshot["appUsage"]): string {
+  if (!appUsage || appUsage.length === 0) return "";
+  const top = appUsage.filter(item => item.minutes >= 10).slice(0, 3);
+  if (top.length === 0) return "";
+  const text = top
+    .map(item => `${item.label || item.package} ${item.minutes} 分钟`)
+    .join("、");
+  return `今天在 ${text}`;
+}
+
+/**
  * 生成一段设备状态速写。
  *
  * 原则：有则说、无则不说。读不到的项直接省略，绝不写「未知」——
@@ -55,6 +74,11 @@ export function describeStatus(status: PerceptionStatusSnapshot): string {
   }
 
   if (status.steps >= 0) parts.push(`今天走了 ${status.steps} 步`);
+
+  // 使用统计：只说前三个用得最久的，且只在超过一定时长时提。
+  // 一次把十几项全念出来，角色会变成一块屏幕使用报告，而不是「瞥了一眼」。
+  const usage = describeTopUsage(status.appUsage);
+  if (usage) parts.push(usage);
 
   if (parts.length === 0) return "";
   const age = formatSince(status.at);
@@ -87,6 +111,9 @@ export function filterStatusBySwitches(
   }
   if (!isCapabilityEnabled(config, "steps")) {
     out.steps = -1;
+  }
+  if (!isCapabilityEnabled(config, "usageStats")) {
+    out.appUsage = [];
   }
   return out;
 }
@@ -131,6 +158,9 @@ export function describeStatusByFocus(status: PerceptionStatusSnapshot, focus?: 
     }
   } else if (key === "steps" || key === "步数") {
     if (status.steps >= 0) parts.push(`今天走了 ${status.steps} 步`);
+  } else if (key === "usage" || key === "usageStats" || key === "使用时长" || key === "屏幕使用时间") {
+    const usage = describeTopUsage(status.appUsage);
+    if (usage) parts.push(usage);
   } else {
     return describeStatus(status);
   }

@@ -533,6 +533,17 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun getPerceptionCapabilities(): String = perception.capabilitiesJson()
 
+        /**
+         * 读今天各应用的使用时长（JSON 数组，按时长降序）。
+         * 未授权或读不到都返回空数组——调用方据此说「读不到」，不编造。
+         *
+         * 授权状态复用上面 deviceAction.hasUsageStatsAccess() 那一个方法，
+         * 这里刻意不再加第二个同名方法：同一个 ShellBridge 里两个同名同参方法
+         * 会构成 JVM 平台声明冲突（之前 openUrl 就这么炸过一次）。
+         */
+        @JavascriptInterface
+        fun readUsageStats(maxEntries: Int): String = perception.usageStatsJson(maxEntries)
+
         /** 活动识别权限是否已授予（步数感知的前提）。 */
         @JavascriptInterface
         fun hasStepPermission(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
@@ -726,7 +737,9 @@ class MainActivity : AppCompatActivity() {
             // 没有 sessionId 的通用提醒（如截屏提示）挂了也没处送，故只在有时加。
             val sid = sessionId?.trim().orEmpty()
             if (sid.isNotEmpty()) {
-                val remoteInput = android.app.RemoteInput.Builder(NotificationReplyReceiver.KEY_REPLY_TEXT)
+                // androidx 版（NotificationCompat.Action.addRemoteInput 只认它）：
+                // 用 android.app.RemoteInput 会因类型不匹配而编译失败。
+                val remoteInput = androidx.core.app.RemoteInput.Builder(NotificationReplyReceiver.KEY_REPLY_TEXT)
                     .setLabel("回复")
                     .build()
                 val replyIntent = Intent(this@MainActivity, NotificationReplyReceiver::class.java).apply {

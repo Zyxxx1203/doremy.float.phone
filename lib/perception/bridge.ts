@@ -5,7 +5,7 @@
 // 与 lib/shell-call-overlay.ts 同一套路：非壳环境一律安全降级为 no-op，
 // 老版 APK 没有这些方法时也返回「不可用」而不是抛错，调用方无需分支判断。
 
-import type { PerceptionCapability } from "./types";
+import type { AppUsageEntry, PerceptionCapability } from "./types";
 
 type PerceptionBridgeLike = {
   getPerceptionSnapshot?: () => string;
@@ -13,6 +13,7 @@ type PerceptionBridgeLike = {
   getPerceptionCapabilities?: () => string;
   hasStepPermission?: () => boolean;
   requestStepPermission?: () => boolean;
+  readUsageStats?: (maxEntries: number) => string;
 };
 
 function bridge(): PerceptionBridgeLike | null {
@@ -90,13 +91,40 @@ export function supportsStepPermission(): boolean {
   return typeof bridge()?.requestStepPermission === "function";
 }
 
-/** 包名 → 应用显示名。失败返回空串，调用方退回显示包名。 */
-export function readAppLabel(packageName: string): string {
+/** 包名 → 应用显示名。失败返回空串，调用方退回显示包名。 */export function readAppLabel(packageName: string): string {
   try {
     return bridge()?.getAppLabel?.(packageName) ?? "";
   } catch {
     return "";
   }
+}
+
+/**
+ * 读今天各应用的使用时长，按时长降序。
+ *
+ * 未授权、壳不支持、读不到都返回空数组——调用方据此说「读不到」，
+ * 绝不编造数据，也绝不返回一批 0 分钟的假记录。
+ */
+export function readUsageStats(maxEntries = 12): AppUsageEntry[] {
+  try {
+    const raw = bridge()?.readUsageStats?.(maxEntries);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is AppUsageEntry => (
+      !!item
+      && typeof item === "object"
+      && typeof (item as AppUsageEntry).package === "string"
+      && Number.isFinite((item as AppUsageEntry).minutes)
+    ));
+  } catch {
+    return [];
+  }
+}
+
+/** 壳是否提供使用统计读取（老 APK 没有）。 */
+export function supportsUsageStats(): boolean {
+  return typeof bridge()?.readUsageStats === "function";
 }
 
 /**
@@ -106,11 +134,17 @@ export function readAppLabel(packageName: string): string {
  * 用户完全看不出来。现在原生必须逐项回答「我真的支持吗」，
  * 设置页据此显示「已接通 / 不支持」，不再让人对着没反应的开关猜。
  */
-export function readNativeCapabilities(): Partial<Record<PerceptionCapability, boolean>> {
+/** 壳上报的能力表：能力标识 → 是否支持；另有 usageStatsGranted 等授权态字段。 */
+export type NativePerceptionCapabilities = Partial<Record<PerceptionCapability, boolean>> & {
+  /** 是否已授予「使用情况访问」权限（与 usageStats 的「支不支持」是两回事） */
+  usageStatsGranted?: boolean;
+};
+
+export function readNativeCapabilities(): NativePerceptionCapabilities {
   try {
     const raw = bridge()?.getPerceptionCapabilities?.();
     if (!raw) return {};
-    const parsed = JSON.parse(raw) as Partial<Record<PerceptionCapability, boolean>>;
+    const parsed = JSON.parse(raw) as NativePerceptionCapabilities;
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return {};

@@ -1,6 +1,8 @@
 package app.floatphone.shell
 
 import android.Manifest
+import android.app.AppOpsManager
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.hardware.Sensor
@@ -11,6 +13,8 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.Build
+import android.os.Process
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Calendar
 
@@ -189,6 +193,99 @@ class PerceptionBridge(private val context: Context) {
         return "${c.get(Calendar.YEAR)}-${c.get(Calendar.MONTH) + 1}-${c.get(Calendar.DAY_OF_MONTH)}"
     }
 
+    // ── 使用情况（屏幕使用时间）─────────────────────────────
+
+    /**
+     * 是否已授予「使用情况访问」权限（屏幕使用时间的前提）。
+     *
+     * 截屏/查岗那边由 DeviceActionBridge 回答同一个问题，两边语义一致，
+     * 但**不共用**：PerceptionBridge 自己也要用它来决定 usageStatsJson 返回什么，
+     * 跨类调用会把「感知只读、设备动作只写」的分工搅乱。
+     */
+    private fun hasUsageStatsAccess(): Boolean = try {
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                context.packageName,
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                context.packageName,
+            )
+        }
+        mode == AppOpsManager.MODE_ALLOWED
+    } catch (e: Throwable) {
+        false
+    }
+
+    /**
+     * 读「今天各应用用了多久」，按使用时长降序返回 JSON 数组。
+     *
+     * 每条只有三个字段：package / label / minutes。
+     * 刻意**不返回**使用的时间点、启动次数、具体页面——「用了多久」已经
+     * 足够让角色说一句「你今天刷了好久的视频」，而时间点会暴露作息细节，
+     * 属于不必要的隐私放大。
+     *
+     * 未授权、系统不支持、查询异常都返回空数组：调用方据此说「读不到」，
+     * 而不是拿到一堆假数据。
+     *
+     * @param maxEntries 最多返回几条（按时长降序取前 N）。默认 12。
+     */
+    fun usageStatsJson(maxEntries: Int): String {
+        val result = JSONArray()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return result.toString()
+        if (!hasUsageStatsAccess()) return result.toString()
+        return try {
+            val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+            val now = System.currentTimeMillis()
+            // 从今天零点算起。用「当天」而不是「最近 24 小时」，
+            // 因为角色问的是「你今天在干嘛」，跨天的时间段会算进昨天，读着别扭。
+            val begin = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, begin, now)
+                ?: return result.toString()
+
+            // 同一包名可能返回多条（分桶），先按包名累加
+            val totalByPackage = HashMap<String, Long>()
+            for (stat in stats) {
+                val pkg = stat.packageName ?: continue
+                val ms = stat.totalTimeInForeground
+                if (ms <= 0L) continue
+                totalByPackage[pkg] = (totalByPackage[pkg] ?: 0L) + ms
+            }
+
+            val limit = maxEntries.coerceIn(1, 50)
+            val top = totalByPackage.entries
+                .sortedByDescending { it.value }
+                .take(limit)
+
+            for ((pkg, ms) in top) {
+                val minutes = (ms / 60_000L).toInt()
+                // 不足一分钟的不列：那种多半是系统组件被拉起一下，
+                // 报给角色只会变成噪声。
+                if (minutes < 1) continue
+                result.put(
+                    JSONObject()
+                        .put("package", pkg)
+                        .put("label", appLabel(pkg))
+                        .put("minutes", minutes),
+                )
+            }
+            result.toString()
+        } catch (e: Throwable) {
+            result.toString()
+        }
+    }
+
     /**
      * 一次取全的设备快照。网页侧的采样定时器每次只跨桥一次，
      * 比分别问电量、问网络少一半调用开销。
@@ -219,6 +316,10 @@ class PerceptionBridge(private val context: Context) {
         .put("location", false)
         .put("calendar", false)
         .put("contacts", false)
-        .put("usageStats", false)
+        // usageStats 现在是真接通了（见 usageStatsJson）：能读就报能读。
+        // 注意区分「支持」与「已授权」——授权状态走 hasUsageStatsAccess()，
+        // 混为一谈会让用户以为手机不支持、从而放弃授权。
+        .put("usageStats", Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP)
+        .put("usageStatsGranted", hasUsageStatsAccess())
         .toString()
 }

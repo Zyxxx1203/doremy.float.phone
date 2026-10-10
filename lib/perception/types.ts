@@ -11,6 +11,21 @@
  *   刻意不新建平行系统——否则每加一个能力就要重写一遍投递逻辑。
  */
 
+/**
+ * 一条应用使用记录（屏幕使用时间）。
+ *
+ * 定义在这里而不是 bridge.ts：bridge 已经 import 本文件，反向再 import 会构成
+ * 循环依赖（虽然 import type 编译后会被擦除，但依赖方向应当单向）。
+ */
+export type AppUsageEntry = {
+  /** 包名，如 com.tencent.mm */
+  package: string;
+  /** 应用显示名（原生翻译好；取不到为空串，调用方退回包名） */
+  label: string;
+  /** 今天前台使用了多少分钟 */
+  minutes: number;
+};
+
 /** 感知能力标识。与原生 capabilitiesJson() 的键一一对应。 */
 export type PerceptionCapability =
   | "battery"
@@ -145,6 +160,8 @@ export type PerceptionStatusSnapshot = {
   foregroundMinutes: number;
   /** 当天步数，-1 = 未知 */
   steps: number;
+  /** 今天各应用使用时长（按时长降序，最多 12 条）；空数组 = 未授权或读不到 */
+  appUsage: AppUsageEntry[];
 };
 
 /** 诊断面板用的一次性状态快照。 */
@@ -170,4 +187,6 @@ export type PerceptionDiagnostics = {
   hourlyLimit: number;
   /** 无匹配规则时产生的信号数（提示用户「信号有，但你没配规则」）。 */
   unmatchedSignals: number;
+  /** 实时读一次今天各应用使用时长（诊断面板展示「角色能读到什么」）。 */
+  appUsage: AppUsageEntry[];
 };
