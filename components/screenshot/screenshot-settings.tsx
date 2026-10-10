@@ -14,7 +14,7 @@
 // 直接渲染内容，不套 PageShell、不收 onBack。
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Camera, Loader2, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
+import { Camera, CircleDot, Loader2, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
 
 import { Toggle } from "@/components/ui/form";
 import { loadMediaObjectUrl } from "@/lib/media-cache-storage";
@@ -22,11 +22,15 @@ import { isShellEnvironment as isShell, openAccessibilitySettings } from "@/lib/
 import {
   captureAndStoreScreenshot,
   clearAllScreenshots,
+  flushPendingUserShot,
+  hasScreenshotBallBridge,
   hasScreenshotBridge,
   loadScreenshotConfig,
   loadScreenshotRecords,
+  prepareScreenshotBall,
   readScreenshotCapabilities,
   saveScreenshotConfig,
+  stopScreenshotBall,
   type ScreenshotConfig,
   type ScreenshotRecord,
 } from "@/lib/screenshot";
@@ -155,6 +159,39 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
     onNotice?.("已清空全部截屏记录");
   }, [onNotice, refresh]);
 
+  /**
+   * 开关桌面悬浮球。
+   *
+   * 开启时必须**当场**把服务拉起来：Android 12+ 只允许 App 在前台时启动
+   * 前台服务，而用户点这个开关的那一刻正是唯一合法的时机。
+   */
+  const toggleBall = useCallback((on: boolean) => {
+    update({ ballEnabled: on });
+    if (!on) {
+      stopScreenshotBall();
+      return;
+    }
+    if (!inShell || !hasScreenshotBallBridge()) {
+      onNotice?.("当前 App 版本还不支持悬浮球，需要更新安卓壳");
+      return;
+    }
+    if (!ready) {
+      onNotice?.("先把上面的截屏与无障碍打开，悬浮球才有意义");
+      return;
+    }
+    if (!prepareScreenshotBall()) {
+      onNotice?.("没能拉起悬浮球，请先授予「显示在其他应用上层」权限");
+      return;
+    }
+    onNotice?.("悬浮球已开启。轻点它截屏，拖到边缘会自动吸附");
+  }, [update, inShell, ready, onNotice]);
+
+  // 页面挂载时补发「点球那一刻网页已被回收」的那张截图。
+  // 原生侧是「读到即清空」，所以重复调用不会重复发送。
+  useEffect(() => {
+    void flushPendingUserShot().catch(() => undefined);
+  }, []);
+
   return (
     <div className="per-shell">
       <div className="per-hero">
@@ -202,6 +239,31 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
               </div>
               <Toggle checked={config.enabled} onChange={toggleEnabled} />
             </div>
+          </div>
+        </div>
+
+        {/* 截屏悬浮球：你自己点一下就能截 */}
+        <div>
+          <div className="settings-menu-section-title">截屏悬浮球</div>
+          <div className="menu-group" style={{ marginTop: 10 }}>
+            <div className="menu-item" style={{ cursor: "default" }}>
+              <div className="menu-icon" style={{ background: "color-mix(in srgb, var(--per-accent, #6f5bd6) 14%, transparent)" }}>
+                <CircleDot size={17} strokeWidth={1.8} />
+              </div>
+              <div className="menu-label-group">
+                <span className="menu-label">显示悬浮球</span>
+                <span className="menu-desc">
+                  {config.ballEnabled
+                    ? "桌面上有个小圆点，点一下就截屏发给角色；拖到边缘会自动吸附"
+                    : "桌面常驻一个小圆点，随手点一下截屏——不用先打开小手机（默认关）"}
+                </span>
+              </div>
+              <Toggle checked={config.ballEnabled} onChange={toggleBall} />
+            </div>
+          </div>
+          <div className="per-note" style={{ padding: "0 var(--ui-padding, 16px)" }}>
+            截出来的图仍然会先弹预览让你确认，你点「发给它」才发得出去——
+            和角色查岗走的是同一套审批。
           </div>
         </div>
 

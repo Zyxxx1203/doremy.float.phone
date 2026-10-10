@@ -67,6 +67,12 @@ class CheckInService : Service() {
         private const val EXTRA_CHARACTER_ID = "character_id"
         private const val EXTRA_NAME = "name"
         private const val EXTRA_AVATAR = "avatar"
+        private const val EXTRA_SOURCE = "source"
+
+        /** 角色发起：到点它想看看你在干嘛。 */
+        const val SOURCE_CHECK_IN = "checkIn"
+        /** 用户发起：你自己点悬浮球截的。 */
+        const val SOURCE_USER = "user"
 
         /** 浮层晾着多久没处理就算「不给」。 */
         private const val AUTO_DISMISS_MS = 90_000L
@@ -121,12 +127,18 @@ class CheckInService : Service() {
          * 结果经 ShellBus 的 'checkIn' 事件回推网页：
          *   {characterId, accepted:true, base64, width, height} 或 {characterId, accepted:false}
          */
-        fun show(context: Context, characterId: String, name: String, avatar: String) {
+        fun show(
+            context: Context,
+            characterId: String,
+            name: String,
+            avatar: String,
+            source: String = SOURCE_CHECK_IN,
+        ) {
             // 优先同进程直改：绕开 Android 12+ 对后台启动服务的限制，
             // 也免掉 Intent 投递的时序竞态。
             val instance = liveInstance
             if (instance != null) {
-                instance.main.post { instance.showCheckIn(characterId, name, avatar) }
+                instance.main.post { instance.showCheckIn(characterId, name, avatar, source) }
                 return
             }
             if (!running) return
@@ -137,6 +149,7 @@ class CheckInService : Service() {
                         putExtra(EXTRA_CHARACTER_ID, characterId)
                         putExtra(EXTRA_NAME, name)
                         putExtra(EXTRA_AVATAR, avatar)
+                        putExtra(EXTRA_SOURCE, source)
                     },
                 )
             }
@@ -154,6 +167,29 @@ class CheckInService : Service() {
 
         /** 服务是否在运行（设置面板显示「查岗待命中」用）。 */
         fun isRunning(): Boolean = running
+
+        /**
+         * 用户主动截屏（悬浮球发起）待取走的结果。
+         *
+         * 为什么不像查岗那样直接推事件：点球那一刻网页可能已被系统回收。
+         * 查岗是网页自己发起的（它当然活着），而点球是原生侧发起的，
+         * 网页在不在完全不确定。若只发事件，用户点了「发给它」却什么都没发生，
+         * 那张图就白截了。所以先落这里，网页活着就立刻拉走，没活着等它下次挂载。
+         *
+         * 只存最近一条、只在本进程内存里：它是「刚才那张」，不是相册。
+         */
+        @Volatile
+        private var pendingUserShot: String = ""
+
+        /** 读走并清空用户主动截屏的结果（空串 = 没有待取）。 */
+        fun consumePendingUserShot(): String {
+            val value = pendingUserShot
+            pendingUserShot = ""
+            return value
+        }
+
+        /** 是否有待取的用户截屏结果（诊断面板用）。 */
+        fun hasPendingUserShot(): Boolean = pendingUserShot.isNotEmpty()
 
         /** 能力与状态快照，给设置面板显示三态。 */
         fun capabilitiesJson(): String = JSONObject()
@@ -227,6 +263,19 @@ class CheckInService : Service() {
     private var titleView: TextView? = null
     /** 浮层里的回复框：用户可以在决定给不给看的同时说一句话。 */
     private var replyInput: EditText? = null
+    /** 两个决策按钮。文案随来源变（角色查岗 vs 你主动截），所以要留引用。 */
+    private var acceptButton: Button? = null
+    private var rejectButton: Button? = null
+
+    /**
+     * 这一张是谁要的。
+     *
+     * checkIn = 角色发起（「TA 想看看你在干嘛」）；
+     * user    = 你主动点悬浮球截的（「发给 TA 看看」）。
+     * 两者走同一套预览与审批，只有措辞不同——用户看到的操作是一样的，
+     * 没必要写两套窗口代码。
+     */
+    private var captureSource: String = SOURCE_CHECK_IN
     /** 窗口参数。要在「可输入 / 不可输入」之间切换，所以留一份引用。 */
     private var layoutParams: WindowManager.LayoutParams? = null
 
@@ -258,7 +307,8 @@ class CheckInService : Service() {
                 val characterId = intent.getStringExtra(EXTRA_CHARACTER_ID).orEmpty()
                 val name = intent.getStringExtra(EXTRA_NAME).orEmpty()
                 val avatar = intent.getStringExtra(EXTRA_AVATAR).orEmpty()
-                main.post { showCheckIn(characterId, name, avatar) }
+                val source = intent.getStringExtra(EXTRA_SOURCE).orEmpty().ifBlank { SOURCE_CHECK_IN }
+                main.post { showCheckIn(characterId, name, avatar, source) }
             }
             ACTION_STOP -> {
                 teardown()
@@ -280,16 +330,28 @@ class CheckInService : Service() {
      * takeScreenshot 是回调式的，几毫秒到几百毫秒不等；这段时间里用户
      * 完全不知道发生了什么。先给个「正在截屏」的即时反馈，体感才不突兀。
      */
-    private fun showCheckIn(characterId: String, name: String, avatar: String) {
+    private fun showCheckIn(
+        characterId: String,
+        name: String,
+        avatar: String,
+        source: String = SOURCE_CHECK_IN,
+    ) {
         lastShowAt = System.currentTimeMillis()
         showCount += 1
+        captureSource = source
         pendingCharacterId = characterId
         pendingBitmap?.recycle()
         pendingBitmap = null
 
         // 先把浮层立起来（预览位置显示占位文字），再等图
         ensureWindow()
-        titleView?.text = "${name.ifBlank { "TA" }}想看看你在干嘛…"
+        val who = name.ifBlank { "TA" }
+        val userInitiated = source == SOURCE_USER
+        titleView?.text = if (userInitiated) "发给 $who 看看" else "$who 想看看你在干嘛…"
+        // 文案随来源变，但两条路走的是同一套预览与审批——用户看到的行为完全一致。
+        acceptButton?.text = if (userInitiated) "发给它" else "给它看"
+        rejectButton?.text = if (userInitiated) "算了" else "不给"
+        replyInput?.hint = if (userInitiated) "顺便说一句（可选）" else "顺便说一句（可选）"
         previewView?.setImageDrawable(null)
         previewView?.scaleType = ImageView.ScaleType.CENTER
         showWindow(true)
@@ -358,6 +420,12 @@ class CheckInService : Service() {
                 .put("accepted", false)
                 .put("reason", "这张图没能处理成功")
                 .also { if (reply.isNotEmpty()) it.put("reply", reply) }
+        }
+        // 用户主动截的（悬浮球）另存一份再推事件：
+        // 此刻网页可能已被回收，事件会落空，图就丢了。查岗不需要这一步——
+        // 那次请求本来就是网页发起的，它必然活着。
+        if (captureSource == SOURCE_USER && payload.optBoolean("accepted")) {
+            pendingUserShot = payload.toString()
         }
         ShellBus.dispatchOverlayEvent("checkIn", payload)
         discardPending()
@@ -525,6 +593,7 @@ class CheckInService : Service() {
             }
             setOnClickListener { rejectCheckIn() }
         }
+        rejectButton = rejectBtn
         val acceptBtn = Button(this).apply {
             text = "给它看"
             setTextColor(Color.WHITE)
@@ -535,6 +604,7 @@ class CheckInService : Service() {
             }
             setOnClickListener { acceptCheckIn() }
         }
+        acceptButton = acceptBtn
         buttonRow.addView(
             rejectBtn,
             LinearLayout.LayoutParams(dp(88), LinearLayout.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(8) },

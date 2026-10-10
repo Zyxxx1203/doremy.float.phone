@@ -77,6 +77,16 @@ export type CheckInDiagnostics = {
   screenshot?: ScreenshotDiagnostics;
 };
 
+/** 原生上报的截屏悬浮球能力与状态。 */
+export type ScreenshotBallCapabilities = {
+  /** 系统版本够不够（Android 11+） */
+  supported?: boolean;
+  /** 无障碍服务是否已开启（截屏的前提） */
+  accessibilityOn?: boolean;
+  /** 悬浮球是否正在显示 */
+  running?: boolean;
+};
+
 /** 原生上报的查岗能力与状态。 */
 export type CheckInCapabilities = {
   /** 系统版本够不够（Android 11+） */

@@ -25,7 +25,8 @@ import {
   shouldFireCheckIn,
   type CheckInCharacterConfig,
 } from "./checkin-config";
-import { hasCheckInBridge, readCheckInCapabilities, requestCheckIn } from "./checkin";
+import { consumePendingUserShot, hasCheckInBridge, readCheckInCapabilities, requestCheckIn } from "./checkin";
+import { ensureShellOverlayListener, subscribeShellOverlayEvents } from "../shell-call-overlay";
 
 /** 一次查岗尝试的结论（给调用方/设置页做记录用）。 */
 export type CheckInAttempt =
@@ -137,6 +138,86 @@ export async function runCheckIn(
   // 拒绝也让它有反应（用户明确要的）——被拒时该失落还是说没关系，交给角色自己决定。
   void requestBackgroundChatReply(sessionId).catch(() => undefined);
   return { ok: true, accepted: false, reason: outcome.reason };
+}
+
+/**
+ * 处理一次「用户主动截屏」（悬浮球发起）。
+ *
+ * 与查岗的区别：没有指定角色——用户点球时只是想分享，发给谁是**现在**决定的。
+ * 取最近聊过的私聊会话作为目标：那是他此刻最可能想发的人。
+ *
+ * @param outcome 原生回传的结果（已确认用户点了「发给它」）
+ */
+export async function deliverUserShot(outcome: CheckInOutcome): Promise<{ ok: boolean; reason?: string }> {
+  if (!outcome.accepted) return { ok: false, reason: outcome.reason || "没有可发送的内容" };
+
+  // 取最近的私聊会话。没有会话就没法发——如实失败，不硬造一个。
+  const sessions = loadChatSessions()
+    .filter(session => !session.isGroup)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const sessionId = sessions[0]?.id;
+  if (!sessionId) return { ok: false, reason: "还没有任何聊天，不知道发给谁" };
+
+  try {
+    // 顺手说的话先发，图后发——读起来是「说了一句 + 配张图」。
+    if (outcome.reply) {
+      pushChatMessage({ sessionId, role: "user", content: outcome.reply });
+    }
+    const stored = await storeMediaBase64(outcome.base64, "image/png");
+    pushChatMessage({
+      sessionId,
+      role: "user",
+      content: "",
+      mediaType: "image",
+      mediaUrl: stored.ref,
+      mediaData: { label: "给你看看我现在这边" },
+    });
+    void requestBackgroundChatReply(sessionId).catch(() => undefined);
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "图片没能保存，这次没发出去" };
+  }
+}
+
+/**
+ * 拉一次「用户主动截屏」的结果并送出去。
+ *
+ * 页面挂载时、以及收到 checkIn 事件时各调一次：
+ *   · 挂载时补发「点球那一刻页面已被系统回收」的那张；
+ *   · 事件时处理当场送达的。
+ * 原生侧是「读到即清空」，所以重复调用不会把同一张图发两遍。
+ *
+ * @returns 真正送出的一张图；没有待取或发送失败时返回 null。
+ */
+export async function flushPendingUserShot(): Promise<boolean> {
+  const pending = consumePendingUserShot();
+  if (!pending) return false;
+  const result = await deliverUserShot(pending);
+  return result.ok;
+}
+
+/**
+ * 启动「用户主动截屏」的接收端：页面挂载时补发一次，之后收到 checkIn 事件再拉一次。
+ *
+ * 必须挂在桌面壳这种「一直在跑」的地方，而不是设置页——用户点球时
+ * 多半正在别的 App 里，设置页根本没开。
+ *
+ * 重复调用无害：原生侧是「读到即清空」，拉两次不会把同一张图发两遍。
+ * 角色查岗也会触发同一个事件，但那条路上原生不写 pendingUserShot，
+ * 所以这里会拿到空、直接返回，不影响查岗自己的 Promise 流程。
+ */
+export function startUserShotBridge(): () => void {
+  if (typeof window === "undefined") return () => { /* noop */ };
+  if (!hasCheckInBridge()) return () => { /* noop */ };
+
+  // 挂载时补发：点球那一刻页面若已被系统回收，事件是丢的，只能靠这里捞回来
+  void flushPendingUserShot().catch(() => undefined);
+
+  ensureShellOverlayListener();
+  return subscribeShellOverlayEvents((event) => {
+    if (event.action !== "checkIn") return;
+    void flushPendingUserShot().catch(() => undefined);
+  });
 }
 
 /**

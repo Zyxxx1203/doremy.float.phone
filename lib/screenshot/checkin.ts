@@ -18,6 +18,7 @@ type CheckInBridgeLike = {
   stopCheckIn?: () => void;
   requestCheckIn?: (characterId: string, name: string, avatar: string) => void;
   getCheckInDiagnostics?: () => string;
+  consumePendingUserShot?: () => string;
 };
 
 function bridge(): CheckInBridgeLike | null {
@@ -40,6 +41,33 @@ export function readCheckInCapabilities(): CheckInCapabilities {
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return {};
+  }
+}
+
+/**
+ * 读走「用户主动截屏（悬浮球）」的结果。
+ *
+ * 返回 null 表示没有待取的结果。壳不支持时同样返回 null——
+ * 老 APK 上没有悬浮球，这个入口是空的，不是错误。
+ */
+export function consumePendingUserShot(): CheckInOutcome | null {
+  try {
+    const raw = bridge()?.consumePendingUserShot?.();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { accepted?: boolean; base64?: string; width?: number; height?: number; reply?: string; reason?: string };
+    const reply = typeof parsed?.reply === "string" && parsed.reply.trim() ? parsed.reply.trim() : undefined;
+    if (parsed?.accepted === true && typeof parsed.base64 === "string" && parsed.base64) {
+      return {
+        accepted: true,
+        base64: parsed.base64,
+        width: typeof parsed.width === "number" ? parsed.width : 0,
+        height: typeof parsed.height === "number" ? parsed.height : 0,
+        reply,
+      };
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 

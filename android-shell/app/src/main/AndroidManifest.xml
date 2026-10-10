@@ -144,6 +144,13 @@
             android:exported="false"
             android:foregroundServiceType="specialUse" />
 
+        <!-- 截屏悬浮球：随手点一下就能截屏发给角色（你自己发起，不是角色查岗）。
+             点击后交给 CheckInService 走同一套预览与审批。 -->
+        <service
+            android:name=".ScreenshotBallService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
+
         <!-- 浮窗通知上的动作按钮（挂断/返回） -->
         <receiver
             android:name=".OverlayActionReceiver"

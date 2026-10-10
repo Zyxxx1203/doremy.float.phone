@@ -8,3 +8,4 @@ export * from "./engine";
 export * from "./checkin-config";
 export * from "./checkin";
 export * from "./checkin-engine";
+export * from "./ball";

@@ -13,6 +13,7 @@ import { useEffect } from "react";
 
 import { ensureShellSubscription, isShellEnvironment } from "@/lib/push-client";
 import { startNotificationReplyBridge } from "@/lib/notification-reply";
+import { startUserShotBridge } from "@/lib/screenshot";
 
 export function ShellPushRegistrar() {
   useEffect(() => {
@@ -23,6 +24,10 @@ export function ShellPushRegistrar() {
   // 通知栏「直接回复」的接收端。挂在这里是因为它和推送订阅同源：
   // 两者都只在安卓壳里生效，也都需要「页面一挂载就开始工作」。
   useEffect(() => startNotificationReplyBridge(), []);
+
+  // 「截屏悬浮球」的接收端。同样必须常驻——用户点球时多半在别的 App 里，
+  // 挂在设置页会漏掉绝大多数点击。
+  useEffect(() => startUserShotBridge(), []);
 
   return null;
 }

@@ -38,12 +38,20 @@ export type ScreenshotConfig = {
    * 超出后最旧的会被删（连媒体库里的图一起删），避免悄悄占满存储。
    */
   keepRecent: number;
+  /**
+   * 是否显示截屏悬浮球（桌面那个点一下就截的小圆点）。默认关。
+   *
+   * 与 enabled 分开：enabled 控制「截屏这件事允不允许」，这里控制
+   * 「桌面要不要常驻一个球」。有人只想要角色查岗，不想桌面上多个东西。
+   */
+  ballEnabled: boolean;
 };
 
 export const SCREENSHOT_DEFAULTS: ScreenshotConfig = {
   enabled: false,
   notifyOnCapture: true,
   keepRecent: 10,
+  ballEnabled: false,
 };
 
 /** 读配置。任何字段缺失都按默认（默认 = 关）处理，绝不因为读失败而放开权限。 */
@@ -59,6 +67,8 @@ export function loadScreenshotConfig(): ScreenshotConfig {
       // 反馈默认开：仅显式 false 才关（与开关的取向相反）
       notifyOnCapture: parsed.notifyOnCapture !== false,
       keepRecent: Number.isFinite(keep) ? Math.max(1, Math.min(50, Math.floor(keep))) : SCREENSHOT_DEFAULTS.keepRecent,
+      // 必须显式 true 才算开——桌面上凭空多个球，缺省绝不能是开
+      ballEnabled: parsed.ballEnabled === true,
     };
   } catch {
     return { ...SCREENSHOT_DEFAULTS };

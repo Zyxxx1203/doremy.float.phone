@@ -930,6 +930,35 @@ class MainActivity : AppCompatActivity() {
         fun getCheckInDiagnostics(): String = CheckInService.diagnosticsJson(this@MainActivity)
 
         /**
+         * 读走「用户主动截屏（悬浮球）」的结果（JSON 字符串，空串 = 没有）。
+         *
+         * 网页在页面挂载时、以及收到 checkIn 事件时各拉一次：前者补
+         * 「点球时页面已被回收」的那次，后者处理当场送达的。拉到即清空，
+         * 所以同一张图不会被发两遍。
+         */
+        @JavascriptInterface
+        fun consumePendingUserShot(): String = CheckInService.consumePendingUserShot()
+
+        // ── 截屏悬浮球（你自己点一下截屏）────
+
+        /** 悬浮球能力与状态。 */
+        @JavascriptInterface
+        fun getScreenshotBallCapabilities(): String = ScreenshotBallService.capabilitiesJson()
+
+        /**
+         * 拉起截屏悬浮球。用户打开开关时（App 在前台）调用——
+         * Android 12+ 禁止后台启动前台服务，必须先暖好。
+         */
+        @JavascriptInterface
+        fun prepareScreenshotBall(): Boolean = ScreenshotBallService.prepare(this@MainActivity)
+
+        /** 收掉截屏悬浮球（用户关掉开关时调用）。 */
+        @JavascriptInterface
+        fun stopScreenshotBall() {
+            ScreenshotBallService.stop(this@MainActivity)
+        }
+
+        /**
          * 预热查岗服务。用户开启查岗时（App 在前台）调用，让服务常驻待命——
          * Android 12+ 禁止后台启动前台服务，而查岗正是后台触发，必须先暖好。
          * 返回是否成功发起；false 多半是没给浮窗权限。
