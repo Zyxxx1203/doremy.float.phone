@@ -629,6 +629,43 @@ function buildAgentComputerUsageGuide(): string {
     ].join("\n");
 }
 
+const PHONE_WIDGET_PARAMETER_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {
+        text: {
+            type: "string",
+            description: "留在桌面上的那句话，一句话、不超过 60 字。",
+        },
+        status: {
+            type: "string",
+            description: "可选，2-5 字的当前状态，如「在想你」「刚睡醒」。",
+        },
+    },
+    required: ["text"],
+});
+
+const PHONE_WIDGET_USAGE_GUIDE = [
+    "以下是你获取指令的返回结果：",
+    "动作：在桌面留句话",
+    "用途：在{{user}}手机桌面上的小组件里留一句话。TA 不用打开聊天就能看见，像你不经意留下的状态。",
+    "",
+    "【重要边界】",
+    "- 这是{{user}}**桌面**上的一小块地方，不是聊天。要像随手写下一句，不要像在发消息。",
+    "- 不要称呼对方、不要问句、不要用引号包住整句、不要写「我说：」这类前缀。",
+    "- 桌面位置有限，正文不超过 60 字，越长越显示不全。",
+    "- 它会**盖掉你上次留的那句**——这是「当前状态」，不是留言板，别当成日记用。",
+    "- 不要频繁换。它是个安静的角落，隔一阵子换一次才自然。",
+    "",
+    "合适的例子：「今天有点想你」「刚吃完楼下的面，一般」「雨下得挺大，你带伞了吗」；",
+    "不合适的：「你好呀，今天过得怎么样？」（这是聊天，不是留话）。",
+    "",
+    "参数：",
+    "  - text (string, 必填): 那句话本身，不超过 60 字",
+    "  - status (string, 可选): 2-5 字的状态标签，如「在想你」",
+    "示例：",
+    '[执行动作:在桌面留句话({"text":"今天有点想你","status":"在想你"})]',
+].join("\n");
+
 const SEND_FILE_PARAMETER_SCHEMA = JSON.stringify({
     type: "object",
     properties: {
