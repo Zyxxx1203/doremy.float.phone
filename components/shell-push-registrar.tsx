@@ -12,12 +12,17 @@
 import { useEffect } from "react";
 
 import { ensureShellSubscription, isShellEnvironment } from "@/lib/push-client";
+import { startNotificationReplyBridge } from "@/lib/notification-reply";
 
 export function ShellPushRegistrar() {
   useEffect(() => {
     if (!isShellEnvironment()) return;
     void ensureShellSubscription();
   }, []);
+
+  // 通知栏「直接回复」的接收端。挂在这里是因为它和推送订阅同源：
+  // 两者都只在安卓壳里生效，也都需要「页面一挂载就开始工作」。
+  useEffect(() => startNotificationReplyBridge(), []);
 
   return null;
 }

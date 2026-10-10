@@ -41,7 +41,7 @@ type ShellBridgeLike = {
 };
 
 /** 原生浮窗事件 */
-export type ShellOverlayAction = "restore" | "hangup" | "reply" | "tick" | "needPermission" | "accessibility" | "foregroundApp" | "screenshot" | "checkIn";
+export type ShellOverlayAction = "restore" | "hangup" | "reply" | "tick" | "needPermission" | "accessibility" | "foregroundApp" | "screenshot" | "checkIn" | "userReply";
 
 export type ShellOverlayEvent = {
     action: ShellOverlayAction;
@@ -73,6 +73,8 @@ export type ShellOverlayEvent = {
     base64?: string;
     /** action='checkIn' 用户在浮层回复框里顺手说的话（可选） */
     reply?: string;
+    /** action='userReply'：用户从通知栏直接回复，待发消息落在哪个会话 */
+    sessionId?: string;
 };
 
 /** 原生事件到达时触发（跨页面/跨组件订阅用） */

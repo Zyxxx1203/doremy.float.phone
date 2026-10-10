@@ -720,6 +720,34 @@ class MainActivity : AppCompatActivity() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 builder.setColor(0xFF5B7CFA.toInt())
             }
+            // 带「回复」按钮：用户可以直接在横幅上回一句。这条路径是**页面活着时**
+            // 角色消息的主要通道（含查岗后角色的反馈），与 PushService 的离线推送
+            // 是两个入口，两边都得挂上，否则「有时能回、有时回不了」。
+            // 没有 sessionId 的通用提醒（如截屏提示）挂了也没处送，故只在有时加。
+            val sid = sessionId?.trim().orEmpty()
+            if (sid.isNotEmpty()) {
+                val remoteInput = android.app.RemoteInput.Builder(NotificationReplyReceiver.KEY_REPLY_TEXT)
+                    .setLabel("回复")
+                    .build()
+                val replyIntent = Intent(this@MainActivity, NotificationReplyReceiver::class.java).apply {
+                    action = NotificationReplyReceiver.ACTION_REPLY
+                    putExtra(NotificationReplyReceiver.EXTRA_SESSION_ID, sid)
+                }
+                // MUTABLE 是必需的：用户输入要由系统填进 RemoteInput，
+                // 不可变的 PendingIntent 装不下结果，回复框会打不开。
+                val replyPending = PendingIntent.getBroadcast(
+                    this@MainActivity,
+                    sid.hashCode(),
+                    replyIntent,
+                    PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                )
+                builder.addAction(
+                    NotificationCompat.Action.Builder(R.drawable.ic_stat, "回复", replyPending)
+                        .addRemoteInput(remoteInput)
+                        .setAllowGeneratedReplies(true)
+                        .build(),
+                )
+            }
             manager.notify(webNotifId++, builder.build())
             if (webNotifId > 900) webNotifId = 500
             true
@@ -893,6 +921,16 @@ class MainActivity : AppCompatActivity() {
         fun stopCheckIn() {
             CheckInService.stop(this@MainActivity)
         }
+
+        /**
+         * 读走并清空「通知栏直接回复」的待发队列（JSON 数组字符串）。
+         *
+         * 网页在页面挂载时、以及收到 userReply 事件时各拉一次：前者补发
+         * 「页面被回收期间用户从通知里回的话」，后者处理当场送达的。
+         * 拉到即清空，所以同一句不会被发两遍。
+         */
+        @JavascriptInterface
+        fun consumePendingReplies(): String = NotificationReplyReceiver.consumePendingReplies(this@MainActivity)
 
         /**
          * 弹一次查岗预览：截当前屏 → 浮层给用户过目 → 结果经 'checkIn' 事件回推。

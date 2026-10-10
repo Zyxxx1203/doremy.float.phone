@@ -149,6 +149,12 @@
             android:name=".OverlayActionReceiver"
             android:exported="false" />
 
+        <!-- 通知栏「直接回复」：用户在消息通知横幅上就地回的话先落到这里，
+             再转交网页的聊天引擎 -->
+        <receiver
+            android:name=".NotificationReplyReceiver"
+            android:exported="false" />
+
         <!-- 通话控制无障碍服务：浮窗保活 + 前台 App 感知（需用户在系统设置里手动开启） -->
         <service
             android:name=".CallControlService"

@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.RemoteInput
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -386,8 +387,40 @@ class PushService : Service() {
         // 角色头像当通知大图标（服务端随广播带的 avatar：data URL 或直链）。
         // 取不到就退回默认图标——头像只是锦上添花，绝不能拖住或搞丢通知。
         loadAvatarBitmap(avatarUrl)?.let { builder.setLargeIcon(it) }
+        // 带「回复」按钮：用户可以直接在通知横幅上回一句，不用点开 App。
+        // 没有 sessionId 的通知（系统提醒类）挂了也没处送，所以只在有时才加。
+        val sid = sessionId?.trim().orEmpty()
+        if (sid.isNotEmpty()) builder.addAction(buildReplyAction(sid))
         getSystemService(NotificationManager::class.java).notify(notifId++, builder.build())
         if (notifId > 400) notifId = 100
+    }
+
+    /**
+     * 构造通知上的「回复」动作（系统级快捷回复）。
+     *
+     * PendingIntent 必须是 MUTABLE：用户输入要先被系统填进 RemoteInput，
+     * 不可变的 PendingIntent 装不下这个结果，回复框会打不开。
+     */
+    private fun buildReplyAction(sessionId: String): NotificationCompat.Action {
+        val remoteInput = RemoteInput.Builder(NotificationReplyReceiver.KEY_REPLY_TEXT)
+            .setLabel("回复")
+            .build()
+        val intent = Intent(this, NotificationReplyReceiver::class.java).apply {
+            action = NotificationReplyReceiver.ACTION_REPLY
+            putExtra(NotificationReplyReceiver.EXTRA_SESSION_ID, sessionId)
+        }
+        // requestCode 用 sessionId 的哈希：不同会话各自一个 PendingIntent，
+        // 否则 FLAG_UPDATE_CURRENT 会让后一条通知顶掉前一条的回复目标。
+        val pending = PendingIntent.getBroadcast(
+            this,
+            sessionId.hashCode(),
+            intent,
+            PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        return NotificationCompat.Action.Builder(R.drawable.ic_stat, "回复", pending)
+            .addRemoteInput(remoteInput)
+            .setAllowGeneratedReplies(true)
+            .build()
     }
 
     /**
