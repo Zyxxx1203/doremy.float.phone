@@ -31,6 +31,7 @@ import {
 import type { BridgeRule } from "@/lib/reality-bridge/types";
 import { createShortcutCommand, loadRecentShortcutCommands, type ShortcutCommand } from "@/lib/shortcut-command-client";
 import { enableOfflinePush, isShellEnvironment, sendShellTestPush } from "@/lib/push-client";
+import { describeBridgePlatform } from "@/lib/shell-detect";
 import {
   isPersonalPushCloudActive,
   isPersonalScreenChatCloudReady,
@@ -285,7 +286,18 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
   const [bridgeToken, setBridgeToken] = useState("");
   const [closing, setClosing] = useState(false);
   const [spinTurns, setSpinTurns] = useState(0);
-  const [mainSec, setMainSec] = useState<"overview" | "android" | "rules" | "shortcuts" | "queries" | "screen">("overview");
+  /**
+   * 这台设备上现实桥该走哪一套。只算一次——UA 在一次会话里不会变。
+   * 它决定：默认落在哪个分区、导航里出现哪一组、以及哪些分区要打「不适用于你」。
+   */
+  const platform = useMemo(() => describeBridgePlatform(), []);
+  /** 当前展示的是「你那套」还是「另一套」的入口。默认当然是你的那套。 */
+  const [showOtherPlatform, setShowOtherPlatform] = useState(false);
+  const [mainSec, setMainSec] = useState<"overview" | "android" | "rules" | "shortcuts" | "queries" | "screen">(
+    // 安卓壳用户直接落在「本机桥」——那正是他能用的那套，省一次点击；
+    // 其余设备落在概览，由概览页说明该走哪条路。
+    () => (describeBridgePlatform().home === "android" && describeBridgePlatform().androidBridge === "ready" ? "android" : "overview"),
+  );
   // 安卓桥分区的只读快照。这里刻意不订阅变化事件：这页只是总览，
   // 用户改完设置回来时组件会重新挂载，读到的自然是最新值。
   const perceptionDiag = useMemo(() => readPerceptionDiagnostics(), []);
@@ -1159,7 +1171,11 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                   {feed.length === 0 ? (
                     <div className="rb-empty">
                       <b>还没有收到数据</b>
-                      <p>在「设置」页新建联动，向导会带你完成快捷指令配置；运行一次后点右上角刷新。</p>
+                      <p>
+                        {platform.androidBridge === "ready"
+                          ? "「设置 → 感知」打开后信号会自己来；想定时做事也可以直接建一条「按时间自动」的联动，不需要任何外部工具。"
+                          : "在「设置」页新建联动，向导会带你完成快捷指令配置；运行一次后点右上角刷新。"}
+                      </p>
                       <button type="button" className="rb-btn" onClick={() => { setMainSec("rules"); setTab("main"); }}>去创建联动</button>
                     </div>
                   ) : feed.slice(0, 20).map(entry => (
@@ -1204,18 +1220,90 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
           {tab === "main" ? (
             <section>
               <>
-                  <div className="rb-chipbar">
-                    <div className="rb-chips">
-                      {/* 分区标签带平台角标：快捷动作/查询/速聊都是 iPhone 快捷指令路线，
-                          安卓用户点了只会白忙——必须一眼看出来，不能靠读说明才发现。 */}
-                      <button type="button" className={`rb-chip${mainSec === "overview" ? " active" : ""}`} onClick={() => setMainSec("overview")}>概览</button>
-                      <button type="button" className={`rb-chip${mainSec === "android" ? " active" : ""}`} onClick={() => setMainSec("android")}>本机桥<em>安卓</em></button>
-                      <button type="button" className={`rb-chip${mainSec === "rules" ? " active" : ""}`} onClick={() => setMainSec("rules")}>联动</button>
-                      <button type="button" className={`rb-chip${mainSec === "shortcuts" ? " active" : ""}`} onClick={() => setMainSec("shortcuts")}>快捷动作<em>iOS</em></button>
-                      <button type="button" className={`rb-chip${mainSec === "queries" ? " active" : ""}`} onClick={() => setMainSec("queries")}>查询<em>iOS</em></button>
-                      <button type="button" className={`rb-chip${mainSec === "screen" ? " active" : ""}`} onClick={() => setMainSec("screen")}>速聊<em>iOS</em></button>
-                    </div>
-                  </div>
+                  {/* ── 分区导航：按平台分组 ──
+                      安卓本机桥与 iPhone 快捷指令是两套毫不相干的东西（一套不经云端，
+                      一套必须配 Supabase），配置步骤没有一步相同。混在一个导航里并列，
+                      结果是每个用户都得先读完六项才知道哪三项跟自己有关。
+                      这里只把「你那套」摆出来，另一套收进下方一行切换入口——
+                      想了解对面那套的人点得到，不需要的人不必先趟一遍。 */}
+                  {(() => {
+                    const isAndroidHome = platform.home === "android";
+                    const showAndroidGroup = isAndroidHome !== showOtherPlatform;
+                    return (
+                      <div className="rb-chipbar">
+                        <div className="rb-chips">
+                          <button type="button" className={`rb-chip${mainSec === "overview" ? " active" : ""}`} onClick={() => setMainSec("overview")}>概览</button>
+                          <button type="button" className={`rb-chip${mainSec === "rules" ? " active" : ""}`} onClick={() => setMainSec("rules")}>联动</button>
+                          {showAndroidGroup ? (
+                            <button type="button" className={`rb-chip${mainSec === "android" ? " active" : ""}`} onClick={() => setMainSec("android")}>本机桥<em>安卓</em></button>
+                          ) : (
+                            <>
+                              <button type="button" className={`rb-chip${mainSec === "shortcuts" ? " active" : ""}`} onClick={() => setMainSec("shortcuts")}>快捷动作<em>iOS</em></button>
+                              <button type="button" className={`rb-chip${mainSec === "queries" ? " active" : ""}`} onClick={() => setMainSec("queries")}>查询<em>iOS</em></button>
+                              <button type="button" className={`rb-chip${mainSec === "screen" ? " active" : ""}`} onClick={() => setMainSec("screen")}>速聊<em>iOS</em></button>
+                            </>
+                          )}
+                        </div>
+                        {platform.home ? (
+                          <button
+                            type="button"
+                            className="rb-platform-switch"
+                            onClick={() => {
+                              const next = !showOtherPlatform;
+                              setShowOtherPlatform(next);
+                              // 切过去时顺手落到那组的第一屏，不然会停在一个已经不显示的标签上
+                              setMainSec(next ? (isAndroidHome ? "shortcuts" : "android") : (isAndroidHome ? "android" : "shortcuts"));
+                            }}
+                          >
+                            {showOtherPlatform
+                              ? `回到适合${platform.label}的这套`
+                              : isAndroidHome ? "我其实用 iPhone？" : "我其实用安卓？"}
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── 平台提示：你现在看的这套，是不是你设备上的那套 ──
+                      只在「不匹配」时出现。文案里必须给出**下一步该做什么**，
+                      光说「不适用于你」等于把用户丢在原地。 */}
+                  {(() => {
+                    const androidSecs = mainSec === "android";
+                    const iosSecs = mainSec === "shortcuts" || mainSec === "queries" || mainSec === "screen";
+                    if (androidSecs && platform.androidBridge !== "ready") {
+                      return (
+                        <div className="rb-platform-note">
+                          <b>这套是安卓本机桥</b>
+                          <p>
+                            {platform.kind === "android-browser"
+                              ? "需要先装「小手机」安卓 App：装好后它会直接读你手机的状态、也能直接做事，全程不经云端。"
+                              : "换到安卓手机上的「小手机」App 里才有这套；你现在的设备走 iPhone 那条路更合适。"}
+                          </p>
+                          {platform.kind === "android-browser"
+                            ? <p className="rb-platform-note-hint">App 装好后回到这里，这一屏就会变成可用状态。</p>
+                            : null}
+                        </div>
+                      );
+                    }
+                    if (iosSecs && platform.iosBridge !== "ready") {
+                      return (
+                        <div className="rb-platform-note">
+                          <b>这套是 iPhone 的快捷指令路线</b>
+                          <p>
+                            {platform.home === "android"
+                              ? "它靠 iPhone 快捷指令上传数据、必须配 Supabase，在安卓上跑不了。安卓有更省事的一套：本机桥直接读手机状态，不经过云端。"
+                              : "要在 iPhone / iPad 上打开才有这套。「快捷动作」「查询」「速聊」都依赖 iPhone 快捷指令与离线推送。"}
+                          </p>
+                          {platform.home === "android" ? (
+                            <button type="button" className="rb-platform-note-jump" onClick={() => { setShowOtherPlatform(false); setMainSec("android"); }}>
+                              去看安卓本机桥 →
+                            </button>
+                          ) : null}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
 
                   {/* ── 本机安卓桥 ──
                       与上面的 iPhone 快捷指令路线并列的第二条信号源：
