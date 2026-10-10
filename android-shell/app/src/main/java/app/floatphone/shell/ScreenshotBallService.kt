@@ -6,13 +6,17 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.util.Base64
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -21,6 +25,7 @@ import android.view.WindowManager
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import org.json.JSONObject
+import java.io.File
 import kotlin.math.abs
 
 /**
@@ -53,9 +58,132 @@ class ScreenshotBallService : Service() {
 
         private const val PREFS = "screenshot_ball_prefs"
 
-        /** 圆点直径与贴边留白。 */
-        private const val DIAMETER_DP = 50
+        /** 贴边留白。 */
         private const val EDGE_DP = 6
+
+        /** 直径默认值（用户可在设置里改，32~96）。 */
+        private const val DEFAULT_DIAMETER_DP = 50
+
+        /** 外观默认值：蓝底白字「截」。 */
+        private const val DEFAULT_TEXT = "截"
+        private const val DEFAULT_COLOR = 0xE65B7CFA.toInt()
+
+        // ── 外观配置（由网页下发，落 SharedPreferences）──
+        //
+        // 为什么存盘而不是只放内存：球是原生画的，而用户改外观的那一刻
+        // 网页在前台；改完可能要过很久再重启 App（服务被系统拉起），
+        // 那时网页还没加载，只能读盘。
+
+        /** 球上的文字（空串 = 不显示文字，只画圆点）。 */
+        @Volatile
+        private var ballText: String = DEFAULT_TEXT
+
+        /** 球的主色。 */
+        @Volatile
+        private var ballColor: Int = DEFAULT_COLOR
+
+        /** 球直径（dp）。 */
+        @Volatile
+        private var ballDiameterDp: Int = DEFAULT_DIAMETER_DP
+
+        /** 自定义图片的落盘路径（空串 = 没有，用纯色圆点）。 */
+        @Volatile
+        private var ballImagePath: String = ""
+
+        /** 从盘里读一次外观配置。 */
+        private fun loadStyle(context: Context) {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            ballText = prefs.getString("text", DEFAULT_TEXT) ?: DEFAULT_TEXT
+            ballColor = prefs.getInt("color", DEFAULT_COLOR)
+            ballDiameterDp = prefs.getInt("diameter", DEFAULT_DIAMETER_DP).coerceIn(32, 96)
+            // 图片路径也要校验文件还在：用户清过数据、或文件被系统清理时，
+            // 路径还留在盘上但文件没了——这时必须退回纯色，否则球会变成空白。
+            val savedImage = prefs.getString("image_path", "").orEmpty()
+            ballImagePath = if (savedImage.isNotEmpty() && File(savedImage).exists()) savedImage else ""
+        }
+
+        /**
+         * 下发外观并即时重画。参数形如 {"text","color","diameter","image"}。
+         *
+         * image 的语义：空串 = 清除自定义图片回到纯色；非空 = base64 PNG；
+         * **字段不存在 = 这次不改图片**。三者必须分开，否则「只改颜色」
+         * 会把用户上传的图弄丢。
+         */
+        fun setStyle(context: Context, json: String): Boolean = runCatching {
+            val obj = JSONObject(json)
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val editor = prefs.edit()
+            if (obj.has("text")) {
+                val text = obj.optString("text", DEFAULT_TEXT).take(4)
+                ballText = text
+                editor.putString("text", text)
+            }
+            if (obj.has("color")) {
+                val parsed = parseColor(obj.optString("color", ""))
+                if (parsed != null) {
+                    ballColor = parsed
+                    editor.putInt("color", parsed)
+                }
+            }
+            if (obj.has("diameter")) {
+                val size = obj.optInt("diameter", DEFAULT_DIAMETER_DP).coerceIn(32, 96)
+                ballDiameterDp = size
+                editor.putInt("diameter", size)
+            }
+            if (obj.has("image")) {
+                val base64 = obj.optString("image", "")
+                if (base64.isEmpty()) {
+                    ballImagePath = ""
+                    editor.putString("image_path", "")
+                } else {
+                    // 落成文件而不是塞进 prefs：几十 KB 的 base64 放 prefs 里
+                    // 会让每次读写都变慢，而 prefs 是同步提交、会卡主线程。
+                    val target = File(context.filesDir, "screenshot_ball_custom.png")
+                    val saved = runCatching {
+                        target.writeBytes(Base64.decode(base64, Base64.DEFAULT))
+                        // 落盘后立刻验证能解码成图：解不出来就当没设，
+                        // 免得球变成一个空白方块
+                        BitmapFactory.decodeFile(target.absolutePath) != null
+                    }.getOrDefault(false)
+                    if (saved) {
+                        ballImagePath = target.absolutePath
+                        editor.putString("image_path", ballImagePath)
+                    }
+                }
+            }
+            editor.apply()
+            // 球正显示着就当场重画——改完能立刻看到效果，不用重开开关
+            liveInstance?.let { it.main.post { it.rebuildBall() } }
+            true
+        }.getOrDefault(false)
+
+        /** 读当前外观（设置页回显用）。 */
+        fun styleJson(context: Context): String {
+            loadStyle(context)
+            return JSONObject()
+                .put("text", ballText)
+                .put("color", colorToHex(ballColor))
+                .put("diameter", ballDiameterDp)
+                // 只报「有没有自定义图片」，不回图本身——设置页不需要
+                // 拿回几万字符的 base64，它自己那边还留着原图。
+                .put("hasImage", ballImagePath.isNotEmpty())
+                .toString()
+        }
+
+        /** #RRGGBB 或 #AARRGGBB → 颜色 int；解析不了返回 null（保持原色）。 */
+        private fun parseColor(raw: String): Int? {
+            val hex = raw.trim().removePrefix("#")
+            return runCatching {
+                when (hex.length) {
+                    6 -> (0xFF000000L or hex.toLong(16)).toInt()
+                    8 -> hex.toLong(16).toInt()
+                    else -> null
+                }
+            }.getOrNull()
+        }
+
+        /** 颜色 int → #AARRGGBB（带透明度，设置页回显用）。 */
+        private fun colorToHex(color: Int): String = "#%08X".format(color)
 
         /** 超过这个位移（dp）就算拖动，不算点击。 */
         private const val TAP_SLOP_DP = 8
@@ -165,6 +293,33 @@ class ScreenshotBallService : Service() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
+    /**
+     * 读自定义图片并裁成圆形。没有图片、读失败都返回 null（调用方退回纯色）。
+     *
+     * 裁剪必须在这里做：直接把方图设成背景会露出四角，而球是个圆。
+     * 用 Canvas + SRC_IN 涂一遍是最省事的圆裁法——先把整个圆画成不透明，
+     * 再把图叠上去按 SRC_IN 混合，圆外的部分自然被切掉。
+     */
+    private fun loadBallImage(): Bitmap? {
+        val path = ballImagePath
+        if (path.isEmpty()) return null
+        return runCatching {
+            val source = BitmapFactory.decodeFile(path) ?: return null
+            val size = diameterPx.coerceAtLeast(1)
+            val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(output)
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+            val rect = android.graphics.RectF(0f, 0f, size.toFloat(), size.toFloat())
+            paint.color = Color.WHITE
+            canvas.drawOval(rect, paint)
+            paint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_IN)
+            // 等比缩到正方形再画。非正方形的源图会被拉一下——
+            // 球就那么大，用户传的多半也是头像类方图，不值得为它做复杂裁切。
+            canvas.drawBitmap(Bitmap.createScaledBitmap(source, size, size, true), 0f, 0f, paint)
+            output
+        }.getOrNull()
+    }
+
     private fun loadPosition() {
         val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val screenW = resources.displayMetrics.widthPixels
@@ -198,16 +353,23 @@ class ScreenshotBallService : Service() {
         loadStyle(this)
         loadPosition()
 
+        // 有自定义图片就用图片当球面，否则用纯色圆点。
+        // 图片模式不显示文字——图上的内容才是主体，再叠个字只会糊成一团。
+        val customImage = loadBallImage()
         val view = TextView(this).apply {
-            text = ballText
+            text = if (customImage != null) "" else ballText
             setTextColor(Color.WHITE)
             // 字号跟着直径走：球调大了字还是 16sp 会显得又小又空
             setTextSize(TypedValue.COMPLEX_UNIT_SP, (ballDiameterDp * 0.32f).coerceIn(12f, 28f))
             gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(ballColor)
-                setStroke(dp(2), 0x66FFFFFF)
+            background = if (customImage != null) {
+                BitmapDrawable(resources, customImage)
+            } else {
+                GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(ballColor)
+                    setStroke(dp(2), 0x66FFFFFF)
+                }
             }
             // 让整块圆都吃触摸事件（否则只有文字那一小块能拖）
             isClickable = true

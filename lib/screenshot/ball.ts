@@ -74,6 +74,13 @@ export type BallStyle = {
   color: string;
   /** 直径（dp），32~96 */
   diameter: number;
+  /**
+   * 自定义图片（base64 PNG，不含 data: 前缀）。
+   *
+   * 空串 = 清除图片、回到纯色圆点；undefined = 这次不改图片，
+   * 保留原样——两者必须区分开，否则「只改颜色」会把用户上传的图弄丢。
+   */
+  image?: string;
 };
 
 /**
@@ -101,6 +108,18 @@ export function readScreenshotBallStyle(): BallStyle | null {
       color: typeof parsed.color === "string" ? parsed.color : "",
       diameter: Number.isFinite(Number(parsed.diameter)) ? Number(parsed.diameter) : 50,
     };
+  } catch {
+    return null;
+  }
+}
+
+/** 原生当前的球是否用了自定义图片。 */
+export function readBallHasImage(): boolean {
+  try {
+    const raw = bridge()?.getScreenshotBallStyle?.();
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { hasImage?: boolean };
+    return parsed?.hasImage === true;
   } catch {
     return null;
   }

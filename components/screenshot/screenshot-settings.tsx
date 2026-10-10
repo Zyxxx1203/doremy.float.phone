@@ -240,7 +240,10 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
    *
    * 老壳没有这个接口时静默跳过：本地配置仍然存着，等壳更新后自然生效。
    */
-  const updateBallStyle = useCallback((patch: Partial<Pick<ScreenshotConfig, "ballText" | "ballColor" | "ballDiameter">>) => {
+  const updateBallStyle = useCallback((
+    patch: Partial<Pick<ScreenshotConfig, "ballText" | "ballColor" | "ballDiameter">>,
+    image?: string,
+  ) => {
     const next = { ...loadScreenshotConfig(), ...patch };
     saveScreenshotConfig(next);
     setConfig(next);
@@ -249,6 +252,9 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
       text: next.ballText,
       color: next.ballColor,
       diameter: next.ballDiameter,
+      // 只有显式传了 image 才带上：undefined 表示「这次不动图片」，
+      // 否则改个颜色就会把用户上传的图弄丢。
+      ...(image !== undefined ? { image } : {}),
     });
   }, []);
 
