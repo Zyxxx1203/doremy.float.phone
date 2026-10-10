@@ -24,6 +24,12 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
+    <!-- Health Connect：Android 13 及以下要单独装那个 App，这里声明它是为了
+         在没装时能正确地「探测不到」而不是崩掉。Android 14+ 它已并入系统。 -->
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
+
     <!-- ══════ 深度陪伴扩展权限（仅本机自用，一次性开到位）══════
          说明：下面这些是「声明」。带 * 的属于危险权限，系统仍会弹窗由用户确认；
          声明只是让 App 有资格去申请。真正的授权入口见设置页的「权限中心」。
@@ -37,6 +43,11 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.BODY_SENSORS" />
+
+    <!-- 健康数据（睡眠）：经 Health Connect 读，不是直接读厂商运动 App。
+         这是 Health Connect 自己的权限（Android 14+ 由系统管），请求时由
+         系统弹出授权，用户拒绝也不影响 App 其余部分。 -->
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
 
     <!-- 日程与通讯录：角色记你的安排、认你的朋友 -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
@@ -94,6 +105,13 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Health Connect 的权限说明页入口。Android 14+ 会在这里链一个
+                 「为什么需要这些权限」的说明，缺了它系统会拒绝授权请求。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+
             <!-- 深链：外部 App（如桌宠）用 floatshell://open?url=<站内地址> 唤起本壳并直达指定页面。
                  目标地址仍受 SITE_URL 前缀校验，只能开自己的站点。 -->
             <intent-filter>

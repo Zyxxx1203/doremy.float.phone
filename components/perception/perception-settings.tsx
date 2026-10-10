@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity, AlertCircle, BarChart3, Battery, Calendar, Cloud,
-  Footprints, MapPin, RefreshCw, ShieldCheck, Smartphone, Trash2, Users, Wifi,
+  Footprints, MapPin, Moon, RefreshCw, ShieldCheck, Smartphone, Trash2, Users, Wifi,
 } from "lucide-react";
 
 import { Toggle } from "@/components/ui/form";
@@ -32,9 +32,12 @@ import {
 } from "@/lib/perception";
 import { clearCloudStatus } from "@/lib/perception/cloud-sync";
 import {
+  hasHealthPermission,
   hasLocationPermission,
   hasStepPermission,
+  readHealthCapabilities,
   readLocationCapabilities,
+  requestHealthPermission,
   requestLocationPermission,
   requestStepPermission,
 } from "@/lib/perception/bridge";
@@ -45,6 +48,7 @@ const CAP_ICONS: Record<PerceptionCapability, typeof Battery> = {
   network: Wifi,
   foregroundApp: Smartphone,
   location: MapPin,
+  sleep: Moon,
   calendar: Calendar,
   contacts: Users,
   usageStats: BarChart3,
@@ -130,6 +134,19 @@ export function PerceptionSettings({ onNotice }: { onNotice?: (msg: string) => v
         // 权限有、开关没开：明确说这一句，否则用户会对着「已开启」的开关
         // 等一个永远不来的信号。
         onNotice?.("定位权限已有，但系统的定位开关没开——在快捷开关里打开即可");
+      }
+      // 睡眠走 Health Connect：先看装没装，再看授没授权。
+      // 两层都要说清楚——「开了没反应」绝大多数卡在这里。
+      if (id === "sleep" && row?.nativeSupported) {
+        const caps = readHealthCapabilities();
+        if (caps.healthAvailable !== true) {
+          onNotice?.("这台手机还没装 Health Connect（或需要更新）。装好并同步一次数据，睡眠才读得到");
+        } else if (!hasHealthPermission()) {
+          const immediate = requestHealthPermission();
+          onNotice?.(immediate
+            ? "睡眠读取已可用"
+            : "请在 Health Connect 里允许「睡眠」读取，允许后睡眠才会生效");
+        }
       }
     }
   }, [update, onNotice]);

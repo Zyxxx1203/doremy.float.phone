@@ -6,9 +6,12 @@
 import { isWithinPushQuietHours } from "../push-client";
 import {
   hasPerceptionBridge,
+  readHealthCapabilities,
+  readHealthDiagnostics,
   readLocation,
   readLocationDiagnostics,
   readNativeCapabilities,
+  readSleep,
   readUsageStats,
 } from "./bridge";
 import { isPerceptionRunning } from "./engine";
@@ -47,6 +50,8 @@ export function readPerceptionDiagnostics(): PerceptionDiagnostics {
     appUsage: readUsageStats(12),
     location: readLocation(),
     locationDiagnostics: readLocationDiagnostics(),
+    sleep: readSleep(),
+    healthDiagnostics: readHealthDiagnostics(),
     hourlyUsed: windowFresh ? state.hourCount : 0,
     hourlyLimit: config.hourlyLimit,
     unmatchedSignals: state.unmatchedSignals,
@@ -85,8 +90,12 @@ export function buildCapabilityRows(): CapabilityRow[] {
     accessibility = false;
   }
 
+  // 睡眠的前置条件在健康桥那边（装没装 Health Connect、授没授权），
+  // 不在感知桥的能力表里，所以单独读一次。
+  const health = readHealthCapabilities();
+
   const ids: PerceptionCapability[] = [
-    "battery", "network", "foregroundApp", "steps", "location", "calendar", "contacts", "usageStats", "returnToPhone",
+    "battery", "network", "foregroundApp", "steps", "location", "sleep", "calendar", "contacts", "usageStats", "returnToPhone",
   ];
 
   return ids.map(id => {
@@ -113,6 +122,15 @@ export function buildCapabilityRows(): CapabilityRow[] {
         missingRequirement = "需要位置权限";
       } else if (native.locationServiceOn !== true) {
         missingRequirement = "系统定位开关没开";
+      }
+    }
+    // 睡眠：三层前置，逐个报清楚，否则用户只会看到「开了却没反应」。
+    // 顺序按可操作性排：先装（没装就得去装），再授权。
+    if (id === "sleep" && nativeSupported) {
+      if (health.healthAvailable !== true) {
+        missingRequirement = "需要先安装 Health Connect";
+      } else if (health.healthGranted !== true) {
+        missingRequirement = "需要授予睡眠读取权限";
       }
     }
     return {

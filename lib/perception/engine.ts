@@ -27,8 +27,11 @@ import {
   readAppLabel,
   readLocation,
   readPerceptionSnapshot,
+  readSleep,
   readUsageStats,
+  refreshHealth,
   refreshLocation,
+  supportsHealth,
   supportsLocation,
   supportsUsageStats,
   type AppUsageEntry,
@@ -211,6 +214,17 @@ async function sampleOnce(): Promise<void> {
     await checkLocationChange(location, state);
   }
 
+  // ── 睡眠 ──
+  // 与位置同一套路：先请原生后台取一次（Health Connect 的读取是挂起函数，
+  // 同步读不到），再读缓存。只在开启时才调——这是健康数据，
+  // 用户没开就不该有任何读取。
+  let sleep = null as ReturnType<typeof readSleep>;
+  if (supportsHealth() && isCapabilityEnabled(config, "sleep")) {
+    refreshHealth();
+    sleep = readSleep();
+    await checkWakeUp(sleep, state);
+  }
+
   // ── 设备状态缓存 ──
   // 供三处读取：聊天时的按需注入、角色主动调用「查看TA的手机」、云端同步。
   // 存在这里而不是各消费方自己去原生取，是为了让它们读到同一份「此刻一致」的状态，
@@ -238,6 +252,7 @@ async function sampleOnce(): Promise<void> {
     steps: snapshot.steps,
     appUsage,
     location,
+    sleep,
   });
 
   // ── 云端同步（默认关）──
@@ -346,6 +361,48 @@ async function checkLocationChange(
 
 /** 判定「换了个地方」的最小距离（米）。 */
 const LOCATION_MOVE_METERS = 500;
+
+/**
+ * 「睡醒了」判定。
+ *
+ * 只在这一觉**刚结束**时报一条，不是每次采样都报「你睡了 7 小时」——
+ * 睡眠时长在一觉之内基本不变，按采样周期反复报会变成一块健康面板。
+ *
+ * 两道闸：
+ *   · 醒来时刻必须落在最近 6 小时内：更早的那一觉是昨天的，现在说
+ *     「你醒了」不合时宜（App 关了一整天才打开时会遇到）。
+ *   · 与上次报过的醒来时刻不同：同一次醒来只报一次。用醒来时刻（而不是
+ *     时长）做标识，因为时长可能因为数据补录而微调。
+ */
+async function checkWakeUp(
+  sleep: ReturnType<typeof readSleep>,
+  state: PerceptionRuntimeState,
+): Promise<void> {
+  if (!sleep) return;
+
+  const hasBaseline = state.lastSleepEndAt > 0;
+  // 先记基准、再判断——首次读到只建立基准，不报「你醒了」：
+  // 那多半是刚开功能，用户此刻醒着，说这句莫名其妙。
+  if (!hasBaseline) {
+    state.lastSleepEndAt = sleep.endAt;
+    return;
+  }
+  if (sleep.endAt === state.lastSleepEndAt) return;
+
+  state.lastSleepEndAt = sleep.endAt;
+
+  const hoursSinceWake = (Date.now() - sleep.endAt) / 3600000;
+  if (hoursSinceWake > WAKE_RECENT_HOURS || hoursSinceWake < -1) return;
+
+  await emitSignal({
+    capability: "sleep",
+    type: "睡醒了",
+    payload: `睡了 ${Math.floor(sleep.minutes / 60)} 小时 ${sleep.minutes % 60} 分钟`,
+  }, state);
+}
+
+/** 「刚醒」的有效窗口（小时）。超过就不提了。 */
+const WAKE_RECENT_HOURS = 6;
 
 /** 前台应用变化：只更新基准，不在这里上报（判断统一在 checkDwell）。 */
 function onForegroundApp(pkg: string): void {

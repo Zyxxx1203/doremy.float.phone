@@ -5,7 +5,14 @@
 // 与 lib/shell-call-overlay.ts 同一套路：非壳环境一律安全降级为 no-op，
 // 老版 APK 没有这些方法时也返回「不可用」而不是抛错，调用方无需分支判断。
 
-import type { AppUsageEntry, LocationDiagnostics, LocationSnapshot, PerceptionCapability } from "./types";
+import type {
+  AppUsageEntry,
+  HealthDiagnostics,
+  LocationDiagnostics,
+  LocationSnapshot,
+  PerceptionCapability,
+  SleepSnapshot,
+} from "./types";
 
 type PerceptionBridgeLike = {
   getPerceptionSnapshot?: () => string;
@@ -20,6 +27,13 @@ type PerceptionBridgeLike = {
   readLocation?: () => string;
   refreshLocation?: () => void;
   getLocationDiagnostics?: () => string;
+  getHealthCapabilities?: () => string;
+  hasHealthPermission?: () => boolean;
+  requestHealthPermission?: () => boolean;
+  readSleep?: () => string;
+  refreshHealth?: () => void;
+  getHealthDiagnostics?: () => string;
+  openHealthSettings?: () => boolean;
 };
 
 function bridge(): PerceptionBridgeLike | null {
@@ -224,6 +238,119 @@ export function refreshLocation(): void {
     bridge()?.refreshLocation?.();
   } catch {
     /* 忽略 */
+  }
+}
+
+/** 健康桥上报的能力与授权状态（老壳/浏览器返回空对象）。 */
+export type HealthCapabilities = {
+  /** 壳接没接健康数据（这一版接了） */
+  health?: boolean;
+  /** Health Connect 在这台设备上能不能用（没装就是 false） */
+  healthAvailable?: boolean;
+  /** 睡眠读取权限给没给 */
+  healthGranted?: boolean;
+  /** 原始的 SDK 状态码，排障用 */
+  healthSdkStatus?: number;
+};
+
+export function readHealthCapabilities(): HealthCapabilities {
+  try {
+    const raw = bridge()?.getHealthCapabilities?.();
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as HealthCapabilities;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/** 壳是否提供健康数据读取（老 APK 没有）。 */
+export function supportsHealth(): boolean {
+  return typeof bridge()?.readSleep === "function";
+}
+
+/** 睡眠读取权限是否已授予。 */
+export function hasHealthPermission(): boolean {
+  try {
+    return bridge()?.hasHealthPermission?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 申请睡眠读取权限。
+ *
+ * 返回 true 表示「现在就能读」，false 表示弹出了授权页、结果要稍后由
+ * hasHealthPermission() 轮询确认——申请是异步的，不能同步拿到结果。
+ * 未安装 Health Connect 时同样返回 false，由调用方引导去安装。
+ */
+export function requestHealthPermission(): boolean {
+  try {
+    return bridge()?.requestHealthPermission?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+/** 壳是否提供健康权限申请接口（老 APK 没有）。 */
+export function supportsHealthPermission(): boolean {
+  return typeof bridge()?.requestHealthPermission === "function";
+}
+
+/**
+ * 读最近一觉。
+ *
+ * 未授权、Health Connect 不可用、没数据，一律返回 null——调用方据此说
+ * 「读不到」，绝不编一个「昨晚睡了 8 小时」：这种假数据角色会当真。
+ */
+export function readSleep(): SleepSnapshot | null {
+  try {
+    const raw = bridge()?.readSleep?.();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<SleepSnapshot>;
+    const minutes = Number(parsed?.sleepMinutes);
+    const endAt = Number(parsed?.sleepEndAt);
+    const startAt = Number(parsed?.sleepStartAt);
+    if (!Number.isFinite(minutes) || minutes <= 0) return null;
+    if (!Number.isFinite(endAt) || endAt <= 0) return null;
+    return {
+      minutes,
+      startAt: Number.isFinite(startAt) ? startAt : 0,
+      endAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 请壳在后台取一次睡眠数据（结果落缓存，随后的 readSleep 能读到）。 */
+export function refreshHealth(): void {
+  try {
+    bridge()?.refreshHealth?.();
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 跳 Health Connect 设置页。返回是否成功（没装时退回应用市场页）。 */
+export function openHealthSettings(): boolean {
+  try {
+    return bridge()?.openHealthSettings?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+/** 读健康桥的内部状态（诊断面板用）。读不到返回 null。 */
+export function readHealthDiagnostics(): HealthDiagnostics | null {
+  try {
+    const raw = bridge()?.getHealthDiagnostics?.();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as HealthDiagnostics;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
   }
 }
 

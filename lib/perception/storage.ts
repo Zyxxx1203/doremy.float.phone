@@ -136,6 +136,8 @@ export type PerceptionRuntimeState = {
   lastLon: number;
   /** 上次位置的地名（供「离开某地」文案用；空串 = 当时也没拿到名字） */
   lastPlace: string;
+  /** 上次已上报过的醒来时刻（毫秒）；同一次醒来只报一次 */
+  lastSleepEndAt: number;
 };
 
 const EMPTY_STATE: PerceptionRuntimeState = {
@@ -156,6 +158,7 @@ const EMPTY_STATE: PerceptionRuntimeState = {
   lastLat: Number.NaN,
   lastLon: Number.NaN,
   lastPlace: "",
+  lastSleepEndAt: 0,
 };
 
 export function loadPerceptionState(): PerceptionRuntimeState {
@@ -198,6 +201,7 @@ const EMPTY_STATUS: PerceptionStatusSnapshot = {
   // 旧缓存没有位置字段，合并后必须是 null 而不是 undefined：
   // 描述函数会判空，undefined 会一路漏到界面文案里。
   location: null,
+  sleep: null,
   // 旧缓存里没有这个字段（这次才加），合并后必须还是个数组——
   // 否则 describeTopUsage 遍历时会在 undefined 上炸。
   appUsage: [],

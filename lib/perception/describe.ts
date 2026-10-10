@@ -22,6 +22,28 @@ export function formatSince(at: string): string {
   return `${Math.floor(hour / 24)} 天前`;
 }
 
+/**
+ * 把「最近一觉」说成人话。
+ *
+ * 说「昨晚睡了 7 小时 20 分钟」这种顺口的句子，不写「睡眠时长：440min」。
+ * 分辨昨晚还是今天小睡，只看入睡时刻是不是在今天零点之前——
+ * 这个量级够用，精确到几点几分入睡没必要（那属于作息细节）。
+ */
+function describeSleep(sleep: PerceptionStatusSnapshot["sleep"]): string {
+  if (!sleep || sleep.minutes <= 0) return "";
+  // 少于 30 分钟的多半是设备误记（手环压到、午间打盹没记全），提了是噪声
+  if (sleep.minutes < 30) return "";
+  const hours = Math.floor(sleep.minutes / 60);
+  const mins = sleep.minutes % 60;
+  const duration = hours > 0
+    ? (mins > 0 ? `${hours} 小时 ${mins} 分钟` : `${hours} 小时`)
+    : `${mins} 分钟`;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const isNight = sleep.startAt > 0 && sleep.startAt < startOfToday.getTime();
+  return isNight ? `昨晚睡了 ${duration}` : `今天睡了 ${duration}`;
+}
+
 /** 把网络类型说成人话。 */
 function describeNetwork(type: string, metered: boolean): string {
   if (!type || type === "none") return "";
@@ -118,6 +140,9 @@ export function filterStatusBySwitches(
   if (!isCapabilityEnabled(config, "location")) {
     out.location = null;
   }
+  if (!isCapabilityEnabled(config, "sleep")) {
+    out.sleep = null;
+  }
   return out;
 }
 
@@ -161,6 +186,9 @@ export function describeStatusByFocus(status: PerceptionStatusSnapshot, focus?: 
     }
   } else if (key === "steps" || key === "步数") {
     if (status.steps >= 0) parts.push(`今天走了 ${status.steps} 步`);
+  } else if (key === "sleep" || key === "睡眠" || key === "睡") {
+    const slept = describeSleep(status.sleep);
+    if (slept) parts.push(slept);
   } else if (key === "usage" || key === "usageStats" || key === "使用时长" || key === "屏幕使用时间") {
     const usage = describeTopUsage(status.appUsage);
     if (usage) parts.push(usage);

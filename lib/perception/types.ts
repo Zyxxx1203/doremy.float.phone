@@ -36,6 +36,7 @@ export type PerceptionCapability =
   | "contacts"
   | "usageStats"
   | "steps"
+  | "sleep"
   | "returnToPhone";
 
 export const PERCEPTION_CAPABILITY_LABEL: Record<PerceptionCapability, string> = {
@@ -47,6 +48,7 @@ export const PERCEPTION_CAPABILITY_LABEL: Record<PerceptionCapability, string> =
   contacts: "联系人",
   usageStats: "使用统计",
   steps: "步数",
+  sleep: "睡眠",
   returnToPhone: "回到手机提醒",
 };
 
@@ -59,6 +61,7 @@ export const PERCEPTION_CAPABILITY_DESC: Record<PerceptionCapability, string> = 
   contacts: "来电或消息可识别为具体的人。需要读取联系人。",
   usageStats: "汇总当天各应用使用时长。需要「使用情况访问」权限。",
   steps: "读取当天步数，作为「在走动 / 宅着」的粗线索。需要活动识别权限。",
+  sleep: "读取最近一觉的时长与起止。只读睡眠，不含睡眠分期；数据来自 Health Connect。",
   returnToPhone: "离开一段时间后回到小手机时，给角色一个「TA 回来了」的信号。纯网页实现，无需额外权限。",
 };
 
@@ -163,12 +166,29 @@ export type PerceptionStatusSnapshot = {
   /** 今天各应用使用时长（按时长降序，最多 12 条）；空数组 = 未授权或读不到 */
   appUsage: AppUsageEntry[];
   /**
+   * 最近一觉。null = 未授权 / Health Connect 不可用 / 没数据。
+   *
+   * 只带时长与起止，不带睡眠分期（深睡/浅睡/REM）——分期是医学化读数，
+   * 角色拿它说事只会像体检报告。
+   */
+  sleep: SleepSnapshot | null;
+  /**
    * 当前位置。null = 未授权 / 定位开关关着 / 读不到。
    *
    * 坐标已由原生降精度到约 110 米，地名只到区/街道级——「到了哪一片」
    * 足够角色说句自然的话，指认门牌不是这个功能要的东西。
    */
   location: LocationSnapshot | null;
+};
+
+/** 最近一觉（只回时长与起止，不含分期）。 */
+export type SleepSnapshot = {
+  /** 睡了多久（分钟） */
+  minutes: number;
+  /** 入睡时刻（毫秒时间戳） */
+  startAt: number;
+  /** 醒来时刻（毫秒时间戳） */
+  endAt: number;
 };
 
 /** 一次位置读取的结果（已降精度）。 */
@@ -210,8 +230,30 @@ export type PerceptionDiagnostics = {
   appUsage: AppUsageEntry[];
   /** 实时读一次当前位置（null = 读不到）。 */
   location: LocationSnapshot | null;
+  /** 实时读一次最近一觉（null = 读不到）。 */
+  sleep: SleepSnapshot | null;
+  /** 健康桥的内部状态（取数次数、最近失败原因）。 */
+  healthDiagnostics: HealthDiagnostics | null;
   /** 位置桥的内部状态（取点次数、最近失败原因）。 */
   locationDiagnostics: LocationDiagnostics | null;
+};
+
+/** 健康桥上报的内部状态（诊断用，不含睡眠内容）。 */
+export type HealthDiagnostics = {
+  /** Health Connect 能不能用 */
+  available?: boolean;
+  /** 睡眠读取权限给没给 */
+  granted?: boolean;
+  /** 是否正有一次取数在进行 */
+  refreshing?: boolean;
+  /** 累计成功取数次数 */
+  refreshCount?: number;
+  /** 原生手里有没有新鲜缓存 */
+  hasCache?: boolean;
+  /** 缓存年龄（毫秒），-1 = 没有缓存 */
+  cacheAgeMs?: number;
+  /** 最近一次失败原因（空串 = 没记到失败） */
+  lastError?: string;
 };
 
 /** 位置桥上报的内部状态（诊断用，不含具体坐标）。 */

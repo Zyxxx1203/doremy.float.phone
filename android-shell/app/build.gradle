@@ -65,4 +65,11 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.activity:activity-ktx:1.9.0'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    // Health Connect：读睡眠与步数。选它而不是各厂商自己的运动 App SDK，
+    // 是因为它由系统统一汇聚（华为/小米/三星健康都往里写），接一次就够，
+    // 不必为每个 ROM 各写一套。代价是用户得在系统里装/启用它并逐项授权。
+    implementation 'androidx.health.connect:connect-client:1.1.0'
+    // Health Connect 的读取 API 是挂起函数，而桥要让网页同步读，所以用协程
+    // 在后台取、取完写进缓存。显式声明而不是靠传递依赖，避免版本变动就编译失败。
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
 }

@@ -323,5 +323,8 @@ class PerceptionBridge(private val context: Context) {
         // 混为一谈会让用户以为手机不支持、从而放弃授权。
         .put("usageStats", Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP)
         .put("usageStatsGranted", hasUsageStatsAccess())
+        // 睡眠接的是 Health Connect（见 HealthBridge）：能力上是支持的，
+        // 「装没装 / 授没授权」另由健康桥回答——不在这里报，免得两处状态打架。
+        .put("sleep", true)
         .toString()
 }

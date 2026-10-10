@@ -38,6 +38,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.health.connect.client.PermissionController
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -92,6 +93,26 @@ class MainActivity : AppCompatActivity() {
 
     /** 位置桥：让角色知道用户大概在哪儿（只前台取点、坐标降精度，边界见 LocationBridge）。 */
     private val locationBridge by lazy { LocationBridge(this) }
+
+    /** 健康桥：让角色知道用户昨晚睡了多久（只读睡眠、只回时长，边界见 HealthBridge）。 */
+    private val healthBridge by lazy { HealthBridge(this) }
+
+    /**
+     * 睡眠读取权限的申请结果回调。
+     *
+     * Health Connect 的授权走它自己的 ActivityResultContract，不是系统的
+     * requestPermissions；用户勾了哪几项由返回的集合告诉我们。
+     * 结果记完就够——真正的读取由网页调 refreshHealth 触发，壳不替网页做判断。
+     */
+    private val healthPermissionLauncher = registerForActivityResult(
+        PermissionController.createRequestPermissionResultContract()
+    ) { grantedPermissions ->
+        healthPermissionGranted = grantedPermissions.contains(HealthBridge.PERM_SLEEP)
+    }
+
+    /** 睡眠读取权限的最近一次申请结果（网页靠轮询 getHealthCapabilities 确认）。 */
+    @Volatile
+    private var healthPermissionGranted = false
 
     /**
      * 定位权限的申请结果回调。
@@ -760,6 +781,53 @@ class MainActivity : AppCompatActivity() {
         /** 位置桥内部状态（诊断面板用，不含具体坐标）。 */
         @JavascriptInterface
         fun getLocationDiagnostics(): String = locationBridge.diagnosticsJson()
+
+        // ── 健康桥（角色知道昨晚睡得怎么样）────
+        // 经 Health Connect 读，只申请睡眠读取、只回时长与起止，不读分期、
+        // 不读心率血氧、不写任何健康数据。
+
+        /** 健康能力与授权状态（含「Health Connect 装没装」）。 */
+        @JavascriptInterface
+        fun getHealthCapabilities(): String = healthBridge.capabilitiesJson()
+
+        /** 睡眠读取权限是否已授予。 */
+        @JavascriptInterface
+        fun hasHealthPermission(): Boolean = healthBridge.hasSleepPermission() || healthPermissionGranted
+
+        /**
+         * 申请睡眠读取权限。
+         *
+         * 返回 true 表示「现在已经可以读」，false 表示弹出了 Health Connect
+         * 的授权页、结果要稍后由 hasHealthPermission() 轮询确认——
+         * 申请是异步的，不能同步拿到结果。
+         */
+        @JavascriptInterface
+        fun requestHealthPermission(): Boolean {
+            if (healthBridge.hasSleepPermission()) return true
+            if (!healthBridge.isAvailable()) return false
+            return runCatching {
+                healthPermissionLauncher.launch(setOf(HealthBridge.PERM_SLEEP))
+                false
+            }.getOrDefault(false)
+        }
+
+        /** 读缓存的最近一觉（JSON；读不到返回空对象）。 */
+        @JavascriptInterface
+        fun readSleep(): String = healthBridge.readJson().toString()
+
+        /** 请健康桥在后台取一次睡眠数据（结果落缓存，随后的 readSleep 能读到）。 */
+        @JavascriptInterface
+        fun refreshHealth() {
+            healthBridge.refresh()
+        }
+
+        /** 跳 Health Connect 设置页（用户在那里看数据来源、撤销授权）。 */
+        @JavascriptInterface
+        fun openHealthSettings(): Boolean = healthBridge.openHealthSettings()
+
+        /** 健康桥内部状态（诊断面板用，不含睡眠内容）。 */
+        @JavascriptInterface
+        fun getHealthDiagnostics(): String = healthBridge.diagnosticsJson()
 
         /** 本机支持哪些设备动作（含授权状态）。 */
         @JavascriptInterface
