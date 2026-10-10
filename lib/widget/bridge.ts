@@ -1,0 +1,115 @@
+"use client";
+
+/**
+ * 小组件 ↔ 安卓壳的桥。
+ *
+ * 分工：
+ *   网页负责「内容和样式」——把模板渲染成完整 HTML 交给原生；
+ *   原生负责「画图和贴到桌面」——离屏 WebView 画成 Bitmap，再更新 RemoteViews。
+ *
+ * 为什么不让网页直接渲染成 PNG 再传：
+ *   WebView 的 canvas.toDataURL 拿不到跨域图片（生成的头像是 data URL 没问题，
+ *   但用户模板里若引了 http 图片就会污染画布）。交给原生离屏渲染没有这个限制，
+ *   而且小手机关着时原生也能自己重画（用上次缓存的 HTML）。
+ *
+ * 所有方法在非壳环境安全降级为 no-op / false。
+ */
+
+import { loadWidgetConfig, loadWidgetData } from "./storage";
+
+type PhoneWidgetBridge = {
+  /** 是否支持小组件（老 APK 没有） */
+  isSupported?: () => boolean;
+  /** 提交渲染数据：HTML + 尺寸。原生据此重画并刷新桌面 */
+  update?: (html: string, widthDp: number, heightDp: number, scale: number) => boolean;
+  /** 让原生立刻重画一次（用上次缓存的 HTML） */
+  refresh?: () => boolean;
+  /** 是否已添加小组件到桌面（未添加时引导用户去加） */
+  isPlaced?: () => boolean;
+  /** 跳到系统的「添加小组件」界面 */
+  requestPin?: () => boolean;
+};
+
+function getBridge(): PhoneWidgetBridge | null {
+  if (typeof window === "undefined") return null;
+  const api = (window as unknown as { PhoneWidget?: PhoneWidgetBridge }).PhoneWidget;
+  return api ?? null;
+}
+
+export function hasWidgetBridge(): boolean {
+  const bridge = getBridge();
+  if (!bridge) return false;
+  try {
+    return bridge.isSupported ? bridge.isSupported() === true : true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 把一份渲染好的 HTML 交给原生。
+ *
+ * @returns 是否成功送达（非壳环境、老壳都返回 false）
+ */
+export function pushWidgetHtml(
+  html: string,
+  size: { widthDp: number; heightDp: number; scale: number },
+): boolean {
+  const bridge = getBridge();
+  if (!bridge?.update) return false;
+  try {
+    return bridge.update(html, size.widthDp, size.heightDp, size.scale) === true;
+  } catch {
+    return false;
+  }
+}
+
+/** 让原生用缓存重画（例如用户刚改了桌面主题）。 */
+export function refreshWidget(): boolean {
+  const bridge = getBridge();
+  if (!bridge?.refresh) return false;
+  try {
+    return bridge.refresh() === true;
+  } catch {
+    return false;
+  }
+}
+
+/** 小组件是否已经放在桌面上。 */
+export function isWidgetPlaced(): boolean {
+  const bridge = getBridge();
+  if (!bridge?.isPlaced) return false;
+  try {
+    return bridge.isPlaced() === true;
+  } catch {
+    return false;
+  }
+}
+
+/** 拉起系统的「添加小组件」引导。 */
+export function requestPinWidget(): boolean {
+  const bridge = getBridge();
+  if (!bridge?.requestPin) return false;
+  try {
+    return bridge.requestPin() === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 把当前存储里的配置与数据推给原生。保存配置、角色改了内容之后都该调一次。
+ *
+ * @param html 已经渲染好的 HTML（调用方用 renderWidgetHtml 生成）
+ */
+export function syncWidgetToNative(html: string): boolean {
+  const config = loadWidgetConfig();
+  if (!config.enabled) return false;
+  const data = loadWidgetData();
+  if (!data) return false;
+  return pushWidgetHtml(html, {
+    widthDp: config.widthDp,
+    heightDp: config.heightDp,
+    scale: config.scale,
+  });
+}

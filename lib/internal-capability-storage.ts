@@ -19,6 +19,7 @@ export const REALITY_BRIDGE_CAPABILITY_ID = "reality_bridge_send";
 export const PERCEPTION_READ_CAPABILITY_ID = "perception_read";
 export const DEVICE_ACTION_CAPABILITY_ID = "device_action";
 export const SYSTEM_CALENDAR_CAPABILITY_ID = "system_calendar";
+export const PHONE_WIDGET_CAPABILITY_ID = "phone_widget";
 
 /**
  * 内置工具的保留名：用户给现实桥的快捷动作/数据项起名时必须避开。
@@ -30,6 +31,7 @@ export const SYSTEM_CALENDAR_CAPABILITY_ID = "system_calendar";
  * **新增内置工具时，记得把名字加到这里。**
  */
 export const RESERVED_INTERNAL_TOOL_NAMES: string[] = [
+    "在桌面留句话",
     "查看TA的手机",
     "操作TA的设备",
     "看看TA的日程",
@@ -1313,6 +1315,15 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
         updatedAt: 0,
     },
     {
+        id: PHONE_WIDGET_CAPABILITY_ID,
+        name: "在桌面留句话",
+        description: "在{{user}}手机桌面的小组件里留一句话。TA 不用打开聊天就能看见，像你不经意留下的状态。留的话会盖掉上一句，所以别频繁换。",
+        enabled: false,
+        mode: "auto",
+        createdAt: 0,
+        updatedAt: 0,
+    },
+    {
         id: TIMED_WAKE_CAPABILITY_ID,
         name: "稍后主动联系",
         description: "让角色约定「过一会儿主动联系对方」：现在设定一个延时与想法，到点后由角色决定主动发消息或静默（不是睡觉醒来）。",
@@ -1456,6 +1467,14 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
             description: capability.description,
             parameterSchema: "{}",
             usageGuide: SYSTEM_CALENDAR_USAGE_GUIDE,
+        };
+    }
+    if (capability.id === PHONE_WIDGET_CAPABILITY_ID) {
+        return {
+            name: capability.name,
+            description: capability.description,
+            parameterSchema: PHONE_WIDGET_PARAMETER_SCHEMA,
+            usageGuide: PHONE_WIDGET_USAGE_GUIDE,
         };
     }
     return null;

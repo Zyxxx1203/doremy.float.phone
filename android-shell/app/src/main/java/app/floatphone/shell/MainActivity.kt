@@ -290,6 +290,9 @@ class MainActivity : AppCompatActivity() {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
 
         webView.addJavascriptInterface(ShellBridge(), "AndroidShell")
+        // 桌面小组件桥：独立命名空间，跟通话/截屏那套分开，
+        // 免得以後加方法时和 AndroidShell 里几十个方法混在一起。
+        webView.addJavascriptInterface(PhoneWidgetBridge(), "PhoneWidget")
         // 步数传感器是异步的（没有同步取值接口），必须提前挂上才有值可读。
         // 这里只是「挂监听」，不申请权限；没授权时 attachStepSensor 内部会直接返回。
         PerceptionBridge.attachStepSensor(this)
@@ -1321,5 +1324,54 @@ class MainActivity : AppCompatActivity() {
         "wav" -> "audio/wav"
         "mp4" -> "video/mp4"
         else -> "application/octet-stream"
+    }
+
+    /**
+     * 桌面小组件桥。
+     *
+     * 与方法庞杂的 ShellBridge 分开命名空间（网页侧挂在 window.PhoneWidget），
+     * 避免以后继续往那个类里堆不相干的能力。
+     *
+     * 所有方法都只做转发，不持有状态——渲染与桌面刷新分别由
+     * PhoneWidgetRenderer / PhoneWidgetProvider 负责，网页侧对应 lib/widget/。
+     */
+    private inner class PhoneWidgetBridge {
+
+        /** 壳是否支持小组件。老壳没有这个对象，网页据此降级。 */
+        @JavascriptInterface
+        fun isSupported(): Boolean = true
+
+        /**
+         * 提交一份渲染好的 HTML。
+         *
+         * 返回 true 只表示「已受理」——真正的渲染是异步的（要等离屏 WebView 加载完），
+         * 网页不该把返回值当作「已经显示出来了」。
+         */
+        @JavascriptInterface
+        fun update(html: String, widthDp: Int, heightDp: Int, scale: Int): Boolean = runCatching {
+            // 尺寸记一份：系统定时刷新（onUpdate）时网页不在场，只能靠这里存的值。
+            PhoneWidgetProvider.saveSize(this@MainActivity, widthDp, heightDp, scale)
+            PhoneWidgetRenderer.renderAndPush(this@MainActivity, html, widthDp, heightDp, scale)
+            true
+        }.getOrDefault(false)
+
+        /** 用上次缓存的 HTML 重画一次（用户改完尺寸/主题时调用）。 */
+        @JavascriptInterface
+        fun refresh(): Boolean = runCatching {
+            val (w, h, scale) = PhoneWidgetProvider.loadSize(this@MainActivity)
+            PhoneWidgetRenderer.renderCached(this@MainActivity, w, h, scale)
+            true
+        }.getOrDefault(false)
+
+        /** 桌面上是否已经放了小组件（没放时设置页给「添加到桌面」引导）。 */
+        @JavascriptInterface
+        fun isPlaced(): Boolean = PhoneWidgetProvider.isPlaced(this@MainActivity)
+
+        /** 拉起系统的「添加到桌面」引导。Android 8+ 有效，更低版本静默失败。 */
+        @JavascriptInterface
+        fun requestPin(): Boolean = runCatching {
+            PhoneWidgetProvider.requestPin(this@MainActivity)
+            true
+        }.getOrDefault(false)
     }
 }

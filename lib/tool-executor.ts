@@ -23,7 +23,7 @@ import {
 } from "./tool-storage";
 import { executeCustomAppToolCall } from "./custom-app-tool-runtime";
 import { characterWorkspace, agentComputerRequest, isAgentComputerConfigured } from "./agent-computer";
-import { AGENT_COMPUTER_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, DEVICE_ACTION_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, PERCEPTION_READ_CAPABILITY_ID, REALITY_BRIDGE_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, SYSTEM_CALENDAR_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
+import { AGENT_COMPUTER_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, DEVICE_ACTION_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, PERCEPTION_READ_CAPABILITY_ID, PHONE_WIDGET_CAPABILITY_ID, REALITY_BRIDGE_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, SYSTEM_CALENDAR_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
 import {
     checkQueryCooldown,
     describeStatusByFocus,
@@ -34,6 +34,9 @@ import {
     markQueryPerformed,
 } from "./perception";
 import { notifyDeviceAction, runDeviceAction } from "./device-action";
+import { renderWidgetHtml } from "./widget/template";
+import { loadWidgetConfig, saveWidgetData, loadWidgetData } from "./widget/storage";
+import { syncWidgetToNative } from "./widget/bridge";
 import {
     formatEventTime,
     hasCalendarBridge,
@@ -817,6 +820,7 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     if (call.name === "操作TA的设备") return executeDeviceActionTool(call, context);
     if (call.name === "看看TA的日程") return executeSystemCalendarReadTool(call);
     if (call.name === "记进TA的日历") return executeSystemCalendarWriteTool(call);
+    if (call.name === "在桌面留句话") return executePhoneWidgetTool(call, context);
     if (isRealityBridgeToolName(call.name)) return executeRealityBridgeTool(call, context);
     if (call.name === "稍后主动联系" || call.name === "设置定时醒来") return executeTimedWakeTool(call, context);
 
@@ -835,6 +839,70 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     }
 
     return executeMemoryWriteTool(call.args, capability, context);
+}
+
+/**
+ * 角色在用户桌面小组件里留一句话。
+ *
+ * 与「往聊天里发消息」的关键差别：用户**不用打开 App** 就能看到，
+ * 所以措辞要像随手写下的状态，而不是打招呼。
+ * 落款用角色名，头像沿用上一次的（生图很慢，不在这个动作里做）。
+ */
+async function executePhoneWidgetTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
+    const capability = getInternalCapability(PHONE_WIDGET_CAPABILITY_ID);
+    if (!capability || !capability.enabled || capability.mode === "off") {
+        return {
+            name: call.name,
+            success: false,
+            error: "「在桌面留句话」能力未启用（工具箱 → 内置能力）",
+            continueConversation: false,
+            persistToHistory: false,
+            userNotice: "桌面留话能力未启用",
+        };
+    }
+    if (!context?.characterId) {
+        return { name: call.name, success: false, error: "这个动作需要在角色会话里使用" };
+    }
+    const config = loadWidgetConfig();
+    if (!config.enabled) {
+        return {
+            name: call.name,
+            success: false,
+            error: "TA 还没有开启桌面小组件（设置 → 桌面小组件）",
+        };
+    }
+
+    const text = String(call.args?.text ?? "").trim().slice(0, 300);
+    if (!text) return { name: call.name, success: false, error: "需要 text 参数" };
+    const status = String(call.args?.status ?? "").trim().slice(0, 30);
+
+    const character = loadCharacters().find(item => item.id === context.characterId);
+    const userName = resolveUserIdentity(context.characterId, context.appId)?.name || "用户";
+
+    saveWidgetData({
+        characterId: context.characterId,
+        text,
+        status,
+        avatar: loadWidgetData()?.avatar ?? "",
+        updatedAt: new Date().toISOString(),
+        source: "tool",
+    });
+
+    // 立刻推给桌面。没装壳/老壳时这一步失败也无所谓——
+    // 内容已经存下了，用户下次打开设置页会看到，装壳后自然同步过去。
+    try {
+        const html = renderWidgetHtml(config.customTemplate, loadWidgetData()!, character?.name ?? "角色", userName);
+        syncWidgetToNative(html);
+    } catch (err) {
+        console.warn("[Widget] 推送原生失败", err);
+    }
+
+    return {
+        name: call.name,
+        success: true,
+        data: `已在 TA 的桌面上留下：「${text}」${status ? `（状态：${status}）` : ""}`,
+        userNotice: "在桌面上留了句话",
+    };
 }
 
 /** 角色查看用户真实手机的系统日历（只读，且只读摘要字段）。 */

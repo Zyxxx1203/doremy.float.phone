@@ -169,6 +169,18 @@
             android:exported="false"
             android:foregroundServiceType="specialUse" />
 
+        <!-- 桌面小组件：角色留在桌面上的话。内容是网页渲染的图片（见 PhoneWidgetProvider）。 -->
+        <receiver
+            android:name=".PhoneWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/phone_widget_info" />
+        </receiver>
+
         <!-- 浮窗通知上的动作按钮（挂断/返回） -->
         <receiver
             android:name=".OverlayActionReceiver"
