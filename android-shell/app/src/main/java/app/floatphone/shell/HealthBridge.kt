@@ -3,7 +3,6 @@ package app.floatphone.shell
 import android.content.Context
 import android.content.Intent
 import androidx.health.connect.client.HealthConnectClient
-import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
@@ -38,8 +37,18 @@ import java.time.temporal.ChronoUnit
 class HealthBridge(private val context: Context) {
 
     companion object {
-        /** 读取睡眠所需的 Health Connect 权限。 */
-        const val PERM_SLEEP = HealthPermission.PERMISSION_READ_SLEEP
+        /**
+         * 读取睡眠所需的 Health Connect 权限。
+         *
+         * 用 getReadPermission(SleepSessionRecord::class) 而不是某个
+         * PERMISSION_* 常量：Health Connect 里没有「睡眠」专用常量，
+         * 权限是按记录类型算出来的。
+         *
+         * 用 get() 属性而不是 val 初始化：它是函数调用，写在初始化表达式里
+         * 会在类加载时就执行，万一抛异常等于整个桥都不可用；按需算最多只坏一次。
+         */
+        val PERM_SLEEP: String
+            get() = HealthPermission.getReadPermission(SleepSessionRecord::class)
 
         /** 缓存存活多久。睡眠数据一天才变几次，没必要频繁重读。 */
         private const val CACHE_TTL_MS = 30 * 60 * 1000L
@@ -145,8 +154,11 @@ class HealthBridge(private val context: Context) {
         refreshing = true
         scope.launch {
             try {
-                val controller = PermissionController.create(context)
-                val has = controller.getGrantedPermissions().contains(PERM_SLEEP)
+                // 权限控制器要从客户端上拿（client.permissionController）。
+                // 原来写的 PermissionController.create(context) 并不存在——
+                // 那是凭印象写的，CI 已证伪。
+                val client = HealthConnectClient.getOrCreate(context)
+                val has = client.permissionController.getGrantedPermissions().contains(PERM_SLEEP)
                 granted = has
                 if (!has) {
                     cachedJson = ""
