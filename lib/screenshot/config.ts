@@ -45,6 +45,14 @@ export type ScreenshotConfig = {
    * 「桌面要不要常驻一个球」。有人只想要角色查岗，不想桌面上多个东西。
    */
   ballEnabled: boolean;
+  /**
+   * 点悬浮球截屏后默认发给谁（角色 id）。空 = 每次都在浮层里选。
+   *
+   * 为什么值得有这个：点球的场景是「赶紧拍下来给你看」，多半站在外面、
+   * 手上还拿着东西。每次都要在一排名字里点一下，这件事就从「顺手」
+   * 变成了「操作」。固定一个人时直接跳过选择最省事；多聊时留空即可。
+   */
+  defaultShareCharacterId: string;
 };
 
 export const SCREENSHOT_DEFAULTS: ScreenshotConfig = {
@@ -52,6 +60,8 @@ export const SCREENSHOT_DEFAULTS: ScreenshotConfig = {
   notifyOnCapture: true,
   keepRecent: 10,
   ballEnabled: false,
+  // 空 = 每次让我选。默认不替用户指定收件人——猜错了等于发错人。
+  defaultShareCharacterId: "",
 };
 
 /** 读配置。任何字段缺失都按默认（默认 = 关）处理，绝不因为读失败而放开权限。 */
@@ -69,6 +79,10 @@ export function loadScreenshotConfig(): ScreenshotConfig {
       keepRecent: Number.isFinite(keep) ? Math.max(1, Math.min(50, Math.floor(keep))) : SCREENSHOT_DEFAULTS.keepRecent,
       // 必须显式 true 才算开——桌面上凭空多个球，缺省绝不能是开
       ballEnabled: parsed.ballEnabled === true,
+      // 只接受非空字符串；角色被删掉时由推送清单那一层负责清掉（见 share-targets）
+      defaultShareCharacterId: typeof parsed.defaultShareCharacterId === "string"
+        ? parsed.defaultShareCharacterId
+        : "",
     };
   } catch {
     return { ...SCREENSHOT_DEFAULTS };

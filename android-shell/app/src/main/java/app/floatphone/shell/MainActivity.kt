@@ -946,6 +946,22 @@ class MainActivity : AppCompatActivity() {
         fun getScreenshotBallCapabilities(): String = ScreenshotBallService.capabilitiesJson()
 
         /**
+         * 网页把「用户主动截屏时发给谁」的候选清单交过来保管。
+         *
+         * 必须提前给：点球那一刻网页可能已被系统回收，浮层回网页取清单
+         * 只会拿到空的。清单只含角色 id 与名字，不含聊天内容或屏幕信息。
+         * 参数形如 {"targets":[{"id":"...","name":"..."}],"defaultId":"..."}。
+         */
+        @JavascriptInterface
+        fun setScreenshotShareTargets(json: String): Boolean =
+            CheckInService.setShareTargets(this@MainActivity, json)
+
+        /** 读分享目标状态（诊断面板用：手上几个角色、默认发给谁、上次发给了谁）。 */
+        @JavascriptInterface
+        fun getScreenshotShareTargets(): String =
+            CheckInService.shareTargetsJson(this@MainActivity)
+
+        /**
          * 拉起截屏悬浮球。用户打开开关时（App 在前台）调用——
          * Android 12+ 禁止后台启动前台服务，必须先暖好。
          */

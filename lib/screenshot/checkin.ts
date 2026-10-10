@@ -19,6 +19,8 @@ type CheckInBridgeLike = {
   requestCheckIn?: (characterId: string, name: string, avatar: string) => void;
   getCheckInDiagnostics?: () => string;
   consumePendingUserShot?: () => string;
+  setScreenshotShareTargets?: (json: string) => boolean;
+  getScreenshotShareTargets?: () => string;
 };
 
 function bridge(): CheckInBridgeLike | null {
@@ -54,8 +56,13 @@ export function consumePendingUserShot(): CheckInOutcome | null {
   try {
     const raw = bridge()?.consumePendingUserShot?.();
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { accepted?: boolean; base64?: string; width?: number; height?: number; reply?: string; reason?: string };
+    const parsed = JSON.parse(raw) as { accepted?: boolean; base64?: string; width?: number; height?: number; reply?: string; reason?: string; characterId?: string };
     const reply = typeof parsed?.reply === "string" && parsed.reply.trim() ? parsed.reply.trim() : undefined;
+    // 目标角色：浮层里当场选的那个（或者设了默认角色时的默认值）。
+    // 老壳不带这个字段 → undefined，调用方退回「最近聊过的私聊会话」。
+    const characterId = typeof parsed?.characterId === "string" && parsed.characterId.trim()
+      ? parsed.characterId.trim()
+      : undefined;
     if (parsed?.accepted === true && typeof parsed.base64 === "string" && parsed.base64) {
       return {
         accepted: true,
@@ -63,9 +70,56 @@ export function consumePendingUserShot(): CheckInOutcome | null {
         width: typeof parsed.width === "number" ? parsed.width : 0,
         height: typeof parsed.height === "number" ? parsed.height : 0,
         reply,
+        characterId,
       };
     }
     return null;
+  } catch {
+    return null;
+  }
+}
+
+/** 壳是否提供「分享目标清单」接口（老 APK 没有）。 */
+export function supportsShareTargets(): boolean {
+  return typeof bridge()?.setScreenshotShareTargets === "function";
+}
+
+/**
+ * 把「可分享角色清单 + 默认角色」交给原生保管。
+ *
+ * 为什么必须提前推、而不是浮层弹出时现取：点球的是原生，那一刻网页
+ * 十有八九已被系统回收，现取只会拿到空清单。推过去原生存着（还落了
+ * SharedPreferences，服务被系统重启也在），浮层直接读本地。
+ *
+ * @returns 原生是否收下了；老壳返回 false（此时仍走「最近会话」老路）
+ */
+export function pushScreenshotShareTargets(
+  targets: Array<{ id: string; name: string }>,
+  defaultId: string,
+): boolean {
+  try {
+    return bridge()?.setScreenshotShareTargets?.(
+      JSON.stringify({ targets, defaultId }),
+    ) === true;
+  } catch {
+    return false;
+  }
+}
+
+/** 读原生手上的分享目标状态（诊断面板用）。读不到返回 null。 */
+export function readScreenshotShareTargets(): import("./types").ScreenshotShareTargetState | null {
+  try {
+    const raw = bridge()?.getScreenshotShareTargets?.();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<import("./types").ScreenshotShareTargetState>;
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      count: Number.isFinite(Number(parsed.count)) ? Number(parsed.count) : 0,
+      defaultId: typeof parsed.defaultId === "string" ? parsed.defaultId : "",
+      defaultName: typeof parsed.defaultName === "string" ? parsed.defaultName : "",
+      lastTargetName: typeof parsed.lastTargetName === "string" ? parsed.lastTargetName : "",
+      lastTargetReason: typeof parsed.lastTargetReason === "string" ? parsed.lastTargetReason : "",
+    };
   } catch {
     return null;
   }

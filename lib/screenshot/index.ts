@@ -9,3 +9,4 @@ export * from "./checkin-config";
 export * from "./checkin";
 export * from "./checkin-engine";
 export * from "./ball";
+export * from "./share-targets";

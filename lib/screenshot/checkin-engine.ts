@@ -151,12 +151,23 @@ export async function runCheckIn(
 export async function deliverUserShot(outcome: CheckInOutcome): Promise<{ ok: boolean; reason?: string }> {
   if (!outcome.accepted) return { ok: false, reason: outcome.reason || "没有可发送的内容" };
 
-  // 取最近的私聊会话。没有会话就没法发——如实失败，不硬造一个。
-  const sessions = loadChatSessions()
-    .filter(session => !session.isGroup)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  const sessionId = sessions[0]?.id;
-  if (!sessionId) return { ok: false, reason: "还没有任何聊天，不知道发给谁" };
+  // 目标优先用浮层里当场选定的那个（或设了默认角色时的默认值）。
+  // 老壳不带 characterId → 退回「最近聊过的私聊会话」，与加选择之前一致；
+  // 那也正是当时唯一可能发出去的人，不算猜错。
+  // 没有会话就没法发——如实失败，不硬造一个。
+  const sessionId = outcome.characterId
+    ? findLatestPrivateSession(outcome.characterId)
+    : loadChatSessions()
+        .filter(session => !session.isGroup)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.id ?? null;
+  if (!sessionId) {
+    return {
+      ok: false,
+      reason: outcome.characterId
+        ? "和这个角色还没有聊天，不知道该往哪发"
+        : "还没有任何聊天，不知道发给谁",
+    };
+  }
 
   try {
     // 顺手说的话先发，图后发——读起来是「说了一句 + 配张图」。

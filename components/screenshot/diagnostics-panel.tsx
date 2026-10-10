@@ -15,8 +15,12 @@ import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, Stethoscope } from "lucide-react";
 
 import { isShellEnvironment as isShell } from "@/lib/shell-call-overlay";
-import { readCheckInDiagnostics, readScreenshotDiagnostics } from "@/lib/screenshot";
-import type { CheckInDiagnostics, ScreenshotDiagnostics } from "@/lib/screenshot";
+import {
+  readCheckInDiagnostics,
+  readScreenshotDiagnostics,
+  readScreenshotShareTargets,
+} from "@/lib/screenshot";
+import type { CheckInDiagnostics, ScreenshotDiagnostics, ScreenshotShareTargetState } from "@/lib/screenshot";
 
 function formatWhen(at: number | undefined): string {
   if (!at || at <= 0) return "从未";
@@ -45,6 +49,7 @@ const TONE_COLOR: Record<string, string> = {
 export function ScreenshotDiagnosticsPanel({ onNotice }: { onNotice?: (msg: string) => void }) {
   const [shot, setShot] = useState<ScreenshotDiagnostics | null>(null);
   const [checkIn, setCheckIn] = useState<CheckInDiagnostics | null>(null);
+  const [share, setShare] = useState<ScreenshotShareTargetState | null>(null);
   const [open, setOpen] = useState(false);
 
   const inShell = isShell();
@@ -52,6 +57,7 @@ export function ScreenshotDiagnosticsPanel({ onNotice }: { onNotice?: (msg: stri
   const refresh = useCallback(() => {
     setShot(readScreenshotDiagnostics());
     setCheckIn(readCheckInDiagnostics());
+    setShare(readScreenshotShareTargets());
   }, []);
 
   // 展开时才读一次，之后切回前台补一次（用户可能刚去系统设置授过权）
@@ -78,6 +84,36 @@ export function ScreenshotDiagnosticsPanel({ onNotice }: { onNotice?: (msg: stri
           tone: shot.lastCaptureAt ? (shot.lastCaptureOk ? "ok" : "bad") : "warn",
         },
         ...(shot.lastError ? [{ label: "最近失败", value: shot.lastError, tone: "bad" as const }] : []),
+      ]
+    : [];
+
+  /**
+   * 「发给谁」这一段。
+   *
+   * 用户主动截屏这条路上，「点了球没发出去」只有三种可能：网页从没推过
+   * 角色清单、还没选收件人、图没处理成功。没有留痕时它们长得一模一样，
+   * 用户只能描述成「点了没反应」。
+   */
+  const shareRows: Row[] = share
+    ? [
+        {
+          label: "可选角色",
+          value: share.count > 0 ? `${share.count} 位` : "0（网页还没推送清单）",
+          tone: share.count > 0 ? "ok" : "warn",
+        },
+        {
+          label: "默认收件人",
+          value: share.defaultName || (share.defaultId ? "已设置的这位已被删除" : "未设置（每次让你选）"),
+          tone: share.defaultId && !share.defaultName ? "bad" : "ok",
+        },
+        {
+          label: "上次发给了谁",
+          value: share.lastTargetName || "还没发过",
+          tone: share.lastTargetName ? "ok" : "warn",
+        },
+        ...(share.lastTargetReason
+          ? [{ label: "上次没能发", value: share.lastTargetReason, tone: "warn" as const }]
+          : []),
       ]
     : [];
 
@@ -131,6 +167,26 @@ export function ScreenshotDiagnosticsPanel({ onNotice }: { onNotice?: (msg: stri
             </div>
           ) : (
             shotRows.map(row => (
+              <div className="menu-item" key={row.label} style={{ cursor: "default" }}>
+                <div className="menu-label-group">
+                  <span className="menu-label" style={{ fontSize: 13 }}>{row.label}</span>
+                </div>
+                <span style={{ fontSize: 12, color: TONE_COLOR[row.tone ?? "ok"], maxWidth: "60%", textAlign: "right", wordBreak: "break-all" }}>
+                  {row.value}
+                </span>
+              </div>
+            ))
+          )}
+
+          <div style={{ padding: "14px 0 6px", fontWeight: 600 }}>发给谁</div>
+          {shareRows.length === 0 ? (
+            <div className="menu-item" style={{ cursor: "default" }}>
+              <div className="menu-label-group">
+                <span className="menu-desc">读不到收件人状态（当前 App 版本可能还没有这个接口，请更新安卓壳）</span>
+              </div>
+            </div>
+          ) : (
+            shareRows.map(row => (
               <div className="menu-item" key={row.label} style={{ cursor: "default" }}>
                 <div className="menu-label-group">
                   <span className="menu-label" style={{ fontSize: 13 }}>{row.label}</span>

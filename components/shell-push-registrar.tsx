@@ -13,7 +13,7 @@ import { useEffect } from "react";
 
 import { ensureShellSubscription, isShellEnvironment } from "@/lib/push-client";
 import { startNotificationReplyBridge } from "@/lib/notification-reply";
-import { startUserShotBridge } from "@/lib/screenshot";
+import { startUserShotBridge, syncScreenshotShareTargets } from "@/lib/screenshot";
 
 export function ShellPushRegistrar() {
   useEffect(() => {
@@ -28,6 +28,24 @@ export function ShellPushRegistrar() {
   // 「截屏悬浮球」的接收端。同样必须常驻——用户点球时多半在别的 App 里，
   // 挂在设置页会漏掉绝大多数点击。
   useEffect(() => startUserShotBridge(), []);
+
+  // 分享目标清单：点球那一刻网页可能已被系统回收，浮层没法回网页取，
+  // 所以清单必须提前推给原生存着。三处触发：挂载时、配置变更时、
+  // 页面回到前台时（角色可能在设置里被增删过）。
+  useEffect(() => {
+    if (!isShellEnvironment()) return;
+    syncScreenshotShareTargets();
+    const onConfig = () => syncScreenshotShareTargets();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") syncScreenshotShareTargets();
+    };
+    window.addEventListener("screenshot-config-changed", onConfig);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("screenshot-config-changed", onConfig);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
 
   return null;
 }

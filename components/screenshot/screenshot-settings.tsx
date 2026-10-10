@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Camera, CircleDot, Loader2, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
 
 import { Toggle } from "@/components/ui/form";
+import { loadCharacters } from "@/lib/character-storage";
 import { loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import { isShellEnvironment as isShell, openAccessibilitySettings } from "@/lib/shell-call-overlay";
 import {
@@ -31,6 +32,7 @@ import {
   readScreenshotCapabilities,
   saveScreenshotConfig,
   stopScreenshotBall,
+  syncScreenshotShareTargets,
   type ScreenshotConfig,
   type ScreenshotRecord,
 } from "@/lib/screenshot";
@@ -106,6 +108,16 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
       urls.forEach((u) => URL.revokeObjectURL(u));
     };
   }, [records]);
+
+  // 角色清单：给「默认接收角色」那一栏用。跟着 config 一起刷新，
+  // 这样用户刚在别处加了角色、回到这一页就能看到。
+  const characters = useMemo(() => {
+    try {
+      return loadCharacters().filter(item => !!item.id && !!item.name?.trim());
+    } catch {
+      return [];
+    }
+  }, [config]);
 
   const inShell = useMemo(() => isShell(), []);
   const bridgeOk = useMemo(() => hasScreenshotBridge(), []);
@@ -183,8 +195,30 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
       onNotice?.("没能拉起悬浮球，请先授予「显示在其他应用上层」权限");
       return;
     }
+    // 开启的那一刻顺手把收件人清单推给原生：点球时网页多半已经不在，
+    // 浮层只能读之前存下的那份。
+    syncScreenshotShareTargets();
     onNotice?.("悬浮球已开启。轻点它截屏，拖到边缘会自动吸附");
   }, [update, inShell, ready, onNotice]);
+
+  /**
+   * 改「默认接收角色」。
+   *
+   * 每改一次就重推清单：原生那份是浮层真正读的，改完不推等于没改。
+   */
+  const setDefaultShareTarget = useCallback((characterId: string) => {
+    update({ defaultShareCharacterId: characterId });
+    // 等 update 落盘后再推（saveScreenshotConfig 是同步写 KV 的，这里安全）
+    const synced = syncScreenshotShareTargets();
+    if (characterId && !synced) {
+      onNotice?.("当前 App 版本还不支持指定收件人，需要更新安卓壳");
+      return;
+    }
+    const name = characters.find(item => item.id === characterId)?.name;
+    onNotice?.(name
+      ? `之后点悬浮球截屏会直接发给${name}，不再弹选择`
+      : "已改为每次截屏都让你选发给谁");
+  }, [update, characters, onNotice]);
 
   // 页面挂载时补发「点球那一刻网页已被回收」的那张截图。
   // 原生侧是「读到即清空」，所以重复调用不会重复发送。
@@ -265,6 +299,57 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
             截出来的图仍然会先弹预览让你确认，你点「发给它」才发得出去——
             和角色查岗走的是同一套审批。
           </div>
+
+          {config.ballEnabled && (
+            <div className="menu-group" style={{ marginTop: 10 }}>
+              <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
+                <div className="menu-label-group">
+                  <span className="menu-label">默认发给谁</span>
+                  <span className="menu-desc">
+                    {characters.length === 0
+                      ? "还没有角色。先创建角色，再回来指定收件人。"
+                      : config.defaultShareCharacterId
+                        ? "点球截屏后直接发给这位，不再弹选择"
+                        : "还没指定。每次点球后会在浮层里让你选一次"}
+                  </span>
+                </div>
+              </div>
+              {characters.length > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 6,
+                    padding: "0 var(--ui-padding, 16px) 10px",
+                  }}
+                >
+                  {characters.map(character => {
+                    const selected = config.defaultShareCharacterId === character.id;
+                    return (
+                      <button
+                        key={character.id}
+                        type="button"
+                        className="ui-btn ui-btn-outline"
+                        style={{ opacity: selected ? 1 : 0.55, maxWidth: "46%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        onClick={() => setDefaultShareTarget(selected ? "" : character.id)}
+                      >
+                        {character.name}
+                      </button>
+                    );
+                  })}
+                  {config.defaultShareCharacterId && (
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn-outline"
+                      onClick={() => setDefaultShareTarget("")}
+                    >
+                      每次让我选
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* 无障碍：截屏的真正前提 */}

@@ -73,6 +73,12 @@ export type CheckInDiagnostics = {
   lastError?: string;
   lastShowAt?: number;
   showCount?: number;
+  /** 原生手上的可分享角色数量（用户主动截屏时浮层里供选择） */
+  shareTargetCount?: number;
+  /** 默认接收角色名（空 = 每次都要在浮层里选） */
+  shareDefaultName?: string;
+  /** 最近一次主动截屏实际发给了谁（空 = 没记到） */
+  lastShareTarget?: string;
   /** 嵌一层截屏桥的状态 */
   screenshot?: ScreenshotDiagnostics;
 };
@@ -104,8 +110,33 @@ export type CheckInCapabilities = {
  * 所以无论同意还是拒绝都会带回来——用户主动打的字不该被吞掉。
  */
 export type CheckInOutcome =
-  | { accepted: true; base64: string; width: number; height: number; reply?: string }
-  | { accepted: false; reason: string; reply?: string };
+  | { accepted: true; base64: string; width: number; height: number; reply?: string; characterId?: string }
+  | { accepted: false; reason: string; reply?: string; characterId?: string };
+
+/**
+ * 一个可选的分享接收角色（用户主动截屏时浮层里选「发给谁」）。
+ *
+ * 只带 id 与名字，不带头像：清单要经 @JavascriptInterface 同步传给原生，
+ * 头像 base64 动辄几百 KB 起，塞进去有撑爆桥的风险，浮层里用名字足够认人。
+ */
+export type ScreenshotShareTarget = {
+  id: string;
+  name: string;
+};
+
+/** 原生当前持有的分享目标状态（诊断面板展示用）。 */
+export type ScreenshotShareTargetState = {
+  /** 原生手上有几个可选角色（0 = 网页还没推送过，或一个角色都没有） */
+  count: number;
+  /** 默认接收角色 id（空 = 每次都在浮层里选） */
+  defaultId: string;
+  /** 默认接收角色名（给人看的） */
+  defaultName: string;
+  /** 最近一次实际发给了谁（空 = 还没发过） */
+  lastTargetName: string;
+  /** 上次没能定下目标的原因（空 = 没有） */
+  lastTargetReason: string;
+};
 
 /** 检索一条截屏记录：图片本体存在媒体库，这里只留引用与元信息。 */
 export type ScreenshotRecord = {
