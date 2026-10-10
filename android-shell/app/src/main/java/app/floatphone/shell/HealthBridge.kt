@@ -154,6 +154,15 @@ class HealthBridge(private val context: Context) {
                     lastError = "还没有睡眠读取权限"
                     return@launch
                 }
+                // 缓存还新鲜就不重读。网页每个采样周期都会调一次 refresh，
+                // 而睡眠一天才变几次——不拦一下等于每分钟往 Health Connect
+                // 查一次，纯属白耗电。
+                if (cachedJson.isNotEmpty()
+                    && System.currentTimeMillis() - cachedAt < CACHE_TTL_MS
+                ) {
+                    lastError = ""
+                    return@launch
+                }
                 readSleepIntoCache()
                 lastError = ""
                 refreshCount += 1

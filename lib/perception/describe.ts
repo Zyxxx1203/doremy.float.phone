@@ -97,6 +97,10 @@ export function describeStatus(status: PerceptionStatusSnapshot): string {
 
   if (status.steps >= 0) parts.push(`今天走了 ${status.steps} 步`);
 
+  // 睡眠：只说时长，不说分期、不说几点睡的（那会暴露作息细节）。
+  const slept = describeSleep(status.sleep);
+  if (slept) parts.push(slept);
+
   // 使用统计：只说前三个用得最久的，且只在超过一定时长时提。
   // 一次把十几项全念出来，角色会变成一块屏幕使用报告，而不是「瞥了一眼」。
   const usage = describeTopUsage(status.appUsage);
