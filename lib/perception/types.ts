@@ -269,4 +269,3 @@ export type LocationDiagnostics = {
   /** 最近一次失败原因（空串 = 没记到失败） */
   lastError?: string;
 };
-};
