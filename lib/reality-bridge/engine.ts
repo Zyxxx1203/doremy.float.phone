@@ -251,6 +251,28 @@ async function runActions(rule: BridgeRule, item: BridgeItem, text: string): Pro
     const outcome = runDeviceAction({ action: actions.deviceAction.action, ...filledArgs });
     done.push(outcome.ok ? `操作设备·${outcome.message ?? "已执行"}` : `操作设备失败：${outcome.reason ?? "未知原因"}`);
   }
+  if (actions.tool?.name) {
+    // 动态 import：tool-executor → perception → 本模块，静态引入会绕成循环依赖。
+    const toolArgs: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(actions.tool.args ?? {})) {
+      toolArgs[key] = typeof value === "string" ? fillTemplate(value, item) : value;
+    }
+    const toolName = actions.tool.name;
+    try {
+      const { executeToolCalls } = await import("../tool-executor");
+      const results = await executeToolCalls([{ name: toolName, args: toolArgs }], {
+        appId: "chat",
+        sourceEngine: "chat",
+        characterId: actions.tool.characterId || actions.chat?.characterId,
+      });
+      const first = results[0];
+      done.push(first?.success
+        ? `调用「${toolName}」${first.data ? `：${first.data.slice(0, 80)}` : "完成"}`
+        : `调用「${toolName}」失败：${(first?.error ?? "动作未找到").slice(0, 80)}`);
+    } catch (err) {
+      done.push(`调用「${toolName}」失败：${(err instanceof Error ? err.message : String(err)).slice(0, 80)}`);
+    }
+  }
   if (actions.outbox?.type) {
     const { config, ready } = bridgeConnection();
     if (ready) {
@@ -372,8 +394,10 @@ export async function applyServerBridgeEntry(meta: {
 
 /** 处理一条收件箱数据：匹配规则 → 加工 → 执行动作 → 记录流水。 */
 export async function processBridgeItem(item: BridgeItem): Promise<BridgeFeedEntry> {
+  // 定时规则不参与信号匹配：它们由 runDueScheduledRules() 直接触发，
+  // 若混进来，任何一条信号都会把它们捎带着跑一遍。
   const rules = loadBridgeRules().filter(rule =>
-    rule.enabled && (rule.matchType === "*" || rule.matchType === item.type));
+    rule.enabled && !rule.schedule && (rule.matchType === "*" || rule.matchType === item.type));
   const entry: BridgeFeedEntry = {
     id: item.id,
     type: item.type,
@@ -408,4 +432,104 @@ export async function processBridgeItem(item: BridgeItem): Promise<BridgeFeedEnt
   if (rules.length === 0 && entry.actions.length === 0) entry.actions.push("仅存档（无匹配规则）");
   appendBridgeFeed(entry);
   return entry;
+}
+
+// ── 定时触发 ──
+
+/**
+ * 这条定时规则现在该不该跑。
+ *
+ * daily / weekly 的判定用「今天（本周）的那个时刻」当基准：
+ * 过了点、且上次跑的时间早于这个基准，才算该跑。这样一天只会命中一次，
+ * 而不是每轮轮询都触发一遍。App 关了几天再打开，最多补跑一次——
+ * 补三次「早安」比漏掉更糟。
+ */
+function isScheduleDue(
+  rule: BridgeRule,
+  now: Date,
+  lastRunAt: number,
+): boolean {
+  const schedule = rule.schedule;
+  if (!schedule) return false;
+
+  if (schedule.kind === "interval") {
+    const minutes = Math.max(1, Math.min(10080, Number(schedule.minutes) || 0));
+    return now.getTime() - lastRunAt >= minutes * 60_000;
+  }
+
+  const matched = /^(\d{1,2}):(\d{2})$/.exec(schedule.time || "");
+  if (!matched) return false;
+  const hour = Number(matched[1]);
+  const minute = Number(matched[2]);
+  if (hour > 23 || minute > 59) return false;
+
+  const target = new Date(now);
+  target.setHours(hour, minute, 0, 0);
+  if (schedule.kind === "weekly") {
+    const weekday = Math.max(0, Math.min(6, Number(schedule.weekday) || 0));
+    // 回退到本周对应的那一天（今天就是那天时 diff=0）
+    target.setDate(target.getDate() - ((now.getDay() - weekday + 7) % 7));
+  }
+  if (now.getTime() < target.getTime()) return false;
+
+  // 建好规则时今天这个点已经过了：不补触发，否则「下午建一条早八点的规则」
+  // 会立刻蹦出来执行一次，看着像 bug。
+  const createdAtMs = Date.parse(rule.createdAt) || 0;
+  if (lastRunAt <= 0 && createdAtMs > target.getTime()) return false;
+
+  return lastRunAt < target.getTime();
+}
+
+/**
+ * 跑一遍所有到点的定时规则。调度器每轮轮询调一次。
+ *
+ * @returns 本次真正触发的规则数（调度器据此决定要不要刷新界面）
+ */
+export async function runDueScheduledRules(): Promise<number> {
+  const rules = loadBridgeRules().filter(rule => rule.enabled && rule.schedule);
+  if (rules.length === 0) return 0;
+
+  let fired = 0;
+  for (const rule of rules) {
+    const now = new Date();
+    if (!isScheduleDue(rule, now, getBridgeRuleLastRunAt(rule.id))) continue;
+
+    // 造一个「凭空来的」信号：定时规则的动作里 {payload} 没有真实数据可填，
+    // 用规则名当 payload，至少 WriteChat 写出来的内容是可读的。
+    const item: BridgeItem = {
+      id: `schedule_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+      type: rule.name || "定时联动",
+      payload: rule.name || "定时触发",
+      createdAt: now.toISOString(),
+    };
+
+    // 先记运行时间：动作可能触发 LLM 生成（几十秒），期间不能让它被重复判定。
+    markBridgeRuleRun(rule.id);
+    try {
+      const text = await processText(rule, item);
+      const actions = await runActions(rule, item, text);
+      appendBridgeFeed({
+        id: item.id,
+        type: item.type,
+        payload: item.payload,
+        processed: text !== item.payload ? text.slice(0, 2000) : undefined,
+        rules: [rule.name],
+        actions: actions.length > 0 ? actions : ["定时触发"],
+        receivedAt: new Date().toISOString(),
+      });
+      fired += 1;
+    } catch (err) {
+      appendBridgeFeed({
+        id: item.id,
+        type: item.type,
+        payload: item.payload,
+        rules: [rule.name],
+        actions: [],
+        error: err instanceof Error ? err.message : String(err),
+        receivedAt: new Date().toISOString(),
+      });
+      console.warn("[现实桥] 定时联动执行失败", rule.name, err);
+    }
+  }
+  return fired;
 }

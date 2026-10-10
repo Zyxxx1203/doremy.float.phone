@@ -40,6 +40,7 @@ import { isValidShortcutEmailAddress, shortcutEmailSubjectTag } from "@/lib/shor
 import { readPerceptionDiagnostics } from "@/lib/perception";
 import { RESERVED_INTERNAL_TOOL_NAMES } from "@/lib/internal-capability-storage";
 import { DEVICE_ACTION_LABEL, loadDeviceActionConfig, TOGGLEABLE_ACTIONS, hasDeviceActionBridge } from "@/lib/device-action";
+import { getEnabledTools } from "@/lib/tool-storage";
 
 type TabId = "main" | "history";
 
@@ -223,6 +224,7 @@ const SCREEN_WIZ_STEP_NAMES = ["接通个人云", "选择角色", "创建快捷�
 const SCREEN_CHAT_SHORTCUT_URL = "https://www.icloud.com/shortcuts/d0ce177469a34aceb4c44b6eb14baae0";
 
 function ruleIcon(rule: BridgeRule) {
+  if (rule.schedule) return RB_ICON_CLOCK;
   const a = rule.actions ?? {};
   if (a.chat) return RB_ICON_CHAT;
   if (a.card) return RB_ICON_CARD;
@@ -295,6 +297,8 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
   const [dataSnapshot, setDataSnapshot] = useState<{ text: string; updatedAt?: string } | "none" | null>(null);
   const [dataSnapshotBusy, setDataSnapshotBusy] = useState(false);
   const characters = useMemo(() => loadCharacters().map(c => ({ id: c.id, name: c.name })), []);
+  /* 「调用一个工具」可选的清单：内置能力 / REST / 组合 / MCP / 自定义 APP 一把抓。 */
+  const availableTools = useMemo(() => getEnabledTools("chat"), []);
   const charName = useCallback((id?: string) => characters.find(c => c.id === id)?.name ?? "角色", [characters]);
   const { config, ready } = bridgeConnection();
 
@@ -449,11 +453,17 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
 
   const saveEditing = useCallback(() => {
     if (!editing) return;
-    if (!editing.matchType.trim()) {
+    if (!editing.schedule && !editing.matchType.trim()) {
       onNotice?.("请填写要接收的信号名");
       return;
     }
-    const name = editing.name.trim() || `当收到「${editing.matchType.trim()}」`;
+    const schedule = editing.schedule;
+    const fallbackName = schedule
+      ? schedule.kind === "interval"
+        ? `每隔 ${schedule.minutes ?? 60} 分钟`
+        : `${schedule.kind === "weekly" ? ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][schedule.weekday ?? 1] : "每天"} ${schedule.time ?? "08:00"}`
+      : `当收到「${editing.matchType.trim()}」`;
+    const name = editing.name.trim() || fallbackName;
     const cleaned: BridgeRule = { ...editing, name: name.slice(0, 30), matchType: editing.matchType.trim().slice(0, 60) };
     const exists = rules.some(rule => rule.id === cleaned.id);
     persistRules(exists ? rules.map(rule => rule.id === cleaned.id ? cleaned : rule) : [cleaned, ...rules]);
@@ -463,6 +473,12 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
 
   const summarize = useCallback((rule: BridgeRule): string => {
     const parts: string[] = [];
+    const schedule = rule.schedule;
+    if (schedule) {
+      if (schedule.kind === "interval") parts.push(`每隔 ${schedule.minutes ?? 60} 分钟`);
+      else if (schedule.kind === "weekly") parts.push(`每周${["日", "一", "二", "三", "四", "五", "六"][schedule.weekday ?? 1]} ${schedule.time ?? "08:00"}`);
+      else parts.push(`每天 ${schedule.time ?? "08:00"}`);
+    }
     const a = rule.actions;
     if (a.chat) {
       const who = charName(a.chat.characterId);
@@ -487,7 +503,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     }
     if (a.outbox) parts.push("回传到 iPhone");
     if (a.broadcast) parts.push("转发给其他 APP");
-    const summary = parts.length ? parts.join("、") : "只是收下来看看";
+    const summary = parts.length ? parts.join("、") : (schedule ? "什么都不做" : "只是收下来看看");
     const cooldown = Number(rule.cooldownMinutes) || 0;
     if (cooldown <= 0) return summary;
     const label = cooldown % 60 === 0 ? `${cooldown / 60} 小时` : `${cooldown} 分钟`;
@@ -675,9 +691,20 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
 
   const wizNext = useCallback(() => {
     if (!editing) return;
-    if (wizStep === 3 && !editing.matchType.trim()) {
+    // 定时规则不看信号名，只校验时间/间隔是否填了
+    if (wizStep === 3 && !editing.schedule && !editing.matchType.trim()) {
       onNotice?.("请先填写或点选一个信号名");
       return;
+    }
+    if (wizStep === 3 && editing.schedule) {
+      if (editing.schedule.kind === "interval" && !(Number(editing.schedule.minutes) > 0)) {
+        onNotice?.("请填写间隔分钟数");
+        return;
+      }
+      if (editing.schedule.kind !== "interval" && !/^\d{1,2}:\d{2}$/.test(editing.schedule.time ?? "")) {
+        onNotice?.("请填写触发时间");
+        return;
+      }
     }
     if (wizStep >= 6) {
       saveEditing();
@@ -1325,7 +1352,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                   {mainSec === "rules" ? (rules.length === 0 ? (
                     <div className="rb-empty">
                       <b>还没有联动</b>
-                      <p>联动会在收到指定信号时自动执行动作，例如收到银行短信时告知角色并等待回复。</p>
+                      <p>联动可以是「收到某个信号时做一件事」，也可以是「每天几点做一件事」——比如每天早上让角色跟你说句话。</p>
                       <button type="button" className="rb-btn" onClick={() => openRuleEditor(newRule(), false)}>新建联动</button>
                     </div>
                   ) : (
@@ -1618,11 +1645,74 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
             <button type="button" className="rb-btn ghost" disabled={syncing || !ready} onClick={() => void syncNow()}>
               {syncing ? "正在刷新…" : "刚发了测试数据？点此刷新"}
             </button>
-            <label>信号名
-              <input value={editing.matchType} maxLength={60} placeholder="例如 duanxin（要和快捷指令里填的一致）"
-                onChange={event => setEditing({ ...editing, matchType: event.target.value })} />
-            </label>
-            <p className="rb-hint">信号名是你给这类消息起的名字。填 * 表示什么消息都算。</p>
+            {/* 触发方式：默认「收到信号」，也可以完全不依赖外部信号、按时间自己跑。 */}
+            <div className="rb-seg">
+              <button type="button" className={!editing.schedule ? "sel" : ""}
+                onClick={() => setEditing({ ...editing, schedule: undefined })}>收到信号时</button>
+              <button type="button" className={editing.schedule ? "sel" : ""}
+                onClick={() => setEditing({
+                  ...editing,
+                  schedule: editing.schedule ?? { kind: "daily", time: "08:00" },
+                })}>按时间自动</button>
+            </div>
+
+            {editing.schedule ? (
+              <>
+                <div className="rb-seg">
+                  {([["daily", "每天"], ["weekly", "每周"], ["interval", "每隔"]] as const).map(([kind, label]) => (
+                    <button key={kind} type="button"
+                      className={editing.schedule!.kind === kind ? "sel" : ""}
+                      onClick={() => setEditing({
+                        ...editing,
+                        schedule: kind === "interval"
+                          ? { kind, minutes: editing.schedule!.minutes ?? 60 }
+                          : { kind, time: editing.schedule!.time ?? "08:00", weekday: editing.schedule!.weekday ?? 1 },
+                      })}>{label}</button>
+                  ))}
+                </div>
+                {editing.schedule.kind === "interval" ? (
+                  <label>每隔多少分钟
+                    <input type="number" min={1} max={10080} value={editing.schedule.minutes ?? 60}
+                      onChange={event => setEditing({
+                        ...editing,
+                        schedule: { kind: "interval", minutes: Math.max(1, Math.min(10080, Number(event.target.value) || 1)) },
+                      })} />
+                  </label>
+                ) : (
+                  <div className="rb-action-body grid2">
+                    {editing.schedule.kind === "weekly" ? (
+                      <label>星期
+                        <select value={editing.schedule.weekday ?? 1}
+                          onChange={event => setEditing({
+                            ...editing,
+                            schedule: { ...editing.schedule!, kind: "weekly", weekday: Number(event.target.value) },
+                          })}>
+                          {["周日", "周一", "周二", "周三", "周四", "周五", "周六"].map((label, index) => (
+                            <option key={index} value={index}>{label}</option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+                    <label>时间
+                      <input type="time" value={editing.schedule.time ?? "08:00"}
+                        onChange={event => setEditing({
+                          ...editing,
+                          schedule: { ...editing.schedule!, kind: editing.schedule!.kind === "weekly" ? "weekly" : "daily", time: event.target.value || "08:00" },
+                        })} />
+                    </label>
+                  </div>
+                )}
+                <p className="rb-hint">到点自动执行，不需要任何信号。只在小手机打开或后台保活时触发；错过的时间点不会补齐。</p>
+              </>
+            ) : (
+              <>
+                <label>信号名
+                  <input value={editing.matchType} maxLength={60} placeholder="例如 duanxin（要和快捷指令里填的一致）"
+                    onChange={event => setEditing({ ...editing, matchType: event.target.value })} />
+                </label>
+                <p className="rb-hint">信号名是你给这类消息起的名字。填 * 表示什么消息都算。</p>
+              </>
+            )}
             <label>触发间隔
               <select
                 value={editing.cooldownMinutes ?? 0}
@@ -1917,6 +2007,71 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                   ) : deviceActionCfg.actions[editing.actions.deviceAction.action as keyof typeof deviceActionCfg.actions] !== true ? (
                     <p className="rb-help">「{DEVICE_ACTION_LABEL[editing.actions.deviceAction.action as keyof typeof DEVICE_ACTION_LABEL]}」这个动作还没在「设置 → 操作设备」里单独打开。</p>
                   ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            {/* 调用一个工具：把角色在聊天里能干的事原样搬进规则里。
+                工具的覆盖面最广（内置能力 + 工具箱 REST/组合 + MCP + 自定义 APP），
+                所以放在最后，让用户先看完语义明确的那几个动作。 */}
+            <div className="rb-action">
+              <label className="rb-check">
+                <input type="checkbox" checked={!!editing.actions.tool}
+                  onChange={event => setEditing({
+                    ...editing,
+                    actions: {
+                      ...editing.actions,
+                      tool: event.target.checked
+                        ? { name: availableTools[0]?.name ?? "", args: {} }
+                        : undefined,
+                    },
+                  })} />
+                调用一个工具
+              </label>
+              {editing.actions.tool ? (
+                <div className="rb-action-body">
+                  {availableTools.length === 0 ? (
+                    <p className="rb-help">还没有可用的工具。先在「工具箱」里添加，或到「工具箱 → 内置能力」开启一个。</p>
+                  ) : (
+                    <>
+                      <select value={editing.actions.tool.name}
+                        onChange={event => setEditing({
+                          ...editing,
+                          actions: { ...editing.actions, tool: { ...editing.actions.tool!, name: event.target.value, args: {} } },
+                        })}>
+                        {availableTools.map(item => (
+                          <option key={`${item.source}:${item.sourceId}`} value={item.name}>{item.name}</option>
+                        ))}
+                      </select>
+                      <label>参数（JSON，可留空）
+                        <textarea
+                          key={editing.actions.tool.name}
+                          rows={2}
+                          defaultValue={Object.keys(editing.actions.tool.args ?? {}).length > 0
+                            ? JSON.stringify(editing.actions.tool.args)
+                            : ""}
+                          placeholder='例：{"focus":"battery"}；值里可以用 {payload} 取收到的内容'
+                          onBlur={event => {
+                            const raw = event.target.value.trim();
+                            if (!raw) {
+                              setEditing({ ...editing, actions: { ...editing.actions, tool: { ...editing.actions.tool!, args: {} } } });
+                              return;
+                            }
+                            try {
+                              const parsed = JSON.parse(raw) as unknown;
+                              if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+                                onNotice?.("参数要是一个 JSON 对象");
+                                return;
+                              }
+                              setEditing({ ...editing, actions: { ...editing.actions, tool: { ...editing.actions.tool!, args: parsed as Record<string, unknown> } } });
+                            } catch {
+                              onNotice?.("参数不是合法的 JSON");
+                            }
+                          }} />
+                      </label>
+                      <p className="rb-help">参数里的 {"{payload}"}、{"{type}"} 会替换成收到的内容或信号名。组合工具、MCP 工具都在这个列表里，等于规则可以直接串联它们。</p>
+                    </>
+                  )}
                 </div>
               ) : null}
             </div>
