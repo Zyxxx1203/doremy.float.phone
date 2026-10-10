@@ -69,6 +69,9 @@ object ScreenshotBridge {
     fun canCapture(): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && service != null
 
+    /** 无障碍服务是否已开（截屏的唯一前提）。 */
+    fun isAccessibilityOn(): Boolean = service != null
+
     /** 能力与状态快照，给设置面板显示三态。 */
     fun capabilitiesJson(): String = JSONObject()
         .put("supported", Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
@@ -87,50 +90,91 @@ object ScreenshotBridge {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             return fail("系统版本太低，截屏需要 Android 11 及以上")
         }
-        val svc = service ?: return fail("无障碍服务没有开启，截屏无法进行")
+        if (service == null) return fail("无障碍服务没有开启，截屏无法进行")
         if (capturing) return fail("上一张还没截完，请稍等一下")
 
+        captureBitmap { bitmap, error ->
+            if (bitmap == null) {
+                publish(JSONObject().put("ok", false).put("reason", error ?: "截屏失败"))
+                return@captureBitmap
+            }
+            encodeAndPublish(bitmap)
+        }
+        return JSONObject().put("ok", true).put("accepted", true)
+    }
+
+    /**
+     * 只取一张原始位图（已等比缩到 MAX_WIDTH 以内），交给调用方处置。
+     *
+     * 查岗浮层复用它：先拿到图给用户过目，用户点头才编码外发——
+     * 「不给」的那条路上，这张位图从头到尾没有变成过 base64。
+     *
+     * @param onResult 失败时 bitmap 为 null、error 为人话原因；可能同步回调。
+     */
+    fun captureBitmap(onResult: (Bitmap?, String?) -> Unit) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            onResult(null, "系统版本太低，截屏需要 Android 11 及以上")
+            return
+        }
+        val svc = service
+        if (svc == null) {
+            onResult(null, "无障碍服务没有开启，截屏无法进行")
+            return
+        }
+        if (capturing) {
+            onResult(null, "上一张还没截完，请稍等一下")
+            return
+        }
         capturing = true
-        return try {
+        try {
             svc.takeScreenshot(
                 Display.DEFAULT_DISPLAY,
                 executor,
                 object : AccessibilityService.TakeScreenshotCallback {
                     override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
                         capturing = false
-                        deliver(result)
+                        onResult(bitmapFrom(result), null)
                     }
 
                     override fun onFailure(errorCode: Int) {
                         capturing = false
-                        publish(JSONObject().put("ok", false).put("reason", failureReason(errorCode)))
+                        onResult(null, failureReason(errorCode))
                     }
                 },
             )
-            JSONObject().put("ok", true).put("accepted", true)
         } catch (e: Throwable) {
             // 有些 ROM 把 takeScreenshot 收紧了，或无障碍被中途关掉；
             // 如实回报，并且一定要把 capturing 标志放掉。
             capturing = false
-            fail(e.message ?: "发起截屏失败")
+            onResult(null, e.message ?: "发起截屏失败")
         }
     }
 
-    /** 把 ScreenshotResult 变成 PNG base64 推回网页。 */
-    private fun deliver(result: AccessibilityService.ScreenshotResult) {
+    /** 把 ScreenshotResult 转成软件位图并等比缩小；失败返回 null。 */
+    private fun bitmapFrom(result: AccessibilityService.ScreenshotResult): Bitmap? {
         val buffer = result.hardwareBuffer
-        try {
+        return try {
             // wrapHardwareBuffer 给的是 GPU 上的位图，缩放/编码前先复制成软件位图：
             // hardware bitmap 上直接做缩放会抛异常。
-            val hardware = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace)
-                ?: return publish(JSONObject().put("ok", false).put("reason", "无法解析屏幕画面"))
-            val software = hardware.copy(Bitmap.Config.ARGB_8888, false)
-                ?: return publish(JSONObject().put("ok", false).put("reason", "无法复制屏幕画面"))
-            val scaled = scaleDown(software)
+            val hardware = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace) ?: return null
+            val software = hardware.copy(Bitmap.Config.ARGB_8888, false) ?: return null
+            scaleDown(software)
+        } catch (e: Throwable) {
+            null
+        } finally {
+            // HardwareBuffer 不关会一直占着图形内存，截几次就能把机器拖垮。
+            runCatching { buffer.close() }
+        }
+    }
+
+    /** 把位图编码成 PNG 并推回网页。 */
+    private fun encodeAndPublish(bitmap: Bitmap) {
+        try {
             val png = ByteArrayOutputStream()
             val bytes = try {
-                if (!scaled.compress(Bitmap.CompressFormat.PNG, 100, png)) {
-                    return publish(JSONObject().put("ok", false).put("reason", "无法编码屏幕画面"))
+                if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, png)) {
+                    publish(JSONObject().put("ok", false).put("reason", "无法编码屏幕画面"))
+                    return
                 }
                 png.toByteArray()
             } finally {
@@ -139,16 +183,13 @@ object ScreenshotBridge {
             publish(
                 JSONObject()
                     .put("ok", true)
-                    .put("width", scaled.width)
-                    .put("height", scaled.height)
+                    .put("width", bitmap.width)
+                    .put("height", bitmap.height)
                     .put("bytes", bytes.size)
                     .put("base64", Base64.encodeToString(bytes, Base64.NO_WRAP)),
             )
         } catch (e: Throwable) {
             publish(JSONObject().put("ok", false).put("reason", e.message ?: "处理屏幕画面失败"))
-        } finally {
-            // HardwareBuffer 不关会一直占着图形内存，截几次就能把机器拖垮。
-            runCatching { buffer.close() }
         }
     }
 

@@ -492,11 +492,13 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         CallOverlayService.onHostBackground()
+        CheckInService.onHostBackground()
     }
 
     override fun onStart() {
         super.onStart()
         CallOverlayService.onHostForeground()
+        CheckInService.onHostForeground()
     }
 
     override fun onDestroy() {
@@ -871,6 +873,35 @@ class MainActivity : AppCompatActivity() {
          */
         @JavascriptInterface
         fun captureScreenshot(): String = ScreenshotBridge.capture().toString()
+
+        // ── 查岗预览浮层（截屏先给用户过目，同意才发给角色）────
+
+        /** 查岗服务能力与状态（系统支持 / 无障碍 / 浮窗权限）。 */
+        @JavascriptInterface
+        fun getCheckInCapabilities(): String = CheckInService.capabilitiesJson()
+
+        /**
+         * 预热查岗服务。用户开启查岗时（App 在前台）调用，让服务常驻待命——
+         * Android 12+ 禁止后台启动前台服务，而查岗正是后台触发，必须先暖好。
+         * 返回是否成功发起；false 多半是没给浮窗权限。
+         */
+        @JavascriptInterface
+        fun prepareCheckIn(): Boolean = CheckInService.prepare(this@MainActivity)
+
+        /** 收掉查岗服务（用户关闭全部查岗时调用）。 */
+        @JavascriptInterface
+        fun stopCheckIn() {
+            CheckInService.stop(this@MainActivity)
+        }
+
+        /**
+         * 弹一次查岗预览：截当前屏 → 浮层给用户过目 → 结果经 'checkIn' 事件回推。
+         * 只表示「已请求」，用户是否同意要等事件。
+         */
+        @JavascriptInterface
+        fun requestCheckIn(characterId: String, name: String, avatar: String) {
+            CheckInService.show(this@MainActivity, characterId, name, avatar)
+        }
 
         /** 打开本应用的系统设置页（引导用户关电池限制、开自启动）。 */
         @JavascriptInterface

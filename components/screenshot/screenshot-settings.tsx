@@ -30,6 +30,7 @@ import {
   type ScreenshotConfig,
   type ScreenshotRecord,
 } from "@/lib/screenshot";
+import { CheckInSettings } from "./checkin-settings";
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
@@ -347,9 +348,11 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
           )}
         </div>
 
+        {/* 主动查岗：每个角色单独设 */}
+        <CheckInSettings onNotice={onNotice} />
+
         <div className="per-note" style={{ padding: "0 var(--ui-padding, 16px)" }}>
-          后续还会加一个悬浮触点：点一下就截屏，截完能直接发给角色看。
-          角色要用这项能力，还要单独开能力：工具箱 → 内置能力。
+          角色要用截屏能力，还要单独开能力：工具箱 → 内置能力。
         </div>
       </div>
     </div>

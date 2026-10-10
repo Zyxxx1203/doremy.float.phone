@@ -41,7 +41,7 @@ type ShellBridgeLike = {
 };
 
 /** 原生浮窗事件 */
-export type ShellOverlayAction = "restore" | "hangup" | "reply" | "tick" | "needPermission" | "accessibility" | "foregroundApp" | "screenshot";
+export type ShellOverlayAction = "restore" | "hangup" | "reply" | "tick" | "needPermission" | "accessibility" | "foregroundApp" | "screenshot" | "checkIn";
 
 export type ShellOverlayEvent = {
     action: ShellOverlayAction;
@@ -65,6 +65,14 @@ export type ShellOverlayEvent = {
     height?: number;
     /** action='screenshot' 成功时 PNG 字节数 */
     bytes?: number;
+    /** action='checkIn'：哪个角色发起的查岗 */
+    characterId?: string;
+    /** action='checkIn'：用户是否同意给角色看 */
+    accepted?: boolean;
+    /** action='checkIn' accepted=true 时的 PNG base64 */
+    base64?: string;
+    /** action='checkIn' 用户在浮层回复框里顺手说的话（可选） */
+    reply?: string;
 };
 
 /** 原生事件到达时触发（跨页面/跨组件订阅用） */

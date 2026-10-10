@@ -5,3 +5,6 @@ export * from "./types";
 export * from "./config";
 export * from "./bridge";
 export * from "./engine";
+export * from "./checkin-config";
+export * from "./checkin";
+export * from "./checkin-engine";

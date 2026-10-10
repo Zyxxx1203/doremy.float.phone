@@ -37,7 +37,27 @@ export type ScreenshotCaptureResult =
     }
   | { ok: false; reason: string };
 
-/** 一条截屏记录：图片本体存在媒体库，这里只留引用与元信息。 */
+/** 原生上报的查岗能力与状态。 */
+export type CheckInCapabilities = {
+  /** 系统版本够不够（Android 11+） */
+  supported?: boolean;
+  /** 无障碍服务是否已开启 */
+  accessibilityOn?: boolean;
+  /** 浮窗权限与常驻服务是否就绪（查岗浮层的前提） */
+  canDraw?: boolean;
+};
+
+/**
+ * 一次查岗等待的结果：用户同意给图，或拒绝/超时/失败。
+ *
+ * reply 是用户在浮层回复框里顺手说的话（可选）。它和屏幕内容无关，
+ * 所以无论同意还是拒绝都会带回来——用户主动打的字不该被吞掉。
+ */
+export type CheckInOutcome =
+  | { accepted: true; base64: string; width: number; height: number; reply?: string }
+  | { accepted: false; reason: string; reply?: string };
+
+/** 检索一条截屏记录：图片本体存在媒体库，这里只留引用与元信息。 */
 export type ScreenshotRecord = {
   id: string;
   /** media-store:// 引用，可直接给 <img src> */

@@ -137,6 +137,13 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
+        <!-- 查岗预览浮层：角色想看你时截屏先弹窗给你过目，你同意才发给它。
+             用 specialUse：它不做媒体播放，只是可被用户看见的一次性确认浮层。 -->
+        <service
+            android:name=".CheckInService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
+
         <!-- 浮窗通知上的动作按钮（挂断/返回） -->
         <receiver
             android:name=".OverlayActionReceiver"
