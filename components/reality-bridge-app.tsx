@@ -39,7 +39,7 @@ import {
 import { isValidShortcutEmailAddress, shortcutEmailSubjectTag } from "@/lib/shortcut-email";
 import { readPerceptionDiagnostics } from "@/lib/perception";
 import { RESERVED_INTERNAL_TOOL_NAMES } from "@/lib/internal-capability-storage";
-import { loadDeviceActionConfig, TOGGLEABLE_ACTIONS, hasDeviceActionBridge } from "@/lib/device-action";
+import { DEVICE_ACTION_LABEL, loadDeviceActionConfig, TOGGLEABLE_ACTIONS, hasDeviceActionBridge } from "@/lib/device-action";
 
 type TabId = "main" | "history";
 
@@ -202,6 +202,20 @@ const RB_ICON_CROSS = <svg {...RB_SVG}><path d="M6 6l12 12M18 6 6 18" /></svg>;
 const RB_ICON_CLOCK = <svg {...RB_SVG}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>;
 const RB_ICON_CHECK = <svg {...RB_SVG}><path d="M4.5 12.5 10 18 19.5 6.5" /></svg>;
 
+/* 联动的「直接操作手机」动作：切换动作时给一份能直接用的默认参数，
+   省得用户面对一堆空字段不知道填什么。 */
+const DEVICE_ACTION_DEFAULT_ARGS: Record<string, Record<string, unknown>> = {
+  torch: { on: true },
+  volume: { stream: "media", mode: "up" },
+  brightness: { level: 50 },
+  dnd: { on: true },
+  openApp: { app: "" },
+  alarm: { hour: 22, minute: 30 },
+  timer: { minutes: 20 },
+  media: { mode: "toggle" },
+  openUrl: { url: "" },
+};
+
 const WIZ_STEP_NAMES = ["接通管道", "创建快捷指令", "选择信号", "加工内容", "决定动作", "测试与保存"] as const;
 const SWIZ_STEP_NAMES = ["接通通道", "动作是什么", "触发方式", "参数与结果", "创建快捷指令", "测试与保存"] as const;
 const DWIZ_STEP_NAMES = ["接通通道", "数据项是什么", "创建上传快捷指令", "测试与保存"] as const;
@@ -215,6 +229,7 @@ function ruleIcon(rule: BridgeRule) {
   if (a.memory || a.timeline) return RB_ICON_BOOK;
   if (a.calendar) return RB_ICON_CALENDAR;
   if (a.notify) return RB_ICON_BELL;
+  if (a.deviceAction) return RB_ICON_GEAR;
   if (a.outbox) return RB_ICON_PHONE;
   if (a.broadcast) return RB_ICON_BROADCAST;
   return RB_ICON_INBOX;
@@ -254,7 +269,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
   const [bridgeToken, setBridgeToken] = useState("");
   const [closing, setClosing] = useState(false);
   const [spinTurns, setSpinTurns] = useState(0);
-  const [mainSec, setMainSec] = useState<"android" | "rules" | "shortcuts" | "queries" | "screen">("android");
+  const [mainSec, setMainSec] = useState<"overview" | "android" | "rules" | "shortcuts" | "queries" | "screen">("overview");
   // 安卓桥分区的只读快照。这里刻意不订阅变化事件：这页只是总览，
   // 用户改完设置回来时组件会重新挂载，读到的自然是最新值。
   const perceptionDiag = useMemo(() => readPerceptionDiagnostics(), []);
@@ -291,7 +306,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
 
 
   useEffect(() => {
-    if (tab !== "history") return;
+    if (tab !== "history" && mainSec !== "overview") return;
     let cancelled = false;
     void loadRecentShortcutCommands(8)
       .then(commands => { if (!cancelled) setRecentCommands(commands); })
@@ -465,6 +480,10 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     if (a.shortcut) {
       const shortcutName = shortcutActions.find(item => item.id === a.shortcut?.actionId)?.name;
       parts.push(shortcutName ? `执行「${shortcutName}」` : "执行快捷动作");
+    }
+    if (a.deviceAction) {
+      const label = DEVICE_ACTION_LABEL[a.deviceAction.action as keyof typeof DEVICE_ACTION_LABEL];
+      parts.push(label ? `直接操作手机（${label}）` : "直接操作手机");
     }
     if (a.outbox) parts.push("回传到 iPhone");
     if (a.broadcast) parts.push("转发给其他 APP");
@@ -772,6 +791,39 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     }
   }, [editingItem, dataSnapshotBusy, config, onNotice]);
 
+  /* 概览页统计：把 feed / rules / shortcutActions 揉成一组可读结论。
+     不引图表库——这里要的是「一眼看出有没有在动」，几个数字就够。 */
+  const stats = useMemo(() => {
+    const today = feed.filter(entry => isToday(entry.receivedAt));
+    const days: { label: string; count: number }[] = [];
+    for (let i = 6; i >= 0; i -= 1) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      const count = feed.filter(entry => {
+        const t = new Date(entry.receivedAt);
+        return `${t.getFullYear()}-${t.getMonth()}-${t.getDate()}` === key;
+      }).length;
+      days.push({ label: `${d.getDate()}`, count });
+    }
+    const byType = new Map<string, number>();
+    for (const entry of feed) {
+      const t = (entry.type || "未知").trim() || "未知";
+      byType.set(t, (byType.get(t) ?? 0) + 1);
+    }
+    const topTypes = Array.from(byType.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const failed = feed.filter(entry => Boolean(entry.error));
+    const since = Date.now() - 24 * 60 * 60 * 1000;
+    const last24h = feed.filter(entry => {
+      const t = Date.parse(entry.receivedAt);
+      return Number.isFinite(t) && t >= since;
+    }).length;
+    const peak = days.reduce((max, d) => Math.max(max, d.count), 0);
+    const commands = recentCommands.length;
+    const commandsFailed = recentCommands.filter(c => c.status === "failed" || c.status === "expired").length;
+    return { today: today.length, total: feed.length, days, topTypes, failed, last24h, peak, commands, commandsFailed };
+  }, [feed, recentCommands]);
+
   /* 收到过的信号名去重，供向导第②步点选 */
   const feedSignals = useMemo(() => {
     const seen: string[] = [];
@@ -793,6 +845,76 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
       navigator.clipboard.writeText(text).then(done).catch(() => done());
     } else done();
   }, [onNotice]);
+
+  /* 规则第⑤步「直接操作手机」的参数行：每个动作要的字段不一样，按类型渲染。
+     值统一先当字符串收，数字在设备动作引擎里再转——那里本来就做宽松解析。 */
+  const renderDeviceActionArgs = (
+    action: string,
+    args: Record<string, unknown>,
+    update: (next: Record<string, unknown>) => void,
+  ) => {
+    const field = (key: string, label: string, placeholder: string, type: "text" | "number" = "text") => (
+      <label key={key}>{label}
+        <input type={type} value={String(args[key] ?? "")} placeholder={placeholder}
+          onChange={event => update({ ...args, [key]: event.target.value })} />
+      </label>
+    );
+    const pick = (key: string, label: string, options: { value: string; label: string }[]) => (
+      <label key={key}>{label}
+        <select value={String(args[key] ?? options[0].value)}
+          onChange={event => update({ ...args, [key]: event.target.value })}>
+          {options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      </label>
+    );
+    switch (action) {
+      case "torch":
+      case "dnd":
+        return pick("on", "状态", [{ value: "true", label: "打开" }, { value: "false", label: "关闭" }]);
+      case "brightness":
+        return field("level", "亮度百分比", "1-100", "number");
+      case "volume":
+        return (
+          <>
+            {pick("stream", "音量类型", [
+              { value: "media", label: "媒体" },
+              { value: "ring", label: "铃声" },
+              { value: "alarm", label: "闹钟" },
+              { value: "notification", label: "通知" },
+            ])}
+            {pick("mode", "操作", [
+              { value: "up", label: "调大" },
+              { value: "down", label: "调小" },
+              { value: "set", label: "设为数值" },
+              { value: "mute", label: "静音" },
+            ])}
+          </>
+        );
+      case "openApp":
+        return field("app", "应用名或包名", "例如 微信，或填 {payload} 用收到的内容");
+      case "alarm":
+        return (
+          <>
+            {field("hour", "小时", "0-23", "number")}
+            {field("minute", "分钟", "0-59", "number")}
+          </>
+        );
+      case "timer":
+        return field("minutes", "多少分钟后", "例如 20", "number");
+      case "media":
+        return pick("mode", "操作", [
+          { value: "toggle", label: "播放 / 暂停" },
+          { value: "play", label: "继续播放" },
+          { value: "pause", label: "暂停" },
+          { value: "next", label: "下一首" },
+          { value: "prev", label: "上一首" },
+        ]);
+      case "openUrl":
+        return field("url", "网址", "https://…");
+      default:
+        return null;
+    }
+  };
 
   const isExistingRule = editing !== null && rules.some(rule => rule.id === editing.id);
 
@@ -951,13 +1073,15 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                 >＋</button>
               </div>
 
-              <div className="rb-tiles">
-                <div className="rb-tile"><i>云端存储</i><b className={ready ? "ok" : "warn"}>{ready ? "已连接" : "未配置"}</b></div>
-                <div className="rb-tile"><i>今日收到</i><b>{feed.filter(entry => isToday(entry.receivedAt)).length} 条</b></div>
-                <div className="rb-tile"><i>联动启用</i><b>{rules.filter(rule => rule.enabled).length} / {rules.length}</b></div>
-              </div>
-              {!ready ? (
-                <p className="rb-hint" style={{ padding: "8px 4px 0" }}>请前往「设置 → 数据管理 → 云端备份」填写 Supabase 配置；现实桥与云端备份共用同一存储空间。</p>
+              {/* 概览屏自带统计，这里只在其余分区显示一条紧凑状态行 */}
+              {mainSec !== "overview" ? (
+                <div className="rb-statusline">
+                  <span className={ready ? "ok" : "warn"}>{ready ? "云端已连接" : "云端未配置"}</span>
+                  <em />
+                  <span>今日 {feed.filter(entry => isToday(entry.receivedAt)).length} 条</span>
+                  <em />
+                  <span>联动 {rules.filter(rule => rule.enabled).length}/{rules.length}</span>
+                </div>
               ) : null}
 
             </section>
@@ -1017,11 +1141,12 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
               <>
                   <div className="rb-chipbar">
                     <div className="rb-chips">
-                      <button type="button" className={`rb-chip${mainSec === "android" ? " active" : ""}`} onClick={() => setMainSec("android")}>本机安卓桥</button>
-                      <button type="button" className={`rb-chip${mainSec === "rules" ? " active" : ""}`} onClick={() => setMainSec("rules")}>自动联动</button>
+                      <button type="button" className={`rb-chip${mainSec === "overview" ? " active" : ""}`} onClick={() => setMainSec("overview")}>概览</button>
+                      <button type="button" className={`rb-chip${mainSec === "android" ? " active" : ""}`} onClick={() => setMainSec("android")}>本机桥</button>
+                      <button type="button" className={`rb-chip${mainSec === "rules" ? " active" : ""}`} onClick={() => setMainSec("rules")}>联动</button>
                       <button type="button" className={`rb-chip${mainSec === "shortcuts" ? " active" : ""}`} onClick={() => setMainSec("shortcuts")}>快捷动作</button>
-                      <button type="button" className={`rb-chip${mainSec === "queries" ? " active" : ""}`} onClick={() => setMainSec("queries")}>主动查询</button>
-                      <button type="button" className={`rb-chip${mainSec === "screen" ? " active" : ""}`} onClick={() => setMainSec("screen")}>屏幕速聊</button>
+                      <button type="button" className={`rb-chip${mainSec === "queries" ? " active" : ""}`} onClick={() => setMainSec("queries")}>查询</button>
+                      <button type="button" className={`rb-chip${mainSec === "screen" ? " active" : ""}`} onClick={() => setMainSec("screen")}>速聊</button>
                     </div>
                   </div>
 
@@ -1030,11 +1155,111 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                       安卓壳能**直接**读到手机状态（不经云端、不出设备），也能直接做事。
                       这里只做「总览 + 引导」——详细开关分别在
                       「设置 → 感知」和「设置 → 操作设备」里，避免同一份配置两处维护。 */}
+                  {mainSec === "overview" ? (
+                    <>
+                      {/* ── 概览：先回答「现在到底在不在动」 ── */}
+                      <div className="rb-stat-hero">
+                        <div className="rb-stat-hero-main">
+                          <b>{stats.last24h}</b>
+                          <i>近 24 小时收到</i>
+                        </div>
+                        <div className="rb-stat-hero-side">
+                          <span><b>{stats.today}</b> 今天</span>
+                          <span><b>{stats.total}</b> 累计</span>
+                        </div>
+                      </div>
+
+                      <div className="rb-card rb-chart-card">
+                        <div className="rb-chart-head">
+                          <b>近 7 天</b>
+                          <span>{stats.total === 0 ? "还没有数据" : `峰值 ${stats.peak} 条/天`}</span>
+                        </div>
+                        <div className="rb-chart">
+                          {stats.days.map((day, index) => (
+                            <div className="rb-chart-col" key={index}>
+                              <span
+                                className={`rb-chart-bar${day.count > 0 ? " has" : ""}`}
+                                style={{ height: `${stats.peak > 0 ? Math.max(6, Math.round((day.count / stats.peak) * 100)) : 6}%` }}
+                                title={`${day.count} 条`}
+                              />
+                              <i>{day.label}</i>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rb-grid">
+                        <div className="rb-rcard" onClick={() => setMainSec("rules")}>
+                          <div className="rb-rtop">
+                            <span className="rb-icchip">{RB_ICON_BROADCAST}</span>
+                            <span className="rb-type">{rules.filter(r => r.enabled).length} 开</span>
+                          </div>
+                          <b>自动联动</b>
+                          <p className="rb-rsum">{rules.length === 0 ? "还没建过" : `共 ${rules.length} 条规则`}</p>
+                        </div>
+                        <div className="rb-rcard" onClick={() => setMainSec("shortcuts")}>
+                          <div className="rb-rtop">
+                            <span className="rb-icchip">{RB_ICON_PHONE}</span>
+                            <span className="rb-type">{stats.commands} 次调用</span>
+                          </div>
+                          <b>快捷动作</b>
+                          <p className="rb-rsum">{shortcutActions.length === 0 ? "还没建过" : `共 ${shortcutActions.length} 个动作`}</p>
+                        </div>
+                      </div>
+
+                      {stats.topTypes.length > 0 ? (
+                        <div className="rb-card">
+                          <span className="rb-card-title">信号来源</span>
+                          <div className="rb-rank">
+                            {stats.topTypes.map(([type, count]) => {
+                              const pct = Math.round((count / stats.total) * 100);
+                              return (
+                                <div className="rb-rank-row" key={type}>
+                                  <span className="rb-rank-name">{type}</span>
+                                  <span className="rb-rank-track"><i style={{ width: `${pct}%` }} /></span>
+                                  <span className="rb-rank-num">{count}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {stats.failed.length > 0 || (stats.total > 0 && rules.length === 0) ? (
+                        <div className="rb-card rb-attention">
+                          {stats.failed.length > 0 ? (
+                            <div className="rb-attn-row">
+                              <span className="rb-icchip">{RB_ICON_BELL}</span>
+                              <div className="rb-main-text">
+                                <b>{stats.failed.length} 条执行出错</b>
+                                <p>{stats.failed[0].error?.slice(0, 60)}</p>
+                              </div>
+                              <button type="button" className="rb-link" onClick={() => { setTab("history"); setHistSec("feed"); }}>查看</button>
+                            </div>
+                          ) : null}
+                          {stats.total > 0 && rules.length === 0 ? (
+                            <div className="rb-attn-row">
+                              <span className="rb-icchip">{RB_ICON_INBOX}</span>
+                              <div className="rb-main-text">
+                                <b>收到数据，但没规则</b>
+                                <p>建条联动，让这些信号真的做点什么</p>
+                              </div>
+                              <button type="button" className="rb-link" onClick={() => { setMainSec("rules"); openRuleEditor(newRule(), false); }}>去建</button>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      {!ready ? (
+                        <p className="rb-hint" style={{ padding: "8px 4px 0" }}>还没配置云端存储——「设置 → 数据管理 → 云端备份」。现实桥与云端备份共用同一空间。</p>
+                      ) : null}
+                    </>
+                  ) : null}
+
                   {mainSec === "android" ? (
                     <>
                       <div className="rb-hint" style={{ padding: "8px 4px 0" }}>
-                        你的安卓小手机自带一套原生能力，不需要快捷指令、不经过云端、数据不出本机。
-                        下面每一项都是「先读状态 / 再动手」的组合，开关在设置里，这里只负责让你看清现状。
+                        不需要快捷指令、不经过云端、数据不出本机。开关在设置里，这里只让你看清现状。
                       </div>
 
                       <div className="rb-grid" style={{ marginTop: 10 }}>
@@ -1075,12 +1300,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                       </div>
 
                       <div className="rb-hint" style={{ padding: "12px 4px 0" }}>
-                        这两项都默认保守：感知只读取（默认开），操作设备会真的改你的手机（默认全关，要逐个打开）。
-                        角色调用它们时，聊天里会留下记录；你不在聊天室时会收到系统通知。
-                      </div>
-
-                      <div className="rb-hint" style={{ padding: "12px 4px 0" }}>
-                        想让角色在<b>离线时</b>也能知道你的状态？去「设置 → 感知」打开「同步状态到我的云端」。
+                        感知只读（默认开）；操作设备会真的改手机（默认全关，逐个打开）。
                       </div>
 
                       {/* 这一屏原本只讲「本机能力在哪配」，于是很多人逛完就走，
@@ -1092,10 +1312,10 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                             <span className="rb-type">下一步</span>
                           </div>
                           <b>去创建自动联动</b>
-                          <p className="rb-rsum">收到某个信号时自动做一件事（写进聊天、记进记忆、触发快捷动作……）</p>
+                          <p className="rb-rsum">收到信号时自动做一件事（写进聊天、记进记忆、操作手机……）</p>
                           <div className="rb-rfoot">
                             <span className="rb-rstate">共 {rules.length} 条联动</span>
-                            <span className="rb-link">去「自动联动」→</span>
+                            <span className="rb-link">去「联动」→</span>
                           </div>
                         </div>
                       </div>
@@ -1146,7 +1366,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                   {mainSec === "shortcuts" ? (shortcutActions.length === 0 ? (
                     <div className="rb-empty">
                       <b>还没有快捷动作</b>
-                      <p>把角色工具绑定到你已有的 iOS 快捷指令。角色调用时会发系统通知，轻点后运行。</p>
+                      <p>把角色工具绑定到你的快捷指令。角色调用时发系统通知，轻点后运行。</p>
                       <button type="button" className="rb-btn" onClick={() => openShortcutEditor(newShortcutAction(), false)}>新建快捷动作</button>
                     </div>
                   ) : (
@@ -1233,7 +1453,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                     ) : (
                       <div className="rb-empty">
                         <b>还没有配置屏幕速聊</b>
-                        <p>双击 iPhone 悬浮球，把当前屏幕发给角色，并直接在系统弹窗里连续聊天。</p>
+                        <p>双击悬浮球，把当前屏幕发给角色，并在系统弹窗里连续聊天。</p>
                         <button type="button" className="rb-btn" onClick={() => openScreenChatEditor(false)}>开始配置</button>
                       </div>
                     )
@@ -1637,6 +1857,66 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                   ) : (
                     <p className="rb-help">还没有可用的推送类快捷动作——先到「快捷动作」页创建一个。</p>
                   )}
+                </div>
+              ) : null}
+            </div>
+
+            {/* 直接操作手机：这台安卓手机自己的「手」，与上面的快捷动作并列。
+                放最后是因为它是唯一会当场改变手机状态的选项，用户看完别的
+                再决定要不要给它这个权限。 */}
+            <div className="rb-action">
+              <label className="rb-check">
+                <input type="checkbox" checked={!!editing.actions.deviceAction}
+                  onChange={event => setEditing({
+                    ...editing,
+                    actions: {
+                      ...editing.actions,
+                      deviceAction: event.target.checked
+                        ? { action: "torch", args: { ...DEVICE_ACTION_DEFAULT_ARGS.torch } }
+                        : undefined,
+                    },
+                  })} />
+                直接操作手机（不需要 iPhone）
+              </label>
+              {editing.actions.deviceAction ? (
+                <div className="rb-action-body">
+                  <select value={editing.actions.deviceAction.action}
+                    onChange={event => {
+                      const next = event.target.value;
+                      setEditing({
+                        ...editing,
+                        actions: {
+                          ...editing.actions,
+                          deviceAction: {
+                            action: next,
+                            args: { ...(DEVICE_ACTION_DEFAULT_ARGS[next] ?? {}) },
+                          },
+                        },
+                      });
+                    }}>
+                    {TOGGLEABLE_ACTIONS.map(id => (
+                      <option key={id} value={id}>{DEVICE_ACTION_LABEL[id]}</option>
+                    ))}
+                  </select>
+                  <div className="rb-action-body grid2">
+                    {renderDeviceActionArgs(
+                      editing.actions.deviceAction.action,
+                      editing.actions.deviceAction.args ?? {},
+                      next => setEditing({
+                        ...editing,
+                        actions: {
+                          ...editing.actions,
+                          deviceAction: { ...editing.actions.deviceAction!, args: next },
+                        },
+                      }),
+                    )}
+                  </div>
+                  <p className="rb-help">收到的内容可以填进参数里（用 {"{payload}"} 或 {"{type}"}），例如「打开 {payload}」。</p>
+                  {!deviceActionEnabled ? (
+                    <p className="rb-help">还没打开「操作设备」总开关，这条联动会执行失败——去「设置 → 操作设备」打开。</p>
+                  ) : deviceActionCfg.actions[editing.actions.deviceAction.action as keyof typeof deviceActionCfg.actions] !== true ? (
+                    <p className="rb-help">「{DEVICE_ACTION_LABEL[editing.actions.deviceAction.action as keyof typeof DEVICE_ACTION_LABEL]}」这个动作还没在「设置 → 操作设备」里单独打开。</p>
+                  ) : null}
                 </div>
               ) : null}
             </div>

@@ -22,6 +22,7 @@ import { getWeekStartIso } from "../calendar-utils";
 import { sendBrowserNotification } from "../browser-notification";
 import { dispatchChatMessageNotice } from "../chat-notification-events";
 import { createShortcutCommand } from "../shortcut-command-client";
+import { runDeviceAction } from "../device-action";
 import {
   REALITY_BRIDGE_DATA_EVENT,
   type BridgeFeedEntry,
@@ -240,6 +241,15 @@ async function runActions(rule: BridgeRule, item: BridgeItem, text: string): Pro
         done.push(`快捷动作「${shortcutAction.name}」失败：${(err instanceof Error ? err.message : String(err)).slice(0, 80)}`);
       }
     }
+  }
+  if (actions.deviceAction?.action) {
+    // 参数先展开 {payload}/{type}：这样能配出「收到『到家』→ 打开 {payload}」
+    const filledArgs: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(actions.deviceAction.args ?? {})) {
+      filledArgs[key] = typeof value === "string" ? fillTemplate(value, item) : value;
+    }
+    const outcome = runDeviceAction({ action: actions.deviceAction.action, ...filledArgs });
+    done.push(outcome.ok ? `操作设备·${outcome.message ?? "已执行"}` : `操作设备失败：${outcome.reason ?? "未知原因"}`);
   }
   if (actions.outbox?.type) {
     const { config, ready } = bridgeConnection();

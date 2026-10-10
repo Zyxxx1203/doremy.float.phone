@@ -39,6 +39,11 @@ export type BridgeRuleActions = {
   outbox?: { type: string };
   /** 广播 bridge.data 事件给已订阅的自定义 APP */
   broadcast?: boolean;
+  /** 在本机上真的做一件事（手电筒、音量、打开应用……）。
+   *  与「快捷动作」的区别：这条不经过云端、不用 iPhone 参与，直接在安卓壳里执行；
+   *  args 里的字符串值支持 {payload}/{type} 占位；执行受「设置 → 操作设备」
+   *  里的逐动作开关约束，没开的动作会被拒绝并如实记进流水。 */
+  deviceAction?: { action: string; args?: Record<string, unknown> };
 };
 
 export type BridgeRule = {
