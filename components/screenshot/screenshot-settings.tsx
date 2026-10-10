@@ -31,7 +31,9 @@ import {
   prepareScreenshotBall,
   readScreenshotCapabilities,
   saveScreenshotConfig,
+  setScreenshotBallStyle,
   stopScreenshotBall,
+  supportsBallStyle,
   syncScreenshotShareTargets,
   type ScreenshotConfig,
   type ScreenshotRecord,
@@ -45,6 +47,16 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
+
+/** 悬浮球可选颜色（都带透明度，与原生默认值同一格式）。 */
+const BALL_COLORS = [
+  { label: "蓝", value: "#E65B7CFA" },
+  { label: "深灰", value: "#E633333D" },
+  { label: "绿", value: "#E634C759" },
+  { label: "橙", value: "#E6FF9F0A" },
+  { label: "红", value: "#E6FF453A" },
+  { label: "粉", value: "#E6FF6B9D" },
+] as const;
 
 function formatTime(at: number): string {
   try {
@@ -220,6 +232,37 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
       : "已改为每次截屏都让你选发给谁");
   }, [update, characters, onNotice]);
 
+  /**
+   * 改悬浮球外观并即时下发。
+   *
+   * 本地存一份（下次打开设置页回显），同时推给原生——球是原生画的，
+   * 只存在网页这一侧改了也看不见。球正显示着时原生会当场重画。
+   *
+   * 老壳没有这个接口时静默跳过：本地配置仍然存着，等壳更新后自然生效。
+   */
+  const updateBallStyle = useCallback((patch: Partial<Pick<ScreenshotConfig, "ballText" | "ballColor" | "ballDiameter">>) => {
+    const next = { ...loadScreenshotConfig(), ...patch };
+    saveScreenshotConfig(next);
+    setConfig(next);
+    if (!supportsBallStyle()) return;
+    setScreenshotBallStyle({
+      text: next.ballText,
+      color: next.ballColor,
+      diameter: next.ballDiameter,
+    });
+  }, []);
+
+  // 开启悬浮球时把外观一并下发：用户可能在上次会话里改过颜色，
+  // 而原生读的是它自己那份盘上配置，两边要在这个时机对齐。
+  useEffect(() => {
+    if (!config.ballEnabled || !supportsBallStyle()) return;
+    setScreenshotBallStyle({
+      text: config.ballText,
+      color: config.ballColor,
+      diameter: config.ballDiameter,
+    });
+  }, [config.ballEnabled, config.ballText, config.ballColor, config.ballDiameter]);
+
   // 页面挂载时补发「点球那一刻网页已被回收」的那张截图。
   // 原生侧是「读到即清空」，所以重复调用不会重复发送。
   useEffect(() => {
@@ -299,6 +342,78 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
             截出来的图仍然会先弹预览让你确认，你点「发给它」才发得出去——
             和角色查岗走的是同一套审批。
           </div>
+
+          {config.ballEnabled && (
+            <div className="menu-group" style={{ marginTop: 10 }}>
+              <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
+                <div className="menu-label-group">
+                  <span className="menu-label">球上显示的字</span>
+                  <span className="menu-desc">最多 4 个字；留空就只画一个圆点，不写字</span>
+                </div>
+                <input
+                  className="per-field-input"
+                  style={{ maxWidth: 92 }}
+                  value={config.ballText}
+                  maxLength={4}
+                  placeholder="留空"
+                  onChange={e => updateBallStyle({ ballText: e.target.value.slice(0, 4) })}
+                />
+              </div>
+              <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
+                <div className="menu-label-group">
+                  <span className="menu-label">颜色</span>
+                  <span className="menu-desc">点一下立刻换，不用重开开关</span>
+                </div>
+                <div className="menu-right" style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  {BALL_COLORS.map(item => {
+                    const selected = config.ballColor.toUpperCase() === item.value.toUpperCase();
+                    return (
+                      <button
+                        key={item.value}
+                        type="button"
+                        aria-label={`${item.label}色`}
+                        onClick={() => updateBallStyle({ ballColor: item.value })}
+                        style={{
+                          width: 30,
+                          height: 30,
+                          padding: 0,
+                          borderRadius: 999,
+                          background: item.value,
+                          opacity: selected ? 1 : 0.45,
+                          border: selected ? "2px solid var(--c-text-title)" : "1px solid rgba(0,0,0,.14)",
+                          cursor: "pointer",
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
+                <div className="menu-label-group">
+                  <span className="menu-label">大小</span>
+                  <span className="menu-desc">桌面那个点多粗；字会跟着一起缩放</span>
+                </div>
+                <div className="menu-right" style={{ display: "flex", gap: 6 }}>
+                  {[40, 50, 64].map(size => (
+                    <button
+                      key={size}
+                      type="button"
+                      className="ui-btn ui-btn-outline"
+                      style={{ opacity: config.ballDiameter === size ? 1 : 0.55 }}
+                      onClick={() => updateBallStyle({ ballDiameter: size })}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {!supportsBallStyle() && (
+                <div className="per-note" style={{ padding: "0 var(--ui-padding, 16px) 10px" }}>
+                  当前 App 版本还不支持自定义外观，需要更新安卓壳；设置会先存着，更新后自动生效。
+                </div>
+              )}
+            </div>
+          )}
 
           {config.ballEnabled && (
             <div className="menu-group" style={{ marginTop: 10 }}>

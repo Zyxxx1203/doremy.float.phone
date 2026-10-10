@@ -1083,6 +1083,19 @@ class MainActivity : AppCompatActivity() {
         fun getScreenshotBallCapabilities(): String = ScreenshotBallService.capabilitiesJson()
 
         /**
+         * 下发悬浮球外观（文字 / 颜色 / 大小），球正显示着会当场重画。
+         * 参数形如 {"text":"截","color":"#5B7CFA","diameter":50}。
+         */
+        @JavascriptInterface
+        fun setScreenshotBallStyle(json: String): Boolean =
+            ScreenshotBallService.setStyle(this@MainActivity, json)
+
+        /** 读悬浮球当前外观（设置页回显用）。 */
+        @JavascriptInterface
+        fun getScreenshotBallStyle(): String =
+            ScreenshotBallService.styleJson(this@MainActivity)
+
+        /**
          * 网页把「用户主动截屏时发给谁」的候选清单交过来保管。
          *
          * 必须提前给：点球那一刻网页可能已被系统回收，浮层回网页取清单

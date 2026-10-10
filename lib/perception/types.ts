@@ -37,7 +37,16 @@ export type PerceptionCapability =
   | "usageStats"
   | "steps"
   | "sleep"
-  | "returnToPhone";
+  | "returnToPhone"
+  /**
+   * 设备操作（角色在真实手机上做了件事）。
+   *
+   * 严格说它不是「感知」（是写不是读），但流水是同一本账——用户想知道
+   * 「角色动过我手机什么」，翻的正是这份记录。刻意**不**加进设置页的能力
+   * 开关列表（buildCapabilityRows 的 ids 是硬编码的）：它没有开关，
+   * 能不能做由「操作设备」那边的逐动作开关决定。
+   */
+  | "deviceAction";
 
 export const PERCEPTION_CAPABILITY_LABEL: Record<PerceptionCapability, string> = {
   battery: "电量与充电",
@@ -50,6 +59,7 @@ export const PERCEPTION_CAPABILITY_LABEL: Record<PerceptionCapability, string> =
   steps: "步数",
   sleep: "睡眠",
   returnToPhone: "回到手机提醒",
+  deviceAction: "设备操作",
 };
 
 export const PERCEPTION_CAPABILITY_DESC: Record<PerceptionCapability, string> = {
@@ -63,6 +73,7 @@ export const PERCEPTION_CAPABILITY_DESC: Record<PerceptionCapability, string> = 
   steps: "读取当天步数，作为「在走动 / 宅着」的粗线索。需要活动识别权限。",
   sleep: "读取最近一觉的时长与起止。只读睡眠，不含睡眠分期；数据来自 Health Connect。",
   returnToPhone: "离开一段时间后回到小手机时，给角色一个「TA 回来了」的信号。纯网页实现，无需额外权限。",
+  deviceAction: "角色在真实手机上执行的动作（手电筒、音量、亮度、勿扰、打开应用等），记进流水供你回查。",
 };
 
 export type PerceptionConfig = {

@@ -17,6 +17,13 @@ const RECORDS_KEY = "ai_phone_screenshot_records_v1";
 registerKvMigration(CONFIG_KEY);
 registerKvMigration(RECORDS_KEY);
 
+/** 数字钳制：非法值退回默认，越界夹到范围内。 */
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
 export type ScreenshotConfig = {
   /**
    * 总开关：是否允许截屏。默认关。
@@ -53,6 +60,18 @@ export type ScreenshotConfig = {
    * 变成了「操作」。固定一个人时直接跳过选择最省事；多聊时留空即可。
    */
   defaultShareCharacterId: string;
+  /**
+   * 悬浮球上的文字（最多 4 字符）。空串 = 只画圆点不显示字。
+   *
+   * 为什么让用户改：默认那个「截」字对有些人太直白（不想被人看到屏幕上
+   * 有个截屏按钮），换成别的字或干脆不写都行——是用户自己的手机，
+   * 该由他决定长什么样。
+   */
+  ballText: string;
+  /** 悬浮球主色（#RRGGBB 或 #AARRGGBB）。 */
+  ballColor: string;
+  /** 悬浮球直径（dp），32~96。 */
+  ballDiameter: number;
 };
 
 export const SCREENSHOT_DEFAULTS: ScreenshotConfig = {
@@ -62,6 +81,11 @@ export const SCREENSHOT_DEFAULTS: ScreenshotConfig = {
   ballEnabled: false,
   // 空 = 每次让我选。默认不替用户指定收件人——猜错了等于发错人。
   defaultShareCharacterId: "",
+  ballText: "截",
+  // 与原生默认值保持一致（0xE6 透明度 + 蓝），否则「没改过」时
+  // 设置页回显与桌面上的球颜色对不上。
+  ballColor: "#E65B7CFA",
+  ballDiameter: 50,
 };
 
 /** 读配置。任何字段缺失都按默认（默认 = 关）处理，绝不因为读失败而放开权限。 */
@@ -83,6 +107,14 @@ export function loadScreenshotConfig(): ScreenshotConfig {
       defaultShareCharacterId: typeof parsed.defaultShareCharacterId === "string"
         ? parsed.defaultShareCharacterId
         : "",
+      // 文字最多 4 个字符（原生也这么截），空串合法（表示不要字）
+      ballText: typeof parsed.ballText === "string"
+        ? parsed.ballText.slice(0, 4)
+        : SCREENSHOT_DEFAULTS.ballText,
+      ballColor: typeof parsed.ballColor === "string" && /^#?[0-9a-fA-F]{6,8}$/.test(parsed.ballColor)
+        ? parsed.ballColor
+        : SCREENSHOT_DEFAULTS.ballColor,
+      ballDiameter: clampNumber(parsed.ballDiameter, 32, 96, SCREENSHOT_DEFAULTS.ballDiameter),
     };
   } catch {
     return { ...SCREENSHOT_DEFAULTS };

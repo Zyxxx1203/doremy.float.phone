@@ -27,6 +27,7 @@ import {
   setTorch,
   setVolume,
 } from "./bridge";
+import { appendPerceptionLog } from "../perception/storage";
 import { DEVICE_ACTION_LABEL, isActionEnabled, loadDeviceActionConfig } from "./storage";
 
 /** 一次设备动作的结论。ok=false 时 reason 一定是给人看的整句。 */
@@ -107,6 +108,34 @@ export function runDeviceAction(args: Record<string, unknown>): DeviceActionOutc
   const action = String(args.action ?? "").trim();
   if (!action) return { ok: false, reason: "缺少 action 参数" };
 
+  /**
+   * 把这次动作记进感知流水。
+   *
+   * 为什么记：角色能在真实手机上改东西是很有存在感的权限，用户事后
+   * 应该能翻到「它动过我什么」——只靠聊天里那句话不够（消息会被刷走）。
+   * 诊断面板的信号记录就是这本账。
+   *
+   * 只记成功的：失败会被角色如实转述，不值得再占一条流水；
+   * 而「动作真的发生了」才是用户要回查的。
+   */
+  const logDeviceAction = (outcome: DeviceActionOutcome, id: string): DeviceActionOutcome => {
+    if (outcome.ok) {
+      try {
+        appendPerceptionLog({
+          id: `dev_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+          at: new Date().toISOString(),
+          capability: "deviceAction",
+          type: DEVICE_ACTION_LABEL[id as keyof typeof DEVICE_ACTION_LABEL] ?? "操作设备",
+          payload: outcome.message ?? "",
+          outcome: "已执行",
+        });
+      } catch {
+        // 记流水失败不该影响动作本身（它已经真的做完了）
+      }
+    }
+    return outcome;
+  };
+
   // 逐动作开关：没开启的动作必须给出明确拒绝——
   // 否则模型会以为「调用了但没反应」，反复重试或干脆谎报成功。
   // 默认状态下全部未开启，所以首次使用时角色几乎一定会撞到这里，
@@ -133,7 +162,7 @@ export function runDeviceAction(args: Record<string, unknown>): DeviceActionOutc
       const on = args.on === true || args.on === "true" || args.on === 1;
       const result = setTorch(on);
       if (!result.ok) return { ok: false, reason: result.reason };
-      return { ok: true, action: "torch", message: on ? "手电筒已打开" : "手电筒已关闭" };
+      return logDeviceAction({ ok: true, action: "torch", message: on ? "手电筒已打开" : "手电筒已关闭" }, "torch");
     }
 
     case "volume": {
@@ -147,7 +176,7 @@ export function runDeviceAction(args: Record<string, unknown>): DeviceActionOutc
       const pct = result.max && result.current !== undefined
         ? Math.round((result.current / result.max) * 100)
         : undefined;
-      return { ok: true, action: "volume", message: pct !== undefined ? `音量已调整（当前约 ${pct}%）` : "音量已调整" };
+      return logDeviceAction({ ok: true, action: "volume", message: pct !== undefined ? `音量已调整（当前约 ${pct}%）` : "音量已调整" }, "volume");
     }
 
     case "brightness": {
@@ -160,7 +189,7 @@ export function runDeviceAction(args: Record<string, unknown>): DeviceActionOutc
         // 需要授权时把原因说清楚，让角色能转告用户去开权限
         return { ok: false, reason: result.needPermission ? "还没有「修改系统设置」权限，需要 TA 去设置里授权" : result.reason };
       }
-      return { ok: true, action: "brightness", message: `屏幕亮度已调到约 ${Math.round(level)}%` };
+      return logDeviceAction({ ok: true, action: "brightness", message: `屏幕亮度已调到约 ${Math.round(level)}%` }, "brightness");
     }
 
     case "dnd": {
@@ -171,7 +200,7 @@ export function runDeviceAction(args: Record<string, unknown>): DeviceActionOutc
       if (!result.ok) {
         return { ok: false, reason: result.needPermission ? "还没有「勿扰模式」访问权限，需要 TA 去设置里授权" : result.reason };
       }
-      return { ok: true, action: "dnd", message: on ? "已打开勿扰模式" : "已关闭勿扰模式" };
+      return logDeviceAction({ ok: true, action: "dnd", message: on ? "已打开勿扰模式" : "已关闭勿扰模式" }, "dnd");
     }
 
     // 「打开应用」：会把用户的屏幕切走，所以是这批动作里**侵略性最强**的一个，
@@ -192,7 +221,9 @@ export function runDeviceAction(args: Record<string, unknown>): DeviceActionOutc
       }
       const result = openApp(pkg);
       if (!result.ok) return { ok: false, reason: result.reason };
-      return { ok: true, action: "openApp", message: `已打开「${label}」` };
+      // 提示里用应用真实名字（bridge 回传的 label），拿不到才退回用户输入的词
+      const shown = result.label || label;
+      return logDeviceAction({ ok: true, action: "openApp", message: `已打开「${shown}」` }, "openApp");
     }
 
     // ── 闹钟：带系统界面，用户自己确认时间 ──
@@ -212,7 +243,7 @@ export function runDeviceAction(args: Record<string, unknown>): DeviceActionOutc
       if (!result.ok) return { ok: false, reason: result.reason };
       const hhmm = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
       // needsConfirm 时系统界面已弹出，结果以用户确认为准，措辞不能说得太满
-      return { ok: true, action: "alarm", message: `闹钟 ${hhmm} 已交给系统时钟（请在时钟里确认）` };
+      return logDeviceAction({ ok: true, action: "alarm", message: `闹钟 ${hhmm} 已交给系统时钟（请在时钟里确认）` }, "alarm");
     }
 
     case "timer": {
@@ -231,7 +262,7 @@ export function runDeviceAction(args: Record<string, unknown>): DeviceActionOutc
       const result = setTimer(seconds, note);
       if (!result.ok) return { ok: false, reason: result.reason };
       const human = seconds >= 60 ? `${Math.round(seconds / 60)} 分钟` : `${seconds} 秒`;
-      return { ok: true, action: "timer", message: `倒计时已开始（${human}）` };
+      return logDeviceAction({ ok: true, action: "timer", message: `倒计时已开始（${human}）` }, "timer");
     }
 
     case "media": {
@@ -248,7 +279,7 @@ export function runDeviceAction(args: Record<string, unknown>): DeviceActionOutc
         prev: "已切到上一首",
         stop: "已停止播放",
       };
-      return { ok: true, action: "media", message: label[op] ?? "已发送播放控制" };
+      return logDeviceAction({ ok: true, action: "media", message: label[op] ?? "已发送播放控制" }, "media");
     }
 
     case "openUrl": {
@@ -258,7 +289,7 @@ export function runDeviceAction(args: Record<string, unknown>): DeviceActionOutc
       if (!url) return { ok: false, reason: "缺少 url 参数" };
       const result = openUrl(url);
       if (!result.ok) return { ok: false, reason: result.reason };
-      return { ok: true, action: "openUrl", message: "已在浏览器里打开" };
+      return logDeviceAction({ ok: true, action: "openUrl", message: "已在浏览器里打开" }, "openUrl");
     }
 
     default:

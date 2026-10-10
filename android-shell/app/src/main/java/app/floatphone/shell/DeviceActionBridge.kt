@@ -211,11 +211,15 @@ class DeviceActionBridge(private val context: Context) {
         val pm = context.packageManager
         val intent = pm.getLaunchIntentForPackage(packageName)
             ?: return JSONObject().put("ok", false)
-                .put("reason", "找不到可启动的应用（包名不对，或它没有启动界面）")
+                .put("reason", "这个应用没有可以打开的界面（可能是插件或系统组件）")
         return try {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
-            JSONObject().put("ok", true).put("package", packageName)
+            // 一并回传显示名：角色/用户说的可能是简称，回一句真实名字才看得出开了哪个
+            val label = runCatching {
+                pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
+            }.getOrDefault("")
+            JSONObject().put("ok", true).put("package", packageName).put("label", label)
         } catch (e: Throwable) {
             JSONObject().put("ok", false).put("reason", e.message ?: "无法打开应用")
         }
@@ -231,15 +235,36 @@ class DeviceActionBridge(private val context: Context) {
         return try {
             val pm = context.packageManager
             val target = label.trim()
-            val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            // 先精确匹配，再退化到包含匹配——避免「微信」误命中「微信读书」。
-            val exact = apps.firstOrNull { pm.getApplicationLabel(it).toString() == target }
-            if (exact != null) return exact.packageName
-            val fuzzy = apps.firstOrNull {
-                val name = pm.getApplicationLabel(it).toString()
-                name.contains(target, ignoreCase = true)
+            // 只在「能从桌面启动的应用」里找。
+            //
+            // 原来用 getInstalledApplications() 会连没有界面的包一起返回
+            // （插件、输入法、壁纸、服务组件），名字撞上了就选中它，
+            // 再由 openApp 报「找不到可启动的应用」——用户看到这句会以为是
+            // 包名写错，其实是那个 App 根本没有界面。
+            //
+            // 用 queryIntentActivities 取 MAIN/LAUNCHER，拿到的必然是可启动的，
+            // 而且天然绕开「有同名的无界面组件」这种坑。
+            val launchable = pm.queryIntentActivities(
+                Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER),
+                0,
+            )
+            val candidates = ArrayList<Pair<String, String>>()
+            for (info in launchable) {
+                val pkg = info.activityInfo?.packageName ?: continue
+                if (pkg == context.packageName) continue
+                val name = runCatching {
+                    pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+                }.getOrDefault("")
+                if (name.isNotEmpty()) candidates.add(Pair(pkg, name))
             }
-            fuzzy?.packageName ?: ""
+            // 先精确匹配，再退化到包含匹配——避免「微信」误命中「微信读书」。
+            // 包含匹配时优先取名字最短的那个：越短越可能是用户说的本尊。
+            val exact = candidates.firstOrNull { it.second == target }
+            if (exact != null) return exact.first
+            val fuzzy = candidates
+                .filter { it.second.contains(target, ignoreCase = true) }
+                .minByOrNull { it.second.length }
+            fuzzy?.first ?: ""
         } catch (e: Throwable) {
             ""
         }

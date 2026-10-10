@@ -40,7 +40,22 @@ export type DeviceActionCapabilities = Partial<Record<DeviceActionId, boolean>>;
  * （用 openSystemSettings）——这与「硬件根本没有」是两回事，不能混为一谈。
  */
 export type DeviceActionResult =
-  | { ok: true; on?: boolean; level?: number; current?: number; max?: number; package?: string }
+  | {
+      ok: true;
+      on?: boolean;
+      level?: number;
+      current?: number;
+      max?: number;
+      package?: string;
+      /**
+       * 该应用的显示名（openApp 成功时回传）。
+       *
+       * 为什么要它：角色说的是「打开微信」，用户输的也可能是简称，
+       * 而真正被打开的可能是「微信」的全名或另一个同名应用。
+       * 回一句真实名字，用户才知道到底开了哪个——不然出错了都看不出。
+       */
+      label?: string;
+    }
   | { ok: false; reason: string; needPermission?: string };
 
 /** 音量流类型（与原生 streamFor 对应）。 */

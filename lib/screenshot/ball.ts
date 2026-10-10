@@ -13,6 +13,8 @@ type BallBridgeLike = {
   getScreenshotBallCapabilities?: () => string;
   prepareScreenshotBall?: () => boolean;
   stopScreenshotBall?: () => void;
+  setScreenshotBallStyle?: (json: string) => boolean;
+  getScreenshotBallStyle?: () => string;
 };
 
 function bridge(): BallBridgeLike | null {
@@ -56,5 +58,50 @@ export function stopScreenshotBall(): void {
     bridge()?.stopScreenshotBall?.();
   } catch {
     /* 忽略 */
+  }
+}
+
+/** 壳是否支持自定义悬浮球外观（老 APK 没有）。 */
+export function supportsBallStyle(): boolean {
+  return typeof bridge()?.setScreenshotBallStyle === "function";
+}
+
+/** 悬浮球外观。 */
+export type BallStyle = {
+  /** 球上的文字，最多 4 字符；空串 = 不显示文字 */
+  text: string;
+  /** 主色，形如 #RRGGBB 或 #AARRGGBB */
+  color: string;
+  /** 直径（dp），32~96 */
+  diameter: number;
+};
+
+/**
+ * 把外观下发给原生并即时生效（球正显示着会当场重画）。
+ *
+ * @returns 原生是否收下；老壳返回 false（此时球仍是默认样子，不是错误）
+ */
+export function setScreenshotBallStyle(style: BallStyle): boolean {
+  try {
+    return bridge()?.setScreenshotBallStyle?.(JSON.stringify(style)) === true;
+  } catch {
+    return false;
+  }
+}
+
+/** 读原生当前的球外观（设置页回显用）。读不到返回 null。 */
+export function readScreenshotBallStyle(): BallStyle | null {
+  try {
+    const raw = bridge()?.getScreenshotBallStyle?.();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<BallStyle>;
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      text: typeof parsed.text === "string" ? parsed.text : "",
+      color: typeof parsed.color === "string" ? parsed.color : "",
+      diameter: Number.isFinite(Number(parsed.diameter)) ? Number(parsed.diameter) : 50,
+    };
+  } catch {
+    return null;
   }
 }

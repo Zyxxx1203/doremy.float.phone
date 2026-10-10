@@ -117,9 +117,23 @@ class ScreenshotBallService : Service() {
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        diameterPx = dp(DIAMETER_DP)
+        loadStyle(this)
+        diameterPx = dp(ballDiameterDp)
         createChannel()
         startForeground(NOTIF_ID, buildNotification())
+    }
+
+    /**
+     * 按当前外观重画球（用户改配置时调用）。
+     *
+     * 先拆再建而不是就地改属性：直径变了窗口尺寸也得变，
+     * 而窗口尺寸只能在 addView 时定，updateViewLayout 改不了大小。
+     */
+    private fun rebuildBall() {
+        ballView?.let { view -> runCatching { windowManager.removeView(view) } }
+        ballView = null
+        diameterPx = dp(ballDiameterDp)
+        showBall()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -157,6 +171,8 @@ class ScreenshotBallService : Service() {
         val screenH = resources.displayMetrics.heightPixels
         val savedX = prefs.getInt("x", -1)
         val savedY = prefs.getInt("y", -1)
+        // 直径可能刚被改过，重新算一次，否则换大球时初始位置会偏出屏幕
+        diameterPx = dp(ballDiameterDp)
         posX = if (savedX >= 0) savedX else screenW - diameterPx - dp(EDGE_DP)
         posY = if (savedY >= 0) savedY else screenH / 3
         clamp()
@@ -179,16 +195,18 @@ class ScreenshotBallService : Service() {
     private fun showBall() {
         if (!canDraw(this)) return
         if (ballView != null) return
+        loadStyle(this)
         loadPosition()
 
         val view = TextView(this).apply {
-            text = "截"
+            text = ballText
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            // 字号跟着直径走：球调大了字还是 16sp 会显得又小又空
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, (ballDiameterDp * 0.32f).coerceIn(12f, 28f))
             gravity = Gravity.CENTER
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(0xE65B7CFA.toInt())
+                setColor(ballColor)
                 setStroke(dp(2), 0x66FFFFFF)
             }
             // 让整块圆都吃触摸事件（否则只有文字那一小块能拖）
