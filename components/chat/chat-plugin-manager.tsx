@@ -329,7 +329,8 @@ export function ChatPluginManager({ onBack }: { onBack: () => void }) {
                         {/* 这里刻意不写 accept=".js,.mjs,text/javascript"：
                             安卓壳的 WebView 会把 accept 翻成系统级 MIME 过滤，而 .js / text/javascript
                             在安卓文件管理器里没有可靠的 MIME 映射，结果是所有文件都变灰、根本选不中。
-                            改成 */* 放行，选完再由 handleFileChosen 校验扩展名。 */}
+                            改成通配的 accept 放行（见下方 input 的 accept 属性），
+                            选完再由 handleFileChosen 校验扩展名。 */}
                         <input
                             ref={fileInputRef}
                             type="file"
