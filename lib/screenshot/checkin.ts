@@ -21,6 +21,9 @@ type CheckInBridgeLike = {
   consumePendingUserShot?: () => string;
   setScreenshotShareTargets?: (json: string) => boolean;
   getScreenshotShareTargets?: () => string;
+  /** 查岗 / 截屏确认浮层的配色（老 APK 没有） */
+  getCheckInTheme?: () => string;
+  setCheckInTheme?: (json: string) => boolean;
 };
 
 function bridge(): CheckInBridgeLike | null {

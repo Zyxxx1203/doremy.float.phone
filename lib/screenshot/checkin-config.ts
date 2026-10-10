@@ -192,6 +192,52 @@ export function resetCheckInRuntime(characterId: string): void {
   saveCheckInRuntime(runtime);
 }
 
+/**
+ * 一个角色的查岗调度快照，给设置页的「链路诊断」读。
+ *
+ * 为什么需要它：查岗不触发时，用户能看到的只有「没弹」这一个事实，
+ * 而真实原因可能是「没开」「今天次数用完了」「距上次还不够久」
+ * 「服务没起来」「权限没给」——五六种情况长得一模一样。
+ * 把配置与运行态一起摊开，用户一眼就能看出卡在哪一环。
+ */
+export type CheckInScheduleSnapshot = {
+  enabled: boolean;
+  minMinutes: number;
+  maxMinutes: number;
+  dailyLimit: number;
+  /** 上次触发时刻（毫秒）；0 = 从未触发 */
+  lastFiredAt: number;
+  /** 距上次触发过了多少分钟；从未触发时为 -1 */
+  minutesSinceLast: number;
+  /** 今天已触发次数（跨天已归零） */
+  countToday: number;
+  /** 今天是否已达上限 */
+  dailyReached: boolean;
+  /** 现在这一刻是否已到点（与引擎用的是同一个判定） */
+  due: boolean;
+};
+
+export function readCheckInScheduleSnapshot(
+  characterId: string,
+  config: CheckInCharacterConfig,
+): CheckInScheduleSnapshot {
+  const runtime = readCharacterRuntime(characterId);
+  const minutesSinceLast = runtime.lastFiredAt > 0
+    ? Math.floor((Date.now() - runtime.lastFiredAt) / 60_000)
+    : -1;
+  return {
+    enabled: config.enabled,
+    minMinutes: config.minMinutes,
+    maxMinutes: config.maxMinutes,
+    dailyLimit: config.dailyLimit,
+    lastFiredAt: runtime.lastFiredAt,
+    minutesSinceLast,
+    countToday: runtime.countToday,
+    dailyReached: runtime.countToday >= config.dailyLimit,
+    due: shouldFireCheckIn(characterId, config),
+  };
+}
+
 /** 在 [minMinutes, maxMinutes] 之间随机取一个等待分钟数。 */
 export function randomCheckInDelayMinutes(config: CheckInCharacterConfig): number {
   const min = Math.max(CHECK_IN_MIN_INTERVAL, config.minMinutes);

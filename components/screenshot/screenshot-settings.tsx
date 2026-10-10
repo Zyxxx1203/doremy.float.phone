@@ -41,6 +41,7 @@ import {
   type ScreenshotRecord,
 } from "@/lib/screenshot";
 import { CheckInSettings } from "./checkin-settings";
+import { CheckInThemeSettings } from "./checkin-theme-settings";
 import { ScreenshotDiagnosticsPanel } from "./diagnostics-panel";
 
 function formatBytes(bytes: number): string {
@@ -735,6 +736,9 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
 
         {/* 主动查岗：每个角色单独设 */}
         <CheckInSettings onNotice={onNotice} />
+
+        {/* 确认浮层的外观：查岗与主动截屏共用同一条浮层，故配色也共用一份 */}
+        <CheckInThemeSettings />
 
         <div className="per-note" style={{ padding: "0 var(--ui-padding, 16px)" }}>
           角色要用截屏能力，还要单独开能力：工具箱 → 内置能力。

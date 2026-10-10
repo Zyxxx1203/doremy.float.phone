@@ -21,10 +21,14 @@ import {
   disableAllCheckIn,
   loadCheckInConfig,
   prepareCheckInService,
+  readCheckInDiagnostics,
+  readCheckInScheduleSnapshot,
+  resetCheckInRuntime,
   runCheckIn,
   saveCharacterCheckIn,
   stopCheckInService,
   type CheckInConfigMap,
+  type CheckInScheduleSnapshot,
 } from "@/lib/screenshot";
 import { isShellEnvironment as isShell } from "@/lib/shell-call-overlay";
 
@@ -33,15 +37,40 @@ const MIN_ALLOWED = 5;
 const MAX_ALLOWED = 720;
 const DAILY_ALLOWED = 20;
 
+/**
+ * 用一句人话回答「下一次什么时候会查」。
+ *
+ * 这是查岗最常被问、也最没法自己算出来的问题：间隔是**随机**的，
+ * 用户设了 30~90 分钟，就没法从「上次是几点」推出「下次是几点」。
+ * 与其让他对着两个数字发愣，不如直接把剩余时间算给他。
+ */
+function describeSchedule(s: CheckInScheduleSnapshot): string {
+  if (!s.enabled) return "这个角色没开查岗";
+  if (s.dailyReached) return `今天已经查过 ${s.countToday} 次，到上限了，明天恢复`;
+  if (s.lastFiredAt <= 0) return "还一次都没查过——下一次扫描就会轮到（最长等一分钟）";
+  if (s.due) return `已到点，下一次扫描就会弹（上次是 ${s.minutesSinceLast} 分钟前）`;
+  const minLeft = Math.max(1, s.minMinutes - s.minutesSinceLast);
+  const maxLeft = Math.max(minLeft, s.maxMinutes - s.minutesSinceLast);
+  return minLeft === maxLeft
+    ? `再过约 ${minLeft} 分钟`
+    : `再过 ${minLeft}~${maxLeft} 分钟（随机取一个）`;
+}
+
 export function CheckInSettings({ onNotice }: { onNotice?: (msg: string) => void }) {
   const [configs, setConfigs] = useState<CheckInConfigMap>(() => loadCheckInConfig());
   const [busyId, setBusyId] = useState<string | null>(null);
+  // 原生那侧的实时状态（服务在不在跑、窗口挂上没）。跟着 refresh 一起更新，
+  // 用户从系统设置授完权回来就能看到「常驻服务」那一行变绿。
+  const [diag, setDiag] = useState(() => readCheckInDiagnostics());
 
   const characters = useMemo(() => loadCharacters(), []);
   const inShell = useMemo(() => isShell(), []);
   const readiness = checkInReadiness();
 
-  const refresh = useCallback(() => setConfigs(loadCheckInConfig()), []);
+  const refresh = useCallback(() => {
+    setConfigs(loadCheckInConfig());
+    setDiag(readCheckInDiagnostics());
+  }, []);
 
   useEffect(() => {
     refresh();
@@ -136,6 +165,13 @@ export function CheckInSettings({ onNotice }: { onNotice?: (msg: string) => void
             const min = config?.minMinutes ?? 30;
             const max = config?.maxMinutes ?? 90;
             const limit = config?.dailyLimit ?? 3;
+            // 链路快照：即便没开启也给一份（「没开」本身就是要展示的状态）
+            const snapshot = readCheckInScheduleSnapshot(character.id, config ?? {
+              enabled: false,
+              minMinutes: 30,
+              maxMinutes: 90,
+              dailyLimit: 3,
+            });
             return (
               <div className="menu-group" key={character.id}>
                 <div className="menu-item" style={{ cursor: "default" }}>
@@ -144,6 +180,11 @@ export function CheckInSettings({ onNotice }: { onNotice?: (msg: string) => void
                     <span className="menu-desc">
                       {enabled ? `每 ${min}~${max} 分钟一次，每天最多 ${limit} 次` : "未开启"}
                     </span>
+                    {enabled ? (
+                      <span className="menu-desc" style={{ color: "var(--per-accent, #6f5bd6)" }}>
+                        {describeSchedule(snapshot)} · 今天已查 {snapshot.countToday} 次
+                      </span>
+                    ) : null}
                   </div>
                   <Toggle checked={enabled} onChange={(v: boolean) => toggle(character.id, v)} />
                 </div>
@@ -229,6 +270,86 @@ export function CheckInSettings({ onNotice }: { onNotice?: (msg: string) => void
         </div>
       )}
 
+      {/* ── 链路诊断 ──
+          查岗不触发时，用户看到的只是「没弹」这一个事实，而真实原因可能是
+          六七种（没开 / 次数用完 / 还没到点 / 服务没起来 / 权限没给……），
+          它们长得一模一样。这里按「一次查岗要走完的每一环」逐条摊开，
+          卡在哪一环一眼可见，不必一层层试。 */}
+      <div className="settings-menu-section-title" style={{ marginTop: 18 }}>链路诊断</div>
+      <div className="menu-group" style={{ marginTop: 10 }}>
+        {[
+          {
+            label: "① 壳支持",
+            value: readiness.bridgeAvailable ? "支持" : "当前 App 版本没有查岗浮层，请更新安卓壳",
+            ok: readiness.bridgeAvailable,
+          },
+          {
+            label: "② 系统版本",
+            value: readiness.supported ? "支持（Android 11+）" : "太低，需要 Android 11 及以上",
+            ok: readiness.supported,
+          },
+          {
+            label: "③ 无障碍服务",
+            value: readiness.accessibilityOn ? "已开启" : "未开启（查岗截屏的前提）",
+            ok: readiness.accessibilityOn,
+          },
+          {
+            label: "④ 浮窗权限",
+            value: readiness.overlayReady ? "已授予" : "未授予（与你开通话浮窗用的是同一个权限）",
+            ok: readiness.overlayReady,
+          },
+          {
+            label: "⑤ 常驻服务",
+            value: diag
+              ? diag.running
+                ? diag.hasInstance ? "运行中" : "在跑但没有实例（多半被系统回收过）"
+                : "未运行（回一次小手机就会自动暖起来）"
+              : "读不到状态（需要更新安卓壳）",
+            ok: diag ? diag.running === true : undefined,
+          },
+          {
+            label: "⑥ 有没有开启的角色",
+            value: anyEnabled ? "有" : "一个都没开——查岗不会自己发生",
+            ok: anyEnabled,
+          },
+          {
+            label: "⑦ 扫描器",
+            value: "随桌面壳常驻，每 1 分钟扫一遍；回到小手机也会立刻补扫",
+            ok: true,
+          },
+        ].map(row => (
+          <div className="menu-item" key={row.label} style={{ cursor: "default" }}>
+            <div className="menu-label-group">
+              <span className="menu-label" style={{ fontSize: 13 }}>{row.label}</span>
+            </div>
+            <span
+              style={{
+                fontSize: 12,
+                color: row.ok === true
+                  ? "var(--per-accent, #6f5bd6)"
+                  : row.ok === false ? "var(--c-danger, #d9534f)" : "var(--c-text)",
+                maxWidth: "62%",
+                textAlign: "right",
+                wordBreak: "break-all",
+              }}
+            >
+              {row.value}
+            </span>
+          </div>
+        ))}
+
+        {diag?.lastError ? (
+          <div className="menu-item" style={{ cursor: "default" }}>
+            <div className="menu-label-group">
+              <span className="menu-label" style={{ fontSize: 13 }}>最近失败</span>
+            </div>
+            <span style={{ fontSize: 12, color: "var(--c-danger, #d9534f)", maxWidth: "62%", textAlign: "right", wordBreak: "break-all" }}>
+              {diag.lastError}
+            </span>
+          </div>
+        ) : null}
+      </div>
+
       <div className="menu-group" style={{ marginTop: 12 }}>
         <div className="menu-item" style={{ cursor: "default" }}>
           <div className="menu-icon" style={{ background: "color-mix(in srgb, var(--per-accent, #6f5bd6) 14%, transparent)" }}>
@@ -248,6 +369,23 @@ export function CheckInSettings({ onNotice }: { onNotice?: (msg: string) => void
                 : "当前 App 版本还没有查岗浮层，请更新安卓壳"}
             </span>
           </div>
+        </div>
+        <div className="menu-item" style={{ cursor: "default" }}>
+          <div className="menu-label-group">
+            <span className="menu-label">重置今日计数</span>
+            <span className="menu-desc">刚测过一次、把今天的额度用掉了？点这里清掉，重新等一轮</span>
+          </div>
+          <button
+            type="button"
+            className="ui-btn ui-btn-outline"
+            onClick={() => {
+              for (const character of characters) resetCheckInRuntime(character.id);
+              refresh();
+              onNotice?.("已重置今日查岗计数与上次触发时间");
+            }}
+          >
+            重置
+          </button>
         </div>
       </div>
 

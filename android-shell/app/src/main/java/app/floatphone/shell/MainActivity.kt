@@ -1059,7 +1059,7 @@ class MainActivity : AppCompatActivity() {
 
         /** 查岗服务能力与状态（系统支持 / 无障碍 / 浮窗权限）。 */
         @JavascriptInterface
-        fun getCheckInCapabilities(): String = CheckInService.capabilitiesJson()
+        fun getCheckInCapabilities(): String = CheckInService.capabilitiesJson(this@MainActivity)
 
         /** 截屏桥的内部状态快照（诊断面板用，不含任何画面内容）。 */
         @JavascriptInterface
@@ -1159,6 +1159,23 @@ class MainActivity : AppCompatActivity() {
         fun requestCheckIn(characterId: String, name: String, avatar: String) {
             CheckInService.show(this@MainActivity, characterId, name, avatar)
         }
+
+        /**
+         * 读查岗 / 截屏确认浮层的配色（JSON 原文）。
+         *
+         * 与通话浮窗的 getOverlayThemeJson 分开走：两者配色互不影响，
+         * 设置页各自回显自己那份。
+         */
+        @JavascriptInterface
+        fun getCheckInTheme(): String = CheckInOverlayTheme.themeJson(this@MainActivity)
+
+        /**
+         * 下发查岗浮层配色（`{key, custom}`）。浮层正开着且在等用户决定时
+         * 不会重建窗口——见 CheckInOverlayTheme.setTheme 的注释。
+         */
+        @JavascriptInterface
+        fun setCheckInTheme(json: String): Boolean =
+            CheckInOverlayTheme.setTheme(this@MainActivity, json)
 
         /** 打开本应用的系统设置页（引导用户关电池限制、开自启动）。 */
         @JavascriptInterface

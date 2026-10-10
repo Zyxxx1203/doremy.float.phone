@@ -1,4 +1,30 @@
 /* ═══ 现实桥 · 极简黑白灰 + 紫（参考图定稿：平面/细线图标/黑主钮/紫点缀） ═══ */
+
+/* 「去设置 →」跳板：凡是需要用户去设置里改开关的地方，都给一个能点的按钮，
+   而不是在文案里写一句路径让他自己翻。文案里的路径念一遍就忘了，
+   能点的按钮省掉他找路的全部成本。 */
+.rb-jump-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 6px 0 2px;
+}
+.rb-link.rb-jump {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: none;
+  background: var(--rb-acc-soft);
+  color: var(--rb-acc-text);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.16s ease, opacity 0.2s ease;
+}
+.rb-link.rb-jump:active { transform: scale(0.94); opacity: 0.8; }
 .reality-bridge-app-shell {
   --rb-bg: #f9f9fb;
   --rb-card: #ffffff;

@@ -387,24 +387,25 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         if (currentPage === "main") {
             // 回到主菜单：恢复到离开时的位置
             body.scrollTo({ top: mainScrollRef.current, left: 0, behavior: "auto" });
-        } else {
-            // 进子页：新内容，从头看
-            body.scrollTo({ top: 0, left: 0, behavior: "auto" });
+            // 记位置必须挂在 **layout effect 的 cleanup** 上，这是全篇唯一正确的时机。
+            //
+            // 为什么不能用 passive useEffect 的 cleanup（原来的写法）：
+            // 那一轮的执行顺序是 DOM 换新 → 本 effect 的 scrollTo(0) 执行 →
+            // 最后才轮到 passive cleanup，读到的 scrollTop 早就是 0 了。
+            // 表现就是「点卡片进子页、返回列表永远回到顶部」，而且改多少次
+            // 记位置的逻辑都没用——因为记下来的本来就是 0。
+            //
+            // layout cleanup 跑在 DOM 被替换之前，那时读到的才是真实位置。
+            return () => {
+                mainScrollRef.current = body.scrollTop;
+            };
         }
+        // 进子页：新内容，从头看
+        body.scrollTo({ top: 0, left: 0, behavior: "auto" });
     }, [currentPage]);
 
-    // 「记位置」交给这个 effect 的 cleanup：它在下次 effect 执行之前跑，
-    // 那时 DOM 还没换，读到的仍是刚才那一屏的真实滚动位置。
-    //
-    // 这样各条进子页的入口（卡片、FeaturedCard、事件跳转）都不必自己记一笔，
-    // 也就不会漏掉某个入口。
-    useEffect(() => {
-        if (currentPage !== "main") return;
-        const body = pageBodyRef.current;
-        return () => {
-            if (body) mainScrollRef.current = body.scrollTop;
-        };
-    }, [currentPage]);
+    // 各条进子页的入口（卡片、FeaturedCard、事件跳转）都不必自己记一笔，
+    // 也就不会漏掉某个入口——记位置统一由上面的 layout cleanup 负责。
 
     // Check for pending mascot navigation mode on mount (stored by desktop-shell)
     useEffect(() => {

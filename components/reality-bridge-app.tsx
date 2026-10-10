@@ -237,6 +237,20 @@ function ruleIcon(rule: BridgeRule) {
   return RB_ICON_INBOX;
 }
 
+/**
+ * 现实桥里那些「去设置 → X」的落点。
+ *
+ * 取值必须是设置页 SubPage 里真实存在的 id（见 phone-settings-app.tsx 的
+ * SubPage 联合类型）——写错一个字，用户点下去会落到设置首页而不是目标页。
+ */
+export type SettingsDeepLinkPage =
+  | "perception"
+  | "deviceAction"
+  | "data"
+  | "cloud"
+  | "screenshot"
+  | "toolbox";
+
 export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
   onClose: () => void;
   onNotice?: (text: string) => void;
@@ -245,7 +259,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
    * 这里只给一个「去设置 →」的跳板——同一份配置只维护一处，
    * 不在这页重复造开关（造了就会两边不一致）。
    */
-  onOpenSettings?: (page: "perception" | "deviceAction") => void;
+  onOpenSettings?: (page: SettingsDeepLinkPage) => void;
 }) {
   const [tab, setTab] = useState<TabId>("main");
   const [settings, setSettings] = useState(() => loadBridgeSettings());
@@ -949,6 +963,26 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
 
   const isExistingRule = editing !== null && rules.some(rule => rule.id === editing.id);
 
+  /**
+   * 「去设置 →」跳板。
+   *
+   * 凡是需要用户去设置里改某个开关的地方，都必须用这个**可点**的按钮，
+   * 而不是在文案里写一句「设置 → 操作设备」就完事。
+   *
+   * 之前的教训：好几处提示写着「去「设置 → 操作设备」打开」，那行字却
+   * 是死的——用户照着念了一遍、退出去一层层翻，翻不到就以为功能坏了。
+   * 一句能点的话，省掉他找路径的全部成本。
+   */
+  const settingsJump = (label: string, page: SettingsDeepLinkPage) => (
+    onOpenSettings ? (
+      <button
+        type="button"
+        className="rb-link rb-jump"
+        onClick={() => { setMenuOpen(false); onOpenSettings(page); }}
+      >{label} →</button>
+    ) : null
+  );
+
   /* 联动向导第②步内联的快捷指令教程 */
   const shortcutSteps = (
     <>
@@ -1284,7 +1318,10 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                       ) : null}
 
                       {!ready ? (
-                        <p className="rb-hint" style={{ padding: "8px 4px 0" }}>还没配置云端存储——「设置 → 数据管理 → 云端备份」。现实桥与云端备份共用同一空间。</p>
+                        <div className="rb-jump-row" style={{ margin: "8px 4px 0" }}>
+                          <p className="rb-hint">还没配置云端存储——现实桥与云端备份共用同一个存储空间，配一次两边都能用。</p>
+                          {settingsJump("去设置配置云端", "data")}
+                        </div>
                       ) : null}
                     </>
                   ) : null}
@@ -1523,7 +1560,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                 <span className="rb-icchip">{RB_ICON_PHONE}</span>
                 <div className="rb-main-text">
                   <b>接收快捷指令消息</b>
-                  <p>{ready ? "应用打开或后台保活期间自动接收" : "请先配置云端存储（设置 → 数据管理 → 云端备份）"}</p>
+                  <p>{ready ? "应用打开或后台保活期间自动接收" : "要先配置云端存储才能收"}</p>
                 </div>
                 <button
                   type="button"
@@ -1532,6 +1569,9 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                   aria-label="接收快捷指令消息"
                 />
               </div>
+              {!ready ? (
+                <div className="rb-jump-row">{settingsJump("去设置配置云端", "data")}</div>
+              ) : null}
               {settings.enabled ? (
                 <div className="rb-freq">
                   {FREQ_OPTIONS.map(opt => (
@@ -1590,7 +1630,8 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                 ) : (
                   <>
                     <div className="rb-wiz-warn">尚未配置云端存储</div>
-                    <p className="rb-help">前往「设置 → 数据管理 → 云端备份」填写 Supabase 项目地址与密钥。现实桥与云端备份共用同一个存储空间，无需重复配置。</p>
+                    <p className="rb-help">需要填写 Supabase 项目地址与密钥。现实桥与云端备份共用同一个存储空间，配一次两边都能用。</p>
+                    <div className="rb-jump-row">{settingsJump("去设置配置云端", "data")}</div>
                   </>
                 )}
                 <p className="rb-hint">如果你用安卓，「本机桥」里的感知与定时会自己产生信号，不需要任何外部工具；用 iPhone 才需要一条上传数据的快捷指令。</p>
@@ -2027,10 +2068,13 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                   </div>
                   <p className="rb-help">收到的内容可以填进参数里（用 {"{payload}"} 或 {"{type}"}），例如「打开 {payload}」。</p>
                   {!deviceActionEnabled ? (
-                    <p className="rb-help">还没打开「操作设备」总开关，这条联动会执行失败——去「设置 → 操作设备」打开。</p>
+                    <p className="rb-help">还没打开「操作设备」总开关，这条联动会执行失败。</p>
                   ) : deviceActionCfg.actions[editing.actions.deviceAction.action as keyof typeof deviceActionCfg.actions] !== true ? (
-                    <p className="rb-help">「{DEVICE_ACTION_LABEL[editing.actions.deviceAction.action as keyof typeof DEVICE_ACTION_LABEL]}」这个动作还没在「设置 → 操作设备」里单独打开。</p>
+                    <p className="rb-help">「{DEVICE_ACTION_LABEL[editing.actions.deviceAction.action as keyof typeof DEVICE_ACTION_LABEL]}」这个动作还没单独打开。</p>
                   ) : null}
+                  {!deviceActionEnabled || deviceActionCfg.actions[editing.actions.deviceAction.action as keyof typeof deviceActionCfg.actions] !== true
+                    ? <div className="rb-jump-row">{settingsJump("去设置里打开它", "deviceAction")}</div>
+                    : null}
                 </div>
               ) : null}
             </div>
@@ -2176,6 +2220,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
 
               {swizStep === 2 ? (
                 <div className="rb-wiz-page">
+                  <p className="rb-hint" style={{ display: "none" }} />
                   <label>工具名称（角色看到的动作名）
                     <input value={editingShortcut.name} maxLength={30} placeholder="例如：打开微信并截图"
                       onChange={event => {

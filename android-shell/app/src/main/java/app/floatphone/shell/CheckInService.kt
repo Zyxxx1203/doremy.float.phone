@@ -55,6 +55,164 @@ import java.io.ByteArrayOutputStream
  *   所以由网页在**用户开启查岗时（App 在前台）**把服务暖起来常驻，
  *   真正要弹窗时只是显示一个已存在的窗口，不涉及「后台启动服务」。
  */
+/**
+ * 查岗 / 截屏确认浮层的配色。
+ *
+ * 与通话浮窗的 ReplyTheme 同一套思路（见 CallOverlayService）：预设打底 +
+ * 逐项覆盖，网页侧「设置 → 截屏 → 确认浮层外观」选或调，经
+ * AndroidShell.setCheckInTheme() 下发存进 SharedPreferences。
+ *
+ * 为什么不与通话浮窗共用一份配色：两者会同时出现（通话中照样会查岗），
+ * 共用就会出现「改这个把那个也改了」。而且这条浮层上面显示的是**整屏画面**，
+ * 用户更需要它长得像自己的东西。
+ *
+ * 独立成顶层 object 而不是塞进 Service 的伴生对象：MainActivity 的桥方法
+ * 要直接读写它，服务实例本身不该暴露给外部。
+ */
+object CheckInOverlayTheme {
+
+    private const val PREFS = "check_in_overlay_prefs"
+    private const val KEY_JSON = "theme_json"
+
+    /** 兜底预设键：与原生原来的硬编码配色一致，没配过的用户看不出变化。 */
+    private const val THEME_DEFAULT = "dark"
+
+    class Theme(
+        val key: String,
+        /** 浮层主底色（已含 alpha） */
+        val panel: Int,
+        val text: Int,
+        val hint: Int,
+        val preview: Int,
+        val chip: Int,
+        val chipText: Int,
+        val accent: Int,
+        val accentText: Int,
+        val muted: Int,
+        val mutedText: Int,
+    )
+
+    private fun build(
+        key: String,
+        panel: Long, text: Long, hint: Long, preview: Long,
+        chip: Long, chipText: Long, accent: Long, accentText: Long,
+        muted: Long, mutedText: Long,
+    ) = Theme(
+        key,
+        panel.toInt(), text.toInt(), hint.toInt(), preview.toInt(),
+        chip.toInt(), chipText.toInt(), accent.toInt(), accentText.toInt(),
+        muted.toInt(), mutedText.toInt(),
+    )
+
+    private val DARK = build(
+        "dark", 0xF21B1B22, 0xFFFFFFFF, 0xFF8A93A6, 0xFF2A2A33,
+        0xFF2A2A33, 0xFFC9D1E0, 0xFF5B7CFA, 0xFFFFFFFF, 0xFF33333D, 0xFFC9D1E0,
+    )
+    private val LIGHT = build(
+        "light", 0xF5FFFFFF, 0xFF1B1B22, 0xFF8A93A6, 0xFFF0F0F4,
+        0xFFF0F0F4, 0xFF3A3A44, 0xFF3B82F6, 0xFFFFFFFF, 0xFFE6E6EC, 0xFF5A6270,
+    )
+    private val OCEAN = build(
+        "ocean", 0xF20E1A2B, 0xFFFFFFFF, 0xFF7E8DA6, 0xFF16263C,
+        0xFF16263C, 0xFFC3D2E6, 0xFF4C8DFF, 0xFFFFFFFF, 0xFF1E3048, 0xFF9FB0C9,
+    )
+    private val SAKURA = build(
+        "sakura", 0xF22A1B24, 0xFFFFFFFF, 0xFFB08A9C, 0xFF3A2733,
+        0xFF3A2733, 0xFFE0C3CF, 0xFFE56B9A, 0xFFFFFFFF, 0xFF452F3C, 0xFFC9A3B3,
+    )
+    private val BAMBOO = build(
+        "bamboo", 0xF2152419, 0xFFFFFFFF, 0xFF8AA694, 0xFF1E3324,
+        0xFF1E3324, 0xFFC0DCC8, 0xFF30A46C, 0xFFFFFFFF, 0xFF27402F, 0xFFA3C9B3,
+    )
+    private val VIOLET = build(
+        "violet", 0xF21D182B, 0xFFFFFFFF, 0xFF938AA6, 0xFF2A2440,
+        0xFF2A2440, 0xFFCFC6E0, 0xFF9B6BFF, 0xFFFFFFFF, 0xFF352D4D, 0xFFB3A9C9,
+    )
+
+    private val ALL = listOf(DARK, LIGHT, OCEAN, SAKURA, BAMBOO, VIOLET)
+
+    private fun of(key: String?): Theme = ALL.firstOrNull { it.key == key } ?: DARK
+
+    /** 只认 #RRGGBB；解析不出就用兜底色。 */
+    private fun parseColor(value: String?, fallback: Int): Int {
+        if (value.isNullOrBlank()) return fallback
+        return runCatching { Color.parseColor(value.trim()) }.getOrDefault(fallback)
+    }
+
+    /**
+     * 从网页下发的 JSON 构造实际配色：
+     * `{ "key": "dark", "custom": { "panel": "#223344", "panelAlpha": 0.8, ... } }`
+     *
+     * panelAlpha 与 panel 分开：底色只存 RGB，透明度单独一项，免得在
+     * #RRGGBBAA 与 #AARRGGBB 两种写法之间来回出错。
+     */
+    private fun fromJson(json: String?): Theme {
+        if (json.isNullOrBlank()) return DARK
+        val root = runCatching { JSONObject(json) }.getOrNull() ?: return DARK
+        val theme = of(root.optString("key", THEME_DEFAULT))
+        val custom = root.optJSONObject("custom") ?: return theme
+
+        val alphaRaw = custom.optDouble("panelAlpha", -1.0)
+            .takeIf { it in 0.0..1.0 }
+            ?.let { (it * 255).toInt() } ?: -1
+        val panelColor = custom.optString("panel", "")
+        val panel = when {
+            panelColor.isNotBlank() && alphaRaw >= 0 ->
+                (alphaRaw shl 24) or (parseColor(panelColor, theme.panel and 0x00FFFFFF) and 0x00FFFFFF)
+            panelColor.isNotBlank() -> parseColor(panelColor, theme.panel)
+            alphaRaw >= 0 -> (alphaRaw shl 24) or (theme.panel and 0x00FFFFFF)
+            else -> theme.panel
+        }
+
+        // 其余各项沿用同一个「有就用、没有就跟随预设」的规则。
+        fun pick(name: String, fallback: Int) =
+            custom.optString(name, "").takeIf { it.isNotBlank() }
+                ?.let { parseColor(it, fallback) } ?: fallback
+
+        return Theme(
+            theme.key,
+            panel,
+            pick("text", theme.text),
+            pick("hint", theme.hint),
+            pick("preview", theme.preview),
+            pick("chip", theme.chip),
+            pick("chipText", theme.chipText),
+            pick("accent", theme.accent),
+            pick("accentText", theme.accentText),
+            pick("muted", theme.muted),
+            pick("mutedText", theme.mutedText),
+        )
+    }
+
+    /** 读当前配色。读不到（没存过 / 存的内容坏了）一律回落默认。 */
+    fun current(context: Context): Theme = fromJson(
+        runCatching {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_JSON, "")
+        }.getOrNull(),
+    )
+
+    /** 当前配色的原文（网页侧回显 / 诊断读）。 */
+    fun themeJson(context: Context): String = runCatching {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_JSON, "").orEmpty()
+    }.getOrDefault("")
+
+    /**
+     * 下发配色并即时生效。
+     *
+     * 浮层正开着时：把窗口拆了重建。改配色大概率发生在设置页，那时浮层
+     * 本就不该开着；万一用户正是在「等你决定」的当口改了，重建会丢掉他
+     * 已经打了一半的回复——所以那种情况下不动窗口，留到下一次自然生效。
+     */
+    fun setTheme(context: Context, json: String): Boolean = runCatching {
+        val normalized = JSONObject(json).toString()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(KEY_JSON, normalized)
+            .apply()
+        CheckInService.applyThemeToLiveInstance()
+        true
+    }.getOrDefault(false)
+}
+
 class CheckInService : Service() {
 
     companion object {
@@ -100,6 +258,23 @@ class CheckInService : Service() {
         @Volatile
         private var liveInstance: CheckInService? = null
 
+        /**
+         * 配色变了：让活着的实例重画。
+         *
+         * 分两种情况，见 CheckInOverlayTheme.setTheme 的注释：
+         *  · 窗口没开着（绝大多数情况）→ 把旧窗口丢掉，下次弹的时候用新配色重建；
+         *  · 窗口正开着且在等用户决定 → **什么都不做**。此刻重建会连预览图
+         *    带用户打了一半的回复一起清掉，为了换个颜色毁掉他的操作不划算。
+         */
+        fun applyThemeToLiveInstance() {
+            val instance = liveInstance ?: return
+            instance.main.post {
+                val view = instance.rootView ?: return@post
+                if (view.visibility == View.VISIBLE) return@post
+                instance.hideWindow()
+            }
+        }
+
         /** 浮窗权限是否已授予（与通话浮窗共用同一个系统权限）。 */
         fun canDraw(context: Context): Boolean =
             Build.VERSION.SDK_INT < 23 || android.provider.Settings.canDrawOverlays(context)
@@ -116,6 +291,22 @@ class CheckInService : Service() {
                 else context.startService(intent)
                 true
             }.getOrDefault(false)
+        }
+
+        /**
+         * 回一条「这次没能弹出来」，并带上原因。
+         *
+         * 浮层类功能最难查的就是「什么都没发生」：没有这条回执，网页只能在
+         * 超时后给一句笼统的「没回应」，用户和排查的人都无从下手。
+         * 走的是与正常结果同一条事件通道，网页侧不必额外长一套心智。
+         */
+        private fun fail(context: Context, characterId: String, reason: String) {
+            recordError("show", reason)
+            val payload = JSONObject()
+                .put("characterId", characterId)
+                .put("accepted", false)
+                .put("reason", reason)
+            ShellBus.dispatchOverlayEvent("checkIn", payload)
         }
 
         /** 收掉服务（网页关闭全部查岗时调用）。 */
@@ -147,7 +338,22 @@ class CheckInService : Service() {
                 instance.main.post { instance.showCheckIn(characterId, name, avatar, source) }
                 return
             }
-            if (!running) return
+
+            // 权限没给：如实回一条失败。不这么做的话，网页会一直等在
+            // requestCheckIn 的 Promise 上，直到超时才反应过来——
+            // 用户看到的只是「点了没反应」。
+            if (!canDraw(context)) {
+                fail(context, characterId, "没有「显示在其他应用上层」权限，浮层弹不出来")
+                return
+            }
+
+            // 服务不在也照样把它拉起来。
+            //
+            // 这里曾经是一句 `if (!running) return`——服务被系统回收后就
+            // 永远弹不出来，而且一声不吭。但此刻正是**唯一合法**的启动时机：
+            // 请求是网页发来的，说明 App 就在前台（Android 12+ 只允许前台
+            // 启动前台服务）。白放着这个时机不用，功能就只能在「运气好、
+            // 服务还活着」的时候工作。
             runCatching {
                 context.startService(
                     Intent(context, CheckInService::class.java).apply {
@@ -279,11 +485,20 @@ class CheckInService : Service() {
                 .toString()
         }
 
-        /** 能力与状态快照，给设置面板显示三态。 */
-        fun capabilitiesJson(): String = JSONObject()
+        /**
+         * 能力与状态快照，给设置面板显示三态。
+         *
+         * canDraw 报的是**系统真实的浮窗权限**（Settings.canDrawOverlays），
+         * 不是「服务在不在跑」。这两者曾经被混为一谈，代价很实在：
+         * 网页拿 canDraw 判断「浮层能不能弹」，权限明明没给也报「已就绪」，
+         * 用户点「试一次」后浮层根本建不出来，网页却老老实实等它回应，
+         * 等满 90 秒才超时——表现就是「点了没反应」，而且查不出原因。
+         */
+        fun capabilitiesJson(context: Context): String = JSONObject()
             .put("supported", Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
             .put("accessibilityOn", ScreenshotBridge.isAccessibilityOn())
-            .put("canDraw", liveInstance != null || running)
+            .put("canDraw", canDraw(context))
+            .put("running", running)
             .toString()
 
         // ── 诊断留痕 ────────────────────────────────────────
@@ -462,7 +677,13 @@ class CheckInService : Service() {
         replyInput?.hint = "顺便说一句（可选）"
         previewView?.setImageDrawable(null)
         previewView?.scaleType = ImageView.ScaleType.CENTER
-        showWindow(true)
+        // 窗口没挂上就别往下走了：截了图也显示不出来，用户只会觉得
+        // 「点了没反应」。如实回一条失败，网页立刻能给他一句人话。
+        if (!showWindow(true)) {
+            fail(this, characterId, "浮层没能显示出来（多半是缺「显示在其他应用上层」权限）")
+            discardPending()
+            return
+        }
         cancelAutoDismiss()
 
         ScreenshotBridge.captureBitmap { bitmap, error ->
@@ -518,11 +739,12 @@ class CheckInService : Service() {
 
         // ② 让用户点一个
         row.visibility = View.VISIBLE
+        val chipTheme = CheckInOverlayTheme.current(this)
         for ((id, itemName) in list) {
             val chip = TextView(this).apply {
                 tag = id
                 text = itemName
-                setTextColor(0xFFC9D1E0.toInt())
+                setTextColor(chipTheme.chipText)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
@@ -530,7 +752,7 @@ class CheckInService : Service() {
                 setPadding(dp(12), dp(6), dp(12), dp(6))
                 background = GradientDrawable().apply {
                     cornerRadius = dp(14).toFloat()
-                    setColor(0xFF2A2A33.toInt())
+                    setColor(chipTheme.chip)
                 }
                 isClickable = true
                 setOnClickListener { selectTarget(id) }
@@ -550,14 +772,15 @@ class CheckInService : Service() {
     private fun selectTarget(id: String) {
         selectedTargetId = id
         val list = targetList ?: return
+        val t = CheckInOverlayTheme.current(this)
         for (i in 0 until list.childCount) {
             val child = list.getChildAt(i)
             val selected = child.tag == id
             (child.background as? GradientDrawable)?.setColor(
-                if (selected) 0xFF5B7CFA.toInt() else 0xFF2A2A33.toInt(),
+                if (selected) t.accent else t.chip,
             )
             (child as? TextView)?.setTextColor(
-                if (selected) Color.WHITE else 0xFFC9D1E0.toInt(),
+                if (selected) t.accentText else t.chipText,
             )
         }
         val name = (0 until list.childCount)
@@ -719,20 +942,27 @@ class CheckInService : Service() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
+    /**
+     * 当前配色。每次建窗口时读一次，不缓存——用户完全可能在设置页改完
+     * 立刻回来点「试一次」，缓存会让那一张还用旧色。
+     */
+    private fun theme(): CheckInOverlayTheme.Theme = CheckInOverlayTheme.current(this)
+
     /** 建窗口（只建一次，之后复用）。 */
     private fun ensureWindow() {
         if (rootView != null) return
+        val t = theme()
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(14), dp(14), dp(12))
             background = GradientDrawable().apply {
                 cornerRadius = dp(18).toFloat()
-                setColor(0xF21B1B22.toInt())
+                setColor(t.panel)
             }
         }
 
         titleView = TextView(this).apply {
-            setTextColor(Color.WHITE)
+            setTextColor(t.text)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             typeface = Typeface.DEFAULT_BOLD
             maxLines = 2
@@ -749,7 +979,7 @@ class CheckInService : Service() {
         val previewWrap = FrameLayout(this).apply {
             background = GradientDrawable().apply {
                 cornerRadius = dp(12).toFloat()
-                setColor(0xFF2A2A33.toInt())
+                setColor(t.preview)
             }
         }
         previewView = ImageView(this).apply {
@@ -792,13 +1022,13 @@ class CheckInService : Service() {
         // 想说话就打一句，不想说直接点下面的按钮。
         replyInput = EditText(this).apply {
             hint = "顺便说一句（可选）"
-            setHintTextColor(0xFF8A93A6.toInt())
-            setTextColor(Color.WHITE)
+            setHintTextColor(t.hint)
+            setTextColor(t.text)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             maxLines = 3
             background = GradientDrawable().apply {
                 cornerRadius = dp(10).toFloat()
-                setColor(0xFF2A2A33.toInt())
+                setColor(t.chip)
             }
             setPadding(dp(10), dp(8), dp(10), dp(8))
             imeOptions = EditorInfo.IME_ACTION_SEND
@@ -828,22 +1058,22 @@ class CheckInService : Service() {
         }
         val rejectBtn = Button(this).apply {
             text = "不给"
-            setTextColor(0xFFC9D1E0.toInt())
+            setTextColor(t.mutedText)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             background = GradientDrawable().apply {
                 cornerRadius = dp(10).toFloat()
-                setColor(0xFF33333D.toInt())
+                setColor(t.muted)
             }
             setOnClickListener { rejectCheckIn() }
         }
         rejectButton = rejectBtn
         val acceptBtn = Button(this).apply {
             text = "给它看"
-            setTextColor(Color.WHITE)
+            setTextColor(t.accentText)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             background = GradientDrawable().apply {
                 cornerRadius = dp(10).toFloat()
-                setColor(0xFF5B7CFA.toInt())
+                setColor(t.accent)
             }
             setOnClickListener { acceptCheckIn() }
         }
@@ -867,9 +1097,14 @@ class CheckInService : Service() {
         rootView = container
     }
 
-    /** 把窗口挂上/取下。首次 addView，之后只改可见性。 */
-    private fun showWindow(visible: Boolean) {
-        val view = rootView ?: return
+    /**
+     * 把窗口挂上/取下。首次 addView，之后只改可见性。
+     *
+     * @return 窗口现在是否真的处于期望状态。addView 失败时返回 false——
+     *         调用方据此立刻收场，而不是截完图对着一个看不见的窗口干等。
+     */
+    private fun showWindow(visible: Boolean): Boolean {
+        val view = rootView ?: return false
         if (visible) {
             if (view.parent == null) {
                 val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -894,14 +1129,17 @@ class CheckInService : Service() {
                     width = resources.displayMetrics.widthPixels - edge * 2
                 }
                 layoutParams = params
-                runCatching { windowManager.addView(view, params) }
+                val added = runCatching { windowManager.addView(view, params) }
                     .onFailure { recordError("addView", it) }
+                    .isSuccess
+                if (!added) return false
             } else {
                 view.visibility = View.VISIBLE
             }
         } else {
             view.visibility = View.GONE
         }
+        return true
     }
 
     /**
