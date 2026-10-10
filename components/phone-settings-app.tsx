@@ -439,11 +439,23 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         return () => window.removeEventListener("mascot-navigate-mode", onMode);
     }, []);
 
-    // Listen for internal settings tab navigation (e.g. mascot "修改绑定" button)
+    /**
+     * 内部深链：别处（现实桥、桌宠等）要求跳到设置里的某一子页。
+     *
+     * 这条通道与上面那条 sessionStorage 标记是**互补**关系，不是重复：
+     * 标记只在设置页「刚挂载」时读得到一次，而事件监听是常驻的——
+     * 设置页早已挂载、或那次读取没赶上时，靠这条才切得过去。
+     *
+     * 必须校验 page 合法性：写错一个 id 就会落进 renderSubPage 的
+     * default 分支，用户看到一张空白页，比不跳还糟。
+     */
     useEffect(() => {
         const onNav = (e: Event) => {
             const { page } = (e as CustomEvent).detail ?? {};
-            if (page) setCurrentPage(page as SubPage);
+            if (typeof page !== "string") return;
+            if (!SETTINGS_MENU.some(m => m.id === page)) return;
+            setCurrentPage(page as SubPage);
+            setSubpageTitle(null);
         };
         window.addEventListener("settings-navigate", onNav);
         return () => window.removeEventListener("settings-navigate", onNav);

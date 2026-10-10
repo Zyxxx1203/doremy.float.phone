@@ -4197,10 +4197,24 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
           onClose={() => setActiveApp(null)}
           onNotice={setNotice}
           onOpenSettings={(page) => {
-            // 复用设置页既有的深链机制（sessionStorage 标记），不新造一条跳转通道。
+            // 跳到设置里的某个子页。这里必须**两条腿一起跑**，只靠一条会漏：
+            //
+            //  ① sessionStorage 标记 —— 只有设置页处于「重新挂载」状态时才会被
+            //     读到。它是给「设置页此刻没开着」这种正常情况用的。
+            //  ② settings-navigate 事件 —— 设置页常驻监听，**不依赖挂载时机**。
+            //
+            // 之前只用了 ①，于是出现「跳转了但停在设置主菜单」：设置页的读取
+            // effect 只在挂载时跑一次，实例若被复用、或那次读取没赶上，标记就白写了。
+            // ②补上后，无论设置页是刚挂载还是早就在，这一页都切得过去。
+            //
             // 顺序要紧：先关掉当前 App，再开设置——否则设置页会被现实桥盖住。
-            sessionStorage.setItem("mascot-settings-mode", page);
+            try { sessionStorage.setItem("mascot-settings-mode", page); } catch { /* 隐私模式等，忽略 */ }
             setActiveApp("settings");
+            // 等设置页挂载完成再把事件送过去。180ms 足够它渲染并装上监听器；
+            // 早于此事件没人接，晚了用户已经看到主菜单、会有「闪一下才跳」的观感。
+            window.setTimeout(() => {
+              window.dispatchEvent(new CustomEvent("settings-navigate", { detail: { page } }));
+            }, 180);
           }}
         />
       );
