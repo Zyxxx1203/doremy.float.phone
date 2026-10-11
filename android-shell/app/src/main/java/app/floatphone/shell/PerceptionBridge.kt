@@ -97,9 +97,29 @@ class PerceptionBridge(private val context: Context) {
     fun batteryJson(): JSONObject = try {
         val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
         val percent = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        // 充电判定优先用状态位，取不到才回退 isCharging。
+        //
+        // 为什么不能只看 isCharging：它在部分机型上会漏报——尤其「插着电源但电池已满」
+        // 与「刚插上、还没被识别」这两种时刻。网页侧一旦读到 false 就发一条「充电结束」，
+        // 过会儿又变 true 发「充电开始」，用户看到的就是充电状态乱跳、识别不准（实测反馈）。
+        // BATTERY_PROPERTY_STATUS 给的是完整状态位：CHARGING / FULL / DISCHARGING /
+        // NOT_CHARGING / UNKNOWN，「插着电源」= CHARGING 或 FULL。
+        val status = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_STATUS)
+        } else {
+            Int.MIN_VALUE
+        }
+        val charging = if (status != Int.MIN_VALUE && status != BatteryManager.BATTERY_STATUS_UNKNOWN) {
+            status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+        } else {
+            bm.isCharging
+        }
         JSONObject()
             .put("percent", if (percent in 0..100) percent else -1)
-            .put("charging", bm.isCharging)
+            .put("charging", charging)
+            // 状态原文一并回传：诊断时能看出到底是哪种（充电/已满/放电/未知），
+            // 而不是只有一个 true/false 让人猜为什么不准。
+            .put("status", status)
     } catch (e: Throwable) {
         JSONObject()
     }

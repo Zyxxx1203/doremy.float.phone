@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 import { loadCharacters } from "@/lib/character-storage";
+import { kvGet, kvSet } from "@/lib/kv-db";
 import { CLOUD_BACKUP_BUCKET, normalizeBackupUrl } from "@/lib/cloud-backup/config";
 import { pollRealityBridgeNow, REALITY_BRIDGE_FEED_UPDATED_EVENT } from "@/components/reality-bridge-scheduler";
 import { testRunRule } from "@/lib/reality-bridge/engine";
@@ -378,6 +379,37 @@ const RULE_SCENE_TEMPLATES: RuleSceneTemplate[] = [
   },
 ];
 
+/**
+ * 试跑示例数据的存盘键。
+ *
+ * 为什么要存：同一条规则常常要来回试几次（改个填充词、改个动作再试），
+ * 每次重新打开都清空、要重敲一遍信号名和内容，很烦（实测反馈）。
+ * 存在本机，下次打开自动带回上次填的内容。
+ */
+const RULE_TEST_SAMPLE_KEY = "ai_phone_rule_test_sample_v1";
+
+function loadRuleTestSample(): { type: string; payload: string } {
+  try {
+    const raw = kvGet(RULE_TEST_SAMPLE_KEY);
+    if (!raw) return { type: "", payload: "" };
+    const parsed = JSON.parse(raw) as { type?: unknown; payload?: unknown };
+    return {
+      type: typeof parsed?.type === "string" ? parsed.type.slice(0, 200) : "",
+      payload: typeof parsed?.payload === "string" ? parsed.payload.slice(0, 500) : "",
+    };
+  } catch {
+    return { type: "", payload: "" };
+  }
+}
+
+function saveRuleTestSample(sample: { type: string; payload: string }): void {
+  try {
+    kvSet(RULE_TEST_SAMPLE_KEY, JSON.stringify(sample));
+  } catch {
+    // 记不住不影响试跑本身，静默即可
+  }
+}
+
 const WIZ_STEP_NAMES = ["接通管道", "创建快捷指令", "选择信号", "加工内容", "决定动作", "测试与保存"] as const;
 const SWIZ_STEP_NAMES = ["接通通道", "动作是什么", "触发方式", "参数与结果", "创建快捷指令", "测试与保存"] as const;
 const DWIZ_STEP_NAMES = ["接通通道", "数据项是什么", "创建上传快捷指令", "测试与保存"] as const;
@@ -436,9 +468,11 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
   const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
   /* 规则试跑：示例数据 + 结果。以前第 6 步只有一句「保存后自己回 iPhone 试」，
      用户配完心里没底。见 runRuleTest。 */
-  const [ruleTest, setRuleTest] = useState<{ type: string; payload: string }>({ type: "", payload: "" });
+  const [ruleTest, setRuleTest] = useState<{ type: string; payload: string }>(loadRuleTestSample);
   const [ruleTestBusy, setRuleTestBusy] = useState(false);
   const [ruleTestResult, setRuleTestResult] = useState<{ ok: boolean; text: string } | null>(null);
+  // 改动即存：下次打开自动带回，不用重敲。
+  useEffect(() => { saveRuleTestSample(ruleTest); }, [ruleTest]);
 
   // 换一个动作/重新打开向导时清掉上次的测试结果
   useEffect(() => { setTestResult(null); }, [editingShortcut?.id]);
@@ -921,8 +955,8 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     setEditing(rule);
     setWizStep(1);
     setWizMax(existing ? 6 : 1);
-    // 换一条规则就清掉上次的试跑结果，免得把上一条的效果错认成这一条的
-    setRuleTest({ type: "", payload: "" });
+    // 只清结果，**保留示例数据**：同一份示例常常要在几条规则间反复试，
+    // 每次都清空会让人重敲一遍（实测反馈）。示例存在本机，下次打开也还在。
     setRuleTestResult(null);
   }, []);
 
