@@ -371,7 +371,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
      * （尤其 Connections 那一屏），这个体验很伤。
      *
      * 现在的规则：
-     *   · 离开主菜单时记下滚动位置；
+     *   · 在主菜单里滚动时随时记下位置；
      *   · 回到主菜单时恢复它；
      *   · 进入任何子页本身仍然从顶部开始（那是新内容，从头看才对）。
      *
@@ -387,25 +387,41 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         if (currentPage === "main") {
             // 回到主菜单：恢复到离开时的位置
             body.scrollTo({ top: mainScrollRef.current, left: 0, behavior: "auto" });
-            // 记位置必须挂在 **layout effect 的 cleanup** 上，这是全篇唯一正确的时机。
-            //
-            // 为什么不能用 passive useEffect 的 cleanup（原来的写法）：
-            // 那一轮的执行顺序是 DOM 换新 → 本 effect 的 scrollTo(0) 执行 →
-            // 最后才轮到 passive cleanup，读到的 scrollTop 早就是 0 了。
-            // 表现就是「点卡片进子页、返回列表永远回到顶部」，而且改多少次
-            // 记位置的逻辑都没用——因为记下来的本来就是 0。
-            //
-            // layout cleanup 跑在 DOM 被替换之前，那时读到的才是真实位置。
-            return () => {
-                mainScrollRef.current = body.scrollTop;
-            };
+            return;
         }
         // 进子页：新内容，从头看
         body.scrollTo({ top: 0, left: 0, behavior: "auto" });
     }, [currentPage]);
 
+    // 当前页的镜像。scroll 事件是异步派发的，可能在切页之后才送到——
+    // handler 用它判断「这一刻还在不在主菜单」，避免把子页那份已被浏览器
+    // 夹过的 scrollTop 写回记录，把好不容易记下的位置覆盖掉。
+    const currentPageRef = useRef<SubPage>(currentPage);
+    useLayoutEffect(() => { currentPageRef.current = currentPage; }, [currentPage]);
+
+    /**
+     * 记录主菜单滚动位置：在主菜单停留期间用 scroll 事件持续记录。
+     *
+     * 为什么不在「离开那一刻」读一次：那一提交里 page-body 的子节点已经换成
+     * 子页内容，若子页首帧比主菜单矮，浏览器会就地把 scrollTop 夹到新上限，
+     * 读到的已不是用户原来的位置。夹掉多少取决于子页高度与滚动深度，于是
+     * 出现「同是返回，有的页面正常、有的跳顶」。滚动时记录没有这个时序依赖。
+     */
+    useEffect(() => {
+        const body = pageBodyRef.current;
+        if (!body || currentPage !== "main") return;
+        const onScroll = () => {
+            if (currentPageRef.current !== "main") return;
+            mainScrollRef.current = body.scrollTop;
+        };
+        body.addEventListener("scroll", onScroll, { passive: true });
+        // 返回主菜单、恢复位置之后同步一次，让记录对齐真实值
+        onScroll();
+        return () => body.removeEventListener("scroll", onScroll);
+    }, [currentPage]);
+
     // 各条进子页的入口（卡片、FeaturedCard、事件跳转）都不必自己记一笔，
-    // 也就不会漏掉某个入口——记位置统一由上面的 layout cleanup 负责。
+    // 也就不会漏掉某个入口——位置由上面的 scroll 监听持续记录。
 
     // Check for pending mascot navigation mode on mount (stored by desktop-shell)
     useEffect(() => {
@@ -503,7 +519,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                             </div>
                             <div className="mt-[10px]">
                                 <CardGrid
-                                    items={SETTINGS_MENU.filter(item => ["weixin", "toolbox", "callOverlay", "perception", "deviceAction", "systemCalendar", "screenshot"].includes(item.id)).map(makeCardItem)}
+                                    items={SETTINGS_MENU.filter(item => ["weixin", "toolbox", "callOverlay", "perception", "deviceAction", "systemCalendar", "screenshot", "widget"].includes(item.id)).map(makeCardItem)}
                                 />
                             </div>
                             <div className="mt-[10px]">
