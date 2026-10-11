@@ -72,6 +72,39 @@ export async function POST(request: Request) {
   }
 }
 
+/**
+ * 列出本账号名下还在排队/执行中的预约。
+ *
+ * 给「排期管理」面板用：用户想看到「哪些角色排了什么」并逐条删，
+ * 而不是只有一个看不见内部的「全清」按钮。
+ *
+ * 只回 trigger_key / kind / execute_at / status：payload 是加密的，服务端
+ * 也没打算在这里解密；trigger_key 已足够反解回角色与用途。
+ */
+export async function GET(request: Request) {
+  if (SHARED_PUSH_DISABLED) return sharedPushDisabledResponse();
+  try {
+    if (!getSupabaseServerConfig()) {
+      return NextResponse.json({ ok: false, error: "Supabase 环境变量未配置。" }, { status: 503 });
+    }
+    const account = await getCurrentAccount(request);
+    if (!account) {
+      return NextResponse.json({ ok: false, error: "未登录。" }, { status: 401 });
+    }
+    const result = await supabaseRestFetch<Array<{ trigger_key: string; kind: string; execute_at: string; status: string }>>(
+      `push_jobs?user_id=eq.${encodeSupabaseFilter(account.id)}&status=in.(pending,running)`
+      + "&select=trigger_key,kind,execute_at,status&order=execute_at.asc&limit=200",
+    );
+    if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: 500 });
+    return NextResponse.json({ ok: true, jobs: result.data });
+  } catch (err) {
+    return NextResponse.json(
+      { ok: false, error: formatSupabaseRestError(err instanceof Error ? err.message : String(err)) },
+      { status: 500 },
+    );
+  }
+}
+
 /** 心跳续约：把 pending 预约的接管时刻推迟到 now+90s。本地生成期间每 30s 一跳。 */
 export async function PATCH(request: Request) {
   if (SHARED_PUSH_DISABLED) return sharedPushDisabledResponse();

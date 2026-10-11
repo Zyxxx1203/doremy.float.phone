@@ -26,6 +26,7 @@ import {
 import { connectPersonalPushCloud, deployPersonalPushCloud, isPersonalPushCloudActive } from "@/lib/personal-push-cloud";
 import { ensurePersonalPushSubscription, getOfflinePushState, markAccountPushSubscribed } from "@/lib/push-client";
 import { diagnoseScheduledBailouts } from "@/lib/push-bailout-diagnostics";
+import { PushSchedulePanel } from "@/components/settings/push-schedule-panel";
 import { formatSelfCheckReport, runOfflinePushSelfCheck } from "@/lib/push-selfcheck";
 import { getWeixinCloudDeployedAt, markWeixinCloudDeployed, savePushCloudScheduled, saveWeixinCloudScheduled } from "@/lib/cloud-deploy-status";
 import { Input, Select } from "@/components/ui/form";
@@ -612,6 +613,11 @@ export function CloudServicesSetup({ onConfigChanged }: { onConfigChanged?: () =
                 {statusCard(<MessageSquare size={17} strokeWidth={1.9} />, "微信接入", weixinDeployed, "云函数与定时任务已部署")}
                 {statusCard(<Satellite size={17} strokeWidth={1.9} />, "离线推送", pushActive, "已部署到你的 Supabase")}
             </div>
+
+            {/* 排期管理：把服务端的主动消息摊开，按角色看清并逐条删。
+                只在个人云激活时显示——没部署就没有「服务端排期」这回事，
+                摆一个永远读不出东西的面板只会让人以为坏了。 */}
+            {pushActive && <PushSchedulePanel />}
 
             {/* 一键排查：逐段探测断点，输出可直接复制发人的报告 */}
             <button

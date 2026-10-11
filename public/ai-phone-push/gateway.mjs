@@ -619,6 +619,20 @@ Deno.serve(async (request: Request) => {
     }
 
     if (action === "jobs") {
+      // 列表：给客户端的「排期管理」面板用。
+      //
+      // 只回 trigger_key / kind / execute_at / status——payload 是加密的，
+      // 网关也没有解密它的能力；而 trigger_key 已足够让前端把每条任务
+      // 反解回「哪个角色、什么用途」（followup:<会话> / idle:<规则> / timedwake:<排期>）。
+      // 这是「删了规则还在发」唯一能查清的地方：服务端可能挂着本地根本
+      // 不知道的任务（idleRepeat 自己续排的 `+` 后缀链）。
+      if (request.method === "GET") {
+        const rows = await readJson<Array<{ trigger_key: string; kind: string; execute_at: string; status: string }>>(await rest(
+          `push_jobs?user_id=eq.${OWNER_ID}&status=in.(pending,running)`
+          + "&select=trigger_key,kind,execute_at,status&order=execute_at.asc&limit=200",
+        ));
+        return json({ ok: true, jobs: rows });
+      }
       const body = await request.json().catch(() => ({})) as Record<string, unknown>;
       const triggerKey = cleanText(body.triggerKey, 200);
       if (request.method === "POST") {

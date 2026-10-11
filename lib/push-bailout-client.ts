@@ -787,6 +787,92 @@ export async function purgeAllBailoutJobs(): Promise<{ ok: boolean; error?: stri
     return { ok: false, error: data.error || `HTTP ${response.status}` };
 }
 
+/**
+ * 列出服务端还在排队/执行中的全部预约。
+ *
+ * 失败时把原因带出来——这个面板存在的意义就是「看清到底挂了什么」，
+ * 读不到还静默返回空列表，会让人误以为「已经清干净了」。
+ */
+export async function fetchScheduledJobs(): Promise<{
+    ok: boolean;
+    jobs?: Array<{ trigger_key: string; kind: string; execute_at: string; status: string }>;
+    error?: string;
+}> {
+    if (!bailoutEnabled()) return { ok: false, error: "当前环境不支持服务端离线预约" };
+    const response = await pushJobsFetch({ method: "GET" }).catch(() => null);
+    if (!response) return { ok: false, error: "请求没有发出去（网络异常）。" };
+    const data = await response.json().catch(() => ({})) as { ok?: boolean; jobs?: unknown; error?: string };
+    if (!response.ok || data.ok !== true) {
+        return { ok: false, error: data.error || `HTTP ${response.status}` };
+    }
+    const jobs = Array.isArray(data.jobs) ? data.jobs as Array<{ trigger_key: string; kind: string; execute_at: string; status: string }> : [];
+    return { ok: true, jobs };
+}
+
+/**
+ * 删掉一条服务端预约（精确键）。
+ *
+ * 刻意**不**走 maySkipBailoutCancel 那道门控：那是给「本地生成时顺手撤销」用的
+ * 省请求优化，而这里是用户盯着某一条亲手点删除——必须真的发出去。
+ */
+export async function deleteScheduledJob(triggerKey: string): Promise<{ ok: boolean; error?: string }> {
+    if (!bailoutEnabled()) return { ok: false, error: "当前环境不支持服务端离线预约" };
+    if (!triggerKey) return { ok: false, error: "缺少任务键。" };
+    const response = await pushJobsFetch({
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ triggerKey }),
+    }).catch(() => null);
+    if (!response) return { ok: false, error: "请求没有发出去（网络异常）。" };
+    if (response.ok) return { ok: true };
+    const data = await response.json().catch(() => ({})) as { error?: string };
+    return { ok: false, error: data.error || `HTTP ${response.status}` };
+}
+
+/**
+ * 停掉某个角色的全部主动消息：服务端排期 + 本地排期一起清。
+ *
+ * 为什么不能只删服务端那一条：本地排期还在的话，下一次巡检
+ *（refreshScheduledBailouts，切后台/每 10 分钟）会立刻把它重新挂上去——
+ * 用户看到的就是「删了又回来」。所以这里连本地规则/排期一起关掉。
+ *
+ * 【一处刻意的例外】追问（followup）由角色输出里的焦虑值自动排期，
+ * 不在本地留任何长期规则。这里只能撤掉眼前这一条；只要角色下一轮输出里
+ * 焦虑值仍越过阈值，它会立刻再排一条。想根治得去调追问阈值/字段名
+ *（面板下方有说明），不是删任务能解决的。
+ */
+export async function stopCharacterScheduledActivity(
+    characterId: string,
+): Promise<{ ok: boolean; localCleared: number; error?: string }> {
+    if (!bailoutEnabled()) return { ok: false, localCleared: 0, error: "当前环境不支持服务端离线预约" };
+    if (!characterId) return { ok: false, localCleared: 0, error: "缺少角色标识。" };
+    let localCleared = 0;
+    try {
+        // ① 追问 / 回复兜底：按会话撤（它们的键里带的是 sessionId，不是角色 id）
+        const sessions = loadChatSessions().filter(session => !session.isGroup && session.contactId === characterId);
+        for (const session of sessions) {
+            await cancelBailoutPrefix(`followup:${session.id}:`);
+            await deleteScheduledJob(`reply:${session.id}`);
+        }
+        // ② 冷场重连：撤服务端链，并关掉本地规则（否则 10 分钟内必然重挂）
+        for (const rule of loadIdleReconnectRules().filter(item => item.characterId === characterId)) {
+            await cancelBailoutPrefix(`idle:${rule.id}:`);
+            removeIdleReconnectRule(rule.id);
+            localCleared += 1;
+        }
+        // ③ 定时主动联系：本地删掉即会派发撤销事件
+        for (const schedule of loadTimedWakeSchedules().filter(item => item.characterId === characterId)) {
+            removeTimedWakeSchedule(schedule.id);
+            localCleared += 1;
+        }
+        // ④ 经期关怀：键里带角色 id
+        await cancelBailoutPrefix(`periodcare:${characterId}:`);
+        return { ok: true, localCleared };
+    } catch (err) {
+        return { ok: false, localCleared, error: err instanceof Error ? err.message : String(err) };
+    }
+}
+
 /** 撤销追问兜底预约：带 count 只撤该轮的精确键，不带则撤该会话全部。 */
 export function cancelFollowUpBailout(sessionId: string, count?: number): void {
     if (!bailoutEnabled()) return;
