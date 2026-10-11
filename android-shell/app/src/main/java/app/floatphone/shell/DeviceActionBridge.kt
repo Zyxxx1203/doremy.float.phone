@@ -50,6 +50,15 @@ class DeviceActionBridge(private val context: Context) {
 
         @Volatile
         private var torchCameraId: String? = null
+
+        /**
+         * 可以安全补发的媒体动作：重复执行不会把状态切反。
+         *
+         * play 在已播放时再调一次还是播放，pause / stop 同理；而 toggle / next / prev
+         * 每执行一次就真的换一下状态，补发就可能造出用户没要求的效果——所以
+         * 会话直控没能确认时只对这三个补一次系统按键（见 mediaControl）。
+         */
+        private val IDEMPOTENT_MEDIA_ACTIONS = setOf("play", "pause", "stop")
     }
 
     /** 找一个带闪光灯的摄像头 id。找不到返回 null（设备没有闪光灯）。 */
@@ -465,10 +474,124 @@ class DeviceActionBridge(private val context: Context) {
         false
     }
 
+    /**
+     * 读一次播放状态。读不到返回 null。
+     *
+     * 单独包一层 try：controller 是**跨进程代理**，播放器进程已经不在了的话
+     * 这里会抛 DeadObjectException——那时 playbackState 读不到、transportControls
+     * 也发不进去，正是「提示指令已下发、用户却没听到声音」的典型来源。
+     * 绝不把异常吞成「暂停中」之类的假状态。
+     */
+    private fun playbackStateOf(controller: MediaController): PlaybackState? = try {
+        controller.playbackState
+    } catch (e: Throwable) {
+        null
+    }
+
+    /** 一次「播放状态 + 曲目」快照，用来比对指令下发前后的变化。 */
+    private class MediaSnapshot(val state: PlaybackState?, val title: String)
+
+    private fun snapshotOf(controller: MediaController): MediaSnapshot =
+        MediaSnapshot(playbackStateOf(controller), mediaTitle(controller))
+
+    /**
+     * 反复读快照，直到满足条件或到达上限。
+     *
+     * 原来这里是「睡 180ms、读一次」——对刚被唤起或繁忙的播放器（QQ音乐这类
+     * 进程可能刚从后台起来）往往不够：读回来的还是操作前的旧值，于是把**成功
+     * 误判成「没能读到确认状态」**（实测反馈）。改成短轮询后，正常情况下第一次
+     * 就满足、立即返回，不会凭空变慢；确实要等的场景才多等几百毫秒。
+     *
+     * 总上限 ≈ attempts × intervalMs ≈ 600ms。这条路径网页侧不阻塞界面，
+     * 多等一会儿换来一句准话，值。
+     */
+    private fun awaitSnapshot(
+        controller: MediaController,
+        satisfied: (MediaSnapshot) -> Boolean,
+        attempts: Int = 5,
+        intervalMs: Long = 150,
+    ): MediaSnapshot {
+        var snapshot = snapshotOf(controller)
+        var round = 1
+        while (round < attempts && !satisfied(snapshot)) {
+            try {
+                Thread.sleep(intervalMs)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return snapshot
+            }
+            snapshot = snapshotOf(controller)
+            round++
+        }
+        return snapshot
+    }
+
+    /**
+     * 快照是否已经体现出这次操作生效。
+     *
+     * play/pause/stop 的预期状态是确定的，能直接核对；toggle 只要求「状态变得和
+     * 操作前不同」；next/prev 靠曲目变化判断——单曲循环下曲目不变并不代表失败，
+     * 所以它没能确认时只标记「没能确认」，不判失败。
+     */
+    private fun satisfies(action: String, after: MediaSnapshot, before: MediaSnapshot): Boolean {
+        val state = after.state?.state
+        return when (action) {
+            "play" -> state == PlaybackState.STATE_PLAYING
+            "pause" -> state == PlaybackState.STATE_PAUSED
+            "stop" -> state == PlaybackState.STATE_STOPPED || state == PlaybackState.STATE_NONE
+            "toggle" -> state != null && state != before.state?.state
+            "next", "prev" -> after.title.isNotEmpty() && after.title != before.title
+            else -> false
+        }
+    }
+
+    /** 动作 → 媒体键。「补一次按键」与「盲发退路」共用同一套映射。 */
+    private fun mediaKeyFor(action: String): Int? = when (action) {
+        "play" -> KeyEvent.KEYCODE_MEDIA_PLAY
+        "pause" -> KeyEvent.KEYCODE_MEDIA_PAUSE
+        "toggle" -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+        "next" -> KeyEvent.KEYCODE_MEDIA_NEXT
+        "prev" -> KeyEvent.KEYCODE_MEDIA_PREVIOUS
+        "stop" -> KeyEvent.KEYCODE_MEDIA_STOP
+        else -> null
+    }
+
+    /**
+     * 盲发一对媒体按键，返回是否真的发出去了。
+     *
+     * 必须成对下发 DOWN/UP：只发 DOWN 会让播放器一直处于「按键按住」状态。
+     * 用块函数体而不是表达式体，是因为这里要提前返回（未知动作）。
+     */
+    private fun dispatchMediaKeys(action: String): Boolean {
+        val keyCode = mediaKeyFor(action) ?: return false
+        return try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+            true
+        } catch (e: Throwable) {
+            false
+        }
+    }
+
     /** 取「当前在播的那个」会话；没有在播的就取第一个（便于对暂停中的下发 play）。 */
-    private fun pickController(controllers: List<MediaController>): MediaController? =
-        controllers.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+    private fun pickController(controllers: List<MediaController>): MediaController? {
+        // 优先在「状态读得到」的会话里挑：读不到状态的会话往往是播放器进程已经
+        // 退出、只在系统里留下一个空壳（QQ音乐这类后台被清掉后很常见）。往空壳
+        // 下发指令不会有任何反应，用户看到的就是「指令已下发，但没能确认生效」。
+        // 状态只读一遍：playbackState 是跨进程调用，同一个会话连读三次纯属浪费，
+        // 而且分次读可能拿到不一致的状态（第一次读得到、第二次读不到）。
+        val alive = ArrayList<Pair<MediaController, PlaybackState>>()
+        for (item in controllers) {
+            val state = playbackStateOf(item) ?: continue
+            alive.add(Pair(item, state))
+        }
+        return alive.firstOrNull { it.second.state == PlaybackState.STATE_PLAYING }?.first
+            ?: alive.firstOrNull()?.first
+            // 全都读不到时仍退回原来那个（总比没有控制对象强），
+            // 由 mediaControl 如实报「读不到状态」，而不是在这里假装选中了一个活的。
             ?: controllers.firstOrNull()
+    }
 
     /** 曲目标识（标题|歌手）。用来判断上一首/下一首有没有真的换歌。 */
     private fun mediaTitle(controller: MediaController): String {
@@ -501,13 +624,20 @@ class DeviceActionBridge(private val context: Context) {
         }
         val controller = pickController(controllers)
             ?: return JSONObject().put("ok", false).put("reason", "没有可控制的播放器")
-        val beforeState = controller.playbackState
-        val beforeTitle = mediaTitle(controller)
-        return try {
+        val before = snapshotOf(controller)
+        val label = runCatching {
+            val pm = context.packageManager
+            pm.getApplicationLabel(pm.getApplicationInfo(controller.packageName, 0)).toString()
+        }.getOrDefault(controller.packageName)
+
+        // ── ① 经会话直控下发 ──
+        // 单独 try：下发这一步失败（播放器进程没了会抛 DeadObjectException）
+        // 不直接判死，后面还有「补发按键」这条路。
+        val transportThrew = try {
             when (action) {
                 "play" -> controller.transportControls.play()
                 "pause" -> controller.transportControls.pause()
-                "toggle" -> if (beforeState?.state == PlaybackState.STATE_PLAYING) {
+                "toggle" -> if (before.state?.state == PlaybackState.STATE_PLAYING) {
                     controller.transportControls.pause()
                 } else {
                     controller.transportControls.play()
@@ -517,35 +647,46 @@ class DeviceActionBridge(private val context: Context) {
                 "stop" -> controller.transportControls.stop()
                 else -> return JSONObject().put("ok", false).put("reason", "未知的播放操作：$action")
             }
-            // 状态回灌不是同步的：不给系统一点时间，读回来的还是操作前的旧值，
-            // 会把成功误判成失败。180ms 是实测够用又不至于卡手感的折中。
-            Thread.sleep(180)
-            val afterState = controller.playbackState
-            val readable = afterState != null
-            val afterTitle = mediaTitle(controller)
-            // play/pause 的预期很明确，能直接核对；next/prev 靠曲目是否变化判断，
-            // 单曲循环下不变并不代表失败，所以只标记「没能确认」而不是判失败。
-            val confirmed = when (action) {
-                "play" -> readable && afterState?.state == PlaybackState.STATE_PLAYING
-                "pause" -> readable && afterState?.state == PlaybackState.STATE_PAUSED
-                "toggle" -> readable && afterState?.state != beforeState?.state
-                "next", "prev" -> readable && afterTitle.isNotEmpty() && afterTitle != beforeTitle
-                "stop" -> readable && (afterState?.state == PlaybackState.STATE_STOPPED || afterState?.state == PlaybackState.STATE_NONE)
-                else -> false
-            }
-            val label = runCatching {
-                val pm = context.packageManager
-                pm.getApplicationLabel(pm.getApplicationInfo(controller.packageName, 0)).toString()
-            }.getOrDefault(controller.packageName)
-            JSONObject().put("ok", true).put("action", action)
-                .put("confirmed", confirmed)
-                .put("readable", readable)
-                .put("viaSession", true)
-                .put("player", label)
-                .put("playing", afterState?.state == PlaybackState.STATE_PLAYING)
+            null
         } catch (e: Throwable) {
-            JSONObject().put("ok", false).put("reason", e.message ?: "媒体控制不可用")
+            e
         }
+
+        // ── ② 等状态回灌并核对 ──
+        // 状态不是同步更新的，且换歌、唤起播放器进程都可能有延迟，所以短轮询
+        // 直到满足预期或到达上限（见 awaitSnapshot）。
+        var after = if (transportThrew == null) {
+            awaitSnapshot(controller) { satisfies(action, it, before) }
+        } else {
+            snapshotOf(controller)
+        }
+        var confirmed = satisfies(action, after, before)
+
+        // ── ③ 没确认上、且这个动作可以安全补发 → 补一次系统媒体按键 ──
+        // 为什么补：MediaController 直控在某些机型/播放器上确实会被忽略
+        // （厂商改过会话实现，或那个会话只是个「遥控器」、真正的播放器在别处）。
+        // 按键走 AudioManager 全局通道，系统会交给当前真正持有焦点的播放器，
+        // 命中率高得多。只补 play/pause/stop——它们重复执行不会把状态切反；
+        // toggle/next/prev 补发会造出用户没要求的效果，宁可如实说「没能确认」。
+        var viaKeys = false
+        if (!confirmed && action in IDEMPOTENT_MEDIA_ACTIONS && dispatchMediaKeys(action)) {
+            viaKeys = true
+            after = awaitSnapshot(controller) { satisfies(action, it, before) }
+            confirmed = satisfies(action, after, before)
+        }
+
+        // ── ④ 如实汇报 ──
+        // readable=false 表示会话还在、但状态读不回来（播放器进程多半已退出，
+        // 只剩个空壳）。这条必须报出去，否则用户和角色都无从判断该不该重试。
+        val readable = after.state != null
+        JSONObject().put("ok", true).put("action", action)
+            .put("confirmed", confirmed)
+            .put("readable", readable)
+            .put("viaSession", true)
+            .put("viaKeys", viaKeys)
+            .put("player", label)
+            .put("playing", after.state?.state == PlaybackState.STATE_PLAYING)
+            .apply { if (transportThrew != null) put("transportError", transportThrew.javaClass.simpleName) }
     }
 
     /**
@@ -555,20 +696,13 @@ class DeviceActionBridge(private val context: Context) {
      * 绝不报成「已播放」——那正是用户看到「提示成功、却没声音」的原因。
      */
     private fun dispatchMediaKeyFallback(action: String): JSONObject {
-        val keyCode = when (action) {
-            "play" -> KeyEvent.KEYCODE_MEDIA_PLAY
-            "pause" -> KeyEvent.KEYCODE_MEDIA_PAUSE
-            "toggle" -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
-            "next" -> KeyEvent.KEYCODE_MEDIA_NEXT
-            "prev" -> KeyEvent.KEYCODE_MEDIA_PREVIOUS
-            "stop" -> KeyEvent.KEYCODE_MEDIA_STOP
-            else -> return JSONObject().put("ok", false).put("reason", "未知的播放操作：$action")
+        if (mediaKeyFor(action) == null) {
+            return JSONObject().put("ok", false).put("reason", "未知的播放操作：$action")
         }
         return try {
-            val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            // 必须成对下发 DOWN/UP：只发 DOWN 会让播放器一直处于「按键按住」状态。
-            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
-            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+            if (!dispatchMediaKeys(action)) {
+                return JSONObject().put("ok", false).put("reason", "媒体按键没能发出去")
+            }
             JSONObject().put("ok", true).put("action", action)
                 .put("confirmed", false)
                 .put("viaSession", false)

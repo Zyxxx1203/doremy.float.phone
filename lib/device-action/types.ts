@@ -66,6 +66,15 @@ export type DeviceActionResult =
       confirmed?: boolean;
       /** 媒体动作：是否走了会话直控（有通知使用权）。false 说明是盲发按键、无从确认。 */
       viaSession?: boolean;
+      /** 媒体动作：会话直控没确认上时，是否又补发了一次系统媒体按键。
+       *  补发过的失败比「什么都没做」更有希望——角色据此措辞更准确。 */
+      viaKeys?: boolean;
+      /** 媒体动作：会话在，但播放状态读不回来（播放器进程多半已退出，只剩空壳）。
+       *  这与「读到了、只是没生效」是两回事，处置方式也不同（要重开播放器）。 */
+      readable?: boolean;
+      /** 媒体动作：会话直控下发时抛的异常类型名（如 DeadObjectException）。有值时
+       *  说明会话是跨进程代理，播放器那边已经不在了。 */
+      transportError?: string;
       /** 媒体动作：当前是否处于播放中（能读到状态时）。 */
       playing?: boolean;
       /** 媒体动作：被控制的播放器显示名（能识别到时）。 */

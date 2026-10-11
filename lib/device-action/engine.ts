@@ -301,11 +301,19 @@ export function runDeviceAction(args: Record<string, unknown>): DeviceActionOutc
       const where = result.player ? `（控制的是「${result.player}」）` : "";
       // 只有**读回状态核对过**才敢说「已播放」。盲发按键时指令可能被系统直接丢掉
       // （后台没有播放器就是这样），旧文案照样报「已继续播放」，用户等了半天没声音。
+      // 措辞按「能不能确认」分档，绝不把「指令发出去了」说成「已经播了」。
+      // 四种情形给四种话，让用户和角色都知道下一步该做什么：
+      //   ① confirmed         → 读回状态核对过，可以直说；
+      //   ② 没授权            → 引导去授「通知使用权」（有这条才有确认能力）；
+      //   ③ 会话在但状态读不到 → 播放器进程多半已退出，重开播放器比反复重试有用；
+      //   ④ 其余没确认        → 如实说没读到确认，可能没生效。
       const message = result.confirmed
         ? `${label[op] ?? "已发送播放控制"}${where}`
         : result.viaSession === false
           ? `已经把播放指令发出去了，但没法确认是否生效——需要 TA 在设置 → 操作设备里授予「通知使用权」，才能读到播放状态帮你确认${where}`
-          : `${label[op] ?? "已发送播放控制"}的指令已下发，但没能从播放器读到确认状态，可能没生效${where}`;
+          : result.readable === false
+            ? `播放指令已发给「${result.player ?? "播放器"}」，但读不到它的播放状态——它可能已经不在后台运行了，需要先打开播放器再试${where}`
+            : `${label[op] ?? "已发送播放控制"}的指令已下发${result.viaKeys ? "（会话直控和系统媒体键都发了）" : ""}，但没能从播放器读到确认状态，可能没生效${where}`;
       return logDeviceAction({ ok: true, action: "media", message }, "media");
     }
 
