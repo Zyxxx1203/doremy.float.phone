@@ -366,6 +366,9 @@ type ChatPromptBuildOptions = {
     activateAllWorldBooks?: boolean;
     toolsAllowed?: boolean;
     forceEnableTools?: boolean;
+    /** 只随本次请求送出的系统提示：不落库、不进历史、下一轮读不到。
+     *  定时查岗这类「一次性事件」用它告诉角色此刻该怎么回应。 */
+    ephemeralSystemNote?: string;
 };
 
 function matchesPromptProfileRef(prompt: { identifier: string; name?: string }, refs: Set<string>): boolean {
@@ -2034,6 +2037,15 @@ export async function buildChatPromptMessages(
     if (!isOfflineMode) {
         const perceptionInjection = maybeBuildStatusInjection();
         if (perceptionInjection) llmMessages.push({ role: "system", content: perceptionInjection });
+    }
+
+    // ── 一次性事件提示（定时查岗的反应指导语）──
+    // 放在最后：它是「此刻该怎么回应」的即时要求，压过前面所有常驻设定。
+    // 只存在于本次请求的 messages 数组里，没人把它写进聊天记录，所以不会
+    // 在后续每一轮被重新读到、变成反复念叨。
+    const ephemeralSystemNote = options?.ephemeralSystemNote?.trim();
+    if (ephemeralSystemNote) {
+        llmMessages.push({ role: "system", content: ephemeralSystemNote });
     }
 
     return { llmMessages, character, config, preset, regexes, userIdentity, toolsEnabled };

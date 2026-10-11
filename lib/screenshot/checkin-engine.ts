@@ -29,6 +29,7 @@ import {
   type CheckInCharacterConfig,
 } from "./checkin-config";
 import { consumePendingUserShot, hasCheckInBridge, readCheckInCapabilities, requestCheckIn } from "./checkin";
+import { resolveCheckInGuidance } from "./checkin-guidance";
 import { ensureShellOverlayListener, subscribeShellOverlayEvents } from "../shell-call-overlay";
 
 /** 一次查岗尝试的结论（给调用方/设置页做记录用）。 */
@@ -123,7 +124,13 @@ export async function runCheckIn(
         mediaUrl: stored.ref,
         mediaData: { label: "给你看我现在的屏幕" },
       });
-      void requestBackgroundChatReply(sessionId).catch(() => undefined);
+      // 用户可给这次结果写一句反应指导语（设置 → 截屏 → 主动查岗）。
+      // 只随本轮请求送出、不落库——否则后面每一轮都会重新看到它。
+      const acceptedGuidance = resolveCheckInGuidance("accepted", name);
+      void requestBackgroundChatReply(
+        sessionId,
+        acceptedGuidance ? { ephemeralSystemNote: acceptedGuidance } : undefined,
+      ).catch(() => undefined);
       return { ok: true, accepted: true };
     } catch {
       return { ok: false, reason: "图片没能保存，这次没发出去" };
@@ -147,7 +154,13 @@ export async function runCheckIn(
       : `[${name}想看看你现在在做什么，但没能截到屏幕（${outcome.reason}）]`;
   pushChatMessage({ sessionId, role: "system", content: note });
   // 拒绝也让它有反应（用户明确要的）——被拒时该失落还是说没关系，交给角色自己决定。
-  void requestBackgroundChatReply(sessionId).catch(() => undefined);
+  // 三种失败结果各自可配指导语，同样只随本轮请求送出。
+  const guidanceKind = declined ? "declined" : timedOut ? "timeout" : "failed";
+  const guidance = resolveCheckInGuidance(guidanceKind, name);
+  void requestBackgroundChatReply(
+    sessionId,
+    guidance ? { ephemeralSystemNote: guidance } : undefined,
+  ).catch(() => undefined);
   return { ok: true, accepted: false, reason: outcome.reason };
 }
 

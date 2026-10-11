@@ -204,7 +204,10 @@ export function scheduleFollowUp(sessionId: string, count: number, stateValues?:
     void armFollowUpBailout(sessionId, count, delaySec, fireAt);
 }
 
-export async function requestBackgroundChatReply(sessionId: string): Promise<{ ok: boolean; skipped?: string }> {
+export async function requestBackgroundChatReply(
+    sessionId: string,
+    options?: { ephemeralSystemNote?: string },
+): Promise<{ ok: boolean; skipped?: string }> {
     if (backgroundReplyFiringSet.has(sessionId)) return { ok: false, skipped: "already_running" };
     const session = loadChatSessions().find(s => s.id === sessionId);
     if (!session) return { ok: false, skipped: "missing_session" };
@@ -217,7 +220,11 @@ export async function requestBackgroundChatReply(sessionId: string): Promise<{ o
         const rounds = await generateBackgroundCompletionRounds(
             session,
             latestMessages,
-            { appTags: session.isGroup ? undefined : ["chat", "text"] },
+            {
+                appTags: session.isGroup ? undefined : ["chat", "text"],
+                // 定时查岗等事件可带一句「该怎么回应」，只作用于这一轮
+                ephemeralSystemNote: options?.ephemeralSystemNote,
+            },
         );
         if (isBackgroundGenerationCancelled(session.id)) return { ok: false, skipped: "cancelled" };
         const { hasVisible, stateValues } = await saveBackgroundCompletionRounds(

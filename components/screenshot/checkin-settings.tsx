@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Eye, Loader2, ShieldAlert } from "lucide-react";
 
-import { Toggle } from "@/components/ui/form";
+import { Toggle, Textarea } from "@/components/ui/form";
 import { loadCharacters } from "@/lib/character-storage";
 import {
   checkInReadiness,
@@ -29,6 +29,9 @@ import {
   stopCheckInService,
   type CheckInConfigMap,
   type CheckInScheduleSnapshot,
+  loadCheckInGuidance,
+  saveCheckInGuidance,
+  type CheckInGuidance,
 } from "@/lib/screenshot";
 import { isShellEnvironment as isShell } from "@/lib/shell-call-overlay";
 
@@ -62,6 +65,9 @@ export function CheckInSettings({ onNotice }: { onNotice?: (msg: string) => void
   // 原生那侧的实时状态（服务在不在跑、窗口挂上没）。跟着 refresh 一起更新，
   // 用户从系统设置授完权回来就能看到「常驻服务」那一行变绿。
   const [diag, setDiag] = useState(() => readCheckInDiagnostics());
+  // 反应指导语：查岗出结果后，额外告诉角色「这一刻该怎么回应」。
+  // 全局一份（不分角色）——它是「这类事该怎么处理」的口径，不是某个角色的性格。
+  const [guidance, setGuidance] = useState<CheckInGuidance>(() => loadCheckInGuidance());
 
   const characters = useMemo(() => loadCharacters(), []);
   const inShell = useMemo(() => isShell(), []);
@@ -70,6 +76,7 @@ export function CheckInSettings({ onNotice }: { onNotice?: (msg: string) => void
   const refresh = useCallback(() => {
     setConfigs(loadCheckInConfig());
     setDiag(readCheckInDiagnostics());
+    setGuidance(loadCheckInGuidance());
   }, []);
 
   useEffect(() => {
@@ -269,6 +276,38 @@ export function CheckInSettings({ onNotice }: { onNotice?: (msg: string) => void
           })}
         </div>
       )}
+
+      {/* ── 反应指导语 ──
+          查岗出结果后，角色具体该怎么反应原先完全靠人设自由发挥。
+          这里给四类结果各留一句话，填了就随那次回应一起交给它，
+          留空则维持原样。刻意不做成必填或给默认模板：多数人不填就挺好。 */}
+      <div className="settings-menu-section-title" style={{ marginTop: 18 }}>反应指导语</div>
+      <div className="per-note" style={{ padding: "0 var(--ui-padding, 16px)", marginBottom: 10 }}>
+        查岗有结果后，额外告诉角色该怎么回应。留空 = 完全交给它自己判断。
+        可用 {"{name}"} 代替角色名。只在这一次回应生效，不会写进聊天记录。
+      </div>
+      <div className="menu-group">
+        {([
+          { key: "accepted", label: "你把屏幕给它看了", hint: "默认它自己决定怎么接话" },
+          { key: "declined", label: "你点了「不给看」", hint: "比如提醒它别追问、别闹脾气" },
+          { key: "timeout", label: "你没回应（超时）", hint: "比如让它别在同一个点上再试" },
+          { key: "failed", label: "没能截到屏幕", hint: "权限或保存失败，不是你拒绝" },
+        ] as const).map(item => (
+          <div className="menu-item" key={item.key} style={{ cursor: "default", alignItems: "flex-start", flexDirection: "column", gap: 6 }}>
+            <div className="menu-label-group">
+              <span className="menu-label">{item.label}</span>
+              <span className="menu-desc">{item.hint}</span>
+            </div>
+            <Textarea
+              className="font-mono ts-11"
+              rows={2}
+              placeholder="留空 = 不加任何话"
+              value={guidance[item.key]}
+              onChange={e => setGuidance(saveCheckInGuidance({ [item.key]: e.target.value }))}
+            />
+          </div>
+        ))}
+      </div>
 
       {/* ── 链路诊断 ──
           查岗不触发时，用户看到的只是「没弹」这一个事实，而真实原因可能是
