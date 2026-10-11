@@ -310,6 +310,9 @@ class DeviceActionBridge(private val context: Context) {
      * 包名 → 应用显示名。给「用名字找应用」的兜底路径用：
      * 角色多半说「打开微信」，而不知道 com.tencent.mm。
      * 返回空串表示没找到（调用方如实说找不到，不要猜一个包名去启动）。
+     *
+     * 本应用自身也在候选里（见下方循环注释）：角色可以用它把用户
+     * 从别的 App 里「叫回」小手机。
      */
     fun findPackageByLabel(label: String): String {
         if (label.isBlank()) return ""
@@ -332,7 +335,13 @@ class DeviceActionBridge(private val context: Context) {
             val candidates = ArrayList<Pair<String, String>>()
             for (info in launchable) {
                 val pkg = info.activityInfo?.packageName ?: continue
-                if (pkg == context.packageName) continue
+                // 不排除本应用自身：角色要能把用户「拉回」小手机——
+                // 典型场景是「刷别的 App 太久，角色叫我回去」。
+                // 原来这里直接把自己 continue 掉，候选列表里根本没有本应用，
+                // 于是「打开 float」永远命中不了，用户只会看到
+                // 「没找到叫 float 的应用」，一直去抠包名（实测反馈）。
+                // 保留 MAIN/LAUNCHER 过滤即可：本应用有 launcher 入口，
+                // 拿到的必然是可启动的那个 Activity，不会误开成空壳包。
                 val name = runCatching {
                     pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
                 }.getOrDefault("")

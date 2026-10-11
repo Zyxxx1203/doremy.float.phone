@@ -211,6 +211,9 @@ export function runDeviceAction(args: Record<string, unknown>): DeviceActionOutc
     // 「打开应用」：会把用户的屏幕切走，所以是这批动作里**侵略性最强**的一个，
     // 默认关闭、需要用户主动开。但场景成立（陪它→打开小手机、
     // 学习→专注应用、吃饭→外卖应用），所以开放而不是砍掉。
+    //
+    // 含小手机自身：规则常配「刷别的 App 太久 → 打开 float 把我叫回去」，
+    // 这条路径曾经永远失败（壳侧把自己排除在候选外，见 DeviceActionBridge）。
     case "openApp": {
       const blocked = allowed("openApp");
       if (blocked) return blocked;
@@ -221,7 +224,12 @@ export function runDeviceAction(args: Record<string, unknown>): DeviceActionOutc
       let label = raw;
       if (!raw.includes(".")) {
         const found = findPackageByLabel(raw);
-        if (!found) return { ok: false, reason: `没找到叫「${raw}」的应用` };
+        if (!found) {
+          // 说清「该填什么」而不是只说「没找到」：模型多半是把包名
+          // （com.xxx）或英文名当显示名传来，用户照着这句只会反复试名字。
+          // 小手机自身的显示名就是「float」，从壳的 app_name 来。
+          return { ok: false, reason: `没找到叫「${raw}」的应用——要填它在桌面上的显示名（中文名通常最准），不是包名；小手机自己叫「float」` };
+        }
         pkg = found;
       }
       const result = openApp(pkg);
