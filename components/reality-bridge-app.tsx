@@ -470,7 +470,24 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
    * 注意安卓同样能收云端传来的快捷指令数据，所以云端相关内容只是收进折叠区，
    * 没有删掉。
    */
-  const flatRuleEditor = platform.androidBridge === "ready";
+  /**
+   * 规则编辑器用「一页到底的长表单」还是「分步向导」。
+   *
+   * 只有 iPhone / iPad 走向导——那套流程（接通云端 → 建上传数据的快捷指令 →
+   * 等信号进来）本来就是为 iOS 设计的。其余情况一律平铺页。
+   *
+   * ⚠️ 判断条件改过一次，这里记一下原因：最早写的是
+   *   `platform.androidBridge === "ready"`
+   * 而这个值**只在「安卓壳 WebView 内」才成立**（见 shell-detect 的
+   * isShellEnvironment：UA 里得有 FloatShell/）。于是从本机桥点进「去创建联动」时，
+   * 只要不是壳内打开（安卓浏览器、加到桌面的 PWA），仍然掉回六步向导——
+   * 用户看到的现象就是「明明说是安卓页，怎么还是那张 iOS 卡片」。
+   * 现在按「是不是 iOS」分：不是 iPhone/iPad 就给平铺页。
+   *
+   * 安卓即使没装壳，平铺页也读得懂：能力清单、以及「按时间自动」的定时规则
+   * 本来就不依赖壳；反过来硬塞一套 iOS 教程给他们才是真的没用。
+   */
+  const flatRuleEditor = platform.home !== "ios";
   /** 当前展示的是「你那套」还是「另一套」的入口。默认当然是你的那套。 */
   const [showOtherPlatform, setShowOtherPlatform] = useState(false);
   const [mainSec, setMainSec] = useState<"overview" | "android" | "rules" | "shortcuts" | "queries" | "screen">("overview");
@@ -1706,16 +1723,26 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                       {/* 这一屏原本只讲「本机能力在哪配」，于是很多人逛完就走，
                           完全没发现右侧还有「自动联动」这一套。这里补一个明确的去处。 */}
                       <div className="rb-grid" style={{ marginTop: 12 }}>
-                        <div className="rb-rcard" onClick={() => setMainSec("rules")}>
+                        <div
+                          className="rb-rcard"
+                          onClick={() => {
+                            setMainSec("rules");
+                            // 一条都没有时**直接开新建**，别再让用户去 rules 分区找那个「＋」。
+                            // 从本机桥点过来的人意图很明确：他就是想建第一条。
+                            // 已经建过的就去列表——那时他多半是想看看或改改，
+                            // 直接弹编辑器会挡住列表。
+                            if (rules.length === 0) openRuleEditor(newRule(), false);
+                          }}
+                        >
                           <div className="rb-rtop">
                             <span className="rb-icchip">{RB_ICON_BROADCAST}</span>
-                            <span className="rb-type">下一步</span>
+                            <span className="rb-type">{rules.length === 0 ? "下一步" : "已建"}</span>
                           </div>
-                          <b>去创建自动联动</b>
+                          <b>{rules.length === 0 ? "去创建自动联动" : "管理自动联动"}</b>
                           <p className="rb-rsum">收到信号时自动做一件事（写进聊天、记进记忆、操作手机……）</p>
                           <div className="rb-rfoot">
                             <span className="rb-rstate">共 {rules.length} 条联动</span>
-                            <span className="rb-link">去「联动」→</span>
+                            <span className="rb-link">{rules.length === 0 ? "开始创建 →" : "去「联动」→"}</span>
                           </div>
                         </div>
                       </div>
