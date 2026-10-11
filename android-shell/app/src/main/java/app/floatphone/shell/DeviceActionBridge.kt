@@ -661,7 +661,11 @@ class DeviceActionBridge(private val context: Context) {
         // 状态不是同步更新的，且换歌、唤起播放器进程都可能有延迟，所以短轮询
         // 直到满足预期或到达上限（见 awaitSnapshot）。
         var after = if (transportThrew == null) {
-            awaitSnapshot(controller) { satisfies(action, it, before) }
+            // 显式用命名参数传 satisfied，不写尾随 lambda。
+            // Kotlin 的尾随 lambda 只对应「函数的最后一个参数」，而这里的最后一个参数
+            // 是 intervalMs: Long——写成 `awaitSnapshot(controller) { ... }` 编译器会把它
+            // 往 Long 上套，报类型不匹配。命名参数既准确又不会被参数顺序变动带偏。
+            awaitSnapshot(controller, satisfied = { satisfies(action, it, before) })
         } else {
             snapshotOf(controller)
         }
@@ -676,7 +680,7 @@ class DeviceActionBridge(private val context: Context) {
         var viaKeys = false
         if (!confirmed && action in IDEMPOTENT_MEDIA_ACTIONS && dispatchMediaKeys(action)) {
             viaKeys = true
-            after = awaitSnapshot(controller) { satisfies(action, it, before) }
+            after = awaitSnapshot(controller, satisfied = { satisfies(action, it, before) })
             confirmed = satisfies(action, after, before)
         }
 
@@ -684,7 +688,11 @@ class DeviceActionBridge(private val context: Context) {
         // readable=false 表示会话还在、但状态读不回来（播放器进程多半已退出，
         // 只剩个空壳）。这条必须报出去，否则用户和角色都无从判断该不该重试。
         val readable = after.state != null
-        JSONObject().put("ok", true).put("action", action)
+        // 这个 return 不能省：本函数是**块体函数**且声明了返回类型 JSONObject，
+        // Kotlin 不会把最后一个表达式当返回值（那是表达式体函数的规则）。
+        // 漏掉它 = 编译错误「A 'return' expression required in a function with a block body」——
+        // 上一轮把 `return try { ... }` 拆成两块时漏了，直接导致 APK 构建失败。
+        return JSONObject().put("ok", true).put("action", action)
             .put("confirmed", confirmed)
             .put("readable", readable)
             .put("viaSession", true)
