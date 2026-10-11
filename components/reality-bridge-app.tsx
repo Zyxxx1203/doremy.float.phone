@@ -257,6 +257,127 @@ const DEVICE_ACTION_DEFAULT_ARGS: Record<string, Record<string, unknown>> = {
   openUrl: { url: "" },
 };
 
+/**
+ * 场景模板：把「我想让角色做的事」直接翻译成一条预填好的规则。
+ *
+ * 为什么需要它：规则的字段全是给机器看的（matchType / payloadFilter / process.mode /
+ * actions.*），新手得先弄懂「信号名是什么」「加工和动作什么关系」才配得出第一条，
+ * 最常见的结局是配完了却永远不触发——因为信号名跟实际发出的对不上（实测反馈）。
+ *
+ * ⚠️ 下面每个 matchType 必须与 lib/perception/engine.ts 里真正 emit 的 type
+ * 一字不差。写错的后果不是报错，而是规则静默永不触发——那比没有模板更糟。
+ */
+type RuleSceneTemplate = {
+  id: string;
+  /** 卡片标题：用用户的话说「我想让角色……」 */
+  title: string;
+  desc: string;
+  tag: "本机信号" | "定时" | "操作手机";
+  /** 信号来自安卓本机桥（感知），iOS 上不会产生 */
+  needsAndroid?: boolean;
+  build: (ctx: { characterId: string }) => BridgeRule;
+};
+
+/**
+ * 定时/提醒类模板给角色看的那句提示。
+ *
+ * 写成括号包住的旁白、而不是角色的台词：让角色**自己组织语言**开口，
+ * 每次说法不一样才有活人感。若直接把台词写死，每天收到的都是同一句。
+ */
+const SCENE_NUDGE_PREFIX = "（";
+const SCENE_NUDGE_SUFFIX = "）";
+
+function sceneNudge(text: string): string {
+  return `${SCENE_NUDGE_PREFIX}${text}${SCENE_NUDGE_SUFFIX}`;
+}
+
+const RULE_SCENE_TEMPLATES: RuleSceneTemplate[] = [
+  {
+    id: "scene_back_to_phone",
+    title: "我回到小手机时理我一下",
+    desc: "离开一会儿再回来，角色会察觉并主动开口。不需要任何权限。",
+    tag: "本机信号",
+    needsAndroid: true,
+    build: ({ characterId }) => ({
+      ...newRule(),
+      name: "我回到小手机时理我一下",
+      matchType: "回到手机",
+      actions: { chat: { characterId, role: "system", requestReply: true } },
+      cooldownMinutes: 15,
+    }),
+  },
+  {
+    id: "scene_long_use",
+    title: "连续刷手机太久时提醒我",
+    desc: "同一个应用连续用太久（多久算久在「感知」里调），角色会看出来并提醒你。",
+    tag: "本机信号",
+    needsAndroid: true,
+    build: ({ characterId }) => ({
+      ...newRule(),
+      name: "刷太久时提醒我",
+      matchType: "长时间使用",
+      actions: { chat: { characterId, role: "system", requestReply: true } },
+      cooldownMinutes: 30,
+    }),
+  },
+  {
+    id: "scene_battery_low",
+    title: "电量低时告诉我",
+    desc: "电量掉到阈值以下，角色会知道并提醒你充电。",
+    tag: "本机信号",
+    needsAndroid: true,
+    build: ({ characterId }) => ({
+      ...newRule(),
+      name: "电量低时告诉我",
+      matchType: "电量偏低",
+      actions: { chat: { characterId, role: "system", requestReply: true } },
+      cooldownMinutes: 60,
+    }),
+  },
+  {
+    id: "scene_morning",
+    title: "每天早上说句早安",
+    desc: "到点角色自己开口，不用你先说话。时间可以改。",
+    tag: "定时",
+    build: ({ characterId }) => ({
+      ...newRule(),
+      name: "每天早上说早安",
+      matchType: "",
+      process: { mode: "template", template: sceneNudge("现在是早上，主动跟{{user}}说声早安吧"), prompt: "" },
+      schedule: { kind: "daily", time: "08:00" },
+      actions: { chat: { characterId, role: "system", requestReply: true } },
+    }),
+  },
+  {
+    id: "scene_sleep_remind",
+    title: "睡前提醒我去睡",
+    desc: "到点角色提醒你该休息了。时间可以改。",
+    tag: "定时",
+    build: ({ characterId }) => ({
+      ...newRule(),
+      name: "睡前提醒我",
+      matchType: "",
+      process: { mode: "template", template: sceneNudge("已经很晚了，提醒{{user}}该休息了"), prompt: "" },
+      schedule: { kind: "daily", time: "23:00" },
+      actions: { chat: { characterId, role: "system", requestReply: true } },
+    }),
+  },
+  {
+    id: "scene_dim_screen",
+    title: "睡前帮我调暗屏幕",
+    desc: "到点直接把屏幕亮度调低。需要先在「设置 → 操作设备」里打开亮度开关并授权。",
+    tag: "操作手机",
+    needsAndroid: true,
+    build: () => ({
+      ...newRule(),
+      name: "睡前调暗屏幕",
+      matchType: "",
+      schedule: { kind: "daily", time: "23:00" },
+      actions: { deviceAction: { action: "brightness", args: { level: 25 } } },
+    }),
+  },
+];
+
 const WIZ_STEP_NAMES = ["接通管道", "创建快捷指令", "选择信号", "加工内容", "决定动作", "测试与保存"] as const;
 const SWIZ_STEP_NAMES = ["接通通道", "动作是什么", "触发方式", "参数与结果", "创建快捷指令", "测试与保存"] as const;
 const DWIZ_STEP_NAMES = ["接通通道", "数据项是什么", "创建上传快捷指令", "测试与保存"] as const;
@@ -338,6 +459,18 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
    *   漏掉这里会让引用处直接 ReferenceError，整页白屏。
    */
   const platform = useMemo(() => describeBridgePlatform(), []);
+  /**
+   * 规则编辑器在安卓上用「一页到底的长表单」，在 iOS 上仍走分步向导。
+   *
+   * 为什么分两套：向导是按 iOS 那条线设计的——先接通云端、再建上传数据的
+   * 快捷指令、然后等信号进来。而安卓有本机桥，感知与定时自己就产生信号，
+   * 前两步对纯安卓用户是纯粹的弯路（实测反馈：不要一步步的卡片引导，
+   * 想把能改的一次摆在眼前）。
+   *
+   * 注意安卓同样能收云端传来的快捷指令数据，所以云端相关内容只是收进折叠区，
+   * 没有删掉。
+   */
+  const flatRuleEditor = platform.androidBridge === "ready";
   /** 当前展示的是「你那套」还是「另一套」的入口。默认当然是你的那套。 */
   const [showOtherPlatform, setShowOtherPlatform] = useState(false);
   const [mainSec, setMainSec] = useState<"overview" | "android" | "rules" | "shortcuts" | "queries" | "screen">("overview");
@@ -775,6 +908,18 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     setRuleTest({ type: "", payload: "" });
     setRuleTestResult(null);
   }, []);
+
+  /** 从场景模板开一条已经填好的规则：用户只需微调，不必懂信号名与动作的组合。 */
+  const openSceneTemplate = useCallback((template: RuleSceneTemplate) => {
+    // 动作需要角色时，用第一个角色兜底；没有角色卡的话模板仍然可开，
+    // 只是「告诉一个角色」那项会指向空 id，由保存时的既有校验拦下并提示。
+    const rule = template.build({ characterId: characters[0]?.id ?? "" });
+    setEditing(rule);
+    setWizStep(1);
+    setWizMax(6);
+    setRuleTest({ type: "", payload: "" });
+    setRuleTestResult(null);
+  }, [characters]);
 
   /**
    * 试跑当前编辑中的规则：真的执行一遍「加工 → 动作」。
@@ -1791,6 +1936,32 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
           <div className="rb-modal rb-editor" onClick={event => event.stopPropagation()}>
             <b className="rb-modal-title">{isExistingRule ? "编辑联动" : "新建联动"}</b>
 
+            {/* 场景模板：只在新建时出现，按「我想让角色……」的说法排列。
+                点一下就把信号、加工、动作全部填好，用户只需微调时间或选角色。
+                编辑已有规则时不出现——那时候用户心里已经有明确目标了，
+                再摆一排模板只会碍事。 */}
+            {flatRuleEditor && !isExistingRule ? (
+              <div className="rb-fieldset" style={{ marginTop: 4 }}>
+                <p className="rb-wiz-tip">选一个最接近的，点开就是填好的规则，改改时间就能用：</p>
+                <div className="rb-signal-chips">
+                  {RULE_SCENE_TEMPLATES.filter(tpl => !tpl.needsAndroid || platform.androidBridge === "ready").map(tpl => (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      className="rb-signal-chip"
+                      title={`${tpl.tag} · ${tpl.desc}`}
+                      onClick={() => openSceneTemplate(tpl)}
+                    >{tpl.title}</button>
+                  ))}
+                </div>
+                <p className="rb-hint">也可以不理它，直接在下面自己配。</p>
+              </div>
+            ) : null}
+
+            {flatRuleEditor ? (
+              <p className="rb-wiz-label">整条联动都在这一页，从上往下改，底部对勾保存</p>
+            ) : (
+            <>
             <div className="rb-wiz-steps">
               {[1, 2, 3, 4, 5, 6].map(n => (
                 <Fragment key={n}>
@@ -1798,7 +1969,9 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                   <button
                     type="button"
                     className={`rb-wiz-dot${n === wizStep ? " cur" : n < wizStep ? " done" : ""}`}
-                    disabled={!isExistingRule && n > wizMax}
+                    /* 新建时也允许直接点任意一步：6 步走下来常要回头改前面填的东西，
+                       原来没走到的步骤禁用，想改只能一步步退回去（实测反馈）。
+                       校验没有放松——必填项仍在「下一步」和「保存」时把关。 */
                     onClick={() => setWizStep(n)}
                     aria-label={`第${n}步 ${WIZ_STEP_NAMES[n - 1]}`}
                   >{n < wizStep ? "✓" : n}</button>
@@ -1806,8 +1979,21 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
               ))}
             </div>
             <p className="rb-wiz-label">{WIZ_STEP_NAMES[wizStep - 1]}</p>
+            </>
+            )}
 
-            {wizStep === 1 ? (
+            {/* 安卓：第 1 步不作为「一步」出现。云端只在要收快捷指令传来的数据时才需要，
+                本机信号（感知、定时）根本不经云端——所以这里降级成一行条件提示，
+                没配就提醒一句，配了什么都不显示。 */}
+            {flatRuleEditor ? (
+              ready ? null : (
+                <div className="rb-wiz-page">
+                  <div className="rb-wiz-warn">还没配置云端存储</div>
+                  <p className="rb-help">只影响「接收 iPhone 快捷指令传来的数据」；本机的感知与定时信号不经过云端，不受影响。</p>
+                  <div className="rb-jump-row">{settingsJump("去设置配置云端", "data")}</div>
+                </div>
+              )
+            ) : wizStep === 1 ? (
               <div className="rb-wiz-page">
                 <p className="rb-wiz-intro">联动的作用：当某个信号出现时，自动执行你安排好的动作。信号可以由小手机自己产生（安卓：电量、网络、位置、定时……），也可以由快捷指令从外面传进来（iOS）。</p>
                 {ready ? (
@@ -1823,7 +2009,9 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
               </div>
             ) : null}
 
-            {wizStep === 2 ? (
+            {/* 第 2 步整块都是「怎么在 iPhone 上建上传数据的快捷指令」——安卓上没这东西，
+                直接不出现（安卓的信号来自本机桥）。 */}
+            {!flatRuleEditor && wizStep === 2 ? (
               <div className="rb-wiz-page">
                 {feedSignals.length > 0 ? (
                   <>
@@ -1855,8 +2043,9 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
               </div>
             ) : null}
 
-            {wizStep === 3 ? (
+            {(flatRuleEditor || wizStep === 3) ? (
             <div className="rb-wiz-page">
+            {flatRuleEditor ? <p className="rb-wiz-tip">什么时候触发</p> : null}
             {feedSignals.length > 0 ? (
               <>
                 <p className="rb-wiz-tip">从最近收到过的信号里点选，保证和快捷指令那头一致：</p>
@@ -1879,7 +2068,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
             </p>
             )}
             <button type="button" className="rb-btn ghost" disabled={syncing || !ready} onClick={() => void syncNow()}>
-              {syncing ? "正在刷新…" : "刚发了测试数据？点此刷新"}
+              {syncing ? "正在刷新…" : "刷新一下信号列表"}
             </button>
             {/* 触发方式：默认「收到信号」，也可以完全不依赖外部信号、按时间自己跑。 */}
             <div className="rb-seg">
@@ -1994,7 +2183,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
             </div>
             ) : null}
 
-            {wizStep === 4 ? (
+            {(flatRuleEditor || wizStep === 4) ? (
             <div className="rb-wiz-page">
             <p className="rb-wiz-tip">收到的原始内容（比如整条短信）交给角色前，可以先加工一下：</p>
             <div className="rb-seg">
@@ -2022,9 +2211,9 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
             </div>
             ) : null}
 
-            {wizStep === 5 ? (
+            {(flatRuleEditor || wizStep === 5) ? (
             <div className="rb-wiz-page">
-            <p className="rb-wiz-tip">收到信号后要做的事，可多选：</p>
+            <p className="rb-wiz-tip">要做什么（可多选，会按顺序执行）</p>
 
             <div className="rb-action">
               <label className="rb-check">
@@ -2397,8 +2586,9 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
             </div>
             ) : null}
 
-            {wizStep === 6 ? (
+            {(flatRuleEditor || wizStep === 6) ? (
               <div className="rb-wiz-page">
+                {flatRuleEditor ? <p className="rb-wiz-tip">试跑与保存</p> : null}
                 <div className="rb-wiz-summary">
                   <b>{editing.name.trim() || (editing.schedule ? "定时联动" : `当收到「${editing.matchType.trim() || "……"}」`)}</b>
                   <p>{summarize(editing)}</p>
@@ -2431,6 +2621,8 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                 {/* 保存之后的验证方式两部分不一样：定时规则不用去 iPhone 跑任何东西。 */}
                 {editing.schedule ? (
                   <p className="rb-help">保存后到点会自动执行。前提是小手机开着或后台保活——完全关闭期间错过的时刻不会补跑。</p>
+                ) : flatRuleEditor ? (
+                  <p className="rb-help">保存后，等本机信号出现（电量变化、打开某个应用、到点等）就会自动触发；能在「历史」页看到记录。</p>
                 ) : (
                   <p className="rb-help">保存后，在 iPhone 上运行一次对应的快捷指令，再到「历史」页刷新；看到这条数据出现，说明联动已经生效。</p>
                 )}
@@ -2448,6 +2640,13 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
               </div>
             ) : null}
 
+            {flatRuleEditor ? (
+              /* 平铺模式没有「下一步」，底部就是一个保存。校验仍走 saveEditing——
+                 它会把「信号名没填」这类问题当场说清楚，而不是静默不保存。 */
+              <div className="rb-wiz-nav">
+                <button type="button" className="rb-wiz-next" onClick={saveEditing} aria-label="保存联动">{RB_ICON_CHECK}</button>
+              </div>
+            ) : (
             <div className="rb-wiz-nav">
               {wizStep > 1 ? (
                 <button type="button" className="rb-wiz-back" onClick={() => setWizStep(wizStep - 1)} aria-label="上一步">{RB_ICON_CHEVRON}</button>
@@ -2459,6 +2658,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                 aria-label={wizStep === 6 ? "保存联动" : "下一步"}
               >{wizStep === 6 ? RB_ICON_CHECK : RB_ICON_ARROW}</button>
             </div>
+            )}
           </div>
           </div>
         ) : null}
