@@ -56,6 +56,17 @@ export type BridgeRule = {
   name: string;
   /** 匹配的数据类型；"*" 匹配全部 */
   matchType: string;
+  /**
+   * 只在这个词出现在信号正文里时才触发（空 = 不限）。
+   *
+   * 为什么需要它：信号类型太粗——「长时间使用」这一条会同时罩住刷抖音、
+   * 刷 B 站、看小说，用户想「只有刷抖音才提醒我」就配不出来。而应用名
+   * 恰好就在 payload 里（如「抖音 已连续使用 20 分钟」），所以按 payload
+   * 做一层关键词过滤就够，不必给每种应用各造一个信号类型。
+   *
+   * 多个词用 | 或 , 分隔，命中任一即触发（如「抖音|快手」）。
+   */
+  payloadFilter?: string;
   enabled: boolean;
   process: {
     mode: BridgeProcessMode;

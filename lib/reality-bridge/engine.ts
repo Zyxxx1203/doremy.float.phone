@@ -397,12 +397,31 @@ export async function applyServerBridgeEntry(meta: {
   return { sessionId };
 }
 
+/**
+ * 规则的关键词过滤：空 = 不限；否则要求信号正文里出现其中之一。
+ *
+ * 大小写不敏感；分隔符接受 | , ，、 三种写法，用哪种用户顺眼就用哪种。
+ * 分隔后全是空串（用户只敲了几个逗号）时视为不限——否则规则会静默失效，
+ * 而用户看到的是「我明明填了过滤却一条都不触发」，极难排查。
+ */
+function matchesPayloadFilter(filter: string | undefined, payload: string): boolean {
+  const raw = (filter ?? "").trim();
+  if (!raw) return true;
+  const terms = raw.split(/[|,，、]/).map(term => term.trim()).filter(Boolean);
+  if (terms.length === 0) return true;
+  const haystack = String(payload ?? "").toLowerCase();
+  return terms.some(term => haystack.includes(term.toLowerCase()));
+}
+
 /** 处理一条收件箱数据：匹配规则 → 加工 → 执行动作 → 记录流水。 */
 export async function processBridgeItem(item: BridgeItem): Promise<BridgeFeedEntry> {
   // 定时规则不参与信号匹配：它们由 runDueScheduledRules() 直接触发，
   // 若混进来，任何一条信号都会把它们捎带着跑一遍。
-  const rules = loadBridgeRules().filter(rule =>
-    rule.enabled && !rule.schedule && (rule.matchType === "*" || rule.matchType === item.type));
+  const rules = loadBridgeRules().filter(rule => {
+    if (!rule.enabled || rule.schedule) return false;
+    if (rule.matchType !== "*" && rule.matchType !== item.type) return false;
+    return matchesPayloadFilter(rule.payloadFilter, item.payload);
+  });
   const entry: BridgeFeedEntry = {
     id: item.id,
     type: item.type,

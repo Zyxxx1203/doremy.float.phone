@@ -489,7 +489,15 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
         : `${schedule.kind === "weekly" ? ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][schedule.weekday ?? 1] : "每天"} ${schedule.time ?? "08:00"}`
       : `当收到「${editing.matchType.trim()}」`;
     const name = editing.name.trim() || fallbackName;
-    const cleaned: BridgeRule = { ...editing, name: name.slice(0, 30), matchType: editing.matchType.trim().slice(0, 60) };
+    // 过滤词留空时写 undefined 而不是空串：旧规则本来就没有这个键，
+    // 保持「没有就是不限」的同一种存盘形状，导出/对比时也干净。
+    const payloadFilter = (editing.payloadFilter ?? "").trim().slice(0, 60);
+    const cleaned: BridgeRule = {
+      ...editing,
+      name: name.slice(0, 30),
+      matchType: editing.matchType.trim().slice(0, 60),
+      payloadFilter: payloadFilter || undefined,
+    };
     const exists = rules.some(rule => rule.id === cleaned.id);
     persistRules(exists ? rules.map(rule => rule.id === cleaned.id ? cleaned : rule) : [cleaned, ...rules]);
     setEditing(null);
@@ -499,6 +507,9 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
   const summarize = useCallback((rule: BridgeRule): string => {
     const parts: string[] = [];
     const schedule = rule.schedule;
+    // 过滤条件放在最前：它决定「这条规则到底会不会被触发」，
+    // 比后面执行了什么更该一眼看到，否则用户会以为规则坏了。
+    if (!schedule && rule.payloadFilter?.trim()) parts.push(`只看含「${rule.payloadFilter.trim()}」的信号`);
     if (schedule) {
       if (schedule.kind === "interval") parts.push(`每隔 ${schedule.minutes ?? 60} 分钟`);
       else if (schedule.kind === "weekly") parts.push(`每周${["日", "一", "二", "三", "四", "五", "六"][schedule.weekday ?? 1]} ${schedule.time ?? "08:00"}`);
@@ -1857,6 +1868,17 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                     onChange={event => setEditing({ ...editing, matchType: event.target.value })} />
                 </label>
                 <p className="rb-hint">信号名是你给这类消息起的名字。填 * 表示什么消息都算。</p>
+
+                {/* 只看包含：信号类型太粗（「长时间使用」会同时罩住刷抖音、刷 B 站），
+                    想「只有刷抖音才提醒我」就得再按正文过滤一层。 */}
+                <label>只看包含
+                  <input value={editing.payloadFilter ?? ""} maxLength={60} placeholder="留空 = 不限；例如 抖音，或 抖音|快手"
+                    onChange={event => setEditing({ ...editing, payloadFilter: event.target.value })} />
+                </label>
+                <p className="rb-hint">
+                  留空表示这条信号全都算。填了就只在收到内容里出现该词的信号时才触发，多个词用 | 隔开。
+                  比如信号名填「长时间使用」、这里填「抖音」，就是「只有刷抖音才提醒」。
+                </p>
               </>
             )}
             <label>触发间隔
