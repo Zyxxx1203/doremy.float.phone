@@ -5,6 +5,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { loadCharacters } from "@/lib/character-storage";
 import { CLOUD_BACKUP_BUCKET, normalizeBackupUrl } from "@/lib/cloud-backup/config";
 import { pollRealityBridgeNow, REALITY_BRIDGE_FEED_UPDATED_EVENT } from "@/components/reality-bridge-scheduler";
+import { testRunRule } from "@/lib/reality-bridge/engine";
 import {
   bridgeConnection,
   clearBridgeFeed,
@@ -127,6 +128,44 @@ function buildShortcutParamSchema(rows: ShortcutParamRow[]): string {
     };
   }
   return JSON.stringify({ type: "object", properties, required: clean.map(row => row.key.trim()) }, null, 2);
+}
+
+/*
+ * 从一个工具的 parameterSchema 里抽出「有哪些参数、什么类型、必填不必填、是干什么的」。
+ *
+ * 现实桥选工具那一步原本只给一个空白 JSON 框，用户不知道这个工具接哪些键
+ * （实测反馈）。而这些信息就在 EnabledTool.parameterSchema 里，纯粹是没用上。
+ *
+ * 解析失败一律返回空数组——宁可退回原来的「手写 JSON」，也不能因为某个工具的
+ * schema 不规范就把这一步整个弄崩。
+ */
+type ToolParamField = { key: string; type: string; required: boolean; description: string };
+
+function parseToolParamFields(schemaText?: string): ToolParamField[] {
+  if (!schemaText) return [];
+  try {
+    const parsed = JSON.parse(schemaText) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
+    const props = parsed.properties;
+    if (!props || typeof props !== "object" || Array.isArray(props)) return [];
+    const required = Array.isArray(parsed.required) ? parsed.required.map(String) : [];
+    const fields: ToolParamField[] = [];
+    for (const [key, def] of Object.entries(props as Record<string, unknown>)) {
+      if (!def || typeof def !== "object" || Array.isArray(def)) continue;
+      const raw = (def as { type?: unknown }).type;
+      // 联合类型（如 ["number","string"]）取第一个可识别的
+      const type = Array.isArray(raw) ? String(raw[0] ?? "string") : String(raw ?? "string");
+      fields.push({
+        key,
+        type,
+        required: required.includes(key),
+        description: String((def as { description?: unknown }).description ?? ""),
+      });
+    }
+    return fields;
+  } catch {
+    return [];
+  }
 }
 
 function newDataItem(): BridgeDataItem {
@@ -274,6 +313,11 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
   const [recentCommands, setRecentCommands] = useState<ShortcutCommand[]>([]);
   const [testingShortcut, setTestingShortcut] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
+  /* 规则试跑：示例数据 + 结果。以前第 6 步只有一句「保存后自己回 iPhone 试」，
+     用户配完心里没底。见 runRuleTest。 */
+  const [ruleTest, setRuleTest] = useState<{ type: string; payload: string }>({ type: "", payload: "" });
+  const [ruleTestBusy, setRuleTestBusy] = useState(false);
+  const [ruleTestResult, setRuleTestResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   // 换一个动作/重新打开向导时清掉上次的测试结果
   useEffect(() => { setTestResult(null); }, [editingShortcut?.id]);
@@ -727,7 +771,42 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     setEditing(rule);
     setWizStep(1);
     setWizMax(existing ? 6 : 1);
+    // 换一条规则就清掉上次的试跑结果，免得把上一条的效果错认成这一条的
+    setRuleTest({ type: "", payload: "" });
+    setRuleTestResult(null);
   }, []);
+
+  /**
+   * 试跑当前编辑中的规则：真的执行一遍「加工 → 动作」。
+   *
+   * 与快捷动作的「发送测试通知」同一个用意——让用户在保存前就看到会发生什么，
+   * 而不是保存完回 iPhone 那边碰运气。动作是真的会执行的（该写聊天就写、
+   * 该弹通知就弹），这一点在界面上必须先说清楚，不能让人以为只是预演。
+   */
+  const runRuleTest = useCallback(async () => {
+    if (!editing || ruleTestBusy) return;
+    setRuleTestBusy(true);
+    try {
+      const result = await testRunRule(editing, {
+        type: ruleTest.type.trim() || editing.matchType.trim() || editing.name.trim() || "试跑数据",
+        payload: ruleTest.payload.trim() || "这是一条试跑数据",
+      });
+      if (result.error) {
+        setRuleTestResult({ ok: false, text: `试跑时出错：${result.error}` });
+        return;
+      }
+      const acted = result.actions.length > 0 ? result.actions.join("、") : "这条规则没有配置任何动作";
+      // 把加工结果也回显出来：用户最关心的就是「AI 先处理」那一步到底处理成了什么
+      const processed = result.processed && result.processed !== ruleTest.payload.trim()
+        ? `加工后：${result.processed}\n`
+        : "";
+      setRuleTestResult({ ok: true, text: `${processed}实际执行：${acted}` });
+    } catch (err) {
+      setRuleTestResult({ ok: false, text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setRuleTestBusy(false);
+    }
+  }, [editing, ruleTest, ruleTestBusy]);
 
   const wizNext = useCallback(() => {
     if (!editing) return;
@@ -2229,12 +2308,65 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                           <option key={`${item.source}:${item.sourceId}`} value={item.name}>{item.name}</option>
                         ))}
                       </select>
+                      {/* 这个工具能传什么参数：直接从它的 parameterSchema 生成提示与一键填入。
+                          以前只给一个空白 JSON 框 + 一句「参数（JSON，可留空）」，用户
+                          根本不知道这个工具接哪些键（实测反馈）。数据本来就在手边，
+                          不用白不用。 */}
+                      {(() => {
+                        const picked = availableTools.find(item => item.name === editing.actions.tool!.name);
+                        const fields = parseToolParamFields(picked?.parameterSchema);
+                        if (fields.length === 0) return null;
+                        // 只列前 8 个：参数特别多的工具（比如组合工具）会把这一屏撑爆，
+                        // 而真正需要那么多参数的人本来就会去写 JSON。
+                        const shown = fields.slice(0, 8);
+                        return (
+                          <div className="rb-action-body" style={{ display: "block" }}>
+                            <p className="rb-hint" style={{ marginTop: 0 }}>这个工具支持的参数（点一下直接填进去）：</p>
+                            <div className="rb-signal-chips">
+                              {shown.map(field => (
+                                <button
+                                  key={field.key}
+                                  type="button"
+                                  className="rb-signal-chip"
+                                  title={`${field.type}${field.required ? "，必填" : "，可选"}${field.description ? ` · ${field.description}` : ""}`}
+                                  onClick={() => {
+                                    setEditing({
+                                      ...editing,
+                                      actions: {
+                                        ...editing.actions,
+                                        tool: {
+                                          ...editing.actions.tool!,
+                                          args: {
+                                            ...(editing.actions.tool!.args ?? {}),
+                                            [field.key]: field.type === "number" || field.type === "integer" ? 0 : field.type === "boolean" ? true : "",
+                                          },
+                                        },
+                                      },
+                                    });
+                                  }}
+                                >{field.key}{field.required ? " *" : ""}</button>
+                              ))}
+                            </div>
+                            {shown.filter(f => f.description).slice(0, 4).map(field => (
+                              <p className="rb-hint" key={field.key} style={{ margin: "2px 0" }}>
+                                <b>{field.key}</b>：{field.description}
+                              </p>
+                            ))}
+                            {fields.length > shown.length ? (
+                              <p className="rb-hint" style={{ margin: "2px 0" }}>还有 {fields.length - shown.length} 个参数，可在下方 JSON 里手动填。</p>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
                       <label>参数（JSON，可留空）
                         <textarea
-                          key={editing.actions.tool.name}
+                          /* key 里带上 args 的序列化：点上面的参数标签填入后，args 一变
+                             就重新挂载一次，框里立刻能看到刚填进去的那个键。只写工具名的话
+                             defaultValue 永远不会刷新，用户点了标签会以为没反应。 */
+                          key={`${editing.actions.tool.name}:${JSON.stringify(editing.actions.tool.args ?? {})}`}
                           rows={2}
                           defaultValue={Object.keys(editing.actions.tool.args ?? {}).length > 0
-                            ? JSON.stringify(editing.actions.tool.args)
+                            ? JSON.stringify(editing.actions.tool.args, null, 2)
                             : ""}
                           placeholder='例：{"focus":"battery"}；值里可以用 {payload} 取收到的内容'
                           onBlur={event => {
@@ -2268,10 +2400,40 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
             {wizStep === 6 ? (
               <div className="rb-wiz-page">
                 <div className="rb-wiz-summary">
-                  <b>{editing.name.trim() || `当收到「${editing.matchType.trim() || "……"}」`}</b>
+                  <b>{editing.name.trim() || (editing.schedule ? "定时联动" : `当收到「${editing.matchType.trim() || "……"}」`)}</b>
                   <p>{summarize(editing)}</p>
                 </div>
-                <p className="rb-help">保存后，在 iPhone 上运行一次对应的快捷指令，再到「历史」页点右上角刷新；看到这条数据出现，说明联动已经生效。</p>
+
+                {/* 试跑：保存前先真的跑一遍，别让用户配完还得回 iPhone 碰运气。 */}
+                <div className="rb-fieldset" style={{ border: "none", padding: 0, margin: "4px 0 0" }}>
+                  <p className="rb-wiz-tip">试跑一次（可选，但强烈建议）</p>
+                  <p className="rb-hint">填一条示例数据，立刻跑完整条链路看效果。<b>动作会真的执行</b>——该写进聊天就写、该弹通知就弹；但不会记进接收记录，也不占用触发间隔。试跑满意再保存。</p>
+                  <label>示例信号名
+                    <input value={ruleTest.type} maxLength={60}
+                      placeholder={editing.schedule ? "定时规则用不到信号名，可留空" : editing.matchType.trim() || "默认用你上面填的信号名"}
+                      onChange={event => setRuleTest({ ...ruleTest, type: event.target.value })} />
+                  </label>
+                  <label>示例内容（就是 {"{payload}"}）
+                    <textarea rows={2} value={ruleTest.payload} maxLength={500}
+                      placeholder={editing.process.mode === "ai" ? "填一段真实点的内容，才看得出 AI 会加工成什么" : "例如：已连续使用抖音 25 分钟"}
+                      onChange={event => setRuleTest({ ...ruleTest, payload: event.target.value })} />
+                  </label>
+                  <button type="button" className="rb-btn ghost" disabled={ruleTestBusy} onClick={() => void runRuleTest()}>
+                    {ruleTestBusy ? "正在试跑…" : "试跑一次"}
+                  </button>
+                  {ruleTestResult && (
+                    <p className="rb-hint" style={{ color: ruleTestResult.ok ? "var(--c-success, #16a34a)" : "var(--c-danger, #dc2626)", wordBreak: "break-word", whiteSpace: "pre-wrap" }} role="status">
+                      {ruleTestResult.text}
+                    </p>
+                  )}
+                </div>
+
+                {/* 保存之后的验证方式两部分不一样：定时规则不用去 iPhone 跑任何东西。 */}
+                {editing.schedule ? (
+                  <p className="rb-help">保存后到点会自动执行。前提是小手机开着或后台保活——完全关闭期间错过的时刻不会补跑。</p>
+                ) : (
+                  <p className="rb-help">保存后，在 iPhone 上运行一次对应的快捷指令，再到「历史」页刷新；看到这条数据出现，说明联动已经生效。</p>
+                )}
                 {isExistingRule ? (
                   <button
                     type="button"

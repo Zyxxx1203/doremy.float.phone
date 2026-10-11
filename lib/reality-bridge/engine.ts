@@ -633,3 +633,36 @@ export async function runDueScheduledRules(): Promise<number> {
   }
   return fired;
 }
+
+/**
+ * 试跑一条规则：立刻把它的「加工 → 动作」链路真的跑一遍，让用户在保存前
+ * 就能看见会发生什么。
+ *
+ * 为什么不能直接复用 processBridgeItem：
+ *   · 它按信号名从已保存的规则里挑，而向导里这条规则**还没保存**；
+ *   · 它把定时规则整个排除在外（那些由 runDueScheduledRules 触发），
+ *     于是「每天 8 点说早安」这种最常配的规则反而最没法验证。
+ * 所以这里直接吃一条明确的规则对象 + 一份示例数据。
+ *
+ * 副作用是真的：动作照常执行（该写聊天就写、该弹通知就弹）——这正是「测试」
+ * 的意义，用户要看到的就是真实效果。但**不写接收记录、不占用触发间隔**，
+ * 免得测试数据把历史弄脏、或把冷却时间白白占掉。
+ */
+export async function testRunRule(
+  rule: BridgeRule,
+  sample: { type: string; payload: string },
+): Promise<{ processed: string; actions: string[]; error?: string }> {
+  const item: BridgeItem = {
+    id: `test_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+    type: sample.type || "试跑数据",
+    payload: sample.payload,
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    const text = await processText(rule, item);
+    const actions = await runActions(rule, item, text);
+    return { processed: text, actions };
+  } catch (err) {
+    return { processed: "", actions: [], error: err instanceof Error ? err.message : String(err) };
+  }
+}
