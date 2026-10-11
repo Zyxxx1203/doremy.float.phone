@@ -111,7 +111,11 @@ object PhoneWidgetRenderer {
                 settings.blockNetworkLoads = true // 不联网：模板里的 http 图片不会加载，避免卡住
             }
             val view = webView
-            view.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
+            // webViewClient 必须在 load 之前挂上。
+            // 原来的顺序是先 load 再设回调：本地 HTML 字符串几乎瞬间加载完，
+            // onPageFinished 会在回调挂上之前就触发，于是回调永远不来、
+            // PNG 永远不落盘，桌面只能显示占位图——
+            // 表现就是「加了小组件，显示出来却是个应用大图标」。
             view.webViewClient = object : android.webkit.WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     view?.postDelayed({
@@ -121,6 +125,7 @@ object PhoneWidgetRenderer {
                     }, DRAW_DELAY_MS)
                 }
             }
+            view.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
         } catch (err: Throwable) {
             runCatching { webView?.destroy() }
         }

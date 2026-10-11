@@ -97,7 +97,10 @@ export async function runWidgetAutoGenerate(): Promise<boolean> {
     // 配了生图且用户开了开关时，顺手换一张配当前状态的头像。
     // 失败/没配都静默沿用旧头像——头像只是锦上添花，
     // 绝不能因为它让「换一句话」这件事整体失败。
-    let avatar = loadWidgetData()?.avatar ?? "";
+    // 头像优先级：已生成/上次留下的 > 角色卡头像。
+    // 以前只带上一轮的 avatar，没开「状态头像」时永远是空 → 桌面只剩首字，
+    // 与角色卡里设的头像完全脱节（用户实报）。
+    let avatar = loadWidgetData()?.avatar || (character.avatar ?? "");
     if (config.useGeneratedAvatar && canGenerateAvatar()) {
       const generated = await generateWidgetAvatar(character, line.status, line.text);
       if (generated) avatar = generated;

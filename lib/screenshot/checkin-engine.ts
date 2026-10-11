@@ -105,6 +105,14 @@ export async function runCheckIn(
       if (outcome.reply) {
         pushChatMessage({ sessionId, role: "user", content: outcome.reply });
       }
+      // 关键：留一条系统事件说明「这张图是它自己查岗看到的」。
+      // 否则角色只见到一张以用户身份发出的图，会当成用户主动分享截图，
+      // 完全意识不到是自己在查岗——与拒绝路径那条说明正好不对称。
+      pushChatMessage({
+        sessionId,
+        role: "system",
+        content: `[${name}想看看你现在在做什么，你把屏幕给它看了]`,
+      });
       const stored = await storeMediaBase64(outcome.base64, "image/png");
       pushChatMessage({
         sessionId,

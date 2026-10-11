@@ -53,7 +53,7 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
   // 预览要跟着「内容版本」重算：角色刚留了新话时，预览也该变
   const [dataVersion, setDataVersion] = useState(0);
 
-  const characters = useMemo(() => loadCharacters().map(c => ({ id: c.id, name: c.name })), []);
+  const characters = useMemo(() => loadCharacters().map(c => ({ id: c.id, name: c.name, avatar: c.avatar ?? "" })), []);
 
   const refresh = useCallback(() => {
     setConfig(loadWidgetConfig());
@@ -82,6 +82,7 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
   }, [config, characters]);
 
   const activeCharacterName = characters.find(c => c.id === config.characterId)?.name ?? "角色";
+  const activeCharacterAvatar = characters.find(c => c.id === config.characterId)?.avatar ?? "";
 
   /**
    * 预览 HTML。
@@ -92,18 +93,21 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
   const previewHtml = useMemo(() => {
     void dataVersion; // 依赖它：数据变了要重算
     const real = loadWidgetData();
+    // 头像优先级：已有头像 > 角色卡头像。
+    // 没开「生成状态头像」、也从没生成过时，以前一律空着 → 预览只剩首字，
+    // 跟角色卡里设的头像对不上（用户实报「头像不同步」）。
     const data = real && real.characterId === config.characterId
-      ? real
+      ? { ...real, avatar: real.avatar || activeCharacterAvatar }
       : {
         characterId: config.characterId,
         text: SAMPLE_TEXT,
         status: SAMPLE_STATUS,
-        avatar: "",
+        avatar: activeCharacterAvatar,
         updatedAt: new Date().toISOString(),
         source: "manual" as const,
       };
     return renderWidgetHtml(templateDraft, data, activeCharacterName, "你");
-  }, [templateDraft, config.characterId, activeCharacterName, dataVersion]);
+  }, [templateDraft, config.characterId, activeCharacterName, activeCharacterAvatar, dataVersion]);
 
   const update = useCallback((patch: Partial<WidgetConfig>) => {
     setConfig(prev => {
@@ -155,13 +159,13 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
       characterId: config.characterId,
       text: SAMPLE_TEXT,
       status: SAMPLE_STATUS,
-      avatar: loadWidgetData()?.avatar ?? "",
+      avatar: loadWidgetData()?.avatar || activeCharacterAvatar,
       updatedAt: new Date().toISOString(),
       source: "manual",
     });
     setDataVersion(v => v + 1);
     onNotice?.("已写入示例内容");
-  }, [config.characterId, onNotice]);
+  }, [config.characterId, activeCharacterAvatar, onNotice]);
 
   const bridgeOk = hasWidgetBridge();
   const previewWidth = clampInt(config.widthDp, WIDGET_LIMITS.widthDp.min, WIDGET_LIMITS.widthDp.max);
