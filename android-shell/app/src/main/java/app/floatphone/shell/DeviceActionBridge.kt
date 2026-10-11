@@ -8,6 +8,10 @@ import android.content.pm.PackageManager
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
+import android.media.MediaMetadata
+import android.media.session.MediaController
+import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
 import android.net.Uri
 import android.os.Build
 import android.os.Process
@@ -197,6 +201,20 @@ class DeviceActionBridge(private val context: Context) {
         }
     }
 
+    /**
+     * 有没有 App 能响应某类闹钟意图。给 capabilitiesJson 用。
+     *
+     * 这里只回答「有没有这个能力」，不代替用户做选择：
+     * 用 queryIntentActivities 而不是 resolveActivity——后者在有多个时钟
+     * 应用时返回 null，会把「有得选」误报成「不支持」。
+     */
+    private fun canHandleAlarmIntent(action: String): Boolean = try {
+        val intent = Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.packageManager.queryIntentActivities(intent, 0).isNotEmpty()
+    } catch (e: Throwable) {
+        false
+    }
+
     /** 当前是不是自动亮度。读不到时按「不是」处理——不因为这个拦住正常调节。 */
     private fun isAutoBrightnessOn(): Boolean = try {
         Settings.System.getInt(
@@ -355,7 +373,14 @@ class DeviceActionBridge(private val context: Context) {
                 .put("minute", minute)
                 .put("needsConfirm", true)
         } catch (e: Throwable) {
-            JSONObject().put("ok", false).put("reason", "这台设备没有可用的时钟应用")
+            // 原来无论什么异常都说「没有可用的时钟应用」，把 Android 11+ 的包可见性
+            // 限制（manifest 缺 queries 声明）误报成了「手机没时钟」——绝大多数手机
+            // 都有时钟，用户看到这句只会一头雾水。现在如实区分。
+            if (e is android.content.ActivityNotFoundException) {
+                JSONObject().put("ok", false).put("reason", "系统里没有能响应「设闹钟」的应用（可能被厂商精简掉了）")
+            } else {
+                JSONObject().put("ok", false).put("reason", "闹钟设置失败：${e.javaClass.simpleName} ${e.message ?: ""}".trim())
+            }
         }
     }
 
@@ -380,23 +405,128 @@ class DeviceActionBridge(private val context: Context) {
             context.startActivity(intent)
             JSONObject().put("ok", true).put("seconds", seconds)
         } catch (e: Throwable) {
-            JSONObject().put("ok", false).put("reason", "这台设备没有可用的时钟应用")
+            if (e is android.content.ActivityNotFoundException) {
+                JSONObject().put("ok", false).put("reason", "系统里没有能响应「倒计时」的应用（可能被厂商精简掉了）")
+            } else {
+                JSONObject().put("ok", false).put("reason", "倒计时设置失败：${e.javaClass.simpleName} ${e.message ?: ""}".trim())
+            }
         }
     }
 
     // ── 媒体播放控制 ──
 
+    /** 现在有哪些活跃媒体会话。没授权时抛 SecurityException，一并吞成空列表。 */
+    private fun activeMediaControllers(): List<MediaController> = try {
+        val msm = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
+        msm.getActiveSessions(MediaControlListenerService.tokenFor(context))
+    } catch (e: Throwable) {
+        emptyList()
+    }
+
+    /**
+     * 有没有资格读活跃媒体会话（即用户授了「通知使用权」）。
+     *
+     * 只能靠试着调一次来判断：系统没给 isNotificationListenerAccessGranted
+     * 这类公开接口，getActiveSessions 抛 SecurityException 就是没授权。
+     */
+    fun canReadActiveSessions(): Boolean = try {
+        val msm = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
+        msm.getActiveSessions(MediaControlListenerService.tokenFor(context))
+        true
+    } catch (e: Throwable) {
+        false
+    }
+
+    /** 取「当前在播的那个」会话；没有在播的就取第一个（便于对暂停中的下发 play）。 */
+    private fun pickController(controllers: List<MediaController>): MediaController? =
+        controllers.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+            ?: controllers.firstOrNull()
+
+    /** 曲目标识（标题|歌手）。用来判断上一首/下一首有没有真的换歌。 */
+    private fun mediaTitle(controller: MediaController): String {
+        val md: MediaMetadata = controller.metadata ?: return ""
+        val title = md.getString(MediaMetadata.METADATA_KEY_TITLE) ?: ""
+        val artist = md.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
+        return if (title.isEmpty() && artist.isEmpty()) "" else "$title|$artist"
+    }
+
     /**
      * 控制正在播放的音乐（暂停/继续/上一首/下一首）。
      *
-     * 用 dispatchMediaKeyEvent 模拟媒体按键，而不是直接操作某个播放器：
-     * 用户可能用网易云、Spotify、B站，模拟按键对**任何**支持媒体按键的
-     * 播放器都有效，而直接调 API 只能覆盖装了 SDK 的那一个。
+     * 曾只用 dispatchMediaKeyEvent 盲发媒体按键，然后无条件回 ok:true——
+     * 后台没有播放器时按键会被系统直接丢掉，角色却照样报「已继续播放」，
+     * 用户等半天没动静（实测反馈）。根因是「指令发出去了」被当成了「事情做成了」。
      *
-     * 零权限。副作用要说清楚：它控制的是「当前抢到媒体焦点的播放器」，
-     * 如果同时开着好几个，动的可能不是用户以为的那个。
+     * 现在两条路：
+     *   ① 有「通知使用权」→ 经 MediaSessionManager 拿活跃会话，用 MediaController
+     *      直接下发，并**读回播放状态核对**是否真的生效，把 confirmed 如实报出去；
+     *   ② 没有该权限 → 退回盲发媒体按键，confirmed=false 并说明无法确认。
+     * 确实没有活跃会话时明确报失败，不再假装成功。
      */
     fun mediaControl(action: String): JSONObject {
+        val controllers = activeMediaControllers()
+        if (controllers.isEmpty()) {
+            // 分不清「没授权」和「真没在播」时不能乱猜：先看有没有授权。
+            if (!canReadActiveSessions()) return dispatchMediaKeyFallback(action)
+            return JSONObject().put("ok", false)
+                .put("reason", "现在没有正在播放的媒体，没有可控制的对象")
+        }
+        val controller = pickController(controllers)
+            ?: return JSONObject().put("ok", false).put("reason", "没有可控制的播放器")
+        val beforeState = controller.playbackState
+        val beforeTitle = mediaTitle(controller)
+        return try {
+            when (action) {
+                "play" -> controller.transportControls.play()
+                "pause" -> controller.transportControls.pause()
+                "toggle" -> if (beforeState?.state == PlaybackState.STATE_PLAYING) {
+                    controller.transportControls.pause()
+                } else {
+                    controller.transportControls.play()
+                }
+                "next" -> controller.transportControls.skipToNext()
+                "prev" -> controller.transportControls.skipToPrevious()
+                "stop" -> controller.transportControls.stop()
+                else -> return JSONObject().put("ok", false).put("reason", "未知的播放操作：$action")
+            }
+            // 状态回灌不是同步的：不给系统一点时间，读回来的还是操作前的旧值，
+            // 会把成功误判成失败。180ms 是实测够用又不至于卡手感的折中。
+            Thread.sleep(180)
+            val afterState = controller.playbackState
+            val readable = afterState != null
+            val afterTitle = mediaTitle(controller)
+            // play/pause 的预期很明确，能直接核对；next/prev 靠曲目是否变化判断，
+            // 单曲循环下不变并不代表失败，所以只标记「没能确认」而不是判失败。
+            val confirmed = when (action) {
+                "play" -> readable && afterState?.state == PlaybackState.STATE_PLAYING
+                "pause" -> readable && afterState?.state == PlaybackState.STATE_PAUSED
+                "toggle" -> readable && afterState?.state != beforeState?.state
+                "next", "prev" -> readable && afterTitle.isNotEmpty() && afterTitle != beforeTitle
+                "stop" -> readable && (afterState?.state == PlaybackState.STATE_STOPPED || afterState?.state == PlaybackState.STATE_NONE)
+                else -> false
+            }
+            val label = runCatching {
+                val pm = context.packageManager
+                pm.getApplicationLabel(pm.getApplicationInfo(controller.packageName, 0)).toString()
+            }.getOrDefault(controller.packageName)
+            JSONObject().put("ok", true).put("action", action)
+                .put("confirmed", confirmed)
+                .put("readable", readable)
+                .put("viaSession", true)
+                .put("player", label)
+                .put("playing", afterState?.state == PlaybackState.STATE_PLAYING)
+        } catch (e: Throwable) {
+            JSONObject().put("ok", false).put("reason", e.message ?: "媒体控制不可用")
+        }
+    }
+
+    /**
+     * 没有「通知使用权」时的退路：盲发媒体按键。
+     *
+     * 这条路没有任何回读手段，所以只能说「指令发出去了」，confirmed 一律 false。
+     * 绝不报成「已播放」——那正是用户看到「提示成功、却没声音」的原因。
+     */
+    private fun dispatchMediaKeyFallback(action: String): JSONObject {
         val keyCode = when (action) {
             "play" -> KeyEvent.KEYCODE_MEDIA_PLAY
             "pause" -> KeyEvent.KEYCODE_MEDIA_PAUSE
@@ -412,6 +542,9 @@ class DeviceActionBridge(private val context: Context) {
             am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
             am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
             JSONObject().put("ok", true).put("action", action)
+                .put("confirmed", false)
+                .put("viaSession", false)
+                .put("needPermission", "notification_listener")
         } catch (e: Throwable) {
             JSONObject().put("ok", false).put("reason", e.message ?: "媒体控制不可用")
         }
@@ -491,6 +624,7 @@ class DeviceActionBridge(private val context: Context) {
                 .setData(Uri.parse("package:${context.packageName}"))
             "dnd" -> Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
             "usage_stats" -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+            "notification_listener" -> Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
             "location" -> Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
             "accessibility" -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
             "battery" -> Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
@@ -527,9 +661,15 @@ class DeviceActionBridge(private val context: Context) {
         .put("dnd", true)
         .put("dndGranted", canSetDnd())
         .put("openApp", true)
-        .put("alarm", true)
-        .put("timer", true)
+        // 闹钟/倒计时原来写死 true，不管手机有没有时钟都应「支持」——检测里那行
+        // 「App 已支持」因此是空的。现在真去查能不能拉起，查不到就如实报 false。
+        .put("alarm", canHandleAlarmIntent(AlarmClock.ACTION_SET_ALARM))
+        .put("timer", canHandleAlarmIntent(AlarmClock.ACTION_SET_TIMER))
         .put("media", true)
+        // 有没有「通知使用权」——有它才能读活跃媒体会话、确认播放指令是否生效。
+        // 与 media=true 分开报：媒体控制本身随时能用（盲发按键），
+        // 缺的只是「确认能力」，混为一谈会让用户以为整个功能不能用。
+        .put("mediaSessionGranted", canReadActiveSessions())
         .put("openUrl", true)
         .put("usageStats", true)
         .put("usageStatsGranted", hasUsageStatsAccess())

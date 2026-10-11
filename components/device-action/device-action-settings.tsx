@@ -158,6 +158,8 @@ export function DeviceActionSettings({ onNotice }: { onNotice?: (msg: string) =>
               const supported = caps[id] === true;
               const granted = id === "brightness" ? grants.brightness
                 : id === "dnd" ? grants.dnd
+                // 媒体控制没授权也能用（盲发按键），只是没法确认生效——不拦着开，
+                // 但在下面给一条「去授权」提示，否则用户会一直看到「没能确认」。
                 : true;
               // media / openUrl / alarm / timer 会把用户带离小手机或改变系统响铃，
               // 开启时明确提醒一句——这几个的存在感比手电筒强得多。
@@ -239,6 +241,17 @@ export function DeviceActionSettings({ onNotice }: { onNotice?: (msg: string) =>
                 <span className="menu-desc">{caps.torch === true ? "这台设备有可用闪光灯" : "没检测到闪光灯"}</span>
               </div>
             </div>
+            {/* 闹钟/倒计时：这两项现在真去查过能不能拉起，不再是写死的 true。 */}
+            <div className="menu-item" style={{ cursor: "default" }}>
+              <div className="menu-label-group">
+                <span className="menu-label">闹钟 / 倒计时</span>
+                <span className="menu-desc">
+                  {caps.alarm === true && caps.timer === true
+                    ? "系统里有可用的时钟应用"
+                    : "系统里没有能响应闹钟/倒计时的应用（厂商可能精简了时钟）"}
+                </span>
+              </div>
+            </div>
             <div className="menu-item" style={{ cursor: "default" }}>
               <div className="menu-label-group">
                 <span className="menu-label">修改系统设置权限</span>
@@ -264,6 +277,34 @@ export function DeviceActionSettings({ onNotice }: { onNotice?: (msg: string) =>
                 <span className="menu-label">勿扰访问权限</span>
                 <span className="menu-desc">{grants.dnd ? "已授权（可开关勿扰）" : "未授权，勿扰会失败"}</span>
               </div>
+            </div>
+            {/* 媒体会话读取：有它才能读到播放状态、确认指令是否真的生效。
+                没有也能用，只是角色只能说「指令发出去了」，无法确认。 */}
+            <div className="menu-item" style={{ cursor: "default" }}>
+              <div className="menu-label-group">
+                <span className="menu-label">通知使用权（媒体确认用）</span>
+                <span className="menu-desc">
+                  {caps.mediaSessionGranted === true
+                    ? "已授权。角色控制音乐后能读回播放状态、确认是否真的生效"
+                    : caps.mediaSessionGranted === false
+                      ? "未授权。角色仍能控制音乐，但只能盲发指令、无法确认是否生效"
+                      : "当前 App 版本不上报这项，需更新安卓壳"}
+                </span>
+              </div>
+              {caps.mediaSessionGranted !== true && (
+                <button
+                  type="button"
+                  className="ui-btn ui-btn-outline"
+                  onClick={() => {
+                    const ok = openSystemSettings("notification_listener");
+                    onNotice?.(ok
+                      ? "请在列表里找到「小手机」并允许通知使用权（它不会读你的通知内容，只为读播放状态）"
+                      : "没能打开系统设置，请手动到「设置 → 通知 → 通知使用权」里授权");
+                  }}
+                >
+                  去授权
+                </button>
+              )}
             </div>
             <div className="menu-item" style={{ cursor: "default" }}>
               <div className="menu-label-group">

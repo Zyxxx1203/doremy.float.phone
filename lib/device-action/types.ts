@@ -27,6 +27,7 @@ export type DeviceActionId =
   | "alarm"
   | "timer"
   | "media"
+  | "mediaSessionGranted"
   | "openUrl"
   | "usageStats"
   | "usageStatsGranted";
@@ -60,6 +61,15 @@ export type DeviceActionResult =
       applied?: boolean;
       /** 亮度动作：当前是否开着自动亮度（开着时系统可能很快把值改回去）。 */
       autoBrightness?: boolean;
+      /** 媒体动作：是否**确认**指令真的生效了（读回播放状态核对过）。
+       *  false 表示只是把指令发出去了，不代表播放器照做了——角色据此措辞。 */
+      confirmed?: boolean;
+      /** 媒体动作：是否走了会话直控（有通知使用权）。false 说明是盲发按键、无从确认。 */
+      viaSession?: boolean;
+      /** 媒体动作：当前是否处于播放中（能读到状态时）。 */
+      playing?: boolean;
+      /** 媒体动作：被控制的播放器显示名（能识别到时）。 */
+      player?: string;
     }
   | { ok: false; reason: string; needPermission?: string };
 

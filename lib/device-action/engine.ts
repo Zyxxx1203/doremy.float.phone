@@ -284,7 +284,15 @@ export function runDeviceAction(args: Record<string, unknown>): DeviceActionOutc
         prev: "已切到上一首",
         stop: "已停止播放",
       };
-      return logDeviceAction({ ok: true, action: "media", message: label[op] ?? "已发送播放控制" }, "media");
+      const where = result.player ? `（控制的是「${result.player}」）` : "";
+      // 只有**读回状态核对过**才敢说「已播放」。盲发按键时指令可能被系统直接丢掉
+      // （后台没有播放器就是这样），旧文案照样报「已继续播放」，用户等了半天没声音。
+      const message = result.confirmed
+        ? `${label[op] ?? "已发送播放控制"}${where}`
+        : result.viaSession === false
+          ? `已经把播放指令发出去了，但没法确认是否生效——需要 TA 在设置 → 操作设备里授予「通知使用权」，才能读到播放状态帮你确认${where}`
+          : `${label[op] ?? "已发送播放控制"}的指令已下发，但没能从播放器读到确认状态，可能没生效${where}`;
+      return logDeviceAction({ ok: true, action: "media", message }, "media");
     }
 
     case "openUrl": {
