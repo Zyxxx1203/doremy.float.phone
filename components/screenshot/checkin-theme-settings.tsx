@@ -138,12 +138,14 @@ export function CheckInThemeSettings() {
 
             {/* ── 预设 ── */}
             <div className="menu-group" style={{ marginTop: 10 }}>
-                <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
+                {/* 纵向排布：色板有 6 个圆点、横着放会把「配色预设」压成一字一行。
+                    标签占一行、色板在下一行，任何屏宽都不会互相挤。 */}
+                <div className="menu-item" style={{ cursor: "default", flexDirection: "column", alignItems: "stretch", gap: 10 }}>
                     <div className="menu-label-group">
                         <span className="menu-label">配色预设</span>
                         <span className="menu-desc">选一套整套换掉</span>
                     </div>
-                    <div className="menu-right" style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <div className="menu-right" style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-start" }}>
                         {CHECK_IN_OVERLAY_THEMES.map(theme => {
                             const selected = themeKey === theme.key;
                             return (

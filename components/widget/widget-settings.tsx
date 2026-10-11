@@ -38,7 +38,7 @@ import {
 const SAMPLE_TEXT = "今天路过那家店，想起你说想吃他家的小笼包";
 const SAMPLE_STATUS = "在想你";
 
-function clampDp(value: number, min: number, max: number): number {
+function clampInt(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Math.round(value)));
 }
 
@@ -164,8 +164,8 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
   }, [config.characterId, onNotice]);
 
   const bridgeOk = hasWidgetBridge();
-  const previewWidth = clampDp(config.widthDp, WIDGET_LIMITS.widthDp.min, WIDGET_LIMITS.widthDp.max);
-  const previewHeight = clampDp(config.heightDp, WIDGET_LIMITS.heightDp.min, WIDGET_LIMITS.heightDp.max);
+  const previewWidth = clampInt(config.widthDp, WIDGET_LIMITS.widthDp.min, WIDGET_LIMITS.widthDp.max);
+  const previewHeight = clampInt(config.heightDp, WIDGET_LIMITS.heightDp.min, WIDGET_LIMITS.heightDp.max);
 
   return (
     <div className="widget-settings">
@@ -179,7 +179,10 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
           {/* 用 iframe 而不是 dangerouslySetInnerHTML：
               模板是用户可自由编辑的 HTML，塞进主文档会污染全局样式，
               而且一旦里面带 <style> 就会影响整个设置页。 */}
+          {/* key 用渲染结果本身：内容一变就强制重建 iframe。
+              只更新 srcDoc 属性时，浏览器有时会沿用旧的内部文档、看上去「改了没反应」。 */}
           <iframe
+            key={previewHtml}
             title="小组件预览"
             className="ws-preview-frame"
             srcDoc={previewHtml}
@@ -239,13 +242,13 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
                 宽（dp）
                 <input type="number" min={WIDGET_LIMITS.widthDp.min} max={WIDGET_LIMITS.widthDp.max}
                   value={config.widthDp}
-                  onChange={e => update({ widthDp: clampDp(Number(e.target.value) || config.widthDp, WIDGET_LIMITS.widthDp.min, WIDGET_LIMITS.widthDp.max) })} />
+                  onChange={e => update({ widthDp: clampInt(Number(e.target.value) || config.widthDp, WIDGET_LIMITS.widthDp.min, WIDGET_LIMITS.widthDp.max) })} />
               </label>
               <label className="ws-field">
                 高（dp）
                 <input type="number" min={WIDGET_LIMITS.heightDp.min} max={WIDGET_LIMITS.heightDp.max}
                   value={config.heightDp}
-                  onChange={e => update({ heightDp: clampDp(Number(e.target.value) || config.heightDp, WIDGET_LIMITS.heightDp.min, WIDGET_LIMITS.heightDp.max) })} />
+                  onChange={e => update({ heightDp: clampInt(Number(e.target.value) || config.heightDp, WIDGET_LIMITS.heightDp.min, WIDGET_LIMITS.heightDp.max) })} />
               </label>
             </div>
             <label className="ws-field">
@@ -339,15 +342,22 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
             </div>
             {config.autoEnabled ? (
               <label className="ws-field">
-                多久换一次
-                <select value={config.autoIntervalHours} onChange={e => update({ autoIntervalHours: Number(e.target.value) })}>
-                  <option value={3}>3 小时</option>
-                  <option value={6}>6 小时</option>
-                  <option value={12}>12 小时</option>
-                  <option value={24}>1 天</option>
-                  <option value={48}>2 天</option>
-                  <option value={72}>3 天</option>
-                </select>
+                多久换一次（小时）
+                {/* 自己填，不再给死档位：1~168 小时（一周）之间任意整数 */}
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={WIDGET_LIMITS.autoIntervalHours.min}
+                  max={WIDGET_LIMITS.autoIntervalHours.max}
+                  value={config.autoIntervalHours}
+                  onChange={e => update({
+                    autoIntervalHours: clampInt(
+                      Number(e.target.value) || config.autoIntervalHours,
+                      WIDGET_LIMITS.autoIntervalHours.min,
+                      WIDGET_LIMITS.autoIntervalHours.max,
+                    ),
+                  })}
+                />
               </label>
             ) : null}
             <p className="ws-hint">

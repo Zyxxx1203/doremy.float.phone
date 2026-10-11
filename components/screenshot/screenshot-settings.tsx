@@ -513,19 +513,22 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
                   <span className="menu-label">大小</span>
                   <span className="menu-desc">桌面那个点多粗；字会跟着一起缩放</span>
                 </div>
-                <div className="menu-right" style={{ display: "flex", gap: 6 }}>
-                  {[40, 50, 64].map(size => (
-                    <button
-                      key={size}
-                      type="button"
-                      className="ui-btn ui-btn-outline"
-                      style={{ opacity: config.ballDiameter === size ? 1 : 0.55 }}
-                      onClick={() => updateBallStyle({ ballDiameter: size })}
-                    >
-                      {size}
-                    </button>
-                  ))}
-                </div>
+                {/* 直接填数值，不再给死档位：32~96 dp 之间任意整数 */}
+                <input
+                  className="per-field-input"
+                  style={{ maxWidth: 92 }}
+                  type="number"
+                  inputMode="numeric"
+                  min={32}
+                  max={96}
+                  value={config.ballDiameter}
+                  aria-label="悬浮球直径（dp）"
+                  onChange={e => {
+                    const n = Number(e.target.value);
+                    if (!Number.isFinite(n)) return;
+                    updateBallStyle({ ballDiameter: Math.max(32, Math.min(96, Math.round(n))) });
+                  }}
+                />
               </div>
               {!supportsBallStyle() && (
                 <div className="per-note" style={{ padding: "0 var(--ui-padding, 16px) 10px" }}>
@@ -643,19 +646,22 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
                   超出后最旧的会被删掉（图片一起删除，不会悄悄占满存储）
                 </span>
               </div>
-              <div className="menu-right">
-                {[5, 10, 20].map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    className="ui-btn ui-btn-outline"
-                    style={{ marginLeft: 6, opacity: config.keepRecent === n ? 1 : 0.6 }}
-                    onClick={() => update({ keepRecent: n })}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
+              {/* 直接填数值：1~50 张之间任意整数，不再给死档位 */}
+              <input
+                className="per-field-input"
+                style={{ maxWidth: 82 }}
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={50}
+                value={config.keepRecent}
+                aria-label="保留最近截屏张数"
+                onChange={e => {
+                  const n = Number(e.target.value);
+                  if (!Number.isFinite(n)) return;
+                  update({ keepRecent: Math.max(1, Math.min(50, Math.round(n))) });
+                }}
+              />
             </div>
           </div>
         </div>
