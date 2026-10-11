@@ -24,6 +24,7 @@ import {
   loadCharacterCheckIn,
   loadCheckInConfig,
   markCheckInFired,
+  readCharacterRuntime,
   shouldFireCheckIn,
   type CheckInCharacterConfig,
 } from "./checkin-config";
@@ -247,6 +248,121 @@ export function startUserShotBridge(): () => void {
     if (event.action !== "checkIn") return;
     void flushPendingUserShot().catch(() => undefined);
   });
+}
+
+/**
+ * 角色在聊天里主动请求看一眼屏幕（工具箱 → 内置能力「想看看你的屏幕」）。
+ *
+ * 与定时查岗（runCheckIn）共用同一套审批与额度，但落地方式必须不同：
+ *   · 定时查岗发生在**没有对话**的时候，看完得自己另起一轮回复
+ *     （所以那边要调 requestBackgroundChatReply）；
+ *   · 这个发生在**对话进行中**，结果直接交回给模型、在同一轮里点评——
+ *     这里若也去起背景回复，就会变成「回两条」。
+ *
+ * 相同的是：一样弹浮层、一样要用户点「给它看」，拒绝路径一样不产生图片、
+ * 一样记一次额度（否则角色一直点「不给」就等于没有上限）。
+ */
+export type CheckInToolOutcome = {
+  /** 动作本身是否正常走完（含「用户没给看」这种正常结果） */
+  ok: boolean;
+  /** 用户是否真的给了图 */
+  accepted?: boolean;
+  /** 给模型看的说明：ok=true 时是所见/被拒的交代，ok=false 时是失败原因 */
+  message: string;
+};
+
+export async function requestCheckInForTool(characterId: string): Promise<CheckInToolOutcome> {
+  const cfg = loadCharacterCheckIn(characterId);
+  if (!cfg.enabled) {
+    return {
+      ok: false,
+      message: "TA 还没有为你开启查岗（设置 → 截屏 → 主动查岗），所以现在不能要求看屏幕。",
+    };
+  }
+
+  const runtime = readCharacterRuntime(characterId);
+  if (runtime.countToday >= cfg.dailyLimit) {
+    return {
+      ok: false,
+      message: `今天已经看过 ${runtime.countToday} 次了（上限 ${cfg.dailyLimit} 次），今天别再要求了。`,
+    };
+  }
+
+  const readiness = checkInReadiness();
+  if (!readiness.bridgeAvailable) return { ok: false, message: "当前 App 版本不支持这个动作，需要更新安卓壳。" };
+  if (!readiness.supported) return { ok: false, message: "TA 的系统版本太低（需要 Android 11 及以上），暂时做不到。" };
+  if (!readiness.accessibilityOn) return { ok: false, message: "TA 还没有开启无障碍服务，暂时截不到屏幕。" };
+  if (!readiness.overlayReady) return { ok: false, message: "TA 还没有授予浮窗权限，弹不出确认框。" };
+
+  const sessionId = findLatestPrivateSession(characterId);
+  const character = loadCharacters().find(c => c.id === characterId);
+  const name = character?.name?.trim() || "TA";
+  const avatar = character?.avatar || "";
+
+  // 先记一次：请求已经发出去了，无论用户最终给不给看。
+  markCheckInFired(characterId);
+
+  const outcome = await requestCheckIn(characterId, name, avatar);
+
+  if (outcome.accepted) {
+    try {
+      if (outcome.reply && sessionId) {
+        pushChatMessage({ sessionId, role: "user", content: outcome.reply });
+      }
+      if (sessionId) {
+        // 这条系统事件是给角色看的：否则它只见到一张「用户发的图」，
+        // 会当成对方主动分享，误以为和自己这个请求无关。
+        pushChatMessage({
+          sessionId,
+          role: "system",
+          content: `[${name}想看看你现在在做什么，你把屏幕给它看了]`,
+        });
+        const stored = await storeMediaBase64(outcome.base64, "image/png");
+        pushChatMessage({
+          sessionId,
+          role: "user",
+          content: "",
+          mediaType: "image",
+          mediaUrl: stored.ref,
+          mediaData: { label: "给你看我现在的屏幕" },
+        });
+      }
+      return {
+        ok: true,
+        accepted: true,
+        message: "TA 把屏幕给你看了，画面已经作为一条消息出现在聊天里。"
+          + "结合你看到的内容自然地回应一句就好，不要逐项列举你看到了什么——那很像在汇报监控。",
+      };
+    } catch {
+      return { ok: false, message: "图拿到手了但没能存下来，这次没看成。" };
+    }
+  }
+
+  // 拒绝时如果用户留了话，那句话是主动说的，照常作为发言送出。
+  if (outcome.reply && sessionId) {
+    pushChatMessage({ sessionId, role: "user", content: outcome.reply });
+  }
+
+  const declined = outcome.reason === "user_rejected";
+  const timedOut = outcome.reason === "timeout";
+  if (sessionId) {
+    const note = declined
+      ? `[${name}想看看你现在在做什么，你没有给它看${outcome.reply ? "，但回了一句话" : ""}]`
+      : timedOut
+        ? `[${name}想看看你现在在做什么，你没有回应]`
+        : `[${name}想看看你在做什么，但没能截到屏幕（${outcome.reason}）]`;
+    pushChatMessage({ sessionId, role: "system", content: note });
+  }
+
+  return {
+    ok: true,
+    accepted: false,
+    message: declined
+      ? "TA 这次没有给你看。不要追问、不要闹脾气、不要反复请求，自然地把话题接下去就好。"
+      : timedOut
+        ? "TA 没有回应你的请求（可能不在手机前）。不要在同一个点上再试一次。"
+        : `这次没能截到屏幕（${outcome.reason}）。不要再重复尝试。`,
+  };
 }
 
 /**

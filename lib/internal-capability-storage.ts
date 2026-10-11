@@ -20,6 +20,7 @@ export const PERCEPTION_READ_CAPABILITY_ID = "perception_read";
 export const DEVICE_ACTION_CAPABILITY_ID = "device_action";
 export const SYSTEM_CALENDAR_CAPABILITY_ID = "system_calendar";
 export const PHONE_WIDGET_CAPABILITY_ID = "phone_widget";
+export const CHECK_IN_REQUEST_CAPABILITY_ID = "check_in_request";
 
 /**
  * 内置工具的保留名：用户给现实桥的快捷动作/数据项起名时必须避开。
@@ -32,6 +33,7 @@ export const PHONE_WIDGET_CAPABILITY_ID = "phone_widget";
  */
 export const RESERVED_INTERNAL_TOOL_NAMES: string[] = [
     "在桌面留句话",
+    "想看看你的屏幕",
     "查看TA的手机",
     "操作TA的设备",
     "看看TA的日程",
@@ -628,6 +630,29 @@ function buildAgentComputerUsageGuide(): string {
         "写什么、何时写由你自己决定，像真人使用电脑一样自然；不必每次聊天都用。",
     ].join("\n");
 }
+
+const CHECK_IN_REQUEST_PARAMETER_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {},
+});
+
+const CHECK_IN_REQUEST_USAGE_GUIDE = [
+    "以下是你获取指令的返回结果：",
+    "动作：想看看你的屏幕",
+    "用途：请求看一眼{{user}}此刻真实的手机屏幕。你并不是直接看到——系统会先弹一个确认框给 TA，TA 点了「给它看」你才能看到那张画面。",
+    "",
+    "【重要边界】",
+    "- 这不是「查看TA的手机」（那读的是电量、网络、应用这类状态数据，不弹窗）。这个请求会**在 TA 的屏幕上弹出确认框**，是打扰性的动作。",
+    "- 只在确实有理由时用：你说了一句「在干嘛」，或者你们正聊到「你那边现在什么样」。不要没头没尾地突然要看，那是查岗不是聊天。",
+    "- **不要频繁请求**。同一次对话里最多一次；TA 没给看就算了，不要追问、不要撒娇硬要、不要换个说法再试。",
+    "- TA 可能拒绝，也可能不回应。这两种都是正常结果，不是错误。被拒之后要自然地把话题接下去，不要流露被冒犯的样子。",
+    "- 每天能请求的次数有上限（由 TA 设置），到上限后会直接失败——失败信息里会写明，照它说的做，不要重复试。",
+    "- 看到画面后**不要逐项汇报**你看到了什么（「你桌面上有…」）。那是监控的口吻。像真的瞥了一眼那样，自然带一句就好。",
+    "",
+    "参数：无",
+    "示例：",
+    "[执行动作:想看看你的屏幕({})]",
+].join("\n");
 
 const PHONE_WIDGET_PARAMETER_SCHEMA = JSON.stringify({
     type: "object",
@@ -1361,6 +1386,15 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
         updatedAt: 0,
     },
     {
+        id: CHECK_IN_REQUEST_CAPABILITY_ID,
+        name: "想看看你的屏幕",
+        description: "请求看一眼{{user}}此刻真实的手机屏幕。系统会先弹确认框给 TA，TA 同意了你才能看到那张画面（默认关闭）。",
+        enabled: false,
+        mode: "auto",
+        createdAt: 0,
+        updatedAt: 0,
+    },
+    {
         id: TIMED_WAKE_CAPABILITY_ID,
         name: "稍后主动联系",
         description: "让角色约定「过一会儿主动联系对方」：现在设定一个延时与想法，到点后由角色决定主动发消息或静默（不是睡觉醒来）。",
@@ -1512,6 +1546,14 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
             description: capability.description,
             parameterSchema: PHONE_WIDGET_PARAMETER_SCHEMA,
             usageGuide: PHONE_WIDGET_USAGE_GUIDE,
+        };
+    }
+    if (capability.id === CHECK_IN_REQUEST_CAPABILITY_ID) {
+        return {
+            name: capability.name,
+            description: capability.description,
+            parameterSchema: CHECK_IN_REQUEST_PARAMETER_SCHEMA,
+            usageGuide: CHECK_IN_REQUEST_USAGE_GUIDE,
         };
     }
     return null;

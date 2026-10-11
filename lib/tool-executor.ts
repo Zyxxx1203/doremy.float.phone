@@ -23,7 +23,7 @@ import {
 } from "./tool-storage";
 import { executeCustomAppToolCall } from "./custom-app-tool-runtime";
 import { characterWorkspace, agentComputerRequest, isAgentComputerConfigured } from "./agent-computer";
-import { AGENT_COMPUTER_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, DEVICE_ACTION_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, PERCEPTION_READ_CAPABILITY_ID, PHONE_WIDGET_CAPABILITY_ID, REALITY_BRIDGE_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, SYSTEM_CALENDAR_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
+import { AGENT_COMPUTER_CAPABILITY_ID, CHECK_IN_REQUEST_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, DEVICE_ACTION_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, PERCEPTION_READ_CAPABILITY_ID, PHONE_WIDGET_CAPABILITY_ID, REALITY_BRIDGE_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, SYSTEM_CALENDAR_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
 import {
     checkQueryCooldown,
     describeStatusByFocus,
@@ -822,6 +822,7 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     if (call.name === "看看TA的日程") return executeSystemCalendarReadTool(call);
     if (call.name === "记进TA的日历") return executeSystemCalendarWriteTool(call);
     if (call.name === "在桌面留句话") return executePhoneWidgetTool(call, context);
+    if (call.name === "想看看你的屏幕") return executeCheckInRequestTool(call, context);
     if (isRealityBridgeToolName(call.name)) return executeRealityBridgeTool(call, context);
     if (call.name === "稍后主动联系" || call.name === "设置定时醒来") return executeTimedWakeTool(call, context);
 
@@ -840,6 +841,50 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     }
 
     return executeMemoryWriteTool(call.args, capability, context);
+}
+
+/**
+ * 角色主动请求看一眼用户屏幕。
+ *
+ * 与「查看TA的手机」的分工：那个读电量/网络这类状态数据、不打扰用户；
+ * 这个会在用户屏幕上**弹一个确认框**，是打扰性动作，必须用户当场点头才看得到。
+ * 所以用户没开启查岗能力时角色完全看不到这个工具。
+ */
+async function executeCheckInRequestTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
+    const capability = getInternalCapability(CHECK_IN_REQUEST_CAPABILITY_ID);
+    if (!capability || !capability.enabled || capability.mode === "off") {
+        return {
+            name: call.name,
+            success: false,
+            error: "「想看看你的屏幕」能力未启用（工具箱 → 内置能力）",
+            continueConversation: false,
+            persistToHistory: false,
+            userNotice: "看屏幕能力未启用",
+        };
+    }
+    if (!context?.characterId) {
+        return { name: call.name, success: false, error: "这个动作需要在角色会话里使用" };
+    }
+
+    try {
+        // 动态引入：截屏模块牵到聊天与追问服务，静态引入容易与这里成环。
+        const { requestCheckInForTool } = await import("./screenshot");
+        const outcome = await requestCheckInForTool(context.characterId);
+        return {
+            name: call.name,
+            success: outcome.ok,
+            // 两种情况都要把话交回给模型：成功的要它接着点评，
+            // 被拒/失败的要它自然接话——所以都走 data，而不是把拒绝当 error 让它重试。
+            data: outcome.message,
+            ...(outcome.accepted ? { userNotice: "看了看你的屏幕" } : {}),
+        };
+    } catch (err) {
+        return {
+            name: call.name,
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+        };
+    }
 }
 
 /**
