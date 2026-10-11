@@ -957,12 +957,24 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
         setRuleTestResult({ ok: false, text: `试跑时出错：${result.error}` });
         return;
       }
-      const acted = result.actions.length > 0 ? result.actions.join("、") : "这条规则没有配置任何动作";
+      // 信号名/过滤词没对上：**这是试跑最该报出来的结论**。
+      // 老实现无条件往下跑，于是「信号名填错」这种最常见的配置错误在试跑里
+      // 完全看不出来——用户以为配好了，真信号来了却一条都不触发。
+      if (!result.matched) {
+        setRuleTestResult({ ok: false, text: result.notes.join("\n") });
+        return;
+      }
+      const lines: string[] = ["✓ 匹配通过（真收到这样的信号，这条规则会触发）"];
+      lines.push(...result.notes);
       // 把加工结果也回显出来：用户最关心的就是「AI 先处理」那一步到底处理成了什么
-      const processed = result.processed && result.processed !== ruleTest.payload.trim()
-        ? `加工后：${result.processed}\n`
-        : "";
-      setRuleTestResult({ ok: true, text: `${processed}实际执行：${acted}` });
+      if (result.processed && result.processed !== ruleTest.payload.trim()) {
+        lines.push(`加工后：${result.processed}`);
+      }
+      const acted = result.actions.length > 0
+        ? result.actions.join("、")
+        : "这条规则没有配置任何动作，收到信号也只会存档";
+      lines.push(`实际执行：${acted}`);
+      setRuleTestResult({ ok: true, text: lines.join("\n") });
     } catch (err) {
       setRuleTestResult({ ok: false, text: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -2638,7 +2650,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                 {/* 试跑：保存前先真的跑一遍，别让用户配完还得回 iPhone 碰运气。 */}
                 <div className="rb-fieldset" style={{ border: "none", padding: 0, margin: "4px 0 0" }}>
                   <p className="rb-wiz-tip">试跑一次（可选，但强烈建议）</p>
-                  <p className="rb-hint">填一条示例数据，立刻跑完整条链路看效果。<b>动作会真的执行</b>——该写进聊天就写、该弹通知就弹；但不会记进接收记录，也不占用触发间隔。试跑满意再保存。</p>
+                  <p className="rb-hint">填一条示例数据，<b>先检查匹配、再真的跑一遍动作</b>——这样既能看出「信号名/过滤词有没有填错」（填错的话真信号来了根本不会触发），也能看出「触发之后会发生什么」。<b>动作会真的执行</b>：该写进聊天就写、该弹通知就弹；但不会记进接收记录，也不占用触发间隔。试跑满意再保存。</p>
                   <label>示例信号名
                     <input value={ruleTest.type} maxLength={60}
                       placeholder={editing.schedule ? "定时规则用不到信号名，可留空" : editing.matchType.trim() || "默认用你上面填的信号名"}

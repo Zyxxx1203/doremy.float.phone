@@ -648,21 +648,82 @@ export async function runDueScheduledRules(): Promise<number> {
  * 的意义，用户要看到的就是真实效果。但**不写接收记录、不占用触发间隔**，
  * 免得测试数据把历史弄脏、或把冷却时间白白占掉。
  */
+/** 试跑结果：除了「跑出了什么」，更要回答「这条规则到底会不会被触发」。 */
+export type RuleTestOutcome = {
+  /** 匹配这一关过了没有。false 时 processed / actions 都是空的。 */
+  matched: boolean;
+  /** 链路里发生过、但用户看不见的环节（过滤、间隔、延迟）的说明。 */
+  notes: string[];
+  processed: string;
+  actions: string[];
+  error?: string;
+};
+
 export async function testRunRule(
   rule: BridgeRule,
   sample: { type: string; payload: string },
-): Promise<{ processed: string; actions: string[]; error?: string }> {
+): Promise<RuleTestOutcome> {
   const item: BridgeItem = {
     id: `test_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
-    type: sample.type || "试跑数据",
+    type: sample.type,
     payload: sample.payload,
     createdAt: new Date().toISOString(),
   };
+  const notes: string[] = [];
+
+  // ① 匹配：**这一步原来是漏掉的**，也正是「试跑像空跑」的原因。
+  //    老实现无条件执行加工与动作，于是信号名填错、过滤词写偏，试跑照样跑得通，
+  //    用户以为配好了；等真信号来了却一条都不触发——最坑的那种「配了没用」。
+  //    试跑必须把这一关也走一遍，否则它验证的只是「动作能不能执行」，
+  //    而不是「这条规则会不会被触发」，后者才是用户真正担心的。
+  if (!rule.schedule) {
+    const wanted = rule.matchType.trim();
+    if (wanted && wanted !== "*" && wanted !== item.type) {
+      return {
+        matched: false,
+        notes: [`信号名对不上：规则等的是「${wanted}」，你试的是「${item.type}」。真的收到「${wanted}」时才会触发。`],
+        processed: "",
+        actions: [],
+      };
+    }
+    if (!matchesPayloadFilter(rule.payloadFilter, item.payload)) {
+      return {
+        matched: false,
+        notes: [`正文过滤没通过：规则要求内容里含「${rule.payloadFilter}」，示例内容里没有。`],
+        processed: "",
+        actions: [],
+      };
+    }
+  } else {
+    notes.push("这是定时规则，不看信号名，到点自己跑。");
+  }
+
+  // ② 触发间隔：真实链路里间隔内的同信号只存档、不执行。
+  //    但试跑**刻意不拦**——否则用户刚触发过一次就再也试不了，而他想看的只是
+  //    「会执行什么」。这里只说一句，让他知道真实情况下可能被拦。
+  const cooldown = Math.max(0, Number(rule.cooldownMinutes) || 0);
+  if (cooldown > 0) {
+    notes.push(`真实触发时，${cooldown} 分钟内重复的同一信号只会存档、不再执行；试跑不受这条限制。`);
+  }
+
+  // ③ 延迟执行：链路里会先排队、到点再跑。试跑不能真的等，所以立刻执行，
+  //    同时把「本该延后多久」如实说出来——不然用户会以为延迟没生效。
+  const delay = Math.max(0, Number(rule.delayMinutes) || 0);
+  if (delay > 0) {
+    notes.push(`真实触发时会先排队 ${delay} 分钟再执行；试跑是立刻跑的。`);
+  }
+
   try {
     const text = await processText(rule, item);
     const actions = await runActions(rule, item, text);
-    return { processed: text, actions };
+    return { matched: true, notes, processed: text, actions };
   } catch (err) {
-    return { processed: "", actions: [], error: err instanceof Error ? err.message : String(err) };
+    return {
+      matched: true,
+      notes,
+      processed: "",
+      actions: [],
+      error: err instanceof Error ? err.message : String(err),
+    };
   }
 }
