@@ -57,6 +57,24 @@ function alphaFromPercent(percent: number): string {
     return Math.round((clamped / 100) * 255).toString(16).padStart(2, "0").toUpperCase();
 }
 
+/**
+ * Android 的 #AARRGGBB → CSS 的 rgba()。
+ *
+ * 必须转：色板存的是原生格式（透明度在最前两位），而 CSS 认的是 #RRGGBBAA。
+ * 直接当 background 用，颜色和透明度会一起错位——「蓝」#E65B7CFA 会被
+ * 浏览器读成 R=E6/G=5B/B=7C/A=FA，画出来是个暗红点（用户实报）。
+ */
+function toCssColor(argb: string): string {
+  const hex = argb.replace(/^#/, "");
+  if (hex.length !== 8) return argb;
+  const a = parseInt(hex.slice(0, 2), 16);
+  const r = parseInt(hex.slice(2, 4), 16);
+  const g = parseInt(hex.slice(4, 6), 16);
+  const b = parseInt(hex.slice(6, 8), 16);
+  if (![a, r, g, b].every(Number.isFinite)) return argb;
+  return `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`;
+}
+
 /** 悬浮球可选颜色（都带透明度，与原生默认值同一格式）。 */
 const BALL_COLORS = [
   { label: "蓝", value: "#E65B7CFA" },
@@ -408,13 +426,19 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
                         key={item.value}
                         type="button"
                         aria-label={`${item.label}色`}
-                        onClick={() => updateBallStyle({ ballColor: item.value })}
+                        onClick={() => {
+                          updateBallStyle({ ballColor: item.value });
+                          // 同步「色号」「透明度」两行：它们各自持有 state，不跟着走的话
+                          // 点完色板下面还显示旧值，看着像「选的和显示的不一样」。
+                          setColorInput(`#${item.value.slice(-6).toUpperCase()}`);
+                          setAlphaPercent(Math.round((parseInt(item.value.slice(1, 3), 16) / 255) * 100));
+                        }}
                         style={{
                           width: 30,
                           height: 30,
                           padding: 0,
                           borderRadius: 999,
-                          background: item.value,
+                          background: toCssColor(item.value),
                           opacity: selected ? 1 : 0.45,
                           border: selected ? "2px solid var(--c-text-title)" : "1px solid rgba(0,0,0,.14)",
                           cursor: "pointer",
