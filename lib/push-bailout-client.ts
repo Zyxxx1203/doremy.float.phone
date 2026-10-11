@@ -24,10 +24,11 @@ import {
     loadMenstrualConfig,
     loadMenstrualRecords,
 } from "./menstrual-storage";
-import { loadTimedWakeSchedules, type TimedWakeSchedule } from "./timed-wake-storage";
+import { loadTimedWakeSchedules, removeTimedWakeSchedule, type TimedWakeSchedule } from "./timed-wake-storage";
 import {
     IDLE_RECONNECT_MAX_CONSECUTIVE,
     loadIdleReconnectRules,
+    removeIdleReconnectRule,
     type IdleReconnectRule,
 } from "./idle-reconnect-storage";
 import { loadCharacters } from "./character-storage";

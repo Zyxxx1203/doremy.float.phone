@@ -25,7 +25,11 @@ export type ScheduledJobRow = {
   executeAtMs: number;
   executeAt: string;
   status: string;
-  /** 归属角色显示名；空串 = 归属不明（孤儿任务或系统任务） */
+  /** 归属角色 id；空串 = 归属不明（系统任务，或规则/排期已被删掉） */
+  characterId: string;
+  /** 归属的会话 id（追问/回复兜底才有），供「按角色整体停止」用 */
+  sessionId: string;
+  /** 归属角色显示名；空串 = 归属不明 */
   characterName: string;
   /** 用途的人话说明 */
   label: string;
@@ -33,21 +37,32 @@ export type ScheduledJobRow = {
   system: boolean;
 };
 
-/** 取角色显示名：别名优先，其次角色名。 */
+/** 取角色显示名。 */
 function characterNameFor(characterId: string): string {
   if (!characterId) return "";
   return loadCharacters().find(character => character.id === characterId)?.name?.trim() || "";
 }
 
-/** 取会话显示名：群聊用群名，单聊优先别名、其次角色名。 */
-function sessionNameFor(sessionId: string): string {
+/** 从会话反解出「显示名 + 角色 id」。群聊没有单一角色，角色 id 返回空串。 */
+function resolveSession(sessionId: string): { name: string; characterId: string } {
   const session = loadChatSessions().find(item => item.id === sessionId);
-  if (!session) return "";
-  if (session.isGroup) return session.groupName?.trim() || "群聊";
+  if (!session) return { name: "", characterId: "" };
+  if (session.isGroup) return { name: session.groupName?.trim() || "群聊", characterId: "" };
   const alias = session.alias?.trim();
-  if (alias) return alias;
-  return characterNameFor(session.contactId);
+  return {
+    name: alias || characterNameFor(session.contactId) || "（会话已删除）",
+    characterId: session.contactId || "",
+  };
 }
+
+/** 解析结果的内部形态。 */
+type Described = {
+  characterId: string;
+  sessionId: string;
+  characterName: string;
+  label: string;
+  system: boolean;
+};
 
 /**
  * 一条 trigger_key 的归属解析。
@@ -61,27 +76,35 @@ function sessionNameFor(sessionId: string): string {
  *   bridge:scan:<用户id>            现实桥扫描（系统）
  * 认不出的一律按「未识别」展示原文，绝不猜——猜错会让用户删掉不该删的东西。
  */
-function describeTriggerKey(triggerKey: string): { characterName: string; label: string; system: boolean } {
+function describeTriggerKey(triggerKey: string): Described {
   // 服务端续排的链会在键尾加 `+`（idle:<rule>:<n>+），解析前先剥掉，
   // 但要记下来——那正是「本地不知道、却在发消息」的那一批。
   const continued = triggerKey.endsWith("+");
   const key = continued ? triggerKey.slice(0, -1) : triggerKey;
   const suffix = continued ? "（服务端续排）" : "";
+  const none = { characterId: "", sessionId: "" };
 
   if (key.startsWith("followup:")) {
     const rest = key.slice("followup:".length);
     const sep = rest.lastIndexOf(":");
     const sessionId = sep > 0 ? rest.slice(0, sep) : rest;
     const nth = sep > 0 ? rest.slice(sep + 1) : "";
+    const resolved = resolveSession(sessionId);
     return {
-      characterName: sessionNameFor(sessionId),
+      characterId: resolved.characterId,
+      sessionId,
+      characterName: resolved.name,
       label: `追问${nth ? `（第 ${nth} 次）` : ""}`,
       system: false,
     };
   }
   if (key.startsWith("reply:")) {
+    const sessionId = key.slice("reply:".length);
+    const resolved = resolveSession(sessionId);
     return {
-      characterName: sessionNameFor(key.slice("reply:".length)),
+      characterId: resolved.characterId,
+      sessionId,
+      characterName: resolved.name,
       label: "回复兜底（你发消息时挂的备用生成）",
       system: false,
     };
@@ -91,11 +114,12 @@ function describeTriggerKey(triggerKey: string): { characterName: string; label:
     const sep = rest.lastIndexOf(":");
     const ruleId = sep > 0 ? rest.slice(0, sep) : rest;
     const rule = loadIdleReconnectRules().find(item => item.id === ruleId);
-    const name = rule ? characterNameFor(rule.characterId) : "";
+    // 规则已被删掉但任务还在服务端：这正是用户最需要看见的一种情况，
+    // 显示成「规则已删除」而不是空白，否则会以为面板坏了。
     return {
-      // 规则已被删掉但任务还在服务端：这正是用户最需要看见的一种情况，
-      // 显示成「规则已删除」而不是空白，否则会以为面板坏了。
-      characterName: name || (ruleId ? "（规则已删除）" : ""),
+      characterId: rule?.characterId ?? "",
+      sessionId: rule?.sessionId ?? "",
+      characterName: rule ? characterNameFor(rule.characterId) : (ruleId ? "（规则已删除）" : ""),
       label: `冷场重连${suffix}`,
       system: false,
     };
@@ -104,6 +128,8 @@ function describeTriggerKey(triggerKey: string): { characterName: string; label:
     const id = key.slice("timedwake:".length);
     const schedule = loadTimedWakeSchedules().find(item => item.id === id);
     return {
+      characterId: schedule?.characterId ?? "",
+      sessionId: schedule?.sessionId ?? "",
       characterName: schedule ? characterNameFor(schedule.characterId) : "（排期已取消）",
       label: "定时主动联系",
       system: false,
@@ -114,15 +140,17 @@ function describeTriggerKey(triggerKey: string): { characterName: string; label:
     const sep = rest.indexOf(":");
     const characterId = sep > 0 ? rest.slice(0, sep) : rest;
     return {
+      characterId,
+      sessionId: "",
       characterName: characterNameFor(characterId),
       label: "经期关怀",
       system: false,
     };
   }
   if (key.startsWith("bridge:")) {
-    return { characterName: "", label: "现实桥扫描（系统任务）", system: true };
+    return { ...none, characterName: "", label: "现实桥扫描（系统任务）", system: true };
   }
-  return { characterName: "", label: `未识别的任务：${triggerKey}`, system: true };
+  return { ...none, characterName: "", label: `未识别的任务：${triggerKey}`, system: true };
 }
 
 /** 把服务端任务清单翻译成可渲染的行，按触发时刻升序。 */
@@ -137,6 +165,8 @@ export function describeScheduledJobs(jobs: RawScheduledJob[]): ScheduledJobRow[
         executeAtMs: Number.isFinite(executeAtMs) ? executeAtMs : 0,
         executeAt: job.execute_at,
         status: job.status,
+        characterId: described.characterId,
+        sessionId: described.sessionId,
         characterName: described.characterName,
         label: described.label,
         system: described.system,
