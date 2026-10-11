@@ -198,21 +198,27 @@ export async function deliverUserShot(outcome: CheckInOutcome): Promise<{ ok: bo
     if (outcome.reply) {
       pushChatMessage({ sessionId, role: "user", content: outcome.reply });
     }
-    // 同时记进「最近截屏」列表：用户想回查刚才截了什么时，
-    // 那张图必须和查岗截的一视同仁地出现在列表里。
-    void recordUserShot({
+    // 存图 + 记进「最近截屏」列表：用户想回查刚才截了什么时，那张图必须
+    // 和查岗截的一视同仁地出现在列表里。两件事共用一次存储，拿回 ref 直接发消息。
+    //
+    // 这里曾经是 `void recordUserShot(...)` 顺手记一笔、再单独 storeMediaBase64——
+    // 而 recordUserShot 在 engine 里根本不存在，同步抛出的 TypeError 被外层
+    // catch 吞掉，于是「话发出去了、图和角色回应都没有」（用户实报）。
+    const record = await recordUserShot({
       base64: outcome.base64,
       width: outcome.width,
       height: outcome.height,
       bytes: outcome.bytes,
-    }).catch(() => undefined);
-    const stored = await storeMediaBase64(outcome.base64, "image/png");
+    });
+    if (!record) {
+      return { ok: false, reason: "图片没能保存，这次没发出去" };
+    }
     pushChatMessage({
       sessionId,
       role: "user",
       content: "",
       mediaType: "image",
-      mediaUrl: stored.ref,
+      mediaUrl: record.ref,
       mediaData: { label: "给你看看我现在这边" },
     });
     void requestBackgroundChatReply(sessionId).catch(() => undefined);

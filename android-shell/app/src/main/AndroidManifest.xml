@@ -77,6 +77,18 @@
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
 
     <!-- 系统能力：常驻、精确闹钟、设置项、状态栏 -->
+    <!-- 设闹钟的**调用方权限**。系统时钟（AOSP 的 HandleSetAlarm、
+         荣耀 com.hihonor.deskclock 等）给响应 SET_ALARM 的入口声明了
+         android:permission="com.android.alarm.permission.SET_ALARM"。
+         它是 normal 级权限：声明即自动授予，不需要用户手动开，但**不声明就没有**，
+         startActivity 会抛：
+           SecurityException: Permission Denial: starting Intent { act=android.intent.action.SET_ALARM
+             ... requires com.android.alarm.permission.SET_ALARM
+         （实测反馈，荣耀机型）。另外缺这个权限时 queryIntentActivities 也可能把
+         时钟过滤掉，让 canHandleAlarmIntent 误报「本机不支持」。
+         注意与下面的 SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM 区分：那两个是
+         「本 App 自己定精确闹钟」用的，这个才是时钟 App 要求调用方持有的。 -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />

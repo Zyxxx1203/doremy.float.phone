@@ -245,7 +245,15 @@ export function runDeviceAction(args: Record<string, unknown>): DeviceActionOutc
       }
       const note = String(args.message ?? "").trim();
       const result = setAlarm(hour, minute, note);
-      if (!result.ok) return { ok: false, reason: result.reason };
+      if (!result.ok) {
+        // needPermission=set_alarm 是「壳没声明时钟要求的调用方权限」——
+        // 这种情况只能更新壳，**系统设置里没有对应开关**，所以措辞必须和
+        // 亮度/勿扰那种「去设置里授权」区分开，免得角色让用户白找一圈。
+        if (result.needPermission === "set_alarm") {
+          return { ok: false, reason: "系统时钟拒绝了这次调用（壳缺少声明的闹钟权限），需要更新到最新版安卓壳；这不是能在系统设置里手动开的权限" };
+        }
+        return { ok: false, reason: result.reason };
+      }
       const hhmm = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
       // needsConfirm 时系统界面已弹出，结果以用户确认为准，措辞不能说得太满
       return logDeviceAction({ ok: true, action: "alarm", message: `闹钟 ${hhmm} 已交给系统时钟（请在时钟里确认）` }, "alarm");
@@ -265,7 +273,13 @@ export function runDeviceAction(args: Record<string, unknown>): DeviceActionOutc
       }
       const note = String(args.message ?? "").trim();
       const result = setTimer(seconds, note);
-      if (!result.ok) return { ok: false, reason: result.reason };
+      if (!result.ok) {
+        // 与闹钟同源：时钟拒绝调用方时只能更新壳，不是用户去设置里开权限。
+        if (result.needPermission === "set_alarm") {
+          return { ok: false, reason: "系统时钟拒绝了这次调用（壳缺少声明的闹钟权限），需要更新到最新版安卓壳；这不是能在系统设置里手动开的权限" };
+        }
+        return { ok: false, reason: result.reason };
+      }
       const human = seconds >= 60 ? `${Math.round(seconds / 60)} 分钟` : `${seconds} 秒`;
       return logDeviceAction({ ok: true, action: "timer", message: `倒计时已开始（${human}）` }, "timer");
     }

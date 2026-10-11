@@ -15,7 +15,7 @@
  * 所有方法在非壳环境安全降级为 no-op / false。
  */
 
-import { loadWidgetConfig, loadWidgetData } from "./storage";
+import { loadWidgetConfig } from "./storage";
 
 type PhoneWidgetBridge = {
   /** 是否支持小组件（老 APK 没有） */
@@ -105,8 +105,8 @@ export function requestPinWidget(): boolean {
 export function syncWidgetToNative(html: string): boolean {
   const config = loadWidgetConfig();
   if (!config.enabled) return false;
-  const data = loadWidgetData();
-  if (!data) return false;
+  // 不再要求「有内容」才推送：html 已经是渲染好的成品（没内容时调用方给的是
+  // 占位模板）。卡在这里会让小组件退回显示应用图标，而不是模板本身。
   return pushWidgetHtml(html, {
     widthDp: config.widthDp,
     heightDp: config.heightDp,

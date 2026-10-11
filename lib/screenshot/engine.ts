@@ -76,12 +76,39 @@ export async function captureAndStoreScreenshot(options?: { silent?: boolean }):
   if (!captured.ok) return { ok: false, reason: captured.reason };
 
   // 存进媒体库：与「粘贴 base64 图片」走同一条链路，聊天里能直接当图片用。
+  const record = await storeScreenshotRecord(captured);
+  if (!record) return { ok: false, reason: "截屏已拿到，但保存图片失败" };
+
+  if (!options?.silent && config.notifyOnCapture) {
+    notifyScreenshot(record);
+  }
+
+  return { ok: true, record };
+}
+
+/**
+ * 把一张已经拿到的画面存进媒体库并记一条记录。
+ *
+ * 抽出来是因为有两条来源：`captureAndStoreScreenshot` 是网页自己发起的截屏，
+ * 悬浮球那条路（见 checkin-engine 的 deliverUserShot）则是原生把图回传过来——
+ * 两者都要「存图 + 记一条」，不该各写一份。
+ *
+ * 返回 null 表示图没能存进媒体库（调用方据此如实报失败，不假装发成功）。
+ */
+async function storeScreenshotRecord(captured: {
+  base64: string;
+  width: number;
+  height: number;
+  /** 原图字节数。老壳不回传（或回传 0）时按 base64 长度估算——它只用于列表里
+   *  显示「多大」，为它把整张图算成「0 KB」比估算更失真。 */
+  bytes?: number;
+}): Promise<ScreenshotRecord | null> {
   let ref: string;
   try {
     const stored = await storeMediaBase64(captured.base64, "image/png");
     ref = stored.ref;
   } catch {
-    return { ok: false, reason: "截屏已拿到，但保存图片失败" };
+    return null;
   }
 
   const record: ScreenshotRecord = {
@@ -89,18 +116,43 @@ export async function captureAndStoreScreenshot(options?: { silent?: boolean }):
     ref,
     width: captured.width,
     height: captured.height,
-    bytes: captured.bytes,
+    bytes: captured.bytes && captured.bytes > 0
+      ? captured.bytes
+      // base64 每 4 个字符编 3 字节，去掉换行等空白后估算
+      : Math.floor(captured.base64.replace(/\s/g, "").length * 0.75),
     at: Date.now(),
   };
 
-  const kept = await trimRecords([record, ...loadScreenshotRecords()], config.keepRecent);
-  saveScreenshotRecords(kept);
-
-  if (!options?.silent && config.notifyOnCapture) {
-    notifyScreenshot(record);
+  // 记录整理失败（存储配额之类）不该让整件事失败——图已经存好了，
+  // 「最近截屏」列表少一条远不如「图发不出去」严重。
+  try {
+    const config = loadScreenshotConfig();
+    const kept = await trimRecords([record, ...loadScreenshotRecords()], config.keepRecent);
+    saveScreenshotRecords(kept);
+  } catch (err) {
+    console.warn("[Screenshot] 记录整理失败", err);
   }
 
-  return { ok: true, record };
+  return record;
+}
+
+/**
+ * 记一张「用户自己截的」画面（悬浮球发起）。
+ *
+ * 悬浮球那条路上，图是原生回传的 base64，网页这边拿到时早已过了
+ * `captureAndStoreScreenshot` 那个入口——所以单独开一个口子，
+ * 与自动截屏共用同一套存储与记录整理。
+ *
+ * 返回记录（含 media-store ref，可直接当图片地址用）；
+ * null 表示没能存进媒体库，调用方应如实报失败。
+ */
+export async function recordUserShot(captured: {
+  base64: string;
+  width: number;
+  height: number;
+  bytes?: number;
+}): Promise<ScreenshotRecord | null> {
+  return storeScreenshotRecord(captured);
 }
 
 /**

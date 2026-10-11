@@ -345,6 +345,43 @@ class DeviceActionBridge(private val context: Context) {
     // ── 闹钟与计时器 ──
 
     /**
+     * 闹钟/倒计时失败的统一措辞。
+     *
+     * 为什么必须分三类：这三种失败对用户意味着完全不同的处置，混成一句话
+     * 就会把人带偏——历史上就干过两次：先是把任何异常都说成「手机没有时钟应用」
+     * （把包可见性限制误报成硬件缺失），后来又把 SecurityException 的原文
+     * 直接透传给用户。
+     *
+     *   · ActivityNotFoundException → 真的没有任何应用响应这个意图，
+     *     如实说「系统里没有时钟」（厂商精简过 ROM 才会遇到）；
+     *   · SecurityException → 时钟在，但它的入口要求调用方持有
+     *     com.android.alarm.permission.SET_ALARM，而本壳没声明。实测原文：
+     *       Permission Denial: starting Intent { act=android.intent.action.SET_ALARM
+     *       cmp=com.hihonor.deskclock/com.android.deskclock.HandleSetAlarm (has extras) }
+     *       from ProcessRecord{...} requires com.android.alarm.permission.SET_ALARM
+     *     这是**调用方权限**（normal 级、声明即授予），修法是在 AndroidManifest 里
+     *     声明它。所以文案只说「需要更新壳」，绝不能让用户去系统设置里找一个
+     *     根本不存在的开关；
+     *   · 其它 → 原样带出异常类型与消息，不替系统编一句解释。
+     */
+    private fun alarmFailureReason(e: Throwable, what: String): JSONObject = when (e) {
+        is android.content.ActivityNotFoundException ->
+            JSONObject().put("ok", false)
+                .put("reason", "系统里没有能响应「$what」的应用（可能被厂商精简掉了）")
+        is SecurityException ->
+            JSONObject().put("ok", false)
+                .put("needPermission", "set_alarm")
+                .put(
+                    "reason",
+                    "系统时钟拒绝了这次调用：它要求调用方声明 com.android.alarm.permission.SET_ALARM 权限，" +
+                        "当前壳还没声明（需要更新到最新版安卓壳，这个权限没法在系统设置里手动开）",
+                )
+        else ->
+            JSONObject().put("ok", false)
+                .put("reason", "$what 设置失败：${e.javaClass.simpleName} ${e.message ?: ""}".trim())
+    }
+
+    /**
      * 设一个闹钟。到点由系统的「时钟」App 响铃。
      *
      * 刻意**带界面**（EXTRA_SKIP_UI=false）：会打开时钟 App 让用户看到并确认。
@@ -373,14 +410,8 @@ class DeviceActionBridge(private val context: Context) {
                 .put("minute", minute)
                 .put("needsConfirm", true)
         } catch (e: Throwable) {
-            // 原来无论什么异常都说「没有可用的时钟应用」，把 Android 11+ 的包可见性
-            // 限制（manifest 缺 queries 声明）误报成了「手机没时钟」——绝大多数手机
-            // 都有时钟，用户看到这句只会一头雾水。现在如实区分。
-            if (e is android.content.ActivityNotFoundException) {
-                JSONObject().put("ok", false).put("reason", "系统里没有能响应「设闹钟」的应用（可能被厂商精简掉了）")
-            } else {
-                JSONObject().put("ok", false).put("reason", "闹钟设置失败：${e.javaClass.simpleName} ${e.message ?: ""}".trim())
-            }
+            // 三种失败分开说，理由见 alarmFailureReason 的注释。
+            alarmFailureReason(e, "闹钟")
         }
     }
 
@@ -405,11 +436,8 @@ class DeviceActionBridge(private val context: Context) {
             context.startActivity(intent)
             JSONObject().put("ok", true).put("seconds", seconds)
         } catch (e: Throwable) {
-            if (e is android.content.ActivityNotFoundException) {
-                JSONObject().put("ok", false).put("reason", "系统里没有能响应「倒计时」的应用（可能被厂商精简掉了）")
-            } else {
-                JSONObject().put("ok", false).put("reason", "倒计时设置失败：${e.javaClass.simpleName} ${e.message ?: ""}".trim())
-            }
+            // 与闹钟同源，同样区分三类失败。
+            alarmFailureReason(e, "倒计时")
         }
     }
 
