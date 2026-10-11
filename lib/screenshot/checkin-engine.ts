@@ -15,7 +15,8 @@
 //  - **失败如实说**：没能截图时写的是「截屏失败」而不是「对方没给看」，
 //    免得角色误以为用户拒绝、做出委屈的反应。
 
-import { pushChatMessage, loadChatSessions, loadCharacters } from "../chat-storage";
+import { pushChatMessage, loadChatSessions } from "../chat-storage";
+import { loadCharacters } from "../character-storage";
 import { recordUserShot } from "./engine";
 import { requestBackgroundChatReply } from "../follow-up-service";
 import { storeMediaBase64 } from "../media-cache-storage";

@@ -51,6 +51,12 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+/** 透明度百分比（10~100）→ 两位十六进制。原生球色是 #AARRGGBB，alpha 在最前两位。 */
+function alphaFromPercent(percent: number): string {
+    const clamped = Math.max(0, Math.min(100, percent));
+    return Math.round((clamped / 100) * 255).toString(16).padStart(2, "0").toUpperCase();
+}
+
 /** 悬浮球可选颜色（都带透明度，与原生默认值同一格式）。 */
 const BALL_COLORS = [
   { label: "蓝", value: "#E65B7CFA" },
@@ -440,7 +446,7 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
                     // 球会在屏幕上乱跳
                     const hex = next.replace(/^#/, "");
                     if (/^[0-9a-fA-F]{6}$/.test(hex)) {
-                      updateBallStyle({ ballColor: `#${alphaHex}${hex.toUpperCase()}` });
+                      updateBallStyle({ ballColor: `#${alphaFromPercent(alphaPercent)}${hex.toUpperCase()}` });
                     }
                   }}
                 />
@@ -450,7 +456,7 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
               <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
                 <div className="menu-label-group">
                   <span className="menu-label">透明度</span>
-                  <span className="menu-desc">当前 {Math.round(alphaFromPercent(alphaPercent) * 100 / 255)}%</span>
+                  <span className="menu-desc">当前 {alphaPercent}%</span>
                 </div>
                 <input
                   type="range"
