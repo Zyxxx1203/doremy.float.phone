@@ -43,6 +43,9 @@ export function loadPerceptionConfig(): PerceptionConfig {
       sampleSeconds: clamp(parsed.sampleSeconds, PERCEPTION_LIMITS.sampleSeconds.min, PERCEPTION_LIMITS.sampleSeconds.max, PERCEPTION_DEFAULTS.sampleSeconds),
       batteryStepPercent: clamp(parsed.batteryStepPercent, PERCEPTION_LIMITS.batteryStepPercent.min, PERCEPTION_LIMITS.batteryStepPercent.max, PERCEPTION_DEFAULTS.batteryStepPercent),
       appDwellMinutes: clamp(parsed.appDwellMinutes, PERCEPTION_LIMITS.appDwellMinutes.min, PERCEPTION_LIMITS.appDwellMinutes.max, PERCEPTION_DEFAULTS.appDwellMinutes),
+      // 缺了它会是 undefined，而 checkAppUsageSignal 里 `undefined <= 0` 为 false、
+      // 除法又得到 NaN——一路绕过所有闸门变成每轮都报。这里必须兜住。
+      appUsageSignalMinutes: clamp(parsed.appUsageSignalMinutes, PERCEPTION_LIMITS.appUsageSignalMinutes.min, PERCEPTION_LIMITS.appUsageSignalMinutes.max, PERCEPTION_DEFAULTS.appUsageSignalMinutes),
       hourlyLimit: clamp(parsed.hourlyLimit, PERCEPTION_LIMITS.hourlyLimit.min, PERCEPTION_LIMITS.hourlyLimit.max, PERCEPTION_DEFAULTS.hourlyLimit),
       respectQuietHours: parsed.respectQuietHours !== false,
       batteryLowPercent: clamp(parsed.batteryLowPercent, PERCEPTION_LIMITS.batteryLowPercent.min, PERCEPTION_LIMITS.batteryLowPercent.max, PERCEPTION_DEFAULTS.batteryLowPercent),
@@ -138,9 +141,21 @@ export type PerceptionRuntimeState = {
   lastPlace: string;
   /** 上次已上报过的醒来时刻（毫秒）；同一次醒来只报一次 */
   lastSleepEndAt: number;
+  /**
+   * 「某个应用今天用太久」已报到第几档：包名 → 档位。
+   *
+   * 为什么要记档位：累计时长每分钟都在涨，不能每轮采样都报一次。
+   * 按「累计每超过阈值一次报一条」算（阈值 60 → 60 分钟报一条、120 再报一条），
+   * 档位记在这里，避免同一档反复报。
+   */
+  usageSignalTier: Record<string, number>;
+  /** 上面那份档位记录属于哪一天（YYYY-MM-DD）。跨天清零，昨天的档位不能当今天的基准。 */
+  usageSignalDate: string;
 };
 
 const EMPTY_STATE: PerceptionRuntimeState = {
+  usageSignalTier: {},
+  usageSignalDate: "",
   lastBatteryPercent: -1,
   lastCharging: false,
   lastNetworkType: "",
