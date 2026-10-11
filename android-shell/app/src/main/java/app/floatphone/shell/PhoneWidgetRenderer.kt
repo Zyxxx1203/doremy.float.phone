@@ -40,6 +40,29 @@ object PhoneWidgetRenderer {
     /** 页面加载完成后再等一小会儿才截图：字体、data URL 图片解码都需要一点时间。 */
     private const val DRAW_DELAY_MS = 160L
 
+    /**
+     * 离屏渲染的总超时。
+     *
+     * 为什么要它：onPageFinished 在个别 ROM 上可能永远不来（离屏 WebView 被限流、
+     * 或加载卡住）。没有兜底的话这一轮就永远悬着，「最后渲染结果」也停在旧值上，
+     * 诊断面板会给出误导性的结论。超时后如实记一条失败并释放 WebView。
+     */
+    private const val RENDER_TIMEOUT_MS = 6000L
+
+    /**
+     * 最近一次渲染的结论。
+     *
+     * 为什么必须记：渲染失败原来一律静默（`runCatching {}` 把异常吞掉），
+     * 桌面只会退回成应用图标——用户看到「加了个图标、模板没出来」，
+     * 而我们从代码里看不出卡在哪一步，只能反复猜（实测已经来回好几轮）。
+     * 把结论留在这里，由 diagnosticsJson 回给网页设置页。
+     */
+    @Volatile private var lastRenderAt: Long = 0L
+    @Volatile private var lastRenderOk: Boolean = false
+    @Volatile private var lastRenderError: String = ""
+    /** 是否有一次渲染正在进行中：用来区分「还没跑过」和「跑了没结果」。 */
+    @Volatile private var renderInFlight: Boolean = false
+
     /** 存下这次的 HTML，供系统定时刷新（onUpdate）时重画。 */
     fun saveHtml(context: Context, html: String) {
         runCatching {
@@ -56,6 +79,30 @@ object PhoneWidgetRenderer {
     }.getOrNull()
 
     fun pngFile(context: Context): File = File(context.applicationContext.filesDir, PNG_NAME)
+
+    /**
+     * 小组件的当前状态，给网页设置页的「检查状态」按钮用。
+     *
+     * 只如实回读，不做任何判断——卡在哪一步由用户看着数值判断（或转述给我们）。
+     * 包含：有没有缓存 HTML、PNG 有没有落盘、多大、最后一次渲染是成功还是败在哪一句。
+     */
+    fun diagnosticsJson(context: Context): String = runCatching {
+        val appContext = context.applicationContext
+        val html = loadHtml(appContext)
+        val file = pngFile(appContext)
+        org.json.JSONObject()
+            .put("hasHtml", html != null)
+            .put("htmlChars", html?.length ?: 0)
+            .put("pngExists", file.exists())
+            .put("pngBytes", if (file.exists()) file.length() else 0L)
+            .put("pngAt", if (file.exists()) file.lastModified() else 0L)
+            .put("renderAt", lastRenderAt)
+            .put("renderOk", lastRenderOk)
+            .put("renderError", lastRenderError)
+            .put("rendering", renderInFlight)
+            .put("placed", PhoneWidgetProvider.isPlaced(appContext))
+            .toString()
+    }.getOrDefault("{}")
 
     /** 用当前缓存的 HTML 重画一次（系统定时刷新、或桌面需要重新贴图时）。 */
     fun renderCached(context: Context, widthDp: Int = 300, heightDp: Int = 150, scale: Int = 2) {
@@ -100,7 +147,25 @@ object PhoneWidgetRenderer {
         val widthPx = (widthDp * density * factor).toInt().coerceIn(widthDp, MAX_DIMEN)
         val heightPx = (heightDp * density * factor).toInt().coerceIn(heightDp, MAX_DIMEN)
 
+        renderInFlight = true
+        lastRenderAt = System.currentTimeMillis()
+        lastRenderOk = false
+        lastRenderError = ""
+
         var webView: WebView? = null
+        // 收尾只能走一次：onPageFinished 与超时兜底谁先到谁负责。
+        // 不加这道锁的话两者都会销毁 WebView 并回调 onDone（桌面被重复刷新）。
+        var settled = false
+        val finish: (Boolean, String) -> Unit = { ok, error ->
+            if (!settled) {
+                settled = true
+                lastRenderOk = ok
+                lastRenderError = error
+                renderInFlight = false
+                runCatching { webView?.destroy() }
+                onDone()
+            }
+        }
         try {
             webView = WebView(context).apply {
                 setBackgroundColor(Color.TRANSPARENT)
@@ -119,15 +184,26 @@ object PhoneWidgetRenderer {
             view.webViewClient = object : android.webkit.WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     view?.postDelayed({
-                        runCatching { drawToFile(context, view, widthPx, heightPx) }
-                        runCatching { view?.destroy() }
-                        onDone()
+                        // 把渲染异常**记下来**而不是吞掉：原来这里只有 runCatching，
+                        // 于是「画失败」与「画成功」在外部完全一样（桌面同样退回图标），
+                        // 从代码里根本看不出卡在哪一步——这也是这个问题来回好几轮的原因。
+                        val drawn = runCatching { drawToFile(context, view, widthPx, heightPx) }
+                        finish(
+                            drawn.isSuccess,
+                            drawn.exceptionOrNull()?.let { "${it.javaClass.simpleName}: ${it.message ?: ""}" } ?: "",
+                        )
                     }, DRAW_DELAY_MS)
                 }
             }
+            // 超时兜底：onPageFinished 在个别 ROM 上可能永远不来（离屏 WebView 被限流、
+            // 或页面加载卡住），没有它这一轮就永远悬着、「渲染中」永远为真，
+            // 诊断面板会给出误导性的结论。
+            Handler(Looper.getMainLooper()).postDelayed({
+                finish(false, "渲染超时（${RENDER_TIMEOUT_MS}ms 内没等到页面加载完成）")
+            }, RENDER_TIMEOUT_MS)
             view.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
         } catch (err: Throwable) {
-            runCatching { webView?.destroy() }
+            finish(false, "创建或加载离屏 WebView 失败：${err.javaClass.simpleName}: ${err.message ?: ""}")
         }
     }
 

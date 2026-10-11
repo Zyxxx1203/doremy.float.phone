@@ -1384,6 +1384,16 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun isPlaced(): Boolean = PhoneWidgetProvider.isPlaced(this@MainActivity)
 
+        /**
+         * 小组件的当前状态（诊断用，只读，不触发任何渲染）。
+         *
+         * 为什么需要：渲染失败原来一律静默，桌面只会退回应用图标，
+         * 用户在设置页看到的预览又是正常的（那是 iframe 渲染的，走不到原生）。
+         * 有了它，设置页能如实列出「HTML 推到了没 / PNG 落盘了没 / 最后一次渲染成败」。
+         */
+        @JavascriptInterface
+        fun diagnostics(): String = PhoneWidgetRenderer.diagnosticsJson(this@MainActivity)
+
         /** 拉起系统的「添加到桌面」引导。Android 8+ 有效，更低版本静默失败。 */
         @JavascriptInterface
         fun requestPin(): Boolean = runCatching {
