@@ -2488,7 +2488,12 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                       }),
                     )}
                   </div>
-                  <p className="rb-help">收到的内容可以填进参数里（用 {"{payload}"} 或 {"{type}"}），例如「打开 {payload}」。</p>
+                  {/* 这行里 {payload} 必须写成 {"{payload}"}：JSX 中裸的 {payload}
+                      会被当表达式求值，而组件作用域里没有这个变量——直接抛
+                      ReferenceError，让整个规则编辑器白屏（实测反馈：联动页报
+                      「payload is not defined」）。平铺模式下各步同时渲染，
+                      所以是一打开就炸，不像向导走到第 5 步才炸。 */}
+                  <p className="rb-help">收到的内容可以填进参数里（用 {"{payload}"} 或 {"{type}"}），例如「打开 {"{payload}"}」。</p>
                   {!deviceActionEnabled ? (
                     <p className="rb-help">还没打开「操作设备」总开关，这条联动会执行失败。</p>
                   ) : deviceActionCfg.actions[editing.actions.deviceAction.action as keyof typeof deviceActionCfg.actions] !== true ? (
