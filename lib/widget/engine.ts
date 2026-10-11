@@ -15,7 +15,15 @@
 import { simpleLLMCall } from "../api-helpers";
 import { loadCharacters } from "../character-storage";
 import { loadApiConfigs, resolveAuxiliaryApiConfig, resolveUserIdentity } from "../settings-storage";
+import { appendCustomAppTimelineEntry } from "../custom-app-storage";
 import { loadWidgetAutoLastRun, loadWidgetConfig, loadWidgetData, markWidgetAutoRun, saveWidgetData } from "./storage";
+
+/**
+ * 小组件自己的时间线来源标识。
+ *
+ * 用来把「我在桌面留了句话」写进角色的短期记忆。
+ */
+const WIDGET_SOURCE = { id: "phone_widget", name: "桌面小组件" };
 import { canGenerateAvatar, generateWidgetAvatar } from "./avatar";
 import type { WidgetData } from "./types";
 
@@ -114,6 +122,21 @@ export async function runWidgetAutoGenerate(): Promise<boolean> {
       updatedAt: new Date().toISOString(),
       source: "auto",
     });
+
+    // 同步进角色的短期记忆（时间线）：这件事花的是**同一次**生成，只是多记一笔。
+    //
+    // 为什么必须记：这句话是角色自己写的，它下次聊天时该记得。不记的话，
+    // 用户说「你昨天在桌面写的那句」，角色会一脸茫然——而那句话明明是它写的（实测反馈）。
+    // 写完不触发任何回复：时间线只是上下文，什么时候开口由对话本身决定。
+    try {
+      appendCustomAppTimelineEntry(WIDGET_SOURCE, {
+        characterId: character.id,
+        summary: `我在 TA 手机桌面留了一句：${line.text}`,
+        detail: line.status ? `当时的状态标签：${line.status}` : undefined,
+      });
+    } catch {
+      // 记时间线失败不该影响留话本身——话已经写进桌面了
+    }
     return true;
   } catch (err) {
     console.warn("[Widget] 自动生成失败", err);
