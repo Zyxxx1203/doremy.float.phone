@@ -53,6 +53,10 @@ object PhoneWidgetRenderer {
      */
     private const val FALLBACK_PAINT_MS = 400L
 
+    /** 画出来是空白时的重试次数与间隔（见 renderToFile 里的 paint）。 */
+    private const val MAX_PAINT_ATTEMPTS = 3
+    private const val REPAINT_INTERVAL_MS = 300L
+
     /**
      * 最近一次渲染的结论。
      *
@@ -173,6 +177,12 @@ object PhoneWidgetRenderer {
         try {
             webView = WebView(context).apply {
                 setBackgroundColor(Color.TRANSPARENT)
+                // ★ 关键：离屏 WebView 默认走**硬件加速**渲染，而 view.draw(canvas)
+                // 只能捕获软件层绘制的内容——不设这一句，画出来是一张全透明的空图。
+                // 表现正是实测反馈的：PNG 文件确实落盘了（尺寸也对）、桌面也确实
+                // 换掉了应用图标，但那张图上是空的、什么都不显示。
+                // 之前几轮没往这里想，是因为所有「有没有出图」的判断都只看文件在不在。
+                setLayerType(View.LAYER_TYPE_SOFTWARE, null)
                 settings.javaScriptEnabled = false // 模板里的 <script> 不该运行
                 settings.domStorageEnabled = false
                 settings.allowFileAccess = false
@@ -189,12 +199,25 @@ object PhoneWidgetRenderer {
             // 异常必须**记下来**而不是吞掉：原来这里只有 runCatching，于是「画失败」
             // 与「画成功」在外部完全一样（桌面同样退回图标），从代码里根本看不出
             // 卡在哪一步——这也是这个问题来回好几轮的原因。
+            var attempts = 0
             val paint: () -> Unit = {
-                val drawn = runCatching { drawToFile(context, view, widthPx, heightPx) }
-                finish(
-                    drawn.isSuccess,
-                    drawn.exceptionOrNull()?.let { "${it.javaClass.simpleName}: ${it.message ?: ""}" } ?: "",
-                )
+                attempts += 1
+                val result = runCatching { drawToFile(context, view, widthPx, heightPx) }
+                when {
+                    // 画出了东西：收工。
+                    result.getOrDefault(false) -> finish(true, "")
+                    // 还是空白：多半 WebView 尚未渲染完（onPageFinished 没来、或不及时），
+                    // 隔一会儿再画一次。
+                    attempts < MAX_PAINT_ATTEMPTS ->
+                        Handler(Looper.getMainLooper()).postDelayed({ paint() }, REPAINT_INTERVAL_MS)
+                    // 多次重试仍空白：如实报出来，别再让诊断停在「正在渲染」那种中间态——
+                    // 「文件存在但图是空的」以前从任何信号里都看不出来（实测反馈）。
+                    else -> finish(
+                        false,
+                        result.exceptionOrNull()?.let { "${it.javaClass.simpleName}: ${it.message ?: ""}" }
+                            ?: "画了 $attempts 次仍是空白（WebView 没有渲染出内容）",
+                    )
+                }
             }
             view.webViewClient = object : android.webkit.WebViewClient() {
                 override fun onPageFinished(v: WebView?, url: String?) {
@@ -211,8 +234,14 @@ object PhoneWidgetRenderer {
         }
     }
 
-    /** 把已经加载好的 WebView 画进 Bitmap 并落盘。 */
-    private fun drawToFile(context: Context, view: WebView, widthPx: Int, heightPx: Int) {
+    /**
+     * 把已经加载好的 WebView 画进 Bitmap 并落盘。
+     *
+     * @return 画面上有没有内容。false = 全透明（WebView 还没渲染出东西）。
+     *         **落盘了不等于画对了**：一张空白 PNG 贴到桌面上就是什么都不显示，
+     *         与失败无异，调用方该据此重画或报错，而不是当成成功。
+     */
+    private fun drawToFile(context: Context, view: WebView, widthPx: Int, heightPx: Int): Boolean {
         val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         view.measure(
@@ -222,9 +251,33 @@ object PhoneWidgetRenderer {
         view.layout(0, 0, widthPx, heightPx)
         view.draw(canvas)
 
+        val hasContent = !isBlank(bitmap)
         FileOutputStream(pngFile(context)).use { out ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         }
         bitmap.recycle()
+        return hasContent
+    }
+
+    /**
+     * 抽样判断画面是不是一片空白（全透明）。
+     *
+     * 为什么要它：「PNG 已落盘、桌面也换了图，但图上什么都没有」这种状态，
+     * 从「文件存不存在」这个信号里完全看不出来（实测反馈正是如此）。
+     * 横竖各抽 24 个点扫一遍，只要有一个不透明像素就当有内容，成本可忽略。
+     */
+    private fun isBlank(bitmap: Bitmap): Boolean {
+        val stepX = (bitmap.width / 24).coerceAtLeast(1)
+        val stepY = (bitmap.height / 24).coerceAtLeast(1)
+        var y = 0
+        while (y < bitmap.height) {
+            var x = 0
+            while (x < bitmap.width) {
+                if (Color.alpha(bitmap.getPixel(x, y)) != 0) return false
+                x += stepX
+            }
+            y += stepY
+        }
+        return true
     }
 }
