@@ -28,6 +28,28 @@ type PhoneWidgetBridge = {
   isPlaced?: () => boolean;
   /** 跳到系统的「添加小组件」界面 */
   requestPin?: () => boolean;
+  /**
+   * 小组件渲染诊断（**新壳才有**，旧壳没有这个方法）。
+   *
+   * 回传原生侧的实际状态：收到 HTML 没、PNG 有没有落盘、最后一次渲染成败。
+   * 网页侧读不到时返回 null——调用方据此说明「需要更新安卓壳才能看到这一项」，
+   * 而不是把它当成「一切正常」。
+   */
+  diagnostics?: () => string;
+};
+
+/** 新壳回传的小组件诊断。字段含义见原生 PhoneWidgetRenderer.diagnosticsJson。 */
+export type WidgetDiagnostics = {
+  hasHtml: boolean;
+  htmlChars: number;
+  pngExists: boolean;
+  pngBytes: number;
+  pngAt: number;
+  renderAt: number;
+  renderOk: boolean;
+  renderError: string;
+  rendering: boolean;
+  placed: boolean;
 };
 
 function getBridge(): PhoneWidgetBridge | null {
@@ -94,6 +116,26 @@ export function requestPinWidget(): boolean {
     return bridge.requestPin() === true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * 读原生侧的小组件诊断。旧壳没这个方法时返回 null。
+ *
+ * 为什么要这个：渲染失败原来是静默的，桌面只会退回应用图标，而设置页的预览
+ * 又是 iframe 自己画的（走不到原生）——两边都正常，只有桌面不对，用户和我们都
+ * 无从判断卡在哪一步。有了它才能把链路逐段对照着看。
+ */
+export function readWidgetDiagnostics(): WidgetDiagnostics | null {
+  const bridge = getBridge();
+  if (!bridge?.diagnostics) return null;
+  try {
+    const raw = bridge.diagnostics();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as WidgetDiagnostics;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
   }
 }
 

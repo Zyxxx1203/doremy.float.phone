@@ -27,6 +27,7 @@ import {
   loadWidgetConfig,
   loadWidgetData,
   pushWidgetHtml,
+  readWidgetDiagnostics,
   renderWidgetHtml,
   requestPinWidget,
   saveWidgetConfig,
@@ -52,6 +53,8 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
   const [placed, setPlaced] = useState(() => isWidgetPlaced());
   // 预览要跟着「内容版本」重算：角色刚留了新话时，预览也该变
   const [dataVersion, setDataVersion] = useState(0);
+  /** 诊断结果（逐行）。null = 还没点过「检查」。 */
+  const [diagnosis, setDiagnosis] = useState<string[] | null>(null);
 
   const characters = useMemo(() => loadCharacters().map(c => ({ id: c.id, name: c.name, avatar: c.avatar ?? "" })), []);
 
@@ -171,6 +174,54 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
   const previewWidth = clampInt(config.widthDp, WIDGET_LIMITS.widthDp.min, WIDGET_LIMITS.widthDp.max);
   const previewHeight = clampInt(config.heightDp, WIDGET_LIMITS.heightDp.min, WIDGET_LIMITS.heightDp.max);
 
+  /**
+   * 逐段检查小组件链路，把每一步的真实状态列出来。
+   *
+   * 为什么要它：桌面上只显示应用图标时，网页侧和原生侧**各自看起来都正常**——
+   * 预览是 iframe 自己画的（走不到原生），而原生渲染失败原来是静默的。
+   * 两边都「正常」、只有桌面不对，用户和我们都没有依据可判断，只能猜。
+   *
+   * 分两段：
+   *   ① 网页侧（旧壳也能查）：桥在不在、总开关开没开、桌面上放没放、这次推送受不受理；
+   *   ② 原生侧（需要新壳）：HTML 收到没、PNG 落盘没、最后一次渲染成败与原因。
+   */
+  const runDiagnosis = useCallback(() => {
+    const lines: string[] = [];
+    const bridgeOk = hasWidgetBridge();
+    lines.push(bridgeOk ? "✓ 壳提供了小组件桥" : "✗ 当前 App 版本没有小组件桥（需要更新安卓壳）");
+    const cfg = loadWidgetConfig();
+    lines.push(cfg.enabled
+      ? "✓ 总开关已打开"
+      : "✗ 总开关关着——网页不会推任何内容给桌面，桌面只能显示应用图标");
+    if (bridgeOk) {
+      lines.push(isWidgetPlaced() ? "✓ 桌面上已有小组件实例" : "✗ 桌面上还没放小组件");
+    }
+    if (bridgeOk && cfg.enabled) {
+      const pushed = pushWidgetHtml(previewHtml, {
+        widthDp: cfg.widthDp,
+        heightDp: cfg.heightDp,
+        scale: cfg.scale,
+      });
+      lines.push(pushed ? "✓ 本次推送已被壳受理" : "✗ 推送没能送到壳");
+    }
+    const diag = readWidgetDiagnostics();
+    lines.push("");
+    if (!diag) {
+      lines.push("原生侧详情需要新壳才有——现在只能判断上面这几项。");
+      lines.push("更新安卓壳后，这里会显示 PNG 是否落盘、渲染成败与原因。");
+    } else {
+      lines.push(diag.hasHtml ? `✓ 壳已收到 HTML（${diag.htmlChars} 字）` : "✗ 壳手里没有 HTML");
+      lines.push(diag.pngExists
+        ? `✓ PNG 已落盘（约 ${Math.max(1, Math.round(diag.pngBytes / 1024))} KB）`
+        : "✗ PNG 还没落盘——桌面只能显示应用图标");
+      if (diag.rendering) lines.push("… 正在渲染");
+      else if (diag.renderAt <= 0) lines.push("… 还没渲染过");
+      else if (diag.renderOk) lines.push("✓ 上一次渲染成功");
+      else lines.push(`✗ 上一次渲染失败：${diag.renderError || "原生没有记录原因"}`);
+    }
+    setDiagnosis(lines);
+  }, [previewHtml]);
+
   return (
     <div className="widget-settings">
       {/* ── 实时预览 ── */}
@@ -202,6 +253,22 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
             推送到桌面
           </button>
         </div>
+        {/* 桌面不对时，用户和我们都得有个依据——别让人只能看着图标干着急。 */}
+        <div className="ws-preview-actions">
+          <button type="button" className="ws-btn ghost" onClick={runDiagnosis}>
+            检查桌面为什么不对
+          </button>
+        </div>
+        {diagnosis ? (
+          <div className="ws-diagnosis">
+            {diagnosis.map((line, index) => (
+              <p
+                key={index}
+                className={line.startsWith("✓") ? "is-ok" : line.startsWith("✗") ? "is-bad" : "is-plain"}
+              >{line || "\u00a0"}</p>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {/* ── 开关与角色 ── */}

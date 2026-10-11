@@ -11,6 +11,28 @@
   font-size: 13px;
 }
 
+/* ── 诊断结果 ── */
+/*
+  逐行列出链路每一段的真实状态。桌面显示不对时，用户靠它转述给我们，
+  比反复描述「就是不行」有用得多。
+*/
+.ws-diagnosis {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--c-inset, #f2f2f6);
+  font-size: 11.5px;
+  line-height: 1.75;
+}
+.ws-diagnosis p {
+  margin: 0;
+  word-break: break-word;
+  color: var(--c-text-secondary, #8e8e98);
+}
+.ws-diagnosis p.is-ok { color: #2fa46a; }
+.ws-diagnosis p.is-bad { color: #d9534f; }
+.ws-diagnosis p.is-plain { opacity: 0.75; }
+
 /* ── 预览 ── */
 .ws-preview-card {
   background: var(--c-card, #fff);
