@@ -41,13 +41,17 @@ object PhoneWidgetRenderer {
     private const val DRAW_DELAY_MS = 160L
 
     /**
-     * 离屏渲染的总超时。
+     * 不依赖 onPageFinished 的固定绘制时机（毫秒）。
      *
-     * 为什么要它：onPageFinished 在个别 ROM 上可能永远不来（离屏 WebView 被限流、
-     * 或加载卡住）。没有兜底的话这一轮就永远悬着，「最后渲染结果」也停在旧值上，
-     * 诊断面板会给出误导性的结论。超时后如实记一条失败并释放 WebView。
+     * 为什么非要这样一个时机：实测反馈是诊断面板长时间停在「正在渲染」、PNG 永不落盘。
+     * 根因是 **onPageFinished 并不保证会来**——模板里若引了 http(s) 图片，
+     * 而我们为了不卡住设了 blockNetworkLoads=true，那张图就会一直保持 pending，
+     * 浏览器因此认为页面「没加载完」，回调可能拖到资源超时甚至永不触发。
+     * 而模板本身是**本地 HTML 字符串**，解析只要几毫秒，真正该等的只有字体与
+     * data URL 图片的解码——400ms 足够画出成品。
+     * 所以到点就画，不再把「出图」这件事押在那个回调上。
      */
-    private const val RENDER_TIMEOUT_MS = 6000L
+    private const val FALLBACK_PAINT_MS = 400L
 
     /**
      * 最近一次渲染的结论。
@@ -181,26 +185,26 @@ object PhoneWidgetRenderer {
             // onPageFinished 会在回调挂上之前就触发，于是回调永远不来、
             // PNG 永远不落盘，桌面只能显示占位图——
             // 表现就是「加了小组件，显示出来却是个应用大图标」。
+            // 绘制动作抽出来，给下面两条触发路径共用。
+            // 异常必须**记下来**而不是吞掉：原来这里只有 runCatching，于是「画失败」
+            // 与「画成功」在外部完全一样（桌面同样退回图标），从代码里根本看不出
+            // 卡在哪一步——这也是这个问题来回好几轮的原因。
+            val paint: () -> Unit = {
+                val drawn = runCatching { drawToFile(context, view, widthPx, heightPx) }
+                finish(
+                    drawn.isSuccess,
+                    drawn.exceptionOrNull()?.let { "${it.javaClass.simpleName}: ${it.message ?: ""}" } ?: "",
+                )
+            }
             view.webViewClient = object : android.webkit.WebViewClient() {
-                override fun onPageFinished(view: WebView?, url: String?) {
-                    view?.postDelayed({
-                        // 把渲染异常**记下来**而不是吞掉：原来这里只有 runCatching，
-                        // 于是「画失败」与「画成功」在外部完全一样（桌面同样退回图标），
-                        // 从代码里根本看不出卡在哪一步——这也是这个问题来回好几轮的原因。
-                        val drawn = runCatching { drawToFile(context, view, widthPx, heightPx) }
-                        finish(
-                            drawn.isSuccess,
-                            drawn.exceptionOrNull()?.let { "${it.javaClass.simpleName}: ${it.message ?: ""}" } ?: "",
-                        )
-                    }, DRAW_DELAY_MS)
+                override fun onPageFinished(v: WebView?, url: String?) {
+                    v?.postDelayed({ paint() }, DRAW_DELAY_MS)
                 }
             }
-            // 超时兜底：onPageFinished 在个别 ROM 上可能永远不来（离屏 WebView 被限流、
-            // 或页面加载卡住），没有它这一轮就永远悬着、「渲染中」永远为真，
-            // 诊断面板会给出误导性的结论。
-            Handler(Looper.getMainLooper()).postDelayed({
-                finish(false, "渲染超时（${RENDER_TIMEOUT_MS}ms 内没等到页面加载完成）")
-            }, RENDER_TIMEOUT_MS)
+            // ── 绘制触发：两条路，谁先到谁画（settled 锁保证只画一次）──
+            //   ① onPageFinished + 小延迟 —— 正常情况走这条，最快；
+            //   ② 固定延迟兜底 —— **不等 onPageFinished**，理由见 FALLBACK_PAINT_MS。
+            Handler(Looper.getMainLooper()).postDelayed({ paint() }, FALLBACK_PAINT_MS)
             view.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
         } catch (err: Throwable) {
             finish(false, "创建或加载离屏 WebView 失败：${err.javaClass.simpleName}: ${err.message ?: ""}")

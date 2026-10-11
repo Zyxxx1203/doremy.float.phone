@@ -196,14 +196,10 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
     if (bridgeOk) {
       lines.push(isWidgetPlaced() ? "✓ 桌面上已有小组件实例" : "✗ 桌面上还没放小组件");
     }
-    if (bridgeOk && cfg.enabled) {
-      const pushed = pushWidgetHtml(previewHtml, {
-        widthDp: cfg.widthDp,
-        heightDp: cfg.heightDp,
-        scale: cfg.scale,
-      });
-      lines.push(pushed ? "✓ 本次推送已被壳受理" : "✗ 推送没能送到壳");
-    }
+    // 刻意**不**在这里推一次 HTML。
+    // 诊断一旦顺手触发渲染，就会自己把状态变成「正在渲染」——看到的永远是
+    // 「正在渲染」而不是结论；而且每点一次就堆一个离屏 WebView，越点越卡。
+    // 要重推请用旁边的「推送到桌面」，两件事分开做。
     const diag = readWidgetDiagnostics();
     lines.push("");
     if (!diag) {
