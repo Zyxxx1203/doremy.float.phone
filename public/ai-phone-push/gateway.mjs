@@ -667,13 +667,38 @@ Deno.serve(async (request: Request) => {
       if (request.method === "DELETE") {
         const triggerPrefix = cleanText(body.triggerPrefix, 200);
         const excludeKey = cleanText(body.excludeKey, 200);
-        if (!triggerKey && !triggerPrefix) return json({ ok: false, error: "缺少预约键。" }, 400);
-        const keyFilter = triggerKey
-          ? `trigger_key=eq.${encodeURIComponent(triggerKey)}`
-          : `trigger_key=like.${encodeURIComponent(`${triggerPrefix}%`)}`
-            + (excludeKey ? `&trigger_key=neq.${encodeURIComponent(excludeKey)}` : "");
+        // all=true：清空本项目名下全部离线预约。
+        //
+        // 必须支持这个参数——客户端「清空存量预约」发的就是 { all: true }
+        //（见 lib/push-bailout-client 的 purgeAllBailoutJobs）。旧实现只认
+        // triggerKey/triggerPrefix，遇到 all 会直接判成「缺少预约键」返回 400，
+        // 用户看到的是「服务端没有确认成功，请检查离线推送是否部署」，
+        // 照着那句提示去查部署和网络，永远查不出所以然。
+        const purgeAll = body.all === true;
+        if (!purgeAll && !triggerKey && !triggerPrefix) {
+          return json({ ok: false, error: "缺少预约键。" }, 400);
+        }
+        const keyFilter = purgeAll
+          ? ""
+          : (triggerKey
+            ? `trigger_key=eq.${encodeURIComponent(triggerKey)}`
+            : `trigger_key=like.${encodeURIComponent(`${triggerPrefix}%`)}`
+              + (excludeKey ? `&trigger_key=neq.${encodeURIComponent(excludeKey)}` : ""));
+        const keyFilterPart = keyFilter ? `&${keyFilter}` : "";
+        // 已领取（running）的任务不能靠删除停手：执行体已经拿到自己那份快照，
+        // 把行删掉并不会中断它，它跑完还会照常续排下一发（见 push-generate 的
+        // idleRepeat）。「规则删了，消息还在发，而且没完没了」正是这么来的。
+        // 必须先标记 cancelled——执行体在生成前与续排前各查一次，被撤就停手。
         await readJson(await rest(
-          `push_jobs?user_id=eq.${OWNER_ID}&status=eq.pending&${keyFilter}`,
+          `push_jobs?user_id=eq.${OWNER_ID}&status=eq.running${keyFilterPart}`,
+          {
+            method: "PATCH",
+            headers: { Prefer: "return=representation" },
+            body: JSON.stringify({ status: "cancelled", updated_at: new Date().toISOString() }),
+          },
+        ));
+        await readJson(await rest(
+          `push_jobs?user_id=eq.${OWNER_ID}&status=eq.pending${keyFilterPart}`,
           { method: "DELETE", headers: { Prefer: "return=representation" } },
         ));
         return json({ ok: true });

@@ -772,13 +772,19 @@ export function installScheduledBailoutRefresher(): void {
  * 却还挂着单，正是「删了规则还在发」的典型情形——用户点这个按钮时就是
  * 要无条件把服务端清干净，哪怕多一个请求。
  */
-export async function purgeAllBailoutJobs(): Promise<boolean> {
+export async function purgeAllBailoutJobs(): Promise<{ ok: boolean; error?: string }> {
     const response = await pushJobsFetch({
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ all: true }),
     }).catch(() => null);
-    return Boolean(response && response.ok);
+    if (!response) return { ok: false, error: "请求没有发出去（网络或跨域失败）。" };
+    if (response.ok) return { ok: true };
+    // 把服务端给的原因带出来。以前只回一个 false，界面统一显示「请检查离线推送
+    // 是否已部署、网络是否正常」——而真实原因可能是「网关不认 all 参数」这种
+    // 具体问题，用户照着那句提示去查部署和网络，永远查不出所以然。
+    const data = await response.json().catch(() => ({})) as { error?: string };
+    return { ok: false, error: data.error || `HTTP ${response.status}` };
 }
 
 /** 撤销追问兜底预约：带 count 只撤该轮的精确键，不带则撤该会话全部。 */

@@ -499,16 +499,18 @@ export function CloudServicesSetup({ onConfigChanged }: { onConfigChanged?: () =
         setPurging(true);
         try {
             const { purgeAllBailoutJobs } = await import("@/lib/push-bailout-client");
-            const ok = await purgeAllBailoutJobs();
+            const result = await purgeAllBailoutJobs();
             setPurgeOpen(false);
-            setResultDialog(ok
+            setResultDialog(result.ok
                 ? {
                     title: "已清空存量预约",
                     text: "服务端名下所有待发的离线预约已清除（正在执行的那条也已标记取消）。\n\n如果还有规则在生效，它们会在你下次聊天/切后台时重新挂上新预约——想彻底不再收到，请先去关掉对应规则。",
                 }
                 : {
                     title: "清空失败",
-                    text: "服务端没有确认成功。请检查「离线推送」是否已部署、当前网络是否正常，稍后重试。",
+                    text: `服务端没有确认成功：${result.error || "未知原因"}。\n\n`
+                        + "如果原因显示「缺少预约键」，说明你的个人云上的离线推送函数还是旧版："
+                        + "到「云服务部署」里重新部署一次离线推送，函数才有「全清」这个能力。",
                 });
         } catch (err) {
             setPurgeOpen(false);
