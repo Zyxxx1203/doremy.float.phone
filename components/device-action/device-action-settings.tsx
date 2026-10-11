@@ -199,7 +199,7 @@ export function DeviceActionSettings({ onNotice }: { onNotice?: (msg: string) =>
             })}
           </div>
           <div className="per-note" style={{ padding: "0 var(--ui-padding, 16px)" }}>
-            角色要做这些动作，还要单独开能力：工具箱 → 内置能力 → 「操作TA的设备」。
+            角色要做这些动作，还要单独开能力：工具箱 → 内置能力 → 「操作手机设备」。
           </div>
         </div>
 

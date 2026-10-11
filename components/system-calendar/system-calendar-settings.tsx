@@ -207,7 +207,7 @@ export function SystemCalendarSettings({ onNotice }: { onNotice?: (msg: string) 
         </div>
 
         <div className="per-note" style={{ padding: "0 var(--ui-padding, 16px)" }}>
-          角色要用这些，还要单独开能力：工具箱 → 内置能力 → 「TA的系统日历」。
+          角色要用这些，还要单独开能力：工具箱 → 内置能力 → 「系统日历」。
         </div>
       </div>
     </div>

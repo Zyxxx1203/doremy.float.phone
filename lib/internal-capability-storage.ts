@@ -33,11 +33,11 @@ export const CHECK_IN_REQUEST_CAPABILITY_ID = "check_in_request";
  */
 export const RESERVED_INTERNAL_TOOL_NAMES: string[] = [
     "在桌面留句话",
-    "想看看你的屏幕",
-    "查看TA的手机",
-    "操作TA的设备",
-    "看看TA的日程",
-    "记进TA的日历",
+    "请求看屏幕",
+    "查看手机状态",
+    "操作手机设备",
+    "查看系统日程",
+    "写入系统日历",
     "写入记忆",
     "发送文件",
     "角色电脑",
@@ -638,11 +638,11 @@ const CHECK_IN_REQUEST_PARAMETER_SCHEMA = JSON.stringify({
 
 const CHECK_IN_REQUEST_USAGE_GUIDE = [
     "以下是你获取指令的返回结果：",
-    "动作：想看看你的屏幕",
+    "动作：请求看屏幕",
     "用途：请求看一眼{{user}}此刻真实的手机屏幕。你并不是直接看到——系统会先弹一个确认框给 TA，TA 点了「给它看」你才能看到那张画面。",
     "",
     "【重要边界】",
-    "- 这不是「查看TA的手机」（那读的是电量、网络、应用这类状态数据，不弹窗）。这个请求会**在 TA 的屏幕上弹出确认框**，是打扰性的动作。",
+    "- 这不是「查看手机状态」（那读的是电量、网络、应用这类状态数据，不弹窗）。这个请求会**在 TA 的屏幕上弹出确认框**，是打扰性的动作。",
     "- 只在确实有理由时用：你说了一句「在干嘛」，或者你们正聊到「你那边现在什么样」。不要没头没尾地突然要看，那是查岗不是聊天。",
     "- **不要频繁请求**。同一次对话里最多一次；TA 没给看就算了，不要追问、不要撒娇硬要、不要换个说法再试。",
     "- TA 可能拒绝，也可能不回应。这两种都是正常结果，不是错误。被拒之后要自然地把话题接下去，不要流露被冒犯的样子。",
@@ -651,7 +651,7 @@ const CHECK_IN_REQUEST_USAGE_GUIDE = [
     "",
     "参数：无",
     "示例：",
-    "[执行动作:想看看你的屏幕({})]",
+    "[执行动作:请求看屏幕({})]",
 ].join("\n");
 
 const PHONE_WIDGET_PARAMETER_SCHEMA = JSON.stringify({
@@ -1279,7 +1279,7 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
     },
     {
         id: PERCEPTION_READ_CAPABILITY_ID,
-        name: "查看TA的手机",
+        name: "查看手机状态",
         description: "看一眼{{user}}此刻真实手机的状态（电量、网络、正在用的应用、步数、今天各应用用了多久、大致位置、最近一觉）。只读，不会改变任何东西。位置与睡眠需要 TA 单独开启。",
         enabled: false,
         mode: "auto",
@@ -1288,7 +1288,7 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
     },
     {
         id: DEVICE_ACTION_CAPABILITY_ID,
-        name: "操作TA的设备",
+        name: "操作手机设备",
         description: "在{{user}}的真实手机上做一件小事：开关手电筒、调音量、调屏幕亮度、开关勿扰。会真的生效且改动是持久的，所以要想清楚再用。",
         enabled: false,
         mode: "auto",
@@ -1297,8 +1297,8 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
     },
     {
         id: SYSTEM_CALENDAR_CAPABILITY_ID,
-        name: "TA的系统日历",
-        description: "看看{{user}}真实手机日历里有什么安排，也可以把重要的日子写进 TA 的系统日历（到点系统会提醒 TA）。",
+        name: "系统日历",
+        description: "看看{{user}}真实手机日历里有什么安排，也可以把重要的日子写进系统日历（到点系统会提醒 TA）。",
         enabled: false,
         mode: "auto",
         createdAt: 0,
@@ -1387,7 +1387,7 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
     },
     {
         id: CHECK_IN_REQUEST_CAPABILITY_ID,
-        name: "想看看你的屏幕",
+        name: "请求看屏幕",
         description: "请求看一眼{{user}}此刻真实的手机屏幕。系统会先弹确认框给 TA，TA 同意了你才能看到那张画面（默认关闭）。",
         enabled: false,
         mode: "auto",
@@ -1603,13 +1603,13 @@ const CALENDAR_WRITE_PARAMETER_SCHEMA = JSON.stringify({
 });
 
 const CALENDAR_READ_TOOL: InternalToolDefinition = {
-    name: "看看TA的日程",
+    name: "查看系统日程",
     description: "读取{{user}}手机系统日历里的真实日程（标题、时间、地点）。",
     parameterSchema: CALENDAR_READ_PARAMETER_SCHEMA,
 };
 
 const CALENDAR_WRITE_TOOL: InternalToolDefinition = {
-    name: "记进TA的日历",
+    name: "写入系统日历",
     description: "把一个重要的日子写进{{user}}手机的系统日历，到点系统会提醒 TA。",
     parameterSchema: CALENDAR_WRITE_PARAMETER_SCHEMA,
 };
@@ -1621,7 +1621,7 @@ const SYSTEM_CALENDAR_SUBTOOLS: InternalToolDefinition[] = [
 
 const SYSTEM_CALENDAR_USAGE_GUIDE = [
     "以下是你获取指令的返回结果：",
-    "服务：TA 的系统日历",
+    "服务：系统日历",
     "用途：两件事——① 看看 TA 真实手机日历里有什么安排；② 把重要的日子写进 TA 的日历。",
     "",
     "【重要边界】",
@@ -1631,21 +1631,21 @@ const SYSTEM_CALENDAR_USAGE_GUIDE = [
     "- 你只能**新增**，不能修改或删除 TA 已有的任何安排。",
     "- 写入的日程会带标记，TA 一眼能看出哪些是你加的。所以别乱写——写之前想清楚这一天是否真的重要。",
     "",
-    "动作：看看TA的日程",
+    "动作：查看系统日程",
     "参数：",
     "  - daysAhead (number): 往后看几天，默认 7",
     "  - daysBack (number): 往前看几天，默认 0",
     "示例：",
-    '[执行动作:看看TA的日程({"daysAhead":7})]',
+    '[执行动作:查看系统日程({"daysAhead":7})]',
     "",
-    "动作：记进TA的日历",
+    "动作：写入系统日历",
     "参数：",
     "  - title (string, 必填): 日程标题",
     "  - date (string, 必填): YYYY-MM-DD",
     "  - startTime / endTime (string): 可选，HH:MM。都填才是时段事件，否则按全天",
     "  - note (string): 可选，描述里的一句话",
     "示例：",
-    '[执行动作:记进TA的日历({"title":"我们在一起的第100天","date":"2026-06-18","note":"记得跟她说点什么"})]',
+    '[执行动作:写入系统日历({"title":"我们在一起的第100天","date":"2026-06-18","note":"记得跟她说点什么"})]',
     "",
     "如果失败（没授权、没有可写日历），结果里会说明原因，**如实转述**，不要假装成功。",
 ].join("\n");
@@ -1710,7 +1710,7 @@ const DEVICE_ACTION_PARAMETER_SCHEMA = JSON.stringify({
 
 const DEVICE_ACTION_USAGE_GUIDE = [
     "以下是你获取指令的返回结果：",
-    "动作：操作TA的设备",
+    "动作：操作手机设备",
     "用途：在{{user}}的真实手机上做一件小事——开手电筒、调音量、调亮度、开勿扰、打开应用、设闹钟/倒计时、控制音乐播放、打开网页。",
     "",
     "【重要边界】",
@@ -1732,7 +1732,7 @@ const DEVICE_ACTION_USAGE_GUIDE = [
     "到饭点了 → 打开外卖应用。用之前先确认你们聊到了这件事，别自说自话把人带走。",
     "",
     "各动作的参数：",
-    "动作：操作TA的设备",
+    "动作：操作手机设备",
     "- action (string, 必填): torch / volume / brightness / dnd / openApp",
     "- on (boolean): action=torch/dnd 时用，true 开 false 关",
     "- level (number): action=brightness 时用 1-100；action=volume 且 mode=set 时用 0-100",
@@ -1741,15 +1741,15 @@ const DEVICE_ACTION_USAGE_GUIDE = [
     "- app (string): action=openApp 时用，应用名或包名",
     "",
     "示例：",
-    '[执行动作:操作TA的设备({"action":"torch","on":true})]',
-    '[执行动作:操作TA的设备({"action":"volume","mode":"down"})]',
-    '[执行动作:操作TA的设备({"action":"brightness","level":30})]',
-    '[执行动作:操作TA的设备({"action":"dnd","on":true})]',
-    '[执行动作:操作TA的设备({"action":"openApp","app":"美团"})]',
-    '[执行动作:操作TA的设备({"action":"timer","minutes":20,"message":"记得起来活动一下"})]',
-    '[执行动作:操作TA的设备({"action":"media","mode":"pause"})]',
-    '[执行动作:操作TA的设备({"action":"alarm","hour":7,"minute":30,"message":"起床啦"})]',
-    '[执行动作:操作TA的设备({"action":"openUrl","url":"https://example.com"})]',
+    '[执行动作:操作手机设备({"action":"torch","on":true})]',
+    '[执行动作:操作手机设备({"action":"volume","mode":"down"})]',
+    '[执行动作:操作手机设备({"action":"brightness","level":30})]',
+    '[执行动作:操作手机设备({"action":"dnd","on":true})]',
+    '[执行动作:操作手机设备({"action":"openApp","app":"美团"})]',
+    '[执行动作:操作手机设备({"action":"timer","minutes":20,"message":"记得起来活动一下"})]',
+    '[执行动作:操作手机设备({"action":"media","mode":"pause"})]',
+    '[执行动作:操作手机设备({"action":"alarm","hour":7,"minute":30,"message":"起床啦"})]',
+    '[执行动作:操作手机设备({"action":"openUrl","url":"https://example.com"})]',
     "",
     "如果失败，结果里会说明原因（比如没有权限、设备没有闪光灯、TA 关掉了这个动作）。**如实转述原因，不要假装成功**；需要授权的，可以提醒 TA 去设置里打开。",
     "成功时 TA 会收到一条通知（除非 TA 关了通知），所以你不用特意报告——但对话里自然提一句会更亲切。",
@@ -1769,7 +1769,7 @@ const PERCEPTION_READ_PARAMETER_SCHEMA = JSON.stringify({
 
 const PERCEPTION_READ_USAGE_GUIDE = [
     "以下是你获取指令的返回结果：",
-    "动作：查看TA的手机",
+    "动作：查看手机状态",
     "用途：看一眼{{user}}此刻真实手机的状态——电量、网络、正在用什么应用、走了多少步、今天各应用用了多久。",
     "",
     "什么时候用：",
@@ -1794,10 +1794,10 @@ const PERCEPTION_READ_USAGE_GUIDE = [
     "- focus (string, 可选): 只看某一类；battery=电量与充电，network=网络，app=正在用什么应用，steps=步数，usage=今天各应用用了多久，location=大致位置，sleep=最近一觉。不填返回全部。",
     "",
     "示例：",
-    "[执行动作:查看TA的手机({})]",
-    '[执行动作:查看TA的手机({"focus":"battery"})]',
-    '[执行动作:查看TA的手机({"focus":"usage"})]',
-    '[执行动作:查看TA的手机({"focus":"sleep"})]',
+    "[执行动作:查看手机状态({})]",
+    '[执行动作:查看手机状态({"focus":"battery"})]',
+    '[执行动作:查看手机状态({"focus":"usage"})]',
+    '[执行动作:查看手机状态({"focus":"sleep"})]',
     "",
     "这是只读动作，不会改变 TA 手机上的任何东西。如果某项读不到，说明缺少对应权限或壳版本过低，不要编造。",
 ].join("\n");

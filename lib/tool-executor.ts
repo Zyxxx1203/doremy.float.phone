@@ -814,15 +814,15 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     if (call.name === "发送文件") return executeSendFileTool(call);
     if (call.name === "角色电脑") return executeAgentComputerTool(call, context);
     // 内置工具必须排在用户自定义的现实桥动作**之前**：
-    // 用户完全可能把快捷动作也命名成「查看TA的手机」，若让现实桥先匹配，
+    // 用户完全可能把快捷动作也命名成「查看手机状态」，若让现实桥先匹配，
     // 内置工具就永远调不到（被同名的用户动作影子覆盖），而且表现是
     // 「调了但行为不对」——极难排查。宁可让用户起名时就被拦住（见现实桥的保留名校验）。
-    if (call.name === "查看TA的手机") return executePerceptionReadTool(call, context);
-    if (call.name === "操作TA的设备") return executeDeviceActionTool(call, context);
-    if (call.name === "看看TA的日程") return executeSystemCalendarReadTool(call);
-    if (call.name === "记进TA的日历") return executeSystemCalendarWriteTool(call);
+    if (call.name === "查看手机状态") return executePerceptionReadTool(call, context);
+    if (call.name === "操作手机设备") return executeDeviceActionTool(call, context);
+    if (call.name === "查看系统日程") return executeSystemCalendarReadTool(call);
+    if (call.name === "写入系统日历") return executeSystemCalendarWriteTool(call);
     if (call.name === "在桌面留句话") return executePhoneWidgetTool(call, context);
-    if (call.name === "想看看你的屏幕") return executeCheckInRequestTool(call, context);
+    if (call.name === "请求看屏幕") return executeCheckInRequestTool(call, context);
     if (isRealityBridgeToolName(call.name)) return executeRealityBridgeTool(call, context);
     if (call.name === "稍后主动联系" || call.name === "设置定时醒来") return executeTimedWakeTool(call, context);
 
@@ -846,7 +846,7 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
 /**
  * 角色主动请求看一眼用户屏幕。
  *
- * 与「查看TA的手机」的分工：那个读电量/网络这类状态数据、不打扰用户；
+ * 与「查看手机状态」的分工：那个读电量/网络这类状态数据、不打扰用户；
  * 这个会在用户屏幕上**弹一个确认框**，是打扰性动作，必须用户当场点头才看得到。
  * 所以用户没开启查岗能力时角色完全看不到这个工具。
  */
@@ -856,7 +856,7 @@ async function executeCheckInRequestTool(call: ToolCall, context?: ToolExecution
         return {
             name: call.name,
             success: false,
-            error: "「想看看你的屏幕」能力未启用（工具箱 → 内置能力）",
+            error: "「请求看屏幕」能力未启用（工具箱 → 内置能力）",
             continueConversation: false,
             persistToHistory: false,
             userNotice: "看屏幕能力未启用",
@@ -966,10 +966,10 @@ async function executeSystemCalendarReadTool(call: ToolCall): Promise<ToolResult
         return {
             name: call.name,
             success: false,
-            error: "「TA的系统日历」能力未启用（工具箱 → 内置能力）",
+            error: "「系统日历」能力未启用（工具箱 → 内置能力）",
             continueConversation: false,
             persistToHistory: false,
-            userNotice: "TA的系统日历能力未启用",
+            userNotice: "系统日历能力未启用",
         };
     }
     if (!hasCalendarBridge()) {
@@ -1022,10 +1022,10 @@ async function executeSystemCalendarWriteTool(call: ToolCall): Promise<ToolResul
         return {
             name: call.name,
             success: false,
-            error: "「TA的系统日历」能力未启用（工具箱 → 内置能力）",
+            error: "「系统日历」能力未启用（工具箱 → 内置能力）",
             continueConversation: false,
             persistToHistory: false,
-            userNotice: "TA的系统日历能力未启用",
+            userNotice: "系统日历能力未启用",
         };
     }
     if (!hasCalendarBridge()) {
@@ -1129,10 +1129,10 @@ async function executePerceptionReadTool(call: ToolCall, context?: ToolExecution
         return {
             name: call.name,
             success: false,
-            error: "「查看TA的手机」能力未启用（工具箱 → 内置能力）",
+            error: "「查看手机状态」能力未启用（工具箱 → 内置能力）",
             continueConversation: false,
             persistToHistory: false,
-            userNotice: "查看TA的手机能力未启用",
+            userNotice: "查看手机状态能力未启用",
         };
     }
 
@@ -1188,10 +1188,10 @@ async function executeDeviceActionTool(call: ToolCall, context?: ToolExecutionCo
         return {
             name: call.name,
             success: false,
-            error: "「操作TA的设备」能力未启用（工具箱 → 内置能力）",
+            error: "「操作手机设备」能力未启用（工具箱 → 内置能力）",
             continueConversation: false,
             persistToHistory: false,
-            userNotice: "操作TA的设备能力未启用",
+            userNotice: "操作手机设备能力未启用",
         };
     }
 

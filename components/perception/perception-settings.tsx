@@ -454,7 +454,7 @@ export function PerceptionSettings({ onNotice }: { onNotice?: (msg: string) => v
                   </div>
                 </div>
                 <div className="per-note" style={{ padding: "0 var(--ui-padding, 16px)" }}>
-                  角色想主动查手机，还要单独开能力：工具箱 → 内置能力 → 「查看TA的手机」。
+                  角色想主动查手机，还要单独开能力：工具箱 → 内置能力 → 「查看手机状态」。
                 </div>
               </div>
 
