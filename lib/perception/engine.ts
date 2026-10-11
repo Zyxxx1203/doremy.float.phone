@@ -47,7 +47,7 @@ import {
   savePerceptionStatus,
   type PerceptionRuntimeState,
 } from "./storage";
-import type { PerceptionCapability, PerceptionSignal } from "./types";
+import type { PerceptionCapability, PerceptionConfig, PerceptionSignal } from "./types";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -203,6 +203,14 @@ async function sampleOnce(): Promise<void> {
   // 因为用户可能一直停在同一个应用、不再产生新事件，靠事件驱动会永远等不到。
   await checkDwell(config.appDwellMinutes, state);
 
+  // ── 应用累计使用 ──
+  // 每轮采样只读一次使用统计，喂给信号判定，再随状态缓存复用给
+  // 「注入 / 主动查询 / 云端同步」。读两次结果是同一份，纯属白花开销。
+  const appUsage = supportsUsageStats() && isCapabilityEnabled(config, "usageStats")
+    ? readUsageStats(12)
+    : ([] as AppUsageEntry[]);
+  await checkAppUsageSignal(config, state, appUsage);
+
   // ── 位置 ──
   // 只在开启时才取：位置权限是敏感授权，用户没开就不该有任何定位调用。
   // 取点用 refreshLocation（一次性），再读缓存——「最后已知位置」可能是
@@ -232,13 +240,11 @@ async function sampleOnce(): Promise<void> {
   const dwellLabel = state.dwellPackage
     ? (readAppLabel(state.dwellPackage) || state.dwellPackage)
     : "";
-  // 使用统计只随快照缓存，不单独产生信号：
-  // 「今天用了多久」是一个持续累积的量，按阈值报会在一天里反复触发同类消息，
-  // 更像仪表盘而不是「角色察觉到什么」。让角色在需要时（注入或主动查询）
-  // 自己去看这份缓存即可。
-  const appUsage = supportsUsageStats() && isCapabilityEnabled(config, "usageStats")
-    ? readUsageStats(12)
-    : ([] as AppUsageEntry[]);
+  // 使用统计这一份数据有两个用途：
+  //   ① 上面 checkAppUsageSignal 据它判定「应用用太久」信号；
+  //   ② 随状态缓存留给「注入 / 主动查询 / 云端同步」，让角色自己去看今天用了多久。
+  // 所以它同时是信号源和快照内容，但**只有**累计满阈值那一刻才产生信号——
+  // 每分钟都报的话就成了仪表盘，不是「角色察觉到什么」。
   savePerceptionStatus({
     at: new Date().toISOString(),
     batteryPercent: percent,
@@ -281,6 +287,87 @@ async function checkDwell(thresholdMinutes: number, state: PerceptionRuntimeStat
   // 只有真投递出去才标记本段已上报。被开关/安静时段/限流拦下时保持未标记，
   // 等条件恢复后还能补上——否则用户白天关了、晚上打开，这段停留就永远丢了。
   if (delivered) state.dwellReported = pkg;
+}
+
+// ── 应用累计使用 ──
+//
+// 与「长时间使用」是两件事，别混：
+//   · 长时间使用（checkDwell）：看**连续**停留，切走再回来计时归零，一段只报一次。
+//   · 应用用太久（下面这个）：看**当天累计**，来回切 App 照样累加，按档位报。
+// 用户说的「刷抖音刷了一上午」是后者——他中间一定切出去过。
+
+/** 本机当天日期键（YYYY-MM-DD），用于跨天清零档位。 */
+function localDayKey(): string {
+  const d = new Date();
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+}
+
+/**
+ * 该应用适用哪条阈值。
+ *
+ * 覆盖表按顺序取**第一条命中**的（用户自己排的优先级，这里不替他重排）。
+ * 匹配是「包含、不区分大小写」，显示名和包名都试一遍：
+ * 普通人填「抖音」，懂的人填 com.ss.android.ugc.aweme，两边都能用。
+ * 返回 0 表示这个应用不报。
+ */
+function resolveUsageThreshold(config: PerceptionConfig, entry: AppUsageEntry): number {
+  const label = (entry.label || readAppLabel(entry.package) || entry.package).toLowerCase();
+  const pkg = entry.package.toLowerCase();
+  for (const rule of config.appUsageSignalOverrides) {
+    const key = (rule.pattern || "").trim().toLowerCase();
+    if (!key) continue;
+    if (label.includes(key) || pkg.includes(key)) return rule.minutes;
+  }
+  return config.appUsageSignalMinutes;
+}
+
+/**
+ * 「某个应用今天用太久」判定。
+ *
+ * 累积时长每分钟都在涨，不能每轮采样都报一次，所以按**档位**报：
+ * 阈值 60 分钟 → 满 60 报一条、满 120 再报一条。已报到第几档记在
+ * usageSignalTier（包名 → 档位），跨天由 usageSignalDate 清零。
+ *
+ * 不用「上次报的时间 + 阈值」那种算法：那样切到别的 App 会让时间基准漂移，
+ * 用户看到的就是「明明已经用了两小时，才刚提醒」。档位只看累计值，不会漂。
+ */
+async function checkAppUsageSignal(
+  config: PerceptionConfig,
+  state: PerceptionRuntimeState,
+  usage: AppUsageEntry[],
+): Promise<void> {
+  const anyEnabled = config.appUsageSignalMinutes > 0
+    || config.appUsageSignalOverrides.some(rule => rule.minutes > 0);
+  if (!anyEnabled) return;
+  if (!usage.length) return;
+
+  const today = localDayKey();
+  if (state.usageSignalDate !== today) {
+    state.usageSignalDate = today;
+    state.usageSignalTier = {};
+  }
+
+  for (const entry of usage) {
+    const threshold = resolveUsageThreshold(config, entry);
+    if (threshold <= 0) continue;
+    const tier = Math.floor(entry.minutes / threshold);
+    if (tier <= 0) continue;
+    const last = state.usageSignalTier[entry.package] ?? 0;
+    if (tier <= last) continue;
+
+    const label = entry.label || readAppLabel(entry.package) || entry.package;
+    const delivered = await emitSignal({
+      capability: "usageStats",
+      type: "应用用太久",
+      payload: `${label} 今天已累计使用 ${entry.minutes} 分钟`,
+    }, state);
+    // 只有真投递出去才推进档位。被开关/安静时段/限流拦下时保持原档，
+    // 条件恢复后补一次——与停留上报同一套「被拦下不算发生过」的约定。
+    // 代价是安静时段里每轮采样都会留一条「已拦截」流水，这是有意的：
+    // 用户能在记录里看见「信号确实产生了，是安静时段拦的」。
+    if (delivered) state.usageSignalTier[entry.package] = tier;
+  }
 }
 
 /** 两个坐标之间的大致距离（米）。用等距圆柱近似——几百米到几公里量级足够。 */

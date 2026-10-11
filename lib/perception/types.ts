@@ -26,6 +26,19 @@ export type AppUsageEntry = {
   minutes: number;
 };
 
+/**
+ * 单应用的使用时长上报阈值覆盖。
+ *
+ * 为什么需要它：「用多久算太久」是因应用而异的——短视频 20 分钟就该说一句，
+ * 微信可能得 90 分钟。全局一个阈值只能取折中值，等于谁的准都不准。
+ */
+export type AppUsageOverride = {
+  /** 应用显示名关键词（包含匹配，不区分大小写），如「抖音」 */
+  pattern: string;
+  /** 该应用今天累计用满多少分钟上报一次；0 = 这个应用不报 */
+  minutes: number;
+};
+
 /** 感知能力标识。与原生 capabilitiesJson() 的键一一对应。 */
 export type PerceptionCapability =
   | "battery"
@@ -69,7 +82,7 @@ export const PERCEPTION_CAPABILITY_DESC: Record<PerceptionCapability, string> = 
   location: "到达或离开某个位置时告诉角色。需要位置权限。",
   calendar: "日程开始前提醒。需要读取系统日历。",
   contacts: "来电或消息可识别为具体的人。需要读取联系人。",
-  usageStats: "汇总当天各应用使用时长。需要「使用情况访问」权限。",
+  usageStats: "汇总当天各应用使用时长；某个应用累计用满设定时长时报一条「应用用太久」。需要「使用情况访问」权限。",
   steps: "读取当天步数，作为「在走动 / 宅着」的粗线索。需要活动识别权限。",
   sleep: "读取最近一觉的时长与起止。只读睡眠，不含睡眠分期；数据来自 Health Connect。",
   returnToPhone: "离开一段时间后回到小手机时，给角色一个「TA 回来了」的信号。纯网页实现，无需额外权限。",
@@ -87,6 +100,15 @@ export type PerceptionConfig = {
   batteryStepPercent: number;
   /** 前台应用连续使用多少分钟才产生信号。 */
   appDwellMinutes: number;
+  /**
+   * 某个应用今天**累计**用满多少分钟产生一条「应用用太久」信号。
+   *
+   * 与 appDwellMinutes 是两件事：那个看连续停留（切走归零），
+   * 这个看当天累计（来回切 App 照样累加）。0 = 不产生这类信号。
+   */
+  appUsageSignalMinutes: number;
+  /** 单应用阈值覆盖表：命中的用条目自己的值，都没命中才用上面的全局值。 */
+  appUsageSignalOverrides: AppUsageOverride[];
   /** 全局限流：每小时最多产生多少条信号（保护 token 预算）。 */
   hourlyLimit: number;
   /** 是否遵守推送安静时段（复用已有设置，夜里不打扰）。 */
@@ -113,6 +135,8 @@ export const PERCEPTION_DEFAULTS: PerceptionConfig = {
   sampleSeconds: 60,
   batteryStepPercent: 5,
   appDwellMinutes: 20,
+  appUsageSignalMinutes: 60,
+  appUsageSignalOverrides: [],
   hourlyLimit: 12,
   respectQuietHours: true,
   batteryLowPercent: 20,
@@ -128,6 +152,8 @@ export const PERCEPTION_LIMITS = {
   sampleSeconds: { min: 20, max: 600 },
   batteryStepPercent: { min: 1, max: 50 },
   appDwellMinutes: { min: 2, max: 180 },
+  // 允许 0：那是「整个累计信号关掉」的合法取值，不是错误输入
+  appUsageSignalMinutes: { min: 0, max: 720 },
   hourlyLimit: { min: 1, max: 60 },
   batteryLowPercent: { min: 1, max: 99 },
   returnAwayMinutes: { min: 1, max: 720 },
@@ -239,6 +265,14 @@ export type PerceptionDiagnostics = {
   unmatchedSignals: number;
   /** 实时读一次今天各应用使用时长（诊断面板展示「角色能读到什么」）。 */
   appUsage: AppUsageEntry[];
+  /**
+   * 「应用用太久」今天各应用已报到第几档（包名 → 档位）。
+   *
+   * 面板靠它回答「为什么没提醒」：档位 0 = 还没满阈值；
+   * 档位已推进 = 报过了，再等一下才轮到下一档。没有这个数，
+   * 用户只能干等一小时猜到底跑没跑。
+   */
+  usageSignalTier: Record<string, number>;
   /** 实时读一次当前位置（null = 读不到）。 */
   location: LocationSnapshot | null;
   /** 实时读一次最近一觉（null = 读不到）。 */

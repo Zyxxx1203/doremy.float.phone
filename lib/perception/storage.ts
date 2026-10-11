@@ -7,6 +7,7 @@ import { kvGet, kvRemove, kvSet, registerKvMigration } from "../kv-db";
 import {
   PERCEPTION_DEFAULTS,
   PERCEPTION_LIMITS,
+  type AppUsageOverride,
   type PerceptionCapability,
   type PerceptionConfig,
   type PerceptionLogEntry,
@@ -31,6 +32,33 @@ function clamp(value: unknown, min: number, max: number, fallback: number): numb
   return Math.max(min, Math.min(max, Math.floor(n)));
 }
 
+/**
+ * 清洗单应用阈值表。
+ *
+ * 存储里的东西可能被手改、也可能来自旧版本，所以逐条验形状：
+ * 名字去空白、空名字丢掉，分钟钳到合法区间。宁可少几条条目，
+ * 也不能让引擎读到 NaN——那会让阈值比较永远为假或永远为真。
+ */
+function sanitizeOverrides(raw: unknown): AppUsageOverride[] {
+  if (!Array.isArray(raw)) return [];
+  const list: AppUsageOverride[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const pattern = String((item as AppUsageOverride).pattern ?? "").trim();
+    if (!pattern) continue;
+    list.push({
+      pattern: pattern.slice(0, 30),
+      minutes: clamp(
+        (item as AppUsageOverride).minutes,
+        0,
+        PERCEPTION_LIMITS.appUsageSignalMinutes.max,
+        0,
+      ),
+    });
+  }
+  return list;
+}
+
 /** 读配置。逐项做范围钳制，避免手改存储写出离谱的值。 */
 export function loadPerceptionConfig(): PerceptionConfig {
   try {
@@ -46,6 +74,7 @@ export function loadPerceptionConfig(): PerceptionConfig {
       // 缺了它会是 undefined，而 checkAppUsageSignal 里 `undefined <= 0` 为 false、
       // 除法又得到 NaN——一路绕过所有闸门变成每轮都报。这里必须兜住。
       appUsageSignalMinutes: clamp(parsed.appUsageSignalMinutes, PERCEPTION_LIMITS.appUsageSignalMinutes.min, PERCEPTION_LIMITS.appUsageSignalMinutes.max, PERCEPTION_DEFAULTS.appUsageSignalMinutes),
+      appUsageSignalOverrides: sanitizeOverrides(parsed.appUsageSignalOverrides),
       hourlyLimit: clamp(parsed.hourlyLimit, PERCEPTION_LIMITS.hourlyLimit.min, PERCEPTION_LIMITS.hourlyLimit.max, PERCEPTION_DEFAULTS.hourlyLimit),
       respectQuietHours: parsed.respectQuietHours !== false,
       batteryLowPercent: clamp(parsed.batteryLowPercent, PERCEPTION_LIMITS.batteryLowPercent.min, PERCEPTION_LIMITS.batteryLowPercent.max, PERCEPTION_DEFAULTS.batteryLowPercent),

@@ -23,6 +23,13 @@ import {
   type PerceptionDiagnostics,
 } from "./types";
 
+/** 本机当天日期键（YYYY-MM-DD）。与引擎里同名函数保持一致，用于判断档位是不是今天的。 */
+function todayKey(): string {
+  const d = new Date();
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+}
+
 /** 一次取全诊断状态。面板每次打开/刷新时调，不做缓存。 */
 export function readPerceptionDiagnostics(): PerceptionDiagnostics {
   let accessibility = false;
@@ -48,6 +55,7 @@ export function readPerceptionDiagnostics(): PerceptionDiagnostics {
     lastSnapshot: state.lastSnapshot,
     status: loadPerceptionStatus(),
     appUsage: readUsageStats(12),
+    // 位置读数：这一行曾在本批编辑中误删，导致面板位置信息恒为空。别删。
     location: readLocation(),
     locationDiagnostics: readLocationDiagnostics(),
     sleep: readSleep(),
@@ -55,6 +63,7 @@ export function readPerceptionDiagnostics(): PerceptionDiagnostics {
     hourlyUsed: windowFresh ? state.hourCount : 0,
     hourlyLimit: config.hourlyLimit,
     unmatchedSignals: state.unmatchedSignals,
+    usageSignalTier: state.usageSignalDate === todayKey() ? state.usageSignalTier : {},
   };
 }
 

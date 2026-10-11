@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity, AlertCircle, BarChart3, Battery, Calendar, Cloud,
-  Footprints, MapPin, Moon, RefreshCw, ShieldCheck, Smartphone, Trash2, Users, Wifi,
+  Footprints, MapPin, Moon, Plus, RefreshCw, ShieldCheck, Smartphone, Trash2, Users, Wifi,
 } from "lucide-react";
 
 import { Toggle } from "@/components/ui/form";
@@ -104,6 +104,14 @@ export function PerceptionSettings({ onNotice }: { onNotice?: (msg: string) => v
     setConfig(next);
     // 采样间隔 / 总开关变化会影响定时器，重建一次
     void restartPerception();
+  }, []);
+
+  // 阈值表只影响判定，不影响采样定时器，所以不重启引擎（否则每敲一个字
+  // 都要清一次定时器重建，纯属浪费）。
+  const updateOverrides = useCallback((next: PerceptionConfig["appUsageSignalOverrides"]) => {
+    const config = { ...loadPerceptionConfig(), appUsageSignalOverrides: next };
+    savePerceptionConfig(config);
+    setConfig(config);
   }, []);
 
   const toggleCapability = useCallback((id: PerceptionCapability, on: boolean) => {
@@ -332,6 +340,23 @@ export function PerceptionSettings({ onNotice }: { onNotice?: (msg: string) => v
                   </div>
                   <div className="per-field">
                     <div className="per-field-body">
+                      <div className="per-field-label">应用累计用太久</div>
+                      <div className="per-field-hint">
+                        某个应用今天累计用满多少分钟，报一条「应用用太久」（中途切走也照样累加）。
+                        0 = 这类信号全关。与上面「应用停留时长」的区别：那个看连续停留，一旦切走就归零
+                      </div>
+                    </div>
+                    <input
+                      className="per-field-input"
+                      type="number"
+                      min={0}
+                      max={720}
+                      value={config.appUsageSignalMinutes}
+                      onChange={e => update({ appUsageSignalMinutes: Math.max(0, Number(e.target.value) || 0) })}
+                    />
+                  </div>
+                  <div className="per-field">
+                    <div className="per-field-body">
                       <div className="per-field-label">每小时上限</div>
                       <div className="per-field-hint">保护你的 API 额度：超过这个数就不再投递</div>
                     </div>
@@ -367,6 +392,54 @@ export function PerceptionSettings({ onNotice }: { onNotice?: (msg: string) => v
                       checked={config.respectQuietHours}
                       onChange={(v: boolean) => update({ respectQuietHours: v })}
                     />
+                  </div>
+
+                  <div className="per-field" style={{ alignItems: "flex-start" }}>
+                    <div className="per-field-body">
+                      <div className="per-field-label">单应用阈值</div>
+                      <div className="per-field-hint">
+                        给特定应用单独设值，按显示名或包名「包含」匹配（不区分大小写）。
+                        没命中的用上面的全局值；填 0 = 这个应用永不报。
+                        例如抖音 20、游戏 0（打游戏不打扰）
+                      </div>
+                      {config.appUsageSignalOverrides.map((rule, idx) => (
+                        <div key={idx} style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8 }}>
+                          <input
+                            className="per-field-input"
+                            style={{ flex: 1, minWidth: 0 }}
+                            placeholder="应用名，如 抖音"
+                            value={rule.pattern}
+                            onChange={e => updateOverrides(config.appUsageSignalOverrides.map((r, i) =>
+                              i === idx ? { ...r, pattern: e.target.value } : r))}
+                          />
+                          <input
+                            className="per-field-input"
+                            style={{ width: 72 }}
+                            type="number"
+                            min={0}
+                            max={720}
+                            value={rule.minutes}
+                            onChange={e => updateOverrides(config.appUsageSignalOverrides.map((r, i) =>
+                              i === idx ? { ...r, minutes: Math.max(0, Number(e.target.value) || 0) } : r))}
+                          />
+                          <button
+                            type="button"
+                            className="ui-btn ui-btn-soft-danger"
+                            onClick={() => updateOverrides(config.appUsageSignalOverrides.filter((_, i) => i !== idx))}
+                          >
+                            <Trash2 size={14} strokeWidth={2} />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        className="ui-btn ui-btn-outline"
+                        style={{ marginTop: 8 }}
+                        onClick={() => updateOverrides([...config.appUsageSignalOverrides, { pattern: "", minutes: 30 }])}
+                      >
+                        <Plus size={14} strokeWidth={2} /> 添加应用
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -573,6 +646,40 @@ export function PerceptionSettings({ onNotice }: { onNotice?: (msg: string) => v
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* 应用累计使用：验证「应用用太久」到底跑没跑 */}
+              <div>
+                <div className="settings-menu-section-title">应用累计使用</div>
+                <div className="menu-group" style={{ marginTop: 10 }}>
+                  {diag.appUsage.length === 0 ? (
+                    <div className="per-empty">
+                      读不到今天的应用使用时长。需要「使用情况访问」权限（系统设置里手动开），
+                      并确认「使用统计」能力是打开的。
+                    </div>
+                  ) : (
+                    diag.appUsage.slice(0, 6).map(entry => {
+                      const name = (entry.label || entry.package).toLowerCase();
+                      const hit = config.appUsageSignalOverrides.find(
+                        rule => rule.pattern.trim() && name.includes(rule.pattern.trim().toLowerCase()),
+                      );
+                      const threshold = hit ? hit.minutes : config.appUsageSignalMinutes;
+                      const tier = diag.usageSignalTier[entry.package] ?? 0;
+                      return (
+                        <div className="menu-item" key={entry.package} style={{ cursor: "default" }}>
+                          <div className="menu-label-group">
+                            <span className="menu-label">{entry.label || entry.package}</span>
+                            <span className="menu-desc">
+                              今天 {entry.minutes} 分钟 · {threshold <= 0
+                                ? "已排除，不报"
+                                : `阈值 ${threshold} 分钟，已报 ${tier} 次`}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
