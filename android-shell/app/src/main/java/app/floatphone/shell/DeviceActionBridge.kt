@@ -619,11 +619,16 @@ class DeviceActionBridge(private val context: Context) {
         if (controllers.isEmpty()) {
             // 分不清「没授权」和「真没在播」时不能乱猜：先看有没有授权。
             if (!canReadActiveSessions()) return dispatchMediaKeyFallback(action)
+            // 没会话 + 有授权 = 手机上此刻没有活着的播放器。这句必须给出下一步：
+            // 只说「没有可控制的对象」，用户看完不知道该干什么（实测反馈）。
+            // 另外「没有正在播放」这个说法本身也不准——暂停中的播放器同样是
+            // 可控制对象，这里真正缺的是「没有正在运行的播放器进程」。
             return JSONObject().put("ok", false)
-                .put("reason", "现在没有正在播放的媒体，没有可控制的对象")
+                .put("reason", "当前没有正在运行的播放器，先在你手机上打开音乐 App 播一首，再让它控制")
         }
         val controller = pickController(controllers)
-            ?: return JSONObject().put("ok", false).put("reason", "没有可控制的播放器")
+            ?: return JSONObject().put("ok", false)
+                .put("reason", "没找到可控制的播放器，先在你手机上打开音乐 App 播一首再试")
         val before = snapshotOf(controller)
         val label = runCatching {
             val pm = context.packageManager
@@ -703,8 +708,12 @@ class DeviceActionBridge(private val context: Context) {
             if (!dispatchMediaKeys(action)) {
                 return JSONObject().put("ok", false).put("reason", "媒体按键没能发出去")
             }
+            // 没授权时读不到任何会话状态，所以只能如实说「发出去了、没法确认」。
+            // needPermission 让网页侧引导去授权——有授权才有确认能力，
+            // 也才不会继续出现「提示成功、却没声音」这种落差。
             JSONObject().put("ok", true).put("action", action)
                 .put("confirmed", false)
+                .put("readable", false)
                 .put("viaSession", false)
                 .put("needPermission", "notification_listener")
         } catch (e: Throwable) {
