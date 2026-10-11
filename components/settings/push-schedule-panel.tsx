@@ -16,6 +16,7 @@ import {
     fetchScheduledJobs,
     stopCharacterScheduledActivity,
 } from "@/lib/push-bailout-client";
+import { isPersonalPushCloudActive } from "@/lib/personal-push-cloud";
 import { describeScheduledJobs, type ScheduledJobRow } from "@/lib/push-schedule-view";
 
 /** 触发时刻：绝对时间 + 相对剩余，两者都要——前者用来对表，后者用来判断急不急。 */
@@ -36,10 +37,15 @@ export function PushSchedulePanel() {
     const [error, setError] = useState("");
     const [note, setNote] = useState("");
     const [busyKey, setBusyKey] = useState("");
+    // 个人云是否在本机启用。刻意自己再查一次而不是由父组件传入：父组件用的是
+    // 挂载时算好的快照，而用户完全可能「先打开这个页面、再去上面部署」，
+    // 那一刻父组件的值还是旧的，面板就会一直显示「未启用」。
+    const [cloudActive, setCloudActive] = useState(true);
 
     const reload = useCallback(async () => {
         setLoading(true);
         setError("");
+        setCloudActive(isPersonalPushCloudActive());
         try {
             const result = await fetchScheduledJobs();
             if (!result.ok) {
@@ -122,6 +128,14 @@ export function PushSchedulePanel() {
                     刷新
                 </button>
             </div>
+
+            {!cloudActive && (
+                <div className="rounded-[12px] bg-amber-500/10 px-3 py-2 text-[calc(12px*var(--app-text-scale,1))] leading-relaxed text-amber-700">
+                    离线推送还没在本机启用，所以这里读不到任何排期。
+                    先在上面完成「离线推送」的部署；如果是换了设备，用下面的
+                    「已经部署过？换了设备只需重新连接」接上即可。
+                </div>
+            )}
 
             {error && (
                 <div className="rounded-[12px] bg-amber-500/10 px-3 py-2 text-[calc(12px*var(--app-text-scale,1))] leading-relaxed text-amber-700">

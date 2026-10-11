@@ -615,9 +615,10 @@ export function CloudServicesSetup({ onConfigChanged }: { onConfigChanged?: () =
             </div>
 
             {/* 排期管理：把服务端的主动消息摊开，按角色看清并逐条删。
-                只在个人云激活时显示——没部署就没有「服务端排期」这回事，
-                摆一个永远读不出东西的面板只会让人以为坏了。 */}
-            {pushActive && <PushSchedulePanel />}
+                刻意**不**用 pushActive 门控——原实现只在已部署时渲染，于是没部署的人
+                根本不知道有这个功能，用户报「找不到入口」时也无从判断是「没部署」
+                还是「这版还没上线」。面板自己会说明当前处于哪种状态。 */}
+            <PushSchedulePanel />
 
             {/* 一键排查：逐段探测断点，输出可直接复制发人的报告 */}
             <button
