@@ -199,8 +199,15 @@ object PhoneWidgetRenderer {
             // 异常必须**记下来**而不是吞掉：原来这里只有 runCatching，于是「画失败」
             // 与「画成功」在外部完全一样（桌面同样退回图标），从代码里根本看不出
             // 卡在哪一步——这也是这个问题来回好几轮的原因。
+            // ⚠️ 这里必须是**局部函数**，不能写成 `val paint: () -> Unit = { ... paint() ... }`。
+            // 后者是「在自己初始化时引用自己」，Kotlin 直接报 Unresolved reference（第 71 次
+            // 构建就是这么挂的）。也考虑过 lateinit——但它只能修饰**类属性**，而 paint 捕获了
+            // view / attempts / widthPx 这些局部变量，提升不上去。局部函数天然可递归，最干净。
             var attempts = 0
-            val paint: () -> Unit = {
+            fun paint() {
+                // 两条触发路径（onPageFinished 与固定兜底）都可能调到这里，
+                // 已经收尾过就直接返回：否则会重复写文件，还把重试次数白白耗掉。
+                if (settled) return
                 attempts += 1
                 val result = runCatching { drawToFile(context, view, widthPx, heightPx) }
                 when {
