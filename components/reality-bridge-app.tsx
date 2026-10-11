@@ -1955,6 +1955,15 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                   ))}
                 </div>
                 <p className="rb-hint">也可以不理它，直接在下面自己配。</p>
+                {/* 「操作手机」类模板会真的改手机状态，前提是设备操作总开关已经打开。
+                    这里必须是**可点**的跳转：只写一句「去设置里打开」用户翻不到，
+                    这正是这个页面最早的教训（见 settingsJump 的注释）。 */}
+                {!deviceActionEnabled ? (
+                  <div className="rb-jump-row">
+                    <span className="rb-hint">带「操作手机」的模板需要先打开设备操作总开关</span>
+                    {settingsJump("去打开", "deviceAction")}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
