@@ -52,6 +52,13 @@ export type PerceptionCapability =
   | "sleep"
   | "returnToPhone"
   /**
+   * 作息与习惯：深夜还醒着、今天第一次打开、很久没来聊天。
+   *
+   * 与其它能力不同，它不读任何传感器——时间本身就是全部数据来源，
+   * 因此纯网页也能用（与 returnToPhone 同一档）。
+   */
+  | "lifeRhythm"
+  /**
    * 设备操作（角色在真实手机上做了件事）。
    *
    * 严格说它不是「感知」（是写不是读），但流水是同一本账——用户想知道
@@ -72,6 +79,7 @@ export const PERCEPTION_CAPABILITY_LABEL: Record<PerceptionCapability, string> =
   steps: "步数",
   sleep: "睡眠",
   returnToPhone: "回到手机提醒",
+  lifeRhythm: "作息与习惯",
   deviceAction: "设备操作",
 };
 
@@ -86,6 +94,7 @@ export const PERCEPTION_CAPABILITY_DESC: Record<PerceptionCapability, string> = 
   steps: "读取当天步数，作为「在走动 / 宅着」的粗线索。需要活动识别权限。",
   sleep: "读取最近一觉的时长与起止。只读睡眠，不含睡眠分期；数据来自 Health Connect。",
   returnToPhone: "离开一段时间后回到小手机时，给角色一个「TA 回来了」的信号。纯网页实现，无需额外权限。",
+  lifeRhythm: "深夜还醒着、今天第一次打开小手机、很久没来聊天时给角色一个信号。纯网页实现，无需额外权限。",
   deviceAction: "角色在真实手机上执行的动作（手电筒、音量、亮度、勿扰、打开应用等），记进流水供你回查。",
 };
 
@@ -121,6 +130,21 @@ export type PerceptionConfig = {
   returnAwayMinutes: number;
   /** 「回到手机」信号的最小间隔（分钟），防止反复切前后台刷屏。 */
   returnCooldownMinutes: number;
+  /**
+   * 几点之前算「深夜」：0 点到这个点之间还醒着，就产生一条「深夜还醒着」。
+   * 默认 5。纯看时钟，不需要任何权限。
+   */
+  lateNightUntilHour: number;
+  /**
+   * 多久没说话产生一条「很久没聊天」（小时）。0 = 不产生。
+   * 「说话」按任意一方最后一条消息算——是真正的双向沉默，不是只统计用户。
+   */
+  noTalkHours: number;
+  /**
+   * 连续多少分钟步数没涨、却一直在用手机，算「久坐不动」（分钟）。0 = 不产生。
+   * 需要步数权限，也需要无障碍服务才知道「一直在用」。
+   */
+  sitStillMinutes: number;
   /** 每轮对话前是否把当前设备状态悄悄注入角色上下文。默认关，会占 token。 */
   injectStatus: boolean;
   /** 同一角色两次「查看TA的手机」之间的最小间隔（分钟），间隔内直接返回缓存。 */
@@ -143,6 +167,9 @@ export const PERCEPTION_DEFAULTS: PerceptionConfig = {
   returnSignalEnabled: true,
   returnAwayMinutes: 5,
   returnCooldownMinutes: 15,
+  lateNightUntilHour: 5,
+  noTalkHours: 24,
+  sitStillMinutes: 120,
   injectStatus: false,
   queryCooldownMinutes: 5,
   cloudSyncEnabled: false,
@@ -158,6 +185,10 @@ export const PERCEPTION_LIMITS = {
   batteryLowPercent: { min: 1, max: 99 },
   returnAwayMinutes: { min: 1, max: 720 },
   returnCooldownMinutes: { min: 0, max: 720 },
+  lateNightUntilHour: { min: 0, max: 12 },
+  // 允许 0：那是「这类信号关掉」的合法取值
+  noTalkHours: { min: 0, max: 336 },
+  sitStillMinutes: { min: 0, max: 720 },
   queryCooldownMinutes: { min: 0, max: 720 },
 } as const;
 

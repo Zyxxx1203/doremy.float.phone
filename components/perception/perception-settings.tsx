@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity, AlertCircle, BarChart3, Battery, Calendar, Cloud,
-  Footprints, MapPin, Moon, Plus, RefreshCw, ShieldCheck, Smartphone, Trash2, Users, Wifi,
+  Footprints, MapPin, Moon, Plus, RefreshCw, ShieldCheck, Smartphone, Sunrise, Trash2, Users, Wifi,
 } from "lucide-react";
 
 import { Toggle } from "@/components/ui/form";
@@ -54,6 +54,10 @@ const CAP_ICONS: Record<PerceptionCapability, typeof Battery> = {
   usageStats: BarChart3,
   steps: Footprints,
   returnToPhone: Activity,
+  lifeRhythm: Sunrise,
+  // deviceAction 不出现在能力列表里（没有开关），但 Record 要求每个能力都有条目。
+  // 缺了它 TS 会报缺键，运行时若真被渲染出来则会是 undefined 图标直接崩。
+  deviceAction: Smartphone,
 };
 
 function fmtTime(iso: string): string {
@@ -446,7 +450,8 @@ export function PerceptionSettings({ onNotice }: { onNotice?: (msg: string) => v
 
               <div className="per-note" style={{ padding: "0 var(--ui-padding, 16px)" }}>
                 想让它变成真正的互动？去「现实桥」新建规则，匹配类型填上面的事件名
-                （如「电量偏低」「充电开始」「长时间使用」），就能让它写进聊天、记忆或通知。
+                （如「电量偏低」「充电开始」「长时间使用」「应用用太久」「深夜还醒着」「很久没聊天」「久坐不动」），
+                就能让它写进聊天、记忆或通知。
               </div>
 
               {/* 回到手机 */}
@@ -494,6 +499,68 @@ export function PerceptionSettings({ onNotice }: { onNotice?: (msg: string) => v
                 </div>
                 <div className="per-note" style={{ padding: "0 var(--ui-padding, 16px)" }}>
                   这只是产生一个信号，不依赖安卓壳。是否让角色开口、说什么，由「现实桥」里的规则决定。
+                </div>
+              </div>
+
+              {/* 作息与习惯 */}
+              <div>
+                <div className="settings-menu-section-title">作息与习惯</div>
+                <div className="menu-group" style={{ marginTop: 10 }}>
+                  <div className="per-field">
+                    <div className="per-field-body">
+                      <div className="per-field-label">几点前算深夜</div>
+                      <div className="per-field-hint">
+                        零点到这个点之间还醒着，产生一条「深夜还醒着」（每天最多一条）；0 = 关。
+                        这段时间正好落在推送安静时段里，开着「遵守安静时段」时它会被拦下
+                      </div>
+                    </div>
+                    <input
+                      className="per-field-input"
+                      type="number"
+                      min={0}
+                      max={12}
+                      value={config.lateNightUntilHour}
+                      onChange={e => update({ lateNightUntilHour: Number(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="per-field">
+                    <div className="per-field-body">
+                      <div className="per-field-label">多久没说话算久</div>
+                      <div className="per-field-hint">
+                        你和角色任一方隔多久没发消息，产生一条「很久没聊天」（每天最多一条）；
+                        单位小时，0 = 关
+                      </div>
+                    </div>
+                    <input
+                      className="per-field-input"
+                      type="number"
+                      min={0}
+                      max={336}
+                      value={config.noTalkHours}
+                      onChange={e => update({ noTalkHours: Number(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="per-field">
+                    <div className="per-field-body">
+                      <div className="per-field-label">多久不动算久坐</div>
+                      <div className="per-field-hint">
+                        步数多久没涨就算「久坐不动」（走两步就重新计时，每段只报一次）；
+                        单位分钟，0 = 关。需要步数权限
+                      </div>
+                    </div>
+                    <input
+                      className="per-field-input"
+                      type="number"
+                      min={0}
+                      max={720}
+                      value={config.sitStillMinutes}
+                      onChange={e => update({ sitStillMinutes: Number(e.target.value) || 0 })}
+                    />
+                  </div>
+                </div>
+                <div className="per-note" style={{ padding: "0 var(--ui-padding, 16px)" }}>
+                  「今天第一次打开」不用设置：当天第一次进小手机就会产生一条。
+                  以上四条都是纯网页实现，不依赖安卓壳，也不需要额外权限。
                 </div>
               </div>
 

@@ -104,15 +104,16 @@ export function buildCapabilityRows(): CapabilityRow[] {
   const health = readHealthCapabilities();
 
   const ids: PerceptionCapability[] = [
-    "battery", "network", "foregroundApp", "steps", "location", "sleep", "calendar", "contacts", "usageStats", "returnToPhone",
+    "battery", "network", "foregroundApp", "steps", "location", "sleep", "calendar", "contacts", "usageStats", "returnToPhone", "lifeRhythm",
   ];
 
   return ids.map(id => {
     const userEnabled = isCapabilityEnabled(config, id);
-    // 「回到手机」是纯网页实现（前后台切换 + 计时），不依赖原生桥，恒为支持。
+    // 这两个是纯网页实现（前后台计时 / 读时钟），不依赖原生桥，恒为支持。
     // 不特殊处理的话，非壳环境/老 APK 下会被 native[id]===true 判成「不支持」，
-    // 而它其实能用——比不显示更让人迷惑。
-    const nativeSupported = id === "returnToPhone" ? true : native[id] === true;
+    // 而它们其实能用——比不显示更让人迷惑。
+    const pureWeb: PerceptionCapability[] = ["returnToPhone", "lifeRhythm"];
+    const nativeSupported = pureWeb.includes(id) ? true : native[id] === true;
     let missingRequirement = "";
     if (id === "foregroundApp" && nativeSupported && !accessibility) {
       missingRequirement = "需要开启无障碍服务";

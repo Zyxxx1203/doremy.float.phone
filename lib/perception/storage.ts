@@ -81,6 +81,9 @@ export function loadPerceptionConfig(): PerceptionConfig {
       returnSignalEnabled: parsed.returnSignalEnabled !== false,
       returnAwayMinutes: clamp(parsed.returnAwayMinutes, PERCEPTION_LIMITS.returnAwayMinutes.min, PERCEPTION_LIMITS.returnAwayMinutes.max, PERCEPTION_DEFAULTS.returnAwayMinutes),
       returnCooldownMinutes: clamp(parsed.returnCooldownMinutes, PERCEPTION_LIMITS.returnCooldownMinutes.min, PERCEPTION_LIMITS.returnCooldownMinutes.max, PERCEPTION_DEFAULTS.returnCooldownMinutes),
+      lateNightUntilHour: clamp(parsed.lateNightUntilHour, PERCEPTION_LIMITS.lateNightUntilHour.min, PERCEPTION_LIMITS.lateNightUntilHour.max, PERCEPTION_DEFAULTS.lateNightUntilHour),
+      noTalkHours: clamp(parsed.noTalkHours, PERCEPTION_LIMITS.noTalkHours.min, PERCEPTION_LIMITS.noTalkHours.max, PERCEPTION_DEFAULTS.noTalkHours),
+      sitStillMinutes: clamp(parsed.sitStillMinutes, PERCEPTION_LIMITS.sitStillMinutes.min, PERCEPTION_LIMITS.sitStillMinutes.max, PERCEPTION_DEFAULTS.sitStillMinutes),
       injectStatus: parsed.injectStatus === true,
       queryCooldownMinutes: clamp(parsed.queryCooldownMinutes, PERCEPTION_LIMITS.queryCooldownMinutes.min, PERCEPTION_LIMITS.queryCooldownMinutes.max, PERCEPTION_DEFAULTS.queryCooldownMinutes),
       cloudSyncEnabled: parsed.cloudSyncEnabled === true,
@@ -180,11 +183,27 @@ export type PerceptionRuntimeState = {
   usageSignalTier: Record<string, number>;
   /** 上面那份档位记录属于哪一天（YYYY-MM-DD）。跨天清零，昨天的档位不能当今天的基准。 */
   usageSignalDate: string;
+  /**
+   * 「每天最多报一次」的信号记在这里：信号标识 → 日期（YYYY-MM-DD）。
+   * 深夜还醒着 / 今天第一次打开 / 很久没聊天 共用这一张表。
+   * 跨天不用清——旧日期自然不等于今天，判断自动失效。
+   */
+  dailySignalDate: Record<string, string>;
+  /** 「久坐不动」的起算时刻；步数一变（起身走动）就重置。 */
+  sitSince: number;
+  /** 起算时的步数基准。步数跟它不一样 = 走过了，重新起算。 */
+  sitSteps: number;
+  /** 本段久坐是否已上报。起身走动后重置，所以每段只报一次。 */
+  sitReported: boolean;
 };
 
 const EMPTY_STATE: PerceptionRuntimeState = {
   usageSignalTier: {},
   usageSignalDate: "",
+  dailySignalDate: {},
+  sitSince: 0,
+  sitSteps: -1,
+  sitReported: false,
   lastBatteryPercent: -1,
   lastCharging: false,
   lastNetworkType: "",
@@ -208,11 +227,19 @@ const EMPTY_STATE: PerceptionRuntimeState = {
 export function loadPerceptionState(): PerceptionRuntimeState {
   try {
     const raw = kvGet(STATE_KEY);
-    if (!raw) return { ...EMPTY_STATE };
+    if (!raw) return { ...EMPTY_STATE, usageSignalTier: {}, dailySignalDate: {} };
     const parsed = JSON.parse(raw) as Partial<PerceptionRuntimeState>;
-    return { ...EMPTY_STATE, ...parsed };
+    return {
+      ...EMPTY_STATE,
+      ...parsed,
+      // 这两张表是对象，而 EMPTY_STATE 是模块级单例：直接沿用它的引用，
+      // 引擎往「今天已报」表里写一笔就会污染这个共享对象，之后每个从空状态
+      // 起家的副本都带着别人的记录。每次复制一份，代价可以忽略。
+      usageSignalTier: { ...(parsed.usageSignalTier ?? {}) },
+      dailySignalDate: { ...(parsed.dailySignalDate ?? {}) },
+    };
   } catch {
-    return { ...EMPTY_STATE };
+    return { ...EMPTY_STATE, usageSignalTier: {}, dailySignalDate: {} };
   }
 }
 

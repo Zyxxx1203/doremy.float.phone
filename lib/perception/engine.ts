@@ -211,6 +211,12 @@ async function sampleOnce(): Promise<void> {
     : ([] as AppUsageEntry[]);
   await checkAppUsageSignal(config, state, appUsage);
 
+  // ── 作息与习惯 ──
+  // 纯时钟信号（深夜/首次打开/很久没聊天）与采样间隔无关；
+  // 久坐需要步数，所以把这一轮的步数读数传进去。
+  await checkLifeRhythm(config, state);
+  await checkSitStill(config, state, snapshot.steps);
+
   // ── 位置 ──
   // 只在开启时才取：位置权限是敏感授权，用户没开就不该有任何定位调用。
   // 取点用 refreshLocation（一次性），再读缓存——「最后已知位置」可能是
@@ -368,6 +374,171 @@ async function checkAppUsageSignal(
     // 用户能在记录里看见「信号确实产生了，是安静时段拦的」。
     if (delivered) state.usageSignalTier[entry.package] = tier;
   }
+}
+
+// ── 作息与习惯 ──
+//
+// 这一组信号**不读任何传感器**：时间本身就是全部数据来源，所以纯网页也能用。
+// 它们回答的是「人是醒着还是睡着、是刚来还是一直在、是热络还是冷着」这种
+// 关系层面的问题——前面那些电量、网络、位置信号回答不了。
+
+/** 每天最多报一次的记录键。 */
+const DAILY_KEY_LATE_NIGHT = "lateNight";
+const DAILY_KEY_FIRST_OPEN = "firstOpen";
+const DAILY_KEY_NO_TALK = "noTalk";
+
+/**
+ * 深夜还醒着。
+ *
+ * 判据只有一条：当前小时数落在 [0, lateNightUntilHour)。默认 5，即 0:00–4:59。
+ * 每天只报一次——不然采样周期一到就报一条，整夜刷屏。
+ *
+ * 【重要】夜里正是推送安静时段覆盖的时间，而安静时段默认开着（respectQuietHours）。
+ * 所以这条信号在默认设置下会被「处于安静时段」拦下，流水里能看到、但不会投递。
+ * 这是刻意的取舍：用户设了夜里别吵，就该是真的别吵，不该为了一个信号偷偷绕过。
+ * 想让它生效，把「遵守安静时段」关掉，或把安静时段的结束时间设早一点。
+ */
+async function checkLateNight(config: PerceptionConfig, state: PerceptionRuntimeState): Promise<void> {
+  if (config.lateNightUntilHour <= 0) return;
+  const hour = new Date().getHours();
+  if (hour >= config.lateNightUntilHour) return;
+
+  const today = localDayKey();
+  if (state.dailySignalDate[DAILY_KEY_LATE_NIGHT] === today) return;
+
+  const delivered = await emitSignal({
+    capability: "lifeRhythm",
+    type: "深夜还醒着",
+    payload: `现在是凌晨 ${hour} 点`,
+  }, state);
+  if (delivered) state.dailySignalDate[DAILY_KEY_LATE_NIGHT] = today;
+}
+
+/**
+ * 今天第一次打开小手机。
+ *
+ * 纯本地判断：当天还没记过 firstOpen 就报一条。App 一直开着不关时，
+ * 跨过零点后的第一轮采样就会触发——那正是「今天第一次打开」的语义。
+ * 每天一条，与「深夜还醒着」互不干扰（两条都可能真实发生，由规则去筛）。
+ */
+async function checkFirstOpenToday(state: PerceptionRuntimeState): Promise<void> {
+  const today = localDayKey();
+  if (state.dailySignalDate[DAILY_KEY_FIRST_OPEN] === today) return;
+
+  const delivered = await emitSignal({
+    capability: "lifeRhythm",
+    type: "今天第一次打开",
+    payload: `今天第一次打开小手机（${new Date().getHours()} 点）`,
+  }, state);
+  if (delivered) state.dailySignalDate[DAILY_KEY_FIRST_OPEN] = today;
+}
+
+/** 距上次查「有没有人在说话」的间隔。会话表整表读一次不算便宜，别每分钟读。 */
+const NO_TALK_CHECK_INTERVAL_MS = 30 * 60 * 1000;
+let lastNoTalkCheckAt = 0;
+
+/**
+ * 很久没聊天。
+ *
+ * 「说话」按**任意一方**最后一条消息算（会话的 updatedAt）：是真正的双向沉默，
+ * 而不是只统计用户发了没有——后者会在角色主动说了话之后仍然报警，很怪。
+ *
+ * 两条闸：
+ *   · 每 30 分钟最多查一次会话表（整表读一次不便宜，而判定精度半小时足够）；
+ *   · 每天最多报一次，报过就把当天日期记下。人一直不说话，不该每小时被念一次。
+ *
+ * 用动态 import 取 chatDb：感知属于底层模块，顶层静态 import 聊天库会让
+ * 依赖方向变乱，也容易在非聊天场景里多拉一份 Dexie 进包。
+ */
+async function checkNoTalk(config: PerceptionConfig, state: PerceptionRuntimeState): Promise<void> {
+  if (config.noTalkHours <= 0) return;
+  const today = localDayKey();
+  if (state.dailySignalDate[DAILY_KEY_NO_TALK] === today) return;
+  if (Date.now() - lastNoTalkCheckAt < NO_TALK_CHECK_INTERVAL_MS) return;
+  lastNoTalkCheckAt = Date.now();
+
+  let lastAt = 0;
+  try {
+    const { chatDb } = await import("../chat-db");
+    const sessions = await chatDb.sessions.toArray();
+    for (const session of sessions) {
+      if (!session.updatedAt) continue;
+      const t = new Date(session.updatedAt).getTime();
+      if (Number.isFinite(t) && t > lastAt) lastAt = t;
+    }
+  } catch {
+    // 读不到就跳过这一轮。宁可不说，也不要凭猜测说「你好久没理我了」。
+    return;
+  }
+  // 一条会话都没有 = 还没开始用，谈不上「很久没聊天」
+  if (!lastAt) return;
+
+  const gapHours = (Date.now() - lastAt) / 3600000;
+  if (gapHours < config.noTalkHours) return;
+
+  const delivered = await emitSignal({
+    capability: "lifeRhythm",
+    type: "很久没聊天",
+    payload: `已经 ${Math.floor(gapHours)} 小时没说话了`,
+  }, state);
+  if (delivered) state.dailySignalDate[DAILY_KEY_NO_TALK] = today;
+}
+
+/** 三个「作息与习惯」信号的统一入口。 */
+async function checkLifeRhythm(config: PerceptionConfig, state: PerceptionRuntimeState): Promise<void> {
+  await checkLateNight(config, state);
+  await checkFirstOpenToday(state);
+  await checkNoTalk(config, state);
+}
+
+/**
+ * 久坐不动。
+ *
+ * 判据：**步数一直没涨**且已经持续够久。
+ *
+ * 为什么用步数而不是「前台应用停留」：停留看的是「在用哪个 App」，
+ * 而放下手机坐着看电视两小时同样是久坐——只看前台会漏掉一半场景。
+ * 代价是「久坐」这个说法有点宽（不含躺着），但对角色说话够用。
+ *
+ * 起算与重置都挂在步数变化上：
+ *   · 首次读到步数 → 起算；
+ *   · 步数一变（起身走动）→ 重新起算、清掉已报标记，于是每一段只报一次；
+ *   · 步数读不到（-1，未授权/老壳）→ 整体跳过，不留半截状态。
+ */
+async function checkSitStill(
+  config: PerceptionConfig,
+  state: PerceptionRuntimeState,
+  steps: number,
+): Promise<void> {
+  if (config.sitStillMinutes <= 0) return;
+
+  if (steps < 0) {
+    state.sitSince = 0;
+    state.sitSteps = -1;
+    state.sitReported = false;
+    return;
+  }
+  if (state.sitSteps !== steps) {
+    state.sitSteps = steps;
+    state.sitSince = Date.now();
+    state.sitReported = false;
+    return;
+  }
+  if (!state.sitSince) {
+    state.sitSince = Date.now();
+    return;
+  }
+  if (state.sitReported) return;
+
+  const minutes = Math.floor((Date.now() - state.sitSince) / 60000);
+  if (minutes < config.sitStillMinutes) return;
+
+  const delivered = await emitSignal({
+    capability: "steps",
+    type: "久坐不动",
+    payload: `已经 ${minutes} 分钟没怎么动了`,
+  }, state);
+  if (delivered) state.sitReported = true;
 }
 
 /** 两个坐标之间的大致距离（米）。用等距圆柱近似——几百米到几公里量级足够。 */
