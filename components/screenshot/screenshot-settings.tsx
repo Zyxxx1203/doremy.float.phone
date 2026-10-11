@@ -13,7 +13,7 @@
 // 挂载方式与 PerceptionSettings / SystemCalendarSettings 一致：
 // 直接渲染内容，不套 PageShell、不收 onBack。
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { Camera, CircleDot, Loader2, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
 
 import { Toggle } from "@/components/ui/form";
@@ -113,6 +113,11 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
   });
   const [ballHasImage, setBallHasImage] = useState(() => readBallHasImage());
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+
+  // 直径用「草稿字符串」而不是直接绑 config：
+  // 直接绑的话每敲一个字符都会走一次 32~96 的夹取，想输 45 时敲下 4 的瞬间
+  // 就被夹成 32，后面的 5 接不上去——表现就是「说能输入，其实根本写不了」。
+  const [diameterInput, setDiameterInput] = useState(() => String(loadScreenshotConfig().ballDiameter));
 
   const refresh = useCallback(() => {
     setConfig(loadScreenshotConfig());
@@ -303,6 +308,58 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
       ...(image !== undefined ? { image } : {}),
     });
   }, []);
+
+  /**
+   * 读用户选的图片 → 压到 512px 以内 → 下发原生当球面。
+   *
+   * 压尺寸的原因：球最大也就 96dp（约两三百像素），原图动辄几 MB，
+   * 过 JS 桥又慢又可能撑爆 Binder 传输；512 足够清晰、通常只有几十 KB。
+   */
+  const handleImagePick = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // 先清掉 input 的值，否则连续选同一张图不会再次触发 onChange
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      onNotice?.("请选一张图片");
+      return;
+    }
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ""));
+        reader.onerror = () => reject(new Error("read_failed"));
+        reader.readAsDataURL(file);
+      });
+      if (!dataUrl) throw new Error("empty");
+
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("decode_failed"));
+        img.src = dataUrl;
+      });
+
+      const MAX = 512;
+      const ratio = Math.min(1, MAX / Math.max(image.width, image.height));
+      const width = Math.max(1, Math.round(image.width * ratio));
+      const height = Math.max(1, Math.round(image.height * ratio));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("no_ctx");
+      ctx.drawImage(image, 0, 0, width, height);
+      const base64 = canvas.toDataURL("image/png").split(",")[1] ?? "";
+      if (!base64) throw new Error("encode_failed");
+
+      updateBallStyle({}, base64);
+      setBallHasImage(true);
+      onNotice?.("已换成上传的图片当球面");
+    } catch {
+      onNotice?.("这张图没能读取，换一张试试");
+    }
+  }, [onNotice, updateBallStyle]);
 
   // 开启悬浮球时把外观一并下发：用户可能在上次会话里改过颜色，
   // 而原生读的是它自己那份盘上配置，两边要在这个时机对齐。
@@ -545,13 +602,21 @@ export function ScreenshotSettings({ onNotice }: { onNotice?: (msg: string) => v
                   inputMode="numeric"
                   min={32}
                   max={96}
-                  value={config.ballDiameter}
+                  value={diameterInput}
                   aria-label="悬浮球直径（dp）"
                   onChange={e => {
-                    const n = Number(e.target.value);
-                    if (!Number.isFinite(n)) return;
-                    updateBallStyle({ ballDiameter: Math.max(32, Math.min(96, Math.round(n))) });
+                    // 只留数字，允许中途是空串或没填完，不在打字过程中夹取
+                    setDiameterInput(e.target.value.replace(/[^0-9]/g, ""));
                   }}
+                  onBlur={() => {
+                    const n = Number(diameterInput);
+                    const safe = Number.isFinite(n) && n > 0
+                      ? Math.max(32, Math.min(96, Math.round(n)))
+                      : config.ballDiameter;
+                    setDiameterInput(String(safe));
+                    if (safe !== config.ballDiameter) updateBallStyle({ ballDiameter: safe });
+                  }}
+                  onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
                 />
               </div>
               {!supportsBallStyle() && (
