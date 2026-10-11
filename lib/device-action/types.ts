@@ -20,6 +20,7 @@ export type DeviceActionId =
   | "volume"
   | "brightness"
   | "brightnessGranted"
+  | "brightnessAuto"
   | "dnd"
   | "dndGranted"
   | "openApp"
@@ -55,6 +56,10 @@ export type DeviceActionResult =
        * 回一句真实名字，用户才知道到底开了哪个——不然出错了都看不出。
        */
       label?: string;
+      /** 亮度动作：值是否真的被系统采用（原生写后回读核对过）。 */
+      applied?: boolean;
+      /** 亮度动作：当前是否开着自动亮度（开着时系统可能很快把值改回去）。 */
+      autoBrightness?: boolean;
     }
   | { ok: false; reason: string; needPermission?: string };
 

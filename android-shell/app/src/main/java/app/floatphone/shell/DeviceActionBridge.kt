@@ -143,22 +143,76 @@ class DeviceActionBridge(private val context: Context) {
         false
     }
 
-    /** 设屏幕亮度，level 为 0-100 百分比。 */
+    /**
+     * 设屏幕亮度，level 为 0-100 百分比。
+     *
+     * 三道检查，缺一不可——早期版本只写了第一行的 putInt 就无条件回 ok:true，
+     * 结果国产 ROM 拦下写入时角色照样报「调好了」，用户屏幕却毫无变化（实测反馈）：
+     *   ① putInt **写失败时返回 false 而不抛异常**，必须接这个返回值；
+     *   ② 写完读回核对，对不上就是没生效，不能报成功；
+     *   ③ 自动亮度会让系统立刻把值覆盖回去，如实告知而不是假装成功。
+     *
+     * 仍然刻意不碰 SCREEN_BRIGHTNESS_MODE（自动亮度）：改模式会让用户
+     * 「明明没动过自动亮度却关了」而困惑。检测到开着只转告，不替他改设置。
+     */
     fun setBrightness(level: Int): JSONObject {
         if (!canSetBrightness()) {
             return JSONObject().put("ok", false)
                 .put("reason", "还没有「修改系统设置」权限")
                 .put("needPermission", "write_settings")
         }
+        val autoBrightness = isAutoBrightnessOn()
         return try {
-            // 系统的亮度值是 0-255；这里刻意不碰 SCREEN_BRIGHTNESS_MODE（自动亮度），
-            // 改模式会让用户「明明没动过自动亮度却关了」而困惑。
+            // 系统的亮度值是 0-255。Android 没有公开接口能查「真实上限」，
+            // 所以按标准量程换算，不猜一个厂商私有的设置键。
             val value = (255 * level.coerceIn(1, 100) / 100.0).toInt().coerceIn(1, 255)
-            Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, value)
+            val written = Settings.System.putInt(
+                context.contentResolver,
+                Settings.System.SCREEN_BRIGHTNESS,
+                value,
+            )
+            if (!written) {
+                return JSONObject().put("ok", false)
+                    .put("autoBrightness", autoBrightness)
+                    .put("reason", "系统拒绝了这次亮度写入（厂商可能限制了修改系统设置）")
+            }
+            // 写完读回核对：putInt 不抛错，不等于真的生效了。
+            // 容差 2 是为了容忍系统对值的整数夹取，再大就是真的没写进去。
+            val readBack = readCurrentBrightness()
+            if (readBack < 0 || Math.abs(readBack - value) > 2) {
+                return JSONObject().put("ok", false)
+                    .put("level", level)
+                    .put("autoBrightness", autoBrightness)
+                    .put(
+                        "reason",
+                        if (autoBrightness) "当前是自动亮度，系统立刻把亮度改了回去；关掉自动亮度后才能由角色控制"
+                        else "亮度写进去了，但系统没有采用（厂商可能限制了修改系统设置）",
+                    )
+            }
             JSONObject().put("ok", true).put("level", level)
+                .put("applied", true)
+                .put("autoBrightness", autoBrightness)
         } catch (e: Throwable) {
             JSONObject().put("ok", false).put("reason", e.message ?: "亮度不可用")
         }
+    }
+
+    /** 当前是不是自动亮度。读不到时按「不是」处理——不因为这个拦住正常调节。 */
+    private fun isAutoBrightnessOn(): Boolean = try {
+        Settings.System.getInt(
+            context.contentResolver,
+            Settings.System.SCREEN_BRIGHTNESS_MODE,
+            Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL,
+        ) == Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
+    } catch (e: Throwable) {
+        false
+    }
+
+    /** 读当前屏幕亮度值。读不到返回 -1（调用方据此判失败，不假装读到）。 */
+    private fun readCurrentBrightness(): Int = try {
+        Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, -1)
+    } catch (e: Throwable) {
+        -1
     }
 
     // ── 勿扰模式 ──
@@ -467,6 +521,9 @@ class DeviceActionBridge(private val context: Context) {
         .put("volume", true)
         .put("brightness", true)
         .put("brightnessGranted", canSetBrightness())
+        // 自动亮度开着时，写进去的值会被系统很快改回去——网页据此提前提醒用户，
+        // 而不是等角色报「调好了」、用户却发现没反应。
+        .put("brightnessAuto", isAutoBrightnessOn())
         .put("dnd", true)
         .put("dndGranted", canSetDnd())
         .put("openApp", true)

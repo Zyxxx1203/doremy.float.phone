@@ -245,6 +245,20 @@ export function DeviceActionSettings({ onNotice }: { onNotice?: (msg: string) =>
                 <span className="menu-desc">{grants.brightness ? "已授权（可调亮度）" : "未授权，调亮度会失败"}</span>
               </div>
             </div>
+            {/* 自动亮度开着时，角色写的亮度会被系统很快改回去——用户看到的现象是
+                「它说调好了，屏幕没变」。权限那行显示正常，问题却不在这儿，所以单独列出来。 */}
+            <div className="menu-item" style={{ cursor: "default" }}>
+              <div className="menu-label-group">
+                <span className="menu-label">自动亮度</span>
+                <span className="menu-desc">
+                  {caps.brightnessAuto === true
+                    ? "已开启。角色调的亮度会被系统盖回去，建议先关掉自动亮度"
+                    : caps.brightnessAuto === false
+                      ? "已关闭，角色可以接管亮度"
+                      : "当前 App 版本不上报这项，需更新安卓壳"}
+                </span>
+              </div>
+            </div>
             <div className="menu-item" style={{ cursor: "default" }}>
               <div className="menu-label-group">
                 <span className="menu-label">勿扰访问权限</span>

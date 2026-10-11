@@ -189,7 +189,12 @@ export function runDeviceAction(args: Record<string, unknown>): DeviceActionOutc
         // 需要授权时把原因说清楚，让角色能转告用户去开权限
         return { ok: false, reason: result.needPermission ? "还没有「修改系统设置」权限，需要 TA 去设置里授权" : result.reason };
       }
-      return logDeviceAction({ ok: true, action: "brightness", message: `屏幕亮度已调到约 ${Math.round(level)}%` }, "brightness");
+      // 自动亮度开着时值会被系统改回去：这时**不能**说「调好了」，
+      // 否则用户屏幕没变、角色却一口咬定成功（实测反馈的正是这种）。
+      const brightnessMessage = result.autoBrightness
+        ? `屏幕亮度已调到约 ${Math.round(level)}%，但 TA 开着自动亮度，系统可能很快改回去——需要关掉自动亮度才由你说了算`
+        : `屏幕亮度已调到约 ${Math.round(level)}%`;
+      return logDeviceAction({ ok: true, action: "brightness", message: brightnessMessage }, "brightness");
     }
 
     case "dnd": {
