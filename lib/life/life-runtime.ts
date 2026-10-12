@@ -192,8 +192,21 @@ export function settleActorTimelineToNow(
         actualLocationId: nextLocationId, actualLocationName: nextLocationName, updatedAt: nowIso,
       }]
     : state.actorStates;
-  if (events === state.events && memories === state.memories && invitations === state.invitations && !actorChanged) return state;
-  return { ...state, events, memories, invitations, actorStates, updatedAt: nowIso };
+  let finalActorStates = actorStates;
+  for (const event of events) {
+    if (event.kind !== "invitation" || event.status !== "active" || event.details !== "follow-player") continue;
+    const characterId = event.participantIds.find(participantId => participantId !== "player");
+    const playerState = finalActorStates.find(actor => actor.ownerType === "player" && actor.ownerId === "player");
+    const characterState = finalActorStates.find(actor => actor.ownerType === "character" && actor.ownerId === characterId);
+    if (!characterId || !playerState?.actualLocationId || !playerState.actualLocationName || !characterState) continue;
+    if (characterState.actualLocationId === playerState.actualLocationId && characterState.activity === "正在陪伴玩家") continue;
+    finalActorStates = [
+      ...finalActorStates.filter(actor => !(actor.ownerType === "character" && actor.ownerId === characterId)),
+      { ...characterState, activity: "正在陪伴玩家", actualLocationId: playerState.actualLocationId, actualLocationName: playerState.actualLocationName, updatedAt: nowIso },
+    ];
+  }
+  if (events === state.events && memories === state.memories && invitations === state.invitations && finalActorStates === state.actorStates) return state;
+  return { ...state, events, memories, invitations, actorStates: finalActorStates, updatedAt: nowIso };
 }
 
 /** Explicit fast-forward advances one actor, then settles every crossed schedule segment. */
@@ -251,8 +264,9 @@ export function confirmLifeInvitation(state: VirtualLifeState, invitationId: str
   if (!invitation) return state;
   const now = new Date().toISOString(), eventId = makeId("event");
   const startAt = new Date(invitation.proposedAt);
-  const endsAt = new Date(startAt.getTime() + 60 * 60_000).toISOString();
-  const event: LifeEvent = { id:eventId, kind:"invitation", status:"confirmed", startsAt:invitation.proposedAt, endsAt, locationId:invitation.locationId, locationName:invitation.locationName, participantIds:["player",invitation.characterId], title:invitation.activity, details:"双方已确认的邀约；到时间后才开始，不会自动传送或跳过时间。", createdAt:now, updatedAt:now };
+  const durationMinutes = Math.max(15, Math.min(invitation.durationMinutes ?? 60, 24 * 60));
+  const endsAt = new Date(startAt.getTime() + durationMinutes * 60_000).toISOString();
+  const event: LifeEvent = { id:eventId, kind:"invitation", status:"confirmed", startsAt:invitation.proposedAt, endsAt, locationId:invitation.locationId, locationName:invitation.locationName, participantIds:["player",invitation.characterId], title:invitation.activity, details:invitation.kind === "follow-request" ? "follow-player" : "confirmed-appointment", createdAt:now, updatedAt:now };
   const next = { ...invitation, status:"confirmed" as const, confirmedAt:now, updatedAt:now, eventId };
   return { ...state, invitations:state.invitations.map(item=>item.id===invitationId?next:item), events:[event,...state.events] };
 }
