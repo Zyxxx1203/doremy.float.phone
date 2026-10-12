@@ -120,7 +120,19 @@ export type LifeSceneParticipant = {
   awarenessByActorId: Record<string, "unaware" | "suspects" | "aware">;
 };
 
-export type LifeSceneMessage = {\n  id: string;\n  sceneId: string;\n  speakerType: LifeOwnerType;\n  speakerId: string;\n  speakerName: string;\n  role: "player" | "character" | "system";\n  action?: string;\n  dialogue: string;\n  createdAt: string;\n};\n\nexport type LifeSceneState = {
+export type LifeSceneMessage = {
+  id: string;
+  sceneId: string;
+  speakerType: LifeOwnerType;
+  speakerId: string;
+  speakerName: string;
+  role: "player" | "character" | "system";
+  action?: string;
+  dialogue: string;
+  createdAt: string;
+};
+
+export type LifeSceneState = {
   id: string;
   locationId: string;
   locationName: string;
