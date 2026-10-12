@@ -480,15 +480,16 @@ export function LifeEngineApp() {
     const invite = state.invitations.find(item => item.id === inviteId && item.status === "proposed");
     if (!invite) return;
     const startsAt = new Date(invite.proposedAt);
-    const endsAt = new Date(startsAt.getTime() + 60 * 60_000);
+    const durationMinutes = Math.max(15, Math.min(invite.durationMinutes ?? 60, 24 * 60));
+    const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
     const playerNow = resolveActorLifeNow(getActorClock(state, "player", PLAYER_ID));
     const characterNow = resolveActorLifeNow(getActorClock(state, "character", invite.characterId));
     if (!Number.isFinite(startsAt.getTime()) || startsAt <= playerNow || startsAt <= characterNow) {
       setNotice("这个时间对你或角色来说已经过去了。请修改邀约时间后再确认；不会为了赴约自动跳过时间。");
       return;
     }
-    const ownerIds = new Set([PLAYER_ID, invite.characterId]);
-    const conflict = state.schedules.find(slot => ownerIds.has(slot.ownerId) && (slot.ownerType === "player" || slot.ownerType === "character") && slot.kind === "appointment" && new Date(slot.startAt) < endsAt && new Date(slot.endAt) > startsAt);
+    const relevantOwners = invite.kind === "follow-request" ? new Set([invite.characterId]) : new Set([PLAYER_ID, invite.characterId]);
+    const conflict = state.schedules.find(slot => relevantOwners.has(slot.ownerId) && (slot.ownerType === "player" || slot.ownerType === "character") && slot.kind === "appointment" && new Date(slot.startAt) < endsAt && new Date(slot.endAt) > startsAt);
     if (conflict) {
       setNotice("这个时段已经有另一项已确认的约定。请先调整时间，避免两件事情同时发生。");
       return;
@@ -499,14 +500,22 @@ export function LifeEngineApp() {
     const makeSlot = (ownerType: LifeOwnerType, ownerId: string): LifeScheduleSlot => ({
       id: "invite-slot-" + confirmed.eventId + "-" + ownerType + "-" + ownerId,
       ownerType, ownerId, startAt: startsAt.toISOString(), endAt: endsAt.toISOString(),
-      title: confirmed.activity, kind: "appointment", source: "event",
-      plannedLocationId: confirmed.locationId, plannedLocationName: confirmed.locationName,
+      title: confirmed.kind === "follow-request" ? "陪伴玩家并跟随其行程" : confirmed.activity,
+      kind: "appointment", source: "event",
+      plannedLocationId: confirmed.kind === "follow-request" ? null : confirmed.locationId,
+      plannedLocationName: confirmed.kind === "follow-request" ? "跟随玩家的实际地点" : confirmed.locationName,
       updatedAt: new Date().toISOString(),
     });
-    next = placeAppointmentInActorSchedule(next, makeSlot("player", PLAYER_ID));
-    next = placeAppointmentInActorSchedule(next, makeSlot("character", confirmed.characterId));
+    if (confirmed.kind === "follow-request") {
+      next = placeAppointmentInActorSchedule(next, makeSlot("character", confirmed.characterId));
+    } else {
+      next = placeAppointmentInActorSchedule(next, makeSlot("player", PLAYER_ID));
+      next = placeAppointmentInActorSchedule(next, makeSlot("character", confirmed.characterId));
+    }
     commit(next);
-    setNotice("邀约已确认，双方的冲突时段已保留前后部分并插入约定；只有两个人的虚拟时间都到达后，活动才会开始。");
+    setNotice(confirmed.kind === "follow-request"
+      ? "陪伴申请已接受。约定时间开始后，TA会跟随你的实际地点；你仍可随时取消。"
+      : "邀约已确认，双方的冲突时段已保留前后部分并插入约定；只有两个人的虚拟时间都到达后，活动才会开始。");
   };
 
   const addManualPlanTitle = (slot: LifeScheduleSlot, title: string) => {
