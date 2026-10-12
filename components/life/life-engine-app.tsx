@@ -114,7 +114,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const settings = state.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;
 
   useEffect(() => {
-    if (!ready || !settings.autoGenerateWeeklyPlans || !characters.length) return;
+    if (!ready || !settings.autoGenerateWeeklyPlans) return;
     let next = state;
     const start = mondayStart(new Date());
     next = generateWeeklyLifePlan(next, "player", PLAYER_ID, playerName, start, { id: "home", name: "家" });
