@@ -68,7 +68,12 @@ export function generateWeeklyLifePlan(state: VirtualLifeState, ownerType: LifeO
   const start = new Date(weekStart); start.setHours(0,0,0,0);
   const end = new Date(start.getTime() + 7 * DAY_MS);
   if (state.schedules.some(slot => slot.ownerType === ownerType && slot.ownerId === ownerId && new Date(slot.startAt) >= start && new Date(slot.startAt) < end)) return state;
-  const now = new Date().toISOString(), slots: LifeScheduleSlot[] = [];\n  const profileText = profile.toLowerCase();\n  const hash = [...ownerId].reduce((sum, char) => sum + char.charCodeAt(0), 0) + start.getDate();\n  const specialDay = ownerType === "character" && includeSpecialEvents && hash % 3 !== 0 ? hash % 7 : -1;\n  const specialTitle = /摄影|拍照|相机|photo/i.test(profileText) ? "去拍些喜欢的照片" : /音乐|唱歌|乐器|music/i.test(profileText) ? "练习音乐 / 听现场" : /运动|健身|跑步|篮球|足球|sport/i.test(profileText) ? "运动与放松" : /读书|阅读|写作|学习|学生|book|study/i.test(profileText) ? "阅读 / 学习一会儿" : /烹饪|做饭|料理|cook/i.test(profileText) ? "试着做一道新菜" : "个人兴趣与临时安排";\n  const specialLocation = /摄影|拍照|相机|运动|健身|跑步|photo|sport/i.test(profileText) ? { id: "park", name: "公园" } : /读书|阅读|写作|学习|学生|book|study/i.test(profileText) ? { id: "library", name: "图书馆" } : /音乐|唱歌|乐器|music/i.test(profileText) ? { id: "cafe", name: "街角咖啡店" } : { id: "home", name: "家" };
+  const now = new Date().toISOString(), slots: LifeScheduleSlot[] = [];
+  const profileText = profile.toLowerCase();
+  const hash = [...ownerId].reduce((sum, char) => sum + char.charCodeAt(0), 0) + start.getDate();
+  const specialDay = ownerType === "character" && includeSpecialEvents && hash % 3 !== 0 ? hash % 7 : -1;
+  const specialTitle = /摄影|拍照|相机|photo/i.test(profileText) ? "去拍些喜欢的照片" : /音乐|唱歌|乐器|music/i.test(profileText) ? "练习音乐 / 听现场" : /运动|健身|跑步|篮球|足球|sport/i.test(profileText) ? "运动与放松" : /读书|阅读|写作|学习|学生|book|study/i.test(profileText) ? "阅读 / 学习一会儿" : /烹饪|做饭|料理|cook/i.test(profileText) ? "试着做一道新菜" : "个人兴趣与临时安排";
+  const specialLocation = /摄影|拍照|相机|运动|健身|跑步|photo|sport/i.test(profileText) ? { id: "park", name: "公园" } : /读书|阅读|写作|学习|学生|book|study/i.test(profileText) ? { id: "library", name: "图书馆" } : /音乐|唱歌|乐器|music/i.test(profileText) ? { id: "cafe", name: "街角咖啡店" } : { id: "home", name: "家" };
   const add = (day: Date, sh: number, sm: number, eh: number, em: number, title: string, kind: LifeScheduleSlot["kind"], location?: {id:string;name:string}) => {
     const from = new Date(day); from.setHours(sh,sm,0,0);
     const to = new Date(day); to.setHours(eh,em,0,0); if (to <= from) to.setDate(to.getDate()+1);
@@ -81,7 +86,8 @@ export function generateWeeklyLifePlan(state: VirtualLifeState, ownerType: LifeO
     add(day,7,30,8,0,"早餐","meal",{id:"home",name:"家"});
     if (!weekend) {
       add(day,8,0,9,0,"通勤 / 前往当天安排","commute");
-      const daytime = ownerType === "player" ? "工作 / 学习（可自行修改）" : /学生|大学|学校|study/i.test(profileText) ? `${ownerName}上课 / 学习` : /自由职业|艺术家|作家|画家|摄影|音乐|创业|freelance|artist/i.test(profileText) ? `${ownerName}的创作 / 项目时间` : `${ownerName}的工作 / 学习`;\n      add(day,9,0,12,0,daytime,ownerType==="player"?"free-time":"work");
+      const daytime = ownerType === "player" ? "工作 / 学习（可自行修改）" : /学生|大学|学校|study/i.test(profileText) ? `${ownerName}上课 / 学习` : /自由职业|艺术家|作家|画家|摄影|音乐|创业|freelance|artist/i.test(profileText) ? `${ownerName}的创作 / 项目时间` : `${ownerName}的工作 / 学习`;
+      add(day,9,0,12,0,daytime,ownerType==="player"?"free-time":"work");
       add(day,12,0,13,0,"午餐","meal");
       add(day,13,0,18,0,ownerType==="player"?"下午安排（可自行修改）":`${ownerName}的下午安排`,ownerType==="player"?"free-time":"work");
     } else {
@@ -91,7 +97,13 @@ export function generateWeeklyLifePlan(state: VirtualLifeState, ownerType: LifeO
       add(day,13,0,18,0,"休闲 / 个人计划","free-time");
     }
     add(day,18,0,19,0,"晚餐","meal");
-    if (offset === specialDay) {\n      add(day,19,0,19,30,"回家 / 稍作休息","free-time",{id:"home",name:"家"});\n      add(day,19,30,20,30,specialTitle,"special",specialLocation);\n      add(day,20,30,22,0,"晚间自由时间","free-time",{id:"home",name:"家"});\n    } else {\n      add(day,19,0,22,0,ownerType==="player"?"自由时间":`${ownerName}的私人时间`,"free-time",{id:"home",name:"家"});\n    }
+    if (offset === specialDay) {
+      add(day,19,0,19,30,"回家 / 稍作休息","free-time",{id:"home",name:"家"});
+      add(day,19,30,20,30,specialTitle,"special",specialLocation);
+      add(day,20,30,22,0,"晚间自由时间","free-time",{id:"home",name:"家"});
+    } else {
+      add(day,19,0,22,0,ownerType==="player"?"自由时间":`${ownerName}的私人时间`,"free-time",{id:"home",name:"家"});
+    }
     add(day,22,0,7,0,"睡眠","habit",{id:"home",name:"家"});
   }
   return { ...state, schedules: [...state.schedules,...slots].sort((a,b)=>a.startAt.localeCompare(b.startAt)) };
