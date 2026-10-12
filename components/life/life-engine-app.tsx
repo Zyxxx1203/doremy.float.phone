@@ -396,7 +396,7 @@ export function LifeEngineApp() {
     const imageSettings = loadImageGenerationSettings();
     const sources: Array<{label:string;dataUrl:string}> = [];
     const playerAsset = stateRef.current.settings.userAppearanceReferenceAssetId;
-    if(playerAsset) {
+    if(playerAsset && participantIds.includes(PLAYER_ID)) {
       const dataUrl=await getChatImageFromIndexedDB(playerAsset);
       if(dataUrl) sources.push({label:playerName,dataUrl});
     }
@@ -430,7 +430,7 @@ export function LifeEngineApp() {
       "为虚拟生活场景生成一张单帧画面，不是拼贴、漫画分格或文字海报。",
       "当前场景："+(activeScene?.locationName || selectedLocation?.name || "日常场景"),
       "场景状态："+(activeScene?.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);return (actor?.name||p.ownerId)+"正在"+p.activity;}).join("；") || playerActivity),
-      settings.userAppearanceDescription.trim() ? "玩家固定外观："+settings.userAppearanceDescription.trim() : "",
+      participantIds.includes(PLAYER_ID) && settings.userAppearanceDescription.trim() ? "玩家固定外观："+settings.userAppearanceDescription.trim() : "",
       ...participantIds.map(pid=>{
         const char=characters.find(item=>item.id===pid);
         if(!char)return "";
@@ -787,7 +787,7 @@ export function LifeEngineApp() {
               <button type="button" disabled={sceneImageBusy} onClick={()=>void generateSceneImages({count:sceneImageCountDraft,participantIds:imageParticipantIds.length?imageParticipantIds:activeScene.participants.filter(p=>p.ownerType==="character").map(p=>p.ownerId),prompt:sceneImagePrompt})} className="inline-flex items-center gap-2 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs font-medium text-white disabled:opacity-50"><Sparkles size={14}/>{sceneImageBusy?"正在生成…":"生成 / 重新生成"}</button>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
-              {activeScene.participants.map(p=>{const actor=actors.find(a=>a.ownerType===p.ownerType&&a.ownerId===p.ownerId);const checked=imageParticipantIds.length===0?p.ownerType==="character":imageParticipantIds.includes(p.ownerId);return <label key={p.ownerType+":"+p.ownerId} className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs"><input type="checkbox" checked={checked} onChange={e=>setImageParticipantIds(prev=>e.target.checked?[...new Set([...prev,p.ownerId])]:prev.filter(id=>id!==p.ownerId))}/>{actor?.name??p.ownerId}</label>;})}
+              {activeScene.participants.map(p=>{const actor=actors.find(a=>a.ownerType===p.ownerType&&a.ownerId===p.ownerId);const checked=imageParticipantIds.length===0?p.ownerType==="character":imageParticipantIds.includes(p.ownerId);return <label key={p.ownerType+":"+p.ownerId} className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs"><input type="checkbox" checked={checked} onChange={e=>setImageParticipantIds(prev=>{const current=prev.length?prev:activeScene.participants.filter(item=>item.ownerType==="character").map(item=>item.ownerId);return e.target.checked?[...new Set([...current,p.ownerId])]:current.filter(id=>id!==p.ownerId)})}/>{actor?.name??p.ownerId}</label>;})}
             </div>
             <textarea value={sceneImagePrompt} onChange={e=>setSceneImagePrompt(e.target.value)} rows={2} placeholder="想要的画面：例如两个人坐在咖啡店窗边，雨天，桌上有两杯热饮；留空则根据当前场景生成。" className="mt-3 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-xs"/>
             <div className="mt-2 flex items-center gap-2 text-xs text-stone-500"><span>本次张数</span><select value={sceneImageCountDraft} onChange={e=>setSceneImageCountDraft(Number(e.target.value) as 1|2|3|4)} className="rounded-lg border border-stone-200 bg-white px-2 py-1"><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option></select><span>张</span><span className="ml-auto">{sceneImageRecords.length} 张存档</span></div>
