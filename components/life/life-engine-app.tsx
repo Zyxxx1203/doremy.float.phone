@@ -53,7 +53,7 @@ const id = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.rand
 const fmt = (value: Date | string) => new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(typeof value === "string" ? new Date(value) : value);
 const mondayStart = (date: Date) => { const d = new Date(date); d.setHours(0,0,0,0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
 
-function parseLifeOutput(text: string): { action?: string; dialogue: string; followRequest?: { durationMinutes: number; reason: string }; planChange?: { title: string; locationId: string } } {
+function parseLifeOutput(text: string): { action?: string; dialogue: string; followRequest?: { durationMinutes: number; reason: string }; planChange?: { title: string; locationId: string }; invitation?: { time: string; locationId: string; activity: string; durationMinutes: number } } {
   const attribute = (source: string, name: string) => {
     const match = source.match(new RegExp(name + "\\s*=\\s*[\"']([^\"']*)[\"']", "i"));
     return (match?.[1] || "").replace(/&quot;/g, "\"").replace(/&amp;/g, "&").trim();
@@ -63,6 +63,8 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
   const duration = Number(attribute(followTag?.[1] || "", "durationMinutes"));
   const followRequest = followTag ? { durationMinutes: Math.max(15, Math.min(Number.isFinite(duration) && duration ? duration : 120, 24 * 60)), reason: attribute(followTag[1], "reason") } : undefined;
   const planChange = planTag ? { title: attribute(planTag[1], "title"), locationId: attribute(planTag[1], "locationId") || "home" } : undefined;
+  const inviteDuration = Number(attribute(inviteTag?.[1] || "", "durationMinutes"));
+  const invitation = inviteTag ? { time: attribute(inviteTag[1], "time"), locationId: attribute(inviteTag[1], "locationId") || "cafe", activity: attribute(inviteTag[1], "activity") || "一起做点什么", durationMinutes: Math.max(15, Math.min(Number.isFinite(inviteDuration) && inviteDuration ? inviteDuration : 60, 24 * 60)) } : undefined;
   const clean = text.replace(/<life_follow_request\b[^>]*\/?\s*>/ig, "").replace(/<life_plan_change\b[^>]*\/?\s*>/ig, "").trim();
   const lines = clean.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   const actionLines: string[] = [];
@@ -637,7 +639,7 @@ export function LifeEngineApp() {
         settings.allowCharactersToStaySilent ? "如果角色当下忙碌、没注意到或不想说话，可以自然沉默。" : "本轮需要对玩家的输入作出回应。",
         wokeFromSleep ? "角色原本正在睡觉，本轮是被消息或紧急情况吵醒；要表现困倦、反应迟缓或不想立刻长谈，不要突然精神饱满。" : "",
         settings.enableAmbientDetails ? "可以用一两笔简短环境细节营造现场感，不要扩写成长篇旁白。" : "不需要环境氛围描写，直接进行实时互动。",
-        "若你确实决定临时改变自己的未来日程，可在对白之外附加隐藏控制标签：<life_plan_change scope=\"today\" title=\"新的安排\" locationId=\"home\" />。仅修改当前虚拟日之后的未开始安排，不能改写过去、不能覆盖已确认约会，也不能让角色瞬移。若你想申请在某段时间一直陪伴并跟随玩家，可附加 <life_follow_request durationMinutes=\"120\" reason=\"简短原因\" />；这只是申请，必须由玩家确认后才生效。没有真实意愿时不要输出标签，标签不会显示为台词。",
+        "若你确实决定临时改变自己的未来日程，可在对白之外附加隐藏控制标签：<life_plan_change scope=\"today\" title=\"新的安排\" locationId=\"home\" />。仅修改当前虚拟日之后的未开始安排，不能改写过去、不能覆盖已确认约会，也不能让角色瞬移。若你想申请在某段时间一直陪伴并跟随玩家，可附加 <life_follow_request durationMinutes=\"120\" reason=\"简短原因\" />；这只是申请，必须由玩家确认后才生效。没有真实意愿时不要输出标签，标签不会显示为台词。 若你真心想主动约玩家做一件具体的事，可附加 <life_invitation time=\"ISO-8601时间\" locationId=\"cafe\" activity=\"活动\" durationMinutes=\"60\" />。时间必须在双方各自虚拟当前时间之后；这只是待确认邀约，不会自动占用双方日程，玩家确认后才同步。只在角色有明确动机时调用，不要每轮都发邀约。",
         settings.customPrompt ? `用户自定义规则：${settings.customPrompt}` : "",
       ].filter(Boolean).join("\n");
       const promptMessage: ChatMessage = {
@@ -661,6 +663,22 @@ export function LifeEngineApp() {
         const currentState = structuredNext.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === target.id);
         if (currentState) structuredNext = upsertActorState(structuredNext, { ...currentState, activity: "正在重新安排接下来的时间", updatedAt: new Date().toISOString() });
         setNotice(target.name + "决定调整今天剩余的日程；已发生的时段和已确认约会都没有被改写。");
+      }
+      if (parsed.invitation && settings.enableInvitations) {
+        const proposedDate = new Date(parsed.invitation.time);
+        const playerNow = resolveActorLifeNow(getActorClock(structuredNext, "player", PLAYER_ID));
+        const characterNow = resolveActorLifeNow(getActorClock(structuredNext, "character", target.id));
+        if (Number.isFinite(proposedDate.getTime()) && proposedDate > playerNow && proposedDate > characterNow) {
+          const location = structuredNext.locations.find(item=>item.id===parsed.invitation?.locationId) ?? structuredNext.locations.find(item=>item.id==="cafe");
+          structuredNext = makeLifeInvitation(structuredNext, {
+            characterId: target.id, playerId: PLAYER_ID, proposedAt: proposedDate.toISOString(),
+            locationId: location?.id, locationName: location?.name, activity: parsed.invitation.activity,
+            kind: "appointment", durationMinutes: parsed.invitation.durationMinutes,
+          });
+          setNotice(target.name+"主动提出邀约。请在「邀约活动」中确认、拒绝或调整；未确认前不会更改日程。");
+        } else {
+          setNotice(target.name+"提出的邀约时间无效或已经过去，因此没有写入日程。");
+        }
       }
       if (parsed.followRequest) {
         const playerNow = resolveActorLifeNow(getActorClock(structuredNext, "player", PLAYER_ID));
