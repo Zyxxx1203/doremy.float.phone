@@ -49,7 +49,7 @@ const id = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.rand
 const fmt = (value: Date | string) => new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(typeof value === "string" ? new Date(value) : value);
 const mondayStart = (date: Date) => { const d = new Date(date); d.setHours(0,0,0,0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
 
-function parseLifeOutput(text: string): { action?: string; dialogue: string; followRequest?: { durationMinutes: number; reason: string }; planChange?: { title: string; locationId: string }; invitation?: { time: string; locationId: string; activity: string; durationMinutes: number } } {
+function parseLifeOutput(text: string): { action?: string; dialogue: string; followRequest?: { durationMinutes: number; reason: string }; planChange?: { title: string; locationId: string; startAt: string; endAt: string }; invitation?: { time: string; locationId: string; activity: string; durationMinutes: number } } {
   const attribute = (source: string, name: string) => {
     const match = source.match(new RegExp(name + "\\s*=\\s*[\"']([^\"']*)[\"']", "i"));
     return (match?.[1] || "").replace(/&quot;/g, "\"").replace(/&amp;/g, "&").trim();
@@ -59,7 +59,7 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
   const inviteTag = text.match(/<life_invitation\b([^>]*)\/?\s*>/i);
   const duration = Number(attribute(followTag?.[1] || "", "durationMinutes"));
   const followRequest = followTag ? { durationMinutes: Math.max(15, Math.min(Number.isFinite(duration) && duration ? duration : 120, 24 * 60)), reason: attribute(followTag[1], "reason") } : undefined;
-  const planChange = planTag ? { title: attribute(planTag[1], "title"), locationId: attribute(planTag[1], "locationId") || "home" } : undefined;
+  const planChange = planTag ? { title: attribute(planTag[1], "title"), locationId: attribute(planTag[1], "locationId") || "home", startAt: attribute(planTag[1], "startAt"), endAt: attribute(planTag[1], "endAt") } : undefined;
   const inviteDuration = Number(attribute(inviteTag?.[1] || "", "durationMinutes"));
   const invitation = inviteTag ? { time: attribute(inviteTag[1], "time"), locationId: attribute(inviteTag[1], "locationId") || "cafe", activity: attribute(inviteTag[1], "activity") || "一起做点什么", durationMinutes: Math.max(15, Math.min(Number.isFinite(inviteDuration) && inviteDuration ? inviteDuration : 60, 24 * 60)) } : undefined;
   const clean = text.replace(/<life_follow_request\b[^>]*\/?\s*>/ig, "").replace(/<life_plan_change\b[^>]*\/?\s*>/ig, "").replace(/<life_invitation\b[^>]*\/?\s*>/ig, "").trim();
@@ -556,18 +556,27 @@ export function LifeEngineApp() {
       let structuredNext = stateRef.current;
       if (settings.enableCharacterAutonomy && parsed.planChange?.title) {
         const characterNow = resolveActorLifeNow(getActorClock(structuredNext, "character", target.id));
-        const dayEnd = new Date(characterNow); dayEnd.setHours(22,0,0,0);
+        const startAt = new Date(parsed.planChange.startAt);
+        const endAt = new Date(parsed.planChange.endAt);
+        const sameDay = Number.isFinite(startAt.getTime()) && Number.isFinite(endAt.getTime())
+          && startAt.getFullYear() === characterNow.getFullYear() && startAt.getMonth() === characterNow.getMonth() && startAt.getDate() === characterNow.getDate()
+          && endAt.getFullYear() === characterNow.getFullYear() && endAt.getMonth() === characterNow.getMonth() && endAt.getDate() === characterNow.getDate();
         const location = structuredNext.locations.find(item => item.id === parsed.planChange?.locationId) ?? structuredNext.locations.find(item => item.id === "home");
-        const changedSchedules = structuredNext.schedules.map(slot => {
-          if (slot.ownerType !== "character" || slot.ownerId !== target.id || slot.kind === "appointment") return slot;
-          const startMs = new Date(slot.startAt).getTime();
-          if (startMs <= characterNow.getTime() || startMs >= dayEnd.getTime() || new Date(slot.endAt).getTime() <= characterNow.getTime()) return slot;
-          return { ...slot, title: parsed.planChange!.title, plannedLocationId: location?.id ?? "home", plannedLocationName: location?.name ?? "家", source: "manual" as const, updatedAt: new Date().toISOString() };
-        });
-        structuredNext = { ...structuredNext, schedules: changedSchedules };
-        const currentState = structuredNext.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === target.id);
-        if (currentState) structuredNext = upsertActorState(structuredNext, { ...currentState, activity: "正在重新安排接下来的时间", updatedAt: new Date().toISOString() });
-        setNotice(target.name + "决定调整今天剩余的日程；已发生的时段和已确认约会都没有被改写。");
+        if (sameDay && startAt > characterNow && endAt > startAt) {
+          const conflict = structuredNext.schedules.some(slot => slot.ownerType === "character" && slot.ownerId === target.id && slot.kind === "appointment" && new Date(slot.startAt) < endAt && new Date(slot.endAt) > startAt);
+          if (!conflict) {
+            const preserved: LifeScheduleSlot[] = [];
+            for (const slot of structuredNext.schedules) {
+              if (slot.ownerType !== "character" || slot.ownerId !== target.id || slot.kind === "appointment" || new Date(slot.endAt) <= startAt || new Date(slot.startAt) >= endAt) { preserved.push(slot); continue; }
+              const a = new Date(slot.startAt).getTime(), b = new Date(slot.endAt).getTime();
+              if (a < startAt.getTime()) preserved.push({ ...slot, id: slot.id + "-before-" + id("plan"), endAt: startAt.toISOString(), updatedAt: new Date().toISOString() });
+              if (b > endAt.getTime()) preserved.push({ ...slot, id: slot.id + "-after-" + id("plan"), startAt: endAt.toISOString(), updatedAt: new Date().toISOString() });
+            }
+            preserved.push({ id: id("plan-change"), ownerType: "character", ownerId: target.id, startAt: startAt.toISOString(), endAt: endAt.toISOString(), title: parsed.planChange.title, plannedLocationId: location?.id ?? "home", plannedLocationName: location?.name ?? "家", kind: "free-time", source: "manual", updatedAt: new Date().toISOString() });
+            structuredNext = { ...structuredNext, schedules: preserved.sort((a,b)=>a.startAt.localeCompare(b.startAt)) };
+            setNotice(target.name + "调整了今天 " + startAt.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"}) + " 至 " + endAt.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"}) + " 的日程，其他时段保持不变。");
+          } else setNotice(target.name + "想调整日程，但该时段已有确认约会，因此没有覆盖。");
+        } else setNotice(target.name + "想调整日程，但时间不在当前虚拟日或已过去，因此没有修改。");
       }
       if (settings.enableCharacterAutonomy && parsed.invitation && settings.enableInvitations) {
         const proposedDate = new Date(parsed.invitation.time);
