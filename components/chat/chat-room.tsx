@@ -1,5 +1,8 @@
 "use client";
 
+import { loadVirtualLifeState } from "@/lib/life/life-storage";
+import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "@/lib/life/life-runtime";
+
 import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, getSystemInstructionDisplayContent, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages, isSessionStreamingEnabled, resolveChatBackgroundImage, resolveChatUserAvatar } from "@/lib/chat-storage";
 import { cleanStreamText, splitStreamPreviewSegments, stripLiteralTexts, stripXmlTagBlocks } from "@/lib/stream-preview";
@@ -3352,6 +3355,9 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             clearGenerationLock(session.id);
         }
 
+        const latestForSleepGate = loadChatMessages(session.id);
+        const lastForSleepGate = latestForSleepGate[latestForSleepGate.length - 1];
+        if (lastForSleepGate?.role === "user" && shouldSuppressLifeSleepReply(lastForSleepGate.content)) { setPendingGenerate(false); return; }
         const generationRun = createGenerationRun(session.id);
         const generationRunId = generationRun.runId;
         const isCurrentGeneration = () => isGenerationRunActive(session.id, generationRunId);
@@ -3688,6 +3694,26 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         });
         if (sent) showChatToast("礼物已送出");
         return sent;
+    };
+
+    const shouldSuppressLifeSleepReply = (userText?: string): boolean => {
+        if (session.isGroup || offlineMode || !character) return false;
+        const life = loadVirtualLifeState();
+        if (!life.settings.enabled || !life.settings.allowCharactersToStaySilent) return false;
+        const latestUserText = (userText || loadChatMessages(session.id).filter(message => message.role === "user").slice(-1)[0]?.content || "").trim();
+        if (!latestUserText) return false;
+        const clock = getActorClock(life, "character", character.id);
+        const now = resolveActorLifeNow(clock);
+        const schedule = getCurrentActorSchedule(life, "character", character.id, now);
+        const presence = life.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === character.id);
+        const sleeping = /睡眠|睡觉|入睡|午休/.test((presence?.activity || "") + " " + (schedule?.title || ""));
+        if (!sleeping) return false;
+        const urgent = /救命|紧急|出事了|危险|受伤|快来|急救/.test(latestUserText);
+        const lightSleeper = /浅眠|警觉|敏感|担心|保护欲|容易醒/.test(character.personality || "");
+        const seed = [...(character.id + latestUserText)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+        const staysAsleep = !urgent && seed % 100 >= (lightSleeper ? 60 : 15);
+        if (staysAsleep) showChatToast(character.name + "正在睡觉，没有被这条消息叫醒。TA醒来后才可能回复。", 3500);
+        return staysAsleep;
     };
 
     const triggerAIResponse = async () => {
@@ -4126,6 +4152,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             });
 
             setMessages(prev => [...prev, newMsg]);
+            if (!diceOnly && shouldSuppressLifeSleepReply(currentText)) { setPendingGenerate(false); return; }
             if (diceOnly) {
                 const diceAside = pushChatMessage({
                     sessionId: session.id,
