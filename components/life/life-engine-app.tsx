@@ -33,7 +33,9 @@ import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { saveChatImageToIndexedDB, getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { deleteThemeAsset } from "@/lib/theme-storage";
-import { loadImageGenerationSettings, saveImageGenerationSettings } from "@/lib/settings-storage";
+import { loadImageGenerationSettings } from "@/lib/settings-storage";
+import { getChatImageFromIndexedDB, saveChatImageToIndexedDB } from "@/lib/chat-asset-storage";
+import { fileToUserAvatarDataUrl } from "@/lib/user-avatar-image";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
 import type { LifeSceneImage } from "@/lib/life/life-types";
@@ -482,6 +484,38 @@ export function LifeEngineApp() {
     return () => { alive = false; };
   }, [activeScene?.id, sceneImageRecords.map(image=>image.id+":"+image.status).join("|")]);
 
+  const composeSceneReferenceSheet = async (participantIds: string[]): Promise<string | undefined> => {
+    const imageSettings = loadImageGenerationSettings();
+    const sources: Array<{label:string;dataUrl:string}> = [];
+    const playerAsset = stateRef.current.settings.userAppearanceReferenceAssetId;
+    if(playerAsset) {
+      const dataUrl=await getChatImageFromIndexedDB(playerAsset);
+      if(dataUrl) sources.push({label:playerName,dataUrl});
+    }
+    for(const participantId of participantIds) {
+      const ref=imageSettings.characterReferences?.[participantId];
+      if(!ref?.assetId||ref.enabled===false)continue;
+      const dataUrl=await getChatImageFromIndexedDB(ref.assetId);
+      if(dataUrl) sources.push({label:characters.find(char=>char.id===participantId)?.name||"角色",dataUrl});
+    }
+    if(!sources.length)return undefined;
+    const decoded=await Promise.all(sources.map(({label,dataUrl})=>new Promise<{label:string;image:HTMLImageElement}>((resolve,reject)=>{
+      const image=new Image();image.onload=()=>resolve({label,image});image.onerror=()=>reject(new Error("参考图读取失败"));image.src=dataUrl;
+    })));
+    const cellW=512,cellH=340,cols=Math.min(2,decoded.length),rows=Math.ceil(decoded.length/cols);
+    const canvas=document.createElement("canvas");canvas.width=cols*cellW;canvas.height=rows*cellH;
+    const ctx=canvas.getContext("2d");if(!ctx)return undefined;
+    ctx.fillStyle="#f7f0e7";ctx.fillRect(0,0,canvas.width,canvas.height);
+    decoded.forEach(({label,image},index)=>{
+      const x=(index%cols)*cellW,y=Math.floor(index/cols)*cellH;
+      const scale=Math.min((cellW-32)/image.naturalWidth,(cellH-58)/image.naturalHeight);
+      const w=image.naturalWidth*scale,h=image.naturalHeight*scale;
+      ctx.drawImage(image,x+(cellW-w)/2,y+8+(cellH-48-h)/2,w,h);
+      ctx.fillStyle="#49392f";ctx.font="600 18px sans-serif";ctx.textAlign="center";ctx.fillText(label,x+cellW/2,y+cellH-16,cellW-24);
+    });
+    return canvas.toDataURL("image/png");
+  };
+
   const buildSceneImagePrompt = (participantIds: string[], customPrompt: string) => {
     const imageSettings = loadImageGenerationSettings();
     const parts = [
@@ -511,6 +545,7 @@ export function LifeEngineApp() {
     setSceneImageBusy(true);
     setNotice("正在生成场景图。每张图会独立保存，失败的图片不会影响已有图库。");
     try {
+      const referenceSheet = await composeSceneReferenceSheet(participantIds);
       const generated: LifeSceneImage[] = [];
       for(let index=0;index<count;index++){
         const referenceCharacterId = participantIds.find(pid=>imageSettings.characterReferences?.[pid]?.assetId && imageSettings.characterReferences?.[pid]?.enabled !== false);
@@ -518,7 +553,8 @@ export function LifeEngineApp() {
           description: prompt+(count>1?"\n画面方案："+(index+1)+"，请在同一场景和角色外观基础上尝试不同自然构图。":""),
           characterId: referenceCharacterId,
           appId: "story",
-          useReferenceImage: Boolean(referenceCharacterId),
+          useReferenceImage: Boolean(referenceSheet || referenceCharacterId),
+          referenceImageDataUrl: referenceSheet,
         });
         if(!result) throw new Error("生图服务未返回图片，请检查 API 配置和启用状态。");
         generated.push({id:id("scene-image"),sceneId:activeScene.id,mediaRef:result.mediaRef,prompt:result.prompt,participantIds:[...participantIds],createdAt:new Date().toISOString(),status:"active",alt:activeScene.locationName+"场景图"});
@@ -895,6 +931,7 @@ export function LifeEngineApp() {
           <Toggle checked={settings.compactLayout} onChange={v=>patchSettings({compactLayout:v})} label="紧凑布局"/>
           <label className="mt-4 block text-sm">默认时间模式<select value={settings.defaultClockMode} onChange={e=>patchSettings({defaultClockMode:e.target.value as LifeEngineSettings["defaultClockMode"]})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="real-time">跟随现实</option><option value="simulation">独立模拟</option><option value="review">暂停回顾</option></select></label>
           <label className="mt-4 block text-sm">新角色默认流速：×{settings.defaultSpeed}<input type="range" min="0.1" max="100" step="0.1" value={settings.defaultSpeed} onChange={e=>patchSettings({defaultSpeed:Number(e.target.value)})} className="mt-2 w-full accent-[var(--life-accent)]"/></label>
+          <div className="mt-4 rounded-2xl border border-stone-200/80 bg-white/60 p-4"><p className="text-sm font-semibold">玩家全局参考图（可选）</p><p className="mt-1 text-xs leading-relaxed text-stone-500">这张图会与入镜角色的参考图合成一张参考板传给支持图生图的生图方案。没有参考图也没关系，可只填写下方形象描述。</p><div className="mt-3 flex items-center gap-3">{settings.userAppearanceReferenceAssetId?<><button type="button" onClick={async()=>{const data=await getChatImageFromIndexedDB(settings.userAppearanceReferenceAssetId!);if(data)window.open(data,"_blank","noopener,noreferrer")}} className="rounded-xl bg-white px-3 py-2 text-xs">查看已保存参考图</button><button type="button" onClick={()=>patchSettings({userAppearanceReferenceAssetId:undefined})} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-red-600">移除参考图</button></>:<label className="cursor-pointer rounded-xl bg-white px-3 py-2 text-xs font-medium text-stone-700">上传形象参考图<input type="file" accept="image/*" className="hidden" onChange={async e=>{const file=e.target.files?.[0];if(!file)return;try{const dataUrl=await fileToUserAvatarDataUrl(file,900,0.84);const blob=await (await fetch(dataUrl)).blob();const assetId=await saveChatImageToIndexedDB(blob);patchSettings({userAppearanceReferenceAssetId:assetId});setNotice("玩家参考图已保存到本机图片资产库。");}catch(err){setNotice("参考图保存失败："+(err instanceof Error?err.message:"未知错误"));}finally{e.currentTarget.value="";}}}/></label>}</div></div>
           <label className="mt-4 block text-sm">玩家形象描述（全局生图使用）<textarea value={settings.userAppearanceDescription} onChange={e=>patchSettings({userAppearanceDescription:e.target.value})} rows={3} placeholder="例如：黑色长发、圆框眼镜、偏爱宽松的米色针织衫。没有参考图时会使用这段描述。" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
           <div className="mt-4 rounded-2xl border border-stone-200/80 bg-white/60 p-4">
             <p className="text-sm font-semibold">场景生图</p>
