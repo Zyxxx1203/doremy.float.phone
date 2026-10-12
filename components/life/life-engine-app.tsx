@@ -400,7 +400,7 @@ export function LifeEngineApp() {
   const composeSceneReferenceSheet = async (participantIds: string[]): Promise<string | undefined> => {
     const imageSettings = loadImageGenerationSettings();
     const sources: Array<{label:string;dataUrl:string}> = [];
-    const playerAsset = imageSettings.userAppearanceReferenceAssetId || stateRef.current.settings.userAppearanceReferenceAssetId;
+    const playerAsset = imageSettings.userAppearanceReferenceAssetId;
     if(playerAsset && participantIds.includes(PLAYER_ID)) {
       const dataUrl=await getChatImageFromIndexedDB(playerAsset);
       if(dataUrl) sources.push({label:playerName,dataUrl});
@@ -435,7 +435,7 @@ export function LifeEngineApp() {
       "为虚拟生活场景生成一张单帧画面，不是拼贴、漫画分格或文字海报。",
       "当前场景："+(activeScene?.locationName || selectedLocation?.name || "日常场景"),
       "场景状态："+(activeScene?.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);return (actor?.name||p.ownerId)+"正在"+p.activity;}).join("；") || playerActivity),
-      participantIds.includes(PLAYER_ID) && (settings.userAppearanceDescription.trim() || imageSettings.userAppearanceDescription?.trim()) ? "玩家固定外观："+(settings.userAppearanceDescription.trim() || imageSettings.userAppearanceDescription?.trim()) : "",
+      participantIds.includes(PLAYER_ID) && imageSettings.userAppearanceDescription?.trim() ? "玩家固定外观："+imageSettings.userAppearanceDescription.trim() : "",
       ...participantIds.map(pid=>{
         const char=characters.find(item=>item.id===pid);
         if(!char)return "";
