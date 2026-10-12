@@ -109,6 +109,7 @@ export function LifeEngineApp() {
   const [inviteAt, setInviteAt] = useState(() => { const d = new Date(Date.now() + 60 * 60_000); d.setMinutes(0,0,0); return new Date(d.getTime() - d.getTimezoneOffset()*60_000).toISOString().slice(0,16); });
   const [customSceneTitle, setCustomSceneTitle] = useState("今天的相处");
   const [sceneImageBusy, setSceneImageBusy] = useState(false);
+  const [sceneGalleryExpanded, setSceneGalleryExpanded] = useState(true);
   const [sceneImagePrompt, setSceneImagePrompt] = useState("");
   const [sceneImageCountDraft, setSceneImageCountDraft] = useState<1|2|3|4>(DEFAULT_LIFE_ENGINE_SETTINGS.sceneImageCount);
   const [imageObjectUrls, setImageObjectUrls] = useState<Record<string,string>>({});
@@ -797,7 +798,9 @@ export function LifeEngineApp() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div><p className="text-sm font-semibold text-stone-800">场景相册</p><p className="mt-0.5 text-[11px] text-stone-500">可一次生成多张，左右切换；重新生成会归档旧图，不会直接覆盖或丢失。</p></div>
               <button type="button" disabled={sceneImageBusy} onClick={()=>void generateSceneImages({count:sceneImageCountDraft,participantIds:imageParticipantIds.length?imageParticipantIds:activeScene.participants.filter(p=>p.ownerType==="character").map(p=>p.ownerId),prompt:sceneImagePrompt})} className="inline-flex items-center gap-2 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs font-medium text-white disabled:opacity-50"><Sparkles size={14}/>{sceneImageBusy?"正在生成…":"生成 / 重新生成"}</button>
+              <button type="button" onClick={()=>setSceneGalleryExpanded(value=>!value)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-600">{sceneGalleryExpanded?"收起图库":"展开图库"}</button>
             </div>
+            {sceneGalleryExpanded && <>
             <div className="mt-3 flex flex-wrap gap-2">
               {activeScene.participants.map(p=>{const actor=actors.find(a=>a.ownerType===p.ownerType&&a.ownerId===p.ownerId);const checked=imageParticipantIds.length===0?p.ownerType==="character":imageParticipantIds.includes(p.ownerId);return <label key={p.ownerType+":"+p.ownerId} className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs"><input type="checkbox" checked={checked} onChange={e=>setImageParticipantIds(prev=>{const current=prev.length?prev:activeScene.participants.filter(item=>item.ownerType==="character").map(item=>item.ownerId);return e.target.checked?[...new Set([...current,p.ownerId])]:current.filter(id=>id!==p.ownerId)})}/>{actor?.name??p.ownerId}</label>;})}
             </div>
@@ -812,6 +815,7 @@ export function LifeEngineApp() {
               {images.length>1&&<div className="flex gap-2 overflow-x-auto px-3 pb-3">{images.map((image,index)=><button type="button" key={image.id} onClick={()=>setImageViewerIndex(index)} className={`h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 ${index===safeIndex?"border-[var(--life-accent)]":"border-transparent"} bg-white`}>{imageObjectUrls[image.id]?<img src={imageObjectUrls[image.id]} alt="" className="h-full w-full object-cover"/>:null}</button>)}</div>}
             </div>})() : <div className="mt-3 rounded-xl border border-dashed border-stone-300 p-5 text-center text-xs text-stone-400">还没有场景图。可以点上方按钮生成；自动生图也能在设置里开启。</div>}
             {sceneImageRecords.some(image=>image.status==="archived")&&<details className="mt-3 rounded-xl border border-stone-200 bg-white/60 p-3"><summary className="cursor-pointer text-xs font-medium text-stone-600">旧图归档（{sceneImageRecords.filter(image=>image.status==="archived").length}）· 可恢复或删除</summary><div className="mt-3 space-y-2">{sceneImageRecords.filter(image=>image.status==="archived").map(image=><div key={image.id} className="flex items-center gap-2 rounded-lg bg-white p-2">{imageObjectUrls[image.id]?<img src={imageObjectUrls[image.id]} alt="" className="h-12 w-12 rounded-md object-cover"/>:<div className="h-12 w-12 rounded-md bg-stone-100"/>}<span className="min-w-0 flex-1 truncate text-[10px] text-stone-500">{new Date(image.createdAt).toLocaleString("zh-CN")}</span><button type="button" onClick={()=>{setSceneImageStatus(image.id,"active");setImageViewerIndex(0)}} className="rounded-lg bg-stone-100 px-2 py-1 text-[10px]">恢复</button><button type="button" onClick={()=>{if(window.confirm("永久删除这张旧图？"))void removeSceneImage(image.id)}} className="rounded-lg px-2 py-1 text-[10px] text-red-600">删除</button></div>)}</div></details>}
+            </>}
           </section>
           <form onSubmit={sendSceneTurn} className="flex gap-2"><input value={sceneInput} onChange={e=>setSceneInput(e.target.value)} placeholder="在这里说话、询问或描述你自己的行动…" className="min-w-0 flex-1 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm" disabled={busy}/><button disabled={busy||!sceneInput.trim()} className="grid w-12 shrink-0 place-items-center rounded-2xl bg-[var(--life-accent)] text-white disabled:opacity-40"><Send size={17}/></button></form>
           <p className="mt-2 text-xs text-stone-500">生成使用角色现有私聊会话和模型配置；本轮场景指令只临时注入，不会把场景规则写进原线上聊天记录。</p>
