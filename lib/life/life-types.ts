@@ -52,6 +52,10 @@ export type LifeEngineSettings = {
   showTimeline: boolean;
   showLocationHints: boolean;
   enableAmbientDetails: boolean;
+  autoGenerateSceneImages: boolean;
+  sceneImageCount: number;
+  sceneImagePrompt: string;
+  playerAppearanceDescription: string;
   customPrompt: string;
   autoGenerateSceneImages: boolean;
   sceneImageCount: 1 | 2 | 3 | 4;
@@ -84,6 +88,10 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   showTimeline: true,
   showLocationHints: true,
   enableAmbientDetails: true,
+  autoGenerateSceneImages: false,
+  sceneImageCount: 2,
+  sceneImagePrompt: "",
+  playerAppearanceDescription: "",
   customPrompt: "",
   autoGenerateSceneImages: false,
   sceneImageCount: 2,
@@ -218,6 +226,7 @@ export type VirtualLifeState = {
   schedules: LifeScheduleSlot[];
   scenes: LifeSceneState[];
   sceneMessages: LifeSceneMessage[];
+  sceneImages: LifeSceneImage[];
   events: LifeEvent[];
   invitations: LifeInvitation[];
   memories: LifeMemoryFact[];
@@ -234,6 +243,7 @@ export function createEmptyVirtualLifeState(now = new Date().toISOString()): Vir
     actorStates: [],
     schedules: [],
     scenes: [],\n    sceneMessages: [],
+    sceneImages: [],
     events: [],
     invitations: [],
     memories: [],
