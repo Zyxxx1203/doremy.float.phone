@@ -110,7 +110,6 @@ export function LifeEngineApp() {
   const [customSceneTitle, setCustomSceneTitle] = useState("今天的相处");
   const [sceneImageBusy, setSceneImageBusy] = useState(false);
   const [sceneImagePrompt, setSceneImagePrompt] = useState("");
-  const [sceneImageStyleDraft, setSceneImageStyleDraft] = useState(DEFAULT_LIFE_ENGINE_SETTINGS.sceneImageStyle);
   const [sceneImageCountDraft, setSceneImageCountDraft] = useState<1|2|3|4>(DEFAULT_LIFE_ENGINE_SETTINGS.sceneImageCount);
   const [imageObjectUrls, setImageObjectUrls] = useState<Record<string,string>>({});
   const [imageViewerIndex, setImageViewerIndex] = useState(0);
