@@ -154,13 +154,15 @@ export function settleActorTimelineToNow(
   }
   const current = getCurrentActorSchedule(state, ownerType, ownerId, virtualNow);
   const previous = findActorState(state, ownerType, ownerId);
-  const nextActivity = current?.title ?? previous?.activity ?? "时间线待补全";
-  const nextLocationId = current?.plannedLocationId ?? previous?.actualLocationId ?? null;
-  const nextLocationName = current?.plannedLocationName ?? previous?.actualLocationName ?? null;
-  const actorChanged = !previous || previous.activity !== nextActivity || (previous.actualLocationId ?? null) !== nextLocationId || (previous.actualLocationName ?? null) !== nextLocationName;
+  const slotChanged = !!current && previous?.scheduleSlotId !== current.id;
+  const nextActivity = slotChanged ? current.title : previous?.activity ?? current?.title ?? "时间线待补全";
+  const nextLocationId = slotChanged ? current?.plannedLocationId ?? null : previous?.actualLocationId ?? current?.plannedLocationId ?? null;
+  const nextLocationName = slotChanged ? current?.plannedLocationName ?? null : previous?.actualLocationName ?? current?.plannedLocationName ?? null;
+  const nextSlotId = current?.id ?? previous?.scheduleSlotId ?? null;
+  const actorChanged = !previous || previous.activity !== nextActivity || (previous.actualLocationId ?? null) !== nextLocationId || (previous.actualLocationName ?? null) !== nextLocationName || (previous.scheduleSlotId ?? null) !== nextSlotId;
   const actorStates = actorChanged
     ? [...state.actorStates.filter(actor => !(actor.ownerType === ownerType && actor.ownerId === ownerId)), {
-        ownerType, ownerId, activity: nextActivity,
+        ownerType, ownerId, activity: nextActivity, scheduleSlotId: nextSlotId,
         actualLocationId: nextLocationId, actualLocationName: nextLocationName, updatedAt: nowIso,
       }]
     : state.actorStates;
