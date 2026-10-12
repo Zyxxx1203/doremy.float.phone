@@ -53,6 +53,10 @@ export type LifeEngineSettings = {
   showLocationHints: boolean;
   enableAmbientDetails: boolean;
   customPrompt: string;
+  autoGenerateSceneImages: boolean;
+  sceneImageCount: 1 | 2 | 3 | 4;
+  sceneImageStyle: string;
+  userAppearanceDescription: string;
 };
 
 export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
@@ -81,6 +85,10 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   showLocationHints: true,
   enableAmbientDetails: true,
   customPrompt: "",
+  autoGenerateSceneImages: false,
+  sceneImageCount: 2,
+  sceneImageStyle: "温暖自然的生活感，电影级构图，表情与动作自然，保持角色外观一致",
+  userAppearanceDescription: "",
 };
 
 export type LifeScheduleSlot = {
@@ -133,6 +141,17 @@ export type LifeSceneMessage = {
   createdAt: string;
 };
 
+export type LifeSceneImage = {
+  id: string;
+  sceneId: string;
+  mediaRef: string;
+  prompt: string;
+  participantIds: string[];
+  createdAt: string;
+  status: "active" | "archived";
+  alt?: string;
+};
+
 export type LifeSceneState = {
   id: string;
   locationId: string;
@@ -143,6 +162,7 @@ export type LifeSceneState = {
   eventId?: string;
   participants: LifeSceneParticipant[];
   lastSettledEventIds: string[];
+  images?: LifeSceneImage[];
 };
 
 export type LifeEvent = {
