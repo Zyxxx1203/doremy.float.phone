@@ -48,20 +48,20 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
     const match = source.match(new RegExp(name + "\\s*=\\s*[\"']([^\"']*)[\"']", "i"));
     return (match?.[1] || "").replace(/&quot;/g, "\"").replace(/&amp;/g, "&").trim();
   };
-  const followTag = text.match(/<life_follow_request\\b([^>]*)\\/?\\s*>/i);
-  const planTag = text.match(/<life_plan_change\\b([^>]*)\\/?\\s*>/i);
+  const followTag = text.match(/<life_follow_request\b([^>]*)\/?\s*>/i);
+  const planTag = text.match(/<life_plan_change\b([^>]*)\/?\s*>/i);
   const duration = Number(attribute(followTag?.[1] || "", "durationMinutes"));
   const followRequest = followTag ? { durationMinutes: Math.max(15, Math.min(Number.isFinite(duration) && duration ? duration : 120, 24 * 60)), reason: attribute(followTag[1], "reason") } : undefined;
   const planChange = planTag ? { title: attribute(planTag[1], "title"), locationId: attribute(planTag[1], "locationId") || "home" } : undefined;
-  const clean = text.replace(/<life_follow_request\\b[^>]*\\/?\\s*>/ig, "").replace(/<life_plan_change\\b[^>]*\\/?\\s*>/ig, "").trim();
-  const lines = clean.split(/\\r?\\n/).map(line => line.trim()).filter(Boolean);
+  const clean = text.replace(/<life_follow_request\b[^>]*\/?\s*>/ig, "").replace(/<life_plan_change\b[^>]*\/?\s*>/ig, "").trim();
+  const lines = clean.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   const actionLines: string[] = [];
   const dialogueLines: string[] = [];
   for (const line of lines) {
-    if (/^\\*[^*].*\\*$/.test(line) || /^（[^）]+）$/.test(line) || /^\\*\\*[^*].*\\*\\*$/.test(line)) actionLines.push(line.replace(/^\\*+|\\*+$/g, "").replace(/^（|）$/g, ""));
-    else if (!/^<\\/?(?:content|summary|thinking)>/i.test(line)) dialogueLines.push(line);
+    if (/^\*[^*].*\*$/.test(line) || /^（[^）]+）$/.test(line) || /^\*\*[^*].*\*\*$/.test(line)) actionLines.push(line.replace(/^\*+|\*+$/g, "").replace(/^（|）$/g, ""));
+    else if (!/^<\/?(?:content|summary|thinking)>/i.test(line)) dialogueLines.push(line);
   }
-  return { action: actionLines.join(" "), dialogue: dialogueLines.join("\\n") || clean, followRequest, planChange };
+  return { action: actionLines.join(" "), dialogue: dialogueLines.join("\n") || clean, followRequest, planChange };
 }
 
 
