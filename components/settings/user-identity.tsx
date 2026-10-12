@@ -11,6 +11,7 @@ export type UserIdentity = {
     id: string;
     name: string;
     avatarUrl?: string;
+    appearanceDescription?: string;
     bio: string;
     gender: string;
     age: string;
@@ -312,6 +313,18 @@ export function UserIdentitySettings() {
                                                     className="ui-input"
                                                 />
                                             </div>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1">
+                                            <label className="menu-desc ml-1">固定外观描述（生图可复用）</label>
+                                            <textarea
+                                                value={identity.appearanceDescription || ""}
+                                                onChange={(e) => updateIdentity(identity.id, { appearanceDescription: e.target.value })}
+                                                placeholder="例如：黑色长发、圆框眼镜、偏爱宽松的米色针织衫。不想固定的特征留空。"
+                                                rows={3}
+                                                className="ui-textarea"
+                                            />
+                                            <p className="menu-desc ml-1">全局用户身份资料。生活场景生图会优先读取；头像也可作为参考图。</p>
                                         </div>
 
                                         <div className="flex flex-col gap-1">
