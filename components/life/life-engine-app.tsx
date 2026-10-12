@@ -132,8 +132,9 @@ export function LifeEngineApp() {
       if (!next.actorClocks.some(clock => clock.ownerType === owner.ownerType && clock.ownerId === owner.ownerId)) {
         next = upsertActorClock(next, owner.ownerType, owner.ownerId, { mode: settings.defaultClockMode, speed: settings.defaultSpeed });
       }
+      // The current week is always complete. The switch controls advance pre-generation only.
+      next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, thisMonday, { id: "home", name: "家" }, owner.profile, settings.generateSpecialEvents);
       if (settings.autoGenerateWeeklyPlans) {
-        next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, thisMonday, { id: "home", name: "家" }, owner.profile, settings.generateSpecialEvents);
         next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, nextMonday, { id: "home", name: "家" }, owner.profile, settings.generateSpecialEvents);
       }
     }
@@ -144,11 +145,24 @@ export function LifeEngineApp() {
     if (!ready) return;
     const settleAll = () => {
       let next = stateRef.current;
+      const liveSettings = next.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;
+      const roster = loadCharacters();
       const owners = [
-        { ownerType: "player" as const, ownerId: PLAYER_ID },
-        ...loadCharacters().map(character => ({ ownerType: "character" as const, ownerId: character.id })),
+        { ownerType: "player" as const, ownerId: PLAYER_ID, name: liveSettings.playerDisplayName || "我", profile: "" },
+        ...roster.map(character => ({ ownerType: "character" as const, ownerId: character.id, name: character.name, profile: [character.persona, character.personality].filter(Boolean).join(" ") })),
       ];
-      for (const owner of owners) next = settleActorTimelineToNow(next, owner.ownerType, owner.ownerId);
+      for (const owner of owners) {
+        const virtualNow = resolveActorLifeNow(getActorClock(next, owner.ownerType, owner.ownerId));
+        const existing = next.schedules.filter(slot => slot.ownerType === owner.ownerType && slot.ownerId === owner.ownerId);
+        const latestEnd = existing.reduce((max, slot) => Math.max(max, new Date(slot.endAt).getTime()), Number.NEGATIVE_INFINITY);
+        let week = mondayStart(Number.isFinite(latestEnd) && latestEnd > virtualNow.getTime() ? new Date(latestEnd - 1) : virtualNow);
+        const target = mondayStart(virtualNow);
+        const targetEnd = new Date(target.getTime() + (liveSettings.autoGenerateWeeklyPlans ? 7 : 0) * 24 * 60 * 60 * 1000);
+        for (let guard=0; week.getTime() <= targetEnd.getTime() && guard<520; guard++, week=new Date(week.getTime()+7*24*60*60*1000)) {
+          next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, week, {id:"home",name:"家"}, owner.profile, liveSettings.generateSpecialEvents);
+        }
+        next = settleActorTimelineToNow(next, owner.ownerType, owner.ownerId);
+      }
       if (next !== stateRef.current) commit(next);
     };
     settleAll();
@@ -178,7 +192,7 @@ export function LifeEngineApp() {
   const actorSchedule = (actor: ActorChoice) => getCurrentActorSchedule(state, actor.ownerType, actor.ownerId, actorNow(actor));
   const advanceCharacterAutonomy = (actor: ActorChoice) => {
     if (actor.ownerType !== "character" || !settings.enableCharacterAutonomy) return;
-    let next = advanceActorTimeline(state, actor.ownerType, actor.ownerId, 60);
+    let next = advanceActorTimeline(state, actor.ownerType, actor.ownerId, 60, actor.name, actor.persona ?? "");
     const virtualNow = resolveActorLifeNow(getActorClock(next, actor.ownerType, actor.ownerId));
     const slot = getCurrentActorSchedule(next, actor.ownerType, actor.ownerId, virtualNow);
     const previous = state.actorStates.find(item => item.ownerType === actor.ownerType && item.ownerId === actor.ownerId);
@@ -476,7 +490,7 @@ export function LifeEngineApp() {
           <SectionTitle eyebrow="Independent timelines" title="每个人都有自己的时间" note="调整某个人的流速，不会改变其他人的时钟。模拟时间不会在退出时偷偷跳回现实。" />
           <div className="space-y-3">{actors.map(actor => { const clock=getActorClock(state,actor.ownerType,actor.ownerId), now=actorNow(actor), current=actorSchedule(actor), actual=actorState(actor); return <div key={`${actor.ownerType}:${actor.ownerId}`} className={`rounded-2xl border p-3 transition ${selectedActorKey===`${actor.ownerType}:${actor.ownerId}`?"border-[var(--life-accent)]/45 bg-white":"border-stone-200/70 bg-white/55"}`}>
             <div className="flex flex-wrap items-start justify-between gap-2"><button onClick={()=>setSelectedActorKey(`${actor.ownerType}:${actor.ownerId}`)} className="flex min-w-0 items-center gap-3 text-left">{actor.avatar ? <img src={actor.avatar} alt="" className="h-10 w-10 rounded-full object-cover"/> : <span className="grid h-10 w-10 place-items-center rounded-full bg-[#efe1d2] text-sm">{actor.ownerType==="player"?"我":actor.name.slice(0,1)}</span>}<span><span className="block font-medium">{actor.name}</span><span className="block text-xs opacity-60">{actorClockLabel(clock)} · {fmt(now)}</span></span></button><span className="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] text-stone-600">{current?.title ?? "当前没有日程"}</span></div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center"><label className="text-xs text-stone-500">时间流速：×{clock.speed}<input type="range" min="0.1" max="100" step="0.1" value={clock.speed} onChange={e=>patchActorClock(actor,{speed:Number(e.target.value),mode:clock.mode==="real-time"?"simulation":clock.mode})} className="mt-2 w-full accent-[var(--life-accent)]"/></label><div className="flex flex-wrap gap-1.5"><select aria-label={`${actor.name}的时间模式`} value={clock.mode} onChange={e=>patchActorClock(actor,{mode:e.target.value as LifeActorClock["mode"]})} className="rounded-xl border border-stone-200 bg-white px-2 py-2 text-xs"><option value="real-time">跟随现实</option><option value="simulation">独立模拟</option><option value="review">暂停回顾</option></select><button onClick={()=>commit(advanceActorTimeline(state,actor.ownerType,actor.ownerId,60))} className="rounded-xl bg-[#f0e3d5] px-3 py-2 text-xs text-stone-700">+1 虚拟小时</button>{actor.ownerType==="character" && <button disabled={!settings.enableCharacterAutonomy} onClick={()=>advanceCharacterAutonomy(actor)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 disabled:opacity-40">自主生活 +1h</button>}</div></div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center"><label className="text-xs text-stone-500">时间流速：×{clock.speed}<input type="range" min="0.1" max="100" step="0.1" value={clock.speed} onChange={e=>patchActorClock(actor,{speed:Number(e.target.value),mode:clock.mode==="real-time"?"simulation":clock.mode})} className="mt-2 w-full accent-[var(--life-accent)]"/></label><div className="flex flex-wrap gap-1.5"><select aria-label={`${actor.name}的时间模式`} value={clock.mode} onChange={e=>patchActorClock(actor,{mode:e.target.value as LifeActorClock["mode"]})} className="rounded-xl border border-stone-200 bg-white px-2 py-2 text-xs"><option value="real-time">跟随现实</option><option value="simulation">独立模拟</option><option value="review">暂停回顾</option></select><button onClick={()=>commit(advanceActorTimeline(state,actor.ownerType,actor.ownerId,60,actor.name,actor.persona??""))} className="rounded-xl bg-[#f0e3d5] px-3 py-2 text-xs text-stone-700">+1 虚拟小时</button>{actor.ownerType==="character" && <button disabled={!settings.enableCharacterAutonomy} onClick={()=>advanceCharacterAutonomy(actor)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 disabled:opacity-40">自主生活 +1h</button>}</div></div>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-500"><MapPin size={13}/><span>实际地点：{actor.ownerType==="player" || settings.revealExactLocations==="open" ? (actual?.actualLocationName ?? "未记录") : settings.revealExactLocations==="ask-only" ? "精确位置未公开" : actual?.actualLocationName ? "有位置线索" : "未记录"}</span><span className="opacity-40">·</span><span>计划地点：{settings.showLocationHints ? (current?.plannedLocationName ? `${current.plannedLocationName}（不保证在场）` : "暂无提示") : "地点线索已隐藏"}</span></div>
           </div>; })}</div>
           <p className="mt-4 text-xs leading-relaxed text-stone-500">提示：倍速只影响该角色的虚拟时钟；计划地点不等于实时定位。真实位置仍需要场景状态或合理的信息来源。</p>
