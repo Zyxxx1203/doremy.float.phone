@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type CSSProperties } from "react";
 import {
   ArrowLeft, CalendarDays, Clock3, Coffee, Heart, MapPin, MessageCircle,
   Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Trash2, Users,
@@ -8,7 +8,8 @@ import {
 import type { Character } from "@/lib/character-types";
 import { loadCharacters } from "@/lib/character-storage";
 import { hydrateKvDb } from "@/lib/kv-db";
-import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
+import { hydrateChatStorage } from "@/lib/chat-storage";
+import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage } from "@/lib/chat-storage";
 import { generateOfflineChatCompletion } from "@/lib/chat-engine";
 import {
   createEmptyVirtualLifeState,
@@ -27,6 +28,7 @@ import {
 import { confirmLifeInvitation, fastForwardActor, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, makeLifeInvitation, resolveActorLifeNow, upsertActorClock, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
 import { loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
+import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
 
 type Tab = "home" | "scene" | "plans" | "invitations" | "settings";
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
@@ -66,6 +68,7 @@ function SectionTitle({ eyebrow, title, note }: { eyebrow: string; title: string
 
 export function LifeEngineApp() {
   const [state, setState] = useState<VirtualLifeState>(() => createEmptyVirtualLifeState());
+  const stateRef = useRef(state);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<Tab>("home");
@@ -74,7 +77,7 @@ export function LifeEngineApp() {
   const [selectedSpeakerId, setSelectedSpeakerId] = useState("");
   const [selectedLocationId, setSelectedLocationId] = useState("cafe");
   const [newLocationName, setNewLocationName] = useState("");
-  const [playerName, setPlayerName] = useState("我");
+
   const [playerActivity, setPlayerActivity] = useState("正在看看周围");
   const [sceneInput, setSceneInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -87,10 +90,11 @@ export function LifeEngineApp() {
 
   useEffect(() => {
     let alive = true;
-    void hydrateKvDb().catch(() => undefined).finally(() => {
+    void hydrateKvDb().then(() => hydrateChatStorage()).catch(() => undefined).finally(() => {
       if (!alive) return;
       const loaded = loadVirtualLifeState();
       const normalized = { ...loaded, locations: loaded.locations.length ? loaded.locations : INITIAL_LOCATIONS };
+      stateRef.current = normalized;
       setState(normalized);
       setCharacters(loadCharacters());
       setReady(true);
@@ -99,6 +103,7 @@ export function LifeEngineApp() {
   }, []);
 
   const commit = useCallback((next: VirtualLifeState) => {
+    stateRef.current = next;
     setState(next);
     saveVirtualLifeState(next);
   }, []);
@@ -108,10 +113,11 @@ export function LifeEngineApp() {
     ...characters.map(char => ({ ownerType: "character" as const, ownerId: char.id, name: char.name, avatar: char.avatar, persona: [char.persona, char.personality].filter(Boolean).join("\n") })),
   ], [characters, playerName]);
   const selectedActor = actors.find(actor => `${actor.ownerType}:${actor.ownerId}` === selectedActorKey) ?? actors[0];
-  const activeScene = useMemo(() => state.scenes.find(scene => scene.status === "active" || scene.status === "paused"), [state.scenes]);
+  const activeScene = useMemo(() => state.scenes.find(scene => scene.status === "active") ?? state.scenes.find(scene => scene.status === "paused"), [state.scenes]);
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
   const selectedLocation = state.locations.find(location => location.id === selectedLocationId) ?? state.locations[0];
   const settings = state.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;
+  const playerName = settings.playerDisplayName || "我";
 
   const patchSettings = (patch: Partial<LifeEngineSettings>) => commit({ ...state, settings: { ...settings, ...patch } });
   const patchActorClock = (actor: ActorChoice, patch: Partial<Pick<LifeActorClock, "mode" | "speed">>) => commit(upsertActorClock(state, actor.ownerType, actor.ownerId, patch));
