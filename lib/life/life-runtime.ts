@@ -129,6 +129,7 @@ export function settleActorTimelineToNow(
   let events = state.events;
   let memories = state.memories;
   let invitations = state.invitations;
+  let scenes = state.scenes;
   const settledKeys = new Set(events.map(event => event.settlementKey).filter(Boolean));
   for (const slot of state.schedules) {
     if (slot.ownerType !== ownerType || slot.ownerId !== ownerId) continue;
@@ -163,20 +164,36 @@ export function settleActorTimelineToNow(
     });
     const started = allAtOrAfter(event.startsAt);
     const ended = allAtOrAfter(event.endsAt);
+    const characterId = event.participantIds.find(participantId => participantId !== "player");
+    const matchingScene = scenes.find(scene =>
+      (scene.status === "active" || scene.status === "paused")
+      && (!event.locationId || scene.locationId === event.locationId)
+      && event.participantIds.every(participantId => scene.participants.some(participant => participant.ownerId === participantId))
+    );
     if (ended) {
-      const updated = { ...event, status: "completed" as const, updatedAt: nowIso, completedAt: nowIso, settlementKey: "invitation:" + event.id };
+      const actuallyOccurred = event.details === "follow-player"
+        ? event.status === "active" && !!findActorState(state, "player", "player")?.actualLocationId
+        : scenes.some(scene => scene.eventId === event.id);
+      const nextStatus = actuallyOccurred ? "completed" as const : "cancelled" as const;
+      const updated = { ...event, status: nextStatus, updatedAt: nowIso, ...(actuallyOccurred ? { completedAt: nowIso } : { cancelledAt: nowIso }), settlementKey: "invitation:" + event.id, details: actuallyOccurred ? event.details : "missed:no-shared-scene-before-end" };
       events = events.map(item => item.id === event.id ? updated : item);
-      invitations = invitations.map(invite => invite.eventId === event.id ? { ...invite, status: "completed" as const, updatedAt: nowIso } : invite);
+      invitations = invitations.map(invite => invite.eventId === event.id ? { ...invite, status: actuallyOccurred ? "completed" as const : "cancelled" as const, updatedAt: nowIso } : invite);
       const memoryId = "memory-" + event.id;
-      if (!memories.some(memory => memory.id === memoryId)) {
+      if (actuallyOccurred && !memories.some(memory => memory.id === memoryId)) {
         memories = [{
           id: memoryId, eventId: event.id, occurredAt: event.endsAt, participants: event.participantIds,
-          fact: "已共同完成约定活动「" + event.title + "」" + (event.locationName ? "，地点：" + event.locationName : "") + "。",
+          fact: (event.details === "follow-player" ? "角色陪伴并跟随玩家完成了约定时段" : "双方共同完成约定活动") + "「" + event.title + "」" + (event.locationName ? "，地点：" + event.locationName : "") + "。",
         }, ...memories].slice(0, 500);
       }
     } else if (started && event.status === "confirmed") {
-      events = events.map(item => item.id === event.id ? { ...item, status: "active" as const, updatedAt: nowIso } : item);
+      if (event.details === "follow-player") {
+        events = events.map(item => item.id === event.id ? { ...item, status: "active" as const, updatedAt: nowIso } : item);
+      } else if (matchingScene) {
+        scenes = scenes.map(scene => scene.id === matchingScene.id ? { ...scene, eventId: event.id, updatedAt: nowIso } : scene);
+        events = events.map(item => item.id === event.id ? { ...item, status: "active" as const, updatedAt: nowIso } : item);
+      }
     }
+    void characterId;
   }
   const current = getCurrentActorSchedule(state, ownerType, ownerId, virtualNow);
   const previous = findActorState(state, ownerType, ownerId);
@@ -205,8 +222,8 @@ export function settleActorTimelineToNow(
       { ...characterState, activity: "正在陪伴玩家", actualLocationId: playerState.actualLocationId, actualLocationName: playerState.actualLocationName, updatedAt: nowIso },
     ];
   }
-  if (events === state.events && memories === state.memories && invitations === state.invitations && finalActorStates === state.actorStates) return state;
-  return { ...state, events, memories, invitations, actorStates: finalActorStates, updatedAt: nowIso };
+  if (events === state.events && memories === state.memories && invitations === state.invitations && scenes === state.scenes && finalActorStates === state.actorStates) return state;
+  return { ...state, events, memories, invitations, scenes, actorStates: finalActorStates, updatedAt: nowIso };
 }
 
 /** Explicit fast-forward advances one actor, then settles every crossed schedule segment. */
