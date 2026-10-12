@@ -111,11 +111,6 @@ export function LifeEngineApp() {
   const [followDurationMinutes, setFollowDurationMinutes] = useState(120);
   const [inviteAt, setInviteAt] = useState(() => { const d = new Date(Date.now() + 60 * 60_000); d.setMinutes(0,0,0); return new Date(d.getTime() - d.getTimezoneOffset()*60_000).toISOString().slice(0,16); });
   const [customSceneTitle, setCustomSceneTitle] = useState("今天的相处");
-  const [generatingSceneImages, setGeneratingSceneImages] = useState(false);
-  const [sceneImagePromptDraft, setSceneImagePromptDraft] = useState("");
-  const [selectedImageCast, setSelectedImageCast] = useState<string[]>([]);
-  const [sceneImageUrls, setSceneImageUrls] = useState<Record<string, string>>({});
-  const [sceneImageIndex, setSceneImageIndex] = useState(0);
   const [sceneImageBusy, setSceneImageBusy] = useState(false);
   const [sceneImagePrompt, setSceneImagePrompt] = useState("");
   const [sceneImageStyleDraft, setSceneImageStyleDraft] = useState(DEFAULT_LIFE_ENGINE_SETTINGS.sceneImageStyle);
@@ -138,22 +133,6 @@ export function LifeEngineApp() {
     });
     return () => { alive = false; };
   }, []);
-
-  useEffect(() => {
-    let alive = true;
-    const activeId = state.scenes.find(scene => scene.status === "active")?.id ?? state.scenes.find(scene => scene.status === "paused")?.id;
-    const images = state.sceneImages.filter(image => image.sceneId === activeId && image.status !== "deleted").sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
-    void Promise.all(images.map(async image => [image.id, await getChatImageFromIndexedDB(image.assetId)] as const)).then(entries => {
-      if (alive) setSceneImageUrls(Object.fromEntries(entries.filter((entry): entry is readonly [string,string] => typeof entry[1] === "string")));
-    });
-    if (activeId && state.scenes.some(scene => scene.id === activeId)) {
-      const scene = state.scenes.find(item => item.id === activeId)!;
-      const cast = scene.participants.map(participant => participant.ownerId);
-      setSelectedImageCast(current => current.length ? current.filter(id => cast.includes(id)) : cast);
-      setSceneImageIndex(0);
-    }
-    return () => { alive = false; };
-  }, [state.sceneImages, state.scenes]);
 
   const commit = useCallback((next: VirtualLifeState) => {
     stateRef.current = next;
@@ -327,76 +306,6 @@ export function LifeEngineApp() {
     setNotice("已记录你的行动；当前日程计划不会被改写，实际行为和地点单独保存。");
   };
 
-  const generateSceneImages = async (scene = activeScene, options: { count?: number; prompt?: string } = {}) => {
-    if (!scene || generatingSceneImages) return;
-    setGeneratingSceneImages(true);
-    const castIds = (selectedImageCast.length ? selectedImageCast : scene.participants.map(p => p.ownerId)).filter(id => scene.participants.some(p => p.ownerId === id));
-    const castNames = castIds.map(ownerId => ownerId === PLAYER_ID ? playerName : characters.find(character => character.id === ownerId)?.name).filter(Boolean);
-    const castDescriptions = castIds.map(ownerId => {
-      if (ownerId === PLAYER_ID) return settings.userAppearanceDescription ? "玩家形象描述：" + settings.userAppearanceDescription : "玩家外观未指定，不要擅自补充明显外貌特征";
-      const character = characters.find(item => item.id === ownerId);
-      return character ? character.name + "的既有人设：" + [character.persona, character.personality].filter(Boolean).join("；") : "";
-    }).filter(Boolean);
-    const currentActivity = scene.participants.map(participant => {
-      const actor = actors.find(item => item.ownerId === participant.ownerId && item.ownerType === participant.ownerType);
-      return (actor?.name ?? participant.ownerId) + "正在" + participant.activity;
-    }).join("；");
-    const basePrompt = (options.prompt ?? sceneImagePromptDraft ?? settings.sceneImageStyle).trim();
-    const description = [
-      "为虚拟生活场景绘制一张画面，不要拼图，不要文字、水印或字幕。",
-      "地点：" + scene.locationName + "。场景当前状态：" + currentActivity + "。",
-      "画面只包含这些入镜角色：" + (castNames.join("、") || "不出现人物") + "。不要把未选中的角色画进画面。",
-      ...castDescriptions,
-      basePrompt ? "用户指定的画面：" + basePrompt : "自然生活感、人物互动符合当前活动，构图清晰，符合角色设定。",
-      "请保持角色外观一致；如果启用角色参考图，应使用对应角色的参考图。"
-    ].join("\n");
-    const count = Math.max(1, Math.min(options.count ?? settings.sceneImageCount ?? 2, 4));
-    try {
-      for (let index=0; index<count; index++) {
-        const generated = await generateImageFromConfiguredApi({
-          description: description + (count > 1 ? "\n这是同一场景的第 " + (index+1) + " 张不同构图版本，避免与前几张完全重复。" : ""),
-          characterId: castIds.find(id => id !== PLAYER_ID),
-          appId: "story",
-          useReferenceImage: true,
-        });
-        if (!generated) throw new Error("请先到小手机的生图设置中启用并配置图片生成服务。");
-        const assetId = await saveChatImageToIndexedDB(generated.blob);
-        const image: LifeSceneImage = {
-          id: id("scene-image"), sceneId: scene.id, assetId, prompt: generated.prompt || description,
-          cast: castIds, createdAt: new Date().toISOString(), status: "active",
-          generationIndex: stateRef.current.sceneImages.filter(item => item.sceneId === scene.id).length + index,
-        };
-        const latest = stateRef.current;
-        commit({ ...latest, sceneImages: [...latest.sceneImages, image] });
-        setSceneImageIndex(index === 0 ? Math.max(0, latest.sceneImages.filter(item => item.sceneId === scene.id && item.status === "active").length) : current => current + 1);
-      }
-      setNotice("场景图片已生成并保存。旧图仍保留，可切换、归档或删除。");
-    } catch (error) {
-      setNotice("场景生图失败：" + (error instanceof Error ? error.message : String(error)));
-    } finally {
-      setGeneratingSceneImages(false);
-    }
-  };
-
-  const archiveSceneImage = (imageId: string) => {
-    const image = stateRef.current.sceneImages.find(item => item.id === imageId);
-    if (!image) return;
-    commit({ ...stateRef.current, sceneImages: stateRef.current.sceneImages.map(item => item.id === imageId ? { ...item, status: "archived" as const } : item) });
-    setNotice("图片已归档，仍可在“显示已归档”中恢复。");
-  };
-  const restoreSceneImage = (imageId: string) => {
-    commit({ ...stateRef.current, sceneImages: stateRef.current.sceneImages.map(item => item.id === imageId ? { ...item, status: "active" as const } : item) });
-    setNotice("图片已恢复到场景图库。");
-  };
-  const deleteSceneImage = async (imageId: string) => {
-    const image = stateRef.current.sceneImages.find(item => item.id === imageId);
-    if (!image) return;
-    try { await deleteThemeAsset(image.assetId); } catch { /* Metadata is still removed; orphan cleanup can be retried. */ }
-    commit({ ...stateRef.current, sceneImages: stateRef.current.sceneImages.filter(item => item.id !== imageId) });
-    setSceneImageUrls(current => { const next = { ...current }; delete next[imageId]; return next; });
-    setNotice("图片和对应本地资源已删除，释放本地存储空间。");
-  };
-
   const createScene = () => {
     if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
     if (!selectedLocation) { setNotice("请先创建或选择一个地点。"); return; }
@@ -417,7 +326,7 @@ export function LifeEngineApp() {
     commit(next);
     setTab("scene");
     setNotice("共同场景已建立并保存；重新打开会接着当前状态，不会重演。");
-    if (settings.autoGenerateSceneImages) void generateSceneImages(scene);
+
   };
 
   /** Arrival uses actual-location state only; planned locations never create encounters. */
