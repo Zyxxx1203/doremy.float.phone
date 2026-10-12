@@ -3712,7 +3712,10 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const lightSleeper = /浅眠|警觉|敏感|担心|保护欲|容易醒/.test(character.personality || "");
         const seed = [...(character.id + latestUserText)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
         const staysAsleep = !urgent && seed % 100 >= (lightSleeper ? 60 : 15);
-        if (staysAsleep) showChatToast(character.name + "正在睡觉，没有被这条消息叫醒。TA醒来后才可能回复。", 3500);
+        if (staysAsleep) {
+            kvSet("life-sleep-pending-reply:" + session.id, "true");
+            showChatToast(character.name + "正在睡觉，没有被这条消息叫醒。TA醒来后会再查看消息。", 3500);
+        }
         return staysAsleep;
     };
 
@@ -4102,6 +4105,28 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     }, [session.contactId, session.id, session.isGroup, syncMessagesFromStorage, triggerAIResponse]);
 
     // 围观群/被禁言时用户不能发言
+    useEffect(() => {
+        if (session.isGroup || offlineMode || !character) return;
+        const key = "life-sleep-pending-reply:" + session.id;
+        const checkPendingSleepReply = () => {
+            if (kvGet(key) !== "true" || isGeneratingRef.current) return;
+            const latest = loadChatMessages(session.id);
+            const lastUser = [...latest].reverse().find(message => message.role === "user");
+            if (!lastUser) { kvRemove(key); return; }
+            if (shouldSuppressLifeSleepReply(lastUser.content)) return;
+            kvRemove(key);
+            showChatToast(character.name + "醒来后看到了你之前的消息，正在回应。", 3500);
+            void triggerAIResponse();
+        };
+        checkPendingSleepReply();
+        const timer = window.setInterval(checkPendingSleepReply, 30_000);
+        window.addEventListener("focus", checkPendingSleepReply);
+        return () => {
+            window.clearInterval(timer);
+            window.removeEventListener("focus", checkPendingSleepReply);
+        };
+    }, [session.id, session.isGroup, offlineMode, character?.id]);
+
     const ensureGroupSpeakPermission = (): boolean => {
         if (!session.isGroup) return true;
         if (session.isSpectator) {
