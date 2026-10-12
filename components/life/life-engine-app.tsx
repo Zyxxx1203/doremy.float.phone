@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type CSSProperties } from "react";
 import {
-  ArrowLeft, CalendarDays, Clock3, Coffee, Heart, MapPin, MessageCircle,
-  Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Trash2, Users,
+  ArrowLeft, CalendarDays, Coffee, Heart, MapPin, MessageCircle,
+  Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles,
 } from "lucide-react";
 import type { Character } from "@/lib/character-types";
 import { loadCharacters } from "@/lib/character-storage";
@@ -14,7 +14,6 @@ import {
   createEmptyVirtualLifeState,
   DEFAULT_LIFE_ENGINE_SETTINGS,
   type LifeActorClock,
-  type LifeActorState,
   type LifeEngineSettings,
   type LifeLocation,
   type LifeOwnerType,
@@ -65,7 +64,8 @@ function SectionTitle({ eyebrow, title, note }: { eyebrow: string; title: string
 }
 
 export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
-  const [state, setState] = useState<VirtualLifeState>(() => createEmptyVirtualLifeState());\n  const stateRef = useRef(state);
+  const [state, setState] = useState<VirtualLifeState>(() => createEmptyVirtualLifeState());
+  const stateRef = useRef(state);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<Tab>("home");
@@ -83,7 +83,6 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [inviteLocationId, setInviteLocationId] = useState("cafe");
   const [inviteActivity, setInviteActivity] = useState("一起喝杯咖啡");
   const [inviteAt, setInviteAt] = useState(() => { const d = new Date(Date.now() + 60 * 60_000); d.setMinutes(0,0,0); return new Date(d.getTime() - d.getTimezoneOffset()*60_000).toISOString().slice(0,16); });
-  const [customSceneTitle, setCustomSceneTitle] = useState("今天的相处");
 
   useEffect(() => {
     let alive = true;
@@ -91,6 +90,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       if (!alive) return;
       const loaded = loadVirtualLifeState();
       const normalized = { ...loaded, locations: loaded.locations.length ? loaded.locations : INITIAL_LOCATIONS };
+      stateRef.current = normalized;
       setState(normalized);
       setCharacters(loadCharacters());
       setReady(true);
@@ -107,7 +107,6 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     { ownerType: "player", ownerId: PLAYER_ID, name: playerName },
     ...characters.map(char => ({ ownerType: "character" as const, ownerId: char.id, name: char.name, avatar: char.avatar, persona: [char.persona, char.personality].filter(Boolean).join("\n") })),
   ], [characters, playerName]);
-  const selectedActor = actors.find(actor => `${actor.ownerType}:${actor.ownerId}` === selectedActorKey) ?? actors[0];
   const activeScene = useMemo(() => state.scenes.find(scene => scene.status === "active") ?? state.scenes.find(scene => scene.status === "paused"), [state.scenes]);
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
   const selectedLocation = state.locations.find(location => location.id === selectedLocationId) ?? state.locations[0];
@@ -168,7 +167,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   const pushSceneMessage = (message: LifeSceneMessage) => {
     const updatedScene = activeScene ? { ...activeScene, updatedAt: new Date().toISOString() } : null;
-    const latest = stateRef.current;\n    let next = { ...latest, sceneMessages: [...latest.sceneMessages, message] };
+    const latest = stateRef.current;
+    let next = { ...latest, sceneMessages: [...latest.sceneMessages, message] };
     if (updatedScene) next = upsertLifeScene(next, updatedScene);
     commit(next);
   };
