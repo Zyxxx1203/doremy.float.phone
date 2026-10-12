@@ -329,7 +329,7 @@ export function LifeEngineApp() {
     const castIds = (selectedImageCast.length ? selectedImageCast : scene.participants.map(p => p.ownerId)).filter(id => scene.participants.some(p => p.ownerId === id));
     const castNames = castIds.map(ownerId => ownerId === PLAYER_ID ? playerName : characters.find(character => character.id === ownerId)?.name).filter(Boolean);
     const castDescriptions = castIds.map(ownerId => {
-      if (ownerId === PLAYER_ID) return settings.playerAppearanceDescription ? "玩家形象描述：" + settings.playerAppearanceDescription : "玩家外观未指定，不要擅自补充明显外貌特征";
+      if (ownerId === PLAYER_ID) return settings.userAppearanceDescription ? "玩家形象描述：" + settings.userAppearanceDescription : "玩家外观未指定，不要擅自补充明显外貌特征";
       const character = characters.find(item => item.id === ownerId);
       return character ? character.name + "的既有人设：" + [character.persona, character.personality].filter(Boolean).join("；") : "";
     }).filter(Boolean);
@@ -337,7 +337,7 @@ export function LifeEngineApp() {
       const actor = actors.find(item => item.ownerId === participant.ownerId && item.ownerType === participant.ownerType);
       return (actor?.name ?? participant.ownerId) + "正在" + participant.activity;
     }).join("；");
-    const basePrompt = (options.prompt ?? sceneImagePromptDraft ?? settings.sceneImagePrompt).trim();
+    const basePrompt = (options.prompt ?? sceneImagePromptDraft ?? settings.sceneImageStyle).trim();
     const description = [
       "为虚拟生活场景绘制一张画面，不要拼图，不要文字、水印或字幕。",
       "地点：" + scene.locationName + "。场景当前状态：" + currentActivity + "。",
