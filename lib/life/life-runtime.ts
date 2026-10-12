@@ -135,7 +135,7 @@ export function settleActorTimelineToNow(
     if (settledKeys.has(settlementKey)) continue;
     const event: LifeEvent = {
       id: "life-slot-" + slot.id,
-      kind: slot.kind === "appointment" || slot.kind === "special" ? "activity" : "memory",
+      kind: "activity",
       status: "completed",
       startsAt: slot.startAt,
       endsAt: slot.endAt,
@@ -154,18 +154,17 @@ export function settleActorTimelineToNow(
   }
   const current = getCurrentActorSchedule(state, ownerType, ownerId, virtualNow);
   const previous = findActorState(state, ownerType, ownerId);
-  const actorStates = state.actorStates.filter(actor => !(actor.ownerType === ownerType && actor.ownerId === ownerId));
-  if (current) {
-    actorStates.push({
-      ownerType, ownerId,
-      activity: current.title,
-      actualLocationId: current.plannedLocationId ?? previous?.actualLocationId ?? null,
-      actualLocationName: current.plannedLocationName ?? previous?.actualLocationName ?? null,
-      updatedAt: nowIso,
-    });
-  } else if (!previous) {
-    actorStates.push({ ownerType, ownerId, activity: "时间线待补全", actualLocationId: null, actualLocationName: null, updatedAt: nowIso });
-  }
+  const nextActivity = current?.title ?? previous?.activity ?? "时间线待补全";
+  const nextLocationId = current?.plannedLocationId ?? previous?.actualLocationId ?? null;
+  const nextLocationName = current?.plannedLocationName ?? previous?.actualLocationName ?? null;
+  const actorChanged = !previous || previous.activity !== nextActivity || (previous.actualLocationId ?? null) !== nextLocationId || (previous.actualLocationName ?? null) !== nextLocationName;
+  const actorStates = actorChanged
+    ? [...state.actorStates.filter(actor => !(actor.ownerType === ownerType && actor.ownerId === ownerId)), {
+        ownerType, ownerId, activity: nextActivity,
+        actualLocationId: nextLocationId, actualLocationName: nextLocationName, updatedAt: nowIso,
+      }]
+    : state.actorStates;
+  if (events === state.events && !actorChanged) return state;
   return { ...state, events, actorStates, updatedAt: nowIso };
 }
 
