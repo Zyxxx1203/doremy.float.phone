@@ -883,7 +883,7 @@ export function LifeEngineApp() {
           <div className="mt-4 rounded-2xl border border-stone-200/80 bg-white/60 p-4"><p className="text-sm font-semibold">玩家形象设置</p><p className="mt-1 text-xs leading-relaxed text-stone-500">玩家形象描述和参考图统一在「小手机设置 → 生图设置 → 全局玩家形象」管理，整个小手机共用。场景生成时会自动读取该配置；如果所选角色也有参考图，会一起组成参考板。</p></div>
           <div className="mt-4 rounded-2xl border border-stone-200/80 bg-white/60 p-4">
             <p className="text-sm font-semibold">场景生图</p>
-            <p className="mt-1 text-xs leading-relaxed text-stone-500">复用小手机现有生图配置。角色外观描述会作为提示词；如果所选角色已有参考图，会优先带入一张参考图。多角色参考图同时编辑需要底层生图接口支持多参考图，目前会把其余角色的固定外观写入提示词。</p>
+            <p className="mt-1 text-xs leading-relaxed text-stone-500">复用小手机现有生图配置。所选角色和玩家的参考图会合成带标签的参考板，交给支持图生图的引擎；其他角色外观描述也会进入提示词。部分引擎（例如当前 NovelAI 文本生成路径）不支持参考板，会使用文字外观描述。</p>
             <div className="mt-3 space-y-2">
               <Toggle checked={settings.autoGenerateSceneImages} onChange={v=>patchSettings({autoGenerateSceneImages:v})} label="场景变化时自动生成图片" hint="关闭时只在你点生图按钮后生成；新场景、地点或参与者活动发生变化时才自动生成，同一状态不会因重开页面重复扣费。"/>
               <label className="block text-sm">每次生成张数<select value={settings.sceneImageCount} onChange={e=>patchSettings({sceneImageCount:Number(e.target.value) as 1|2|3|4})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value={1}>1 张</option><option value={2}>2 张</option><option value={3}>3 张</option><option value={4}>4 张</option></select></label>
