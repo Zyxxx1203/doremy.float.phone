@@ -552,7 +552,13 @@ export function LifeEngineApp() {
         settings.allowCharactersToStaySilent ? "如果角色当下忙碌、没注意到或不想说话，可以自然沉默。" : "本轮需要对玩家的输入作出回应。",
         wokeFromSleep ? "角色原本正在睡觉，本轮是被消息或紧急情况吵醒；要表现困倦、反应迟缓或不想立刻长谈，不要突然精神饱满。" : "",
         settings.enableAmbientDetails ? "可以用一两笔简短环境细节营造现场感，不要扩写成长篇旁白。" : "不需要环境氛围描写，直接进行实时互动。",
-        settings.enableCharacterAutonomy ? "你可以按需调用生活工具（通过输出对应隐藏标签调用，不要向玩家解释标签）：change_schedule（独立开关开启时）：<life_plan_change startAt=\\"ISO-8601开始时间\\" endAt=\\"ISO-8601结束时间\\" title=\\"新的安排\\" locationId=\\"home\\" />，只调整当前虚拟日的未来时段；propose_invitation（邀约开关开启时）：<life_invitation time=\\"ISO-8601时间\\" locationId=\\"cafe\\" activity=\\"活动\\" durationMinutes=\\"60\\" />，玩家确认后才同步日程；request_follow（陪伴申请开关开启时）：<life_follow_request durationMinutes=\\"120\\" reason=\\"简短原因\\" />，需要玩家确认。每轮最多调用一个工具，仅在角色有真实动机时调用，不要为了展示功能而调用。关闭某个工具后不要输出对应标签。" : "角色自主行动工具已关闭，不要输出生活工具标签。",
+        settings.enableCharacterAutonomy ? [
+          "你可以按需调用下列已启用的生活工具，通过隐藏标签调用，不要向玩家解释标签。",
+          settings.enableScheduleChangeTool ? "change_schedule：<life_plan_change startAt=\"ISO-8601开始时间\" endAt=\"ISO-8601结束时间\" title=\"新的安排\" locationId=\"home\" />。只调整当前虚拟日未来时段，保留前后日程，不覆盖确认约会。" : "",
+          settings.enableInvitations ? "propose_invitation：<life_invitation time=\"ISO-8601时间\" locationId=\"cafe\" activity=\"活动\" durationMinutes=\"60\" />。这是待确认邀约，玩家确认后才同步日程。" : "",
+          settings.enableInvitations && settings.enableFollowRequestTool ? "request_follow：<life_follow_request durationMinutes=\"120\" reason=\"简短原因\" />。需要玩家确认，可被拒绝。" : "",
+          "每轮最多调用一个工具，仅在角色有真实动机时调用，不要为了展示功能调用。"
+        ].filter(Boolean).join(" ") : "角色自主行动工具已关闭，不要输出生活工具标签.",
         settings.customPrompt ? `用户自定义规则：${settings.customPrompt}` : "",
       ].filter(Boolean).join("\n");
       const promptMessage: ChatMessage = {
