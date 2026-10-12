@@ -3,7 +3,8 @@
 import { createSseJsonParser } from "./sse-json";
 import { maybeAppendShortcutCapability, maybeAppendPerceptionStatus } from "./offline-shortcut-capability";
 import { maybeBuildStatusInjection } from "./perception/describe";
-import { loadCharacters } from "./character-storage";\nimport { buildLifeMemoryContext } from "./life/life-memory-bridge";
+import { loadCharacters } from "./character-storage";
+import { buildLifeMemoryContext } from "./life/life-memory-bridge";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
 import { emitChatPluginEvent, runChatPluginTransform } from "./chat-plugin-hooks";
 import { buildChatPluginPromptFragments } from "./chat-plugin-storage";
