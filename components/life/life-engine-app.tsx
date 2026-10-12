@@ -96,6 +96,7 @@ export function LifeEngineApp() {
   const [inviteCharacterId, setInviteCharacterId] = useState("");
   const [inviteLocationId, setInviteLocationId] = useState("cafe");
   const [inviteActivity, setInviteActivity] = useState("一起喝杯咖啡");
+  const [followDurationMinutes, setFollowDurationMinutes] = useState(120);
   const [inviteAt, setInviteAt] = useState(() => { const d = new Date(Date.now() + 60 * 60_000); d.setMinutes(0,0,0); return new Date(d.getTime() - d.getTimezoneOffset()*60_000).toISOString().slice(0,16); });
   const [customSceneTitle, setCustomSceneTitle] = useState("今天的相处");
 
@@ -393,6 +394,37 @@ export function LifeEngineApp() {
       };
       const result = await generateOfflineChatCompletion(session, [...previous, promptMessage]);
       const parsed = parseLifeOutput(result.content);
+      let structuredNext = stateRef.current;
+      if (parsed.planChange?.title) {
+        const characterNow = resolveActorLifeNow(getActorClock(structuredNext, "character", target.id));
+        const dayEnd = new Date(characterNow); dayEnd.setHours(22,0,0,0);
+        const location = structuredNext.locations.find(item => item.id === parsed.planChange?.locationId) ?? structuredNext.locations.find(item => item.id === "home");
+        const changedSchedules = structuredNext.schedules.map(slot => {
+          if (slot.ownerType !== "character" || slot.ownerId !== target.id || slot.kind === "appointment") return slot;
+          const startMs = new Date(slot.startAt).getTime();
+          if (startMs <= characterNow.getTime() || startMs >= dayEnd.getTime() || new Date(slot.endAt).getTime() <= characterNow.getTime()) return slot;
+          return { ...slot, title: parsed.planChange!.title, plannedLocationId: location?.id ?? "home", plannedLocationName: location?.name ?? "家", source: "manual" as const, updatedAt: new Date().toISOString() };
+        });
+        structuredNext = { ...structuredNext, schedules: changedSchedules };
+        const currentState = structuredNext.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === target.id);
+        if (currentState) structuredNext = upsertActorState(structuredNext, { ...currentState, activity: "正在重新安排接下来的时间", updatedAt: new Date().toISOString() });
+        setNotice(target.name + "决定调整今天剩余的日程；已发生的时段和已确认约会都没有被改写。");
+      }
+      if (parsed.followRequest) {
+        const playerNow = resolveActorLifeNow(getActorClock(structuredNext, "player", PLAYER_ID));
+        const characterNow = resolveActorLifeNow(getActorClock(structuredNext, "character", target.id));
+        const playerPresence = structuredNext.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
+        structuredNext = makeLifeInvitation(structuredNext, {
+          characterId: target.id, playerId: PLAYER_ID,
+          proposedAt: new Date(Math.max(playerNow.getTime(), characterNow.getTime()) + 60_000).toISOString(),
+          locationId: playerPresence?.actualLocationId ?? undefined,
+          locationName: playerPresence?.actualLocationName ?? undefined,
+          activity: "申请陪伴并跟随你的行程" + (parsed.followRequest.reason ? "（" + parsed.followRequest.reason + "）" : ""),
+          kind: "follow-request", durationMinutes: parsed.followRequest.durationMinutes,
+        });
+        setNotice(target.name + "提出了陪伴申请；你可以在「邀约活动」中确认或拒绝。");
+      }
+      if (structuredNext !== stateRef.current) commit(structuredNext);
       pushSceneMessage({ id: id("turn"), sceneId: activeScene.id, speakerType: "character", speakerId: target.id, speakerName: target.name, role: "character", action: settings.showActionNarration ? parsed.action : undefined, dialogue: parsed.dialogue, createdAt: new Date().toISOString() });
       if (settings.saveConfirmedEventsToMemory && userText.trim() && parsed.dialogue.trim()) {
         const eventId = id("event"), eventNow = new Date().toISOString();
@@ -423,6 +455,25 @@ export function LifeEngineApp() {
     const next = makeLifeInvitation(state, { characterId: character.id, playerId: PLAYER_ID, proposedAt: new Date(inviteAt).toISOString(), locationId: location?.id, locationName: location?.name, activity: inviteActivity.trim() });
     commit(next);
     setNotice("邀约已记录为待确认；只有确认后才会建立双方日程事件。");
+  };
+
+  const createFollowRequest = (characterId: string, durationMinutes = followDurationMinutes, reason = "") => {
+    const character = characters.find(item => item.id === characterId);
+    if (!character) { setNotice("请先选择一位角色。"); return; }
+    const playerNow = resolveActorLifeNow(getActorClock(stateRef.current, "player", PLAYER_ID));
+    const characterNow = resolveActorLifeNow(getActorClock(stateRef.current, "character", character.id));
+    const proposedAt = new Date(Math.max(playerNow.getTime(), characterNow.getTime()) + 60_000).toISOString();
+    const playerPresence = stateRef.current.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
+    const next = makeLifeInvitation(stateRef.current, {
+      characterId: character.id, playerId: PLAYER_ID, proposedAt,
+      locationId: playerPresence?.actualLocationId ?? undefined,
+      locationName: playerPresence?.actualLocationName ?? undefined,
+      activity: "申请陪伴并跟随你的行程" + (reason ? "（" + reason + "）" : ""),
+      kind: "follow-request", durationMinutes,
+    });
+    commit(next);
+    setTab("invitations");
+    setNotice(character.name + "的陪伴申请已放入待确认列表。你确认后，TA才会在约定时段跟随你的实际地点。");
   };
 
   const confirmInvitation = (inviteId: string) => {
