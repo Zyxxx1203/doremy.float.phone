@@ -53,7 +53,7 @@ function normalizeState(value: unknown): VirtualLifeState {
     locations: Array.isArray(raw.locations) ? raw.locations : [],
     actorStates: Array.isArray(raw.actorStates) ? raw.actorStates : [],
     schedules: Array.isArray(raw.schedules) ? raw.schedules : [],
-    scenes: Array.isArray(raw.scenes) ? raw.scenes : [],
+    scenes: Array.isArray(raw.scenes) ? raw.scenes : [],\n    sceneMessages: Array.isArray(raw.sceneMessages) ? raw.sceneMessages : [],
     events: Array.isArray(raw.events) ? raw.events : [],
     invitations: Array.isArray(raw.invitations) ? raw.invitations : [],
     memories: Array.isArray(raw.memories) ? raw.memories : [],
