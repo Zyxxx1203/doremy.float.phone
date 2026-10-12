@@ -3707,7 +3707,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const schedule = getCurrentActorSchedule(life, "character", character.id, now);
         const presence = life.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === character.id);
         const sleeping = /睡眠|睡觉|入睡|午休/.test((presence?.activity || "") + " " + (schedule?.title || ""));
-        if (!sleeping) return false;
+        if (!sleeping) { kvRemove("life-sleep-pending-reply:" + session.id); return false; }
         const urgent = /救命|紧急|出事了|危险|受伤|快来|急救/.test(latestUserText);
         const lightSleeper = /浅眠|警觉|敏感|担心|保护欲|容易醒/.test(character.personality || "");
         const seed = [...(character.id + latestUserText)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
@@ -3715,6 +3715,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         if (staysAsleep) {
             kvSet("life-sleep-pending-reply:" + session.id, "true");
             showChatToast(character.name + "正在睡觉，没有被这条消息叫醒。TA醒来后会再查看消息。", 3500);
+        } else {
+            kvRemove("life-sleep-pending-reply:" + session.id);
         }
         return staysAsleep;
     };
