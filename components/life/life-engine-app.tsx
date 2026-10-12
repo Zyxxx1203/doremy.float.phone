@@ -119,6 +119,15 @@ export function LifeEngineApp() {
   const settings = state.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;
   const playerName = settings.playerDisplayName || "我";
 
+  useEffect(() => {
+    if (!ready || !settings.autoGenerateWeeklyPlans) return;
+    let next = state;
+    const start = mondayStart(new Date());
+    next = generateWeeklyLifePlan(next, "player", PLAYER_ID, playerName, start, { id: "home", name: "家" });
+    for (const character of characters) next = generateWeeklyLifePlan(next, "character", character.id, character.name, start, { id: "home", name: "家" }, [character.persona, character.personality].filter(Boolean).join(" "), settings.generateSpecialEvents);
+    if (next !== state) commit(next);
+  }, [ready, settings.autoGenerateWeeklyPlans, settings.generateSpecialEvents, characters, playerName, state, commit]);
+
   const patchSettings = (patch: Partial<LifeEngineSettings>) => commit({ ...state, settings: { ...settings, ...patch } });
   const patchActorClock = (actor: ActorChoice, patch: Partial<Pick<LifeActorClock, "mode" | "speed">>) => commit(upsertActorClock(state, actor.ownerType, actor.ownerId, patch));
   const actorNow = (actor: ActorChoice) => resolveActorLifeNow(getActorClock(state, actor.ownerType, actor.ownerId));
@@ -130,7 +139,7 @@ export function LifeEngineApp() {
     let next = state;
     const start = mondayStart(new Date());
     next = generateWeeklyLifePlan(next, "player", PLAYER_ID, playerName, start, { id: "home", name: "家" });
-    for (const character of characters) next = generateWeeklyLifePlan(next, "character", character.id, character.name, start, { id: "home", name: "家" });
+    for (const character of characters) next = generateWeeklyLifePlan(next, "character", character.id, character.name, start, { id: "home", name: "家" }, [character.persona, character.personality].filter(Boolean).join(" "), settings.generateSpecialEvents);
     if (next === state) setNotice("本周计划已经存在，没有重新生成或覆盖你的修改。");
     else { commit(next); setNotice("已为你和角色生成本周可编辑的生活日程。"); }
   };
