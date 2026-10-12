@@ -111,6 +111,76 @@ export function generateWeeklyLifePlan(state: VirtualLifeState, ownerType: LifeO
   return { ...state, schedules: [...state.schedules,...slots].sort((a,b)=>a.startAt.localeCompare(b.startAt)) };
 }
 
+/**
+ * Catch up one actor to their own virtual now. Every completed schedule slot is
+ * settled idempotently, and the current slot updates their real activity/location.
+ * This runs on app resume and after explicit fast-forward; it never advances another actor.
+ */
+export function settleActorTimelineToNow(
+  state: VirtualLifeState,
+  ownerType: LifeOwnerType,
+  ownerId: string,
+  realNow = new Date(),
+): VirtualLifeState {
+  const clock = getActorClock(state, ownerType, ownerId);
+  const virtualNow = resolveActorLifeNow(clock, realNow);
+  const nowIso = realNow.toISOString();
+  let events = state.events;
+  const settledKeys = new Set(events.map(event => event.settlementKey).filter(Boolean));
+  for (const slot of state.schedules) {
+    if (slot.ownerType !== ownerType || slot.ownerId !== ownerId) continue;
+    const endMs = new Date(slot.endAt).getTime();
+    if (!Number.isFinite(endMs) || endMs > virtualNow.getTime()) continue;
+    const settlementKey = "schedule:" + slot.id;
+    if (settledKeys.has(settlementKey)) continue;
+    const event: LifeEvent = {
+      id: "life-slot-" + slot.id,
+      kind: slot.kind === "appointment" || slot.kind === "special" ? "activity" : "memory",
+      status: "completed",
+      startsAt: slot.startAt,
+      endsAt: slot.endAt,
+      locationId: slot.plannedLocationId ?? undefined,
+      locationName: slot.plannedLocationName ?? undefined,
+      participantIds: [ownerId],
+      title: slot.title,
+      details: "该时段已按个人时间线经过并结算。",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      completedAt: nowIso,
+      settlementKey,
+    };
+    events = [...events, event];
+    settledKeys.add(settlementKey);
+  }
+  const current = getCurrentActorSchedule(state, ownerType, ownerId, virtualNow);
+  const previous = findActorState(state, ownerType, ownerId);
+  const actorStates = state.actorStates.filter(actor => !(actor.ownerType === ownerType && actor.ownerId === ownerId));
+  if (current) {
+    actorStates.push({
+      ownerType, ownerId,
+      activity: current.title,
+      actualLocationId: current.plannedLocationId ?? previous?.actualLocationId ?? null,
+      actualLocationName: current.plannedLocationName ?? previous?.actualLocationName ?? null,
+      updatedAt: nowIso,
+    });
+  } else if (!previous) {
+    actorStates.push({ ownerType, ownerId, activity: "时间线待补全", actualLocationId: null, actualLocationName: null, updatedAt: nowIso });
+  }
+  return { ...state, events, actorStates, updatedAt: nowIso };
+}
+
+/** Explicit fast-forward advances one actor, then settles every crossed schedule segment. */
+export function advanceActorTimeline(
+  state: VirtualLifeState,
+  ownerType: LifeOwnerType,
+  ownerId: string,
+  minutes: number,
+  realNow = new Date(),
+): VirtualLifeState {
+  const advanced = fastForwardActor(state, ownerType, ownerId, minutes, realNow);
+  return settleActorTimelineToNow(advanced, ownerType, ownerId, realNow);
+}
+
 export function getCurrentActorSchedule(state: VirtualLifeState, ownerType: LifeOwnerType, ownerId: string, at: Date) {
   const time = at.getTime();
   return state.schedules.find(slot => slot.ownerType===ownerType && slot.ownerId===ownerId && new Date(slot.startAt).getTime()<=time && new Date(slot.endAt).getTime()>time);
