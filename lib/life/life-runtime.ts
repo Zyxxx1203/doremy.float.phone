@@ -2,6 +2,7 @@ import type { LifeActorClock, LifeActorState, LifeEvent, LifeInvitation, LifeOwn
 
 const DAY_MS = 86_400_000;
 const clampSpeed = (speed: number) => Math.max(0.01, Math.min(Number.isFinite(speed) ? speed : 1, 1000));
+const mondayStartLife = (date: Date) => { const d = new Date(date); d.setHours(0,0,0,0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
 export const lifeActorKey = (ownerType: LifeOwnerType, ownerId: string) => `${ownerType}:${ownerId}`;
 
 export function getActorClock(state: VirtualLifeState, ownerType: LifeOwnerType, ownerId: string): LifeActorClock {
@@ -176,9 +177,22 @@ export function advanceActorTimeline(
   ownerType: LifeOwnerType,
   ownerId: string,
   minutes: number,
+  ownerName = ownerId,
+  profile = "",
   realNow = new Date(),
 ): VirtualLifeState {
-  const advanced = fastForwardActor(state, ownerType, ownerId, minutes, realNow);
+  const current = resolveActorLifeNow(getActorClock(state, ownerType, ownerId), realNow);
+  const target = new Date(current.getTime() + Math.max(0, minutes) * 60_000);
+  const existing = state.schedules.filter(slot => slot.ownerType === ownerType && slot.ownerId === ownerId);
+  const latestEnd = existing.reduce((max, slot) => Math.max(max, new Date(slot.endAt).getTime()), Number.NEGATIVE_INFINITY);
+  let week = mondayStartLife(Number.isFinite(latestEnd) && latestEnd > current.getTime() ? new Date(latestEnd - 1) : current);
+  const targetWeek = mondayStartLife(target);
+  let next = state;
+  // Fast-forward may cross many days/weeks. Fill every crossed week before settling.
+  for (let guard = 0; week.getTime() <= targetWeek.getTime() && guard < 520; guard++, week = new Date(week.getTime() + 7 * DAY_MS)) {
+    next = generateWeeklyLifePlan(next, ownerType, ownerId, ownerName, week, { id: "home", name: "家" }, profile, true);
+  }
+  const advanced = fastForwardActor(next, ownerType, ownerId, minutes, realNow);
   return settleActorTimelineToNow(advanced, ownerType, ownerId, realNow);
 }
 
