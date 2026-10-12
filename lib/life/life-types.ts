@@ -53,16 +53,11 @@ export type LifeEngineSettings = {
   showLocationHints: boolean;
   enableAmbientDetails: boolean;
   autoGenerateSceneImages: boolean;
-  sceneImageCount: number;
-  sceneImagePrompt: string;
-  playerAppearanceDescription: string;
-  customPrompt: string;
-  autoGenerateSceneImages: boolean;
   sceneImageCount: 1 | 2 | 3 | 4;
   sceneImageStyle: string;
   userAppearanceDescription: string;
+  customPrompt: string;
 };
-
 export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   playerDisplayName: "我",
   enabled: true,
@@ -90,13 +85,9 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   enableAmbientDetails: true,
   autoGenerateSceneImages: false,
   sceneImageCount: 2,
-  sceneImagePrompt: "",
-  playerAppearanceDescription: "",
-  customPrompt: "",
-  autoGenerateSceneImages: false,
-  sceneImageCount: 2,
   sceneImageStyle: "温暖自然的生活感，电影级构图，表情与动作自然，保持角色外观一致",
   userAppearanceDescription: "",
+  customPrompt: "",
 };
 
 export type LifeScheduleSlot = {
