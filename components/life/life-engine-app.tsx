@@ -212,6 +212,54 @@ export function LifeEngineApp() {
     setNotice(`${actor.name}的实际地点已更新为「${location.name}」。这与日程中的计划地点分开保存。`);
   };
 
+  const recordPlayerAction = () => {
+    const text = playerActivity.trim();
+    if (!text) { setNotice("先写下你现在正在做什么。"); return; }
+    const latest = stateRef.current;
+    const currentPlayer = latest.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
+    const locationId = currentPlayer?.actualLocationId ?? selectedLocation?.id ?? null;
+    const locationName = currentPlayer?.actualLocationName ?? selectedLocation?.name ?? null;
+    const now = new Date().toISOString();
+    let next = upsertActorState(latest, {
+      ownerType: "player", ownerId: PLAYER_ID, activity: text,
+      scheduleSlotId: currentPlayer?.scheduleSlotId ?? null,
+      actualLocationId: locationId, actualLocationName: locationName, updatedAt: now,
+    });
+    const currentScene = next.scenes.find(scene => scene.status === "active") ?? next.scenes.find(scene => scene.status === "paused");
+    if (currentScene) {
+      const participants = currentScene.participants.map(participant =>
+        participant.ownerType === "player" && participant.ownerId === PLAYER_ID ? { ...participant, activity: text } : participant,
+      );
+      next = upsertLifeScene(next, { ...currentScene, participants, updatedAt: now });
+      next = { ...next, sceneMessages: [...next.sceneMessages, {
+        id: id("turn"), sceneId: currentScene.id, speakerType: "player", speakerId: PLAYER_ID,
+        speakerName: playerName, role: "player", action: text, dialogue: "", createdAt: now,
+      }] };
+      const colocated = next.actorStates.filter(actor => actor.actualLocationId && actor.actualLocationId === locationId).map(actor => actor.ownerId);
+      const participantsInFact = [...new Set([PLAYER_ID, ...colocated])];
+      if (settings.saveConfirmedEventsToMemory) {
+        const eventId = id("event");
+        const eventNow = resolveActorLifeNow(getActorClock(next, "player", PLAYER_ID)).toISOString();
+        next = {
+          ...next,
+          events: [...next.events, {
+            id: eventId, kind: "activity" as const, status: "completed" as const,
+            startsAt: eventNow, endsAt: eventNow,
+            locationId: locationId ?? undefined, locationName: locationName ?? undefined,
+            participantIds: participantsInFact, title: text,
+            details: "玩家在共同生活场景中执行了该行动。", createdAt: now, updatedAt: now, completedAt: now,
+          }],
+          memories: [{
+            id: id("memory"), eventId, occurredAt: eventNow, participants: participantsInFact,
+            fact: playerName + "在" + (locationName ?? currentScene.locationName) + "：" + text,
+          }, ...next.memories].slice(0, 500),
+        };
+      }
+    }
+    commit(next);
+    setNotice("已记录你的行动；当前日程计划不会被改写，实际行为和地点单独保存。");
+  };
+
   const createScene = () => {
     if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
     if (!selectedLocation) { setNotice("请先创建或选择一个地点。"); return; }
@@ -278,8 +326,10 @@ export function LifeEngineApp() {
   };
 
   const pushSceneMessage = (message: LifeSceneMessage) => {
-    const updatedScene = activeScene ? { ...activeScene, updatedAt: new Date().toISOString() } : null;
-    let next = { ...state, sceneMessages: [...state.sceneMessages, message] };
+    const latest = stateRef.current;
+    const currentScene = latest.scenes.find(scene => scene.status === "active") ?? latest.scenes.find(scene => scene.status === "paused");
+    const updatedScene = currentScene ? { ...currentScene, updatedAt: new Date().toISOString() } : null;
+    let next = { ...latest, sceneMessages: [...latest.sceneMessages, message] };
     if (updatedScene) next = upsertLifeScene(next, updatedScene);
     commit(next);
   };
@@ -371,6 +421,17 @@ export function LifeEngineApp() {
 
   const themeClass = settings.sceneTheme === "night-sky" ? "from-slate-950 via-slate-900 to-indigo-950 text-slate-100" : settings.sceneTheme === "sage" ? "from-[#eaf0e8] via-[#f3f4eb] to-[#dce8dc] text-stone-800" : settings.sceneTheme === "rose" ? "from-[#fff0f1] via-[#fff8f6] to-[#f7e3e5] text-stone-800" : "from-[#fbf4e9] via-[#f7efe4] to-[#ead9c6] text-stone-800";
   const cssVars = { "--life-accent": settings.accentColor, "--life-opacity": settings.panelOpacity / 100, "--life-font": `${settings.dialogueFontSize}px`, "--life-narration-font": `${settings.narrationFontSize}px` } as CSSProperties;
+  const playerActor = actors[0];
+  const playerNow = actorNow(playerActor);
+  const playerDayStart = new Date(playerNow); playerDayStart.setHours(0,0,0,0);
+  const playerDayEnd = new Date(playerDayStart.getTime() + 24 * 60 * 60 * 1000);
+  const playerTodaySlots = state.schedules.filter(slot => slot.ownerType === "player" && slot.ownerId === PLAYER_ID && new Date(slot.startAt).getTime() < playerDayEnd.getTime() && new Date(slot.endAt).getTime() > playerDayStart.getTime()).sort((a,b)=>a.startAt.localeCompare(b.startAt));
+  const playerPastSlots = playerTodaySlots.filter(slot => new Date(slot.endAt).getTime() <= playerNow.getTime());
+  const playerCurrentSlot = playerTodaySlots.find(slot => new Date(slot.startAt).getTime() <= playerNow.getTime() && new Date(slot.endAt).getTime() > playerNow.getTime());
+  const playerFutureSlots = playerTodaySlots.filter(slot => new Date(slot.startAt).getTime() > playerNow.getTime());
+  const playerPresence = actorState(playerActor);
+  const nearbyCharacters = characters.map(character => ({ character, presence: state.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === character.id) })).filter(item => !!playerPresence?.actualLocationId && item.presence?.actualLocationId === playerPresence.actualLocationId);
+
 
   if (!ready) return <main className="flex min-h-screen items-center justify-center bg-[#f7efe4] text-stone-500">正在打开生活档案…</main>;
 
@@ -381,8 +442,8 @@ export function LifeEngineApp() {
         <div className="flex flex-wrap items-center gap-2"><span className="rounded-full border border-white/70 bg-white/60 px-3 py-1.5 text-xs">{actors.length} 位生活参与者</span><button onClick={ensurePlans} className="inline-flex items-center gap-2 rounded-full bg-[var(--life-accent)] px-4 py-2 text-sm font-medium text-white shadow-sm"><CalendarDays size={15}/>生成本周日程</button></div>
       </header>
       {notice && <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-[var(--life-accent)]/20 bg-white/75 px-4 py-3 text-sm text-stone-700"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="关闭提示">×</button></div>}
-      <nav className="mb-5 grid grid-cols-5 gap-1 rounded-2xl border border-white/80 bg-white/55 p-1 shadow-sm">
-        {([{id:"home",label:"生活总览",icon:Heart},{id:"scene",label:"生活场景",icon:MessageCircle},{id:"plans",label:"七日日程",icon:CalendarDays},{id:"invitations",label:"邀约",icon:Coffee},{id:"settings",label:"自定义",icon:Settings2}] as const).filter(item => (item.id !== "plans" || settings.showTimeline) && (item.id !== "invitations" || settings.enableInvitations)).map(item => { const Icon=item.icon; return <button key={item.id} onClick={() => setTab(item.id)} className={`flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] transition sm:flex-row sm:text-sm ${tab===item.id?"bg-white text-[var(--life-accent)] shadow-sm":"opacity-65 hover:opacity-100"}`}><Icon size={16}/>{item.label}</button>; })}
+      <nav className="mb-5 grid grid-cols-4 gap-1 rounded-2xl border border-white/80 bg-white/55 p-1 shadow-sm">
+        {([{id:"home",label:"角色日常",icon:Heart},{id:"invitations",label:"邀约活动",icon:Coffee},{id:"scene",label:"共同经历",icon:MessageCircle},{id:"settings",label:"自定义",icon:Settings2}] as const).filter(item => item.id !== "invitations" || settings.enableInvitations).map(item => { const Icon=item.icon; return <button key={item.id} onClick={() => setTab(item.id)} className={`flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] transition sm:flex-row sm:text-sm ${tab===item.id?"bg-white text-[var(--life-accent)] shadow-sm":"opacity-65 hover:opacity-100"}`}><Icon size={16}/>{item.label}</button>; })}
       </nav>
 
       {tab === "home" && <div className="grid gap-4 lg:grid-cols-[1.15fr_.85fr]">
