@@ -504,7 +504,7 @@ export function ImageGenerationSettings() {
             <div className="menu-group p-4 flex flex-col gap-3">
                 <div>
                     <div className="menu-label">全局玩家形象（整个小手机共用）</div>
-                    <p className="menu-desc mt-1">为描绘“你本人”的生图功能提供统一形象。没有参考图也可以只写描述；生活场景会把所选角色的参考图与玩家参考图合成参考板（图生图引擎支持时生效）。</p>
+                    <p className="menu-desc mt-1">为描绘“你本人”的生图功能提供统一形象。没有参考图也可以只写描述；生活场景会把所选角色的参考图与玩家参考图合成参考板；OpenAI 兼容图生图方案支持参考板，NovelAI 当前只使用外观文字描述。</p>
                 </div>
                 <div className="flex flex-col gap-1">
                     <label className="menu-desc ml-1">固定外观描述</label>
