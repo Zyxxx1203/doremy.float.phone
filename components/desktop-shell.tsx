@@ -4242,6 +4242,10 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       return <StoryApp onClose={() => setActiveApp(null)} />;
     }
 
+    if (activeApp === "life") {
+      return <LifeEngineApp onClose={() => setActiveApp(null)} />;
+    }
+
     if (activeApp === "vnmode") {
       return <VnApp onClose={() => setActiveApp(null)} />;
     }
