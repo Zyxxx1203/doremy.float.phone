@@ -3699,7 +3699,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     const shouldSuppressLifeSleepReply = (userText?: string, notify = true): boolean => {
         if (session.isGroup || offlineMode || !character) return false;
         const life = loadVirtualLifeState();
-        if (!life.settings.enabled || !life.settings.allowCharactersToStaySilent) return false;
+        if (!life.settings.enabled || !life.settings.allowCharactersToStaySilent) { kvRemove("life-sleep-pending-reply:" + session.id); return false; }
         const latestUserText = (userText || loadChatMessages(session.id).filter(message => message.role === "user").slice(-1)[0]?.content || "").trim();
         if (!latestUserText) return false;
         const clock = getActorClock(life, "character", character.id);
