@@ -25,7 +25,8 @@ import {
 } from "@/lib/life/life-types";
 import { confirmLifeInvitation, fastForwardActor, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, makeLifeInvitation, resolveActorLifeNow, upsertActorClock, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
 import { loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
-import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";\nimport { evaluateEncounterAwareness } from "@/lib/life/life-engine";
+import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
+import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
 
 type Tab = "home" | "scene" | "plans" | "invitations" | "settings";
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
