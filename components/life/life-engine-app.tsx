@@ -545,7 +545,7 @@ export function LifeEngineApp() {
         settings.allowCharactersToStaySilent ? "如果角色当下忙碌、没注意到或不想说话，可以自然沉默。" : "本轮需要对玩家的输入作出回应。",
         wokeFromSleep ? "角色原本正在睡觉，本轮是被消息或紧急情况吵醒；要表现困倦、反应迟缓或不想立刻长谈，不要突然精神饱满。" : "",
         settings.enableAmbientDetails ? "可以用一两笔简短环境细节营造现场感，不要扩写成长篇旁白。" : "不需要环境氛围描写，直接进行实时互动。",
-        settings.enableCharacterAutonomy ? "你可以按需调用以下三个生活工具（通过输出对应隐藏标签调用，不要向玩家解释标签）：1) change_schedule：<life_plan_change startAt=\"ISO-8601开始时间\" endAt=\"ISO-8601结束时间\" title=\"新的安排\" locationId=\"home\" />，仅调整你自己的当前虚拟日未来未开始时段，已发生时间和已确认约会不可改，不能瞬移；2) propose_invitation：<life_invitation time=\"ISO-8601时间\" locationId=\"cafe\" activity=\"活动\" durationMinutes=\"60\" />，提出邀约但必须由玩家确认才改日程；3) request_follow：<life_follow_request durationMinutes=\"120\" reason=\"简短原因\" />，申请在一段时间内跟随玩家，必须由玩家确认且可拒绝。每轮最多调用一个工具，只有角色确实有动机时才调用，不要为展示功能而调用。关闭自主行动后，所有工具调用都会被忽略。" : "角色自主行动工具已关闭，不要输出生活工具标签。",
+        settings.enableCharacterAutonomy ? "你可以按需调用生活工具（通过输出对应隐藏标签调用，不要向玩家解释标签）：change_schedule（独立开关开启时）：<life_plan_change startAt=\\"ISO-8601开始时间\\" endAt=\\"ISO-8601结束时间\\" title=\\"新的安排\\" locationId=\\"home\\" />，只调整当前虚拟日的未来时段；propose_invitation（邀约开关开启时）：<life_invitation time=\\"ISO-8601时间\\" locationId=\\"cafe\\" activity=\\"活动\\" durationMinutes=\\"60\\" />，玩家确认后才同步日程；request_follow（陪伴申请开关开启时）：<life_follow_request durationMinutes=\\"120\\" reason=\\"简短原因\\" />，需要玩家确认。每轮最多调用一个工具，仅在角色有真实动机时调用，不要为了展示功能而调用。关闭某个工具后不要输出对应标签。" : "角色自主行动工具已关闭，不要输出生活工具标签。",
         settings.customPrompt ? `用户自定义规则：${settings.customPrompt}` : "",
       ].filter(Boolean).join("\n");
       const promptMessage: ChatMessage = {
@@ -555,7 +555,7 @@ export function LifeEngineApp() {
       const result = await generateOfflineChatCompletion(session, [...previous, promptMessage]);
       const parsed = parseLifeOutput(result.content);
       let structuredNext = stateRef.current;
-      if (settings.enableCharacterAutonomy && parsed.planChange?.title) {
+      if (settings.enableCharacterAutonomy && settings.enableScheduleChangeTool && parsed.planChange?.title) {
         const characterNow = resolveActorLifeNow(getActorClock(structuredNext, "character", target.id));
         const startAt = new Date(parsed.planChange.startAt);
         const endAt = new Date(parsed.planChange.endAt);
@@ -595,7 +595,7 @@ export function LifeEngineApp() {
           setNotice(target.name+"提出的邀约时间无效或已经过去，因此没有写入日程。");
         }
       }
-      if (settings.enableCharacterAutonomy && settings.enableInvitations && parsed.followRequest) {
+      if (settings.enableCharacterAutonomy && settings.enableFollowRequestTool && settings.enableInvitations && parsed.followRequest) {
         const playerNow = resolveActorLifeNow(getActorClock(structuredNext, "player", PLAYER_ID));
         const characterNow = resolveActorLifeNow(getActorClock(structuredNext, "character", target.id));
         const playerPresence = structuredNext.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
@@ -843,7 +843,8 @@ export function LifeEngineApp() {
             <Toggle checked={settings.generateSpecialEvents} onChange={v=>patchSettings({generateSpecialEvents:v})} label="允许偶发特殊事件"/>
             <Toggle checked={settings.enableCoincidences} onChange={v=>patchSettings({enableCoincidences:v})} label="启用偶遇与注意力判断" hint="关闭后场景仍可互动，但不做随机偶遇判断。"/>
             <Toggle checked={settings.enableCharacterAutonomy} onChange={v=>patchSettings({enableCharacterAutonomy:v})} label="允许角色自主行动"/>
-            <Toggle checked={settings.enableInvitations} onChange={v=>patchSettings({enableInvitations:v})} label="启用邀约系统"/>
+            <div className="ml-3 space-y-2 border-l-2 border-[#e7d4c1] pl-3"><Toggle checked={settings.enableScheduleChangeTool} onChange={v=>patchSettings({enableScheduleChangeTool:v})} label="允许角色自主调整日程" hint="只允许改当前虚拟日的未来时段，不会覆盖确认约会。"/><Toggle checked={settings.enableInvitations} onChange={v=>patchSettings({enableInvitations:v})} label="允许角色主动发出邀约"/><Toggle checked={settings.enableFollowRequestTool} onChange={v=>patchSettings({enableFollowRequestTool:v})} label="允许角色申请陪伴并跟随你"/></div>
+
             <Toggle checked={settings.saveConfirmedEventsToMemory} onChange={v=>patchSettings({saveConfirmedEventsToMemory:v})} label="将已发生的事件写入生活记忆"/>
             <Toggle checked={settings.showActionNarration} onChange={v=>patchSettings({showActionNarration:v})} label="显示简短动作旁白"/>
             <Toggle checked={settings.keepDialogueConcise} onChange={v=>patchSettings({keepDialogueConcise:v})} label="默认保持短回合对话"/>
