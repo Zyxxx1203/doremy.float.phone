@@ -6,6 +6,9 @@ import type { WidgetInstance, WidgetType } from "@/lib/widget-types";
 import { WIDGET_SIZE_CELLS, WIDGET_CATALOG } from "@/lib/widget-types";
 import { useMusicPlayerOptional } from "@/lib/music-context";
 import { resolveUserIdentity } from "@/lib/settings-storage";
+import { loadCharacters } from "@/lib/character-storage";
+import { loadVirtualLifeState } from "@/lib/life/life-storage";
+import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "@/lib/life/life-runtime";
 import { ContentDialog } from "@/components/ui/modal";
 import { getMascotState, activateMascot, subscribeMascot } from "@/lib/mascot-state";
 import { getMascotSettingsSnapshot, resolveMascotImageRef, subscribeMascotSettings } from "@/lib/mascot-settings";
@@ -90,6 +93,10 @@ function WidgetContent({
   switch (type) {
     case "music":
       return <MusicWidget config={config} widgetId={widgetId} onConfigChange={onConfigChange} />;
+    case "lifeTimeline":
+      return <LifeTimelineWidget config={config} widgetId={widgetId} onConfigChange={onConfigChange} preview={preview} />;
+    case "lifeCharacter":
+      return <LifeCharacterWidget config={config} widgetId={widgetId} onConfigChange={onConfigChange} preview={preview} />;
     case "calendar":
       return <CalendarWidget />;
     case "clock":
@@ -158,6 +165,89 @@ function WidgetContent({
     default:
       return null;
   }
+}
+
+// ----------------------------------------------------
+//   Virtual Life Widgets
+// ----------------------------------------------------
+function LifeTimelineWidget({ config, widgetId, onConfigChange, preview }: any) {
+  const [snapshot, setSnapshot] = useState<any>(null);
+  const [showNext, setShowNext] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => {
+      const state = loadVirtualLifeState();
+      const clock = getActorClock(state, "player", "player");
+      const now = resolveActorLifeNow(clock);
+      const current = getCurrentActorSchedule(state, "player", "player", now);
+      const next = state.schedules.filter(slot => slot.ownerType === "player" && slot.ownerId === "player" && new Date(slot.startAt).getTime() > now.getTime()).sort((a,b)=>a.startAt.localeCompare(b.startAt))[0];
+      const actual = state.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === "player");
+      if (alive) setSnapshot({ now, current, next, actual, settings: state.settings });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+    return () => { alive = false; window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+  }, []);
+  const accent = typeof config?.accentColor === "string" && /^#[0-9a-f]{6}$/i.test(config.accentColor) ? config.accentColor : "#a8795c";
+  if (!snapshot) return <div className="flex h-full items-center justify-center text-xs text-stone-400">正在读取生活时间线…</div>;
+  const { now, current, next, actual, settings } = snapshot;
+  const time = now.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false});
+  return <div className="flex h-full flex-col justify-between overflow-hidden rounded-xl p-3" style={{background:typeof config?.background==="string"?config.background:"linear-gradient(145deg,#fffaf1,#ead8c4)",color:"#4d3b30"}}>
+    <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-semibold tracking-[.16em]" style={{color:accent}}>MY LIFE · TODAY</span><span className="text-xs font-semibold">{time}</span></div>
+    <div className="min-h-0"><p className="mt-2 truncate text-base font-semibold">{actual?.activity || current?.title || "今天的安排待补全"}</p><p className="mt-1 truncate text-[11px] opacity-70">{actual?.actualLocationName || (settings?.showLocationHints ? current?.plannedLocationName : "") || "地点暂未记录"}</p></div>
+    {showNext && <div className="rounded-lg bg-white/65 p-2"><p className="text-[9px] opacity-55">接下来</p><p className="truncate text-[11px] font-medium">{next?.title || "今天的安排已结束"}</p>{next && <p className="text-[9px] opacity-55">{new Date(next.startAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})} · {next.plannedLocationName || "地点待定"}</p>}</div>}
+    {!preview && <button onClick={()=>setShowNext(v=>!v)} className="mt-1 self-end text-[9px]" style={{color:accent}}>{showNext?"收起下一项":"查看下一项"}</button>}
+  </div>;
+}
+
+function LifeCharacterWidget({ config, widgetId, onConfigChange, preview }: any) {
+  const [characters, setCharacters] = useState<any[]>([]);
+  const [snapshot, setSnapshot] = useState<any>(null);
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => {
+      const roster = loadCharacters();
+      const state = loadVirtualLifeState();
+      if (!alive) return;
+      setCharacters(roster);
+      const selected = roster.find(character => character.id === config?.characterId) || roster[0];
+      if (!selected) { setSnapshot(null); return; }
+      const clock = getActorClock(state, "character", selected.id);
+      const now = resolveActorLifeNow(clock);
+      const current = getCurrentActorSchedule(state, "character", selected.id, now);
+      const next = state.schedules.filter(slot => slot.ownerType === "character" && slot.ownerId === selected.id && new Date(slot.startAt).getTime() > now.getTime()).sort((a,b)=>a.startAt.localeCompare(b.startAt))[0];
+      const actual = state.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === selected.id);
+      const player = state.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === "player");
+      const locationKnown = state.settings?.revealExactLocations === "open" || (!!player?.actualLocationId && player.actualLocationId === actual?.actualLocationId);
+      const location = locationKnown ? actual?.actualLocationName : state.settings?.revealExactLocations === "ask-only" ? "地点暂不公开" : current?.plannedLocationName ? "地点线索：" + current.plannedLocationName : "地点未知";
+      setSnapshot({ selected, now, current, next, actual, location });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+    return () => { alive = false; window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+  }, [config?.characterId]);
+  const cycle = () => {
+    if (preview || characters.length < 2) return;
+    const currentIndex = Math.max(0, characters.findIndex(character => character.id === snapshot?.selected?.id));
+    const next = characters[(currentIndex + 1) % characters.length];
+    onConfigChange?.(widgetId, { ...(config || {}), characterId: next.id });
+    const state = loadVirtualLifeState();
+    const clock = getActorClock(state, "character", next.id);
+    const now = resolveActorLifeNow(clock);
+    const actual = state.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === next.id);
+    const current = getCurrentActorSchedule(state, "character", next.id, now);
+    const nextSlot = state.schedules.filter(slot => slot.ownerType === "character" && slot.ownerId === next.id && new Date(slot.startAt).getTime() > now.getTime()).sort((a,b)=>a.startAt.localeCompare(b.startAt))[0];
+    setSnapshot({ selected: next, now, current, next: nextSlot, actual, location: actual?.actualLocationName || current?.plannedLocationName || "地点未知" });
+  };
+  if (!snapshot) return <button onClick={cycle} className="flex h-full w-full items-center justify-center p-3 text-xs text-stone-400">添加角色后显示此刻状态</button>;
+  return <button onClick={cycle} className="flex h-full w-full flex-col justify-between overflow-hidden rounded-xl p-3 text-left" style={{background:typeof config?.background==="string"?config.background:"linear-gradient(145deg,#fff9f2,#e7d6c4)",color:"#4d3b30"}}>
+    <div className="flex items-center gap-2"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/80 text-xs font-semibold">{snapshot.selected.name.slice(0,1)}</span><span className="min-w-0 flex-1 truncate text-xs font-semibold">{snapshot.selected.name}</span><span className="text-[9px] opacity-55">{snapshot.now.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span></div>
+    <div className="min-h-0"><p className="mt-2 truncate text-sm font-semibold">{snapshot.actual?.activity || snapshot.current?.title || "当前活动未知"}</p><p className="mt-1 truncate text-[10px] opacity-65">{snapshot.location}</p></div>
+    <p className="truncate text-[9px] opacity-55">下一项：{snapshot.next?.title || "暂无"}</p>
+    {!preview && characters.length>1 && <span className="self-end text-[9px] opacity-50">点按切换角色 ↗</span>}
+  </button>;
 }
 
 // ----------------------------------------------------
