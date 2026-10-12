@@ -164,6 +164,8 @@ export type LifeEvent = {
 
 export type LifeInvitation = {
   id: string;
+  kind?: "appointment" | "follow-request";
+  durationMinutes?: number;
   characterId: string;
   playerId: string;
   proposedAt: string;
