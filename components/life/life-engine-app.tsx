@@ -370,11 +370,14 @@ export function LifeEngineApp() {
     setTab("scene");
   };
 
+  const autoImageFingerprint = activeScene
+    ? [activeScene.id, activeScene.locationId, ...activeScene.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity)].join("|")
+    : "";
   useEffect(() => {
-    if (!ready || !activeScene || !settings.autoGenerateSceneImages || activeScene.images?.length || autoImageSceneRef.current === activeScene.id) return;
-    autoImageSceneRef.current = activeScene.id;
+    if (!ready || !activeScene || !settings.autoGenerateSceneImages || !autoImageFingerprint || autoImageSceneRef.current === autoImageFingerprint) return;
+    autoImageSceneRef.current = autoImageFingerprint;
     void generateSceneImages({count:settings.sceneImageCount});
-  }, [ready, activeScene?.id, activeScene?.images?.length, settings.autoGenerateSceneImages, settings.sceneImageCount]);
+  }, [ready, autoImageFingerprint, settings.autoGenerateSceneImages, settings.sceneImageCount]);
 
   useEffect(() => { setSceneImageCountDraft(settings.sceneImageCount); }, [settings.sceneImageCount]);
 
@@ -878,7 +881,7 @@ export function LifeEngineApp() {
             <p className="text-sm font-semibold">场景生图</p>
             <p className="mt-1 text-xs leading-relaxed text-stone-500">复用小手机现有生图配置。角色外观描述会作为提示词；如果所选角色已有参考图，会优先带入一张参考图。多角色参考图同时编辑需要底层生图接口支持多参考图，目前会把其余角色的固定外观写入提示词。</p>
             <div className="mt-3 space-y-2">
-              <Toggle checked={settings.autoGenerateSceneImages} onChange={v=>patchSettings({autoGenerateSceneImages:v})} label="场景变化时自动生成图片" hint="关闭时只在你点生图按钮后生成；每个场景自动生成一次，避免重开页面重复扣费。"/>
+              <Toggle checked={settings.autoGenerateSceneImages} onChange={v=>patchSettings({autoGenerateSceneImages:v})} label="场景变化时自动生成图片" hint="关闭时只在你点生图按钮后生成；新场景、地点或参与者活动发生变化时才自动生成，同一状态不会因重开页面重复扣费。"/>
               <label className="block text-sm">每次生成张数<select value={settings.sceneImageCount} onChange={e=>patchSettings({sceneImageCount:Number(e.target.value) as 1|2|3|4})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value={1}>1 张</option><option value={2}>2 张</option><option value={3}>3 张</option><option value={4}>4 张</option></select></label>
               <label className="block text-sm">场景画风<textarea value={settings.sceneImageStyle} onChange={e=>patchSettings({sceneImageStyle:e.target.value})} rows={2} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
             </div>
