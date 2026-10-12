@@ -57,8 +57,6 @@ export type LifeEngineSettings = {
   autoGenerateSceneImages: boolean;
   sceneImageCount: 1 | 2 | 3 | 4;
   sceneImageStyle: string;
-  userAppearanceDescription: string;
-  userAppearanceReferenceAssetId?: string;
   customPrompt: string;
 };
 export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
@@ -91,7 +89,6 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   autoGenerateSceneImages: false,
   sceneImageCount: 2,
   sceneImageStyle: "温暖自然的生活感，电影级构图，表情与动作自然，保持角色外观一致",
-  userAppearanceDescription: "",
   customPrompt: "",
 };
 
