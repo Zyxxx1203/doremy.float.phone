@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type CSSProperties } from "react";
 import {
-  ArrowLeft, CalendarDays, Coffee, Heart, MapPin, MessageCircle,
+  ArrowLeft, CalendarDays, Coffee, Heart, MapPin, MessageCircle, Users,
   Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles,
 } from "lucide-react";
 import type { Character } from "@/lib/character-types";
@@ -53,7 +53,7 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string } {
 }
 
 function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange: (value: boolean) => void; label: string; hint?: string }) {
-  return <label className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-black/5 bg-white/70 px-4 py-3">
+  return <label className="flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-black/5 bg-white/[var(--life-opacity)] px-4 py-3">
     <span className="min-w-0"><span className="block text-sm font-medium text-stone-800">{label}</span>{hint && <span className="mt-0.5 block text-xs leading-relaxed text-stone-500">{hint}</span>}</span>
     <input type="checkbox" className="sr-only" checked={checked} onChange={e => onChange(e.target.checked)} />
     <span aria-hidden className={`relative h-6 w-11 shrink-0 rounded-full transition ${checked ? "bg-[#b88768]" : "bg-stone-300"}`}><span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition ${checked ? "left-[22px]" : "left-0.5"}`} /></span>
@@ -111,7 +111,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const activeScene = useMemo(() => state.scenes.find(scene => scene.status === "active") ?? state.scenes.find(scene => scene.status === "paused"), [state.scenes]);
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
   const selectedLocation = state.locations.find(location => location.id === selectedLocationId) ?? state.locations[0];
-  const settings = state.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;
+  const settings = state.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;\n  const playerName = settings.playerDisplayName || "我";
 
   useEffect(() => {
     if (!ready || !settings.autoGenerateWeeklyPlans) return;
@@ -126,7 +126,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const patchActorClock = (actor: ActorChoice, patch: Partial<Pick<LifeActorClock, "mode" | "speed">>) => commit(upsertActorClock(state, actor.ownerType, actor.ownerId, patch));
   const actorNow = (actor: ActorChoice) => resolveActorLifeNow(getActorClock(state, actor.ownerType, actor.ownerId));
   const actorState = (actor: ActorChoice) => state.actorStates.find(item => item.ownerType === actor.ownerType && item.ownerId === actor.ownerId);
-  const actorSchedule = (actor: ActorChoice) => getCurrentActorSchedule(state, actor.ownerType, actor.ownerId, actorNow(actor));
+  const actorSchedule = (actor: ActorChoice) => getCurrentActorSchedule(state, actor.ownerType, actor.ownerId, actorNow(actor));\n\n  const advanceCharacterAutonomy = (actor: ActorChoice) => {\n    if (actor.ownerType !== "character" || !settings.enableCharacterAutonomy) return;\n    let next = fastForwardActor(state, actor.ownerType, actor.ownerId, 60);\n    const virtualNow = resolveActorLifeNow(getActorClock(next, actor.ownerType, actor.ownerId));\n    const slot = getCurrentActorSchedule(next, actor.ownerType, actor.ownerId, virtualNow);\n    const previous = state.actorStates.find(item => item.ownerType === actor.ownerType && item.ownerId === actor.ownerId);\n    next = upsertActorState(next, { ownerType: actor.ownerType, ownerId: actor.ownerId, activity: slot?.title ?? previous?.activity ?? "正在自主安排时间", actualLocationId: slot?.plannedLocationId ?? previous?.actualLocationId ?? null, actualLocationName: slot?.plannedLocationName ?? previous?.actualLocationName ?? null, updatedAt: new Date().toISOString() });\n    commit(next);\n    setNotice(`${actor.name}独立度过了一个虚拟小时；其他人的时间没有变化。`);\n  };
   const actorClockLabel = (clock: LifeActorClock) => clock.mode === "real-time" ? "跟随现实" : clock.mode === "review" ? "回顾暂停" : `模拟 ×${clock.speed}`;
 
   const ensurePlans = () => {
