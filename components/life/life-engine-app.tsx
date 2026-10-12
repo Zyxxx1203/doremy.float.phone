@@ -105,10 +105,12 @@ export function LifeEngineApp() {
   const [customSceneTitle, setCustomSceneTitle] = useState("今天的相处");
   const [sceneImageBusy, setSceneImageBusy] = useState(false);
   const [sceneImagePrompt, setSceneImagePrompt] = useState("");
-  const [sceneImageStyleDraft, setSceneImageStyleDraft] = useState(settings.sceneImageStyle);
-  const [sceneImageCountDraft, setSceneImageCountDraft] = useState<1|2|3|4>(settings.sceneImageCount);
+  const [sceneImageStyleDraft, setSceneImageStyleDraft] = useState(DEFAULT_LIFE_ENGINE_SETTINGS.sceneImageStyle);
+  const [sceneImageCountDraft, setSceneImageCountDraft] = useState<1|2|3|4>(DEFAULT_LIFE_ENGINE_SETTINGS.sceneImageCount);
   const [imageObjectUrls, setImageObjectUrls] = useState<Record<string,string>>({});
   const [imageViewerIndex, setImageViewerIndex] = useState(0);
+  const [imageParticipantIds, setImageParticipantIds] = useState<string[]>([]);
+  const autoImageSceneRef = useRef<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -360,6 +362,12 @@ export function LifeEngineApp() {
     }
     setTab("scene");
   };
+
+  useEffect(() => {
+    if (!ready || !activeScene || !settings.autoGenerateSceneImages || activeScene.images?.length || autoImageSceneRef.current === activeScene.id) return;
+    autoImageSceneRef.current = activeScene.id;
+    void generateSceneImages({count:settings.sceneImageCount});
+  }, [ready, activeScene?.id, activeScene?.images?.length, settings.autoGenerateSceneImages, settings.sceneImageCount]);
 
   const sceneImageRecords = activeScene?.images ?? [];
   useEffect(() => {
@@ -771,6 +779,16 @@ export function LifeEngineApp() {
           <Toggle checked={settings.compactLayout} onChange={v=>patchSettings({compactLayout:v})} label="紧凑布局"/>
           <label className="mt-4 block text-sm">默认时间模式<select value={settings.defaultClockMode} onChange={e=>patchSettings({defaultClockMode:e.target.value as LifeEngineSettings["defaultClockMode"]})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="real-time">跟随现实</option><option value="simulation">独立模拟</option><option value="review">暂停回顾</option></select></label>
           <label className="mt-4 block text-sm">新角色默认流速：×{settings.defaultSpeed}<input type="range" min="0.1" max="100" step="0.1" value={settings.defaultSpeed} onChange={e=>patchSettings({defaultSpeed:Number(e.target.value)})} className="mt-2 w-full accent-[var(--life-accent)]"/></label>
+          <label className="mt-4 block text-sm">玩家形象描述（全局生图使用）<textarea value={settings.userAppearanceDescription} onChange={e=>patchSettings({userAppearanceDescription:e.target.value})} rows={3} placeholder="例如：黑色长发、圆框眼镜、偏爱宽松的米色针织衫。没有参考图时会使用这段描述。" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+          <div className="mt-4 rounded-2xl border border-stone-200/80 bg-white/60 p-4">
+            <p className="text-sm font-semibold">场景生图</p>
+            <p className="mt-1 text-xs leading-relaxed text-stone-500">复用小手机现有生图配置。角色外观描述会作为提示词；如果所选角色已有参考图，会优先带入一张参考图。多角色参考图同时编辑需要底层生图接口支持多参考图，目前会把其余角色的固定外观写入提示词。</p>
+            <div className="mt-3 space-y-2">
+              <Toggle checked={settings.autoGenerateSceneImages} onChange={v=>patchSettings({autoGenerateSceneImages:v})} label="场景变化时自动生成图片" hint="关闭时只在你点生图按钮后生成；每个场景自动生成一次，避免重开页面重复扣费。"/>
+              <label className="block text-sm">每次生成张数<select value={settings.sceneImageCount} onChange={e=>patchSettings({sceneImageCount:Number(e.target.value) as 1|2|3|4})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value={1}>1 张</option><option value={2}>2 张</option><option value={3}>3 张</option><option value={4}>4 张</option></select></label>
+              <label className="block text-sm">场景画风<textarea value={settings.sceneImageStyle} onChange={e=>patchSettings({sceneImageStyle:e.target.value})} rows={2} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+            </div>
+          </div>
           <label className="mt-4 block text-sm">自定义场景提示词<textarea value={settings.customPrompt} onChange={e=>patchSettings({customPrompt:e.target.value})} rows={5} placeholder="例如：角色更重视生活习惯；不要每次见面都主动热情打招呼……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
           <button onClick={()=>patchSettings({ ...DEFAULT_LIFE_ENGINE_SETTINGS })} className="mt-4 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm text-stone-600">恢复默认设置</button>
         </section>
