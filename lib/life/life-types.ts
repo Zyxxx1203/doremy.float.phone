@@ -192,7 +192,8 @@ export type VirtualLifeState = {
   locations: LifeLocation[];
   actorStates: LifeActorState[];
   schedules: LifeScheduleSlot[];
-  scenes: LifeSceneState[];\n  sceneMessages: LifeSceneMessage[];
+  scenes: LifeSceneState[];
+  sceneMessages: LifeSceneMessage[];
   events: LifeEvent[];
   invitations: LifeInvitation[];
   memories: LifeMemoryFact[];
