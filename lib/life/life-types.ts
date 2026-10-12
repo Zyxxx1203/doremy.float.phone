@@ -1,10 +1,9 @@
 /**
  * Virtual Life Engine domain model.
  *
- * Keep life-scene conversations separate from the existing long-form offline
- * story mode. These types intentionally describe state, not UI components.
+ * Life-scene is intentionally separate from online chat and long-form story mode.
+ * Persistent entities are kept serializable so they can use the existing KV layer.
  */
-
 export type LifeInteractionMode = "online-chat" | "life-scene" | "story-mode";
 export type LifeClockMode = "real-time" | "simulation" | "review";
 export type LifeOwnerType = "player" | "character";
@@ -12,12 +11,74 @@ export type LifeEventStatus = "planned" | "confirmed" | "active" | "completed" |
 
 export type LifeClockState = {
   mode: LifeClockMode;
-  /** ISO timestamp for the last clock synchronization. */
   realAnchorAt: string;
-  /** Simulated ISO time at the anchor; null means use real time. */
   simulationAnchorAt?: string | null;
-  /** Simulation speed multiplier; 1 means one virtual minute per real minute. */
   speed: number;
+};
+
+/** Independent clock: changing one actor never mutates any other actor's time. */
+export type LifeActorClock = {
+  ownerType: LifeOwnerType;
+  ownerId: string;
+  mode: LifeClockMode;
+  realAnchorAt: string;
+  virtualAnchorAt: string;
+  speed: number;
+  updatedAt: string;
+};
+
+export type LifeEngineSettings = {
+  enabled: boolean;
+  autoGenerateWeeklyPlans: boolean;
+  generateSpecialEvents: boolean;
+  enableCoincidences: boolean;
+  enableCharacterAutonomy: boolean;
+  enableInvitations: boolean;
+  saveConfirmedEventsToMemory: boolean;
+  showActionNarration: boolean;
+  keepDialogueConcise: boolean;
+  allowCharactersToStaySilent: boolean;
+  revealExactLocations: "ask-only" | "clues" | "open";
+  defaultClockMode: LifeClockMode;
+  defaultSpeed: number;
+  sceneTheme: "warm-paper" | "night-sky" | "sage" | "rose" | "custom";
+  accentColor: string;
+  panelOpacity: number;
+  dialogueFontSize: number;
+  narrationFontSize: number;
+  dialogueBubbleStyle: "rounded" | "soft" | "square";
+  compactLayout: boolean;
+  showTimeline: boolean;
+  showLocationHints: boolean;
+  enableAmbientDetails: boolean;
+  customPrompt: string;
+};
+
+export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
+  enabled: true,
+  autoGenerateWeeklyPlans: true,
+  generateSpecialEvents: true,
+  enableCoincidences: true,
+  enableCharacterAutonomy: true,
+  enableInvitations: true,
+  saveConfirmedEventsToMemory: true,
+  showActionNarration: true,
+  keepDialogueConcise: true,
+  allowCharactersToStaySilent: true,
+  revealExactLocations: "clues",
+  defaultClockMode: "real-time",
+  defaultSpeed: 1,
+  sceneTheme: "warm-paper",
+  accentColor: "#b88768",
+  panelOpacity: 96,
+  dialogueFontSize: 15,
+  narrationFontSize: 12,
+  dialogueBubbleStyle: "rounded",
+  compactLayout: false,
+  showTimeline: true,
+  showLocationHints: true,
+  enableAmbientDetails: true,
+  customPrompt: "",
 };
 
 export type LifeScheduleSlot = {
@@ -31,7 +92,6 @@ export type LifeScheduleSlot = {
   plannedLocationName?: string | null;
   kind: "habit" | "work" | "study" | "meal" | "commute" | "free-time" | "appointment" | "special";
   source: "weekly-generation" | "manual" | "event";
-  /** Slots are persisted so opening the app does not regenerate a person's week. */
   updatedAt: string;
 };
 
@@ -45,7 +105,6 @@ export type LifeLocation = {
 export type LifeActorState = {
   ownerType: LifeOwnerType;
   ownerId: string;
-  /** What the person is actually doing now, not merely what was planned. */
   activity: string;
   actualLocationId?: string | null;
   actualLocationName?: string | null;
@@ -55,9 +114,7 @@ export type LifeActorState = {
 export type LifeSceneParticipant = {
   ownerType: LifeOwnerType;
   ownerId: string;
-  /** Per-scene activity/state. */
   activity: string;
-  /** Whether this participant currently notices the player/other participants. */
   awarenessByActorId: Record<string, "unaware" | "suspects" | "aware">;
 };
 
@@ -69,7 +126,6 @@ export type LifeSceneState = {
   updatedAt: string;
   status: "active" | "paused" | "completed";
   participants: LifeSceneParticipant[];
-  /** Stable scene state means reopening resumes, rather than recreating the event. */
   lastSettledEventIds: string[];
 };
 
@@ -88,7 +144,6 @@ export type LifeEvent = {
   updatedAt: string;
   completedAt?: string;
   cancelledAt?: string;
-  /** Prevent duplicate settlement after restart, time-skip or push retry. */
   settlementKey?: string;
 };
 
@@ -112,13 +167,14 @@ export type LifeMemoryFact = {
   occurredAt: string;
   participants: string[];
   fact: string;
-  /** Optional character interpretation is kept distinct from the observed fact. */
   interpretations?: Record<string, string>;
 };
 
 export type VirtualLifeState = {
   schemaVersion: 1;
   clock: LifeClockState;
+  actorClocks: LifeActorClock[];
+  settings: LifeEngineSettings;
   locations: LifeLocation[];
   actorStates: LifeActorState[];
   schedules: LifeScheduleSlot[];
@@ -133,6 +189,8 @@ export function createEmptyVirtualLifeState(now = new Date().toISOString()): Vir
   return {
     schemaVersion: 1,
     clock: { mode: "real-time", realAnchorAt: now, simulationAnchorAt: null, speed: 1 },
+    actorClocks: [],
+    settings: { ...DEFAULT_LIFE_ENGINE_SETTINGS },
     locations: [],
     actorStates: [],
     schedules: [],
