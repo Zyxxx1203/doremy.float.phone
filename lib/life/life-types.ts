@@ -140,6 +140,7 @@ export type LifeSceneState = {
   startedAt: string;
   updatedAt: string;
   status: "active" | "paused" | "completed";
+  eventId?: string;
   participants: LifeSceneParticipant[];
   lastSettledEventIds: string[];
 };
