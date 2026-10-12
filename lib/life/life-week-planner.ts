@@ -38,11 +38,6 @@ export function installGeneratedLifeWeekOnce(
   );
   if (candidates.length === 0) return { state, installed: false, reason: "empty" };
 
-  const ids = new Set<string>();
-  for (const slot of candidates) {
-    if (ids.has(slot.id)) continue;
-    ids.add(slot.id);
-  }
   const unique = candidates.filter((slot, index) => candidates.findIndex(other => other.id === slot.id) === index);
   return {
     state: {
@@ -54,18 +49,23 @@ export function installGeneratedLifeWeekOnce(
   };
 }
 
-/** Replace only this person's affected future slots; historical slots are immutable. */
-export function replaceFutureLifeSlots(
+/**
+ * Replace only explicitly identified affected future slots for one person.
+ * Unrelated future plans and all historical slots remain untouched.
+ */
+export function replaceAffectedFutureLifeSlots(
   state: VirtualLifeState,
   ownerType: LifeOwnerType,
   ownerId: string,
   from: string,
+  affectedSlotIds: string[],
   replacements: LifeScheduleSlot[],
 ): VirtualLifeState {
   const cutoff = new Date(from).getTime();
-  if (!Number.isFinite(cutoff)) return state;
+  if (!Number.isFinite(cutoff) || affectedSlotIds.length === 0) return state;
+  const affected = new Set(affectedSlotIds);
   const schedules = state.schedules.filter(slot => {
-    if (slot.ownerType !== ownerType || slot.ownerId !== ownerId) return true;
+    if (slot.ownerType !== ownerType || slot.ownerId !== ownerId || !affected.has(slot.id)) return true;
     return new Date(slot.startAt).getTime() < cutoff;
   });
   const valid = replacements.filter(slot =>
