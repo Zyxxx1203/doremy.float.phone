@@ -34,6 +34,8 @@ export type LifeEngineSettings = {
   generateSpecialEvents: boolean;
   enableCoincidences: boolean;
   enableCharacterAutonomy: boolean;
+  enableScheduleChangeTool: boolean;
+  enableFollowRequestTool: boolean;
   enableInvitations: boolean;
   saveConfirmedEventsToMemory: boolean;
   showActionNarration: boolean;
@@ -66,6 +68,8 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   generateSpecialEvents: true,
   enableCoincidences: true,
   enableCharacterAutonomy: true,
+  enableScheduleChangeTool: true,
+  enableFollowRequestTool: true,
   enableInvitations: true,
   saveConfirmedEventsToMemory: true,
   showActionNarration: true,
