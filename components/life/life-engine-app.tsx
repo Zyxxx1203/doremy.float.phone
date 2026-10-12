@@ -30,7 +30,7 @@ import { advanceActorTimeline, confirmLifeInvitation, generateWeeklyLifePlan, ge
 import { loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
-import { loadImageGenerationSettings } from "@/lib/settings-storage";
+import { loadImageGenerationSettings, resolveUserIdentity } from "@/lib/settings-storage";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
@@ -435,7 +435,7 @@ export function LifeEngineApp() {
       "为虚拟生活场景生成一张单帧画面，不是拼贴、漫画分格或文字海报。",
       "当前场景："+(activeScene?.locationName || selectedLocation?.name || "日常场景"),
       "场景状态："+(activeScene?.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);return (actor?.name||p.ownerId)+"正在"+p.activity;}).join("；") || playerActivity),
-      participantIds.includes(PLAYER_ID) && (imageSettings.userAppearanceDescription?.trim() || settings.userAppearanceDescription.trim()) ? "玩家固定外观："+(imageSettings.userAppearanceDescription?.trim() || settings.userAppearanceDescription.trim()) : "",
+      participantIds.includes(PLAYER_ID) && (imageSettings.userAppearanceDescription?.trim() || resolveUserIdentity(undefined, "story")?.appearanceDescription?.trim() || settings.userAppearanceDescription.trim()) ? "玩家固定外观："+(imageSettings.userAppearanceDescription?.trim() || resolveUserIdentity(undefined, "story")?.appearanceDescription?.trim() || settings.userAppearanceDescription.trim()) : "",
       ...participantIds.map(pid=>{
         const char=characters.find(item=>item.id===pid);
         if(!char)return "";
