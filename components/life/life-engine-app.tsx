@@ -373,9 +373,18 @@ export function LifeEngineApp() {
     ? [activeScene.id, activeScene.locationId, ...activeScene.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity)].join("|")
     : "";
   useEffect(() => {
-    if (!ready || !activeScene || !settings.autoGenerateSceneImages || !autoImageFingerprint || autoImageSceneRef.current === autoImageFingerprint) return;
-    autoImageSceneRef.current = autoImageFingerprint;
-    void generateSceneImages({count:settings.sceneImageCount});
+    const maybeGenerate = () => {
+      if (!ready || !activeScene || !settings.autoGenerateSceneImages || !autoImageFingerprint || autoImageSceneRef.current === autoImageFingerprint) return;
+      if (!loadImageGenerationSettings().enabled) {
+        setNotice("已开启场景自动生图；请先在「小手机设置 → 生图设置」启用生图服务，启用后会自动尝试。");
+        return;
+      }
+      autoImageSceneRef.current = autoImageFingerprint;
+      void generateSceneImages({count:settings.sceneImageCount});
+    };
+    maybeGenerate();
+    window.addEventListener("settings-image-generation-updated", maybeGenerate);
+    return () => window.removeEventListener("settings-image-generation-updated", maybeGenerate);
   }, [ready, autoImageFingerprint, settings.autoGenerateSceneImages, settings.sceneImageCount]);
 
   useEffect(() => { setSceneImageCountDraft(settings.sceneImageCount); }, [settings.sceneImageCount]);
