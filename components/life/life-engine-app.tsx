@@ -196,7 +196,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         LIFE_SCENE_OUTPUT_CONTRACT,
         settings.showActionNarration ? "动作旁白要短，单独一行使用 *动作* 格式；对白只写说出口的话。" : "不要输出动作旁白，只输出角色说出口的话。",
         settings.keepDialogueConcise ? "一轮通常 1-3 句，除非用户明确要求展开。" : "允许适度展开，但仍保持实时互动感。",
-        settings.allowCharactersToStaySilent ? "如果角色当下忙碌、没注意到或不想说话，可以自然沉默。" : "本轮需要对玩家的输入作出回应。",\n        settings.enableAmbientDetails ? "可以用一两笔简短环境细节营造现场感，不要扩写成长篇旁白。" : "不需要环境氛围描写，直接进行实时互动。",
+        settings.allowCharactersToStaySilent ? "如果角色当下忙碌、没注意到或不想说话，可以自然沉默。" : "本轮需要对玩家的输入作出回应。",
+        settings.enableAmbientDetails ? "可以用一两笔简短环境细节营造现场感，不要扩写成长篇旁白。" : "不需要环境氛围描写，直接进行实时互动。",
         settings.customPrompt ? `用户自定义规则：${settings.customPrompt}` : "",
       ].filter(Boolean).join("\n");
       const promptMessage: ChatMessage = {
@@ -209,7 +210,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       if (settings.saveConfirmedEventsToMemory && userText.trim() && parsed.dialogue.trim()) {
         const eventId = id("event"), eventNow = new Date().toISOString();
         const event = { id: eventId, kind: "activity" as const, status: "completed" as const, locationId: activeScene.locationId, locationName: activeScene.locationName, participantIds: ["player", target.id], title: "生活场景对话", details: `${playerName}：${userText}\n${target.name}：${parsed.dialogue}`, createdAt: eventNow, updatedAt: eventNow, completedAt: eventNow };
-        const latest = stateRef.current;\n        commit({ ...latest, events: [event, ...latest.events], memories: [{ id: id("memory"), eventId, occurredAt: eventNow, participants: ["player", target.id], fact: `在${activeScene.locationName}，${playerName}与${target.name}进行了一次对话。` }, ...latest.memories].slice(0, 500) });
+        const latest = stateRef.current;
+        commit({ ...latest, events: [event, ...latest.events], memories: [{ id: id("memory"), eventId, occurredAt: eventNow, participants: ["player", target.id], fact: `在${activeScene.locationName}，${playerName}与${target.name}进行了一次对话。` }, ...latest.memories].slice(0, 500) });
       }
     } catch (error) {
       setNotice(error instanceof Error ? `角色生成失败：${error.message}` : "角色生成失败，请检查聊天模型配置。");
