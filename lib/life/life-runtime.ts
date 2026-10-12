@@ -204,11 +204,30 @@ export function makeLifeInvitation(state: VirtualLifeState, input: Omit<LifeInvi
   const now = new Date().toISOString(), invitation: LifeInvitation = { ...input, id: makeId("invite"), status: "proposed", updatedAt: now };
   return { ...state, invitations: [invitation,...state.invitations] };
 }
+export function placeAppointmentInActorSchedule(state: VirtualLifeState, slot: LifeScheduleSlot): VirtualLifeState {
+  const start = new Date(slot.startAt).getTime(), end = new Date(slot.endAt).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return state;
+  const nextSlots: LifeScheduleSlot[] = [];
+  for (const existing of state.schedules) {
+    const sameOwner = existing.ownerType === slot.ownerType && existing.ownerId === slot.ownerId;
+    const a = new Date(existing.startAt).getTime(), b = new Date(existing.endAt).getTime();
+    if (!sameOwner || b <= start || a >= end) { nextSlots.push(existing); continue; }
+    // Preserve unaffected time before and after the appointment instead of creating gaps.
+    if (a < start) nextSlots.push({ ...existing, id: existing.id + "-before-" + slot.id, endAt: slot.startAt, updatedAt: new Date().toISOString() });
+    if (b > end) nextSlots.push({ ...existing, id: existing.id + "-after-" + slot.id, startAt: slot.endAt, updatedAt: new Date().toISOString() });
+  }
+  nextSlots.push(slot);
+  nextSlots.sort((a,b)=>a.startAt.localeCompare(b.startAt));
+  return { ...state, schedules: nextSlots };
+}
+
 export function confirmLifeInvitation(state: VirtualLifeState, invitationId: string): VirtualLifeState {
   const invitation = state.invitations.find(item => item.id===invitationId && item.status==="proposed");
   if (!invitation) return state;
   const now = new Date().toISOString(), eventId = makeId("event");
-  const event: LifeEvent = { id:eventId, kind:"invitation", status:"confirmed", startsAt:invitation.proposedAt, locationId:invitation.locationId, locationName:invitation.locationName, participantIds:["player",invitation.characterId], title:invitation.activity, details:"双方已确认的邀约；到时间后才开始，不会自动传送或跳过时间。", createdAt:now, updatedAt:now };
+  const startAt = new Date(invitation.proposedAt);
+  const endsAt = new Date(startAt.getTime() + 60 * 60_000).toISOString();
+  const event: LifeEvent = { id:eventId, kind:"invitation", status:"confirmed", startsAt:invitation.proposedAt, endsAt, locationId:invitation.locationId, locationName:invitation.locationName, participantIds:["player",invitation.characterId], title:invitation.activity, details:"双方已确认的邀约；到时间后才开始，不会自动传送或跳过时间。", createdAt:now, updatedAt:now };
   const next = { ...invitation, status:"confirmed" as const, confirmedAt:now, updatedAt:now, eventId };
   return { ...state, invitations:state.invitations.map(item=>item.id===invitationId?next:item), events:[event,...state.events] };
 }
