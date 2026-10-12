@@ -108,6 +108,7 @@ export type LifeActorState = {
   ownerType: LifeOwnerType;
   ownerId: string;
   activity: string;
+  scheduleSlotId?: string | null;
   actualLocationId?: string | null;
   actualLocationName?: string | null;
   updatedAt: string;
