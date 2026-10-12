@@ -461,7 +461,7 @@ export function LifeEngineApp() {
     if (!activeScene || sceneImageBusy) return;
     const imageSettings = loadImageGenerationSettings();
     if (!imageSettings.enabled) { setNotice("请先到「设置 → 生图设置」启用并配置生图 API。"); return; }
-    const participantIds = options?.participantIds ?? activeScene.participants.filter(p=>p.ownerType==="character").map(p=>p.ownerId);
+    const participantIds = options?.participantIds ?? (imageParticipantIds.length ? imageParticipantIds : activeScene.participants.filter(p=>p.ownerType==="character").map(p=>p.ownerId));
     const prompt = buildSceneImagePrompt(participantIds, options?.prompt ?? sceneImagePrompt);
     const count = Math.max(1,Math.min(4,options?.count ?? settings.sceneImageCount));
     setSceneImageBusy(true);
