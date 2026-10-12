@@ -370,6 +370,19 @@ export function LifeEngineApp() {
     const targetId = selectedSpeakerId || activeScene.participants.find(p => p.ownerType === "character")?.ownerId || "";
     const target = characters.find(char => char.id === targetId);
     if (!target) { setNotice("请先选择场景中的一位角色作为回应对象。"); return; }
+    const targetClock = getActorClock(stateRef.current, "character", target.id);
+    const targetNow = resolveActorLifeNow(targetClock);
+    const targetSchedule = getCurrentActorSchedule(stateRef.current, "character", target.id, targetNow);
+    const targetPresence = stateRef.current.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === target.id);
+    const isSleeping = /睡眠|睡觉|入睡|午休/.test((targetPresence?.activity || "") + " " + (targetSchedule?.title || ""));
+    const urgentMessage = /救命|紧急|出事了|危险|受伤|快来|急救/.test(userText);
+    const easySleeper = /浅眠|警觉|敏感|担心|保护欲|容易醒/.test(target.personality || "");
+    const wakeSeed = [...(target.id + userText)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+    const wokeFromSleep = isSleeping && (urgentMessage || wakeSeed % 100 < (easySleeper ? 60 : 15));
+    if (isSleeping && settings.allowCharactersToStaySilent && !wokeFromSleep) {
+      setNotice(target.name + "正在睡觉，没有被这条消息叫醒。消息留在当前场景里；TA醒来后才可能回应。");
+      return;
+    }
     const contacts = loadChatContacts();
     const sessions = loadChatSessions();
     const contact = contacts.find(item => item.characterId === target.id);
@@ -384,6 +397,7 @@ export function LifeEngineApp() {
         settings.showActionNarration ? "动作旁白要短，单独一行使用 *动作* 格式；对白只写说出口的话。" : "不要输出动作旁白，只输出角色说出口的话。",
         settings.keepDialogueConcise ? "一轮通常 1-3 句，除非用户明确要求展开。" : "允许适度展开，但仍保持实时互动感。",
         settings.allowCharactersToStaySilent ? "如果角色当下忙碌、没注意到或不想说话，可以自然沉默。" : "本轮需要对玩家的输入作出回应。",
+        wokeFromSleep ? "角色原本正在睡觉，本轮是被消息或紧急情况吵醒；要表现困倦、反应迟缓或不想立刻长谈，不要突然精神饱满。" : "",
         settings.enableAmbientDetails ? "可以用一两笔简短环境细节营造现场感，不要扩写成长篇旁白。" : "不需要环境氛围描写，直接进行实时互动。",
         "若你确实决定临时改变自己的未来日程，可在对白之外附加隐藏控制标签：<life_plan_change scope=\"today\" title=\"新的安排\" locationId=\"home\" />。仅修改当前虚拟日之后的未开始安排，不能改写过去、不能覆盖已确认约会，也不能让角色瞬移。若你想申请在某段时间一直陪伴并跟随玩家，可附加 <life_follow_request durationMinutes=\"120\" reason=\"简短原因\" />；这只是申请，必须由玩家确认后才生效。没有真实意愿时不要输出标签，标签不会显示为台词。",
         settings.customPrompt ? `用户自定义规则：${settings.customPrompt}` : "",
