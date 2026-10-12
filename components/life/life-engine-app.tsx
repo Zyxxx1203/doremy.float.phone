@@ -60,12 +60,13 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
   };
   const followTag = text.match(/<life_follow_request\b([^>]*)\/?\s*>/i);
   const planTag = text.match(/<life_plan_change\b([^>]*)\/?\s*>/i);
+  const inviteTag = text.match(/<life_invitation\\b([^>]*)\\/?\\s*>/i);
   const duration = Number(attribute(followTag?.[1] || "", "durationMinutes"));
   const followRequest = followTag ? { durationMinutes: Math.max(15, Math.min(Number.isFinite(duration) && duration ? duration : 120, 24 * 60)), reason: attribute(followTag[1], "reason") } : undefined;
   const planChange = planTag ? { title: attribute(planTag[1], "title"), locationId: attribute(planTag[1], "locationId") || "home" } : undefined;
   const inviteDuration = Number(attribute(inviteTag?.[1] || "", "durationMinutes"));
   const invitation = inviteTag ? { time: attribute(inviteTag[1], "time"), locationId: attribute(inviteTag[1], "locationId") || "cafe", activity: attribute(inviteTag[1], "activity") || "一起做点什么", durationMinutes: Math.max(15, Math.min(Number.isFinite(inviteDuration) && inviteDuration ? inviteDuration : 60, 24 * 60)) } : undefined;
-  const clean = text.replace(/<life_follow_request\b[^>]*\/?\s*>/ig, "").replace(/<life_plan_change\b[^>]*\/?\s*>/ig, "").trim();
+  const clean = text.replace(/<life_follow_request\b[^>]*\/?\s*>/ig, "").replace(/<life_plan_change\b[^>]*\/?\s*>/ig, "").replace(/<life_invitation\\b[^>]*\\/?\\s*>/ig, "").trim();
   const lines = clean.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   const actionLines: string[] = [];
   const dialogueLines: string[] = [];
