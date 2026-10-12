@@ -129,10 +129,35 @@ export function LifeEngineApp() {
   }, [ready, settings.autoGenerateWeeklyPlans, settings.generateSpecialEvents, characters, playerName, state, commit]);
 
   const patchSettings = (patch: Partial<LifeEngineSettings>) => commit({ ...state, settings: { ...settings, ...patch } });
-  const patchActorClock = (actor: ActorChoice, patch: Partial<Pick<LifeActorClock, "mode" | "speed">>) => commit(upsertActorClock(state, actor.ownerType, actor.ownerId, patch));
+  const patchActorClock = (actor: ActorChoice, patch: Partial<Pick<LifeActorClock, "mode" | "speed">>) => {
+    const clock = getActorClock(state, actor.ownerType, actor.ownerId);
+    if (clock.mode === "simulation" && patch.mode === "real-time") {
+      const align = window.confirm("要把这个角色的虚拟时间对齐到现实时间吗？\n确定：对齐现实时间；取消：继续保持独立模拟。");
+      commit(upsertActorClock(state, actor.ownerType, actor.ownerId, { mode: align ? "real-time" : "simulation" }));
+      return;
+    }
+    commit(upsertActorClock(state, actor.ownerType, actor.ownerId, patch));
+  };
   const actorNow = (actor: ActorChoice) => resolveActorLifeNow(getActorClock(state, actor.ownerType, actor.ownerId));
   const actorState = (actor: ActorChoice) => state.actorStates.find(item => item.ownerType === actor.ownerType && item.ownerId === actor.ownerId);
   const actorSchedule = (actor: ActorChoice) => getCurrentActorSchedule(state, actor.ownerType, actor.ownerId, actorNow(actor));
+  const advanceCharacterAutonomy = (actor: ActorChoice) => {
+    if (actor.ownerType !== "character" || !settings.enableCharacterAutonomy) return;
+    let next = fastForwardActor(state, actor.ownerType, actor.ownerId, 60);
+    const virtualNow = resolveActorLifeNow(getActorClock(next, actor.ownerType, actor.ownerId));
+    const slot = getCurrentActorSchedule(next, actor.ownerType, actor.ownerId, virtualNow);
+    const previous = state.actorStates.find(item => item.ownerType === actor.ownerType && item.ownerId === actor.ownerId);
+    next = upsertActorState(next, {
+      ownerType: actor.ownerType, ownerId: actor.ownerId,
+      activity: slot?.title ?? previous?.activity ?? "正在自主安排时间",
+      actualLocationId: slot?.plannedLocationId ?? previous?.actualLocationId ?? null,
+      actualLocationName: slot?.plannedLocationName ?? previous?.actualLocationName ?? null,
+      updatedAt: new Date().toISOString(),
+    });
+    commit(next);
+    setNotice(`${actor.name}独立度过了一个虚拟小时；其他人的时间没有变化。`);
+  };
+
   const actorClockLabel = (clock: LifeActorClock) => clock.mode === "real-time" ? "跟随现实" : clock.mode === "review" ? "回顾暂停" : `模拟 ×${clock.speed}`;
 
   const ensurePlans = () => {
