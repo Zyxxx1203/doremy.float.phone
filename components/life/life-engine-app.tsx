@@ -31,8 +31,7 @@ import { loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-stor
 import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
 import { loadImageGenerationSettings } from "@/lib/settings-storage";
-import { getChatImageFromIndexedDB, saveChatImageToIndexedDB } from "@/lib/chat-asset-storage";
-import { fileToUserAvatarDataUrl } from "@/lib/user-avatar-image";
+import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
 
@@ -881,8 +880,7 @@ export function LifeEngineApp() {
           <Toggle checked={settings.compactLayout} onChange={v=>patchSettings({compactLayout:v})} label="紧凑布局"/>
           <label className="mt-4 block text-sm">默认时间模式<select value={settings.defaultClockMode} onChange={e=>patchSettings({defaultClockMode:e.target.value as LifeEngineSettings["defaultClockMode"]})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="real-time">跟随现实</option><option value="simulation">独立模拟</option><option value="review">暂停回顾</option></select></label>
           <label className="mt-4 block text-sm">新角色默认流速：×{settings.defaultSpeed}<input type="range" min="0.1" max="100" step="0.1" value={settings.defaultSpeed} onChange={e=>patchSettings({defaultSpeed:Number(e.target.value)})} className="mt-2 w-full accent-[var(--life-accent)]"/></label>
-          <div className="mt-4 rounded-2xl border border-stone-200/80 bg-white/60 p-4"><p className="text-sm font-semibold">玩家全局参考图（可选）</p><p className="mt-1 text-xs leading-relaxed text-stone-500">这张图会与入镜角色的参考图合成一张参考板传给支持图生图的生图方案。没有参考图也没关系，可只填写下方形象描述。</p><div className="mt-3 flex items-center gap-3">{settings.userAppearanceReferenceAssetId?<><button type="button" onClick={async()=>{const data=await getChatImageFromIndexedDB(settings.userAppearanceReferenceAssetId!);if(data)window.open(data,"_blank","noopener,noreferrer")}} className="rounded-xl bg-white px-3 py-2 text-xs">查看已保存参考图</button><button type="button" onClick={()=>patchSettings({userAppearanceReferenceAssetId:undefined})} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-red-600">移除参考图</button></>:<label className="cursor-pointer rounded-xl bg-white px-3 py-2 text-xs font-medium text-stone-700">上传形象参考图<input type="file" accept="image/*" className="hidden" onChange={async e=>{const file=e.target.files?.[0];if(!file)return;try{const dataUrl=await fileToUserAvatarDataUrl(file,900,0.84);const blob=await (await fetch(dataUrl)).blob();const assetId=await saveChatImageToIndexedDB(blob);patchSettings({userAppearanceReferenceAssetId:assetId});setNotice("玩家参考图已保存到本机图片资产库。");}catch(err){setNotice("参考图保存失败："+(err instanceof Error?err.message:"未知错误"));}finally{e.currentTarget.value="";}}}/></label>}</div></div>
-          <label className="mt-4 block text-sm">玩家形象描述（全局生图使用）<textarea value={settings.userAppearanceDescription} onChange={e=>patchSettings({userAppearanceDescription:e.target.value})} rows={3} placeholder="例如：黑色长发、圆框眼镜、偏爱宽松的米色针织衫。没有参考图时会使用这段描述。" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+          <div className="mt-4 rounded-2xl border border-stone-200/80 bg-white/60 p-4"><p className="text-sm font-semibold">玩家形象设置</p><p className="mt-1 text-xs leading-relaxed text-stone-500">玩家形象描述和参考图统一在「小手机设置 → 生图设置 → 全局玩家形象」管理，整个小手机共用。场景生成时会自动读取该配置；如果所选角色也有参考图，会一起组成参考板。</p></div>
           <div className="mt-4 rounded-2xl border border-stone-200/80 bg-white/60 p-4">
             <p className="text-sm font-semibold">场景生图</p>
             <p className="mt-1 text-xs leading-relaxed text-stone-500">复用小手机现有生图配置。角色外观描述会作为提示词；如果所选角色已有参考图，会优先带入一张参考图。多角色参考图同时编辑需要底层生图接口支持多参考图，目前会把其余角色的固定外观写入提示词。</p>
