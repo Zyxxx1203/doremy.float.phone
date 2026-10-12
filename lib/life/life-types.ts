@@ -218,7 +218,6 @@ export type VirtualLifeState = {
   schedules: LifeScheduleSlot[];
   scenes: LifeSceneState[];
   sceneMessages: LifeSceneMessage[];
-  sceneImages: LifeSceneImage[];
   events: LifeEvent[];
   invitations: LifeInvitation[];
   memories: LifeMemoryFact[];
@@ -235,7 +234,6 @@ export function createEmptyVirtualLifeState(now = new Date().toISOString()): Vir
     actorStates: [],
     schedules: [],
     scenes: [],\n    sceneMessages: [],
-    sceneImages: [],
     events: [],
     invitations: [],
     memories: [],
