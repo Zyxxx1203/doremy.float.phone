@@ -4,7 +4,7 @@ import { createSseJsonParser } from "./sse-json";
 import { maybeAppendShortcutCapability, maybeAppendPerceptionStatus } from "./offline-shortcut-capability";
 import { maybeBuildStatusInjection } from "./perception/describe";
 import { loadCharacters } from "./character-storage";
-import { buildLifeMemoryContext } from "./life/life-memory-bridge";
+import { buildLifeMemoryContext, buildLifePresenceContext } from "./life/life-memory-bridge";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
 import { emitChatPluginEvent, runChatPluginTransform } from "./chat-plugin-hooks";
 import { buildChatPluginPromptFragments } from "./chat-plugin-storage";
@@ -1898,7 +1898,8 @@ export async function buildChatPromptMessages(
         buildMusicCloudMacro(),
     ]);
 
-    const longTermMemories = [\n        memResults ? formatLongTermMemories(memResults) : "",\n        buildLifeMemoryContext(character.id),\n    ].filter(Boolean).join("\\n\\n");
+    const longTermMemories = [\n        memResults ? formatLongTermMemories(memResults) : "",\n        buildLifeMemoryContext(character.id),
+        buildLifePresenceContext(character.id),\n    ].filter(Boolean).join("\\n\\n");
     const coreMemories = coreResults ? formatCoreMemories(coreResults) : "";
     const scheduleSummary = buildCalendarScheduleMarker("character", character.id, getWeekStartIso(now));
     const currentSchedule = getCurrentCalendarScheduleForPrompt("character", character.id, now);
