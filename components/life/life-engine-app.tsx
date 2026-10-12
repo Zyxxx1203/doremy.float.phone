@@ -451,9 +451,9 @@ export function LifeEngineApp() {
     const count = Math.max(1,Math.min(4,options?.count ?? settings.sceneImageCount));
     setSceneImageBusy(true);
     setNotice("正在生成场景图。每张图会独立保存，失败的图片不会影响已有图库。");
+    const generated: LifeSceneImage[] = [];
     try {
       const referenceSheet = await composeSceneReferenceSheet(participantIds);
-      const generated: LifeSceneImage[] = [];
       for(let index=0;index<count;index++){
         const referenceCharacterId = participantIds.find(pid=>imageSettings.characterReferences?.[pid]?.assetId && imageSettings.characterReferences?.[pid]?.enabled !== false);
         const result = await generateImageFromConfiguredApi({
@@ -475,7 +475,8 @@ export function LifeEngineApp() {
         setNotice("生成完成。旧图已归档，可在图库中恢复或删除以释放缓存空间。");
       }
     } catch(error) {
-      setNotice("场景图生成失败："+(error instanceof Error?error.message:"未知错误"));
+      await Promise.all(generated.map(image=>deleteMediaRef(image.mediaRef)));
+      setNotice("场景图生成失败："+(error instanceof Error?error.message:"未知错误")+"；本轮未完成的图片已清理，旧图库未受影响。");
     } finally { setSceneImageBusy(false); }
   };
 
@@ -544,7 +545,7 @@ export function LifeEngineApp() {
         settings.allowCharactersToStaySilent ? "如果角色当下忙碌、没注意到或不想说话，可以自然沉默。" : "本轮需要对玩家的输入作出回应。",
         wokeFromSleep ? "角色原本正在睡觉，本轮是被消息或紧急情况吵醒；要表现困倦、反应迟缓或不想立刻长谈，不要突然精神饱满。" : "",
         settings.enableAmbientDetails ? "可以用一两笔简短环境细节营造现场感，不要扩写成长篇旁白。" : "不需要环境氛围描写，直接进行实时互动。",
-        settings.enableCharacterAutonomy ? "你可以按需调用以下三个生活工具（通过输出对应隐藏标签调用，不要向玩家解释标签）：1) change_schedule：<life_plan_change scope=\"today\" title=\"新的安排\" locationId=\"home\" />，仅调整你自己的未来未开始时段，已发生时间和已确认约会不可改，不能瞬移；2) propose_invitation：<life_invitation time=\"ISO-8601时间\" locationId=\"cafe\" activity=\"活动\" durationMinutes=\"60\" />，提出邀约但必须由玩家确认才改日程；3) request_follow：<life_follow_request durationMinutes=\"120\" reason=\"简短原因\" />，申请在一段时间内跟随玩家，必须由玩家确认且可拒绝。每轮最多调用一个工具，只有角色确实有动机时才调用，不要为展示功能而调用。关闭自主行动后，所有工具调用都会被忽略。" : "角色自主行动工具已关闭，不要输出生活工具标签。",
+        settings.enableCharacterAutonomy ? "你可以按需调用以下三个生活工具（通过输出对应隐藏标签调用，不要向玩家解释标签）：1) change_schedule：<life_plan_change startAt=\"ISO-8601开始时间\" endAt=\"ISO-8601结束时间\" title=\"新的安排\" locationId=\"home\" />，仅调整你自己的当前虚拟日未来未开始时段，已发生时间和已确认约会不可改，不能瞬移；2) propose_invitation：<life_invitation time=\"ISO-8601时间\" locationId=\"cafe\" activity=\"活动\" durationMinutes=\"60\" />，提出邀约但必须由玩家确认才改日程；3) request_follow：<life_follow_request durationMinutes=\"120\" reason=\"简短原因\" />，申请在一段时间内跟随玩家，必须由玩家确认且可拒绝。每轮最多调用一个工具，只有角色确实有动机时才调用，不要为展示功能而调用。关闭自主行动后，所有工具调用都会被忽略。" : "角色自主行动工具已关闭，不要输出生活工具标签。",
         settings.customPrompt ? `用户自定义规则：${settings.customPrompt}` : "",
       ].filter(Boolean).join("\n");
       const promptMessage: ChatMessage = {
