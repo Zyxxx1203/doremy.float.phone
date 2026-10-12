@@ -127,6 +127,8 @@ export function settleActorTimelineToNow(
   const virtualNow = resolveActorLifeNow(clock, realNow);
   const nowIso = realNow.toISOString();
   let events = state.events;
+  let memories = state.memories;
+  let invitations = state.invitations;
   const settledKeys = new Set(events.map(event => event.settlementKey).filter(Boolean));
   for (const slot of state.schedules) {
     if (slot.ownerType !== ownerType || slot.ownerId !== ownerId) continue;
@@ -153,6 +155,29 @@ export function settleActorTimelineToNow(
     events = [...events, event];
     settledKeys.add(settlementKey);
   }
+  for (const event of [...events]) {
+    if (event.kind !== "invitation" || (event.status !== "confirmed" && event.status !== "active") || !event.startsAt || !event.endsAt) continue;
+    const allAtOrAfter = (iso: string) => event.participantIds.every(participantId => {
+      const participantType: LifeOwnerType = participantId === "player" ? "player" : "character";
+      return resolveActorLifeNow(getActorClock(state, participantType, participantId), realNow).getTime() >= new Date(iso).getTime();
+    });
+    const started = allAtOrAfter(event.startsAt);
+    const ended = allAtOrAfter(event.endsAt);
+    if (ended) {
+      const updated = { ...event, status: "completed" as const, updatedAt: nowIso, completedAt: nowIso, settlementKey: "invitation:" + event.id };
+      events = events.map(item => item.id === event.id ? updated : item);
+      invitations = invitations.map(invite => invite.eventId === event.id ? { ...invite, status: "completed" as const, updatedAt: nowIso } : invite);
+      const memoryId = "memory-" + event.id;
+      if (!memories.some(memory => memory.id === memoryId)) {
+        memories = [{
+          id: memoryId, eventId: event.id, occurredAt: event.endsAt, participants: event.participantIds,
+          fact: "已共同完成约定活动「" + event.title + "」" + (event.locationName ? "，地点：" + event.locationName : "") + "。",
+        }, ...memories].slice(0, 500);
+      }
+    } else if (started && event.status === "confirmed") {
+      events = events.map(item => item.id === event.id ? { ...item, status: "active" as const, updatedAt: nowIso } : item);
+    }
+  }
   const current = getCurrentActorSchedule(state, ownerType, ownerId, virtualNow);
   const previous = findActorState(state, ownerType, ownerId);
   const slotChanged = !!current && previous?.scheduleSlotId !== current.id;
@@ -167,8 +192,8 @@ export function settleActorTimelineToNow(
         actualLocationId: nextLocationId, actualLocationName: nextLocationName, updatedAt: nowIso,
       }]
     : state.actorStates;
-  if (events === state.events && !actorChanged) return state;
-  return { ...state, events, actorStates, updatedAt: nowIso };
+  if (events === state.events && memories === state.memories && invitations === state.invitations && !actorChanged) return state;
+  return { ...state, events, memories, invitations, actorStates, updatedAt: nowIso };
 }
 
 /** Explicit fast-forward advances one actor, then settles every crossed schedule segment. */
