@@ -82,29 +82,31 @@ export function generateWeeklyLifePlan(state: VirtualLifeState, ownerType: LifeO
   };
   for (let offset=0; offset<7; offset++) {
     const day = new Date(start.getTime()+offset*DAY_MS), weekend = day.getDay()===0 || day.getDay()===6;
+    add(day,0,0,7,0,"睡眠","habit",{id:"home",name:"家"});
     add(day,7,0,7,30,"起床、洗漱","habit",{id:"home",name:"家"});
     add(day,7,30,8,0,"早餐","meal",{id:"home",name:"家"});
     if (!weekend) {
-      add(day,8,0,9,0,"通勤 / 前往当天安排","commute");
-      const daytime = ownerType === "player" ? "工作 / 学习（可自行修改）" : /学生|大学|学校|study/i.test(profileText) ? `${ownerName}上课 / 学习` : /自由职业|艺术家|作家|画家|摄影|音乐|创业|freelance|artist/i.test(profileText) ? `${ownerName}的创作 / 项目时间` : `${ownerName}的工作 / 学习`;
-      add(day,9,0,12,0,daytime,ownerType==="player"?"free-time":"work");
-      add(day,12,0,13,0,"午餐","meal");
-      add(day,13,0,18,0,ownerType==="player"?"下午安排（可自行修改）":`${ownerName}的下午安排`,ownerType==="player"?"free-time":"work");
+      const daytimeLocation = /学生|大学|学校|study/i.test(profileText) ? {id:"school",name:"学校"} : {id:"work",name:"工作地点"};
+      add(day,8,0,9,0,"通勤 / 前往当天安排","commute",{id:"transit",name:"通勤途中"});
+      const daytime = ownerType === "player" ? "工作 / 学习（可自行修改）" : /学生|大学|学校|study/i.test(profileText) ? ownerName+"上课 / 学习" : /自由职业|艺术家|作家|画家|摄影|音乐|创业|freelance|artist/i.test(profileText) ? ownerName+"的创作 / 项目时间" : ownerName+"的工作 / 学习";
+      add(day,9,0,12,0,daytime,ownerType==="player"?"free-time":"work",daytimeLocation);
+      add(day,12,0,13,0,"午餐","meal",{id:"canteen",name:"食堂 / 附近餐馆"});
+      add(day,13,0,18,0,ownerType==="player"?"下午安排（可自行修改）":ownerName+"的下午安排",ownerType==="player"?"free-time":"work",daytimeLocation);
     } else {
       add(day,8,0,9,0,"慢慢开始的一天","free-time",{id:"home",name:"家"});
-      add(day,9,0,12,0,ownerType==="player"?"周末自由安排":`${ownerName}的周末安排`,"free-time");
-      add(day,12,0,13,0,"午餐","meal");
-      add(day,13,0,18,0,"休闲 / 个人计划","free-time");
+      add(day,9,0,12,0,ownerType==="player"?"周末自由安排":ownerName+"的周末安排","free-time",{id:"home",name:"家"});
+      add(day,12,0,13,0,"午餐","meal",{id:"home",name:"家"});
+      add(day,13,0,18,0,"休闲 / 个人计划","free-time",{id:"home",name:"家"});
     }
-    add(day,18,0,19,0,"晚餐","meal");
+    add(day,18,0,19,0,"晚餐","meal",{id:"home",name:"家"});
     if (offset === specialDay) {
       add(day,19,0,19,30,"回家 / 稍作休息","free-time",{id:"home",name:"家"});
       add(day,19,30,20,30,specialTitle,"special",specialLocation);
       add(day,20,30,22,0,"晚间自由时间","free-time",{id:"home",name:"家"});
     } else {
-      add(day,19,0,22,0,ownerType==="player"?"自由时间":`${ownerName}的私人时间`,"free-time",{id:"home",name:"家"});
+      add(day,19,0,22,0,ownerType==="player"?"自由时间":ownerName+"的私人时间","free-time",{id:"home",name:"家"});
     }
-    add(day,22,0,7,0,"睡眠","habit",{id:"home",name:"家"});
+    add(day,22,0,24,0,"睡眠","habit",{id:"home",name:"家"});
   }
   return { ...state, schedules: [...state.schedules,...slots].sort((a,b)=>a.startAt.localeCompare(b.startAt)) };
 }
