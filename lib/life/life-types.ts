@@ -118,7 +118,7 @@ export type LifeSceneParticipant = {
   awarenessByActorId: Record<string, "unaware" | "suspects" | "aware">;
 };
 
-export type LifeSceneState = {
+export type LifeSceneMessage = {\n  id: string;\n  sceneId: string;\n  speakerType: LifeOwnerType;\n  speakerId: string;\n  speakerName: string;\n  role: "player" | "character" | "system";\n  action?: string;\n  dialogue: string;\n  createdAt: string;\n};\n\nexport type LifeSceneState = {
   id: string;
   locationId: string;
   locationName: string;
@@ -178,7 +178,7 @@ export type VirtualLifeState = {
   locations: LifeLocation[];
   actorStates: LifeActorState[];
   schedules: LifeScheduleSlot[];
-  scenes: LifeSceneState[];
+  scenes: LifeSceneState[];\n  sceneMessages: LifeSceneMessage[];
   events: LifeEvent[];
   invitations: LifeInvitation[];
   memories: LifeMemoryFact[];
@@ -194,7 +194,7 @@ export function createEmptyVirtualLifeState(now = new Date().toISOString()): Vir
     locations: [],
     actorStates: [],
     schedules: [],
-    scenes: [],
+    scenes: [],\n    sceneMessages: [],
     events: [],
     invitations: [],
     memories: [],
