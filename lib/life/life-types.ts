@@ -56,6 +56,7 @@ export type LifeEngineSettings = {
   sceneImageCount: 1 | 2 | 3 | 4;
   sceneImageStyle: string;
   userAppearanceDescription: string;
+  userAppearanceReferenceAssetId?: string;
   customPrompt: string;
 };
 export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
