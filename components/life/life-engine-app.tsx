@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type CSSProperties } from "react";
 import {
   ArrowLeft, CalendarDays, Clock3, Coffee, Heart, MapPin, MessageCircle,
-  Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Trash2, Users, ChevronLeft, ChevronRight, ImagePlus, Archive, RotateCcw,
+  Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Trash2, Users, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import type { Character } from "@/lib/character-types";
 import { loadCharacters } from "@/lib/character-storage";
@@ -544,7 +544,7 @@ export function LifeEngineApp() {
         settings.allowCharactersToStaySilent ? "如果角色当下忙碌、没注意到或不想说话，可以自然沉默。" : "本轮需要对玩家的输入作出回应。",
         wokeFromSleep ? "角色原本正在睡觉，本轮是被消息或紧急情况吵醒；要表现困倦、反应迟缓或不想立刻长谈，不要突然精神饱满。" : "",
         settings.enableAmbientDetails ? "可以用一两笔简短环境细节营造现场感，不要扩写成长篇旁白。" : "不需要环境氛围描写，直接进行实时互动。",
-        "若你确实决定临时改变自己的未来日程，可在对白之外附加隐藏控制标签：<life_plan_change scope=\"today\" title=\"新的安排\" locationId=\"home\" />。仅修改当前虚拟日之后的未开始安排，不能改写过去、不能覆盖已确认约会，也不能让角色瞬移。若你想申请在某段时间一直陪伴并跟随玩家，可附加 <life_follow_request durationMinutes=\"120\" reason=\"简短原因\" />；这只是申请，必须由玩家确认后才生效。没有真实意愿时不要输出标签，标签不会显示为台词。 若你真心想主动约玩家做一件具体的事，可附加 <life_invitation time=\"ISO-8601时间\" locationId=\"cafe\" activity=\"活动\" durationMinutes=\"60\" />。时间必须在双方各自虚拟当前时间之后；这只是待确认邀约，不会自动占用双方日程，玩家确认后才同步。只在角色有明确动机时调用，不要每轮都发邀约。",
+        settings.enableCharacterAutonomy ? "你可以按需调用以下三个生活工具（通过输出对应隐藏标签调用，不要向玩家解释标签）：1) change_schedule：<life_plan_change scope=\"today\" title=\"新的安排\" locationId=\"home\" />，仅调整你自己的未来未开始时段，已发生时间和已确认约会不可改，不能瞬移；2) propose_invitation：<life_invitation time=\"ISO-8601时间\" locationId=\"cafe\" activity=\"活动\" durationMinutes=\"60\" />，提出邀约但必须由玩家确认才改日程；3) request_follow：<life_follow_request durationMinutes=\"120\" reason=\"简短原因\" />，申请在一段时间内跟随玩家，必须由玩家确认且可拒绝。每轮最多调用一个工具，只有角色确实有动机时才调用，不要为展示功能而调用。关闭自主行动后，所有工具调用都会被忽略。" : "角色自主行动工具已关闭，不要输出生活工具标签。",
         settings.customPrompt ? `用户自定义规则：${settings.customPrompt}` : "",
       ].filter(Boolean).join("\n");
       const promptMessage: ChatMessage = {
@@ -554,7 +554,7 @@ export function LifeEngineApp() {
       const result = await generateOfflineChatCompletion(session, [...previous, promptMessage]);
       const parsed = parseLifeOutput(result.content);
       let structuredNext = stateRef.current;
-      if (parsed.planChange?.title) {
+      if (settings.enableCharacterAutonomy && parsed.planChange?.title) {
         const characterNow = resolveActorLifeNow(getActorClock(structuredNext, "character", target.id));
         const dayEnd = new Date(characterNow); dayEnd.setHours(22,0,0,0);
         const location = structuredNext.locations.find(item => item.id === parsed.planChange?.locationId) ?? structuredNext.locations.find(item => item.id === "home");
@@ -569,7 +569,7 @@ export function LifeEngineApp() {
         if (currentState) structuredNext = upsertActorState(structuredNext, { ...currentState, activity: "正在重新安排接下来的时间", updatedAt: new Date().toISOString() });
         setNotice(target.name + "决定调整今天剩余的日程；已发生的时段和已确认约会都没有被改写。");
       }
-      if (parsed.invitation && settings.enableInvitations) {
+      if (settings.enableCharacterAutonomy && parsed.invitation && settings.enableInvitations) {
         const proposedDate = new Date(parsed.invitation.time);
         const playerNow = resolveActorLifeNow(getActorClock(structuredNext, "player", PLAYER_ID));
         const characterNow = resolveActorLifeNow(getActorClock(structuredNext, "character", target.id));
@@ -585,7 +585,7 @@ export function LifeEngineApp() {
           setNotice(target.name+"提出的邀约时间无效或已经过去，因此没有写入日程。");
         }
       }
-      if (parsed.followRequest) {
+      if (settings.enableCharacterAutonomy && settings.enableInvitations && parsed.followRequest) {
         const playerNow = resolveActorLifeNow(getActorClock(structuredNext, "player", PLAYER_ID));
         const characterNow = resolveActorLifeNow(getActorClock(structuredNext, "character", target.id));
         const playerPresence = structuredNext.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
