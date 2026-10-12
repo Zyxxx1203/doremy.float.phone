@@ -3696,7 +3696,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         return sent;
     };
 
-    const shouldSuppressLifeSleepReply = (userText?: string): boolean => {
+    const shouldSuppressLifeSleepReply = (userText?: string, notify = true): boolean => {
         if (session.isGroup || offlineMode || !character) return false;
         const life = loadVirtualLifeState();
         if (!life.settings.enabled || !life.settings.allowCharactersToStaySilent) return false;
@@ -3714,7 +3714,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const staysAsleep = !urgent && seed % 100 >= (lightSleeper ? 60 : 15);
         if (staysAsleep) {
             kvSet("life-sleep-pending-reply:" + session.id, "true");
-            showChatToast(character.name + "正在睡觉，没有被这条消息叫醒。TA醒来后会再查看消息。", 3500);
+            if (notify) showChatToast(character.name + "正在睡觉，没有被这条消息叫醒。TA醒来后会再查看消息。", 3500);
         } else {
             kvRemove("life-sleep-pending-reply:" + session.id);
         }
@@ -4115,7 +4115,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             const latest = loadChatMessages(session.id);
             const lastUser = [...latest].reverse().find(message => message.role === "user");
             if (!lastUser) { kvRemove(key); return; }
-            if (shouldSuppressLifeSleepReply(lastUser.content)) return;
+            if (shouldSuppressLifeSleepReply(lastUser.content, false)) return;
             kvRemove(key);
             showChatToast(character.name + "醒来后看到了你之前的消息，正在回应。", 3500);
             void triggerAIResponse();
