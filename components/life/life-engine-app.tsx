@@ -30,15 +30,11 @@ import { advanceActorTimeline, confirmLifeInvitation, generateWeeklyLifePlan, ge
 import { loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
-import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
-import { saveChatImageToIndexedDB, getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
-import { deleteThemeAsset } from "@/lib/theme-storage";
 import { loadImageGenerationSettings } from "@/lib/settings-storage";
 import { getChatImageFromIndexedDB, saveChatImageToIndexedDB } from "@/lib/chat-asset-storage";
 import { fileToUserAvatarDataUrl } from "@/lib/user-avatar-image";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
-import type { LifeSceneImage } from "@/lib/life/life-types";
 
 type Tab = "home" | "scene" | "plans" | "invitations" | "settings";
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
