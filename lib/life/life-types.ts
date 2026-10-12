@@ -28,6 +28,7 @@ export type LifeActorClock = {
 };
 
 export type LifeEngineSettings = {
+  playerDisplayName: string;
   enabled: boolean;
   autoGenerateWeeklyPlans: boolean;
   generateSpecialEvents: boolean;
@@ -55,6 +56,7 @@ export type LifeEngineSettings = {
 };
 
 export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
+  playerDisplayName: "我",
   enabled: true,
   autoGenerateWeeklyPlans: true,
   generateSpecialEvents: true,
