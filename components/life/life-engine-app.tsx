@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type CSSProperties } from "react";
 import {
-  ArrowLeft, CalendarDays, Clock3, Coffee, Heart, MapPin, MessageCircle,
-  Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Trash2, Users, ChevronLeft, ChevronRight,
+  CalendarDays, Coffee, Heart, MapPin, MessageCircle,
+  Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Users,
 } from "lucide-react";
 import type { Character } from "@/lib/character-types";
 import { loadCharacters } from "@/lib/character-storage";
