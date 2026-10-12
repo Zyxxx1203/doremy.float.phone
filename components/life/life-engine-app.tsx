@@ -178,15 +178,17 @@ export function LifeEngineApp() {
   };
 
   const createScene = () => {
+    if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
     if (!selectedLocation) { setNotice("请先创建或选择一个地点。"); return; }
     const chosen = characters.filter(char => selectedCharacterIds.includes(char.id));
-    if (!chosen.length) { setNotice("至少选择一位角色，才能开始生活场景。"); return; }
+    if (!chosen.length) { setNotice("至少选择一位角色，才能开始共同生活场景。"); return; }
     const now = new Date().toISOString();
+    const ids = ["player", ...chosen.map(char => char.id)];
     const participants: LifeSceneParticipant[] = [
-      { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "正在看看周围", awarenessByActorId: {} },
-      ...chosen.map(char => ({ ownerType: "character" as const, ownerId: char.id, activity: "正在做自己的事", awarenessByActorId: {} })),
+      { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "正在看看周围", awarenessByActorId: Object.fromEntries(ids.filter(other => other !== PLAYER_ID).map(other => [other, "aware" as const])) },
+      ...chosen.map(char => ({ ownerType: "character" as const, ownerId: char.id, activity: "正在做自己的事", awarenessByActorId: Object.fromEntries(ids.filter(other => other !== char.id).map(other => [other, "aware" as const])) })),
     ];
-    let next = { ...state, scenes: state.scenes.map(scene => scene.status === "active" ? { ...scene, status: "paused" as const, updatedAt: now } : scene) };
+    let next: VirtualLifeState = { ...state, scenes: state.scenes.map(scene => scene.status === "active" ? { ...scene, status: "paused" as const, updatedAt: now } : scene) };
     const scene: LifeSceneState = { id: id("scene"), locationId: selectedLocation.id, locationName: selectedLocation.name, startedAt: now, updatedAt: now, status: "active", participants, lastSettledEventIds: [] };
     next = upsertLifeScene(next, scene);
     for (const actor of [{ ownerType: "player" as const, ownerId: PLAYER_ID }, ...chosen.map(char => ({ ownerType: "character" as const, ownerId: char.id }))]) {
@@ -194,7 +196,50 @@ export function LifeEngineApp() {
     }
     commit(next);
     setTab("scene");
-    setNotice("场景已建立并保存；之后重新打开会接着当前状态，不会重演。");
+    setNotice("共同场景已建立并保存；重新打开会接着当前状态，不会重演。");
+  };
+
+  /** Arrival uses actual-location state only; planned locations never create encounters. */
+  const enterLocationSolo = () => {
+    if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
+    if (!selectedLocation) return;
+    const now = new Date().toISOString();
+    const actualCharacters = settings.enableCoincidences
+      ? characters.filter(char => state.actorStates.some(actor => actor.ownerType === "character" && actor.ownerId === char.id && actor.actualLocationId === selectedLocation.id))
+      : [];
+    const participants: LifeSceneParticipant[] = [{
+      ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "正在看看周围", awarenessByActorId: {},
+    }];
+    for (const char of actualCharacters) {
+      const actor = state.actorStates.find(item => item.ownerType === "character" && item.ownerId === char.id);
+      if (!actor) continue;
+      const perception = {
+        distance: "medium" as const,
+        lineOfSight: selectedLocation.visibility === "public",
+        audible: true,
+        attention: /专注|工作|学习|读书|写作|打电话/.test(actor.activity) ? "focused" as const : /发呆|等待|休息/.test(actor.activity) ? "distracted" as const : "normal" as const,
+        activity: /等待|休息|发呆/.test(actor.activity) ? "waiting" as const : /工作|学习|读书|写作/.test(actor.activity) ? "busy" as const : "casual" as const,
+        noticing: /外向|敏锐|警觉|好奇|观察力/.test(char.personality || "") ? 0.68 : 0.38,
+        environmentNoise: /咖啡|车站|商场/.test(selectedLocation.name) ? 0.62 : 0.25,
+      };
+      const seed = [...char.id].reduce((sum, value) => sum + value.charCodeAt(0), 0);
+      const awareness = evaluateEncounterAwareness(perception, seed);
+      participants.push({ ownerType: "character", ownerId: char.id, activity: actor.activity, awarenessByActorId: { player: awareness } });
+      participants[0].awarenessByActorId[char.id] = selectedLocation.visibility === "public" ? "aware" : "suspects";
+    }
+    let next: VirtualLifeState = { ...state, scenes: state.scenes.map(scene => scene.status === "active" ? { ...scene, status: "paused" as const, updatedAt: now } : scene) };
+    const scene: LifeSceneState = { id: id("scene"), locationId: selectedLocation.id, locationName: selectedLocation.name, startedAt: now, updatedAt: now, status: "active", participants, lastSettledEventIds: [] };
+    next = upsertLifeScene(next, scene);
+    next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "正在看看周围", actualLocationId: selectedLocation.id, actualLocationName: selectedLocation.name, updatedAt: now });
+    commit(next);
+    if (!actualCharacters.length) {
+      const message: LifeSceneMessage = { id: id("turn"), sceneId: scene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: "场景记录", role: "system", dialogue: settings.enableCoincidences ? "你来到了这里。暂时没有发现实际在场的熟人；你可以自己待一会儿，也可以稍后再看看。" : "你来到了这里。偶遇功能当前关闭，你可以独自探索这个地点。", createdAt: now };
+      commit({ ...stateRef.current, sceneMessages: [...stateRef.current.sceneMessages, message] });
+    } else {
+      const noticed = participants.filter(p => p.ownerType === "character" && p.awarenessByActorId.player === "aware").length;
+      setNotice(noticed ? "你来到了" + selectedLocation.name + "，有角色注意到了你。" : "你来到了" + selectedLocation.name + "；有人在场，但暂时没人明确注意到你。");
+    }
+    setTab("scene");
   };
 
   const pushSceneMessage = (message: LifeSceneMessage) => {
