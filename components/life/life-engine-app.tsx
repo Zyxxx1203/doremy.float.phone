@@ -113,6 +113,7 @@ export function LifeEngineApp() {
   const [sceneImageCountDraft, setSceneImageCountDraft] = useState<1|2|3|4>(DEFAULT_LIFE_ENGINE_SETTINGS.sceneImageCount);
   const [imageObjectUrls, setImageObjectUrls] = useState<Record<string,string>>({});
   const [imageViewerIndex, setImageViewerIndex] = useState(0);
+  const imageTouchStartRef = useRef<number | null>(null);
   const [imageParticipantIds, setImageParticipantIds] = useState<string[]>([]);
   const autoImageSceneRef = useRef<string | null>(null);
 
@@ -373,6 +374,8 @@ export function LifeEngineApp() {
     autoImageSceneRef.current = activeScene.id;
     void generateSceneImages({count:settings.sceneImageCount});
   }, [ready, activeScene?.id, activeScene?.images?.length, settings.autoGenerateSceneImages, settings.sceneImageCount]);
+
+  useEffect(() => { setSceneImageCountDraft(settings.sceneImageCount); }, [settings.sceneImageCount]);
 
   const sceneImageRecords = activeScene?.images ?? [];
   useEffect(() => {
@@ -801,7 +804,7 @@ export function LifeEngineApp() {
             <textarea value={sceneImagePrompt} onChange={e=>setSceneImagePrompt(e.target.value)} rows={2} placeholder="想要的画面：例如两个人坐在咖啡店窗边，雨天，桌上有两杯热饮；留空则根据当前场景生成。" className="mt-3 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-xs"/>
             <div className="mt-2 flex items-center gap-2 text-xs text-stone-500"><span>本次张数</span><select value={sceneImageCountDraft} onChange={e=>setSceneImageCountDraft(Number(e.target.value) as 1|2|3|4)} className="rounded-lg border border-stone-200 bg-white px-2 py-1"><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option></select><span>张</span><span className="ml-auto">{sceneImageRecords.length} 张存档</span></div>
             {sceneImageRecords.filter(image=>image.status==="active").length>0 ? (()=>{const images=sceneImageRecords.filter(image=>image.status==="active");const safeIndex=Math.min(imageViewerIndex,images.length-1);const current=images[safeIndex];return <div className="mt-3 overflow-hidden rounded-xl bg-[#f5eee7]">
-              <div className="relative grid min-h-48 place-items-center">
+              <div className="relative grid min-h-48 place-items-center touch-pan-y" onTouchStart={e=>{imageTouchStartRef.current=e.changedTouches[0]?.clientX??null}} onTouchEnd={e=>{const start=imageTouchStartRef.current;imageTouchStartRef.current=null;const end=e.changedTouches[0]?.clientX;if(start===null||end===undefined||Math.abs(end-start)<45)return;const count=sceneImageRecords.filter(image=>image.status==="active").length;if(count>1)setImageViewerIndex(index=>(index+(end<start?1:-1)+count)%count)}}>
                 {imageObjectUrls[current.id]?<img src={imageObjectUrls[current.id]} alt={current.alt||"生活场景图"} className="max-h-[420px] w-full object-contain"/>:<p className="p-8 text-xs text-stone-400">正在加载图片…</p>}
                 {images.length>1&&<><button type="button" onClick={()=>setImageViewerIndex((safeIndex-1+images.length)%images.length)} className="absolute left-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-white/85 text-lg shadow">‹</button><button type="button" onClick={()=>setImageViewerIndex((safeIndex+1)%images.length)} className="absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-white/85 text-lg shadow">›</button></>}
               </div>
