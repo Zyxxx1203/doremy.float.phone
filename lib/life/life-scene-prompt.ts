@@ -1,9 +1,6 @@
 import type { LifeSceneState, VirtualLifeState } from "./life-types";
 
-/**
- * Prompt contract for the new life-scene mode only.
- * Do not use this for online chat or the existing long-form story mode.
- */
+/** This contract belongs only to life-scene mode, never online chat or long-form story mode. */
 export const LIFE_SCENE_OUTPUT_CONTRACT = `【生活场景模式输出规则】
 你正在进行持续的、可恢复的生活场景互动，不是长篇小说，也不是线上聊天。
 
@@ -18,24 +15,38 @@ export const LIFE_SCENE_OUTPUT_CONTRACT = `【生活场景模式输出规则】
 9. 不要自动快进虚拟时间。只有用户明确选择模拟推进时才推进；退出模拟时询问继续模拟还是对齐现实时间。
 10. 玩家角色的决定由玩家控制，不要擅自替玩家行动、发言或接受邀约。`;
 
-export function buildLifeScenePromptContext(
-  state: VirtualLifeState,
-  scene: LifeSceneState,
-): string {
+export function buildLifeScenePromptContext(state: VirtualLifeState, scene: LifeSceneState, viewerId?: string): string {
+  const viewer = viewerId ? scene.participants.find(p => p.ownerType === "character" && p.ownerId === viewerId) : undefined;
+  const visibleActorStates = state.actorStates.filter(actor => {
+    if (!viewerId) return actor.ownerType === "player" || scene.participants.some(p => p.ownerType === actor.ownerType && p.ownerId === actor.ownerId);
+    if (actor.ownerType === "character" && actor.ownerId === viewerId) return true;
+    if (actor.ownerType === "player") return Boolean(viewer?.awarenessByActorId.player === "aware");
+    return scene.participants.some(p => p.ownerType === actor.ownerType && p.ownerId === actor.ownerId && viewer?.awarenessByActorId[p.ownerId] === "aware");
+  });
+  const participantIds = scene.participants.map(p => p.ownerId);
+  const memories = state.memories
+    .filter(memory => memory.participants.includes(viewerId || "player") && memory.participants.some(id => participantIds.includes(id)))
+    .sort((a,b) => b.occurredAt.localeCompare(a.occurredAt))
+    .slice(0, 8)
+    .reverse();
+  const recentTurns = state.sceneMessages
+    .filter(message => message.sceneId === scene.id)
+    .slice(-12)
+    .map(message => `- ${message.speakerName}${message.action ? `（${message.action}）` : ""}：${message.dialogue}`);
   const lines = [
     "【当前生活场景状态】",
     `场景：${scene.locationName}（locationId=${scene.locationId}）`,
     `场景状态：${scene.status}`,
     `场景开始时间：${scene.startedAt}`,
     "参与者当前活动：",
-    ...scene.participants.map(participant =>
-      `- ${participant.ownerType} ${participant.ownerId}：${participant.activity || "当前活动未知"}`,
-    ),
-    "当前已知的实际状态（仅供场景连续性使用，不代表其他角色都知道）：",
-    ...state.actorStates.map(actor =>
-      `- ${actor.ownerType} ${actor.ownerId}：${actor.activity || "活动未知"}；实际地点：${actor.actualLocationName || "未知"}`,
-    ),
-    "注意：计划地点不能替代实际地点；只允许角色使用自己已观察到或有合理渠道得知的信息。",
+    ...scene.participants.map(participant => `- ${participant.ownerType} ${participant.ownerId}：${participant.activity || "当前活动未知"}；对玩家的认知：${participant.awarenessByActorId.player || "尚未判定"}`),
+    "角色有理由知道的实际状态（其他人的状态不可自动推知）：",
+    ...visibleActorStates.map(actor => `- ${actor.ownerType} ${actor.ownerId}：${actor.activity || "活动未知"}；实际地点：${actor.actualLocationName || "未知"}`),
+    memories.length ? "【该角色参与过的共同记忆事实】" : "",
+    ...memories.map(memory => `- ${memory.fact}`),
+    recentTurns.length ? "【本场景最近发生的对话】" : "",
+    ...recentTurns,
+    "注意：计划地点不能替代实际地点；只允许角色使用自己已观察到或有合理渠道得知的信息。场景历史用于保持连续性，不代表所有参与者都知道每件事。",
   ];
-  return lines.join("\n");
+  return lines.filter(Boolean).join("\n");
 }
