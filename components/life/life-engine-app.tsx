@@ -25,7 +25,7 @@ import {
   type LifeScheduleSlot,
   type VirtualLifeState,
 } from "@/lib/life/life-types";
-import { advanceActorTimeline, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, makeLifeInvitation, resolveActorLifeNow, settleActorTimelineToNow, upsertActorClock, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
+import { advanceActorTimeline, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, upsertActorClock, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
 import { loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
@@ -414,19 +414,36 @@ export function LifeEngineApp() {
   };
 
   const confirmInvitation = (inviteId: string) => {
-    const next = confirmLifeInvitation(state, inviteId);
-    const invite = next.invitations.find(item => item.id === inviteId);
-    if (invite?.eventId) {
-      const char = characters.find(item => item.id === invite.characterId);
-      const playerClock = getActorClock(next, "player", PLAYER_ID);
-      const charClock = getActorClock(next, "character", invite.characterId);
-      const startsAt = new Date(invite.proposedAt);
-      const endAt = new Date(startsAt.getTime() + 60 * 60_000);
-      const mkSlot = (ownerType: LifeOwnerType, ownerId: string): LifeScheduleSlot => ({ id: `invite-slot-${invite.eventId}-${ownerType}-${ownerId}`, ownerType, ownerId, startAt: startsAt.toISOString(), endAt: endAt.toISOString(), title: invite.activity, kind: "appointment", source: "event", plannedLocationId: invite.locationId, plannedLocationName: invite.locationName, updatedAt: new Date().toISOString() });
-      const withSlots = { ...next, schedules: [...next.schedules, mkSlot("player", PLAYER_ID), mkSlot("character", invite.characterId)] };
-      void playerClock; void charClock; void char;
-      commit(withSlots);
-    } else commit(next);
+    const invite = state.invitations.find(item => item.id === inviteId && item.status === "proposed");
+    if (!invite) return;
+    const startsAt = new Date(invite.proposedAt);
+    const endsAt = new Date(startsAt.getTime() + 60 * 60_000);
+    const playerNow = resolveActorLifeNow(getActorClock(state, "player", PLAYER_ID));
+    const characterNow = resolveActorLifeNow(getActorClock(state, "character", invite.characterId));
+    if (!Number.isFinite(startsAt.getTime()) || startsAt <= playerNow || startsAt <= characterNow) {
+      setNotice("这个时间对你或角色来说已经过去了。请修改邀约时间后再确认；不会为了赴约自动跳过时间。");
+      return;
+    }
+    const ownerIds = new Set([PLAYER_ID, invite.characterId]);
+    const conflict = state.schedules.find(slot => ownerIds.has(slot.ownerId) && (slot.ownerType === "player" || slot.ownerType === "character") && slot.kind === "appointment" && new Date(slot.startAt) < endsAt && new Date(slot.endAt) > startsAt);
+    if (conflict) {
+      setNotice("这个时段已经有另一项已确认的约定。请先调整时间，避免两件事情同时发生。");
+      return;
+    }
+    let next = confirmLifeInvitation(state, inviteId);
+    const confirmed = next.invitations.find(item => item.id === inviteId);
+    if (!confirmed?.eventId) { commit(next); return; }
+    const makeSlot = (ownerType: LifeOwnerType, ownerId: string): LifeScheduleSlot => ({
+      id: "invite-slot-" + confirmed.eventId + "-" + ownerType + "-" + ownerId,
+      ownerType, ownerId, startAt: startsAt.toISOString(), endAt: endsAt.toISOString(),
+      title: confirmed.activity, kind: "appointment", source: "event",
+      plannedLocationId: confirmed.locationId, plannedLocationName: confirmed.locationName,
+      updatedAt: new Date().toISOString(),
+    });
+    next = placeAppointmentInActorSchedule(next, makeSlot("player", PLAYER_ID));
+    next = placeAppointmentInActorSchedule(next, makeSlot("character", confirmed.characterId));
+    commit(next);
+    setNotice("邀约已确认，双方的冲突时段已保留前后部分并插入约定；只有两个人的虚拟时间都到达后，活动才会开始。");
   };
 
   const addManualPlanTitle = (slot: LifeScheduleSlot, title: string) => {
