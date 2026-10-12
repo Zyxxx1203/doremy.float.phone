@@ -108,10 +108,19 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     ...characters.map(char => ({ ownerType: "character" as const, ownerId: char.id, name: char.name, avatar: char.avatar, persona: [char.persona, char.personality].filter(Boolean).join("\n") })),
   ], [characters, playerName]);
   const selectedActor = actors.find(actor => `${actor.ownerType}:${actor.ownerId}` === selectedActorKey) ?? actors[0];
-  const activeScene = useMemo(() => state.scenes.find(scene => scene.status === "active" || scene.status === "paused"), [state.scenes]);
+  const activeScene = useMemo(() => state.scenes.find(scene => scene.status === "active") ?? state.scenes.find(scene => scene.status === "paused"), [state.scenes]);
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
   const selectedLocation = state.locations.find(location => location.id === selectedLocationId) ?? state.locations[0];
   const settings = state.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;
+
+  useEffect(() => {
+    if (!ready || !settings.autoGenerateWeeklyPlans || !characters.length) return;
+    let next = state;
+    const start = mondayStart(new Date());
+    next = generateWeeklyLifePlan(next, "player", PLAYER_ID, playerName, start, { id: "home", name: "家" });
+    for (const character of characters) next = generateWeeklyLifePlan(next, "character", character.id, character.name, start, { id: "home", name: "家" });
+    if (next !== state) commit(next);
+  }, [ready, settings.autoGenerateWeeklyPlans, characters, playerName, state, commit]);
 
   const patchSettings = (patch: Partial<LifeEngineSettings>) => commit({ ...state, settings: { ...settings, ...patch } });
   const patchActorClock = (actor: ActorChoice, patch: Partial<Pick<LifeActorClock, "mode" | "speed">>) => commit(upsertActorClock(state, actor.ownerType, actor.ownerId, patch));
@@ -269,7 +278,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           <div className="space-y-3">{actors.map(actor => { const clock=getActorClock(state,actor.ownerType,actor.ownerId), now=actorNow(actor), current=actorSchedule(actor), actual=actorState(actor); return <div key={`${actor.ownerType}:${actor.ownerId}`} className={`rounded-2xl border p-3 transition ${selectedActorKey===`${actor.ownerType}:${actor.ownerId}`?"border-[var(--life-accent)]/45 bg-white":"border-stone-200/70 bg-white/55"}`}>
             <div className="flex flex-wrap items-start justify-between gap-2"><button onClick={()=>setSelectedActorKey(`${actor.ownerType}:${actor.ownerId}`)} className="flex min-w-0 items-center gap-3 text-left">{actor.avatar ? <img src={actor.avatar} alt="" className="h-10 w-10 rounded-full object-cover"/> : <span className="grid h-10 w-10 place-items-center rounded-full bg-[#efe1d2] text-sm">{actor.ownerType==="player"?"我":actor.name.slice(0,1)}</span>}<span><span className="block font-medium">{actor.name}</span><span className="block text-xs opacity-60">{actorClockLabel(clock)} · {fmt(now)}</span></span></button><span className="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] text-stone-600">{current?.title ?? "当前没有日程"}</span></div>
             <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center"><label className="text-xs text-stone-500">时间流速：×{clock.speed}<input type="range" min="0.1" max="100" step="0.1" value={clock.speed} onChange={e=>patchActorClock(actor,{speed:Number(e.target.value),mode:clock.mode==="real-time"?"simulation":clock.mode})} className="mt-2 w-full accent-[var(--life-accent)]"/></label><div className="flex flex-wrap gap-1.5"><select aria-label={`${actor.name}的时间模式`} value={clock.mode} onChange={e=>patchActorClock(actor,{mode:e.target.value as LifeActorClock["mode"]})} className="rounded-xl border border-stone-200 bg-white px-2 py-2 text-xs"><option value="real-time">跟随现实</option><option value="simulation">独立模拟</option><option value="review">暂停回顾</option></select><button onClick={()=>commit(fastForwardActor(state,actor.ownerType,actor.ownerId,60))} className="rounded-xl bg-[#f0e3d5] px-3 py-2 text-xs text-stone-700">+1 虚拟小时</button></div></div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-500"><MapPin size={13}/><span>实际地点：{actual?.actualLocationName ?? "未记录"}</span><span className="opacity-40">·</span><span>计划地点：{current?.plannedLocationName ?? "暂无提示"}</span></div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-500"><MapPin size={13}/><span>实际地点：{actual?.actualLocationName ?? "未记录"}</span><select aria-label={`${actor.name}实际地点`} value={actual?.actualLocationId ?? ""} onChange={e=>updateActorLocation(actor,e.target.value)} className="max-w-36 rounded-lg border border-stone-200 bg-white px-2 py-1"><option value="" disabled>更新实际地点…</option>{state.locations.map(loc=><option key={loc.id} value={loc.id}>{loc.name}</option>)}</select><span className="opacity-40">·</span><span>计划地点：{current?.plannedLocationName ?? "暂无提示"}</span></div>
           </div>; })}</div>
           <p className="mt-4 text-xs leading-relaxed text-stone-500">提示：倍速只影响该角色的虚拟时钟；计划地点不等于实时定位。真实位置仍需要场景状态或合理的信息来源。</p>
         </section>
