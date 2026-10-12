@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type CSSProperties } from "react";
 import {
   ArrowLeft, CalendarDays, Clock3, Coffee, Heart, MapPin, MessageCircle,
   Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Trash2, Users,
@@ -8,7 +8,7 @@ import {
 import type { Character } from "@/lib/character-types";
 import { loadCharacters } from "@/lib/character-storage";
 import { hydrateKvDb } from "@/lib/kv-db";
-import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
+import { hydrateChatStorage, loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage } from "@/lib/chat-storage";
 import { generateOfflineChatCompletion } from "@/lib/chat-engine";
 import {
   createEmptyVirtualLifeState,
@@ -64,8 +64,8 @@ function SectionTitle({ eyebrow, title, note }: { eyebrow: string; title: string
   return <div className="mb-4"><p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#a4775d]">{eyebrow}</p><h2 className="mt-1 text-xl font-semibold tracking-tight text-stone-800">{title}</h2>{note && <p className="mt-1 text-sm leading-relaxed text-stone-500">{note}</p>}</div>;
 }
 
-export function LifeEngineApp() {
-  const [state, setState] = useState<VirtualLifeState>(() => createEmptyVirtualLifeState());
+export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
+  const [state, setState] = useState<VirtualLifeState>(() => createEmptyVirtualLifeState());\n  const stateRef = useRef(state);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<Tab>("home");
@@ -87,7 +87,7 @@ export function LifeEngineApp() {
 
   useEffect(() => {
     let alive = true;
-    void hydrateKvDb().catch(() => undefined).finally(() => {
+    void hydrateKvDb().then(() => hydrateChatStorage()).catch(() => undefined).finally(() => {
       if (!alive) return;
       const loaded = loadVirtualLifeState();
       const normalized = { ...loaded, locations: loaded.locations.length ? loaded.locations : INITIAL_LOCATIONS };
@@ -159,7 +159,7 @@ export function LifeEngineApp() {
 
   const pushSceneMessage = (message: LifeSceneMessage) => {
     const updatedScene = activeScene ? { ...activeScene, updatedAt: new Date().toISOString() } : null;
-    let next = { ...state, sceneMessages: [...state.sceneMessages, message] };
+    const latest = stateRef.current;\n    let next = { ...latest, sceneMessages: [...latest.sceneMessages, message] };
     if (updatedScene) next = upsertLifeScene(next, updatedScene);
     commit(next);
   };
@@ -255,7 +255,7 @@ export function LifeEngineApp() {
   return <main style={cssVars} className={`min-h-screen bg-gradient-to-br ${themeClass} px-3 py-4 sm:px-6 sm:py-8`}>
     <div className="mx-auto max-w-6xl">
       <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/75 text-[var(--life-accent)] shadow-sm"><Heart size={22}/></div><div><p className="text-[10px] font-semibold uppercase tracking-[0.26em] opacity-60">LIFE SIMULATOR · PERSONAL WORLD</p><h1 className="text-2xl font-semibold tracking-tight">虚拟生活引擎</h1><p className="mt-0.5 text-xs opacity-65">各自生活 · 独立时间 · 自然相遇 · 持续记忆</p></div></div>
+        <div className="flex items-center gap-3">{onClose && <button onClick={onClose} aria-label="返回桌面" className="grid h-10 w-10 place-items-center rounded-xl bg-white/70 shadow-sm"><ArrowLeft size={18}/></button>}<div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/75 text-[var(--life-accent)] shadow-sm"><Heart size={22}/></div><div><p className="text-[10px] font-semibold uppercase tracking-[0.26em] opacity-60">LIFE SIMULATOR · PERSONAL WORLD</p><h1 className="text-2xl font-semibold tracking-tight">虚拟生活引擎</h1><p className="mt-0.5 text-xs opacity-65">各自生活 · 独立时间 · 自然相遇 · 持续记忆</p></div></div>
         <div className="flex flex-wrap items-center gap-2"><span className="rounded-full border border-white/70 bg-white/60 px-3 py-1.5 text-xs">{actors.length} 位生活参与者</span><button onClick={ensurePlans} className="inline-flex items-center gap-2 rounded-full bg-[var(--life-accent)] px-4 py-2 text-sm font-medium text-white shadow-sm"><CalendarDays size={15}/>生成本周日程</button></div>
       </header>
       {notice && <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-[var(--life-accent)]/20 bg-white/75 px-4 py-3 text-sm text-stone-700"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="关闭提示">×</button></div>}
