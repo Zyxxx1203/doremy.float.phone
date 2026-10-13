@@ -115,7 +115,6 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [inviteAt, setInviteAt] = useState(() => { const d = new Date(Date.now() + 60 * 60_000); d.setMinutes(0,0,0); return new Date(d.getTime() - d.getTimezoneOffset()*60_000).toISOString().slice(0,16); });
   const [customSceneTitle, setCustomSceneTitle] = useState("今天的相处");
   const [sceneImageBusy, setSceneImageBusy] = useState(false);
-  const sceneImagePrompt = settings.sceneImagePrompt;
   const [imageObjectUrls, setImageObjectUrls] = useState<Record<string,string>>({});
   const [imageViewerIndex, setImageViewerIndex] = useState(0);
   const imageTouchStartRef = useRef<number | null>(null);
@@ -143,6 +142,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   }, []);
 
   const settings = state.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;
+  const sceneImagePrompt = settings.sceneImagePrompt;
   const playerName = settings.playerDisplayName || "我";
   const actors = useMemo<ActorChoice[]>(() => [
     { ownerType: "player", ownerId: PLAYER_ID, name: playerName },
