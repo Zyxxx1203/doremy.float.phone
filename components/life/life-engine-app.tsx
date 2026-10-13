@@ -901,8 +901,34 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setNotice("已记录你的决定，双方日程没有被更改。");
   };
 
-  const addManualPlanTitle = (slot: LifeScheduleSlot, title: string) => {
-    commit({ ...state, schedules: state.schedules.map(item => item.id === slot.id ? { ...item, title, source: "manual", updatedAt: new Date().toISOString() } : item) });
+  const updateManualPlan = (slot: LifeScheduleSlot, patch: Partial<Pick<LifeScheduleSlot, "title" | "startAt" | "endAt" | "plannedLocationName">>) => {
+    const now = new Date().toISOString();
+    const updated = { ...slot, ...patch, plannedLocationId: patch.plannedLocationName !== undefined ? null : slot.plannedLocationId, source: "manual" as const, updatedAt: now };
+    if (new Date(updated.endAt).getTime() <= new Date(updated.startAt).getTime()) {
+      setNotice("日程结束时间必须晚于开始时间。");
+      return;
+    }
+    let next = { ...stateRef.current, schedules: stateRef.current.schedules.map(item => item.id === slot.id ? updated : item).sort((a,b)=>a.startAt.localeCompare(b.startAt)) };
+    next = appendLifeTimelineEntry(next, { category: "schedule", title: "修改了日程：" + updated.title, details: updated.startAt + " – " + updated.endAt + " · " + (updated.plannedLocationName || "地点待定"), actorId: slot.ownerId, actorName: actors.find(actor => actor.ownerId === slot.ownerId && actor.ownerType === slot.ownerType)?.name, locationName: updated.plannedLocationName ?? undefined, sourceId: slot.id });
+    commit(next);
+    setNotice("日程已保存。");
+  };
+
+  const addManualPlan = (actor: ActorChoice) => {
+    const now = actorNow(actor);
+    const start = new Date(now); start.setMinutes(0, 0, 0); start.setHours(start.getHours() + 1);
+    const end = new Date(start.getTime() + 60 * 60_000);
+    const current = actorState(actor);
+    const locationName = current?.actualLocationName || state.locations.find(item => item.id === current?.actualLocationId)?.name || "家";
+    const slot: LifeScheduleSlot = { id: id("manual-plan"), ownerType: actor.ownerType, ownerId: actor.ownerId, startAt: start.toISOString(), endAt: end.toISOString(), title: "新的日程", plannedLocationName: locationName, kind: "free-time", source: "manual", updatedAt: new Date().toISOString() };
+    commit({ ...stateRef.current, schedules: [...stateRef.current.schedules, slot].sort((a,b)=>a.startAt.localeCompare(b.startAt)) });
+    setNotice("已添加日程，请填写时间、地点和事件内容。");
+  };
+
+  const deleteManualPlan = (slot: LifeScheduleSlot) => {
+    if (slot.source !== "manual") { setNotice("系统生成的计划可以编辑；目前只允许删除手动添加的日程。"); return; }
+    commit({ ...stateRef.current, schedules: stateRef.current.schedules.filter(item => item.id !== slot.id) });
+    setNotice("已删除这条日程。");
   };
 
   const themeClass = settings.sceneTheme === "night-sky" ? "from-slate-950 via-slate-900 to-indigo-950 text-slate-100" : settings.sceneTheme === "sage" ? "from-[#eaf0e8] via-[#f3f4eb] to-[#dce8dc] text-stone-800" : settings.sceneTheme === "rose" ? "from-[#fff0f1] via-[#fff8f6] to-[#f7e3e5] text-stone-800" : "from-[#fbf4e9] via-[#f7efe4] to-[#ead9c6] text-stone-800";
