@@ -149,8 +149,6 @@ export type ChatMessage = {
     origin?: "chat" | "reading_discuss" | "custom_app" | "custom_app_background" | "story_floating_phone" | "call";
     mediaUrl?: string;
     mediaData?: {
-        callStartMarker?: boolean; // 手动标记通话片段的开头
-        callEndMarker?: boolean;   // 手动标记通话片段的结尾
         amount?: number;          // 红包/转账金额
         count?: number;           // 红包个数
         label?: string;           // 红包留言/转账备注/照片描述/位置名/表情名
