@@ -863,6 +863,15 @@ remove draft sync  const sceneImageRecords = activeScene?.images ?? [];
             <Toggle checked={settings.showLocationHints} onChange={v=>patchSettings({showLocationHints:v})} label="显示计划地点线索"/>
             <Toggle checked={settings.enableAmbientDetails} onChange={v=>patchSettings({enableAmbientDetails:v})} label="启用环境细节"/>
           </div>
+          <div className="mt-4 rounded-2xl border border-[var(--life-accent)]/25 bg-white/70 p-4">
+            <p className="text-sm font-semibold">角色可调用的生活工具</p>
+            <p className="mt-1 text-xs leading-relaxed text-stone-500">这些工具不需要你手动替角色创建。角色在生活现场或消息 APP 私聊中有真实动机时，可以自己发起；只有需要你参与的邀约和陪伴申请才会进入待确认列表。</p>
+            <div className="mt-3 space-y-2 text-xs">
+              <div className="flex items-start justify-between gap-3 rounded-xl bg-white/80 p-3"><div><code>life_propose_invitation</code><p className="mt-1 text-stone-500">角色主动邀约你一起做某件事</p></div><span className={settings.enableCharacterAutonomy&&settings.enableInvitations?"text-emerald-700":"text-stone-400"}>{settings.enableCharacterAutonomy&&settings.enableInvitations?"已启用":"已关闭"}</span></div>
+              <div className="flex items-start justify-between gap-3 rounded-xl bg-white/80 p-3"><div><code>life_request_follow</code><p className="mt-1 text-stone-500">角色主动申请陪伴，并跟随你的实际行程</p></div><span className={settings.enableCharacterAutonomy&&settings.enableInvitations&&settings.enableFollowRequestTool?"text-emerald-700":"text-stone-400"}>{settings.enableCharacterAutonomy&&settings.enableInvitations&&settings.enableFollowRequestTool?"已启用":"已关闭"}</span></div>
+              <div className="flex items-start justify-between gap-3 rounded-xl bg-white/80 p-3"><div><code>life_change_schedule</code><p className="mt-1 text-stone-500">角色调整自己当天未开始的普通日程</p></div><span className={settings.enableCharacterAutonomy&&settings.enableScheduleChangeTool?"text-emerald-700":"text-stone-400"}>{settings.enableCharacterAutonomy&&settings.enableScheduleChangeTool?"已启用":"已关闭"}</span></div>
+            </div>
+          </div>
           <label className="mt-4 block text-sm">位置情报权限<select value={settings.revealExactLocations} onChange={e=>patchSettings({revealExactLocations:e.target.value as LifeEngineSettings["revealExactLocations"]})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="ask-only">只有询问或可靠渠道才能得知精确位置</option><option value="clues">默认只显示习惯与模糊线索</option><option value="open">允许公开查看实际位置</option></select></label>
         </section>
         <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Appearance & comfort" title="界面自定义" note="外观设置独立保存，不会影响角色数据或原有聊天主题。" />
