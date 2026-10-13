@@ -34,8 +34,8 @@ import {
   supportsHealth,
   supportsLocation,
   supportsUsageStats,
-  type AppUsageEntry,
 } from "./bridge";
+import type { AppUsageEntry } from "./types";
 import { syncPerceptionToCloud } from "./cloud-sync";
 import {
   appendPerceptionLog,
