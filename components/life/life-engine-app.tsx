@@ -1175,8 +1175,15 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               const endClock=range?parseClock(range[2],startClock.hour+1):{hour:(startClock.hour+1)%24,minute:startClock.minute};
               const start=new Date(day);start.setHours(startClock.hour,startClock.minute,0,0);
               const end=new Date(day);end.setHours(endClock.hour,endClock.minute,0,0);if(end<=start)end.setDate(end.getDate()+1);
-              const location=next.locations.find(loc=>body.includes(loc.name));
-              let title=body.replace(/后天|明天|明日|今天|今日|周[一二三四五六日天]|星期[一二三四五六日天]/g,"").replace(/((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?)?)\s*(?:到|至|—|-)\s*((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?)?)/g,"").replace(/(?:在|于)\s*[^，,。；;]+/g,match=>location&&match.includes(location.name)?"":"").replace(/\s+/g," ").replace(/^[，,、\s]+|[，,。；;\s]+$/g,"").trim();
+              const knownLocation=next.locations.find(loc=>body.includes(loc.name));
+              const placeMatch=body.match(/(?:在|去|到|于)\s*([^，,。；;\s]+?)(?=(?:做|和|跟|一起|参加|开会|学习|工作|看|吃|喝|玩|逛|运动|散步|读|写|画|练|休息|睡|聊|见|约|$))/);
+              const placeName=knownLocation?.name||placeMatch?.[1];
+              let location=knownLocation;
+              if(!location&&placeName){location={id:id("location"),name:placeName,description:"从快速日程输入识别的地点",visibility:"public"};next={...next,locations:[...next.locations,location]};}
+              let title=body.replace(/后天|明天|明日|今天|今日|周[一二三四五六日天]|星期[一二三四五六日天]/g,"").replace(/((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?)?)\s*(?:到|至|—|-)\s*((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?)?)/g,"").replace(/(?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?)/g,"");
+              if(placeMatch)title=title.replace(placeMatch[0],"");
+              else if(location){for(const prefix of ["在","去","到","于"])title=title.replace(prefix+location.name,"");}
+              title=title.replace(/\s+/g," ").replace(/^[，,、\s]+|[，,。；;\s]+$/g,"").trim();
               if(!title)title=location?"在"+location.name+"活动":"日程安排";
               const actual=next.actorStates.find(item=>item.ownerType===actor.ownerType&&item.ownerId===actor.ownerId);
               next={...next,schedules:[...next.schedules,{id:id("quick-plan"),ownerType:actor.ownerType,ownerId:actor.ownerId,startAt:start.toISOString(),endAt:end.toISOString(),title,plannedLocationId:location?.id??actual?.actualLocationId??undefined,plannedLocationName:location?.name??actual?.actualLocationName??undefined,kind:"free-time",source:"manual",updatedAt:new Date().toISOString()}].sort((a,b)=>a.startAt.localeCompare(b.startAt))};
