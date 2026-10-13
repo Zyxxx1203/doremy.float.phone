@@ -258,54 +258,6 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setNotice(`${actor.name}的实际地点已更新为「${location.name}」。这与日程中的计划地点分开保存。`);
   };
 
-  const recordPlayerAction = () => {
-    const text = playerActivity.trim();
-    if (!text) { setNotice("先写下你现在正在做什么。"); return; }
-    const latest = stateRef.current;
-    const currentPlayer = latest.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
-    const locationId = currentPlayer?.actualLocationId ?? selectedLocation?.id ?? null;
-    const locationName = currentPlayer?.actualLocationName ?? selectedLocation?.name ?? null;
-    const now = new Date().toISOString();
-    let next = upsertActorState(latest, {
-      ownerType: "player", ownerId: PLAYER_ID, activity: text,
-      scheduleSlotId: currentPlayer?.scheduleSlotId ?? null,
-      actualLocationId: locationId, actualLocationName: locationName, updatedAt: now,
-    });
-    const currentScene = next.scenes.find(scene => scene.status === "active") ?? next.scenes.find(scene => scene.status === "paused");
-    if (currentScene) {
-      const participants = currentScene.participants.map(participant =>
-        participant.ownerType === "player" && participant.ownerId === PLAYER_ID ? { ...participant, activity: text } : participant,
-      );
-      next = upsertLifeScene(next, { ...currentScene, participants, updatedAt: now });
-      next = { ...next, sceneMessages: [...next.sceneMessages, {
-        id: id("turn"), sceneId: currentScene.id, speakerType: "player", speakerId: PLAYER_ID,
-        speakerName: playerName, role: "player", action: text, dialogue: "", createdAt: now,
-      }] };
-      const colocated = next.actorStates.filter(actor => actor.actualLocationId && actor.actualLocationId === locationId).map(actor => actor.ownerId);
-      const participantsInFact = [...new Set([PLAYER_ID, ...colocated])];
-      if (settings.saveConfirmedEventsToMemory) {
-        const eventId = id("event");
-        const eventNow = resolveActorLifeNow(getActorClock(next, "player", PLAYER_ID)).toISOString();
-        next = {
-          ...next,
-          events: [...next.events, {
-            id: eventId, kind: "activity" as const, status: "completed" as const,
-            startsAt: eventNow, endsAt: eventNow,
-            locationId: locationId ?? undefined, locationName: locationName ?? undefined,
-            participantIds: participantsInFact, title: text,
-            details: "玩家在共同生活场景中执行了该行动。", createdAt: now, updatedAt: now, completedAt: now,
-          }],
-          memories: [{
-            id: id("memory"), eventId, occurredAt: eventNow, participants: participantsInFact,
-            fact: playerName + "在" + (locationName ?? currentScene.locationName) + "：" + text,
-          }, ...next.memories].slice(0, 500),
-        };
-      }
-    }
-    commit(next);
-    setNotice("已记录你的行动；当前日程计划不会被改写，实际行为和地点单独保存。");
-  };
-
   const createScene = () => {
     if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
     if (!selectedLocation) { setNotice("请先创建或选择一个地点。"); return; }
@@ -338,7 +290,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       ? characters.filter(char => state.actorStates.some(actor => actor.ownerType === "character" && actor.ownerId === char.id && actor.actualLocationId === selectedLocation.id))
       : [];
     const participants: LifeSceneParticipant[] = [{
-      ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "正在看看周围", awarenessByActorId: {},
+      ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "刚来到这里", awarenessByActorId: {},
     }];
     for (const char of actualCharacters) {
       const actor = state.actorStates.find(item => item.ownerType === "character" && item.ownerId === char.id);
@@ -360,7 +312,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     let next: VirtualLifeState = { ...state, scenes: state.scenes.map(scene => scene.status === "active" ? { ...scene, status: "paused" as const, updatedAt: now } : scene) };
     const scene: LifeSceneState = { id: id("scene"), locationId: selectedLocation.id, locationName: selectedLocation.name, startedAt: now, updatedAt: now, status: "active", participants, lastSettledEventIds: [] };
     next = upsertLifeScene(next, scene);
-    next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "正在看看周围", actualLocationId: selectedLocation.id, actualLocationName: selectedLocation.name, updatedAt: now });
+    next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "刚来到这里", actualLocationId: selectedLocation.id, actualLocationName: selectedLocation.name, updatedAt: now });
     commit(next);
     if (!actualCharacters.length) {
       const message: LifeSceneMessage = { id: id("turn"), sceneId: scene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: "场景记录", role: "system", dialogue: settings.enableCoincidences ? "你来到了这里。暂时没有发现实际在场的熟人；你可以自己待一会儿，也可以稍后再看看。" : "你来到了这里。偶遇功能当前关闭，你可以独自探索这个地点。", createdAt: now };
@@ -827,7 +779,7 @@ remove draft sync  const sceneImageRecords = activeScene?.images ?? [];
           <div className="mb-4 flex flex-wrap gap-2">{activeScene.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);const awareness=p.awarenessByActorId.player;const status=awareness==="unaware"?"还没注意到你":awareness==="suspects"?"似乎察觉到你":awareness==="aware"?"注意到你":"";return <button key={p.ownerId} onClick={()=>p.ownerType==="character"&&setSelectedSpeakerId(p.ownerId)} className={`rounded-full px-3 py-1.5 text-xs ${selectedSpeakerId===p.ownerId?"bg-[var(--life-accent)] text-white":"bg-[#f1e5d8] text-stone-700"}`}>{actor?.name??p.ownerId} · {status || p.activity}</button>})}</div>
           <div className="mb-4 max-h-[48vh] min-h-48 space-y-3 overflow-y-auto rounded-2xl bg-white/65 p-3 sm:p-5" style={{fontSize:"var(--life-font)"}}>
             {sceneMessages.length===0 && <div className="grid min-h-36 place-items-center text-center text-sm text-stone-400"><div><Sparkles className="mx-auto mb-2" size={22}/><p>场景已经准备好了。</p><p className="mt-1 text-xs">角色可以忙自己的事，也可以回应你；不会自动写成长篇剧情。</p></div></div>}
-            {sceneMessages.map(message=><div key={message.id} className={`flex ${message.role==="player"?"justify-end":"justify-start"}`}><div className={`max-w-[88%] rounded-2xl px-4 py-3 ${settings.dialogueBubbleStyle==="square"?"rounded-md":settings.dialogueBubbleStyle==="soft"?"rounded-[1.4rem]":"rounded-2xl"} ${message.role==="player"?"bg-[#e9d4c0] text-stone-800":"bg-white text-stone-800 shadow-sm"}`}>{message.role!=="player"&&<p className="mb-1 text-[11px] font-semibold text-[var(--life-accent)]">{message.speakerName}</p>}{message.action&&<p className="mb-1.5 italic text-stone-500" style={{fontSize:"var(--life-narration-font)"}}>*{message.action}*</p>}{message.dialogue&&<p className="whitespace-pre-wrap leading-relaxed">{message.dialogue}</p>}<p className="mt-1 text-right text-[10px] opacity-45">{new Date(message.createdAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</p></div></div>)}
+            {sceneMessages.map(message=><div key={message.id} className={`flex ${message.role==="player"?"justify-end":"justify-start"}`}><div className={`max-w-[88%] rounded-2xl px-4 py-3 ${settings.dialogueBubbleStyle==="square"?"rounded-md":settings.dialogueBubbleStyle==="soft"?"rounded-[1.4rem]":"rounded-2xl"} ${message.role==="player"?"bg-[#e9d4c0] text-stone-800":"bg-white text-stone-800 shadow-sm"}`}>{message.role!=="player"&&<p className="mb-1 text-[11px] font-semibold text-[var(--life-accent)]">{message.speakerName}</p>}{message.action&&<p className="mb-1.5 italic text-stone-500" style={{fontSize:"var(--life-narration-font)"}}>*{message.action}*</p>}{message.dialogue&&{message.dialogue&&<p className="whitespace-pre-wrap leading-relaxed">{message.dialogue}</p>}}<p className="mt-1 text-right text-[10px] opacity-45">{new Date(message.createdAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</p></div></div>)}
             {busy&&<div className="text-xs text-stone-400">角色正在回应……</div>}
           </div>
           <section className="mb-3 rounded-2xl border border-stone-200/80 bg-white/60 p-2.5">
