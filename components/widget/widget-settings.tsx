@@ -339,7 +339,7 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
             </div>
             <p className="ws-hint">
               这里可以写任意 HTML 和 CSS——渐变、圆角、阴影、字体、透明度、对齐都能用。
-              桌面上显示什么，就是这段代码渲染出来的样子。
+              桌面上显示什么，就是这段代码渲染出来的样子。新增的生活状态占位符会直接读取生活 APP 的虚拟时间、当前活动、实际地点和下一项日程；不用重复配置时钟，生活状态变化后桌面组件会自动刷新。
             </p>
 
             {templateExpanded ? (
