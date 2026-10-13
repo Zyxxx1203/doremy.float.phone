@@ -1150,13 +1150,6 @@ class CheckInService : Service() {
     }
 
     /**
-     * 把浮层切成「可输入」：去掉 NOT_FOCUSABLE 并唤起键盘。
-     *
-     * 为什么不在建窗口时就允许输入：那会让浮层一出现就抢走键盘焦点——
-     * 用户可能正在别的 App 里打一句话，被我们半路截走，非常讨厌。
-     * 只有他主动点了回复框，才把焦点切过来。
-     */
-    /**
      * Recompute an already-attached overlay after rotation. Both WindowManager bounds and
      * the fixed-height screenshot preview must be refreshed or landscape can leave the
      * decision buttons outside the visible/touchable area.
@@ -1182,6 +1175,13 @@ class CheckInService : Service() {
             .onFailure { recordError("rotationUpdate", it) }
     }
 
+    /**
+     * 把浮层切成「可输入」：去掉 NOT_FOCUSABLE 并唤起键盘。
+     *
+     * 为什么不在建窗口时就允许输入：那会让浮层一出现就抢走键盘焦点——
+     * 用户可能正在别的 App 里打一句话，被我们半路截走，非常讨厌。
+     * 只有他主动点了回复框，才把焦点切过来。
+     */
     private fun enableTyping() {
         val view = rootView ?: return
         val params = layoutParams ?: return
