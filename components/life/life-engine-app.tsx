@@ -906,12 +906,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const updateManualPlan = (slot: LifeScheduleSlot, patch: Partial<Pick<LifeScheduleSlot, "title" | "startAt" | "endAt" | "plannedLocationName">>) => {
     const now = new Date().toISOString();
     const updated = { ...slot, ...patch, plannedLocationId: patch.plannedLocationName !== undefined ? null : slot.plannedLocationId, source: "manual" as const, updatedAt: now };
-    if (new Date(updated.endAt).getTime() <= new Date(updated.startAt).getTime()) {
-      setNotice("日程结束时间必须晚于开始时间。");
-      return;
-    }
     const next = { ...stateRef.current, schedules: stateRef.current.schedules.map(item => item.id === slot.id ? updated : item).sort((a,b)=>a.startAt.localeCompare(b.startAt)) };
     commit(next);
+    if (new Date(updated.endAt).getTime() <= new Date(updated.startAt).getTime()) setNotice("请继续调整时间，让结束时间晚于开始时间。");
   };
 
   const addManualPlan = (actor: ActorChoice) => {
