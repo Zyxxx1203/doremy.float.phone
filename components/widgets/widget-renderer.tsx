@@ -95,6 +95,8 @@ function WidgetContent({
       return <MusicWidget config={config} widgetId={widgetId} onConfigChange={onConfigChange} />;
     case "lifeTimeline":
       return <LifeTimelineWidget config={config} widgetId={widgetId} onConfigChange={onConfigChange} preview={preview} />;
+    case "lifeNow":
+      return <LifeNowWidget config={config} preview={preview} />;
     case "lifeCharacter":
       return <LifeCharacterWidget config={config} widgetId={widgetId} onConfigChange={onConfigChange} preview={preview} />;
     case "calendar":
@@ -170,6 +172,33 @@ function WidgetContent({
 // ----------------------------------------------------
 //   Virtual Life Widgets
 // ----------------------------------------------------
+function LifeNowWidget({ config }: any) {
+  const [snapshot, setSnapshot] = useState<any>(null);
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => {
+      const state = loadVirtualLifeState();
+      const now = resolveActorLifeNow(getActorClock(state, "player", "player"));
+      const current = getCurrentActorSchedule(state, "player", "player", now);
+      const actual = state.actorStates.find((actor: any) => actor.ownerType === "player" && actor.ownerId === "player");
+      const scene = state.scenes.find((item: any) => item.status === "active" || item.status === "paused");
+      if (alive) setSnapshot({ now, current, actual, scene, enabled: state.settings.enabled });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("virtual-life-state-updated", refresh);
+    return () => { alive = false; window.clearInterval(timer); window.removeEventListener("focus", refresh); window.removeEventListener("virtual-life-state-updated", refresh); };
+  }, []);
+  if (!snapshot) return <div className="flex h-full items-center justify-center text-xs text-stone-400">正在读取…</div>;
+  const accent = typeof config?.accentColor === "string" && /^#[0-9a-f]{6}$/i.test(config.accentColor) ? config.accentColor : "#a8795c";
+  const time = snapshot.now.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return <div className="flex h-full flex-col justify-between overflow-hidden rounded-xl p-3" style={{ background: typeof config?.background === "string" ? config.background : "linear-gradient(145deg,#fffaf1,#ead8c4)", color: "#4d3b30" }}>
+    <div className="flex items-center justify-between gap-2"><span className="text-[9px] font-semibold tracking-[.14em]" style={{ color: accent }}>此刻 · MY LIFE</span><span className="text-lg font-semibold tabular-nums">{time}</span></div>
+    <div className="min-h-0"><p className="mt-2 line-clamp-2 text-sm font-semibold">{snapshot.actual?.activity || snapshot.current?.title || "正在度过自由时间"}</p><p className="mt-1 truncate text-[10px] opacity-70">{snapshot.actual?.actualLocationName || snapshot.current?.plannedLocationName || snapshot.scene?.locationName || "地点待补充"}</p></div>
+  </div>;
+}
+
 function LifeTimelineWidget({ config, widgetId, onConfigChange, preview }: any) {
   const [snapshot, setSnapshot] = useState<any>(null);
   const [showNext, setShowNext] = useState(true);
