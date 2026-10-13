@@ -2527,17 +2527,10 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 if (part.mediaType === "voice_call" || part.mediaType === "video_call") {
                     if (session.isSpectator) continue; // 围观群不能把用户卷进群通话
                     const callType = part.mediaType === "voice_call" ? "voice" : "video";
-                    const isHidden = !mountedRef.current || !isChatRoomElementVisible(wrapperRef.current);
-                    if (isHidden) {
-                        window.dispatchEvent(new CustomEvent("ai-call-trigger", {
-                            detail: { sessionId: session.id, type: callType, characterName: r.characterName },
-                        }));
-                    } else {
-                        setCallInitiator("character");
-                        setCallInitiatorName(r.characterName);
-                        if (callType === "voice") setShowVoiceCall(true);
-                        else setShowVideoCall(true);
-                    }
+                    // 统一通过全局通话触发事件打开通话界面，避免依赖当前聊天组件的局部弹窗状态。
+                    window.dispatchEvent(new CustomEvent("ai-call-trigger", {
+                        detail: { sessionId: session.id, type: callType, characterName: r.characterName },
+                    }));
                     continue;
                 }
                 if (part.mediaType === "accept_red_packet") {
