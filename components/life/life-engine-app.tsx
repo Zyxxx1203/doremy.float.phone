@@ -231,7 +231,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           }
           const afterActor = next.actorStates.find(item => item.ownerType === owner.ownerType && item.ownerId === owner.ownerId);
           if (beforeActor && afterActor && (beforeActor.activity !== afterActor.activity || beforeActor.actualLocationId !== afterActor.actualLocationId)) {
-            next = appendLifeTimelineEntry(next, { category: "schedule", title: owner.name + "现在" + afterActor.activity, details: afterActor.actualLocationName ? "当前地点：" + afterActor.actualLocationName : undefined, actorId: owner.ownerId, actorName: owner.name, locationName: afterActor.actualLocationName });
+            next = appendLifeTimelineEntry(next, { category: "schedule", title: owner.name + "现在" + afterActor.activity, details: afterActor.actualLocationName ? "当前地点：" + afterActor.actualLocationName : undefined, actorId: owner.ownerId, actorName: owner.name, locationName: afterActor.actualLocationName ?? undefined });
           }
           if (beforeActor && afterActor && beforeActor.actualLocationId !== afterActor.actualLocationId && afterActor.actualLocationName) {
             next = appendLifeTimelineEntry(next, {
