@@ -67,10 +67,12 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
   useEffect(() => {
     const onChange = () => refresh();
     window.addEventListener(WIDGET_UPDATED_EVENT, onChange);
-    const onVisible = () => { if (document.visibilityState === "visible") setPlaced(isWidgetPlaced()); };
+    window.addEventListener("virtual-life-state-updated", onChange);
+    const onVisible = () => { if (document.visibilityState === "visible") { setPlaced(isWidgetPlaced()); refresh(); } };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.removeEventListener(WIDGET_UPDATED_EVENT, onChange);
+      window.removeEventListener("virtual-life-state-updated", onChange);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [refresh]);
