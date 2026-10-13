@@ -47,6 +47,8 @@ const INITIAL_LOCATIONS: LifeLocation[] = [
 ];
 const id = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 const fmt = (value: Date | string) => new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(typeof value === "string" ? new Date(value) : value);
+const toLocalDateTimeInput = (value: string) => { const d = new Date(value); if (!Number.isFinite(d.getTime())) return ""; const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000); return local.toISOString().slice(0, 16); };
+const fromLocalDateTimeInput = (value: string) => { const d = new Date(value); return Number.isFinite(d.getTime()) ? d.toISOString() : ""; };
 const mondayStart = (date: Date) => { const d = new Date(date); d.setHours(0,0,0,0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
 
 function parseLifeOutput(text: string): { action?: string; dialogue: string; followRequest?: { durationMinutes: number; reason: string }; planChange?: { title: string; locationId: string; startAt: string; endAt: string }; invitation?: { time: string; locationId: string; activity: string; durationMinutes: number } } {
