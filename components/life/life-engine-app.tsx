@@ -765,6 +765,19 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const playerFutureSlots = playerTodaySlots.filter(slot => new Date(slot.startAt).getTime() > playerNow.getTime());
   const playerPresence = actorState(playerActor);
   const nearbyCharacters = characters.map(character => ({ character, presence: state.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === character.id) })).filter(item => !!playerPresence?.actualLocationId && item.presence?.actualLocationId === playerPresence.actualLocationId);
+  const lifeTimeline = (state.timeline ?? []).filter(entry => {
+    if (entry.category === "location" || entry.category === "scene") return settings.recordLocationChanges;
+    if (entry.category === "action") return settings.recordCharacterActions;
+    if (entry.category === "dialogue") return settings.recordSceneMessages;
+    if (entry.category === "schedule") return settings.recordScheduleChanges;
+    if (entry.category === "tool") return settings.recordToolCalls;
+    if (entry.category === "social") return settings.recordSocialActivity;
+    if (entry.category === "diary") return settings.recordDiaryActivity;
+    if (entry.category === "chat") return settings.recordChatActivity;
+    return true;
+  }).slice().sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt));
+  const recentLifeTimeline = lifeTimeline.slice(0, 5);
+  const olderLifeTimeline = lifeTimeline.slice(5);
 
 
   if (!ready) return <main className="flex min-h-screen items-center justify-center bg-[#f7efe4] text-stone-500">正在打开生活档案…</main>;
@@ -828,6 +841,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             <div className="rounded-2xl bg-white/75 p-3"><p className="text-[11px] text-stone-500">实际地点</p><p className="mt-1 font-semibold">{playerPresence?.actualLocationName ?? "尚未记录"}</p><p className="mt-1 text-xs text-stone-500">计划：{settings.showLocationHints ? playerCurrentSlot?.plannedLocationName ?? "暂无提示" : "地点线索已隐藏"}</p></div>
             <div className="rounded-2xl bg-white/75 p-3"><p className="text-[11px] text-stone-500">当前场景</p><p className="mt-1 font-semibold">{activeScene?.locationName ?? "尚未进入场景"}</p><p className="mt-1 text-xs text-stone-500">{activeScene ? (activeScene.status==="active"?"正在进行":"已暂停，可继续") : "可以从下方选择地点进入"}</p></div>
           </div>
+          <section className="mt-4 rounded-2xl border border-stone-200/70 bg-white/60 p-3 sm:p-4">
+            <div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-sm font-semibold text-stone-800">今天发生的事</p><p className="mt-0.5 text-[11px] text-stone-500">生活、行动和互动会按发生时间连续记录</p></div><span className="rounded-full bg-white px-2.5 py-1 text-[10px] text-stone-500">{lifeTimeline.length} 条</span></div>
+            {recentLifeTimeline.length ? <div className="space-y-2">{recentLifeTimeline.map(entry=><div key={entry.id} className="flex gap-3 rounded-xl bg-white/80 p-3"><span className="w-12 shrink-0 pt-0.5 text-[11px] tabular-nums text-stone-400">{new Date(entry.occurredAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><div className="min-w-0 flex-1"><p className="text-sm font-medium text-stone-800">{entry.title}</p>{entry.details&&<p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-stone-600">{entry.details}</p>}<p className="mt-1 text-[10px] text-stone-400">{entry.actorName ? entry.actorName+" · " : ""}{entry.locationName ? entry.locationName+" · " : ""}{({location:"地点",scene:"场景",action:"行动",dialogue:"对话",schedule:"日程",tool:"工具",social:"朋友圈",diary:"日记",chat:"消息",system:"系统"} as Record<string,string>)[entry.category] ?? "生活记录"}</p></div></div>)}</div> : <div className="rounded-xl bg-white/70 p-4 text-center text-xs text-stone-500">还没有符合当前筛选条件的记录。开始行动或互动后，这里会逐渐形成你的一天。</div>}
+            {olderLifeTimeline.length>0&&<details className="mt-3 rounded-xl border border-stone-200/70 bg-white/50 p-3"><summary className="cursor-pointer text-xs font-medium text-stone-600">展开更早的记录（{olderLifeTimeline.length}）</summary><div className="mt-3 space-y-2">{olderLifeTimeline.map(entry=><div key={entry.id} className="flex gap-3 border-l-2 border-stone-200 pl-3 py-1"><span className="w-12 shrink-0 text-[10px] tabular-nums text-stone-400">{new Date(entry.occurredAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><div className="min-w-0 flex-1"><p className="text-xs font-medium">{entry.title}</p>{entry.details&&<p className="mt-0.5 whitespace-pre-wrap break-words text-[11px] text-stone-500">{entry.details}</p></div></div>)}</div></details>}
+          </section>
           {settings.showTimeline && <div className="mt-4">
             {playerPastSlots.length>0 && <details className="mb-3 rounded-2xl border border-stone-200/70 bg-white/55 p-3"><summary className="cursor-pointer text-sm font-medium text-stone-600">展开已度过的时段（{playerPastSlots.length}）</summary><div className="mt-3 space-y-2">{playerPastSlots.map(slot=><div key={slot.id} className="flex gap-3 rounded-xl bg-stone-50/80 p-2.5 text-xs"><span className="w-24 shrink-0 text-stone-400">{new Date(slot.startAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}–{new Date(slot.endAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><span className="min-w-0 flex-1">{slot.title}</span><span className="text-stone-400">{slot.plannedLocationName??"地点未定"}</span></div>)}</div></details>}
             <div className="space-y-2">
@@ -880,6 +898,16 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             <Toggle checked={settings.allowCharactersToStaySilent} onChange={v=>patchSettings({allowCharactersToStaySilent:v})} label="允许角色沉默或专注做自己的事"/>
             <Toggle checked={settings.showTimeline} onChange={v=>patchSettings({showTimeline:v})} label="显示日程时间线"/>
             <Toggle checked={settings.showLocationHints} onChange={v=>patchSettings({showLocationHints:v})} label="显示计划地点线索"/>
+            <div className="mt-3 rounded-2xl border border-stone-200/70 bg-white/60 p-3"><p className="mb-2 text-xs font-semibold text-stone-700">生活记录显示筛选</p><div className="space-y-2">
+              <Toggle checked={settings.recordLocationChanges} onChange={v=>patchSettings({recordLocationChanges:v})} label="地点与场景变化"/>
+              <Toggle checked={settings.recordCharacterActions} onChange={v=>patchSettings({recordCharacterActions:v})} label="我和角色的行动"/>
+              <Toggle checked={settings.recordSceneMessages} onChange={v=>patchSettings({recordSceneMessages:v})} label="生活现场的对话气泡"/>
+              <Toggle checked={settings.recordChatActivity} onChange={v=>patchSettings({recordChatActivity:v})} label="消息 APP 聊天动态"/>
+              <Toggle checked={settings.recordSocialActivity} onChange={v=>patchSettings({recordSocialActivity:v})} label="朋友圈动态"/>
+              <Toggle checked={settings.recordDiaryActivity} onChange={v=>patchSettings({recordDiaryActivity:v})} label="日记动态"/>
+              <Toggle checked={settings.recordToolCalls} onChange={v=>patchSettings({recordToolCalls:v})} label="角色调用工具"/>
+              <Toggle checked={settings.recordScheduleChanges} onChange={v=>patchSettings({recordScheduleChanges:v})} label="日程与时间变化"/>
+            </div><p className="mt-2 text-[10px] leading-relaxed text-stone-500">关闭某一项只会将该类记录从时间线隐藏，不会删除已保存的记录。</p></div>
             <Toggle checked={settings.enableAmbientDetails} onChange={v=>patchSettings({enableAmbientDetails:v})} label="启用环境细节"/>
           </div>
           <div className="mt-4 rounded-2xl border border-[var(--life-accent)]/25 bg-white/70 p-4">
