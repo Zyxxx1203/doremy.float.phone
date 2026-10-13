@@ -126,7 +126,20 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     void hydrateKvDb().then(() => hydrateChatStorage()).catch(() => undefined).finally(() => {
       if (!alive) return;
       const loaded = loadVirtualLifeState();
-      const normalized = { ...loaded, locations: loaded.locations.length ? loaded.locations : INITIAL_LOCATIONS };
+      let normalized: VirtualLifeState = { ...loaded, locations: loaded.locations.length ? loaded.locations : INITIAL_LOCATIONS };
+      const hasContinuingScene = normalized.scenes.some(scene => scene.status === "active" || scene.status === "paused");
+      if (!hasContinuingScene && normalized.settings.enabled) {
+        const player = normalized.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
+        const virtualNow = resolveActorLifeNow(getActorClock(normalized, "player", PLAYER_ID));
+        const currentSlot = getCurrentActorSchedule(normalized, "player", PLAYER_ID, virtualNow);
+        const location = normalized.locations.find(item => item.id === (player?.actualLocationId || currentSlot?.plannedLocationId)) || normalized.locations.find(item => item.id === "home") || normalized.locations[0];
+        if (location) {
+          const now = new Date().toISOString();
+          const scene: LifeSceneState = { id: id("scene"), locationId: location.id, locationName: player?.actualLocationName || currentSlot?.plannedLocationName || location.name, startedAt: now, updatedAt: now, status: "active", participants: [{ ownerType: "player", ownerId: PLAYER_ID, activity: player?.activity || currentSlot?.title || "正在度过今天", awarenessByActorId: {} }], lastSettledEventIds: [] };
+          normalized = { ...normalized, scenes: [...normalized.scenes, scene] };
+          saveVirtualLifeState(normalized);
+        }
+      }
       stateRef.current = normalized;
       setState(normalized);
       setCharacters(loadCharacters());
