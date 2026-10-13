@@ -713,20 +713,34 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   };
 
   const regenerateSceneMessage = async (message: LifeSceneMessage) => {
-    if (message.role !== "character") {
-      setNotice("重新生成仅适用于角色回复；玩家消息可以编辑或删除。");
+    const latestAtStart = stateRef.current;
+    let targetMessage = message;
+    if (message.role === "player") {
+      const playerIndex = latestAtStart.sceneMessages.findIndex(item => item.id === message.id);
+      targetMessage = latestAtStart.sceneMessages.slice(playerIndex + 1).find(item =>
+        item.sceneId === message.sceneId && item.role === "character"
+        && !latestAtStart.sceneMessages.slice(playerIndex + 1, latestAtStart.sceneMessages.indexOf(item)).some(previous => previous.sceneId === message.sceneId && previous.role === "player")
+      ) as LifeSceneMessage;
+      if (!targetMessage) {
+        setNotice("这条玩家输入后面还没有角色回复，先发送一次互动再重新生成。");
+        return;
+      }
+    } else if (message.role !== "character") {
+      setNotice("系统记录可以编辑或删除；重新生成需要选中玩家输入或角色回复。");
       return;
     }
-    const character = characters.find(item => item.id === message.speakerId);
-    const contact = loadChatContacts().find(item => item.characterId === message.speakerId);
+    const character = characters.find(item => item.id === targetMessage.speakerId);
+    const contact = loadChatContacts().find(item => item.characterId === targetMessage.speakerId);
     const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup);
-    const scene = stateRef.current.scenes.find(item => item.id === message.sceneId);
+    const scene = stateRef.current.scenes.find(item => item.id === targetMessage.sceneId);
     if (!character || !session || !scene) {
       setNotice("找不到角色聊天会话或原场景，暂时无法重新生成。");
       return;
     }
-    const sceneIndex = stateRef.current.sceneMessages.findIndex(item => item.id === message.id);
-    const previousPlayer = stateRef.current.sceneMessages.slice(0, sceneIndex).reverse().find(item => item.sceneId === message.sceneId && item.role === "player");
+    const sceneIndex = stateRef.current.sceneMessages.findIndex(item => item.id === targetMessage.id);
+    const previousPlayer = message.role === "player"
+      ? message
+      : stateRef.current.sceneMessages.slice(0, sceneIndex).reverse().find(item => item.sceneId === targetMessage.sceneId && item.role === "player");
     if (!previousPlayer) {
       setNotice("找不到这条回复对应的玩家输入，无法重新生成。");
       return;
@@ -753,19 +767,19 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const result = await generateOfflineChatCompletion(session, [...previous, prompt]);
       const parsed = parseLifeOutput(result.content);
       const latest = stateRef.current;
-      const sceneMessages = latest.sceneMessages.map(item => item.id === message.id
+      const sceneMessages = latest.sceneMessages.map(item => item.id === targetMessage.id
         ? { ...item, action: settings.showActionNarration ? parsed.action : undefined, dialogue: parsed.dialogue, createdAt: new Date().toISOString() }
         : item);
       let next: VirtualLifeState = {
         ...latest,
         sceneMessages,
-        timeline: latest.timeline.filter(entry => !(entry.sourceId === message.id && (entry.category === "action" || entry.category === "dialogue"))),
+        timeline: latest.timeline.filter(entry => !(entry.sourceId === targetMessage.id && (entry.category === "action" || entry.category === "dialogue"))),
       };
       if (settings.showActionNarration && parsed.action) {
-        next = appendLifeTimelineEntry(next, { category: "action", title: character.name + "的行动", details: parsed.action, actorId: character.id, actorName: character.name, locationName: scene.locationName, sceneId: scene.id, sourceId: message.id });
+        next = appendLifeTimelineEntry(next, { category: "action", title: character.name + "的行动", details: parsed.action, actorId: character.id, actorName: character.name, locationName: scene.locationName, sceneId: scene.id, sourceId: targetMessage.id });
       }
       if (parsed.dialogue.trim()) {
-        next = appendLifeTimelineEntry(next, { category: "dialogue", title: character.name + "说", details: parsed.dialogue, actorId: character.id, actorName: character.name, locationName: scene.locationName, sceneId: scene.id, sourceId: message.id });
+        next = appendLifeTimelineEntry(next, { category: "dialogue", title: character.name + "说", details: parsed.dialogue, actorId: character.id, actorName: character.name, locationName: scene.locationName, sceneId: scene.id, sourceId: targetMessage.id });
       }
       commit(next);
       setNotice("角色回复已重新生成，生活时间线也已同步。");
@@ -1480,7 +1494,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             <div className="grid grid-cols-2 gap-2">
               <button type="button" onClick={() => handleMessageAction("edit")} className="flex items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-3 text-sm"><Pencil size={16}/>编辑消息</button>
               <button type="button" onClick={() => handleMessageAction("delete")} className="flex items-center justify-center gap-2 rounded-xl border border-red-100 bg-white px-3 py-3 text-sm text-red-600"><Trash2 size={16}/>删除消息</button>
-              <button type="button" disabled={messageActionTarget.role !== "character" || busy} onClick={() => handleMessageAction("regenerate")} className="col-span-2 flex items-center justify-center gap-2 rounded-xl bg-[var(--life-accent)] px-3 py-3 text-sm text-white disabled:opacity-40"><RefreshCw size={16}/>重新生成角色回复</button>
+              <button type="button" disabled={messageActionTarget.role === "system" || busy} onClick={() => handleMessageAction("regenerate")} className="col-span-2 flex items-center justify-center gap-2 rounded-xl bg-[var(--life-accent)] px-3 py-3 text-sm text-white disabled:opacity-40"><RefreshCw size={16}/>{messageActionTarget.role === "player" ? "重新生成对应角色回复" : "重新生成这条角色回复"}</button>
             </div>
             <p className="mt-3 text-center text-[11px] text-stone-400">删除会同步清理这条消息的时间线记录。</p>
           </>}
