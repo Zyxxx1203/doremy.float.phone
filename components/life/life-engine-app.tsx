@@ -377,7 +377,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const current = actorState(actor);
     let next = upsertActorState(state, { ownerType: actor.ownerType, ownerId: actor.ownerId, activity: current?.activity || "正在这里活动", actualLocationId: location.id, actualLocationName: location.name, updatedAt: new Date().toISOString() });
     next = appendLifeTimelineEntry(next, { category: "location", title: actor.name + "来到了" + location.name, details: current?.actualLocationName ? "从" + current.actualLocationName + "前往" + location.name : "首次记录实际地点", actorId: actor.ownerId, actorName: actor.name, locationName: location.name });
-    if (actor.ownerType === "player" && current?.actualLocationId && current.actualLocationId !== location.id) {
+    if (actor.ownerType === "player" && current?.actualLocationId !== location.id) {
       const scene = next.scenes.find(item => item.status === "active" || item.status === "paused");
       if (scene) {
         const now = new Date().toISOString();
