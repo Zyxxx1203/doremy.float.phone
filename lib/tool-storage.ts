@@ -485,7 +485,8 @@ export function getEnabledTools(appId?: string): EnabledTool[] {
         });
     }
 
-    if (appId === "chat") {
+    {
+        // Life actions are global toolbox capabilities, available outside the Life APP too.
         const lifeSettings = loadVirtualLifeState().settings;
         if (lifeSettings.enabled && lifeSettings.enableCharacterAutonomy) {
             for (const tool of LIFE_TOOL_DEFINITIONS) {
