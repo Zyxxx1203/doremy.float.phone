@@ -15,6 +15,7 @@ import { parseAIResponse } from "./rich-message-parser";
 import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import { findUserAvatarChangeIntent, inferAvatarDecisionFromReply } from "./chat-avatar-intent";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "./life/life-storage";
+import { getActorClock, resolveActorLifeNow } from "./life/life-runtime";
 
 export const DEFAULT_VISION_IMAGE_PROMPT_LIMIT = 1;
 export const MAX_VISION_IMAGE_PROMPT_LIMIT = 20;
@@ -1522,15 +1523,15 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
                     const playerSent = newMsg.role === "user";
                     const content = typeof newMsg.content === "string" ? newMsg.content.trim() : "";
                     const shortPreview = content.replace(/\\s+/g, " ").slice(0, 120);
-                    const nowIso = new Date().toISOString();
+                    const nowIso = resolveActorLifeNow(getActorClock(life, "player", "player")).toISOString();
                     const chatTitle = "你和" + character.name + "在消息 APP 聊天";
                     const line = (playerSent ? "你" : character.name) + "：" + (shortPreview || "发送了消息");
                     const previous = [...(life.timeline ?? [])].reverse().find(entry =>
                         entry.category === "chat" &&
                         entry.actorId === character.id &&
                         Number.isFinite(new Date(entry.occurredAt).getTime()) &&
-                        Date.now() - new Date(entry.occurredAt).getTime() >= 0 &&
-                        Date.now() - new Date(entry.occurredAt).getTime() <= 5 * 60 * 1000
+                        new Date(nowIso).getTime() - new Date(entry.occurredAt).getTime() >= 0 &&
+                        new Date(nowIso).getTime() - new Date(entry.occurredAt).getTime() <= 5 * 60 * 1000
                     );
                     if (previous) {
                         const priorLines = (previous.details ?? "").split("\\n").filter(Boolean);
