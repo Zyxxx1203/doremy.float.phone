@@ -32,7 +32,11 @@ class QqCoupleDraftAccessibilityService : AccessibilityService() {
             val args = Bundle().apply {
                 putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, draft)
             }
-            val filled = editor.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+            val filled = try {
+                editor.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+            } finally {
+                editor.recycle()
+            }
             if (filled) {
                 // 单次草稿：避免页面每次刷新都覆盖用户后续编辑。
                 prefs.edit().remove(KEY_PENDING_DRAFT).apply()
