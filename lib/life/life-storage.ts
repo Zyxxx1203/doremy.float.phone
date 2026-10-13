@@ -9,6 +9,7 @@ import {
   type LifeTimelineEntry,
   type VirtualLifeState,
 } from "./life-types";
+import { getActorClock, resolveActorLifeNow } from "./life-runtime";
 
 const STORAGE_KEY = "ai_phone_virtual_life_state_v1";
 registerKvMigration(STORAGE_KEY);
@@ -88,7 +89,7 @@ export function appendLifeTimelineEntry(state: VirtualLifeState, entry: Omit<Lif
   const item: LifeTimelineEntry = {
     ...entry,
     id: entry.id ?? "life-log-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
-    occurredAt: entry.occurredAt ?? new Date().toISOString(),
+    occurredAt: entry.occurredAt ?? resolveActorLifeNow(getActorClock(state, "player", "player")).toISOString(),
   };
   return { ...state, timeline: [...(state.timeline ?? []), item].slice(-5000) };
 }
