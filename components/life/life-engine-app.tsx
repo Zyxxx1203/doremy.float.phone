@@ -660,6 +660,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const openMessageActions = (message: LifeSceneMessage) => {
     setMessageActionTarget(message);
     setMessageEditDraft(message.dialogue);
+    setMessageEditActionDraft(message.action || "");
     setMessageActionMode("menu");
   };
 
