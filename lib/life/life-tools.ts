@@ -1,6 +1,6 @@
 import { loadCharacters } from "../character-storage";
 import { loadChatContacts } from "../chat-storage";
-import { loadVirtualLifeState, saveVirtualLifeState } from "./life-storage";
+import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "./life-storage";
 import {
   getActorClock,
   resolveActorLifeNow,
@@ -165,7 +165,8 @@ export async function executeLifeToolCall(
       locationId: location?.id, locationName: location?.name, activity,
       kind: "appointment", durationMinutes: duration,
     });
-    saveVirtualLifeState(next);
+    const logged = appendLifeTimelineEntry(next, { category: "tool", title: "角色发起邀约：" + activity, details: "时间：" + time.toLocaleString("zh-CN") + "；地点：" + (location?.name ?? "地点待定"), actorId: characterId, actorName: loadCharacters().find(item => item.id === characterId)?.name ?? "角色", locationName: location?.name });
+    saveVirtualLifeState(logged);
     return result(name, true, JSON.stringify({ created: true, activity, time: time.toISOString(), location: location?.name ?? "地点待定", status: "proposed", message: "邀约已提交给玩家，等待玩家接受或拒绝。" }));
   }
 
@@ -185,7 +186,8 @@ export async function executeLifeToolCall(
       activity: "申请陪伴并跟随你的行程" + (reason ? "（" + reason + "）" : ""),
       kind: "follow-request", durationMinutes: duration,
     });
-    saveVirtualLifeState(next);
+    const logged = appendLifeTimelineEntry(next, { category: "tool", title: "角色申请陪伴", details: (reason ? "原因：" + reason + "；" : "") + "申请时长：" + duration + " 分钟", actorId: characterId, actorName: loadCharacters().find(item => item.id === characterId)?.name ?? "角色" });
+    saveVirtualLifeState(logged);
     return result(name, true, JSON.stringify({ created: true, durationMinutes: duration, reason, status: "proposed", message: "陪伴申请已提交给玩家，等待玩家接受或拒绝。" }));
   }
 
@@ -193,7 +195,8 @@ export async function executeLifeToolCall(
     if (!state.settings.enableScheduleChangeTool) return result(name, false, undefined, "角色自主调整日程已在自定义设置中关闭。");
     const changed = applyScheduleChange(state, characterId, args);
     if (changed.error) return result(name, false, undefined, changed.error);
-    saveVirtualLifeState(changed.state);
+    const logged = appendLifeTimelineEntry(changed.state, { category: "schedule", title: "角色调整了日程：" + cleanText(args.title, 120), details: cleanText(args.startAt, 80) + " – " + cleanText(args.endAt, 80), actorId: characterId, actorName: loadCharacters().find(item => item.id === characterId)?.name ?? "角色", locationName: changed.state.locations.find(item => item.id === cleanText(args.locationId, 100))?.name });
+    saveVirtualLifeState(logged);
     return result(name, true, JSON.stringify({ updated: true, title: cleanText(args.title, 120), startAt: cleanText(args.startAt, 80), endAt: cleanText(args.endAt, 80), message: "角色日程已调整，已确认约会和其他人的日程保持不变。" }));
   }
 
