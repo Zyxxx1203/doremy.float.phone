@@ -1522,15 +1522,38 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
                     const playerSent = newMsg.role === "user";
                     const content = typeof newMsg.content === "string" ? newMsg.content.trim() : "";
                     const shortPreview = content.replace(/\\s+/g, " ").slice(0, 120);
-                    const logged = appendLifeTimelineEntry(life, {
-                        category: "chat",
-                        title: playerSent ? "你刚刚和" + character.name + "聊了天" : character.name + "刚刚给你发了消息",
-                        details: shortPreview || "消息内容见消息 APP",
-                        actorId: playerSent ? "player" : character.id,
-                        actorName: playerSent ? "我" : character.name,
-                        sourceId: newMsg.id,
-                    });
-                    saveVirtualLifeState(logged);
+                    const nowIso = new Date().toISOString();
+                    const chatTitle = "你和" + character.name + "在消息 APP 聊天";
+                    const line = (playerSent ? "你" : character.name) + "：" + (shortPreview || "发送了消息");
+                    const previous = [...(life.timeline ?? [])].reverse().find(entry =>
+                        entry.category === "chat" &&
+                        entry.actorId === character.id &&
+                        Number.isFinite(new Date(entry.occurredAt).getTime()) &&
+                        Date.now() - new Date(entry.occurredAt).getTime() >= 0 &&
+                        Date.now() - new Date(entry.occurredAt).getTime() <= 5 * 60 * 1000
+                    );
+                    if (previous) {
+                        const priorLines = (previous.details ?? "").split("\\n").filter(Boolean);
+                        const updated = {
+                            ...life,
+                            timeline: life.timeline.map(entry => entry.id === previous.id
+                                ? { ...entry, occurredAt: nowIso, title: chatTitle, details: [...priorLines, line].slice(-3).join("\\n"), sourceId: newMsg.id }
+                                : entry),
+                            updatedAt: nowIso,
+                        };
+                        saveVirtualLifeState(updated);
+                    } else {
+                        const logged = appendLifeTimelineEntry(life, {
+                            category: "chat",
+                            title: chatTitle,
+                            details: line,
+                            actorId: character.id,
+                            actorName: character.name,
+                            sourceId: newMsg.id,
+                            occurredAt: nowIso,
+                        });
+                        saveVirtualLifeState(logged);
+                    }
                 }
             }
         } catch {
