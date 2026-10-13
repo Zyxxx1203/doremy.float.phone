@@ -14,6 +14,7 @@ import { emitChatPluginEvent, runChatPluginTransformSync } from "./chat-plugin-h
 import { parseAIResponse } from "./rich-message-parser";
 import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import { findUserAvatarChangeIntent, inferAvatarDecisionFromReply } from "./chat-avatar-intent";
+import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "./life/life-storage";
 
 export const DEFAULT_VISION_IMAGE_PROMPT_LIMIT = 1;
 export const MAX_VISION_IMAGE_PROMPT_LIMIT = 20;
@@ -1507,6 +1508,35 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
         window.dispatchEvent(new CustomEvent(CHAT_MESSAGE_PUSHED_EVENT, { detail: { message: newMsg } }));
     }
     emitChatPluginEvent("message.persisted", { message: newMsg });
+
+    // Keep a lightweight cross-app breadcrumb in the Life timeline. Do not copy full
+    // chat history into Life; the canonical message remains in Chat storage.
+    if ((newMsg.role === "user" || newMsg.role === "assistant") && typeof window !== "undefined") {
+        try {
+            const life = loadVirtualLifeState();
+            if (life.settings.enabled && life.settings.recordChatActivity) {
+                const session = _sessionsCache.find(item => item.id === newMsg.sessionId);
+                const contact = session ? loadChatContacts().find(item => item.id === session.contactId) : undefined;
+                const character = contact ? loadCharacters().find(item => item.id === contact.characterId) : undefined;
+                if (session && !session.isGroup && character) {
+                    const playerSent = newMsg.role === "user";
+                    const content = typeof newMsg.content === "string" ? newMsg.content.trim() : "";
+                    const shortPreview = content.replace(/\\s+/g, " ").slice(0, 120);
+                    const logged = appendLifeTimelineEntry(life, {
+                        category: "chat",
+                        title: playerSent ? "你刚刚和" + character.name + "聊了天" : character.name + "刚刚给你发了消息",
+                        details: shortPreview || "消息内容见消息 APP",
+                        actorId: playerSent ? "player" : character.id,
+                        actorName: playerSent ? "我" : character.name,
+                        sourceId: newMsg.id,
+                    });
+                    saveVirtualLifeState(logged);
+                }
+            }
+        } catch {
+            // Life timeline logging must never block ordinary message persistence.
+        }
+    }
 
     return newMsg;
 }
