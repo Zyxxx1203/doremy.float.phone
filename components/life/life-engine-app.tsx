@@ -381,7 +381,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const scene = next.scenes.find(item => item.status === "active" || item.status === "paused");
       if (scene) {
         const now = new Date().toISOString();
-        next = appendLifeTimelineEntry(next, { category: "scene", title: "当前场景转移至" + location.name, details: "你从" + (current.actualLocationName || scene.locationName) + "前往" + location.name + "；沿用同一条持续场景记录", actorId: PLAYER_ID, actorName: playerName, locationName: location.name, sceneId: scene.id });
+        next = appendLifeTimelineEntry(next, { category: "scene", title: "当前场景转移至" + location.name, details: "你从" + (current?.actualLocationName || scene.locationName) + "前往" + location.name + "；沿用同一条持续场景记录", actorId: PLAYER_ID, actorName: playerName, locationName: location.name, sceneId: scene.id });
         next = upsertLifeScene(next, { ...scene, locationId: location.id, locationName: location.name, status: "active", updatedAt: now, participants: scene.participants.map(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID ? { ...participant, activity: playerActivity || participant.activity } : participant) });
       }
     } else if (actor.ownerType === "character") {
