@@ -17,6 +17,7 @@ import { loadVnProjectionEntries } from "./vn-storage";
 import { loadMapProjectionEntries, loadMapSharedProjectionEntries } from "./map-storage";
 import { loadGameProjectionEntries } from "./game-storage";
 import { loadDiaryEntries } from "./diary-entry-storage";
+import { loadVirtualLifeState } from "./life/life-storage";
 import type { DiaryEntry, DiaryEntryBlock } from "./diary-entry-types";
 import { loadNoteWallProjectionEntries } from "./notewall-memory";
 import { loadXiaohongshuProjectionEntries } from "./xiaohongshu-memory";
@@ -787,6 +788,55 @@ export function loadNativeTimeline(
                 timestampOptions,
             }),
         });
+    }
+
+    // ── Shared Life timeline (scene actions, whereabouts, schedules and tools) ──
+    // Native chat, moments and diary content already has dedicated projections above.
+    // Only add Life-specific events here to avoid duplicate memory injection.
+    const lifeState = loadVirtualLifeState();
+    if (lifeState.settings.enabled) {
+        const characterSceneIds = new Set(
+            lifeState.scenes
+                .filter(scene => scene.participants.some(participant =>
+                    participant.ownerType === "character" && participant.ownerId === characterId
+                ))
+                .map(scene => scene.id)
+        );
+        const characterInvitationIds = new Set(
+            lifeState.invitations
+                .filter(invitation => invitation.characterId === characterId)
+                .map(invitation => invitation.id)
+        );
+        for (const lifeEntry of lifeState.timeline ?? []) {
+            if (options?.afterTimestamp && lifeEntry.occurredAt <= options.afterTimestamp) continue;
+            if (!["location", "scene", "action", "dialogue", "schedule", "tool", "system"].includes(lifeEntry.category)) continue;
+            const belongsToCharacter = lifeEntry.actorId === characterId
+                || (!!lifeEntry.sceneId && characterSceneIds.has(lifeEntry.sceneId))
+                || (!!lifeEntry.sourceId && characterInvitationIds.has(lifeEntry.sourceId));
+            if (!belongsToCharacter) continue;
+            const title = clipTimelineText(lifeEntry.title, 180);
+            const details = clipTimelineText(lifeEntry.details ?? "", 500);
+            const label = lifeEntry.category === "dialogue" ? "共同场景对话"
+                : lifeEntry.category === "action" ? "共同场景行动"
+                : lifeEntry.category === "tool" ? "角色工具调用"
+                : lifeEntry.category === "schedule" ? "日程变化"
+                : lifeEntry.category === "location" ? "地点变化"
+                : "生活记录";
+            entries.push({
+                id: "life:" + lifeEntry.id,
+                sourceApp: "custom_app",
+                sourceDetail: "custom_app_event",
+                authorType: lifeEntry.actorId === characterId ? "character" : "user",
+                timestamp: lifeEntry.occurredAt,
+                customAppId: "life",
+                customAppName: "生活",
+                customAppLabel: label,
+                content: formatStoredPromptEventContent(
+                    [title, details].filter(Boolean).join("："),
+                    { label: "生活", timestamp: lifeEntry.occurredAt, timeAware, timestampOptions },
+                ),
+            });
+        }
     }
 
     // Sort by timestamp ascending
