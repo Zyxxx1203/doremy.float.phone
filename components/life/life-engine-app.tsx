@@ -636,6 +636,73 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setNotice("图片记录已删除，关联媒体缓存也已清理。");
   };
 
+  const handleSceneMessageLongPress = async (message: LifeSceneMessage) => {
+    const choice = window.prompt("消息操作：输入 1 编辑对白，2 删除整条消息，3 重新生成角色回复。", "1");
+    if (choice === null) return;
+    if (choice.trim() === "1") {
+      const edited = window.prompt("编辑这条消息的对白内容：", message.dialogue);
+      if (edited === null) return;
+      const latest = stateRef.current;
+      commit({ ...latest, sceneMessages: latest.sceneMessages.map(item => item.id === message.id ? { ...item, dialogue: edited } : item) });
+      setNotice("消息已编辑。");
+      return;
+    }
+    if (choice.trim() === "2") {
+      if (!window.confirm("确定删除这条消息吗？")) return;
+      const latest = stateRef.current;
+      commit({ ...latest, sceneMessages: latest.sceneMessages.filter(item => item.id !== message.id) });
+      setNotice("消息已删除。");
+      return;
+    }
+    if (choice.trim() !== "3") return;
+    if (message.role !== "character") {
+      setNotice("重新生成仅适用于角色回复；玩家消息可以编辑或删除。");
+      return;
+    }
+    const character = characters.find(item => item.id === message.speakerId);
+    const contact = loadChatContacts().find(item => item.characterId === message.speakerId);
+    const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup);
+    const scene = stateRef.current.scenes.find(item => item.id === message.sceneId);
+    if (!character || !session || !scene) {
+      setNotice("找不到角色聊天会话或原场景，暂时无法重新生成。");
+      return;
+    }
+    const sceneIndex = stateRef.current.sceneMessages.findIndex(item => item.id === message.id);
+    const previousPlayer = stateRef.current.sceneMessages.slice(0, sceneIndex).reverse().find(item => item.sceneId === message.sceneId && item.role === "player");
+    if (!previousPlayer) {
+      setNotice("找不到这条回复对应的玩家输入，无法重新生成。");
+      return;
+    }
+    setBusy(true);
+    try {
+      const previous = loadChatMessages(session.id, 12).filter(item => item.status !== "failed" && !item.isRetracted);
+      const sceneContext = buildLifeScenePromptContext(stateRef.current, scene, character.id);
+      const prompt: ChatMessage = {
+        id: id("life-regenerate"), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
+        content: [
+          "【仅本轮使用生活场景模式规则，不要写入线上聊天历史】",
+          LIFE_SCENE_OUTPUT_CONTRACT,
+          settings.showActionNarration ? "动作旁白单独一行，使用 *动作* 格式；对白只写说出口的话。" : "不要输出动作旁白，只输出角色说出口的话。",
+          settings.keepDialogueConcise ? "一轮通常 1-3 句，保持实时互动感。" : "允许适度展开，但保持实时互动感。",
+          settings.customPrompt ? "用户自定义规则：" + settings.customPrompt : "",
+          sceneContext,
+          "玩家行动：" + (previousPlayer.action || "无"),
+          "玩家对白：" + (previousPlayer.dialogue || "无"),
+          "请重新生成" + character.name + "对这条输入的自然回应。只生成角色回应，不要重复玩家内容。",
+        ].filter(Boolean).join("\n"),
+      };
+      const result = await generateOfflineChatCompletion(session, [...previous, prompt]);
+      const parsed = parseLifeOutput(result.content);
+      const latest = stateRef.current;
+      commit({ ...latest, sceneMessages: latest.sceneMessages.map(item => item.id === message.id ? { ...item, action: settings.showActionNarration ? parsed.action : undefined, dialogue: parsed.dialogue, createdAt: new Date().toISOString() } : item) });
+      setNotice("角色回复已重新生成。");
+    } catch (error) {
+      setNotice(error instanceof Error ? "重新生成失败：" + error.message : "重新生成失败，请检查模型配置。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const pushSceneMessage = (message: LifeSceneMessage) => {
     const latest = stateRef.current;
     const currentScene = latest.scenes.find(scene => scene.id === message.sceneId);
@@ -1093,7 +1160,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           <div className="mb-4 flex flex-wrap gap-2">{activeScene.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);const awareness=p.awarenessByActorId.player;const status=awareness==="unaware"?"还没注意到你":awareness==="suspects"?"似乎察觉到你":awareness==="aware"?"注意到你":"";return <button key={p.ownerId} onClick={()=>p.ownerType==="character"&&setSelectedSpeakerId(p.ownerId)} className={`rounded-full px-3 py-1.5 text-xs ${selectedSpeakerId===p.ownerId?"bg-[var(--life-accent)] text-white":"bg-[#f1e5d8] text-stone-700"}`}>{actor?.name??p.ownerId} · {status || p.activity}</button>})}</div>
           <div className="mb-4 max-h-[48vh] min-h-48 space-y-3 overflow-y-auto rounded-2xl bg-white/65 p-3 sm:p-5" style={{fontSize:"var(--life-font)"}}>
             {sceneMessages.length===0 && <div className="grid min-h-36 place-items-center text-center text-sm text-stone-400"><div><Sparkles className="mx-auto mb-2" size={22}/><p>场景已经准备好了。</p><p className="mt-1 text-xs">角色可以忙自己的事，也可以回应你；不会自动写成长篇剧情。</p></div></div>}
-            {sceneMessages.map(message=><div key={message.id} className="space-y-2">
+            {sceneMessages.map(message=><div key={message.id} className="space-y-2" onContextMenu={event => { event.preventDefault(); void handleSceneMessageLongPress(message); }}>
               {message.action&&<div className="my-3 flex items-center gap-3 px-2" aria-label="行动旁白"><span className="h-px flex-1 bg-stone-300/80"/><p className="max-w-[82%] text-center italic leading-relaxed text-stone-500" style={{fontSize:"var(--life-narration-font)"}}>{message.action}</p><span className="h-px flex-1 bg-stone-300/80"/></div>}
               {message.dialogue&&<div className={`flex ${message.role==="player"?"justify-end":"justify-start"}`}><div className={`max-w-[88%] rounded-2xl px-4 py-3 ${settings.dialogueBubbleStyle==="square"?"rounded-md":settings.dialogueBubbleStyle==="soft"?"rounded-[1.4rem]":"rounded-2xl"} ${message.role==="player"?"bg-[#e9d4c0] text-stone-800":"bg-white text-stone-800 shadow-sm"}`}>{message.role!=="player"&&<p className="mb-1 text-[11px] font-semibold text-[var(--life-accent)]">{message.speakerName}</p>}<p className="whitespace-pre-wrap leading-relaxed">{message.dialogue}</p></div></div>}
             </div>)}
