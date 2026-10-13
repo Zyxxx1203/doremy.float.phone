@@ -1514,7 +1514,7 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
     if ((newMsg.role === "user" || newMsg.role === "assistant") && typeof window !== "undefined") {
         try {
             const life = loadVirtualLifeState();
-            if (life.settings.enabled && life.settings.recordChatActivity) {
+            if (life.settings.enabled) {
                 const session = _sessionsCache.find(item => item.id === newMsg.sessionId);
                 const contact = session ? loadChatContacts().find(item => item.id === session.contactId) : undefined;
                 const character = contact ? loadCharacters().find(item => item.id === contact.characterId) : undefined;
