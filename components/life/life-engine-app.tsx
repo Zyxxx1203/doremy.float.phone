@@ -257,13 +257,22 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const virtualNow = resolveActorLifeNow(getActorClock(next, actor.ownerType, actor.ownerId));
     const slot = getCurrentActorSchedule(next, actor.ownerType, actor.ownerId, virtualNow);
     const previous = state.actorStates.find(item => item.ownerType === actor.ownerType && item.ownerId === actor.ownerId);
+    const nextActivity = slot?.title ?? previous?.activity ?? "正在自主安排时间";
+    const nextLocationId = slot?.plannedLocationId ?? previous?.actualLocationId ?? null;
+    const nextLocationName = slot?.plannedLocationName ?? previous?.actualLocationName ?? null;
     next = upsertActorState(next, {
       ownerType: actor.ownerType, ownerId: actor.ownerId,
-      activity: slot?.title ?? previous?.activity ?? "正在自主安排时间",
-      actualLocationId: slot?.plannedLocationId ?? previous?.actualLocationId ?? null,
-      actualLocationName: slot?.plannedLocationName ?? previous?.actualLocationName ?? null,
+      activity: nextActivity,
+      actualLocationId: nextLocationId,
+      actualLocationName: nextLocationName,
       updatedAt: new Date().toISOString(),
     });
+    if (previous?.activity !== nextActivity) {
+      next = appendLifeTimelineEntry(next, { category: "schedule", title: actor.name + "现在" + nextActivity, details: nextLocationName ? "当前地点：" + nextLocationName : undefined, actorId: actor.ownerId, actorName: actor.name, locationName: nextLocationName });
+    }
+    if (previous?.actualLocationId !== nextLocationId && nextLocationName) {
+      next = appendLifeTimelineEntry(next, { category: "location", title: actor.name + "来到了" + nextLocationName, details: previous?.actualLocationName ? "从" + previous.actualLocationName + "前往" + nextLocationName : "自主生活时更新了地点", actorId: actor.ownerId, actorName: actor.name, locationName: nextLocationName });
+    }
     commit(next);
     setNotice(`${actor.name}独立度过了一个虚拟小时；其他人的时间没有变化。`);
   };
