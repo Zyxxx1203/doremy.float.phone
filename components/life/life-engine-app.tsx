@@ -35,7 +35,7 @@ import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
 
-type Tab = "home" | "scene" | "plans" | "invitations" | "settings";
+type Tab = "home" | "scene" | "people" | "plans" | "invitations" | "settings";
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
 const PLAYER_ID = "player";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -965,6 +965,38 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setNotice("已删除这条日程。");
   };
 
+  const goToCharacter = (character: Character) => {
+    const current = stateRef.current;
+    const presence = current.actorStates.find(item => item.ownerType === "character" && item.ownerId === character.id);
+    const schedule = getCurrentActorSchedule(current, "character", character.id, resolveActorLifeNow(getActorClock(current, "character", character.id)));
+    const placeName = presence?.actualLocationName || schedule?.plannedLocationName;
+    if (!placeName) {
+      setNotice(`还不知道${character.name}此刻在哪里；可以先查看 TA 的日程，或通过聊天向 TA 问问。`);
+      setTab("plans");
+      return;
+    }
+    let next = current;
+    let location = next.locations.find(item => item.id === presence?.actualLocationId && item.name === placeName)
+      || next.locations.find(item => item.name.trim().toLocaleLowerCase() === placeName.trim().toLocaleLowerCase());
+    if (!location) {
+      location = { id: id("location"), name: placeName, description: "从角色当前动态定位到的地点", visibility: "public" };
+      next = { ...next, locations: [...next.locations, location] };
+    }
+    const now = new Date().toISOString();
+    next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: "正在去找" + character.name, actualLocationId: location.id, actualLocationName: location.name, updatedAt: now });
+    const scene = next.scenes.find(item => item.status === "active" || item.status === "paused");
+    if (scene) {
+      const participants = scene.participants.filter(item => !(item.ownerType === "player" && item.ownerId === PLAYER_ID));
+      next = upsertLifeScene(next, { ...scene, locationId: location.id, locationName: location.name, status: "active", updatedAt: now, participants: [{ ownerType: "player", ownerId: PLAYER_ID, activity: "正在去找" + character.name, awarenessByActorId: { [character.id]: "aware" } }, ...participants.filter(item => item.ownerType !== "character" || item.ownerId !== character.id), { ownerType: "character", ownerId: character.id, activity: presence?.activity || schedule?.title || "在这里活动", awarenessByActorId: { [PLAYER_ID]: "aware" } }] });
+    }
+    next = appendLifeTimelineEntry(next, { category: "location", title: "你去找" + character.name, details: "前往" + location.name + (presence?.actualLocationName ? "（角色记录的当前位置）" : "（根据角色日程推测）"), actorId: PLAYER_ID, actorName: playerName, locationName: location.name });
+    commit(next);
+    setSelectedLocationId(location.id);
+    setSelectedCharacterIds(ids => ids.includes(character.id) ? ids : [...ids, character.id]);
+    setNotice(`已前往「${location.name}」，并将${character.name}加入当前互动场景。若地点来自日程推测，实际位置仍需角色或场景确认。`);
+    setTab("home");
+  };
+
   const themeClass = settings.sceneTheme === "night-sky" ? "from-slate-950 via-slate-900 to-indigo-950 text-slate-100" : settings.sceneTheme === "sage" ? "from-[#eaf0e8] via-[#f3f4eb] to-[#dce8dc] text-stone-800" : settings.sceneTheme === "rose" ? "from-[#fff0f1] via-[#fff8f6] to-[#f7e3e5] text-stone-800" : "from-[#fbf4e9] via-[#f7efe4] to-[#ead9c6] text-stone-800";
   const cssVars = { "--life-accent": settings.accentColor, "--life-opacity": settings.panelOpacity / 100, "--life-font": `${settings.dialogueFontSize}px`, "--life-narration-font": `${settings.narrationFontSize}px` } as CSSProperties;
   const playerActor = actors[0];
@@ -1002,8 +1034,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         <div className="flex flex-wrap items-center gap-2"><button onClick={()=>tab==="home"?closeApp():setTab("home")} aria-label="返回生活现场" className="inline-flex items-center gap-1 rounded-full border border-white/80 bg-white/70 px-3 py-2 text-sm"><ArrowLeft size={15}/><span>返回</span></button><button onClick={closeApp} aria-label="退出生活 APP" className="inline-flex items-center gap-1 rounded-full border border-white/80 bg-white/70 px-3 py-2 text-sm"><X size={15}/><span>退出</span></button><span className="rounded-full border border-white/70 bg-white/60 px-3 py-1.5 text-xs">{actors.length} 位生活参与者</span><button onClick={ensurePlans} className="inline-flex items-center gap-2 rounded-full bg-[var(--life-accent)] px-4 py-2 text-sm font-medium text-white shadow-sm"><CalendarDays size={15}/>生成本周日程</button></div>
       </header>
       {notice && <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-[var(--life-accent)]/20 bg-white/75 px-4 py-3 text-sm text-stone-700"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="关闭提示">×</button></div>}
-      <nav aria-label="生活导航" className="sticky top-0 z-20 mb-5 grid grid-cols-4 gap-1 rounded-2xl border border-white/80 bg-[#fbf7f0]/90 p-1 shadow-sm backdrop-blur-md">
-        {([{id:"home",label:"生活现场",icon:Heart},{id:"plans",label:"七日日程",icon:CalendarDays},{id:"invitations",label:"邀约活动",icon:Coffee},{id:"settings",label:"自定义",icon:Settings2}] as const).filter(item => item.id !== "invitations" || settings.enableInvitations).map(item => { const Icon=item.icon; return <button key={item.id} onClick={() => setTab(item.id)} aria-current={tab===item.id?"page":undefined} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] transition sm:flex-row sm:text-sm ${tab===item.id?"bg-white text-[var(--life-accent)] shadow-sm":"opacity-65 hover:opacity-100"}`}><span className="relative inline-flex"><Icon size={16}/>{item.id==="invitations"&&pendingCharacterInvitations.length>0&&<span className="absolute -right-2 -top-2 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] text-white">{pendingCharacterInvitations.length}</span>}</span><span className="truncate">{item.label}</span></button>; })}
+      <nav aria-label="生活导航" className="sticky top-0 z-20 mb-5 grid grid-cols-5 gap-1 rounded-2xl border border-white/80 bg-[#fbf7f0]/90 p-1 shadow-sm backdrop-blur-md">
+        {([{id:"home",label:"生活现场",icon:Heart},{id:"people",label:"角色动态",icon:Users},{id:"plans",label:"七日日程",icon:CalendarDays},{id:"invitations",label:"邀约活动",icon:Coffee},{id:"settings",label:"自定义",icon:Settings2}] as const).filter(item => item.id !== "invitations" || settings.enableInvitations).map(item => { const Icon=item.icon; return <button key={item.id} onClick={() => setTab(item.id)} aria-current={tab===item.id?"page":undefined} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] transition sm:flex-row sm:text-sm ${tab===item.id?"bg-white text-[var(--life-accent)] shadow-sm":"opacity-65 hover:opacity-100"}`}><span className="relative inline-flex"><Icon size={16}/>{item.id==="invitations"&&pendingCharacterInvitations.length>0&&<span className="absolute -right-2 -top-2 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] text-white">{pendingCharacterInvitations.length}</span>}</span><span className="truncate">{item.label}</span></button>; })}
       </nav>
 
       {(tab === "home" || tab === "scene") && <div className="space-y-4">
@@ -1081,6 +1113,27 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           <p className="mt-4 text-xs leading-relaxed text-stone-500">提示：倍速只影响该角色的虚拟时钟；计划地点不等于实时定位。真实位置仍需要场景状态或合理的信息来源。</p>
         </section>
       </div></div>}
+
+      {tab === "people" && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
+        <SectionTitle eyebrow="Character presence" title="角色动态" note="汇总所有已载入角色的虚拟时间、当前活动和位置。实际记录与日程推测会分开标记；未知位置不会伪装成实时定位。" />
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {characters.map(character => {
+            const presence = state.actorStates.find(item => item.ownerType === "character" && item.ownerId === character.id);
+            const virtualNow = resolveActorLifeNow(getActorClock(state, "character", character.id));
+            const schedule = getCurrentActorSchedule(state, "character", character.id, virtualNow);
+            const actualLocation = presence?.actualLocationName || state.locations.find(item => item.id === presence?.actualLocationId)?.name;
+            const scene = state.scenes.find(item => (item.status === "active" || item.status === "paused") && item.participants.some(p => p.ownerType === "character" && p.ownerId === character.id));
+            const place = actualLocation || schedule?.plannedLocationName || scene?.locationName;
+            const isActual = !!actualLocation;
+            return <article key={character.id} className="rounded-2xl border border-stone-200/80 bg-white/75 p-4">
+              <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{character.name}</h3><p className="mt-1 text-xs text-stone-500">{virtualNow.toLocaleString("zh-CN",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false})} · 角色虚拟时间</p></div><span className={`shrink-0 rounded-full px-2 py-1 text-[10px] ${isActual?"bg-emerald-50 text-emerald-700":"bg-amber-50 text-amber-700"}`}>{isActual?"位置已记录":place?"按日程推测":"位置未知"}</span></div>
+              <div className="mt-3 rounded-xl bg-stone-50/90 p-3"><p className="text-sm font-medium">{presence?.activity || schedule?.title || "暂未记录当前活动"}</p><p className="mt-1 text-xs text-stone-500">地点：{place || "未知"}{!isActual && schedule?.plannedLocationName ? "（计划地点，不代表实时在场）" : ""}</p>{scene && <p className="mt-1 text-[11px] text-[var(--life-accent)]">正在互动场景中</p>}</div>
+              <div className="mt-3 flex gap-2"><button type="button" onClick={()=>goToCharacter(character)} disabled={!place} className="flex-1 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs font-medium text-white disabled:opacity-40">去找 TA</button><button type="button" onClick={()=>{setSelectedActorKey("character:"+character.id);setTab("plans");}} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">看日程</button></div>
+            </article>;
+          })}
+          {characters.length===0 && <p className="rounded-xl bg-white/60 p-4 text-sm text-stone-500">还没有载入角色。添加角色后，这里会统一显示他们的动态。</p>}
+        </div>
+      </section>}
 
       {tab === "plans" && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3"><SectionTitle eyebrow="Weekly plans" title="未来七天的生活日程" note="计划每周生成一次并保存在本地；已有日程不会被重复生成覆盖。点击标题可编辑，计划地点只作为线索。" /><button onClick={ensurePlans} className="inline-flex items-center gap-2 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white"><RefreshCw size={14}/>检查并补全</button></div>
