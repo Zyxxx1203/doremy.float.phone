@@ -90,6 +90,7 @@ export function appendLifeTimelineEntry(state: VirtualLifeState, entry: Omit<Lif
     ...entry,
     id: entry.id ?? "life-log-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
     occurredAt: entry.occurredAt ?? resolveActorLifeNow(getActorClock(state, "player", "player")).toISOString(),
+    recordedAt: entry.recordedAt ?? new Date().toISOString(),
   };
   return { ...state, timeline: [...(state.timeline ?? []), item].slice(-5000) };
 }
