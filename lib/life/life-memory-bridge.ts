@@ -8,17 +8,26 @@ import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "./l
  */
 export function buildLifeMemoryContext(characterId: string, limit = 10): string {
   const state = loadVirtualLifeState();
-  if (!state.settings.enabled) return "";
+  if (!state.settings.enabled || !state.settings.saveConfirmedEventsToMemory) return "";
   const facts = state.memories
     .filter(memory => memory.participants.includes(characterId) && memory.fact.trim())
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
     .slice(0, Math.max(0, Math.min(limit, 30)))
     .reverse();
-  if (!facts.length) return "";
+  const characterSceneIds = new Set(state.scenes
+    .filter(scene => scene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === characterId))
+    .map(scene => scene.id));
+  const timeline = (state.timeline ?? [])
+    .filter(entry => entry.actorId === characterId || (!!entry.sceneId && characterSceneIds.has(entry.sceneId)))
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+    .slice(0, Math.max(0, Math.min(limit * 2, 40)))
+    .reverse();
+  if (!facts.length && !timeline.length) return "";
   return [
-    "【虚拟生活共同记忆｜已发生事实】",
-    "以下是角色本人参与过的生活场景事件摘要。它们是已记录事实，不是猜测；不要擅自扩写成未发生的细节。",
+    "【虚拟生活共同记忆｜已记录的相关事实】",
+    "以下只包含这个角色参与、发起或身处相关共同场景时产生的记录。它们是生活记录，不代表角色知道自己没有观察到的其他人的私密行动；不得把计划、推测或未发生的事情当成事实。",
     ...facts.map(fact => `- ${new Date(fact.occurredAt).toLocaleString("zh-CN")}：${fact.fact}`),
+    ...timeline.map(entry => `- ${new Date(entry.occurredAt).toLocaleString("zh-CN")}：${entry.title}${entry.details ? "；" + entry.details : ""}`),
   ].join("\n");
 }
 
