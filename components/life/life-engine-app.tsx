@@ -37,6 +37,7 @@ import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
 
 type Tab = "home" | "scene" | "people" | "plans" | "invitations" | "settings";
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
+type QuickPlanDraft = { id: string; ownerType: LifeOwnerType; ownerId: string; startAt: string; endAt: string; title: string; locationName: string };
 const PLAYER_ID = "player";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const INITIAL_LOCATIONS: LifeLocation[] = [
@@ -116,6 +117,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [newLocationName, setNewLocationName] = useState("");
 
   const [quickPlanText, setQuickPlanText] = useState("");
+  const [quickPlanDrafts, setQuickPlanDrafts] = useState<QuickPlanDraft[]>([]);
   const [playerActivity, setPlayerActivity] = useState("");
   const [sceneInput, setSceneInput] = useState("");
   const [sceneActionInput, setSceneActionInput] = useState("");
@@ -1158,7 +1160,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           <button type="button" onClick={()=>{
             const lines=quickPlanText.split(/\n|；|;/).map(line=>line.trim()).filter(Boolean);
             if(!lines.length){setNotice("先写下你想安排的事情。");return;}
-            let next=stateRef.current;let added=0;const errors:string[]=[];
+            let next=stateRef.current;const drafts:QuickPlanDraft[]=[];const errors:string[]=[];
             const parseClock=(raw:string, fallbackHour:number)=>{
               const m=raw.trim().match(/^(上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*(\d{1,2})(?:[:：点时](\d{1,2})分?)?$/);
               if(!m)return {hour:fallbackHour,minute:0};
@@ -1197,13 +1199,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               title=title.replace(/\s+/g," ").replace(/^[，,、\s]+|[，,。；;\s]+$/g,"").trim();
               if(!title)title=location?"在"+location.name+"活动":"日程安排";
               const actual=next.actorStates.find(item=>item.ownerType===actor.ownerType&&item.ownerId===actor.ownerId);
-              next={...next,schedules:[...next.schedules,{id:id("quick-plan"),ownerType:actor.ownerType,ownerId:actor.ownerId,startAt:start.toISOString(),endAt:end.toISOString(),title,plannedLocationId:location?.id??actual?.actualLocationId??undefined,plannedLocationName:location?.name??actual?.actualLocationName??undefined,kind:"free-time",source:"manual",updatedAt:new Date().toISOString()}].sort((a,b)=>a.startAt.localeCompare(b.startAt))};
-              next=appendLifeTimelineEntry(next,{category:"schedule",title:actor.name+"新增日程："+title,details:fmt(start)+"–"+fmt(end)+(location?" · "+location.name:""),actorId:actor.ownerId,actorName:actor.name,locationName:location?.name});
-              added++;
+              drafts.push({id:id("quick-plan-draft"),ownerType:actor.ownerType,ownerId:actor.ownerId,startAt:start.toISOString(),endAt:end.toISOString(),title,locationName:location?.name??actual?.actualLocationName??""});
             }
-            if(added){commit(next);setQuickPlanText("");setNotice("已识别并填入 "+added+" 条日程；你可以在下方继续修改时间、地点和内容。");}
+            if(drafts.length){setQuickPlanDrafts(drafts);setNotice("识别出 "+drafts.length+" 条待确认日程。请检查并修改下面的表单，再点击确认保存。");}
             else setNotice("没能识别出时间范围。试试“明天下午3点到5点在咖啡馆画画”，一件事写一行。");
-            if(errors.length&&added)setNotice("已填入 "+added+" 条；另有 "+errors.length+" 条未识别，请补充明确时间后再试。");
+            if(errors.length&&drafts.length)setNotice("识别出 "+drafts.length+" 条；另有 "+errors.length+" 条未识别，请补充明确时间后重新识别。");
           }} className="mt-2 rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white">识别并填入日程</button>
         </div>
       </section>}
