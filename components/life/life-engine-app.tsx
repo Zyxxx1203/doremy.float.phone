@@ -658,15 +658,79 @@ remove draft sync  const sceneImageRecords = activeScene?.images ?? [];
     setNewLocationName("");
   };
 
-  const addInvitation = (event: FormEvent) => {
+  const addInvitation = async (event: FormEvent) => {
     event.preventDefault();
-    if (!inviteCharacterId || !inviteAt || !inviteActivity.trim()) return;
+    if (!inviteCharacterId || !inviteAt || !inviteActivity.trim() || busy) return;
     const character = characters.find(item => item.id === inviteCharacterId);
-    const location = state.locations.find(item => item.id === inviteLocationId);
+    const location = stateRef.current.locations.find(item => item.id === inviteLocationId);
     if (!character) return;
-    const next = makeLifeInvitation(state, { characterId: character.id, playerId: PLAYER_ID, proposedAt: new Date(inviteAt).toISOString(), locationId: location?.id, locationName: location?.name, activity: inviteActivity.trim() });
+    const proposedAt = new Date(inviteAt);
+    const base = stateRef.current;
+    const playerNow = resolveActorLifeNow(getActorClock(base, "player", PLAYER_ID));
+    const characterNow = resolveActorLifeNow(getActorClock(base, "character", character.id));
+    if (!Number.isFinite(proposedAt.getTime()) || proposedAt <= playerNow || proposedAt <= characterNow) {
+      setNotice("邀约时间必须晚于你和角色各自的当前时间。");
+      return;
+    }
+    const contacts = loadChatContacts();
+    const sessions = loadChatSessions();
+    const contact = contacts.find(item => item.characterId === character.id);
+    const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup);
+    if (!session) {
+      setNotice(`找不到「${character.name}」的线上私聊会话。请先在消息 APP 与 TA 建立私聊，再发出邀约。`);
+      return;
+    }
+    const next = makeLifeInvitation(base, {
+      proposedBy: "player",
+      characterId: character.id, playerId: PLAYER_ID, proposedAt: proposedAt.toISOString(),
+      locationId: location?.id, locationName: location?.name, activity: inviteActivity.trim(),
+      kind: "appointment", durationMinutes: 60,
+    });
+    const invitation = next.invitations[0];
     commit(next);
-    setNotice("邀约已记录为待确认；只有确认后才会建立双方日程事件。");
+    setBusy(true);
+    setNotice(`已向${character.name}发出邀约，正在根据 TA 的人设和当前日程等待回应……`);
+    try {
+      const previous = loadChatMessages(session.id, 12).filter(message => message.status !== "failed" && !message.isRetracted);
+      const prompt: ChatMessage = {
+        id: id("life-invitation-response"), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
+        content: [
+          "【生活 APP 邀约确认】",
+          `玩家向你发出邀约：${inviteActivity.trim()}`,
+          `时间：${proposedAt.toLocaleString("zh-CN")}`,
+          `地点：${location?.name ?? "地点待定"}`,
+          "请根据你的人设、当前日程、关系和真实意愿，自主决定接受或拒绝。不要让玩家替你确认；不要为了讨好玩家而默认接受。",
+          "只输出一个机器可读标签，并可在 reason 中写一句简短自然的理由：<life_invitation_response decision=\"accept|decline\" reason=\"理由\" />。没有明确接受就视为拒绝；不要改动日程，系统会在接受后处理冲突和排期。",
+        ].join("\n"),
+      };
+      const result = await generateOfflineChatCompletion(session, [...previous, prompt]);
+      const tag = result.content.match(/<life_invitation_response\b([^>]*)\/?\s*>/i);
+      const attribute = (source: string, name: string) => source.match(new RegExp(name + "\\s*=\\s*[\"']([^\"']*)[\"']", "i"))?.[1]?.trim() ?? "";
+      const decision = attribute(tag?.[1] ?? "", "decision").toLowerCase();
+      const reason = attribute(tag?.[1] ?? "", "reason").replace(/&quot;/g, "\"").replace(/&amp;/g, "&").slice(0, 240);
+      const current = stateRef.current;
+      if (decision === "accept") {
+        const resolution = resolveInvitationConfirmation(current, invitation.id);
+        if (resolution.ok) {
+          const confirmedState = { ...resolution.state, invitations: resolution.state.invitations.map(item => item.id === invitation.id ? { ...item, responseReason: reason || "角色接受了邀约。" } : item) };
+          commit(confirmedState);
+          setNotice(`${character.name}答应了这次邀约。${reason ? " TA 的回应：" + reason : ""}`);
+        } else {
+          commit({ ...current, invitations: current.invitations.map(item => item.id === invitation.id ? { ...item, status: "declined" as const, responseReason: resolution.notice, updatedAt: new Date().toISOString() } : item) });
+          setNotice(`${character.name}愿意赴约，但排期未能成立：${resolution.notice}`);
+        }
+      } else {
+        const declineReason = reason || (decision === "decline" ? "角色决定这次不赴约。" : "角色没有明确答应这次邀约，因此没有替 TA 自动确认。");
+        commit({ ...current, invitations: current.invitations.map(item => item.id === invitation.id ? { ...item, status: "declined" as const, responseReason: declineReason, updatedAt: new Date().toISOString() } : item) });
+        setNotice(`${character.name}没有接受这次邀约。${declineReason}`);
+      }
+    } catch (error) {
+      const current = stateRef.current;
+      commit({ ...current, invitations: current.invitations.map(item => item.id === invitation.id ? { ...item, status: "declined" as const, responseReason: "暂时无法取得角色回应，请稍后重新发起邀约。", updatedAt: new Date().toISOString() } : item) });
+      setNotice(error instanceof Error ? `邀约已发出，但角色回应失败：${error.message}` : "邀约已发出，但角色回应失败。");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const createFollowRequest = (characterId: string, durationMinutes = followDurationMinutes, reason = "") => {
@@ -688,27 +752,23 @@ remove draft sync  const sceneImageRecords = activeScene?.images ?? [];
     setNotice(character.name + "的陪伴申请已放入待确认列表。你确认后，TA才会在约定时段跟随你的实际地点。");
   };
 
-  const confirmInvitation = (inviteId: string) => {
-    const invite = state.invitations.find(item => item.id === inviteId && item.status === "proposed");
-    if (!invite) return;
+  const resolveInvitationConfirmation = (base: VirtualLifeState, inviteId: string): { ok: boolean; state: VirtualLifeState; notice: string } => {
+    const invite = base.invitations.find(item => item.id === inviteId && item.status === "proposed");
+    if (!invite) return { ok: false, state: base, notice: "找不到仍待确认的邀约。" };
     const startsAt = new Date(invite.proposedAt);
     const durationMinutes = Math.max(15, Math.min(invite.durationMinutes ?? 60, 24 * 60));
     const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
-    const playerNow = resolveActorLifeNow(getActorClock(state, "player", PLAYER_ID));
-    const characterNow = resolveActorLifeNow(getActorClock(state, "character", invite.characterId));
+    const playerNow = resolveActorLifeNow(getActorClock(base, "player", PLAYER_ID));
+    const characterNow = resolveActorLifeNow(getActorClock(base, "character", invite.characterId));
     if (!Number.isFinite(startsAt.getTime()) || startsAt <= playerNow || startsAt <= characterNow) {
-      setNotice("这个时间对你或角色来说已经过去了。请修改邀约时间后再确认；不会为了赴约自动跳过时间。");
-      return;
+      return { ok: false, state: base, notice: "这个时间对你或角色来说已经过去了。请修改时间；不会为了赴约自动跳过时间。" };
     }
     const relevantOwners = invite.kind === "follow-request" ? new Set([invite.characterId]) : new Set([PLAYER_ID, invite.characterId]);
-    const conflict = state.schedules.find(slot => relevantOwners.has(slot.ownerId) && (slot.ownerType === "player" || slot.ownerType === "character") && slot.kind === "appointment" && new Date(slot.startAt) < endsAt && new Date(slot.endAt) > startsAt);
-    if (conflict) {
-      setNotice("这个时段已经有另一项已确认的约定。请先调整时间，避免两件事情同时发生。");
-      return;
-    }
-    let next = confirmLifeInvitation(state, inviteId);
+    const conflict = base.schedules.find(slot => relevantOwners.has(slot.ownerId) && (slot.ownerType === "player" || slot.ownerType === "character") && slot.kind === "appointment" && new Date(slot.startAt) < endsAt && new Date(slot.endAt) > startsAt);
+    if (conflict) return { ok: false, state: base, notice: "这个时段已经有另一项已确认的约定。请先调整时间，避免两件事情同时发生。" };
+    let next = confirmLifeInvitation(base, inviteId);
     const confirmed = next.invitations.find(item => item.id === inviteId);
-    if (!confirmed?.eventId) { commit(next); return; }
+    if (!confirmed?.eventId) return { ok: false, state: next, notice: "邀约状态更新失败，没有建立日程。" };
     const makeSlot = (ownerType: LifeOwnerType, ownerId: string): LifeScheduleSlot => ({
       id: "invite-slot-" + confirmed.eventId + "-" + ownerType + "-" + ownerId,
       ownerType, ownerId, startAt: startsAt.toISOString(), endAt: endsAt.toISOString(),
@@ -724,10 +784,16 @@ remove draft sync  const sceneImageRecords = activeScene?.images ?? [];
       next = placeAppointmentInActorSchedule(next, makeSlot("player", PLAYER_ID));
       next = placeAppointmentInActorSchedule(next, makeSlot("character", confirmed.characterId));
     }
-    commit(next);
-    setNotice(confirmed.kind === "follow-request"
+    return { ok: true, state: next, notice: confirmed.kind === "follow-request"
       ? "陪伴申请已接受。约定时间开始后，TA会跟随你的实际地点；你仍可随时取消。"
-      : "邀约已确认，双方的冲突时段已保留前后部分并插入约定；只有两个人的虚拟时间都到达后，活动才会开始。");
+      : "邀约已确认，双方的冲突时段已保留前后部分并插入约定；只有两个人的虚拟时间都到达后，活动才会开始。" };
+  };
+
+  const confirmInvitation = (inviteId: string) => {
+    const result = resolveInvitationConfirmation(stateRef.current, inviteId);
+    if (!result.ok) { setNotice(result.notice); return; }
+    commit(result.state);
+    setNotice(result.notice);
   };
 
   const addManualPlanTitle = (slot: LifeScheduleSlot, title: string) => {
