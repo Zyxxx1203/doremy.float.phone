@@ -199,17 +199,23 @@ export function settleActorTimelineToNow(
   const previous = findActorState(state, ownerType, ownerId);
   const slotChanged = !!current && previous?.scheduleSlotId !== current.id;
   const nextActivity = slotChanged ? current.title : previous?.activity ?? current?.title ?? "时间线待补全";
-  // A schedule is a plan, not physical movement. Only seed a location from the plan
-  // when the actor has no known actual location; explicit travel changes stay in effect
-  // until another real location change is recorded.
-  const nextLocationId = previous?.actualLocationId ?? current?.plannedLocationId ?? null;
-  const nextLocationName = previous?.actualLocationName ?? current?.plannedLocationName ?? null;
+  // A schedule is a plan, not physical movement. A manually chosen location is
+  // respected until its expected stay expires; then the current itinerary resumes.
+  const stayExpired = !!previous?.actualLocationUntil && new Date(previous.actualLocationUntil).getTime() <= virtualNow.getTime();
+  const nextLocationId = stayExpired
+    ? current?.plannedLocationId ?? null
+    : previous?.actualLocationId ?? current?.plannedLocationId ?? null;
+  const nextLocationName = stayExpired
+    ? current?.plannedLocationName ?? null
+    : previous?.actualLocationName ?? current?.plannedLocationName ?? null;
+  const nextLocationUntil = stayExpired ? null : previous?.actualLocationUntil ?? null;
   const nextSlotId = current?.id ?? previous?.scheduleSlotId ?? null;
-  const actorChanged = !previous || previous.activity !== nextActivity || (previous.actualLocationId ?? null) !== nextLocationId || (previous.actualLocationName ?? null) !== nextLocationName || (previous.scheduleSlotId ?? null) !== nextSlotId;
+  const actorChanged = !previous || previous.activity !== nextActivity || (previous.actualLocationId ?? null) !== nextLocationId || (previous.actualLocationName ?? null) !== nextLocationName || (previous.actualLocationUntil ?? null) !== nextLocationUntil || (previous.scheduleSlotId ?? null) !== nextSlotId;
   const actorStates = actorChanged
     ? [...state.actorStates.filter(actor => !(actor.ownerType === ownerType && actor.ownerId === ownerId)), {
         ownerType, ownerId, activity: nextActivity, scheduleSlotId: nextSlotId,
-        actualLocationId: nextLocationId, actualLocationName: nextLocationName, updatedAt: nowIso,
+        actualLocationId: nextLocationId, actualLocationName: nextLocationName,
+        actualLocationUntil: nextLocationUntil, updatedAt: nowIso,
       }]
     : state.actorStates;
   let finalActorStates = actorStates;
