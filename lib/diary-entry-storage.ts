@@ -249,7 +249,7 @@ export function createDiaryEntry(input: DiaryEntryInput): DiaryEntry {
   saveDiaryEntries([entry, ...loadDiaryEntries()]);
   try {
     const life = loadVirtualLifeState();
-    if (life.settings.enabled && life.settings.recordDiaryActivity) {
+    if (life.settings.enabled) {
       const isCharacter = !!entry.characterId && entry.characterId !== "player" && entry.characterId !== "self";
       const logged = appendLifeTimelineEntry(life, {
         category: "diary",
