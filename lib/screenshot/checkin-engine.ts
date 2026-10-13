@@ -31,6 +31,7 @@ import {
 import { consumePendingUserShot, hasCheckInBridge, readCheckInCapabilities, requestCheckIn } from "./checkin";
 import { resolveCheckInGuidance } from "./checkin-guidance";
 import { ensureShellOverlayListener, subscribeShellOverlayEvents } from "../shell-call-overlay";
+import type { CheckInOutcome } from "./types";
 import { loadVirtualLifeState } from "../life/life-storage";
 import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "../life/life-runtime";
 
