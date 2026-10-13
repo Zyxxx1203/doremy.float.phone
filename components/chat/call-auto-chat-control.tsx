@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import {
     type CallAutoChatConfig,
     type CallAutoChatStatus,
+    MAX_INTERVAL_SECONDS,
     MAX_TURNS_LIMIT,
     MIN_INTERVAL_SECONDS,
     readCallAutoChatStatus,
