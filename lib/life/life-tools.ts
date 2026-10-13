@@ -136,9 +136,8 @@ export async function executeLifeToolCall(
 ) {
   if (!LIFE_TOOL_DEFINITIONS.some(tool => tool.name === call.name)) return null;
   const name = call.name;
-  if (context?.appId && context.appId !== "chat" && context.appId !== "group_chat") {
-    return result(name, false, undefined, "生活工具目前只允许在角色私聊中执行。");
-  }
+  // The calling surface is not restricted: any chat/tool-enabled app may use life actions
+  // as long as the invoking character can be resolved and the global life settings allow it.
   const characterId = resolveInvokingCharacterId(context?.characterId);
   if (!characterId) return result(name, false, undefined, "无法确定正在调用工具的角色身份。");
   const state = loadVirtualLifeState();
