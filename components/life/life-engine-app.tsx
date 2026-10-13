@@ -227,7 +227,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             if (beforeEventIds.has(event.id) || event.kind !== "activity" || event.status !== "completed" || !event.settlementKey?.startsWith("schedule:")) continue;
             const ended = new Date(event.endsAt ?? event.createdAt).getTime();
             if (!Number.isFinite(ended) || ended < recentCutoff) continue;
-            next = appendLifeTimelineEntry(next, { category: "schedule", occurredAt: event.endsAt ?? event.createdAt, title: owner.name + "结束了一个时段：" + event.title, details: event.locationName ? "地点：" + event.locationName : undefined, actorId: owner.ownerId, actorName: owner.name, locationName: event.locationName, sourceId: event.id });
+            next = appendLifeTimelineEntry(next, { category: "schedule", occurredAt: event.endsAt ?? event.createdAt, title: owner.name + "结束了一个时段：" + event.title, details: event.locationName ? "地点：" + event.locationName : undefined, actorId: owner.ownerId, actorName: owner.name, locationName: event.locationName ?? undefined, sourceId: event.id });
           }
           const afterActor = next.actorStates.find(item => item.ownerType === owner.ownerType && item.ownerId === owner.ownerId);
           if (beforeActor && afterActor && (beforeActor.activity !== afterActor.activity || beforeActor.actualLocationId !== afterActor.actualLocationId)) {
@@ -248,7 +248,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
                   next = appendLifeTimelineEntry(next, {
                     category: "scene", title: owner.name + "离开了你所在的场景",
                     details: "TA 前往了" + afterActor.actualLocationName,
-                    actorId: owner.ownerId, actorName: owner.name, locationName: beforeActor.actualLocationName,
+                    actorId: owner.ownerId, actorName: owner.name, locationName: beforeActor.actualLocationName ?? undefined,
                     sceneId: sharedScene?.id,
                   });
                   if (sharedScene) {
@@ -327,7 +327,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       updatedAt: new Date().toISOString(),
     });
     if (previous?.activity !== nextActivity) {
-      next = appendLifeTimelineEntry(next, { category: "schedule", title: actor.name + "现在" + nextActivity, details: nextLocationName ? "当前地点：" + nextLocationName : undefined, actorId: actor.ownerId, actorName: actor.name, locationName: nextLocationName });
+      next = appendLifeTimelineEntry(next, { category: "schedule", title: actor.name + "现在" + nextActivity, details: nextLocationName ? "当前地点：" + nextLocationName : undefined, actorId: actor.ownerId, actorName: actor.name, locationName: nextLocationName ?? undefined });
     }
     if (previous?.actualLocationId !== nextLocationId && nextLocationName) {
       next = appendLifeTimelineEntry(next, { category: "location", title: actor.name + "来到了" + nextLocationName, details: previous?.actualLocationName ? "从" + previous.actualLocationName + "前往" + nextLocationName : "自主生活时更新了地点", actorId: actor.ownerId, actorName: actor.name, locationName: nextLocationName });
