@@ -222,6 +222,54 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           if (beforeActor && afterActor && (beforeActor.activity !== afterActor.activity || beforeActor.actualLocationId !== afterActor.actualLocationId)) {
             next = appendLifeTimelineEntry(next, { category: "schedule", title: owner.name + "现在" + afterActor.activity, details: afterActor.actualLocationName ? "当前地点：" + afterActor.actualLocationName : undefined, actorId: owner.ownerId, actorName: owner.name, locationName: afterActor.actualLocationName });
           }
+          if (beforeActor && afterActor && beforeActor.actualLocationId !== afterActor.actualLocationId && afterActor.actualLocationName) {
+            next = appendLifeTimelineEntry(next, {
+              category: "location",
+              title: owner.name + "来到了" + afterActor.actualLocationName,
+              details: beforeActor.actualLocationName ? "从" + beforeActor.actualLocationName + "前往" + afterActor.actualLocationName : "实际地点发生变化",
+              actorId: owner.ownerId, actorName: owner.name, locationName: afterActor.actualLocationName,
+            });
+            if (owner.ownerType === "character") {
+              const player = next.actorStates.find(item => item.ownerType === "player" && item.ownerId === PLAYER_ID);
+              if (player?.actualLocationId) {
+                const sharedScene = next.scenes.find(scene => scene.status === "active" && scene.locationId === player.actualLocationId);
+                if (beforeActor.actualLocationId === player.actualLocationId && afterActor.actualLocationId !== player.actualLocationId) {
+                  next = appendLifeTimelineEntry(next, {
+                    category: "scene", title: owner.name + "离开了你所在的场景",
+                    details: "TA 前往了" + afterActor.actualLocationName,
+                    actorId: owner.ownerId, actorName: owner.name, locationName: beforeActor.actualLocationName,
+                    sceneId: sharedScene?.id,
+                  });
+                  if (sharedScene) {
+                    next = upsertLifeScene(next, {
+                      ...sharedScene,
+                      participants: sharedScene.participants.filter(participant => !(participant.ownerType === "character" && participant.ownerId === owner.ownerId)),
+                      updatedAt: new Date().toISOString(),
+                    });
+                  }
+                } else if (beforeActor.actualLocationId !== player.actualLocationId && afterActor.actualLocationId === player.actualLocationId) {
+                  next = appendLifeTimelineEntry(next, {
+                    category: "scene", title: owner.name + "进入了你所在的场景",
+                    details: "TA 现在也在" + afterActor.actualLocationName,
+                    actorId: owner.ownerId, actorName: owner.name, locationName: afterActor.actualLocationName,
+                    sceneId: sharedScene?.id,
+                  });
+                  if (sharedScene && !sharedScene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === owner.ownerId)) {
+                    next = upsertLifeScene(next, {
+                      ...sharedScene,
+                      participants: [
+                        ...sharedScene.participants.map(participant => participant.ownerType === "player"
+                          ? { ...participant, awarenessByActorId: { ...participant.awarenessByActorId, [owner.ownerId]: "aware" as const } }
+                          : participant),
+                        { ownerType: "character", ownerId: owner.ownerId, activity: afterActor.activity, awarenessByActorId: { [PLAYER_ID]: "aware" } },
+                      ],
+                      updatedAt: new Date().toISOString(),
+                    });
+                  }
+                }
+              }
+            }
+          }
         }
       }
       if (next !== stateRef.current) commit(next);
