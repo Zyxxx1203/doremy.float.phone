@@ -199,8 +199,11 @@ export function settleActorTimelineToNow(
   const previous = findActorState(state, ownerType, ownerId);
   const slotChanged = !!current && previous?.scheduleSlotId !== current.id;
   const nextActivity = slotChanged ? current.title : previous?.activity ?? current?.title ?? "时间线待补全";
-  const nextLocationId = slotChanged ? current?.plannedLocationId ?? null : previous?.actualLocationId ?? current?.plannedLocationId ?? null;
-  const nextLocationName = slotChanged ? current?.plannedLocationName ?? null : previous?.actualLocationName ?? current?.plannedLocationName ?? null;
+  // A schedule is a plan, not physical movement. Only seed a location from the plan
+  // when the actor has no known actual location; explicit travel changes stay in effect
+  // until another real location change is recorded.
+  const nextLocationId = previous?.actualLocationId ?? current?.plannedLocationId ?? null;
+  const nextLocationName = previous?.actualLocationName ?? current?.plannedLocationName ?? null;
   const nextSlotId = current?.id ?? previous?.scheduleSlotId ?? null;
   const actorChanged = !previous || previous.activity !== nextActivity || (previous.actualLocationId ?? null) !== nextLocationId || (previous.actualLocationName ?? null) !== nextLocationName || (previous.scheduleSlotId ?? null) !== nextSlotId;
   const actorStates = actorChanged
