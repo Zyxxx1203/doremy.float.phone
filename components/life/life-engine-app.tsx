@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type CSSProperties } from "react";
 import {
   ArrowLeft, CalendarDays, Coffee, Heart, MapPin,
-  Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Users, X,
+  Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Users, X, Pencil, Trash2, MoreHorizontal,
 } from "lucide-react";
 import type { Character } from "@/lib/character-types";
 import { loadCharacters } from "@/lib/character-storage";
@@ -121,6 +121,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [playerActivity, setPlayerActivity] = useState("");
   const [sceneInput, setSceneInput] = useState("");
   const [sceneActionInput, setSceneActionInput] = useState("");
+  const [messageActionTarget, setMessageActionTarget] = useState<LifeSceneMessage | null>(null);
+  const [messageActionMode, setMessageActionMode] = useState<"menu" | "edit" | "delete-confirm">("menu");
+  const [messageEditDraft, setMessageEditDraft] = useState("");
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressTriggeredRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [inviteCharacterId, setInviteCharacterId] = useState("");
@@ -636,25 +641,53 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setNotice("图片记录已删除，关联媒体缓存也已清理。");
   };
 
-  const handleSceneMessageLongPress = async (message: LifeSceneMessage) => {
-    const choice = window.prompt("消息操作：输入 1 编辑对白，2 删除整条消息，3 重新生成角色回复。", "1");
-    if (choice === null) return;
-    if (choice.trim() === "1") {
-      const edited = window.prompt("编辑这条消息的对白内容：", message.dialogue);
-      if (edited === null) return;
-      const latest = stateRef.current;
-      commit({ ...latest, sceneMessages: latest.sceneMessages.map(item => item.id === message.id ? { ...item, dialogue: edited } : item) });
-      setNotice("消息已编辑。");
-      return;
+  const openMessageActions = (message: LifeSceneMessage) => {
+    setMessageActionTarget(message);
+    setMessageEditDraft(message.dialogue);
+    setMessageActionMode("menu");
+  };
+
+  const clearMessageLongPress = () => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
     }
-    if (choice.trim() === "2") {
-      if (!window.confirm("确定删除这条消息吗？")) return;
-      const latest = stateRef.current;
-      commit({ ...latest, sceneMessages: latest.sceneMessages.filter(item => item.id !== message.id) });
-      setNotice("消息已删除。");
-      return;
+  };
+
+  const saveMessageEdit = () => {
+    if (!messageActionTarget) return;
+    const message = messageActionTarget;
+    const dialogue = messageEditDraft.trim();
+    const latest = stateRef.current;
+    const sceneMessages = latest.sceneMessages.map(item => item.id === message.id ? { ...item, dialogue } : item);
+    const timeline = latest.timeline
+      .filter(entry => !(entry.sourceId === message.id && entry.category === "dialogue" && !dialogue))
+      .map(entry => entry.sourceId === message.id && entry.category === "dialogue"
+        ? { ...entry, title: (message.speakerName || playerName) + "说", details: dialogue }
+        : entry);
+    let next: VirtualLifeState = { ...latest, sceneMessages, timeline };
+    if (dialogue && !timeline.some(entry => entry.sourceId === message.id && entry.category === "dialogue")) {
+      next = appendLifeTimelineEntry(next, { category: "dialogue", title: (message.speakerName || playerName) + "说", details: dialogue, actorId: message.speakerId, actorName: message.speakerName || playerName, locationName: latest.scenes.find(scene => scene.id === message.sceneId)?.locationName, sceneId: message.sceneId, sourceId: message.id });
     }
-    if (choice.trim() !== "3") return;
+    commit(next);
+    setMessageActionTarget(null);
+    setNotice("消息已保存，生活时间线也已同步。");
+  };
+
+  const deleteSceneMessage = () => {
+    if (!messageActionTarget) return;
+    const message = messageActionTarget;
+    const latest = stateRef.current;
+    commit({
+      ...latest,
+      sceneMessages: latest.sceneMessages.filter(item => item.id !== message.id),
+      timeline: latest.timeline.filter(entry => entry.sourceId !== message.id),
+    });
+    setMessageActionTarget(null);
+    setNotice("消息及其对应的生活时间线记录已删除。");
+  };
+
+  const regenerateSceneMessage = async (message: LifeSceneMessage) => {
     if (message.role !== "character") {
       setNotice("重新生成仅适用于角色回复；玩家消息可以编辑或删除。");
       return;
@@ -674,6 +707,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       return;
     }
     setBusy(true);
+    setMessageActionTarget(null);
     try {
       const previous = loadChatMessages(session.id, 12).filter(item => item.status !== "failed" && !item.isRetracted);
       const sceneContext = buildLifeScenePromptContext(stateRef.current, scene, character.id);
@@ -694,12 +728,38 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const result = await generateOfflineChatCompletion(session, [...previous, prompt]);
       const parsed = parseLifeOutput(result.content);
       const latest = stateRef.current;
-      commit({ ...latest, sceneMessages: latest.sceneMessages.map(item => item.id === message.id ? { ...item, action: settings.showActionNarration ? parsed.action : undefined, dialogue: parsed.dialogue, createdAt: new Date().toISOString() } : item) });
-      setNotice("角色回复已重新生成。");
+      const sceneMessages = latest.sceneMessages.map(item => item.id === message.id
+        ? { ...item, action: settings.showActionNarration ? parsed.action : undefined, dialogue: parsed.dialogue, createdAt: new Date().toISOString() }
+        : item);
+      let next: VirtualLifeState = {
+        ...latest,
+        sceneMessages,
+        timeline: latest.timeline.filter(entry => !(entry.sourceId === message.id && (entry.category === "action" || entry.category === "dialogue"))),
+      };
+      if (settings.showActionNarration && parsed.action) {
+        next = appendLifeTimelineEntry(next, { category: "action", title: character.name + "的行动", details: parsed.action, actorId: character.id, actorName: character.name, locationName: scene.locationName, sceneId: scene.id, sourceId: message.id });
+      }
+      if (parsed.dialogue.trim()) {
+        next = appendLifeTimelineEntry(next, { category: "dialogue", title: character.name + "说", details: parsed.dialogue, actorId: character.id, actorName: character.name, locationName: scene.locationName, sceneId: scene.id, sourceId: message.id });
+      }
+      commit(next);
+      setNotice("角色回复已重新生成，生活时间线也已同步。");
     } catch (error) {
       setNotice(error instanceof Error ? "重新生成失败：" + error.message : "重新生成失败，请检查模型配置。");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleMessageAction = (action: "edit" | "delete" | "regenerate") => {
+    if (!messageActionTarget) return;
+    if (action === "edit") {
+      setMessageEditDraft(messageActionTarget.dialogue);
+      setMessageActionMode("edit");
+    } else if (action === "delete") {
+      setMessageActionMode("delete-confirm");
+    } else {
+      void regenerateSceneMessage(messageActionTarget);
     }
   };
 
@@ -1143,7 +1203,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           <div className="mt-3"><p className="mb-2 text-sm font-medium">此刻和你在同一地点的角色</p>{nearbyCharacters.length ? <div className="flex flex-wrap gap-2">{nearbyCharacters.map(({character,presence})=><button key={character.id} onClick={()=>{setSelectedSpeakerId(character.id);setSelectedActorKey("character:"+character.id);setTab("home");}} className="flex items-center gap-2 rounded-xl bg-white/80 px-3 py-2 text-xs"><span className="grid h-7 w-7 place-items-center rounded-full bg-[#efe1d2]">{character.name.slice(0,1)}</span><span className="text-left"><span className="block font-medium">{character.name}</span><span className="block text-stone-500">{presence?.activity??"正在自己的生活里"}</span></span></button>)}</div> : <p className="rounded-xl bg-white/55 p-3 text-xs text-stone-500">目前没有记录到和你同地点的角色。计划地点只是线索；你也可以前往其他地点看看会不会遇见谁。</p>}</div>
         </section>
       {(tab === "home" || tab === "scene") && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3"><SectionTitle eyebrow="Live scene" title={activeScene ? activeScene.locationName : "还没有正在进行的场景"} note={activeScene ? `场景始于 ${fmt(activeScene.startedAt)} · ${activeScene.participants.length} 位参与者 · 已保存，可随时回来继续` : "先从生活总览中选择地点和参与角色，创建一个持续场景。"} />{activeScene && <button onClick={()=>{let next={...stateRef.current,scenes:stateRef.current.scenes.map(scene=>scene.id===activeScene.id?{...scene,status:"paused" as const,updatedAt:new Date().toISOString()}:scene)};next=appendLifeTimelineEntry(next,{category:"scene",title:"你暂时离开了"+activeScene.locationName,actorName:playerName,locationName:activeScene.locationName,sceneId:activeScene.id});commit(next)}} className="inline-flex items-center gap-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs"><Pause size={14}/>暂停场景</button>}</div>
+        <div className="flex flex-wrap items-start justify-between gap-3"><SectionTitle eyebrow="Live scene" title={activeScene ? activeScene.locationName : "还没有正在进行的场景"} note={activeScene ? `场景始于 ${fmt(activeScene.startedAt)} · ${activeScene.participants.length} 位参与者 · 已保存，可随时回来继续` : "先从生活总览中选择地点和参与角色，创建一个持续场景。"} />{activeScene && <button onClick={()=>{const now=new Date().toISOString();let next={...stateRef.current,scenes:stateRef.current.scenes.map(scene=>scene.id===activeScene.id?{...scene,status:(activeScene.status==="active"?"paused":"active") as "active"|"paused",updatedAt:now}:{...scene,status:scene.status==="active"?"paused" as const:scene.status})};next=appendLifeTimelineEntry(next,{category:"scene",title:(activeScene.status==="active"?"你暂时离开了":"你回到了")+activeScene.locationName,actorName:playerName,locationName:activeScene.locationName,sceneId:activeScene.id});commit(next);setNotice(activeScene.status==="active"?"场景已暂停，回来时可以继续。":"已回到原场景，之前的消息会保留。")}} className="inline-flex items-center gap-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">{activeScene.status==="active"?<><Pause size={14}/>暂停场景</>:<><Play size={14}/>继续场景</>}</button>}</div>
         <div className="mb-4 rounded-2xl border border-stone-200/80 bg-white/75 p-3 sm:p-4">
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
             <label className="block text-sm font-medium">当前地点
@@ -1160,7 +1220,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           <div className="mb-4 flex flex-wrap gap-2">{activeScene.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);const awareness=p.awarenessByActorId.player;const status=awareness==="unaware"?"还没注意到你":awareness==="suspects"?"似乎察觉到你":awareness==="aware"?"注意到你":"";return <button key={p.ownerId} onClick={()=>p.ownerType==="character"&&setSelectedSpeakerId(p.ownerId)} className={`rounded-full px-3 py-1.5 text-xs ${selectedSpeakerId===p.ownerId?"bg-[var(--life-accent)] text-white":"bg-[#f1e5d8] text-stone-700"}`}>{actor?.name??p.ownerId} · {status || p.activity}</button>})}</div>
           <div className="mb-4 max-h-[48vh] min-h-48 space-y-3 overflow-y-auto rounded-2xl bg-white/65 p-3 sm:p-5" style={{fontSize:"var(--life-font)"}}>
             {sceneMessages.length===0 && <div className="grid min-h-36 place-items-center text-center text-sm text-stone-400"><div><Sparkles className="mx-auto mb-2" size={22}/><p>场景已经准备好了。</p><p className="mt-1 text-xs">角色可以忙自己的事，也可以回应你；不会自动写成长篇剧情。</p></div></div>}
-            {sceneMessages.map(message=><div key={message.id} className="space-y-2" onContextMenu={event => { event.preventDefault(); void handleSceneMessageLongPress(message); }}>
+            {sceneMessages.map(message=><div key={message.id} className="group space-y-2 rounded-xl transition-colors" onTouchStart={() => { longPressTriggeredRef.current = false; clearMessageLongPress(); longPressTimerRef.current = window.setTimeout(() => { longPressTriggeredRef.current = true; openMessageActions(message); }, 550); }} onTouchEnd={clearMessageLongPress} onTouchMove={clearMessageLongPress} onTouchCancel={clearMessageLongPress} onContextMenu={event => { event.preventDefault(); clearMessageLongPress(); openMessageActions(message); }}>
               {message.action&&<div className="my-3 flex items-center gap-3 px-2" aria-label="行动旁白"><span className="h-px flex-1 bg-stone-300/80"/><p className="max-w-[82%] text-center italic leading-relaxed text-stone-500" style={{fontSize:"var(--life-narration-font)"}}>{message.action}</p><span className="h-px flex-1 bg-stone-300/80"/></div>}
               {message.dialogue&&<div className={`flex ${message.role==="player"?"justify-end":"justify-start"}`}><div className={`max-w-[88%] rounded-2xl px-4 py-3 ${settings.dialogueBubbleStyle==="square"?"rounded-md":settings.dialogueBubbleStyle==="soft"?"rounded-[1.4rem]":"rounded-2xl"} ${message.role==="player"?"bg-[#e9d4c0] text-stone-800":"bg-white text-stone-800 shadow-sm"}`}>{message.role!=="player"&&<p className="mb-1 text-[11px] font-semibold text-[var(--life-accent)]">{message.speakerName}</p>}<p className="whitespace-pre-wrap leading-relaxed">{message.dialogue}</p></div></div>}
             </div>)}
@@ -1178,7 +1238,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             <label className="block text-xs font-medium text-stone-600">说话 / 对话气泡（可留空）<textarea value={sceneInput} onChange={e=>setSceneInput(e.target.value)} placeholder="想对角色说的话……" rows={2} className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm" disabled={busy}/></label>
             <div className="flex items-center justify-between gap-2"><span className="text-[11px] text-stone-500">可以只行动、只说话，也可以两者一起。</span><button disabled={busy||(!sceneInput.trim()&&!sceneActionInput.trim())} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm text-white disabled:opacity-40"><Send size={15}/>{busy?"角色正在回应…":"执行"}</button></div>
           </form>
-          <p className="mt-2 text-xs text-stone-500">生成使用角色现有私聊会话和模型配置；本轮场景指令只临时注入，不会把场景规则写进原线上聊天记录。</p>
+          <p className="mt-2 text-xs text-stone-500">长按任意消息可编辑、删除或重新生成角色回复。生成使用角色现有私聊会话和模型配置；本轮场景指令只临时注入，不会把场景规则写进原线上聊天记录。</p>
         </>}
       </section>}
           <section className="mt-4 rounded-2xl border border-stone-200/70 bg-white/60 p-3 sm:p-4">
@@ -1364,6 +1424,28 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           </div>
           <label className="mt-4 block text-sm">自定义场景提示词<textarea value={settings.customPrompt} onChange={e=>patchSettings({customPrompt:e.target.value})} rows={5} placeholder="例如：角色更重视生活习惯；不要每次见面都主动热情打招呼……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
           <button onClick={()=>patchSettings({ ...DEFAULT_LIFE_ENGINE_SETTINGS })} className="mt-4 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm text-stone-600">恢复默认设置</button>
+        </section>
+      </div>}
+      {messageActionTarget && <div className="fixed inset-0 z-[100] flex items-end justify-center bg-stone-950/35 p-3 sm:items-center" onMouseDown={event => { if (event.target === event.currentTarget) setMessageActionTarget(null); }}>
+        <section role="dialog" aria-modal="true" aria-label="消息操作" className="w-full max-w-md rounded-3xl border border-white/70 bg-[#fffaf5] p-4 shadow-2xl sm:p-5">
+          <div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-xs font-medium text-[var(--life-accent)]">消息操作</p><h3 className="mt-1 text-base font-semibold text-stone-800">{messageActionTarget.speakerName || "场景消息"}</h3></div><button type="button" onClick={() => setMessageActionTarget(null)} aria-label="关闭" className="grid h-9 w-9 place-items-center rounded-full bg-white text-stone-500"><X size={18}/></button></div>
+          {messageActionMode === "menu" && <>
+            <p className="mb-4 line-clamp-3 whitespace-pre-wrap rounded-2xl bg-white/80 p-3 text-sm leading-relaxed text-stone-600">{messageActionTarget.dialogue || messageActionTarget.action || "这条记录没有对白文本。"}</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => handleMessageAction("edit")} className="flex items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-3 text-sm"><Pencil size={16}/>编辑消息</button>
+              <button type="button" onClick={() => handleMessageAction("delete")} className="flex items-center justify-center gap-2 rounded-xl border border-red-100 bg-white px-3 py-3 text-sm text-red-600"><Trash2 size={16}/>删除消息</button>
+              <button type="button" disabled={messageActionTarget.role !== "character" || busy} onClick={() => handleMessageAction("regenerate")} className="col-span-2 flex items-center justify-center gap-2 rounded-xl bg-[var(--life-accent)] px-3 py-3 text-sm text-white disabled:opacity-40"><RefreshCw size={16}/>重新生成角色回复</button>
+            </div>
+            <p className="mt-3 text-center text-[11px] text-stone-400">删除会同步清理这条消息的时间线记录。</p>
+          </>}
+          {messageActionMode === "edit" && <>
+            <label className="block text-sm font-medium text-stone-700">对白内容<textarea autoFocus value={messageEditDraft} onChange={event => setMessageEditDraft(event.target.value)} rows={4} className="mt-2 w-full resize-y rounded-2xl border border-stone-200 bg-white p-3 text-sm leading-relaxed outline-none focus:border-[var(--life-accent)]" placeholder="编辑对白；留空也可以保存。"/></label>
+            <div className="mt-3 flex gap-2"><button type="button" onClick={() => setMessageActionMode("menu")} className="flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">返回</button><button type="button" onClick={saveMessageEdit} className="flex-1 rounded-xl bg-[var(--life-accent)] px-3 py-2.5 text-sm text-white">保存修改</button></div>
+          </>}
+          {messageActionMode === "delete-confirm" && <>
+            <p className="rounded-2xl bg-white/80 p-3 text-sm leading-relaxed text-stone-600">确定删除这条消息吗？关联的行动／对白时间线记录也会一起删除，此操作无法撤销。</p>
+            <div className="mt-3 flex gap-2"><button type="button" onClick={() => setMessageActionMode("menu")} className="flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">取消</button><button type="button" onClick={deleteSceneMessage} className="flex-1 rounded-xl bg-red-600 px-3 py-2.5 text-sm text-white">确认删除</button></div>
+          </>}
         </section>
       </div>}
       <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] opacity-55"><span>数据保存在当前设备的 KV 数据库中</span><span>生活时钟按角色独立 · 计划不等于现实 · 场景持续保存</span></footer>
