@@ -114,6 +114,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
   const [selectedSpeakerId, setSelectedSpeakerId] = useState("");
   const [selectedLocationId, setSelectedLocationId] = useState("cafe");
+  const [stayDurationMinutes, setStayDurationMinutes] = useState(120);
   const [newLocationName, setNewLocationName] = useState("");
 
   const [quickPlanText, setQuickPlanText] = useState("");
@@ -124,6 +125,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [messageActionTarget, setMessageActionTarget] = useState<LifeSceneMessage | null>(null);
   const [messageActionMode, setMessageActionMode] = useState<"menu" | "edit" | "delete-confirm">("menu");
   const [messageEditDraft, setMessageEditDraft] = useState("");
+  const [messageEditActionDraft, setMessageEditActionDraft] = useState("");
   const longPressTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
   const [busy, setBusy] = useState(false);
@@ -408,7 +410,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const location = state.locations.find(item => item.id === locationId);
     if (!location) return;
     const current = actorState(actor);
-    let next = upsertActorState(state, { ownerType: actor.ownerType, ownerId: actor.ownerId, activity: current?.activity || "正在这里活动", actualLocationId: location.id, actualLocationName: location.name, updatedAt: new Date().toISOString() });
+    let next = upsertActorState(state, { ownerType: actor.ownerType, ownerId: actor.ownerId, activity: current?.activity || "正在这里活动", actualLocationId: location.id, actualLocationName: location.name, actualLocationUntil: null, updatedAt: new Date().toISOString() });
     next = appendLifeTimelineEntry(next, { category: "location", title: actor.name + "来到了" + location.name, details: current?.actualLocationName ? "从" + current.actualLocationName + "前往" + location.name : "首次记录实际地点", actorId: actor.ownerId, actorName: actor.name, locationName: location.name });
     if (actor.ownerType === "player" && current?.actualLocationId !== location.id) {
       const scene = next.scenes.find(item => item.status === "active" || item.status === "paused");
@@ -457,7 +459,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       : { id: id("scene"), locationId: selectedLocation.id, locationName: selectedLocation.name, startedAt: now, updatedAt: now, status: "active", participants, lastSettledEventIds: [] };
     next = upsertLifeScene(next, scene);
     for (const actor of [{ ownerType: "player" as const, ownerId: PLAYER_ID }, ...chosen.map(char => ({ ownerType: "character" as const, ownerId: char.id }))]) {
-      next = upsertActorState(next, { ...actor, activity: actor.ownerType === "player" ? (playerActivity || "刚来到这里") : "正在做自己的事", actualLocationId: selectedLocation.id, actualLocationName: selectedLocation.name, updatedAt: now });
+      next = upsertActorState(next, { ...actor, activity: actor.ownerType === "player" ? (playerActivity || "刚来到这里") : "正在做自己的事", actualLocationId: selectedLocation.id, actualLocationName: selectedLocation.name, actualLocationUntil: actor.ownerType === "player" ? new Date(resolveActorLifeNow(getActorClock(stateRef.current, "player", PLAYER_ID)).getTime() + stayDurationMinutes * 60_000).toISOString() : null, updatedAt: now });
     }
     next = appendLifeTimelineEntry(next, { category: "scene", title: "你和" + chosen.map(char=>char.name).join("、") + "进入了" + selectedLocation.name, details: "共同场景开始；" + (playerActivity || "你刚来到这里"), actorName: playerName, locationName: selectedLocation.name, sceneId: scene.id });
     commit(next);
@@ -500,7 +502,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       ? { ...existingScene, locationId: selectedLocation.id, locationName: selectedLocation.name, updatedAt: now, status: "active", participants: [{ ...participants[0], activity: playerActivity || "正在这里活动" }, ...existingScene.participants.filter(p => p.ownerType === "character" && participants.some(candidate => candidate.ownerType === "character" && candidate.ownerId === p.ownerId))] }
       : { id: id("scene"), locationId: selectedLocation.id, locationName: selectedLocation.name, startedAt: now, updatedAt: now, status: "active", participants, lastSettledEventIds: [] };
     next = upsertLifeScene(next, scene);
-    next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "正在这里活动", actualLocationId: selectedLocation.id, actualLocationName: selectedLocation.name, updatedAt: now });
+    next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "正在这里活动", actualLocationId: selectedLocation.id, actualLocationName: selectedLocation.name, actualLocationUntil: new Date(resolveActorLifeNow(getActorClock(stateRef.current, "player", PLAYER_ID)).getTime() + stayDurationMinutes * 60_000).toISOString(), updatedAt: now });
     next = appendLifeTimelineEntry(next, { category: "location", title: "你来到了" + selectedLocation.name, details: playerActivity || "开始探索这个地点", actorId: PLAYER_ID, actorName: playerName, locationName: selectedLocation.name, sceneId: scene.id });
     if (actualCharacters.length) next = appendLifeTimelineEntry(next, { category: "scene", title: "在" + selectedLocation.name + "遇见了" + actualCharacters.map(char=>char.name).join("、"), actorName: playerName, locationName: selectedLocation.name, sceneId: scene.id });
     commit(next);
@@ -672,16 +674,25 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (!messageActionTarget) return;
     const message = messageActionTarget;
     const dialogue = messageEditDraft.trim();
+    const action = messageEditActionDraft.trim();
     const latest = stateRef.current;
-    const sceneMessages = latest.sceneMessages.map(item => item.id === message.id ? { ...item, dialogue } : item);
-    const timeline = latest.timeline
-      .filter(entry => !(entry.sourceId === message.id && entry.category === "dialogue" && !dialogue))
-      .map(entry => entry.sourceId === message.id && entry.category === "dialogue"
-        ? { ...entry, title: (message.speakerName || playerName) + "说", details: dialogue }
-        : entry);
+    const sceneMessages = latest.sceneMessages.map(item => item.id === message.id ? { ...item, dialogue, action: action || undefined } : item);
+    let timeline = latest.timeline
+      .filter(entry => !(entry.sourceId === message.id && ((entry.category === "dialogue" && !dialogue) || (entry.category === "action" && !action))))
+      .map(entry => {
+        if (entry.sourceId !== message.id) return entry;
+        if (entry.category === "dialogue") return { ...entry, title: (message.speakerName || playerName) + "说", details: dialogue };
+        if (entry.category === "action") return { ...entry, title: (message.speakerName || playerName) + "的行动", details: action };
+        return entry;
+      });
     let next: VirtualLifeState = { ...latest, sceneMessages, timeline };
+    const locationName = latest.scenes.find(scene => scene.id === message.sceneId)?.locationName;
     if (dialogue && !timeline.some(entry => entry.sourceId === message.id && entry.category === "dialogue")) {
-      next = appendLifeTimelineEntry(next, { category: "dialogue", title: (message.speakerName || playerName) + "说", details: dialogue, actorId: message.speakerId, actorName: message.speakerName || playerName, locationName: latest.scenes.find(scene => scene.id === message.sceneId)?.locationName, sceneId: message.sceneId, sourceId: message.id });
+      next = appendLifeTimelineEntry(next, { category: "dialogue", title: (message.speakerName || playerName) + "说", details: dialogue, actorId: message.speakerId, actorName: message.speakerName || playerName, locationName, sceneId: message.sceneId, sourceId: message.id });
+      timeline = next.timeline;
+    }
+    if (action && !timeline.some(entry => entry.sourceId === message.id && entry.category === "action")) {
+      next = appendLifeTimelineEntry(next, { category: "action", title: (message.speakerName || playerName) + "的行动", details: action, actorId: message.speakerId, actorName: message.speakerName || playerName, locationName, sceneId: message.sceneId, sourceId: message.id });
     }
     commit(next);
     setMessageActionTarget(null);
@@ -769,6 +780,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (!messageActionTarget) return;
     if (action === "edit") {
       setMessageEditDraft(messageActionTarget.dialogue);
+      setMessageEditActionDraft(messageActionTarget.action || "");
       setMessageActionMode("edit");
     } else if (action === "delete") {
       setMessageActionMode("delete-confirm");
@@ -1225,6 +1237,26 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             </label>
             <div className="flex items-end gap-2"><button type="button" onClick={enterLocationSolo} disabled={!settings.enabled} className="flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm disabled:opacity-40">前往地点</button><button type="button" onClick={createScene} disabled={!characters.length||!settings.enabled} className="flex-1 rounded-xl bg-[var(--life-accent)] px-3 py-2.5 text-sm text-white disabled:opacity-40">进入互动</button></div>
           </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+            <label className="block text-xs font-medium text-stone-600">预计停留时间
+              <select value={stayDurationMinutes} onChange={event=>setStayDurationMinutes(Number(event.target.value))} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700">
+                <option value={30}>半小时</option><option value={60}>1 小时</option><option value={120}>2 小时</option><option value={240}>4 小时</option><option value={480}>8 小时</option>
+              </select>
+            </label>
+            {playerPresence?.actualLocationUntil && <button type="button" onClick={()=>{
+              const now=new Date().toISOString();
+              const current=getCurrentActorSchedule(stateRef.current,"player",PLAYER_ID,resolveActorLifeNow(getActorClock(stateRef.current,"player",PLAYER_ID)));
+              const location=stateRef.current.locations.find(item=>item.id===current?.plannedLocationId) ?? stateRef.current.locations.find(item=>item.id==="home") ?? stateRef.current.locations[0];
+              if(!location){setNotice("找不到原计划地点，请先检查日程。");return;}
+              let next=upsertActorState(stateRef.current,{ownerType:"player",ownerId:PLAYER_ID,activity:current?.title||playerPresence.activity,scheduleSlotId:current?.id??playerPresence.scheduleSlotId,actualLocationId:location.id,actualLocationName:location.name,actualLocationUntil:null,updatedAt:now});
+              const scene=next.scenes.find(item=>item.status==="active");
+              if(scene) next=upsertLifeScene(next,{...scene,locationId:location.id,locationName:location.name,updatedAt:now});
+              next=appendLifeTimelineEntry(next,{category:"schedule",title:"已恢复原计划",details:"结束临时停留，回到当前日程地点「"+location.name+"」。",actorId:PLAYER_ID,actorName:playerName,locationName:location.name,sceneId:scene?.id});
+              commit(next);setSelectedLocationId(location.id);setNotice("已提前结束临时停留，恢复当前日程地点。");
+            }} className="rounded-xl border border-[#d9c2ae] bg-[#fbf5ee] px-3 py-2.5 text-xs text-stone-700">恢复原计划</button>}
+          </div>
+          {playerPresence?.actualLocationUntil && <p className="mt-2 text-[11px] text-stone-500">临时停留预计于 {new Date(playerPresence.actualLocationUntil).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})} 结束；届时会自动恢复当前行程地点。你也可以提前恢复原计划。</p>}
+          </div>
           <div className="mt-2 flex gap-2"><input value={newLocationName} onChange={e=>setNewLocationName(e.target.value)} placeholder="添加一个新地点…" className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/><button type="button" onClick={addLocation} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm">添加地点</button></div>
           <label className="mt-3 block text-sm font-medium text-stone-700">你现在的行动（可选）<input value={playerActivity} onChange={e=>setPlayerActivity(e.target.value)} placeholder="例如：坐在窗边看书、慢慢散步……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
           <div className="mt-3"><p className="mb-2 text-xs font-medium text-stone-600">选择一起互动的角色</p><div className="flex flex-wrap gap-2">{characters.map(char=><label key={char.id} className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs"><input type="checkbox" checked={selectedCharacterIds.includes(char.id)} onChange={e=>setSelectedCharacterIds(old=>e.target.checked?[...new Set([...old,char.id])]:old.filter(id=>id!==char.id))}/>{char.name}</label>)}</div></div>
@@ -1453,6 +1485,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             <p className="mt-3 text-center text-[11px] text-stone-400">删除会同步清理这条消息的时间线记录。</p>
           </>}
           {messageActionMode === "edit" && <>
+            <label className="mb-3 block text-sm font-medium text-stone-700">动作 / 旁白（可选）<textarea value={messageEditActionDraft} onChange={event => setMessageEditActionDraft(event.target.value)} rows={2} className="mt-2 w-full resize-y rounded-2xl border border-stone-200 bg-white p-3 text-sm leading-relaxed outline-none focus:border-[var(--life-accent)]" placeholder="编辑动作；留空会移除动作。"/></label>
             <label className="block text-sm font-medium text-stone-700">对白内容<textarea autoFocus value={messageEditDraft} onChange={event => setMessageEditDraft(event.target.value)} rows={4} className="mt-2 w-full resize-y rounded-2xl border border-stone-200 bg-white p-3 text-sm leading-relaxed outline-none focus:border-[var(--life-accent)]" placeholder="编辑对白；留空也可以保存。"/></label>
             <div className="mt-3 flex gap-2"><button type="button" onClick={() => setMessageActionMode("menu")} className="flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">返回</button><button type="button" onClick={saveMessageEdit} className="flex-1 rounded-xl bg-[var(--life-accent)] px-3 py-2.5 text-sm text-white">保存修改</button></div>
           </>}
