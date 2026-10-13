@@ -12,6 +12,8 @@ import {
     getInternalCapabilityToolDefinition,
 } from "./internal-capability-storage";
 import { loadCustomAppToolsForContext, type RegisteredCustomAppExtension } from "./custom-app-sdk-registry";
+import { LIFE_TOOL_DEFINITIONS } from "./life/life-tools";
+import { loadVirtualLifeState } from "./life/life-storage";
 import type { CustomAppToolDefinition } from "./custom-app-types";
 import {
     BUILTIN_PHONE_WORKFLOW_PACKAGE,
@@ -349,7 +351,7 @@ export type EnabledTool = {
     description: string;
     parameterSchema: string;
     usageGuide?: string;
-    source: "rest" | "rest_package" | "composite" | "composite_package" | "mcp" | "mcp_server" | "internal" | "custom_app" | "custom_app_package";
+    source: "rest" | "rest_package" | "composite" | "composite_package" | "mcp" | "mcp_server" | "internal" | "custom_app" | "custom_app_package" | "life";
     sourceId: string;       // RestToolConfig.id or McpServerConfig.id
     customAppId?: string;
     customAppName?: string;
@@ -481,6 +483,12 @@ export function getEnabledTools(appId?: string): EnabledTool[] {
             customAppName: first.appName,
             customAppTools: group,
         });
+    }
+
+    if ((appId === "chat" || appId === undefined) && loadVirtualLifeState().settings.enabled) {
+        for (const tool of LIFE_TOOL_DEFINITIONS) {
+            tools.push({ ...tool, source: "life", sourceId: "life-engine" });
+        }
     }
 
     return tools;
