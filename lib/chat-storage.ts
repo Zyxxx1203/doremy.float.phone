@@ -1529,9 +1529,9 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
                     const previous = [...(life.timeline ?? [])].reverse().find(entry =>
                         entry.category === "chat" &&
                         entry.actorId === character.id &&
-                        Number.isFinite(new Date(entry.occurredAt).getTime()) &&
-                        new Date(nowIso).getTime() - new Date(entry.occurredAt).getTime() >= 0 &&
-                        new Date(nowIso).getTime() - new Date(entry.occurredAt).getTime() <= 5 * 60 * 1000
+                        Number.isFinite(new Date(entry.recordedAt ?? entry.occurredAt).getTime()) &&
+                        Date.now() - new Date(entry.recordedAt ?? entry.occurredAt).getTime() >= 0 &&
+                        Date.now() - new Date(entry.recordedAt ?? entry.occurredAt).getTime() <= 5 * 60 * 1000
                     );
                     if (previous) {
                         const priorLines = (previous.details ?? "").split("\n").filter(Boolean);
