@@ -27,7 +27,7 @@ import {
   type VirtualLifeState,
 } from "@/lib/life/life-types";
 import { advanceActorTimeline, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, upsertActorClock, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
-import { loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
+import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
 import { loadImageGenerationSettings } from "@/lib/settings-storage";
@@ -253,7 +253,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const location = state.locations.find(item => item.id === locationId);
     if (!location) return;
     const current = actorState(actor);
-    commit(upsertActorState(state, { ownerType: actor.ownerType, ownerId: actor.ownerId, activity: current?.activity || "正在这里活动", actualLocationId: location.id, actualLocationName: location.name, updatedAt: new Date().toISOString() }));
+    let next = upsertActorState(state, { ownerType: actor.ownerType, ownerId: actor.ownerId, activity: current?.activity || "正在这里活动", actualLocationId: location.id, actualLocationName: location.name, updatedAt: new Date().toISOString() });
+    if (settings.recordLocationChanges) next = appendLifeTimelineEntry(next, { category: "location", title: actor.name + "来到了" + location.name, details: current?.actualLocationName ? "从" + current.actualLocationName + "前往" + location.name : "首次记录实际地点", actorId: actor.ownerId, actorName: actor.name, locationName: location.name });
+    commit(next);
     setNotice(`${actor.name}的实际地点已更新为「${location.name}」。这与日程中的计划地点分开保存。`);
   };
 
@@ -274,6 +276,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     for (const actor of [{ ownerType: "player" as const, ownerId: PLAYER_ID }, ...chosen.map(char => ({ ownerType: "character" as const, ownerId: char.id }))]) {
       next = upsertActorState(next, { ...actor, activity: actor.ownerType === "player" ? (playerActivity || "刚来到这里") : "正在做自己的事", actualLocationId: selectedLocation.id, actualLocationName: selectedLocation.name, updatedAt: now });
     }
+    if (settings.recordLocationChanges || settings.recordCharacterActions) next = appendLifeTimelineEntry(next, { category: "scene", title: "你和" + chosen.map(char=>char.name).join("、") + "进入了" + selectedLocation.name, details: "共同场景开始；" + (playerActivity || "你刚来到这里"), actorName: playerName, locationName: selectedLocation.name, sceneId: scene.id });
     commit(next);
     setTab("home");
     setNotice("共同场景已建立并保存；重新打开会接着当前状态，不会重演。");
@@ -312,6 +315,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const scene: LifeSceneState = { id: id("scene"), locationId: selectedLocation.id, locationName: selectedLocation.name, startedAt: now, updatedAt: now, status: "active", participants, lastSettledEventIds: [] };
     next = upsertLifeScene(next, scene);
     next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "刚来到这里", actualLocationId: selectedLocation.id, actualLocationName: selectedLocation.name, updatedAt: now });
+    if (settings.recordLocationChanges) next = appendLifeTimelineEntry(next, { category: "location", title: "你来到了" + selectedLocation.name, details: playerActivity || "开始探索这个地点", actorId: PLAYER_ID, actorName: playerName, locationName: selectedLocation.name, sceneId: scene.id });
+    if (actualCharacters.length && settings.recordCharacterActions) next = appendLifeTimelineEntry(next, { category: "scene", title: "在" + selectedLocation.name + "遇见了" + actualCharacters.map(char=>char.name).join("、"), actorName: playerName, locationName: selectedLocation.name, sceneId: scene.id });
     commit(next);
     if (!actualCharacters.length) {
       const message: LifeSceneMessage = { id: id("turn"), sceneId: scene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: "场景记录", role: "system", dialogue: settings.enableCoincidences ? "你来到了这里。暂时没有发现实际在场的熟人；你可以自己待一会儿，也可以稍后再看看。" : "你来到了这里。偶遇功能当前关闭，你可以独自探索这个地点。", createdAt: now };
@@ -466,10 +471,23 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   const pushSceneMessage = (message: LifeSceneMessage) => {
     const latest = stateRef.current;
-    const currentScene = latest.scenes.find(scene => scene.status === "active") ?? latest.scenes.find(scene => scene.status === "paused");
+    const currentScene = latest.scenes.find(scene => scene.id === message.sceneId);
     const updatedScene = currentScene ? { ...currentScene, updatedAt: new Date().toISOString() } : null;
     let next = { ...latest, sceneMessages: [...latest.sceneMessages, message] };
     if (updatedScene) next = upsertLifeScene(next, updatedScene);
+    const actorName = message.speakerName || (message.role === "player" ? playerName : "生活记录");
+    if (message.role === "system") {
+      if (settings.recordLocationChanges || settings.recordCharacterActions) {
+        next = appendLifeTimelineEntry(next, { category: "scene", title: message.dialogue.slice(0, 100), details: message.dialogue, actorName, locationName: currentScene?.locationName, sceneId: message.sceneId, sourceId: message.id });
+      }
+    } else {
+      if (message.action && (message.role === "player" ? settings.recordCharacterActions : settings.recordCharacterActions)) {
+        next = appendLifeTimelineEntry(next, { category: "action", title: actorName + (message.role === "player" ? "进行了行动" : "的行动"), details: message.action, actorId: message.speakerId, actorName, locationName: currentScene?.locationName, sceneId: message.sceneId, sourceId: message.id });
+      }
+      if (message.dialogue.trim() && settings.recordSceneMessages) {
+        next = appendLifeTimelineEntry(next, { category: "dialogue", title: actorName + (message.role === "player" ? "说" : "说"), details: message.dialogue, actorId: message.speakerId, actorName, locationName: currentScene?.locationName, sceneId: message.sceneId, sourceId: message.id });
+      }
+    }
     commit(next);
   };
 
@@ -605,7 +623,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const name = newLocationName.trim();
     if (!name) return;
     const location: LifeLocation = { id: id("place"), name, description: "", visibility: "public" };
-    commit({ ...state, locations: [...state.locations, location] });
+    let next = { ...state, locations: [...state.locations, location] };
+    if (settings.recordLocationChanges) next = appendLifeTimelineEntry(next, { category: "location", title: "创建了新地点：" + location.name, actorName: playerName, locationName: location.name });
+    commit(next);
     setSelectedLocationId(location.id);
     setNewLocationName("");
   };
