@@ -111,7 +111,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [inviteCharacterId, setInviteCharacterId] = useState("");
   const [inviteLocationId, setInviteLocationId] = useState("cafe");
   const [inviteActivity, setInviteActivity] = useState("一起喝杯咖啡");
-  const [inviteAt, setInviteAt] = useState(() => { const d = new Date(Date.now() + 60 * 60_000); d.setMinutes(0,0,0); return new Date(d.getTime() - d.getTimezoneOffset()*60_000).toISOString().slice(0,16); });
+  const [inviteAt, setInviteAt] = useState("");
+  const [inviteAtEdited, setInviteAtEdited] = useState(false);
+  const inviteDefaultInitializedRef = useRef(false);
   const [sceneImageBusy, setSceneImageBusy] = useState(false);
   const [imageObjectUrls, setImageObjectUrls] = useState<Record<string,string>>({});
   const [imageViewerIndex, setImageViewerIndex] = useState(0);
@@ -150,6 +152,15 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     window.addEventListener("virtual-life-state-updated", syncExternalLifeChanges);
     return () => window.removeEventListener("virtual-life-state-updated", syncExternalLifeChanges);
   }, []);
+
+  useEffect(() => {
+    if (!ready || inviteDefaultInitializedRef.current || inviteAtEdited) return;
+    const virtualNow = resolveActorLifeNow(getActorClock(state, "player", PLAYER_ID));
+    const rounded = new Date(virtualNow.getTime() + 60 * 60_000);
+    rounded.setMinutes(0, 0, 0);
+    setInviteAt(new Date(rounded.getTime() - rounded.getTimezoneOffset() * 60_000).toISOString().slice(0, 16));
+    inviteDefaultInitializedRef.current = true;
+  }, [ready, state.actorClocks, inviteAtEdited]);
 
   const settings = state.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;
   const sceneImagePrompt = settings.sceneImagePrompt;
@@ -761,7 +772,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       setNotice(`找不到「${character.name}」的线上私聊会话。请先在消息 APP 与 TA 建立私聊，再发出邀约。`);
       return;
     }
-    const next = makeLifeInvitation(base, {
+    let next = makeLifeInvitation(base, {
       proposedBy: "player",
       characterId: character.id, playerId: PLAYER_ID, proposedAt: proposedAt.toISOString(),
       locationId: location?.id, locationName: location?.name, activity: inviteActivity.trim(),
@@ -856,10 +867,39 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   };
 
   const confirmInvitation = (inviteId: string) => {
-    const result = resolveInvitationConfirmation(stateRef.current, inviteId);
+    const base = stateRef.current;
+    const result = resolveInvitationConfirmation(base, inviteId);
     if (!result.ok) { setNotice(result.notice); return; }
-    commit(result.state);
+    const invite = base.invitations.find(item => item.id === inviteId);
+    const character = invite ? characters.find(item => item.id === invite.characterId) : undefined;
+    const logged = invite ? appendLifeTimelineEntry(result.state, {
+      category: "schedule",
+      title: invite.kind === "follow-request" ? (character?.name ?? "角色") + "的陪伴申请已被接受" : (character?.name ?? "角色") + "的邀约已确认",
+      details: invite.activity + " · " + new Date(invite.proposedAt).toLocaleString("zh-CN"),
+      actorId: invite.characterId, actorName: character?.name ?? "角色", locationName: invite.locationName, sourceId: invite.id,
+    }) : result.state;
+    commit(logged);
     setNotice(result.notice);
+  };
+
+  const declineInvitation = (inviteId: string) => {
+    const base = stateRef.current;
+    const invite = base.invitations.find(item => item.id === inviteId && item.status === "proposed");
+    if (!invite) return;
+    const character = characters.find(item => item.id === invite.characterId);
+    const updated = {
+      ...base,
+      invitations: base.invitations.map(item => item.id === inviteId
+        ? { ...item, status: "declined" as const, responseReason: "你暂时没有接受这项安排。", updatedAt: new Date().toISOString() }
+        : item),
+    };
+    const logged = appendLifeTimelineEntry(updated, {
+      category: "schedule",
+      title: invite.kind === "follow-request" ? "你拒绝了" + (character?.name ?? "角色") + "的陪伴申请" : "你拒绝了" + (character?.name ?? "角色") + "的邀约",
+      details: invite.activity, actorId: PLAYER_ID, actorName: playerName, locationName: invite.locationName, sourceId: invite.id,
+    });
+    commit(logged);
+    setNotice("已记录你的决定，双方日程没有被更改。");
   };
 
   const addManualPlanTitle = (slot: LifeScheduleSlot, title: string) => {
@@ -891,6 +931,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   }).slice().sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt));
   const recentLifeTimeline = lifeTimeline.slice(0, 5);
   const olderLifeTimeline = lifeTimeline.slice(5);
+  const pendingCharacterInvitations = state.invitations.filter(invite => invite.status === "proposed" && invite.proposedBy !== "player");
 
 
   if (!ready) return <main className="flex min-h-screen items-center justify-center bg-[#f7efe4] text-stone-500">正在打开生活档案…</main>;
@@ -903,7 +944,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       </header>
       {notice && <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-[var(--life-accent)]/20 bg-white/75 px-4 py-3 text-sm text-stone-700"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="关闭提示">×</button></div>}
       <nav className="mb-5 grid grid-cols-3 gap-1 rounded-2xl border border-white/80 bg-white/55 p-1 shadow-sm">
-        {([{id:"home",label:"生活现场",icon:Heart},{id:"invitations",label:"邀约活动",icon:Coffee},{id:"settings",label:"自定义",icon:Settings2}] as const).filter(item => item.id !== "invitations" || settings.enableInvitations).map(item => { const Icon=item.icon; return <button key={item.id} onClick={() => setTab(item.id)} className={`flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] transition sm:flex-row sm:text-sm ${tab===item.id?"bg-white text-[var(--life-accent)] shadow-sm":"opacity-65 hover:opacity-100"}`}><Icon size={16}/>{item.label}</button>; })}
+        {([{id:"home",label:"生活现场",icon:Heart},{id:"invitations",label:"邀约活动",icon:Coffee},{id:"settings",label:"自定义",icon:Settings2}] as const).filter(item => item.id !== "invitations" || settings.enableInvitations).map(item => { const Icon=item.icon; return <button key={item.id} onClick={() => setTab(item.id)} className={`flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] transition sm:flex-row sm:text-sm ${tab===item.id?"bg-white text-[var(--life-accent)] shadow-sm":"opacity-65 hover:opacity-100"}`}><span className="relative inline-flex"><Icon size={16}/>{item.id==="invitations"&&pendingCharacterInvitations.length>0&&<span className="absolute -right-2 -top-2 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] text-white">{pendingCharacterInvitations.length}</span>}</span>{item.label}</button>; })}
       </nav>
 
       {(tab === "home" || tab === "scene") && <div className="space-y-4">
@@ -922,6 +963,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             {recentLifeTimeline.length ? <div className="space-y-2">{recentLifeTimeline.map(entry=><div key={entry.id} className="flex gap-3 rounded-xl bg-white/80 p-3"><span className="w-12 shrink-0 pt-0.5 text-[11px] tabular-nums text-stone-400">{new Date(entry.occurredAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><div className="min-w-0 flex-1"><p className="text-sm font-medium text-stone-800">{entry.title}</p>{entry.details&&<p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-stone-600">{entry.details}</p>}<p className="mt-1 text-[10px] text-stone-400">{entry.actorName ? entry.actorName+" · " : ""}{entry.locationName ? entry.locationName+" · " : ""}{entry.category === "location" ? "地点" : entry.category === "scene" ? "场景" : entry.category === "action" ? "行动" : entry.category === "dialogue" ? "对话" : entry.category === "schedule" ? "日程" : entry.category === "tool" ? "工具" : entry.category === "social" ? "朋友圈" : entry.category === "diary" ? "日记" : entry.category === "chat" ? "消息" : "生活记录"}</p></div></div>)}</div> : <div className="rounded-xl bg-white/70 p-4 text-center text-xs text-stone-500">还没有符合当前筛选条件的记录。开始行动或互动后，这里会逐渐形成你的一天。</div>}
             {olderLifeTimeline.length>0&&<details className="mt-3 rounded-xl border border-stone-200/70 bg-white/50 p-3"><summary className="cursor-pointer text-xs font-medium text-stone-600">展开更早的记录（{olderLifeTimeline.length}）</summary><div className="mt-3 space-y-2">{olderLifeTimeline.map(entry=><div key={entry.id} className="flex gap-3 border-l-2 border-stone-200 pl-3 py-1"><span className="w-12 shrink-0 text-[10px] tabular-nums text-stone-400">{new Date(entry.occurredAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><div className="min-w-0 flex-1"><p className="text-xs font-medium">{entry.title}</p>{entry.details&&<p className="mt-0.5 whitespace-pre-wrap break-words text-[11px] text-stone-500">{entry.details}</p>}</div></div>)}</div></details>}
           </section>
+          {pendingCharacterInvitations.length > 0 && <section className="mt-3 rounded-2xl border border-rose-200/80 bg-rose-50/75 p-3 sm:p-4"><div className="flex items-center justify-between gap-3"><div className="min-w-0"><p className="text-sm font-semibold text-stone-800">有 {pendingCharacterInvitations.length} 项等你回应</p><p className="mt-1 text-xs text-stone-600">角色主动发来的邀约或陪伴申请，不会自动修改日程。</p></div><button onClick={() => setTab("invitations")} className="shrink-0 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white">查看并决定</button></div></section>}
           {settings.showTimeline && <div className="mt-4">
             {playerPastSlots.length>0 && <details className="mb-3 rounded-2xl border border-stone-200/70 bg-white/55 p-3"><summary className="cursor-pointer text-sm font-medium text-stone-600">展开已度过的时段（{playerPastSlots.length}）</summary><div className="mt-3 space-y-2">{playerPastSlots.map(slot=><div key={slot.id} className="flex gap-3 rounded-xl bg-stone-50/80 p-2.5 text-xs"><span className="w-24 shrink-0 text-stone-400">{new Date(slot.startAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}–{new Date(slot.endAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><span className="min-w-0 flex-1">{slot.title}</span><span className="text-stone-400">{slot.plannedLocationName??"地点未定"}</span></div>)}</div></details>}
             <div className="space-y-2">
@@ -988,10 +1030,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
       {tab === "invitations" && <div className="grid gap-4 lg:grid-cols-[.85fr_1.15fr]">
         <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Make a plan together" title="创建邀约" note="你发出的邀约由角色根据人设和日程决定是否接受；角色主动发出的邀约由你决定是否接受。双方同意后才同步日程，不会瞬间跳到约定时间。" />
-          <form onSubmit={addInvitation} className="space-y-3"><label className="block text-sm">邀请谁<select value={inviteCharacterId} onChange={e=>setInviteCharacterId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="">选择角色</option>{characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label className="block text-sm">活动<input value={inviteActivity} onChange={e=>setInviteActivity(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">时间<input type="datetime-local" value={inviteAt} onChange={e=>setInviteAt(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">地点<select value={inviteLocationId} onChange={e=>setInviteLocationId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5">{state.locations.map(loc=><option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></label><button disabled={busy} className="w-full rounded-2xl bg-[var(--life-accent)] px-4 py-3 text-sm font-medium text-white disabled:opacity-50">{busy?"等待角色回应…":"发出邀约"}</button></form>
+          <form onSubmit={addInvitation} className="space-y-3"><label className="block text-sm">邀请谁<select value={inviteCharacterId} onChange={e=>setInviteCharacterId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="">选择角色</option>{characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label className="block text-sm">活动<input value={inviteActivity} onChange={e=>setInviteActivity(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">时间<input type="datetime-local" value={inviteAt} onChange={e=>{setInviteAtEdited(true);setInviteAt(e.target.value)}} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/><span className="mt-1 block text-[11px] text-stone-500">默认按你的虚拟时间预填；双方时钟不同步时，系统仍会分别检查是否来得及赴约。</span></label><label className="block text-sm">地点<select value={inviteLocationId} onChange={e=>setInviteLocationId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5">{state.locations.map(loc=><option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></label><button disabled={busy} className="w-full rounded-2xl bg-[var(--life-accent)] px-4 py-3 text-sm font-medium text-white disabled:opacity-50">{busy?"等待角色回应…":"发出邀约"}</button></form>
         </section>
         <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Invitation inbox" title="邀约记录" />
-          {state.invitations.length===0?<p className="rounded-2xl bg-white/60 p-4 text-sm text-stone-400">这里会保存待确认、已确认和已取消的邀约。</p>:<div className="space-y-3">{state.invitations.map(invite=>{const char=characters.find(c=>c.id===invite.characterId);return <div key={invite.id} className="rounded-2xl border border-stone-200/70 bg-white/70 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-medium">{char?.name??"未知角色"} · {invite.kind==="follow-request"?"陪伴申请":"邀约"} · {invite.activity}</p><p className="mt-1 text-xs text-stone-500">{fmt(invite.proposedAt)} · {invite.kind==="follow-request"?(invite.durationMinutes??120)+" 分钟 · 跟随你的实际行程":invite.locationName??"地点待定"}</p>{invite.responseReason&&<p className="mt-1 text-xs leading-relaxed text-stone-600">{invite.responseReason}</p>}</div><span className="rounded-full bg-[#f0e3d5] px-2.5 py-1 text-[11px]">{(invite.status==="proposed"&&invite.proposedBy==="player"?"等待角色回应":({proposed:"待确认",confirmed:"已确认",declined:"已拒绝",cancelled:"已取消",completed:"已完成"} as Record<string,string>)[invite.status])}</span></div>{invite.status==="proposed"&&invite.proposedBy!=="player"&&<div className="mt-3 flex gap-2"><button onClick={()=>confirmInvitation(invite.id)} className="rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white">{invite.kind==="follow-request"?"接受陪伴申请":"确认并同步日程"}</button><button onClick={()=>commit({...state,invitations:state.invitations.map(item=>item.id===invite.id?{...item,status:"declined" as const,updatedAt:new Date().toISOString()}:item)})} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">拒绝</button></div>}</div>;})}</div>}
+          {state.invitations.length===0?<p className="rounded-2xl bg-white/60 p-4 text-sm text-stone-400">这里会保存待确认、已确认和已取消的邀约。</p>:<div className="space-y-3">{state.invitations.map(invite=>{const char=characters.find(c=>c.id===invite.characterId);return <div key={invite.id} className="rounded-2xl border border-stone-200/70 bg-white/70 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-medium">{char?.name??"未知角色"} · {invite.kind==="follow-request"?"陪伴申请":"邀约"} · {invite.activity}</p><p className="mt-1 text-xs text-stone-500">{fmt(invite.proposedAt)} · {invite.kind==="follow-request"?(invite.durationMinutes??120)+" 分钟 · 跟随你的实际行程":invite.locationName??"地点待定"}</p>{invite.responseReason&&<p className="mt-1 text-xs leading-relaxed text-stone-600">{invite.responseReason}</p>}</div><span className="rounded-full bg-[#f0e3d5] px-2.5 py-1 text-[11px]">{(invite.status==="proposed"&&invite.proposedBy==="player"?"等待角色回应":({proposed:"待确认",confirmed:"已确认",declined:"已拒绝",cancelled:"已取消",completed:"已完成"} as Record<string,string>)[invite.status])}</span></div>{invite.status==="proposed"&&invite.proposedBy!=="player"&&<div className="mt-3 flex gap-2"><button onClick={()=>confirmInvitation(invite.id)} className="rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white">{invite.kind==="follow-request"?"接受陪伴申请":"确认并同步日程"}</button><button onClick={()=>declineInvitation(invite.id)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">拒绝</button></div>}</div>;})}</div>}
         </section>
       </div>}
 
