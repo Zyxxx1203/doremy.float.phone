@@ -198,10 +198,12 @@ export function settleActorTimelineToNow(
   const current = getCurrentActorSchedule(state, ownerType, ownerId, virtualNow);
   const previous = findActorState(state, ownerType, ownerId);
   const slotChanged = !!current && previous?.scheduleSlotId !== current.id;
-  const nextActivity = slotChanged ? current.title : previous?.activity ?? current?.title ?? "时间线待补全";
   // A schedule is a plan, not physical movement. A manually chosen location is
   // respected until its expected stay expires; then the current itinerary resumes.
   const stayExpired = !!previous?.actualLocationUntil && new Date(previous.actualLocationUntil).getTime() <= virtualNow.getTime();
+  const nextActivity = stayExpired
+    ? current?.title ?? previous?.activity ?? "时间线待补全"
+    : slotChanged ? current.title : previous?.activity ?? current?.title ?? "时间线待补全";
   const nextLocationId = stayExpired
     ? current?.plannedLocationId ?? null
     : previous?.actualLocationId ?? current?.plannedLocationId ?? null;
