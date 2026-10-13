@@ -75,7 +75,10 @@ export function loadVirtualLifeState(): VirtualLifeState {
 
 export function saveVirtualLifeState(state: VirtualLifeState): VirtualLifeState {
   const saved = { ...state, schemaVersion: 1 as const, updatedAt: new Date().toISOString() };
-  if (typeof window !== "undefined") kvSet(STORAGE_KEY, JSON.stringify(saved));
+  if (typeof window !== "undefined") {
+    kvSet(STORAGE_KEY, JSON.stringify(saved));
+    window.dispatchEvent(new CustomEvent("virtual-life-state-updated"));
+  }
   return saved;
 }
 
