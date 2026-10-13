@@ -291,12 +291,13 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
 
             {!bridgeOk ? (
               <p className="ws-warn">当前 App 版本不支持桌面小组件——需要更新安卓壳。</p>
-            ) : !placed ? (
+            ) : (
               <div className="ws-inline-row">
-                <span>还没有放到桌面上</span>
-                <button type="button" className="ws-link" onClick={placeWidget}>添加到桌面</button>
+                <span>{placed ? "桌面已有实例，可再添加一个同款小组件" : "还没有放到桌面上"}</span>
+                <button type="button" className="ws-link" onClick={placeWidget}>{placed ? "再添加一个" : "添加到桌面"}</button>
               </div>
-            ) : null}
+            )}
+            <p className="ws-hint">目前多个桌面实例共用同一份角色、内容和样式设置；暂不支持每个实例分别选择不同角色。</p>
           </>
         ) : null}
       </div>
