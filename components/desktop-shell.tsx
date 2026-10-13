@@ -4012,6 +4012,43 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     if (targetPageIndex !== page) setCurrentPageIndex(targetPageIndex);
   }, [editMode, getSwipePageWidth, pageCount, setSwipeDrag]);
 
+  // A canceled pointer (including rotation/OS gesture takeover) must not be treated
+  // as a completed swipe. Clear the transient translate so the desktop cannot get stuck.
+  const handleSwipeCancel = useCallback((e: React.PointerEvent) => {
+    const drag = editDragRef.current;
+    if (drag && drag.pointerId === e.pointerId) {
+      handleSwipeEnd(e);
+      return;
+    }
+    if (swipeRef.current.pointerId === e.pointerId) {
+      swipeRef.current.pointerId = null;
+      swipeRef.current.deltaX = 0;
+      swipeRef.current.locked = null;
+      setSwipeDrag(0);
+    }
+    cancelLongPress();
+    swipeLayerRef.current?.classList.remove("phone-swipe-dragging");
+  }, [handleSwipeEnd, setSwipeDrag]);
+
+  // Android may emit resize/orientationchange while a pointer is captured. Reset stale
+  // gesture state so the next horizontal swipe starts cleanly after returning upright.
+  useEffect(() => {
+    const resetSwipeAfterRotation = () => {
+      if (editDragRef.current?.active) return;
+      swipeRef.current.pointerId = null;
+      swipeRef.current.deltaX = 0;
+      swipeRef.current.locked = null;
+      setSwipeDrag(0);
+      swipeLayerRef.current?.classList.remove("phone-swipe-dragging");
+    };
+    window.addEventListener("orientationchange", resetSwipeAfterRotation);
+    window.addEventListener("resize", resetSwipeAfterRotation);
+    return () => {
+      window.removeEventListener("orientationchange", resetSwipeAfterRotation);
+      window.removeEventListener("resize", resetSwipeAfterRotation);
+    };
+  }, [setSwipeDrag]);
+
   const handleCloseXiaohongshu = useCallback((isBusy?: boolean) => {
     const shouldKeepMounted = isBusy ?? xiaohongshuBusy;
     setActiveApp(null);
@@ -4648,7 +4685,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                 onPointerDown={handleSwipeStart}
                 onPointerMove={handleSwipeMove}
                 onPointerUp={handleSwipeEnd}
-                onPointerCancel={handleSwipeEnd}
+                onPointerCancel={handleSwipeCancel}
               >
                 {/* Edit mode Done button */}
                 {editMode && !activeApp && (
@@ -4931,7 +4968,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                   style={{ "--dock-count": Math.max(1, dock.length) } as CSSProperties}
                   onPointerMove={handleSwipeMove}
                   onPointerUp={handleSwipeEnd}
-                  onPointerCancel={handleSwipeEnd}
+                  onPointerCancel={handleSwipeCancel}
                 >
                   {dockSkinUrl && (
                     <span className="dock-skin-layer" style={{ backgroundImage: `url("${dockSkinUrl}")` }} />
