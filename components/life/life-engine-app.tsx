@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type CSSProperties } from "react";
 import {
   ArrowLeft, CalendarDays, Coffee, Heart, MapPin,
-  Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Users, X, Pencil, Trash2, MoreHorizontal,
+  Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Users, X, Pencil, Trash2,
 } from "lucide-react";
 import type { Character } from "@/lib/character-types";
 import { loadCharacters } from "@/lib/character-storage";
@@ -206,6 +206,16 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const activeScene = useMemo(() => state.scenes.find(scene => scene.status === "active") ?? state.scenes.find(scene => scene.status === "paused"), [state.scenes]);
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
   const selectedLocation = state.locations.find(location => location.id === selectedLocationId) ?? state.locations[0];
+
+  useEffect(() => {
+    if (!activeScene) return;
+    const firstParticipant = activeScene.participants.find(participant => participant.ownerType === "character");
+    if (!activeScene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === selectedSpeakerId)) {
+      setSelectedSpeakerId(firstParticipant?.ownerId ?? "");
+    }
+  }, [activeScene?.id, activeScene?.participants, selectedSpeakerId]);
+
+
 
   useEffect(() => {
     if (!ready) return;
