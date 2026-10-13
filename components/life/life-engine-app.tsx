@@ -1172,7 +1172,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               const single=body.match(/(?:在|于|约|大概)?\s*((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?))/);
               if(!range&&!single){errors.push(line);continue;}
               const startClock=parseClock(range?.[1]||single?.[1]||"",9);
-              const endClock=range?parseClock(range[2],startClock.hour+1):{hour:(startClock.hour+1)%24,minute:startClock.minute};
+              const endClock=range?parseClock(range[2],startClock.hour+1):{hour:(startClock.hour+1)%24,minute:startClock.minute};if(range&&startClock.hour>=12&&startClock.hour<20&&endClock.hour<startClock.hour&&!/(上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)/.test(range[2]))endClock.hour+=12;
               const start=new Date(day);start.setHours(startClock.hour,startClock.minute,0,0);
               const end=new Date(day);end.setHours(endClock.hour,endClock.minute,0,0);if(end<=start)end.setDate(end.getDate()+1);
               const knownLocation=next.locations.find(loc=>body.includes(loc.name));
