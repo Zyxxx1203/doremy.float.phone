@@ -466,7 +466,7 @@ export function parseToolCalls(text: string): { cleanText: string; toolCalls: To
 export async function executeToolCalls(toolCalls: ToolCall[], context?: ToolExecutionContext): Promise<ToolResult[]> {
     throwIfAborted(context?.signal);
     const results = await Promise.all(toolCalls.map(call => executeSingleToolCall(call, context, { depth: 0 })));
-    if (context?.appId === "chat" && context.characterId && typeof window !== "undefined") {
+    if ((context?.appId === "chat" || context?.appId === "group_chat") && context.characterId && typeof window !== "undefined") {
         try {
             let life = loadVirtualLifeState();
             if (life.settings.enabled && life.settings.recordToolCalls) {
@@ -485,7 +485,6 @@ export async function executeToolCalls(toolCalls: ToolCall[], context?: ToolExec
                         details: detail,
                         actorId: context.characterId,
                         actorName: characterName,
-                        sourceId: result?.id || undefined,
                     });
                     changed = true;
                 }
