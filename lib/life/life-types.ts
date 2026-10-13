@@ -138,6 +138,8 @@ export type LifeActorState = {
   scheduleSlotId?: string | null;
   actualLocationId?: string | null;
   actualLocationName?: string | null;
+  /** Optional virtual-life time when a manually chosen location stay ends and the planned itinerary resumes. */
+  actualLocationUntil?: string | null;
   updatedAt: string;
 };
 
