@@ -304,8 +304,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const playerSlot = getCurrentActorSchedule(next, "player", PLAYER_ID, playerNow);
       const sceneLocationId = currentPlayer?.actualLocationId || playerSlot?.plannedLocationId || continuingScene?.locationId;
       const sceneLocationName = currentPlayer?.actualLocationName || playerSlot?.plannedLocationName || continuingScene?.locationName;
-      if (continuingScene && sceneLocationId && sceneLocationName && (continuingScene.locationId !== sceneLocationId || continuingScene.locationName !== sceneLocationName || continuingScene.status !== "active")) {
-        next = upsertLifeScene(next, { ...continuingScene, locationId: sceneLocationId, locationName: sceneLocationName, status: "active", updatedAt: new Date().toISOString(), participants: continuingScene.participants.map(participant => participant.ownerType === "player" ? { ...participant, activity: currentPlayer?.activity || playerSlot?.title || participant.activity } : participant) });
+      if (continuingScene && sceneLocationId && sceneLocationName && (continuingScene.locationId !== sceneLocationId || continuingScene.locationName !== sceneLocationName)) {
+        next = upsertLifeScene(next, { ...continuingScene, locationId: sceneLocationId, locationName: sceneLocationName, updatedAt: new Date().toISOString(), participants: continuingScene.participants.map(participant => participant.ownerType === "player" ? { ...participant, activity: currentPlayer?.activity || playerSlot?.title || participant.activity } : participant) });
       }
       if (next !== stateRef.current) commit(next);
     };
