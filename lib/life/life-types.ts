@@ -164,6 +164,8 @@ export type LifeSceneState = {
   participants: LifeSceneParticipant[];
   lastSettledEventIds: string[];
   images?: LifeSceneImage[];
+  /** Last scene-state fingerprint successfully auto-rendered; prevents duplicate cost after reopening. */
+  lastAutoImageFingerprint?: string;
 };
 
 export type LifeEvent = {
