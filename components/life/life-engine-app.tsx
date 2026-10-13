@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type CSSProperties } from "react";
 import {
-  CalendarDays, Coffee, Heart, MapPin, MessageCircle,
-  Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Users,
+  ArrowLeft, CalendarDays, Coffee, Heart, MapPin, MessageCircle,
+  Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Users, X,
 } from "lucide-react";
 import type { Character } from "@/lib/character-types";
 import { loadCharacters } from "@/lib/character-storage";
@@ -70,7 +70,7 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
     if (/^\*[^*].*\*$/.test(line) || /^（[^）]+）$/.test(line) || /^\*\*[^*].*\*\*$/.test(line)) actionLines.push(line.replace(/^\*+|\*+$/g, "").replace(/^（|）$/g, ""));
     else if (!/^<\/?(?:content|summary|thinking)>/i.test(line)) dialogueLines.push(line);
   }
-  return { action: actionLines.join(" "), dialogue: dialogueLines.join("\n") || clean, followRequest, planChange, invitation };
+  return { action: actionLines.join(" "), dialogue: dialogueLines.join("\n") || (actionLines.length ? "" : clean), followRequest, planChange, invitation };
 }
 
 
@@ -87,7 +87,11 @@ function SectionTitle({ eyebrow, title, note }: { eyebrow: string; title: string
 }
 
 export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
-  void onClose;
+  const closeApp = () => {
+    if (onClose) { onClose(); return; }
+    if (typeof window !== "undefined" && window.history.length > 1) window.history.back();
+    else if (typeof window !== "undefined") window.location.assign("/");
+  };
   const [state, setState] = useState<VirtualLifeState>(() => createEmptyVirtualLifeState());
   const stateRef = useRef(state);
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -101,6 +105,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   const [playerActivity, setPlayerActivity] = useState("正在看看周围");
   const [sceneInput, setSceneInput] = useState("");
+  const [sceneActionInput, setSceneActionInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [inviteCharacterId, setInviteCharacterId] = useState("");
@@ -323,7 +328,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       next = upsertActorState(next, { ...actor, activity: actor.ownerType === "player" ? playerActivity : "正在做自己的事", actualLocationId: selectedLocation.id, actualLocationName: selectedLocation.name, updatedAt: now });
     }
     commit(next);
-    setTab("scene");
+    setTab("home");
     setNotice("共同场景已建立并保存；重新打开会接着当前状态，不会重演。");
 
   };
@@ -368,7 +373,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const noticed = participants.filter(p => p.ownerType === "character" && p.awarenessByActorId.player === "aware").length;
       setNotice(noticed ? "你来到了" + selectedLocation.name + "，有角色注意到了你。" : "你来到了" + selectedLocation.name + "；有人在场，但暂时没人明确注意到你。");
     }
-    setTab("scene");
+    setTab("home");
   };
 
   const autoImageFingerprint = activeScene
@@ -525,11 +530,14 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   const sendSceneTurn = async (event: FormEvent) => {
     event.preventDefault();
-    if (!activeScene || !sceneInput.trim() || busy) return;
     const userText = sceneInput.trim();
+    const userAction = sceneActionInput.trim();
+    if (!activeScene || (!userText && !userAction) || busy) return;
+    const userTurn = [userAction ? `行动：${userAction}` : "", userText ? `说话：${userText}` : ""].filter(Boolean).join("\n");
     setSceneInput("");
+    setSceneActionInput("");
     const now = new Date().toISOString();
-    pushSceneMessage({ id: id("turn"), sceneId: activeScene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: playerName, role: "player", dialogue: userText, createdAt: now });
+    pushSceneMessage({ id: id("turn"), sceneId: activeScene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: playerName, role: "player", action: userAction || undefined, dialogue: userText, createdAt: now });
     const targetId = selectedSpeakerId || activeScene.participants.find(p => p.ownerType === "character")?.ownerId || "";
     const target = characters.find(char => char.id === targetId);
     if (!target) { setNotice("请先选择场景中的一位角色作为回应对象。"); return; }
@@ -538,7 +546,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const targetSchedule = getCurrentActorSchedule(stateRef.current, "character", target.id, targetNow);
     const targetPresence = stateRef.current.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === target.id);
     const isSleeping = /睡眠|睡觉|入睡|午休/.test((targetPresence?.activity || "") + " " + (targetSchedule?.title || ""));
-    const urgentMessage = /救命|紧急|出事了|危险|受伤|快来|急救/.test(userText);
+    const urgentMessage = /救命|紧急|出事了|危险|受伤|快来|急救/.test(userTurn);
     const easySleeper = /浅眠|警觉|敏感|担心|保护欲|容易醒/.test(target.personality || "");
     const wakeSeed = [...(target.id + userText)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
     const wokeFromSleep = isSleeping && (urgentMessage || wakeSeed % 100 < (easySleeper ? 60 : 15));
@@ -573,7 +581,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       ].filter(Boolean).join("\n");
       const promptMessage: ChatMessage = {
         id: id("life-user"), sessionId: session.id, role: "user", status: "sent", createdAt: now,
-        content: `[仅本轮使用生活场景模式规则，不要写入线上聊天历史]\n${settingsInstructions}\n\n${sceneContext}\n\n场景内玩家刚刚说：${userText}\n请让${target.name}按其既有人设自然回应。不要替玩家发言或行动。`,
+        content: `[仅本轮使用生活场景模式规则，不要写入线上聊天历史]\n${settingsInstructions}\n\n${sceneContext}\n\n玩家本轮行动：${userAction || "（没有额外动作）"}\n玩家本轮对白：${userText || "（没有说话）"}\n请让${target.name}按其既有人设自然回应。行动与对白分开处理；玩家只行动时，不要擅自替玩家补台词。`,
       };
       const result = await generateOfflineChatCompletion(session, [...previous, promptMessage]);
       const parsed = parseLifeOutput(result.content);
@@ -634,11 +642,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       }
       if (structuredNext !== stateRef.current) commit(structuredNext);
       pushSceneMessage({ id: id("turn"), sceneId: activeScene.id, speakerType: "character", speakerId: target.id, speakerName: target.name, role: "character", action: settings.showActionNarration ? parsed.action : undefined, dialogue: parsed.dialogue, createdAt: new Date().toISOString() });
-      if (settings.saveConfirmedEventsToMemory && userText.trim() && parsed.dialogue.trim()) {
+      if (settings.saveConfirmedEventsToMemory && (userText.trim() || userAction.trim()) && (parsed.dialogue.trim() || parsed.action?.trim())) {
         const eventId = id("event"), eventNow = new Date().toISOString();
-        const event = { id: eventId, kind: "activity" as const, status: "completed" as const, locationId: activeScene.locationId, locationName: activeScene.locationName, participantIds: ["player", target.id], title: "生活场景对话", details: `${playerName}：${userText}\n${target.name}：${parsed.dialogue}`, createdAt: eventNow, updatedAt: eventNow, completedAt: eventNow };
+        const event = { id: eventId, kind: "activity" as const, status: "completed" as const, locationId: activeScene.locationId, locationName: activeScene.locationName, participantIds: ["player", target.id], title: userAction.trim() && !userText.trim() ? "生活场景行动" : "生活场景互动", details: `${playerName}行动：${userAction || "无"}\n${playerName}对白：${userText || "无"}\n${target.name}行动：${parsed.action || "无"}\n${target.name}对白：${parsed.dialogue || "无"}`, createdAt: eventNow, updatedAt: eventNow, completedAt: eventNow };
         const latest = stateRef.current;
-        commit({ ...latest, events: [event, ...latest.events], memories: [{ id: id("memory"), eventId, occurredAt: eventNow, participants: ["player", target.id], fact: `在${activeScene.locationName}，${playerName}说：“${userText.trim().slice(0, 180)}”；${target.name}回应：“${parsed.dialogue.trim().slice(0, 180)}”。` }, ...latest.memories].slice(0, 500) });
+        const fact = `在${activeScene.locationName}，${playerName}${userAction.trim() ? "行动：“" + userAction.trim().slice(0, 120) + "”" : ""}${userText.trim() ? "说：“" + userText.trim().slice(0, 120) + "”" : ""}；${target.name}${parsed.action?.trim() ? "行动：“" + parsed.action.trim().slice(0, 120) + "”" : ""}${parsed.dialogue.trim() ? "说：“" + parsed.dialogue.trim().slice(0, 120) + "”" : ""}。`;
+        commit({ ...latest, events: [event, ...latest.events], memories: [{ id: id("memory"), eventId, occurredAt: eventNow, participants: ["player", target.id], fact }, ...latest.memories].slice(0, 500) });
       }
     } catch (error) {
       setNotice(error instanceof Error ? `角色生成失败：${error.message}` : "角色生成失败，请检查聊天模型配置。");
@@ -750,62 +759,26 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     <div className="mx-auto max-w-6xl">
       <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/75 text-[var(--life-accent)] shadow-sm"><Heart size={22}/></div><div><p className="text-[10px] font-semibold uppercase tracking-[0.26em] opacity-60">LIFE SIMULATOR · PERSONAL WORLD</p><h1 className="text-2xl font-semibold tracking-tight">虚拟生活引擎</h1><p className="mt-0.5 text-xs opacity-65">各自生活 · 独立时间 · 自然相遇 · 持续记忆</p></div></div>
-        <div className="flex flex-wrap items-center gap-2"><span className="rounded-full border border-white/70 bg-white/60 px-3 py-1.5 text-xs">{actors.length} 位生活参与者</span><button onClick={ensurePlans} className="inline-flex items-center gap-2 rounded-full bg-[var(--life-accent)] px-4 py-2 text-sm font-medium text-white shadow-sm"><CalendarDays size={15}/>生成本周日程</button></div>
+        <div className="flex flex-wrap items-center gap-2"><button onClick={closeApp} aria-label="返回或退出生活 APP" className="inline-flex items-center gap-1 rounded-full border border-white/80 bg-white/70 px-3 py-2 text-sm"><ArrowLeft size={15}/><span>返回</span><X size={13}/></button><span className="rounded-full border border-white/70 bg-white/60 px-3 py-1.5 text-xs">{actors.length} 位生活参与者</span><button onClick={ensurePlans} className="inline-flex items-center gap-2 rounded-full bg-[var(--life-accent)] px-4 py-2 text-sm font-medium text-white shadow-sm"><CalendarDays size={15}/>生成本周日程</button></div>
       </header>
       {notice && <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-[var(--life-accent)]/20 bg-white/75 px-4 py-3 text-sm text-stone-700"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="关闭提示">×</button></div>}
-      <nav className="mb-5 grid grid-cols-4 gap-1 rounded-2xl border border-white/80 bg-white/55 p-1 shadow-sm">
-        {([{id:"home",label:"角色日常",icon:Heart},{id:"invitations",label:"邀约活动",icon:Coffee},{id:"scene",label:"共同经历",icon:MessageCircle},{id:"settings",label:"自定义",icon:Settings2}] as const).filter(item => item.id !== "invitations" || settings.enableInvitations).map(item => { const Icon=item.icon; return <button key={item.id} onClick={() => setTab(item.id)} className={`flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] transition sm:flex-row sm:text-sm ${tab===item.id?"bg-white text-[var(--life-accent)] shadow-sm":"opacity-65 hover:opacity-100"}`}><Icon size={16}/>{item.label}</button>; })}
+      <nav className="mb-5 grid grid-cols-3 gap-1 rounded-2xl border border-white/80 bg-white/55 p-1 shadow-sm">
+        {([{id:"home",label:"生活现场",icon:Heart},{id:"invitations",label:"邀约活动",icon:Coffee},{id:"settings",label:"自定义",icon:Settings2}] as const).filter(item => item.id !== "invitations" || settings.enableInvitations).map(item => { const Icon=item.icon; return <button key={item.id} onClick={() => setTab(item.id)} className={`flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] transition sm:flex-row sm:text-sm ${tab===item.id?"bg-white text-[var(--life-accent)] shadow-sm":"opacity-65 hover:opacity-100"}`}><Icon size={16}/>{item.label}</button>; })}
       </nav>
 
-      {tab === "home" && <div className="space-y-4">
-        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <SectionTitle eyebrow="Your day · 24 hours" title={playerNow.toLocaleDateString("zh-CN",{month:"long",day:"numeric",weekday:"long"})+" · 我的时间线"} note="已过去的时段可以折叠查看；快进会逐段结算日程，不会直接抹掉中间发生的生活。" />
-            <button onClick={()=>setTab("plans")} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">查看完整七日日程</button>
-          </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            <div className="rounded-2xl bg-white/75 p-3"><p className="text-[11px] text-stone-500">现在</p><p className="mt-1 text-lg font-semibold">{playerNow.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</p><p className="mt-1 text-xs text-stone-600">{playerPresence?.activity ?? playerCurrentSlot?.title ?? "时间线待补全"}</p></div>
-            <div className="rounded-2xl bg-white/75 p-3"><p className="text-[11px] text-stone-500">实际地点</p><p className="mt-1 font-semibold">{playerPresence?.actualLocationName ?? "尚未记录"}</p><p className="mt-1 text-xs text-stone-500">计划：{settings.showLocationHints ? playerCurrentSlot?.plannedLocationName ?? "暂无提示" : "地点线索已隐藏"}</p></div>
-            <div className="rounded-2xl bg-white/75 p-3"><p className="text-[11px] text-stone-500">当前场景</p><p className="mt-1 font-semibold">{activeScene?.locationName ?? "尚未进入场景"}</p><p className="mt-1 text-xs text-stone-500">{activeScene ? (activeScene.status==="active"?"正在进行":"已暂停，可继续") : "可以从下方选择地点进入"}</p></div>
-          </div>
-          {settings.showTimeline && <div className="mt-4">
-            {playerPastSlots.length>0 && <details className="mb-3 rounded-2xl border border-stone-200/70 bg-white/55 p-3"><summary className="cursor-pointer text-sm font-medium text-stone-600">展开已度过的时段（{playerPastSlots.length}）</summary><div className="mt-3 space-y-2">{playerPastSlots.map(slot=><div key={slot.id} className="flex gap-3 rounded-xl bg-stone-50/80 p-2.5 text-xs"><span className="w-24 shrink-0 text-stone-400">{new Date(slot.startAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}–{new Date(slot.endAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><span className="min-w-0 flex-1">{slot.title}</span><span className="text-stone-400">{slot.plannedLocationName??"地点未定"}</span></div>)}</div></details>}
-            <div className="space-y-2">
-              {playerCurrentSlot && <div className="flex gap-3 rounded-2xl border border-[var(--life-accent)]/40 bg-white p-3 shadow-sm"><span className="w-24 shrink-0 text-xs font-semibold text-[var(--life-accent)]">{new Date(playerCurrentSlot.startAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}–{new Date(playerCurrentSlot.endAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><div className="min-w-0 flex-1"><p className="font-medium">{playerCurrentSlot.title}</p><p className="mt-1 text-xs text-stone-500">实际状态：{playerPresence?.activity??playerCurrentSlot.title} · {playerPresence?.actualLocationName??playerCurrentSlot.plannedLocationName??"地点未记录"}</p></div><span className="self-start rounded-full bg-[var(--life-accent)]/10 px-2 py-1 text-[10px] text-[var(--life-accent)]">正在进行</span></div>}
-              {playerFutureSlots.slice(0,5).map(slot=><div key={slot.id} className="flex gap-3 rounded-xl bg-white/60 p-3 text-xs"><span className="w-24 shrink-0 text-stone-400">{new Date(slot.startAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}–{new Date(slot.endAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><span className="min-w-0 flex-1 font-medium">{slot.title}</span><span className="text-stone-400">{slot.plannedLocationName??"地点未定"}</span></div>)}
-              {!playerCurrentSlot && playerTodaySlots.length===0 && <div className="rounded-xl bg-white/65 p-3 text-sm text-stone-500">今天的时间线还没生成。你可以开启自动日程，或到七日日程页补全。</div>}
-            </div>
-          </div>}
-          <div className="mt-4 rounded-2xl border border-stone-200/70 bg-white/65 p-3">
-            <p className="mb-2 text-sm font-medium">现在就做点什么</p>
-            <div className="flex flex-wrap gap-2"><input value={playerActivity} onChange={e=>setPlayerActivity(e.target.value)} placeholder="例如：走到窗边、抱住TA、自己看书……" className="min-w-[180px] flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/><button onClick={recordPlayerAction} className="rounded-xl bg-[var(--life-accent)] px-3 py-2.5 text-sm text-white">记录行动</button><button onClick={enterLocationSolo} disabled={!selectedLocation||!settings.enabled} className="rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">前往 {selectedLocation?.name??"地点"}</button><button onClick={()=>setTab("scene")} className="rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">共同经历</button></div>
-          </div>
-          <div className="mt-3"><p className="mb-2 text-sm font-medium">此刻和你在同一地点的角色</p>{nearbyCharacters.length ? <div className="flex flex-wrap gap-2">{nearbyCharacters.map(({character,presence})=><button key={character.id} onClick={()=>{setSelectedSpeakerId(character.id);setSelectedActorKey("character:"+character.id);setTab("scene");}} className="flex items-center gap-2 rounded-xl bg-white/80 px-3 py-2 text-xs"><span className="grid h-7 w-7 place-items-center rounded-full bg-[#efe1d2]">{character.name.slice(0,1)}</span><span className="text-left"><span className="block font-medium">{character.name}</span><span className="block text-stone-500">{presence?.activity??"正在自己的生活里"}</span></span></button>)}</div> : <p className="rounded-xl bg-white/55 p-3 text-xs text-stone-500">目前没有记录到和你同地点的角色。计划地点只是线索；你也可以前往其他地点看看会不会遇见谁。</p>}</div>
-        </section>
-        <div className="grid gap-4 lg:grid-cols-[1.15fr_.85fr]">
-        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
-          <SectionTitle eyebrow="Independent timelines" title="每个人都有自己的时间" note="调整某个人的流速，不会改变其他人的时钟。模拟时间不会在退出时偷偷跳回现实。" />
-          <div className="space-y-3">{actors.map(actor => { const clock=getActorClock(state,actor.ownerType,actor.ownerId), now=actorNow(actor), current=actorSchedule(actor), actual=actorState(actor); return <div key={`${actor.ownerType}:${actor.ownerId}`} className={`rounded-2xl border p-3 transition ${selectedActorKey===`${actor.ownerType}:${actor.ownerId}`?"border-[var(--life-accent)]/45 bg-white":"border-stone-200/70 bg-white/55"}`}>
-            <div className="flex flex-wrap items-start justify-between gap-2"><button onClick={()=>setSelectedActorKey(`${actor.ownerType}:${actor.ownerId}`)} className="flex min-w-0 items-center gap-3 text-left">{actor.avatar ? <img src={actor.avatar} alt="" className="h-10 w-10 rounded-full object-cover"/> : <span className="grid h-10 w-10 place-items-center rounded-full bg-[#efe1d2] text-sm">{actor.ownerType==="player"?"我":actor.name.slice(0,1)}</span>}<span><span className="block font-medium">{actor.name}</span><span className="block text-xs opacity-60">{actorClockLabel(clock)} · {fmt(now)}</span></span></button><span className="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] text-stone-600">{current?.title ?? "当前没有日程"}</span></div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center"><label className="text-xs text-stone-500">时间流速：×{clock.speed}<input type="range" min="0.1" max="100" step="0.1" value={clock.speed} onChange={e=>patchActorClock(actor,{speed:Number(e.target.value),mode:clock.mode==="real-time"?"simulation":clock.mode})} className="mt-2 w-full accent-[var(--life-accent)]"/></label><div className="flex flex-wrap gap-1.5"><select aria-label={`${actor.name}的时间模式`} value={clock.mode} onChange={e=>patchActorClock(actor,{mode:e.target.value as LifeActorClock["mode"]})} className="rounded-xl border border-stone-200 bg-white px-2 py-2 text-xs"><option value="real-time">跟随现实</option><option value="simulation">独立模拟</option><option value="review">暂停回顾</option></select><button onClick={()=>commit(advanceActorTimeline(state,actor.ownerType,actor.ownerId,60,actor.name,actor.persona??""))} className="rounded-xl bg-[#f0e3d5] px-3 py-2 text-xs text-stone-700">+1 虚拟小时</button>{actor.ownerType==="character" && <button disabled={!settings.enableCharacterAutonomy} onClick={()=>advanceCharacterAutonomy(actor)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 disabled:opacity-40">自主生活 +1h</button>}</div></div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-500"><MapPin size={13}/><span>实际地点：{actor.ownerType==="player" || settings.revealExactLocations==="open" ? (actual?.actualLocationName ?? "未记录") : settings.revealExactLocations==="ask-only" ? "精确位置未公开" : actual?.actualLocationName ? "有位置线索" : "未记录"}</span><span className="opacity-40">·</span><span>计划地点：{settings.showLocationHints ? (current?.plannedLocationName ? `${current.plannedLocationName}（不保证在场）` : "暂无提示") : "地点线索已隐藏"}</span></div>
-          </div>; })}</div>
-          <p className="mt-4 text-xs leading-relaxed text-stone-500">提示：倍速只影响该角色的虚拟时钟；计划地点不等于实时定位。真实位置仍需要场景状态或合理的信息来源。</p>
-        </section>
-        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
-          <SectionTitle eyebrow="Meet by chance" title="进入一个地点" note="同处一地不等于彼此一定看见。你可以决定谁和你一起进入场景，之后再自然互动。" />
-          <label className="mb-3 block text-sm">选择地点<select value={selectedLocationId} onChange={e=>setSelectedLocationId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5">{state.locations.map(loc=><option key={loc.id} value={loc.id}>{loc.name} · {loc.visibility==="public"?"公共":"私人"}</option>)}</select></label>
-          <div className="mb-3 flex gap-2"><input value={newLocationName} onChange={e=>setNewLocationName(e.target.value)} placeholder="自定义新地点…" className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/><button onClick={addLocation} className="rounded-xl bg-white px-3 text-[var(--life-accent)] shadow-sm"><Plus size={17}/></button></div>
-          <label className="mb-2 block text-sm">你正在做什么？<input value={playerActivity} onChange={e=>setPlayerActivity(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label>
-          <p className="mb-2 mt-4 text-sm font-medium">选择同行角色</p>
-          <div className="mb-4 grid grid-cols-2 gap-2">{characters.map(char=><label key={char.id} className="flex cursor-pointer items-center gap-2 rounded-xl border border-stone-200/70 bg-white/70 p-2.5 text-sm"><input type="checkbox" checked={selectedCharacterIds.includes(char.id)} onChange={e=>setSelectedCharacterIds(old=>e.target.checked?[...old,char.id]:old.filter(id=>id!==char.id))} className="accent-[var(--life-accent)]"/><span className="truncate">{char.name}</span></label>)}</div>
-          <button onClick={createScene} disabled={!characters.length || !settings.enabled} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--life-accent)] px-4 py-3 font-medium text-white disabled:opacity-40"><Users size={16}/>与所选角色一起进入</button><button onClick={enterLocationSolo} disabled={!settings.enabled} className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-[var(--life-accent)]/35 bg-white px-4 py-3 text-sm font-medium text-[var(--life-accent)] disabled:opacity-40"><MapPin size={16}/>自己前往，看看会不会遇到人</button>
-          {activeScene && <button onClick={()=>setTab("scene")} className="mt-2 w-full rounded-2xl border border-[var(--life-accent)]/30 bg-white px-4 py-3 text-sm text-[var(--life-accent)]">继续上次场景：{activeScene.locationName}</button>}
-        </section>
-      </div></div>}
-
-      {tab === "scene" && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
+      {(tab === "home" || tab === "scene") && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3"><SectionTitle eyebrow="Live scene" title={activeScene ? activeScene.locationName : "还没有正在进行的场景"} note={activeScene ? `场景始于 ${fmt(activeScene.startedAt)} · ${activeScene.participants.length} 位参与者 · 已保存，可随时回来继续` : "先从生活总览中选择地点和参与角色，创建一个持续场景。"} />{activeScene && <button onClick={()=>commit({...state,scenes:state.scenes.map(scene=>scene.id===activeScene.id?{...scene,status:"paused" as const,updatedAt:new Date().toISOString()}:scene)})} className="inline-flex items-center gap-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs"><Pause size={14}/>暂时离开</button>}</div>
+        <div className="mb-4 rounded-2xl border border-stone-200/80 bg-white/75 p-3 sm:p-4">
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <label className="block text-sm font-medium">当前地点
+              <select value={selectedLocationId} onChange={e=>setSelectedLocationId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">{state.locations.map(loc=><option key={loc.id} value={loc.id}>{loc.name} · {loc.visibility==="public"?"公共":"私人"}</option>)}</select>
+            </label>
+            <div className="flex items-end gap-2"><button type="button" onClick={enterLocationSolo} disabled={!settings.enabled} className="flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm disabled:opacity-40">前往地点</button><button type="button" onClick={createScene} disabled={!characters.length||!settings.enabled} className="flex-1 rounded-xl bg-[var(--life-accent)] px-3 py-2.5 text-sm text-white disabled:opacity-40">进入互动</button></div>
+          </div>
+          <div className="mt-2 flex gap-2"><input value={newLocationName} onChange={e=>setNewLocationName(e.target.value)} placeholder="添加一个新地点…" className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/><button type="button" onClick={addLocation} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm">添加地点</button></div>
+          <div className="mt-3"><p className="mb-2 text-xs font-medium text-stone-600">选择一起互动的角色</p><div className="flex flex-wrap gap-2">{characters.map(char=><label key={char.id} className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs"><input type="checkbox" checked={selectedCharacterIds.includes(char.id)} onChange={e=>setSelectedCharacterIds(old=>e.target.checked?[...new Set([...old,char.id])]:old.filter(id=>id!==char.id))}/>{char.name}</label>)}</div></div>
+          {!characters.length&&<p className="mt-2 text-xs text-stone-500">还没有角色档案；先在小手机里创建角色，之后就能在这里互动。</p>}
+        </div>
         {activeScene && <>
           <div className="mb-4 flex flex-wrap gap-2">{activeScene.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);const awareness=p.awarenessByActorId.player;const status=awareness==="unaware"?"还没注意到你":awareness==="suspects"?"似乎察觉到你":awareness==="aware"?"注意到你":"";return <button key={p.ownerId} onClick={()=>p.ownerType==="character"&&setSelectedSpeakerId(p.ownerId)} className={`rounded-full px-3 py-1.5 text-xs ${selectedSpeakerId===p.ownerId?"bg-[var(--life-accent)] text-white":"bg-[#f1e5d8] text-stone-700"}`}>{actor?.name??p.ownerId} · {status || p.activity}</button>})}</div>
           <div className="mb-4 max-h-[48vh] min-h-48 space-y-3 overflow-y-auto rounded-2xl bg-white/65 p-3 sm:p-5" style={{fontSize:"var(--life-font)"}}>
@@ -836,10 +809,51 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             {sceneImageRecords.some(image=>image.status==="archived")&&<details className="mt-3 rounded-xl border border-stone-200 bg-white/60 p-3"><summary className="cursor-pointer text-xs font-medium text-stone-600">旧图归档（{sceneImageRecords.filter(image=>image.status==="archived").length}）· 可恢复或删除</summary><div className="mt-3 space-y-2">{sceneImageRecords.filter(image=>image.status==="archived").map(image=><div key={image.id} className="flex items-center gap-2 rounded-lg bg-white p-2">{imageObjectUrls[image.id]?<img src={imageObjectUrls[image.id]} alt="" className="h-12 w-12 rounded-md object-cover"/>:<div className="h-12 w-12 rounded-md bg-stone-100"/>}<span className="min-w-0 flex-1 truncate text-[10px] text-stone-500">{new Date(image.createdAt).toLocaleString("zh-CN")}</span><button type="button" onClick={()=>{setSceneImageStatus(image.id,"active");setImageViewerIndex(0)}} className="rounded-lg bg-stone-100 px-2 py-1 text-[10px]">恢复</button><button type="button" onClick={()=>{if(window.confirm("永久删除这张旧图？"))void removeSceneImage(image.id)}} className="rounded-lg px-2 py-1 text-[10px] text-red-600">删除</button></div>)}</div></details>}
             </>}
           </section>
-          <form onSubmit={sendSceneTurn} className="flex gap-2"><input value={sceneInput} onChange={e=>setSceneInput(e.target.value)} placeholder="在这里说话、询问或描述你自己的行动…" className="min-w-0 flex-1 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm" disabled={busy}/><button disabled={busy||!sceneInput.trim()} className="grid w-12 shrink-0 place-items-center rounded-2xl bg-[var(--life-accent)] text-white disabled:opacity-40"><Send size={17}/></button></form>
+          <form onSubmit={sendSceneTurn} className="space-y-2 rounded-2xl border border-stone-200/80 bg-white/80 p-3">
+            <label className="block text-xs font-medium text-stone-600">行动 / 旁白（可单独发送）<textarea value={sceneActionInput} onChange={e=>setSceneActionInput(e.target.value)} placeholder="例如：走到她身边，轻轻碰了碰她的手。" rows={2} className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm" disabled={busy}/></label>
+            <label className="block text-xs font-medium text-stone-600">说话 / 对话气泡（可留空）<textarea value={sceneInput} onChange={e=>setSceneInput(e.target.value)} placeholder="想对角色说的话……" rows={2} className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm" disabled={busy}/></label>
+            <div className="flex items-center justify-between gap-2"><span className="text-[11px] text-stone-500">可以只行动、只说话，也可以两者一起。</span><button disabled={busy||(!sceneInput.trim()&&!sceneActionInput.trim())} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm text-white disabled:opacity-40"><Send size={15}/>{busy?"角色正在回应…":"执行"}</button></div>
+          </form>
           <p className="mt-2 text-xs text-stone-500">生成使用角色现有私聊会话和模型配置；本轮场景指令只临时注入，不会把场景规则写进原线上聊天记录。</p>
         </>}
       </section>}
+
+      {tab === "home" && <div className="space-y-4">
+        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <SectionTitle eyebrow="Your day · 24 hours" title={playerNow.toLocaleDateString("zh-CN",{month:"long",day:"numeric",weekday:"long"})+" · 我的时间线"} note="已过去的时段可以折叠查看；快进会逐段结算日程，不会直接抹掉中间发生的生活。" />
+            <button onClick={()=>setTab("plans")} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">查看完整七日日程</button>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <div className="rounded-2xl bg-white/75 p-3"><p className="text-[11px] text-stone-500">现在</p><p className="mt-1 text-lg font-semibold">{playerNow.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</p><p className="mt-1 text-xs text-stone-600">{playerPresence?.activity ?? playerCurrentSlot?.title ?? "时间线待补全"}</p></div>
+            <div className="rounded-2xl bg-white/75 p-3"><p className="text-[11px] text-stone-500">实际地点</p><p className="mt-1 font-semibold">{playerPresence?.actualLocationName ?? "尚未记录"}</p><p className="mt-1 text-xs text-stone-500">计划：{settings.showLocationHints ? playerCurrentSlot?.plannedLocationName ?? "暂无提示" : "地点线索已隐藏"}</p></div>
+            <div className="rounded-2xl bg-white/75 p-3"><p className="text-[11px] text-stone-500">当前场景</p><p className="mt-1 font-semibold">{activeScene?.locationName ?? "尚未进入场景"}</p><p className="mt-1 text-xs text-stone-500">{activeScene ? (activeScene.status==="active"?"正在进行":"已暂停，可继续") : "可以从下方选择地点进入"}</p></div>
+          </div>
+          {settings.showTimeline && <div className="mt-4">
+            {playerPastSlots.length>0 && <details className="mb-3 rounded-2xl border border-stone-200/70 bg-white/55 p-3"><summary className="cursor-pointer text-sm font-medium text-stone-600">展开已度过的时段（{playerPastSlots.length}）</summary><div className="mt-3 space-y-2">{playerPastSlots.map(slot=><div key={slot.id} className="flex gap-3 rounded-xl bg-stone-50/80 p-2.5 text-xs"><span className="w-24 shrink-0 text-stone-400">{new Date(slot.startAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}–{new Date(slot.endAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><span className="min-w-0 flex-1">{slot.title}</span><span className="text-stone-400">{slot.plannedLocationName??"地点未定"}</span></div>)}</div></details>}
+            <div className="space-y-2">
+              {playerCurrentSlot && <div className="flex gap-3 rounded-2xl border border-[var(--life-accent)]/40 bg-white p-3 shadow-sm"><span className="w-24 shrink-0 text-xs font-semibold text-[var(--life-accent)]">{new Date(playerCurrentSlot.startAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}–{new Date(playerCurrentSlot.endAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><div className="min-w-0 flex-1"><p className="font-medium">{playerCurrentSlot.title}</p><p className="mt-1 text-xs text-stone-500">实际状态：{playerPresence?.activity??playerCurrentSlot.title} · {playerPresence?.actualLocationName??playerCurrentSlot.plannedLocationName??"地点未记录"}</p></div><span className="self-start rounded-full bg-[var(--life-accent)]/10 px-2 py-1 text-[10px] text-[var(--life-accent)]">正在进行</span></div>}
+              {playerFutureSlots.slice(0,5).map(slot=><div key={slot.id} className="flex gap-3 rounded-xl bg-white/60 p-3 text-xs"><span className="w-24 shrink-0 text-stone-400">{new Date(slot.startAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}–{new Date(slot.endAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><span className="min-w-0 flex-1 font-medium">{slot.title}</span><span className="text-stone-400">{slot.plannedLocationName??"地点未定"}</span></div>)}
+              {!playerCurrentSlot && playerTodaySlots.length===0 && <div className="rounded-xl bg-white/65 p-3 text-sm text-stone-500">今天的时间线还没生成。你可以开启自动日程，或到七日日程页补全。</div>}
+            </div>
+          </div>}
+          <div className="mt-4 rounded-2xl border border-stone-200/70 bg-white/65 p-3">
+            <p className="mb-2 text-sm font-medium">现在就做点什么</p>
+            <div className="flex flex-wrap gap-2"><input value={playerActivity} onChange={e=>setPlayerActivity(e.target.value)} placeholder="例如：走到窗边、抱住TA、自己看书……" className="min-w-[180px] flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/><button onClick={recordPlayerAction} className="rounded-xl bg-[var(--life-accent)] px-3 py-2.5 text-sm text-white">记录行动</button><button onClick={enterLocationSolo} disabled={!selectedLocation||!settings.enabled} className="rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">前往 {selectedLocation?.name??"地点"}</button><button onClick={()=>setTab("home")} className="rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">共同经历</button></div>
+          </div>
+          <div className="mt-3"><p className="mb-2 text-sm font-medium">此刻和你在同一地点的角色</p>{nearbyCharacters.length ? <div className="flex flex-wrap gap-2">{nearbyCharacters.map(({character,presence})=><button key={character.id} onClick={()=>{setSelectedSpeakerId(character.id);setSelectedActorKey("character:"+character.id);setTab("home");}} className="flex items-center gap-2 rounded-xl bg-white/80 px-3 py-2 text-xs"><span className="grid h-7 w-7 place-items-center rounded-full bg-[#efe1d2]">{character.name.slice(0,1)}</span><span className="text-left"><span className="block font-medium">{character.name}</span><span className="block text-stone-500">{presence?.activity??"正在自己的生活里"}</span></span></button>)}</div> : <p className="rounded-xl bg-white/55 p-3 text-xs text-stone-500">目前没有记录到和你同地点的角色。计划地点只是线索；你也可以前往其他地点看看会不会遇见谁。</p>}</div>
+        </section>
+        <div className="grid gap-4 lg:grid-cols-[1.15fr_.85fr]">
+        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
+          <SectionTitle eyebrow="Independent timelines" title="每个人都有自己的时间" note="调整某个人的流速，不会改变其他人的时钟。模拟时间不会在退出时偷偷跳回现实。" />
+          <div className="space-y-3">{actors.map(actor => { const clock=getActorClock(state,actor.ownerType,actor.ownerId), now=actorNow(actor), current=actorSchedule(actor), actual=actorState(actor); return <div key={`${actor.ownerType}:${actor.ownerId}`} className={`rounded-2xl border p-3 transition ${selectedActorKey===`${actor.ownerType}:${actor.ownerId}`?"border-[var(--life-accent)]/45 bg-white":"border-stone-200/70 bg-white/55"}`}>
+            <div className="flex flex-wrap items-start justify-between gap-2"><button onClick={()=>setSelectedActorKey(`${actor.ownerType}:${actor.ownerId}`)} className="flex min-w-0 items-center gap-3 text-left">{actor.avatar ? <img src={actor.avatar} alt="" className="h-10 w-10 rounded-full object-cover"/> : <span className="grid h-10 w-10 place-items-center rounded-full bg-[#efe1d2] text-sm">{actor.ownerType==="player"?"我":actor.name.slice(0,1)}</span>}<span><span className="block font-medium">{actor.name}</span><span className="block text-xs opacity-60">{actorClockLabel(clock)} · {fmt(now)}</span></span></button><span className="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] text-stone-600">{current?.title ?? "当前没有日程"}</span></div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center"><label className="text-xs text-stone-500">时间流速：×{clock.speed}<input type="range" min="0.1" max="100" step="0.1" value={clock.speed} onChange={e=>patchActorClock(actor,{speed:Number(e.target.value),mode:clock.mode==="real-time"?"simulation":clock.mode})} className="mt-2 w-full accent-[var(--life-accent)]"/></label><div className="flex flex-wrap gap-1.5"><select aria-label={`${actor.name}的时间模式`} value={clock.mode} onChange={e=>patchActorClock(actor,{mode:e.target.value as LifeActorClock["mode"]})} className="rounded-xl border border-stone-200 bg-white px-2 py-2 text-xs"><option value="real-time">跟随现实</option><option value="simulation">独立模拟</option><option value="review">暂停回顾</option></select><button onClick={()=>commit(advanceActorTimeline(state,actor.ownerType,actor.ownerId,60,actor.name,actor.persona??""))} className="rounded-xl bg-[#f0e3d5] px-3 py-2 text-xs text-stone-700">+1 虚拟小时</button>{actor.ownerType==="character" && <button disabled={!settings.enableCharacterAutonomy} onClick={()=>advanceCharacterAutonomy(actor)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 disabled:opacity-40">自主生活 +1h</button>}</div></div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-500"><MapPin size={13}/><span>实际地点：{actor.ownerType==="player" || settings.revealExactLocations==="open" ? (actual?.actualLocationName ?? "未记录") : settings.revealExactLocations==="ask-only" ? "精确位置未公开" : actual?.actualLocationName ? "有位置线索" : "未记录"}</span><span className="opacity-40">·</span><span>计划地点：{settings.showLocationHints ? (current?.plannedLocationName ? `${current.plannedLocationName}（不保证在场）` : "暂无提示") : "地点线索已隐藏"}</span></div>
+          </div>; })}</div>
+          <p className="mt-4 text-xs leading-relaxed text-stone-500">提示：倍速只影响该角色的虚拟时钟；计划地点不等于实时定位。真实位置仍需要场景状态或合理的信息来源。</p>
+        </section>
+      </div></div>}
 
       {tab === "plans" && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3"><SectionTitle eyebrow="Weekly plans" title="未来七天的生活日程" note="计划每周生成一次并保存在本地；已有日程不会被重复生成覆盖。点击标题可编辑，计划地点只作为线索。" /><button onClick={ensurePlans} className="inline-flex items-center gap-2 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white"><RefreshCw size={14}/>检查并补全</button></div>
