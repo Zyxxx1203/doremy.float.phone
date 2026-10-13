@@ -64,13 +64,24 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
   const planChange = planTag ? { title: attribute(planTag[1], "title"), locationId: attribute(planTag[1], "locationId") || "home", startAt: attribute(planTag[1], "startAt"), endAt: attribute(planTag[1], "endAt") } : undefined;
   const inviteDuration = Number(attribute(inviteTag?.[1] || "", "durationMinutes"));
   const invitation = inviteTag ? { time: attribute(inviteTag[1], "time"), locationId: attribute(inviteTag[1], "locationId") || "cafe", activity: attribute(inviteTag[1], "activity") || "一起做点什么", durationMinutes: Math.max(15, Math.min(Number.isFinite(inviteDuration) && inviteDuration ? inviteDuration : 60, 24 * 60)) } : undefined;
-  const clean = text.replace(/<life_follow_request\b[^>]*\/?\s*>/ig, "").replace(/<life_plan_change\b[^>]*\/?\s*>/ig, "").replace(/<life_invitation\b[^>]*\/?\s*>/ig, "").trim();
+  const actionTag = text.match(/<life_action\b[^>]*>([\s\S]*?)<\/life_action\s*>/i);
+  const dialogueTag = text.match(/<life_dialogue\b[^>]*>([\s\S]*?)<\/life_dialogue\s*>/i);
+  const stripControlTags = (value: string) => value
+    .replace(/<life_(?:action|dialogue|follow_request|plan_change|invitation)\b[^>]*\/?\s*>/ig, "")
+    .replace(/<\/?(?:content|summary|thinking)>/ig, "")
+    .trim();
+  if (actionTag || dialogueTag) {
+    const action = stripControlTags(actionTag?.[1] || "").replace(/^\*+|\*+$/g, "").trim();
+    const dialogue = stripControlTags(dialogueTag?.[1] || "");
+    return { action, dialogue, followRequest, planChange, invitation };
+  }
+  const clean = stripControlTags(text);
   const lines = clean.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   const actionLines: string[] = [];
   const dialogueLines: string[] = [];
   for (const line of lines) {
     if (/^\*[^*].*\*$/.test(line) || /^（[^）]+）$/.test(line) || /^\*\*[^*].*\*\*$/.test(line)) actionLines.push(line.replace(/^\*+|\*+$/g, "").replace(/^（|）$/g, ""));
-    else if (!/^<\/?(?:content|summary|thinking)>/i.test(line)) dialogueLines.push(line);
+    else dialogueLines.push(line);
   }
   return { action: actionLines.join(" "), dialogue: dialogueLines.join("\n") || (actionLines.length ? "" : clean), followRequest, planChange, invitation };
 }
