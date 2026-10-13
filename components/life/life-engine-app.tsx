@@ -1166,7 +1166,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               const day=new Date(actorNow(actor));day.setSeconds(0,0);
               if(/后天/.test(body))day.setDate(day.getDate()+2);else if(/明天|明日/.test(body))day.setDate(day.getDate()+1);else if(/今天|今日/.test(body)){}else{
                 const weekday=body.match(/周([一二三四五六日天])|星期([一二三四五六日天])/);
-                if(weekday){const n={"一":1,"二":2,"三":3,"四":4,"五":5,"六":6,"日":0,"天":0}[(weekday[1]||weekday[2])];let delta=(n-day.getDay()+7)%7;if(delta===0)delta=7;day.setDate(day.getDate()+delta);}
+                if(weekday){const weekMap:Record<string,number>={"一":1,"二":2,"三":3,"四":4,"五":5,"六":6,"日":0,"天":0};const n=weekMap[weekday[1]||weekday[2]]??0;let delta=(n-day.getDay()+7)%7;if(delta===0)delta=7;day.setDate(day.getDate()+delta);}
               }
               const range=body.match(/((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?)?)\s*(?:到|至|—|-)\s*((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?)?)/);
               const single=body.match(/(?:在|于|约|大概)?\s*((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?))/);
