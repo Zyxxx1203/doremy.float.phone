@@ -6,6 +6,7 @@ import {
   type LifeEvent,
   type LifeEventStatus,
   type LifeEngineSettings,
+  type LifeTimelineEntry,
   type VirtualLifeState,
 } from "./life-types";
 
@@ -58,6 +59,7 @@ function normalizeState(value: unknown): VirtualLifeState {
     events: Array.isArray(raw.events) ? raw.events : [],
     invitations: Array.isArray(raw.invitations) ? raw.invitations : [],
     memories: Array.isArray(raw.memories) ? raw.memories : [],
+    timeline: Array.isArray(raw.timeline) ? raw.timeline : [],
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : empty.updatedAt,
   };
 }
@@ -80,6 +82,15 @@ export function saveVirtualLifeState(state: VirtualLifeState): VirtualLifeState 
     window.dispatchEvent(new CustomEvent("virtual-life-state-updated"));
   }
   return saved;
+}
+
+export function appendLifeTimelineEntry(state: VirtualLifeState, entry: Omit<LifeTimelineEntry, "id" | "occurredAt"> & { id?: string; occurredAt?: string }): VirtualLifeState {
+  const item: LifeTimelineEntry = {
+    ...entry,
+    id: entry.id ?? "life-log-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
+    occurredAt: entry.occurredAt ?? new Date().toISOString(),
+  };
+  return { ...state, timeline: [...(state.timeline ?? []), item].slice(-5000) };
 }
 
 export function upsertLifeScheduleSlot(state: VirtualLifeState, slot: VirtualLifeState["schedules"][number]): VirtualLifeState {
