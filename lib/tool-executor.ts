@@ -23,7 +23,7 @@ import {
 } from "./tool-storage";
 import { executeCustomAppToolCall } from "./custom-app-tool-runtime";
 import { characterWorkspace, agentComputerRequest, isAgentComputerConfigured } from "./agent-computer";
-import { AGENT_COMPUTER_CAPABILITY_ID, CHECK_IN_REQUEST_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, DEVICE_ACTION_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, PERCEPTION_READ_CAPABILITY_ID, PHONE_WIDGET_CAPABILITY_ID, REALITY_BRIDGE_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, SYSTEM_CALENDAR_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
+import { AGENT_COMPUTER_CAPABILITY_ID, CHECK_IN_REQUEST_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, DEVICE_ACTION_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, PERCEPTION_READ_CAPABILITY_ID, PHONE_WIDGET_CAPABILITY_ID, QQ_COUPLE_POST_CAPABILITY_ID, REALITY_BRIDGE_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, SYSTEM_CALENDAR_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
 import {
     checkQueryCooldown,
     describeStatusByFocus,
@@ -805,6 +805,66 @@ function normalizeInternalToolResult(result: ToolResult): ToolResult {
     };
 }
 
+/**
+ * 把角色生成的情侣空间动态交给 Android 壳。原生端只填入编辑框，不点击发布。
+ */
+async function executeQqCouplePostTool(call: ToolCall): Promise<ToolResult> {
+    const capability = getInternalCapability(QQ_COUPLE_POST_CAPABILITY_ID);
+    if (!capability || !capability.enabled || capability.mode === "off") {
+        return {
+            name: call.name,
+            success: false,
+            error: "「发布情侣空间动态」能力未启用（工具箱 → 内置能力）",
+            continueConversation: false,
+            persistToHistory: false,
+            userNotice: "情侣空间动态工具未启用",
+        };
+    }
+    const text = String(call.args?.text ?? "").trim().slice(0, 2000);
+    if (!text) return { name: call.name, success: false, error: "需要 text 参数" };
+    if (typeof window === "undefined") {
+        return { name: call.name, success: false, error: "该功能只能在手机端运行" };
+    }
+    const shell = (window as unknown as {
+        AndroidShell?: { prepareQqCouplePost?: (draft: string) => string };
+    }).AndroidShell;
+    if (!shell?.prepareQqCouplePost) {
+        return {
+            name: call.name,
+            success: false,
+            error: "当前环境没有 QQ 草稿原生桥。请使用已更新的 Android 壳 APK；普通网页暂不支持。",
+        };
+    }
+    try {
+        const result = JSON.parse(shell.prepareQqCouplePost(text)) as {
+            ok?: boolean;
+            message?: string;
+            reason?: string;
+            needsAccessibility?: boolean;
+        };
+        if (!result.ok) {
+            return {
+                name: call.name,
+                success: false,
+                error: result.reason || "QQ 草稿准备失败",
+                ...(result.needsAccessibility ? { userNotice: "请先启用 QQ 情侣空间草稿助手，再重试" } : {}),
+            };
+        }
+        return {
+            name: call.name,
+            success: true,
+            data: result.message || "已打开 QQ，等待进入情侣空间动态编辑页。不会自动点击发布。",
+            userNotice: "已将情侣空间动态草稿交给手机 QQ",
+        };
+    } catch (error) {
+        return {
+            name: call.name,
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+        };
+    }
+}
+
 async function executeInternalTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult | null> {
     if (isNoteWallToolName(call.name)) return executeNoteWallTool(call, context);
     if (isMusicControlToolName(call.name)) return executeMusicControlTool(call, context);
@@ -822,6 +882,7 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     if (call.name === "查看系统日程") return executeSystemCalendarReadTool(call);
     if (call.name === "写入系统日历") return executeSystemCalendarWriteTool(call);
     if (call.name === "在桌面留句话") return executePhoneWidgetTool(call, context);
+    if (call.name === "发布情侣空间动态") return executeQqCouplePostTool(call);
     if (call.name === "请求看屏幕") return executeCheckInRequestTool(call, context);
     if (isRealityBridgeToolName(call.name)) return executeRealityBridgeTool(call, context);
     if (call.name === "稍后主动联系" || call.name === "设置定时醒来") return executeTimedWakeTool(call, context);
