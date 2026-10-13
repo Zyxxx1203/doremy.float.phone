@@ -192,7 +192,24 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         for (let guard=0; week.getTime() <= targetEnd.getTime() && guard<520; guard++, week=new Date(week.getTime()+7*24*60*60*1000)) {
           next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, week, {id:"home",name:"家"}, owner.profile, liveSettings.generateSpecialEvents);
         }
+        const beforeSettle = next;
+        const beforeActor = beforeSettle.actorStates.find(item => item.ownerType === owner.ownerType && item.ownerId === owner.ownerId);
+        const beforeEventIds = new Set(beforeSettle.events.map(event => event.id));
         next = settleActorTimelineToNow(next, owner.ownerType, owner.ownerId);
+        if (liveSettings.recordScheduleChanges) {
+          const nowForOwner = resolveActorLifeNow(getActorClock(next, owner.ownerType, owner.ownerId));
+          const recentCutoff = nowForOwner.getTime() - 24 * 60 * 60 * 1000;
+          for (const event of next.events) {
+            if (beforeEventIds.has(event.id) || event.kind !== "activity" || event.status !== "completed" || !event.settlementKey?.startsWith("schedule:")) continue;
+            const ended = new Date(event.endsAt ?? event.createdAt).getTime();
+            if (!Number.isFinite(ended) || ended < recentCutoff) continue;
+            next = appendLifeTimelineEntry(next, { category: "schedule", occurredAt: event.endsAt ?? event.createdAt, title: owner.name + "结束了一个时段：" + event.title, details: event.locationName ? "地点：" + event.locationName : undefined, actorId: owner.ownerId, actorName: owner.name, locationName: event.locationName, sourceId: event.id });
+          }
+          const afterActor = next.actorStates.find(item => item.ownerType === owner.ownerType && item.ownerId === owner.ownerId);
+          if (beforeActor && afterActor && (beforeActor.activity !== afterActor.activity || beforeActor.actualLocationId !== afterActor.actualLocationId)) {
+            next = appendLifeTimelineEntry(next, { category: "schedule", title: owner.name + "现在" + afterActor.activity, details: afterActor.actualLocationName ? "当前地点：" + afterActor.actualLocationName : undefined, actorId: owner.ownerId, actorName: owner.name, locationName: afterActor.actualLocationName });
+          }
+        }
       }
       if (next !== stateRef.current) commit(next);
     };
