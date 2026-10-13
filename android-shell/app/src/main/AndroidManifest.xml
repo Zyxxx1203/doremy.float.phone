@@ -225,6 +225,19 @@
             android:name=".NotificationReplyReceiver"
             android:exported="false" />
 
+        <!-- QQ 情侣空间草稿助手：只在用户进入发布编辑页后填入文字，不自动点击发布。 -->
+        <service
+            android:name=".QqCoupleDraftAccessibilityService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/qq_couple_draft_accessibility" />
+        </service>
+
         <!-- 通话控制无障碍服务：浮窗保活 + 前台 App 感知（需用户在系统设置里手动开启） -->
         <service
             android:name=".CallControlService"

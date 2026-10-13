@@ -20,6 +20,7 @@ export const PERCEPTION_READ_CAPABILITY_ID = "perception_read";
 export const DEVICE_ACTION_CAPABILITY_ID = "device_action";
 export const SYSTEM_CALENDAR_CAPABILITY_ID = "system_calendar";
 export const PHONE_WIDGET_CAPABILITY_ID = "phone_widget";
+export const QQ_COUPLE_POST_CAPABILITY_ID = "qq_couple_post";
 export const CHECK_IN_REQUEST_CAPABILITY_ID = "check_in_request";
 
 /**
@@ -33,6 +34,7 @@ export const CHECK_IN_REQUEST_CAPABILITY_ID = "check_in_request";
  */
 export const RESERVED_INTERNAL_TOOL_NAMES: string[] = [
     "在桌面留句话",
+    "发布情侣空间动态",
     "请求看屏幕",
     "查看手机状态",
     "操作手机设备",
@@ -689,6 +691,36 @@ const PHONE_WIDGET_USAGE_GUIDE = [
     "  - status (string, 可选): 2-5 字的状态标签，如「在想你」",
     "示例：",
     '[执行动作:在桌面留句话({"text":"今天有点想你","status":"在想你"})]',
+].join("\n");
+
+const QQ_COUPLE_POST_PARAMETER_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {
+        text: {
+            type: "string",
+            description: "要发布到 QQ 情侣空间的动态正文，最多 2000 字。只生成内容，不要声称已发布。",
+        },
+    },
+    required: ["text"],
+});
+
+const QQ_COUPLE_POST_USAGE_GUIDE = [
+    "以下是你获取指令的返回结果：",
+    "动作：发布情侣空间动态",
+    "用途：把你写好的动态草稿交给用户手机上的 QQ，并尝试在用户手动打开情侣空间发布编辑页后填入正文。",
+    "",
+    "重要边界：",
+    "- 这是 QQ 内置的情侣空间，不是普通 QQ 空间说说。",
+    "- 该工具只会打开 QQ、等待用户进入情侣空间编辑页并填入草稿；不会点击发布，也不会绕过登录、验证码或安全验证。",
+    "- 只有工具返回成功并且用户在 QQ 里看到草稿后，才能说「草稿已填入」；绝不能说「已经发布」。",
+    "- 如果用户未启用本壳的 QQ 情侣空间草稿助手，工具会打开系统无障碍设置。请提醒用户启用后返回聊天，再重试一次。",
+    "- 动态要像角色自己的生活碎片，不要每次都写成告白或总结；结合当前聊天和角色性格生成。",
+    "",
+    "参数：",
+    "- text (string, 必填): 动态正文，最多 2000 字。",
+    "",
+    "示例：",
+    '[执行动作:发布情侣空间动态({"text":"刚刚路过一家小店，第一反应居然是想拉你一起进去看看。"})]',
 ].join("\n");
 
 const SEND_FILE_PARAMETER_SCHEMA = JSON.stringify({
@@ -1386,6 +1418,15 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
         updatedAt: 0,
     },
     {
+        id: QQ_COUPLE_POST_CAPABILITY_ID,
+        name: "发布情侣空间动态",
+        description: "把角色写好的动态草稿交给手机 QQ 的情侣空间发布页；需要用户启用无障碍助手并手动确认发布，默认关闭。",
+        enabled: false,
+        mode: "auto",
+        createdAt: 0,
+        updatedAt: 0,
+    },
+    {
         id: CHECK_IN_REQUEST_CAPABILITY_ID,
         name: "请求看屏幕",
         description: "请求看一眼{{user}}此刻真实的手机屏幕。系统会先弹确认框给 TA，TA 同意了你才能看到那张画面（默认关闭）。",
@@ -1546,6 +1587,14 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
             description: capability.description,
             parameterSchema: PHONE_WIDGET_PARAMETER_SCHEMA,
             usageGuide: PHONE_WIDGET_USAGE_GUIDE,
+        };
+    }
+    if (capability.id === QQ_COUPLE_POST_CAPABILITY_ID) {
+        return {
+            name: capability.name,
+            description: capability.description,
+            parameterSchema: QQ_COUPLE_POST_PARAMETER_SCHEMA,
+            usageGuide: QQ_COUPLE_POST_USAGE_GUIDE,
         };
     }
     if (capability.id === CHECK_IN_REQUEST_CAPABILITY_ID) {

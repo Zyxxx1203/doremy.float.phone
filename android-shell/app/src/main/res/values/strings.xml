@@ -6,4 +6,5 @@
     <string name="accessibility_service_description">让角色的通话小窗能浮在其他 App 上层，并允许角色感知当前前台 App，实现深度陪伴（仅本机使用）。</string>
     <!-- 桌面小组件在系统「添加小组件」列表里的说明 -->
     <string name="phone_widget_desc">角色留在桌面上的话</string>
+    <string name="qq_couple_draft_accessibility_description">当你手动进入 QQ 情侣空间动态编辑页时，帮助填入你在小手机中确认的草稿；不会替你点击发布。</string>
 </resources>
