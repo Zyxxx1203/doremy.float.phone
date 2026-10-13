@@ -190,6 +190,9 @@ export type LifeEvent = {
 
 export type LifeInvitation = {
   id: string;
+  /** Who initiated the invitation; old saved records omit this and are treated as character-origin. */
+  proposedBy?: "player" | "character";
+  responseReason?: string;
   kind?: "appointment" | "follow-request";
   durationMinutes?: number;
   characterId: string;
