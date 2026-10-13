@@ -485,9 +485,19 @@ export function getEnabledTools(appId?: string): EnabledTool[] {
         });
     }
 
-    if ((appId === "chat" || appId === undefined) && loadVirtualLifeState().settings.enabled) {
-        for (const tool of LIFE_TOOL_DEFINITIONS) {
-            tools.push({ ...tool, source: "life", sourceId: "life-engine" });
+    if (appId === "chat") {
+        const lifeSettings = loadVirtualLifeState().settings;
+        if (lifeSettings.enabled && lifeSettings.enableCharacterAutonomy) {
+            for (const tool of LIFE_TOOL_DEFINITIONS) {
+                const allowed = tool.name === "life_propose_invitation"
+                    ? lifeSettings.enableInvitations
+                    : tool.name === "life_request_follow"
+                        ? lifeSettings.enableInvitations && lifeSettings.enableFollowRequestTool
+                        : tool.name === "life_change_schedule"
+                            ? lifeSettings.enableScheduleChangeTool
+                            : false;
+                if (allowed) tools.push({ ...tool, source: "life", sourceId: "life-engine" });
+            }
         }
     }
 
