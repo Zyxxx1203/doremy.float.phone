@@ -218,6 +218,27 @@ export function settleActorTimelineToNow(
         actualLocationUntil: nextLocationUntil, updatedAt: nowIso,
       }]
     : state.actorStates;
+  let timeline = state.timeline;
+  if (stayExpired && ownerType === "player" && nextLocationId && nextLocationName && previous?.actualLocationId !== nextLocationId) {
+    const activeScene = scenes.find(scene => scene.status === "active");
+    if (activeScene) {
+      scenes = scenes.map(scene => scene.id === activeScene.id
+        ? { ...scene, locationId: nextLocationId, locationName: nextLocationName, updatedAt: nowIso }
+        : scene);
+    }
+    timeline = [...timeline, {
+      id: makeId("timeline"),
+      category: "location",
+      occurredAt: virtualNow.toISOString(),
+      recordedAt: nowIso,
+      title: "按原计划前往" + nextLocationName,
+      details: "临时停留时间已结束，生活行程恢复执行。",
+      actorId: ownerId,
+      actorName: state.settings.playerDisplayName || "我",
+      locationName: nextLocationName,
+      sceneId: activeScene?.id,
+    }];
+  }
   let finalActorStates = actorStates;
   for (const event of events) {
     if (event.kind !== "invitation" || event.status !== "active" || event.details !== "follow-player") continue;
@@ -231,8 +252,8 @@ export function settleActorTimelineToNow(
       { ...characterState, activity: "正在陪伴玩家", actualLocationId: playerState.actualLocationId, actualLocationName: playerState.actualLocationName, updatedAt: nowIso },
     ];
   }
-  if (events === state.events && memories === state.memories && invitations === state.invitations && scenes === state.scenes && finalActorStates === state.actorStates) return state;
-  return { ...state, events, memories, invitations, scenes, actorStates: finalActorStates, updatedAt: nowIso };
+  if (events === state.events && memories === state.memories && invitations === state.invitations && scenes === state.scenes && finalActorStates === state.actorStates && timeline === state.timeline) return state;
+  return { ...state, events, memories, invitations, scenes, actorStates: finalActorStates, timeline, updatedAt: nowIso };
 }
 
 /** Explicit fast-forward advances one actor, then settles every crossed schedule segment. */
