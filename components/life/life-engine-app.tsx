@@ -451,10 +451,13 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       participants.push({ ownerType: "character", ownerId: char.id, activity: actor.activity, awarenessByActorId: { player: awareness } });
       participants[0].awarenessByActorId[char.id] = selectedLocation.visibility === "public" ? "aware" : "suspects";
     }
-    let next: VirtualLifeState = { ...state, scenes: state.scenes.map(scene => scene.status === "active" ? { ...scene, status: "paused" as const, updatedAt: now } : scene) };
-    const scene: LifeSceneState = { id: id("scene"), locationId: selectedLocation.id, locationName: selectedLocation.name, startedAt: now, updatedAt: now, status: "active", participants, lastSettledEventIds: [] };
+    const existingScene = stateRef.current.scenes.find(scene => scene.status === "active" || scene.status === "paused");
+    let next: VirtualLifeState = { ...stateRef.current, scenes: stateRef.current.scenes.map(scene => (scene.status === "active" || scene.status === "paused") ? { ...scene, status: "paused" as const, updatedAt: now } : scene) };
+    const scene: LifeSceneState = existingScene
+      ? { ...existingScene, locationId: selectedLocation.id, locationName: selectedLocation.name, updatedAt: now, status: "active", participants: [{ ...participants[0], activity: playerActivity || "正在这里活动" }, ...existingScene.participants.filter(p => p.ownerType === "character" && participants.some(candidate => candidate.ownerType === "character" && candidate.ownerId === p.ownerId))] }
+      : { id: id("scene"), locationId: selectedLocation.id, locationName: selectedLocation.name, startedAt: now, updatedAt: now, status: "active", participants, lastSettledEventIds: [] };
     next = upsertLifeScene(next, scene);
-    next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "刚来到这里", actualLocationId: selectedLocation.id, actualLocationName: selectedLocation.name, updatedAt: now });
+    next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "正在这里活动", actualLocationId: selectedLocation.id, actualLocationName: selectedLocation.name, updatedAt: now });
     next = appendLifeTimelineEntry(next, { category: "location", title: "你来到了" + selectedLocation.name, details: playerActivity || "开始探索这个地点", actorId: PLAYER_ID, actorName: playerName, locationName: selectedLocation.name, sceneId: scene.id });
     if (actualCharacters.length) next = appendLifeTimelineEntry(next, { category: "scene", title: "在" + selectedLocation.name + "遇见了" + actualCharacters.map(char=>char.name).join("、"), actorName: playerName, locationName: selectedLocation.name, sceneId: scene.id });
     commit(next);
