@@ -38,4 +38,11 @@ object ShellBus {
         val literal = JSONObject.quote(detail.toString())
         evalJs("window.dispatchEvent(new CustomEvent('shell-call-overlay',{detail:JSON.parse($literal)}))")
     }
+
+    /** 向网页报告 QQ 情侣空间草稿助手状态。 */
+    fun dispatchQqCoupleDraftEvent(status: String) {
+        val payload = JSONObject().put("status", status)
+        val literal = JSONObject.quote(payload.toString())
+        evalJs("window.dispatchEvent(new CustomEvent('shell-qq-couple-draft',{detail:JSON.parse($literal)}))")
+    }
 }
