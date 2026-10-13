@@ -721,7 +721,7 @@ const QQ_COUPLE_POST_USAGE_GUIDE = [
     "",
     "示例：",
     '[执行动作:发布情侣空间动态({"text":"刚刚路过一家小店，第一反应居然是想拉你一起进去看看。"})]',
-].join("\\n");
+].join("\n");
 
 const SEND_FILE_PARAMETER_SCHEMA = JSON.stringify({
     type: "object",
