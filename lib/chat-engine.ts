@@ -5,7 +5,6 @@ import { maybeAppendShortcutCapability, maybeAppendPerceptionStatus } from "./of
 import { maybeBuildStatusInjection } from "./perception/describe";
 import { loadCharacters } from "./character-storage";
 import { buildLifeMemoryContext, buildLifePresenceContext } from "./life/life-memory-bridge";
-import { LIFE_TOOL_DEFINITIONS } from "./life/life-tools";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
 import { emitChatPluginEvent, runChatPluginTransform } from "./chat-plugin-hooks";
 import { buildChatPluginPromptFragments } from "./chat-plugin-storage";
@@ -1761,18 +1760,6 @@ export function buildNativeChatTools(enabledTools: EnabledTool[], expandedSource
         }
     }
 
-    // Life tools are global capabilities: expose them to ordinary chat, group chat and
-    // custom app conversations, not only from inside the Life APP UI.
-    for (const lifeTool of LIFE_TOOL_DEFINITIONS) {
-        if (usedNames.has(lifeTool.name)) continue;
-        usedNames.add(lifeTool.name);
-        let parameters: Record<string, unknown> = {};
-        try { parameters = JSON.parse(lifeTool.parameterSchema) as Record<string, unknown>; } catch { parameters = { type: "object", properties: {} }; }
-        definitions.push({ name: lifeTool.name, description: lifeTool.description, parameters });
-        nameMap.set(lifeTool.name, lifeTool.name);
-        displayNameMap.set(lifeTool.name, lifeTool.name);
-        realToolSourceMap.set(lifeTool.name, "life");
-    }
     return { definitions, nameMap, displayNameMap, loaderMap, realToolSourceMap };
 }
 
