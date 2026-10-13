@@ -38,6 +38,7 @@ import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
 type Tab = "home" | "scene" | "plans" | "invitations" | "settings";
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
 const PLAYER_ID = "player";
+const DAY_MS = 24 * 60 * 60 * 1000;
 const INITIAL_LOCATIONS: LifeLocation[] = [
   { id: "home", name: "家", description: "可以休息、吃饭和独处的地方", visibility: "private" },
   { id: "cafe", name: "街角咖啡店", description: "适合偶遇和闲聊", visibility: "public" },
@@ -85,7 +86,8 @@ function SectionTitle({ eyebrow, title, note }: { eyebrow: string; title: string
   return <div className="mb-4"><p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#a4775d]">{eyebrow}</p><h2 className="mt-1 text-xl font-semibold tracking-tight text-stone-800">{title}</h2>{note && <p className="mt-1 text-sm leading-relaxed text-stone-500">{note}</p>}</div>;
 }
 
-export function LifeEngineApp() {
+export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
+  void onClose;
   const [state, setState] = useState<VirtualLifeState>(() => createEmptyVirtualLifeState());
   const stateRef = useRef(state);
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -137,6 +139,8 @@ export function LifeEngineApp() {
     saveVirtualLifeState(next);
   }, []);
 
+  const settings = state.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;
+  const playerName = settings.playerDisplayName || "我";
   const actors = useMemo<ActorChoice[]>(() => [
     { ownerType: "player", ownerId: PLAYER_ID, name: playerName },
     ...characters.map(char => ({ ownerType: "character" as const, ownerId: char.id, name: char.name, avatar: char.avatar, persona: [char.persona, char.personality].filter(Boolean).join("\n") })),
@@ -145,8 +149,6 @@ export function LifeEngineApp() {
   const activeScene = useMemo(() => state.scenes.find(scene => scene.status === "active") ?? state.scenes.find(scene => scene.status === "paused"), [state.scenes]);
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
   const selectedLocation = state.locations.find(location => location.id === selectedLocationId) ?? state.locations[0];
-  const settings = state.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;
-  const playerName = settings.playerDisplayName || "我";
 
   useEffect(() => {
     if (!ready) return;
