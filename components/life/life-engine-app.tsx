@@ -169,6 +169,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       stateRef.current = normalized;
       setState(normalized);
       setCharacters(loadCharacters());
+      setPlayerIdentity(resolveUserIdentity());
       setReady(true);
     });
     return () => { alive = false; };
