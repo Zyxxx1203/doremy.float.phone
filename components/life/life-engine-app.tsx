@@ -636,7 +636,7 @@ export function LifeEngineApp() {
         const eventId = id("event"), eventNow = new Date().toISOString();
         const event = { id: eventId, kind: "activity" as const, status: "completed" as const, locationId: activeScene.locationId, locationName: activeScene.locationName, participantIds: ["player", target.id], title: "生活场景对话", details: `${playerName}：${userText}\n${target.name}：${parsed.dialogue}`, createdAt: eventNow, updatedAt: eventNow, completedAt: eventNow };
         const latest = stateRef.current;
-        commit({ ...latest, events: [event, ...latest.events], memories: [{ id: id("memory"), eventId, occurredAt: eventNow, participants: ["player", target.id], fact: `在${activeScene.locationName}，${playerName}与${target.name}进行了一次对话。` }, ...latest.memories].slice(0, 500) });
+        commit({ ...latest, events: [event, ...latest.events], memories: [{ id: id("memory"), eventId, occurredAt: eventNow, participants: ["player", target.id], fact: `在${activeScene.locationName}，${playerName}说：“${userText.trim().slice(0, 180)}”；${target.name}回应：“${parsed.dialogue.trim().slice(0, 180)}”。` }, ...latest.memories].slice(0, 500) });
       }
     } catch (error) {
       setNotice(error instanceof Error ? `角色生成失败：${error.message}` : "角色生成失败，请检查聊天模型配置。");
