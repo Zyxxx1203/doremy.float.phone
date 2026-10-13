@@ -111,7 +111,6 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [inviteCharacterId, setInviteCharacterId] = useState("");
   const [inviteLocationId, setInviteLocationId] = useState("cafe");
   const [inviteActivity, setInviteActivity] = useState("一起喝杯咖啡");
-  const [followDurationMinutes, setFollowDurationMinutes] = useState(120);
   const [inviteAt, setInviteAt] = useState(() => { const d = new Date(Date.now() + 60 * 60_000); d.setMinutes(0,0,0); return new Date(d.getTime() - d.getTimezoneOffset()*60_000).toISOString().slice(0,16); });
   const [customSceneTitle, setCustomSceneTitle] = useState("今天的相处");
   const [sceneImageBusy, setSceneImageBusy] = useState(false);
@@ -612,6 +611,7 @@ remove draft sync  const sceneImageRecords = activeScene?.images ?? [];
         if (Number.isFinite(proposedDate.getTime()) && proposedDate > playerNow && proposedDate > characterNow) {
           const location = structuredNext.locations.find(item=>item.id===parsed.invitation?.locationId) ?? structuredNext.locations.find(item=>item.id==="cafe");
           structuredNext = makeLifeInvitation(structuredNext, {
+            proposedBy: "character",
             characterId: target.id, playerId: PLAYER_ID, proposedAt: proposedDate.toISOString(),
             locationId: location?.id, locationName: location?.name, activity: parsed.invitation.activity,
             kind: "appointment", durationMinutes: parsed.invitation.durationMinutes,
@@ -626,6 +626,7 @@ remove draft sync  const sceneImageRecords = activeScene?.images ?? [];
         const characterNow = resolveActorLifeNow(getActorClock(structuredNext, "character", target.id));
         const playerPresence = structuredNext.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
         structuredNext = makeLifeInvitation(structuredNext, {
+          proposedBy: "character",
           characterId: target.id, playerId: PLAYER_ID,
           proposedAt: new Date(Math.max(playerNow.getTime(), characterNow.getTime()) + 60_000).toISOString(),
           locationId: playerPresence?.actualLocationId ?? undefined,
@@ -731,25 +732,6 @@ remove draft sync  const sceneImageRecords = activeScene?.images ?? [];
     } finally {
       setBusy(false);
     }
-  };
-
-  const createFollowRequest = (characterId: string, durationMinutes = followDurationMinutes, reason = "") => {
-    const character = characters.find(item => item.id === characterId);
-    if (!character) { setNotice("请先选择一位角色。"); return; }
-    const playerNow = resolveActorLifeNow(getActorClock(stateRef.current, "player", PLAYER_ID));
-    const characterNow = resolveActorLifeNow(getActorClock(stateRef.current, "character", character.id));
-    const proposedAt = new Date(Math.max(playerNow.getTime(), characterNow.getTime()) + 60_000).toISOString();
-    const playerPresence = stateRef.current.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
-    const next = makeLifeInvitation(stateRef.current, {
-      characterId: character.id, playerId: PLAYER_ID, proposedAt,
-      locationId: playerPresence?.actualLocationId ?? undefined,
-      locationName: playerPresence?.actualLocationName ?? undefined,
-      activity: "申请陪伴并跟随你的行程" + (reason ? "（" + reason + "）" : ""),
-      kind: "follow-request", durationMinutes,
-    });
-    commit(next);
-    setTab("invitations");
-    setNotice(character.name + "的陪伴申请已放入待确认列表。你确认后，TA才会在约定时段跟随你的实际地点。");
   };
 
   const resolveInvitationConfirmation = (base: VirtualLifeState, inviteId: string): { ok: boolean; state: VirtualLifeState; notice: string } => {
@@ -905,15 +887,9 @@ remove draft sync  const sceneImageRecords = activeScene?.images ?? [];
       {tab === "invitations" && <div className="grid gap-4 lg:grid-cols-[.85fr_1.15fr]">
         <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Make a plan together" title="创建邀约" note="邀约先处于待确认状态。确认后才同步双方日程；不会瞬间跳到约定时间。" />
           <form onSubmit={addInvitation} className="space-y-3"><label className="block text-sm">邀请谁<select value={inviteCharacterId} onChange={e=>setInviteCharacterId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="">选择角色</option>{characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label className="block text-sm">活动<input value={inviteActivity} onChange={e=>setInviteActivity(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">时间<input type="datetime-local" value={inviteAt} onChange={e=>setInviteAt(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">地点<select value={inviteLocationId} onChange={e=>setInviteLocationId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5">{state.locations.map(loc=><option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></label><button className="w-full rounded-2xl bg-[var(--life-accent)] px-4 py-3 text-sm font-medium text-white">发出邀约</button></form>
-          <div className="mt-5 border-t border-stone-200/80 pt-4">
-            <p className="text-sm font-semibold">角色提出陪伴申请</p>
-            <p className="mt-1 text-xs leading-relaxed text-stone-500">角色也可以在共同生活对话中主动申请跟随你。申请不会自动生效，必须由你确认；拒绝后不会修改任何日程。</p>
-            <label className="mt-3 block text-sm">陪伴时长<select value={followDurationMinutes} onChange={e=>setFollowDurationMinutes(Number(e.target.value))} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value={30}>30 分钟</option><option value={60}>1 小时</option><option value={120}>2 小时</option><option value={240}>4 小时</option><option value={480}>半天 / 8 小时</option><option value={720}>12 小时</option></select></label>
-            <button type="button" disabled={!inviteCharacterId} onClick={()=>createFollowRequest(inviteCharacterId,followDurationMinutes)} className="mt-3 w-full rounded-2xl border border-[var(--life-accent)]/40 bg-white px-4 py-3 text-sm font-medium text-[var(--life-accent)] disabled:opacity-40">创建待确认的陪伴申请</button>
-          </div>
         </section>
         <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Invitation inbox" title="邀约记录" />
-          {state.invitations.length===0?<p className="rounded-2xl bg-white/60 p-4 text-sm text-stone-400">这里会保存待确认、已确认和已取消的邀约。</p>:<div className="space-y-3">{state.invitations.map(invite=>{const char=characters.find(c=>c.id===invite.characterId);return <div key={invite.id} className="rounded-2xl border border-stone-200/70 bg-white/70 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-medium">{char?.name??"未知角色"} · {invite.kind==="follow-request"?"陪伴申请":"邀约"} · {invite.activity}</p><p className="mt-1 text-xs text-stone-500">{fmt(invite.proposedAt)} · {invite.kind==="follow-request"?(invite.durationMinutes??120)+" 分钟 · 跟随你的实际行程":invite.locationName??"地点待定"}</p></div><span className="rounded-full bg-[#f0e3d5] px-2.5 py-1 text-[11px]">{({proposed:"待确认",confirmed:"已确认",declined:"已拒绝",cancelled:"已取消",completed:"已完成"} as Record<string,string>)[invite.status]}</span></div>{invite.status==="proposed"&&<div className="mt-3 flex gap-2"><button onClick={()=>confirmInvitation(invite.id)} className="rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white">{invite.kind==="follow-request"?"接受陪伴申请":"确认并同步日程"}</button><button onClick={()=>commit({...state,invitations:state.invitations.map(item=>item.id===invite.id?{...item,status:"declined" as const,updatedAt:new Date().toISOString()}:item)})} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">拒绝</button></div>}</div>;})}</div>}
+          {state.invitations.length===0?<p className="rounded-2xl bg-white/60 p-4 text-sm text-stone-400">这里会保存待确认、已确认和已取消的邀约。</p>:<div className="space-y-3">{state.invitations.map(invite=>{const char=characters.find(c=>c.id===invite.characterId);return <div key={invite.id} className="rounded-2xl border border-stone-200/70 bg-white/70 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-medium">{char?.name??"未知角色"} · {invite.kind==="follow-request"?"陪伴申请":"邀约"} · {invite.activity}</p><p className="mt-1 text-xs text-stone-500">{fmt(invite.proposedAt)} · {invite.kind==="follow-request"?(invite.durationMinutes??120)+" 分钟 · 跟随你的实际行程":invite.locationName??"地点待定"}</p>{invite.responseReason&&<p className="mt-1 text-xs leading-relaxed text-stone-600">{invite.responseReason}</p>}</div><span className="rounded-full bg-[#f0e3d5] px-2.5 py-1 text-[11px]">{(invite.status==="proposed"&&invite.proposedBy==="player"?"等待角色回应":({proposed:"待确认",confirmed:"已确认",declined:"已拒绝",cancelled:"已取消",completed:"已完成"} as Record<string,string>)[invite.status])}</span></div>{invite.status==="proposed"&&invite.proposedBy!=="player"&&<div className="mt-3 flex gap-2"><button onClick={()=>confirmInvitation(invite.id)} className="rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white">{invite.kind==="follow-request"?"接受陪伴申请":"确认并同步日程"}</button><button onClick={()=>commit({...state,invitations:state.invitations.map(item=>item.id===invite.id?{...item,status:"declined" as const,updatedAt:new Date().toISOString()}:item)})} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">拒绝</button></div>}</div>;})}</div>}
         </section>
       </div>}
 
