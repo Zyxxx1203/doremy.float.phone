@@ -825,7 +825,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         {([{id:"home",label:"生活现场",icon:Heart},{id:"invitations",label:"邀约活动",icon:Coffee},{id:"settings",label:"自定义",icon:Settings2}] as const).filter(item => item.id !== "invitations" || settings.enableInvitations).map(item => { const Icon=item.icon; return <button key={item.id} onClick={() => setTab(item.id)} className={`flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] transition sm:flex-row sm:text-sm ${tab===item.id?"bg-white text-[var(--life-accent)] shadow-sm":"opacity-65 hover:opacity-100"}`}><Icon size={16}/>{item.label}</button>; })}
       </nav>
 
-      {tab === "home" && <div className="space-y-4">
+      {(tab === "home" || tab === "scene") && <div className="space-y-4">
         <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <SectionTitle eyebrow="Your day · 24 hours" title={playerNow.toLocaleDateString("zh-CN",{month:"long",day:"numeric",weekday:"long"})+" · 我的时间线"} note="已过去的时段可以折叠查看；快进会逐段结算日程，不会直接抹掉中间发生的生活。" />
