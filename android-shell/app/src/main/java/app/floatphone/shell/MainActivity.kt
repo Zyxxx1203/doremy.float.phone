@@ -7,6 +7,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.ContentValues
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -24,6 +25,7 @@ import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONObject
 import android.webkit.CookieManager
 import android.webkit.DownloadListener
 import android.webkit.JavascriptInterface
@@ -552,6 +554,57 @@ class MainActivity : AppCompatActivity() {
     inner class ShellBridge {
         @JavascriptInterface
         fun getVersion(): String = VERSION
+
+        /**
+         * 准备一条 QQ 情侣空间动态草稿并打开 QQ。
+         *
+         * 首次使用需要用户手动启用本壳的辅助服务。服务只会在识别到情侣空间发布
+         * 编辑页时填入文字，绝不会替用户点击「发布」。
+         */
+        @JavascriptInterface
+        fun prepareQqCouplePost(text: String): String {
+            val draft = text.trim().take(2000)
+            if (draft.isEmpty()) return JSONObject().put("ok", false).put("reason", "动态内容不能为空").toString()
+
+            val component = ComponentName(this@MainActivity, QqCoupleDraftAccessibilityService::class.java)
+            val enabledServices = Settings.Secure.getString(
+                contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+            ).orEmpty().split(':')
+            val enabled = enabledServices.any { it.equals(component.flattenToString(), ignoreCase = true) ||
+                it.endsWith("/.QqCoupleDraftAccessibilityService", ignoreCase = true) ||
+                it.endsWith("/app.floatphone.shell.QqCoupleDraftAccessibilityService", ignoreCase = true) }
+
+            if (!enabled) {
+                runOnUiThread {
+                    runCatching {
+                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                }
+                return JSONObject().put("ok", false)
+                    .put("reason", "请在系统无障碍设置中启用「QQ 情侣空间草稿助手」，返回聊天后再让角色重试。")
+                    .put("needsAccessibility", true).toString()
+            }
+
+            val launchIntent = packageManager.getLaunchIntentForPackage(QqCoupleDraftAccessibilityService.QQ_PACKAGE)
+                ?: return JSONObject().put("ok", false).put("reason", "没有找到手机 QQ，请先安装并登录 QQ。").toString()
+
+            getSharedPreferences(QqCoupleDraftAccessibilityService.PREFS, MODE_PRIVATE)
+                .edit().putString(QqCoupleDraftAccessibilityService.KEY_PENDING_DRAFT, draft).apply()
+
+            return try {
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                runOnUiThread { startActivity(launchIntent) }
+                JSONObject().put("ok", true)
+                    .put("message", "已打开 QQ。请手动进入情侣空间的动态编辑页面；助手识别到编辑页后会填入草稿，但不会点击发布。")
+                    .toString()
+            } catch (error: Throwable) {
+                getSharedPreferences(QqCoupleDraftAccessibilityService.PREFS, MODE_PRIVATE)
+                    .edit().remove(QqCoupleDraftAccessibilityService.KEY_PENDING_DRAFT).apply()
+                JSONObject().put("ok", false)
+                    .put("reason", error.message ?: "打开 QQ 失败").toString()
+            }
+        }
 
         /** 实测系统状态栏高度（CSS px）。页面侧兜底轮询用；主要注入路径见 injectStatusBarHeight。 */
         @JavascriptInterface
