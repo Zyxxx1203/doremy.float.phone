@@ -83,9 +83,15 @@ export function WidgetScheduler() {
       try {
         await hydrateKvDb();
         const config = loadWidgetConfig();
-        if (config.enabled && config.autoEnabled) {
-          const changed = await runWidgetAutoGenerate();
-          if (changed) pushWidgetToNative();
+        if (config.enabled) {
+          let contentChanged = false;
+          if (config.autoEnabled) {
+            contentChanged = await runWidgetAutoGenerate();
+            if (contentChanged) pushWidgetToNative();
+          }
+          // Keep virtual time/current activity fresh even when the character's message is unchanged.
+          // runWidgetAutoGenerate emits the normal update event when content changes.
+          if (!contentChanged) pushWidgetToNative();
         }
       } catch (err) {
         console.warn("[Widget] 调度失败", err);

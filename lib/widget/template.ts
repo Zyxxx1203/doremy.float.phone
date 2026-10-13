@@ -107,9 +107,9 @@ export const DEFAULT_WIDGET_TEMPLATE = `<!doctype html>
     line-height: 1.55;
     color: var(--ink);
     font-weight: 500;
-    /* 最多三行，超出打点，避免把卡片撑爆 */
+    /* 给底部生活状态留出空间，留言最多两行 */
     display: -webkit-box;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
     word-break: break-word;
