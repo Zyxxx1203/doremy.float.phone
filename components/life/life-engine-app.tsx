@@ -368,10 +368,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     let next = upsertActorState(state, { ownerType: actor.ownerType, ownerId: actor.ownerId, activity: current?.activity || "正在这里活动", actualLocationId: location.id, actualLocationName: location.name, updatedAt: new Date().toISOString() });
     next = appendLifeTimelineEntry(next, { category: "location", title: actor.name + "来到了" + location.name, details: current?.actualLocationName ? "从" + current.actualLocationName + "前往" + location.name : "首次记录实际地点", actorId: actor.ownerId, actorName: actor.name, locationName: location.name });
     if (actor.ownerType === "player" && current?.actualLocationId && current.actualLocationId !== location.id) {
-      const scene = next.scenes.find(item => item.status === "active" && item.locationId === current.actualLocationId);
+      const scene = next.scenes.find(item => item.status === "active" || item.status === "paused");
       if (scene) {
-        next = appendLifeTimelineEntry(next, { category: "scene", title: "你离开了" + scene.locationName, details: "你前往了" + location.name, actorId: PLAYER_ID, actorName: playerName, locationName: scene.locationName, sceneId: scene.id });
-        next = upsertLifeScene(next, { ...scene, status: "paused", updatedAt: new Date().toISOString() });
+        const now = new Date().toISOString();
+        next = appendLifeTimelineEntry(next, { category: "scene", title: "当前场景转移至" + location.name, details: "你从" + (current.actualLocationName || scene.locationName) + "前往" + location.name + "；沿用同一条持续场景记录", actorId: PLAYER_ID, actorName: playerName, locationName: location.name, sceneId: scene.id });
+        next = upsertLifeScene(next, { ...scene, locationId: location.id, locationName: location.name, status: "active", updatedAt: now, participants: scene.participants.map(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID ? { ...participant, activity: playerActivity || participant.activity } : participant) });
       }
     } else if (actor.ownerType === "character") {
       const player = next.actorStates.find(item => item.ownerType === "player" && item.ownerId === PLAYER_ID);
