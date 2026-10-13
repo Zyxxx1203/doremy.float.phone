@@ -342,6 +342,30 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const current = actorState(actor);
     let next = upsertActorState(state, { ownerType: actor.ownerType, ownerId: actor.ownerId, activity: current?.activity || "正在这里活动", actualLocationId: location.id, actualLocationName: location.name, updatedAt: new Date().toISOString() });
     next = appendLifeTimelineEntry(next, { category: "location", title: actor.name + "来到了" + location.name, details: current?.actualLocationName ? "从" + current.actualLocationName + "前往" + location.name : "首次记录实际地点", actorId: actor.ownerId, actorName: actor.name, locationName: location.name });
+    if (actor.ownerType === "player" && current?.actualLocationId && current.actualLocationId !== location.id) {
+      const scene = next.scenes.find(item => item.status === "active" && item.locationId === current.actualLocationId);
+      if (scene) {
+        next = appendLifeTimelineEntry(next, { category: "scene", title: "你离开了" + scene.locationName, details: "你前往了" + location.name, actorId: PLAYER_ID, actorName: playerName, locationName: scene.locationName, sceneId: scene.id });
+        next = upsertLifeScene(next, { ...scene, status: "paused", updatedAt: new Date().toISOString() });
+      }
+    } else if (actor.ownerType === "character") {
+      const player = next.actorStates.find(item => item.ownerType === "player" && item.ownerId === PLAYER_ID);
+      const scene = player?.actualLocationId
+        ? next.scenes.find(item => item.status === "active" && item.locationId === player.actualLocationId)
+        : undefined;
+      if (scene && current?.actualLocationId === player?.actualLocationId && location.id !== player?.actualLocationId
+        && scene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === actor.ownerId)) {
+        next = appendLifeTimelineEntry(next, { category: "scene", title: actor.name + "离开了你所在的场景", details: "TA 前往了" + location.name, actorId: actor.ownerId, actorName: actor.name, locationName: scene.locationName, sceneId: scene.id });
+        next = upsertLifeScene(next, { ...scene, participants: scene.participants.filter(participant => !(participant.ownerType === "character" && participant.ownerId === actor.ownerId)), updatedAt: new Date().toISOString() });
+      } else if (scene && location.id === player?.actualLocationId
+        && !scene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === actor.ownerId)) {
+        next = appendLifeTimelineEntry(next, { category: "scene", title: actor.name + "进入了你所在的场景", details: "TA 现在也在" + location.name, actorId: actor.ownerId, actorName: actor.name, locationName: location.name, sceneId: scene.id });
+        next = upsertLifeScene(next, { ...scene, participants: [
+          ...scene.participants.map(participant => participant.ownerType === "player" ? { ...participant, awarenessByActorId: { ...participant.awarenessByActorId, [actor.ownerId]: "aware" as const } } : participant),
+          { ownerType: "character", ownerId: actor.ownerId, activity: current?.activity || "正在这里活动", awarenessByActorId: { [PLAYER_ID]: "aware" } },
+        ], updatedAt: new Date().toISOString() });
+      }
+    }
     commit(next);
     setNotice(`${actor.name}的实际地点已更新为「${location.name}」。这与日程中的计划地点分开保存。`);
   };
