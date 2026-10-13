@@ -187,7 +187,8 @@ function LifeTimelineWidget({ config, widgetId, onConfigChange, preview }: any) 
     refresh();
     const timer = window.setInterval(refresh, 30_000);
     window.addEventListener("focus", refresh);
-    return () => { alive = false; window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+    window.addEventListener("virtual-life-state-updated", refresh);
+    return () => { alive = false; window.clearInterval(timer); window.removeEventListener("focus", refresh); window.removeEventListener("virtual-life-state-updated", refresh); };
   }, []);
   const accent = typeof config?.accentColor === "string" && /^#[0-9a-f]{6}$/i.test(config.accentColor) ? config.accentColor : "#a8795c";
   if (!snapshot) return <div className="flex h-full items-center justify-center text-xs text-stone-400">正在读取生活时间线…</div>;
@@ -226,7 +227,8 @@ function LifeCharacterWidget({ config, widgetId, onConfigChange, preview }: any)
     refresh();
     const timer = window.setInterval(refresh, 30_000);
     window.addEventListener("focus", refresh);
-    return () => { alive = false; window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+    window.addEventListener("virtual-life-state-updated", refresh);
+    return () => { alive = false; window.clearInterval(timer); window.removeEventListener("focus", refresh); window.removeEventListener("virtual-life-state-updated", refresh); };
   }, [config?.characterId]);
   const cycle = () => {
     if (preview || characters.length < 2) return;
