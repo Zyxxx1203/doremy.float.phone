@@ -109,13 +109,18 @@ export function WidgetScheduler() {
 
     // 内容一变立刻推：角色刚用工具留了话，桌面应该马上变，不该等下一轮检查
     const onUpdated = () => { pushWidgetToNative(); };
+    const onLifeUpdated = () => { pushWidgetToNative(); };
     window.addEventListener(WIDGET_UPDATED_EVENT, onUpdated);
+    // The native widget shares the same virtual-life source as the Life app.
+    // A location, activity, clock or schedule change refreshes its rendered card immediately.
+    window.addEventListener("virtual-life-state-updated", onLifeUpdated);
 
     return () => {
       disposed = true;
       cancelStart();
       if (cancelTimer) cancelTimer();
       window.removeEventListener(WIDGET_UPDATED_EVENT, onUpdated);
+      window.removeEventListener("virtual-life-state-updated", onLifeUpdated);
     };
   }, []);
 
