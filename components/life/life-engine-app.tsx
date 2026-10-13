@@ -39,7 +39,6 @@ type Tab = "home" | "scene" | "plans" | "invitations" | "settings";
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
 const PLAYER_ID = "player";
 const DAY_MS = 24 * 60 * 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
 const INITIAL_LOCATIONS: LifeLocation[] = [
   { id: "home", name: "家", description: "可以休息、吃饭和独处的地方", visibility: "private" },
   { id: "cafe", name: "街角咖啡店", description: "适合偶遇和闲聊", visibility: "public" },
@@ -140,8 +139,6 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     saveVirtualLifeState(next);
   }, []);
 
-  const settings = state.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;
-  const playerName = settings.playerDisplayName || "我";
   const settings = state.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;
   const playerName = settings.playerDisplayName || "我";
   const actors = useMemo<ActorChoice[]>(() => [
