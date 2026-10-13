@@ -116,7 +116,7 @@ export function addMomentPost(post: Omit<MomentPost, "id" | "likes" | "createdAt
     dbPutPost(newPost);
     try {
         const life = loadVirtualLifeState();
-        if (life.settings.enabled && life.settings.recordSocialActivity) {
+        if (life.settings.enabled) {
             const isCharacter = newPost.authorType === "character";
             const author = isCharacter ? loadCharacters().find(item => item.id === newPost.authorId)?.name ?? "角色" : "你";
             const logged = appendLifeTimelineEntry(life, {
