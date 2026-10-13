@@ -8,6 +8,7 @@ import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "./l
  */
 export function buildLifeMemoryContext(characterId: string, limit = 10): string {
   const state = loadVirtualLifeState();
+  if (!state.settings.enabled) return "";
   const facts = state.memories
     .filter(memory => memory.participants.includes(characterId) && memory.fact.trim())
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
@@ -27,6 +28,7 @@ export function buildLifeMemoryContext(characterId: string, limit = 10): string 
  */
 export function buildLifePresenceContext(characterId: string): string {
   const state = loadVirtualLifeState();
+  if (!state.settings.enabled) return "";
   const clock = getActorClock(state, "character", characterId);
   const now = resolveActorLifeNow(clock);
   const schedule = getCurrentActorSchedule(state, "character", characterId, now);
