@@ -374,13 +374,13 @@ export function LifeEngineApp() {
     : "";
   useEffect(() => {
     const maybeGenerate = () => {
-      if (!ready || !activeScene || !settings.autoGenerateSceneImages || !autoImageFingerprint || autoImageSceneRef.current === autoImageFingerprint) return;
+      if (!ready || !activeScene || !settings.autoGenerateSceneImages || !autoImageFingerprint || activeScene.lastAutoImageFingerprint === autoImageFingerprint || autoImageSceneRef.current === autoImageFingerprint) return;
       if (!loadImageGenerationSettings().enabled) {
         setNotice("已开启场景自动生图；请先在「小手机设置 → 生图设置」启用生图服务，启用后会自动尝试。");
         return;
       }
       autoImageSceneRef.current = autoImageFingerprint;
-      void generateSceneImages({count:settings.sceneImageCount});
+      void generateSceneImages({count:settings.sceneImageCount,autoFingerprint:autoImageFingerprint});
     };
     maybeGenerate();
     window.addEventListener("settings-image-generation-updated", maybeGenerate);
@@ -457,7 +457,7 @@ export function LifeEngineApp() {
     return parts.filter(Boolean).join("\n");
   };
 
-  const generateSceneImages = async (options?: { prompt?: string; participantIds?: string[]; count?: number }) => {
+  const generateSceneImages = async (options?: { prompt?: string; participantIds?: string[]; count?: number; autoFingerprint?: string }) => {
     if (!activeScene || sceneImageBusy) return;
     const imageSettings = loadImageGenerationSettings();
     if (!imageSettings.enabled) { setNotice("请先到「设置 → 生图设置」启用并配置生图 API。"); return; }
@@ -484,7 +484,7 @@ export function LifeEngineApp() {
       const latest=stateRef.current;
       const scene=latest.scenes.find(item=>item.id===activeScene.id);
       if(scene){
-        const updated={...scene,images:[...(scene.images??[]).map(image=>({...image,status:"archived" as const})),...generated],updatedAt:new Date().toISOString()};
+        const updated={...scene,images:[...(scene.images??[]).map(image=>({...image,status:"archived" as const})),...generated],lastAutoImageFingerprint:options?.autoFingerprint ?? scene.lastAutoImageFingerprint,updatedAt:new Date().toISOString()};
         commit({...latest,scenes:latest.scenes.map(item=>item.id===scene.id?updated:item)});
         setImageViewerIndex(0);
         setNotice("生成完成。旧图已归档，可在图库中恢复或删除以释放缓存空间。");
