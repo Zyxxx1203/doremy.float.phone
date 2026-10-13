@@ -104,6 +104,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [selectedLocationId, setSelectedLocationId] = useState("cafe");
   const [newLocationName, setNewLocationName] = useState("");
 
+  const [quickPlanText, setQuickPlanText] = useState("");
   const [playerActivity, setPlayerActivity] = useState("");
   const [sceneInput, setSceneInput] = useState("");
   const [sceneActionInput, setSceneActionInput] = useState("");
@@ -1079,7 +1080,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           <div className="mb-4 flex flex-wrap gap-2">{activeScene.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);const awareness=p.awarenessByActorId.player;const status=awareness==="unaware"?"还没注意到你":awareness==="suspects"?"似乎察觉到你":awareness==="aware"?"注意到你":"";return <button key={p.ownerId} onClick={()=>p.ownerType==="character"&&setSelectedSpeakerId(p.ownerId)} className={`rounded-full px-3 py-1.5 text-xs ${selectedSpeakerId===p.ownerId?"bg-[var(--life-accent)] text-white":"bg-[#f1e5d8] text-stone-700"}`}>{actor?.name??p.ownerId} · {status || p.activity}</button>})}</div>
           <div className="mb-4 max-h-[48vh] min-h-48 space-y-3 overflow-y-auto rounded-2xl bg-white/65 p-3 sm:p-5" style={{fontSize:"var(--life-font)"}}>
             {sceneMessages.length===0 && <div className="grid min-h-36 place-items-center text-center text-sm text-stone-400"><div><Sparkles className="mx-auto mb-2" size={22}/><p>场景已经准备好了。</p><p className="mt-1 text-xs">角色可以忙自己的事，也可以回应你；不会自动写成长篇剧情。</p></div></div>}
-            {sceneMessages.map(message=><div key={message.id} className={`flex ${message.role==="player"?"justify-end":"justify-start"}`}><div className={`max-w-[88%] rounded-2xl px-4 py-3 ${settings.dialogueBubbleStyle==="square"?"rounded-md":settings.dialogueBubbleStyle==="soft"?"rounded-[1.4rem]":"rounded-2xl"} ${message.role==="player"?"bg-[#e9d4c0] text-stone-800":"bg-white text-stone-800 shadow-sm"}`}>{message.role!=="player"&&<p className="mb-1 text-[11px] font-semibold text-[var(--life-accent)]">{message.speakerName}</p>}{message.action&&<p className="mb-1.5 italic text-stone-500" style={{fontSize:"var(--life-narration-font)"}}>*{message.action}*</p>}{message.dialogue&&<p className="whitespace-pre-wrap leading-relaxed">{message.dialogue}</p>}<p className="mt-1 text-right text-[10px] opacity-45">{new Date(message.createdAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</p></div></div>)}
+            {sceneMessages.map(message=><div key={message.id} className="space-y-2">
+              {message.action&&<div className="my-3 flex items-center gap-3 px-2" aria-label="行动旁白"><span className="h-px flex-1 bg-stone-300/80"/><p className="max-w-[82%] text-center italic leading-relaxed text-stone-500" style={{fontSize:"var(--life-narration-font)"}}>{message.action}<span className="ml-2 text-[10px] not-italic opacity-50">{new Date(message.createdAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</span></p><span className="h-px flex-1 bg-stone-300/80"/></div>}
+              {message.dialogue&&<div className={`flex ${message.role==="player"?"justify-end":"justify-start"}`}><div className={`max-w-[88%] rounded-2xl px-4 py-3 ${settings.dialogueBubbleStyle==="square"?"rounded-md":settings.dialogueBubbleStyle==="soft"?"rounded-[1.4rem]":"rounded-2xl"} ${message.role==="player"?"bg-[#e9d4c0] text-stone-800":"bg-white text-stone-800 shadow-sm"}`}>{message.role!=="player"&&<p className="mb-1 text-[11px] font-semibold text-[var(--life-accent)]">{message.speakerName}</p>}<p className="whitespace-pre-wrap leading-relaxed">{message.dialogue}</p><p className="mt-1 text-right text-[10px] opacity-45">{new Date(message.createdAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</p></div></div>}
+            </div>)}
             {busy&&<div className="text-xs text-stone-400">角色正在回应……</div>}
           </div>
           <section className="mb-3 rounded-2xl border border-stone-200/80 bg-white/60 p-2.5">
@@ -1135,6 +1139,56 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         </div>
       </section>}
 
+      {tab === "plans" && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
+        <div className="mb-4 rounded-2xl border border-[#d9c2ae] bg-[#fbf5ee] p-3 sm:p-4">
+          <p className="text-sm font-semibold text-stone-800">一句话安排日程</p>
+          <p className="mt-1 text-xs leading-relaxed text-stone-500">把安排一次说完，每行一件事。支持“明天下午3点到5点在咖啡馆画画”，也可以写“角色名：周五晚上7点去公园散步”。识别后会生成可继续编辑的日程。</p>
+          <textarea value={quickPlanText} onChange={e=>setQuickPlanText(e.target.value)} rows={3} placeholder={"明天下午3点到5点在咖啡馆画画\n周五晚上7点去公园散步"} className="mt-3 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/>
+          <button type="button" onClick={()=>{
+            const lines=quickPlanText.split(/\n|；|;/).map(line=>line.trim()).filter(Boolean);
+            if(!lines.length){setNotice("先写下你想安排的事情。");return;}
+            let next=stateRef.current;let added=0;const errors:string[]=[];
+            const parseClock=(raw:string, fallbackHour:number)=>{
+              const m=raw.trim().match(/^(上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*(\d{1,2})(?:[:：点时](\d{1,2})分?)?$/);
+              if(!m)return {hour:fallbackHour,minute:0};
+              let hour=Number(m[2]),minute=Number(m[3]||0);const period=m[1]||"";
+              if(["下午","傍晚","晚上","夜里"].includes(period)&&hour<12)hour+=12;
+              if(["凌晨"].includes(period)&&hour===12)hour=0;
+              if(["中午"].includes(period)&&hour<11)hour+=12;
+              if(["上午","早上","清晨"].includes(period)&&hour===12)hour=0;
+              return {hour:Math.min(23,Math.max(0,hour)),minute:Math.min(59,Math.max(0,minute))};
+            };
+            for(const line of lines){
+              const pref=line.match(/^([^：:]{1,30})[：:]\s*(.+)$/);
+              const namedActor=pref?actors.find(a=>a.name.trim()===pref[1].trim()):undefined;
+              const actor=namedActor||(selectedActor&&selectedActor.ownerType?selectedActor:actors[0]);
+              let body=(pref?pref[2]:line).trim();
+              const day=new Date(actorNow(actor));day.setSeconds(0,0);
+              if(/后天/.test(body))day.setDate(day.getDate()+2);else if(/明天|明日/.test(body))day.setDate(day.getDate()+1);else if(/今天|今日/.test(body)){}else{
+                const weekday=body.match(/周([一二三四五六日天])|星期([一二三四五六日天])/);
+                if(weekday){const n={"一":1,"二":2,"三":3,"四":4,"五":5,"六":6,"日":0,"天":0}[(weekday[1]||weekday[2])];let delta=(n-day.getDay()+7)%7;if(delta===0)delta=7;day.setDate(day.getDate()+delta);}
+              }
+              const range=body.match(/((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?)?)\s*(?:到|至|—|-)\s*((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?)?)/);
+              const single=body.match(/(?:在|于|约|大概)?\s*((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?))/);
+              if(!range&&!single){errors.push(line);continue;}
+              const startClock=parseClock(range?.[1]||single?.[1]||"",9);
+              const endClock=range?parseClock(range[2],startClock.hour+1):{hour:(startClock.hour+1)%24,minute:startClock.minute};
+              const start=new Date(day);start.setHours(startClock.hour,startClock.minute,0,0);
+              const end=new Date(day);end.setHours(endClock.hour,endClock.minute,0,0);if(end<=start)end.setDate(end.getDate()+1);
+              const location=next.locations.find(loc=>body.includes(loc.name));
+              let title=body.replace(/后天|明天|明日|今天|今日|周[一二三四五六日天]|星期[一二三四五六日天]/g,"").replace(/((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?)?)\s*(?:到|至|—|-)\s*((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?)?)/g,"").replace(/(?:在|于)\s*[^，,。；;]+/g,match=>location&&match.includes(location.name)?"":"").replace(/\s+/g," ").replace(/^[，,、\s]+|[，,。；;\s]+$/g,"").trim();
+              if(!title)title=location?"在"+location.name+"活动":"日程安排";
+              const actual=next.actorStates.find(item=>item.ownerType===actor.ownerType&&item.ownerId===actor.ownerId);
+              next={...next,schedules:[...next.schedules,{id:id("quick-plan"),ownerType:actor.ownerType,ownerId:actor.ownerId,startAt:start.toISOString(),endAt:end.toISOString(),title,plannedLocationId:location?.id??actual?.actualLocationId??undefined,plannedLocationName:location?.name??actual?.actualLocationName??undefined,kind:"free-time",source:"manual",updatedAt:new Date().toISOString()}].sort((a,b)=>a.startAt.localeCompare(b.startAt))};
+              next=appendLifeTimelineEntry(next,{category:"schedule",title:actor.name+"新增日程："+title,details:fmt(start)+"–"+fmt(end)+(location?" · "+location.name:""),actorId:actor.ownerId,actorName:actor.name,locationName:location?.name});
+              added++;
+            }
+            if(added){commit(next);setQuickPlanText("");setNotice("已识别并填入 "+added+" 条日程；你可以在下方继续修改时间、地点和内容。");}
+            else setNotice("没能识别出时间范围。试试“明天下午3点到5点在咖啡馆画画”，一件事写一行。");
+            if(errors.length&&added)setNotice("已填入 "+added+" 条；另有 "+errors.length+" 条未识别，请补充明确时间后再试。");
+          }} className="mt-2 rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white">识别并填入日程</button>
+        </div>
+      </section>}
       {tab === "plans" && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3"><SectionTitle eyebrow="Weekly plans" title="未来七天的生活日程" note="计划每周生成一次并保存在本地；已有日程不会被重复生成覆盖。点击标题可编辑，计划地点只作为线索。" /><button onClick={ensurePlans} className="inline-flex items-center gap-2 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white"><RefreshCw size={14}/>检查并补全</button></div>
         {actors.map(actor=>{const slots=state.schedules.filter(slot=>slot.ownerType===actor.ownerType&&slot.ownerId===actor.ownerId).sort((a,b)=>a.startAt.localeCompare(b.startAt));return <div key={`${actor.ownerType}:${actor.ownerId}`} className="mb-5"><div className="mb-2 flex items-center justify-between gap-2"><h3 className="flex items-center gap-2 text-sm font-semibold"><span className="h-2 w-2 rounded-full bg-[var(--life-accent)]"/>{actor.name}<span className="text-xs font-normal text-stone-400">{slots.length} 条安排</span></h3><button type="button" onClick={()=>addManualPlan(actor)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">＋ 添加日程</button></div>{slots.length===0?<p className="rounded-xl bg-white/60 p-3 text-sm text-stone-400">还没有日程，可以直接添加，也可以点击「检查并补全」。</p>:<div className="space-y-3">{slots.filter(slot=>new Date(slot.endAt).getTime()>Date.now()-DAY_MS).slice(0,40).map(slot=><div key={slot.id} className="rounded-xl border border-stone-200/70 bg-white/65 p-3"><div className="grid gap-2 sm:grid-cols-2"><label className="text-[11px] text-stone-500">开始时间<input aria-label="编辑日程开始时间" type="datetime-local" value={toLocalDateTimeInput(slot.startAt)} onChange={e=>{const value=fromLocalDateTimeInput(e.target.value);if(value)updateManualPlan(slot,{startAt:value});}} onBlur={()=>recordManualPlanEdit(slot)} className="mt-1 w-full min-w-0 rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs"/></label><label className="text-[11px] text-stone-500">结束时间<input aria-label="编辑日程结束时间" type="datetime-local" value={toLocalDateTimeInput(slot.endAt)} onChange={e=>{const value=fromLocalDateTimeInput(e.target.value);if(value)updateManualPlan(slot,{endAt:value});}} onBlur={()=>recordManualPlanEdit(slot)} className="mt-1 w-full min-w-0 rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs"/></label><label className="text-[11px] text-stone-500 sm:col-span-2">事件 / 活动内容<input aria-label="编辑日程标题" value={slot.title} onChange={e=>updateManualPlan(slot,{title:e.target.value})} onBlur={()=>recordManualPlanEdit(slot)} className="mt-1 w-full min-w-0 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"/></label><label className="text-[11px] text-stone-500 sm:col-span-2">地点（可自由填写）<input aria-label="编辑日程地点" value={slot.plannedLocationName??""} placeholder="输入地点名称，不必先创建地点" onChange={e=>updateManualPlan(slot,{plannedLocationName:e.target.value})} onBlur={()=>recordManualPlanEdit(slot)} className="mt-1 w-full min-w-0 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"/></label></div><div className="mt-2 flex items-center justify-between gap-2"><span className="text-[10px] text-stone-400">{slot.kind} · {slot.source==="manual"?"手动日程":"可编辑计划"}</span><button type="button" onClick={()=>deleteManualPlan(slot)} className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-500">删除</button></div></div>)}</div>}</div>;})}
