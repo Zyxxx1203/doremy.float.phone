@@ -19,7 +19,7 @@ export function buildLifeMemoryContext(characterId: string, limit = 10): string 
     "【虚拟生活共同记忆｜已发生事实】",
     "以下是角色本人参与过的生活场景事件摘要。它们是已记录事实，不是猜测；不要擅自扩写成未发生的细节。",
     ...facts.map(fact => `- ${new Date(fact.occurredAt).toLocaleString("zh-CN")}：${fact.fact}`),
-  ].join("\\n");
+  ].join("\n");
 }
 
 /**
