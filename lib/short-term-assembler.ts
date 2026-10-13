@@ -808,7 +808,7 @@ export function loadNativeTimeline(
                 .map(invitation => invitation.id)
         );
         for (const lifeEntry of lifeState.timeline ?? []) {
-            if (options?.afterTimestamp && lifeEntry.occurredAt <= options.afterTimestamp) continue;
+            if (options?.afterTimestamp && (lifeEntry.recordedAt ?? lifeEntry.occurredAt) <= options.afterTimestamp) continue;
             if (!["location", "scene", "action", "dialogue", "schedule", "tool", "system"].includes(lifeEntry.category)) continue;
             const belongsToCharacter = lifeEntry.actorId === characterId
                 || (!!lifeEntry.sceneId && characterSceneIds.has(lifeEntry.sceneId))
