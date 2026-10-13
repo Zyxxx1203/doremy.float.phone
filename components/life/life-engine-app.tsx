@@ -138,6 +138,19 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     saveVirtualLifeState(next);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const syncExternalLifeChanges = () => {
+      // Chat, diary, moments and tool execution write timeline entries outside this component.
+      // Reload without saving so the next UI action does not overwrite those entries.
+      const latest = loadVirtualLifeState();
+      stateRef.current = latest;
+      setState(latest);
+    };
+    window.addEventListener("virtual-life-state-updated", syncExternalLifeChanges);
+    return () => window.removeEventListener("virtual-life-state-updated", syncExternalLifeChanges);
+  }, []);
+
   const settings = state.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;
   const sceneImagePrompt = settings.sceneImagePrompt;
   const playerName = settings.playerDisplayName || "我";
