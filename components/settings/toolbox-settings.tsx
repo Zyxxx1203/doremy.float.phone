@@ -168,6 +168,12 @@ export function ToolboxSettings() {
         return () => window.removeEventListener(CUSTOM_APPS_UPDATED_EVENT, handler);
     }, []);
 
+    useEffect(() => {
+        const syncLifeToolSettings = () => setLifeToolSettings(loadVirtualLifeState().settings);
+        window.addEventListener("virtual-life-state-updated", syncLifeToolSettings);
+        return () => window.removeEventListener("virtual-life-state-updated", syncLifeToolSettings);
+    }, []);
+
     function persistRestPackages(packages: RestToolPackageConfig[]) { setRestPackages(packages); saveRestToolPackages(packages); }
     function persistRest(tools: RestToolConfig[]) { setRestTools(tools); saveRestTools(tools); }
     function persistCompositePackages(packages: CompositeToolPackageConfig[]) { setCompositePackages(packages); saveCompositeToolPackages(packages); }
