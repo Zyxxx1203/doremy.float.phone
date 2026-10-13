@@ -229,6 +229,8 @@ export type LifeTimelineEntry = {
   id: string;
   category: LifeTimelineCategory;
   occurredAt: string;
+  /** Real persistence time, used for incremental memory sync; occurredAt follows virtual life time. */
+  recordedAt?: string;
   title: string;
   details?: string;
   actorId?: string;
