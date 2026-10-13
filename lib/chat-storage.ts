@@ -1538,7 +1538,7 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
                         const updated = {
                             ...life,
                             timeline: life.timeline.map(entry => entry.id === previous.id
-                                ? { ...entry, occurredAt: nowIso, title: chatTitle, details: [...priorLines, line].slice(-3).join("\\n"), sourceId: newMsg.id }
+                                ? { ...entry, occurredAt: nowIso, recordedAt: new Date().toISOString(), title: chatTitle, details: [...priorLines, line].slice(-3).join("\\n"), sourceId: newMsg.id }
                                 : entry),
                             updatedAt: nowIso,
                         };
