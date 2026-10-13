@@ -676,6 +676,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       kind: "appointment", durationMinutes: 60,
     });
     const invitation = next.invitations[0];
+    if (settings.recordScheduleChanges) next = appendLifeTimelineEntry(next, { category: "schedule", title: "你向" + character.name + "发起邀约", details: inviteActivity.trim() + " · " + proposedAt.toLocaleString("zh-CN") + (location?.name ? " · " + location.name : ""), actorId: PLAYER_ID, actorName: playerName, locationName: location?.name, sourceId: invitation.id });
     commit(next);
     setBusy(true);
     setNotice(`已向${character.name}发出邀约，正在根据 TA 的人设和当前日程等待回应……`);
@@ -702,7 +703,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         const resolution = resolveInvitationConfirmation(current, invitation.id);
         if (resolution.ok) {
           const confirmedState = { ...resolution.state, invitations: resolution.state.invitations.map(item => item.id === invitation.id ? { ...item, responseReason: reason || "角色接受了邀约。" } : item) };
-          commit(confirmedState);
+          const logged = settings.recordScheduleChanges ? appendLifeTimelineEntry(confirmedState, { category: "schedule", title: character.name + "接受了你的邀约", details: invitation.activity + (reason ? " · " + reason : ""), actorId: character.id, actorName: character.name, locationName: invitation.locationName, sourceId: invitation.id }) : confirmedState;
+          commit(logged);
           setNotice(`${character.name}答应了这次邀约。${reason ? " TA 的回应：" + reason : ""}`);
         } else {
           commit({ ...current, invitations: current.invitations.map(item => item.id === invitation.id ? { ...item, status: "declined" as const, responseReason: resolution.notice, updatedAt: new Date().toISOString() } : item) });
@@ -710,7 +712,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         }
       } else {
         const declineReason = reason || (decision === "decline" ? "角色决定这次不赴约。" : "角色没有明确答应这次邀约，因此没有替 TA 自动确认。");
-        commit({ ...current, invitations: current.invitations.map(item => item.id === invitation.id ? { ...item, status: "declined" as const, responseReason: declineReason, updatedAt: new Date().toISOString() } : item) });
+        let declinedState = { ...current, invitations: current.invitations.map(item => item.id === invitation.id ? { ...item, status: "declined" as const, responseReason: declineReason, updatedAt: new Date().toISOString() } : item) };
+        if (settings.recordScheduleChanges) declinedState = appendLifeTimelineEntry(declinedState, { category: "schedule", title: character.name + "拒绝了你的邀约", details: invitation.activity + " · " + declineReason, actorId: character.id, actorName: character.name, locationName: invitation.locationName, sourceId: invitation.id });
+        commit(declinedState);
         setNotice(`${character.name}没有接受这次邀约。${declineReason}`);
       }
     } catch (error) {
