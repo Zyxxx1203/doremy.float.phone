@@ -36,7 +36,7 @@ import {
 import { discoverMcpTools, startMcpOAuth } from "@/lib/tool-executor";
 import { getMaxToolRounds, loadChatAppSettings, saveChatAppSettings } from "@/lib/chat-storage";
 import { SettingsContext } from "@/components/phone-settings-app";
-import { loadVirtualLifeState } from "@/lib/life/life-storage";
+import { loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { LIFE_TOOL_DEFINITIONS } from "@/lib/life/life-tools";
 import { Toggle, Input, Textarea, Select } from "@/components/ui/form";
 import { ConfirmDialog, ContentDialog } from "@/components/ui/modal";
@@ -112,6 +112,7 @@ export function ToolboxSettings() {
     const [compositeTools, setCompositeTools] = useState<CompositeToolConfig[]>([]);
     const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]);
     const [internalCapabilities, setInternalCapabilities] = useState<InternalCapabilityConfig[]>([]);
+    const [lifeToolSettings, setLifeToolSettings] = useState(() => loadVirtualLifeState().settings);
     const [customAppTools, setCustomAppTools] = useState<CustomAppToolEntry[]>([]);
     const [editRestPackageId, setEditRestPackageId] = useState<string | null>(null);
     const [editRestId, setEditRestId] = useState<string | null>(null);
@@ -209,6 +210,12 @@ export function ToolboxSettings() {
     }
     function updateInternalCapability(id: string, updates: Partial<InternalCapabilityConfig>) {
         persistInternal(internalCapabilities.map(item => item.id === id ? { ...item, ...updates, updatedAt: Date.now() } : item));
+    }
+
+    function updateLifeToolSetting(key: "enableInvitations" | "enableFollowRequestTool" | "enableScheduleChangeTool", value: boolean) {
+        const latest = loadVirtualLifeState();
+        const saved = saveVirtualLifeState({ ...latest, settings: { ...latest.settings, [key]: value } });
+        setLifeToolSettings(saved.settings);
     }
     async function updateCustomAppToolEnabled(tool: CustomAppToolEntry, enabled: boolean) {
         const now = new Date().toISOString();
@@ -795,7 +802,6 @@ export function ToolboxSettings() {
         ? customAppTools.find(tool => customAppToolKey(tool) === editCustomAppToolKey) ?? null
         : null;
     const exportEntries = buildExportEntries();
-    const lifeToolSettings = loadVirtualLifeState().settings;
 
     return (
         <div className="flex flex-col gap-[24px] h-full">
@@ -821,31 +827,6 @@ export function ToolboxSettings() {
                     </Select>
                 </div>
             </div>
-            {/* Built-in life tools are system tools, not REST tools; show them here so users can verify availability. */}
-            <section className="rounded-2xl border border-[#dbc6b2] bg-[#fbf5ee] p-4">
-                <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                        <p className="menu-label">生活引擎工具</p>
-                        <p className="menu-desc !mt-1 !whitespace-normal">这些是聊天中可调用的内置工具，不会出现在 REST 工具列表里。启用后角色会按情境调用，不需要手动创建工具。</p>
-                    </div>
-                    <span className={`ui-badge shrink-0 ${lifeToolSettings.enabled && lifeToolSettings.enableCharacterAutonomy ? "" : "opacity-60"}`}>{lifeToolSettings.enabled && lifeToolSettings.enableCharacterAutonomy ? "已开放" : "未开放"}</span>
-                </div>
-                <div className="mt-3 flex flex-col gap-2">
-                    {LIFE_TOOL_DEFINITIONS.map(tool => {
-                        const enabled = lifeToolSettings.enabled && lifeToolSettings.enableCharacterAutonomy && (
-                            tool.name === "life_propose_invitation" ? lifeToolSettings.enableInvitations :
-                            tool.name === "life_request_follow" ? lifeToolSettings.enableInvitations && lifeToolSettings.enableFollowRequestTool :
-                            tool.name === "life_change_schedule" ? lifeToolSettings.enableScheduleChangeTool : false
-                        );
-                        const label = tool.name === "life_propose_invitation" ? "主动发起邀约" : tool.name === "life_request_follow" ? "申请陪伴／跟随" : tool.name === "life_change_schedule" ? "调整角色日程" : tool.name;
-                        return <div key={tool.name} className="flex items-center justify-between gap-3 rounded-xl bg-white/80 px-3 py-2">
-                            <div className="min-w-0"><p className="text-sm font-medium text-stone-800">{label}</p><p className="mt-0.5 text-[11px] leading-relaxed text-stone-500">{tool.description}</p></div>
-                            <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] ${enabled ? "bg-emerald-50 text-emerald-700" : "bg-stone-100 text-stone-500"}`}>{enabled ? "可调用" : "已关闭"}</span>
-                        </div>;
-                    })}
-                </div>
-                <p className="mt-3 text-xs leading-relaxed text-stone-600">开启路径：生活 APP →「自定义」→ 打开生活引擎与角色自主行动，再分别开启「主动邀约」「日程调整」「跟随申请」。这里显示的是当前实际开关状态。</p>
-            </section>
             {/* REST Tools */}
             <div className="flex justify-between items-center gap-3">
                 <p className="settings-menu-section-title">Tools</p>
@@ -1131,6 +1112,34 @@ export function ToolboxSettings() {
                             </div>
                         </div>
                     );
+                })}
+                <div className="ui-group-card !flex-row !items-center">
+                    <div className="flex-1 flex flex-col gap-1 min-w-0">
+                        <div className="flex items-center gap-[6px] min-w-0">
+                            <span className="menu-label truncate min-w-0">生活引擎工具</span>
+                            <span className="ui-badge shrink-0">内置</span>
+                        </div>
+                        <span className="menu-desc !mt-0">角色主动邀约、申请陪伴与调整日程的工具集合；总开关仍由生活 APP 自定义页控制。</span>
+                    </div>
+                    <span className={`ui-badge shrink-0 ${lifeToolSettings.enabled && lifeToolSettings.enableCharacterAutonomy ? "" : "opacity-60"}`}>{lifeToolSettings.enabled && lifeToolSettings.enableCharacterAutonomy ? "已开放" : "总开关关闭"}</span>
+                </div>
+                {LIFE_TOOL_DEFINITIONS.map(tool => {
+                    const settingKey = tool.name === "life_propose_invitation" ? "enableInvitations" : tool.name === "life_request_follow" ? "enableFollowRequestTool" : tool.name === "life_change_schedule" ? "enableScheduleChangeTool" : null;
+                    if (!settingKey) return null;
+                    const label = tool.name === "life_propose_invitation" ? "主动发起邀约" : tool.name === "life_request_follow" ? "申请陪伴／跟随" : "调整角色日程";
+                    const checked = Boolean(lifeToolSettings[settingKey]);
+                    return <div key={tool.name} className="ui-group-card !flex-row !items-center">
+                        <div className="flex-1 flex flex-col gap-1 min-w-0">
+                            <div className="flex items-center gap-[6px] min-w-0">
+                                <span className="menu-label truncate min-w-0">{label}</span>
+                                <span className="ui-badge shrink-0">内置</span>
+                            </div>
+                            <span className="menu-desc !mt-0">{tool.description}</span>
+                        </div>
+                        <div className="shrink-0">
+                            <Toggle checked={checked} onChange={value => updateLifeToolSetting(settingKey, value)} />
+                        </div>
+                    </div>;
                 })}
             </div>
 
