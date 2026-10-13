@@ -1898,8 +1898,11 @@ export async function buildChatPromptMessages(
         buildMusicCloudMacro(),
     ]);
 
-    const longTermMemories = [\n        memResults ? formatLongTermMemories(memResults) : "",\n        buildLifeMemoryContext(character.id),
-        buildLifePresenceContext(character.id),\n    ].filter(Boolean).join("\\n\\n");
+    const longTermMemories = [
+        memResults ? formatLongTermMemories(memResults) : "",
+        buildLifeMemoryContext(character.id),
+        buildLifePresenceContext(character.id),
+    ].filter(Boolean).join("\n\n");
     const coreMemories = coreResults ? formatCoreMemories(coreResults) : "";
     const scheduleSummary = buildCalendarScheduleMarker("character", character.id, getWeekStartIso(now));
     const currentSchedule = getCurrentCalendarScheduleForPrompt("character", character.id, now);
