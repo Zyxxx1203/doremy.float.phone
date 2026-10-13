@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
+import android.content.res.Configuration
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -286,6 +287,17 @@ class ScreenshotBallService : Service() {
         return START_STICKY
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        main.post {
+            if (ballView != null) {
+                diameterPx = dp(ballDiameterDp)
+                clamp()
+                applyPosition()
+            }
+        }
+    }
+
     override fun onDestroy() {
         teardown()
         super.onDestroy()
@@ -422,10 +434,10 @@ class ScreenshotBallService : Service() {
         runCatching { windowManager.addView(view, params) }
     }
 
-    /** 松手后吸附到最近的左右边缘。 */
+    /** 松手后吸附到最近的左右边缘；不额外留边距，确保真正贴边。 */
     private fun snapToEdge() {
         val screenW = resources.displayMetrics.widthPixels
-        posX = if (posX + diameterPx / 2 < screenW / 2) dp(EDGE_DP) else screenW - diameterPx - dp(EDGE_DP)
+        posX = if (posX + diameterPx / 2 < screenW / 2) 0 else maxOf(0, screenW - diameterPx)
         posY = posY.coerceIn(0, maxOf(0, resources.displayMetrics.heightPixels - diameterPx))
         applyPosition()
     }
