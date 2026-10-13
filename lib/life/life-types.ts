@@ -53,6 +53,14 @@ export type LifeEngineSettings = {
   compactLayout: boolean;
   showTimeline: boolean;
   showLocationHints: boolean;
+  recordLocationChanges: boolean;
+  recordSceneMessages: boolean;
+  recordCharacterActions: boolean;
+  recordScheduleChanges: boolean;
+  recordToolCalls: boolean;
+  recordSocialActivity: boolean;
+  recordDiaryActivity: boolean;
+  recordChatActivity: boolean;
   enableAmbientDetails: boolean;
   autoGenerateSceneImages: boolean;
   sceneImageCount: 1 | 2 | 3 | 4;
@@ -86,6 +94,14 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   compactLayout: false,
   showTimeline: true,
   showLocationHints: true,
+  recordLocationChanges: true,
+  recordSceneMessages: true,
+  recordCharacterActions: true,
+  recordScheduleChanges: true,
+  recordToolCalls: true,
+  recordSocialActivity: true,
+  recordDiaryActivity: true,
+  recordChatActivity: true,
   enableAmbientDetails: true,
   autoGenerateSceneImages: false,
   sceneImageCount: 2,
@@ -207,6 +223,22 @@ export type LifeInvitation = {
   eventId?: string;
 };
 
+export type LifeTimelineCategory = "location" | "scene" | "action" | "dialogue" | "schedule" | "tool" | "social" | "diary" | "chat" | "system";
+
+export type LifeTimelineEntry = {
+  id: string;
+  category: LifeTimelineCategory;
+  occurredAt: string;
+  title: string;
+  details?: string;
+  actorId?: string;
+  actorName?: string;
+  locationName?: string;
+  sceneId?: string;
+  /** Related scene message id, chat session id, post id, diary id, or tool call id. */
+  sourceId?: string;
+};
+
 export type LifeMemoryFact = {
   id: string;
   eventId: string;
@@ -229,6 +261,7 @@ export type VirtualLifeState = {
   events: LifeEvent[];
   invitations: LifeInvitation[];
   memories: LifeMemoryFact[];
+  timeline: LifeTimelineEntry[];
   updatedAt: string;
 };
 
@@ -246,6 +279,7 @@ export function createEmptyVirtualLifeState(now = new Date().toISOString()): Vir
     events: [],
     invitations: [],
     memories: [],
+    timeline: [],
     updatedAt: now,
   };
 }
