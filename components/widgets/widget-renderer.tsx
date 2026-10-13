@@ -182,7 +182,23 @@ function LifeTimelineWidget({ config, widgetId, onConfigChange, preview }: any) 
       const current = getCurrentActorSchedule(state, "player", "player", now);
       const next = state.schedules.filter(slot => slot.ownerType === "player" && slot.ownerId === "player" && new Date(slot.startAt).getTime() > now.getTime()).sort((a,b)=>a.startAt.localeCompare(b.startAt))[0];
       const actual = state.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === "player");
-      if (alive) setSnapshot({ now, current, next, actual, settings: state.settings });
+      const dayStart = new Date(now); dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+      const visibleTimeline = (state.timeline ?? []).filter(entry => {
+        const at = new Date(entry.occurredAt).getTime();
+        if (!Number.isFinite(at) || at < dayStart.getTime() || at >= dayEnd.getTime()) return false;
+        if (entry.category === "location" || entry.category === "scene") return state.settings.recordLocationChanges;
+        if (entry.category === "action") return state.settings.recordCharacterActions;
+        if (entry.category === "dialogue") return state.settings.recordSceneMessages;
+        if (entry.category === "schedule") return state.settings.recordScheduleChanges;
+        if (entry.category === "tool") return state.settings.recordToolCalls;
+        if (entry.category === "social") return state.settings.recordSocialActivity;
+        if (entry.category === "diary") return state.settings.recordDiaryActivity;
+        if (entry.category === "chat") return state.settings.recordChatActivity;
+        return true;
+      }).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+      const latestEvent = visibleTimeline[0];
+      if (alive) setSnapshot({ now, current, next, actual, latestEvent, settings: state.settings });
     };
     refresh();
     const timer = window.setInterval(refresh, 30_000);
@@ -196,7 +212,7 @@ function LifeTimelineWidget({ config, widgetId, onConfigChange, preview }: any) 
   const time = now.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false});
   return <div className="flex h-full flex-col justify-between overflow-hidden rounded-xl p-3" style={{background:typeof config?.background==="string"?config.background:"linear-gradient(145deg,#fffaf1,#ead8c4)",color:"#4d3b30"}}>
     <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-semibold tracking-[.16em]" style={{color:accent}}>MY LIFE · TODAY</span><span className="text-xs font-semibold">{time}</span></div>
-    <div className="min-h-0"><p className="mt-2 truncate text-base font-semibold">{actual?.activity || current?.title || "今天的安排待补全"}</p><p className="mt-1 truncate text-[11px] opacity-70">{actual?.actualLocationName || (settings?.showLocationHints ? current?.plannedLocationName : "") || "地点暂未记录"}</p></div>
+    <div className="min-h-0"><p className="mt-2 truncate text-base font-semibold">{actual?.activity || current?.title || "今天的安排待补全"}</p><p className="mt-1 truncate text-[11px] opacity-70">{actual?.actualLocationName || (settings?.showLocationHints ? current?.plannedLocationName : "") || "地点暂未记录"}</p>{snapshot.latestEvent && <p className="mt-1 truncate text-[10px] opacity-60" title={snapshot.latestEvent.title}>最近：{snapshot.latestEvent.title}</p>}</div>
     {showNext && <div className="rounded-lg bg-white/65 p-2"><p className="text-[9px] opacity-55">接下来</p><p className="truncate text-[11px] font-medium">{next?.title || "今天的安排已结束"}</p>{next && <p className="text-[9px] opacity-55">{new Date(next.startAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})} · {next.plannedLocationName || "地点待定"}</p>}</div>}
     {!preview && <button onClick={()=>setShowNext(v=>!v)} className="mt-1 self-end text-[9px]" style={{color:accent}}>{showNext?"收起下一项":"查看下一项"}</button>}
   </div>;
