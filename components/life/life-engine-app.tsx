@@ -910,10 +910,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       setNotice("日程结束时间必须晚于开始时间。");
       return;
     }
-    let next = { ...stateRef.current, schedules: stateRef.current.schedules.map(item => item.id === slot.id ? updated : item).sort((a,b)=>a.startAt.localeCompare(b.startAt)) };
-    next = appendLifeTimelineEntry(next, { category: "schedule", title: "修改了日程：" + updated.title, details: updated.startAt + " – " + updated.endAt + " · " + (updated.plannedLocationName || "地点待定"), actorId: slot.ownerId, actorName: actors.find(actor => actor.ownerId === slot.ownerId && actor.ownerType === slot.ownerType)?.name, locationName: updated.plannedLocationName ?? undefined, sourceId: slot.id });
+    const next = { ...stateRef.current, schedules: stateRef.current.schedules.map(item => item.id === slot.id ? updated : item).sort((a,b)=>a.startAt.localeCompare(b.startAt)) };
     commit(next);
-    setNotice("日程已保存。");
   };
 
   const addManualPlan = (actor: ActorChoice) => {
