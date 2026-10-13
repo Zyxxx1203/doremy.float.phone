@@ -247,7 +247,7 @@ export async function deliverUserShot(outcome: CheckInOutcome): Promise<{ ok: bo
       base64: outcome.base64,
       width: outcome.width,
       height: outcome.height,
-      bytes: outcome.bytes,
+      bytes: Math.floor(outcome.base64.length * 3 / 4),
     });
     if (!record) {
       return { ok: false, reason: "图片没能保存，这次没发出去" };
