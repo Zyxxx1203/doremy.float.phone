@@ -469,7 +469,7 @@ export async function executeToolCalls(toolCalls: ToolCall[], context?: ToolExec
     if ((context?.appId === "chat" || context?.appId === "group_chat") && context.characterId && typeof window !== "undefined") {
         try {
             let life = loadVirtualLifeState();
-            if (life.settings.enabled && life.settings.recordToolCalls) {
+            if (life.settings.enabled) {
                 const characterName = loadCharacters().find(character => character.id === context.characterId)?.name ?? "角色";
                 let changed = false;
                 for (let index = 0; index < toolCalls.length; index++) {
