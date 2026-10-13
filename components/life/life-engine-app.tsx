@@ -746,7 +746,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   if (!ready) return <main className="flex min-h-screen items-center justify-center bg-[#f7efe4] text-stone-500">正在打开生活档案…</main>;
 
-  return <main style={cssVars} className={`min-h-screen bg-gradient-to-br ${themeClass} ${settings.compactLayout ? "px-2 py-2 sm:px-3 sm:py-3" : "px-3 py-4 sm:px-6 sm:py-8"}`}>
+  return <main style={cssVars} className={`h-screen h-[100dvh] overflow-y-auto overscroll-y-contain touch-pan-y bg-gradient-to-br ${themeClass} ${settings.compactLayout ? "px-2 py-2 sm:px-3 sm:py-3" : "px-3 py-4 sm:px-6 sm:py-8"}`}>
     <div className="mx-auto max-w-6xl">
       <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/75 text-[var(--life-accent)] shadow-sm"><Heart size={22}/></div><div><p className="text-[10px] font-semibold uppercase tracking-[0.26em] opacity-60">LIFE SIMULATOR · PERSONAL WORLD</p><h1 className="text-2xl font-semibold tracking-tight">虚拟生活引擎</h1><p className="mt-0.5 text-xs opacity-65">各自生活 · 独立时间 · 自然相遇 · 持续记忆</p></div></div>
