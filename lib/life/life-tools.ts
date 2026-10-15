@@ -140,7 +140,7 @@ function applyScheduleChange(state: VirtualLifeState, characterId: string, args:
     plannedLocationId: location?.id ?? null,
     plannedLocationName: location?.name ?? null,
     kind: "free-time",
-    source: "manual",
+    source: "character-tool",
     updatedAt: new Date().toISOString(),
   });
   return { state: { ...state, schedules: schedules.sort((a, b) => a.startAt.localeCompare(b.startAt)) }, error: "" };
