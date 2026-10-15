@@ -30,7 +30,9 @@ jobs:
         run: npm ci
       - name: TypeScript type check
         run: npx tsc --noEmit
-      - name: Life schedule regression tests
-        run: npm run test:life
+      - name: Life schedule regression tests (UTC)
+        run: TZ=UTC npm run test:life
+      - name: Life schedule regression tests (daylight-saving timezone)
+        run: TZ=America/New_York npm run test:life
       - name: Production build
         run: npm run build
