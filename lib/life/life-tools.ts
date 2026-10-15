@@ -6,9 +6,8 @@ import {
   getActorClock,
   resolveActorLifeNow,
   makeLifeInvitation,
-  placeAppointmentInActorSchedule,
 } from "./life-runtime";
-import type { LifeOwnerType, LifeScheduleSlot, VirtualLifeState } from "./life-types";
+import type { VirtualLifeState } from "./life-types";
 
 export type LifeToolDefinition = {
   name: string;
