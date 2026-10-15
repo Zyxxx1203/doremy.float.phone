@@ -159,6 +159,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [inviteReason, setInviteReason] = useState("");
   const [inviteAt, setInviteAt] = useState("");
   const [inviteAtEdited, setInviteAtEdited] = useState(false);
+  const [editingInvitationId, setEditingInvitationId] = useState<string | null>(null);
+  const [editInvitationDraft, setEditInvitationDraft] = useState({ activity: "", reason: "", proposedAt: "", locationId: "", durationMinutes: "60" });
   const inviteDefaultInitializedRef = useRef(false);
   const [sceneImageBusy, setSceneImageBusy] = useState(false);
   const [imageObjectUrls, setImageObjectUrls] = useState<Record<string,string>>({});
@@ -1285,6 +1287,170 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setNotice(result.notice);
   };
 
+  const beginEditInvitation = (inviteId: string) => {
+    const invite = stateRef.current.invitations.find(item => item.id === inviteId);
+    if (!invite || !["proposed", "confirmed"].includes(invite.status)) return;
+    const localDate = new Date(invite.proposedAt);
+    const localValue = Number.isFinite(localDate.getTime())
+      ? new Date(localDate.getTime() - localDate.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
+      : "";
+    setEditingInvitationId(invite.id);
+    setEditInvitationDraft({
+      activity: invite.activity,
+      reason: invite.reason ?? "",
+      proposedAt: localValue,
+      locationId: invite.locationId ?? stateRef.current.locations.find(location => location.name === invite.locationName)?.id ?? stateRef.current.locations[0]?.id ?? "",
+      durationMinutes: String(invite.durationMinutes ?? 60),
+    });
+  };
+
+  const saveInvitationEdit = (inviteId: string) => {
+    const current = stateRef.current;
+    const invite = current.invitations.find(item => item.id === inviteId);
+    if (!invite || !["proposed", "confirmed"].includes(invite.status)) return;
+    const activity = editInvitationDraft.activity.trim();
+    const start = new Date(editInvitationDraft.proposedAt);
+    const duration = Math.max(15, Math.min(1440, Number(editInvitationDraft.durationMinutes) || 60));
+    const end = new Date(start.getTime() + duration * 60_000);
+    const location = current.locations.find(item => item.id === editInvitationDraft.locationId);
+    if (!activity || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+      setNotice("请填写有效的活动内容和时间。原邀约没有改变。");
+      return;
+    }
+    const playerNow = resolveActorLifeNow(getActorClock(current, "player", PLAYER_ID));
+    const characterNow = resolveActorLifeNow(getActorClock(current, "character", invite.characterId));
+    if (start <= playerNow || start <= characterNow) {
+      setNotice("新时间必须晚于你和角色各自的当前虚拟时间。原邀约没有改变。");
+      return;
+    }
+    const linkedEvent = invite.status === "confirmed"
+      ? current.events.find(event => event.id === invite.eventId && event.kind === "invitation")
+      : undefined;
+    if (invite.status === "confirmed" && !linkedEvent) {
+      setNotice("找不到这条已确认邀约对应的日程事件，未修改任何内容。");
+      return;
+    }
+    const linkedPrefix = linkedEvent ? "invite-slot-" + linkedEvent.id + "-" : "";
+    const linkedSlots = linkedPrefix ? current.schedules.filter(slot => slot.id.startsWith(linkedPrefix)) : [];
+    const linkedIds = new Set(linkedSlots.map(slot => slot.id));
+    const ownerIds = invite.kind === "follow-request" ? [invite.characterId] : [PLAYER_ID, invite.characterId];
+    for (const ownerId of ownerIds) {
+      const ownerType: LifeOwnerType = ownerId === PLAYER_ID ? "player" : "character";
+      const conflict = current.schedules.find(slot =>
+        slot.ownerId === ownerId && slot.ownerType === ownerType && !linkedIds.has(slot.id)
+        && new Date(slot.startAt).getTime() < end.getTime()
+        && new Date(slot.endAt).getTime() > start.getTime()
+        && (slot.kind === "appointment" || slot.source === "manual" || slot.source === "event" || slot.source === "character-tool")
+      );
+      if (conflict) {
+        setNotice("新时间与「" + conflict.title + "」冲突。原邀约和双方日程均未改变。");
+        return;
+      }
+    }
+    const now = new Date().toISOString();
+    const updatedInvitation = {
+      ...invite,
+      activity,
+      reason: editInvitationDraft.reason.trim() || undefined,
+      proposedAt: start.toISOString(),
+      durationMinutes: duration,
+      locationId: invite.kind === "follow-request" ? undefined : location?.id,
+      locationName: invite.kind === "follow-request" ? undefined : location?.name,
+      updatedAt: now,
+      ...(invite.status === "confirmed" ? { responseReason: (invite.responseReason ? invite.responseReason + " · " : "") + "邀约内容已由用户调整。" } : {}),
+    };
+    let next: VirtualLifeState = {
+      ...current,
+      invitations: current.invitations.map(item => item.id === invite.id ? updatedInvitation : item),
+    };
+    if (linkedEvent) {
+      next = {
+        ...next,
+        events: next.events.map(event => event.id === linkedEvent.id ? {
+          ...event, startsAt: start.toISOString(), endsAt: end.toISOString(), title: activity,
+          locationId: invite.kind === "follow-request" ? undefined : location?.id,
+          locationName: invite.kind === "follow-request" ? undefined : location?.name,
+          updatedAt: now,
+        } : event),
+        schedules: next.schedules.filter(slot => !linkedIds.has(slot.id)),
+      };
+      for (const ownerId of ownerIds) {
+        const ownerType: LifeOwnerType = ownerId === PLAYER_ID ? "player" : "character";
+        const slot: LifeScheduleSlot = {
+          id: "invite-slot-" + linkedEvent.id + "-" + ownerType + "-" + ownerId,
+          ownerType, ownerId, startAt: start.toISOString(), endAt: end.toISOString(),
+          title: invite.kind === "follow-request" ? "陪伴玩家并跟随其行程" : activity,
+          kind: "appointment", source: "event",
+          plannedLocationId: invite.kind === "follow-request" ? null : location?.id ?? null,
+          plannedLocationName: invite.kind === "follow-request" ? "跟随玩家的实际地点" : location?.name ?? null,
+          updatedAt: now,
+        };
+        next = placeAppointmentInActorSchedule(next, slot);
+      }
+    }
+    next = appendLifeTimelineEntry(next, {
+      category: "schedule", title: "重新安排邀约：" + activity,
+      details: start.toLocaleString("zh-CN") + " · " + (location?.name ?? (invite.kind === "follow-request" ? "跟随玩家" : "地点待定")),
+      actorId: invite.characterId, actorName: characters.find(character => character.id === invite.characterId)?.name,
+      locationName: location?.name, sourceId: invite.id,
+    });
+    commit(next);
+    setEditingInvitationId(null);
+    setNotice(invite.status === "confirmed" ? "邀约已调整，双方日程已同步。请记得把变更告知角色；当前系统不会自动发起第二轮角色同意流程。" : "邀约内容已更新。");
+  };
+
+  const cancelInvitation = (inviteId: string) => {
+    const current = stateRef.current;
+    const invite = current.invitations.find(item => item.id === inviteId && ["proposed", "confirmed"].includes(item.status));
+    if (!invite) return;
+    const event = invite.status === "confirmed" ? current.events.find(item => item.id === invite.eventId && item.kind === "invitation") : undefined;
+    const prefix = event ? "invite-slot-" + event.id + "-" : "";
+    const linkedSlots = prefix ? current.schedules.filter(slot => slot.id.startsWith(prefix)) : [];
+    const linkedIds = new Set(linkedSlots.map(slot => slot.id));
+    const now = new Date().toISOString();
+    let next: VirtualLifeState = {
+      ...current,
+      invitations: current.invitations.map(item => item.id === inviteId ? { ...item, status: "cancelled" as const, updatedAt: now, responseReason: (item.responseReason ? item.responseReason + " · " : "") + "邀约已取消。" } : item),
+      events: event ? current.events.map(item => item.id === event.id ? { ...item, status: "cancelled" as const, cancelledAt: now, updatedAt: now } : item) : current.events,
+      schedules: current.schedules.filter(slot => !linkedIds.has(slot.id)),
+    };
+    if (event) {
+      const startMs = new Date(event.startsAt ?? invite.proposedAt).getTime();
+      const endMs = new Date(event.endsAt ?? (startMs + (invite.durationMinutes ?? 60) * 60_000)).getTime();
+      for (const slot of linkedSlots) {
+        const occupied = next.schedules.some(other => other.ownerType === slot.ownerType && other.ownerId === slot.ownerId && new Date(other.startAt).getTime() < endMs && new Date(other.endAt).getTime() > startMs);
+        if (!occupied && Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
+          next.schedules = [...next.schedules, {
+            id: id("cancelled-invite-free-time"), ownerType: slot.ownerType, ownerId: slot.ownerId,
+            startAt: new Date(startMs).toISOString(), endAt: new Date(endMs).toISOString(),
+            title: "自由活动", kind: "free-time", source: "weekly-generation",
+            plannedLocationId: slot.plannedLocationId, plannedLocationName: slot.plannedLocationName, updatedAt: now,
+          }];
+        }
+      }
+    }
+    next = appendLifeTimelineEntry(next, { category: "schedule", title: "取消邀约：" + invite.activity, details: "已取消，不再占用双方的约定时段。", actorId: invite.characterId, locationName: invite.locationName, sourceId: invite.id });
+    commit(next);
+    setEditingInvitationId(null);
+    setNotice("邀约已取消；相关日程已解除占用。");
+  };
+
+  const reuseInvitation = (inviteId: string) => {
+    const invite = stateRef.current.invitations.find(item => item.id === inviteId);
+    if (!invite) return;
+    setInviteCharacterId(invite.characterId);
+    setInviteActivity(invite.activity);
+    setInviteReason(invite.reason ?? "");
+    setInviteLocationId(invite.locationId ?? stateRef.current.locations.find(location => location.name === invite.locationName)?.id ?? "cafe");
+    const d = new Date(invite.proposedAt);
+    if (Number.isFinite(d.getTime())) {
+      setInviteAt(new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16));
+      setInviteAtEdited(true);
+    }
+    setEditingInvitationId(null);
+    setNotice("已将这条邀约复制到创建表单。修改时间后即可重新发起。");
+  };
+
   const declineInvitation = (inviteId: string) => {
     const base = stateRef.current;
     const invite = base.invitations.find(item => item.id === inviteId && item.status === "proposed");
@@ -1903,7 +2069,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           <form onSubmit={addInvitation} className="space-y-3"><label className="block text-sm">邀请谁<select value={inviteCharacterId} onChange={e=>setInviteCharacterId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="">选择角色</option>{characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label className="block text-sm">事件 / 活动<input value={inviteActivity} onChange={e=>setInviteActivity(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">邀约理由<textarea value={inviteReason} onChange={e=>setInviteReason(e.target.value)} placeholder="例如：最近想和你聊聊，或者想把这件有趣的事分享给你" rows={2} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">时间<input type="datetime-local" value={inviteAt} onChange={e=>{setInviteAtEdited(true);setInviteAt(e.target.value)}} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/><span className="mt-1 block text-[11px] text-stone-500">默认按你的虚拟时间预填；双方时钟不同步时，系统仍会分别检查是否来得及赴约。</span></label><label className="block text-sm">地点<select value={inviteLocationId} onChange={e=>setInviteLocationId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5">{state.locations.map(loc=><option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></label><button disabled={busy} className="w-full rounded-2xl bg-[var(--life-accent)] px-4 py-3 text-sm font-medium text-white disabled:opacity-50">{busy?"等待角色回应…":"发出邀约"}</button></form>
         </section>
         <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Invitation inbox" title="邀约记录" />
-          {state.invitations.length===0?<p className="rounded-2xl bg-white/60 p-4 text-sm text-stone-400">这里会保存待确认、已确认和已取消的邀约。</p>:<div className="space-y-3">{state.invitations.map(invite=>{const char=characters.find(c=>c.id===invite.characterId);return <div key={invite.id} className="rounded-2xl border border-stone-200/70 bg-white/70 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-medium">{char?.name??"未知角色"} · {invite.kind==="follow-request"?"陪伴申请":"邀约"} · {invite.activity}</p><p className="mt-1 text-xs text-stone-500">{fmt(invite.proposedAt)} · {invite.kind==="follow-request"?(invite.durationMinutes??120)+" 分钟 · 跟随你的实际行程":invite.locationName??"地点待定"}</p>{invite.reason&&<p className="mt-1 text-xs leading-relaxed text-stone-600">理由：{invite.reason}</p>}{invite.responseReason&&<p className="mt-1 text-xs leading-relaxed text-stone-600">回应：{invite.responseReason}</p>}</div><span className="rounded-full bg-[#f0e3d5] px-2.5 py-1 text-[11px]">{(invite.status==="proposed"&&invite.proposedBy==="player"?"等待角色回应":({proposed:"待确认",confirmed:"已确认",declined:"已拒绝",cancelled:"已取消",completed:"已完成"} as Record<string,string>)[invite.status])}</span></div>{invite.status==="proposed"&&invite.proposedBy!=="player"&&<div className="mt-3 flex gap-2"><button onClick={()=>confirmInvitation(invite.id)} className="rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white">{invite.kind==="follow-request"?"接受陪伴申请":"确认并同步日程"}</button><button onClick={()=>declineInvitation(invite.id)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">拒绝</button></div>}</div>;})}</div>}
+          {state.invitations.length===0?<p className="rounded-2xl bg-white/60 p-4 text-sm text-stone-400">这里会保存待确认、已确认和已取消的邀约。</p>:<div className="space-y-3">{state.invitations.map(invite=>{const char=characters.find(c=>c.id===invite.characterId);const editable=invite.status==="proposed"||invite.status==="confirmed";const editing=editingInvitationId===invite.id;return <div key={invite.id} className="rounded-2xl border border-stone-200/70 bg-white/70 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-medium">{char?.name??"未知角色"} · {invite.kind==="follow-request"?"陪伴申请":"邀约"} · {invite.activity}</p><p className="mt-1 text-xs text-stone-500">{fmt(invite.proposedAt)} · {invite.kind==="follow-request"?(invite.durationMinutes??120)+" 分钟 · 跟随你的实际行程":invite.locationName??"地点待定"} · {invite.durationMinutes??60} 分钟</p>{invite.reason&&<p className="mt-1 text-xs leading-relaxed text-stone-600">理由：{invite.reason}</p>}{invite.responseReason&&<p className="mt-1 text-xs leading-relaxed text-stone-600">回应：{invite.responseReason}</p>}</div><span className="shrink-0 rounded-full bg-[#f0e3d5] px-2.5 py-1 text-[11px]">{(invite.status==="proposed"&&invite.proposedBy==="player"?"等待角色回应":({proposed:"待确认",confirmed:"已确认",declined:"已拒绝",cancelled:"已取消",completed:"已完成"} as Record<string,string>)[invite.status])}</span></div>{editing&&<div className="mt-4 grid gap-3 rounded-2xl bg-[#faf5ef] p-3"><label className="block text-xs">活动内容<input value={editInvitationDraft.activity} onChange={e=>setEditInvitationDraft(d=>({...d,activity:e.target.value}))} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/></label><label className="block text-xs">邀约理由<textarea value={editInvitationDraft.reason} onChange={e=>setEditInvitationDraft(d=>({...d,reason:e.target.value}))} rows={2} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/></label><label className="block text-xs">时间<input type="datetime-local" value={editInvitationDraft.proposedAt} onChange={e=>setEditInvitationDraft(d=>({...d,proposedAt:e.target.value}))} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/></label><label className="block text-xs">持续时长（分钟）<input type="number" min={15} max={1440} step={15} value={editInvitationDraft.durationMinutes} onChange={e=>setEditInvitationDraft(d=>({...d,durationMinutes:e.target.value}))} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/></label>{invite.kind!=="follow-request"&&<label className="block text-xs">地点<select value={editInvitationDraft.locationId} onChange={e=>setEditInvitationDraft(d=>({...d,locationId:e.target.value}))} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm">{state.locations.map(loc=><option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></label>}<div className="flex gap-2"><button type="button" onClick={()=>saveInvitationEdit(invite.id)} className="flex-1 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white">保存并同步日程</button><button type="button" onClick={()=>setEditingInvitationId(null)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">取消编辑</button></div></div>}{!editing&&<div className="mt-3 flex flex-wrap gap-2">{invite.status==="proposed"&&invite.proposedBy!=="player"&&<><button onClick={()=>confirmInvitation(invite.id)} className="rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white">{invite.kind==="follow-request"?"接受陪伴申请":"确认并同步日程"}</button><button onClick={()=>declineInvitation(invite.id)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">拒绝</button></>}{editable&&<button onClick={()=>beginEditInvitation(invite.id)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">编辑 / 重新安排</button>}{editable&&<button onClick={()=>cancelInvitation(invite.id)} className="rounded-xl border border-red-200 px-3 py-2 text-xs text-red-600">取消邀约</button>}{(invite.status==="declined"||invite.status==="cancelled")&&<button onClick={()=>reuseInvitation(invite.id)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">复制并重新发起</button>}</div>}</div>;})}</div>}
         </section>
       </div>}
 
