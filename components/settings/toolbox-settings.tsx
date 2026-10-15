@@ -1125,7 +1125,7 @@ export function ToolboxSettings() {
                             <span className="menu-label truncate min-w-0">生活引擎工具</span>
                             <span className="ui-badge shrink-0">内置</span>
                         </div>
-                        <span className="menu-desc !mt-0">角色主动邀约、申请陪伴与调整日程的工具集合；总开关仍由生活 APP 自定义页控制。</span>
+                        <span className="menu-desc !mt-0">下面三项分别控制：主动邀约、申请陪伴／跟随、调整角色自己的日程。每项可独立开关；要实际执行，还需在生活 APP 中开启「虚拟生活引擎」与「角色自主行动」。</span>
                     </div>
                     <span className={`ui-badge shrink-0 ${lifeToolSettings.enabled && lifeToolSettings.enableCharacterAutonomy ? "" : "opacity-60"}`}>{lifeToolSettings.enabled && lifeToolSettings.enableCharacterAutonomy ? "已开放" : "总开关关闭"}</span>
                 </div>
