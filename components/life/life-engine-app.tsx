@@ -428,10 +428,13 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   };
 
   const updateActorLocation = (actor: ActorChoice, locationId: string) => {
-    const location = state.locations.find(item => item.id === locationId);
+    // Read and update the latest persisted-in-memory snapshot so a rapid location
+    // change cannot overwrite another life action committed since this render.
+    const currentState = stateRef.current;
+    const location = currentState.locations.find(item => item.id === locationId);
     if (!location) return;
-    const current = actorState(actor);
-    let next = upsertActorState(state, { ownerType: actor.ownerType, ownerId: actor.ownerId, activity: current?.activity || "正在这里活动", actualLocationId: location.id, actualLocationName: location.name, actualLocationUntil: null, updatedAt: new Date().toISOString() });
+    const current = currentState.actorStates.find(item => item.ownerType === actor.ownerType && item.ownerId === actor.ownerId);
+    let next = upsertActorState(currentState, { ownerType: actor.ownerType, ownerId: actor.ownerId, activity: current?.activity || "正在这里活动", actualLocationId: location.id, actualLocationName: location.name, actualLocationUntil: null, updatedAt: new Date().toISOString() });
     next = appendLifeTimelineEntry(next, { category: "location", title: actor.name + "来到了" + location.name, details: current?.actualLocationName ? "从" + current.actualLocationName + "前往" + location.name : "首次记录实际地点", actorId: actor.ownerId, actorName: actor.name, locationName: location.name });
     if (actor.ownerType === "player" && current?.actualLocationId !== location.id) {
       const scene = next.scenes.find(item => item.status === "active") ?? next.scenes.filter(item => item.status === "paused").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
