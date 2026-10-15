@@ -326,7 +326,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     let next = state;
     const owners = [
       { ownerType: "player" as const, ownerId: PLAYER_ID, name: playerName, profile: "" },
-      ...characters.map(character => ({ ownerType: "character" as const, ownerId: character.id, name: character.name, profile: [character.persona, character.personality, ...(character.tags ?? [])].filter(Boolean).join(" ") })),
+      ...characters.map(character => ({ ownerType: "character" as const, ownerId: character.id, name: character.name, profile: [character.persona, character.personality, ...(character.tags ?? []), getCharacterWorldBookContext(character.id), ...state.locations.map(location => location.characterHabits?.[character.id] ? `${location.name}地点习惯：${location.characterHabits[character.id]}` : "")].filter(Boolean).join(" ") })),
     ];
     for (const owner of owners) {
       if (!next.actorClocks.some(clock => clock.ownerType === owner.ownerType && clock.ownerId === owner.ownerId)) {
@@ -343,7 +343,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       }
     }
     if (next !== state) commit(next);
-  }, [ready, settings.autoGenerateWeeklyPlans, settings.generateSpecialEvents, settings.defaultClockMode, settings.defaultSpeed, characters, playerName, state, commit]);
+  }, [ready, settings.autoGenerateWeeklyPlans, settings.generateSpecialEvents, settings.defaultClockMode, settings.defaultSpeed, activePromptPreset.scheduleGenerationPrompt, characters, playerName, state, worldBooks, bindingConfig, commit]);
 
   useEffect(() => {
     if (!ready) return;
@@ -353,7 +353,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const roster = loadCharacters();
       const owners = [
         { ownerType: "player" as const, ownerId: PLAYER_ID, name: liveSettings.playerDisplayName || "我", profile: "" },
-        ...roster.map(character => ({ ownerType: "character" as const, ownerId: character.id, name: character.name, profile: [character.persona, character.personality, ...(character.tags ?? [])].filter(Boolean).join(" ") })),
+        ...roster.map(character => ({ ownerType: "character" as const, ownerId: character.id, name: character.name, profile: [character.persona, character.personality, ...(character.tags ?? []), getCharacterWorldBookContext(character.id), ...stateRef.current.locations.map(location => location.characterHabits?.[character.id] ? `${location.name}地点习惯：${location.characterHabits[character.id]}` : "")].filter(Boolean).join(" ") })),
       ];
       for (const owner of owners) {
         const virtualNow = resolveActorLifeNow(getActorClock(next, owner.ownerType, owner.ownerId));
@@ -456,7 +456,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       window.removeEventListener("focus", settleAll);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [ready, commit]);
+  }, [ready, commit, worldBooks, bindingConfig, activePromptPreset.scheduleGenerationPrompt]);
 
   const patchSettings = (patch: Partial<LifeEngineSettings>) => commit({ ...stateRef.current, settings: { ...stateRef.current.settings, ...patch } });
   const patchActivePromptPreset = (patch: Partial<LifePromptPreset>) => {
