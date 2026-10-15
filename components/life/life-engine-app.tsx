@@ -1193,7 +1193,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           `时间：${proposedAt.toLocaleString("zh-CN")}`,
           `地点：${location?.name ?? "地点待定"}`,
           `邀约理由：${inviteReason.trim() || "未填写"}`,
-          activePromptPreset.invitationResponsePrompt?.trim() || activePromptPreset.invitationResponsePrompt?.trim() || "请根据你的人设、当前日程、关系和真实意愿，自主决定接受或拒绝。不要让玩家替你确认；不要为了讨好玩家而默认接受。",
+          activePromptPreset.invitationResponsePrompt?.trim() || "请根据你的人设、当前日程、关系和真实意愿，自主决定接受或拒绝。不要让玩家替你确认；不要为了讨好玩家而默认接受。",
           activePromptPresetText ? "小手机预设补充规则：\n" + activePromptPresetText : "",
           settings.customPrompt ? "用户自定义规则：" + settings.customPrompt : "",
           "只输出一个机器可读标签，并可在 reason 中写一句简短自然的理由：<life_invitation_response decision=\"accept|decline\" reason=\"理由\" />。没有明确接受就视为拒绝；不要改动日程，系统会在接受后处理冲突和排期。",
@@ -1244,7 +1244,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       return { ok: false, state: base, notice: "这个时间对你或角色来说已经过去了。请修改时间；不会为了赴约自动跳过时间。" };
     }
     const relevantOwners = invite.kind === "follow-request" ? new Set([invite.characterId]) : new Set([PLAYER_ID, invite.characterId]);
-    const conflict = base.schedules.find(slot => relevantOwners.has(slot.ownerId) && (slot.ownerType === "player" || slot.ownerType === "character") && (slot.kind === "appointment" || slot.source === "manual" || slot.source === "event" || slot.source === "character-tool") && new Date(slot.startAt) < endsAt && new Date(slot.endAt) > startsAt);
+    const conflict = base.schedules.find(slot => relevantOwners.has(slot.ownerId) && ((slot.ownerType === "player" && invite.kind !== "follow-request" && slot.ownerId === PLAYER_ID) || (slot.ownerType === "character" && slot.ownerId === invite.characterId)) && (slot.kind === "appointment" || slot.source === "event") && new Date(slot.startAt) < endsAt && new Date(slot.endAt) > startsAt);
     if (conflict) return { ok: false, state: base, notice: "这个时段已经有另一项已确认的约定。请先调整时间，避免两件事情同时发生。" };
     let next = confirmLifeInvitation(base, inviteId);
     const confirmed = next.invitations.find(item => item.id === inviteId);
