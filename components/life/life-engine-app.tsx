@@ -1939,6 +1939,24 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               <p className="col-span-2 text-[10px] text-stone-400">可用类名：.life-scene-chat、.life-scene-bubble、.life-scene-composer。CSS 修改后即时保存。</p>
             </div>
           </details>
+          <details className="mb-1 shrink-0 rounded-lg border border-[var(--life-accent)]/25 bg-white/70 px-2 py-1">
+
+            <summary className="cursor-pointer list-none py-1 text-[11px] font-semibold text-stone-600">聊天工具箱 · 生活引擎工具开关</summary>
+
+            <div className="space-y-2 p-2">
+
+              <Toggle checked={settings.enableInvitations} onChange={v=>patchSettings({enableInvitations:v})} label="角色主动邀约" hint="允许角色在有动机时向你提出见面或共同活动；邀约会进入「邀约活动」，由你决定是否接受。"/>
+
+              <Toggle checked={settings.enableFollowRequestTool} onChange={v=>patchSettings({enableFollowRequestTool:v})} label="角色申请陪伴" hint="允许角色申请在约定时段陪伴你，并跟随你的实际地点；你可以拒绝或取消，不会自动替你答应。"/>
+
+              <Toggle checked={settings.enableScheduleChangeTool} onChange={v=>patchSettings({enableScheduleChangeTool:v})} label="角色调整自己的日程" hint="允许角色修改自己当天尚未开始的普通日程；不会覆盖已确认的约会，也不会替你修改日程。"/>
+
+              <p className="px-1 text-[10px] leading-relaxed text-stone-500">以上工具还受「设置 → 允许角色自主行动」总开关控制。关闭单项只会禁用对应工具，不会删除已有邀约或日程。</p>
+
+            </div>
+
+          </details>
+
           <form onSubmit={sendSceneTurn} className={`life-scene-composer shrink-0 rounded-xl border border-stone-200/70 bg-white/95 ${settings.compactLayout ? "space-y-1 p-1.5" : "space-y-1.5 p-2"}`}>
             <div className={`grid gap-1.5 sm:grid-cols-[0.75fr_1.25fr] ${settings.compactLayout ? "sm:gap-1" : ""}`}>
               <label className="block text-xs font-medium text-stone-600">行动 / 旁白<textarea value={sceneActionInput} onChange={e=>setSceneActionInput(e.target.value)} placeholder="行动（可选）" rows={1} className="mt-1 w-full resize-y rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-sm leading-snug" disabled={busy}/></label>
@@ -2174,7 +2192,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             <Toggle checked={settings.generateSpecialEvents} onChange={v=>patchSettings({generateSpecialEvents:v})} label="允许偶发特殊事件"/>
             <Toggle checked={settings.enableCoincidences} onChange={v=>patchSettings({enableCoincidences:v})} label="启用偶遇与注意力判断" hint="关闭后场景仍可互动，但不做随机偶遇判断。"/>
             <Toggle checked={settings.enableCharacterAutonomy} onChange={v=>patchSettings({enableCharacterAutonomy:v})} label="允许角色自主行动"/>
-            <div className="ml-3 space-y-2 border-l-2 border-[#e7d4c1] pl-3"><Toggle checked={settings.enableScheduleChangeTool} onChange={v=>patchSettings({enableScheduleChangeTool:v})} label="允许角色自主调整日程" hint="只允许改当前虚拟日的未来时段，不会覆盖确认约会。"/><Toggle checked={settings.enableInvitations} onChange={v=>patchSettings({enableInvitations:v})} label="允许角色主动发出邀约"/><Toggle checked={settings.enableFollowRequestTool} onChange={v=>patchSettings({enableFollowRequestTool:v})} label="允许角色申请陪伴并跟随你"/></div>
+            <p className="ml-3 rounded-xl bg-white/60 p-3 text-xs leading-relaxed text-stone-500">具体生活工具的独立开关已放入现场聊天工具箱；这里仅保留角色自主行动总开关。</p>
 
             <Toggle checked={settings.saveConfirmedEventsToMemory} onChange={v=>patchSettings({saveConfirmedEventsToMemory:v})} label="将已发生的事件写入生活记忆"/>
             <Toggle checked={settings.showActionNarration} onChange={v=>patchSettings({showActionNarration:v})} label="显示简短动作旁白"/>
