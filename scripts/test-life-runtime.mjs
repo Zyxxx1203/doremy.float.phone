@@ -10,12 +10,16 @@ const compiled = ts.transpileModule(source, {
 const moduleBox = { exports: {} };
 const sandbox = { module: moduleBox, exports: moduleBox.exports, Date, Math, console };
 vm.runInNewContext(compiled, sandbox, { filename: "life-runtime.cjs" });
-const { advanceActorTimeline, generateWeeklyLifePlan, getCurrentActorSchedule, insertManualLifeScheduleSlot, settleActorTimelineToNow } = moduleBox.exports;
+const { advanceActorTimeline, confirmLifeInvitation, generateWeeklyLifePlan, getCurrentActorSchedule, insertManualLifeScheduleSlot, placeAppointmentInActorSchedule, settleActorTimelineToNow } = moduleBox.exports;
 assert.equal(typeof advanceActorTimeline, "function", "timeline fast-forward should be exported");
 assert.equal(typeof generateWeeklyLifePlan, "function", "weekly planner should be exported");
 assert.equal(typeof getCurrentActorSchedule, "function", "current schedule selector should be exported");
 assert.equal(typeof insertManualLifeScheduleSlot, "function", "manual schedule insertion should be exported");
 assert.equal(typeof settleActorTimelineToNow, "function", "timeline settlement should be exported");
+
+assert.equal(typeof confirmLifeInvitation, "function", "invitation confirmation should be exported");
+assert.equal(typeof placeAppointmentInActorSchedule, "function", "appointment placement should be exported");
+
 
 function makeState(schedules = []) {
   return {
@@ -335,5 +339,47 @@ assert.equal(attachedExistingScene.events.find(event => event.id === "ap-event")
 
 
 
+
+
+const malformedInvitationState = {
+  ...makeState(),
+  invitations: [{
+    id: "malformed-invite",
+    status: "proposed",
+    proposedAt: "not-a-date",
+    durationMinutes: Number.NaN,
+    characterId: "c1",
+    playerId: "player",
+    activity: "无效约会",
+  }],
+  events: [],
+};
+assert.equal(
+  confirmLifeInvitation(malformedInvitationState, "malformed-invite"),
+  malformedInvitationState,
+  "invalid invitation dates must not create malformed events",
+);
+const malformedLegacySlot = {
+  id: "legacy-invalid-slot",
+  ownerType: "player",
+  ownerId: "player",
+  startAt: "invalid",
+  endAt: "invalid",
+  title: "旧数据",
+};
+const placedAppointment = placeAppointmentInActorSchedule(
+  makeState([malformedLegacySlot]),
+  {
+    id: "valid-appointment",
+    ownerType: "player",
+    ownerId: "player",
+    startAt: "2026-10-15T10:00:00.000Z",
+    endAt: "2026-10-15T11:00:00.000Z",
+    title: "有效约会",
+    kind: "appointment",
+    source: "event",
+  },
+);
+assert.ok(placedAppointment.schedules.some(slot => slot.id === "legacy-invalid-slot"), "appointment placement must not silently delete malformed legacy slots");
 
 console.log("Life schedule regression tests passed.");
