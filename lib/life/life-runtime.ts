@@ -238,7 +238,7 @@ export function generateWeeklyLifePlan(
   // new places are added to the library. This prevents "library / study room"
   // from becoming a new duplicate every time a plan is generated.
   const normalizePlace = (value: string) => value.toLocaleLowerCase()
-    .replace(/[\\s\\u3000·•/\\\\|｜、，,。.!！?？:：;；()（）\\[\\]【】_-]+/g, "");
+    .replace(/[\s\u3000·•/\\|｜、，,。.!！?？:：;；()（）\[\]【】_-]+/g, "");
   const canonicalAliases: Record<string, string[]> = {
     home: ["家", "家里", "住所", "住处", "home"],
     cafe: ["咖啡店", "咖啡馆", "街角咖啡店", "cafe", "coffee shop"],
