@@ -308,6 +308,14 @@ export function settleActorTimelineToNow(
         };
         scenes = [...scenes, matchingScene];
       }
+      // If an already-active appointment is being recovered while it is still
+      // underway, its scene takes precedence over any stale active scene. For
+      // historical appointments (ended=true), do not disturb today's scene.
+      if (!ended && event.status === "active" && matchingScene) {
+        scenes = scenes.map(scene => scene.id !== matchingScene!.id && scene.status === "active"
+          ? { ...scene, status: "paused" as const, updatedAt: nowIso }
+          : scene);
+      }
     }
 
     if (ended) {
