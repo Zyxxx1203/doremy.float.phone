@@ -493,7 +493,7 @@ export function getEnabledTools(appId?: string): EnabledTool[] {
                 const allowed = tool.name === "life_propose_invitation"
                     ? lifeSettings.enableInvitations
                     : tool.name === "life_request_follow"
-                        ? lifeSettings.enableInvitations && lifeSettings.enableFollowRequestTool
+                        ? lifeSettings.enableFollowRequestTool
                         : tool.name === "life_change_schedule"
                             ? lifeSettings.enableScheduleChangeTool
                             : false;
