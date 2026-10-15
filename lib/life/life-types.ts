@@ -248,6 +248,8 @@ export type LifeInvitation = {
   locationId?: string;
   locationName?: string;
   activity: string;
+  /** Why the inviter wants to meet; shown separately from the event/activity. */
+  reason?: string;
   status: "proposed" | "confirmed" | "declined" | "cancelled" | "completed";
   confirmedAt?: string;
   updatedAt: string;
