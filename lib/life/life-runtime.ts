@@ -107,8 +107,22 @@ export function generateWeeklyLifePlan(
   const profileText = profile.toLowerCase();
   const hash = [...ownerId].reduce((sum, char) => sum + char.charCodeAt(0), 0) + start.getDate();
   const specialDay = ownerType === "character" && includeSpecialEvents && hash % 3 !== 0 ? hash % 7 : -1;
-  const specialTitle = /摄影|拍照|相机|photo/i.test(profileText) ? "去拍些喜欢的照片" : /音乐|唱歌|乐器|music/i.test(profileText) ? "练习音乐 / 听现场" : /运动|健身|跑步|篮球|足球|sport/i.test(profileText) ? "运动与放松" : /读书|阅读|写作|学习|学生|book|study/i.test(profileText) ? "阅读 / 学习一会儿" : /烹饪|做饭|料理|cook/i.test(profileText) ? "试着做一道新菜" : "个人兴趣与临时安排";
-  const specialLocation = /摄影|拍照|相机|运动|健身|跑步|photo|sport/i.test(profileText) ? { id: "park", name: "公园" } : /读书|阅读|写作|学习|学生|book|study/i.test(profileText) ? { id: "library", name: "图书馆" } : /音乐|唱歌|乐器|music/i.test(profileText) ? { id: "cafe", name: "街角咖啡店" } : { id: "home", name: "家" };
+  const has = (...patterns: RegExp[]) => patterns.some(pattern => pattern.test(profileText));
+  const student = has(/学生|大学|学校|上课|课程|考试|study|student|school|university/);
+  const creative = has(/自由职业|艺术家|作家|画家|摄影|音乐|创作|设计师|创业|freelance|artist|writer|designer|creator/);
+  const specialTitle = has(/摄影|拍照|相机|photo|photographer/) ? "外出拍摄 / 整理照片"
+    : has(/音乐|唱歌|乐器|作曲|music|singer|musician/) ? "练习音乐 / 听现场"
+    : has(/运动|健身|跑步|篮球|足球|sport|fitness|runner/) ? "运动与放松"
+    : has(/读书|阅读|写作|书店|学习|学生|book|study|student|writer/) ? "阅读、写作或学习"
+    : has(/烹饪|做饭|料理|烘焙|cook|chef|baker/) ? "试做新菜 / 料理时间"
+    : has(/游戏|电竞|game|gamer/) ? "游戏与休息"
+    : "按角色兴趣安排的私人时间";
+  const specialLocation = has(/摄影|拍照|相机|运动|健身|跑步|photo|sport|fitness/) ? { id: "park", name: "公园" }
+    : has(/读书|阅读|写作|学习|学生|book|study|student|writer/) ? { id: "library", name: "图书馆" }
+    : has(/音乐|唱歌|乐器|music|singer|musician/) ? { id: "studio", name: "音乐 / 创作空间" }
+    : has(/烹饪|做饭|料理|烘焙|cook|chef|baker/) ? { id: "home", name: "家" }
+    : has(/游戏|电竞|game|gamer/) ? { id: "home", name: "家" }
+    : defaultLocation ?? { id: "home", name: "家" };
   const add = (day: Date, sh: number, sm: number, eh: number, em: number, title: string, kind: LifeScheduleSlot["kind"], location?: { id: string; name: string }) => {
     const from = new Date(day);
     from.setHours(sh, sm, 0, 0);
@@ -133,9 +147,9 @@ export function generateWeeklyLifePlan(
     add(day, 7, 0, 7, 30, "起床、洗漱", "habit", { id: "home", name: "家" });
     add(day, 7, 30, 8, 0, "早餐", "meal", { id: "home", name: "家" });
     if (!weekend) {
-      const daytimeLocation = /学生|大学|学校|study/i.test(profileText) ? { id: "school", name: "学校" } : { id: "work", name: "工作地点" };
-      add(day, 8, 0, 9, 0, "通勤 / 前往当天安排", "commute", { id: "transit", name: "通勤途中" });
-      const daytime = ownerType === "player" ? "工作 / 学习（可自行修改）" : /学生|大学|学校|study/i.test(profileText) ? ownerName + "上课 / 学习" : /自由职业|艺术家|作家|画家|摄影|音乐|创业|freelance|artist/i.test(profileText) ? ownerName + "的创作 / 项目时间" : ownerName + "的工作 / 学习";
+      const daytimeLocation = student ? { id: "school", name: "学校" } : creative ? (has(/音乐|唱歌|乐器|music|musician/) ? { id: "studio", name: "音乐 / 创作空间" } : { id: "cafe", name: "街角咖啡店" }) : { id: "work", name: "工作地点" };
+      add(day, 8, 0, 9, 0, student ? "前往学校" : creative ? "前往工作 / 创作地点" : "通勤 / 前往当天安排", "commute", { id: "transit", name: "通勤途中" });
+      const daytime = ownerType === "player" ? "工作 / 学习（可按自己的现实安排修改）" : student ? ownerName + "上课 / 学习" : creative ? ownerName + "的创作 / 项目时间" : ownerName + "的工作 / 学习";
       add(day, 9, 0, 12, 0, daytime, ownerType === "player" ? "free-time" : "work", daytimeLocation);
       add(day, 12, 0, 13, 0, "午餐", "meal", { id: "canteen", name: "食堂 / 附近餐馆" });
       add(day, 13, 0, 18, 0, ownerType === "player" ? "下午安排（可自行修改）" : ownerName + "的下午安排", ownerType === "player" ? "free-time" : "work", daytimeLocation);
