@@ -23,6 +23,7 @@ import {
   type LifeSceneImage,
   type LifeSceneParticipant,
   type LifeSceneState,
+  type LifePromptPreset,
   type LifeScheduleSlot,
   type VirtualLifeState,
 } from "@/lib/life/life-types";
@@ -30,12 +31,13 @@ import { advanceActorTimeline, applyCharacterLifeScheduleChange, confirmLifeInvi
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
-import { loadImageGenerationSettings, resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
+import { loadImageGenerationSettings, loadPresets, resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
+import type { PresetConfig } from "@/lib/settings-types";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
 
-type Tab = "home" | "scene" | "daily" | "people" | "plans" | "invitations" | "experiences" | "settings";
+type Tab = "home" | "scene" | "daily" | "people" | "plans" | "invitations" | "experiences" | "locations" | "settings";
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
 type QuickPlanDraft = { id: string; ownerType: LifeOwnerType; ownerId: string; startAt: string; endAt: string; title: string; locationName: string };
 const PLAYER_ID = "player";
@@ -117,6 +119,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<Tab>("home");
   const [sceneView, setSceneView] = useState(false);
+  const [phonePresets, setPhonePresets] = useState<PresetConfig[]>([]);
+  const [selectedPhonePresetId, setSelectedPhonePresetId] = useState("");
   const [dailySubtab, setDailySubtab] = useState<"people" | "plans">("people");
   const [experienceActorFilter, setExperienceActorFilter] = useState("all");
   const [experienceCategoryFilter, setExperienceCategoryFilter] = useState("all");
@@ -237,6 +241,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   }, [ready, state.actorClocks, inviteAtEdited]);
 
   const settings = state.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;
+  const promptPresets = settings.promptPresets ?? [];
+  const activePromptPreset = promptPresets.find(preset => preset.id === settings.activePromptPresetId) ?? promptPresets[0] ?? { id: "life-default", name: "生活现场默认预设" };
+  const activePromptPresetText = [activePromptPreset.basePresetPrompt, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.customPrompt].filter(value => typeof value === "string" && value.trim()).join("\\n\\n");
+  const activeSceneOutputPrompt = activePromptPreset.sceneOutputPrompt?.trim() || LIFE_SCENE_OUTPUT_CONTRACT;
   const sceneImagePrompt = settings.sceneImagePrompt;
   const playerName = settings.playerDisplayName || "我";
   useEffect(() => {
@@ -427,7 +435,37 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     };
   }, [ready, commit]);
 
-  const patchSettings = (patch: Partial<LifeEngineSettings>) => commit({ ...state, settings: { ...settings, ...patch } });
+  const patchSettings = (patch: Partial<LifeEngineSettings>) => commit({ ...stateRef.current, settings: { ...stateRef.current.settings, ...patch } });
+  const patchActivePromptPreset = (patch: Partial<LifePromptPreset>) => {
+    const currentSettings = stateRef.current.settings;
+    let presets = [...(currentSettings.promptPresets ?? [])];
+    let activeId = currentSettings.activePromptPresetId;
+    if (!presets.length) {
+      presets = [{ id: "life-default", name: "生活现场默认预设" }];
+      activeId = "life-default";
+    }
+    if (!activeId || !presets.some(preset => preset.id === activeId)) activeId = presets[0].id;
+    presets = presets.map(preset => preset.id === activeId ? { ...preset, ...patch } : preset);
+    commit({ ...stateRef.current, settings: { ...currentSettings, promptPresets: presets, activePromptPresetId: activeId } });
+  };
+  const createLifePromptPreset = () => {
+    const presets = [...(stateRef.current.settings.promptPresets ?? [])];
+    const preset: LifePromptPreset = { id: id("life-prompt-preset"), name: `生活预设 ${presets.length + 1}` };
+    commit({ ...stateRef.current, settings: { ...stateRef.current.settings, promptPresets: [...presets, preset], activePromptPresetId: preset.id } });
+  };
+  const deleteActiveLifePromptPreset = () => {
+    const presets = stateRef.current.settings.promptPresets ?? [];
+    if (presets.length <= 1) { setNotice("至少保留一个生活预设；可以清空其中的内容恢复默认。"); return; }
+    const next = presets.filter(preset => preset.id !== activePromptPreset.id);
+    commit({ ...stateRef.current, settings: { ...stateRef.current.settings, promptPresets: next, activePromptPresetId: next[0]?.id } });
+  };
+  const importPhonePromptPreset = () => {
+    const source = phonePresets.find(preset => preset.id === selectedPhonePresetId);
+    if (!source) { setNotice("请先选择一个小手机原有预设。"); return; }
+    const imported = source.prompts.filter(prompt => prompt.enabled !== false && prompt.content?.trim()).map(prompt => `【${prompt.name || prompt.identifier}】\\n${prompt.content}`).join("\\n\\n");
+    patchActivePromptPreset({ sourcePresetId: source.id, sourcePresetName: source.name, basePresetPrompt: imported });
+    setNotice(`已将「${source.name}」中启用的提示词导入当前生活预设。导入内容可继续直接编辑，不会修改原小手机预设。`);
+  };
   const patchActorClock = (actor: ActorChoice, patch: Partial<Pick<LifeActorClock, "mode" | "speed">>) => {
     const clock = getActorClock(state, actor.ownerType, actor.ownerId);
     if (clock.mode === "simulation" && patch.mode === "real-time") {
