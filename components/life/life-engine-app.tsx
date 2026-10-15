@@ -322,9 +322,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const nextMonday = new Date(thisMonday);
       nextMonday.setDate(nextMonday.getDate() + 7);
       // Each person's schedule follows their own virtual calendar, not the device date.
-      next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, thisMonday, { id: "home", name: "家" }, owner.profile, settings.generateSpecialEvents);
+      next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, thisMonday, { id: "home", name: "家" }, [owner.profile, activePromptPreset.scheduleGenerationPrompt].filter(Boolean).join(" "), settings.generateSpecialEvents);
       if (settings.autoGenerateWeeklyPlans) {
-        next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, nextMonday, { id: "home", name: "家" }, owner.profile, settings.generateSpecialEvents);
+        next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, nextMonday, { id: "home", name: "家" }, [owner.profile, activePromptPreset.scheduleGenerationPrompt].filter(Boolean).join(" "), settings.generateSpecialEvents);
       }
     }
     if (next !== state) commit(next);
@@ -349,7 +349,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         const targetEnd = new Date(target);
         targetEnd.setDate(targetEnd.getDate() + (liveSettings.autoGenerateWeeklyPlans ? 7 : 0));
         for (let guard = 0; week.getTime() <= targetEnd.getTime() && guard < 520; guard++) {
-          next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, week, { id: "home", name: "家" }, owner.profile, liveSettings.generateSpecialEvents);
+          next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, week, { id: "home", name: "家" }, [owner.profile, activePromptPreset.scheduleGenerationPrompt].filter(Boolean).join(" "), liveSettings.generateSpecialEvents);
           week.setDate(week.getDate() + 7);
         }
         const beforeSettle = next;
@@ -520,7 +520,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     next = generateWeeklyLifePlan(next, "player", PLAYER_ID, playerName, mondayStart(playerVirtualNow), { id: "home", name: "家" });
     for (const character of characters) {
       const characterVirtualNow = resolveActorLifeNow(getActorClock(next, "character", character.id));
-      next = generateWeeklyLifePlan(next, "character", character.id, character.name, mondayStart(characterVirtualNow), { id: "home", name: "家" }, [character.persona, character.personality, ...(character.tags ?? [])].filter(Boolean).join(" "), settings.generateSpecialEvents);
+      next = generateWeeklyLifePlan(next, "character", character.id, character.name, mondayStart(characterVirtualNow), { id: "home", name: "家" }, [character.persona, character.personality, ...(character.tags ?? []), activePromptPreset.scheduleGenerationPrompt].filter(Boolean).join(" "), settings.generateSpecialEvents);
     }
     if (next === state) setNotice("本周计划已经存在，没有重新生成或覆盖你的修改。");
     else { commit(next); setNotice("已按每个人自己的虚拟时间生成可编辑的生活日程。"); }
@@ -1176,7 +1176,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           `玩家向你发出邀约：${inviteActivity.trim()}`,
           `时间：${proposedAt.toLocaleString("zh-CN")}`,
           `地点：${location?.name ?? "地点待定"}`,
-          activePromptPreset.invitationResponsePrompt?.trim() || "请根据你的人设、当前日程、关系和真实意愿，自主决定接受或拒绝。不要让玩家替你确认；不要为了讨好玩家而默认接受。",
+          activePromptPreset.invitationResponsePrompt?.trim() || activePromptPreset.invitationResponsePrompt?.trim() || "请根据你的人设、当前日程、关系和真实意愿，自主决定接受或拒绝。不要让玩家替你确认；不要为了讨好玩家而默认接受。",
+          activePromptPresetText ? "小手机预设补充规则：\\n" + activePromptPresetText : "",
+          settings.customPrompt ? "用户自定义规则：" + settings.customPrompt : "",
           "只输出一个机器可读标签，并可在 reason 中写一句简短自然的理由：<life_invitation_response decision=\"accept|decline\" reason=\"理由\" />。没有明确接受就视为拒绝；不要改动日程，系统会在接受后处理冲突和排期。",
         ].join("\n"),
       };
@@ -1646,7 +1648,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           </div>
           <div className="flex items-center justify-between gap-3 border-t border-stone-200/50 bg-white/45 px-4 py-3 sm:px-5"><span className="text-[11px] text-stone-400">{isCurrent ? "你的当前位置" : people.some(person => person.isActuallyHere) ? "角色正在这里生活" : "可以前往探索"}</span><button type="button" onClick={() => { setSelectedLocationId(location.id); setSelectedCharacterIds(people.filter(person => person.isActuallyHere).map(person => person.character.id)); enterLocationSolo(location.id); }} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white shadow-sm"><MapPin size={14}/>{isCurrent ? "进入现场" : "前往"}</button></div>
         </article>)}
-        <button type="button" onClick={() => { setSelectedLocationId(playerLocationId); setSceneView(false); setTab("home"); }} className="w-full rounded-2xl border border-dashed border-stone-300 bg-white/40 px-4 py-3 text-sm text-stone-600">地点列表已显示全部已知地点 · 可在现场添加新地点、布局和道具</button>
+        <button type="button" onClick={() => { setSelectedLocationId(playerLocationId); setSceneView(false); setTab("locations"); }} className="w-full rounded-2xl border border-dashed border-stone-300 bg-white/40 px-4 py-3 text-sm text-stone-600">管理地点库 · 添加地点、布局、道具与角色习惯</button>
       </section>}
       {((tab === "home" && sceneView) || tab === "scene") && <section className={`flex min-w-0 flex-col rounded-2xl border border-white/80 bg-white/60 p-2.5 shadow-sm sm:p-4 ${immersiveScene ? "min-h-0 flex-1" : ""}`}>
         <div className="mb-2 flex shrink-0 flex-wrap items-start justify-between gap-2"><div className="min-w-0 flex-1"><SectionTitle eyebrow="LIVE SCENE · 生活现场" title={activeScene ? activeScene.locationName : "还没有正在进行的场景"} note={activeScene ? [state.locations.find(location => location.id === activeScene.locationId)?.description, state.locations.find(location => location.id === activeScene.locationId)?.atmosphere, `场景始于 ${fmt(activeScene.startedAt)} · ${activeScene.participants.length} 位参与者`].filter(Boolean).join(" · ") : "先从地点列表选择一个地点。"} /></div><div className="flex shrink-0 items-center gap-2"><button type="button" onClick={() => { setSceneView(false); setTab("home"); }} className="inline-flex items-center gap-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs"><ArrowLeft size={14}/>地点列表</button>{activeScene && <button onClick={()=>{const now=new Date().toISOString();let next={...stateRef.current,scenes:stateRef.current.scenes.map(scene=>scene.id===activeScene.id?{...scene,status:(activeScene.status==="active"?"paused":"active") as "active"|"paused",updatedAt:now}:{...scene,status:scene.status==="active"?"paused" as const:scene.status})};next=appendLifeTimelineEntry(next,{category:"scene",title:(activeScene.status==="active"?"你暂时离开了":"你回到了")+activeScene.locationName,actorName:playerName,locationName:activeScene.locationName,sceneId:activeScene.id});commit(next);setNotice(activeScene.status==="active"?"场景已暂停，回来时可以继续。":"已回到原场景，之前的消息会保留。")}} className="inline-flex items-center gap-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">{activeScene.status==="active"?<><Pause size={14}/>暂停场景</>:<><Play size={14}/>继续场景</>}</button>}</div></div>
