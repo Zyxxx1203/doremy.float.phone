@@ -529,7 +529,10 @@ export function placeAppointmentInActorSchedule(state: VirtualLifeState, slot: L
   for (const existing of state.schedules) {
     const sameOwner = existing.ownerType === slot.ownerType && existing.ownerId === slot.ownerId;
     const a = new Date(existing.startAt).getTime(), b = new Date(existing.endAt).getTime();
-    if (!sameOwner || b <= start || a >= end) { nextSlots.push(existing); continue; }
+    if (!sameOwner || !Number.isFinite(a) || !Number.isFinite(b) || b <= start || a >= end) {
+      nextSlots.push(existing);
+      continue;
+    }
     // Preserve unaffected time before and after the appointment instead of creating gaps.
     if (a < start) nextSlots.push({ ...existing, id: existing.id + "-before-" + slot.id, endAt: slot.startAt, updatedAt: new Date().toISOString() });
     if (b > end) nextSlots.push({ ...existing, id: existing.id + "-after-" + slot.id, startAt: slot.endAt, updatedAt: new Date().toISOString() });
@@ -599,10 +602,14 @@ export function insertManualLifeScheduleSlot(
 export function confirmLifeInvitation(state: VirtualLifeState, invitationId: string): VirtualLifeState {
   const invitation = state.invitations.find(item => item.id===invitationId && item.status==="proposed");
   if (!invitation) return state;
-  const now = new Date().toISOString(), eventId = makeId("event");
   const startAt = new Date(invitation.proposedAt);
-  const durationMinutes = Math.max(15, Math.min(invitation.durationMinutes ?? 60, 24 * 60));
+  if (!Number.isFinite(startAt.getTime())) return state;
+  const rawDuration = invitation.durationMinutes;
+  const durationMinutes = Number.isFinite(rawDuration)
+    ? Math.max(15, Math.min(rawDuration as number, 24 * 60))
+    : 60;
   const endsAt = new Date(startAt.getTime() + durationMinutes * 60_000).toISOString();
+  const now = new Date().toISOString(), eventId = makeId("event");
   const event: LifeEvent = { id:eventId, kind:"invitation", status:"confirmed", startsAt:invitation.proposedAt, endsAt, locationId:invitation.locationId, locationName:invitation.locationName, participantIds:["player",invitation.characterId], title:invitation.activity, details:invitation.kind === "follow-request" ? "follow-player" : "confirmed-appointment", createdAt:now, updatedAt:now };
   const next = { ...invitation, status:"confirmed" as const, confirmedAt:now, updatedAt:now, eventId };
   return { ...state, invitations:state.invitations.map(item=>item.id===invitationId?next:item), events:[event,...state.events] };
