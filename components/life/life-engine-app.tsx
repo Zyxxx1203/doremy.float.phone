@@ -1672,7 +1672,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             <label className="block text-sm font-medium">当前地点
               <select value={selectedLocationId} onChange={e=>setSelectedLocationId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">{state.locations.map(loc=><option key={loc.id} value={loc.id}>{loc.name} · {loc.visibility==="public"?"公共":"私人"}</option>)}</select>
             </label>
-            <div className="flex items-end gap-2"><button type="button" onClick={enterLocationSolo} disabled={!settings.enabled} className="flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm disabled:opacity-40">前往地点</button><button type="button" onClick={createScene} disabled={!characters.length||!settings.enabled} className="flex-1 rounded-xl bg-[var(--life-accent)] px-3 py-2.5 text-sm text-white disabled:opacity-40">进入互动</button></div>
+            <div className="flex items-end gap-2"><button type="button" onClick={() => enterLocationSolo()} disabled={!settings.enabled} className="flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm disabled:opacity-40">前往地点</button><button type="button" onClick={createScene} disabled={!characters.length||!settings.enabled} className="flex-1 rounded-xl bg-[var(--life-accent)] px-3 py-2.5 text-sm text-white disabled:opacity-40">进入互动</button></div>
           </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
             <label className="block text-xs font-medium text-stone-600">预计停留时间
