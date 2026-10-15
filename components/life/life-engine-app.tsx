@@ -71,7 +71,7 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
   const followRequest = followTag ? { durationMinutes: Math.max(15, Math.min(Number.isFinite(duration) && duration ? duration : 120, 24 * 60)), reason: attribute(followTag[1], "reason") } : undefined;
   const planChange = planTag ? { title: attribute(planTag[1], "title"), locationId: attribute(planTag[1], "locationId") || "home", startAt: attribute(planTag[1], "startAt"), endAt: attribute(planTag[1], "endAt") } : undefined;
   const inviteDuration = Number(attribute(inviteTag?.[1] || "", "durationMinutes"));
-  const invitation = inviteTag ? { time: attribute(inviteTag[1], "time"), locationId: attribute(inviteTag[1], "locationId") || "cafe", activity: attribute(inviteTag[1], "activity") || "一起做点什么", durationMinutes: Math.max(15, Math.min(Number.isFinite(inviteDuration) && inviteDuration ? inviteDuration : 60, 24 * 60)) } : undefined;
+  const invitation = inviteTag ? { time: attribute(inviteTag[1], "time"), locationId: attribute(inviteTag[1], "locationId") || "cafe", activity: attribute(inviteTag[1], "activity") || "一起做点什么", reason: attribute(inviteTag[1], "reason"), durationMinutes: Math.max(15, Math.min(Number.isFinite(inviteDuration) && inviteDuration ? inviteDuration : 60, 24 * 60)) } : undefined;
   const actionTag = text.match(/<life_action\b[^>]*>([\s\S]*?)<\/life_action\s*>/i);
   const dialogueTag = text.match(/<life_dialogue\b[^>]*>([\s\S]*?)<\/life_dialogue\s*>/i);
   const stripControlTags = (value: string) => value
@@ -156,6 +156,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [inviteCharacterId, setInviteCharacterId] = useState("");
   const [inviteLocationId, setInviteLocationId] = useState("cafe");
   const [inviteActivity, setInviteActivity] = useState("一起喝杯咖啡");
+  const [inviteReason, setInviteReason] = useState("");
   const [inviteAt, setInviteAt] = useState("");
   const [inviteAtEdited, setInviteAtEdited] = useState(false);
   const inviteDefaultInitializedRef = useRef(false);
@@ -1065,7 +1066,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           structuredNext = makeLifeInvitation(structuredNext, {
             proposedBy: "character",
             characterId: target.id, playerId: PLAYER_ID, proposedAt: proposedDate.toISOString(),
-            locationId: location?.id, locationName: location?.name, activity: parsed.invitation.activity,
+            locationId: location?.id, locationName: location?.name, activity: parsed.invitation.activity, reason: parsed.invitation.reason || undefined,
             kind: "appointment", durationMinutes: parsed.invitation.durationMinutes,
           });
           setNotice(target.name+"主动提出邀约。请在「邀约活动」中确认、拒绝或调整；未确认前不会更改日程。");
@@ -1174,7 +1175,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     let next = makeLifeInvitation(base, {
       proposedBy: "player",
       characterId: character.id, playerId: PLAYER_ID, proposedAt: proposedAt.toISOString(),
-      locationId: location?.id, locationName: location?.name, activity: inviteActivity.trim(),
+      locationId: location?.id, locationName: location?.name, activity: inviteActivity.trim(), reason: inviteReason.trim() || undefined,
       kind: "appointment", durationMinutes: 60,
     });
     const invitation = next.invitations[0];
@@ -1191,6 +1192,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           `玩家向你发出邀约：${inviteActivity.trim()}`,
           `时间：${proposedAt.toLocaleString("zh-CN")}`,
           `地点：${location?.name ?? "地点待定"}`,
+          `邀约理由：${inviteReason.trim() || "未填写"}`,
           activePromptPreset.invitationResponsePrompt?.trim() || activePromptPreset.invitationResponsePrompt?.trim() || "请根据你的人设、当前日程、关系和真实意愿，自主决定接受或拒绝。不要让玩家替你确认；不要为了讨好玩家而默认接受。",
           activePromptPresetText ? "小手机预设补充规则：\n" + activePromptPresetText : "",
           settings.customPrompt ? "用户自定义规则：" + settings.customPrompt : "",
@@ -1898,10 +1900,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
       {tab === "invitations" && <div className="grid gap-4 lg:grid-cols-[.85fr_1.15fr]">
         <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Make a plan together" title="创建邀约" note="你发出的邀约由角色根据人设和日程决定是否接受；角色主动发出的邀约由你决定是否接受。双方同意后才同步日程，不会瞬间跳到约定时间。" />
-          <form onSubmit={addInvitation} className="space-y-3"><label className="block text-sm">邀请谁<select value={inviteCharacterId} onChange={e=>setInviteCharacterId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="">选择角色</option>{characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label className="block text-sm">活动<input value={inviteActivity} onChange={e=>setInviteActivity(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">时间<input type="datetime-local" value={inviteAt} onChange={e=>{setInviteAtEdited(true);setInviteAt(e.target.value)}} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/><span className="mt-1 block text-[11px] text-stone-500">默认按你的虚拟时间预填；双方时钟不同步时，系统仍会分别检查是否来得及赴约。</span></label><label className="block text-sm">地点<select value={inviteLocationId} onChange={e=>setInviteLocationId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5">{state.locations.map(loc=><option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></label><button disabled={busy} className="w-full rounded-2xl bg-[var(--life-accent)] px-4 py-3 text-sm font-medium text-white disabled:opacity-50">{busy?"等待角色回应…":"发出邀约"}</button></form>
+          <form onSubmit={addInvitation} className="space-y-3"><label className="block text-sm">邀请谁<select value={inviteCharacterId} onChange={e=>setInviteCharacterId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="">选择角色</option>{characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label className="block text-sm">事件 / 活动<input value={inviteActivity} onChange={e=>setInviteActivity(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">邀约理由<textarea value={inviteReason} onChange={e=>setInviteReason(e.target.value)} placeholder="例如：最近想和你聊聊，或者想把这件有趣的事分享给你" rows={2} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">时间<input type="datetime-local" value={inviteAt} onChange={e=>{setInviteAtEdited(true);setInviteAt(e.target.value)}} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/><span className="mt-1 block text-[11px] text-stone-500">默认按你的虚拟时间预填；双方时钟不同步时，系统仍会分别检查是否来得及赴约。</span></label><label className="block text-sm">地点<select value={inviteLocationId} onChange={e=>setInviteLocationId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5">{state.locations.map(loc=><option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></label><button disabled={busy} className="w-full rounded-2xl bg-[var(--life-accent)] px-4 py-3 text-sm font-medium text-white disabled:opacity-50">{busy?"等待角色回应…":"发出邀约"}</button></form>
         </section>
         <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Invitation inbox" title="邀约记录" />
-          {state.invitations.length===0?<p className="rounded-2xl bg-white/60 p-4 text-sm text-stone-400">这里会保存待确认、已确认和已取消的邀约。</p>:<div className="space-y-3">{state.invitations.map(invite=>{const char=characters.find(c=>c.id===invite.characterId);return <div key={invite.id} className="rounded-2xl border border-stone-200/70 bg-white/70 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-medium">{char?.name??"未知角色"} · {invite.kind==="follow-request"?"陪伴申请":"邀约"} · {invite.activity}</p><p className="mt-1 text-xs text-stone-500">{fmt(invite.proposedAt)} · {invite.kind==="follow-request"?(invite.durationMinutes??120)+" 分钟 · 跟随你的实际行程":invite.locationName??"地点待定"}</p>{invite.responseReason&&<p className="mt-1 text-xs leading-relaxed text-stone-600">{invite.responseReason}</p>}</div><span className="rounded-full bg-[#f0e3d5] px-2.5 py-1 text-[11px]">{(invite.status==="proposed"&&invite.proposedBy==="player"?"等待角色回应":({proposed:"待确认",confirmed:"已确认",declined:"已拒绝",cancelled:"已取消",completed:"已完成"} as Record<string,string>)[invite.status])}</span></div>{invite.status==="proposed"&&invite.proposedBy!=="player"&&<div className="mt-3 flex gap-2"><button onClick={()=>confirmInvitation(invite.id)} className="rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white">{invite.kind==="follow-request"?"接受陪伴申请":"确认并同步日程"}</button><button onClick={()=>declineInvitation(invite.id)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">拒绝</button></div>}</div>;})}</div>}
+          {state.invitations.length===0?<p className="rounded-2xl bg-white/60 p-4 text-sm text-stone-400">这里会保存待确认、已确认和已取消的邀约。</p>:<div className="space-y-3">{state.invitations.map(invite=>{const char=characters.find(c=>c.id===invite.characterId);return <div key={invite.id} className="rounded-2xl border border-stone-200/70 bg-white/70 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-medium">{char?.name??"未知角色"} · {invite.kind==="follow-request"?"陪伴申请":"邀约"} · {invite.activity}</p><p className="mt-1 text-xs text-stone-500">{fmt(invite.proposedAt)} · {invite.kind==="follow-request"?(invite.durationMinutes??120)+" 分钟 · 跟随你的实际行程":invite.locationName??"地点待定"}</p>{invite.reason&&<p className="mt-1 text-xs leading-relaxed text-stone-600">理由：{invite.reason}</p>}{invite.responseReason&&<p className="mt-1 text-xs leading-relaxed text-stone-600">回应：{invite.responseReason}</p>}</div><span className="rounded-full bg-[#f0e3d5] px-2.5 py-1 text-[11px]">{(invite.status==="proposed"&&invite.proposedBy==="player"?"等待角色回应":({proposed:"待确认",confirmed:"已确认",declined:"已拒绝",cancelled:"已取消",completed:"已完成"} as Record<string,string>)[invite.status])}</span></div>{invite.status==="proposed"&&invite.proposedBy!=="player"&&<div className="mt-3 flex gap-2"><button onClick={()=>confirmInvitation(invite.id)} className="rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white">{invite.kind==="follow-request"?"接受陪伴申请":"确认并同步日程"}</button><button onClick={()=>declineInvitation(invite.id)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">拒绝</button></div>}</div>;})}</div>}
         </section>
       </div>}
 
