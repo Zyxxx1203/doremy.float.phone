@@ -259,13 +259,13 @@ export function settleActorTimelineToNow(
       if (matchingScene) {
         // Reuse an already-recorded shared scene at the agreed location rather
         // than losing the event merely because the scene was opened manually.
-        if (!matchingScene.eventId) {
-          const attachedScene: LifeSceneState = {
-            ...matchingScene,
-            eventId: event.id,
-            status: ended ? "completed" : "active",
-            updatedAt: nowIso,
-          };
+        const attachedScene: LifeSceneState = {
+          ...matchingScene,
+          eventId: event.id,
+          status: ended ? "completed" : "active",
+          updatedAt: nowIso,
+        };
+        if (matchingScene.eventId !== event.id || matchingScene.status !== attachedScene.status) {
           matchingScene = attachedScene;
           scenes = scenes.map(scene => scene.id === attachedScene.id ? attachedScene : scene);
         }
