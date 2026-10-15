@@ -1,7 +1,7 @@
 "use client";
 
-import { loadVirtualLifeState } from "@/lib/life/life-storage";
-import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "@/lib/life/life-runtime";
+import { loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
+import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow, settleActorTimelineToNow } from "@/lib/life/life-runtime";
 
 import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, getSystemInstructionDisplayContent, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages, isSessionStreamingEnabled, resolveChatBackgroundImage, resolveChatUserAvatar } from "@/lib/chat-storage";
@@ -3691,7 +3691,9 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 
     const shouldSuppressLifeSleepReply = (userText?: string, notify = true): boolean => {
         if (session.isGroup || offlineMode || !character) return false;
-        const life = loadVirtualLifeState();
+        const loadedLife = loadVirtualLifeState();
+        const settledLife = settleActorTimelineToNow(loadedLife, "character", character.id);
+        const life = settledLife === loadedLife ? loadedLife : saveVirtualLifeState(settledLife);
         if (!life.settings.enabled || !life.settings.allowCharactersToStaySilent) { kvRemove("life-sleep-pending-reply:" + session.id); return false; }
         const latestUserText = (userText || loadChatMessages(session.id).filter(message => message.role === "user").slice(-1)[0]?.content || "").trim();
         if (!latestUserText) return false;

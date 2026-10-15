@@ -3,7 +3,11 @@ import type { LifeScheduleSlot, LifeOwnerType, VirtualLifeState } from "./life-t
 function weekEndFromStart(weekStart: string): string | null {
   const start = new Date(weekStart);
   if (!Number.isFinite(start.getTime())) return null;
-  return new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  // A calendar week is seven local dates, not always 168 hours: daylight-saving
+  // transitions can make the elapsed duration 167 or 169 hours.
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+  return end.toISOString();
 }
 
 /**

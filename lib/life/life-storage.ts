@@ -7,6 +7,7 @@ import {
   type LifeEventStatus,
   type LifeEngineSettings,
   type LifeTimelineEntry,
+  type LifeOwnerType,
   type VirtualLifeState,
 } from "./life-types";
 import { getActorClock, resolveActorLifeNow } from "./life-runtime";
@@ -85,11 +86,25 @@ export function saveVirtualLifeState(state: VirtualLifeState): VirtualLifeState 
   return saved;
 }
 
-export function appendLifeTimelineEntry(state: VirtualLifeState, entry: Omit<LifeTimelineEntry, "id" | "occurredAt"> & { id?: string; occurredAt?: string }): VirtualLifeState {
+export function appendLifeTimelineEntry(
+  state: VirtualLifeState,
+  entry: Omit<LifeTimelineEntry, "id" | "occurredAt"> & {
+    id?: string;
+    occurredAt?: string;
+    /** Optional clock owner for events whose actor ID cannot be inferred from current state. */
+    ownerType?: LifeOwnerType;
+    ownerId?: string;
+  },
+): VirtualLifeState {
+  const { ownerType: explicitOwnerType, ownerId: explicitOwnerId, ...timelineEntry } = entry;
+  const actorId = explicitOwnerId ?? entry.actorId ?? "player";
+  const inferredActor = state.actorStates.find(actor => actor.ownerId === actorId);
+  const inferredSlot = state.schedules.find(slot => slot.ownerId === actorId);
+  const ownerType = explicitOwnerType ?? inferredActor?.ownerType ?? inferredSlot?.ownerType ?? (actorId === "player" ? "player" : "character");
   const item: LifeTimelineEntry = {
-    ...entry,
+    ...timelineEntry,
     id: entry.id ?? "life-log-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
-    occurredAt: entry.occurredAt ?? resolveActorLifeNow(getActorClock(state, "player", "player")).toISOString(),
+    occurredAt: entry.occurredAt ?? resolveActorLifeNow(getActorClock(state, ownerType, actorId)).toISOString(),
     recordedAt: entry.recordedAt ?? new Date().toISOString(),
   };
   return { ...state, timeline: [...(state.timeline ?? []), item].slice(-5000) };

@@ -1,5 +1,13 @@
-import { loadVirtualLifeState } from "./life-storage";
-import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "./life-runtime";
+import { loadVirtualLifeState, saveVirtualLifeState } from "./life-storage";
+import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow, settleActorTimelineToNow } from "./life-runtime";
+
+function loadSettledCharacterLifeState(characterId: string) {
+  let state = loadVirtualLifeState();
+  if (!state.settings.enabled) return state;
+  const settled = settleActorTimelineToNow(state, "character", characterId);
+  if (settled !== state) state = saveVirtualLifeState(settled);
+  return state;
+}
 
 /**
  * Shared fact bridge: only confirmed life-scene facts involving this character
@@ -7,7 +15,7 @@ import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "./l
  * deliberately excluded so the character cannot acquire fabricated memories.
  */
 export function buildLifeMemoryContext(characterId: string, limit = 10): string {
-  const state = loadVirtualLifeState();
+  const state = loadSettledCharacterLifeState(characterId);
   if (!state.settings.enabled || !state.settings.saveConfirmedEventsToMemory) return "";
   const facts = state.memories
     .filter(memory => memory.participants.includes(characterId) && memory.fact.trim())
@@ -27,16 +35,18 @@ export function buildLifeMemoryContext(characterId: string, limit = 10): string 
  * a fabricated memory; the prompt must respect sleep, work and actual location.
  */
 export function buildLifePresenceContext(characterId: string): string {
-  const state = loadVirtualLifeState();
+  const state = loadSettledCharacterLifeState(characterId);
   if (!state.settings.enabled) return "";
   const clock = getActorClock(state, "character", characterId);
   const now = resolveActorLifeNow(clock);
   const schedule = getCurrentActorSchedule(state, "character", characterId, now);
   const actor = state.actorStates.find(item => item.ownerType === "character" && item.ownerId === characterId);
-  const scene = [...state.scenes].reverse().find(item =>
-    (item.status === "active" || item.status === "paused")
-    && item.participants.some(participant => participant.ownerType === "character" && participant.ownerId === characterId),
-  );
+  const belongsToCharacter = (item: typeof state.scenes[number]) =>
+    item.participants.some(participant => participant.ownerType === "character" && participant.ownerId === characterId);
+  const scene = state.scenes.find(item => item.status === "active" && belongsToCharacter(item))
+    ?? state.scenes
+      .filter(item => item.status === "paused" && belongsToCharacter(item))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
   if (!schedule && !actor && !scene) return "";
   const activity = actor?.activity || schedule?.title || "暂时没有记录当前活动";
   const sleeping = /睡眠|睡觉|入睡|午休|休息/.test(activity) || /睡眠|睡觉|入睡|午休/.test(schedule?.title || "");
