@@ -45,6 +45,7 @@ function normalizeState(value: unknown): VirtualLifeState {
   const clock = raw.clock && typeof raw.clock === "object" ? raw.clock : empty.clock;
   return {
     schemaVersion: 1,
+    scheduleProfileVersion: typeof raw.scheduleProfileVersion === "number" ? raw.scheduleProfileVersion : 0,
     clock: {
       mode: clock.mode === "simulation" || clock.mode === "review" ? clock.mode : "real-time",
       realAnchorAt: typeof clock.realAnchorAt === "string" ? clock.realAnchorAt : empty.clock.realAnchorAt,
