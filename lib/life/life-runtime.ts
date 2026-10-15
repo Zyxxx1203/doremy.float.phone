@@ -107,7 +107,8 @@ export function generateWeeklyLifePlan(
   const profileText = profile.toLowerCase();
   const normalizeProfilePlace = (value: string) => value.toLocaleLowerCase().replace(/[\s\u3000·•/\\|｜、，,。.!！?？:：;；()（）\[\]【】_-]+/g, "");
   const discoveredLocations: LifeLocation[] = [];
-  let profilePreferredLocation: LifeLocation | undefined = state.locations.find(location => Boolean(location.characterHabits?.[ownerId]?.trim()));
+  const existingLocations = state.locations ?? [];
+  let profilePreferredLocation: LifeLocation | undefined = existingLocations.find(location => Boolean(location.characterHabits?.[ownerId]?.trim()));
   const placeCue = /(?:常去|喜欢去|习惯去|经常去|偶尔去|常在|喜欢在|习惯在|经常在|工作地点(?:是|为)?|地点偏好[:：])\s*([^，。；;\n]{2,28})/g;
   const profilePlaceCandidates = [...profile.matchAll(placeCue)].map(match => (match[1] ?? "")
     .replace(/(看书|学习|散步|吃饭|喝咖啡|工作|上课|练习|休息|聊天|买花|买东西|逛街|读书|创作|然后|之后).*$/,"")
@@ -115,7 +116,7 @@ export function generateWeeklyLifePlan(
   for (const placeName of profilePlaceCandidates) {
     const key = normalizeProfilePlace(placeName);
     if (!key || /^(这里|那里|家里|家中|附近|外面|室内|户外|学校|公司|你身边|身旁|身边|周围|旁边|门口|屋内|房间)$/.test(key)) continue;
-    const existing = [...state.locations, ...discoveredLocations].find(location => {
+    const existing = [...existingLocations, ...discoveredLocations].find(location => {
       const names = [location.name, ...(location.aliases ?? [])].map(normalizeProfilePlace).filter(name => name.length >= 2);
       return names.includes(key) || names.some(name => key.length >= 3 && (key.includes(name) || name.includes(key)));
     });
@@ -280,7 +281,7 @@ export function generateWeeklyLifePlan(
     canteen: ["食堂", "附近餐馆", "餐馆", "餐厅", "饭店", "canteen"],
     studio: ["音乐创作空间", "音乐空间", "创作空间", "录音室", "studio"],
   };
-  const locations: LifeLocation[] = [...state.locations, ...discoveredLocations];
+  const locations: LifeLocation[] = [...existingLocations, ...discoveredLocations];
   const resolveCanonical = (slot: LifeScheduleSlot): LifeScheduleSlot => {
     const rawName = (slot.plannedLocationName ?? "").trim();
     if (!rawName || /跟随玩家的实际地点|地点待定|未知地点/i.test(rawName)) return slot;
