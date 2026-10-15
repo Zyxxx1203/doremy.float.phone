@@ -20,7 +20,7 @@ android {
         targetSdk 34
         versionCode 1
         versionName "life-test-1.0"
-        buildConfigField "String", "SITE_URL", "\"\${siteUrl}\""
+        buildConfigField "String", "SITE_URL", "\"${siteUrl}\""
     }
 
     buildFeatures { buildConfig true }
