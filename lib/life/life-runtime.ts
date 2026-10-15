@@ -605,8 +605,8 @@ export function confirmLifeInvitation(state: VirtualLifeState, invitationId: str
   const startAt = new Date(invitation.proposedAt);
   if (!Number.isFinite(startAt.getTime())) return state;
   const rawDuration = invitation.durationMinutes;
-  const durationMinutes = Number.isFinite(rawDuration)
-    ? Math.max(15, Math.min(rawDuration as number, 24 * 60))
+  const durationMinutes = typeof rawDuration === "number" && Number.isFinite(rawDuration)
+    ? Math.max(15, Math.min(rawDuration, 24 * 60))
     : 60;
   const endsAt = new Date(startAt.getTime() + durationMinutes * 60_000).toISOString();
   const now = new Date().toISOString(), eventId = makeId("event");
