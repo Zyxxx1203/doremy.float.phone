@@ -63,6 +63,20 @@ const emptyPlan = generateWeeklyLifePlan(makeState(), "player", "player", "我",
 assert.ok(emptyPlan.schedules.length >= 60, "a new week should receive a complete schedule skeleton");
 assertWeekHasNoGapsOrOverlaps(emptyPlan.schedules, "player", "player", weekStart);
 
+const dstWeekStart = new Date(2026, 2, 2, 0, 0, 0, 0);
+const dstWeekPlan = generateWeeklyLifePlan(
+  makeState(),
+  "player",
+  "player",
+  "我",
+  dstWeekStart,
+  { id: "home", name: "家" },
+  "",
+  false,
+);
+assertWeekHasNoGapsOrOverlaps(dstWeekPlan.schedules, "player", "player", dstWeekStart);
+
+
 // A single manually added appointment must not block generation of the rest of the week.
 const appointment = {
   id: "manual-appointment",
