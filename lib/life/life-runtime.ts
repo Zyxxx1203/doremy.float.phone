@@ -156,6 +156,7 @@ export function generateWeeklyLifePlan(
     : has(/烹饪|做饭|料理|烘焙|cook|chef|baker/) ? { id: "home", name: "家" }
     : has(/游戏|电竞|game|gamer/) ? { id: "home", name: "家" }
     : defaultLocation ?? { id: "home", name: "家" });
+  const leisureLocation = ownerType === "character" ? (profilePreferredLocation ?? { id: "home", name: "家" }) : { id: "home", name: "家" };
   const add = (day: Date, sh: number, sm: number, eh: number, em: number, title: string, kind: LifeScheduleSlot["kind"], location?: { id: string; name: string }) => {
     const from = new Date(day);
     from.setHours(sh, sm, 0, 0);
@@ -207,9 +208,9 @@ export function generateWeeklyLifePlan(
       add(day, 13, 0, 18, 0, afternoonTitle, ownerType === "player" ? "free-time" : (student || researcher || dutyRole || creative || professional) ? "work" : "free-time", daytimeLocation);
     } else {
       add(day, 8, 0, 9, 0, "慢慢开始的一天", "free-time", { id: "home", name: "家" });
-      add(day, 9, 0, 12, 0, ownerType === "player" ? "周末自由安排" : ownerName + "的周末安排", "free-time", { id: "home", name: "家" });
+      add(day, 9, 0, 12, 0, ownerType === "player" ? "周末自由安排" : ownerName + "的周末安排", "free-time", leisureLocation);
       add(day, 12, 0, 13, 0, "午餐", "meal", { id: "home", name: "家" });
-      add(day, 13, 0, 18, 0, "休闲 / 个人计划", "free-time", { id: "home", name: "家" });
+      add(day, 13, 0, 18, 0, "休闲 / 个人计划", "free-time", leisureLocation);
     }
     add(day, 18, 0, 19, 0, "晚餐", "meal", { id: "home", name: "家" });
     if (offset === specialDay) {
