@@ -120,6 +120,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [tab, setTab] = useState<Tab>("home");
   const [sceneView, setSceneView] = useState(false);
   const [locationDossierOpen, setLocationDossierOpen] = useState(false);
+  const [locationStatsTick, setLocationStatsTick] = useState(0);
+  useEffect(() => { const timer = window.setInterval(() => setLocationStatsTick(value => value + 1), 30_000); return () => window.clearInterval(timer); }, []);
   const [phonePresets, setPhonePresets] = useState<PresetConfig[]>([]);
   const [worldBooks, setWorldBooks] = useState<WorldBookConfig[]>([]);
   const [bindingConfig, setBindingConfig] = useState<BindingConfig>(() => loadBindingConfig());
@@ -290,27 +292,25 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const selectedLocationVisitStats = useMemo(() => {
     if (!selectedLocation) return { visits: 0, minutes: 0, activeMinutes: 0 };
     const virtualNow = resolveActorLifeNow(getActorClock(state, "player", PLAYER_ID));
-    const visits = state.timeline
-      .filter(entry => entry.category === "location" && entry.actorId === PLAYER_ID && entry.title.startsWith("你来到了"))
+    const locationEntries = state.timeline
+      .filter(entry => entry.category === "location" && entry.actorId === PLAYER_ID && !!entry.locationName)
       .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+    const visits = locationEntries.filter(entry => entry.title.startsWith("你来到了"));
     let minutes = 0;
     let activeMinutes = 0;
     let count = 0;
-    visits.forEach((entry, index) => {
+    visits.forEach(entry => {
       if (entry.locationName !== selectedLocation.name) return;
       count += 1;
-      const nextArrival = visits.slice(index + 1).find(next => next.locationName !== entry.locationName);
-      const endAt = nextArrival ? new Date(nextArrival.occurredAt) : (
-        state.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID)?.actualLocationId === selectedLocation.id
-          ? virtualNow
-          : new Date(entry.occurredAt)
-      );
+      const nextLocationEntry = locationEntries.find(next => next.occurredAt > entry.occurredAt);
+      const isStillHere = state.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID)?.actualLocationId === selectedLocation.id && !nextLocationEntry;
+      const endAt = nextLocationEntry ? new Date(nextLocationEntry.occurredAt) : isStillHere ? virtualNow : new Date(entry.occurredAt);
       const duration = Math.max(0, Math.floor((endAt.getTime() - new Date(entry.occurredAt).getTime()) / 60_000));
       minutes += duration;
-      if (!nextArrival && state.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID)?.actualLocationId === selectedLocation.id) activeMinutes = duration;
+      if (isStillHere) activeMinutes = duration;
     });
     return { visits: count, minutes, activeMinutes };
-  }, [state.timeline, state.actorStates, state.actorClocks, selectedLocation]);
+  }, [state.timeline, state.actorStates, state.actorClocks, selectedLocation, locationStatsTick]);
   // In a live scene, the viewport belongs to the scene itself rather than the document.
   const immersiveScene = !!activeScene && ((tab === "home" && sceneView) || tab === "scene");
   useEffect(() => {
