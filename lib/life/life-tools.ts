@@ -122,7 +122,7 @@ export async function executeLifeToolCall(
   }
 
   if (name === "life_request_follow") {
-    if (!state.settings.enableInvitations || !state.settings.enableFollowRequestTool) return result(name, false, undefined, "角色陪伴申请已在自定义设置中关闭。");
+    if (!state.settings.enableFollowRequestTool) return result(name, false, undefined, "角色陪伴申请已在自定义设置中关闭。");
     const playerNow = resolveActorLifeNow(getActorClock(state, "player", "player"));
     const characterNow = resolveActorLifeNow(getActorClock(state, "character", characterId));
     const player = state.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === "player");
