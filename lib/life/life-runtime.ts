@@ -278,16 +278,22 @@ export function settleActorTimelineToNow(
   // respected until its expected stay expires; then the current itinerary resumes.
   const stayExpired = !!previous?.actualLocationUntil && new Date(previous.actualLocationUntil).getTime() <= virtualNow.getTime();
   const nextActivity = stayExpired
-    ? current?.title ?? previous?.activity ?? "时间线待补全"
-    : slotChanged ? current.title : previous?.activity ?? current?.title ?? "时间线待补全";
+    ? current?.title ?? previous?.activity ?? "自由活动"
+    : current && slotChanged
+      ? current.title
+      : !current && previous?.scheduleSlotId
+        ? "自由活动"
+        : previous?.activity ?? current?.title ?? "自由活动";
+  // A missing current slot must clear the old slot reference. Otherwise deleting
+  // or editing a schedule can leave an actor permanently attached to stale activity.
   const nextLocationId = stayExpired
-    ? current?.plannedLocationId ?? null
+    ? current?.plannedLocationId ?? previous?.actualLocationId ?? null
     : previous?.actualLocationId ?? current?.plannedLocationId ?? null;
   const nextLocationName = stayExpired
-    ? current?.plannedLocationName ?? null
+    ? current?.plannedLocationName ?? previous?.actualLocationName ?? null
     : previous?.actualLocationName ?? current?.plannedLocationName ?? null;
   const nextLocationUntil = stayExpired ? null : previous?.actualLocationUntil ?? null;
-  const nextSlotId = current?.id ?? previous?.scheduleSlotId ?? null;
+  const nextSlotId = current?.id ?? null;
   const actorChanged = !previous || previous.activity !== nextActivity || (previous.actualLocationId ?? null) !== nextLocationId || (previous.actualLocationName ?? null) !== nextLocationName || (previous.actualLocationUntil ?? null) !== nextLocationUntil || (previous.scheduleSlotId ?? null) !== nextSlotId;
   const actorStates = actorChanged
     ? [...state.actorStates.filter(actor => !(actor.ownerType === ownerType && actor.ownerId === ownerId)), {
@@ -362,7 +368,16 @@ export function advanceActorTimeline(
 
 export function getCurrentActorSchedule(state: VirtualLifeState, ownerType: LifeOwnerType, ownerId: string, at: Date) {
   const time = at.getTime();
-  return state.schedules.find(slot => slot.ownerType===ownerType && slot.ownerId===ownerId && new Date(slot.startAt).getTime()<=time && new Date(slot.endAt).getTime()>time);
+  return state.schedules
+    .filter(slot => slot.ownerType === ownerType && slot.ownerId === ownerId)
+    .filter(slot => {
+      const start = new Date(slot.startAt).getTime();
+      const end = new Date(slot.endAt).getTime();
+      return Number.isFinite(start) && Number.isFinite(end) && start <= time && end > time;
+    })
+    // If legacy data contains overlaps, the most recently started slot wins
+    // deterministically instead of whichever item happened to be stored first.
+    .sort((a, b) => b.startAt.localeCompare(a.startAt))[0];
 }
 export function makeLifeInvitation(state: VirtualLifeState, input: Omit<LifeInvitation,"id"|"status"|"updatedAt">): VirtualLifeState {
   const now = new Date().toISOString(), invitation: LifeInvitation = { ...input, id: makeId("invite"), status: "proposed", updatedAt: now };
