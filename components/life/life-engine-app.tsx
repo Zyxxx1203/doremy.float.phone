@@ -26,7 +26,7 @@ import {
   type LifeScheduleSlot,
   type VirtualLifeState,
 } from "@/lib/life/life-types";
-import { advanceActorTimeline, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, insertManualLifeScheduleSlot, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, upsertActorClock, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
+import { advanceActorTimeline, applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, insertManualLifeScheduleSlot, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, upsertActorClock, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
@@ -904,28 +904,31 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const parsed = parseLifeOutput(result.content);
       let structuredNext = stateRef.current;
       if (settings.enableCharacterAutonomy && settings.enableScheduleChangeTool && parsed.planChange?.title) {
-        const characterNow = resolveActorLifeNow(getActorClock(structuredNext, "character", target.id));
-        const startAt = new Date(parsed.planChange.startAt);
-        const endAt = new Date(parsed.planChange.endAt);
-        const sameDay = Number.isFinite(startAt.getTime()) && Number.isFinite(endAt.getTime())
-          && startAt.getFullYear() === characterNow.getFullYear() && startAt.getMonth() === characterNow.getMonth() && startAt.getDate() === characterNow.getDate()
-          && endAt.getFullYear() === characterNow.getFullYear() && endAt.getMonth() === characterNow.getMonth() && endAt.getDate() === characterNow.getDate();
-        const location = structuredNext.locations.find(item => item.id === parsed.planChange?.locationId) ?? structuredNext.locations.find(item => item.id === "home");
-        if (sameDay && startAt > characterNow && endAt > startAt) {
-          const conflict = structuredNext.schedules.some(slot => slot.ownerType === "character" && slot.ownerId === target.id && slot.kind === "appointment" && new Date(slot.startAt) < endAt && new Date(slot.endAt) > startAt);
-          if (!conflict) {
-            const preserved: LifeScheduleSlot[] = [];
-            for (const slot of structuredNext.schedules) {
-              if (slot.ownerType !== "character" || slot.ownerId !== target.id || slot.kind === "appointment" || new Date(slot.endAt) <= startAt || new Date(slot.startAt) >= endAt) { preserved.push(slot); continue; }
-              const a = new Date(slot.startAt).getTime(), b = new Date(slot.endAt).getTime();
-              if (a < startAt.getTime()) preserved.push({ ...slot, id: slot.id + "-before-" + id("plan"), endAt: startAt.toISOString(), updatedAt: new Date().toISOString() });
-              if (b > endAt.getTime()) preserved.push({ ...slot, id: slot.id + "-after-" + id("plan"), startAt: endAt.toISOString(), updatedAt: new Date().toISOString() });
-            }
-            preserved.push({ id: id("plan-change"), ownerType: "character", ownerId: target.id, startAt: startAt.toISOString(), endAt: endAt.toISOString(), title: parsed.planChange.title, plannedLocationId: location?.id ?? "home", plannedLocationName: location?.name ?? "家", kind: "free-time", source: "manual", updatedAt: new Date().toISOString() });
-            structuredNext = { ...structuredNext, schedules: preserved.sort((a,b)=>a.startAt.localeCompare(b.startAt)) };
-            setNotice(target.name + "调整了今天 " + startAt.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"}) + " 至 " + endAt.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"}) + " 的日程，其他时段保持不变。");
-          } else setNotice(target.name + "想调整日程，但该时段已有确认约会，因此没有覆盖。");
-        } else setNotice(target.name + "想调整日程，但时间不在当前虚拟日或已过去，因此没有修改。");
+        const startText = String(parsed.planChange.startAt ?? "");
+        const endText = String(parsed.planChange.endAt ?? "");
+        const changed = applyCharacterLifeScheduleChange(structuredNext, target.id, {
+          startAt: startText,
+          endAt: endText,
+          title: parsed.planChange.title,
+          locationId: parsed.planChange.locationId,
+        });
+        if (changed.error) {
+          setNotice(target.name + "想调整日程，但" + changed.error);
+        } else {
+          const startAt = new Date(startText);
+          const endAt = new Date(endText);
+          const location = changed.state.locations.find(item => item.id === parsed.planChange?.locationId);
+          structuredNext = appendLifeTimelineEntry(changed.state, {
+            category: "schedule",
+            title: target.name + "调整了日程：" + parsed.planChange.title,
+            details: startText + " – " + endText,
+            actorId: target.id,
+            actorName: target.name,
+            locationName: location?.name,
+            occurredAt: resolveActorLifeNow(getActorClock(changed.state, "character", target.id)).toISOString(),
+          });
+          setNotice(target.name + "调整了今天 " + startAt.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"}) + " 至 " + endAt.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"}) + " 的日程，其他时段保持不变。");
+        }
       }
       if (settings.enableCharacterAutonomy && parsed.invitation && settings.enableInvitations) {
         const proposedDate = new Date(parsed.invitation.time);
