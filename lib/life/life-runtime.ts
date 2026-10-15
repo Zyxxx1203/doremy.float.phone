@@ -65,53 +65,129 @@ export function upsertLifeScene(state: VirtualLifeState, scene: LifeSceneState):
 const makeId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;
 
 /** Create an editable weekly skeleton only when the owner has no plan for that week. */
-export function generateWeeklyLifePlan(state: VirtualLifeState, ownerType: LifeOwnerType, ownerId: string, ownerName: string, weekStart: Date, defaultLocation?: { id: string; name: string }, profile = "", includeSpecialEvents = true): VirtualLifeState {
-  const start = new Date(weekStart); start.setHours(0,0,0,0);
-  const end = new Date(start.getTime() + 7 * DAY_MS);
-  if (state.schedules.some(slot => slot.ownerType === ownerType && slot.ownerId === ownerId && new Date(slot.startAt) >= start && new Date(slot.startAt) < end)) return state;
-  const now = new Date().toISOString(), slots: LifeScheduleSlot[] = [];
+export function generateWeeklyLifePlan(
+  state: VirtualLifeState,
+  ownerType: LifeOwnerType,
+  ownerId: string,
+  ownerName: string,
+  weekStart: Date,
+  defaultLocation?: { id: string; name: string },
+  profile = "",
+  includeSpecialEvents = true,
+): VirtualLifeState {
+  const start = new Date(weekStart);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+  const ownerSlots = state.schedules.filter(slot => slot.ownerType === ownerType && slot.ownerId === ownerId);
+  const weekSlots = ownerSlots.filter(slot => {
+    const slotStart = new Date(slot.startAt).getTime();
+    const slotEnd = new Date(slot.endAt).getTime();
+    return Number.isFinite(slotStart) && Number.isFinite(slotEnd)
+      && slotStart < end.getTime() && slotEnd > start.getTime();
+  });
+
+  // A generated week is a stable plan: opening the app must never reroll it.
+  // However, a single manual appointment must not prevent the rest of the week
+  // from being populated. In that case we generate the baseline and carve out
+  // the time already occupied by manual/event slots.
+  if (weekSlots.some(slot => slot.source === "weekly-generation")) return state;
+
+  const now = new Date().toISOString();
+  const slots: LifeScheduleSlot[] = [];
   const profileText = profile.toLowerCase();
   const hash = [...ownerId].reduce((sum, char) => sum + char.charCodeAt(0), 0) + start.getDate();
   const specialDay = ownerType === "character" && includeSpecialEvents && hash % 3 !== 0 ? hash % 7 : -1;
   const specialTitle = /摄影|拍照|相机|photo/i.test(profileText) ? "去拍些喜欢的照片" : /音乐|唱歌|乐器|music/i.test(profileText) ? "练习音乐 / 听现场" : /运动|健身|跑步|篮球|足球|sport/i.test(profileText) ? "运动与放松" : /读书|阅读|写作|学习|学生|book|study/i.test(profileText) ? "阅读 / 学习一会儿" : /烹饪|做饭|料理|cook/i.test(profileText) ? "试着做一道新菜" : "个人兴趣与临时安排";
   const specialLocation = /摄影|拍照|相机|运动|健身|跑步|photo|sport/i.test(profileText) ? { id: "park", name: "公园" } : /读书|阅读|写作|学习|学生|book|study/i.test(profileText) ? { id: "library", name: "图书馆" } : /音乐|唱歌|乐器|music/i.test(profileText) ? { id: "cafe", name: "街角咖啡店" } : { id: "home", name: "家" };
-  const add = (day: Date, sh: number, sm: number, eh: number, em: number, title: string, kind: LifeScheduleSlot["kind"], location?: {id:string;name:string}) => {
-    const from = new Date(day); from.setHours(sh,sm,0,0);
-    const to = new Date(day); to.setHours(eh,em,0,0); if (to <= from) to.setDate(to.getDate()+1);
+  const add = (day: Date, sh: number, sm: number, eh: number, em: number, title: string, kind: LifeScheduleSlot["kind"], location?: { id: string; name: string }) => {
+    const from = new Date(day);
+    from.setHours(sh, sm, 0, 0);
+    const to = new Date(day);
+    to.setHours(eh, em, 0, 0);
+    if (to <= from) to.setDate(to.getDate() + 1);
     const loc = location ?? defaultLocation;
-    slots.push({ id: makeId("slot"), ownerType, ownerId, startAt: from.toISOString(), endAt: to.toISOString(), title, kind, source: "weekly-generation", plannedLocationId: loc?.id ?? null, plannedLocationName: loc?.name ?? null, updatedAt: now });
+    slots.push({
+      id: makeId("slot"), ownerType, ownerId, startAt: from.toISOString(), endAt: to.toISOString(),
+      title, kind, source: "weekly-generation",
+      plannedLocationId: loc?.id ?? null, plannedLocationName: loc?.name ?? null, updatedAt: now,
+    });
   };
-  for (let offset=0; offset<7; offset++) {
-    const day = new Date(start.getTime()+offset*DAY_MS), weekend = day.getDay()===0 || day.getDay()===6;
-    add(day,0,0,7,0,"睡眠","habit",{id:"home",name:"家"});
-    add(day,7,0,7,30,"起床、洗漱","habit",{id:"home",name:"家"});
-    add(day,7,30,8,0,"早餐","meal",{id:"home",name:"家"});
-    if (!weekend) {
-      const daytimeLocation = /学生|大学|学校|study/i.test(profileText) ? {id:"school",name:"学校"} : {id:"work",name:"工作地点"};
-      add(day,8,0,9,0,"通勤 / 前往当天安排","commute",{id:"transit",name:"通勤途中"});
-      const daytime = ownerType === "player" ? "工作 / 学习（可自行修改）" : /学生|大学|学校|study/i.test(profileText) ? ownerName+"上课 / 学习" : /自由职业|艺术家|作家|画家|摄影|音乐|创业|freelance|artist/i.test(profileText) ? ownerName+"的创作 / 项目时间" : ownerName+"的工作 / 学习";
-      add(day,9,0,12,0,daytime,ownerType==="player"?"free-time":"work",daytimeLocation);
-      add(day,12,0,13,0,"午餐","meal",{id:"canteen",name:"食堂 / 附近餐馆"});
-      add(day,13,0,18,0,ownerType==="player"?"下午安排（可自行修改）":ownerName+"的下午安排",ownerType==="player"?"free-time":"work",daytimeLocation);
-    } else {
-      add(day,8,0,9,0,"慢慢开始的一天","free-time",{id:"home",name:"家"});
-      add(day,9,0,12,0,ownerType==="player"?"周末自由安排":ownerName+"的周末安排","free-time",{id:"home",name:"家"});
-      add(day,12,0,13,0,"午餐","meal",{id:"home",name:"家"});
-      add(day,13,0,18,0,"休闲 / 个人计划","free-time",{id:"home",name:"家"});
-    }
-    add(day,18,0,19,0,"晚餐","meal",{id:"home",name:"家"});
-    if (offset === specialDay) {
-      add(day,19,0,19,30,"回家 / 稍作休息","free-time",{id:"home",name:"家"});
-      add(day,19,30,20,30,specialTitle,"special",specialLocation);
-      add(day,20,30,22,0,"晚间自由时间","free-time",{id:"home",name:"家"});
-    } else {
-      add(day,19,0,22,0,ownerType==="player"?"自由时间":ownerName+"的私人时间","free-time",{id:"home",name:"家"});
-    }
-    add(day,22,0,24,0,"睡眠","habit",{id:"home",name:"家"});
-  }
-  return { ...state, schedules: [...state.schedules,...slots].sort((a,b)=>a.startAt.localeCompare(b.startAt)) };
-}
 
+  // Use calendar-day arithmetic rather than adding 24 hours, so daylight-saving
+  // transitions cannot shift the generated local schedule by an hour.
+  for (let offset = 0; offset < 7; offset++) {
+    const day = new Date(start);
+    day.setDate(start.getDate() + offset);
+    const weekend = day.getDay() === 0 || day.getDay() === 6;
+    add(day, 0, 0, 7, 0, "睡眠", "habit", { id: "home", name: "家" });
+    add(day, 7, 0, 7, 30, "起床、洗漱", "habit", { id: "home", name: "家" });
+    add(day, 7, 30, 8, 0, "早餐", "meal", { id: "home", name: "家" });
+    if (!weekend) {
+      const daytimeLocation = /学生|大学|学校|study/i.test(profileText) ? { id: "school", name: "学校" } : { id: "work", name: "工作地点" };
+      add(day, 8, 0, 9, 0, "通勤 / 前往当天安排", "commute", { id: "transit", name: "通勤途中" });
+      const daytime = ownerType === "player" ? "工作 / 学习（可自行修改）" : /学生|大学|学校|study/i.test(profileText) ? ownerName + "上课 / 学习" : /自由职业|艺术家|作家|画家|摄影|音乐|创业|freelance|artist/i.test(profileText) ? ownerName + "的创作 / 项目时间" : ownerName + "的工作 / 学习";
+      add(day, 9, 0, 12, 0, daytime, ownerType === "player" ? "free-time" : "work", daytimeLocation);
+      add(day, 12, 0, 13, 0, "午餐", "meal", { id: "canteen", name: "食堂 / 附近餐馆" });
+      add(day, 13, 0, 18, 0, ownerType === "player" ? "下午安排（可自行修改）" : ownerName + "的下午安排", ownerType === "player" ? "free-time" : "work", daytimeLocation);
+    } else {
+      add(day, 8, 0, 9, 0, "慢慢开始的一天", "free-time", { id: "home", name: "家" });
+      add(day, 9, 0, 12, 0, ownerType === "player" ? "周末自由安排" : ownerName + "的周末安排", "free-time", { id: "home", name: "家" });
+      add(day, 12, 0, 13, 0, "午餐", "meal", { id: "home", name: "家" });
+      add(day, 13, 0, 18, 0, "休闲 / 个人计划", "free-time", { id: "home", name: "家" });
+    }
+    add(day, 18, 0, 19, 0, "晚餐", "meal", { id: "home", name: "家" });
+    if (offset === specialDay) {
+      add(day, 19, 0, 19, 30, "回家 / 稍作休息", "free-time", { id: "home", name: "家" });
+      add(day, 19, 30, 20, 30, specialTitle, "special", specialLocation);
+      add(day, 20, 30, 22, 0, "晚间自由时间", "free-time", { id: "home", name: "家" });
+    } else {
+      add(day, 19, 0, 22, 0, ownerType === "player" ? "自由时间" : ownerName + "的私人时间", "free-time", { id: "home", name: "家" });
+    }
+    add(day, 22, 0, 24, 0, "睡眠", "habit", { id: "home", name: "家" });
+  }
+
+  const occupied = weekSlots
+    .map(slot => ({ start: new Date(slot.startAt).getTime(), end: new Date(slot.endAt).getTime() }))
+    .filter(range => Number.isFinite(range.start) && Number.isFinite(range.end) && range.end > range.start)
+    .sort((a, b) => a.start - b.start);
+  const generated: LifeScheduleSlot[] = [];
+  for (const template of slots) {
+    const templateStart = new Date(template.startAt).getTime();
+    const templateEnd = new Date(template.endAt).getTime();
+    let cursor = templateStart;
+    let part = 0;
+    for (const range of occupied) {
+      if (range.end <= cursor) continue;
+      if (range.start >= templateEnd) break;
+      if (range.start > cursor) {
+        const partEnd = Math.min(range.start, templateEnd);
+        if (partEnd > cursor) {
+          generated.push({
+            ...template,
+            id: part === 0 && partEnd === templateEnd ? template.id : template.id + "-part-" + part,
+            startAt: new Date(cursor).toISOString(),
+            endAt: new Date(partEnd).toISOString(),
+          });
+          part++;
+        }
+      }
+      cursor = Math.max(cursor, range.end);
+      if (cursor >= templateEnd) break;
+    }
+    if (cursor < templateEnd) {
+      generated.push({
+        ...template,
+        id: part === 0 && cursor === templateStart ? template.id : template.id + "-part-" + part,
+        startAt: new Date(cursor).toISOString(),
+        endAt: template.endAt,
+      });
+    }
+  }
+
+  if (generated.length === 0) return state;
+  return { ...state, schedules: [...state.schedules, ...generated].sort((a, b) => a.startAt.localeCompare(b.startAt)) };
+}
 /**
  * Catch up one actor to their own virtual now. Every completed schedule slot is
  * settled idempotently, and the current slot updates their real activity/location.
@@ -276,8 +352,9 @@ export function advanceActorTimeline(
   const targetWeek = mondayStartLife(target);
   let next = state;
   // Fast-forward may cross many days/weeks. Fill every crossed week before settling.
-  for (let guard = 0; week.getTime() <= targetWeek.getTime() && guard < 520; guard++, week = new Date(week.getTime() + 7 * DAY_MS)) {
+  for (let guard = 0; week.getTime() <= targetWeek.getTime() && guard < 520; guard++) {
     next = generateWeeklyLifePlan(next, ownerType, ownerId, ownerName, week, { id: "home", name: "家" }, profile, true);
+    week.setDate(week.getDate() + 7);
   }
   const advanced = fastForwardActor(next, ownerType, ownerId, minutes, realNow);
   return settleActorTimelineToNow(advanced, ownerType, ownerId, realNow);
