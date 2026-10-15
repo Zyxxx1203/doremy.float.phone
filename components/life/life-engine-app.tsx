@@ -164,7 +164,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     void hydrateKvDb().then(() => hydrateChatStorage()).catch(() => undefined).finally(() => {
       if (!alive) return;
       const loaded = loadVirtualLifeState();
-      let normalized: VirtualLifeState = { ...loaded, locations: [...INITIAL_LOCATIONS.filter(location => !loaded.locations.some(saved => saved.id === location.id)), ...loaded.locations] };
+      let normalized: VirtualLifeState = { ...loaded, locations: [...INITIAL_LOCATIONS.filter(location => !loaded.locations.some(saved => saved.id === location.id)), ...loaded.locations.map(saved => { const defaults = INITIAL_LOCATIONS.find(location => location.id === saved.id); return defaults ? { ...defaults, ...saved, description: saved.description || defaults.description, atmosphere: saved.atmosphere || defaults.atmosphere, layout: saved.layout || defaults.layout, props: saved.props?.length ? saved.props : defaults.props } : saved; })] };
       const hasContinuingScene = normalized.scenes.some(scene => scene.status === "active" || scene.status === "paused");
       if (!hasContinuingScene && normalized.settings.enabled) {
         const player = normalized.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
@@ -1040,7 +1040,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         description: locationDescriptionDraft.trim(),
         atmosphere: locationAtmosphereDraft.trim(),
         layout: locationLayoutDraft.trim(),
-        props: [...new Set(locationPropsDraft.split(/[、,，;；\\n]/).map(prop => prop.trim()).filter(Boolean))],
+        props: [...new Set(locationPropsDraft.split(/[、,，;；\n]/).map(prop => prop.trim()).filter(Boolean))],
       }),
     };
     commit(next);
@@ -1629,7 +1629,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           <p className="mt-2 text-xs text-stone-500">长按任意消息可编辑、删除或重新生成角色回复。生成使用角色现有私聊会话和模型配置；本轮场景指令只临时注入，不会把场景规则写进原线上聊天记录。</p>
         </>}
       </section>}
-          <section className={`mt-4 rounded-2xl border border-stone-200/70 bg-white/60 p-3 sm:p-4 ${immersiveScene ? "hidden" : ""}`}>
+          <section className={`mt-4 rounded-2xl border border-stone-200/70 bg-white/60 p-3 sm:p-4 ${immersiveScene || (tab === "home" && !sceneView) ? "hidden" : ""}`}>
             <div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-sm font-semibold text-stone-800">今天发生的事</p><p className="mt-0.5 text-[11px] text-stone-500">生活、行动和互动会按发生时间连续记录</p></div><span className="rounded-full bg-white px-2.5 py-1 text-[10px] text-stone-500">{lifeTimeline.length} 条</span></div>
             {recentLifeTimeline.length ? <div className="space-y-2">{recentLifeTimeline.map(entry=><div key={entry.id} className="flex gap-3 rounded-xl bg-white/80 p-3"><span className="w-12 shrink-0 pt-0.5 text-[11px] tabular-nums text-stone-400">{new Date(entry.occurredAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><div className="min-w-0 flex-1"><p className="text-sm font-medium text-stone-800">{entry.title}</p>{entry.details&&<p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-stone-600">{entry.details}</p>}<p className="mt-1 text-[10px] text-stone-400">{entry.actorName ? entry.actorName+" · " : ""}{entry.locationName ? entry.locationName+" · " : ""}{entry.category === "location" ? "地点" : entry.category === "scene" ? "场景" : entry.category === "action" ? "行动" : entry.category === "dialogue" ? "对话" : entry.category === "schedule" ? "日程" : entry.category === "tool" ? "工具" : entry.category === "social" ? "朋友圈" : entry.category === "diary" ? "日记" : entry.category === "chat" ? "消息" : "生活记录"}</p></div></div>)}</div> : <div className="rounded-xl bg-white/70 p-4 text-center text-xs text-stone-500">还没有符合当前筛选条件的记录。开始行动或互动后，这里会逐渐形成你的一天。</div>}
             {olderLifeTimeline.length>0&&<details className="mt-3 rounded-xl border border-stone-200/70 bg-white/50 p-3"><summary className="cursor-pointer text-xs font-medium text-stone-600">展开更早的记录（{olderLifeTimeline.length}）</summary><div className="mt-3 space-y-2">{olderLifeTimeline.map(entry=><div key={entry.id} className="flex gap-3 border-l-2 border-stone-200 pl-3 py-1"><span className="w-12 shrink-0 text-[10px] tabular-nums text-stone-400">{new Date(entry.occurredAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><div className="min-w-0 flex-1"><p className="text-xs font-medium">{entry.title}</p>{entry.details&&<p className="mt-0.5 whitespace-pre-wrap break-words text-[11px] text-stone-500">{entry.details}</p>}</div></div>)}</div></details>}
