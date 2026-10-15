@@ -86,11 +86,10 @@ export function generateWeeklyLifePlan(
       && slotStart < end.getTime() && slotEnd > start.getTime();
   });
 
-  // A generated week is a stable plan: opening the app must never reroll it.
-  // However, a single manual appointment must not prevent the rest of the week
-  // from being populated. In that case we generate the baseline and carve out
-  // the time already occupied by manual/event slots.
-  if (weekSlots.some(slot => slot.source === "weekly-generation")) return state;
+  // Preserve every existing slot and fill only uncovered time. This keeps a
+  // complete generated week stable, while also repairing older partially
+  // generated weeks instead of treating one leftover generated slot as proof
+  // that all seven days are complete.
 
   const now = new Date().toISOString();
   const slots: LifeScheduleSlot[] = [];
