@@ -27,7 +27,24 @@ export type LifeActorClock = {
   updatedAt: string;
 };
 
+export type LifePromptPreset = {
+  id: string;
+  name: string;
+  description?: string;
+  sourcePresetId?: string;
+  sourcePresetName?: string;
+  basePresetPrompt?: string;
+  sceneOutputPrompt?: string;
+  sceneBehaviorPrompt?: string;
+  scheduleGenerationPrompt?: string;
+  invitationResponsePrompt?: string;
+  locationHabitPrompt?: string;
+  customPrompt?: string;
+};
+
 export type LifeEngineSettings = {
+  promptPresets?: LifePromptPreset[];
+  activePromptPresetId?: string;
   playerDisplayName: string;
   enabled: boolean;
   autoGenerateWeeklyPlans: boolean;
@@ -128,6 +145,10 @@ export type LifeLocation = {
   id: string;
   name: string;
   description?: string;
+  /** Alternate names used to match generated itinerary places back to this canonical location. */
+  aliases?: string[];
+  /** Per-character habits at this location, keyed by character ID. */
+  characterHabits?: Record<string, string>;
   /** User-authored atmosphere cues used by the live scene prompt and location cards. */
   atmosphere?: string;
   /** Stable spatial layout: where the door, seats, windows, counters, etc. are. */
