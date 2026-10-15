@@ -98,8 +98,12 @@ export function appendLifeTimelineEntry(
 ): VirtualLifeState {
   const { ownerType: explicitOwnerType, ownerId: explicitOwnerId, ...timelineEntry } = entry;
   const actorId = explicitOwnerId ?? entry.actorId ?? "player";
-  const inferredActor = state.actorStates.find(actor => actor.ownerId === actorId);
-  const inferredSlot = state.schedules.find(slot => slot.ownerId === actorId);
+  const inferredActor = state.actorStates.find(actor =>
+    actor.ownerId === actorId && (!explicitOwnerType || actor.ownerType === explicitOwnerType)
+  );
+  const inferredSlot = state.schedules.find(slot =>
+    slot.ownerId === actorId && (!explicitOwnerType || slot.ownerType === explicitOwnerType)
+  );
   const ownerType = explicitOwnerType ?? inferredActor?.ownerType ?? inferredSlot?.ownerType ?? (actorId === "player" ? "player" : "character");
   const item: LifeTimelineEntry = {
     ...timelineEntry,
