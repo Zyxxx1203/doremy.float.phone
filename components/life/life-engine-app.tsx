@@ -1075,7 +1075,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       return { ok: false, state: base, notice: "这个时间对你或角色来说已经过去了。请修改时间；不会为了赴约自动跳过时间。" };
     }
     const relevantOwners = invite.kind === "follow-request" ? new Set([invite.characterId]) : new Set([PLAYER_ID, invite.characterId]);
-    const conflict = base.schedules.find(slot => relevantOwners.has(slot.ownerId) && (slot.ownerType === "player" || slot.ownerType === "character") && (slot.kind === "appointment" || slot.source === "manual" || slot.source === "event") && new Date(slot.startAt) < endsAt && new Date(slot.endAt) > startsAt);
+    const conflict = base.schedules.find(slot => relevantOwners.has(slot.ownerId) && (slot.ownerType === "player" || slot.ownerType === "character") && (slot.kind === "appointment" || slot.source === "manual" || slot.source === "event" || slot.source === "character-tool") && new Date(slot.startAt) < endsAt && new Date(slot.endAt) > startsAt);
     if (conflict) return { ok: false, state: base, notice: "这个时段已经有另一项已确认的约定。请先调整时间，避免两件事情同时发生。" };
     let next = confirmLifeInvitation(base, inviteId);
     const confirmed = next.invitations.find(item => item.id === inviteId);
@@ -1204,7 +1204,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           && !linkedSlotIds.has(other.id)
           && new Date(other.startAt).getTime() < endMs
           && new Date(other.endAt).getTime() > startMs
-          && (other.kind === "appointment" || other.source === "manual" || other.source === "event")
+          && (other.kind === "appointment" || other.source === "manual" || other.source === "event" || other.source === "character-tool")
         );
         if (conflict) {
           setNotice("这段时间与「" + conflict.title + "」冲突。已保留原约会和双方日程。");
