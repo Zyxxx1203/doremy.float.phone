@@ -1312,7 +1312,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   };
 
   const deleteManualPlan = (slot: LifeScheduleSlot) => {
-    if (slot.source !== "manual") { setNotice("系统生成的计划可以编辑；目前只允许删除手动添加的日程。"); return; }
+    if (slot.source !== "manual" && slot.source !== "character-tool") { setNotice("系统生成的计划可以编辑；目前只允许删除手动添加或角色主动调整的日程。"); return; }
     const current = stateRef.current;
     const now = new Date().toISOString();
     const restoredFreeTime: LifeScheduleSlot = {
