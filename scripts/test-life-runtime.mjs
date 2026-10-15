@@ -81,6 +81,35 @@ const partial = generateWeeklyLifePlan(makeState([appointment]), "player", "play
 assert.ok(partial.schedules.some(slot => slot.id === appointment.id), "existing appointment must be preserved");
 assertWeekHasNoGapsOrOverlaps(partial.schedules, "player", "player", weekStart);
 
+const partiallyGeneratedWeek = makeState([{
+  id: "legacy-generated-monday-sleep",
+  ownerType: "player",
+  ownerId: "player",
+  startAt: localIso(0, 0),
+  endAt: localIso(0, 7),
+  title: "睡眠",
+  kind: "habit",
+  source: "weekly-generation",
+  plannedLocationId: "home",
+  plannedLocationName: "家",
+}]);
+const repairedWeek = generateWeeklyLifePlan(
+  partiallyGeneratedWeek,
+  "player",
+  "player",
+  "我",
+  weekStart,
+  { id: "home", name: "家" },
+  "",
+  false,
+);
+assert.ok(
+  repairedWeek.schedules.some(slot => slot.id === "legacy-generated-monday-sleep"),
+  "repairing a partial week must preserve existing generated slots",
+);
+assertWeekHasNoGapsOrOverlaps(repairedWeek.schedules, "player", "player", weekStart);
+
+
 // Re-opening or re-running generation must not reroll a week already generated.
 const rerun = generateWeeklyLifePlan(partial, "player", "player", "我", weekStart, { id: "home", name: "家" }, "", false);
 assert.equal(rerun, partial, "an already generated week must remain stable");
