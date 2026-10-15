@@ -599,6 +599,89 @@ export function insertManualLifeScheduleSlot(
   return { state: { ...state, schedules: nextSlots.sort((a, b) => a.startAt.localeCompare(b.startAt)) } };
 }
 
+/**
+ * Apply a character-authored schedule change through one shared business rule.
+ * It may reshape generated or previous character-tool slots, but never silently
+ * overwrites user-authored plans or confirmed events.
+ */
+export function applyCharacterLifeScheduleChange(
+  state: VirtualLifeState,
+  characterId: string,
+  input: { startAt: string; endAt: string; title: string; locationId?: string },
+  realNow = new Date(),
+): { state: VirtualLifeState; error?: string } {
+  const startAt = new Date(input.startAt);
+  const endAt = new Date(input.endAt);
+  const title = input.title.trim().slice(0, 120);
+  if (!title || !Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime()) || endAt <= startAt) {
+    return { state, error: "需要有效的活动内容和开始/结束时间，且结束时间必须晚于开始时间。" };
+  }
+  const characterNow = resolveActorLifeNow(getActorClock(state, "character", characterId), realNow);
+  const sameDay = startAt.getFullYear() === characterNow.getFullYear()
+    && startAt.getMonth() === characterNow.getMonth()
+    && startAt.getDate() === characterNow.getDate()
+    && endAt.getFullYear() === characterNow.getFullYear()
+    && endAt.getMonth() === characterNow.getMonth()
+    && endAt.getDate() === characterNow.getDate();
+  if (!sameDay || startAt <= characterNow) {
+    return { state, error: "只能调整角色当前虚拟日中尚未开始的时段。" };
+  }
+
+  const startMs = startAt.getTime();
+  const endMs = endAt.getTime();
+  const conflict = state.schedules.find(slot => {
+    if (slot.ownerType !== "character" || slot.ownerId !== characterId) return false;
+    const slotStart = new Date(slot.startAt).getTime();
+    const slotEnd = new Date(slot.endAt).getTime();
+    if (!Number.isFinite(slotStart) || !Number.isFinite(slotEnd)) return false;
+    return (slot.kind === "appointment" || slot.source === "manual" || slot.source === "event")
+      && slotStart < endMs
+      && slotEnd > startMs;
+  });
+  if (conflict) return { state, error: "该时段与「" + conflict.title + "」冲突；没有覆盖用户安排或已确认约会。" };
+
+  const locationId = input.locationId?.trim();
+  const location = state.locations.find(item => item.id === locationId) ?? state.locations.find(item => item.id === "home");
+  const schedules: LifeScheduleSlot[] = [];
+  const updatedAt = realNow.toISOString();
+  for (const slot of state.schedules) {
+    const slotStart = new Date(slot.startAt).getTime();
+    const slotEnd = new Date(slot.endAt).getTime();
+    if (
+      slot.ownerType !== "character"
+      || slot.ownerId !== characterId
+      || slot.kind === "appointment"
+      || !Number.isFinite(slotStart)
+      || !Number.isFinite(slotEnd)
+      || slotEnd <= startMs
+      || slotStart >= endMs
+    ) {
+      schedules.push(slot);
+      continue;
+    }
+    if (slotStart < startMs) {
+      schedules.push({ ...slot, id: slot.id + "-before-life-tool-" + startMs, endAt: startAt.toISOString(), updatedAt });
+    }
+    if (slotEnd > endMs) {
+      schedules.push({ ...slot, id: slot.id + "-after-life-tool-" + endMs, startAt: endAt.toISOString(), updatedAt });
+    }
+  }
+  schedules.push({
+    id: "life-tool-plan-" + characterId + "-" + startMs,
+    ownerType: "character",
+    ownerId: characterId,
+    startAt: startAt.toISOString(),
+    endAt: endAt.toISOString(),
+    title,
+    plannedLocationId: location?.id ?? null,
+    plannedLocationName: location?.name ?? null,
+    kind: "free-time",
+    source: "character-tool",
+    updatedAt,
+  });
+  return { state: { ...state, schedules: schedules.sort((a, b) => a.startAt.localeCompare(b.startAt)) } };
+}
+
 export function confirmLifeInvitation(state: VirtualLifeState, invitationId: string): VirtualLifeState {
   const invitation = state.invitations.find(item => item.id===invitationId && item.status==="proposed");
   if (!invitation) return state;
