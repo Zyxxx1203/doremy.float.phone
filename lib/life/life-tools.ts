@@ -2,6 +2,7 @@ import { loadCharacters } from "../character-storage";
 import { loadChatContacts } from "../chat-storage";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "./life-storage";
 import {
+  applyCharacterLifeScheduleChange,
   getActorClock,
   resolveActorLifeNow,
   makeLifeInvitation,
@@ -84,68 +85,6 @@ function result(name: string, success: boolean, data?: string, error?: string) {
   return { name, success, ...(data ? { data } : {}), ...(error ? { error } : {}) };
 }
 
-function applyScheduleChange(state: VirtualLifeState, characterId: string, args: Record<string, unknown>) {
-  const startAt = new Date(cleanText(args.startAt, 80));
-  const endAt = new Date(cleanText(args.endAt, 80));
-  const title = cleanText(args.title, 120);
-  if (!title || !Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime()) || endAt <= startAt) {
-    return { state, error: "需要有效的 title、startAt 和 endAt，且结束时间必须晚于开始时间。" };
-  }
-  const now = resolveActorLifeNow(getActorClock(state, "character", characterId));
-  const sameDay = startAt.getFullYear() === now.getFullYear()
-    && startAt.getMonth() === now.getMonth()
-    && startAt.getDate() === now.getDate()
-    && endAt.getFullYear() === now.getFullYear()
-    && endAt.getMonth() === now.getMonth()
-    && endAt.getDate() === now.getDate();
-  if (!sameDay || startAt <= now) return { state, error: "只能调整角色当前虚拟日中尚未开始的时段。" };
-  const conflict = state.schedules.some(slot => {
-    if (slot.ownerType !== "character" || slot.ownerId !== characterId) return false;
-    const slotStart = new Date(slot.startAt).getTime();
-    const slotEnd = new Date(slot.endAt).getTime();
-    if (!Number.isFinite(slotStart) || !Number.isFinite(slotEnd)) return false;
-    return (slot.kind === "appointment" || slot.source === "manual" || slot.source === "event")
-      && slotStart < endAt.getTime()
-      && slotEnd > startAt.getTime();
-  });
-  if (conflict) return { state, error: "该时段存在已确认约会，不能覆盖。" };
-  const locationId = cleanText(args.locationId, 100);
-  const location = state.locations.find(item => item.id === locationId) ?? state.locations.find(item => item.id === "home");
-  const schedules: LifeScheduleSlot[] = [];
-  for (const slot of state.schedules) {
-    const a = new Date(slot.startAt).getTime();
-    const b = new Date(slot.endAt).getTime();
-    if (
-      slot.ownerType !== "character"
-      || slot.ownerId !== characterId
-      || slot.kind === "appointment"
-      || !Number.isFinite(a)
-      || !Number.isFinite(b)
-      || b <= startAt.getTime()
-      || a >= endAt.getTime()
-    ) {
-      schedules.push(slot);
-      continue;
-    }
-    if (a < startAt.getTime()) schedules.push({ ...slot, id: slot.id + "-before-life-tool-" + startAt.getTime(), endAt: startAt.toISOString(), updatedAt: new Date().toISOString() });
-    if (b > endAt.getTime()) schedules.push({ ...slot, id: slot.id + "-after-life-tool-" + endAt.getTime(), startAt: endAt.toISOString(), updatedAt: new Date().toISOString() });
-  }
-  schedules.push({
-    id: "life-tool-plan-" + characterId + "-" + startAt.getTime(),
-    ownerType: "character",
-    ownerId: characterId,
-    startAt: startAt.toISOString(),
-    endAt: endAt.toISOString(),
-    title,
-    plannedLocationId: location?.id ?? null,
-    plannedLocationName: location?.name ?? null,
-    kind: "free-time",
-    source: "character-tool",
-    updatedAt: new Date().toISOString(),
-  });
-  return { state: { ...state, schedules: schedules.sort((a, b) => a.startAt.localeCompare(b.startAt)) }, error: "" };
-}
-
 export async function executeLifeToolCall(
   call: { name: string; args: unknown },
   context?: { appId?: string; characterId?: string },
@@ -206,7 +145,12 @@ export async function executeLifeToolCall(
 
   if (name === "life_change_schedule") {
     if (!state.settings.enableScheduleChangeTool) return result(name, false, undefined, "角色自主调整日程已在自定义设置中关闭。");
-    const changed = applyScheduleChange(state, characterId, args);
+    const changed = applyCharacterLifeScheduleChange(state, characterId, {
+      startAt: cleanText(args.startAt, 80),
+      endAt: cleanText(args.endAt, 80),
+      title: cleanText(args.title, 120),
+      locationId: cleanText(args.locationId, 100),
+    });
     if (changed.error) return result(name, false, undefined, changed.error);
     const logged = appendLifeTimelineEntry(changed.state, { category: "schedule", title: "角色调整了日程：" + cleanText(args.title, 120), details: cleanText(args.startAt, 80) + " – " + cleanText(args.endAt, 80), actorId: characterId, actorName: loadCharacters().find(item => item.id === characterId)?.name ?? "角色", locationName: changed.state.locations.find(item => item.id === cleanText(args.locationId, 100))?.name, occurredAt: resolveActorLifeNow(getActorClock(changed.state, "character", characterId)).toISOString() });
     saveVirtualLifeState(logged);
