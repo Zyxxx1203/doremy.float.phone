@@ -99,18 +99,34 @@ function applyScheduleChange(state: VirtualLifeState, characterId: string, args:
     && endAt.getMonth() === now.getMonth()
     && endAt.getDate() === now.getDate();
   if (!sameDay || startAt <= now) return { state, error: "只能调整角色当前虚拟日中尚未开始的时段。" };
-  const conflict = state.schedules.some(slot => slot.ownerType === "character" && slot.ownerId === characterId && slot.kind === "appointment" && new Date(slot.startAt) < endAt && new Date(slot.endAt) > startAt);
+  const conflict = state.schedules.some(slot => {
+    if (slot.ownerType !== "character" || slot.ownerId !== characterId) return false;
+    const slotStart = new Date(slot.startAt).getTime();
+    const slotEnd = new Date(slot.endAt).getTime();
+    if (!Number.isFinite(slotStart) || !Number.isFinite(slotEnd)) return false;
+    return (slot.kind === "appointment" || slot.source === "manual" || slot.source === "event")
+      && slotStart < endAt.getTime()
+      && slotEnd > startAt.getTime();
+  });
   if (conflict) return { state, error: "该时段存在已确认约会，不能覆盖。" };
   const locationId = cleanText(args.locationId, 100);
   const location = state.locations.find(item => item.id === locationId) ?? state.locations.find(item => item.id === "home");
   const schedules: LifeScheduleSlot[] = [];
   for (const slot of state.schedules) {
-    if (slot.ownerType !== "character" || slot.ownerId !== characterId || slot.kind === "appointment" || new Date(slot.endAt) <= startAt || new Date(slot.startAt) >= endAt) {
+    const a = new Date(slot.startAt).getTime();
+    const b = new Date(slot.endAt).getTime();
+    if (
+      slot.ownerType !== "character"
+      || slot.ownerId !== characterId
+      || slot.kind === "appointment"
+      || !Number.isFinite(a)
+      || !Number.isFinite(b)
+      || b <= startAt.getTime()
+      || a >= endAt.getTime()
+    ) {
       schedules.push(slot);
       continue;
     }
-    const a = new Date(slot.startAt).getTime();
-    const b = new Date(slot.endAt).getTime();
     if (a < startAt.getTime()) schedules.push({ ...slot, id: slot.id + "-before-life-tool-" + startAt.getTime(), endAt: startAt.toISOString(), updatedAt: new Date().toISOString() });
     if (b > endAt.getTime()) schedules.push({ ...slot, id: slot.id + "-after-life-tool-" + endAt.getTime(), startAt: endAt.toISOString(), updatedAt: new Date().toISOString() });
   }
