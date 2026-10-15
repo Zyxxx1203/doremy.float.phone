@@ -223,8 +223,6 @@ const withCharacterToolPlan = { ...emptyPlan, schedules: [...emptyPlan.schedules
 const blockedByCharacterTool = insertManualLifeScheduleSlot(withCharacterToolPlan, { ...manualActivity, id: "overlapping-user-plan" });
 assert.equal(blockedByCharacterTool.conflict?.id, characterToolPlan.id, "manual plans must not silently overwrite a character-authored schedule change");
 
-
-
 const overlapState = makeState([
   { id: "earlier", ownerType: "character", ownerId: "c1", startAt: "2026-10-15T09:00:00.000Z", endAt: "2026-10-15T12:00:00.000Z", title: "旧安排" },
   { id: "later", ownerType: "character", ownerId: "c1", startAt: "2026-10-15T10:00:00.000Z", endAt: "2026-10-15T11:00:00.000Z", title: "新安排" },
@@ -390,12 +388,6 @@ assert.ok(
   recoveredActiveAppointment.scenes.some(scene => scene.eventId === "ap-event" && scene.status === "completed"),
   "catch-up should reconstruct the missing scene for an elapsed active appointment",
 );
-
-
-
-
-
-
 
 const malformedInvitationState = {
   ...makeState(),
