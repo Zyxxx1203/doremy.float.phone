@@ -342,6 +342,27 @@ assert.equal(attachedExistingScene.scenes.length, 1, "catch-up should reuse an e
 assert.equal(attachedExistingScene.scenes[0].eventId, "ap-event", "the elapsed appointment should attach to the existing shared scene");
 assert.equal(attachedExistingScene.events.find(event => event.id === "ap-event")?.status, "completed");
 
+const activeAppointmentWithoutScene = {
+  ...apState,
+  events: apState.events.map(event => event.id === "ap-event" ? { ...event, status: "active" } : event),
+};
+const recoveredActiveAppointment = settleActorTimelineToNow(
+  activeAppointmentWithoutScene,
+  "player",
+  "player",
+  new Date("2026-10-15T15:00:00.000Z"),
+);
+assert.equal(
+  recoveredActiveAppointment.events.find(event => event.id === "ap-event")?.status,
+  "completed",
+  "an already-active appointment that lost its scene should be recovered during catch-up",
+);
+assert.ok(
+  recoveredActiveAppointment.scenes.some(scene => scene.eventId === "ap-event" && scene.status === "completed"),
+  "catch-up should reconstruct the missing scene for an elapsed active appointment",
+);
+
+
 
 
 
