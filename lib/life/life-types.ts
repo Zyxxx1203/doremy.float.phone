@@ -128,6 +128,12 @@ export type LifeLocation = {
   id: string;
   name: string;
   description?: string;
+  /** User-authored atmosphere cues used by the live scene prompt and location cards. */
+  atmosphere?: string;
+  /** Stable spatial layout: where the door, seats, windows, counters, etc. are. */
+  layout?: string;
+  /** Persistent props/objects that can be referenced by later actions and dialogue. */
+  props?: string[];
   visibility: "public" | "private";
 };
 
