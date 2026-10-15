@@ -1175,17 +1175,28 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       }
       const eventSlotPrefix = "invite-slot-" + linkedEvent.id + "-";
       const linkedSlots = current.schedules.filter(item => item.id.startsWith(eventSlotPrefix));
-      const participantSlots = linkedSlots.length
-        ? linkedSlots
-        : current.schedules.filter(item =>
-            linkedEvent.participantIds.includes(item.ownerId)
-            && (linkedEvent.details !== "follow-player" || item.ownerId !== PLAYER_ID)
-            && item.kind === "appointment"
-            && item.source === "event"
-            && item.startAt === linkedEvent.startsAt
-            && item.endAt === linkedEvent.endsAt
-          );
       const linkedSlotIds = new Set(linkedSlots.map(item => item.id));
+      const keepFollowLocation = linkedEvent.details === "follow-player";
+      const expectedOwnerIds = linkedEvent.participantIds.filter(ownerId => !keepFollowLocation || ownerId !== PLAYER_ID);
+      // Repair a missing participant slot while editing an existing appointment;
+      // the shared event must never become a one-sided calendar entry.
+      const participantSlots: LifeScheduleSlot[] = expectedOwnerIds.map(ownerId => {
+        const ownerType: LifeOwnerType = ownerId === PLAYER_ID ? "player" : "character";
+        const existing = linkedSlots.find(item => item.ownerId === ownerId && item.ownerType === ownerType);
+        return existing ?? {
+          id: eventSlotPrefix + ownerType + "-" + ownerId,
+          ownerType,
+          ownerId,
+          startAt: linkedEvent.startsAt ?? slot.startAt,
+          endAt: linkedEvent.endsAt ?? slot.endAt,
+          title: keepFollowLocation ? "陪伴玩家并跟随其行程" : linkedEvent.title,
+          kind: "appointment",
+          source: "event",
+          plannedLocationId: keepFollowLocation ? null : linkedEvent.locationId ?? null,
+          plannedLocationName: keepFollowLocation ? "跟随玩家的实际地点" : linkedEvent.locationName ?? null,
+          updatedAt: now,
+        };
+      });
       for (const participantSlot of participantSlots) {
         const conflict = current.schedules.find(other =>
           other.ownerType === participantSlot.ownerType
@@ -1200,7 +1211,6 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           return;
         }
       }
-      const keepFollowLocation = linkedEvent.details === "follow-player";
       const nextEvent = {
         ...linkedEvent,
         startsAt: updated.startAt,
@@ -1228,7 +1238,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           : invitation),
         schedules: current.schedules.filter(item => !linkedSlotIds.has(item.id)),
       };
-      const slotsToUpdate: LifeScheduleSlot[] = linkedSlots.length ? linkedSlots : [slot];
+      const slotsToUpdate: LifeScheduleSlot[] = participantSlots;
       for (const original of slotsToUpdate) {
         const nextSlot: LifeScheduleSlot = {
           ...original,
