@@ -86,10 +86,21 @@ export function generateWeeklyLifePlan(
       && slotStart < end.getTime() && slotEnd > start.getTime();
   });
 
-  // Preserve every existing slot and fill only uncovered time. This keeps a
-  // complete generated week stable, while also repairing older partially
-  // generated weeks instead of treating one leftover generated slot as proof
-  // that all seven days are complete.
+  // Fast-path a fully covered week. Partial legacy weeks continue through the
+  // normal generator, which preserves these slots and fills only the gaps.
+  const coverage = weekSlots
+    .map(slot => ({
+      start: Math.max(start.getTime(), new Date(slot.startAt).getTime()),
+      end: Math.min(end.getTime(), new Date(slot.endAt).getTime()),
+    }))
+    .filter(range => range.end > range.start)
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+  let coveredUntil = start.getTime();
+  for (const range of coverage) {
+    if (range.start > coveredUntil) break;
+    coveredUntil = Math.max(coveredUntil, range.end);
+    if (coveredUntil >= end.getTime()) return state;
+  }
 
   const now = new Date().toISOString();
   const slots: LifeScheduleSlot[] = [];
