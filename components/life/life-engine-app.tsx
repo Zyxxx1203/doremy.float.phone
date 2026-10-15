@@ -136,6 +136,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [locationAtmosphereDraft, setLocationAtmosphereDraft] = useState("");
   const [locationLayoutDraft, setLocationLayoutDraft] = useState("");
   const [locationPropsDraft, setLocationPropsDraft] = useState("");
+  const [locationHabitDrafts, setLocationHabitDrafts] = useState<Record<string, string>>({});
 
   const [quickPlanText, setQuickPlanText] = useState("");
   const [quickPlanDrafts, setQuickPlanDrafts] = useState<QuickPlanDraft[]>([]);
@@ -292,6 +293,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setLocationAtmosphereDraft(selectedLocation?.atmosphere ?? "");
     setLocationLayoutDraft(selectedLocation?.layout ?? "");
     setLocationPropsDraft((selectedLocation?.props ?? []).join("、"));
+    setLocationHabitDrafts(selectedLocation?.characterHabits ?? {});
   }, [selectedLocation?.id]);
 
   useEffect(() => {
@@ -1578,8 +1580,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         <div className="flex flex-wrap items-center gap-2"><button onClick={()=>tab==="home"?closeApp():setTab("home")} aria-label="返回生活现场" className="inline-flex items-center gap-1 rounded-full border border-white/80 bg-white/70 px-3 py-2 text-sm"><ArrowLeft size={15}/><span>返回</span></button><button onClick={closeApp} aria-label="退出生活 APP" className="inline-flex items-center gap-1 rounded-full border border-white/80 bg-white/70 px-3 py-2 text-sm"><X size={15}/><span>退出</span></button><span className="rounded-full border border-white/70 bg-white/60 px-3 py-1.5 text-xs">{actors.length} 位生活参与者</span></div>
       </header>
       {notice && !immersiveScene && <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-[var(--life-accent)]/20 bg-white/75 px-4 py-3 text-sm text-stone-700"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="关闭提示">×</button></div>}
-      <nav aria-label="生活导航" className="sticky top-0 z-20 mb-2 grid grid-cols-5 gap-1 rounded-xl border border-white/80 bg-[#fbf7f0]/90 p-1 shadow-sm backdrop-blur-md">
-        {([{id:"home",label:"生活现场",icon:MessagesSquare},{id:"daily",label:"角色日常",icon:CalendarDays},{id:"invitations",label:"邀约活动",icon:Coffee},{id:"experiences",label:"共同经历",icon:Heart},{id:"settings",label:"设置",icon:Settings2}] as const).filter(item => item.id !== "invitations" || settings.enableInvitations).map(item => { const Icon=item.icon; const active=item.id===tab||(item.id==="daily"&&(tab==="daily"||tab==="people"||tab==="plans")); return <button key={item.id} onClick={() => { if(item.id==="daily"){setTab("daily");setSceneView(false);return;} setTab(item.id); if(item.id==="home") setSceneView(false); }} aria-current={active?"page":undefined} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] transition sm:flex-row sm:text-sm ${active?"bg-white text-[var(--life-accent)] shadow-sm":"opacity-65 hover:opacity-100"}`}><span className="relative inline-flex"><Icon size={16}/>{item.id==="invitations"&&pendingCharacterInvitations.length>0&&<span className="absolute -right-2 -top-2 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] text-white">{pendingCharacterInvitations.length}</span>}</span><span className="truncate">{item.label}</span></button>; })}
+      <nav aria-label="生活导航" className="sticky top-0 z-20 mb-2 grid grid-cols-6 gap-1 rounded-xl border border-white/80 bg-[#fbf7f0]/90 p-1 shadow-sm backdrop-blur-md">
+        {([{id:"home",label:"生活现场",icon:MessagesSquare},{id:"daily",label:"角色日常",icon:CalendarDays},{id:"invitations",label:"邀约活动",icon:Coffee},{id:"experiences",label:"共同经历",icon:Heart},{id:"locations",label:"地点库",icon:MapPin},{id:"settings",label:"设置",icon:Settings2}] as const).filter(item => item.id !== "invitations" || settings.enableInvitations).map(item => { const Icon=item.icon; const active=item.id===tab||(item.id==="daily"&&(tab==="daily"||tab==="people"||tab==="plans")); return <button key={item.id} onClick={() => { if(item.id==="daily"){setTab("daily");setSceneView(false);return;} setTab(item.id); if(item.id==="home" || item.id==="locations") setSceneView(false); }} aria-current={active?"page":undefined} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] transition sm:flex-row sm:text-sm ${active?"bg-white text-[var(--life-accent)] shadow-sm":"opacity-65 hover:opacity-100"}`}><span className="relative inline-flex"><Icon size={16}/>{item.id==="invitations"&&pendingCharacterInvitations.length>0&&<span className="absolute -right-2 -top-2 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] text-white">{pendingCharacterInvitations.length}</span>}</span><span className="truncate">{item.label}</span></button>; })}
       </nav>
 
       {(tab === "home" || tab === "scene") && <div className={immersiveScene ? "flex min-h-0 flex-1 flex-col" : "space-y-4"}>
