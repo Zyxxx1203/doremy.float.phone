@@ -1939,23 +1939,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               <p className="col-span-2 text-[10px] text-stone-400">可用类名：.life-scene-chat、.life-scene-bubble、.life-scene-composer。CSS 修改后即时保存。</p>
             </div>
           </details>
-          <details className="mb-1 shrink-0 rounded-lg border border-[var(--life-accent)]/25 bg-white/70 px-2 py-1">
-
-            <summary className="cursor-pointer list-none py-1 text-[11px] font-semibold text-stone-600">聊天工具箱 · 生活引擎工具开关</summary>
-
-            <div className="space-y-2 p-2">
-
-              <Toggle checked={settings.enableInvitations} onChange={v=>patchSettings({enableInvitations:v})} label="角色主动邀约" hint="允许角色在有动机时向你提出见面或共同活动；邀约会进入「邀约活动」，由你决定是否接受。"/>
-
-              <Toggle checked={settings.enableFollowRequestTool} onChange={v=>patchSettings({enableFollowRequestTool:v})} label="角色申请陪伴" hint="允许角色申请在约定时段陪伴你，并跟随你的实际地点；你可以拒绝或取消，不会自动替你答应。"/>
-
-              <Toggle checked={settings.enableScheduleChangeTool} onChange={v=>patchSettings({enableScheduleChangeTool:v})} label="角色调整自己的日程" hint="允许角色修改自己当天尚未开始的普通日程；不会覆盖已确认的约会，也不会替你修改日程。"/>
-
-              <p className="px-1 text-[10px] leading-relaxed text-stone-500">以上工具还受「设置 → 允许角色自主行动」总开关控制。关闭单项只会禁用对应工具，不会删除已有邀约或日程。</p>
-
-            </div>
-
-          </details>
+          
 
           <form onSubmit={sendSceneTurn} className={`life-scene-composer shrink-0 rounded-xl border border-stone-200/70 bg-white/95 ${settings.compactLayout ? "space-y-1 p-1.5" : "space-y-1.5 p-2"}`}>
             <div className={`grid gap-1.5 sm:grid-cols-[0.75fr_1.25fr] ${settings.compactLayout ? "sm:gap-1" : ""}`}>
