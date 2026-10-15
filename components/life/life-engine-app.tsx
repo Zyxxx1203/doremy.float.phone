@@ -165,6 +165,23 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       if (!alive) return;
       const loaded = loadVirtualLifeState();
       let normalized: VirtualLifeState = { ...loaded, locations: [...INITIAL_LOCATIONS.filter(location => !loaded.locations.some(saved => saved.id === location.id)), ...loaded.locations.map(saved => { const defaults = INITIAL_LOCATIONS.find(location => location.id === saved.id); return defaults ? { ...defaults, ...saved, description: saved.description || defaults.description, atmosphere: saved.atmosphere || defaults.atmosphere, layout: saved.layout || defaults.layout, props: saved.props?.length ? saved.props : defaults.props } : saved; })] };
+      // One-time migration: rebuild only auto-generated character schedule slots in the current/next two weeks.
+      // User-authored and completed historical entries remain untouched.
+      if ((normalized.scheduleProfileVersion ?? 0) < 2) {
+        const realNow = Date.now();
+        const rebuildUntil = realNow + 14 * DAY_MS;
+        normalized = {
+          ...normalized,
+          scheduleProfileVersion: 2,
+          schedules: normalized.schedules.filter(slot => !(
+            slot.ownerType === "character" &&
+            slot.source === "weekly-generation" &&
+            new Date(slot.startAt).getTime() < rebuildUntil &&
+            new Date(slot.endAt).getTime() > realNow
+          )),
+        };
+        saveVirtualLifeState(normalized);
+      }
       const hasContinuingScene = normalized.scenes.some(scene => scene.status === "active" || scene.status === "paused");
       if (!hasContinuingScene && normalized.settings.enabled) {
         const player = normalized.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
