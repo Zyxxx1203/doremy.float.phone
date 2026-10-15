@@ -36,6 +36,8 @@ export type LifePromptPreset = {
   basePresetPrompt?: string;
   sceneOutputPrompt?: string;
   sceneBehaviorPrompt?: string;
+  sceneTaskPrompt?: string;
+  toolCallingPrompt?: string;
   scheduleGenerationPrompt?: string;
   invitationResponsePrompt?: string;
   locationHabitPrompt?: string;
