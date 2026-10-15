@@ -183,13 +183,14 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const loaded = loadVirtualLifeState();
       let normalized: VirtualLifeState = { ...loaded, locations: [...INITIAL_LOCATIONS.filter(location => !loaded.locations.some(saved => saved.id === location.id)), ...loaded.locations.map(saved => { const defaults = INITIAL_LOCATIONS.find(location => location.id === saved.id); return defaults ? { ...defaults, ...saved, description: saved.description || defaults.description, atmosphere: saved.atmosphere || defaults.atmosphere, layout: saved.layout || defaults.layout, props: saved.props?.length ? saved.props : defaults.props } : saved; })] };
       // One-time migration: rebuild only auto-generated character schedule slots in the current/next two weeks.
+      // This version incorporates bound world books, saved location habits, and canonical place matching.
       // User-authored and completed historical entries remain untouched.
-      if ((normalized.scheduleProfileVersion ?? 0) < 2) {
+      if ((normalized.scheduleProfileVersion ?? 0) < 3) {
         const realNow = Date.now();
         const rebuildUntil = realNow + 14 * DAY_MS;
         normalized = {
           ...normalized,
-          scheduleProfileVersion: 2,
+          scheduleProfileVersion: 3,
           schedules: normalized.schedules.filter(slot => !(
             slot.ownerType === "character" &&
             slot.source === "weekly-generation" &&
