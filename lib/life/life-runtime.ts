@@ -255,7 +255,7 @@ export function settleActorTimelineToNow(
     // Catch-up must settle the whole virtual interval, even if the app was not
     // opened until after the appointment ended. Otherwise a confirmed event
     // would be incorrectly marked "missed" simply because no page timer ran.
-    if (started && event.status === "confirmed" && event.details !== "follow-player") {
+    if (started && (event.status === "confirmed" || event.status === "active") && event.details !== "follow-player") {
       if (matchingScene) {
         // Reuse an already-recorded shared scene at the agreed location rather
         // than losing the event merely because the scene was opened manually.
