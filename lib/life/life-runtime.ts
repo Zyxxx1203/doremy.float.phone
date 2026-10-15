@@ -105,6 +105,35 @@ export function generateWeeklyLifePlan(
   const now = new Date().toISOString();
   const slots: LifeScheduleSlot[] = [];
   const profileText = profile.toLowerCase();
+  const normalizeProfilePlace = (value: string) => value.toLocaleLowerCase().replace(/[\s\u3000·•/\\|｜、，,。.!！?？:：;；()（）\[\]【】_-]+/g, "");
+  const discoveredLocations: LifeLocation[] = [];
+  let profilePreferredLocation: LifeLocation | undefined = state.locations.find(location => Boolean(location.characterHabits?.[ownerId]?.trim()));
+  const placeCue = /(?:常去|喜欢去|习惯去|经常去|偶尔去|常在|喜欢在|习惯在|经常在|工作地点(?:是|为)?|地点偏好[:：])\s*([^，。；;\n]{2,28})/g;
+  const profilePlaceCandidates = [...profile.matchAll(placeCue)].map(match => (match[1] ?? "")
+    .replace(/(看书|学习|散步|吃饭|喝咖啡|工作|上课|练习|休息|聊天|买花|买东西|逛街|读书|创作|然后|之后).*$/,"")
+    .replace(/^[的在去到：:\s]+|[的了和及\s]+$/g,"").trim()).filter(name => name.length >= 2).slice(0, 5);
+  for (const placeName of profilePlaceCandidates) {
+    const key = normalizeProfilePlace(placeName);
+    if (!key || /^(这里|那里|家里|家中|附近|外面|室内|户外|学校|公司)$/.test(key)) continue;
+    const existing = [...state.locations, ...discoveredLocations].find(location => {
+      const names = [location.name, ...(location.aliases ?? [])].map(normalizeProfilePlace).filter(name => name.length >= 2);
+      return names.includes(key) || names.some(name => key.length >= 3 && (key.includes(name) || name.includes(key)));
+    });
+    if (existing) {
+      if (!profilePreferredLocation && existing.id !== "home") profilePreferredLocation = existing;
+      continue;
+    }
+    const idBase = "place-" + key.slice(0, 32);
+    let placeId = idBase, suffix = 2;
+    while ([...state.locations, ...discoveredLocations].some(location => location.id === placeId)) placeId = idBase + "-" + suffix++;
+    const discovered: LifeLocation = {
+      id: placeId, name: placeName,
+      description: "从角色卡或已绑定世界书中识别出的地点。请在地点库补充固定环境、空间布局与道具。",
+      atmosphere: "", layout: "", props: [], aliases: [], visibility: "public",
+    };
+    discoveredLocations.push(discovered);
+    if (!profilePreferredLocation) profilePreferredLocation = discovered;
+  }
   const hash = [...ownerId].reduce((sum, char) => sum + char.charCodeAt(0), 0) + start.getDate();
   const specialDay = ownerType === "character" && includeSpecialEvents && hash % 3 !== 0 ? hash % 7 : -1;
   const has = (...patterns: RegExp[]) => patterns.some(pattern => pattern.test(profileText));
@@ -121,12 +150,12 @@ export function generateWeeklyLifePlan(
     : has(/烹饪|做饭|料理|烘焙|cook|chef|baker/) ? "试做新菜 / 料理时间"
     : has(/游戏|电竞|game|gamer/) ? "游戏与休息"
     : "按角色兴趣安排的私人时间";
-  const specialLocation = has(/摄影|拍照|相机|运动|健身|跑步|photo|sport|fitness/) ? { id: "park", name: "公园" }
+  const specialLocation = profilePreferredLocation ?? (has(/摄影|拍照|相机|运动|健身|跑步|photo|sport|fitness/) ? { id: "park", name: "公园" }
     : has(/读书|阅读|写作|学习|学生|book|study|student|writer/) ? { id: "library", name: "图书馆" }
     : has(/音乐|唱歌|乐器|music|singer|musician/) ? { id: "studio", name: "音乐 / 创作空间" }
     : has(/烹饪|做饭|料理|烘焙|cook|chef|baker/) ? { id: "home", name: "家" }
     : has(/游戏|电竞|game|gamer/) ? { id: "home", name: "家" }
-    : defaultLocation ?? { id: "home", name: "家" };
+    : defaultLocation ?? { id: "home", name: "家" });
   const add = (day: Date, sh: number, sm: number, eh: number, em: number, title: string, kind: LifeScheduleSlot["kind"], location?: { id: string; name: string }) => {
     const from = new Date(day);
     from.setHours(sh, sm, 0, 0);
@@ -250,7 +279,7 @@ export function generateWeeklyLifePlan(
     canteen: ["食堂", "附近餐馆", "餐馆", "餐厅", "饭店", "canteen"],
     studio: ["音乐创作空间", "音乐空间", "创作空间", "录音室", "studio"],
   };
-  const locations: LifeLocation[] = [...state.locations];
+  const locations: LifeLocation[] = [...state.locations, ...discoveredLocations];
   const resolveCanonical = (slot: LifeScheduleSlot): LifeScheduleSlot => {
     const rawName = (slot.plannedLocationName ?? "").trim();
     if (!rawName || /跟随玩家的实际地点|地点待定|未知地点/i.test(rawName)) return slot;
