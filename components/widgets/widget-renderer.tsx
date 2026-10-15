@@ -181,7 +181,8 @@ function LifeNowWidget({ config }: any) {
       const now = resolveActorLifeNow(getActorClock(state, "player", "player"));
       const current = getCurrentActorSchedule(state, "player", "player", now);
       const actual = state.actorStates.find((actor: any) => actor.ownerType === "player" && actor.ownerId === "player");
-      const scene = state.scenes.find((item: any) => item.status === "active") ?? state.scenes.filter((item: any) => item.status === "paused").sort((a: any, b: any) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))[0];
+      const belongsToPlayer = (item: any) => item.participants?.some((participant: any) => participant.ownerType === "player" && participant.ownerId === "player");
+      const scene = state.scenes.find((item: any) => item.status === "active" && belongsToPlayer(item)) ?? state.scenes.filter((item: any) => item.status === "paused" && belongsToPlayer(item)).sort((a: any, b: any) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))[0];
       if (alive) setSnapshot({ now, current, actual, scene, enabled: state.settings.enabled });
     };
     refresh();
