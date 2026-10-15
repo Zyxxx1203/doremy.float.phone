@@ -1,4 +1,4 @@
-import type { LifeActorClock, LifeActorState, LifeEvent, LifeInvitation, LifeOwnerType, LifeScheduleSlot, LifeSceneState, VirtualLifeState } from "./life-types";
+import type { LifeActorClock, LifeActorState, LifeEvent, LifeInvitation, LifeLocation, LifeOwnerType, LifeScheduleSlot, LifeSceneState, VirtualLifeState } from "./life-types";
 
 const clampSpeed = (speed: number) => Math.max(0.01, Math.min(Number.isFinite(speed) ? speed : 1, 1000));
 const mondayStartLife = (date: Date) => { const d = new Date(date); d.setHours(0,0,0,0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
@@ -232,7 +232,65 @@ export function generateWeeklyLifePlan(
   }
 
   if (generated.length === 0) return state;
-  return { ...state, schedules: [...state.schedules, ...generated].sort((a, b) => a.startAt.localeCompare(b.startAt)) };
+
+  // The location library is the source of truth. Every generated itinerary slot
+  // first resolves to an existing canonical place (name/alias/id); only genuinely
+  // new places are added to the library. This prevents "library / study room"
+  // from becoming a new duplicate every time a plan is generated.
+  const normalizePlace = (value: string) => value.toLocaleLowerCase()
+    .replace(/[\\s\\u3000·•/\\\\|｜、，,。.!！?？:：;；()（）\\[\\]【】_-]+/g, "");
+  const canonicalAliases: Record<string, string[]> = {
+    home: ["家", "家里", "住所", "住处", "home"],
+    cafe: ["咖啡店", "咖啡馆", "街角咖啡店", "cafe", "coffee shop"],
+    park: ["公园", "户外活动地点", "运动场地", "park"],
+    library: ["图书馆", "研究空间", "研究室", "图书馆研究空间", "library"],
+    school: ["学校", "校园", "教室", "school"],
+    work: ["工作地点", "办公室", "工作室", "公司", "workplace", "office"],
+    transit: ["通勤途中", "通勤", "路上", "交通途中", "transit"],
+    canteen: ["食堂", "附近餐馆", "餐馆", "餐厅", "饭店", "canteen"],
+    studio: ["音乐创作空间", "音乐空间", "创作空间", "录音室", "studio"],
+  };
+  const locations: LifeLocation[] = [...state.locations];
+  const resolveCanonical = (slot: LifeScheduleSlot): LifeScheduleSlot => {
+    const rawName = (slot.plannedLocationName ?? "").trim();
+    if (!rawName || /跟随玩家的实际地点|地点待定|未知地点/i.test(rawName)) return slot;
+    const byId = locations.find(location => location.id === slot.plannedLocationId);
+    const normalizedName = normalizePlace(rawName);
+    const byName = locations.find(location => {
+      const candidates = [location.name, ...(location.aliases ?? []), ...(canonicalAliases[location.id] ?? [])].map(normalizePlace);
+      if (candidates.includes(normalizedName)) return true;
+      // Match descriptive variants only when one side is a known canonical alias
+      // and the other adds a qualifier such as "图书馆 / 研究空间".
+      return candidates.some(alias => alias.length >= 2 && normalizedName.length > alias.length
+        && (normalizedName.startsWith(alias) || normalizedName.endsWith(alias))
+        && (/[\\/／、，,·]/.test(rawName) || /研究空间|附近餐馆|户外活动地点|创作空间/.test(rawName)));
+    });
+    let canonical = byId ?? byName;
+    if (!canonical) {
+      const slug = normalizedName.slice(0, 32) || "new-place";
+      const baseId = "place-" + slug;
+      let newId = baseId, suffix = 2;
+      while (locations.some(location => location.id === newId)) newId = baseId + "-" + suffix++;
+      canonical = {
+        id: newId,
+        name: rawName,
+        description: "由角色日程首次发现的地点。请在地点库中补充环境描写、固定布局与可用道具。",
+        atmosphere: "",
+        layout: "",
+        props: [],
+        aliases: [],
+        visibility: "public",
+      };
+      locations.push(canonical);
+    }
+    return { ...slot, plannedLocationId: canonical.id, plannedLocationName: canonical.name };
+  };
+  const canonicalGenerated = generated.map(resolveCanonical);
+  return {
+    ...state,
+    locations,
+    schedules: [...state.schedules, ...canonicalGenerated].sort((a, b) => a.startAt.localeCompare(b.startAt)),
+  };
 }
 /**
  * Catch up one actor to their own virtual now. Every completed schedule slot is
