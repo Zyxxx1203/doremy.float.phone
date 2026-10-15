@@ -1098,6 +1098,26 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setNewLocationName("");
   };
 
+  const saveCharacterLocationHabit = (characterId: string) => {
+    if (!selectedLocation) return;
+    const habit = (locationHabitDrafts[characterId] ?? "").trim();
+    const current = stateRef.current;
+    const next = { ...current, locations: current.locations.map(location => {
+      if (location.id !== selectedLocation.id) return location;
+      const characterHabits = { ...(location.characterHabits ?? {}) };
+      if (habit) characterHabits[characterId] = habit;
+      else delete characterHabits[characterId];
+      return { ...location, characterHabits };
+    }) };
+    commit(next);
+    setNotice(habit ? `已保存角色在「${selectedLocation.name}」的地点习惯。` : "已清除该角色在此地点的自定义习惯。");
+  };
+  const selectLifePromptPreset = (presetId: string) => {
+    const currentSettings = stateRef.current.settings;
+    let presets = [...(currentSettings.promptPresets ?? [])];
+    if (!presets.some(preset => preset.id === presetId)) presets = [{ id: presetId, name: "生活现场默认预设" }, ...presets];
+    commit({ ...stateRef.current, settings: { ...currentSettings, promptPresets: presets, activePromptPresetId: presetId } });
+  };
   const saveLocationDetails = () => {
     if (!selectedLocation) return;
     const next = {
