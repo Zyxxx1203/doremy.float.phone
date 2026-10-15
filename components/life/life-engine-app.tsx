@@ -254,7 +254,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
   const selectedLocation = state.locations.find(location => location.id === selectedLocationId) ?? state.locations[0];
   // In a live scene, the viewport belongs to the scene itself rather than the document.
-  const immersiveScene = tab === "home" && sceneView && !!activeScene;
+  const immersiveScene = !!activeScene && ((tab === "home" && sceneView) || tab === "scene");
   useEffect(() => {
     if (typeof window === "undefined") return;
     const viewport = window.visualViewport;
