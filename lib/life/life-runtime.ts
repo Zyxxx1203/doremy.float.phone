@@ -239,17 +239,21 @@ export function settleActorTimelineToNow(
     const started = allAtOrAfter(event.startsAt);
     const ended = allAtOrAfter(event.endsAt);
     const characterId = event.participantIds.find(participantId => participantId !== "player");
-    let matchingScene = scenes.find(scene =>
-      (scene.status === "active" || scene.status === "paused")
-      && (!scene.eventId || scene.eventId === event.id)
-      && (event.locationId
-        ? scene.locationId === event.locationId
-        : event.locationName ? scene.locationName === event.locationName : true)
-      && event.participantIds.every(participantId => scene.participants.some(participant =>
-        participant.ownerId === participantId
-        && participant.ownerType === (participantId === "player" ? "player" : "character")
-      ))
-    );
+    // An event-linked scene remains the canonical scene even if a previous
+    // partial save left its status out of sync with the event. Reuse it first
+    // to avoid duplicate scene records during recovery.
+    let matchingScene = scenes.find(scene => scene.eventId === event.id)
+      ?? scenes.find(scene =>
+        (scene.status === "active" || scene.status === "paused")
+        && !scene.eventId
+        && (event.locationId
+          ? scene.locationId === event.locationId
+          : event.locationName ? scene.locationName === event.locationName : true)
+        && event.participantIds.every(participantId => scene.participants.some(participant =>
+          participant.ownerId === participantId
+          && participant.ownerType === (participantId === "player" ? "player" : "character")
+        ))
+      );
 
     // Catch-up must settle the whole virtual interval, even if the app was not
     // opened until after the appointment ended. Otherwise a confirmed event
