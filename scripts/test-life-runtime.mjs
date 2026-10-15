@@ -416,6 +416,35 @@ assert.equal(recoveredStaleScene.scenes.length, 1, "recovery must reuse the even
 assert.equal(recoveredStaleScene.scenes[0].id, "ap-existing-scene");
 assert.equal(recoveredStaleScene.scenes[0].status, "completed");
 
+const staleActiveSceneState = {
+  ...activeAppointmentWithoutScene,
+  scenes: [{
+    id: "unrelated-active-scene",
+    locationId: "home",
+    locationName: "家",
+    startedAt: "2026-10-15T12:00:00.000Z",
+    updatedAt: "2026-10-15T12:00:00.000Z",
+    status: "active",
+    participants: [
+      { ownerType: "player", ownerId: "player", activity: "在家", awarenessByActorId: {} },
+    ],
+    lastSettledEventIds: [],
+  }],
+};
+const recoveredOngoingAppointment = settleActorTimelineToNow(
+  staleActiveSceneState,
+  "player",
+  "player",
+  apNow,
+);
+assert.equal(
+  recoveredOngoingAppointment.scenes.find(scene => scene.id === "unrelated-active-scene")?.status,
+  "paused",
+  "recovering an ongoing appointment should pause a stale unrelated active scene",
+);
+assert.ok(recoveredOngoingAppointment.scenes.some(scene => scene.eventId === "ap-event" && scene.status === "active"));
+
+
 
 const malformedInvitationState = {
   ...makeState(),
