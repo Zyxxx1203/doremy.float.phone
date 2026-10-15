@@ -110,6 +110,10 @@ export function generateWeeklyLifePlan(
   const has = (...patterns: RegExp[]) => patterns.some(pattern => pattern.test(profileText));
   const student = has(/学生|大学|学校|上课|课程|考试|study|student|school|university/);
   const creative = has(/自由职业|艺术家|作家|画家|摄影|音乐|创作|设计师|创业|freelance|artist|writer|designer|creator/);
+  const researcher = has(/研究员|研究者|学者|教授|实验|科学家|研究魔法|法师|魔法师|炼金|scholar|researcher|scientist|wizard|mage/);
+  const dutyRole = has(/骑士|守卫|警察|保镖|军人|巡逻|护卫|猎人|knight|guard|soldier|police|hunter/);
+  const professional = has(/医生|护士|医师|教师|老师|厨师|店员|服务员|经理|职员|上班|工作|doctor|nurse|teacher|chef|employee|manager/);
+  const fantasyRole = has(/魔法|法术|修仙|仙人|妖怪|精灵|兽人|吸血鬼|狼人|龙族|骑士|王子|公主|王国|宫廷|中世纪|fantasy|vampire|werewolf|elf|dragon|medieval/);
   const specialTitle = has(/摄影|拍照|相机|photo|photographer/) ? "外出拍摄 / 整理照片"
     : has(/音乐|唱歌|乐器|作曲|music|singer|musician/) ? "练习音乐 / 听现场"
     : has(/运动|健身|跑步|篮球|足球|sport|fitness|runner/) ? "运动与放松"
@@ -147,12 +151,31 @@ export function generateWeeklyLifePlan(
     add(day, 7, 0, 7, 30, "起床、洗漱", "habit", { id: "home", name: "家" });
     add(day, 7, 30, 8, 0, "早餐", "meal", { id: "home", name: "家" });
     if (!weekend) {
-      const daytimeLocation = student ? { id: "school", name: "学校" } : creative ? (has(/音乐|唱歌|乐器|music|musician/) ? { id: "studio", name: "音乐 / 创作空间" } : { id: "cafe", name: "街角咖啡店" }) : { id: "work", name: "工作地点" };
-      add(day, 8, 0, 9, 0, student ? "前往学校" : creative ? "前往工作 / 创作地点" : "通勤 / 前往当天安排", "commute", { id: "transit", name: "通勤途中" });
-      const daytime = ownerType === "player" ? "工作 / 学习（可按自己的现实安排修改）" : student ? ownerName + "上课 / 学习" : creative ? ownerName + "的创作 / 项目时间" : ownerName + "的工作 / 学习";
-      add(day, 9, 0, 12, 0, daytime, ownerType === "player" ? "free-time" : "work", daytimeLocation);
-      add(day, 12, 0, 13, 0, "午餐", "meal", { id: "canteen", name: "食堂 / 附近餐馆" });
-      add(day, 13, 0, 18, 0, ownerType === "player" ? "下午安排（可自行修改）" : ownerName + "的下午安排", ownerType === "player" ? "free-time" : "work", daytimeLocation);
+      const daytimeLocation = ownerType === "player" ? { id: "work", name: "工作地点" }
+        : student ? { id: "school", name: "学校" }
+        : researcher ? { id: "library", name: "图书馆 / 研究空间" }
+        : dutyRole ? { id: "park", name: "巡逻 / 户外活动地点" }
+        : creative ? (has(/音乐|唱歌|乐器|music|musician/) ? { id: "studio", name: "音乐 / 创作空间" } : { id: "cafe", name: "街角咖啡店" })
+        : professional ? { id: "work", name: "工作地点" }
+        : { id: "home", name: "家" };
+      if (daytimeLocation.id !== "home") add(day, 8, 0, 9, 0, student ? "前往学校" : researcher ? "前往研究空间" : dutyRole ? "准备外出 / 巡逻" : creative ? "前往工作 / 创作地点" : "通勤 / 前往当天安排", "commute", { id: "transit", name: "通勤途中" });
+      const daytime = ownerType === "player" ? "工作 / 学习（可按自己的现实安排修改）"
+        : student ? ownerName + "上课 / 学习"
+        : researcher ? ownerName + (fantasyRole ? "研究知识 / 练习术法" : "研究 / 阅读 / 实验")
+        : dutyRole ? ownerName + (fantasyRole ? "履行职责 / 巡逻" : "值勤 / 巡逻 / 处理事务")
+        : creative ? ownerName + "的创作 / 项目时间"
+        : professional ? ownerName + "的工作时段"
+        : ownerName + "的个人安排 / 自由活动";
+      add(day, 9, 0, 12, 0, daytime, ownerType === "player" ? "free-time" : (student || researcher || dutyRole || creative || professional) ? "work" : "free-time", daytimeLocation);
+      add(day, 12, 0, 13, 0, "午餐 / 用餐休息", "meal", daytimeLocation.id === "home" ? { id: "home", name: "家" } : { id: "canteen", name: "食堂 / 附近餐馆" });
+      const afternoonTitle = ownerType === "player" ? "下午安排（可自行修改）"
+        : student ? ownerName + "的课程 / 自习"
+        : researcher ? ownerName + (fantasyRole ? "继续研究 / 训练" : "继续研究 / 整理成果")
+        : dutyRole ? ownerName + (fantasyRole ? "执行职责 / 训练" : "下午值勤 / 处理事务")
+        : creative ? ownerName + "的创作 / 项目时间"
+        : professional ? ownerName + "的工作时段"
+        : ownerName + "的个人安排 / 自由活动";
+      add(day, 13, 0, 18, 0, afternoonTitle, ownerType === "player" ? "free-time" : (student || researcher || dutyRole || creative || professional) ? "work" : "free-time", daytimeLocation);
     } else {
       add(day, 8, 0, 9, 0, "慢慢开始的一天", "free-time", { id: "home", name: "家" });
       add(day, 9, 0, 12, 0, ownerType === "player" ? "周末自由安排" : ownerName + "的周末安排", "free-time", { id: "home", name: "家" });
