@@ -1211,7 +1211,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           : {}),
         updatedAt: now,
       };
-      let next = {
+      let next: VirtualLifeState = {
         ...current,
         events: current.events.map(event => event.id === linkedEvent.id ? nextEvent : event),
         invitations: current.invitations.map(invitation => invitation.eventId === linkedEvent.id
