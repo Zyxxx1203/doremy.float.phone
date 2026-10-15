@@ -69,6 +69,8 @@ export type LifeEngineSettings = {
   dialogueFontSize: number;
   narrationFontSize: number;
   dialogueBubbleStyle: "rounded" | "soft" | "square";
+  /** User CSS overrides for the life scene chat only. */
+  customSceneCss?: string;
   compactLayout: boolean;
   showTimeline: boolean;
   showLocationHints: boolean;
@@ -110,6 +112,7 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   dialogueFontSize: 15,
   narrationFontSize: 12,
   dialogueBubbleStyle: "rounded",
+  customSceneCss: "",
   compactLayout: false,
   showTimeline: true,
   showLocationHints: true,
