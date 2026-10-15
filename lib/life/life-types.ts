@@ -120,7 +120,7 @@ export type LifeScheduleSlot = {
   plannedLocationId?: string | null;
   plannedLocationName?: string | null;
   kind: "habit" | "work" | "study" | "meal" | "commute" | "free-time" | "appointment" | "special";
-  source: "weekly-generation" | "manual" | "event";
+  source: "weekly-generation" | "manual" | "event" | "character-tool";
   updatedAt: string;
 };
 
