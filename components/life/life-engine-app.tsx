@@ -1733,6 +1733,54 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         </section>
       </div></div>}
 
+      {tab === "locations" && <div className="space-y-4">
+        <section className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm sm:p-6">
+          <SectionTitle eyebrow="Canonical location library" title="地点库" note="每个地点都有稳定 ID、环境设定、空间布局、道具、角色习惯和历史记录。角色生成日程时会优先复用这里已有的地点；只有确实找不到匹配项时才新增地点。"/>
+          <form onSubmit={event => { event.preventDefault(); addLocation(); }} className="flex gap-2">
+            <input value={newLocationName} onChange={event => setNewLocationName(event.target.value)} placeholder="创建一个新地点，例如：旧城区的花店" className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/>
+            <button type="submit" className="shrink-0 rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white"><Plus size={15} className="mr-1 inline"/>添加地点</button>
+          </form>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {state.locations.map(location => {
+              const entries = state.timeline.filter(entry => entry.locationName === location.name);
+              const eventCount = state.events.filter(event => event.locationId === location.id || event.locationName === location.name).length;
+              const actualPeople = characters.filter(character => state.actorStates.some(actor => actor.ownerType === "character" && actor.ownerId === character.id && actor.actualLocationId === location.id));
+              return <button type="button" key={location.id} onClick={() => setSelectedLocationId(location.id)} className={`rounded-2xl border p-3 text-left transition ${selectedLocationId === location.id ? "border-[var(--life-accent)] bg-[#fffaf5] shadow-sm" : "border-stone-200/70 bg-white/70 hover:bg-white"}`}>
+                <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="font-semibold text-stone-800">{location.name}</h3><p className="mt-1 line-clamp-2 text-xs leading-relaxed text-stone-500">{location.description || "尚未添加地点描写"}</p></div><span className="shrink-0 rounded-full bg-stone-100 px-2 py-1 text-[10px] text-stone-500">{location.visibility === "private" ? "私人" : "公共"}</span></div>
+                <div className="mt-3 flex flex-wrap gap-1.5">{actualPeople.length ? actualPeople.map(person => <span key={person.id} className="rounded-full bg-[#efe1d2] px-2 py-1 text-[10px] text-stone-700">{person.name} · 在场</span>) : <span className="rounded-full bg-stone-100 px-2 py-1 text-[10px] text-stone-500">目前没有实际在场角色</span>}</div>
+                <div className="mt-3 flex items-center justify-between gap-2 text-[10px] text-stone-400"><span>生活记录 {entries.length} 条 · 事件 {eventCount} 件</span><span>{location.props?.length ?? 0} 件道具 · 查看档案 →</span></div>
+              </button>;
+            })}
+          </div>
+        </section>
+        {selectedLocation && <section className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm sm:p-6">
+          <SectionTitle eyebrow="Location dossier" title={selectedLocation.name + " · 地点档案"} note="这些设定会持久保存，并注入后续场景提示词。布局定义空间关系，道具可在行动中被引用，角色习惯会影响其在此处的行为，但不应限制角色临时做出新行动。"/>
+          <label className="mb-3 block text-sm font-medium text-stone-700">地点名称<input value={selectedLocation.name} onChange={event => commit({ ...stateRef.current, locations: stateRef.current.locations.map(location => location.id === selectedLocation.id ? { ...location, name: event.target.value } : location) })} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label>
+          <label className="mb-3 block text-sm font-medium text-stone-700">别名 / 日程匹配关键词<textarea value={(selectedLocation.aliases ?? []).join("、")} onChange={event => commit({ ...stateRef.current, locations: stateRef.current.locations.map(location => location.id === selectedLocation.id ? { ...location, aliases: event.target.value.split(/[、,，;；\n]/).map(value => value.trim()).filter(Boolean) } : location) })} rows={2} placeholder="例如：旧城区花店、花店、花房" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+          <label className="mb-3 block text-sm font-medium text-stone-700">环境描写<textarea value={locationDescriptionDraft} onChange={event => setLocationDescriptionDraft(event.target.value)} rows={3} placeholder="空间是什么样的？光线、声音、气味、固定陈设……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+          <label className="mb-3 block text-sm font-medium text-stone-700">氛围<textarea value={locationAtmosphereDraft} onChange={event => setLocationAtmosphereDraft(event.target.value)} rows={2} placeholder="时段、天气、人声、气味、情绪氛围……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+          <label className="mb-3 block text-sm font-medium text-stone-700">固定空间布局<textarea value={locationLayoutDraft} onChange={event => setLocationLayoutDraft(event.target.value)} rows={3} placeholder="门窗、家具、通道、柜台、座位之间的空间关系……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+          <label className="mb-4 block text-sm font-medium text-stone-700">可用道具<textarea value={locationPropsDraft} onChange={event => setLocationPropsDraft(event.target.value)} rows={2} placeholder="用顿号或逗号分隔，例如：花剪、包装纸、玻璃花瓶" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+          <button type="button" onClick={saveLocationDetails} className="w-full rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white">保存地点设定</button>
+          <div className="mt-5 border-t border-stone-200/70 pt-4">
+            <SectionTitle eyebrow="Character habits" title="角色在这里的习惯" note="写长期倾向，不是强制动作。比如某角色每次来书店会先看新书区、习惯坐最里面的位置，或会顺手给别人带一杯热饮。"/>
+            <div className="space-y-3">{characters.map(character => {
+              const history = state.timeline.filter(entry => entry.locationName === selectedLocation.name && (entry.actorId === character.id || entry.actorName === character.name));
+              const frequentActions = [...new Set(history.map(entry => entry.title).filter(Boolean))].slice(0, 4);
+              return <div key={character.id} className="rounded-2xl border border-stone-200/70 bg-white/80 p-3">
+                <div className="flex items-center gap-2">{character.avatar ? <img src={character.avatar} alt="" className="h-9 w-9 rounded-full object-cover"/> : <span className="grid h-9 w-9 place-items-center rounded-full bg-[#efe1d2]">{character.name.slice(0,1)}</span>}<div className="min-w-0 flex-1"><p className="text-sm font-semibold">{character.name}</p><p className="text-[10px] text-stone-500">在此地点有 {history.length} 条行动 / 生活记录</p></div></div>
+                <label className="mt-3 block text-xs font-medium text-stone-600">地点习惯<textarea value={locationHabitDrafts[character.id] ?? ""} onChange={event => setLocationHabitDrafts(current => ({ ...current, [character.id]: event.target.value }))} rows={2} placeholder={`描述 ${character.name} 在「${selectedLocation.name}」经常做的事；留空表示没有特别设定。`} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+                {frequentActions.length > 0 && <div className="mt-2"><p className="text-[10px] font-medium text-stone-500">已记录过的事情</p><div className="mt-1 flex flex-wrap gap-1.5">{frequentActions.map(action => <span key={action} className="rounded-full bg-stone-100 px-2 py-1 text-[10px] text-stone-600">{action}</span>)}</div></div>}
+                <button type="button" onClick={() => saveCharacterLocationHabit(character.id)} className="mt-3 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">保存 {character.name} 的习惯</button>
+              </div>;
+            })}</div>
+          </div>
+          <div className="mt-5 border-t border-stone-200/70 pt-4"><SectionTitle eyebrow="Recent history" title="这里发生过什么" note="记录来自生活系统已经保存的行动、对白、日程与事件，不会把计划误当成已经发生的事情。"/>
+            {state.timeline.filter(entry => entry.locationName === selectedLocation.name).slice().sort((a,b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0,20).length ? <div className="space-y-2">{state.timeline.filter(entry => entry.locationName === selectedLocation.name).slice().sort((a,b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0,20).map(entry => <div key={entry.id} className="rounded-xl bg-white/80 p-3"><p className="text-sm font-medium">{entry.title}</p>{entry.details && <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-stone-500">{entry.details}</p>}<p className="mt-1 text-[10px] text-stone-400">{entry.actorName || "生活记录"} · {new Date(entry.occurredAt).toLocaleString("zh-CN")}</p></div>)}</div> : <p className="rounded-xl bg-white/70 p-4 text-sm text-stone-500">这个地点还没有已发生的生活记录。角色习惯和地点设定保存后，会影响未来互动。</p>}
+          </div>
+        </section>}
+      </div>}
+
       {tab === "daily" && <div role="tablist" aria-label="角色日常视图" className="mb-4 grid grid-cols-2 gap-1 rounded-2xl border border-white/80 bg-white/55 p-1">
         <button type="button" role="tab" aria-selected={dailySubtab === "people"} onClick={() => setDailySubtab("people")} className={`rounded-xl px-3 py-2.5 text-sm transition ${dailySubtab === "people" ? "bg-white font-semibold text-[var(--life-accent)] shadow-sm" : "text-stone-500"}`}>角色动态</button>
         <button type="button" role="tab" aria-selected={dailySubtab === "plans"} onClick={() => setDailySubtab("plans")} className={`rounded-xl px-3 py-2.5 text-sm transition ${dailySubtab === "plans" ? "bg-white font-semibold text-[var(--life-accent)] shadow-sm" : "text-stone-500"}`}>七日日程</button>
