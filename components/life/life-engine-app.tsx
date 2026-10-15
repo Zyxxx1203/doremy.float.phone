@@ -530,7 +530,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   };
 
   /** Arrival uses actual-location state only; planned locations never create encounters. */
-  const enterLocationSolo = (targetLocationId = destinationId) => {
+  const enterLocationSolo = (targetLocationId = selectedLocationId) => {
     const destination = stateRef.current.locations.find(location => location.id === targetLocationId);
     if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
     if (!destination) return;
@@ -1449,6 +1449,37 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const playerFutureSlots = playerTodaySlots.filter(slot => new Date(slot.startAt).getTime() > playerNow.getTime());
   const playerPresence = actorState(playerActor);
   const nearbyCharacters = characters.map(character => ({ character, presence: state.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === character.id) })).filter(item => !!playerPresence?.actualLocationId && item.presence?.actualLocationId === playerPresence.actualLocationId);
+  const playerLocationId = playerPresence?.actualLocationId || playerCurrentSlot?.plannedLocationId || activeScene?.locationId || "home";
+  const locationCards = state.locations.map(location => {
+    const people = characters.map(character => {
+      const presence = state.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === character.id);
+      const currentSlot = getCurrentActorSchedule(state, "character", character.id, resolveActorLifeNow(getActorClock(state, "character", character.id)));
+      const isActuallyHere = presence?.actualLocationId === location.id;
+      const isExpectedHere = !presence?.actualLocationId && currentSlot?.plannedLocationId === location.id;
+      return { character, activity: presence?.activity || currentSlot?.title || "正在自己的生活里", isActuallyHere, isExpectedHere };
+    }).filter(person => person.isActuallyHere || person.isExpectedHere);
+    const dynamicActivity = people.filter(person => person.isActuallyHere).map(person => person.activity).filter(Boolean);
+    const inferredAtmosphere = dynamicActivity.length
+      ? `现场有${dynamicActivity.join("、")}的生活动静。`
+      : people.some(person => person.isExpectedHere) ? "日程显示有人可能会来这里，但实际在场尚未确认。" : "暂时没有记录到角色在场，环境保持安静。";
+    const atmosphere = [location.atmosphere?.trim(), inferredAtmosphere].filter(Boolean).join(" ");
+    return { location, people, atmosphere, isCurrent: location.id === playerLocationId };
+  }).sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || b.people.filter(person => person.isActuallyHere).length - a.people.filter(person => person.isActuallyHere).length || a.location.name.localeCompare(b.location.name, "zh-CN"));
+  const saveLocationDetails = () => {
+    if (!selectedLocation) return;
+    const next = {
+      ...stateRef.current,
+      locations: stateRef.current.locations.map(location => location.id !== selectedLocation.id ? location : {
+        ...location,
+        description: locationDescriptionDraft.trim(),
+        atmosphere: locationAtmosphereDraft.trim(),
+        layout: locationLayoutDraft.trim(),
+        props: [...new Set(locationPropsDraft.split(/[、,，;；\\n]/).map(prop => prop.trim()).filter(Boolean))],
+      }),
+    };
+    commit(next);
+    setNotice(`已保存「${selectedLocation.name}」的环境描写、空间布局与道具；后续场景互动会读取这些设定。`);
+  };
   const lifeTimeline = (state.timeline ?? []).filter(entry => {
     if (entry.category === "location" || entry.category === "scene") return settings.recordLocationChanges;
     if (entry.category === "action") return settings.recordCharacterActions;
@@ -1497,7 +1528,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       </header>
       {notice && <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-[var(--life-accent)]/20 bg-white/75 px-4 py-3 text-sm text-stone-700"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="关闭提示">×</button></div>}
       <nav aria-label="生活导航" className="sticky top-0 z-20 mb-2 grid grid-cols-5 gap-1 rounded-xl border border-white/80 bg-[#fbf7f0]/90 p-1 shadow-sm backdrop-blur-md">
-        {([{id:"home",label:"生活现场",icon:MessagesSquare},{id:"daily",label:"角色日常",icon:CalendarDays},{id:"invitations",label:"邀约活动",icon:Coffee},{id:"experiences",label:"共同经历",icon:Heart},{id:"settings",label:"设置",icon:Settings2}] as const).filter(item => item.id !== "invitations" || settings.enableInvitations).map(item => { const Icon=item.icon; const active=item.id===tab||(item.id==="daily"&&(tab==="daily"||tab==="people"||tab==="plans")); return <button key={item.id} onClick={() => { if(item.id==="daily"){setTab("daily");return;} setTab(item.id); }} aria-current={active?"page":undefined} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] transition sm:flex-row sm:text-sm ${active?"bg-white text-[var(--life-accent)] shadow-sm":"opacity-65 hover:opacity-100"}`}><span className="relative inline-flex"><Icon size={16}/>{item.id==="invitations"&&pendingCharacterInvitations.length>0&&<span className="absolute -right-2 -top-2 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] text-white">{pendingCharacterInvitations.length}</span>}</span><span className="truncate">{item.label}</span></button>; })}
+        {([{id:"home",label:"生活现场",icon:MessagesSquare},{id:"daily",label:"角色日常",icon:CalendarDays},{id:"invitations",label:"邀约活动",icon:Coffee},{id:"experiences",label:"共同经历",icon:Heart},{id:"settings",label:"设置",icon:Settings2}] as const).filter(item => item.id !== "invitations" || settings.enableInvitations).map(item => { const Icon=item.icon; const active=item.id===tab||(item.id==="daily"&&(tab==="daily"||tab==="people"||tab==="plans")); return <button key={item.id} onClick={() => { if(item.id==="daily"){setTab("daily");setSceneView(false);return;} setTab(item.id); if(item.id==="home") setSceneView(false); }} aria-current={active?"page":undefined} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] transition sm:flex-row sm:text-sm ${active?"bg-white text-[var(--life-accent)] shadow-sm":"opacity-65 hover:opacity-100"}`}><span className="relative inline-flex"><Icon size={16}/>{item.id==="invitations"&&pendingCharacterInvitations.length>0&&<span className="absolute -right-2 -top-2 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] text-white">{pendingCharacterInvitations.length}</span>}</span><span className="truncate">{item.label}</span></button>; })}
       </nav>
 
       {(tab === "home" || tab === "scene") && <div className={immersiveScene ? "flex min-h-0 flex-1 flex-col" : "space-y-4"}>
@@ -1523,7 +1554,28 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           </div>}
           <div className="mt-3"><p className="mb-2 text-sm font-medium">此刻和你在同一地点的角色</p>{nearbyCharacters.length ? <div className="flex flex-wrap gap-2">{nearbyCharacters.map(({character,presence})=><button key={character.id} onClick={()=>{setSelectedSpeakerId(character.id);setSelectedActorKey("character:"+character.id);setTab("home");}} className="flex items-center gap-2 rounded-xl bg-white/80 px-3 py-2 text-xs"><span className="grid h-7 w-7 place-items-center rounded-full bg-[#efe1d2]">{character.name.slice(0,1)}</span><span className="text-left"><span className="block font-medium">{character.name}</span><span className="block text-stone-500">{presence?.activity??"正在自己的生活里"}</span></span></button>)}</div> : <p className="rounded-xl bg-white/55 p-3 text-xs text-stone-500">目前没有记录到和你同地点的角色。计划地点只是线索；你也可以前往其他地点看看会不会遇见谁。</p>}</div>
         </section></details>}
-      {(tab === "home" || tab === "scene") && <section className={`flex min-w-0 flex-col rounded-2xl border border-white/80 bg-white/60 p-2.5 shadow-sm sm:p-4 ${immersiveScene ? "min-h-0 flex-1" : ""}`}>
+      {tab === "home" && !sceneView && <section className="space-y-4">
+        <div className="flex items-end justify-between gap-3 px-1">
+          <div><p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--life-accent)]">Places & people</p><h2 className="mt-1 text-2xl font-semibold tracking-tight text-stone-800">此刻，世界正在发生什么</h2><p className="mt-1 text-xs leading-relaxed text-stone-500">先看你所在的地方，再看看其他角色正在生活的地点。只有实际位置会触发相遇；日程位置会明确标为预计。</p></div>
+          <button onClick={() => openDaily("plans")} className="shrink-0 rounded-xl border border-white/80 bg-white/75 px-3 py-2 text-xs text-stone-600">我的日程</button>
+        </div>
+        {locationCards.map(({location, people, atmosphere, isCurrent}) => <article key={location.id} className={`overflow-hidden rounded-3xl border shadow-sm transition ${isCurrent ? "border-[var(--life-accent)]/45 bg-white/90 ring-1 ring-[var(--life-accent)]/10" : "border-white/80 bg-white/65"}`}>
+          <div role="button" tabIndex={0} onClick={() => { setSelectedLocationId(location.id); setSelectedCharacterIds(people.filter(person => person.isActuallyHere).map(person => person.character.id)); enterLocationSolo(location.id); }} onKeyDown={event => { if(event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedLocationId(location.id); setSelectedCharacterIds(people.filter(person => person.isActuallyHere).map(person => person.character.id)); enterLocationSolo(location.id); } }} className="cursor-pointer p-4 outline-none focus-visible:ring-2 focus-visible:ring-[var(--life-accent)] sm:p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-semibold text-stone-800">{location.name}</h3>{isCurrent && <span className="rounded-full bg-[var(--life-accent)]/10 px-2 py-1 text-[10px] font-medium text-[var(--life-accent)]">你在这里</span>}{location.visibility === "private" && <span className="rounded-full bg-stone-100 px-2 py-1 text-[10px] text-stone-500">私人空间</span>}</div><p className="mt-1 text-sm leading-relaxed text-stone-600">{location.description || "这个地点还没有添加描写。"}</p></div>
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[#f3e8dc] text-[var(--life-accent)]"><MapPin size={19}/></span>
+            </div>
+            <div className="mt-3 rounded-2xl bg-[#f8f2eb]/85 p-3"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-400">Atmosphere · 此刻氛围</p><p className="mt-1 text-sm leading-relaxed text-stone-700">{atmosphere}</p></div>
+            <div className="mt-3"><p className="mb-2 text-xs font-semibold text-stone-600">在场角色 · {people.filter(person => person.isActuallyHere).length} 位实际在场{people.some(person => person.isExpectedHere) ? " · 另有日程预计" : ""}</p>
+              {people.length ? <div className="flex flex-wrap gap-2">{people.map(({character,activity,isActuallyHere,isExpectedHere}) => <span key={character.id} className="inline-flex items-center gap-2 rounded-full border border-stone-200/70 bg-white/80 px-2.5 py-1.5 text-xs text-stone-700"><span className="grid h-7 w-7 place-items-center overflow-hidden rounded-full bg-[#efe1d2]">{character.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character.name.slice(0,1)}</span><span><span className="block font-medium">{character.name}</span><span className="block max-w-44 truncate text-[10px] text-stone-500">{activity}{isExpectedHere && !isActuallyHere ? " · 日程预计，未确认在场" : ""}</span></span></span>)}</div> : <p className="rounded-xl bg-white/70 px-3 py-2 text-xs text-stone-500">目前没有角色在场。你仍然可以前往探索，不会凭空制造偶遇。</p>}
+            </div>
+            {(location.layout || location.props?.length) && <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-stone-500">{location.layout ? `空间：${location.layout} ` : ""}{location.props?.length ? `· 可用道具：${location.props.slice(0,5).join("、")}` : ""}</p>}
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t border-stone-200/50 bg-white/45 px-4 py-3 sm:px-5"><span className="text-[11px] text-stone-400">{isCurrent ? "你的当前位置" : people.some(person => person.isActuallyHere) ? "角色正在这里生活" : "可以前往探索"}</span><button type="button" onClick={() => { setSelectedLocationId(location.id); setSelectedCharacterIds(people.filter(person => person.isActuallyHere).map(person => person.character.id)); enterLocationSolo(location.id); }} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white shadow-sm"><MapPin size={14}/>{isCurrent ? "进入现场" : "前往"}</button></div>
+        </article>)}
+        <button type="button" onClick={() => { setSelectedLocationId(playerLocationId); setSceneView(false); setTab("home"); }} className="w-full rounded-2xl border border-dashed border-stone-300 bg-white/40 px-4 py-3 text-sm text-stone-600">地点列表已显示全部已知地点 · 可在现场添加新地点、布局和道具</button>
+      </section>}
+      {((tab === "home" && sceneView) || tab === "scene") && <section className={`flex min-w-0 flex-col rounded-2xl border border-white/80 bg-white/60 p-2.5 shadow-sm sm:p-4 ${immersiveScene ? "min-h-0 flex-1" : ""}`}>
         <div className="mb-2 flex shrink-0 flex-wrap items-start justify-between gap-2"><SectionTitle eyebrow="Live scene" title={activeScene ? activeScene.locationName : "还没有正在进行的场景"} note={activeScene ? [state.locations.find(location => location.id === activeScene.locationId)?.description, `场景始于 ${fmt(activeScene.startedAt)} · ${activeScene.participants.length} 位参与者 · 已保存，可随时回来继续`].filter(Boolean).join(" · ") : "先从生活总览中选择地点和参与角色，创建一个持续场景。"} />{activeScene && <button onClick={()=>{const now=new Date().toISOString();let next={...stateRef.current,scenes:stateRef.current.scenes.map(scene=>scene.id===activeScene.id?{...scene,status:(activeScene.status==="active"?"paused":"active") as "active"|"paused",updatedAt:now}:{...scene,status:scene.status==="active"?"paused" as const:scene.status})};next=appendLifeTimelineEntry(next,{category:"scene",title:(activeScene.status==="active"?"你暂时离开了":"你回到了")+activeScene.locationName,actorName:playerName,locationName:activeScene.locationName,sceneId:activeScene.id});commit(next);setNotice(activeScene.status==="active"?"场景已暂停，回来时可以继续。":"已回到原场景，之前的消息会保留。")}} className="inline-flex items-center gap-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">{activeScene.status==="active"?<><Pause size={14}/>暂停场景</>:<><Play size={14}/>继续场景</>}</button>}</div>
         <details open={!activeScene} className="mb-2 rounded-xl border border-stone-200/80 bg-white/75"><summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-medium text-stone-700">场景与地点设置 · {activeScene ? activeScene.locationName : "选择地点并开始互动"}</summary><div className="px-3 pb-3 sm:px-4">
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
