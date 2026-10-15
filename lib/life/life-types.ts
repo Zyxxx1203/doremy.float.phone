@@ -303,7 +303,7 @@ export type VirtualLifeState = {
 export function createEmptyVirtualLifeState(now = new Date().toISOString()): VirtualLifeState {
   return {
     schemaVersion: 1,
-    scheduleProfileVersion: 2,
+    scheduleProfileVersion: 3,
     clock: { mode: "real-time", realAnchorAt: now, simulationAnchorAt: null, speed: 1 },
     actorClocks: [],
     settings: { ...DEFAULT_LIFE_ENGINE_SETTINGS },
