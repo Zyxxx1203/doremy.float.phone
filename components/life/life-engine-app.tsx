@@ -31,8 +31,8 @@ import { advanceActorTimeline, applyCharacterLifeScheduleChange, confirmLifeInvi
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
-import { loadImageGenerationSettings, loadPresets, resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
-import type { PresetConfig } from "@/lib/settings-types";
+import { loadBindingConfig, loadImageGenerationSettings, loadPresets, loadWorldBooks, resolveBinding, resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
+import type { BindingConfig, PresetConfig, WorldBookConfig } from "@/lib/settings-types";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
@@ -120,6 +120,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [tab, setTab] = useState<Tab>("home");
   const [sceneView, setSceneView] = useState(false);
   const [phonePresets, setPhonePresets] = useState<PresetConfig[]>([]);
+  const [worldBooks, setWorldBooks] = useState<WorldBookConfig[]>([]);
+  const [bindingConfig, setBindingConfig] = useState<BindingConfig>(() => loadBindingConfig());
   const [selectedPhonePresetId, setSelectedPhonePresetId] = useState("");
   const [dailySubtab, setDailySubtab] = useState<"people" | "plans">("people");
   const [experienceActorFilter, setExperienceActorFilter] = useState("all");
@@ -165,9 +167,13 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const openDaily = (subtab: "people" | "plans") => { setDailySubtab(subtab); setTab("daily"); };
   useEffect(() => {
     const refreshPhonePresets = () => setPhonePresets(loadPresets());
-    refreshPhonePresets();
+    const refreshWorldBooks = () => setWorldBooks(loadWorldBooks());
+    const refreshBindings = () => setBindingConfig(loadBindingConfig());
+    refreshPhonePresets(); refreshWorldBooks(); refreshBindings();
     window.addEventListener("settings-presets-updated", refreshPhonePresets);
-    return () => window.removeEventListener("settings-presets-updated", refreshPhonePresets);
+    window.addEventListener("settings-worldbooks-updated", refreshWorldBooks);
+    window.addEventListener("settings-bindings-updated", refreshBindings);
+    return () => { window.removeEventListener("settings-presets-updated", refreshPhonePresets); window.removeEventListener("settings-worldbooks-updated", refreshWorldBooks); window.removeEventListener("settings-bindings-updated", refreshBindings); };
   }, []);
 
   useEffect(() => {
