@@ -444,6 +444,19 @@ assert.equal(
 );
 assert.ok(recoveredOngoingAppointment.scenes.some(scene => scene.eventId === "ap-event" && scene.status === "active"));
 
+const historicalAppointmentWithCurrentScene = settleActorTimelineToNow(
+  staleActiveSceneState,
+  "player",
+  "player",
+  new Date("2026-10-15T15:00:00.000Z"),
+);
+assert.equal(
+  historicalAppointmentWithCurrentScene.scenes.find(scene => scene.id === "unrelated-active-scene")?.status,
+  "active",
+  "catching up a historical appointment must not pause the current active scene",
+);
+
+
 
 
 const malformedInvitationState = {
