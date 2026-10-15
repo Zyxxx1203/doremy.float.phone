@@ -213,7 +213,7 @@ function LifeTimelineWidget({ config, widgetId, onConfigChange, preview }: any) 
       const next = state.schedules.filter(slot => slot.ownerType === "player" && slot.ownerId === "player" && new Date(slot.startAt).getTime() > now.getTime()).sort((a,b)=>a.startAt.localeCompare(b.startAt))[0];
       const actual = state.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === "player");
       const dayStart = new Date(now); dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+      const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1);
       const visibleTimeline = (state.timeline ?? []).filter(entry => {
         const at = new Date(entry.occurredAt).getTime();
         if (!Number.isFinite(at) || at < dayStart.getTime() || at >= dayEnd.getTime()) return false;
