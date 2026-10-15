@@ -906,7 +906,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           sceneContext,
           "玩家行动：" + (previousPlayer.action || "无"),
           "玩家对白：" + (previousPlayer.dialogue || "无"),
-          "请重新生成" + character.name + "对这条输入的自然回应。只生成角色回应，不要重复玩家内容。",
+          (activePromptPreset.sceneTaskPrompt?.trim() || "请重新生成{characterName}对这条输入的自然回应。只生成角色回应，不要重复玩家内容。").replace(/\{characterName\}/g, character.name).replace(/\{playerName\}/g, playerName).replace(/\{locationName\}/g, scene.locationName),
         ].filter(Boolean).join("\n"),
       };
       const result = await generateOfflineChatCompletion(session, [...previous, prompt]);
@@ -1010,20 +1010,20 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         settings.allowCharactersToStaySilent ? "如果角色当下忙碌、没注意到或不想说话，可以自然沉默。" : "本轮需要对玩家的输入作出回应。",
         wokeFromSleep ? "角色原本正在睡觉，本轮是被消息或紧急情况吵醒；要表现困倦、反应迟缓或不想立刻长谈，不要突然精神饱满。" : "",
         settings.enableAmbientDetails ? "可以用一两笔简短环境细节营造现场感，不要扩写成长篇旁白。" : "不需要环境氛围描写，直接进行实时互动。",
-        settings.enableCharacterAutonomy ? [
+        settings.enableCharacterAutonomy ? (activePromptPreset.toolCallingPrompt?.trim() || [
           "你可以按需调用下列已启用的生活工具，通过隐藏标签调用，不要向玩家解释标签。",
           settings.enableScheduleChangeTool ? "change_schedule：<life_plan_change startAt=\"ISO-8601开始时间\" endAt=\"ISO-8601结束时间\" title=\"新的安排\" locationId=\"home\" />。只调整当前虚拟日未来时段，保留前后日程，不覆盖确认约会。" : "",
           settings.enableInvitations ? "propose_invitation：<life_invitation time=\"ISO-8601时间\" locationId=\"cafe\" activity=\"活动\" durationMinutes=\"60\" />。这是待确认邀约，玩家确认后才同步日程。" : "",
           settings.enableInvitations && settings.enableFollowRequestTool ? "request_follow：<life_follow_request durationMinutes=\"120\" reason=\"简短原因\" />。需要玩家确认，可被拒绝。" : "",
           "每轮最多调用一个工具，仅在角色有真实动机时调用，不要为了展示功能调用。"
-        ].filter(Boolean).join(" ") : "角色自主行动工具已关闭，不要输出生活工具标签.",
+        ].filter(Boolean).join(" ")) : "角色自主行动工具已关闭，不要输出生活工具标签.",
         activePromptPresetText ? `小手机预设继承内容与当前生活预设规则：\\n${activePromptPresetText}` : "",
         activePromptPreset.locationHabitPrompt ? `地点习惯规则：\\n${activePromptPreset.locationHabitPrompt}` : "",
         settings.customPrompt ? `用户自定义规则：${settings.customPrompt}` : "",
       ].filter(Boolean).join("\n");
       const promptMessage: ChatMessage = {
         id: id("life-user"), sessionId: session.id, role: "user", status: "sent", createdAt: now,
-        content: `[仅本轮使用生活场景模式规则，不要写入线上聊天历史]\n${settingsInstructions}\n\n${sceneContext}\n\n玩家本轮行动：${userAction || "（没有额外动作）"}\n玩家本轮对白：${userText || "（没有说话）"}\n请让${target.name}按其既有人设自然回应。行动与对白分开处理；玩家只行动时，不要擅自替玩家补台词。`,
+        content: `[仅本轮使用生活场景模式规则，不要写入线上聊天历史]\n${settingsInstructions}\n\n${sceneContext}\n\n玩家本轮行动：${userAction || "（没有额外动作）"}\n玩家本轮对白：${userText || "（没有说话）"}\n${(activePromptPreset.sceneTaskPrompt?.trim() || "请让{characterName}按其既有人设自然回应。行动与对白分开处理；玩家只行动时，不要擅自替玩家补台词。").replace(/\{characterName\}/g, target.name).replace(/\{playerName\}/g, playerName).replace(/\{locationName\}/g, activeScene.locationName)}`,
       };
       const result = await generateOfflineChatCompletion(session, [...previous, promptMessage]);
       const parsed = parseLifeOutput(result.content);
