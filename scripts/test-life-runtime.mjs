@@ -389,6 +389,34 @@ assert.ok(
   "catch-up should reconstruct the missing scene for an elapsed active appointment",
 );
 
+const staleCompletedSceneState = {
+  ...activeAppointmentWithoutScene,
+  scenes: [{
+    id: "ap-existing-scene",
+    locationId: "cafe",
+    locationName: "街角咖啡店",
+    startedAt: apStart,
+    updatedAt: apEnd,
+    status: "completed",
+    eventId: "ap-event",
+    participants: [
+      { ownerType: "player", ownerId: "player", activity: "一起喝咖啡", awarenessByActorId: {} },
+      { ownerType: "character", ownerId: "c1", activity: "一起喝咖啡", awarenessByActorId: {} },
+    ],
+    lastSettledEventIds: [],
+  }],
+};
+const recoveredStaleScene = settleActorTimelineToNow(
+  staleCompletedSceneState,
+  "player",
+  "player",
+  new Date("2026-10-15T15:00:00.000Z"),
+);
+assert.equal(recoveredStaleScene.scenes.length, 1, "recovery must reuse the event-linked scene even when its previous status was stale");
+assert.equal(recoveredStaleScene.scenes[0].id, "ap-existing-scene");
+assert.equal(recoveredStaleScene.scenes[0].status, "completed");
+
+
 const malformedInvitationState = {
   ...makeState(),
   invitations: [{
