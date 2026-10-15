@@ -41,10 +41,15 @@ type QuickPlanDraft = { id: string; ownerType: LifeOwnerType; ownerId: string; s
 const PLAYER_ID = "player";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const INITIAL_LOCATIONS: LifeLocation[] = [
-  { id: "home", name: "家", description: "可以休息、吃饭和独处的地方", visibility: "private" },
-  { id: "cafe", name: "街角咖啡店", description: "适合偶遇和闲聊", visibility: "public" },
-  { id: "park", name: "公园", description: "散步、运动或发呆", visibility: "public" },
-  { id: "library", name: "图书馆", description: "安静学习与阅读", visibility: "public" },
+  { id: "home", name: "家", description: "熟悉而放松的私人空间。日常起居、休息、吃饭，也可以在这里安静地陪伴彼此。", atmosphere: "温暖、私密、放松；随着时间和在场角色的状态自然变化。", layout: "入户门通向客厅；客厅有沙发和茶几，窗边有一处可以坐下的位置；厨房与卧室分别位于内侧。", props: ["沙发", "茶几", "抱枕", "窗帘", "水杯"], visibility: "private" },
+  { id: "cafe", name: "街角咖啡店", description: "临街的咖啡店，适合偶遇、聊天、看书或短暂停留。", atmosphere: "咖啡香、轻柔的背景音乐、偶尔响起的杯碟声；忙碌程度随时段变化。", layout: "入口旁是点单柜台，靠窗有双人座，店内侧有几张小桌，后方通向洗手间。", props: ["菜单", "咖啡杯", "纸巾", "窗边座位", "手机"], visibility: "public" },
+  { id: "park", name: "公园", description: "有步道、树荫和长椅的公共绿地，适合散步、运动或发呆。", atmosphere: "风声、树叶和远处的人声；天气、时段与在场者的活动会影响氛围。", layout: "入口连接环形步道；步道旁有长椅和树荫，中央有一片开阔草地。", props: ["长椅", "树荫", "步道", "草地", "饮料瓶"], visibility: "public" },
+  { id: "library", name: "图书馆", description: "安静的阅读与学习空间，适合专注，也适合偶尔交换低声的几句话。", atmosphere: "安静、克制，只有翻页声、键盘声和轻微脚步声。", layout: "入口有借阅台，中央是书架，靠窗有单人桌，内侧有小组讨论区。", props: ["书籍", "书签", "台灯", "笔记本", "耳机"], visibility: "public" },
+  { id: "school", name: "学校", description: "教室、图书馆与校园公共区域组成的学习空间。", atmosphere: "课间热闹、上课时安静，随时间段变化。", layout: "教学楼走廊连接教室与楼梯，校园道路通向图书馆和食堂。", props: ["课本", "笔记本", "书包", "校园卡"], visibility: "public" },
+  { id: "work", name: "工作地点", description: "用于角色上班、处理事务或进行日常工作的地点。", atmosphere: "专注、规律，可能伴随交谈、键盘声或短暂休息。", layout: "入口连接公共区域，内部有工作桌、座位与休息区。", props: ["电脑", "文件", "水杯", "便签"], visibility: "public" },
+  { id: "transit", name: "通勤途中", description: "连接不同地点的路程；角色可能步行、乘车或短暂停留。", atmosphere: "流动、短暂，周围声音和人流随路线变化。", layout: "以道路、站台或车厢为主，具体空间随出行方式变化。", props: ["手机", "耳机", "交通卡", "背包"], visibility: "public" },
+  { id: "canteen", name: "食堂 / 附近餐馆", description: "用餐、休息和短暂交流的地方。", atmosphere: "餐食香气、人声与餐具声，饭点会更热闹。", layout: "入口附近有取餐或点单处，座位分布在用餐区。", props: ["餐盘", "筷子", "纸巾", "饮料"], visibility: "public" },
+  { id: "studio", name: "音乐 / 创作空间", description: "适合练习乐器、写作、绘画或其他个人创作。", atmosphere: "专注、私密，可能有轻微音乐声或创作时的杂物声。", layout: "主要工作台靠近光源，乐器或材料收纳在一侧，留出活动空间。", props: ["耳机", "笔记本", "乐器 / 创作工具", "水杯"], visibility: "public" },
 ];
 const id = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 const fmt = (value: Date | string) => new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(typeof value === "string" ? new Date(value) : value);
@@ -111,6 +116,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [playerIdentity, setPlayerIdentity] = useState(() => resolveUserIdentity());
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<Tab>("home");
+  const [sceneView, setSceneView] = useState(false);
   const [dailySubtab, setDailySubtab] = useState<"people" | "plans">("people");
   const [experienceActorFilter, setExperienceActorFilter] = useState("all");
   const [experienceCategoryFilter, setExperienceCategoryFilter] = useState("all");
@@ -122,6 +128,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [selectedLocationId, setSelectedLocationId] = useState("cafe");
   const [stayDurationMinutes, setStayDurationMinutes] = useState(120);
   const [newLocationName, setNewLocationName] = useState("");
+  const [locationDescriptionDraft, setLocationDescriptionDraft] = useState("");
+  const [locationAtmosphereDraft, setLocationAtmosphereDraft] = useState("");
+  const [locationLayoutDraft, setLocationLayoutDraft] = useState("");
+  const [locationPropsDraft, setLocationPropsDraft] = useState("");
 
   const [quickPlanText, setQuickPlanText] = useState("");
   const [quickPlanDrafts, setQuickPlanDrafts] = useState<QuickPlanDraft[]>([]);
@@ -154,7 +164,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     void hydrateKvDb().then(() => hydrateChatStorage()).catch(() => undefined).finally(() => {
       if (!alive) return;
       const loaded = loadVirtualLifeState();
-      let normalized: VirtualLifeState = { ...loaded, locations: loaded.locations.length ? loaded.locations : INITIAL_LOCATIONS };
+      let normalized: VirtualLifeState = { ...loaded, locations: [...INITIAL_LOCATIONS.filter(location => !loaded.locations.some(saved => saved.id === location.id)), ...loaded.locations] };
       const hasContinuingScene = normalized.scenes.some(scene => scene.status === "active" || scene.status === "paused");
       if (!hasContinuingScene && normalized.settings.enabled) {
         const player = normalized.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
@@ -220,14 +230,14 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   }, [selectedSpeakerId]);
   const actors = useMemo<ActorChoice[]>(() => [
     { ownerType: "player", ownerId: PLAYER_ID, name: playerName, avatar: playerIdentity?.avatarUrl },
-    ...characters.map(char => ({ ownerType: "character" as const, ownerId: char.id, name: char.name, avatar: char.avatar, persona: [char.persona, char.personality].filter(Boolean).join("\n") })),
+    ...characters.map(char => ({ ownerType: "character" as const, ownerId: char.id, name: char.name, avatar: char.avatar, persona: [char.persona, char.personality, ...(char.tags ?? [])].filter(Boolean).join("\n") })),
   ], [characters, playerName, playerIdentity?.avatarUrl]);
   const selectedActor = actors.find(actor => `${actor.ownerType}:${actor.ownerId}` === selectedActorKey) ?? actors[0];
   const activeScene = useMemo(() => state.scenes.find(scene => scene.status === "active") ?? state.scenes.filter(scene => scene.status === "paused").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0], [state.scenes]);
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
   const selectedLocation = state.locations.find(location => location.id === selectedLocationId) ?? state.locations[0];
   // In a live scene, the viewport belongs to the scene itself rather than the document.
-  const immersiveScene = tab === "home" && !!activeScene;
+  const immersiveScene = tab === "home" && sceneView && !!activeScene;
   useEffect(() => {
     if (typeof window === "undefined") return;
     const viewport = window.visualViewport;
@@ -247,6 +257,13 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   }, [immersiveScene]);
 
   useEffect(() => {
+    setLocationDescriptionDraft(selectedLocation?.description ?? "");
+    setLocationAtmosphereDraft(selectedLocation?.atmosphere ?? "");
+    setLocationLayoutDraft(selectedLocation?.layout ?? "");
+    setLocationPropsDraft((selectedLocation?.props ?? []).join("、"));
+  }, [selectedLocation?.id]);
+
+  useEffect(() => {
     if (!activeScene) return;
     const firstParticipant = activeScene.participants.find(participant => participant.ownerType === "character");
     if (!activeScene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === selectedSpeakerId)) {
@@ -261,7 +278,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     let next = state;
     const owners = [
       { ownerType: "player" as const, ownerId: PLAYER_ID, name: playerName, profile: "" },
-      ...characters.map(character => ({ ownerType: "character" as const, ownerId: character.id, name: character.name, profile: [character.persona, character.personality].filter(Boolean).join(" ") })),
+      ...characters.map(character => ({ ownerType: "character" as const, ownerId: character.id, name: character.name, profile: [character.persona, character.personality, ...(character.tags ?? [])].filter(Boolean).join(" ") })),
     ];
     for (const owner of owners) {
       if (!next.actorClocks.some(clock => clock.ownerType === owner.ownerType && clock.ownerId === owner.ownerId)) {
@@ -288,7 +305,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const roster = loadCharacters();
       const owners = [
         { ownerType: "player" as const, ownerId: PLAYER_ID, name: liveSettings.playerDisplayName || "我", profile: "" },
-        ...roster.map(character => ({ ownerType: "character" as const, ownerId: character.id, name: character.name, profile: [character.persona, character.personality].filter(Boolean).join(" ") })),
+        ...roster.map(character => ({ ownerType: "character" as const, ownerId: character.id, name: character.name, profile: [character.persona, character.personality, ...(character.tags ?? [])].filter(Boolean).join(" ") })),
       ];
       for (const owner of owners) {
         const virtualNow = resolveActorLifeNow(getActorClock(next, owner.ownerType, owner.ownerId));
@@ -440,7 +457,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     next = generateWeeklyLifePlan(next, "player", PLAYER_ID, playerName, mondayStart(playerVirtualNow), { id: "home", name: "家" });
     for (const character of characters) {
       const characterVirtualNow = resolveActorLifeNow(getActorClock(next, "character", character.id));
-      next = generateWeeklyLifePlan(next, "character", character.id, character.name, mondayStart(characterVirtualNow), { id: "home", name: "家" }, [character.persona, character.personality].filter(Boolean).join(" "), settings.generateSpecialEvents);
+      next = generateWeeklyLifePlan(next, "character", character.id, character.name, mondayStart(characterVirtualNow), { id: "home", name: "家" }, [character.persona, character.personality, ...(character.tags ?? [])].filter(Boolean).join(" "), settings.generateSpecialEvents);
     }
     if (next === state) setNotice("本周计划已经存在，没有重新生成或覆盖你的修改。");
     else { commit(next); setNotice("已按每个人自己的虚拟时间生成可编辑的生活日程。"); }
