@@ -377,7 +377,7 @@ export function getCurrentActorSchedule(state: VirtualLifeState, ownerType: Life
     })
     // If legacy data contains overlaps, the most recently started slot wins
     // deterministically instead of whichever item happened to be stored first.
-    .sort((a, b) => b.startAt.localeCompare(a.startAt))[0];
+    .sort((a, b) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime())[0];
 }
 export function makeLifeInvitation(state: VirtualLifeState, input: Omit<LifeInvitation,"id"|"status"|"updatedAt">): VirtualLifeState {
   const now = new Date().toISOString(), invitation: LifeInvitation = { ...input, id: makeId("invite"), status: "proposed", updatedAt: now };
