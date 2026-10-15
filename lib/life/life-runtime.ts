@@ -114,7 +114,7 @@ export function generateWeeklyLifePlan(
     .replace(/^[的在去到：:\s]+|[的了和及\s]+$/g,"").trim()).filter(name => name.length >= 2).slice(0, 5);
   for (const placeName of profilePlaceCandidates) {
     const key = normalizeProfilePlace(placeName);
-    if (!key || /^(这里|那里|家里|家中|附近|外面|室内|户外|学校|公司)$/.test(key)) continue;
+    if (!key || /^(这里|那里|家里|家中|附近|外面|室内|户外|学校|公司|你身边|身旁|身边|周围|旁边|门口|屋内|房间)$/.test(key)) continue;
     const existing = [...state.locations, ...discoveredLocations].find(location => {
       const names = [location.name, ...(location.aliases ?? [])].map(normalizeProfilePlace).filter(name => name.length >= 2);
       return names.includes(key) || names.some(name => key.length >= 3 && (key.includes(name) || name.includes(key)));
