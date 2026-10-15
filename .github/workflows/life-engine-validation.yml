@@ -3,6 +3,8 @@ name: Virtual life feature validation
 on:
   pull_request:
     branches: [main, feat/life-engine-foundation]
+  push:
+    branches: [codex/life-system-overhaul-v2, feat/life-engine-foundation]
   workflow_dispatch:
 
 permissions:
