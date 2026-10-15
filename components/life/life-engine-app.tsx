@@ -312,15 +312,15 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     });
     return { visits: count, minutes, activeMinutes };
   }, [state.timeline, state.actorStates, state.actorClocks, selectedLocation, locationStatsTick]);
+  // In a live scene, the viewport belongs to the scene itself rather than the document.
+  const immersiveScene = !!activeScene && ((tab === "home" && sceneView) || tab === "scene");
+
   useEffect(() => {
     if (!immersiveScene) return;
     const scroller = sceneChatScrollRef.current;
     if (!scroller) return;
     scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
   }, [immersiveScene, activeScene?.id, sceneMessages.length, busy]);
-
-  // In a live scene, the viewport belongs to the scene itself rather than the document.
-  const immersiveScene = !!activeScene && ((tab === "home" && sceneView) || tab === "scene");
   useEffect(() => {
     if (typeof window === "undefined") return;
     const viewport = window.visualViewport;
