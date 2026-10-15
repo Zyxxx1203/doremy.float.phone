@@ -27,6 +27,7 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
     return scene.participants.some(p => p.ownerType === actor.ownerType && p.ownerId === actor.ownerId && viewer?.awarenessByActorId[p.ownerId] === "aware");
   });
   const participantIds = scene.participants.map(p => p.ownerId);
+  const location = state.locations.find(item => item.id === scene.locationId);
   const memories = state.memories
     .filter(memory => memory.participants.includes(viewerId || "player") && memory.participants.some(id => participantIds.includes(id)))
     .sort((a,b) => b.occurredAt.localeCompare(a.occurredAt))
@@ -39,6 +40,11 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
   const lines = [
     "【当前生活场景状态】",
     `场景：${scene.locationName}（locationId=${scene.locationId}）`,
+    location?.description ? `地点描写：${location.description}` : "",
+    location?.atmosphere ? `地点氛围：${location.atmosphere}` : "",
+    location?.layout ? `固定空间布局：${location.layout}` : "",
+    location?.props?.length ? `场景中可持续使用的道具：${location.props.join("、")}` : "",
+    "地点描写、空间布局和道具是持续场景的固定环境事实；角色可以基于这些细节行动，除非用户明确修改，不要随意重置或凭空替换。",
     `场景状态：${scene.status}`,
     `场景开始时间：${scene.startedAt}`,
     "参与者当前活动：",
