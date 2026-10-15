@@ -44,6 +44,8 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
     location?.atmosphere ? `地点氛围：${location.atmosphere}` : "",
     location?.layout ? `固定空间布局：${location.layout}` : "",
     location?.props?.length ? `场景中可持续使用的道具：${location.props.join("、")}` : "",
+    viewerId && location?.characterHabits?.[viewerId] ? `该角色在此地点的个人习惯：${location.characterHabits[viewerId]}` : "",
+    ...scene.participants.filter(participant => participant.ownerType === "character" && location?.characterHabits?.[participant.ownerId]).map(participant => `角色 ${participant.ownerId} 在此地点的习惯：${location!.characterHabits![participant.ownerId]}`),
     "地点描写、空间布局和道具是持续场景的固定环境事实；角色可以基于这些细节行动，除非用户明确修改，不要随意重置或凭空替换。",
     `场景状态：${scene.status}`,
     `场景开始时间：${scene.startedAt}`,
