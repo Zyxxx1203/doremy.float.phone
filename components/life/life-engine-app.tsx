@@ -226,6 +226,25 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const activeScene = useMemo(() => state.scenes.find(scene => scene.status === "active") ?? state.scenes.filter(scene => scene.status === "paused").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0], [state.scenes]);
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
   const selectedLocation = state.locations.find(location => location.id === selectedLocationId) ?? state.locations[0];
+  // In a live scene, the viewport belongs to the scene itself rather than the document.
+  const immersiveScene = tab === "home" && !!activeScene;
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const viewport = window.visualViewport;
+    const syncViewport = () => {
+      const height = viewport?.height ?? window.innerHeight;
+      document.documentElement.style.setProperty("--life-viewport-height", `${Math.max(240, Math.round(height))}px`);
+    };
+    syncViewport();
+    viewport?.addEventListener("resize", syncViewport);
+    viewport?.addEventListener("scroll", syncViewport);
+    window.addEventListener("resize", syncViewport);
+    return () => {
+      viewport?.removeEventListener("resize", syncViewport);
+      viewport?.removeEventListener("scroll", syncViewport);
+      window.removeEventListener("resize", syncViewport);
+    };
+  }, [immersiveScene]);
 
   useEffect(() => {
     if (!activeScene) return;
@@ -1432,8 +1451,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   if (!ready) return <main className="flex min-h-screen items-center justify-center bg-[#f7efe4] text-stone-500">正在打开生活档案…</main>;
 
-  return <main style={cssVars} className={`min-h-screen min-h-[100dvh] overflow-y-auto overscroll-y-contain touch-pan-y bg-gradient-to-br ${themeClass} ${settings.compactLayout ? "px-1.5 py-1.5 sm:px-3 sm:py-3" : "px-2 py-2 sm:px-4 sm:py-4"}`}>
-    <div className="mx-auto w-full max-w-none">
+  return <main style={{ ...cssVars, ...(immersiveScene ? { height: "var(--life-viewport-height, 100dvh)" } : {}) }} className={`${immersiveScene ? "flex flex-col overflow-hidden overscroll-none" : "min-h-screen min-h-[100dvh] overflow-y-auto overscroll-y-contain touch-pan-y"} bg-gradient-to-br ${themeClass} ${settings.compactLayout ? "px-1.5 py-1.5 sm:px-3 sm:py-3" : "px-2 py-2 sm:px-4 sm:py-4"}`}>
+    <div className={`mx-auto w-full max-w-none ${immersiveScene ? "flex min-h-0 flex-1 flex-col" : ""}`}>
       <header className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/75 text-[var(--life-accent)] shadow-sm"><Heart size={22}/></div><div><p className="text-[10px] font-semibold uppercase tracking-[0.26em] opacity-60">A LIVING WORLD · SHARED MOMENTS</p><h1 className="text-2xl font-semibold tracking-tight">生活世界</h1><p className="mt-0.5 text-xs opacity-65">角色有自己的生活，你也可以随时加入</p></div></div>
         <div className="flex flex-wrap items-center gap-2"><button onClick={()=>tab==="home"?closeApp():setTab("home")} aria-label="返回生活现场" className="inline-flex items-center gap-1 rounded-full border border-white/80 bg-white/70 px-3 py-2 text-sm"><ArrowLeft size={15}/><span>返回</span></button><button onClick={closeApp} aria-label="退出生活 APP" className="inline-flex items-center gap-1 rounded-full border border-white/80 bg-white/70 px-3 py-2 text-sm"><X size={15}/><span>退出</span></button><span className="rounded-full border border-white/70 bg-white/60 px-3 py-1.5 text-xs">{actors.length} 位生活参与者</span></div>
@@ -1443,8 +1462,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         {([{id:"home",label:"生活现场",icon:MessagesSquare},{id:"daily",label:"角色日常",icon:CalendarDays},{id:"invitations",label:"邀约活动",icon:Coffee},{id:"experiences",label:"共同经历",icon:Heart},{id:"settings",label:"设置",icon:Settings2}] as const).filter(item => item.id !== "invitations" || settings.enableInvitations).map(item => { const Icon=item.icon; const active=item.id===tab||(item.id==="daily"&&(tab==="daily"||tab==="people"||tab==="plans")); return <button key={item.id} onClick={() => { if(item.id==="daily"){setTab("daily");return;} setTab(item.id); }} aria-current={active?"page":undefined} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] transition sm:flex-row sm:text-sm ${active?"bg-white text-[var(--life-accent)] shadow-sm":"opacity-65 hover:opacity-100"}`}><span className="relative inline-flex"><Icon size={16}/>{item.id==="invitations"&&pendingCharacterInvitations.length>0&&<span className="absolute -right-2 -top-2 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] text-white">{pendingCharacterInvitations.length}</span>}</span><span className="truncate">{item.label}</span></button>; })}
       </nav>
 
-      {(tab === "home" || tab === "scene") && <div className="space-y-4">
-        <details className="rounded-2xl border border-white/80 bg-white/55 shadow-sm"><summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-stone-600">生活状态与时间线 · {playerNow.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})} · 展开查看</summary><section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
+      {(tab === "home" || tab === "scene") && <div className={immersiveScene ? "flex min-h-0 flex-1 flex-col" : "space-y-4"}>
+        {!immersiveScene && <details open className="rounded-2xl border border-white/80 bg-white/55 shadow-sm"><summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-stone-600">生活状态与时间线 · {playerNow.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})} · 展开查看</summary><section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <SectionTitle eyebrow="Your day · 24 hours" title={playerNow.toLocaleDateString("zh-CN",{month:"long",day:"numeric",weekday:"long"})+" · 我的时间线"} note="已过去的时段可以折叠查看；快进会逐段结算日程，不会直接抹掉中间发生的生活。" />
             <button onClick={()=>openDaily("plans")} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">查看完整七日日程</button>
@@ -1465,8 +1484,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             </div>
           </div>}
           <div className="mt-3"><p className="mb-2 text-sm font-medium">此刻和你在同一地点的角色</p>{nearbyCharacters.length ? <div className="flex flex-wrap gap-2">{nearbyCharacters.map(({character,presence})=><button key={character.id} onClick={()=>{setSelectedSpeakerId(character.id);setSelectedActorKey("character:"+character.id);setTab("home");}} className="flex items-center gap-2 rounded-xl bg-white/80 px-3 py-2 text-xs"><span className="grid h-7 w-7 place-items-center rounded-full bg-[#efe1d2]">{character.name.slice(0,1)}</span><span className="text-left"><span className="block font-medium">{character.name}</span><span className="block text-stone-500">{presence?.activity??"正在自己的生活里"}</span></span></button>)}</div> : <p className="rounded-xl bg-white/55 p-3 text-xs text-stone-500">目前没有记录到和你同地点的角色。计划地点只是线索；你也可以前往其他地点看看会不会遇见谁。</p>}</div>
-        </section></details>
-      {(tab === "home" || tab === "scene") && <section className="flex min-w-0 flex-col rounded-2xl border border-white/80 bg-white/60 p-2.5 shadow-sm sm:p-4">
+        </section></details>}
+      {(tab === "home" || tab === "scene") && <section className={`flex min-w-0 flex-col rounded-2xl border border-white/80 bg-white/60 p-2.5 shadow-sm sm:p-4 ${immersiveScene ? "min-h-0 flex-1" : ""}`}>
         <div className="mb-2 flex flex-wrap items-start justify-between gap-2"><SectionTitle eyebrow="Live scene" title={activeScene ? activeScene.locationName : "还没有正在进行的场景"} note={activeScene ? `场景始于 ${fmt(activeScene.startedAt)} · ${activeScene.participants.length} 位参与者 · 已保存，可随时回来继续` : "先从生活总览中选择地点和参与角色，创建一个持续场景。"} />{activeScene && <button onClick={()=>{const now=new Date().toISOString();let next={...stateRef.current,scenes:stateRef.current.scenes.map(scene=>scene.id===activeScene.id?{...scene,status:(activeScene.status==="active"?"paused":"active") as "active"|"paused",updatedAt:now}:{...scene,status:scene.status==="active"?"paused" as const:scene.status})};next=appendLifeTimelineEntry(next,{category:"scene",title:(activeScene.status==="active"?"你暂时离开了":"你回到了")+activeScene.locationName,actorName:playerName,locationName:activeScene.locationName,sceneId:activeScene.id});commit(next);setNotice(activeScene.status==="active"?"场景已暂停，回来时可以继续。":"已回到原场景，之前的消息会保留。")}} className="inline-flex items-center gap-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">{activeScene.status==="active"?<><Pause size={14}/>暂停场景</>:<><Play size={14}/>继续场景</>}</button>}</div>
         <details open={!activeScene} className="mb-2 rounded-xl border border-stone-200/80 bg-white/75"><summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-medium text-stone-700">场景与地点设置 · {activeScene ? activeScene.locationName : "选择地点并开始互动"}</summary><div className="px-3 pb-3 sm:px-4">
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
@@ -1501,7 +1520,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         </div></details>
         {activeScene && <>
           <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1">{activeScene.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);const awareness=p.awarenessByActorId.player;const status=awareness==="unaware"?"还没注意到你":awareness==="suspects"?"似乎察觉到你":awareness==="aware"?"注意到你":p.activity;return <button key={p.ownerType+":"+p.ownerId} onClick={()=>p.ownerType==="character"&&setSelectedSpeakerId(p.ownerId)} className={`flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-xs ${selectedSpeakerId===p.ownerId?"border-[var(--life-accent)] bg-white shadow-sm":"border-white/70 bg-white/55"}`}><span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-[#efe1d2] text-sm text-stone-700">{actor?.avatar?<img src={actor.avatar} alt="" className="h-full w-full object-cover"/>:(actor?.name??p.ownerId).slice(0,1)}</span><span className="text-left"><span className="block font-medium">{actor?.name??p.ownerId}</span><span className="block max-w-28 truncate text-[10px] opacity-60">{status}</span></span></button>})}</div>
-          <div className="mb-2 h-[58dvh] min-h-[320px] max-h-[760px] space-y-3 overflow-y-auto overscroll-contain rounded-xl bg-white/70 p-3 sm:p-5" style={{fontSize:"var(--life-font)"}}>
+          <div className={`mb-2 min-h-0 space-y-3 overflow-y-auto overscroll-contain touch-pan-y rounded-xl bg-white/70 p-3 sm:p-5 ${immersiveScene ? "flex-1" : "h-[58dvh] min-h-[320px] max-h-[760px]"}`} style={{fontSize:"var(--life-font)", WebkitOverflowScrolling:"touch"}}>
             {sceneMessages.length===0 && <div className="grid min-h-36 place-items-center text-center text-sm text-stone-400"><div><Sparkles className="mx-auto mb-2" size={22}/><p>场景已经准备好了。</p><p className="mt-1 text-xs">角色可以忙自己的事，也可以回应你；不会自动写成长篇剧情。</p></div></div>}
             {sceneMessages.map(message=><div key={message.id} className="group space-y-2 rounded-xl transition-colors" onTouchStart={() => { longPressTriggeredRef.current = false; clearMessageLongPress(); longPressTimerRef.current = window.setTimeout(() => { longPressTriggeredRef.current = true; openMessageActions(message); }, 550); }} onTouchEnd={clearMessageLongPress} onTouchMove={clearMessageLongPress} onTouchCancel={clearMessageLongPress} onContextMenu={event => { event.preventDefault(); clearMessageLongPress(); openMessageActions(message); }}>
               {message.action&&<div className="my-3 flex items-center gap-3 px-2" aria-label="行动旁白"><span className="h-px flex-1 bg-stone-300/80"/><p className="max-w-[82%] text-center italic leading-relaxed text-stone-500" style={{fontSize:"var(--life-narration-font)"}}>{message.action}</p><span className="h-px flex-1 bg-stone-300/80"/></div>}
@@ -1526,12 +1545,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           <p className="mt-2 text-xs text-stone-500">长按任意消息可编辑、删除或重新生成角色回复。生成使用角色现有私聊会话和模型配置；本轮场景指令只临时注入，不会把场景规则写进原线上聊天记录。</p>
         </>}
       </section>}
-          <section className="mt-4 rounded-2xl border border-stone-200/70 bg-white/60 p-3 sm:p-4">
+          <section className={`mt-4 rounded-2xl border border-stone-200/70 bg-white/60 p-3 sm:p-4 ${immersiveScene ? "hidden" : ""}`}>
             <div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-sm font-semibold text-stone-800">今天发生的事</p><p className="mt-0.5 text-[11px] text-stone-500">生活、行动和互动会按发生时间连续记录</p></div><span className="rounded-full bg-white px-2.5 py-1 text-[10px] text-stone-500">{lifeTimeline.length} 条</span></div>
             {recentLifeTimeline.length ? <div className="space-y-2">{recentLifeTimeline.map(entry=><div key={entry.id} className="flex gap-3 rounded-xl bg-white/80 p-3"><span className="w-12 shrink-0 pt-0.5 text-[11px] tabular-nums text-stone-400">{new Date(entry.occurredAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><div className="min-w-0 flex-1"><p className="text-sm font-medium text-stone-800">{entry.title}</p>{entry.details&&<p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-stone-600">{entry.details}</p>}<p className="mt-1 text-[10px] text-stone-400">{entry.actorName ? entry.actorName+" · " : ""}{entry.locationName ? entry.locationName+" · " : ""}{entry.category === "location" ? "地点" : entry.category === "scene" ? "场景" : entry.category === "action" ? "行动" : entry.category === "dialogue" ? "对话" : entry.category === "schedule" ? "日程" : entry.category === "tool" ? "工具" : entry.category === "social" ? "朋友圈" : entry.category === "diary" ? "日记" : entry.category === "chat" ? "消息" : "生活记录"}</p></div></div>)}</div> : <div className="rounded-xl bg-white/70 p-4 text-center text-xs text-stone-500">还没有符合当前筛选条件的记录。开始行动或互动后，这里会逐渐形成你的一天。</div>}
             {olderLifeTimeline.length>0&&<details className="mt-3 rounded-xl border border-stone-200/70 bg-white/50 p-3"><summary className="cursor-pointer text-xs font-medium text-stone-600">展开更早的记录（{olderLifeTimeline.length}）</summary><div className="mt-3 space-y-2">{olderLifeTimeline.map(entry=><div key={entry.id} className="flex gap-3 border-l-2 border-stone-200 pl-3 py-1"><span className="w-12 shrink-0 text-[10px] tabular-nums text-stone-400">{new Date(entry.occurredAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><div className="min-w-0 flex-1"><p className="text-xs font-medium">{entry.title}</p>{entry.details&&<p className="mt-0.5 whitespace-pre-wrap break-words text-[11px] text-stone-500">{entry.details}</p>}</div></div>)}</div></details>}
           </section>
-        <div className="grid gap-4 lg:grid-cols-[1.15fr_.85fr]">
+        <div className={`grid gap-4 lg:grid-cols-[1.15fr_.85fr] ${immersiveScene ? "hidden" : ""}`}>
         <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
           <SectionTitle eyebrow="Independent timelines" title="每个人都有自己的时间" note="调整某个人的流速，不会改变其他人的时钟。模拟时间不会在退出时偷偷跳回现实。" />
           <div className="space-y-3">{actors.map(actor => { const clock=getActorClock(state,actor.ownerType,actor.ownerId), now=actorNow(actor), current=actorSchedule(actor), actual=actorState(actor); return <div key={`${actor.ownerType}:${actor.ownerId}`} className={`rounded-2xl border p-3 transition ${selectedActorKey===`${actor.ownerType}:${actor.ownerId}`?"border-[var(--life-accent)]/45 bg-white":"border-stone-200/70 bg-white/55"}`}>
@@ -1675,7 +1694,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           </label>
         </div>
         <div className="mb-3 flex items-center justify-between gap-3 text-xs text-stone-500"><span>找到 {experienceTimeline.length} 条记录</span><button type="button" onClick={() => { setExperienceActorFilter("all"); setExperienceCategoryFilter("all"); setExperienceDateFilter(""); setExperienceGroupBy("date"); }} className="rounded-lg border border-stone-200 bg-white px-3 py-1.5">重置筛选</button></div>
-        {sortedExperienceGroups.length === 0 ? <div className="rounded-2xl bg-white/65 p-8 text-center"><p className="text-sm font-medium text-stone-700">还没有符合条件的经历</p><p className="mt-1 text-xs text-stone-500">开始行动、聊天或一起参加活动后，记录会逐渐出现在这里。</p></div> : <div className="space-y-4">
+        {sortedExperienceGroups.length === 0 ? <div className="rounded-2xl bg-white/65 p-8 text-center"><p className="text-sm font-medium text-stone-700">还没有符合条件的经历</p><p className="mt-1 text-xs text-stone-500">开始行动、聊天或一起参加活动后，记录会逐渐出现在这里。</p></div> : <div className="max-h-[62dvh] space-y-4 overflow-y-auto overscroll-contain touch-pan-y pr-1" style={{ WebkitOverflowScrolling: "touch" }}>
           {sortedExperienceGroups.map(([groupKey, entries]) => <section key={groupKey} className="overflow-hidden rounded-2xl border border-stone-200/70 bg-white/60">
             <h3 className="sticky top-14 z-10 border-b border-stone-200/70 bg-[#fbf7f0]/95 px-4 py-3 text-sm font-semibold text-stone-700 backdrop-blur-sm">{experienceGroupBy === "date" ? (groupKey === "日期未知" ? groupKey : new Date(groupKey + "T12:00:00").toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" })) : groupKey}</h3>
             <div className="space-y-2 p-3">{entries.map(entry => <article key={entry.id} className="flex gap-3 rounded-xl bg-white/85 p-3">
