@@ -287,6 +287,30 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const activeScene = useMemo(() => state.scenes.find(scene => scene.status === "active") ?? state.scenes.filter(scene => scene.status === "paused").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0], [state.scenes]);
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
   const selectedLocation = state.locations.find(location => location.id === selectedLocationId) ?? state.locations[0];
+  const selectedLocationVisitStats = useMemo(() => {
+    if (!selectedLocation) return { visits: 0, minutes: 0, activeMinutes: 0 };
+    const virtualNow = resolveActorLifeNow(getActorClock(state, "player", PLAYER_ID));
+    const visits = state.timeline
+      .filter(entry => entry.category === "location" && entry.actorId === PLAYER_ID && entry.title.startsWith("你来到了"))
+      .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+    let minutes = 0;
+    let activeMinutes = 0;
+    let count = 0;
+    visits.forEach((entry, index) => {
+      if (entry.locationName !== selectedLocation.name) return;
+      count += 1;
+      const nextArrival = visits.slice(index + 1).find(next => next.locationName !== entry.locationName);
+      const endAt = nextArrival ? new Date(nextArrival.occurredAt) : (
+        state.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID)?.actualLocationId === selectedLocation.id
+          ? virtualNow
+          : new Date(entry.occurredAt)
+      );
+      const duration = Math.max(0, Math.floor((endAt.getTime() - new Date(entry.occurredAt).getTime()) / 60_000));
+      minutes += duration;
+      if (!nextArrival && state.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID)?.actualLocationId === selectedLocation.id) activeMinutes = duration;
+    });
+    return { visits: count, minutes, activeMinutes };
+  }, [state.timeline, state.actorStates, state.actorClocks, selectedLocation]);
   // In a live scene, the viewport belongs to the scene itself rather than the document.
   const immersiveScene = !!activeScene && ((tab === "home" && sceneView) || tab === "scene");
   useEffect(() => {
@@ -1942,6 +1966,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         </section>
         {locationDossierOpen && selectedLocation && <section className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm sm:p-6">
           <button type="button" onClick={() => setLocationDossierOpen(false)} className="mb-4 inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-700"><ArrowLeft size={16}/>返回地点列表</button>
+          <div className="mb-4 grid grid-cols-3 gap-2">
+            <div className="rounded-2xl bg-[#f5ede4] p-3"><p className="text-[10px] text-stone-500">到访次数</p><p className="mt-1 text-lg font-semibold text-stone-800">{selectedLocationVisitStats.visits}</p></div>
+            <div className="rounded-2xl bg-[#f5ede4] p-3"><p className="text-[10px] text-stone-500">累计停留</p><p className="mt-1 text-lg font-semibold text-stone-800">{Math.floor(selectedLocationVisitStats.minutes / 60)}h {selectedLocationVisitStats.minutes % 60}m</p></div>
+            <div className="rounded-2xl bg-[#f5ede4] p-3"><p className="text-[10px] text-stone-500">本次停留</p><p className="mt-1 text-lg font-semibold text-stone-800">{Math.floor(selectedLocationVisitStats.activeMinutes / 60)}h {selectedLocationVisitStats.activeMinutes % 60}m</p></div>
+          </div>
+          <p className="mb-4 text-xs leading-relaxed text-stone-500">统计按生活系统的虚拟时间计算：每次前往会记入生活时间线，离开或临时停留到期后自动结算。它是实际到访记录，不会把尚未发生的计划误记为已到访。</p>
           <SectionTitle eyebrow="Location dossier" title={selectedLocation.name + " · 地点档案"} note="这些设定会持久保存，并注入后续场景提示词。布局定义空间关系，道具可在行动中被引用，角色习惯会影响其在此处的行为，但不应限制角色临时做出新行动。"/>
           <label className="mb-3 block text-sm font-medium text-stone-700">地点名称<input value={selectedLocation.name} onChange={event => commit({ ...stateRef.current, locations: stateRef.current.locations.map(location => location.id === selectedLocation.id ? { ...location, name: event.target.value } : location) })} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label>
           <label className="mb-3 block text-sm font-medium text-stone-700">别名 / 日程匹配关键词<textarea value={(selectedLocation.aliases ?? []).join("、")} onChange={event => commit({ ...stateRef.current, locations: stateRef.current.locations.map(location => location.id === selectedLocation.id ? { ...location, aliases: event.target.value.split(/[、,，;；\n]/).map(value => value.trim()).filter(Boolean) } : location) })} rows={2} placeholder="例如：旧城区花店、花店、花房" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
