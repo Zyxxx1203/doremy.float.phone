@@ -266,10 +266,18 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     window.addEventListener(USER_IDENTITIES_UPDATED_EVENT, syncIdentity);
     return () => window.removeEventListener(USER_IDENTITIES_UPDATED_EVENT, syncIdentity);
   }, [selectedSpeakerId]);
+  const getCharacterWorldBookContext = (characterId: string) => {
+    const chatBinding = resolveBinding(bindingConfig, characterId, "chat");
+    const dwellingBinding = resolveBinding(bindingConfig, characterId, "dwelling");
+    const ids = new Set([...(chatBinding.worldBookIds ?? []), ...(dwellingBinding.worldBookIds ?? [])]);
+    return worldBooks.filter(book => ids.has(book.id)).flatMap(book =>
+      book.entries.filter(entry => !entry.disable).map(entry => [entry.comment, entry.key, entry.content].filter(Boolean).join("："))
+    ).slice(0, 30).join("\n").slice(0, 8000);
+  };
   const actors = useMemo<ActorChoice[]>(() => [
     { ownerType: "player", ownerId: PLAYER_ID, name: playerName, avatar: playerIdentity?.avatarUrl },
-    ...characters.map(char => ({ ownerType: "character" as const, ownerId: char.id, name: char.name, avatar: char.avatar, persona: [char.persona, char.personality, ...(char.tags ?? [])].filter(Boolean).join("\n") })),
-  ], [characters, playerName, playerIdentity?.avatarUrl]);
+    ...characters.map(char => ({ ownerType: "character" as const, ownerId: char.id, name: char.name, avatar: char.avatar, persona: [char.persona, char.personality, ...(char.tags ?? []), getCharacterWorldBookContext(char.id)].filter(Boolean).join("\n") })),
+  ], [characters, playerName, playerIdentity?.avatarUrl, worldBooks, bindingConfig]);
   const selectedActor = actors.find(actor => `${actor.ownerType}:${actor.ownerId}` === selectedActorKey) ?? actors[0];
   const activeScene = useMemo(() => state.scenes.find(scene => scene.status === "active") ?? state.scenes.filter(scene => scene.status === "paused").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0], [state.scenes]);
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
