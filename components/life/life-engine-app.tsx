@@ -256,7 +256,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const settings = state.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;
   const promptPresets = settings.promptPresets ?? [];
   const activePromptPreset: LifePromptPreset = promptPresets.find(preset => preset.id === settings.activePromptPresetId) ?? promptPresets[0] ?? { id: "life-default", name: "生活现场默认预设" };
-  const activePromptPresetText = [activePromptPreset.basePresetPrompt, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.customPrompt].filter(value => typeof value === "string" && value.trim()).join("\\n\\n");
+  const activePromptPresetText = [activePromptPreset.basePresetPrompt, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.customPrompt].filter(value => typeof value === "string" && value.trim()).join("\n\n");
   const activeSceneOutputPrompt = activePromptPreset.sceneOutputPrompt?.trim() || LIFE_SCENE_OUTPUT_CONTRACT;
   const sceneImagePrompt = settings.sceneImagePrompt;
   const playerName = settings.playerDisplayName || "我";
@@ -900,8 +900,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           activeSceneOutputPrompt,
           settings.showActionNarration ? "动作旁白单独一行，使用 *动作* 格式；对白只写说出口的话。" : "不要输出动作旁白，只输出角色说出口的话。",
           settings.keepDialogueConcise ? "一轮通常 1-3 句，保持实时互动感。" : "允许适度展开，但保持实时互动感。",
-          activePromptPresetText ? "小手机预设继承内容与当前生活预设规则：\\n" + activePromptPresetText : "",
-          activePromptPreset.locationHabitPrompt ? "地点习惯规则：\\n" + activePromptPreset.locationHabitPrompt : "",
+          activePromptPresetText ? "小手机预设继承内容与当前生活预设规则：\n" + activePromptPresetText : "",
+          activePromptPreset.locationHabitPrompt ? "地点习惯规则：\n" + activePromptPreset.locationHabitPrompt : "",
           settings.customPrompt ? "用户自定义规则：" + settings.customPrompt : "",
           sceneContext,
           "玩家行动：" + (previousPlayer.action || "无"),
@@ -1017,8 +1017,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           settings.enableInvitations && settings.enableFollowRequestTool ? "request_follow：<life_follow_request durationMinutes=\"120\" reason=\"简短原因\" />。需要玩家确认，可被拒绝。" : "",
           "每轮最多调用一个工具，仅在角色有真实动机时调用，不要为了展示功能调用。"
         ].filter(Boolean).join(" ")) : "角色自主行动工具已关闭，不要输出生活工具标签.",
-        activePromptPresetText ? `小手机预设继承内容与当前生活预设规则：\\n${activePromptPresetText}` : "",
-        activePromptPreset.locationHabitPrompt ? `地点习惯规则：\\n${activePromptPreset.locationHabitPrompt}` : "",
+        activePromptPresetText ? `小手机预设继承内容与当前生活预设规则：\n${activePromptPresetText}` : "",
+        activePromptPreset.locationHabitPrompt ? `地点习惯规则：\n${activePromptPreset.locationHabitPrompt}` : "",
         settings.customPrompt ? `用户自定义规则：${settings.customPrompt}` : "",
       ].filter(Boolean).join("\n");
       const promptMessage: ChatMessage = {
@@ -1191,7 +1191,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           `时间：${proposedAt.toLocaleString("zh-CN")}`,
           `地点：${location?.name ?? "地点待定"}`,
           activePromptPreset.invitationResponsePrompt?.trim() || activePromptPreset.invitationResponsePrompt?.trim() || "请根据你的人设、当前日程、关系和真实意愿，自主决定接受或拒绝。不要让玩家替你确认；不要为了讨好玩家而默认接受。",
-          activePromptPresetText ? "小手机预设补充规则：\\n" + activePromptPresetText : "",
+          activePromptPresetText ? "小手机预设补充规则：\n" + activePromptPresetText : "",
           settings.customPrompt ? "用户自定义规则：" + settings.customPrompt : "",
           "只输出一个机器可读标签，并可在 reason 中写一句简短自然的理由：<life_invitation_response decision=\"accept|decline\" reason=\"理由\" />。没有明确接受就视为拒绝；不要改动日程，系统会在接受后处理冲突和排期。",
         ].join("\n"),
