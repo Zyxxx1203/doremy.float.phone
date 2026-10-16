@@ -21,6 +21,14 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Base64
 import android.view.WindowManager
+import android.view.Gravity
+import android.view.View
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import android.content.ClipboardManager
+import android.content.ClipData
 import androidx.core.app.NotificationCompat
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -102,6 +110,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var rootContainer: FrameLayout
     private lateinit var webView: WebView
+    private var recoveryOverlay: View? = null
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
     /** 系统状态栏实际高度（CSS px，即物理像素 / density），实时更新。 */
@@ -277,6 +286,88 @@ class MainActivity : AppCompatActivity() {
         return candidate
     }
 
+
+    /**
+     * Native recovery UI: remains usable when the website fails to load or the WebView
+     * renderer dies. This is intentionally native, so it does not depend on React/JS.
+     */
+    private fun showNativeRecoveryScreen(title: String, detail: String) {
+        if (!::rootContainer.isInitialized) return
+        runOnUiThread {
+            recoveryOverlay?.let { rootContainer.removeView(it) }
+            val panel = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(28, 28, 28, 28)
+                setBackgroundColor(android.graphics.Color.rgb(248, 246, 242))
+            }
+            panel.addView(TextView(this).apply {
+                text = "小手机 · 启动恢复"
+                textSize = 13f
+                setTextColor(android.graphics.Color.DKGRAY)
+            })
+            panel.addView(TextView(this).apply {
+                text = title
+                textSize = 23f
+                setTextColor(android.graphics.Color.rgb(35, 35, 35))
+                setPadding(0, 12, 0, 10)
+            })
+            panel.addView(TextView(this).apply {
+                text = detail + "\n\n你可以先复制诊断摘要反馈问题，或尝试重新加载。此页面不会清除聊天、角色记忆或应用数据。"
+                textSize = 14f
+                setTextColor(android.graphics.Color.DKGRAY)
+                setPadding(0, 0, 0, 18)
+            })
+            fun action(label: String, run: () -> Unit) {
+                panel.addView(Button(this).apply {
+                    text = label
+                    isAllCaps = false
+                    setOnClickListener { run() }
+                }, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = 8 })
+            }
+            action("重新启动页面（不清除数据）") { recreate() }
+            action("在系统浏览器打开站点") {
+                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SITE_URL))) }
+                    .onFailure { showNativeRecoveryScreen("无法打开浏览器", it.message ?: "系统未找到可用浏览器") }
+            }
+            action("复制诊断摘要") {
+                val summary = buildString {
+                    appendLine("小手机原生恢复摘要")
+                    appendLine("时间：${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())}")
+                    appendLine("App：$packageName / $VERSION")
+                    appendLine("Android：${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
+                    appendLine("设备：${Build.MANUFACTURER} ${Build.MODEL}")
+                    appendLine("WebView：${runCatching { WebView.getCurrentWebViewPackage()?.let { it.packageName + " " + it.versionName } }.getOrNull() ?: "未知"}")
+                    appendLine("站点：${Uri.parse(SITE_URL).scheme}://${Uri.parse(SITE_URL).host}")
+                    appendLine("问题：$title")
+                    appendLine("详情：$detail")
+                    val crashFile = File(filesDir, "last-native-crash.txt")
+                    if (crashFile.exists()) appendLine("上次原生崩溃：${crashFile.readText().takeLast(12000)}")
+                }
+                runCatching {
+                    (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+                        .setPrimaryClip(ClipData.newPlainText("小手机诊断摘要", summary))
+                    android.widget.Toast.makeText(this, "诊断摘要已复制；发送前请检查隐私信息", android.widget.Toast.LENGTH_LONG).show()
+                }.onFailure {
+                    showNativeRecoveryScreen("复制失败", it.message ?: "系统剪贴板不可用")
+                }
+            }
+            recoveryOverlay = ScrollView(this).apply {
+                isFillViewport = true
+                addView(panel)
+                setBackgroundColor(android.graphics.Color.rgb(248, 246, 242))
+            }
+            rootContainer.addView(recoveryOverlay, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            ))
+            recoveryOverlay?.bringToFront()
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -334,6 +425,32 @@ class MainActivity : AppCompatActivity() {
         ShellBus.webView = webView
 
         webView.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                recoveryOverlay?.let { rootContainer.removeView(it) }
+                recoveryOverlay = null
+            }
+
+            override fun onReceivedError(view: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
+                super.onReceivedError(view, request, error)
+                if (request.isForMainFrame) {
+                    val description = "网页主文档加载失败：${error.description}（错误码 ${error.errorCode}）"
+                    showNativeRecoveryScreen("网页没有加载成功", description)
+                }
+            }
+
+            override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: android.webkit.WebResourceResponse) {
+                super.onReceivedHttpError(view, request, response)
+                if (request.isForMainFrame && response.statusCode >= 400) {
+                    showNativeRecoveryScreen("站点返回错误", "HTTP ${response.statusCode} ${response.reasonPhrase ?: ""}\n地址：${request.url.host ?: "未知"}")
+                }
+            }
+
+            override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+                val reason = if (detail.didCrash()) "WebView 渲染进程崩溃" else "WebView 渲染进程被系统回收"
+                showNativeRecoveryScreen("网页进程异常退出", "$reason；系统优先级：${detail.rendererPriorityAtExit()}")
+                return true
+            }
+
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url
                 val scheme = url.scheme ?: return false
