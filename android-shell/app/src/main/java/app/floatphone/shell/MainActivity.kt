@@ -111,6 +111,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var rootContainer: FrameLayout
     private lateinit var webView: WebView
     private var recoveryOverlay: View? = null
+    private var recoveryBoot = false
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
     /** 系统状态栏实际高度（CSS px，即物理像素 / density），实时更新。 */
@@ -328,7 +329,11 @@ class MainActivity : AppCompatActivity() {
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = 8 })
             }
-            action("重新启动页面（不清除数据）") { recreate() }
+            action("退出恢复模式并重试（不清除数据）") {
+                getSharedPreferences("float_startup_diagnostics", Context.MODE_PRIVATE)
+                    .edit().putBoolean("launch_in_progress", false).apply()
+                recreate()
+            }
             action("在系统浏览器打开站点") {
                 runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SITE_URL))) }
                     .onFailure { showNativeRecoveryScreen("无法打开浏览器", it.message ?: "系统未找到可用浏览器") }
@@ -372,6 +377,28 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         installNativeCrashRecorder()
+
+        // If the previous launch never reached a successful main-page load, start in
+        // a native-only recovery screen. This avoids repeatedly initializing a crashing
+        // WebView/bridge stack and lets users copy diagnostics without opening the website.
+        val startupPrefs = getSharedPreferences("float_startup_diagnostics", Context.MODE_PRIVATE)
+        recoveryBoot = startupPrefs.getBoolean("launch_in_progress", false)
+        startupPrefs.edit()
+            .putBoolean("launch_in_progress", true)
+            .putLong("launch_started_at", System.currentTimeMillis())
+            .apply()
+        if (recoveryBoot) {
+            rootContainer = FrameLayout(this)
+            setContentView(rootContainer)
+            val crashFile = File(filesDir, "last-native-crash.txt")
+            val lastCrash = if (crashFile.exists()) crashFile.readText().takeLast(6000) else "没有捕获到未捕获异常堆栈；也可能是系统强制结束、ANR 或崩溃发生在记录器安装前。"
+            showNativeRecoveryScreen(
+                "检测到上次启动未完成",
+                "已进入原生恢复模式，暂不启动网页和原生桥，避免反复闪退。请先复制诊断摘要；确认后再点“退出恢复模式并重试”。\n\n上次异常摘要：\n" + lastCrash
+            )
+            return
+        }
+
         WindowCompat.setDecorFitsSystemWindows(window, false)
         enableDisplayCutoutCover()
         hideSystemStatusBar()
@@ -428,6 +455,17 @@ class MainActivity : AppCompatActivity() {
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
                 recoveryOverlay?.let { rootContainer.removeView(it) }
                 recoveryOverlay = null
+            }
+
+            override fun onPageFinished(view: WebView, url: String?) {
+                super.onPageFinished(view, url)
+                if (url != null && Uri.parse(url).host == Uri.parse(SITE_URL).host) {
+                    getSharedPreferences("float_startup_diagnostics", Context.MODE_PRIVATE)
+                        .edit()
+                        .putBoolean("launch_in_progress", false)
+                        .putLong("last_successful_page_at", System.currentTimeMillis())
+                        .apply()
+                }
             }
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
