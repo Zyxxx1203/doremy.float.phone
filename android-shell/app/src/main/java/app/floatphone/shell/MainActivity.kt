@@ -331,7 +331,10 @@ class MainActivity : AppCompatActivity() {
             }
             action("退出恢复模式并重试（不清除数据）") {
                 getSharedPreferences("float_startup_diagnostics", Context.MODE_PRIVATE)
-                    .edit().putBoolean("launch_in_progress", false).apply()
+                    .edit()
+                    .putBoolean("launch_in_progress", false)
+                    .putLong("last_successful_page_at", System.currentTimeMillis())
+                    .apply()
                 recreate()
             }
             action("在系统浏览器打开站点") {
@@ -382,7 +385,14 @@ class MainActivity : AppCompatActivity() {
         // a native-only recovery screen. This avoids repeatedly initializing a crashing
         // WebView/bridge stack and lets users copy diagnostics without opening the website.
         val startupPrefs = getSharedPreferences("float_startup_diagnostics", Context.MODE_PRIVATE)
-        recoveryBoot = startupPrefs.getBoolean("launch_in_progress", false)
+        val crashFile = File(filesDir, "last-native-crash.txt")
+        val lastSuccessAt = startupPrefs.getLong("last_successful_page_at", 0L)
+        val recordedCrashAt = if (crashFile.isFile) {
+            runCatching { crashFile.useLines { it.firstOrNull()?.removePrefix("time=")?.toLongOrNull() ?: 0L } }.getOrDefault(0L)
+        } else 0L
+        // A newly recorded native crash also triggers safe mode, even if the page had
+        // loaded successfully earlier in the same process lifecycle.
+        recoveryBoot = startupPrefs.getBoolean("launch_in_progress", false) || recordedCrashAt > lastSuccessAt
         startupPrefs.edit()
             .putBoolean("launch_in_progress", true)
             .putLong("launch_started_at", System.currentTimeMillis())
@@ -390,7 +400,6 @@ class MainActivity : AppCompatActivity() {
         if (recoveryBoot) {
             rootContainer = FrameLayout(this)
             setContentView(rootContainer)
-            val crashFile = File(filesDir, "last-native-crash.txt")
             val lastCrash = if (crashFile.exists()) crashFile.readText().takeLast(6000) else "没有捕获到未捕获异常堆栈；也可能是系统强制结束、ANR 或崩溃发生在记录器安装前。"
             showNativeRecoveryScreen(
                 "检测到上次启动未完成",
