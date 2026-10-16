@@ -27,8 +27,9 @@ android {
         // 1.0.11：截屏与主动查岗（含查岗浮层回复框）；通知栏「直接回复」。
         // 1.0.12：截屏可选收件人；位置感知；睡眠（Health Connect）。
         // 1.0.13：原生后台应用时长监测、现实桥事件补传与返回学习软件通知。
-        versionCode 12
-        versionName "1.0.13"
+        // 1.0.14：运行诊断页与原生设备/权限快照。
+        versionCode 13
+        versionName "1.0.14"
         buildConfigField "String", "SITE_URL", "\"${siteUrl}\""
     }
 
