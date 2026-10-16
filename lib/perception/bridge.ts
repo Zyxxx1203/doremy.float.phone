@@ -164,6 +164,8 @@ export function configureBackgroundPerception(config: {
   enabled: boolean;
   thresholdMinutes: number;
   foregroundAppEnabled: boolean;
+  targetPackage?: string;
+  targetFilter?: string;
 }): boolean {
   try {
     return bridge()?.configureBackgroundPerception?.(JSON.stringify(config)) === true;
