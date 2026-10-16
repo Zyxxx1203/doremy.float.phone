@@ -450,6 +450,16 @@ async function runSync(): Promise<void> {
         if (usePersonal && !screenSnapshot) deleteRuleIds.push(SCREEN_CHAT_SNAPSHOT_ID);
 
         if (usePersonal) {
+            // 原生无障碍服务不能读取 WebView 的 IndexedDB 配置。
+            // 将个人云地址/密钥加密登记到站点侧，仅供已登录的原生事件入口代写收件箱；
+            // 规则与生成快照仍只同步到个人云，不复制到站点。
+            await fetch("/api/push/bridge-config", {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ cloudConfig: { url: cloudConfig.url, key: cloudConfig.key } }),
+            }).catch(() => null);
+
             const response = await personalPushFetch("bridge-sync", {
                 method: "POST",
                 body: JSON.stringify({
