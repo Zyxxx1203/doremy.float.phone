@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     const payload = String(body.payload ?? "").trim().slice(0, 1000);
     const createdAt = String(body.createdAt ?? "");
     const timestamp = Date.parse(createdAt);
-    if (!/^[a-zA-Z0-9_-]{8,100}$/.test(id) || type !== "长时间使用" || !payload) {
+    if (!/^[a-zA-Z0-9_-]{8,100}$/.test(id) || !["长时间使用", "应用用太久"].includes(type) || !payload) {
       return NextResponse.json({ ok: false, error: "事件格式无效。" }, { status: 400 });
     }
     if (!Number.isFinite(timestamp) || timestamp > Date.now() + 60_000 || Date.now() - timestamp > 2 * 60 * 60 * 1000) {
