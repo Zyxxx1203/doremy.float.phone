@@ -730,9 +730,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        if (ShellBus.webView === webView) ShellBus.webView = null
-        CookieManager.getInstance().flush()
-        webView.destroy()
+        // Recovery mode intentionally returns before creating a WebView. Keep its
+        // lifecycle safe: touching a lateinit WebView here would crash the recovery UI.
+        if (::webView.isInitialized) {
+            if (ShellBus.webView === webView) ShellBus.webView = null
+            runCatching { CookieManager.getInstance().flush() }
+            runCatching { webView.stopLoading() }
+            runCatching { webView.destroy() }
+        }
         super.onDestroy()
     }
 
