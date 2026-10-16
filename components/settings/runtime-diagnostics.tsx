@@ -9,6 +9,8 @@ type CheckItem = { id: string; title: string; status: CheckStatus; detail: strin
 type AndroidShellDiagnostics = {
   getVersion?: () => string;
   getDiagnosticsSnapshot?: () => string;
+  getLastNativeCrashLog?: () => string;
+  clearLastNativeCrashLog?: () => boolean;
 };
 declare global { interface Window { AndroidShell?: AndroidShellDiagnostics; } }
 
@@ -34,6 +36,7 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
   const [lastRun, setLastRun] = useState<number | null>(null);
   const [errors, setErrors] = useState<QaErrorEntry[]>([]);
   const [nativeInfo, setNativeInfo] = useState<Record<string, unknown> | null>(null);
+  const [nativeCrashLog, setNativeCrashLog] = useState("");
 
   const runChecks = useCallback(async () => {
     setBusy(true);
@@ -84,6 +87,7 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
       }
     }
     setNativeInfo(parsed);
+    setNativeCrashLog(shell && typeof shell.getLastNativeCrashLog === "function" ? safeRead(() => shell.getLastNativeCrashLog!(), "") : "");
     setErrors(recentErrors());
     setChecks(result);
     setLastRun(Date.now());
@@ -103,12 +107,13 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
       "", "检查结果：",
       ...checks.map(item => "[" + labelFor(item.status) + "] " + item.title + "：" + item.detail + (item.fix ? "；建议：" + item.fix : "")),
       "", "原生信息：", nativeInfo ? JSON.stringify(nativeInfo, null, 2) : "无（浏览器/PWA 或当前 APK 不支持）",
+      "", "上一次原生崩溃日志：", nativeCrashLog || "没有已保存的原生崩溃日志",
       "", "最近前端异常（最多 30 条；不包含聊天记录）：",
       ...(errors.length ? errors.map(item => "[" + new Date(item.ts).toISOString() + "] " + item.kind + (item.source ? " (" + item.source + ")" : "") + " " + item.message) : ["无已捕获异常"]),
       "", "隐私说明：报告由本机生成，不会自动上传。分享前请检查是否包含个人信息。"
     ];
     return lines.join("\n");
-  }, [checks, errors, lastRun, nativeInfo]);
+  }, [checks, errors, lastRun, nativeInfo, nativeCrashLog]);
 
   const copyReport = async () => {
     try { await navigator.clipboard.writeText(report); onNotice?.("诊断报告已复制；发送前请先检查内容。"); }
@@ -145,6 +150,11 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
         <div style={{ paddingTop: 2, color: item.status === "ok" ? "#16a34a" : item.status === "fail" ? "#dc2626" : item.status === "warn" ? "#d97706" : "var(--muted-foreground, #888)" }}>{iconFor(item.status)}</div>
         <div style={{ minWidth: 0 }}><div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}><strong style={{ fontSize: 13 }}>{item.title}</strong><span style={{ fontSize: 10, opacity: .65 }}>{labelFor(item.status)}</span></div><p style={{ fontSize: 12, lineHeight: 1.6, margin: "5px 0 0", overflowWrap: "anywhere" }}>{item.detail}</p>{item.fix && <p style={{ fontSize: 12, lineHeight: 1.6, margin: "5px 0 0", opacity: .75 }}>建议：{item.fix}</p>}</div>
       </article>)}
+    </section>
+    <section style={{ border: "1px solid var(--border, rgba(128,128,128,.18))", borderRadius: 16, padding: 14 }}>
+      <div style={{ fontWeight: 700, fontSize: 14 }}>上一次原生崩溃</div>
+      <p style={{ fontSize: 12, opacity: .7, lineHeight: 1.6, margin: "7px 0 10px" }}>新版 APK 会在进程发生未捕获原生异常时，将最近一次堆栈保存在应用私有目录；只在本机读取，不会自动上传。旧 APK 无此能力。</p>
+      {nativeCrashLog ? <><pre style={{ maxHeight: 220, overflow: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 10, lineHeight: 1.5, padding: 10, borderRadius: 10, background: "var(--surface-secondary, rgba(128,128,128,.07))" }}>{nativeCrashLog}</pre><button type="button" onClick={() => { const ok = safeRead(() => Boolean(window.AndroidShell?.clearLastNativeCrashLog?.()), false); if (ok) { setNativeCrashLog(""); onNotice?.("本机保存的原生崩溃日志已清除。"); } else onNotice?.("清除失败或当前 APK 不支持。"); }} style={{ marginTop: 8, border: "1px solid var(--border, #ddd)", borderRadius: 9, padding: "7px 10px", background: "transparent", fontSize: 12 }}>清除本机崩溃日志</button></> : <div style={{ fontSize: 12, opacity: .65 }}>没有已保存的原生崩溃日志，或当前 APK 版本不支持。</div>}
     </section>
     <section style={{ border: "1px solid var(--border, rgba(128,128,128,.18))", borderRadius: 16, padding: 14 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700, fontSize: 14 }}><Wifi size={17} /> 最近前端异常</div>
