@@ -21,6 +21,8 @@ type PerceptionBridgeLike = {
   hasStepPermission?: () => boolean;
   requestStepPermission?: () => boolean;
   readUsageStats?: (maxEntries: number) => string;
+  configureBackgroundPerception?: (json: string) => boolean;
+  supportsBackgroundDwellTracking?: () => boolean;
   getLocationCapabilities?: () => string;
   hasLocationPermission?: () => boolean;
   requestLocationPermission?: () => boolean;
@@ -145,6 +147,29 @@ export function readUsageStats(maxEntries = 12): AppUsageEntry[] {
 /** 壳是否提供使用统计读取（老 APK 没有）。 */
 export function supportsUsageStats(): boolean {
   return typeof bridge()?.readUsageStats === "function";
+}
+
+/** 是否有原生后台连续停留计时；老 APK 自动回退网页端实现。 */
+export function supportsBackgroundDwellTracking(): boolean {
+  try {
+    return bridge()?.supportsBackgroundDwellTracking?.() === true
+      && typeof bridge()?.configureBackgroundPerception === "function";
+  } catch {
+    return false;
+  }
+}
+
+/** 将感知开关与停留阈值同步到原生无障碍服务的持久化配置。 */
+export function configureBackgroundPerception(config: {
+  enabled: boolean;
+  thresholdMinutes: number;
+  foregroundAppEnabled: boolean;
+}): boolean {
+  try {
+    return bridge()?.configureBackgroundPerception?.(JSON.stringify(config)) === true;
+  } catch {
+    return false;
+  }
 }
 
 /** 位置桥上报的能力与授权状态（老壳/浏览器返回空对象）。 */
