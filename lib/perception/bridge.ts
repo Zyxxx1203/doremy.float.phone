@@ -164,6 +164,9 @@ export function configureBackgroundPerception(config: {
   enabled: boolean;
   thresholdMinutes: number;
   foregroundAppEnabled: boolean;
+  usageStatsEnabled: boolean;
+  usageSignalMinutes: number;
+  usageOverrides: Array<{ pattern: string; minutes: number }>;
   targetPackage?: string;
   targetFilter?: string;
 }): boolean {
