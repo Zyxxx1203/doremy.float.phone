@@ -577,6 +577,10 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         val target = consumeOpenUrl(intent) ?: return
+        if (!::webView.isInitialized) {
+            showNativeRecoveryScreen("当前处于安全恢复模式", "收到站内跳转请求，但网页尚未启动。请先复制诊断摘要，确认后退出恢复模式重试。")
+            return
+        }
         // SPA 已加载：loadUrl 到同页 hash 只触发 hashchange，不会整页重载
         webView.loadUrl(target)
     }
@@ -719,14 +723,18 @@ class MainActivity : AppCompatActivity() {
      */
     override fun onStop() {
         super.onStop()
-        CallOverlayService.onHostBackground()
-        CheckInService.onHostBackground()
+        if (!recoveryBoot) {
+            runCatching { CallOverlayService.onHostBackground() }
+            runCatching { CheckInService.onHostBackground() }
+        }
     }
 
     override fun onStart() {
         super.onStart()
-        CallOverlayService.onHostForeground()
-        CheckInService.onHostForeground()
+        if (!recoveryBoot) {
+            runCatching { CallOverlayService.onHostForeground() }
+            runCatching { CheckInService.onHostForeground() }
+        }
     }
 
     override fun onDestroy() {
