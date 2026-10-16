@@ -643,7 +643,7 @@ class MainActivity : AppCompatActivity() {
                 .put("webViewVersion", webViewPackage?.versionName ?: "unknown")
                 .put("permissions", org.json.JSONObject()
                     .put("notifications", if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED &&
+                        ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED &&
                             notificationManager.areNotificationsEnabled()
                     } else notificationManager.areNotificationsEnabled())
                     .put("overlay", Settings.canDrawOverlays(this@MainActivity))
