@@ -66,6 +66,34 @@ class MainActivity : AppCompatActivity() {
          * 只需要管一个开关。渠道一旦创建过，后建的只更新名称/描述，不会重置用户选择。
          */
         const val CH_MESSAGES = "shell_messages"
+        @Volatile private var nativeCrashRecorderInstalled = false
+    }
+
+    /**
+     * 将上一次未捕获的原生崩溃留在应用私有目录，供用户下次启动后主动导出诊断。
+     * 不上传、不读取业务数据；写入失败时仍交给 Android 原始崩溃处理器。
+     */
+    private fun installNativeCrashRecorder() {
+        synchronized(MainActivity::class.java) {
+            if (nativeCrashRecorderInstalled) return
+            nativeCrashRecorderInstalled = true
+            val appContext = applicationContext
+            val previous = Thread.getDefaultUncaughtExceptionHandler()
+            Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+                try {
+                    val writer = java.io.StringWriter()
+                    throwable.printStackTrace(java.io.PrintWriter(writer))
+                    val body = "time=" + System.currentTimeMillis() +
+                        "\nthread=" + thread.name +
+                        "\n" + writer.toString()
+                    val clipped = if (body.length > 30000) body.takeLast(30000) else body
+                    File(appContext.filesDir, "last-native-crash.txt").writeText(clipped)
+                } catch (_: Throwable) {
+                    // Crash recorder must never replace the real crash handling path.
+                }
+                previous?.uncaughtException(thread, throwable)
+            }
+        }
     }
 
     private lateinit var rootContainer: FrameLayout
@@ -248,6 +276,7 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installNativeCrashRecorder()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         enableDisplayCutoutCover()
         hideSystemStatusBar()
@@ -557,6 +586,21 @@ class MainActivity : AppCompatActivity() {
          * 本机运行诊断快照。只读取系统状态，不读取聊天、角色、截图或账号数据。
          * 诊断页通过此方法区分「旧 APK / 权限未开 / 系统环境差异」。
          */
+        @JavascriptInterface
+        fun getLastNativeCrashLog(): String = try {
+            val file = File(filesDir, "last-native-crash.txt")
+            if (!file.isFile) "" else file.readText().takeLast(30000)
+        } catch (_: Throwable) {
+            ""
+        }
+
+        @JavascriptInterface
+        fun clearLastNativeCrashLog(): Boolean = try {
+            File(filesDir, "last-native-crash.txt").delete() || !File(filesDir, "last-native-crash.txt").exists()
+        } catch (_: Throwable) {
+            false
+        }
+
         @JavascriptInterface
         fun getDiagnosticsSnapshot(): String = try {
             val appOps = getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
