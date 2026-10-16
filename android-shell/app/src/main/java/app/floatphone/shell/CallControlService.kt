@@ -18,6 +18,9 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
@@ -59,6 +62,7 @@ class CallControlService : AccessibilityService() {
     private val dwellTicker = object : Runnable {
         override fun run() {
             checkDwellThreshold()
+            checkUsageThresholds()
             deliverPendingEvents()
             handler.postDelayed(this, CHECK_INTERVAL_MS)
         }
@@ -133,14 +137,74 @@ class CallControlService : AccessibilityService() {
         reportedPackage = pkg
         prefs.edit().putString(REPORTED_PACKAGE_KEY, pkg).apply()
         enqueueEvent(event)
-        showReturnToStudyNotification(label, thresholdMinutes, prefs)
+        showReturnToStudyNotification(label, "已连续使用 ${thresholdMinutes} 分钟", prefs)
     }
+
+    /** 每分钟检查系统当天累计使用时长，处理「抖音今天累计超过 N 分钟」规则。 */
+    private fun checkUsageThresholds() {
+        val now = System.currentTimeMillis()
+        if (now - lastUsageCheckAt < 60_000L) return
+        lastUsageCheckAt = now
+
+        val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("enabled", false) || !prefs.getBoolean("usageStatsEnabled", false)) return
+
+        val raw = try { PerceptionBridge(this).usageStatsJson(50) } catch (_: Throwable) { "[]" }
+        val entries = try { JSONArray(raw) } catch (_: Throwable) { JSONArray() }
+        if (entries.length() == 0) return
+
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(now))
+        val savedDate = prefs.getString("usageSignalDate", "").orEmpty()
+        val tiers = try {
+            JSONObject(if (savedDate == today) prefs.getString("usageSignalTiers", "{}") ?: "{}" else "{}")
+        } catch (_: Throwable) { JSONObject() }
+        val overrides = try { JSONArray(prefs.getString("usageOverrides", "[]") ?: "[]") } catch (_: Throwable) { JSONArray() }
+        val defaultThreshold = prefs.getInt("usageSignalMinutes", 60).coerceIn(0, 720)
+
+        for (i in 0 until entries.length()) {
+            val entry = entries.optJSONObject(i) ?: continue
+            val pkg = entry.optString("package")
+            val label = entry.optString("label").ifBlank { pkg }
+            val minutes = entry.optInt("minutes", 0)
+            if (pkg.isBlank() || minutes <= 0) continue
+
+            var threshold = defaultThreshold
+            for (j in 0 until overrides.length()) {
+                val override = overrides.optJSONObject(j) ?: continue
+                val pattern = override.optString("pattern").trim()
+                if (pattern.isBlank()) continue
+                if (label.contains(pattern, ignoreCase = true) || pkg.contains(pattern, ignoreCase = true)) {
+                    threshold = override.optInt("minutes", defaultThreshold).coerceIn(0, 720)
+                    break
+                }
+            }
+            if (threshold <= 0) continue
+            val tier = minutes / threshold
+            if (tier <= 0 || tier <= tiers.optInt(pkg, 0)) continue
+
+            val event = JSONObject()
+                .put("id", "usage_${Integer.toHexString(pkg.hashCode())}_${today.replace("-", "")}_${tier}")
+                .put("type", "应用用太久")
+                .put("payload", "${label} 今天已累计使用 ${minutes} 分钟")
+                .put("createdAt", java.time.Instant.ofEpochMilli(now).toString())
+            enqueueEvent(event)
+            tiers.put(pkg, tier)
+            showReturnToStudyNotification(label, "今天已累计使用 ${minutes} 分钟", prefs)
+        }
+
+        prefs.edit()
+            .putString("usageSignalDate", today)
+            .putString("usageSignalTiers", tiers.toString())
+            .apply()
+    }
+
+    @Volatile private var lastUsageCheckAt: Long = 0L
 
     /**
      * Android 不保证允许后台服务直接抢前台打开另一个 App。
      * 因此提供本地通知的一键返回操作；用户点击后由 PendingIntent 正常启动目标学习软件。
      */
-    private fun showReturnToStudyNotification(label: String, thresholdMinutes: Int, prefs: android.content.SharedPreferences) {
+    private fun showReturnToStudyNotification(label: String, detail: String, prefs: android.content.SharedPreferences) {
         val targetPackage = prefs.getString("targetPackage", "").orEmpty()
         if (targetPackage.isBlank()) return
         val filter = prefs.getString("targetFilter", "").orEmpty()
@@ -167,7 +231,7 @@ class CallControlService : AccessibilityService() {
         val notification = NotificationCompat.Builder(this, "native_focus_reminder")
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle("小手机 · 专注提醒")
-            .setContentText("${label} 已连续使用 ${thresholdMinutes} 分钟，点此返回学习软件")
+            .setContentText("${label} ${detail}，点此返回学习软件")
             .setContentIntent(pendingIntent)
             .addAction(NotificationCompat.Action(0, "返回学习软件", pendingIntent))
             .setAutoCancel(true)
