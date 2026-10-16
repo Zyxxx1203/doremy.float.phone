@@ -57,6 +57,7 @@ const HOUR_MS = 60 * 60 * 1000;
 let timer: number | null = null;
 let unsubscribeForeground: (() => void) | null = null;
 let unsubscribeVisibility: (() => void) | null = null;
+let unsubscribeBridgeRules: (() => void) | null = null;
 let running = false;
 let nativeDwellTrackingConfigured = false;
 
@@ -814,22 +815,31 @@ function getNativeResumeTarget(): {
   };
 }
 
+function syncNativeBackgroundConfig(): void {
+  const config = loadPerceptionConfig();
+  nativeDwellTrackingConfigured = supportsBackgroundDwellTracking()
+    && configureBackgroundPerception({
+      enabled: config.enabled,
+      thresholdMinutes: config.appDwellMinutes,
+      foregroundAppEnabled: isCapabilityEnabled(config, "foregroundApp"),
+      usageStatsEnabled: isCapabilityEnabled(config, "usageStats"),
+      usageSignalMinutes: config.appUsageSignalMinutes,
+      usageOverrides: config.appUsageSignalOverrides,
+      ...getNativeResumeTarget(),
+    });
+}
+
 /** 启动引擎。幂等：重复调用不会起第二个定时器。 */
 export async function startPerception(): Promise<void> {
   if (typeof window === "undefined") return;
   if (running) return;
-  const initialConfig = loadPerceptionConfig();
-  nativeDwellTrackingConfigured = supportsBackgroundDwellTracking()
-    && configureBackgroundPerception({
-      enabled: initialConfig.enabled,
-      thresholdMinutes: initialConfig.appDwellMinutes,
-      foregroundAppEnabled: isCapabilityEnabled(initialConfig, "foregroundApp"),
-      usageStatsEnabled: isCapabilityEnabled(initialConfig, "usageStats"),
-      usageSignalMinutes: initialConfig.appUsageSignalMinutes,
-      usageOverrides: initialConfig.appUsageSignalOverrides,
-      ...getNativeResumeTarget(),
-    });
+  syncNativeBackgroundConfig();
   running = true;
+  if (!unsubscribeBridgeRules) {
+    const onRulesUpdated = () => syncNativeBackgroundConfig();
+    window.addEventListener("reality-bridge-rules-updated", onRulesUpdated);
+    unsubscribeBridgeRules = () => window.removeEventListener("reality-bridge-rules-updated", onRulesUpdated);
+  }
 
   // 前台应用事件来自无障碍服务，经壳的 shell-call-overlay 通道过来。
   // 与通话浮窗共用同一条通道（ensureShellOverlayListener 幂等）。
@@ -879,6 +889,10 @@ export function stopPerception(): void {
     unsubscribeVisibility();
     unsubscribeVisibility = null;
   }
+  if (unsubscribeBridgeRules) {
+    unsubscribeBridgeRules();
+    unsubscribeBridgeRules = null;
+  }
 }
 
 /**
@@ -889,15 +903,6 @@ export async function restartPerception(): Promise<void> {
   stopPerception();
   const config = loadPerceptionConfig();
   // 即使网页感知总开关被关闭，也要通知原生层停用后台采集。
-  nativeDwellTrackingConfigured = supportsBackgroundDwellTracking()
-    && configureBackgroundPerception({
-      enabled: config.enabled,
-      thresholdMinutes: config.appDwellMinutes,
-      foregroundAppEnabled: isCapabilityEnabled(config, "foregroundApp"),
-      usageStatsEnabled: isCapabilityEnabled(config, "usageStats"),
-      usageSignalMinutes: config.appUsageSignalMinutes,
-      usageOverrides: config.appUsageSignalOverrides,
-      ...getNativeResumeTarget(),
-    });
+  syncNativeBackgroundConfig();
   if (config.enabled) await startPerception();
 }
