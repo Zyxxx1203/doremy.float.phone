@@ -34,6 +34,8 @@ import {
   supportsHealth,
   supportsLocation,
   supportsUsageStats,
+  supportsBackgroundDwellTracking,
+  configureBackgroundPerception,
   type AppUsageEntry,
 } from "./bridge";
 import { syncPerceptionToCloud } from "./cloud-sync";
@@ -55,6 +57,7 @@ let timer: number | null = null;
 let unsubscribeForeground: (() => void) | null = null;
 let unsubscribeVisibility: (() => void) | null = null;
 let running = false;
+let nativeDwellTrackingConfigured = false;
 
 /** 引擎是否在运行（诊断面板读） */
 export function isPerceptionRunning(): boolean {
@@ -201,7 +204,11 @@ async function sampleOnce(): Promise<void> {
   // ── 前台应用停留 ──
   // 事件只更新「当前在用哪个应用」，真正的判断放在采样里：
   // 因为用户可能一直停在同一个应用、不再产生新事件，靠事件驱动会永远等不到。
-  await checkDwell(config.appDwellMinutes, state);
+  // 新版 APK 由原生无障碍服务负责后台连续停留计时，并把到期事件投递到同一云端现实桥；
+  // 网页端不再同时判断，避免前台/后台双重触发。旧 APK/浏览器仍走原有网页实现。
+  if (!nativeDwellTrackingConfigured) {
+    await checkDwell(config.appDwellMinutes, state);
+  }
 
   // ── 应用累计使用 ──
   // 每轮采样只读一次使用统计，喂给信号判定，再随状态缓存复用给
@@ -784,6 +791,13 @@ export function markQueryPerformed(characterId: string): void {
 export async function startPerception(): Promise<void> {
   if (typeof window === "undefined") return;
   if (running) return;
+  const initialConfig = loadPerceptionConfig();
+  nativeDwellTrackingConfigured = supportsBackgroundDwellTracking()
+    && configureBackgroundPerception({
+      enabled: initialConfig.enabled,
+      thresholdMinutes: initialConfig.appDwellMinutes,
+      foregroundAppEnabled: isCapabilityEnabled(initialConfig, "foregroundApp"),
+    });
   running = true;
 
   // 前台应用事件来自无障碍服务，经壳的 shell-call-overlay 通道过来。
@@ -843,5 +857,12 @@ export function stopPerception(): void {
 export async function restartPerception(): Promise<void> {
   stopPerception();
   const config = loadPerceptionConfig();
+  // 即使网页感知总开关被关闭，也要通知原生层停用后台采集。
+  nativeDwellTrackingConfigured = supportsBackgroundDwellTracking()
+    && configureBackgroundPerception({
+      enabled: config.enabled,
+      thresholdMinutes: config.appDwellMinutes,
+      foregroundAppEnabled: isCapabilityEnabled(config, "foregroundApp"),
+    });
   if (config.enabled) await startPerception();
 }
