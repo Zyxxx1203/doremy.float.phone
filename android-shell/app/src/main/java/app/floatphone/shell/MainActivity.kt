@@ -584,6 +584,30 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun readUsageStats(maxEntries: Int): String = perception.usageStatsJson(maxEntries)
 
+        /**
+         * 把网页端感知开关/连续使用阈值持久化给原生无障碍服务。
+         * 这里只同步最小配置，不上传任何数据；后台事件仍经登录态站点 API 发送。
+         */
+        @JavascriptInterface
+        fun configureBackgroundPerception(json: String): Boolean = try {
+            val config = org.json.JSONObject(json)
+            val threshold = config.optInt("thresholdMinutes", 20).coerceIn(2, 180)
+            getSharedPreferences("native_background_perception", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("enabled", config.optBoolean("enabled", false))
+                .putBoolean("foregroundAppEnabled", config.optBoolean("foregroundAppEnabled", false))
+                .putInt("thresholdMinutes", threshold)
+                .putLong("updatedAt", System.currentTimeMillis())
+                .apply()
+            true
+        } catch (_: Throwable) {
+            false
+        }
+
+        /** 原生无障碍服务是否支持独立后台停留计时（供网页避免重复触发）。 */
+        @JavascriptInterface
+        fun supportsBackgroundDwellTracking(): Boolean = true
+
         /** 活动识别权限是否已授予（步数感知的前提）。 */
         @JavascriptInterface
         fun hasStepPermission(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
