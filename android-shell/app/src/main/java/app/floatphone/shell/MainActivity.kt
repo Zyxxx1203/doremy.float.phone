@@ -511,7 +511,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun ensurePushService() {
         if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS)
             != PackageManager.PERMISSION_GRANTED
         ) {
             notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -598,7 +598,7 @@ class MainActivity : AppCompatActivity() {
                         ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED &&
                             notificationManager.areNotificationsEnabled()
                     } else notificationManager.areNotificationsEnabled())
-                    .put("overlay", Settings.canDrawOverlays(this))
+                    .put("overlay", Settings.canDrawOverlays(this@MainActivity))
                     .put("usageAccess", usageMode == android.app.AppOpsManager.MODE_ALLOWED)
                     .put("accessibility", accessibilityServices.split(':').any {
                         it.equals(expectedAccessibility, ignoreCase = true)
