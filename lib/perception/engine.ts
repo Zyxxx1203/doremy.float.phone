@@ -794,7 +794,7 @@ export function markQueryPerformed(characterId: string): void {
 function getNativeResumeTarget(): { targetPackage?: string; targetFilter?: string } {
   const rule = loadBridgeRules().find(item => {
     if (!item.enabled || item.schedule) return false;
-    if (item.matchType !== "长时间使用" && item.matchType !== "*") return false;
+    if (item.matchType !== "长时间使用" && item.matchType !== "应用用太久" && item.matchType !== "*") return false;
     const action = item.actions?.deviceAction;
     const args = action?.args ?? {};
     const target = String(args.packageName ?? args.package ?? "");
