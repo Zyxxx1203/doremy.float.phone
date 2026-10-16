@@ -100,6 +100,7 @@ function toServerRule(rule: BridgeRule): (ServerBridgeRule & { actions: BridgeRu
         id: rule.id,
         name: rule.name,
         matchType: rule.matchType,
+        payloadFilter: rule.payloadFilter,
         cooldownMinutes: rule.cooldownMinutes,
         ...(rule.schedule ? { schedule: rule.schedule, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" } : {}),
         createdAt: rule.createdAt,
