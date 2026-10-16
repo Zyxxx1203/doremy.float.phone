@@ -55,7 +55,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         val SITE_URL: String = BuildConfig.SITE_URL
-        const val VERSION = "1.0.10"
+        const val VERSION = "1.0.14"
         /** 来电接听等场景的站内深链（必须以 SITE_URL 开头，否则忽略） */
         const val EXTRA_OPEN_URL = "open_url"
         /** 外部 App（如桌宠）唤起本壳用的自定义 scheme：floatshell://open?url=<站内地址> */
@@ -552,6 +552,65 @@ class MainActivity : AppCompatActivity() {
     inner class ShellBridge {
         @JavascriptInterface
         fun getVersion(): String = VERSION
+
+        /**
+         * 本机运行诊断快照。只读取系统状态，不读取聊天、角色、截图或账号数据。
+         * 诊断页通过此方法区分「旧 APK / 权限未开 / 系统环境差异」。
+         */
+        @JavascriptInterface
+        fun getDiagnosticsSnapshot(): String = try {
+            val appOps = getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+            val usageMode = appOps.checkOpNoThrow(
+                android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,
+                android.os.Process.myUid(),
+                packageName
+            )
+            val accessibilityServices = Settings.Secure.getString(
+                contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ).orEmpty()
+            val expectedAccessibility = android.content.ComponentName(
+                this@MainActivity,
+                CallControlService::class.java
+            ).flattenToString()
+            val webViewPackage = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WebView.getCurrentWebViewPackage()
+            } else null
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(packageName, 0)
+            }
+            org.json.JSONObject()
+                .put("appId", packageName)
+                .put("appVersion", BuildConfig.VERSION_NAME)
+                .put("versionCode", packageInfo.longVersionCode)
+                .put("androidVersion", Build.VERSION.RELEASE ?: "unknown")
+                .put("sdkInt", Build.VERSION.SDK_INT)
+                .put("manufacturer", Build.MANUFACTURER ?: "unknown")
+                .put("model", Build.MODEL ?: "unknown")
+                .put("webViewPackage", webViewPackage?.packageName ?: "unknown")
+                .put("webViewVersion", webViewPackage?.versionName ?: "unknown")
+                .put("permissions", org.json.JSONObject()
+                    .put("notifications", if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED &&
+                            notificationManager.areNotificationsEnabled()
+                    } else notificationManager.areNotificationsEnabled())
+                    .put("overlay", Settings.canDrawOverlays(this))
+                    .put("usageAccess", usageMode == android.app.AppOpsManager.MODE_ALLOWED)
+                    .put("accessibility", accessibilityServices.split(':').any {
+                        it.equals(expectedAccessibility, ignoreCase = true)
+                    })
+                )
+                .toString()
+        } catch (error: Throwable) {
+            org.json.JSONObject()
+                .put("diagnosticsError", error.javaClass.simpleName + ": " + (error.message ?: "unknown"))
+                .put("appVersion", BuildConfig.VERSION_NAME)
+                .toString()
+        }
 
         /** 实测系统状态栏高度（CSS px）。页面侧兜底轮询用；主要注入路径见 injectStatusBarHeight。 */
         @JavascriptInterface
