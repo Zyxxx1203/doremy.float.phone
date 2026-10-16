@@ -91,7 +91,11 @@ class MainActivity : AppCompatActivity() {
                 } catch (_: Throwable) {
                     // Crash recorder must never replace the real crash handling path.
                 }
-                previous?.uncaughtException(thread, throwable)
+                if (previous != null) {
+                    previous.uncaughtException(thread, throwable)
+                } else {
+                    android.os.Process.killProcess(android.os.Process.myPid())
+                }
             }
         }
     }
