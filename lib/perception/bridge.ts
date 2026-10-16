@@ -167,6 +167,7 @@ export function configureBackgroundPerception(config: {
   usageStatsEnabled: boolean;
   usageSignalMinutes: number;
   usageOverrides: Array<{ pattern: string; minutes: number }>;
+  ruleFilters: Array<{ matchType: string; payloadFilter?: string }>;
   targetPackage?: string;
   targetFilter?: string;
 }): boolean {
