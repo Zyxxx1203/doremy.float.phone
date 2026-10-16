@@ -127,6 +127,7 @@ class CallControlService : AccessibilityService() {
         } catch (_: Throwable) {
             pkg
         }
+        if (!hasMatchingRule(prefs, "长时间使用", label)) return
         val event = JSONObject()
             .put("id", "dwell_${Integer.toHexString(pkg.hashCode())}_${startedAt}")
             .put("type", "长时间使用")
@@ -182,6 +183,7 @@ class CallControlService : AccessibilityService() {
             val tier = minutes / threshold
             if (tier <= 0 || tier <= tiers.optInt(pkg, 0)) continue
 
+            if (!hasMatchingRule(prefs, "应用用太久", label)) continue
             val event = JSONObject()
                 .put("id", "usage_${Integer.toHexString(pkg.hashCode())}_${today.replace("-", "")}_${tier}")
                 .put("type", "应用用太久")
@@ -199,6 +201,24 @@ class CallControlService : AccessibilityService() {
     }
 
     @Volatile private var lastUsageCheckAt: Long = 0L
+
+    /** 仅上传能命中用户已启用现实桥规则的应用事件，避免把无关应用名送上云。 */
+    private fun hasMatchingRule(
+        prefs: android.content.SharedPreferences,
+        eventType: String,
+        label: String,
+    ): Boolean {
+        val rules = try { JSONArray(prefs.getString("ruleFilters", "[]") ?: "[]") } catch (_: Throwable) { JSONArray() }
+        for (i in 0 until rules.length()) {
+            val rule = rules.optJSONObject(i) ?: continue
+            val type = rule.optString("matchType")
+            if (type != "*" && type != eventType) continue
+            val filter = rule.optString("payloadFilter").trim()
+            val terms = filter.split("|", ",").map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+            if (terms.isEmpty() || terms.any { label.lowercase().contains(it) }) return true
+        }
+        return false
+    }
 
     /**
      * Android 不保证允许后台服务直接抢前台打开另一个 App。
