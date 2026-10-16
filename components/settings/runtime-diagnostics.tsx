@@ -66,6 +66,10 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
     let parsed: Record<string, unknown> | null = null;
     const hasDiag = Boolean(shell && typeof shell.getDiagnosticsSnapshot === "function");
     result.push({ id: "native-diag", title: "原生诊断接口", status: !isShell ? "info" : hasDiag ? "ok" : "warn", detail: !isShell ? "非原生环境，跳过 Android 专项检查。" : hasDiag ? "当前 APK 提供原生诊断接口。" : "当前 APK 没有诊断接口，可能是旧版。", fix: isShell && !hasDiag ? "重新构建并安装包含诊断接口的 APK。" : undefined });
+    if (isShell) {
+      result.push({ id: "screenshot-auth", title: "截屏授权", status: "info", detail: "Android 屏幕捕获通常使用临时 MediaProjection 授权，系统不提供可靠的永久授权标志，因此这里不会误报“已授权”。请在设置 → 截屏中实际执行一次测试。", fix: "如果授权弹窗出现后仍失败，请记录失败发生在授权、捕获还是图片返回阶段。" });
+    }
+
     if (hasDiag) {
       try {
         parsed = JSON.parse(shell!.getDiagnosticsSnapshot!()) as Record<string, unknown>;
@@ -146,6 +150,15 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
       <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700, fontSize: 14 }}><Wifi size={17} /> 最近前端异常</div>
       <p style={{ fontSize: 12, opacity: .7, lineHeight: 1.6, margin: "7px 0 10px" }}>最多显示最近 30 条 JavaScript 异常和未处理 Promise 错误。原生闪退仍需 Android 崩溃日志。</p>
       {errors.length ? <div style={{ display: "grid", gap: 7 }}>{errors.slice(0, 8).map((item, index) => <div key={item.ts + "-" + index} style={{ fontSize: 11, lineHeight: 1.5, padding: 9, borderRadius: 10, background: "var(--surface-secondary, rgba(128,128,128,.07))", overflowWrap: "anywhere" }}><div style={{ opacity: .65 }}>{new Date(item.ts).toLocaleString()} · {item.kind}{item.source ? " · " + item.source : ""}</div><div>{item.message}</div></div>)}</div> : <div style={{ fontSize: 12, opacity: .65 }}>目前没有捕获到前端异常。</div>}
+    </section>
+    <section style={{ border: "1px solid var(--border, rgba(128,128,128,.18))", borderRadius: 16, padding: 14 }}>
+      <div style={{ fontWeight: 700, fontSize: 14 }}>如果 APK 闪退</div>
+      <ol style={{ fontSize: 12, lineHeight: 1.8, paddingLeft: 20, margin: "8px 0 0" }}>
+        <li>先区分是整个 APK 退出，还是只有网页白屏/返回桌面后重新加载。</li>
+        <li>确认 APK 版本与网页部署版本；修改 Kotlin、Manifest 或原生桥后必须重新构建安装 APK。</li>
+        <li>如果整个进程退出，本页只能提供前端异常，不能代替 Android 原生崩溃日志。请通过 Android Studio 的 Logcat 或系统错误报告取得崩溃时间附近的 FATAL EXCEPTION / AndroidRuntime 堆栈。</li>
+        <li>分享日志前请删除账号、令牌、个人内容；不要为了排错清除应用数据。</li>
+      </ol>
     </section>
     <section style={{ border: "1px solid var(--border, rgba(128,128,128,.18))", borderRadius: 16, padding: 14 }}>
       <div style={{ fontWeight: 700, fontSize: 14 }}>导出诊断报告</div>
