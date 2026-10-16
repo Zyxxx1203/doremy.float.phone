@@ -217,7 +217,9 @@ async function sampleOnce(): Promise<void> {
   const appUsage = supportsUsageStats() && isCapabilityEnabled(config, "usageStats")
     ? readUsageStats(12)
     : ([] as AppUsageEntry[]);
-  await checkAppUsageSignal(config, state, appUsage);
+  if (!nativeDwellTrackingConfigured) {
+    await checkAppUsageSignal(config, state, appUsage);
+  }
 
   // ── 作息与习惯 ──
   // 纯时钟信号（深夜/首次打开/很久没聊天）与采样间隔无关；
@@ -816,6 +818,9 @@ export async function startPerception(): Promise<void> {
       enabled: initialConfig.enabled,
       thresholdMinutes: initialConfig.appDwellMinutes,
       foregroundAppEnabled: isCapabilityEnabled(initialConfig, "foregroundApp"),
+      usageStatsEnabled: isCapabilityEnabled(initialConfig, "usageStats"),
+      usageSignalMinutes: initialConfig.appUsageSignalMinutes,
+      usageOverrides: initialConfig.appUsageSignalOverrides,
       ...getNativeResumeTarget(),
     });
   running = true;
@@ -883,6 +888,9 @@ export async function restartPerception(): Promise<void> {
       enabled: config.enabled,
       thresholdMinutes: config.appDwellMinutes,
       foregroundAppEnabled: isCapabilityEnabled(config, "foregroundApp"),
+      usageStatsEnabled: isCapabilityEnabled(config, "usageStats"),
+      usageSignalMinutes: config.appUsageSignalMinutes,
+      usageOverrides: config.appUsageSignalOverrides,
       ...getNativeResumeTarget(),
     });
   if (config.enabled) await startPerception();
