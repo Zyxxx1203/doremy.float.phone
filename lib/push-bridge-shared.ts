@@ -15,6 +15,10 @@ export type ServerBridgeRule = {
     name: string;
     matchType: string;
     cooldownMinutes?: number;
+    /** Scheduled rules are triggered by the personal-cloud minute scanner. */
+    schedule?: { kind: "daily" | "weekly" | "interval"; time?: string; weekday?: number; minutes?: number };
+    timeZone?: string;
+    createdAt?: string;
     process: {
         mode: "raw" | "template" | "ai";
         template?: string;
