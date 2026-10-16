@@ -292,6 +292,7 @@ type ServerBridgeRule = {
   id: string;
   name: string;
   matchType: string;
+  payloadFilter?: string;
   cooldownMinutes?: number;
   schedule?: { kind: "daily" | "weekly" | "interval"; time?: string; weekday?: number; minutes?: number };
   timeZone?: string;
@@ -405,6 +406,13 @@ type RuleSnapshot = {
 const INBOX_PREFIX = "bridge-inbox/";
 const BACKUP_BUCKET = "ai-phone-backup";
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+function payloadFilterMatches(filter: string | undefined, payload: string): boolean {
+  const terms = String(filter || "").split(/[|,]/).map(term => term.trim().toLocaleLowerCase()).filter(Boolean);
+  if (terms.length === 0) return true;
+  const value = payload.toLocaleLowerCase();
+  return terms.some(term => value.includes(term));
+}
 
 function parseBridgeItem(name: string, text: string): BridgeItem | null {
   try {
@@ -777,7 +785,9 @@ Deno.serve(async (req: Request) => {
     for (const item of items) {
       const matched = item.scheduledRuleId
         ? rules.filter(rule => rule.id === item.scheduledRuleId && Boolean(rule.schedule))
-        : rules.filter(rule => !rule.schedule && (rule.matchType === "*" || rule.matchType === item.type));
+        : rules.filter(rule => !rule.schedule
+          && (rule.matchType === "*" || rule.matchType === item.type)
+          && payloadFilterMatches(rule.payloadFilter, item.payload));
       if (matched.length === 0) {
         outboxRows.push({
           id: `out_${crypto.randomUUID()}`,
