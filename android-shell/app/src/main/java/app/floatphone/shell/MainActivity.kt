@@ -597,6 +597,8 @@ class MainActivity : AppCompatActivity() {
                 .putBoolean("enabled", config.optBoolean("enabled", false))
                 .putBoolean("foregroundAppEnabled", config.optBoolean("foregroundAppEnabled", false))
                 .putInt("thresholdMinutes", threshold)
+                .putString("targetPackage", config.optString("targetPackage", "").take(160))
+                .putString("targetFilter", config.optString("targetFilter", "").take(160))
                 .putLong("updatedAt", System.currentTimeMillis())
                 .apply()
             true
