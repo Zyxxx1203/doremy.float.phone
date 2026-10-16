@@ -1,11 +1,17 @@
 package app.floatphone.shell
 
 import android.accessibilityservice.AccessibilityService
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.webkit.CookieManager
+import androidx.core.app.NotificationCompat
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -127,6 +133,47 @@ class CallControlService : AccessibilityService() {
         reportedPackage = pkg
         prefs.edit().putString(REPORTED_PACKAGE_KEY, pkg).apply()
         enqueueEvent(event)
+        showReturnToStudyNotification(label, thresholdMinutes, prefs)
+    }
+
+    /**
+     * Android 不保证允许后台服务直接抢前台打开另一个 App。
+     * 因此提供本地通知的一键返回操作；用户点击后由 PendingIntent 正常启动目标学习软件。
+     */
+    private fun showReturnToStudyNotification(label: String, thresholdMinutes: Int, prefs: android.content.SharedPreferences) {
+        val targetPackage = prefs.getString("targetPackage", "").orEmpty()
+        if (targetPackage.isBlank()) return
+        val filter = prefs.getString("targetFilter", "").orEmpty()
+        val terms = filter.split("|", ",").map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+        if (terms.isNotEmpty() && terms.none { label.lowercase().contains(it) }) return
+
+        val launchIntent = packageManager.getLaunchIntentForPackage(targetPackage) ?: return
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            targetPackage.hashCode(),
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            manager.createNotificationChannel(
+                NotificationChannel("native_focus_reminder", "专注提醒", NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = "应用连续使用达到设定时长时，提供返回学习软件的快捷操作"
+                    setShowBadge(false)
+                },
+            )
+        }
+        val notification = NotificationCompat.Builder(this, "native_focus_reminder")
+            .setSmallIcon(R.drawable.ic_stat)
+            .setContentTitle("小手机 · 专注提醒")
+            .setContentText("${label} 已连续使用 ${thresholdMinutes} 分钟，点此返回学习软件")
+            .setContentIntent(pendingIntent)
+            .addAction(NotificationCompat.Action(0, "返回学习软件", pendingIntent))
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+        runCatching { manager.notify(42_013, notification) }
     }
 
     private fun enqueueEvent(event: JSONObject) {
