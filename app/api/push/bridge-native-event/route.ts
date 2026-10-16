@@ -72,7 +72,40 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: `个人云收件箱写入失败：HTTP ${upload.status} ${detail}` }, { status: 502 });
     }
 
-    // 复用现有 bridge_scan worker。删除旧状态任务再插入，避免唯一索引被 done/failed 行卡住。
+    // 个人云模式下，规则与 push-bridge worker 都在用户自己的 Supabase。
+    // 用已有 bridge_token 唤醒个人云网关，避免把个人规则/快照复制到站点数据库。
+    const siteSupabase = getSupabaseServerConfig();
+    const sameProject = siteSupabase
+      && siteSupabase.url.replace(/\\/+$/, "").toLowerCase() === cloudUrl.toLowerCase();
+    if (!sameProject) {
+      const personalHeaders = { apikey: cloudKey, Authorization: `Bearer ${cloudKey}` };
+      const tokenResponse = await fetch(
+        `${cloudUrl}/rest/v1/push_bridge_config?user_id=eq.owner&select=bridge_token&limit=1`,
+        { headers: personalHeaders, cache: "no-store", signal: AbortSignal.timeout(8_000) },
+      );
+      if (!tokenResponse.ok) {
+        return NextResponse.json({ ok: false, error: "无法读取个人云现实桥令牌。" }, { status: 502 });
+      }
+      const tokenRows = await tokenResponse.json() as { bridge_token?: string }[];
+      const bridgeToken = String(tokenRows[0]?.bridge_token ?? "");
+      if (!bridgeToken) {
+        return NextResponse.json({ ok: false, error: "个人云现实桥尚未初始化；请先打开现实桥设置并完成同步。" }, { status: 409 });
+      }
+      const wake = await fetch(`${cloudUrl}/functions/v1/ai-phone-push?action=bridge-wake`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: bridgeToken }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!wake.ok) {
+        const detail = (await wake.text().catch(() => "")).slice(0, 200);
+        return NextResponse.json({ ok: false, error: `个人云唤醒失败：HTTP ${wake.status} ${detail}` }, { status: 502 });
+      }
+      return NextResponse.json({ ok: true, queued: true, personalCloud: true });
+    }
+
+    // 同项目模式直接复用站点 bridge_scan worker。删除旧状态任务再插入，避免唯一索引被 done/failed 行卡住。
     const triggerKey = `bridge:scan:${account.id}`;
     const jobFilter = `push_jobs?user_id=eq.${encodeSupabaseFilter(account.id)}&trigger_key=eq.${encodeSupabaseFilter(triggerKey)}`;
     await supabaseRestFetch(jobFilter, { method: "DELETE" });
