@@ -75,8 +75,8 @@ export async function POST(request: Request) {
     // 个人云模式下，规则与 push-bridge worker 都在用户自己的 Supabase。
     // 用已有 bridge_token 唤醒个人云网关，避免把个人规则/快照复制到站点数据库。
     const siteSupabase = getSupabaseServerConfig();
-    const sameProject = siteSupabase
-      && siteSupabase.url.replace(/\\/+$/, "").toLowerCase() === cloudUrl.toLowerCase();
+    const sameProject = Boolean(siteSupabase
+      && new URL(siteSupabase.url).origin.toLowerCase() === new URL(cloudUrl).origin.toLowerCase());
     if (!sameProject) {
       const personalHeaders = { apikey: cloudKey, Authorization: `Bearer ${cloudKey}` };
       const tokenResponse = await fetch(
