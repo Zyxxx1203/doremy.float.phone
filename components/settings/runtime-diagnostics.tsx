@@ -126,7 +126,7 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
     anchor.href = url;
     anchor.download = "float-diagnostics-" + new Date().toISOString().replace(/[:.]/g, "-") + ".txt";
     anchor.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   const failed = checks.filter(item => item.status === "fail").length;
   const warned = checks.filter(item => item.status === "warn").length;
