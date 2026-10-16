@@ -336,7 +336,7 @@ function scheduleDue(rule: ServerBridgeRule, now: Date, lastRunAt: number): bool
     const minutes = Math.max(1, Math.min(10080, Number(schedule.minutes) || 1));
     return now.getTime() - lastRunAt >= minutes * 60_000;
   }
-  const match = /^(\\d{1,2}):(\\d{2})$/.exec(schedule.time || "");
+  const match = /^(\d{1,2}):(\d{2})$/.exec(schedule.time || "");
   if (!match) return false;
   const hour = Number(match[1]);
   const minute = Number(match[2]);
