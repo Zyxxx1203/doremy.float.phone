@@ -20,6 +20,7 @@
 
 import { isWithinPushQuietHours } from "../push-client";
 import { processBridgeItem } from "../reality-bridge/engine";
+import { loadBridgeRules } from "../reality-bridge/storage";
 import type { BridgeItem } from "../reality-bridge/types";
 import { ensureShellOverlayListener, subscribeShellOverlayEvents } from "../shell-call-overlay";
 import {
@@ -787,6 +788,24 @@ export function markQueryPerformed(characterId: string): void {
 
 // ── 生命周期 ──
 
+/** 从已启用的「长时间使用」规则提取可选的本地返回应用动作。 */
+function getNativeResumeTarget(): { targetPackage?: string; targetFilter?: string } {
+  const rule = loadBridgeRules().find(item => {
+    if (!item.enabled || item.schedule) return false;
+    if (item.matchType !== "长时间使用" && item.matchType !== "*") return false;
+    const action = item.actions?.deviceAction;
+    const args = action?.args ?? {};
+    const target = String(args.packageName ?? args.package ?? "");
+    return action?.action === "openApp" && Boolean(target);
+  });
+  if (!rule) return {};
+  const args = rule.actions?.deviceAction?.args ?? {};
+  return {
+    targetPackage: String(args.packageName ?? args.package ?? "").slice(0, 160),
+    targetFilter: String(rule.payloadFilter ?? "").slice(0, 160),
+  };
+}
+
 /** 启动引擎。幂等：重复调用不会起第二个定时器。 */
 export async function startPerception(): Promise<void> {
   if (typeof window === "undefined") return;
@@ -797,6 +816,7 @@ export async function startPerception(): Promise<void> {
       enabled: initialConfig.enabled,
       thresholdMinutes: initialConfig.appDwellMinutes,
       foregroundAppEnabled: isCapabilityEnabled(initialConfig, "foregroundApp"),
+      ...getNativeResumeTarget(),
     });
   running = true;
 
@@ -863,6 +883,7 @@ export async function restartPerception(): Promise<void> {
       enabled: config.enabled,
       thresholdMinutes: config.appDwellMinutes,
       foregroundAppEnabled: isCapabilityEnabled(config, "foregroundApp"),
+      ...getNativeResumeTarget(),
     });
   if (config.enabled) await startPerception();
 }
