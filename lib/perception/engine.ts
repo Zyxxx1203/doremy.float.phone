@@ -790,21 +790,27 @@ export function markQueryPerformed(characterId: string): void {
 
 // ── 生命周期 ──
 
-/** 从已启用的「长时间使用」规则提取可选的本地返回应用动作。 */
-function getNativeResumeTarget(): { targetPackage?: string; targetFilter?: string } {
-  const rule = loadBridgeRules().find(item => {
-    if (!item.enabled || item.schedule) return false;
-    if (item.matchType !== "长时间使用" && item.matchType !== "应用用太久" && item.matchType !== "*") return false;
+/** 把需要后台感知的规则过滤条件与可选的返回学习软件动作同步给原生层。 */
+function getNativeResumeTarget(): {
+  targetPackage?: string;
+  targetFilter?: string;
+  ruleFilters: Array<{ matchType: string; payloadFilter?: string }>;
+} {
+  const rules = loadBridgeRules().filter(item => item.enabled && !item.schedule
+    && ["长时间使用", "应用用太久", "*"].includes(item.matchType));
+  const rule = rules.find(item => {
     const action = item.actions?.deviceAction;
     const args = action?.args ?? {};
     const target = String(args.packageName ?? args.package ?? "");
     return action?.action === "openApp" && Boolean(target);
   });
-  if (!rule) return {};
-  const args = rule.actions?.deviceAction?.args ?? {};
+  const args = rule?.actions?.deviceAction?.args ?? {};
   return {
-    targetPackage: String(args.packageName ?? args.package ?? "").slice(0, 160),
-    targetFilter: String(rule.payloadFilter ?? "").slice(0, 160),
+    ...(rule ? {
+      targetPackage: String(args.packageName ?? args.package ?? "").slice(0, 160),
+      targetFilter: String(rule.payloadFilter ?? "").slice(0, 160),
+    } : {}),
+    ruleFilters: rules.map(item => ({ matchType: item.matchType, payloadFilter: item.payloadFilter })),
   };
 }
 
