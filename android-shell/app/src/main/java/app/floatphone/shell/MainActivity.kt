@@ -345,7 +345,7 @@ class MainActivity : AppCompatActivity() {
                     appendLine("App：$packageName / $VERSION")
                     appendLine("Android：${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
                     appendLine("设备：${Build.MANUFACTURER} ${Build.MODEL}")
-                    appendLine("WebView：${runCatching { WebView.getCurrentWebViewPackage()?.let { it.packageName + " " + it.versionName } }.getOrNull() ?: "未知"}")
+                    appendLine("WebView：${if (recoveryBoot) "安全模式下未初始化" else runCatching { WebView.getCurrentWebViewPackage()?.let { it.packageName + " " + it.versionName } }.getOrNull() ?: "未知"}")
                     appendLine("站点：${Uri.parse(SITE_URL).scheme}://${Uri.parse(SITE_URL).host}")
                     appendLine("问题：$title")
                     appendLine("详情：$detail")
@@ -386,7 +386,7 @@ class MainActivity : AppCompatActivity() {
         startupPrefs.edit()
             .putBoolean("launch_in_progress", true)
             .putLong("launch_started_at", System.currentTimeMillis())
-            .apply()
+            .commit()
         if (recoveryBoot) {
             rootContainer = FrameLayout(this)
             setContentView(rootContainer)
