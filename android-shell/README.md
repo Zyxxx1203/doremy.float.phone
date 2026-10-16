@@ -122,3 +122,10 @@ android-shell/
 - `supabase/functions/push-generate/index.ts` 需要是包含 shellpush 广播的最新版
   （改动后需重新部署边缘函数）。
 - Realtime 广播用 service key 直接调 HTTP API，无需额外建表或改配置。
+
+
+## 闪退与运行诊断
+
+新版壳提供原生启动恢复界面：如果上次启动没有完成主页面加载，或记录到新的原生崩溃，会优先进入安全模式，让用户在不启动 WebView 的情况下复制诊断摘要，再选择是否重试。网页主文档加载失败和 WebView 渲染进程退出也会显示原生恢复页。
+
+详细操作、限制、ADB/Logcat 取证方式和反馈信息清单见 [DIAGNOSTICS.md](./DIAGNOSTICS.md)。诊断不会自动上传，也不要为排错直接清除应用数据。
