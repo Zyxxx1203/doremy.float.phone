@@ -586,7 +586,7 @@ class MainActivity : AppCompatActivity() {
             org.json.JSONObject()
                 .put("appId", packageName)
                 .put("appVersion", BuildConfig.VERSION_NAME)
-                .put("versionCode", packageInfo.longVersionCode)
+                .put("versionCode", if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) packageInfo.longVersionCode else packageInfo.versionCode.toLong())
                 .put("androidVersion", Build.VERSION.RELEASE ?: "unknown")
                 .put("sdkInt", Build.VERSION.SDK_INT)
                 .put("manufacturer", Build.MANUFACTURER ?: "unknown")
