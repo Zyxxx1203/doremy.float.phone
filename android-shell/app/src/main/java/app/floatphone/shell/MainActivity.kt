@@ -600,6 +600,7 @@ class MainActivity : AppCompatActivity() {
                 .putInt("thresholdMinutes", threshold)
                 .putInt("usageSignalMinutes", config.optInt("usageSignalMinutes", 60).coerceIn(0, 720))
                 .putString("usageOverrides", config.optJSONArray("usageOverrides")?.toString() ?: "[]")
+                .putString("ruleFilters", config.optJSONArray("ruleFilters")?.toString() ?: "[]")
                 .putString("targetPackage", config.optString("targetPackage", "").take(160))
                 .putString("targetFilter", config.optString("targetFilter", "").take(160))
                 .putLong("updatedAt", System.currentTimeMillis())
