@@ -1967,6 +1967,22 @@ export async function buildChatPromptMessages(
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
     });
+    // Tool-use policy: keep the model proactive for real app actions without forcing tools on ordinary conversation.
+    if (toolsEnabled) {
+        llmMessages.push({
+            role: "system",
+            content: [
+                "【工具调用策略】你可以使用当前会话已提供的工具完成真实查询和操作。不要只因为能用自然语言回答就跳过工具。",
+                "应主动调用工具的情况：用户要求查询/读取应用中的真实数据或当前状态；要求搜索外部/本地资料；要求保存、修改、删除、创建或发送内容；要求控制设备、日历、音乐、组件、快捷动作或其他已提供能力；以及完成任务必须依赖工具返回结果时。",
+                "优先级：真实数据以工具查询结果为准；实际操作必须执行对应工具后才能声称完成；不得把猜测当作查询结果，也不得把工具失败说成没有数据。",
+                "工具选择：先选择职责最匹配的已启用工具；如果工具套件/MCP 需要展开说明，遇到明确相关的任务时主动展开并继续执行，不要仅因为工具名称不熟悉就放弃。参数不确定时先读取说明或查询必要信息。",
+                "工具结果：执行后检查成功/失败及返回内容；失败时如有安全且合理的修复方式可调整参数重试一次，否则如实说明。不要重复执行已经成功且没有必要重复的操作。",
+                "不应滥用工具：纯闲聊、创作、解释常识、仅提出想法而未要求查询或保存时，可以直接回答；不要为了展示能力调用无关工具。涉及删除、对外发送、付费或其他高影响操作时，遵循工具权限和必要的用户确认。",
+                "如果当前提供的是文本动作协议，必须按可用动作说明中的格式先获取所需参数规范，再输出执行动作指令；如果使用原生工具调用，直接调用对应工具，不要把工具调用伪装成普通文字。",
+            ].join("\\n"),
+        });
+    }
+
     const avatarChangeIntent = !session.isGroup
         ? findUserAvatarChangeIntent(historyForPrompt, session.id, character.id)
         : null;
