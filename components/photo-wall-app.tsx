@@ -163,6 +163,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [templateText, setTemplateText] = useState("LOVE");
   const [templateName, setTemplateName] = useState("");
   const [customTemplates, setCustomTemplates] = useState<PhotoWallTemplate[]>(() => loadCustomTemplates());
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
 
   const scheduleSave = useCallback((next: PhotoWallState) => {
@@ -228,8 +229,25 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const next = customTemplates.filter(item => item.id !== templateId);
     saveCustomTemplates(next);
     setCustomTemplates(next);
+    if (editingTemplateId === templateId) setEditingTemplateId(null);
     onNotice?.("已删除自定义摆放模板。");
-  }, [customTemplates, onNotice]);
+  }, [customTemplates, editingTemplateId, onNotice]);
+
+  const updateTemplateSlot = useCallback((templateId: string, slotIndex: number, key: "x" | "y" | "scale" | "rotation", value: number) => {
+    if (!Number.isFinite(value)) return;
+    const next = customTemplates.map(template => {
+      if (template.id !== templateId) return template;
+      const slots = template.slots.map((slot, index) => {
+        if (index !== slotIndex) return slot;
+        const limits = key === "x" || key === "y" ? [0.06, 0.94] : key === "scale" ? [0.35, 3] : [-45, 45];
+        const bounded = Math.min(limits[1], Math.max(limits[0], value));
+        return { ...slot, [key]: Math.round(bounded * 100) / 100 };
+      });
+      return { ...template, slots };
+    });
+    setCustomTemplates(next);
+    saveCustomTemplates(next);
+  }, [customTemplates]);
 
   /** 整墙导出 PNG：canvas 重绘，不受滚动位置和屏幕尺寸影响。 */
   const exportWall = async () => {
@@ -603,7 +621,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             {listAllTemplates().map(template => (
               <span key={template.id} className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-[#ddd1bd] bg-[#fdfaf3] pl-3 pr-1 py-1 text-[11px] text-[#7a6a56]">
                 <button type="button" onClick={() => applyTemplate(template.id)} className="py-0.5 transition hover:text-[#53634c] active:scale-95">{template.name}</button>
-                {!template.builtin && <button type="button" onClick={() => deleteCustomTemplate(template.id)} className="grid h-6 w-6 place-items-center rounded-full text-[#a28a76] hover:bg-[#eee4d7] hover:text-[#a05f50]" aria-label={"删除模板 " + template.name}><X size={11}/></button>}
+                {!template.builtin && <>
+                  <button type="button" onClick={() => setEditingTemplateId(current => current === template.id ? null : template.id)} className={`grid h-6 w-6 place-items-center rounded-full ${editingTemplateId === template.id ? "bg-[#78866d] text-white" : "text-[#a28a76] hover:bg-[#eee4d7]"}`} aria-label={"编辑模板骨架 " + template.name}><PenLine size={11}/></button>
+                  <button type="button" onClick={() => deleteCustomTemplate(template.id)} className="grid h-6 w-6 place-items-center rounded-full text-[#a28a76] hover:bg-[#eee4d7] hover:text-[#a05f50]" aria-label={"删除模板 " + template.name}><X size={11}/></button>
+                </>}
               </span>
             ))}
             <button type="button" onClick={() => applyTemplate("builtin-text")} className="rounded-full border border-[#ddd1bd] bg-[#fdfaf3] px-3 py-1.5 text-[11px] text-[#7a6a56] transition hover:bg-white active:scale-95">文字骨架</button>
@@ -616,6 +637,20 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             <input value={templateName} onChange={event => setTemplateName(event.target.value.slice(0, 32))} placeholder="给当前布局命名，例如：我们的纪念日" className="min-w-0 flex-1 rounded-lg border border-[#e6dccd] bg-white/80 px-3 py-2 text-[11px] outline-none focus:border-[#b5a18a]"/>
             <button type="button" onClick={saveCurrentLayoutAsTemplate} disabled={!photos.length} className="shrink-0 rounded-lg border border-[#c7b49a] bg-[#f1e7d7] px-3 py-2 text-[11px] text-[#75624d] disabled:opacity-40"><Check size={12} className="mr-1 inline"/>保存当前布局为模板</button>
           </div>
+          {editingTemplateId && customTemplates.find(template => template.id === editingTemplateId) && (() => {
+            const template = customTemplates.find(item => item.id === editingTemplateId)!;
+            return <div className="mt-3 rounded-xl border border-[#d9cbb8] bg-[#fffdf8] p-3">
+              <div className="flex items-center justify-between gap-2"><div className="min-w-0"><p className="truncate text-xs font-semibold text-[#76634d]">编辑骨架 · {template.name}</p><p className="mt-1 text-[10px] text-[#a0927e]">拖动滑杆调整每个槽位的相对位置、大小与倾斜角度。</p></div><button type="button" onClick={() => setEditingTemplateId(null)} className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[#8d7c66] hover:bg-[#f1e7d7]" aria-label="关闭骨架编辑"><X size={13}/></button></div>
+              <div className="mt-3 max-h-56 space-y-3 overflow-y-auto overscroll-contain pr-1">
+                {template.slots.map((slot, index) => <div key={index} className="rounded-lg border border-[#eee5d8] bg-[#fcf8f1] p-2.5">
+                  <div className="mb-2 text-[10px] font-medium text-[#8b7861]">照片槽位 {index + 1}</div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                    {([["x", "横向", 0.06, 0.94, 0.01], ["y", "纵向", 0.06, 0.94, 0.01], ["scale", "大小", 0.35, 3, 0.05], ["rotation", "旋转", -45, 45, 1]] as const).map(([key, label, min, max, step]) => <label key={key} className="min-w-0 text-[10px] text-[#8f7c66]"><span className="mb-1 flex items-center justify-between gap-1"><span>{label}</span><span className="font-mono text-[#6d5b47]">{slot[key].toFixed(2)}</span></span><input type="range" min={min} max={max} step={step} value={slot[key]} onChange={event => updateTemplateSlot(template.id, index, key, Number(event.target.value))} className="w-full accent-[#78866d]"/></label>)}
+                  </div>
+                </div>)}
+              </div>
+            </div>;
+          })()}
           <p className="mt-1.5 text-[10px] leading-5 text-[#a0927e]">模板保存的是相对坐标骨架，不包含照片本身；以后可重复套用，再拖动、缩放、旋转微调。自定义模板最多保留 40 个。</p>
         </div>
 
