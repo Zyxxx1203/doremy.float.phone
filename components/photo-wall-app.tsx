@@ -452,12 +452,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     setSelectedPhotoId(photo.id); setEditTitle(photo.title); setEditNote(photo.backNote); setEditTags(photo.tags.join("、"));
   };
 
-  return <div className="absolute inset-0 z-[82] flex flex-col overflow-hidden bg-[#f4f0e7] text-[#51483d]" style={{ fontFamily: '"Noto Serif SC", "Songti SC", serif' }}>
-    <header className="relative z-10 flex shrink-0 items-center gap-3 border-b border-[#ded5c7] bg-[#f7f3eb]/95 px-4 py-3">
-      <button onClick={onClose} className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#ded5c7] text-[#7b6a58] hover:bg-white" aria-label="返回"><ArrowLeft size={17}/></button>
+  return <div className="photo-wall-app absolute inset-0 z-[82] flex min-w-0 flex-col overflow-hidden bg-[radial-gradient(ellipse_at_top,#fffdf8_0%,#f4f0e7_58%,#e9e1d4_100%)] text-[#51483d]" style={{ fontFamily: '"Noto Serif SC", "Songti SC", serif' }}>
+    <header className="relative z-10 flex shrink-0 items-center gap-3 border-b border-[#ded5c7]/80 bg-white/75 px-4 py-3 shadow-[0_8px_28px_rgba(94,76,53,.06)] backdrop-blur-xl">
+      <button onClick={onClose} className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-2xl border border-[#ded5c7] bg-white/80 text-[#7b6a58] shadow-sm transition hover:-translate-y-0.5 hover:bg-white active:scale-95" aria-label="返回"><ArrowLeft size={17}/></button>
       <div className="min-w-0 flex-1"><div className="font-serif text-xl tracking-[.12em]">照片墙</div><div className="mt-0.5 text-[10px] tracking-[.2em] text-[#a09380]">A LITTLE ARCHIVE OF US · {photos.length} PHOTOS</div></div>
-      <button onClick={() => setShowSettings(value => !value)} className="rounded-full border border-[#ded5c7] px-3 py-2 text-xs tracking-wider text-[#85735f]">设置</button>
-      <button onClick={() => { setShowAddMenu(value => !value); }} className="grid h-9 w-9 place-items-center rounded-full bg-[#7e8a72] text-white shadow-sm" aria-label="添加照片"><Plus size={18}/></button>
+      <button onClick={() => setShowSettings(value => !value)} className="min-h-11 cursor-pointer rounded-2xl border border-[#ded5c7] bg-white/75 px-4 py-2 text-xs tracking-wider text-[#85735f] shadow-sm transition hover:bg-white active:scale-95">设置</button>
+      <button onClick={() => { setShowAddMenu(value => !value); }} className="grid h-11 w-11 cursor-pointer place-items-center rounded-2xl bg-gradient-to-br from-[#9ba68e] to-[#6f7d65] text-white shadow-[0_8px_18px_rgba(92,109,81,.25)] transition hover:-translate-y-0.5 active:scale-95" aria-label="添加照片"><Plus size={18}/></button>
     </header>
 
     {showAddMenu && <div className="absolute right-4 top-[62px] z-30 w-56 rounded-2xl border border-[#e4d9c9] bg-[#fffdf8] p-2 shadow-xl">
