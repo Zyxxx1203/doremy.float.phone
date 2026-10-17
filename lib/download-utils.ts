@@ -201,8 +201,14 @@ export async function downloadUrl(url: string, filename: string): Promise<void> 
     if (blob) {
         await downloadFile(blob, filename);
     } else {
-        const error = new Error("网络请求和代理下载均失败，请检查网络、跨域限制或资源链接是否有效。");
-        emitDownloadNotice("error", `${filename}下载失败：${error.message}`);
-        throw error;
+        // Preserve the original direct-link fallback, but no longer leave the user without feedback.
+        const a = document.createElement("a");
+        a.href = url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        emitDownloadNotice("info", `${filename}无法直接保存，已尝试打开原始链接；若没有下载，请检查浏览器下载权限或资源链接。`);
     }
 }
