@@ -683,7 +683,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   };
 
-  const createScene = () => runSceneFlight(selectedLocation?.name || "新的场景", performCreateScene);
+  const createScene = () => {
+    if (!settings.enabled || !selectedLocation || !characters.some(character => selectedCharacterIds.includes(character.id))) { performCreateScene(); return; }
+    runSceneFlight(selectedLocation.name, performCreateScene);
+  };
 
   /** Arrival uses actual-location state only; planned locations never create encounters. */
   const performEnterLocationSolo = (targetLocationId = selectedLocationId) => {
@@ -753,6 +756,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   const enterLocationSolo = (targetLocationId = selectedLocationId) => {
     const destination = stateRef.current.locations.find(location => location.id === targetLocationId);
+    if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
     if (!destination) return;
     runSceneFlight(destination.name, () => performEnterLocationSolo(targetLocationId));
   };
