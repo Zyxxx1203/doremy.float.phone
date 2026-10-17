@@ -328,10 +328,28 @@ function stripVisionPromptImageData(msg: ChatMessage): ChatMessage {
 export function applyVisionImagePromptLimit(history: ChatMessage[], limitValue: unknown): ChatMessage[] {
     const limit = normalizeVisionImagePromptLimit(limitValue);
     let remaining = limit;
+    const groupedDecisions = new Map<string, boolean>();
 
     for (let index = history.length - 1; index >= 0; index -= 1) {
         const msg = history[index];
         if (!isVisionPromptImageMessage(msg) || !hasVisionPromptImageData(msg)) continue;
+        const groupId = msg.mediaData?.imageGroupId;
+        if (groupId) {
+            const keepGroup = groupedDecisions.get(groupId);
+            if (keepGroup === true) continue;
+            if (keepGroup === false) {
+                history[index] = stripVisionPromptImageData(msg);
+                continue;
+            }
+            const keep = remaining > 0;
+            groupedDecisions.set(groupId, keep);
+            if (keep) {
+                remaining -= 1;
+                continue;
+            }
+            history[index] = stripVisionPromptImageData(msg);
+            continue;
+        }
         if (remaining > 0) {
             remaining -= 1;
             continue;
@@ -1881,8 +1899,27 @@ export async function buildChatPromptMessages(
         excludeOfflineSessionId: options?.excludeOfflineSessionId,
         promptTimestampOptions,
     });
+    const expandedVisionHistory = truncatedHistory.flatMap(msg => {
+        const refs = msg.mediaType === "image" && Array.isArray(msg.mediaData?.imageRefs)
+            ? msg.mediaData.imageRefs.filter((ref): ref is string => typeof ref === "string" && Boolean(ref))
+            : [];
+        if (refs.length < 2) return [{ ...msg }];
+        return refs.map((ref, index) => ({
+            ...msg,
+            id: `${msg.id}__group_image_${index + 1}`,
+            mediaUrl: ref,
+            mediaData: {
+                ...msg.mediaData,
+                imageRefs: undefined,
+                imageGroupId: msg.id,
+                imageGroupIndex: index,
+                imageGroupCount: refs.length,
+                label: msg.mediaData?.label ? `${msg.mediaData.label}（第 ${index + 1} 张，共 ${refs.length} 张）` : `合并图片（第 ${index + 1} 张，共 ${refs.length} 张）`,
+            },
+        }));
+    });
     const promptHistory = applyVisionImagePromptLimit(
-        truncatedHistory.map(msg => ({ ...msg })),
+        expandedVisionHistory,
         resolveVisionImagePromptLimit(session),
     );
 
