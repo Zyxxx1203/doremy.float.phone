@@ -502,9 +502,9 @@ export async function armLifeSceneProactiveBailout(input: {
 }
 
 /** Cancel the pending server-side life-scene turn when local foreground generation takes over. */
-export function cancelLifeSceneProactiveBailouts(sceneId: string): void {
-    if (!sceneId) return;
-    void cancelBailoutPrefix("life-scene:" + sceneId + ":");
+export function cancelLifeSceneProactiveBailouts(sceneId: string): Promise<void> {
+    if (!sceneId) return Promise.resolve();
+    return cancelBailoutPrefix("life-scene:" + sceneId + ":");
 }
 
 /** Prevent a second proactive channel from talking while a character is physically co-present. */
