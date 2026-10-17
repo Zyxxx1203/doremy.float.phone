@@ -294,16 +294,22 @@ export function MainApp() {
       cancelled = true;
     };
 
+    let fullscreenNoticeShown = false;
+    const showFullscreenNoticeOnce = (message: string) => {
+      if (fullscreenNoticeShown) return;
+      fullscreenNoticeShown = true;
+      window.dispatchEvent(new CustomEvent("app-global-notice", { detail: { kind: "info", message } }));
+    };
     function tryFullscreen() {
       if (!shouldRequestPwaFullscreen()) return;
       const doc = document.documentElement;
       if (document.fullscreenElement) return;
       if (typeof doc.requestFullscreen !== "function") {
-        window.dispatchEvent(new CustomEvent("app-global-notice", { detail: { kind: "info", message: "当前浏览器不支持网页强制全屏。可尝试将网站添加到主屏幕，或使用浏览器自身的全屏功能。" } }));
+        showFullscreenNoticeOnce("当前浏览器不支持网页强制全屏。普通网页仍会显示浏览器地址栏；如需更沉浸的显示，可将网站添加到主屏幕后打开。");
         return;
       }
       void doc.requestFullscreen().catch(() => {
-        window.dispatchEvent(new CustomEvent("app-global-notice", { detail: { kind: "info", message: "浏览器没有允许网页进入全屏；请从页面内点击后重试，或将网站添加到主屏幕运行。" } }));
+        showFullscreenNoticeOnce("浏览器没有允许网页进入全屏。普通网页无法强行隐藏浏览器地址栏；可尝试添加到主屏幕运行。");
       });
     }
     document.addEventListener("click", tryFullscreen);
