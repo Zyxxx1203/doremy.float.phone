@@ -31,7 +31,8 @@ const summarizingSet = new Set<string>();
  */
 export async function maybeRunSummarization(
     characterId: string,
-    characterName: string
+    characterName: string,
+    memoryWrites?: { writeLongTermMemory?: boolean; writeCoreMemory?: boolean },
 ): Promise<void> {
     const config = loadMemoryConfig();
     if (!config.autoSummarizeEnabled) return;
@@ -42,7 +43,7 @@ export async function maybeRunSummarization(
     if (summarizingSet.has(characterId)) return;
     summarizingSet.add(characterId);
     try {
-        await runSummarizationPipeline(characterId, characterName);
+        await runSummarizationPipeline(characterId, characterName, memoryWrites);
     } finally {
         summarizingSet.delete(characterId);
     }
@@ -61,6 +62,8 @@ export async function runSummarizationPipeline(
         force?: boolean;
         /** 手动指定总结起点（覆盖进度水位线）；force 为真时忽略 */
         sinceTimestamp?: string;
+        writeLongTermMemory?: boolean;
+        writeCoreMemory?: boolean;
     }
 ): Promise<{ success: boolean; error?: string }> {
     const config = loadMemoryConfig();
@@ -79,7 +82,7 @@ export async function runSummarizationPipeline(
     // 进度水位线取「过滤后」最后一条的时间，因此关掉的来源不会把水位线推过头，
     // 但已被水位线越过的内容重新打开后也不会回补——这一点在设置里已注明。
     const allEntries = filterTimelineByAllowedSources(
-        loadNativeTimeline(characterId, afterTimestamp ? { afterTimestamp } : undefined),
+        loadNativeTimeline(characterId, { ...(afterTimestamp ? { afterTimestamp } : {}), memoryTarget: "long_term" }),
         config.shortTermAllowedSources,
     );
 
@@ -146,40 +149,47 @@ export async function runSummarizationPipeline(
             .filter((sessionId): sessionId is string => Boolean(sessionId)),
     ));
 
-    // Save as long-term memory
+    // 保存目标分别受分线开关控制；关闭写入不会删除已有记忆。
     const now = new Date().toISOString();
-    const longTermEntry: MemoryEntry = {
-        id: `mem_lt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        characterId,
-        sourceApp: dominantSource as MemoryEntry["sourceApp"],
-        type: "long_term",
-        content: summary,
-        embedding,
-        importance: 0.8,
-        createdAt: now,
-        updatedAt: now,
-        metadata: {
-            summarizedEvents: allEntries.length,
-            timeSpan: `${earliest} ~ ${latest}`,
-            sourceSessionIds,
-        },
-    };
-    await saveMemoryEntry(longTermEntry);
+    if (options?.writeLongTermMemory !== false) {
+        const longTermEntry: MemoryEntry = {
+            id: `mem_lt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            characterId,
+            sourceApp: dominantSource as MemoryEntry["sourceApp"],
+            type: "long_term",
+            content: summary,
+            embedding,
+            importance: 0.8,
+            createdAt: now,
+            updatedAt: now,
+            metadata: {
+                summarizedEvents: allEntries.length,
+                timeSpan: `${earliest} ~ ${latest}`,
+                sourceSessionIds,
+            },
+        };
+        await saveMemoryEntry(longTermEntry);
+        setLastSummarizedTimestamp(characterId, latest);
 
-    // Update last summarized timestamp + reset counter
-    setLastSummarizedTimestamp(characterId, latest);
-    resetEventCounter(characterId);
-
-    // Enforce long-term limit
-    const allLongTerm = await loadMemoryEntries(characterId);
-    if (allLongTerm.length > config.maxLongTermEntries) {
-        const excess = allLongTerm.slice(0, allLongTerm.length - config.maxLongTermEntries);
-        await deleteMemoryEntries(excess.map(e => e.id));
+        const allLongTerm = await loadMemoryEntries(characterId);
+        if (allLongTerm.length > config.maxLongTermEntries) {
+            const excess = allLongTerm.slice(0, allLongTerm.length - config.maxLongTermEntries);
+            await deleteMemoryEntries(excess.map(e => e.id));
+        }
     }
 
-    incrementCoreMemoryCounter(characterId);
-    await maybeRunCoreMemoryPipeline(characterId, characterName);
+    resetEventCounter(characterId);
+    if (options?.writeCoreMemory !== false) {
+        incrementCoreMemoryCounter(characterId);
+        if (options?.writeLongTermMemory === false) {
+            // 不持久化长期记忆时，核心记忆仍可基于本次摘要执行；核心流水线读取现有长期记忆，
+            // 因此本次临时摘要不写入长期库，避免越过用户的独立开关。
+            console.warn("[MemorySummarizer] Core-only branch summary generated; long-term persistence disabled.");
+        } else {
+            await maybeRunCoreMemoryPipeline(characterId, characterName);
+        }
+    }
 
-    console.log(`[MemorySummarizer] Summarized ${allEntries.length} entries → 1 long-term memory`);
+    console.log(`[MemorySummarizer] Summarized ${allEntries.length} entries`);
     return { success: true };
 }
