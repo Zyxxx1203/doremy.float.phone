@@ -741,7 +741,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     const [draggingPlusItem, setDraggingPlusItem] = useState<string | null>(null);
     const plusMenuContainerRef = useRef<HTMLDivElement | null>(null);
     const plusMenuDragTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const plusMenuDragRef = useRef<{ label: string; x: number; y: number; scrollLeft: number; started: boolean; moved: boolean } | null>(null);
+    const plusMenuDragRef = useRef<{ label: string; x: number; y: number; scrollLeft: number; started: boolean; moved: boolean; targetLabel?: string } | null>(null);
     const suppressPlusClickRef = useRef(false);
 
     // 表情包搜索联想：ESC/失焦置 true 隐藏，输入变化重新开启
@@ -867,14 +867,16 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
         event.preventDefault();
         const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-plus-tool-label]");
         const targetLabel = target?.dataset.plusToolLabel;
-        if (targetLabel) reorderPlusMenuItem(drag.label, targetLabel);
+        if (targetLabel && targetLabel !== drag.label) drag.targetLabel = targetLabel;
     };
     const handlePlusPointerUp = () => {
         if (plusMenuDragTimerRef.current) clearTimeout(plusMenuDragTimerRef.current);
         plusMenuDragTimerRef.current = null;
-        if (plusMenuDragRef.current?.started || plusMenuDragRef.current?.moved) {
+        const drag = plusMenuDragRef.current;
+        if (drag?.started && drag.targetLabel) reorderPlusMenuItem(drag.label, drag.targetLabel);
+        if (drag?.started || drag?.moved) {
             suppressPlusClickRef.current = true;
-            window.setTimeout(() => { suppressPlusClickRef.current = false; }, 80);
+            window.setTimeout(() => { suppressPlusClickRef.current = false; }, 120);
         }
         plusMenuDragRef.current = null;
         setDraggingPlusItem(null);
