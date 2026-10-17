@@ -6963,7 +6963,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                 const mime = dataUrl.slice(5, dataUrl.indexOf(";")) || "image/jpeg";
                                 return (await storeMediaBase64(dataUrl.slice(comma + 1), mime)).ref;
                             }));
-                            if (refs.length) sendRichMessage("image", { label: desc, imageRefs: refs }, "", refs[0]);
+                            if (refs.length) sendRichMessage("image", { label: desc, imageRefs: refs.slice(1) }, "", refs[0]);
                         } catch (error) {
                             showChatToast("图片保存失败：" + (error instanceof Error ? error.message : "请重试"));
                         }
