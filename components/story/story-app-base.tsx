@@ -1482,7 +1482,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
       const storyCharacters = memoryCharacterIds
         .map((id) => characters.find((character) => character.id === id))
         .filter((item): item is NonNullable<typeof item> => Boolean(item));
-      if (storyCharacters.length && !currentSession?.independentStory) {
+      if (storyCharacters.length && (resolveStoryMemorySettings(currentSession).writeLongTermMemory || resolveStoryMemorySettings(currentSession).writeCoreMemory)) {
         void (async () => {
           try {
             for (const storyCharacter of storyCharacters) {
@@ -1569,7 +1569,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
       if (activeSessionIdRef.current === sessionId) setMessages(loadStoryMessages(sessionId));
       setStorageVersion((value) => value + 1);
 
-      if (!session.independentStory) {
+      if (resolveStoryMemorySettings(session).writeLongTermMemory || resolveStoryMemorySettings(session).writeCoreMemory) {
         for (const id of session.participantIds?.length ? session.participantIds : [characterId]) {
           const item = characters.find((candidate) => candidate.id === id);
           if (!item) continue;
