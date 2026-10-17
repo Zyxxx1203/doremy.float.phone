@@ -5,6 +5,7 @@ import { resolveLifeCharacterIdForContact } from "@/lib/life/life-autonomy";
 import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow, settleActorTimelineToNow } from "@/lib/life/life-runtime";
 
 import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { storeMediaBase64 } from "@/lib/media-cache-storage";
 import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, getSystemInstructionDisplayContent, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages, isSessionStreamingEnabled, resolveChatBackgroundImage, resolveChatUserAvatar } from "@/lib/chat-storage";
 import { cleanStreamText, splitStreamPreviewSegments, stripLiteralTexts, stripXmlTagBlocks } from "@/lib/stream-preview";
 import type { StateValue } from "@/lib/chat-storage";
@@ -6954,7 +6955,19 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             )}
             {richModal === "photo" && (
                 <PhotoInputModal
-                    onSend={(desc, imageDataUrl) => { setRichModal(null); sendRichMessage("image", { label: desc }, "", imageDataUrl); }}
+                    onSend={async (desc, imageDataUrls) => {
+                        setRichModal(null);
+                        try {
+                            const refs = await Promise.all(imageDataUrls.map(async (dataUrl) => {
+                                const comma = dataUrl.indexOf(",");
+                                const mime = dataUrl.slice(5, dataUrl.indexOf(";")) || "image/jpeg";
+                                return (await storeMediaBase64(dataUrl.slice(comma + 1), mime)).ref;
+                            }));
+                            if (refs.length) sendRichMessage("image", { label: desc, imageRefs: refs }, "", refs[0]);
+                        } catch (error) {
+                            showChatToast("图片保存失败：" + (error instanceof Error ? error.message : "请重试"));
+                        }
+                    }}
                     onClose={() => setRichModal(null)}
                 />
             )}
