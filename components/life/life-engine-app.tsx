@@ -1127,7 +1127,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       }
     };
     const onSceneMessageAdded = () => {
-      // A new player/character turn invalidates the old snapshot; replace it with fresh context.
+      // The proactive loop re-arms once in finally; don't race a second job against it.
+      if (proactiveBusyRef.current) return;
+      // A manual player/character turn invalidates the old snapshot; replace it with fresh context.
       void armOfflineBailout();
     };
     const onVisibilityChange = () => {
