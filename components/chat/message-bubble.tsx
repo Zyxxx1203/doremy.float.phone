@@ -1365,8 +1365,11 @@ function ImageBubble({
     }, [rawUrl]);
 
     useEffect(() => {
-        const extraRefs = Array.isArray(d?.imageRefs) ? d.imageRefs.filter((ref): ref is string => typeof ref === "string") : [];
-        const refs = extraRefs.length && rawUrl ? [rawUrl, ...extraRefs] : extraRefs;
+        const savedRefs = Array.isArray(d?.imageRefs) ? d.imageRefs.filter((ref): ref is string => typeof ref === "string" && ref.length > 0) : [];
+        // 新消息存完整引用数组；旧消息只存了首图之外的引用，按 rawUrl 自动兼容。
+        const refs = savedRefs.length
+            ? (rawUrl && savedRefs[0] !== rawUrl ? [rawUrl, ...savedRefs] : savedRefs)
+            : (rawUrl ? [rawUrl] : []);
         if (refs.length < 2 || d?.imageCollection !== true) {
             groupUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
             groupUrlsRef.current = [];
@@ -1390,12 +1393,12 @@ function ImageBubble({
                 return;
             }
             groupUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
-            if (complete) {
+            if (loaded.length > 0) {
+                // 一张引用失效也不能让整组消息消失；保留能读取的图片并明确提示不完整。
                 groupUrlsRef.current = loaded;
                 setGroupUrls(loaded);
-                setGroupLoadError(false);
+                setGroupLoadError(!complete);
             } else {
-                loaded.forEach(url => URL.revokeObjectURL(url));
                 groupUrlsRef.current = [];
                 setGroupUrls([]);
                 setGroupLoadError(true);
@@ -1498,6 +1501,7 @@ function ImageBubble({
                             </button>
                         ))}
                     </div>
+                    {groupLoadError && <div role="status" className="border-t border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">部分图片暂时无法读取，已保留其余图片。可重新发送补齐。</div>}
                 </div>
                 {previewAndDialog}
             </>
