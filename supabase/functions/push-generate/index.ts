@@ -1133,9 +1133,14 @@ Deno.serve(async (req: Request) => {
     const targetUrl = deliverAsCall && callSessionId
       ? `/?ring=${encodeURIComponent(callSessionId)}&rt=${Date.now()}`
       : (payload.notify?.url || "/");
+    const lifeScenePreview = payload.merge?.lifeScene ? (() => {
+      const action = rawText.match(/<life_action\b[^>]*>([\s\S]*?)<\/life_action\s*>/i)?.[1]?.trim() ?? "";
+      const dialogue = rawText.match(/<life_dialogue\b[^>]*>([\s\S]*?)<\/life_dialogue\s*>/i)?.[1]?.trim() ?? "";
+      return [action, dialogue].filter(Boolean).join(" ") || rawText.replace(/<[^>]+>/g, "").trim();
+    })() : rawText;
     let parts = deliverAsCall
       ? ["来电话了…"]
-      : splitResponseForPushPreview(rawText).slice(0, 6);
+      : splitResponseForPushPreview(lifeScenePreview).slice(0, 6);
     if (parts.length === 0) parts = ["发来一条消息"];
 
     for (let index = 0; index < parts.length; index += 1) {
