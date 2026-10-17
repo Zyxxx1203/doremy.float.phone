@@ -153,6 +153,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [characterCommenterId, setCharacterCommenterId] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const autoRunRef = useRef(false);
+
   // 拖动照片时每帧都写 localStorage 会明显卡手，这里把落盘延后合并。
   const saveTimerRef = useRef<number | null>(null);
   // 拖动是高频回调，且 setState 的更新函数必须是纯函数（StrictMode 会执行两次），

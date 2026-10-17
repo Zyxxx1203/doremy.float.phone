@@ -2118,6 +2118,24 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       .life-scene-display-options-body label { min-width: 0; overflow-wrap: anywhere; line-height: 1.5; }
       .life-scene-display-options-body input, .life-scene-display-options-body select, .life-scene-display-options-body textarea { box-sizing: border-box; max-width: 100%; min-width: 0; }
       .life-scene-display-options-body .grid { min-width: 0; }
+      /* 原先这一组数值项写死 grid-cols-2：手机上每列仅约 160px，
+         「气泡内边距（px）」这类标签被迫折行、输入框顶破格子、与相邻卡片重叠。
+         窄屏改单列，并把每项压成「左标签 + 右窄输入框」一行，纵向高度也随之减半。 */
+      @media (max-width: 559px) {
+        .life-scene-display-options-body .grid-cols-2 { grid-template-columns: minmax(0, 1fr) !important; }
+      }
+      .life-scene-display-options-body .grid-cols-2 > label {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        padding: 6px 8px !important;
+      }
+      .life-scene-display-options-body .grid-cols-2 > label > input,
+      .life-scene-display-options-body .grid-cols-2 > label > select {
+        flex: 0 0 auto; width: 74px; margin-top: 0 !important; padding: 4px 6px !important;
+        text-align: center; font-variant-numeric: tabular-nums;
+      }
+      /* 字体这类长文本仍占整行，否则会把自己挤成一条缝 */
+      .life-scene-display-options-body .grid-cols-2 > label.col-span-2 { flex-wrap: wrap; }
+      .life-scene-display-options-body .grid-cols-2 > label.col-span-2 > input { flex: 1 1 100%; width: 100%; text-align: left; }
       @media (min-width: 560px) {
         .life-scene-display-options[open] { left: max(24px, calc((100vw - 720px) / 2)) !important; right: max(24px, calc((100vw - 720px) / 2)) !important; }
       }
