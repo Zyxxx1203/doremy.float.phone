@@ -72,8 +72,9 @@ export const PAGE_2_DEFAULT: IconId[] = [
   "mapmode"
 ];
 
-// 第三页默认图标：右半边 2×2 排布（左半边留给日历组件），位置见 createDefaultDesktopIconLayout
-export const PAGE_3_DEFAULT: IconId[] = ["worldbuilder", "qa", "resource_hub", "realitybridge", "mixology", "life", "archive", "photowall", "watchtogether"];
+// 第三页放系统/工具类应用；生活、档案、照片墙、一起看单独放到第四页，避免与已有图标/组件抢位置。
+export const PAGE_3_DEFAULT: IconId[] = ["worldbuilder", "qa", "resource_hub", "realitybridge", "mixology"];
+export const PAGE_4_DEFAULT: IconId[] = ["life", "archive", "photowall", "watchtogether"];
 
 export const DOCK_DEFAULT: IconId[] = ["settings", "theme", "resources", "characters"];
 
