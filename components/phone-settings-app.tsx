@@ -95,8 +95,7 @@ const SETTINGS_MENU = [
     { id: "widget", icon: LayoutTemplate, label: "桌面小组件", desc: "角色留在桌面上的话", iconColor: BINDING_ACCENTS.memory , glass: "" },
     { id: "agentComputer", icon: Laptop, label: "角色电脑", desc: "云端小电脑（自部署）", iconColor: BINDING_ACCENTS.memory , glass: "agent-computer" },
     { id: "identity", icon: UserCircle, label: "用户身份", desc: "个人信息", iconColor: BINDING_ACCENTS.identity , glass: "identity" },
-    { id: "compatibility", icon: Smartphone, label: "设备兼容性", desc: "屏幕适配、原生接口开关与兼容性报告", iconColor: BINDING_ACCENTS.memory , glass: "" },
-    { id: "diagnostics", icon: AlertTriangle, label: "运行诊断", desc: "检查设备、权限、网页与最近异常", iconColor: BINDING_ACCENTS.memory , glass: "" },
+    { id: "diagnostics", icon: Smartphone, label: "故障诊断与设备兼容性", desc: "运行故障检查、屏幕适配、原生接口能力与诊断报告", iconColor: BINDING_ACCENTS.memory , glass: "" },
     { id: "about", icon: Info, label: "关于与声明", desc: "版本与协议", iconColor: BINDING_ACCENTS.memory , glass: "about" },
 ] as const;
 
@@ -357,9 +356,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
             case "widget":
                 return <WidgetSettings onNotice={onNotice} />;
             case "diagnostics":
-                return <RuntimeDiagnostics onNotice={onNotice} />;
-            case "compatibility":
-                return <DeviceCompatibilitySettings onNotice={onNotice} />;
+                return <div style={{ display: "grid", gap: 18 }}><RuntimeDiagnostics onNotice={onNotice} /><div style={{ borderTop: "1px solid var(--border, rgba(128,128,128,.18))", paddingTop: 18 }}><DeviceCompatibilitySettings onNotice={onNotice} /></div></div>;
             case "agentComputer":
                 return <AgentComputerSettings onNotice={onNotice} />;
             case "moderation":
@@ -560,7 +557,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                             </div>
                         </div>
                         <CardGrid
-                            items={SETTINGS_MENU.filter(item => ["compatibility", "diagnostics"].includes(item.id)).map(makeCardItem)}
+                            items={SETTINGS_MENU.filter(item => ["diagnostics"].includes(item.id)).map(makeCardItem)}
                         />
                         {isAdmin ? (
                             <div className="settings-moderation-section">
