@@ -1008,7 +1008,7 @@ export function loadStoryProjectionEntries(
     if (!participants.includes(characterId)) return false;
     const memorySettings = resolveStoryMemorySettings(item);
     const targetEnabled = options?.memoryTarget === "long_term" ? memorySettings.writeLongTermMemory : options?.memoryTarget === "core" ? memorySettings.writeCoreMemory : memorySettings.writePublicShortTermMemory;
-    return targetEnabled && (!item.independentStory || Boolean(item.includedInMemoryAt));
+    return targetEnabled && (!item.independentStory || Boolean(item.includedInMemoryAt) || Boolean(item.memorySettings));
   });
   if (!sessions.length) return [];
   const messages = sessions.flatMap((session) => loadStoryMessages(session.id))
