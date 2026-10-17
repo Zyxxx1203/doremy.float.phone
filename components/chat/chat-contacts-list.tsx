@@ -189,9 +189,9 @@ export function ChatContactsList({ onCloseApp, onSelectSession, onSelectMascot, 
                 bodyRef={bodyRef}
                 rightAction={
                     <button
-                        className="page-back-btn"
+                        className="page-back-btn relative z-[10000] pointer-events-auto touch-manipulation"
                         type="button"
-                        onClick={() => {
+                        onClick={(event) => { event.preventDefault(); event.stopPropagation();
                             addFromCardRef.current = false;
                             setIsAddFriendOpen(true);
                             setAddQuery("");
@@ -200,7 +200,7 @@ export function ChatContactsList({ onCloseApp, onSelectSession, onSelectMascot, 
                             setGreetingText(identity?.name ? `我是${identity.name}` : "你好");
                         }}
                     >
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 8v8M8 12h8" /></svg>
+                        <svg className="pointer-events-none" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 8v8M8 12h8" /></svg>
                     </button>
                 }
             >
