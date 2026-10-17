@@ -1362,17 +1362,12 @@ function ImageBubble({
         const refs = Array.isArray(d?.imageRefs) ? d.imageRefs.filter((ref): ref is string => typeof ref === "string") : [];
         if (refs.length < 2) { setGroupUrls([]); return; }
         let alive = true;
-        const urls: string[] = [];
-        void Promise.all(refs.map(async ref => {
-            const url = await loadMediaObjectUrl(ref);
-            if (url) urls.push(url);
-            return url;
-        })).then(results => {
+        void Promise.all(refs.map(ref => loadMediaObjectUrl(ref))).then(results => {
             const ordered = results.filter((url): url is string => Boolean(url));
             if (alive) setGroupUrls(ordered);
             else ordered.forEach(url => URL.revokeObjectURL(url));
         });
-        return () => { alive = false; urls.forEach(url => URL.revokeObjectURL(url)); };
+        return () => { alive = false; };
     }, [Array.isArray(d?.imageRefs) ? d.imageRefs.join("|") : ""]);
 
     const openPromptEditor = useCallback(() => {
@@ -1452,7 +1447,7 @@ function ImageBubble({
         return (
             <>
                 <div className="chat-photo-card chat-photo-card--image grid max-w-[260px] grid-cols-2 gap-1 overflow-hidden rounded-xl" style={{ cursor: "pointer" }}>
-                    {groupUrls.map((url, index) => <button type="button" key={url} onClick={e => { e.stopPropagation(); setPreviewImageUrl(url); setShowPreview(true); }} className="relative aspect-square min-w-0 overflow-hidden bg-stone-100"><img src={url} alt={`${label} ${index + 1}`} className="h-full w-full object-cover" />{index === 3 && groupUrls.length > 4 && <span className="absolute inset-0 grid place-items-center bg-black/45 text-2xl font-semibold text-white">+${groupUrls.length - 4}</span>}</button>)}
+                    {groupUrls.map((url, index) => <button type="button" key={url} onClick={e => { e.stopPropagation(); setPreviewImageUrl(url); setShowPreview(true); }} className="relative aspect-square min-w-0 overflow-hidden bg-stone-100"><img src={url} alt={`${label} ${index + 1}`} className="h-full w-full object-cover" />{index === 3 && groupUrls.length > 4 && <span className="absolute inset-0 grid place-items-center bg-black/45 text-2xl font-semibold text-white>{"+" + (groupUrls.length - 4)}</span>}</button>)}
                 </div>
                 {previewAndDialog}
             </>
