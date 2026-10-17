@@ -235,6 +235,24 @@ export function MainApp() {
   const [splashDismissed, setSplashDismissed] = useState(false);
   const [kvHydrateFailed, setKvHydrateFailed] = useState(false);
   const [initAttempt, setInitAttempt] = useState(0);
+  const [downloadNotice, setDownloadNotice] = useState<{ kind: "success" | "error" | "info"; message: string } | null>(null);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onDownloadNotice = (event: Event) => {
+      const detail = (event as CustomEvent<{ kind?: string; message?: string }>).detail;
+      if (!detail?.message) return;
+      const kind = detail.kind === "error" || detail.kind === "info" ? detail.kind : "success";
+      setDownloadNotice({ kind, message: detail.message });
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => setDownloadNotice(null), kind === "error" ? 6500 : 4200);
+    };
+    window.addEventListener("app-download-notice", onDownloadNotice);
+    return () => {
+      window.removeEventListener("app-download-notice", onDownloadNotice);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -331,6 +349,22 @@ export function MainApp() {
             {/* 壳推送订阅的兜底注册：壳原生那次失败是静默的，这里可验证地补一次 */}
             <ShellPushRegistrar />
           </MusicProvider>
+          {downloadNotice && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="fixed left-1/2 z-[99999] max-w-[min(92vw,440px)] -translate-x-1/2 rounded-2xl px-4 py-3 text-sm shadow-xl backdrop-blur-xl"
+              style={{
+                bottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
+                color: downloadNotice.kind === "error" ? "#7f1d1d" : "#24352b",
+                background: downloadNotice.kind === "error" ? "rgba(254,226,226,.97)" : downloadNotice.kind === "info" ? "rgba(255,251,235,.97)" : "rgba(236,253,245,.97)",
+                border: "1px solid " + (downloadNotice.kind === "error" ? "rgba(220,38,38,.24)" : "rgba(22,101,52,.16)"),
+                overflowWrap: "anywhere",
+              }}
+            >
+              {downloadNotice.message}
+            </div>
+          )}
         </main>
       )}
     </AccountGate>
