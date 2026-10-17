@@ -1994,7 +1994,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (entry.category === "chat") return settings.recordChatActivity;
     return true;
   }).slice().sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt));
-  const timelineImageRefsKey = lifeTimeline.map(entry => entry.id + ":" + (entry.imageMediaRef ?? "")).join("|");
+  const timelineImageRefsKey = lifeTimeline.filter(entry => entry.imageMediaRef).map(entry => entry.id + ":" + entry.imageMediaRef).join("|");
   useEffect(() => {
     let alive = true;
     const urls: Record<string, string> = {};
@@ -2037,7 +2037,15 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       });
       if (!result) throw new Error("生图服务未返回图片，请检查 API 配置。");
       const latest = stateRef.current;
+      const currentEntry = latest.timeline.find(item => item.id === entry.id);
+      if (!currentEntry) {
+        await deleteMediaRef(result.mediaRef);
+        throw new Error("这条生活记录已不存在，图片没有保存。");
+      }
       commit({ ...latest, timeline: latest.timeline.map(item => item.id === entry.id ? { ...item, imageMediaRef: result.mediaRef } : item) });
+      if (currentEntry.imageMediaRef && currentEntry.imageMediaRef !== result.mediaRef) {
+        await deleteMediaRef(currentEntry.imageMediaRef).catch(() => undefined);
+      }
       setNotice("生活记录图片已生成并保存。");
     } catch (error) {
       setNotice("生活记录生图失败：" + (error instanceof Error ? error.message : "未知错误"));
