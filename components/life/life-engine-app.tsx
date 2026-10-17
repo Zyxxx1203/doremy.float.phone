@@ -667,7 +667,26 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   };
 
-  const createScene = () => { performCreateScene(); };
+  const transitionSceneAction = (action: () => void) => {
+    if (typeof document === "undefined" || (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false)) {
+      action();
+      return;
+    }
+    const viewTransitionDocument = document as Document & {
+      startViewTransition?: (callback: () => void) => { finished?: Promise<void> };
+    };
+    if (typeof viewTransitionDocument.startViewTransition !== "function") {
+      action();
+      return;
+    }
+    try {
+      viewTransitionDocument.startViewTransition(() => action());
+    } catch {
+      action();
+    }
+  };
+
+  const createScene = () => transitionSceneAction(performCreateScene);
 
   /** Arrival uses actual-location state only; planned locations never create encounters. */
   /** Arrival uses actual-location state only; planned locations never create encounters. */
@@ -740,7 +759,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const destination = stateRef.current.locations.find(location => location.id === targetLocationId);
     if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
     if (!destination) return;
-    performEnterLocationSolo(targetLocationId);
+    transitionSceneAction(() => performEnterLocationSolo(targetLocationId));
   };
 
   const autoImageFingerprint = activeScene
@@ -2101,6 +2120,21 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   return <main style={{ ...cssVars, ...(immersiveScene ? { height: "var(--life-viewport-height, 100dvh)" } : {}) }} className={`${immersiveScene ? "flex flex-col overflow-hidden overscroll-none" : "min-h-screen min-h-[100dvh] overflow-y-auto overscroll-y-contain touch-pan-y"} bg-gradient-to-br ${themeClass} ${settings.compactLayout ? "px-1.5 py-1.5 sm:px-3 sm:py-3" : "px-2 py-2 sm:px-4 sm:py-4"}`}>
     <style>{`
+      /* Tie the spatial transition to the real scene-state update; no artificial waiting screen. */
+      @keyframes life-view-leave {
+        from { opacity: 1; transform: scale(1); }
+        to { opacity: 0; transform: scale(.982); }
+      }
+      @keyframes life-view-arrive {
+        from { opacity: 0; transform: scale(1.018); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      ::view-transition-old(root) {
+        animation: life-view-leave 220ms cubic-bezier(.4, 0, 1, 1) both;
+      }
+      ::view-transition-new(root) {
+        animation: life-view-arrive 380ms cubic-bezier(.16, 1, .3, 1) both;
+      }
       /* Scene transitions: spatial, responsive, and respectful of reduced-motion preferences. */
       @keyframes life-scene-enter {
         0% { opacity: 0; transform: translate3d(0, 14px, 0) scale(.985); filter: blur(3px); }
@@ -2117,6 +2151,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       .life-place-card:active { transform: scale(.992); }
       @media (prefers-reduced-motion: reduce) {
         .life-scene-panel, .life-place-list, .life-place-card { animation: none !important; will-change: auto; }
+        ::view-transition-old(root), ::view-transition-new(root) { animation: none !important; }
       }
       .life-scene-display-options[open] {
         position: fixed !important;
