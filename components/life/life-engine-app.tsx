@@ -33,6 +33,7 @@ import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/l
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
 import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts, suspendIdleReconnectForLifeScene, refreshScheduledBailouts } from "@/lib/push-bailout-client";
+import { cancelFollowUp } from "@/lib/follow-up-service";
 import { loadBindingConfig, loadImageGenerationSettings, loadPresets, loadWorldBooks, resolveBinding, resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
 import type { BindingConfig, PresetConfig, WorldBookConfig } from "@/lib/settings-types";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
@@ -1137,6 +1138,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         void armOfflineBailout();
       }
     };
+    // Clear any locally scheduled online-chat follow-up for characters currently in this scene.
+    for (const characterId of candidateIds) {
+      const contact = loadChatContacts().find(item => item.characterId === characterId);
+      const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup);
+      if (session) cancelFollowUp(session.id);
+    }
     void suspendIdleReconnectForLifeScene(candidateIds);
     void armOfflineBailout();
     const timer = window.setInterval(() => void tick(), LIFE_AUTONOMY_TICK_MS);
