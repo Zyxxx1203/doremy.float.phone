@@ -670,6 +670,79 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const createScene = () => { performCreateScene(); };
 
   /** Arrival uses actual-location state only; planned locations never create encounters. */
+  /** Arrival uses actual-location state only; planned locations never create encounters. */
+  const performEnterLocationSolo = (targetLocationId = selectedLocationId) => {
+    const destination = stateRef.current.locations.find(location => location.id === targetLocationId);
+    if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
+    if (!destination) return;
+    const now = new Date().toISOString();
+    const actualCharacters = settings.enableCoincidences
+      ? characters.filter(char => state.actorStates.some(actor => actor.ownerType === "character" && actor.ownerId === char.id && actor.actualLocationId === destination.id))
+      : [];
+    const participants: LifeSceneParticipant[] = [{
+      ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "刚来到这里", awarenessByActorId: {},
+    }];
+    for (const char of actualCharacters) {
+      const actor = state.actorStates.find(item => item.ownerType === "character" && item.ownerId === char.id);
+      if (!actor) continue;
+      const perception = {
+        distance: "medium" as const,
+        lineOfSight: destination.visibility === "public",
+        audible: true,
+        attention: /专注|工作|学习|读书|写作|打电话/.test(actor.activity) ? "focused" as const : /发呆|等待|休息/.test(actor.activity) ? "distracted" as const : "normal" as const,
+        activity: /等待|休息|发呆/.test(actor.activity) ? "waiting" as const : /工作|学习|读书|写作/.test(actor.activity) ? "busy" as const : "casual" as const,
+        noticing: /外向|敏锐|警觉|好奇|观察力/.test(char.personality || "") ? 0.68 : 0.38,
+        environmentNoise: /咖啡|车站|商场/.test(destination.name) ? 0.62 : 0.25,
+      };
+      const seed = [...char.id].reduce((sum, value) => sum + value.charCodeAt(0), 0);
+      const awareness = evaluateEncounterAwareness(perception, seed);
+      participants.push({ ownerType: "character", ownerId: char.id, activity: actor.activity, awarenessByActorId: { player: awareness } });
+      participants[0].awarenessByActorId[char.id] = destination.visibility === "public" ? "aware" : "suspects";
+    }
+    const existingScene = stateRef.current.scenes.find(scene => scene.status === "active" && scene.locationId === destination.id) ?? stateRef.current.scenes.filter(scene => scene.status === "paused" && scene.locationId === destination.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    // Startup may create a placeholder active scene before the user actually enters it. Record the first real entry if this scene has no entry card/timeline record yet.
+    const hasRecordedEntry = !!existingScene && (
+      stateRef.current.sceneMessages.some(message => message.sceneId === existingScene.id && message.role === "system" && /你来到了|你回到了/.test(message.action || message.dialogue || "")) ||
+      stateRef.current.timeline.some(entry => entry.sceneId === existingScene.id && entry.category === "location" && entry.title.startsWith("你来到了"))
+    );
+    const shouldRecordSceneEntry = !existingScene || existingScene.status === "paused" || !hasRecordedEntry;
+    const isFirstSceneEntry = !existingScene || !hasRecordedEntry;
+    let next: VirtualLifeState = { ...stateRef.current, scenes: stateRef.current.scenes.map(scene => (scene.status === "active" || scene.status === "paused") ? { ...scene, status: "paused" as const, updatedAt: now } : scene) };
+    const scene: LifeSceneState = existingScene
+      ? { ...existingScene, locationId: destination.id, locationName: destination.name, updatedAt: now, status: "active", participants: [{ ...participants[0], activity: playerActivity || "正在这里活动" }, ...existingScene.participants.filter(p => p.ownerType === "character" && participants.some(candidate => candidate.ownerType === "character" && candidate.ownerId === p.ownerId))] }
+      : { id: id("scene"), locationId: destination.id, locationName: destination.name, startedAt: now, updatedAt: now, status: "active", participants, lastSettledEventIds: [] };
+    next = upsertLifeScene(next, scene);
+    next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "正在这里活动", actualLocationId: destination.id, actualLocationName: destination.name, actualLocationUntil: new Date(resolveActorLifeNow(getActorClock(stateRef.current, "player", PLAYER_ID)).getTime() + stayDurationMinutes * 60_000).toISOString(), updatedAt: now });
+    if (shouldRecordSceneEntry) {
+      const entryText = isFirstSceneEntry
+        ? "你来到了" + destination.name + "。场景从这里开始。"
+        : "你回到了" + destination.name + "。先前的场景与互动仍在继续。";
+      next = appendLifeTimelineEntry(next, { category: "scene", title: isFirstSceneEntry ? "你进入了" + destination.name : "你回到了" + destination.name, details: entryText, actorId: PLAYER_ID, actorName: "场景旁白", locationName: destination.name, sceneId: scene.id });
+      const entryNarration: LifeSceneMessage = { id: id("turn"), sceneId: scene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: "场景旁白", role: "system", action: entryText, dialogue: "", createdAt: now };
+      next = { ...next, sceneMessages: [...next.sceneMessages, entryNarration] };
+      next = appendLifeTimelineEntry(next, { category: "location", title: "你来到了" + destination.name, details: [playerActivity || "开始探索这个地点", `预计停留 ${stayDurationMinutes} 分钟；到期后自动恢复当前日程地点。`].join(" · "), actorId: PLAYER_ID, actorName: playerName, locationName: destination.name, sceneId: scene.id });
+      if (isFirstSceneEntry && actualCharacters.length) next = appendLifeTimelineEntry(next, { category: "scene", title: "在" + destination.name + "遇见了" + actualCharacters.map(char=>char.name).join("、"), actorName: playerName, locationName: destination.name, sceneId: scene.id });
+    }
+    commit(next);
+    if (!actualCharacters.length) {
+      setNotice(settings.enableCoincidences ? "你来到了" + destination.name + "。再次打开当前场景不会重复添加记录；点击「暂时离开」后返回才会添加返回旁白。" : "你来到了" + destination.name + "。偶遇功能当前关闭，你可以独自探索这个地点。");
+    } else {
+      const noticed = participants.filter(p => p.ownerType === "character" && p.awarenessByActorId.player === "aware").length;
+      setNotice(noticed ? "你来到了" + destination.name + "，有角色注意到了你。" : "你来到了" + destination.name + "；有人在场，但暂时没人明确注意到你。");
+    }
+    setSelectedLocationId(destination.id);
+    setSelectedCharacterIds(actualCharacters.map(character => character.id));
+    setTab("home");
+    setSceneView(true);
+  };
+
+  const enterLocationSolo = (targetLocationId = selectedLocationId) => {
+    const destination = stateRef.current.locations.find(location => location.id === targetLocationId);
+    if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
+    if (!destination) return;
+    performEnterLocationSolo(targetLocationId);
+  };
+
   const autoImageFingerprint = activeScene
     ? [activeScene.id, activeScene.locationId, ...activeScene.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity)].join("|")
     : "";
