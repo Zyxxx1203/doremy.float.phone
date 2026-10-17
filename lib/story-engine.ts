@@ -309,7 +309,7 @@ async function buildStoryPromptMessages(
     const snippets: string[] = [];
     for (const sibling of siblingSessions) {
       const siblingSettings = resolveStoryMemorySettings(sibling);
-      if (!siblingSettings.allowOtherBranchesRead || !siblingSettings.sharedMemoryTypes.includes("branch")) continue;
+      if (!siblingSettings.allowOtherBranchesRead || !siblingSettings.writeBranchMemory || !siblingSettings.sharedMemoryTypes.includes("branch")) continue;
       const summary = loadStoryMessages(sibling.id)
         .filter((message) => message.role === "assistant" && Boolean(message.storySummary))
         .slice(-12)
