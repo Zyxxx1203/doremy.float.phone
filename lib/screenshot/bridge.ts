@@ -89,6 +89,10 @@ function parseAck(raw: unknown): CaptureAck {
  */
 export function captureScreenshot(timeoutMs = 8000): Promise<ScreenshotCaptureResult> {
   return new Promise<ScreenshotCaptureResult>((resolve) => {
+    if (!isCompatibilityFeatureEnabled("screenshot")) {
+      resolve({ ok: false, reason: "截屏接口已在系统设置 → 设备兼容性中停用" });
+      return;
+    }
     const b = bridge();
     if (!b?.captureScreenshot) {
       resolve({ ok: false, reason: "当前 App 版本不支持截屏，需要更新安卓壳" });
