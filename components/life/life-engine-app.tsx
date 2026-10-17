@@ -2298,6 +2298,16 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               <Toggle checked={settings.recordToolCalls} onChange={v=>patchSettings({recordToolCalls:v})} label="角色调用工具"/>
               <Toggle checked={settings.recordScheduleChanges} onChange={v=>patchSettings({recordScheduleChanges:v})} label="日程与时间变化"/>
             </div><p className="mt-2 text-[10px] leading-relaxed text-stone-500">关闭某一项只会将该类记录从时间线隐藏，不会删除已保存的记录。</p></div>
+            <div className="mt-4 rounded-2xl border border-[var(--life-accent)]/25 bg-white/70 p-4">
+              <p className="text-sm font-semibold">生活现场主动性</p>
+              <p className="mt-1 text-xs leading-relaxed text-stone-500">角色与玩家同处一个正在进行的场景时，可以在没有新输入的情况下自主发起简短互动。系统有冷却和每日上限，不会每隔几秒强制刷消息。</p>
+              <div className="mt-3"><Toggle checked={settings.enableProactiveSceneMessages !== false} onChange={v=>patchSettings({enableProactiveSceneMessages:v})} label="允许角色在生活现场主动说话"/></div>
+              <label className="mt-3 block text-xs text-stone-600">主动回合最短间隔（分钟）
+                <input type="number" min={2} max={60} step={1} value={settings.proactiveSceneIntervalMinutes ?? 5} onChange={e=>patchSettings({proactiveSceneIntervalMinutes:Math.max(2,Math.min(60,Number(e.target.value)||5))})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/>
+              </label>
+              <div className="mt-3"><Toggle checked={settings.enableLifeMessageNotifications !== false} onChange={v=>patchSettings({enableLifeMessageNotifications:v})} label="主动消息弹窗提示"/></div>
+              <p className="mt-2 text-[10px] leading-relaxed text-stone-500">目前弹窗在生活现场内显示；系统通知还需要浏览器/Android 授权。离线时由服务端生成并推送属于下一阶段的后台任务，不依赖此页面定时器。</p>
+            </div>
             <Toggle checked={settings.enableAmbientDetails} onChange={v=>patchSettings({enableAmbientDetails:v})} label="启用环境细节"/>
           </div>
           <div className="mt-4 rounded-2xl border border-[var(--life-accent)]/25 bg-white/70 p-4">
