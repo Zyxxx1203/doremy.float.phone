@@ -1,5 +1,6 @@
-import { isCompatibilityFeatureEnabled } from "../device-compatibility";
 "use client";
+
+import { isCompatibilityFeatureEnabled } from "../device-compatibility";
 
 // 设备动作 ↔ 安卓壳的原生桥对接层。
 //
