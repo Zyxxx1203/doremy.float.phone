@@ -32,7 +32,7 @@ export type IconId =
   | "mixology"
   | "life"
   | "archive"
-  | "photowall";
+  | "photowall"\n  | "watchtogether";
 
 // 桌面文件夹：以 folder: 前缀的 id 伪装成图标占一个格子参与拖拽/换页，
 // 内容（名字 + 成员图标）另存 DesktopFolderMap。文件夹不允许进 dock。
@@ -72,7 +72,7 @@ export const PAGE_2_DEFAULT: IconId[] = [
 ];
 
 // 第三页默认图标：右半边 2×2 排布（左半边留给日历组件），位置见 createDefaultDesktopIconLayout
-export const PAGE_3_DEFAULT: IconId[] = ["worldbuilder", "qa", "resource_hub", "realitybridge", "mixology", "life", "archive", "photowall"];
+export const PAGE_3_DEFAULT: IconId[] = ["worldbuilder", "qa", "resource_hub", "realitybridge", "mixology", "life", "archive", "photowall", "watchtogether"];
 
 export const DOCK_DEFAULT: IconId[] = ["settings", "theme", "resources", "characters"];
 
@@ -130,5 +130,5 @@ export const ICONS: Record<IconId, IconMeta> = {
   mixology: { id: "mixology", label: "独家特调", tone: "var(--c-icon-violet)", placeholder: false },
   life: { id: "life", label: "生活", tone: "var(--c-icon-rose)", placeholder: false },
   archive: { id: "archive", label: "档案室", tone: "var(--c-icon-teal)", placeholder: false },
-  photowall: { id: "photowall", label: "照片墙", tone: "var(--c-icon-rose)", placeholder: false },
+  photowall: { id: "photowall", label: "照片墙", tone: "var(--c-icon-rose)", placeholder: false },\n  watchtogether: { id: "watchtogether", label: "一起看", tone: "var(--c-icon-sage, #7e8b78)", placeholder: false },
 };
