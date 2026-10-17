@@ -558,7 +558,8 @@ export async function clearStorageCategory(
     case "chat_images": return clearChatCategory("image", options.keepDays);
     case "chat_voice": return clearChatCategory("voice", options.keepDays);
     case "chat_media_files": return clearChatCategory("file", options.keepDays);
-    case "photo_wall_images": return clearPhotoWallImages(options.keepDays);\n    case "moments_images": return clearMomentsImages(options.keepDays);
+    case "photo_wall_images": return clearPhotoWallImages(options.keepDays);
+    case "moments_images": return clearMomentsImages(options.keepDays);
     case "xiaohongshu_images": return clearXiaohongshuImages(options.keepDays);
     case "local_music": return clearLocalMusic(options.keepDays);
     case "dwelling_images": return clearDwellingImages();
