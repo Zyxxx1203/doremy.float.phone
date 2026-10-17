@@ -8,7 +8,7 @@ import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { loadMediaBlob, loadMediaObjectUrl, storeMediaBlob, deleteMediaRef } from "@/lib/media-cache-storage";
 import { loadVirtualLifeState } from "@/lib/life/life-storage";
 import { generateChatCompletion, flattenCompletionResult } from "@/lib/chat-engine";
-import { loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
+import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import {
   createPhotoWallId, DEFAULT_PHOTO_WALL_SETTINGS, loadPhotoWallState, savePhotoWallState,
   type PhotoWallAnnotation, type PhotoWallPhoto, type PhotoWallState,
@@ -328,8 +328,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     setBusy(true); setBusyLabel(`${commenter.name}正在认真看这张照片…`);
     try {
       const sessions = loadChatSessions();
-      const session = sessions.find(item => !item.isGroup && item.contactId === commenter.id)
-        ?? ({ id: `photo-wall-${commenter.id}`, contactId: commenter.id, unreadCount: 0, updatedAt: new Date().toISOString(), isPinned: false, isGroup: false } as ChatSession);
+      const contact = loadChatContacts().find(item => item.characterId === commenter.id);
+      const session = sessions.find(item => !item.isGroup && item.contactId === contact?.id)
+        ?? ({ id: `photo-wall-${commenter.id}`, contactId: contact?.id ?? commenter.id, unreadCount: 0, updatedAt: new Date().toISOString(), isPinned: false, isGroup: false } as ChatSession);
       const history = loadChatMessages(session.id).slice(-16);
       const instruction = [
         "你正在和亲近的人一起翻看一张私人照片墙。",
@@ -362,8 +363,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     if (!selectedPhoto || !window.confirm("确定把这张照片从照片墙移除吗？这会删除图片文件，但不会删除其他照片或聊天记录。")) return;
     try {
       const ref = selectedPhoto.mediaRef;
+      const sharedByAnotherPhoto = state.photos.some(photo => photo.id !== selectedPhoto.id && photo.mediaRef === ref);
       persist({ ...state, photos: state.photos.filter(photo => photo.id !== selectedPhoto.id) });
-      await deleteMediaRef(ref);
+      // Chat favorites intentionally share the original media ref with the chat.
+      // Never delete a shared blob when removing only its photo-wall card.
+      if (!sharedByAnotherPhoto && selectedPhoto.source !== "chat-favorite") await deleteMediaRef(ref);
       setSelectedPhotoId(null);
       onNotice?.("照片已移除。");
     } catch (error) { onNotice?.("移除失败：" + (error instanceof Error ? error.message : String(error))); }
