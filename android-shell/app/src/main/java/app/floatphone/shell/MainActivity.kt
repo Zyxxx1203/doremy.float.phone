@@ -75,6 +75,17 @@ class MainActivity : AppCompatActivity() {
          */
         const val CH_MESSAGES = "shell_messages"
         @Volatile private var nativeCrashRecorderInstalled = false
+        private const val MAX_WEB_CONSOLE_LOGS = 200
+        private val webConsoleLogs = java.util.Collections.synchronizedList(mutableListOf<String>())
+        private fun recordWebConsoleMessage(message: String) {
+            synchronized(webConsoleLogs) {
+                webConsoleLogs.add(message.take(1200))
+                while (webConsoleLogs.size > MAX_WEB_CONSOLE_LOGS) webConsoleLogs.removeAt(0)
+            }
+        }
+        private fun webConsoleLogsJson(): String = synchronized(webConsoleLogs) {
+            org.json.JSONArray(webConsoleLogs.toList()).toString()
+        }
     }
 
     /**
@@ -515,6 +526,17 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView.webChromeClient = object : WebChromeClient() {
+            // Capture WebView JavaScript warnings/errors locally for the diagnostics panel.
+            override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage): Boolean {
+                val level = when (consoleMessage.messageLevel()) {
+                    android.webkit.ConsoleMessage.MessageLevel.ERROR -> "ERROR"
+                    android.webkit.ConsoleMessage.MessageLevel.WARNING -> "WARN"
+                    else -> return true
+                }
+                recordWebConsoleMessage(level + " " + consoleMessage.sourceId().orEmpty() + ":" +
+                    consoleMessage.lineNumber() + " " + consoleMessage.message().orEmpty())
+                return true
+            }
             override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
                 val supported = request.resources.filter { webResourcePermissions(it).isNotEmpty() }
                 if (supported.isEmpty()) { request.deny(); return }
@@ -781,6 +803,15 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Throwable) {
             false
         }
+
+        @JavascriptInterface
+        fun getWebConsoleLogs(): String = webConsoleLogsJson()
+
+        @JavascriptInterface
+        fun clearWebConsoleLogs(): Boolean = try {
+            synchronized(webConsoleLogs) { webConsoleLogs.clear() }
+            true
+        } catch (_: Throwable) { false }
 
         @JavascriptInterface
         fun getDiagnosticsSnapshot(): String = try {
