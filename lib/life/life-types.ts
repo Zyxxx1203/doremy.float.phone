@@ -296,6 +296,8 @@ export type LifeTimelineEntry = {
   sceneId?: string;
   /** Related scene message id, chat session id, post id, diary id, or tool call id. */
   sourceId?: string;
+  /** Optional user-requested illustration for this life record, stored in the existing media cache. */
+  imageMediaRef?: string;
 };
 
 export type LifeMemoryFact = {
