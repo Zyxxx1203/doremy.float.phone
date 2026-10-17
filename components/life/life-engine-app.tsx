@@ -1053,7 +1053,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     };
     const armOfflineBailout = async () => {
       if (disposed || settings.enableLifeOfflinePush === false) return;
-      cancelLifeSceneProactiveBailouts(activeScene.id);
+      await cancelLifeSceneProactiveBailouts(activeScene.id);
       const candidate = pickCandidate();
       if (!candidate) return;
       const result = await armLifeSceneProactiveBailout({
@@ -1090,7 +1090,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       proactiveAttemptAtRef.current[activeScene.id] = now;
       proactiveLastSpeakerRef.current[activeScene.id] = character.id;
       proactiveBusyRef.current = true;
-      cancelLifeSceneProactiveBailouts(activeScene.id);
+      await cancelLifeSceneProactiveBailouts(activeScene.id);
       setBusy(true);
       try {
         const history = loadChatMessages(session.id, 10).filter(item => item.status !== "failed" && !item.isRetracted);
@@ -1127,7 +1127,6 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     };
     const onSceneMessageAdded = () => {
       // A new player/character turn invalidates the old snapshot; replace it with fresh context.
-      cancelLifeSceneProactiveBailouts(activeScene.id);
       void armOfflineBailout();
     };
     const onVisibilityChange = () => {
