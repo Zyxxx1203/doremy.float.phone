@@ -83,6 +83,12 @@ export type LifeEngineSettings = {
   recordDiaryActivity: boolean;
   recordChatActivity: boolean;
   enableAmbientDetails: boolean;
+  /** Let present characters occasionally initiate short life-scene dialogue. */
+  enableProactiveSceneMessages?: boolean;
+  /** Minimum real-time minutes between proactive turns in an active scene. */
+  proactiveSceneIntervalMinutes?: number;
+  /** Request a browser/system notification for a proactive scene message. */
+  enableLifeMessageNotifications?: boolean;
   autoGenerateSceneImages: boolean;
   sceneImageCount: 1 | 2 | 3 | 4;
   sceneImageStyle: string;
@@ -125,6 +131,9 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   recordDiaryActivity: true,
   recordChatActivity: true,
   enableAmbientDetails: true,
+  enableProactiveSceneMessages: true,
+  proactiveSceneIntervalMinutes: 5,
+  enableLifeMessageNotifications: true,
   autoGenerateSceneImages: false,
   sceneImageCount: 2,
   sceneImageStyle: "温暖自然的生活感，电影级构图，表情与动作自然，保持角色外观一致",
