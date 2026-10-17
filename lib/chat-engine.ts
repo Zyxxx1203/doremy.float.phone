@@ -1900,9 +1900,10 @@ export async function buildChatPromptMessages(
         promptTimestampOptions,
     });
     const expandedVisionHistory = truncatedHistory.flatMap(msg => {
-        const refs = msg.mediaType === "image" && Array.isArray(msg.mediaData?.imageRefs)
+        const extraRefs = msg.mediaType === "image" && Array.isArray(msg.mediaData?.imageRefs)
             ? msg.mediaData.imageRefs.filter((ref): ref is string => typeof ref === "string" && Boolean(ref))
             : [];
+        const refs = extraRefs.length && msg.mediaUrl ? [msg.mediaUrl, ...extraRefs] : extraRefs;
         if (refs.length < 2) return [{ ...msg }];
         return refs.map((ref, index) => ({
             ...msg,
