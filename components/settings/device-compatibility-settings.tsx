@@ -17,7 +17,17 @@ type NativeApi = {
   notify?: (...args: unknown[]) => unknown;
   startCallOverlay?: (...args: unknown[]) => unknown;
   setTorch?: (...args: unknown[]) => unknown;
+  setVolume?: (...args: unknown[]) => unknown;
+  setBrightness?: (...args: unknown[]) => unknown;
+  openApp?: (...args: unknown[]) => unknown;
+  setAlarm?: (...args: unknown[]) => unknown;
+  setTimer?: (...args: unknown[]) => unknown;
+  getDeviceActionCapabilities?: (...args: unknown[]) => unknown;
   getPerceptionSnapshot?: (...args: unknown[]) => unknown;
+  getPerceptionCapabilities?: (...args: unknown[]) => unknown;
+  getLocationCapabilities?: (...args: unknown[]) => unknown;
+  getHealthCapabilities?: (...args: unknown[]) => unknown;
+  readUsageStats?: (...args: unknown[]) => unknown;
   readCalendarEvents?: (...args: unknown[]) => unknown;
   captureScreenshot?: (...args: unknown[]) => unknown;
   getDiagnosticsSnapshot?: () => string;
@@ -40,8 +50,8 @@ const FEATURE_ROWS: Array<{
 }> = [
   { id: "notifications", title: "网页即时系统通知", description: "网页仍在运行时通过原生桥发通知；关闭后退回浏览器/站内通知，不影响 APK 被杀后的原生离线推送。", supported: (api) => typeof api?.notify === "function" },
   { id: "callOverlay", title: "原生浮窗接口（通话/查岗）", description: "跨应用显示通话小窗与相关浮层；需要新版 APK、悬浮窗权限与系统允许。", supported: (api) => typeof api?.startCallOverlay === "function" },
-  { id: "deviceActions", title: "设备操作接口", description: "手电筒、音量、亮度、闹钟、打开应用等；每个动作仍可能需要独立权限。", supported: (api) => typeof api?.setTorch === "function" },
-  { id: "perception", title: "设备感知接口", description: "电量、网络、应用使用情况、定位和健康等读取能力。", supported: (api) => typeof api?.getPerceptionSnapshot === "function" },
+  { id: "deviceActions", title: "设备操作接口", description: "手电筒、音量、亮度、闹钟、打开应用等；每个动作仍可能需要独立权限。", supported: (api) => typeof api?.getDeviceActionCapabilities === "function" || typeof api?.setTorch === "function" || typeof api?.setVolume === "function" || typeof api?.setBrightness === "function" || typeof api?.openApp === "function" || typeof api?.setAlarm === "function" || typeof api?.setTimer === "function" },
+  { id: "perception", title: "设备感知接口", description: "电量、网络、应用使用情况、定位和健康等读取能力。", supported: (api) => typeof api?.getPerceptionCapabilities === "function" || typeof api?.getPerceptionSnapshot === "function" || typeof api?.getLocationCapabilities === "function" || typeof api?.getHealthCapabilities === "function" || typeof api?.readUsageStats === "function" },
   { id: "calendar", title: "系统日历接口", description: "读取或写入 Android 系统日历；读写权限独立。", supported: (api) => typeof api?.readCalendarEvents === "function" },
   { id: "screenshot", title: "屏幕捕获接口", description: "控制网页发起原生截屏；查岗浮层还会受「原生浮窗接口」开关、无障碍和临时截屏授权影响。", supported: (api) => typeof api?.captureScreenshot === "function" },
   { id: "widgets", title: "桌面小组件接口", description: "把网页模板交给 APK 原生小组件渲染；需要支持该能力的 APK。", supported: () => typeof getWidgetApi()?.update === "function" },
