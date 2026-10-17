@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type CSSProperties } from "react";
 import {
-  ArrowLeft, CalendarDays, Coffee, Heart, MapPin, MessagesSquare, Eye,
+  ArrowLeft, CalendarDays, Coffee, Heart, MapPin, MessagesSquare, Eye, Plane,
   Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Users, X, Pencil, Trash2,
 } from "lucide-react";
 import type { Character } from "@/lib/character-types";
@@ -168,14 +168,18 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   busyRef.current = busy;
   const [notice, setNotice] = useState("");
   const [sceneToast, setSceneToast] = useState<{ title: string; body: string } | null>(null);
-  const [sceneFlight, setSceneFlight] = useState<{ destination: string; phase: "takeoff" | "landing" } | null>(null);
+  const [sceneFlight, setSceneFlight] = useState<{ origin: string; destination: string; phase: "takeoff" | "landing" } | null>(null);
   const sceneFlightTimerRef = useRef<number | null>(null);
   const runSceneFlight = (destination: string, action: () => void) => {
     if (sceneFlightTimerRef.current !== null) window.clearTimeout(sceneFlightTimerRef.current);
-    setSceneFlight({ destination, phase: "takeoff" });
+    const currentPlayer = stateRef.current.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
+    const origin = currentPlayer?.actualLocationName || activeScene?.locationName || "当前地点";
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    if (reducedMotion) { action(); return; }
+    setSceneFlight({ origin, destination, phase: "takeoff" });
     sceneFlightTimerRef.current = window.setTimeout(() => {
       action();
-      setSceneFlight({ destination, phase: "landing" });
+      setSceneFlight({ origin, destination, phase: "landing" });
       sceneFlightTimerRef.current = window.setTimeout(() => { setSceneFlight(null); sceneFlightTimerRef.current = null; }, 560);
     }, 1420);
   };
@@ -2113,8 +2117,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     {sceneFlight && <div className="life-flight-overlay" role="status" aria-live="polite" aria-label={`正在前往${sceneFlight.destination}`}>
       <div className="life-flight-streak" style={{ top: "24%" }} /><div className="life-flight-streak" /><div className="life-flight-streak" /><div className="life-flight-streak" />
       <svg className="life-flight-route" viewBox="0 0 390 280" preserveAspectRatio="none" aria-hidden="true"><path d="M -20 210 C 78 20, 198 290, 420 40" /></svg>
-      <div className="life-flight-plane" aria-hidden="true">✈️</div>
-      <div className="life-flight-copy"><div className="life-flight-destination">{sceneFlight.destination}</div><div className="life-flight-caption">{sceneFlight.phase === "landing" ? "已抵达 · 开始探索" : "TRAVELLING TO YOUR SCENE"}</div></div>
+      <div className="life-flight-plane" aria-hidden="true"><Plane size={96} strokeWidth={1.25} /></div>
+      <div className="life-flight-copy"><div className="life-flight-destination">{sceneFlight.destination}</div><div className="life-flight-route-label">{sceneFlight.origin} <span aria-hidden="true">→</span> {sceneFlight.destination}</div><div className="life-flight-caption">{sceneFlight.phase === "landing" ? "已抵达 · 开始探索" : "正在穿云前往你的生活现场"}</div></div>
     </div>}
     <style>{`
       /* A cinematic travel transition: aircraft, moving cloud layers, route arc and a soft landing. */
@@ -2159,7 +2163,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       .life-flight-route path { fill: none; stroke: rgba(255,250,242,.72); stroke-width: 1.6; stroke-linecap: round; stroke-dasharray: 8 12; animation: life-flight-route 1.9s ease both; }
       .life-flight-copy { position: relative; z-index: 4; margin-top: 30vh; padding: 0 24px; text-align: center; animation: life-flight-copy 2.1s ease both; }
       .life-flight-destination { font-size: clamp(25px, 7vw, 36px); font-weight: 700; letter-spacing: .08em; text-shadow: 0 3px 18px rgba(16,28,42,.22); }
-      .life-flight-caption { margin-top: 10px; font-size: 12px; letter-spacing: .3em; color: rgba(255,250,242,.8); }
+      .life-flight-route-label { margin-top: 9px; font-size: 13px; color: rgba(255,250,242,.9); letter-spacing: .08em; }
+      .life-flight-caption { margin-top: 10px; font-size: 11px; letter-spacing: .2em; color: rgba(255,250,242,.8); }
       @media (prefers-reduced-motion: reduce) { .life-flight-overlay::before, .life-flight-overlay::after, .life-flight-plane, .life-flight-streak, .life-flight-route path, .life-flight-copy { animation-duration: .01ms !important; } }
       /* Scene transitions: spatial, responsive, and respectful of reduced-motion preferences. */
       @keyframes life-scene-enter {
