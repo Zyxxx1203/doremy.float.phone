@@ -179,13 +179,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     return `${target.platformName}暂时没有稳定的通用嵌入播放器。可尝试打开原始链接；角色陪看仍可基于你填写的当前片段描述进行回应。`;
   }, [target]);
 
-  return <div className="absolute inset-0 z-[82] flex flex-col overflow-hidden bg-[#f1eee8] text-[#343b36]">
-    <header className="flex shrink-0 items-center gap-3 border-b border-[#d9d8d0] bg-[#f8f6f0] px-4 py-3">
-      <button onClick={onClose} className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#dedbd1]" aria-label="返回"><ArrowLeft size={17}/></button>
+  return <div className="watch-together-app absolute inset-0 z-[82] flex min-w-0 flex-col overflow-hidden bg-[radial-gradient(ellipse_at_top,#fffdf8_0%,#f1eee8_60%,#e3e7df_100%)] text-[#343b36]">
+    <header className="flex shrink-0 items-center gap-3 border-b border-[#d9d8d0]/80 bg-white/75 px-4 py-3 shadow-[0_8px_28px_rgba(52,59,54,.06)] backdrop-blur-xl">
+      <button onClick={onClose} className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-2xl border border-[#dedbd1] bg-white/80 shadow-sm transition hover:-translate-y-0.5 active:scale-95" aria-label="返回"><ArrowLeft size={17}/></button>
       <div className="min-w-0 flex-1"><div className="font-serif text-xl tracking-[.08em]">一起看</div><div className="text-[10px] tracking-[.18em] text-[#8d968a]">WATCH, PAUSE, TALK A LITTLE</div></div>
-      <button onClick={() => setShowSettings(value => !value)} className="grid h-9 w-9 place-items-center rounded-full border border-[#dedbd1]" aria-label="观影设置"><Settings2 size={17}/></button>
+      <button onClick={() => setShowSettings(value => !value)} className="grid h-11 w-11 cursor-pointer place-items-center rounded-2xl border border-[#dedbd1] bg-white/80 shadow-sm transition hover:-translate-y-0.5 active:scale-95" aria-label="观影设置"><Settings2 size={17}/></button>
     </header>
-    <main className="min-h-0 flex-1 overflow-y-auto">
+    <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
       <section className="mx-auto max-w-5xl px-4 pb-6 pt-5 sm:px-6">
         <div className="flex flex-col gap-2 sm:flex-row">
           <input value={urlInput} onChange={event => setUrlInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter") openVideo(); }} placeholder="粘贴抖音 / 小红书 / B站 / 腾讯 / 爱奇艺 / 优酷链接" className="min-w-0 flex-1 rounded-xl border border-[#dcd8cd] bg-[#fbfaf6] px-4 py-3 text-sm outline-none placeholder:text-[#a9aa9f] focus:border-[#87947e]"/>
