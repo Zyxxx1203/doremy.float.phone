@@ -165,7 +165,7 @@ export function loadNativeTimeline(
         userName?: string;
         appId?: import("./settings-types").ContentAppId;
         excludeOfflineSessionId?: string;
-        memoryTarget?: "short_term" | "long_term";
+        memoryTarget?: "short_term" | "long_term" | "core";
         timeAware?: boolean;
         promptTimestampOptions?: PromptTimestampOptions;
     }
@@ -937,7 +937,7 @@ export function prepareShortTermContext(
         afterTimestamp?: string;
         /** false 时仅保留剧情 APP 时间线，不读取其他 APP 的相关事件。 */
         includeOtherApps?: boolean;
-        memoryTarget?: "short_term" | "long_term";
+        memoryTarget?: "short_term" | "long_term" | "core";
         timeAware?: boolean;
         promptTimestampOptions?: PromptTimestampOptions;
     },
