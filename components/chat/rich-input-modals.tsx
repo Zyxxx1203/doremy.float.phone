@@ -7,13 +7,14 @@ import { isAndroidBrowser } from "./voice-input-platform";
 // ── Photo Input Modal ─────────────────────────────
 
 interface PhotoInputModalProps {
-    onSend: (description: string, imageDataUrls: string[]) => void;
+    onSend: (description: string, imageDataUrls: string[], mergeForDisplay: boolean) => void;
     onClose: () => void;
 }
 
 export function PhotoInputModal({ onSend, onClose }: PhotoInputModalProps) {
     const [desc, setDesc] = useState("");
     const [imageDataUrls, setImageDataUrls] = useState<string[]>([]);
+    const [mergeForDisplay, setMergeForDisplay] = useState(false);
     const [reading, setReading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -57,9 +58,16 @@ export function PhotoInputModal({ onSend, onClose }: PhotoInputModalProps) {
                 </div>
                 <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
                 <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="添加描述（选填）" rows={2} className="mt-3 w-full resize-none rounded-xl border border-[var(--c-border)] bg-[var(--c-input)] p-3 text-sm outline-none" />
+                {imageDataUrls.length > 1 && (
+                    <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-[var(--c-text)]">
+                        <input type="checkbox" checked={mergeForDisplay} onChange={e => setMergeForDisplay(e.target.checked)} className="h-4 w-4 accent-[var(--c-primary)]" />
+                        <span>发送后合并展示</span>
+                        <span className="text-xs text-[var(--c-icon)]">作为一条可横向滑动的多图消息</span>
+                    </label>
+                )}
                 <div className="mt-3 flex gap-3 w-full">
                     <button onClick={onClose} className="ui-btn ui-btn-ghost ui-btn-bordered-ghost flex-1">取消</button>
-                    <button onClick={() => { if (canSend) onSend(desc.trim(), imageDataUrls); }} disabled={!canSend} className="ui-btn ui-btn-success flex-1 disabled:opacity-50">{reading ? "读取中…" : `发送 ${imageDataUrls.length ? `(${imageDataUrls.length})` : ""}`}</button>
+                    <button onClick={() => { if (canSend) onSend(desc.trim(), imageDataUrls, mergeForDisplay); }} disabled={!canSend} className="ui-btn ui-btn-success flex-1 disabled:opacity-50">{reading ? "读取中…" : `发送 ${imageDataUrls.length ? `(${imageDataUrls.length})` : ""}`}</button>
                 </div>
             </div>
         </div>
