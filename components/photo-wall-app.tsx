@@ -102,6 +102,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [referencePhotoId, setReferencePhotoId] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [showChatPicker, setShowChatPicker] = useState(false);
+  const [chatCandidates, setChatCandidates] = useState<Array<{ key: string; ref: string; title: string; sessionName: string; createdAt: string }>>([]);
   const [characterCommenterId, setCharacterCommenterId] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const autoRunRef = useRef(false);
@@ -140,6 +142,58 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     persist({ ...current, photos: [photo, ...current.photos.filter(item => item.id !== photo.id)] });
     setSelectedPhotoId(photo.id);
   }, [persist]);
+
+  const openChatPicker = async () => {
+    setShowAddMenu(false);
+    setBusy(true); setBusyLabel("正在翻找聊天里珍藏的照片…");
+    try {
+      const candidates: Array<{ key: string; ref: string; title: string; sessionName: string; createdAt: string }> = [];
+      for (const session of loadChatSessions()) {
+        for (const message of loadChatMessages(session.id)) {
+          const imageMessage = message.mediaType === "image" || (message.mediaType === "media_file" && message.mediaData?.fileType === "image");
+          const refs = [message.mediaUrl, ...(Array.isArray(message.mediaData?.imageRefs) ? message.mediaData.imageRefs as string[] : [])];
+          if (!imageMessage && !refs.some(ref => typeof ref === "string" && (ref.startsWith("media-store://") || ref.startsWith("data:image/")))) continue;
+          for (const [index, ref] of refs.entries()) {
+            if (typeof ref !== "string" || !(ref.startsWith("media-store://") || ref.startsWith("data:image/") || /^https?:\\/\\//i.test(ref))) continue;
+            candidates.push({
+              key: `${message.id}-${index}-${ref.slice(0, 32)}`, ref,
+              title: message.content?.trim().slice(0, 48) || "聊天里的照片",
+              sessionName: session.groupName || session.alias || session.contactId || session.id,
+              createdAt: message.createdAt,
+            });
+          }
+        }
+      }
+      const unique = candidates.filter((item, index, all) => all.findIndex(other => other.ref === item.ref) === index).slice(-120).reverse();
+      setChatCandidates(unique);
+      setShowChatPicker(true);
+      if (!unique.length) onNotice?.("还没有找到可收藏的聊天图片。");
+    } catch (error) { onNotice?.("读取聊天照片失败：" + (error instanceof Error ? error.message : String(error))); }
+    finally { setBusy(false); setBusyLabel(""); }
+  };
+
+  const importChatPhoto = async (candidate: { key: string; ref: string; title: string; sessionName: string; createdAt: string }) => {
+    setBusy(true); setBusyLabel("正在把这张聊天照片收进照片墙…");
+    try {
+      let mediaRef = candidate.ref;
+      if (!mediaRef.startsWith("media-store://")) {
+        const response = await fetch(mediaRef);
+        if (!response.ok) throw new Error("图片读取失败");
+        const blob = await response.blob();
+        mediaRef = await storeMediaBlob(blob, blob.type || "image/jpeg", "image");
+      }
+      const photo: PhotoWallPhoto = {
+        id: createPhotoWallId(), mediaRef, createdAt: new Date().toISOString(),
+        capturedAt: candidate.createdAt, ownerType: "user", ownerName: "我", kind: "favorite",
+        title: candidate.title || "聊天里的照片", caption: `来自聊天：${candidate.sessionName}`,
+        backNote: "", tags: ["聊天收藏", candidate.sessionName], annotations: [], shareWithCharacters: true, source: "chat-favorite",
+      };
+      addPhoto(photo);
+      setShowChatPicker(false);
+      onNotice?.("已把聊天照片收藏到照片墙。");
+    } catch (error) { onNotice?.("收藏聊天照片失败：" + (error instanceof Error ? error.message : String(error))); }
+    finally { setBusy(false); setBusyLabel(""); }
+  };
 
   const uploadFiles = async (files: FileList | File[]) => {
     const list = Array.from(files).filter(file => file.type.startsWith("image/"));
@@ -243,7 +297,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         if (index < count - 1) await new Promise(resolve => window.setTimeout(resolve, 900));
       }
       const fresh = loadPhotoWallState();
-      persist({ ...fresh, settings: { ...fresh.settings, lastDailyGenerationDay: today, lastDailyGenerationAt: new Date().toISOString(), lastDailyGenerationError: generated ? undefined : fresh.settings.lastDailyGenerationError } });
+      persist({ ...fresh, settings: { ...fresh.settings, lastDailyGenerationDay: generated ? today : fresh.settings.lastDailyGenerationDay, lastDailyGenerationAt: generated ? new Date().toISOString() : fresh.settings.lastDailyGenerationAt, lastDailyGenerationError: generated ? undefined : fresh.settings.lastDailyGenerationError } });
       if (generated) onNotice?.(`今日照片已显影：${generated} 张。`);
     } finally { autoRunRef.current = false; }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -328,6 +382,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
     {showAddMenu && <div className="absolute right-4 top-[62px] z-30 w-56 rounded-2xl border border-[#e4d9c9] bg-[#fffdf8] p-2 shadow-xl">
       <button onClick={() => { setShowAddMenu(false); fileRef.current?.click(); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-[#f3ede2]"><ImagePlus size={17}/>收藏我的照片</button>
+      <button onClick={() => void openChatPicker()} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-[#f3ede2]"><Heart size={17}/>从聊天收藏照片</button>
       <button onClick={() => { setShowAddMenu(false); void generatePhoto(selectedCharacter, "moment"); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-[#f3ede2]"><Sparkles size={17}/>请角色生成一张</button>
       <button onClick={() => { setShowAddMenu(false); setShowSettings(true); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-[#f3ede2]"><Camera size={17}/>今日照片与生成设置</button>
     </div>}
@@ -362,6 +417,15 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       </section>
     </main>
 
+    {showChatPicker && <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#332c24]/45 p-4" onClick={() => setShowChatPicker(false)}>
+      <section className="flex max-h-[82%] w-full max-w-lg flex-col overflow-hidden rounded-[4px] border border-[#e3d7c6] bg-[#f7f2e8] shadow-xl" onClick={event => event.stopPropagation()}>
+        <header className="flex items-center justify-between border-b border-[#e3d7c6] px-4 py-3"><div><h2 className="font-serif text-lg">从聊天里挑一张</h2><p className="mt-1 text-[10px] text-[#9b8a75]">收藏会保留原图，不会把同一张媒体重复复制</p></div><button onClick={() => setShowChatPicker(false)} aria-label="关闭"><X size={17}/></button></header>
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {chatCandidates.length ? <div className="space-y-2">{chatCandidates.map(candidate => <button key={candidate.key} onClick={() => void importChatPhoto(candidate)} className="flex w-full items-center gap-3 rounded-xl border border-[#e6dccd] bg-[#fcf9f2] p-3 text-left hover:bg-white"><ChatCandidateThumb refId={candidate.ref}/><span className="min-w-0 flex-1"><span className="block truncate text-sm text-[#655647]">{candidate.title}</span><span className="mt-1 block truncate text-[10px] text-[#9a8973]">{candidate.sessionName} · {new Date(candidate.createdAt).toLocaleDateString("zh-CN")}</span></span><Plus size={15} className="shrink-0 text-[#849174]"/></button>)}</div> : <p className="py-10 text-center text-xs text-[#9a8973]">没有找到可收藏的照片。</p>}
+        </div>
+      </section>
+    </div>}
+
     {selectedPhoto && <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#332c24]/55 p-3 backdrop-blur-[3px]" onClick={() => setSelectedPhotoId(null)}>
       <div className="relative flex max-h-[94%] w-full max-w-3xl flex-col overflow-hidden rounded-[4px] border border-[#e3d7c6] bg-[#f7f2e8] shadow-[0_24px_80px_rgba(20,15,10,.28)] sm:flex-row" onClick={event => event.stopPropagation()}>
         <button onClick={() => setSelectedPhotoId(null)} className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-[#f7f2e8]/90 text-[#7c6b58]" aria-label="关闭"><X size={16}/></button>
@@ -393,6 +457,17 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       </div>
     </div>}
   </div>;
+}
+
+function ChatCandidateThumb({ refId }: { refId: string }) {
+  const [src, setSrc] = useState("");
+  useEffect(() => {
+    if (!refId.startsWith("media-store://")) { setSrc(refId); return; }
+    let active = true; let url = "";
+    void loadMediaObjectUrl(refId).then(value => { if (!active) { if (value) URL.revokeObjectURL(value); return; } if (value) { url = value; setSrc(value); } });
+    return () => { active = false; if (url) URL.revokeObjectURL(url); };
+  }, [refId]);
+  return <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg bg-[#e7dfd2]">{src ? <img src={src} alt="" className="h-full w-full object-cover"/> : <ImagePlus size={16} className="text-[#a0917d]"/>}</span>;
 }
 
 function PhotoLarge({ refId, title }: { refId: string; title: string }) {
