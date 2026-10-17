@@ -124,8 +124,6 @@ export function openAccessibilitySettings(): void {
 
 /** 让原生开一个通话浮窗。返回 false 表示没有浮窗权限（需要引导授权）。 */
 export function startShellCallOverlay(params: {
-    if (!isCompatibilityFeatureEnabled("callOverlay")) return false;
-
     name: string;
     avatar?: string | null;
     meta?: string[];
@@ -134,6 +132,7 @@ export function startShellCallOverlay(params: {
      *  否则原生从 0 起数，和网页计时两套并行、时长对不上。 */
     elapsedSeconds?: number;
 }): boolean {
+    if (!isCompatibilityFeatureEnabled("callOverlay")) return false;
     const b = bridge();
     if (!b?.startCallOverlay) return false;
     try {
@@ -151,13 +150,12 @@ export function startShellCallOverlay(params: {
 
 /** 更新浮窗内容（名称/头像/时长），不重建窗口 */
 export function updateShellCallOverlay(params: {
-    if (!isCompatibilityFeatureEnabled("callOverlay")) return;
-
     name: string;
     avatar?: string | null;
     meta?: string[];
     elapsedSeconds?: number;
 }): void {
+    if (!isCompatibilityFeatureEnabled("callOverlay")) return;
     const b = bridge();
     if (!b?.updateCallOverlay) return;
     try {
