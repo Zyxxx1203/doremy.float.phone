@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * Device compatibility preferences.
  * Settings are stored locally per origin/device. They never grant Android permissions or
