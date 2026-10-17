@@ -251,8 +251,8 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
   const clearCharacter = (characterId: string) => updateData(current => ({ ...current, entries: current.entries.filter(entry => entry.characterId !== characterId) }));
   const deleteEntry = (entryId: string) => updateData(current => ({ ...current, entries: current.entries.filter(entry => entry.id !== entryId) }));
 
-  return <section hidden={!active} className="space-y-4">
-    <div className="flex flex-wrap items-start justify-between gap-3">
+  return <section hidden={!active} className="min-w-0 max-w-full space-y-4 break-words [overflow-wrap:anywhere]">
+    <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
       <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--life-accent)]">Life Observer</p><h2 className="mt-1 text-xl font-semibold text-stone-800">观察 TA 的生活</h2><p className="mt-1 max-w-2xl text-sm leading-relaxed text-stone-500">从角色自己的行程与已记录事件出发，补写你没有亲眼看到的生活片段。点进角色才生成，不会一口气为所有角色生成长文。</p></div>
       <button type="button" onClick={() => setSettingsOpen(value => !value)} className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"><Settings2 size={16}/>观察设置</button>
     </div>
