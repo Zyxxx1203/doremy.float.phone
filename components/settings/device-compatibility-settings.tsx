@@ -186,6 +186,7 @@ export function DeviceCompatibilitySettings({ onNotice }: { onNotice?: (message:
         return (enabled ? "[已启用]" : "[手动停用]") + (supported ? "[接口存在] " : "[接口缺失] ") + row.title;
       }),
       "",
+      "原生能力快照：" + JSON.stringify(apiSnapshots),
       "适配配置：" + JSON.stringify(settings),
       "注意：报告仅在本机生成，不会自动上传。分享前请检查设备信息。",
     ];
