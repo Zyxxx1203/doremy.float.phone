@@ -3,6 +3,7 @@
 import { Component, memo, useCallback, useEffect, useInsertionEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ErrorInfo, type ReactNode } from "react";
 
 import { updateStatusBarTone } from "@/lib/bg-tone";
+import { loadDeviceCompatibilitySettings } from "@/lib/device-compatibility";
 import { startDiaryEntryTimerService, stopDiaryEntryTimerService } from "@/lib/diary-entry-timer-service";
 import { startFollowUpService, stopFollowUpService } from "@/lib/follow-up-service";
 import { startMomentsService, stopMomentsService } from "@/lib/moments-engine";
@@ -1080,7 +1081,15 @@ function useAndroidNativeKeyboardViewport() {
       const wrap = document.querySelector<HTMLElement>(".phone-shell-wrap");
       const drop = wrap ? (parseFloat(getComputedStyle(wrap).getPropertyValue("--status-bar-drop")) || 0) : 0;
       const compatibilityScale = Math.max(0.5, Number.parseFloat(root.style.getPropertyValue("--compat-layout-scale")) || 1);
-      root.style.setProperty("--phone-screen-height", `${Math.round((window.innerHeight + drop) / compatibilityScale)}px`);
+      const compatibility = loadDeviceCompatibilitySettings();
+      const keyboardResized = window.innerHeight < maxInnerHeight - 80;
+      if (!keyboardResized && compatibility.layoutMode === "manual" && compatibility.screenHeight >= 200) {
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        const referenceHeight = compatibility.screenUnit === "physical" ? compatibility.screenHeight / dpr : compatibility.screenHeight;
+        root.style.setProperty("--phone-screen-height", `${Math.round(referenceHeight / Math.max(0.75, compatibility.uiScale || 1))}px`);
+      } else {
+        root.style.setProperty("--phone-screen-height", `${Math.round((window.innerHeight + drop) / compatibilityScale)}px`);
+      }
     };
 
     const requestApply = () => {
