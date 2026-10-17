@@ -71,16 +71,31 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
       }
       const groups = [...hashGroups.values()].filter(group => group.length > 1);
       const byId = new Map(items.map(item => [item.id, item]));
-      // 每组优先保留文件体积最大的一份；体积相同时保留较新的副本。
-      const candidates = groups.flatMap(group => group.slice().sort((a, b) => {
-        const left = byId.get(a); const right = byId.get(b);
-        return (right?.bytes ?? 0) - (left?.bytes ?? 0) || (right?.createdAt ?? 0) - (left?.createdAt ?? 0);
-      }).slice(1));
+      // Prefer keeping files referenced by chat. Only recommend deleting an unreferenced
+      // copy; if every copy is referenced, leave the group out of deletion candidates.
+      // The current reference index covers chat messages, so this is deliberately
+      // conservative rather than claiming a full cross-module reference audit.
+      const candidates = groups.flatMap(group => {
+        const sorted = group.slice().sort((a, b) => {
+          const left = byId.get(a); const right = byId.get(b);
+          const leftReferenced = (left?.usedBy.length ?? 0) > 0;
+          const rightReferenced = (right?.usedBy.length ?? 0) > 0;
+          if (leftReferenced !== rightReferenced) return leftReferenced ? -1 : 1;
+          return (right?.bytes ?? 0) - (left?.bytes ?? 0) || (right?.createdAt ?? 0) - (left?.createdAt ?? 0);
+        });
+        return sorted.slice(1).filter(id => (byId.get(id)?.usedBy.length ?? 0) === 0);
+      });
       setDuplicateGroups(groups);
       setDuplicateIds(new Set(candidates));
       setSelected([]);
       setTab("duplicates");
-      onNotice?.(groups.length ? `找到 ${groups.length} 组完全相同的文件，已排除每组建议保留的一份；请检查候选项后再删除。` : "没有发现内容完全相同的文件。");
+      const protectedCount = groups.reduce((count, group) => {
+        const hasUnreferencedDuplicate = group.some(id => candidates.includes(id));
+        return count + (hasUnreferencedDuplicate ? 0 : 1);
+      }, 0);
+      onNotice?.(groups.length
+        ? `找到 ${groups.length} 组完全相同的文件；仅推荐删除未被聊天引用的副本。另有 ${protectedCount} 组没有安全删除候选，已保护不推荐删除。请检查后手动选择。`
+        : "没有发现内容完全相同的文件。");
     } catch (error) {
       onNotice?.("重复扫描失败：" + (error instanceof Error ? error.message : String(error)));
     } finally { setScanningDuplicates(false); }
