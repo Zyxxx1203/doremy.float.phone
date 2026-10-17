@@ -1448,3 +1448,11 @@
 .folder-dots .dot.active {
   background: color-mix(in srgb, var(--c-home-label, #ffffff) 85%, transparent);
 }
+
+/* 大屏触控设备（平板/折叠屏展开态）也支持兼容性缩放；小屏手机由上面的键盘感知规则处理。 */
+@media (min-width: 501px) and (hover: none) and (pointer: coarse) {
+  .phone-shell-wrap {
+    transform: scale(var(--compat-layout-scale, 1));
+    transform-origin: top left;
+  }
+}
