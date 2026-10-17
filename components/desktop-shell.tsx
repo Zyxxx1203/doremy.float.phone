@@ -1086,7 +1086,7 @@ function useAndroidNativeKeyboardViewport() {
       if (!keyboardResized && compatibility.layoutMode === "manual" && compatibility.screenHeight >= 200) {
         const dpr = Math.max(1, window.devicePixelRatio || 1);
         const referenceHeight = compatibility.screenUnit === "physical" ? compatibility.screenHeight / dpr : compatibility.screenHeight;
-        root.style.setProperty("--phone-screen-height", `${Math.round(referenceHeight / Math.max(0.75, compatibility.uiScale || 1))}px`);
+        root.style.setProperty("--phone-screen-height", `${Math.round(referenceHeight / Math.max(0.75, compatibility.uiScale || 1) + drop / compatibilityScale)}px`);
       } else {
         root.style.setProperty("--phone-screen-height", `${Math.round((window.innerHeight + drop) / compatibilityScale)}px`);
       }
