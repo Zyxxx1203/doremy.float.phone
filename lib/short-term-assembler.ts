@@ -520,6 +520,7 @@ export function loadNativeTimeline(
         afterTimestamp: options?.afterTimestamp,
         userName,
         charName,
+        memoryTarget: options?.memoryTarget,
     });
     for (const storyEntry of storyEntries) {
         entries.push({
@@ -935,6 +936,7 @@ export function prepareShortTermContext(
         afterTimestamp?: string;
         /** false 时仅保留剧情 APP 时间线，不读取其他 APP 的相关事件。 */
         includeOtherApps?: boolean;
+        memoryTarget?: "short_term" | "long_term";
         timeAware?: boolean;
         promptTimestampOptions?: PromptTimestampOptions;
     },
