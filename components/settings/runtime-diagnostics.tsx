@@ -137,6 +137,11 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
   const warned = checks.filter(item => item.status === "warn").length;
 
   return <div style={{ display: "grid", gap: 14, padding: "4px 0 24px" }}>
+    <section style={{ border: "1px solid var(--border, rgba(128,128,128,.18))", borderRadius: 16, padding: 14 }}>
+      <div style={{ fontWeight: 700, fontSize: 14 }}>WebView Console 警告与错误</div>
+      <p style={{ fontSize: 12, opacity: .7, lineHeight: 1.6, margin: "7px 0 10px" }}>新版 Android 壳会在本机保留最近 200 条 warning/error，不自动上传。日志可能包含 URL 或错误上下文，分享前请检查。</p>
+      {webConsoleLogs.length ? <><div style={{ display: "grid", gap: 7 }}>{webConsoleLogs.slice(0, 12).map((item, index) => <div key={index} style={{ fontSize: 11, lineHeight: 1.5, padding: 9, borderRadius: 10, background: "var(--surface-secondary, rgba(128,128,128,.07))", overflowWrap: "anywhere" }}>{item}</div>)}</div><button type="button" onClick={() => { const ok = safeRead(() => Boolean(window.AndroidShell?.clearWebConsoleLogs?.()), false); if (ok) { setWebConsoleLogs([]); onNotice?.("本机 WebView Console 日志已清除。"); } else onNotice?.("清除失败或当前 APK 不支持。"); }} style={{ marginTop: 8, border: "1px solid var(--border, #ddd)", borderRadius: 9, padding: "7px 10px", background: "transparent", fontSize: 12 }}>清除 Console 日志</button></> : <div style={{ fontSize: 12, opacity: .65 }}>目前没有捕获到 WebView Console 警告/错误，或当前 APK 尚未提供该接口。</div>}
+    </section>
     <section style={{ borderRadius: 18, padding: 16, background: "var(--surface-secondary, rgba(128,128,128,.08))", border: "1px solid var(--border, rgba(128,128,128,.18))" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <Smartphone size={22} />
