@@ -165,6 +165,7 @@ export function loadNativeTimeline(
         userName?: string;
         appId?: import("./settings-types").ContentAppId;
         excludeOfflineSessionId?: string;
+        memoryTarget?: "short_term" | "long_term";
         timeAware?: boolean;
         promptTimestampOptions?: PromptTimestampOptions;
     }
@@ -952,6 +953,7 @@ export function prepareShortTermContext(
         appId: appId as import("./settings-types").ContentAppId,
         excludeOfflineSessionId: options?.excludeOfflineSessionId,
         afterTimestamp: options?.afterTimestamp,
+        memoryTarget: options?.memoryTarget,
         timeAware,
         promptTimestampOptions: options?.promptTimestampOptions,
     });
