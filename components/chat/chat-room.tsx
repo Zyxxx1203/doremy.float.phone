@@ -741,7 +741,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     const [draggingPlusItem, setDraggingPlusItem] = useState<string | null>(null);
     const plusMenuContainerRef = useRef<HTMLDivElement | null>(null);
     const plusMenuDragTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const plusMenuDragRef = useRef<{ label: string; x: number; y: number; scrollLeft: number; started: boolean } | null>(null);
+    const plusMenuDragRef = useRef<{ label: string; x: number; y: number; scrollLeft: number; started: boolean; moved: boolean } | null>(null);
     const suppressPlusClickRef = useRef(false);
 
     // 表情包搜索联想：ESC/失焦置 true 隐藏，输入变化重新开启
@@ -840,7 +840,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     };
     const handlePlusPointerDown = (event: React.PointerEvent<HTMLButtonElement>, label: string) => {
         if (event.pointerType === "mouse" && event.button !== 0) return;
-        plusMenuDragRef.current = { label, x: event.clientX, y: event.clientY, scrollLeft: plusMenuContainerRef.current?.scrollLeft ?? 0, started: false };
+        plusMenuDragRef.current = { label, x: event.clientX, y: event.clientY, scrollLeft: plusMenuContainerRef.current?.scrollLeft ?? 0, started: false, moved: false };
         try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* optional on older WebViews */ }
         if (plusMenuDragTimerRef.current) clearTimeout(plusMenuDragTimerRef.current);
         plusMenuDragTimerRef.current = setTimeout(() => {
@@ -857,6 +857,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
         const dy = event.clientY - drag.y;
         if (!drag.started) {
             if (Math.abs(dx) > 7 || Math.abs(dy) > 12) {
+                drag.moved = true;
                 if (plusMenuDragTimerRef.current) clearTimeout(plusMenuDragTimerRef.current);
                 plusMenuDragTimerRef.current = null;
                 if (Math.abs(dx) > Math.abs(dy) && plusMenuContainerRef.current) plusMenuContainerRef.current.scrollLeft = drag.scrollLeft - dx;
@@ -871,7 +872,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     const handlePlusPointerUp = () => {
         if (plusMenuDragTimerRef.current) clearTimeout(plusMenuDragTimerRef.current);
         plusMenuDragTimerRef.current = null;
-        if (plusMenuDragRef.current?.started) {
+        if (plusMenuDragRef.current?.started || plusMenuDragRef.current?.moved) {
             suppressPlusClickRef.current = true;
             window.setTimeout(() => { suppressPlusClickRef.current = false; }, 80);
         }
