@@ -1,3 +1,4 @@
+import { isCompatibilityFeatureEnabled } from "../device-compatibility";
 "use client";
 
 // 感知系统 ↔ 安卓壳的原生桥对接层。
@@ -39,7 +40,7 @@ type PerceptionBridgeLike = {
 };
 
 function bridge(): PerceptionBridgeLike | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined" || !isCompatibilityFeatureEnabled("perception")) return null;
   const candidate = (window as unknown as { AndroidShell?: PerceptionBridgeLike }).AndroidShell;
   return candidate && typeof candidate === "object" ? candidate : null;
 }
