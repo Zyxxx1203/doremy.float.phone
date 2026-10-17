@@ -113,6 +113,8 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
       ...checks.map(item => "[" + labelFor(item.status) + "] " + item.title + "：" + item.detail + (item.fix ? "；建议：" + item.fix : "")),
       "", "原生信息：", nativeInfo ? JSON.stringify(nativeInfo, null, 2) : "无（浏览器/PWA 或当前 APK 不支持）",
       "", "上一次原生崩溃日志：", nativeCrashLog || "没有已保存的原生崩溃日志",
+      "", "最近 WebView Console 警告/错误（最多 200 条）：",
+      ...(webConsoleLogs.length ? webConsoleLogs.slice().reverse() : ["无已捕获日志；可能不是原生壳或 APK 版本较旧"]),
       "", "最近前端异常（最多 30 条；不包含聊天记录）：",
       ...(errors.length ? errors.map(item => "[" + new Date(item.ts).toISOString() + "] " + item.kind + (item.source ? " (" + item.source + ")" : "") + " " + item.message) : ["无已捕获异常"]),
       "", "隐私说明：报告由本机生成，不会自动上传。分享前请检查是否包含个人信息。"
