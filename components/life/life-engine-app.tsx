@@ -1154,6 +1154,15 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("life-scene-message-added", onSceneMessageAdded);
+      const latestSettings = stateRef.current.settings;
+      const latestScene = stateRef.current.scenes.find(scene => scene.id === activeScene.id);
+      // Keep the snapshot on ordinary page close/backgrounding, but cancel it when the
+      // scene ends or the user explicitly disables proactive/offline behavior.
+      if (!latestScene || latestScene.status !== "active" || !latestSettings.enabled
+        || !latestSettings.enableCharacterAutonomy || latestSettings.enableProactiveSceneMessages === false
+        || latestSettings.enableLifeOfflinePush === false) {
+        cancelLifeSceneProactiveBailouts(activeScene.id);
+      }
       // Refresh rules against the latest persisted scene state. The co-presence guard
       // keeps idle reconnect suspended while this scene remains active.
       void refreshScheduledBailouts();
