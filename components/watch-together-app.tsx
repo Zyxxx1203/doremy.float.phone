@@ -127,7 +127,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     } catch (error) { onNotice?.("角色语音播放失败：" + (error instanceof Error ? error.message : String(error))); }
   };
 
-  const generateComment = useCallback(async (manual = false) => {
+  const generateComment = useCallback(async (manual = false, momentOverride?: string) => {
     if (!target || !character || commentBusyRef.current) return;
     commentBusyRef.current = true; setBusy(true);
     try {
@@ -140,7 +140,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         "你正在和用户一起看视频，是亲密、自然的陪伴，不是影评机器人。",
         `视频平台：${target.platformName}；视频标题（用户可编辑）：${videoTitle || "暂未命名"}。`,
         `视频链接：${target.url}`,
-        `用户描述的当前片段/时间点：${settings.currentMoment.trim() || "用户暂未提供具体画面描述"}。`,
+        `用户描述的当前片段/时间点与两人的互动：${(momentOverride ?? settings.currentMoment).trim() || "用户暂未提供具体画面描述"}。`,
         "请结合角色自己的性格、兴趣和你们的关系，写一句自然的即时反应：可以吐槽、惊讶、共情、提问或分享感受。不要声称你真的看到了链接里无法读取的画面；不要编造剧情细节。只输出角色会直接说的话，最多60个汉字。",
       ].join("\n");
       const userMessage: ChatMessage = { id: `watch-${Date.now()}`, sessionId: session.id, role: "user", content: prompt, status: "sent", createdAt: new Date().toISOString() };
@@ -157,6 +157,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     } catch (error) { onNotice?.("角色观影回应失败：" + (error instanceof Error ? error.message : String(error))); }
     finally { commentBusyRef.current = false; setBusy(false); }
   }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice]);
+
+  const actTogether = (cue: string) => {
+    const nextMoment = [settings.currentMoment.trim(), cue].filter(Boolean).join("；").slice(0, 800);
+    patchSettings({ currentMoment: nextMoment });
+    void generateComment(true, nextMoment);
+  };
 
   useEffect(() => {
     if (!watching || !target) return;
@@ -253,8 +259,15 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
       {/* 角色在屏幕下方轻声说话 */}
       {target && <section className="mx-auto mt-4 w-full max-w-3xl">
-        <div className="relative rounded-[22px] border border-white/10 bg-white/[.045] p-4 backdrop-blur">
-          <div className="flex items-start gap-3">
+        <div className="relative isolate overflow-hidden rounded-[26px] border border-[#d4a575]/20 bg-gradient-to-br from-[#49372b]/80 via-[#2d231d]/90 to-[#1c1714]/95 p-4 shadow-[inset_0_1px_0_rgba(255,224,184,.08),0_18px_44px_rgba(0,0,0,.28)] backdrop-blur-xl sm:p-5">
+          {/* 沙发与毯子的低对比剪影：只作氛围底景，不遮挡互动控件。 */}
+          <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-20 overflow-hidden opacity-70">
+            <div className="absolute inset-x-0 bottom-0 h-12 rounded-t-[34px] border-t border-[#d2a477]/15 bg-gradient-to-b from-[#76543d]/25 to-[#241a15]/65"/>
+            <div className="absolute bottom-5 left-4 h-8 w-[24%] rounded-[18px] border border-[#d8b18a]/10 bg-[#d0a176]/[.07]"/>
+            <div className="absolute bottom-5 right-4 h-8 w-[24%] rounded-[18px] border border-[#d8b18a]/10 bg-[#d0a176]/[.07]"/>
+            <div className="absolute bottom-0 left-[31%] h-7 w-[38%] -rotate-2 rounded-t-[24px] bg-[#b98c62]/[.08]"/>
+          </div>
+          <div className="relative z-10 flex items-start gap-3">
             {character && <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-[#4a3d33] text-xs text-[#e6d8c4]">{character.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character.name.slice(0, 1)}</span>}
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-2">
@@ -280,8 +293,16 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             <button onClick={() => setShowSettings(value => !value)} className="ml-auto flex items-center gap-1 rounded-full px-2 py-2 text-[11px] text-[#8b8077] transition active:scale-95"><ChevronDown size={13} className={showSettings ? "rotate-180 transition" : "transition"}/>陪看方式</button>
           </div>
 
-          <label className="mt-3 block text-[10px] tracking-[.15em] text-[#7d7268]">此刻屏幕上的画面（可选）</label>
-          <textarea value={settings.currentMoment} onChange={event => patchSettings({ currentMoment: event.target.value })} rows={2} placeholder="例如：00:43，他终于回头看了她一眼。也可以只写你现在的感受。" className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-black/20 p-3 text-xs leading-5 text-[#efe2d0] outline-none placeholder:text-[#6f665e] focus:border-[#c99a6a]" />
+          <label className="relative z-10 mt-3 block text-[10px] tracking-[.15em] text-[#b5a18e]">此刻的画面 / 你们的小动作（可选）</label>
+          <textarea value={settings.currentMoment} onChange={event => patchSettings({ currentMoment: event.target.value })} rows={2} placeholder="写下屏幕里的片段，或你们此刻靠在一起的小动作……" className="relative z-10 mt-2 w-full resize-none rounded-xl border border-white/10 bg-black/25 p-3 text-xs leading-5 text-[#efe2d0] outline-none placeholder:text-[#7e7064] focus:border-[#c99a6a]" />
+          <div className="relative z-10 mt-2 flex flex-wrap gap-1.5">
+            {[
+              ["🧣", "把毯子分给 TA", "把柔软的毯子往 TA 那边分了一点，轻轻挨近。"],
+              ["🍿", "递一口零食", "拿起一颗零食递到 TA 嘴边，忍不住看了 TA 一眼。"],
+              ["🤍", "靠近一点", "悄悄往 TA 身边靠近一点，肩膀轻轻贴在一起。"],
+              ["🫶", "牵住 TA 的手", "在沙发毯子下面悄悄牵住 TA 的手。"],
+            ].map(([icon, label, cue]) => <button key={label} type="button" onClick={() => actTogether(cue)} disabled={busy || !character} className="rounded-full border border-[#d6b18c]/15 bg-[#d6b18c]/[.07] px-2.5 py-1.5 text-[10px] text-[#d8c2aa] transition hover:border-[#d6b18c]/35 hover:bg-[#d6b18c]/[.13] active:scale-95 disabled:opacity-40"><span className="mr-1">{icon}</span>{label}</button>)}
+          </div>
         </div>
 
         {/* 陪看设置：抽屉式，默认收起，避免占据屏幕空间 */}
