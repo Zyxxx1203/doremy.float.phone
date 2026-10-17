@@ -1079,7 +1079,8 @@ function useAndroidNativeKeyboardViewport() {
       // 手机壳有 -status-bar-drop 的负 margin-top，高度补上这段才能让底栏贴住视口底/键盘顶
       const wrap = document.querySelector<HTMLElement>(".phone-shell-wrap");
       const drop = wrap ? (parseFloat(getComputedStyle(wrap).getPropertyValue("--status-bar-drop")) || 0) : 0;
-      root.style.setProperty("--phone-screen-height", `${Math.round(window.innerHeight + drop)}px`);
+      const compatibilityScale = Math.max(0.5, Number.parseFloat(root.style.getPropertyValue("--compat-layout-scale")) || 1);
+      root.style.setProperty("--phone-screen-height", `${Math.round((window.innerHeight + drop) / compatibilityScale)}px`);
     };
 
     const requestApply = () => {
