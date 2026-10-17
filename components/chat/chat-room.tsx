@@ -7051,7 +7051,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                             if (refs.length) {
                                 if (mergeForDisplay && refs.length > 1) {
                                     // 合并模式：单条消息保存整组引用，由气泡以横向轮播展示。
-                                    const sent = sendRichMessage("image", { label: desc, imageRefs: refs.slice(1), imageCollection: true }, "", refs[0]);
+                                    const sent = sendRichMessage("image", { ...(desc ? { label: desc } : {}), imageRefs: refs, imageCollection: true }, "", refs[0]);
                                     if (sent) showChatToast(`已合并发送 ${refs.length} 张图片，可左右滑动查看`);
                                 } else {
                                     // 普通模式：每张图各自成为一条消息，顺序与选择顺序一致。
