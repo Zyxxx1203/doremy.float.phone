@@ -1,3 +1,4 @@
+# Optional life-system branch: validate independently; do not merge into main without explicit approval.
 name: Virtual life feature validation
 
 on:
