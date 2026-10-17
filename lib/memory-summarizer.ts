@@ -19,7 +19,7 @@ import { resolveAuxiliaryApiConfig } from "./settings-storage";
 import { loadNativeTimeline, formatTimelineForSummarization, filterTimelineByAllowedSources } from "./short-term-assembler";
 import { generateEmbedding, resolveEmbeddingModel } from "./memory-embedding";
 import { simpleLLMCall } from "./api-helpers";
-import { maybeRunCoreMemoryPipeline } from "./core-memory-builder";
+import { maybeRunCoreMemoryPipeline, runCoreMemoryPipeline } from "./core-memory-builder";
 
 /** Per-character lock to prevent concurrent summarization. */
 const summarizingSet = new Set<string>();
@@ -182,9 +182,15 @@ export async function runSummarizationPipeline(
     if (options?.writeCoreMemory !== false) {
         incrementCoreMemoryCounter(characterId);
         if (options?.writeLongTermMemory === false) {
-            // 不持久化长期记忆时，核心记忆仍可基于本次摘要执行；核心流水线读取现有长期记忆，
-            // 因此本次临时摘要不写入长期库，避免越过用户的独立开关。
-            console.warn("[MemorySummarizer] Core-only branch summary generated; long-term persistence disabled.");
+            await runCoreMemoryPipeline(characterId, characterName, {
+                force: true,
+                additionalSummary: {
+                    content: summary,
+                    createdAt: now,
+                    sourceApp: dominantSource as MemoryEntry["sourceApp"],
+                    sourceSessionIds,
+                },
+            });
         } else {
             await maybeRunCoreMemoryPipeline(characterId, characterName);
         }
