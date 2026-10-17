@@ -1,3 +1,4 @@
+import { isCompatibilityFeatureEnabled } from "../device-compatibility";
 "use client";
 
 // 系统日历 ↔ 安卓壳的原生桥对接层。
@@ -32,7 +33,7 @@ type CalendarBridgeLike = {
 };
 
 function bridge(): CalendarBridgeLike | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined" || !isCompatibilityFeatureEnabled("calendar")) return null;
   const candidate = (window as unknown as { AndroidShell?: CalendarBridgeLike }).AndroidShell;
   return candidate && typeof candidate === "object" ? candidate : null;
 }
