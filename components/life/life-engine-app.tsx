@@ -636,6 +636,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       ...chosen.map(char => ({ ownerType: "character" as const, ownerId: char.id, activity: "正在做自己的事", awarenessByActorId: Object.fromEntries(ids.filter(other => other !== char.id).map(other => [other, "aware" as const])) })),
     ];
     const existingScene = stateRef.current.scenes.find(scene => scene.status === "active" && scene.locationId === selectedLocation.id) ?? stateRef.current.scenes.filter(scene => scene.status === "paused" && scene.locationId === selectedLocation.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    const shouldRecordSceneEntry = !existingScene || existingScene.status === "paused";
+    const isFirstSceneEntry = !existingScene;
     let next: VirtualLifeState = { ...stateRef.current, scenes: stateRef.current.scenes.map(scene => (scene.status === "active" || scene.status === "paused") ? { ...scene, status: "paused" as const, updatedAt: now } : scene) };
     const scene: LifeSceneState = existingScene
       ? { ...existingScene, locationId: selectedLocation.id, locationName: selectedLocation.name, updatedAt: now, status: "active", participants }
@@ -644,7 +646,14 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     for (const actor of [{ ownerType: "player" as const, ownerId: PLAYER_ID }, ...chosen.map(char => ({ ownerType: "character" as const, ownerId: char.id }))]) {
       next = upsertActorState(next, { ...actor, activity: actor.ownerType === "player" ? (playerActivity || "刚来到这里") : "正在做自己的事", actualLocationId: selectedLocation.id, actualLocationName: selectedLocation.name, actualLocationUntil: actor.ownerType === "player" ? new Date(resolveActorLifeNow(getActorClock(stateRef.current, "player", PLAYER_ID)).getTime() + stayDurationMinutes * 60_000).toISOString() : null, updatedAt: now });
     }
-    next = appendLifeTimelineEntry(next, { category: "scene", title: "你和" + chosen.map(char=>char.name).join("、") + "进入了" + selectedLocation.name, details: "共同场景开始；" + (playerActivity || "你刚来到这里"), actorName: playerName, locationName: selectedLocation.name, sceneId: scene.id });
+    if (shouldRecordSceneEntry) {
+      const entryText = isFirstSceneEntry
+        ? "你来到了" + selectedLocation.name + "。场景从这里开始。"
+        : "你回到了" + selectedLocation.name + "。先前的场景与互动仍在继续。";
+      next = appendLifeTimelineEntry(next, { category: "scene", title: isFirstSceneEntry ? "你和" + chosen.map(char=>char.name).join("、") + "进入了" + selectedLocation.name : "你回到了" + selectedLocation.name, details: entryText, actorName: "场景旁白", locationName: selectedLocation.name, sceneId: scene.id });
+      const entryNarration: LifeSceneMessage = { id: id("turn"), sceneId: scene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: "场景旁白", role: "system", action: entryText, dialogue: "", createdAt: now };
+      next = { ...next, sceneMessages: [...next.sceneMessages, entryNarration] };
+    }
     commit(next);
     setTab("home");
     setSceneView(true);
