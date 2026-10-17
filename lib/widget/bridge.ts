@@ -1,5 +1,6 @@
-import { isCompatibilityFeatureEnabled } from "../device-compatibility";
 "use client";
+
+import { isCompatibilityFeatureEnabled } from "../device-compatibility";
 
 /**
  * 小组件 ↔ 安卓壳的桥。
