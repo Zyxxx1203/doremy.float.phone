@@ -97,6 +97,8 @@ export type LifeEngineSettings = {
   enableProactiveSceneMessages?: boolean;
   /** Minimum real-time minutes between proactive turns in an active scene. */
   proactiveSceneIntervalMinutes?: number;
+  /** Maximum real-time minutes between proactive turns; the next interval is randomized within the range. */
+  proactiveSceneIntervalMaxMinutes?: number;
   /** Request a browser/system notification for a proactive scene message. */
   enableLifeMessageNotifications?: boolean;
   /** Allow server-side proactive scene jobs while the app is backgrounded or terminated. */
@@ -150,6 +152,7 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   enableAmbientDetails: true,
   enableProactiveSceneMessages: true,
   proactiveSceneIntervalMinutes: 5,
+  proactiveSceneIntervalMaxMinutes: 15,
   enableLifeMessageNotifications: true,
   enableLifeOfflinePush: true,
   autoGenerateSceneImages: false,
