@@ -22,22 +22,18 @@ type NativeApi = {
   openApp?: (...args: unknown[]) => unknown;
   setAlarm?: (...args: unknown[]) => unknown;
   setTimer?: (...args: unknown[]) => unknown;
-  getDeviceActionCapabilities?: (...args: unknown[]) => unknown;
-  getPerceptionSnapshot?: (...args: unknown[]) => unknown;
-  getPerceptionCapabilities?: (...args: unknown[]) => unknown;
-  getLocationCapabilities?: (...args: unknown[]) => unknown;
-  getHealthCapabilities?: (...args: unknown[]) => unknown;
-  readUsageStats?: (...args: unknown[]) => unknown;
-  readCalendarEvents?: (...args: unknown[]) => unknown;
-  captureScreenshot?: (...args: unknown[]) => unknown;
-  getDiagnosticsSnapshot?: () => string;
   getDeviceActionCapabilities?: () => string;
+  getPerceptionSnapshot?: (...args: unknown[]) => unknown;
   getPerceptionCapabilities?: () => string;
   getLocationCapabilities?: () => string;
   getHealthCapabilities?: () => string;
+  readUsageStats?: (...args: unknown[]) => unknown;
+  readCalendarEvents?: (...args: unknown[]) => unknown;
   getCalendarCapabilities?: () => string;
+  captureScreenshot?: (...args: unknown[]) => unknown;
   getScreenshotCapabilities?: () => string;
   getScreenshotDiagnostics?: () => string;
+  getDiagnosticsSnapshot?: () => string;
 };
 type WidgetApi = { update?: (...args: unknown[]) => unknown; isSupported?: () => boolean; diagnostics?: () => string };
 function getNativeApi(): NativeApi | undefined {
