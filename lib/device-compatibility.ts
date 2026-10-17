@@ -103,10 +103,14 @@ export function applyDeviceCompatibilitySettings(
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const referenceWidth = settings.screenUnit === "physical" ? settings.screenWidth / dpr : settings.screenWidth;
     const referenceHeight = settings.screenUnit === "physical" ? settings.screenHeight / dpr : settings.screenHeight;
-    const fitScale = Math.min(screenWidth / referenceWidth, screenHeight / referenceHeight);
-    const scale = clamp(fitScale * userScale, 0.5, 1.25);
-    root.style.setProperty("--phone-screen-width", Math.round(referenceWidth) + "px");
-    root.style.setProperty("--phone-screen-height", Math.round(referenceHeight) + "px");
+    // Change the layout coordinate space inversely to the user scale, then fit the whole
+    // reference screen into the actual display. This keeps the shell within bounds at 75–125%.
+    const layoutWidth = referenceWidth / userScale;
+    const layoutHeight = referenceHeight / userScale;
+    const fitScale = Math.min(screenWidth / layoutWidth, screenHeight / layoutHeight);
+    const scale = clamp(fitScale, 0.5, 1.25);
+    root.style.setProperty("--phone-screen-width", Math.round(layoutWidth) + "px");
+    root.style.setProperty("--phone-screen-height", Math.round(layoutHeight) + "px");
     root.style.setProperty("--compat-layout-scale", String(scale));
   } else if (Math.abs(userScale - 1) > 0.001) {
     root.style.setProperty("--phone-screen-width", Math.round(viewportWidth / userScale) + "px");
