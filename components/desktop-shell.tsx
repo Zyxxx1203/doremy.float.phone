@@ -29,7 +29,7 @@ import { XiaohongshuApp } from "@/components/xiaohongshu/xiaohongshu-app";
 import { StoryApp } from "@/components/story/story-app";
 import { LifeEngineApp } from "@/components/life/life-engine-app";
 import { ArchiveRoomApp } from "@/components/archive-room-app";
-import { PhotoWallApp } from "@/components/photo-wall-app";
+import { PhotoWallApp } from "@/components/photo-wall-app";\nimport { WatchTogetherApp } from "@/components/watch-together-app";
 import { VnApp } from "@/components/vn/vn-app";
 import ReadingApp from "@/components/reading/reading-app";
 import MapApp from "@/components/map/map-app";
