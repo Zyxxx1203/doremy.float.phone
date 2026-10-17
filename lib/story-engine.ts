@@ -11,7 +11,7 @@ import {
 import type { ApiConfig, PresetConfig, RegexConfig, WorldBookConfig } from "./settings-types";
 import { assemblePromptPayload, type LLMMessage } from "./llm-prompt-assembler";
 import { previewMessagesForApi, sendLLMRequest, ChatEngineError } from "./chat-engine";
-import { loadMemoryConfig } from "./memory-storage";
+import { loadMemoryConfig, loadMemoryEntriesByType } from "./memory-storage";
 import { retrieveCoreMemoriesForPrompt, retrieveMemoriesForPrompt } from "./memory-service";
 import { formatCoreMemories, formatLongTermMemories } from "./memory-injector";
 import { prepareShortTermContext } from "./short-term-assembler";
@@ -309,19 +309,45 @@ async function buildStoryPromptMessages(
     const snippets: string[] = [];
     for (const sibling of siblingSessions) {
       const siblingSettings = resolveStoryMemorySettings(sibling);
-      if (!siblingSettings.allowOtherBranchesRead || !siblingSettings.writeBranchMemory || !siblingSettings.sharedMemoryTypes.includes("branch")) continue;
-      const summary = loadStoryMessages(sibling.id)
-        .filter((message) => message.role === "assistant" && Boolean(
-          message.branchMemorySummary !== undefined
+      if (!siblingSettings.allowOtherBranchesRead) continue;
+      const label = sibling.branchName || "未命名分线";
+
+      if (siblingSettings.sharedMemoryTypes.includes("branch") && siblingSettings.writeBranchMemory) {
+        const branchSummary = loadStoryMessages(sibling.id)
+          .filter((message) => message.role === "assistant" && Boolean(
+            message.branchMemorySummary !== undefined
+              ? message.branchMemorySummary
+              : sibling.memorySettings?.writeBranchMemory !== false ? message.storySummary : "",
+          ))
+          .slice(-12)
+          .map((message) => (message.branchMemorySummary !== undefined
             ? message.branchMemorySummary
-            : sibling.memorySettings?.writeBranchMemory !== false ? message.storySummary : "",
-        ))
-        .slice(-12)
-        .map((message) => (message.branchMemorySummary !== undefined
-          ? message.branchMemorySummary
-          : sibling.memorySettings?.writeBranchMemory !== false ? message.storySummary : "")?.trim())
-        .filter((value): value is string => Boolean(value));
-      if (summary.length) snippets.push(`【分线：${sibling.branchName || "未命名分线"}】\n${summary.join("\n")}`);
+            : sibling.memorySettings?.writeBranchMemory !== false ? message.storySummary : "")?.trim())
+          .filter((value): value is string => Boolean(value));
+        if (branchSummary.length) snippets.push(`【分线摘要：${label}】\n${branchSummary.join("\n")}`);
+      }
+
+      if (siblingSettings.sharedMemoryTypes.includes("public_short_term") && siblingSettings.writePublicShortTermMemory) {
+        const publicSummary = loadStoryMessages(sibling.id)
+          .filter((message) => message.role === "assistant" && Boolean(message.storySummary))
+          .slice(-12)
+          .map((message) => message.storySummary?.trim())
+          .filter((value): value is string => Boolean(value));
+        if (publicSummary.length) snippets.push(`【分线公共短期事件：${label}】\n${publicSummary.join("\n")}`);
+      }
+
+      const belongsExclusivelyToSibling = (entry: { metadata?: Record<string, unknown> }) => {
+        const ids = Array.isArray(entry.metadata?.sourceSessionIds) ? entry.metadata?.sourceSessionIds.map(String) : [];
+        return ids.length === 1 && ids[0] === sibling.id;
+      };
+      if (siblingSettings.sharedMemoryTypes.includes("long_term") && siblingSettings.writeLongTermMemory) {
+        const entries = (await loadMemoryEntriesByType(characterId, "long_term")).filter(belongsExclusivelyToSibling);
+        if (entries.length) snippets.push(`【分线长期记忆：${label}】\n${entries.slice(-8).map((entry) => entry.content).join("\n")}`);
+      }
+      if (siblingSettings.sharedMemoryTypes.includes("core") && siblingSettings.writeCoreMemory) {
+        const entries = (await loadMemoryEntriesByType(characterId, "core")).filter(belongsExclusivelyToSibling);
+        if (entries.length) snippets.push(`【分线核心记忆：${label}】\n${entries.slice(-8).map((entry) => entry.content).join("\n")}`);
+      }
     }
     sharedBranchContext = snippets.join("\n\n");
   }
