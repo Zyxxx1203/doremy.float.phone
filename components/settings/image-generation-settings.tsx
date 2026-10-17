@@ -68,6 +68,7 @@ export function ImageGenerationSettings() {
     const [settings, setSettings] = useState<ImageGenerationSettingsType>(DEFAULT_IMAGE_GENERATION_SETTINGS);
     const [characters, setCharacters] = useState<Character[]>([]);
     const [referencePreviews, setReferencePreviews] = useState<Record<string, string>>({});
+    const [userReferencePreview, setUserReferencePreview] = useState<string | null>(null);
     const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
     const [cropCharacterId, setCropCharacterId] = useState<string | null>(null);
     const [cropDraft, setCropDraft] = useState({ x: 0.27, y: 0.12, size: 0.46 });
@@ -162,6 +163,14 @@ export function ImageGenerationSettings() {
         });
         return () => { cancelled = true; };
     }, [settings.characterReferences]);
+
+    useEffect(() => {
+        let cancelled = false;
+        const assetId = settings.userAppearanceReferenceAssetId;
+        if (!assetId) { setUserReferencePreview(null); return; }
+        void getChatImageFromIndexedDB(assetId).then(dataUrl => { if (!cancelled) setUserReferencePreview(dataUrl); });
+        return () => { cancelled = true; };
+    }, [settings.userAppearanceReferenceAssetId]);
 
     useEffect(() => {
         return () => {
@@ -399,6 +408,13 @@ export function ImageGenerationSettings() {
         });
     };
 
+    const openUserFaceCrop = () => {
+        const crop = settings.userAppearanceFaceCrop || { x: 0.27, y: 0.12, size: 0.46 };
+        setCropDraft(crop);
+        setCropViewport({ width: 0, height: 0 });
+        setCropCharacterId("__user__");
+    };
+
     const openFaceCrop = (characterId: string) => {
         const crop = settings.characterReferences?.[characterId]?.faceCrop || { x: 0.27, y: 0.12, size: 0.46 };
         setCropDraft(crop);
@@ -470,6 +486,7 @@ export function ImageGenerationSettings() {
     };
 
     const selectedCharacter = characters.find(character => character.id === selectedCharacterId) || null;
+    const activeCropPreview = cropCharacterId === "__user__" ? userReferencePreview : (cropCharacterId ? referencePreviews[cropCharacterId] : null);
     const selectedReference = selectedCharacter ? settings.characterReferences?.[selectedCharacter.id] : undefined;
     const characterListOverflows = characterScrollMetrics.scrollHeight > characterScrollMetrics.clientHeight + 1;
     const characterScrollThumbPercent = characterListOverflows
@@ -498,25 +515,6 @@ export function ImageGenerationSettings() {
                     <span className="menu-right settings-tools-menu-toggle">
                         <Toggle checked={settings.enabled} onChange={(enabled) => updateSettings({ enabled })} className="settings-toggle-control" />
                     </span>
-                </div>
-            </div>
-
-            <div className="menu-group p-4 flex flex-col gap-3">
-                <div>
-                    <div className="menu-label">全局玩家形象（整个小手机共用）</div>
-                    <p className="menu-desc mt-1">为描绘“你本人”的生图功能提供统一形象。没有参考图也可以只写描述；生活场景会把所选角色的参考图与玩家参考图合成参考板；OpenAI 兼容图生图方案支持参考板，NovelAI 当前只使用外观文字描述。</p>
-                </div>
-                <div className="flex flex-col gap-1">
-                    <label className="menu-desc ml-1">固定外观描述</label>
-                    <Textarea value={settings.userAppearanceDescription || ""} onChange={event=>persist({...settings,userAppearanceDescription:event.target.value})} rows={3} placeholder="例如：黑色长发、圆框眼镜、偏爱宽松的米色针织衫。尽量写稳定的外观特征，不必每次重复。" />
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                    {settings.userAppearanceReferenceAssetId ? <button type="button" onClick={async()=>{const data=await getChatImageFromIndexedDB(settings.userAppearanceReferenceAssetId!);if(data)window.open(data,"_blank","noopener,noreferrer")}} className="ui-btn ui-btn-soft-action min-h-10 px-3 py-2 text-xs">查看已保存的玩家参考图</button> : <span className="menu-desc">尚未上传参考图（可选）</span>}
-                    <label className="ui-btn ui-btn-soft-action min-h-10 cursor-pointer px-3 py-2 text-xs">
-                        <Upload size={14} className="mr-1 inline"/> {settings.userAppearanceReferenceAssetId ? "替换参考图" : "上传玩家参考图"}
-                        <input type="file" accept="image/*" className="hidden" onChange={async event=>{const input=event.currentTarget;const file=input.files?.[0];if(!file)return;try{const dataUrl=await fileToUserAvatarDataUrl(file,900,0.84);const blob=await (await fetch(dataUrl)).blob();const assetId=await saveChatImageToIndexedDB(blob);persist({...settings,userAppearanceReferenceAssetId:assetId});setStatus({success:true,message:"玩家全局参考图已保存。"});}catch(error){setStatus({success:false,message:error instanceof Error?error.message:"参考图保存失败"});}finally{input.value="";}}}/>
-                    </label>
-                    {settings.userAppearanceReferenceAssetId&&<button type="button" onClick={()=>persist({...settings,userAppearanceReferenceAssetId:undefined})} className="ui-btn min-h-10 px-3 py-2 text-xs text-red-600">移除参考图</button>}
                 </div>
             </div>
 
@@ -1040,6 +1038,44 @@ export function ImageGenerationSettings() {
                         <span className="leading-[1.5]">NovelAI 会使用角色专属特征提示词，但暂不读取参考图；切回 OpenAI 兼容引擎后参考图仍会保留。</span>
                     </Alert>
                 )}
+                <div className="menu-group p-4 flex flex-col gap-3">
+                    <div className="flex items-start gap-3">
+                        <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-input)]">
+                            {userReferencePreview ? <img src={userReferencePreview} alt="玩家参考图" className="h-full w-full object-cover"/> : <div className="grid h-full place-items-center text-[var(--c-icon)]"><Camera size={22}/></div>}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <div className="menu-label">玩家本人 · 全局参考图</div>
+                            <p className="menu-desc mt-1">生活场景合成参考板时会用它来保持“你”的形象。可以单独选取脸部区域，减少背景、衣服对身份一致性的干扰；这张图不会替代角色各自的参考图。</p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                <label className="ui-btn ui-btn-soft-action min-h-9 cursor-pointer px-3 py-2 text-xs">
+                                    <Upload size={14} className="mr-1 inline"/> {settings.userAppearanceReferenceAssetId ? "更换玩家参考图" : "上传玩家参考图"}
+                                    <input type="file" accept="image/*" className="hidden" onChange={async event => {
+                                        const input = event.currentTarget; const file = input.files?.[0]; if (!file) return;
+                                        try {
+                                            const dataUrl = await fileToUserAvatarDataUrl(file, 1200, 0.88);
+                                            const blob = await (await fetch(dataUrl)).blob();
+                                            const assetId = await saveChatImageToIndexedDB(blob);
+                                            persist({ ...settings, userAppearanceReferenceAssetId: assetId, userAppearanceFaceCrop: settings.userAppearanceFaceCrop || { x: 0.27, y: 0.12, size: 0.46 } });
+                                            setUserReferencePreview(dataUrl);
+                                            setCropDraft(settings.userAppearanceFaceCrop || { x: 0.27, y: 0.12, size: 0.46 });
+                                            setCropViewport({ width: 0, height: 0 });
+                                            setCropCharacterId("__user__");
+                                            setStatus({ success: true, message: "玩家参考图已保存，请框选脸部区域以便锁定形象。" });
+                                        } catch (error) { setStatus({ success: false, message: error instanceof Error ? error.message : "参考图保存失败" }); }
+                                        finally { input.value = ""; }
+                                    }}/>
+                                </label>
+                                {userReferencePreview && <button type="button" className="ui-btn ui-btn-outline min-h-9 px-3 py-2 text-xs" onClick={openUserFaceCrop}><ScanFace size={14} className="mr-1 inline"/>选取脸部 / 锁定形象</button>}
+                                {settings.userAppearanceReferenceAssetId && <button type="button" className="ui-btn min-h-9 px-3 py-2 text-xs text-red-600" onClick={() => { persist({ ...settings, userAppearanceReferenceAssetId: undefined }); setUserReferencePreview(null); }}>移除</button>}
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <label className="menu-desc ml-1">玩家固定外观描述</label>
+                        <Textarea value={settings.userAppearanceDescription || ""} onChange={event => persist({ ...settings, userAppearanceDescription: event.target.value })} rows={2} placeholder="例如：黑色长发、圆框眼镜、偏爱宽松的米色针织衫。只写稳定的外观特征。" />
+                    </div>
+                    {settings.userAppearanceReferenceAssetId && <p className="menu-desc">脸部选区：{settings.userAppearanceFaceCrop ? "已保存" : "使用默认区域"}。OpenAI 兼容引擎的生活场景会使用裁切后的玩家参考图；NovelAI 暂不支持图像参考。</p>}
+                </div>
                 <div className="relative">
                     <div
                         ref={characterListRef}
@@ -1180,22 +1216,23 @@ export function ImageGenerationSettings() {
                 )}
             </div>
 
-            {cropCharacterId && referencePreviews[cropCharacterId] && (
+            {cropCharacterId && activeCropPreview && (
                 <ContentDialog
                     title="选取脸部锁定区域"
                     confirmLabel="保存选区"
                     cancelLabel="取消"
                     onCancel={() => setCropCharacterId(null)}
                     onConfirm={() => {
-                        updateCharacterReference(cropCharacterId, { faceCrop: cropDraft, enabled: true });
+                        if (cropCharacterId === "__user__") persist({ ...settings, userAppearanceFaceCrop: cropDraft });
+                        else updateCharacterReference(cropCharacterId, { faceCrop: cropDraft, enabled: true });
                         setCropCharacterId(null);
                     }}
                 >
                     <div className="flex flex-col gap-3">
-                        <p className="menu-desc">拖动方框覆盖角色脸部；发送参考图时只会截取这个区域，减少服装和背景干扰。</p>
+                        <p className="menu-desc">拖动方框覆盖脸部；生活场景参考板会优先使用这个区域，减少服装和背景干扰。</p>
                         <div ref={cropContainerRef} className="relative mx-auto w-fit max-h-[52vh] max-w-full overflow-hidden rounded-xl bg-black/80">
                             <img
-                                src={referencePreviews[cropCharacterId]}
+                                src={activeCropPreview || ""}
                                 alt="参考图脸部选取"
                                 draggable={false}
                                 className="block max-h-[52vh] max-w-full select-none object-contain"
