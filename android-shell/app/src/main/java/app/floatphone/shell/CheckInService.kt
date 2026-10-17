@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
+import android.content.res.Configuration
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -638,6 +639,11 @@ class CheckInService : Service() {
         return START_STICKY
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        main.post { refreshWindowForConfiguration() }
+    }
+
     override fun onDestroy() {
         teardown()
         super.onDestroy()
@@ -1135,11 +1141,38 @@ class CheckInService : Service() {
                 if (!added) return false
             } else {
                 view.visibility = View.VISIBLE
+                refreshWindowForConfiguration()
             }
         } else {
             view.visibility = View.GONE
         }
         return true
+    }
+
+    /**
+     * Recompute an already-attached overlay after rotation. Both WindowManager bounds and
+     * the fixed-height screenshot preview must be refreshed or landscape can leave the
+     * decision buttons outside the visible/touchable area.
+     */
+    private fun refreshWindowForConfiguration() {
+        val view = rootView ?: return
+        if (view.parent == null) return
+        val screenWidth = resources.displayMetrics.widthPixels.coerceAtLeast(dp(1))
+        val screenHeight = resources.displayMetrics.heightPixels.coerceAtLeast(dp(1))
+        val params = layoutParams ?: (view.layoutParams as? WindowManager.LayoutParams) ?: return
+        params.width = (screenWidth - dp(40)).coerceAtLeast(dp(240))
+        params.height = WindowManager.LayoutParams.WRAP_CONTENT
+        params.gravity = Gravity.CENTER
+        val previewFrame = previewView?.parent as? View
+        val previewLayout = previewFrame?.layoutParams as? LinearLayout.LayoutParams
+        if (previewFrame != null && previewLayout != null) {
+            previewLayout.height = minOf(dp(280), (screenHeight - dp(240)).coerceAtLeast(dp(100)))
+            previewFrame.layoutParams = previewLayout
+            previewFrame.requestLayout()
+        }
+        view.requestLayout()
+        runCatching { windowManager.updateViewLayout(view, params) }
+            .onFailure { recordError("rotationUpdate", it) }
     }
 
     /**
