@@ -1330,6 +1330,7 @@ function ImageBubble({
     // 与 MediaFileBubble 相同：先解析为 object URL 再渲染。
     const [resolvedUrl, setResolvedUrl] = useState<string>(isMediaStoreRef(rawUrl) ? "" : rawUrl);
     const [groupUrls, setGroupUrls] = useState<string[]>([]);
+    const groupUrlsRef = useRef<string[]>([]);
     const [previewImageUrl, setPreviewImageUrl] = useState<string>("");
     const [refExpired, setRefExpired] = useState(false);
     const [showPromptEditor, setShowPromptEditor] = useState(false);
@@ -1362,15 +1363,30 @@ function ImageBubble({
     useEffect(() => {
         const extraRefs = Array.isArray(d?.imageRefs) ? d.imageRefs.filter((ref): ref is string => typeof ref === "string") : [];
         const refs = extraRefs.length && rawUrl ? [rawUrl, ...extraRefs] : extraRefs;
-        if (refs.length < 2) { setGroupUrls([]); return; }
+        if (refs.length < 2) {
+            groupUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+            groupUrlsRef.current = [];
+            setGroupUrls([]);
+            return;
+        }
         let alive = true;
         void Promise.all(refs.map(ref => loadMediaObjectUrl(ref))).then(results => {
             const ordered = results.filter((url): url is string => Boolean(url));
-            if (alive) setGroupUrls(ordered);
-            else ordered.forEach(url => URL.revokeObjectURL(url));
+            if (alive) {
+                groupUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+                groupUrlsRef.current = ordered;
+                setGroupUrls(ordered);
+            } else {
+                ordered.forEach(url => URL.revokeObjectURL(url));
+            }
         });
         return () => { alive = false; };
-    }, [Array.isArray(d?.imageRefs) ? d.imageRefs.join("|") : ""]);
+    }, [rawUrl, Array.isArray(d?.imageRefs) ? d.imageRefs.join("|") : ""]);
+
+    useEffect(() => () => {
+        groupUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+        groupUrlsRef.current = [];
+    }, []);
 
     const openPromptEditor = useCallback(() => {
         const latestHasRef = hasCharacterReferenceImage(characterId);
