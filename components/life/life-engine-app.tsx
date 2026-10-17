@@ -2090,6 +2090,38 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   if (!ready) return <main className="flex min-h-screen items-center justify-center bg-[#f7efe4] text-stone-500">正在打开生活档案…</main>;
 
   return <main style={{ ...cssVars, ...(immersiveScene ? { height: "var(--life-viewport-height, 100dvh)" } : {}) }} className={`${immersiveScene ? "flex flex-col overflow-hidden overscroll-none" : "min-h-screen min-h-[100dvh] overflow-y-auto overscroll-y-contain touch-pan-y"} bg-gradient-to-br ${themeClass} ${settings.compactLayout ? "px-1.5 py-1.5 sm:px-3 sm:py-3" : "px-2 py-2 sm:px-4 sm:py-4"}`}>
+    <style>{`
+      .life-scene-display-options[open] {
+        position: fixed !important;
+        inset: max(8px, env(safe-area-inset-top, 0px)) 8px max(8px, env(safe-area-inset-bottom, 0px)) !important;
+        z-index: 2147483000 !important;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        max-height: none !important;
+        overflow: hidden;
+        padding: 12px;
+        border-radius: 20px;
+        border: 1px solid rgba(168, 137, 106, .35);
+        background: rgba(255, 252, 246, .985);
+        box-shadow: 0 24px 80px rgba(42, 34, 25, .28);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        pointer-events: auto;
+      }
+      .life-scene-display-options[open] > summary { flex: 0 0 auto; padding: 10px 8px; line-height: 1.5; overflow-wrap: anywhere; }
+      .life-scene-display-options-body { min-width: 0; }
+      .life-scene-display-options[open] .life-scene-display-options-body {
+        flex: 1 1 auto; min-height: 0; max-height: none !important; overflow: auto;
+        padding: 10px 4px 16px; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+      }
+      .life-scene-display-options-body label { min-width: 0; overflow-wrap: anywhere; line-height: 1.5; }
+      .life-scene-display-options-body input, .life-scene-display-options-body select, .life-scene-display-options-body textarea { box-sizing: border-box; max-width: 100%; min-width: 0; }
+      .life-scene-display-options-body .grid { min-width: 0; }
+      @media (min-width: 560px) {
+        .life-scene-display-options[open] { left: max(24px, calc((100vw - 720px) / 2)) !important; right: max(24px, calc((100vw - 720px) / 2)) !important; }
+      }
+    `}</style>
     {settings.customSceneCss?.trim() && <style>{settings.customSceneCss.replace(/<\/style/gi, "<\\/style")}</style>}
     <div className={`mx-auto w-full max-w-none ${immersiveScene ? "flex min-h-0 flex-1 flex-col" : ""}`}>
       <header className={`${immersiveScene ? "hidden" : "mb-2 flex flex-wrap items-center justify-between gap-2"}`}>
@@ -2206,9 +2238,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
              </div>
              {sceneImageRecords.filter(image=>image.status==="active").length>0&&<div className="mt-2 flex gap-2 overflow-x-auto pb-1">{sceneImageRecords.filter(image=>image.status==="active").map((image,index)=><button type="button" key={image.id} onClick={()=>setImageViewerIndex(index)} aria-label={`查看第 ${index+1} 张场景图`} className={`shrink-0 overflow-hidden rounded-xl border ${index===imageViewerIndex?"border-[var(--life-accent)]":"border-stone-200"}`}>{imageObjectUrls[image.id]?<img src={imageObjectUrls[image.id]} alt={image.alt||"场景图"} className="h-16 w-16 object-cover"/>:<span className="grid h-16 w-16 place-items-center text-[10px] text-stone-400">加载中</span>}</button>)}</div>}
            </details>
-          <details className="mb-1 min-h-0 shrink-0 rounded-lg border border-stone-200/70 bg-white/70 px-2 py-1">
-            <summary className="cursor-pointer list-none text-[11px] font-medium text-stone-500">聊天显示选项 · 主题 / 气泡 / 时间 / 位置情报 / CSS</summary>
-            <div className="max-h-[38dvh] overflow-y-auto overscroll-contain touch-pan-y p-2 text-xs" style={{ WebkitOverflowScrolling: "touch" }}><div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <details className="life-scene-display-options mb-1 min-h-0 shrink-0 rounded-xl border border-stone-200/70 bg-white/80 px-2 py-1 shadow-sm">
+            <summary className="cursor-pointer list-none text-xs font-semibold text-stone-600">聊天显示选项 · 主题 / 气泡 / 时间 / 位置情报 / CSS（点开后独立滚动）</summary>
+            <div className="life-scene-display-options-body max-h-[38dvh] overflow-y-auto overscroll-contain touch-pan-y p-2 text-xs" style={{ WebkitOverflowScrolling: "touch" }}><div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
               <label>主题<select value={settings.sceneTheme} onChange={e=>patchSettings({sceneTheme:e.target.value as LifeEngineSettings["sceneTheme"]})} className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-2 py-1.5"><option value="warm-paper">暖米棕</option><option value="sage">鼠尾草绿</option><option value="rose">玫瑰</option><option value="night-sky">夜空</option><option value="custom">自定义 CSS</option></select></label>
               <div className="grid grid-cols-2 gap-1.5">
                 <label className="block rounded-lg border border-stone-200 bg-white p-2">对白字号（px）<input aria-label="对白字号" type="number" min="8" max="48" step="1" value={settings.dialogueFontSize} onChange={e=>patchSettings({dialogueFontSize:Math.max(8,Math.min(48,Number(e.target.value)||8))})} className="mt-1 w-full rounded-md border border-stone-200 bg-white px-2 py-1.5 text-sm"/></label>
