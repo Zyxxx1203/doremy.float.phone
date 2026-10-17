@@ -142,6 +142,6 @@ function MediaRow({ item, checked, onToggle }: { item: ArchiveItem; checked: boo
   return <article className={`flex items-center gap-3 rounded-2xl border p-3 ${checked?"border-stone-500 bg-stone-50":"border-stone-200 bg-white"}`}>
     <button onClick={onToggle} className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border ${checked?"border-stone-800 bg-stone-800 text-white":"border-stone-300 text-transparent"}`} aria-label={checked?"取消选择":"选择"}><Check size={14}/></button>
     <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-stone-100">{item.category==="image"&&url?<img src={url} alt="" className="h-full w-full object-cover"/>:<Icon size={22} className="text-stone-500"/>}</div>
-    <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{item.id}</div><div className="mt-1 text-xs text-stone-500">{bytesLabel(item.bytes)} · {dateLabel(item.createdAt)}</div><div className={`mt-1 truncate text-xs ${item.usedBy.length ? "text-emerald-700" : "text-amber-700"}`}>{item.usedBy.length?`关联 ${item.usedBy.length} 个聊天会话`:"未发现聊天引用（不代表一定可删除）"}</div></div>
+    <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{item.id}</div><div className="mt-1 text-xs text-stone-500">{bytesLabel(item.bytes)} · {dateLabel(item.createdAt)}</div><div className={`mt-1 truncate text-xs ${item.usedBy.length ? "text-emerald-700" : "text-amber-700"}`}>{item.usedBy.length ? "关联 " + item.usedBy.length + " 个聊天会话" : "未发现聊天引用（不代表一定可删除）"}</div></div>
   </article>;
 }
