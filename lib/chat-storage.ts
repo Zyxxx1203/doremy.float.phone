@@ -14,6 +14,8 @@ import { emitChatPluginEvent, runChatPluginTransformSync } from "./chat-plugin-h
 import { parseAIResponse } from "./rich-message-parser";
 import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import { findUserAvatarChangeIntent, inferAvatarDecisionFromReply } from "./chat-avatar-intent";
+import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "./life/life-storage";
+import { getActorClock, resolveActorLifeNow } from "./life/life-runtime";
 
 export const DEFAULT_VISION_IMAGE_PROMPT_LIMIT = 1;
 export const MAX_VISION_IMAGE_PROMPT_LIMIT = 20;
@@ -1507,6 +1509,58 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
         window.dispatchEvent(new CustomEvent(CHAT_MESSAGE_PUSHED_EVENT, { detail: { message: newMsg } }));
     }
     emitChatPluginEvent("message.persisted", { message: newMsg });
+
+    // Keep a lightweight cross-app breadcrumb in the Life timeline. Do not copy full
+    // chat history into Life; the canonical message remains in Chat storage.
+    if ((newMsg.role === "user" || newMsg.role === "assistant") && typeof window !== "undefined") {
+        try {
+            const life = loadVirtualLifeState();
+            if (life.settings.enabled) {
+                const session = _sessionsCache.find(item => item.id === newMsg.sessionId);
+                const contact = session ? loadChatContacts().find(item => item.id === session.contactId) : undefined;
+                const character = contact ? loadCharacters().find(item => item.id === contact.characterId) : undefined;
+                if (session && !session.isGroup && character) {
+                    const playerSent = newMsg.role === "user";
+                    const content = typeof newMsg.content === "string" ? newMsg.content.trim() : "";
+                    const shortPreview = content.replace(/\s+/g, " ").slice(0, 120);
+                    const nowIso = resolveActorLifeNow(getActorClock(life, "player", "player")).toISOString();
+                    const chatTitle = "你和" + character.name + "在消息 APP 聊天";
+                    const line = (playerSent ? "你" : character.name) + "：" + (shortPreview || "发送了消息");
+                    const previous = [...(life.timeline ?? [])].reverse().find(entry =>
+                        entry.category === "chat" &&
+                        entry.actorId === character.id &&
+                        Number.isFinite(new Date(entry.recordedAt ?? entry.occurredAt).getTime()) &&
+                        Date.now() - new Date(entry.recordedAt ?? entry.occurredAt).getTime() >= 0 &&
+                        Date.now() - new Date(entry.recordedAt ?? entry.occurredAt).getTime() <= 5 * 60 * 1000
+                    );
+                    if (previous) {
+                        const priorLines = (previous.details ?? "").split("\n").filter(Boolean);
+                        const updated = {
+                            ...life,
+                            timeline: life.timeline.map(entry => entry.id === previous.id
+                                ? { ...entry, occurredAt: nowIso, recordedAt: new Date().toISOString(), title: chatTitle, details: [...priorLines, line].slice(-3).join("\n"), sourceId: newMsg.id }
+                                : entry),
+                            updatedAt: nowIso,
+                        };
+                        saveVirtualLifeState(updated);
+                    } else {
+                        const logged = appendLifeTimelineEntry(life, {
+                            category: "chat",
+                            title: chatTitle,
+                            details: line,
+                            actorId: character.id,
+                            actorName: character.name,
+                            sourceId: newMsg.id,
+                            occurredAt: nowIso,
+                        });
+                        saveVirtualLifeState(logged);
+                    }
+                }
+            }
+        } catch {
+            // Life timeline logging must never block ordinary message persistence.
+        }
+    }
 
     return newMsg;
 }
