@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import JSZip from "jszip";
 import { Archive, ArrowLeft, AudioLines, Check, File, Image as ImageIcon, LoaderCircle, RefreshCw, Search, Trash2, Video, X, Copy, HardDrive, ShieldAlert } from "lucide-react";
 import { deleteMediaRef, listMediaCacheSummaries, loadMediaBlob, loadMediaObjectUrl, type MediaCacheSummary } from "@/lib/media-cache-storage";
 import { loadChatSessions, loadChatMessages } from "@/lib/chat-storage";
@@ -69,10 +70,17 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
         hashGroups.set(hash, ids);
       }
       const groups = [...hashGroups.values()].filter(group => group.length > 1);
+      const byId = new Map(items.map(item => [item.id, item]));
+      // 每组优先保留文件体积最大的一份；体积相同时保留较新的副本。
+      const candidates = groups.flatMap(group => group.slice().sort((a, b) => {
+        const left = byId.get(a); const right = byId.get(b);
+        return (right?.bytes ?? 0) - (left?.bytes ?? 0) || (right?.createdAt ?? 0) - (left?.createdAt ?? 0);
+      }).slice(1));
       setDuplicateGroups(groups);
-      setDuplicateIds(new Set(groups.flat()));
+      setDuplicateIds(new Set(candidates));
+      setSelected([]);
       setTab("duplicates");
-      onNotice?.(groups.length ? `找到 ${groups.length} 组完全相同的文件，请检查后再删除。` : "没有发现内容完全相同的文件。");
+      onNotice?.(groups.length ? `找到 ${groups.length} 组完全相同的文件，已排除每组建议保留的一份；请检查候选项后再删除。` : "没有发现内容完全相同的文件。");
     } catch (error) {
       onNotice?.("重复扫描失败：" + (error instanceof Error ? error.message : String(error)));
     } finally { setScanningDuplicates(false); }
@@ -86,6 +94,32 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
   }), [items, tab, duplicateIds, filter, query]);
 
   const toggle = (id: string) => setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const exportSelected = async () => {
+    if (!selected.length) return;
+    try {
+      const zip = new JSZip();
+      let exported = 0;
+      for (const item of items.filter(entry => selected.includes(entry.id))) {
+        const stored = await loadMediaBlob(item.ref);
+        if (!stored) continue;
+        const extension = stored.mimeType.split("/")[1]?.split(";")[0]?.replace("jpeg", "jpg") || "bin";
+        zip.file(`${item.category}/${item.id}.${extension}`, stored.blob);
+        exported += 1;
+      }
+      if (!exported) { onNotice?.("所选项目没有可导出的文件。"); return; }
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `档案室导出-${new Date().toISOString().slice(0, 10)}.zip`;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+      onNotice?.(`已导出 ${exported} 个文件。`);
+    } catch (error) {
+      onNotice?.("导出失败：" + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
   const deleteSelected = async () => {
     const targets = items.filter(item => selected.includes(item.id));
     const referenced = targets.filter(item => item.usedBy.length > 0);
@@ -125,7 +159,7 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
       <div className="mt-3 flex items-center justify-between gap-2 text-xs text-stone-500"><span>{visibleItems.length} 个项目{selected.length? ` · 已选 ${selected.length}`:""}</span><button onClick={()=>setSelected(selected.length===visibleItems.length?[]:visibleItems.map(x=>x.id))} className="font-medium text-stone-700">{selected.length===visibleItems.length&&visibleItems.length?"取消全选":"选择当前列表"}</button></div>
       <div className="mt-2 space-y-2 pb-24">{loading?<div className="py-12 text-center text-sm text-stone-500"><LoaderCircle className="mx-auto mb-2 animate-spin"/>正在扫描媒体索引…</div>:visibleItems.length===0?<div className="rounded-2xl border border-dashed border-stone-300 bg-white/50 px-4 py-12 text-center text-sm text-stone-500">{tab==="duplicates"?"没有重复项，或尚未完成扫描。":"当前范围没有找到媒体文件。"}</div>:visibleItems.map(item=><MediaRow key={item.id} item={item} checked={selected.includes(item.id)} onToggle={()=>toggle(item.id)}/>)}</div>
     </main>
-    {selected.length>0&&<footer className="flex shrink-0 items-center gap-3 border-t border-stone-200 bg-white/95 px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))]"><div className="min-w-0 flex-1 text-sm"><div className="font-semibold">已选择 {selected.length} 项</div><div className="text-xs text-stone-500">约 {bytesLabel(items.filter(x=>selected.includes(x.id)).reduce((n,x)=>n+x.bytes,0))}</div></div><button onClick={()=>{setSelected([]);setConfirmDelete(false);}} className="rounded-xl px-3 py-2 text-sm text-stone-600">取消</button><button onClick={()=>void deleteSelected()} className="flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-medium text-white"><Trash2 size={16}/>{confirmDelete?"确认删除":"删除所选"}</button></footer>}
+    {selected.length>0&&<footer className="flex shrink-0 items-center gap-3 border-t border-stone-200 bg-white/95 px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))]"><div className="min-w-0 flex-1 text-sm"><div className="font-semibold">已选择 {selected.length} 项</div><div className="text-xs text-stone-500">约 {bytesLabel(items.filter(x=>selected.includes(x.id)).reduce((n,x)=>n+x.bytes,0))}</div></div><button onClick={()=>void exportSelected()} className="flex items-center gap-2 rounded-xl border border-stone-300 px-3 py-2.5 text-sm font-medium text-stone-700">导出 ZIP</button><button onClick={()=>{setSelected([]);setConfirmDelete(false);}} className="rounded-xl px-3 py-2 text-sm text-stone-600">取消</button><button onClick={()=>void deleteSelected()} className="flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-medium text-white"><Trash2 size={16}/>{confirmDelete?"确认删除":"删除所选"}</button></footer>}
   </div>;
 }
 
@@ -142,6 +176,6 @@ function MediaRow({ item, checked, onToggle }: { item: ArchiveItem; checked: boo
   return <article className={`flex items-center gap-3 rounded-2xl border p-3 ${checked?"border-stone-500 bg-stone-50":"border-stone-200 bg-white"}`}>
     <button onClick={onToggle} className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border ${checked?"border-stone-800 bg-stone-800 text-white":"border-stone-300 text-transparent"}`} aria-label={checked?"取消选择":"选择"}><Check size={14}/></button>
     <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-stone-100">{item.category==="image"&&url?<img src={url} alt="" className="h-full w-full object-cover"/>:<Icon size={22} className="text-stone-500"/>}</div>
-    <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{item.id}</div><div className="mt-1 text-xs text-stone-500">{bytesLabel(item.bytes)} · {dateLabel(item.createdAt)}</div><div className={`mt-1 truncate text-xs ${item.usedBy.length ? "text-emerald-700" : "text-amber-700"}`}>{item.usedBy.length ? "关联 " + item.usedBy.length + " 个聊天会话" : "未发现聊天引用（不代表一定可删除）"}</div></div>
+    <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{item.id}</div><div className="mt-1 text-xs text-stone-500">{bytesLabel(item.bytes)} · {dateLabel(item.createdAt)}</div>{item.category === "audio" && url && <audio controls preload="none" src={url} className="mt-2 h-8 w-full max-w-[190px]"/>}<div className={`mt-1 truncate text-xs ${item.usedBy.length ? "text-emerald-700" : "text-amber-700"}`>{item.usedBy.length ? "关联 " + item.usedBy.length + " 个聊天会话" : "未发现聊天引用（不代表一定可删除）"}</div></div>
   </article>;
 }
