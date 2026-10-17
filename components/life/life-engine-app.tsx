@@ -169,6 +169,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [notice, setNotice] = useState("");
   const [sceneToast, setSceneToast] = useState<{ title: string; body: string } | null>(null);
   const proactiveAttemptAtRef = useRef<Record<string, number>>({});
+  const proactiveNextAtRef = useRef<Record<string, number>>({});
   const proactiveBusyRef = useRef(false);
   const proactiveLastSpeakerRef = useRef<Record<string, string>>({});
   const [inviteCharacterId, setInviteCharacterId] = useState("");
@@ -1067,7 +1068,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   useEffect(() => {
     if (!ready || !settings.enabled || !settings.enableCharacterAutonomy || settings.enableProactiveSceneMessages === false || !activeScene || activeScene.status !== "active" || !immersiveScene) return;
     let disposed = false;
-    const intervalMs = Math.max(2, Math.min(60, settings.proactiveSceneIntervalMinutes ?? 5)) * 60_000;
+    const minIntervalMinutes = Math.max(2, Math.min(60, settings.proactiveSceneIntervalMinutes ?? 5));
+    const maxIntervalMinutes = Math.max(minIntervalMinutes, Math.min(60, settings.proactiveSceneIntervalMaxMinutes ?? 15));
+    const getRandomIntervalMs = () => (minIntervalMinutes + Math.floor(Math.random() * (maxIntervalMinutes - minIntervalMinutes + 1))) * 60_000;
     const candidateIds = [...new Set(activeScene.participants
       .filter(participant => participant.ownerType === "character" && participant.ownerId && participant.activity !== "离开")
       .map(participant => participant.ownerId))];
@@ -1111,7 +1114,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         characterName: candidate.character.name,
         prompt: buildPrompt(candidate.character),
         // Give the foreground 1-2 ticks to cancel and take over before the server runs.
-        executeAtMs: Date.now() + intervalMs + LIFE_AUTONOMY_TICK_MS * 2,
+        executeAtMs: Date.now() + getRandomIntervalMs() + LIFE_AUTONOMY_TICK_MS * 2,
       });
       if (!result.ok && result.reason !== "当前账号没有可用的离线推送订阅" && result.reason !== "当前环境不支持服务端离线预约") {
         console.debug("[LifeAutonomy] background fallback not armed:", result.reason);
@@ -1123,8 +1126,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const previousAttempt = proactiveAttemptAtRef.current[activeScene.id];
       if (previousAttempt == null) {
         proactiveAttemptAtRef.current[activeScene.id] = now;
+        proactiveNextAtRef.current[activeScene.id] = now + getRandomIntervalMs();
         return;
       }
+      const nextAllowedAt = proactiveNextAtRef.current[activeScene.id];
+      if (nextAllowedAt != null && now < nextAllowedAt) return;
       const decision = evaluateLifeAutonomyWindow({
         scene: activeScene, playerId: PLAYER_ID, messages: stateRef.current.sceneMessages, now,
         lastAttemptAt: previousAttempt, intervalMinutes: settings.proactiveSceneIntervalMinutes ?? 5,
@@ -1136,6 +1142,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       if (!candidate) return;
       const { character, session } = candidate;
       proactiveAttemptAtRef.current[activeScene.id] = now;
+      proactiveNextAtRef.current[activeScene.id] = now + getRandomIntervalMs();
       proactiveLastSpeakerRef.current[activeScene.id] = character.id;
       proactiveBusyRef.current = true;
       await cancelLifeSceneProactiveBailouts(activeScene.id);
@@ -1216,7 +1223,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       // keeps idle reconnect suspended while this scene remains active.
       void refreshScheduledBailouts();
     };
-  }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.enableLifeOfflinePush, settings.proactiveSceneIntervalMinutes, settings.showActionNarration, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, playerName]);
+  }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.enableLifeOfflinePush, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.showActionNarration, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, playerName]);
   const sendSceneTurn = async (event: FormEvent) => {
     event.preventDefault();
     const userText = sceneInput.trim();
@@ -2480,9 +2487,15 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               <p className="text-sm font-semibold">生活现场主动性</p>
               <p className="mt-1 text-xs leading-relaxed text-stone-500">角色与玩家同处一个正在进行的场景时，可以在没有新输入的情况下自主发起简短互动。系统有冷却和每日上限，不会每隔几秒强制刷消息。</p>
               <div className="mt-3"><Toggle checked={settings.enableProactiveSceneMessages !== false} onChange={v=>patchSettings({enableProactiveSceneMessages:v})} label="允许角色在生活现场主动说话"/></div>
-              <label className="mt-3 block text-xs text-stone-600">主动回合最短间隔（分钟）
-                <input type="number" min={2} max={60} step={1} value={settings.proactiveSceneIntervalMinutes ?? 5} onChange={e=>patchSettings({proactiveSceneIntervalMinutes:Math.max(2,Math.min(60,Number(e.target.value)||5))})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/>
-              </label>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <label className="block min-w-0 text-xs text-stone-600">最短间隔（分钟）
+                  <input type="number" inputMode="numeric" min={2} max={60} step={1} value={settings.proactiveSceneIntervalMinutes ?? 5} onChange={e=>{const min=Math.max(2,Math.min(60,Number(e.target.value)||2));patchSettings({proactiveSceneIntervalMinutes:min,proactiveSceneIntervalMaxMinutes:Math.max(min,settings.proactiveSceneIntervalMaxMinutes??15)});}} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/>
+                </label>
+                <label className="block min-w-0 text-xs text-stone-600">最长间隔（分钟）
+                  <input type="number" inputMode="numeric" min={2} max={60} step={1} value={settings.proactiveSceneIntervalMaxMinutes ?? 15} onChange={e=>{const max=Math.max(settings.proactiveSceneIntervalMinutes??5,Math.min(60,Number(e.target.value)||2));patchSettings({proactiveSceneIntervalMaxMinutes:max});}} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/>
+                </label>
+              </div>
+              <p className="mt-2 text-[10px] leading-relaxed text-stone-500">每次自主互动会在最短与最长间隔之间随机安排，不再固定按同一个周期触发。</p>
               <div className="mt-3"><Toggle checked={settings.enableLifeMessageNotifications !== false} onChange={async v=>{if(v && typeof Notification!=="undefined" && Notification.permission==="default"){try{await Notification.requestPermission();}catch{/* permission prompt may be unavailable in WebView */}}patchSettings({enableLifeMessageNotifications:v});}} label="主动消息弹窗提示"/></div>
               <div className="mt-3"><Toggle checked={settings.enableLifeOfflinePush !== false} onChange={v=>patchSettings({enableLifeOfflinePush:v})} label="后台/关闭应用时继续主动推送" hint="需要已配置推送订阅和服务端任务；关闭后只在前台生活现场主动互动。"/></div>
               <p className="mt-2 text-[10px] leading-relaxed text-stone-500">前台优先在生活现场生成；进入后台或应用被关闭时，会尝试交给已配置的服务端离线推送任务。需要先启用推送订阅与个人 Supabase/自部署推送服务；无订阅时只保留前台主动性。离线生成结果会在下次打开应用后合并回原生活场景，不写入线上聊天记录。</p>
