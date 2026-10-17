@@ -2313,9 +2313,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         </section>}
       </div>}
 
-      {tab === "daily" && <div role="tablist" aria-label="角色日常视图" className="mb-4 grid grid-cols-2 gap-1 rounded-2xl border border-white/80 bg-white/55 p-1">
-        <button type="button" role="tab" aria-selected={dailySubtab === "people"} onClick={() => setDailySubtab("people")} className={`rounded-xl px-3 py-2.5 text-sm transition ${dailySubtab === "people" ? "bg-white font-semibold text-[var(--life-accent)] shadow-sm" : "text-stone-500"}`}>角色动态</button>
-        <button type="button" role="tab" aria-selected={dailySubtab === "plans"} onClick={() => setDailySubtab("plans")} className={`rounded-xl px-3 py-2.5 text-sm transition ${dailySubtab === "plans" ? "bg-white font-semibold text-[var(--life-accent)] shadow-sm" : "text-stone-500"}`}>七日日程</button>
+      {tab === "daily" && <div role="tablist" aria-label="角色日程视图" className="mb-4 grid grid-cols-3 gap-1 rounded-2xl border border-white/80 bg-white/55 p-1">
+        <button type="button" role="tab" aria-selected={dailySubtab === "people"} onClick={() => setDailySubtab("people")} className={`min-w-0 rounded-xl px-2 py-2.5 text-sm transition ${dailySubtab === "people" ? "bg-white font-semibold text-[var(--life-accent)] shadow-sm" : "text-stone-500"}`}>角色动态</button>
+        <button type="button" role="tab" aria-selected={dailySubtab === "plans"} onClick={() => setDailySubtab("plans")} className={`min-w-0 rounded-xl px-2 py-2.5 text-sm transition ${dailySubtab === "plans" ? "bg-white font-semibold text-[var(--life-accent)] shadow-sm" : "text-stone-500"}`}>七日日程</button>
+        <button type="button" role="tab" aria-selected={dailySubtab === "observe"} onClick={() => setDailySubtab("observe")} className={`min-w-0 rounded-xl px-2 py-2.5 text-sm transition ${dailySubtab === "observe" ? "bg-white font-semibold text-[var(--life-accent)] shadow-sm" : "text-stone-500"}`}>观察生活</button>
       </div>}
       {tab === "daily" && dailySubtab === "observe" && <div className="rounded-3xl border border-white/80 bg-white/55 p-3 shadow-sm sm:p-4"><LifeObservation characters={characters} active={true} onNotice={setNotice} /></div>}\n      {(tab === "people" || (tab === "daily" && dailySubtab === "people")) && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
         <SectionTitle eyebrow="Character presence" title="角色动态" note="汇总所有已载入角色的虚拟时间、当前活动和位置。实际记录与日程推测会分开标记；未知位置不会伪装成实时定位。" />
