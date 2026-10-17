@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Camera, Check, ChevronLeft, ChevronRight, Feather, Heart, ImagePlus, LoaderCircle, MessageCircle, MoreHorizontal, PenLine, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
+import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
+import { loadImageGenerationSettings } from "@/lib/settings-storage";
 import type { Character } from "@/lib/character-types";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { loadMediaBlob, loadMediaObjectUrl, storeMediaBlob, deleteMediaRef } from "@/lib/media-cache-storage";
@@ -41,6 +43,47 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     reader.onload = () => resolve(String(reader.result ?? ""));
     reader.readAsDataURL(blob);
   });
+}
+
+async function composePhotoReferenceSheet(sources: Array<{ label: string; dataUrl: string; crop?: { x: number; y: number; size: number } }>): Promise<string | undefined> {
+  if (!sources.length) return undefined;
+  const decoded = await Promise.all(sources.map(source => new Promise<{ label: string; image: HTMLImageElement; crop?: { x: number; y: number; size: number } }>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve({ label: source.label, image, crop: source.crop });
+    image.onerror = () => reject(new Error("参考图读取失败"));
+    image.src = source.dataUrl;
+  })));
+  const cell = 384;
+  const columns = Math.min(2, decoded.length);
+  const rows = Math.ceil(decoded.length / columns);
+  const canvas = document.createElement("canvas");
+  canvas.width = columns * cell;
+  canvas.height = rows * (cell + 36);
+  const context = canvas.getContext("2d");
+  if (!context) return undefined;
+  context.fillStyle = "#f7f0e7";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  decoded.forEach(({ label, image, crop }, index) => {
+    const x = (index % columns) * cell;
+    const y = Math.floor(index / columns) * (cell + 36);
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    if (crop) {
+      const side = Math.max(1, Math.round(Math.min(width, height) * Math.max(0.18, Math.min(1, crop.size))));
+      const sx = Math.max(0, Math.min(width - side, Math.round(crop.x * width)));
+      const sy = Math.max(0, Math.min(height - side, Math.round(crop.y * height)));
+      context.drawImage(image, sx, sy, side, side, x + 12, y + 8, cell - 24, cell - 24);
+    } else {
+      const scale = Math.min((cell - 24) / width, (cell - 24) / height);
+      const w = width * scale, h = height * scale;
+      context.drawImage(image, x + (cell - w) / 2, y + 8 + (cell - 24 - h) / 2, w, h);
+    }
+    context.fillStyle = "#49392f";
+    context.font = "600 16px sans-serif";
+    context.textAlign = "center";
+    context.fillText(label, x + cell / 2, y + cell + 22, cell - 20);
+  });
+  return canvas.toDataURL("image/png");
 }
 async function optimizeUpload(file: File): Promise<Blob> {
   if (!file.type.startsWith("image/") || file.type === "image/gif" || file.type === "image/svg+xml") return file;
@@ -241,8 +284,27 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (refPhoto) {
         const stored = await loadMediaBlob(refPhoto.mediaRef);
         if (stored) referenceImageDataUrl = await blobToDataUrl(stored.blob);
+      } else if (kind === "candid" || kind === "moment") {
+        // These photo types may depict the player, so use the player's global
+        // reference and the character's own reference together when available.
+        const imageSettings = loadImageGenerationSettings();
+        const sources: Array<{ label: string; dataUrl: string; crop?: { x: number; y: number; size: number } }> = [];
+        if (imageSettings.userAppearanceReferenceAssetId) {
+          const dataUrl = await getChatImageFromIndexedDB(imageSettings.userAppearanceReferenceAssetId);
+          if (dataUrl) sources.push({ label: "玩家本人", dataUrl, crop: imageSettings.userAppearanceFaceCrop });
+        }
+        const characterReference = imageSettings.characterReferences?.[owner.id];
+        if (characterReference?.assetId && characterReference.enabled !== false) {
+          const dataUrl = await getChatImageFromIndexedDB(characterReference.assetId);
+          if (dataUrl) sources.push({ label: owner.name, dataUrl, crop: characterReference.faceCrop });
+        }
+        referenceImageDataUrl = await composePhotoReferenceSheet(sources);
       }
-      const referenceText = referenceImageDataUrl ? "请严格参考提供的参考照片中可见人物/物件的视觉特征，保持一致，不要复制原图构图。" : "";
+      const referenceText = referenceImageDataUrl
+        ? (kind === "candid" || kind === "moment"
+          ? "请参考图中标注的玩家本人和角色外观，分别保持身份特征一致；参考图只用于人物身份，不要复制原图构图。"
+          : "请严格参考提供的参考照片中可见人物/物件的视觉特征，保持一致，不要复制原图构图。")
+        : "";
       const description = [
         "为私人生活照片墙生成一张有真实相机质感的照片，而不是插画、海报、拼贴或文字卡片。",
         `照片拍摄者/角色：${owner.name}。角色设定：${(owner.persona || owner.personality || "").slice(0, 700)}。`,
