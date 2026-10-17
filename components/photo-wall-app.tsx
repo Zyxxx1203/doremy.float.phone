@@ -268,9 +268,19 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     setBusy(true); setBusyLabel(daily ? "角色正在把今天的片刻留进照片墙…" : "正在显影这张照片…");
     try {
       const life = loadVirtualLifeState();
-      const recent = life.timeline.filter(entry => Date.now() - Date.parse(entry.occurredAt) < 7 * DAY_MS).slice(0, 8);
-      const event = recent.find(entry => !entry.actorId || entry.actorId === owner.id) ?? recent[0];
-      const eventText = event ? `最近的生活片段：${event.title}${event.locationName ? `，地点是${event.locationName}` : ""}${event.details ? `。细节：${event.details}` : ""}。` : "没有明确的近期事件，请描绘一个自然、安静、可信的小日常，不要凭空制造重大剧情。";
+      const recent = life.timeline
+        .filter(entry => {
+          const at = Date.parse(entry.occurredAt);
+          return Number.isFinite(at) && Date.now() - at >= 0 && Date.now() - at < 7 * DAY_MS;
+        })
+        .sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt))
+        .slice(0, 24);
+      const belongsToCharacter = (entry: typeof recent[number]) => !entry.actorId || entry.actorId === owner.id;
+      const warmMoment = recent.find(entry => belongsToCharacter(entry) && /开心|幸福|温暖|陪伴|拥抱|约会|惊喜|庆祝|一起|喜欢|安心|成功|完成|笑|礼物|咖啡|晚餐|散步|旅行|纪念/.test([entry.title, entry.details || ""].join(" ")));
+      const event = warmMoment ?? recent.find(belongsToCharacter) ?? recent[0];
+      const eventText = event
+        ? `优先把这段真实生活片段转化成值得珍藏的照片：${event.title}${event.locationName ? `，地点是${event.locationName}` : ""}${event.details ? `。细节：${event.details}` : ""}。如果它带有温暖、幸福、亲密、轻松或小小成就的情绪，请抓住这种感觉；不必把事件逐字画出来，也不要凭空制造重大剧情。`
+        : "没有明确的近期事件，请描绘一个自然、温暖、安静、可信的小日常，优先呈现陪伴、轻松或小确幸，不要凭空制造重大剧情。";
       const kindPrompt: Record<PhotoWallPhoto["kind"], string> = {
         favorite: "角色自己珍藏的一张照片，带有私人的情绪和生活痕迹。",
         selfie: "角色自然随手拍下的自拍，不摆拍，像发给亲近之人的私密日常。",
