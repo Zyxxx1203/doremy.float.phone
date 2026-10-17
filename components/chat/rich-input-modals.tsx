@@ -7,73 +7,59 @@ import { isAndroidBrowser } from "./voice-input-platform";
 // ── Photo Input Modal ─────────────────────────────
 
 interface PhotoInputModalProps {
-    onSend: (description: string, imageDataUrl?: string) => void;
+    onSend: (description: string, imageDataUrls: string[]) => void;
     onClose: () => void;
 }
 
 export function PhotoInputModal({ onSend, onClose }: PhotoInputModalProps) {
     const [desc, setDesc] = useState("");
-    const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+    const [imageDataUrls, setImageDataUrls] = useState<string[]>([]);
+    const [reading, setReading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-            setImageDataUrl(reader.result as string);
-        };
-        reader.readAsDataURL(file);
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []).filter(file => file.type.startsWith("image/"));
+        e.target.value = "";
+        if (!files.length) return;
+        setReading(true);
+        try {
+            const loaded = await Promise.all(files.map(file => new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("无法读取图片"));
+                reader.onerror = () => reject(new Error("读取图片失败"));
+                reader.readAsDataURL(file);
+            })));
+            setImageDataUrls(prev => [...prev, ...loaded].slice(0, 9));
+        } catch {
+            // 文件读取失败时保留已选图片，不清空预览。
+        } finally { setReading(false); }
     };
 
-    const canSend = !!imageDataUrl;
-
+    const canSend = imageDataUrls.length > 0 && !reading;
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div
-                onClick={e => e.stopPropagation()}
-                className="modal-dialog"
-            >
+            <div onClick={e => e.stopPropagation()} className="modal-dialog" style={{ maxWidth: 420, width: "min(92vw, 420px)" }}>
                 <div className="ts-16 font-semibold text-center text-[var(--c-text)]">发送照片</div>
-                <div
-                    className="w-full rounded-xl flex items-center justify-center ui-placeholder-gradient overflow-hidden cursor-pointer relative"
-                    style={{ minHeight: imageDataUrl ? "auto" : "120px" }}
-                    onClick={() => fileInputRef.current?.click()}
-                >
-                    {imageDataUrl ? (
-                        <img
-                            src={imageDataUrl}
-                            alt="preview"
-                            className="w-full h-auto rounded-xl"
-                            style={{ maxHeight: "240px", objectFit: "contain" }}
-                        />
-                    ) : (
-                        <div className="flex flex-col items-center gap-2 py-6">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--c-icon)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="12" y1="5" x2="12" y2="19" />
-                                <line x1="5" y1="12" x2="19" y2="12" />
-                            </svg>
-                            <span className="ts-12 text-[var(--c-icon)]">点击上传图片</span>
+                <div className="mt-1 text-center ts-12 text-[var(--c-icon)]">一次最多选择 9 张，合并成一组发送</div>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                    {imageDataUrls.map((src, index) => (
+                        <div key={index} className="relative aspect-square overflow-hidden rounded-xl bg-[var(--c-input)]">
+                            <img src={src} alt={`待发送图片 ${index + 1}`} className="h-full w-full object-cover" />
+                            <button type="button" onClick={() => setImageDataUrls(prev => prev.filter((_, i) => i !== index))} className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-black/65 text-white" aria-label="移除图片">×</button>
                         </div>
+                    ))}
+                    {imageDataUrls.length < 9 && (
+                        <button type="button" onClick={() => fileInputRef.current?.click()} className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-[var(--c-icon)]/40 bg-[var(--c-input)]/40 text-[var(--c-icon)]">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            <span className="ts-12">{imageDataUrls.length ? "继续添加" : "选择图片"}</span>
+                        </button>
                     )}
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleFileChange}
-                    />
                 </div>
-                <div className="flex gap-3 w-full">
-                    <button
-                        onClick={onClose}
-                        className="ui-btn ui-btn-ghost ui-btn-bordered-ghost flex-1"
-                    >取消</button>
-                    <button
-                        onClick={() => { if (canSend) onSend(desc.trim(), imageDataUrl!); }}
-                        disabled={!canSend}
-                        className="ui-btn ui-btn-success flex-1"
-                    >发送</button>
+                <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
+                <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="添加描述（选填）" rows={2} className="mt-3 w-full resize-none rounded-xl border border-[var(--c-border)] bg-[var(--c-input)] p-3 text-sm outline-none" />
+                <div className="mt-3 flex gap-3 w-full">
+                    <button onClick={onClose} className="ui-btn ui-btn-ghost ui-btn-bordered-ghost flex-1">取消</button>
+                    <button onClick={() => { if (canSend) onSend(desc.trim(), imageDataUrls); }} disabled={!canSend} className="ui-btn ui-btn-success flex-1 disabled:opacity-50">{reading ? "读取中…" : `发送 ${imageDataUrls.length ? `(${imageDataUrls.length})` : ""}`}</button>
                 </div>
             </div>
         </div>
