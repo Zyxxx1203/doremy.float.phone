@@ -837,7 +837,13 @@ function normalizeImageGenerationSettings(settings: Partial<ImageGenerationSetti
         activeOpenAiPresetId,
         novelai,
         characterReferences: refs,
-        userAppearanceFaceCrop: (() => {\n            const crop = settings?.userAppearanceFaceCrop;\n            const size = crop && typeof crop.size === "number" ? Math.max(0.18, Math.min(1, crop.size)) : 0.46;\n            return crop && typeof crop.x === "number" && typeof crop.y === "number"\n                ? { x: Math.max(0, Math.min(1, crop.x)), y: Math.max(0, Math.min(1, crop.y)), size }\n                : { x: 0.27, y: 0.12, size: 0.46 };\n        })(),
+        userAppearanceFaceCrop: (() => {
+            const crop = settings?.userAppearanceFaceCrop;
+            const size = crop && typeof crop.size === "number" ? Math.max(0.18, Math.min(1, crop.size)) : 0.46;
+            return crop && typeof crop.x === "number" && typeof crop.y === "number"
+                ? { x: Math.max(0, Math.min(1, crop.x)), y: Math.max(0, Math.min(1, crop.y)), size }
+                : { x: 0.27, y: 0.12, size: 0.46 };
+        })(),
         imageHosting: {
             ...DEFAULT_IMAGE_GENERATION_SETTINGS.imageHosting,
             ...hosting,
