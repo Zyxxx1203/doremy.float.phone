@@ -1488,7 +1488,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
             for (const storyCharacter of storyCharacters) {
               incrementEventCounter(storyCharacter.id);
               incrementEventCounter(storyCharacter.id);
-              await maybeRunSummarization(storyCharacter.id, storyCharacter.name);
+              await maybeRunSummarization(storyCharacter.id, storyCharacter.name, { writeLongTermMemory: resolveStoryMemorySettings(currentSession).writeLongTermMemory, writeCoreMemory: resolveStoryMemorySettings(currentSession).writeCoreMemory });
             }
           } catch (err) {
             console.warn("[StoryApp] Memory counter/summarization failed:", err);
@@ -1574,7 +1574,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
           const item = characters.find((candidate) => candidate.id === id);
           if (!item) continue;
           incrementEventCounter(item.id);
-          void maybeRunSummarization(item.id, item.name).catch(() => undefined);
+          void maybeRunSummarization(item.id, item.name, { writeLongTermMemory: resolveStoryMemorySettings(session).writeLongTermMemory, writeCoreMemory: resolveStoryMemorySettings(session).writeCoreMemory }).catch(() => undefined);
         }
       }
     }).catch((error) => {
