@@ -13,6 +13,8 @@
  */
 
 import type { WidgetData } from "./types";
+import { loadVirtualLifeState } from "../life/life-storage";
+import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "../life/life-runtime";
 
 /** 模板可用的占位符（写文档时同步更新这里）。 */
 export const WIDGET_PLACEHOLDERS = [
@@ -27,6 +29,11 @@ export const WIDGET_PLACEHOLDERS = [
   { token: "{{userName}}", desc: "你的名字" },
   { token: "{{hasStatus}}", desc: "有状态时是 1，否则 0（配合 CSS 用）" },
   { token: "{{hasAvatar}}", desc: "有头像时是 1，否则 0" },
+  { token: "{{lifeTime}}", desc: "玩家当前虚拟时间；生活引擎关闭时为空" },
+  { token: "{{lifeActivity}}", desc: "玩家当前活动或正在进行的日程" },
+  { token: "{{lifeLocation}}", desc: "玩家当前实际地点；没有记录时为空" },
+  { token: "{{lifeNext}}", desc: "下一段生活日程的时间和名称" },
+  { token: "{{lifeLine}}", desc: "适合直接放在桌面组件底部的一行生活状态" },
 ] as const;
 
 /**
@@ -94,14 +101,15 @@ export const DEFAULT_WIDGET_TEMPLATE = `<!doctype html>
     color: var(--accent);
     background: var(--bg-accent);
   }
+  .life-line { margin-top: auto; padding-top: 2px; font-size: 9px; line-height: 1.3; color: var(--sub); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .text {
     font-size: 15px;
     line-height: 1.55;
     color: var(--ink);
     font-weight: 500;
-    /* 最多三行，超出打点，避免把卡片撑爆 */
+    /* 给底部生活状态留出空间，留言最多两行 */
     display: -webkit-box;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
     word-break: break-word;
@@ -121,6 +129,7 @@ export const DEFAULT_WIDGET_TEMPLATE = `<!doctype html>
       {{statusChip}}
     </div>
     <div class="text">{{text}}</div>
+    <div class="life-line">{{lifeLine}}</div>
   </div>
 </body>
 </html>`;
@@ -190,8 +199,29 @@ export function renderWidgetHtml(
     ? `<div class="status">${esc(data.status)}</div>`
     : "";
 
+  const lifeState = loadVirtualLifeState();
+  let lifeTime = "", lifeActivity = "", lifeLocation = "", lifeNext = "", lifeLine = "";
+  if (lifeState.settings.enabled) {
+    const lifeNow = resolveActorLifeNow(getActorClock(lifeState, "player", "player"));
+    const timeLabel = lifeNow.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+    const current = getCurrentActorSchedule(lifeState, "player", "player", lifeNow);
+    const actual = lifeState.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === "player");
+    const next = lifeState.schedules
+      .filter(slot => slot.ownerType === "player" && slot.ownerId === "player" && new Date(slot.startAt).getTime() > lifeNow.getTime())
+      .sort((a, b) => a.startAt.localeCompare(b.startAt))[0];
+    lifeTime = timeLabel;
+    lifeActivity = actual?.activity || current?.title || "";
+    lifeLocation = actual?.actualLocationName || (lifeState.settings.showLocationHints ? current?.plannedLocationName || "" : "");
+    lifeNext = next ? new Date(next.startAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }) + " · " + next.title : "";
+    lifeLine = [ "生活 " + timeLabel, lifeActivity, lifeLocation ].filter(Boolean).map(esc).join(" · ");
+  }
   const base = template.trim() || DEFAULT_WIDGET_TEMPLATE;
   return base
+    .replace(/\{\{lifeTime\}\}/g, esc(lifeTime))
+    .replace(/\{\{lifeActivity\}\}/g, esc(lifeActivity))
+    .replace(/\{\{lifeLocation\}\}/g, esc(lifeLocation))
+    .replace(/\{\{lifeNext\}\}/g, esc(lifeNext))
+    .replace(/\{\{lifeLine\}\}/g, lifeLine)
     .replace(/\{\{text\}\}/g, esc(data.text))
     .replace(/\{\{status\}\}/g, esc(data.status))
     .replace(/\{\{statusChip\}\}/g, statusChip)
