@@ -5,6 +5,7 @@ import JSZip from "jszip";
 import { Archive, ArrowLeft, AudioLines, Check, File, Image as ImageIcon, LoaderCircle, RefreshCw, Search, Trash2, Video, X, Copy, HardDrive, ShieldAlert } from "lucide-react";
 import { deleteMediaRef, listMediaCacheSummaries, loadMediaBlob, loadMediaObjectUrl, type MediaCacheSummary } from "@/lib/media-cache-storage";
 import { loadChatSessions, loadChatMessages } from "@/lib/chat-storage";
+import { loadPhotoWallState } from "@/lib/photo-wall-storage";
 
 type ArchiveItem = MediaCacheSummary & { ref: string; usedBy: string[]; objectUrl?: string };
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
@@ -40,6 +41,13 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
             used.get(id)!.add(session.groupName || session.alias || session.contactId || session.id);
           }
         }
+      }
+      // Include photo wall references too: archive cleanup must not silently break a saved photo.
+      for (const photo of loadPhotoWallState().photos) {
+        if (!photo.mediaRef.startsWith("media-store://")) continue;
+        const id = photo.mediaRef.slice("media-store://".length);
+        if (!used.has(id)) used.set(id, new Set());
+        used.get(id)!.add(`照片墙：${photo.title || "未命名照片"}`);
       }
       setItems(summaries.map(item => ({ ...item, ref: refFor(item.id), usedBy: [...(used.get(item.id) || [])] })).sort((a, b) => b.createdAt - a.createdAt));
       setSelected([]);
@@ -137,6 +145,11 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
 
   const deleteSelected = async () => {
     const targets = items.filter(item => selected.includes(item.id));
+    const photoWallProtected = targets.filter(item => item.usedBy.some(name => name.startsWith("照片墙：")));
+    if (photoWallProtected.length) {
+      onNotice?.(`所选项目中有 ${photoWallProtected.length} 个仍被照片墙使用。请先在照片墙中移除对应照片，再清理媒体文件，避免留下失效记录。`);
+      return;
+    }
     const referenced = targets.filter(item => item.usedBy.length > 0);
     if (referenced.length && !confirmDelete) {
       setConfirmDelete(true);
