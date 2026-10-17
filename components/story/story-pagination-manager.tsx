@@ -355,7 +355,7 @@ export function StoryPaginationManager(props: StoryPaginationManagerProps) {
                             }
                           }}>结束并加入记忆</button>
                         ) : null}
-                        {!isMain ? <button type="button" className="story-branch-memory" onClick={() => openBranchMemorySettings(session)}>记忆设置</button> : null}
+                        <button type="button" className="story-branch-memory" onClick={() => openBranchMemorySettings(session)}>记忆设置</button>
                         <button type="button" className="story-branch-export" aria-label={`导出${session.branchName || "剧情"}`} onClick={() => props.onExportSession(session.id)}><ArrowDownTrayIcon width={14} /></button>
                       </div>
                     </div>
@@ -422,7 +422,7 @@ export function StoryPaginationManager(props: StoryPaginationManagerProps) {
             <div className="story-memory-branch-picker">
               <strong>允许本分线读取哪些分线</strong>
               <small>双向授权不是自动互通：对方分线也必须允许共享。</small>
-              {props.sessions.filter((session) => session.id !== editingMemorySessionId && (session.branchId || "main") !== "main").map((session) => (
+              {props.sessions.filter((session) => session.id !== editingMemorySessionId).map((session) => (
                 <label key={session.id}>
                   <input type="checkbox" checked={memorySettingsDraft.readableBranchIds.includes(session.id)} onChange={(event) => setMemorySettingsDraft((current) => ({
                     ...current,
