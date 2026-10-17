@@ -32,8 +32,9 @@ function normalizeSettings(value: unknown): LifeEngineSettings {
   const settings = { ...DEFAULT_LIFE_ENGINE_SETTINGS, ...raw };
   settings.defaultSpeed = Number.isFinite(settings.defaultSpeed) ? Math.max(0.01, Math.min(settings.defaultSpeed, 1000)) : 1;
   settings.panelOpacity = Number.isFinite(settings.panelOpacity) ? Math.max(50, Math.min(settings.panelOpacity, 100)) : 96;
-  settings.dialogueFontSize = Number.isFinite(settings.dialogueFontSize) ? Math.max(12, Math.min(settings.dialogueFontSize, 24)) : 15;
-  settings.narrationFontSize = Number.isFinite(settings.narrationFontSize) ? Math.max(10, Math.min(settings.narrationFontSize, 20)) : 12;
+  settings.dialogueFontSize = Number.isFinite(settings.dialogueFontSize) ? Math.max(12, Math.min(settings.dialogueFontSize, 28)) : 15;
+  settings.narrationFontSize = Number.isFinite(settings.narrationFontSize) ? Math.max(10, Math.min(settings.narrationFontSize, 24)) : 12;
+  settings.bubblePadding = Number.isFinite(settings.bubblePadding) ? Math.max(2, Math.min(settings.bubblePadding, 14)) : DEFAULT_LIFE_ENGINE_SETTINGS.bubblePadding;
   if (!/^#[0-9a-f]{6}$/i.test(settings.accentColor)) settings.accentColor = DEFAULT_LIFE_ENGINE_SETTINGS.accentColor;
   return settings;
 }
