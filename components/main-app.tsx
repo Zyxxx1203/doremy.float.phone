@@ -247,9 +247,9 @@ export function MainApp() {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => setDownloadNotice(null), kind === "error" ? 6500 : 4200);
     };
-    window.addEventListener("app-download-notice", onDownloadNotice);
+    window.addEventListener("app-global-notice", onDownloadNotice);
     return () => {
-      window.removeEventListener("app-download-notice", onDownloadNotice);
+      window.removeEventListener("app-global-notice", onDownloadNotice);
       if (timer) clearTimeout(timer);
     };
   }, []);
@@ -297,7 +297,13 @@ export function MainApp() {
       if (!shouldRequestPwaFullscreen()) return;
       const doc = document.documentElement;
       if (document.fullscreenElement) return;
-      doc.requestFullscreen?.().catch(() => { });
+      if (typeof doc.requestFullscreen !== "function") {
+        window.dispatchEvent(new CustomEvent("app-global-notice", { detail: { kind: "info", message: "当前浏览器不支持网页强制全屏。可尝试将网站添加到主屏幕，或使用浏览器自身的全屏功能。" } }));
+        return;
+      }
+      void doc.requestFullscreen().catch(() => {
+        window.dispatchEvent(new CustomEvent("app-global-notice", { detail: { kind: "info", message: "浏览器没有允许网页进入全屏；请从页面内点击后重试，或将网站添加到主屏幕运行。" } }));
+      });
     }
     document.addEventListener("click", tryFullscreen);
     return () => {
