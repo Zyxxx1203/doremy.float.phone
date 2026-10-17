@@ -157,6 +157,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const longPressTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  busyRef.current = busy;
   const [notice, setNotice] = useState("");
   const [sceneToast, setSceneToast] = useState<{ title: string; body: string } | null>(null);
   const proactiveAttemptAtRef = useRef<Record<string, number>>({});
@@ -1016,7 +1018,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (!ready || !settings.enabled || !settings.enableCharacterAutonomy || settings.enableProactiveSceneMessages === false || !activeScene || !immersiveScene) return;
     let disposed = false;
     const tick = async () => {
-      if (disposed || document.visibilityState !== "visible" || busy || proactiveBusyRef.current) return;
+      if (disposed || document.visibilityState !== "visible" || busyRef.current || proactiveBusyRef.current) return;
       const now = Date.now();
       const previousAttempt = proactiveAttemptAtRef.current[activeScene.id];
       if (previousAttempt == null) {
@@ -1030,7 +1032,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         now,
         lastAttemptAt: previousAttempt,
         intervalMinutes: settings.proactiveSceneIntervalMinutes ?? 5,
-        busy,
+        busy: busyRef.current,
         visible: document.visibilityState === "visible",
         enabled: settings.enableProactiveSceneMessages !== false && settings.enableCharacterAutonomy,
       });
@@ -1108,7 +1110,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       disposed = true;
       window.clearInterval(timer);
     };
-  }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.showActionNarration, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, immersiveScene, busy, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, playerName]);
+  }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.showActionNarration, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, immersiveScene, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, playerName]);
 
   const sendSceneTurn = async (event: FormEvent) => {
     event.preventDefault();
