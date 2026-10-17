@@ -32,6 +32,7 @@ import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } f
 import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
+import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts, suspendIdleReconnectForLifeScene, refreshScheduledBailouts } from "@/lib/push-bailout-client";
 import { loadBindingConfig, loadImageGenerationSettings, loadPresets, loadWorldBooks, resolveBinding, resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
 import type { BindingConfig, PresetConfig, WorldBookConfig } from "@/lib/settings-types";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
@@ -1012,11 +1013,59 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     commit(next);
   };
 
-  // Bounded autonomous scene loop: only runs while the scene is open and the app is foregrounded.
-  // The scheduler controls *when* the model may act; the model still chooses whether/how to speak.
+  // Foreground life-scene autonomy plus a server snapshot as a background/terminated-app fallback.
+  // When the app is visible, local scene generation wins and cancels the queued server turn.
   useEffect(() => {
-    if (!ready || !settings.enabled || !settings.enableCharacterAutonomy || settings.enableProactiveSceneMessages === false || !activeScene || !immersiveScene) return;
+    if (!ready || !settings.enabled || !settings.enableCharacterAutonomy || settings.enableProactiveSceneMessages === false || !activeScene || activeScene.status !== "active" || !immersiveScene) return;
     let disposed = false;
+    const intervalMs = Math.max(2, Math.min(60, settings.proactiveSceneIntervalMinutes ?? 5)) * 60_000;
+    const candidateIds = [...new Set(activeScene.participants
+      .filter(participant => participant.ownerType === "character" && participant.ownerId && participant.activity !== "离开")
+      .map(participant => participant.ownerId))];
+    const buildPrompt = (character: Character): string => {
+      const sceneContext = buildLifeScenePromptContext(stateRef.current, activeScene, character.id);
+      return [
+        "【生活现场自主回合：不是对玩家新消息的回复】,
+        activeSceneOutputPrompt,
+        settings.showActionNarration ? "动作旁白与角色对白必须严格分开。" : "只输出角色实际说出口的对白。",
+        settings.keepDialogueConcise ? "保持自然简短，像真实相处时的一小句或一个小动作。" : "可以适度展开，但不要写成长篇故事。",
+        "当前没有新的玩家输入。请结合角色正在做的事、性格、地点习惯、最近发生的事情和场景气氛，自主判断是否有自然的发言或行动动机。可以主动搭话、分享正在做的事、提出轻微互动，也可以继续忙自己的事或保持沉默。不要为了触发功能强行说话；不要替玩家行动或发言；不要重复上一条内容。",
+        activePromptPresetText,
+        activePromptPreset.sceneBehaviorPrompt || "",
+        activePromptPreset.locationHabitPrompt || "",
+        settings.customPrompt || "",
+        sceneContext,
+        (activePromptPreset.sceneTaskPrompt?.trim() || "请生成{characterName}此刻自然、自主的一小回合。没有值得说的话时，动作和对白都可以留空。")
+          .replace(/\{characterName\}/g, character.name)
+          .replace(/\{playerName\}/g, playerName)
+          .replace(/\{locationName\}/g, activeScene.locationName),
+      ].filter(Boolean).join("\n\n");
+    };
+    const pickCandidate = () => {
+      const speakerId = chooseLifeAutonomyCharacter(candidateIds, proactiveLastSpeakerRef.current[activeScene.id]);
+      const character = characters.find(item => item.id === speakerId);
+      if (!character) return null;
+      const contact = loadChatContacts().find(item => item.characterId === character.id);
+      const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup);
+      return session ? { character, session } : null;
+    };
+    const armOfflineBailout = async () => {
+      if (disposed || document.visibilityState === "visible" && busyRef.current) return;
+      const candidate = pickCandidate();
+      if (!candidate) return;
+      const result = await armLifeSceneProactiveBailout({
+        sessionId: candidate.session.id,
+        sceneId: activeScene.id,
+        characterId: candidate.character.id,
+        characterName: candidate.character.name,
+        prompt: buildPrompt(candidate.character),
+        // Give the foreground 1-2 ticks to cancel and take over before the server runs.
+        executeAtMs: Date.now() + intervalMs + LIFE_AUTONOMY_TICK_MS * 2,
+      });
+      if (!result.ok && result.reason !== "当前账号没有可用的离线推送订阅" && result.reason !== "当前环境不支持服务端离线预约") {
+        console.debug("[LifeAutonomy] background fallback not armed:", result.reason);
+      }
+    };
     const tick = async () => {
       if (disposed || document.visibilityState !== "visible" || busyRef.current || proactiveBusyRef.current) return;
       const now = Date.now();
@@ -1026,70 +1075,35 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         return;
       }
       const decision = evaluateLifeAutonomyWindow({
-        scene: activeScene,
-        playerId: PLAYER_ID,
-        messages: stateRef.current.sceneMessages,
-        now,
-        lastAttemptAt: previousAttempt,
-        intervalMinutes: settings.proactiveSceneIntervalMinutes ?? 5,
-        busy: busyRef.current,
-        visible: document.visibilityState === "visible",
+        scene: activeScene, playerId: PLAYER_ID, messages: stateRef.current.sceneMessages, now,
+        lastAttemptAt: previousAttempt, intervalMinutes: settings.proactiveSceneIntervalMinutes ?? 5,
+        busy: busyRef.current, visible: document.visibilityState === "visible",
         enabled: settings.enableProactiveSceneMessages !== false && settings.enableCharacterAutonomy,
       });
       if (!decision.eligible) return;
-      const speakerId = chooseLifeAutonomyCharacter(decision.characterIds, proactiveLastSpeakerRef.current[activeScene.id]);
-      const character = characters.find(item => item.id === speakerId);
-      if (!character) return;
-      const contacts = loadChatContacts();
-      const sessions = loadChatSessions();
-      const contact = contacts.find(item => item.characterId === character.id);
-      const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup);
-      if (!session) return;
-
+      const candidate = pickCandidate();
+      if (!candidate) return;
+      const { character, session } = candidate;
       proactiveAttemptAtRef.current[activeScene.id] = now;
       proactiveLastSpeakerRef.current[activeScene.id] = character.id;
       proactiveBusyRef.current = true;
+      cancelLifeSceneProactiveBailouts(activeScene.id);
       setBusy(true);
       try {
         const history = loadChatMessages(session.id, 10).filter(item => item.status !== "failed" && !item.isRetracted);
-        const sceneContext = buildLifeScenePromptContext(stateRef.current, activeScene, character.id);
         const proactivePrompt: ChatMessage = {
-          id: id("life-autonomy"),
-          sessionId: session.id,
-          role: "user",
-          status: "sent",
-          createdAt: new Date().toISOString(),
-          content: [
-            "【生活现场自主回合：不是对玩家新消息的回复】",
-            activeSceneOutputPrompt,
-            settings.showActionNarration ? "动作旁白与角色对白必须严格分开。" : "只输出角色实际说出口的对白。",
-            settings.keepDialogueConcise ? "保持自然简短，像真实相处时的一小句或一个小动作。" : "可以适度展开，但不要写成长篇故事。",
-            "当前没有新的玩家输入。请结合角色正在做的事、性格、地点习惯、最近发生的事情和场景气氛，自主判断是否有自然的发言或行动动机。可以主动搭话、分享正在做的事、提出轻微互动，也可以继续忙自己的事或保持沉默。不要为了触发功能强行说话；不要替玩家行动或发言；不要重复上一条内容。",
-            activePromptPresetText,
-            activePromptPreset.sceneBehaviorPrompt || "",
-            activePromptPreset.locationHabitPrompt || "",
-            settings.customPrompt || "",
-            sceneContext,
-            (activePromptPreset.sceneTaskPrompt?.trim() || "请生成{characterName}此刻自然、自主的一小回合。没有值得说的话时，动作和对白都可以留空。")
-              .replace(/\{characterName\}/g, character.name)
-              .replace(/\{playerName\}/g, playerName)
-              .replace(/\{locationName\}/g, activeScene.locationName),
-          ].filter(Boolean).join("\n\n"),
+          id: id("life-autonomy"), sessionId: session.id, role: "user", status: "sent",
+          createdAt: new Date().toISOString(), content: buildPrompt(character),
         };
         const result = await generateOfflineChatCompletion(session, [...history, proactivePrompt]);
         if (disposed) return;
         const parsed = parseLifeOutput(result.content);
         if (!parsed.action?.trim() && !parsed.dialogue.trim()) return;
         const message: LifeSceneMessage = {
-          id: id("life-proactive"),
-          sceneId: activeScene.id,
-          speakerType: "character",
-          speakerId: character.id,
-          speakerName: character.name,
-          role: "character",
+          id: id("life-proactive"), sceneId: activeScene.id, speakerType: "character",
+          speakerId: character.id, speakerName: character.name, role: "character",
           action: settings.showActionNarration ? parsed.action?.trim() || undefined : undefined,
-          dialogue: parsed.dialogue.trim(),
-          createdAt: new Date().toISOString(),
+          dialogue: parsed.dialogue.trim(), createdAt: new Date().toISOString(),
         };
         pushSceneMessage(message);
         const body = [message.action, message.dialogue].filter(Boolean).join(" ");
@@ -1102,16 +1116,33 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         console.warn("[LifeAutonomy] proactive scene turn failed:", error);
       } finally {
         proactiveBusyRef.current = false;
-        if (!disposed) setBusy(false);
+        if (!disposed) {
+          setBusy(false);
+          void armOfflineBailout();
+        }
       }
     };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        cancelLifeSceneProactiveBailouts(activeScene.id);
+        void tick();
+      } else {
+        void armOfflineBailout();
+      }
+    };
+    void suspendIdleReconnectForLifeScene(candidateIds);
+    void armOfflineBailout();
     const timer = window.setInterval(() => void tick(), LIFE_AUTONOMY_TICK_MS);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       disposed = true;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      // Refresh rules against the latest persisted scene state. The co-presence guard
+      // keeps idle reconnect suspended while this scene remains active.
+      void refreshScheduledBailouts();
     };
-  }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.showActionNarration, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, immersiveScene, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, playerName]);
-
+  }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.showActionNarration, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, activePromptPreset.locationHabitPrompt, playerName]);
   const sendSceneTurn = async (event: FormEvent) => {
     event.preventDefault();
     const userText = sceneInput.trim();
