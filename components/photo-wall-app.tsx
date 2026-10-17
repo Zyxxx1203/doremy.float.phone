@@ -117,15 +117,15 @@ function PhotoThumbnail({ photo, onOpen }: { photo: PhotoWallPhoto; onOpen: () =
     }).catch(() => undefined);
     return () => { active = false; if (url) URL.revokeObjectURL(url); };
   }, [photo.mediaRef]);
-  return <button onClick={onOpen} className="group relative block w-full overflow-hidden rounded-[3px] bg-[#e8e1d5] text-left shadow-[0_5px_16px_rgba(75,60,43,.09)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_12px_26px_rgba(75,60,43,.15)]">
-    <div className="aspect-[4/5] overflow-hidden bg-[#e9e3d8]">
+  return <button onClick={onOpen} className="group relative block w-full overflow-hidden rounded-[20px] border border-white/80 bg-[#fffdf8] text-left shadow-[0_8px_24px_rgba(75,60,43,.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_12px_26px_rgba(75,60,43,.15)]">
+    <div className="aspect-[4/5] overflow-hidden rounded-t-[19px] bg-[#e9e3d8]">
       {src ? <img src={src} alt={photo.title} loading="lazy" className="h-full w-full object-cover transition duration-700 group-hover:scale-[1.025]" /> : <div className="grid h-full place-items-center text-[#9c907f]"><ImagePlus size={25}/></div>}
     </div>
-    <div className="px-3 pb-3 pt-3">
+    <div className="px-3.5 pb-3.5 pt-3">
       <div className="flex items-center justify-between gap-2"><span className="truncate font-serif text-[15px] text-[#54483d]">{photo.title || "未命名的瞬间"}</span>{photo.annotations.length > 0 && <MessageCircle size={13} className="shrink-0 text-[#a17b64]"/>}</div>
       <div className="mt-1 flex items-center justify-between gap-2 text-[10px] tracking-[.12em] text-[#9b8d7b]"><span className="truncate">{photo.ownerName}</span><span>{new Date(photo.createdAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</span></div>
     </div>
-    <span className="absolute left-2 top-2 rounded-full border border-white/60 bg-[#f9f5ec]/85 px-2 py-1 text-[10px] tracking-wider text-[#7f6b58]">{KIND_LABEL[photo.kind]}</span>
+    <span className="absolute left-2 top-2 rounded-full border border-white/75 bg-[#fffaf0]/90 px-2.5 py-1.5 text-[10px] tracking-wider shadow-sm backdrop-blur text-[#7f6b58]">{KIND_LABEL[photo.kind]}</span>
   </button>;
 }
 
@@ -486,19 +486,19 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         </div>
       </section>}
 
-      <nav className="sticky top-0 z-10 flex items-center gap-2 overflow-x-auto border-b border-[#e4dbce] bg-[#f4f0e7]/95 px-5 py-3 backdrop-blur sm:px-8">
-        {([{id:"all",label:"全部记忆"},{id:"mine",label:"我收藏的"},{id:"characters",label:"角色留下的"},{id:"favorites",label:"值得珍藏"}] as {id:Filter;label:string}[]).map(item => <button key={item.id} onClick={() => setFilter(item.id)} className={`shrink-0 rounded-full px-3 py-2 text-xs tracking-wider transition ${filter===item.id?"bg-[#7e8a72] text-white":"text-[#8d7e6b] hover:bg-[#eae2d5]"}`}>{item.label}</button>)}
+      <nav className="sticky top-0 z-10 flex items-center gap-2 overflow-x-auto border-b border-[#e4dbce]/80 bg-[#fffaf1]/90 px-4 py-3 backdrop-blur-xl sm:px-8">
+        {([{id:"all",label:"全部记忆"},{id:"mine",label:"我收藏的"},{id:"characters",label:"角色留下的"},{id:"favorites",label:"值得珍藏"}] as {id:Filter;label:string}[]).map(item => <button key={item.id} onClick={() => setFilter(item.id)} className={`shrink-0 rounded-full px-4 py-2.5 text-xs font-medium tracking-wide transition duration-200 ${filter===item.id?"bg-[#7e8a72] text-white":"text-[#8d7e6b] border border-transparent hover:border-[#ddd1bd] hover:bg-white"}`}>{item.label}</button>)}
         <span className="ml-auto hidden shrink-0 text-[10px] tracking-wider text-[#aa9a86] sm:block">点开照片 · 翻到背面</span>
       </nav>
 
       <section className="px-4 pb-24 pt-5 sm:px-7">
         {busy && <div className="mb-4 flex items-center gap-2 rounded-xl border border-[#e4d8c6] bg-[#faf7f0] px-3 py-3 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
-        {visiblePhotos.length ? <div className="mx-auto grid max-w-5xl grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 sm:gap-x-5 sm:gap-y-7 lg:grid-cols-4">{visiblePhotos.map(photo => <PhotoThumbnail key={photo.id} photo={photo} onOpen={() => openPhoto(photo)}/>)}</div> : <div className="mx-auto flex max-w-sm flex-col items-center px-6 py-16 text-center"><div className="grid h-16 w-16 place-items-center rounded-full border border-[#ddd0bd] text-[#a0917d]"><Feather size={24}/></div><h2 className="mt-5 font-serif text-xl font-normal">这里还留着空白</h2><p className="mt-2 text-xs leading-6 text-[#968674]">先收藏一张你喜欢的照片。之后，角色也会把自己想珍藏的风景、自拍和生活片段慢慢放进来。</p><button onClick={() => fileRef.current?.click()} className="mt-5 rounded-full border border-[#b7a48c] px-5 py-2.5 text-xs tracking-wider text-[#786953]">收藏第一张照片</button></div>}
+        {visiblePhotos.length ? <div className="mx-auto grid max-w-5xl grid-cols-2 gap-3.5 sm:grid-cols-3 sm:gap-5 lg:grid-cols-3">{visiblePhotos.map(photo => <PhotoThumbnail key={photo.id} photo={photo} onOpen={() => openPhoto(photo)}/>)}</div> : <div className="mx-auto flex max-w-sm flex-col items-center px-6 py-16 text-center"><div className="grid h-16 w-16 place-items-center rounded-full border border-[#ddd0bd] text-[#a0917d]"><Feather size={24}/></div><h2 className="mt-5 font-serif text-xl font-normal">这里还留着空白</h2><p className="mt-2 text-xs leading-6 text-[#968674]">先收藏一张你喜欢的照片。之后，角色也会把自己想珍藏的风景、自拍和生活片段慢慢放进来。</p><button onClick={() => fileRef.current?.click()} className="mt-5 rounded-full border border-[#b7a48c] px-5 py-2.5 text-xs tracking-wider text-[#786953]">收藏第一张照片</button></div>}
       </section>
     </main>
 
-    {showChatPicker && <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#332c24]/45 p-4" onClick={() => setShowChatPicker(false)}>
-      <section className="flex max-h-[82%] w-full max-w-lg flex-col overflow-hidden rounded-[4px] border border-[#e3d7c6] bg-[#f7f2e8] shadow-xl" onClick={event => event.stopPropagation()}>
+    {showChatPicker && <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#332c24]/40 p-4 backdrop-blur-sm" onClick={() => setShowChatPicker(false)}>
+      <section className="flex max-h-[82%] w-full max-w-lg flex-col overflow-hidden rounded-[24px] border border-[#e3d7c6] bg-[#fffaf1] shadow-xl" onClick={event => event.stopPropagation()}>
         <header className="flex items-center justify-between border-b border-[#e3d7c6] px-4 py-3"><div><h2 className="font-serif text-lg">从聊天里挑一张</h2><p className="mt-1 text-[10px] text-[#9b8a75]">收藏会保留原图，不会把同一张媒体重复复制</p></div><button onClick={() => setShowChatPicker(false)} aria-label="关闭"><X size={17}/></button></header>
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {chatCandidates.length ? <div className="space-y-2">{chatCandidates.map(candidate => <button key={candidate.key} onClick={() => void importChatPhoto(candidate)} className="flex w-full items-center gap-3 rounded-xl border border-[#e6dccd] bg-[#fcf9f2] p-3 text-left hover:bg-white"><ChatCandidateThumb refId={candidate.ref}/><span className="min-w-0 flex-1"><span className="block truncate text-sm text-[#655647]">{candidate.title}</span><span className="mt-1 block truncate text-[10px] text-[#9a8973]">{candidate.sessionName} · {new Date(candidate.createdAt).toLocaleDateString("zh-CN")}</span></span><Plus size={15} className="shrink-0 text-[#849174]"/></button>)}</div> : <p className="py-10 text-center text-xs text-[#9a8973]">没有找到可收藏的照片。</p>}
@@ -506,8 +506,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       </section>
     </div>}
 
-    {selectedPhoto && <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#332c24]/55 p-3 backdrop-blur-[3px]" onClick={() => setSelectedPhotoId(null)}>
-      <div className="relative flex max-h-[94%] w-full max-w-3xl flex-col overflow-hidden rounded-[4px] border border-[#e3d7c6] bg-[#f7f2e8] shadow-[0_24px_80px_rgba(20,15,10,.28)] sm:flex-row" onClick={event => event.stopPropagation()}>
+    {selectedPhoto && <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#332c24]/48 p-3 backdrop-blur-md" onClick={() => setSelectedPhotoId(null)}>
+      <div className="relative flex max-h-[94%] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-[#e3d7c6] bg-[#fffaf1] shadow-[0_24px_80px_rgba(20,15,10,.28)] sm:flex-row" onClick={event => event.stopPropagation()}>
         <button onClick={() => setSelectedPhotoId(null)} className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-[#f7f2e8]/90 text-[#7c6b58]" aria-label="关闭"><X size={16}/></button>
         <div className="flex max-h-[46vh] min-h-[220px] items-center justify-center bg-[#e7dfd2] sm:max-h-none sm:min-h-0 sm:w-1/2">
           <PhotoLarge refId={selectedPhoto.mediaRef} title={selectedPhoto.title}/>
