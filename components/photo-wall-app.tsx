@@ -469,12 +469,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={event => { if (event.target.files) void uploadFiles(event.target.files); event.currentTarget.value = ""; }}/>
 
     <main className="min-h-0 flex-1 overflow-y-auto">
-      <section className="relative overflow-hidden border-b border-[#e1d7c8] px-5 pb-6 pt-7 sm:px-8">
+      <section className="relative mx-4 mt-4 overflow-hidden rounded-[28px] border border-white/80 bg-gradient-to-br from-[#fffaf0] via-[#f4eadc] to-[#e6eadf] px-5 pb-6 pt-6 shadow-[0_12px_32px_rgba(93,75,52,.08)] sm:mx-7 sm:px-8">
         <div className="pointer-events-none absolute -right-6 -top-10 h-48 w-48 rounded-full border border-[#d6cbb9]/70"/><div className="pointer-events-none absolute -right-1 top-0 h-36 w-36 rounded-full border border-[#d6cbb9]/50"/>
         <div className="relative max-w-2xl"><div className="text-[10px] tracking-[.32em] text-[#a0927e]">THE THINGS WE KEEP</div><h1 className="mt-3 font-serif text-[30px] font-normal leading-tight tracking-[.08em] sm:text-[38px]">把日子，慢慢收好。</h1><p className="mt-3 max-w-md text-xs leading-6 tracking-wide text-[#887a68]">有些照片不是为了证明发生过什么，只是因为那一刻，心里很柔软。</p><div className="mt-5 flex items-center gap-3 text-[10px] tracking-[.15em] text-[#9d8d78]"><span className="h-px w-8 bg-[#b9a68e]"/><span>{new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" })}</span><span>·</span><span>{characters.length} 位角色在这里留下痕迹</span></div></div>
       </section>
 
-      {showSettings && <section className="border-b border-[#e2d8ca] bg-[#eee8dc] px-5 py-4 sm:px-8">
+      {showSettings && <section className="mx-4 mt-3 rounded-[22px] border border-white/80 bg-white/75 px-4 py-4 shadow-sm backdrop-blur sm:mx-7 sm:px-6">
         <div className="mx-auto max-w-3xl">
           <div className="flex items-center justify-between"><h2 className="font-serif text-lg">日常显影</h2><button onClick={() => setShowSettings(false)} aria-label="关闭设置"><X size={17}/></button></div>
           <p className="mt-1 text-xs leading-5 text-[#897a67]">开启后，每天首次打开照片墙时，角色会依据最近的生活记录生成照片。仅在应用运行时触发；图片由你配置的生图服务生成，可能产生 API 费用。</p>
@@ -507,7 +507,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     </div>}
 
     {selectedPhoto && <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#332c24]/48 p-3 backdrop-blur-md" onClick={() => setSelectedPhotoId(null)}>
-      <div className="relative flex max-h-[94%] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-[#e3d7c6] bg-[#fffaf1] shadow-[0_24px_80px_rgba(20,15,10,.28)] sm:flex-row" onClick={event => event.stopPropagation()}>
+      <div className="relative flex max-h-[94%] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-white/70 bg-[#fffaf1] shadow-[0_24px_80px_rgba(20,15,10,.28)] sm:flex-row" onClick={event => event.stopPropagation()}>
         <button onClick={() => setSelectedPhotoId(null)} className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-[#f7f2e8]/90 text-[#7c6b58]" aria-label="关闭"><X size={16}/></button>
         <div className="flex max-h-[46vh] min-h-[220px] items-center justify-center bg-[#e7dfd2] sm:max-h-none sm:min-h-0 sm:w-1/2">
           <PhotoLarge refId={selectedPhoto.mediaRef} title={selectedPhoto.title}/>
