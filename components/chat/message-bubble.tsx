@@ -1332,6 +1332,8 @@ function ImageBubble({
     // 与 MediaFileBubble 相同：先解析为 object URL 再渲染。
     const [resolvedUrl, setResolvedUrl] = useState<string>(isMediaStoreRef(rawUrl) ? "" : rawUrl);
     const [groupUrls, setGroupUrls] = useState<string[]>([]);
+    const [groupLoading, setGroupLoading] = useState(false);
+    const [groupLoadError, setGroupLoadError] = useState(false);
     const groupUrlsRef = useRef<string[]>([]);
     const [previewImageUrl, setPreviewImageUrl] = useState<string>("");
     const [refExpired, setRefExpired] = useState(false);
@@ -1365,25 +1367,46 @@ function ImageBubble({
     useEffect(() => {
         const extraRefs = Array.isArray(d?.imageRefs) ? d.imageRefs.filter((ref): ref is string => typeof ref === "string") : [];
         const refs = extraRefs.length && rawUrl ? [rawUrl, ...extraRefs] : extraRefs;
-        if (refs.length < 2) {
+        if (refs.length < 2 || d?.imageCollection !== true) {
             groupUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
             groupUrlsRef.current = [];
             setGroupUrls([]);
+            setGroupLoading(false);
+            setGroupLoadError(false);
             return;
         }
         let alive = true;
-        void Promise.all(refs.map(ref => loadMediaObjectUrl(ref))).then(results => {
-            const ordered = results.filter((url): url is string => Boolean(url));
-            if (alive) {
-                groupUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
-                groupUrlsRef.current = ordered;
-                setGroupUrls(ordered);
-            } else {
-                ordered.forEach(url => URL.revokeObjectURL(url));
+        setGroupLoading(true);
+        setGroupLoadError(false);
+        void Promise.allSettled(refs.map(async ref => {
+            const url = await loadMediaObjectUrl(ref);
+            if (!url) throw new Error("媒体引用不存在");
+            return url;
+        })).then(results => {
+            const loaded = results.flatMap(result => result.status === "fulfilled" ? [result.value] : []);
+            const complete = results.length === refs.length && loaded.length === refs.length;
+            if (!alive) {
+                loaded.forEach(url => URL.revokeObjectURL(url));
+                return;
             }
+            groupUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+            if (complete) {
+                groupUrlsRef.current = loaded;
+                setGroupUrls(loaded);
+                setGroupLoadError(false);
+            } else {
+                loaded.forEach(url => URL.revokeObjectURL(url));
+                groupUrlsRef.current = [];
+                setGroupUrls([]);
+                setGroupLoadError(true);
+            }
+        }).catch(() => {
+            if (alive) setGroupLoadError(true);
+        }).finally(() => {
+            if (alive) setGroupLoading(false);
         });
         return () => { alive = false; };
-    }, [rawUrl, Array.isArray(d?.imageRefs) ? d.imageRefs.join("|") : ""]);
+    }, [rawUrl, d?.imageCollection, Array.isArray(d?.imageRefs) ? d.imageRefs.join("|") : ""]);
 
     useEffect(() => () => {
         groupUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
@@ -1478,6 +1501,31 @@ function ImageBubble({
                 </div>
                 {previewAndDialog}
             </>
+        );
+    }
+    if (d?.imageCollection === true && groupLoadError) {
+        return (
+            <>
+                <div className="chat-photo-card chat-photo-card--image max-w-[260px] overflow-hidden rounded-xl">
+                    {resolvedUrl ? (
+                        <button type="button" onClick={e => { e.stopPropagation(); setPreviewImageUrl(resolvedUrl); setShowPreview(true); }} className="block w-full">
+                            <img src={resolvedUrl} alt={label} className="block max-h-[320px] w-auto max-w-full" />
+                        </button>
+                    ) : <div className="p-4 text-sm">首张图片也暂时无法读取</div>}
+                    <div role="status" className="border-t border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+                        多图集合加载不完整，当前只显示首张图片。请重新发送这组图片。
+                    </div>
+                </div>
+                {previewAndDialog}
+            </>
+        );
+    }
+    if (d?.imageCollection === true && groupLoading && groupUrls.length < 2) {
+        return (
+            <div className="chat-photo-card chat-photo-card--image relative max-w-[260px] overflow-hidden rounded-xl">
+                {resolvedUrl ? <img src={resolvedUrl} alt={label} className="block max-h-[320px] w-auto max-w-full" /> : <div className="p-8 text-sm">正在读取多图…</div>}
+                <div role="status" className="bg-stone-50 px-3 py-2 text-xs text-stone-600">正在整理多图集合…</div>
+            </div>
         );
     }
     if (resolvedUrl) {
