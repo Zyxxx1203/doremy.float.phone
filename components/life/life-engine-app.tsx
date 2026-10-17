@@ -811,6 +811,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       "当前场景："+(activeScene?.locationName || selectedLocation?.name || "日常场景"),
       "场景状态："+(activeScene?.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);return (actor?.name||p.ownerId)+"正在"+p.activity;}).join("；") || playerActivity),
       participantIds.includes(PLAYER_ID) && imageSettings.userAppearanceDescription?.trim() ? "玩家固定外观："+imageSettings.userAppearanceDescription.trim() : "",
+      participantIds.includes(PLAYER_ID) && imageSettings.userAppearanceReferenceAssetId ? "参考板中标注“"+playerName+"”的图片用于保持玩家本人身份特征；不要把玩家与角色混为一人。" : "",
       ...participantIds.map(pid=>{
         const char=characters.find(item=>item.id===pid);
         if(!char)return "";
@@ -827,7 +828,15 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (!activeScene || sceneImageBusy) return;
     const imageSettings = loadImageGenerationSettings();
     if (!imageSettings.enabled) { setNotice("请先到「设置 → 生图设置」启用并配置生图 API。"); return; }
-    const participantIds = options?.participantIds ?? (imageParticipantIds.length ? imageParticipantIds : activeScene.participants.filter(p=>p.ownerType==="character").map(p=>p.ownerId));
+    const participantIds = options?.participantIds ?? (imageParticipantIds.length
+      ? imageParticipantIds
+      : [
+          ...(activeScene.participants.some(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID)
+            && (imageSettings.userAppearanceReferenceAssetId || imageSettings.userAppearanceDescription?.trim())
+            ? [PLAYER_ID]
+            : []),
+          ...activeScene.participants.filter(participant => participant.ownerType === "character").map(participant => participant.ownerId),
+        ]);
     const prompt = buildSceneImagePrompt(participantIds, options?.prompt ?? sceneImagePrompt);
     const count = Math.max(1,Math.min(4,options?.count ?? settings.sceneImageCount));
     setSceneImageBusy(true);
