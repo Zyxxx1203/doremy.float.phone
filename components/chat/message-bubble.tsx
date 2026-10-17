@@ -1359,7 +1359,8 @@ function ImageBubble({
     }, [rawUrl]);
 
     useEffect(() => {
-        const refs = Array.isArray(d?.imageRefs) ? d.imageRefs.filter((ref): ref is string => typeof ref === "string") : [];
+        const extraRefs = Array.isArray(d?.imageRefs) ? d.imageRefs.filter((ref): ref is string => typeof ref === "string") : [];
+        const refs = extraRefs.length && rawUrl ? [rawUrl, ...extraRefs] : extraRefs;
         if (refs.length < 2) { setGroupUrls([]); return; }
         let alive = true;
         void Promise.all(refs.map(ref => loadMediaObjectUrl(ref))).then(results => {
@@ -1446,8 +1447,8 @@ function ImageBubble({
     if (groupUrls.length > 1) {
         return (
             <>
-                <div className="chat-photo-card chat-photo-card--image grid max-w-[260px] grid-cols-2 gap-1 overflow-hidden rounded-xl" style={{ cursor: "pointer" }}>
-                    {groupUrls.map((url, index) => <button type="button" key={url} onClick={e => { e.stopPropagation(); setPreviewImageUrl(url); setShowPreview(true); }} className="relative aspect-square min-w-0 overflow-hidden bg-stone-100"><img src={url} alt={`${label} ${index + 1}`} className="h-full w-full object-cover" />{index === 3 && groupUrls.length > 4 && <span className="absolute inset-0 grid place-items-center bg-black/45 text-2xl font-semibold text-white>{"+" + (groupUrls.length - 4)}</span>}</button>)}
+                <div className="chat-photo-card chat-photo-card--image grid max-w-[260px] gap-1 overflow-hidden rounded-xl" style={{ cursor: "pointer", gridTemplateColumns: groupUrls.length > 4 ? "repeat(3,minmax(0,1fr))" : "repeat(2,minmax(0,1fr))" }}>
+                    {groupUrls.map((url, index) => <button type="button" key={url} onClick={e => { e.stopPropagation(); setPreviewImageUrl(url); setShowPreview(true); }} className="relative aspect-square min-w-0 overflow-hidden bg-stone-100"><img src={url} alt={`${label} ${index + 1}`} className="h-full w-full object-cover" /></button>)}
                 </div>
                 {previewAndDialog}
             </>
