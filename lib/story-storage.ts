@@ -373,6 +373,8 @@ export function resolveStoryMemorySettings(session?: Pick<StorySession, "memoryS
     resolved.writePublicShortTermMemory = false;
     resolved.writeLongTermMemory = false;
     resolved.writeCoreMemory = false;
+    resolved.writeBranchMemory = false;
+    resolved.allowOtherBranchesRead = false;
     resolved.writePublicShortTermMemory = false;
   }
   return resolved;
