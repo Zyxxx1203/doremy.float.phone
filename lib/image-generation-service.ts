@@ -746,6 +746,8 @@ export async function generateImageFromConfiguredApi(params: {
   /** 内容所属 APP；用于按“角色 > APP > 全局”解析生图方案。 */
   appId?: string;
   useReferenceImage?: boolean;
+  /** Optional pre-composed reference sheet for multi-character scene images. */
+  referenceImageDataUrl?: string;
   settings?: ImageGenerationSettings;
   signal?: AbortSignal;
 }): Promise<ImageGenerationResult | null> {
@@ -813,18 +815,19 @@ export async function generateImageFromConfiguredApi(params: {
   if (!openaiSettings.apiKey.trim() || !openaiSettings.baseUrl.trim() || !openaiSettings.model.trim()) return null;
 
   const reference = params.characterId ? settings.characterReferences?.[params.characterId] : undefined;
+  const suppliedReferenceImageDataUrl = params.referenceImageDataUrl?.trim() || null;
   // 「非自拍不使用参考图」开关已从生图设置页删除：参考图启用后始终参与生成
   const shouldUseReference = Boolean(
     params.useReferenceImage
-    && reference?.assetId
-    && reference.enabled !== false,
+    && (Boolean(suppliedReferenceImageDataUrl) || Boolean(reference?.assetId))
+    && reference?.enabled !== false,
   );
-  const rawReferenceImageDataUrl = shouldUseReference && reference?.assetId
-    ? await getChatImageFromIndexedDB(reference.assetId)
+  const rawReferenceImageDataUrl = shouldUseReference
+    ? (suppliedReferenceImageDataUrl || (reference?.assetId ? await getChatImageFromIndexedDB(reference.assetId) : null))
     : null;
   throwIfAborted(params.signal);
   const referenceImageDataUrl = rawReferenceImageDataUrl
-    ? await normalizeReferenceImageForEdit(rawReferenceImageDataUrl, reference?.faceCrop)
+    ? await normalizeReferenceImageForEdit(rawReferenceImageDataUrl, suppliedReferenceImageDataUrl ? undefined : reference?.faceCrop)
     : null;
   throwIfAborted(params.signal);
   const characterPrompt = reference?.featurePrompt?.trim() || "";

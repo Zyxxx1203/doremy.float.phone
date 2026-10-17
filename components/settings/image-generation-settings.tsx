@@ -12,6 +12,7 @@ import {
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import { getChatImageFromIndexedDB, saveChatImageToIndexedDB } from "@/lib/chat-asset-storage";
+import { fileToUserAvatarDataUrl } from "@/lib/user-avatar-image";
 import {
     fetchImageGenerationModels,
     fetchNovelAiModels,
@@ -497,6 +498,25 @@ export function ImageGenerationSettings() {
                     <span className="menu-right settings-tools-menu-toggle">
                         <Toggle checked={settings.enabled} onChange={(enabled) => updateSettings({ enabled })} className="settings-toggle-control" />
                     </span>
+                </div>
+            </div>
+
+            <div className="menu-group p-4 flex flex-col gap-3">
+                <div>
+                    <div className="menu-label">全局玩家形象（整个小手机共用）</div>
+                    <p className="menu-desc mt-1">为描绘“你本人”的生图功能提供统一形象。没有参考图也可以只写描述；生活场景会把所选角色的参考图与玩家参考图合成参考板；OpenAI 兼容图生图方案支持参考板，NovelAI 当前只使用外观文字描述。</p>
+                </div>
+                <div className="flex flex-col gap-1">
+                    <label className="menu-desc ml-1">固定外观描述</label>
+                    <Textarea value={settings.userAppearanceDescription || ""} onChange={event=>persist({...settings,userAppearanceDescription:event.target.value})} rows={3} placeholder="例如：黑色长发、圆框眼镜、偏爱宽松的米色针织衫。尽量写稳定的外观特征，不必每次重复。" />
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                    {settings.userAppearanceReferenceAssetId ? <button type="button" onClick={async()=>{const data=await getChatImageFromIndexedDB(settings.userAppearanceReferenceAssetId!);if(data)window.open(data,"_blank","noopener,noreferrer")}} className="ui-btn ui-btn-soft-action min-h-10 px-3 py-2 text-xs">查看已保存的玩家参考图</button> : <span className="menu-desc">尚未上传参考图（可选）</span>}
+                    <label className="ui-btn ui-btn-soft-action min-h-10 cursor-pointer px-3 py-2 text-xs">
+                        <Upload size={14} className="mr-1 inline"/> {settings.userAppearanceReferenceAssetId ? "替换参考图" : "上传玩家参考图"}
+                        <input type="file" accept="image/*" className="hidden" onChange={async event=>{const input=event.currentTarget;const file=input.files?.[0];if(!file)return;try{const dataUrl=await fileToUserAvatarDataUrl(file,900,0.84);const blob=await (await fetch(dataUrl)).blob();const assetId=await saveChatImageToIndexedDB(blob);persist({...settings,userAppearanceReferenceAssetId:assetId});setStatus({success:true,message:"玩家全局参考图已保存。"});}catch(error){setStatus({success:false,message:error instanceof Error?error.message:"参考图保存失败"});}finally{input.value="";}}}/>
+                    </label>
+                    {settings.userAppearanceReferenceAssetId&&<button type="button" onClick={()=>persist({...settings,userAppearanceReferenceAssetId:undefined})} className="ui-btn min-h-10 px-3 py-2 text-xs text-red-600">移除参考图</button>}
                 </div>
             </div>
 

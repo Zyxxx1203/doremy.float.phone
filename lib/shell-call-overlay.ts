@@ -69,8 +69,6 @@ export type ShellOverlayEvent = {
     characterId?: string;
     /** action='checkIn'：用户是否同意给角色看 */
     accepted?: boolean;
-    /** action='checkIn' accepted=true 时的 PNG base64 */
-    base64?: string;
     /** action='checkIn' 用户在浮层回复框里顺手说的话（可选） */
     reply?: string;
     /** action='userReply'：用户从通知栏直接回复，待发消息落在哪个会话 */

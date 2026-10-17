@@ -339,7 +339,7 @@ export function readSleep(): SleepSnapshot | null {
   try {
     const raw = bridge()?.readSleep?.();
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<SleepSnapshot>;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
     const minutes = Number(parsed?.sleepMinutes);
     const endAt = Number(parsed?.sleepEndAt);
     const startAt = Number(parsed?.sleepStartAt);
