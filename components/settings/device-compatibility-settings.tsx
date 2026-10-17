@@ -20,7 +20,7 @@ type NativeApi = {
   getPerceptionSnapshot?: (...args: unknown[]) => unknown;
   readCalendarEvents?: (...args: unknown[]) => unknown;
   captureScreenshot?: (...args: unknown[]) => unknown;
-  getDiagnosticsSnapshot?: (...args: unknown[]) => unknown;
+  getDiagnosticsSnapshot?: () => string;
 };
 type WidgetApi = { update?: (...args: unknown[]) => unknown; isSupported?: () => boolean };
 function getNativeApi(): NativeApi | undefined {
@@ -39,7 +39,7 @@ const FEATURE_ROWS: Array<{
   supported: (native: NativeApi | undefined) => boolean;
 }> = [
   { id: "notifications", title: "系统通知", description: "消息在后台时调用 Android 通知栏；关闭后仍可由浏览器/站内通知接管。", supported: (api) => typeof api?.notify === "function" || (typeof window !== "undefined" && "Notification" in window) },
-  { id: "callOverlay", title: "原生通话浮窗", description: "跨应用显示通话小窗；需要新版 APK、悬浮窗权限与系统允许。", supported: (api) => typeof api?.startCallOverlay === "function" },
+  { id: "callOverlay", title: "原生浮窗接口（通话/查岗）", description: "跨应用显示通话小窗与相关浮层；需要新版 APK、悬浮窗权限与系统允许。", supported: (api) => typeof api?.startCallOverlay === "function" },
   { id: "deviceActions", title: "设备操作接口", description: "手电筒、音量、亮度、闹钟、打开应用等；每个动作仍可能需要独立权限。", supported: (api) => typeof api?.setTorch === "function" },
   { id: "perception", title: "设备感知接口", description: "电量、网络、应用使用情况、定位和健康等读取能力。", supported: (api) => typeof api?.getPerceptionSnapshot === "function" },
   { id: "calendar", title: "系统日历接口", description: "读取或写入 Android 系统日历；读写权限独立。", supported: (api) => typeof api?.readCalendarEvents === "function" },
