@@ -12,6 +12,7 @@ import {
     getEventCounter,
     resetEventCounter,
     getLastSummarizedTimestamp,
+    getLastCoreSummarizedTimestamp,
     setLastSummarizedTimestamp,
     incrementCoreMemoryCounter,
 } from "./memory-storage";
@@ -75,9 +76,14 @@ export async function runSummarizationPipeline(
     }
 
     // Read native app data (chat messages, moments) directly — no separate event log
+    const coreOnly = options?.writeLongTermMemory === false && options?.writeCoreMemory !== false;
     const afterTimestamp = options?.force
         ? undefined
-        : options?.sinceTimestamp ?? (getLastSummarizedTimestamp(characterId) ?? undefined);
+        : options?.sinceTimestamp ?? (
+            coreOnly
+                ? getLastCoreSummarizedTimestamp(characterId)
+                : getLastSummarizedTimestamp(characterId)
+        ) ?? undefined;
     // 记忆来源开关同样作用于长期总结：被关掉的来源不进总结素材。
     // 进度水位线取「过滤后」最后一条的时间，因此关掉的来源不会把水位线推过头，
     // 但已被水位线越过的内容重新打开后也不会回补——这一点在设置里已注明。
