@@ -41,7 +41,7 @@ export function PhotoInputModal({ onSend, onClose }: PhotoInputModalProps) {
         <div className="modal-overlay" onClick={onClose}>
             <div onClick={e => e.stopPropagation()} className="modal-dialog" style={{ maxWidth: 420, width: "min(92vw, 420px)" }}>
                 <div className="ts-16 font-semibold text-center text-[var(--c-text)]">发送照片</div>
-                <div className="mt-1 text-center ts-12 text-[var(--c-icon)]">一次最多选择 9 张，合并成一组发送</div>
+                <div className="mt-1 text-center ts-12 text-[var(--c-icon)]">一次最多选择 9 张，可逐条发送，也可合并成可滑动相册</div>
                 <div className="mt-3 grid grid-cols-3 gap-2">
                     {imageDataUrls.map((src, index) => (
                         <div key={index} className="relative aspect-square overflow-hidden rounded-xl bg-[var(--c-input)]">
