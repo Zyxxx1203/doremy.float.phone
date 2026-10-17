@@ -188,7 +188,7 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
       for (const character of characters) {
         const config = current.characters[character.id] ?? { enabled: false, intervalMinutes: 180 };
         if (!config.enabled || busyRef.current.has(character.id)) continue;
-        const last = config.lastGeneratedAt ? new Date(config.lastGeneratedAt).getTime() : now;
+        const last = config.lastGeneratedAt ? new Date(config.lastGeneratedAt).getTime() : now - clamp(config.intervalMinutes, 15, 10080) * 60_000;
         if (now - last >= clamp(config.intervalMinutes, 15, 10080) * 60_000) void generateForCharacter(character, false);
       }
     }, 60_000);
