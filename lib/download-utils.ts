@@ -68,7 +68,7 @@ export function isIOSBrowser(): boolean {
     return /iPad|iPhone|iPod/i.test(ua) || (platform === "MacIntel" && navigator.maxTouchPoints > 1);
 }
 
-export async function downloadFile(blob: Blob, filename: string, options: DownloadFileOptions = {}): Promise<void> {
+async function downloadFileInternal(blob: Blob, filename: string, options: DownloadFileOptions = {}): Promise<void> {
     const url = URL.createObjectURL(blob);
     const anchorDownload = () => {
         const a = document.createElement("a");
@@ -129,6 +129,20 @@ export async function downloadFile(blob: Blob, filename: string, options: Downlo
     anchorDownload();
     emitDownloadNotice("success", `已发起下载：${filename}（可在浏览器下载列表查看）`);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
+ * 下载统一入口：即使调用方吞掉 Promise rejection，也先向全局 UI 发出可见错误。
+ * 浏览器无法确认用户是否真的保存成功，因此成功提示使用“已发起/已交给系统”，不虚报落盘。
+ */
+export async function downloadFile(blob: Blob, filename: string, options: DownloadFileOptions = {}): Promise<void> {
+    try {
+        await downloadFileInternal(blob, filename, options);
+    } catch (error) {
+        const reason = error instanceof Error ? error.message : "未知错误";
+        emitDownloadNotice("error", `${filename} 下载失败：${reason}`);
+        throw error;
+    }
 }
 
 /** Blob → 纯 base64（去掉 data URL 前缀），供壳的 saveBase64File 使用。 */
