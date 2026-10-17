@@ -531,7 +531,7 @@ async function clearPhotoWallImages(keepDays?: number): Promise<StorageClearResu
   const state = loadPhotoWallState();
   const cutoff = cutoffMs(keepDays);
   const keep: typeof state.photos = [];
-  let cleared = 0;
+  const removed: typeof state.photos = [];
   let freedBytes = 0;
   const summaries = await listMediaCacheSummaries().catch(() => []);
   const bytesById = new Map(summaries.map(item => [item.id, item.bytes] as const));
@@ -540,14 +540,24 @@ async function clearPhotoWallImages(keepDays?: number): Promise<StorageClearResu
       keep.push(photo);
       continue;
     }
-    cleared += 1;
+    removed.push(photo);
     const id = photo.mediaRef.startsWith(MEDIA_STORE_PROTOCOL) ? photo.mediaRef.slice(MEDIA_STORE_PROTOCOL.length) : "";
     freedBytes += bytesById.get(id) ?? 0;
   }
-  if (cleared) savePhotoWallState({ ...state, photos: keep });
-  // Deliberately do not delete the underlying blob here: another feature may share
-  // the same media ref. The orphan-media scanner can reclaim it after a grace period.
-  return { cleared, freedBytes };
+  if (removed.length) savePhotoWallState({ ...state, photos: keep });
+  // Metadata is removed first, then references are scanned again. Delete only blobs
+  // no longer referenced by any remaining feature; shared chat/theme refs are preserved.
+  const uniqueRefs = Array.from(new Set(removed.map(photo => photo.mediaRef).filter(isMediaStoreRef)));
+  for (const ref of uniqueRefs) {
+    const id = ref.slice(MEDIA_STORE_PROTOCOL.length);
+    let stillReferenced = false;
+    await scanAllStorageStrings(raw => {
+      if (raw.includes(id)) stillReferenced = true;
+    }, [MEDIA_CACHE_DB]);
+    if (!stillReferenced) await deleteMediaRef(ref).catch(() => undefined);
+    else freedBytes -= bytesById.get(id) ?? 0;
+  }
+  return { cleared: removed.length, freedBytes: Math.max(0, freedBytes) };
 }
 
 export async function clearStorageCategory(
