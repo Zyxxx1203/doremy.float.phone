@@ -444,6 +444,8 @@ export type StoryMessage = {
   rawContent: string;
   renderedContent?: string;
   storySummary?: string;
+  /** 仅供其他分线读取的专属摘要；与公共短期事件摘要分开保存。 */
+  branchMemorySummary?: string;
   regexSignature?: string;
   parserVersion?: number;
   createdAt: string;
