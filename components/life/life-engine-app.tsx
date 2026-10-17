@@ -1091,9 +1091,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         };
         pushSceneMessage(message);
         const body = [message.action, message.dialogue].filter(Boolean).join(" ");
-        setSceneToast({ title: character.name + "主动说话了", body });
-        notifyLifeSceneMessage(character.name + " · 生活现场", body, () => setTab("scene"));
-        window.setTimeout(() => setSceneToast(current => current?.body === body ? null : current), 6500);
+        if (settings.enableLifeMessageNotifications !== false) {
+          setSceneToast({ title: character.name + "主动说话了", body });
+          notifyLifeSceneMessage(character.name + " · 生活现场", body, () => setTab("scene"));
+          window.setTimeout(() => setSceneToast(current => current?.body === body ? null : current), 6500);
+        }
       } catch (error) {
         console.warn("[LifeAutonomy] proactive scene turn failed:", error);
       } finally {
@@ -2305,7 +2307,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               <label className="mt-3 block text-xs text-stone-600">主动回合最短间隔（分钟）
                 <input type="number" min={2} max={60} step={1} value={settings.proactiveSceneIntervalMinutes ?? 5} onChange={e=>patchSettings({proactiveSceneIntervalMinutes:Math.max(2,Math.min(60,Number(e.target.value)||5))})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/>
               </label>
-              <div className="mt-3"><Toggle checked={settings.enableLifeMessageNotifications !== false} onChange={v=>patchSettings({enableLifeMessageNotifications:v})} label="主动消息弹窗提示"/></div>
+              <div className="mt-3"><Toggle checked={settings.enableLifeMessageNotifications !== false} onChange={async v=>{if(v && typeof Notification!=="undefined" && Notification.permission==="default"){try{await Notification.requestPermission();}catch{/* permission prompt may be unavailable in WebView */}}patchSettings({enableLifeMessageNotifications:v});}} label="主动消息弹窗提示"/></div>
               <p className="mt-2 text-[10px] leading-relaxed text-stone-500">目前弹窗在生活现场内显示；系统通知还需要浏览器/Android 授权。离线时由服务端生成并推送属于下一阶段的后台任务，不依赖此页面定时器。</p>
             </div>
             <Toggle checked={settings.enableAmbientDetails} onChange={v=>patchSettings({enableAmbientDetails:v})} label="启用环境细节"/>
