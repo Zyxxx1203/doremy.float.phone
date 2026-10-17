@@ -202,14 +202,14 @@ export function DeviceCompatibilitySettings({ onNotice }: { onNotice?: (message:
       </div>
       <div style={{ fontSize: 12, lineHeight: 1.65, opacity: .8 }}>
         {nativeSnapshot
-          ? "已读取原生设备信息：" + [nativeSnapshot.manufacturer, nativeSnapshot.model, nativeSnapshot.androidVersion ? "Android " + nativeSnapshot.androidVersion : ""].filter(Boolean).join(" · ")
+          ? "已读取原生设备信息：" + [nativeSnapshot.manufacturer, nativeSnapshot.model, nativeSnapshot.androidVersion ? "Android " + String(nativeSnapshot.androidVersion) : ""].filter(Boolean).join(" · ")
           : "未读取到 Android 原生设备信息。网页/PWA 只能获取有限的屏幕和浏览器数据；APK 需要提供相应原生桥接口。"}
       </div>
     </section>
 
     <section style={panelStyle}>
       <div><strong style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}><Wrench size={17} />屏幕布局调整</strong>
-        <p style={{ fontSize: 12, lineHeight: 1.6, opacity: .72, margin: "6px 0 0" }}>自动模式使用当前设备的可用视口。手动模式可输入参考分辨率，适合遇到边缘裁切、内容过大或比例不一致时试调。系统报告值通常是逻辑像素；若填物理分辨率，请选择物理像素并由 DPR 自动换算。它不会改变 Android 系统真实分辨率。</p>
+        <p style={{ fontSize: 12, lineHeight: 1.6, opacity: .72, margin: "6px 0 0" }}>自动模式使用当前设备的可用视口。手动模式可输入参考分辨率，适合遇到边缘裁切、内容过大或比例不一致时试调。系统报告值通常是逻辑像素；若填物理分辨率，请选择物理像素并由 DPR 自动换算。它不会改变 Android 系统真实分辨率。顶部状态栏错位时，可在「桌面 → 主题 → 状态栏」调整顶部偏移和状态栏占位上移。</p>
       </div>
       <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 13 }}>
         <span>布局模式</span>
@@ -259,6 +259,9 @@ export function DeviceCompatibilitySettings({ onNotice }: { onNotice?: (message:
               </div>
               <p style={{ fontSize: 11, lineHeight: 1.55, opacity: .72, margin: "5px 0 0" }}>{row.description}</p>
               {!supported && <p style={{ fontSize: 11, lineHeight: 1.5, color: "#d97706", margin: "4px 0 0" }}>此能力在当前环境可能不可用；请检查 APK 版本、系统权限或改用浏览器替代功能。</p>}
+              {supported && row.id === "notifications" && (nativeSnapshot?.permissions as Record<string, unknown> | undefined)?.notifications === false && <p style={{ fontSize: 11, lineHeight: 1.5, color: "#d97706", margin: "4px 0 0" }}>接口存在，但系统通知权限未开启；请到 Android 应用设置中允许通知。</p>}
+              {supported && row.id === "callOverlay" && (nativeSnapshot?.permissions as Record<string, unknown> | undefined)?.overlay === false && <p style={{ fontSize: 11, lineHeight: 1.5, color: "#d97706", margin: "4px 0 0" }}>接口存在，但悬浮窗权限未开启；请到 Android 特殊权限设置中允许显示在其他应用上层。</p>}
+              {supported && row.id === "perception" && (nativeSnapshot?.permissions as Record<string, unknown> | undefined)?.usageAccess === false && <p style={{ fontSize: 11, lineHeight: 1.5, color: "#d97706", margin: "4px 0 0" }}>接口存在，但应用使用情况访问权限未开启；部分感知数据会不可用。</p>}
             </div>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, whiteSpace: "nowrap" }}>
               <input type="checkbox" checked={enabled} onChange={(event) => toggleFeature(row.id, event.target.checked)} />
