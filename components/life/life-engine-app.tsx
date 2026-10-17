@@ -138,6 +138,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [experienceGroupBy, setExperienceGroupBy] = useState<"date" | "character">("date");
   const [timelineImageBusyId, setTimelineImageBusyId] = useState("");
   const [timelineImageUrls, setTimelineImageUrls] = useState<Record<string, string>>({});
+  const timelineImageObjectUrlsRef = useRef<Record<string, string>>({});
   const [selectedActorKey, setSelectedActorKey] = useState("player:player");
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
   const [selectedSpeakerId, setSelectedSpeakerId] = useState("");
@@ -2002,13 +2003,16 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       if (url) urls[entry.id] = url;
     })).then(() => {
       if (!alive) { Object.values(urls).forEach(url => URL.revokeObjectURL(url)); return; }
-      setTimelineImageUrls(previous => {
-        Object.values(previous).forEach(url => URL.revokeObjectURL(url));
-        return urls;
-      });
+      Object.values(timelineImageObjectUrlsRef.current).forEach(url => URL.revokeObjectURL(url));
+      timelineImageObjectUrlsRef.current = urls;
+      setTimelineImageUrls(urls);
     });
     return () => { alive = false; };
   }, [timelineImageRefsKey]);
+  useEffect(() => () => {
+    Object.values(timelineImageObjectUrlsRef.current).forEach(url => URL.revokeObjectURL(url));
+    timelineImageObjectUrlsRef.current = {};
+  }, []);
   const generateTimelineImage = async (entry: LifeTimelineEntry) => {
     if (timelineImageBusyId) return;
     const imageSettings = loadImageGenerationSettings();
