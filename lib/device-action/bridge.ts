@@ -42,7 +42,7 @@ export function hasDeviceActionBridge(): boolean {
 function parseResult(raw: unknown, fallbackReason: string): DeviceActionResult {
   if (typeof raw !== "string" || !raw) return { ok: false, reason: fallbackReason };
   try {
-    const parsed = JSON.parse(raw) as Partial<DeviceActionResult>;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
     if (parsed && parsed.ok === true) {
       return { ...parsed, ok: true } as DeviceActionResult;
     }
