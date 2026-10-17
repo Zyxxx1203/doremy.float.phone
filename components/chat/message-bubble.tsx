@@ -151,6 +151,8 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
         if (prev.msg.mediaData?.status !== next.msg.mediaData?.status) return false;
         if (prev.msg.mediaData?.label !== next.msg.mediaData?.label) return false;
         if ((prev.msg.mediaData?.imageRefs || []).join("|") !== (next.msg.mediaData?.imageRefs || []).join("|")) return false;
+        if (prev.msg.mediaData?.imageCollection !== next.msg.mediaData?.imageCollection) return false;
+        if (prev.msg.mediaData?.imageIndex !== next.msg.mediaData?.imageIndex) return false;
         if (prev.msg.mediaData?.claimedBy?.length !== next.msg.mediaData?.claimedBy?.length) return false;
         if (prev.msg.mediaData?.appName !== next.msg.mediaData?.appName) return false;
         if (prev.msg.mediaData?.appCardTitle !== next.msg.mediaData?.appCardTitle) return false;
@@ -1467,7 +1469,7 @@ function ImageBubble({
                 <div className="chat-photo-card chat-photo-card--image relative max-w-[260px] overflow-hidden rounded-xl" style={{ cursor: "pointer" }}>
                     <div className="flex w-full snap-x snap-mandatory gap-0 overflow-x-auto overscroll-x-contain" style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}>
                         {groupUrls.map((url, index) => (
-                            <button type="button" key={url} onClick={e => { e.stopPropagation(); setPreviewImageUrl(url); setShowPreview(true); }} className="relative aspect-square w-full min-w-full snap-center overflow-hidden bg-stone-100">
+                            <button type="button" key={`${index}-${url}`} onClick={e => { e.stopPropagation(); setPreviewImageUrl(url); setShowPreview(true); }} className="relative aspect-square w-full min-w-full snap-center overflow-hidden bg-stone-100">
                                 <img src={url} alt={`${label} ${index + 1}`} className="h-full w-full object-cover" loading={index < 2 ? "eager" : "lazy"} />
                                 <span className="absolute bottom-2 right-2 rounded-full bg-black/55 px-2 py-0.5 text-xs text-white">{index + 1}/{groupUrls.length}</span>
                             </button>
