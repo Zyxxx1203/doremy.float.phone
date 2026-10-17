@@ -6955,7 +6955,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             )}
             {richModal === "photo" && (
                 <PhotoInputModal
-                    onSend={async (desc, imageDataUrls) => {
+                    onSend={async (desc, imageDataUrls, mergeForDisplay) => {
                         setRichModal(null);
                         try {
                             const refs = await Promise.all(imageDataUrls.map(async (dataUrl) => {
@@ -6963,7 +6963,17 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                 const mime = dataUrl.slice(5, dataUrl.indexOf(";")) || "image/jpeg";
                                 return (await storeMediaBase64(dataUrl.slice(comma + 1), mime)).ref;
                             }));
-                            if (refs.length) sendRichMessage("image", { label: desc, imageRefs: refs.slice(1) }, "", refs[0]);
+                            if (refs.length) {
+                                if (mergeForDisplay && refs.length > 1) {
+                                    // 合并模式：单条消息保存整组引用，由气泡以横向轮播展示。
+                                    sendRichMessage("image", { label: desc, imageRefs: refs.slice(1), imageCollection: true }, "", refs[0]);
+                                } else {
+                                    // 普通模式：每张图各自成为一条消息，顺序与选择顺序一致。
+                                    refs.forEach((ref, index) => {
+                                        sendRichMessage("image", { ...(desc ? { label: desc } : {}), ...(index === 0 ? {} : { imageIndex: index + 1 }) }, "", ref);
+                                    });
+                                }
+                            }
                         } catch (error) {
                             showChatToast("图片保存失败：" + (error instanceof Error ? error.message : "请重试"));
                         }
