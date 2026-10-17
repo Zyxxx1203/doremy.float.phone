@@ -7049,13 +7049,18 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                             if (refs.length) {
                                 if (mergeForDisplay && refs.length > 1) {
                                     // 合并模式：单条消息保存整组引用，由气泡以横向轮播展示。
-                                    sendRichMessage("image", { label: desc, imageRefs: refs.slice(1), imageCollection: true }, "", refs[0]);
+                                    const sent = sendRichMessage("image", { label: desc, imageRefs: refs.slice(1), imageCollection: true }, "", refs[0]);
+                                    if (sent) showChatToast(`已合并发送 ${refs.length} 张图片，可左右滑动查看`);
                                 } else {
                                     // 普通模式：每张图各自成为一条消息，顺序与选择顺序一致。
+                                    let sentCount = 0;
                                     refs.forEach((ref, index) => {
-                                        sendRichMessage("image", { ...(desc ? { label: desc } : {}), ...(index === 0 ? {} : { imageIndex: index + 1 }) }, "", ref);
+                                        if (sendRichMessage("image", { ...(desc ? { label: desc } : {}), ...(index === 0 ? {} : { imageIndex: index + 1 }) }, "", ref)) sentCount += 1;
                                     });
+                                    if (sentCount) showChatToast(`已发送 ${sentCount} 张图片`);
                                 }
+                            } else {
+                                showChatToast("没有图片成功保存，请重新选择后再发送");
                             }
                         } catch (error) {
                             showChatToast("图片保存失败：" + (error instanceof Error ? error.message : "请重试"));
