@@ -330,8 +330,9 @@ export function DataManagement({ onNotice }: DataManagementProps) {
     setCloudBackingUp(true);
     try {
       saveCloudBackupConfig(cloudConfig);
-      // Cloud uploads are chunked → large media is fine; always back up in full (incl. images).
-      const result = await runCloudBackup(cloudConfig, { force: true, excludeMedia: false, onProgress: setCloudProgress });
+      // Manual and scheduled backups must honor the same media policy; otherwise
+      // "exclude media" silently stops working whenever the user taps Backup Now.
+      const result = await runCloudBackup(cloudConfig, { force: true, excludeMedia: cloudConfig.excludeMedia, onProgress: setCloudProgress });
       setCloudState(loadCloudBackupState());
       if (result.status === "anomaly") {
         onNotice?.("数据明显变小，已存为待复核备份并保留之前的备份。");
