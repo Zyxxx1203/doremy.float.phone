@@ -150,14 +150,31 @@ export const BUILTIN_TEMPLATES: PhotoWallTemplate[] = [
 
 /** 按模板 id 现算骨架：数量随当前照片数变化，所以不预先固化 slots。 */
 export function buildTemplateSlots(templateId: string, count: number, customText?: string): Slot[] {
+  let slots: Slot[];
   switch (templateId) {
-    case "builtin-heart": return heartSlots(count);
-    case "builtin-grid": return gridSlots(count);
-    case "builtin-ring": return ringSlots(count);
-    case "builtin-scatter": return scatterSlots(count);
-    case "builtin-text": return textSlots(customText || "LOVE", count);
-    default: return gridSlots(count);
+    case "builtin-heart": slots = heartSlots(count); break;
+    case "builtin-grid": slots = gridSlots(count); break;
+    case "builtin-ring": slots = ringSlots(count); break;
+    case "builtin-scatter": slots = scatterSlots(count); break;
+    case "builtin-text": slots = textSlots(customText || "LOVE", count); break;
+    default: {
+      // 自定义模板同样使用持久化的坐标骨架；此前这里只会退回网格，
+      // 导致用户保存的模板虽然出现在列表中，套用时却不会生效。
+      const template = loadCustomTemplates().find(item => item.id === templateId);
+      slots = template?.slots?.length
+        ? template.slots.map(slot => ({
+            x: round(clamp01(Number(slot.x) || 0.5)),
+            y: round(clamp01(Number(slot.y) || 0.5)),
+            scale: Math.min(3, Math.max(0.35, Number(slot.scale) || 0.82)),
+            rotation: Math.min(45, Math.max(-45, Number(slot.rotation) || 0)),
+          }))
+        : gridSlots(count);
+      break;
+    }
   }
+  if (!slots.length) return gridSlots(count);
+  // 模板骨架槽位少于照片时，按骨架循环填入；照片多于槽位不会被丢弃。
+  return Array.from({ length: Math.max(1, count) }, (_, index) => slots[index % slots.length]);
 }
 
 export function templateSlotCount(templateId: string, customText?: string): number {
