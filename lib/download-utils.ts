@@ -1,3 +1,8 @@
+function emitDownloadNotice(kind: "success" | "error" | "info", message: string): void {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent("app-download-notice", { detail: { kind, message, at: Date.now() } }));
+}
+
 export type DownloadFileOptions = {
     disableNativeShare?: boolean;
     nativeShareOnly?: boolean;
@@ -85,11 +90,13 @@ export async function downloadFile(blob: Blob, filename: string, options: Downlo
         if (canNativeShare) {
             try {
                 await navigator.share({ files: [file] });
+                emitDownloadNotice("success", `已打开系统分享：${filename}`);
                 setTimeout(() => URL.revokeObjectURL(url), 1000);
                 return;
             } catch (err) {
                 // User explicitly dismissed the share sheet → respect it, don't force a download.
                 if (err instanceof DOMException && err.name === "AbortError") {
+                    emitDownloadNotice("info", `已取消保存：${filename}`);
                     setTimeout(() => URL.revokeObjectURL(url), 1000);
                     return;
                 }
@@ -99,7 +106,9 @@ export async function downloadFile(blob: Blob, filename: string, options: Downlo
             }
         }
         setTimeout(() => URL.revokeObjectURL(url), 1000);
-        throw new Error("当前浏览器没有成功打开系统分享，请在 Safari 中重试，或导出轻量备份后再试。");
+        const error = new Error("当前浏览器没有成功打开系统分享，请在 Safari 中重试，或导出轻量备份后再试。");
+        emitDownloadNotice("error", `${filename}：${error.message}`);
+        throw error;
     }
 
     // 壳环境：blob: + a[download] 在 WebView 里不会落盘（DownloadManager 取不到内存地址），
@@ -109,6 +118,7 @@ export async function downloadFile(blob: Blob, filename: string, options: Downlo
         try {
             const base64 = await blobToBase64(blob);
             if (shell.saveBase64File(filename, base64)) {
+                emitDownloadNotice("success", `已保存到系统下载目录：${filename}`);
                 setTimeout(() => URL.revokeObjectURL(url), 1000);
                 return;
             }
@@ -118,6 +128,7 @@ export async function downloadFile(blob: Blob, filename: string, options: Downlo
     }
 
     anchorDownload();
+    emitDownloadNotice("success", `已发起下载：${filename}（可在浏览器下载列表查看）`);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
@@ -164,7 +175,10 @@ function toAbsoluteUrl(url: string): string {
 export async function downloadUrl(url: string, filename: string): Promise<void> {
     // 直链优先走壳的原生下载：页面里的 fetch→blob 一旦进后台就被暂停，
     // 交给系统下载器才能真正「离开界面继续下」。
-    if (downloadUrlInFloatShell(toAbsoluteUrl(url), filename)) return;
+    if (downloadUrlInFloatShell(toAbsoluteUrl(url), filename)) {
+        emitDownloadNotice("success", `已交给系统下载管理器：${filename}`);
+        return;
+    }
 
     let blob: Blob | null = null;
 
@@ -187,12 +201,8 @@ export async function downloadUrl(url: string, filename: string): Promise<void> 
     if (blob) {
         await downloadFile(blob, filename);
     } else {
-        const a = document.createElement("a");
-        a.href = url;
-        a.target = "_blank";
-        a.rel = "noopener";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
+        const error = new Error("网络请求和代理下载均失败，请检查网络、跨域限制或资源链接是否有效。");
+        emitDownloadNotice("error", `${filename}下载失败：${error.message}`);
+        throw error;
     }
 }
