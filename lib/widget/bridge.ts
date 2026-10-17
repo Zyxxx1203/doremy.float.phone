@@ -1,3 +1,4 @@
+import { isCompatibilityFeatureEnabled } from "../device-compatibility";
 "use client";
 
 /**
@@ -53,7 +54,7 @@ export type WidgetDiagnostics = {
 };
 
 function getBridge(): PhoneWidgetBridge | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined" || !isCompatibilityFeatureEnabled("widgets")) return null;
   const api = (window as unknown as { PhoneWidget?: PhoneWidgetBridge }).PhoneWidget;
   return api ?? null;
 }
