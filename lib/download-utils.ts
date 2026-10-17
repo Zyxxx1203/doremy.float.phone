@@ -1,6 +1,6 @@
 function emitDownloadNotice(kind: "success" | "error" | "info", message: string): void {
     if (typeof window === "undefined") return;
-    window.dispatchEvent(new CustomEvent("app-download-notice", { detail: { kind, message, at: Date.now() } }));
+    window.dispatchEvent(new CustomEvent("app-global-notice", { detail: { kind, message, at: Date.now() } }));
 }
 
 export type DownloadFileOptions = {
