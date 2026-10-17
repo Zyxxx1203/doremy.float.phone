@@ -37,7 +37,7 @@ function formatCoreTimelineForSummarization(
 export async function runCoreMemoryPipeline(
     characterId: string,
     characterName: string,
-    options?: { force?: boolean },
+    options?: { force?: boolean; additionalSummary?: { content: string; createdAt: string; sourceApp: MemoryEntry["sourceApp"]; sourceSessionIds: string[] } },
 ): Promise<{ success: boolean; error?: string; rebuiltCount?: number }> {
     const config = loadMemoryConfig();
     const allLongTermEntries = await loadMemoryEntriesByType(characterId, "long_term");
@@ -62,8 +62,17 @@ export async function runCoreMemoryPipeline(
             sourceSessionIds: Array.isArray(entry.metadata?.sourceSessionIds)
                 ? entry.metadata.sourceSessionIds.map(String)
                 : [],
-        }))
-        .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+        }));
+    if (options?.additionalSummary?.content.trim()) {
+        entries.push({
+            id: `mem_core_ephemeral_${options.additionalSummary.createdAt}`,
+            timestamp: options.additionalSummary.createdAt,
+            content: options.additionalSummary.content,
+            sourceApp: options.additionalSummary.sourceApp,
+            sourceSessionIds: [...options.additionalSummary.sourceSessionIds],
+        });
+    }
+    entries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
     if (entries.length === 0) {
         if (!options?.force) resetCoreMemoryCounter(characterId);
