@@ -31,6 +31,7 @@ import { advanceActorTimeline, applyCharacterLifeScheduleChange, confirmLifeInvi
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
+import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
 import { loadBindingConfig, loadImageGenerationSettings, loadPresets, loadWorldBooks, resolveBinding, resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
 import type { BindingConfig, PresetConfig, WorldBookConfig } from "@/lib/settings-types";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
@@ -157,6 +158,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const longPressTriggeredRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [sceneToast, setSceneToast] = useState<{ title: string; body: string } | null>(null);
+  const proactiveAttemptAtRef = useRef<Record<string, number>>({});
+  const proactiveBusyRef = useRef(false);
+  const proactiveLastSpeakerRef = useRef<Record<string, string>>({});
   const [inviteCharacterId, setInviteCharacterId] = useState("");
   const [inviteLocationId, setInviteLocationId] = useState("cafe");
   const [inviteActivity, setInviteActivity] = useState("一起喝杯咖啡");
@@ -1005,6 +1010,104 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     commit(next);
   };
 
+  // Bounded autonomous scene loop: only runs while the scene is open and the app is foregrounded.
+  // The scheduler controls *when* the model may act; the model still chooses whether/how to speak.
+  useEffect(() => {
+    if (!ready || !settings.enabled || !settings.enableCharacterAutonomy || settings.enableProactiveSceneMessages === false || !activeScene || !immersiveScene) return;
+    let disposed = false;
+    const tick = async () => {
+      if (disposed || document.visibilityState !== "visible" || busy || proactiveBusyRef.current) return;
+      const now = Date.now();
+      const previousAttempt = proactiveAttemptAtRef.current[activeScene.id];
+      if (previousAttempt == null) {
+        proactiveAttemptAtRef.current[activeScene.id] = now;
+        return;
+      }
+      const decision = evaluateLifeAutonomyWindow({
+        scene: activeScene,
+        playerId: PLAYER_ID,
+        messages: stateRef.current.sceneMessages,
+        now,
+        lastAttemptAt: previousAttempt,
+        intervalMinutes: settings.proactiveSceneIntervalMinutes ?? 5,
+        busy,
+        visible: document.visibilityState === "visible",
+        enabled: settings.enableProactiveSceneMessages !== false && settings.enableCharacterAutonomy,
+      });
+      if (!decision.eligible) return;
+      const speakerId = chooseLifeAutonomyCharacter(decision.characterIds, proactiveLastSpeakerRef.current[activeScene.id]);
+      const character = characters.find(item => item.id === speakerId);
+      if (!character) return;
+      const contacts = loadChatContacts();
+      const sessions = loadChatSessions();
+      const contact = contacts.find(item => item.characterId === character.id);
+      const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup);
+      if (!session) return;
+
+      proactiveAttemptAtRef.current[activeScene.id] = now;
+      proactiveLastSpeakerRef.current[activeScene.id] = character.id;
+      proactiveBusyRef.current = true;
+      setBusy(true);
+      try {
+        const history = loadChatMessages(session.id, 10).filter(item => item.status !== "failed" && !item.isRetracted);
+        const sceneContext = buildLifeScenePromptContext(stateRef.current, activeScene, character.id);
+        const proactivePrompt: ChatMessage = {
+          id: id("life-autonomy"),
+          sessionId: session.id,
+          role: "user",
+          status: "sent",
+          createdAt: new Date().toISOString(),
+          content: [
+            "【生活现场自主回合：不是对玩家新消息的回复】",
+            activeSceneOutputPrompt,
+            settings.showActionNarration ? "动作旁白与角色对白必须严格分开。" : "只输出角色实际说出口的对白。",
+            settings.keepDialogueConcise ? "保持自然简短，像真实相处时的一小句或一个小动作。" : "可以适度展开，但不要写成长篇故事。",
+            "当前没有新的玩家输入。请结合角色正在做的事、性格、地点习惯、最近发生的事情和场景气氛，自主判断是否有自然的发言或行动动机。可以主动搭话、分享正在做的事、提出轻微互动，也可以继续忙自己的事或保持沉默。不要为了触发功能强行说话；不要替玩家行动或发言；不要重复上一条内容。",
+            activePromptPresetText,
+            activePromptPreset.sceneBehaviorPrompt || "",
+            activePromptPreset.locationHabitPrompt || "",
+            settings.customPrompt || "",
+            sceneContext,
+            (activePromptPreset.sceneTaskPrompt?.trim() || "请生成{characterName}此刻自然、自主的一小回合。没有值得说的话时，动作和对白都可以留空。")
+              .replace(/\{characterName\}/g, character.name)
+              .replace(/\{playerName\}/g, playerName)
+              .replace(/\{locationName\}/g, activeScene.locationName),
+          ].filter(Boolean).join("\n\n"),
+        };
+        const result = await generateOfflineChatCompletion(session, [...history, proactivePrompt]);
+        if (disposed) return;
+        const parsed = parseLifeOutput(result.content);
+        if (!parsed.action?.trim() && !parsed.dialogue.trim()) return;
+        const message: LifeSceneMessage = {
+          id: id("life-proactive"),
+          sceneId: activeScene.id,
+          speakerType: "character",
+          speakerId: character.id,
+          speakerName: character.name,
+          role: "character",
+          action: settings.showActionNarration ? parsed.action?.trim() || undefined : undefined,
+          dialogue: parsed.dialogue.trim(),
+          createdAt: new Date().toISOString(),
+        };
+        pushSceneMessage(message);
+        const body = [message.action, message.dialogue].filter(Boolean).join(" ");
+        setSceneToast({ title: character.name + "主动说话了", body });
+        notifyLifeSceneMessage(character.name + " · 生活现场", body, () => setTab("scene"));
+        window.setTimeout(() => setSceneToast(current => current?.body === body ? null : current), 6500);
+      } catch (error) {
+        console.warn("[LifeAutonomy] proactive scene turn failed:", error);
+      } finally {
+        proactiveBusyRef.current = false;
+        if (!disposed) setBusy(false);
+      }
+    };
+    const timer = window.setInterval(() => void tick(), LIFE_AUTONOMY_TICK_MS);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.showActionNarration, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, immersiveScene, busy, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, playerName]);
+
   const sendSceneTurn = async (event: FormEvent) => {
     event.preventDefault();
     const userText = sceneInput.trim();
@@ -1818,6 +1921,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         <div className="flex items-center gap-3"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/75 text-[var(--life-accent)] shadow-sm"><Heart size={22}/></div><div><p className="text-[10px] font-semibold uppercase tracking-[0.26em] opacity-60">A LIVING WORLD · SHARED MOMENTS</p><h1 className="text-2xl font-semibold tracking-tight">生活世界</h1><p className="mt-0.5 text-xs opacity-65">角色有自己的生活，你也可以随时加入</p></div></div>
         <div className="flex flex-wrap items-center gap-2"><button onClick={()=>tab==="home"?closeApp():setTab("home")} aria-label="返回生活现场" className="inline-flex items-center gap-1 rounded-full border border-white/80 bg-white/70 px-3 py-2 text-sm"><ArrowLeft size={15}/><span>返回</span></button><button onClick={closeApp} aria-label="退出生活 APP" className="inline-flex items-center gap-1 rounded-full border border-white/80 bg-white/70 px-3 py-2 text-sm"><X size={15}/><span>退出</span></button><span className="rounded-full border border-white/70 bg-white/60 px-3 py-1.5 text-xs">{actors.length} 位生活参与者</span></div>
       </header>
+      {sceneToast && immersiveScene && <div role="status" aria-live="polite" className="fixed left-1/2 top-[max(1rem,env(safe-area-inset-top))] z-[120] w-[min(92vw,26rem)] -translate-x-1/2 rounded-2xl border border-[var(--life-accent)]/30 bg-[#fffaf3]/95 px-4 py-3 shadow-xl backdrop-blur-md"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-semibold text-[var(--life-accent)]">{sceneToast.title}</p><p className="mt-1 text-sm leading-relaxed text-stone-700">{sceneToast.body}</p></div><button type="button" onClick={() => setSceneToast(null)} aria-label="关闭主动消息提示" className="shrink-0 text-stone-400">×</button></div></div>}
       {notice && !immersiveScene && <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-[var(--life-accent)]/20 bg-white/75 px-4 py-3 text-sm text-stone-700"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="关闭提示">×</button></div>}
       <nav aria-label="生活导航" className={`${immersiveScene ? "hidden" : "sticky top-0 z-20 mb-2 grid grid-cols-6 gap-1 rounded-xl border border-white/80 bg-[#fbf7f0]/90 p-1 shadow-sm backdrop-blur-md"}`}>
         {([{id:"home",label:"生活现场",icon:MessagesSquare},{id:"daily",label:"角色日常",icon:CalendarDays},{id:"invitations",label:"邀约活动",icon:Coffee},{id:"experiences",label:"共同经历",icon:Heart},{id:"locations",label:"地点库",icon:MapPin},{id:"settings",label:"设置",icon:Settings2}] as const).filter(item => item.id !== "invitations" || settings.enableInvitations || settings.enableFollowRequestTool || pendingCharacterInvitations.length > 0).map(item => { const Icon=item.icon; const active=item.id===tab||(item.id==="daily"&&(tab==="daily"||tab==="people"||tab==="plans")); return <button key={item.id} onClick={() => { if(item.id==="daily"){setTab("daily");setSceneView(false);return;} setTab(item.id); if(item.id==="home" || item.id==="locations") setSceneView(false); if(item.id==="locations") setLocationDossierOpen(false); }} aria-current={active?"page":undefined} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] transition sm:flex-row sm:text-sm ${active?"bg-white text-[var(--life-accent)] shadow-sm":"opacity-65 hover:opacity-100"}`}><span className="relative inline-flex"><Icon size={16}/>{item.id==="invitations"&&pendingCharacterInvitations.length>0&&<span className="absolute -right-2 -top-2 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] text-white">{pendingCharacterInvitations.length}</span>}</span><span className="truncate">{item.label}</span></button>; })}
