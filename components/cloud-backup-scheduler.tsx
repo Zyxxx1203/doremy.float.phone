@@ -36,7 +36,7 @@ export function CloudBackupScheduler() {
 
       const state = loadCloudBackupState();
       const dueMs = config.intervalHours * 3600_000;
-      const last = state.lastCreatedAt ? Date.parse(state.lastCreatedAt) : 0;
+      const last = state.lastAttemptAt ? Date.parse(state.lastAttemptAt) : state.lastCreatedAt ? Date.parse(state.lastCreatedAt) : 0;
       if (Number.isFinite(last) && last > 0 && Date.now() - last < dueMs) return;
 
       runWhenIdle(async () => {
