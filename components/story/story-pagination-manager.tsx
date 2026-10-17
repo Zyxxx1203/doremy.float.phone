@@ -67,7 +67,6 @@ export function StoryPaginationManager(props: StoryPaginationManagerProps) {
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
   const [groupName, setGroupName] = useState("");
   const [branchName, setBranchName] = useState("");
-  const [inheritRecentMemory, setInheritRecentMemory] = useState(false);
   const [editingMemorySessionId, setEditingMemorySessionId] = useState<string | null>(null);
   const [memorySettingsDraft, setMemorySettingsDraft] = useState<StoryMemorySettings>({ ...DEFAULT_STORY_MEMORY_SETTINGS, readableBranchIds: [], sharedMemoryTypes: [...DEFAULT_STORY_MEMORY_SETTINGS.sharedMemoryTypes] });
   const [deleteSelection, setDeleteSelection] = useState<string[]>([]);
@@ -110,7 +109,6 @@ export function StoryPaginationManager(props: StoryPaginationManagerProps) {
   const openNewBranch = () => {
     setEditingMemorySessionId(null);
     setBranchName("");
-    setInheritRecentMemory(false);
     setMemorySettingsDraft({ ...DEFAULT_STORY_MEMORY_SETTINGS, readableBranchIds: [], sharedMemoryTypes: [...DEFAULT_STORY_MEMORY_SETTINGS.sharedMemoryTypes] });
     setBranchModalOpen(true);
   };
@@ -135,14 +133,13 @@ export function StoryPaginationManager(props: StoryPaginationManagerProps) {
     } else {
       props.onBranchCreate({
         name,
-        inheritRecentMemory,
+        inheritRecentMemory: true,
         independentStory: false,
         memorySettings,
       });
     }
     setBranchName("");
     setInheritRecentMemory(false);
-    setIndependentStory(false);
     setEditingMemorySessionId(null);
     setBranchModalOpen(false);
   };
