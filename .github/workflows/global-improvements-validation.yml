@@ -2,15 +2,23 @@ name: Validate global compatibility improvements
 
 on:
   push:
-    branches: [main, feature/global-improvements, feature/life-system]
+    branches: [main]
     paths:
       - ".github/workflows/global-improvements-validation.yml"
       - "components/chat/call-auto-chat-control.tsx"
       - "components/chat/voice-call-screen.tsx"
       - "components/screenshot/**"
       - "components/settings/image-generation-settings.tsx"
+      - "components/settings/device-compatibility-settings.tsx"
+      - "components/device-compatibility-bootstrap.tsx"
+      - "components/phone-settings-app.tsx"
+      - "components/desktop-shell.tsx"
+      - "app/layout.tsx"
+      - "styles/phone-shell.css"
       - "components/widget/widget-settings.tsx"
       - "lib/chat-storage.ts"
+      - "lib/device-compatibility.ts"
+      - "lib/shell-notify.ts"
       - "lib/device-action/**"
       - "lib/image-generation-service.ts"
       - "lib/perception/**"
