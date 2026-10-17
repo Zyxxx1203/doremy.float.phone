@@ -273,12 +273,13 @@ async function buildStoryPromptMessages(
     ? { ...resolveStoryMemorySettings(), ...storyMemory.memorySettings }
     : resolveStoryMemorySettings({ independentStory: storyMemory?.independent });
   // 分线自己的完整聊天历史始终进入上下文；各开关只控制外部记忆来源。
-  const usePublicShortTerm = memorySettings.readPublicShortTermMemory;
+  const usePublicShortTerm = memorySettings.readPublicShortTermMemory || memorySettings.readOtherAppsMemory;
   const context = usePublicShortTerm
     ? prepareShortTermContext(characterId, "story", {
       userName: userIdentity?.name ?? "用户",
       history: historyMessages,
       afterTimestamp: storyMemory?.inheritRecentMemory === false ? storyMemory.startedAt : undefined,
+      includeOtherApps: memorySettings.readOtherAppsMemory,
     })
     : {
       recentBlocks: [],
