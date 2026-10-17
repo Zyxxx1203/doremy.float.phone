@@ -2349,7 +2349,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
                 <input type="number" min={2} max={60} step={1} value={settings.proactiveSceneIntervalMinutes ?? 5} onChange={e=>patchSettings({proactiveSceneIntervalMinutes:Math.max(2,Math.min(60,Number(e.target.value)||5))})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/>
               </label>
               <div className="mt-3"><Toggle checked={settings.enableLifeMessageNotifications !== false} onChange={async v=>{if(v && typeof Notification!=="undefined" && Notification.permission==="default"){try{await Notification.requestPermission();}catch{/* permission prompt may be unavailable in WebView */}}patchSettings({enableLifeMessageNotifications:v});}} label="主动消息弹窗提示"/></div>
-              <p className="mt-2 text-[10px] leading-relaxed text-stone-500">目前弹窗在生活现场内显示；系统通知还需要浏览器/Android 授权。离线时由服务端生成并推送属于下一阶段的后台任务，不依赖此页面定时器。</p>
+              <p className="mt-2 text-[10px] leading-relaxed text-stone-500">前台优先在生活现场生成；进入后台或应用被关闭时，会尝试交给已配置的服务端离线推送任务。需要先启用推送订阅与个人 Supabase/自部署推送服务；无订阅时只保留前台主动性。离线生成结果会在下次打开应用后合并回原生活场景，不写入线上聊天记录。</p>
             </div>
             <Toggle checked={settings.enableAmbientDetails} onChange={v=>patchSettings({enableAmbientDetails:v})} label="启用环境细节"/>
           </div>
