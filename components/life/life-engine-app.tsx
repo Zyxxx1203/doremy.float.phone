@@ -168,6 +168,18 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   busyRef.current = busy;
   const [notice, setNotice] = useState("");
   const [sceneToast, setSceneToast] = useState<{ title: string; body: string } | null>(null);
+  const [sceneFlight, setSceneFlight] = useState<{ destination: string; phase: "takeoff" | "landing" } | null>(null);
+  const sceneFlightTimerRef = useRef<number | null>(null);
+  const runSceneFlight = (destination: string, action: () => void) => {
+    if (sceneFlightTimerRef.current !== null) window.clearTimeout(sceneFlightTimerRef.current);
+    setSceneFlight({ destination, phase: "takeoff" });
+    sceneFlightTimerRef.current = window.setTimeout(() => {
+      action();
+      setSceneFlight({ destination, phase: "landing" });
+      sceneFlightTimerRef.current = window.setTimeout(() => { setSceneFlight(null); sceneFlightTimerRef.current = null; }, 560);
+    }, 1420);
+  };
+  useEffect(() => () => { if (sceneFlightTimerRef.current !== null) window.clearTimeout(sceneFlightTimerRef.current); }, []);
   const proactiveAttemptAtRef = useRef<Record<string, number>>({});
   const proactiveNextAtRef = useRef<Record<string, number>>({});
   const proactiveBusyRef = useRef(false);
@@ -630,7 +642,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setNotice(`${actor.name}的实际地点已更新为「${location.name}」。这与日程中的计划地点分开保存。`);
   };
 
-  const createScene = () => {
+  const performCreateScene = () => {
     if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
     if (!selectedLocation) { setNotice("请先创建或选择一个地点。"); return; }
     const chosen = characters.filter(char => selectedCharacterIds.includes(char.id));
@@ -667,8 +679,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   };
 
+  const createScene = () => runSceneFlight(selectedLocation?.name || "新的场景", performCreateScene);
+
   /** Arrival uses actual-location state only; planned locations never create encounters. */
-  const enterLocationSolo = (targetLocationId = selectedLocationId) => {
+  const performEnterLocationSolo = (targetLocationId = selectedLocationId) => {
     const destination = stateRef.current.locations.find(location => location.id === targetLocationId);
     if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
     if (!destination) return;
@@ -731,6 +745,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setSelectedCharacterIds(actualCharacters.map(character => character.id));
     setTab("home");
     setSceneView(true);
+  };
+
+  const enterLocationSolo = (targetLocationId = selectedLocationId) => {
+    const destination = stateRef.current.locations.find(location => location.id === targetLocationId);
+    if (!destination) return;
+    runSceneFlight(destination.name, () => performEnterLocationSolo(targetLocationId));
   };
 
   const autoImageFingerprint = activeScene
@@ -2090,7 +2110,57 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   if (!ready) return <main className="flex min-h-screen items-center justify-center bg-[#f7efe4] text-stone-500">正在打开生活档案…</main>;
 
   return <main style={{ ...cssVars, ...(immersiveScene ? { height: "var(--life-viewport-height, 100dvh)" } : {}) }} className={`${immersiveScene ? "flex flex-col overflow-hidden overscroll-none" : "min-h-screen min-h-[100dvh] overflow-y-auto overscroll-y-contain touch-pan-y"} bg-gradient-to-br ${themeClass} ${settings.compactLayout ? "px-1.5 py-1.5 sm:px-3 sm:py-3" : "px-2 py-2 sm:px-4 sm:py-4"}`}>
+    {sceneFlight && <div className="life-flight-overlay" role="status" aria-live="polite" aria-label={`正在前往${sceneFlight.destination}`}>
+      <div className="life-flight-streak" style={{ top: "24%" }} /><div className="life-flight-streak" /><div className="life-flight-streak" /><div className="life-flight-streak" />
+      <svg className="life-flight-route" viewBox="0 0 390 280" preserveAspectRatio="none" aria-hidden="true"><path d="M -20 210 C 78 20, 198 290, 420 40" /></svg>
+      <div className="life-flight-plane" aria-hidden="true">✈️</div>
+      <div className="life-flight-copy"><div className="life-flight-destination">{sceneFlight.destination}</div><div className="life-flight-caption">{sceneFlight.phase === "landing" ? "已抵达 · 开始探索" : "TRAVELLING TO YOUR SCENE"}</div></div>
+    </div>}
     <style>{`
+      /* A cinematic travel transition: aircraft, moving cloud layers, route arc and a soft landing. */
+      @keyframes life-flight-plane {
+        0% { transform: translate3d(-48vw, 18vh, 0) rotate(-10deg) scale(.72); }
+        20% { transform: translate3d(-22vw, -3vh, 0) rotate(-4deg) scale(.92); }
+        62% { transform: translate3d(16vw, -11vh, 0) rotate(-1deg) scale(1.08); }
+        100% { transform: translate3d(65vw, -27vh, 0) rotate(7deg) scale(.82); }
+      }
+      @keyframes life-flight-clouds {
+        from { transform: translate3d(22vw, 0, 0) scale(1.08); opacity: .12; }
+        35% { opacity: .65; }
+        to { transform: translate3d(-28vw, -5vh, 0) scale(1.35); opacity: .08; }
+      }
+      @keyframes life-flight-streak {
+        from { transform: translate3d(110vw, 0, 0) rotate(-12deg); opacity: 0; }
+        18% { opacity: .7; }
+        82% { opacity: .55; }
+        to { transform: translate3d(-110vw, 9vh, 0) rotate(-12deg); opacity: 0; }
+      }
+      @keyframes life-flight-route {
+        0% { stroke-dashoffset: 620; opacity: 0; }
+        20% { opacity: .8; }
+        80% { opacity: .55; }
+        100% { stroke-dashoffset: 0; opacity: 0; }
+      }
+      @keyframes life-flight-copy {
+        0%, 18% { opacity: 0; transform: translateY(12px); }
+        42%, 82% { opacity: 1; transform: translateY(0); }
+        100% { opacity: 0; transform: translateY(-8px); }
+      }
+      .life-flight-overlay { position: fixed; inset: 0; z-index: 2147483646; overflow: hidden; display: grid; place-items: center; color: #fffaf2; background: radial-gradient(ellipse at 68% 23%, rgba(246,205,156,.35), transparent 35%), linear-gradient(155deg,#17283d 0%,#435e79 47%,#d0bca8 100%); isolation: isolate; }
+      .life-flight-overlay::before, .life-flight-overlay::after { content: ""; position: absolute; width: 140vw; height: 50vh; left: -20vw; border-radius: 50%; background: rgba(255,255,255,.13); filter: blur(30px); animation: life-flight-clouds 2.1s cubic-bezier(.2,.65,.3,1) both; }
+      .life-flight-overlay::before { top: 10%; }
+      .life-flight-overlay::after { bottom: -7%; animation-delay: .12s; background: rgba(255,246,229,.2); }
+      .life-flight-plane { position: absolute; z-index: 3; left: 0; top: 45%; font-size: clamp(64px, 18vw, 112px); line-height: 1; filter: drop-shadow(0 12px 16px rgba(16,28,42,.28)); animation: life-flight-plane 1.85s cubic-bezier(.2,.65,.25,1) both; }
+      .life-flight-streak { position: absolute; right: -20%; width: 44vw; height: 2px; border-radius: 99px; background: linear-gradient(90deg,transparent,rgba(255,255,255,.85),transparent); animation: life-flight-streak 1.3s linear both; }
+      .life-flight-streak:nth-of-type(2) { top: 34%; animation-delay: .18s; width: 34vw; }
+      .life-flight-streak:nth-of-type(3) { top: 52%; animation-delay: .42s; width: 52vw; }
+      .life-flight-streak:nth-of-type(4) { top: 67%; animation-delay: .08s; width: 27vw; }
+      .life-flight-route { position: absolute; inset: 15% 0 auto; width: 100%; height: 52%; overflow: visible; }
+      .life-flight-route path { fill: none; stroke: rgba(255,250,242,.72); stroke-width: 1.6; stroke-linecap: round; stroke-dasharray: 8 12; animation: life-flight-route 1.9s ease both; }
+      .life-flight-copy { position: relative; z-index: 4; margin-top: 30vh; padding: 0 24px; text-align: center; animation: life-flight-copy 2.1s ease both; }
+      .life-flight-destination { font-size: clamp(25px, 7vw, 36px); font-weight: 700; letter-spacing: .08em; text-shadow: 0 3px 18px rgba(16,28,42,.22); }
+      .life-flight-caption { margin-top: 10px; font-size: 12px; letter-spacing: .3em; color: rgba(255,250,242,.8); }
+      @media (prefers-reduced-motion: reduce) { .life-flight-overlay::before, .life-flight-overlay::after, .life-flight-plane, .life-flight-streak, .life-flight-route path, .life-flight-copy { animation-duration: .01ms !important; } }
       /* Scene transitions: spatial, responsive, and respectful of reduced-motion preferences. */
       @keyframes life-scene-enter {
         0% { opacity: 0; transform: translate3d(0, 14px, 0) scale(.985); filter: blur(3px); }
