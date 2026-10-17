@@ -1043,7 +1043,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       ].filter(Boolean).join("\n\n");
     };
     const pickCandidate = () => {
-      const speakerId = chooseLifeAutonomyCharacter(candidateIds, proactiveLastSpeakerRef.current[activeScene.id]);
+      const lastSceneSpeaker = [...stateRef.current.sceneMessages].reverse().find(message => message.sceneId === activeScene.id && message.role === "character")?.speakerId;
+      const speakerId = chooseLifeAutonomyCharacter(candidateIds, proactiveLastSpeakerRef.current[activeScene.id] || lastSceneSpeaker);
       const character = characters.find(item => item.id === speakerId);
       if (!character) return null;
       const contact = loadChatContacts().find(item => item.characterId === character.id);
@@ -1052,6 +1053,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     };
     const armOfflineBailout = async () => {
       if (disposed || settings.enableLifeOfflinePush === false) return;
+      cancelLifeSceneProactiveBailouts(activeScene.id);
       const candidate = pickCandidate();
       if (!candidate) return;
       const result = await armLifeSceneProactiveBailout({
