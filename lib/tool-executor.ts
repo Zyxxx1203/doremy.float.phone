@@ -22,6 +22,8 @@ import {
     toolNameMatches,
 } from "./tool-storage";
 import { executeCustomAppToolCall } from "./custom-app-tool-runtime";
+import { executeLifeToolCall } from "./life/life-tools";
+import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "./life/life-storage";
 import { characterWorkspace, agentComputerRequest, isAgentComputerConfigured } from "./agent-computer";
 import { AGENT_COMPUTER_CAPABILITY_ID, CHECK_IN_REQUEST_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, DEVICE_ACTION_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, PERCEPTION_READ_CAPABILITY_ID, PHONE_WIDGET_CAPABILITY_ID, REALITY_BRIDGE_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, SYSTEM_CALENDAR_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
 import {
@@ -463,7 +465,36 @@ export function parseToolCalls(text: string): { cleanText: string; toolCalls: To
 
 export async function executeToolCalls(toolCalls: ToolCall[], context?: ToolExecutionContext): Promise<ToolResult[]> {
     throwIfAborted(context?.signal);
-    return Promise.all(toolCalls.map(call => executeSingleToolCall(call, context, { depth: 0 })));
+    const results = await Promise.all(toolCalls.map(call => executeSingleToolCall(call, context, { depth: 0 })));
+    if ((context?.appId === "chat" || context?.appId === "group_chat") && context.characterId && typeof window !== "undefined") {
+        try {
+            let life = loadVirtualLifeState();
+            if (life.settings.enabled) {
+                const characterName = loadCharacters().find(character => character.id === context.characterId)?.name ?? "角色";
+                let changed = false;
+                for (let index = 0; index < toolCalls.length; index++) {
+                    const call = toolCalls[index];
+                    if (call.name.startsWith("life_")) continue; // Life tools record their own richer event.
+                    const result = results[index];
+                    const detail = result?.success === false
+                        ? "调用未成功：" + (result.error || "工具返回失败")
+                        : "角色在消息互动中执行了该工具。";
+                    life = appendLifeTimelineEntry(life, {
+                        category: "tool",
+                        title: characterName + "调用了" + call.name + "工具",
+                        details: detail,
+                        actorId: context.characterId,
+                        actorName: characterName,
+                    });
+                    changed = true;
+                }
+                if (changed) saveVirtualLifeState(life);
+            }
+        } catch {
+            // Tool execution must not fail because optional Life timeline logging failed.
+        }
+    }
+    return results;
 }
 
 type ToolExecutionHint = {
@@ -542,6 +573,12 @@ async function executeSingleToolCall(
         return null;
     };
     const tryCustomApp = () => executeCustomAppToolCall(call, context, nameMacroContext);
+    const tryLife = () => executeLifeToolCall(call, context);
+
+    if (call.name.startsWith("life_")) {
+        const lifeResult = await tryLife();
+        if (lifeResult) return lifeResult;
+    }
 
     if (preferredType === "internal") {
         const result = await tryInternal();

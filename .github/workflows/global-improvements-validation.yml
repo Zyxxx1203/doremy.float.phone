@@ -2,7 +2,7 @@ name: Validate global compatibility improvements
 
 on:
   push:
-    branches: [main, feature/global-improvements]
+    branches: [main, feature/global-improvements, feature/life-system]
     paths:
       - ".github/workflows/global-improvements-validation.yml"
       - "components/chat/call-auto-chat-control.tsx"

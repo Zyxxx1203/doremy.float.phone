@@ -26,6 +26,7 @@ import { REALITY_BRIDGE_APP_EVENT_NAME, REALITY_BRIDGE_DATA_EVENT } from "@/lib/
 import { DiaryApp } from "@/components/diary/diary-app";
 import { XiaohongshuApp } from "@/components/xiaohongshu/xiaohongshu-app";
 import { StoryApp } from "@/components/story/story-app";
+import { LifeEngineApp } from "@/components/life/life-engine-app";
 import { VnApp } from "@/components/vn/vn-app";
 import ReadingApp from "@/components/reading/reading-app";
 import MapApp from "@/components/map/map-app";
@@ -4277,6 +4278,10 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
     if (activeApp === "story") {
       return <StoryApp onClose={() => setActiveApp(null)} />;
+    }
+
+    if (activeApp === "life") {
+      return <LifeEngineApp onClose={() => setActiveApp(null)} />;
     }
 
     if (activeApp === "vnmode") {

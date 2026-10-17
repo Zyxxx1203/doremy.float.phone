@@ -678,6 +678,8 @@ Deno.serve(async (req: Request) => {
         if (!rawText) rawText = "……";
       }
     }
+    // A life-scene turn must remain a scene interaction, never turn into an online-chat call.
+    if (payload.merge?.lifeScene) deliverAsCall = false;
 
     // ── 离线快捷动作：AI 输出【快捷动作：名称】则经本项目网关创建命令并推送运行通知 ──
     // 动作目录在 push_bridge_config.shortcut_actions（个人云由客户端同步；
@@ -1128,14 +1130,20 @@ Deno.serve(async (req: Request) => {
       : null;
     if (!vapid && webSubs.length > 0) pushErrors.push("no vapid config");
     const title = payload.notify?.title || "小手机";
-    const callSessionId = typeof payload.merge?.sessionId === "string" ? payload.merge.sessionId : "";
-    // 来电：单条推送（不分段），点开带 ring 参数直达振铃；正文照常进 outbox
+    const isLifeSceneJob = Boolean(payload.merge?.lifeScene);
+    const callSessionId = !isLifeSceneJob && typeof payload.merge?.sessionId === "string" ? payload.merge.sessionId : "";
+    // Life-scene notifications return to the life page, not the underlying online chat session.
     const targetUrl = deliverAsCall && callSessionId
       ? `/?ring=${encodeURIComponent(callSessionId)}&rt=${Date.now()}`
-      : (payload.notify?.url || "/");
+      : (isLifeSceneJob ? "/life" : (payload.notify?.url || "/"));
+    const lifeScenePreview = payload.merge?.lifeScene ? (() => {
+      const action = rawText.match(/<life_action\b[^>]*>([\s\S]*?)<\/life_action\s*>/i)?.[1]?.trim() ?? "";
+      const dialogue = rawText.match(/<life_dialogue\b[^>]*>([\s\S]*?)<\/life_dialogue\s*>/i)?.[1]?.trim() ?? "";
+      return [action, dialogue].filter(Boolean).join(" ") || rawText.replace(/<[^>]+>/g, "").trim();
+    })() : rawText;
     let parts = deliverAsCall
       ? ["来电话了…"]
-      : splitResponseForPushPreview(rawText).slice(0, 6);
+      : splitResponseForPushPreview(lifeScenePreview).slice(0, 6);
     if (parts.length === 0) parts = ["发来一条消息"];
 
     for (let index = 0; index < parts.length; index += 1) {

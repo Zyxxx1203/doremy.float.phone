@@ -67,10 +67,12 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
   useEffect(() => {
     const onChange = () => refresh();
     window.addEventListener(WIDGET_UPDATED_EVENT, onChange);
+    window.addEventListener("virtual-life-state-updated", onChange);
     const onVisible = () => { if (document.visibilityState === "visible") { setPlaced(isWidgetPlaced()); refresh(); } };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.removeEventListener(WIDGET_UPDATED_EVENT, onChange);
+      window.removeEventListener("virtual-life-state-updated", onChange);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [refresh]);
@@ -340,7 +342,7 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
             </div>
             <p className="ws-hint">
               这里可以写任意 HTML 和 CSS——渐变、圆角、阴影、字体、透明度、对齐都能用。
-              桌面上显示什么，就是这段代码渲染出来的样子。
+              桌面上显示什么，就是这段代码渲染出来的样子。新增的生活状态占位符复用生活 APP 的虚拟时间、当前活动、地点线索和下一项日程，不用重复配置时钟。小手机运行且调度可用时会刷新；应用完全退出后不保证实时后台更新。
             </p>
 
             {templateExpanded ? (

@@ -1,5 +1,9 @@
 "use client";
 
+import { loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
+import { resolveLifeCharacterIdForContact } from "@/lib/life/life-autonomy";
+import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow, settleActorTimelineToNow } from "@/lib/life/life-runtime";
+
 import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, getSystemInstructionDisplayContent, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages, isSessionStreamingEnabled, resolveChatBackgroundImage, resolveChatUserAvatar } from "@/lib/chat-storage";
 import { cleanStreamText, splitStreamPreviewSegments, stripLiteralTexts, stripXmlTagBlocks } from "@/lib/stream-preview";
@@ -118,6 +122,16 @@ function uiRole(msg: ChatMessage): string {
     return msg.role;
 }
 
+function isCharacterCoPresentInLifeScene(characterId: string): boolean {
+    try {
+        const state = loadVirtualLifeState();
+        return state.settings.enabled && state.scenes.some(scene => scene.status === "active"
+            && scene.participants.some(participant => participant.ownerType === "player" && participant.ownerId === "player")
+            && scene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === characterId && participant.activity !== "离开"));
+    } catch {
+        return false;
+    }
+}
 function isChatRoomElementVisible(element: HTMLElement | null): boolean {
     if (!element || !element.isConnected) return false;
     const rect = element.getBoundingClientRect();
@@ -2524,17 +2538,10 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 if (part.mediaType === "voice_call" || part.mediaType === "video_call") {
                     if (session.isSpectator) continue; // 围观群不能把用户卷进群通话
                     const callType = part.mediaType === "voice_call" ? "voice" : "video";
-                    const isHidden = !mountedRef.current || !isChatRoomElementVisible(wrapperRef.current);
-                    if (isHidden) {
-                        window.dispatchEvent(new CustomEvent("ai-call-trigger", {
-                            detail: { sessionId: session.id, type: callType, characterName: r.characterName },
-                        }));
-                    } else {
-                        setCallInitiator("character");
-                        setCallInitiatorName(r.characterName);
-                        if (callType === "voice") setShowVoiceCall(true);
-                        else setShowVideoCall(true);
-                    }
+                    // 统一通过全局通话触发事件打开通话界面，避免依赖当前聊天组件的局部弹窗状态。
+                    window.dispatchEvent(new CustomEvent("ai-call-trigger", {
+                        detail: { sessionId: session.id, type: callType, characterName: r.characterName },
+                    }));
                     continue;
                 }
                 if (part.mediaType === "accept_red_packet") {
@@ -3352,6 +3359,9 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             clearGenerationLock(session.id);
         }
 
+        const latestForSleepGate = loadChatMessages(session.id);
+        const lastForSleepGate = latestForSleepGate[latestForSleepGate.length - 1];
+        if (lastForSleepGate?.role === "user" && shouldSuppressLifeSleepReply(lastForSleepGate.content)) { setPendingGenerate(false); return; }
         const generationRun = createGenerationRun(session.id);
         const generationRunId = generationRun.runId;
         const isCurrentGeneration = () => isGenerationRunActive(session.id, generationRunId);
@@ -3690,6 +3700,33 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         return sent;
     };
 
+    const shouldSuppressLifeSleepReply = (userText?: string, notify = true): boolean => {
+        if (session.isGroup || offlineMode || !character) return false;
+        const loadedLife = loadVirtualLifeState();
+        const settledLife = settleActorTimelineToNow(loadedLife, "character", character.id);
+        const life = settledLife === loadedLife ? loadedLife : saveVirtualLifeState(settledLife);
+        if (!life.settings.enabled || !life.settings.allowCharactersToStaySilent) { kvRemove("life-sleep-pending-reply:" + session.id); return false; }
+        const latestUserText = (userText || loadChatMessages(session.id).filter(message => message.role === "user").slice(-1)[0]?.content || "").trim();
+        if (!latestUserText) return false;
+        const clock = getActorClock(life, "character", character.id);
+        const now = resolveActorLifeNow(clock);
+        const schedule = getCurrentActorSchedule(life, "character", character.id, now);
+        const presence = life.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === character.id);
+        const sleeping = /睡眠|睡觉|入睡|午休/.test((presence?.activity || "") + " " + (schedule?.title || ""));
+        if (!sleeping) { kvRemove("life-sleep-pending-reply:" + session.id); return false; }
+        const urgent = /救命|紧急|出事了|危险|受伤|快来|急救/.test(latestUserText);
+        const lightSleeper = /浅眠|警觉|敏感|担心|保护欲|容易醒/.test(character.personality || "");
+        const seed = [...(character.id + latestUserText)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+        const staysAsleep = !urgent && seed % 100 >= (lightSleeper ? 60 : 15);
+        if (staysAsleep) {
+            kvSet("life-sleep-pending-reply:" + session.id, "true");
+            if (notify) showChatToast(character.name + "正在睡觉，没有被这条消息叫醒。TA醒来后会再查看消息。", 3500);
+        } else {
+            kvRemove("life-sleep-pending-reply:" + session.id);
+        }
+        return staysAsleep;
+    };
+
     const triggerAIResponse = async () => {
         if (isGeneratingRef.current) {
             if (activeGenerationRuns.has(session.id)) return;
@@ -3977,7 +4014,12 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 if (!isCurrentGeneration()) return;
 
                 if (lastSendResult) {
-                    scheduleFollowUp(session.id, 0, lastSendResult.stateValues);
+                    const lifeCharacterId = resolveLifeCharacterIdForContact(session.contactId, loadChatContacts());
+                    if (lifeCharacterId && isCharacterCoPresentInLifeScene(lifeCharacterId)) {
+                        cancelFollowUp(session.id);
+                    } else {
+                        scheduleFollowUp(session.id, 0, lastSendResult.stateValues);
+                    }
                     const isHidden = !mountedRef.current || !isChatRoomElementVisible(wrapperRef.current);
                     if (isHidden && lastSendResult.triggerCall) {
                         window.dispatchEvent(new CustomEvent("ai-call-trigger", {
@@ -4076,6 +4118,28 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     }, [session.contactId, session.id, session.isGroup, syncMessagesFromStorage, triggerAIResponse]);
 
     // 围观群/被禁言时用户不能发言
+    useEffect(() => {
+        if (session.isGroup || offlineMode || !character) return;
+        const key = "life-sleep-pending-reply:" + session.id;
+        const checkPendingSleepReply = () => {
+            if (kvGet(key) !== "true" || isGeneratingRef.current) return;
+            const latest = loadChatMessages(session.id);
+            const lastUser = [...latest].reverse().find(message => message.role === "user");
+            if (!lastUser) { kvRemove(key); return; }
+            if (shouldSuppressLifeSleepReply(lastUser.content, false)) return;
+            kvRemove(key);
+            showChatToast(character.name + "醒来后看到了你之前的消息，正在回应。", 3500);
+            void triggerAIResponse();
+        };
+        checkPendingSleepReply();
+        const timer = window.setInterval(checkPendingSleepReply, 30_000);
+        window.addEventListener("focus", checkPendingSleepReply);
+        return () => {
+            window.clearInterval(timer);
+            window.removeEventListener("focus", checkPendingSleepReply);
+        };
+    }, [session.id, session.isGroup, offlineMode, character?.id]);
+
     const ensureGroupSpeakPermission = (): boolean => {
         if (!session.isGroup) return true;
         if (session.isSpectator) {
@@ -4126,6 +4190,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             });
 
             setMessages(prev => [...prev, newMsg]);
+            if (!diceOnly && shouldSuppressLifeSleepReply(currentText)) { setPendingGenerate(false); return; }
             if (diceOnly) {
                 const diceAside = pushChatMessage({
                     sessionId: session.id,
