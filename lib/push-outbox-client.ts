@@ -32,6 +32,8 @@ type OutboxEntry = {
         armAt?: string;
         /** 云端触发快捷动作失败的摘要；成功时不带这个字段 */
         shortcutDeliveryError?: string;
+        /** Server-generated proactive life-scene turn; must never be merged into online chat. */
+        lifeScene?: { sceneId?: string; characterId?: string; characterName?: string };
     } | null;
     created_at: string;
 };
@@ -53,6 +55,15 @@ function getTimedWakeIdFromTriggerKey(triggerKey: string | null): string | null 
 function clearTimedWakeIfHandled(triggerKey: string | null): void {
     const timedWakeId = getTimedWakeIdFromTriggerKey(triggerKey);
     if (timedWakeId) removeTimedWakeSchedule(timedWakeId);
+}
+function parseLifeSceneProactiveOutput(raw: string): { action: string; dialogue: string } {
+    const actionMatch = raw.match(/<life_action\b[^>]*>([\s\S]*?)<\/life_action\s*>/i);
+    const dialogueMatch = raw.match(/<life_dialogue\b[^>]*>([\s\S]*?)<\/life_dialogue\s*>/i);
+    const clean = (value: string) => value
+        .replace(/<\/?(?:content|summary|thinking)>/ig, "")
+        .replace(/&quot;/g, '"').replace(/&amp;/g, "&").trim();
+    if (actionMatch || dialogueMatch) return { action: clean(actionMatch?.[1] || ""), dialogue: clean(dialogueMatch?.[1] || "") };
+    return { action: "", dialogue: clean(raw.replace(/<[^>]+>/g, "")) };
 }
 
 export async function consumeServerOutbox(options?: { silent?: boolean; force?: boolean }): Promise<void> {
@@ -154,6 +165,50 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                     // 都没发生，写进现实桥动态让用户查得到原因。这是一条独立的
                     // outbox 行（云端在投递之后才写），不是角色消息——消费掉即可，
                     // 绝不能走下面的建消息流程，否则聊天里会凭空多出一条。
+                    // Life-scene output has its own durable destination. Never insert it into the
+                    // character's online chat history, even though the push job uses that session
+                    // only to build the provider snapshot and carry notification metadata.
+                    const lifeScene = meta.lifeScene;
+                    if (lifeScene?.sceneId && lifeScene.characterId) {
+                        const { loadVirtualLifeState, saveVirtualLifeState, appendLifeTimelineEntry } = await import("./life/life-storage");
+                        const state = loadVirtualLifeState();
+                        const scene = state.scenes.find(item => item.id === lifeScene.sceneId && item.status === "active");
+                        const playerPresent = scene?.participants.some(item => item.ownerType === "player" && item.ownerId === "player");
+                        const characterPresent = scene?.participants.some(item => item.ownerType === "character" && item.ownerId === lifeScene.characterId && item.activity !== "离开");
+                        const messageId = "life-outbox-" + entry.id;
+                        if (scene && playerPresent && characterPresent && !state.sceneMessages.some(item => item.id === messageId)) {
+                            const parsed = parseLifeSceneProactiveOutput(entry.raw_text);
+                            if (parsed.action || parsed.dialogue) {
+                                const now = new Date().toISOString();
+                                const speakerName = lifeScene.characterName || meta.characterName || "角色";
+                                const message = {
+                                    id: messageId, sceneId: scene.id, speakerType: "character" as const,
+                                    speakerId: lifeScene.characterId, speakerName, role: "character" as const,
+                                    action: parsed.action || undefined, dialogue: parsed.dialogue, createdAt: now,
+                                };
+                                let next = {
+                                    ...state, sceneMessages: [...state.sceneMessages, message],
+                                    scenes: state.scenes.map(item => item.id === scene.id ? { ...item, updatedAt: now } : item),
+                                };
+                                if (message.action) next = appendLifeTimelineEntry(next, {
+                                    category: "action", title: speakerName + "的行动", details: message.action,
+                                    actorId: message.speakerId, actorName: speakerName, locationName: scene.locationName,
+                                    sceneId: scene.id, sourceId: message.id,
+                                });
+                                if (message.dialogue.trim()) next = appendLifeTimelineEntry(next, {
+                                    category: "dialogue", title: speakerName + "说", details: message.dialogue,
+                                    actorId: message.speakerId, actorName: speakerName, locationName: scene.locationName,
+                                    sceneId: scene.id, sourceId: message.id,
+                                });
+                                saveVirtualLifeState(next);
+                            }
+                        }
+                        // If the scene ended while the app was offline, consume the stale turn
+                        // rather than leaking it into online chat.
+                        consumedIds.push(entry.id);
+                        if (entry.trigger_key) handledTriggerKeys.add(entry.trigger_key);
+                        continue;
+                    }
                     if ((meta as { kind?: string }).kind === "shortcut_delivery_error") {
                         const detail = typeof meta.shortcutDeliveryError === "string"
                             ? meta.shortcutDeliveryError
