@@ -51,6 +51,8 @@ const MDI_PATHS: Record<IconId, string> = {
   settings: mdiCogOutline,
   life: mdiHeart,
   archive: mdiDatabase,
+  photowall: mdiCamera,
+  watchtogether: mdiMovie,
   chat: mdiMessageProcessing,
   diary: mdiBookOpenPageVariant,
   music: mdiMusic,

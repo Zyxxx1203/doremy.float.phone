@@ -765,31 +765,40 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   const composeSceneReferenceSheet = async (participantIds: string[]): Promise<string | undefined> => {
     const imageSettings = loadImageGenerationSettings();
-    const sources: Array<{label:string;dataUrl:string}> = [];
+    const sources: Array<{label:string;dataUrl:string;faceCrop?:{x:number;y:number;size:number}}> = [];
     const playerAsset = imageSettings.userAppearanceReferenceAssetId;
     if(playerAsset && participantIds.includes(PLAYER_ID)) {
       const dataUrl=await getChatImageFromIndexedDB(playerAsset);
-      if(dataUrl) sources.push({label:playerName,dataUrl});
+      if(dataUrl) sources.push({label:playerName,dataUrl,faceCrop:imageSettings.userAppearanceFaceCrop});
     }
     for(const participantId of participantIds) {
       const ref=imageSettings.characterReferences?.[participantId];
       if(!ref?.assetId||ref.enabled===false)continue;
       const dataUrl=await getChatImageFromIndexedDB(ref.assetId);
-      if(dataUrl) sources.push({label:characters.find(char=>char.id===participantId)?.name||"角色",dataUrl});
+      if(dataUrl) sources.push({label:characters.find(char=>char.id===participantId)?.name||"角色",dataUrl,faceCrop:ref.faceCrop});
     }
     if(!sources.length)return undefined;
-    const decoded=await Promise.all(sources.map(({label,dataUrl})=>new Promise<{label:string;image:HTMLImageElement}>((resolve,reject)=>{
-      const image=new Image();image.onload=()=>resolve({label,image});image.onerror=()=>reject(new Error("参考图读取失败"));image.src=dataUrl;
+    const decoded=await Promise.all(sources.map(({label,dataUrl,faceCrop})=>new Promise<{label:string;image:HTMLImageElement;faceCrop?:{x:number;y:number;size:number}}>((resolve,reject)=>{
+      const image=new Image();image.onload=()=>resolve({label,image,faceCrop});image.onerror=()=>reject(new Error("参考图读取失败"));image.src=dataUrl;
     })));
     const cellW=512,cellH=340,cols=Math.min(2,decoded.length),rows=Math.ceil(decoded.length/cols);
     const canvas=document.createElement("canvas");canvas.width=cols*cellW;canvas.height=rows*cellH;
     const ctx=canvas.getContext("2d");if(!ctx)return undefined;
     ctx.fillStyle="#f7f0e7";ctx.fillRect(0,0,canvas.width,canvas.height);
-    decoded.forEach(({label,image},index)=>{
+    decoded.forEach(({label,image,faceCrop},index)=>{
       const x=(index%cols)*cellW,y=Math.floor(index/cols)*cellH;
-      const scale=Math.min((cellW-32)/image.naturalWidth,(cellH-58)/image.naturalHeight);
-      const w=image.naturalWidth*scale,h=image.naturalHeight*scale;
-      ctx.drawImage(image,x+(cellW-w)/2,y+8+(cellH-48-h)/2,w,h);
+      if(faceCrop){
+        const width=image.naturalWidth||image.width, height=image.naturalHeight||image.height;
+        const side=Math.max(1,Math.round(Math.min(width,height)*Math.max(0.18,Math.min(1,faceCrop.size))));
+        const sx=Math.max(0,Math.min(width-side,Math.round(faceCrop.x*width)));
+        const sy=Math.max(0,Math.min(height-side,Math.round(faceCrop.y*height)));
+        const targetSize=Math.min(cellW-32,cellH-58);
+        ctx.drawImage(image,sx,sy,side,side,x+(cellW-targetSize)/2,y+8+(cellH-48-targetSize)/2,targetSize,targetSize);
+      }else{
+        const scale=Math.min((cellW-32)/image.naturalWidth,(cellH-58)/image.naturalHeight);
+        const w=image.naturalWidth*scale,h=image.naturalHeight*scale;
+        ctx.drawImage(image,x+(cellW-w)/2,y+8+(cellH-48-h)/2,w,h);
+      }
       ctx.fillStyle="#49392f";ctx.font="600 18px sans-serif";ctx.textAlign="center";ctx.fillText(label,x+cellW/2,y+cellH-16,cellW-24);
     });
     return canvas.toDataURL("image/png");
@@ -802,6 +811,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       "当前场景："+(activeScene?.locationName || selectedLocation?.name || "日常场景"),
       "场景状态："+(activeScene?.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);return (actor?.name||p.ownerId)+"正在"+p.activity;}).join("；") || playerActivity),
       participantIds.includes(PLAYER_ID) && imageSettings.userAppearanceDescription?.trim() ? "玩家固定外观："+imageSettings.userAppearanceDescription.trim() : "",
+      participantIds.includes(PLAYER_ID) && imageSettings.userAppearanceReferenceAssetId ? "参考板中标注“"+playerName+"”的图片用于保持玩家本人身份特征；不要把玩家与角色混为一人。" : "",
       ...participantIds.map(pid=>{
         const char=characters.find(item=>item.id===pid);
         if(!char)return "";
@@ -818,7 +828,15 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (!activeScene || sceneImageBusy) return;
     const imageSettings = loadImageGenerationSettings();
     if (!imageSettings.enabled) { setNotice("请先到「设置 → 生图设置」启用并配置生图 API。"); return; }
-    const participantIds = options?.participantIds ?? (imageParticipantIds.length ? imageParticipantIds : activeScene.participants.filter(p=>p.ownerType==="character").map(p=>p.ownerId));
+    const participantIds = options?.participantIds ?? (imageParticipantIds.length
+      ? imageParticipantIds
+      : [
+          ...(activeScene.participants.some(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID)
+            && (imageSettings.userAppearanceReferenceAssetId || imageSettings.userAppearanceDescription?.trim())
+            ? [PLAYER_ID]
+            : []),
+          ...activeScene.participants.filter(participant => participant.ownerType === "character").map(participant => participant.ownerId),
+        ]);
     const prompt = buildSceneImagePrompt(participantIds, options?.prompt ?? sceneImagePrompt);
     const count = Math.max(1,Math.min(4,options?.count ?? settings.sceneImageCount));
     setSceneImageBusy(true);

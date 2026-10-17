@@ -245,6 +245,8 @@ export type ImageGenerationSettings = {
     /** Whole-phone user appearance used by image generation features that depict the player. */
     userAppearanceDescription?: string;
     userAppearanceReferenceAssetId?: string;
+    /** Normalized square face crop for the global player reference image. */
+    userAppearanceFaceCrop?: { x: number; y: number; size: number };
     characterReferences: Record<string, {
         assetId?: string;
         updatedAt: number;
