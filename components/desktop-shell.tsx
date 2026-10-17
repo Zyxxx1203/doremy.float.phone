@@ -28,6 +28,7 @@ import { DiaryApp } from "@/components/diary/diary-app";
 import { XiaohongshuApp } from "@/components/xiaohongshu/xiaohongshu-app";
 import { StoryApp } from "@/components/story/story-app";
 import { LifeEngineApp } from "@/components/life/life-engine-app";
+import { ArchiveRoomApp } from "@/components/archive-room-app";
 import { VnApp } from "@/components/vn/vn-app";
 import ReadingApp from "@/components/reading/reading-app";
 import MapApp from "@/components/map/map-app";
@@ -4292,6 +4293,10 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
     if (activeApp === "life") {
       return <LifeEngineApp onClose={() => setActiveApp(null)} />;
+    }
+
+    if (activeApp === "archive") {
+      return <ArchiveRoomApp onClose={() => setActiveApp(null)} onNotice={setNotice} />;
     }
 
     if (activeApp === "vnmode") {
