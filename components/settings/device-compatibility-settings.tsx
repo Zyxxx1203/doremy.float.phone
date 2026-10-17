@@ -31,8 +31,15 @@ type NativeApi = {
   readCalendarEvents?: (...args: unknown[]) => unknown;
   captureScreenshot?: (...args: unknown[]) => unknown;
   getDiagnosticsSnapshot?: () => string;
+  getDeviceActionCapabilities?: () => string;
+  getPerceptionCapabilities?: () => string;
+  getLocationCapabilities?: () => string;
+  getHealthCapabilities?: () => string;
+  getCalendarCapabilities?: () => string;
+  getScreenshotCapabilities?: () => string;
+  getScreenshotDiagnostics?: () => string;
 };
-type WidgetApi = { update?: (...args: unknown[]) => unknown; isSupported?: () => boolean };
+type WidgetApi = { update?: (...args: unknown[]) => unknown; isSupported?: () => boolean; diagnostics?: () => string };
 function getNativeApi(): NativeApi | undefined {
   if (typeof window === "undefined") return undefined;
   return (window as unknown as { AndroidShell?: NativeApi }).AndroidShell;
@@ -95,16 +102,44 @@ export function DeviceCompatibilitySettings({ onNotice }: { onNotice?: (message:
   const [settings, setSettings] = useState<DeviceCompatibilitySettings>(() => loadDeviceCompatibilitySettings());
   const [metrics, setMetrics] = useState(() => readDeviceRuntimeMetrics());
   const [nativeSnapshot, setNativeSnapshot] = useState<Record<string, unknown> | null>(null);
+  const [apiSnapshots, setApiSnapshots] = useState<Record<string, unknown>>({});
   const [reportCopied, setReportCopied] = useState(false);
 
   const refresh = useCallback(() => {
     setMetrics(readDeviceRuntimeMetrics());
+    const api = getNativeApi();
     try {
-      const raw = getNativeApi()?.getDiagnosticsSnapshot?.();
+      const raw = api?.getDiagnosticsSnapshot?.();
       setNativeSnapshot(raw ? JSON.parse(raw) as Record<string, unknown> : null);
     } catch {
       setNativeSnapshot(null);
     }
+    const snapshots: Record<string, unknown> = {};
+    const readers: Array<[string, (() => string) | undefined]> = [
+      ["deviceActions", api?.getDeviceActionCapabilities ? () => api.getDeviceActionCapabilities!() : undefined],
+      ["perception", api?.getPerceptionCapabilities ? () => api.getPerceptionCapabilities!() : undefined],
+      ["location", api?.getLocationCapabilities ? () => api.getLocationCapabilities!() : undefined],
+      ["health", api?.getHealthCapabilities ? () => api.getHealthCapabilities!() : undefined],
+      ["systemCalendar", api?.getCalendarCapabilities ? () => api.getCalendarCapabilities!() : undefined],
+      ["screenshot", api?.getScreenshotCapabilities ? () => api.getScreenshotCapabilities!() : undefined],
+      ["screenshotDiagnostics", api?.getScreenshotDiagnostics ? () => api.getScreenshotDiagnostics!() : undefined],
+    ];
+    for (const [key, read] of readers) {
+      if (!read) continue;
+      try {
+        const raw = read();
+        snapshots[key] = raw ? JSON.parse(raw) as unknown : { available: false };
+      } catch {
+        snapshots[key] = { readError: true };
+      }
+    }
+    try {
+      const raw = getWidgetApi()?.diagnostics?.();
+      if (raw) snapshots.widgets = JSON.parse(raw) as unknown;
+    } catch {
+      snapshots.widgets = { readError: true };
+    }
+    setApiSnapshots(snapshots);
   }, []);
 
   useEffect(() => {
@@ -155,7 +190,7 @@ export function DeviceCompatibilitySettings({ onNotice }: { onNotice?: (message:
       "注意：报告仅在本机生成，不会自动上传。分享前请检查设备信息。",
     ];
     return lines.join("\n");
-  }, [metrics, nativeSnapshot, native, settings]);
+  }, [metrics, nativeSnapshot, apiSnapshots, native, settings]);
 
   const update = <K extends keyof DeviceCompatibilitySettings>(key: K, value: DeviceCompatibilitySettings[K]) => {
     setSettings((current) => ({ ...current, [key]: value }));
@@ -287,6 +322,10 @@ export function DeviceCompatibilitySettings({ onNotice }: { onNotice?: (message:
     <section style={panelStyle}>
       <div><strong style={{ fontSize: 14 }}>导出兼容性报告</strong><p style={{ fontSize: 12, opacity: .7, lineHeight: 1.6, margin: "5px 0 0" }}>报告包括屏幕尺寸、DPR、浏览器/WebView 版本与接口存在性，不包含聊天内容、角色记忆或截图。</p></div>
       <button type="button" style={{ ...buttonStyle, justifySelf: "start" }} onClick={copyReport}><Clipboard size={15} />{reportCopied ? "已复制报告" : "复制报告"}</button>
+      {Object.keys(apiSnapshots).length > 0 && <details style={{ fontSize: 12 }}>
+        <summary style={{ cursor: "pointer", padding: "6px 0" }}>展开原生接口能力快照（只读检测）</summary>
+        <pre style={{ marginTop: 8, padding: 10, borderRadius: 10, overflowX: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", background: "var(--surface-secondary, rgba(128,128,128,.06))", fontSize: 10, lineHeight: 1.5 }}>{JSON.stringify(apiSnapshots, null, 2)}</pre>
+      </details>}
       <textarea readOnly value={report} aria-label="兼容性诊断报告" style={{ ...inputStyle, minHeight: 190, resize: "vertical", fontSize: 11, lineHeight: 1.5, whiteSpace: "pre-wrap" }} />
     </section>
   </div>;
