@@ -278,7 +278,7 @@ async function buildStoryPromptMessages(
     ? prepareShortTermContext(characterId, "story", {
       userName: userIdentity?.name ?? "用户",
       history: historyMessages,
-      afterTimestamp: storyMemory?.inheritRecentMemory === false ? storyMemory.startedAt : undefined,
+      afterTimestamp: !storyMemory?.memorySettings && storyMemory?.inheritRecentMemory === false ? storyMemory.startedAt : undefined,
       includeOtherApps: memorySettings.readOtherAppsMemory,
     })
     : {
