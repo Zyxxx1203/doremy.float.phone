@@ -154,7 +154,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           const refs = [message.mediaUrl, ...(Array.isArray(message.mediaData?.imageRefs) ? message.mediaData.imageRefs as string[] : [])];
           if (!imageMessage && !refs.some(ref => typeof ref === "string" && (ref.startsWith("media-store://") || ref.startsWith("data:image/")))) continue;
           for (const [index, ref] of refs.entries()) {
-            if (typeof ref !== "string" || !(ref.startsWith("media-store://") || ref.startsWith("data:image/") || /^https?:\\/\\//i.test(ref))) continue;
+            if (typeof ref !== "string" || !(ref.startsWith("media-store://") || ref.startsWith("data:image/") || /^https?:\/\//i.test(ref))) continue;
             candidates.push({
               key: `${message.id}-${index}-${ref.slice(0, 32)}`, ref,
               title: message.content?.trim().slice(0, 48) || "聊天里的照片",
