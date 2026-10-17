@@ -1489,10 +1489,10 @@ function ImageBubble({
     if (groupUrls.length > 1 && d?.imageCollection === true) {
         return (
             <>
-                <div className="chat-photo-card chat-photo-card--image relative max-w-[260px] overflow-hidden rounded-xl" style={{ cursor: "pointer" }}>
+                <div className="chat-photo-card chat-photo-card--image relative w-[min(260px,75vw)] max-w-full overflow-hidden rounded-xl" style={{ cursor: "pointer" }}>
                     <div className="flex w-full snap-x snap-mandatory gap-0 overflow-x-auto overscroll-x-contain" style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}>
                         {groupUrls.map((url, index) => (
-                            <button type="button" key={`${index}-${url}`} onClick={e => { e.stopPropagation(); setPreviewImageUrl(url); setShowPreview(true); }} className="relative aspect-square w-full min-w-full snap-center overflow-hidden bg-stone-100">
+                            <button type="button" key={`${index}-${url}`} onClick={e => { e.stopPropagation(); setPreviewImageUrl(url); setShowPreview(true); }} className="relative aspect-square w-full min-w-full flex-none snap-center overflow-hidden bg-stone-100">
                                 <img src={url} alt={`${label} ${index + 1}`} className="h-full w-full object-cover" loading={index < 2 ? "eager" : "lazy"} />
                                 <span className="absolute bottom-2 right-2 rounded-full bg-black/55 px-2 py-0.5 text-xs text-white">{index + 1}/{groupUrls.length}</span>
                             </button>
@@ -1506,7 +1506,7 @@ function ImageBubble({
     if (d?.imageCollection === true && groupLoadError) {
         return (
             <>
-                <div className="chat-photo-card chat-photo-card--image max-w-[260px] overflow-hidden rounded-xl">
+                <div className="chat-photo-card chat-photo-card--image w-[min(260px,75vw)] max-w-full overflow-hidden rounded-xl">
                     {resolvedUrl ? (
                         <button type="button" onClick={e => { e.stopPropagation(); setPreviewImageUrl(resolvedUrl); setShowPreview(true); }} className="block w-full">
                             <img src={resolvedUrl} alt={label} className="block max-h-[320px] w-auto max-w-full" />
@@ -1522,7 +1522,7 @@ function ImageBubble({
     }
     if (d?.imageCollection === true && groupLoading && groupUrls.length < 2) {
         return (
-            <div className="chat-photo-card chat-photo-card--image relative max-w-[260px] overflow-hidden rounded-xl">
+            <div className="chat-photo-card chat-photo-card--image relative w-[min(260px,75vw)] max-w-full overflow-hidden rounded-xl">
                 {resolvedUrl ? <img src={resolvedUrl} alt={label} className="block max-h-[320px] w-auto max-w-full" /> : <div className="p-8 text-sm">正在读取多图…</div>}
                 <div role="status" className="bg-stone-50 px-3 py-2 text-xs text-stone-600">正在整理多图集合…</div>
             </div>
