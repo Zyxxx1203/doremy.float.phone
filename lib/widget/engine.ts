@@ -18,7 +18,7 @@ import { loadChatContacts, loadChatSessions, loadChatMessages } from "../chat-st
 import { loadMemoryConfig } from "../memory-storage";
 import { retrieveCoreMemoriesForPrompt, retrieveMemoriesForPrompt } from "../memory-service";
 import { loadApiConfigs, resolveAuxiliaryApiConfig, resolveUserIdentity } from "../settings-storage";
-import { appendCustomAppTimelineEntry } from "../custom-app-storage";
+import { appendCustomAppTimelineEntry, loadCustomAppTimelineEntries } from "../custom-app-storage";
 import { loadWidgetAutoLastRun, loadWidgetConfig, loadWidgetData, markWidgetAutoRun, saveWidgetData } from "./storage";
 
 /**
@@ -67,6 +67,13 @@ async function generateLine(
     .map(({ message }) => `${message.role === "user" ? userName : character.name}：${message.content.trim().slice(0, 700)}`)
     .join("\n");
 
+  // 自定义应用时间线是小手机里记录近期事件/短期经历的一条数据源。
+  const recentTimeline = loadCustomAppTimelineEntries(characterId)
+    .slice(-15)
+    .map(entry => `[${entry.createdAt.slice(0, 16)}] ${entry.appName}：${entry.summary}${entry.detail ? `（${entry.detail}` + "）" : ""}`)
+    .join("\n")
+    .slice(0, 4000);
+
   let memoryContext = "";
   try {
     const memoryConfig = loadMemoryConfig();
@@ -105,6 +112,8 @@ async function generateLine(
         "你必须保持角色原本的性格、价值观、身份、关系边界、说话习惯和情感表达方式。不要把所有角色都写成温柔、黏人、主动表达爱意的通用陪伴型 AI；角色没有表现出的情绪和经历，不要凭空编造。",
         "【近期聊天】以下内容只用于理解最近发生的事、双方正在聊什么以及角色当下的语气。请勿复述整段聊天，也不要把用户的话冒充成角色说过的话。",
         recentMessages || "没有读取到近期私聊记录。不要假装记得不存在的对话。",
+        "【短期记忆/近期事件】这是小手机记录的近期事件时间线，用于补足聊天窗口之外发生的事；只在相关时参考，不要机械复述。",
+        recentTimeline || "没有读取到近期事件时间线。",
         "【角色记忆】以下是已经保存的记忆，只在与当前状态有关时参考；如果与角色卡冲突，以角色卡为准。不要编造记忆中没有的共同经历。",
         memoryContext || "没有读取到可用的核心/长期记忆。",
         "【输出要求】",
