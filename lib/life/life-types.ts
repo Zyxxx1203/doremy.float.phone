@@ -68,6 +68,8 @@ export type LifeEngineSettings = {
   panelOpacity: number;
   dialogueFontSize: number;
   narrationFontSize: number;
+  /** Inner padding for life-scene dialogue bubbles, in pixels. */
+  bubblePadding: number;
   dialogueBubbleStyle: "rounded" | "soft" | "square";
   /** User CSS overrides for the life scene chat only. */
   customSceneCss?: string;
@@ -119,6 +121,7 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   panelOpacity: 96,
   dialogueFontSize: 15,
   narrationFontSize: 12,
+  bubblePadding: 6,
   dialogueBubbleStyle: "rounded",
   customSceneCss: "",
   compactLayout: false,
