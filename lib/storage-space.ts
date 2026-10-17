@@ -72,7 +72,12 @@ const MEDIA_CACHE_DB = "AiPhoneMediaCacheDB";
 // 刚写入还没被引用方保存的媒体（如生成中的图片）不能当孤儿删掉。
 const ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000;
 
-const CATEGORY_META: Record<StorageCategoryId, { label: string; description: string; supportsKeepDays: boolean }> = {\n  photo_wall_images: {\n    label: "照片墙图片",\n    description: "你收藏的照片和角色生成的生活照片。清理会从照片墙移除记录；媒体文件会在确认无其他引用后由孤儿媒体清理回收。",\n    supportsKeepDays: true,\n  },
+const CATEGORY_META: Record<StorageCategoryId, { label: string; description: string; supportsKeepDays: boolean }> = {
+  photo_wall_images: {
+    label: "照片墙图片",
+    description: "你收藏的照片和角色生成的生活照片。清理会从照片墙移除记录；媒体文件会在确认无其他引用后由孤儿媒体清理回收。",
+    supportsKeepDays: true,
+  },
   chat_images: {
     label: "聊天图片",
     description: "聊天里收发和 AI 生成的图片。清理后聊天文字保留，图片显示为已清理。",
