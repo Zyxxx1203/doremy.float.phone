@@ -157,6 +157,7 @@ const EMOJI_FONTS = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", 
 
 const ICON_LAYOUT_STORAGE_KEY = "ai_phone_icon_layout_v2";
 const ICON_LAYOUT_STORAGE_KEY_V1 = "ai_phone_icon_layout_v1";
+const NEW_LIFESTYLE_APPS_PAGE_MIGRATION_KEY = "ai_phone_new_lifestyle_apps_page4_v1";
 // Sentinel "page" used by the drag engine to mean "the dock". getDesktopPageNumber
 // returns 0 for it and getDesktopPageKeys filters it out, so page iteration never
 // treats the dock as a real page.
@@ -415,6 +416,39 @@ function trimEmptyTrailingPages(layout: DesktopLayout, widgets: WidgetInstance[]
 function getInstalledCustomIconIds(): Set<string> {
   return new Set(loadInstalledCustomApps().map(app => toCustomAppIconId(app.id)));
 }
+
+function migrateNewLifestyleAppsToPageFour(
+  layout: DesktopLayout,
+  widgets: WidgetInstance[],
+  dock: DesktopIconId[],
+  folders: DesktopFolderMap,
+): DesktopLayout {
+  if (kvGet(NEW_LIFESTYLE_APPS_PAGE_MIGRATION_KEY) === "1") return layout;
+  const movedIds = new Set<DesktopIconId>(["life", "archive", "photowall", "watchtogether"]);
+  const next = cloneDesktopLayout(layout, widgets);
+  for (const pageKey of getDesktopPageKeysForState(next, widgets)) {
+    next[pageKey] = (next[pageKey] ?? []).filter(icon => !movedIds.has(icon.id));
+  }
+  ensureDesktopPage(next, "page4" as DesktopPageKey);
+  const folderMembers = new Set(Object.values(folders).flatMap(folder => folder.icons));
+  const widgetOcc = buildWidgetOccupancy(widgets.filter(widget => widget.page === 4));
+  const usedCells = new Set((next.page4 ?? []).map(icon => `${icon.row},${icon.col}`));
+  for (const id of ["life", "archive", "photowall", "watchtogether"] as const) {
+    if (dock.includes(id) || folderMembers.has(id)) continue;
+    const desired = id === "life" ? { row: 3, col: 2 }
+      : id === "archive" ? { row: 3, col: 3 }
+      : id === "photowall" ? { row: 4, col: 2 }
+      : { row: 4, col: 3 };
+    const free = findNearestFreeCell(desired.row, desired.col, widgetOcc, usedCells);
+    if (!free) continue;
+    next.page4.push({ id, ...free });
+    usedCells.add(`${free.row},${free.col}`);
+  }
+  kvSet(NEW_LIFESTYLE_APPS_PAGE_MIGRATION_KEY, "1");
+  return next;
+}
+
+
 
 function migrateLegacyDesktopIconId(id: string, customIconIds = getInstalledCustomIconIds()): DesktopIconId | null {
   if (id === "weibo") return "game";
@@ -1602,11 +1636,12 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
         try {
           const normalized = normalizeLayout(JSON.parse(rawV2), hydratedWidgets, dockIds, hydratedFolders);
           const sane = sanitizeDesktopFolders(hydratedFolders, normalized, hydratedDock, hydratedWidgets);
+          const migratedLayout = migrateNewLifestyleAppsToPageFour(sane.layout, hydratedWidgets, hydratedDock, sane.folders);
           setFolders(sane.folders);
-          setLayout(sane.layout);
-          if (sane.changed) {
-            writeDesktopFolders(sane.folders);
-            kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(sane.layout));
+          setLayout(migratedLayout);
+          if (sane.changed) writeDesktopFolders(sane.folders);
+          if (sane.changed || migratedLayout !== sane.layout || kvGet(NEW_LIFESTYLE_APPS_PAGE_MIGRATION_KEY) === "1") {
+            kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(migratedLayout));
           }
           setDesktopReady(true);
           return;
