@@ -199,7 +199,7 @@ function stripMediaInString(value: string): string {
   if (value.length <= MEDIA_MIN_BYTES && !mayContainMedia) return value;
   if (mayContainMedia) {
     try { return JSON.stringify(stripMediaDeep(JSON.parse(value))); }
-    catch { return value.includes("media-store://") ? "" : value; }
+    catch { return value.replace(/media-store:\/\/[^\s"'\\]+/g, ""); }
   }
   return value;
 }
