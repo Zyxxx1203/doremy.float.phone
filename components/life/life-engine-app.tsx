@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type CSSProperties } from "react";
 import {
-  ArrowLeft, CalendarDays, Coffee, Heart, MapPin, MessagesSquare,
+  ArrowLeft, CalendarDays, Coffee, Heart, MapPin, MessagesSquare, Eye,
   Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Users, X, Pencil, Trash2,
 } from "lucide-react";
 import type { Character } from "@/lib/character-types";
@@ -39,8 +39,9 @@ import type { BindingConfig, PresetConfig, WorldBookConfig } from "@/lib/setting
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
+import { LifeObservation } from "@/components/life/life-observation";
 
-type Tab = "home" | "scene" | "daily" | "people" | "plans" | "invitations" | "experiences" | "locations" | "settings";
+type Tab = "home" | "scene" | "daily" | "people" | "plans" | "invitations" | "experiences" | "locations" | "observe" | "settings";
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
 type QuickPlanDraft = { id: string; ownerType: LifeOwnerType; ownerId: string; startAt: string; endAt: string; title: string; locationName: string };
 const PLAYER_ID = "player";
@@ -2009,9 +2010,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       </header>
       {sceneToast && immersiveScene && <div role="status" aria-live="polite" className="fixed left-1/2 top-[max(1rem,env(safe-area-inset-top))] z-[120] w-[min(92vw,26rem)] -translate-x-1/2 rounded-2xl border border-[var(--life-accent)]/30 bg-[#fffaf3]/95 px-4 py-3 shadow-xl backdrop-blur-md"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-semibold text-[var(--life-accent)]">{sceneToast.title}</p><p className="mt-1 text-sm leading-relaxed text-stone-700">{sceneToast.body}</p></div><button type="button" onClick={() => setSceneToast(null)} aria-label="关闭主动消息提示" className="shrink-0 text-stone-400">×</button></div></div>}
       {notice && !immersiveScene && <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-[var(--life-accent)]/20 bg-white/75 px-4 py-3 text-sm text-stone-700"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="关闭提示">×</button></div>}
-      <nav aria-label="生活导航" className={`${immersiveScene ? "hidden" : "sticky top-0 z-20 mb-2 grid grid-cols-6 gap-1 rounded-xl border border-white/80 bg-[#fbf7f0]/90 p-1 shadow-sm backdrop-blur-md"}`}>
-        {([{id:"home",label:"生活现场",icon:MessagesSquare},{id:"daily",label:"角色日常",icon:CalendarDays},{id:"invitations",label:"邀约活动",icon:Coffee},{id:"experiences",label:"共同经历",icon:Heart},{id:"locations",label:"地点库",icon:MapPin},{id:"settings",label:"设置",icon:Settings2}] as const).filter(item => item.id !== "invitations" || settings.enableInvitations || settings.enableFollowRequestTool || pendingCharacterInvitations.length > 0).map(item => { const Icon=item.icon; const active=item.id===tab||(item.id==="daily"&&(tab==="daily"||tab==="people"||tab==="plans")); return <button key={item.id} onClick={() => { if(item.id==="daily"){setTab("daily");setSceneView(false);return;} setTab(item.id); if(item.id==="home" || item.id==="locations") setSceneView(false); if(item.id==="locations") setLocationDossierOpen(false); }} aria-current={active?"page":undefined} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] transition sm:flex-row sm:text-sm ${active?"bg-white text-[var(--life-accent)] shadow-sm":"opacity-65 hover:opacity-100"}`}><span className="relative inline-flex"><Icon size={16}/>{item.id==="invitations"&&pendingCharacterInvitations.length>0&&<span className="absolute -right-2 -top-2 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] text-white">{pendingCharacterInvitations.length}</span>}</span><span className="truncate">{item.label}</span></button>; })}
+      <nav aria-label="生活导航" className={`${immersiveScene ? "hidden" : "sticky top-0 z-20 mb-2 grid grid-cols-4 gap-1 rounded-xl border border-white/80 bg-[#fbf7f0]/90 p-1 shadow-sm backdrop-blur-md sm:grid-cols-7"}`}>
+        {([{id:"home",label:"生活现场",icon:MessagesSquare},{id:"daily",label:"角色日常",icon:CalendarDays},{id:"invitations",label:"邀约活动",icon:Coffee},{id:"experiences",label:"共同经历",icon:Heart},{id:"locations",label:"地点库",icon:MapPin},{id:"observe",label:"观察生活",icon:Eye},{id:"settings",label:"设置",icon:Settings2}] as const).filter(item => item.id !== "invitations" || settings.enableInvitations || settings.enableFollowRequestTool || pendingCharacterInvitations.length > 0).map(item => { const Icon=item.icon; const active=item.id===tab||(item.id==="daily"&&(tab==="daily"||tab==="people"||tab==="plans")); return <button key={item.id} onClick={() => { if(item.id==="daily"){setTab("daily");setSceneView(false);return;} setTab(item.id); if(item.id==="home" || item.id==="locations" || item.id==="observe") setSceneView(false); if(item.id==="locations") setLocationDossierOpen(false); }} aria-current={active?"page":undefined} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[11px] transition sm:flex-row sm:text-sm ${active?"bg-white text-[var(--life-accent)] shadow-sm":"opacity-65 hover:opacity-100"}`}><span className="relative inline-flex"><Icon size={16}/>{item.id==="invitations"&&pendingCharacterInvitations.length>0&&<span className="absolute -right-2 -top-2 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] text-white">{pendingCharacterInvitations.length}</span>}</span><span className="truncate">{item.label}</span></button>; })}
       </nav>
+      <LifeObservation characters={characters} active={tab === "observe"} onNotice={setNotice} />
 
       {(tab === "home" || tab === "scene") && <div className={immersiveScene ? "flex min-h-0 flex-1 flex-col" : "space-y-4"}>
         {tab === "scene" && !immersiveScene && <details open className="rounded-2xl border border-white/80 bg-white/55 shadow-sm"><summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-stone-600">生活状态与时间线 · {playerNow.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})} · 展开查看</summary><section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
