@@ -11,6 +11,8 @@ type AndroidShellDiagnostics = {
   getDiagnosticsSnapshot?: () => string;
   getLastNativeCrashLog?: () => string;
   clearLastNativeCrashLog?: () => boolean;
+  getWebConsoleLogs?: () => string;
+  clearWebConsoleLogs?: () => boolean;
 };
 declare global { interface Window { AndroidShell?: AndroidShellDiagnostics; } }
 
@@ -37,6 +39,7 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
   const [errors, setErrors] = useState<QaErrorEntry[]>([]);
   const [nativeInfo, setNativeInfo] = useState<Record<string, unknown> | null>(null);
   const [nativeCrashLog, setNativeCrashLog] = useState("");
+  const [webConsoleLogs, setWebConsoleLogs] = useState<string[]>([]);
 
   const runChecks = useCallback(async () => {
     setBusy(true);
@@ -88,6 +91,8 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
     }
     setNativeInfo(parsed);
     setNativeCrashLog(shell && typeof shell.getLastNativeCrashLog === "function" ? safeRead(() => shell.getLastNativeCrashLog!(), "") : "");
+    const rawConsoleLogs = shell && typeof shell.getWebConsoleLogs === "function" ? safeRead(() => shell.getWebConsoleLogs!(), "[]") : "[]";
+    setWebConsoleLogs(safeRead(() => { const parsedLogs: unknown = JSON.parse(rawConsoleLogs); return Array.isArray(parsedLogs) ? parsedLogs.filter((item): item is string => typeof item === "string").slice(-200).reverse() : []; }, []));
     setErrors(recentErrors());
     setChecks(result);
     setLastRun(Date.now());
@@ -108,12 +113,14 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
       ...checks.map(item => "[" + labelFor(item.status) + "] " + item.title + "：" + item.detail + (item.fix ? "；建议：" + item.fix : "")),
       "", "原生信息：", nativeInfo ? JSON.stringify(nativeInfo, null, 2) : "无（浏览器/PWA 或当前 APK 不支持）",
       "", "上一次原生崩溃日志：", nativeCrashLog || "没有已保存的原生崩溃日志",
+      "", "最近 WebView Console 警告/错误（最多 200 条）：",
+      ...(webConsoleLogs.length ? webConsoleLogs.slice().reverse() : ["无已捕获的 WebView Console 错误；可能不是原生壳或 APK 版本较旧"]),
       "", "最近前端异常（最多 30 条；不包含聊天记录）：",
       ...(errors.length ? errors.map(item => "[" + new Date(item.ts).toISOString() + "] " + item.kind + (item.source ? " (" + item.source + ")" : "") + " " + item.message) : ["无已捕获异常"]),
       "", "隐私说明：报告由本机生成，不会自动上传。分享前请检查是否包含个人信息。"
     ];
     return lines.join("\n");
-  }, [checks, errors, lastRun, nativeInfo, nativeCrashLog]);
+  }, [checks, errors, lastRun, nativeInfo, nativeCrashLog, webConsoleLogs]);
 
   const copyReport = async () => {
     try { await navigator.clipboard.writeText(report); onNotice?.("诊断报告已复制；发送前请先检查内容。"); }
@@ -155,6 +162,11 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
       <div style={{ fontWeight: 700, fontSize: 14 }}>上一次原生崩溃</div>
       <p style={{ fontSize: 12, opacity: .7, lineHeight: 1.6, margin: "7px 0 10px" }}>新版 APK 会在进程发生未捕获原生异常时，将最近一次堆栈保存在应用私有目录；只在本机读取，不会自动上传。旧 APK 无此能力。</p>
       {nativeCrashLog ? <><pre style={{ maxHeight: 220, overflow: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 10, lineHeight: 1.5, padding: 10, borderRadius: 10, background: "var(--surface-secondary, rgba(128,128,128,.07))" }}>{nativeCrashLog}</pre><button type="button" onClick={() => { const ok = safeRead(() => Boolean(window.AndroidShell?.clearLastNativeCrashLog?.()), false); if (ok) { setNativeCrashLog(""); onNotice?.("本机保存的原生崩溃日志已清除。"); } else onNotice?.("清除失败或当前 APK 不支持。"); }} style={{ marginTop: 8, border: "1px solid var(--border, #ddd)", borderRadius: 9, padding: "7px 10px", background: "transparent", fontSize: 12 }}>清除本机崩溃日志</button></> : <div style={{ fontSize: 12, opacity: .65 }}>没有已保存的原生崩溃日志，或当前 APK 版本不支持。</div>}
+    </section>
+    <section style={{ border: "1px solid var(--border, rgba(128,128,128,.18))", borderRadius: 16, padding: 14 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700, fontSize: 14 }}><Wifi size={17} /> WebView Console 警告与错误</div>
+      <p style={{ fontSize: 12, opacity: .7, lineHeight: 1.6, margin: "7px 0 10px" }}>新版 Android 壳会在本机保留最近 200 条 warning/error，不自动上传。日志可能包含 URL 或错误上下文，分享前请检查。</p>
+      {webConsoleLogs.length ? <><div style={{ display: "grid", gap: 7 }}>{webConsoleLogs.slice(0, 12).map((item, index) => <div key={index} style={{ fontSize: 11, lineHeight: 1.5, padding: 9, borderRadius: 10, background: "var(--surface-secondary, rgba(128,128,128,.07))", overflowWrap: "anywhere" }}>{item}</div>)}</div><button type="button" onClick={() => { const ok = safeRead(() => Boolean(window.AndroidShell?.clearWebConsoleLogs?.()), false); if (ok) { setWebConsoleLogs([]); onNotice?.("本机 WebView Console 日志已清除。"); } else onNotice?.("清除失败或当前 APK 不支持。"); }} style={{ marginTop: 8, border: "1px solid var(--border, #ddd)", borderRadius: 9, padding: "7px 10px", background: "transparent", fontSize: 12 }}>清除 Console 日志</button></> : <div style={{ fontSize: 12, opacity: .65 }}>目前没有捕获到 WebView Console 警告/错误，或当前 APK 尚未提供该接口。</div>}
     </section>
     <section style={{ border: "1px solid var(--border, rgba(128,128,128,.18))", borderRadius: 16, padding: 14 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700, fontSize: 14 }}><Wifi size={17} /> 最近前端异常</div>
