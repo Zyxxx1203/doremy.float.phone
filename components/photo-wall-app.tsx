@@ -336,6 +336,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         `照片标题：${selectedPhoto.title}。`,
         `照片背面记录：${selectedPhoto.backNote || selectedPhoto.caption || "还没有写下记录"}。`,
         `标签：${selectedPhoto.tags.join("、") || "没有标签"}。`,
+        `已有批注：${selectedPhoto.annotations.map(note => `${note.authorName}：${note.content}`).join("；") || "还没有批注"}。`,
         `照片类型：${KIND_LABEL[selectedPhoto.kind]}；拍摄者：${selectedPhoto.ownerName}。`,
         "请以角色本人的口吻写一条自然、具体、真诚的短批注，像在照片背面留下的一句话。不要解释任务，不要说自己是AI，最多80个汉字。若照片内容信息不足，不要编造看不见的细节。",
       ].join("\n");
