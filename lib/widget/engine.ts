@@ -14,6 +14,9 @@
 
 import { simpleLLMCall } from "../api-helpers";
 import { loadCharacters } from "../character-storage";
+import { loadChatContacts, loadChatSessions, loadChatMessages } from "../chat-storage";
+import { loadMemoryConfig } from "../memory-storage";
+import { retrieveCoreMemoriesForPrompt, retrieveMemoriesForPrompt } from "../memory-service";
 import { loadApiConfigs, resolveAuxiliaryApiConfig, resolveUserIdentity } from "../settings-storage";
 import { appendCustomAppTimelineEntry } from "../custom-app-storage";
 import { loadWidgetAutoLastRun, loadWidgetConfig, loadWidgetData, markWidgetAutoRun, saveWidgetData } from "./storage";
@@ -37,34 +40,87 @@ const AUTO_TEXT_LIMIT = 60;
  * 长了显示不下，也太「表演」。要的是一句像随手写下的状态。
  */
 async function generateLine(
-  characterName: string,
+  character: ReturnType<typeof loadCharacters>[number],
   userName: string,
   previous: WidgetData | null,
 ): Promise<{ text: string; status: string } | null> {
   const config = resolveAuxiliaryApiConfig("memorySummaryApiConfigId") ?? loadApiConfigs()[0];
   if (!config) return null;
 
-  const avoid = previous?.text ? `\n（不要重复你上次写的那句：「${previous.text}」）` : "";
+  // 角色卡是人格依据；最近聊天与角色记忆是当前状态依据。
+  // 不再只把角色名字交给模型，否则模型只能用通用语气猜人设。
+  const characterId = character.id;
+  const contact = loadChatContacts().find(item => item.characterId === characterId);
+  const sessions = loadChatSessions().filter(session =>
+    !session.isGroup && session.contactId === contact?.id
+  );
+  const recentMessages = sessions
+    .flatMap(session => loadChatMessages(session.id, 30).map(message => ({ session, message })))
+    .filter(({ message }) =>
+      (message.role === "user" || message.role === "assistant") &&
+      !message.isRetracted &&
+      typeof message.content === "string" &&
+      message.content.trim()
+    )
+    .sort((a, b) => a.message.createdAt.localeCompare(b.message.createdAt))
+    .slice(-20)
+    .map(({ message }) => `${message.role === "user" ? userName : character.name}：${message.content.trim().slice(0, 700)}`)
+    .join("\\n");
+
+  let memoryContext = "";
+  try {
+    const memoryConfig = loadMemoryConfig();
+    const [coreMemories, longTermMemories] = await Promise.all([
+      retrieveCoreMemoriesForPrompt(characterId, memoryConfig),
+      retrieveMemoriesForPrompt(
+        characterId,
+        [character.name, character.persona, recentMessages].filter(Boolean).join("\\n").slice(0, 5000),
+        memoryConfig,
+      ),
+    ]);
+    const entries = [
+      ...coreMemories.map(entry => `[核心记忆] ${entry.content}`),
+      ...longTermMemories.map(entry => `[长期记忆] ${entry.content}`),
+    ];
+    memoryContext = entries.join("\\n").slice(0, 7000);
+  } catch (error) {
+    console.warn("[Widget] 读取角色记忆失败，继续使用角色卡和近期聊天", error);
+  }
+
+  const persona = [
+    character.persona?.trim() ? `【角色人设】\\n${character.persona.trim()}` : "",
+    character.personality?.trim() ? `【性格补充】\\n${character.personality.trim()}` : "",
+    character.briefPersona?.trim() ? `【简量人设】\\n${character.briefPersona.trim()}` : "",
+    character.tags?.length ? `【角色标签】${character.tags.join("、")}` : "",
+  ].filter(Boolean).join("\\n\\n");
+  const avoid = previous?.text ? `\\n【避免重复】你上次留在桌面上的话是：「${previous.text}」，这次请换一个自然的角度，不要换几个词后重复。` : "";
+
   const result = await simpleLLMCall(config, [
     {
       role: "system",
       content: [
-        `你是「${characterName}」，正在${userName}手机桌面的一块小地方留一句话。`,
-        "这句话会被 TA 在桌面上直接看到，是你不经意留下的状态。",
-        "要求：",
-        `1. 正文一句话，不超过 ${AUTO_TEXT_LIMIT} 字，口语、具体、有生活感；`,
-        "2. 不要像在发消息，不要称呼对方，不要问句——就是要像随手记下的一句；",
-        "3. 不要用引号包住整句，不要写「我说：」这类前缀。",
-        "只输出严格 JSON，不要任何额外文字：{\"text\":\"...\",\"status\":\"...\"}",
-        "status 是一个 2-5 字的当前状态，如「在想你」「刚睡醒」「有点困」。",
-      ].join("\n"),
+        `你正在以角色「${character.name}」本人的身份，为${userName}手机桌面留下一句短短的日常状态。`,
+        "【最高优先级：严格遵守角色卡】",
+        persona || "角色卡暂时没有填写详细人设；不要擅自补充具体背景或关系设定。",
+        "你必须保持角色原本的性格、价值观、身份、关系边界、说话习惯和情感表达方式。不要把所有角色都写成温柔、黏人、主动表达爱意的通用陪伴型 AI；角色没有表现出的情绪和经历，不要凭空编造。",
+        "【近期聊天】以下内容只用于理解最近发生的事、双方正在聊什么以及角色当下的语气。请勿复述整段聊天，也不要把用户的话冒充成角色说过的话。",
+        recentMessages || "没有读取到近期私聊记录。不要假装记得不存在的对话。",
+        "【角色记忆】以下是已经保存的记忆，只在与当前状态有关时参考；如果与角色卡冲突，以角色卡为准。不要编造记忆中没有的共同经历。",
+        memoryContext || "没有读取到可用的核心/长期记忆。",
+        "【输出要求】",
+        `1. 正文只写一句，不超过 ${AUTO_TEXT_LIMIT} 字，像这个角色自然留下的一瞬间状态；具体但不刻意煽情。`,
+        "2. 不要强迫所有角色都向用户表达思念；可以写正在做的事、观察、心情或符合人设的简短念头。",
+        "3. 不要像正式聊天消息，不强制称呼用户、不强制问句；保持角色自己的口吻。",
+        "4. 不要添加人设中没有的重大事件、关系进展、地点或经历。",
+        "5. 只输出严格 JSON，不要任何额外文字：{\\"text\\":\\"...\\",\\"status\\":\\"...\\"}",
+        "status 是 2-5 字的简短状态标签，也必须符合角色当前情绪；不要默认使用「在想你」之类的亲密状态。",
+      ].join("\\n\\n"),
     },
-    { role: "user", content: `现在给 TA 留一句。${avoid}` },
-  ], { temperature: 0.9 });
+    { role: "user", content: `请结合你的人设、近期互动和已有记忆，留下一句自然、不重复的桌面状态。${avoid}` },
+  ], { temperature: 0.8, max_tokens: 220, label: "widget-auto-generate" });
 
   const raw = (result.content ?? "").trim();
   if (!raw) return null;
-  // 模型可能包了 ```json 围栏，剥掉再解析
   const cleaned = raw.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   try {
     const parsed = JSON.parse(cleaned) as { text?: unknown; status?: unknown };
@@ -72,7 +128,6 @@ async function generateLine(
     if (!text) return null;
     return { text, status: String(parsed.status ?? "").trim().slice(0, 12) };
   } catch {
-    // 解析失败：把整段当成正文兜底（总比什么都不留好），但限长
     const text = cleaned.replace(/\s+/g, " ").slice(0, AUTO_TEXT_LIMIT);
     return text ? { text, status: "" } : null;
   }
@@ -97,7 +152,7 @@ export async function runWidgetAutoGenerate(): Promise<boolean> {
 
   const userName = resolveUserIdentity(config.characterId)?.name || "用户";
   try {
-    const line = await generateLine(character.name, userName, loadWidgetData());
+    const line = await generateLine(character, userName, loadWidgetData());
     if (!line) return false;
     // 先记号，再写数据：生成可能要十几秒，期间不能被重复触发
     markWidgetAutoRun();
