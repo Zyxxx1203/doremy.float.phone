@@ -113,10 +113,14 @@ async function downloadFileInternal(blob: Blob, filename: string, options: Downl
         return;
     }
 
-    // 壳环境：blob: + a[download] 在 WebView 里不会落盘（DownloadManager 取不到内存地址），
-    // 必须把内容 base64 交给壳从 MediaStore 写进公共「下载」目录。落盘失败再退回浏览器做法。
+    // 壳环境中 blob: + a[download] 通常无法落盘，必须使用原生桥；失败时不再假装浏览器兜底成功。
     const shell = readFloatShellBridge();
-    if (shell?.saveBase64File) {
+    if (shell) {
+        if (!shell.saveBase64File) {
+            emitDownloadNotice("error", `${filename} 保存失败：当前 APK 没有文件保存能力，请更新到包含下载桥的版本。`);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            return;
+        }
         try {
             const base64 = await blobToBase64(blob);
             if (shell.saveBase64File(filename, base64)) {
@@ -124,14 +128,17 @@ async function downloadFileInternal(blob: Blob, filename: string, options: Downl
                 setTimeout(() => URL.revokeObjectURL(url), 1000);
                 return;
             }
-        } catch {
-            // 交给下面的浏览器兜底路径
+            emitDownloadNotice("error", `${filename} 保存失败：Android 原生保存接口返回失败，请检查存储空间和文件权限。`);
+        } catch (error) {
+            emitDownloadNotice("error", `${filename} 保存失败：${error instanceof Error ? error.message : "读取或写入文件时发生错误"}`);
         }
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        return;
     }
 
     try {
         anchorDownload();
-        // 浏览器没有标准 API 可确认最终是否写入磁盘，因此明确提示「已发起」而非「已下载成功」。
+        // 浏览器无法确认最终落盘，因此提示为已触发，不虚报成功。
         emitDownloadNotice("info", `已触发浏览器下载：${filename}。如果下载列表没有记录，请检查浏览器下载权限后重试。`);
     } catch (error) {
         emitDownloadNotice("error", `${filename} 下载启动失败：${error instanceof Error ? error.message : "浏览器拒绝了下载请求"}`);
@@ -223,8 +230,10 @@ export async function downloadUrl(url: string, filename: string): Promise<void> 
 
     if (blob) {
         await downloadFile(blob, filename);
+    } else if (readFloatShellBridge()) {
+        emitDownloadNotice("error", `${filename} 下载失败：资源请求和站内代理均未取得文件，Android 壳无法保存。请检查网络、资源链接或跨域限制后重试。`);
     } else {
-        // Preserve the original direct-link fallback, but no longer leave the user without feedback.
+        // 普通浏览器仍尝试打开原始链接，但明确告知这只是兜底尝试，不代表下载成功。
         const a = document.createElement("a");
         a.href = url;
         a.target = "_blank";
