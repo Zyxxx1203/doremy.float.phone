@@ -242,6 +242,9 @@ export type ImageGenerationSettings = {
     activeOpenAiPresetId?: string;
     // NovelAI 模式配置
     novelai?: NovelAiSettings;
+    /** Whole-phone user appearance used by image generation features that depict the player. */
+    userAppearanceDescription?: string;
+    userAppearanceReferenceAssetId?: string;
     characterReferences: Record<string, {
         assetId?: string;
         updatedAt: number;
