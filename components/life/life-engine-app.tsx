@@ -2240,24 +2240,52 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
            </details>
           <details className="life-scene-display-options mb-1 min-h-0 shrink-0 rounded-xl border border-stone-200/70 bg-white/80 px-2 py-1 shadow-sm">
             <summary className="cursor-pointer list-none text-xs font-semibold text-stone-600">聊天显示选项 · 主题 / 气泡 / 时间 / 位置情报 / CSS（点开后独立滚动）</summary>
-            <div className="life-scene-display-options-body max-h-[38dvh] overflow-y-auto overscroll-contain touch-pan-y p-2 text-xs" style={{ WebkitOverflowScrolling: "touch" }}><div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
-              <label>主题<select value={settings.sceneTheme} onChange={e=>patchSettings({sceneTheme:e.target.value as LifeEngineSettings["sceneTheme"]})} className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-2 py-1.5"><option value="warm-paper">暖米棕</option><option value="sage">鼠尾草绿</option><option value="rose">玫瑰</option><option value="night-sky">夜空</option><option value="custom">自定义 CSS</option></select></label>
-              <div className="grid grid-cols-2 gap-1.5">
-                <label className="block rounded-lg border border-stone-200 bg-white p-2">对白字号（px）<input aria-label="对白字号" type="number" min="8" max="48" step="1" value={settings.dialogueFontSize} onChange={e=>patchSettings({dialogueFontSize:Math.max(8,Math.min(48,Number(e.target.value)||8))})} className="mt-1 w-full rounded-md border border-stone-200 bg-white px-2 py-1.5 text-sm"/></label>
-                <label className="block rounded-lg border border-stone-200 bg-white p-2">旁白字号（px）<input aria-label="旁白字号" type="number" min="8" max="36" step="1" value={settings.narrationFontSize} onChange={e=>patchSettings({narrationFontSize:Math.max(8,Math.min(36,Number(e.target.value)||8))})} className="mt-1 w-full rounded-md border border-stone-200 bg-white px-2 py-1.5 text-sm"/></label>
-                <label className="block rounded-lg border border-stone-200 bg-white p-2">气泡内边距（px）<input aria-label="气泡内边距" type="number" min="0" max="24" step="1" value={settings.bubblePadding} onChange={e=>patchSettings({bubblePadding:Math.max(0,Math.min(24,Number(e.target.value)||0))})} className="mt-1 w-full rounded-md border border-stone-200 bg-white px-2 py-1.5 text-sm"/></label>
-                <label className="block rounded-lg border border-stone-200 bg-white p-2">消息间距（px）<input aria-label="消息间距" type="number" min="0" max="24" step="1" value={settings.messageGapPx ?? 4} onChange={e=>patchSettings({messageGapPx:Math.max(0,Math.min(24,Number(e.target.value)||0))})} className="mt-1 w-full rounded-md border border-stone-200 bg-white px-2 py-1.5 text-sm"/></label>
-                <label className="block rounded-lg border border-stone-200 bg-white p-2">旁白间距（px）<input aria-label="旁白间距" type="number" min="0" max="24" step="1" value={settings.narrationGapPx ?? 4} onChange={e=>patchSettings({narrationGapPx:Math.max(0,Math.min(24,Number(e.target.value)||0))})} className="mt-1 w-full rounded-md border border-stone-200 bg-white px-2 py-1.5 text-sm"/></label>
-                <label className="block rounded-lg border border-stone-200 bg-white p-2">对白字体<input aria-label="对白字体" type="text" value={settings.dialogueFontFamily} onChange={e=>patchSettings({dialogueFontFamily:e.target.value})} placeholder="系统默认 / Arial" className="mt-1 w-full min-w-0 rounded-md border border-stone-200 bg-white px-2 py-1.5 text-sm"/></label>
-                <label className="col-span-2 block rounded-lg border border-stone-200 bg-white p-2">旁白 / 场景卡片字体<input aria-label="旁白字体" type="text" value={settings.narrationFontFamily} onChange={e=>patchSettings({narrationFontFamily:e.target.value})} placeholder='例如 "Microsoft YaHei", sans-serif' className="mt-1 w-full min-w-0 rounded-md border border-stone-200 bg-white px-2 py-1.5 text-sm"/></label>
-              </div>
-              <label>对白气泡<select value={settings.dialogueBubbleStyle} onChange={e=>patchSettings({dialogueBubbleStyle:e.target.value as LifeEngineSettings["dialogueBubbleStyle"]})} className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-2 py-1.5"><option value="rounded">圆润</option><option value="soft">柔和大圆角</option><option value="square">方形</option></select></label>
-              <label>我的时间模式<select value={getActorClock(state,"player",PLAYER_ID).mode} onChange={e=>patchActorClock(actors[0],{mode:e.target.value as LifeActorClock["mode"]})} className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-2 py-1.5"><option value="real-time">跟随现实</option><option value="simulation">独立模拟</option><option value="review">暂停回顾</option></select></label>
-              <label>位置情报<select value={settings.revealExactLocations} onChange={e=>patchSettings({revealExactLocations:e.target.value as LifeEngineSettings["revealExactLocations"]})} className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-2 py-1.5"><option value="ask-only">仅询问/可靠渠道</option><option value="clues">模糊线索</option><option value="open">公开实际位置</option></select></label>
-              <div className="col-span-2"><Toggle checked={settings.compactLayout} onChange={v=>patchSettings({compactLayout:v})} label="紧凑布局"/></div>
-              <label className="col-span-2">自定义 CSS（仅生活聊天室）<textarea value={settings.customSceneCss ?? ""} onChange={e=>patchSettings({customSceneCss:e.target.value})} rows={4} spellCheck={false} placeholder=".life-scene-bubble { padding: 6px 9px !important; max-width: 76% !important; }" className="mt-1 w-full rounded-lg border border-stone-200 bg-white p-2 font-mono text-[11px]"/></label>
-              <p className="text-[10px] text-stone-400 sm:col-span-2">可用类名：.life-scene-chat、.life-scene-bubble、.life-scene-composer。CSS 修改后即时保存。</p>
-            </div></div>
+            <div className="life-scene-display-options-body max-h-[30dvh] overflow-y-auto overscroll-contain touch-pan-y p-2 text-xs" style={{ WebkitOverflowScrolling: "touch" }}>
+              <div className="grid min-w-0 grid-cols-1 gap-1.5 sm:grid-cols-2">
+                <label className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white px-2 py-1.5">
+                  <span className="shrink-0 text-[11px] text-stone-600">主题</span>
+                  <select value={settings.sceneTheme} onChange={e=>patchSettings({sceneTheme:e.target.value as LifeEngineSettings["sceneTheme"]})} className="min-w-0 flex-1 rounded-md border border-stone-200 bg-white px-1.5 py-1 text-xs"><option value="warm-paper">暖米棕</option><option value="sage">鼠尾草绿</option><option value="rose">玫瑰</option><option value="night-sky">夜空</option><option value="custom">自定义 CSS</option></select>
+                </label>
+                {([
+                  {key:"dialogueFontSize",label:"对白字号",min:8,max:48,fallback:8},
+                  {key:"narrationFontSize",label:"旁白字号",min:8,max:36,fallback:12},
+                  {key:"bubblePadding",label:"气泡内边距",min:0,max:24,fallback:0},
+                  {key:"messageGapPx",label:"消息间距",min:0,max:24,fallback:4},
+                  {key:"narrationGapPx",label:"旁白间距",min:0,max:24,fallback:4},
+                ] as const).map(item => <label key={item.key} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white px-2 py-1.5">
+                  <span className="shrink-0 text-[11px] text-stone-600">{item.label}（px）</span>
+                  <input aria-label={item.label} type="number" inputMode="numeric" min={item.min} max={item.max} step={1}
+                    value={settings[item.key] ?? item.fallback}
+                    onChange={e=>{const raw=e.target.value;if(raw==="")return;const n=Number(raw);if(Number.isFinite(n))patchSettings({[item.key]:Math.max(item.min,Math.min(item.max,Math.round(n)))} as Partial<LifeEngineSettings>)}}
+                    className="w-16 shrink-0 rounded-md border border-stone-200 bg-white px-1 py-1 text-center text-xs tabular-nums"/>
+                </label>)}
+                <label className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white px-2 py-1.5">
+                  <span className="shrink-0 text-[11px] text-stone-600">对白气泡</span>
+                  <select value={settings.dialogueBubbleStyle} onChange={e=>patchSettings({dialogueBubbleStyle:e.target.value as LifeEngineSettings["dialogueBubbleStyle"]})} className="min-w-0 flex-1 rounded-md border border-stone-200 bg-white px-1.5 py-1 text-xs"><option value="rounded">圆润</option><option value="soft">柔和大圆角</option><option value="square">方形</option></select>
+                </label>
+                <label className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white px-2 py-1.5">
+                  <span className="shrink-0 text-[11px] text-stone-600">我的时间</span>
+                  <select value={getActorClock(state,"player",PLAYER_ID).mode} onChange={e=>patchActorClock(actors[0],{mode:e.target.value as LifeActorClock["mode"]})} className="min-w-0 flex-1 rounded-md border border-stone-200 bg-white px-1.5 py-1 text-xs"><option value="real-time">跟随现实</option><option value="simulation">独立模拟</option><option value="review">暂停回顾</option></select>
+                </label>
+                <label className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white px-2 py-1.5">
+                  <span className="shrink-0 text-[11px] text-stone-600">位置情报</span>
+                  <select value={settings.revealExactLocations} onChange={e=>patchSettings({revealExactLocations:e.target.value as LifeEngineSettings["revealExactLocations"]})} className="min-w-0 flex-1 rounded-md border border-stone-200 bg-white px-1.5 py-1 text-xs"><option value="ask-only">仅询问/可靠渠道</option><option value="clues">模糊线索</option><option value="open">公开实际位置</option></select>
+                </label>
+                <label className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white px-2 py-1.5">
+                  <span className="shrink-0 text-[11px] text-stone-600">对白字体</span>
+                  <input aria-label="对白字体" type="text" value={settings.dialogueFontFamily} onChange={e=>patchSettings({dialogueFontFamily:e.target.value})} placeholder="系统默认" className="min-w-0 flex-1 rounded-md border border-stone-200 bg-white px-1.5 py-1 text-xs"/>
+                </label>
+                <label className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white px-2 py-1.5">
+                  <span className="shrink-0 text-[11px] text-stone-600">旁白字体</span>
+                  <input aria-label="旁白字体" type="text" value={settings.narrationFontFamily} onChange={e=>patchSettings({narrationFontFamily:e.target.value})} placeholder="系统默认" className="min-w-0 flex-1 rounded-md border border-stone-200 bg-white px-1.5 py-1 text-xs"/>
+                </label>
+                <div className="min-w-0 sm:col-span-2"><Toggle checked={settings.compactLayout} onChange={v=>patchSettings({compactLayout:v})} label="紧凑布局"/></div>
+                <label className="block min-w-0 sm:col-span-2">
+                  <span className="text-[11px] text-stone-600">自定义 CSS（仅生活聊天室）</span>
+                  <textarea value={settings.customSceneCss ?? ""} onChange={e=>patchSettings({customSceneCss:e.target.value})} rows={3} spellCheck={false} placeholder=".life-scene-bubble { padding: 6px 9px !important; max-width: 76% !important; }" className="mt-1 w-full min-w-0 rounded-lg border border-stone-200 bg-white p-2 font-mono text-[11px]"/>
+                </label>
+                <p className="text-[10px] text-stone-400 sm:col-span-2">可用类名：.life-scene-chat、.life-scene-bubble、.life-scene-composer。CSS 修改后即时保存。</p>
+              </div></div>
           </details>
           
           
