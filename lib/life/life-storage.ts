@@ -37,6 +37,8 @@ function normalizeSettings(value: unknown): LifeEngineSettings {
   settings.dialogueFontFamily = typeof settings.dialogueFontFamily === "string" ? settings.dialogueFontFamily.slice(0, 160) : "";
   settings.narrationFontFamily = typeof settings.narrationFontFamily === "string" ? settings.narrationFontFamily.slice(0, 160) : "";
   settings.bubblePadding = Number.isFinite(settings.bubblePadding) ? Math.max(0, Math.min(settings.bubblePadding, 24)) : DEFAULT_LIFE_ENGINE_SETTINGS.bubblePadding;
+  settings.messageGapPx = Number.isFinite(settings.messageGapPx) ? Math.max(0, Math.min(settings.messageGapPx, 24)) : DEFAULT_LIFE_ENGINE_SETTINGS.messageGapPx;
+  settings.narrationGapPx = Number.isFinite(settings.narrationGapPx) ? Math.max(0, Math.min(settings.narrationGapPx, 24)) : DEFAULT_LIFE_ENGINE_SETTINGS.narrationGapPx;
   if (!/^#[0-9a-f]{6}$/i.test(settings.accentColor)) settings.accentColor = DEFAULT_LIFE_ENGINE_SETTINGS.accentColor;
   return settings;
 }
