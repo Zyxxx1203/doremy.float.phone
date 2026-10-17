@@ -118,7 +118,7 @@ export function DeviceCompatibilitySettings({ onNotice }: { onNotice?: (message:
     const lines = [
       "小手机设备兼容性报告",
       "生成时间：" + new Date().toLocaleString(),
-      "屏幕物理像素/系统报告：" + metrics.screenWidth + " × " + metrics.screenHeight,
+      "系统报告屏幕尺寸（CSS px）：" + metrics.screenWidth + " × " + metrics.screenHeight,
       "当前布局视口：" + metrics.viewportWidth + " × " + metrics.viewportHeight,
       "可视视口：" + metrics.visualWidth + " × " + metrics.visualHeight,
       "设备像素比 DPR：" + metrics.dpr,
@@ -191,7 +191,7 @@ export function DeviceCompatibilitySettings({ onNotice }: { onNotice?: (message:
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 8 }}>
         {[
-          ["屏幕报告", metrics.screenWidth + " × " + metrics.screenHeight],
+          ["系统屏幕尺寸", metrics.screenWidth + " × " + metrics.screenHeight],
           ["当前视口", metrics.viewportWidth + " × " + metrics.viewportHeight],
           ["可视区域", metrics.visualWidth + " × " + metrics.visualHeight],
           ["DPR / 方向", metrics.dpr + " · " + (metrics.orientation === "portrait" ? "竖屏" : "横屏")],
@@ -209,7 +209,7 @@ export function DeviceCompatibilitySettings({ onNotice }: { onNotice?: (message:
 
     <section style={panelStyle}>
       <div><strong style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}><Wrench size={17} />屏幕布局调整</strong>
-        <p style={{ fontSize: 12, lineHeight: 1.6, opacity: .72, margin: "6px 0 0" }}>自动模式使用当前设备的可用视口。手动模式可输入参考分辨率，适合遇到边缘裁切、内容过大或比例不一致时试调；它不会改变 Android 系统真实分辨率。</p>
+        <p style={{ fontSize: 12, lineHeight: 1.6, opacity: .72, margin: "6px 0 0" }}>自动模式使用当前设备的可用视口。手动模式可输入参考分辨率，适合遇到边缘裁切、内容过大或比例不一致时试调。系统报告值通常是逻辑像素；若填物理分辨率，请选择物理像素并由 DPR 自动换算。它不会改变 Android 系统真实分辨率。</p>
       </div>
       <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 13 }}>
         <span>布局模式</span>
