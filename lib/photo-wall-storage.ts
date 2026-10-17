@@ -87,7 +87,7 @@ export function loadPhotoWallState(): PhotoWallState {
     const raw = kvGet(STORAGE_KEY);
     if (!raw) return { version: 1, photos: [], settings: { ...DEFAULT_PHOTO_WALL_SETTINGS } };
     const parsed = JSON.parse(raw) as Partial<PhotoWallState>;
-    const settings = parsed.settings && typeof parsed.settings === "object" ? parsed.settings : {};
+    const settings: Partial<PhotoWallSettings> = parsed.settings && typeof parsed.settings === "object" ? parsed.settings : {};
     return {
       version: 1,
       photos: Array.isArray(parsed.photos) ? parsed.photos.map(normalizePhoto).filter((photo): photo is PhotoWallPhoto => photo !== null) : [],
