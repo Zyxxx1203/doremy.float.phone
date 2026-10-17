@@ -139,7 +139,6 @@ export function StoryPaginationManager(props: StoryPaginationManagerProps) {
       });
     }
     setBranchName("");
-    setInheritRecentMemory(false);
     setEditingMemorySessionId(null);
     setBranchModalOpen(false);
   };
