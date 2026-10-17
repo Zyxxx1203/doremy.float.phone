@@ -682,9 +682,13 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       participants[0].awarenessByActorId[char.id] = destination.visibility === "public" ? "aware" : "suspects";
     }
     const existingScene = stateRef.current.scenes.find(scene => scene.status === "active" && scene.locationId === destination.id) ?? stateRef.current.scenes.filter(scene => scene.status === "paused" && scene.locationId === destination.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
-    // Reopening the scene view is not a new arrival. Only a brand-new scene or an explicitly paused scene gets an entry/return record.
-    const shouldRecordSceneEntry = !existingScene || existingScene.status === "paused";
-    const isFirstSceneEntry = !existingScene;
+    // Startup may create a placeholder active scene before the user actually enters it. Record the first real entry if this scene has no entry card/timeline record yet.
+    const hasRecordedEntry = !!existingScene && (
+      stateRef.current.sceneMessages.some(message => message.sceneId === existingScene.id && message.role === "system" && /你来到了|你回到了/.test(message.action || message.dialogue || "")) ||
+      stateRef.current.timeline.some(entry => entry.sceneId === existingScene.id && entry.category === "location" && entry.title.startsWith("你来到了"))
+    );
+    const shouldRecordSceneEntry = !existingScene || existingScene.status === "paused" || !hasRecordedEntry;
+    const isFirstSceneEntry = !existingScene || !hasRecordedEntry;
     let next: VirtualLifeState = { ...stateRef.current, scenes: stateRef.current.scenes.map(scene => (scene.status === "active" || scene.status === "paused") ? { ...scene, status: "paused" as const, updatedAt: now } : scene) };
     const scene: LifeSceneState = existingScene
       ? { ...existingScene, locationId: destination.id, locationName: destination.name, updatedAt: now, status: "active", participants: [{ ...participants[0], activity: playerActivity || "正在这里活动" }, ...existingScene.participants.filter(p => p.ownerType === "character" && participants.some(candidate => candidate.ownerType === "character" && candidate.ownerId === p.ownerId))] }
