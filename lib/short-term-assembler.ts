@@ -526,6 +526,7 @@ export function loadNativeTimeline(
     for (const storyEntry of storyEntries) {
         entries.push({
             id: storyEntry.id,
+            sessionId: storyEntry.sessionId,
             sourceApp: "story",
             sourceDetail: "story",
             timestamp: storyEntry.timestamp,
