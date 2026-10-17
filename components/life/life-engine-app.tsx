@@ -1011,6 +1011,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       }
     }
     commit(next);
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("life-scene-message-added"));
   };
 
   // Foreground life-scene autonomy plus a server snapshot as a background/terminated-app fallback.
@@ -1050,7 +1051,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       return session ? { character, session } : null;
     };
     const armOfflineBailout = async () => {
-      if (disposed || document.visibilityState === "visible" && busyRef.current) return;
+      if (disposed) return;
       const candidate = pickCandidate();
       if (!candidate) return;
       const result = await armLifeSceneProactiveBailout({
@@ -1122,6 +1123,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         }
       }
     };
+    const onSceneMessageAdded = () => {
+      // A new player/character turn invalidates the old snapshot; replace it with fresh context.
+      cancelLifeSceneProactiveBailouts(activeScene.id);
+      void armOfflineBailout();
+    };
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         cancelLifeSceneProactiveBailouts(activeScene.id);
@@ -1134,10 +1140,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     void armOfflineBailout();
     const timer = window.setInterval(() => void tick(), LIFE_AUTONOMY_TICK_MS);
     document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("life-scene-message-added", onSceneMessageAdded);
     return () => {
       disposed = true;
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("life-scene-message-added", onSceneMessageAdded);
       // Refresh rules against the latest persisted scene state. The co-presence guard
       // keeps idle reconnect suspended while this scene remains active.
       void refreshScheduledBailouts();
