@@ -97,13 +97,15 @@ export function applyDeviceCompatibilitySettings(
   const root = document.documentElement;
   const viewportWidth = Math.max(1, window.visualViewport?.width || window.innerWidth || window.screen.width || 1);
   const viewportHeight = Math.max(1, window.visualViewport?.height || window.innerHeight || window.screen.height || 1);
+  const screenWidth = Math.max(1, window.screen?.width || window.innerWidth || 1);
+  const screenHeight = Math.max(1, window.screen?.height || window.innerHeight || 1);
   const userScale = clamp(settings.uiScale || 1, 0.75, 1.25);
 
   if (settings.layoutMode === "manual" && settings.screenWidth >= 100 && settings.screenHeight >= 200) {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const referenceWidth = settings.screenUnit === "physical" ? settings.screenWidth / dpr : settings.screenWidth;
     const referenceHeight = settings.screenUnit === "physical" ? settings.screenHeight / dpr : settings.screenHeight;
-    const fitScale = Math.min(viewportWidth / referenceWidth, viewportHeight / referenceHeight);
+    const fitScale = Math.min(screenWidth / referenceWidth, screenHeight / referenceHeight);
     const scale = clamp(fitScale * userScale, 0.5, 1.25);
     root.style.setProperty("--phone-screen-width", Math.round(referenceWidth) + "px");
     root.style.setProperty("--phone-screen-height", Math.round(referenceHeight) + "px");
