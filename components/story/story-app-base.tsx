@@ -86,6 +86,8 @@ import {
   type StoryCharacterSettings,
   type StoryGroup,
   type StoryOwnerType,
+  type StoryMemorySettings,
+  resolveStoryMemorySettings,
 } from "@/lib/story-storage";
 import { createOrGetSession, hydrateChatStorage, loadChatMessages, loadChatSessions, markChatSessionRead, pushChatMessage } from "@/lib/chat-storage";
 import { flattenCompletionResult, generateChatCompletion } from "@/lib/chat-engine";
@@ -1186,7 +1188,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
     activateStorySession(session);
   }
 
-  function handleStoryBranchCreate(input: { name: string; inheritRecentMemory: boolean; independentStory: boolean }) {
+  function handleStoryBranchCreate(input: { name: string; inheritRecentMemory: boolean; independentStory: boolean; memorySettings: StoryMemorySettings }) {
     if (!activeOwnerId || !activeCharacterId) return;
     const mainSession = loadStorySessionsForOwner(activeOwnerType, activeOwnerId).find((session) => (session.branchId || "main") === "main") || currentSession || undefined;
     const session = createOrGetStorySession(activeCharacterId, {
@@ -1197,6 +1199,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
       branchName: input.name,
       inheritRecentMemory: input.inheritRecentMemory,
       independentStory: input.independentStory,
+      memorySettings: input.memorySettings,
       baseSession: mainSession,
     });
     activateStorySession(session);
@@ -1453,6 +1456,10 @@ export function StoryApp({ onClose }: StoryAppProps) {
           independent: currentSession?.independentStory,
           inheritRecentMemory: currentSession?.inheritRecentMemory ?? true,
           startedAt: currentSession?.createdAt,
+          sessionId: currentSession?.id,
+          ownerType: currentSession?.ownerType || "single",
+          ownerId: currentSession?.ownerId || currentSession?.characterId,
+          memorySettings: resolveStoryMemorySettings(currentSession),
         },
         signal: generationRun.controller.signal,
       });
@@ -1542,6 +1549,10 @@ export function StoryApp({ onClose }: StoryAppProps) {
         independent: session.independentStory,
         inheritRecentMemory: session.inheritRecentMemory ?? true,
         startedAt: session.createdAt,
+        sessionId: session.id,
+        ownerType: session.ownerType || "single",
+        ownerId: session.ownerId || session.characterId,
+        memorySettings: resolveStoryMemorySettings(session),
       },
       signal: generationRun.controller.signal,
     }).then((result) => {
