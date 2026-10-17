@@ -778,18 +778,27 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       if(dataUrl) sources.push({label:characters.find(char=>char.id===participantId)?.name||"角色",dataUrl,faceCrop:ref.faceCrop});
     }
     if(!sources.length)return undefined;
-    const decoded=await Promise.all(sources.map(({label,dataUrl})=>new Promise<{label:string;image:HTMLImageElement}>((resolve,reject)=>{
-      const image=new Image();image.onload=()=>resolve({label,image});image.onerror=()=>reject(new Error("参考图读取失败"));image.src=dataUrl;
+    const decoded=await Promise.all(sources.map(({label,dataUrl,faceCrop})=>new Promise<{label:string;image:HTMLImageElement;faceCrop?:{x:number;y:number;size:number}}>((resolve,reject)=>{
+      const image=new Image();image.onload=()=>resolve({label,image,faceCrop});image.onerror=()=>reject(new Error("参考图读取失败"));image.src=dataUrl;
     })));
     const cellW=512,cellH=340,cols=Math.min(2,decoded.length),rows=Math.ceil(decoded.length/cols);
     const canvas=document.createElement("canvas");canvas.width=cols*cellW;canvas.height=rows*cellH;
     const ctx=canvas.getContext("2d");if(!ctx)return undefined;
     ctx.fillStyle="#f7f0e7";ctx.fillRect(0,0,canvas.width,canvas.height);
-    decoded.forEach(({label,image},index)=>{
+    decoded.forEach(({label,image,faceCrop},index)=>{
       const x=(index%cols)*cellW,y=Math.floor(index/cols)*cellH;
-      const scale=Math.min((cellW-32)/image.naturalWidth,(cellH-58)/image.naturalHeight);
-      const w=image.naturalWidth*scale,h=image.naturalHeight*scale;
-      ctx.drawImage(image,x+(cellW-w)/2,y+8+(cellH-48-h)/2,w,h);
+      if(faceCrop){
+        const width=image.naturalWidth||image.width, height=image.naturalHeight||image.height;
+        const side=Math.max(1,Math.round(Math.min(width,height)*Math.max(0.18,Math.min(1,faceCrop.size))));
+        const sx=Math.max(0,Math.min(width-side,Math.round(faceCrop.x*width)));
+        const sy=Math.max(0,Math.min(height-side,Math.round(faceCrop.y*height)));
+        const targetSize=Math.min(cellW-32,cellH-58);
+        ctx.drawImage(image,sx,sy,side,side,x+(cellW-targetSize)/2,y+8+(cellH-48-targetSize)/2,targetSize,targetSize);
+      }else{
+        const scale=Math.min((cellW-32)/image.naturalWidth,(cellH-58)/image.naturalHeight);
+        const w=image.naturalWidth*scale,h=image.naturalHeight*scale;
+        ctx.drawImage(image,x+(cellW-w)/2,y+8+(cellH-48-h)/2,w,h);
+      }
       ctx.fillStyle="#49392f";ctx.font="600 18px sans-serif";ctx.textAlign="center";ctx.fillText(label,x+cellW/2,y+cellH-16,cellW-24);
     });
     return canvas.toDataURL("image/png");
