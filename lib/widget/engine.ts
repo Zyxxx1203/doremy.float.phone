@@ -65,7 +65,7 @@ async function generateLine(
     .sort((a, b) => a.message.createdAt.localeCompare(b.message.createdAt))
     .slice(-20)
     .map(({ message }) => `${message.role === "user" ? userName : character.name}：${message.content.trim().slice(0, 700)}`)
-    .join("\\n");
+    .join("\n");
 
   let memoryContext = "";
   try {
@@ -74,7 +74,7 @@ async function generateLine(
       retrieveCoreMemoriesForPrompt(characterId, memoryConfig),
       retrieveMemoriesForPrompt(
         characterId,
-        [character.name, character.persona, recentMessages].filter(Boolean).join("\\n").slice(0, 5000),
+        [character.name, character.persona, recentMessages].filter(Boolean).join("\n").slice(0, 5000),
         memoryConfig,
       ),
     ]);
@@ -82,18 +82,18 @@ async function generateLine(
       ...coreMemories.map(entry => `[核心记忆] ${entry.content}`),
       ...longTermMemories.map(entry => `[长期记忆] ${entry.content}`),
     ];
-    memoryContext = entries.join("\\n").slice(0, 7000);
+    memoryContext = entries.join("\n").slice(0, 7000);
   } catch (error) {
     console.warn("[Widget] 读取角色记忆失败，继续使用角色卡和近期聊天", error);
   }
 
   const persona = [
-    character.persona?.trim() ? `【角色人设】\\n${character.persona.trim()}` : "",
-    character.personality?.trim() ? `【性格补充】\\n${character.personality.trim()}` : "",
-    character.briefPersona?.trim() ? `【简量人设】\\n${character.briefPersona.trim()}` : "",
+    character.persona?.trim() ? `【角色人设】\n${character.persona.trim()}` : "",
+    character.personality?.trim() ? `【性格补充】\n${character.personality.trim()}` : "",
+    character.briefPersona?.trim() ? `【简量人设】\n${character.briefPersona.trim()}` : "",
     character.tags?.length ? `【角色标签】${character.tags.join("、")}` : "",
-  ].filter(Boolean).join("\\n\\n");
-  const avoid = previous?.text ? `\\n【避免重复】你上次留在桌面上的话是：「${previous.text}」，这次请换一个自然的角度，不要换几个词后重复。` : "";
+  ].filter(Boolean).join("\n\n");
+  const avoid = previous?.text ? `\n【避免重复】你上次留在桌面上的话是：「${previous.text}」，这次请换一个自然的角度，不要换几个词后重复。` : "";
 
   const result = await simpleLLMCall(config, [
     {
@@ -114,7 +114,7 @@ async function generateLine(
         "4. 不要添加人设中没有的重大事件、关系进展、地点或经历。",
         "5. 只输出严格 JSON，不要任何额外文字：{\\"text\\":\\"...\\",\\"status\\":\\"...\\"}",
         "status 是 2-5 字的简短状态标签，也必须符合角色当前情绪；不要默认使用「在想你」之类的亲密状态。",
-      ].join("\\n\\n"),
+      ].join("\n\n"),
     },
     { role: "user", content: `请结合你的人设、近期互动和已有记忆，留下一句自然、不重复的桌面状态。${avoid}` },
   ], { temperature: 0.8, max_tokens: 220, label: "widget-auto-generate" });
