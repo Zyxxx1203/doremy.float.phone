@@ -288,12 +288,8 @@ export function MainApp() {
       }
     })();
 
-    // 安卓全屏兜底。是否请求全屏在每次点击时读取，设置切换后无需重载。
-    const isMobile = window.matchMedia("(max-width: 500px) and (hover: none) and (pointer: coarse)").matches;
-    if (!isMobile) return () => {
-      cancelled = true;
-    };
-
+    // 网页端与移动端统一尝试浏览器全屏；只能在用户手势中请求，失败时给出明确提示。
+    // 是否请求仍由「全屏/显示系统状态栏」偏好决定，切换设置后无需重载。
     let fullscreenNoticeShown = false;
     const showFullscreenNoticeOnce = (message: string) => {
       if (fullscreenNoticeShown) return;
