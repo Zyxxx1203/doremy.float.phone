@@ -261,6 +261,9 @@ export type ChatMessage = {
         fileDuration?: number;
         useReferenceImage?: boolean; // AI photo tag: whether to send the character reference image to the generator
         imageRefs?: string[]; // 微信式合并发送的多图消息，使用 media-store:// 引用
+        imageGroupId?: string;
+        imageGroupIndex?: number;
+        imageGroupCount?: number;
         imageGenerationMediaRef?: string;
         imageGenerationPrompt?: string;
         imageGenerationUsedReference?: boolean;
