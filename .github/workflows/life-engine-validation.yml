@@ -3,9 +3,9 @@ name: Virtual life feature validation
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main, feat/life-engine-foundation]
+    branches: [main, feat/life-engine-foundation, codex/life-system-overhaul-v2]
   push:
-    branches: [codex/life-system-overhaul-v2, feat/life-engine-foundation]
+    branches: [codex/life-system-overhaul-v2, feat/life-engine-foundation, feat/life-agent-autonomy]
   workflow_dispatch:
 
 permissions:
