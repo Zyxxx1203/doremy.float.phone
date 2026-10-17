@@ -1051,7 +1051,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       return session ? { character, session } : null;
     };
     const armOfflineBailout = async () => {
-      if (disposed) return;
+      if (disposed || settings.enableLifeOfflinePush === false) return;
       const candidate = pickCandidate();
       if (!candidate) return;
       const result = await armLifeSceneProactiveBailout({
@@ -1150,7 +1150,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       // keeps idle reconnect suspended while this scene remains active.
       void refreshScheduledBailouts();
     };
-  }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.showActionNarration, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, playerName]);
+  }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.enableLifeOfflinePush, settings.proactiveSceneIntervalMinutes, settings.showActionNarration, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, playerName]);
   const sendSceneTurn = async (event: FormEvent) => {
     event.preventDefault();
     const userText = sceneInput.trim();
@@ -2349,6 +2349,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
                 <input type="number" min={2} max={60} step={1} value={settings.proactiveSceneIntervalMinutes ?? 5} onChange={e=>patchSettings({proactiveSceneIntervalMinutes:Math.max(2,Math.min(60,Number(e.target.value)||5))})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/>
               </label>
               <div className="mt-3"><Toggle checked={settings.enableLifeMessageNotifications !== false} onChange={async v=>{if(v && typeof Notification!=="undefined" && Notification.permission==="default"){try{await Notification.requestPermission();}catch{/* permission prompt may be unavailable in WebView */}}patchSettings({enableLifeMessageNotifications:v});}} label="主动消息弹窗提示"/></div>
+              <div className="mt-3"><Toggle checked={settings.enableLifeOfflinePush !== false} onChange={v=>patchSettings({enableLifeOfflinePush:v})} label="后台/关闭应用时继续主动推送" hint="需要已配置推送订阅和服务端任务；关闭后只在前台生活现场主动互动。"/></div>
               <p className="mt-2 text-[10px] leading-relaxed text-stone-500">前台优先在生活现场生成；进入后台或应用被关闭时，会尝试交给已配置的服务端离线推送任务。需要先启用推送订阅与个人 Supabase/自部署推送服务；无订阅时只保留前台主动性。离线生成结果会在下次打开应用后合并回原生活场景，不写入线上聊天记录。</p>
             </div>
             <Toggle checked={settings.enableAmbientDetails} onChange={v=>patchSettings({enableAmbientDetails:v})} label="启用环境细节"/>
