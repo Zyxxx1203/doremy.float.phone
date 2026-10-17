@@ -2787,12 +2787,58 @@
   margin: 8px 0 0;
   border-radius: var(--ui-radius-card);
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  padding: 16px;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(3, 74px);
+  grid-auto-columns: 66px;
+  grid-template-columns: none;
+  gap: 8px 7px;
+  padding: 10px 12px;
+  max-width: 100%;
+  max-height: 252px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   content-visibility: auto;
   transform-origin: top center;
   animation: chatPanelExpand 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.chat-plus-menu::-webkit-scrollbar { display: none; }
+.chat-plus-menu-item {
+  appearance: none;
+  width: 66px;
+  min-width: 0;
+  min-height: 0;
+  padding: 4px 2px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  transition: background 0.14s, transform 0.14s, opacity 0.14s;
+}
+.chat-plus-menu-item:focus-visible {
+  outline: 2px solid var(--c-icon-active);
+  outline-offset: 1px;
+}
+.chat-plus-menu-item:active { background: color-mix(in srgb, var(--c-panel) 75%, transparent); }
+.chat-plus-menu-item.is-dragging {
+  opacity: .72;
+  transform: scale(.94);
+  background: color-mix(in srgb, var(--c-icon-active) 12%, var(--c-panel));
+  box-shadow: 0 4px 14px rgba(0,0,0,.12);
+}
+.chat-plus-tool-label {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: center;
 }
 
 /* ── Plus menu icon box ── */
