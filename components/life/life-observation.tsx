@@ -1,13 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Clock3, RefreshCw, Settings2, Eye, ChevronLeft, Save } from "lucide-react";
+import { BookOpen, Clock3, RefreshCw, Settings2, Eye, ChevronLeft, Save, ImagePlus } from "lucide-react";
 import type { Character } from "@/lib/character-types";
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage } from "@/lib/chat-storage";
 import { generateOfflineChatCompletion } from "@/lib/chat-engine";
 import { kvGet, kvSet, hydrateKvDb } from "@/lib/kv-db";
 import { getActorClock, resolveActorLifeNow } from "@/lib/life/life-runtime";
 import { loadVirtualLifeState } from "@/lib/life/life-storage";
+import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
+import { loadImageGenerationSettings } from "@/lib/settings-storage";
+import { loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import type { LifeScheduleSlot, LifeTimelineEntry } from "@/lib/life/life-types";
 
 type ObservationEntry = {
@@ -18,6 +21,8 @@ type ObservationEntry = {
   toAt: string;
   createdAt: string;
   content: string;
+  imageMediaRef?: string;
+  imagePrompt?: string;
 };
 type CharacterObservationConfig = { enabled: boolean; intervalMinutes: number; lastGeneratedAt?: string; coveredUntil?: string };
 type ObservationData = {
@@ -76,6 +81,8 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [imageBusyId, setImageBusyId] = useState<string | null>(null);
+  const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
   const busyRef = useRef(new Set<string>());
   const dataRef = useRef(data);
@@ -85,6 +92,18 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
   const selectedEntries = useMemo(() => data.entries.filter(entry => entry.characterId === selectedId).sort((a, b) => b.toAt.localeCompare(a.toAt)), [data.entries, selectedId]);
 
   const refresh = useCallback(() => setData(loadData()), []);
+  useEffect(() => {
+    let alive = true;
+    const urls: Record<string, string> = {};
+    void Promise.all(data.entries.filter(entry => entry.imageMediaRef).map(async entry => {
+      const url = await loadMediaObjectUrl(entry.imageMediaRef!);
+      if (url) urls[entry.id] = url;
+    })).then(() => {
+      if (!alive) { Object.values(urls).forEach(url => URL.revokeObjectURL(url)); return; }
+      setImageUrls(previous => { Object.values(previous).forEach(url => URL.revokeObjectURL(url)); return urls; });
+    });
+    return () => { alive = false; };
+  }, [data.entries.map(entry => entry.id + ":" + (entry.imageMediaRef ?? "")).join("|")]);
   useEffect(() => {
     let alive = true;
     void hydrateKvDb().then(() => { if (alive) refresh(); });
@@ -206,6 +225,29 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
     }
     void generateForCharacter(character, true);
   };
+  const generateEntryImage = async (entry: ObservationEntry) => {
+    if (imageBusyId) return;
+    if (!loadImageGenerationSettings().enabled) { tell("请先到「系统设置 → 图像生成 API」启用并配置生图服务。"); return; }
+    setImageBusyId(entry.id);
+    try {
+      const result = await generateImageFromConfiguredApi({
+        description: [
+          "根据以下生活观察记录生成一张写实感/插画感的单帧生活场景图。画面只呈现一个连续场景，不要拼贴、漫画分格、字幕或水印。角色外观应尽量遵循角色卡与已配置的角色参考图。",
+          "角色：" + entry.characterName,
+          "生活时间：" + fmt(entry.fromAt) + " 至 " + fmt(entry.toAt),
+          "生活记录：\n" + entry.content.slice(0, 5000),
+          "请优先选择记录中最有画面感的一个片段，保持人物动作、地点、光线和氛围与文字一致。",
+        ].join("\n\n"),
+        characterId: entry.characterId,
+        appId: "life",
+      });
+      if (!result) throw new Error("生图服务没有返回图片，请检查 API 配置。");
+      updateData(current => ({ ...current, entries: current.entries.map(item => item.id === entry.id ? { ...item, imageMediaRef: result.mediaRef, imagePrompt: result.prompt } : item) }));
+      tell("已为这段生活记录生成场景图。");
+    } catch (error) {
+      tell("场景图生成失败：" + (error instanceof Error ? error.message : "请检查生图 API 配置。"));
+    } finally { setImageBusyId(null); }
+  };
   const clearCharacter = (characterId: string) => updateData(current => ({ ...current, entries: current.entries.filter(entry => entry.characterId !== characterId) }));
   const deleteEntry = (entryId: string) => updateData(current => ({ ...current, entries: current.entries.filter(entry => entry.id !== entryId) }));
 
@@ -251,7 +293,7 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
         <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-stone-100 bg-white/80 p-3"><div className="min-w-0"><p className="text-sm font-medium text-stone-700">自动生活描写</p><p className="mt-0.5 text-xs text-stone-500">每隔设定时间生成一次；仅在应用处于前台时自动触发，进入角色页面时也会补齐新行程。</p></div><input type="checkbox" aria-label="开启该角色自动生活描写" checked={selectedConfig?.enabled ?? false} onChange={event => updateData(current => ({ ...current, characters: { ...current.characters, [selectedCharacter.id]: { ...(current.characters[selectedCharacter.id] ?? { intervalMinutes: 180 }), enabled: event.target.checked } } }))}/></div>
       </article>
       {busyId === selectedCharacter.id && <div className="rounded-xl bg-white/80 p-3 text-sm text-stone-600">正在整理行程、时间线并生成生活描写……</div>}
-      {selectedEntries.map(entry => <article key={entry.id} className="rounded-2xl border border-stone-200/70 bg-white/85 p-4 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-2"><div className="flex items-center gap-2 text-xs font-semibold text-[var(--life-accent)]"><BookOpen size={15}/>{fmt(entry.fromAt)} — {fmt(entry.toAt)}</div><button type="button" onClick={() => deleteEntry(entry.id)} className="text-xs text-stone-400 hover:text-red-600">删除</button></div><div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-stone-700">{entry.content}</div></article>)}
+      {selectedEntries.map(entry => <article key={entry.id} className="rounded-2xl border border-stone-200/70 bg-white/85 p-4 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-2"><div className="flex items-center gap-2 text-xs font-semibold text-[var(--life-accent)]"><BookOpen size={15}/>{fmt(entry.fromAt)} — {fmt(entry.toAt)}</div><div className="flex items-center gap-3"><button type="button" disabled={imageBusyId === entry.id} onClick={() => void generateEntryImage(entry)} className="inline-flex items-center gap-1 text-xs text-[var(--life-accent)] disabled:opacity-50"><ImagePlus size={14}/>{imageBusyId === entry.id ? "正在生成…" : entry.imageMediaRef ? "重新生成场景图" : "生成场景图"}</button><button type="button" onClick={() => deleteEntry(entry.id)} className="text-xs text-stone-400 hover:text-red-600">删除</button></div></div><div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-stone-700">{entry.content}</div>{entry.imageMediaRef && (imageUrls[entry.id] ? <img src={imageUrls[entry.id]} alt={entry.characterName + "的生活场景图"} className="mt-3 max-h-[420px] w-full rounded-xl object-contain bg-stone-100"/> : <p className="mt-3 text-xs text-stone-400">场景图已保存，正在读取图片…</p>)}</article>)}
       {!selectedEntries.length && busyId !== selectedCharacter.id && <p className="rounded-2xl bg-white/70 p-5 text-sm text-stone-500">还没有生活描写。点击「继续补写」开始观察。</p>}
       <div className="flex flex-wrap gap-2"><button type="button" onClick={() => clearCharacter(selectedCharacter.id)} className="rounded-xl border border-red-100 bg-white px-3 py-2 text-xs text-red-600">清空该角色全部记录</button><button type="button" onClick={() => setSelectedId(null)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-600">返回角色列表</button></div>
     </div>}
