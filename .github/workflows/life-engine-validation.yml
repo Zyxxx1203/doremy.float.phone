@@ -1,12 +1,34 @@
-# Optional life-system branch: validate independently; do not merge into main without explicit approval.
-name: Virtual life feature validation
+# Mainline life-system validation.
+name: Validate life system and compatibility
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main, feat/life-engine-foundation, codex/life-system-overhaul-v2, feature/life-system, feature/life-system-mainline]
+    branches: [main]
+    paths:
+      - "components/life/**"
+      - "lib/life/**"
+      - "components/chat/chat-room.tsx"
+      - "components/desktop-shell.tsx"
+      - "components/phone-settings-app.tsx"
+      - "lib/device-compatibility.ts"
+      - "styles/phone-shell.css"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/life-engine-validation.yml"
   push:
-    branches: [codex/life-system-overhaul-v2, feat/life-engine-foundation, feat/life-agent-autonomy, feature/life-system, feature/life-system-mainline]
+    branches: [main]
+    paths:
+      - "components/life/**"
+      - "lib/life/**"
+      - "components/chat/chat-room.tsx"
+      - "components/desktop-shell.tsx"
+      - "components/phone-settings-app.tsx"
+      - "lib/device-compatibility.ts"
+      - "styles/phone-shell.css"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/life-engine-validation.yml"
   workflow_dispatch:
 
 permissions:
