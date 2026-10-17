@@ -311,9 +311,15 @@ async function buildStoryPromptMessages(
       const siblingSettings = resolveStoryMemorySettings(sibling);
       if (!siblingSettings.allowOtherBranchesRead || !siblingSettings.writeBranchMemory || !siblingSettings.sharedMemoryTypes.includes("branch")) continue;
       const summary = loadStoryMessages(sibling.id)
-        .filter((message) => message.role === "assistant" && Boolean(sibling.memorySettings ? message.branchMemorySummary : message.storySummary))
+        .filter((message) => message.role === "assistant" && Boolean(
+          message.branchMemorySummary !== undefined
+            ? message.branchMemorySummary
+            : sibling.memorySettings?.writeBranchMemory !== false ? message.storySummary : "",
+        ))
         .slice(-12)
-        .map((message) => (sibling.memorySettings ? message.branchMemorySummary : message.storySummary)?.trim())
+        .map((message) => (message.branchMemorySummary !== undefined
+          ? message.branchMemorySummary
+          : sibling.memorySettings?.writeBranchMemory !== false ? message.storySummary : "")?.trim())
         .filter((value): value is string => Boolean(value));
       if (summary.length) snippets.push(`【分线：${sibling.branchName || "未命名分线"}】\n${summary.join("\n")}`);
     }
