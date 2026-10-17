@@ -765,17 +765,17 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   const composeSceneReferenceSheet = async (participantIds: string[]): Promise<string | undefined> => {
     const imageSettings = loadImageGenerationSettings();
-    const sources: Array<{label:string;dataUrl:string}> = [];
+    const sources: Array<{label:string;dataUrl:string;faceCrop?:{x:number;y:number;size:number}}> = [];
     const playerAsset = imageSettings.userAppearanceReferenceAssetId;
     if(playerAsset && participantIds.includes(PLAYER_ID)) {
       const dataUrl=await getChatImageFromIndexedDB(playerAsset);
-      if(dataUrl) sources.push({label:playerName,dataUrl});
+      if(dataUrl) sources.push({label:playerName,dataUrl,faceCrop:imageSettings.userAppearanceFaceCrop});
     }
     for(const participantId of participantIds) {
       const ref=imageSettings.characterReferences?.[participantId];
       if(!ref?.assetId||ref.enabled===false)continue;
       const dataUrl=await getChatImageFromIndexedDB(ref.assetId);
-      if(dataUrl) sources.push({label:characters.find(char=>char.id===participantId)?.name||"角色",dataUrl});
+      if(dataUrl) sources.push({label:characters.find(char=>char.id===participantId)?.name||"角色",dataUrl,faceCrop:ref.faceCrop});
     }
     if(!sources.length)return undefined;
     const decoded=await Promise.all(sources.map(({label,dataUrl})=>new Promise<{label:string;image:HTMLImageElement}>((resolve,reject)=>{
