@@ -730,13 +730,14 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
 }, ref) {
     const [inputText, setInputText] = useState("");
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-    const [plusMenuOrder, setPlusMenuOrder] = useState<string[]>(() => {
+    const [plusMenuOrder, setPlusMenuOrder] = useState<string[]>([]);
+    useEffect(() => {
         try {
             const saved = window.localStorage.getItem("chat-plus-menu-order-v1");
             const parsed = saved ? JSON.parse(saved) : [];
-            return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
-        } catch { return []; }
-    });
+            if (Array.isArray(parsed)) setPlusMenuOrder(parsed.filter((value): value is string => typeof value === "string"));
+        } catch { /* storage may be unavailable */ }
+    }, []);
     const [draggingPlusItem, setDraggingPlusItem] = useState<string | null>(null);
     const plusMenuContainerRef = useRef<HTMLDivElement | null>(null);
     const plusMenuDragTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
