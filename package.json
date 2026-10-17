@@ -8,6 +8,7 @@
     "build": "node scripts/build-weixin-assistant-dist.mjs && node scripts/build-personal-push-dist.mjs && next build && node scripts/restore-backdrop-filter.mjs",
     "start": "node scripts/local-next-server.mjs --prod",
     "lint": "next lint",
+    "test:life": "node scripts/test-life-runtime.mjs && node scripts/test-life-autonomy.mjs",
     "check:sdk": "node scripts/check-custom-app-sdk-consistency.mjs",
     "check:weixin": "node scripts/check-weixin-prompt-equivalence.mjs",
     "check:push": "node scripts/check-personal-push-dist.mjs",
