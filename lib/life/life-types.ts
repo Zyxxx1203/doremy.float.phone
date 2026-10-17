@@ -68,6 +68,10 @@ export type LifeEngineSettings = {
   panelOpacity: number;
   dialogueFontSize: number;
   narrationFontSize: number;
+  /** CSS font-family for dialogue; accepts a system font name or CSS font stack. */
+  dialogueFontFamily: string;
+  /** CSS font-family for narration and scene cards. */
+  narrationFontFamily: string;
   /** Inner padding for life-scene dialogue bubbles, in pixels. */
   bubblePadding: number;
   dialogueBubbleStyle: "rounded" | "soft" | "square";
@@ -121,7 +125,9 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   panelOpacity: 96,
   dialogueFontSize: 15,
   narrationFontSize: 12,
-  bubblePadding: 6,
+  dialogueFontFamily: "",
+  narrationFontFamily: "",
+  bubblePadding: 4,
   dialogueBubbleStyle: "rounded",
   customSceneCss: "",
   compactLayout: false,
