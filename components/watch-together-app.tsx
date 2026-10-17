@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Captions, ExternalLink, Expand, Heart, LoaderCircle, MessageCircle, Pause, Play, Send, Settings2, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, Expand, ExternalLink, Heart, LoaderCircle, MessageCircle, Pause, Play, Settings2, Sparkles, X } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import { generateChatCompletion, flattenCompletionResult } from "@/lib/chat-engine";
@@ -17,7 +17,6 @@ type WatchSettings = { characterId: string; intervalMinutes: number; voiceEnable
 
 const SETTINGS_KEY = "ai_phone_watch_together_v1";
 const DEFAULT_SETTINGS: WatchSettings = { characterId: "", intervalMinutes: 5, voiceEnabled: true, danmakuEnabled: true, subtitlesEnabled: true, currentMoment: "" };
-
 function parseVideoUrl(value: string): VideoTarget | null {
   try {
     const url = new URL(value.trim());
@@ -79,6 +78,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [watching, setWatching] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [fullScreen, setFullScreen] = useState(false);
   const playerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -164,66 +164,183 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     return () => window.clearInterval(timer);
   }, [watching, target, settings.intervalMinutes, generateComment]);
 
+  /** 全屏：优先真实调用；不支持时明确说明限制，不做「点了没反应」的假按钮。 */
   const enterFullscreen = async () => {
-    try {
-      if (!playerRef.current) return;
-      if (!document.fullscreenElement) await playerRef.current.requestFullscreen();
-      else await document.exitFullscreen();
-    } catch { onNotice?.("当前设备或浏览器不支持此播放器的全屏模式，请尝试播放器内的全屏按钮。"); }
+    const element = playerRef.current;
+    if (!element) return;
+    if (document.fullscreenElement) { await document.exitFullscreen().catch(() => undefined); return; }
+    if (typeof element.requestFullscreen !== "function" || document.fullscreenEnabled === false) {
+      onNotice?.("当前环境（可能是 iOS 或 WebView 壳）不允许页面全屏，请使用视频播放器自带的放大按钮。");
+      return;
+    }
+    try { await element.requestFullscreen(); }
+    catch { onNotice?.("全屏请求被系统拒绝，可尝试播放器内的全屏按钮。"); }
   };
 
   const latestComment = comments[comments.length - 1];
   const platformNote = useMemo(() => {
-    if (!target) return "粘贴视频分享链接，尽可能在同一页面播放。";
-    if (target.supported) return `已识别为${target.platformName}。能否播放仍取决于平台的嵌入政策、登录状态、会员权限与 DRM。`;
-    return `${target.platformName}暂时没有稳定的通用嵌入播放器。可尝试打开原始链接；角色陪看仍可基于你填写的当前片段描述进行回应。`;
+    if (!target) return "";
+    if (target.supported) return `已接入${target.platformName}。能否播放取决于平台嵌入政策、登录状态与会员权限。`;
+    return `${target.platformName}暂无稳定嵌入播放器，可打开原视频，陪看仍会基于你描述的片段回应。`;
   }, [target]);
 
-  return <div className="watch-together-app pointer-events-auto isolate absolute inset-0 z-[1000] flex min-w-0 flex-col overflow-hidden bg-[radial-gradient(ellipse_at_top,#fffdf8_0%,#f5f0e8_52%,#e6ebe2_100%)] text-[#343b36]">
-    <header className="relative z-[1001] flex shrink-0 items-center gap-3 border-b border-[#d9d8d0]/80 bg-white/82 px-4 py-3 shadow-[0_8px_28px_rgba(52,59,54,.08)] backdrop-blur-xl">
-      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onClose(); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-[#dedbd1] bg-white/80 shadow-sm transition hover:-translate-y-0.5 active:scale-95" aria-label="返回"><ArrowLeft size={17}/></button>
-      <div className="min-w-0 flex-1"><div className="font-serif text-xl tracking-[.08em]">一起看</div><div className="text-[10px] tracking-[.18em] text-[#8d968a]">WATCH, PAUSE, TALK A LITTLE</div></div>
-      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowSettings(value => !value); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-[#dedbd1] bg-white/80 shadow-sm transition hover:-translate-y-0.5 active:scale-95" aria-label="观影设置"><Settings2 size={17}/></button>
+  return <div className="watch-together-app pointer-events-auto isolate absolute inset-0 z-[1000] flex min-w-0 flex-col overflow-hidden text-[#f0e6d8]" style={{ background: "radial-gradient(ellipse 120% 80% at 50% -10%, #3a2f26 0%, #241e19 42%, #14100d 100%)" }}>
+    {/* 弹幕动画：仓库里从未定义过 watchDanmaku，之前那条 animation 是空转，这里补上真实 keyframes */}
+    <style>{`@keyframes watchDanmaku { 0% { transform: translateX(28%); opacity: 0 } 8% { opacity: 1 } 88% { opacity: 1 } 100% { transform: translateX(-150%); opacity: 0 } }`}</style>
+
+    {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
+    <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div className="absolute -left-24 top-10 h-72 w-72 rounded-full opacity-40 blur-3xl" style={{ background: "radial-gradient(circle, #c98f52 0%, transparent 70%)" }} />
+      <div className="absolute -right-20 top-1/3 h-80 w-80 rounded-full opacity-25 blur-3xl" style={{ background: "radial-gradient(circle, #7a6a9a 0%, transparent 70%)" }} />
+    </div>
+
+    <header className="relative z-[1001] flex shrink-0 items-center gap-3 px-4 pb-3" style={{ paddingTop: "max(12px, var(--page-header-safe-top, 48px))" }}>
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onClose(); }} className="grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-white/10 bg-white/5 text-[#e6d8c4] backdrop-blur transition active:scale-95" aria-label="返回"><ArrowLeft size={17}/></button>
+      <div className="min-w-0 flex-1">
+        <div className="font-serif text-lg tracking-[.14em]">一起看</div>
+        <div className="truncate text-[10px] tracking-[.2em] text-[#a2948a]">今晚只有我们两个</div>
+      </div>
+      {character && <div className="flex shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1.5">
+        <span className="grid h-6 w-6 place-items-center overflow-hidden rounded-full bg-[#4a3d33] text-[10px] text-[#e6d8c4]">{character.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character.name.slice(0, 1)}</span>
+        <span className="max-w-[72px] truncate text-[11px] text-[#d8c9b6]">{character.name}</span>
+      </div>}
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowSettings(value => !value); }} className="grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-white/10 bg-white/5 text-[#e6d8c4] backdrop-blur transition active:scale-95" aria-label="观影设置"><Settings2 size={17}/></button>
     </header>
-    <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
-      <section className="mx-auto max-w-4xl px-4 pb-8 pt-5 sm:px-6">
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input value={urlInput} onChange={event => setUrlInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter") openVideo(); }} placeholder="粘贴抖音 / 小红书 / B站 / 腾讯 / 爱奇艺 / 优酷链接" className="min-w-0 flex-1 rounded-2xl border border-[#dcd8cd] bg-white/85 px-4 py-3.5 text-sm shadow-sm outline-none placeholder:text-[#a9aa9f] focus:border-[#87947e]"/>
-          <button onClick={openVideo} className="rounded-2xl bg-gradient-to-r from-[#7e8b78] to-[#65765f] px-5 py-3.5 text-sm font-medium tracking-wide text-white shadow-[0_8px_20px_rgba(92,109,81,.2)] transition hover:brightness-105 active:scale-[.98]">载入视频</button>
-        </div>
-        <p className="mt-2 text-[11px] leading-5 text-[#8c9185]">{platformNote}</p>
 
-        {showSettings && <section className="mt-4 rounded-[24px] border border-white/80 bg-white/70 p-4 shadow-[0_10px_28px_rgba(52,59,54,.06)] backdrop-blur sm:p-5">
-          <h2 className="font-serif text-lg">陪看方式</h2>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <label className="text-xs text-[#72796f]">陪你看的人<select value={character?.id ?? ""} onChange={event => patchSettings({ characterId: event.target.value })} className="mt-2 w-full rounded-lg border border-[#dedbd1] bg-white px-3 py-2.5 text-sm">{characters.map(char => <option key={char.id} value={char.id}>{char.name}</option>)}</select></label>
-            <label className="text-xs text-[#72796f]">主动说话间隔<select value={settings.intervalMinutes} onChange={event => patchSettings({ intervalMinutes: Number(event.target.value) })} className="mt-2 w-full rounded-lg border border-[#dedbd1] bg-white px-3 py-2.5 text-sm">{[1,2,3,5,8,10,15,20,30,45,60].map(value => <option key={value} value={value}>{value} 分钟</option>)}</select></label>
+    <main className="relative z-[1001] min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-8">
+      {/* 屏幕：房间里唯一的光源 */}
+      <section
+        ref={playerRef}
+        className={`relative mx-auto w-full max-w-3xl overflow-hidden rounded-[26px] border border-white/10 bg-[#0d0b09] ${fullScreen ? "h-screen max-w-none rounded-none" : ""}`}
+        style={{ boxShadow: "0 0 0 1px rgba(255,214,170,.06), 0 28px 70px rgba(0,0,0,.6), 0 0 120px rgba(201,143,82,.16)" }}
+      >
+        {target?.embedUrl ? (
+          <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className="aspect-video w-full border-0" />
+        ) : (
+          <div className="flex aspect-video flex-col items-center justify-center px-6 text-center">
+            <div className="grid h-16 w-16 place-items-center rounded-full border border-white/15 bg-white/5 text-[#d9b489]">
+              {target ? <ExternalLink size={24}/> : <Play size={24}/>}
+            </div>
+            <div className="mt-5 font-serif text-lg tracking-wide text-[#efe2d0]">{target ? `${target.platformName}需要外部打开` : "把想看的放上屏幕"}</div>
+            <p className="mt-2 max-w-xs text-[11px] leading-6 text-[#9c9086]">
+              {target ? "这个平台没有稳定的通用嵌入方式。打开原视频后回来，TA 依然会陪着你聊。" : "粘贴一个视频链接，关灯，把这段夜晚交给你们两个人。"}
+            </p>
+            {target && <button onClick={() => window.open(target.url, "_blank", "noopener,noreferrer")} className="mt-5 flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-4 py-2 text-xs text-[#e6d8c4] transition active:scale-95"><ExternalLink size={13}/>打开原视频</button>}
           </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            <label className="flex items-center gap-2 rounded-xl bg-[#efeee7] p-3 text-xs"><input type="checkbox" checked={settings.voiceEnabled} onChange={event => patchSettings({ voiceEnabled: event.target.checked })} className="accent-[#7e8b78]"/>角色语音（需绑定语音）</label>
-            <label className="flex items-center gap-2 rounded-xl bg-[#efeee7] p-3 text-xs"><input type="checkbox" checked={settings.danmakuEnabled} onChange={event => patchSettings({ danmakuEnabled: event.target.checked })} className="accent-[#7e8b78]"/>角色弹幕</label>
-            <label className="flex items-center gap-2 rounded-xl bg-[#efeee7] p-3 text-xs"><input type="checkbox" checked={settings.subtitlesEnabled} onChange={event => patchSettings({ subtitlesEnabled: event.target.checked })} className="accent-[#7e8b78]"/>角色字幕</label>
-          </div>
-          <p className="mt-3 text-[10px] leading-5 text-[#92958a]">角色发言使用你已配置的聊天模型与语音绑定；平台自带字幕/弹幕的开关通常不能跨站控制，下面的开关控制的是角色陪看层。</p>
-        </section>}
+        )}
 
-        <section ref={playerRef} className={`relative mt-5 overflow-hidden rounded-[24px] border border-white/60 bg-[#222723] shadow-[0_16px_40px_rgba(43,49,41,.18)] ${fullScreen ? "h-screen rounded-none" : ""}`}>
-          {target?.embedUrl ? <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className="aspect-video w-full border-0"/> : <div className="flex aspect-video flex-col items-center justify-center px-6 text-center text-[#c8cec3]"><div className="grid h-14 w-14 place-items-center rounded-full border border-white/20"><Play size={23}/></div><div className="mt-4 font-serif text-lg">{target ? `${target.platformName}需要外部打开` : "把喜欢的视频带进来"}</div><p className="mt-2 max-w-sm text-xs leading-6 text-[#a8b0a4]">{target ? "该平台没有稳定的通用嵌入方式。点击下方按钮打开原视频，返回后仍可和角色一起聊。" : "视频播放器会在这里出现。不同平台对内嵌播放的支持不同。"} </p>{target && <button onClick={() => window.open(target.url, "_blank", "noopener,noreferrer")} className="mt-4 flex items-center gap-2 rounded-full border border-white/25 px-4 py-2 text-xs"><ExternalLink size={13}/>打开原视频</button>}</div>}
-          {target?.embedUrl && settings.danmakuEnabled && comments.length > 0 && <div className="pointer-events-none absolute inset-0 overflow-hidden">{comments.slice(-6).map((comment,index) => <div key={comment.id} className="absolute right-2 max-w-[90%] animate-[watchDanmaku_12s_linear_forwards] whitespace-nowrap rounded-full bg-black/35 px-3 py-1 text-sm text-white drop-shadow" style={{ top: `${12 + index * 12}%`, animationDelay: `${index * .45}s` }}>{comment.characterName}：{comment.text}</div>)}</div>}
-          {target && settings.subtitlesEnabled && latestComment && <div className="pointer-events-none absolute bottom-4 left-3 right-3 text-center"><span className="rounded-md bg-black/70 px-3 py-2 text-sm leading-6 text-white [box-decoration-break:clone]">{latestComment.text}</span></div>}
-          <div className="absolute right-2 top-2 flex gap-1"><button onClick={() => void enterFullscreen()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/45 text-white" aria-label="全屏"><Expand size={15}/></button></div>
-        </section>
-
-        <div className="mt-4 rounded-2xl border border-[#dedbd1] bg-[#f9f7f1] p-4">
-          <div className="flex flex-wrap items-center gap-2"><div className="min-w-0 flex-1"><input value={videoTitle} onChange={event => setVideoTitle(event.target.value)} placeholder="给这段视频起个名字（可选）" className="w-full bg-transparent font-serif text-lg outline-none placeholder:text-[#b4b3a8]"/></div><button onClick={() => void generateComment(true)} disabled={!target || !character || busy} className="flex items-center gap-2 rounded-full bg-[#7e8b78] px-4 py-2.5 text-xs text-white disabled:opacity-40">{busy ? <LoaderCircle size={14} className="animate-spin"/> : <MessageCircle size={14}/>}请TA说一句</button></div>
-          <label className="mt-3 block text-[10px] tracking-[.15em] text-[#9b9d91]">此刻看到的片段 / 时间点（可选）</label>
-          <textarea value={settings.currentMoment} onChange={event => patchSettings({ currentMoment: event.target.value })} rows={2} placeholder="例如：00:43，他终于回头看了她一眼……你也可以写下自己的感受。" className="mt-2 w-full resize-y rounded-xl border border-[#e2dfd5] bg-white/70 p-3 text-xs leading-5 outline-none focus:border-[#87947e]"/>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#e4e1d7] pt-3"><div className="text-xs text-[#777e73]">{character ? `和 ${character.name} 一起看` : "请先导入角色卡"}</div><div className="flex gap-2"><button onClick={() => { setWatching(value => !value); if (!watching) void generateComment(false); }} disabled={!target || !character} className="flex items-center gap-2 rounded-full border border-[#c7c9bd] px-4 py-2 text-xs text-[#66715f] disabled:opacity-40">{watching ? <Pause size={13}/> : <Play size={13}/>} {watching ? "暂停陪看" : "开始陪看"}</button><button onClick={() => setComments([])} className="grid h-9 w-9 place-items-center rounded-full border border-[#dedbd1] text-[#96998e]" aria-label="清空角色弹幕"><X size={14}/></button></div></div>
+        {target?.embedUrl && settings.danmakuEnabled && comments.length > 0 && <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          {comments.slice(-6).map((comment, index) => <div key={comment.id} className="absolute right-2 max-w-[88%] whitespace-nowrap rounded-full bg-black/35 px-3 py-1 text-[13px] text-white/95 drop-shadow" style={{ top: `${14 + index * 12}%`, animation: "watchDanmaku 12s linear forwards", animationDelay: `${index * .45}s` }}>{comment.characterName}：{comment.text}</div>)}
+        </div>}
+        {target && settings.subtitlesEnabled && latestComment && <div className="pointer-events-none absolute bottom-5 left-4 right-4 text-center">
+          <span className="rounded-md bg-black/65 px-3 py-2 text-sm leading-6 text-white/95 [box-decoration-break:clone]">{latestComment.text}</span>
+        </div>}
+        <div className="absolute right-2 top-2 flex gap-1">
+          <button onClick={() => void enterFullscreen()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/45 text-white/90 backdrop-blur transition active:scale-95" aria-label="全屏"><Expand size={15}/></button>
         </div>
-
-        {comments.length > 0 && <section className="mt-5"><div className="mb-3 flex items-center gap-2 text-[10px] tracking-[.2em] text-[#9b9d91]"><Heart size={12}/> JUST SAID</div><div className="space-y-2">{comments.slice().reverse().map(comment => <div key={comment.id} className="rounded-2xl border border-white/90 bg-white/75 px-4 py-3 shadow-sm transition hover:bg-white"><div className="flex items-center justify-between gap-3"><span className="text-xs text-[#7e8b78]">{comment.characterName}</span><span className="text-[10px] text-[#b1b1a6]">{new Date(comment.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</span></div><p className="mt-1 font-serif text-sm leading-6 text-[#4e564d]">{comment.text}</p></div>)}</div></section>}
+        {/* 屏幕洒在桌面上的余光 */}
+        {!fullScreen && <div aria-hidden className="pointer-events-none absolute -bottom-6 left-1/2 h-6 w-[86%] -translate-x-1/2 rounded-[50%] opacity-40 blur-xl" style={{ background: "radial-gradient(ellipse, #d7a06a 0%, transparent 70%)" }} />}
       </section>
+
+      {/* 没有视频时：链接输入放在「屏幕」下方，像往播放器里投一块碟 */}
+      {!target && <div className="mx-auto mt-4 w-full max-w-3xl">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input value={urlInput} onChange={event => setUrlInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter") openVideo(); }} placeholder="粘贴 B站 / 抖音 / 小红书 / 腾讯 / 优酷链接" className="min-w-0 flex-1 rounded-2xl border border-white/12 bg-white/6 px-4 py-3.5 text-sm text-[#f0e6d8] outline-none placeholder:text-[#8b8077] focus:border-[#c99a6a]" />
+          <button onClick={openVideo} className="rounded-2xl px-5 py-3.5 text-sm font-medium tracking-wide text-[#2a1f16] transition active:scale-[.98]" style={{ background: "linear-gradient(135deg,#e8c39a,#c99a6a)" }}>放上屏幕</button>
+        </div>
+        {platformNote && <p className="mt-2 text-[11px] leading-5 text-[#8b8077]">{platformNote}</p>}
+      </div>}
+
+      {/* 角色在屏幕下方轻声说话 */}
+      {target && <section className="mx-auto mt-4 w-full max-w-3xl">
+        <div className="relative rounded-[22px] border border-white/10 bg-white/[.045] p-4 backdrop-blur">
+          <div className="flex items-start gap-3">
+            {character && <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-[#4a3d33] text-xs text-[#e6d8c4]">{character.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character.name.slice(0, 1)}</span>}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-2">
+                <span className="text-[11px] tracking-[.14em] text-[#c99a6a]">{character?.name ?? "角色"}</span>
+                <span className="text-[10px] text-[#7d7268]">{busy ? "正在看着屏幕…" : watching ? "陪你看" : "还没开始"}</span>
+              </div>
+              <p className="mt-1.5 min-h-[22px] font-serif text-[15px] leading-7 text-[#efe2d0]">
+                {latestComment ? latestComment.text : <span className="text-[#8b8077]">TA 还没说话。可以自己先说说此刻看到了什么。</span>}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button onClick={() => void generateComment(true)} disabled={!character || busy} className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs text-[#2a1f16] transition active:scale-95 disabled:opacity-40" style={{ background: "linear-gradient(135deg,#e8c39a,#c99a6a)" }}>
+              {busy ? <LoaderCircle size={13} className="animate-spin"/> : <MessageCircle size={13}/>}让 TA 说一句
+            </button>
+            <button onClick={() => { setWatching(value => !value); if (!watching) void generateComment(false); }} disabled={!character} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3.5 py-2 text-xs text-[#d8c9b6] transition active:scale-95 disabled:opacity-40">
+              {watching ? <Pause size={13}/> : <Play size={13}/>}{watching ? "暂停陪看" : "开始陪看"}
+            </button>
+            <button onClick={() => setShowHistory(true)} disabled={!comments.length} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3.5 py-2 text-xs text-[#d8c9b6] transition active:scale-95 disabled:opacity-40">
+              <Heart size={13}/>悄悄话 {comments.length > 0 && <span className="text-[#c99a6a]">{comments.length}</span>}
+            </button>
+            <button onClick={() => setShowSettings(value => !value)} className="ml-auto flex items-center gap-1 rounded-full px-2 py-2 text-[11px] text-[#8b8077] transition active:scale-95"><ChevronDown size={13} className={showSettings ? "rotate-180 transition" : "transition"}/>陪看方式</button>
+          </div>
+
+          <label className="mt-3 block text-[10px] tracking-[.15em] text-[#7d7268]">此刻屏幕上的画面（可选）</label>
+          <textarea value={settings.currentMoment} onChange={event => patchSettings({ currentMoment: event.target.value })} rows={2} placeholder="例如：00:43，他终于回头看了她一眼。也可以只写你现在的感受。" className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-black/20 p-3 text-xs leading-5 text-[#efe2d0] outline-none placeholder:text-[#6f665e] focus:border-[#c99a6a]" />
+        </div>
+
+        {/* 陪看设置：抽屉式，默认收起，避免占据屏幕空间 */}
+        {showSettings && <div className="mt-3 rounded-[22px] border border-white/10 bg-white/[.045] p-4 backdrop-blur">
+          <div className="flex items-center justify-between">
+            <h2 className="font-serif text-base tracking-wide text-[#efe2d0]">陪看方式</h2>
+            <button onClick={() => setShowSettings(false)} aria-label="收起设置" className="text-[#8b8077]"><X size={15}/></button>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="text-[11px] text-[#9c9086]">陪你看的人
+              <select value={character?.id ?? ""} onChange={event => patchSettings({ characterId: event.target.value })} className="mt-1.5 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none">
+                {characters.map(char => <option key={char.id} value={char.id} className="bg-[#241e19]">{char.name}</option>)}
+              </select>
+            </label>
+            <label className="text-[11px] text-[#9c9086]">主动说话间隔
+              <select value={settings.intervalMinutes} onChange={event => patchSettings({ intervalMinutes: Number(event.target.value) })} className="mt-1.5 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none">
+                {[1,2,3,5,8,10,15,20,30,45,60].map(value => <option key={value} value={value} className="bg-[#241e19]">{value} 分钟</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {([["voiceEnabled", "角色语音"], ["danmakuEnabled", "角色弹幕"], ["subtitlesEnabled", "角色字幕"]] as [keyof WatchSettings, string][]).map(([key, label]) => <button
+              key={key}
+              type="button"
+              onClick={() => patchSettings({ [key]: !settings[key] } as Partial<WatchSettings>)}
+              className={`rounded-full border px-3 py-2 text-[11px] transition active:scale-95 ${settings[key] ? "border-[#c99a6a]/60 bg-[#c99a6a]/15 text-[#e8c39a]" : "border-white/10 bg-white/5 text-[#8b8077]"}`}
+            >{label}</button>)}
+          </div>
+          <p className="mt-3 text-[10px] leading-5 text-[#7d7268]">角色发言使用你已配置的聊天模型与语音绑定。平台自带的字幕/弹幕开关无法跨站控制，这里的开关只作用于「角色陪看」这一层。</p>
+        </div>}
+      </section>}
     </main>
+
+    {/* 悄悄话抽屉：历史发言收起来，不占屏幕 */}
+    {showHistory && <div className="absolute inset-0 z-[1002] flex flex-col justify-end bg-black/55 backdrop-blur-sm" onClick={() => setShowHistory(false)}>
+      <section className="flex max-h-[72%] flex-col overflow-hidden rounded-t-[26px] border-t border-white/12 bg-[#221c17]" onClick={event => event.stopPropagation()}>
+        <header className="flex items-center justify-between border-b border-white/8 px-4 py-3.5">
+          <div>
+            <div className="font-serif text-base tracking-wide text-[#efe2d0]">今晚说过的话</div>
+            <div className="mt-0.5 text-[10px] tracking-[.18em] text-[#7d7268]">{comments.length} 句 · 只属于你们</div>
+          </div>
+          <button onClick={() => setShowHistory(false)} aria-label="关闭" className="grid h-9 w-9 place-items-center rounded-full border border-white/10 text-[#a2948a]"><X size={15}/></button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          {comments.length ? <div className="space-y-3">{[...comments].reverse().map(comment => <div key={comment.id} className="rounded-2xl border border-white/8 bg-white/[.035] px-3.5 py-3">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-[11px] tracking-wide text-[#c99a6a]">{comment.characterName}</span>
+              <span className="text-[10px] text-[#6f665e]">{new Date(comment.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</span>
+            </div>
+            <p className="mt-1 font-serif text-sm leading-6 text-[#ded0bd]">{comment.text}</p>
+          </div>)}</div> : <p className="py-10 text-center text-xs text-[#7d7268]">还没有说过话。</p>}
+        </div>
+        <footer className="flex items-center justify-between gap-3 border-t border-white/8 px-4 py-3" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
+          <span className="text-[10px] text-[#6f665e]">{watching ? "正在陪看" : "已暂停"}</span>
+          <button onClick={() => setComments([])} className="flex items-center gap-1.5 rounded-full border border-white/12 px-3 py-2 text-[11px] text-[#a2948a] transition active:scale-95"><Sparkles size={12}/>清空记录</button>
+        </footer>
+      </section>
+    </div>}
+
     <audio ref={audioRef} className="hidden" />
   </div>;
 }

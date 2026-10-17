@@ -167,7 +167,10 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
   };
 
   return <div className="pointer-events-auto isolate absolute inset-0 z-[1000] flex flex-col overflow-hidden bg-[#f6f4f0] text-stone-800">
-    <header className="relative z-[1001] flex shrink-0 items-center gap-3 border-b border-stone-200 bg-white/95 px-4 py-3">
+    <header
+      className="relative z-[1001] flex shrink-0 items-center gap-3 border-b border-stone-200 bg-white/95 px-4 pb-3"
+      style={{ paddingTop: "max(12px, var(--page-header-safe-top, 48px))" }}
+    >
       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onClose(); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 shrink-0 touch-manipulation place-items-center rounded-2xl border border-stone-200 bg-white shadow-sm" aria-label="返回"><ArrowLeft size={18}/></button>
       <div className="min-w-0 flex-1"><div className="text-lg font-semibold tracking-wide">档案室</div><div className="text-xs text-stone-500">媒体资产与留存管理</div></div>
       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void refresh(); }} disabled={loading} className="relative z-[1002] pointer-events-auto grid h-11 w-11 shrink-0 touch-manipulation place-items-center rounded-2xl border border-stone-200 bg-white shadow-sm disabled:opacity-50" aria-label="刷新"><RefreshCw size={16} className={loading ? "animate-spin" : ""}/></button>

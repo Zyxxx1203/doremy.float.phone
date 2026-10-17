@@ -27,6 +27,56 @@ export type PhotoWallPhoto = {
   referencePhotoId?: string;
   generationPrompt?: string;
   source: "upload" | "generated" | "chat-favorite" | "life-event";
+  /**
+   * 贴墙布局。缺省时照片仍按旧版网格流式排布，保证老数据无损；
+   * 一旦用户拖动/套用模板，就写入绝对坐标（画布百分比 0~1），
+   * 这样不同屏宽下相对位置保持一致。
+   */
+  placement?: PhotoWallPlacement;
+  /** 相框级涂鸦层：笔迹与贴纸都画在相框之上、照片之下，随照片一起保存。 */
+  doodles?: PhotoWallDoodle[];
+};
+
+/** 一张照片在墙上的摆放。坐标用画布比例，避免换屏幕后错位。 */
+export type PhotoWallPlacement = {
+  /** 中心点横坐标，0~1（画布宽度的比例） */
+  x: number;
+  /** 中心点纵坐标，0~1 */
+  y: number;
+  /** 相对基准宽度的缩放，1 = 默认尺寸 */
+  scale: number;
+  /** 旋转角度，单位度 */
+  rotation: number;
+  /** 层叠顺序，越大越靠上 */
+  z: number;
+  frame: PhotoWallFrameStyle;
+  /** 木框/纸张的底色 */
+  frameColor: string;
+};
+
+export type PhotoWallFrameStyle = "polaroid" | "thin" | "wood" | "tape" | "none";
+
+/** 相框级涂鸦：笔迹与贴纸都画在相框之上、照片之下。 */
+export type PhotoWallDoodle = {
+  id: string;
+  kind: "stroke" | "sticker";
+  /** 贴纸用的 emoji 或短字符 */
+  content?: string;
+  color: string;
+  width: number;
+  /** 归一化到相框内的坐标点，0~1 */
+  points: { x: number; y: number }[];
+  createdAt: string;
+};
+
+/** 一个「摆放模板」= 一组可编辑的坐标骨架，照片按顺序吸附进去。 */
+export type PhotoWallTemplate = {
+  id: string;
+  name: string;
+  /** builtin 模板随代码内置，用户自建的可删改 */
+  builtin?: boolean;
+  /** 骨架槽位，坐标同样是 0~1 比例 */
+  slots: { x: number; y: number; scale: number; rotation: number }[];
 };
 
 export type PhotoWallSettings = {
@@ -79,6 +129,64 @@ function normalizePhoto(value: unknown): PhotoWallPhoto | null {
     referencePhotoId: typeof raw.referencePhotoId === "string" ? raw.referencePhotoId : undefined,
     generationPrompt: typeof raw.generationPrompt === "string" ? raw.generationPrompt.slice(0, 4000) : undefined,
     source: raw.source === "generated" || raw.source === "chat-favorite" || raw.source === "life-event" ? raw.source : "upload",
+    placement: normalizePlacement(raw.placement),
+    doodles: normalizeDoodles(raw.doodles),
+  };
+}
+
+/** 涂鸦归一化：坐标压进 0~1，超长笔迹截断，避免脏数据把画布拖垮。 */
+export function normalizeDoodles(value: unknown): PhotoWallDoodle[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const result: PhotoWallDoodle[] = [];
+  for (const item of value.slice(-200)) {
+    if (!item || typeof item !== "object") continue;
+    const raw = item as Partial<PhotoWallDoodle>;
+    if (raw.kind !== "stroke" && raw.kind !== "sticker") continue;
+    if (typeof raw.id !== "string") continue;
+    const points = Array.isArray(raw.points)
+      ? raw.points
+          .filter(point => point && typeof point === "object")
+          .slice(0, 600)
+          .map(point => ({ x: clamp01((point as { x?: number }).x, 0), y: clamp01((point as { y?: number }).y, 0) }))
+      : [];
+    if (raw.kind === "stroke" && points.length < 2) continue;
+    if (raw.kind === "sticker" && !points.length) continue;
+    result.push({
+      id: raw.id,
+      kind: raw.kind,
+      content: typeof raw.content === "string" ? raw.content.slice(0, 8) : undefined,
+      color: typeof raw.color === "string" && /^#[0-9a-f]{3,8}$/i.test(raw.color) ? raw.color : "#c2705a",
+      width: typeof raw.width === "number" && Number.isFinite(raw.width) ? Math.min(24, Math.max(1, raw.width)) : 3,
+      points,
+      createdAt: typeof raw.createdAt === "string" ? raw.createdAt : new Date().toISOString(),
+    });
+  }
+  return result.length ? result : undefined;
+}
+
+const FRAME_STYLES: PhotoWallFrameStyle[] = ["polaroid", "thin", "wood", "tape", "none"];
+
+function clamp01(value: unknown, fallback: number): number {
+  const n = typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  return Math.min(1, Math.max(0, n));
+}
+
+/** 布局归一化：任何越界/非数值都回收成安全值，避免渲染出屏幕外救不回来。 */
+export function normalizePlacement(value: unknown): PhotoWallPlacement | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Partial<PhotoWallPlacement>;
+  const frame = FRAME_STYLES.includes(raw.frame as PhotoWallFrameStyle) ? raw.frame as PhotoWallFrameStyle : "polaroid";
+  const scale = typeof raw.scale === "number" && Number.isFinite(raw.scale) ? Math.min(3, Math.max(0.35, raw.scale)) : 1;
+  const rotation = typeof raw.rotation === "number" && Number.isFinite(raw.rotation) ? Math.min(45, Math.max(-45, raw.rotation)) : 0;
+  const z = typeof raw.z === "number" && Number.isFinite(raw.z) ? Math.round(raw.z) : 1;
+  return {
+    x: clamp01(raw.x, 0.5),
+    y: clamp01(raw.y, 0.5),
+    scale,
+    rotation,
+    z,
+    frame,
+    frameColor: typeof raw.frameColor === "string" && /^#[0-9a-f]{3,8}$/i.test(raw.frameColor) ? raw.frameColor : "#fffdf8",
   };
 }
 

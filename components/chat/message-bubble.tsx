@@ -1346,6 +1346,8 @@ function ImageBubble({
     const isPending = regenerating || (!resolvedUrl && d?.imageGenerationStatus === "pending");
     const canRegenerate = Boolean(d?.label?.trim());
     const [showPreview, setShowPreview] = useState(false);
+    // 多图集合的当前页：用于指示点，让「这是几张、看到第几张」一眼可见。
+    const [activeGroupIndex, setActiveGroupIndex] = useState(0);
 
     const [hasRef, setHasRef] = useState(() => hasCharacterReferenceImage(characterId));
     const [useReferenceDraft, setUseReferenceDraft] = useState(d?.useReferenceImage === true);
@@ -1493,7 +1495,17 @@ function ImageBubble({
         return (
             <>
                 <div className="chat-photo-card chat-photo-card--image relative w-[min(260px,75vw)] max-w-full overflow-hidden rounded-xl" style={{ cursor: "pointer" }}>
-                    <div className="flex w-full snap-x snap-mandatory gap-0 overflow-x-auto overscroll-x-contain" style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}>
+                    <div
+                        className="flex w-full snap-x snap-mandatory gap-0 overflow-x-auto overscroll-x-contain"
+                        style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
+                        onScroll={event => {
+                            // 用滚动位置反推当前页，保证指示点与实际看到的图一致。
+                            const el = event.currentTarget;
+                            const width = el.clientWidth || 1;
+                            const next = Math.round(el.scrollLeft / width);
+                            setActiveGroupIndex(current => (next !== current && next >= 0 && next < groupUrls.length ? next : current));
+                        }}
+                    >
                         {groupUrls.map((url, index) => (
                             <button type="button" key={`${index}-${url}`} onClick={e => { e.stopPropagation(); setPreviewImageUrl(url); setShowPreview(true); }} className="relative aspect-square w-full min-w-full flex-none snap-center overflow-hidden bg-stone-100">
                                 <img src={url} alt={`${label} ${index + 1}`} className="h-full w-full object-cover" loading={index < 2 ? "eager" : "lazy"} />
@@ -1501,6 +1513,17 @@ function ImageBubble({
                             </button>
                         ))}
                     </div>
+                    {/* 翻页指示：像微信一样能看出这组有几张、当前在第几张。 */}
+                    {groupUrls.length > 1 && (
+                        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-2 flex items-center justify-center gap-1">
+                            {groupUrls.map((url, index) => (
+                                <span
+                                    key={`dot-${index}-${url}`}
+                                    className={`h-1.5 rounded-full transition-all duration-200 ${index === activeGroupIndex ? "w-4 bg-white shadow-sm" : "w-1.5 bg-white/55"}`}
+                                />
+                            ))}
+                        </div>
+                    )}
                     {groupLoadError && <div role="status" className="border-t border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">部分图片暂时无法读取，已保留其余图片。可重新发送补齐。</div>}
                 </div>
                 {previewAndDialog}

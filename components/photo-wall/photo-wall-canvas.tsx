@@ -1,0 +1,367 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Droplet, Eraser, ImagePlus, Minus, Palette, Plus, RotateCcw, RotateCw, Sparkles, SquarePen, Smile, Unlock } from "lucide-react";
+import { loadMediaObjectUrl } from "@/lib/media-cache-storage";
+import {
+  createPhotoWallId,
+  type PhotoWallDoodle,
+  type PhotoWallFrameStyle,
+  type PhotoWallPhoto,
+  type PhotoWallPlacement,
+} from "@/lib/photo-wall-storage";
+
+/** 相框留白比例：宝丽来下缘更宽，留给手写感。 */
+const FRAME_PADDING: Record<PhotoWallFrameStyle, { x: number; y: number; bottom: number }> = {
+  polaroid: { x: 0.055, y: 0.045, bottom: 0.16 },
+  thin: { x: 0.018, y: 0.018, bottom: 0.03 },
+  wood: { x: 0.05, y: 0.05, bottom: 0.09 },
+  tape: { x: 0.03, y: 0.03, bottom: 0.06 },
+  none: { x: 0, y: 0, bottom: 0 },
+};
+
+const FRAME_BG: Record<PhotoWallFrameStyle, string> = {
+  polaroid: "#fffdf8",
+  thin: "#f6f1e6",
+  wood: "#a97c52",
+  tape: "#fbf6ea",
+  none: "transparent",
+};
+
+export const STICKER_CHOICES = ["❤", "✦", "✿", "☾", "☘", "♪", "★", "⌘"];
+const BRUSH_COLORS = ["#c2705a", "#7d8b6f", "#b08a54", "#5d6b8a", "#8a6b8a", "#3c3a36"];
+
+/** 照片墙基准宽度比例：单张照片默认占墙宽的比例，再乘 placement.scale。 */
+const BASE_PHOTO_RATIO = 0.3;
+
+/** 没有摆放坐标的老照片，给一个稳定但错落的默认落点。 */
+export function fallbackPlacement(index: number): PhotoWallPlacement {
+  const col = index % 3;
+  const row = Math.floor(index / 3);
+  const wobble = ((index * 37) % 11) - 5;
+  return {
+    x: Math.min(0.88, Math.max(0.12, 0.2 + col * 0.3 + wobble * 0.004)),
+    y: Math.min(0.9, Math.max(0.1, 0.14 + row * 0.27 + wobble * 0.003)),
+    scale: 1,
+    rotation: wobble,
+    z: index + 1,
+    frame: "polaroid",
+    frameColor: "#fffdf8",
+  };
+}
+
+type Props = {
+  photos: PhotoWallPhoto[];
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  onChangePlacement: (id: string, placement: PhotoWallPlacement) => void;
+  onChangeDoodles: (id: string, doodles: PhotoWallDoodle[]) => void;
+  onOpenDetail: (photo: PhotoWallPhoto) => void;
+};
+
+type DragState = {
+  id: string;
+  pointerId: number;
+  mode: "move" | "resize";
+  startX: number;
+  startY: number;
+  base: PhotoWallPlacement;
+  wallWidth: number;
+  wallHeight: number;
+  moved: boolean;
+};
+
+export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onChangeDoodles, onOpenDetail }: Props) {
+  const wallRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const strokeRef = useRef<{ id: string; photoId: string } | null>(null);
+
+  const [mode, setMode] = useState<"move" | "doodle">("move");
+  const [brushColor, setBrushColor] = useState(BRUSH_COLORS[0]);
+  const [brushWidth, setBrushWidth] = useState(3);
+  const [sticker, setSticker] = useState<string | null>(null);
+  const [draftPoints, setDraftPoints] = useState<{ x: number; y: number }[]>([]);
+
+  const ordered = useMemo(() => photos.slice().sort((a, b) => (a.placement?.z ?? 0) - (b.placement?.z ?? 0)), [photos]);
+  const placementOf = useCallback(
+    (photo: PhotoWallPhoto, index: number) => photo.placement ?? fallbackPlacement(index),
+    [],
+  );
+
+  const selectedPhoto = ordered.find(photo => photo.id === selectedId) ?? null;
+
+  const commit = useCallback((id: string, next: PhotoWallPlacement) => onChangePlacement(id, next), [onChangePlacement]);
+
+  /* ── 拖动 / 缩放 ───────────────────────────────── */
+  const beginDrag = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number, mode: "move" | "resize") => {
+    if (mode === "move" && event.button !== undefined && event.button !== 0) return;
+    const wall = wallRef.current;
+    if (!wall) return;
+    const rect = wall.getBoundingClientRect();
+    // 必须在墙容器上捕获指针：move/up 都监听在墙容器，若捕获到照片节点，
+    // 后续 pointermove 会被路由到那个节点，墙上的 handler 收不到，拖动就失效了。
+    wall.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      id: photo.id,
+      pointerId: event.pointerId,
+      mode,
+      startX: event.clientX,
+      startY: event.clientY,
+      base: placementOf(photo, index),
+      wallWidth: rect.width || 1,
+      wallHeight: rect.height || 1,
+      moved: false,
+    };
+    onSelect(photo.id);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+    if (drag.mode === "move") {
+      const nextX = Math.min(0.98, Math.max(0.02, drag.base.x + dx / drag.wallWidth));
+      const nextY = Math.min(0.98, Math.max(0.02, drag.base.y + dy / drag.wallHeight));
+      commit(drag.id, { ...drag.base, x: nextX, y: nextY });
+    } else {
+      const delta = (dx + dy) / 2 / drag.wallWidth;
+      const scale = Math.min(3, Math.max(0.35, drag.base.scale + delta * 2));
+      commit(drag.id, { ...drag.base, scale });
+    }
+  };
+
+  const endDrag = (event: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+  };
+
+  /* ── 涂鸦绘制 ─────────────────────────────────── */
+  const pointOn = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number) => {
+    const target = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const placement = placementOf(photo, index);
+    // 归一化到这张照片的相框范围内
+    const width = target.width || 1;
+    const height = target.height || 1;
+    return {
+      x: Math.min(1, Math.max(0, (event.clientX - target.left) / width)),
+      y: Math.min(1, Math.max(0, (event.clientY - target.top) / height)),
+      placement,
+    };
+  };
+
+  const doodlePointerDown = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number) => {
+    if (mode !== "doodle") return;
+    event.stopPropagation();
+    const point = pointOn(event, photo, index);
+    const existing = photo.doodles ?? [];
+    if (sticker) {
+      onChangeDoodles(photo.id, [
+        ...existing,
+        { id: createPhotoWallId(), kind: "sticker", content: sticker, color: brushColor, width: brushWidth, points: [{ x: point.x, y: point.y }], createdAt: new Date().toISOString() },
+      ]);
+      return;
+    }
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    const id = createPhotoWallId();
+    strokeRef.current = { id, photoId: photo.id };
+    setDraftPoints([{ x: point.x, y: point.y }]);
+  };
+
+  const doodlePointerMove = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number) => {
+    if (!strokeRef.current || strokeRef.current.photoId !== photo.id) return;
+    const point = pointOn(event, photo, index);
+    setDraftPoints(prev => {
+      const last = prev[prev.length - 1];
+      if (last && Math.hypot(last.x - point.x, last.y - point.y) < 0.004) return prev;
+      return [...prev, { x: point.x, y: point.y }];
+    });
+  };
+
+  const doodlePointerUp = (event: React.PointerEvent, photo: PhotoWallPhoto) => {
+    const stroke = strokeRef.current;
+    if (!stroke || stroke.photoId !== photo.id) return;
+    strokeRef.current = null;
+    const points = draftPoints;
+    setDraftPoints([]);
+    if (points.length < 2) return;
+    onChangeDoodles(photo.id, [
+      ...(photo.doodles ?? []),
+      { id: stroke.id, kind: "stroke", color: brushColor, width: brushWidth, points, createdAt: new Date().toISOString() },
+    ]);
+  };
+
+  const clearDoodles = () => {
+    if (!selectedPhoto) return;
+    onChangeDoodles(selectedPhoto.id, []);
+  };
+
+  /* ── 选中照片的小工具条 ──────────────────────── */
+  const nudge = (photo: PhotoWallPhoto, index: number, patch: Partial<PhotoWallPlacement>) => {
+    const base = placementOf(photo, index);
+    commit(photo.id, { ...base, ...patch } as PhotoWallPlacement);
+  };
+
+  const bringToFront = (photo: PhotoWallPhoto, index: number) => {
+    const maxZ = ordered.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
+    nudge(photo, index, { z: maxZ + 1 });
+  };
+
+  return <div className="relative">
+    <div
+      ref={wallRef}
+      className="photo-wall-surface relative w-full select-none overflow-hidden rounded-[26px] border border-[#e0d5c4] shadow-[inset_0_1px_0_rgba(255,255,255,.7),0_18px_40px_rgba(88,70,48,.12)]"
+      style={{ aspectRatio: "4 / 5", touchAction: "none" }}
+      onPointerMove={handlePointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onClick={event => { if (event.target === event.currentTarget) onSelect(null); }}
+    >
+      {ordered.length === 0 && <div className="pointer-events-none absolute inset-0 grid place-items-center text-[#a99a86]"><div className="text-center"><ImagePlus size={26} className="mx-auto"/><p className="mt-2 text-xs">这面墙还空着</p></div></div>}
+
+      {ordered.map((photo, index) => {
+        const placement = placementOf(photo, index);
+        const isSelected = photo.id === selectedId;
+        return <WallPhotoFrame
+          key={photo.id}
+          photo={photo}
+          placement={placement}
+          selected={isSelected}
+          doodleMode={mode === "doodle" && isSelected}
+          draftPoints={isSelected && strokeRef.current?.photoId === photo.id ? draftPoints : []}
+          onPointerDownMove={(event) => beginDrag(event, photo, index, "move")}
+          onPointerDownResize={(event) => beginDrag(event, photo, index, "resize")}
+          onDoodlePointerDown={(event) => doodlePointerDown(event, photo, index)}
+          onDoodlePointerMove={(event) => doodlePointerMove(event, photo, index)}
+          onDoodlePointerUp={(event) => doodlePointerUp(event, photo)}
+          onOpenDetail={() => onOpenDetail(photo)}
+        />;
+      })}
+    </div>
+
+    {/* 画布工具条 */}
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      <button type="button" onClick={() => setMode("move")} className={`flex items-center gap-1.5 rounded-full px-3 py-2 text-xs ${mode === "move" ? "bg-[#78866d] text-white" : "border border-[#ddd1bd] bg-white/70 text-[#7d6d5a]"}`}><Unlock size={13}/>摆照片</button>
+      <button type="button" onClick={() => setMode("doodle")} disabled={!selectedPhoto} className={`flex items-center gap-1.5 rounded-full px-3 py-2 text-xs disabled:opacity-40 ${mode === "doodle" ? "bg-[#b8896f] text-white" : "border border-[#ddd1bd] bg-white/70 text-[#7d6d5a]"}`}><SquarePen size={13}/>涂鸦</button>
+      {mode === "doodle" && <>
+        <span className="mx-1 h-4 w-px bg-[#ddd1bd]" />
+        <span className="flex items-center gap-1"><Palette size={12} className="text-[#9a8973]"/>{BRUSH_COLORS.map(color => <button key={color} type="button" aria-label={`画笔颜色 ${color}`} onClick={() => { setBrushColor(color); setSticker(null); }} className={`h-5 w-5 rounded-full border ${brushColor === color && !sticker ? "border-[#6b5c4a] ring-2 ring-white" : "border-white/70"}`} style={{ background: color }} />)}</span>
+        <span className="flex items-center gap-1"><Droplet size={12} className="text-[#9a8973]"/>{[2, 3, 5, 8].map(width => <button key={width} type="button" onClick={() => setBrushWidth(width)} className={`grid h-6 w-6 place-items-center rounded-full text-[10px] ${brushWidth === width ? "bg-[#6b5c4a] text-white" : "bg-white/70 text-[#7d6d5a]"}`}>{width}</button>)}</span>
+        <span className="flex items-center gap-1"><Smile size={12} className="text-[#9a8973]"/>{STICKER_CHOICES.map(item => <button key={item} type="button" onClick={() => setSticker(current => current === item ? null : item)} className={`grid h-6 w-6 place-items-center rounded-full text-[13px] ${sticker === item ? "bg-[#6b5c4a] text-white" : "bg-white/70"}`}>{item}</button>)}</span>
+        <button type="button" onClick={clearDoodles} disabled={!selectedPhoto?.doodles?.length} className="ml-auto flex items-center gap-1 rounded-full border border-[#e0c8bd] px-3 py-1.5 text-[11px] text-[#a06a58] disabled:opacity-40"><Eraser size={12}/>清空涂鸦</button>
+      </>}
+    </div>
+
+    {selectedPhoto && mode === "move" && <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-2xl border border-[#e6dccd] bg-white/70 px-2 py-2">
+      <span className="px-1 text-[11px] text-[#9a8973]">已选：{selectedPhoto.title || "未命名"}</span>
+      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.max(0.35, (selectedPhoto.placement?.scale ?? 1) - 0.12) })} className="grid h-8 w-8 place-items-center rounded-full bg-white text-[#7d6d5a]" aria-label="缩小"><Minus size={14}/></button>
+      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.min(3, (selectedPhoto.placement?.scale ?? 1) + 0.12) })} className="grid h-8 w-8 place-items-center rounded-full bg-white text-[#7d6d5a]" aria-label="放大"><Plus size={14}/></button>
+      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { rotation: Math.max(-45, (selectedPhoto.placement?.rotation ?? 0) - 3) })} className="grid h-8 w-8 place-items-center rounded-full bg-white text-[#7d6d5a]" aria-label="左转"><RotateCcw size={14}/></button>
+      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { rotation: Math.min(45, (selectedPhoto.placement?.rotation ?? 0) + 3) })} className="grid h-8 w-8 place-items-center rounded-full bg-white text-[#7d6d5a]" aria-label="右转"><RotateCw size={14}/></button>
+      <button type="button" onClick={() => bringToFront(selectedPhoto, ordered.indexOf(selectedPhoto))} className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-[11px] text-[#7d6d5a]"><Sparkles size={12}/>置顶</button>
+      <button type="button" onClick={() => onOpenDetail(selectedPhoto)} className="rounded-full bg-[#78866d] px-3 py-1.5 text-[11px] text-white">看大图 / 背面</button>
+    </div>}
+  </div>;
+}
+
+type FrameProps = {
+  photo: PhotoWallPhoto;
+  placement: PhotoWallPlacement;
+  selected: boolean;
+  doodleMode: boolean;
+  draftPoints: { x: number; y: number }[];
+  onPointerDownMove: (event: React.PointerEvent) => void;
+  onPointerDownResize: (event: React.PointerEvent) => void;
+  onDoodlePointerDown: (event: React.PointerEvent) => void;
+  onDoodlePointerMove: (event: React.PointerEvent) => void;
+  onDoodlePointerUp: (event: React.PointerEvent) => void;
+  onOpenDetail: () => void;
+};
+
+function WallPhotoFrame({ photo, placement, selected, doodleMode, draftPoints, onPointerDownMove, onPointerDownResize, onDoodlePointerDown, onDoodlePointerMove, onDoodlePointerUp, onOpenDetail }: FrameProps) {
+  const [src, setSrc] = useState("");
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let url = "";
+    setFailed(false);
+    void loadMediaObjectUrl(photo.mediaRef).then(value => {
+      if (!active) { if (value) URL.revokeObjectURL(value); return; }
+      if (value) { url = value; setSrc(value); } else setFailed(true);
+    }).catch(() => { if (active) setFailed(true); });
+    return () => { active = false; if (url) URL.revokeObjectURL(url); };
+  }, [photo.mediaRef]);
+
+  const frame = placement.frame;
+  const pad = FRAME_PADDING[frame];
+  const width = `${BASE_PHOTO_RATIO * placement.scale * 100}%`;
+
+  return <div
+    className="absolute"
+    style={{
+      left: `${placement.x * 100}%`,
+      top: `${placement.y * 100}%`,
+      width,
+      transform: `translate(-50%, -50%) rotate(${placement.rotation}deg)`,
+      zIndex: placement.z,
+      touchAction: "none",
+    }}
+  >
+    <div
+      className={`relative ${selected ? "outline outline-2 outline-offset-2 outline-[#8b9a7e]" : ""}`}
+      style={{
+        background: FRAME_BG[frame] === "transparent" ? "transparent" : (placement.frameColor || FRAME_BG[frame]),
+        padding: `${pad.y * 100}% ${pad.x * 100}% ${pad.bottom * 100}%`,
+        borderRadius: frame === "thin" ? 4 : frame === "none" ? 8 : 6,
+        boxShadow: frame === "none" ? "0 6px 18px rgba(70,55,38,.22)" : "0 10px 24px rgba(70,55,38,.2)",
+      }}
+      onPointerDown={(event) => { if (!doodleMode) onPointerDownMove(event); }}
+      onDoubleClick={onOpenDetail}
+    >
+      <div className="relative overflow-hidden bg-[#e7dfd2]" style={{ aspectRatio: "1 / 1", borderRadius: frame === "none" ? 6 : 2 }}>
+        {src ? <img src={src} alt={photo.title} draggable={false} className="h-full w-full object-cover" /> : failed ? <div className="grid h-full place-items-center text-[9px] text-[#a06050]">图片无法显示</div> : <div className="grid h-full place-items-center text-[#a99a86]"><ImagePlus size={16}/></div>}
+        {frame === "tape" && <>
+          <span className="pointer-events-none absolute -left-2 -top-2 h-4 w-10 -rotate-12 bg-[#f3e9cf]/85 shadow-sm" />
+          <span className="pointer-events-none absolute -right-2 -top-2 h-4 w-10 rotate-12 bg-[#f3e9cf]/85 shadow-sm" />
+        </>}
+      </div>
+      {frame === "polaroid" && <div className="mt-1 truncate text-center font-serif text-[9px] text-[#8d7c66]">{photo.title}</div>}
+
+      {/* 相框级涂鸦层：画在相框之上 */}
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full" style={{ overflow: "visible" }}>
+        {(photo.doodles ?? []).map(doodle => doodle.kind === "stroke"
+          ? <polyline
+              key={doodle.id}
+              points={doodle.points.map(point => `${point.x * 100},${point.y * 100}`).join(" ")}
+              fill="none"
+              stroke={doodle.color}
+              strokeWidth={doodle.width}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+            />
+          : <text key={doodle.id} x={(doodle.points[0]?.x ?? 0.5) * 100} y={(doodle.points[0]?.y ?? 0.5) * 100} fontSize={12} textAnchor="middle" dominantBaseline="middle">{doodle.content}</text>)}
+        {draftPoints.length > 1 && <polyline points={draftPoints.map(point => `${point.x * 100},${point.y * 100}`).join(" ")} fill="none" stroke="#c2705a" strokeWidth={3} strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
+      </svg>
+
+      {doodleMode && <div
+        className="absolute inset-0 cursor-crosshair"
+        style={{ touchAction: "none" }}
+        onPointerDown={onDoodlePointerDown}
+        onPointerMove={onDoodlePointerMove}
+        onPointerUp={onDoodlePointerUp}
+        onPointerCancel={onDoodlePointerUp}
+      />}
+
+      {selected && !doodleMode && <button
+        type="button"
+        aria-label="拖动调整大小"
+        onPointerDown={onPointerDownResize}
+        className="absolute -bottom-2 -right-2 grid h-6 w-6 place-items-center rounded-full border border-white bg-[#78866d] text-white shadow"
+      ><Plus size={12}/></button>}
+    </div>
+  </div>;
+}

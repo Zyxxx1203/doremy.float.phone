@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Camera, Check, ChevronLeft, ChevronRight, Feather, Heart, ImagePlus, LoaderCircle, MessageCircle, MoreHorizontal, PenLine, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, Camera, Check, ChevronLeft, ChevronRight, Download, Feather, Heart, ImagePlus, LoaderCircle, MessageCircle, MoreHorizontal, PenLine, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { loadImageGenerationSettings } from "@/lib/settings-storage";
@@ -13,8 +13,11 @@ import { generateChatCompletion, flattenCompletionResult, readCompressedImageDat
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import {
   createPhotoWallId, DEFAULT_PHOTO_WALL_SETTINGS, loadPhotoWallState, savePhotoWallState,
-  type PhotoWallAnnotation, type PhotoWallPhoto, type PhotoWallState,
+  type PhotoWallAnnotation, type PhotoWallDoodle, type PhotoWallPhoto, type PhotoWallPlacement, type PhotoWallState,
 } from "@/lib/photo-wall-storage";
+import { PhotoWallCanvas } from "@/components/photo-wall/photo-wall-canvas";
+import { buildTemplateSlots, listAllTemplates } from "@/lib/photo-wall-templates";
+import { downloadPhotoWallPng } from "@/lib/photo-wall-export";
 
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
 type Filter = "all" | "mine" | "characters" | "favorites";
@@ -150,8 +153,72 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [characterCommenterId, setCharacterCommenterId] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const autoRunRef = useRef(false);
+  // 拖动照片时每帧都写 localStorage 会明显卡手，这里把落盘延后合并。
+  const saveTimerRef = useRef<number | null>(null);
+  // 拖动是高频回调，且 setState 的更新函数必须是纯函数（StrictMode 会执行两次），
+  // 所以不能把写盘副作用塞进更新函数里。用 ref 保存最新状态快照供回调同步读取。
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const [templateText, setTemplateText] = useState("LOVE");
+  const [exportBusy, setExportBusy] = useState(false);
+
+  const scheduleSave = useCallback((next: PhotoWallState) => {
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => { savePhotoWallState(next); saveTimerRef.current = null; }, 200);
+  }, []);
+
+  /** 统一落盘入口：先更新状态快照与 React 状态，再合并写盘。 */
+  const commitPhotos = useCallback((nextPhotos: PhotoWallPhoto[]) => {
+    const next: PhotoWallState = { ...stateRef.current, photos: nextPhotos };
+    stateRef.current = next;
+    setState(next);
+    scheduleSave(next);
+  }, [scheduleSave]);
+
+  /** 拖动/缩放/旋转：只改这一张照片的摆放，位置用 0~1 比例存，换屏幕不会错位。 */
+  const changePlacement = useCallback((photoId: string, placement: PhotoWallPlacement) => {
+    commitPhotos(stateRef.current.photos.map(photo => photo.id === photoId ? { ...photo, placement } : photo));
+  }, [commitPhotos]);
+
+  /** 相框级涂鸦层：笔迹与贴纸跟着照片一起存。 */
+  const changeDoodles = useCallback((photoId: string, doodles: PhotoWallDoodle[]) => {
+    commitPhotos(stateRef.current.photos.map(photo => photo.id === photoId ? { ...photo, doodles } : photo));
+  }, [commitPhotos]);
+
+  /** 套用模板骨架：照片按顺序吸附进槽位，套完仍然可以自由拖动。 */
+  const applyTemplate = useCallback((templateId: string) => {
+    const current = stateRef.current;
+    const ordered = current.photos.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    if (!ordered.length) { onNotice?.("墙上还没有照片。"); return; }
+    const slots = buildTemplateSlots(templateId, ordered.length, templateText);
+    if (!slots.length) return;
+    commitPhotos(current.photos.map(photo => {
+      const index = ordered.findIndex(item => item.id === photo.id);
+      const slot = slots[index % slots.length];
+      if (!slot) return photo;
+      const base = photo.placement;
+      return { ...photo, placement: { x: slot.x, y: slot.y, scale: slot.scale, rotation: slot.rotation, z: index + 1, frame: base?.frame ?? "polaroid", frameColor: base?.frameColor ?? "#fffdf8" } as PhotoWallPlacement };
+    }));
+    onNotice?.("已按模板重新摆放，之后仍可自由拖动微调。");
+  }, [commitPhotos, onNotice, templateText]);
+
+  /** 整墙导出 PNG：canvas 重绘，不受滚动位置和屏幕尺寸影响。 */
+  const exportWall = async () => {
+    if (exportBusy) return;
+    const targets = visiblePhotos.length ? visiblePhotos : photos;
+    if (!targets.length) { onNotice?.("墙上还没有照片可以导出。"); return; }
+    setExportBusy(true);
+    try {
+      const ok = await downloadPhotoWallPng(targets);
+      onNotice?.(ok ? "已开始下载整墙 PNG。" : "导出失败：没有生成有效图片。");
+    } catch (error) { onNotice?.("导出失败：" + (error instanceof Error ? error.message : String(error))); }
+    finally { setExportBusy(false); }
+  };
 
   const persist = useCallback((next: PhotoWallState) => {
+    // 必须同步快照：commitPhotos 依赖 stateRef 读最新状态，
+    // 否则上传/保存背面后紧接着拖动会用旧快照把新照片覆盖掉。
+    stateRef.current = next;
     setState(next);
     savePhotoWallState(next);
   }, []);
@@ -453,7 +520,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   };
 
   return <div className="photo-wall-app pointer-events-auto isolate absolute inset-0 z-[1000] flex min-w-0 flex-col overflow-hidden bg-[radial-gradient(ellipse_at_top,#fffdf8_0%,#f4f0e7_58%,#e9e1d4_100%)] text-[#51483d]" style={{ fontFamily: '"Noto Serif SC", "Songti SC", serif' }}>
-    <header className="relative z-[1001] flex shrink-0 items-center gap-3 border-b border-[#ded5c7]/80 bg-white/75 px-4 py-3 shadow-[0_8px_28px_rgba(94,76,53,.06)] backdrop-blur-xl">
+    <header
+      className="relative z-[1001] flex shrink-0 items-center gap-3 border-b border-[#ded5c7]/80 bg-white/75 px-4 pb-3 shadow-[0_8px_28px_rgba(94,76,53,.06)] backdrop-blur-xl"
+      style={{ paddingTop: "max(12px, var(--page-header-safe-top, 48px))" }}
+    >
       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onClose(); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-[#ded5c7] bg-white/80 text-[#7b6a58] shadow-sm transition hover:-translate-y-0.5 hover:bg-white active:scale-95" aria-label="返回"><ArrowLeft size={17}/></button>
       <div className="min-w-0 flex-1"><div className="font-serif text-xl tracking-[.12em]">照片墙</div><div className="mt-0.5 text-[10px] tracking-[.2em] text-[#a09380]">A LITTLE ARCHIVE OF US · {photos.length} PHOTOS</div></div>
       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowSettings(value => !value); }} className="relative z-[1002] pointer-events-auto min-h-11 cursor-pointer touch-manipulation rounded-2xl border border-[#ded5c7] bg-white/75 px-4 py-2 text-xs tracking-wider text-[#85735f] shadow-sm transition hover:bg-white active:scale-95">设置</button>
@@ -488,12 +558,40 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
       <nav className="sticky top-0 z-10 flex items-center gap-2 overflow-x-auto border-b border-[#e4dbce]/80 bg-[#fffaf1]/90 px-4 py-3 backdrop-blur-xl sm:px-8">
         {([{id:"all",label:"全部记忆"},{id:"mine",label:"我收藏的"},{id:"characters",label:"角色留下的"},{id:"favorites",label:"值得珍藏"}] as {id:Filter;label:string}[]).map(item => <button key={item.id} onClick={() => setFilter(item.id)} className={`shrink-0 rounded-full px-4 py-2.5 text-xs font-medium tracking-wide transition duration-200 ${filter===item.id?"bg-[#7e8a72] text-white":"text-[#8d7e6b] border border-transparent hover:border-[#ddd1bd] hover:bg-white"}`}>{item.label}</button>)}
-        <span className="ml-auto hidden shrink-0 text-[10px] tracking-wider text-[#aa9a86] sm:block">点开照片 · 翻到背面</span>
+        <button onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="ml-auto flex shrink-0 items-center gap-1.5 rounded-full border border-[#cbbba6] bg-white/80 px-3 py-2 text-[11px] tracking-wider text-[#7a6a56] disabled:opacity-40"><Download size={13}/>{exportBusy ? "导出中…" : "导出整墙"}</button>
       </nav>
 
-      <section className="px-4 pb-24 pt-5 sm:px-7">
-        {busy && <div className="mb-4 flex items-center gap-2 rounded-xl border border-[#e4d8c6] bg-[#faf7f0] px-3 py-3 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
-        {visiblePhotos.length ? <div className="mx-auto grid max-w-5xl grid-cols-2 gap-3.5 sm:grid-cols-3 sm:gap-5 lg:grid-cols-3">{visiblePhotos.map(photo => <PhotoThumbnail key={photo.id} photo={photo} onOpen={() => openPhoto(photo)}/>)}</div> : <div className="mx-auto flex max-w-sm flex-col items-center px-6 py-16 text-center"><div className="grid h-16 w-16 place-items-center rounded-full border border-[#ddd0bd] text-[#a0917d]"><Feather size={24}/></div><h2 className="mt-5 font-serif text-xl font-normal">这里还留着空白</h2><p className="mt-2 text-xs leading-6 text-[#968674]">先收藏一张你喜欢的照片。之后，角色也会把自己想珍藏的风景、自拍和生活片段慢慢放进来。</p><button onClick={() => fileRef.current?.click()} className="mt-5 rounded-full border border-[#b7a48c] px-5 py-2.5 text-xs tracking-wider text-[#786953]">收藏第一张照片</button></div>}
+      <section className="px-4 pb-24 pt-4 sm:px-7">
+        {busy && <div className="mb-3 flex items-center gap-2 rounded-xl border border-[#e4d8c6] bg-[#faf7f0] px-3 py-2.5 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
+
+        {/* 摆放模板：选一个骨架一键排好，之后仍可自由拖动微调 */}
+        <div className="mb-3 rounded-2xl border border-[#e6dccd] bg-white/65 px-3 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] tracking-[.16em] text-[#9a8973]">摆放模板</span>
+            <span className="text-[10px] text-[#b0a08c]">套用后仍可自由拖动</span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {listAllTemplates().map(template => (
+              <button key={template.id} type="button" onClick={() => applyTemplate(template.id)} className="rounded-full border border-[#ddd1bd] bg-[#fdfaf3] px-3 py-1.5 text-[11px] text-[#7a6a56] transition hover:bg-white active:scale-95">{template.name}</button>
+            ))}
+            <button type="button" onClick={() => applyTemplate("builtin-text")} className="rounded-full border border-[#ddd1bd] bg-[#fdfaf3] px-3 py-1.5 text-[11px] text-[#7a6a56] transition hover:bg-white active:scale-95">文字骨架</button>
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <input value={templateText} onChange={event => setTemplateText(event.target.value.slice(0, 12))} placeholder="文字骨架内容，如 LOVE / 家 / 2024.6.1" className="min-w-0 flex-1 rounded-lg border border-[#e6dccd] bg-[#fcf9f2] px-2.5 py-2 text-[11px] outline-none focus:border-[#b5a18a]"/>
+            <button type="button" onClick={() => applyTemplate("builtin-text")} className="shrink-0 rounded-lg bg-[#78866d] px-3 py-2 text-[11px] text-white">排成这个字</button>
+          </div>
+        </div>
+
+        {visiblePhotos.length
+          ? <div className="mx-auto max-w-3xl"><PhotoWallCanvas
+              photos={visiblePhotos}
+              selectedId={selectedPhotoId}
+              onSelect={setSelectedPhotoId}
+              onChangePlacement={changePlacement}
+              onChangeDoodles={changeDoodles}
+              onOpenDetail={photo => openPhoto(photo)}
+            /></div>
+          : <div className="mx-auto flex max-w-sm flex-col items-center px-6 py-16 text-center"><div className="grid h-16 w-16 place-items-center rounded-full border border-[#ddd0bd] text-[#a0917d]"><Feather size={24}/></div><h2 className="mt-5 font-serif text-xl font-normal">这面墙还空着</h2><p className="mt-2 text-xs leading-6 text-[#968674]">先收藏一张你喜欢的照片。之后，角色也会把自己想珍藏的风景、自拍和生活片段慢慢放进来。</p><button onClick={() => fileRef.current?.click()} className="mt-5 rounded-full border border-[#b7a48c] px-5 py-2.5 text-xs tracking-wider text-[#786953]">收藏第一张照片</button></div>}
       </section>
     </main>
 

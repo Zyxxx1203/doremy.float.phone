@@ -63,6 +63,7 @@ import {
   PAGE_1_DEFAULT,
   PAGE_2_DEFAULT,
   PAGE_3_DEFAULT,
+  PAGE_4_DEFAULT,
   createFolderIconId,
   isFolderIconId,
   type DesktopIconId,
@@ -557,11 +558,14 @@ function normalizeLayout(raw: unknown, widgets: WidgetInstance[], dockIds: Set<D
   for (const folder of Object.values(folders)) {
     for (const memberId of folder.icons) allPlaced.add(memberId);
   }
-  const allDefaults = [...PAGE_1_DEFAULT, ...PAGE_2_DEFAULT, ...PAGE_3_DEFAULT, ...DOCK_DEFAULT];
+  // PAGE_4_DEFAULT 必须一并纳入兜底：生活/档案室/照片墙/一起看四个图标是后加的
+  // 独立页，漏了它们时一旦走「恢复默认外观 / 导入主题包 / 旧布局迁移」路径，
+  // 图标不被兜底就会被永久清掉，且每次重启都救不回（用户反馈过新增应用消失）。
+  const allDefaults = [...PAGE_1_DEFAULT, ...PAGE_2_DEFAULT, ...PAGE_3_DEFAULT, ...PAGE_4_DEFAULT, ...DOCK_DEFAULT];
 
   for (const id of allDefaults) {
     if (allPlaced.has(id) || dockIds.has(id)) continue;
-    const primaryPage = PAGE_1_DEFAULT.includes(id) ? 1 : PAGE_2_DEFAULT.includes(id) ? 2 : PAGE_3_DEFAULT.includes(id) ? 3 : 1;
+    const primaryPage = PAGE_1_DEFAULT.includes(id) ? 1 : PAGE_2_DEFAULT.includes(id) ? 2 : PAGE_3_DEFAULT.includes(id) ? 3 : PAGE_4_DEFAULT.includes(id) ? 4 : 1;
     // placeIconOnAvailablePage 页满会顺延到下一页乃至新开一页——
     // 曾经这里只在现有页里找空格，页面被图标和组件占满时就静默放弃，
     // 图标（如外观）从此永久丢失且每次重启都救不回

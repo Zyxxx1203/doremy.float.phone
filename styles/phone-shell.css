@@ -175,6 +175,14 @@
   color: var(--status-bar-color);
   font-family: inherit;
   transition: color 0.3s ease;
+  /* 状态栏是纯装饰层（时钟/信号/岛），没有任何可点元素。
+     它是 absolute + z-index:10 横跨整屏顶部 36~48px，而 App 打开时
+     .phone-shell.app-open-shell 的内边距归零、工作区只有 z-index:2，
+     于是这条横带稳稳盖在所有 App 的顶部之上，把返回键/设置键的点击
+     全部吃掉（触摸比鼠标更容易命中，因为手指落点偏上）。
+     加 pointer-events: none 让点击穿透到下方 App，是这类
+     「多个页面同一位置按钮失灵」的真正公共根因。 */
+  pointer-events: none;
 }
 
 .status-island {
