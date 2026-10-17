@@ -190,6 +190,8 @@ export function ChatContactsList({ onCloseApp, onSelectSession, onSelectMascot, 
                 rightAction={
                     <button
                         className="page-back-btn relative z-[10000] pointer-events-auto touch-manipulation"
+                        style={{ position: "relative", zIndex: 2147483000, pointerEvents: "auto", touchAction: "manipulation" }}
+                        aria-label="添加朋友"
                         type="button"
                         onClick={(event) => { event.preventDefault(); event.stopPropagation();
                             addFromCardRef.current = false;
@@ -427,7 +429,7 @@ export function ChatContactsList({ onCloseApp, onSelectSession, onSelectMascot, 
 
             {/* Add Friend Modal */}
             {isAddFriendOpen && (
-                <div style={{ position: 'absolute', inset: 0, zIndex: 9999, background: '#ffffff' }}>
+                <div style={{ position: 'fixed', inset: 0, zIndex: 2147483000, pointerEvents: 'auto', background: '#ffffff' }}>
                 <div style={{ position: 'absolute', inset: 0, background: 'var(--c-page-body-bg)' }}>
                 <PageShell title="添加朋友" onBack={() => { setIsAddFriendOpen(false); if (addFromCardRef.current) { addFromCardRef.current = false; onPendingAddContactBack?.(); } }}>
                     {!addResult && addResult !== null && (
