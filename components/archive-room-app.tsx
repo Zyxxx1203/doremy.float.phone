@@ -166,11 +166,11 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
     }
   };
 
-  return <div className="absolute inset-0 z-[80] flex flex-col overflow-hidden bg-[#f6f4f0] text-stone-800">
-    <header className="flex shrink-0 items-center gap-3 border-b border-stone-200 bg-white/90 px-4 py-3">
-      <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full bg-stone-100" aria-label="返回"><ArrowLeft size={18}/></button>
+  return <div className="pointer-events-auto isolate absolute inset-0 z-[1000] flex flex-col overflow-hidden bg-[#f6f4f0] text-stone-800">
+    <header className="relative z-[1001] flex shrink-0 items-center gap-3 border-b border-stone-200 bg-white/95 px-4 py-3">
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onClose(); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 shrink-0 touch-manipulation place-items-center rounded-2xl border border-stone-200 bg-white shadow-sm" aria-label="返回"><ArrowLeft size={18}/></button>
       <div className="min-w-0 flex-1"><div className="text-lg font-semibold tracking-wide">档案室</div><div className="text-xs text-stone-500">媒体资产与留存管理</div></div>
-      <button onClick={() => void refresh()} disabled={loading} className="grid h-9 w-9 place-items-center rounded-full bg-stone-100" aria-label="刷新"><RefreshCw size={16} className={loading ? "animate-spin" : ""}/></button>
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void refresh(); }} disabled={loading} className="relative z-[1002] pointer-events-auto grid h-11 w-11 shrink-0 touch-manipulation place-items-center rounded-2xl border border-stone-200 bg-white shadow-sm disabled:opacity-50" aria-label="刷新"><RefreshCw size={16} className={loading ? "animate-spin" : ""}/></button>
     </header>
     <main className="min-h-0 flex-1 overflow-y-auto p-4">
       <section className="rounded-3xl bg-gradient-to-br from-[#e8e0d3] via-[#f4eee5] to-[#d9e3db] p-5 shadow-sm">
