@@ -32,6 +32,7 @@ import {
     type IdleReconnectRule,
 } from "./idle-reconnect-storage";
 import { loadCharacters } from "./character-storage";
+import { loadVirtualLifeState } from "./life/life-storage";
 import type { RegexConfig } from "./settings-types";
 import type { LLMMessage } from "./llm-prompt-assembler";
 
@@ -442,6 +443,91 @@ export async function cancelBailoutPrefix(triggerPrefix: string, excludeKey?: st
 }
 
 /**
+ * Schedule one server-side life-scene proactive turn. The model request is snapshotted
+ * while the app is available; push-generate runs it if the app is backgrounded/killed.
+ * The outbox carries lifeScene metadata so the reply is restored to the scene, not chat.
+ */
+export async function armLifeSceneProactiveBailout(input: {
+    sessionId: string;
+    sceneId: string;
+    characterId: string;
+    characterName: string;
+    prompt: string;
+    executeAtMs: number;
+}): Promise<BailoutArmResult> {
+    if (!bailoutEnabled()) return { ok: false, reason: "当前环境不支持服务端离线预约" };
+    try {
+        if (!(await hasAccountPushSubscription())) return { ok: false, reason: "当前账号没有可用的离线推送订阅" };
+        if (isWithinPushQuietHours(input.executeAtMs)) return { ok: false, reason: "触发时间落在推送安静时段内" };
+        const session = loadChatSessions().find(item => item.id === input.sessionId);
+        if (!session || session.isGroup || session.contactId !== input.characterId) return { ok: false, reason: "找不到对应的单聊会话" };
+        const history = loadChatMessages(session.id, 10).filter(item => item.status !== "failed" && !item.isRetracted);
+        const promptMessage: ChatMessage = {
+            id: "life-autonomy-snapshot-" + Date.now().toString(36),
+            sessionId: session.id,
+            role: "user",
+            status: "sent",
+            createdAt: new Date().toISOString(),
+            content: input.prompt,
+        };
+        const { llmMessages, character, config, preset, regexes, userIdentity } = await buildChatPromptMessages(
+            session,
+            [...history, promptMessage],
+            { appTags: ["chat", "text", "life-scene"] },
+        );
+        const request = buildProviderRequest(config, preset, toLlmRequestMessages(llmMessages));
+        const posted = await postBailoutJob({
+            triggerKey: "life-scene:" + input.sceneId + ":" + input.characterId,
+            kind: "timed_task",
+            executeAtMs: input.executeAtMs,
+            request,
+            notifyTitle: input.characterName || character.name,
+            merge: {
+                sessionId: session.id,
+                prevCount: 0,
+                regexes,
+                characterName: input.characterName || character.name,
+                userName: userIdentity?.name ?? "用户",
+                appId: "chat",
+                appTags: ["chat", "text", "life-scene"],
+                armAt: new Date(input.executeAtMs).toISOString(),
+                lifeScene: { sceneId: input.sceneId, characterId: input.characterId, characterName: input.characterName || character.name },
+            },
+        });
+        return posted ? { ok: true } : { ok: false, reason: "服务端预约接口没有确认成功" };
+    } catch (err) {
+        console.warn("[PushBailout] life-scene arm failed:", err);
+        return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+}
+
+/** Cancel the pending server-side life-scene turn when local foreground generation takes over. */
+export function cancelLifeSceneProactiveBailouts(sceneId: string): void {
+    if (!sceneId) return;
+    void cancelBailoutPrefix("life-scene:" + sceneId + ":");
+}
+
+/** Prevent a second proactive channel from talking while a character is physically co-present. */
+function isCharacterCoPresentInLifeScene(characterId: string): boolean {
+    try {
+        const state = loadVirtualLifeState();
+        if (!state.settings.enabled) return false;
+        return state.scenes.some(scene => scene.status === "active"
+            && scene.participants.some(participant => participant.ownerType === "player" && participant.ownerId === "player")
+            && scene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === characterId && participant.activity !== "离开"));
+    } catch {
+        return false;
+    }
+}
+
+/** Cancel already queued idle-reconnect messages for characters currently in the life scene. */
+export async function suspendIdleReconnectForLifeScene(characterIds: string[]): Promise<void> {
+    if (!characterIds.length) return;
+    for (const rule of loadIdleReconnectRules()) {
+        if (characterIds.includes(rule.characterId)) await cancelBailoutPrefix("idle:" + rule.id + ":");
+    }
+}
+/**
  * 通话开始/结束时处理这个会话的离线预约。
  *
  * 为什么需要：离线任务（冷场重连 / 追问）按「用户最后一条文字消息 + 间隔」
@@ -483,6 +569,7 @@ export async function armIdleReconnectBailout(rule: IdleReconnectRule): Promise<
         if (!(await hasAccountPushSubscription())) return { ok: false, reason: "当前账号没有可用的离线推送订阅" };
         const session = loadChatSessions().find(s => s.id === rule.sessionId);
         if (!session || session.isGroup || session.contactId !== rule.characterId) return { ok: false, reason: "找不到对应的单聊会话" };
+        if (isCharacterCoPresentInLifeScene(rule.characterId)) return { ok: false, reason: "角色正在生活现场与玩家同场，已优先交给生活现场主动性" };
         // 正在通话中：不挂冷场重连。通话期间系统看不到文字回复，会误判成用户
         // 沉默了、按规则发来主动消息，只在通知里冒出来（用户实报）。
         if (isCallActiveForSession(session.id)) return { ok: false, reason: "会话正在通话中" };
