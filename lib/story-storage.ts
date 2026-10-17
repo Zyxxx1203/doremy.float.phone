@@ -998,13 +998,14 @@ function compactProjectionText(text: string, maxLen = 160): string {
 
 export function loadStoryProjectionEntries(
   characterId: string,
-  options?: { afterTimestamp?: string; userName?: string; charName?: string }
+  options?: { afterTimestamp?: string; userName?: string; charName?: string; memoryTarget?: "short_term" | "long_term" }
 ): StoryProjectionEntry[] {
   const sessions = _sessionsCache.filter((item) => {
     const participants = item.participantIds?.length ? item.participantIds : [item.characterId];
     if (!participants.includes(characterId)) return false;
     const memorySettings = resolveStoryMemorySettings(item);
-    return memorySettings.writePublicShortTermMemory && (!item.independentStory || Boolean(item.includedInMemoryAt));
+    const targetEnabled = options?.memoryTarget === "long_term" ? memorySettings.writeLongTermMemory : memorySettings.writePublicShortTermMemory;
+    return targetEnabled && (!item.independentStory || Boolean(item.includedInMemoryAt));
   });
   if (!sessions.length) return [];
   const messages = sessions.flatMap((session) => loadStoryMessages(session.id))
