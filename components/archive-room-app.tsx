@@ -36,7 +36,7 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
             if (typeof ref !== "string" || !ref.startsWith("media-store://")) continue;
             const id = ref.slice("media-store://".length);
             if (!used.has(id)) used.set(id, new Set());
-            used.get(id)!.add(session.name || session.id);
+            used.get(id)!.add(session.groupName || session.alias || session.contactId || session.id);
           }
         }
       }
