@@ -1025,7 +1025,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const buildPrompt = (character: Character): string => {
       const sceneContext = buildLifeScenePromptContext(stateRef.current, activeScene, character.id);
       return [
-        "【生活现场自主回合：不是对玩家新消息的回复】,
+        "【生活现场自主回合：不是对玩家新消息的回复】",
         activeSceneOutputPrompt,
         settings.showActionNarration ? "动作旁白与角色对白必须严格分开。" : "只输出角色实际说出口的对白。",
         settings.keepDialogueConcise ? "保持自然简短，像真实相处时的一小句或一个小动作。" : "可以适度展开，但不要写成长篇故事。",
@@ -1142,7 +1142,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       // keeps idle reconnect suspended while this scene remains active.
       void refreshScheduledBailouts();
     };
-  }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.showActionNarration, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, activePromptPreset.locationHabitPrompt, playerName]);
+  }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.showActionNarration, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, playerName]);
   const sendSceneTurn = async (event: FormEvent) => {
     event.preventDefault();
     const userText = sceneInput.trim();
