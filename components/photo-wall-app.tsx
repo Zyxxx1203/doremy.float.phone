@@ -13,10 +13,10 @@ import { generateChatCompletion, flattenCompletionResult, readCompressedImageDat
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import {
   createPhotoWallId, DEFAULT_PHOTO_WALL_SETTINGS, loadPhotoWallState, savePhotoWallState,
-  type PhotoWallAnnotation, type PhotoWallDoodle, type PhotoWallPhoto, type PhotoWallPlacement, type PhotoWallState,
+  type PhotoWallAnnotation, type PhotoWallDoodle, type PhotoWallPhoto, type PhotoWallPlacement, type PhotoWallState, type PhotoWallTemplate,
 } from "@/lib/photo-wall-storage";
-import { PhotoWallCanvas } from "@/components/photo-wall/photo-wall-canvas";
-import { buildTemplateSlots, listAllTemplates } from "@/lib/photo-wall-templates";
+import { PhotoWallCanvas, fallbackPlacement } from "@/components/photo-wall/photo-wall-canvas";
+import { buildTemplateSlots, listAllTemplates, loadCustomTemplates, saveCustomTemplates } from "@/lib/photo-wall-templates";
 import { downloadPhotoWallPng } from "@/lib/photo-wall-export";
 
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
@@ -161,6 +161,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const stateRef = useRef(state);
   stateRef.current = state;
   const [templateText, setTemplateText] = useState("LOVE");
+  const [templateName, setTemplateName] = useState("");
+  const [customTemplates, setCustomTemplates] = useState<PhotoWallTemplate[]>(() => loadCustomTemplates());
   const [exportBusy, setExportBusy] = useState(false);
 
   const scheduleSave = useCallback((next: PhotoWallState) => {
@@ -202,6 +204,32 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     }));
     onNotice?.("已按模板重新摆放，之后仍可自由拖动微调。");
   }, [commitPhotos, onNotice, templateText]);
+
+  /** 将当前墙面坐标保存为可重复使用的自定义模板。 */
+  const saveCurrentLayoutAsTemplate = useCallback(() => {
+    const current = stateRef.current;
+    if (!current.photos.length) { onNotice?.("先放入几张照片，再保存摆放模板。"); return; }
+    const name = templateName.trim();
+    if (!name) { onNotice?.("请先给这个模板起个名字。"); return; }
+    const ordered = current.photos.slice().sort((a, b) => (a.placement?.z ?? 0) - (b.placement?.z ?? 0));
+    const slots = ordered.map((photo, index) => {
+      const placement = photo.placement ?? fallbackPlacement(index);
+      return { x: placement.x, y: placement.y, scale: placement.scale, rotation: placement.rotation };
+    });
+    const template: PhotoWallTemplate = { id: createPhotoWallId(), name: name.slice(0, 32), builtin: false, slots };
+    const next = [...customTemplates.filter(item => item.id !== template.id), template].slice(-40);
+    saveCustomTemplates(next);
+    setCustomTemplates(next);
+    setTemplateName("");
+    onNotice?.("已保存模板「" + template.name + "」，之后可以重复套用。");
+  }, [customTemplates, onNotice, templateName]);
+
+  const deleteCustomTemplate = useCallback((templateId: string) => {
+    const next = customTemplates.filter(item => item.id !== templateId);
+    saveCustomTemplates(next);
+    setCustomTemplates(next);
+    onNotice?.("已删除自定义摆放模板。");
+  }, [customTemplates, onNotice]);
 
   /** 整墙导出 PNG：canvas 重绘，不受滚动位置和屏幕尺寸影响。 */
   const exportWall = async () => {
@@ -573,7 +601,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {listAllTemplates().map(template => (
-              <button key={template.id} type="button" onClick={() => applyTemplate(template.id)} className="rounded-full border border-[#ddd1bd] bg-[#fdfaf3] px-3 py-1.5 text-[11px] text-[#7a6a56] transition hover:bg-white active:scale-95">{template.name}</button>
+              <span key={template.id} className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-[#ddd1bd] bg-[#fdfaf3] pl-3 pr-1 py-1 text-[11px] text-[#7a6a56]">
+                <button type="button" onClick={() => applyTemplate(template.id)} className="py-0.5 transition hover:text-[#53634c] active:scale-95">{template.name}</button>
+                {!template.builtin && <button type="button" onClick={() => deleteCustomTemplate(template.id)} className="grid h-6 w-6 place-items-center rounded-full text-[#a28a76] hover:bg-[#eee4d7] hover:text-[#a05f50]" aria-label={"删除模板 " + template.name}><X size={11}/></button>}
+              </span>
             ))}
             <button type="button" onClick={() => applyTemplate("builtin-text")} className="rounded-full border border-[#ddd1bd] bg-[#fdfaf3] px-3 py-1.5 text-[11px] text-[#7a6a56] transition hover:bg-white active:scale-95">文字骨架</button>
           </div>
@@ -581,6 +612,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             <input value={templateText} onChange={event => setTemplateText(event.target.value.slice(0, 12))} placeholder="文字骨架内容，如 LOVE / 家 / 2024.6.1" className="min-w-0 flex-1 rounded-lg border border-[#e6dccd] bg-[#fcf9f2] px-2.5 py-2 text-[11px] outline-none focus:border-[#b5a18a]"/>
             <button type="button" onClick={() => applyTemplate("builtin-text")} className="shrink-0 rounded-lg bg-[#78866d] px-3 py-2 text-[11px] text-white">排成这个字</button>
           </div>
+          <div className="mt-2 flex flex-col gap-2 rounded-xl border border-dashed border-[#d9cbb8] bg-[#fbf7ef]/80 p-2.5 sm:flex-row">
+            <input value={templateName} onChange={event => setTemplateName(event.target.value.slice(0, 32))} placeholder="给当前布局命名，例如：我们的纪念日" className="min-w-0 flex-1 rounded-lg border border-[#e6dccd] bg-white/80 px-3 py-2 text-[11px] outline-none focus:border-[#b5a18a]"/>
+            <button type="button" onClick={saveCurrentLayoutAsTemplate} disabled={!photos.length} className="shrink-0 rounded-lg border border-[#c7b49a] bg-[#f1e7d7] px-3 py-2 text-[11px] text-[#75624d] disabled:opacity-40"><Check size={12} className="mr-1 inline"/>保存当前布局为模板</button>
+          </div>
+          <p className="mt-1.5 text-[10px] leading-5 text-[#a0927e]">模板保存的是相对坐标骨架，不包含照片本身；以后可重复套用，再拖动、缩放、旋转微调。自定义模板最多保留 40 个。</p>
         </div>
 
         {visiblePhotos.length
