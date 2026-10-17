@@ -74,6 +74,10 @@ export type LifeEngineSettings = {
   narrationFontFamily: string;
   /** Inner padding for life-scene dialogue bubbles, in pixels. */
   bubblePadding: number;
+  /** Vertical gap between life-scene messages, in pixels. */
+  messageGapPx: number;
+  /** Vertical gap between narration and dialogue within a turn, in pixels. */
+  narrationGapPx: number;
   dialogueBubbleStyle: "rounded" | "soft" | "square";
   /** User CSS overrides for the life scene chat only. */
   customSceneCss?: string;
@@ -128,6 +132,8 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   dialogueFontFamily: "",
   narrationFontFamily: "",
   bubblePadding: 4,
+  messageGapPx: 4,
+  narrationGapPx: 4,
   dialogueBubbleStyle: "rounded",
   customSceneCss: "",
   compactLayout: false,
