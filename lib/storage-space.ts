@@ -24,6 +24,7 @@ import {
 import { momentsDb } from "./moments-db";
 import { hydrateMomentsStorage, updateMomentPost } from "./moments-storage";
 import { deleteTrack, getAudioBlob, loadAllTracks } from "./music-storage";
+import { loadPhotoWallState, savePhotoWallState } from "./photo-wall-storage";
 import { deleteRawFile, hydrateReadingStorage, listRawFileSummaries, loadBooks } from "./reading-storage";
 import { loadXiaohongshuState, saveXiaohongshuState } from "./xiaohongshu-storage";
 
@@ -43,6 +44,7 @@ export type StorageCategoryId =
   | "chat_images"
   | "chat_voice"
   | "chat_media_files"
+  | "photo_wall_images"
   | "moments_images"
   | "xiaohongshu_images"
   | "local_music"
@@ -70,7 +72,7 @@ const MEDIA_CACHE_DB = "AiPhoneMediaCacheDB";
 // 刚写入还没被引用方保存的媒体（如生成中的图片）不能当孤儿删掉。
 const ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000;
 
-const CATEGORY_META: Record<StorageCategoryId, { label: string; description: string; supportsKeepDays: boolean }> = {
+const CATEGORY_META: Record<StorageCategoryId, { label: string; description: string; supportsKeepDays: boolean }> = {\n  photo_wall_images: {\n    label: "照片墙图片",\n    description: "你收藏的照片和角色生成的生活照片。清理会从照片墙移除记录；媒体文件会在确认无其他引用后由孤儿媒体清理回收。",\n    supportsKeepDays: true,\n  },
   chat_images: {
     label: "聊天图片",
     description: "聊天里收发和 AI 生成的图片。清理后聊天文字保留，图片显示为已清理。",
@@ -225,6 +227,18 @@ export async function scanStorageSpace(onProgress?: (detail: string) => void): P
   stats.push(makeStat("chat_images", chatTotals.image.bytes, chatTotals.image.count));
   stats.push(makeStat("chat_voice", chatTotals.voice.bytes, chatTotals.voice.count));
   stats.push(makeStat("chat_media_files", chatTotals.file.bytes, chatTotals.file.count));
+
+  onProgress?.("统计照片墙图片…");
+  const photoWall = loadPhotoWallState();
+  let photoWallBytes = 0;
+  let photoWallCount = 0;
+  for (const photo of photoWall.photos) {
+    const bytes = mediaRefBytes(photo.mediaRef, new Set(), mediaBytesById);
+    if (bytes <= 0) continue;
+    photoWallBytes += bytes;
+    photoWallCount += 1;
+  }
+  stats.push(makeStat("photo_wall_images", photoWallBytes, photoWallCount));
 
   onProgress?.("统计朋友圈图片…");
   await hydrateMomentsStorage().catch(() => undefined);
@@ -508,6 +522,29 @@ async function clearOrphanMedia(): Promise<StorageClearResult> {
   return { cleared, freedBytes };
 }
 
+async function clearPhotoWallImages(keepDays?: number): Promise<StorageClearResult> {
+  const state = loadPhotoWallState();
+  const cutoff = cutoffMs(keepDays);
+  const keep: typeof state.photos = [];
+  let cleared = 0;
+  let freedBytes = 0;
+  const summaries = await listMediaCacheSummaries().catch(() => []);
+  const bytesById = new Map(summaries.map(item => [item.id, item.bytes] as const));
+  for (const photo of state.photos) {
+    if (!isBeforeCutoff(photo.createdAt, cutoff)) {
+      keep.push(photo);
+      continue;
+    }
+    cleared += 1;
+    const id = photo.mediaRef.startsWith(MEDIA_STORE_PROTOCOL) ? photo.mediaRef.slice(MEDIA_STORE_PROTOCOL.length) : "";
+    freedBytes += bytesById.get(id) ?? 0;
+  }
+  if (cleared) savePhotoWallState({ ...state, photos: keep });
+  // Deliberately do not delete the underlying blob here: another feature may share
+  // the same media ref. The orphan-media scanner can reclaim it after a grace period.
+  return { cleared, freedBytes };
+}
+
 export async function clearStorageCategory(
   id: StorageCategoryId,
   options: { keepDays?: number } = {},
@@ -516,7 +553,7 @@ export async function clearStorageCategory(
     case "chat_images": return clearChatCategory("image", options.keepDays);
     case "chat_voice": return clearChatCategory("voice", options.keepDays);
     case "chat_media_files": return clearChatCategory("file", options.keepDays);
-    case "moments_images": return clearMomentsImages(options.keepDays);
+    case "photo_wall_images": return clearPhotoWallImages(options.keepDays);\n    case "moments_images": return clearMomentsImages(options.keepDays);
     case "xiaohongshu_images": return clearXiaohongshuImages(options.keepDays);
     case "local_music": return clearLocalMusic(options.keepDays);
     case "dwelling_images": return clearDwellingImages();
