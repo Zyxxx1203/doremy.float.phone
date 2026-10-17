@@ -9,7 +9,7 @@ import type { Character } from "@/lib/character-types";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { loadMediaBlob, loadMediaObjectUrl, storeMediaBlob, deleteMediaRef } from "@/lib/media-cache-storage";
 import { loadVirtualLifeState } from "@/lib/life/life-storage";
-import { generateChatCompletion, flattenCompletionResult } from "@/lib/chat-engine";
+import { generateChatCompletion, flattenCompletionResult, readCompressedImageDataUrl } from "@/lib/chat-engine";
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import {
   createPhotoWallId, DEFAULT_PHOTO_WALL_SETTINGS, loadPhotoWallState, savePhotoWallState,
@@ -417,9 +417,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         id: createPhotoWallId(), sessionId: session.id, role: "user", content: instruction,
         status: "sent", createdAt: new Date().toISOString(),
       };
+      const storedPhoto = await loadMediaBlob(selectedPhoto.mediaRef).catch(() => null);
+      const attachedImages = storedPhoto ? [await readCompressedImageDataUrl(storedPhoto.blob)] : [];
       const result = await generateChatCompletion(session, [...history, promptMessage], {
         appId: "photo_wall", appTags: ["photo_wall"], toolsAllowed: false,
-        ephemeralSystemNote: "这是照片墙上的一次性批注请求。只输出角色会写在照片背面的简短批注，不要调用工具，也不要将任务说明复述出来。",
+        attachedImages,
+        ephemeralSystemNote: "这是照片墙上的一次性批注请求。若当前模型支持视觉识别，请结合附带的照片本身来写批注；如果没有读取到图片，不要猜测画面细节。只输出角色会写在照片背面的简短批注，不要调用工具，也不要将任务说明复述出来。",
       });
       const content = flattenCompletionResult(result).trim().replace(/^["“]|["”]$/g, "");
       if (!content) throw new Error("角色没有生成批注，请稍后再试。");
