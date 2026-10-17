@@ -1,3 +1,4 @@
+import { isCompatibilityFeatureEnabled } from "../device-compatibility";
 "use client";
 
 // 设备动作 ↔ 安卓壳的原生桥对接层。
@@ -28,7 +29,7 @@ type DeviceActionBridgeLike = {
 };
 
 function bridge(): DeviceActionBridgeLike | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined" || !isCompatibilityFeatureEnabled("deviceActions")) return null;
   const candidate = (window as unknown as { AndroidShell?: DeviceActionBridgeLike }).AndroidShell;
   return candidate && typeof candidate === "object" ? candidate : null;
 }
