@@ -55,7 +55,7 @@ export async function runCoreMemoryPipeline(
         });
     });
 
-    if (allLongTermEntries.length === 0) {
+    if (allLongTermEntries.length === 0 && !options?.additionalSummary?.content.trim()) {
         return { success: false, error: "没有可用于总结核心记忆的长期记忆" };
     }
 
