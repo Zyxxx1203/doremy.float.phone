@@ -730,6 +730,18 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
 }, ref) {
     const [inputText, setInputText] = useState("");
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const [plusMenuOrder, setPlusMenuOrder] = useState<string[]>(() => {
+        try {
+            const saved = window.localStorage.getItem("chat-plus-menu-order-v1");
+            const parsed = saved ? JSON.parse(saved) : [];
+            return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
+        } catch { return []; }
+    });
+    const [draggingPlusItem, setDraggingPlusItem] = useState<string | null>(null);
+    const plusMenuContainerRef = useRef<HTMLDivElement | null>(null);
+    const plusMenuDragTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const plusMenuDragRef = useRef<{ label: string; x: number; y: number; scrollLeft: number; started: boolean } | null>(null);
+    const suppressPlusClickRef = useRef(false);
 
     // 表情包搜索联想：ESC/失焦置 true 隐藏，输入变化重新开启
     const [suggestClosed, setSuggestClosed] = useState(false);
@@ -806,6 +818,65 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
             onClick: () => onOpenCustomPlusAction(action),
         })),
     ];
+    const orderedPlusMenuItems = [...plusMenuItems].sort((a, b) => {
+        const ai = plusMenuOrder.indexOf(a.label);
+        const bi = plusMenuOrder.indexOf(b.label);
+        if (ai < 0 && bi < 0) return 0;
+        if (ai < 0) return 1;
+        if (bi < 0) return -1;
+        return ai - bi;
+    });
+    const reorderPlusMenuItem = (sourceLabel: string, targetLabel: string) => {
+        if (!sourceLabel || !targetLabel || sourceLabel === targetLabel) return;
+        const labels = orderedPlusMenuItems.map(item => item.label);
+        const from = labels.indexOf(sourceLabel);
+        const to = labels.indexOf(targetLabel);
+        if (from < 0 || to < 0 || from === to) return;
+        const moved = labels.splice(from, 1)[0];
+        labels.splice(to, 0, moved);
+        setPlusMenuOrder(labels);
+        try { window.localStorage.setItem("chat-plus-menu-order-v1", JSON.stringify(labels)); } catch { /* storage may be unavailable */ }
+    };
+    const handlePlusPointerDown = (event: React.PointerEvent<HTMLButtonElement>, label: string) => {
+        if (event.pointerType === "mouse" && event.button !== 0) return;
+        plusMenuDragRef.current = { label, x: event.clientX, y: event.clientY, scrollLeft: plusMenuContainerRef.current?.scrollLeft ?? 0, started: false };
+        try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* optional on older WebViews */ }
+        if (plusMenuDragTimerRef.current) clearTimeout(plusMenuDragTimerRef.current);
+        plusMenuDragTimerRef.current = setTimeout(() => {
+            if (plusMenuDragRef.current) {
+                plusMenuDragRef.current.started = true;
+                setDraggingPlusItem(label);
+            }
+        }, 360);
+    };
+    const handlePlusPointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+        const drag = plusMenuDragRef.current;
+        if (!drag) return;
+        const dx = event.clientX - drag.x;
+        const dy = event.clientY - drag.y;
+        if (!drag.started) {
+            if (Math.abs(dx) > 7 || Math.abs(dy) > 12) {
+                if (plusMenuDragTimerRef.current) clearTimeout(plusMenuDragTimerRef.current);
+                plusMenuDragTimerRef.current = null;
+                if (Math.abs(dx) > Math.abs(dy) && plusMenuContainerRef.current) plusMenuContainerRef.current.scrollLeft = drag.scrollLeft - dx;
+            }
+            return;
+        }
+        event.preventDefault();
+        const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-plus-tool-label]");
+        const targetLabel = target?.dataset.plusToolLabel;
+        if (targetLabel) reorderPlusMenuItem(drag.label, targetLabel);
+    };
+    const handlePlusPointerUp = () => {
+        if (plusMenuDragTimerRef.current) clearTimeout(plusMenuDragTimerRef.current);
+        plusMenuDragTimerRef.current = null;
+        if (plusMenuDragRef.current?.started) {
+            suppressPlusClickRef.current = true;
+            window.setTimeout(() => { suppressPlusClickRef.current = false; }, 80);
+        }
+        plusMenuDragRef.current = null;
+        setDraggingPlusItem(null);
+    };
 
     return (
         <div className="chat-input-bar chat-room-main-pane flex flex-col" data-ui="input">
@@ -954,14 +1025,24 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
             </div>
 
             {showPlusMenu && (
-                <div className="chat-plus-menu">
-                    {plusMenuItems.map((item, i) => (
-                        <div key={`${item.label}-${i}`} onClick={item.onClick} className="chat-plus-menu-item flex flex-col items-center gap-1.5 cursor-pointer" {...(item.active ? { "data-active": "" } : {})}>
-                            <div className="chat-plus-icon-box">
-                                {item.icon}
-                            </div>
-                            <span className="ts-11 text-[var(--c-text)]">{item.label}</span>
-                        </div>
+                <div className="chat-plus-menu" ref={plusMenuContainerRef} aria-label="聊天工具栏，长按可拖动排序，左右滑动查看更多">
+                    {orderedPlusMenuItems.map((item, i) => (
+                        <button
+                            key={item.label + "-" + i}
+                            type="button"
+                            data-plus-tool-label={item.label}
+                            onPointerDown={(event) => handlePlusPointerDown(event, item.label)}
+                            onPointerMove={handlePlusPointerMove}
+                            onPointerUp={handlePlusPointerUp}
+                            onPointerCancel={handlePlusPointerUp}
+                            onClick={() => { if (suppressPlusClickRef.current) return; item.onClick(); }}
+                            className={"chat-plus-menu-item flex flex-col items-center gap-1.5 cursor-pointer" + (draggingPlusItem === item.label ? " is-dragging" : "")}
+                            {...(item.active ? { "data-active": "" } : {})}
+                            aria-label={item.label + "，长按可拖动排序"}
+                        >
+                            <span className="chat-plus-icon-box" aria-hidden="true">{item.icon}</span>
+                            <span className="chat-plus-tool-label ts-11 text-[var(--c-text)]">{item.label}</span>
+                        </button>
                     ))}
                 </div>
             )}
