@@ -1470,7 +1470,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
         rawContent: result.rawText,
         renderedContent: result.renderedText,
         storySummary: result.storySummary,
-        branchMemorySummary: resolveStoryMemorySettings(currentSession).writeBranchMemory ? result.storySummary : undefined,
+        branchMemorySummary: resolveStoryMemorySettings(currentSession).writeBranchMemory ? result.storySummary : "",
         regexSignature: result.regexSignature,
         parserVersion: result.parserVersion,
       });
@@ -1564,7 +1564,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
         rawContent: result.rawText,
         renderedContent: result.renderedText,
         storySummary: result.storySummary,
-        branchMemorySummary: resolveStoryMemorySettings(session).writeBranchMemory ? result.storySummary : undefined,
+        branchMemorySummary: resolveStoryMemorySettings(session).writeBranchMemory ? result.storySummary : "",
         regexSignature: result.regexSignature,
         parserVersion: result.parserVersion,
       });
@@ -1845,7 +1845,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
       const assistantMessage = pushStoryMessage({
         sessionId, role: "assistant",
         rawContent: result.rawText, renderedContent: result.renderedText,
-        storySummary: result.storySummary, branchMemorySummary: resolveStoryMemorySettings(currentSession).writeBranchMemory ? result.storySummary : undefined, regexSignature: result.regexSignature, parserVersion: result.parserVersion,
+        storySummary: result.storySummary, branchMemorySummary: resolveStoryMemorySettings(currentSession).writeBranchMemory ? result.storySummary : "", regexSignature: result.regexSignature, parserVersion: result.parserVersion,
       });
       if (activeSessionIdRef.current === sessionId) setMessages(loadStoryMessages(sessionId));
       setStorageVersion(v => v + 1);
