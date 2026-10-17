@@ -4,6 +4,7 @@ import { createSseJsonParser } from "./sse-json";
 import { maybeAppendShortcutCapability, maybeAppendPerceptionStatus } from "./offline-shortcut-capability";
 import { maybeBuildStatusInjection } from "./perception/describe";
 import { loadCharacters } from "./character-storage";
+import { buildLifeMemoryContext, buildLifePresenceContext } from "./life/life-memory-bridge";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
 import { emitChatPluginEvent, runChatPluginTransform } from "./chat-plugin-hooks";
 import { buildChatPluginPromptFragments } from "./chat-plugin-storage";
@@ -1869,8 +1870,9 @@ export async function buildChatPromptMessages(
     const effectiveAppTags = mergeAppTags(options?.appTags, promptProfile?.appTags, resolvedAppId);
     const toolsAllowed = options?.toolsAllowed !== false && !isOfflineMode;
     const enabledTools = toolsAllowed ? getEnabledTools(resolvedAppId) : [];
+    const hasLifeTools = enabledTools.some(tool => tool.source === "life");
     const toolsEnabled = enabledTools.length > 0
-        && (options?.forceEnableTools === true || presetIncludesToolsMacro(preset, resolvedAppId, effectiveAppTags));
+        && (options?.forceEnableTools === true || hasLifeTools || presetIncludesToolsMacro(preset, resolvedAppId, effectiveAppTags));
     const usesNativeActions = Boolean(toolsEnabled && nativeToolProtocolForConfig(config));
     const { recentBlocks, truncatedHistory, wbActivationContext, unifiedRecentItems } = prepareShortTermContext(character.id, resolvedAppId, {
         history: historyForPrompt,
@@ -1897,7 +1899,11 @@ export async function buildChatPromptMessages(
         buildMusicCloudMacro(),
     ]);
 
-    const longTermMemories = memResults ? formatLongTermMemories(memResults) : "";
+    const longTermMemories = [
+        memResults ? formatLongTermMemories(memResults) : "",
+        buildLifeMemoryContext(character.id),
+        buildLifePresenceContext(character.id),
+    ].filter(Boolean).join("\\n\\n");
     const coreMemories = coreResults ? formatCoreMemories(coreResults) : "";
     const scheduleSummary = buildCalendarScheduleMarker("character", character.id, getWeekStartIso(now));
     const currentSchedule = getCurrentCalendarScheduleForPrompt("character", character.id, now);
