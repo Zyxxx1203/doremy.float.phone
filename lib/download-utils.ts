@@ -106,9 +106,8 @@ export async function downloadFile(blob: Blob, filename: string, options: Downlo
             }
         }
         setTimeout(() => URL.revokeObjectURL(url), 1000);
-        const error = new Error("当前浏览器没有成功打开系统分享，请在 Safari 中重试，或导出轻量备份后再试。");
-        emitDownloadNotice("error", `${filename}：${error.message}`);
-        throw error;
+        emitDownloadNotice("error", `${filename}：当前浏览器没有成功打开系统分享，请在 Safari 中重试，或导出轻量备份后再试。`);
+        return;
     }
 
     // 壳环境：blob: + a[download] 在 WebView 里不会落盘（DownloadManager 取不到内存地址），
