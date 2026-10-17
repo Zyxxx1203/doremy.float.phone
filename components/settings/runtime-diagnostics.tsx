@@ -11,6 +11,8 @@ type AndroidShellDiagnostics = {
   getDiagnosticsSnapshot?: () => string;
   getLastNativeCrashLog?: () => string;
   clearLastNativeCrashLog?: () => boolean;
+  getWebConsoleLogs?: () => string;
+  clearWebConsoleLogs?: () => boolean;
 };
 declare global { interface Window { AndroidShell?: AndroidShellDiagnostics; } }
 
@@ -37,6 +39,7 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
   const [errors, setErrors] = useState<QaErrorEntry[]>([]);
   const [nativeInfo, setNativeInfo] = useState<Record<string, unknown> | null>(null);
   const [nativeCrashLog, setNativeCrashLog] = useState("");
+  const [webConsoleLogs, setWebConsoleLogs] = useState<string[]>([]);
 
   const runChecks = useCallback(async () => {
     setBusy(true);
@@ -88,6 +91,8 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
     }
     setNativeInfo(parsed);
     setNativeCrashLog(shell && typeof shell.getLastNativeCrashLog === "function" ? safeRead(() => shell.getLastNativeCrashLog!(), "") : "");
+    const rawConsoleLogs = shell && typeof shell.getWebConsoleLogs === "function" ? safeRead(() => shell.getWebConsoleLogs!(), "[]") : "[]";
+    setWebConsoleLogs(safeRead(() => { const parsedLogs: unknown = JSON.parse(rawConsoleLogs); return Array.isArray(parsedLogs) ? parsedLogs.filter((item): item is string => typeof item === "string").slice(-200).reverse() : []; }, []));
     setErrors(recentErrors());
     setChecks(result);
     setLastRun(Date.now());
@@ -113,7 +118,7 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
       "", "隐私说明：报告由本机生成，不会自动上传。分享前请检查是否包含个人信息。"
     ];
     return lines.join("\n");
-  }, [checks, errors, lastRun, nativeInfo, nativeCrashLog]);
+  }, [checks, errors, lastRun, nativeInfo, nativeCrashLog, webConsoleLogs]);
 
   const copyReport = async () => {
     try { await navigator.clipboard.writeText(report); onNotice?.("诊断报告已复制；发送前请先检查内容。"); }
