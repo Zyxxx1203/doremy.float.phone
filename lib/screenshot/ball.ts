@@ -121,6 +121,6 @@ export function readBallHasImage(): boolean {
     const parsed = JSON.parse(raw) as { hasImage?: boolean };
     return parsed?.hasImage === true;
   } catch {
-    return null;
+    return false;
   }
 }
