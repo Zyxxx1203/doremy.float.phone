@@ -121,6 +121,16 @@ function uiRole(msg: ChatMessage): string {
     return msg.role;
 }
 
+function isCharacterCoPresentInLifeScene(characterId: string): boolean {
+    try {
+        const state = loadVirtualLifeState();
+        return state.settings.enabled && state.scenes.some(scene => scene.status === "active"
+            && scene.participants.some(participant => participant.ownerType === "player" && participant.ownerId === "player")
+            && scene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === characterId && participant.activity !== "离开"));
+    } catch {
+        return false;
+    }
+}
 function isChatRoomElementVisible(element: HTMLElement | null): boolean {
     if (!element || !element.isConnected) return false;
     const rect = element.getBoundingClientRect();
@@ -4003,7 +4013,11 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 if (!isCurrentGeneration()) return;
 
                 if (lastSendResult) {
-                    scheduleFollowUp(session.id, 0, lastSendResult.stateValues);
+                    if (isCharacterCoPresentInLifeScene(session.contactId)) {
+                        cancelFollowUp(session.id);
+                    } else {
+                        scheduleFollowUp(session.id, 0, lastSendResult.stateValues);
+                    }
                     const isHidden = !mountedRef.current || !isChatRoomElementVisible(wrapperRef.current);
                     if (isHidden && lastSendResult.triggerCall) {
                         window.dispatchEvent(new CustomEvent("ai-call-trigger", {
