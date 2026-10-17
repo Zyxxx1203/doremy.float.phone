@@ -474,7 +474,7 @@ export async function armLifeSceneProactiveBailout(input: {
         const { llmMessages, character, config, preset, regexes, userIdentity } = await buildChatPromptMessages(
             session,
             [...history, promptMessage],
-            { appTags: ["chat", "text", "life-scene"] },
+            { appTags: ["chat", "text", "offline", "life-scene"] },
         );
         const request = buildProviderRequest(config, preset, toLlmRequestMessages(llmMessages));
         const posted = await postBailoutJob({
@@ -490,7 +490,7 @@ export async function armLifeSceneProactiveBailout(input: {
                 characterName: input.characterName || character.name,
                 userName: userIdentity?.name ?? "用户",
                 appId: "chat",
-                appTags: ["chat", "text", "life-scene"],
+                appTags: ["chat", "text", "offline", "life-scene"],
                 armAt: new Date(input.executeAtMs).toISOString(),
                 lifeScene: { sceneId: input.sceneId, characterId: input.characterId, characterName: input.characterName || character.name },
             },
