@@ -356,7 +356,7 @@ export const DEFAULT_STORY_MEMORY_SETTINGS: StoryMemorySettings = {
   sharedMemoryTypes: ["branch", "public_short_term", "long_term", "core"],
 };
 
-export function resolveStoryMemorySettings(session?: Pick<StorySession, "memorySettings" | "independentStory">): StoryMemorySettings {
+export function resolveStoryMemorySettings(session?: Pick<StorySession, "memorySettings" | "independentStory"> | null): StoryMemorySettings {
   const stored = session?.memorySettings;
   const resolved: StoryMemorySettings = {
     ...DEFAULT_STORY_MEMORY_SETTINGS,
