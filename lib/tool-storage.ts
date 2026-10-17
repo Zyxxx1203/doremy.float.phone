@@ -12,6 +12,8 @@ import {
     getInternalCapabilityToolDefinition,
 } from "./internal-capability-storage";
 import { loadCustomAppToolsForContext, type RegisteredCustomAppExtension } from "./custom-app-sdk-registry";
+import { LIFE_TOOL_DEFINITIONS } from "./life/life-tools";
+import { loadVirtualLifeState } from "./life/life-storage";
 import type { CustomAppToolDefinition } from "./custom-app-types";
 import {
     BUILTIN_PHONE_WORKFLOW_PACKAGE,
@@ -349,7 +351,7 @@ export type EnabledTool = {
     description: string;
     parameterSchema: string;
     usageGuide?: string;
-    source: "rest" | "rest_package" | "composite" | "composite_package" | "mcp" | "mcp_server" | "internal" | "custom_app" | "custom_app_package";
+    source: "rest" | "rest_package" | "composite" | "composite_package" | "mcp" | "mcp_server" | "internal" | "custom_app" | "custom_app_package" | "life";
     sourceId: string;       // RestToolConfig.id or McpServerConfig.id
     customAppId?: string;
     customAppName?: string;
@@ -481,6 +483,23 @@ export function getEnabledTools(appId?: string): EnabledTool[] {
             customAppName: first.appName,
             customAppTools: group,
         });
+    }
+
+    {
+        // Life actions are global toolbox capabilities, available outside the Life APP too.
+        const lifeSettings = loadVirtualLifeState().settings;
+        if (lifeSettings.enabled && lifeSettings.enableCharacterAutonomy) {
+            for (const tool of LIFE_TOOL_DEFINITIONS) {
+                const allowed = tool.name === "life_propose_invitation"
+                    ? lifeSettings.enableInvitations
+                    : tool.name === "life_request_follow"
+                        ? lifeSettings.enableFollowRequestTool
+                        : tool.name === "life_change_schedule"
+                            ? lifeSettings.enableScheduleChangeTool
+                            : false;
+                if (allowed) tools.push({ ...tool, source: "life", sourceId: "life-engine" });
+            }
+        }
     }
 
     return tools;
