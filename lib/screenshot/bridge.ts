@@ -1,3 +1,4 @@
+import { isCompatibilityFeatureEnabled } from "../device-compatibility";
 "use client";
 
 // 截屏 ↔ 安卓壳的原生桥对接层。
@@ -20,7 +21,7 @@ type ScreenshotBridgeLike = {
 };
 
 function bridge(): ScreenshotBridgeLike | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined" || !isCompatibilityFeatureEnabled("screenshot")) return null;
   const candidate = (window as unknown as { AndroidShell?: ScreenshotBridgeLike }).AndroidShell;
   return candidate && typeof candidate === "object" ? candidate : null;
 }
