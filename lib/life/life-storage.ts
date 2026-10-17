@@ -32,9 +32,11 @@ function normalizeSettings(value: unknown): LifeEngineSettings {
   const settings = { ...DEFAULT_LIFE_ENGINE_SETTINGS, ...raw };
   settings.defaultSpeed = Number.isFinite(settings.defaultSpeed) ? Math.max(0.01, Math.min(settings.defaultSpeed, 1000)) : 1;
   settings.panelOpacity = Number.isFinite(settings.panelOpacity) ? Math.max(50, Math.min(settings.panelOpacity, 100)) : 96;
-  settings.dialogueFontSize = Number.isFinite(settings.dialogueFontSize) ? Math.max(12, Math.min(settings.dialogueFontSize, 28)) : 15;
-  settings.narrationFontSize = Number.isFinite(settings.narrationFontSize) ? Math.max(10, Math.min(settings.narrationFontSize, 24)) : 12;
-  settings.bubblePadding = Number.isFinite(settings.bubblePadding) ? Math.max(2, Math.min(settings.bubblePadding, 14)) : DEFAULT_LIFE_ENGINE_SETTINGS.bubblePadding;
+  settings.dialogueFontSize = Number.isFinite(settings.dialogueFontSize) ? Math.max(8, Math.min(settings.dialogueFontSize, 48)) : 15;
+  settings.narrationFontSize = Number.isFinite(settings.narrationFontSize) ? Math.max(8, Math.min(settings.narrationFontSize, 36)) : 12;
+  settings.dialogueFontFamily = typeof settings.dialogueFontFamily === "string" ? settings.dialogueFontFamily.slice(0, 160) : "";
+  settings.narrationFontFamily = typeof settings.narrationFontFamily === "string" ? settings.narrationFontFamily.slice(0, 160) : "";
+  settings.bubblePadding = Number.isFinite(settings.bubblePadding) ? Math.max(0, Math.min(settings.bubblePadding, 24)) : DEFAULT_LIFE_ENGINE_SETTINGS.bubblePadding;
   if (!/^#[0-9a-f]{6}$/i.test(settings.accentColor)) settings.accentColor = DEFAULT_LIFE_ENGINE_SETTINGS.accentColor;
   return settings;
 }
