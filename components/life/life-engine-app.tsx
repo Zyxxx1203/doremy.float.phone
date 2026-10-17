@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type CSSProperties } from "react";
+import { flushSync } from "react-dom";
 import {
   ArrowLeft, CalendarDays, Coffee, Heart, MapPin, MessagesSquare, Eye,
   Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Users, X, Pencil, Trash2,
@@ -683,12 +684,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const runOnce = () => {
       if (actionStarted) return;
       actionStarted = true;
-      action();
+      flushSync(action);
     };
     try {
       viewTransitionDocument.startViewTransition(runOnce);
     } catch {
-      runOnce();
+      if (!actionStarted) action();
     }
   };
 
