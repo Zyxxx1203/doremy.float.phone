@@ -23,11 +23,13 @@ type NativeApi = {
   getDiagnosticsSnapshot?: (...args: unknown[]) => unknown;
 };
 type WidgetApi = { update?: (...args: unknown[]) => unknown; isSupported?: () => boolean };
-declare global {
-  interface Window {
-    AndroidShell?: NativeApi;
-    PhoneWidget?: WidgetApi;
-  }
+function getNativeApi(): NativeApi | undefined {
+  if (typeof window === "undefined") return undefined;
+  return (window as unknown as { AndroidShell?: NativeApi }).AndroidShell;
+}
+function getWidgetApi(): WidgetApi | undefined {
+  if (typeof window === "undefined") return undefined;
+  return (window as unknown as { PhoneWidget?: WidgetApi }).PhoneWidget;
 }
 
 const FEATURE_ROWS: Array<{
@@ -36,13 +38,13 @@ const FEATURE_ROWS: Array<{
   description: string;
   supported: (native: NativeApi | undefined) => boolean;
 }> = [
-  { id: "notifications", title: "系统通知", description: "消息在后台时调用 Android 通知栏；关闭后仍可由浏览器/站内通知接管。", supported: (api) => typeof api?.notify === "function" || ("Notification" in window) },
+  { id: "notifications", title: "系统通知", description: "消息在后台时调用 Android 通知栏；关闭后仍可由浏览器/站内通知接管。", supported: (api) => typeof api?.notify === "function" || (typeof window !== "undefined" && "Notification" in window) },
   { id: "callOverlay", title: "原生通话浮窗", description: "跨应用显示通话小窗；需要新版 APK、悬浮窗权限与系统允许。", supported: (api) => typeof api?.startCallOverlay === "function" },
   { id: "deviceActions", title: "设备操作接口", description: "手电筒、音量、亮度、闹钟、打开应用等；每个动作仍可能需要独立权限。", supported: (api) => typeof api?.setTorch === "function" },
   { id: "perception", title: "设备感知接口", description: "电量、网络、应用使用情况、定位和健康等读取能力。", supported: (api) => typeof api?.getPerceptionSnapshot === "function" },
   { id: "calendar", title: "系统日历接口", description: "读取或写入 Android 系统日历；读写权限独立。", supported: (api) => typeof api?.readCalendarEvents === "function" },
   { id: "screenshot", title: "截屏与查岗接口", description: "屏幕捕获、查岗浮层；受 Android 版本、无障碍和临时截屏授权影响。", supported: (api) => typeof api?.captureScreenshot === "function" },
-  { id: "widgets", title: "桌面小组件接口", description: "把网页模板交给 APK 原生小组件渲染；需要支持该能力的 APK。", supported: () => typeof window.PhoneWidget?.update === "function" },
+  { id: "widgets", title: "桌面小组件接口", description: "把网页模板交给 APK 原生小组件渲染；需要支持该能力的 APK。", supported: () => typeof getWidgetApi()?.update === "function" },
 ];
 
 const panelStyle: React.CSSProperties = {
@@ -88,7 +90,7 @@ export function DeviceCompatibilitySettings({ onNotice }: { onNotice?: (message:
   const refresh = useCallback(() => {
     setMetrics(readDeviceRuntimeMetrics());
     try {
-      const raw = window.AndroidShell?.getDiagnosticsSnapshot?.();
+      const raw = getNativeApi()?.getDiagnosticsSnapshot?.();
       setNativeSnapshot(raw ? JSON.parse(raw) as Record<string, unknown> : null);
     } catch {
       setNativeSnapshot(null);
@@ -111,7 +113,7 @@ export function DeviceCompatibilitySettings({ onNotice }: { onNotice?: (message:
     };
   }, [refresh]);
 
-  const native = typeof window !== "undefined" ? window.AndroidShell : undefined;
+  const native = getNativeApi();
   const report = useMemo(() => {
     const lines = [
       "小手机设备兼容性报告",
