@@ -1328,6 +1328,8 @@ function ImageBubble({
     // 媒体维护压缩后 mediaUrl 是 media-store:// 引用，直接当 <img src> 会裂图，
     // 与 MediaFileBubble 相同：先解析为 object URL 再渲染。
     const [resolvedUrl, setResolvedUrl] = useState<string>(isMediaStoreRef(rawUrl) ? "" : rawUrl);
+    const [groupUrls, setGroupUrls] = useState<string[]>([]);
+    const [previewImageUrl, setPreviewImageUrl] = useState<string>("");
     const [refExpired, setRefExpired] = useState(false);
     const [showPromptEditor, setShowPromptEditor] = useState(false);
     const [promptDraft, setPromptDraft] = useState("");
@@ -1355,6 +1357,23 @@ function ImageBubble({
         });
         return () => { if (revokeUrl) URL.revokeObjectURL(revokeUrl); };
     }, [rawUrl]);
+
+    useEffect(() => {
+        const refs = Array.isArray(d?.imageRefs) ? d.imageRefs.filter((ref): ref is string => typeof ref === "string") : [];
+        if (refs.length < 2) { setGroupUrls([]); return; }
+        let alive = true;
+        const urls: string[] = [];
+        void Promise.all(refs.map(async ref => {
+            const url = await loadMediaObjectUrl(ref);
+            if (url) urls.push(url);
+            return url;
+        })).then(results => {
+            const ordered = results.filter((url): url is string => Boolean(url));
+            if (alive) setGroupUrls(ordered);
+            else ordered.forEach(url => URL.revokeObjectURL(url));
+        });
+        return () => { alive = false; urls.forEach(url => URL.revokeObjectURL(url)); };
+    }, [Array.isArray(d?.imageRefs) ? d.imageRefs.join("|") : ""]);
 
     const openPromptEditor = useCallback(() => {
         const latestHasRef = hasCharacterReferenceImage(characterId);
@@ -1401,7 +1420,7 @@ function ImageBubble({
         <>
             {showPreview && (
                 <MediaPreviewOverlay
-                    imageUrl={resolvedUrl || undefined}
+                    imageUrl={previewImageUrl || resolvedUrl || undefined}
                     description={!resolvedUrl ? label : undefined}
                     saveFilename={resolvedUrl ? ensureExtension(label, "image") : undefined}
                     onRegenerate={canRegenerate ? () => { setShowPreview(false); openPromptEditor(); } : undefined}
@@ -1429,13 +1448,23 @@ function ImageBubble({
         </>
     );
 
+    if (groupUrls.length > 1) {
+        return (
+            <>
+                <div className="chat-photo-card chat-photo-card--image grid max-w-[260px] grid-cols-2 gap-1 overflow-hidden rounded-xl" style={{ cursor: "pointer" }}>
+                    {groupUrls.map((url, index) => <button type="button" key={url} onClick={e => { e.stopPropagation(); setPreviewImageUrl(url); setShowPreview(true); }} className="relative aspect-square min-w-0 overflow-hidden bg-stone-100"><img src={url} alt={`${label} ${index + 1}`} className="h-full w-full object-cover" />{index === 3 && groupUrls.length > 4 && <span className="absolute inset-0 grid place-items-center bg-black/45 text-2xl font-semibold text-white">+${groupUrls.length - 4}</span>}</button>)}
+                </div>
+                {previewAndDialog}
+            </>
+        );
+    }
     if (resolvedUrl) {
         return (
             <>
                 <div
                     className="chat-photo-card chat-photo-card--image rounded-none"
                     style={{ cursor: "pointer" }}
-                    onClick={e => { e.stopPropagation(); setShowPreview(true); }}
+                    onClick={e => { e.stopPropagation(); setPreviewImageUrl(resolvedUrl); setShowPreview(true); }}
                 >
                     <img
                         src={resolvedUrl}
