@@ -309,6 +309,7 @@ export async function armFollowUpBailout(
         if (isWithinPushQuietHours(fireAt + FOLLOWUP_BAILOUT_GRACE_MS)) return; // 安静时段不打扰
         const session = loadChatSessions().find(s => s.id === sessionId);
         if (!session || session.isGroup) return; // 第一期只覆盖单聊追问
+        if (isCharacterCoPresentInLifeScene(session.contactId)) return; // 同场时不再从线上聊天渠道主动追问
         // 正在通话中：不挂追问兜底。通话期间角色其实一直在说话，但系统看不到
         // 你的文字回复，会按沉默判成「对方没回」，到点生成一条主动消息弹通知——
         // 人明明在电话里聊着（用户实报）。通话本身就是最强的「在场」信号。
@@ -524,7 +525,10 @@ function isCharacterCoPresentInLifeScene(characterId: string): boolean {
 export async function suspendIdleReconnectForLifeScene(characterIds: string[]): Promise<void> {
     if (!characterIds.length) return;
     for (const rule of loadIdleReconnectRules()) {
-        if (characterIds.includes(rule.characterId)) await cancelBailoutPrefix("idle:" + rule.id + ":");
+        if (!characterIds.includes(rule.characterId)) continue;
+        await cancelBailoutPrefix("idle:" + rule.id + ":");
+        const session = loadChatSessions().find(item => item.id === rule.sessionId);
+        if (session) await cancelBailoutPrefix("followup:" + session.id + ":");
     }
 }
 /**
