@@ -16,6 +16,7 @@ export function PhotoInputModal({ onSend, onClose }: PhotoInputModalProps) {
     const [imageDataUrls, setImageDataUrls] = useState<string[]>([]);
     const [mergeForDisplay, setMergeForDisplay] = useState(false);
     const [reading, setReading] = useState(false);
+    const [readError, setReadError] = useState("");
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -23,6 +24,7 @@ export function PhotoInputModal({ onSend, onClose }: PhotoInputModalProps) {
         e.target.value = "";
         if (!files.length) return;
         setReading(true);
+        setReadError("");
         try {
             const loaded = await Promise.all(files.map(file => new Promise<string>((resolve, reject) => {
                 const reader = new FileReader();
@@ -31,8 +33,9 @@ export function PhotoInputModal({ onSend, onClose }: PhotoInputModalProps) {
                 reader.readAsDataURL(file);
             })));
             setImageDataUrls(prev => [...prev, ...loaded].slice(0, 9));
-        } catch {
-            // 文件读取失败时保留已选图片，不清空预览。
+            if (imageDataUrls.length + loaded.length > 9) setReadError("最多发送 9 张图片，超出的图片未加入。");
+        } catch (error) {
+            setReadError(error instanceof Error ? error.message : "图片读取失败，请重新选择。");
         } finally { setReading(false); }
     };
 
@@ -58,6 +61,7 @@ export function PhotoInputModal({ onSend, onClose }: PhotoInputModalProps) {
                 </div>
                 <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
                 <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="添加描述（选填）" rows={2} className="mt-3 w-full resize-none rounded-xl border border-[var(--c-border)] bg-[var(--c-input)] p-3 text-sm outline-none" />
+                {readError && <div role="alert" className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs leading-relaxed text-rose-700">{readError}</div>}
                 {imageDataUrls.length > 1 && (
                     <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-[var(--c-text)]">
                         <input type="checkbox" checked={mergeForDisplay} onChange={e => setMergeForDisplay(e.target.checked)} className="h-4 w-4 accent-[var(--c-primary)]" />
