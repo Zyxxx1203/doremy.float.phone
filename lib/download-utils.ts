@@ -76,8 +76,11 @@ async function downloadFileInternal(blob: Blob, filename: string, options: Downl
         a.download = filename;
         a.rel = "noopener";
         document.body.appendChild(a);
-        a.click();
-        a.remove();
+        try {
+            a.click();
+        } finally {
+            a.remove();
+        }
     };
 
     const shouldUseNativeShare = options.nativeShareOnly || (!options.disableNativeShare && isIOSBrowser());
@@ -126,9 +129,16 @@ async function downloadFileInternal(blob: Blob, filename: string, options: Downl
         }
     }
 
-    anchorDownload();
-    emitDownloadNotice("success", `已发起下载：${filename}（可在浏览器下载列表查看）`);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    try {
+        anchorDownload();
+        // 浏览器没有标准 API 可确认最终是否写入磁盘，因此明确提示「已发起」而非「已下载成功」。
+        emitDownloadNotice("info", `已触发浏览器下载：${filename}。如果下载列表没有记录，请检查浏览器下载权限后重试。`);
+    } catch (error) {
+        emitDownloadNotice("error", `${filename} 下载启动失败：${error instanceof Error ? error.message : "浏览器拒绝了下载请求"}`);
+        throw error;
+    } finally {
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
 }
 
 /**
