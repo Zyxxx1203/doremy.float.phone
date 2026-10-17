@@ -364,8 +364,8 @@ export function MainApp() {
           </MusicProvider>
           {downloadNotice && typeof document !== "undefined" && createPortal(
             <div
-            role="status"
-            aria-live="polite"
+            role={downloadNotice.kind === "error" ? "alert" : "status"}
+            aria-live={downloadNotice.kind === "error" ? "assertive" : "polite"}
             className="fixed left-1/2 z-[99999] max-w-[min(92vw,440px)] -translate-x-1/2 rounded-2xl px-4 py-3 text-sm shadow-xl backdrop-blur-xl"
             style={{
             bottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)",
