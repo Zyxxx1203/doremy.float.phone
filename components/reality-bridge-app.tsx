@@ -2608,6 +2608,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
               {offlineReplyGenerating ? "正在让角色准备回复…" : (editing.offlineReplies?.length ? "重新生成并替换回复库" : "让角色 AI 预写离线回复")}
             </button>
             </div>
+            </div>
             ) : null}
 
             {(flatRuleEditor || wizStep === 5) ? (
