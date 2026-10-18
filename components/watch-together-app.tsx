@@ -172,7 +172,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     localVideoObjectUrlRef.current = objectUrl;
     const localTarget: VideoTarget = { url: objectUrl, embedUrl: null, platform: "other", platformName: "本地视频", supported: true, nativeVideo: true };
     setTarget(localTarget);
-    setVideoTitle(file.name.replace(/\\.[^.]+$/, "") || "本地视频");
+    setVideoTitle(file.name.replace(/\.[^.]+$/, "") || "本地视频");
     setComments([]);
     setDiscussionDraft("");
     setTimepointDraft("");
@@ -310,6 +310,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const latestComment = comments[comments.length - 1];
   const platformNote = useMemo(() => {
     if (!target) return "";
+    if (target.platformName === "本地视频") return "本地视频只在当前页面临时播放，不会上传。";
     if (target.supported) return `已接入${target.platformName}。能否播放取决于平台嵌入政策、登录状态与会员权限。`;
     return `${target.platformName}暂无稳定嵌入播放器，可打开原视频，陪看仍会基于你描述的片段回应。`;
   }, [target]);

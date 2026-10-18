@@ -204,13 +204,13 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (!pointers.has(event.pointerId)) return;
       const wasPinching = pinchModeRef.current;
       pointers.delete(event.pointerId);
-      if (wasPinching) {
-        if (pointers.size < 2) setShowZoomFeedback(false);
-        if (pointers.size === 0) {
-          pinchModeRef.current = false;
-          pinchStartRef.current = null;
-          window.dispatchEvent(new Event("photo-wall-pinch-end"));
-        }
+      if (wasPinching && pointers.size < 2) {
+        setShowZoomFeedback(false);
+        pinchModeRef.current = false;
+        pinchStartRef.current = null;
+        // End the pinch as soon as either finger lifts; the remaining finger
+        // must not keep the canvas frozen, and any subsequent pinch starts fresh.
+        window.dispatchEvent(new Event("photo-wall-pinch-end"));
       }
       if (pointers.size === 0) singleTouchRef.current = null;
     };
