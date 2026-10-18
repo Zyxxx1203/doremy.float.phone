@@ -1999,7 +1999,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   };
 
   const themeClass = settings.sceneTheme === "night-sky" ? "from-slate-950 via-slate-900 to-indigo-950 text-slate-100" : settings.sceneTheme === "sage" ? "from-[#eaf0e8] via-[#f3f4eb] to-[#dce8dc] text-stone-800" : settings.sceneTheme === "rose" ? "from-[#fff0f1] via-[#fff8f6] to-[#f7e3e5] text-stone-800" : "from-[#fbf4e9] via-[#f7efe4] to-[#ead9c6] text-stone-800";
-  const cssVars = { "--life-accent": settings.accentColor, "--life-opacity": settings.panelOpacity / 100, "--life-font": `${settings.dialogueFontSize}px`, "--life-narration-font": `${settings.narrationFontSize}px` } as CSSProperties;
+  const lifePalette = settings.sceneTheme === "night-sky" ? {"--life-surface-rgb":"30 41 59","--life-strong-rgb":"15 23 42","--life-soft-rgb":"51 65 85","--life-border-rgb":"100 116 139","--life-text":"#f1f5f9","--life-muted":"#cbd5e1","--life-faint":"#94a3b8","--life-overlay":"rgba(15,23,42,.98)"} : settings.sceneTheme === "sage" ? {"--life-surface-rgb":"239 244 235","--life-strong-rgb":"248 250 245","--life-soft-rgb":"222 233 218","--life-border-rgb":"166 190 161","--life-text":"#354438","--life-muted":"#596c5b","--life-faint":"#718473","--life-overlay":"rgba(245,249,241,.98)"} : settings.sceneTheme === "rose" ? {"--life-surface-rgb":"255 242 243","--life-strong-rgb":"255 249 248","--life-soft-rgb":"250 224 228","--life-border-rgb":"231 183 191","--life-text":"#65464b","--life-muted":"#89676c","--life-faint":"#a17d82","--life-overlay":"rgba(255,247,247,.985)"} : {"--life-surface-rgb":"250 244 235","--life-strong-rgb":"255 251 245","--life-soft-rgb":"239 225 210","--life-border-rgb":"217 194 174","--life-text":"#514237","--life-muted":"#79695c","--life-faint":"#9a8879","--life-overlay":"rgba(255,252,246,.985)"};
+  const cssVars = { ...lifePalette, "--life-accent": settings.accentColor, "--life-opacity": settings.panelOpacity / 100, "--life-font": `${settings.dialogueFontSize}px`, "--life-narration-font": `${settings.narrationFontSize}px` } as CSSProperties;
   const playerActor = actors[0];
   const playerNow = actorNow(playerActor);
   const playerDayStart = new Date(playerNow); playerDayStart.setHours(0,0,0,0);
@@ -2173,7 +2174,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         padding: 12px;
         border-radius: 20px;
         border: 1px solid rgba(168, 137, 106, .35);
-        background: rgba(255, 252, 246, .985);
+        background: var(--life-overlay);
         box-shadow: 0 24px 80px rgba(42, 34, 25, .28);
         backdrop-filter: blur(20px);
         -webkit-backdrop-filter: blur(20px);
@@ -2209,6 +2210,61 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       @media (min-width: 560px) {
         .life-scene-display-options[open] { left: max(24px, calc((100vw - 720px) / 2)) !important; right: max(24px, calc((100vw - 720px) / 2)) !important; }
       }
+    `}</style>
+    <style>{`
+      .life-rose-garden [class~="bg-white"],
+.life-rose-garden [class~="bg-white/95"],
+.life-rose-garden [class~="bg-white/90"],
+.life-rose-garden [class~="bg-white/85"],
+.life-rose-garden [class~="bg-white/80"],
+.life-rose-garden [class~="bg-white/75"],
+.life-rose-garden [class~="bg-white/70"],
+.life-rose-garden [class~="bg-white/65"],
+.life-rose-garden [class~="bg-white/60"],
+.life-rose-garden [class~="bg-white/55"],
+.life-rose-garden [class~="bg-white/50"],
+.life-rose-garden [class~="bg-white/45"],
+.life-rose-garden [class~="bg-white/40"],
+.life-rose-garden [class~="bg-white/35"] { background-color: rgb(var(--life-strong-rgb) / .78) !important; }
+      .life-rose-garden [class~="bg-[#efe1d2]"],
+.life-rose-garden [class~="bg-[#f3e8dc]"],
+.life-rose-garden [class~="bg-[#f0e3d5]"],
+.life-rose-garden [class~="bg-[#e9d4c0]"],
+.life-rose-garden [class~="bg-[#f5e9dd]/70"],
+.life-rose-garden [class~="bg-stone-50/80"],
+.life-rose-garden [class~="bg-stone-50/90"],
+.life-rose-garden [class~="bg-stone-100"] { background-color: rgb(var(--life-soft-rgb) / .86) !important; }
+      .life-rose-garden [class~="bg-[#fbf7f0]/90"],
+.life-rose-garden [class~="bg-[#fbf7f0]"],
+.life-rose-garden [class~="bg-[#fffaf5]"],
+.life-rose-garden [class~="bg-[#fffaf3]/95"],
+.life-rose-garden [class~="bg-[#fffdf9]"],
+.life-rose-garden [class~="bg-[#fbf5ee]"],
+.life-rose-garden [class~="bg-[#faf5ef]"],
+.life-rose-garden [class~="bg-[#f8f4ee]"],
+.life-rose-garden [class~="bg-[#f7efe4]"],
+.life-rose-garden [class~="bg-[#f5ede4]"],
+.life-rose-garden [class~="bg-[#f8f2eb]/85"] { background-color: rgb(var(--life-surface-rgb) / .94) !important; }
+      .life-rose-garden [class~="border-white/80"],
+.life-rose-garden [class~="border-white/70"],
+.life-rose-garden [class~="border-stone-200"],
+.life-rose-garden [class~="border-stone-200/80"],
+.life-rose-garden [class~="border-stone-200/70"],
+.life-rose-garden [class~="border-stone-200/60"],
+.life-rose-garden [class~="border-stone-200/50"],
+.life-rose-garden [class~="border-stone-300"],
+.life-rose-garden [class~="border-[#d9c2ae]"],
+.life-rose-garden [class~="border-[#d8c1ad]/60"] { border-color: rgb(var(--life-border-rgb) / .76) !important; }
+      .life-rose-garden [class~="text-stone-800"], .life-rose-garden [class~="text-stone-700"], .life-rose-garden [class~="text-stone-600"] { color: var(--life-text) !important; }
+      .life-rose-garden [class~="text-stone-500"] { color: var(--life-muted) !important; }
+      .life-rose-garden [class~="text-stone-400"] { color: var(--life-faint) !important; }
+      .life-rose-garden [class~="bg-[#b88768]"] { background-color: var(--life-accent) !important; }
+      .life-rose-garden [class~="text-[#a4775d]"] { color: var(--life-accent) !important; }
+      .life-rose-garden nav[aria-label="生活导航"] { background-color: rgb(var(--life-surface-rgb) / .96) !important; border-color: rgb(var(--life-border-rgb) / .76) !important; }
+      .life-rose-garden nav[aria-label="生活导航"] button[aria-current="page"] { background-color: rgb(var(--life-strong-rgb) / .98) !important; color: var(--life-accent) !important; }
+      .life-rose-garden input:not([type="checkbox"]):not([type="radio"]):not([type="color"]), .life-rose-garden select, .life-rose-garden textarea { color: var(--life-text); border-color: rgb(var(--life-border-rgb) / .85); }
+      .life-rose-garden .life-scene-display-options[open] { background: var(--life-overlay) !important; border-color: rgb(var(--life-border-rgb) / .8); }
+      .life-rose-garden [class~="bg-[#fffaf3]/95"], .life-rose-garden [class~="bg-[#fffaf5]"] { background-color: var(--life-overlay) !important; }
     `}</style>
     {settings.customSceneCss?.trim() && <style>{settings.customSceneCss.replace(/<\/style/gi, "<\\/style")}</style>}
     <div className={`mx-auto w-full max-w-none ${immersiveScene ? "flex min-h-0 flex-1 flex-col" : ""}`}>
