@@ -137,6 +137,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
   const [wallView, setWallView] = useState<"panorama" | "timeline" | "edit">("panorama");
+  const [panoramaZoom, setPanoramaZoom] = useState(100);
+  const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
   const [selectedCharacterId, setSelectedCharacterId] = useState("");
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [editNote, setEditNote] = useState("");
@@ -704,8 +706,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       </section>
 
       </> : wallView === "panorama" ? <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-16 pt-2 sm:px-6">
-        <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto overscroll-contain rounded-[26px] p-3 sm:p-5" style={{WebkitOverflowScrolling:"touch", backgroundImage:"radial-gradient(ellipse at 50% 20%,rgba(255,255,255,.72),transparent 68%),linear-gradient(145deg,#f5ead9,#e7dac7)", touchAction:"pan-x pan-y"}}>
-          <div className="shrink-0" style={{width:"100%", maxWidth:"560px"}}>
+        <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto overscroll-contain rounded-[26px] p-3 sm:p-5" style={{WebkitOverflowScrolling:"touch", backgroundImage:"radial-gradient(ellipse at 50% 20%,rgba(255,255,255,.72),transparent 68%),linear-gradient(145deg,#f5ead9,#e7dac7)", touchAction:"pan-x pan-y"}}
+          onTouchStart={event => { if (event.touches.length === 2) { const dx=event.touches[0].clientX-event.touches[1].clientX; const dy=event.touches[0].clientY-event.touches[1].clientY; pinchStartRef.current={distance:Math.max(1,Math.hypot(dx,dy)),zoom:panoramaZoom}; } }}
+          onTouchMove={event => { if (event.touches.length === 2 && pinchStartRef.current) { const dx=event.touches[0].clientX-event.touches[1].clientX; const dy=event.touches[0].clientY-event.touches[1].clientY; const distance=Math.hypot(dx,dy); setPanoramaZoom(Math.max(50,Math.min(180,Math.round(pinchStartRef.current.zoom*distance/pinchStartRef.current.distance)))); event.preventDefault(); } }}
+          onTouchEnd={event => { if (event.touches.length < 2) pinchStartRef.current=null; }}>
+          <div className="shrink-0 transition-[width] duration-100" style={{width:`${panoramaZoom}%`, minWidth: panoramaZoom < 100 ? "50%" : "100%", maxWidth:"none"}}>
             <PhotoWallCanvas photos={photos} selectedId={null} onSelect={() => setWallView("edit")} onChangePlacement={changePlacement} onChangeDoodles={changeDoodles} onOpenDetail={photo => openPhoto(photo)} readOnly panorama />
           </div>
         </div>
