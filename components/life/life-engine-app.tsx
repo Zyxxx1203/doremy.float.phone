@@ -91,18 +91,66 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
     .trim();
   if (actionTag || dialogueTag) {
     const action = actionTags.map(tag => stripControlTags(tag[1] || "").replace(/^\*+|\*+$/g, "").trim()).filter(Boolean).join("\n");
-    const dialogue = dialogueTags.map(tag => stripControlTags(tag[1] || "").trim()).filter(Boolean).join("\n");
-    return { action, dialogue, followRequest, planChange, invitation };
+    const rawDialogue = dialogueTags.map(tag => stripControlTags(tag[1] || "").trim()).filter(Boolean).join("\n");
+    const separated = parseLifeOutput(rawDialogue);
+    return { action: [action, separated.action].filter(Boolean).join("\n"), dialogue: separated.dialogue, followRequest, planChange, invitation };
   }
   const clean = stripControlTags(text);
-  const lines = clean.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-  const actionLines: string[] = [];
+  const extractedActions: string[] = [];
+  let dialogueSource = clean.replace(/\*([^*\n]+)\*/g, (_match, action: string) => {
+    if (action.trim()) extractedActions.push(action.trim());
+    return " ";
+  });
+  dialogueSource = dialogueSource.replace(/（([^（）\n]+)）/g, (whole, action: string) => {
+    const value = action.trim();
+    if (/笑|看|望|转身|低头|抬手|靠近|走到|坐下|起身|点头|摇头|伸手|叹气|皱眉|眨眼|抱住|拿起|放下|注视|呼吸|动作|神情|轻轻|轻声|语气/.test(value)) {
+      extractedActions.push(value);
+      return " ";
+    }
+    return whole;
+  });
   const dialogueLines: string[] = [];
-  for (const line of lines) {
-    if (/^\*[^*].*\*$/.test(line) || /^（[^）]+）$/.test(line) || /^\*\*[^*].*\*\*$/.test(line)) actionLines.push(line.replace(/^\*+|\*+$/g, "").replace(/^（|）$/g, ""));
-    else dialogueLines.push(line);
+  for (const line of dialogueSource.split(/\r?\n/).map(item => item.trim()).filter(Boolean)) {
+    const actionLabel = line.match(/^(?:动作|行动|旁白|场景描写)\s*[:：]\s*(.+)$/);
+    const dialogueLabel = line.match(/^对白\s*[:：]\s*(.+)$/);
+    if (actionLabel) extractedActions.push(actionLabel[1].trim());
+    else dialogueLines.push(dialogueLabel ? dialogueLabel[1].trim() : line);
   }
-  return { action: actionLines.join(" "), dialogue: dialogueLines.join("\n") || (actionLines.length ? "" : clean), followRequest, planChange, invitation };
+  const dialogue = dialogueLines.join("\n").replace(/\s+([，。！？；：])/g, "$1").trim();
+  return { action: extractedActions.filter(Boolean).join("\n"), dialogue, followRequest, planChange, invitation };
+}
+
+
+function rebuildSceneDialogueTimeline(state: VirtualLifeState, sceneId: string, batchSizeValue: number): VirtualLifeState {
+  const batchSize = Math.max(1, Math.min(100, Math.floor(batchSizeValue || 10)));
+  const messages = state.sceneMessages
+    .filter(message => message.sceneId === sceneId && message.role !== "system" && Boolean(message.dialogue?.trim()))
+    .slice()
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const previous = state.timeline.filter(entry => entry.category === "dialogue" && entry.sceneId === sceneId);
+  let next: VirtualLifeState = { ...state, timeline: state.timeline.filter(entry => !(entry.category === "dialogue" && entry.sceneId === sceneId)) };
+  for (let offset = 0; offset < messages.length; offset += batchSize) {
+    const group = messages.slice(offset, offset + batchSize);
+    const last = group[group.length - 1];
+    const groupNumber = Math.floor(offset / batchSize) + 1;
+    const sourceId = "scene-dialogue-batch:" + sceneId + ":" + groupNumber;
+    const oldEntry = previous.find(entry => entry.sourceId === sourceId);
+    const details = group.map(message => (message.speakerName || message.speakerId) + "：" + message.dialogue.trim()).join("\n");
+    next = appendLifeTimelineEntry(next, {
+      id: oldEntry?.id,
+      category: "dialogue",
+      occurredAt: last.createdAt,
+      recordedAt: new Date().toISOString(),
+      title: "生活现场对话 · " + group.length + "/" + batchSize + " 条",
+      details,
+      actorId: last.speakerId,
+      actorName: last.speakerName,
+      locationName: next.scenes.find(scene => scene.id === sceneId)?.locationName,
+      sceneId,
+      sourceId,
+    });
+  }
+  return next;
 }
 
 function splitLifeReplySegments(value: string): string[] {
@@ -223,7 +271,27 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     void hydrateKvDb().then(() => hydrateChatStorage()).catch(() => undefined).finally(() => {
       if (!alive) return;
       const loaded = loadVirtualLifeState();
-      let normalized: VirtualLifeState = { ...loaded, locations: [...INITIAL_LOCATIONS.filter(location => !loaded.locations.some(saved => saved.id === location.id)), ...loaded.locations.map(saved => { const defaults = INITIAL_LOCATIONS.find(location => location.id === saved.id); return defaults ? { ...defaults, ...saved, description: saved.description || defaults.description, atmosphere: saved.atmosphere || defaults.atmosphere, layout: saved.layout || defaults.layout, props: saved.props?.length ? saved.props : defaults.props } : saved; })] };
+      let normalized: VirtualLifeState = {
+        ...loaded,
+        settings: {
+          ...DEFAULT_LIFE_ENGINE_SETTINGS,
+          ...loaded.settings,
+          dialogueFontSize: loaded.settings?.dialogueFontSize === 15 ? 13 : loaded.settings?.dialogueFontSize ?? 13,
+          bubblePadding: loaded.settings?.bubblePadding === 4 ? 3 : loaded.settings?.bubblePadding ?? 3,
+          sceneRecordBatchSize: Math.max(1, Math.min(100, Number(loaded.settings?.sceneRecordBatchSize) || 10)),
+        },
+        locations: [...INITIAL_LOCATIONS.filter(location => !loaded.locations.some(saved => saved.id === location.id)), ...loaded.locations.map(saved => { const defaults = INITIAL_LOCATIONS.find(location => location.id === saved.id); return defaults ? { ...defaults, ...saved, description: saved.description || defaults.description, atmosphere: saved.atmosphere || defaults.atmosphere, layout: saved.layout || defaults.layout, props: saved.props?.length ? saved.props : defaults.props } : saved; })],
+      };
+      const migratedMessages = normalized.sceneMessages.map(message => {
+        if (message.role === "system" || !message.dialogue.trim()) return message;
+        const separated = parseLifeOutput(message.dialogue);
+        if (!separated.action) return message;
+        return { ...message, action: [message.action, separated.action].filter(Boolean).join("\n"), dialogue: separated.dialogue };
+      });
+      if (migratedMessages.some((message, index) => message !== normalized.sceneMessages[index])) {
+        normalized = { ...normalized, sceneMessages: migratedMessages };
+        saveVirtualLifeState(normalized);
+      }
       // One-time migration: rebuild only auto-generated character schedule slots in the current/next two weeks.
       // This version incorporates bound world books, saved location habits, and canonical place matching.
       // User-authored and completed historical entries remain untouched.
@@ -1071,6 +1139,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (action && !timeline.some(entry => entry.sourceId === message.id && entry.category === "action")) {
       next = appendLifeTimelineEntry(next, { category: "action", title: (message.speakerName || playerName) + "的行动", details: action, actorId: message.speakerId, actorName: message.speakerName || playerName, locationName, sceneId: message.sceneId, sourceId: message.id });
     }
+    next = rebuildSceneDialogueTimeline(next, message.sceneId, latest.settings.sceneRecordBatchSize ?? 10);
     commit(next);
     setMessageActionTarget(null);
     setNotice("消息已保存，生活时间线也已同步。");
@@ -1080,11 +1149,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (!messageActionTarget) return;
     const message = messageActionTarget;
     const latest = stateRef.current;
-    commit({
+    const next: VirtualLifeState = {
       ...latest,
       sceneMessages: latest.sceneMessages.filter(item => item.id !== message.id),
       timeline: latest.timeline.filter(entry => entry.sourceId !== message.id),
-    });
+    };
+    commit(rebuildSceneDialogueTimeline(next, message.sceneId, latest.settings.sceneRecordBatchSize ?? 10));
     setMessageActionTarget(null);
     setNotice("消息及其对应的生活时间线记录已删除。");
   };
@@ -1132,7 +1202,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         content: [
           "【仅本轮使用生活场景模式规则，不要写入线上聊天历史】",
           activeSceneOutputPrompt,
-          settings.showActionNarration ? "严格只用 <life_action>...</life_action> 表示动作/场景旁白，用 <life_dialogue>...</life_dialogue> 表示角色实际说出口的话；两者分开，标签外不要输出文字。" : "仍须使用 <life_action></life_action> 与 <life_dialogue>...</life_dialogue>，把 life_action 留空；标签外不要输出文字。",
+          settings.showActionNarration ? "动作、神态、移动和环境旁白只放进 <life_action>...</life_action>；真正说出口的话只放进 <life_dialogue>...</life_dialogue>。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。" : "仍须使用 <life_action></life_action> 与 <life_dialogue>...</life_dialogue>，把 life_action 留空；标签外不要输出文字。",
           settings.keepDialogueConcise ? "一轮通常 1-3 句，保持实时互动感。" : "允许适度展开，但保持实时互动感。",
           activePromptPresetText ? "小手机预设继承内容与当前生活预设规则：\n" + activePromptPresetText : "",
           activePromptPreset.locationHabitPrompt ? "地点习惯规则：\n" + activePromptPreset.locationHabitPrompt : "",
@@ -1197,7 +1267,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         next = appendLifeTimelineEntry(next, { category: "action", title: actorName + (message.role === "player" ? "进行了行动" : "的行动"), details: message.action, actorId: message.speakerId, actorName, locationName: currentScene?.locationName, sceneId: message.sceneId, sourceId: message.id });
       }
       if (message.dialogue.trim()) {
-        next = appendLifeTimelineEntry(next, { category: "dialogue", title: actorName + (message.role === "player" ? "说" : "说"), details: message.dialogue, actorId: message.speakerId, actorName, locationName: currentScene?.locationName, sceneId: message.sceneId, sourceId: message.id });
+        next = rebuildSceneDialogueTimeline(next, message.sceneId, latest.settings.sceneRecordBatchSize ?? 10);
       }
     }
     commit(next);
@@ -1220,7 +1290,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       return [
         "【生活现场自主回合：不是对玩家新消息的回复】",
         activeSceneOutputPrompt,
-         settings.showActionNarration ? "严格使用 <life_action>...</life_action> 与 <life_dialogue>...</life_dialogue>，动作和对白分开，标签外不要输出文字。" : "仍使用 <life_action></life_action> 与 <life_dialogue>...</life_dialogue>，把 life_action 留空，标签外不要输出文字。",
+         settings.showActionNarration ? "动作、神态、移动和环境旁白只放进 <life_action>...</life_action>；真正说出口的话只放进 <life_dialogue>...</life_dialogue>。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。" : "仍使用 <life_action></life_action> 与 <life_dialogue>...</life_dialogue>，把 life_action 留空，标签外不要输出文字。",
         settings.keepDialogueConcise ? "保持自然简短，像真实相处时的一小句或一个小动作。" : "可以适度展开，但不要写成长篇故事。",
         "当前没有新的玩家输入。请结合角色正在做的事、性格、地点习惯、最近发生的事情和场景气氛，自主判断是否有自然的发言或行动动机。可以主动搭话、分享正在做的事、提出轻微互动，也可以继续忙自己的事或保持沉默。不要为了触发功能强行说话；不要替玩家行动或发言；不要重复上一条内容。",
         activePromptPresetText,
@@ -1420,7 +1490,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const sceneContext = buildLifeScenePromptContext(stateRef.current, activeScene, target.id);
       const settingsInstructions = [
         activeSceneOutputPrompt,
-        settings.showActionNarration ? "严格只用 <life_action>...</life_action> 表示动作/场景旁白，用 <life_dialogue>...</life_dialogue> 表示角色实际说出口的话；两者分开，标签外不要输出文字。" : "仍须使用 <life_action></life_action> 与 <life_dialogue>...</life_dialogue>，把 life_action 留空；标签外不要输出文字。",
+        settings.showActionNarration ? "动作、神态、移动和环境旁白只放进 <life_action>...</life_action>；真正说出口的话只放进 <life_dialogue>...</life_dialogue>。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。" : "仍须使用 <life_action></life_action> 与 <life_dialogue>...</life_dialogue>，把 life_action 留空；标签外不要输出文字。",
         settings.keepDialogueConcise ? "一轮通常 1-3 句，除非用户明确要求展开。" : "允许适度展开，但仍保持实时互动感。",
         forceReaction ? "本轮由玩家手动强制触发反馈。必须结合最近已经发生的动作或对白，输出可见且符合角色性格的反应；不能空白，也不要只泛泛问候。" : settings.allowCharactersToStaySilent ? "如果角色当下忙碌、没注意到或不想说话，可以自然沉默。" : "本轮需要对玩家的输入作出回应。",
         wokeFromSleep ? "角色原本正在睡觉，本轮是被消息或紧急情况吵醒；要表现困倦、反应迟缓或不想立刻长谈，不要突然精神饱满。" : "",
@@ -2583,9 +2653,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           <div ref={sceneChatScrollRef} className={`life-scene-chat mb-1 min-h-0 min-w-0 flex-1 flex flex-col overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y rounded-xl bg-white/80 ${settings.compactLayout ? "p-1 sm:p-1.5" : "p-1.5 sm:p-2"} ${immersiveScene ? "" : "h-[58dvh] min-h-[280px] max-h-[760px]"}`} style={{fontSize:"var(--life-font)", rowGap: `${settings.messageGapPx ?? 4}px`, WebkitOverflowScrolling:"touch"}}>
             {sceneMessages.length===0 && <div className="grid min-h-36 place-items-center text-center text-sm text-stone-400"><div><Sparkles className="mx-auto mb-2" size={22}/><p>场景已经准备好了。</p><p className="mt-1 text-xs">角色可以忙自己的事，也可以回应你；不会自动写成长篇剧情。</p></div></div>}
             {sceneMessages.map(message=><div key={message.id} className="group flex min-w-0 max-w-full flex-col rounded-xl transition-colors" onTouchStart={() => { longPressTriggeredRef.current = false; clearMessageLongPress(); longPressTimerRef.current = window.setTimeout(() => { longPressTriggeredRef.current = true; openMessageActions(message); }, 550); }} onTouchEnd={clearMessageLongPress} onTouchMove={clearMessageLongPress} onTouchCancel={clearMessageLongPress} onContextMenu={event => { event.preventDefault(); clearMessageLongPress(); openMessageActions(message); }}>
-              {message.role==="system" ? <div className="life-scene-entry-card mx-auto flex w-fit max-w-[92%] items-center justify-center gap-1.5 rounded-xl border border-[#d8c1ad]/60 bg-[#f5e9dd]/70 px-2.5 py-1.5 text-center"><MapPin size={12} className="shrink-0 text-[#a4775d]"/><p className="whitespace-pre-wrap text-center leading-snug text-stone-600" style={{fontSize:"var(--life-narration-font)",fontFamily:settings.narrationFontFamily || undefined}}>{message.action || message.dialogue}</p></div> : <>
+              {message.role==="system" ? <div className="mx-auto max-w-[92%] px-2 py-1 text-center italic leading-relaxed text-stone-500"><p className="whitespace-pre-wrap text-center leading-snug" style={{fontSize:"var(--life-narration-font)",fontFamily:settings.narrationFontFamily || undefined}}>{message.action || message.dialogue}</p></div> : <>
                 {message.action&&<div className="flex items-center gap-2 px-1" style={{marginBlock: `${settings.narrationGapPx ?? 4}px`}} aria-label="行动旁白"><span className="h-px flex-1 bg-stone-300/80"/><p className="min-w-0 max-w-[82%] break-words text-center italic leading-relaxed text-stone-500 [overflow-wrap:anywhere]" style={{fontSize:"var(--life-narration-font)",fontFamily:settings.narrationFontFamily || undefined}}>{message.action}</p><span className="h-px flex-1 bg-stone-300/80"/></div>}
-                {message.dialogue&&<div className={`flex min-w-0 max-w-full items-end gap-1.5 ${message.role==="player"?"justify-end":"justify-start"}`}>{message.role!=="player"&&<span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full bg-[#efe1d2] text-[11px] text-stone-700">{actors.find(actor=>actor.ownerType==="character"&&actor.ownerId===message.speakerId)?.avatar?<img src={actors.find(actor=>actor.ownerType==="character"&&actor.ownerId===message.speakerId)?.avatar??undefined} alt="" className="h-full w-full object-cover"/>:(message.speakerName||"角").slice(0,1)}</span>}<div style={{fontSize:"var(--life-font)", fontFamily:settings.dialogueFontFamily || undefined, padding: `${settings.bubblePadding}px ${settings.bubblePadding}px`}} className={`life-scene-bubble min-w-0 max-w-[88%] break-words [overflow-wrap:anywhere] ${settings.compactLayout ? "rounded-xl px-2 py-1" : "rounded-2xl px-2.5 py-1.5"} ${settings.dialogueBubbleStyle==="square"?"rounded-md":settings.dialogueBubbleStyle==="soft"?"rounded-[1.4rem]":"rounded-2xl"} ${message.role==="player"?"bg-[#e9d4c0] text-stone-800":"bg-white text-stone-800 shadow-sm"}`}>{message.role!=="player"&&<p className="mb-0.5 text-[10px] font-semibold text-[var(--life-accent)]">{message.speakerName}</p>}<p className="min-w-0 whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">{message.dialogue}</p></div>{message.role==="player"&&<span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full bg-[#e9d4c0] text-[11px] text-stone-700">{playerIdentity?.avatarUrl?<img src={playerIdentity.avatarUrl} alt="" className="h-full w-full object-cover"/>:playerName.slice(0,1)}</span>}</div>}
+                {message.dialogue&&<div className={`flex min-w-0 max-w-full items-end gap-1.5 ${message.role==="player"?"justify-end":"justify-start"}`}>{message.role!=="player"&&<span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full bg-[#efe1d2] text-[11px] text-stone-700">{actors.find(actor=>actor.ownerType==="character"&&actor.ownerId===message.speakerId)?.avatar?<img src={actors.find(actor=>actor.ownerType==="character"&&actor.ownerId===message.speakerId)?.avatar??undefined} alt="" className="h-full w-full object-cover"/>:(message.speakerName||"角").slice(0,1)}</span>}<div style={{fontSize:"var(--life-font)", fontFamily:settings.dialogueFontFamily || undefined, padding: `${settings.bubblePadding}px ${settings.bubblePadding}px`}} className={`life-scene-bubble min-w-0 max-w-[88%] border border-stone-200/70 break-words [overflow-wrap:anywhere] ${settings.dialogueBubbleStyle==="square"?"rounded-md":settings.dialogueBubbleStyle==="soft"?"rounded-xl":"rounded-lg"} ${message.role==="player"?"bg-[#f0dfcf] text-stone-800":"bg-white/95 text-stone-800"}`}>{message.role!=="player"&&}<p className="min-w-0 whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">{message.dialogue}</p></div>{message.role==="player"&&<span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full bg-[#e9d4c0] text-[11px] text-stone-700">{playerIdentity?.avatarUrl?<img src={playerIdentity.avatarUrl} alt="" className="h-full w-full object-cover"/>:playerName.slice(0,1)}</span>}</div>}
               </>}
             </div>)}
             {busy&&<div className="text-xs text-stone-400">角色正在回应……</div>}
@@ -2662,6 +2732,20 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           <label className="mb-3 block text-sm font-medium text-stone-700">氛围<textarea value={locationAtmosphereDraft} onChange={event => setLocationAtmosphereDraft(event.target.value)} rows={2} placeholder="时段、天气、人声、气味、情绪氛围……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
           <label className="mb-3 block text-sm font-medium text-stone-700">固定空间布局<textarea value={locationLayoutDraft} onChange={event => setLocationLayoutDraft(event.target.value)} rows={3} placeholder="门窗、家具、通道、柜台、座位之间的空间关系……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
           <label className="mb-4 block text-sm font-medium text-stone-700">可用道具<textarea value={locationPropsDraft} onChange={event => setLocationPropsDraft(event.target.value)} rows={2} placeholder="用顿号或逗号分隔，例如：花剪、包装纸、玻璃花瓶" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+          {selectedLocation.id === "home" && <section className="mb-4 rounded-xl border border-stone-200/80 bg-white/80 p-3">
+            <h3 className="text-sm font-semibold text-stone-700">同居设置</h3>
+            <p className="mt-1 text-xs leading-relaxed text-stone-500">默认每个角色拥有独立住处。勾选后，TA 的后续居家日程会转到你的「家」。</p>
+            <div className="mt-3 space-y-2">{characters.map(character => <label key={character.id} className="flex min-h-11 items-center gap-3 border-b border-stone-100 py-2 text-sm text-stone-700 last:border-0">
+              {character.avatar ? <img src={character.avatar} alt="" className="h-8 w-8 rounded-full object-cover"/> : <span className="grid h-8 w-8 place-items-center rounded-full bg-[#efe1d2]">{character.name.slice(0,1)}</span>}
+              <span className="min-w-0 flex-1">{character.name}</span>
+              <input type="checkbox" checked={(selectedLocation.residents ?? []).includes(character.id)} onChange={event => {
+                const residents = new Set(selectedLocation.residents ?? []);
+                if (event.target.checked) residents.add(character.id); else residents.delete(character.id);
+                commit({ ...stateRef.current, locations: stateRef.current.locations.map(location => location.id === "home" ? { ...location, residents: [...residents] } : location) });
+                setNotice(event.target.checked ? "已设置与" + character.name + "同居；后续居家日程会使用同一住处。" : "已取消与" + character.name + "同居；后续居家日程将恢复独立住处。");
+              }} className="h-4 w-4 accent-[var(--life-accent)]"/>
+            </label>)}</div>
+          </section>}
           <button type="button" onClick={saveLocationDetails} className="w-full rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white">保存地点设定</button>
           <div className="mt-5 border-t border-stone-200/70 pt-4">
             <SectionTitle eyebrow="Character habits" title="角色在这里的习惯" note="写长期倾向，不是强制动作。比如某角色每次来书店会先看新书区、习惯坐最里面的位置，或会顺手给别人带一杯热饮。"/>
@@ -2906,7 +2990,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             <div className="mt-3 rounded-2xl border border-stone-200/70 bg-white/60 p-3"><p className="mb-2 text-xs font-semibold text-stone-700">生活记录显示筛选</p><div className="space-y-2">
               <Toggle checked={settings.recordLocationChanges} onChange={v=>patchSettings({recordLocationChanges:v})} label="地点与场景变化"/>
               <Toggle checked={settings.recordCharacterActions} onChange={v=>patchSettings({recordCharacterActions:v})} label="我和角色的行动"/>
-              <Toggle checked={settings.recordSceneMessages} onChange={v=>patchSettings({recordSceneMessages:v})} label="生活现场的对话气泡"/>
+              <Toggle checked={settings.recordSceneMessages} onChange={v=>patchSettings({recordSceneMessages:v})} label="生活现场的对话记录"/>
+              <label className="block rounded-2xl border border-black/5 bg-white/70 px-4 py-3 text-sm text-stone-700">每几条对白汇总成一条记录
+                <input key={settings.sceneRecordBatchSize ?? 10} type="number" inputMode="numeric" min="1" max="100" defaultValue={settings.sceneRecordBatchSize ?? 10} onBlur={event => patchSettings({sceneRecordBatchSize:Math.max(1,Math.min(100,Number(event.currentTarget.value)||10))})} className="mt-2 w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5"/>
+                <span className="mt-1 block text-[11px] text-stone-500">默认 10 条；同一组记录会持续更新，不会每说一句就新增记录。</span>
+              </label>
               <Toggle checked={settings.recordChatActivity} onChange={v=>patchSettings({recordChatActivity:v})} label="消息 APP 聊天动态"/>
               <Toggle checked={settings.recordSocialActivity} onChange={v=>patchSettings({recordSocialActivity:v})} label="朋友圈动态"/>
               <Toggle checked={settings.recordDiaryActivity} onChange={v=>patchSettings({recordDiaryActivity:v})} label="日记动态"/>
@@ -2955,14 +3043,14 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             <p className="mt-2 text-xs opacity-70">可切换主题预设，也可输入 HEX 色号自定义强调色。</p>
           </div>
           <label className="mb-4 block text-sm">面板不透明度：{settings.panelOpacity}%<input type="range" min="50" max="100" value={settings.panelOpacity} onChange={e=>patchSettings({panelOpacity:Number(e.target.value)})} className="mt-2 w-full accent-[var(--life-accent)]"/></label>
-          <label className="mb-4 block text-sm">对白字号（px）<input key={settings.dialogueFontSize} type="number" inputMode="numeric" min="8" max="48" defaultValue={settings.dialogueFontSize} onBlur={e=>patchSettings({dialogueFontSize:Math.max(8,Math.min(48,Number(e.currentTarget.value)||16))})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2"/></label><label className="mb-4 block text-sm">动作旁白字号（px）<input key={settings.narrationFontSize} type="number" inputMode="numeric" min="8" max="36" defaultValue={settings.narrationFontSize} onBlur={e=>patchSettings({narrationFontSize:Math.max(8,Math.min(36,Number(e.currentTarget.value)||14))})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2"/></label><label className="mb-4 block text-sm">气泡内边距（px）<input key={settings.bubblePadding} type="number" inputMode="numeric" min="0" max="24" defaultValue={settings.bubblePadding} onBlur={e=>patchSettings({bubblePadding:Math.max(0,Math.min(24,Number(e.currentTarget.value)||0))})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2"/></label><label className="mb-4 block text-sm">对白字体（CSS font-family）<input value={settings.dialogueFontFamily} onChange={e=>patchSettings({dialogueFontFamily:e.target.value})} placeholder="系统默认 / Arial / sans-serif" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2"/></label><label className="mb-4 block text-sm">旁白字体（CSS font-family）<input value={settings.narrationFontFamily} onChange={e=>patchSettings({narrationFontFamily:e.target.value})} placeholder='"Microsoft YaHei", sans-serif' className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2"/></label>
+          <label className="mb-4 block text-sm">对白字号（px）<input key={settings.dialogueFontSize} type="number" inputMode="numeric" min="8" max="48" defaultValue={settings.dialogueFontSize} onBlur={e=>patchSettings({dialogueFontSize:Math.max(8,Math.min(48,Number(e.currentTarget.value)||13))})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2"/></label><label className="mb-4 block text-sm">动作旁白字号（px）<input key={settings.narrationFontSize} type="number" inputMode="numeric" min="8" max="36" defaultValue={settings.narrationFontSize} onBlur={e=>patchSettings({narrationFontSize:Math.max(8,Math.min(36,Number(e.currentTarget.value)||14))})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2"/></label><label className="mb-4 block text-sm">气泡内边距（px）<input key={settings.bubblePadding} type="number" inputMode="numeric" min="0" max="24" defaultValue={settings.bubblePadding} onBlur={e=>patchSettings({bubblePadding:Math.max(0,Math.min(24,Number(e.currentTarget.value)||0))})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2"/></label><label className="mb-4 block text-sm">对白字体（CSS font-family）<input value={settings.dialogueFontFamily} onChange={e=>patchSettings({dialogueFontFamily:e.target.value})} placeholder="系统默认 / Arial / sans-serif" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2"/></label><label className="mb-4 block text-sm">旁白字体（CSS font-family）<input value={settings.narrationFontFamily} onChange={e=>patchSettings({narrationFontFamily:e.target.value})} placeholder='"Microsoft YaHei", sans-serif' className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2"/></label>
           <Toggle checked={settings.compactLayout} onChange={v=>patchSettings({compactLayout:v})} label="紧凑布局"/>
            <div className="mt-4 rounded-2xl border border-stone-200 bg-[#f8f4ee] p-3">
              <p className="mb-2 text-sm font-semibold text-stone-700">聊天显示实时预览</p>
              <p className="mb-3 text-xs text-stone-500">调整参数会即时更新预览并应用到生活聊天室；聊天室本身不再放置这组设置，把空间留给互动。</p>
              <div className="life-scene-chat flex min-w-0 flex-col rounded-xl bg-white/80 p-2" style={{fontSize:"var(--life-font)",rowGap:`${settings.messageGapPx ?? 4}px`}}>
                <div className="flex items-center gap-2" style={{marginBlock:`${settings.narrationGapPx ?? 4}px`}}><span className="h-px flex-1 bg-stone-300/80"/><p className="max-w-[82%] text-center italic leading-relaxed text-stone-500" style={{fontSize:`${settings.narrationFontSize}px`,fontFamily:settings.narrationFontFamily || undefined}}>轻轻推开门，走到窗边坐下。</p><span className="h-px flex-1 bg-stone-300/80"/></div>
-               <div className="flex justify-start"><div className={`life-scene-bubble min-w-0 max-w-[88%] break-words bg-white text-stone-800 shadow-sm ${settings.dialogueBubbleStyle==="square"?"rounded-md":settings.dialogueBubbleStyle==="soft"?"rounded-[1.4rem]":"rounded-2xl"}`} style={{fontSize:`${settings.dialogueFontSize}px`,fontFamily:settings.dialogueFontFamily || undefined,padding:`${settings.bubblePadding}px`}}><p className="mb-0.5 text-[10px] font-semibold text-[var(--life-accent)]">角色示例</p><p>这样就能预览字号、气泡、间距和字体效果。</p></div></div>
+               <div className="flex justify-start"><div className={`life-scene-bubble min-w-0 max-w-[88%] break-words bg-white text-stone-800 shadow-sm ${settings.dialogueBubbleStyle==="square"?"rounded-md":settings.dialogueBubbleStyle==="soft"?"rounded-[1.4rem]":"rounded-2xl"}`} style={{fontSize:`${settings.dialogueFontSize}px`,fontFamily:settings.dialogueFontFamily || undefined,padding:`${settings.bubblePadding}px`}}><p>这样就能预览字号、气泡、间距和字体效果。</p></div></div>
                <div className="flex justify-end"><div className={`life-scene-bubble min-w-0 max-w-[88%] break-words bg-[#e9d4c0] text-stone-800 ${settings.dialogueBubbleStyle==="square"?"rounded-md":settings.dialogueBubbleStyle==="soft"?"rounded-[1.4rem]":"rounded-2xl"}`} style={{fontSize:`${settings.dialogueFontSize}px`,fontFamily:settings.dialogueFontFamily || undefined,padding:`${settings.bubblePadding}px`}}>玩家示例消息</div></div>
              </div>
            </div>

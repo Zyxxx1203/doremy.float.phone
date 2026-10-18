@@ -74,21 +74,26 @@ export function generateWeeklyLifePlan(
   profile = "",
   includeSpecialEvents = true,
 ): VirtualLifeState {
-  const personalHomeId = ownerType === "character" ? "home-" + ownerId : "home";
   const currentLocations = state.locations ?? [];
+  const playerHome = currentLocations.find(location => location.id === "home");
+  const livesWithPlayer = ownerType === "character" && Boolean(playerHome?.residents?.includes(ownerId));
+  const personalHomeId = ownerType === "character" && !livesWithPlayer ? "home-" + ownerId : "home";
   const personalHome: LifeLocation = currentLocations.find(location => location.id === personalHomeId) ?? {
     id: personalHomeId,
     name: ownerType === "character" ? ownerName + "的家" : "家",
-    description: ownerType === "character" ? "角色自己的私人住处，与玩家的家相互独立；只有明确设定同居后才共享。" : "你自己的家。",
+    description: ownerType === "character" ? "角色自己的私人住处；可在玩家家的地点档案中设置同居。" : "你自己的家。",
     atmosphere: "熟悉、私密、可以放松的空间。",
     layout: "有自己的起居区域与休息空间。",
     props: ["沙发", "茶几", "水杯", "床头灯"],
     visibility: "private",
   };
   if (ownerType === "character") {
+    const oldHomeId = livesWithPlayer ? "home-" + ownerId : "home";
+    const now = Date.now();
     const migratedSchedules = state.schedules.map(slot =>
       slot.ownerType === "character" && slot.ownerId === ownerId &&
-      (slot.plannedLocationId === "home" || (!slot.plannedLocationId && slot.plannedLocationName === "家"))
+      new Date(slot.endAt).getTime() > now &&
+      (slot.plannedLocationId === oldHomeId || (!slot.plannedLocationId && slot.plannedLocationName === "家"))
         ? { ...slot, plannedLocationId: personalHomeId, plannedLocationName: personalHome.name }
         : slot
     );

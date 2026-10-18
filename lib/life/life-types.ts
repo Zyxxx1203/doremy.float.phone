@@ -79,6 +79,8 @@ export type LifeEngineSettings = {
   messageGapPx: number;
   /** Vertical gap between narration and dialogue within a turn, in pixels. */
   narrationGapPx: number;
+  /** Dialogue messages combined into one life timeline record. */
+  sceneRecordBatchSize?: number;
   dialogueBubbleStyle: "rounded" | "soft" | "square";
   /** User CSS overrides for the life scene chat only. */
   customSceneCss?: string;
@@ -131,13 +133,14 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   accentColor: "#b88768",
   accentColorMode: "theme",
   panelOpacity: 96,
-  dialogueFontSize: 15,
+  dialogueFontSize: 13,
   narrationFontSize: 12,
   dialogueFontFamily: "",
   narrationFontFamily: "",
-  bubblePadding: 4,
+  bubblePadding: 3,
   messageGapPx: 4,
   narrationGapPx: 4,
+  sceneRecordBatchSize: 10,
   dialogueBubbleStyle: "rounded",
   customSceneCss: "",
   compactLayout: false,
@@ -186,6 +189,8 @@ export type LifeLocation = {
   aliases?: string[];
   /** Per-character habits at this location, keyed by character ID. */
   characterHabits?: Record<string, string>;
+  /** Character IDs explicitly sharing the player's home. */
+  residents?: string[];
   /** User-authored atmosphere cues used by the live scene prompt and location cards. */
   atmosphere?: string;
   /** Stable spatial layout: where the door, seats, windows, counters, etc. are. */
