@@ -192,7 +192,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   }, []);
 
   const [comments, setComments] = useState<WatchComment[]>([]);
-  const [frameSampleCount, setFrameSampleCount] = useState(0);
+  const [companionCollapsed, setCompanionCollapsed] = useState(false);
+  const [showQuickChat, setShowQuickChat] = useState(false);
   const pendingDiscussionRef = useRef<Array<{ moment: string; timepoint?: string }>>([]);
   const [discussionDraft, setDiscussionDraft] = useState("");
   const [timepointDraft, setTimepointDraft] = useState("");
@@ -206,7 +207,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const commentListRef = useRef<HTMLDivElement>(null);
   const videoFramesRef = useRef<Array<{ targetUrl: string; seconds: number; timestamp: string; dataUrl: string }>>([]);
   const frameCaptureFailedRef = useRef<string | null>(null);
-  const visionWarningTargetRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const commentBusyRef = useRef(false);
   const objectUrlRef = useRef<string | null>(null);
@@ -257,7 +257,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const seconds = Math.max(0, video.currentTime);
       const frame = { targetUrl: target.url, seconds, timestamp: new Date().toISOString(), dataUrl };
       videoFramesRef.current = [...videoFramesRef.current.filter(item => item.targetUrl === target.url && Math.abs(item.seconds - seconds) > 1), frame].slice(-8);
-      setFrameSampleCount(videoFramesRef.current.length);
       frameCaptureFailedRef.current = null;
       return frame;
     } catch {
@@ -268,15 +267,16 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   useEffect(() => {
     videoFramesRef.current = videoFramesRef.current.filter(frame => frame.targetUrl === target?.url);
-    setFrameSampleCount(videoFramesRef.current.length);
     frameCaptureFailedRef.current = null;
-    visionWarningTargetRef.current = null;
-    if (!watching || !target) return;
-    const capture = () => { captureCurrentVideoFrame(); };
-    capture();
-    const timer = window.setInterval(capture, 8000);
+    // Capture silently from native in-page video only. Avoid pixel readback on clicks or React state updates.
+    if (!target?.nativeVideo) return;
+    const timer = window.setInterval(() => {
+      const video = playerRef.current?.querySelector("video");
+      if (!video || video.paused || video.ended || video.readyState < 2) return;
+      captureCurrentVideoFrame();
+    }, 12000);
     return () => window.clearInterval(timer);
-  }, [watching, target?.url, captureCurrentVideoFrame]);
+  }, [target?.url, target?.nativeVideo, captureCurrentVideoFrame]);
 
   useEffect(() => {
     const list = commentListRef.current;
@@ -376,21 +376,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const session = sessions.find(item => !item.isGroup && item.contactId === contact?.id)
         ?? ({ id: `watch-together-${character.id}`, contactId: contact?.id ?? character.id, unreadCount: 0, updatedAt: new Date().toISOString(), isPinned: false, isGroup: false } as ChatSession);
       const history = loadChatMessages(session.id).slice(-12).filter(item => item.status !== "failed" && !item.isRetracted);
-      const currentFrame = captureCurrentVideoFrame();
-      const recentFrames = videoFramesRef.current
+      // Use cached samples only; never synchronously capture while a video is playing because some WebViews stall.
+      const framesToSend = videoFramesRef.current
         .filter(frame => frame.targetUrl === target.url && Date.now() - new Date(frame.timestamp).getTime() <= 90000)
         .slice(-3);
-      const framesToSend = currentFrame
-        ? [...recentFrames.filter(frame => Math.abs(frame.seconds - currentFrame.seconds) > 1), currentFrame].slice(-3)
-        : recentFrames;
       const activeBinding = resolveBinding(loadBindingConfig(), character.id, "watch_together");
       const visionConfig = loadApiConfigs().find(config => config.id === activeBinding.apiConfigId);
       const visionEnabled = visionConfig?.enableImageRecognition === true;
       const framesVisibleToModel = visionEnabled ? framesToSend : [];
-      if (framesToSend.length > 0 && !visionEnabled && visionWarningTargetRef.current !== target.url) {
-        visionWarningTargetRef.current = target.url;
-        onNotice?.("已经采集到视频画面，但「一起看」绑定的聊天 API 没有开启图像识别，角色目前看不到截图。请为这个角色的「一起看」绑定启用图像识别，并使用支持视觉的模型。");
-      }
       const frameMessages: ChatMessage[] = framesVisibleToModel.map((frame, index) => ({
         id: "watch-frame-" + Date.now() + "-" + index,
         sessionId: session.id,
@@ -426,7 +419,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const comment: WatchComment = { id: `comment-${Date.now()}`, characterId: character.id, characterName: character.name, text: responseText, createdAt: new Date().toISOString(), kind: "character", timepoint: responseTimepoint, targetUrl: target.url };
       setComments(current => { const next = [...current.slice(-99), comment]; saveTargetComments(target.url, next); return next; });
       if (settings.voiceEnabled) void speakComment(responseText, character.id);
-      if (manual) onNotice?.(framesVisibleToModel.length ? `${character.name}已经参考当前画面回应。` : `${character.name}回应了一句；本轮没有可读取画面，只依据文字内容。`);
+      if (manual) setCompanionCollapsed(false);
     } catch (error) {
       onNotice?.("角色观影回应失败：" + (error instanceof Error ? error.message : String(error)));
     } finally {
@@ -435,7 +428,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       queuedAfterReply = pendingDiscussionRef.current.shift();
       if (queuedAfterReply) window.setTimeout(() => { void generateComment(true, queuedAfterReply!.moment, queuedAfterReply!.timepoint); }, 50);
     }
-  }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice, captureCurrentVideoFrame]);
+  }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice]);
 
   const submitScreenshotForCharacter = async (file?: File) => {
     if (!target || !file) return;
@@ -448,10 +441,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       })();
       const frame = { targetUrl: target.url, seconds, timestamp: new Date().toISOString(), dataUrl };
       videoFramesRef.current = [...videoFramesRef.current.filter(item => item.targetUrl === target.url), frame].slice(-8);
-      setFrameSampleCount(videoFramesRef.current.length);
       const stamp = formatVideoTime(seconds);
       const moment = [settings.currentMoment.trim(), "用户附加截图时间点：" + stamp + "。请仅讨论该画面，不要推测后续。"].filter(Boolean).join("\n").slice(0, 800);
-      onNotice?.("截图已添加给角色，时间点 " + stamp + "。");
       if (commentBusyRef.current) pendingDiscussionRef.current.push({ moment, timepoint: stamp });
       else void generateComment(true, moment, stamp);
     } catch (error) {
@@ -470,14 +461,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     patchSettings({currentMoment:moment}); setDiscussionDraft("");
     if (commentBusyRef.current) {
       pendingDiscussionRef.current.push({ moment, timepoint: timepoint || undefined });
-      onNotice?.("已记下你的消息；角色正在回应，结束后会接着回复。");
     } else void generateComment(true,moment,timepoint||undefined);
   };
 
   const actTogether = (cue: string) => {
     const nextMoment = [settings.currentMoment.trim(), cue].filter(Boolean).join("；").slice(0, 800);
     patchSettings({ currentMoment: nextMoment });
-    void generateComment(true, nextMoment);
+    if (commentBusyRef.current) pendingDiscussionRef.current.push({ moment: nextMoment });
+    else void generateComment(true, nextMoment);
   };
 
   useEffect(() => {
@@ -655,7 +646,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
           <section className="relative z-10 mt-5 min-h-0 border-t border-[#d6b18c]/20 pt-4">
             <div className="flex items-baseline justify-between gap-2"><h2 className="font-serif text-base tracking-wide text-[#f0dfcc]">一起讨论</h2><span className="text-[10px] tracking-[.12em] text-[#a9937e]">SCENE NOTES · {comments.length}</span></div>
-            <p className="mt-1 text-[10px] leading-5 text-[#a9937e]">把某一幕或想说的话记在对应时间点。可读取的视频会自动每 8 秒采样；跨站播放器不能被网页截图时，请点「给 TA 看截图」。已采集 {frameSampleCount} 张。角色绑定的 API 需开启图像识别才能真正看见这些图片。</p>
+            <p className="mt-1 text-[10px] leading-5 text-[#a9937e]">把某一幕或想说的话记在对应时间点；你的消息和 TA 的回应都会出现在画面弹幕与下方讨论记录里。</p>
             {comments.some(item=>item.timepoint) && <div className="mt-3 flex flex-wrap gap-2">{[...new Set(comments.filter(item=>item.timepoint).map(item=>item.timepoint!))].map(point=><button key={point} type="button" onClick={()=>{setTimepointDraft(point);setDiscussionDraft(`想再聊聊 ${point} 这一幕`);}} className="border-b border-[#c99a78]/60 px-1 py-1 text-[11px] text-[#e4c6a8]">{point} ↗</button>)}</div>}
             <div ref={commentListRef} className="watch-comment-list mt-3 min-h-0 max-h-64 space-y-3 overflow-y-auto overscroll-contain pr-1">{comments.length ? comments.slice(-30).map(item=><div key={item.id} className={`flex ${item.kind==="user"?"justify-end":"justify-start"}`}><div className={`max-w-[88%] rounded-2xl border px-3 py-2.5 shadow-sm ${item.kind==="user"?"border-[#d6b18c]/35 bg-[#d6b18c]/10":"border-white/10 bg-white/[.045]"}`}><div className="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-[#c4a58a]"><span>{item.kind==="user"?"我":item.characterName}</span>{item.timepoint&&<button type="button" onClick={()=>setTimepointDraft(item.timepoint||"")} className="border-b border-[#c99a78]/50 text-[#e4c6a8]">{item.timepoint}</button>}<span className="text-[#85756a]">{new Date(item.createdAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</span></div><p className="whitespace-pre-wrap break-words font-serif text-sm leading-6 text-[#efe2d0]">{item.text}</p></div></div>) : <p className="border-l border-[#c99a78]/45 py-1 pl-3 text-xs leading-6 text-[#a9937e]">这里留给你们讨论剧情、吐槽片段，或标记想一起记住的时刻。</p>}</div>
             <div className="watch-discussion-composer mt-3 border-t border-[#d6b18c]/20 pt-3"><div className="flex items-center gap-2"><input value={timepointDraft} onChange={event=>setTimepointDraft(event.target.value.slice(0,16))} disabled={!target} placeholder="时间点 03:12（可选）" className="w-[42%] min-w-0 border-b border-[#9c7b63]/60 bg-transparent px-1 py-2 text-xs text-[#f0dfcc] outline-none placeholder:text-[#907d6c] focus:border-[#e4c6a8]"/><span className="text-[10px] text-[#907d6c]">章节 / 剧情标记</span></div><textarea value={discussionDraft} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} disabled={!target} maxLength={800} rows={2} placeholder={target ? "写下你对这一幕的看法……" : "先放上视频，再写下你对这一幕的看法……"} className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-black/20 p-3 text-sm leading-6 text-[#efe2d0] outline-none placeholder:text-[#907d6c] focus:border-[#c99a78]/60 focus:ring-2 focus:ring-[#c99a78]/10"/><div className="mt-2 flex justify-end"><button type="button" onClick={submitDiscussion} disabled={!target||!discussionDraft.trim()} className="inline-flex items-center rounded-full border border-[#c99a78]/60 bg-[#c99a78] px-4 py-2.5 text-xs font-medium text-[#2a1f16] shadow-sm transition hover:brightness-105 active:scale-[.98] disabled:opacity-40"><MessageCircle size={13} className="mr-1 inline"/>记下并问问 TA</button></div></div>
