@@ -710,12 +710,13 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           </div>
         </div>
         {!photos.length && <div className="pointer-events-none absolute inset-x-8 top-1/2 -translate-y-1/2 text-center"><p className="font-serif text-lg text-[#76634e]">一面空白的奶油墙</p><p className="mt-2 text-xs text-[#95836c]">点击「进入编辑」来添加照片</p></div>}
+        <button type="button" onClick={() => setWallView("edit")} className="absolute bottom-3 right-4 z-20 rounded-full border border-white/70 bg-[#78866d] px-5 py-3 text-sm font-medium text-white shadow-[0_8px_24px_rgba(72,86,62,.28)]">进入编辑</button>
       </div> : <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-24 pt-4 sm:px-7" style={{WebkitOverflowScrolling:"touch"}}>
         {photos.length === 0 ? <div className="grid min-h-[55dvh] place-items-center text-center text-[#8f806d]"><div><Feather size={28} className="mx-auto"/><p className="mt-3">还没有收录的回忆</p><p className="mt-1 text-xs">进入编辑，添加第一张照片。</p></div></div> : <div className="mx-auto max-w-2xl space-y-6">
-          {[...new Set([...photos].sort((a,b)=>(b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt)).map(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return Number.isNaN(date.getTime()) ? "未知时间" : date.toLocaleDateString("zh-CN", {year:"numeric",month:"2-digit"}); }))].map(group => {
+          {[...new Set([...photos].sort((a,b)=>(b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt)).map(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return Number.isNaN(date.getTime()) ? "未知时间" : `${date.getFullYear()}.${String(date.getMonth()+1).padStart(2,"0")}`; }))].map(group => {
             const items = photos.filter(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return (Number.isNaN(date.getTime()) ? "未知时间" : date.toLocaleDateString("zh-CN", {year:"numeric",month:"2-digit"})) === group; }).sort((a,b)=>(b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt));
             return <section key={group} className="relative pl-5 before:absolute before:bottom-0 before:left-1 before:top-8 before:w-px before:bg-[#d8c4ab]">
-              <h2 className="sticky top-0 z-10 mb-3 rounded-xl bg-[#f3eadc]/95 px-3 py-2 font-serif text-base text-[#75624d] backdrop-blur">{group}</h2>
+              <h2 className="sticky top-0 z-10 mb-3 rounded-xl bg-[#f3eadc]/95 px-3 py-2 font-serif text-base text-[#75624d] backdrop-blur">{group} <span className="mx-1 text-[#c4ad91]">｜</span><span className="text-sm">我们的时光</span></h2>
               <div className="space-y-4">{items.map((photo,index) => <button type="button" key={photo.id} onClick={() => openPhoto(photo)} className="relative block w-full rounded-[22px] border border-[#e5d7c5] bg-[#fffaf1] p-3 text-left shadow-[0_8px_22px_rgba(90,67,42,.08)]">
                 <span className="absolute -left-[21px] top-6 h-3 w-3 rounded-full border-2 border-[#f3eadc] bg-[#9aab8c]"/>
                 <div className="mx-auto max-w-[360px] rotate-0 rounded-sm bg-[#fffdf8] p-3 pb-5 shadow-[0_5px_14px_rgba(70,55,40,.15)]">
