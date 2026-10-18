@@ -167,8 +167,21 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [exportBusy, setExportBusy] = useState(false);
 
   const scheduleSave = useCallback((next: PhotoWallState) => {
-    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = window.setTimeout(() => { savePhotoWallState(next); saveTimerRef.current = null; }, 200);
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      savePhotoWallState(stateRef.current);
+      saveTimerRef.current = null;
+    }, 200);
+  }, []);
+
+  // 关闭照片墙/切换应用时，不能丢掉尚在 200ms 防抖窗口中的拖动、缩放或涂鸦。
+  // 用最新快照落盘，避免闭包里保存的旧状态覆盖最后一次操作。
+  useEffect(() => () => {
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+      savePhotoWallState(stateRef.current);
+    }
   }, []);
 
   /** 统一落盘入口：先更新状态快照与 React 状态，再合并写盘。 */
@@ -277,7 +290,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   }, []);
   useEffect(() => {
     refreshCharacters();
-    const refresh = () => setState(loadPhotoWallState());
+    const refresh = () => {
+      const next = loadPhotoWallState();
+      stateRef.current = next;
+      setState(next);
+    };
     window.addEventListener("photo-wall-updated", refresh);
     window.addEventListener("characters-updated", refreshCharacters);
     return () => { window.removeEventListener("photo-wall-updated", refresh); window.removeEventListener("characters-updated", refreshCharacters); };
