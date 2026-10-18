@@ -10,6 +10,46 @@ import { loadPhotoWallState } from "@/lib/photo-wall-storage";
 type ArchiveItem = MediaCacheSummary & { ref: string; usedBy: string[]; objectUrl?: string };
 type ArchiveMeta = { label?: string; note?: string; favorite?: boolean };
 const ARCHIVE_META_KEY = "ai_phone_archive_meta_v1";
+
+type AverageImageHash = { high: number; low: number };
+async function averageImageHash(blob: Blob): Promise<AverageImageHash | null> {
+  let bitmap: ImageBitmap | null = null;
+  try {
+    bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement("canvas");
+    canvas.width = 8; canvas.height = 8;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return null;
+    context.drawImage(bitmap, 0, 0, 8, 8);
+    const data = context.getImageData(0, 0, 8, 8).data;
+    const luminance: number[] = [];
+    let sum = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const value = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+      luminance.push(value); sum += value;
+    }
+    const average = sum / luminance.length;
+    let high = 0; let low = 0;
+    for (let i = 0; i < luminance.length; i += 1) {
+      const bit = luminance[i] >= average ? 1 : 0;
+      if (i < 32) high = (high << 1) | bit;
+      else low = (low << 1) | bit;
+    }
+    return { high: high >>> 0, low: low >>> 0 };
+  } catch { return null; }
+  finally { bitmap?.close(); }
+}
+function popcount32(value: number): number {
+  let v = value >>> 0;
+  v -= (v >>> 1) & 0x55555555;
+  v = (v & 0x33333333) + ((v >>> 2) & 0x33333333);
+  v = (v + (v >>> 4)) & 0x0F0F0F0F;
+  return (Math.imul(v, 0x01010101) >>> 24);
+}
+function imageHashDistance(a: AverageImageHash, b: AverageImageHash): number {
+  return popcount32(a.high ^ b.high) + popcount32(a.low ^ b.low);
+}
+
 function loadArchiveMeta(): Record<string, ArchiveMeta> { try { const raw = typeof window !== "undefined" ? window.localStorage.getItem(ARCHIVE_META_KEY) : null; const parsed = raw ? JSON.parse(raw) : {}; return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, ArchiveMeta> : {}; } catch { return {}; } }
 function saveArchiveMeta(value: Record<string, ArchiveMeta>) { try { window.localStorage.setItem(ARCHIVE_META_KEY, JSON.stringify(value)); } catch { /* metadata must never block media access */ } }
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
@@ -26,6 +66,8 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
   const [loading, setLoading] = useState(false);
   const [scanningDuplicates, setScanningDuplicates] = useState(false);
   const [duplicateIds, setDuplicateIds] = useState<Set<string>>(new Set());
+  const [exactDuplicateIds, setExactDuplicateIds] = useState<Set<string>>(new Set());
+  const [visualDuplicateIds, setVisualDuplicateIds] = useState<Set<string>>(new Set());
   const [duplicateGroups, setDuplicateGroups] = useState<string[][]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [meta, setMeta] = useState<Record<string, ArchiveMeta>>(() => loadArchiveMeta());
@@ -73,7 +115,8 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
     setScanningDuplicates(true);
     try {
       const hashGroups = new Map<string, string[]>();
-      // 逐个读取并计算摘要，不把所有媒体 Blob 同时放进内存。
+      const imageHashes = new Map<string, AverageImageHash>();
+      // 逐个读取、计算内容摘要和低分辨率视觉摘要，避免同时将所有 Blob 放入内存。
       for (const item of items) {
         const loaded = await loadMediaBlob(item.ref);
         if (!loaded) continue;
@@ -82,14 +125,72 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
         const ids = hashGroups.get(hash) || [];
         ids.push(item.id);
         hashGroups.set(hash, ids);
+        if (item.category === "image" || loaded.blob.type.startsWith("image/")) {
+          const visualHash = await averageImageHash(loaded.blob);
+          if (visualHash) imageHashes.set(item.id, visualHash);
+        }
       }
-      const groups = [...hashGroups.values()].filter(group => group.length > 1);
+      const exactGroups = [...hashGroups.values()].filter(group => group.length > 1);
+      const exactIds = new Set(exactGroups.flat());
+      // Average-hash is a review aid for re-encoded/resized copies. It never makes an
+      // item eligible for automatic deletion; only exact SHA-256 copies can be recommended.
+      const imageIds = [...imageHashes.keys()];
+      const visualParent = new Map<string, string>(imageIds.map(id => [id, id]));
+      const findVisualRoot = (id: string): string => {
+        const p = visualParent.get(id) ?? id;
+        if (p === id) return id;
+        const root = findVisualRoot(p);
+        visualParent.set(id, root);
+        return root;
+      };
+      for (let i = 0; i < imageIds.length; i += 1) {
+        for (let j = i + 1; j < imageIds.length; j += 1) {
+          const left = imageIds[i]; const right = imageIds[j];
+          const a = imageHashes.get(left); const b = imageHashes.get(right);
+          if (!a || !b || imageHashDistance(a, b) > 5) continue;
+          const rootA = findVisualRoot(left); const rootB = findVisualRoot(right);
+          if (rootA !== rootB) visualParent.set(rootB, rootA);
+        }
+      }
+      const visualBuckets = new Map<string, string[]>();
+      for (const id of imageIds) {
+        const root = findVisualRoot(id);
+        const ids = visualBuckets.get(root) ?? [];
+        ids.push(id);
+        visualBuckets.set(root, ids);
+      }
+      const visualGroups = [...visualBuckets.values()].filter(group => group.length > 1);
+      const combinedParent = new Map<string, string>();
+      const findCombinedRoot = (id: string): string => {
+        const p = combinedParent.get(id) ?? id;
+        if (p === id) return id;
+        const root = findCombinedRoot(p);
+        combinedParent.set(id, root);
+        return root;
+      };
+      const connectGroup = (group: string[]) => {
+        if (!group.length) return;
+        if (!combinedParent.has(group[0])) combinedParent.set(group[0], group[0]);
+        for (const id of group.slice(1)) {
+          if (!combinedParent.has(id)) combinedParent.set(id, id);
+          const a = findCombinedRoot(group[0]); const b = findCombinedRoot(id);
+          if (a !== b) combinedParent.set(b, a);
+        }
+      };
+      exactGroups.forEach(connectGroup);
+      visualGroups.forEach(connectGroup);
+      const combinedBuckets = new Map<string, string[]>();
+      for (const id of combinedParent.keys()) {
+        const root = findCombinedRoot(id);
+        const ids = combinedBuckets.get(root) ?? [];
+        ids.push(id);
+        combinedBuckets.set(root, ids);
+      }
+      const groups = [...combinedBuckets.values()].filter(group => group.length > 1);
       const byId = new Map(items.map(item => [item.id, item]));
-      // Prefer keeping files referenced by chat. Only recommend deleting an unreferenced
-      // copy; if every copy is referenced, leave the group out of deletion candidates.
-      // The current reference index covers chat messages, so this is deliberately
-      // conservative rather than claiming a full cross-module reference audit.
-      const candidates = groups.flatMap(group => {
+      // Prefer keeping favorites and files referenced by chat/photo wall. Only recommend
+      // deleting an unreferenced exact copy; perceptual matches require human review.
+      const candidates = exactGroups.flatMap(group => {
         const sorted = group.slice().sort((a, b) => {
           const left = byId.get(a); const right = byId.get(b);
           const leftFavorite = meta[a]?.favorite === true;
@@ -102,19 +203,22 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
         });
         return sorted.slice(1).filter(id => meta[id]?.favorite !== true && (byId.get(id)?.usedBy.length ?? 0) === 0);
       });
+      const visualIds = new Set(visualGroups.flat().filter(id => !exactIds.has(id)));
       setDuplicateGroups(groups);
-      // Keep every member visible; recommendations are a separate, conservative selection.
       setDuplicateIds(new Set(groups.flat()));
+      setExactDuplicateIds(exactIds);
+      setVisualDuplicateIds(visualIds);
       setRecommendedDeleteIds(new Set(candidates));
       setSelected([]);
       setTab("duplicates");
-      const protectedCount = groups.reduce((count, group) => {
-        const hasUnreferencedDuplicate = group.some(id => candidates.includes(id));
-        return count + (hasUnreferencedDuplicate ? 0 : 1);
+      const protectedCount = exactGroups.reduce((count, group) => {
+        const hasCandidate = group.some(id => candidates.includes(id));
+        return count + (hasCandidate ? 0 : 1);
       }, 0);
+      const visualOnlyGroups = visualGroups.filter(group => group.some(id => !exactIds.has(id))).length;
       onNotice?.(groups.length
-        ? `找到 ${groups.length} 组内容完全相同的文件；现在展示每组全部副本，可逐张选择。已为未收藏且未被引用的副本提供 ${candidates.length} 个推荐删除项。${protectedCount} 组暂时没有安全推荐项。`
-        : "没有发现内容完全相同的文件。");
+        ? "扫描完成：" + exactGroups.length + " 组文件内容完全相同，另有 " + visualOnlyGroups + " 组视觉相似图片供人工核对。已为未收藏且未被引用的完全重复副本提供 " + candidates.length + " 个推荐删除项；" + protectedCount + " 组没有安全推荐项。视觉相似项不会自动推荐删除。"
+        : "没有发现内容完全相同或视觉相似的媒体文件。");
     } catch (error) {
       onNotice?.("重复扫描失败：" + (error instanceof Error ? error.message : String(error)));
     } finally { setScanningDuplicates(false); }
@@ -200,19 +304,19 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
       </section>
       <div className="mt-4 grid grid-cols-2 gap-3">
         <button onClick={() => {setTab("all");setFilter("all");}} className={`rounded-2xl border p-4 text-left ${tab==="all"?"border-stone-400 bg-white":"border-stone-200 bg-white/60"}`}><Archive size={19}/><div className="mt-2 font-semibold">媒体库</div><div className="mt-1 text-xs text-stone-500">浏览、筛选与批量管理</div></button>
-        <button onClick={() => void scanDuplicates()} disabled={scanningDuplicates || loading} className="rounded-2xl border border-stone-200 bg-white/60 p-4 text-left disabled:opacity-60">{scanningDuplicates?<LoaderCircle size={19} className="animate-spin"/>:<Copy size={19}/>}<div className="mt-2 font-semibold">重复文件扫描</div><div className="mt-1 text-xs text-stone-500">按文件内容精确比对</div></button>
+        <button onClick={() => void scanDuplicates()} disabled={scanningDuplicates || loading} className="rounded-2xl border border-stone-200 bg-white/60 p-4 text-left disabled:opacity-60">{scanningDuplicates?<LoaderCircle size={19} className="animate-spin"/>:<Copy size={19}/>}<div className="mt-2 font-semibold">重复文件扫描</div><div className="mt-1 text-xs text-stone-500">精确重复 + 视觉相似候选</div></button>
       </div>
-      {tab==="duplicates"&&<div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900"><ShieldAlert size={16} className="mb-1"/>这里展示重复组的全部副本，你可以逐张选择保留哪个。只把内容哈希完全一致的文件视为重复；压缩、裁剪后的相似图片需要单独判断。<div className="mt-2 flex flex-wrap items-center gap-2"><button type="button" onClick={()=>{setSelected(visibleItems.filter(item=>recommendedDeleteIds.has(item.id)&&meta[item.id]?.favorite!==true).map(item=>item.id));setConfirmDelete(false);}} className="rounded-lg border border-amber-300 bg-white/80 px-3 py-2 font-medium">选择推荐删除项（{visibleItems.filter(item=>recommendedDeleteIds.has(item.id)&&meta[item.id]?.favorite!==true).length}）</button><button type="button" onClick={()=>{setSelected(visibleItems.filter(item=>meta[item.id]?.favorite!==true).map(item=>item.id));setConfirmDelete(false);}} className="rounded-lg border border-amber-300 bg-white/80 px-3 py-2">选择未收藏项</button></div></div>}
+      {tab==="duplicates"&&<div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900"><ShieldAlert size={16} className="mb-1"/>这里展示内容完全相同的文件和视觉相似图片的全部候选，可逐张勾选。绿色「推荐删除」只来自内容哈希完全一致且未收藏、未被引用的副本；视觉相似项仅供人工核对，绝不会自动推荐删除。<div className="mt-2 flex flex-wrap items-center gap-2"><button type="button" onClick={()=>{setSelected(visibleItems.filter(item=>recommendedDeleteIds.has(item.id)&&meta[item.id]?.favorite!==true).map(item=>item.id));setConfirmDelete(false);}} className="rounded-lg border border-amber-300 bg-white/80 px-3 py-2 font-medium">选择推荐删除项（{visibleItems.filter(item=>recommendedDeleteIds.has(item.id)&&meta[item.id]?.favorite!==true).length}）</button><button type="button" onClick={()=>{setSelected(visibleItems.filter(item=>meta[item.id]?.favorite!==true).map(item=>item.id));setConfirmDelete(false);}} className="rounded-lg border border-amber-300 bg-white/80 px-3 py-2">选择未收藏项</button></div></div>}
       <div className="mt-5 flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-3 py-2"><Search size={16} className="shrink-0 text-stone-400"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="搜索文件 ID 或关联会话" className="min-w-0 flex-1 bg-transparent text-sm outline-none"/>{query&&<button onClick={()=>setQuery("")}><X size={15}/></button>}</div>
       <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1">{([{key:"all",label:"全部"},{key:"image",label:"图片"},{key:"audio",label:"语音"},{key:"video",label:"视频"},{key:"file",label:"其他"}] as const).map(x=><button key={x.key} onClick={()=>setFilter(x.key)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs ${filter===x.key?"bg-stone-800 text-white":"bg-white text-stone-600"}`}>{x.label}</button>)}</div>
       <div className="mt-3 flex items-center justify-between gap-2 text-xs text-stone-500"><span>{visibleItems.length} 个项目{selected.length? ` · 已选 ${selected.length}`:""}</span><div className="flex items-center gap-3"><button type="button" onClick={()=>{setSelected(visibleItems.filter(item=>meta[item.id]?.favorite!==true).map(item=>item.id));setConfirmDelete(false);}} className="font-medium text-stone-700">选中未收藏</button><button onClick={()=>{setSelected(selected.length===visibleItems.length?[]:visibleItems.map(x=>x.id));setConfirmDelete(false);}} className="font-medium text-stone-700">{selected.length===visibleItems.length&&visibleItems.length?"取消全选":"选择当前列表"}</button></div></div>
-      <div className="mt-2 space-y-2 pb-24">{loading?<div className="py-12 text-center text-sm text-stone-500"><LoaderCircle className="mx-auto mb-2 animate-spin"/>正在扫描媒体索引…</div>:visibleItems.length===0?<div className="rounded-2xl border border-dashed border-stone-300 bg-white/50 px-4 py-12 text-center text-sm text-stone-500">{tab==="duplicates"?"没有重复项，或尚未完成扫描。":"当前范围没有找到媒体文件。"}</div>:visibleItems.map(item=><MediaRow key={item.id} item={item} checked={selected.includes(item.id)} onToggle={()=>toggle(item.id)} meta={meta[item.id] ?? {}} onPatch={patch=>patchMeta(item.id,patch)} recommended={recommendedDeleteIds.has(item.id)}/>)}</div>
+      <div className="mt-2 space-y-2 pb-24">{loading?<div className="py-12 text-center text-sm text-stone-500"><LoaderCircle className="mx-auto mb-2 animate-spin"/>正在扫描媒体索引…</div>:visibleItems.length===0?<div className="rounded-2xl border border-dashed border-stone-300 bg-white/50 px-4 py-12 text-center text-sm text-stone-500">{tab==="duplicates"?"没有重复项，或尚未完成扫描。":"当前范围没有找到媒体文件。"}</div>:visibleItems.map(item=><MediaRow key={item.id} item={item} checked={selected.includes(item.id)} onToggle={()=>toggle(item.id)} meta={meta[item.id] ?? {}} onPatch={patch=>patchMeta(item.id,patch)} recommended={recommendedDeleteIds.has(item.id)} exactDuplicate={exactDuplicateIds.has(item.id)} visualSimilar={visualDuplicateIds.has(item.id)}/>)}</div>
     </main>
     {selected.length>0&&<footer className="flex shrink-0 items-center gap-3 border-t border-stone-200 bg-white/95 px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))]"><div className="min-w-0 flex-1 text-sm"><div className="font-semibold">已选择 {selected.length} 项</div><div className="text-xs text-stone-500">约 {bytesLabel(items.filter(x=>selected.includes(x.id)).reduce((n,x)=>n+x.bytes,0))}</div></div><button onClick={()=>void exportSelected()} className="flex items-center gap-2 rounded-xl border border-stone-300 px-3 py-2.5 text-sm font-medium text-stone-700">导出 ZIP</button><button onClick={()=>{setSelected([]);setConfirmDelete(false);}} className="rounded-xl px-3 py-2 text-sm text-stone-600">取消</button><button onClick={()=>void deleteSelected()} className="flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-medium text-white"><Trash2 size={16}/>{confirmDelete?"确认删除":"删除所选"}</button></footer>}
   </div>;
 }
 
-function MediaRow({ item, checked, onToggle, meta, onPatch, recommended }: { item: ArchiveItem; checked: boolean; onToggle: () => void; meta: ArchiveMeta; onPatch: (patch: Partial<ArchiveMeta>) => void; recommended: boolean }) {
+function MediaRow({ item, checked, onToggle, meta, onPatch, recommended, exactDuplicate, visualSimilar }: { item: ArchiveItem; checked: boolean; onToggle: () => void; meta: ArchiveMeta; onPatch: (patch: Partial<ArchiveMeta>) => void; recommended: boolean; exactDuplicate: boolean; visualSimilar: boolean }) {
   const [url, setUrl] = useState("");
   useEffect(() => {
     let active = true;
@@ -233,6 +337,8 @@ function MediaRow({ item, checked, onToggle, meta, onPatch, recommended }: { ite
       {item.category === "audio" && url && <audio controls preload="none" src={url} className="mt-2 h-8 w-full max-w-[240px]"/>}
       <div className={item.usedBy.length ? "mt-1 break-words text-xs text-emerald-700" : "mt-1 break-words text-xs text-amber-700"}>{item.usedBy.length ? "关联 " + item.usedBy.length + " 个会话 / 记录" : "未发现已知引用（不代表一定可删除）"}</div>
       {meta.favorite && <div className="mt-1 text-[10px] font-medium text-amber-700">已收藏 · 批量删除会自动保护</div>}
+      {exactDuplicate && <div className="mt-1 text-[10px] font-medium text-emerald-700">文件内容完全相同（SHA-256）</div>}
+      {visualSimilar && <div className="mt-1 text-[10px] font-medium text-amber-700">视觉相似候选 · 需人工核对，不自动推荐删除</div>}
       {recommended && !meta.favorite && <div className="mt-1 text-[10px] font-medium text-emerald-700">推荐删除候选（仍需你选择并确认）</div>}
       <input value={meta.label ?? ""} onChange={event=>onPatch({label:event.target.value})} placeholder={item.category==="audio"?"给语音标注内容 / 角色 / 场景…":"给文件起一个容易识别的名字…"} aria-label="文件备注名称" className="mt-2 w-full rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-2 text-xs outline-none focus:border-stone-400"/>
       <textarea value={meta.note ?? ""} onChange={event=>onPatch({note:event.target.value})} rows={1} placeholder="备注：内容、来源、为什么要保留……" aria-label="文件备注" className="mt-2 w-full resize-y rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-2 text-xs outline-none focus:border-stone-400"/>
