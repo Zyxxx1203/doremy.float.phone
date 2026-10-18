@@ -403,7 +403,7 @@ function WallPhotoFrame({ photo, placement, selected, flipped, onToggleFlip, doo
 
       </>}
 
-      {selected && !doodleMode && !placement.locked && <button
+      {selected && mode === "move" && !doodleMode && !placement.locked && <button
         type="button"
         aria-label="拖动调整大小"
         onPointerDown={event => { event.stopPropagation(); onPointerDownResize(event); }}

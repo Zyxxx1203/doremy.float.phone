@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ArrowLeft, Camera, Check, ChevronLeft, ChevronRight, Download, Feather, Heart, ImagePlus, LoaderCircle, MessageCircle, MoreHorizontal, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
@@ -709,7 +710,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={event => { if (event.target.files) void uploadFiles(event.target.files); event.currentTarget.value = ""; }}/>
 
     <main className={wallView === "panorama" ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-y-auto overscroll-contain"}>
-      {showZoomFeedback && <div aria-live="polite" className="pointer-events-none fixed left-1/2 top-1/2 z-[10050] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#dfcfbe] bg-[#49372b]/95 px-4 py-2.5 font-sans text-base font-semibold tabular-nums text-white shadow-xl">{panoramaZoom}%</div>}
+      {showZoomFeedback && typeof document !== "undefined" && createPortal(<div aria-live="polite" className="pointer-events-none fixed left-1/2 top-1/2 z-[10050] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#dfcfbe] bg-[#49372b]/95 px-4 py-2.5 font-sans text-base font-semibold tabular-nums text-white shadow-xl">{panoramaZoom}%</div>, document.body)}
       {wallView === "settings" ? <div className="min-h-full bg-[#f5ede3] px-4 pb-10 pt-5 sm:px-7" style={{backgroundImage:"repeating-linear-gradient(0deg,rgba(122,84,68,.025) 0,rgba(122,84,68,.025) 1px,transparent 1px,transparent 5px)"}}>
         <div className="mx-auto max-w-3xl">
           <p className="text-[10px] tracking-[.24em] text-[#a18172]">A QUIET CORNER FOR YOUR WALL</p>

@@ -7385,7 +7385,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             )}
 
             {/* Chat toast notification (overlay, does not affect layout) */}
-            {chatToast && (
+            {chatToast && typeof document !== "undefined" && createPortal(
                 <div className="chat-toast-overlay">
                     <div className="wp-toast chat-toast-floating">
                         {chatToast === "加载音乐中..." ? (
@@ -7395,7 +7395,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                             </span>
                         ) : chatToast}
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* 通话界面已提升到 desktop-shell 的 CallLayer 常驻渲染：
