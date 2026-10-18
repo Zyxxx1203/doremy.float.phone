@@ -1,14 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronDown, Expand, ExternalLink, Heart, LoaderCircle, MessageCircle, Pause, Play, Settings2, Sparkles, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, Expand, ExternalLink, Heart, ImagePlus, LoaderCircle, MessageCircle, Pause, Play, Settings2, Sparkles, X } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import { generateChatCompletion, flattenCompletionResult } from "@/lib/chat-engine";
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { resolveVoiceConfig, synthesizeSpeech } from "@/lib/tts-service";
-import { resolveUserIdentity } from "@/lib/settings-storage";
+import { loadApiConfigs, loadBindingConfig, resolveBinding, resolveUserIdentity } from "@/lib/settings-storage";
+import { readCompressedImageDataUrl } from "@/lib/chat-engine";
 
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
 type Platform = "bilibili" | "youtube" | "tencent" | "youku" | "iqiyi" | "douyin" | "xiaohongshu" | "other";
@@ -23,6 +24,25 @@ const SETTINGS_KEY = "ai_phone_watch_together_v1";
 const SETTINGS_MIGRATION_KEY = "ai_phone_watch_together_schema_v2";
 const COMMENTS_KEY = "ai_phone_watch_together_comments_v1";
 const DEFAULT_SETTINGS: WatchSettings = { characterId: "", intervalMinMinutes: 3, intervalMaxMinutes: 8, voiceEnabled: true, danmakuEnabled: true, subtitlesEnabled: false, currentMoment: "" };
+function formatVideoTime(seconds: number): string {
+  const safe = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const rest = safe % 60;
+  return hours > 0
+    ? String(hours).padStart(2, "0") + ":" + String(minutes).padStart(2, "0") + ":" + String(rest).padStart(2, "0")
+    : String(minutes).padStart(2, "0") + ":" + String(rest).padStart(2, "0");
+}
+function parseVideoTime(value: string): number | null {
+  const match = value.trim().match(/^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = match[1] ? Number(match[1]) : 0;
+  const minutes = Number(match[2]);
+  const seconds = Number(match[3]);
+  if (minutes > 59 || seconds > 59) return null;
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
 function parseVideoUrl(value: string): VideoTarget | null {
   try {
     const source = value.trim();
@@ -115,6 +135,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [urlInput, setUrlInput] = useState("");
   const [target, setTarget] = useState<VideoTarget | null>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
+  const screenshotFileInputRef = useRef<HTMLInputElement>(null);
   const localVideoObjectUrlRef = useRef<string | null>(null);
   const nativeVideoCacheRef = useRef<{ url: string; cacheId: string } | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
@@ -171,6 +192,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   }, []);
 
   const [comments, setComments] = useState<WatchComment[]>([]);
+  const [frameSampleCount, setFrameSampleCount] = useState(0);
+  const pendingDiscussionRef = useRef<Array<{ moment: string; timepoint?: string }>>([]);
   const [discussionDraft, setDiscussionDraft] = useState("");
   const [timepointDraft, setTimepointDraft] = useState("");
   const [watching, setWatching] = useState(false);
@@ -232,7 +255,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const dataUrl = canvas.toDataURL("image/jpeg", 0.62);
       const seconds = Math.max(0, video.currentTime);
       const frame = { targetUrl: target.url, seconds, timestamp: new Date().toISOString(), dataUrl };
-      videoFramesRef.current = [...videoFramesRef.current.filter(item => item.targetUrl === target.url && item.seconds !== seconds), frame].slice(-4);
+      videoFramesRef.current = [...videoFramesRef.current.filter(item => item.targetUrl === target.url && Math.abs(item.seconds - seconds) > 1), frame].slice(-8);
+      setFrameSampleCount(videoFramesRef.current.length);
       frameCaptureFailedRef.current = null;
       return frame;
     } catch {
@@ -243,18 +267,29 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   useEffect(() => {
     videoFramesRef.current = videoFramesRef.current.filter(frame => frame.targetUrl === target?.url);
+    setFrameSampleCount(videoFramesRef.current.length);
     frameCaptureFailedRef.current = null;
     if (!watching || !target) return;
     const capture = () => { captureCurrentVideoFrame(); };
     capture();
-    const timer = window.setInterval(capture, 12000);
+    const timer = window.setInterval(capture, 8000);
     return () => window.clearInterval(timer);
   }, [watching, target?.url, captureCurrentVideoFrame]);
 
   useEffect(() => {
     const list = commentListRef.current;
     if (!list) return;
-    requestAnimationFrame(() => { list.scrollTo({ top: list.scrollHeight, behavior: "smooth" }); });
+    let first = 0;
+    let second = 0;
+    first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => {
+        const current = commentListRef.current;
+        if (!current) return;
+        current.scrollTop = current.scrollHeight;
+        current.scrollTo({ top: current.scrollHeight, behavior: "smooth" });
+      });
+    });
+    return () => { cancelAnimationFrame(first); cancelAnimationFrame(second); };
   }, [comments.length, fullScreen, busy]);
   const restoreOrientation = async () => {
     try { screen.orientation?.unlock?.(); } catch { /* orientation lock is optional */ }
@@ -332,6 +367,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const generateComment = useCallback(async (manual = false, momentOverride?: string, timepointOverride?: string) => {
     if (!target || !character || commentBusyRef.current) return;
     commentBusyRef.current = true; setBusy(true);
+    let queuedAfterReply: { moment: string; timepoint?: string } | undefined;
     try {
       const sessions = loadChatSessions();
       const contact = loadChatContacts().find(item => item.characterId === character.id);
@@ -339,44 +375,100 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         ?? ({ id: `watch-together-${character.id}`, contactId: contact?.id ?? character.id, unreadCount: 0, updatedAt: new Date().toISOString(), isPinned: false, isGroup: false } as ChatSession);
       const history = loadChatMessages(session.id).slice(-12).filter(item => item.status !== "failed" && !item.isRetracted);
       const currentFrame = captureCurrentVideoFrame();
-      const recentFrames = videoFramesRef.current.filter(frame => frame.targetUrl === target.url && Date.now() - new Date(frame.timestamp).getTime() <= 45000).slice(-3);
-      const framesToSend = currentFrame ? [...recentFrames.filter(frame => frame.seconds !== currentFrame.seconds), currentFrame].slice(-3) : recentFrames;
-      const frameMessages: ChatMessage[] = framesToSend.map((frame, index) => {
-        const minute = Math.floor(frame.seconds / 60).toString().padStart(2, "0");
-        const second = Math.floor(frame.seconds % 60).toString().padStart(2, "0");
-        return { id: "watch-frame-" + Date.now() + "-" + index, sessionId: session.id, role: "user", content: "[视频当前画面截图，时间点 " + minute + ":" + second + "。只讨论截至此时间的画面，不透露或推测后续剧情。]", status: "sent", createdAt: frame.timestamp, mediaType: "image", mediaUrl: frame.dataUrl, mediaData: { label: "视频当前画面 " + minute + ":" + second } };
-      });
+      const recentFrames = videoFramesRef.current
+        .filter(frame => frame.targetUrl === target.url && Date.now() - new Date(frame.timestamp).getTime() <= 90000)
+        .slice(-3);
+      const framesToSend = currentFrame
+        ? [...recentFrames.filter(frame => Math.abs(frame.seconds - currentFrame.seconds) > 1), currentFrame].slice(-3)
+        : recentFrames;
+      const activeBinding = resolveBinding(loadBindingConfig(), character.id, "watch_together");
+      const visionConfig = loadApiConfigs().find(config => config.id === activeBinding.apiConfigId);
+      const visionEnabled = visionConfig?.enableImageRecognition === true;
+      const framesVisibleToModel = visionEnabled ? framesToSend : [];
+      if (framesToSend.length > 0 && !visionEnabled) {
+        onNotice?.("已经采集到视频画面，但「一起看」绑定的聊天 API 没有开启图像识别，角色目前看不到截图。请为这个角色的「一起看」绑定启用图像识别，并使用支持视觉的模型。");
+      }
+      const frameMessages: ChatMessage[] = framesVisibleToModel.map((frame, index) => ({
+        id: "watch-frame-" + Date.now() + "-" + index,
+        sessionId: session.id,
+        role: "user",
+        content: "[视频画面截图，时间点 " + formatVideoTime(frame.seconds) + "。只评论这个时间点及之前已经出现的画面，绝不剧透后续内容。]",
+        status: "sent",
+        createdAt: frame.timestamp,
+        mediaType: "image",
+        mediaUrl: frame.dataUrl,
+        mediaData: { label: "视频当前画面 " + formatVideoTime(frame.seconds) },
+      }));
       const prompt = [
         "你正在和用户一起看视频，是亲密、自然的陪伴，不是影评机器人。",
         `视频平台：${target.platformName}；视频标题（用户可编辑）：${videoTitle || "暂未命名"}。`,
-        `视频链接：${target.url}`,
         `用户描述的当前片段/时间点与两人的互动：${(momentOverride ?? settings.currentMoment).trim() || "用户暂未提供具体画面描述"}。`,
-        frameMessages.length ? "我附上了带精确时间点的最近视频截图。请只讨论这些截图里已经出现的内容；严禁透露、猜测或提示之后的剧情或反转。若截图看不清就坦白说看不清，不要编造。" : "当前没有可读取的视频画面截图。跨站 iframe 或防截取源可能禁止网页读取画面；只依据用户文字描述回应，不要声称看到了视频。",
-        "请结合角色自己的性格、兴趣和你们的关系，写一句自然的即时反应：可以吐槽、惊讶、共情、提问或分享感受。只输出角色会直接说的话，最多60个汉字。",
+        frameMessages.length
+          ? "附带多张带时间戳的视频截图。先读截图标签中的时间点，再依照时间顺序理解片段。只能评论这些截图中已经出现的内容；禁止猜测、提示或泄露后续剧情/反转，也不能根据标题或常识补全未显示情节。看不清时坦白说看不清，不能编造画面。"
+          : "本轮没有可供模型读取的视频截图。可能是跨站 iframe 无法截图，或图像识别没有开启。不得声称自己看见了画面；只能针对用户提供的文字内容自然回应。",
+        "请结合角色自己的性格、兴趣和你们的关系，写一句自然的即时反应：可以吐槽、惊讶、共情、提问或分享感受。只输出角色会直接说的话，最多60个汉字。不搜寻或推断视频后续剧情。",
       ].join("\n");
       const userMessage: ChatMessage = { id: `watch-${Date.now()}`, sessionId: session.id, role: "user", content: prompt, status: "sent", createdAt: new Date().toISOString() };
       const visionSession = { ...session, visionImagePromptLimit: 3, visionImagePromptLimitUsesGlobal: false };
       const result = await generateChatCompletion(visionSession, [...history, ...frameMessages, userMessage], {
-        appId: "watch_together", appTags: ["watch_together"], toolsAllowed: false,
-        ephemeralSystemNote: "你正在共同观影。不要调用工具、不要复述任务、不要声称直接读取了视频画面。只输出一句自然简短的角色发言。",
+        appId: "watch_together",
+        appTags: ["watch_together"],
+        toolsAllowed: false,
+        ephemeralSystemNote: "你正在共同观影。只有请求中实际附带的图像才算你看见的内容。不要调用工具，不要复述任务，不要假装看见不可读取的 iframe。只输出一句自然简短的角色发言，并严格避免剧透。",
       });
-      const text = flattenCompletionResult(result).trim().replace(/^["“]|["”]$/g, "");
-      if (!text) return;
-      const comment: WatchComment = { id: `comment-${Date.now()}`, characterId: character.id, characterName: character.name, text, createdAt: new Date().toISOString(), kind:"character", timepoint:timepointOverride, targetUrl:target.url };
-      setComments(current => { const next=[...current.slice(-99),comment]; saveTargetComments(target.url,next); return next; });
-      if (settings.voiceEnabled) void speakComment(text, character.id);
-      if (manual) onNotice?.(frameMessages.length ? `${character.name}说了一句（已参考最近视频截图）。` : frameCaptureFailedRef.current ? `${character.name}说了一句；当前无法读取视频画面，只根据文字讨论。` : `${character.name}说了一句。`);
-    } catch (error) { onNotice?.("角色观影回应失败：" + (error instanceof Error ? error.message : String(error))); }
-    finally { commentBusyRef.current = false; setBusy(false); }
+      const responseText = flattenCompletionResult(result).trim().replace(/^["“]|["”]$/g, "");
+      if (!responseText) return;
+      const lastFrame = framesVisibleToModel[framesVisibleToModel.length - 1];
+      const responseTimepoint = timepointOverride || (lastFrame ? formatVideoTime(lastFrame.seconds) : undefined);
+      const comment: WatchComment = { id: `comment-${Date.now()}`, characterId: character.id, characterName: character.name, text: responseText, createdAt: new Date().toISOString(), kind: "character", timepoint: responseTimepoint, targetUrl: target.url };
+      setComments(current => { const next = [...current.slice(-99), comment]; saveTargetComments(target.url, next); return next; });
+      if (settings.voiceEnabled) void speakComment(responseText, character.id);
+      if (manual) onNotice?.(framesVisibleToModel.length ? `${character.name}已经参考当前画面回应。` : `${character.name}回应了一句；本轮没有可读取画面，只依据文字内容。`);
+    } catch (error) {
+      onNotice?.("角色观影回应失败：" + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      commentBusyRef.current = false;
+      setBusy(false);
+      queuedAfterReply = pendingDiscussionRef.current.shift();
+      if (queuedAfterReply) window.setTimeout(() => { void generateComment(true, queuedAfterReply!.moment, queuedAfterReply!.timepoint); }, 50);
+    }
   }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice, captureCurrentVideoFrame]);
+
+  const submitScreenshotForCharacter = async (file?: File) => {
+    if (!target || !file) return;
+    if (!file.type.startsWith("image/")) { onNotice?.("请选择一张截图图片。"); return; }
+    try {
+      const dataUrl = await readCompressedImageDataUrl(file);
+      const seconds = parseVideoTime(timepointDraft) ?? (() => {
+        const video = playerRef.current?.querySelector("video");
+        return video && Number.isFinite(video.currentTime) ? video.currentTime : 0;
+      })();
+      const frame = { targetUrl: target.url, seconds, timestamp: new Date().toISOString(), dataUrl };
+      videoFramesRef.current = [...videoFramesRef.current.filter(item => item.targetUrl === target.url), frame].slice(-8);
+      setFrameSampleCount(videoFramesRef.current.length);
+      const stamp = formatVideoTime(seconds);
+      const moment = [settings.currentMoment.trim(), "用户附加截图时间点：" + stamp + "。请仅讨论该画面，不要推测后续。"].filter(Boolean).join("\n").slice(0, 800);
+      onNotice?.("截图已添加给角色，时间点 " + stamp + "。");
+      if (commentBusyRef.current) pendingDiscussionRef.current.push({ moment, timepoint: stamp });
+      else void generateComment(true, moment, stamp);
+    } catch (error) {
+      onNotice?.("截图读取失败：" + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      if (screenshotFileInputRef.current) screenshotFileInputRef.current.value = "";
+    }
+  };
 
   const submitDiscussion = () => {
     const text=discussionDraft.trim(); if(!target||!text) return;
     const timepoint=timepointDraft.trim().slice(0,16);
     const comment:WatchComment={id:`user-${Date.now()}`,characterId:"user",characterName:"我",text,createdAt:new Date().toISOString(),kind:"user",timepoint:timepoint||undefined,targetUrl:target.url};
     setComments(current=>{const next=[...current.slice(-99),comment];saveTargetComments(target.url,next);return next;});
-    const moment=[timepoint?`时间点 ${timepoint}`:"",text].filter(Boolean).join("：").slice(0,800);
-    patchSettings({currentMoment:moment}); setDiscussionDraft(""); void generateComment(true,moment,timepoint||undefined);
+    const moment=[timepoint ? `时间点 ${timepoint}` : "",text].filter(Boolean).join("：").slice(0,800);
+    patchSettings({currentMoment:moment}); setDiscussionDraft("");
+    if (commentBusyRef.current) {
+      pendingDiscussionRef.current.push({ moment, timepoint: timepoint || undefined });
+      onNotice?.("已记下你的消息；角色正在回应，结束后会接着回复。");
+    } else void generateComment(true,moment,timepoint||undefined);
   };
 
   const actTogether = (cue: string) => {
@@ -436,12 +528,23 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div { display:flex; flex-direction:column; height:100%; min-height:0; border-radius:16px!important; padding:10px!important; overflow:hidden; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div > .relative.z-10.mb-4 { display:none; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel section { display:flex; flex-direction:column; flex:1 1 auto; min-height:0; margin-top:8px; padding-top:8px; overflow:hidden; }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .mt-3.max-h-64 { max-height:28dvh; min-height:72px; flex:1 1 auto; overflow-y:auto; overscroll-behavior:contain; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .watch-comment-list { flex:1 1 auto; min-height:0; max-height:none; overflow-y:auto; overscroll-behavior:contain; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .watch-discussion-composer { flex-shrink:0; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div > .relative.z-10.flex.items-start { flex-shrink:0; min-height:84px; max-height:84px; overflow:hidden; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div > .relative.z-10.flex.items-start p { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div { width:100%; max-width:none; box-sizing:border-box; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player { position:relative; box-sizing:border-box; aspect-ratio:auto; overflow:hidden; min-height:0; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player > video,
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player > iframe { position:absolute; inset:0; display:block; width:100%; height:100%; min-width:0; min-height:0; max-height:100%; aspect-ratio:auto; object-fit:contain; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player > div { min-height:0; height:100%; }
+      .watch-danmaku-track { position:absolute; left:100%; max-width:none; white-space:nowrap; animation-name:watchDanmaku; animation-timing-function:linear; animation-fill-mode:forwards; pointer-events:none; }
+      .watch-danmaku-track > span { display:inline-block; border-radius:999px; background:rgba(0,0,0,.45); padding:4px 10px; color:rgba(255,255,255,.96); font-size:clamp(11px,1.2vw,15px); text-shadow:0 1px 3px rgba(0,0,0,.85); }
+      @media (orientation: portrait) { .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div { padding:8px!important; } .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel section { margin-top:4px; padding-top:4px; } .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .watch-comment-list { min-height:50px; } }
       .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel section > div.mt-3.border-t { flex-shrink:0; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div > div.relative.z-10.mt-2 { display:none; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-player video,.watch-together-app[data-watch-fullscreen="true"] .watch-player iframe { display:block; width:100%; height:100%; max-height:100%; aspect-ratio:auto; object-fit:contain; }
       @media (orientation: portrait) { .watch-together-app[data-watch-fullscreen="true"] > main { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(120px,30dvh) minmax(0,1fr); grid-template-areas:"title" "player" "interaction"; overflow:hidden; } }\n      @media (orientation: landscape) and (min-width: 700px) {\n        .watch-together-main { display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(300px, .9fr); grid-template-rows:auto minmax(0, auto) minmax(0, 1fr); grid-template-areas:"title interaction" "player interaction" "link interaction"; gap:10px; overflow:hidden; padding-bottom:12px; }\n        .watch-player { grid-area:player; width:100%; max-width:none; align-self:start; }\n        .watch-link-panel { grid-area:link; min-width:0; overflow:auto; }\n        .watch-interaction-panel { grid-area:interaction; min-height:0; overflow-y:auto; overscroll-behavior:contain; margin-top:0!important; }\n      }\n    `}</style>
-    <style>{`@keyframes watchDanmaku { 0% { transform: translateX(28%); opacity: 0 } 8% { opacity: 1 } 88% { opacity: 1 } 100% { transform: translateX(-150%); opacity: 0 } }`}</style>
+    <style>{`@keyframes watchDanmaku { 0% { transform: translateX(0); opacity: 0 } 6% { opacity: 1 } 92% { opacity: 1 } 100% { transform: translateX(calc(-100% - 100vw)); opacity: 0 } }`}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -486,11 +589,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </div>
         )}
 
-        {(target?.embedUrl || target?.nativeVideo) && settings.danmakuEnabled && comments.length > 0 && <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
-          {comments.slice(-6).map((comment, index) => <div key={comment.id} className="absolute right-2 max-w-[88%] whitespace-nowrap rounded-full bg-black/35 px-3 py-1 text-[13px] text-white/95 drop-shadow" style={{ top: `${14 + index * 12}%`, animation: "watchDanmaku 12s linear forwards", animationDelay: `${index * .45}s` }}>{comment.characterName}：{comment.text}</div>)}
-        </div>}
-        {target && settings.subtitlesEnabled && latestComment && <div className="pointer-events-none absolute bottom-5 left-4 right-4 text-center">
-          <span className="rounded-md bg-black/65 px-3 py-2 text-sm leading-6 text-white/95 [box-decoration-break:clone]">{latestComment.text}</span>
+        {(target?.embedUrl || target?.nativeVideo) && settings.danmakuEnabled && comments.some(comment => comment.kind !== "user" && comment.targetUrl === target.url) && <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
+          {comments.filter(comment => comment.kind !== "user" && comment.targetUrl === target.url).slice(-8).map((comment, index) => {
+            const lane = 10 + ((index * 13 + comment.id.length * 7) % 7) * 10;
+            const duration = Math.max(8, Math.min(18, 8 + comment.text.length * 0.17));
+            return <div key={comment.id} className="watch-danmaku-track" style={{ top: lane + "%", animationDuration: duration + "s", animationDelay: (index * 0.28) + "s" }}><span>{comment.characterName}：{comment.text}</span></div>;
+          })}
         </div>}
         <div className="absolute right-2 top-2 flex gap-1">
           <button onClick={() => void enterFullscreen()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/45 text-white/90 backdrop-blur transition active:scale-95" aria-label="全屏"><Expand size={15}/></button>
@@ -507,6 +611,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           <button type="button" onClick={() => videoFileInputRef.current?.click()} className="rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">选择本地视频</button>
         </div>
         <input ref={videoFileInputRef} type="file" accept="video/*,.mp4,.webm,.mov,.m4v,.ogv" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; openLocalVideo(file); }} />
+        <input ref={screenshotFileInputRef} type="file" accept="image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; void submitScreenshotForCharacter(file); }} />
         {target && target.platformName !== "本地视频" && !target.embedUrl && !target.nativeVideoUrl && <p className="mt-2 rounded-xl bg-[#f4e7d6] px-3 py-2 text-xs leading-5 text-[#82644c]">正在尝试原生解析。若链接无法取得公开的视频流，平台分享页不能被网页强制嵌入；可选择本地视频继续在这里播放和讨论。</p>}
         {target?.platformName === "本地视频" && <p className="mt-2 px-1 text-[11px] leading-5 text-[#8b7665]">当前播放的是本地文件；选择新文件或输入链接可以切换视频。</p>}
         {platformNote && <p className="mt-2 px-1 text-[11px] leading-5 text-[#8b7665]">{platformNote}</p>}
@@ -532,6 +637,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button onClick={() => screenshotFileInputRef.current?.click()} disabled={!target || busy} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3.5 py-2 text-xs text-[#d8c9b6] transition active:scale-95 disabled:opacity-40"><ImagePlus size={13}/>给 TA 看截图</button>
             <button onClick={() => void generateComment(true)} disabled={!target || !character || busy} className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs text-[#2a1f16] transition active:scale-95 disabled:opacity-40" style={{ background: "linear-gradient(135deg,#e8c39a,#c99a6a)" }}>
               {busy ? <LoaderCircle size={13} className="animate-spin"/> : <MessageCircle size={13}/>}让 TA 说一句
             </button>
@@ -544,12 +650,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             <button onClick={() => setShowSettings(value => !value)} className="ml-auto flex items-center gap-1 rounded-full px-2 py-2 text-[11px] text-[#8b8077] transition active:scale-95"><ChevronDown size={13} className={showSettings ? "rotate-180 transition" : "transition"}/>陪看方式</button>
           </div>
 
-          <section className="relative z-10 mt-5 border-t border-[#d6b18c]/20 pt-4">
+          <section className="relative z-10 mt-5 min-h-0 border-t border-[#d6b18c]/20 pt-4">
             <div className="flex items-baseline justify-between gap-2"><h2 className="font-serif text-base tracking-wide text-[#f0dfcc]">一起讨论</h2><span className="text-[10px] tracking-[.12em] text-[#a9937e]">SCENE NOTES · {comments.length}</span></div>
-            <p className="mt-1 text-[10px] leading-5 text-[#a9937e]">把某一幕、剧情转折或想说的话记在对应时间点。外部播放器的实际播放时间无法由跨站 iframe 读取，因此时间点可手动填写。</p>
+            <p className="mt-1 text-[10px] leading-5 text-[#a9937e]">把某一幕或想说的话记在对应时间点。可读取的视频会自动每 8 秒采样；跨站播放器不能被网页截图时，请点「给 TA 看截图」。已采集 {frameSampleCount} 张。角色绑定的 API 需开启图像识别才能真正看见这些图片。</p>
             {comments.some(item=>item.timepoint) && <div className="mt-3 flex flex-wrap gap-2">{[...new Set(comments.filter(item=>item.timepoint).map(item=>item.timepoint!))].map(point=><button key={point} type="button" onClick={()=>{setTimepointDraft(point);setDiscussionDraft(`想再聊聊 ${point} 这一幕`);}} className="border-b border-[#c99a78]/60 px-1 py-1 text-[11px] text-[#e4c6a8]">{point} ↗</button>)}</div>}
-            <div ref={commentListRef} className="mt-3 max-h-64 space-y-3 overflow-y-auto overscroll-contain pr-1">{comments.length ? comments.slice(-30).map(item=><div key={item.id} className={`flex ${item.kind==="user"?"justify-end":"justify-start"}`}><div className={`max-w-[88%] rounded-2xl border px-3 py-2.5 shadow-sm ${item.kind==="user"?"border-[#d6b18c]/35 bg-[#d6b18c]/10":"border-white/10 bg-white/[.045]"}`}><div className="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-[#c4a58a]"><span>{item.kind==="user"?"我":item.characterName}</span>{item.timepoint&&<button type="button" onClick={()=>setTimepointDraft(item.timepoint||"")} className="border-b border-[#c99a78]/50 text-[#e4c6a8]">{item.timepoint}</button>}<span className="text-[#85756a]">{new Date(item.createdAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</span></div><p className="whitespace-pre-wrap break-words font-serif text-sm leading-6 text-[#efe2d0]">{item.text}</p></div></div>) : <p className="border-l border-[#c99a78]/45 py-1 pl-3 text-xs leading-6 text-[#a9937e]">这里留给你们讨论剧情、吐槽片段，或标记想一起记住的时刻。</p>}</div>
-            <div className="mt-3 border-t border-[#d6b18c]/20 pt-3"><div className="flex items-center gap-2"><input value={timepointDraft} onChange={event=>setTimepointDraft(event.target.value.slice(0,16))} disabled={!target} placeholder="时间点 03:12（可选）" className="w-[42%] min-w-0 border-b border-[#9c7b63]/60 bg-transparent px-1 py-2 text-xs text-[#f0dfcc] outline-none placeholder:text-[#907d6c] focus:border-[#e4c6a8]"/><span className="text-[10px] text-[#907d6c]">章节 / 剧情标记</span></div><textarea value={discussionDraft} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} disabled={!target} maxLength={800} rows={2} placeholder={target ? "写下你对这一幕的看法……" : "先放上视频，再写下你对这一幕的看法……"} className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-black/20 p-3 text-sm leading-6 text-[#efe2d0] outline-none placeholder:text-[#907d6c] focus:border-[#c99a78]/60 focus:ring-2 focus:ring-[#c99a78]/10"/><div className="mt-2 flex justify-end"><button type="button" onClick={submitDiscussion} disabled={!target||!discussionDraft.trim()||busy} className="inline-flex items-center rounded-full border border-[#c99a78]/60 bg-[#c99a78] px-4 py-2.5 text-xs font-medium text-[#2a1f16] shadow-sm transition hover:brightness-105 active:scale-[.98] disabled:opacity-40"><MessageCircle size={13} className="mr-1 inline"/>记下并问问 TA</button></div></div>
+            <div ref={commentListRef} className="watch-comment-list mt-3 min-h-0 max-h-64 space-y-3 overflow-y-auto overscroll-contain pr-1">{comments.length ? comments.slice(-30).map(item=><div key={item.id} className={`flex ${item.kind==="user"?"justify-end":"justify-start"}`}><div className={`max-w-[88%] rounded-2xl border px-3 py-2.5 shadow-sm ${item.kind==="user"?"border-[#d6b18c]/35 bg-[#d6b18c]/10":"border-white/10 bg-white/[.045]"}`}><div className="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-[#c4a58a]"><span>{item.kind==="user"?"我":item.characterName}</span>{item.timepoint&&<button type="button" onClick={()=>setTimepointDraft(item.timepoint||"")} className="border-b border-[#c99a78]/50 text-[#e4c6a8]">{item.timepoint}</button>}<span className="text-[#85756a]">{new Date(item.createdAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</span></div><p className="whitespace-pre-wrap break-words font-serif text-sm leading-6 text-[#efe2d0]">{item.text}</p></div></div>) : <p className="border-l border-[#c99a78]/45 py-1 pl-3 text-xs leading-6 text-[#a9937e]">这里留给你们讨论剧情、吐槽片段，或标记想一起记住的时刻。</p>}</div>
+            <div className="watch-discussion-composer mt-3 border-t border-[#d6b18c]/20 pt-3"><div className="flex items-center gap-2"><input value={timepointDraft} onChange={event=>setTimepointDraft(event.target.value.slice(0,16))} disabled={!target} placeholder="时间点 03:12（可选）" className="w-[42%] min-w-0 border-b border-[#9c7b63]/60 bg-transparent px-1 py-2 text-xs text-[#f0dfcc] outline-none placeholder:text-[#907d6c] focus:border-[#e4c6a8]"/><span className="text-[10px] text-[#907d6c]">章节 / 剧情标记</span></div><textarea value={discussionDraft} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} disabled={!target} maxLength={800} rows={2} placeholder={target ? "写下你对这一幕的看法……" : "先放上视频，再写下你对这一幕的看法……"} className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-black/20 p-3 text-sm leading-6 text-[#efe2d0] outline-none placeholder:text-[#907d6c] focus:border-[#c99a78]/60 focus:ring-2 focus:ring-[#c99a78]/10"/><div className="mt-2 flex justify-end"><button type="button" onClick={submitDiscussion} disabled={!target||!discussionDraft.trim()} className="inline-flex items-center rounded-full border border-[#c99a78]/60 bg-[#c99a78] px-4 py-2.5 text-xs font-medium text-[#2a1f16] shadow-sm transition hover:brightness-105 active:scale-[.98] disabled:opacity-40"><MessageCircle size={13} className="mr-1 inline"/>记下并问问 TA</button></div></div>
           </section>
           <div className="relative z-10 mt-2 flex flex-wrap gap-1.5">
             {[
@@ -587,7 +693,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            {([["voiceEnabled", "角色语音"], ["danmakuEnabled", "角色弹幕"], ["subtitlesEnabled", "角色字幕"]] as [keyof WatchSettings, string][]).map(([key, label]) => <button
+            {([["voiceEnabled", "角色语音"], ["danmakuEnabled", "角色弹幕"]] as [keyof WatchSettings, string][]).map(([key, label]) => <button
               key={key}
               type="button"
               onClick={() => patchSettings({ [key]: !settings[key] } as Partial<WatchSettings>)}
