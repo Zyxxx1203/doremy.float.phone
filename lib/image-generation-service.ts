@@ -749,7 +749,7 @@ export async function fetchNovelAiModels(apiKey: string): Promise<string[]> {
 }
 
 function descriptionExplicitlyIncludesPlayer(description: string): boolean {
-  return /(?:玩家本人|玩家入镜|玩家出镜|用户本人|用户形象|用户入镜|用户出镜|我的形象|本人入镜|本人出镜|我和.{0,24}(?:一起|合照|同框|在画面)|和我.{0,24}(?:一起|合照|同框)|与我.{0,24}(?:一起|合照|同框)|跟我.{0,24}(?:一起|合照|同框)|with me|me in (?:the|this) (?:image|picture)|my appearance|the user|player character)/i.test(description);
+  return /(?:玩家本人|玩家入镜|玩家出镜|用户本人|用户形象|用户入镜|用户出镜|我的形象|我的照片|我入镜|我出镜|我在画面|我也在画面|本人入镜|本人出镜|我和.{0,24}(?:一起|合照|合影|同框|在画面)|和我.{0,24}(?:一起|合照|合影|同框)|与我.{0,24}(?:一起|合照|合影|同框)|跟我.{0,24}(?:一起|合照|合影|同框)|我们(?:一起|合照|合影|同框|出镜|入镜)|with me|me in (?:the|this) (?:image|picture)|my appearance|I am (?:in|pictured in)|the user(?: appears| is in the image)?|player character)/i.test(description);
 }
 
 const DEFAULT_IDENTITY_FACE_CROP = { x: 0.27, y: 0.12, size: 0.46 };
@@ -796,8 +796,9 @@ export async function generateImageFromConfiguredApi(params: {
 
   const characterIdentityPrompt = involvedCharacterIds.map(characterId => {
     const character = characterById.get(characterId);
-    const featurePrompt = settings.characterReferences?.[characterId]?.featurePrompt?.trim();
-    if (!character || !featurePrompt) return "";
+    const characterReference = settings.characterReferences?.[characterId];
+    const featurePrompt = characterReference?.featurePrompt?.trim();
+    if (!character || !featurePrompt || (settings.provider === "novelai" && characterReference?.novelAiFeaturePromptEnabled === false)) return "";
     return `${character.name}的稳定身份特征（不固定临时服装和姿态）：${featurePrompt}`;
   }).filter(Boolean);
   const userAppearancePrompt = includeUserAppearance && settings.userAppearanceDescription?.trim()

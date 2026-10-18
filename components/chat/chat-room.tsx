@@ -2944,7 +2944,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     ): Promise<ChatMessage | null> => {
         if (!isPendingChatGeneratedImageMessage(message)) return Promise.resolve(null);
         const imageDescription = message.mediaData?.label?.trim() || "";
-        const groupPhotoPattern = /合照|合影|全员|大家|所有人|群像|我们|所有成员|group\\s*(?:photo|portrait)|everyone|all of us|the whole group/i;
+        const groupPhotoPattern = /合照|合影|全员|大家|所有人|群像|我们|所有成员|group\s*(?:photo|portrait)|everyone|all of us|the whole group/i;
         const groupCharacterIds = session.isGroup && groupPhotoPattern.test(imageDescription)
             ? session.participantIds
             : undefined;
