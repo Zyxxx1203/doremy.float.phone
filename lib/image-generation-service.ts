@@ -888,7 +888,7 @@ export async function generateImageFromConfiguredApi(params: {
   if (params.useReferenceImage !== false && includeUserAppearance && settings.userAppearanceReferenceAssetId) {
     const dataUrl = await getChatImageFromIndexedDB(settings.userAppearanceReferenceAssetId);
     if (dataUrl) {
-      referenceSources.splice(params.useReferenceImage !== false && suppliedReferenceImageDataUrl ? 1 : 0, 0, {
+      referenceSources.splice(suppliedReferenceImageDataUrl ? 1 : 0, 0, {
         label: "玩家本人",
         dataUrl,
         crop: settings.userAppearanceFaceCrop || DEFAULT_IDENTITY_FACE_CROP,
