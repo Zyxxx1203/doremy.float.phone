@@ -1542,6 +1542,10 @@ function ImageBubble({
                 if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
                 if (Math.abs(dy) > Math.abs(dx)) { groupGestureRef.current = null; return; }
                 gesture.mode = "horizontal";
+                // Capture only after the gesture is clearly horizontal: taps still
+                // reach the photo button and open the gallery, while swipes continue
+                // working even if the finger leaves the stack's bounds.
+                try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* older WebView */ }
             }
             if (gesture.mode !== "horizontal") return;
             let offset = dx;
