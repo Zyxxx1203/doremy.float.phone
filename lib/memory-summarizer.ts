@@ -104,19 +104,11 @@ export async function runSummarizationPipeline(
 
     // Use user-editable prompt template from config, with placeholder substitution
     const promptTemplate = config.summarizationPrompt?.trim() || DEFAULT_SUMMARIZATION_PROMPT;
-    const summaryPrompt = [
-        promptTemplate
-            .replace(/\{\{char\}\}/gi, characterName)
-            .replace(/\{\{earliest\}\}/gi, earliest)
-            .replace(/\{\{latest\}\}/gi, latest)
-            .replace(/\{\{events\}\}/gi, eventsText),
-        [
-            "【不可被自定义模板覆盖的记忆边界】",
-            "一起看（共同观影）与照片墙的过程数据只属于短期上下文：播放进度、临时弹幕/评论、拖动缩放位置、相框/贴纸/涂鸦、墙面布局、临时互动和单次观影细节，都不得写入长期记忆或核心记忆。",
-            "不要把上述过程数据概括成长期事实。只有其中明确表达、且独立于该功能操作的稳定偏好或重要关系事实，才可用抽象文字保留；不要保存照片内容推测、截图细节或临时布局状态。",
-            "如果素材主要来自这些临时功能，宁可不总结，也不要为了凑条目数把它们升级成长期记忆。"
-        ].join("\n")
-    ].join("\n\n");
+    const summaryPrompt = promptTemplate
+        .replace(/\{\{char\}\}/gi, characterName)
+        .replace(/\{\{earliest\}\}/gi, earliest)
+        .replace(/\{\{latest\}\}/gi, latest)
+        .replace(/\{\{events\}\}/gi, eventsText);
 
     // Call LLM for summarization — compatible with all providers
     // label 用于在「底层调用大模型日志」中标识这是记忆总结调用
