@@ -925,6 +925,16 @@ class MainActivity : AppCompatActivity() {
             false
         }
 
+        /** 将现实桥规则同步到本机执行器；规则和事件保存在应用私有存储。 */
+        @JavascriptInterface
+        fun configureNativeRealityBridge(json: String): Boolean =
+            NativeRealityBridge.configure(this@MainActivity, json)
+
+        /** 读取本机现实桥执行流水，供网页诊断面板显示。 */
+        @JavascriptInterface
+        fun getNativeRealityBridgeLog(): String =
+            NativeRealityBridge.recentLog(this@MainActivity)
+
         /** 原生无障碍服务是否支持独立后台停留计时（供网页避免重复触发）。 */
         @JavascriptInterface
         fun supportsBackgroundDwellTracking(): Boolean = true
