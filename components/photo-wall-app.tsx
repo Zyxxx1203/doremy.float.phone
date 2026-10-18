@@ -764,7 +764,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       newRef = await storeMediaBlob(blob, blob.type || file.type || "image/jpeg", "image");
       const current = stateRef.current;
       const oldRef = current.wallBackgroundRef;
-      persist({ ...current, wallBackgroundRef: newRef });
+      // 记下上传时的世界尺寸：之后往四边长，背景按原比例停在它该在的区域，不会被拉糊。
+      persist({ ...current, wallBackgroundRef: newRef, wallBackgroundBox: wallWorldOf(current) });
       if (oldRef && oldRef !== newRef) void deleteMediaRef(oldRef);
       onNotice?.("画布背景已保存。");
     } catch (error) {
@@ -775,7 +776,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
   const clearCanvasBackground = () => {
     const oldRef = stateRef.current.wallBackgroundRef;
-    persist({ ...stateRef.current, wallBackgroundRef: undefined });
+    persist({ ...stateRef.current, wallBackgroundRef: undefined, wallBackgroundBox: undefined });
     if (oldRef) void deleteMediaRef(oldRef);
     onNotice?.("已移除画布背景，照片和涂鸦不会受影响。");
   };
@@ -1079,6 +1080,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               wallDoodles={state.wallDoodles ?? []}
               onChangeWallDoodles={changeWallDoodles}
                backgroundImage={wallBackgroundUrl}
+              backgroundBox={state.wallBackgroundBox}
+              wallWorld={world}
               onOpenDetail={photo => openPhoto(photo)}
             /></div></div>
           : <div className="mx-auto flex max-w-sm flex-col items-center px-6 py-16 text-center"><div className="grid h-16 w-16 place-items-center rounded-full border border-[#ddd0bd] text-[#a0917d]"><Feather size={24}/></div><h2 className="mt-5 font-serif text-xl font-normal">这面墙还空着</h2><p className="mt-2 text-xs leading-6 text-[#968674]">先收藏一张你喜欢的照片。之后，角色也会把自己想珍藏的风景、自拍和生活片段慢慢放进来。</p><button onClick={() => fileRef.current?.click()} className="mt-5 rounded-full border border-[#b7a48c] px-5 py-2.5 text-xs tracking-wider text-[#786953]">收藏第一张照片</button></div>}

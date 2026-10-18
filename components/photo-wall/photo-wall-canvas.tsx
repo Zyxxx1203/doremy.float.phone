@@ -70,6 +70,9 @@ type Props = {
   wallDoodles?: PhotoWallDoodle[];
   onChangeWallDoodles?: (doodles: PhotoWallDoodle[]) => void;
   backgroundImage?: string;
+  /** 背景图绑定的世界盒子：无界画布扩容后按它铺，避免整张图被拉伸。 */
+  backgroundBox?: { width: number; height: number };
+  wallWorld?: { width: number; height: number };
   onOpenDetail: (photo: PhotoWallPhoto) => void;
   readOnly?: boolean;
   fitHeight?: boolean;
@@ -87,7 +90,7 @@ type DragState = {
   moved: boolean;
 };
 
-export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, onOpenDetail, readOnly = false, fitHeight = false }: Props) {
+export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, backgroundBox, wallWorld, onOpenDetail, readOnly = false, fitHeight = false }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const strokeRef = useRef<{ id: string; photoId: string } | null>(null);
@@ -138,6 +141,14 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   );
 
   const selectedPhoto = ordered.find(photo => photo.id === selectedId) ?? null;
+
+  /** 背景图按「上传时那块世界」铺：画布扩容后它不会被拉大拉糊，只是四周多出空白。 */
+  const backgroundSizing = backgroundBox && wallWorld && wallWorld.width > 0 && wallWorld.height > 0
+    ? {
+        size: `${(backgroundBox.width / wallWorld.width) * 100}% ${(backgroundBox.height / wallWorld.height) * 100}%`,
+        position: "left top" as const,
+      }
+    : { size: "cover", position: "center" as const };
 
   const commit = useCallback((id: string, next: PhotoWallPlacement) => onChangePlacement(id, next), [onChangePlacement]);
   /** 松手时用来把「最终落点」交回给上层做扩容判断。 */
@@ -369,7 +380,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       ref={wallRef}
       data-photo-wall-mode={mode}
       className={"photo-wall-surface relative h-full w-full select-none overflow-hidden rounded-[2px] border border-[#eee3d8] shadow-[inset_0_1px_0_rgba(255,255,255,.95),0_4px_12px_rgba(88,70,48,.06)]"}
-      style={{ aspectRatio: fitHeight ? "4 / 5" : undefined, flex: "0 0 auto", touchAction: readOnly ? "auto" : "none", backgroundSize: backgroundImage ? "cover" : undefined, backgroundPosition: "center", backgroundImage: backgroundImage ? 'linear-gradient(rgba(255,250,242,.13),rgba(255,250,242,.13)),url("' + backgroundImage + '")' : "repeating-linear-gradient(0deg,rgba(130,98,70,.018) 0,rgba(130,98,70,.018) 1px,transparent 1px,transparent 4px),radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.9),transparent 62%),linear-gradient(145deg,#fffaf2 0%,#faf3ea 48%,#f5ece2 100%)" }}
+      style={{ aspectRatio: fitHeight ? "4 / 5" : undefined, flex: "0 0 auto", touchAction: readOnly ? "auto" : "none", backgroundSize: backgroundImage ? backgroundSizing.size : undefined, backgroundPosition: backgroundSizing.position, backgroundRepeat: backgroundImage ? "no-repeat" : undefined, backgroundImage: backgroundImage ? 'linear-gradient(rgba(255,250,242,.13),rgba(255,250,242,.13)),url("' + backgroundImage + '")' : "repeating-linear-gradient(0deg,rgba(130,98,70,.018) 0,rgba(130,98,70,.018) 1px,transparent 1px,transparent 4px),radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.9),transparent 62%),linear-gradient(145deg,#fffaf2 0%,#faf3ea 48%,#f5ece2 100%)" }}
       onPointerMove={readOnly ? undefined : handlePointerMove}
       onPointerUp={readOnly ? undefined : endDrag}
       onPointerCancel={readOnly ? undefined : endDrag}

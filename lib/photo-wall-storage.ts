@@ -122,6 +122,8 @@ export type PhotoWallState = {
   photos: PhotoWallPhoto[];
   wallDoodles?: PhotoWallDoodle[];
   wallBackgroundRef?: string;
+  /** 背景图上传时绑定的世界尺寸：之后扩容不再拉伸这张图。 */
+  wallBackgroundBox?: PhotoWallWorld;
   /** 无界画布的世界尺寸；缺省按 DEFAULT_PHOTO_WALL_WORLD 处理。 */
   world?: PhotoWallWorld;
   settings: PhotoWallSettings;
@@ -236,6 +238,7 @@ export function loadPhotoWallState(): PhotoWallState {
       photos: Array.isArray(parsed.photos) ? parsed.photos.map(normalizePhoto).filter((photo): photo is PhotoWallPhoto => photo !== null) : [],
       wallDoodles: normalizeDoodles(parsed.wallDoodles),
       wallBackgroundRef: typeof parsed.wallBackgroundRef === "string" && parsed.wallBackgroundRef.startsWith("media-store://") ? parsed.wallBackgroundRef : undefined,
+      wallBackgroundBox: parsed.wallBackgroundBox && typeof parsed.wallBackgroundBox === "object" ? normalizeWorld(parsed.wallBackgroundBox) : undefined,
       world: normalizeWorld(parsed.world),
       settings: {
         dailyGenerationEnabled: settings.dailyGenerationEnabled === true,
@@ -256,6 +259,7 @@ export function savePhotoWallState(state: PhotoWallState): void {
     photos: state.photos.map(normalizePhoto).filter((photo): photo is PhotoWallPhoto => photo !== null),
     wallDoodles: normalizeDoodles(state.wallDoodles),
     wallBackgroundRef: typeof state.wallBackgroundRef === "string" && state.wallBackgroundRef.startsWith("media-store://") ? state.wallBackgroundRef : undefined,
+    wallBackgroundBox: state.wallBackgroundBox && typeof state.wallBackgroundBox === "object" ? normalizeWorld(state.wallBackgroundBox) : undefined,
     world: normalizeWorld(state.world),
     settings: {
       ...DEFAULT_PHOTO_WALL_SETTINGS,
