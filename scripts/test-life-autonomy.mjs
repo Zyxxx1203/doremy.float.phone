@@ -55,6 +55,17 @@ assert.equal(evaluateLifeAutonomyWindow({ ...base, messages: dailyMessages }).re
 
 assert.equal(chooseLifeAutonomyCharacter(["c1", "c2"], "c1") !== "c1", true, "speaker selection should avoid immediate repetition where possible");
 assert.equal(chooseLifeAutonomyCharacter([], undefined), null);
+const c1SpokeRecently = [{
+  sceneId: scene.id,
+  role: "character",
+  speakerId: "c1",
+  createdAt: new Date(now - 60_000).toISOString(),
+}];
+assert.equal(
+  chooseLifeAutonomyCharacter(["c1", "c2"], undefined, c1SpokeRecently, scene.id),
+  "c2",
+  "proactive selection should favor a character who has not spoken in the current scene",
+);
 
 const contacts = [{ id: "contact-uuid-123", characterId: "character-id-456" }];
 assert.equal(resolveLifeCharacterIdForContact("contact-uuid-123", contacts), "character-id-456", "contact ID must resolve to the linked character ID");
