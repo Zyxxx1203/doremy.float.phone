@@ -213,8 +213,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   return <div className="relative">
     <div
       ref={wallRef}
-      className="photo-wall-surface relative w-full select-none overflow-hidden rounded-[2px] border border-[#d8c4b0] shadow-[inset_0_1px_0_rgba(255,255,255,.7),0_10px_24px_rgba(88,70,48,.1)]"
-      style={{ aspectRatio: "4 / 5", touchAction: readOnly ? "auto" : "none", backgroundImage: "repeating-linear-gradient(0deg,rgba(130,98,70,.025) 0,rgba(130,98,70,.025) 1px,transparent 1px,transparent 4px),radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.38),transparent 52%),linear-gradient(145deg,#f2e7d7 0%,#eee1cf 48%,#e8dac6 100%)" }}
+      className="photo-wall-surface relative w-full select-none overflow-hidden rounded-[2px] border border-[#eee3d8] shadow-[inset_0_1px_0_rgba(255,255,255,.95),0_4px_12px_rgba(88,70,48,.06)]"
+      style={{ aspectRatio: "4 / 5", touchAction: readOnly ? "auto" : "none", backgroundImage: "repeating-linear-gradient(0deg,rgba(130,98,70,.018) 0,rgba(130,98,70,.018) 1px,transparent 1px,transparent 4px),radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.9),transparent 62%),linear-gradient(145deg,#fffaf2 0%,#faf3ea 48%,#f5ece2 100%)" }}
       onPointerMove={readOnly ? undefined : handlePointerMove}
       onPointerUp={readOnly ? undefined : endDrag}
       onPointerCancel={readOnly ? undefined : endDrag}
