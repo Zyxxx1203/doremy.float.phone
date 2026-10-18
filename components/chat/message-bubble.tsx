@@ -1347,6 +1347,7 @@ function ImageBubble({
     const isPending = regenerating || (!resolvedUrl && d?.imageGenerationStatus === "pending");
     const canRegenerate = Boolean(d?.label?.trim());
     const [showPreview, setShowPreview] = useState(false);
+    const [previewOriginRect, setPreviewOriginRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
     // 多图集合的当前页：用于指示点，让「这是几张、看到第几张」一眼可见。
     const [activeGroupIndex, setActiveGroupIndex] = useState(0);
     const [expandedCollection, setExpandedCollection] = useState(false);
@@ -1497,6 +1498,7 @@ function ImageBubble({
                     imageUrl={previewImageUrl || resolvedUrl || undefined}
                     galleryImages={d?.imageCollection === true && groupUrls.length > 1 ? groupUrls : undefined}
                     initialIndex={activeGroupIndex}
+                    originRect={previewOriginRect}
                     description={!resolvedUrl ? label : undefined}
                     saveFilename={resolvedUrl ? ensureExtension(label, "image") : undefined}
                     onRegenerate={canRegenerate ? () => { setShowPreview(false); openPromptEditor(); } : undefined}
@@ -1584,7 +1586,7 @@ function ImageBubble({
                         </div>
                         <div className="flex flex-col gap-2">
                             {groupUrls.map((url, itemIndex) => (
-                                <button type="button" key={`${itemIndex}-${url}`} onClick={event => { event.stopPropagation(); setActiveGroupIndex(itemIndex); setPreviewImageUrl(url); setShowPreview(true); }} className="relative block w-full overflow-hidden rounded-xl bg-stone-100">
+                                <button type="button" key={`${itemIndex}-${url}`} onClick={event => { event.stopPropagation(); const rect=event.currentTarget.getBoundingClientRect(); setPreviewOriginRect({left:rect.left,top:rect.top,width:rect.width,height:rect.height}); setActiveGroupIndex(itemIndex); setPreviewImageUrl(url); setShowPreview(true); }} className="relative block w-full overflow-hidden rounded-xl bg-stone-100">
                                     <img src={url} alt={`${label} ${itemIndex + 1}`} className="block max-h-[280px] w-full object-contain" loading={itemIndex < 2 ? "eager" : "lazy"} />
                                     <span className="absolute bottom-2 right-2 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white">{itemIndex + 1}/{groupUrls.length}</span>
                                 </button>
@@ -1617,6 +1619,8 @@ function ImageBubble({
                                     onClick={event => {
                                         event.stopPropagation();
                                         if (suppressGroupTapRef.current) { suppressGroupTapRef.current = false; return; }
+                                        const rect=event.currentTarget.getBoundingClientRect();
+                                        setPreviewOriginRect({left:rect.left,top:rect.top,width:rect.width,height:rect.height});
                                         setShowPreview(true);
                                     }}
                                     className="absolute left-[46px] top-0 h-[220px] w-[170px] overflow-hidden rounded-[14px] border border-white/30 bg-stone-900 shadow-[0_5px_20px_rgba(0,0,0,.28)]"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { downloadFile } from "@/lib/download-utils";
@@ -56,6 +56,7 @@ const ACTION_BUTTON_STYLE: CSSProperties = {
 };
 
 
+type GalleryOriginRect = { left: number; top: number; width: number; height: number };
 type GalleryPoint = { x: number; y: number };
 type GalleryGesture = {
     mode: "pending" | "swipe" | "dismiss" | "drag" | "pinch";
@@ -74,11 +75,13 @@ function GalleryPreviewOverlay({
     images,
     initialIndex = 0,
     saveFilename = "图片.jpg",
+    originRect,
     onClose,
 }: {
     images: string[];
     initialIndex?: number;
     saveFilename?: string;
+    originRect?: GalleryOriginRect | null;
     onClose: () => void;
 }) {
     const [index, setIndex] = useState(() => Math.max(0, Math.min(images.length - 1, initialIndex)));
@@ -91,6 +94,11 @@ function GalleryPreviewOverlay({
     const pointersRef = useRef(new Map<number, GalleryPoint>());
     const gestureRef = useRef<GalleryGesture | null>(null);
     const lastTapRef = useRef<{ at: number; x: number; y: number }>({ at: 0, x: 0, y: 0 });
+    const overlayRef = useRef<HTMLDivElement | null>(null);
+    const activeImageRef = useRef<HTMLImageElement | null>(null);
+    const didOpenAnimationRef = useRef(false);
+    const closeAnimationRef = useRef(false);
+    const closeTimerRef = useRef<number | null>(null);
 
     const distance = (points: GalleryPoint[]) => Math.max(1, Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y));
     const clampOffset = (next: GalleryPoint, nextScale: number): GalleryPoint => {
@@ -100,9 +108,76 @@ function GalleryPreviewOverlay({
     };
     const resetZoom = () => { setScale(1); setOffset({ x: 0, y: 0 }); setDismissY(0); };
 
+    const animateOpen = useCallback(() => {
+        if (!originRect || didOpenAnimationRef.current) return;
+        const image = activeImageRef.current;
+        const overlay = overlayRef.current;
+        if (!image || !overlay || !image.complete || image.naturalWidth === 0) return;
+        didOpenAnimationRef.current = true;
+        const previousTransform = image.style.transform;
+        image.style.transition = "none";
+        image.style.transform = "none";
+        const imageRect = image.getBoundingClientRect();
+        image.style.transform = previousTransform;
+        const tx = originRect.left + originRect.width / 2 - (imageRect.left + imageRect.width / 2);
+        const ty = originRect.top + originRect.height / 2 - (imageRect.top + imageRect.height / 2);
+        const scaleFromThumbnail = Math.max(0.04, Math.min(1, originRect.width / Math.max(1, imageRect.width), originRect.height / Math.max(1, imageRect.height)));
+        image.style.transition = "none";
+        image.style.transform = `translate3d(${tx}px,${ty}px,0) scale(${scaleFromThumbnail})`;
+        overlay.style.transition = "none";
+        overlay.style.background = "rgba(0,0,0,0)";
+        void overlay.offsetWidth;
+        window.requestAnimationFrame(() => {
+            if (closeAnimationRef.current) return;
+            image.style.transition = "transform .28s cubic-bezier(.32,.72,0,1)";
+            image.style.transform = "translate3d(0,0,0) scale(1)";
+            overlay.style.transition = "background .28s ease";
+            overlay.style.background = "#000";
+        });
+    }, [originRect]);
+
+    const closeViewer = useCallback(() => {
+        if (closeAnimationRef.current) return;
+        const image = activeImageRef.current;
+        const overlay = overlayRef.current;
+        if (!originRect || !image || !overlay || !didOpenAnimationRef.current) {
+            onClose();
+            return;
+        }
+        closeAnimationRef.current = true;
+        window.requestAnimationFrame(() => {
+            const activeImage = activeImageRef.current ?? image;
+            const activeOverlay = overlayRef.current ?? overlay;
+            const previousTransform = activeImage.style.transform;
+            activeImage.style.transition = "none";
+            activeImage.style.transform = "none";
+            const imageRect = activeImage.getBoundingClientRect();
+            activeImage.style.transform = previousTransform;
+            void activeImage.offsetWidth;
+            const tx = originRect.left + originRect.width / 2 - (imageRect.left + imageRect.width / 2);
+            const ty = originRect.top + originRect.height / 2 - (imageRect.top + imageRect.height / 2);
+            const scaleToThumbnail = Math.max(0.04, Math.min(1, originRect.width / Math.max(1, imageRect.width), originRect.height / Math.max(1, imageRect.height)));
+            activeImage.style.transition = "transform .25s cubic-bezier(.32,.72,0,1)";
+            activeImage.style.transform = `translate3d(${tx}px,${ty}px,0) scale(${scaleToThumbnail})`;
+            activeOverlay.style.transition = "background .25s ease";
+            activeOverlay.style.background = "rgba(0,0,0,0)";
+            closeTimerRef.current = window.setTimeout(onClose, 270);
+        });
+    }, [originRect, onClose]);
+
+    useEffect(() => {
+        if (!originRect) return;
+        const frame = window.requestAnimationFrame(animateOpen);
+        return () => window.cancelAnimationFrame(frame);
+    }, [animateOpen, originRect]);
+
+    useEffect(() => () => {
+        if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+    }, []);
+
     useEffect(() => {
         const onKey = (event: KeyboardEvent) => {
-            if (event.key === "Escape") onClose();
+            if (event.key === "Escape") closeViewer();
             else if (event.key === "ArrowLeft") {
                 setIndex(current => Math.max(0, current - 1));
                 resetZoom();
@@ -114,7 +189,7 @@ function GalleryPreviewOverlay({
         const onSwipeBack = (event: Event) => {
             if (event.defaultPrevented) return;
             event.preventDefault();
-            onClose();
+            closeViewer();
         };
         window.addEventListener("keydown", onKey);
         document.addEventListener("phone-swipe-back", onSwipeBack, true);
@@ -122,9 +197,10 @@ function GalleryPreviewOverlay({
             window.removeEventListener("keydown", onKey);
             document.removeEventListener("phone-swipe-back", onSwipeBack, true);
         };
-    }, [images.length, onClose]);
+    }, [images.length, closeViewer]);
 
     const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+        if (closeAnimationRef.current) return;
         event.stopPropagation();
         pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* optional on older WebViews */ }
@@ -148,7 +224,7 @@ function GalleryPreviewOverlay({
     };
 
     const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-        if (!pointersRef.current.has(event.pointerId)) return;
+        if (closeAnimationRef.current || !pointersRef.current.has(event.pointerId)) return;
         pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         const points = [...pointersRef.current.values()];
         const gesture = gestureRef.current;
@@ -226,7 +302,7 @@ function GalleryPreviewOverlay({
         }
         if (gesture.mode === "dismiss") {
             if (dy > 86 || (dy > 24 && elapsed < 260)) {
-                onClose();
+                closeViewer();
                 return;
             }
             resetZoom();
@@ -285,6 +361,7 @@ function GalleryPreviewOverlay({
     if (typeof document === "undefined") return null;
     return createPortal(
         <div
+            ref={overlayRef}
             className="chat-gallery-preview"
             role="dialog"
             aria-modal="true"
@@ -292,7 +369,7 @@ function GalleryPreviewOverlay({
             onClick={event => event.stopPropagation()}
             style={{
                 position: "fixed", inset: 0, zIndex: 100000, overflow: "hidden",
-                background: `rgba(0,0,0,${Math.max(0.18, 1 - Math.abs(dismissY) / 720)})`,
+                background: originRect && !didOpenAnimationRef.current ? "rgba(0,0,0,0)" : `rgba(0,0,0,${Math.max(0.18, 1 - Math.abs(dismissY) / 720)})`,
                 touchAction: "none", WebkitTapHighlightColor: "transparent",
             }}
         >
@@ -312,11 +389,13 @@ function GalleryPreviewOverlay({
                     {images.map((url, imageIndex) => (
                         <div key={`${imageIndex}-${url}`} style={{ flex: "0 0 100vw", width: "100vw", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                             <img
+                                ref={imageIndex === index ? activeImageRef : undefined}
+                                onLoad={imageIndex === index ? animateOpen : undefined}
                                 src={url}
                                 alt={`第 ${imageIndex + 1} 张图片`}
                                 draggable={false}
                                 style={{
-                                    maxWidth: "100vw", maxHeight: "100dvh", width: "auto", height: "auto", objectFit: "contain",
+                                    maxWidth: "86vw", maxHeight: "80dvh", width: "auto", height: "auto", objectFit: "contain",
                                     userSelect: "none", pointerEvents: "none", willChange: "transform",
                                     transform: imageIndex === index ? `translate3d(${offset.x}px,${offset.y + dismissY}px,0) scale(${scale})` : "none",
                                     transition: isDragging ? "none" : "transform .24s ease",
@@ -332,7 +411,7 @@ function GalleryPreviewOverlay({
             <button
                 type="button"
                 onPointerDown={event => event.stopPropagation()}
-                onClick={event => { event.stopPropagation(); onClose(); }}
+                onClick={event => { event.stopPropagation(); closeViewer(); }}
                 aria-label="关闭图片浏览"
                 style={{ position: "absolute", top: "max(env(safe-area-inset-top, 0px), 12px)", right: 14, width: 40, height: 40, display: "grid", placeItems: "center", border: "1px solid rgba(255,255,255,.15)", borderRadius: "50%", color: "white", background: "rgba(255,255,255,.12)", backdropFilter: "blur(12px)" }}
             >
@@ -360,6 +439,7 @@ export function MediaPreviewOverlay({
     imageUrl,
     galleryImages,
     initialIndex = 0,
+    originRect,
     description,
     saveFilename,
     onRegenerate,
@@ -369,6 +449,7 @@ export function MediaPreviewOverlay({
     imageUrl?: string | null;
     galleryImages?: string[];
     initialIndex?: number;
+    originRect?: GalleryOriginRect | null;
     description?: string;
     saveFilename?: string;
     onRegenerate?: () => void;
@@ -390,7 +471,7 @@ export function MediaPreviewOverlay({
         return () => document.removeEventListener("phone-swipe-back", handleSwipeBack, true);
     }, [galleryImages?.length, onClose]);
     if (galleryImages && galleryImages.length > 1) {
-        return <GalleryPreviewOverlay images={galleryImages} initialIndex={initialIndex} saveFilename={saveFilename} onClose={onClose} />;
+        return <GalleryPreviewOverlay images={galleryImages} initialIndex={initialIndex} originRect={originRect} saveFilename={saveFilename} onClose={onClose} />;
     }
     // 保存要重新拉一次图片，慢网络下会卡一下——按钮上给个状态
     if (typeof document === "undefined") return null;
