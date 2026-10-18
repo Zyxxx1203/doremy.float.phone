@@ -377,6 +377,18 @@ export function MediaPreviewOverlay({
 }) {
     // Keep hooks unconditional even when this component switches between single-image and collection mode.
     const [saving, setSaving] = useState(false);
+    useEffect(() => {
+        // Full collections have their own horizontal swipe controller; ordinary previews
+        // should close first when the phone's system back gesture is invoked.
+        if (galleryImages && galleryImages.length > 1) return;
+        const handleSwipeBack = (event: Event) => {
+            if (event.defaultPrevented) return;
+            event.preventDefault();
+            onClose();
+        };
+        document.addEventListener("phone-swipe-back", handleSwipeBack, true);
+        return () => document.removeEventListener("phone-swipe-back", handleSwipeBack, true);
+    }, [galleryImages?.length, onClose]);
     if (galleryImages && galleryImages.length > 1) {
         return <GalleryPreviewOverlay images={galleryImages} initialIndex={initialIndex} saveFilename={saveFilename} onClose={onClose} />;
     }
