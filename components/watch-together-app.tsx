@@ -73,7 +73,14 @@ function loadCommentStore(): Record<string, WatchComment[]> {
   catch { return {}; }
 }
 function loadTargetComments(url: string): WatchComment[] { return loadCommentStore()[url] ?? []; }
-function saveTargetComments(url: string, comments: WatchComment[]): void { const store=loadCommentStore(); store[url]=comments.slice(-100); kvSet(COMMENTS_KEY,JSON.stringify(store)); }
+function saveTargetComments(url: string, comments: WatchComment[]): void {
+  const store=loadCommentStore();
+  delete store[url];
+  store[url]=comments.slice(-100);
+  const keys=Object.keys(store);
+  while(keys.length>20){const oldest=keys.shift();if(oldest)delete store[oldest];}
+  kvSet(COMMENTS_KEY,JSON.stringify(store));
+}
 
 /** Screen orientation locking is not included in every TypeScript DOM lib/browser. */
 async function tryLockLandscape(): Promise<void> {
@@ -272,7 +279,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         <span className="grid h-6 w-6 place-items-center overflow-hidden rounded-full bg-[#4a3d33] text-[10px] text-[#e6d8c4]">{character.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character.name.slice(0, 1)}</span>
         <span className="max-w-[72px] truncate text-[11px] text-[#d8c9b6]">{character.name}</span>
       </div>}
-      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowSettings(value => !value); }} className="relative z-[1011] grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center border-b border-[#8f6a5a]/50 bg-[#fffaf2]/60 text-[#6d4e47] transition active:scale-95" aria-label="观影设置"><Settings2 size={17}/></button>
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowSettings(value => !value); }} className="relative z-[1011] grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center border-b border-[#8f6a5a]/50 bg-[#fffaf2]/60 text-[#6d4e47] transition active:scale-95" aria-label="观影设置" aria-expanded={showSettings}><Settings2 size={17}/></button>
     </header>
 
     <main className="watch-together-main relative z-[1001] min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-8" style={{backgroundImage:"radial-gradient(ellipse at 50% 0%,rgba(255,251,242,.72),transparent 62%)"}}>
@@ -356,7 +363,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             <p className="mt-1 text-[10px] leading-5 text-[#a9937e]">把某一幕、剧情转折或想说的话记在对应时间点。外部播放器的实际播放时间无法由跨站 iframe 读取，因此时间点可手动填写。</p>
             {comments.some(item=>item.timepoint) && <div className="mt-3 flex flex-wrap gap-2">{[...new Set(comments.filter(item=>item.timepoint).map(item=>item.timepoint!))].map(point=><button key={point} type="button" onClick={()=>{setTimepointDraft(point);setDiscussionDraft(`想再聊聊 ${point} 这一幕`);}} className="border-b border-[#c99a78]/60 px-1 py-1 text-[11px] text-[#e4c6a8]">{point} ↗</button>)}</div>}
             <div className="mt-3 max-h-64 space-y-3 overflow-y-auto overscroll-contain pr-1">{comments.length ? comments.slice(-30).map(item=><div key={item.id} className={`flex ${item.kind==="user"?"justify-end":"justify-start"}`}><div className={`max-w-[88%] border px-3 py-2.5 ${item.kind==="user"?"border-[#d6b18c]/35 bg-[#d6b18c]/10":"border-white/10 bg-white/[.045]"}`}><div className="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-[#c4a58a]"><span>{item.kind==="user"?"我":item.characterName}</span>{item.timepoint&&<button type="button" onClick={()=>setTimepointDraft(item.timepoint||"")} className="border-b border-[#c99a78]/50 text-[#e4c6a8]">{item.timepoint}</button>}<span className="text-[#85756a]">{new Date(item.createdAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</span></div><p className="whitespace-pre-wrap break-words font-serif text-sm leading-6 text-[#efe2d0]">{item.text}</p></div></div>) : <p className="border-l border-[#c99a78]/45 py-1 pl-3 text-xs leading-6 text-[#a9937e]">这里留给你们讨论剧情、吐槽片段，或标记想一起记住的时刻。</p>}</div>
-            <div className="mt-3 border-t border-[#d6b18c]/20 pt-3"><div className="flex items-center gap-2"><input value={timepointDraft} onChange={event=>setTimepointDraft(event.target.value.slice(0,16))} placeholder="时间点 03:12（可选）" className="w-[42%] min-w-0 border-b border-[#9c7b63]/60 bg-transparent px-1 py-2 text-xs text-[#f0dfcc] outline-none placeholder:text-[#907d6c] focus:border-[#e4c6a8]"/><span className="text-[10px] text-[#907d6c]">章节 / 剧情标记</span></div><textarea value={discussionDraft} onChange={event=>setDiscussionDraft(event.target.value)} rows={2} placeholder="写下你对这一幕的看法……" className="mt-2 w-full resize-none border border-white/10 bg-black/15 p-3 text-sm leading-6 text-[#efe2d0] outline-none placeholder:text-[#907d6c] focus:border-[#c99a78]/60"/><div className="mt-2 flex justify-end"><button type="button" onClick={submitDiscussion} disabled={!target||!discussionDraft.trim()||busy} className="border border-[#c99a78]/60 bg-[#c99a78] px-4 py-2 text-xs text-[#2a1f16] disabled:opacity-40"><MessageCircle size={13} className="mr-1 inline"/>记下并问问 TA</button></div></div>
+            <div className="mt-3 border-t border-[#d6b18c]/20 pt-3"><div className="flex items-center gap-2"><input value={timepointDraft} onChange={event=>setTimepointDraft(event.target.value.slice(0,16))} placeholder="时间点 03:12（可选）" className="w-[42%] min-w-0 border-b border-[#9c7b63]/60 bg-transparent px-1 py-2 text-xs text-[#f0dfcc] outline-none placeholder:text-[#907d6c] focus:border-[#e4c6a8]"/><span className="text-[10px] text-[#907d6c]">章节 / 剧情标记</span></div><textarea value={discussionDraft} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} maxLength={800} rows={2} placeholder="写下你对这一幕的看法……" className="mt-2 w-full resize-none border border-white/10 bg-black/15 p-3 text-sm leading-6 text-[#efe2d0] outline-none placeholder:text-[#907d6c] focus:border-[#c99a78]/60"/><div className="mt-2 flex justify-end"><button type="button" onClick={submitDiscussion} disabled={!target||!discussionDraft.trim()||busy} className="border border-[#c99a78]/60 bg-[#c99a78] px-4 py-2 text-xs text-[#2a1f16] disabled:opacity-40"><MessageCircle size={13} className="mr-1 inline"/>记下并问问 TA</button></div></div>
           </section>
           <div className="relative z-10 mt-2 flex flex-wrap gap-1.5">
             {[
