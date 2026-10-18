@@ -239,6 +239,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
           onDoodlePointerMove={(event) => { if (!readOnly) doodlePointerMove(event, photo, index); }}
           onDoodlePointerUp={(event) => { if (!readOnly) doodlePointerUp(event, photo); }}
           onOpenDetail={() => onOpenDetail(photo)}
+          readOnly={readOnly}
         />;
       })}
     </div>
@@ -280,9 +281,10 @@ type FrameProps = {
   onDoodlePointerMove: (event: React.PointerEvent) => void;
   onDoodlePointerUp: (event: React.PointerEvent) => void;
   onOpenDetail: () => void;
+  readOnly: boolean;
 };
 
-function WallPhotoFrame({ photo, placement, selected, doodleMode, draftPoints, onPointerDownMove, onPointerDownResize, onDoodlePointerDown, onDoodlePointerMove, onDoodlePointerUp, onOpenDetail }: FrameProps) {
+function WallPhotoFrame({ photo, placement, selected, doodleMode, draftPoints, onPointerDownMove, onPointerDownResize, onDoodlePointerDown, onDoodlePointerMove, onDoodlePointerUp, onOpenDetail, readOnly }: FrameProps) {
   const [src, setSrc] = useState("");
   const [failed, setFailed] = useState(false);
 
@@ -322,6 +324,7 @@ function WallPhotoFrame({ photo, placement, selected, doodleMode, draftPoints, o
       }}
       onPointerDown={(event) => { if (!doodleMode) onPointerDownMove(event); }}
       onDoubleClick={onOpenDetail}
+      onClick={event => { if (readOnly) { event.stopPropagation(); onOpenDetail(); } }}
     >
       <div className="relative overflow-hidden bg-[#e7dfd2]" style={{ aspectRatio: "1 / 1", borderRadius: frame === "none" ? 6 : 2 }}>
         {src ? <img src={src} alt={photo.title} draggable={false} className="h-full w-full object-cover" /> : failed ? <div className="grid h-full place-items-center text-[9px] text-[#a06050]">图片无法显示</div> : <div className="grid h-full place-items-center text-[#a99a86]"><ImagePlus size={16}/></div>}
