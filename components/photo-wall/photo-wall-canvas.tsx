@@ -216,6 +216,9 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   /* ── 选中照片的小工具条 ──────────────────────── */
   const nudge = (photo: PhotoWallPhoto, index: number, patch: Partial<PhotoWallPlacement>) => {
     const base = placementOf(photo, index);
+    // Lock protects position/size/orientation from every control; the explicit
+    // locked-field toggle remains allowed so the user can unlock the card.
+    if (base.locked && patch.locked === undefined) return;
     commit(photo.id, { ...base, ...patch } as PhotoWallPlacement);
   };
 
