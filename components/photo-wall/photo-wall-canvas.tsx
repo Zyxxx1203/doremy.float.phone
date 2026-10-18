@@ -442,8 +442,22 @@ type FrameProps = {
 function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, onToggleFlip, doodleMode, draftPoints, onPointerDownMove, onPointerDownResize, onDoodlePointerDown, onDoodlePointerMove, onDoodlePointerUp, onOpenDetail, readOnly }: FrameProps) {
   const [src, setSrc] = useState("");
   const [failed, setFailed] = useState(false);
+  /** 无界画布可能很大：滚出视野的照片先不解码，回来再补，避免几十张图一起占内存。 */
+  const [inView, setInView] = useState(true);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const node = rootRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) setInView(entry.isIntersecting);
+    }, { rootMargin: "600px" });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!inView || src) return;
     let active = true;
     let url = "";
     setFailed(false);
@@ -452,13 +466,14 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
       if (value) { url = value; setSrc(value); } else setFailed(true);
     }).catch(() => { if (active) setFailed(true); });
     return () => { active = false; if (url) URL.revokeObjectURL(url); };
-  }, [photo.mediaRef]);
+  }, [photo.mediaRef, inView, src]);
 
   const frame = placement.frame;
   const pad = FRAME_PADDING[frame];
   const width = `clamp(${112 * placement.scale}px, ${14 * placement.scale}vw, ${224 * placement.scale}px)`;
 
   return <div
+    ref={rootRef}
     data-photo-wall-photo
     className="absolute"
     style={{

@@ -165,10 +165,18 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   useEffect(() => {
     const current = target;
-    if (!current || current.nativeVideo || current.embedUrl || current.supported) return;
+    if (!current || current.nativeVideo) return;
+    /**
+     * 平台视频优先试一次「原生解析出真实视频流」：
+     * 成功就换成同源 <video> 播放——真正的站内播放，还能直接截帧给角色看；
+     * 失败就静默留在 iframe 上，不拿提示打扰用户。
+     * （B 站要生效，壳侧 isSupportedShareUrl 需要把 bilibili.com / b23.tv 加进白名单。）
+     */
+    const preferNativeStream = current.platform === "bilibili";
+    if ((current.embedUrl || current.supported) && !preferNativeStream) return;
     let host = "";
     try { host = new URL(current.url).hostname.toLowerCase(); } catch { return; }
-    const roots = ["xhslink.com", "xhslink.cn", "xiaohongshu.com", "douyin.com", "iesdouyin.com", "kuaishou.com"];
+    const roots = ["xhslink.com", "xhslink.cn", "xiaohongshu.com", "douyin.com", "iesdouyin.com", "kuaishou.com", "bilibili.com", "b23.tv"];
     if (!roots.some(root => host === root || host.endsWith("." + root))) return;
     const native = (window as WatchNativeWindow).AndroidShell;
     if (!native || !native.resolveShortVideoShareUrl) return;
@@ -185,14 +193,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         nativeVideoCacheRef.current = { url: current.url, cacheId: detail.cacheId };
         setTarget(previous => previous && previous.url === current.url ? { ...previous, nativeVideo: true, nativeVideoUrl: detail.contentUri, nativeCacheId: detail.cacheId, supported: true } : previous);
         onNotice?.("已取得可播放的视频流，可以在小手机内观看并继续讨论。");
-      } else {
+      } else if (!preferNativeStream) {
         onNotice?.("小手机未能从该分享链接取得可播放的视频流：" + (detail.message || "平台可能要求登录，或使用了签名/防盗链地址。"));
       }
     };
     window.addEventListener("floatshell-shared-video-ready", onResolved);
     try {
-      if (!native.resolveShortVideoShareUrl(current.url, requestId)) onNotice?.("原生视频解析没有接受这个链接，请确认 APK 已更新。");
-    } catch { onNotice?.("无法调用 APK 的原生视频解析能力。"); }
+      if (!native.resolveShortVideoShareUrl(current.url, requestId) && !preferNativeStream) onNotice?.("原生视频解析没有接受这个链接，请确认 APK 已更新。");
+    } catch { if (!preferNativeStream) onNotice?.("无法调用 APK 的原生视频解析能力。"); }
     return () => {
       active = false;
       window.removeEventListener("floatshell-shared-video-ready", onResolved);
