@@ -97,11 +97,20 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   }, []);
   useEffect(() => { saveSettings(settings); }, [settings]);
   useEffect(() => {
-    const onFullscreen = () => setFullScreen(Boolean(document.fullscreenElement));
+    const onFullscreen = () => {
+      const active = Boolean(document.fullscreenElement);
+      setFullScreen(active);
+      if (!active) {
+        try { screen.orientation?.unlock?.(); } catch { /* orientation lock is optional */ }
+      }
+    };
     document.addEventListener("fullscreenchange", onFullscreen);
     return () => document.removeEventListener("fullscreenchange", onFullscreen);
   }, []);
-  useEffect(() => () => { if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current); }, []);
+  useEffect(() => () => {
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    try { screen.orientation?.unlock?.(); } catch { /* orientation lock is optional */ }
+  }, []);
 
   const patchSettings = (patch: Partial<WatchSettings>) => setSettings(current => ({ ...current, ...patch }));
   const openVideo = () => {
