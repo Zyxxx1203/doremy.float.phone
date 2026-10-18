@@ -269,6 +269,8 @@ export type ChatMessage = {
         imageGroupCount?: number;
         imageGenerationMediaRef?: string;
         imageGenerationPrompt?: string;
+        /** 图像提示要求多人同框时保留参与者 ID，供失败重试/重新生成继续使用身份参考。 */
+        imageGenerationCharacterIds?: string[];
         imageGenerationUsedReference?: boolean;
         imageGenerationStatus?: "pending" | "failed" | "generated";
         imageGenerationError?: string;

@@ -944,12 +944,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       "当前场景："+(activeScene?.locationName || selectedLocation?.name || "日常场景"),
       "场景状态："+(activeScene?.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);return (actor?.name||p.ownerId)+"正在"+p.activity;}).join("；") || playerActivity),
       participantIds.includes(PLAYER_ID) && imageSettings.userAppearanceDescription?.trim() ? "玩家固定外观："+imageSettings.userAppearanceDescription.trim() : "",
-      participantIds.includes(PLAYER_ID) && imageSettings.userAppearanceReferenceAssetId ? "参考板中标注“"+playerName+"”的图片用于保持玩家本人身份特征；不要把玩家与角色混为一人。" : "",
+      participantIds.includes(PLAYER_ID) && imageSettings.userAppearanceReferenceAssetId ? "玩家本人使用独立脸部参考图保持身份；不要把玩家与角色混为一人，也不要复制参考图的服装或站位。" : "",
       ...participantIds.map(pid=>{
         const char=characters.find(item=>item.id===pid);
         if(!char)return "";
         const ref=imageSettings.characterReferences?.[char.id];
-        return char.name+"的外观与性格："+[char.persona,char.personality,ref?.featurePrompt].filter(Boolean).join("；");
+        return char.name+"的角色身份与稳定外观（服装、姿态和站位随当前场景变化）："+[char.persona,ref?.featurePrompt].filter(Boolean).join("；");
       }),
       settings.sceneImageStyle,
       customPrompt.trim(),

@@ -2943,7 +2943,15 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         guard?: GenerationRunGuard,
     ): Promise<ChatMessage | null> => {
         if (!isPendingChatGeneratedImageMessage(message)) return Promise.resolve(null);
-        return generateAndApplyChatGeneratedImage(message, characterId || session.contactId, { signal: guard?.signal })
+        const imageDescription = message.mediaData?.label?.trim() || "";
+        const groupPhotoPattern = /合照|合影|全员|大家|所有人|群像|我们|所有成员|group\\s*(?:photo|portrait)|everyone|all of us|the whole group/i;
+        const groupCharacterIds = session.isGroup && groupPhotoPattern.test(imageDescription)
+            ? session.participantIds
+            : undefined;
+        return generateAndApplyChatGeneratedImage(message, characterId || session.contactId, {
+            signal: guard?.signal,
+            characterIds: groupCharacterIds,
+        })
             .catch(error => {
                 if (!isAbortLikeError(error)) {
                     console.warn("[ImageGeneration] Failed to generate chat image:", error);

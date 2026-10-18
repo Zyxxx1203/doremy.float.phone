@@ -40,7 +40,7 @@ export function isPendingChatGeneratedImageMessage(message: Pick<ChatMessage, "m
 export async function generateAndApplyChatGeneratedImage(
     message: ChatMessage,
     characterId?: string,
-    options?: { signal?: AbortSignal; description?: string; useReferenceImage?: boolean },
+    options?: { signal?: AbortSignal; description?: string; useReferenceImage?: boolean; characterIds?: string[] },
 ): Promise<ChatMessage> {
     const previousDescription = message.mediaData?.label?.trim() || "";
     const description = (options?.description ?? previousDescription).trim();
@@ -49,6 +49,7 @@ export async function generateAndApplyChatGeneratedImage(
     const effectiveUseReference = options?.useReferenceImage !== undefined
         ? options.useReferenceImage
         : (message.mediaData?.useReferenceImage === true);
+    const effectiveCharacterIds = options?.characterIds ?? message.mediaData?.imageGenerationCharacterIds;
 
     if (
         (previousDescription && previousDescription !== description) ||
@@ -65,6 +66,7 @@ export async function generateAndApplyChatGeneratedImage(
                 ...message.mediaData,
                 label: description,
                 useReferenceImage: effectiveUseReference,
+                imageGenerationCharacterIds: effectiveCharacterIds,
                 imageGenerationStatus: "pending",
                 imageGenerationError: undefined,
             },
@@ -78,6 +80,7 @@ export async function generateAndApplyChatGeneratedImage(
             characterId,
             appId: "chat",
             useReferenceImage: effectiveUseReference,
+            characterIds: effectiveCharacterIds,
             signal: options?.signal,
         });
         if (!generated) throw new Error("生图配置未启用或不完整");
@@ -92,6 +95,7 @@ export async function generateAndApplyChatGeneratedImage(
             useReferenceImage: effectiveUseReference,
             imageGenerationMediaRef: generated.mediaRef,
             imageGenerationPrompt: generated.prompt,
+            imageGenerationCharacterIds: effectiveCharacterIds,
             imageGenerationUsedReference: generated.usedReferenceImage,
             imageGenerationStatus: "generated",
             imageGenerationError: undefined,
@@ -111,6 +115,7 @@ export async function generateAndApplyChatGeneratedImage(
                 ...message.mediaData,
                 label: description,
                 useReferenceImage: effectiveUseReference,
+                imageGenerationCharacterIds: effectiveCharacterIds,
                 imageGenerationStatus: "failed",
                 imageGenerationError: errorToMessage(error),
             },
