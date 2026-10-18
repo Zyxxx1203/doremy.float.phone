@@ -105,6 +105,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [settings, setSettings] = useState<WatchSettings>(() => loadSettings());
   const [urlInput, setUrlInput] = useState("");
   const [target, setTarget] = useState<VideoTarget | null>(null);
+  const videoFileInputRef = useRef<HTMLInputElement>(null);
+  const localVideoObjectUrlRef = useRef<string | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
   const [comments, setComments] = useState<WatchComment[]>([]);
   const [discussionDraft, setDiscussionDraft] = useState("");
@@ -154,13 +156,36 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   }, []);
   useEffect(() => () => {
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    if (localVideoObjectUrlRef.current) URL.revokeObjectURL(localVideoObjectUrlRef.current);
     try { screen.orientation?.unlock?.(); } catch { /* orientation lock is optional */ }
   }, []);
 
   const patchSettings = (patch: Partial<WatchSettings>) => setSettings(current => ({ ...current, ...patch }));
+  const openLocalVideo = (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("video/") && !/\.(mp4|webm|m4v|mov|ogv|ogg)$/i.test(file.name)) {
+      onNotice?.("请选择 MP4、WebM、MOV 或其他浏览器支持的视频文件。");
+      return;
+    }
+    if (localVideoObjectUrlRef.current) URL.revokeObjectURL(localVideoObjectUrlRef.current);
+    const objectUrl = URL.createObjectURL(file);
+    localVideoObjectUrlRef.current = objectUrl;
+    const localTarget: VideoTarget = { url: objectUrl, embedUrl: null, platform: "other", platformName: "本地视频", supported: true, nativeVideo: true };
+    setTarget(localTarget);
+    setVideoTitle(file.name.replace(/\\.[^.]+$/, "") || "本地视频");
+    setComments([]);
+    setDiscussionDraft("");
+    setTimepointDraft("");
+    setWatching(false);
+    onNotice?.("已载入本地视频。视频在当前页面内播放，不会上传；切换文件或离开一起看后会释放临时引用。");
+  };
   const openVideo = () => {
     const parsed = parseVideoUrl(urlInput);
     if (!parsed) { onNotice?.("请粘贴完整的视频分享链接（http/https）。"); return; }
+    if (localVideoObjectUrlRef.current) {
+      URL.revokeObjectURL(localVideoObjectUrlRef.current);
+      localVideoObjectUrlRef.current = null;
+    }
     setTarget(parsed);
     setVideoTitle(current => current || `${parsed.platformName}的一段视频`);
     setComments(loadTargetComments(parsed.url));
@@ -352,11 +377,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       </section>
 
       {/* 没有视频时：链接输入放在「屏幕」下方，像往播放器里投一块碟 */}
-      {!target && <div className="watch-link-panel mx-auto mt-4 w-full max-w-3xl rounded-3xl border border-[#b89979]/30 bg-[#fff8ed]/75 p-3 shadow-[0_12px_30px_rgba(96,67,43,.08)] backdrop-blur sm:p-4">
+      {(!target || target.platformName !== "本地视频") && <div className="watch-link-panel mx-auto mt-4 w-full max-w-3xl rounded-3xl border border-[#b89979]/30 bg-[#fff8ed]/75 p-3 shadow-[0_12px_30px_rgba(96,67,43,.08)] backdrop-blur sm:p-4">
         <div className="flex flex-col gap-2 sm:flex-row">
-          <input value={urlInput} onChange={event => setUrlInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter") openVideo(); }} placeholder="粘贴 B站 / 抖音 / 小红书 / 腾讯 / 优酷链接" className="min-w-0 flex-1 rounded-2xl border border-[#dac6ad] bg-white/90 px-4 py-3.5 text-sm text-[#554437] outline-none placeholder:text-[#a09383] focus:border-[#b88768] focus:ring-2 focus:ring-[#c99a6a]/15" />
+          <input value={urlInput} onChange={event => setUrlInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter") openVideo(); }} placeholder="粘贴视频链接；短视频分享链接不保证能自动内嵌" className="min-w-0 flex-1 rounded-2xl border border-[#dac6ad] bg-white/90 px-4 py-3.5 text-sm text-[#554437] outline-none placeholder:text-[#a09383] focus:border-[#b88768] focus:ring-2 focus:ring-[#c99a6a]/15" />
           <button onClick={openVideo} className="rounded-2xl px-5 py-3.5 text-sm font-semibold tracking-wide text-[#2a1f16] shadow-sm transition hover:brightness-[1.02] active:scale-[.98]" style={{ background: "linear-gradient(135deg,#f0d0a8,#c99a6a)" }}>放上屏幕</button>
+          <button type="button" onClick={() => videoFileInputRef.current?.click()} className="rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">选择本地视频</button>
         </div>
+        <input ref={videoFileInputRef} type="file" accept="video/*,.mp4,.webm,.mov,.m4v,.ogv" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; openLocalVideo(file); }} />
+        {target && target.platformName !== "本地视频" && !target.embedUrl && <p className="mt-2 rounded-xl bg-[#f4e7d6] px-3 py-2 text-xs leading-5 text-[#82644c]">这个平台没有可靠的网页内嵌源。选择已保存的视频文件后仍可在这里播放，再继续和角色讨论。</p>}
         {platformNote && <p className="mt-2 px-1 text-[11px] leading-5 text-[#8b7665]">{platformNote}</p>}
       </div>}
 

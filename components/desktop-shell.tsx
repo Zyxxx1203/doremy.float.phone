@@ -4151,7 +4151,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     const isGestureExcluded = (target: EventTarget | null) => {
       if (!(target instanceof Element)) return false;
       return Boolean(target.closest(
-        'input, textarea, select, [contenteditable="true"], video, audio, canvas, [data-swipe-back-ignore], .watch-player, .chat-gallery-preview'
+        'input, textarea, select, [contenteditable="true"], video, audio, canvas, [data-swipe-back-ignore], .watch-player, .chat-gallery-preview, .chat-photo-carousel-stack, .photo-wall-surface, [data-photo-wall-viewport]'
       ));
     };
     const onPointerDown = (event: PointerEvent) => {
