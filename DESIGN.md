@@ -9,13 +9,11 @@ Float is a personalised Android phone shell with many different mini-apps. A sin
 
 ## Visual direction by feature
 
-### Life system — French rose manor and botanical journal
+### Life system — preserve existing theme and prioritise scene chat
 
-- Palette: warm cream, parchment, dusty rose and restrained antique gold. Sage may be a minor botanical accent, never the dominant surface colour.
-- Use paper-like surfaces, fine botanical/engraving details, editorial serif accents and postcard/dossier motifs sparingly.
-- Places should feel like entries in a curated atlas; schedules like an elegant planner; scene conversations like letters exchanged in a lived-in space.
-- Prioritise the scene chat over decoration. Action narration remains visually distinct from spoken dialogue. Preserve user-defined accent/theme settings.
-- Avoid default dashboard appearance, stacks of identical white rounded cards, oversized badges and unnecessary decorative text.
+- Respect the life system's existing scene theme, accent colour, opacity, custom CSS and saved appearance settings. Do not impose an extra default palette or decorative card layer.
+- Render action/narration as standalone centered text and spoken dialogue separately; the avatar identifies the speaker, so do not repeat the name inside the speech bubble.
+- Keep controls compact and leave the available height to the conversation. Avoid oversized rounded cards, repeated labels and decoration that shifts the layout.
 
 ### Photo wall — full-wall scrapbook
 

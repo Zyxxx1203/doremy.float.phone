@@ -12,80 +12,6 @@
   --float-motion-ease: cubic-bezier(0.2, 0.75, 0.25, 1);
 }
 
-/* Life system: rose-manor stationery, with theme accent still sourced from settings. */
-.life-rose-garden .life-place-card {
-  position: relative;
-  isolation: isolate;
-  border-radius: 15px !important;
-  border-color: color-mix(in srgb, var(--life-accent, var(--float-rose)) 22%, #e4d6cb) !important;
-  box-shadow:
-    0 8px 24px rgba(82, 55, 53, 0.065),
-    inset 0 1px 0 rgba(255, 255, 255, 0.88) !important;
-  background-image:
-    radial-gradient(ellipse at top right, color-mix(in srgb, var(--life-accent, var(--float-rose)) 8%, transparent), transparent 55%) !important;
-  transition:
-    transform 220ms var(--float-motion-ease),
-    border-color 220ms var(--float-motion-ease),
-    box-shadow 220ms var(--float-motion-ease);
-  animation: float-life-card-arrive 360ms var(--float-motion-ease) both;
-}
-
-.life-rose-garden .life-place-card > * {
-  position: relative;
-  z-index: 1;
-}
-
-.life-rose-garden .life-scene-panel {
-  border-radius: 15px !important;
-  border-color: color-mix(in srgb, var(--life-accent, var(--float-rose)) 18%, #e4d6cb) !important;
-  box-shadow: 0 12px 30px rgba(82, 55, 53, 0.055) !important;
-}
-
-.life-rose-garden .life-scene-chat {
-  border-radius: 10px !important;
-  background-image:
-    repeating-linear-gradient(
-      to bottom,
-      transparent 0,
-      transparent 27px,
-      rgba(170, 139, 120, 0.055) 28px,
-      transparent 29px
-    ) !important;
-}
-
-.life-rose-garden .life-scene-entry-card {
-  border-radius: 5px !important;
-  border-left: 2px solid color-mix(in srgb, var(--life-accent, var(--float-rose)) 38%, #e0c8bf) !important;
-}
-
-.life-rose-garden .life-scene-composer {
-  border-radius: 11px !important;
-  border-color: color-mix(in srgb, var(--life-accent, var(--float-rose)) 16%, #e4d6cb) !important;
-}
-
-.life-rose-garden nav[aria-label="生活导航"] {
-  border-radius: 10px !important;
-  box-shadow: 0 6px 18px rgba(82, 55, 53, 0.045) !important;
-}
-
-.life-rose-garden button:not(:disabled),
-.photo-wall-app button:not(:disabled),
-.watch-together-app button:not(:disabled) {
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-}
-
-.life-rose-garden button:focus-visible,
-.photo-wall-app button:focus-visible,
-.watch-together-app button:focus-visible,
-.photo-wall-app input:focus-visible,
-.photo-wall-app textarea:focus-visible,
-.watch-together-app input:focus-visible,
-.watch-together-app textarea:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--float-rose) 74%, white);
-  outline-offset: 2px;
-}
-
 /* Photo wall: keep the existing cream paper / Polaroid palette; add tactile feedback only. */
 .photo-wall-app button {
   transition:
@@ -148,24 +74,12 @@
 .watch-together-app [aria-label="双人同步电波"] > span:nth-child(3n + 2) { animation-delay: -0.48s; }
 .watch-together-app [aria-label="双人同步电波"] > span:nth-child(3n) { animation-delay: -0.18s; }
 
-@keyframes float-life-card-arrive {
-  from { opacity: 0; transform: translateY(7px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 @keyframes float-radio-wave {
   from { transform: scaleY(0.55); opacity: 0.58; }
   to { transform: scaleY(1.18); opacity: 1; }
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .life-rose-garden .life-place-card:hover {
-    transform: translateY(-2px);
-    box-shadow:
-      0 12px 28px rgba(82, 55, 53, 0.085),
-      inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
-  }
-
   .watch-together-app .watch-player:hover {
     border-color: rgba(255, 237, 216, 0.95) !important;
     box-shadow:
@@ -175,20 +89,12 @@
   }
 }
 
-.life-rose-garden button:active:not(:disabled),
 .photo-wall-app button:active:not(:disabled),
 .watch-together-app button:active:not(:disabled) {
   transform: translateY(1px) scale(0.99);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .life-rose-garden .life-place-card {
-    animation: none !important;
-    transition: none !important;
-  }
-
-  .life-rose-garden button,
-  .photo-wall-app button,
   .watch-together-app button,
   .watch-together-app .watch-player {
     transition: none !important;
