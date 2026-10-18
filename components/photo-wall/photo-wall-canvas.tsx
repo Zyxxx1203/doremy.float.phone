@@ -58,6 +58,7 @@ type Props = {
   onChangeDoodles: (id: string, doodles: PhotoWallDoodle[]) => void;
   onOpenDetail: (photo: PhotoWallPhoto) => void;
   readOnly?: boolean;
+  fitHeight?: boolean;
 };
 
 type DragState = {
@@ -72,7 +73,7 @@ type DragState = {
   moved: boolean;
 };
 
-export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onChangeDoodles, onOpenDetail, readOnly = false }: Props) {
+export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onChangeDoodles, onOpenDetail, readOnly = false, fitHeight = false }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const strokeRef = useRef<{ id: string; photoId: string } | null>(null);
@@ -210,10 +211,10 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     nudge(photo, index, { z: maxZ + 1 });
   };
 
-  return <div className="relative">
+  return <div className={fitHeight ? "relative flex h-full w-full items-center justify-center" : "relative"}>
     <div
       ref={wallRef}
-      className="photo-wall-surface relative w-full select-none overflow-hidden rounded-[2px] border border-[#eee3d8] shadow-[inset_0_1px_0_rgba(255,255,255,.95),0_4px_12px_rgba(88,70,48,.06)]"
+      className={"photo-wall-surface relative select-none overflow-hidden rounded-[2px] border border-[#eee3d8] shadow-[inset_0_1px_0_rgba(255,255,255,.95),0_4px_12px_rgba(88,70,48,.06)] " + (fitHeight ? "h-full w-auto shrink-0" : "w-full")}
       style={{ aspectRatio: "4 / 5", touchAction: readOnly ? "auto" : "none", backgroundImage: "repeating-linear-gradient(0deg,rgba(130,98,70,.018) 0,rgba(130,98,70,.018) 1px,transparent 1px,transparent 4px),radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.9),transparent 62%),linear-gradient(145deg,#fffaf2 0%,#faf3ea 48%,#f5ece2 100%)" }}
       onPointerMove={readOnly ? undefined : handlePointerMove}
       onPointerUp={readOnly ? undefined : endDrag}
