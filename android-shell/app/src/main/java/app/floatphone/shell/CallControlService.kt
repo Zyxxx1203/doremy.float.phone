@@ -274,6 +274,14 @@ class CallControlService : AccessibilityService() {
             for (i in (queue.length() - 20).coerceAtLeast(0) until queue.length()) bounded.put(queue.getJSONObject(i))
             prefs.edit().putString(QUEUE_KEY, bounded.toString()).apply()
         }
+        // 同一事件立即交给本机现实桥执行器；云端补传仍独立保留，Cookie/网络失败不影响本地规则。
+        runCatching {
+            NativeRealityBridge.capture(
+                applicationContext,
+                event.optString("type"),
+                event.optString("payload"),
+            )
+        }
     }
 
     private fun deliverPendingEvents() {
