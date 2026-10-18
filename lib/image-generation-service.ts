@@ -749,7 +749,7 @@ export async function fetchNovelAiModels(apiKey: string): Promise<string[]> {
 }
 
 function descriptionExplicitlyIncludesPlayer(description: string): boolean {
-  return /(?:玩家本人|玩家入镜|玩家出镜|用户本人|用户形象|用户入镜|用户出镜|我的形象|我的照片|我入镜|我出镜|我在画面|我也在画面|本人入镜|本人出镜|我和.{0,24}(?:一起|合照|合影|同框|在画面)|和我.{0,24}(?:一起|合照|合影|同框)|与我.{0,24}(?:一起|合照|合影|同框)|跟我.{0,24}(?:一起|合照|合影|同框)|我们(?:一起|合照|合影|同框|出镜|入镜)|with me|me in (?:the|this) (?:image|picture)|my appearance|I am (?:in|pictured in)|the user(?: appears| is in the image)?|player character)/i.test(description);
+  return /(?:玩家本人|玩家入镜|玩家出镜|用户本人|用户形象|用户入镜|用户出镜|我的形象|我的照片|我入镜|我出镜|我在画面|我也在画面|本人入镜|本人出镜|主人本人|主人入镜|主人出镜|主人的形象|我和.{0,24}(?:一起|合照|合影|同框|在画面)|和我.{0,24}(?:一起|合照|合影|同框)|与我.{0,24}(?:一起|合照|合影|同框)|跟我.{0,24}(?:一起|合照|合影|同框)|你和.{0,24}(?:一起|合照|合影|同框|入镜|出镜)|和你.{0,24}(?:一起|合照|合影|同框|入镜|出镜)|与主人.{0,24}(?:一起|合照|合影|同框|入镜|出镜)|和主人.{0,24}(?:一起|合照|合影|同框|入镜|出镜)|我们(?:一起|合照|合影|同框|出镜|入镜)|with me|me in (?:the|this) (?:image|picture)|my appearance|I am (?:in|pictured in)|the user(?: appears| is in the image)?|player character)/i.test(description);
 }
 
 const DEFAULT_IDENTITY_FACE_CROP = { x: 0.27, y: 0.12, size: 0.46 };
@@ -856,7 +856,7 @@ export async function generateImageFromConfiguredApi(params: {
 
   const referenceSources: Array<{ label: string; dataUrl: string; crop?: { x: number; y: number; size: number } }> = [];
   const suppliedReferenceImageDataUrl = params.referenceImageDataUrl?.trim() || null;
-  if (params.useReferenceImage && suppliedReferenceImageDataUrl) {
+  if (params.useReferenceImage !== false && suppliedReferenceImageDataUrl) {
     referenceSources.push({ label: "补充场景参考", dataUrl: suppliedReferenceImageDataUrl });
   }
 
@@ -874,7 +874,8 @@ export async function generateImageFromConfiguredApi(params: {
     }
   };
 
-  if (params.useReferenceImage) {
+  if (params.useReferenceImage !== false) {
+    // Identity references are automatic by default; only an explicit per-image opt-out disables them.
     // Primary character is first. This ensures the current chat speaker's identity remains the anchor.
     for (const characterId of involvedCharacterIds) {
       await appendCharacterReference(characterId);
@@ -884,10 +885,10 @@ export async function generateImageFromConfiguredApi(params: {
 
   // The global user reference is independent from any character's per-chat reference toggle.
   // It is added only when the user is explicitly/clearly part of the requested image.
-  if (includeUserAppearance && settings.userAppearanceReferenceAssetId) {
+  if (params.useReferenceImage !== false && includeUserAppearance && settings.userAppearanceReferenceAssetId) {
     const dataUrl = await getChatImageFromIndexedDB(settings.userAppearanceReferenceAssetId);
     if (dataUrl) {
-      referenceSources.splice(params.useReferenceImage && suppliedReferenceImageDataUrl ? 1 : 0, 0, {
+      referenceSources.splice(params.useReferenceImage !== false && suppliedReferenceImageDataUrl ? 1 : 0, 0, {
         label: "玩家本人",
         dataUrl,
         crop: settings.userAppearanceFaceCrop || DEFAULT_IDENTITY_FACE_CROP,

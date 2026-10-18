@@ -45,7 +45,7 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
     const [photoRegenerating, setPhotoRegenerating] = useState(false);
     const characterId = post.authorType === "character" ? post.authorId : undefined;
     const [hasRef, setHasRef] = useState(() => hasCharacterReferenceImage(characterId));
-    const [photoUseReferenceDraft, setPhotoUseReferenceDraft] = useState(post.photoUseReferenceImage === true);
+    const [photoUseReferenceDraft, setPhotoUseReferenceDraft] = useState(post.photoUseReferenceImage !== false);
     const [showFallbackPreview, setShowFallbackPreview] = useState(false);
     // photoRetryError 只用于提示词弹窗内的即时校验；生成失败改用一次性弹窗，不再挂红字
     const [photoRetryError, setPhotoRetryError] = useState("");
@@ -163,7 +163,7 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
     const openPostEditor = () => {
         setPostContentDraft(post.content);
         setPostPhotoDescDraft(post.photoDescription || "");
-        setPostUseReferenceDraft(post.photoUseReferenceImage === true);
+        setPostUseReferenceDraft(post.photoUseReferenceImage !== false);
         setPostLocationDraft(post.location || "");
         setShowPostActions(false);
         setEditingPostOpen(true);
@@ -176,7 +176,7 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
         updateMomentPost(post.id, {
             content,
             photoDescription: photoDescription || undefined,
-            photoUseReferenceImage: photoDescription ? postUseReferenceDraft : false,
+            photoUseReferenceImage: photoDescription ? postUseReferenceDraft : undefined,
             location: postLocationDraft.trim() || undefined,
         });
         setEditingPostOpen(false);
@@ -262,7 +262,7 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
         const latestHasRef = hasCharacterReferenceImage(characterId);
         setHasRef(latestHasRef);
         setPhotoPromptDraft(post.photoDescription?.trim() || "");
-        setPhotoUseReferenceDraft(latestHasRef && post.photoUseReferenceImage === true);
+        setPhotoUseReferenceDraft(latestHasRef && post.photoUseReferenceImage !== false);
         setPhotoRetryError("");
         setShowPhotoPromptEditor(true);
     }, [characterId, post.photoDescription, post.photoUseReferenceImage]);

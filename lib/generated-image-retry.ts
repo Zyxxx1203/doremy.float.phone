@@ -48,7 +48,7 @@ export async function generateAndApplyChatGeneratedImage(
 
     const effectiveUseReference = options?.useReferenceImage !== undefined
         ? options.useReferenceImage
-        : (message.mediaData?.useReferenceImage === true);
+        : (message.mediaData?.disableReferenceImage !== true);
     const effectiveCharacterIds = options?.characterIds ?? message.mediaData?.imageGenerationCharacterIds;
 
     if (
@@ -66,6 +66,7 @@ export async function generateAndApplyChatGeneratedImage(
                 ...message.mediaData,
                 label: description,
                 useReferenceImage: effectiveUseReference,
+                disableReferenceImage: !effectiveUseReference,
                 imageGenerationCharacterIds: effectiveCharacterIds,
                 imageGenerationStatus: "pending",
                 imageGenerationError: undefined,
@@ -93,6 +94,7 @@ export async function generateAndApplyChatGeneratedImage(
             fileType: "image",
             fileName,
             useReferenceImage: effectiveUseReference,
+            disableReferenceImage: !effectiveUseReference,
             imageGenerationMediaRef: generated.mediaRef,
             imageGenerationPrompt: generated.prompt,
             imageGenerationCharacterIds: effectiveCharacterIds,
@@ -115,6 +117,7 @@ export async function generateAndApplyChatGeneratedImage(
                 ...message.mediaData,
                 label: description,
                 useReferenceImage: effectiveUseReference,
+                disableReferenceImage: !effectiveUseReference,
                 imageGenerationCharacterIds: effectiveCharacterIds,
                 imageGenerationStatus: "failed",
                 imageGenerationError: errorToMessage(error),
@@ -147,7 +150,7 @@ export async function retryMomentGeneratedPhoto(
 
     const effectiveUseReference = useReferenceImage !== undefined
         ? useReferenceImage
-        : (post.photoUseReferenceImage === true);
+        : (post.photoUseReferenceImage !== false);
 
     // 同聊天：重试先置 pending 并广播，卡片立刻显示"图片生成中…"；成功/失败都会再写状态。
     updateMomentPost(post.id, {

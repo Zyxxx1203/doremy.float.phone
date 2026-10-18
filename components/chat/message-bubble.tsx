@@ -1356,7 +1356,7 @@ function ImageBubble({
     const suppressGroupTapRef = useRef(false); // Prevent pointer-up from also firing a tap/open action.
 
     const [hasRef, setHasRef] = useState(() => hasCharacterReferenceImage(characterId));
-    const [useReferenceDraft, setUseReferenceDraft] = useState(d?.useReferenceImage === true);
+    const [useReferenceDraft, setUseReferenceDraft] = useState(d?.disableReferenceImage !== true);
 
     useEffect(() => {
         let active = true;
@@ -1454,7 +1454,7 @@ function ImageBubble({
         const latestHasRef = hasCharacterReferenceImage(characterId);
         setHasRef(latestHasRef);
         setPromptDraft(d?.label?.trim() || "");
-        setUseReferenceDraft(latestHasRef && d?.useReferenceImage === true);
+        setUseReferenceDraft(latestHasRef && d?.disableReferenceImage !== true);
         setRetryError("");
         setShowPromptEditor(true);
     }, [characterId, d?.label, d?.useReferenceImage]);
@@ -2265,13 +2265,13 @@ function MediaFileBubble({
     }, []);
 
     const [hasRef, setHasRef] = useState(() => hasCharacterReferenceImage(characterId));
-    const [imageUseReferenceDraft, setImageUseReferenceDraft] = useState(msg.mediaData?.useReferenceImage === true);
+    const [imageUseReferenceDraft, setImageUseReferenceDraft] = useState(msg.mediaData?.disableReferenceImage !== true);
 
     const openImagePromptEditor = useCallback(() => {
         const latestHasRef = hasCharacterReferenceImage(characterId);
         setHasRef(latestHasRef);
         setImagePromptDraft(msg.mediaData?.label?.trim() || "");
-        setImageUseReferenceDraft(latestHasRef && msg.mediaData?.useReferenceImage === true);
+        setImageUseReferenceDraft(latestHasRef && msg.mediaData?.disableReferenceImage !== true);
         setImageRetryError("");
         setShowImagePromptEditor(true);
     }, [characterId, msg.mediaData?.label, msg.mediaData?.useReferenceImage]);
