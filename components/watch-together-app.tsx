@@ -174,13 +174,33 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const enterFullscreen = async () => {
     const element = playerRef.current;
     if (!element) return;
-    if (document.fullscreenElement) { await document.exitFullscreen().catch(() => undefined); return; }
-    if (typeof element.requestFullscreen !== "function" || document.fullscreenEnabled === false) {
-      onNotice?.("当前环境（可能是 iOS 或 WebView 壳）不允许页面全屏，请使用视频播放器自带的放大按钮。");
+
+    // WebView / 部分移动浏览器没有 Fullscreen API：仍提供可退出的沉浸式布局，
+    // 不要让全屏按钮看起来像失效。原生全屏可用时仍优先交给浏览器处理。
+    if (fullScreen && !document.fullscreenElement) {
+      setFullScreen(false);
+      try { await screen.orientation?.unlock?.(); } catch { /* orientation lock is optional */ }
       return;
     }
-    try { await element.requestFullscreen(); }
-    catch { onNotice?.("全屏请求被系统拒绝，可尝试播放器内的全屏按钮。"); }
+    if (document.fullscreenElement) {
+      await document.exitFullscreen().catch(() => undefined);
+      try { await screen.orientation?.unlock?.(); } catch { /* orientation lock is optional */ }
+      return;
+    }
+    if (typeof element.requestFullscreen !== "function" || document.fullscreenEnabled === false) {
+      setFullScreen(true);
+      try { await screen.orientation?.lock?.("landscape"); } catch { /* not supported on every device */ }
+      onNotice?.("当前环境不支持系统全屏，已切换沉浸式布局；再次点击右上角按钮可退出。");
+      return;
+    }
+    try {
+      await element.requestFullscreen();
+      try { await screen.orientation?.lock?.("landscape"); } catch { /* orientation lock is optional */ }
+    } catch {
+      setFullScreen(true);
+      try { await screen.orientation?.lock?.("landscape"); } catch { /* not supported on every device */ }
+      onNotice?.("系统拒绝了原生全屏，已切换沉浸式布局；再次点击右上角按钮可退出。");
+    }
   };
 
   const latestComment = comments[comments.length - 1];
@@ -217,7 +237,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       {/* 屏幕：房间里唯一的光源 */}
       <section
         ref={playerRef}
-        className={`relative mx-auto w-full max-w-3xl overflow-hidden rounded-[26px] border border-white/10 bg-[#0d0b09] ${fullScreen ? "h-[100dvh] max-w-none rounded-none" : ""}`}
+        className={`relative mx-auto w-full max-w-3xl overflow-hidden rounded-[26px] border border-white/10 bg-[#0d0b09] ${fullScreen ? "fixed inset-0 z-[2000] h-[100dvh] w-screen max-w-none rounded-none" : ""}`}
         style={{ boxShadow: "0 0 0 1px rgba(255,214,170,.06), 0 28px 70px rgba(0,0,0,.6), 0 0 120px rgba(201,143,82,.16)" }}
       >
         {target?.embedUrl ? (
