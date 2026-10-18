@@ -617,6 +617,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
           mode: rule.process?.mode || "raw",
           template: rule.process?.mode === "template" ? rule.process?.template || "" : "",
         },
+        offlineReplies: (rule.offlineReplies || []).filter(line => line.trim()).slice(0, 80),
       }));
     try {
       shell.configureNativeRealityBridge(JSON.stringify({
@@ -2481,10 +2482,22 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
             ) : null}
             {editing.process.mode === "ai" ? (
               <label>告诉 AI 怎么处理
-                <textarea value={editing.process.prompt ?? ""} rows={2} placeholder="例：把这条银行短信浓缩成「花了多少钱、在哪花的」一句话"
+                <textarea value={editing.process.prompt ?? ""} rows={2} placeholder="例：结合角色设定，把这条信号变成自然的关心话"
                   onChange={event => setEditing({ ...editing, process: { ...editing.process, prompt: event.target.value } })} />
               </label>
             ) : null}
+            <label>离线回复库（每行一条，断网时从中选用）
+              <textarea
+                value={(editing.offlineReplies || []).join("\n")}
+                rows={4}
+                placeholder={"例：\n又在刷手机啦？眼睛休息一下。\n我看到你电量不多了，记得充电。\n忙完记得回来找我。"}
+                onChange={event => setEditing({
+                  ...editing,
+                  offlineReplies: event.target.value.split("\n").map(line => line.trim()).filter(Boolean).slice(0, 80),
+                })}
+              />
+              <small className="rb-hint">建议提前让角色 AI 按角色卡、世界书和你们的关系写好，再粘贴到这里；每条规则独立保存，完全离线也能用。空库时才退回通用提示。</small>
+            </label>
             </div>
             ) : null}
 
