@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Camera, Check, ChevronLeft, ChevronRight, Download, Feather, Heart, ImagePlus, LoaderCircle, MessageCircle , MoreHorizontal, PenLine, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, Camera, Check, ChevronLeft, ChevronRight, Download, Feather, Heart, ImagePlus, LoaderCircle, MessageCircle, MoreHorizontal, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { loadImageGenerationSettings } from "@/lib/settings-storage";
@@ -13,7 +13,7 @@ import { generateChatCompletion, flattenCompletionResult, readCompressedImageDat
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import {
   createPhotoWallId, DEFAULT_PHOTO_WALL_SETTINGS, loadPhotoWallState, savePhotoWallState,
-  type PhotoWallAnnotation, type PhotoWallDoodle, type PhotoWallPhoto, type PhotoWallPlacement, type PhotoWallState, type PhotoWallTemplate,
+  type PhotoWallDoodle, type PhotoWallPhoto, type PhotoWallPlacement, type PhotoWallState, type PhotoWallTemplate,
 } from "@/lib/photo-wall-storage";
 import { PhotoWallCanvas, fallbackPlacement } from "@/components/photo-wall/photo-wall-canvas";
 import { buildTemplateSlots, listAllTemplates, loadCustomTemplates, saveCustomTemplates } from "@/lib/photo-wall-templates";
@@ -52,8 +52,14 @@ function formatDate(value: string): string {
   if (Number.isNaN(date.getTime())) return "某个日子";
   return new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
 }
-function makeAnnotation(authorType: "user" | "character", authorName: string, content: string, authorId?: string): PhotoWallAnnotation {
-  return { id: createPhotoWallId(), authorType, authorName, authorId, content: content.trim(), createdAt: new Date().toISOString() };
+function getPhotoBackText(photo: PhotoWallPhoto): string {
+  const manual = photo.backNote?.trim() ?? "";
+  const legacyNotes = (photo.annotations ?? []).map(note => {
+    const date = new Date(note.createdAt);
+    const when = Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("zh-CN");
+    return `${note.authorName}${when ? `（${when}）` : ""}：${note.content.trim()}`;
+  }).filter(Boolean);
+  return [manual, ...legacyNotes].filter(Boolean).join("\n\n");
 }
 function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -204,7 +210,6 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [editNote, setEditNote] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [editTags, setEditTags] = useState("");
-  const [annotationDraft, setAnnotationDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState("");
   const [newKind, setNewKind] = useState<PhotoWallPhoto["kind"]>("favorite");
@@ -605,18 +610,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     if (!selectedPhoto) return;
     const currentState = stateRef.current;
     const latestPhoto = currentState.photos.find(photo => photo.id === selectedPhoto.id) ?? selectedPhoto;
-    const nextPhoto = { ...latestPhoto, title: editTitle.trim() || "未命名的瞬间", backNote: editNote, tags: editTags.split(/[,，#\n]/).map(tag => tag.trim()).filter(Boolean).slice(0, 20) };
+    const nextPhoto = { ...latestPhoto, title: editTitle.trim() || "未命名的瞬间", backNote: editNote, annotations: [], tags: editTags.split(/[,，#\n]/).map(tag => tag.trim()).filter(Boolean).slice(0, 20) };
     persist({ ...currentState, photos: currentState.photos.map(photo => photo.id === nextPhoto.id ? nextPhoto : photo) });
     setPhotoViewOnly(true);
     onNotice?.("照片背面的内容已保存。");
-  };
-
-  const addUserAnnotation = () => {
-    if (!selectedPhoto || !annotationDraft.trim()) return;
-    const annotation = makeAnnotation("user", "我", annotationDraft);
-    const currentState = stateRef.current;
-    persist({ ...currentState, photos: currentState.photos.map(photo => photo.id === selectedPhoto.id ? { ...photo, annotations: [...photo.annotations, annotation] } : photo) });
-    setAnnotationDraft("");
   };
 
   const askCharacterToWrite = async () => {
@@ -631,9 +628,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const instruction = [
         "你正在和亲近的人一起翻看一张私人照片墙。",
         `照片标题：${selectedPhoto.title}。`,
-        `照片背面记录：${selectedPhoto.backNote || selectedPhoto.caption || "还没有写下记录"}。`,
+        `照片背面已有内容：${editNote || getPhotoBackText(selectedPhoto) || selectedPhoto.caption || "还没有写下记录"}。`,
         `标签：${selectedPhoto.tags.join("、") || "没有标签"}。`,
-        `已有批注：${selectedPhoto.annotations.map(note => `${note.authorName}：${note.content}`).join("；") || "还没有批注"}。`,
         `照片类型：${KIND_LABEL[selectedPhoto.kind]}；拍摄者：${selectedPhoto.ownerName}。`,
         "请以角色本人的口吻写一条自然、具体、真诚的短批注，像在照片背面留下的一句话。不要解释任务，不要说自己是AI，最多80个汉字。若照片内容信息不足，不要编造看不见的细节。",
       ].join("\n");
@@ -650,10 +646,14 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       });
       const content = flattenCompletionResult(result).trim().replace(/^["“]|["”]$/g, "");
       if (!content) throw new Error("角色没有生成批注，请稍后再试。");
-      const annotation = makeAnnotation("character", commenter.name, content, commenter.id);
       const fresh = loadPhotoWallState();
-      persist({ ...fresh, photos: fresh.photos.map(photo => photo.id === selectedPhoto.id ? { ...photo, annotations: [...photo.annotations, annotation] } : photo) });
-      onNotice?.(`${commenter.name}在照片背面留了一句话。`);
+      const existing = fresh.photos.find(photo => photo.id === selectedPhoto.id) ?? selectedPhoto;
+      const baseText = editNote.trim() || getPhotoBackText(existing);
+      const nextBackNote = [baseText, `${commenter.name}：${content}`].filter(Boolean).join("\n\n");
+      persist({ ...fresh, photos: fresh.photos.map(photo => photo.id === selectedPhoto.id ? { ...photo, backNote: nextBackNote, annotations: [] } : photo) });
+      setEditNote(nextBackNote);
+      setPhotoViewOnly(false);
+      onNotice?.(`${commenter.name}已经把一句话写进照片背面。`);
     } catch (error) { onNotice?.("请角色写批注失败：" + (error instanceof Error ? error.message : String(error))); }
     finally { setBusy(false); setBusyLabel(""); }
   };
@@ -675,7 +675,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
   const openPhoto = (photo: PhotoWallPhoto, viewOnly = true) => {
     setPhotoViewOnly(viewOnly);
-    setSelectedPhotoId(photo.id); setEditTitle(photo.title); setEditNote(photo.backNote); setEditTags(photo.tags.join("、"));
+    setSelectedPhotoId(photo.id); setEditTitle(photo.title); setEditNote(getPhotoBackText(photo)); setEditTags(photo.tags.join("、"));
   };
 
   return <div className="photo-wall-app pointer-events-auto isolate absolute inset-0 z-[1000] flex min-w-0 flex-col overflow-hidden bg-[radial-gradient(ellipse_at_top,#fffdf8_0%,#f4f0e7_58%,#e9e1d4_100%)] text-[#51483d]" style={{ fontFamily: '"Noto Serif SC", "Songti SC", serif' }}>
@@ -839,26 +839,18 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           <div className="text-[10px] tracking-[.25em] text-[#aa987f]">{selectedPhoto.ownerName.toUpperCase()} · {KIND_LABEL[selectedPhoto.kind]}</div>
           {photoViewOnly ? <h2 className="mt-3 font-serif text-xl text-[#5b4d3e]">{selectedPhoto.title || "未命名的瞬间"}</h2> : <input value={editTitle} onChange={event => setEditTitle(event.target.value)} className="mt-3 w-full border-b border-[#dfd3c1] bg-transparent pb-2 font-serif text-xl text-[#5b4d3e] outline-none focus:border-[#9e8b70]" placeholder="给这张照片起个名字"/>}
           <p className="mt-2 text-[10px] tracking-wider text-[#a39583]">{formatDate(selectedPhoto.createdAt)}</p>
-          {photoViewOnly && <button type="button" onClick={() => { setPhotoViewOnly(false); setEditTitle(selectedPhoto.title); setEditNote(selectedPhoto.backNote); setEditTags(selectedPhoto.tags.join("、")); }} className="mt-3 self-start rounded-full border border-[#cbbba6] px-3 py-2 text-xs text-[#796952]">编辑这张照片</button>}
+          {photoViewOnly && <button type="button" onClick={() => { setPhotoViewOnly(false); setEditTitle(selectedPhoto.title); setEditNote(getPhotoBackText(selectedPhoto)); setEditTags(selectedPhoto.tags.join("、")); }} className="mt-3 self-start rounded-full border border-[#cbbba6] px-3 py-2 text-xs text-[#796952]">编辑这张照片</button>}
           <div className="mt-5 border-t border-[#e3d7c6] pt-3 font-serif text-base text-[#655342]">照片背面 · 手记与留言</div>
-          {photoViewOnly ? <p className="mt-2 whitespace-pre-wrap rounded-sm bg-[#fcf9f2] p-3 font-serif text-sm leading-6 text-[#655647]">{selectedPhoto.backNote || selectedPhoto.caption || "还没有写下手记。"}</p> : <textarea value={editNote} onChange={event => setEditNote(event.target.value)} rows={4} placeholder="写下当时的天气、心情，或一个只有你们懂的细节……" className="mt-2 w-full resize-y rounded-sm border border-[#e6dccd] bg-[#fcf9f2] p-3 font-serif text-sm leading-6 text-[#655647] outline-none placeholder:text-[#c1b5a4] focus:border-[#b5a18a]"/>}
+          {photoViewOnly ? <p className="mt-2 whitespace-pre-wrap rounded-sm bg-[#fcf9f2] p-3 font-serif text-sm leading-6 text-[#655647]">{getPhotoBackText(selectedPhoto) || selectedPhoto.caption || "还没有写下手记或留言。"}</p> : <textarea value={editNote} onChange={event => setEditNote(event.target.value)} rows={7} placeholder="把手记、你留下的话和角色回应都写在这里；它们共用这张照片的背面。" className="mt-2 w-full resize-y rounded-sm border border-[#e6dccd] bg-[#fcf9f2] p-3 font-serif text-sm leading-6 text-[#655647] outline-none placeholder:text-[#c1b5a4] focus:border-[#b5a18a]"/>}
           <label className="mt-3 block text-[10px] tracking-[.2em] text-[#9a8973]">标签 · TAGS</label>
           {photoViewOnly ? <p className="mt-2 text-xs text-[#8d7a65]">{selectedPhoto.tags.length ? selectedPhoto.tags.map(tag => `#${tag}`).join("　") : "暂无标签"}</p> : <input value={editTags} onChange={event => setEditTags(event.target.value)} placeholder="用逗号分隔，比如：雨天、回家、幸福" className="mt-2 w-full rounded-sm border border-[#e6dccd] bg-[#fcf9f2] px-3 py-2 text-xs outline-none focus:border-[#b5a18a]"/>}
-          {!photoViewOnly && <><label className="mt-3 flex items-center gap-2 text-xs text-[#857460]"><input type="checkbox" checked={selectedPhoto.shareWithCharacters} onChange={event => persist({ ...state, photos: state.photos.map(photo => photo.id === selectedPhoto.id ? { ...photo, shareWithCharacters: event.target.checked } : photo) })} className="accent-[#87565b]"/>允许角色看到这张照片及背面记录</label>
+          {!photoViewOnly && <><label className="mt-3 flex items-center gap-2 text-xs text-[#857460]"><input type="checkbox" checked={selectedPhoto.shareWithCharacters} onChange={event => { const currentState = stateRef.current; persist({ ...currentState, photos: currentState.photos.map(photo => photo.id === selectedPhoto.id ? { ...photo, shareWithCharacters: event.target.checked } : photo) }); }} className="accent-[#87565b]"/>允许角色看到这张照片及背面记录</label>
           <div className="mt-4 flex gap-2"><button onClick={saveBack} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[#87565b] px-3 py-2.5 text-xs tracking-wider text-white"><Check size={14}/>保存背面</button><button onClick={() => void deleteSelectedPhoto()} className="grid h-10 w-10 place-items-center rounded-full border border-[#e3d7c6] text-[#9c7566]" aria-label="删除照片"><Trash2 size={15}/></button></div></>}
-          <div className="mt-3 border-t border-[#e3d7c6] pt-3">
-            <div className="mb-2 flex items-center justify-between"><span className="text-[11px] text-[#9a8973]">留下的话</span><span className="text-[10px] text-[#aa9a86]">{selectedPhoto.annotations.length} 条</span></div>
-            {selectedPhoto.annotations.length > 0 ? <div className="mt-3 space-y-3">{selectedPhoto.annotations.map(note => <div key={note.id} className={`border-l-2 pl-3 py-1 ${note.authorType==="character"?"border-[#b88c82]":"border-[#c7a58b]"}`}><div className="flex items-baseline justify-between gap-2"><span className="text-xs text-[#786954]">{note.authorName}</span><span className="text-[9px] text-[#b0a18e]">{new Date(note.createdAt).toLocaleDateString("zh-CN")}</span></div><p className="mt-1 whitespace-pre-wrap font-serif text-sm leading-6 text-[#655647]">{note.content}</p></div>)}</div> : <p className="mt-2 text-xs leading-5 text-[#a19380]">{photoViewOnly ? "还没有留下批注。" : "还没有人写下批注。可以先写一句，也可以请角色来看看。"}</p>}
-            {!photoViewOnly && <>
-            <textarea value={annotationDraft} onChange={event => setAnnotationDraft(event.target.value)} rows={2} placeholder="给这张照片留一句话…" className="mt-4 w-full resize-none rounded-sm border border-[#e6dccd] bg-[#fcf9f2] p-3 text-xs leading-5 outline-none placeholder:text-[#c1b5a4]"/>
-            <button onClick={addUserAnnotation} disabled={!annotationDraft.trim()} className="mt-2 rounded-full border border-[#cbbba6] px-3 py-2 text-xs text-[#796952] disabled:opacity-40"><PenLine size={12} className="mr-1 inline"/>写下我的批注</button>
-            <div className="mt-4 rounded-xl bg-[#eee7db] p-3">
-              <div className="flex flex-wrap items-center gap-2"><span className="text-xs text-[#85745f]">请角色也来看看</span><select value={characterCommenterId} onChange={event => setCharacterCommenterId(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-[#ded1bf] bg-[#faf6ee] px-2 py-2 text-xs">{characters.map(char => <option key={char.id} value={char.id}>{char.name}</option>)}</select></div>
-              <button onClick={() => void askCharacterToWrite()} disabled={busy || !commenter || !selectedPhoto.shareWithCharacters} className="mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[#87565b] px-3 py-2.5 text-xs tracking-wider text-white disabled:opacity-40"><Heart size={13}/>请TA在照片背面写一句话</button>
-              {!selectedPhoto.shareWithCharacters && <p className="mt-2 text-[10px] text-[#9a7967]">这张照片目前不对角色开放。打开上方分享开关后，角色才可以回应。</p>}
-            </div>
-            </>}
-          </div>
+          {!photoViewOnly && <div className="mt-4 rounded-xl bg-[#eee7db] p-3">
+            <div className="flex flex-wrap items-center gap-2"><span className="text-xs text-[#85745f]">请角色也来看看</span><select value={characterCommenterId} onChange={event => setCharacterCommenterId(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-[#ded1bf] bg-[#faf6ee] px-2 py-2 text-xs">{characters.map(char => <option key={char.id} value={char.id}>{char.name}</option>)}</select></div>
+            <button onClick={() => void askCharacterToWrite()} disabled={busy || !commenter || !selectedPhoto.shareWithCharacters} className="mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[#87565b] px-3 py-2.5 text-xs tracking-wider text-white disabled:opacity-40"><Heart size={13}/>请 TA 把一句话写进同一张背面</button>
+            {!selectedPhoto.shareWithCharacters && <p className="mt-2 text-[10px] text-[#9a7967]">这张照片目前不对角色开放。打开上方分享开关后，角色才可以回应。</p>}
+          </div>}
         </div>
       </div>
     </div>}
