@@ -302,7 +302,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
 
   return <div className={fitHeight ? "relative flex h-full w-full items-center justify-center" : "relative"}>
     {/* 画布工具条 */}
-    {!readOnly && <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-[#e2d2c3] py-2.5">
+    {!readOnly && <div className="photo-wall-tools sticky left-0 z-[10000] mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-y border-[#e2d2c3] py-2.5" style={{ width: "min(420px, calc(100vw - 16px))", background: "rgba(255,250,242,.97)" }}>
       <button type="button" onClick={() => setMode(current => current === "move" ? "view" : "move")} className={`flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs transition ${mode === "move" ? "border-[#87565b] bg-[#87565b] text-white" : "border-[#ddd1bd] bg-white/80 text-[#7d6d5a]"}`}><Unlock size={13}/>{mode === "move" ? "完成摆放" : "摆照片"}</button>
       <button type="button" onClick={() => { setMode(current => current === "doodle" ? "view" : "doodle"); if (selectedPhoto) setFlippedPhotoIds(current => { const next = new Set(current); next.delete(selectedPhoto.id); return next; }); }} title="进入涂鸦后可在整面墙任意位置按住并拖动画线或放置贴纸" className={`flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs transition ${mode === "doodle" ? "border-[#a77b77] bg-[#a77b77] text-white" : "border-[#ddd1bd] bg-white/80 text-[#7d6d5a]"}`}><SquarePen size={13}/>{mode === "doodle" ? "退出涂鸦" : "涂鸦"}</button>
       {mode === "doodle" && <>
@@ -315,7 +315,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       </>}
     </div>}
 
-    {!readOnly && selectedPhoto && mode !== "view" && <div className="mt-2 flex flex-wrap items-center gap-1.5 border-y border-[#e6dccd] bg-white/70 px-2 py-2">
+    {!readOnly && selectedPhoto && mode !== "view" && <div className="photo-wall-tools sticky left-0 z-[10000] mt-2 flex flex-wrap items-center gap-1.5 border-y border-[#e6dccd] bg-white/95 px-2 py-2" style={{ width: "min(420px, calc(100vw - 16px))" }}>
       <span className="px-1 text-[11px] text-[#9a8973]">已选：{selectedPhoto.title || "未命名"}</span>
       <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.max(0.35, (selectedPhoto.placement?.scale ?? 1) - 0.12) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="缩小"><Minus size={14}/></button>
       <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.min(3, (selectedPhoto.placement?.scale ?? 1) + 0.12) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="放大"><Plus size={14}/></button>
