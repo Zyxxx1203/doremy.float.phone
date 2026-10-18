@@ -7053,7 +7053,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                 if (mergeForDisplay && refs.length > 1) {
                                     // 合并模式：单条消息保存整组引用，由气泡以横向轮播展示。
                                     // mediaUrl 持有主图，其余引用只保存后续图片；历史数据仍兼容 imageRefs 含主图的完整数组。
-                                    const sent = sendRichMessage("image", { ...(desc ? { label: desc } : {}), imageRefs: refs.slice(1), imageCollection: true }, "", refs[0]);
+                                    const sent = sendRichMessage("image", { ...(desc ? { label: desc } : {}), imageRefs: refs.slice(1), imageRefsExcludePrimary: true, imageCollection: true }, "", refs[0]);
                                     if (sent) showChatToast(`已合并发送 ${refs.length} 张图片，可左右滑动查看`);
                                 } else {
                                     // 普通模式：每张图各自成为一条消息，顺序与选择顺序一致。

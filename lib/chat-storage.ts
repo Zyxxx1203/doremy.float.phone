@@ -260,7 +260,8 @@ export type ChatMessage = {
         fileName?: string;
         fileDuration?: number;
         useReferenceImage?: boolean; // AI photo tag: whether to send the character reference image to the generator
-        imageRefs?: string[]; // 微信式合并发送的多图消息，存储主图之外的 media-store:// 引用
+        imageRefs?: string[]; // 微信式合并发送的多图消息；旧数据可能含主图，新数据存主图之外的引用
+        imageRefsExcludePrimary?: boolean; // true 表示 imageRefs 明确不含 mediaUrl，兼容重复选择同一图片
         imageCollection?: boolean; // true 时作为单条横向轮播集合消息展示
         imageIndex?: number; // 普通多图逐条发送时的原始选择顺序（从 1 开始）
         imageGroupId?: string;

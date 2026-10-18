@@ -151,6 +151,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
         if (prev.msg.mediaData?.status !== next.msg.mediaData?.status) return false;
         if (prev.msg.mediaData?.label !== next.msg.mediaData?.label) return false;
         if ((prev.msg.mediaData?.imageRefs || []).join("|") !== (next.msg.mediaData?.imageRefs || []).join("|")) return false;
+        if (prev.msg.mediaData?.imageRefsExcludePrimary !== next.msg.mediaData?.imageRefsExcludePrimary) return false;
         if (prev.msg.mediaData?.imageCollection !== next.msg.mediaData?.imageCollection) return false;
         if (prev.msg.mediaData?.imageIndex !== next.msg.mediaData?.imageIndex) return false;
         if (prev.msg.mediaData?.claimedBy?.length !== next.msg.mediaData?.claimedBy?.length) return false;
@@ -1397,7 +1398,9 @@ function ImageBubble({
         const savedRefs = Array.isArray(d?.imageRefs) ? d.imageRefs.filter((ref): ref is string => typeof ref === "string" && ref.length > 0) : [];
         // 新消息存完整引用数组；旧消息只存了首图之外的引用，按 rawUrl 自动兼容。
         const refs = savedRefs.length
-            ? (rawUrl && savedRefs[0] !== rawUrl ? [rawUrl, ...savedRefs] : savedRefs)
+            ? (d?.imageRefsExcludePrimary === true
+                ? (rawUrl ? [rawUrl, ...savedRefs] : savedRefs)
+                : (rawUrl && savedRefs[0] !== rawUrl ? [rawUrl, ...savedRefs] : savedRefs))
             : (rawUrl ? [rawUrl] : []);
         if (refs.length < 2 || d?.imageCollection !== true) {
             groupUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
@@ -1439,7 +1442,7 @@ function ImageBubble({
             if (alive) setGroupLoading(false);
         });
         return () => { alive = false; };
-    }, [rawUrl, d?.imageCollection, Array.isArray(d?.imageRefs) ? d.imageRefs.join("|") : ""]);
+    }, [rawUrl, d?.imageCollection, d?.imageRefsExcludePrimary, Array.isArray(d?.imageRefs) ? d.imageRefs.join("|") : ""]);
 
     useEffect(() => () => {
         groupUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
