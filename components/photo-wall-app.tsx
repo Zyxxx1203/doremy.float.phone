@@ -141,6 +141,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
   const [selectedCharacterId, setSelectedCharacterId] = useState("");
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
+  const [photoViewOnly, setPhotoViewOnly] = useState(false);
   const [editNote, setEditNote] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [editTags, setEditTags] = useState("");
@@ -594,6 +595,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   };
 
   const openPhoto = (photo: PhotoWallPhoto) => {
+    setPhotoViewOnly(wallView !== "edit");
     setSelectedPhotoId(photo.id); setEditTitle(photo.title); setEditNote(photo.backNote); setEditTags(photo.tags.join("、"));
   };
 
@@ -755,14 +757,14 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-6 sm:px-6 sm:pt-8">
           <div className="text-[10px] tracking-[.25em] text-[#aa987f]">{selectedPhoto.ownerName.toUpperCase()} · {KIND_LABEL[selectedPhoto.kind]}</div>
-          <input value={editTitle} onChange={event => setEditTitle(event.target.value)} className="mt-3 w-full border-b border-[#dfd3c1] bg-transparent pb-2 font-serif text-xl text-[#5b4d3e] outline-none focus:border-[#9e8b70]" placeholder="给这张照片起个名字"/>
+          {photoViewOnly ? <h2 className="mt-3 font-serif text-xl text-[#5b4d3e]">{selectedPhoto.title || "未命名的瞬间"}</h2> : <input value={editTitle} onChange={event => setEditTitle(event.target.value)} className="mt-3 w-full border-b border-[#dfd3c1] bg-transparent pb-2 font-serif text-xl text-[#5b4d3e] outline-none focus:border-[#9e8b70]" placeholder="给这张照片起个名字"/>}
           <p className="mt-2 text-[10px] tracking-wider text-[#a39583]">{formatDate(selectedPhoto.createdAt)}</p>
           <label className="mt-5 block text-[10px] tracking-[.2em] text-[#9a8973]">背面手记 / THE BACK OF THE PHOTO</label>
-          <textarea value={editNote} onChange={event => setEditNote(event.target.value)} rows={4} placeholder="写下当时的天气、心情，或一个只有你们懂的细节……" className="mt-2 w-full resize-y rounded-sm border border-[#e6dccd] bg-[#fcf9f2] p-3 font-serif text-sm leading-6 text-[#655647] outline-none placeholder:text-[#c1b5a4] focus:border-[#b5a18a]"/>
+          {photoViewOnly ? <p className="mt-2 whitespace-pre-wrap rounded-sm bg-[#fcf9f2] p-3 font-serif text-sm leading-6 text-[#655647]">{selectedPhoto.backNote || selectedPhoto.caption || "还没有写下手记。"}</p> : <textarea value={editNote} onChange={event => setEditNote(event.target.value)} rows={4} placeholder="写下当时的天气、心情，或一个只有你们懂的细节……" className="mt-2 w-full resize-y rounded-sm border border-[#e6dccd] bg-[#fcf9f2] p-3 font-serif text-sm leading-6 text-[#655647] outline-none placeholder:text-[#c1b5a4] focus:border-[#b5a18a]"/>}
           <label className="mt-3 block text-[10px] tracking-[.2em] text-[#9a8973]">标签 · TAGS</label>
-          <input value={editTags} onChange={event => setEditTags(event.target.value)} placeholder="用逗号分隔，比如：雨天、回家、幸福" className="mt-2 w-full rounded-sm border border-[#e6dccd] bg-[#fcf9f2] px-3 py-2 text-xs outline-none focus:border-[#b5a18a]"/>
-          <label className="mt-3 flex items-center gap-2 text-xs text-[#857460]"><input type="checkbox" checked={selectedPhoto.shareWithCharacters} onChange={event => persist({ ...state, photos: state.photos.map(photo => photo.id === selectedPhoto.id ? { ...photo, shareWithCharacters: event.target.checked } : photo) })} className="accent-[#78866d]"/>允许角色看到这张照片及背面记录</label>
-          <div className="mt-4 flex gap-2"><button onClick={saveBack} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[#78866d] px-3 py-2.5 text-xs tracking-wider text-white"><Check size={14}/>保存背面</button><button onClick={() => void deleteSelectedPhoto()} className="grid h-10 w-10 place-items-center rounded-full border border-[#e3d7c6] text-[#9c7566]" aria-label="删除照片"><Trash2 size={15}/></button></div>
+          {photoViewOnly ? <p className="mt-2 text-xs text-[#8d7a65]">{selectedPhoto.tags.length ? selectedPhoto.tags.map(tag => `#${tag}`).join("　") : "暂无标签"}</p> : <input value={editTags} onChange={event => setEditTags(event.target.value)} placeholder="用逗号分隔，比如：雨天、回家、幸福" className="mt-2 w-full rounded-sm border border-[#e6dccd] bg-[#fcf9f2] px-3 py-2 text-xs outline-none focus:border-[#b5a18a]"/>}
+          {!photoViewOnly && <><label className="mt-3 flex items-center gap-2 text-xs text-[#857460]"><input type="checkbox" checked={selectedPhoto.shareWithCharacters} onChange={event => persist({ ...state, photos: state.photos.map(photo => photo.id === selectedPhoto.id ? { ...photo, shareWithCharacters: event.target.checked } : photo) })} className="accent-[#78866d]"/>允许角色看到这张照片及背面记录</label>
+          <div className="mt-4 flex gap-2"><button onClick={saveBack} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[#78866d] px-3 py-2.5 text-xs tracking-wider text-white"><Check size={14}/>保存背面</button><button onClick={() => void deleteSelectedPhoto()} className="grid h-10 w-10 place-items-center rounded-full border border-[#e3d7c6] text-[#9c7566]" aria-label="删除照片"><Trash2 size={15}/></button></div></>}
           <div className="mt-6 border-t border-[#e3d7c6] pt-4">
             <div className="flex items-center justify-between"><div className="font-serif text-base">留在照片背面的字</div><span className="text-[10px] text-[#aa9a86]">{selectedPhoto.annotations.length} 条批注</span></div>
             {selectedPhoto.annotations.length > 0 ? <div className="mt-3 space-y-3">{selectedPhoto.annotations.map(note => <div key={note.id} className={`border-l-2 pl-3 py-1 ${note.authorType==="character"?"border-[#9aab8b]":"border-[#c7a58b]"}`}><div className="flex items-baseline justify-between gap-2"><span className="text-xs text-[#786954]">{note.authorName}</span><span className="text-[9px] text-[#b0a18e]">{new Date(note.createdAt).toLocaleDateString("zh-CN")}</span></div><p className="mt-1 whitespace-pre-wrap font-serif text-sm leading-6 text-[#655647]">{note.content}</p></div>)}</div> : <p className="mt-2 text-xs leading-5 text-[#a19380]">还没有人写下批注。可以先写一句，也可以请角色来看看。</p>}
