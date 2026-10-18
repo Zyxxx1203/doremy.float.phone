@@ -231,9 +231,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     return `${target.platformName}暂无稳定嵌入播放器，可打开原视频，陪看仍会基于你描述的片段回应。`;
   }, [target]);
 
-  return <div className="watch-together-app pointer-events-auto isolate absolute inset-0 z-[1000] flex min-w-0 flex-col overflow-hidden text-[#f0e6d8]" style={{ background: "radial-gradient(ellipse 120% 80% at 50% -10%, #3a2f26 0%, #241e19 42%, #14100d 100%)" }}>
+  return <div className="watch-together-app pointer-events-auto isolate absolute inset-0 z-[1000] flex min-w-0 flex-col overflow-hidden text-[#f0e6d8]" style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)" }}>
     {/* 弹幕动画：仓库里从未定义过 watchDanmaku，之前那条 animation 是空转，这里补上真实 keyframes */}
-    <style>{`\n      .watch-together-main { display:flex; flex-direction:column; }\n      .watch-player { flex-shrink:0; }\n      .watch-link-panel { flex-shrink:0; }\n      .watch-interaction-panel { min-width:0; }\n      @media (orientation: landscape) and (min-width: 700px) {\n        .watch-together-main { display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(300px, .9fr); grid-template-rows:minmax(0, auto) minmax(0, 1fr); grid-template-areas:"player interaction" "link interaction"; gap:12px; overflow:hidden; padding-bottom:12px; }\n        .watch-player { grid-area:player; width:100%; max-width:none; align-self:start; }\n        .watch-link-panel { grid-area:link; min-width:0; overflow:auto; }\n        .watch-interaction-panel { grid-area:interaction; min-height:0; overflow-y:auto; overscroll-behavior:contain; margin-top:0!important; }\n      }\n    `}</style>
+    <style>{`\n      .watch-together-main { display:flex; flex-direction:column; }\n      .watch-player { flex-shrink:0; border:8px solid #342a21!important; border-radius:22px!important; background:#090807; box-shadow:0 7px 0 #8c6847,0 14px 28px rgba(68,44,24,.28)!important; }\n      .watch-link-panel { flex-shrink:0; }\n      .watch-interaction-panel { min-width:0; }\n      @media (orientation: landscape) and (min-width: 700px) {\n        .watch-together-main { display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(300px, .9fr); grid-template-rows:minmax(0, auto) minmax(0, 1fr); grid-template-areas:"player interaction" "link interaction"; gap:12px; overflow:hidden; padding-bottom:12px; }\n        .watch-player { grid-area:player; width:100%; max-width:none; align-self:start; }\n        .watch-link-panel { grid-area:link; min-width:0; overflow:auto; }\n        .watch-interaction-panel { grid-area:interaction; min-height:0; overflow-y:auto; overscroll-behavior:contain; margin-top:0!important; }\n      }\n    `}</style>
     <style>{`@keyframes watchDanmaku { 0% { transform: translateX(28%); opacity: 0 } 8% { opacity: 1 } 88% { opacity: 1 } 100% { transform: translateX(-150%); opacity: 0 } }`}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
@@ -242,11 +242,11 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       <div className="absolute -right-20 top-1/3 h-80 w-80 rounded-full opacity-25 blur-3xl" style={{ background: "radial-gradient(circle, #7a6a9a 0%, transparent 70%)" }} />
     </div>
 
-    <header className="relative z-[1001] flex shrink-0 items-center gap-3 px-4 pb-3" style={{ paddingTop: "max(12px, var(--page-header-safe-top, 48px))" }}>
+    <header className="relative z-[1001] flex shrink-0 items-center gap-3 px-4 pb-3 text-[#4e3a2b]" style={{ paddingTop: "max(12px, var(--page-header-safe-top, 48px))" }}>
       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onClose(); }} className="grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-white/10 bg-white/5 text-[#e6d8c4] backdrop-blur transition active:scale-95" aria-label="返回"><ArrowLeft size={17}/></button>
       <div className="min-w-0 flex-1">
-        <div className="font-serif text-lg tracking-[.14em]">一起看</div>
-        <div className="truncate text-[10px] tracking-[.2em] text-[#a2948a]">今晚只有我们两个</div>
+        <div className="font-serif text-lg tracking-[.14em]">一起看 · 客厅</div>
+        <div className="truncate text-[10px] tracking-[.12em] text-[#806b57]">把喜欢的内容放上电视，和 TA 慢慢看</div>
       </div>
       {character && <div className="flex shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1.5">
         <span className="grid h-6 w-6 place-items-center overflow-hidden rounded-full bg-[#4a3d33] text-[10px] text-[#e6d8c4]">{character.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character.name.slice(0, 1)}</span>
