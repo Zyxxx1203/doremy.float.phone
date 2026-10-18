@@ -2216,7 +2216,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     img.addEventListener("error", onDone, { once: true });
                 }
             }
-        } else if (displayMessages.length > prevMsgCountRef.current && el) {
+        } else if (displayMessages.length > prevMsgCountRef.current && el && isNearBottomRef.current) {
+            // 新消息只在用户原本就在底部附近时跟随；查看历史消息时不强行抢走滚动位置。
             el.scrollTop = el.scrollHeight;
         }
         prevMsgCountRef.current = displayMessages.length;
