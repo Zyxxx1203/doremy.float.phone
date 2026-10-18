@@ -120,15 +120,15 @@ function PhotoThumbnail({ photo, onOpen }: { photo: PhotoWallPhoto; onOpen: () =
     }).catch(() => undefined);
     return () => { active = false; if (url) URL.revokeObjectURL(url); };
   }, [photo.mediaRef]);
-  return <button onClick={onOpen} className="group relative block w-full overflow-hidden rounded-[20px] border border-white/80 bg-[#fffdf8] text-left shadow-[0_8px_24px_rgba(75,60,43,.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_12px_26px_rgba(75,60,43,.15)]">
-    <div className="aspect-[4/5] overflow-hidden rounded-t-[19px] bg-[#e9e3d8]">
+  return <button onClick={onOpen} className="group relative block w-full overflow-hidden border border-[#e2d2c0] bg-[#fffdf8] text-left shadow-[2px_5px_12px_rgba(75,60,43,.13)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[3px_7px_15px_rgba(75,60,43,.17)]">
+    <div className="aspect-[4/5] overflow-hidden border-[5px] border-b-0 border-[#fffdf8] bg-[#e9e3d8]">
       {src ? <img src={src} alt={photo.title} loading="lazy" className="h-full w-full object-cover transition duration-700 group-hover:scale-[1.025]" /> : <div className="grid h-full place-items-center text-[#9c907f]"><ImagePlus size={25}/></div>}
     </div>
-    <div className="px-3.5 pb-3.5 pt-3">
+    <div className="border-t-0 px-3 pb-4 pt-2">
       <div className="flex items-center justify-between gap-2"><span className="truncate font-serif text-[15px] text-[#54483d]">{photo.title || "未命名的瞬间"}</span>{photo.annotations.length > 0 && <MessageCircle size={13} className="shrink-0 text-[#a17b64]"/>}</div>
       <div className="mt-1 flex items-center justify-between gap-2 text-[10px] tracking-[.12em] text-[#9b8d7b]"><span className="truncate">{photo.ownerName}</span><span>{new Date(photo.createdAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</span></div>
     </div>
-    <span className="absolute left-2 top-2 rounded-full border border-white/75 bg-[#fffaf0]/90 px-2.5 py-1.5 text-[10px] tracking-wider shadow-sm backdrop-blur text-[#7f6b58]">{KIND_LABEL[photo.kind]}</span>
+    <span className="absolute left-2 top-2 border border-white/75 bg-[#fffaf0]/90 px-2 py-1 text-[10px] tracking-wider text-[#7f6b58]">{KIND_LABEL[photo.kind]}</span>
   </button>;
 }
 
@@ -231,6 +231,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       return { ...photo, placement: { x: slot.x, y: slot.y, scale: slot.scale, rotation: slot.rotation, z: index + 1, frame: base?.frame ?? "polaroid", frameColor: base?.frameColor ?? "#fffdf8" } as PhotoWallPlacement };
     }));
     onNotice?.("已按模板重新摆放，之后仍可自由拖动微调。");
+    setWallView("edit");
   }, [commitPhotos, onNotice, templateText]);
 
   /** 将当前墙面坐标保存为可重复使用的自定义模板。 */
@@ -604,9 +605,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       style={{ paddingTop: "max(12px, var(--page-header-safe-top, 48px))" }}
     >
       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); wallView === "settings" ? setWallView("edit") : onClose(); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-[#ded5c7] bg-white/80 text-[#7b6a58] shadow-sm transition hover:-translate-y-0.5 hover:bg-white active:scale-95" aria-label="返回"><ArrowLeft size={17}/></button>
-      <div className="min-w-0 flex-1"><div className="font-serif text-xl tracking-[.08em]">{wallView === "settings" ? "墙面与显影设置" : "照片墙"}</div><div className="mt-0.5 text-[10px] tracking-[.16em] text-[#a09380]">{wallView === "settings" ? "WALL & DEVELOPING" : `A LITTLE ARCHIVE OF US · ${photos.length} PHOTOS`}</div></div>
+      <div className="min-w-0 flex-1"><div className="whitespace-nowrap font-serif text-lg tracking-[.04em]">{wallView === "settings" ? "墙面与显影设置" : "照片墙"}</div><div className="mt-0.5 truncate whitespace-nowrap text-[10px] tracking-[.1em] text-[#a09380]">{wallView === "settings" ? "WALL & DEVELOPING" : `A LITTLE ARCHIVE OF US · ${photos.length} PHOTOS`}</div></div>
       {wallView === "edit" && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAddMenu(false); setWallView("settings"); }} className="relative z-[1002] pointer-events-auto min-h-10 shrink-0 cursor-pointer touch-manipulation border-b border-[#bda28d] px-2 py-1 text-sm tracking-wider text-[#79545a] transition active:opacity-60">设置</button>}
-      {wallView === "edit" && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAddMenu(value => !value); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 cursor-pointer touch-manipulation place-items-center rounded-2xl bg-gradient-to-br from-[#a77b77] to-[#87565b] text-white shadow-[0_8px_18px_rgba(92,109,81,.25)] transition hover:-translate-y-0.5 active:scale-95" aria-label="添加照片"><Plus size={18}/></button>}
+      {wallView === "edit" && <button type="button" onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="grid h-10 w-10 shrink-0 place-items-center border border-[#d8c4b4] bg-[#fffaf2] text-[#795b52] disabled:opacity-40" aria-label="导出整墙 PNG"><Download size={16}/></button>}
+      {wallView === "edit" && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAddMenu(value => !value); }} className="relative z-[1002] pointer-events-auto grid h-10 w-10 shrink-0 cursor-pointer touch-manipulation place-items-center border border-[#d8c4b4] bg-[#fffaf2] text-[#87565b] transition active:scale-95" aria-label="添加照片"><Plus size={18}/></button>}
       {(wallView === "panorama" || wallView === "timeline") && <button type="button" onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="grid h-10 w-10 shrink-0 place-items-center border border-[#d8c4b4] bg-[#fffaf3]/80 text-[#795b52] disabled:opacity-40" aria-label="导出整墙 PNG"><Download size={17}/></button>}
       {(wallView === "panorama" || wallView === "timeline") && <button type="button" onClick={() => setWallView("edit")} className="shrink-0 border-b border-[#bda28d] px-2 py-2 text-sm text-[#79545a]">进入编辑</button>}
       {wallView === "edit" && <span className="shrink-0 text-xs tracking-wide text-[#87565b]">编辑中</span>}
@@ -618,9 +620,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     </nav>}
     {wallView === "edit" && showAddMenu && <div className="absolute right-3 z-[1004] w-[min(17rem,calc(100vw-1.5rem))] border border-[#d7c2b1] bg-[#fffaf2] p-1 shadow-[0_16px_44px_rgba(60,42,32,.22)]" style={{top:"calc(max(12px, var(--page-header-safe-top, 48px)) + 64px)"}}>
       <button onClick={() => { setShowAddMenu(false); fileRef.current?.click(); }} className="flex min-h-11 w-full items-center gap-3 border-b border-[#eadfd3] px-3 py-2.5 text-left text-sm leading-5 text-[#5d4942] last:border-b-0 hover:bg-[#f3e9df]"><ImagePlus size={17}/>收藏我的照片</button>
-      <button onClick={() => void openChatPicker()} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-[#f3ede2]"><Heart size={17}/>从聊天收藏照片</button>
-      <button onClick={() => { setShowAddMenu(false); void generatePhoto(selectedCharacter, "moment"); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-[#f3ede2]"><Sparkles size={17}/>请角色生成一张</button>
-      <button onClick={() => { setShowAddMenu(false); setWallView("settings"); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-[#f3ede2]"><Camera size={17}/>今日照片与生成设置</button>
+      <button onClick={() => { setShowAddMenu(false); void openChatPicker(); }} className="flex min-h-11 w-full items-center gap-3 border-b border-[#eadfd3] px-3 py-2.5 text-left text-sm leading-5 text-[#5d4942] hover:bg-[#f3e9df]"><Heart size={17}/>从聊天收藏照片</button>
+      <button onClick={() => { setShowAddMenu(false); void generatePhoto(selectedCharacter, "moment"); }} className="flex min-h-11 w-full items-center gap-3 border-b border-[#eadfd3] px-3 py-2.5 text-left text-sm leading-5 text-[#5d4942] hover:bg-[#f3e9df]"><Sparkles size={17}/>请角色生成一张</button>
+      <button onClick={() => { setShowAddMenu(false); setWallView("settings"); }} className="flex min-h-11 w-full items-center gap-3 px-3 py-2.5 text-left text-sm leading-5 text-[#5d4942] hover:bg-[#f3e9df]"><Camera size={17}/>今日照片与生成设置</button>
     </div>}
     <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={event => { if (event.target.files) void uploadFiles(event.target.files); event.currentTarget.value = ""; }}/>
 
