@@ -2705,8 +2705,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
                 return digits[raw] ?? Number.NaN;
               };
               body = body
-                .replace(/([零〇一二两三四五六七八九十]{1,3})点半/g, (_match, number: string) => String(chineseNumber(number)) + "点30分")
-                .replace(/([零〇一二两三四五六七八九十]{1,3})(?=点|时|分)/g, (_match, number: string) => String(chineseNumber(number)));
+                .replace(/([零〇一二两三四五六七八九十]{1,3})\s*点\s*半/g, (_match, number: string) => String(chineseNumber(number)) + "点30分")
+                .replace(/([零〇一二两三四五六七八九十]{1,3})\s*(?=点|时|分)/g, (_match, number: string) => String(chineseNumber(number)))
+                .replace(/(\d{1,2})\s+点/g, "$1点")
+                .replace(/([点时])\s+(\d{1,2})/g, "$1$2")
+                .replace(/(\d{1,2})\s*分/g, "$1分");
               const day=new Date(actorNow(actor));day.setSeconds(0,0);
               if(/后天/.test(body))day.setDate(day.getDate()+2);else if(/明天|明日/.test(body))day.setDate(day.getDate()+1);else if(/今天|今日/.test(body)){}else{
                 const weekday=body.match(/周([一二三四五六日天])|星期([一二三四五六日天])/);
