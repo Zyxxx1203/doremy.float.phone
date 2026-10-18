@@ -2268,6 +2268,45 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       .life-rose-garden nav[aria-label="生活导航"] { background-color: rgb(var(--life-surface-rgb) / .96) !important; border-color: rgb(var(--life-border-rgb) / .76) !important; }
       .life-rose-garden nav[aria-label="生活导航"] button[aria-current="page"] { background-color: rgb(var(--life-strong-rgb) / .98) !important; color: var(--life-accent) !important; }
       .life-rose-garden input:not([type="checkbox"]):not([type="radio"]):not([type="color"]), .life-rose-garden select, .life-rose-garden textarea { color: var(--life-text); border-color: rgb(var(--life-border-rgb) / .85); }
+      /* Theme every text utility, not just the three shades used by the original palette. */
+      .life-rose-garden [class~="text-stone-900"],
+      .life-rose-garden [class~="text-stone-800"],
+      .life-rose-garden [class~="text-stone-700"],
+      .life-rose-garden [class~="text-stone-600"],
+      .life-rose-garden [class~="text-gray-900"],
+      .life-rose-garden [class~="text-gray-800"],
+      .life-rose-garden [class~="text-gray-700"],
+      .life-rose-garden [class~="text-gray-600"] { color: var(--life-text) !important; }
+      .life-rose-garden [class~="text-stone-500"],
+      .life-rose-garden [class~="text-stone-400"],
+      .life-rose-garden [class~="text-stone-300"],
+      .life-rose-garden [class~="text-gray-500"],
+      .life-rose-garden [class~="text-gray-400"],
+      .life-rose-garden [class~="text-gray-300"] { color: var(--life-muted) !important; }
+      /* Native controls and switches follow the selected scene palette. */
+      .life-rose-garden input:not([type="color"]),
+      .life-rose-garden select,
+      .life-rose-garden textarea {
+        background-color: rgb(var(--life-surface-rgb) / .96);
+        color: var(--life-text) !important;
+        caret-color: var(--life-accent);
+      }
+      .life-rose-garden input[type="checkbox"],
+      .life-rose-garden input[type="radio"] { accent-color: var(--life-accent); }
+      .life-rose-garden input[type="range"] { accent-color: var(--life-accent); }
+      .life-rose-garden [role="switch"] {
+        border-color: rgb(var(--life-border-rgb) / .9) !important;
+        background-color: rgb(var(--life-soft-rgb) / .95);
+      }
+      .life-rose-garden [role="switch"][aria-checked="true"] { background-color: var(--life-accent) !important; }
+      .life-rose-garden [role="switch"] > span { background-color: #fff !important; }
+      .life-rose-garden button:focus-visible,
+      .life-rose-garden input:focus-visible,
+      .life-rose-garden select:focus-visible,
+      .life-rose-garden textarea:focus-visible {
+        outline: 2px solid color-mix(in srgb, var(--life-accent) 70%, transparent);
+        outline-offset: 2px;
+      }
       .life-rose-garden .life-scene-display-options[open] { background: var(--life-overlay) !important; border-color: rgb(var(--life-border-rgb) / .8); }
       .life-rose-garden [class~="bg-[#fffaf3]/95"], .life-rose-garden [class~="bg-[#fffaf5]"] { background-color: var(--life-overlay) !important; }
     `}</style>
