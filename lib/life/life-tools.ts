@@ -1,4 +1,5 @@
 import { loadCharacters } from "../character-storage";
+import { LIFE_ENGINE_CAPABILITY_ID, getInternalCapability } from "../internal-capability-storage";
 import { loadChatContacts } from "../chat-storage";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "./life-storage";
 import {
@@ -89,6 +90,10 @@ export async function executeLifeToolCall(
   context?: { appId?: string; characterId?: string },
 ) {
   if (!LIFE_TOOL_DEFINITIONS.some(tool => tool.name === call.name)) return null;
+  const capability = getInternalCapability(LIFE_ENGINE_CAPABILITY_ID);
+  if (!capability || !capability.enabled || capability.mode === "off") {
+    return result(call.name, false, undefined, "生活引擎工具能力未启用，请在系统设置 → 聊天工具箱 → Internal Capabilities 中开启。");
+  }
   const name = call.name;
   // The calling surface is not restricted: any chat/tool-enabled app may use life actions
   // as long as the invoking character can be resolved and the global life settings allow it.
