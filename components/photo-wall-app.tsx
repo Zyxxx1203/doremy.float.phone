@@ -155,6 +155,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
   const [selectedCharacterId, setSelectedCharacterId] = useState<string>(() => readPhotoWallCharacter());
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
+  const [timelineFlippedPhotoIds, setTimelineFlippedPhotoIds] = useState<Set<string>>(new Set());
   const [photoViewOnly, setPhotoViewOnly] = useState(false);
   const [editNote, setEditNote] = useState("");
   const [editTitle, setEditTitle] = useState("");
@@ -342,6 +343,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   }), [photos, filter]);
   const selectedPhoto = photos.find(photo => photo.id === selectedPhotoId) ?? null;
   const selectedCharacter = characters.find(char => char.id === selectedCharacterId) ?? null;
+  const toggleTimelineFlip = (photoId: string) => setTimelineFlippedPhotoIds(current => { const next = new Set(current); if (next.has(photoId)) next.delete(photoId); else next.add(photoId); return next; });
   const commenter = characters.find(char => char.id === characterCommenterId) ?? characters[0] ?? null;
 
   const addPhoto = useCallback((photo: PhotoWallPhoto) => {
@@ -753,11 +755,25 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               <div className="space-y-4">{items.map((photo,index) => <article key={photo.id} className="relative border-l border-[#d5bba7] pl-4 pb-2 text-left">
                 <span className="absolute -left-[5px] top-5 h-2 w-2 border border-[#b88c82] bg-[#f3eadc]"/>
                 <div className="mx-auto max-w-[360px] border border-[#e3d3c1] bg-[#fffdf8] p-2 pb-4 shadow-[2px_5px_12px_rgba(70,55,40,.13)]">
-                  <div className="overflow-hidden bg-[#e9dfd0]"><PhotoThumbnail photo={photo} onOpen={() => openPhoto(photo)} /></div>
-                  <button type="button" onClick={() => openPhoto(photo)} className="mt-2 block w-full text-center font-serif text-sm leading-5 text-[#655342]">{photo.title || "未命名的瞬间"}</button>
-                  {(photo.backNote || photo.caption) && <p className="mt-1 whitespace-pre-wrap text-center font-serif text-xs leading-5 text-[#8d7a65]">{photo.backNote || photo.caption}</p>}
-                  {photo.tags.length > 0 && <p className="mt-2 text-center text-[10px] tracking-wide text-[#a18172]">{photo.tags.map(tag=>`#${tag}`).join("　")}</p>}
-                  {photo.annotations.slice(0,2).map(note=><p key={note.id} className="mt-2 border-t border-dashed border-[#d9c6b6] pt-2 text-left font-serif text-xs leading-5 text-[#8d7a65]">「{note.content}」<span className="ml-1 text-[10px] text-[#b29b88]">— {note.authorName}</span></p>)}
+                  {timelineFlippedPhotoIds.has(photo.id) ? (
+                    <button type="button" onClick={() => toggleTimelineFlip(photo.id)} aria-label="翻回照片正面" className="flex aspect-square w-full flex-col overflow-y-auto bg-[#fffaf2] p-4 text-left text-[#6b5947]">
+                      <div className="border-b border-[#dfcfbe] pb-2 text-[9px] tracking-[.2em] text-[#a58f77]">THE BACK · 照片背面</div>
+                      <h3 className="mt-3 break-words font-serif text-base leading-6">{photo.title || "未命名的瞬间"}</h3>
+                      <p className="mt-3 whitespace-pre-wrap break-words text-xs leading-6">{photo.backNote?.trim() || "这张照片的背面还空着。你可以打开详情，为它写下一段手记。"}</p>
+                      {photo.caption && <p className="mt-3 border-t border-[#e8dccd] pt-2 text-[11px] leading-5 text-[#8d7a65]">照片说明：{photo.caption}</p>}
+                      {photo.annotations.length > 0 && <div className="mt-3 border-t border-[#e8dccd] pt-2">{photo.annotations.map(note=><p key={note.id} className="mt-1 break-words text-xs leading-5">「{note.content}」<span className="ml-1 text-[10px] text-[#b29b88]">— {note.authorName}</span></p>)}</div>}
+                      <span className="mt-auto pt-3 text-center text-[10px] text-[#aa927d]">点击卡片翻回正面</span>
+                    </button>
+                  ) : (
+                    <>
+                      <div className="overflow-hidden bg-[#e9dfd0]"><PhotoThumbnail photo={photo} onOpen={() => toggleTimelineFlip(photo.id)} /></div>
+                      <button type="button" onClick={() => toggleTimelineFlip(photo.id)} className="mt-2 block w-full text-center font-serif text-sm leading-5 text-[#655342]">{photo.title || "未命名的瞬间"}</button>
+                      {photo.caption && <p className="mt-1 whitespace-pre-wrap text-center font-serif text-xs leading-5 text-[#8d7a65]">{photo.caption}</p>}
+                      {photo.tags.length > 0 && <p className="mt-2 text-center text-[10px] tracking-wide text-[#a18172]">{photo.tags.map(tag => "#" + tag).join("　")}</p>}
+                      <p className="mt-2 text-center text-[10px] tracking-wide text-[#b29b88]">点击照片翻面，查看背面的手记与留言</p>
+                    </>
+                  )}
+                  <button type="button" onClick={() => openPhoto(photo)} className="mt-3 block w-full rounded-lg border border-[#d8c4af] px-3 py-2 text-xs text-[#795b52]">查看大图 / 编辑</button>
                   <p className="mt-2 text-center text-[10px] tracking-wider text-[#a08c74]">{formatDate(photo.capturedAt || photo.createdAt)}</p>
                 </div>
               </article>)}</div>

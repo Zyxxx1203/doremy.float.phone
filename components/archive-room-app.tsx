@@ -135,7 +135,7 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
       // Average-hash is a review aid for re-encoded/resized copies. It never makes an
       // item eligible for automatic deletion; only exact SHA-256 copies can be recommended.
       const imageIds = [...imageHashes.keys()];
-      const visualParent = new Map<string, string>(imageIds.map(id => [id, id]));
+      const visualParent = new Map<string, string>(imageIds.map(id => [id, id] as [string, string]));
       const findVisualRoot = (id: string): string => {
         const p = visualParent.get(id) ?? id;
         if (p === id) return id;
@@ -224,6 +224,12 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
     } finally { setScanningDuplicates(false); }
   };
 
+  const duplicateGroupLabelById = useMemo(() => {
+    const labels = new Map<string, number>();
+    duplicateGroups.forEach((group, index) => group.forEach(id => labels.set(id, index + 1)));
+    return labels;
+  }, [duplicateGroups]);
+
   const visibleItems = useMemo(() => items.filter(item => {
     if (tab === "duplicates" && !duplicateIds.has(item.id)) return false;
     if (filter !== "all" && item.category !== filter) return false;
@@ -310,13 +316,13 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
       <div className="mt-5 flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-3 py-2"><Search size={16} className="shrink-0 text-stone-400"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="搜索文件 ID 或关联会话" className="min-w-0 flex-1 bg-transparent text-sm outline-none"/>{query&&<button onClick={()=>setQuery("")}><X size={15}/></button>}</div>
       <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1">{([{key:"all",label:"全部"},{key:"image",label:"图片"},{key:"audio",label:"语音"},{key:"video",label:"视频"},{key:"file",label:"其他"}] as const).map(x=><button key={x.key} onClick={()=>setFilter(x.key)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs ${filter===x.key?"bg-stone-800 text-white":"bg-white text-stone-600"}`}>{x.label}</button>)}</div>
       <div className="mt-3 flex items-center justify-between gap-2 text-xs text-stone-500"><span>{visibleItems.length} 个项目{selected.length? ` · 已选 ${selected.length}`:""}</span><div className="flex items-center gap-3"><button type="button" onClick={()=>{setSelected(visibleItems.filter(item=>meta[item.id]?.favorite!==true).map(item=>item.id));setConfirmDelete(false);}} className="font-medium text-stone-700">选中未收藏</button><button onClick={()=>{setSelected(selected.length===visibleItems.length?[]:visibleItems.map(x=>x.id));setConfirmDelete(false);}} className="font-medium text-stone-700">{selected.length===visibleItems.length&&visibleItems.length?"取消全选":"选择当前列表"}</button></div></div>
-      <div className="mt-2 space-y-2 pb-24">{loading?<div className="py-12 text-center text-sm text-stone-500"><LoaderCircle className="mx-auto mb-2 animate-spin"/>正在扫描媒体索引…</div>:visibleItems.length===0?<div className="rounded-2xl border border-dashed border-stone-300 bg-white/50 px-4 py-12 text-center text-sm text-stone-500">{tab==="duplicates"?"没有重复项，或尚未完成扫描。":"当前范围没有找到媒体文件。"}</div>:visibleItems.map(item=><MediaRow key={item.id} item={item} checked={selected.includes(item.id)} onToggle={()=>toggle(item.id)} meta={meta[item.id] ?? {}} onPatch={patch=>patchMeta(item.id,patch)} recommended={recommendedDeleteIds.has(item.id)} exactDuplicate={exactDuplicateIds.has(item.id)} visualSimilar={visualDuplicateIds.has(item.id)}/>)}</div>
+      <div className="mt-2 space-y-2 pb-24">{loading?<div className="py-12 text-center text-sm text-stone-500"><LoaderCircle className="mx-auto mb-2 animate-spin"/>正在扫描媒体索引…</div>:visibleItems.length===0?<div className="rounded-2xl border border-dashed border-stone-300 bg-white/50 px-4 py-12 text-center text-sm text-stone-500">{tab==="duplicates"?"没有重复项，或尚未完成扫描。":"当前范围没有找到媒体文件。"}</div>:visibleItems.map(item=><MediaRow key={item.id} item={item} checked={selected.includes(item.id)} onToggle={()=>toggle(item.id)} meta={meta[item.id] ?? {}} onPatch={patch=>patchMeta(item.id,patch)} recommended={recommendedDeleteIds.has(item.id)} exactDuplicate={exactDuplicateIds.has(item.id)} visualSimilar={visualDuplicateIds.has(item.id)} duplicateGroup={tab === "duplicates" ? duplicateGroupLabelById.get(item.id) : undefined}/>)}</div>
     </main>
     {selected.length>0&&<footer className="flex shrink-0 items-center gap-3 border-t border-stone-200 bg-white/95 px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))]"><div className="min-w-0 flex-1 text-sm"><div className="font-semibold">已选择 {selected.length} 项</div><div className="text-xs text-stone-500">约 {bytesLabel(items.filter(x=>selected.includes(x.id)).reduce((n,x)=>n+x.bytes,0))}</div></div><button onClick={()=>void exportSelected()} className="flex items-center gap-2 rounded-xl border border-stone-300 px-3 py-2.5 text-sm font-medium text-stone-700">导出 ZIP</button><button onClick={()=>{setSelected([]);setConfirmDelete(false);}} className="rounded-xl px-3 py-2 text-sm text-stone-600">取消</button><button onClick={()=>void deleteSelected()} className="flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-medium text-white"><Trash2 size={16}/>{confirmDelete?"确认删除":"删除所选"}</button></footer>}
   </div>;
 }
 
-function MediaRow({ item, checked, onToggle, meta, onPatch, recommended, exactDuplicate, visualSimilar }: { item: ArchiveItem; checked: boolean; onToggle: () => void; meta: ArchiveMeta; onPatch: (patch: Partial<ArchiveMeta>) => void; recommended: boolean; exactDuplicate: boolean; visualSimilar: boolean }) {
+function MediaRow({ item, checked, onToggle, meta, onPatch, recommended, exactDuplicate, visualSimilar, duplicateGroup }: { item: ArchiveItem; checked: boolean; onToggle: () => void; meta: ArchiveMeta; onPatch: (patch: Partial<ArchiveMeta>) => void; recommended: boolean; exactDuplicate: boolean; visualSimilar: boolean; duplicateGroup?: number }) {
   const [url, setUrl] = useState("");
   useEffect(() => {
     let active = true;
@@ -333,6 +339,7 @@ function MediaRow({ item, checked, onToggle, meta, onPatch, recommended, exactDu
     <div className="min-w-0 flex-1">
       <div className="flex items-start gap-2"><div className="min-w-0 flex-1 break-words text-sm font-medium">{meta.label?.trim() || item.id}</div><button type="button" onClick={()=>onPatch({favorite:!meta.favorite})} aria-label={meta.favorite?"取消收藏":"收藏文件"} title={meta.favorite?"取消收藏":"收藏文件"} className={"shrink-0 rounded-lg p-1 " + (meta.favorite?"text-amber-600":"text-stone-400")}><Star size={17} fill={meta.favorite?"currentColor":"none"}/></button></div>
       <div className="mt-1 break-all text-[10px] text-stone-400">ID: {item.id}</div>
+      {duplicateGroup !== undefined && <div className="mt-1 text-[10px] font-medium text-stone-500">重复候选组 {duplicateGroup}</div>}
       <div className="mt-1 text-xs text-stone-500">{bytesLabel(item.bytes)} · {dateLabel(item.createdAt)} · {item.category==="audio"?"语音":item.category==="image"?"图片":item.category==="video"?"视频":"文件"}</div>
       {item.category === "audio" && url && <audio controls preload="none" src={url} className="mt-2 h-8 w-full max-w-[240px]"/>}
       <div className={item.usedBy.length ? "mt-1 break-words text-xs text-emerald-700" : "mt-1 break-words text-xs text-amber-700"}>{item.usedBy.length ? "关联 " + item.usedBy.length + " 个会话 / 记录" : "未发现已知引用（不代表一定可删除）"}</div>
