@@ -415,7 +415,7 @@ const directCorsFailedBaseUrls = new Set<string>();
 async function generateImageViaServerOrProxy(params: {
   settings: ImageGenerationSettings;
   prompt: string;
-  referenceImageDataUrl: string | null;
+  referenceImageDataUrls: string[];
   signal?: AbortSignal;
 }): Promise<ImageGenerationApiResponse> {
   if (IMAGE_GEN_PROXY_URL) {
