@@ -580,15 +580,36 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const toggleTimelineFlip = (photoId: string) => setTimelineFlippedPhotoIds(current => { const next = new Set(current); if (next.has(photoId)) next.delete(photoId); else next.add(photoId); return next; });
   const commenter = characters.find(char => char.id === characterCommenterId) ?? characters[0] ?? null;
 
+  /**
+   * 新照片的落点：跟着你当前看到的位置走。
+   * 无界画布变大了以后，如果还按模板的绝对坐标散落，新照片会掉到视野外，
+   * 用户会以为"没加上"。默认（builtin-scatter）就落在视野中心附近；
+   * 只有用户明确挑过别的骨架模板时，才按模板槽位摆放。
+   */
+  const placementAnchor = useCallback((): { x: number; y: number } => {
+    const viewport = panoramaViewportRef.current;
+    const current = wallWorldOf(stateRef.current);
+    const zoom = Math.max(0.05, panoramaZoomRef.current / 100);
+    if (!viewport || !viewport.clientWidth) return { x: 0.5, y: 0.5 };
+    const x = (viewport.scrollLeft + viewport.clientWidth / 2) / Math.max(1, current.width * zoom);
+    const y = (viewport.scrollTop + viewport.clientHeight / 2) / Math.max(1, current.height * zoom);
+    return { x: Math.min(0.9, Math.max(0.1, x)), y: Math.min(0.9, Math.max(0.1, y)) };
+  }, []);
+
   const addPhoto = useCallback((photo: PhotoWallPhoto) => {
     const current = loadPhotoWallState();
     const order = current.photos.length;
-    const slot = buildTemplateSlots(activeTemplateId, order + 1, templateText)[order] ?? fallbackPlacement(order);
+    const explicitTemplate = Boolean(activeTemplateId) && activeTemplateId !== "builtin-scatter";
+    const slot = explicitTemplate ? buildTemplateSlots(activeTemplateId, order + 1, templateText)[order] : undefined;
+    const anchor = placementAnchor();
+    const jitter = ((order % 5) - 2) * 0.018;
     const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
-    const placed = { ...photo, placement: photo.placement ?? { ...slot, z: maxZ + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } };
+    const x = slot ? slot.x : Math.min(0.92, Math.max(0.08, anchor.x + jitter));
+    const y = slot ? slot.y : Math.min(0.92, Math.max(0.08, anchor.y + jitter));
+    const placed = { ...photo, placement: photo.placement ?? { x, y, scale: slot?.scale ?? 1, rotation: slot?.rotation ?? Math.round(jitter * 300), z: maxZ + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } };
     persist({ ...current, photos: [placed, ...current.photos.filter(item => item.id !== photo.id)] });
     setSelectedPhotoId(photo.id);
-  }, [persist, activeTemplateId, templateText]);
+  }, [persist, activeTemplateId, templateText, placementAnchor]);
 
   const openChatPicker = async () => {
     setShowAddMenu(false);
