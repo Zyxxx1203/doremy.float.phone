@@ -663,25 +663,23 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           </section>
         </div>
       </div> : wallView === "edit" ? <>
-      <section className="relative mx-4 mt-4 overflow-hidden rounded-[28px] border border-white/80 bg-gradient-to-br from-[#fffaf0] via-[#f4eadc] to-[#eadfd7] px-5 pb-6 pt-6 shadow-[0_12px_32px_rgba(93,75,52,.08)] sm:mx-7 sm:px-8">
-        <div className="pointer-events-none absolute -right-6 -top-10 h-48 w-48 rounded-full border border-[#d6cbb9]/70"/><div className="pointer-events-none absolute -right-1 top-0 h-36 w-36 rounded-full border border-[#d6cbb9]/50"/>
-        <div className="relative max-w-2xl"><div className="text-[10px] tracking-[.32em] text-[#a0927e]">THE THINGS WE KEEP</div><h1 className="mt-3 font-serif text-[30px] font-normal leading-tight tracking-[.08em] sm:text-[38px]">把日子，慢慢收好。</h1><p className="mt-3 max-w-md text-xs leading-6 tracking-wide text-[#887a68]">有些照片不是为了证明发生过什么，只是因为那一刻，心里很柔软。</p><div className="mt-5 flex items-center gap-3 text-[10px] tracking-[.15em] text-[#9d8d78]"><span className="h-px w-8 bg-[#b9a68e]"/><span>{new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" })}</span><span>·</span><span>{characters.length} 位角色在这里留下痕迹</span></div></div>
-      </section>
+      <div className="mx-4 flex min-h-10 items-center justify-between border-b border-[#d9c6b6] px-1 py-2 sm:mx-7"><span className="font-serif text-sm tracking-wide text-[#5d4942]">在墙上，慢慢摆好这些瞬间</span><span className="text-[10px] text-[#a18172]">{visiblePhotos.length} 张 · 可拖动微调</span></div>
 
 
 
-      <nav className="sticky top-0 z-10 flex items-center gap-2 overflow-x-auto border-b border-[#e4dbce]/80 bg-[#fffaf1]/90 px-4 py-3 backdrop-blur-xl sm:px-8">
-        {([{id:"all",label:"全部记忆"},{id:"mine",label:"我收藏的"},{id:"characters",label:"角色留下的"},{id:"favorites",label:"值得珍藏"}] as {id:Filter;label:string}[]).map(item => <button key={item.id} onClick={() => setFilter(item.id)} className={`shrink-0 rounded-full px-4 py-2.5 text-xs font-medium tracking-wide transition duration-200 ${filter===item.id?"bg-[#87565b] text-white":"text-[#8d7e6b] border border-transparent hover:border-[#ddd1bd] hover:bg-white"}`}>{item.label}</button>)}
-        <button onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="ml-auto flex shrink-0 items-center gap-1.5 rounded-full border border-[#cbbba6] bg-white/80 px-3 py-2 text-[11px] tracking-wider text-[#7a6a56] disabled:opacity-40"><Download size={13}/>{exportBusy ? "导出中…" : "导出整墙"}</button>
+
+      <nav className="sticky top-0 z-10 flex min-h-11 items-center gap-5 overflow-x-auto border-b border-[#e4dbce]/80 bg-[#f7efe5]/95 px-4 py-2 sm:px-7">
+        {([{id:"all",label:"全部记忆"},{id:"mine",label:"我收藏的"},{id:"characters",label:"角色留下的"},{id:"favorites",label:"值得珍藏"}] as {id:Filter;label:string}[]).map(item => <button key={item.id} onClick={() => setFilter(item.id)} className={`shrink-0 border-b-2 px-0.5 py-2 text-xs font-medium tracking-wide transition duration-200 ${filter===item.id?"border-[#87565b] text-[#87565b]":"border-transparent text-[#8d7e6b] hover:text-[#70434a]"}`}>{item.label}</button>)}
+        <button onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="ml-auto flex shrink-0 items-center gap-1.5 border-b border-[#cbbba6] px-1 py-2 text-[11px] tracking-wider text-[#795b52] disabled:opacity-40"><Download size={13}/>{exportBusy ? "导出中…" : "导出 PNG"}</button>
       </nav>
 
-      <section className="px-4 pb-24 pt-4 sm:px-7">
+      <section className="px-3 pb-12 pt-3 sm:px-6">
         {busy && <div className="mb-3 flex items-center gap-2 rounded-xl border border-[#e4d8c6] bg-[#faf7f0] px-3 py-2.5 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
 
 
 
         {visiblePhotos.length
-          ? <div className="mx-auto max-w-3xl"><PhotoWallCanvas
+          ? <div className="mx-auto w-full max-w-4xl"><PhotoWallCanvas
               photos={visiblePhotos}
               selectedId={selectedPhotoId}
               onSelect={setSelectedPhotoId}
@@ -693,7 +691,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       </section>
 
       </> : wallView === "panorama" ? <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-16 pt-2 sm:px-6">
-        <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto overscroll-contain rounded-[26px] p-3 sm:p-5" style={{WebkitOverflowScrolling:"touch", backgroundImage:"radial-gradient(ellipse at 50% 20%,rgba(255,255,255,.72),transparent 68%),linear-gradient(145deg,#f5ead9,#e7dac7)", touchAction:"pan-x pan-y"}}
+        <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto overscroll-contain border-y border-[#d8c4b4] p-2 sm:p-4" style={{WebkitOverflowScrolling:"touch", backgroundImage:"radial-gradient(ellipse at 50% 20%,rgba(255,255,255,.72),transparent 68%),linear-gradient(145deg,#f5ead9,#e7dac7)", touchAction:"pan-x pan-y"}}
           onTouchStart={event => { if (event.touches.length === 2) { const dx=event.touches[0].clientX-event.touches[1].clientX; const dy=event.touches[0].clientY-event.touches[1].clientY; pinchStartRef.current={distance:Math.max(1,Math.hypot(dx,dy)),zoom:panoramaZoom}; } }}
           onTouchMove={event => { if (event.touches.length === 2 && pinchStartRef.current) { const dx=event.touches[0].clientX-event.touches[1].clientX; const dy=event.touches[0].clientY-event.touches[1].clientY; const distance=Math.hypot(dx,dy); setPanoramaZoom(Math.max(50,Math.min(180,Math.round(pinchStartRef.current.zoom*distance/pinchStartRef.current.distance)))); event.preventDefault(); } }}
           onTouchEnd={event => { if (event.touches.length < 2) pinchStartRef.current=null; }}>
@@ -709,12 +707,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             const items = photos.filter(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return (Number.isNaN(date.getTime()) ? "未知时间" : `${date.getFullYear()}.${String(date.getMonth()+1).padStart(2,"0")}`) === group; }).sort((a,b)=>(b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt));
             return <section key={group} className="relative pl-5 before:absolute before:bottom-0 before:left-1 before:top-8 before:w-px before:bg-[#d8c4ab]">
               <h2 className="sticky top-0 z-10 mb-3 rounded-xl bg-[#f3eadc]/95 px-3 py-2 font-serif text-base text-[#75624d] backdrop-blur">{group} <span className="mx-1 text-[#c4ad91]">｜</span><span className="text-sm">我们的时光</span></h2>
-              <div className="space-y-4">{items.map((photo,index) => <article key={photo.id} className="relative block w-full rounded-[22px] border border-[#e5d7c5] bg-gradient-to-br from-[#fffaf1] via-[#f8efe2] to-[#efe2d0] p-3 text-left shadow-[0_8px_22px_rgba(90,67,42,.08)]">
-                <span className="absolute -left-[21px] top-6 h-3 w-3 rounded-full border-2 border-[#f3eadc] bg-[#b88c82]"/>
-                <div role="button" tabIndex={0} onClick={() => openPhoto(photo)} onKeyDown={event => {if(event.key==="Enter"||event.key===" ") openPhoto(photo);}} className="mx-auto max-w-[360px] cursor-pointer rounded-sm bg-[#fffdf8] p-3 pb-5 shadow-[0_5px_14px_rgba(70,55,40,.15)]">
+              <div className="space-y-4">{items.map((photo,index) => <article key={photo.id} className="relative border-l border-[#d5bba7] pl-4 pb-2 text-left">
+                <span className="absolute -left-[5px] top-5 h-2 w-2 border border-[#b88c82] bg-[#f3eadc]"/>
+                <div className="mx-auto max-w-[360px] border border-[#e3d3c1] bg-[#fffdf8] p-2 pb-4 shadow-[2px_5px_12px_rgba(70,55,40,.13)]">
                   <div className="overflow-hidden bg-[#e9dfd0]"><PhotoThumbnail photo={photo} onOpen={() => openPhoto(photo)} /></div>
-                  <p className="mt-2 text-center font-serif text-sm text-[#655342]">{photo.title || "未命名的瞬间"}</p>
-                  {(photo.caption || photo.backNote) && <p className="mt-1 whitespace-pre-wrap text-center text-xs leading-5 text-[#8d7a65]">{photo.caption || photo.backNote}</p>}
+                  <button type="button" onClick={() => openPhoto(photo)} className="mt-2 block w-full text-center font-serif text-sm leading-5 text-[#655342]">{photo.title || "未命名的瞬间"}</button>
+                  {(photo.caption || photo.backNote) && <p className="mt-1 whitespace-pre-wrap text-center font-serif text-xs leading-5 text-[#8d7a65]">{photo.caption || photo.backNote}</p>}
                   {(photo.doodles?.length || photo.annotations?.length) ? <p className="mt-1 text-center text-[10px] text-[#a08c74]">✦ {photo.doodles?.length ?? 0} 个涂鸦 / 贴纸 · {photo.annotations?.length ?? 0} 条留言</p> : null}
                   <p className="mt-1 text-center text-[10px] tracking-wider text-[#a08c74]">{formatDate(photo.createdAt)}</p>
                 </div>
