@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/global-improvements-validation.yml"
+      - "DESIGN.md"
+      - "app/globals.css"
+      - "styles/immersive-design.css"
       - "components/chat/call-auto-chat-control.tsx"
       - "components/chat/voice-call-screen.tsx"
       - "components/screenshot/**"
