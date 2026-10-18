@@ -2284,7 +2284,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       .life-rose-garden [class~="text-gray-400"],
       .life-rose-garden [class~="text-gray-300"] { color: var(--life-muted) !important; }
       /* Native controls and switches follow the selected scene palette. */
-      .life-rose-garden input:not([type="color"]),
+      .life-rose-garden input:not([type="color"]):not([type="checkbox"]):not([type="radio"]),
       .life-rose-garden select,
       .life-rose-garden textarea {
         background-color: rgb(var(--life-surface-rgb) / .96);
