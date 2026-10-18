@@ -343,7 +343,7 @@ function MediaRow({ item, checked, onToggle, meta, onPatch, recommended, exactDu
       <div className="mt-1 text-xs text-stone-500">{bytesLabel(item.bytes)} · {dateLabel(item.createdAt)} · {item.category==="audio"?"语音":item.category==="image"?"图片":item.category==="video"?"视频":"文件"}</div>
       {item.category === "audio" && url && <audio controls preload="none" src={url} className="mt-2 h-8 w-full max-w-[240px]"/>}
       <div className={item.usedBy.length ? "mt-1 break-words text-xs text-emerald-700" : "mt-1 break-words text-xs text-amber-700"}>{item.usedBy.length ? "关联 " + item.usedBy.length + " 个会话 / 记录" : "未发现已知引用（不代表一定可删除）"}</div>
-      {meta.favorite && <div className="mt-1 text-[10px] font-medium text-amber-700">已收藏 · 批量删除会自动保护</div>}
+      {meta.favorite && <div className="mt-1.5 flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-700"><Star size={10} fill="currentColor"/>已收藏</span><span className="text-[10px] text-amber-700">批量删除会自动保护</span></div>}
       {exactDuplicate && <div className="mt-1 text-[10px] font-medium text-emerald-700">文件内容完全相同（SHA-256）</div>}
       {visualSimilar && <div className="mt-1 text-[10px] font-medium text-amber-700">视觉相似候选 · 需人工核对，不自动推荐删除</div>}
       {recommended && !meta.favorite && <div className="mt-1 text-[10px] font-medium text-emerald-700">推荐删除候选（仍需你选择并确认）</div>}

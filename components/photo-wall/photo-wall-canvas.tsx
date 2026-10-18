@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Droplet, Eraser, ImagePlus, Minus, Palette, Plus, RotateCcw, RotateCw, Sparkles, SquarePen, Smile, Unlock } from "lucide-react";
+import { Droplet, Eraser, ImagePlus, Lock, Minus, Palette, Plus, RotateCcw, RotateCw, Sparkles, SquarePen, Smile, Unlock } from "lucide-react";
 import { loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import {
   createPhotoWallId,
@@ -101,6 +101,11 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     if (mode === "move" && event.button !== undefined && event.button !== 0) return;
     const wall = wallRef.current;
     if (!wall) return;
+    const currentPlacement = placementOf(photo, index);
+    if (currentPlacement.locked) {
+      onSelect(photo.id);
+      return;
+    }
     const rect = wall.getBoundingClientRect();
     // 必须在墙容器上捕获指针：move/up 都监听在墙容器，若捕获到照片节点，
     // 后续 pointermove 会被路由到那个节点，墙上的 handler 收不到，拖动就失效了。
@@ -255,8 +260,9 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     {/* 画布工具条 */}
     {!readOnly && <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-[#e2d2c3] py-2.5">
       <button type="button" onClick={() => setMode("move")} className={`flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-0.5 py-2 text-xs ${mode === "move" ? "bg-[#87565b] text-white" : "border border-[#ddd1bd] bg-white/70 text-[#7d6d5a]"}`}><Unlock size={13}/>摆照片</button>
-      <button type="button" onClick={() => setMode("doodle")} disabled={!selectedPhoto} className={`flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-0.5 py-2 text-xs disabled:opacity-40 ${mode === "doodle" ? "bg-[#a77b77] text-white" : "border border-[#ddd1bd] bg-white/70 text-[#7d6d5a]"}`}><SquarePen size={13}/>涂鸦</button>
+      <button type="button" onClick={() => { setMode("doodle"); if (selectedPhoto) setFlippedPhotoIds(current => { const next = new Set(current); next.delete(selectedPhoto.id); return next; }); }} disabled={!selectedPhoto} title="先选中一张照片，再直接在照片上划线或放贴纸" className={`flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-0.5 py-2 text-xs disabled:opacity-40 ${mode === "doodle" ? "bg-[#a77b77] text-white" : "border border-[#ddd1bd] bg-white/70 text-[#7d6d5a]"}`}><SquarePen size={13}/>涂鸦</button>
       {mode === "doodle" && <>
+        <span className="w-full basis-full text-[10px] leading-4 text-[#9a8973]">已选照片上直接划线；先点贴纸，再点照片放置。点击「摆照片」可退出涂鸦。</span>
         <span className="mx-1 h-4 w-px bg-[#ddd1bd]" />
         <span className="flex items-center gap-1"><Palette size={12} className="text-[#9a8973]"/>{BRUSH_COLORS.map(color => <button key={color} type="button" aria-label={`画笔颜色 ${color}`} onClick={() => { setBrushColor(color); setSticker(null); }} className={`h-5 w-5 rounded-full border ${brushColor === color && !sticker ? "border-[#6b5c4a] ring-2 ring-white" : "border-white/70"}`} style={{ background: color }} />)}</span>
         <span className="flex items-center gap-1"><Droplet size={12} className="text-[#9a8973]"/>{[2, 3, 5, 8].map(width => <button key={width} type="button" onClick={() => setBrushWidth(width)} className={`grid h-6 w-6 place-items-center rounded-full text-[10px] ${brushWidth === width ? "bg-[#6b5c4a] text-white" : "bg-white/70 text-[#7d6d5a]"}`}>{width}</button>)}</span>
@@ -271,8 +277,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.min(3, (selectedPhoto.placement?.scale ?? 1) + 0.12) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="放大"><Plus size={14}/></button>
       <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { rotation: Math.max(-45, (selectedPhoto.placement?.rotation ?? 0) - 3) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="左转"><RotateCcw size={14}/></button>
       <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { rotation: Math.min(45, (selectedPhoto.placement?.rotation ?? 0) + 3) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="右转"><RotateCw size={14}/></button>
-      <button type="button" onClick={() => bringToFront(selectedPhoto, ordered.indexOf(selectedPhoto))} className="flex items-center gap-1 rounded-none border-b border-[#d7c2b1] bg-transparent px-2 py-1.5 text-[11px] text-[#7d6d5a]"><Sparkles size={12}/>置顶</button>
-      <button type="button" onClick={() => onOpenDetail(selectedPhoto)} className="rounded-none border-b border-[#87565b] bg-[#87565b] px-3 py-1.5 text-[11px] text-white">看大图 / 背面</button>
+      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { locked: !selectedPhoto.placement?.locked })} title={selectedPhoto.placement?.locked ? "解除锁定后可移动照片" : "锁定后防止误拖动"} className={`flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px] ${selectedPhoto.placement?.locked ? "border-[#87565b] bg-[#87565b] text-white" : "border-[#d7c2b1] bg-white/80 text-[#7d6d5a]"}`}>{selectedPhoto.placement?.locked ? <Lock size={12}/> : <Unlock size={12}/>} {selectedPhoto.placement?.locked ? "已锁定" : "锁定照片"}</button>
+      <button type="button" onClick={() => onOpenDetail(selectedPhoto)} className="rounded-full border border-[#87565b] bg-[#87565b] px-3 py-1.5 text-[11px] text-white">查看详情</button>
     </div>}
   </div>;
 }
@@ -379,7 +385,7 @@ function WallPhotoFrame({ photo, placement, selected, flipped, onToggleFlip, doo
 
       </>}
 
-      {selected && !doodleMode && <button
+      {selected && !doodleMode && !placement.locked && <button
         type="button"
         aria-label="拖动调整大小"
         onPointerDown={event => { event.stopPropagation(); onPointerDownResize(event); }}

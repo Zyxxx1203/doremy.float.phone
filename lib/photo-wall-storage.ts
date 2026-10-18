@@ -50,6 +50,8 @@ export type PhotoWallPlacement = {
   /** 层叠顺序，越大越靠上 */
   z: number;
   frame: PhotoWallFrameStyle;
+  /** 锁定后禁止拖动与缩放，翻面和涂鸦仍可用。 */
+  locked?: boolean;
   /** 木框/纸张的底色 */
   frameColor: string;
 };
@@ -186,6 +188,7 @@ export function normalizePlacement(value: unknown): PhotoWallPlacement | undefin
     rotation,
     z,
     frame,
+    locked: raw.locked === true,
     frameColor: typeof raw.frameColor === "string" && /^#[0-9a-f]{3,8}$/i.test(raw.frameColor) ? raw.frameColor : "#fffdf8",
   };
 }

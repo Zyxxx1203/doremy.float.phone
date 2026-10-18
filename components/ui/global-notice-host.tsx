@@ -42,9 +42,8 @@ export function GlobalNoticeHost() {
       key={notice.id}
       role={notice.kind === "error" ? "alert" : "status"}
       aria-live={notice.kind === "error" ? "assertive" : "polite"}
-      className="fixed left-1/2 z-[10000] flex w-[min(92vw,420px)] -translate-x-1/2 items-start gap-3 rounded-2xl border bg-[var(--c-card,#fff)] px-4 py-3 text-[var(--c-text,#292722)] shadow-[0_12px_36px_rgba(0,0,0,.2)]"
+      className="fixed left-1/2 top-1/2 z-[10000] flex w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 items-start gap-3 rounded-2xl border bg-[var(--c-card,#fff)] px-4 py-3 text-[var(--c-text,#292722)] shadow-[0_12px_36px_rgba(0,0,0,.2)]"
       style={{
-        top: "max(12px, calc(env(safe-area-inset-top, 0px) + 12px))",
         borderColor: style.border,
         animation: "globalNoticeIn 180ms cubic-bezier(.2,.8,.2,1) both",
       }}
@@ -55,7 +54,7 @@ export function GlobalNoticeHost() {
         {notice.message}
       </div>
       <button type="button" className="ml-1 grid h-6 w-6 shrink-0 place-items-center rounded-full text-lg leading-none opacity-60 hover:opacity-100" aria-label="关闭提示" onClick={() => setNotice(null)}>×</button>
-      <style>{`@keyframes globalNoticeIn { from { opacity: 0; transform: translate(-50%, -8px) scale(.98); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }`}</style>
+      <style>{`@keyframes globalNoticeIn { from { opacity: 0; transform: translate(-50%, -46%) scale(.98); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }`}</style>
     </div>
   );
 }

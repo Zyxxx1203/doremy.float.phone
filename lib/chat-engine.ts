@@ -16,6 +16,7 @@ import {
     loadFollowUpSchedule,
     loadChatAppSettings,
     getMaxToolRounds,
+    loadChatContacts,
     loadChatSessions,
     saveChatSessions,
     getLatestCharacterStateValues,
@@ -1826,8 +1827,11 @@ export async function buildChatPromptMessages(
     // 避免拉黑/解除拉黑刚切换后仍使用进入聊天室时的旧 session 快照。
     session = loadChatSessions().find(item => item.id === session.id) ?? session;
     const chars = loadCharacters();
-    const character = chars.find(c => c.id === session.contactId);
-    if (!character) throw new ChatEngineError(`Character not found: ${session.contactId}`);
+    // Normal chats store ChatContact.id; virtual life sessions may store Character.id.
+    const contact = loadChatContacts().find(item => item.id === session.contactId);
+    const character = chars.find(c => c.id === session.contactId)
+        ?? chars.find(c => c.id === contact?.characterId);
+    if (!character) throw new ChatEngineError(`Character not found for session contact ${session.contactId}${contact?.characterId ? ` (character ${contact.characterId})` : ""}`);
 
     const resolvedAppId = options?.appId ?? "chat";
     const bindings = loadBindingConfig();
