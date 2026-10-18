@@ -13,11 +13,11 @@ type Props = { onClose: () => void; onNotice?: (message: string) => void };
 type Platform = "bilibili" | "youtube" | "tencent" | "youku" | "iqiyi" | "douyin" | "xiaohongshu" | "other";
 type VideoTarget = { url: string; embedUrl: string | null; platform: Platform; platformName: string; supported: boolean };
 type WatchComment = { id: string; characterId: string; characterName: string; text: string; createdAt: string; kind?: "character" | "user"; timepoint?: string; targetUrl?: string };
-type WatchSettings = { characterId: string; intervalMinutes: number; voiceEnabled: boolean; danmakuEnabled: boolean; subtitlesEnabled: boolean; currentMoment: string };
+type WatchSettings = { characterId: string; intervalMinMinutes: number; intervalMaxMinutes: number; voiceEnabled: boolean; danmakuEnabled: boolean; subtitlesEnabled: boolean; currentMoment: string };
 
 const SETTINGS_KEY = "ai_phone_watch_together_v1";
 const COMMENTS_KEY = "ai_phone_watch_together_comments_v1";
-const DEFAULT_SETTINGS: WatchSettings = { characterId: "", intervalMinutes: 5, voiceEnabled: true, danmakuEnabled: true, subtitlesEnabled: true, currentMoment: "" };
+const DEFAULT_SETTINGS: WatchSettings = { characterId: "", intervalMinMinutes: 3, intervalMaxMinutes: 8, voiceEnabled: true, danmakuEnabled: true, subtitlesEnabled: true, currentMoment: "" };
 function parseVideoUrl(value: string): VideoTarget | null {
   try {
     const url = new URL(value.trim());
@@ -57,7 +57,8 @@ function loadSettings(): WatchSettings {
     const parsed = JSON.parse(raw) as Partial<WatchSettings>;
     return {
       characterId: typeof parsed.characterId === "string" ? parsed.characterId : "",
-      intervalMinutes: typeof parsed.intervalMinutes === "number" ? Math.max(1, Math.min(60, parsed.intervalMinutes)) : 5,
+      intervalMinMinutes: Math.max(1, Math.min(60, typeof parsed.intervalMinMinutes === "number" ? parsed.intervalMinMinutes : typeof parsed.intervalMinutes === "number" ? parsed.intervalMinutes : 3)),
+      intervalMaxMinutes: Math.max(Math.max(1, Math.min(60, typeof parsed.intervalMinMinutes === "number" ? parsed.intervalMinMinutes : typeof parsed.intervalMinutes === "number" ? parsed.intervalMinutes : 3)), Math.min(60, typeof parsed.intervalMaxMinutes === "number" ? parsed.intervalMaxMinutes : typeof parsed.intervalMinutes === "number" ? Math.min(60, parsed.intervalMinutes + 5) : 8)),
       voiceEnabled: parsed.voiceEnabled !== false,
       danmakuEnabled: parsed.danmakuEnabled !== false,
       subtitlesEnabled: parsed.subtitlesEnabled !== false,
@@ -108,6 +109,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [fullScreen, setFullScreen] = useState(false);
+  const originalOrientationRef = useRef<string | null>(null);
   const playerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const commentBusyRef = useRef(false);
@@ -124,13 +126,22 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     });
   }, []);
   useEffect(() => { saveSettings(settings); }, [settings]);
+  const restoreOrientation = async () => {
+    try { screen.orientation?.unlock?.(); } catch { /* orientation lock is optional */ }
+    const original = originalOrientationRef.current;
+    if (original) {
+      try {
+        const orientation = screen.orientation as ScreenOrientation & { lock?: (value: string) => Promise<void> };
+        await orientation.lock?.(original);
+      } catch { /* Browsers may only permit orientation locks while fullscreen. */ }
+    }
+    originalOrientationRef.current = null;
+  };
   useEffect(() => {
     const onFullscreen = () => {
       const active = Boolean(document.fullscreenElement);
       setFullScreen(active);
-      if (!active) {
-        try { screen.orientation?.unlock?.(); } catch { /* orientation lock is optional */ }
-      }
+      if (!active) void restoreOrientation();
     };
     document.addEventListener("fullscreenchange", onFullscreen);
     return () => document.removeEventListener("fullscreenchange", onFullscreen);
@@ -213,25 +224,40 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   useEffect(() => {
     if (!watching || !target) return;
-    const timer = window.setInterval(() => { void generateComment(false); }, Math.max(1, Math.min(60, settings.intervalMinutes)) * 60_000);
-    return () => window.clearInterval(timer);
-  }, [watching, target, settings.intervalMinutes, generateComment]);
+    let timer = 0;
+    let disposed = false;
+    const scheduleNext = () => {
+      const min = Math.max(1, Math.min(60, settings.intervalMinMinutes));
+      const max = Math.max(min, Math.min(60, settings.intervalMaxMinutes));
+      const delayMinutes = min + Math.floor(Math.random() * (max - min + 1));
+      timer = window.setTimeout(async () => {
+        await generateComment(false);
+        if (!disposed) scheduleNext();
+      }, delayMinutes * 60_000);
+    };
+    scheduleNext();
+    return () => { disposed = true; window.clearTimeout(timer); };
+  }, [watching, target, settings.intervalMinMinutes, settings.intervalMaxMinutes, generateComment]);
 
-  /** 全屏：优先真实调用；不支持时明确说明限制，不做「点了没反应」的假按钮。 */
+  /** 全屏进入横屏沉浸模式；退出时尽可能恢复进入前的屏幕方向和播放器布局。 */
   const enterFullscreen = async () => {
     const element = playerRef.current;
     if (!element) return;
+    if (!fullScreen) originalOrientationRef.current = screen.orientation?.type ?? null;
 
     // WebView / 部分移动浏览器没有 Fullscreen API：仍提供可退出的沉浸式布局，
     // 不要让全屏按钮看起来像失效。原生全屏可用时仍优先交给浏览器处理。
     if (fullScreen && !document.fullscreenElement) {
       setFullScreen(false);
-      try { await screen.orientation?.unlock?.(); } catch { /* orientation lock is optional */ }
+      await restoreOrientation();
+      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
       return;
     }
     if (document.fullscreenElement) {
       await document.exitFullscreen().catch(() => undefined);
-      try { await screen.orientation?.unlock?.(); } catch { /* orientation lock is optional */ }
+      setFullScreen(false);
+      await restoreOrientation();
+      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
       return;
     }
     if (typeof element.requestFullscreen !== "function" || document.fullscreenEnabled === false) {
@@ -392,11 +418,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
                 {characters.map(char => <option key={char.id} value={char.id} className="bg-[#241e19]">{char.name}</option>)}
               </select>
             </label>
-            <label className="text-[11px] text-[#9c9086]">主动说话间隔
-              <select value={settings.intervalMinutes} onChange={event => patchSettings({ intervalMinutes: Number(event.target.value) })} className="mt-1.5 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none">
-                {[1,2,3,5,8,10,15,20,30,45,60].map(value => <option key={value} value={value} className="bg-[#241e19]">{value} 分钟</option>)}
-              </select>
-            </label>
+            <div className="text-[11px] text-[#9c9086]">主动说话间隔（分钟）
+              <div className="mt-1.5 grid grid-cols-2 gap-2">
+                <label className="min-w-0">最短<input type="number" inputMode="numeric" min="1" max="60" value={settings.intervalMinMinutes} onChange={event => patchSettings({ intervalMinMinutes: Number(event.target.value) || 1, intervalMaxMinutes: Math.max(Number(event.target.value) || 1, settings.intervalMaxMinutes) })} onBlur={() => patchSettings({ intervalMinMinutes: Math.max(1, Math.min(60, settings.intervalMinMinutes)), intervalMaxMinutes: Math.max(Math.max(1, Math.min(60, settings.intervalMinMinutes)), settings.intervalMaxMinutes) })} className="mt-1 block w-full min-w-0 rounded-lg border border-white/10 bg-black/30 px-2.5 py-2.5 text-sm text-[#efe2d0] outline-none"/></label>
+                <label className="min-w-0">最长<input type="number" inputMode="numeric" min={settings.intervalMinMinutes} max="60" value={settings.intervalMaxMinutes} onChange={event => patchSettings({ intervalMaxMinutes: Number(event.target.value) || settings.intervalMinMinutes })} onBlur={() => patchSettings({ intervalMaxMinutes: Math.max(settings.intervalMinMinutes, Math.min(60, settings.intervalMaxMinutes)) })} className="mt-1 block w-full min-w-0 rounded-lg border border-white/10 bg-black/30 px-2.5 py-2.5 text-sm text-[#efe2d0] outline-none"/></label>
+              </div>
+              <p className="mt-1 text-[10px] leading-relaxed text-[#8b8077]">角色每次发言后，都会在这个范围内重新随机等待。</p>
+            </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             {([["voiceEnabled", "角色语音"], ["danmakuEnabled", "角色弹幕"], ["subtitlesEnabled", "角色字幕"]] as [keyof WatchSettings, string][]).map(([key, label]) => <button
