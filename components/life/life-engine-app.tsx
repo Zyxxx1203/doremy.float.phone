@@ -40,6 +40,7 @@ import { loadBindingConfig, loadImageGenerationSettings, loadPresets, loadWorldB
 import type { BindingConfig, PresetConfig, WorldBookConfig } from "@/lib/settings-types";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
+import "./life-rose-garden.css";
 import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
 import { LifeObservation } from "@/components/life/life-observation";
 
@@ -2125,7 +2126,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   if (!ready) return <main className="flex min-h-screen items-center justify-center bg-[#f7efe4] text-stone-500">正在打开生活档案…</main>;
 
-  return <main style={{ ...cssVars, ...(immersiveScene ? { height: "var(--life-viewport-height, 100dvh)" } : {}) }} className={`${immersiveScene ? "flex flex-col overflow-hidden overscroll-none" : "min-h-screen min-h-[100dvh] overflow-y-auto overscroll-y-contain touch-pan-y"} bg-gradient-to-br ${themeClass} ${settings.compactLayout ? "px-1.5 py-1.5 sm:px-3 sm:py-3" : "px-2 py-2 sm:px-4 sm:py-4"}`}>
+  return <main style={{ ...cssVars, ...(immersiveScene ? { height: "var(--life-viewport-height, 100dvh)" } : {}) }} className={`life-rose-garden ${immersiveScene ? "flex flex-col overflow-hidden overscroll-none" : "min-h-screen min-h-[100dvh] overflow-y-auto overscroll-y-contain touch-pan-y"} bg-gradient-to-br ${themeClass} ${settings.compactLayout ? "px-1.5 py-1.5 sm:px-3 sm:py-3" : "px-2 py-2 sm:px-4 sm:py-4"}`}>
     <style>{`
       /* Tie the spatial transition to the real scene-state update; no artificial waiting screen. */
       @keyframes life-view-leave {
