@@ -54,7 +54,7 @@ function loadSettings(): WatchSettings {
   try {
     const raw = kvGet(SETTINGS_KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
-    const parsed = JSON.parse(raw) as Partial<WatchSettings>;
+    const parsed = JSON.parse(raw) as Partial<WatchSettings> & { intervalMinutes?: number };
     return {
       characterId: typeof parsed.characterId === "string" ? parsed.characterId : "",
       intervalMinMinutes: Math.max(1, Math.min(60, typeof parsed.intervalMinMinutes === "number" ? parsed.intervalMinMinutes : typeof parsed.intervalMinutes === "number" ? parsed.intervalMinutes : 3)),
