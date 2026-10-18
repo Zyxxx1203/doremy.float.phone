@@ -2742,7 +2742,14 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               const start=new Date(day);start.setHours(startClock.hour,startClock.minute,0,0);
               const end=new Date(day);end.setHours(endClock.hour,endClock.minute,0,0);if(end<=start)end.setDate(end.getDate()+1);
               const knownLocation=next.locations.find(loc=>[loc.name,...(loc.aliases??[])].some(alias=>alias && body.includes(alias)));
-              const placeMatch=body.match(/(?:在|去|到|于)\s*([^，,。；;\s]+?)(?=(?:做|和|跟|一起|参加|开会|学习|工作|看|吃|喝|玩|逛|运动|散步|读|写|画|练|休息|睡|聊|见|约|$))/);
+              // Prefer known places directly. Otherwise strip date/time first, so a range's
+              // connector (e.g. 「到9点」) can never be mistaken for a location name.
+              const placeSearchText=body
+                .replace(/后天|明天|明日|今天|今日|周[一二三四五六日天]|星期[一二三四五六日天]/g,"")
+                .replace(new RegExp("("+clockPattern+")\\s*(?:到|至|—|-|~|～)\\s*("+clockPattern+")","g")," ")
+                .replace(new RegExp(clockPattern,"g")," ")
+                .replace(/[到至—~～-]/g," ");
+              const placeMatch=knownLocation?null:placeSearchText.match(/(?:在|去|到|于|回)\s*([^，,。；;\s]+?)(?=(?:做|和|跟|一起|参加|开会|学习|工作|看|吃|喝|玩|逛|运动|散步|读|写|画|练|休息|睡|聊|见|约|$))/);
               const placeName=knownLocation?.name||placeMatch?.[1];
               let location=knownLocation;
               if(!location&&placeName){location={id:id("location"),name:placeName,description:"从快速日程输入识别的地点",visibility:"public"};next={...next,locations:[...next.locations,location]};}
