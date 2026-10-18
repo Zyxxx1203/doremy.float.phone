@@ -1,5 +1,5 @@
 import { loadCharacters } from "../character-storage";
-import { LIFE_ENGINE_CAPABILITY_ID, getInternalCapability } from "../internal-capability-storage";
+import { LIFE_INVITATION_CAPABILITY_ID, LIFE_FOLLOW_CAPABILITY_ID, LIFE_SCHEDULE_CAPABILITY_ID, getInternalCapability } from "../internal-capability-storage";
 import { loadChatContacts } from "../chat-storage";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "./life-storage";
 import {
@@ -90,9 +90,14 @@ export async function executeLifeToolCall(
   context?: { appId?: string; characterId?: string },
 ) {
   if (!LIFE_TOOL_DEFINITIONS.some(tool => tool.name === call.name)) return null;
-  const capability = getInternalCapability(LIFE_ENGINE_CAPABILITY_ID);
+  const capabilityId = call.name === "life_propose_invitation"
+    ? LIFE_INVITATION_CAPABILITY_ID
+    : call.name === "life_request_follow"
+      ? LIFE_FOLLOW_CAPABILITY_ID
+      : LIFE_SCHEDULE_CAPABILITY_ID;
+  const capability = getInternalCapability(capabilityId);
   if (!capability || !capability.enabled || capability.mode === "off") {
-    return result(call.name, false, undefined, "生活引擎工具能力未启用，请在系统设置 → 聊天工具箱 → Internal Capabilities 中开启。");
+    return result(call.name, false, undefined, "此生活工具能力未启用，请在系统设置 → 聊天工具箱 → Internal Capabilities 中开启对应项目。");
   }
   const name = call.name;
   // The calling surface is not restricted: any chat/tool-enabled app may use life actions
