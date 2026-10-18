@@ -539,7 +539,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app[data-watch-fullscreen="true"] .watch-player video,.watch-together-app[data-watch-fullscreen="true"] .watch-player iframe { display:block; width:100%; height:100%; max-height:100%; aspect-ratio:auto; object-fit:contain; }
       @media (orientation: portrait) { .watch-together-app[data-watch-fullscreen="true"] > main { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(120px,30dvh) minmax(0,1fr); grid-template-areas:"title" "player" "interaction"; overflow:hidden; } }\n      @media (orientation: landscape) and (min-width: 700px) {\n        .watch-together-main { display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(300px, .9fr); grid-template-rows:auto minmax(0, auto) minmax(0, 1fr); grid-template-areas:"title interaction" "player interaction" "link interaction"; gap:10px; overflow:hidden; padding-bottom:12px; }\n        .watch-player { grid-area:player; width:100%; max-width:none; align-self:start; }\n        .watch-link-panel { grid-area:link; min-width:0; overflow:auto; }\n        .watch-interaction-panel { grid-area:interaction; min-height:0; overflow-y:auto; overscroll-behavior:contain; margin-top:0!important; }\n      }\n
       .watch-together-app[data-watch-fullscreen="true"] > header {
-        position:absolute!important; inset:0 0 auto 0!important; z-index:40!important;
+        position:absolute!important; inset:0 0 auto 0!important; z-index:1100!important;
         display:flex; min-height:0!important; padding:calc(env(safe-area-inset-top,0px) + 5px) 10px 5px!important;
         background:linear-gradient(180deg,rgba(0,0,0,.62),transparent)!important; color:#fff!important; pointer-events:none;
       }
