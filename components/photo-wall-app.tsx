@@ -707,19 +707,25 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       </nav>
 
       <section className="px-3 pb-12 pt-3 sm:px-6">
+        <div className="mb-3 flex items-center justify-end gap-1.5 rounded-xl border border-[#eadfd5] bg-[#fffaf1]/80 px-2 py-1.5">
+          <span className="mr-auto text-[10px] text-[#9b8774]">画布缩放</span>
+          <button type="button" onClick={() => setPanoramaZoom(value => Math.max(50, value - 10))} aria-label="缩小编辑画布" className="grid h-8 w-8 place-items-center rounded-full text-[#79545a]"><Minus size={14}/></button>
+          <button type="button" onClick={() => setPanoramaZoom(80)} aria-label="适配编辑画布" className="min-w-11 px-1 text-[10px] tabular-nums text-[#79545a]">{panoramaZoom}%</button>
+          <button type="button" onClick={() => setPanoramaZoom(value => Math.min(180, value + 10))} aria-label="放大编辑画布" className="grid h-8 w-8 place-items-center rounded-full text-[#79545a]"><Plus size={14}/></button>
+        </div>
         {busy && <div className="mb-3 flex items-center gap-2 rounded-xl border border-[#e4d8c6] bg-[#faf7f0] px-3 py-2.5 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
 
 
 
         {visiblePhotos.length
-          ? <div className="mx-auto w-full max-w-4xl"><PhotoWallCanvas
+          ? <div className="mx-auto w-full max-w-4xl overflow-auto overscroll-contain" style={{ maxHeight: "calc(100dvh - 270px)", WebkitOverflowScrolling: "touch" }}><div style={{ width: panoramaZoom + "%", minWidth: panoramaZoom < 100 ? "50%" : "100%", marginInline: "auto", transition: "width 100ms ease" }}><PhotoWallCanvas
               photos={visiblePhotos}
               selectedId={selectedPhotoId}
               onSelect={setSelectedPhotoId}
               onChangePlacement={changePlacement}
               onChangeDoodles={changeDoodles}
               onOpenDetail={photo => openPhoto(photo)}
-            /></div>
+            /></div></div>
           : <div className="mx-auto flex max-w-sm flex-col items-center px-6 py-16 text-center"><div className="grid h-16 w-16 place-items-center rounded-full border border-[#ddd0bd] text-[#a0917d]"><Feather size={24}/></div><h2 className="mt-5 font-serif text-xl font-normal">这面墙还空着</h2><p className="mt-2 text-xs leading-6 text-[#968674]">先收藏一张你喜欢的照片。之后，角色也会把自己想珍藏的风景、自拍和生活片段慢慢放进来。</p><button onClick={() => fileRef.current?.click()} className="mt-5 rounded-full border border-[#b7a48c] px-5 py-2.5 text-xs tracking-wider text-[#786953]">收藏第一张照片</button></div>}
       </section>
 
