@@ -174,14 +174,25 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     }, 200);
   }, []);
 
-  // 关闭照片墙/切换应用时，不能丢掉尚在 200ms 防抖窗口中的拖动、缩放或涂鸦。
-  // 用最新快照落盘，避免闭包里保存的旧状态覆盖最后一次操作。
-  useEffect(() => () => {
-    if (saveTimerRef.current !== null) {
+  // 关闭照片墙、切到后台或页面进入 pagehide 时，立即冲刷防抖保存。
+  // 移动端后台计时器可能被挂起，不能只依赖 200ms timeout。
+  useEffect(() => {
+    const flushPendingSave = () => {
+      if (saveTimerRef.current === null) return;
       window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
       savePhotoWallState(stateRef.current);
-    }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") flushPendingSave();
+    };
+    window.addEventListener("pagehide", flushPendingSave);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("pagehide", flushPendingSave);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      flushPendingSave();
+    };
   }, []);
 
   /** 统一落盘入口：先更新状态快照与 React 状态，再合并写盘。 */
