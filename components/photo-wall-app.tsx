@@ -136,6 +136,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [state, setState] = useState<PhotoWallState>(() => loadPhotoWallState());
   const [characters, setCharacters] = useState<Character[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
+  const [wallView, setWallView] = useState<"panorama" | "timeline" | "edit">("panorama");
   const [selectedCharacterId, setSelectedCharacterId] = useState("");
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [editNote, setEditNote] = useState("");
@@ -603,8 +604,14 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       <div className="min-w-0 flex-1"><div className="font-serif text-xl tracking-[.12em]">照片墙</div><div className="mt-0.5 text-[10px] tracking-[.2em] text-[#a09380]">A LITTLE ARCHIVE OF US · {photos.length} PHOTOS</div></div>
       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowSettings(value => !value); }} className="relative z-[1002] pointer-events-auto min-h-11 cursor-pointer touch-manipulation rounded-2xl border border-[#ded5c7] bg-white/75 px-4 py-2 text-xs tracking-wider text-[#85735f] shadow-sm transition hover:bg-white active:scale-95">设置</button>
       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAddMenu(value => !value); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 cursor-pointer touch-manipulation place-items-center rounded-2xl bg-gradient-to-br from-[#9ba68e] to-[#6f7d65] text-white shadow-[0_8px_18px_rgba(92,109,81,.25)] transition hover:-translate-y-0.5 active:scale-95" aria-label="添加照片"><Plus size={18}/></button>
+      <button type="button" onClick={() => setWallView("edit")} className="rounded-xl bg-[#78866d] px-3 py-2 text-xs text-white">进入编辑</button>
     </header>
 
+    <nav className="z-[1002] flex shrink-0 items-center justify-center gap-2 border-t border-[#ded5c7] bg-[#fffaf1]/95 px-3 py-2 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur">
+      <button type="button" onClick={() => setWallView("panorama")} className={`rounded-full px-4 py-2 text-xs ${wallView==="panorama"?"bg-[#78866d] text-white":"text-[#85735f]"}`}>全景墙</button>
+      <button type="button" onClick={() => setWallView("timeline")} className={`rounded-full px-4 py-2 text-xs ${wallView==="timeline"?"bg-[#78866d] text-white":"text-[#85735f]"}`}>时间轴海报</button>
+      <button type="button" onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="rounded-full border border-[#cbbba6] bg-white px-3 py-2 text-xs text-[#7a6a56] disabled:opacity-40">{exportBusy ? "导出中…" : "导出 PNG"}</button>
+    </nav>
     {showAddMenu && <div className="absolute right-4 top-[62px] z-30 w-56 rounded-2xl border border-[#e4d9c9] bg-[#fffdf8] p-2 shadow-xl">
       <button onClick={() => { setShowAddMenu(false); fileRef.current?.click(); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-[#f3ede2]"><ImagePlus size={17}/>收藏我的照片</button>
       <button onClick={() => void openChatPicker()} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-[#f3ede2]"><Heart size={17}/>从聊天收藏照片</button>
@@ -614,6 +621,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={event => { if (event.target.files) void uploadFiles(event.target.files); event.currentTarget.value = ""; }}/>
 
     <main className="min-h-0 flex-1 overflow-y-auto">
+      {wallView === "edit" ? <>
       <section className="relative mx-4 mt-4 overflow-hidden rounded-[28px] border border-white/80 bg-gradient-to-br from-[#fffaf0] via-[#f4eadc] to-[#e6eadf] px-5 pb-6 pt-6 shadow-[0_12px_32px_rgba(93,75,52,.08)] sm:mx-7 sm:px-8">
         <div className="pointer-events-none absolute -right-6 -top-10 h-48 w-48 rounded-full border border-[#d6cbb9]/70"/><div className="pointer-events-none absolute -right-1 top-0 h-36 w-36 rounded-full border border-[#d6cbb9]/50"/>
         <div className="relative max-w-2xl"><div className="text-[10px] tracking-[.32em] text-[#a0927e]">THE THINGS WE KEEP</div><h1 className="mt-3 font-serif text-[30px] font-normal leading-tight tracking-[.08em] sm:text-[38px]">把日子，慢慢收好。</h1><p className="mt-3 max-w-md text-xs leading-6 tracking-wide text-[#887a68]">有些照片不是为了证明发生过什么，只是因为那一刻，心里很柔软。</p><div className="mt-5 flex items-center gap-3 text-[10px] tracking-[.15em] text-[#9d8d78]"><span className="h-px w-8 bg-[#b9a68e]"/><span>{new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" })}</span><span>·</span><span>{characters.length} 位角色在这里留下痕迹</span></div></div>
@@ -693,6 +701,35 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             /></div>
           : <div className="mx-auto flex max-w-sm flex-col items-center px-6 py-16 text-center"><div className="grid h-16 w-16 place-items-center rounded-full border border-[#ddd0bd] text-[#a0917d]"><Feather size={24}/></div><h2 className="mt-5 font-serif text-xl font-normal">这面墙还空着</h2><p className="mt-2 text-xs leading-6 text-[#968674]">先收藏一张你喜欢的照片。之后，角色也会把自己想珍藏的风景、自拍和生活片段慢慢放进来。</p><button onClick={() => fileRef.current?.click()} className="mt-5 rounded-full border border-[#b7a48c] px-5 py-2.5 text-xs tracking-wider text-[#786953]">收藏第一张照片</button></div>}
       </section>
+
+      </> : wallView === "panorama" ? <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-20 pt-3 sm:px-6">
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[26px] border border-[#ded5c7] bg-[#f4eadc] p-2 shadow-inner">
+          <div className="w-full max-w-[min(100%,560px)]">
+            <PhotoWallCanvas photos={photos} selectedId={null} onSelect={() => setWallView("edit")} onChangePlacement={changePlacement} onChangeDoodles={changeDoodles} onOpenDetail={photo => openPhoto(photo)} />
+          </div>
+        </div>
+        {!photos.length && <div className="pointer-events-none absolute inset-x-8 top-1/2 -translate-y-1/2 text-center text-sm text-[#897965]">这面墙还空着。点击「进入编辑」来添加照片。</div>}
+        <button type="button" onClick={() => setWallView("edit")} className="absolute bottom-24 right-5 rounded-full bg-[#78866d] px-5 py-3 text-sm font-medium text-white shadow-lg">进入编辑</button>
+      </div> : <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-24 pt-4 sm:px-7" style={{WebkitOverflowScrolling:"touch"}}>
+        {photos.length === 0 ? <div className="grid min-h-[55dvh] place-items-center text-center text-[#8f806d]"><div><Feather size={28} className="mx-auto"/><p className="mt-3">还没有收录的回忆</p><p className="mt-1 text-xs">进入编辑，添加第一张照片。</p></div></div> : <div className="mx-auto max-w-2xl space-y-6">
+          {[...new Set(photos.map(photo => { const date = new Date(photo.createdAt); return Number.isNaN(date.getTime()) ? "未知时间" : date.toLocaleDateString("zh-CN", {year:"numeric",month:"2-digit"}); }))].map(group => {
+            const items = photos.filter(photo => { const date = new Date(photo.createdAt); return (Number.isNaN(date.getTime()) ? "未知时间" : date.toLocaleDateString("zh-CN", {year:"numeric",month:"2-digit"})) === group; });
+            return <section key={group} className="relative pl-5 before:absolute before:bottom-0 before:left-1 before:top-8 before:w-px before:bg-[#d8c4ab]">
+              <h2 className="sticky top-0 z-10 mb-3 rounded-xl bg-[#f3eadc]/95 px-3 py-2 font-serif text-base text-[#75624d] backdrop-blur">{group}</h2>
+              <div className="space-y-4">{items.map((photo,index) => <button type="button" key={photo.id} onClick={() => openPhoto(photo)} className="relative block w-full rounded-[22px] border border-[#e5d7c5] bg-[#fffaf1] p-3 text-left shadow-[0_8px_22px_rgba(90,67,42,.08)]">
+                <span className="absolute -left-[21px] top-6 h-3 w-3 rounded-full border-2 border-[#f3eadc] bg-[#9aab8c]"/>
+                <div className="mx-auto max-w-[360px] rotate-0 rounded-sm bg-[#fffdf8] p-3 pb-5 shadow-[0_5px_14px_rgba(70,55,40,.15)]">
+                  <div className="overflow-hidden bg-[#e9dfd0]"><PhotoThumbnail photo={photo} onOpen={() => openPhoto(photo)} /></div>
+                  <p className="mt-2 text-center font-serif text-sm text-[#655342]">{photo.title || "未命名的瞬间"}</p>
+                  {photo.note && <p className="mt-1 whitespace-pre-wrap text-center text-xs leading-5 text-[#8d7a65]">{photo.note}</p>}
+                  {(photo.doodles?.length || photo.annotations?.length) ? <p className="mt-1 text-center text-[10px] text-[#a08c74]">✦ {photo.doodles?.length ?? 0} 个涂鸦 / 贴纸 · {photo.annotations?.length ?? 0} 条留言</p> : null}
+                  <p className="mt-1 text-center text-[10px] tracking-wider text-[#a08c74]">{formatDate(photo.createdAt)}</p>
+                </div>
+              </button>)}</div>
+            </section>;
+          })}
+        </div>}
+      </div>}
     </main>
 
     {showChatPicker && <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#332c24]/40 p-4 backdrop-blur-sm" onClick={() => setShowChatPicker(false)}>
