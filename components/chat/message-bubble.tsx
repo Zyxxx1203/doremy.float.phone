@@ -1552,7 +1552,7 @@ function ImageBubble({
             if (gesture.mode !== "horizontal") return;
             let offset = dx;
             if ((activeGroupIndex === 0 && dx > 0) || (activeGroupIndex === groupUrls.length - 1 && dx < 0)) offset *= 0.28;
-            setGroupDragOffset(offset);
+            setGroupDragOffset(Math.max(-8, Math.min(8, offset * 0.16)));
             event.preventDefault();
             event.stopPropagation();
         };
@@ -1608,7 +1608,7 @@ function ImageBubble({
                             const distance = Math.abs(relative);
                             if (distance > 1) return null;
                             const scale = 1 - distance * 0.045;
-                            const x = relative * 7 + Math.max(-14, Math.min(14, groupDragOffset * 0.35));
+                            const x = relative * 5 + groupDragOffset;
                             return (
                                 <button
                                     key={`${itemIndex}-${url}`}
@@ -1621,11 +1621,11 @@ function ImageBubble({
                                         setPreviewOriginRect({left:rect.left,top:rect.top,width:rect.width,height:rect.height});
                                         setShowPreview(true);
                                     }}
-                                    className="absolute left-[8px] top-0 h-[170px] w-[132px] overflow-hidden rounded-[10px] border border-white/35 bg-stone-900"
+                                    className="absolute left-[8px] top-0 h-[170px] w-[132px] overflow-hidden rounded-[10px] border border-white/35 bg-stone-900 shadow-none"
                                     style={{
                                         transform: `translate3d(${x}px,0,0) scale(${scale})`,
                                         transformOrigin: "left center",
-                                        transition: groupGestureRef.current?.mode === "horizontal" ? "none" : "transform .14s ease-out, opacity .14s ease-out",
+                                        transition: groupGestureRef.current?.mode === "horizontal" ? "none" : "transform .10s ease-out, opacity .10s ease-out",
                                         zIndex: 10 - distance,
                                         opacity: 1 - distance * 0.1,
                                         pointerEvents: relative === 0 ? "auto" : "none",

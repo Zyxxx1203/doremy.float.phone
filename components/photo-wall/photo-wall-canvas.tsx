@@ -88,6 +88,32 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   const [sticker, setSticker] = useState<string | null>(null);
   const [draftPoints, setDraftPoints] = useState<{ x: number; y: number }[]>([]);
 
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onPinchStart = () => {
+      multiTouchRef.current = true;
+      dragRef.current = null;
+      strokeRef.current = null;
+      suppressClickRef.current = true;
+      if (timer) clearTimeout(timer);
+    };
+    const onPinchEnd = () => {
+      suppressClickRef.current = true;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        multiTouchRef.current = false;
+        suppressClickRef.current = false;
+      }, 420);
+    };
+    window.addEventListener("photo-wall-pinch-start", onPinchStart);
+    window.addEventListener("photo-wall-pinch-end", onPinchEnd);
+    return () => {
+      window.removeEventListener("photo-wall-pinch-start", onPinchStart);
+      window.removeEventListener("photo-wall-pinch-end", onPinchEnd);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
   const ordered = useMemo(() => photos.slice().sort((a, b) => (a.placement?.z ?? 0) - (b.placement?.z ?? 0)), [photos]);
   const placementOf = useCallback(
     (photo: PhotoWallPhoto, index: number) => photo.placement ?? fallbackPlacement(index),
@@ -257,6 +283,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
           flipped={flippedPhotoIds.has(photo.id)}
           onToggleFlip={() => {
             if (mode !== "view") return;
+            if (multiTouchRef.current) { suppressClickRef.current = true; return; }
             if (suppressClickRef.current) { suppressClickRef.current = false; return; }
             setFlippedPhotoIds(current => { const next = new Set(current); if (next.has(photo.id)) next.delete(photo.id); else next.add(photo.id); return next; });
           }}
@@ -276,10 +303,10 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
 
     {/* 画布工具条 */}
     {!readOnly && <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-[#e2d2c3] py-2.5">
-      <button type="button" onClick={() => setMode(current => current === "move" ? "view" : "move")} className={`flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-3 py-2 text-xs ${mode === "move" ? "bg-[#87565b] text-white" : "border border-[#ddd1bd] bg-white/70 text-[#7d6d5a]"}`}><Unlock size={13}/>{mode === "move" ? "完成摆放" : "摆照片"}</button>
-      <button type="button" onClick={() => { setMode("doodle"); if (selectedPhoto) setFlippedPhotoIds(current => { const next = new Set(current); next.delete(selectedPhoto.id); return next; }); }} disabled={!selectedPhoto} title="先点照片选中，再点击涂鸦，然后在照片上按住并划动" className={`flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-3 py-2 text-xs disabled:opacity-40 ${mode === "doodle" ? "bg-[#a77b77] text-white" : "border border-[#ddd1bd] bg-white/70 text-[#7d6d5a]"}`}><SquarePen size={13}/>涂鸦</button>
+      <button type="button" onClick={() => setMode(current => current === "move" ? "view" : "move")} className={`flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs transition ${mode === "move" ? "border-[#87565b] bg-[#87565b] text-white" : "border-[#ddd1bd] bg-white/80 text-[#7d6d5a]"}`}><Unlock size={13}/>{mode === "move" ? "完成摆放" : "摆照片"}</button>
+      <button type="button" onClick={() => { setMode(current => current === "doodle" ? "view" : "doodle"); if (selectedPhoto) setFlippedPhotoIds(current => { const next = new Set(current); next.delete(selectedPhoto.id); return next; }); }} title="点击进入涂鸦；若尚未选中照片，先点一张照片，随后在照片上按住并划动" className={`flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs transition ${mode === "doodle" ? "border-[#a77b77] bg-[#a77b77] text-white" : "border-[#ddd1bd] bg-white/80 text-[#7d6d5a]"}`}><SquarePen size={13}/>{mode === "doodle" ? "退出涂鸦" : "涂鸦"}</button>
       {mode === "doodle" && <>
-        <span className="w-full basis-full text-[10px] leading-4 text-[#9a8973]">已选照片上直接划线；先点贴纸，再点照片放置。点击「摆照片」可退出涂鸦。</span>
+        <span className="w-full basis-full text-[10px] leading-4 text-[#9a8973]">{selectedPhoto ? "在已选照片上按住并划动即可画线；先选颜色/粗细。点贴纸后，再点照片放置贴纸。" : "先点一张照片进行选中；选中后在照片上按住并划动即可画线。涂鸦模式不会翻转照片。"}</span>
         <span className="mx-1 h-4 w-px bg-[#ddd1bd]" />
         <span className="flex items-center gap-1"><Palette size={12} className="text-[#9a8973]"/>{BRUSH_COLORS.map(color => <button key={color} type="button" aria-label={`画笔颜色 ${color}`} onClick={() => { setBrushColor(color); setSticker(null); }} className={`h-5 w-5 rounded-full border ${brushColor === color && !sticker ? "border-[#6b5c4a] ring-2 ring-white" : "border-white/70"}`} style={{ background: color }} />)}</span>
         <span className="flex items-center gap-1"><Droplet size={12} className="text-[#9a8973]"/>{[2, 3, 5, 8].map(width => <button key={width} type="button" onClick={() => setBrushWidth(width)} className={`grid h-6 w-6 place-items-center rounded-full text-[10px] ${brushWidth === width ? "bg-[#6b5c4a] text-white" : "bg-white/70 text-[#7d6d5a]"}`}>{width}</button>)}</span>
@@ -358,7 +385,7 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
         boxShadow: frame === "none" ? "0 6px 18px rgba(70,55,38,.22)" : "0 10px 24px rgba(70,55,38,.2)",
       }}
       onPointerDown={(event) => { if (!doodleMode) onPointerDownMove(event); }}
-      onClick={event => { event.stopPropagation(); if (!doodleMode) onToggleFlip(); }}
+      onClick={event => { event.stopPropagation(); if (!placementMode && !doodleMode) onToggleFlip(); }}
     >
       {flipped ? <div className="relative flex w-full flex-col overflow-y-auto rounded-sm bg-[#fffaf2] p-2.5 text-[#6b5947]" style={{ aspectRatio: "1 / 1", borderRadius: frame === "none" ? 2 : 1 }}>
         <div className="border-b border-[#dfcfbe] pb-1 text-[7px] tracking-[.2em] text-[#a58f77]">THE BACK · 背面</div>

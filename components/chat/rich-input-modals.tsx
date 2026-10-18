@@ -53,9 +53,10 @@ export function PhotoInputModal({ onSend, onClose }: PhotoInputModalProps) {
                         </div>
                     ))}
                 </div>}
-                {imageDataUrls.length < 9 && <button type="button" onClick={() => fileInputRef.current?.click()} className="mt-3 flex min-h-[84px] w-full items-center justify-center gap-3 rounded-xl border border-dashed border-[var(--c-icon)]/45 bg-[var(--c-input)]/35 px-4 py-4 text-[var(--c-icon)] transition-colors hover:bg-[var(--c-input)]/60">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    <span className="text-sm">{imageDataUrls.length ? "继续添加图片" : "选择图片"}<span className="ml-2 text-xs opacity-70">最多 9 张</span></span>
+                {imageDataUrls.length < 9 && <button type="button" onClick={() => fileInputRef.current?.click()} className="mt-3 flex min-h-[116px] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[var(--c-icon)]/45 bg-[var(--c-input)]/35 px-4 py-5 text-[var(--c-icon)] transition-colors hover:bg-[var(--c-input)]/60">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    <span className="text-sm font-medium">{imageDataUrls.length ? "继续添加图片" : "选择图片"}</span>
+                    <span className="text-xs opacity-70">一次最多 9 张 · 也可以继续添加</span>
                 </button>}
                 <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
                 <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="添加描述（选填）" rows={2} className="mt-3 w-full resize-none rounded-xl border border-[var(--c-border)] bg-[var(--c-input)] p-3 text-sm outline-none" />

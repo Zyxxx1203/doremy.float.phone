@@ -160,6 +160,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [wallView, setWallView] = useState<"panorama" | "timeline" | "edit" | "settings">("panorama");
   const [panoramaZoom, setPanoramaZoom] = useState(100);
   const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
+  const pinchPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchModeRef = useRef(false);
   const singleTouchRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number; startedOnPhoto: boolean } | null>(null);
   const panoramaViewportRef = useRef<HTMLDivElement>(null);
   const panoramaZoomRef = useRef(100);
@@ -169,42 +171,89 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     if (wallView !== "panorama" && wallView !== "edit") return;
     const viewport = panoramaViewportRef.current;
     if (!viewport) return;
-    const distance = (touches: TouchList) => Math.max(1, Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY));
-    const onStart = (event: TouchEvent) => {
-      if (event.touches.length >= 2) {
-        event.preventDefault(); singleTouchRef.current = null;
-        pinchStartRef.current = { distance: distance(event.touches), zoom: panoramaZoomRef.current };
-        setShowZoomFeedback(true);
-      } else if (event.touches.length === 1) {
+    const touchDistance = (touches: TouchList) => Math.max(1, Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY));
+    const pointsDistance = (points: { x: number; y: number }[]) => Math.max(1, Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y));
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.pointerType !== "touch" || !(event.target instanceof Node) || !viewport.contains(event.target)) return;
+      pinchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pinchPointersRef.current.size < 2) return;
+      const points = [...pinchPointersRef.current.values()].slice(0, 2);
+      pinchStartRef.current = { distance: pointsDistance(points), zoom: panoramaZoomRef.current };
+      pinchModeRef.current = true;
+      singleTouchRef.current = null;
+      setShowZoomFeedback(true);
+      window.dispatchEvent(new Event("photo-wall-pinch-start"));
+      if (event.cancelable) event.preventDefault();
+      event.stopPropagation();
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      const pointers = pinchPointersRef.current;
+      if (!pointers.has(event.pointerId)) return;
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (!pinchModeRef.current) return;
+      if (event.cancelable) event.preventDefault();
+      event.stopPropagation();
+      if (pointers.size < 2 || !pinchStartRef.current) return;
+      const nextZoom = Math.max(50, Math.min(180, Math.round(pinchStartRef.current.zoom * pointsDistance([...pointers.values()].slice(0, 2)) / pinchStartRef.current.distance)));
+      panoramaZoomRef.current = nextZoom;
+      setPanoramaZoom(nextZoom);
+      setShowZoomFeedback(true);
+    };
+    const onPointerEnd = (event: PointerEvent) => {
+      const pointers = pinchPointersRef.current;
+      if (!pointers.has(event.pointerId)) return;
+      const wasPinching = pinchModeRef.current;
+      pointers.delete(event.pointerId);
+      if (wasPinching) {
+        if (pointers.size < 2) setShowZoomFeedback(false);
+        if (pointers.size === 0) {
+          pinchModeRef.current = false;
+          pinchStartRef.current = null;
+          window.dispatchEvent(new Event("photo-wall-pinch-end"));
+        }
+      }
+      if (pointers.size === 0) singleTouchRef.current = null;
+    };
+    const onTouchStart = (event: TouchEvent) => {
+      if (event.touches.length >= 2) { singleTouchRef.current = null; return; }
+      if (event.touches.length === 1) {
         const target = event.target instanceof Element ? event.target : null;
         singleTouchRef.current = { x: event.touches[0].clientX, y: event.touches[0].clientY, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, startedOnPhoto: Boolean(target?.closest("[data-photo-wall-photo]")) };
       }
     };
-    const onMove = (event: TouchEvent) => {
-      if (event.touches.length >= 2 && pinchStartRef.current) {
-        event.preventDefault();
-        const nextZoom = Math.max(50, Math.min(180, Math.round(pinchStartRef.current.zoom * distance(event.touches) / pinchStartRef.current.distance)));
-        panoramaZoomRef.current = nextZoom; setPanoramaZoom(nextZoom); setShowZoomFeedback(true);
-        return;
-      }
+    const onTouchMove = (event: TouchEvent) => {
+      // Two-finger scaling uses Pointer Events; this handler only pans with one finger.
+      if (event.touches.length !== 1 || pinchModeRef.current) return;
       const start = singleTouchRef.current;
-      if (event.touches.length !== 1 || !start || (start.startedOnPhoto && wallView === "edit")) return;
+      if (!start || (start.startedOnPhoto && wallView === "edit")) return;
       const dx = event.touches[0].clientX - start.x, dy = event.touches[0].clientY - start.y;
       if (Math.abs(dx) + Math.abs(dy) < 3) return;
-      event.preventDefault(); viewport.scrollLeft = start.scrollLeft - dx; viewport.scrollTop = start.scrollTop - dy;
+      if (event.cancelable) event.preventDefault();
+      viewport.scrollLeft = start.scrollLeft - dx; viewport.scrollTop = start.scrollTop - dy;
     };
-    const onEnd = (event: TouchEvent) => {
-      if (event.touches.length < 2) { pinchStartRef.current = null; setShowZoomFeedback(false); }
+    const onTouchEnd = (event: TouchEvent) => {
+      if (event.touches.length < 2 && pinchModeRef.current) setShowZoomFeedback(false);
       if (event.touches.length === 0) singleTouchRef.current = null;
       else if (event.touches.length === 1) singleTouchRef.current = { x: event.touches[0].clientX, y: event.touches[0].clientY, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, startedOnPhoto: false };
     };
-    viewport.addEventListener("touchstart", onStart, { passive: false, capture: true });
-    viewport.addEventListener("touchmove", onMove, { passive: false, capture: true });
-    viewport.addEventListener("touchend", onEnd, { passive: false, capture: true });
-    viewport.addEventListener("touchcancel", onEnd, { passive: false, capture: true });
+    // Window capture keeps tracking both fingers even if one leaves a photo frame.
+    window.addEventListener("pointerdown", onPointerDown, { capture: true, passive: false });
+    window.addEventListener("pointermove", onPointerMove, { capture: true, passive: false });
+    window.addEventListener("pointerup", onPointerEnd, true);
+    window.addEventListener("pointercancel", onPointerEnd, true);
+    viewport.addEventListener("touchstart", onTouchStart, { passive: false, capture: true });
+    viewport.addEventListener("touchmove", onTouchMove, { passive: false, capture: true });
+    viewport.addEventListener("touchend", onTouchEnd, { passive: false, capture: true });
+    viewport.addEventListener("touchcancel", onTouchEnd, { passive: false, capture: true });
     return () => {
-      viewport.removeEventListener("touchstart", onStart, true); viewport.removeEventListener("touchmove", onMove, true);
-      viewport.removeEventListener("touchend", onEnd, true); viewport.removeEventListener("touchcancel", onEnd, true);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("pointermove", onPointerMove, true);
+      window.removeEventListener("pointerup", onPointerEnd, true);
+      window.removeEventListener("pointercancel", onPointerEnd, true);
+      viewport.removeEventListener("touchstart", onTouchStart, true);
+      viewport.removeEventListener("touchmove", onTouchMove, true);
+      viewport.removeEventListener("touchend", onTouchEnd, true);
+      viewport.removeEventListener("touchcancel", onTouchEnd, true);
     };
   }, [wallView]);
   const [selectedCharacterId, setSelectedCharacterId] = useState<string>(() => readPhotoWallCharacter());
@@ -769,7 +818,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
 
         {visiblePhotos.length
-          ? <div ref={panoramaViewportRef} className="mx-auto w-full max-w-4xl overflow-auto overscroll-contain" style={{ maxHeight: "calc(100dvh - 270px)", WebkitOverflowScrolling: "touch", touchAction: "none" }}><div style={{ width: panoramaZoom + "%", minWidth: panoramaZoom < 100 ? "50%" : "100%", marginInline: "auto" }}><PhotoWallCanvas
+          ? <div ref={panoramaViewportRef} data-photo-wall-viewport className="mx-auto w-full max-w-4xl overflow-auto overscroll-contain" style={{ maxHeight: "calc(100dvh - 270px)", WebkitOverflowScrolling: "touch", touchAction: "none", overscrollBehavior: "contain" }}><div style={{ width: panoramaZoom + "%", minWidth: panoramaZoom < 100 ? "50%" : "100%", marginInline: "auto" }}><PhotoWallCanvas
               photos={visiblePhotos}
               selectedId={selectedPhotoId}
               onSelect={setSelectedPhotoId}
@@ -781,7 +830,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       </section>
 
       </> : wallView === "panorama" ? <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden pb-16 pt-0">
-        <div ref={panoramaViewportRef} className="relative flex min-h-0 flex-1 items-stretch justify-stretch overflow-auto overscroll-contain border-y border-[#eadfd5] p-0" style={{WebkitOverflowScrolling:"touch", backgroundImage:"radial-gradient(ellipse at 50% 12%,rgba(255,255,255,.98),transparent 72%),linear-gradient(145deg,#fffaf2,#f6eee4)", touchAction:"none"}}>
+        <div ref={panoramaViewportRef} data-photo-wall-viewport className="relative flex min-h-0 flex-1 items-stretch justify-stretch overflow-auto overscroll-contain border-y border-[#eadfd5] p-0" style={{WebkitOverflowScrolling:"touch", backgroundImage:"radial-gradient(ellipse at 50% 12%,rgba(255,255,255,.98),transparent 72%),linear-gradient(145deg,#fffaf2,#f6eee4)", touchAction:"none", overscrollBehavior:"contain"}}>
           <div className="shrink-0 transition-[width,height] duration-100" style={{height:panoramaZoom+"%",width:panoramaZoom+"%",minHeight:panoramaZoom+"%",minWidth:panoramaZoom+"%",maxWidth:"none"}}>
             <PhotoWallCanvas photos={photos} selectedId={null} onSelect={() => {}} onChangePlacement={changePlacement} onChangeDoodles={changeDoodles} onOpenDetail={photo => openPhoto(photo)} readOnly fitHeight />
           </div>
