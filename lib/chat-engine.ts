@@ -1907,7 +1907,11 @@ export async function buildChatPromptMessages(
         const extraRefs = msg.mediaType === "image" && Array.isArray(msg.mediaData?.imageRefs)
             ? msg.mediaData.imageRefs.filter((ref): ref is string => typeof ref === "string" && Boolean(ref))
             : [];
-        const refs = extraRefs.length && msg.mediaUrl ? [msg.mediaUrl, ...extraRefs] : extraRefs;
+        // 新数据里 imageRefs 只存主图以外的引用；旧版合并消息可能存的是完整数组。
+        // 两种形式都归一化，避免把主图重复发送给视觉模型。
+        const refs = msg.mediaUrl
+            ? [msg.mediaUrl, ...extraRefs.filter((ref, index) => index > 0 || ref !== msg.mediaUrl).filter(ref => ref !== msg.mediaUrl)]
+            : extraRefs;
         if (refs.length < 2) return [{ ...msg }];
         return refs.map((ref, index) => ({
             ...msg,
