@@ -1,5 +1,6 @@
 import { loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import { fallbackPlacement } from "@/components/photo-wall/photo-wall-canvas";
+import { downloadFile } from "@/lib/download-utils";
 import type { PhotoWallFrameStyle, PhotoWallPhoto, PhotoWallPlacement } from "@/lib/photo-wall-storage";
 
 /**
@@ -180,15 +181,15 @@ export async function renderPhotoWallPng(photos: PhotoWallPhoto[], options: Expo
   return canvas.toDataURL("image/png");
 }
 
-/** 导出并触发下载，返回是否成功触发。 */
+/** 导出并交给统一下载入口，兼容 Android 原生壳、浏览器与 iOS 分享兜底。 */
 export async function downloadPhotoWallPng(photos: PhotoWallPhoto[], options: ExportOptions = {}): Promise<boolean> {
   const dataUrl = await renderPhotoWallPng(photos, options);
   if (!dataUrl) return false;
-  const anchor = document.createElement("a");
-  anchor.href = dataUrl;
-  anchor.download = `照片墙-${new Date().toISOString().slice(0, 10)}.png`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
+  const response = await fetch(dataUrl);
+  if (!response.ok) throw new Error("PNG 图片数据读取失败");
+  const blob = await response.blob();
+  if (!blob.size) throw new Error("生成的 PNG 文件为空");
+  const filename = `照片墙-${new Date().toISOString().slice(0, 10)}.png`;
+  await downloadFile(blob, filename);
   return true;
 }
