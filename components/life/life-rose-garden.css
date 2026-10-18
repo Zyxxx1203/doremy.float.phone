@@ -128,69 +128,67 @@
 }
 
 
-/* Main-branch selectors: ornamental detail layered onto the existing life UI. */
+/* Consistent rose-garden palette across the existing life-system pages.
+   Keep the current layout, copy, controls and theme behavior unchanged. */
 .life-rose-garden {
-  background-image:
-    radial-gradient(circle at 0 0, rgba(201,143,152,.13), transparent 19rem),
-    radial-gradient(circle at 100% 12%, rgba(137,151,128,.12), transparent 17rem),
-    linear-gradient(145deg, #fffaf4 0%, #f8f0e9 54%, #f7f1e8 100%) !important;
+  color: #62483f;
 }
-.life-rose-garden > header {
-  position: relative;
+.life-rose-garden nav[aria-label="生活导航"] {
+  border-color: rgba(185,154,101,.38) !important;
+  background: rgba(255,250,243,.94) !important;
 }
-.life-rose-garden > header::after {
-  content: "";
-  display: block;
-  height: 1px;
-  margin: .85rem 0 .2rem;
-  background: linear-gradient(90deg, transparent, rgba(185,154,101,.7) 18%, rgba(201,143,152,.48) 50%, rgba(185,154,101,.7) 82%, transparent);
+.life-rose-garden nav[aria-label="生活导航"] button[aria-current="page"] {
+  color: #a86675 !important;
+  background: #f7e8e7 !important;
 }
 .life-rose-garden section.rounded-3xl,
 .life-rose-garden section.rounded-2xl,
-.life-rose-garden > div > section.rounded-2xl {
-  position: relative;
+.life-rose-garden details.rounded-2xl {
   border-color: rgba(185,154,101,.34) !important;
-  box-shadow: 0 5px 18px rgba(100,69,56,.045), inset 0 0 0 1px rgba(255,255,255,.55);
+  background-color: rgba(255,250,243,.78);
 }
-.life-rose-garden section.rounded-3xl::before,
-.life-rose-garden section.rounded-2xl::before {
-  content: "✦";
-  position: absolute;
-  top: .7rem;
-  right: .85rem;
-  color: rgba(185,154,101,.65);
-  font-size: 10px;
-  line-height: 1;
-  pointer-events: none;
+.life-rose-garden article.rounded-xl,
+.life-rose-garden div.rounded-xl.border,
+.life-rose-garden div.rounded-2xl.border {
+  border-color: rgba(185,154,101,.27) !important;
 }
-.life-rose-garden .life-place-list > *,
-.life-rose-garden .life-scene-entry-card {
-  border-color: rgba(185,154,101,.4) !important;
-  box-shadow: 0 4px 14px rgba(100,69,56,.045);
+.life-rose-garden :is(section, article, div)[class*="bg-white"] {
+  background-color: rgba(255,252,247,.78);
 }
-.life-rose-garden .life-scene-chat {
-  border: 1px solid rgba(185,154,101,.28);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.72);
+.life-rose-garden :is(button, a)[class*="bg-[var(--life-accent)]"] {
+  background-color: #b77e87;
+  color: #fffaf7;
 }
-.life-rose-garden .life-scene-bubble {
-  border: 1px solid rgba(185,154,101,.16);
+.life-rose-garden :is(button, a)[class*="border-white"] {
+  border-color: rgba(185,154,101,.3) !important;
 }
-.life-rose-garden :is(button, [role="button"]) {
-  -webkit-tap-highlight-color: transparent;
-}
-.life-rose-garden :is(button, [role="button"]):focus-visible {
-  outline: 2px solid rgba(201,143,152,.8);
-  outline-offset: 2px;
+.life-rose-garden :is(button, a)[class*="border-stone"] {
+  border-color: rgba(185,154,101,.32) !important;
 }
 .life-rose-garden :is(input, textarea, select) {
   border-color: rgba(185,154,101,.34) !important;
+  background-color: rgba(255,252,247,.96) !important;
+  color: #62483f;
 }
 .life-rose-garden :is(input, textarea, select):focus {
   border-color: #c98f98 !important;
   box-shadow: 0 0 0 2px rgba(201,143,152,.14);
 }
+.life-rose-garden .life-scene-chat {
+  border-color: rgba(185,154,101,.28);
+}
+.life-rose-garden .life-scene-bubble {
+  border-color: rgba(185,154,101,.16);
+}
+.life-rose-garden :is(h2, h3) {
+  color: #68483f;
+}
+.life-rose-garden :is(p, span, label) {
+  text-decoration-color: rgba(185,154,101,.35);
+}
 @media (max-width: 520px) {
-  .life-rose-garden section.rounded-3xl::before,
-  .life-rose-garden section.rounded-2xl::before { top: .55rem; right: .65rem; }
-  .life-rose-garden .life-scene-chat { box-shadow: none; }
+  .life-rose-garden section.rounded-3xl,
+  .life-rose-garden section.rounded-2xl {
+    box-shadow: 0 2px 10px rgba(100,69,56,.035);
+  }
 }
