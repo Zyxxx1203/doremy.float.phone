@@ -65,6 +65,7 @@ export type LifeEngineSettings = {
   defaultSpeed: number;
   sceneTheme: "warm-paper" | "night-sky" | "sage" | "rose" | "lavender" | "ocean" | "matcha" | "peach" | "midnight" | "custom";
   accentColor: string;
+  accentColorMode?: "theme" | "custom";
   panelOpacity: number;
   dialogueFontSize: number;
   narrationFontSize: number;
@@ -128,6 +129,7 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   defaultSpeed: 1,
   sceneTheme: "warm-paper",
   accentColor: "#b88768",
+  accentColorMode: "theme",
   panelOpacity: 96,
   dialogueFontSize: 15,
   narrationFontSize: 12,
