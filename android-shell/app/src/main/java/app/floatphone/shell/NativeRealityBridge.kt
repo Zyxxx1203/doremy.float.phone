@@ -67,13 +67,21 @@ object NativeRealityBridge {
                 continue
             }
             matched = true
+            // 优先从预先写好的角色回复库抽取，确保断网时不临时请求模型。
+            // 回复允许使用 {payload}/{type} 占位；未配置回复库时再尝试模板/通用兜底。
+            val replies = rule.optJSONArray("offlineReplies") ?: JSONArray()
+            val candidates = (0 until replies.length())
+                .mapNotNull { replies.optString(it).trim().takeIf(String::isNotBlank) }
             val template = rule.optJSONObject("process")?.optString("template", "").orEmpty()
-            val message = template.replace("{payload}", payload).replace("{type}", type)
-                .ifBlank { "现实桥感知到：$payload" }.take(500)
-            val notified = postNotification(context, rule.optString("name", "现实桥"), message, now)
+            val selected = if (candidates.isNotEmpty()) candidates[(System.currentTimeMillis() % candidates.size).toInt()]
+                else template.ifBlank { "我注意到：{payload}" }
+            val message = selected.replace("{payload}", payload).replace("{type}", type).take(500)
+            val title = rule.optString("characterName").ifBlank { rule.optString("name", "现实桥") }
+            val notified = postNotification(context, title, message, now)
             prefs.edit().putLong("last_run_$ruleId", now).apply()
             record(context, event, rule.optString("name", ruleId),
-                if (notified) "已匹配并提交本机通知" else "规则已匹配，但通知未显示（请检查通知权限/系统渠道）")
+                if (notified) "已匹配；本机回复：$message；系统已接受通知提交"
+                else "已匹配；本机回复：$message；通知未显示（请检查通知权限/系统渠道）")
         }
         if (!matched) record(context, event, null, "未执行：没有启用且匹配的本机规则")
     }
