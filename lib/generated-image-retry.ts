@@ -48,7 +48,7 @@ export async function generateAndApplyChatGeneratedImage(
 
     const effectiveUseReference = options?.useReferenceImage !== undefined
         ? options.useReferenceImage
-        : (message.mediaData?.disableReferenceImage !== true);
+        : (message.mediaData?.disableReferenceImage !== true && message.mediaData?.useReferenceImage !== false);
     const effectiveCharacterIds = options?.characterIds ?? message.mediaData?.imageGenerationCharacterIds;
 
     if (
