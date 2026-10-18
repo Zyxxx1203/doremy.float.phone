@@ -620,6 +620,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
           template: rule.process?.mode === "template" ? rule.process?.template || "" : "",
         },
         offlineReplies: (rule.offlineReplies || []).filter(line => line.trim()).slice(0, 80),
+        characterName: characters.find(character => character.id === rule.actions.chat?.characterId)?.name || "",
       }));
     try {
       shell.configureNativeRealityBridge(JSON.stringify({
@@ -629,7 +630,35 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     } catch {
       // 原生桥暂不可用时保留网页规则，不让设置页崩溃。
     }
-  }, [settings.enabled, rules]);
+  }, [settings.enabled, rules, characters]);
+
+  const [nativeLog, setNativeLog] = useState<Array<{ eventId?: string; type?: string; payload?: string; rule?: string; result?: string; at?: number }>>([]);
+  const [nativeLogAvailable, setNativeLogAvailable] = useState(false);
+  const refreshNativeLog = useCallback(() => {
+    if (typeof window === "undefined" || !isShellEnvironment()) {
+      setNativeLogAvailable(false);
+      setNativeLog([]);
+      return;
+    }
+    const shell = (window as Window & { AndroidShell?: { getNativeRealityBridgeLog?: () => string } }).AndroidShell;
+    if (!shell?.getNativeRealityBridgeLog) {
+      setNativeLogAvailable(false);
+      setNativeLog([]);
+      return;
+    }
+    try {
+      const parsed: unknown = JSON.parse(shell.getNativeRealityBridgeLog());
+      setNativeLog(Array.isArray(parsed) ? parsed.filter(item => item && typeof item === "object") as Array<{ eventId?: string; type?: string; payload?: string; rule?: string; result?: string; at?: number }> : []);
+      setNativeLogAvailable(true);
+    } catch {
+      setNativeLogAvailable(false);
+      setNativeLog([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "history" && histSec === "native") refreshNativeLog();
+  }, [tab, histSec, refreshNativeLog]);
 
   const [feed, setFeed] = useState(() => loadBridgeFeed());
   const [editing, setEditing] = useState<BridgeRule | null>(null);
@@ -708,7 +737,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
   const deviceActionOnCount = TOGGLEABLE_ACTIONS.filter(id => deviceActionCfg.actions[id] === true).length;
   const [screenChat, setScreenChat] = useState<ScreenChatSettings>(() => loadScreenChatSettings());
   const [editingScreenChat, setEditingScreenChat] = useState<ScreenChatSettings | null>(null);
-  const [histSec, setHistSec] = useState<"feed" | "commands">("feed");
+  const [histSec, setHistSec] = useState<"feed" | "commands" | "native">("feed");
   const [confirmClear, setConfirmClear] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [wizStep, setWizStep] = useState(1);
@@ -1667,6 +1696,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
             <div className="rb-chips">
               <button type="button" className={`rb-chip${histSec === "feed" ? " active" : ""}`} onClick={() => setHistSec("feed")}>最近收到</button>
               <button type="button" className={`rb-chip${histSec === "commands" ? " active" : ""}`} onClick={() => setHistSec("commands")}>最近快捷指令</button>
+              <button type="button" className={`rb-chip${histSec === "native" ? " active" : ""}`} onClick={() => setHistSec("native")}>本机执行记录</button>
             </div>
           </div>
         ) : null}
@@ -1738,7 +1768,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                     </div>
                   ))}
                 </>
-              ) : (
+              ) : histSec === "commands" ? (
                 recentCommands.length === 0 ? (
                   <div className="rb-empty">
                     <b>还没有调用记录</b>
@@ -1762,6 +1792,23 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                     </div>
                   ))
                 )
+              ) : (
+                <>
+                  <div className="rb-inline-actions" style={{ justifyContent: "flex-end", marginBottom: 10 }}>
+                    <button type="button" className="rb-btn ghost" onClick={refreshNativeLog}>{RB_ICON_REFRESH} 刷新本机记录</button>
+                  </div>
+                  {!nativeLogAvailable ? (
+                    <div className="rb-empty"><b>本机记录仅在 Android APK 中提供</b><p>网页版本没有原生系统事件执行器。请在 APK 内打开此页查看本机保存的记录。</p></div>
+                  ) : nativeLog.length === 0 ? (
+                    <div className="rb-empty"><b>还没有本机执行记录</b><p>记录保存在这台 Android 设备本地。可先测试充电开始/结束或电量偏低等系统信号；通知权限关闭时也会记录失败原因。</p></div>
+                  ) : nativeLog.slice().sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 50).map((entry, index) => (
+                    <div className="rb-card rb-feed-item" key={`${entry.eventId || "native"}-${entry.at || index}-${index}`}>
+                      <div className="rb-feed-head"><span className="rb-type">{entry.type || "本机事件"}</span><span className="rb-time">{entry.at ? fmtTime(new Date(entry.at).toISOString()) : ""}</span></div>
+                      <p className="rb-payload">{(entry.payload || "").slice(0, 180)}</p>
+                      <p className="rb-meta">匹配规则：{entry.rule || "无"} · {entry.result || "无结果信息"}</p>
+                    </div>
+                  ))}
+                </>
               )}
             </section>
           ) : null}
@@ -2545,6 +2592,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                   onChange={event => setEditing({ ...editing, process: { ...editing.process, prompt: event.target.value } })} />
               </label>
             ) : null}
+            <div className="rb-field-group">
             <label>离线回复库（每行一条，断网时从中选用）
               <textarea
                 value={(editing.offlineReplies || []).join("\n")}
@@ -2559,6 +2607,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
               <button type="button" className="rb-btn ghost" disabled={offlineReplyGenerating || !editing.actions.chat?.characterId} onClick={() => void generateOfflineReplies()}>
                 {offlineReplyGenerating ? "正在让角色准备回复…" : (editing.offlineReplies?.length ? "重新生成并替换回复库" : "让角色 AI 预写离线回复")}
               </button>
+            </div>
             </label>
             </div>
             ) : null}
