@@ -137,6 +137,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
   const [wallView, setWallView] = useState<"panorama" | "timeline" | "edit">("panorama");
+  const [panoramaZoom, setPanoramaZoom] = useState(100);
   const [selectedCharacterId, setSelectedCharacterId] = useState("");
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [editNote, setEditNote] = useState("");
@@ -703,11 +704,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       </section>
 
       </> : wallView === "panorama" ? <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-20 pt-3 sm:px-6">
-        <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[26px] border border-[#ded5c7] bg-[#f4eadc] p-2 shadow-inner">
-          <div className="w-full max-w-[min(100%,560px)]">
-            <PhotoWallCanvas photos={photos} selectedId={null} onSelect={() => setWallView("edit")} onChangePlacement={changePlacement} onChangeDoodles={changeDoodles} onOpenDetail={photo => openPhoto(photo)} readOnly />
+        <div className="flex min-h-0 flex-1 items-start justify-center overflow-auto overscroll-contain rounded-[26px] border border-[#ded5c7] bg-[#f4eadc] p-2 shadow-inner" style={{WebkitOverflowScrolling:"touch"}}>
+          <div className="shrink-0" style={{width:`${panoramaZoom}%`, minWidth: panoramaZoom < 100 ? "60%" : "100%", maxWidth:"none"}}>
+            <PhotoWallCanvas photos={photos} selectedId={null} onSelect={() => setWallView("edit")} onChangePlacement={changePlacement} onChangeDoodles={changeDoodles} onOpenDetail={photo => openPhoto(photo)} readOnly panorama />
           </div>
         </div>
+        <div className="mt-2 flex shrink-0 items-center gap-3 rounded-xl border border-[#ded5c7] bg-white/70 px-3 py-2"><span className="shrink-0 text-[11px] text-[#85735f]">全景缩放</span><button type="button" onClick={()=>setPanoramaZoom(v=>Math.max(70,v-10))} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-sm" aria-label="缩小全景">−</button><input aria-label="全景缩放比例" type="range" min="70" max="180" step="10" value={panoramaZoom} onChange={e=>setPanoramaZoom(Number(e.target.value))} className="min-w-0 flex-1 accent-[#78866d]"/><button type="button" onClick={()=>setPanoramaZoom(v=>Math.min(180,v+10))} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-sm" aria-label="放大全景">＋</button><span className="w-10 shrink-0 text-right text-[10px] text-[#85735f]">{panoramaZoom}%</span><button type="button" onClick={()=>setPanoramaZoom(100)} className="shrink-0 text-[10px] text-[#78866d]">重置</button></div>
         {!photos.length && <div className="pointer-events-none absolute inset-x-8 top-1/2 -translate-y-1/2 text-center text-sm text-[#897965]">这面墙还空着。点击「进入编辑」来添加照片。</div>}
         <button type="button" onClick={() => setWallView("edit")} className="absolute bottom-24 right-5 rounded-full bg-[#78866d] px-5 py-3 text-sm font-medium text-white shadow-lg">进入编辑</button>
       </div> : <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-24 pt-4 sm:px-7" style={{WebkitOverflowScrolling:"touch"}}>
