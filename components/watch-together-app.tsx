@@ -21,7 +21,7 @@ type WatchSettings = { characterId: string; intervalMinMinutes: number; interval
 
 const SETTINGS_KEY = "ai_phone_watch_together_v1";
 const COMMENTS_KEY = "ai_phone_watch_together_comments_v1";
-const DEFAULT_SETTINGS: WatchSettings = { characterId: "", intervalMinMinutes: 3, intervalMaxMinutes: 8, voiceEnabled: true, danmakuEnabled: true, subtitlesEnabled: true, currentMoment: "" };
+const DEFAULT_SETTINGS: WatchSettings = { characterId: "", intervalMinMinutes: 3, intervalMaxMinutes: 8, voiceEnabled: true, danmakuEnabled: true, subtitlesEnabled: false, currentMoment: "" };
 function parseVideoUrl(value: string): VideoTarget | null {
   try {
     const source = value.trim();
@@ -174,6 +174,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [fullScreen, setFullScreen] = useState(false);
   const originalOrientationRef = useRef<string | null>(null);
   const playerRef = useRef<HTMLDivElement>(null);
+  const commentListRef = useRef<HTMLDivElement>(null);
+  const videoFramesRef = useRef<Array<{ targetUrl: string; seconds: number; timestamp: string; dataUrl: string }>>([]);
+  const frameCaptureFailedRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const commentBusyRef = useRef(false);
   const objectUrlRef = useRef<string | null>(null);
@@ -190,6 +193,47 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     });
   }, []);
   useEffect(() => { saveSettings(settings); }, [settings]);
+
+  const captureCurrentVideoFrame = useCallback((): { targetUrl: string; seconds: number; timestamp: string; dataUrl: string } | null => {
+    if (!target) return null;
+    const video = playerRef.current?.querySelector("video");
+    if (!video || video.readyState < 2 || !Number.isFinite(video.currentTime)) return null;
+    try {
+      const maxSide = 640;
+      const scale = Math.min(1, maxSide / Math.max(video.videoWidth || 1, video.videoHeight || 1));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round((video.videoWidth || 640) * scale));
+      canvas.height = Math.max(1, Math.round((video.videoHeight || 360) * scale));
+      const context = canvas.getContext("2d");
+      if (!context) return null;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.62);
+      const seconds = Math.max(0, video.currentTime);
+      const frame = { targetUrl: target.url, seconds, timestamp: new Date().toISOString(), dataUrl };
+      videoFramesRef.current = [...videoFramesRef.current.filter(item => item.targetUrl === target.url && item.seconds !== seconds), frame].slice(-4);
+      frameCaptureFailedRef.current = null;
+      return frame;
+    } catch {
+      frameCaptureFailedRef.current = "这个视频源不允许网页读取画面（常见于跨站 iframe 或启用防截取的视频）。";
+      return null;
+    }
+  }, [target]);
+
+  useEffect(() => {
+    videoFramesRef.current = videoFramesRef.current.filter(frame => frame.targetUrl === target?.url);
+    frameCaptureFailedRef.current = null;
+    if (!watching || !target) return;
+    const capture = () => { captureCurrentVideoFrame(); };
+    capture();
+    const timer = window.setInterval(capture, 12000);
+    return () => window.clearInterval(timer);
+  }, [watching, target?.url, captureCurrentVideoFrame]);
+
+  useEffect(() => {
+    const list = commentListRef.current;
+    if (!list) return;
+    requestAnimationFrame(() => { list.scrollTo({ top: list.scrollHeight, behavior: "smooth" }); });
+  }, [comments.length, fullScreen, busy]);
   const restoreOrientation = async () => {
     try { screen.orientation?.unlock?.(); } catch { /* orientation lock is optional */ }
     const original = originalOrientationRef.current;
@@ -272,15 +316,25 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const session = sessions.find(item => !item.isGroup && item.contactId === contact?.id)
         ?? ({ id: `watch-together-${character.id}`, contactId: contact?.id ?? character.id, unreadCount: 0, updatedAt: new Date().toISOString(), isPinned: false, isGroup: false } as ChatSession);
       const history = loadChatMessages(session.id).slice(-12).filter(item => item.status !== "failed" && !item.isRetracted);
+      const currentFrame = captureCurrentVideoFrame();
+      const recentFrames = videoFramesRef.current.filter(frame => frame.targetUrl === target.url && Date.now() - new Date(frame.timestamp).getTime() <= 45000).slice(-3);
+      const framesToSend = currentFrame ? [...recentFrames.filter(frame => frame.seconds !== currentFrame.seconds), currentFrame].slice(-3) : recentFrames;
+      const frameMessages: ChatMessage[] = framesToSend.map((frame, index) => {
+        const minute = Math.floor(frame.seconds / 60).toString().padStart(2, "0");
+        const second = Math.floor(frame.seconds % 60).toString().padStart(2, "0");
+        return { id: "watch-frame-" + Date.now() + "-" + index, sessionId: session.id, role: "user", content: "[视频当前画面截图，时间点 " + minute + ":" + second + "。只讨论截至此时间的画面，不透露或推测后续剧情。]", status: "sent", createdAt: frame.timestamp, mediaType: "image", mediaUrl: frame.dataUrl, mediaData: { label: "视频当前画面 " + minute + ":" + second } };
+      });
       const prompt = [
         "你正在和用户一起看视频，是亲密、自然的陪伴，不是影评机器人。",
         `视频平台：${target.platformName}；视频标题（用户可编辑）：${videoTitle || "暂未命名"}。`,
         `视频链接：${target.url}`,
         `用户描述的当前片段/时间点与两人的互动：${(momentOverride ?? settings.currentMoment).trim() || "用户暂未提供具体画面描述"}。`,
-        "请结合角色自己的性格、兴趣和你们的关系，写一句自然的即时反应：可以吐槽、惊讶、共情、提问或分享感受。不要声称你真的看到了链接里无法读取的画面；不要编造剧情细节。只输出角色会直接说的话，最多60个汉字。",
+        frameMessages.length ? "我附上了带精确时间点的最近视频截图。请只讨论这些截图里已经出现的内容；严禁透露、猜测或提示之后的剧情或反转。若截图看不清就坦白说看不清，不要编造。" : "当前没有可读取的视频画面截图。跨站 iframe 或防截取源可能禁止网页读取画面；只依据用户文字描述回应，不要声称看到了视频。",
+        "请结合角色自己的性格、兴趣和你们的关系，写一句自然的即时反应：可以吐槽、惊讶、共情、提问或分享感受。只输出角色会直接说的话，最多60个汉字。",
       ].join("\n");
       const userMessage: ChatMessage = { id: `watch-${Date.now()}`, sessionId: session.id, role: "user", content: prompt, status: "sent", createdAt: new Date().toISOString() };
-      const result = await generateChatCompletion(session, [...history, userMessage], {
+      const visionSession = { ...session, visionImagePromptLimit: 3, visionImagePromptLimitUsesGlobal: false };
+      const result = await generateChatCompletion(visionSession, [...history, ...frameMessages, userMessage], {
         appId: "watch_together", appTags: ["watch_together"], toolsAllowed: false,
         ephemeralSystemNote: "你正在共同观影。不要调用工具、不要复述任务、不要声称直接读取了视频画面。只输出一句自然简短的角色发言。",
       });
@@ -292,7 +346,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       if (manual) onNotice?.(`${character.name}说了一句。`);
     } catch (error) { onNotice?.("角色观影回应失败：" + (error instanceof Error ? error.message : String(error))); }
     finally { commentBusyRef.current = false; setBusy(false); }
-  }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice]);
+  }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice, captureCurrentVideoFrame]);
 
   const submitDiscussion = () => {
     const text=discussionDraft.trim(); if(!target||!text) return;
@@ -328,39 +382,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   /** 全屏进入横屏沉浸模式；退出时尽可能恢复进入前的屏幕方向和播放器布局。 */
   const enterFullscreen = async () => {
-    const element = playerRef.current;
-    if (!element) return;
-    if (!fullScreen) originalOrientationRef.current = screen.orientation?.type ?? null;
-
-    // WebView / 部分移动浏览器没有 Fullscreen API：仍提供可退出的沉浸式布局，
-    // 不要让全屏按钮看起来像失效。原生全屏可用时仍优先交给浏览器处理。
-    if (fullScreen && !document.fullscreenElement) {
-      setFullScreen(false);
-      await restoreOrientation();
-      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
-      return;
-    }
-    if (document.fullscreenElement) {
-      await document.exitFullscreen().catch(() => undefined);
-      setFullScreen(false);
-      await restoreOrientation();
-      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
-      return;
-    }
-    if (typeof element.requestFullscreen !== "function" || document.fullscreenEnabled === false) {
+    if (!fullScreen) {
+      originalOrientationRef.current = screen.orientation?.type ?? null;
       setFullScreen(true);
       await tryLockLandscape();
-      onNotice?.("当前环境不支持系统全屏，已切换沉浸式布局；再次点击右上角按钮可退出。");
       return;
     }
-    try {
-      await element.requestFullscreen();
-      await tryLockLandscape();
-    } catch {
-      setFullScreen(true);
-      await tryLockLandscape();
-      onNotice?.("系统拒绝了原生全屏，已切换沉浸式布局；再次点击右上角按钮可退出。");
-    }
+    setFullScreen(false);
+    await restoreOrientation();
   };
 
   const latestComment = comments[comments.length - 1];
@@ -372,10 +401,21 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     return `${target.platformName}还没有取得可播放的视频流；查看解析提示或选择本地视频，不会假称已实现站内播放。`;
   }, [target]);
 
-  return <div className="watch-together-app pointer-events-auto isolate absolute inset-0 z-[1000] flex min-w-0 flex-col overflow-hidden text-[#f0e6d8]" style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)" }}>
+  return <div data-watch-fullscreen={fullScreen ? "true" : "false"} className={"watch-together-app pointer-events-auto isolate flex min-w-0 flex-col overflow-hidden text-[#f0e6d8] " + (fullScreen ? "fixed inset-0 z-[3000]" : "absolute inset-0 z-[1000]")} style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)", height: fullScreen ? "100dvh" : undefined, width: fullScreen ? "100vw" : undefined }}>
     {/* 弹幕动画：仓库里从未定义过 watchDanmaku，之前那条 animation 是空转，这里补上真实 keyframes */}
     <style>{`\n      .watch-together-main { display:flex; flex-direction:column; }
-      @keyframes watchWave { from { transform:scaleY(.45); opacity:.45 } to { transform:scaleY(1.15); opacity:1 } }\n      .watch-player { flex-shrink:0; border:5px solid #342a21!important; border-radius:22px!important; background:#090807; box-shadow:0 0 0 1px rgba(255,247,233,.45),0 8px 0 #8c6847,0 24px 42px rgba(68,44,24,.26)!important; }\n      .watch-link-panel { flex-shrink:0; }\n      .watch-interaction-panel { min-width:0; }\n      @media (orientation: landscape) and (min-width: 700px) {\n        .watch-together-main { display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(300px, .9fr); grid-template-rows:auto minmax(0, auto) minmax(0, 1fr); grid-template-areas:"title interaction" "player interaction" "link interaction"; gap:10px; overflow:hidden; padding-bottom:12px; }\n        .watch-player { grid-area:player; width:100%; max-width:none; align-self:start; }\n        .watch-link-panel { grid-area:link; min-width:0; overflow:auto; }\n        .watch-interaction-panel { grid-area:interaction; min-height:0; overflow-y:auto; overscroll-behavior:contain; margin-top:0!important; }\n      }\n    `}</style>
+      @keyframes watchWave { from { transform:scaleY(.45); opacity:.45 } to { transform:scaleY(1.15); opacity:1 } }\n      .watch-player { flex-shrink:0; border:5px solid #342a21!important; border-radius:22px!important; background:#090807; box-shadow:0 0 0 1px rgba(255,247,233,.45),0 8px 0 #8c6847,0 24px 42px rgba(68,44,24,.26)!important; }\n      .watch-link-panel { flex-shrink:0; }\n      .watch-interaction-panel { min-width:0; }
+      .watch-together-app[data-watch-fullscreen="true"] > header { padding-top:max(3px,env(safe-area-inset-top))!important; padding-bottom:3px!important; }
+      .watch-together-app[data-watch-fullscreen="true"] > main { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); grid-template-areas:"title interaction" "player interaction"; flex:1; min-height:0; overflow:hidden; gap:8px; padding:6px 8px max(8px,env(safe-area-inset-bottom)); }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-room-title { grid-area:title; width:100%; max-width:none; margin:0!important; padding:0!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player { grid-area:player; align-self:stretch; width:100%; max-width:none; height:100%; min-height:0; border-radius:12px!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel { display:none; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel { grid-area:interaction; min-height:0; height:100%; width:100%; max-width:none; margin:0!important; overflow-y:auto; overscroll-behavior:contain; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div { min-height:100%; border-radius:16px!important; padding:10px!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .mt-3.max-h-64 { max-height:none; min-height:70px; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel section { margin-top:8px; padding-top:8px; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player video,.watch-together-app[data-watch-fullscreen="true"] .watch-player iframe { display:block; width:100%; height:100%; max-height:100%; aspect-ratio:auto; object-fit:contain; }
+      @media (orientation: portrait) { .watch-together-app[data-watch-fullscreen="true"] > main { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(120px,30dvh) minmax(0,1fr); grid-template-areas:"title" "player" "interaction"; overflow:hidden; } }\n      @media (orientation: landscape) and (min-width: 700px) {\n        .watch-together-main { display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(300px, .9fr); grid-template-rows:auto minmax(0, auto) minmax(0, 1fr); grid-template-areas:"title interaction" "player interaction" "link interaction"; gap:10px; overflow:hidden; padding-bottom:12px; }\n        .watch-player { grid-area:player; width:100%; max-width:none; align-self:start; }\n        .watch-link-panel { grid-area:link; min-width:0; overflow:auto; }\n        .watch-interaction-panel { grid-area:interaction; min-height:0; overflow-y:auto; overscroll-behavior:contain; margin-top:0!important; }\n      }\n    `}</style>
     <style>{`@keyframes watchDanmaku { 0% { transform: translateX(28%); opacity: 0 } 8% { opacity: 1 } 88% { opacity: 1 } 100% { transform: translateX(-150%); opacity: 0 } }`}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
@@ -401,13 +441,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       <div className="watch-room-title mx-auto mb-3 w-full max-w-3xl px-1 pt-1"><div className="flex items-center justify-between gap-3 rounded-2xl border border-[#b99b80]/25 bg-[#fffaf2]/65 px-4 py-3 text-[#6d5141] shadow-[0_8px_22px_rgba(96,67,43,.06)] backdrop-blur"><div className="min-w-0"><p className="truncate font-serif text-sm">{target ? `一起看《${videoTitle || target.platformName + "的一段视频"}》` : "把想看的内容放上屏幕"}</p><p className="mt-0.5 text-[10px] tracking-wide text-[#8b7665]">{target ? (target.nativeVideoUrl ? target.platformName + " · 小手机内播放" : target.supported ? target.platformName + " · 链接播放" : target.platformName + " · 尝试站内解析") : "等待开始 · 选择视频或粘贴链接"}</p></div><span className="shrink-0 text-[10px] tracking-[.14em] text-[#a18172]">TOGETHER</span></div></div>
       <section
         ref={playerRef}
-        className={`watch-player relative mx-auto w-full max-w-3xl overflow-hidden rounded-[26px] border border-white/10 bg-[#0d0b09] ${fullScreen ? "fixed inset-0 z-[2000] h-[100dvh] w-screen max-w-none rounded-none" : ""}`}
+        className="watch-player relative mx-auto w-full max-w-3xl min-h-0 overflow-hidden rounded-[26px] border border-white/10 bg-[#0d0b09]"
         style={{ boxShadow: "0 0 0 1px rgba(255,214,170,.06), 0 28px 70px rgba(0,0,0,.6), 0 0 120px rgba(201,143,82,.16)" }}
       >
         {target?.nativeVideo ? (
-          <video key={target.nativeVideoUrl || target.url} src={target.nativeVideoUrl || target.url} controls playsInline className={`${fullScreen ? "h-full w-full aspect-auto" : "aspect-video w-full"} bg-black`} onEnded={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } }} onError={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } onNotice?.("视频无法在当前 WebView 播放，可能是格式、签名有效期或平台防盗链限制。"); }} />
+          <video key={target.nativeVideoUrl || target.url} src={target.nativeVideoUrl || target.url} controls playsInline className={fullScreen ? "h-full w-full object-contain bg-black" : "aspect-video w-full bg-black"} onEnded={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } }} onError={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } onNotice?.("视频无法在当前 WebView 播放，可能是格式、签名有效期或平台防盗链限制。"); }} />
         ) : target?.embedUrl ? (
-          <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className={`${fullScreen ? "h-full w-full aspect-auto" : "aspect-video w-full"} border-0`} />
+          <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className={fullScreen ? "h-full w-full border-0" : "aspect-video w-full border-0"} />
         ) : (
           <div className="flex aspect-video flex-col items-center justify-center px-6 text-center">
             <div className="grid h-16 w-16 place-items-center rounded-full border border-white/15 bg-white/5 text-[#d9b489]">
@@ -415,13 +455,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </div>
             <div className="mt-5 font-serif text-lg tracking-wide text-[#efe2d0]">{target ? `${target.platformName}需要外部打开` : "把想看的放上屏幕"}</div>
             <p className="mt-2 max-w-xs text-[11px] leading-6 text-[#9c9086]">
-              {target ? "这个平台没有稳定的通用嵌入方式。打开原视频后回来，TA 依然会陪着你聊。" : "粘贴一个视频链接，找个舒服的时刻，把这一段时间留给你们两个人。"}
+              {target ? "目前无法在小手机内读取这个链接的真实画面；若原生解析失败，请选择本地视频，角色就能根据当前帧回应。" : "粘贴一个视频链接，或选择本地视频，让你们在同一个页面里边看边聊。"}
             </p>
             {target && <button onClick={() => window.open(target.url, "_blank", "noopener,noreferrer")} className="mt-5 flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-4 py-2 text-xs text-[#e6d8c4] transition active:scale-95"><ExternalLink size={13}/>打开原视频</button>}
           </div>
         )}
 
-        {target?.embedUrl && settings.danmakuEnabled && comments.length > 0 && <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        {(target?.embedUrl || target?.nativeVideo) && settings.danmakuEnabled && comments.length > 0 && <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
           {comments.slice(-6).map((comment, index) => <div key={comment.id} className="absolute right-2 max-w-[88%] whitespace-nowrap rounded-full bg-black/35 px-3 py-1 text-[13px] text-white/95 drop-shadow" style={{ top: `${14 + index * 12}%`, animation: "watchDanmaku 12s linear forwards", animationDelay: `${index * .45}s` }}>{comment.characterName}：{comment.text}</div>)}
         </div>}
         {target && settings.subtitlesEnabled && latestComment && <div className="pointer-events-none absolute bottom-5 left-4 right-4 text-center">
@@ -483,7 +523,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             <div className="flex items-baseline justify-between gap-2"><h2 className="font-serif text-base tracking-wide text-[#f0dfcc]">一起讨论</h2><span className="text-[10px] tracking-[.12em] text-[#a9937e]">SCENE NOTES · {comments.length}</span></div>
             <p className="mt-1 text-[10px] leading-5 text-[#a9937e]">把某一幕、剧情转折或想说的话记在对应时间点。外部播放器的实际播放时间无法由跨站 iframe 读取，因此时间点可手动填写。</p>
             {comments.some(item=>item.timepoint) && <div className="mt-3 flex flex-wrap gap-2">{[...new Set(comments.filter(item=>item.timepoint).map(item=>item.timepoint!))].map(point=><button key={point} type="button" onClick={()=>{setTimepointDraft(point);setDiscussionDraft(`想再聊聊 ${point} 这一幕`);}} className="border-b border-[#c99a78]/60 px-1 py-1 text-[11px] text-[#e4c6a8]">{point} ↗</button>)}</div>}
-            <div className="mt-3 max-h-64 space-y-3 overflow-y-auto overscroll-contain pr-1">{comments.length ? comments.slice(-30).map(item=><div key={item.id} className={`flex ${item.kind==="user"?"justify-end":"justify-start"}`}><div className={`max-w-[88%] rounded-2xl border px-3 py-2.5 shadow-sm ${item.kind==="user"?"border-[#d6b18c]/35 bg-[#d6b18c]/10":"border-white/10 bg-white/[.045]"}`}><div className="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-[#c4a58a]"><span>{item.kind==="user"?"我":item.characterName}</span>{item.timepoint&&<button type="button" onClick={()=>setTimepointDraft(item.timepoint||"")} className="border-b border-[#c99a78]/50 text-[#e4c6a8]">{item.timepoint}</button>}<span className="text-[#85756a]">{new Date(item.createdAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</span></div><p className="whitespace-pre-wrap break-words font-serif text-sm leading-6 text-[#efe2d0]">{item.text}</p></div></div>) : <p className="border-l border-[#c99a78]/45 py-1 pl-3 text-xs leading-6 text-[#a9937e]">这里留给你们讨论剧情、吐槽片段，或标记想一起记住的时刻。</p>}</div>
+            <div ref={commentListRef} className="mt-3 max-h-64 space-y-3 overflow-y-auto overscroll-contain pr-1">{comments.length ? comments.slice(-30).map(item=><div key={item.id} className={`flex ${item.kind==="user"?"justify-end":"justify-start"}`}><div className={`max-w-[88%] rounded-2xl border px-3 py-2.5 shadow-sm ${item.kind==="user"?"border-[#d6b18c]/35 bg-[#d6b18c]/10":"border-white/10 bg-white/[.045]"}`}><div className="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-[#c4a58a]"><span>{item.kind==="user"?"我":item.characterName}</span>{item.timepoint&&<button type="button" onClick={()=>setTimepointDraft(item.timepoint||"")} className="border-b border-[#c99a78]/50 text-[#e4c6a8]">{item.timepoint}</button>}<span className="text-[#85756a]">{new Date(item.createdAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</span></div><p className="whitespace-pre-wrap break-words font-serif text-sm leading-6 text-[#efe2d0]">{item.text}</p></div></div>) : <p className="border-l border-[#c99a78]/45 py-1 pl-3 text-xs leading-6 text-[#a9937e]">这里留给你们讨论剧情、吐槽片段，或标记想一起记住的时刻。</p>}</div>
             <div className="mt-3 border-t border-[#d6b18c]/20 pt-3"><div className="flex items-center gap-2"><input value={timepointDraft} onChange={event=>setTimepointDraft(event.target.value.slice(0,16))} disabled={!target} placeholder="时间点 03:12（可选）" className="w-[42%] min-w-0 border-b border-[#9c7b63]/60 bg-transparent px-1 py-2 text-xs text-[#f0dfcc] outline-none placeholder:text-[#907d6c] focus:border-[#e4c6a8]"/><span className="text-[10px] text-[#907d6c]">章节 / 剧情标记</span></div><textarea value={discussionDraft} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} disabled={!target} maxLength={800} rows={2} placeholder={target ? "写下你对这一幕的看法……" : "先放上视频，再写下你对这一幕的看法……"} className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-black/20 p-3 text-sm leading-6 text-[#efe2d0] outline-none placeholder:text-[#907d6c] focus:border-[#c99a78]/60 focus:ring-2 focus:ring-[#c99a78]/10"/><div className="mt-2 flex justify-end"><button type="button" onClick={submitDiscussion} disabled={!target||!discussionDraft.trim()||busy} className="inline-flex items-center rounded-full border border-[#c99a78]/60 bg-[#c99a78] px-4 py-2.5 text-xs font-medium text-[#2a1f16] shadow-sm transition hover:brightness-105 active:scale-[.98] disabled:opacity-40"><MessageCircle size={13} className="mr-1 inline"/>记下并问问 TA</button></div></div>
           </section>
           <div className="relative z-10 mt-2 flex flex-wrap gap-1.5">
