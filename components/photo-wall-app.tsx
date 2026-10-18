@@ -608,7 +608,6 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       {wallView === "edit" && <button type="button" onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="grid h-10 w-10 shrink-0 place-items-center border border-[#d8c4b4] bg-[#fffaf2] text-[#795b52] disabled:opacity-40" aria-label="导出整墙 PNG"><Download size={16}/></button>}
       {wallView === "edit" && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAddMenu(value => !value); }} className="relative z-[1002] pointer-events-auto grid h-10 w-10 shrink-0 cursor-pointer touch-manipulation place-items-center border border-[#d8c4b4] bg-[#fffaf2] text-[#87565b] transition active:scale-95" aria-label="添加照片"><Plus size={18}/></button>}
       {(wallView === "panorama" || wallView === "timeline") && <button type="button" onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="grid h-10 w-10 shrink-0 place-items-center border border-[#d8c4b4] bg-[#fffaf3]/80 text-[#795b52] disabled:opacity-40" aria-label="导出整墙 PNG"><Download size={17}/></button>}
-      {(wallView === "panorama" || wallView === "timeline") && <button type="button" onClick={() => setWallView("edit")} className="shrink-0 border-b border-[#bda28d] px-2 py-2 text-sm text-[#79545a]">进入编辑</button>}
       {wallView === "edit" && <span className="shrink-0 text-xs tracking-wide text-[#87565b]">编辑中</span>}
     </header>
 
@@ -690,8 +689,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           : <div className="mx-auto flex max-w-sm flex-col items-center px-6 py-16 text-center"><div className="grid h-16 w-16 place-items-center rounded-full border border-[#ddd0bd] text-[#a0917d]"><Feather size={24}/></div><h2 className="mt-5 font-serif text-xl font-normal">这面墙还空着</h2><p className="mt-2 text-xs leading-6 text-[#968674]">先收藏一张你喜欢的照片。之后，角色也会把自己想珍藏的风景、自拍和生活片段慢慢放进来。</p><button onClick={() => fileRef.current?.click()} className="mt-5 rounded-full border border-[#b7a48c] px-5 py-2.5 text-xs tracking-wider text-[#786953]">收藏第一张照片</button></div>}
       </section>
 
-      </> : wallView === "panorama" ? <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-16 pt-2 sm:px-6">
-        <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto overscroll-contain border-y border-[#d8c4b4] p-2 sm:p-4" style={{WebkitOverflowScrolling:"touch", backgroundImage:"radial-gradient(ellipse at 50% 20%,rgba(255,255,255,.72),transparent 68%),linear-gradient(145deg,#f5ead9,#e7dac7)", touchAction:"pan-x pan-y"}}
+      </> : wallView === "panorama" ? <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden pb-16 pt-0">
+        <div className="relative flex min-h-0 flex-1 items-stretch justify-stretch overflow-auto overscroll-contain border-y border-[#eadfd5] p-0" style={{WebkitOverflowScrolling:"touch", backgroundImage:"radial-gradient(ellipse at 50% 12%,rgba(255,255,255,.98),transparent 72%),linear-gradient(145deg,#fffaf2,#f6eee4)", touchAction:"pan-x pan-y"}}
           onTouchStart={event => { if (event.touches.length === 2) { const dx=event.touches[0].clientX-event.touches[1].clientX; const dy=event.touches[0].clientY-event.touches[1].clientY; pinchStartRef.current={distance:Math.max(1,Math.hypot(dx,dy)),zoom:panoramaZoom}; } }}
           onTouchMove={event => { if (event.touches.length === 2 && pinchStartRef.current) { const dx=event.touches[0].clientX-event.touches[1].clientX; const dy=event.touches[0].clientY-event.touches[1].clientY; const distance=Math.hypot(dx,dy); setPanoramaZoom(Math.max(50,Math.min(180,Math.round(pinchStartRef.current.zoom*distance/pinchStartRef.current.distance)))); event.preventDefault(); } }}
           onTouchEnd={event => { if (event.touches.length < 2) pinchStartRef.current=null; }}>
@@ -699,8 +698,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             <PhotoWallCanvas photos={photos} selectedId={null} onSelect={() => {}} onChangePlacement={changePlacement} onChangeDoodles={changeDoodles} onOpenDetail={photo => openPhoto(photo)} readOnly />
           </div>
         </div>
-        {!photos.length && <div className="pointer-events-none absolute inset-x-8 top-1/2 -translate-y-1/2 text-center"><p className="font-serif text-lg text-[#76634e]">一面空白的奶油墙</p><p className="mt-2 text-xs text-[#95836c]">点击「进入编辑」来添加照片</p></div>}
-        <button type="button" onClick={() => setWallView("edit")} className="absolute bottom-3 right-4 z-20 rounded-full border border-white/70 bg-[#87565b] px-5 py-3 text-sm font-medium text-white shadow-[0_8px_24px_rgba(72,86,62,.28)]">进入编辑</button>
+        {!photos.length && <div className="pointer-events-none absolute inset-x-8 top-1/2 -translate-y-1/2 text-center"><p className="font-serif text-lg text-[#8a7566]">一面空白的奶油墙</p><p className="mt-2 text-xs text-[#aa9788]">切换到下方「时间轴海报」浏览照片，或从设置中管理墙面。</p></div>}
       </div> : <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-24 pt-4 sm:px-7" style={{WebkitOverflowScrolling:"touch"}}>
         {photos.length === 0 ? <div className="grid min-h-[55dvh] place-items-center text-center text-[#8f806d]"><div><Feather size={28} className="mx-auto"/><p className="mt-3">还没有收录的回忆</p><p className="mt-1 text-xs">进入编辑，添加第一张照片。</p></div></div> : <div className="mx-auto max-w-2xl space-y-6">
           {[...new Set([...photos].sort((a,b)=>(b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt)).map(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return Number.isNaN(date.getTime()) ? "未知时间" : `${date.getFullYear()}.${String(date.getMonth()+1).padStart(2,"0")}`; }))].map(group => {
