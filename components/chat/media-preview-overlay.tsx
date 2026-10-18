@@ -59,7 +59,8 @@ const ACTION_BUTTON_STYLE: CSSProperties = {
 type GalleryOriginRect = { left: number; top: number; width: number; height: number };
 type GalleryPoint = { x: number; y: number };
 type GalleryGesture = {
-    mode: "pending" | "swipe" | "dismiss" | "drag" | "pinch";
+    mode: "pending" | "swipe" | "dismiss" | "drag" | "pinch" | "edgeBack";
+    edge: "left" | "right" | null;
     pointerId: number;
     startX: number;
     startY: number;
@@ -207,7 +208,7 @@ function GalleryPreviewOverlay({
         const points = [...pointersRef.current.values()];
         if (points.length >= 2) {
             gestureRef.current = {
-                mode: "pinch", pointerId: event.pointerId, startX: points[0].x, startY: points[0].y,
+                mode: "pinch", edge: null, pointerId: event.pointerId, startX: points[0].x, startY: points[0].y,
                 startTime: Date.now(), startScale: scale, startOffset: offset,
                 startDistance: distance(points), moved: true,
             };
@@ -215,8 +216,13 @@ function GalleryPreviewOverlay({
             setDragX(0);
             setDismissY(0);
         } else {
+            const edge: "left" | "right" | null = event.clientX <= 24
+                ? "left"
+                : event.clientX >= window.innerWidth - 24
+                    ? "right"
+                    : null;
             gestureRef.current = {
-                mode: "pending", pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
+                mode: "pending", edge, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
                 startTime: Date.now(), startScale: scale, startOffset: offset,
                 startDistance: 0, moved: false,
             };
@@ -231,7 +237,7 @@ function GalleryPreviewOverlay({
         if (!gesture) return;
         if (points.length >= 2) {
             if (gesture.mode !== "pinch") {
-                gestureRef.current = { ...gesture, mode: "pinch", startScale: scale, startOffset: offset, startDistance: distance(points), moved: true };
+                gestureRef.current = { ...gesture, mode: "pinch", edge: null, startScale: scale, startOffset: offset, startDistance: distance(points), moved: true };
                 setIsDragging(true);
                 return;
             }
@@ -247,13 +253,21 @@ function GalleryPreviewOverlay({
         const dy = event.clientY - gesture.startY;
         if (gesture.mode === "pending") {
             if (Math.abs(dx) < 7 && Math.abs(dy) < 7) return;
-            const mode = gesture.startScale > 1.01 ? "drag" : (Math.abs(dx) >= Math.abs(dy) ? "swipe" : "dismiss");
+            const towardCenter = gesture.edge === "left" ? dx : gesture.edge === "right" ? -dx : 0;
+            // At the actual screen edges, native-style back wins over gallery paging.
+            // Elsewhere, horizontal movement changes photos as usual.
+            const mode = gesture.edge && towardCenter > 8 && Math.abs(dx) >= Math.abs(dy) * 1.15
+                ? "edgeBack"
+                : gesture.startScale > 1.01 ? "drag" : (Math.abs(dx) >= Math.abs(dy) ? "swipe" : "dismiss");
             gestureRef.current = { ...gesture, mode, moved: true };
             setIsDragging(true);
         }
         const current = gestureRef.current;
         if (!current) return;
-        if (current.mode === "swipe") {
+        if (current.mode === "edgeBack") {
+            event.preventDefault();
+            setDragX((current.edge === "left" ? dx : -dx) * 0.12);
+        } else if (current.mode === "swipe") {
             let next = dx;
             if ((index === 0 && dx > 0) || (index === images.length - 1 && dx < 0)) next *= 0.28;
             setDragX(next);
@@ -286,6 +300,15 @@ function GalleryPreviewOverlay({
         setIsDragging(false);
         if (gesture.mode === "pinch") {
             if (scale < 1.01) resetZoom();
+            return;
+        }
+        if (gesture.mode === "edgeBack") {
+            const towardCenter = gesture.edge === "left" ? dx : gesture.edge === "right" ? -dx : 0;
+            if (towardCenter >= Math.max(76, window.innerWidth * 0.18) && towardCenter >= Math.abs(dy) * 1.35) {
+                closeViewer();
+            } else {
+                setDragX(0);
+            }
             return;
         }
         if (gesture.mode === "swipe") {
