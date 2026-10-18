@@ -1224,6 +1224,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   const [customAppUpdateBusy, setCustomAppUpdateBusy] = useState(false);
   const customAppUpdateCheckingRef = useRef<Set<string>>(new Set());
   const activeAppRef = useRef<DesktopIconId | null>(null);
+  const swipeBackGestureRef = useRef<{ pointerId: number; startX: number; startY: number; horizontal: boolean } | null>(null);
   const [customAppBadges, setCustomAppBadges] = useState<Record<string, number>>({});
   const [customAppBackgroundRuns, setCustomAppBackgroundRuns] = useState<CustomAppBackgroundEventRun[]>([]);
   const [customAppBackgroundToolRuns, setCustomAppBackgroundToolRuns] = useState<CustomAppBackgroundToolRun[]>([]);
@@ -4140,6 +4141,87 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     }
     setActiveApp(null);
   }
+
+  // Android-style system back gesture for every foreground app. Nested pages can
+  // consume "phone-swipe-back" first (e.g. the workshop's GitHub settings sheet);
+  // otherwise the active app is closed/returned using the same app-specific path
+  // as its close button.
+  useEffect(() => {
+    const cancelGesture = () => { swipeBackGestureRef.current = null; };
+    const isGestureExcluded = (target: EventTarget | null) => {
+      if (!(target instanceof Element)) return false;
+      return Boolean(target.closest(
+        'input, textarea, select, [contenteditable="true"], video, audio, canvas, [data-swipe-back-ignore], .photo-wall-surface, .watch-player'
+      ));
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.pointerType !== "touch" || !event.isPrimary || event.button !== 0) return;
+      if (!activeAppRef.current || event.clientX > 24 || isGestureExcluded(event.target)) {
+        swipeBackGestureRef.current = null;
+        return;
+      }
+      swipeBackGestureRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        horizontal: false,
+      };
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      const gesture = swipeBackGestureRef.current;
+      if (!gesture || gesture.pointerId !== event.pointerId) return;
+      const dx = event.clientX - gesture.startX;
+      const dy = event.clientY - gesture.startY;
+      if (!gesture.horizontal) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        if (Math.abs(dy) > Math.abs(dx) * 1.15 || dx <= 0) {
+          cancelGesture();
+          return;
+        }
+        gesture.horizontal = true;
+      }
+      if (dx > 12 && event.cancelable) event.preventDefault();
+    };
+    const onPointerUp = (event: PointerEvent) => {
+      const gesture = swipeBackGestureRef.current;
+      if (!gesture || gesture.pointerId !== event.pointerId) return;
+      swipeBackGestureRef.current = null;
+      const dx = event.clientX - gesture.startX;
+      const dy = event.clientY - gesture.startY;
+      if (!gesture.horizontal || dx < Math.max(76, window.innerWidth * 0.18) || dx < Math.abs(dy) * 1.35) return;
+      const currentApp = activeAppRef.current;
+      if (!currentApp) return;
+      const backEvent = new Event("phone-swipe-back", { cancelable: true });
+      document.dispatchEvent(backEvent);
+      if (backEvent.defaultPrevented) return;
+      const customApp = getCustomAppForIcon(currentApp);
+      if (customApp) {
+        closeCustomAppRunner(customApp);
+        return;
+      }
+      if (currentApp === "chat") {
+        setActiveChatSession(null);
+        setChatInitSessionId(null);
+      }
+      setActiveApp(null);
+    };
+    const onPointerCancel = (event: PointerEvent) => {
+      if (swipeBackGestureRef.current?.pointerId === event.pointerId) cancelGesture();
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("pointermove", onPointerMove, { capture: true, passive: false });
+    window.addEventListener("pointerup", onPointerUp, true);
+    window.addEventListener("pointercancel", onPointerCancel, true);
+    window.addEventListener("blur", cancelGesture);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("pointermove", onPointerMove, true);
+      window.removeEventListener("pointerup", onPointerUp, true);
+      window.removeEventListener("pointercancel", onPointerCancel, true);
+      window.removeEventListener("blur", cancelGesture);
+      cancelGesture();
+    };
+  }, [getCustomAppForIcon, customAppLaunchContext]);
 
   function dismissPendingCustomAppUpdate(): void {
     if (customAppUpdateBusy || !customAppUpdatePrompt) return;

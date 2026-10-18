@@ -899,6 +899,32 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
     [previewItem],
   );
 
+  // Let the most-specific workshop panel close before the phone closes the app.
+  // This also makes swipe-back behave like Android's nested back stack.
+  useEffect(() => {
+    const onPhoneSwipeBack = (event: Event) => {
+      if (event.defaultPrevented) return;
+      const consume = (action: () => void) => { event.preventDefault(); action(); };
+      if (viewerImage) return consume(() => setViewerImage(null));
+      if (editingMsg) return consume(() => { setEditingMsg(null); setEditText(""); setEditImages([]); setEditFiles([]); setEditAttachMenuOpen(false); });
+      if (repoSheetOpen) return consume(() => setRepoSheetOpen(false));
+      if (apiLogOpen) return consume(() => setApiLogOpen(false));
+      if (settingsOpen) return consume(() => setSettingsOpen(false));
+      if (renameTarget) return consume(() => setRenameTarget(null));
+      if (clearToolsOpen) return consume(() => setClearToolsOpen(false));
+      if (previewItem) return consume(() => setPreviewItem(null));
+      if (previewOpen) return consume(() => setPreviewOpen(false));
+      if (editAttachMenuOpen) return consume(() => setEditAttachMenuOpen(false));
+      if (attachMenuOpen) return consume(() => setAttachMenuOpen(false));
+      if (drawerOpen) return consume(() => setDrawerOpen(false));
+    };
+    document.addEventListener("phone-swipe-back", onPhoneSwipeBack);
+    return () => document.removeEventListener("phone-swipe-back", onPhoneSwipeBack);
+  }, [
+    viewerImage, editingMsg, repoSheetOpen, apiLogOpen, settingsOpen, renameTarget,
+    clearToolsOpen, previewItem, previewOpen, editAttachMenuOpen, attachMenuOpen, drawerOpen,
+  ]);
+
   // 自动滚动：用户上滚阅读时不拉回底部
   const handleScroll = useCallback(() => {
     const el = bodyRef.current;
@@ -1067,7 +1093,7 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
           setRenameTitle(title);
         }}
       />
-      <div className={`qa-stage ${drawerOpen ? "is-pushed" : ""}`}>
+      <div className={`qa-stage ${drawerOpen && !repoSheetOpen ? "is-pushed" : ""}`}>
       <div className="qa-ambient" aria-hidden />
       <header className="qa-header">
         <div className="qa-header-left">
@@ -1271,7 +1297,7 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
             <button
               type="button"
               className={`qa-circle-btn qa-github-btn ${repoConnected ? "is-active" : ""}`}
-              onClick={() => setRepoSheetOpen(true)}
+              onClick={() => { setDrawerOpen(false); setRepoSheetOpen(true); }}
               aria-label="连接仓库"
             >
               <Github size={16} strokeWidth={1.75} />
