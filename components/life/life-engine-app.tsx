@@ -10,7 +10,7 @@ import type { Character } from "@/lib/character-types";
 import { loadCharacters } from "@/lib/character-storage";
 import { hydrateKvDb } from "@/lib/kv-db";
 import { hydrateChatStorage } from "@/lib/chat-storage";
-import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage } from "@/lib/chat-storage";
+import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { generateOfflineChatCompletion } from "@/lib/chat-engine";
 import {
   createEmptyVirtualLifeState,
@@ -61,6 +61,9 @@ const INITIAL_LOCATIONS: LifeLocation[] = [
   { id: "studio", name: "音乐 / 创作空间", description: "适合练习乐器、写作、绘画或其他个人创作。", atmosphere: "专注、私密，可能有轻微音乐声或创作时的杂物声。", layout: "主要工作台靠近光源，乐器或材料收纳在一侧，留出活动空间。", props: ["耳机", "笔记本", "乐器 / 创作工具", "水杯"], visibility: "public" },
 ];
 const id = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+function createLifeVirtualSession(characterId: string, characterName: string): ChatSession {
+  return { id: "life-engine-" + characterId, contactId: characterId, unreadCount: 0, updatedAt: new Date().toISOString(), isPinned: false, isGroup: false, alias: characterName };
+}
 const fmt = (value: Date | string) => new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(typeof value === "string" ? new Date(value) : value);
 const toLocalDateTimeInput = (value: string) => { const d = new Date(value); if (!Number.isFinite(d.getTime())) return ""; const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000); return local.toISOString().slice(0, 16); };
 const fromLocalDateTimeInput = (value: string) => { const d = new Date(value); return Number.isFinite(d.getTime()) ? d.toISOString() : ""; };
@@ -166,6 +169,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const longPressTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
   const [busy, setBusy] = useState(false);
+  const [scheduleRegenerationOwnerId, setScheduleRegenerationOwnerId] = useState<string | null>(null);
   const busyRef = useRef(false);
   busyRef.current = busy;
   const [notice, setNotice] = useState("");
@@ -581,6 +585,83 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   };
 
   const actorClockLabel = (clock: LifeActorClock) => clock.mode === "real-time" ? "跟随现实" : clock.mode === "review" ? "回顾暂停" : `模拟 ×${clock.speed}`;
+
+
+  const regenerateActorScheduleWithAI = async (actor: ActorChoice) => {
+    if (actor.ownerType !== "character" || scheduleRegenerationOwnerId) return;
+    const character = characters.find(item => item.id === actor.ownerId);
+    if (!character) { setNotice("找不到角色档案，无法生成日程。"); return; }
+    setScheduleRegenerationOwnerId(actor.ownerId);
+    setNotice("正在让 " + character.name + " 根据人设与近期记忆规划未来七天……");
+    try {
+      const current = stateRef.current;
+      const start = mondayStart(resolveActorLifeNow(getActorClock(current, "character", character.id)));
+      const end = new Date(start.getTime()); end.setDate(end.getDate() + 7);
+      const locations = current.locations.map(p => "- " + p.name + ((p.aliases?.length ?? 0) ? "（别名：" + p.aliases!.join("、") + "）" : "") + (p.characterHabits?.[character.id] ? "；角色习惯：" + p.characterHabits[character.id] : "")).join("\n");
+      const memories = current.memories.filter(m => m.participants.includes(character.id) || m.participants.includes(PLAYER_ID)).slice(0, 12).map(m => "- " + m.fact).join("\n") || "暂无共同记忆";
+      const events = current.timeline.filter(t => t.actorId === character.id || t.actorName === character.name).slice(-18).map(t => "- " + t.occurredAt + "｜" + t.title + (t.details ? "：" + t.details : "")).join("\n") || "暂无个人生活记录";
+      const protectedSlots = current.schedules.filter(slot => slot.ownerType === "character" && slot.ownerId === character.id && slot.startAt < end.toISOString() && slot.endAt > start.toISOString() && slot.source !== "weekly-generation");
+      const fixed = protectedSlots.map(slot => "- " + slot.startAt + "—" + slot.endAt + "：" + slot.title + "（必须保留且不可冲突）").join("\n") || "无固定安排";
+      const session = createLifeVirtualSession(character.id, character.name);
+      const prompt: ChatMessage = {
+        id: id("life-schedule-ai"), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
+        content: [
+          "为生活模拟系统生成角色未来七天日程。请按角色差异化思考，不可让所有角色套用相同模板。",
+          "角色：" + character.name, "角色卡：" + (character.persona || "未填写"), "性格：" + (character.personality || "未填写"), "标签：" + (character.tags ?? []).join("、"),
+          "用户补充规则：" + (activePromptPreset.scheduleGenerationPrompt || "无"),
+          "近期共同记忆：\n" + memories, "近期个人记录：\n" + events, "允许地点（只选这些）：\n" + locations, "必须保留的固定安排：\n" + fixed,
+          "时间范围：从 " + start.toLocaleDateString("sv-SE") + " 开始的七天；dayOffset 0 为第一天，6 为第七天。",
+          "只输出合法 JSON 数组，不要 Markdown。项目格式：{\"dayOffset\":0,\"start\":\"07:30\",\"end\":\"08:30\",\"title\":\"起床洗漱与早餐\",\"kind\":\"habit\",\"location\":\"家\"}。kind 只能是 habit、work、study、meal、commute、free-time、appointment、special。时间使用 HH:mm。",
+          "要求：每一天安排要覆盖全天、无空档、活动符合角色职业和性格；工作日与休息日有差异；结合近期记忆安排后续；只用已有地点；固定安排不能更改或冲突；每天 5—9 段有意义的活动，避免每天重复相同内容。"
+        ].join("\n\n")
+      };
+      const result = await generateOfflineChatCompletion(session, [prompt]);
+      const raw = result.content.trim();
+      const first = raw.indexOf("["); const last = raw.lastIndexOf("]");
+      if (first < 0 || last <= first) throw new Error("模型没有返回有效 JSON 数组。");
+      const decoded: unknown = JSON.parse(raw.slice(first, last + 1));
+      if (!Array.isArray(decoded)) throw new Error("日程结果不是数组。");
+      const clean = (value: string) => value.toLocaleLowerCase().replace(/[\s\u3000·•/\\|｜、，,。.!！?？:：;；()（）\[\]【】_-]+/g, "");
+      const kinds = new Set(["habit", "work", "study", "meal", "commute", "free-time", "appointment", "special"]);
+      const home = current.locations.find(p => p.id === "home") ?? current.locations[0];
+      const aiSlots: LifeScheduleSlot[] = [];
+      const days = new Set<number>();
+      for (const item of decoded as Array<Record<string, unknown>>) {
+        const d = Number(item.dayOffset), title = String(item.title ?? "").trim().slice(0, 100);
+        const sm = /^(\d{1,2}):(\d{2})$/.exec(String(item.start ?? "")), em = /^(\d{1,2}):(\d{2})$/.exec(String(item.end ?? ""));
+        if (!Number.isInteger(d) || d < 0 || d > 6 || !title || !sm || !em) continue;
+        const sh=Number(sm[1]), si=Number(sm[2]), eh=Number(em[1]), ei=Number(em[2]);
+        if (sh>23 || eh>23 || si>59 || ei>59) continue;
+        const a=new Date(start.getTime()); a.setDate(a.getDate()+d); a.setHours(sh,si,0,0);
+        const b=new Date(start.getTime()); b.setDate(b.getDate()+d); b.setHours(eh,ei,0,0);
+        if (b<=a || a<start || b>end) continue;
+        const placeKey=clean(String(item.location ?? "家"));
+        const place=current.locations.find(p=>[p.name,...(p.aliases ?? [])].map(clean).some(n=>n===placeKey || (n.length>1 && placeKey.length>1 && (n.includes(placeKey)||placeKey.includes(n))))) ?? home;
+        days.add(d);
+        aiSlots.push({id:id("ai-slot"),ownerType:"character",ownerId:character.id,startAt:a.toISOString(),endAt:b.toISOString(),title,kind:kinds.has(String(item.kind))?String(item.kind) as LifeScheduleSlot["kind"]:"free-time",source:"weekly-generation",plannedLocationId:place?.id ?? null,plannedLocationName:place?.name ?? "家",updatedAt:new Date().toISOString()});
+      }
+      if (aiSlots.length < 20 || days.size < 5) throw new Error("有效日程数量不足，无法覆盖整周；原日程未更改。");
+      const overlaps=(a:LifeScheduleSlot,b:LifeScheduleSlot)=>new Date(a.startAt).getTime()<new Date(b.endAt).getTime()&&new Date(a.endAt).getTime()>new Date(b.startAt).getTime();
+      const accepted:LifeScheduleSlot[]=[];
+      for (const slot of aiSlots.sort((a,b)=>a.startAt.localeCompare(b.startAt))) if (!protectedSlots.some(p=>overlaps(p,slot))&&!accepted.some(p=>overlaps(p,slot))) accepted.push(slot);
+      const generated:LifeScheduleSlot[]=[...accepted];
+      for (let d=0;d<7;d++) {
+        const dayStart=new Date(start.getTime()); dayStart.setDate(dayStart.getDate()+d); dayStart.setHours(0,0,0,0);
+        const dayEnd=new Date(dayStart.getTime()); dayEnd.setDate(dayEnd.getDate()+1);
+        const daySlots=[...protectedSlots,...accepted].filter(p=>new Date(p.startAt)<dayEnd&&new Date(p.endAt)>dayStart).sort((a,b)=>a.startAt.localeCompare(b.startAt));
+        let cursor=dayStart.getTime();
+        const free=(a:number,b:number)=>{if(b-a<300000)return;generated.push({id:id("ai-free"),ownerType:"character",ownerId:character.id,startAt:new Date(a).toISOString(),endAt:new Date(b).toISOString(),title:"自由活动 / 休息（可按当天情况调整）",kind:"free-time",source:"weekly-generation",plannedLocationId:home?.id??null,plannedLocationName:home?.name??"家",updatedAt:new Date().toISOString()});};
+        for(const slot of daySlots){const a=Math.max(dayStart.getTime(),new Date(slot.startAt).getTime()),b=Math.min(dayEnd.getTime(),new Date(slot.endAt).getTime());if(a>cursor)free(cursor,a);cursor=Math.max(cursor,b);if(cursor>=dayEnd.getTime())break;}
+        if(cursor<dayEnd.getTime())free(cursor,dayEnd.getTime());
+      }
+      const latest=stateRef.current;
+      const retained=latest.schedules.filter(slot=>!(slot.ownerType==="character"&&slot.ownerId===character.id&&slot.source==="weekly-generation"&&slot.startAt<end.toISOString()&&slot.endAt>start.toISOString()));
+      commit({...latest,schedules:[...retained,...generated].sort((a,b)=>a.startAt.localeCompare(b.startAt))});
+      setNotice("已根据"+character.name+"的角色卡、短期共同记忆和生活记录重生成 AI 日程；手动及已确认安排已保留。");
+    } catch(error) {
+      setNotice("AI 日程生成失败："+(error instanceof Error?error.message:String(error))+"。原日程未被修改。");
+    } finally { setScheduleRegenerationOwnerId(null); }
+  };
 
   const ensurePlans = () => {
     let next = state;
@@ -1004,10 +1085,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     }
     const character = characters.find(item => item.id === targetMessage.speakerId);
     const contact = loadChatContacts().find(item => item.characterId === targetMessage.speakerId);
-    const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup);
+    const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeVirtualSession(targetMessage.speakerId, character?.name ?? "角色");
     const scene = stateRef.current.scenes.find(item => item.id === targetMessage.sceneId);
-    if (!character || !session || !scene) {
-      setNotice("找不到角色聊天会话或原场景，暂时无法重新生成。");
+    if (!character || !scene) {
+      setNotice("找不到角色档案或原场景，暂时无法重新生成。");
       return;
     }
     const sceneIndex = stateRef.current.sceneMessages.findIndex(item => item.id === targetMessage.id);
@@ -1142,13 +1223,13 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       if (!character) return null;
       const contact = loadChatContacts().find(item => item.characterId === character.id);
       const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup);
-      return session ? { character, session } : null;
+      return { character, session: session ?? createLifeVirtualSession(character.id, character.name) };
     };
     const armOfflineBailout = async () => {
       if (disposed || settings.enableLifeOfflinePush === false) return;
       await cancelLifeSceneProactiveBailouts(activeScene.id);
       const candidate = pickCandidate();
-      if (!candidate) return;
+      if (!candidate || candidate.session.id.startsWith("life-engine-")) return;
       const result = await armLifeSceneProactiveBailout({
         sessionId: candidate.session.id,
         sceneId: activeScene.id,
@@ -1266,16 +1347,18 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       void refreshScheduledBailouts();
     };
   }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.enableLifeOfflinePush, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.showActionNarration, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, playerName]);
-  const sendSceneTurn = async (event: FormEvent) => {
-    event.preventDefault();
+  const sendSceneTurn = async (event?: FormEvent, forceReaction = false) => {
+    event?.preventDefault();
     const userText = sceneInput.trim();
     const userAction = sceneActionInput.trim();
-    if (!activeScene || (!userText && !userAction) || busy) return;
-    const userTurn = [userAction ? `行动：${userAction}` : "", userText ? `说话：${userText}` : ""].filter(Boolean).join("\n");
-    setSceneInput("");
-    setSceneActionInput("");
+    if (!activeScene || (!userText && !userAction && !forceReaction) || busy) return;
+    const userTurn = [userAction ? `行动：${userAction}` : "", userText ? `说话：${userText}` : ""].filter(Boolean).join("\n") || "玩家手动请求角色对最近行为作出反馈";
     const now = new Date().toISOString();
-    pushSceneMessage({ id: id("turn"), sceneId: activeScene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: playerName, role: "player", action: userAction || undefined, dialogue: userText, createdAt: now });
+    if (userText || userAction) {
+      setSceneInput("");
+      setSceneActionInput("");
+      pushSceneMessage({ id: id("turn"), sceneId: activeScene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: playerName, role: "player", action: userAction || undefined, dialogue: userText, createdAt: now });
+    }
     const targetId = selectedSpeakerId || activeScene.participants.find(p => p.ownerType === "character")?.ownerId || "";
     const target = characters.find(char => char.id === targetId);
     if (!target) { setNotice("请先选择场景中的一位角色作为回应对象。"); return; }
@@ -1287,16 +1370,15 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const urgentMessage = /救命|紧急|出事了|危险|受伤|快来|急救/.test(userTurn);
     const easySleeper = /浅眠|警觉|敏感|担心|保护欲|容易醒/.test(target.personality || "");
     const wakeSeed = [...(target.id + userText)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
-    const wokeFromSleep = isSleeping && (urgentMessage || wakeSeed % 100 < (easySleeper ? 60 : 15));
-    if (isSleeping && settings.allowCharactersToStaySilent && !wokeFromSleep) {
+    const wokeFromSleep = isSleeping && (forceReaction || urgentMessage || wakeSeed % 100 < (easySleeper ? 60 : 15));
+    if (isSleeping && settings.allowCharactersToStaySilent && !wokeFromSleep && !forceReaction) {
       setNotice(target.name + "正在睡觉，没有被这条消息叫醒。消息留在当前场景里；TA醒来后才可能回应。");
       return;
     }
     const contacts = loadChatContacts();
     const sessions = loadChatSessions();
     const contact = contacts.find(item => item.characterId === target.id);
-    const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup);
-    if (!session) { setNotice(`找不到「${target.name}」的线上聊天会话。请先在小手机中与TA建立私聊，再回来使用共享角色设定生成场景回应。`); return; }
+    const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeVirtualSession(target.id, target.name);
     setBusy(true);
     try {
       const previous = loadChatMessages(session.id, 12).filter(message => message.status !== "failed" && !message.isRetracted);
@@ -1305,7 +1387,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         activeSceneOutputPrompt,
         settings.showActionNarration ? "动作旁白要短，单独一行使用 *动作* 格式；对白只写说出口的话。" : "不要输出动作旁白，只输出角色说出口的话。",
         settings.keepDialogueConcise ? "一轮通常 1-3 句，除非用户明确要求展开。" : "允许适度展开，但仍保持实时互动感。",
-        settings.allowCharactersToStaySilent ? "如果角色当下忙碌、没注意到或不想说话，可以自然沉默。" : "本轮需要对玩家的输入作出回应。",
+        forceReaction ? "本轮由玩家手动强制触发反馈。必须结合最近已经发生的动作或对白，输出可见且符合角色性格的反应；不能空白，也不要只泛泛问候。" : settings.allowCharactersToStaySilent ? "如果角色当下忙碌、没注意到或不想说话，可以自然沉默。" : "本轮需要对玩家的输入作出回应。",
         wokeFromSleep ? "角色原本正在睡觉，本轮是被消息或紧急情况吵醒；要表现困倦、反应迟缓或不想立刻长谈，不要突然精神饱满。" : "",
         settings.enableAmbientDetails ? "可以用一两笔简短环境细节营造现场感，不要扩写成长篇旁白。" : "不需要环境氛围描写，直接进行实时互动。",
         settings.enableCharacterAutonomy ? (activePromptPreset.toolCallingPrompt?.trim() || [
@@ -1321,7 +1403,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       ].filter(Boolean).join("\n");
       const promptMessage: ChatMessage = {
         id: id("life-user"), sessionId: session.id, role: "user", status: "sent", createdAt: now,
-        content: `[仅本轮使用生活场景模式规则，不要写入线上聊天历史]\n${settingsInstructions}\n\n${sceneContext}\n\n玩家本轮行动：${userAction || "（没有额外动作）"}\n玩家本轮对白：${userText || "（没有说话）"}\n${(activePromptPreset.sceneTaskPrompt?.trim() || "请让{characterName}按其既有人设自然回应。行动与对白分开处理；玩家只行动时，不要擅自替玩家补台词。").replace(/\{characterName\}/g, target.name).replace(/\{playerName\}/g, playerName).replace(/\{locationName\}/g, activeScene.locationName)}`,
+        content: `[仅本轮使用生活场景模式规则，不要写入线上聊天历史]\n${settingsInstructions}\n\n${sceneContext}\n\n玩家本轮行动：${userAction || (forceReaction ? "（请结合最近的用户行为作出反馈）" : "（没有额外动作）")}\n玩家本轮对白：${userText || (forceReaction ? "（请回应最近的对话或动作，不要要求用户重复输入）" : "（没有说话）")}\n${(activePromptPreset.sceneTaskPrompt?.trim() || "请让{characterName}按其既有人设自然回应。行动与对白分开处理；玩家只行动时，不要擅自替玩家补台词。").replace(/\{characterName\}/g, target.name).replace(/\{playerName\}/g, playerName).replace(/\{locationName\}/g, activeScene.locationName)}`,
       };
       const result = await generateOfflineChatCompletion(session, [...previous, promptMessage]);
       const parsed = parseLifeOutput(result.content);
@@ -1463,11 +1545,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const contacts = loadChatContacts();
     const sessions = loadChatSessions();
     const contact = contacts.find(item => item.characterId === character.id);
-    const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup);
-    if (!session) {
-      setNotice(`找不到「${character.name}」的线上私聊会话。请先在消息 APP 与 TA 建立私聊，再发出邀约。`);
-      return;
-    }
+    const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeVirtualSession(character.id, character.name);
     let next = makeLifeInvitation(base, {
       proposedBy: "player",
       characterId: character.id, playerId: PLAYER_ID, proposedAt: proposedAt.toISOString(),
@@ -2447,7 +2525,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               <label className="block text-xs font-medium text-stone-600">行动 / 旁白<textarea value={sceneActionInput} onChange={e=>setSceneActionInput(e.target.value)} placeholder="行动（可选）" rows={1} className="mt-1 w-full resize-y rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-sm leading-snug" disabled={busy}/></label>
               <label className="block text-xs font-medium text-stone-600">说话 / 对话气泡<textarea value={sceneInput} onChange={e=>setSceneInput(e.target.value)} placeholder="想对角色说的话……" rows={1} className="mt-1 w-full resize-y rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-sm leading-snug" disabled={busy}/></label>
             </div>
-            <div className="flex items-center justify-end gap-2"><span className="mr-auto truncate text-[10px] text-stone-400">{busy ? "角色正在回应…" : "行动与对白可分开发送"}</span><button disabled={busy||(!sceneInput.trim()&&!sceneActionInput.trim())} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--life-accent)] px-3 py-1.5 text-xs text-white disabled:opacity-40"><Send size={13}/>{busy?"等待中":"发送"}</button></div>
+            <div className="flex flex-wrap items-center justify-end gap-2"><span className="mr-auto truncate text-[10px] text-stone-400">{busy ? "角色正在回应…" : "行动与对白可分开发送"}</span><button type="button" onClick={() => void sendSceneTurn(undefined, true)} disabled={busy || !activeScene || !activeScene.participants.some(p => p.ownerType === "character" && characters.some(c => c.id === p.ownerId))} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--life-accent)]/40 bg-white px-3 py-1.5 text-xs text-[var(--life-accent)] disabled:opacity-40"><MessagesSquare size={13}/>让角色回应</button><button type="submit" disabled={busy||(!sceneInput.trim()&&!sceneActionInput.trim())} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--life-accent)] px-3 py-1.5 text-xs text-white disabled:opacity-40"><Send size={13}/>{busy?"等待中":"发送"}</button></div>
           </form>
           
         </>}
@@ -2620,7 +2698,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       </section>}
       {tab === "plans" && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3"><SectionTitle eyebrow="Weekly plans" title="未来七天的生活日程" note="计划每周生成一次并保存在本地；已有日程不会被重复生成覆盖。点击标题可编辑，计划地点只作为线索。" /><button onClick={ensurePlans} className="inline-flex items-center gap-2 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white"><RefreshCw size={14}/>检查并补全</button></div>
-        {actors.map(actor=>{const virtualNow=actorNow(actor);const slots=state.schedules.filter(slot=>slot.ownerType===actor.ownerType&&slot.ownerId===actor.ownerId).sort((a,b)=>a.startAt.localeCompare(b.startAt));return <div key={`${actor.ownerType}:${actor.ownerId}`} className="mb-5"><div className="mb-2 flex items-center justify-between gap-2"><h3 className="flex items-center gap-2 text-sm font-semibold"><span className="h-2 w-2 rounded-full bg-[var(--life-accent)]"/>{actor.name}<span className="text-xs font-normal text-stone-400">{slots.length} 条安排</span></h3><button type="button" onClick={()=>addManualPlan(actor)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">＋ 添加日程</button></div>{slots.length===0?<p className="rounded-xl bg-white/60 p-3 text-sm text-stone-400">还没有日程，可以直接添加，也可以点击「检查并补全」。</p>:<div className="space-y-3">{slots.filter(slot=>new Date(slot.endAt).getTime()>virtualNow.getTime()-DAY_MS).slice(0,40).map(slot=><div key={slot.id} className="rounded-xl border border-stone-200/70 bg-white/65 p-3"><div className="grid gap-2 sm:grid-cols-2"><label className="text-[11px] text-stone-500">开始时间<input aria-label="编辑日程开始时间" type="datetime-local" value={toLocalDateTimeInput(slot.startAt)} onChange={e=>{const value=fromLocalDateTimeInput(e.target.value);if(value)updateManualPlan(slot,{startAt:value});}} onBlur={()=>recordManualPlanEdit(slot)} className="mt-1 w-full min-w-0 rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs"/></label><label className="text-[11px] text-stone-500">结束时间<input aria-label="编辑日程结束时间" type="datetime-local" value={toLocalDateTimeInput(slot.endAt)} onChange={e=>{const value=fromLocalDateTimeInput(e.target.value);if(value)updateManualPlan(slot,{endAt:value});}} onBlur={()=>recordManualPlanEdit(slot)} className="mt-1 w-full min-w-0 rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs"/></label><label className="text-[11px] text-stone-500 sm:col-span-2">事件 / 活动内容<input aria-label="编辑日程标题" value={slot.title} onChange={e=>updateManualPlan(slot,{title:e.target.value})} onBlur={()=>recordManualPlanEdit(slot)} className="mt-1 w-full min-w-0 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"/></label><label className="text-[11px] text-stone-500 sm:col-span-2">地点（可自由填写）<input aria-label="编辑日程地点" value={slot.plannedLocationName??""} placeholder="输入地点名称，不必先创建地点" onChange={e=>updateManualPlan(slot,{plannedLocationName:e.target.value})} onBlur={()=>recordManualPlanEdit(slot)} className="mt-1 w-full min-w-0 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"/></label></div><div className="mt-2 flex items-center justify-between gap-2"><span className="text-[10px] text-stone-400">{slot.kind} · {slot.source==="manual"?"手动日程":slot.source==="character-tool"?"角色主动调整":"可编辑计划"}</span><button type="button" onClick={()=>deleteManualPlan(slot)} className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-500">删除</button></div></div>)}</div>}</div>;})}
+        {actors.map(actor=>{const virtualNow=actorNow(actor);const slots=state.schedules.filter(slot=>slot.ownerType===actor.ownerType&&slot.ownerId===actor.ownerId).sort((a,b)=>a.startAt.localeCompare(b.startAt));return <div key={`${actor.ownerType}:${actor.ownerId}`} className="mb-5"><div className="mb-2 flex items-center justify-between gap-2"><h3 className="flex items-center gap-2 text-sm font-semibold"><span className="h-2 w-2 rounded-full bg-[var(--life-accent)]"/>{actor.name}<span className="text-xs font-normal text-stone-400">{slots.length} 条安排</span></h3>{actor.ownerType === "character" && <button type="button" disabled={scheduleRegenerationOwnerId !== null} onClick={() => void regenerateActorScheduleWithAI(actor)} className="rounded-xl border border-[var(--life-accent)]/40 bg-white px-3 py-2 text-xs text-[var(--life-accent)] disabled:opacity-50">{scheduleRegenerationOwnerId === actor.ownerId ? "AI 正在规划…" : "AI 重新生成"}</button>}<button type="button" onClick={()=>addManualPlan(actor)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">＋ 添加日程</button></div>{slots.length===0?<p className="rounded-xl bg-white/60 p-3 text-sm text-stone-400">还没有日程，可以直接添加，也可以点击「检查并补全」。</p>:<div className="space-y-3">{slots.filter(slot=>new Date(slot.endAt).getTime()>virtualNow.getTime()-DAY_MS).slice(0,40).map(slot=><div key={slot.id} className="rounded-xl border border-stone-200/70 bg-white/65 p-3"><div className="grid gap-2 sm:grid-cols-2"><label className="text-[11px] text-stone-500">开始时间<input aria-label="编辑日程开始时间" type="datetime-local" value={toLocalDateTimeInput(slot.startAt)} onChange={e=>{const value=fromLocalDateTimeInput(e.target.value);if(value)updateManualPlan(slot,{startAt:value});}} onBlur={()=>recordManualPlanEdit(slot)} className="mt-1 w-full min-w-0 rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs"/></label><label className="text-[11px] text-stone-500">结束时间<input aria-label="编辑日程结束时间" type="datetime-local" value={toLocalDateTimeInput(slot.endAt)} onChange={e=>{const value=fromLocalDateTimeInput(e.target.value);if(value)updateManualPlan(slot,{endAt:value});}} onBlur={()=>recordManualPlanEdit(slot)} className="mt-1 w-full min-w-0 rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs"/></label><label className="text-[11px] text-stone-500 sm:col-span-2">事件 / 活动内容<input aria-label="编辑日程标题" value={slot.title} onChange={e=>updateManualPlan(slot,{title:e.target.value})} onBlur={()=>recordManualPlanEdit(slot)} className="mt-1 w-full min-w-0 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"/></label><label className="text-[11px] text-stone-500 sm:col-span-2">地点（可自由填写）<input aria-label="编辑日程地点" value={slot.plannedLocationName??""} placeholder="输入地点名称，不必先创建地点" onChange={e=>updateManualPlan(slot,{plannedLocationName:e.target.value})} onBlur={()=>recordManualPlanEdit(slot)} className="mt-1 w-full min-w-0 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"/></label></div><div className="mt-2 flex items-center justify-between gap-2"><span className="text-[10px] text-stone-400">{slot.kind} · {slot.source==="manual"?"手动日程":slot.source==="character-tool"?"角色主动调整":"可编辑计划"}</span><button type="button" onClick={()=>deleteManualPlan(slot)} className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-500">删除</button></div></div>)}</div>}</div>;})}
       </section>}
 
 
@@ -2798,7 +2876,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             <label className="mt-4 block text-sm font-medium">邀约接受 / 拒绝判断提示词<textarea value={activePromptPreset.invitationResponsePrompt ?? ""} onChange={event => patchActivePromptPreset({ invitationResponsePrompt: event.target.value })} rows={4} placeholder="留空使用默认规则。可以自定义角色如何结合人设、关系、日程和真实意愿决定是否赴约。" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
             <label className="mt-4 block text-sm font-medium">地点习惯执行规则<textarea value={activePromptPreset.locationHabitPrompt ?? ""} onChange={event => patchActivePromptPreset({ locationHabitPrompt: event.target.value })} rows={4} placeholder="例如：把地点习惯当作倾向而非强制脚本；习惯可以被新事件改变，但不要无缘无故遗忘长期习惯。" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
             <label className="mt-4 block text-sm font-medium">此预设的通用补充规则<textarea value={activePromptPreset.customPrompt ?? ""} onChange={event => patchActivePromptPreset({ customPrompt: event.target.value })} rows={4} placeholder="只作用于当前生活预设。" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
-            <p className="mt-3 text-[11px] leading-relaxed text-stone-500">注意：场景输出协议、角色行为规则、地点习惯规则和小手机预设基础文本会实际加入生活现场生成请求；日程生成目前采用角色卡画像 + 地点库匹配的本地规则生成，不会伪装成调用了 AI。日程补充规则会参与角色画像关键词匹配。</p>
+            <p className="mt-3 text-[11px] leading-relaxed text-stone-500">场景互动复用角色 AI 接口与短期记忆；没有线上私聊也可以生成。日程目前可通过本地规则检查并补全；AI 重新生成入口会按角色单独读取人设、近期记忆与生活记录。</p>
           </section>
           <label className="mt-4 block text-sm">自定义场景提示词<textarea value={settings.customPrompt} onChange={e=>patchSettings({customPrompt:e.target.value})} rows={5} placeholder="例如：角色更重视生活习惯；不要每次见面都主动热情打招呼……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
           <button onClick={()=>patchSettings({ ...DEFAULT_LIFE_ENGINE_SETTINGS })} className="mt-4 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm text-stone-600">恢复默认设置</button>

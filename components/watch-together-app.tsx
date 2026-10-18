@@ -8,10 +8,11 @@ import { generateChatCompletion, flattenCompletionResult } from "@/lib/chat-engi
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { resolveVoiceConfig, synthesizeSpeech } from "@/lib/tts-service";
+import { resolveUserIdentity } from "@/lib/settings-storage";
 
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
 type Platform = "bilibili" | "youtube" | "tencent" | "youku" | "iqiyi" | "douyin" | "xiaohongshu" | "other";
-type VideoTarget = { url: string; embedUrl: string | null; platform: Platform; platformName: string; supported: boolean };
+type VideoTarget = { url: string; embedUrl: string | null; platform: Platform; platformName: string; supported: boolean; nativeVideo?: boolean };
 type WatchComment = { id: string; characterId: string; characterName: string; text: string; createdAt: string; kind?: "character" | "user"; timepoint?: string; targetUrl?: string };
 type WatchSettings = { characterId: string; intervalMinMinutes: number; intervalMaxMinutes: number; voiceEnabled: boolean; danmakuEnabled: boolean; subtitlesEnabled: boolean; currentMoment: string };
 
@@ -20,10 +21,14 @@ const COMMENTS_KEY = "ai_phone_watch_together_comments_v1";
 const DEFAULT_SETTINGS: WatchSettings = { characterId: "", intervalMinMinutes: 3, intervalMaxMinutes: 8, voiceEnabled: true, danmakuEnabled: true, subtitlesEnabled: true, currentMoment: "" };
 function parseVideoUrl(value: string): VideoTarget | null {
   try {
-    const url = new URL(value.trim());
+    const source = value.trim();
+    const extracted = new RegExp("https?://\\S+", "i").exec(source)?.[0] ?? source;
+    const cleanUrl = extracted.replace(/[)\]},，。！？、；;,.!?]+$/u, "");
+    const url = new URL(cleanUrl);
     if (url.protocol !== "https:" && url.protocol !== "http:") return null;
     const host = url.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
     const original = url.toString();
+    if (new RegExp("\\.(mp4|webm|ogg|ogv|m3u8)$", "i").test(url.pathname)) return { url: original, embedUrl: null, platform: "other", platformName: "视频文件", supported: true, nativeVideo: true };
     if (host === "bilibili.com" || host.endsWith(".bilibili.com") || host === "b23.tv") {
       const bvid = /\/(BV[0-9A-Za-z]{10})/i.exec(url.pathname)?.[1];
       const aid = /\/av(\d+)/i.exec(url.pathname)?.[1];
@@ -115,6 +120,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const commentBusyRef = useRef(false);
   const objectUrlRef = useRef<string | null>(null);
   const character = characters.find(item => item.id === settings.characterId) ?? characters[0] ?? null;
+  const playerIdentity = resolveUserIdentity();
 
   useEffect(() => {
     const list = loadCharacters();
@@ -315,7 +321,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         className={`watch-player relative mx-auto w-full max-w-3xl overflow-hidden rounded-[26px] border border-white/10 bg-[#0d0b09] ${fullScreen ? "fixed inset-0 z-[2000] h-[100dvh] w-screen max-w-none rounded-none" : ""}`}
         style={{ boxShadow: "0 0 0 1px rgba(255,214,170,.06), 0 28px 70px rgba(0,0,0,.6), 0 0 120px rgba(201,143,82,.16)" }}
       >
-        {target?.embedUrl ? (
+        {target?.nativeVideo ? (
+          <video key={target.url} src={target.url} controls playsInline className={`${fullScreen ? "h-full w-full aspect-auto" : "aspect-video w-full"} bg-black`} onError={() => onNotice?.("这个视频文件无法在当前浏览器播放，可能是格式不支持或来源限制。")} />
+        ) : target?.embedUrl ? (
           <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className={`${fullScreen ? "h-full w-full aspect-auto" : "aspect-video w-full"} border-0`} />
         ) : (
           <div className="flex aspect-video flex-col items-center justify-center px-6 text-center">
@@ -359,7 +367,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           <div className="relative z-10 mb-4 flex items-center gap-3 border-y border-[#d6b18c]/20 py-3">
             <div className="flex min-w-0 flex-1 items-center gap-2"><span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden border border-[#d6b18c]/45 bg-[#e6d4bf] text-xs text-[#694e43]">{character?.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character?.name.slice(0,1) ?? "TA"}</span><span className="min-w-0"><span className="block truncate text-xs text-[#f1dfc9]">{character?.name ?? "TA"}</span><span className="block text-[10px] text-[#a9937e]">{watching ? "正在陪你看" : "等你一起看"}</span></span></div>
             <div className="flex h-10 min-w-[76px] flex-1 items-center justify-center gap-[3px]" aria-label="双人同步电波">{Array.from({length:15},(_,i)=><span key={i} className="w-[2px] rounded-full bg-[#c99a78]" style={{height:`${5+((i*7+3)%13)}px`,opacity:watching?0.95:0.45,animation:watching?`watchWave 900ms ease-in-out ${i*55}ms infinite alternate`:undefined}}/>)}</div>
-            <div className="flex min-w-0 flex-1 items-center justify-end gap-2 text-right"><span className="min-w-0"><span className="block truncate text-xs text-[#f1dfc9]">我</span><span className="block text-[10px] text-[#a9937e]">和你同频</span></span><span className="grid h-11 w-11 shrink-0 place-items-center border border-[#d6b18c]/45 bg-[#6d5141] font-serif text-lg text-[#f1dfc9]">♡</span></div>
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-2 text-right"><span className="min-w-0"><span className="block truncate text-xs text-[#f1dfc9]">{playerIdentity?.name || "我"}</span><span className="block text-[10px] text-[#a9937e]">和你同频</span></span><span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden border border-[#d6b18c]/45 bg-[#6d5141] font-serif text-sm text-[#f1dfc9]">{playerIdentity?.avatarUrl ? <img src={playerIdentity.avatarUrl} alt="" className="h-full w-full object-cover"/> : (playerIdentity?.name || "我").slice(0, 1)}</span></div>
           </div>
           <div className="relative z-10 flex items-start gap-3">
             {character && <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-[#4a3d33] text-xs text-[#e6d8c4]">{character.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character.name.slice(0, 1)}</span>}

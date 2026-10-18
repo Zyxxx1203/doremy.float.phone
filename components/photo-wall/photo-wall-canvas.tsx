@@ -77,6 +77,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const strokeRef = useRef<{ id: string; photoId: string } | null>(null);
+  const suppressClickRef = useRef(false);
+  const [flippedPhotoIds, setFlippedPhotoIds] = useState<Set<string>>(new Set());
 
   const [mode, setMode] = useState<"move" | "doodle">("move");
   const [brushColor, setBrushColor] = useState(BRUSH_COLORS[0]);
@@ -137,6 +139,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   const endDrag = (event: React.PointerEvent) => {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    suppressClickRef.current = drag.moved;
     dragRef.current = null;
   };
 
@@ -231,6 +234,11 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
           photo={photo}
           placement={placement}
           selected={isSelected}
+          flipped={flippedPhotoIds.has(photo.id)}
+          onToggleFlip={() => {
+            if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+            setFlippedPhotoIds(current => { const next = new Set(current); if (next.has(photo.id)) next.delete(photo.id); else next.add(photo.id); return next; });
+          }}
           doodleMode={mode === "doodle" && isSelected}
           draftPoints={isSelected && strokeRef.current?.photoId === photo.id ? draftPoints : []}
           onPointerDownMove={(event) => { if (!readOnly) beginDrag(event, photo, index, "move"); }}
@@ -273,6 +281,8 @@ type FrameProps = {
   photo: PhotoWallPhoto;
   placement: PhotoWallPlacement;
   selected: boolean;
+  flipped: boolean;
+  onToggleFlip: () => void;
   doodleMode: boolean;
   draftPoints: { x: number; y: number }[];
   onPointerDownMove: (event: React.PointerEvent) => void;
@@ -284,7 +294,7 @@ type FrameProps = {
   readOnly: boolean;
 };
 
-function WallPhotoFrame({ photo, placement, selected, doodleMode, draftPoints, onPointerDownMove, onPointerDownResize, onDoodlePointerDown, onDoodlePointerMove, onDoodlePointerUp, onOpenDetail, readOnly }: FrameProps) {
+function WallPhotoFrame({ photo, placement, selected, flipped, onToggleFlip, doodleMode, draftPoints, onPointerDownMove, onPointerDownResize, onDoodlePointerDown, onDoodlePointerMove, onDoodlePointerUp, onOpenDetail, readOnly }: FrameProps) {
   const [src, setSrc] = useState("");
   const [failed, setFailed] = useState(false);
 
@@ -323,11 +333,16 @@ function WallPhotoFrame({ photo, placement, selected, doodleMode, draftPoints, o
         boxShadow: frame === "none" ? "0 6px 18px rgba(70,55,38,.22)" : "0 10px 24px rgba(70,55,38,.2)",
       }}
       onPointerDown={(event) => { if (!doodleMode) onPointerDownMove(event); }}
-      onDoubleClick={onOpenDetail}
-      onClick={event => { if (readOnly) { event.stopPropagation(); onOpenDetail(); } }}
+      onClick={event => { event.stopPropagation(); if (!doodleMode) onToggleFlip(); }}
     >
+      {flipped ? <div className="relative flex w-full flex-col overflow-y-auto rounded-sm bg-[#fffaf2] p-2.5 text-[#6b5947]" style={{ aspectRatio: "1 / 1", borderRadius: frame === "none" ? 2 : 1 }}>
+        <div className="border-b border-[#dfcfbe] pb-1 text-[7px] tracking-[.2em] text-[#a58f77]">THE BACK · 背面</div>
+        <div className="mt-1 break-words text-[9px] font-semibold leading-snug">{photo.title || "未命名的瞬间"}</div>
+        <p className="mt-1 whitespace-pre-wrap break-words text-[8px] leading-relaxed">{photo.backNote?.trim() || "这张照片的背面还空着。可以点工具栏的「看大图 / 背面」查看和编辑。"}</p>
+        {photo.annotations.length > 0 && <div className="mt-auto border-t border-[#e8dccd] pt-1">{photo.annotations.slice(-2).map(note => <p key={note.id} className="mt-0.5 break-words text-[7px] leading-snug"><span className="font-semibold">{note.authorName}：</span>{note.content}</p>)}</div>}
+      </div> : <>
       <div className="relative overflow-hidden bg-[#e7dfd2]" style={{ aspectRatio: "1 / 1", borderRadius: frame === "none" ? 2 : 1 }}>
-        {src ? <img src={src} alt={photo.title} draggable={false} className="h-full w-full object-cover" /> : failed ? <div className="grid h-full place-items-center text-[9px] text-[#a06050]">图片无法显示</div> : <div className="grid h-full place-items-center text-[#a99a86]"><ImagePlus size={16}/></div>}
+        {src ? <img src={src} alt={photo.title} draggable={false} className="h-full w-full object-contain" /> : failed ? <div className="grid h-full place-items-center text-[9px] text-[#a06050]">图片无法显示</div> : <div className="grid h-full place-items-center text-[#a99a86]"><ImagePlus size={16}/></div>}
         {frame === "tape" && <>
           <span className="pointer-events-none absolute -left-2 -top-2 h-4 w-10 -rotate-12 bg-[#f3e9cf]/85 shadow-sm" />
           <span className="pointer-events-none absolute -right-2 -top-2 h-4 w-10 rotate-12 bg-[#f3e9cf]/85 shadow-sm" />
@@ -356,15 +371,19 @@ function WallPhotoFrame({ photo, placement, selected, doodleMode, draftPoints, o
         className="absolute inset-0 cursor-crosshair"
         style={{ touchAction: "none" }}
         onPointerDown={onDoodlePointerDown}
+        onClick={event => event.stopPropagation()}
         onPointerMove={onDoodlePointerMove}
         onPointerUp={onDoodlePointerUp}
         onPointerCancel={onDoodlePointerUp}
       />}
 
+      </>}
+
       {selected && !doodleMode && <button
         type="button"
         aria-label="拖动调整大小"
-        onPointerDown={onPointerDownResize}
+        onPointerDown={event => { event.stopPropagation(); onPointerDownResize(event); }}
+        onClick={event => event.stopPropagation()}
         className="absolute -bottom-2 -right-2 grid h-6 w-6 place-items-center rounded-full border border-white bg-[#87565b] text-white shadow"
       ><Plus size={12}/></button>}
     </div>

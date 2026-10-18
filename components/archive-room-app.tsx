@@ -2,12 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import JSZip from "jszip";
-import { Archive, ArrowLeft, AudioLines, Check, File, Image as ImageIcon, LoaderCircle, RefreshCw, Search, Trash2, Video, X, Copy, HardDrive, ShieldAlert } from "lucide-react";
+import { Archive, ArrowLeft, AudioLines, Check, File, Image as ImageIcon, LoaderCircle, RefreshCw, Search, Trash2, Video, X, Copy, HardDrive, ShieldAlert, Star } from "lucide-react";
 import { deleteMediaRef, listMediaCacheSummaries, loadMediaBlob, loadMediaObjectUrl, type MediaCacheSummary } from "@/lib/media-cache-storage";
 import { loadChatSessions, loadChatMessages } from "@/lib/chat-storage";
 import { loadPhotoWallState } from "@/lib/photo-wall-storage";
 
 type ArchiveItem = MediaCacheSummary & { ref: string; usedBy: string[]; objectUrl?: string };
+type ArchiveMeta = { label?: string; note?: string; favorite?: boolean };
+const ARCHIVE_META_KEY = "ai_phone_archive_meta_v1";
+function loadArchiveMeta(): Record<string, ArchiveMeta> { try { const raw = typeof window !== "undefined" ? window.localStorage.getItem(ARCHIVE_META_KEY) : null; const parsed = raw ? JSON.parse(raw) : {}; return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, ArchiveMeta> : {}; } catch { return {}; } }
+function saveArchiveMeta(value: Record<string, ArchiveMeta>) { try { window.localStorage.setItem(ARCHIVE_META_KEY, JSON.stringify(value)); } catch { /* metadata must never block media access */ } }
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
 const refFor = (id: string) => `media-store://${id}`;
 const bytesLabel = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1024 ** 3 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${(bytes / 1024 ** 3).toFixed(2)} GB`;
@@ -24,6 +28,8 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
   const [duplicateIds, setDuplicateIds] = useState<Set<string>>(new Set());
   const [duplicateGroups, setDuplicateGroups] = useState<string[][]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [meta, setMeta] = useState<Record<string, ArchiveMeta>>(() => loadArchiveMeta());
+  const [recommendedDeleteIds, setRecommendedDeleteIds] = useState<Set<string>>(new Set());
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -86,15 +92,20 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
       const candidates = groups.flatMap(group => {
         const sorted = group.slice().sort((a, b) => {
           const left = byId.get(a); const right = byId.get(b);
+          const leftFavorite = meta[a]?.favorite === true;
+          const rightFavorite = meta[b]?.favorite === true;
+          if (leftFavorite !== rightFavorite) return leftFavorite ? -1 : 1;
           const leftReferenced = (left?.usedBy.length ?? 0) > 0;
           const rightReferenced = (right?.usedBy.length ?? 0) > 0;
           if (leftReferenced !== rightReferenced) return leftReferenced ? -1 : 1;
           return (right?.bytes ?? 0) - (left?.bytes ?? 0) || (right?.createdAt ?? 0) - (left?.createdAt ?? 0);
         });
-        return sorted.slice(1).filter(id => (byId.get(id)?.usedBy.length ?? 0) === 0);
+        return sorted.slice(1).filter(id => meta[id]?.favorite !== true && (byId.get(id)?.usedBy.length ?? 0) === 0);
       });
       setDuplicateGroups(groups);
-      setDuplicateIds(new Set(candidates));
+      // Keep every member visible; recommendations are a separate, conservative selection.
+      setDuplicateIds(new Set(groups.flat()));
+      setRecommendedDeleteIds(new Set(candidates));
       setSelected([]);
       setTab("duplicates");
       const protectedCount = groups.reduce((count, group) => {
@@ -102,7 +113,7 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
         return count + (hasUnreferencedDuplicate ? 0 : 1);
       }, 0);
       onNotice?.(groups.length
-        ? `找到 ${groups.length} 组完全相同的文件；仅推荐删除未被聊天引用的副本。另有 ${protectedCount} 组没有安全删除候选，已保护不推荐删除。请检查后手动选择。`
+        ? `找到 ${groups.length} 组内容完全相同的文件；现在展示每组全部副本，可逐张选择。已为未收藏且未被引用的副本提供 ${candidates.length} 个推荐删除项。${protectedCount} 组暂时没有安全推荐项。`
         : "没有发现内容完全相同的文件。");
     } catch (error) {
       onNotice?.("重复扫描失败：" + (error instanceof Error ? error.message : String(error)));
@@ -112,11 +123,16 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
   const visibleItems = useMemo(() => items.filter(item => {
     if (tab === "duplicates" && !duplicateIds.has(item.id)) return false;
     if (filter !== "all" && item.category !== filter) return false;
-    if (query && !item.id.toLowerCase().includes(query.toLowerCase()) && !item.usedBy.some(name => name.toLowerCase().includes(query.toLowerCase()))) return false;
+    const itemMeta = meta[item.id];
+    if (query && !item.id.toLowerCase().includes(query.toLowerCase()) && !(itemMeta?.label || "").toLowerCase().includes(query.toLowerCase()) && !(itemMeta?.note || "").toLowerCase().includes(query.toLowerCase()) && !item.usedBy.some(name => name.toLowerCase().includes(query.toLowerCase()))) return false;
     return true;
-  }), [items, tab, duplicateIds, filter, query]);
+  }), [items, tab, duplicateIds, filter, query, meta]);
 
-  const toggle = (id: string) => setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggle = (id: string) => { setConfirmDelete(false); setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]); };
+  const patchMeta = (id: string, patch: Partial<ArchiveMeta>) => {
+    const next = { ...meta, [id]: { ...(meta[id] ?? {}), ...patch } };
+    setMeta(next); saveArchiveMeta(next);
+  };
   const exportSelected = async () => {
     if (!selected.length) return;
     try {
@@ -145,15 +161,17 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
 
   const deleteSelected = async () => {
     const targets = items.filter(item => selected.includes(item.id));
+    const favorited = targets.filter(item => meta[item.id]?.favorite === true);
+    if (favorited.length) { onNotice?.(`所选项目中有 ${favorited.length} 个已收藏文件；为防止误删，已阻止本次删除。请取消收藏后再操作。`); setConfirmDelete(false); return; }
     const photoWallProtected = targets.filter(item => item.usedBy.some(name => name.startsWith("照片墙：")));
     if (photoWallProtected.length) {
       onNotice?.(`所选项目中有 ${photoWallProtected.length} 个仍被照片墙使用。请先在照片墙中移除对应照片，再清理媒体文件，避免留下失效记录。`);
       return;
     }
     const referenced = targets.filter(item => item.usedBy.length > 0);
-    if (referenced.length && !confirmDelete) {
+    if ((referenced.length || targets.length > 1) && !confirmDelete) {
       setConfirmDelete(true);
-      onNotice?.(`其中 ${referenced.length} 个文件仍被聊天消息引用。再次确认才会删除文件；聊天文字会保留，但对应媒体可能无法显示。`);
+      onNotice?.(`准备删除 ${targets.length} 个媒体文件${referenced.length ? `，其中 ${referenced.length} 个仍被聊天消息引用` : ""}。再次点击确认后才会执行；引用媒体可能无法显示。收藏项不会被删除。`);
       return;
     }
     try {
@@ -184,29 +202,40 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
         <button onClick={() => {setTab("all");setFilter("all");}} className={`rounded-2xl border p-4 text-left ${tab==="all"?"border-stone-400 bg-white":"border-stone-200 bg-white/60"}`}><Archive size={19}/><div className="mt-2 font-semibold">媒体库</div><div className="mt-1 text-xs text-stone-500">浏览、筛选与批量管理</div></button>
         <button onClick={() => void scanDuplicates()} disabled={scanningDuplicates || loading} className="rounded-2xl border border-stone-200 bg-white/60 p-4 text-left disabled:opacity-60">{scanningDuplicates?<LoaderCircle size={19} className="animate-spin"/>:<Copy size={19}/>}<div className="mt-2 font-semibold">重复文件扫描</div><div className="mt-1 text-xs text-stone-500">按文件内容精确比对</div></button>
       </div>
-      {tab==="duplicates"&&<div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900"><ShieldAlert size={16} className="mb-1"/>仅识别文件内容完全一致的重复项，不会自动删除。相似但经过压缩或裁剪的图片不会在此列出。</div>}
+      {tab==="duplicates"&&<div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900"><ShieldAlert size={16} className="mb-1"/>这里展示重复组的全部副本，你可以逐张选择保留哪个。只把内容哈希完全一致的文件视为重复；压缩、裁剪后的相似图片需要单独判断。<div className="mt-2 flex flex-wrap items-center gap-2"><button type="button" onClick={()=>{setSelected(visibleItems.filter(item=>recommendedDeleteIds.has(item.id)&&meta[item.id]?.favorite!==true).map(item=>item.id));setConfirmDelete(false);}} className="rounded-lg border border-amber-300 bg-white/80 px-3 py-2 font-medium">选择推荐删除项（{visibleItems.filter(item=>recommendedDeleteIds.has(item.id)&&meta[item.id]?.favorite!==true).length}）</button><button type="button" onClick={()=>{setSelected(visibleItems.filter(item=>meta[item.id]?.favorite!==true).map(item=>item.id));setConfirmDelete(false);}} className="rounded-lg border border-amber-300 bg-white/80 px-3 py-2">选择未收藏项</button></div></div>}
       <div className="mt-5 flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-3 py-2"><Search size={16} className="shrink-0 text-stone-400"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="搜索文件 ID 或关联会话" className="min-w-0 flex-1 bg-transparent text-sm outline-none"/>{query&&<button onClick={()=>setQuery("")}><X size={15}/></button>}</div>
       <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1">{([{key:"all",label:"全部"},{key:"image",label:"图片"},{key:"audio",label:"语音"},{key:"video",label:"视频"},{key:"file",label:"其他"}] as const).map(x=><button key={x.key} onClick={()=>setFilter(x.key)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs ${filter===x.key?"bg-stone-800 text-white":"bg-white text-stone-600"}`}>{x.label}</button>)}</div>
-      <div className="mt-3 flex items-center justify-between gap-2 text-xs text-stone-500"><span>{visibleItems.length} 个项目{selected.length? ` · 已选 ${selected.length}`:""}</span><button onClick={()=>setSelected(selected.length===visibleItems.length?[]:visibleItems.map(x=>x.id))} className="font-medium text-stone-700">{selected.length===visibleItems.length&&visibleItems.length?"取消全选":"选择当前列表"}</button></div>
-      <div className="mt-2 space-y-2 pb-24">{loading?<div className="py-12 text-center text-sm text-stone-500"><LoaderCircle className="mx-auto mb-2 animate-spin"/>正在扫描媒体索引…</div>:visibleItems.length===0?<div className="rounded-2xl border border-dashed border-stone-300 bg-white/50 px-4 py-12 text-center text-sm text-stone-500">{tab==="duplicates"?"没有重复项，或尚未完成扫描。":"当前范围没有找到媒体文件。"}</div>:visibleItems.map(item=><MediaRow key={item.id} item={item} checked={selected.includes(item.id)} onToggle={()=>toggle(item.id)}/>)}</div>
+      <div className="mt-3 flex items-center justify-between gap-2 text-xs text-stone-500"><span>{visibleItems.length} 个项目{selected.length? ` · 已选 ${selected.length}`:""}</span><div className="flex items-center gap-3"><button type="button" onClick={()=>{setSelected(visibleItems.filter(item=>meta[item.id]?.favorite!==true).map(item=>item.id));setConfirmDelete(false);}} className="font-medium text-stone-700">选中未收藏</button><button onClick={()=>{setSelected(selected.length===visibleItems.length?[]:visibleItems.map(x=>x.id));setConfirmDelete(false);}} className="font-medium text-stone-700">{selected.length===visibleItems.length&&visibleItems.length?"取消全选":"选择当前列表"}</button></div></div>
+      <div className="mt-2 space-y-2 pb-24">{loading?<div className="py-12 text-center text-sm text-stone-500"><LoaderCircle className="mx-auto mb-2 animate-spin"/>正在扫描媒体索引…</div>:visibleItems.length===0?<div className="rounded-2xl border border-dashed border-stone-300 bg-white/50 px-4 py-12 text-center text-sm text-stone-500">{tab==="duplicates"?"没有重复项，或尚未完成扫描。":"当前范围没有找到媒体文件。"}</div>:visibleItems.map(item=><MediaRow key={item.id} item={item} checked={selected.includes(item.id)} onToggle={()=>toggle(item.id)} meta={meta[item.id] ?? {}} onPatch={patch=>patchMeta(item.id,patch)} recommended={recommendedDeleteIds.has(item.id)}/>)}</div>
     </main>
     {selected.length>0&&<footer className="flex shrink-0 items-center gap-3 border-t border-stone-200 bg-white/95 px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))]"><div className="min-w-0 flex-1 text-sm"><div className="font-semibold">已选择 {selected.length} 项</div><div className="text-xs text-stone-500">约 {bytesLabel(items.filter(x=>selected.includes(x.id)).reduce((n,x)=>n+x.bytes,0))}</div></div><button onClick={()=>void exportSelected()} className="flex items-center gap-2 rounded-xl border border-stone-300 px-3 py-2.5 text-sm font-medium text-stone-700">导出 ZIP</button><button onClick={()=>{setSelected([]);setConfirmDelete(false);}} className="rounded-xl px-3 py-2 text-sm text-stone-600">取消</button><button onClick={()=>void deleteSelected()} className="flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-medium text-white"><Trash2 size={16}/>{confirmDelete?"确认删除":"删除所选"}</button></footer>}
   </div>;
 }
 
-function MediaRow({ item, checked, onToggle }: { item: ArchiveItem; checked: boolean; onToggle: () => void }) {
+function MediaRow({ item, checked, onToggle, meta, onPatch, recommended }: { item: ArchiveItem; checked: boolean; onToggle: () => void; meta: ArchiveMeta; onPatch: (patch: Partial<ArchiveMeta>) => void; recommended: boolean }) {
   const [url, setUrl] = useState("");
   useEffect(() => {
+    let active = true;
     let current = "";
     if (item.category === "image" || item.category === "video" || item.category === "audio") {
-      void loadMediaObjectUrl(item.ref).then(value => { if (value) { current = value; setUrl(value); } });
+      void loadMediaObjectUrl(item.ref).then(value => { if (value && active) { current = value; setUrl(value); } else if (value) URL.revokeObjectURL(value); });
     }
-    return () => { if (current) URL.revokeObjectURL(current); };
+    return () => { active = false; if (current) URL.revokeObjectURL(current); };
   }, [item.ref, item.category]);
   const Icon = item.category === "image" ? ImageIcon : item.category === "audio" ? AudioLines : item.category === "video" ? Video : File;
-  return <article className={`flex items-center gap-3 rounded-2xl border p-3 ${checked?"border-stone-500 bg-stone-50":"border-stone-200 bg-white"}`}>
-    <button onClick={onToggle} className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border ${checked?"border-stone-800 bg-stone-800 text-white":"border-stone-300 text-transparent"}`} aria-label={checked?"取消选择":"选择"}><Check size={14}/></button>
-    <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-stone-100">{item.category==="image"&&url?<img src={url} alt="" className="h-full w-full object-cover"/>:<Icon size={22} className="text-stone-500"/>}</div>
-    <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{item.id}</div><div className="mt-1 text-xs text-stone-500">{bytesLabel(item.bytes)} · {dateLabel(item.createdAt)}</div>{item.category === "audio" && url && <audio controls preload="none" src={url} className="mt-2 h-8 w-full max-w-[190px]"/>}<div className={item.usedBy.length ? "mt-1 truncate text-xs text-emerald-700" : "mt-1 truncate text-xs text-amber-700"}>{item.usedBy.length ? "关联 " + item.usedBy.length + " 个聊天会话" : "未发现聊天引用（不代表一定可删除）"}</div></div>
+  return <article className={"flex items-start gap-3 rounded-2xl border p-3 " + (checked ? "border-stone-500 bg-stone-50" : "border-stone-200 bg-white")}>
+    <button type="button" onClick={onToggle} className={"mt-1 grid h-6 w-6 shrink-0 place-items-center rounded-full border " + (checked ? "border-stone-800 bg-stone-800 text-white" : "border-stone-300 text-transparent")} aria-label={checked ? "取消选择" : "选择"}><Check size={14}/></button>
+    <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-stone-100">{item.category==="image"&&url?<img src={url} alt={meta.label || ""} className="h-full w-full object-contain"/>:item.category==="video"&&url?<video src={url} muted preload="metadata" className="h-full w-full object-contain"/>:<Icon size={22} className="text-stone-500"/>}</div>
+    <div className="min-w-0 flex-1">
+      <div className="flex items-start gap-2"><div className="min-w-0 flex-1 break-words text-sm font-medium">{meta.label?.trim() || item.id}</div><button type="button" onClick={()=>onPatch({favorite:!meta.favorite})} aria-label={meta.favorite?"取消收藏":"收藏文件"} title={meta.favorite?"取消收藏":"收藏文件"} className={"shrink-0 rounded-lg p-1 " + (meta.favorite?"text-amber-600":"text-stone-400")}><Star size={17} fill={meta.favorite?"currentColor":"none"}/></button></div>
+      <div className="mt-1 break-all text-[10px] text-stone-400">ID: {item.id}</div>
+      <div className="mt-1 text-xs text-stone-500">{bytesLabel(item.bytes)} · {dateLabel(item.createdAt)} · {item.category==="audio"?"语音":item.category==="image"?"图片":item.category==="video"?"视频":"文件"}</div>
+      {item.category === "audio" && url && <audio controls preload="none" src={url} className="mt-2 h-8 w-full max-w-[240px]"/>}
+      <div className={item.usedBy.length ? "mt-1 break-words text-xs text-emerald-700" : "mt-1 break-words text-xs text-amber-700"}>{item.usedBy.length ? "关联 " + item.usedBy.length + " 个会话 / 记录" : "未发现已知引用（不代表一定可删除）"}</div>
+      {meta.favorite && <div className="mt-1 text-[10px] font-medium text-amber-700">已收藏 · 批量删除会自动保护</div>}
+      {recommended && !meta.favorite && <div className="mt-1 text-[10px] font-medium text-emerald-700">推荐删除候选（仍需你选择并确认）</div>}
+      <input value={meta.label ?? ""} onChange={event=>onPatch({label:event.target.value})} placeholder={item.category==="audio"?"给语音标注内容 / 角色 / 场景…":"给文件起一个容易识别的名字…"} aria-label="文件备注名称" className="mt-2 w-full rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-2 text-xs outline-none focus:border-stone-400"/>
+      <textarea value={meta.note ?? ""} onChange={event=>onPatch({note:event.target.value})} rows={1} placeholder="备注：内容、来源、为什么要保留……" aria-label="文件备注" className="mt-2 w-full resize-y rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-2 text-xs outline-none focus:border-stone-400"/>
+    </div>
   </article>;
 }

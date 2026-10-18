@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Camera, Check, ChevronLeft, ChevronRight, Download, Feather, Heart, ImagePlus, LoaderCircle, MessageCircle, MoreHorizontal, PenLine, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, Camera, Check, ChevronLeft, ChevronRight, Download, Feather, Heart, ImagePlus, LoaderCircle, MessageCircle, Minus, MoreHorizontal, PenLine, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { loadImageGenerationSettings } from "@/lib/settings-storage";
@@ -27,6 +27,20 @@ const KIND_LABEL: Record<PhotoWallPhoto["kind"], string> = {
 };
 const KIND_OPTIONS: PhotoWallPhoto["kind"][] = ["favorite", "selfie", "candid", "scenery", "object", "moment"];
 const DAY_MS = 24 * 60 * 60 * 1000;
+const PHOTO_WALL_PROMPT_KEY = "ai_phone_photo_wall_prompt_v1";
+const PHOTO_WALL_ACTIVE_TEMPLATE_KEY = "ai_phone_photo_wall_active_template_v1";
+const DEFAULT_PHOTO_WALL_PROMPT = [
+  "请生成一张真实相机拍摄的私人生活照片，而不是插画、海报或拼贴。",
+  "角色：{characterName}",
+  "角色设定：{characterPersona}",
+  "照片类型：{photoType}",
+  "近期生活片段：{lifeEvent}",
+  "参考图要求：{referenceText}",
+  "画面风格：温柔、文艺、自然光、低饱和胶片色彩、细微颗粒、构图克制、真实生活细节。",
+  "不要出现文字、水印、拼接边框或不自然的手指。",
+].join("\n");
+function readPhotoWallPrompt(): string { try { return typeof window !== "undefined" ? window.localStorage.getItem(PHOTO_WALL_PROMPT_KEY) || DEFAULT_PHOTO_WALL_PROMPT : DEFAULT_PHOTO_WALL_PROMPT; } catch { return DEFAULT_PHOTO_WALL_PROMPT; } }
+function readPhotoWallTemplate(): string { try { return typeof window !== "undefined" ? window.localStorage.getItem(PHOTO_WALL_ACTIVE_TEMPLATE_KEY) || "builtin-scatter" : "builtin-scatter"; } catch { return "builtin-scatter"; } }
 
 function dayKey(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -122,7 +136,7 @@ function PhotoThumbnail({ photo, onOpen }: { photo: PhotoWallPhoto; onOpen: () =
   }, [photo.mediaRef]);
   return <button type="button" onClick={onOpen} aria-label={`查看照片：${photo.title || "未命名的瞬间"}`} className="group relative block w-full text-left">
     <div className="relative aspect-square overflow-hidden bg-[#e9e3d8]">
-      {src ? <img src={src} alt={photo.title} loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.02]" /> : <div className="grid h-full place-items-center text-[#9c907f]"><ImagePlus size={25}/></div>}
+      {src ? <img src={src} alt={photo.title} loading="lazy" className="h-full w-full object-contain transition duration-500 group-hover:scale-[1.01]" /> : <div className="grid h-full place-items-center text-[#9c907f]"><ImagePlus size={25}/></div>}
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full" style={{overflow:"visible"}}>
         {(photo.doodles ?? []).map(doodle => doodle.kind === "stroke" ? <polyline key={doodle.id} points={doodle.points.map(point=>`${point.x*100},${point.y*100}`).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(0.8,doodle.width/2)} strokeLinecap="round" strokeLinejoin="round"/> : <text key={doodle.id} x={(doodle.points[0]?.x ?? .5)*100} y={(doodle.points[0]?.y ?? .5)*100} fill={doodle.color} fontSize="12" textAnchor="middle" dominantBaseline="middle">{doodle.content || "✦"}</text>)}
       </svg>
@@ -135,7 +149,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
   const [wallView, setWallView] = useState<"panorama" | "timeline" | "edit" | "settings">("panorama");
-  const [panoramaZoom, setPanoramaZoom] = useState(100);
+  const [panoramaZoom, setPanoramaZoom] = useState(80);
   const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
   const [selectedCharacterId, setSelectedCharacterId] = useState("");
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
@@ -162,6 +176,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const stateRef = useRef(state);
   stateRef.current = state;
   const [templateText, setTemplateText] = useState("LOVE");
+  const [activeTemplateId, setActiveTemplateId] = useState<string>(() => readPhotoWallTemplate());
+  const [generationPromptTemplate, setGenerationPromptTemplate] = useState<string>(() => readPhotoWallPrompt());
   const [templateName, setTemplateName] = useState("");
   const [customTemplates, setCustomTemplates] = useState<PhotoWallTemplate[]>(() => loadCustomTemplates());
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
@@ -217,7 +233,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   /** 套用模板骨架：照片按顺序吸附进槽位，套完仍然可以自由拖动。 */
   const applyTemplate = useCallback((templateId: string) => {
     const current = stateRef.current;
-    const ordered = current.photos.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const ordered = current.photos.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     if (!ordered.length) { onNotice?.("墙上还没有照片。"); return; }
     const slots = buildTemplateSlots(templateId, ordered.length, templateText);
     if (!slots.length) return;
@@ -228,7 +244,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const base = photo.placement;
       return { ...photo, placement: { x: slot.x, y: slot.y, scale: slot.scale, rotation: slot.rotation, z: index + 1, frame: base?.frame ?? "polaroid", frameColor: base?.frameColor ?? "#fffdf8" } as PhotoWallPlacement };
     }));
-    onNotice?.("已按模板重新摆放，之后仍可自由拖动微调。");
+    setActiveTemplateId(templateId);
+    try { window.localStorage.setItem(PHOTO_WALL_ACTIVE_TEMPLATE_KEY, templateId); } catch { /* current placements remain saved */ }
+    onNotice?.("已按模板重新摆放；新照片也会沿用这个摆放轨迹。");
     setWallView("edit");
   }, [commitPhotos, onNotice, templateText]);
 
@@ -326,9 +344,13 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
   const addPhoto = useCallback((photo: PhotoWallPhoto) => {
     const current = loadPhotoWallState();
-    persist({ ...current, photos: [photo, ...current.photos.filter(item => item.id !== photo.id)] });
+    const order = current.photos.length;
+    const slot = buildTemplateSlots(activeTemplateId, order + 1, templateText)[order] ?? fallbackPlacement(order);
+    const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
+    const placed = { ...photo, placement: photo.placement ?? { ...slot, z: maxZ + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } };
+    persist({ ...current, photos: [placed, ...current.photos.filter(item => item.id !== photo.id)] });
     setSelectedPhotoId(photo.id);
-  }, [persist]);
+  }, [persist, activeTemplateId, templateText]);
 
   const openChatPicker = async () => {
     setShowAddMenu(false);
@@ -399,7 +421,13 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         });
       }
       const current = loadPhotoWallState();
-      persist({ ...current, photos: [...created, ...current.photos] });
+      const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
+      const slots = buildTemplateSlots(activeTemplateId, current.photos.length + created.length, templateText);
+      const placedCreated = created.map((photo, index) => {
+        const slot = slots[current.photos.length + index] ?? fallbackPlacement(current.photos.length + index);
+        return { ...photo, placement: { ...slot, z: maxZ + index + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } };
+      });
+      persist({ ...current, photos: [...placedCreated, ...current.photos] });
       setSelectedPhotoId(created[0]?.id ?? null);
       onNotice?.(`已收藏 ${created.length} 张照片。`);
     } catch (error) { onNotice?.("收藏失败：" + (error instanceof Error ? error.message : String(error))); }
@@ -459,12 +487,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           ? "请参考图中标注的玩家本人和角色外观，分别保持身份特征一致；参考图只用于人物身份，不要复制原图构图。"
           : "请严格参考提供的参考照片中可见人物/物件的视觉特征，保持一致，不要复制原图构图。")
         : "";
-      const description = [
-        "为私人生活照片墙生成一张有真实相机质感的照片，而不是插画、海报、拼贴或文字卡片。",
-        `照片拍摄者/角色：${owner.name}。角色设定：${(owner.persona || owner.personality || "").slice(0, 700)}。`,
-        `照片类型：${kindPrompt[kind]}`, eventText, referenceText,
-        "审美：温柔、文艺、自然光、低饱和胶片色彩、细微颗粒、构图克制、真实生活细节；不要出现文字、水印、拼接边框或不自然的手指。",
-      ].filter(Boolean).join("\n");
+      const description = (generationPromptTemplate.trim() || DEFAULT_PHOTO_WALL_PROMPT)
+        .split("{characterName}").join(owner.name)
+        .split("{characterPersona}").join((owner.persona || owner.personality || "").slice(0, 700))
+        .split("{photoType}").join(kindPrompt[kind])
+        .split("{lifeEvent}").join(eventText)
+        .split("{referenceText}").join(referenceText);
       const result = await generateImageFromConfiguredApi({
         description, characterId: owner.id, appId: "photo_wall",
         useReferenceImage: Boolean(referenceImageDataUrl) || kind === "selfie",
@@ -592,8 +620,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     } catch (error) { onNotice?.("移除失败：" + (error instanceof Error ? error.message : String(error))); }
   };
 
-  const openPhoto = (photo: PhotoWallPhoto) => {
-    setPhotoViewOnly(wallView !== "edit");
+  const openPhoto = (photo: PhotoWallPhoto, viewOnly = true) => {
+    setPhotoViewOnly(viewOnly);
     setSelectedPhotoId(photo.id); setEditTitle(photo.title); setEditNote(photo.backNote); setEditTags(photo.tags.join("、"));
   };
 
@@ -624,7 +652,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     </div>}
     <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={event => { if (event.target.files) void uploadFiles(event.target.files); event.currentTarget.value = ""; }}/>
 
-    <main className={wallView === "edit" || wallView === "settings" ? "min-h-0 flex-1 overflow-y-auto" : "min-h-0 flex-1 overflow-hidden"}>
+    <main className={wallView === "panorama" ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-y-auto overscroll-contain"}>
       {wallView === "settings" ? <div className="min-h-full bg-[#f5ede3] px-4 pb-10 pt-5 sm:px-7" style={{backgroundImage:"repeating-linear-gradient(0deg,rgba(122,84,68,.025) 0,rgba(122,84,68,.025) 1px,transparent 1px,transparent 5px)"}}>
         <div className="mx-auto max-w-3xl">
           <p className="text-[10px] tracking-[.24em] text-[#a18172]">A QUIET CORNER FOR YOUR WALL</p>
@@ -635,6 +663,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             <p className="mt-2 text-xs leading-6 text-[#8b7569]">每天首次打开照片墙时，可依据最近生活记录生成照片。仅在应用运行时触发；图片由你配置的生图服务生成，可能产生 API 费用。</p>
             <label className="mt-4 flex min-h-11 items-center justify-between gap-4 border-b border-[#eadfd3] py-3 text-sm text-[#5d4942]"><span>每日自动生成</span><input type="checkbox" checked={state.settings.dailyGenerationEnabled} onChange={event => persist({ ...state, settings: { ...state.settings, dailyGenerationEnabled: event.target.checked } })} className="h-4 w-4 accent-[#87565b]"/></label>
             <div className="flex min-h-11 items-center justify-between gap-4 border-b border-[#eadfd3] py-3 text-sm text-[#5d4942]"><span>每天最多生成</span><select value={state.settings.dailyPhotoCount} onChange={event => persist({ ...state, settings: { ...state.settings, dailyPhotoCount: Number(event.target.value) as 1 | 2 | 3 } })} className="max-w-[45%] border-b border-[#d7c2b1] bg-transparent px-2 py-1 text-right"><option value={1}>1 张</option><option value={2}>2 张</option><option value={3}>3 张</option></select></div>
+            <label className="mt-4 block text-xs text-[#8b7569]">让谁生成照片<select value={selectedCharacterId} onChange={event => setSelectedCharacterId(event.target.value)} className="mt-2 w-full border-b border-[#d7c2b1] bg-transparent px-2 py-2 text-sm text-[#5d4942]"><option value="">请选择角色</option>{characters.map(char => <option key={char.id} value={char.id}>{char.name}</option>)}</select></label>
+            <label className="mt-4 block text-xs text-[#8b7569]">角色照片生成提示词（可编辑；支持 {`{characterName}`}、{`{characterPersona}`}、{`{photoType}`}、{`{lifeEvent}`}、{`{referenceText}`} 变量）<textarea value={generationPromptTemplate} onChange={event => setGenerationPromptTemplate(event.target.value)} rows={7} placeholder={DEFAULT_PHOTO_WALL_PROMPT} className="mt-2 w-full resize-y rounded-xl border border-[#e6dccd] bg-[#fcf9f2] p-3 text-xs leading-6 text-[#655647]"/></label>
+            <div className="mt-2 flex gap-2"><button type="button" onClick={() => { try { window.localStorage.setItem(PHOTO_WALL_PROMPT_KEY, generationPromptTemplate); onNotice?.("角色照片生成提示词已保存，将用于下一次生成。"); } catch { onNotice?.("保存提示词失败，请检查本地存储空间。"); } }} className="rounded-xl bg-[#87565b] px-3 py-2 text-xs text-white">保存提示词</button><button type="button" onClick={() => setGenerationPromptTemplate(DEFAULT_PHOTO_WALL_PROMPT)} className="rounded-xl border border-[#d7c2b1] px-3 py-2 text-xs text-[#79545a]">恢复默认</button></div>
             <div className="flex flex-wrap items-center gap-2 border-b border-[#eadfd3] py-3 text-xs"><span className="text-[#8b7569]">生成参考图</span><select value={referencePhotoId} onChange={event => setReferencePhotoId(event.target.value)} className="min-w-0 flex-1 border-b border-[#d7c2b1] bg-transparent px-2 py-2"><option value="">使用角色外观参考设置</option>{photos.map(photo => <option key={photo.id} value={photo.id}>{photo.title}</option>)}</select></div>
             {state.settings.lastDailyGenerationAt && <p className="mt-3 text-[11px] leading-5 text-[#93836e]">上次显影：{formatDate(state.settings.lastDailyGenerationAt)}{state.settings.lastDailyGenerationError ? ` · 上次有错误：${state.settings.lastDailyGenerationError}` : ""}</p>}
             <button disabled={busy || !selectedCharacter} onClick={() => void generatePhoto(selectedCharacter, "moment")} className="mt-4 border border-[#87565b] bg-[#87565b] px-4 py-2.5 text-xs tracking-wide text-[#fff8f0] disabled:opacity-50"><Sparkles size={13} className="mr-1 inline"/>现在生成一张</button>
@@ -691,11 +722,16 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       </section>
 
       </> : wallView === "panorama" ? <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden pb-16 pt-0">
+        <div className="absolute right-3 top-3 z-20 flex items-center gap-1.5 rounded-full border border-[#dfcfbe] bg-[#fffaf1]/95 p-1 shadow-sm backdrop-blur">
+          <button type="button" onClick={() => setPanoramaZoom(value => Math.max(50, value - 10))} aria-label="缩小画布" className="grid h-8 w-8 place-items-center rounded-full text-[#79545a]"><Minus size={14}/></button>
+          <button type="button" onClick={() => setPanoramaZoom(80)} aria-label="适配画布" className="min-w-11 px-1 text-[10px] tabular-nums text-[#79545a]">{panoramaZoom}%</button>
+          <button type="button" onClick={() => setPanoramaZoom(value => Math.min(180, value + 10))} aria-label="放大画布" className="grid h-8 w-8 place-items-center rounded-full text-[#79545a]"><Plus size={14}/></button>
+        </div>
         <div className="relative flex min-h-0 flex-1 items-stretch justify-stretch overflow-auto overscroll-contain border-y border-[#eadfd5] p-0" style={{WebkitOverflowScrolling:"touch", backgroundImage:"radial-gradient(ellipse at 50% 12%,rgba(255,255,255,.98),transparent 72%),linear-gradient(145deg,#fffaf2,#f6eee4)", touchAction:"pan-x pan-y"}}
           onTouchStart={event => { if (event.touches.length === 2) { const dx=event.touches[0].clientX-event.touches[1].clientX; const dy=event.touches[0].clientY-event.touches[1].clientY; pinchStartRef.current={distance:Math.max(1,Math.hypot(dx,dy)),zoom:panoramaZoom}; } }}
           onTouchMove={event => { if (event.touches.length === 2 && pinchStartRef.current) { const dx=event.touches[0].clientX-event.touches[1].clientX; const dy=event.touches[0].clientY-event.touches[1].clientY; const distance=Math.hypot(dx,dy); setPanoramaZoom(Math.max(50,Math.min(180,Math.round(pinchStartRef.current.zoom*distance/pinchStartRef.current.distance)))); event.preventDefault(); } }}
           onTouchEnd={event => { if (event.touches.length < 2) pinchStartRef.current=null; }}>
-          <div className="h-full shrink-0 transition-[width] duration-100" style={{height:"100%",width:`${panoramaZoom}%`, minWidth: panoramaZoom < 100 ? "50%" : "100%", maxWidth:"none"}}>
+          <div className="shrink-0 transition-[width,height] duration-100" style={{height:panoramaZoom+"%",width:panoramaZoom+"%",minHeight:panoramaZoom+"%",minWidth:panoramaZoom+"%",maxWidth:"none"}}>
             <PhotoWallCanvas photos={photos} selectedId={null} onSelect={() => {}} onChangePlacement={changePlacement} onChangeDoodles={changeDoodles} onOpenDetail={photo => openPhoto(photo)} readOnly fitHeight />
           </div>
         </div>
@@ -733,23 +769,24 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     </div>}
 
     {selectedPhoto && <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#332c24]/48 p-3 backdrop-blur-md" onClick={() => setSelectedPhotoId(null)}>
-      <div className="relative flex max-h-[94%] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-white/70 bg-[#fffaf1] shadow-[0_24px_80px_rgba(20,15,10,.28)] sm:flex-row" onClick={event => event.stopPropagation()}>
+      <div className="relative flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-[20px] border border-white/70 bg-[#fffaf1] shadow-[0_24px_80px_rgba(20,15,10,.28)] sm:flex-row" onClick={event => event.stopPropagation()}>
         <button onClick={() => setSelectedPhotoId(null)} className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-[#f7f2e8]/90 text-[#7c6b58]" aria-label="关闭"><X size={16}/></button>
-        <div className="flex max-h-[46vh] min-h-[220px] items-center justify-center bg-[#e7dfd2] sm:max-h-none sm:min-h-0 sm:w-1/2">
+        <div className="flex h-[34dvh] max-h-[34dvh] min-h-[140px] shrink-0 items-center justify-center overflow-hidden bg-[#e7dfd2] p-2 sm:h-auto sm:max-h-none sm:min-h-0 sm:w-1/2">
           <PhotoLarge refId={selectedPhoto.mediaRef} title={selectedPhoto.title}/>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-6 sm:px-6 sm:pt-8">
+        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-5 pb-5 pt-6 sm:px-6 sm:pt-8" style={{ WebkitOverflowScrolling: "touch" }}>
           <div className="text-[10px] tracking-[.25em] text-[#aa987f]">{selectedPhoto.ownerName.toUpperCase()} · {KIND_LABEL[selectedPhoto.kind]}</div>
           {photoViewOnly ? <h2 className="mt-3 font-serif text-xl text-[#5b4d3e]">{selectedPhoto.title || "未命名的瞬间"}</h2> : <input value={editTitle} onChange={event => setEditTitle(event.target.value)} className="mt-3 w-full border-b border-[#dfd3c1] bg-transparent pb-2 font-serif text-xl text-[#5b4d3e] outline-none focus:border-[#9e8b70]" placeholder="给这张照片起个名字"/>}
           <p className="mt-2 text-[10px] tracking-wider text-[#a39583]">{formatDate(selectedPhoto.createdAt)}</p>
-          <label className="mt-5 block text-[10px] tracking-[.2em] text-[#9a8973]">背面手记 / THE BACK OF THE PHOTO</label>
+          {photoViewOnly && <button type="button" onClick={() => { setPhotoViewOnly(false); setEditTitle(selectedPhoto.title); setEditNote(selectedPhoto.backNote); setEditTags(selectedPhoto.tags.join("、")); }} className="mt-3 self-start rounded-full border border-[#cbbba6] px-3 py-2 text-xs text-[#796952]">编辑这张照片</button>}
+          <label className="mt-5 block text-[10px] tracking-[.2em] text-[#9a8973]">背面手记</label>
           {photoViewOnly ? <p className="mt-2 whitespace-pre-wrap rounded-sm bg-[#fcf9f2] p-3 font-serif text-sm leading-6 text-[#655647]">{selectedPhoto.backNote || selectedPhoto.caption || "还没有写下手记。"}</p> : <textarea value={editNote} onChange={event => setEditNote(event.target.value)} rows={4} placeholder="写下当时的天气、心情，或一个只有你们懂的细节……" className="mt-2 w-full resize-y rounded-sm border border-[#e6dccd] bg-[#fcf9f2] p-3 font-serif text-sm leading-6 text-[#655647] outline-none placeholder:text-[#c1b5a4] focus:border-[#b5a18a]"/>}
           <label className="mt-3 block text-[10px] tracking-[.2em] text-[#9a8973]">标签 · TAGS</label>
           {photoViewOnly ? <p className="mt-2 text-xs text-[#8d7a65]">{selectedPhoto.tags.length ? selectedPhoto.tags.map(tag => `#${tag}`).join("　") : "暂无标签"}</p> : <input value={editTags} onChange={event => setEditTags(event.target.value)} placeholder="用逗号分隔，比如：雨天、回家、幸福" className="mt-2 w-full rounded-sm border border-[#e6dccd] bg-[#fcf9f2] px-3 py-2 text-xs outline-none focus:border-[#b5a18a]"/>}
           {!photoViewOnly && <><label className="mt-3 flex items-center gap-2 text-xs text-[#857460]"><input type="checkbox" checked={selectedPhoto.shareWithCharacters} onChange={event => persist({ ...state, photos: state.photos.map(photo => photo.id === selectedPhoto.id ? { ...photo, shareWithCharacters: event.target.checked } : photo) })} className="accent-[#87565b]"/>允许角色看到这张照片及背面记录</label>
           <div className="mt-4 flex gap-2"><button onClick={saveBack} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[#87565b] px-3 py-2.5 text-xs tracking-wider text-white"><Check size={14}/>保存背面</button><button onClick={() => void deleteSelectedPhoto()} className="grid h-10 w-10 place-items-center rounded-full border border-[#e3d7c6] text-[#9c7566]" aria-label="删除照片"><Trash2 size={15}/></button></div></>}
           <div className="mt-6 border-t border-[#e3d7c6] pt-4">
-            <div className="flex items-center justify-between"><div className="font-serif text-base">留在照片背面的字</div><span className="text-[10px] text-[#aa9a86]">{selectedPhoto.annotations.length} 条批注</span></div>
+            <div className="flex items-center justify-between"><div className="font-serif text-base">背面留言（与手记同属这张卡片）</div><span className="text-[10px] text-[#aa9a86]">{selectedPhoto.annotations.length} 条批注</span></div>
             {selectedPhoto.annotations.length > 0 ? <div className="mt-3 space-y-3">{selectedPhoto.annotations.map(note => <div key={note.id} className={`border-l-2 pl-3 py-1 ${note.authorType==="character"?"border-[#b88c82]":"border-[#c7a58b]"}`}><div className="flex items-baseline justify-between gap-2"><span className="text-xs text-[#786954]">{note.authorName}</span><span className="text-[9px] text-[#b0a18e]">{new Date(note.createdAt).toLocaleDateString("zh-CN")}</span></div><p className="mt-1 whitespace-pre-wrap font-serif text-sm leading-6 text-[#655647]">{note.content}</p></div>)}</div> : <p className="mt-2 text-xs leading-5 text-[#a19380]">{photoViewOnly ? "还没有留下批注。" : "还没有人写下批注。可以先写一句，也可以请角色来看看。"}</p>}
             {!photoViewOnly && <>
             <textarea value={annotationDraft} onChange={event => setAnnotationDraft(event.target.value)} rows={2} placeholder="给这张照片留一句话…" className="mt-4 w-full resize-none rounded-sm border border-[#e6dccd] bg-[#fcf9f2] p-3 text-xs leading-5 outline-none placeholder:text-[#c1b5a4]"/>
