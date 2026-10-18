@@ -602,8 +602,19 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const start = mondayStart(resolveActorLifeNow(getActorClock(current, "character", character.id)));
       const end = new Date(start.getTime()); end.setDate(end.getDate() + 7);
       const locations = current.locations.map(p => "- " + p.name + ((p.aliases?.length ?? 0) ? "（别名：" + p.aliases!.join("、") + "）" : "") + (p.characterHabits?.[character.id] ? "；角色习惯：" + p.characterHabits[character.id] : "")).join("\n");
-      const memories = current.memories.filter(m => m.participants.includes(character.id) || m.participants.includes(PLAYER_ID)).slice(0, 12).map(m => "- " + m.fact).join("\n") || "暂无共同记忆";
-      const events = current.timeline.filter(t => t.actorId === character.id || t.actorName === character.name).slice(-18).map(t => "- " + t.occurredAt + "｜" + t.title + (t.details ? "：" + t.details : "")).join("\n") || "暂无个人生活记录";
+      const memories = current.memories
+        .filter(m => m.participants.includes(character.id) && m.participants.includes(PLAYER_ID))
+        .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+        .slice(0, 12)
+        .reverse()
+        .map(m => "- " + m.fact).join("\n") || "暂无共同记忆";
+      const events = current.timeline
+        .filter(t => t.actorId === character.id || t.actorName === character.name || (t.actorId === PLAYER_ID && t.category === "social"))
+        .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+        .slice(0, 18)
+        .reverse()
+        .map(t => "- " + t.occurredAt + "｜" + t.title + (t.details ? "：" + t.details : "")).join("\n") || "暂无近期个人生活记录";
+      const characterWorldBook = getCharacterWorldBookContext(character.id);
       const protectedSlots = current.schedules.filter(slot => slot.ownerType === "character" && slot.ownerId === character.id && slot.startAt < end.toISOString() && slot.endAt > start.toISOString() && slot.source !== "weekly-generation");
       const fixed = protectedSlots.map(slot => "- " + slot.startAt + "—" + slot.endAt + "：" + slot.title + "（必须保留且不可冲突）").join("\n") || "无固定安排";
       const session = createLifeVirtualSession(character.id, character.name);
@@ -613,6 +624,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           "为生活模拟系统生成角色未来七天日程。请按角色差异化思考，不可让所有角色套用相同模板。",
           "角色：" + character.name, "角色卡：" + (character.persona || "未填写"), "性格：" + (character.personality || "未填写"), "标签：" + (character.tags ?? []).join("、"),
           "用户补充规则：" + (activePromptPreset.scheduleGenerationPrompt || "无"),
+          "小手机当前预设规则：\n" + (activePromptPresetText || "无额外规则"),
+          "世界书中与该角色相关的背景：\n" + (characterWorldBook || "暂无相关世界书条目"),
           "近期共同记忆：\n" + memories, "近期个人记录：\n" + events, "允许地点（只选这些）：\n" + locations, "必须保留的固定安排：\n" + fixed,
           "时间范围：从 " + start.toLocaleDateString("sv-SE") + " 开始的七天；dayOffset 0 为第一天，6 为第七天。",
           "只输出合法 JSON 数组，不要 Markdown。项目格式：{\"dayOffset\":0,\"start\":\"07:30\",\"end\":\"08:30\",\"title\":\"起床洗漱与早餐\",\"kind\":\"habit\",\"location\":\"家\"}。kind 只能是 habit、work、study、meal、commute、free-time、appointment、special。时间使用 HH:mm。",
@@ -2753,7 +2766,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         </div>
       </section>}
       {tab === "plans" && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3"><SectionTitle eyebrow="Weekly plans" title="未来七天的生活日程" note="这里为你显示角色每天大致会去的地点，不展示角色具体时段；计划只是线索，不能保证 TA 一定在场。自己的日程仍可查看和编辑精确时间。" /><button onClick={ensurePlans} className="inline-flex items-center gap-2 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white"><RefreshCw size={14}/>检查并补全</button></div>
+        <div className="flex flex-wrap items-start justify-between gap-3"><SectionTitle eyebrow="Weekly plans" title="你和角色的七日日程" note="这里按人分组：你自己的日程显示具体时间；角色只显示日期、活动和地点线索，不显示具体时段。计划不是保证，是否真的遇见 TA 取决于当前实际位置、角色自己的决定和现场情况。" /><button onClick={ensurePlans} className="inline-flex items-center gap-2 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white"><RefreshCw size={14}/>检查并补全</button></div>
         {actors.map(actor=>{const virtualNow=actorNow(actor);const slots=state.schedules.filter(slot=>slot.ownerType===actor.ownerType&&slot.ownerId===actor.ownerId).sort((a,b)=>a.startAt.localeCompare(b.startAt));return <div key={`${actor.ownerType}:${actor.ownerId}`} className="mb-5"><div className="mb-2 flex items-center justify-between gap-2"><h3 className="flex items-center gap-2 text-sm font-semibold"><span className="h-2 w-2 rounded-full bg-[var(--life-accent)]"/>{actor.name}<span className="text-xs font-normal text-stone-400">{slots.length} 条安排</span></h3>{actor.ownerType === "character" && <button type="button" disabled={scheduleRegenerationOwnerId !== null} onClick={() => void regenerateActorScheduleWithAI(actor)} className="rounded-xl border border-[var(--life-accent)]/40 bg-white px-3 py-2 text-xs text-[var(--life-accent)] disabled:opacity-50">{scheduleRegenerationOwnerId === actor.ownerId ? "AI 正在规划…" : "AI 重新生成"}</button>}<button type="button" onClick={()=>addManualPlan(actor)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">＋ 添加日程</button></div>{slots.length===0?<p className="rounded-xl bg-white/60 p-3 text-sm text-stone-400">还没有日程，可以直接添加，也可以点击「检查并补全」。</p>:<div className="space-y-3">{slots.filter(slot=>new Date(slot.endAt).getTime()>virtualNow.getTime()-DAY_MS).slice(0,40).map(slot=><div key={slot.id} className="rounded-xl border border-stone-200/70 bg-white/65 p-3">{actor.ownerType === "character" ? <div className="rounded-2xl border border-[#d9c2ae]/70 bg-[#fffaf5]/85 p-3">
                 <div className="flex items-center justify-between gap-2"><span className="rounded-full border border-[#ddcbb7] bg-white px-2.5 py-1 text-[10px] text-[#92735e]">{new Date(slot.startAt).toLocaleDateString("zh-CN",{month:"long",day:"numeric",weekday:"short"})}</span><span className="text-[10px] text-stone-400">行程线索</span></div>
                 <p className="mt-2 text-sm font-medium text-stone-700">{slot.title}</p>
