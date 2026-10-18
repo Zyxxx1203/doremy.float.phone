@@ -107,9 +107,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       return;
     }
     const rect = wall.getBoundingClientRect();
-    // 必须在墙容器上捕获指针：move/up 都监听在墙容器，若捕获到照片节点，
-    // 后续 pointermove 会被路由到那个节点，墙上的 handler 收不到，拖动就失效了。
-    wall.setPointerCapture(event.pointerId);
+    // 不在 pointerdown 时抢占指针，否则普通轻触的 click 会落到墙容器上，
+    // 照片卡片收不到 click，用户就无法翻面。只有真正开始拖动时再捕获。
     dragRef.current = {
       id: photo.id,
       pointerId: event.pointerId,
@@ -129,7 +128,12 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     if (!drag || drag.pointerId !== event.pointerId) return;
     const dx = event.clientX - drag.startX;
     const dy = event.clientY - drag.startY;
-    if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+    if (!drag.moved) {
+      if (Math.abs(dx) + Math.abs(dy) <= 3) return;
+      drag.moved = true;
+      const wall = wallRef.current;
+      if (wall && !wall.hasPointerCapture(event.pointerId)) wall.setPointerCapture(event.pointerId);
+    }
     if (drag.mode === "move") {
       const nextX = Math.min(0.98, Math.max(0.02, drag.base.x + dx / drag.wallWidth));
       const nextY = Math.min(0.98, Math.max(0.02, drag.base.y + dy / drag.wallHeight));
@@ -146,6 +150,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     if (!drag || drag.pointerId !== event.pointerId) return;
     suppressClickRef.current = drag.moved;
     dragRef.current = null;
+    if (drag.moved) window.setTimeout(() => { suppressClickRef.current = false; }, 0);
   };
 
   /* ── 涂鸦绘制 ─────────────────────────────────── */
@@ -344,7 +349,8 @@ function WallPhotoFrame({ photo, placement, selected, flipped, onToggleFlip, doo
       {flipped ? <div className="relative flex w-full flex-col overflow-y-auto rounded-sm bg-[#fffaf2] p-2.5 text-[#6b5947]" style={{ aspectRatio: "1 / 1", borderRadius: frame === "none" ? 2 : 1 }}>
         <div className="border-b border-[#dfcfbe] pb-1 text-[7px] tracking-[.2em] text-[#a58f77]">THE BACK · 背面</div>
         <div className="mt-1 break-words text-[9px] font-semibold leading-snug">{photo.title || "未命名的瞬间"}</div>
-        <p className="mt-1 whitespace-pre-wrap break-words text-[8px] leading-relaxed">{photo.backNote?.trim() || "这张照片的背面还空着。可以点工具栏的「看大图 / 背面」查看和编辑。"}</p>
+        <p className="mt-1 whitespace-pre-wrap break-words text-[8px] leading-relaxed">{photo.backNote?.trim() || "还没有写下手记。打开详情可编辑背面内容。"}</p>
+        {photo.caption?.trim() && <p className="mt-1 break-words border-t border-[#e8dccd] pt-1 text-[7px] leading-snug">照片说明：{photo.caption}</p>}
         {photo.annotations.length > 0 && <div className="mt-auto border-t border-[#e8dccd] pt-1">{photo.annotations.slice(-2).map(note => <p key={note.id} className="mt-0.5 break-words text-[7px] leading-snug"><span className="font-semibold">{note.authorName}：</span>{note.content}</p>)}</div>}
       </div> : <>
       <div className="relative overflow-hidden bg-[#e7dfd2]" style={{ aspectRatio: "1 / 1", borderRadius: frame === "none" ? 2 : 1 }}>
