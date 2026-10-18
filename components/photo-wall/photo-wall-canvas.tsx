@@ -214,7 +214,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     <div
       ref={wallRef}
       className="photo-wall-surface relative w-full select-none overflow-hidden rounded-[2px] border border-[#d8c4b0] shadow-[inset_0_1px_0_rgba(255,255,255,.7),0_10px_24px_rgba(88,70,48,.1)]"
-      style={{ aspectRatio: "4 / 5", touchAction: readOnly ? "pan-y pinch-zoom" : "none", backgroundImage: "radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.38),transparent 52%),linear-gradient(145deg,#f2e7d7 0%,#eee1cf 48%,#e8dac6 100%)" }}
+      style={{ aspectRatio: "4 / 5", touchAction: readOnly ? "auto" : "none", backgroundImage: "radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.38),transparent 52%),linear-gradient(145deg,#f2e7d7 0%,#eee1cf 48%,#e8dac6 100%)" }}
       onPointerMove={readOnly ? undefined : handlePointerMove}
       onPointerUp={readOnly ? undefined : endDrag}
       onPointerCancel={readOnly ? undefined : endDrag}
