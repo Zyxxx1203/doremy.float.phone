@@ -217,11 +217,11 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       {/* 屏幕：房间里唯一的光源 */}
       <section
         ref={playerRef}
-        className={`relative mx-auto w-full max-w-3xl overflow-hidden rounded-[26px] border border-white/10 bg-[#0d0b09] ${fullScreen ? "h-screen max-w-none rounded-none" : ""}`}
+        className={`relative mx-auto w-full max-w-3xl overflow-hidden rounded-[26px] border border-white/10 bg-[#0d0b09] ${fullScreen ? "h-[100dvh] max-w-none rounded-none" : ""}`}
         style={{ boxShadow: "0 0 0 1px rgba(255,214,170,.06), 0 28px 70px rgba(0,0,0,.6), 0 0 120px rgba(201,143,82,.16)" }}
       >
         {target?.embedUrl ? (
-          <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className="aspect-video w-full border-0" />
+          <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className={`${fullScreen ? "h-full w-full aspect-auto" : "aspect-video w-full"} border-0`} />
         ) : (
           <div className="flex aspect-video flex-col items-center justify-center px-6 text-center">
             <div className="grid h-16 w-16 place-items-center rounded-full border border-white/15 bg-white/5 text-[#d9b489]">
