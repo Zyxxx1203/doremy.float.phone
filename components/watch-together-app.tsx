@@ -259,14 +259,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
       <div className="absolute -left-24 top-10 h-72 w-72 rounded-full opacity-40 blur-3xl" style={{ background: "radial-gradient(circle, #c98f52 0%, transparent 70%)" }} />
-      <div className="absolute -right-20 top-1/3 h-80 w-80 rounded-full opacity-25 blur-3xl" style={{ background: "radial-gradient(circle, #7a6a9a 0%, transparent 70%)" }} />
+      <div className="absolute -right-20 top-1/3 h-80 w-80 rounded-full opacity-25 blur-3xl" style={{ background: "radial-gradient(circle, #c99a78 0%, transparent 70%)" }} />
     </div>
 
     <header className="relative z-[1010] flex shrink-0 items-center gap-3 px-4 pb-3 text-[#4e3a2b]" style={{ paddingTop: "max(12px, var(--page-header-safe-top, 48px))" }}>
       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onClose(); }} className="grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-white/10 bg-white/5 text-[#e6d8c4] backdrop-blur transition active:scale-95" aria-label="返回"><ArrowLeft size={17}/></button>
       <div className="min-w-0 flex-1">
-        <div className="font-serif text-lg tracking-[.14em]">一起看 · 客厅</div>
-        <div className="truncate text-[10px] tracking-[.12em] text-[#806b57]">把喜欢的内容放上电视，和 TA 慢慢看</div>
+        <div className="whitespace-nowrap font-serif text-lg tracking-[.08em]">一起看 · 同频</div>
+        <div className="truncate whitespace-nowrap text-[10px] tracking-[.08em] text-[#806b57]">把喜欢的内容放上屏幕，和 TA 边看边聊</div>
       </div>
       {character && <div className="flex shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-2.5 py-1.5">
         <span className="grid h-6 w-6 place-items-center overflow-hidden rounded-full bg-[#4a3d33] text-[10px] text-[#e6d8c4]">{character.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character.name.slice(0, 1)}</span>
@@ -291,7 +291,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </div>
             <div className="mt-5 font-serif text-lg tracking-wide text-[#efe2d0]">{target ? `${target.platformName}需要外部打开` : "把想看的放上屏幕"}</div>
             <p className="mt-2 max-w-xs text-[11px] leading-6 text-[#9c9086]">
-              {target ? "这个平台没有稳定的通用嵌入方式。打开原视频后回来，TA 依然会陪着你聊。" : "粘贴一个视频链接，关灯，把这段夜晚交给你们两个人。"}
+              {target ? "这个平台没有稳定的通用嵌入方式。打开原视频后回来，TA 依然会陪着你聊。" : "粘贴一个视频链接，找个舒服的时刻，把这一段时间留给你们两个人。"}
             </p>
             {target && <button onClick={() => window.open(target.url, "_blank", "noopener,noreferrer")} className="mt-5 flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-4 py-2 text-xs text-[#e6d8c4] transition active:scale-95"><ExternalLink size={13}/>打开原视频</button>}
           </div>
