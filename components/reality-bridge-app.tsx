@@ -2566,7 +2566,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
             </div>
             ) : null}
 
-            {(flatRuleEditor || wizStep === 4) ? (
+            {(flatRuleEditor || wizStep === 4 || wizStep === 5) ? (
             <div className="rb-wiz-page">
             <p className="rb-wiz-tip">收到的原始内容（比如整条短信）交给角色前，可以先加工一下：</p>
             <div className="rb-seg">
