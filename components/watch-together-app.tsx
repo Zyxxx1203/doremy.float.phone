@@ -68,6 +68,18 @@ function saveSettings(settings: WatchSettings): void {
   kvSet(SETTINGS_KEY, JSON.stringify(settings));
 }
 
+/** Screen orientation locking is not included in every TypeScript DOM lib/browser. */
+async function tryLockLandscape(): Promise<void> {
+  try {
+    const orientation = screen.orientation as ScreenOrientation & {
+      lock?: (value: "landscape") => Promise<void>;
+    };
+    await orientation.lock?.("landscape");
+  } catch {
+    // Orientation locking is optional; immersive playback still works without it.
+  }
+}
+
 export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [settings, setSettings] = useState<WatchSettings>(() => loadSettings());
@@ -198,16 +210,16 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     }
     if (typeof element.requestFullscreen !== "function" || document.fullscreenEnabled === false) {
       setFullScreen(true);
-      try { await screen.orientation?.lock?.("landscape"); } catch { /* not supported on every device */ }
+      await tryLockLandscape();
       onNotice?.("当前环境不支持系统全屏，已切换沉浸式布局；再次点击右上角按钮可退出。");
       return;
     }
     try {
       await element.requestFullscreen();
-      try { await screen.orientation?.lock?.("landscape"); } catch { /* orientation lock is optional */ }
+      await tryLockLandscape();
     } catch {
       setFullScreen(true);
-      try { await screen.orientation?.lock?.("landscape"); } catch { /* not supported on every device */ }
+      await tryLockLandscape();
       onNotice?.("系统拒绝了原生全屏，已切换沉浸式布局；再次点击右上角按钮可退出。");
     }
   };
