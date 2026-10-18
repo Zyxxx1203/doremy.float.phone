@@ -377,7 +377,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       </section>
 
       {/* 没有视频时：链接输入放在「屏幕」下方，像往播放器里投一块碟 */}
-      {(!target || target.platformName !== "本地视频") && <div className="watch-link-panel mx-auto mt-4 w-full max-w-3xl rounded-3xl border border-[#b89979]/30 bg-[#fff8ed]/75 p-3 shadow-[0_12px_30px_rgba(96,67,43,.08)] backdrop-blur sm:p-4">
+      <div className="watch-link-panel mx-auto mt-4 w-full max-w-3xl rounded-3xl border border-[#b89979]/30 bg-[#fff8ed]/75 p-3 shadow-[0_12px_30px_rgba(96,67,43,.08)] backdrop-blur sm:p-4">
         <div className="flex flex-col gap-2 sm:flex-row">
           <input value={urlInput} onChange={event => setUrlInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter") openVideo(); }} placeholder="粘贴视频链接；短视频分享链接不保证能自动内嵌" className="min-w-0 flex-1 rounded-2xl border border-[#dac6ad] bg-white/90 px-4 py-3.5 text-sm text-[#554437] outline-none placeholder:text-[#a09383] focus:border-[#b88768] focus:ring-2 focus:ring-[#c99a6a]/15" />
           <button onClick={openVideo} className="rounded-2xl px-5 py-3.5 text-sm font-semibold tracking-wide text-[#2a1f16] shadow-sm transition hover:brightness-[1.02] active:scale-[.98]" style={{ background: "linear-gradient(135deg,#f0d0a8,#c99a6a)" }}>放上屏幕</button>
@@ -385,8 +385,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         </div>
         <input ref={videoFileInputRef} type="file" accept="video/*,.mp4,.webm,.mov,.m4v,.ogv" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; openLocalVideo(file); }} />
         {target && target.platformName !== "本地视频" && !target.embedUrl && <p className="mt-2 rounded-xl bg-[#f4e7d6] px-3 py-2 text-xs leading-5 text-[#82644c]">这个平台没有可靠的网页内嵌源。选择已保存的视频文件后仍可在这里播放，再继续和角色讨论。</p>}
+        {target?.platformName === "本地视频" && <p className="mt-2 px-1 text-[11px] leading-5 text-[#8b7665]">当前播放的是本地文件；选择新文件或输入链接可以切换视频。</p>}
         {platformNote && <p className="mt-2 px-1 text-[11px] leading-5 text-[#8b7665]">{platformNote}</p>}
-      </div>}
+      </div>
 
       {/* 角色在屏幕下方轻声说话 */}
       <section className="watch-interaction-panel mx-auto mt-4 w-full max-w-3xl">
