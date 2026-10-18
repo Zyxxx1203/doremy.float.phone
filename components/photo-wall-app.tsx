@@ -137,7 +137,6 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
   const [wallView, setWallView] = useState<"panorama" | "timeline" | "edit">("panorama");
-  const [panoramaZoom, setPanoramaZoom] = useState(100);
   const [selectedCharacterId, setSelectedCharacterId] = useState("");
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   const [editNote, setEditNote] = useState("");
@@ -605,14 +604,15 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       <div className="min-w-0 flex-1"><div className="font-serif text-xl tracking-[.12em]">照片墙</div><div className="mt-0.5 text-[10px] tracking-[.2em] text-[#a09380]">A LITTLE ARCHIVE OF US · {photos.length} PHOTOS</div></div>
       {wallView === "edit" && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowSettings(value => !value); }} className="relative z-[1002] pointer-events-auto min-h-11 cursor-pointer touch-manipulation rounded-2xl border border-[#ded5c7] bg-white/75 px-4 py-2 text-xs tracking-wider text-[#85735f] shadow-sm transition hover:bg-white active:scale-95">设置</button>}
       {wallView === "edit" && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAddMenu(value => !value); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 cursor-pointer touch-manipulation place-items-center rounded-2xl bg-gradient-to-br from-[#9ba68e] to-[#6f7d65] text-white shadow-[0_8px_18px_rgba(92,109,81,.25)] transition hover:-translate-y-0.5 active:scale-95" aria-label="添加照片"><Plus size={18}/></button>}
-      <button type="button" onClick={() => setWallView("edit")} className="rounded-xl bg-[#78866d] px-3 py-2 text-xs text-white">{wallView === "edit" ? "编辑中" : "进入编辑"}</button>
+      {wallView !== "edit" && <button type="button" onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-[#ded5c7] bg-white/80 text-[#7b6a58] disabled:opacity-40" aria-label="导出整墙 PNG"><Download size={17}/></button>}
+      {wallView !== "edit" && <button type="button" onClick={() => setWallView("edit")} className="rounded-xl bg-[#78866d] px-3 py-2 text-xs text-white">进入编辑</button>}
+      {wallView === "edit" && <span className="rounded-xl bg-[#78866d]/10 px-3 py-2 text-xs text-[#78866d]">编辑模式</span>}
     </header>
 
-    <nav className="z-[1002] flex shrink-0 items-center justify-center gap-2 border-t border-[#ded5c7] bg-[#fffaf1]/95 px-3 py-2 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur">
+    {wallView !== "edit" && <nav className="absolute bottom-0 left-0 right-0 z-[1002] flex shrink-0 items-center justify-center gap-2 border-t border-[#ded5c7] bg-[#fffaf1]/95 px-3 py-2 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur">
       <button type="button" onClick={() => setWallView("panorama")} className={`rounded-full px-4 py-2 text-xs ${wallView==="panorama"?"bg-[#78866d] text-white":"text-[#85735f]"}`}>全景墙</button>
       <button type="button" onClick={() => setWallView("timeline")} className={`rounded-full px-4 py-2 text-xs ${wallView==="timeline"?"bg-[#78866d] text-white":"text-[#85735f]"}`}>时间轴海报</button>
-      <button type="button" onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="rounded-full border border-[#cbbba6] bg-white px-3 py-2 text-xs text-[#7a6a56] disabled:opacity-40">{exportBusy ? "导出中…" : "导出 PNG"}</button>
-    </nav>
+    </nav>}
     {wallView === "edit" && showAddMenu && <div className="absolute right-4 top-[62px] z-30 w-56 rounded-2xl border border-[#e4d9c9] bg-[#fffdf8] p-2 shadow-xl">
       <button onClick={() => { setShowAddMenu(false); fileRef.current?.click(); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-[#f3ede2]"><ImagePlus size={17}/>收藏我的照片</button>
       <button onClick={() => void openChatPicker()} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-[#f3ede2]"><Heart size={17}/>从聊天收藏照片</button>
@@ -621,7 +621,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     </div>}
     <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={event => { if (event.target.files) void uploadFiles(event.target.files); event.currentTarget.value = ""; }}/>
 
-    <main className="min-h-0 flex-1 overflow-y-auto">
+    <main className={wallView === "edit" ? "min-h-0 flex-1 overflow-y-auto" : "min-h-0 flex-1 overflow-hidden"}>
       {wallView === "edit" ? <>
       <section className="relative mx-4 mt-4 overflow-hidden rounded-[28px] border border-white/80 bg-gradient-to-br from-[#fffaf0] via-[#f4eadc] to-[#e6eadf] px-5 pb-6 pt-6 shadow-[0_12px_32px_rgba(93,75,52,.08)] sm:mx-7 sm:px-8">
         <div className="pointer-events-none absolute -right-6 -top-10 h-48 w-48 rounded-full border border-[#d6cbb9]/70"/><div className="pointer-events-none absolute -right-1 top-0 h-36 w-36 rounded-full border border-[#d6cbb9]/50"/>
@@ -703,19 +703,17 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           : <div className="mx-auto flex max-w-sm flex-col items-center px-6 py-16 text-center"><div className="grid h-16 w-16 place-items-center rounded-full border border-[#ddd0bd] text-[#a0917d]"><Feather size={24}/></div><h2 className="mt-5 font-serif text-xl font-normal">这面墙还空着</h2><p className="mt-2 text-xs leading-6 text-[#968674]">先收藏一张你喜欢的照片。之后，角色也会把自己想珍藏的风景、自拍和生活片段慢慢放进来。</p><button onClick={() => fileRef.current?.click()} className="mt-5 rounded-full border border-[#b7a48c] px-5 py-2.5 text-xs tracking-wider text-[#786953]">收藏第一张照片</button></div>}
       </section>
 
-      </> : wallView === "panorama" ? <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-20 pt-3 sm:px-6">
-        <div className="flex min-h-0 flex-1 items-start justify-center overflow-auto overscroll-contain rounded-[26px] border border-[#ded5c7] bg-[#f4eadc] p-2 shadow-inner" style={{WebkitOverflowScrolling:"touch"}}>
-          <div className="shrink-0" style={{width:`${panoramaZoom}%`, minWidth: panoramaZoom < 100 ? "60%" : "100%", maxWidth:"none"}}>
+      </> : wallView === "panorama" ? <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-16 pt-2 sm:px-6">
+        <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto overscroll-contain rounded-[26px] p-3 sm:p-5" style={{WebkitOverflowScrolling:"touch", backgroundImage:"radial-gradient(ellipse at 50% 20%,rgba(255,255,255,.72),transparent 68%),linear-gradient(145deg,#f5ead9,#e7dac7)", touchAction:"pan-x pan-y"}}>
+          <div className="shrink-0" style={{width:"100%", maxWidth:"560px"}}>
             <PhotoWallCanvas photos={photos} selectedId={null} onSelect={() => setWallView("edit")} onChangePlacement={changePlacement} onChangeDoodles={changeDoodles} onOpenDetail={photo => openPhoto(photo)} readOnly panorama />
           </div>
         </div>
-        <div className="mt-2 flex shrink-0 items-center gap-3 rounded-xl border border-[#ded5c7] bg-white/70 px-3 py-2"><span className="shrink-0 text-[11px] text-[#85735f]">全景缩放</span><button type="button" onClick={()=>setPanoramaZoom(v=>Math.max(70,v-10))} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-sm" aria-label="缩小全景">−</button><input aria-label="全景缩放比例" type="range" min="70" max="180" step="10" value={panoramaZoom} onChange={e=>setPanoramaZoom(Number(e.target.value))} className="min-w-0 flex-1 accent-[#78866d]"/><button type="button" onClick={()=>setPanoramaZoom(v=>Math.min(180,v+10))} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-sm" aria-label="放大全景">＋</button><span className="w-10 shrink-0 text-right text-[10px] text-[#85735f]">{panoramaZoom}%</span><button type="button" onClick={()=>setPanoramaZoom(100)} className="shrink-0 text-[10px] text-[#78866d]">重置</button></div>
-        {!photos.length && <div className="pointer-events-none absolute inset-x-8 top-1/2 -translate-y-1/2 text-center text-sm text-[#897965]">这面墙还空着。点击「进入编辑」来添加照片。</div>}
-        <button type="button" onClick={() => setWallView("edit")} className="absolute bottom-24 right-5 rounded-full bg-[#78866d] px-5 py-3 text-sm font-medium text-white shadow-lg">进入编辑</button>
+        {!photos.length && <div className="pointer-events-none absolute inset-x-8 top-1/2 -translate-y-1/2 text-center"><p className="font-serif text-lg text-[#76634e]">一面空白的奶油墙</p><p className="mt-2 text-xs text-[#95836c]">点击「进入编辑」来添加照片</p></div>}
       </div> : <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-24 pt-4 sm:px-7" style={{WebkitOverflowScrolling:"touch"}}>
         {photos.length === 0 ? <div className="grid min-h-[55dvh] place-items-center text-center text-[#8f806d]"><div><Feather size={28} className="mx-auto"/><p className="mt-3">还没有收录的回忆</p><p className="mt-1 text-xs">进入编辑，添加第一张照片。</p></div></div> : <div className="mx-auto max-w-2xl space-y-6">
-          {[...new Set(photos.map(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return Number.isNaN(date.getTime()) ? "未知时间" : date.toLocaleDateString("zh-CN", {year:"numeric",month:"2-digit"}); }))].map(group => {
-            const items = photos.filter(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return (Number.isNaN(date.getTime()) ? "未知时间" : date.toLocaleDateString("zh-CN", {year:"numeric",month:"2-digit"})) === group; });
+          {[...new Set([...photos].sort((a,b)=>(b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt)).map(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return Number.isNaN(date.getTime()) ? "未知时间" : date.toLocaleDateString("zh-CN", {year:"numeric",month:"2-digit"}); }))].map(group => {
+            const items = photos.filter(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return (Number.isNaN(date.getTime()) ? "未知时间" : date.toLocaleDateString("zh-CN", {year:"numeric",month:"2-digit"})) === group; }).sort((a,b)=>(b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt));
             return <section key={group} className="relative pl-5 before:absolute before:bottom-0 before:left-1 before:top-8 before:w-px before:bg-[#d8c4ab]">
               <h2 className="sticky top-0 z-10 mb-3 rounded-xl bg-[#f3eadc]/95 px-3 py-2 font-serif text-base text-[#75624d] backdrop-blur">{group}</h2>
               <div className="space-y-4">{items.map((photo,index) => <button type="button" key={photo.id} onClick={() => openPhoto(photo)} className="relative block w-full rounded-[22px] border border-[#e5d7c5] bg-[#fffaf1] p-3 text-left shadow-[0_8px_22px_rgba(90,67,42,.08)]">
