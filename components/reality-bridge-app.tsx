@@ -1108,6 +1108,27 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     setRuleTestResult(null);
   }, [characters]);
 
+
+  /** 一键补齐当前已实现的本机感知规则。新装规则默认关闭，避免首次进入就突然刷消息。 */
+  const installPerceptionRules = useCallback(() => {
+    const characterId = characters[0]?.id ?? "";
+    if (!characterId) {
+      onNotice?.("请先创建至少一个角色，再安装感知规则");
+      return;
+    }
+    const templates = RULE_SCENE_TEMPLATES.filter(template => template.tag === "本机信号");
+    const existingNames = new Set(rules.map(rule => rule.name));
+    const additions = templates
+      .filter(template => !existingNames.has(template.build({ characterId }).name))
+      .map(template => ({ ...template.build({ characterId }), enabled: false }));
+    if (additions.length === 0) {
+      onNotice?.("本机感知规则已经齐全，没有重复添加");
+      return;
+    }
+    persistRules([...rules, ...additions].slice(0, 100));
+    onNotice?.(`已添加 ${additions.length} 条感知规则，默认关闭；请逐条检查角色、关键词、阈值和权限后再开启`);
+  }, [characters, rules, persistRules, onNotice]);
+
   /**
    * 试跑当前编辑中的规则：真的执行一遍「加工 → 动作」。
    *
@@ -2163,7 +2184,10 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                     >{tpl.title}</button>
                   ))}
                 </div>
-                <p className="rb-hint">也可以不理它，直接在下面自己配。</p>
+                <button type="button" className="rb-btn" style={{ marginTop: 8 }} onClick={installPerceptionRules}>
+                  一键补齐全部本机感知规则（默认关闭）
+                </button>
+                <p className="rb-hint">批量添加只创建规则，不会自动开启；你可以逐条修改角色、关键词、冷却和动作，再用卡片开关启用。也可以不理模板，直接在下面自己配。</p>
                 {/* 「操作手机」类模板会真的改手机状态，前提是设备操作总开关已经打开。
                     这里必须是**可点**的跳转：只写一句「去设置里打开」用户翻不到，
                     这正是这个页面最早的教训（见 settingsJump 的注释）。 */}
