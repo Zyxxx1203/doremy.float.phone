@@ -255,8 +255,15 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowSettings(value => !value); }} className="grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-white/10 bg-white/5 text-[#e6d8c4] backdrop-blur transition active:scale-95" aria-label="观影设置"><Settings2 size={17}/></button>
     </header>
 
-    <main className="watch-together-main relative z-[1001] min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-8">
-      {/* 屏幕：房间里唯一的光源 */}
+    <main className="watch-together-main relative z-[1001] min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-8" style={{backgroundImage:"radial-gradient(ellipse at 50% 0%,rgba(255,251,242,.72),transparent 62%)"}}>
+      <div aria-hidden className="relative mx-auto mb-3 h-16 w-full max-w-3xl overflow-hidden rounded-2xl border border-[#c8ad8e]/70 bg-gradient-to-b from-[#f7e7cc] via-[#e9c99f] to-[#cda77e] shadow-inner">
+        <div className="absolute inset-y-2 left-[8%] w-[34%] rounded-t-full border-[5px] border-[#f7f0e5]/90 bg-gradient-to-b from-[#d8e0d7] to-[#f1d4a9] shadow-[inset_0_0_22px_rgba(255,255,255,.5)]"/>
+        <div className="absolute inset-y-2 right-[8%] w-[34%] rounded-t-full border-[5px] border-[#f7f0e5]/90 bg-gradient-to-b from-[#d8e0d7] to-[#f1d4a9] shadow-[inset_0_0_22px_rgba(255,255,255,.5)]"/>
+        <div className="absolute bottom-0 left-0 right-0 h-3 bg-[#a98563]/35"/>
+        <div className="absolute bottom-2 right-[3%] h-9 w-2 rounded-full bg-[#9b7656]/60"/>
+        <div className="absolute bottom-2 right-[2%] h-2 w-5 rounded-full bg-[#9b7656]/70"/>
+      </div>
+      {/* 屏幕：电视机是客厅视觉中心，所有播放画面仍由原有播放器承载。 */}
       <section
         ref={playerRef}
         className={`watch-player relative mx-auto w-full max-w-3xl overflow-hidden rounded-[26px] border border-white/10 bg-[#0d0b09] ${fullScreen ? "fixed inset-0 z-[2000] h-[100dvh] w-screen max-w-none rounded-none" : ""}`}
@@ -302,6 +309,23 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       {/* 角色在屏幕下方轻声说话 */}
       {target && <section className="watch-interaction-panel mx-auto mt-4 w-full max-w-3xl">
         <div className="relative isolate overflow-hidden rounded-[26px] border border-[#d4a575]/20 bg-gradient-to-br from-[#49372b]/80 via-[#2d231d]/90 to-[#1c1714]/95 p-4 shadow-[inset_0_1px_0_rgba(255,224,184,.08),0_18px_44px_rgba(0,0,0,.28)] backdrop-blur-xl sm:p-5">
+          {/* 沙发场景：两个人坐在同一张沙发上面向电视，保留原有角色互动控件。 */}
+          <div className="relative z-10 mb-4 rounded-[22px] border border-[#d7b58e]/20 bg-gradient-to-b from-[#88664b]/35 to-[#3b2b20]/70 px-4 pb-3 pt-4">
+            <div className="absolute inset-x-4 bottom-2 h-8 rounded-[18px] border border-[#d7b58e]/20 bg-[#d4a477]/10"/>
+            <div className="relative flex items-end justify-between gap-3">
+              <div className="flex flex-1 flex-col items-center">
+                <div className="mb-1 rounded-full bg-[#f3dfc7] px-2.5 py-1 text-[10px] text-[#70543b] shadow-sm">我</div>
+                <div className="grid h-12 w-12 place-items-center rounded-full border-2 border-[#e9d1b3]/60 bg-gradient-to-br from-[#d7b18b] to-[#8f6848] text-lg shadow-lg">♡</div>
+                <div className="mt-1 h-5 w-20 rounded-t-[18px] border border-[#e2c29f]/25 bg-[#d3ad85]/35"/>
+              </div>
+              <div className="mb-3 rounded-full border border-[#d7b58e]/20 bg-[#f1d8b8]/10 px-3 py-1 text-[10px] text-[#ead5bb]">一起看着电视</div>
+              <div className="flex flex-1 flex-col items-center">
+                <div className="mb-1 rounded-full bg-[#f3dfc7] px-2.5 py-1 text-[10px] text-[#70543b] shadow-sm">{character?.name ?? "TA"}</div>
+                <div className="grid h-12 w-12 place-items-center overflow-hidden rounded-full border-2 border-[#e9d1b3]/60 bg-[#4a3d33] text-sm text-[#e6d8c4] shadow-lg">{character?.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character?.name.slice(0,1) ?? "♡"}</div>
+                <div className="mt-1 h-5 w-20 rounded-t-[18px] border border-[#e2c29f]/25 bg-[#a87b56]/40"/>
+              </div>
+            </div>
+          </div>
           {/* 沙发与毯子的低对比剪影：只作氛围底景，不遮挡互动控件。 */}
           <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-20 overflow-hidden opacity-70">
             <div className="absolute inset-x-0 bottom-0 h-12 rounded-t-[34px] border-t border-[#d2a477]/15 bg-gradient-to-b from-[#76543d]/25 to-[#241a15]/65"/>
