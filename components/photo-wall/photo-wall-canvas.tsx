@@ -58,6 +58,7 @@ type Props = {
   onChangeDoodles: (id: string, doodles: PhotoWallDoodle[]) => void;
   onOpenDetail: (photo: PhotoWallPhoto) => void;
   readOnly?: boolean;
+  panorama?: boolean;
 };
 
 type DragState = {
@@ -72,7 +73,7 @@ type DragState = {
   moved: boolean;
 };
 
-export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onChangeDoodles, onOpenDetail, readOnly = false }: Props) {
+export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onChangeDoodles, onOpenDetail, readOnly = false, panorama = false }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const strokeRef = useRef<{ id: string; photoId: string } | null>(null);
@@ -214,7 +215,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     <div
       ref={wallRef}
       className="photo-wall-surface relative w-full select-none overflow-hidden rounded-[26px] border border-[#e0d5c4] shadow-[inset_0_1px_0_rgba(255,255,255,.7),0_18px_40px_rgba(88,70,48,.12)]"
-      style={{ aspectRatio: "4 / 5", touchAction: readOnly ? "pan-y pinch-zoom" : "none" }}
+      style={{ aspectRatio: panorama ? "16 / 10" : "4 / 5", touchAction: readOnly ? "pan-y pinch-zoom" : "none" }}
       onPointerMove={readOnly ? undefined : handlePointerMove}
       onPointerUp={readOnly ? undefined : endDrag}
       onPointerCancel={readOnly ? undefined : endDrag}
