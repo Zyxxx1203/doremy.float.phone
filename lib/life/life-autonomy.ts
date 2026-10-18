@@ -64,11 +64,31 @@ export function evaluateLifeAutonomyWindow(input: {
   return { eligible: true, reason: "eligible", characterIds };
 }
 
-export function chooseLifeAutonomyCharacter(characterIds: string[], lastSpeakerId?: string): string | null {
+export function chooseLifeAutonomyCharacter(
+  characterIds: string[],
+  lastSpeakerId?: string,
+  messages: LifeSceneMessage[] = [],
+  sceneId?: string,
+): string | null {
   if (!characterIds.length) return null;
+
+  // Avoid letting random selection repeatedly favor whichever character happens
+  // to be first in the participant list. Prefer the character who has been
+  // quiet the longest, while still keeping a little variation between ties.
   const alternatives = characterIds.filter(id => id !== lastSpeakerId);
   const pool = alternatives.length ? alternatives : characterIds;
-  return pool[Math.floor(Math.random() * pool.length)] ?? null;
+  const lastSpokeAt = new Map<string, number>();
+  for (const message of messages) {
+    if (message.role !== "character" || !pool.includes(message.speakerId)) continue;
+    if (sceneId && message.sceneId !== sceneId) continue;
+    const at = Date.parse(message.createdAt);
+    if (!Number.isFinite(at)) continue;
+    lastSpokeAt.set(message.speakerId, Math.max(lastSpokeAt.get(message.speakerId) ?? 0, at));
+  }
+
+  const oldestAt = Math.min(...pool.map(id => lastSpokeAt.get(id) ?? 0));
+  const leastRecentlyHeard = pool.filter(id => (lastSpokeAt.get(id) ?? 0) === oldestAt);
+  return leastRecentlyHeard[Math.floor(Math.random() * leastRecentlyHeard.length)] ?? null;
 }
 
 export function notifyLifeSceneMessage(title: string, body: string, onClick?: () => void): void {
