@@ -38,8 +38,6 @@ import { getMaxToolRounds, loadChatAppSettings, saveChatAppSettings } from "@/li
 import { SettingsContext } from "@/components/phone-settings-app";
 import { Toggle, Input, Textarea, Select } from "@/components/ui/form";
 import { ConfirmDialog, ContentDialog } from "@/components/ui/modal";
-import { loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
-import type { LifeEngineSettings } from "@/lib/life/life-types";
 
 type ToolExportEntry = {
     key: string;
@@ -139,16 +137,7 @@ export function ToolboxSettings() {
     const [toolboxImportError, setToolboxImportError] = useState<string | null>(null);
     const [expandedCompositePackageIds, setExpandedCompositePackageIds] = useState<Set<string>>(() => new Set());
     const [expandedCustomAppGroupIds, setExpandedCustomAppGroupIds] = useState<Set<string>>(() => new Set());
-    const [maxToolRounds, setMaxToolRounds] = useState(() => getMaxToolRounds());
-    const [lifeSettings, setLifeSettings] = useState<LifeEngineSettings>(() => loadVirtualLifeState().settings);
-
-    const patchLifeSettings = (patch: Partial<LifeEngineSettings>) => {
-        const latest = loadVirtualLifeState();
-        const saved = saveVirtualLifeState({ ...latest, settings: { ...latest.settings, ...patch } });
-        setLifeSettings(saved.settings);
-    };
-
-    const handleMaxToolRoundsChange = (value: number) => {
+    const [maxToolRounds, setMaxToolRounds] = useState(() => getMaxToolRounds());const handleMaxToolRoundsChange = (value: number) => {
         const settings = loadChatAppSettings();
         saveChatAppSettings({ ...settings, maxToolRounds: value });
         setMaxToolRounds(value);
@@ -828,29 +817,6 @@ export function ToolboxSettings() {
                     </Select>
                 </div>
             </div>
-            <section className="ui-group-card">
-                <div className="mb-2">
-                    <span className="menu-label">生活引擎工具</span>
-                    <p className="menu-desc !mt-1 !whitespace-normal">在系统设置的聊天工具箱统一管理生活系统工具，不占用生活聊天室空间。</p>
-                </div>
-                <div className="flex flex-col gap-2">
-                    {([
-                        ["enabled", "生活引擎总开关", "关闭后暂停生活系统场景行为与工具。"],
-                        ["enableCharacterAutonomy", "角色自主行动", "与总开关共同决定角色是否能自主发起行为。"],
-                        ["enableInvitations", "主动邀约", "允许角色提出一起吃饭、出门或参加活动。"],
-                        ["enableFollowRequestTool", "申请陪伴 / 跟随", "允许角色申请陪伴并跟随你的实际行程。"],
-                        ["enableScheduleChangeTool", "调整角色日程", "允许角色调整当天尚未开始的普通日程。"],
-                    ] as const).map(([key, label, hint]) => (
-                        <label key={key} className="flex cursor-pointer items-center gap-3 rounded-xl border border-black/5 bg-white/70 px-3 py-2.5">
-                            <input type="checkbox" checked={Boolean(lifeSettings[key])} onChange={e => patchLifeSettings({ [key]: e.target.checked } as Partial<LifeEngineSettings>)} className="h-4 w-4 shrink-0 accent-[var(--life-accent,#b88768)]"/>
-                            <span className="min-w-0 flex-1">
-                                <span className="block text-sm font-medium">{label}</span>
-                                <span className="menu-desc !mt-0 !whitespace-normal">{hint}</span>
-                            </span>
-                        </label>
-                    ))}
-                </div>
-            </section>
             {/* REST Tools */}
             <div className="flex justify-between items-center gap-3">
                 <p className="settings-menu-section-title">Tools</p>
