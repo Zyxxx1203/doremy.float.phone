@@ -694,8 +694,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           onTouchStart={event => { if (event.touches.length === 2) { const dx=event.touches[0].clientX-event.touches[1].clientX; const dy=event.touches[0].clientY-event.touches[1].clientY; pinchStartRef.current={distance:Math.max(1,Math.hypot(dx,dy)),zoom:panoramaZoom}; } }}
           onTouchMove={event => { if (event.touches.length === 2 && pinchStartRef.current) { const dx=event.touches[0].clientX-event.touches[1].clientX; const dy=event.touches[0].clientY-event.touches[1].clientY; const distance=Math.hypot(dx,dy); setPanoramaZoom(Math.max(50,Math.min(180,Math.round(pinchStartRef.current.zoom*distance/pinchStartRef.current.distance)))); event.preventDefault(); } }}
           onTouchEnd={event => { if (event.touches.length < 2) pinchStartRef.current=null; }}>
-          <div className="shrink-0 transition-[width] duration-100" style={{width:`${panoramaZoom}%`, minWidth: panoramaZoom < 100 ? "50%" : "100%", maxWidth:"none"}}>
-            <PhotoWallCanvas photos={photos} selectedId={null} onSelect={() => {}} onChangePlacement={changePlacement} onChangeDoodles={changeDoodles} onOpenDetail={photo => openPhoto(photo)} readOnly />
+          <div className="h-full shrink-0 transition-[width] duration-100" style={{height:"100%",width:`${panoramaZoom}%`, minWidth: panoramaZoom < 100 ? "50%" : "100%", maxWidth:"none"}}>
+            <PhotoWallCanvas photos={photos} selectedId={null} onSelect={() => {}} onChangePlacement={changePlacement} onChangeDoodles={changeDoodles} onOpenDetail={photo => openPhoto(photo)} readOnly fitHeight />
           </div>
         </div>
         {!photos.length && <div className="pointer-events-none absolute inset-x-8 top-1/2 -translate-y-1/2 text-center"><p className="font-serif text-lg text-[#8a7566]">一面空白的奶油墙</p><p className="mt-2 text-xs text-[#aa9788]">切换到下方「时间轴海报」浏览照片，或从设置中管理墙面。</p></div>}
