@@ -136,7 +136,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [state, setState] = useState<PhotoWallState>(() => loadPhotoWallState());
   const [characters, setCharacters] = useState<Character[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
-  const [wallView, setWallView] = useState<"panorama" | "timeline" | "edit">("panorama");
+  const [wallView, setWallView] = useState<"panorama" | "timeline" | "edit" | "settings">("panorama");
   const [panoramaZoom, setPanoramaZoom] = useState(100);
   const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
   const [selectedCharacterId, setSelectedCharacterId] = useState("");
@@ -150,7 +150,6 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [busyLabel, setBusyLabel] = useState("");
   const [newKind, setNewKind] = useState<PhotoWallPhoto["kind"]>("favorite");
   const [referencePhotoId, setReferencePhotoId] = useState("");
-  const [showSettings, setShowSettings] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showChatPicker, setShowChatPicker] = useState(false);
   const [chatCandidates, setChatCandidates] = useState<Array<{ key: string; ref: string; title: string; sessionName: string; createdAt: string }>>([]);
@@ -604,96 +603,82 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       className="relative z-[1001] flex shrink-0 items-center gap-3 border-b border-[#ded5c7]/80 bg-white/75 px-4 pb-3 shadow-[0_8px_28px_rgba(94,76,53,.06)] backdrop-blur-xl"
       style={{ paddingTop: "max(12px, var(--page-header-safe-top, 48px))" }}
     >
-      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onClose(); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-[#ded5c7] bg-white/80 text-[#7b6a58] shadow-sm transition hover:-translate-y-0.5 hover:bg-white active:scale-95" aria-label="返回"><ArrowLeft size={17}/></button>
-      <div className="min-w-0 flex-1"><div className="font-serif text-xl tracking-[.12em]">照片墙</div><div className="mt-0.5 text-[10px] tracking-[.2em] text-[#a09380]">A LITTLE ARCHIVE OF US · {photos.length} PHOTOS</div></div>
-      {wallView === "edit" && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowSettings(value => !value); }} className="relative z-[1002] pointer-events-auto min-h-11 cursor-pointer touch-manipulation rounded-2xl border border-[#ded5c7] bg-white/75 px-4 py-2 text-xs tracking-wider text-[#85735f] shadow-sm transition hover:bg-white active:scale-95">设置</button>}
-      {wallView === "edit" && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAddMenu(value => !value); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 cursor-pointer touch-manipulation place-items-center rounded-2xl bg-gradient-to-br from-[#9ba68e] to-[#6f7d65] text-white shadow-[0_8px_18px_rgba(92,109,81,.25)] transition hover:-translate-y-0.5 active:scale-95" aria-label="添加照片"><Plus size={18}/></button>}
-      {wallView !== "edit" && <button type="button" onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-[#ded5c7] bg-white/80 text-[#7b6a58] disabled:opacity-40" aria-label="导出整墙 PNG"><Download size={17}/></button>}
-      {wallView !== "edit" && <button type="button" onClick={() => setWallView("edit")} className="rounded-xl bg-[#78866d] px-3 py-2 text-xs text-white">进入编辑</button>}
-      {wallView === "edit" && <span className="rounded-xl bg-[#78866d]/10 px-3 py-2 text-xs text-[#78866d]">编辑模式</span>}
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); wallView === "settings" ? setWallView("edit") : onClose(); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-[#ded5c7] bg-white/80 text-[#7b6a58] shadow-sm transition hover:-translate-y-0.5 hover:bg-white active:scale-95" aria-label="返回"><ArrowLeft size={17}/></button>
+      <div className="min-w-0 flex-1"><div className="font-serif text-xl tracking-[.08em]">{wallView === "settings" ? "墙面与显影设置" : "照片墙"}</div><div className="mt-0.5 text-[10px] tracking-[.16em] text-[#a09380]">{wallView === "settings" ? "WALL & DEVELOPING" : `A LITTLE ARCHIVE OF US · ${photos.length} PHOTOS`}</div></div>
+      {wallView === "edit" && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAddMenu(false); setWallView("settings"); }} className="relative z-[1002] pointer-events-auto min-h-10 shrink-0 cursor-pointer touch-manipulation border-b border-[#bda28d] px-2 py-1 text-sm tracking-wider text-[#79545a] transition active:opacity-60">设置</button>}
+      {wallView === "edit" && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAddMenu(value => !value); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 cursor-pointer touch-manipulation place-items-center rounded-2xl bg-gradient-to-br from-[#a77b77] to-[#87565b] text-white shadow-[0_8px_18px_rgba(92,109,81,.25)] transition hover:-translate-y-0.5 active:scale-95" aria-label="添加照片"><Plus size={18}/></button>}
+      {(wallView === "panorama" || wallView === "timeline") && <button type="button" onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="grid h-10 w-10 shrink-0 place-items-center border border-[#d8c4b4] bg-[#fffaf3]/80 text-[#795b52] disabled:opacity-40" aria-label="导出整墙 PNG"><Download size={17}/></button>}
+      {(wallView === "panorama" || wallView === "timeline") && <button type="button" onClick={() => setWallView("edit")} className="shrink-0 border-b border-[#bda28d] px-2 py-2 text-sm text-[#79545a]">进入编辑</button>}
+      {wallView === "edit" && <span className="shrink-0 text-xs tracking-wide text-[#87565b]">编辑中</span>}
     </header>
 
-    {wallView !== "edit" && <nav className="absolute bottom-0 left-0 right-0 z-[1002] flex shrink-0 items-center justify-center gap-2 border-t border-[#ded5c7] bg-[#fffaf1]/95 px-3 py-2 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur">
-      <button type="button" onClick={() => setWallView("panorama")} className={`rounded-full px-4 py-2 text-xs ${wallView==="panorama"?"bg-[#78866d] text-white":"text-[#85735f]"}`}>全景墙</button>
-      <button type="button" onClick={() => setWallView("timeline")} className={`rounded-full px-4 py-2 text-xs ${wallView==="timeline"?"bg-[#78866d] text-white":"text-[#85735f]"}`}>时间轴海报</button>
+    {(wallView === "panorama" || wallView === "timeline") && <nav className="absolute bottom-0 left-0 right-0 z-[1002] flex shrink-0 items-center justify-center gap-5 border-t border-[#d8c4b4] bg-[#f8f0e6]/96 px-3 py-2 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur">
+      <button type="button" onClick={() => setWallView("panorama")} className={`border-b-2 px-2 py-2 text-sm ${wallView==="panorama"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>全景墙</button>
+      <button type="button" onClick={() => setWallView("timeline")} className={`border-b-2 px-2 py-2 text-sm ${wallView==="timeline"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>时间轴海报</button>
     </nav>}
-    {wallView === "edit" && showAddMenu && <div className="absolute right-4 top-[62px] z-30 w-56 rounded-2xl border border-[#e4d9c9] bg-[#fffdf8] p-2 shadow-xl">
-      <button onClick={() => { setShowAddMenu(false); fileRef.current?.click(); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-[#f3ede2]"><ImagePlus size={17}/>收藏我的照片</button>
+    {wallView === "edit" && showAddMenu && <div className="absolute right-3 z-[1004] w-[min(17rem,calc(100vw-1.5rem))] border border-[#d7c2b1] bg-[#fffaf2] p-1 shadow-[0_16px_44px_rgba(60,42,32,.22)]" style={{top:"calc(max(12px, var(--page-header-safe-top, 48px)) + 64px)"}}>
+      <button onClick={() => { setShowAddMenu(false); fileRef.current?.click(); }} className="flex min-h-11 w-full items-center gap-3 border-b border-[#eadfd3] px-3 py-2.5 text-left text-sm leading-5 text-[#5d4942] last:border-b-0 hover:bg-[#f3e9df]"><ImagePlus size={17}/>收藏我的照片</button>
       <button onClick={() => void openChatPicker()} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-[#f3ede2]"><Heart size={17}/>从聊天收藏照片</button>
       <button onClick={() => { setShowAddMenu(false); void generatePhoto(selectedCharacter, "moment"); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-[#f3ede2]"><Sparkles size={17}/>请角色生成一张</button>
-      <button onClick={() => { setShowAddMenu(false); setShowSettings(true); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-[#f3ede2]"><Camera size={17}/>今日照片与生成设置</button>
+      <button onClick={() => { setShowAddMenu(false); setWallView("settings"); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-[#f3ede2]"><Camera size={17}/>今日照片与生成设置</button>
     </div>}
     <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={event => { if (event.target.files) void uploadFiles(event.target.files); event.currentTarget.value = ""; }}/>
 
-    <main className={wallView === "edit" ? "min-h-0 flex-1 overflow-y-auto" : "min-h-0 flex-1 overflow-hidden"}>
-      {wallView === "edit" ? <>
-      <section className="relative mx-4 mt-4 overflow-hidden rounded-[28px] border border-white/80 bg-gradient-to-br from-[#fffaf0] via-[#f4eadc] to-[#e6eadf] px-5 pb-6 pt-6 shadow-[0_12px_32px_rgba(93,75,52,.08)] sm:mx-7 sm:px-8">
+    <main className={wallView === "edit" || wallView === "settings" ? "min-h-0 flex-1 overflow-y-auto" : "min-h-0 flex-1 overflow-hidden"}>
+      {wallView === "settings" ? <div className="min-h-full bg-[#f5ede3] px-4 pb-10 pt-5 sm:px-7" style={{backgroundImage:"repeating-linear-gradient(0deg,rgba(122,84,68,.025) 0,rgba(122,84,68,.025) 1px,transparent 1px,transparent 5px)"}}>
+        <div className="mx-auto max-w-3xl">
+          <p className="text-[10px] tracking-[.24em] text-[#a18172]">A QUIET CORNER FOR YOUR WALL</p>
+          <h1 className="mt-2 font-serif text-2xl font-normal text-[#503d38]">把墙面布置成你喜欢的样子</h1>
+          <p className="mt-2 text-xs leading-6 text-[#8b7569]">模板只保存摆放骨架，不会覆盖照片内容；应用后仍可回到画布继续拖动、缩放和涂鸦。</p>
+          <section className="mt-5 border-y border-[#d9c6b6] bg-[#fffaf2]/75 px-4 py-4 shadow-[0_8px_24px_rgba(83,55,39,.05)]">
+            <div className="flex items-center justify-between gap-3"><h2 className="font-serif text-lg text-[#5a403b]">日常显影</h2><span className="text-[10px] tracking-[.12em] text-[#a18172]">DAILY DEVELOPING</span></div>
+            <p className="mt-2 text-xs leading-6 text-[#8b7569]">每天首次打开照片墙时，可依据最近生活记录生成照片。仅在应用运行时触发；图片由你配置的生图服务生成，可能产生 API 费用。</p>
+            <label className="mt-4 flex min-h-11 items-center justify-between gap-4 border-b border-[#eadfd3] py-3 text-sm text-[#5d4942]"><span>每日自动生成</span><input type="checkbox" checked={state.settings.dailyGenerationEnabled} onChange={event => persist({ ...state, settings: { ...state.settings, dailyGenerationEnabled: event.target.checked } })} className="h-4 w-4 accent-[#87565b]"/></label>
+            <div className="flex min-h-11 items-center justify-between gap-4 border-b border-[#eadfd3] py-3 text-sm text-[#5d4942]"><span>每天最多生成</span><select value={state.settings.dailyPhotoCount} onChange={event => persist({ ...state, settings: { ...state.settings, dailyPhotoCount: Number(event.target.value) as 1 | 2 | 3 } })} className="max-w-[45%] border-b border-[#d7c2b1] bg-transparent px-2 py-1 text-right"><option value={1}>1 张</option><option value={2}>2 张</option><option value={3}>3 张</option></select></div>
+            <div className="flex flex-wrap items-center gap-2 border-b border-[#eadfd3] py-3 text-xs"><span className="text-[#8b7569]">生成参考图</span><select value={referencePhotoId} onChange={event => setReferencePhotoId(event.target.value)} className="min-w-0 flex-1 border-b border-[#d7c2b1] bg-transparent px-2 py-2"><option value="">使用角色外观参考设置</option>{photos.map(photo => <option key={photo.id} value={photo.id}>{photo.title}</option>)}</select></div>
+            {state.settings.lastDailyGenerationAt && <p className="mt-3 text-[11px] leading-5 text-[#93836e]">上次显影：{formatDate(state.settings.lastDailyGenerationAt)}{state.settings.lastDailyGenerationError ? ` · 上次有错误：${state.settings.lastDailyGenerationError}` : ""}</p>}
+            <button disabled={busy || !selectedCharacter} onClick={() => void generatePhoto(selectedCharacter, "moment")} className="mt-4 border border-[#87565b] bg-[#87565b] px-4 py-2.5 text-xs tracking-wide text-[#fff8f0] disabled:opacity-50"><Sparkles size={13} className="mr-1 inline"/>现在生成一张</button>
+          </section>
+          <section className="mt-6 border-y border-[#d9c6b6] bg-[#fffaf2]/75 px-4 py-4">
+            <div className="flex items-center justify-between gap-3"><h2 className="font-serif text-lg text-[#5a403b]">摆放模板</h2><span className="text-[10px] text-[#a18172]">LAYOUT STUDIES</span></div>
+            <p className="mt-2 text-xs leading-5 text-[#8b7569]">选一个构图骨架，照片会按相对位置排列；原始照片与内容不会被删除。</p>
+            <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+              {listAllTemplates().map(template => <div key={template.id} className="min-w-0 border-b border-[#eadfd3] py-2.5">
+                <button type="button" onClick={() => applyTemplate(template.id)} className="block w-full text-left font-serif text-sm leading-5 text-[#5d4942] hover:text-[#87565b]">{template.name}</button>
+                <div className="mt-2 flex items-center gap-3 text-[11px] text-[#9a8174]">
+                  {!template.builtin && <><button type="button" onClick={() => setEditingTemplateId(current => current === template.id ? null : template.id)} className="underline decoration-[#d7c2b1] underline-offset-4" aria-label={"编辑模板骨架 " + template.name}>编辑骨架</button><button type="button" onClick={() => deleteCustomTemplate(template.id)} className="underline decoration-[#d7c2b1] underline-offset-4">删除</button></>}
+                  {template.builtin && <span>内置模板</span>}
+                </div>
+              </div>)}
+            </div>
+            <div className="mt-4 flex items-center gap-2 border-t border-[#eadfd3] pt-4">
+              <input value={templateText} onChange={event => setTemplateText(event.target.value.slice(0, 12))} placeholder="文字骨架内容，如 LOVE / 家" className="min-w-0 flex-1 border-b border-[#d7c2b1] bg-transparent px-1 py-2 text-sm text-[#5d4942] outline-none focus:border-[#87565b]"/>
+              <button type="button" onClick={() => applyTemplate("builtin-text")} className="shrink-0 border border-[#d7c2b1] px-3 py-2 text-xs text-[#79545a]">排成这个字</button>
+            </div>
+            <div className="mt-3 flex flex-col gap-2 border-t border-[#eadfd3] pt-3 sm:flex-row">
+              <input value={templateName} onChange={event => setTemplateName(event.target.value.slice(0, 32))} placeholder="给当前布局命名" className="min-w-0 flex-1 border-b border-[#d7c2b1] bg-transparent px-1 py-2 text-sm text-[#5d4942] outline-none focus:border-[#87565b]"/>
+              <button type="button" onClick={saveCurrentLayoutAsTemplate} disabled={!photos.length} className="shrink-0 border border-[#d7c2b1] px-3 py-2 text-xs text-[#79545a] disabled:opacity-40"><Check size={12} className="mr-1 inline"/>保存当前布局为模板</button>
+            </div>
+            {editingTemplateId && customTemplates.find(template => template.id === editingTemplateId) && (() => { const template=customTemplates.find(item=>item.id===editingTemplateId)!; return <div className="mt-4 border-t border-[#d9c6b6] pt-4"><div className="flex items-center justify-between gap-2"><div className="min-w-0"><p className="font-serif text-sm text-[#5d4942]">编辑骨架 · {template.name}</p><p className="mt-1 text-[10px] leading-5 text-[#8b7569]">调整槽位相对位置、大小与倾斜角度。</p></div><button type="button" onClick={() => setEditingTemplateId(null)} aria-label="关闭骨架编辑" className="px-2 py-1 text-[#87565b]"><X size={13}/></button></div><div className="mt-3 max-h-56 space-y-3 overflow-y-auto pr-1">{template.slots.map((slot,index)=><div key={index} className="border-b border-[#eadfd3] pb-3"><div className="mb-2 text-[11px] text-[#8b7569]">照片槽位 {index+1}</div><div className="grid grid-cols-2 gap-x-3 gap-y-2">{([["x","横向",0.06,0.94,0.01],["y","纵向",0.06,0.94,0.01],["scale","大小",0.35,3,0.05],["rotation","旋转",-45,45,1]] as const).map(([key,label,min,max,step])=><label key={key} className="min-w-0 text-[10px] text-[#8f7c66]"><span className="mb-1 flex items-center justify-between gap-1"><span>{label}</span><span className="font-mono text-[#6d5b47]">{slot[key].toFixed(2)}</span></span><input type="range" min={min} max={max} step={step} value={slot[key]} onChange={event=>updateTemplateSlot(template.id,index,key,Number(event.target.value))} className="w-full accent-[#87565b]"/></label>)}</div></div>)}</div></div>; })()}
+          </section>
+        </div>
+      </div> : wallView === "edit" ? <>
+      <section className="relative mx-4 mt-4 overflow-hidden rounded-[28px] border border-white/80 bg-gradient-to-br from-[#fffaf0] via-[#f4eadc] to-[#eadfd7] px-5 pb-6 pt-6 shadow-[0_12px_32px_rgba(93,75,52,.08)] sm:mx-7 sm:px-8">
         <div className="pointer-events-none absolute -right-6 -top-10 h-48 w-48 rounded-full border border-[#d6cbb9]/70"/><div className="pointer-events-none absolute -right-1 top-0 h-36 w-36 rounded-full border border-[#d6cbb9]/50"/>
         <div className="relative max-w-2xl"><div className="text-[10px] tracking-[.32em] text-[#a0927e]">THE THINGS WE KEEP</div><h1 className="mt-3 font-serif text-[30px] font-normal leading-tight tracking-[.08em] sm:text-[38px]">把日子，慢慢收好。</h1><p className="mt-3 max-w-md text-xs leading-6 tracking-wide text-[#887a68]">有些照片不是为了证明发生过什么，只是因为那一刻，心里很柔软。</p><div className="mt-5 flex items-center gap-3 text-[10px] tracking-[.15em] text-[#9d8d78]"><span className="h-px w-8 bg-[#b9a68e]"/><span>{new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" })}</span><span>·</span><span>{characters.length} 位角色在这里留下痕迹</span></div></div>
       </section>
 
-      {showSettings && <section className="mx-4 mt-3 rounded-[22px] border border-white/80 bg-white/75 px-4 py-4 shadow-sm backdrop-blur sm:mx-7 sm:px-6">
-        <div className="mx-auto max-w-3xl">
-          <div className="flex items-center justify-between"><h2 className="font-serif text-lg">日常显影</h2><button onClick={() => setShowSettings(false)} aria-label="关闭设置"><X size={17}/></button></div>
-          <p className="mt-1 text-xs leading-5 text-[#897a67]">开启后，每天首次打开照片墙时，角色会依据最近的生活记录生成照片。仅在应用运行时触发；图片由你配置的生图服务生成，可能产生 API 费用。</p>
-          <label className="mt-4 flex items-center justify-between gap-4 rounded-xl bg-[#f8f4ed] p-3 text-sm"><span>每日自动生成</span><input type="checkbox" checked={state.settings.dailyGenerationEnabled} onChange={event => persist({ ...state, settings: { ...state.settings, dailyGenerationEnabled: event.target.checked } })} className="h-4 w-4 accent-[#78876b]"/></label>
-          <div className="mt-2 flex items-center justify-between gap-4 rounded-xl bg-[#f8f4ed] p-3 text-sm"><span>每天最多生成</span><select value={state.settings.dailyPhotoCount} onChange={event => persist({ ...state, settings: { ...state.settings, dailyPhotoCount: Number(event.target.value) as 1 | 2 | 3 } })} className="rounded-lg border border-[#e1d7c8] bg-white px-2 py-1"><option value={1}>1 张</option><option value={2}>2 张</option><option value={3}>3 张</option></select></div>
-          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-[#f8f4ed] p-3 text-xs"><span className="text-[#897a67]">生成参考图（可选）</span><select value={referencePhotoId} onChange={event => setReferencePhotoId(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-[#e1d7c8] bg-white px-2 py-2"><option value="">不指定照片，使用角色外观参考设置</option>{photos.map(photo => <option key={photo.id} value={photo.id}>{photo.title}</option>)}</select></div>
-          {state.settings.lastDailyGenerationAt && <p className="mt-2 text-[11px] text-[#93836e]">上次显影：{formatDate(state.settings.lastDailyGenerationAt)}{state.settings.lastDailyGenerationError ? ` · 上次有错误：${state.settings.lastDailyGenerationError}` : ""}</p>}
-          <button disabled={busy || !selectedCharacter} onClick={() => void generatePhoto(selectedCharacter, "moment")} className="mt-3 rounded-full bg-[#78866d] px-4 py-2 text-xs tracking-wider text-white disabled:opacity-50"><Sparkles size={13} className="mr-1 inline"/>现在生成一张</button>
-        </div>
-      </section>}
+
 
       <nav className="sticky top-0 z-10 flex items-center gap-2 overflow-x-auto border-b border-[#e4dbce]/80 bg-[#fffaf1]/90 px-4 py-3 backdrop-blur-xl sm:px-8">
-        {([{id:"all",label:"全部记忆"},{id:"mine",label:"我收藏的"},{id:"characters",label:"角色留下的"},{id:"favorites",label:"值得珍藏"}] as {id:Filter;label:string}[]).map(item => <button key={item.id} onClick={() => setFilter(item.id)} className={`shrink-0 rounded-full px-4 py-2.5 text-xs font-medium tracking-wide transition duration-200 ${filter===item.id?"bg-[#7e8a72] text-white":"text-[#8d7e6b] border border-transparent hover:border-[#ddd1bd] hover:bg-white"}`}>{item.label}</button>)}
+        {([{id:"all",label:"全部记忆"},{id:"mine",label:"我收藏的"},{id:"characters",label:"角色留下的"},{id:"favorites",label:"值得珍藏"}] as {id:Filter;label:string}[]).map(item => <button key={item.id} onClick={() => setFilter(item.id)} className={`shrink-0 rounded-full px-4 py-2.5 text-xs font-medium tracking-wide transition duration-200 ${filter===item.id?"bg-[#87565b] text-white":"text-[#8d7e6b] border border-transparent hover:border-[#ddd1bd] hover:bg-white"}`}>{item.label}</button>)}
         <button onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="ml-auto flex shrink-0 items-center gap-1.5 rounded-full border border-[#cbbba6] bg-white/80 px-3 py-2 text-[11px] tracking-wider text-[#7a6a56] disabled:opacity-40"><Download size={13}/>{exportBusy ? "导出中…" : "导出整墙"}</button>
       </nav>
 
       <section className="px-4 pb-24 pt-4 sm:px-7">
         {busy && <div className="mb-3 flex items-center gap-2 rounded-xl border border-[#e4d8c6] bg-[#faf7f0] px-3 py-2.5 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
 
-        {/* 摆放模板：选一个骨架一键排好，之后仍可自由拖动微调 */}
-        <div className="mb-3 rounded-2xl border border-[#e6dccd] bg-white/65 px-3 py-3">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] tracking-[.16em] text-[#9a8973]">摆放模板</span>
-            <span className="text-[10px] text-[#b0a08c]">套用后仍可自由拖动</span>
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {listAllTemplates().map(template => (
-              <span key={template.id} className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-[#ddd1bd] bg-[#fdfaf3] pl-3 pr-1 py-1 text-[11px] text-[#7a6a56]">
-                <button type="button" onClick={() => applyTemplate(template.id)} className="py-0.5 transition hover:text-[#53634c] active:scale-95">{template.name}</button>
-                {!template.builtin && <>
-                  <button type="button" onClick={() => setEditingTemplateId(current => current === template.id ? null : template.id)} className={`grid h-6 w-6 place-items-center rounded-full ${editingTemplateId === template.id ? "bg-[#78866d] text-white" : "text-[#a28a76] hover:bg-[#eee4d7]"}`} aria-label={"编辑模板骨架 " + template.name}><PenLine size={11}/></button>
-                  <button type="button" onClick={() => deleteCustomTemplate(template.id)} className="grid h-6 w-6 place-items-center rounded-full text-[#a28a76] hover:bg-[#eee4d7] hover:text-[#a05f50]" aria-label={"删除模板 " + template.name}><X size={11}/></button>
-                </>}
-              </span>
-            ))}
-            <button type="button" onClick={() => applyTemplate("builtin-text")} className="rounded-full border border-[#ddd1bd] bg-[#fdfaf3] px-3 py-1.5 text-[11px] text-[#7a6a56] transition hover:bg-white active:scale-95">文字骨架</button>
-          </div>
-          <div className="mt-2 flex items-center gap-2">
-            <input value={templateText} onChange={event => setTemplateText(event.target.value.slice(0, 12))} placeholder="文字骨架内容，如 LOVE / 家 / 2024.6.1" className="min-w-0 flex-1 rounded-lg border border-[#e6dccd] bg-[#fcf9f2] px-2.5 py-2 text-[11px] outline-none focus:border-[#b5a18a]"/>
-            <button type="button" onClick={() => applyTemplate("builtin-text")} className="shrink-0 rounded-lg bg-[#78866d] px-3 py-2 text-[11px] text-white">排成这个字</button>
-          </div>
-          <div className="mt-2 flex flex-col gap-2 rounded-xl border border-dashed border-[#d9cbb8] bg-[#fbf7ef]/80 p-2.5 sm:flex-row">
-            <input value={templateName} onChange={event => setTemplateName(event.target.value.slice(0, 32))} placeholder="给当前布局命名，例如：我们的纪念日" className="min-w-0 flex-1 rounded-lg border border-[#e6dccd] bg-white/80 px-3 py-2 text-[11px] outline-none focus:border-[#b5a18a]"/>
-            <button type="button" onClick={saveCurrentLayoutAsTemplate} disabled={!photos.length} className="shrink-0 rounded-lg border border-[#c7b49a] bg-[#f1e7d7] px-3 py-2 text-[11px] text-[#75624d] disabled:opacity-40"><Check size={12} className="mr-1 inline"/>保存当前布局为模板</button>
-          </div>
-          {editingTemplateId && customTemplates.find(template => template.id === editingTemplateId) && (() => {
-            const template = customTemplates.find(item => item.id === editingTemplateId)!;
-            return <div className="mt-3 rounded-xl border border-[#d9cbb8] bg-[#fffdf8] p-3">
-              <div className="flex items-center justify-between gap-2"><div className="min-w-0"><p className="truncate text-xs font-semibold text-[#76634d]">编辑骨架 · {template.name}</p><p className="mt-1 text-[10px] text-[#a0927e]">拖动滑杆调整每个槽位的相对位置、大小与倾斜角度。</p></div><button type="button" onClick={() => setEditingTemplateId(null)} className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[#8d7c66] hover:bg-[#f1e7d7]" aria-label="关闭骨架编辑"><X size={13}/></button></div>
-              <div className="mt-3 max-h-56 space-y-3 overflow-y-auto overscroll-contain pr-1">
-                {template.slots.map((slot, index) => <div key={index} className="rounded-lg border border-[#eee5d8] bg-[#fcf8f1] p-2.5">
-                  <div className="mb-2 text-[10px] font-medium text-[#8b7861]">照片槽位 {index + 1}</div>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-                    {([["x", "横向", 0.06, 0.94, 0.01], ["y", "纵向", 0.06, 0.94, 0.01], ["scale", "大小", 0.35, 3, 0.05], ["rotation", "旋转", -45, 45, 1]] as const).map(([key, label, min, max, step]) => <label key={key} className="min-w-0 text-[10px] text-[#8f7c66]"><span className="mb-1 flex items-center justify-between gap-1"><span>{label}</span><span className="font-mono text-[#6d5b47]">{slot[key].toFixed(2)}</span></span><input type="range" min={min} max={max} step={step} value={slot[key]} onChange={event => updateTemplateSlot(template.id, index, key, Number(event.target.value))} className="w-full accent-[#78866d]"/></label>)}
-                  </div>
-                </div>)}
-              </div>
-            </div>;
-          })()}
-          <p className="mt-1.5 text-[10px] leading-5 text-[#a0927e]">模板保存的是相对坐标骨架，不包含照片本身；以后可重复套用，再拖动、缩放、旋转微调。自定义模板最多保留 40 个。</p>
-        </div>
+
 
         {visiblePhotos.length
           ? <div className="mx-auto max-w-3xl"><PhotoWallCanvas
@@ -717,7 +702,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           </div>
         </div>
         {!photos.length && <div className="pointer-events-none absolute inset-x-8 top-1/2 -translate-y-1/2 text-center"><p className="font-serif text-lg text-[#76634e]">一面空白的奶油墙</p><p className="mt-2 text-xs text-[#95836c]">点击「进入编辑」来添加照片</p></div>}
-        <button type="button" onClick={() => setWallView("edit")} className="absolute bottom-3 right-4 z-20 rounded-full border border-white/70 bg-[#78866d] px-5 py-3 text-sm font-medium text-white shadow-[0_8px_24px_rgba(72,86,62,.28)]">进入编辑</button>
+        <button type="button" onClick={() => setWallView("edit")} className="absolute bottom-3 right-4 z-20 rounded-full border border-white/70 bg-[#87565b] px-5 py-3 text-sm font-medium text-white shadow-[0_8px_24px_rgba(72,86,62,.28)]">进入编辑</button>
       </div> : <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-24 pt-4 sm:px-7" style={{WebkitOverflowScrolling:"touch"}}>
         {photos.length === 0 ? <div className="grid min-h-[55dvh] place-items-center text-center text-[#8f806d]"><div><Feather size={28} className="mx-auto"/><p className="mt-3">还没有收录的回忆</p><p className="mt-1 text-xs">进入编辑，添加第一张照片。</p></div></div> : <div className="mx-auto max-w-2xl space-y-6">
           {[...new Set([...photos].sort((a,b)=>(b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt)).map(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return Number.isNaN(date.getTime()) ? "未知时间" : `${date.getFullYear()}.${String(date.getMonth()+1).padStart(2,"0")}`; }))].map(group => {
@@ -725,7 +710,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             return <section key={group} className="relative pl-5 before:absolute before:bottom-0 before:left-1 before:top-8 before:w-px before:bg-[#d8c4ab]">
               <h2 className="sticky top-0 z-10 mb-3 rounded-xl bg-[#f3eadc]/95 px-3 py-2 font-serif text-base text-[#75624d] backdrop-blur">{group} <span className="mx-1 text-[#c4ad91]">｜</span><span className="text-sm">我们的时光</span></h2>
               <div className="space-y-4">{items.map((photo,index) => <article key={photo.id} className="relative block w-full rounded-[22px] border border-[#e5d7c5] bg-gradient-to-br from-[#fffaf1] via-[#f8efe2] to-[#efe2d0] p-3 text-left shadow-[0_8px_22px_rgba(90,67,42,.08)]">
-                <span className="absolute -left-[21px] top-6 h-3 w-3 rounded-full border-2 border-[#f3eadc] bg-[#9aab8c]"/>
+                <span className="absolute -left-[21px] top-6 h-3 w-3 rounded-full border-2 border-[#f3eadc] bg-[#b88c82]"/>
                 <div role="button" tabIndex={0} onClick={() => openPhoto(photo)} onKeyDown={event => {if(event.key==="Enter"||event.key===" ") openPhoto(photo);}} className="mx-auto max-w-[360px] cursor-pointer rounded-sm bg-[#fffdf8] p-3 pb-5 shadow-[0_5px_14px_rgba(70,55,40,.15)]">
                   <div className="overflow-hidden bg-[#e9dfd0]"><PhotoThumbnail photo={photo} onOpen={() => openPhoto(photo)} /></div>
                   <p className="mt-2 text-center font-serif text-sm text-[#655342]">{photo.title || "未命名的瞬间"}</p>
@@ -744,7 +729,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       <section className="flex max-h-[82%] w-full max-w-lg flex-col overflow-hidden rounded-[24px] border border-[#e3d7c6] bg-[#fffaf1] shadow-xl" onClick={event => event.stopPropagation()}>
         <header className="flex items-center justify-between border-b border-[#e3d7c6] px-4 py-3"><div><h2 className="font-serif text-lg">从聊天里挑一张</h2><p className="mt-1 text-[10px] text-[#9b8a75]">收藏会保留原图，不会把同一张媒体重复复制</p></div><button onClick={() => setShowChatPicker(false)} aria-label="关闭"><X size={17}/></button></header>
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          {chatCandidates.length ? <div className="space-y-2">{chatCandidates.map(candidate => <button key={candidate.key} onClick={() => void importChatPhoto(candidate)} className="flex w-full items-center gap-3 rounded-xl border border-[#e6dccd] bg-[#fcf9f2] p-3 text-left hover:bg-white"><ChatCandidateThumb refId={candidate.ref}/><span className="min-w-0 flex-1"><span className="block truncate text-sm text-[#655647]">{candidate.title}</span><span className="mt-1 block truncate text-[10px] text-[#9a8973]">{candidate.sessionName} · {new Date(candidate.createdAt).toLocaleDateString("zh-CN")}</span></span><Plus size={15} className="shrink-0 text-[#849174]"/></button>)}</div> : <p className="py-10 text-center text-xs text-[#9a8973]">没有找到可收藏的照片。</p>}
+          {chatCandidates.length ? <div className="space-y-2">{chatCandidates.map(candidate => <button key={candidate.key} onClick={() => void importChatPhoto(candidate)} className="flex w-full items-center gap-3 rounded-xl border border-[#e6dccd] bg-[#fcf9f2] p-3 text-left hover:bg-white"><ChatCandidateThumb refId={candidate.ref}/><span className="min-w-0 flex-1"><span className="block truncate text-sm text-[#655647]">{candidate.title}</span><span className="mt-1 block truncate text-[10px] text-[#9a8973]">{candidate.sessionName} · {new Date(candidate.createdAt).toLocaleDateString("zh-CN")}</span></span><Plus size={15} className="shrink-0 text-[#87565b]"/></button>)}</div> : <p className="py-10 text-center text-xs text-[#9a8973]">没有找到可收藏的照片。</p>}
         </div>
       </section>
     </div>}
@@ -763,8 +748,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           {photoViewOnly ? <p className="mt-2 whitespace-pre-wrap rounded-sm bg-[#fcf9f2] p-3 font-serif text-sm leading-6 text-[#655647]">{selectedPhoto.backNote || selectedPhoto.caption || "还没有写下手记。"}</p> : <textarea value={editNote} onChange={event => setEditNote(event.target.value)} rows={4} placeholder="写下当时的天气、心情，或一个只有你们懂的细节……" className="mt-2 w-full resize-y rounded-sm border border-[#e6dccd] bg-[#fcf9f2] p-3 font-serif text-sm leading-6 text-[#655647] outline-none placeholder:text-[#c1b5a4] focus:border-[#b5a18a]"/>}
           <label className="mt-3 block text-[10px] tracking-[.2em] text-[#9a8973]">标签 · TAGS</label>
           {photoViewOnly ? <p className="mt-2 text-xs text-[#8d7a65]">{selectedPhoto.tags.length ? selectedPhoto.tags.map(tag => `#${tag}`).join("　") : "暂无标签"}</p> : <input value={editTags} onChange={event => setEditTags(event.target.value)} placeholder="用逗号分隔，比如：雨天、回家、幸福" className="mt-2 w-full rounded-sm border border-[#e6dccd] bg-[#fcf9f2] px-3 py-2 text-xs outline-none focus:border-[#b5a18a]"/>}
-          {!photoViewOnly && <><label className="mt-3 flex items-center gap-2 text-xs text-[#857460]"><input type="checkbox" checked={selectedPhoto.shareWithCharacters} onChange={event => persist({ ...state, photos: state.photos.map(photo => photo.id === selectedPhoto.id ? { ...photo, shareWithCharacters: event.target.checked } : photo) })} className="accent-[#78866d]"/>允许角色看到这张照片及背面记录</label>
-          <div className="mt-4 flex gap-2"><button onClick={saveBack} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[#78866d] px-3 py-2.5 text-xs tracking-wider text-white"><Check size={14}/>保存背面</button><button onClick={() => void deleteSelectedPhoto()} className="grid h-10 w-10 place-items-center rounded-full border border-[#e3d7c6] text-[#9c7566]" aria-label="删除照片"><Trash2 size={15}/></button></div></>}
+          {!photoViewOnly && <><label className="mt-3 flex items-center gap-2 text-xs text-[#857460]"><input type="checkbox" checked={selectedPhoto.shareWithCharacters} onChange={event => persist({ ...state, photos: state.photos.map(photo => photo.id === selectedPhoto.id ? { ...photo, shareWithCharacters: event.target.checked } : photo) })} className="accent-[#87565b]"/>允许角色看到这张照片及背面记录</label>
+          <div className="mt-4 flex gap-2"><button onClick={saveBack} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[#87565b] px-3 py-2.5 text-xs tracking-wider text-white"><Check size={14}/>保存背面</button><button onClick={() => void deleteSelectedPhoto()} className="grid h-10 w-10 place-items-center rounded-full border border-[#e3d7c6] text-[#9c7566]" aria-label="删除照片"><Trash2 size={15}/></button></div></>}
           <div className="mt-6 border-t border-[#e3d7c6] pt-4">
             <div className="flex items-center justify-between"><div className="font-serif text-base">留在照片背面的字</div><span className="text-[10px] text-[#aa9a86]">{selectedPhoto.annotations.length} 条批注</span></div>
             {selectedPhoto.annotations.length > 0 ? <div className="mt-3 space-y-3">{selectedPhoto.annotations.map(note => <div key={note.id} className={`border-l-2 pl-3 py-1 ${note.authorType==="character"?"border-[#9aab8b]":"border-[#c7a58b]"}`}><div className="flex items-baseline justify-between gap-2"><span className="text-xs text-[#786954]">{note.authorName}</span><span className="text-[9px] text-[#b0a18e]">{new Date(note.createdAt).toLocaleDateString("zh-CN")}</span></div><p className="mt-1 whitespace-pre-wrap font-serif text-sm leading-6 text-[#655647]">{note.content}</p></div>)}</div> : <p className="mt-2 text-xs leading-5 text-[#a19380]">还没有人写下批注。可以先写一句，也可以请角色来看看。</p>}
@@ -772,7 +757,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             <button onClick={addUserAnnotation} disabled={!annotationDraft.trim()} className="mt-2 rounded-full border border-[#cbbba6] px-3 py-2 text-xs text-[#796952] disabled:opacity-40"><PenLine size={12} className="mr-1 inline"/>写下我的批注</button>
             <div className="mt-4 rounded-xl bg-[#eee7db] p-3">
               <div className="flex flex-wrap items-center gap-2"><span className="text-xs text-[#85745f]">请角色也来看看</span><select value={characterCommenterId} onChange={event => setCharacterCommenterId(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-[#ded1bf] bg-[#faf6ee] px-2 py-2 text-xs">{characters.map(char => <option key={char.id} value={char.id}>{char.name}</option>)}</select></div>
-              <button onClick={() => void askCharacterToWrite()} disabled={busy || !commenter || !selectedPhoto.shareWithCharacters} className="mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[#8b9a7e] px-3 py-2.5 text-xs tracking-wider text-white disabled:opacity-40"><Heart size={13}/>请TA在照片背面写一句话</button>
+              <button onClick={() => void askCharacterToWrite()} disabled={busy || !commenter || !selectedPhoto.shareWithCharacters} className="mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[#87565b] px-3 py-2.5 text-xs tracking-wider text-white disabled:opacity-40"><Heart size={13}/>请TA在照片背面写一句话</button>
               {!selectedPhoto.shareWithCharacters && <p className="mt-2 text-[10px] text-[#9a7967]">这张照片目前不对角色开放。打开上方分享开关后，角色才可以回应。</p>}
             </div>
           </div>
