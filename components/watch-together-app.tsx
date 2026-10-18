@@ -233,7 +233,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   return <div className="watch-together-app pointer-events-auto isolate absolute inset-0 z-[1000] flex min-w-0 flex-col overflow-hidden text-[#f0e6d8]" style={{ background: "radial-gradient(ellipse 120% 80% at 50% -10%, #3a2f26 0%, #241e19 42%, #14100d 100%)" }}>
     {/* 弹幕动画：仓库里从未定义过 watchDanmaku，之前那条 animation 是空转，这里补上真实 keyframes */}
-    <style>{`@keyframes watchDanmaku { 0% { transform: translateX(28%); opacity: 0 } 8% { opacity: 1 } 88% { opacity: 1 } 100% { transform: translateX(-150%); opacity: 0 } }`}</style>
+    <style>{`\n      .watch-together-main { display:flex; flex-direction:column; }\n      .watch-player { flex-shrink:0; }\n      .watch-link-panel { flex-shrink:0; }\n      .watch-interaction-panel { min-width:0; }\n      @media (orientation: landscape) and (min-width: 700px) {\n        .watch-together-main { display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(300px, .9fr); grid-template-rows:minmax(0, auto) minmax(0, 1fr); grid-template-areas:"player interaction" "link interaction"; gap:12px; overflow:hidden; padding-bottom:12px; }\n        .watch-player { grid-area:player; width:100%; max-width:none; align-self:start; }\n        .watch-link-panel { grid-area:link; min-width:0; overflow:auto; }\n        .watch-interaction-panel { grid-area:interaction; min-height:0; overflow-y:auto; overscroll-behavior:contain; margin-top:0!important; }\n      }\n    `}</style>\n    <style>{`@keyframes watchDanmaku { 0% { transform: translateX(28%); opacity: 0 } 8% { opacity: 1 } 88% { opacity: 1 } 100% { transform: translateX(-150%); opacity: 0 } }`}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -254,11 +254,11 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowSettings(value => !value); }} className="grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-white/10 bg-white/5 text-[#e6d8c4] backdrop-blur transition active:scale-95" aria-label="观影设置"><Settings2 size={17}/></button>
     </header>
 
-    <main className="relative z-[1001] min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-8">
+    <main className="watch-together-main relative z-[1001] min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-8">
       {/* 屏幕：房间里唯一的光源 */}
       <section
         ref={playerRef}
-        className={`relative mx-auto w-full max-w-3xl overflow-hidden rounded-[26px] border border-white/10 bg-[#0d0b09] ${fullScreen ? "fixed inset-0 z-[2000] h-[100dvh] w-screen max-w-none rounded-none" : ""}`}
+        className={`watch-player relative mx-auto w-full max-w-3xl overflow-hidden rounded-[26px] border border-white/10 bg-[#0d0b09] ${fullScreen ? "fixed inset-0 z-[2000] h-[100dvh] w-screen max-w-none rounded-none" : ""}`}
         style={{ boxShadow: "0 0 0 1px rgba(255,214,170,.06), 0 28px 70px rgba(0,0,0,.6), 0 0 120px rgba(201,143,82,.16)" }}
       >
         {target?.embedUrl ? (
@@ -290,7 +290,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       </section>
 
       {/* 没有视频时：链接输入放在「屏幕」下方，像往播放器里投一块碟 */}
-      {!target && <div className="mx-auto mt-4 w-full max-w-3xl">
+      {!target && <div className="watch-link-panel mx-auto mt-4 w-full max-w-3xl">
         <div className="flex flex-col gap-2 sm:flex-row">
           <input value={urlInput} onChange={event => setUrlInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter") openVideo(); }} placeholder="粘贴 B站 / 抖音 / 小红书 / 腾讯 / 优酷链接" className="min-w-0 flex-1 rounded-2xl border border-white/12 bg-white/6 px-4 py-3.5 text-sm text-[#f0e6d8] outline-none placeholder:text-[#8b8077] focus:border-[#c99a6a]" />
           <button onClick={openVideo} className="rounded-2xl px-5 py-3.5 text-sm font-medium tracking-wide text-[#2a1f16] transition active:scale-[.98]" style={{ background: "linear-gradient(135deg,#e8c39a,#c99a6a)" }}>放上屏幕</button>
@@ -299,7 +299,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       </div>}
 
       {/* 角色在屏幕下方轻声说话 */}
-      {target && <section className="mx-auto mt-4 w-full max-w-3xl">
+      {target && <section className="watch-interaction-panel mx-auto mt-4 w-full max-w-3xl">
         <div className="relative isolate overflow-hidden rounded-[26px] border border-[#d4a575]/20 bg-gradient-to-br from-[#49372b]/80 via-[#2d231d]/90 to-[#1c1714]/95 p-4 shadow-[inset_0_1px_0_rgba(255,224,184,.08),0_18px_44px_rgba(0,0,0,.28)] backdrop-blur-xl sm:p-5">
           {/* 沙发与毯子的低对比剪影：只作氛围底景，不遮挡互动控件。 */}
           <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-20 overflow-hidden opacity-70">
