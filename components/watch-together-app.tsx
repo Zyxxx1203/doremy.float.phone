@@ -537,7 +537,49 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel section > div.mt-3.border-t { flex-shrink:0; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div > div.relative.z-10.mt-2 { display:none; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-player video,.watch-together-app[data-watch-fullscreen="true"] .watch-player iframe { display:block; width:100%; height:100%; max-height:100%; aspect-ratio:auto; object-fit:contain; }
-      @media (orientation: portrait) { .watch-together-app[data-watch-fullscreen="true"] > main { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(120px,30dvh) minmax(0,1fr); grid-template-areas:"title" "player" "interaction"; overflow:hidden; } }\n      @media (orientation: landscape) and (min-width: 700px) {\n        .watch-together-main { display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(300px, .9fr); grid-template-rows:auto minmax(0, auto) minmax(0, 1fr); grid-template-areas:"title interaction" "player interaction" "link interaction"; gap:10px; overflow:hidden; padding-bottom:12px; }\n        .watch-player { grid-area:player; width:100%; max-width:none; align-self:start; }\n        .watch-link-panel { grid-area:link; min-width:0; overflow:auto; }\n        .watch-interaction-panel { grid-area:interaction; min-height:0; overflow-y:auto; overscroll-behavior:contain; margin-top:0!important; }\n      }\n    `}</style>
+      @media (orientation: portrait) { .watch-together-app[data-watch-fullscreen="true"] > main { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(120px,30dvh) minmax(0,1fr); grid-template-areas:"title" "player" "interaction"; overflow:hidden; } }\n      @media (orientation: landscape) and (min-width: 700px) {\n        .watch-together-main { display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(300px, .9fr); grid-template-rows:auto minmax(0, auto) minmax(0, 1fr); grid-template-areas:"title interaction" "player interaction" "link interaction"; gap:10px; overflow:hidden; padding-bottom:12px; }\n        .watch-player { grid-area:player; width:100%; max-width:none; align-self:start; }\n        .watch-link-panel { grid-area:link; min-width:0; overflow:auto; }\n        .watch-interaction-panel { grid-area:interaction; min-height:0; overflow-y:auto; overscroll-behavior:contain; margin-top:0!important; }\n      }\n
+      .watch-together-app[data-watch-fullscreen="true"] > header {
+        position:absolute!important; inset:0 0 auto 0!important; z-index:40!important;
+        display:flex; min-height:0!important; padding:calc(env(safe-area-inset-top,0px) + 5px) 10px 5px!important;
+        background:linear-gradient(180deg,rgba(0,0,0,.62),transparent)!important; color:#fff!important; pointer-events:none;
+      }
+      .watch-together-app[data-watch-fullscreen="true"] > header button,
+      .watch-together-app[data-watch-fullscreen="true"] > header a { pointer-events:auto; }
+      .watch-together-app[data-watch-fullscreen="true"] > main {
+        display:block!important; position:absolute!important; inset:0!important; flex:none!important; min-height:0!important;
+        width:100%!important; overflow:hidden!important; padding:0!important; gap:0!important; background:none!important;
+      }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-room-title,
+      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel,
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel { display:none!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player {
+        position:absolute!important; inset:0!important; width:100%!important; height:100%!important; max-width:none!important;
+        min-height:0!important; aspect-ratio:auto!important; margin:0!important; padding:0!important; overflow:hidden!important;
+        border:0!important; border-radius:0!important; box-shadow:none!important; background:#000!important;
+      }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player > video,
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player > iframe {
+        position:absolute!important; inset:0!important; display:block!important; width:100%!important; height:100%!important;
+        max-width:none!important; max-height:none!important; min-width:0!important; min-height:0!important;
+        border:0!important; aspect-ratio:auto!important; object-fit:contain!important;
+      }
+      .watch-companion-overlay {
+        max-height:calc(100dvh - 64px - env(safe-area-inset-bottom,0px)); overflow:visible;
+      }
+      .watch-companion-card, .watch-companion-pill {
+        background:rgba(13,12,12,.72)!important; backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+      }
+      .watch-danmaku-track[data-kind="user"] > span { background:rgba(54,101,144,.82); }
+      @media (orientation:landscape) {
+        .watch-together-app[data-watch-fullscreen="true"] .watch-companion-overlay {
+          left:12px; right:auto; width:min(430px,44vw); top:max(48px,calc(env(safe-area-inset-top) + 12px));
+        }
+        .watch-together-app[data-watch-fullscreen="true"] .watch-companion-card { max-width:100%; }
+      }
+      @media (prefers-reduced-motion:reduce) {
+        .watch-together-app[data-watch-fullscreen="true"] .watch-danmaku-track { animation:none!important; left:10px!important; transform:none!important; }
+      }
+    `}</style>
     <style>{`@keyframes watchDanmaku { 0% { transform: translateX(0); opacity: 0 } 6% { opacity: 1 } 92% { opacity: 1 } 100% { transform: translateX(calc(-100% - 100vw)); opacity: 0 } }`}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
@@ -583,11 +625,34 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </div>
         )}
 
-        {(target?.embedUrl || target?.nativeVideo) && settings.danmakuEnabled && comments.some(comment => comment.kind !== "user" && comment.targetUrl === target.url) && <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
-          {comments.filter(comment => comment.kind !== "user" && comment.targetUrl === target.url).slice(-8).map((comment, index) => {
+        {fullScreen && target && <div className="watch-companion-overlay pointer-events-none absolute left-2 right-2 top-[max(48px,calc(env(safe-area-inset-top)+12px))] z-30">
+          {companionCollapsed ? <button type="button" onClick={() => setCompanionCollapsed(false)} className="watch-companion-pill pointer-events-auto flex max-w-full items-center gap-2 rounded-full border border-white/25 bg-black/65 px-3 py-2 text-left text-white shadow-lg backdrop-blur-xl">
+            {character?.avatar ? <img src={character.avatar} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover"/> : <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#8b6b57] text-xs">{character?.name.slice(0,1) || "TA"}</span>}
+            <span className="min-w-0 flex-1 truncate text-xs">{latestComment?.text || "陪看已就绪"}</span><ChevronDown size={14} className="shrink-0"/>
+          </button> : <div className="watch-companion-card pointer-events-auto max-w-[min(540px,100%)] rounded-2xl border border-white/20 bg-black/62 p-2.5 text-white shadow-xl backdrop-blur-xl">
+            <div className="flex min-w-0 items-center gap-2">
+              {character?.avatar ? <img src={character.avatar} alt="" className="h-9 w-9 shrink-0 rounded-full border border-white/20 object-cover"/> : <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#8b6b57] text-sm">{character?.name.slice(0,1) || "TA"}</span>}
+              <div className="min-w-0 flex-1"><p className="truncate text-[10px] text-white/65">{character?.name || "TA"} · 陪你看</p><p className="mt-0.5 line-clamp-2 break-words text-xs leading-5">{latestComment ? latestComment.text : "开始播放后，TA 会把即时反应变成弹幕。"}</p></div>
+              <button type="button" onClick={() => { setCompanionCollapsed(true); setShowQuickChat(false); }} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/10" aria-label="收起陪看悬浮窗"><ChevronDown size={15}/></button>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <button type="button" onClick={() => actTogether("我们先停一下，聊聊刚才这一幕。")} disabled={!character} className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1.5 text-[10px] disabled:opacity-40">暂停聊聊</button>
+              <button type="button" onClick={() => actTogether("我想和你分享一下刚才这一幕带给我的感受。")} disabled={!character} className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1.5 text-[10px] disabled:opacity-40">说说感受</button>
+              <button type="button" onClick={() => actTogether("只根据已经出现的画面聊聊眼前线索，不推测或透露后续剧情。")} disabled={!character} className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1.5 text-[10px] disabled:opacity-40">聊聊线索</button>
+              <button type="button" onClick={() => setShowQuickChat(value => !value)} disabled={!character} className="rounded-full bg-[#e6c49d] px-2.5 py-1.5 text-[10px] text-[#302218] disabled:opacity-40">发弹幕 / 交流</button>
+              <button type="button" onClick={() => { setWatching(value => !value); if (!watching) void generateComment(false); }} disabled={!character} className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1.5 text-[10px] disabled:opacity-40">{watching ? "暂停陪看" : "开始陪看"}</button>
+            </div>
+            {showQuickChat && <form onSubmit={event => { event.preventDefault(); submitDiscussion(); }} className="mt-2 flex items-center gap-2 border-t border-white/15 pt-2">
+              <input autoComplete="off" value={discussionDraft} onChange={event => setDiscussionDraft(event.target.value.slice(0,800))} placeholder="发一条只属于你们的弹幕…" className="min-w-0 flex-1 rounded-full border border-white/15 bg-white/10 px-3 py-2 text-xs text-white outline-none placeholder:text-white/45"/>
+              <button type="submit" disabled={!discussionDraft.trim()} className="shrink-0 rounded-full bg-[#e6c49d] px-3 py-2 text-xs text-[#302218] disabled:opacity-40">发送</button>
+            </form>}
+          </div>}
+        </div>}
+        {(target?.embedUrl || target?.nativeVideo) && settings.danmakuEnabled && comments.some(comment => comment.targetUrl === target.url) && <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
+          {comments.filter(comment => comment.targetUrl === target.url).slice(-8).map((comment, index) => {
             const lane = 10 + ((index * 13 + comment.id.length * 7) % 7) * 10;
             const duration = Math.max(8, Math.min(18, 8 + comment.text.length * 0.17));
-            return <div key={comment.id} className="watch-danmaku-track" style={{ top: lane + "%", animationDuration: duration + "s", animationDelay: (index * 0.28) + "s" }}><span>{comment.characterName}：{comment.text}</span></div>;
+            return <div key={comment.id} data-kind={comment.kind === "user" ? "user" : "character"} className="watch-danmaku-track" style={{ top: lane + "%", animationDuration: duration + "s", animationDelay: (index * 0.28) + "s" }}><span>{comment.kind === "user" ? "我" : comment.characterName}：{comment.text}</span></div>;
           })}
         </div>}
         <div className="absolute right-2 top-2 flex gap-1">
