@@ -1510,14 +1510,6 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
             usageGuide: TOOLBOX_MANAGEMENT_USAGE_GUIDE,
         };
     }
-    if (capability.id === LIFE_ENGINE_CAPABILITY_ID) {
-        return {
-            name: capability.name,
-            description: capability.description,
-            parameterSchema: "{}",
-            usageGuide: "生活系统支持以下动作工具：life_propose_invitation（主动邀约）、life_request_follow（申请陪伴/跟随）、life_change_schedule（调整角色自己的未来日程）。仅在角色有真实动机时调用；所有动作都受生活引擎和对应功能开关约束。",
-        };
-    }
     if (capability.id === TIMED_WAKE_CAPABILITY_ID) {
         return {
             name: capability.name,
