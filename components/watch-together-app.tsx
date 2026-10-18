@@ -369,7 +369,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         </div>
 
         {/* 陪看设置：抽屉式，默认收起，避免占据屏幕空间 */}
-        {showSettings && <div className="mt-3 border-y border-white/10 bg-[#2a211a] p-4 backdrop-blur">
+
+      </section>}
+    </main>
+
+    {showSettings && <div className="absolute inset-0 z-[1012] flex items-end bg-black/45 backdrop-blur-sm" onClick={() => setShowSettings(false)}>
+      <section className="max-h-[78%] w-full overflow-y-auto border-t border-[#c99a78]/30 bg-[#2a211a] p-4 pb-[max(16px,env(safe-area-inset-bottom))]" onClick={event => event.stopPropagation()}>
           <div className="flex items-center justify-between">
             <h2 className="font-serif text-base tracking-wide text-[#efe2d0]">陪看方式</h2>
             <button onClick={() => setShowSettings(false)} aria-label="收起设置" className="text-[#8b8077]"><X size={15}/></button>
@@ -395,9 +400,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             >{label}</button>)}
           </div>
           <p className="mt-3 text-[10px] leading-5 text-[#7d7268]">角色发言使用你已配置的聊天模型与语音绑定。平台自带的字幕/弹幕开关无法跨站控制，这里的开关只作用于「角色陪看」这一层。</p>
-        </div>}
-      </section>}
-    </main>
+      </section>
+    </div>}
 
     {/* 悄悄话抽屉：历史发言收起来，不占屏幕 */}
     {showHistory && <div className="absolute inset-0 z-[1012] flex flex-col justify-end bg-black/55 backdrop-blur-sm" onClick={() => setShowHistory(false)}>
