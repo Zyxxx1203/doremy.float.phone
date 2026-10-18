@@ -92,6 +92,7 @@ export type PhotoWallSettings = {
 export type PhotoWallState = {
   version: 1;
   photos: PhotoWallPhoto[];
+  wallDoodles?: PhotoWallDoodle[];
   settings: PhotoWallSettings;
 };
 
@@ -202,6 +203,7 @@ export function loadPhotoWallState(): PhotoWallState {
     return {
       version: 1,
       photos: Array.isArray(parsed.photos) ? parsed.photos.map(normalizePhoto).filter((photo): photo is PhotoWallPhoto => photo !== null) : [],
+      wallDoodles: normalizeDoodles(parsed.wallDoodles),
       settings: {
         dailyGenerationEnabled: settings.dailyGenerationEnabled === true,
         dailyPhotoCount: settings.dailyPhotoCount === 1 || settings.dailyPhotoCount === 3 ? settings.dailyPhotoCount : 2,

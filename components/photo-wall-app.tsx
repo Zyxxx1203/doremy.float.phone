@@ -159,6 +159,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [filter, setFilter] = useState<Filter>("all");
   const [wallView, setWallView] = useState<"panorama" | "timeline" | "edit" | "settings">("panorama");
   const [panoramaZoom, setPanoramaZoom] = useState(100);
+  const [timelineRange, setTimelineRange] = useState<"all" | "7d" | "30d" | "90d" | "year">("all");
   const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
   const pinchPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinchModeRef = useRef(false);
@@ -437,6 +438,19 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   }, [refreshCharacters]);
 
   const photos = useMemo(() => state.photos.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [state.photos]);
+  const timelinePhotos = useMemo(() => {
+    if (timelineRange === "all") return photos;
+    const floor = new Date();
+    if (timelineRange === "year") { floor.setMonth(0, 1); floor.setHours(0, 0, 0, 0); }
+    else { floor.setDate(floor.getDate() - Number(timelineRange.slice(0, -1))); floor.setHours(0, 0, 0, 0); }
+    return photos.filter(photo => {
+      const at = new Date(photo.capturedAt || photo.createdAt);
+      return Number.isFinite(at.getTime()) && at.getTime() >= floor.getTime();
+    });
+  }, [photos, timelineRange]);
+  const changeWallDoodles = useCallback((wallDoodles: PhotoWallDoodle[]) => {
+    persist({ ...stateRef.current, wallDoodles });
+  }, [persist]);
   const visiblePhotos = useMemo(() => photos.filter(photo => {
     if (filter === "mine") return photo.ownerType === "user";
     if (filter === "characters") return photo.ownerType === "character";
@@ -812,7 +826,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       </nav>
 
       <section className="px-3 pb-12 pt-3 sm:px-6">
-        <p className="mb-3 px-1 text-[10px] text-[#9b8774]">双指捏合缩放画布 · 单指拖动照片 · 选中照片后可涂鸦或锁定</p>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e2d2c3] bg-[#fffaf2]/90 px-3 py-2">
+          <p className="text-[10px] text-[#9b8774]">双指捏合或使用按钮缩放 · 摆照片、涂鸦均为独立模式</p>
+          <div className="flex items-center gap-1"><button type="button" onClick={() => setPanoramaZoom(value => Math.max(50,value-10))} aria-label="缩小照片墙" className="grid h-8 w-8 place-items-center rounded-lg border border-[#d8c4b4] bg-white">−</button><span className="min-w-10 text-center text-[10px] text-[#795b52]">{panoramaZoom}%</span><button type="button" onClick={() => setPanoramaZoom(value => Math.min(180,value+10))} aria-label="放大照片墙" className="grid h-8 w-8 place-items-center rounded-lg border border-[#d8c4b4] bg-white">＋</button><button type="button" onClick={() => setPanoramaZoom(100)} className="px-2 text-[10px] text-[#795b52]">适应</button></div>
+        </div>
         {busy && <div className="mb-3 flex items-center gap-2 rounded-xl border border-[#e4d8c6] bg-[#faf7f0] px-3 py-2.5 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
 
 
@@ -824,6 +841,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               onSelect={setSelectedPhotoId}
               onChangePlacement={changePlacement}
               onChangeDoodles={changeDoodles}
+              wallDoodles={state.wallDoodles ?? []}
+              onChangeWallDoodles={changeWallDoodles}
               onOpenDetail={photo => openPhoto(photo)}
             /></div></div>
           : <div className="mx-auto flex max-w-sm flex-col items-center px-6 py-16 text-center"><div className="grid h-16 w-16 place-items-center rounded-full border border-[#ddd0bd] text-[#a0917d]"><Feather size={24}/></div><h2 className="mt-5 font-serif text-xl font-normal">这面墙还空着</h2><p className="mt-2 text-xs leading-6 text-[#968674]">先收藏一张你喜欢的照片。之后，角色也会把自己想珍藏的风景、自拍和生活片段慢慢放进来。</p><button onClick={() => fileRef.current?.click()} className="mt-5 rounded-full border border-[#b7a48c] px-5 py-2.5 text-xs tracking-wider text-[#786953]">收藏第一张照片</button></div>}
@@ -832,19 +851,21 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       </> : wallView === "panorama" ? <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden pb-16 pt-0">
         <div ref={panoramaViewportRef} data-photo-wall-viewport className="relative flex min-h-0 flex-1 items-stretch justify-stretch overflow-auto overscroll-contain border-y border-[#eadfd5] p-0" style={{WebkitOverflowScrolling:"touch", backgroundImage:"radial-gradient(ellipse at 50% 12%,rgba(255,255,255,.98),transparent 72%),linear-gradient(145deg,#fffaf2,#f6eee4)", touchAction:"none", overscrollBehavior:"contain"}}>
           <div className="shrink-0 transition-[width,height] duration-100" style={{height:panoramaZoom+"%",width:panoramaZoom+"%",minHeight:panoramaZoom+"%",minWidth:panoramaZoom+"%",maxWidth:"none"}}>
-            <PhotoWallCanvas photos={photos} selectedId={null} onSelect={() => {}} onChangePlacement={changePlacement} onChangeDoodles={changeDoodles} onOpenDetail={photo => openPhoto(photo)} readOnly fitHeight />
+            <PhotoWallCanvas photos={photos} selectedId={null} onSelect={() => {}} onChangePlacement={changePlacement} onChangeDoodles={changeDoodles} wallDoodles={state.wallDoodles ?? []} onChangeWallDoodles={changeWallDoodles} onOpenDetail={photo => openPhoto(photo)} readOnly fitHeight />
           </div>
         </div>
+        <div className="absolute right-3 top-3 z-20 flex items-center gap-1 rounded-xl border border-[#d8c4b4] bg-[#fffaf1]/95 p-1 shadow-sm"><button type="button" onClick={() => setPanoramaZoom(value => Math.max(50,value-10))} aria-label="缩小全景墙" className="grid h-8 w-8 place-items-center text-[#795b52]">−</button><span className="min-w-10 text-center text-[10px] tabular-nums text-[#795b52]">{panoramaZoom}%</span><button type="button" onClick={() => setPanoramaZoom(value => Math.min(180,value+10))} aria-label="放大全景墙" className="grid h-8 w-8 place-items-center text-[#795b52]">＋</button><button type="button" onClick={() => setPanoramaZoom(100)} className="px-2 text-[10px] text-[#795b52]">适应</button></div>
         {!photos.length && <div className="pointer-events-none absolute inset-x-8 top-1/2 -translate-y-1/2 text-center"><p className="font-serif text-lg text-[#8a7566]">一面空白的奶油墙</p><p className="mt-2 text-xs text-[#aa9788]">点击右上角「编辑」添加照片，或切换到时间轴海报浏览回忆。</p></div>}
       </div> : <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-24 pt-4 sm:px-7" style={{WebkitOverflowScrolling:"touch"}}>
-        {photos.length === 0 ? <div className="grid min-h-[55dvh] place-items-center text-center text-[#8f806d]"><div><Feather size={28} className="mx-auto"/><p className="mt-3">还没有收录的回忆</p><p className="mt-1 text-xs">进入编辑，添加第一张照片。</p></div></div> : <div className="mx-auto max-w-2xl space-y-6">
-          {[...new Set([...photos].sort((a,b)=>(b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt)).map(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return Number.isNaN(date.getTime()) ? "未知时间" : `${date.getFullYear()}.${String(date.getMonth()+1).padStart(2,"0")}`; }))].map(group => {
-            const items = photos.filter(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return (Number.isNaN(date.getTime()) ? "未知时间" : `${date.getFullYear()}.${String(date.getMonth()+1).padStart(2,"0")}`) === group; }).sort((a,b)=>(b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt));
+        <div className="sticky top-0 z-20 mx-auto mb-4 flex max-w-2xl items-center gap-2 border-b border-[#d8c4b4] bg-[#f3eadc]/95 px-2 py-2 backdrop-blur"><span className="shrink-0 text-[11px] text-[#8b7665]">时间</span><select value={timelineRange} onChange={event => setTimelineRange(event.target.value as typeof timelineRange)} aria-label="筛选照片时间" className="min-w-0 flex-1 rounded-lg border border-[#d8c4b4] bg-[#fffaf1] px-3 py-2 text-xs text-[#6d5946]"><option value="all">全部时间</option><option value="7d">最近 7 天</option><option value="30d">最近 30 天</option><option value="90d">最近 90 天</option><option value="year">今年</option></select><span className="shrink-0 text-[10px] text-[#a18e7a]">{timelinePhotos.length} 张</span></div>
+        {timelinePhotos.length === 0 ? <div className="grid min-h-[55dvh] place-items-center text-center text-[#8f806d]"><div><Feather size={28} className="mx-auto"/><p className="mt-3">还没有收录的回忆</p><p className="mt-1 text-xs">进入编辑，添加第一张照片。</p></div></div> : <div className="mx-auto max-w-2xl space-y-4">
+          {[...new Set([...timelinePhotos].sort((a,b)=>(b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt)).map(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return Number.isNaN(date.getTime()) ? "未知时间" : `${date.getFullYear()}.${String(date.getMonth()+1).padStart(2,"0")}`; }))].map(group => {
+            const items = timelinePhotos.filter(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return (Number.isNaN(date.getTime()) ? "未知时间" : `${date.getFullYear()}.${String(date.getMonth()+1).padStart(2,"0")}`) === group; }).sort((a,b)=>(b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt));
             return <section key={group} className="relative pl-5 before:absolute before:bottom-0 before:left-1 before:top-8 before:w-px before:bg-[#d8c4ab]">
               <h2 className="sticky top-0 z-10 mb-3 border-b border-[#d8c4b4] bg-[#f3eadc]/95 px-1 py-2 font-serif text-base text-[#75624d] backdrop-blur">{group} <span className="mx-1 text-[#c4ad91]">｜</span><span className="text-sm">我们的时光</span></h2>
-              <div className="space-y-4">{items.map((photo,index) => <article key={photo.id} className="relative border-l border-[#d5bba7] pl-4 pb-2 text-left">
+              <div className="space-y-3">{items.map((photo,index) => <article key={photo.id} className="relative border-l border-[#d5bba7] pl-4 pb-2 text-left">
                 <span className="absolute -left-[5px] top-5 h-2 w-2 border border-[#b88c82] bg-[#f3eadc]"/>
-                <div className="mx-auto max-w-[360px] border border-[#e3d3c1] bg-[#fffdf8] p-2 pb-4 shadow-[2px_5px_12px_rgba(70,55,40,.13)]">
+                <div className="mx-auto max-w-[260px] border border-[#e3d3c1] bg-[#fffdf8] p-2 pb-4 shadow-[2px_5px_12px_rgba(70,55,40,.13)]">
                   {timelineFlippedPhotoIds.has(photo.id) ? (
                     <button type="button" onClick={() => toggleTimelineFlip(photo.id)} aria-label="翻回照片正面" className="flex aspect-square w-full flex-col overflow-y-auto bg-[#fffaf2] p-4 text-left text-[#6b5947]">
                       <div className="border-b border-[#dfcfbe] pb-2 text-[9px] tracking-[.2em] text-[#a58f77]">THE BACK · 照片背面</div>
