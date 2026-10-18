@@ -30,6 +30,8 @@ import {
   type ScreenChatSettings,
 } from "@/lib/reality-bridge/storage";
 import type { BridgeRule } from "@/lib/reality-bridge/types";
+import { buildChatPromptMessages, sendLLMRequest } from "@/lib/chat-engine";
+import { loadChatMessages, loadChatSessions } from "@/lib/chat-storage";
 import { createShortcutCommand, loadRecentShortcutCommands, type ShortcutCommand } from "@/lib/shortcut-command-client";
 import { enableOfflinePush, isShellEnvironment, sendShellTestPush } from "@/lib/push-client";
 import { describeBridgePlatform } from "@/lib/shell-detect";
@@ -631,6 +633,8 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
 
   const [feed, setFeed] = useState(() => loadBridgeFeed());
   const [editing, setEditing] = useState<BridgeRule | null>(null);
+  const [offlineReplyGenerating, setOfflineReplyGenerating] = useState(false);
+
   const [dataItems, setDataItems] = useState<BridgeDataItem[]>(() => loadBridgeDataItems());
   const [editingItem, setEditingItem] = useState<BridgeDataItem | null>(null);
   const [shortcutActions, setShortcutActions] = useState<BridgeShortcutAction[]>(() => loadBridgeShortcutActions());
@@ -873,6 +877,61 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
       setSyncing(false);
     }
   }, [syncing, onNotice]);
+
+  const generateOfflineReplies = useCallback(async () => {
+    const characterId = editing?.actions.chat?.characterId;
+    if (!editing || !characterId) {
+      onNotice?.("先在「要做什么」里选择一个角色，再生成离线回复。");
+      return;
+    }
+    const character = characters.find(item => item.id === characterId);
+    const session = loadChatSessions().find(item => item.contactId === characterId && !item.isGroup);
+    if (!character || !session) {
+      onNotice?.("找不到这个角色的聊天会话，请先打开一次该角色的聊天室。");
+      return;
+    }
+    setOfflineReplyGenerating(true);
+    try {
+      const history = loadChatMessages(session.id, 30);
+      const instruction = [
+        "你正在为角色的现实桥制作离线回复库。请严格遵守当前角色卡、已注入的世界书、预设、记忆与聊天语境，不要改变角色人设。",
+        "请针对下面这条现实事件规则，写 8 条彼此不同、自然简短、像该角色本人会说的话。",
+        "要求：每条 1-2 句；不提模型、提示词、离线库或系统；不要假装已经执行没有发生的事情；避免重复同一套句式。",
+        `规则名称：${editing.name || "现实桥联动"}`,
+        `触发信号：${editing.matchType || "任意信号"}`,
+        `事件正文：{payload}（这是运行时会替换的占位符）`,
+        "请保留 {payload} 作为可选占位符，输出纯文本，每行一条回复，不要编号、不要解释。"
+      ].join("\n");
+      const syntheticMessage = {
+        id: `offline-library-${Date.now()}`,
+        sessionId: session.id,
+        role: "user" as const,
+        content: instruction,
+        status: "sent" as const,
+        createdAt: new Date().toISOString(),
+      };
+      const built = await buildChatPromptMessages(session, [...history, syntheticMessage], { appId: "chat" });
+      const generated = await sendLLMRequest(
+        built.config,
+        built.preset,
+        [...built.llmMessages, { role: "user", content: instruction }],
+        built.regexes,
+        { characterName: character.name },
+        { appId: "reality-bridge-offline-library", skipOutputRegex: true },
+      );
+      const lines = generated.split(/\r?\n/)
+        .map(line => line.replace(/^\s*(?:[-*•]|\d+[.)、])\s*/, "").trim())
+        .filter(line => line.length > 0 && line.length <= 220)
+        .slice(0, 30);
+      if (!lines.length) throw new Error("模型没有返回可用的逐行回复，请重试。");
+      setEditing(previous => previous ? { ...previous, offlineReplies: lines } : previous);
+      onNotice?.(`已按 ${character.name} 的角色上下文生成 ${lines.length} 条离线回复，可继续手动修改后保存。`);
+    } catch (error) {
+      onNotice?.(error instanceof Error ? `生成失败：${error.message}` : "生成离线回复失败，请检查模型配置和网络。");
+    } finally {
+      setOfflineReplyGenerating(false);
+    }
+  }, [editing, characters, onNotice]);
 
   const saveEditing = useCallback(() => {
     if (!editing) return;
@@ -2496,7 +2555,10 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                   offlineReplies: event.target.value.split("\n").map(line => line.trim()).filter(Boolean).slice(0, 80),
                 })}
               />
-              <small className="rb-hint">建议提前让角色 AI 按角色卡、世界书和你们的关系写好，再粘贴到这里；每条规则独立保存，完全离线也能用。空库时才退回通用提示。</small>
+              <small className="rb-hint">回复会在联网时按角色的角色卡、预设、世界书与近期聊天语境预生成，之后保存在本机规则配置里。断网时只从这里选用，不临时调用模型；你仍可逐条改写。</small>
+              <button type="button" className="rb-btn ghost" disabled={offlineReplyGenerating || !editing.actions.chat?.characterId} onClick={() => void generateOfflineReplies()}>
+                {offlineReplyGenerating ? "正在让角色准备回复…" : (editing.offlineReplies?.length ? "重新生成并替换回复库" : "让角色 AI 预写离线回复")}
+              </button>
             </label>
             </div>
             ) : null}
