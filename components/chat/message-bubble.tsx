@@ -1353,17 +1353,40 @@ function ImageBubble({
     const [useReferenceDraft, setUseReferenceDraft] = useState(d?.useReferenceImage === true);
 
     useEffect(() => {
-        if (!isMediaStoreRef(rawUrl)) {
-            setResolvedUrl(rawUrl);
-            setRefExpired(false);
-            return;
-        }
+        let active = true;
         let revokeUrl = "";
-        loadMediaObjectUrl(rawUrl).then(objUrl => {
-            if (objUrl) { setResolvedUrl(objUrl); revokeUrl = objUrl; }
-            else setRefExpired(true);
+        setResolvedUrl(isMediaStoreRef(rawUrl) ? "" : rawUrl);
+        setRefExpired(false);
+
+        if (!isMediaStoreRef(rawUrl)) {
+            return () => { active = false; };
+        }
+
+        void loadMediaObjectUrl(rawUrl).then(objUrl => {
+            if (!active) {
+                if (objUrl) URL.revokeObjectURL(objUrl);
+                return;
+            }
+            if (objUrl) {
+                revokeUrl = objUrl;
+                setResolvedUrl(objUrl);
+                setRefExpired(false);
+            } else {
+                setRefExpired(true);
+            }
+        }).catch(() => {
+            // A stale/deleted media reference should render the existing recovery UI,
+            // not produce an unhandled promise rejection or leave the previous photo visible.
+            if (active) {
+                setResolvedUrl("");
+                setRefExpired(true);
+            }
         });
-        return () => { if (revokeUrl) URL.revokeObjectURL(revokeUrl); };
+
+        return () => {
+            active = false;
+            if (revokeUrl) URL.revokeObjectURL(revokeUrl);
+        };
     }, [rawUrl]);
 
     useEffect(() => {
@@ -1381,6 +1404,7 @@ function ImageBubble({
             return;
         }
         let alive = true;
+        setActiveGroupIndex(0);
         setGroupLoading(true);
         setGroupLoadError(false);
         void Promise.allSettled(refs.map(async ref => {
