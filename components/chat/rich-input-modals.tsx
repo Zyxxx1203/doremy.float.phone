@@ -45,20 +45,18 @@ export function PhotoInputModal({ onSend, onClose }: PhotoInputModalProps) {
             <div onClick={e => e.stopPropagation()} className="modal-dialog" style={{ maxWidth: 420, width: "min(92vw, 420px)" }}>
                 <div className="ts-16 font-semibold text-center text-[var(--c-text)]">发送照片</div>
                 <div className="mt-1 text-center ts-12 text-[var(--c-icon)]">一次最多选择 9 张，可逐条发送，也可合并成可滑动相册</div>
-                <div className="mt-3 grid grid-cols-3 gap-2">
+                {imageDataUrls.length > 0 && <div className="mt-3 grid grid-cols-3 gap-2">
                     {imageDataUrls.map((src, index) => (
                         <div key={index} className="relative aspect-square overflow-hidden rounded-xl bg-[var(--c-input)]">
                             <img src={src} alt={`待发送图片 ${index + 1}`} className="h-full w-full object-cover" />
                             <button type="button" onClick={() => setImageDataUrls(prev => prev.filter((_, i) => i !== index))} className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-black/65 text-white" aria-label="移除图片">×</button>
                         </div>
                     ))}
-                    {imageDataUrls.length < 9 && (
-                        <button type="button" onClick={() => fileInputRef.current?.click()} className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-[var(--c-icon)]/40 bg-[var(--c-input)]/40 text-[var(--c-icon)]">
-                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                            <span className="ts-12">{imageDataUrls.length ? "继续添加" : "选择图片"}</span>
-                        </button>
-                    )}
-                </div>
+                </div>}
+                {imageDataUrls.length < 9 && <button type="button" onClick={() => fileInputRef.current?.click()} className="mt-3 flex min-h-[84px] w-full items-center justify-center gap-3 rounded-xl border border-dashed border-[var(--c-icon)]/45 bg-[var(--c-input)]/35 px-4 py-4 text-[var(--c-icon)] transition-colors hover:bg-[var(--c-input)]/60">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    <span className="text-sm">{imageDataUrls.length ? "继续添加图片" : "选择图片"}<span className="ml-2 text-xs opacity-70">最多 9 张</span></span>
+                </button>}
                 <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
                 <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="添加描述（选填）" rows={2} className="mt-3 w-full resize-none rounded-xl border border-[var(--c-border)] bg-[var(--c-input)] p-3 text-sm outline-none" />
                 {readError && <div role="alert" className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs leading-relaxed text-rose-700">{readError}</div>}

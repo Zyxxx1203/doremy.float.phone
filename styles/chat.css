@@ -981,20 +981,30 @@
 }
 
 .chat-toast-overlay {
-  position: absolute;
-  top: 96px;
-  left: 0;
-  right: 0;
+  /* Center against the viewport, not a translated/narrow chat pane. */
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 96px);
+  left: 50%;
+  right: auto;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  transform: translateX(-50%);
   display: flex;
   justify-content: center;
   pointer-events: none;
-  z-index: 40;
+  z-index: 10050;
 }
 
 .chat-toast-floating {
   position: static;
   bottom: auto;
   align-self: auto;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 /* ── Bubble role defaults ── */

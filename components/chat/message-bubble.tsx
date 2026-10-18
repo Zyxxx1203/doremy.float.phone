@@ -1595,22 +1595,20 @@ function ImageBubble({
                     </div>
                 ) : (
                     <div
-                        className="chat-photo-carousel-stack relative h-[220px] w-[min(250px,75vw)] max-w-full select-none overflow-hidden"
+                        className="chat-photo-carousel-stack relative h-[174px] w-[min(164px,52vw)] max-w-full select-none overflow-hidden"
                         style={{ touchAction: "pan-y", WebkitUserSelect: "none" }}
                         onPointerDown={beginCollectionGesture}
                         onPointerMove={moveCollectionGesture}
                         onPointerUp={finishCollectionGesture}
                         onPointerCancel={() => { groupGestureRef.current = null; setGroupDragOffset(0); }}
                     >
-                        <button type="button" onClick={event => { event.stopPropagation(); setExpandedCollection(true); }} className="absolute left-0 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-1 rounded-xl border border-stone-200/70 bg-black/55 px-2 py-2 text-[10px] leading-4 text-white shadow-sm backdrop-blur-sm">
-                            <span>展开</span><span className="text-xs font-semibold">{groupUrls.length} 张</span>
-                        </button>
+                        <button type="button" onClick={event => { event.stopPropagation(); setExpandedCollection(true); }} aria-label="展开照片组" title="展开照片组" className="absolute bottom-1 right-1 z-30 grid h-6 w-6 place-items-center rounded-full border border-white/40 bg-black/35 text-sm leading-none text-white/90 backdrop-blur-sm">⌄</button>
                         {groupUrls.map((url, itemIndex) => {
                             const relative = itemIndex - activeGroupIndex;
                             const distance = Math.abs(relative);
-                            if (distance > 2) return null;
-                            const scale = 1 - distance * 0.065;
-                            const x = relative * 16 + groupDragOffset;
+                            if (distance > 1) return null;
+                            const scale = 1 - distance * 0.045;
+                            const x = relative * 7 + Math.max(-14, Math.min(14, groupDragOffset * 0.35));
                             return (
                                 <button
                                     key={`${itemIndex}-${url}`}
@@ -1623,23 +1621,23 @@ function ImageBubble({
                                         setPreviewOriginRect({left:rect.left,top:rect.top,width:rect.width,height:rect.height});
                                         setShowPreview(true);
                                     }}
-                                    className="absolute left-[46px] top-0 h-[220px] w-[170px] overflow-hidden rounded-[14px] border border-white/30 bg-stone-900 shadow-[0_5px_20px_rgba(0,0,0,.28)]"
+                                    className="absolute left-[8px] top-0 h-[170px] w-[132px] overflow-hidden rounded-[10px] border border-white/35 bg-stone-900"
                                     style={{
                                         transform: `translate3d(${x}px,0,0) scale(${scale})`,
                                         transformOrigin: "left center",
-                                        transition: groupGestureRef.current?.mode === "horizontal" ? "none" : "transform .32s cubic-bezier(.25,.8,.35,1), opacity .32s",
+                                        transition: groupGestureRef.current?.mode === "horizontal" ? "none" : "transform .14s ease-out, opacity .14s ease-out",
                                         zIndex: 10 - distance,
                                         opacity: 1 - distance * 0.1,
                                         pointerEvents: relative === 0 ? "auto" : "none",
                                     }}
                                 >
-                                    <img src={url} alt={`${label} ${itemIndex + 1}`} className="h-full w-full object-cover" draggable={false} loading={itemIndex < 2 ? "eager" : "lazy"} />
+                                    <img src={url} alt={`${label} ${itemIndex + 1}`} className="h-full w-full object-contain" draggable={false} loading={itemIndex < 2 ? "eager" : "lazy"} />
                                     <span className="absolute bottom-2 right-2 rounded-full bg-black/60 px-2.5 py-1 text-xs tabular-nums text-white">{activeGroupIndex + 1}/{groupUrls.length}</span>
                                 </button>
                             );
                         })}
-                        <div aria-hidden className="pointer-events-none absolute left-[48px] top-2 flex gap-1.5">
-                            {groupUrls.map((url, itemIndex) => <span key={`${itemIndex}-${url}`} className={`h-1.5 rounded-full transition-all ${itemIndex === activeGroupIndex ? "w-4 bg-white shadow" : "w-1.5 bg-white/60"}`} />)}
+                        <div aria-hidden className="pointer-events-none absolute left-[9px] top-2 flex gap-1">
+                            {groupUrls.map((url, itemIndex) => <span key={`${itemIndex}-${url}`} className={`h-1 rounded-full ${itemIndex === activeGroupIndex ? "w-3 bg-white/90" : "w-1 bg-white/45"}`} />)}
                         </div>
                     </div>
                 )}

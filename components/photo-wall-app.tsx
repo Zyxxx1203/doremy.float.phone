@@ -159,6 +159,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [wallView, setWallView] = useState<"panorama" | "timeline" | "edit" | "settings">("panorama");
   const [panoramaZoom, setPanoramaZoom] = useState(100);
   const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
+  const singleTouchRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number; startedOnPhoto: boolean } | null>(null);
   const panoramaViewportRef = useRef<HTMLDivElement>(null);
   const panoramaZoomRef = useRef(100);
   const [showZoomFeedback, setShowZoomFeedback] = useState(false);
@@ -167,40 +168,42 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     if (wallView !== "panorama" && wallView !== "edit") return;
     const viewport = panoramaViewportRef.current;
     if (!viewport) return;
-    const distance = (touches: TouchList) => {
-      const dx = touches[0].clientX - touches[1].clientX;
-      const dy = touches[0].clientY - touches[1].clientY;
-      return Math.max(1, Math.hypot(dx, dy));
-    };
+    const distance = (touches: TouchList) => Math.max(1, Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY));
     const onStart = (event: TouchEvent) => {
-      if (event.touches.length !== 2) return;
-      event.preventDefault();
-      pinchStartRef.current = { distance: distance(event.touches), zoom: panoramaZoomRef.current };
-      setShowZoomFeedback(true);
-    };
-    const onMove = (event: TouchEvent) => {
-      if (event.touches.length !== 2 || !pinchStartRef.current) return;
-      event.preventDefault();
-      const nextZoom = Math.max(50, Math.min(180, Math.round(pinchStartRef.current.zoom * distance(event.touches) / pinchStartRef.current.distance)));
-      panoramaZoomRef.current = nextZoom;
-      setPanoramaZoom(nextZoom);
-      setShowZoomFeedback(true);
-    };
-    const onEnd = (event: TouchEvent) => {
-      if (event.touches.length < 2) {
-        pinchStartRef.current = null;
-        setShowZoomFeedback(false);
+      if (event.touches.length >= 2) {
+        event.preventDefault(); singleTouchRef.current = null;
+        pinchStartRef.current = { distance: distance(event.touches), zoom: panoramaZoomRef.current };
+        setShowZoomFeedback(true);
+      } else if (event.touches.length === 1) {
+        const target = event.target instanceof Element ? event.target : null;
+        singleTouchRef.current = { x: event.touches[0].clientX, y: event.touches[0].clientY, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, startedOnPhoto: Boolean(target?.closest("[data-photo-wall-photo]")) };
       }
     };
-    viewport.addEventListener("touchstart", onStart, { passive: false });
-    viewport.addEventListener("touchmove", onMove, { passive: false });
-    viewport.addEventListener("touchend", onEnd, { passive: false });
-    viewport.addEventListener("touchcancel", onEnd, { passive: false });
+    const onMove = (event: TouchEvent) => {
+      if (event.touches.length >= 2 && pinchStartRef.current) {
+        event.preventDefault();
+        const nextZoom = Math.max(50, Math.min(180, Math.round(pinchStartRef.current.zoom * distance(event.touches) / pinchStartRef.current.distance)));
+        panoramaZoomRef.current = nextZoom; setPanoramaZoom(nextZoom); setShowZoomFeedback(true);
+        return;
+      }
+      const start = singleTouchRef.current;
+      if (event.touches.length !== 1 || !start || (start.startedOnPhoto && wallView === "edit")) return;
+      const dx = event.touches[0].clientX - start.x, dy = event.touches[0].clientY - start.y;
+      if (Math.abs(dx) + Math.abs(dy) < 3) return;
+      event.preventDefault(); viewport.scrollLeft = start.scrollLeft - dx; viewport.scrollTop = start.scrollTop - dy;
+    };
+    const onEnd = (event: TouchEvent) => {
+      if (event.touches.length < 2) { pinchStartRef.current = null; setShowZoomFeedback(false); }
+      if (event.touches.length === 0) singleTouchRef.current = null;
+      else if (event.touches.length === 1) singleTouchRef.current = { x: event.touches[0].clientX, y: event.touches[0].clientY, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, startedOnPhoto: false };
+    };
+    viewport.addEventListener("touchstart", onStart, { passive: false, capture: true });
+    viewport.addEventListener("touchmove", onMove, { passive: false, capture: true });
+    viewport.addEventListener("touchend", onEnd, { passive: false, capture: true });
+    viewport.addEventListener("touchcancel", onEnd, { passive: false, capture: true });
     return () => {
-      viewport.removeEventListener("touchstart", onStart);
-      viewport.removeEventListener("touchmove", onMove);
-      viewport.removeEventListener("touchend", onEnd);
-      viewport.removeEventListener("touchcancel", onEnd);
+      viewport.removeEventListener("touchstart", onStart, true); viewport.removeEventListener("touchmove", onMove, true);
+      viewport.removeEventListener("touchend", onEnd, true); viewport.removeEventListener("touchcancel", onEnd, true);
     };
   }, [wallView]);
   const [selectedCharacterId, setSelectedCharacterId] = useState<string>(() => readPhotoWallCharacter());
@@ -706,7 +709,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={event => { if (event.target.files) void uploadFiles(event.target.files); event.currentTarget.value = ""; }}/>
 
     <main className={wallView === "panorama" ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-y-auto overscroll-contain"}>
-      {showZoomFeedback && <div aria-live="polite" className="pointer-events-none absolute left-1/2 top-1/2 z-[1005] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#dfcfbe] bg-[#49372b]/95 px-5 py-3 font-sans text-lg font-semibold tabular-nums text-white shadow-xl">{panoramaZoom}%</div>}
+      {showZoomFeedback && <div aria-live="polite" className="pointer-events-none fixed left-1/2 top-1/2 z-[10050] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#dfcfbe] bg-[#49372b]/95 px-4 py-2.5 font-sans text-base font-semibold tabular-nums text-white shadow-xl">{panoramaZoom}%</div>}
       {wallView === "settings" ? <div className="min-h-full bg-[#f5ede3] px-4 pb-10 pt-5 sm:px-7" style={{backgroundImage:"repeating-linear-gradient(0deg,rgba(122,84,68,.025) 0,rgba(122,84,68,.025) 1px,transparent 1px,transparent 5px)"}}>
         <div className="mx-auto max-w-3xl">
           <p className="text-[10px] tracking-[.24em] text-[#a18172]">A QUIET CORNER FOR YOUR WALL</p>
@@ -765,7 +768,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
 
         {visiblePhotos.length
-          ? <div ref={panoramaViewportRef} className="mx-auto w-full max-w-4xl overflow-auto overscroll-contain" style={{ maxHeight: "calc(100dvh - 270px)", WebkitOverflowScrolling: "touch", touchAction: "pan-x pan-y" }}><div style={{ width: panoramaZoom + "%", minWidth: panoramaZoom < 100 ? "50%" : "100%", marginInline: "auto", transition: "width 100ms ease" }}><PhotoWallCanvas
+          ? <div ref={panoramaViewportRef} className="mx-auto w-full max-w-4xl overflow-auto overscroll-contain" style={{ maxHeight: "calc(100dvh - 270px)", WebkitOverflowScrolling: "touch", touchAction: "none" }}><div style={{ width: panoramaZoom + "%", minWidth: panoramaZoom < 100 ? "50%" : "100%", marginInline: "auto" }}><PhotoWallCanvas
               photos={visiblePhotos}
               selectedId={selectedPhotoId}
               onSelect={setSelectedPhotoId}
@@ -777,7 +780,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       </section>
 
       </> : wallView === "panorama" ? <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden pb-16 pt-0">
-        <div ref={panoramaViewportRef} className="relative flex min-h-0 flex-1 items-stretch justify-stretch overflow-auto overscroll-contain border-y border-[#eadfd5] p-0" style={{WebkitOverflowScrolling:"touch", backgroundImage:"radial-gradient(ellipse at 50% 12%,rgba(255,255,255,.98),transparent 72%),linear-gradient(145deg,#fffaf2,#f6eee4)", touchAction:"pan-x pan-y"}}>
+        <div ref={panoramaViewportRef} className="relative flex min-h-0 flex-1 items-stretch justify-stretch overflow-auto overscroll-contain border-y border-[#eadfd5] p-0" style={{WebkitOverflowScrolling:"touch", backgroundImage:"radial-gradient(ellipse at 50% 12%,rgba(255,255,255,.98),transparent 72%),linear-gradient(145deg,#fffaf2,#f6eee4)", touchAction:"none"}}>
           <div className="shrink-0 transition-[width,height] duration-100" style={{height:panoramaZoom+"%",width:panoramaZoom+"%",minHeight:panoramaZoom+"%",minWidth:panoramaZoom+"%",maxWidth:"none"}}>
             <PhotoWallCanvas photos={photos} selectedId={null} onSelect={() => {}} onChangePlacement={changePlacement} onChangeDoodles={changeDoodles} onOpenDetail={photo => openPhoto(photo)} readOnly fitHeight />
           </div>

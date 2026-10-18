@@ -78,9 +78,11 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   const dragRef = useRef<DragState | null>(null);
   const strokeRef = useRef<{ id: string; photoId: string } | null>(null);
   const suppressClickRef = useRef(false);
+  const multiTouchRef = useRef(false);
   const [flippedPhotoIds, setFlippedPhotoIds] = useState<Set<string>>(new Set());
 
-  const [mode, setMode] = useState<"move" | "doodle">("move");
+  // Viewing is the safe default: taps flip; placement starts only on explicit opt-in.
+  const [mode, setMode] = useState<"view" | "move" | "doodle">("view");
   const [brushColor, setBrushColor] = useState(BRUSH_COLORS[0]);
   const [brushWidth, setBrushWidth] = useState(3);
   const [sticker, setSticker] = useState<string | null>(null);
@@ -97,8 +99,10 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   const commit = useCallback((id: string, next: PhotoWallPlacement) => onChangePlacement(id, next), [onChangePlacement]);
 
   /* ── 拖动 / 缩放 ───────────────────────────────── */
-  const beginDrag = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number, mode: "move" | "resize") => {
-    if (mode === "move" && event.button !== undefined && event.button !== 0) return;
+  const beginDrag = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number, dragMode: "move" | "resize") => {
+    if (multiTouchRef.current) return;
+    if (mode !== "move") { onSelect(photo.id); return; }
+    if (dragMode === "move" && event.button !== undefined && event.button !== 0) return;
     const wall = wallRef.current;
     if (!wall) return;
     const currentPlacement = placementOf(photo, index);
@@ -112,7 +116,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     dragRef.current = {
       id: photo.id,
       pointerId: event.pointerId,
-      mode,
+      mode: dragMode,
       startX: event.clientX,
       startY: event.clientY,
       base: placementOf(photo, index),
@@ -236,6 +240,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       onPointerMove={readOnly ? undefined : handlePointerMove}
       onPointerUp={readOnly ? undefined : endDrag}
       onPointerCancel={readOnly ? undefined : endDrag}
+      onTouchStart={event => { if (event.touches.length > 1) { multiTouchRef.current = true; dragRef.current = null; } }}
+      onTouchEnd={event => { if (event.touches.length < 2) multiTouchRef.current = false; }}
       onClick={event => { if (event.target === event.currentTarget) onSelect(null); }}
     >
       {ordered.length === 0 && !readOnly && <div className="pointer-events-none absolute inset-0 grid place-items-center text-[#a99a86]"><div className="text-center"><ImagePlus size={26} className="mx-auto"/><p className="mt-2 text-xs">这面墙还空着</p></div></div>}
@@ -250,6 +256,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
           selected={isSelected}
           flipped={flippedPhotoIds.has(photo.id)}
           onToggleFlip={() => {
+            if (mode !== "view") return;
             if (suppressClickRef.current) { suppressClickRef.current = false; return; }
             setFlippedPhotoIds(current => { const next = new Set(current); if (next.has(photo.id)) next.delete(photo.id); else next.add(photo.id); return next; });
           }}
@@ -268,8 +275,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
 
     {/* 画布工具条 */}
     {!readOnly && <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-[#e2d2c3] py-2.5">
-      <button type="button" onClick={() => setMode("move")} className={`flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-0.5 py-2 text-xs ${mode === "move" ? "bg-[#87565b] text-white" : "border border-[#ddd1bd] bg-white/70 text-[#7d6d5a]"}`}><Unlock size={13}/>摆照片</button>
-      <button type="button" onClick={() => { setMode("doodle"); if (selectedPhoto) setFlippedPhotoIds(current => { const next = new Set(current); next.delete(selectedPhoto.id); return next; }); }} disabled={!selectedPhoto} title="先选中一张照片，再直接在照片上划线或放贴纸" className={`flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-0.5 py-2 text-xs disabled:opacity-40 ${mode === "doodle" ? "bg-[#a77b77] text-white" : "border border-[#ddd1bd] bg-white/70 text-[#7d6d5a]"}`}><SquarePen size={13}/>涂鸦</button>
+      <button type="button" onClick={() => setMode(current => current === "move" ? "view" : "move")} className={`flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-3 py-2 text-xs ${mode === "move" ? "bg-[#87565b] text-white" : "border border-[#ddd1bd] bg-white/70 text-[#7d6d5a]"}`}><Unlock size={13}/>{mode === "move" ? "完成摆放" : "摆照片"}</button>
+      <button type="button" onClick={() => { setMode("doodle"); if (selectedPhoto) setFlippedPhotoIds(current => { const next = new Set(current); next.delete(selectedPhoto.id); return next; }); }} disabled={!selectedPhoto} title="先点照片选中，再点击涂鸦，然后在照片上按住并划动" className={`flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-3 py-2 text-xs disabled:opacity-40 ${mode === "doodle" ? "bg-[#a77b77] text-white" : "border border-[#ddd1bd] bg-white/70 text-[#7d6d5a]"}`}><SquarePen size={13}/>涂鸦</button>
       {mode === "doodle" && <>
         <span className="w-full basis-full text-[10px] leading-4 text-[#9a8973]">已选照片上直接划线；先点贴纸，再点照片放置。点击「摆照片」可退出涂鸦。</span>
         <span className="mx-1 h-4 w-px bg-[#ddd1bd]" />
@@ -280,7 +287,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       </>}
     </div>}
 
-    {!readOnly && selectedPhoto && mode === "move" && <div className="mt-2 flex flex-wrap items-center gap-1.5 border-y border-[#e6dccd] bg-white/70 px-2 py-2">
+    {!readOnly && selectedPhoto && mode !== "view" && <div className="mt-2 flex flex-wrap items-center gap-1.5 border-y border-[#e6dccd] bg-white/70 px-2 py-2">
       <span className="px-1 text-[11px] text-[#9a8973]">已选：{selectedPhoto.title || "未命名"}</span>
       <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.max(0.35, (selectedPhoto.placement?.scale ?? 1) - 0.12) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="缩小"><Minus size={14}/></button>
       <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.min(3, (selectedPhoto.placement?.scale ?? 1) + 0.12) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="放大"><Plus size={14}/></button>
@@ -329,6 +336,7 @@ function WallPhotoFrame({ photo, placement, selected, flipped, onToggleFlip, doo
   const width = `${BASE_PHOTO_RATIO * placement.scale * 100}%`;
 
   return <div
+    data-photo-wall-photo
     className="absolute"
     style={{
       left: `${placement.x * 100}%`,
