@@ -276,7 +276,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   /** 整墙导出 PNG：canvas 重绘，不受滚动位置和屏幕尺寸影响。 */
   const exportWall = async () => {
     if (exportBusy) return;
-    const targets = visiblePhotos.length ? visiblePhotos : photos;
+    const targets = photos;
     if (!targets.length) { onNotice?.("墙上还没有照片可以导出。"); return; }
     setExportBusy(true);
     try {
