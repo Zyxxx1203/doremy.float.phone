@@ -261,6 +261,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
             setFlippedPhotoIds(current => { const next = new Set(current); if (next.has(photo.id)) next.delete(photo.id); else next.add(photo.id); return next; });
           }}
           doodleMode={mode === "doodle" && isSelected}
+          placementMode={mode === "move"}
           draftPoints={isSelected && strokeRef.current?.photoId === photo.id ? draftPoints : []}
           onPointerDownMove={(event) => { if (!readOnly) beginDrag(event, photo, index, "move"); }}
           onPointerDownResize={(event) => { if (!readOnly) beginDrag(event, photo, index, "resize"); }}
@@ -304,6 +305,7 @@ type FrameProps = {
   placement: PhotoWallPlacement;
   selected: boolean;
   flipped: boolean;
+  placementMode: boolean;
   onToggleFlip: () => void;
   doodleMode: boolean;
   draftPoints: { x: number; y: number }[];
@@ -316,7 +318,7 @@ type FrameProps = {
   readOnly: boolean;
 };
 
-function WallPhotoFrame({ photo, placement, selected, flipped, onToggleFlip, doodleMode, draftPoints, onPointerDownMove, onPointerDownResize, onDoodlePointerDown, onDoodlePointerMove, onDoodlePointerUp, onOpenDetail, readOnly }: FrameProps) {
+function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, onToggleFlip, doodleMode, draftPoints, onPointerDownMove, onPointerDownResize, onDoodlePointerDown, onDoodlePointerMove, onDoodlePointerUp, onOpenDetail, readOnly }: FrameProps) {
   const [src, setSrc] = useState("");
   const [failed, setFailed] = useState(false);
 
@@ -403,7 +405,7 @@ function WallPhotoFrame({ photo, placement, selected, flipped, onToggleFlip, doo
 
       </>}
 
-      {selected && mode === "move" && !doodleMode && !placement.locked && <button
+      {selected && placementMode && !doodleMode && !placement.locked && <button
         type="button"
         aria-label="拖动调整大小"
         onPointerDown={event => { event.stopPropagation(); onPointerDownResize(event); }}
