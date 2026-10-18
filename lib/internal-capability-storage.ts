@@ -21,6 +21,7 @@ export const DEVICE_ACTION_CAPABILITY_ID = "device_action";
 export const SYSTEM_CALENDAR_CAPABILITY_ID = "system_calendar";
 export const PHONE_WIDGET_CAPABILITY_ID = "phone_widget";
 export const CHECK_IN_REQUEST_CAPABILITY_ID = "check_in_request";
+export const LIFE_ENGINE_CAPABILITY_ID = "life_engine";
 
 /**
  * 内置工具的保留名：用户给现实桥的快捷动作/数据项起名时必须避开。
@@ -1395,6 +1396,15 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
         updatedAt: 0,
     },
     {
+        id: LIFE_ENGINE_CAPABILITY_ID,
+        name: "生活引擎工具",
+        description: "生活系统角色工具：主动邀约、申请陪伴/跟随、调整角色自己的未来日程。具体动作仍受生活引擎总开关、角色自主行动与各项生活设置约束。",
+        enabled: true,
+        mode: "auto",
+        createdAt: 0,
+        updatedAt: 0,
+    },
+    {
         id: TIMED_WAKE_CAPABILITY_ID,
         name: "稍后主动联系",
         description: "让角色约定「过一会儿主动联系对方」：现在设定一个延时与想法，到点后由角色决定主动发消息或静默（不是睡觉醒来）。",
@@ -1498,6 +1508,14 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
             description: capability.description,
             parameterSchema: "{}",
             usageGuide: TOOLBOX_MANAGEMENT_USAGE_GUIDE,
+        };
+    }
+    if (capability.id === LIFE_ENGINE_CAPABILITY_ID) {
+        return {
+            name: capability.name,
+            description: capability.description,
+            parameterSchema: "{}",
+            usageGuide: "生活系统支持以下动作工具：life_propose_invitation（主动邀约）、life_request_follow（申请陪伴/跟随）、life_change_schedule（调整角色自己的未来日程）。仅在角色有真实动机时调用；所有动作都受生活引擎和对应功能开关约束。",
         };
     }
     if (capability.id === TIMED_WAKE_CAPABILITY_ID) {
