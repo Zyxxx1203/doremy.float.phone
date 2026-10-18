@@ -74,7 +74,8 @@ export function chooseLifeAutonomyCharacter(
 
   // Avoid letting random selection repeatedly favor whichever character happens
   // to be first in the participant list. Prefer the character who has been
-  // quiet the longest, while still keeping a little variation between ties.
+  // quiet the longest; characters who have not spoken yet get their first turn
+  // before a recently active character. Randomness is used only to break ties.
   const alternatives = characterIds.filter(id => id !== lastSpeakerId);
   const pool = alternatives.length ? alternatives : characterIds;
   const lastSpokeAt = new Map<string, number>();
