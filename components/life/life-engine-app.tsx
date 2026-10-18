@@ -38,7 +38,6 @@ import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts, suspend
 import { cancelFollowUp } from "@/lib/follow-up-service";
 import { loadBindingConfig, loadImageGenerationSettings, loadPresets, loadWorldBooks, resolveBinding, resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
 import type { BindingConfig, PresetConfig, WorldBookConfig } from "@/lib/settings-types";
-import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import "./life-rose-garden.css";
 import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
@@ -938,47 +937,6 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     return () => { alive = false; };
   }, [activeScene?.id, sceneImageRecords.map(image=>image.id+":"+image.status).join("|")]);
 
-  const composeSceneReferenceSheet = async (participantIds: string[]): Promise<string | undefined> => {
-    const imageSettings = loadImageGenerationSettings();
-    const sources: Array<{label:string;dataUrl:string;faceCrop?:{x:number;y:number;size:number}}> = [];
-    const playerAsset = imageSettings.userAppearanceReferenceAssetId;
-    if(playerAsset && participantIds.includes(PLAYER_ID)) {
-      const dataUrl=await getChatImageFromIndexedDB(playerAsset);
-      if(dataUrl) sources.push({label:playerName,dataUrl,faceCrop:imageSettings.userAppearanceFaceCrop});
-    }
-    for(const participantId of participantIds) {
-      const ref=imageSettings.characterReferences?.[participantId];
-      if(!ref?.assetId||ref.enabled===false)continue;
-      const dataUrl=await getChatImageFromIndexedDB(ref.assetId);
-      if(dataUrl) sources.push({label:characters.find(char=>char.id===participantId)?.name||"角色",dataUrl,faceCrop:ref.faceCrop});
-    }
-    if(!sources.length)return undefined;
-    const decoded=await Promise.all(sources.map(({label,dataUrl,faceCrop})=>new Promise<{label:string;image:HTMLImageElement;faceCrop?:{x:number;y:number;size:number}}>((resolve,reject)=>{
-      const image=new Image();image.onload=()=>resolve({label,image,faceCrop});image.onerror=()=>reject(new Error("参考图读取失败"));image.src=dataUrl;
-    })));
-    const cellW=512,cellH=340,cols=Math.min(2,decoded.length),rows=Math.ceil(decoded.length/cols);
-    const canvas=document.createElement("canvas");canvas.width=cols*cellW;canvas.height=rows*cellH;
-    const ctx=canvas.getContext("2d");if(!ctx)return undefined;
-    ctx.fillStyle="#f7f0e7";ctx.fillRect(0,0,canvas.width,canvas.height);
-    decoded.forEach(({label,image,faceCrop},index)=>{
-      const x=(index%cols)*cellW,y=Math.floor(index/cols)*cellH;
-      if(faceCrop){
-        const width=image.naturalWidth||image.width, height=image.naturalHeight||image.height;
-        const side=Math.max(1,Math.round(Math.min(width,height)*Math.max(0.18,Math.min(1,faceCrop.size))));
-        const sx=Math.max(0,Math.min(width-side,Math.round(faceCrop.x*width)));
-        const sy=Math.max(0,Math.min(height-side,Math.round(faceCrop.y*height)));
-        const targetSize=Math.min(cellW-32,cellH-58);
-        ctx.drawImage(image,sx,sy,side,side,x+(cellW-targetSize)/2,y+8+(cellH-48-targetSize)/2,targetSize,targetSize);
-      }else{
-        const scale=Math.min((cellW-32)/image.naturalWidth,(cellH-58)/image.naturalHeight);
-        const w=image.naturalWidth*scale,h=image.naturalHeight*scale;
-        ctx.drawImage(image,x+(cellW-w)/2,y+8+(cellH-48-h)/2,w,h);
-      }
-      ctx.fillStyle="#49392f";ctx.font="600 18px sans-serif";ctx.textAlign="center";ctx.fillText(label,x+cellW/2,y+cellH-16,cellW-24);
-    });
-    return canvas.toDataURL("image/png");
-  };
-
   const buildSceneImagePrompt = (participantIds: string[], customPrompt: string) => {
     const imageSettings = loadImageGenerationSettings();
     const parts = [
@@ -1018,15 +976,19 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setNotice("正在生成场景图。每张图会独立保存，失败的图片不会影响已有图库。");
     const generated: LifeSceneImage[] = [];
     try {
-      const referenceSheet = await composeSceneReferenceSheet(participantIds);
+      const referenceCharacterId = participantIds.find(pid=>pid !== PLAYER_ID && imageSettings.characterReferences?.[pid]?.assetId && imageSettings.characterReferences?.[pid]?.enabled !== false);
+      const characterIds = participantIds.filter(pid => pid !== PLAYER_ID && characters.some(character => character.id === pid));
+      const includeUserAppearance = participantIds.includes(PLAYER_ID);
+      const hasCharacterReferences = characterIds.some(pid => Boolean(imageSettings.characterReferences?.[pid]?.assetId) && imageSettings.characterReferences?.[pid]?.enabled !== false);
+      const hasPlayerReference = includeUserAppearance && Boolean(imageSettings.userAppearanceReferenceAssetId);
       for(let index=0;index<count;index++){
-        const referenceCharacterId = participantIds.find(pid=>imageSettings.characterReferences?.[pid]?.assetId && imageSettings.characterReferences?.[pid]?.enabled !== false);
         const result = await generateImageFromConfiguredApi({
           description: prompt+(count>1?"\n画面方案："+(index+1)+"，请在同一场景和角色外观基础上尝试不同自然构图。":""),
-          characterId: referenceCharacterId,
+          characterId: referenceCharacterId || characterIds[0],
+          characterIds,
+          includeUserAppearance,
           appId: "story",
-          useReferenceImage: Boolean(referenceSheet || referenceCharacterId),
-          referenceImageDataUrl: referenceSheet,
+          useReferenceImage: hasCharacterReferences || hasPlayerReference,
         });
         if(!result) throw new Error("生图服务未返回图片，请检查 API 配置和启用状态。");
         generated.push({id:id("scene-image"),sceneId:activeScene.id,mediaRef:result.mediaRef,prompt:result.prompt,participantIds:[...participantIds],createdAt:new Date().toISOString(),status:"active",alt:activeScene.locationName+"场景图"});
@@ -2262,6 +2224,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         characterId,
         appId: "story",
         useReferenceImage: Boolean(characterId),
+        includeUserAppearance: entry.actorId === PLAYER_ID ? true : undefined,
       });
       if (!result) throw new Error("生图服务未返回图片，请检查 API 配置。");
       const latest = stateRef.current;

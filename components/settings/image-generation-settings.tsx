@@ -1035,7 +1035,7 @@ export function ImageGenerationSettings() {
                 {settings.provider === "novelai" && (
                     <Alert variant="info">
                         <Info size={16} className="mt-[2px] shrink-0" />
-                        <span className="leading-[1.5]">NovelAI 会使用角色专属特征提示词，但暂不读取参考图；切回 OpenAI 兼容引擎后参考图仍会保留。</span>
+                        <span className="leading-[1.5]">NovelAI 当前适配器只使用角色文字特征，不读取脸部参考图；为了避免多角色身份被模型融合，不会把多人参考图硬塞成一张。切回支持多图编辑的 OpenAI 兼容模型后，已保存的参考图仍会保留。</span>
                     </Alert>
                 )}
                 <div className="menu-group p-4 flex flex-col gap-3">
@@ -1045,7 +1045,7 @@ export function ImageGenerationSettings() {
                         </div>
                         <div className="min-w-0 flex-1">
                             <div className="menu-label">玩家本人 · 全局参考图</div>
-                            <p className="menu-desc mt-1">生活场景合成参考板时会用它来保持“你”的形象。可以单独选取脸部区域，减少背景、衣服对身份一致性的干扰；这张图不会替代角色各自的参考图。</p>
+                            <p className="menu-desc mt-1">只要生成内容明确包含你本人入镜，就会把这张图作为全局身份参考；聊天、生活场景等功能共用同一份资料。可单独选取脸部区域，尽量避免把参考图里的服装、背景和姿势固定到新画面；它不会替代角色各自的参考图。</p>
                             <div className="mt-3 flex flex-wrap gap-2">
                                 <label className="ui-btn ui-btn-soft-action min-h-9 cursor-pointer px-3 py-2 text-xs">
                                     <Upload size={14} className="mr-1 inline"/> {settings.userAppearanceReferenceAssetId ? "更换玩家参考图" : "上传玩家参考图"}
@@ -1072,9 +1072,9 @@ export function ImageGenerationSettings() {
                     </div>
                     <div className="flex flex-col gap-1">
                         <label className="menu-desc ml-1">玩家固定外观描述</label>
-                        <Textarea value={settings.userAppearanceDescription || ""} onChange={event => persist({ ...settings, userAppearanceDescription: event.target.value })} rows={2} placeholder="例如：黑色长发、圆框眼镜、偏爱宽松的米色针织衫。只写稳定的外观特征。" />
+                        <Textarea value={settings.userAppearanceDescription || ""} onChange={event => persist({ ...settings, userAppearanceDescription: event.target.value })} rows={2} placeholder="例如：黑色长发、圆框眼镜、偏爱宽松的米色针织衫。只写稳定的身份特征（如五官、发色、发型、明显标记）；服装和姿态应由每次场景提示词决定。" />
                     </div>
-                    {settings.userAppearanceReferenceAssetId && <p className="menu-desc">脸部选区：{settings.userAppearanceFaceCrop ? "已保存" : "使用默认区域"}。OpenAI 兼容引擎的生活场景会使用裁切后的玩家参考图；NovelAI 暂不支持图像参考。</p>}
+                    {settings.userAppearanceReferenceAssetId && <p className="menu-desc">脸部选区：{settings.userAppearanceFaceCrop ? "已保存" : "使用默认区域"}。OpenAI 兼容引擎会在你本人入镜时使用裁切后的全局参考图；多角色画面会分别传入各角色的脸部参考。NovelAI 当前适配器只使用文字外观描述，不读取图像参考。</p>}
                 </div>
                 <div className="relative">
                     <div
