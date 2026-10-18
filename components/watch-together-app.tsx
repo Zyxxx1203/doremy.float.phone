@@ -206,6 +206,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const commentListRef = useRef<HTMLDivElement>(null);
   const videoFramesRef = useRef<Array<{ targetUrl: string; seconds: number; timestamp: string; dataUrl: string }>>([]);
   const frameCaptureFailedRef = useRef<string | null>(null);
+  const visionWarningTargetRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const commentBusyRef = useRef(false);
   const objectUrlRef = useRef<string | null>(null);
@@ -269,6 +270,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     videoFramesRef.current = videoFramesRef.current.filter(frame => frame.targetUrl === target?.url);
     setFrameSampleCount(videoFramesRef.current.length);
     frameCaptureFailedRef.current = null;
+    visionWarningTargetRef.current = null;
     if (!watching || !target) return;
     const capture = () => { captureCurrentVideoFrame(); };
     capture();
@@ -385,7 +387,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const visionConfig = loadApiConfigs().find(config => config.id === activeBinding.apiConfigId);
       const visionEnabled = visionConfig?.enableImageRecognition === true;
       const framesVisibleToModel = visionEnabled ? framesToSend : [];
-      if (framesToSend.length > 0 && !visionEnabled) {
+      if (framesToSend.length > 0 && !visionEnabled && visionWarningTargetRef.current !== target.url) {
+        visionWarningTargetRef.current = target.url;
         onNotice?.("已经采集到视频画面，但「一起看」绑定的聊天 API 没有开启图像识别，角色目前看不到截图。请为这个角色的「一起看」绑定启用图像识别，并使用支持视觉的模型。");
       }
       const frameMessages: ChatMessage[] = framesVisibleToModel.map((frame, index) => ({
@@ -662,7 +665,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               ["✦", "暂停聊聊", "我们先停一下，聊聊刚才这一幕。"],
               ["◌", "标记这一幕", "这段值得记下来，之后我们再一起回看。"],
               ["♡", "说说感受", "我想和你分享一下刚才这一幕带给我的感受。"],
-              ["↗", "猜猜接下来", "你觉得接下来会发生什么？说说你的猜想。"],
+              ["↗", "聊聊眼前线索", "只根据已经出现的画面聊聊眼前线索，不推测或透露后续剧情。"],
             ].map(([icon, label, cue]) => <button key={label} type="button" onClick={() => actTogether(cue)} disabled={!target || busy || !character} className="rounded-full border border-[#d6b18c]/15 bg-[#d6b18c]/[.07] px-2.5 py-1.5 text-[10px] text-[#d8c2aa] transition hover:border-[#d6b18c]/35 hover:bg-[#d6b18c]/[.13] active:scale-95 disabled:opacity-40"><span className="mr-1">{icon}</span>{label}</button>)}
           </div>
         </div>
