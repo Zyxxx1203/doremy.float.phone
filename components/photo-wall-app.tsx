@@ -120,18 +120,16 @@ function PhotoThumbnail({ photo, onOpen }: { photo: PhotoWallPhoto; onOpen: () =
     }).catch(() => undefined);
     return () => { active = false; if (url) URL.revokeObjectURL(url); };
   }, [photo.mediaRef]);
-  return <button onClick={onOpen} className="group relative block w-full overflow-hidden border border-[#e2d2c0] bg-[#fffdf8] text-left shadow-[2px_5px_12px_rgba(75,60,43,.13)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[3px_7px_15px_rgba(75,60,43,.17)]">
-    <div className="aspect-[4/5] overflow-hidden border-[5px] border-b-0 border-[#fffdf8] bg-[#e9e3d8]">
-      {src ? <img src={src} alt={photo.title} loading="lazy" className="h-full w-full object-cover transition duration-700 group-hover:scale-[1.025]" /> : <div className="grid h-full place-items-center text-[#9c907f]"><ImagePlus size={25}/></div>}
+  return <button type="button" onClick={onOpen} aria-label={`查看照片：${photo.title || "未命名的瞬间"}`} className="group relative block w-full text-left">
+    <div className="relative aspect-[4/3] overflow-hidden bg-[#e9e3d8]">
+      {src ? <img src={src} alt={photo.title} loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.02]" /> : <div className="grid h-full place-items-center text-[#9c907f]"><ImagePlus size={25}/></div>}
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full" style={{overflow:"visible"}}>
+        {(photo.doodles ?? []).map(doodle => doodle.kind === "stroke" ? <polyline key={doodle.id} points={doodle.points.map(point=>`${point.x*100},${point.y*100}`).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(0.8,doodle.width/2)} strokeLinecap="round" strokeLinejoin="round"/> : <text key={doodle.id} x={(doodle.points[0]?.x ?? .5)*100} y={(doodle.points[0]?.y ?? .5)*100} fill={doodle.color} fontSize="12" textAnchor="middle" dominantBaseline="middle">{doodle.content || "✦"}</text>)}
+      </svg>
+      <span className="absolute left-1.5 top-1.5 bg-[#fffaf0]/90 px-1.5 py-0.5 text-[9px] tracking-wide text-[#7f6b58]">{KIND_LABEL[photo.kind]}</span>
     </div>
-    <div className="border-t-0 px-3 pb-4 pt-2">
-      <div className="flex items-center justify-between gap-2"><span className="truncate font-serif text-[15px] text-[#54483d]">{photo.title || "未命名的瞬间"}</span>{photo.annotations.length > 0 && <MessageCircle size={13} className="shrink-0 text-[#a17b64]"/>}</div>
-      <div className="mt-1 flex items-center justify-between gap-2 text-[10px] tracking-[.12em] text-[#9b8d7b]"><span className="truncate">{photo.ownerName}</span><span>{new Date(photo.createdAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</span></div>
-    </div>
-    <span className="absolute left-2 top-2 border border-white/75 bg-[#fffaf0]/90 px-2 py-1 text-[10px] tracking-wider text-[#7f6b58]">{KIND_LABEL[photo.kind]}</span>
   </button>;
 }
-
 export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [state, setState] = useState<PhotoWallState>(() => loadPhotoWallState());
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -708,15 +706,16 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           {[...new Set([...photos].sort((a,b)=>(b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt)).map(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return Number.isNaN(date.getTime()) ? "未知时间" : `${date.getFullYear()}.${String(date.getMonth()+1).padStart(2,"0")}`; }))].map(group => {
             const items = photos.filter(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return (Number.isNaN(date.getTime()) ? "未知时间" : `${date.getFullYear()}.${String(date.getMonth()+1).padStart(2,"0")}`) === group; }).sort((a,b)=>(b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt));
             return <section key={group} className="relative pl-5 before:absolute before:bottom-0 before:left-1 before:top-8 before:w-px before:bg-[#d8c4ab]">
-              <h2 className="sticky top-0 z-10 mb-3 rounded-xl bg-[#f3eadc]/95 px-3 py-2 font-serif text-base text-[#75624d] backdrop-blur">{group} <span className="mx-1 text-[#c4ad91]">｜</span><span className="text-sm">我们的时光</span></h2>
+              <h2 className="sticky top-0 z-10 mb-3 border-b border-[#d8c4b4] bg-[#f3eadc]/95 px-1 py-2 font-serif text-base text-[#75624d] backdrop-blur">{group} <span className="mx-1 text-[#c4ad91]">｜</span><span className="text-sm">我们的时光</span></h2>
               <div className="space-y-4">{items.map((photo,index) => <article key={photo.id} className="relative border-l border-[#d5bba7] pl-4 pb-2 text-left">
                 <span className="absolute -left-[5px] top-5 h-2 w-2 border border-[#b88c82] bg-[#f3eadc]"/>
                 <div className="mx-auto max-w-[360px] border border-[#e3d3c1] bg-[#fffdf8] p-2 pb-4 shadow-[2px_5px_12px_rgba(70,55,40,.13)]">
                   <div className="overflow-hidden bg-[#e9dfd0]"><PhotoThumbnail photo={photo} onOpen={() => openPhoto(photo)} /></div>
                   <button type="button" onClick={() => openPhoto(photo)} className="mt-2 block w-full text-center font-serif text-sm leading-5 text-[#655342]">{photo.title || "未命名的瞬间"}</button>
-                  {(photo.caption || photo.backNote) && <p className="mt-1 whitespace-pre-wrap text-center font-serif text-xs leading-5 text-[#8d7a65]">{photo.caption || photo.backNote}</p>}
-                  {(photo.doodles?.length || photo.annotations?.length) ? <p className="mt-1 text-center text-[10px] text-[#a08c74]">✦ {photo.doodles?.length ?? 0} 个涂鸦 / 贴纸 · {photo.annotations?.length ?? 0} 条留言</p> : null}
-                  <p className="mt-1 text-center text-[10px] tracking-wider text-[#a08c74]">{formatDate(photo.createdAt)}</p>
+                  {(photo.backNote || photo.caption) && <p className="mt-1 whitespace-pre-wrap text-center font-serif text-xs leading-5 text-[#8d7a65]">{photo.backNote || photo.caption}</p>}
+                  {photo.tags.length > 0 && <p className="mt-2 text-center text-[10px] tracking-wide text-[#a18172]">{photo.tags.map(tag=>`#${tag}`).join("　")}</p>}
+                  {photo.annotations.slice(0,2).map(note=><p key={note.id} className="mt-2 border-t border-dashed border-[#d9c6b6] pt-2 text-left font-serif text-xs leading-5 text-[#8d7a65]">「{note.content}」<span className="ml-1 text-[10px] text-[#b29b88]">— {note.authorName}</span></p>)}
+                  <p className="mt-2 text-center text-[10px] tracking-wider text-[#a08c74]">{formatDate(photo.capturedAt || photo.createdAt)}</p>
                 </div>
               </article>)}</div>
             </section>;
