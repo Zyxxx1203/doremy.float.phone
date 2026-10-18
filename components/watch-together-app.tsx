@@ -20,6 +20,7 @@ type WatchComment = { id: string; characterId: string; characterName: string; te
 type WatchSettings = { characterId: string; intervalMinMinutes: number; intervalMaxMinutes: number; voiceEnabled: boolean; danmakuEnabled: boolean; subtitlesEnabled: boolean; currentMoment: string };
 
 const SETTINGS_KEY = "ai_phone_watch_together_v1";
+const SETTINGS_MIGRATION_KEY = "ai_phone_watch_together_schema_v2";
 const COMMENTS_KEY = "ai_phone_watch_together_comments_v1";
 const DEFAULT_SETTINGS: WatchSettings = { characterId: "", intervalMinMinutes: 3, intervalMaxMinutes: 8, voiceEnabled: true, danmakuEnabled: true, subtitlesEnabled: false, currentMoment: "" };
 function parseVideoUrl(value: string): VideoTarget | null {
@@ -63,19 +64,24 @@ function loadSettings(): WatchSettings {
     const raw = kvGet(SETTINGS_KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
     const parsed = JSON.parse(raw) as Partial<WatchSettings> & { intervalMinutes?: number };
+    const migrated = kvGet(SETTINGS_MIGRATION_KEY) === "2";
+    const previousMin = typeof parsed.intervalMinMinutes === "number" ? parsed.intervalMinMinutes : typeof parsed.intervalMinutes === "number" ? parsed.intervalMinutes : 3;
+    const previousMax = typeof parsed.intervalMaxMinutes === "number" ? parsed.intervalMaxMinutes : typeof parsed.intervalMinutes === "number" ? Math.min(60, parsed.intervalMinutes + 5) : 8;
+    const untouchedDefault = !migrated && previousMin === 3 && previousMax === 8;
     return {
       characterId: typeof parsed.characterId === "string" ? parsed.characterId : "",
-      intervalMinMinutes: Math.max(1, Math.min(60, typeof parsed.intervalMinMinutes === "number" ? parsed.intervalMinMinutes : typeof parsed.intervalMinutes === "number" ? parsed.intervalMinutes : 3)),
-      intervalMaxMinutes: Math.max(Math.max(1, Math.min(60, typeof parsed.intervalMinMinutes === "number" ? parsed.intervalMinMinutes : typeof parsed.intervalMinutes === "number" ? parsed.intervalMinutes : 3)), Math.min(60, typeof parsed.intervalMaxMinutes === "number" ? parsed.intervalMaxMinutes : typeof parsed.intervalMinutes === "number" ? Math.min(60, parsed.intervalMinutes + 5) : 8)),
+      intervalMinMinutes: untouchedDefault ? 1 : Math.max(1, Math.min(60, previousMin)),
+      intervalMaxMinutes: untouchedDefault ? 2 : Math.max(Math.max(1, Math.min(60, previousMin)), Math.min(60, previousMax)),
       voiceEnabled: parsed.voiceEnabled !== false,
       danmakuEnabled: parsed.danmakuEnabled !== false,
-      subtitlesEnabled: parsed.subtitlesEnabled !== false,
+      subtitlesEnabled: migrated ? parsed.subtitlesEnabled !== false : false,
       currentMoment: typeof parsed.currentMoment === "string" ? parsed.currentMoment.slice(0, 800) : "",
     };
   } catch { return { ...DEFAULT_SETTINGS }; }
 }
 function saveSettings(settings: WatchSettings): void {
   kvSet(SETTINGS_KEY, JSON.stringify(settings));
+  kvSet(SETTINGS_MIGRATION_KEY, "2");
 }
 function loadCommentStore(): Record<string, WatchComment[]> {
   try { const raw=kvGet(COMMENTS_KEY); if(!raw) return {}; const parsed=JSON.parse(raw) as Record<string,unknown>; return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, WatchComment[]] => Array.isArray(entry[1]))); }
@@ -207,7 +213,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const captureCurrentVideoFrame = useCallback((): { targetUrl: string; seconds: number; timestamp: string; dataUrl: string } | null => {
     if (!target) return null;
     const video = playerRef.current?.querySelector("video");
-    if (!video || video.readyState < 2 || !Number.isFinite(video.currentTime)) return null;
+    if (!video) {
+      frameCaptureFailedRef.current = target.embedUrl
+        ? "该平台使用跨站 iframe，网页拿不到播放器内部画面。"
+        : "该链接没有直接播放的 video 元素，因此网页无法截取当前画面。";
+      return null;
+    }
+    if (video.readyState < 2 || !Number.isFinite(video.currentTime)) return null;
     try {
       const maxSide = 640;
       const scale = Math.min(1, maxSide / Math.max(video.videoWidth || 1, video.videoHeight || 1));
@@ -353,7 +365,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const comment: WatchComment = { id: `comment-${Date.now()}`, characterId: character.id, characterName: character.name, text, createdAt: new Date().toISOString(), kind:"character", timepoint:timepointOverride, targetUrl:target.url };
       setComments(current => { const next=[...current.slice(-99),comment]; saveTargetComments(target.url,next); return next; });
       if (settings.voiceEnabled) void speakComment(text, character.id);
-      if (manual) onNotice?.(`${character.name}说了一句。`);
+      if (manual) onNotice?.(frameMessages.length ? `${character.name}说了一句（已参考最近视频截图）。` : frameCaptureFailedRef.current ? `${character.name}说了一句；当前无法读取视频画面，只根据文字讨论。` : `${character.name}说了一句。`);
     } catch (error) { onNotice?.("角色观影回应失败：" + (error instanceof Error ? error.message : String(error))); }
     finally { commentBusyRef.current = false; setBusy(false); }
   }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice, captureCurrentVideoFrame]);
@@ -421,9 +433,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app[data-watch-fullscreen="true"] .watch-player { grid-area:player; align-self:stretch; width:100%; max-width:none; height:100%; min-height:0; border-radius:12px!important; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel { display:none; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel { grid-area:interaction; min-height:0; height:100%; width:100%; max-width:none; margin:0!important; overflow-y:auto; overscroll-behavior:contain; }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div { min-height:100%; border-radius:16px!important; padding:10px!important; }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .mt-3.max-h-64 { max-height:none; min-height:70px; }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel section { margin-top:8px; padding-top:8px; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div { display:flex; flex-direction:column; height:100%; min-height:0; border-radius:16px!important; padding:10px!important; overflow:hidden; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div > .relative.z-10.mb-4 { display:none; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel section { display:flex; flex-direction:column; flex:1 1 auto; min-height:0; margin-top:8px; padding-top:8px; overflow:hidden; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .mt-3.max-h-64 { max-height:28dvh; min-height:72px; flex:1 1 auto; overflow-y:auto; overscroll-behavior:contain; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel section > div.mt-3.border-t { flex-shrink:0; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div > div.relative.z-10.mt-2 { display:none; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-player video,.watch-together-app[data-watch-fullscreen="true"] .watch-player iframe { display:block; width:100%; height:100%; max-height:100%; aspect-ratio:auto; object-fit:contain; }
       @media (orientation: portrait) { .watch-together-app[data-watch-fullscreen="true"] > main { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(120px,30dvh) minmax(0,1fr); grid-template-areas:"title" "player" "interaction"; overflow:hidden; } }\n      @media (orientation: landscape) and (min-width: 700px) {\n        .watch-together-main { display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(300px, .9fr); grid-template-rows:auto minmax(0, auto) minmax(0, 1fr); grid-template-areas:"title interaction" "player interaction" "link interaction"; gap:10px; overflow:hidden; padding-bottom:12px; }\n        .watch-player { grid-area:player; width:100%; max-width:none; align-self:start; }\n        .watch-link-panel { grid-area:link; min-width:0; overflow:auto; }\n        .watch-interaction-panel { grid-area:interaction; min-height:0; overflow-y:auto; overscroll-behavior:contain; margin-top:0!important; }\n      }\n    `}</style>
     <style>{`@keyframes watchDanmaku { 0% { transform: translateX(28%); opacity: 0 } 8% { opacity: 1 } 88% { opacity: 1 } 100% { transform: translateX(-150%); opacity: 0 } }`}</style>
