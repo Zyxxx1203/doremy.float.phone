@@ -621,7 +621,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       if (first < 0 || last <= first) throw new Error("模型没有返回有效 JSON 数组。");
       const decoded: unknown = JSON.parse(raw.slice(first, last + 1));
       if (!Array.isArray(decoded)) throw new Error("日程结果不是数组。");
-      const clean = (value: string) => value.toLocaleLowerCase().replace(/[\s\u3000·•/\\|｜、，,。.!！?？:：;；()（）\[\]【】_-]+/g, "");
+      const clean = (value: string) => value.toLocaleLowerCase().replace(/[\s\u3000·•\/\\|｜、，,。.!！?？:：;；()（）\[\]【】_-]+/g, "");
       const kinds = new Set(["habit", "work", "study", "meal", "commute", "free-time", "appointment", "special"]);
       const home = current.locations.find(p => p.id === "home") ?? current.locations[0];
       const aiSlots: LifeScheduleSlot[] = [];
