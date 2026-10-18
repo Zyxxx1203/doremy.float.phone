@@ -146,12 +146,21 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
       return;
     }
     const contact = loadChatContacts().find(item => item.characterId === character.id);
-    const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup);
-    if (!session) { if (manual) tell(`找不到「${character.name}」的私聊会话。请先与TA建立聊天会话，才能使用当前模型生成人物生活描写。`); return; }
+    const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup) ?? {
+      id: "life-observation-" + character.id,
+      contactId: contact?.id ?? character.id,
+      unreadCount: 0,
+      updatedAt: new Date().toISOString(),
+      isPinned: false,
+      isGroup: false,
+      alias: character.name,
+    };
     busyRef.current.add(character.id);
     setBusyId(character.id);
     try {
-      const recent = loadChatMessages(session.id, 8).filter(message => message.status !== "failed" && !message.isRetracted);
+      const recent = session.id.startsWith("life-observation-")
+        ? []
+        : loadChatMessages(session.id, 8).filter(message => message.status !== "failed" && !message.isRetracted);
       const scheduleText = coveredSchedules.map(formatSchedule).join("\n") || "（这段时间没有排定的行程）";
       const timelineText = coveredTimeline.map(formatTimeline).join("\n") || "（没有额外的已记录事件）";
       const worldContext = [
