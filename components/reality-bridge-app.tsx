@@ -596,6 +596,38 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
   const [tab, setTab] = useState<TabId>("main");
   const [settings, setSettings] = useState(() => loadBridgeSettings());
   const [rules, setRules] = useState<BridgeRule[]>(() => loadBridgeRules());
+  // 安卓壳内把同一份规则同步给原生本机引擎。该链路只写本地 SharedPreferences，
+  // 不上传事件；网页关闭后，已同步的系统电源规则仍可独立匹配。
+  useEffect(() => {
+    if (typeof window === "undefined" || !isShellEnvironment()) return;
+    const shell = (window as Window & {
+      AndroidShell?: { configureNativeRealityBridge?: (json: string) => boolean };
+    }).AndroidShell;
+    if (!shell?.configureNativeRealityBridge) return;
+    const nativeRules = rules
+      .filter(rule => !rule.schedule)
+      .map(rule => ({
+        id: rule.id,
+        name: rule.name,
+        matchType: rule.matchType,
+        payloadFilter: rule.payloadFilter || "",
+        enabled: rule.enabled === true,
+        cooldownMinutes: rule.cooldownMinutes || 0,
+        process: {
+          mode: rule.process?.mode || "raw",
+          template: rule.process?.mode === "template" ? rule.process?.template || "" : "",
+        },
+      }));
+    try {
+      shell.configureNativeRealityBridge(JSON.stringify({
+        enabled: settings.enabled !== false,
+        rules: nativeRules,
+      }));
+    } catch {
+      // 原生桥暂不可用时保留网页规则，不让设置页崩溃。
+    }
+  }, [settings.enabled, rules]);
+
   const [feed, setFeed] = useState(() => loadBridgeFeed());
   const [editing, setEditing] = useState<BridgeRule | null>(null);
   const [dataItems, setDataItems] = useState<BridgeDataItem[]>(() => loadBridgeDataItems());
