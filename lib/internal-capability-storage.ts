@@ -21,7 +21,9 @@ export const DEVICE_ACTION_CAPABILITY_ID = "device_action";
 export const SYSTEM_CALENDAR_CAPABILITY_ID = "system_calendar";
 export const PHONE_WIDGET_CAPABILITY_ID = "phone_widget";
 export const CHECK_IN_REQUEST_CAPABILITY_ID = "check_in_request";
-export const LIFE_ENGINE_CAPABILITY_ID = "life_engine";
+export const LIFE_INVITATION_CAPABILITY_ID = "life_invitation";
+export const LIFE_FOLLOW_CAPABILITY_ID = "life_follow";
+export const LIFE_SCHEDULE_CAPABILITY_ID = "life_schedule";
 
 /**
  * 内置工具的保留名：用户给现实桥的快捷动作/数据项起名时必须避开。
@@ -1396,9 +1398,27 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
         updatedAt: 0,
     },
     {
-        id: LIFE_ENGINE_CAPABILITY_ID,
-        name: "生活引擎工具",
-        description: "生活系统角色工具：主动邀约、申请陪伴/跟随、调整角色自己的未来日程。具体动作仍受生活引擎总开关、角色自主行动与各项生活设置约束。",
+        id: LIFE_INVITATION_CAPABILITY_ID,
+        name: "生活系统 · 主动邀约",
+        description: "允许角色在有真实动机时向你提出约会、活动或共同安排；邀约进入待确认列表，不会自动写入已确认行程。",
+        enabled: true,
+        mode: "auto",
+        createdAt: 0,
+        updatedAt: 0,
+    },
+    {
+        id: LIFE_FOLLOW_CAPABILITY_ID,
+        name: "生活系统 · 申请陪伴 / 跟随",
+        description: "允许角色申请陪伴并跟随你的实际行程；申请需要你接受，不会静默改变双方的位置状态。",
+        enabled: true,
+        mode: "auto",
+        createdAt: 0,
+        updatedAt: 0,
+    },
+    {
+        id: LIFE_SCHEDULE_CAPABILITY_ID,
+        name: "生活系统 · 调整角色日程",
+        description: "允许角色调整自己当天尚未开始的普通日程；不得修改玩家日程、过去时段或覆盖已确认约会。",
         enabled: true,
         mode: "auto",
         createdAt: 0,
