@@ -253,7 +253,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   return <div className="watch-together-app pointer-events-auto isolate absolute inset-0 z-[1000] flex min-w-0 flex-col overflow-hidden text-[#f0e6d8]" style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)" }}>
     {/* 弹幕动画：仓库里从未定义过 watchDanmaku，之前那条 animation 是空转，这里补上真实 keyframes */}
     <style>{`\n      .watch-together-main { display:flex; flex-direction:column; }
-      @keyframes watchWave { from { transform:scaleY(.45); opacity:.45 } to { transform:scaleY(1.15); opacity:1 } }\n      .watch-player { flex-shrink:0; border:9px solid #342a21!important; border-radius:7px!important; background:#090807; box-shadow:0 0 0 1px rgba(255,247,233,.45),0 7px 0 #8c6847,0 14px 28px rgba(68,44,24,.22)!important; }\n      .watch-link-panel { flex-shrink:0; }\n      .watch-interaction-panel { min-width:0; }\n      @media (orientation: landscape) and (min-width: 700px) {\n        .watch-together-main { display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(300px, .9fr); grid-template-rows:minmax(0, auto) minmax(0, 1fr); grid-template-areas:"player interaction" "link interaction"; gap:12px; overflow:hidden; padding-bottom:12px; }\n        .watch-player { grid-area:player; width:100%; max-width:none; align-self:start; }\n        .watch-link-panel { grid-area:link; min-width:0; overflow:auto; }\n        .watch-interaction-panel { grid-area:interaction; min-height:0; overflow-y:auto; overscroll-behavior:contain; margin-top:0!important; }\n      }\n    `}</style>
+      @keyframes watchWave { from { transform:scaleY(.45); opacity:.45 } to { transform:scaleY(1.15); opacity:1 } }\n      .watch-player { flex-shrink:0; border:9px solid #342a21!important; border-radius:7px!important; background:#090807; box-shadow:0 0 0 1px rgba(255,247,233,.45),0 7px 0 #8c6847,0 14px 28px rgba(68,44,24,.22)!important; }\n      .watch-link-panel { flex-shrink:0; }\n      .watch-interaction-panel { min-width:0; }\n      @media (orientation: landscape) and (min-width: 700px) {\n        .watch-together-main { display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(300px, .9fr); grid-template-rows:auto minmax(0, auto) minmax(0, 1fr); grid-template-areas:"title interaction" "player interaction" "link interaction"; gap:10px; overflow:hidden; padding-bottom:12px; }\n        .watch-player { grid-area:player; width:100%; max-width:none; align-self:start; }\n        .watch-link-panel { grid-area:link; min-width:0; overflow:auto; }\n        .watch-interaction-panel { grid-area:interaction; min-height:0; overflow-y:auto; overscroll-behavior:contain; margin-top:0!important; }\n      }\n    `}</style>
     <style>{`@keyframes watchDanmaku { 0% { transform: translateX(28%); opacity: 0 } 8% { opacity: 1 } 88% { opacity: 1 } 100% { transform: translateX(-150%); opacity: 0 } }`}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
@@ -276,7 +276,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     </header>
 
     <main className="watch-together-main relative z-[1001] min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-8" style={{backgroundImage:"radial-gradient(ellipse at 50% 0%,rgba(255,251,242,.72),transparent 62%)"}}>
-      <div className="mx-auto mb-2 w-full max-w-3xl px-1"><div className="flex items-center justify-between gap-3 border-b border-[#b99b80]/40 pb-2 text-[#6d5141]"><div className="min-w-0"><p className="truncate font-serif text-sm">{target ? `一起看《${videoTitle || target.platformName + "的一段视频"}》` : "把想看的内容放上屏幕"}</p><p className="mt-0.5 text-[10px] tracking-wide text-[#8b7665]">{target ? (target.supported ? target.platformName + " · 链接播放" : target.platformName + " · 外部播放") : "等待开始 · 选择视频或粘贴链接"}</p></div><span className="shrink-0 text-[10px] tracking-[.14em] text-[#a18172]">TOGETHER</span></div></div>
+      <div className="watch-room-title mx-auto mb-2 w-full max-w-3xl px-1"><div className="flex items-center justify-between gap-3 border-b border-[#b99b80]/40 pb-2 text-[#6d5141]"><div className="min-w-0"><p className="truncate font-serif text-sm">{target ? `一起看《${videoTitle || target.platformName + "的一段视频"}》` : "把想看的内容放上屏幕"}</p><p className="mt-0.5 text-[10px] tracking-wide text-[#8b7665]">{target ? (target.supported ? target.platformName + " · 链接播放" : target.platformName + " · 外部播放") : "等待开始 · 选择视频或粘贴链接"}</p></div><span className="shrink-0 text-[10px] tracking-[.14em] text-[#a18172]">TOGETHER</span></div></div>
       <section
         ref={playerRef}
         className={`watch-player relative mx-auto w-full max-w-3xl overflow-hidden rounded-[26px] border border-white/10 bg-[#0d0b09] ${fullScreen ? "fixed inset-0 z-[2000] h-[100dvh] w-screen max-w-none rounded-none" : ""}`}
@@ -321,7 +321,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
       {/* 角色在屏幕下方轻声说话 */}
       {target && <section className="watch-interaction-panel mx-auto mt-4 w-full max-w-3xl">
-        <div className="relative isolate overflow-hidden rounded-[26px] border border-[#d4a575]/20 bg-gradient-to-br from-[#49372b]/80 via-[#2d231d]/90 to-[#1c1714]/95 p-4 shadow-[inset_0_1px_0_rgba(255,224,184,.08),0_18px_44px_rgba(0,0,0,.28)] backdrop-blur-xl sm:p-5">
+        <div className="relative isolate overflow-hidden border-y border-[#d4a575]/20 bg-gradient-to-br from-[#49372b]/80 via-[#2d231d]/90 to-[#1c1714]/95 p-4 shadow-[inset_0_1px_0_rgba(255,224,184,.08)] backdrop-blur-xl sm:p-5">
           {/* 双人电波连线：用头像和波形表达同步陪伴，不再绘制伪沙发。 */}
           <div className="relative z-10 mb-4 flex items-center gap-3 border-y border-[#d6b18c]/20 py-3">
             <div className="flex min-w-0 flex-1 items-center gap-2"><span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden border border-[#d6b18c]/45 bg-[#e6d4bf] text-xs text-[#694e43]">{character?.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character?.name.slice(0,1) ?? "TA"}</span><span className="min-w-0"><span className="block truncate text-xs text-[#f1dfc9]">{character?.name ?? "TA"}</span><span className="block text-[10px] text-[#a9937e]">{watching ? "正在陪你看" : "等你一起看"}</span></span></div>
@@ -360,10 +360,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </section>
           <div className="relative z-10 mt-2 flex flex-wrap gap-1.5">
             {[
-              ["🧣", "把毯子分给 TA", "把柔软的毯子往 TA 那边分了一点，轻轻挨近。"],
-              ["🍿", "递一口零食", "拿起一颗零食递到 TA 嘴边，忍不住看了 TA 一眼。"],
-              ["🤍", "靠近一点", "悄悄往 TA 身边靠近一点，肩膀轻轻贴在一起。"],
-              ["🫶", "牵住 TA 的手", "在沙发毯子下面悄悄牵住 TA 的手。"],
+              ["✦", "暂停聊聊", "我们先停一下，聊聊刚才这一幕。"],
+              ["◌", "标记这一幕", "这段值得记下来，之后我们再一起回看。"],
+              ["♡", "说说感受", "我想和你分享一下刚才这一幕带给我的感受。"],
+              ["↗", "猜猜接下来", "你觉得接下来会发生什么？说说你的猜想。"],
             ].map(([icon, label, cue]) => <button key={label} type="button" onClick={() => actTogether(cue)} disabled={busy || !character} className="rounded-full border border-[#d6b18c]/15 bg-[#d6b18c]/[.07] px-2.5 py-1.5 text-[10px] text-[#d8c2aa] transition hover:border-[#d6b18c]/35 hover:bg-[#d6b18c]/[.13] active:scale-95 disabled:opacity-40"><span className="mr-1">{icon}</span>{label}</button>)}
           </div>
         </div>
@@ -420,7 +420,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         </div>
         <footer className="flex items-center justify-between gap-3 border-t border-white/8 px-4 py-3" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
           <span className="text-[10px] text-[#6f665e]">{watching ? "正在陪看" : "已暂停"}</span>
-          <button onClick={() => setComments([])} className="flex items-center gap-1.5 rounded-full border border-white/12 px-3 py-2 text-[11px] text-[#a2948a] transition active:scale-95"><Sparkles size={12}/>清空记录</button>
+          <button onClick={() => { setComments([]); if (target) saveTargetComments(target.url, []); }} className="flex items-center gap-1.5 border-b border-white/12 px-2 py-2 text-[11px] text-[#a2948a] transition active:opacity-60"><Sparkles size={12}/>清空记录</button>
         </footer>
       </section>
     </div>}
