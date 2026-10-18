@@ -1185,7 +1185,7 @@ export function attachMomentPhotoInBackground(
     postId: string,
     description: string,
     characterId: string,
-    useReferenceImage: boolean,
+    useReferenceImage: boolean | undefined,
     signal?: AbortSignal,
 ): void {
     void (async () => {
