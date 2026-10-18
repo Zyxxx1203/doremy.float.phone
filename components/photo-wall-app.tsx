@@ -705,15 +705,15 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       </> : wallView === "panorama" ? <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-20 pt-3 sm:px-6">
         <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[26px] border border-[#ded5c7] bg-[#f4eadc] p-2 shadow-inner">
           <div className="w-full max-w-[min(100%,560px)]">
-            <PhotoWallCanvas photos={photos} selectedId={null} onSelect={() => setWallView("edit")} onChangePlacement={changePlacement} onChangeDoodles={changeDoodles} onOpenDetail={photo => openPhoto(photo)} />
+            <PhotoWallCanvas photos={photos} selectedId={null} onSelect={() => setWallView("edit")} onChangePlacement={changePlacement} onChangeDoodles={changeDoodles} onOpenDetail={photo => openPhoto(photo)} readOnly />
           </div>
         </div>
         {!photos.length && <div className="pointer-events-none absolute inset-x-8 top-1/2 -translate-y-1/2 text-center text-sm text-[#897965]">这面墙还空着。点击「进入编辑」来添加照片。</div>}
         <button type="button" onClick={() => setWallView("edit")} className="absolute bottom-24 right-5 rounded-full bg-[#78866d] px-5 py-3 text-sm font-medium text-white shadow-lg">进入编辑</button>
       </div> : <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-24 pt-4 sm:px-7" style={{WebkitOverflowScrolling:"touch"}}>
         {photos.length === 0 ? <div className="grid min-h-[55dvh] place-items-center text-center text-[#8f806d]"><div><Feather size={28} className="mx-auto"/><p className="mt-3">还没有收录的回忆</p><p className="mt-1 text-xs">进入编辑，添加第一张照片。</p></div></div> : <div className="mx-auto max-w-2xl space-y-6">
-          {[...new Set(photos.map(photo => { const date = new Date(photo.createdAt); return Number.isNaN(date.getTime()) ? "未知时间" : date.toLocaleDateString("zh-CN", {year:"numeric",month:"2-digit"}); }))].map(group => {
-            const items = photos.filter(photo => { const date = new Date(photo.createdAt); return (Number.isNaN(date.getTime()) ? "未知时间" : date.toLocaleDateString("zh-CN", {year:"numeric",month:"2-digit"})) === group; });
+          {[...new Set(photos.map(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return Number.isNaN(date.getTime()) ? "未知时间" : date.toLocaleDateString("zh-CN", {year:"numeric",month:"2-digit"}); }))].map(group => {
+            const items = photos.filter(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return (Number.isNaN(date.getTime()) ? "未知时间" : date.toLocaleDateString("zh-CN", {year:"numeric",month:"2-digit"})) === group; });
             return <section key={group} className="relative pl-5 before:absolute before:bottom-0 before:left-1 before:top-8 before:w-px before:bg-[#d8c4ab]">
               <h2 className="sticky top-0 z-10 mb-3 rounded-xl bg-[#f3eadc]/95 px-3 py-2 font-serif text-base text-[#75624d] backdrop-blur">{group}</h2>
               <div className="space-y-4">{items.map((photo,index) => <button type="button" key={photo.id} onClick={() => openPhoto(photo)} className="relative block w-full rounded-[22px] border border-[#e5d7c5] bg-[#fffaf1] p-3 text-left shadow-[0_8px_22px_rgba(90,67,42,.08)]">
@@ -721,7 +721,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
                 <div className="mx-auto max-w-[360px] rotate-0 rounded-sm bg-[#fffdf8] p-3 pb-5 shadow-[0_5px_14px_rgba(70,55,40,.15)]">
                   <div className="overflow-hidden bg-[#e9dfd0]"><PhotoThumbnail photo={photo} onOpen={() => openPhoto(photo)} /></div>
                   <p className="mt-2 text-center font-serif text-sm text-[#655342]">{photo.title || "未命名的瞬间"}</p>
-                  {photo.note && <p className="mt-1 whitespace-pre-wrap text-center text-xs leading-5 text-[#8d7a65]">{photo.note}</p>}
+                  {(photo.caption || photo.backNote) && <p className="mt-1 whitespace-pre-wrap text-center text-xs leading-5 text-[#8d7a65]">{photo.caption || photo.backNote}</p>}
                   {(photo.doodles?.length || photo.annotations?.length) ? <p className="mt-1 text-center text-[10px] text-[#a08c74]">✦ {photo.doodles?.length ?? 0} 个涂鸦 / 贴纸 · {photo.annotations?.length ?? 0} 条留言</p> : null}
                   <p className="mt-1 text-center text-[10px] tracking-wider text-[#a08c74]">{formatDate(photo.createdAt)}</p>
                 </div>
