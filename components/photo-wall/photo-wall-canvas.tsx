@@ -214,8 +214,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   return <div className="relative">
     <div
       ref={wallRef}
-      className="photo-wall-surface relative w-full select-none overflow-hidden rounded-[26px] border border-[#e0d5c4] shadow-[inset_0_1px_0_rgba(255,255,255,.7),0_18px_40px_rgba(88,70,48,.12)]"
-      style={{ aspectRatio: "4 / 5", touchAction: readOnly ? "pan-y pinch-zoom" : "none", backgroundImage: "radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.38),transparent 52%),linear-gradient(145deg,#f2e7d7 0%,#eee1cf 48%,#e8dac6 100%)" }}
+      className="photo-wall-surface relative w-full select-none overflow-hidden rounded-[2px] border border-[#d8c4b0] shadow-[inset_0_1px_0_rgba(255,255,255,.7),0_10px_24px_rgba(88,70,48,.1)]"
+      style={{ aspectRatio: panorama ? "16 / 10" : "4 / 5", touchAction: readOnly ? "pan-y pinch-zoom" : "none", backgroundImage: "radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.38),transparent 52%),linear-gradient(145deg,#f2e7d7 0%,#eee1cf 48%,#e8dac6 100%)" }}
       onPointerMove={readOnly ? undefined : handlePointerMove}
       onPointerUp={readOnly ? undefined : endDrag}
       onPointerCancel={readOnly ? undefined : endDrag}
@@ -245,9 +245,9 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     </div>
 
     {/* 画布工具条 */}
-    {!readOnly && <div className="mt-3 flex flex-wrap items-center gap-2">
-      <button type="button" onClick={() => setMode("move")} className={`flex items-center gap-1.5 rounded-full px-3 py-2 text-xs ${mode === "move" ? "bg-[#78866d] text-white" : "border border-[#ddd1bd] bg-white/70 text-[#7d6d5a]"}`}><Unlock size={13}/>摆照片</button>
-      <button type="button" onClick={() => setMode("doodle")} disabled={!selectedPhoto} className={`flex items-center gap-1.5 rounded-full px-3 py-2 text-xs disabled:opacity-40 ${mode === "doodle" ? "bg-[#b8896f] text-white" : "border border-[#ddd1bd] bg-white/70 text-[#7d6d5a]"}`}><SquarePen size={13}/>涂鸦</button>
+    {!readOnly && <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-[#e2d2c3] py-2.5">
+      <button type="button" onClick={() => setMode("move")} className={`flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-0.5 py-2 text-xs ${mode === "move" ? "bg-[#87565b] text-white" : "border border-[#ddd1bd] bg-white/70 text-[#7d6d5a]"}`}><Unlock size={13}/>摆照片</button>
+      <button type="button" onClick={() => setMode("doodle")} disabled={!selectedPhoto} className={`flex items-center gap-1.5 rounded-none border-b-2 border-transparent px-0.5 py-2 text-xs disabled:opacity-40 ${mode === "doodle" ? "bg-[#a77b77] text-white" : "border border-[#ddd1bd] bg-white/70 text-[#7d6d5a]"}`}><SquarePen size={13}/>涂鸦</button>
       {mode === "doodle" && <>
         <span className="mx-1 h-4 w-px bg-[#ddd1bd]" />
         <span className="flex items-center gap-1"><Palette size={12} className="text-[#9a8973]"/>{BRUSH_COLORS.map(color => <button key={color} type="button" aria-label={`画笔颜色 ${color}`} onClick={() => { setBrushColor(color); setSticker(null); }} className={`h-5 w-5 rounded-full border ${brushColor === color && !sticker ? "border-[#6b5c4a] ring-2 ring-white" : "border-white/70"}`} style={{ background: color }} />)}</span>
@@ -259,12 +259,12 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
 
     {!readOnly && selectedPhoto && mode === "move" && <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-2xl border border-[#e6dccd] bg-white/70 px-2 py-2">
       <span className="px-1 text-[11px] text-[#9a8973]">已选：{selectedPhoto.title || "未命名"}</span>
-      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.max(0.35, (selectedPhoto.placement?.scale ?? 1) - 0.12) })} className="grid h-8 w-8 place-items-center rounded-full bg-white text-[#7d6d5a]" aria-label="缩小"><Minus size={14}/></button>
-      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.min(3, (selectedPhoto.placement?.scale ?? 1) + 0.12) })} className="grid h-8 w-8 place-items-center rounded-full bg-white text-[#7d6d5a]" aria-label="放大"><Plus size={14}/></button>
-      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { rotation: Math.max(-45, (selectedPhoto.placement?.rotation ?? 0) - 3) })} className="grid h-8 w-8 place-items-center rounded-full bg-white text-[#7d6d5a]" aria-label="左转"><RotateCcw size={14}/></button>
-      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { rotation: Math.min(45, (selectedPhoto.placement?.rotation ?? 0) + 3) })} className="grid h-8 w-8 place-items-center rounded-full bg-white text-[#7d6d5a]" aria-label="右转"><RotateCw size={14}/></button>
-      <button type="button" onClick={() => bringToFront(selectedPhoto, ordered.indexOf(selectedPhoto))} className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-[11px] text-[#7d6d5a]"><Sparkles size={12}/>置顶</button>
-      <button type="button" onClick={() => onOpenDetail(selectedPhoto)} className="rounded-full bg-[#78866d] px-3 py-1.5 text-[11px] text-white">看大图 / 背面</button>
+      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.max(0.35, (selectedPhoto.placement?.scale ?? 1) - 0.12) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="缩小"><Minus size={14}/></button>
+      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.min(3, (selectedPhoto.placement?.scale ?? 1) + 0.12) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="放大"><Plus size={14}/></button>
+      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { rotation: Math.max(-45, (selectedPhoto.placement?.rotation ?? 0) - 3) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="左转"><RotateCcw size={14}/></button>
+      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { rotation: Math.min(45, (selectedPhoto.placement?.rotation ?? 0) + 3) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="右转"><RotateCw size={14}/></button>
+      <button type="button" onClick={() => bringToFront(selectedPhoto, ordered.indexOf(selectedPhoto))} className="flex items-center gap-1 rounded-none border-b border-[#d7c2b1] bg-transparent px-2 py-1.5 text-[11px] text-[#7d6d5a]"><Sparkles size={12}/>置顶</button>
+      <button type="button" onClick={() => onOpenDetail(selectedPhoto)} className="rounded-none border-b border-[#87565b] bg-[#87565b] px-3 py-1.5 text-[11px] text-white">看大图 / 背面</button>
     </div>}
   </div>;
 }
@@ -315,18 +315,18 @@ function WallPhotoFrame({ photo, placement, selected, doodleMode, draftPoints, o
     }}
   >
     <div
-      className={`relative ${selected ? "outline outline-2 outline-offset-2 outline-[#8b9a7e]" : ""}`}
+      className={`relative ${selected ? "outline outline-2 outline-offset-2 outline-[#87565b]" : ""}`}
       style={{
         background: FRAME_BG[frame] === "transparent" ? "transparent" : (placement.frameColor || FRAME_BG[frame]),
         padding: `${pad.y * 100}% ${pad.x * 100}% ${pad.bottom * 100}%`,
-        borderRadius: frame === "thin" ? 4 : frame === "none" ? 8 : 6,
+        borderRadius: frame === "thin" ? 1 : frame === "none" ? 2 : 1,
         boxShadow: frame === "none" ? "0 6px 18px rgba(70,55,38,.22)" : "0 10px 24px rgba(70,55,38,.2)",
       }}
       onPointerDown={(event) => { if (!doodleMode) onPointerDownMove(event); }}
       onDoubleClick={onOpenDetail}
       onClick={event => { if (readOnly) { event.stopPropagation(); onOpenDetail(); } }}
     >
-      <div className="relative overflow-hidden bg-[#e7dfd2]" style={{ aspectRatio: "1 / 1", borderRadius: frame === "none" ? 6 : 2 }}>
+      <div className="relative overflow-hidden bg-[#e7dfd2]" style={{ aspectRatio: "1 / 1", borderRadius: frame === "none" ? 2 : 1 }}>
         {src ? <img src={src} alt={photo.title} draggable={false} className="h-full w-full object-cover" /> : failed ? <div className="grid h-full place-items-center text-[9px] text-[#a06050]">图片无法显示</div> : <div className="grid h-full place-items-center text-[#a99a86]"><ImagePlus size={16}/></div>}
         {frame === "tape" && <>
           <span className="pointer-events-none absolute -left-2 -top-2 h-4 w-10 -rotate-12 bg-[#f3e9cf]/85 shadow-sm" />
@@ -365,7 +365,7 @@ function WallPhotoFrame({ photo, placement, selected, doodleMode, draftPoints, o
         type="button"
         aria-label="拖动调整大小"
         onPointerDown={onPointerDownResize}
-        className="absolute -bottom-2 -right-2 grid h-6 w-6 place-items-center rounded-full border border-white bg-[#78866d] text-white shadow"
+        className="absolute -bottom-2 -right-2 grid h-6 w-6 place-items-center rounded-full border border-white bg-[#87565b] text-white shadow"
       ><Plus size={12}/></button>}
     </div>
   </div>;
