@@ -136,7 +136,7 @@ class NativeRealityBridgeReceiver : android.content.BroadcastReceiver() {
             Intent.ACTION_POWER_DISCONNECTED ->
                 NativeRealityBridge.capture(context, "充电结束", "手机停止充电")
             Intent.ACTION_BATTERY_LOW ->
-                NativeRealityBridge.capture(context, "电量低", "手机电量偏低")
+                NativeRealityBridge.capture(context, "电量变化", "手机电量偏低")
         }
     }
 }
