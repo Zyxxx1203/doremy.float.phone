@@ -705,6 +705,15 @@ async function fireIdleReconnect(rule: IdleReconnectRule, lastUserAt: number) {
             return;
         }
 
+        // A proactive generation can take tens of seconds. Re-check the source
+        // conversation immediately before committing it: if the user has returned
+        // while the model was thinking, discard the stale unsolicited message.
+        const newestUserMessage = [...loadChatMessages(session.id)].reverse().find(message => message.role === "user");
+        if (!newestUserMessage || Date.parse(newestUserMessage.createdAt) > lastUserAt || isWithinPushQuietHours(Date.now())) {
+            window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId: session.id } }));
+            return;
+        }
+
         const { hasVisible, stateValues } = await saveBackgroundCompletionRounds(
             rounds,
             session.id,
