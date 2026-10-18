@@ -26,9 +26,9 @@ export default function AppErrorBoundary({ error, reset }: Props) {
 
   const report = [
     "float client runtime error",
-    `message: ${error.message || "(empty message; inspect browser console)}`,
+    `message: ${error.message || "(empty message; inspect browser console)"}`,
     `name: ${error.name}`,
-    `digest: ${error.digest || "(none)}`,
+    `digest: ${error.digest || "(none)"}`,
     `url: ${typeof window === "undefined" ? "(unknown)" : window.location.href}`,
     `time: ${new Date().toISOString()}`,
     `userAgent: ${typeof navigator === "undefined" ? "(unknown)" : navigator.userAgent}`,
