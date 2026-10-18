@@ -656,10 +656,6 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     }
   }, []);
 
-  useEffect(() => {
-    if (tab === "history" && histSec === "native") refreshNativeLog();
-  }, [tab, histSec, refreshNativeLog]);
-
   const [feed, setFeed] = useState(() => loadBridgeFeed());
   const [editing, setEditing] = useState<BridgeRule | null>(null);
   const [offlineReplyGenerating, setOfflineReplyGenerating] = useState(false);
@@ -738,6 +734,9 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
   const [screenChat, setScreenChat] = useState<ScreenChatSettings>(() => loadScreenChatSettings());
   const [editingScreenChat, setEditingScreenChat] = useState<ScreenChatSettings | null>(null);
   const [histSec, setHistSec] = useState<"feed" | "commands" | "native">("feed");
+  useEffect(() => {
+    if (tab === "history" && histSec === "native") refreshNativeLog();
+  }, [tab, histSec, refreshNativeLog]);
   const [confirmClear, setConfirmClear] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [wizStep, setWizStep] = useState(1);
@@ -2603,12 +2602,11 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                   offlineReplies: event.target.value.split("\n").map(line => line.trim()).filter(Boolean).slice(0, 80),
                 })}
               />
-              <small className="rb-hint">回复会在联网时按角色的角色卡、预设、世界书与近期聊天语境预生成，之后保存在本机规则配置里。断网时只从这里选用，不临时调用模型；你仍可逐条改写。</small>
-              <button type="button" className="rb-btn ghost" disabled={offlineReplyGenerating || !editing.actions.chat?.characterId} onClick={() => void generateOfflineReplies()}>
-                {offlineReplyGenerating ? "正在让角色准备回复…" : (editing.offlineReplies?.length ? "重新生成并替换回复库" : "让角色 AI 预写离线回复")}
-              </button>
-            </div>
             </label>
+            <small className="rb-hint">回复会在联网时按角色的角色卡、预设、世界书与近期聊天语境预生成，之后保存在本机规则配置里。断网时只从这里选用，不临时调用模型；你仍可逐条改写。</small>
+            <button type="button" className="rb-btn ghost" disabled={offlineReplyGenerating || !editing.actions.chat?.characterId} onClick={() => void generateOfflineReplies()}>
+              {offlineReplyGenerating ? "正在让角色准备回复…" : (editing.offlineReplies?.length ? "重新生成并替换回复库" : "让角色 AI 预写离线回复")}
+            </button>
             </div>
             ) : null}
 
