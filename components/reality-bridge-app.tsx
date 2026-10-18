@@ -914,7 +914,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
       const generated = await sendLLMRequest(
         built.config,
         built.preset,
-        [...built.llmMessages, { role: "user", content: instruction }],
+        built.llmMessages,
         built.regexes,
         { characterName: character.name },
         { appId: "reality-bridge-offline-library", skipOutputRegex: true },
