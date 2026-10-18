@@ -311,7 +311,7 @@ function WallPhotoFrame({ photo, placement, selected, doodleMode, draftPoints, o
       width,
       transform: `translate(-50%, -50%) rotate(${placement.rotation}deg)`,
       zIndex: placement.z,
-      touchAction: "none",
+      touchAction: readOnly ? "auto" : "none",
     }}
   >
     <div
