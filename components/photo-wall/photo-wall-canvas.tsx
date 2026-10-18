@@ -129,7 +129,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     const dx = event.clientX - drag.startX;
     const dy = event.clientY - drag.startY;
     if (!drag.moved) {
-      if (Math.abs(dx) + Math.abs(dy) <= 3) return;
+      // A tiny finger/mouse jitter must still count as a tap so the card flips.
+      if (Math.abs(dx) + Math.abs(dy) <= 8) return;
       drag.moved = true;
       const wall = wallRef.current;
       if (wall && !wall.hasPointerCapture(event.pointerId)) wall.setPointerCapture(event.pointerId);
