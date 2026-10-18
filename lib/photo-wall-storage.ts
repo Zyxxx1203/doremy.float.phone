@@ -93,6 +93,7 @@ export type PhotoWallState = {
   version: 1;
   photos: PhotoWallPhoto[];
   wallDoodles?: PhotoWallDoodle[];
+  wallBackgroundRef?: string;
   settings: PhotoWallSettings;
 };
 
@@ -204,6 +205,7 @@ export function loadPhotoWallState(): PhotoWallState {
       version: 1,
       photos: Array.isArray(parsed.photos) ? parsed.photos.map(normalizePhoto).filter((photo): photo is PhotoWallPhoto => photo !== null) : [],
       wallDoodles: normalizeDoodles(parsed.wallDoodles),
+      wallBackgroundRef: typeof parsed.wallBackgroundRef === "string" && parsed.wallBackgroundRef.startsWith("media-store://") ? parsed.wallBackgroundRef : undefined,
       settings: {
         dailyGenerationEnabled: settings.dailyGenerationEnabled === true,
         dailyPhotoCount: settings.dailyPhotoCount === 1 || settings.dailyPhotoCount === 3 ? settings.dailyPhotoCount : 2,
@@ -221,6 +223,8 @@ export function savePhotoWallState(state: PhotoWallState): void {
   const next: PhotoWallState = {
     version: 1,
     photos: state.photos.map(normalizePhoto).filter((photo): photo is PhotoWallPhoto => photo !== null),
+    wallDoodles: normalizeDoodles(state.wallDoodles),
+    wallBackgroundRef: typeof state.wallBackgroundRef === "string" && state.wallBackgroundRef.startsWith("media-store://") ? state.wallBackgroundRef : undefined,
     settings: {
       ...DEFAULT_PHOTO_WALL_SETTINGS,
       ...state.settings,

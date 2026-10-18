@@ -31,8 +31,7 @@ const FRAME_BG: Record<PhotoWallFrameStyle, string> = {
 export const STICKER_CHOICES = ["❤", "✦", "✿", "☾", "☘", "♪", "★", "⌘"];
 const BRUSH_COLORS = ["#c2705a", "#a77b77", "#b08a54", "#5d6b8a", "#8a6b8a", "#3c3a36"];
 
-/** 照片墙基准宽度比例：单张照片默认占墙宽的比例，再乘 placement.scale。 */
-const BASE_PHOTO_RATIO = 0.3;
+/** 固定在舒服的阅读尺寸；画布变大时照片不跟着膨胀。 */
 
 /** 没有摆放坐标的老照片，给一个稳定但错落的默认落点。 */
 export function fallbackPlacement(index: number): PhotoWallPlacement {
@@ -58,6 +57,7 @@ type Props = {
   onChangeDoodles: (id: string, doodles: PhotoWallDoodle[]) => void;
   wallDoodles?: PhotoWallDoodle[];
   onChangeWallDoodles?: (doodles: PhotoWallDoodle[]) => void;
+  backgroundImage?: string;
   onOpenDetail: (photo: PhotoWallPhoto) => void;
   readOnly?: boolean;
   fitHeight?: boolean;
@@ -75,7 +75,7 @@ type DragState = {
   moved: boolean;
 };
 
-export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, onOpenDetail, readOnly = false, fitHeight = false }: Props) {
+export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, onOpenDetail, readOnly = false, fitHeight = false }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const strokeRef = useRef<{ id: string; photoId: string } | null>(null);
@@ -301,10 +301,35 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   };
 
   return <div className={fitHeight ? "relative flex h-full w-full items-center justify-center" : "relative"}>
+    {/* 画布工具条 */}
+    {!readOnly && <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-[#e2d2c3] py-2.5">
+      <button type="button" onClick={() => setMode(current => current === "move" ? "view" : "move")} className={`flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs transition ${mode === "move" ? "border-[#87565b] bg-[#87565b] text-white" : "border-[#ddd1bd] bg-white/80 text-[#7d6d5a]"}`}><Unlock size={13}/>{mode === "move" ? "完成摆放" : "摆照片"}</button>
+      <button type="button" onClick={() => { setMode(current => current === "doodle" ? "view" : "doodle"); if (selectedPhoto) setFlippedPhotoIds(current => { const next = new Set(current); next.delete(selectedPhoto.id); return next; }); }} title="进入涂鸦后可在整面墙任意位置按住并拖动画线或放置贴纸" className={`flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs transition ${mode === "doodle" ? "border-[#a77b77] bg-[#a77b77] text-white" : "border-[#ddd1bd] bg-white/80 text-[#7d6d5a]"}`}><SquarePen size={13}/>{mode === "doodle" ? "退出涂鸦" : "涂鸦"}</button>
+      {mode === "doodle" && <>
+        <span className="w-full basis-full text-[10px] leading-4 text-[#9a8973]">"在整面墙任意位置按住并划动即可涂鸦，可跨过照片；选贴纸后点画布放置。照片旧涂鸦仍保留。"</span>
+        <span className="mx-1 h-4 w-px bg-[#ddd1bd]" />
+        <span className="flex items-center gap-1"><Palette size={12} className="text-[#9a8973]"/>{BRUSH_COLORS.map(color => <button key={color} type="button" aria-label={`画笔颜色 ${color}`} onClick={() => { setBrushColor(color); setSticker(null); }} className={`h-5 w-5 rounded-full border ${brushColor === color && !sticker ? "border-[#6b5c4a] ring-2 ring-white" : "border-white/70"}`} style={{ background: color }} />)}</span>
+        <span className="flex items-center gap-1"><Droplet size={12} className="text-[#9a8973]"/>{[2, 3, 5, 8].map(width => <button key={width} type="button" onClick={() => setBrushWidth(width)} className={`grid h-6 w-6 place-items-center rounded-full text-[10px] ${brushWidth === width ? "bg-[#6b5c4a] text-white" : "bg-white/70 text-[#7d6d5a]"}`}>{width}</button>)}</span>
+        <span className="flex items-center gap-1"><Smile size={12} className="text-[#9a8973]"/>{STICKER_CHOICES.map(item => <button key={item} type="button" onClick={() => setSticker(current => current === item ? null : item)} className={`grid h-6 w-6 place-items-center rounded-full text-[13px] ${sticker === item ? "bg-[#6b5c4a] text-white" : "bg-white/70"}`}>{item}</button>)}</span>
+        <button type="button" onClick={clearDoodles} disabled={!selectedPhoto?.doodles?.length && !wallDoodles.length} className="ml-auto flex items-center gap-1 border-b border-[#e0c8bd] px-2 py-1.5 text-[11px] text-[#a06a58] disabled:opacity-40"><Eraser size={12}/>清空涂鸦</button>
+      </>}
+    </div>}
+
+    {!readOnly && selectedPhoto && mode !== "view" && <div className="mt-2 flex flex-wrap items-center gap-1.5 border-y border-[#e6dccd] bg-white/70 px-2 py-2">
+      <span className="px-1 text-[11px] text-[#9a8973]">已选：{selectedPhoto.title || "未命名"}</span>
+      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.max(0.35, (selectedPhoto.placement?.scale ?? 1) - 0.12) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="缩小"><Minus size={14}/></button>
+      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.min(3, (selectedPhoto.placement?.scale ?? 1) + 0.12) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="放大"><Plus size={14}/></button>
+      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { rotation: Math.max(-45, (selectedPhoto.placement?.rotation ?? 0) - 3) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="左转"><RotateCcw size={14}/></button>
+      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { rotation: Math.min(45, (selectedPhoto.placement?.rotation ?? 0) + 3) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="右转"><RotateCw size={14}/></button>
+      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { locked: !selectedPhoto.placement?.locked })} title={selectedPhoto.placement?.locked ? "解除锁定后可移动照片" : "锁定后防止误拖动"} className={`flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px] ${selectedPhoto.placement?.locked ? "border-[#87565b] bg-[#87565b] text-white" : "border-[#d7c2b1] bg-white/80 text-[#7d6d5a]"}`}>{selectedPhoto.placement?.locked ? <Lock size={12}/> : <Unlock size={12}/>} {selectedPhoto.placement?.locked ? "已锁定" : "锁定照片"}</button>
+      <button type="button" onClick={() => onOpenDetail(selectedPhoto)} className="rounded-full border border-[#87565b] bg-[#87565b] px-3 py-1.5 text-[11px] text-white">查看详情</button>
+    </div>}
+
     <div
       ref={wallRef}
+      data-photo-wall-mode={mode}
       className={"photo-wall-surface relative select-none overflow-hidden rounded-[2px] border border-[#eee3d8] shadow-[inset_0_1px_0_rgba(255,255,255,.95),0_4px_12px_rgba(88,70,48,.06)] " + (fitHeight ? "h-full w-auto shrink-0" : "w-full")}
-      style={{ aspectRatio: "4 / 5", width: fitHeight ? "auto" : "100%", height: fitHeight ? "100%" : "auto", flex: "0 0 auto", touchAction: readOnly ? "auto" : "none", backgroundImage: "repeating-linear-gradient(0deg,rgba(130,98,70,.018) 0,rgba(130,98,70,.018) 1px,transparent 1px,transparent 4px),radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.9),transparent 62%),linear-gradient(145deg,#fffaf2 0%,#faf3ea 48%,#f5ece2 100%)" }}
+      style={{ aspectRatio: "4 / 5", width: fitHeight ? "auto" : "100%", height: fitHeight ? "100%" : "auto", flex: "0 0 auto", touchAction: readOnly ? "auto" : "none", backgroundSize: backgroundImage ? "cover" : undefined, backgroundPosition: "center", backgroundImage: backgroundImage ? 'linear-gradient(rgba(255,250,242,.13),rgba(255,250,242,.13)),url("' + backgroundImage + '")' : "repeating-linear-gradient(0deg,rgba(130,98,70,.018) 0,rgba(130,98,70,.018) 1px,transparent 1px,transparent 4px),radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.9),transparent 62%),linear-gradient(145deg,#fffaf2 0%,#faf3ea 48%,#f5ece2 100%)" }}
       onPointerMove={readOnly ? undefined : handlePointerMove}
       onPointerUp={readOnly ? undefined : endDrag}
       onPointerCancel={readOnly ? undefined : endDrag}
@@ -329,7 +354,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
             if (suppressClickRef.current) { suppressClickRef.current = false; return; }
             setFlippedPhotoIds(current => { const next = new Set(current); if (next.has(photo.id)) next.delete(photo.id); else next.add(photo.id); return next; });
           }}
-          doodleMode={mode === "doodle" && isSelected}
+          doodleMode={mode === "doodle"}
           placementMode={mode === "move"}
           draftPoints={isSelected && strokeRef.current?.photoId === photo.id ? draftPoints : []}
           onPointerDownMove={(event) => { if (!readOnly) beginDrag(event, photo, index, "move"); }}
@@ -353,29 +378,6 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       </svg>
     </div>
 
-    {/* 画布工具条 */}
-    {!readOnly && <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-[#e2d2c3] py-2.5">
-      <button type="button" onClick={() => setMode(current => current === "move" ? "view" : "move")} className={`flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs transition ${mode === "move" ? "border-[#87565b] bg-[#87565b] text-white" : "border-[#ddd1bd] bg-white/80 text-[#7d6d5a]"}`}><Unlock size={13}/>{mode === "move" ? "完成摆放" : "摆照片"}</button>
-      <button type="button" onClick={() => { setMode(current => current === "doodle" ? "view" : "doodle"); if (selectedPhoto) setFlippedPhotoIds(current => { const next = new Set(current); next.delete(selectedPhoto.id); return next; }); }} title="进入涂鸦后可在整面墙任意位置按住并拖动画线或放置贴纸" className={`flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs transition ${mode === "doodle" ? "border-[#a77b77] bg-[#a77b77] text-white" : "border-[#ddd1bd] bg-white/80 text-[#7d6d5a]"}`}><SquarePen size={13}/>{mode === "doodle" ? "退出涂鸦" : "涂鸦"}</button>
-      {mode === "doodle" && <>
-        <span className="w-full basis-full text-[10px] leading-4 text-[#9a8973]">"在整面墙任意位置按住并划动即可涂鸦，可跨过照片；选贴纸后点画布放置。照片旧涂鸦仍保留。"</span>
-        <span className="mx-1 h-4 w-px bg-[#ddd1bd]" />
-        <span className="flex items-center gap-1"><Palette size={12} className="text-[#9a8973]"/>{BRUSH_COLORS.map(color => <button key={color} type="button" aria-label={`画笔颜色 ${color}`} onClick={() => { setBrushColor(color); setSticker(null); }} className={`h-5 w-5 rounded-full border ${brushColor === color && !sticker ? "border-[#6b5c4a] ring-2 ring-white" : "border-white/70"}`} style={{ background: color }} />)}</span>
-        <span className="flex items-center gap-1"><Droplet size={12} className="text-[#9a8973]"/>{[2, 3, 5, 8].map(width => <button key={width} type="button" onClick={() => setBrushWidth(width)} className={`grid h-6 w-6 place-items-center rounded-full text-[10px] ${brushWidth === width ? "bg-[#6b5c4a] text-white" : "bg-white/70 text-[#7d6d5a]"}`}>{width}</button>)}</span>
-        <span className="flex items-center gap-1"><Smile size={12} className="text-[#9a8973]"/>{STICKER_CHOICES.map(item => <button key={item} type="button" onClick={() => setSticker(current => current === item ? null : item)} className={`grid h-6 w-6 place-items-center rounded-full text-[13px] ${sticker === item ? "bg-[#6b5c4a] text-white" : "bg-white/70"}`}>{item}</button>)}</span>
-        <button type="button" onClick={clearDoodles} disabled={!selectedPhoto?.doodles?.length && !wallDoodles.length} className="ml-auto flex items-center gap-1 border-b border-[#e0c8bd] px-2 py-1.5 text-[11px] text-[#a06a58] disabled:opacity-40"><Eraser size={12}/>清空涂鸦</button>
-      </>}
-    </div>}
-
-    {!readOnly && selectedPhoto && mode !== "view" && <div className="mt-2 flex flex-wrap items-center gap-1.5 border-y border-[#e6dccd] bg-white/70 px-2 py-2">
-      <span className="px-1 text-[11px] text-[#9a8973]">已选：{selectedPhoto.title || "未命名"}</span>
-      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.max(0.35, (selectedPhoto.placement?.scale ?? 1) - 0.12) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="缩小"><Minus size={14}/></button>
-      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.min(3, (selectedPhoto.placement?.scale ?? 1) + 0.12) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="放大"><Plus size={14}/></button>
-      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { rotation: Math.max(-45, (selectedPhoto.placement?.rotation ?? 0) - 3) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="左转"><RotateCcw size={14}/></button>
-      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { rotation: Math.min(45, (selectedPhoto.placement?.rotation ?? 0) + 3) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="右转"><RotateCw size={14}/></button>
-      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { locked: !selectedPhoto.placement?.locked })} title={selectedPhoto.placement?.locked ? "解除锁定后可移动照片" : "锁定后防止误拖动"} className={`flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px] ${selectedPhoto.placement?.locked ? "border-[#87565b] bg-[#87565b] text-white" : "border-[#d7c2b1] bg-white/80 text-[#7d6d5a]"}`}>{selectedPhoto.placement?.locked ? <Lock size={12}/> : <Unlock size={12}/>} {selectedPhoto.placement?.locked ? "已锁定" : "锁定照片"}</button>
-      <button type="button" onClick={() => onOpenDetail(selectedPhoto)} className="rounded-full border border-[#87565b] bg-[#87565b] px-3 py-1.5 text-[11px] text-white">查看详情</button>
-    </div>}
   </div>;
 }
 
@@ -414,7 +416,7 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
 
   const frame = placement.frame;
   const pad = FRAME_PADDING[frame];
-  const width = `${BASE_PHOTO_RATIO * placement.scale * 100}%`;
+  const width = `clamp(${112 * placement.scale}px, ${14 * placement.scale}vw, ${224 * placement.scale}px)`;
 
   return <div
     data-photo-wall-photo
