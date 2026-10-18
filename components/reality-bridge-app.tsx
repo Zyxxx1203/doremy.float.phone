@@ -378,14 +378,14 @@ const RULE_SCENE_TEMPLATES: RuleSceneTemplate[] = [
   },
   {
     id: "scene_network_change",
-    title: "网络切换时告诉我",
-    desc: "Wi-Fi/移动网络切换时触发；避免把网络变化直接当作精确位置。",
+    title: "切换到移动网络时告诉我",
+    desc: "网络切换到移动网络时触发；避免把网络变化直接当作精确位置。",
     tag: "本机信号",
     needsAndroid: true,
     build: ({ characterId }) => ({
       ...newRule(),
-      name: "网络切换时互动",
-      matchType: "网络切换到",
+      name: "切换到移动网络时互动",
+      matchType: "网络切换到移动网络",
       actions: { chat: { characterId, role: "system", requestReply: true } },
       cooldownMinutes: 60,
     }),
@@ -423,6 +423,7 @@ const RULE_SCENE_TEMPLATES: RuleSceneTemplate[] = [
     title: "深夜还醒着时关心我",
     desc: "到达感知设置的深夜时段时触发；按天去重。",
     tag: "本机信号",
+    needsAndroid: true,
     build: ({ characterId }) => ({
       ...newRule(),
       name: "深夜关心",
@@ -436,6 +437,7 @@ const RULE_SCENE_TEMPLATES: RuleSceneTemplate[] = [
     title: "每天第一次打开时打招呼",
     desc: "当天首次打开小手机时触发；不需要 Android 原生权限。",
     tag: "本机信号",
+    needsAndroid: true,
     build: ({ characterId }) => ({
       ...newRule(),
       name: "每日首次见面",
@@ -449,6 +451,7 @@ const RULE_SCENE_TEMPLATES: RuleSceneTemplate[] = [
     title: "很久没聊天时主动找我",
     desc: "超过感知设置中的沉默时长后触发；一天最多一次。",
     tag: "本机信号",
+    needsAndroid: true,
     build: ({ characterId }) => ({
       ...newRule(),
       name: "久未聊天主动联系",
