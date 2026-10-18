@@ -58,7 +58,6 @@ type Props = {
   onChangeDoodles: (id: string, doodles: PhotoWallDoodle[]) => void;
   onOpenDetail: (photo: PhotoWallPhoto) => void;
   readOnly?: boolean;
-  panorama?: boolean;
 };
 
 type DragState = {
@@ -73,7 +72,7 @@ type DragState = {
   moved: boolean;
 };
 
-export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onChangeDoodles, onOpenDetail, readOnly = false, panorama = false }: Props) {
+export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onChangeDoodles, onOpenDetail, readOnly = false }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const strokeRef = useRef<{ id: string; photoId: string } | null>(null);
@@ -215,7 +214,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     <div
       ref={wallRef}
       className="photo-wall-surface relative w-full select-none overflow-hidden rounded-[2px] border border-[#d8c4b0] shadow-[inset_0_1px_0_rgba(255,255,255,.7),0_10px_24px_rgba(88,70,48,.1)]"
-      style={{ aspectRatio: panorama ? "16 / 10" : "4 / 5", touchAction: readOnly ? "pan-y pinch-zoom" : "none", backgroundImage: "radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.38),transparent 52%),linear-gradient(145deg,#f2e7d7 0%,#eee1cf 48%,#e8dac6 100%)" }}
+      style={{ aspectRatio: "4 / 5", touchAction: readOnly ? "pan-y pinch-zoom" : "none", backgroundImage: "radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.38),transparent 52%),linear-gradient(145deg,#f2e7d7 0%,#eee1cf 48%,#e8dac6 100%)" }}
       onPointerMove={readOnly ? undefined : handlePointerMove}
       onPointerUp={readOnly ? undefined : endDrag}
       onPointerCancel={readOnly ? undefined : endDrag}
@@ -253,11 +252,11 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
         <span className="flex items-center gap-1"><Palette size={12} className="text-[#9a8973]"/>{BRUSH_COLORS.map(color => <button key={color} type="button" aria-label={`画笔颜色 ${color}`} onClick={() => { setBrushColor(color); setSticker(null); }} className={`h-5 w-5 rounded-full border ${brushColor === color && !sticker ? "border-[#6b5c4a] ring-2 ring-white" : "border-white/70"}`} style={{ background: color }} />)}</span>
         <span className="flex items-center gap-1"><Droplet size={12} className="text-[#9a8973]"/>{[2, 3, 5, 8].map(width => <button key={width} type="button" onClick={() => setBrushWidth(width)} className={`grid h-6 w-6 place-items-center rounded-full text-[10px] ${brushWidth === width ? "bg-[#6b5c4a] text-white" : "bg-white/70 text-[#7d6d5a]"}`}>{width}</button>)}</span>
         <span className="flex items-center gap-1"><Smile size={12} className="text-[#9a8973]"/>{STICKER_CHOICES.map(item => <button key={item} type="button" onClick={() => setSticker(current => current === item ? null : item)} className={`grid h-6 w-6 place-items-center rounded-full text-[13px] ${sticker === item ? "bg-[#6b5c4a] text-white" : "bg-white/70"}`}>{item}</button>)}</span>
-        <button type="button" onClick={clearDoodles} disabled={!selectedPhoto?.doodles?.length} className="ml-auto flex items-center gap-1 rounded-full border border-[#e0c8bd] px-3 py-1.5 text-[11px] text-[#a06a58] disabled:opacity-40"><Eraser size={12}/>清空涂鸦</button>
+        <button type="button" onClick={clearDoodles} disabled={!selectedPhoto?.doodles?.length} className="ml-auto flex items-center gap-1 border-b border-[#e0c8bd] px-2 py-1.5 text-[11px] text-[#a06a58] disabled:opacity-40"><Eraser size={12}/>清空涂鸦</button>
       </>}
     </div>}
 
-    {!readOnly && selectedPhoto && mode === "move" && <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-2xl border border-[#e6dccd] bg-white/70 px-2 py-2">
+    {!readOnly && selectedPhoto && mode === "move" && <div className="mt-2 flex flex-wrap items-center gap-1.5 border-y border-[#e6dccd] bg-white/70 px-2 py-2">
       <span className="px-1 text-[11px] text-[#9a8973]">已选：{selectedPhoto.title || "未命名"}</span>
       <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.max(0.35, (selectedPhoto.placement?.scale ?? 1) - 0.12) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="缩小"><Minus size={14}/></button>
       <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.min(3, (selectedPhoto.placement?.scale ?? 1) + 0.12) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="放大"><Plus size={14}/></button>
