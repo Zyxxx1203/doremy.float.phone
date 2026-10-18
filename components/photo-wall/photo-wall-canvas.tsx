@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Droplet, Eraser, ImagePlus, Lock, Minus, Palette, Plus, RotateCcw, RotateCw, Sparkles, SquarePen, Smile, Unlock } from "lucide-react";
+import { Droplet, Eraser, ImagePlus, Lock, Minus, Palette, Plus, Redo2, RotateCcw, RotateCw, Sparkles, SquarePen, Smile, Undo2, Unlock } from "lucide-react";
 import { loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import {
   createPhotoWallId,
@@ -60,6 +60,12 @@ type Props = {
    * 拖拽基准（base + 初始矩形）会失效，照片会跳。
    */
   onPlacementSettled?: (id: string, placement: PhotoWallPlacement) => void;
+  /** 一次拖动开始前回调：上层据此压一条撤销快照（拖动中每帧都在写坐标，不能在里面压栈）。 */
+  onDragBegin?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
   onChangeDoodles: (id: string, doodles: PhotoWallDoodle[]) => void;
   wallDoodles?: PhotoWallDoodle[];
   onChangeWallDoodles?: (doodles: PhotoWallDoodle[]) => void;
@@ -81,7 +87,7 @@ type DragState = {
   moved: boolean;
 };
 
-export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, onOpenDetail, readOnly = false, fitHeight = false }: Props) {
+export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, onOpenDetail, readOnly = false, fitHeight = false }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const strokeRef = useRef<{ id: string; photoId: string } | null>(null);
@@ -96,6 +102,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   const [brushColor, setBrushColor] = useState(BRUSH_COLORS[0]);
   const [brushWidth, setBrushWidth] = useState(3);
   const [sticker, setSticker] = useState<string | null>(null);
+  const [eraser, setEraser] = useState(false);
   const [draftPoints, setDraftPoints] = useState<{ x: number; y: number }[]>([]);
 
   useEffect(() => {
@@ -174,6 +181,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       // A tiny finger/mouse jitter must still count as a tap so the card flips.
       if (Math.abs(dx) + Math.abs(dy) <= 8) return;
       drag.moved = true;
+      onDragBegin?.();
       const wall = wallRef.current;
       if (wall && !wall.hasPointerCapture(event.pointerId)) wall.setPointerCapture(event.pointerId);
     }
@@ -263,11 +271,24 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     if (!rect) return { x: 0.5, y: 0.5 };
     return { x: Math.min(1, Math.max(0, (event.clientX - rect.left) / Math.max(1, rect.width))), y: Math.min(1, Math.max(0, (event.clientY - rect.top) / Math.max(1, rect.height))) };
   };
+  /** 橡皮：只擦掉点中的那一笔/那个贴纸，不动其他内容。 */
+  const eraseWallDoodleAt = (point: { x: number; y: number }) => {
+    const hit = [...wallDoodles].reverse().find(doodle => {
+      if (doodle.kind === "sticker") {
+        const center = doodle.points[0];
+        return center ? Math.hypot(center.x - point.x, center.y - point.y) < 0.035 : false;
+      }
+      return doodle.points.some(item => Math.hypot(item.x - point.x, item.y - point.y) < 0.02);
+    });
+    if (hit) onChangeWallDoodles?.(wallDoodles.filter(item => item.id !== hit.id));
+  };
+
   const wallDoodlePointerDown = (event: React.PointerEvent) => {
     if (readOnly || mode !== "doodle") return;
     event.preventDefault();
     event.stopPropagation();
     const point = wallPoint(event);
+    if (eraser) { eraseWallDoodleAt(point); return; }
     if (sticker) {
       onChangeWallDoodles?.([...wallDoodles, { id: createPhotoWallId(), kind: "sticker", content: sticker, color: brushColor, width: brushWidth, points: [point], createdAt: new Date().toISOString() }]);
       return;
@@ -318,6 +339,9 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   return <div className={fitHeight ? "relative flex h-full w-full items-center justify-center" : "relative"}>
     {/* 画布工具条 */}
     {!readOnly && <div className="photo-wall-tools sticky left-0 z-[10000] mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-y border-[#e2d2c3] py-2.5" style={{ width: "min(420px, calc(100vw - 16px))", background: "rgba(255,250,242,.97)" }}>
+      <button type="button" onClick={() => onUndo?.()} disabled={!canUndo} aria-label="撤销上一步" title="撤销" className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#ddd1bd] bg-white/80 text-[#7d6d5a] transition disabled:opacity-30"><Undo2 size={14}/></button>
+      <button type="button" onClick={() => onRedo?.()} disabled={!canRedo} aria-label="重做" title="重做" className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#ddd1bd] bg-white/80 text-[#7d6d5a] transition disabled:opacity-30"><Redo2 size={14}/></button>
+      <span className="h-4 w-px shrink-0 bg-[#ddd1bd]" />
       <button type="button" onClick={() => setMode(current => current === "move" ? "view" : "move")} className={`flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs transition ${mode === "move" ? "border-[#87565b] bg-[#87565b] text-white" : "border-[#ddd1bd] bg-white/80 text-[#7d6d5a]"}`}><Unlock size={13}/>{mode === "move" ? "完成摆放" : "摆照片"}</button>
       <button type="button" onClick={() => { setMode(current => current === "doodle" ? "view" : "doodle"); if (selectedPhoto) setFlippedPhotoIds(current => { const next = new Set(current); next.delete(selectedPhoto.id); return next; }); }} title="进入涂鸦后可在整面墙任意位置按住并拖动画线或放置贴纸" className={`flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs transition ${mode === "doodle" ? "border-[#a77b77] bg-[#a77b77] text-white" : "border-[#ddd1bd] bg-white/80 text-[#7d6d5a]"}`}><SquarePen size={13}/>{mode === "doodle" ? "退出涂鸦" : "涂鸦"}</button>
       {mode === "doodle" && <>
@@ -326,7 +350,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
         <span className="flex items-center gap-1"><Palette size={12} className="text-[#9a8973]"/>{BRUSH_COLORS.map(color => <button key={color} type="button" aria-label={`画笔颜色 ${color}`} onClick={() => { setBrushColor(color); setSticker(null); }} className={`h-5 w-5 rounded-full border ${brushColor === color && !sticker ? "border-[#6b5c4a] ring-2 ring-white" : "border-white/70"}`} style={{ background: color }} />)}</span>
         <span className="flex items-center gap-1"><Droplet size={12} className="text-[#9a8973]"/>{[2, 3, 5, 8].map(width => <button key={width} type="button" onClick={() => setBrushWidth(width)} className={`grid h-6 w-6 place-items-center rounded-full text-[10px] ${brushWidth === width ? "bg-[#6b5c4a] text-white" : "bg-white/70 text-[#7d6d5a]"}`}>{width}</button>)}</span>
         <span className="flex items-center gap-1"><Smile size={12} className="text-[#9a8973]"/>{STICKER_CHOICES.map(item => <button key={item} type="button" onClick={() => setSticker(current => current === item ? null : item)} className={`grid h-6 w-6 place-items-center rounded-full text-[13px] ${sticker === item ? "bg-[#6b5c4a] text-white" : "bg-white/70"}`}>{item}</button>)}</span>
-        <button type="button" onClick={clearDoodles} disabled={!selectedPhoto?.doodles?.length && !wallDoodles.length} className="ml-auto flex items-center gap-1 border-b border-[#e0c8bd] px-2 py-1.5 text-[11px] text-[#a06a58] disabled:opacity-40"><Eraser size={12}/>清空涂鸦</button>
+        <button type="button" onClick={() => { setEraser(value => !value); setSticker(null); }} aria-pressed={eraser} className={`ml-auto flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px] transition ${eraser ? "border-[#a06a58] bg-[#a06a58] text-white" : "border-[#e0c8bd] bg-white/70 text-[#8a6d5c]"}`}><Eraser size={12}/>橡皮</button>
+        <button type="button" onClick={clearDoodles} disabled={!selectedPhoto?.doodles?.length && !wallDoodles.length} className="ml-2 flex items-center gap-1 border-b border-[#e0c8bd] px-2 py-1.5 text-[11px] text-[#a06a58] disabled:opacity-40"><Eraser size={12}/>清空涂鸦</button>
       </>}
     </div>}
 

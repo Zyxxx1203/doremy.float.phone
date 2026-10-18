@@ -13,7 +13,7 @@ import { generateChatCompletion, flattenCompletionResult, readCompressedImageDat
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import {
   createPhotoWallId, DEFAULT_PHOTO_WALL_SETTINGS, loadPhotoWallState, savePhotoWallState,
-  type PhotoWallDoodle, type PhotoWallPhoto, type PhotoWallPlacement, type PhotoWallState, type PhotoWallTemplate,
+  type PhotoWallDoodle, type PhotoWallPhoto, type PhotoWallPlacement, type PhotoWallState, type PhotoWallTemplate, type PhotoWallWorld,
 } from "@/lib/photo-wall-storage";
 import { PhotoWallCanvas, fallbackPlacement } from "@/components/photo-wall/photo-wall-canvas";
 import { applyWorldGrow, planWorldGrow, remapDoodles, remapPlacement, wallWorldOf, type WorldGrow } from "@/lib/photo-wall-world";
@@ -169,6 +169,30 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   /** 世界尺寸来自持久化状态：扩容后照片比例不变，只换分母。 */
   const world = wallWorldOf(state);
   const zoomInitializedRef = useRef(false);
+  /** 等待下一帧补偿的滚动量（扩容往左长、或缩放锚点变化时用）。 */
+  const pendingScrollRef = useRef<{ left: number; top: number } | null>(null);
+
+  /**
+   * 缩放时保持视口中心不动。
+   * 只改 zoom 会让内容从左上角往外长，手指按住的地方就跑掉了；
+   * 这里按同一比例把滚动位置一起推过去，手感才对。
+   */
+  const applyZoom = useCallback((nextZoom: number) => {
+    const clamped = Math.max(15, Math.min(300, Math.round(nextZoom)));
+    const previous = panoramaZoomRef.current;
+    panoramaZoomRef.current = clamped;
+    setPanoramaZoom(clamped);
+    if (!previous || previous === clamped) return;
+    const viewport = panoramaViewportRef.current;
+    if (!viewport) return;
+    const ratio = clamped / previous;
+    const centerX = viewport.clientWidth / 2;
+    const centerY = viewport.clientHeight / 2;
+    pendingScrollRef.current = {
+      left: (viewport.scrollLeft + centerX) * ratio - centerX - viewport.scrollLeft,
+      top: (viewport.scrollTop + centerY) * ratio - centerY - viewport.scrollTop,
+    };
+  }, []);
   const [wallBackgroundUrl, setWallBackgroundUrl] = useState("");
   const wallBackgroundInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { panoramaZoomRef.current = panoramaZoom; }, [panoramaZoom]);
@@ -209,8 +233,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       event.stopPropagation();
       if (pointers.size < 2 || !pinchStartRef.current) return;
       const nextZoom = Math.max(15, Math.min(300, Math.round(pinchStartRef.current.zoom * pointsDistance([...pointers.values()].slice(0, 2)) / pinchStartRef.current.distance)));
-      panoramaZoomRef.current = nextZoom;
-      setPanoramaZoom(nextZoom);
+      applyZoom(nextZoom);
     };
     const onPointerEnd = (event: PointerEvent) => {
       const pointers = pinchPointersRef.current;
@@ -251,8 +274,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           window.dispatchEvent(new Event("photo-wall-pinch-start"));
         }
         const nextZoom = Math.max(15, Math.min(300, Math.round(pinchStartRef.current.zoom * touchDistance(event.touches) / pinchStartRef.current.distance)));
-        panoramaZoomRef.current = nextZoom;
-        setPanoramaZoom(nextZoom);
+        applyZoom(nextZoom);
           return;
       }
       if (event.touches.length !== 1 || pinchModeRef.current) return;
@@ -393,12 +415,49 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     savePhotoWallState(next);
   }, []);
 
+  /* ── 撤销 / 重做 ──────────────────────────────────────────────
+     只存引用快照：照片对象是不可变的，整墙涂鸦也是数组替换，
+     所以一份快照几乎不占内存，不需要深拷贝，也不会复制媒体数据。 */
+  type WallSnapshot = { photos: PhotoWallPhoto[]; wallDoodles?: PhotoWallDoodle[]; world: PhotoWallWorld };
+  const historyRef = useRef<WallSnapshot[]>([]);
+  const futureRef = useRef<WallSnapshot[]>([]);
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const snapshotOf = useCallback((source: PhotoWallState): WallSnapshot => ({
+    photos: source.photos,
+    wallDoodles: source.wallDoodles,
+    world: wallWorldOf(source),
+  }), []);
+  const pushHistory = useCallback((source: PhotoWallState) => {
+    historyRef.current.push(snapshotOf(source));
+    if (historyRef.current.length > 80) historyRef.current.shift();
+    futureRef.current = [];
+    setHistoryVersion(value => value + 1);
+  }, [snapshotOf]);
+  const undo = useCallback(() => {
+    const previous = historyRef.current.pop();
+    if (!previous) return;
+    const current = stateRef.current;
+    futureRef.current.push(snapshotOf(current));
+    applyImmediate({ ...current, photos: previous.photos, wallDoodles: previous.wallDoodles, world: previous.world });
+    setHistoryVersion(value => value + 1);
+  }, [applyImmediate, snapshotOf]);
+  const redo = useCallback(() => {
+    const next = futureRef.current.pop();
+    if (!next) return;
+    const current = stateRef.current;
+    historyRef.current.push(snapshotOf(current));
+    applyImmediate({ ...current, photos: next.photos, wallDoodles: next.wallDoodles, world: next.world });
+    setHistoryVersion(value => value + 1);
+  }, [applyImmediate, snapshotOf]);
+  const canUndo = historyRef.current.length > 0;
+  const canRedo = futureRef.current.length > 0;
+  void historyVersion; // 快照栈变化时触发一次重渲染，好让按钮的禁用态跟上
+
   /**
    * 向左/向上扩容时补偿滚动。
    * 必须等到 React 把新的画布尺寸刷进 DOM 之后再改 scrollLeft——
    * 提前改会被浏览器按旧的 scrollWidth 夹回去，画面就跳了。
    */
-  const pendingScrollRef = useRef<{ left: number; top: number } | null>(null);
   const compensateViewportScroll = useCallback((grow: WorldGrow) => {
     const zoom = panoramaZoomRef.current / 100;
     if (!grow.left && !grow.top) return;
@@ -441,8 +500,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
   /** 相框级涂鸦层：笔迹与贴纸跟着照片一起存。 */
   const changeDoodles = useCallback((photoId: string, doodles: PhotoWallDoodle[]) => {
+    pushHistory(stateRef.current);
     commitPhotos(stateRef.current.photos.map(photo => photo.id === photoId ? { ...photo, doodles } : photo));
-  }, [commitPhotos]);
+  }, [commitPhotos, pushHistory]);
 
   /** 套用模板骨架：照片按顺序吸附进槽位，套完仍然可以自由拖动。 */
   const applyTemplate = useCallback((templateId: string) => {
@@ -562,6 +622,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
    */
   const changeWallDoodles = useCallback((wallDoodles: PhotoWallDoodle[]) => {
     const current = stateRef.current;
+    pushHistory(current);
     const grow = planWorldGrow(wallWorldOf(current), wallDoodles.flatMap(doodle => doodle.points));
     if (!grow) {
       persist({ ...current, wallDoodles });
@@ -569,7 +630,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     }
     compensateViewportScroll(grow);
     applyImmediate({ ...applyWorldGrow(current, grow), wallDoodles: remapDoodles(wallDoodles, grow) });
-  }, [applyImmediate, compensateViewportScroll, persist]);
+  }, [applyImmediate, compensateViewportScroll, persist, pushHistory]);
   const visiblePhotos = useMemo(() => photos.filter(photo => {
     if (filter === "mine") return photo.ownerType === "user";
     if (filter === "characters") return photo.ownerType === "character";
@@ -598,6 +659,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
   const addPhoto = useCallback((photo: PhotoWallPhoto) => {
     const current = loadPhotoWallState();
+    pushHistory(current);
     const order = current.photos.length;
     const explicitTemplate = Boolean(activeTemplateId) && activeTemplateId !== "builtin-scatter";
     const slot = explicitTemplate ? buildTemplateSlots(activeTemplateId, order + 1, templateText)[order] : undefined;
@@ -895,6 +957,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const currentState = stateRef.current;
       const ref = selectedPhoto.mediaRef;
       const sharedByAnotherPhoto = currentState.photos.some(photo => photo.id !== selectedPhoto.id && photo.mediaRef === ref);
+      pushHistory(currentState);
       persist({ ...currentState, photos: currentState.photos.filter(photo => photo.id !== selectedPhoto.id) });
       // Chat favorites intentionally share the original media ref with the chat.
       // Never delete a shared blob when removing only its photo-wall card.
@@ -1007,6 +1070,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               onSelect={setSelectedPhotoId}
               onChangePlacement={changePlacement}
               onPlacementSettled={settlePlacement}
+              onDragBegin={() => pushHistory(stateRef.current)}
+              onUndo={undo}
+              onRedo={redo}
+              canUndo={canUndo}
+              canRedo={canRedo}
               onChangeDoodles={changeDoodles}
               wallDoodles={state.wallDoodles ?? []}
               onChangeWallDoodles={changeWallDoodles}
