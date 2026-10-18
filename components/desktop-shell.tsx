@@ -1224,7 +1224,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   const [customAppUpdateBusy, setCustomAppUpdateBusy] = useState(false);
   const customAppUpdateCheckingRef = useRef<Set<string>>(new Set());
   const activeAppRef = useRef<DesktopIconId | null>(null);
-  const swipeBackGestureRef = useRef<{ pointerId: number; startX: number; startY: number; horizontal: boolean } | null>(null);
+  const swipeBackGestureRef = useRef<{ pointerId: number; startX: number; startY: number; edge: "left" | "right"; horizontal: boolean } | null>(null);
   const [customAppBadges, setCustomAppBadges] = useState<Record<string, number>>({});
   const [customAppBackgroundRuns, setCustomAppBackgroundRuns] = useState<CustomAppBackgroundEventRun[]>([]);
   const [customAppBackgroundToolRuns, setCustomAppBackgroundToolRuns] = useState<CustomAppBackgroundToolRun[]>([]);
@@ -4151,12 +4151,17 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     const isGestureExcluded = (target: EventTarget | null) => {
       if (!(target instanceof Element)) return false;
       return Boolean(target.closest(
-        'input, textarea, select, [contenteditable="true"], video, audio, canvas, [data-swipe-back-ignore], .photo-wall-surface, .watch-player'
+        'input, textarea, select, [contenteditable="true"], video, audio, canvas, [data-swipe-back-ignore], .photo-wall-surface, .watch-player, .chat-photo-carousel-stack'
       ));
     };
     const onPointerDown = (event: PointerEvent) => {
       if (event.pointerType !== "touch" || !event.isPrimary || event.button !== 0) return;
-      if (!activeAppRef.current || event.clientX > 24 || isGestureExcluded(event.target)) {
+      const edge: "left" | "right" | null = event.clientX <= 24
+        ? "left"
+        : event.clientX >= window.innerWidth - 24
+          ? "right"
+          : null;
+      if (!activeAppRef.current || !edge || isGestureExcluded(event.target)) {
         swipeBackGestureRef.current = null;
         return;
       }
@@ -4164,6 +4169,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
+        edge,
         horizontal: false,
       };
     };
@@ -4172,15 +4178,16 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       if (!gesture || gesture.pointerId !== event.pointerId) return;
       const dx = event.clientX - gesture.startX;
       const dy = event.clientY - gesture.startY;
+      const towardCenter = gesture.edge === "left" ? dx : -dx;
       if (!gesture.horizontal) {
         if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-        if (Math.abs(dy) > Math.abs(dx) * 1.15 || dx <= 0) {
+        if (Math.abs(dy) > Math.abs(dx) * 1.15 || towardCenter <= 0) {
           cancelGesture();
           return;
         }
         gesture.horizontal = true;
       }
-      if (dx > 12 && event.cancelable) event.preventDefault();
+      if (towardCenter > 12 && event.cancelable) event.preventDefault();
     };
     const onPointerUp = (event: PointerEvent) => {
       const gesture = swipeBackGestureRef.current;
@@ -4188,7 +4195,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       swipeBackGestureRef.current = null;
       const dx = event.clientX - gesture.startX;
       const dy = event.clientY - gesture.startY;
-      if (!gesture.horizontal || dx < Math.max(76, window.innerWidth * 0.18) || dx < Math.abs(dy) * 1.35) return;
+      const towardCenter = gesture.edge === "left" ? dx : -dx;
+      if (!gesture.horizontal || towardCenter < Math.max(76, window.innerWidth * 0.18) || towardCenter < Math.abs(dy) * 1.35) return;
       const currentApp = activeAppRef.current;
       if (!currentApp) return;
       const backEvent = new Event("phone-swipe-back", { cancelable: true });
