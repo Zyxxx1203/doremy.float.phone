@@ -22,6 +22,7 @@ import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkBreaks from "remark-breaks";
 import { createPortal } from "react-dom";
 import { Blocks, Maximize2, ReceiptText } from "lucide-react";
+import { SharedVideoLinkCard, isShortVideoShareUrl } from "@/components/chat/shared-video-link-card";
 import { retryChatGeneratedImage } from "@/lib/generated-image-retry";
 import { hasCharacterReferenceImage } from "@/lib/image-generation-service";
 import { GeneratedImageErrorDialog } from "./generated-image-error-dialog";
@@ -540,7 +541,13 @@ const MARKDOWN_COMPONENTS = {
             <table {...props} />
         </div>
     ),
-    a: ({ node, ...props }: any) => <a className="chat-markdown-link" target="_blank" rel="noreferrer" {...props} />,
+    a: ({ node, href, children, ...props }: any) => {
+        const targetUrl = typeof href === "string" ? href : "";
+        if (targetUrl && isShortVideoShareUrl(targetUrl)) {
+            return <SharedVideoLinkCard url={targetUrl} />;
+        }
+        return <a className="chat-markdown-link" {...props} href={targetUrl} target="_blank" rel="noreferrer">{children}</a>;
+    },
     user: ({ node, ...props }: any) => <span className="rm-user" {...props} />,
     prologue: ({ node, ...props }: any) => <div className="rm-prologue" {...props} />,
     profile: ({ node, ...props }: any) => <div className="rm-profile" {...props} />,

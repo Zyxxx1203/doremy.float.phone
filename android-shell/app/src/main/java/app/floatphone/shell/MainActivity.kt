@@ -32,6 +32,7 @@ import android.content.ClipData
 import androidx.core.app.NotificationCompat
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import android.webkit.CookieManager
 import android.webkit.DownloadListener
 import android.webkit.JavascriptInterface
@@ -48,12 +49,17 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.health.connect.client.PermissionController
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import java.io.File
 import java.io.FileOutputStream
+import java.io.ByteArrayOutputStream
+import java.util.UUID
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * Float 小手机安卓壳：全屏 WebView 直接加载线上站点。
@@ -216,6 +222,7 @@ class MainActivity : AppCompatActivity() {
         .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
         .build()
+
 
     private val fileChooserLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -387,9 +394,257 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+private data class CachedSharedVideo(val cacheId: String, val contentUri: String)
+private data class SharedVideoPage(val pageUrl: String, val html: String?, val directVideoUrl: String?)
+
+private val sharedVideoExecutor = Executors.newFixedThreadPool(2)
+private val sharedVideoClient: OkHttpClient by lazy {
+    OkHttpClient.Builder()
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(75, TimeUnit.SECONDS)
+        .build()
+}
+
+private fun sharedVideoCacheDir(): File = File(cacheDir, "shared-video")
+
+private fun isHostUnder(host: String, suffix: String): Boolean =
+    host.equals(suffix, ignoreCase = true) || host.endsWith("." + suffix, ignoreCase = true)
+
+private fun isAllowedShareOrPageHost(host: String): Boolean =
+    listOf("douyin.com", "iesdouyin.com", "kuaishou.com", "xiaohongshu.com", "xhslink.com")
+        .any { isHostUnder(host, it) }
+
+private fun isAllowedVideoHost(host: String): Boolean =
+    listOf("douyinvod.com", "kwaicdn.com", "kwimgs.com", "kspkg.com", "ks-cdn.com", "xhscdn.com")
+        .any { isHostUnder(host, it) }
+
+private fun isSupportedShareUrl(rawUrl: String): Boolean {
+    val url = rawUrl.trim().toHttpUrlOrNull() ?: return false
+    if (url.scheme != "http" && url.scheme != "https") return false
+    return isAllowedShareOrPageHost(url.host)
+}
+
+private fun isTrustedShellPage(): Boolean {
+    if (!::webView.isInitialized) return false
+    val configuredHost = Uri.parse(SITE_URL).host ?: return false
+    val current = Uri.parse(webView.url ?: return false)
+    return current.scheme in listOf("https", "http")
+        && current.host?.equals(configuredHost, ignoreCase = true) == true
+}
+
+private fun isLikelyPublicMp4(rawUrl: String): Boolean {
+    val url = rawUrl.toHttpUrlOrNull() ?: return false
+    if (!isAllowedVideoHost(url.host)) return false
+    val path = url.encodedPath.lowercase()
+    if (path.endsWith(".m3u8") || path.endsWith(".jpg") || path.endsWith(".jpeg")
+        || path.endsWith(".png") || path.endsWith(".webp") || path.endsWith(".gif")) return false
+    return path.endsWith(".mp4")
+        || isHostUnder(url.host, "douyinvod.com")
+        || isHostUnder(url.host, "kwaicdn.com")
+        || isHostUnder(url.host, "kwimgs.com")
+        || isHostUnder(url.host, "kspkg.com")
+        || isHostUnder(url.host, "ks-cdn.com")
+        || (isHostUnder(url.host, "xhscdn.com") && (path.contains("video") || url.queryParameter("type") == "video"))
+}
+
+private fun readBoundedText(input: java.io.InputStream, maxBytes: Int): String {
+    val output = ByteArrayOutputStream()
+    val buffer = ByteArray(8192)
+    var total = 0
+    while (true) {
+        val count = input.read(buffer)
+        if (count < 0) break
+        total += count
+        if (total > maxBytes) throw IllegalStateException("分享页面过大，已停止解析")
+        output.write(buffer, 0, count)
+    }
+    return output.toString(Charsets.UTF_8.name())
+}
+
+private fun fetchSharedVideoPage(startUrl: String): SharedVideoPage {
+    var currentUrl = startUrl
+    for (attempt in 0..6) {
+        val current = currentUrl.toHttpUrlOrNull()
+            ?: throw IllegalArgumentException("分享链接格式不正确")
+        if (!isAllowedShareOrPageHost(current.host)) {
+            throw IllegalArgumentException("跳转到了不支持的平台域名，已停止解析")
+        }
+
+        val request = Request.Builder()
+            .url(current)
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
+            .header("Accept", "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8")
+            .build()
+        val response = sharedVideoClient.newCall(request).execute()
+        if (response.code in 300..399) {
+            val location = response.header("Location")
+            val next = if (location.isNullOrBlank()) null else response.request.url.resolve(location)
+            response.close()
+            if (next == null) throw IllegalStateException("分享页面返回了无效跳转")
+            val nextUrl = next.toString()
+            if (isLikelyPublicMp4(nextUrl)) return SharedVideoPage(currentUrl, null, nextUrl)
+            if (!isAllowedShareOrPageHost(next.host)) {
+                throw IllegalStateException("分享页面跳转到受限或不支持的地址，已停止解析")
+            }
+            currentUrl = nextUrl
+            continue
+        }
+
+        response.use {
+            if (!it.isSuccessful) throw IllegalStateException("平台页面返回 HTTP " + it.code)
+            val contentType = (it.header("Content-Type") ?: "").lowercase()
+            if (contentType.startsWith("video/") && isLikelyPublicMp4(current.toString())) {
+                return SharedVideoPage(current.toString(), null, current.toString())
+            }
+            val body = it.body ?: throw IllegalStateException("平台页面没有可读取的内容")
+            val length = body.contentLength()
+            if (length > 4L * 1024L * 1024L) throw IllegalStateException("分享页面过大，已停止解析")
+            val html = body.byteStream().use { stream -> readBoundedText(stream, 4 * 1024 * 1024) }
+            return SharedVideoPage(current.toString(), html, null)
+        }
+    }
+    throw IllegalStateException("分享链接跳转次数过多")
+}
+
+private fun extractPublicMp4Url(html: String): String? {
+    val normalized = html
+        .replace("\\/", "/")
+        .replace("\\u002F", "/", ignoreCase = true)
+        .replace("\\u0026", "&", ignoreCase = true)
+        .replace("\\u003D", "=", ignoreCase = true)
+        .replace("&amp;", "&", ignoreCase = true)
+    val urlRegex = Regex("""https?://[^\s"'<>\\]+""", RegexOption.IGNORE_CASE)
+    val markerNames = listOf(
+        "playAddr", "play_addr", "playUrl", "play_url", "downloadAddr",
+        "download_addr", "srcNoMark", "src_no_mark", "og:video", "contentUrl",
+        "video_url", "videoUrl", "video_src"
+    )
+    val preferred = mutableListOf<String>()
+    for (marker in markerNames) {
+        var from = 0
+        while (true) {
+            val index = normalized.indexOf(marker, from, ignoreCase = true)
+            if (index < 0) break
+            val end = minOf(normalized.length, index + 6000)
+            preferred.addAll(urlRegex.findAll(normalized.substring(index, end)).map { it.value })
+            from = index + marker.length
+        }
+    }
+    val allCandidates = preferred + urlRegex.findAll(normalized).map { it.value }.toList()
+    return allCandidates.asSequence()
+        .map { it.trim().trimEnd(',', ';', ')', ']', '}', '\\') }
+        .distinct()
+        .firstOrNull { isLikelyPublicMp4(it) }
+}
+
+private fun downloadPublicMp4(mediaUrl: String, pageUrl: String): CachedSharedVideo {
+    var currentUrl = mediaUrl
+    for (attempt in 0..5) {
+        val current = currentUrl.toHttpUrlOrNull()
+            ?: throw IllegalArgumentException("视频地址格式不正确")
+        if (!isLikelyPublicMp4(current.toString())) {
+            throw IllegalStateException("只允许从支持的平台公开视频 CDN 获取 MP4")
+        }
+        val request = Request.Builder()
+            .url(current)
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
+            .header("Accept", "video/mp4,video/*;q=0.9,application/octet-stream;q=0.8,*/*;q=0.5")
+            .header("Referer", pageUrl)
+            .build()
+        val response = sharedVideoClient.newCall(request).execute()
+        if (response.code in 300..399) {
+            val location = response.header("Location")
+            val next = if (location.isNullOrBlank()) null else response.request.url.resolve(location)
+            response.close()
+            if (next == null || !isLikelyPublicMp4(next.toString())) {
+                throw IllegalStateException("视频流跳转到了不支持的地址，已停止下载")
+            }
+            currentUrl = next.toString()
+            continue
+        }
+
+        response.use {
+            if (!it.isSuccessful) throw IllegalStateException("视频流返回 HTTP " + it.code)
+            val contentType = (it.header("Content-Type") ?: "").lowercase()
+            if (contentType.contains("mpegurl") || current.encodedPath.endsWith(".m3u8", ignoreCase = true)) {
+                throw IllegalStateException("此链接返回的是 HLS 流，不是可直接嵌入的 MP4")
+            }
+            if (contentType.startsWith("image/")) throw IllegalStateException("平台返回了图片而不是视频")
+            if (!contentType.startsWith("video/") && !contentType.contains("octet-stream")
+                && !isLikelyPublicMp4(current.toString())) {
+                throw IllegalStateException("平台没有返回可播放的视频流")
+            }
+            val body = it.body ?: throw IllegalStateException("视频流为空")
+            if (body.contentLength() > 100L * 1024L * 1024L) throw IllegalStateException("视频超过 100 MB 缓存上限")
+            val directory = sharedVideoCacheDir()
+            if (!directory.exists() && !directory.mkdirs()) throw IllegalStateException("无法创建临时视频缓存目录")
+            val cacheId = UUID.randomUUID().toString()
+            val file = File(directory, cacheId + ".mp4")
+            try {
+                body.byteStream().use { input ->
+                    FileOutputStream(file).use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        var total = 0L
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            total += count
+                            if (total > 100L * 1024L * 1024L) throw IllegalStateException("视频超过 100 MB 缓存上限")
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                }
+                val contentUri = FileProvider.getUriForFile(
+                    this,
+                    packageName + ".sharedvideos",
+                    file
+                ).toString()
+                return CachedSharedVideo(cacheId, contentUri)
+            } catch (error: Throwable) {
+                file.delete()
+                throw error
+            }
+        }
+    }
+    throw IllegalStateException("视频流跳转次数过多")
+}
+
+private fun resolveAndCacheSharedVideo(rawUrl: String): CachedSharedVideo {
+    val trimmed = rawUrl.trim()
+    if (!isSupportedShareUrl(trimmed)) throw IllegalArgumentException("仅支持抖音、快手和小红书的 HTTP(S) 分享链接")
+    pruneCachedSharedVideos()
+    val page = fetchSharedVideoPage(trimmed)
+    val mediaUrl = page.directVideoUrl
+        ?: page.html?.let { extractPublicMp4Url(it) }
+        ?: throw IllegalStateException("页面中没有找到可直接播放的公开 MP4；可能需要登录、由 JavaScript 加载或使用了平台专有签名")
+    return downloadPublicMp4(mediaUrl, page.pageUrl)
+}
+
+private fun pruneCachedSharedVideos() {
+    val directory = sharedVideoCacheDir()
+    if (!directory.exists()) return
+    val cutoff = System.currentTimeMillis() - 24L * 60L * 60L * 1000L
+    directory.listFiles()?.filter { it.isFile && it.name.endsWith(".mp4") }?.forEach { file ->
+        if (file.lastModified() < cutoff) file.delete()
+    }
+}
+
+private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
+    if (!cacheId.matches(Regex("[a-fA-F0-9-]{36}"))) return false
+    val directory = sharedVideoCacheDir().canonicalFile
+    val file = File(directory, cacheId + ".mp4").canonicalFile
+    if (file.parentFile != directory) return false
+    return file.delete() || !file.exists()
+}
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pruneCachedSharedVideos()
         installNativeCrashRecorder()
 
         // If the previous launch never reached a successful main-page load, start in
@@ -777,6 +1032,7 @@ class MainActivity : AppCompatActivity() {
             runCatching { webView.stopLoading() }
             runCatching { webView.destroy() }
         }
+        runCatching { sharedVideoExecutor.shutdownNow() }
         super.onDestroy()
     }
 
@@ -784,6 +1040,44 @@ class MainActivity : AppCompatActivity() {
     inner class ShellBridge {
         @JavascriptInterface
         fun getVersion(): String = VERSION
+
+        /** Resolve public short-video share links to a bounded, app-private MP4 cache. */
+        @JavascriptInterface
+        fun resolveShortVideoShareUrl(url: String, requestId: String): Boolean {
+            val cleanUrl = url.trim()
+            val cleanRequestId = requestId.trim()
+            if (!isTrustedShellPage() || cleanRequestId.isBlank() || cleanRequestId.length > 120 || !isSupportedShareUrl(cleanUrl)) return false
+            return runCatching {
+                sharedVideoExecutor.execute {
+                    val result = runCatching { resolveAndCacheSharedVideo(cleanUrl) }
+                    val payload = org.json.JSONObject().put("requestId", cleanRequestId)
+                    result.onSuccess {
+                        payload.put("ok", true)
+                            .put("cacheId", it.cacheId)
+                            .put("contentUri", it.contentUri)
+                    }.onFailure { error ->
+                        payload.put("ok", false)
+                            .put("message", (error.message ?: "公开视频解析失败").take(240))
+                    }
+                    runOnUiThread {
+                        if (!::webView.isInitialized || isFinishing || !isTrustedShellPage()) {
+                            result.getOrNull()?.let { deleteCachedSharedVideoInternal(it.cacheId) }
+                            return@runOnUiThread
+                        }
+                        val script = "window.dispatchEvent(new CustomEvent('floatshell-shared-video-ready',{detail:" + payload.toString() + "}));"
+                        webView.evaluateJavascript(script, null)
+                    }
+                }
+                true
+            }.getOrDefault(false)
+        }
+
+        /** Deletes only a UUID-named MP4 from the dedicated private cache directory. */
+        @JavascriptInterface
+        fun deleteCachedShortVideo(cacheId: String): Boolean {
+            if (!isTrustedShellPage()) return false
+            return runCatching { deleteCachedSharedVideoInternal(cacheId) }.getOrDefault(false)
+        }
 
         /**
          * 本机运行诊断快照。只读取系统状态，不读取聊天、角色、截图或账号数据。
