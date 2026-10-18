@@ -81,15 +81,17 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
   const planChange = planTag ? { title: attribute(planTag[1], "title"), locationId: attribute(planTag[1], "locationId") || "home", startAt: attribute(planTag[1], "startAt"), endAt: attribute(planTag[1], "endAt") } : undefined;
   const inviteDuration = Number(attribute(inviteTag?.[1] || "", "durationMinutes"));
   const invitation = inviteTag ? { time: attribute(inviteTag[1], "time"), locationId: attribute(inviteTag[1], "locationId") || "cafe", activity: attribute(inviteTag[1], "activity") || "一起做点什么", reason: attribute(inviteTag[1], "reason"), durationMinutes: Math.max(15, Math.min(Number.isFinite(inviteDuration) && inviteDuration ? inviteDuration : 60, 24 * 60)) } : undefined;
-  const actionTag = text.match(/<life_action\b[^>]*>([\s\S]*?)<\/life_action\s*>/i);
-  const dialogueTag = text.match(/<life_dialogue\b[^>]*>([\s\S]*?)<\/life_dialogue\s*>/i);
+  const actionTags = [...text.matchAll(/<life_action\b[^>]*>([\s\S]*?)<\/life_action\s*>/ig)];
+  const dialogueTags = [...text.matchAll(/<life_dialogue\b[^>]*>([\s\S]*?)<\/life_dialogue\s*>/ig)];
+  const actionTag = actionTags[0];
+  const dialogueTag = dialogueTags[0];
   const stripControlTags = (value: string) => value
     .replace(/<life_(?:action|dialogue|follow_request|plan_change|invitation)\b[^>]*\/?\s*>/ig, "")
     .replace(/<\/?(?:content|summary|thinking)>/ig, "")
     .trim();
   if (actionTag || dialogueTag) {
-    const action = stripControlTags(actionTag?.[1] || "").replace(/^\*+|\*+$/g, "").trim();
-    const dialogue = stripControlTags(dialogueTag?.[1] || "");
+    const action = actionTags.map(tag => stripControlTags(tag[1] || "").replace(/^\*+|\*+$/g, "").trim()).filter(Boolean).join("\n");
+    const dialogue = dialogueTags.map(tag => stripControlTags(tag[1] || "").trim()).filter(Boolean).join("\n");
     return { action, dialogue, followRequest, planChange, invitation };
   }
   const clean = stripControlTags(text);
@@ -101,6 +103,13 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
     else dialogueLines.push(line);
   }
   return { action: actionLines.join(" "), dialogue: dialogueLines.join("\n") || (actionLines.length ? "" : clean), followRequest, planChange, invitation };
+}
+
+function splitLifeReplySegments(value: string): string[] {
+  return value.replace(/\r/g, "").replace(/([。！？!?])(?=\S)/g, "$1\n").split(/\n+/)
+    .map(segment => segment.replace(/^[-•*]+\s*/, "").trim())
+    .map(segment => segment.replace(/^["“”「」『』]+|["“”「」『』]+$/g, "").trim())
+    .filter(Boolean);
 }
 
 
@@ -1123,7 +1132,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         content: [
           "【仅本轮使用生活场景模式规则，不要写入线上聊天历史】",
           activeSceneOutputPrompt,
-          settings.showActionNarration ? "动作旁白单独一行，使用 *动作* 格式；对白只写说出口的话。" : "不要输出动作旁白，只输出角色说出口的话。",
+          settings.showActionNarration ? "严格只用 <life_action>...</life_action> 表示动作/场景旁白，用 <life_dialogue>...</life_dialogue> 表示角色实际说出口的话；两者分开，标签外不要输出文字。" : "仍须使用 <life_action></life_action> 与 <life_dialogue>...</life_dialogue>，把 life_action 留空；标签外不要输出文字。",
           settings.keepDialogueConcise ? "一轮通常 1-3 句，保持实时互动感。" : "允许适度展开，但保持实时互动感。",
           activePromptPresetText ? "小手机预设继承内容与当前生活预设规则：\n" + activePromptPresetText : "",
           activePromptPreset.locationHabitPrompt ? "地点习惯规则：\n" + activePromptPreset.locationHabitPrompt : "",
@@ -1200,8 +1209,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   useEffect(() => {
     if (!ready || !settings.enabled || !settings.enableCharacterAutonomy || settings.enableProactiveSceneMessages === false || !activeScene || activeScene.status !== "active" || !immersiveScene) return;
     let disposed = false;
-    const minIntervalMinutes = Math.max(2, Math.min(60, settings.proactiveSceneIntervalMinutes ?? 5));
-    const maxIntervalMinutes = Math.max(minIntervalMinutes, Math.min(60, settings.proactiveSceneIntervalMaxMinutes ?? 15));
+    const minIntervalMinutes = Math.max(2, Math.min(60, settings.proactiveSceneIntervalMinutes ?? 2));
+    const maxIntervalMinutes = Math.max(minIntervalMinutes, Math.min(60, settings.proactiveSceneIntervalMaxMinutes ?? 4));
     const getRandomIntervalMs = () => (minIntervalMinutes + Math.floor(Math.random() * (maxIntervalMinutes - minIntervalMinutes + 1))) * 60_000;
     const candidateIds = [...new Set(activeScene.participants
       .filter(participant => participant.ownerType === "character" && participant.ownerId && participant.activity !== "离开")
@@ -1211,7 +1220,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       return [
         "【生活现场自主回合：不是对玩家新消息的回复】",
         activeSceneOutputPrompt,
-        settings.showActionNarration ? "动作旁白与角色对白必须严格分开。" : "只输出角色实际说出口的对白。",
+         settings.showActionNarration ? "严格使用 <life_action>...</life_action> 与 <life_dialogue>...</life_dialogue>，动作和对白分开，标签外不要输出文字。" : "仍使用 <life_action></life_action> 与 <life_dialogue>...</life_dialogue>，把 life_action 留空，标签外不要输出文字。",
         settings.keepDialogueConcise ? "保持自然简短，像真实相处时的一小句或一个小动作。" : "可以适度展开，但不要写成长篇故事。",
         "当前没有新的玩家输入。请结合角色正在做的事、性格、地点习惯、最近发生的事情和场景气氛，自主判断是否有自然的发言或行动动机。可以主动搭话、分享正在做的事、提出轻微互动，也可以继续忙自己的事或保持沉默。不要为了触发功能强行说话；不要替玩家行动或发言；不要重复上一条内容。",
         activePromptPresetText,
@@ -1294,14 +1303,16 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         if (disposed) return;
         const parsed = parseLifeOutput(result.content);
         if (!parsed.action?.trim() && !parsed.dialogue.trim()) return;
-        const message: LifeSceneMessage = {
-          id: id("life-proactive"), sceneId: activeScene.id, speakerType: "character",
-          speakerId: character.id, speakerName: character.name, role: "character",
-          action: settings.showActionNarration ? parsed.action?.trim() || undefined : undefined,
-          dialogue: parsed.dialogue.trim(), createdAt: new Date().toISOString(),
-        };
-        pushSceneMessage(message);
-        const body = [message.action, message.dialogue].filter(Boolean).join(" ");
+        const responseAt = new Date().toISOString();
+        const actionSegments = settings.showActionNarration ? splitLifeReplySegments(parsed.action ?? "") : [];
+        const dialogueSegments = splitLifeReplySegments(parsed.dialogue);
+        const responseMessages: LifeSceneMessage[] = [
+          ...actionSegments.map(action => ({ id: id("life-proactive-action"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: character.id, speakerName: character.name, role: "character" as const, action, dialogue: "", createdAt: responseAt })),
+          ...dialogueSegments.map(dialogue => ({ id: id("life-proactive-dialogue"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: character.id, speakerName: character.name, role: "character" as const, dialogue, createdAt: responseAt })),
+        ];
+        if (!responseMessages.length) responseMessages.push({ id: id("life-proactive"), sceneId: activeScene.id, speakerType: "character", speakerId: character.id, speakerName: character.name, role: "character", dialogue: "", createdAt: responseAt });
+        responseMessages.forEach(pushSceneMessage);
+        const body = responseMessages.map(message => [message.action, message.dialogue].filter(Boolean).join(" ")).filter(Boolean).join(" ");
         if (settings.enableLifeMessageNotifications !== false) {
           setSceneToast({ title: character.name + "主动说话了", body });
           notifyLifeSceneMessage(character.name + " · 生活现场", body, () => setTab("scene"));
@@ -1377,6 +1388,14 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const targetId = resolveLifeCharacterId(rawTargetId);
     const target = characters.find(char => char.id === targetId);
     if (!target) { setNotice("没有找到可回应的角色。请检查该场景参与者是否关联到现有角色卡。"); return; }
+    if (userText || userAction) {
+      const latest = stateRef.current;
+      const scene = latest.scenes.find(item => item.id === activeScene.id);
+      if (scene) {
+        const updatedScene = { ...scene, participants: scene.participants.map(participant => participant.ownerType === "character" && participant.ownerId === target.id ? { ...participant, awarenessByActorId: { ...participant.awarenessByActorId, [PLAYER_ID]: "aware" as const } } : participant), updatedAt: new Date().toISOString() };
+        commit({ ...latest, scenes: latest.scenes.map(item => item.id === scene.id ? updatedScene : item) });
+      }
+    }
     const targetClock = getActorClock(stateRef.current, "character", target.id);
     const targetNow = resolveActorLifeNow(targetClock);
     const targetSchedule = getCurrentActorSchedule(stateRef.current, "character", target.id, targetNow);
@@ -1401,7 +1420,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const sceneContext = buildLifeScenePromptContext(stateRef.current, activeScene, target.id);
       const settingsInstructions = [
         activeSceneOutputPrompt,
-        settings.showActionNarration ? "动作旁白要短，单独一行使用 *动作* 格式；对白只写说出口的话。" : "不要输出动作旁白，只输出角色说出口的话。",
+        settings.showActionNarration ? "严格只用 <life_action>...</life_action> 表示动作/场景旁白，用 <life_dialogue>...</life_dialogue> 表示角色实际说出口的话；两者分开，标签外不要输出文字。" : "仍须使用 <life_action></life_action> 与 <life_dialogue>...</life_dialogue>，把 life_action 留空；标签外不要输出文字。",
         settings.keepDialogueConcise ? "一轮通常 1-3 句，除非用户明确要求展开。" : "允许适度展开，但仍保持实时互动感。",
         forceReaction ? "本轮由玩家手动强制触发反馈。必须结合最近已经发生的动作或对白，输出可见且符合角色性格的反应；不能空白，也不要只泛泛问候。" : settings.allowCharactersToStaySilent ? "如果角色当下忙碌、没注意到或不想说话，可以自然沉默。" : "本轮需要对玩家的输入作出回应。",
         wokeFromSleep ? "角色原本正在睡觉，本轮是被消息或紧急情况吵醒；要表现困倦、反应迟缓或不想立刻长谈，不要突然精神饱满。" : "",
@@ -1488,7 +1507,15 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         setNotice(target.name + "提出了陪伴申请；你可以在「邀约活动」中确认或拒绝。");
       }
       if (structuredNext !== stateRef.current) commit(structuredNext);
-      pushSceneMessage({ id: id("turn"), sceneId: activeScene.id, speakerType: "character", speakerId: target.id, speakerName: target.name, role: "character", action: settings.showActionNarration ? parsed.action : undefined, dialogue: parsed.dialogue, createdAt: new Date().toISOString() });
+      const replyAt = new Date().toISOString();
+      const actionSegments = settings.showActionNarration ? splitLifeReplySegments(parsed.action ?? "") : [];
+      const dialogueSegments = splitLifeReplySegments(parsed.dialogue);
+      const replyMessages: LifeSceneMessage[] = [
+        ...actionSegments.map(action => ({ id: id("turn-action"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, action, dialogue: "", createdAt: replyAt })),
+        ...dialogueSegments.map(dialogue => ({ id: id("turn-dialogue"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, dialogue, createdAt: replyAt })),
+      ];
+      if (!replyMessages.length) replyMessages.push({ id: id("turn"), sceneId: activeScene.id, speakerType: "character", speakerId: target.id, speakerName: target.name, role: "character", dialogue: "", createdAt: replyAt });
+      replyMessages.forEach(pushSceneMessage);
       if (forceReaction) setNotice(target.name + "已回应最近的互动。");
       if (settings.saveConfirmedEventsToMemory && (userText.trim() || userAction.trim()) && (parsed.dialogue.trim() || parsed.action?.trim())) {
         const eventId = id("event"), eventNow = new Date().toISOString();
