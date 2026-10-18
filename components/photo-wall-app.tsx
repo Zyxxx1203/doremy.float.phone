@@ -166,7 +166,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
 
-  const scheduleSave = useCallback((next: PhotoWallState) => {
+  const scheduleSave = useCallback((_next: PhotoWallState) => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
     saveTimerRef.current = window.setTimeout(() => {
       savePhotoWallState(stateRef.current);
