@@ -38,7 +38,7 @@ export function isShortVideoShareUrl(rawUrl: string): boolean {
         if (matchesDomain("kuaishou.com")) {
             return host === "v.kuaishou.com" || path.includes("/short-video/") || path.includes("/fw/");
         }
-        if (matchesDomain("xhslink.com")) return true;
+        if (matchesDomain("xhslink.com") || matchesDomain("xhslink.cn")) return true;
         if (matchesDomain("xiaohongshu.com")) {
             return path.includes("/explore/") || path.includes("/discovery/item/");
         }

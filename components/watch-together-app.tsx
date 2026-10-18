@@ -12,7 +12,10 @@ import { resolveUserIdentity } from "@/lib/settings-storage";
 
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
 type Platform = "bilibili" | "youtube" | "tencent" | "youku" | "iqiyi" | "douyin" | "xiaohongshu" | "other";
-type VideoTarget = { url: string; embedUrl: string | null; platform: Platform; platformName: string; supported: boolean; nativeVideo?: boolean };
+type VideoTarget = { url: string; embedUrl: string | null; platform: Platform; platformName: string; supported: boolean; nativeVideo?: boolean; nativeVideoUrl?: string; nativeCacheId?: string };
+type WatchNativeBridge = { resolveShortVideoShareUrl?: (url: string, requestId: string) => boolean; deleteCachedShortVideo?: (cacheId: string) => boolean };
+type WatchNativeWindow = Window & { AndroidShell?: WatchNativeBridge };
+type WatchNativeResolved = { requestId?: string; ok?: boolean; cacheId?: string; contentUri?: string; message?: string };
 type WatchComment = { id: string; characterId: string; characterName: string; text: string; createdAt: string; kind?: "character" | "user"; timepoint?: string; targetUrl?: string };
 type WatchSettings = { characterId: string; intervalMinMinutes: number; intervalMaxMinutes: number; voiceEnabled: boolean; danmakuEnabled: boolean; subtitlesEnabled: boolean; currentMoment: string };
 
@@ -50,7 +53,7 @@ function parseVideoUrl(value: string): VideoTarget | null {
     }
     if (host === "iqiyi.com" || host.endsWith(".iqiyi.com")) return { url: original, embedUrl: null, platform: "iqiyi", platformName: "爱奇艺", supported: false };
     if (host === "douyin.com" || host.endsWith(".douyin.com")) return { url: original, embedUrl: null, platform: "douyin", platformName: "抖音", supported: false };
-    if (host === "xiaohongshu.com" || host.endsWith(".xiaohongshu.com") || host === "xhslink.com") return { url: original, embedUrl: null, platform: "xiaohongshu", platformName: "小红书", supported: false };
+    if (host === "xiaohongshu.com" || host.endsWith(".xiaohongshu.com") || host === "xhslink.com" || host.endsWith(".xhslink.com") || host === "xhslink.cn" || host.endsWith(".xhslink.cn")) return { url: original, embedUrl: null, platform: "xiaohongshu", platformName: "小红书", supported: false };
     return { url: original, embedUrl: null, platform: "other", platformName: host, supported: false };
   } catch { return null; }
 }
@@ -107,7 +110,60 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [target, setTarget] = useState<VideoTarget | null>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
   const localVideoObjectUrlRef = useRef<string | null>(null);
+  const nativeVideoCacheRef = useRef<{ url: string; cacheId: string } | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
+
+  useEffect(() => {
+    const current = target;
+    if (!current || current.nativeVideo || current.embedUrl || current.supported) return;
+    let host = "";
+    try { host = new URL(current.url).hostname.toLowerCase(); } catch { return; }
+    const roots = ["xhslink.com", "xhslink.cn", "xiaohongshu.com", "douyin.com", "iesdouyin.com", "kuaishou.com"];
+    if (!roots.some(root => host === root || host.endsWith("." + root))) return;
+    const native = (window as WatchNativeWindow).AndroidShell;
+    if (!native || !native.resolveShortVideoShareUrl) return;
+    const requestId = "watch-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 9);
+    let active = true;
+    const onResolved = (event: Event) => {
+      const detail = (event as CustomEvent<WatchNativeResolved>).detail;
+      if (!detail || detail.requestId !== requestId) return;
+      if (!active) {
+        if (detail.cacheId) { try { native.deleteCachedShortVideo?.(detail.cacheId); } catch { /* native cache TTL is fallback */ } }
+        return;
+      }
+      if (detail.ok && detail.cacheId && detail.contentUri) {
+        nativeVideoCacheRef.current = { url: current.url, cacheId: detail.cacheId };
+        setTarget(previous => previous && previous.url === current.url ? { ...previous, nativeVideo: true, nativeVideoUrl: detail.contentUri, nativeCacheId: detail.cacheId, supported: true } : previous);
+        onNotice?.("已取得可播放的视频流，可以在小手机内观看并继续讨论。");
+      } else {
+        onNotice?.("小手机未能从该分享链接取得可播放的视频流：" + (detail.message || "平台可能要求登录，或使用了签名/防盗链地址。"));
+      }
+    };
+    window.addEventListener("floatshell-shared-video-ready", onResolved);
+    try {
+      if (!native.resolveShortVideoShareUrl(current.url, requestId)) onNotice?.("原生视频解析没有接受这个链接，请确认 APK 已更新。");
+    } catch { onNotice?.("无法调用 APK 的原生视频解析能力。"); }
+    return () => {
+      active = false;
+      window.removeEventListener("floatshell-shared-video-ready", onResolved);
+      const cached = nativeVideoCacheRef.current;
+      if (cached && cached.url === current.url) {
+        try { native.deleteCachedShortVideo?.(cached.cacheId); } catch { /* native cache TTL is fallback */ }
+        nativeVideoCacheRef.current = null;
+      }
+    };
+  // URL alone defines the resolver lifetime so updating the target with its cache URI will not clear it.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target && target.url]);
+
+  useEffect(() => () => {
+    const cached = nativeVideoCacheRef.current;
+    if (cached) {
+      try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* native cache TTL is fallback */ }
+      nativeVideoCacheRef.current = null;
+    }
+  }, []);
+
   const [comments, setComments] = useState<WatchComment[]>([]);
   const [discussionDraft, setDiscussionDraft] = useState("");
   const [timepointDraft, setTimepointDraft] = useState("");
@@ -191,7 +247,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     setComments(loadTargetComments(parsed.url));
     setDiscussionDraft(""); setTimepointDraft("");
     setWatching(false);
-    if (!parsed.supported) onNotice?.(`${parsed.platformName}暂不保证站内嵌入播放，已保留原始链接，可尝试在当前 WebView 或外部播放器打开。`);
+    if (!parsed.supported && (parsed.platform === "xiaohongshu" || parsed.platform === "douyin")) onNotice?.("正在尝试在小手机内解析" + parsed.platformName + "的公开视频流；如果平台要求登录或启用了防盗链，解析可能失败。");
   };
 
   const speakComment = async (text: string, characterId: string) => {
@@ -311,8 +367,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const platformNote = useMemo(() => {
     if (!target) return "";
     if (target.platformName === "本地视频") return "本地视频只在当前页面临时播放，不会上传。";
+    if (target.nativeVideoUrl) return target.platformName + "已解析到小手机内播放；仍受公开视频权限、链接时效与平台防盗链影响。";
     if (target.supported) return `已接入${target.platformName}。能否播放取决于平台嵌入政策、登录状态与会员权限。`;
-    return `${target.platformName}暂无稳定嵌入播放器，可打开原视频，陪看仍会基于你描述的片段回应。`;
+    return `${target.platformName}还没有取得可播放的视频流；查看解析提示或选择本地视频，不会假称已实现站内播放。`;
   }, [target]);
 
   return <div className="watch-together-app pointer-events-auto isolate absolute inset-0 z-[1000] flex min-w-0 flex-col overflow-hidden text-[#f0e6d8]" style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)" }}>
@@ -341,14 +398,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     </header>
 
     <main className="watch-together-main relative z-[1001] min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-8" style={{backgroundImage:"radial-gradient(ellipse at 50% 0%,rgba(255,251,242,.72),transparent 62%)"}}>
-      <div className="watch-room-title mx-auto mb-3 w-full max-w-3xl px-1 pt-1"><div className="flex items-center justify-between gap-3 rounded-2xl border border-[#b99b80]/25 bg-[#fffaf2]/65 px-4 py-3 text-[#6d5141] shadow-[0_8px_22px_rgba(96,67,43,.06)] backdrop-blur"><div className="min-w-0"><p className="truncate font-serif text-sm">{target ? `一起看《${videoTitle || target.platformName + "的一段视频"}》` : "把想看的内容放上屏幕"}</p><p className="mt-0.5 text-[10px] tracking-wide text-[#8b7665]">{target ? (target.supported ? target.platformName + " · 链接播放" : target.platformName + " · 外部播放") : "等待开始 · 选择视频或粘贴链接"}</p></div><span className="shrink-0 text-[10px] tracking-[.14em] text-[#a18172]">TOGETHER</span></div></div>
+      <div className="watch-room-title mx-auto mb-3 w-full max-w-3xl px-1 pt-1"><div className="flex items-center justify-between gap-3 rounded-2xl border border-[#b99b80]/25 bg-[#fffaf2]/65 px-4 py-3 text-[#6d5141] shadow-[0_8px_22px_rgba(96,67,43,.06)] backdrop-blur"><div className="min-w-0"><p className="truncate font-serif text-sm">{target ? `一起看《${videoTitle || target.platformName + "的一段视频"}》` : "把想看的内容放上屏幕"}</p><p className="mt-0.5 text-[10px] tracking-wide text-[#8b7665]">{target ? (target.nativeVideoUrl ? target.platformName + " · 小手机内播放" : target.supported ? target.platformName + " · 链接播放" : target.platformName + " · 尝试站内解析") : "等待开始 · 选择视频或粘贴链接"}</p></div><span className="shrink-0 text-[10px] tracking-[.14em] text-[#a18172]">TOGETHER</span></div></div>
       <section
         ref={playerRef}
         className={`watch-player relative mx-auto w-full max-w-3xl overflow-hidden rounded-[26px] border border-white/10 bg-[#0d0b09] ${fullScreen ? "fixed inset-0 z-[2000] h-[100dvh] w-screen max-w-none rounded-none" : ""}`}
         style={{ boxShadow: "0 0 0 1px rgba(255,214,170,.06), 0 28px 70px rgba(0,0,0,.6), 0 0 120px rgba(201,143,82,.16)" }}
       >
         {target?.nativeVideo ? (
-          <video key={target.url} src={target.url} controls playsInline className={`${fullScreen ? "h-full w-full aspect-auto" : "aspect-video w-full"} bg-black`} onError={() => onNotice?.("这个视频文件无法在当前浏览器播放，可能是格式不支持或来源限制。")} />
+          <video key={target.nativeVideoUrl || target.url} src={target.nativeVideoUrl || target.url} controls playsInline className={`${fullScreen ? "h-full w-full aspect-auto" : "aspect-video w-full"} bg-black`} onEnded={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } }} onError={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } onNotice?.("视频无法在当前 WebView 播放，可能是格式、签名有效期或平台防盗链限制。"); }} />
         ) : target?.embedUrl ? (
           <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className={`${fullScreen ? "h-full w-full aspect-auto" : "aspect-video w-full"} border-0`} />
         ) : (
@@ -385,7 +442,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           <button type="button" onClick={() => videoFileInputRef.current?.click()} className="rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">选择本地视频</button>
         </div>
         <input ref={videoFileInputRef} type="file" accept="video/*,.mp4,.webm,.mov,.m4v,.ogv" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; openLocalVideo(file); }} />
-        {target && target.platformName !== "本地视频" && !target.embedUrl && <p className="mt-2 rounded-xl bg-[#f4e7d6] px-3 py-2 text-xs leading-5 text-[#82644c]">这个平台没有可靠的网页内嵌源。选择已保存的视频文件后仍可在这里播放，再继续和角色讨论。</p>}
+        {target && target.platformName !== "本地视频" && !target.embedUrl && !target.nativeVideoUrl && <p className="mt-2 rounded-xl bg-[#f4e7d6] px-3 py-2 text-xs leading-5 text-[#82644c]">正在尝试原生解析。若链接无法取得公开的视频流，平台分享页不能被网页强制嵌入；可选择本地视频继续在这里播放和讨论。</p>}
         {target?.platformName === "本地视频" && <p className="mt-2 px-1 text-[11px] leading-5 text-[#8b7665]">当前播放的是本地文件；选择新文件或输入链接可以切换视频。</p>}
         {platformNote && <p className="mt-2 px-1 text-[11px] leading-5 text-[#8b7665]">{platformNote}</p>}
       </div>

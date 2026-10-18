@@ -2532,6 +2532,24 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
   // Allow other components to switch apps via custom event
   const [chatInitSessionId, setChatInitSessionId] = useState<string | null>(null);
   const [activeChatSession, setActiveChatSession] = useState<ChatSession | null>(null);
+  useEffect(() => {
+    const handleNativeBack = (event: Event) => {
+      const custom = event as CustomEvent<{ handled?: boolean }>;
+      if (activeApp !== null) {
+        if (custom.detail) custom.detail.handled = true;
+        setActiveApp(null);
+        setActiveChatSession(null);
+        setOpenFolderId(null);
+        return;
+      }
+      if (openFolderId !== null) {
+        if (custom.detail) custom.detail.handled = true;
+        setOpenFolderId(null);
+      }
+    };
+    window.addEventListener("floatphone-native-back", handleNativeBack);
+    return () => window.removeEventListener("floatphone-native-back", handleNativeBack);
+  }, [activeApp, openFolderId]);
   const [customAppLaunchContext, setCustomAppLaunchContext] = useState<CustomAppLaunchState | null>(null);
   const [appMarketLaunchContext, setAppMarketLaunchContext] = useState<Record<string, unknown> | null>(null);
   useEffect(() => {

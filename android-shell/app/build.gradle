@@ -29,8 +29,8 @@ android {
         // 1.0.13：原生后台应用时长监测、现实桥事件补传与返回学习软件通知。
         // 1.0.14：运行诊断页与原生设备/权限快照。
         // 1.0.16：短视频分享链接原生解析与限额临时缓存。
-        versionCode 15
-        versionName "1.0.16"
+        versionCode 16
+        versionName "1.0.17"
         buildConfigField "String", "SITE_URL", "\"${siteUrl}\""
     }
 
