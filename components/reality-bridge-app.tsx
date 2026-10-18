@@ -620,7 +620,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
           template: rule.process?.mode === "template" ? rule.process?.template || "" : "",
         },
         offlineReplies: (rule.offlineReplies || []).filter(line => line.trim()).slice(0, 80),
-        characterName: characters.find(character => character.id === rule.actions.chat?.characterId)?.name || "",
+        characterName: loadCharacters().find(character => character.id === rule.actions.chat?.characterId)?.name || "",
       }));
     try {
       shell.configureNativeRealityBridge(JSON.stringify({
@@ -630,7 +630,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     } catch {
       // 原生桥暂不可用时保留网页规则，不让设置页崩溃。
     }
-  }, [settings.enabled, rules, characters]);
+  }, [settings.enabled, rules]);
 
   const [nativeLog, setNativeLog] = useState<Array<{ eventId?: string; type?: string; payload?: string; rule?: string; result?: string; at?: number }>>([]);
   const [nativeLogAvailable, setNativeLogAvailable] = useState(false);
