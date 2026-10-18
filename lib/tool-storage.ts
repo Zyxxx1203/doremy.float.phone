@@ -9,7 +9,9 @@ import type {
 import {
     findEnabledInternalSubToolDefinition,
     getEnabledInternalCapabilities,
+    getInternalCapability,
     getInternalCapabilityToolDefinition,
+    LIFE_ENGINE_CAPABILITY_ID,
 } from "./internal-capability-storage";
 import { loadCustomAppToolsForContext, type RegisteredCustomAppExtension } from "./custom-app-sdk-registry";
 import { LIFE_TOOL_DEFINITIONS } from "./life/life-tools";
@@ -488,7 +490,8 @@ export function getEnabledTools(appId?: string): EnabledTool[] {
     {
         // Life actions are global toolbox capabilities, available outside the Life APP too.
         const lifeSettings = loadVirtualLifeState().settings;
-        if (lifeSettings.enabled && lifeSettings.enableCharacterAutonomy) {
+        const lifeCapability = getInternalCapability(LIFE_ENGINE_CAPABILITY_ID);
+        if (lifeCapability?.enabled && lifeCapability.mode !== "off" && lifeSettings.enabled && lifeSettings.enableCharacterAutonomy) {
             for (const tool of LIFE_TOOL_DEFINITIONS) {
                 const allowed = tool.name === "life_propose_invitation"
                     ? lifeSettings.enableInvitations
