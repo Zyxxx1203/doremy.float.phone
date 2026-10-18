@@ -2693,10 +2693,13 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             const lines=quickPlanText.split(/\n|；|;/).map(line=>line.trim()).filter(Boolean);
             if(!lines.length){setNotice("先写下你想安排的事情。");return;}
             let next=stateRef.current;const drafts:QuickPlanDraft[]=[];const errors:string[]=[];
+            const periodPattern="(?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?";
+            // 支持「3点」「3点半」「3点30分」「15:30」「下午3时」等常见写法。
+            const clockPattern=periodPattern+"\\s*\\d{1,2}(?:\\s*(?::|：)\\s*\\d{1,2}|\\s*点(?:\\s*\\d{1,2}\\s*分?)?|\\s*时(?:\\s*\\d{1,2}\\s*分?)?)?";
             const parseClock=(raw:string, fallbackHour:number)=>{
-              const m=raw.trim().match(/^(上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*(\d{1,2})(?:[:：点时](\d{1,2})分?)?$/);
+              const m=raw.trim().match(/^(上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*(\d{1,2})(?:(?:\s*[:：]\s*(\d{1,2}))|(?:\s*点(?:\s*(\d{1,2})\s*分?)?)|(?:\s*时(?:\s*(\d{1,2})\s*分?)?))?$/);
               if(!m)return {hour:fallbackHour,minute:0};
-              let hour=Number(m[2]),minute=Number(m[3]||0);const period=m[1]||"";
+              let hour=Number(m[2]),minute=Number(m[3]??m[4]??m[5]??0);const period=m[1]||"";
               if(["下午","傍晚","晚上","夜里"].includes(period)&&hour<12)hour+=12;
               if(["凌晨"].includes(period)&&hour===12)hour=0;
               if(["中午"].includes(period)&&hour<11)hour+=12;
@@ -2720,6 +2723,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               body = body
                 .replace(/([零〇一二两三四五六七八九十]{1,3})\s*点\s*半/g, (_match, number: string) => String(chineseNumber(number)) + "点30分")
                 .replace(/([零〇一二两三四五六七八九十]{1,3})\s*(?=点|时|分)/g, (_match, number: string) => String(chineseNumber(number)))
+                .replace(/(\d{1,2})\s*点\s*半/g, "$1点30分")
+                .replace(/点([零〇一二两三四五六七八九十]{1,2})\s*分/g, (_match, number: string) => "点" + String(chineseNumber(number)) + "分")
+                .replace(/时([零〇一二两三四五六七八九十]{1,2})\s*分/g, (_match, number: string) => "时" + String(chineseNumber(number)) + "分")
                 .replace(/(\d{1,2})\s+点/g, "$1点")
                 .replace(/([点时])\s+(\d{1,2})/g, "$1$2")
                 .replace(/(\d{1,2})\s*分/g, "$1分");
@@ -2728,8 +2734,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
                 const weekday=body.match(/周([一二三四五六日天])|星期([一二三四五六日天])/);
                 if(weekday){const weekMap:Record<string,number>={"一":1,"二":2,"三":3,"四":4,"五":5,"六":6,"日":0,"天":0};const n=weekMap[weekday[1]||weekday[2]]??0;let delta=(n-day.getDay()+7)%7;if(delta===0)delta=7;day.setDate(day.getDate()+delta);}
               }
-              const range=body.match(/((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?)?)\s*(?:到|至|—|-)\s*((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?)?)/);
-              const single=body.match(/(?:在|于|约|大概)?\s*((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?))/);
+              const range=body.match(new RegExp("("+clockPattern+")\\s*(?:到|至|—|-|~|～)\\s*("+clockPattern+")"));
+              const single=body.match(new RegExp("(?:在|于|约|大概)?\\s*("+clockPattern+")"));
               if(!range&&!single){errors.push(line);continue;}
               const startClock=parseClock(range?.[1]||single?.[1]||"",9);
               const endClock=range?parseClock(range[2],startClock.hour+1):{hour:(startClock.hour+1)%24,minute:startClock.minute};if(range&&startClock.hour>=12&&startClock.hour<20&&endClock.hour<startClock.hour&&!/(上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)/.test(range[2]))endClock.hour+=12;
@@ -2740,7 +2746,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               const placeName=knownLocation?.name||placeMatch?.[1];
               let location=knownLocation;
               if(!location&&placeName){location={id:id("location"),name:placeName,description:"从快速日程输入识别的地点",visibility:"public"};next={...next,locations:[...next.locations,location]};}
-              let title=body.replace(/后天|明天|明日|今天|今日|周[一二三四五六日天]|星期[一二三四五六日天]/g,"").replace(/((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?)?)\s*(?:到|至|—|-)\s*((?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?)?)/g,"").replace(/(?:上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*\d{1,2}(?:[:：点时]\d{1,2}分?)/g,"");
+              let title=body
+                .replace(/后天|明天|明日|今天|今日|周[一二三四五六日天]|星期[一二三四五六日天]/g,"")
+                .replace(new RegExp("("+clockPattern+")\\s*(?:到|至|—|-|~|～)\\s*("+clockPattern+")","g"),"")
+                .replace(new RegExp(clockPattern,"g"),"");
               if(placeMatch)title=title.replace(placeMatch[0],"");
               else if(location){for(const prefix of ["在","去","到","于"])title=title.replace(prefix+location.name,"");}
               title=title.replace(/\s+/g," ").replace(/^[，,、\s]+|[，,。；;\s]+$/g,"").trim();
