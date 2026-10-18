@@ -1,0 +1,61 @@
+# Float UI / Interaction Design Rules
+
+This document is the implementation contract for visual changes in `momo.float.phone`.
+It is inspired by public design-system references such as Awesome DESIGN.md and Better Design; it does not copy any company's proprietary branding or page.
+
+## Product premise
+
+Float is a personalised Android phone shell with many different mini-apps. A single global theme must not flatten every app into the same generic dashboard. Keep each app's established behaviour and saved theme settings, then create a clear visual identity within that app's scope.
+
+## Visual direction by feature
+
+### Life system — French rose manor and botanical journal
+
+- Palette: warm cream, parchment, dusty rose and restrained antique gold. Sage may be a minor botanical accent, never the dominant surface colour.
+- Use paper-like surfaces, fine botanical/engraving details, editorial serif accents and postcard/dossier motifs sparingly.
+- Places should feel like entries in a curated atlas; schedules like an elegant planner; scene conversations like letters exchanged in a lived-in space.
+- Prioritise the scene chat over decoration. Action narration remains visually distinct from spoken dialogue. Preserve user-defined accent/theme settings.
+- Avoid default dashboard appearance, stacks of identical white rounded cards, oversized badges and unnecessary decorative text.
+
+### Photo wall — full-wall scrapbook
+
+- Browse mode is a read-only panoramic wall or a timeline of memory posters; editing controls belong in edit mode.
+- Use Polaroids, handwritten notes, paper, tape and subtle shadows. The wall itself should feel like a composition, not a grid of generic cards.
+- Never let decorative overlays block selecting, flipping, moving, zooming, drawing or exporting photos.
+
+### Watch together — warm, cinematic companionship
+
+- The video remains the visual anchor; discussion and composition controls must not resize it based on message length.
+- Prefer a floating cinema frame, subtle ambient light and a living avatar-to-avatar radio-wave connection over a literal TV/sofa illustration.
+- Danmaku, transcript, discussion and video controls must remain distinct layers with reliable touch targets.
+- Full-screen layout must preserve the stable player box, safe areas, scrolling discussion and the existing restore/exit behaviour.
+
+## Shape, type and hierarchy
+
+- Use medium radii (roughly 10–18 px) for most panels. Reserve fully rounded pills for compact actions or status chips.
+- One screen should have one dominant surface and a clearly secondary layer; use spacing, contrast and typography before adding more borders.
+- Use icon families consistently. Icons should support labels, not replace touchable button areas.
+- Avoid truncation where the actual task needs reading; allow long content to wrap in the conversation and notes areas.
+
+## Motion language
+
+- Motion should communicate a real state change: entry, focus, connection, location transition, expansion, saving or a completed action.
+- Prefer transform and opacity for transitions; do not animate layout dimensions in a way that shifts controls or the video player.
+- Use restrained 160–360 ms transitions for interactions and longer, low-amplitude ambient motion only for a clear focal element.
+- Scene transitions should connect to actual state updates (for example, a short camera-like pan/crossfade when the selected location changes). Do not add unrelated airplane, portal or travel animations just for spectacle.
+- Respect `prefers-reduced-motion`, WebView frame budgets, Android safe areas and touch input.
+
+## 3D miniature scenes
+
+- Three.js / React Three Fiber may be used for genuinely spatial features such as a dollhouse, miniature room or garden; do not add 3D to a screen that does not benefit from spatial exploration.
+- Load the 3D canvas only when the feature is opened. Use a dynamic client-side boundary, a modest device-pixel ratio, compressed assets and an accessible 2.5D/static fallback.
+- Stop or reduce the render loop when hidden, avoid expensive post-processing on mobile, dispose of resources, and keep accessible DOM controls separate from the canvas.
+- Interactions must call existing application actions; clicking a chair, door or character should never create a parallel copy of life-system state.
+- Prove performance on mobile WebView before making 3D the only route into a feature.
+
+## Non-negotiable regression guardrails
+
+- Do not change feature logic, user data shape, API calls or persisted settings for a visual-only task.
+- Keep editable prompts and user customisations intact.
+- Preserve keyboard focus, full-button hit targets, reduced-motion support, responsive layout and viewport safe areas.
+- Before accepting visual work, run TypeScript and production build validation and inspect the relevant screen at a narrow mobile viewport and a desktop viewport.
