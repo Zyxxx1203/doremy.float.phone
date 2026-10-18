@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
+import { X } from "lucide-react";
 import { downloadFile } from "@/lib/download-utils";
 import { isMediaStoreRef, loadMediaBlob } from "@/lib/media-cache-storage";
 
@@ -54,12 +55,310 @@ const ACTION_BUTTON_STYLE: CSSProperties = {
     backdropFilter: "blur(8px)",
 };
 
+
+type GalleryPoint = { x: number; y: number };
+type GalleryGesture = {
+    mode: "pending" | "swipe" | "dismiss" | "drag" | "pinch";
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startTime: number;
+    startScale: number;
+    startOffset: GalleryPoint;
+    startDistance: number;
+    moved: boolean;
+};
+
+/** WeChat-style immersive multi-image viewer: swipe, pinch, double tap, drag, swipe-down close. */
+function GalleryPreviewOverlay({
+    images,
+    initialIndex = 0,
+    saveFilename = "图片.jpg",
+    onClose,
+}: {
+    images: string[];
+    initialIndex?: number;
+    saveFilename?: string;
+    onClose: () => void;
+}) {
+    const [index, setIndex] = useState(() => Math.max(0, Math.min(images.length - 1, initialIndex)));
+    const [scale, setScale] = useState(1);
+    const [offset, setOffset] = useState<GalleryPoint>({ x: 0, y: 0 });
+    const [dragX, setDragX] = useState(0);
+    const [dismissY, setDismissY] = useState(0);
+    const [isDragging, setIsDragging] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const pointersRef = useRef(new Map<number, GalleryPoint>());
+    const gestureRef = useRef<GalleryGesture | null>(null);
+    const lastTapRef = useRef<{ at: number; x: number; y: number }>({ at: 0, x: 0, y: 0 });
+
+    const distance = (points: GalleryPoint[]) => Math.max(1, Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y));
+    const clampOffset = (next: GalleryPoint, nextScale: number): GalleryPoint => {
+        const maxX = (nextScale - 1) * (typeof window !== "undefined" ? window.innerWidth : 400) / 2;
+        const maxY = (nextScale - 1) * (typeof window !== "undefined" ? window.innerHeight : 800) / 2;
+        return { x: Math.max(-maxX, Math.min(maxX, next.x)), y: Math.max(-maxY, Math.min(maxY, next.y)) };
+    };
+    const resetZoom = () => { setScale(1); setOffset({ x: 0, y: 0 }); setDismissY(0); };
+
+    useEffect(() => {
+        const onKey = (event: KeyboardEvent) => {
+            if (event.key === "Escape") onClose();
+            else if (event.key === "ArrowLeft") {
+                setIndex(current => Math.max(0, current - 1));
+                resetZoom();
+            } else if (event.key === "ArrowRight") {
+                setIndex(current => Math.min(images.length - 1, current + 1));
+                resetZoom();
+            }
+        };
+        const onSwipeBack = (event: Event) => {
+            if (event.defaultPrevented) return;
+            event.preventDefault();
+            onClose();
+        };
+        window.addEventListener("keydown", onKey);
+        document.addEventListener("phone-swipe-back", onSwipeBack, true);
+        return () => {
+            window.removeEventListener("keydown", onKey);
+            document.removeEventListener("phone-swipe-back", onSwipeBack, true);
+        };
+    }, [images.length, onClose]);
+
+    const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+        event.stopPropagation();
+        pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* optional on older WebViews */ }
+        const points = [...pointersRef.current.values()];
+        if (points.length >= 2) {
+            gestureRef.current = {
+                mode: "pinch", pointerId: event.pointerId, startX: points[0].x, startY: points[0].y,
+                startTime: Date.now(), startScale: scale, startOffset: offset,
+                startDistance: distance(points), moved: true,
+            };
+            setIsDragging(true);
+            setDragX(0);
+            setDismissY(0);
+        } else {
+            gestureRef.current = {
+                mode: "pending", pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
+                startTime: Date.now(), startScale: scale, startOffset: offset,
+                startDistance: 0, moved: false,
+            };
+        }
+    };
+
+    const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+        if (!pointersRef.current.has(event.pointerId)) return;
+        pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        const points = [...pointersRef.current.values()];
+        const gesture = gestureRef.current;
+        if (!gesture) return;
+        if (points.length >= 2) {
+            if (gesture.mode !== "pinch") {
+                gestureRef.current = { ...gesture, mode: "pinch", startScale: scale, startOffset: offset, startDistance: distance(points), moved: true };
+                setIsDragging(true);
+                return;
+            }
+            const nextScale = Math.max(1, Math.min(4, gesture.startScale * distance(points) / Math.max(1, gesture.startDistance)));
+            setScale(nextScale);
+            setOffset(clampOffset(gesture.startOffset, nextScale));
+            setIsDragging(true);
+            event.preventDefault();
+            return;
+        }
+        if (gesture.mode === "pinch") return;
+        const dx = event.clientX - gesture.startX;
+        const dy = event.clientY - gesture.startY;
+        if (gesture.mode === "pending") {
+            if (Math.abs(dx) < 7 && Math.abs(dy) < 7) return;
+            const mode = gesture.startScale > 1.01 ? "drag" : (Math.abs(dx) >= Math.abs(dy) ? "swipe" : "dismiss");
+            gestureRef.current = { ...gesture, mode, moved: true };
+            setIsDragging(true);
+        }
+        const current = gestureRef.current;
+        if (!current) return;
+        if (current.mode === "swipe") {
+            let next = dx;
+            if ((index === 0 && dx > 0) || (index === images.length - 1 && dx < 0)) next *= 0.28;
+            setDragX(next);
+            event.preventDefault();
+        } else if (current.mode === "dismiss") {
+            setDismissY(dy);
+            setScale(Math.max(0.62, 1 - Math.abs(dy) / Math.max(500, window.innerHeight * 1.5)));
+            event.preventDefault();
+        } else if (current.mode === "drag") {
+            setOffset(clampOffset({ x: current.startOffset.x + dx, y: current.startOffset.y + dy }, current.startScale));
+            event.preventDefault();
+        }
+    };
+
+    const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+        const gesture = gestureRef.current;
+        pointersRef.current.delete(event.pointerId);
+        if (pointersRef.current.size > 0) {
+            if (gesture?.mode === "pinch") {
+                gestureRef.current = null;
+                setIsDragging(false);
+            }
+            return;
+        }
+        if (!gesture) return;
+        const dx = event.clientX - gesture.startX;
+        const dy = event.clientY - gesture.startY;
+        const elapsed = Math.max(1, Date.now() - gesture.startTime);
+        gestureRef.current = null;
+        setIsDragging(false);
+        if (gesture.mode === "pinch") {
+            if (scale < 1.01) resetZoom();
+            return;
+        }
+        if (gesture.mode === "swipe") {
+            const quick = Math.abs(dx) / elapsed > 0.5;
+            if (Math.abs(dx) > window.innerWidth * 0.22 || quick) {
+                const nextIndex = Math.max(0, Math.min(images.length - 1, index + (dx < 0 ? 1 : -1)));
+                if (nextIndex !== index) {
+                    setIndex(nextIndex);
+                    resetZoom();
+                }
+            }
+            setDragX(0);
+            return;
+        }
+        if (gesture.mode === "dismiss") {
+            if (dy > 86 || (dy > 24 && elapsed < 260)) {
+                onClose();
+                return;
+            }
+            resetZoom();
+            return;
+        }
+        if (gesture.mode === "drag") return;
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) {
+            const now = Date.now();
+            const previous = lastTapRef.current;
+            if (now - previous.at < 280 && Math.abs(event.clientX - previous.x) < 28 && Math.abs(event.clientY - previous.y) < 28) {
+                lastTapRef.current = { at: 0, x: 0, y: 0 };
+                if (scale > 1.01) resetZoom();
+                else {
+                    const nextScale = 2.2;
+                    setScale(nextScale);
+                    setOffset(clampOffset({ x: (window.innerWidth / 2 - event.clientX) * 0.85, y: (window.innerHeight / 2 - event.clientY) * 0.85 }, nextScale));
+                }
+            } else {
+                lastTapRef.current = { at: now, x: event.clientX, y: event.clientY };
+            }
+        }
+    };
+
+    const onPointerCancel = (event: React.PointerEvent<HTMLDivElement>) => {
+        pointersRef.current.delete(event.pointerId);
+        gestureRef.current = null;
+        setIsDragging(false);
+        setDragX(0);
+        setDismissY(0);
+        if (scale < 1) resetZoom();
+    };
+
+    const handleSave = async () => {
+        const url = images[index];
+        if (!url || saving) return;
+        setSaving(true);
+        try {
+            let blob = await resolvePreviewBlob(url);
+            if (!blob && url.startsWith("blob:")) {
+                const response = await fetch(url);
+                if (response.ok) blob = await response.blob();
+            }
+            const base = saveFilename.replace(/\.[^.]+$/, "") || "图片";
+            const ext = /\.([a-z0-9]+)$/i.exec(saveFilename)?.[1] || "jpg";
+            const filename = images.length > 1 ? `${base}_${index + 1}.${ext}` : saveFilename;
+            if (blob) await downloadFile(blob, filename);
+            else {
+                const { downloadUrl } = await import("@/lib/download-utils");
+                await downloadUrl(url, filename);
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (typeof document === "undefined") return null;
+    return createPortal(
+        <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`图片浏览，第 ${index + 1} 张，共 ${images.length} 张`}
+            onClick={event => event.stopPropagation()}
+            style={{
+                position: "fixed", inset: 0, zIndex: 100000, overflow: "hidden",
+                background: `rgba(0,0,0,${Math.max(0.18, 1 - Math.abs(dismissY) / 720)})`,
+                touchAction: "none", WebkitTapHighlightColor: "transparent",
+            }}
+        >
+            <div
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerCancel={onPointerCancel}
+                style={{ position: "absolute", inset: 0, overflow: "hidden", touchAction: "none" }}
+            >
+                <div style={{
+                    display: "flex", height: "100%", width: `${images.length * 100}vw`,
+                    transform: `translate3d(calc(-${index * 100}vw + ${dragX}px),0,0)`,
+                    transition: isDragging ? "none" : "transform .28s cubic-bezier(.32,.72,0,1)",
+                    willChange: "transform",
+                }}>
+                    {images.map((url, imageIndex) => (
+                        <div key={`${imageIndex}-${url}`} style={{ flex: "0 0 100vw", width: "100vw", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                            <img
+                                src={url}
+                                alt={`第 ${imageIndex + 1} 张图片`}
+                                draggable={false}
+                                style={{
+                                    maxWidth: "100vw", maxHeight: "100dvh", width: "auto", height: "auto", objectFit: "contain",
+                                    userSelect: "none", WebkitUserDrag: "none", pointerEvents: "none", willChange: "transform",
+                                    transform: imageIndex === index ? `translate3d(${offset.x}px,${offset.y + dismissY}px,0) scale(${scale})` : "none",
+                                    transition: isDragging ? "none" : "transform .24s ease",
+                                }}
+                            />
+                        </div>
+                    ))}
+                </div>
+            </div>
+            <div style={{ position: "absolute", top: "max(env(safe-area-inset-top, 0px), 16px)", left: "50%", transform: "translateX(-50%)", padding: "6px 13px", borderRadius: 99, color: "rgba(255,255,255,.92)", background: "rgba(255,255,255,.10)", backdropFilter: "blur(12px)", fontSize: 14, letterSpacing: ".04em", pointerEvents: "none" }}>
+                {index + 1} / {images.length}
+            </div>
+            <button
+                type="button"
+                onPointerDown={event => event.stopPropagation()}
+                onClick={event => { event.stopPropagation(); onClose(); }}
+                aria-label="关闭图片浏览"
+                style={{ position: "absolute", top: "max(env(safe-area-inset-top, 0px), 12px)", right: 14, width: 40, height: 40, display: "grid", placeItems: "center", border: "1px solid rgba(255,255,255,.15)", borderRadius: "50%", color: "white", background: "rgba(255,255,255,.12)", backdropFilter: "blur(12px)" }}
+            >
+                <X size={20}/>
+            </button>
+            <button
+                type="button"
+                disabled={saving}
+                onPointerDown={event => event.stopPropagation()}
+                onClick={event => { event.stopPropagation(); void handleSave(); }}
+                style={{ position: "absolute", left: "50%", bottom: "max(env(safe-area-inset-bottom, 0px), 24px)", transform: "translateX(-50%)", padding: "9px 18px", border: "1px solid rgba(255,255,255,.18)", borderRadius: 99, color: "white", background: "rgba(255,255,255,.12)", backdropFilter: "blur(12px)", fontSize: 13 }}
+            >
+                {saving ? "保存中…" : "保存当前图片"}
+            </button>
+        </div>,
+        document.body,
+    );
+}
+
 /**
  * 全屏媒体预览层：图片（或未生成时的文字描述）+ 下方操作按钮排。
  * 聊天、朋友圈、小卷共用——聊天流里不放常驻小按钮，保存/重新生成都收在这里。
  */
 export function MediaPreviewOverlay({
     imageUrl,
+    galleryImages,
+    initialIndex = 0,
     description,
     saveFilename,
     onRegenerate,
@@ -67,12 +366,17 @@ export function MediaPreviewOverlay({
     onClose,
 }: {
     imageUrl?: string | null;
+    galleryImages?: string[];
+    initialIndex?: number;
     description?: string;
     saveFilename?: string;
     onRegenerate?: () => void;
     regenerating?: boolean;
     onClose: () => void;
 }) {
+    if (galleryImages && galleryImages.length > 1) {
+        return <GalleryPreviewOverlay images={galleryImages} initialIndex={initialIndex} saveFilename={saveFilename} onClose={onClose} />;
+    }
     // 保存要重新拉一次图片，慢网络下会卡一下——按钮上给个状态
     const [saving, setSaving] = useState(false);
     if (typeof document === "undefined") return null;

@@ -1348,6 +1348,10 @@ function ImageBubble({
     const [showPreview, setShowPreview] = useState(false);
     // 多图集合的当前页：用于指示点，让「这是几张、看到第几张」一眼可见。
     const [activeGroupIndex, setActiveGroupIndex] = useState(0);
+    const [expandedCollection, setExpandedCollection] = useState(false);
+    const [groupDragOffset, setGroupDragOffset] = useState(0);
+    const groupGestureRef = useRef<{ pointerId: number; startX: number; startY: number; startAt: number; mode: "pending" | "horizontal" } | null>(null);
+    const suppressGroupTapRef = useRef(false);
 
     const [hasRef, setHasRef] = useState(() => hasCharacterReferenceImage(characterId));
     const [useReferenceDraft, setUseReferenceDraft] = useState(d?.useReferenceImage === true);
@@ -1488,6 +1492,8 @@ function ImageBubble({
             {showPreview && (
                 <MediaPreviewOverlay
                     imageUrl={previewImageUrl || resolvedUrl || undefined}
+                    galleryImages={d?.imageCollection === true && groupUrls.length > 1 ? groupUrls : undefined}
+                    initialIndex={activeGroupIndex}
                     description={!resolvedUrl ? label : undefined}
                     saveFilename={resolvedUrl ? ensureExtension(label, "image") : undefined}
                     onRegenerate={canRegenerate ? () => { setShowPreview(false); openPromptEditor(); } : undefined}
@@ -1516,40 +1522,116 @@ function ImageBubble({
     );
 
     if (groupUrls.length > 1 && d?.imageCollection === true) {
+        const beginCollectionGesture = (event: React.PointerEvent<HTMLDivElement>) => {
+            event.stopPropagation();
+            if (expandedCollection) return;
+            groupGestureRef.current = {
+                pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
+                startAt: Date.now(), mode: "pending",
+            };
+        };
+        const moveCollectionGesture = (event: React.PointerEvent<HTMLDivElement>) => {
+            const gesture = groupGestureRef.current;
+            if (!gesture || gesture.pointerId !== event.pointerId) return;
+            const dx = event.clientX - gesture.startX;
+            const dy = event.clientY - gesture.startY;
+            if (gesture.mode === "pending") {
+                if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+                if (Math.abs(dy) > Math.abs(dx)) { groupGestureRef.current = null; return; }
+                gesture.mode = "horizontal";
+            }
+            if (gesture.mode !== "horizontal") return;
+            let offset = dx;
+            if ((activeGroupIndex === 0 && dx > 0) || (activeGroupIndex === groupUrls.length - 1 && dx < 0)) offset *= 0.28;
+            setGroupDragOffset(offset);
+            event.preventDefault();
+            event.stopPropagation();
+        };
+        const finishCollectionGesture = (event: React.PointerEvent<HTMLDivElement>) => {
+            const gesture = groupGestureRef.current;
+            if (!gesture || gesture.pointerId !== event.pointerId) return;
+            groupGestureRef.current = null;
+            const dx = event.clientX - gesture.startX;
+            const dy = event.clientY - gesture.startY;
+            const elapsed = Math.max(1, Date.now() - gesture.startAt);
+            if (gesture.mode === "horizontal") {
+                suppressGroupTapRef.current = true;
+                const swipeEnough = Math.abs(dx) > 34 || (Math.abs(dx) > 18 && elapsed < 250);
+                if (swipeEnough && Math.abs(dx) >= Math.abs(dy)) {
+                    setActiveGroupIndex(current => Math.max(0, Math.min(groupUrls.length - 1, current + (dx < 0 ? 1 : -1))));
+                }
+                setGroupDragOffset(0);
+                window.setTimeout(() => { suppressGroupTapRef.current = false; }, 0);
+                event.stopPropagation();
+                return;
+            }
+            setGroupDragOffset(0);
+        };
         return (
             <>
-                <div className="chat-photo-card chat-photo-card--image relative w-[min(260px,75vw)] max-w-full overflow-hidden rounded-xl" style={{ cursor: "pointer" }}>
-                    <div
-                        className="flex w-full snap-x snap-mandatory gap-0 overflow-x-auto overscroll-x-contain"
-                        style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
-                        onScroll={event => {
-                            // 用滚动位置反推当前页，保证指示点与实际看到的图一致。
-                            const el = event.currentTarget;
-                            const width = el.clientWidth || 1;
-                            const next = Math.round(el.scrollLeft / width);
-                            setActiveGroupIndex(current => (next !== current && next >= 0 && next < groupUrls.length ? next : current));
-                        }}
-                    >
-                        {groupUrls.map((url, index) => (
-                            <button type="button" key={`${index}-${url}`} onClick={e => { e.stopPropagation(); setPreviewImageUrl(url); setShowPreview(true); }} className="relative aspect-square w-full min-w-full flex-none snap-center overflow-hidden bg-stone-100">
-                                <img src={url} alt={`${label} ${index + 1}`} className="h-full w-full object-cover" loading={index < 2 ? "eager" : "lazy"} />
-                                <span className="absolute bottom-2 right-2 rounded-full bg-black/55 px-2 py-0.5 text-xs text-white">{index + 1}/{groupUrls.length}</span>
-                            </button>
-                        ))}
-                    </div>
-                    {/* 翻页指示：像微信一样能看出这组有几张、当前在第几张。 */}
-                    {groupUrls.length > 1 && (
-                        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-2 flex items-center justify-center gap-1">
-                            {groupUrls.map((url, index) => (
-                                <span
-                                    key={`dot-${index}-${url}`}
-                                    className={`h-1.5 rounded-full transition-all duration-200 ${index === activeGroupIndex ? "w-4 bg-white shadow-sm" : "w-1.5 bg-white/55"}`}
-                                />
+                {expandedCollection ? (
+                    <div className="chat-photo-carousel-expanded chat-photo-card w-[min(230px,75vw)] max-w-full overflow-y-auto rounded-2xl p-2" style={{ maxHeight: "min(52vh,440px)", touchAction: "pan-y", WebkitOverflowScrolling: "touch" }}>
+                        <div className="mb-2 flex items-center justify-between px-1">
+                            <span className="text-xs font-medium text-stone-700">共 {groupUrls.length} 张照片</span>
+                            <button type="button" onClick={event => { event.stopPropagation(); setExpandedCollection(false); }} className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] text-stone-600">收起</button>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            {groupUrls.map((url, itemIndex) => (
+                                <button type="button" key={`${itemIndex}-${url}`} onClick={event => { event.stopPropagation(); setActiveGroupIndex(itemIndex); setPreviewImageUrl(url); setShowPreview(true); }} className="relative block w-full overflow-hidden rounded-xl bg-stone-100">
+                                    <img src={url} alt={`${label} ${itemIndex + 1}`} className="block max-h-[280px] w-full object-contain" loading={itemIndex < 2 ? "eager" : "lazy"} />
+                                    <span className="absolute bottom-2 right-2 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white">{itemIndex + 1}/{groupUrls.length}</span>
+                                </button>
                             ))}
                         </div>
-                    )}
-                    {groupLoadError && <div role="status" className="border-t border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">部分图片暂时无法读取，已保留其余图片。可重新发送补齐。</div>}
-                </div>
+                    </div>
+                ) : (
+                    <div
+                        className="chat-photo-carousel-stack relative h-[220px] w-[min(250px,75vw)] max-w-full select-none overflow-hidden"
+                        style={{ touchAction: "pan-y", WebkitUserSelect: "none" }}
+                        onPointerDown={beginCollectionGesture}
+                        onPointerMove={moveCollectionGesture}
+                        onPointerUp={finishCollectionGesture}
+                        onPointerCancel={() => { groupGestureRef.current = null; setGroupDragOffset(0); }}
+                    >
+                        <button type="button" onClick={event => { event.stopPropagation(); setExpandedCollection(true); }} className="absolute left-0 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-1 rounded-xl border border-stone-200/70 bg-black/55 px-2 py-2 text-[10px] leading-4 text-white shadow-sm backdrop-blur-sm">
+                            <span>展开</span><span className="text-xs font-semibold">{groupUrls.length} 张</span>
+                        </button>
+                        {groupUrls.map((url, itemIndex) => {
+                            const relative = itemIndex - activeGroupIndex;
+                            const distance = Math.abs(relative);
+                            if (distance > 2) return null;
+                            const scale = 1 - distance * 0.065;
+                            const x = relative * 16 + groupDragOffset;
+                            return (
+                                <button
+                                    key={`${itemIndex}-${url}`}
+                                    type="button"
+                                    aria-label={`查看第 ${activeGroupIndex + 1} 张，共 ${groupUrls.length} 张图片`}
+                                    onClick={event => {
+                                        event.stopPropagation();
+                                        if (suppressGroupTapRef.current) { suppressGroupTapRef.current = false; return; }
+                                        setShowPreview(true);
+                                    }}
+                                    className="absolute left-[46px] top-0 h-[220px] w-[170px] overflow-hidden rounded-[14px] border border-white/30 bg-stone-900 shadow-[0_5px_20px_rgba(0,0,0,.28)]"
+                                    style={{
+                                        transform: `translate3d(${x}px,0,0) scale(${scale})`,
+                                        transformOrigin: "left center",
+                                        transition: groupGestureRef.current?.mode === "horizontal" ? "none" : "transform .32s cubic-bezier(.25,.8,.35,1), opacity .32s",
+                                        zIndex: 10 - distance,
+                                        opacity: 1 - distance * 0.1,
+                                        pointerEvents: relative === 0 ? "auto" : "none",
+                                    }}
+                                >
+                                    <img src={url} alt={`${label} ${itemIndex + 1}`} className="h-full w-full object-cover" draggable={false} loading={itemIndex < 2 ? "eager" : "lazy"} />
+                                    <span className="absolute bottom-2 right-2 rounded-full bg-black/60 px-2.5 py-1 text-xs tabular-nums text-white">{activeGroupIndex + 1}/{groupUrls.length}</span>
+                                </button>
+                            );
+                        })}
+                        <div aria-hidden className="pointer-events-none absolute left-[48px] top-2 flex gap-1.5">
+                            {groupUrls.map((url, itemIndex) => <span key={`${itemIndex}-${url}`} className={`h-1.5 rounded-full transition-all ${itemIndex === activeGroupIndex ? "w-4 bg-white shadow" : "w-1.5 bg-white/60"}`} />)}
+                        </div>
+                    </div>
+                )}
                 {previewAndDialog}
             </>
         );
