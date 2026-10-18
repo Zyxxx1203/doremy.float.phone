@@ -234,16 +234,18 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     return () => window.removeEventListener("floatphone-app-back", handleAppBack);
   }, [fullScreen, showSettings, showHistory]);
 
-  const captureCurrentVideoFrame = useCallback((): { targetUrl: string; seconds: number; timestamp: string; dataUrl: string } | null => {
-    if (!target) return null;
+  const captureCurrentVideoFrame = useCallback(async (): Promise<void> => {
+    if (!target) return;
     const video = playerRef.current?.querySelector("video");
     if (!video) {
       frameCaptureFailedRef.current = target.embedUrl
         ? "该平台使用跨站 iframe，网页拿不到播放器内部画面。"
         : "该链接没有直接播放的 video 元素，因此网页无法截取当前画面。";
-      return null;
+      return;
     }
-    if (video.readyState < 2 || !Number.isFinite(video.currentTime)) return null;
+    if (video.readyState < 2 || !Number.isFinite(video.currentTime)) return;
+    const targetUrl = target.url;
+    const seconds = Math.max(0, video.currentTime);
     try {
       const maxSide = 640;
       const scale = Math.min(1, maxSide / Math.max(video.videoWidth || 1, video.videoHeight || 1));
@@ -251,17 +253,23 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       canvas.width = Math.max(1, Math.round((video.videoWidth || 640) * scale));
       canvas.height = Math.max(1, Math.round((video.videoHeight || 360) * scale));
       const context = canvas.getContext("2d");
-      if (!context) return null;
+      if (!context) return;
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.62);
-      const seconds = Math.max(0, video.currentTime);
-      const frame = { targetUrl: target.url, seconds, timestamp: new Date().toISOString(), dataUrl };
-      videoFramesRef.current = [...videoFramesRef.current.filter(item => item.targetUrl === target.url && Math.abs(item.seconds - seconds) > 1), frame].slice(-8);
+      // toBlob encodes off the synchronous toDataURL path so the playback thread is less likely to stutter.
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", 0.62));
+      if (!blob) return;
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(reader.error ?? new Error("截图读取失败"));
+        reader.onload = () => resolve(String(reader.result ?? ""));
+        reader.readAsDataURL(blob);
+      });
+      if (!dataUrl) return;
+      const frame = { targetUrl, seconds, timestamp: new Date().toISOString(), dataUrl };
+      videoFramesRef.current = [...videoFramesRef.current.filter(item => item.targetUrl === targetUrl && Math.abs(item.seconds - seconds) > 1), frame].slice(-8);
       frameCaptureFailedRef.current = null;
-      return frame;
     } catch {
       frameCaptureFailedRef.current = "这个视频源不允许网页读取画面（常见于跨站 iframe 或启用防截取的视频）。";
-      return null;
     }
   }, [target]);
 
@@ -274,7 +282,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const video = playerRef.current?.querySelector("video");
       if (!video || video.paused || video.ended || video.readyState < 2) return;
       captureCurrentVideoFrame();
-    }, 12000);
+    }, 15000);
     return () => window.clearInterval(timer);
   }, [target?.url, target?.nativeVideo, captureCurrentVideoFrame]);
 
