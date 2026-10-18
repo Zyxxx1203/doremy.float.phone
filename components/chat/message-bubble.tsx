@@ -1351,7 +1351,7 @@ function ImageBubble({
     const [expandedCollection, setExpandedCollection] = useState(false);
     const [groupDragOffset, setGroupDragOffset] = useState(0);
     const groupGestureRef = useRef<{ pointerId: number; startX: number; startY: number; startAt: number; mode: "pending" | "horizontal" } | null>(null);
-    const suppressGroupTapRef = useRef(false);
+    const suppressGroupTapRef = useRef(false); // Prevent pointer-up from also firing a tap/open action.
 
     const [hasRef, setHasRef] = useState(() => hasCharacterReferenceImage(characterId));
     const [useReferenceDraft, setUseReferenceDraft] = useState(d?.useReferenceImage === true);

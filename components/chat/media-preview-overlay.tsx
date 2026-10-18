@@ -374,11 +374,12 @@ export function MediaPreviewOverlay({
     regenerating?: boolean;
     onClose: () => void;
 }) {
+    // Keep hooks unconditional even when this component switches between single-image and collection mode.
+    const [saving, setSaving] = useState(false);
     if (galleryImages && galleryImages.length > 1) {
         return <GalleryPreviewOverlay images={galleryImages} initialIndex={initialIndex} saveFilename={saveFilename} onClose={onClose} />;
     }
     // 保存要重新拉一次图片，慢网络下会卡一下——按钮上给个状态
-    const [saving, setSaving] = useState(false);
     if (typeof document === "undefined") return null;
     return createPortal(
         <div
