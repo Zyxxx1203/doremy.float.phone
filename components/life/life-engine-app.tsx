@@ -1570,6 +1570,24 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setNotice(`已向${character.name}发出邀约，正在根据 TA 的人设和当前日程等待回应……`);
     try {
       const previous = loadChatMessages(session.id, 12).filter(message => message.status !== "failed" && !message.isRetracted);
+      const roleAgenda = base.schedules
+        .filter(slot => slot.ownerType === "character" && slot.ownerId === character.id && new Date(slot.endAt).getTime() >= characterNow.getTime() - 60 * 60_000)
+        .sort((a, b) => a.startAt.localeCompare(b.startAt))
+        .slice(0, 12);
+      const existingInvitations = base.invitations
+        .filter(item => item.characterId === character.id)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .slice(0, 8);
+      const relationshipMemories = base.memories
+        .filter(memory => memory.participants.includes(character.id) && memory.participants.includes(PLAYER_ID))
+        .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+        .slice(0, 8)
+        .reverse();
+      const recentLifeEvents = base.timeline
+        .filter(entry => entry.actorId === character.id || entry.actorId === PLAYER_ID)
+        .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+        .slice(0, 8)
+        .reverse();
       const prompt: ChatMessage = {
         id: id("life-invitation-response"), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
         content: [
@@ -1578,6 +1596,15 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           `时间：${proposedAt.toLocaleString("zh-CN")}`,
           `地点：${location?.name ?? "地点待定"}`,
           `邀约理由：${inviteReason.trim() || "未填写"}`,
+          `你当前的虚拟时间：${characterNow.toLocaleString("zh-CN")}`,
+          "【你自己的当前与近期日程】",
+          ...(roleAgenda.length ? roleAgenda.map(slot => `- ${new Date(slot.startAt).toLocaleString("zh-CN")}–${new Date(slot.endAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}：${slot.title}；地点：${slot.plannedLocationName || "未确定"}；来源：${slot.source}${slot.source === "manual" ? "（优先尊重玩家手动安排）" : ""}`) : ["- 暂无已有日程记录，不要凭空补充固定承诺。"]),
+          "【你和玩家已经形成的共同记忆】",
+          ...(relationshipMemories.length ? relationshipMemories.map(memory => `- ${memory.fact}`) : ["- 没有可用的共同记忆，勿假定亲密程度或承诺。"]),
+          "【近期邀约与承诺】",
+          ...(existingInvitations.length ? existingInvitations.map(item => `- ${item.status}；${item.proposedBy === "player" ? "玩家发起" : "角色发起"}；${item.activity}；${new Date(item.proposedAt).toLocaleString("zh-CN")}；地点：${item.locationName || "未确定"}；理由：${item.reason || "无"}；回应：${item.responseReason || "无"}`) : ["- 没有既有邀约。"]),
+          "【近期生活记录】",
+          ...recentLifeEvents.map(entry => `- ${new Date(entry.occurredAt).toLocaleString("zh-CN")}；${entry.actorName || "参与者"}；${entry.title}${entry.details ? "；" + entry.details : ""}`),
           activePromptPreset.invitationResponsePrompt?.trim() || "请根据你的人设、当前日程、关系和真实意愿，自主决定接受或拒绝。不要让玩家替你确认；不要为了讨好玩家而默认接受。",
           activePromptPresetText ? "小手机预设补充规则：\n" + activePromptPresetText : "",
           settings.customPrompt ? "用户自定义规则：" + settings.customPrompt : "",

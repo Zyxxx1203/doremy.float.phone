@@ -1,3 +1,4 @@
+import { getActorClock, resolveActorLifeNow } from "./life-runtime";
 import type { LifeSceneState, VirtualLifeState } from "./life-types";
 
 /** This contract belongs only to life-scene mode, never online chat or long-form story mode. */
@@ -42,6 +43,22 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
     .filter(message => message.sceneId === scene.id)
     .slice(-12)
     .map(message => `- ${message.speakerName}${message.action ? `（${message.action}）` : ""}：${message.dialogue}`);
+  const viewerNow = viewerId ? resolveActorLifeNow(getActorClock(state, "character", viewerId)) : null;
+  const viewerNowMs = viewerNow?.getTime() ?? Date.now();
+  const upcomingSchedule = viewerId ? state.schedules
+    .filter(slot => slot.ownerType === "character" && slot.ownerId === viewerId && new Date(slot.endAt).getTime() >= viewerNowMs - 60 * 60_000)
+    .sort((a, b) => a.startAt.localeCompare(b.startAt))
+    .slice(0, 10) : [];
+  const recentInvitations = viewerId ? state.invitations
+    .filter(invitation => invitation.characterId === viewerId)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, 8)
+    .reverse() : [];
+  const recentCharacterEvents = viewerId ? state.timeline
+    .filter(entry => entry.actorId === viewerId || entry.actorId === "player")
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+    .slice(0, 8)
+    .reverse() : [];
   const lines = [
     "【当前生活场景状态】",
     `场景：${scene.locationName}（locationId=${scene.locationId}）`,
@@ -58,11 +75,17 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
     ...scene.participants.map(participant => `- ${participant.ownerType} ${participant.ownerId}：${participant.activity || "当前活动未知"}；对玩家的认知：${participant.awarenessByActorId.player || "尚未判定"}`),
     "角色有理由知道的实际状态（其他人的状态不可自动推知）：",
     ...visibleActorStates.map(actor => `- ${actor.ownerType} ${actor.ownerId}：${actor.activity || "活动未知"}；实际地点：${actor.actualLocationName || "未知"}`),
+    viewerId ? "【角色自己的近期行程与承诺（仅用于内部决策，不要主动把整张行程表念给玩家）】" : "",
+    viewerNow ? `角色当前虚拟时间：${viewerNow.toLocaleString("zh-CN")}` : "",
+    ...upcomingSchedule.map(slot => `- ${new Date(slot.startAt).toLocaleString("zh-CN")}–${new Date(slot.endAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}：${slot.title}；地点：${slot.plannedLocationName || "未确定"}；来源：${slot.source}${slot.source === "manual" ? "（玩家手动安排，优先尊重）" : slot.source === "character-tool" ? "（角色主动调整）" : ""}`),
+    ...recentInvitations.map(invitation => `- 既有邀约：${invitation.status}；${invitation.proposedBy === "player" ? "玩家发起" : "角色发起"}；${invitation.activity}；${new Date(invitation.proposedAt).toLocaleString("zh-CN")}；地点：${invitation.locationName || "未确定"}；理由：${invitation.reason || "无"}；回应：${invitation.responseReason || "无"}`),
+    ...recentCharacterEvents.map(entry => `- 近期生活记录：${new Date(entry.occurredAt).toLocaleString("zh-CN")}；${entry.actorName || "参与者"}；${entry.title}${entry.details ? "；" + entry.details : ""}`),
     memories.length ? "【该角色参与过的共同记忆事实】" : "",
     ...memories.map(memory => `- ${memory.fact}`),
     recentTurns.length ? "【本场景最近发生的对话】" : "",
     ...recentTurns,
     "注意：计划地点不能替代实际地点；只允许角色使用自己已观察到或有合理渠道得知的信息。场景历史用于保持连续性，不代表所有参与者都知道每件事。",
+    "角色可以结合近期互动和关系阶段判断是否要主动发起生活工具。调整行程前先核对这份自己的当前日程、已确认邀约和手动安排；只有本轮互动确实改变计划且符合角色意愿时才调用日程调整工具，不能为了迎合玩家或展示功能而调用。玩家邀请不等于必须接受；角色应给出符合性格、关系与实际时间冲突的真实决定。",
   ];
   return lines.filter(Boolean).join("\n");
 }
