@@ -121,7 +121,7 @@ function PhotoThumbnail({ photo, onOpen }: { photo: PhotoWallPhoto; onOpen: () =
     return () => { active = false; if (url) URL.revokeObjectURL(url); };
   }, [photo.mediaRef]);
   return <button type="button" onClick={onOpen} aria-label={`查看照片：${photo.title || "未命名的瞬间"}`} className="group relative block w-full text-left">
-    <div className="relative aspect-[4/3] overflow-hidden bg-[#e9e3d8]">
+    <div className="relative aspect-square overflow-hidden bg-[#e9e3d8]">
       {src ? <img src={src} alt={photo.title} loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.02]" /> : <div className="grid h-full place-items-center text-[#9c907f]"><ImagePlus size={25}/></div>}
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full" style={{overflow:"visible"}}>
         {(photo.doodles ?? []).map(doodle => doodle.kind === "stroke" ? <polyline key={doodle.id} points={doodle.points.map(point=>`${point.x*100},${point.y*100}`).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(0.8,doodle.width/2)} strokeLinecap="round" strokeLinejoin="round"/> : <text key={doodle.id} x={(doodle.points[0]?.x ?? .5)*100} y={(doodle.points[0]?.y ?? .5)*100} fill={doodle.color} fontSize="12" textAnchor="middle" dominantBaseline="middle">{doodle.content || "✦"}</text>)}
