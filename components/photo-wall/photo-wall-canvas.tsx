@@ -215,13 +215,13 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     <div
       ref={wallRef}
       className="photo-wall-surface relative w-full select-none overflow-hidden rounded-[26px] border border-[#e0d5c4] shadow-[inset_0_1px_0_rgba(255,255,255,.7),0_18px_40px_rgba(88,70,48,.12)]"
-      style={{ aspectRatio: panorama ? "16 / 10" : "4 / 5", touchAction: readOnly ? "pan-y pinch-zoom" : "none" }}
+      style={{ aspectRatio: "4 / 5", touchAction: readOnly ? "pan-y pinch-zoom" : "none", backgroundImage: "radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.38),transparent 52%),linear-gradient(145deg,#f2e7d7 0%,#eee1cf 48%,#e8dac6 100%)" }}
       onPointerMove={readOnly ? undefined : handlePointerMove}
       onPointerUp={readOnly ? undefined : endDrag}
       onPointerCancel={readOnly ? undefined : endDrag}
       onClick={event => { if (event.target === event.currentTarget) onSelect(null); }}
     >
-      {ordered.length === 0 && <div className="pointer-events-none absolute inset-0 grid place-items-center text-[#a99a86]"><div className="text-center"><ImagePlus size={26} className="mx-auto"/><p className="mt-2 text-xs">这面墙还空着</p></div></div>}
+      {ordered.length === 0 && !readOnly && <div className="pointer-events-none absolute inset-0 grid place-items-center text-[#a99a86]"><div className="text-center"><ImagePlus size={26} className="mx-auto"/><p className="mt-2 text-xs">这面墙还空着</p></div></div>}
 
       {ordered.map((photo, index) => {
         const placement = placementOf(photo, index);
