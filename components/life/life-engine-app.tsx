@@ -2246,7 +2246,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         </section></details>}
       {tab === "home" && !sceneView && <section className="life-place-list space-y-4">
         <div className="flex items-end justify-between gap-3 px-1">
-          <div><p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--life-accent)]">Places & people</p><h2 className="mt-1 text-2xl font-semibold tracking-tight text-stone-800">此刻，世界正在发生什么</h2></div>
+          <div><p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--life-accent)]">Places & people</p><h2 className="mt-1 text-2xl font-semibold tracking-tight text-stone-800">此刻</h2></div>
           <button onClick={() => openDaily("plans")} className="shrink-0 rounded-xl border border-white/80 bg-white/75 px-3 py-2 text-xs text-stone-600">我的日程</button>
         </div>
         {locationCards.map(({location, people, atmosphere, isCurrent}, index) => <article key={location.id} style={{ animationDelay: `${Math.min(index, 8) * 45}ms` }} className={`life-place-card overflow-hidden rounded-3xl border shadow-sm transition ${isCurrent ? "border-[var(--life-accent)]/45 bg-white/90 ring-1 ring-[var(--life-accent)]/10" : "border-white/80 bg-white/65"}`}>
@@ -2325,9 +2325,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
              </div>
              {sceneImageRecords.filter(image=>image.status==="active").length>0&&<div className="mt-2 flex gap-2 overflow-x-auto pb-1">{sceneImageRecords.filter(image=>image.status==="active").map((image,index)=><button type="button" key={image.id} onClick={()=>setImageViewerIndex(index)} aria-label={`查看第 ${index+1} 张场景图`} className={`shrink-0 overflow-hidden rounded-xl border ${index===imageViewerIndex?"border-[var(--life-accent)]":"border-stone-200"}`}>{imageObjectUrls[image.id]?<img src={imageObjectUrls[image.id]} alt={image.alt||"场景图"} className="h-16 w-16 object-cover"/>:<span className="grid h-16 w-16 place-items-center text-[10px] text-stone-400">加载中</span>}</button>)}</div>}
            </details>
-          <details className="life-scene-display-options mb-1 min-h-0 shrink-0 rounded-xl border border-stone-200/70 bg-white/80 px-2 py-1 shadow-sm">
+          <details className="life-scene-display-options mb-1 flex min-h-0 max-h-[42dvh] shrink-0 flex-col overflow-hidden rounded-xl border border-stone-200/70 bg-white/80 px-2 py-1 shadow-sm">
             <summary className="cursor-pointer list-none text-xs font-semibold text-stone-600">聊天显示选项 · 主题 / 气泡 / 时间 / 位置情报 / CSS（点开后独立滚动）</summary>
-            <div className="life-scene-display-options-body max-h-[38dvh] overflow-y-auto overscroll-contain touch-pan-y p-2 text-xs" style={{ WebkitOverflowScrolling: "touch" }}><div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="life-scene-display-options-body min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y p-2 text-xs" style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}><div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
               <label>主题<select value={settings.sceneTheme} onChange={e=>patchSettings({sceneTheme:e.target.value as LifeEngineSettings["sceneTheme"]})} className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-2 py-1.5"><option value="warm-paper">暖米棕</option><option value="sage">鼠尾草绿</option><option value="rose">玫瑰</option><option value="night-sky">夜空</option><option value="custom">自定义 CSS</option></select></label>
               <div className="grid grid-cols-2 gap-1.5">
                 <label className="block rounded-lg border border-stone-200 bg-white p-2">对白字号（px）<input aria-label="对白字号" type="number" min="8" max="48" step="1" value={settings.dialogueFontSize} onChange={e=>patchSettings({dialogueFontSize:Math.max(8,Math.min(48,Number(e.target.value)||8))})} className="mt-1 w-full rounded-md border border-stone-200 bg-white px-2 py-1.5 text-sm"/></label>
