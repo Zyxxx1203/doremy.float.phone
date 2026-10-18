@@ -63,7 +63,7 @@ export type LifeEngineSettings = {
   revealExactLocations: "ask-only" | "clues" | "open";
   defaultClockMode: LifeClockMode;
   defaultSpeed: number;
-  sceneTheme: "warm-paper" | "night-sky" | "sage" | "rose" | "custom";
+  sceneTheme: "warm-paper" | "night-sky" | "sage" | "rose" | "lavender" | "ocean" | "matcha" | "peach" | "midnight" | "custom";
   accentColor: string;
   panelOpacity: number;
   dialogueFontSize: number;
