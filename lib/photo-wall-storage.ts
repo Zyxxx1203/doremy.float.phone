@@ -89,11 +89,41 @@ export type PhotoWallSettings = {
   lastDailyGenerationError?: string;
 };
 
+/**
+ * 画布世界：无界墙当前的实际尺寸，单位 CSS 像素。
+ *
+ * 摆放坐标仍是「占世界的比例」，所以扩容时只要按比例重映射，
+ * 老照片、摆放模板、涂鸦一个都不用迁移数据。
+ */
+export type PhotoWallWorld = { width: number; height: number };
+
+/**
+ * 初始世界尺寸：约等于旧版「3 屏宽 × 4:5」的画布。
+ * 老数据第一次加载时落在这里，看起来和升级前完全一样。
+ */
+export const DEFAULT_PHOTO_WALL_WORLD: PhotoWallWorld = { width: 2400, height: 3000 };
+
+/** 世界下限：再小就放不下默认落点的照片；上限防脏数据把画布撑到浏览器卡死。 */
+const WALL_WORLD_MIN = 1200;
+const WALL_WORLD_MAX = 12000;
+
+export function normalizeWorld(value: unknown): PhotoWallWorld {
+  const raw = value && typeof value === "object" ? value as Partial<PhotoWallWorld> : {};
+  const width = typeof raw.width === "number" && Number.isFinite(raw.width) ? raw.width : DEFAULT_PHOTO_WALL_WORLD.width;
+  const height = typeof raw.height === "number" && Number.isFinite(raw.height) ? raw.height : DEFAULT_PHOTO_WALL_WORLD.height;
+  return {
+    width: Math.round(Math.min(WALL_WORLD_MAX, Math.max(WALL_WORLD_MIN, width))),
+    height: Math.round(Math.min(WALL_WORLD_MAX, Math.max(WALL_WORLD_MIN, height))),
+  };
+}
+
 export type PhotoWallState = {
   version: 1;
   photos: PhotoWallPhoto[];
   wallDoodles?: PhotoWallDoodle[];
   wallBackgroundRef?: string;
+  /** 无界画布的世界尺寸；缺省按 DEFAULT_PHOTO_WALL_WORLD 处理。 */
+  world?: PhotoWallWorld;
   settings: PhotoWallSettings;
 };
 
@@ -206,6 +236,7 @@ export function loadPhotoWallState(): PhotoWallState {
       photos: Array.isArray(parsed.photos) ? parsed.photos.map(normalizePhoto).filter((photo): photo is PhotoWallPhoto => photo !== null) : [],
       wallDoodles: normalizeDoodles(parsed.wallDoodles),
       wallBackgroundRef: typeof parsed.wallBackgroundRef === "string" && parsed.wallBackgroundRef.startsWith("media-store://") ? parsed.wallBackgroundRef : undefined,
+      world: normalizeWorld(parsed.world),
       settings: {
         dailyGenerationEnabled: settings.dailyGenerationEnabled === true,
         dailyPhotoCount: settings.dailyPhotoCount === 1 || settings.dailyPhotoCount === 3 ? settings.dailyPhotoCount : 2,
@@ -225,6 +256,7 @@ export function savePhotoWallState(state: PhotoWallState): void {
     photos: state.photos.map(normalizePhoto).filter((photo): photo is PhotoWallPhoto => photo !== null),
     wallDoodles: normalizeDoodles(state.wallDoodles),
     wallBackgroundRef: typeof state.wallBackgroundRef === "string" && state.wallBackgroundRef.startsWith("media-store://") ? state.wallBackgroundRef : undefined,
+    world: normalizeWorld(state.world),
     settings: {
       ...DEFAULT_PHOTO_WALL_SETTINGS,
       ...state.settings,

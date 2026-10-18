@@ -54,6 +54,12 @@ type Props = {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onChangePlacement: (id: string, placement: PhotoWallPlacement) => void;
+  /**
+   * 拖动/缩放「松手」时回调一次。
+   * 无界画布靠它决定要不要扩容：拖动过程中不能扩，否则本组件的
+   * 拖拽基准（base + 初始矩形）会失效，照片会跳。
+   */
+  onPlacementSettled?: (id: string, placement: PhotoWallPlacement) => void;
   onChangeDoodles: (id: string, doodles: PhotoWallDoodle[]) => void;
   wallDoodles?: PhotoWallDoodle[];
   onChangeWallDoodles?: (doodles: PhotoWallDoodle[]) => void;
@@ -75,7 +81,7 @@ type DragState = {
   moved: boolean;
 };
 
-export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, onOpenDetail, readOnly = false, fitHeight = false }: Props) {
+export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, onOpenDetail, readOnly = false, fitHeight = false }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const strokeRef = useRef<{ id: string; photoId: string } | null>(null);
@@ -127,6 +133,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   const selectedPhoto = ordered.find(photo => photo.id === selectedId) ?? null;
 
   const commit = useCallback((id: string, next: PhotoWallPlacement) => onChangePlacement(id, next), [onChangePlacement]);
+  /** 松手时用来把「最终落点」交回给上层做扩容判断。 */
+  const settledRef = useRef<{ id: string; placement: PhotoWallPlacement } | null>(null);
 
   /* ── 拖动 / 缩放 ───────────────────────────────── */
   const beginDrag = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number, dragMode: "move" | "resize") => {
@@ -172,11 +180,13 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     if (drag.mode === "move") {
       const nextX = Math.min(0.98, Math.max(0.02, drag.base.x + dx / drag.wallWidth));
       const nextY = Math.min(0.98, Math.max(0.02, drag.base.y + dy / drag.wallHeight));
-      commit(drag.id, { ...drag.base, x: nextX, y: nextY });
+      settledRef.current = { id: drag.id, placement: { ...drag.base, x: nextX, y: nextY } };
+      commit(drag.id, settledRef.current.placement);
     } else {
       const delta = (dx + dy) / 2 / drag.wallWidth;
       const scale = Math.min(3, Math.max(0.35, drag.base.scale + delta * 2));
-      commit(drag.id, { ...drag.base, scale });
+      settledRef.current = { id: drag.id, placement: { ...drag.base, scale } };
+      commit(drag.id, settledRef.current.placement);
     }
   };
 
@@ -185,7 +195,12 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     if (!drag || drag.pointerId !== event.pointerId) return;
     suppressClickRef.current = drag.moved;
     dragRef.current = null;
-    if (drag.moved) window.setTimeout(() => { suppressClickRef.current = false; }, 0);
+    if (drag.moved) {
+      const settled = settledRef.current;
+      settledRef.current = null;
+      if (settled && settled.id === drag.id) onPlacementSettled?.(settled.id, settled.placement);
+      window.setTimeout(() => { suppressClickRef.current = false; }, 0);
+    }
   };
 
   /* ── 涂鸦绘制 ─────────────────────────────────── */
@@ -328,8 +343,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     <div
       ref={wallRef}
       data-photo-wall-mode={mode}
-      className={"photo-wall-surface relative select-none overflow-hidden rounded-[2px] border border-[#eee3d8] shadow-[inset_0_1px_0_rgba(255,255,255,.95),0_4px_12px_rgba(88,70,48,.06)] " + (fitHeight ? "h-full w-auto shrink-0" : "w-full")}
-      style={{ aspectRatio: "4 / 5", width: fitHeight ? "auto" : "100%", height: fitHeight ? "100%" : "auto", flex: "0 0 auto", touchAction: readOnly ? "auto" : "none", backgroundSize: backgroundImage ? "cover" : undefined, backgroundPosition: "center", backgroundImage: backgroundImage ? 'linear-gradient(rgba(255,250,242,.13),rgba(255,250,242,.13)),url("' + backgroundImage + '")' : "repeating-linear-gradient(0deg,rgba(130,98,70,.018) 0,rgba(130,98,70,.018) 1px,transparent 1px,transparent 4px),radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.9),transparent 62%),linear-gradient(145deg,#fffaf2 0%,#faf3ea 48%,#f5ece2 100%)" }}
+      className={"photo-wall-surface relative h-full w-full select-none overflow-hidden rounded-[2px] border border-[#eee3d8] shadow-[inset_0_1px_0_rgba(255,255,255,.95),0_4px_12px_rgba(88,70,48,.06)]"}
+      style={{ aspectRatio: fitHeight ? "4 / 5" : undefined, flex: "0 0 auto", touchAction: readOnly ? "auto" : "none", backgroundSize: backgroundImage ? "cover" : undefined, backgroundPosition: "center", backgroundImage: backgroundImage ? 'linear-gradient(rgba(255,250,242,.13),rgba(255,250,242,.13)),url("' + backgroundImage + '")' : "repeating-linear-gradient(0deg,rgba(130,98,70,.018) 0,rgba(130,98,70,.018) 1px,transparent 1px,transparent 4px),radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.9),transparent 62%),linear-gradient(145deg,#fffaf2 0%,#faf3ea 48%,#f5ece2 100%)" }}
       onPointerMove={readOnly ? undefined : handlePointerMove}
       onPointerUp={readOnly ? undefined : endDrag}
       onPointerCancel={readOnly ? undefined : endDrag}

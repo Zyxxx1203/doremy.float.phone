@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Camera, Check, ChevronLeft, ChevronRight, Download, Feather, Heart, ImagePlus, LoaderCircle, MessageCircle, MoreHorizontal, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
@@ -16,6 +16,7 @@ import {
   type PhotoWallDoodle, type PhotoWallPhoto, type PhotoWallPlacement, type PhotoWallState, type PhotoWallTemplate,
 } from "@/lib/photo-wall-storage";
 import { PhotoWallCanvas, fallbackPlacement } from "@/components/photo-wall/photo-wall-canvas";
+import { applyWorldGrow, planWorldGrow, remapDoodles, remapPlacement, wallWorldOf, type WorldGrow } from "@/lib/photo-wall-world";
 import { buildTemplateSlots, listAllTemplates, loadCustomTemplates, saveCustomTemplates } from "@/lib/photo-wall-templates";
 import { downloadPhotoWallPng } from "@/lib/photo-wall-export";
 
@@ -165,9 +166,22 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const singleTouchRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number; startedOnPhoto: boolean } | null>(null);
   const panoramaViewportRef = useRef<HTMLDivElement>(null);
   const panoramaZoomRef = useRef(100);
+  /** 世界尺寸来自持久化状态：扩容后照片比例不变，只换分母。 */
+  const world = wallWorldOf(state);
+  const zoomInitializedRef = useRef(false);
   const [wallBackgroundUrl, setWallBackgroundUrl] = useState("");
   const wallBackgroundInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { panoramaZoomRef.current = panoramaZoom; }, [panoramaZoom]);
+  // 无界画布：首次进入编辑视图时把世界宽度适配成约 2.6 屏宽，
+  // 和升级前的「三屏宽画布」观感一致；之后缩放完全交给双指。
+  useEffect(() => {
+    if (wallView !== "edit" || zoomInitializedRef.current) return;
+    const width = panoramaViewportRef.current?.clientWidth ?? 0;
+    if (!width) return;
+    zoomInitializedRef.current = true;
+    const fit = Math.round((260 * width) / Math.max(1, world.width));
+    setPanoramaZoom(Math.min(180, Math.max(15, fit)));
+  }, [wallView, world.width, state.photos.length]);
   useEffect(() => {
     if (wallView !== "edit") return;
     const viewport = panoramaViewportRef.current;
@@ -194,7 +208,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (event.cancelable) event.preventDefault();
       event.stopPropagation();
       if (pointers.size < 2 || !pinchStartRef.current) return;
-      const nextZoom = Math.max(50, Math.min(180, Math.round(pinchStartRef.current.zoom * pointsDistance([...pointers.values()].slice(0, 2)) / pinchStartRef.current.distance)));
+      const nextZoom = Math.max(15, Math.min(300, Math.round(pinchStartRef.current.zoom * pointsDistance([...pointers.values()].slice(0, 2)) / pinchStartRef.current.distance)));
       panoramaZoomRef.current = nextZoom;
       setPanoramaZoom(nextZoom);
     };
@@ -236,7 +250,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           pinchModeRef.current = true;
           window.dispatchEvent(new Event("photo-wall-pinch-start"));
         }
-        const nextZoom = Math.max(50, Math.min(180, Math.round(pinchStartRef.current.zoom * touchDistance(event.touches) / pinchStartRef.current.distance)));
+        const nextZoom = Math.max(15, Math.min(300, Math.round(pinchStartRef.current.zoom * touchDistance(event.touches) / pinchStartRef.current.distance)));
         panoramaZoomRef.current = nextZoom;
         setPanoramaZoom(nextZoom);
           return;
@@ -372,10 +386,58 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     scheduleSave(next);
   }, [scheduleSave]);
 
-  /** 拖动/缩放/旋转：只改这一张照片的摆放，位置用 0~1 比例存，换屏幕不会错位。 */
+  /** 结构性变更（扩画布）要立刻落盘，不能等防抖——否则一滚回去就又是旧世界。 */
+  const applyImmediate = useCallback((next: PhotoWallState) => {
+    stateRef.current = next;
+    setState(next);
+    savePhotoWallState(next);
+  }, []);
+
+  /**
+   * 向左/向上扩容时补偿滚动。
+   * 必须等到 React 把新的画布尺寸刷进 DOM 之后再改 scrollLeft——
+   * 提前改会被浏览器按旧的 scrollWidth 夹回去，画面就跳了。
+   */
+  const pendingScrollRef = useRef<{ left: number; top: number } | null>(null);
+  const compensateViewportScroll = useCallback((grow: WorldGrow) => {
+    const zoom = panoramaZoomRef.current / 100;
+    if (!grow.left && !grow.top) return;
+    pendingScrollRef.current = { left: grow.left * zoom, top: grow.top * zoom };
+  }, []);
+  useLayoutEffect(() => {
+    const pending = pendingScrollRef.current;
+    if (!pending) return;
+    pendingScrollRef.current = null;
+    const viewport = panoramaViewportRef.current;
+    if (!viewport) return;
+    if (pending.left) viewport.scrollLeft += pending.left;
+    if (pending.top) viewport.scrollTop += pending.top;
+  });
+
+  /**
+   * 拖动/缩放/旋转：只改这一张照片的摆放，位置用 0~1 比例存，换屏幕不会错位。
+   * 注意这里**不扩容**——拖动中途改世界尺寸会让画布的拖拽基准失效，照片会跳。
+   */
   const changePlacement = useCallback((photoId: string, placement: PhotoWallPlacement) => {
     commitPhotos(stateRef.current.photos.map(photo => photo.id === photoId ? { ...photo, placement } : photo));
   }, [commitPhotos]);
+
+  /**
+   * 松手后判一次扩容：落点贴到世界外圈就往那一侧扩。
+   * 扩容把所有比例按像素重算 + 补偿滚动，所以照片和涂鸦在屏幕上不动，
+   * 只是可滚动范围变大——「无限画布」就是这一步攒出来的。
+   */
+  const settlePlacement = useCallback((photoId: string, placement: PhotoWallPlacement) => {
+    const current = stateRef.current;
+    const grow = planWorldGrow(wallWorldOf(current), [{ x: placement.x, y: placement.y }]);
+    if (!grow) return;
+    const grown = applyWorldGrow(current, grow);
+    compensateViewportScroll(grow);
+    applyImmediate({
+      ...grown,
+      photos: grown.photos.map(photo => photo.id === photoId ? { ...photo, placement: remapPlacement(placement, grow) } : photo),
+    });
+  }, [applyImmediate, compensateViewportScroll]);
 
   /** 相框级涂鸦层：笔迹与贴纸跟着照片一起存。 */
   const changeDoodles = useCallback((photoId: string, doodles: PhotoWallDoodle[]) => {
@@ -452,7 +514,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     if (!targets.length) { onNotice?.("墙上还没有照片可以导出。"); return; }
     setExportBusy(true);
     try {
-      const ok = await downloadPhotoWallPng(targets);
+      const ok = await downloadPhotoWallPng(targets, { aspect: world.width / world.height });
       onNotice?.(ok ? "已开始下载整墙 PNG。" : "导出失败：没有生成有效图片。");
     } catch (error) { onNotice?.("导出失败：" + (error instanceof Error ? error.message : String(error))); }
     finally { setExportBusy(false); }
@@ -494,9 +556,20 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       return Number.isFinite(at.getTime()) && at.getTime() >= floor.getTime();
     });
   }, [photos, timelineRange]);
+  /**
+   * 整墙涂鸦在「一笔画完」时才回调，所以在这里扩容是安全的：
+   * 不会边画边改画布，也不会把正在画的那笔截断。
+   */
   const changeWallDoodles = useCallback((wallDoodles: PhotoWallDoodle[]) => {
-    persist({ ...stateRef.current, wallDoodles });
-  }, [persist]);
+    const current = stateRef.current;
+    const grow = planWorldGrow(wallWorldOf(current), wallDoodles.flatMap(doodle => doodle.points));
+    if (!grow) {
+      persist({ ...current, wallDoodles });
+      return;
+    }
+    compensateViewportScroll(grow);
+    applyImmediate({ ...applyWorldGrow(current, grow), wallDoodles: remapDoodles(wallDoodles, grow) });
+  }, [applyImmediate, compensateViewportScroll, persist]);
   const visiblePhotos = useMemo(() => photos.filter(photo => {
     if (filter === "mine") return photo.ownerType === "user";
     if (filter === "characters") return photo.ownerType === "character";
@@ -907,11 +980,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
 
         {visiblePhotos.length
-          ? <div ref={panoramaViewportRef} data-photo-wall-viewport className="h-full min-h-0 w-full overflow-auto overscroll-contain" style={{ WebkitOverflowScrolling: "touch", touchAction: "none", overscrollBehavior: "contain" }}><div style={{ width: (300 * panoramaZoom / 100) + "%", minWidth: (1200 * panoramaZoom / 100) + "px", maxWidth: "none" }}><PhotoWallCanvas
+          ? <div ref={panoramaViewportRef} data-photo-wall-viewport className="h-full min-h-0 w-full overflow-auto overscroll-contain" style={{ WebkitOverflowScrolling: "touch", touchAction: "none", overscrollBehavior: "contain" }}><div style={{ width: world.width * panoramaZoom / 100, height: world.height * panoramaZoom / 100, minWidth: "1px", maxWidth: "none" }}><PhotoWallCanvas
               photos={visiblePhotos}
               selectedId={selectedPhotoId}
               onSelect={setSelectedPhotoId}
               onChangePlacement={changePlacement}
+              onPlacementSettled={settlePlacement}
               onChangeDoodles={changeDoodles}
               wallDoodles={state.wallDoodles ?? []}
               onChangeWallDoodles={changeWallDoodles}

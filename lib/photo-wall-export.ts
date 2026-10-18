@@ -58,13 +58,18 @@ function roundedRect(context: CanvasRenderingContext2D, x: number, y: number, wi
   context.closePath();
 }
 
-export type ExportOptions = { width?: number; background?: string };
+/**
+ * aspect：画布宽高比。无界墙扩容后世界不再是固定 4:5，
+ * 导出要跟着世界比例走，否则照片会被横向压扁。
+ */
+export type ExportOptions = { width?: number; height?: number; background?: string; aspect?: number };
 
 /** 返回 PNG 的 dataURL；没有任何照片时返回 null。 */
 export async function renderPhotoWallPng(photos: PhotoWallPhoto[], options: ExportOptions = {}): Promise<string | null> {
   if (!photos.length) return null;
   const width = Math.min(3200, Math.max(720, Math.round(options.width ?? 1600)));
-  const height = Math.round(width * 1.25);
+  const aspect = typeof options.aspect === "number" && Number.isFinite(options.aspect) && options.aspect > 0.2 && options.aspect < 5 ? options.aspect : 0.8;
+  const height = Math.round(options.height ?? width / aspect);
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
