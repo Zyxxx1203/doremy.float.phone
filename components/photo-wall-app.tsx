@@ -624,7 +624,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     onNotice?.("已移除画布背景，照片和涂鸦不会受影响。");
   };
 
-  const generatePhoto = async (owner: Character | null, kind: PhotoWallPhoto["kind"], daily = false) =>
+  const generatePhoto = async (owner: Character | null, kind: PhotoWallPhoto["kind"], daily = false) => {
     if (busy) return;
     if (!owner) { onNotice?.("请先导入至少一张角色卡。"); return; }
     setBusy(true); setBusyLabel(daily ? "角色正在把今天的片刻留进照片墙…" : "正在显影这张照片…");
