@@ -216,14 +216,36 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (pointers.size === 0) singleTouchRef.current = null;
     };
     const onTouchStart = (event: TouchEvent) => {
-      if (event.touches.length >= 2) { singleTouchRef.current = null; return; }
+      if (event.touches.length >= 2) {
+        if (!pinchModeRef.current) {
+          pinchStartRef.current = { distance: touchDistance(event.touches), zoom: panoramaZoomRef.current };
+          pinchModeRef.current = true;
+          window.dispatchEvent(new Event("photo-wall-pinch-start"));
+        }
+        singleTouchRef.current = null;
+        setShowZoomFeedback(true);
+        if (event.cancelable) event.preventDefault();
+        return;
+      }
       if (event.touches.length === 1) {
         const target = event.target instanceof Element ? event.target : null;
         singleTouchRef.current = { x: event.touches[0].clientX, y: event.touches[0].clientY, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, startedOnPhoto: Boolean(target?.closest("[data-photo-wall-photo]")) };
       }
     };
     const onTouchMove = (event: TouchEvent) => {
-      // Two-finger scaling uses Pointer Events; this handler only pans with one finger.
+      if (event.touches.length >= 2) {
+        if (event.cancelable) event.preventDefault();
+        if (!pinchStartRef.current) pinchStartRef.current = { distance: touchDistance(event.touches), zoom: panoramaZoomRef.current };
+        if (!pinchModeRef.current) {
+          pinchModeRef.current = true;
+          window.dispatchEvent(new Event("photo-wall-pinch-start"));
+        }
+        const nextZoom = Math.max(50, Math.min(180, Math.round(pinchStartRef.current.zoom * touchDistance(event.touches) / pinchStartRef.current.distance)));
+        panoramaZoomRef.current = nextZoom;
+        setPanoramaZoom(nextZoom);
+        setShowZoomFeedback(true);
+        return;
+      }
       if (event.touches.length !== 1 || pinchModeRef.current) return;
       const start = singleTouchRef.current;
       if (!start || (start.startedOnPhoto && wallView === "edit")) return;
@@ -233,7 +255,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       viewport.scrollLeft = start.scrollLeft - dx; viewport.scrollTop = start.scrollTop - dy;
     };
     const onTouchEnd = (event: TouchEvent) => {
-      if (event.touches.length < 2 && pinchModeRef.current) setShowZoomFeedback(false);
+      if (event.touches.length < 2 && pinchModeRef.current) {
+        setShowZoomFeedback(false);
+        pinchModeRef.current = false;
+        pinchStartRef.current = null;
+        window.dispatchEvent(new Event("photo-wall-pinch-end"));
+      }
       if (event.touches.length === 0) singleTouchRef.current = null;
       else if (event.touches.length === 1) singleTouchRef.current = { x: event.touches[0].clientX, y: event.touches[0].clientY, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, startedOnPhoto: false };
     };
@@ -288,6 +315,18 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [customTemplates, setCustomTemplates] = useState<PhotoWallTemplate[]>(() => loadCustomTemplates());
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
+  useEffect(() => {
+    const handleAppBack = (event: Event) => {
+      const detail = (event as CustomEvent<{ handled?: boolean }>).detail;
+      if (showAddMenu) { setShowAddMenu(false); if (detail) detail.handled = true; return; }
+      if (showChatPicker) { setShowChatPicker(false); if (detail) detail.handled = true; return; }
+      if (selectedPhotoId) { setSelectedPhotoId(null); if (detail) detail.handled = true; return; }
+      if (wallView === "settings") { setWallView("edit"); if (detail) detail.handled = true; return; }
+      if (wallView === "edit" || wallView === "timeline") { setWallView("panorama"); if (detail) detail.handled = true; }
+    };
+    window.addEventListener("floatphone-app-back", handleAppBack);
+    return () => window.removeEventListener("floatphone-app-back", handleAppBack);
+  }, [wallView, showAddMenu, showChatPicker, selectedPhotoId]);
 
   const scheduleSave = useCallback((_next: PhotoWallState) => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
@@ -750,7 +789,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       className="relative z-10 flex shrink-0 items-center gap-3 border-b border-[#ded5c7]/80 bg-white/75 px-4 pb-3 shadow-[0_8px_28px_rgba(94,76,53,.06)] backdrop-blur-xl"
       style={{ paddingTop: "max(12px, var(--page-header-safe-top, 48px))" }}
     >
-      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); wallView === "settings" ? setWallView("edit") : onClose(); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-[#ded5c7] bg-white/80 text-[#7b6a58] shadow-sm transition hover:-translate-y-0.5 hover:bg-white active:scale-95" aria-label="返回"><ArrowLeft size={17}/></button>
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); if (showAddMenu) setShowAddMenu(false); else if (showChatPicker) setShowChatPicker(false); else if (selectedPhotoId) setSelectedPhotoId(null); else if (wallView === "settings") setWallView("edit"); else if (wallView === "edit" || wallView === "timeline") setWallView("panorama"); else onClose(); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-[#ded5c7] bg-white/80 text-[#7b6a58] shadow-sm transition hover:-translate-y-0.5 hover:bg-white active:scale-95" aria-label="返回上一级"><ArrowLeft size={17}/></button>
       <div className="min-w-0 flex-1"><div className="whitespace-nowrap font-serif text-lg tracking-[.04em]">{wallView === "settings" ? "墙面与显影设置" : "照片墙"}</div><div className="mt-0.5 truncate whitespace-nowrap text-[10px] tracking-[.1em] text-[#a09380]">{wallView === "settings" ? "WALL & DEVELOPING" : `A LITTLE ARCHIVE OF US · ${photos.length} PHOTOS`}</div></div>
       {wallView === "edit" && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAddMenu(false); setWallView("settings"); }} className="relative z-[1002] pointer-events-auto min-h-10 shrink-0 cursor-pointer touch-manipulation border-b border-[#bda28d] px-2 py-1 text-sm tracking-wider text-[#79545a] transition active:opacity-60">设置</button>}
       {wallView === "edit" && <button type="button" onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="grid h-10 w-10 shrink-0 place-items-center border border-[#d8c4b4] bg-[#fffaf2] text-[#795b52] disabled:opacity-40" aria-label="导出整墙 PNG"><Download size={16}/></button>}

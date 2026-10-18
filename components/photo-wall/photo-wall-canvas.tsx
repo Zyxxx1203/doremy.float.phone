@@ -304,7 +304,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     <div
       ref={wallRef}
       className={"photo-wall-surface relative select-none overflow-hidden rounded-[2px] border border-[#eee3d8] shadow-[inset_0_1px_0_rgba(255,255,255,.95),0_4px_12px_rgba(88,70,48,.06)] " + (fitHeight ? "h-full w-auto shrink-0" : "w-full")}
-      style={{ aspectRatio: "4 / 5", width: fitHeight ? "min(64vh, 80vw)" : "100%", height: fitHeight ? "100%" : "auto", flex: "0 0 auto", touchAction: readOnly ? "auto" : "none", backgroundImage: "repeating-linear-gradient(0deg,rgba(130,98,70,.018) 0,rgba(130,98,70,.018) 1px,transparent 1px,transparent 4px),radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.9),transparent 62%),linear-gradient(145deg,#fffaf2 0%,#faf3ea 48%,#f5ece2 100%)" }}
+      style={{ aspectRatio: "4 / 5", width: fitHeight ? "auto" : "100%", height: fitHeight ? "100%" : "auto", flex: "0 0 auto", touchAction: readOnly ? "auto" : "none", backgroundImage: "repeating-linear-gradient(0deg,rgba(130,98,70,.018) 0,rgba(130,98,70,.018) 1px,transparent 1px,transparent 4px),radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.9),transparent 62%),linear-gradient(145deg,#fffaf2 0%,#faf3ea 48%,#f5ece2 100%)" }}
       onPointerMove={readOnly ? undefined : handlePointerMove}
       onPointerUp={readOnly ? undefined : endDrag}
       onPointerCancel={readOnly ? undefined : endDrag}
@@ -345,6 +345,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
         className={mode === "doodle" && !readOnly ? "absolute inset-0 h-full w-full cursor-crosshair" : "pointer-events-none absolute inset-0 h-full w-full"}
         style={{ zIndex: 9999, pointerEvents: mode === "doodle" && !readOnly ? "auto" : "none", touchAction: "none", overflow: "visible" }}
         onPointerDown={wallDoodlePointerDown} onPointerMove={wallDoodlePointerMove} onPointerUp={wallDoodlePointerUp} onPointerCancel={wallDoodlePointerUp}>
+        {mode === "doodle" && !readOnly && <rect x="0" y="0" width="100" height="100" fill="transparent" />}
         {wallDoodles.map(doodle => doodle.kind === "stroke"
           ? <polyline key={doodle.id} points={doodle.points.map(point => (point.x * 100) + "," + (point.y * 100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(0.6, doodle.width / 2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
           : <text key={doodle.id} x={(doodle.points[0]?.x ?? 0.5) * 100} y={(doodle.points[0]?.y ?? 0.5) * 100} fill={doodle.color} fontSize={5} textAnchor="middle" dominantBaseline="middle">{doodle.content}</text>)}

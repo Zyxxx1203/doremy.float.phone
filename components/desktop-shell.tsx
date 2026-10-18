@@ -2536,6 +2536,12 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     const handleNativeBack = (event: Event) => {
       const custom = event as CustomEvent<{ handled?: boolean }>;
       if (activeApp !== null) {
+        const appBack = { handled: false };
+        window.dispatchEvent(new CustomEvent("floatphone-app-back", { detail: appBack }));
+        if (appBack.handled) {
+          if (custom.detail) custom.detail.handled = true;
+          return;
+        }
         if (custom.detail) custom.detail.handled = true;
         setActiveApp(null);
         setActiveChatSession(null);

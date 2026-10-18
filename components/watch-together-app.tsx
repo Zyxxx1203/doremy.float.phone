@@ -193,6 +193,16 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     });
   }, []);
   useEffect(() => { saveSettings(settings); }, [settings]);
+  useEffect(() => {
+    const handleAppBack = (event: Event) => {
+      const detail = (event as CustomEvent<{ handled?: boolean }>).detail;
+      if (fullScreen) { setFullScreen(false); void restoreOrientation(); if (detail) detail.handled = true; }
+      else if (showSettings) { setShowSettings(false); if (detail) detail.handled = true; }
+      else if (showHistory) { setShowHistory(false); if (detail) detail.handled = true; }
+    };
+    window.addEventListener("floatphone-app-back", handleAppBack);
+    return () => window.removeEventListener("floatphone-app-back", handleAppBack);
+  }, [fullScreen, showSettings, showHistory]);
 
   const captureCurrentVideoFrame = useCallback((): { targetUrl: string; seconds: number; timestamp: string; dataUrl: string } | null => {
     if (!target) return null;
