@@ -10,6 +10,29 @@ import { kvGet, kvSet } from "@/lib/kv-db";
 import { resolveVoiceConfig, synthesizeSpeech } from "@/lib/tts-service";
 import { loadApiConfigs, loadBindingConfig, resolveBinding, resolveUserIdentity } from "@/lib/settings-storage";
 import { readCompressedImageDataUrl } from "@/lib/chat-engine";
+import { captureScreenshot, hasScreenshotBridge } from "@/lib/screenshot";
+
+/** 自动搭话的每日上限：护栏，避免暂停/挂机时白烧 API。 */
+const WATCH_AUTO_DAILY_LIMIT = 24;
+const WATCH_AUTO_DAY_KEY = "ai_phone_watch_auto_day_v1";
+
+function readWatchAutoCount(): number {
+  try {
+    const raw = window.localStorage.getItem(WATCH_AUTO_DAY_KEY);
+    if (!raw) return 0;
+    const parsed = JSON.parse(raw) as { day?: string; count?: number };
+    return parsed?.day === new Date().toISOString().slice(0, 10) ? Math.max(0, Number(parsed.count) || 0) : 0;
+  } catch { return 0; }
+}
+
+function bumpWatchAutoCount(): void {
+  try {
+    window.localStorage.setItem(WATCH_AUTO_DAY_KEY, JSON.stringify({
+      day: new Date().toISOString().slice(0, 10),
+      count: readWatchAutoCount() + 1,
+    }));
+  } catch { /* 存不下就不计数，不影响观看 */ }
+}
 
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
 type Platform = "bilibili" | "youtube" | "tencent" | "youku" | "iqiyi" | "douyin" | "xiaohongshu" | "other";
@@ -206,6 +229,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const playerRef = useRef<HTMLDivElement>(null);
   const commentListRef = useRef<HTMLDivElement>(null);
   const videoFramesRef = useRef<Array<{ targetUrl: string; seconds: number; timestamp: string; dataUrl: string }>>([]);
+  /** 跨站 iframe 读不到 currentTime，用观看秒表估一个时间点，让弹幕能对上进度。 */
+  const iframeSecondsRef = useRef(0);
   const frameCaptureFailedRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const commentBusyRef = useRef(false);
@@ -234,10 +259,69 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     return () => window.removeEventListener("floatphone-app-back", handleAppBack);
   }, [fullScreen, showSettings, showHistory]);
 
+  /**
+   * 跨站 iframe（B 站等）网页层取不到播放器像素，但壳能**静默截整屏**。
+   * 截完整屏后按播放器在屏幕上的位置裁一刀，只把视频画面交给角色：
+   * 不弹预览、不弹按钮、不打断观看。
+   */
+  const captureSilentScreenFrame = useCallback(async (): Promise<string | null> => {
+    if (!hasScreenshotBridge()) return null;
+    const player = playerRef.current;
+    if (!player) return null;
+    try {
+      const shot = await captureScreenshot(7000);
+      if (!shot.ok || !shot.base64) return null;
+      const binary = atob(shot.base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+      const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+      const rect = player.getBoundingClientRect();
+      const viewportWidth = Math.max(1, window.innerWidth);
+      const viewportHeight = Math.max(1, window.innerHeight);
+      const scaleX = bitmap.width / viewportWidth;
+      const scaleY = bitmap.height / viewportHeight;
+      const sourceX = Math.max(0, Math.min(bitmap.width - 1, rect.left * scaleX));
+      const sourceY = Math.max(0, Math.min(bitmap.height - 1, rect.top * scaleY));
+      const sourceWidth = Math.max(1, Math.min(bitmap.width - sourceX, rect.width * scaleX));
+      const sourceHeight = Math.max(1, Math.min(bitmap.height - sourceY, rect.height * scaleY));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(sourceWidth));
+      canvas.height = Math.max(1, Math.round(sourceHeight));
+      const context = canvas.getContext("2d");
+      if (!context) { bitmap.close(); return null; }
+      context.drawImage(bitmap, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", 0.62));
+      if (!blob) return null;
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(reader.error ?? new Error("截图读取失败"));
+        reader.onload = () => resolve(String(reader.result ?? ""));
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      // 静默失败：截图拿不到就不给画面，绝不用提示打断观看。
+      return null;
+    }
+  }, []);
+
   const captureCurrentVideoFrame = useCallback(async (): Promise<void> => {
     if (!target) return;
     const video = playerRef.current?.querySelector("video");
     if (!video) {
+      const targetUrl = target.url;
+      if (target.embedUrl) {
+        const silent = await captureSilentScreenFrame();
+        if (silent) {
+          const seconds = iframeSecondsRef.current;
+          videoFramesRef.current = [
+            ...videoFramesRef.current.filter(item => item.targetUrl === targetUrl && Math.abs(item.seconds - seconds) > 4),
+            { targetUrl, seconds, timestamp: new Date().toISOString(), dataUrl: silent },
+          ].slice(-8);
+          frameCaptureFailedRef.current = null;
+          return;
+        }
+      }
       frameCaptureFailedRef.current = target.embedUrl
         ? "该平台使用跨站 iframe，网页拿不到播放器内部画面。"
         : "该链接没有直接播放的 video 元素，因此网页无法截取当前画面。";
@@ -276,6 +360,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   useEffect(() => {
     videoFramesRef.current = videoFramesRef.current.filter(frame => frame.targetUrl === target?.url);
     frameCaptureFailedRef.current = null;
+    iframeSecondsRef.current = 0;
     // Capture silently from native in-page video only. Avoid pixel readback on clicks or React state updates.
     if (!target?.nativeVideo) return;
     const timer = window.setInterval(() => {
@@ -285,6 +370,16 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     }, 15000);
     return () => window.clearInterval(timer);
   }, [target?.url, target?.nativeVideo, captureCurrentVideoFrame]);
+
+  // 跨站 iframe 拿不到 currentTime：用一张只在「正在看且页面可见」时走的秒表，
+  // 给角色一个大致进度，弹幕说「第 12 分钟」时不至于永远是 0。
+  useEffect(() => {
+    if (!watching || !target?.embedUrl) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") iframeSecondsRef.current += 1;
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [watching, target?.embedUrl, target?.url]);
 
   useEffect(() => {
     const list = commentListRef.current;
@@ -438,6 +533,17 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     }
   }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice]);
 
+  /** 把一帧画面交给角色：手动截图和静默截屏共用这一条路径。 */
+  const submitFrameDataUrl = async (dataUrl: string, seconds: number, prefix = "用户附加截图") => {
+    if (!target) return;
+    const frame = { targetUrl: target.url, seconds, timestamp: new Date().toISOString(), dataUrl };
+    videoFramesRef.current = [...videoFramesRef.current.filter(item => item.targetUrl === target.url), frame].slice(-8);
+    const stamp = formatVideoTime(seconds);
+    const moment = [settings.currentMoment.trim(), prefix + "时间点：" + stamp + "。请仅讨论该画面，不要推测后续。"].filter(Boolean).join("\n").slice(0, 800);
+    if (commentBusyRef.current) pendingDiscussionRef.current.push({ moment, timepoint: stamp });
+    else void generateComment(true, moment, stamp);
+  };
+
   const submitScreenshotForCharacter = async (file?: File) => {
     if (!target || !file) return;
     if (!file.type.startsWith("image/")) { onNotice?.("请选择一张截图图片。"); return; }
@@ -445,19 +551,26 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const dataUrl = await readCompressedImageDataUrl(file);
       const seconds = parseVideoTime(timepointDraft) ?? (() => {
         const video = playerRef.current?.querySelector("video");
-        return video && Number.isFinite(video.currentTime) ? video.currentTime : 0;
+        return video && Number.isFinite(video.currentTime) ? video.currentTime : iframeSecondsRef.current;
       })();
-      const frame = { targetUrl: target.url, seconds, timestamp: new Date().toISOString(), dataUrl };
-      videoFramesRef.current = [...videoFramesRef.current.filter(item => item.targetUrl === target.url), frame].slice(-8);
-      const stamp = formatVideoTime(seconds);
-      const moment = [settings.currentMoment.trim(), "用户附加截图时间点：" + stamp + "。请仅讨论该画面，不要推测后续。"].filter(Boolean).join("\n").slice(0, 800);
-      if (commentBusyRef.current) pendingDiscussionRef.current.push({ moment, timepoint: stamp });
-      else void generateComment(true, moment, stamp);
+      await submitFrameDataUrl(dataUrl, seconds);
     } catch (error) {
       onNotice?.("截图读取失败：" + (error instanceof Error ? error.message : String(error)));
     } finally {
       if (screenshotFileInputRef.current) screenshotFileInputRef.current.value = "";
     }
+  };
+
+  /**
+   * 「让 TA 看一眼」：壳里就静默截整屏（连跨站 iframe 一起拍到），
+   * 没有壳或没授权才退回选图。整个过程不弹预览、不打断播放。
+   */
+  const lookAtScreenNow = async () => {
+    const silent = await captureSilentScreenFrame();
+    if (!silent) { screenshotFileInputRef.current?.click(); return; }
+    const video = playerRef.current?.querySelector("video");
+    const seconds = video && Number.isFinite(video.currentTime) ? video.currentTime : iframeSecondsRef.current;
+    await submitFrameDataUrl(silent, seconds, "用户让你看了一眼当前屏幕，");
   };
 
   const submitDiscussion = () => {
@@ -479,6 +592,11 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     else void generateComment(true, nextMoment);
   };
 
+  /**
+   * 角色主动搭话的护栏（一起看专属，不和生活系统共用）：
+   * 页面不可见、视频暂停/播完、超过当日上限，都只跳过这一轮并继续排下一次，
+   * 不会因为暂停挂机白烧 API。弹幕仍然是角色**主动**说的，不改成手动触发。
+   */
   useEffect(() => {
     if (!watching || !target) return;
     let timer = 0;
@@ -488,7 +606,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const max = Math.max(min, Math.min(60, settings.intervalMaxMinutes));
       const delayMinutes = min + Math.floor(Math.random() * (max - min + 1));
       timer = window.setTimeout(async () => {
-        await generateComment(false);
+        const video = playerRef.current?.querySelector("video");
+        const paused = Boolean(video && (video.paused || video.ended));
+        const overLimit = readWatchAutoCount() >= WATCH_AUTO_DAILY_LIMIT;
+        if (document.visibilityState === "visible" && !paused && !overLimit) {
+          await generateComment(false);
+          bumpWatchAutoCount();
+        }
         if (!disposed) scheduleNext();
       }, delayMinutes * 60_000);
     };
@@ -704,7 +828,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button onClick={() => screenshotFileInputRef.current?.click()} disabled={!target || busy} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3.5 py-2 text-xs text-[#d8c9b6] transition active:scale-95 disabled:opacity-40"><ImagePlus size={13}/>给 TA 看截图</button>
+            <button onClick={() => void lookAtScreenNow()} disabled={!target || busy} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3.5 py-2 text-xs text-[#d8c9b6] transition active:scale-95 disabled:opacity-40"><ImagePlus size={13}/>让 TA 看一眼</button>
             <button onClick={() => void generateComment(true)} disabled={!target || !character || busy} className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs text-[#2a1f16] transition active:scale-95 disabled:opacity-40" style={{ background: "linear-gradient(135deg,#e8c39a,#c99a6a)" }}>
               {busy ? <LoaderCircle size={13} className="animate-spin"/> : <MessageCircle size={13}/>}让 TA 说一句
             </button>
