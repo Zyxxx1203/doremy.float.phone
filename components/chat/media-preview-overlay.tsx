@@ -285,6 +285,7 @@ function GalleryPreviewOverlay({
     if (typeof document === "undefined") return null;
     return createPortal(
         <div
+            className="chat-gallery-preview"
             role="dialog"
             aria-modal="true"
             aria-label={`图片浏览，第 ${index + 1} 张，共 ${images.length} 张`}
