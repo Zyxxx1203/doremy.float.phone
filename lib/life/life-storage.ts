@@ -40,6 +40,7 @@ function normalizeSettings(value: unknown): LifeEngineSettings {
   settings.messageGapPx = Number.isFinite(settings.messageGapPx) ? Math.max(0, Math.min(settings.messageGapPx, 24)) : DEFAULT_LIFE_ENGINE_SETTINGS.messageGapPx;
   settings.narrationGapPx = Number.isFinite(settings.narrationGapPx) ? Math.max(0, Math.min(settings.narrationGapPx, 24)) : DEFAULT_LIFE_ENGINE_SETTINGS.narrationGapPx;
   if (!/^#[0-9a-f]{6}$/i.test(settings.accentColor)) settings.accentColor = DEFAULT_LIFE_ENGINE_SETTINGS.accentColor;
+  settings.accentColorMode = settings.accentColorMode === "custom" ? "custom" : "theme";
   return settings;
 }
 
