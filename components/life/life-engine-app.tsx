@@ -2019,7 +2019,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const lifePalette = activeTheme.palette;
   const themeAccentColor = activeTheme.accent;
   const effectiveAccentColor = settings.accentColorMode === "custom" ? settings.accentColor : themeAccentColor;
-  const cssVars = { ...lifePalette, "--life-accent": effectiveAccentColor, "--life-opacity": settings.panelOpacity / 100, "--life-font": `${settings.dialogueFontSize}px`, "--life-narration-font": `${settings.narrationFontSize}px` } as CSSProperties;
+  const cssVars = { ...lifePalette, "--life-accent": effectiveAccentColor, "--life-opacity": settings.panelOpacity / 100, "--life-font": `${settings.dialogueFontSize}px`, "--life-narration-font": `${settings.narrationFontSize}px` } as unknown as CSSProperties;
   const playerActor = actors[0];
   const playerNow = actorNow(playerActor);
   const playerDayStart = new Date(playerNow); playerDayStart.setHours(0,0,0,0);
