@@ -1561,7 +1561,7 @@ function ImageBubble({
                     setActiveGroupIndex(current => Math.max(0, Math.min(groupUrls.length - 1, current + (dx < 0 ? 1 : -1))));
                 }
                 setGroupDragOffset(0);
-                window.setTimeout(() => { suppressGroupTapRef.current = false; }, 0);
+                window.setTimeout(() => { suppressGroupTapRef.current = false; }, 120);
                 event.stopPropagation();
                 return;
             }
@@ -1606,7 +1606,7 @@ function ImageBubble({
                                 <button
                                     key={`${itemIndex}-${url}`}
                                     type="button"
-                                    aria-label={`查看第 ${activeGroupIndex + 1} 张，共 ${groupUrls.length} 张图片`}
+                                    aria-label={`打开整组照片浏览，共 ${groupUrls.length} 张图片`}
                                     onClick={event => {
                                         event.stopPropagation();
                                         if (suppressGroupTapRef.current) { suppressGroupTapRef.current = false; return; }
