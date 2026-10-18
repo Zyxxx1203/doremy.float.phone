@@ -15,6 +15,7 @@ on:
       - "components/desktop-shell.tsx"
       - "components/life/life-engine-app.tsx"
       - "components/photo-wall-app.tsx"
+      - "components/photo-wall/**"
       - "components/watch-together-app.tsx"
       - "components/chat/chat-contacts-list.tsx"
       - "components/ui/page-shell.tsx"
