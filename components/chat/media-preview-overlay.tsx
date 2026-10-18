@@ -316,7 +316,7 @@ function GalleryPreviewOverlay({
                                 draggable={false}
                                 style={{
                                     maxWidth: "100vw", maxHeight: "100dvh", width: "auto", height: "auto", objectFit: "contain",
-                                    userSelect: "none", WebkitUserDrag: "none", pointerEvents: "none", willChange: "transform",
+                                    userSelect: "none", pointerEvents: "none", willChange: "transform",
                                     transform: imageIndex === index ? `translate3d(${offset.x}px,${offset.y + dismissY}px,0) scale(${scale})` : "none",
                                     transition: isDragging ? "none" : "transform .24s ease",
                                 }}
