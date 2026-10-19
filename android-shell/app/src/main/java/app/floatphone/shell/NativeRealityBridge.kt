@@ -87,11 +87,14 @@ object NativeRealityBridge {
             val candidates = (0 until replies.length())
                 .mapNotNull { replies.optString(it).trim().takeIf(String::isNotBlank) }
             val template = rule.optJSONObject("process")?.optString("template", "").orEmpty()
+            val configuredAction = rule.optJSONObject("deviceAction")
             val selected = if (candidates.isNotEmpty()) candidates[(System.currentTimeMillis() % candidates.size).toInt()]
-                else template.ifBlank { "我注意到：{payload}" }
+                else template.ifBlank { if (configuredAction != null) "" else "我注意到：{payload}" }
             val replyMessage = selected.replace("{payload}", payload).replace("{type}", type).take(360)
-            val actionResult = rule.optJSONObject("deviceAction")?.let { executeBackgroundDeviceAction(context, prefs, it) }.orEmpty()
-            val message = listOf(actionResult, replyMessage).filter { it.isNotBlank() }.joinToString("\n").take(500)
+            val actionResult = configuredAction?.let { executeBackgroundDeviceAction(context, prefs, it) }.orEmpty()
+            val visibleParts = listOf(actionResult, replyMessage).filter { it.isNotBlank() }
+            val message = (visibleParts.ifEmpty { listOf("规则已触发，但没有配置离线回复或可执行设备动作。") })
+                .joinToString("\n").take(500)
             val title = rule.optString("characterName").ifBlank { rule.optString("name", "现实桥") }
             val notified = postNotification(context, title, message, now)
             prefs.edit().putLong("last_run_$ruleId", now).apply()

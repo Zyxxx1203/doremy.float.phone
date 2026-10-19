@@ -183,7 +183,7 @@ function describeTime(iso: string): string {
 export function injectWidgetCss(html: string, css: string): string {
   const customCss = css.trim();
   if (!customCss) return html;
-  const style = "<style data-custom-widget-css>\\n" + customCss + "\\n</style>";
+  const style = "<style data-custom-widget-css>\n" + customCss + "\n</style>";
   const headEnd = html.toLowerCase().indexOf("</head>");
   if (headEnd >= 0) return html.slice(0, headEnd) + style + html.slice(headEnd);
   return style + html;

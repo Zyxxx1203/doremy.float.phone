@@ -615,6 +615,12 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
   const [tab, setTab] = useState<TabId>("main");
   const [settings, setSettings] = useState(() => loadBridgeSettings());
   const [rules, setRules] = useState<BridgeRule[]>(() => loadBridgeRules());
+  const [deviceActionConfigRevision, setDeviceActionConfigRevision] = useState(0);
+  useEffect(() => {
+    const onDeviceActionsChanged = () => setDeviceActionConfigRevision(value => value + 1);
+    window.addEventListener("device-action-config-changed", onDeviceActionsChanged);
+    return () => window.removeEventListener("device-action-config-changed", onDeviceActionsChanged);
+  }, []);
   // 安卓壳内把同一份规则同步给原生本机引擎。该链路只写本地 SharedPreferences，
   // 不上传事件；网页关闭后，已同步的系统电源规则仍可独立匹配。
   useEffect(() => {
@@ -628,7 +634,9 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
       .filter(rule => !rule.schedule)
       .map(rule => {
         const chosenAction = rule.actions.deviceAction;
-        const canSyncAction = !!chosenAction && deviceActionConfig.enabled === true && deviceActionConfig.actions[chosenAction.action as keyof typeof deviceActionConfig.actions] === true;
+        // Native rules that run with the WebView closed intentionally sync only torch:
+        // other actions often need foreground UI, permissions, or user confirmation.
+        const canSyncAction = !!chosenAction && chosenAction.action === "torch" && deviceActionConfig.enabled === true && deviceActionConfig.actions[chosenAction.action as keyof typeof deviceActionConfig.actions] === true;
         return {
           id: rule.id,
           name: rule.name,
@@ -645,7 +653,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
           ...(canSyncAction ? { deviceAction: { action: chosenAction!.action, args: chosenAction!.args ?? {} } } : {}),
         };
       });
-    const watchesAmbientLight = rules.some(rule => rule.enabled === true && !rule.schedule && rule.matchType === "环境光线" && rule.actions.deviceAction?.action === "torch" && rule.actions.deviceAction.args?.on === true && deviceActionConfig.enabled === true && deviceActionConfig.actions.torch === true);
+    const watchesAmbientLight = rules.some(rule => rule.enabled === true && !rule.schedule && rule.matchType === "环境光线" && rule.actions.deviceAction?.action === "torch" && String(rule.actions.deviceAction.args?.on).toLowerCase() === "true" && deviceActionConfig.enabled === true && deviceActionConfig.actions.torch === true);
 
     try {
       shell.configureNativeRealityBridge(JSON.stringify({
@@ -658,7 +666,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     } catch {
       // 原生桥暂不可用时保留网页规则，不让设置页崩溃。
     }
-  }, [settings.enabled, rules]);
+  }, [settings.enabled, rules, deviceActionConfigRevision]);
 
   const [nativeLog, setNativeLog] = useState<Array<{ eventId?: string; type?: string; payload?: string; rule?: string; result?: string; at?: number }>>([]);
   const [nativeLogAvailable, setNativeLogAvailable] = useState(false);
