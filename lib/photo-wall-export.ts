@@ -1,7 +1,7 @@
 import { loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import { fallbackPlacement } from "@/components/photo-wall/photo-wall-canvas";
 import { downloadFile } from "@/lib/download-utils";
-import type { PhotoWallFrameStyle, PhotoWallPhoto, PhotoWallPlacement } from "@/lib/photo-wall-storage";
+import type { PhotoWallDoodle, PhotoWallFrameStyle, PhotoWallPhoto, PhotoWallPlacement, PhotoWallWorld } from "@/lib/photo-wall-storage";
 
 /**
  * 把整面照片墙绘制成一张 PNG。
@@ -9,7 +9,7 @@ import type { PhotoWallFrameStyle, PhotoWallPhoto, PhotoWallPlacement } from "@/
  * 导出结果始终是同一张高分辨率图。
  */
 
-const BASE_PHOTO_RATIO = 0.3;
+const BASE_PHOTO_RATIO = 0.1;
 
 const FRAME_PADDING: Record<PhotoWallFrameStyle, { x: number; y: number; bottom: number }> = {
   polaroid: { x: 0.055, y: 0.045, bottom: 0.16 },
@@ -36,14 +36,16 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
   });
 }
 
-/** 按 object-fit: cover 的方式把图片画进目标框，保持比例不拉伸。 */
 function drawCover(context: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number) {
-  const iw = image.naturalWidth || image.width;
-  const ih = image.naturalHeight || image.height;
+  const iw = image.naturalWidth || image.width, ih = image.naturalHeight || image.height;
   if (!iw || !ih) return;
-  const scale = Math.max(width / iw, height / ih);
-  const drawWidth = iw * scale;
-  const drawHeight = ih * scale;
+  const scale = Math.max(width / iw, height / ih), drawWidth = iw * scale, drawHeight = ih * scale;
+  context.drawImage(image, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight);
+}
+function drawContain(context: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number) {
+  const iw = image.naturalWidth || image.width, ih = image.naturalHeight || image.height;
+  if (!iw || !ih) return;
+  const scale = Math.min(width / iw, height / ih), drawWidth = iw * scale, drawHeight = ih * scale;
   context.drawImage(image, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight);
 }
 
@@ -62,7 +64,7 @@ function roundedRect(context: CanvasRenderingContext2D, x: number, y: number, wi
  * aspect：画布宽高比。无界墙扩容后世界不再是固定 4:5，
  * 导出要跟着世界比例走，否则照片会被横向压扁。
  */
-export type ExportOptions = { width?: number; height?: number; background?: string; aspect?: number };
+export type ExportOptions = { width?: number; height?: number; background?: string; aspect?: number; world?: PhotoWallWorld; backgroundRef?: string; backgroundBox?: PhotoWallWorld; wallDoodles?: PhotoWallDoodle[] };
 
 /** 返回 PNG 的 dataURL；没有任何照片时返回 null。 */
 export async function renderPhotoWallPng(photos: PhotoWallPhoto[], options: ExportOptions = {}): Promise<string | null> {
@@ -84,9 +86,23 @@ export async function renderPhotoWallPng(photos: PhotoWallPhoto[], options: Expo
   glow.addColorStop(1, "rgba(232,222,205,.55)");
   context.fillStyle = glow;
   context.fillRect(0, 0, width, height);
+  if (options.backgroundRef) {
+    let backgroundUrl = "";
+    try {
+      backgroundUrl = await loadMediaObjectUrl(options.backgroundRef).catch(() => "");
+      if (backgroundUrl) {
+        const image = await loadImage(backgroundUrl), world = options.world, box = options.backgroundBox;
+        if (image) {
+          if (world && box && world.width > 0 && world.height > 0) context.drawImage(image, 0, 0, width * box.width / world.width, height * box.height / world.height);
+          else drawCover(context, image, 0, 0, width, height);
+        }
+      }
+    } finally { if (backgroundUrl) URL.revokeObjectURL(backgroundUrl); }
+  }
 
   const ordered = photos.slice().sort((a, b) => (a.placement?.z ?? 0) - (b.placement?.z ?? 0));
   const placements: PhotoWallPlacement[] = ordered.map((photo, index) => photo.placement ?? fallbackPlacement(index));
+  const frameRatio = options.world?.width && options.world.width > 0 ? 240 / options.world.width : BASE_PHOTO_RATIO;
 
   // 并行取图，失败的照片画一个占位框而不是整张导出失败
   const images = await Promise.all(ordered.map(async photo => {
@@ -102,7 +118,7 @@ export async function renderPhotoWallPng(photos: PhotoWallPhoto[], options: Expo
     const placement = placements[index];
     const frame = placement.frame;
     const pad = FRAME_PADDING[frame];
-    const frameWidth = BASE_PHOTO_RATIO * placement.scale * width;
+    const frameWidth = frameRatio * placement.scale * width;
     // 相框高度 = 图片区（正方形）+ 上下留白
     const innerSize = frameWidth * (1 - pad.x * 2);
     const frameHeight = innerSize + frameWidth * (pad.y + pad.bottom);
@@ -138,7 +154,7 @@ export async function renderPhotoWallPng(photos: PhotoWallPhoto[], options: Expo
     context.fillStyle = "#e7dfd2";
     context.fillRect(imageX, imageY, innerSize, innerSize);
     const image = images[index];
-    if (image) drawCover(context, image, imageX, imageY, innerSize, innerSize);
+    if (image) drawContain(context, image, imageX, imageY, innerSize, innerSize);
     else {
       context.fillStyle = "#b08d7a";
       context.font = `${Math.round(innerSize * 0.09)}px sans-serif`;
@@ -183,6 +199,19 @@ export async function renderPhotoWallPng(photos: PhotoWallPhoto[], options: Expo
     context.restore();
   }
 
+  for (const doodle of options.wallDoodles ?? []) {
+    if (doodle.kind === "stroke" && doodle.points.length > 1) {
+      context.save(); context.strokeStyle = doodle.color;
+      context.lineWidth = doodle.width * (width / Math.max(1, options.world?.width ?? 2400));
+      context.lineCap = "round"; context.lineJoin = "round"; context.beginPath();
+      doodle.points.forEach((point, index) => { if (index === 0) context.moveTo(point.x * width, point.y * height); else context.lineTo(point.x * width, point.y * height); });
+      context.stroke(); context.restore();
+    } else if (doodle.kind === "sticker" && doodle.content) {
+      context.save(); context.fillStyle = doodle.color; context.font = `${Math.max(12, Math.round(width * 0.05))}px sans-serif`;
+      context.textAlign = "center"; context.textBaseline = "middle";
+      context.fillText(doodle.content, (doodle.points[0]?.x ?? 0.5) * width, (doodle.points[0]?.y ?? 0.5) * height); context.restore();
+    }
+  }
   return canvas.toDataURL("image/png");
 }
 

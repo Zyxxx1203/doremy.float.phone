@@ -98,11 +98,14 @@ export function remapDoodles(doodles: readonly PhotoWallDoodle[], grow: WorldGro
 }
 
 /** 一次性把整个世界（尺寸 + 所有照片 + 整墙涂鸦）搬到扩容后的坐标系。 */
+function legacyPlacement(index: number): PhotoWallPlacement {
+  const col = index % 3, row = Math.floor(index / 3), wobble = ((index * 37) % 11) - 5;
+  return { x: Math.min(0.88, Math.max(0.12, 0.2 + col * 0.3 + wobble * 0.004)), y: Math.min(0.9, Math.max(0.1, 0.14 + row * 0.27 + wobble * 0.003)), scale: 1, rotation: wobble, z: index + 1, frame: "polaroid", frameColor: "#fffdf8" };
+}
 export function applyWorldGrow(state: PhotoWallState, grow: WorldGrow): PhotoWallState {
   return {
-    ...state,
-    world: grow.world,
-    photos: state.photos.map(photo => photo.placement ? { ...photo, placement: remapPlacement(photo.placement, grow) } : photo),
+    ...state, world: grow.world,
+    photos: state.photos.map((photo, index) => ({ ...photo, placement: remapPlacement(photo.placement ?? legacyPlacement(index), grow) })),
     wallDoodles: state.wallDoodles ? remapDoodles(state.wallDoodles, grow) : state.wallDoodles,
   };
 }

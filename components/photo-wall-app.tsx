@@ -157,13 +157,14 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [state, setState] = useState<PhotoWallState>(() => loadPhotoWallState());
   const [characters, setCharacters] = useState<Character[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
-  const [wallView, setWallView] = useState<"timeline" | "memories" | "edit" | "settings">("edit");
+  const [wallView, setWallView] = useState<"timeline" | "memories" | "panorama" | "edit" | "settings">("panorama");
+  const [settingsReturnView, setSettingsReturnView] = useState<"panorama" | "edit">("panorama");
   const [panoramaZoom, setPanoramaZoom] = useState(100);
   const [timelineRange, setTimelineRange] = useState<"all" | "7d" | "30d" | "90d" | "year">("all");
   const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
   const pinchPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinchModeRef = useRef(false);
-  const singleTouchRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number; startedOnPhoto: boolean } | null>(null);
+  const singleTouchRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number; startedOnPhoto: boolean; panStarted?: boolean } | null>(null);
   const panoramaViewportRef = useRef<HTMLDivElement>(null);
   const panoramaZoomRef = useRef(100);
   /** 世界尺寸来自持久化状态：扩容后照片比例不变，只换分母。 */
@@ -177,7 +178,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
    * 只改 zoom 会让内容从左上角往外长，手指按住的地方就跑掉了；
    * 这里按同一比例把滚动位置一起推过去，手感才对。
    */
-  const applyZoom = useCallback((nextZoom: number) => {
+  const applyZoom = useCallback((nextZoom: number, anchor?: { x: number; y: number }) => {
     const clamped = Math.max(15, Math.min(300, Math.round(nextZoom)));
     const previous = panoramaZoomRef.current;
     panoramaZoomRef.current = clamped;
@@ -186,11 +187,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const viewport = panoramaViewportRef.current;
     if (!viewport) return;
     const ratio = clamped / previous;
-    const centerX = viewport.clientWidth / 2;
-    const centerY = viewport.clientHeight / 2;
+    const anchorX = anchor?.x ?? viewport.clientWidth / 2;
+    const anchorY = anchor?.y ?? viewport.clientHeight / 2;
     pendingScrollRef.current = {
-      left: (viewport.scrollLeft + centerX) * ratio - centerX - viewport.scrollLeft,
-      top: (viewport.scrollTop + centerY) * ratio - centerY - viewport.scrollTop,
+      left: (viewport.scrollLeft + anchorX) * ratio - anchorX - viewport.scrollLeft,
+      top: (viewport.scrollTop + anchorY) * ratio - anchorY - viewport.scrollTop,
     };
   }, []);
   const [wallBackgroundUrl, setWallBackgroundUrl] = useState("");
@@ -199,122 +200,96 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   // 无界画布：首次进入编辑视图时把世界宽度适配成约 2.6 屏宽，
   // 和升级前的「三屏宽画布」观感一致；之后缩放完全交给双指。
   useEffect(() => {
-    if (wallView !== "edit" || zoomInitializedRef.current) return;
-    const width = panoramaViewportRef.current?.clientWidth ?? 0;
-    if (!width) return;
+    if ((wallView !== "edit" && wallView !== "panorama") || zoomInitializedRef.current) return;
+    const viewport = panoramaViewportRef.current;
+    const width = viewport?.clientWidth ?? 0, height = viewport?.clientHeight ?? 0;
+    if (!width || !height) return;
     zoomInitializedRef.current = true;
-    const fit = Math.round((260 * width) / Math.max(1, world.width));
-    setPanoramaZoom(Math.min(180, Math.max(15, fit)));
+    const fit = Math.min((96 * width) / Math.max(1, world.width), (88 * height) / Math.max(1, world.height));
+    setPanoramaZoom(Math.min(180, Math.max(15, Math.round(fit))));
   }, [wallView, world.width, state.photos.length]);
   useEffect(() => {
-    if (wallView !== "edit") return;
+    if (wallView !== "edit" && wallView !== "panorama") return;
     const viewport = panoramaViewportRef.current;
     if (!viewport) return;
     const touchDistance = (touches: TouchList) => Math.max(1, Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY));
     const pointsDistance = (points: { x: number; y: number }[]) => Math.max(1, Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y));
+    const supportsPointerEvents = typeof window !== "undefined" && "PointerEvent" in window;
     const onPointerDown = (event: PointerEvent) => {
       if (event.pointerType !== "touch" || !(event.target instanceof Node) || !viewport.contains(event.target)) return;
+      const firstPointer = pinchPointersRef.current.size === 0;
       pinchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (firstPointer) {
+        const target = event.target instanceof Element ? event.target : null;
+        singleTouchRef.current = { x: event.clientX, y: event.clientY, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, startedOnPhoto: Boolean(target?.closest("[data-photo-wall-photo]")), panStarted: false };
+      }
       if (pinchPointersRef.current.size < 2) return;
       const points = [...pinchPointersRef.current.values()].slice(0, 2);
       pinchStartRef.current = { distance: pointsDistance(points), zoom: panoramaZoomRef.current };
-      pinchModeRef.current = true;
-      singleTouchRef.current = null;
+      pinchModeRef.current = true; singleTouchRef.current = null;
       window.dispatchEvent(new Event("photo-wall-pinch-start"));
-      if (event.cancelable) event.preventDefault();
-      event.stopPropagation();
+      if (event.cancelable) event.preventDefault(); event.stopPropagation();
     };
     const onPointerMove = (event: PointerEvent) => {
       const pointers = pinchPointersRef.current;
       if (!pointers.has(event.pointerId)) return;
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      if (!pinchModeRef.current) return;
-      if (event.cancelable) event.preventDefault();
-      event.stopPropagation();
-      if (pointers.size < 2 || !pinchStartRef.current) return;
-      const nextZoom = Math.max(15, Math.min(300, Math.round(pinchStartRef.current.zoom * pointsDistance([...pointers.values()].slice(0, 2)) / pinchStartRef.current.distance)));
-      applyZoom(nextZoom);
+      if (pointers.size >= 2 && pinchModeRef.current && pinchStartRef.current) {
+        if (event.cancelable) event.preventDefault(); event.stopPropagation();
+        const points = [...pointers.values()].slice(0, 2), rect = viewport.getBoundingClientRect();
+        const nextZoom = Math.max(15, Math.min(300, Math.round(pinchStartRef.current.zoom * pointsDistance(points) / pinchStartRef.current.distance)));
+        applyZoom(nextZoom, { x: (points[0].x + points[1].x) / 2 - rect.left, y: (points[0].y + points[1].y) / 2 - rect.top });
+        return;
+      }
+      if (supportsPointerEvents && pointers.size === 1 && !pinchModeRef.current) {
+        if (viewport.querySelector('[data-photo-wall-mode="doodle"]')) return;
+        const start = singleTouchRef.current;
+        if (!start || (start.startedOnPhoto && wallView === "edit")) return;
+        const dx = event.clientX - start.x, dy = event.clientY - start.y;
+        if (Math.abs(dx) + Math.abs(dy) < 3) return;
+        if (event.cancelable) event.preventDefault();
+        if (!start.panStarted) { start.panStarted = true; window.dispatchEvent(new Event("photo-wall-pan-start")); }
+        viewport.scrollLeft = start.scrollLeft - dx; viewport.scrollTop = start.scrollTop - dy;
+      }
     };
     const onPointerEnd = (event: PointerEvent) => {
       const pointers = pinchPointersRef.current;
       if (!pointers.has(event.pointerId)) return;
-      const wasPinching = pinchModeRef.current;
+      const wasPinching = pinchModeRef.current, wasPanning = singleTouchRef.current?.panStarted === true;
       pointers.delete(event.pointerId);
-      if (wasPinching && pointers.size < 2) {
-        pinchModeRef.current = false;
-        pinchStartRef.current = null;
-        // End the pinch as soon as either finger lifts; the remaining finger
-        // must not keep the canvas frozen, and any subsequent pinch starts fresh.
-        window.dispatchEvent(new Event("photo-wall-pinch-end"));
-      }
+      if (wasPinching && pointers.size < 2) { pinchModeRef.current = false; pinchStartRef.current = null; window.dispatchEvent(new Event("photo-wall-pinch-end")); }
+      if (wasPanning && pointers.size === 0) window.dispatchEvent(new Event("photo-wall-pan-end"));
       if (pointers.size === 0) singleTouchRef.current = null;
-    };
-    const onTouchStart = (event: TouchEvent) => {
-      if (event.touches.length >= 2) {
-        if (!pinchModeRef.current) {
-          pinchStartRef.current = { distance: touchDistance(event.touches), zoom: panoramaZoomRef.current };
-          pinchModeRef.current = true;
-          window.dispatchEvent(new Event("photo-wall-pinch-start"));
-        }
-        singleTouchRef.current = null;
-          if (event.cancelable) event.preventDefault();
-        return;
+      else if (pointers.size === 1 && wasPinching) {
+        const remaining = [...pointers.values()][0];
+        singleTouchRef.current = { x: remaining.x, y: remaining.y, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, startedOnPhoto: false, panStarted: false };
       }
-      if (event.touches.length === 1) {
-        const target = event.target instanceof Element ? event.target : null;
-        singleTouchRef.current = { x: event.touches[0].clientX, y: event.touches[0].clientY, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, startedOnPhoto: Boolean(target?.closest("[data-photo-wall-photo]")) };
-      }
-    };
-    const onTouchMove = (event: TouchEvent) => {
-      if (event.touches.length >= 2) {
-        if (event.cancelable) event.preventDefault();
-        if (!pinchStartRef.current) pinchStartRef.current = { distance: touchDistance(event.touches), zoom: panoramaZoomRef.current };
-        if (!pinchModeRef.current) {
-          pinchModeRef.current = true;
-          window.dispatchEvent(new Event("photo-wall-pinch-start"));
-        }
-        const nextZoom = Math.max(15, Math.min(300, Math.round(pinchStartRef.current.zoom * touchDistance(event.touches) / pinchStartRef.current.distance)));
-        applyZoom(nextZoom);
-          return;
-      }
-      if (event.touches.length !== 1 || pinchModeRef.current) return;
-      if (viewport.querySelector('[data-photo-wall-mode="doodle"]')) return;
-      const start = singleTouchRef.current;
-      if (!start || (start.startedOnPhoto && wallView === "edit")) return;
-      const dx = event.touches[0].clientX - start.x, dy = event.touches[0].clientY - start.y;
-      if (Math.abs(dx) + Math.abs(dy) < 3) return;
-      if (event.cancelable) event.preventDefault();
-      viewport.scrollLeft = start.scrollLeft - dx; viewport.scrollTop = start.scrollTop - dy;
-    };
-    const onTouchEnd = (event: TouchEvent) => {
-      if (event.touches.length < 2 && pinchModeRef.current) {
-        pinchModeRef.current = false;
-        pinchStartRef.current = null;
-        window.dispatchEvent(new Event("photo-wall-pinch-end"));
-      }
-      if (event.touches.length === 0) singleTouchRef.current = null;
-      else if (event.touches.length === 1) singleTouchRef.current = { x: event.touches[0].clientX, y: event.touches[0].clientY, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, startedOnPhoto: false };
     };
     // Window capture keeps tracking both fingers even if one leaves a photo frame.
     window.addEventListener("pointerdown", onPointerDown, { capture: true, passive: false });
     window.addEventListener("pointermove", onPointerMove, { capture: true, passive: false });
     window.addEventListener("pointerup", onPointerEnd, true);
     window.addEventListener("pointercancel", onPointerEnd, true);
-    viewport.addEventListener("touchstart", onTouchStart, { passive: false, capture: true });
-    viewport.addEventListener("touchmove", onTouchMove, { passive: false, capture: true });
-    viewport.addEventListener("touchend", onTouchEnd, { passive: false, capture: true });
-    viewport.addEventListener("touchcancel", onTouchEnd, { passive: false, capture: true });
+    if (!supportsPointerEvents) {
+      viewport.addEventListener("touchstart", onTouchStart, { passive: false, capture: true });
+      viewport.addEventListener("touchmove", onTouchMove, { passive: false, capture: true });
+      viewport.addEventListener("touchend", onTouchEnd, { passive: false, capture: true });
+      viewport.addEventListener("touchcancel", onTouchEnd, { passive: false, capture: true });
+    }
     return () => {
       window.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("pointermove", onPointerMove, true);
       window.removeEventListener("pointerup", onPointerEnd, true);
       window.removeEventListener("pointercancel", onPointerEnd, true);
-      viewport.removeEventListener("touchstart", onTouchStart, true);
-      viewport.removeEventListener("touchmove", onTouchMove, true);
-      viewport.removeEventListener("touchend", onTouchEnd, true);
-      viewport.removeEventListener("touchcancel", onTouchEnd, true);
+      pinchPointersRef.current.clear(); pinchStartRef.current = null; pinchModeRef.current = false; singleTouchRef.current = null;
+      if (!supportsPointerEvents) {
+        viewport.removeEventListener("touchstart", onTouchStart, true);
+        viewport.removeEventListener("touchmove", onTouchMove, true);
+        viewport.removeEventListener("touchend", onTouchEnd, true);
+        viewport.removeEventListener("touchcancel", onTouchEnd, true);
+      }
     };
-  }, [wallView]);
+  }, [wallView, state.photos.length, filter]);
   const [selectedCharacterId, setSelectedCharacterId] = useState<string>(() => readPhotoWallCharacter());
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
   useEffect(() => {
@@ -364,12 +339,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (showAddMenu) { setShowAddMenu(false); if (detail) detail.handled = true; return; }
       if (showChatPicker) { setShowChatPicker(false); if (detail) detail.handled = true; return; }
       if (selectedPhotoId) { setSelectedPhotoId(null); if (detail) detail.handled = true; return; }
-      if (wallView === "settings" || wallView === "timeline" || wallView === "memories") { setWallView("edit"); if (detail) detail.handled = true; return; }
+      if (wallView === "settings" || wallView === "timeline" || wallView === "memories") { setWallView(wallView === "settings" ? settingsReturnView : "panorama"); if (detail) detail.handled = true; return; }
       if (wallView === "edit") { onClose(); if (detail) detail.handled = true; }
     };
     window.addEventListener("floatphone-app-back", handleAppBack);
     return () => window.removeEventListener("floatphone-app-back", handleAppBack);
-  }, [wallView, showAddMenu, showChatPicker, selectedPhotoId]);
+  }, [wallView, showAddMenu, showChatPicker, selectedPhotoId, settingsReturnView]);
 
   const scheduleSave = useCallback((_next: PhotoWallState) => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
@@ -511,6 +486,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     if (!ordered.length) { onNotice?.("墙上还没有照片。"); return; }
     const slots = buildTemplateSlots(templateId, ordered.length, templateText);
     if (!slots.length) return;
+    pushHistory(current);
     commitPhotos(current.photos.map(photo => {
       const index = ordered.findIndex(item => item.id === photo.id);
       const slot = slots[index % slots.length];
@@ -522,7 +498,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     try { window.localStorage.setItem(PHOTO_WALL_ACTIVE_TEMPLATE_KEY, templateId); } catch { /* current placements remain saved */ }
     onNotice?.("已按模板重新摆放；新照片也会沿用这个摆放轨迹。");
     setWallView("edit");
-  }, [commitPhotos, onNotice, templateText]);
+  }, [commitPhotos, onNotice, templateText, pushHistory]);
 
   /** 将当前墙面坐标保存为可重复使用的自定义模板。 */
   const saveCurrentLayoutAsTemplate = useCallback(() => {
@@ -574,7 +550,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     if (!targets.length) { onNotice?.("墙上还没有照片可以导出。"); return; }
     setExportBusy(true);
     try {
-      const ok = await downloadPhotoWallPng(targets, { aspect: world.width / world.height });
+      const ok = await downloadPhotoWallPng(targets, {
+        aspect: world.width / world.height, world,
+        wallDoodles: stateRef.current.wallDoodles ?? [],
+        backgroundRef: stateRef.current.wallBackgroundRef,
+        backgroundBox: stateRef.current.wallBackgroundBox,
+      });
       onNotice?.(ok ? "已开始下载整墙 PNG。" : "导出失败：没有生成有效图片。");
     } catch (error) { onNotice?.("导出失败：" + (error instanceof Error ? error.message : String(error))); }
     finally { setExportBusy(false); }
@@ -658,7 +639,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   }, []);
 
   const addPhoto = useCallback((photo: PhotoWallPhoto) => {
-    const current = loadPhotoWallState();
+    const current = stateRef.current;
     pushHistory(current);
     const order = current.photos.length;
     const explicitTemplate = Boolean(activeTemplateId) && activeTemplateId !== "builtin-scatter";
@@ -741,7 +722,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           caption: "", backNote: "", tags: [], annotations: [], shareWithCharacters: true, source: "upload",
         });
       }
-      const current = loadPhotoWallState();
+      const current = stateRef.current;
       const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
       const slots = buildTemplateSlots(activeTemplateId, current.photos.length + created.length, templateText);
       const placedCreated = created.map((photo, index) => {
@@ -978,33 +959,32 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       className="relative z-10 flex shrink-0 items-center gap-3 border-b border-[#ded5c7]/80 bg-white/75 px-4 pb-3 shadow-[0_8px_28px_rgba(94,76,53,.06)] backdrop-blur-xl"
       style={{ paddingTop: "max(12px, var(--page-header-safe-top, 48px))" }}
     >
-      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); if (showAddMenu) setShowAddMenu(false); else if (showChatPicker) setShowChatPicker(false); else if (selectedPhotoId) setSelectedPhotoId(null); else if (wallView === "settings" || wallView === "timeline" || wallView === "memories") setWallView("edit"); else onClose(); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-[#ded5c7] bg-white/80 text-[#7b6a58] shadow-sm transition hover:-translate-y-0.5 hover:bg-white active:scale-95" aria-label="返回上一级"><ArrowLeft size={17}/></button>
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); if (showAddMenu) setShowAddMenu(false); else if (showChatPicker) setShowChatPicker(false); else if (selectedPhotoId) setSelectedPhotoId(null); else if (wallView === "settings" || wallView === "timeline" || wallView === "memories") setWallView(wallView === "settings" ? settingsReturnView : "panorama"); else onClose(); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-[#ded5c7] bg-white/80 text-[#7b6a58] shadow-sm transition hover:-translate-y-0.5 hover:bg-white active:scale-95" aria-label="返回上一级"><ArrowLeft size={17}/></button>
       <div className="min-w-0 flex-1"><div className="whitespace-nowrap font-serif text-lg tracking-[.04em]">{wallView === "settings" ? "墙面与显影设置" : wallView === "memories" ? "全部记忆" : wallView === "timeline" ? "时间轴" : "照片墙"}</div><div className="mt-0.5 truncate whitespace-nowrap text-[10px] tracking-[.1em] text-[#a09380]">{wallView === "settings" ? "WALL & DEVELOPING" : `A LITTLE ARCHIVE OF US · ${photos.length} PHOTOS`}</div></div>
-      {wallView === "edit" && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAddMenu(false); setWallView("settings"); }} className="relative z-[1002] pointer-events-auto min-h-10 shrink-0 cursor-pointer touch-manipulation border-b border-[#bda28d] px-2 py-1 text-sm tracking-wider text-[#79545a] transition active:opacity-60">设置</button>}
-      {wallView === "edit" && <button type="button" onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="grid h-10 w-10 shrink-0 place-items-center border border-[#d8c4b4] bg-[#fffaf2] text-[#795b52] disabled:opacity-40" aria-label="导出整墙 PNG"><Download size={16}/></button>}
+      {(wallView === "edit" || wallView === "panorama") && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAddMenu(false); setSettingsReturnView(wallView === "edit" ? "edit" : "panorama"); setWallView("settings"); }} className="relative z-[1002] pointer-events-auto min-h-10 shrink-0 cursor-pointer touch-manipulation border-b border-[#bda28d] px-2 py-1 text-sm tracking-wider text-[#79545a] transition active:opacity-60">设置</button>}
       {wallView === "edit" && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAddMenu(value => !value); }} className="relative z-[1002] pointer-events-auto grid h-10 w-10 shrink-0 cursor-pointer touch-manipulation place-items-center border border-[#d8c4b4] bg-[#fffaf2] text-[#87565b] transition active:scale-95" aria-label="添加照片"><Plus size={18}/></button>}
-      {(wallView === "edit" || wallView === "memories" || wallView === "timeline") && <button type="button" onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="grid h-10 w-10 shrink-0 place-items-center border border-[#d8c4b4] bg-[#fffaf3]/80 text-[#795b52] disabled:opacity-40" aria-label="导出整墙 PNG"><Download size={17}/></button>}
+      {(wallView === "edit" || wallView === "panorama" || wallView === "memories" || wallView === "timeline") && <button type="button" onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="grid h-10 w-10 shrink-0 place-items-center border border-[#d8c4b4] bg-[#fffaf3]/80 text-[#795b52] disabled:opacity-40" aria-label="导出整墙 PNG"><Download size={17}/></button>}
+      {wallView === "panorama" && <button type="button" onClick={() => setWallView("edit")} className="shrink-0 border-b border-[#bda28d] px-2 py-2 text-sm text-[#79545a]">编辑墙面</button>}
       {(wallView === "memories" || wallView === "timeline") && <button type="button" onClick={() => setWallView("edit")} className="shrink-0 border-b border-[#bda28d] px-2 py-2 text-sm text-[#79545a]">编辑</button>}
       {wallView === "edit" && <span className="shrink-0 text-xs tracking-wide text-[#87565b]">画布</span>}
     </header>
 
     {wallView !== "settings" && <nav className="absolute bottom-0 left-0 right-0 z-20 flex shrink-0 items-center justify-center gap-7 border-t border-[#d8c4b4] bg-[#f8f0e6]/96 px-3 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur">
-      <button type="button" onClick={() => setWallView("edit")} className={`border-b-2 px-1 py-2 text-sm ${wallView==="edit"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>画布</button>
-      <button type="button" onClick={() => setWallView("memories")} className={`border-b-2 px-1 py-2 text-sm ${wallView==="memories"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>全部记忆</button>
+      <button type="button" onClick={() => setWallView("panorama")} className={`border-b-2 px-1 py-2 text-sm ${wallView==="panorama"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>全景墙</button>
       <button type="button" onClick={() => setWallView("timeline")} className={`border-b-2 px-1 py-2 text-sm ${wallView==="timeline"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>时间轴</button>
     </nav>}
     {wallView === "edit" && showAddMenu && <div className="absolute right-3 z-30 w-[min(17rem,calc(100vw-1.5rem))] border border-[#d7c2b1] bg-[#fffaf2] p-1 shadow-[0_16px_44px_rgba(60,42,32,.22)]" style={{top:"calc(max(12px, var(--page-header-safe-top, 48px)) + 64px)"}}>
       <button onClick={() => { setShowAddMenu(false); fileRef.current?.click(); }} className="flex min-h-11 w-full items-center gap-3 border-b border-[#eadfd3] px-3 py-2.5 text-left text-sm leading-5 text-[#5d4942] last:border-b-0 hover:bg-[#f3e9df]"><ImagePlus size={17}/>收藏我的照片</button>
       <button onClick={() => { setShowAddMenu(false); void openChatPicker(); }} className="flex min-h-11 w-full items-center gap-3 border-b border-[#eadfd3] px-3 py-2.5 text-left text-sm leading-5 text-[#5d4942] hover:bg-[#f3e9df]"><Heart size={17}/>从聊天收藏照片</button>
-      <button onClick={() => { setShowAddMenu(false); if (!selectedCharacter) { setWallView("settings"); onNotice?.("请先在「今日照片与生成设置」中明确选择要生成照片的角色。"); return; } void generatePhoto(selectedCharacter, "moment"); }} className="flex min-h-11 w-full items-center gap-3 border-b border-[#eadfd3] px-3 py-2.5 text-left text-sm leading-5 text-[#5d4942] hover:bg-[#f3e9df]"><Sparkles size={17}/>请角色生成一张</button>
+      <button onClick={() => { setShowAddMenu(false); if (!selectedCharacter) { setSettingsReturnView("edit"); setWallView("settings"); onNotice?.("请先在「今日照片与生成设置」中明确选择要生成照片的角色。"); return; } void generatePhoto(selectedCharacter, "moment"); }} className="flex min-h-11 w-full items-center gap-3 border-b border-[#eadfd3] px-3 py-2.5 text-left text-sm leading-5 text-[#5d4942] hover:bg-[#f3e9df]"><Sparkles size={17}/>请角色生成一张</button>
       <button onClick={() => { setShowAddMenu(false); wallBackgroundInputRef.current?.click(); }} className="flex min-h-11 w-full items-center gap-3 border-b border-[#eadfd3] px-3 py-2.5 text-left text-sm leading-5 text-[#5d4942] hover:bg-[#f3e9df]"><ImagePlus size={17}/>上传画布背景</button>
       {state.wallBackgroundRef && <button onClick={() => { setShowAddMenu(false); clearCanvasBackground(); }} className="flex min-h-11 w-full items-center gap-3 border-b border-[#eadfd3] px-3 py-2.5 text-left text-sm leading-5 text-[#8f5a54] hover:bg-[#f3e9df]"><X size={17}/>移除当前背景</button>}
-      <button onClick={() => { setShowAddMenu(false); setWallView("settings"); }} className="flex min-h-11 w-full items-center gap-3 px-3 py-2.5 text-left text-sm leading-5 text-[#5d4942] hover:bg-[#f3e9df]"><Camera size={17}/>今日照片与生成设置</button>
+      <button onClick={() => { setShowAddMenu(false); setSettingsReturnView("edit"); setWallView("settings"); }} className="flex min-h-11 w-full items-center gap-3 px-3 py-2.5 text-left text-sm leading-5 text-[#5d4942] hover:bg-[#f3e9df]"><Camera size={17}/>今日照片与生成设置</button>
     </div>}
     <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={event => { if (event.target.files) void uploadFiles(event.target.files); event.currentTarget.value = ""; }}/>
     <input ref={wallBackgroundInputRef} type="file" accept="image/*" className="hidden" onChange={event => { const file = event.currentTarget.files?.[0]; if (file) void uploadCanvasBackground(file); event.currentTarget.value = ""; }}/>
 
-    <main className={wallView === "edit" ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-y-auto overscroll-contain"} style={{ paddingBottom: "calc(58px + env(safe-area-inset-bottom, 0px))" }}>
+    <main className={wallView === "edit" || wallView === "panorama" ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-y-auto overscroll-contain"} style={{ paddingBottom: "calc(58px + env(safe-area-inset-bottom, 0px))" }}>
       {wallView === "settings" ? <div className="min-h-full bg-[#f5ede3] px-4 pb-10 pt-5 sm:px-7" style={{backgroundImage:"repeating-linear-gradient(0deg,rgba(122,84,68,.025) 0,rgba(122,84,68,.025) 1px,transparent 1px,transparent 5px)"}}>
         <div className="mx-auto max-w-3xl">
           <p className="text-[10px] tracking-[.24em] text-[#a18172]">A QUIET CORNER FOR YOUR WALL</p>
@@ -1045,48 +1025,27 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             {editingTemplateId && customTemplates.find(template => template.id === editingTemplateId) && (() => { const template=customTemplates.find(item=>item.id===editingTemplateId)!; return <div className="mt-4 border-t border-[#d9c6b6] pt-4"><div className="flex items-center justify-between gap-2"><div className="min-w-0"><p className="font-serif text-sm text-[#5d4942]">编辑骨架 · {template.name}</p><p className="mt-1 text-[10px] leading-5 text-[#8b7569]">调整槽位相对位置、大小与倾斜角度。</p></div><button type="button" onClick={() => setEditingTemplateId(null)} aria-label="关闭骨架编辑" className="px-2 py-1 text-[#87565b]"><X size={13}/></button></div><div className="mt-3 max-h-56 space-y-3 overflow-y-auto pr-1">{template.slots.map((slot,index)=><div key={index} className="border-b border-[#eadfd3] pb-3"><div className="mb-2 text-[11px] text-[#8b7569]">照片槽位 {index+1}</div><div className="grid grid-cols-2 gap-x-3 gap-y-2">{([["x","横向",0.06,0.94,0.01],["y","纵向",0.06,0.94,0.01],["scale","大小",0.35,3,0.05],["rotation","旋转",-45,45,1]] as const).map(([key,label,min,max,step])=><label key={key} className="min-w-0 text-[10px] text-[#8f7c66]"><span className="mb-1 flex items-center justify-between gap-1"><span>{label}</span><span className="font-mono text-[#6d5b47]">{slot[key].toFixed(2)}</span></span><input type="range" min={min} max={max} step={step} value={slot[key]} onChange={event=>updateTemplateSlot(template.id,index,key,Number(event.target.value))} className="w-full accent-[#87565b]"/></label>)}</div></div>)}</div></div>; })()}
           </section>
         </div>
-      </div> : wallView === "edit" ? <>
-      <div className="mx-4 flex min-h-10 items-center justify-between border-b border-[#d9c6b6] px-1 py-2 sm:mx-7"><span className="font-serif text-sm tracking-wide text-[#5d4942]">在墙上，慢慢摆好这些瞬间</span><span className="text-[10px] text-[#a18172]">{visiblePhotos.length} 张 · 可拖动微调</span></div>
-
-
-
-
-      <nav className="sticky top-0 z-10 flex min-h-11 items-center gap-5 overflow-x-auto border-b border-[#e4dbce]/80 bg-[#f7efe5]/95 px-4 py-2 sm:px-7">
+      </div> : (wallView === "edit" || wallView === "panorama") ? <>
+      {wallView === "edit" && <div className="mx-4 flex min-h-10 items-center justify-between border-b border-[#d9c6b6] px-1 py-2 sm:mx-7"><span className="font-serif text-sm tracking-wide text-[#5d4942]">在墙上，慢慢摆好这些瞬间</span><span className="text-[10px] text-[#a18172]">{visiblePhotos.length} 张 · 可拖动微调</span></div>}
+      {wallView === "edit" && <nav className="sticky top-0 z-10 flex min-h-11 items-center gap-5 overflow-x-auto border-b border-[#e4dbce]/80 bg-[#f7efe5]/95 px-4 py-2 sm:px-7">
         {([{id:"all",label:"全部照片"},{id:"mine",label:"我收藏的"},{id:"characters",label:"角色留下的"}] as {id:Filter;label:string}[]).map(item => <button key={item.id} onClick={() => setFilter(item.id)} className={`shrink-0 border-b-2 px-0.5 py-2 text-xs font-medium tracking-wide transition duration-200 ${filter===item.id?"border-[#87565b] text-[#87565b]":"border-transparent text-[#8d7e6b] hover:text-[#70434a]"}`}>{item.label}</button>)}
-        <button onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="ml-auto flex shrink-0 items-center gap-1.5 border-b border-[#cbbba6] px-1 py-2 text-[11px] tracking-wider text-[#795b52] disabled:opacity-40"><Download size={13}/>{exportBusy ? "导出中…" : "导出 PNG"}</button>
-      </nav>
-
-      <section className="px-3 pb-12 pt-3 sm:px-6">
-        <div className="mb-2 flex items-center justify-between gap-2 border-b border-[#e2d2c3] px-1 py-2">
-          <p className="font-serif text-sm text-[#5d4942]">自由画布</p><span className="text-[10px] text-[#9b8774]">{visiblePhotos.length} 张照片</span>
+      </nav>}
+      <section className="flex h-full min-h-0 flex-col overflow-hidden px-3 pb-12 pt-3 sm:px-6">
+        {wallView === "edit" && <div className="mb-2 flex items-center justify-between gap-2 border-b border-[#e2d2c3] px-1 py-2"><p className="font-serif text-sm text-[#5d4942]">自由画布</p><span className="text-[10px] text-[#9b8774]">{visiblePhotos.length} 张照片</span></div>}
+        {busy && <div className="mb-3 flex shrink-0 items-center gap-2 border border-[#e4d8c6] bg-[#faf7f0] px-3 py-2.5 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
+        <div ref={panoramaViewportRef} data-photo-wall-viewport className="min-h-0 flex-1 w-full overflow-auto overscroll-contain" style={{ WebkitOverflowScrolling: "touch", touchAction: "none", overscrollBehavior: "contain" }}>
+          <div className="relative shrink-0 overflow-hidden" style={{ width: world.width * panoramaZoom / 100, height: world.height * panoramaZoom / 100, touchAction: "none" }}>
+            <PhotoWallCanvas photos={visiblePhotos} selectedId={selectedPhotoId} onSelect={setSelectedPhotoId}
+              onChangePlacement={changePlacement} onPlacementSettled={settlePlacement}
+              onDragBegin={() => pushHistory(stateRef.current)} onUndo={undo} onRedo={redo}
+              canUndo={canUndo} canRedo={canRedo} onChangeDoodles={changeDoodles}
+              wallDoodles={state.wallDoodles ?? []} onChangeWallDoodles={changeWallDoodles}
+              backgroundImage={wallBackgroundUrl} backgroundBox={state.wallBackgroundBox}
+              wallWorld={world} canvasZoom={panoramaZoom / 100} readOnly={wallView === "panorama"}
+              onOpenDetail={photo => openPhoto(photo)} />
+          </div>
         </div>
-        {busy && <div className="mb-3 flex items-center gap-2 rounded-xl border border-[#e4d8c6] bg-[#faf7f0] px-3 py-2.5 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
-
-
-
-        {visiblePhotos.length
-          ? <div ref={panoramaViewportRef} data-photo-wall-viewport className="h-full min-h-0 w-full overflow-auto overscroll-contain" style={{ WebkitOverflowScrolling: "touch", touchAction: "none", overscrollBehavior: "contain" }}><div style={{ width: world.width * panoramaZoom / 100, height: world.height * panoramaZoom / 100, minWidth: "1px", maxWidth: "none" }}><PhotoWallCanvas
-              photos={visiblePhotos}
-              selectedId={selectedPhotoId}
-              onSelect={setSelectedPhotoId}
-              onChangePlacement={changePlacement}
-              onPlacementSettled={settlePlacement}
-              onDragBegin={() => pushHistory(stateRef.current)}
-              onUndo={undo}
-              onRedo={redo}
-              canUndo={canUndo}
-              canRedo={canRedo}
-              onChangeDoodles={changeDoodles}
-              wallDoodles={state.wallDoodles ?? []}
-              onChangeWallDoodles={changeWallDoodles}
-               backgroundImage={wallBackgroundUrl}
-              backgroundBox={state.wallBackgroundBox}
-              wallWorld={world}
-              onOpenDetail={photo => openPhoto(photo)}
-            /></div></div>
-          : <div className="mx-auto flex max-w-sm flex-col items-center px-6 py-16 text-center"><div className="grid h-16 w-16 place-items-center rounded-full border border-[#ddd0bd] text-[#a0917d]"><Feather size={24}/></div><h2 className="mt-5 font-serif text-xl font-normal">这面墙还空着</h2><p className="mt-2 text-xs leading-6 text-[#968674]">先收藏一张你喜欢的照片。之后，角色也会把自己想珍藏的风景、自拍和生活片段慢慢放进来。</p><button onClick={() => fileRef.current?.click()} className="mt-5 rounded-full border border-[#b7a48c] px-5 py-2.5 text-xs tracking-wider text-[#786953]">收藏第一张照片</button></div>}
       </section>
-
       </> : wallView === "memories" ? <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-4 sm:px-7" style={{WebkitOverflowScrolling:"touch"}}>
         {photos.length ? <div className="mx-auto grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {photos.map(photo => <article key={photo.id} className="min-w-0 border border-[#e3d3c1] bg-[#fffdf8] p-2 pb-3 shadow-[2px_5px_12px_rgba(70,55,40,.10)]">

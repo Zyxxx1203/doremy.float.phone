@@ -76,6 +76,7 @@ type Props = {
   onOpenDetail: (photo: PhotoWallPhoto) => void;
   readOnly?: boolean;
   fitHeight?: boolean;
+  canvasZoom?: number;
 };
 
 type DragState = {
@@ -90,7 +91,7 @@ type DragState = {
   moved: boolean;
 };
 
-export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, backgroundBox, wallWorld, onOpenDetail, readOnly = false, fitHeight = false }: Props) {
+export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, backgroundBox, wallWorld, onOpenDetail, readOnly = false, fitHeight = false, canvasZoom = 1 }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const strokeRef = useRef<{ id: string; photoId: string } | null>(null);
@@ -127,9 +128,13 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     };
     window.addEventListener("photo-wall-pinch-start", onPinchStart);
     window.addEventListener("photo-wall-pinch-end", onPinchEnd);
+    window.addEventListener("photo-wall-pan-start", onPinchStart);
+    window.addEventListener("photo-wall-pan-end", onPinchEnd);
     return () => {
       window.removeEventListener("photo-wall-pinch-start", onPinchStart);
       window.removeEventListener("photo-wall-pinch-end", onPinchEnd);
+      window.removeEventListener("photo-wall-pan-start", onPinchStart);
+      window.removeEventListener("photo-wall-pan-end", onPinchEnd);
       if (timer) clearTimeout(timer);
     };
   }, []);
@@ -241,6 +246,14 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     event.stopPropagation();
     const point = pointOn(event, photo, index);
     const existing = photo.doodles ?? [];
+    if (eraser) {
+      const hit = [...existing].reverse().find(doodle => {
+        const threshold = doodle.kind === "sticker" ? 0.05 : 0.035;
+        return doodle.points.some(item => Math.hypot(item.x - point.x, item.y - point.y) < threshold);
+      });
+      if (hit) onChangeDoodles(photo.id, existing.filter(item => item.id !== hit.id));
+      return;
+    }
     if (sticker) {
       onChangeDoodles(photo.id, [
         ...existing,
@@ -248,6 +261,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       ]);
       return;
     }
+    onSelect(photo.id);
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     const id = createPhotoWallId();
     strokeRef.current = { id, photoId: photo.id };
@@ -328,10 +342,10 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     setDraftPoints([]);
     if (points.length >= 2) onChangeWallDoodles?.([...wallDoodles, { id: stroke.id, kind: "stroke", color: brushColor, width: brushWidth, points, createdAt: new Date().toISOString() }]);
   };
-  const clearDoodles = () => {
+  const clearPhotoDoodles = () => {
     if (selectedPhoto) onChangeDoodles(selectedPhoto.id, []);
-    onChangeWallDoodles?.([]);
   };
+  const clearWallDoodles = () => onChangeWallDoodles?.([]);
 
   /* ── 选中照片的小工具条 ──────────────────────── */
   const nudge = (photo: PhotoWallPhoto, index: number, patch: Partial<PhotoWallPlacement>) => {
@@ -347,7 +361,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     nudge(photo, index, { z: maxZ + 1 });
   };
 
-  return <div className={fitHeight ? "relative flex h-full w-full items-center justify-center" : "relative"}>
+  return <div className={fitHeight ? "relative flex h-full w-full items-center justify-center" : "relative"} style={wallWorld ? { width: wallWorld.width, height: wallWorld.height } : undefined}>
     {/* 画布工具条 */}
     {!readOnly && <div className="photo-wall-tools sticky left-0 z-[10000] mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-y border-[#e2d2c3] py-2.5" style={{ width: "min(420px, calc(100vw - 16px))", background: "rgba(255,250,242,.97)" }}>
       <button type="button" onClick={() => onUndo?.()} disabled={!canUndo} aria-label="撤销上一步" title="撤销" className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#ddd1bd] bg-white/80 text-[#7d6d5a] transition disabled:opacity-30"><Undo2 size={14}/></button>
@@ -362,7 +376,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
         <span className="flex items-center gap-1"><Droplet size={12} className="text-[#9a8973]"/>{[2, 3, 5, 8].map(width => <button key={width} type="button" onClick={() => setBrushWidth(width)} className={`grid h-6 w-6 place-items-center rounded-full text-[10px] ${brushWidth === width ? "bg-[#6b5c4a] text-white" : "bg-white/70 text-[#7d6d5a]"}`}>{width}</button>)}</span>
         <span className="flex items-center gap-1"><Smile size={12} className="text-[#9a8973]"/>{STICKER_CHOICES.map(item => <button key={item} type="button" onClick={() => setSticker(current => current === item ? null : item)} className={`grid h-6 w-6 place-items-center rounded-full text-[13px] ${sticker === item ? "bg-[#6b5c4a] text-white" : "bg-white/70"}`}>{item}</button>)}</span>
         <button type="button" onClick={() => { setEraser(value => !value); setSticker(null); }} aria-pressed={eraser} className={`ml-auto flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px] transition ${eraser ? "border-[#a06a58] bg-[#a06a58] text-white" : "border-[#e0c8bd] bg-white/70 text-[#8a6d5c]"}`}><Eraser size={12}/>橡皮</button>
-        <button type="button" onClick={clearDoodles} disabled={!selectedPhoto?.doodles?.length && !wallDoodles.length} className="ml-2 flex items-center gap-1 border-b border-[#e0c8bd] px-2 py-1.5 text-[11px] text-[#a06a58] disabled:opacity-40"><Eraser size={12}/>清空涂鸦</button>
+        <button type="button" onClick={clearPhotoDoodles} disabled={!selectedPhoto?.doodles?.length} title="只清除所选照片上的装饰" className="ml-1 flex items-center gap-1 border-b border-[#e0c8bd] px-2 py-1.5 text-[11px] text-[#a06a58] disabled:opacity-40"><Eraser size={12}/>清空照片</button>
+        <button type="button" onClick={clearWallDoodles} disabled={!wallDoodles.length} title="只清除固定在墙面上的涂鸦" className="flex items-center gap-1 border-b border-[#e0c8bd] px-2 py-1.5 text-[11px] text-[#a06a58] disabled:opacity-40"><Eraser size={12}/>清空墙面</button>
       </>}
     </div>}
 
@@ -379,8 +394,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     <div
       ref={wallRef}
       data-photo-wall-mode={mode}
-      className={"photo-wall-surface relative h-full w-full select-none overflow-hidden rounded-[2px] border border-[#eee3d8] shadow-[inset_0_1px_0_rgba(255,255,255,.95),0_4px_12px_rgba(88,70,48,.06)]"}
-      style={{ aspectRatio: fitHeight ? "4 / 5" : undefined, flex: "0 0 auto", touchAction: readOnly ? "auto" : "none", backgroundSize: backgroundImage ? backgroundSizing.size : undefined, backgroundPosition: backgroundSizing.position, backgroundRepeat: backgroundImage ? "no-repeat" : undefined, backgroundImage: backgroundImage ? 'linear-gradient(rgba(255,250,242,.13),rgba(255,250,242,.13)),url("' + backgroundImage + '")' : "repeating-linear-gradient(0deg,rgba(130,98,70,.018) 0,rgba(130,98,70,.018) 1px,transparent 1px,transparent 4px),radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.9),transparent 62%),linear-gradient(145deg,#fffaf2 0%,#faf3ea 48%,#f5ece2 100%)" }}
+      className={"photo-wall-surface absolute left-0 top-0 select-none overflow-hidden rounded-[2px] border border-[#eee3d8] shadow-[inset_0_1px_0_rgba(255,255,255,.95),0_4px_12px_rgba(88,70,48,.06)]"}
+      style={{ width: wallWorld?.width ?? 2400, height: wallWorld?.height ?? 3000, transform: `scale(${canvasZoom})`, transformOrigin: "top left", aspectRatio: fitHeight ? "4 / 5" : undefined, touchAction: readOnly ? "auto" : "none", backgroundSize: backgroundImage ? backgroundSizing.size : undefined, backgroundPosition: backgroundSizing.position, backgroundRepeat: backgroundImage ? "no-repeat" : undefined, backgroundImage: backgroundImage ? 'linear-gradient(rgba(255,250,242,.13),rgba(255,250,242,.13)),url("' + backgroundImage + '")' : "repeating-linear-gradient(0deg,rgba(130,98,70,.018) 0,rgba(130,98,70,.018) 1px,transparent 1px,transparent 4px),radial-gradient(ellipse at 24% 15%,rgba(255,255,255,.9),transparent 62%),linear-gradient(145deg,#fffaf2 0%,#faf3ea 48%,#f5ece2 100%)" }}
       onPointerMove={readOnly ? undefined : handlePointerMove}
       onPointerUp={readOnly ? undefined : endDrag}
       onPointerCancel={readOnly ? undefined : endDrag}
@@ -390,7 +405,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     >
       {ordered.length === 0 && !readOnly && <div className="pointer-events-none absolute inset-0 grid place-items-center text-[#a99a86]"><div className="text-center"><ImagePlus size={26} className="mx-auto"/><p className="mt-2 text-xs">这面墙还空着</p></div></div>}
 
-      {ordered.map((photo, index) => {
+      <div aria-hidden="true" className="absolute inset-0" style={{ zIndex: 0, pointerEvents: mode === "doodle" && !readOnly ? "auto" : "none", touchAction: "none" }} onPointerDown={wallDoodlePointerDown} onPointerMove={wallDoodlePointerMove} onPointerUp={wallDoodlePointerUp} onPointerCancel={wallDoodlePointerUp} />
+      {ordered.map((photo, index) => {}
         const placement = placementOf(photo, index);
         const isSelected = photo.id === selectedId;
         return <WallPhotoFrame
@@ -418,9 +434,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
         />;
       })}
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="整面照片墙涂鸦画布"
-        className={mode === "doodle" && !readOnly ? "absolute inset-0 h-full w-full cursor-crosshair" : "pointer-events-none absolute inset-0 h-full w-full"}
-        style={{ zIndex: 9999, pointerEvents: mode === "doodle" && !readOnly ? "auto" : "none", touchAction: "none", overflow: "visible" }}
-        onPointerDown={wallDoodlePointerDown} onPointerMove={wallDoodlePointerMove} onPointerUp={wallDoodlePointerUp} onPointerCancel={wallDoodlePointerUp}>
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        style={{ zIndex: 9999, pointerEvents: "none", touchAction: "none", overflow: "visible" }}>
         {mode === "doodle" && !readOnly && <rect x="0" y="0" width="100" height="100" fill="transparent" />}
         {wallDoodles.map(doodle => doodle.kind === "stroke"
           ? <polyline key={doodle.id} points={doodle.points.map(point => (point.x * 100) + "," + (point.y * 100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(0.6, doodle.width / 2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
@@ -481,7 +496,8 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
 
   const frame = placement.frame;
   const pad = FRAME_PADDING[frame];
-  const width = `clamp(${112 * placement.scale}px, ${14 * placement.scale}vw, ${224 * placement.scale}px)`;
+  // World dimensions stay stable; camera zoom scales cards and wall together.
+  const width = `${240 * placement.scale}px`;
 
   return <div
     ref={rootRef}
@@ -536,7 +552,7 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
               strokeLinejoin="round"
               vectorEffect="non-scaling-stroke"
             />
-          : <text key={doodle.id} x={(doodle.points[0]?.x ?? 0.5) * 100} y={(doodle.points[0]?.y ?? 0.5) * 100} fontSize={12} textAnchor="middle" dominantBaseline="middle">{doodle.content}</text>)}
+          : <text key={doodle.id} x={(doodle.points[0]?.x ?? 0.5) * 100} y={(doodle.points[0]?.y ?? 0.5) * 100} fill={doodle.color} fontSize={12} textAnchor="middle" dominantBaseline="middle">{doodle.content}</text>)}
         {draftPoints.length > 1 && <polyline points={draftPoints.map(point => `${point.x * 100},${point.y * 100}`).join(" ")} fill="none" stroke="#c2705a" strokeWidth={3} strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
       </svg>
 
