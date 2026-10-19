@@ -89,7 +89,7 @@ export async function renderPhotoWallPng(photos: PhotoWallPhoto[], options: Expo
   if (options.backgroundRef) {
     let backgroundUrl = "";
     try {
-      backgroundUrl = await loadMediaObjectUrl(options.backgroundRef).catch(() => "");
+      backgroundUrl = (await loadMediaObjectUrl(options.backgroundRef).catch(() => null)) ?? "";
       if (backgroundUrl) {
         const image = await loadImage(backgroundUrl), world = options.world, box = options.backgroundBox;
         if (image) {

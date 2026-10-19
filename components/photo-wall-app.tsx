@@ -265,6 +265,80 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         singleTouchRef.current = { x: remaining.x, y: remaining.y, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, startedOnPhoto: false, panStarted: false };
       }
     };
+
+    const onTouchStart = (event: TouchEvent) => {
+      if (supportsPointerEvents) return;
+      if (event.touches.length >= 2) {
+        if (!pinchModeRef.current) {
+          pinchStartRef.current = { distance: touchDistance(event.touches), zoom: panoramaZoomRef.current };
+          pinchModeRef.current = true;
+          window.dispatchEvent(new Event("photo-wall-pinch-start"));
+        }
+        singleTouchRef.current = null;
+        if (event.cancelable) event.preventDefault();
+        return;
+      }
+      if (event.touches.length === 1) {
+        const target = event.target instanceof Element ? event.target : null;
+        singleTouchRef.current = {
+          x: event.touches[0].clientX, y: event.touches[0].clientY,
+          scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop,
+          startedOnPhoto: Boolean(target?.closest("[data-photo-wall-photo]")), panStarted: false,
+        };
+      }
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      if (supportsPointerEvents) return;
+      if (event.touches.length >= 2) {
+        if (event.cancelable) event.preventDefault();
+        if (!pinchStartRef.current) pinchStartRef.current = { distance: touchDistance(event.touches), zoom: panoramaZoomRef.current };
+        if (!pinchModeRef.current) {
+          pinchModeRef.current = true;
+          window.dispatchEvent(new Event("photo-wall-pinch-start"));
+        }
+        const midpoint = {
+          x: (event.touches[0].clientX + event.touches[1].clientX) / 2,
+          y: (event.touches[0].clientY + event.touches[1].clientY) / 2,
+        };
+        const rect = viewport.getBoundingClientRect();
+        const nextZoom = Math.max(15, Math.min(300, Math.round(
+          pinchStartRef.current.zoom * touchDistance(event.touches) / pinchStartRef.current.distance,
+        )));
+        applyZoom(nextZoom, { x: midpoint.x - rect.left, y: midpoint.y - rect.top });
+        return;
+      }
+      if (event.touches.length !== 1 || pinchModeRef.current) return;
+      if (viewport.querySelector('[data-photo-wall-mode="doodle"]')) return;
+      const start = singleTouchRef.current;
+      if (!start || (start.startedOnPhoto && wallView === "edit")) return;
+      const dx = event.touches[0].clientX - start.x, dy = event.touches[0].clientY - start.y;
+      if (Math.abs(dx) + Math.abs(dy) < 3) return;
+      if (event.cancelable) event.preventDefault();
+      if (!start.panStarted) {
+        start.panStarted = true;
+        window.dispatchEvent(new Event("photo-wall-pan-start"));
+      }
+      viewport.scrollLeft = start.scrollLeft - dx;
+      viewport.scrollTop = start.scrollTop - dy;
+    };
+    const onTouchEnd = (event: TouchEvent) => {
+      if (supportsPointerEvents) return;
+      if (event.touches.length < 2 && pinchModeRef.current) {
+        pinchModeRef.current = false;
+        pinchStartRef.current = null;
+        window.dispatchEvent(new Event("photo-wall-pinch-end"));
+      }
+      if (event.touches.length === 0) {
+        if (singleTouchRef.current?.panStarted) window.dispatchEvent(new Event("photo-wall-pan-end"));
+        singleTouchRef.current = null;
+      } else if (event.touches.length === 1) {
+        singleTouchRef.current = {
+          x: event.touches[0].clientX, y: event.touches[0].clientY,
+          scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop,
+          startedOnPhoto: false, panStarted: false,
+        };
+      }
+    };
     // Window capture keeps tracking both fingers even if one leaves a photo frame.
     window.addEventListener("pointerdown", onPointerDown, { capture: true, passive: false });
     window.addEventListener("pointermove", onPointerMove, { capture: true, passive: false });
