@@ -179,6 +179,16 @@ function describeTime(iso: string): string {
  * @param charName 角色名（落款）
  * @param userName 用户名
  */
+/** Inject custom CSS without requiring users to edit the HTML structure. */
+export function injectWidgetCss(html: string, css: string): string {
+  const customCss = css.trim();
+  if (!customCss) return html;
+  const style = "<style data-custom-widget-css>\\n" + customCss + "\\n</style>";
+  const headEnd = html.toLowerCase().indexOf("</head>");
+  if (headEnd >= 0) return html.slice(0, headEnd) + style + html.slice(headEnd);
+  return style + html;
+}
+
 export function renderWidgetHtml(
   template: string,
   data: WidgetData,
