@@ -173,8 +173,30 @@ export function buildTemplateSlots(templateId: string, count: number, customText
     }
   }
   if (!slots.length) return gridSlots(count);
-  // 模板骨架槽位少于照片时，按骨架循环填入；照片多于槽位不会被丢弃。
-  return Array.from({ length: Math.max(1, count) }, (_, index) => slots[index % slots.length]);
+  // Built-ins calculate the requested count. Custom templates must not recycle slots,
+  // or newly added photos land exactly on top of the saved cards.
+  if (!templateId.startsWith("builtin-") && slots.length < count) {
+    const originalSlots = slots.slice();
+    const candidates = gridSlots(Math.max(40, count * 4));
+    for (const candidate of candidates) {
+      if (slots.length >= count) break;
+      const nearest = Math.min(...slots.map(slot => Math.hypot(slot.x - candidate.x, slot.y - candidate.y)));
+      if (nearest > 0.06) slots.push({ ...candidate, scale: Math.min(candidate.scale, 0.72) });
+    }
+    while (slots.length < count) {
+      const index = slots.length - originalSlots.length;
+      const base = originalSlots[index % originalSlots.length];
+      const angle = index * 2.399963229728653;
+      const radius = 0.08 + (index % 4) * 0.025;
+      slots.push({
+        x: round(clamp01(base.x + Math.cos(angle) * radius)),
+        y: round(clamp01(base.y + Math.sin(angle) * radius)),
+        scale: Math.max(0.45, Math.min(0.68, base.scale * 0.72)),
+        rotation: Math.max(-20, Math.min(20, base.rotation + (index % 2 ? -5 : 5))),
+      });
+    }
+  }
+  return Array.from({ length: Math.max(1, count) }, (_, index) => slots[index] ?? slots[index % slots.length]);
 }
 
 export function templateSlotCount(templateId: string, customText?: string): number {

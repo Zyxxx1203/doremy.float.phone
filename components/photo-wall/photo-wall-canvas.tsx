@@ -27,6 +27,13 @@ const FRAME_BG: Record<PhotoWallFrameStyle, string> = {
   tape: "#fbf6ea",
   none: "transparent",
 };
+const FRAME_LABEL: Record<PhotoWallFrameStyle, string> = {
+  polaroid: "拍立得",
+  thin: "细框",
+  wood: "木框",
+  tape: "胶带",
+  none: "无框",
+};
 
 export const STICKER_CHOICES = ["❤", "✦", "✿", "☾", "☘", "♪", "★", "⌘"];
 const BRUSH_COLORS = ["#c2705a", "#a77b77", "#b08a54", "#5d6b8a", "#8a6b8a", "#3c3a36"];
@@ -350,9 +357,9 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   /* ── 选中照片的小工具条 ──────────────────────── */
   const nudge = (photo: PhotoWallPhoto, index: number, patch: Partial<PhotoWallPlacement>) => {
     const base = placementOf(photo, index);
-    // Lock protects position/size/orientation from every control; the explicit
-    // locked-field toggle remains allowed so the user can unlock the card.
-    if (base.locked && patch.locked === undefined) return;
+    // Lock protects placement/size/rotation. Framing remains a presentation choice.
+    if (base.locked && patch.locked === undefined && patch.frame === undefined && patch.frameColor === undefined) return;
+    onDragBegin?.();
     commit(photo.id, { ...base, ...patch } as PhotoWallPlacement);
   };
 
@@ -387,6 +394,15 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.min(3, (selectedPhoto.placement?.scale ?? 1) + 0.12) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="放大"><Plus size={14}/></button>
       <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { rotation: Math.max(-45, (selectedPhoto.placement?.rotation ?? 0) - 3) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="左转"><RotateCcw size={14}/></button>
       <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { rotation: Math.min(45, (selectedPhoto.placement?.rotation ?? 0) + 3) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="右转"><RotateCw size={14}/></button>
+      {mode === "move" && <>
+        <span className="ml-1 text-[10px] text-[#9a8973]">相框</span>
+        {(["polaroid", "thin", "wood", "tape", "none"] as PhotoWallFrameStyle[]).map(frame => <button key={frame} type="button"
+          aria-pressed={(selectedPhoto.placement?.frame ?? "polaroid") === frame}
+          onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { frame, frameColor: FRAME_BG[frame] })}
+          className={`rounded-full border px-2 py-1.5 text-[10px] ${(selectedPhoto.placement?.frame ?? "polaroid") === frame ? "border-[#87565b] bg-[#f4e6e6] text-[#87565b]" : "border-[#d7c2b1] bg-white/80 text-[#7d6d5a]"}`}>
+          {FRAME_LABEL[frame]}
+        </button>)}
+      </>}
       <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { locked: !selectedPhoto.placement?.locked })} title={selectedPhoto.placement?.locked ? "解除锁定后可移动照片" : "锁定后防止误拖动"} className={`flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px] ${selectedPhoto.placement?.locked ? "border-[#87565b] bg-[#87565b] text-white" : "border-[#d7c2b1] bg-white/80 text-[#7d6d5a]"}`}>{selectedPhoto.placement?.locked ? <Lock size={12}/> : <Unlock size={12}/>} {selectedPhoto.placement?.locked ? "已锁定" : "锁定照片"}</button>
       <button type="button" onClick={() => onOpenDetail(selectedPhoto)} className="rounded-full border border-[#87565b] bg-[#87565b] px-3 py-1.5 text-[11px] text-white">查看详情</button>
     </div>}

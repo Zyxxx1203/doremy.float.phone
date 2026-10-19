@@ -188,6 +188,7 @@ export async function renderPhotoWallPng(photos: PhotoWallPhoto[], options: Expo
         context.stroke();
       } else if (doodle.kind === "sticker" && doodle.content) {
         const point = doodle.points[0] ?? { x: 0.5, y: 0.5 };
+        context.fillStyle = doodle.color;
         context.font = `${Math.round(frameWidth * 0.18)}px sans-serif`;
         context.textAlign = "center";
         context.textBaseline = "middle";

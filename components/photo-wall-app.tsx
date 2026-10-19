@@ -174,12 +174,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const pendingScrollRef = useRef<{ left: number; top: number } | null>(null);
 
   /**
-   * 缩放时保持视口中心不动。
+   * 缩放时保持用户指定的锚点不动。
    * 只改 zoom 会让内容从左上角往外长，手指按住的地方就跑掉了；
    * 这里按同一比例把滚动位置一起推过去，手感才对。
    */
   const applyZoom = useCallback((nextZoom: number, anchor?: { x: number; y: number }) => {
-    const clamped = Math.max(15, Math.min(300, Math.round(nextZoom)));
+    const clamped = Math.max(5, Math.min(300, Math.round(nextZoom)));
     const previous = panoramaZoomRef.current;
     panoramaZoomRef.current = clamped;
     setPanoramaZoom(clamped);
@@ -197,8 +197,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [wallBackgroundUrl, setWallBackgroundUrl] = useState("");
   const wallBackgroundInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { panoramaZoomRef.current = panoramaZoom; }, [panoramaZoom]);
-  // 无界画布：首次进入编辑视图时把世界宽度适配成约 2.6 屏宽，
-  // 和升级前的「三屏宽画布」观感一致；之后缩放完全交给双指。
+  // 首次进入全景/编辑视图时将整面墙适配到可用区域；后续缩放由用户控制。
   useEffect(() => {
     if ((wallView !== "edit" && wallView !== "panorama") || zoomInitializedRef.current) return;
     const viewport = panoramaViewportRef.current;
@@ -206,7 +205,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     if (!width || !height) return;
     zoomInitializedRef.current = true;
     const fit = Math.min((96 * width) / Math.max(1, world.width), (88 * height) / Math.max(1, world.height));
-    setPanoramaZoom(Math.min(180, Math.max(15, Math.round(fit))));
+    setPanoramaZoom(Math.min(180, Math.max(5, Math.round(fit))));
   }, [wallView, world.width, state.photos.length]);
   useEffect(() => {
     if (wallView !== "edit" && wallView !== "panorama") return;
@@ -237,7 +236,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (pointers.size >= 2 && pinchModeRef.current && pinchStartRef.current) {
         if (event.cancelable) event.preventDefault(); event.stopPropagation();
         const points = [...pointers.values()].slice(0, 2), rect = viewport.getBoundingClientRect();
-        const nextZoom = Math.max(15, Math.min(300, Math.round(pinchStartRef.current.zoom * pointsDistance(points) / pinchStartRef.current.distance)));
+        const nextZoom = Math.max(5, Math.min(300, Math.round(pinchStartRef.current.zoom * pointsDistance(points) / pinchStartRef.current.distance)));
         applyZoom(nextZoom, { x: (points[0].x + points[1].x) / 2 - rect.left, y: (points[0].y + points[1].y) / 2 - rect.top });
         return;
       }
@@ -301,7 +300,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           y: (event.touches[0].clientY + event.touches[1].clientY) / 2,
         };
         const rect = viewport.getBoundingClientRect();
-        const nextZoom = Math.max(15, Math.min(300, Math.round(
+        const nextZoom = Math.max(5, Math.min(300, Math.round(
           pinchStartRef.current.zoom * touchDistance(event.touches) / pinchStartRef.current.distance,
         )));
         applyZoom(nextZoom, { x: midpoint.x - rect.left, y: midpoint.y - rect.top });
