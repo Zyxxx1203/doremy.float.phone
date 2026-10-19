@@ -7,7 +7,7 @@ import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { loadImageGenerationSettings } from "@/lib/settings-storage";
 import type { Character } from "@/lib/character-types";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
-import { loadMediaBlob, loadMediaObjectUrl, storeMediaBlob, deleteMediaRef } from "@/lib/media-cache-storage";
+import { loadMediaBlob, loadMediaObjectUrl, storeMediaBlob, deleteMediaRef, retainMediaRef, releaseMediaRef } from "@/lib/media-cache-storage";
 import { loadVirtualLifeState } from "@/lib/life/life-storage";
 import { generateChatCompletion, flattenCompletionResult, readCompressedImageDataUrl } from "@/lib/chat-engine";
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
@@ -365,6 +365,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   }, [wallView, state.photos.length, filter]);
   const [selectedCharacterId, setSelectedCharacterId] = useState<string>(() => readPhotoWallCharacter());
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
+  useEffect(() => {
+    const backgroundRef = state.wallBackgroundRef;
+    if (backgroundRef) void retainMediaRef(backgroundRef, "photo-wall-background").catch(error => console.warn("[照片墙] 背景引用保护失败", error));
+  }, [state.wallBackgroundRef]);
+
   useEffect(() => {
     let active = true;
     let loadedUrl = "";
@@ -816,14 +821,21 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     try {
       const blob = await optimizeUpload(file);
       newRef = await storeMediaBlob(blob, blob.type || file.type || "image/jpeg", "image");
+      await retainMediaRef(newRef, "photo-wall-background");
       const current = stateRef.current;
       const oldRef = current.wallBackgroundRef;
       // 记下上传时的世界尺寸：之后往四边长，背景按原比例停在它该在的区域，不会被拉糊。
       persist({ ...current, wallBackgroundRef: newRef, wallBackgroundBox: wallWorldOf(current) });
-      if (oldRef && oldRef !== newRef) void deleteMediaRef(oldRef);
-      onNotice?.("画布背景已保存。");
+      if (oldRef && oldRef !== newRef) {
+        await releaseMediaRef(oldRef, "photo-wall-background").catch(() => undefined);
+        await deleteMediaRef(oldRef).catch(() => undefined);
+      }
+      onNotice?.("画布背景已保存，并已在媒体库建立引用保护。");
     } catch (error) {
-      if (newRef) await deleteMediaRef(newRef).catch(() => undefined);
+      if (newRef) {
+        await releaseMediaRef(newRef, "photo-wall-background").catch(() => undefined);
+        await deleteMediaRef(newRef).catch(() => undefined);
+      }
       onNotice?.("设置背景失败：" + (error instanceof Error ? error.message : String(error)));
     } finally { setBusy(false); setBusyLabel(""); }
   };
@@ -831,7 +843,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const clearCanvasBackground = () => {
     const oldRef = stateRef.current.wallBackgroundRef;
     persist({ ...stateRef.current, wallBackgroundRef: undefined, wallBackgroundBox: undefined });
-    if (oldRef) void deleteMediaRef(oldRef);
+    if (oldRef) void releaseMediaRef(oldRef, "photo-wall-background").then(() => deleteMediaRef(oldRef)).catch(error => console.warn("[照片墙] 清理旧背景失败", error));
     onNotice?.("已移除画布背景，照片和涂鸦不会受影响。");
   };
 

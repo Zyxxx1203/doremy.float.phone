@@ -8,6 +8,8 @@ interface MediaCacheEntry {
     mimeType: string;
     mediaCategory: "audio" | "image" | "video" | "file";
     createdAt: number;
+    /** Persistent references held by features; generic media cleanup must not remove these. */
+    retainedBy?: string[];
 }
 
 class MediaCacheDatabase extends Dexie {
@@ -112,10 +114,39 @@ export async function loadMediaBlob(ref: string): Promise<{ blob: Blob; mimeType
     return { blob: entry.blob, mimeType: entry.mimeType, category: entry.mediaCategory };
 }
 
+/** Keep a media ref alive while a persistent feature references it. */
+export async function retainMediaRef(ref: string | undefined, owner: string): Promise<void> {
+    if (!ref || !ref.startsWith(MEDIA_STORE_PROTOCOL) || !owner.trim()) return;
+    const table = getDb().entries;
+    const id = ref.slice(MEDIA_STORE_PROTOCOL.length);
+    const entry = await table.get(id);
+    if (!entry) throw new Error("媒体文件不存在，无法建立引用保护");
+    await table.update(id, { retainedBy: Array.from(new Set([...(entry.retainedBy ?? []), owner.trim()])) });
+}
+
+/** Release one feature's reference. Deletion remains an explicit separate operation. */
+export async function releaseMediaRef(ref: string | undefined, owner: string): Promise<void> {
+    if (!ref || !ref.startsWith(MEDIA_STORE_PROTOCOL) || !owner.trim()) return;
+    const table = getDb().entries;
+    const id = ref.slice(MEDIA_STORE_PROTOCOL.length);
+    const entry = await table.get(id);
+    if (!entry) return;
+    await table.update(id, { retainedBy: (entry.retainedBy ?? []).filter(value => value !== owner.trim()) });
+}
+
+export async function isMediaRefRetained(ref: string | undefined): Promise<boolean> {
+    if (!ref || !ref.startsWith(MEDIA_STORE_PROTOCOL)) return false;
+    const entry = await getDb().entries.get(ref.slice(MEDIA_STORE_PROTOCOL.length));
+    return Boolean(entry?.retainedBy?.length);
+}
+
 export async function deleteMediaRef(ref: string | undefined): Promise<void> {
     if (!ref || !ref.startsWith(MEDIA_STORE_PROTOCOL)) return;
+    const table = getDb().entries;
     const id = ref.slice(MEDIA_STORE_PROTOCOL.length);
-    await getDb().entries.delete(id);
+    const entry = await table.get(id);
+    if (entry?.retainedBy?.length) return;
+    await table.delete(id);
 }
 
 export async function loadMediaObjectUrl(ref: string): Promise<string | null> {
