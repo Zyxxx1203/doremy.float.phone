@@ -162,10 +162,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const localVideoObjectUrlRef = useRef<string | null>(null);
   const nativeVideoCacheRef = useRef<{ url: string; cacheId: string } | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
+  const [resolutionMessage, setResolutionMessage] = useState("");
 
   useEffect(() => {
     const current = target;
-    if (!current || current.nativeVideo) return;
+    if (!current) { setResolutionMessage(""); return; }
+    if (current.nativeVideo) { setResolutionMessage("解析成功：已取得可播放的视频源，当前由小手机内置播放器播放。"); return; }
+    setResolutionMessage("正在检查此链接是否支持站内播放……");
     /**
      * 平台视频优先试一次「原生解析出真实视频流」：
      * 成功就换成同源 <video> 播放——真正的站内播放，还能直接截帧给角色看；
@@ -173,13 +176,24 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
      * （B 站要生效，壳侧 isSupportedShareUrl 需要把 bilibili.com / b23.tv 加进白名单。）
      */
     const preferNativeStream = current.platform === "bilibili";
-    if ((current.embedUrl || current.supported) && !preferNativeStream) return;
+    if ((current.embedUrl || current.supported) && !preferNativeStream) {
+      setResolutionMessage("已识别链接，当前使用平台站内播放器。这不代表已经解析出真实视频流。");
+      return;
+    }
     let host = "";
     try { host = new URL(current.url).hostname.toLowerCase(); } catch { return; }
     const roots = ["xhslink.com", "xhslink.cn", "xiaohongshu.com", "douyin.com", "iesdouyin.com", "kuaishou.com", "bilibili.com", "b23.tv"];
-    if (!roots.some(root => host === root || host.endsWith("." + root))) return;
+    if (!roots.some(root => host === root || host.endsWith("." + root))) {
+      setResolutionMessage("当前解析器不支持这个平台。可尝试站内嵌入、打开原视频或选择本地视频。");
+      return;
+    }
     const native = (window as WatchNativeWindow).AndroidShell;
-    if (!native || !native.resolveShortVideoShareUrl) return;
+    if (!native || !native.resolveShortVideoShareUrl) {
+      setResolutionMessage("当前 APK 没有提供原生视频解析能力。可以使用支持嵌入的平台，或选择本地视频。");
+      onNotice?.("原生解析不可用：请确认 APK 已更新并包含视频解析桥。");
+      return;
+    }
+    setResolutionMessage("正在请求 APK 原生解析视频流……");
     const requestId = "watch-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 9);
     let active = true;
     const onResolved = (event: Event) => {
@@ -192,15 +206,27 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       if (detail.ok && detail.cacheId && detail.contentUri) {
         nativeVideoCacheRef.current = { url: current.url, cacheId: detail.cacheId };
         setTarget(previous => previous && previous.url === current.url ? { ...previous, nativeVideo: true, nativeVideoUrl: detail.contentUri, nativeCacheId: detail.cacheId, supported: true } : previous);
-        onNotice?.("已取得可播放的视频流，可以在小手机内观看并继续讨论。");
-      } else if (!preferNativeStream) {
-        onNotice?.("小手机未能从该分享链接取得可播放的视频流：" + (detail.message || "平台可能要求登录，或使用了签名/防盗链地址。"));
+        const message = "解析成功：已取得可在小手机内播放的视频流。";
+        setResolutionMessage(message);
+        onNotice?.(message);
+      } else {
+        const message = "解析失败：未取得可播放的视频流。" + (detail.message ? "原因：" + detail.message : "可能需要登录/会员权限，或平台使用防盗链与时效地址。") + " 可尝试站内嵌入、打开原视频或播放本地文件。";
+        setResolutionMessage(message);
+        onNotice?.(message);
       }
     };
     window.addEventListener("floatshell-shared-video-ready", onResolved);
     try {
-      if (!native.resolveShortVideoShareUrl(current.url, requestId) && !preferNativeStream) onNotice?.("原生视频解析没有接受这个链接，请确认 APK 已更新。");
-    } catch { if (!preferNativeStream) onNotice?.("无法调用 APK 的原生视频解析能力。"); }
+      if (!native.resolveShortVideoShareUrl(current.url, requestId)) {
+        const message = "APK 没有接受解析请求，请检查 APK 版本及支持的平台。";
+        setResolutionMessage(message);
+        onNotice?.(message);
+      }
+    } catch {
+      const message = "调用 APK 原生解析失败，请检查 APK 版本与原生桥状态。";
+      setResolutionMessage(message);
+      onNotice?.(message);
+    }
     return () => {
       active = false;
       window.removeEventListener("floatshell-shared-video-ready", onResolved);
@@ -653,7 +679,25 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     {/* 弹幕动画：仓库里从未定义过 watchDanmaku，之前那条 animation 是空转，这里补上真实 keyframes */}
     <style>{`\n      .watch-together-main { display:flex; flex-direction:column; }
       @keyframes watchWave { from { transform:scaleY(.45); opacity:.45 } to { transform:scaleY(1.15); opacity:1 } }\n      .watch-player { flex-shrink:0; border:5px solid #342a21!important; border-radius:22px!important; background:#090807; box-shadow:0 0 0 1px rgba(255,247,233,.45),0 8px 0 #8c6847,0 24px 42px rgba(68,44,24,.26)!important; }\n      .watch-link-panel { flex-shrink:0; }\n      .watch-interaction-panel { min-width:0; }
-      .watch-together-app[data-watch-fullscreen="true"] > header { padding-top:max(3px,env(safe-area-inset-top))!important; padding-bottom:3px!important; }
+      /* Portrait mode: keep video, discussion and link controls in one viewport. */
+       @media (max-width: 699px), (orientation: portrait) {
+         .watch-together-app:not([data-watch-fullscreen="true"]) > main.watch-together-main {
+           display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(92px,25dvh) minmax(0,1fr) auto;
+           grid-template-areas:"title" "player" "interaction" "link"; gap:6px; padding:0 8px max(6px,env(safe-area-inset-bottom)); flex:1 1 auto; min-height:0; overflow:hidden;
+         }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-room-title { grid-area:title; width:100%; max-width:none; margin:0!important; padding:0!important; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player { grid-area:player; width:100%; max-width:none; height:100%; min-height:0; align-self:stretch; border-width:2px!important; border-radius:12px!important; aspect-ratio:auto; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > video,
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > iframe { width:100%; height:100%; max-height:100%; aspect-ratio:auto; object-fit:contain; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel { grid-area:interaction; width:100%; max-width:none; min-height:0; height:100%; overflow:hidden; margin:0!important; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel > div { display:flex; flex-direction:column; min-height:0; height:100%; overflow:hidden; padding:8px!important; border-radius:14px!important; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-comment-list { flex:1 1 auto; min-height:0; max-height:none; overflow-y:auto; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel section { flex:1 1 auto; min-height:0; overflow:hidden; display:flex; flex-direction:column; margin-top:6px; padding-top:6px; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel { grid-area:link; width:100%; max-width:none; margin:0!important; padding:6px!important; max-height:18dvh; overflow-y:auto; border-radius:12px!important; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel input { padding-top:7px!important; padding-bottom:7px!important; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel button { padding:7px 9px!important; }
+       }
+       .watch-together-app[data-watch-fullscreen="true"] > header { padding-top:max(3px,env(safe-area-inset-top))!important; padding-bottom:3px!important; }
       .watch-together-app[data-watch-fullscreen="true"] > main { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); grid-template-areas:"title interaction" "player interaction"; flex:1; min-height:0; overflow:hidden; gap:8px; padding:6px 8px max(8px,env(safe-area-inset-bottom)); }
       .watch-together-app[data-watch-fullscreen="true"] .watch-room-title { grid-area:title; width:100%; max-width:none; margin:0!important; padding:0!important; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-player { grid-area:player; align-self:stretch; width:100%; max-width:none; height:100%; min-height:0; border-radius:12px!important; }
@@ -811,7 +855,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         </div>
         <input ref={videoFileInputRef} type="file" accept="video/*,.mp4,.webm,.mov,.m4v,.ogv" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; openLocalVideo(file); }} />
         <input ref={screenshotFileInputRef} type="file" accept="image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; void submitScreenshotForCharacter(file); }} />
-        {target && target.platformName !== "本地视频" && !target.embedUrl && !target.nativeVideoUrl && <p className="mt-2 rounded-xl bg-[#f4e7d6] px-3 py-2 text-xs leading-5 text-[#82644c]">正在尝试原生解析。若链接无法取得公开的视频流，平台分享页不能被网页强制嵌入；可选择本地视频继续在这里播放和讨论。</p>}
+        {target && target.platformName !== "本地视频" && !target.embedUrl && !target.nativeVideoUrl && <p role="status" aria-live="polite" className="mt-2 rounded-xl bg-[#f4e7d6] px-3 py-2 text-xs leading-5 text-[#82644c]">{resolutionMessage || "等待检查视频链接……"}</p>}
+        {resolutionMessage && (target?.embedUrl || target?.nativeVideoUrl) && <p role="status" aria-live="polite" className="mt-2 rounded-xl border border-[#cdb79b]/60 bg-[#fffaf2] px-3 py-2 text-xs leading-5 text-[#82644c]">{resolutionMessage}</p>}
         {target?.platformName === "本地视频" && <p className="mt-2 px-1 text-[11px] leading-5 text-[#8b7665]">当前播放的是本地文件；选择新文件或输入链接可以切换视频。</p>}
         {platformNote && <p className="mt-2 px-1 text-[11px] leading-5 text-[#8b7665]">{platformNote}</p>}
       </div>
