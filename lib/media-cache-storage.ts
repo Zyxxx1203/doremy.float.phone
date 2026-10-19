@@ -1,4 +1,5 @@
 import Dexie from "dexie";
+import { loadPhotoWallState } from "./photo-wall-storage";
 
 // ── Database ─────────────────────────────────────
 
@@ -145,7 +146,14 @@ export async function deleteMediaRef(ref: string | undefined): Promise<void> {
     const table = getDb().entries;
     const id = ref.slice(MEDIA_STORE_PROTOCOL.length);
     const entry = await table.get(id);
-    if (entry?.retainedBy?.length) return;
+    // Old photo-wall backgrounds predate retainedBy, so check the persistent source of truth too.
+    // This keeps a background safe even if the photo-wall screen has not been opened since upgrade.
+    let referencedByPhotoWall = false;
+    try {
+        const state = loadPhotoWallState();
+        referencedByPhotoWall = state.wallBackgroundRef === ref || state.photos.some(photo => photo.mediaRef === ref);
+    } catch { /* If a damaged storage record cannot be read, still honor explicit retention metadata. */ }
+    if (entry?.retainedBy?.length || referencedByPhotoWall) return;
     await table.delete(id);
 }
 
@@ -164,6 +172,8 @@ export type MediaCacheSummary = {
     bytes: number;
     category: MediaCacheEntry["mediaCategory"];
     createdAt: number;
+    /** Explicit owners of durable feature references, e.g. photo-wall-background. */
+    retainedBy: string[];
 };
 
 /** 逐条流式读取 id/大小/类别——blob.size 只读元数据，不会把媒体内容载入内存。 */
@@ -175,6 +185,7 @@ export async function listMediaCacheSummaries(): Promise<MediaCacheSummary[]> {
             bytes: entry.blob?.size ?? 0,
             category: entry.mediaCategory,
             createdAt: entry.createdAt,
+            retainedBy: entry.retainedBy ?? [],
         });
     });
     return out;

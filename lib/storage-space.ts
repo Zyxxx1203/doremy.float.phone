@@ -197,7 +197,7 @@ async function collectOrphanMedia(): Promise<Array<{ id: string; bytes: number }
   }, [MEDIA_CACHE_DB]);
   const now = Date.now();
   return summaries
-    .filter((item) => !referenced.has(item.id) && now - item.createdAt >= ORPHAN_GRACE_MS)
+    .filter((item) => item.retainedBy.length === 0 && !referenced.has(item.id) && now - item.createdAt >= ORPHAN_GRACE_MS)
     .map((item) => ({ id: item.id, bytes: item.bytes }));
 }
 
