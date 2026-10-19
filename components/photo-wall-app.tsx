@@ -1295,7 +1295,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               {group.items.map(photo => <article key={photo.id} className="min-w-0 border border-[#e3d3c1] bg-[#fffdf8] p-1.5 pb-2 shadow-[1px_3px_8px_rgba(70,55,40,.09)]">
                 {timelineFlippedPhotoIds.has(photo.id) ? <button type="button" onClick={() => toggleTimelineFlip(photo.id)} aria-label="翻回照片正面" className="flex aspect-square w-full flex-col overflow-y-auto bg-[#fffaf2] p-2 text-left text-[#6b5947]">
                   <span className="border-b border-[#dfcfbe] pb-1 text-[8px] tracking-wide text-[#a58f77]">照片背面</span><span className="mt-1 break-words font-serif text-[10px] leading-snug">{photo.title || "未命名"}</span><span className="mt-1 whitespace-pre-wrap break-words text-[9px] leading-snug">{photo.backNote?.trim() || "背面还没有手记"}</span>
-                </button> : <button type="button" onClick={() => toggleTimelineFlip(photo.id)} aria-label="翻看照片背面" className="block aspect-square w-full overflow-hidden bg-[#e9dfd0]"><PhotoThumbnail photo={photo} onOpen={() => toggleTimelineFlip(photo.id)} /></button>}
+                </button> : <div className="aspect-square w-full overflow-hidden bg-[#e9dfd0]"><PhotoThumbnail photo={photo} onOpen={() => toggleTimelineFlip(photo.id)} /></div>}
                 <button type="button" onClick={() => openPhoto(photo)} className="mt-1.5 block w-full truncate text-left font-serif text-[10px] leading-4 text-[#655342]">{photo.title || "未命名的瞬间"}</button>
                 <p className="mt-0.5 truncate text-[9px] text-[#a08c74]">{formatDate(photo.capturedAt || photo.createdAt)}</p>
               </article>)}
