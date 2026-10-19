@@ -2628,7 +2628,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
               </label>
             ) : null}
             <div className="rb-field-group">
-            <label>离线回复库（每行一条，断网时从中选用）
+            <label>可选的离线回复文案（每行一条，断网时从中选用）
               <textarea
                 value={(editing.offlineReplies || []).join("\n")}
                 rows={4}
@@ -2639,7 +2639,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                 })}
               />
             </label>
-            <small className="rb-hint">回复会在联网时按角色的角色卡、预设、世界书与近期聊天语境预生成，之后保存在本机规则配置里。断网时只从这里选用，不临时调用模型；你仍可逐条改写。</small>
+            <small className="rb-hint">这只是断网时备用的话术，不负责执行设备动作。纯设备动作规则可以留空；需要角色回复时，联网后可按角色卡、预设、世界书与近期聊天语境预生成，再保存在本机规则配置里，断网时不临时调用模型。</small>
             <button type="button" className="rb-btn ghost" disabled={offlineReplyGenerating || !editing.actions.chat?.characterId} onClick={() => void generateOfflineReplies()}>
               {offlineReplyGenerating ? "正在让角色准备回复…" : (editing.offlineReplies?.length ? "重新生成并替换回复库" : "让角色 AI 预写离线回复")}
             </button>
@@ -2650,6 +2650,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
             {(flatRuleEditor || wizStep === 5) ? (
             <div className="rb-wiz-page">
             <p className="rb-wiz-tip">要做什么（可多选，会按顺序执行）</p>
+            <p className="rb-help">这里不只有角色说话：每个动作都是独立可选的。只勾选“直接操作手机”就能做设备动作，不必勾选“告诉一个角色”；“调用一个工具”会执行你已经启用的工具。
 
             <div className="rb-action">
               <label className="rb-check">
@@ -2855,6 +2856,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                   })} />
                 直接操作手机（不需要 iPhone）
               </label>
+              <p className="rb-help">纯设备动作可以单独运行。小手机界面关闭后，当前原生后台直连只支持“环境光线 → 手电筒”；亮度、音量、勿扰、打开应用等其它动作需要小手机运行中触发或用户确认。</p>
               {editing.actions.deviceAction ? (
                 <div className="rb-action-body">
                   <select value={editing.actions.deviceAction.action}
@@ -2923,6 +2925,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                   })} />
                 调用一个工具
               </label>
+              <p className="rb-help">这里执行已在工具箱启用的内置能力、REST/组合工具、MCP 或自定义 APP 工具。规则在小手机运行时调用工具执行器；界面完全关闭后，目前不会在原生后台任意执行工具，只有单独支持的手电筒规则例外。</p>
               {editing.actions.tool ? (
                 <div className="rb-action-body">
                   {availableTools.length === 0 ? (
