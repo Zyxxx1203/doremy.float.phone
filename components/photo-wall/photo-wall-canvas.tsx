@@ -406,7 +406,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       {ordered.length === 0 && !readOnly && <div className="pointer-events-none absolute inset-0 grid place-items-center text-[#a99a86]"><div className="text-center"><ImagePlus size={26} className="mx-auto"/><p className="mt-2 text-xs">这面墙还空着</p></div></div>}
 
       <div aria-hidden="true" className="absolute inset-0" style={{ zIndex: 0, pointerEvents: mode === "doodle" && !readOnly ? "auto" : "none", touchAction: "none" }} onPointerDown={wallDoodlePointerDown} onPointerMove={wallDoodlePointerMove} onPointerUp={wallDoodlePointerUp} onPointerCancel={wallDoodlePointerUp} />
-      {ordered.map((photo, index) => {}
+      {ordered.map((photo, index) => {
         const placement = placementOf(photo, index);
         const isSelected = photo.id === selectedId;
         return <WallPhotoFrame
