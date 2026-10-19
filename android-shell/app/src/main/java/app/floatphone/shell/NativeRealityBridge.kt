@@ -21,15 +21,29 @@ object NativeRealityBridge {
     private const val KEY_LOG = "execution_log"
     private const val KEY_RULES = "rules_json"
     private const val KEY_ENABLED = "enabled"
+    private const val KEY_DEVICE_ACTIONS_ENABLED = "device_actions_enabled"
+    private const val KEY_ALLOWED_DEVICE_ACTIONS = "allowed_device_actions"
     private const val CHANNEL = "reality_bridge_local"
     private const val MAX_ITEMS = 100
 
     fun configure(context: Context, json: String): Boolean = try {
         val config = JSONObject(json)
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putBoolean(KEY_ENABLED, config.optBoolean("enabled", false))
+        val app = context.applicationContext
+        val enabled = config.optBoolean("enabled", false)
+        val watchAmbientLight = enabled && config.optBoolean("watchAmbientLight", false)
+        app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_ENABLED, enabled)
+            .putBoolean(KEY_DEVICE_ACTIONS_ENABLED, config.optBoolean("deviceActionsEnabled", false))
+            .putString(KEY_ALLOWED_DEVICE_ACTIONS, config.optJSONArray("allowedDeviceActions")?.toString() ?: "[]")
             .putString(KEY_RULES, config.optJSONArray("rules")?.toString() ?: "[]")
             .apply()
+        val monitorIntent = Intent(app, AmbientLightMonitorService::class.java)
+        runCatching {
+            if (watchAmbientLight) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) app.startForegroundService(monitorIntent)
+                else app.startService(monitorIntent)
+            } else app.stopService(monitorIntent)
+        }
         true
     } catch (_: Throwable) { false }
 
@@ -75,7 +89,9 @@ object NativeRealityBridge {
             val template = rule.optJSONObject("process")?.optString("template", "").orEmpty()
             val selected = if (candidates.isNotEmpty()) candidates[(System.currentTimeMillis() % candidates.size).toInt()]
                 else template.ifBlank { "我注意到：{payload}" }
-            val message = selected.replace("{payload}", payload).replace("{type}", type).take(500)
+            val replyMessage = selected.replace("{payload}", payload).replace("{type}", type).take(360)
+            val actionResult = rule.optJSONObject("deviceAction")?.let { executeBackgroundDeviceAction(context, prefs, it) }.orEmpty()
+            val message = listOf(actionResult, replyMessage).filter { it.isNotBlank() }.joinToString("\n").take(500)
             val title = rule.optString("characterName").ifBlank { rule.optString("name", "现实桥") }
             val notified = postNotification(context, title, message, now)
             prefs.edit().putLong("last_run_$ruleId", now).apply()
@@ -84,6 +100,22 @@ object NativeRealityBridge {
                 else "已匹配；本机回复：$message；通知未显示（请检查通知权限/系统渠道）")
         }
         if (!matched) record(context, event, null, "未执行：没有启用且匹配的本机规则")
+    }
+
+    /** Background rules use an explicit user-controlled allow-list and only native-supported actions. */
+    private fun executeBackgroundDeviceAction(context: Context, prefs: android.content.SharedPreferences, action: JSONObject): String {
+        if (!prefs.getBoolean(KEY_DEVICE_ACTIONS_ENABLED, false)) return "未执行设备动作：设置中的「操作设备」总开关未开启"
+        val name = action.optString("action", "").trim()
+        val allowed = readArray(prefs.getString(KEY_ALLOWED_DEVICE_ACTIONS, "[]"))
+        if ((0 until allowed.length()).none { allowed.optString(it) == name }) return "未执行设备动作：该动作未在设置中明确授权"
+        if (name != "torch") return "未执行设备动作：该动作暂不支持原生后台自动执行，请保持小手机运行中"
+        val args = action.optJSONObject("args") ?: JSONObject()
+        val rawOn = args.opt("on")
+        val on = rawOn == true || rawOn?.toString().equals("true", ignoreCase = true) || rawOn?.toString() == "1"
+        val result = DeviceActionBridge(context.applicationContext).setTorch(on)
+        return if (result.optBoolean("ok", false)) {
+            if (on) "设备动作已执行：已自动打开手电筒" else "设备动作已执行：已自动关闭手电筒"
+        } else "设备动作失败：" + result.optString("reason", "设备未能执行该动作")
     }
 
     fun recentLog(context: Context): String =

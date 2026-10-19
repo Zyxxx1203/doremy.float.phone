@@ -549,6 +549,23 @@ const RULE_SCENE_TEMPLATES: RuleSceneTemplate[] = [
       actions: { deviceAction: { action: "brightness", args: { level: 25 } } },
     }),
   },
+  {
+    id: "scene_dark_flashlight",
+    title: "环境很暗时自动开手电筒",
+    desc: "照度低于约 15 lux 时直接打开手电筒。需要开启设备操作总开关并允许手电筒动作；启用后会显示 Android 常驻监测通知。强制停止或关机时不会运行。",
+    tag: "操作手机",
+    needsAndroid: true,
+    build: () => ({
+      ...newRule(),
+      name: "环境很暗时打开手电筒",
+      matchType: "环境光线",
+      payloadFilter: "很暗",
+      cooldownMinutes: 10,
+      process: { mode: "template", template: "检测到环境很暗，尝试帮你打开手电筒。", prompt: "" },
+      actions: { deviceAction: { action: "torch", args: { on: true } } },
+    }),
+  },
+
 ];
 
 const WIZ_STEP_NAMES = ["接通管道", "创建快捷指令", "选择信号", "加工内容", "决定动作", "测试与保存"] as const;
@@ -606,25 +623,36 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
       AndroidShell?: { configureNativeRealityBridge?: (json: string) => boolean };
     }).AndroidShell;
     if (!shell?.configureNativeRealityBridge) return;
+    const deviceActionConfig = loadDeviceActionConfig();
     const nativeRules = rules
       .filter(rule => !rule.schedule)
-      .map(rule => ({
-        id: rule.id,
-        name: rule.name,
-        matchType: rule.matchType,
-        payloadFilter: rule.payloadFilter || "",
-        enabled: rule.enabled === true,
-        cooldownMinutes: rule.cooldownMinutes || 0,
-        process: {
-          mode: rule.process?.mode || "raw",
-          template: rule.process?.mode === "template" ? rule.process?.template || "" : "",
-        },
-        offlineReplies: (rule.offlineReplies || []).filter(line => line.trim()).slice(0, 80),
-        characterName: loadCharacters().find(character => character.id === rule.actions.chat?.characterId)?.name || "",
-      }));
+      .map(rule => {
+        const chosenAction = rule.actions.deviceAction;
+        const canSyncAction = !!chosenAction && deviceActionConfig.enabled === true && deviceActionConfig.actions[chosenAction.action as keyof typeof deviceActionConfig.actions] === true;
+        return {
+          id: rule.id,
+          name: rule.name,
+          matchType: rule.matchType,
+          payloadFilter: rule.payloadFilter || "",
+          enabled: rule.enabled === true,
+          cooldownMinutes: rule.cooldownMinutes || 0,
+          process: {
+            mode: rule.process?.mode || "raw",
+            template: rule.process?.mode === "template" ? rule.process?.template || "" : "",
+          },
+          offlineReplies: (rule.offlineReplies || []).filter(line => line.trim()).slice(0, 80),
+          characterName: loadCharacters().find(character => character.id === rule.actions.chat?.characterId)?.name || "",
+          ...(canSyncAction ? { deviceAction: { action: chosenAction!.action, args: chosenAction!.args ?? {} } } : {}),
+        };
+      });
+    const watchesAmbientLight = rules.some(rule => rule.enabled === true && !rule.schedule && rule.matchType === "环境光线" && rule.actions.deviceAction?.action === "torch" && rule.actions.deviceAction.args?.on === true && deviceActionConfig.enabled === true && deviceActionConfig.actions.torch === true);
+
     try {
       shell.configureNativeRealityBridge(JSON.stringify({
         enabled: settings.enabled !== false,
+        deviceActionsEnabled: deviceActionConfig.enabled === true,
+        allowedDeviceActions: TOGGLEABLE_ACTIONS.filter(action => deviceActionConfig.actions[action] === true),
+        watchAmbientLight: watchesAmbientLight,
         rules: nativeRules,
       }));
     } catch {
