@@ -679,23 +679,23 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     {/* 弹幕动画：仓库里从未定义过 watchDanmaku，之前那条 animation 是空转，这里补上真实 keyframes */}
     <style>{`\n      .watch-together-main { display:flex; flex-direction:column; }
       @keyframes watchWave { from { transform:scaleY(.45); opacity:.45 } to { transform:scaleY(1.15); opacity:1 } }\n      .watch-player { flex-shrink:0; border:5px solid #342a21!important; border-radius:22px!important; background:#090807; box-shadow:0 0 0 1px rgba(255,247,233,.45),0 8px 0 #8c6847,0 24px 42px rgba(68,44,24,.26)!important; }\n      .watch-link-panel { flex-shrink:0; }\n      .watch-interaction-panel { min-width:0; }
-      /* Portrait mode: keep video, discussion and link controls in one viewport. */
+      /* Portrait mode: natural page scrolling; do not compress chat into a fixed-height tile. */
        @media (max-width: 699px), (orientation: portrait) {
          .watch-together-app:not([data-watch-fullscreen="true"]) > main.watch-together-main {
-           display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(92px,25dvh) minmax(0,1fr) auto;
-           grid-template-areas:"title" "player" "interaction" "link"; gap:6px; padding:0 8px max(6px,env(safe-area-inset-bottom)); flex:1 1 auto; min-height:0; overflow:hidden;
+           display:flex; flex-direction:column; gap:12px; padding:10px 12px max(20px,env(safe-area-inset-bottom));
+           flex:1 1 auto; min-height:0; overflow-x:hidden; overflow-y:auto!important; overscroll-behavior:contain;
          }
-         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-room-title { grid-area:title; width:100%; max-width:none; margin:0!important; padding:0!important; }
-         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player { grid-area:player; width:100%; max-width:none; height:100%; min-height:0; align-self:stretch; border-width:2px!important; border-radius:12px!important; aspect-ratio:auto; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-room-title { order:0; width:100%; max-width:none; margin:0!important; padding:0!important; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player { order:1; width:100%; max-width:none; height:auto; min-height:0; aspect-ratio:16 / 9; max-height:48dvh; align-self:stretch; border-width:3px!important; border-radius:14px!important; }
          .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > video,
-         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > iframe { width:100%; height:100%; max-height:100%; aspect-ratio:auto; object-fit:contain; }
-         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel { grid-area:interaction; width:100%; max-width:none; min-height:0; height:100%; overflow:hidden; margin:0!important; }
-         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel > div { display:flex; flex-direction:column; min-height:0; height:100%; overflow:hidden; padding:8px!important; border-radius:14px!important; }
-         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-comment-list { flex:1 1 auto; min-height:0; max-height:none; overflow-y:auto; }
-         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel section { flex:1 1 auto; min-height:0; overflow:hidden; display:flex; flex-direction:column; margin-top:6px; padding-top:6px; }
-         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel { grid-area:link; width:100%; max-width:none; margin:0!important; padding:6px!important; max-height:18dvh; overflow-y:auto; border-radius:12px!important; }
-         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel input { padding-top:7px!important; padding-bottom:7px!important; }
-         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel button { padding:7px 9px!important; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > iframe { display:block; width:100%; height:100%; max-height:48dvh; aspect-ratio:16 / 9; object-fit:contain; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel { order:2; width:100%; max-width:none; min-height:0; height:auto; overflow:visible; margin:0!important; flex-shrink:0; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel > div { display:block; min-height:0; height:auto; overflow:visible; padding:12px!important; border-radius:18px!important; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-comment-list { min-height:110px; max-height:38vh; overflow-y:auto; overscroll-behavior:contain; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel section { flex:none; min-height:0; overflow:visible; display:block; margin-top:14px; padding-top:12px; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel { order:3; width:100%; max-width:none; margin:0!important; padding:10px!important; max-height:none; overflow:visible; flex-shrink:0; border-radius:16px!important; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel input { padding-top:10px!important; padding-bottom:10px!important; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel button { padding:9px 11px!important; }
        }
        .watch-together-app[data-watch-fullscreen="true"] > header { padding-top:max(3px,env(safe-area-inset-top))!important; padding-bottom:3px!important; }
       .watch-together-app[data-watch-fullscreen="true"] > main { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); grid-template-areas:"title interaction" "player interaction"; flex:1; min-height:0; overflow:hidden; gap:8px; padding:6px 8px max(8px,env(safe-area-inset-bottom)); }

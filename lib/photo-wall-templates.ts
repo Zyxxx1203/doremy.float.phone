@@ -90,6 +90,29 @@ function scatterSlots(count: number): Slot[] {
   return slots;
 }
 
+/** 填充式：从中心开始，按一圈圈递增半径向外铺开，而不是沿边缘绕圈。 */
+function fillSlots(count: number): Slot[] {
+  const total = Math.max(1, count);
+  const slots: Slot[] = [{ x: 0.5, y: 0.5, scale: 0.86, rotation: 0 }];
+  let ring = 1;
+  while (slots.length < total && ring < 32) {
+    const radius = Math.min(0.44, ring * 0.075);
+    const perRing = Math.max(5, Math.round((Math.PI * 2 * radius) / 0.115));
+    const offset = (ring % 2) * Math.PI / perRing;
+    for (let i = 0; i < perRing && slots.length < total; i += 1) {
+      const angle = (i / perRing) * Math.PI * 2 + offset;
+      slots.push({
+        x: round(clamp01(0.5 + Math.cos(angle) * radius)),
+        y: round(clamp01(0.5 + Math.sin(angle) * radius * 0.82)),
+        scale: round(Math.max(0.62, 0.82 - (ring % 3) * 0.035)),
+        rotation: round(Math.sin(angle * 2.7) * 5),
+      });
+    }
+    ring += 1;
+  }
+  return slots.slice(0, total);
+}
+
 /**
  * 文字骨架：用离屏 canvas 画一遍文字，采样像素点作为落点。
  * 这样「LOVE」「家」「2024.6.1」这类都能排出来，不需要为每个字硬编码。
@@ -146,6 +169,7 @@ export const BUILTIN_TEMPLATES: PhotoWallTemplate[] = [
   { id: "builtin-grid", name: "整齐网格", builtin: true, slots: [] },
   { id: "builtin-ring", name: "环抱", builtin: true, slots: [] },
   { id: "builtin-scatter", name: "随手散落", builtin: true, slots: [] },
+  { id: "builtin-fill", name: "中心向外·填充", builtin: true, slots: [] },
 ];
 
 /** 按模板 id 现算骨架：数量随当前照片数变化，所以不预先固化 slots。 */
@@ -156,6 +180,7 @@ export function buildTemplateSlots(templateId: string, count: number, customText
     case "builtin-grid": slots = gridSlots(count); break;
     case "builtin-ring": slots = ringSlots(count); break;
     case "builtin-scatter": slots = scatterSlots(count); break;
+    case "builtin-fill": slots = fillSlots(count); break;
     case "builtin-text": slots = textSlots(customText || "LOVE", count); break;
     default: {
       // 自定义模板同样使用持久化的坐标骨架；此前这里只会退回网格，

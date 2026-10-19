@@ -27,6 +27,7 @@ const KIND_LABEL: Record<PhotoWallPhoto["kind"], string> = {
   favorite: "珍藏", selfie: "自拍", candid: "不经意的你", scenery: "沿途风景", object: "喜欢的小物", moment: "共同瞬间",
 };
 const KIND_OPTIONS: PhotoWallPhoto["kind"][] = ["favorite", "selfie", "candid", "scenery", "object", "moment"];
+const DEFAULT_WALL_BRUSH_PALETTE = ["#c2705a", "#a77b77", "#b08a54", "#5d6b8a", "#8a6b8a", "#3c3a36"];
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PHOTO_WALL_PROMPT_KEY = "ai_phone_photo_wall_prompt_v1";
 const PHOTO_WALL_ACTIVE_TEMPLATE_KEY = "ai_phone_photo_wall_active_template_v1";
@@ -160,7 +161,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [wallView, setWallView] = useState<"timeline" | "memories" | "panorama" | "edit" | "settings">("panorama");
   const [settingsReturnView, setSettingsReturnView] = useState<"panorama" | "edit">("panorama");
   const [panoramaZoom, setPanoramaZoom] = useState(100);
-  const [timelineRange, setTimelineRange] = useState<"all" | "7d" | "30d" | "90d" | "year">("all");
+  const [timelineStartDate, setTimelineStartDate] = useState("");
+  const [timelineEndDate, setTimelineEndDate] = useState("");
+  const [timelineGrouping, setTimelineGrouping] = useState<"photo" | "day" | "week" | "month" | "year">("month");
   const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
   const pinchPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinchModeRef = useRef(false);
@@ -171,11 +174,21 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const world = wallWorldOf(state);
   const [wallCanvasMode, setWallCanvasMode] = useState<"view" | "move" | "doodle">("view");
   const [wallBrushColor, setWallBrushColor] = useState("#c2705a");
+  const [wallColorDraft, setWallColorDraft] = useState("#c2705a");
+  const [wallBrushPalette, setWallBrushPalette] = useState<string[]>(() => {
+    try {
+      const saved = typeof window !== "undefined" ? JSON.parse(window.localStorage.getItem("photo_wall_brush_palette_v1") || "[]") : [];
+      return Array.isArray(saved) ? Array.from(new Set([...DEFAULT_WALL_BRUSH_PALETTE, ...saved.filter((value): value is string => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value))])).slice(0, 20) : DEFAULT_WALL_BRUSH_PALETTE;
+    } catch { return DEFAULT_WALL_BRUSH_PALETTE; }
+  });
   const [wallBrushWidth, setWallBrushWidth] = useState(3);
   const [wallSticker, setWallSticker] = useState<string | null>(null);
   const [wallEraser, setWallEraser] = useState(false);
   const [wallWidthDraft, setWallWidthDraft] = useState(String(world.width));
   const [wallHeightDraft, setWallHeightDraft] = useState(String(world.height));
+  useEffect(() => {
+    try { window.localStorage.setItem("photo_wall_brush_palette_v1", JSON.stringify(wallBrushPalette)); } catch { /* optional palette persistence */ }
+  }, [wallBrushPalette]);
   const zoomInitializedRef = useRef(false);
   /** 等待下一帧补偿的滚动量（扩容往左长、或缩放锚点变化时用）。 */
   const pendingScrollRef = useRef<{ left: number; top: number } | null>(null);
@@ -674,15 +687,45 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
   const photos = useMemo(() => state.photos.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [state.photos]);
   const timelinePhotos = useMemo(() => {
-    if (timelineRange === "all") return photos;
-    const floor = new Date();
-    if (timelineRange === "year") { floor.setMonth(0, 1); floor.setHours(0, 0, 0, 0); }
-    else { floor.setDate(floor.getDate() - Number(timelineRange.slice(0, -1))); floor.setHours(0, 0, 0, 0); }
+    const start = timelineStartDate ? new Date(timelineStartDate + "T00:00:00").getTime() : Number.NEGATIVE_INFINITY;
+    const end = timelineEndDate ? new Date(timelineEndDate + "T23:59:59.999").getTime() : Number.POSITIVE_INFINITY;
     return photos.filter(photo => {
-      const at = new Date(photo.capturedAt || photo.createdAt);
-      return Number.isFinite(at.getTime()) && at.getTime() >= floor.getTime();
-    });
-  }, [photos, timelineRange]);
+      const value = new Date(photo.capturedAt || photo.createdAt).getTime();
+      return Number.isFinite(value) && value >= start && value <= end;
+    }).sort((a, b) => (b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt));
+  }, [photos, timelineStartDate, timelineEndDate]);
+
+  const timelineGroups = useMemo(() => {
+    const groups = new Map<string, { key: string; label: string; items: PhotoWallPhoto[] }>();
+    const localKey = (date: Date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+    for (const photo of timelinePhotos) {
+      const date = new Date(photo.capturedAt || photo.createdAt);
+      let key = "", label = "";
+      if (timelineGrouping === "photo") {
+        key = "photo:" + photo.id;
+        label = formatDate(photo.capturedAt || photo.createdAt);
+      } else if (timelineGrouping === "day") {
+        key = localKey(date);
+        label = date.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
+      } else if (timelineGrouping === "week") {
+        const start = new Date(date); start.setHours(0, 0, 0, 0);
+        start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+        const end = new Date(start); end.setDate(end.getDate() + 6);
+        key = "week:" + localKey(start);
+        label = localKey(start) + " — " + localKey(end);
+      } else if (timelineGrouping === "year") {
+        key = String(date.getFullYear());
+        label = key + " 年";
+      } else {
+        key = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
+        label = date.getFullYear() + " 年 " + (date.getMonth() + 1) + " 月";
+      }
+      const group = groups.get(key) ?? { key, label, items: [] };
+      group.items.push(photo);
+      groups.set(key, group);
+    }
+    return [...groups.values()];
+  }, [timelinePhotos, timelineGrouping]);
   /**
    * 整墙涂鸦在「一笔画完」时才回调，所以在这里扩容是安全的：
    * 不会边画边改画布，也不会把正在画的那笔截断。
@@ -1172,7 +1215,23 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             <button type="button" onClick={applyWallDimensions} className="shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[10px] text-[#7d6d5a]">应用尺寸</button>
           </div>
           {wallCanvasMode === "doodle" && <div className="mb-2 flex flex-wrap items-center gap-2 border-b border-[#e6d9cb] bg-[#fffaf2]/85 px-2 py-2">
-            {["#c2705a","#a77b77","#b08a54","#5d6b8a","#8a6b8a","#3c3a36"].map(color => <button key={color} type="button" aria-label={"画笔颜色 "+color} onClick={() => { setWallBrushColor(color); setWallSticker(null); setWallEraser(false); }} className={wallBrushColor===color&&!wallSticker&&!wallEraser?"h-5 w-5 border border-[#6b5c4a] ring-2 ring-[#e7d6c6]":"h-5 w-5 border border-white/70"} style={{background:color}}/>)}
+            {wallBrushPalette.map(color => <button key={color} type="button" aria-label={"画笔颜色 "+color} title={"画笔颜色 "+color} onClick={() => { setWallBrushColor(color); setWallColorDraft(color); setWallSticker(null); setWallEraser(false); }} className={wallBrushColor===color&&!wallSticker&&!wallEraser?"h-5 w-5 border border-[#6b5c4a] ring-2 ring-[#e7d6c6]":"h-5 w-5 border border-white/70"} style={{background:color}}/>)}
+            <label className="flex items-center gap-1 text-[10px] text-[#8b7665]">色号
+              <input type="color" value={/^#[0-9a-f]{6}$/i.test(wallColorDraft) ? wallColorDraft : wallBrushColor} onChange={event => { setWallColorDraft(event.target.value); setWallBrushColor(event.target.value); setWallSticker(null); setWallEraser(false); }} aria-label="选择涂鸦颜色" className="h-6 w-7 cursor-pointer border-0 bg-transparent p-0"/>
+              <input type="text" value={wallColorDraft} onChange={event => setWallColorDraft(event.target.value)} placeholder="#c2705a" aria-label="输入涂鸦颜色十六进制色号" className="w-[78px] border-b border-[#d8c6b5] bg-transparent px-1 py-1 text-[10px] uppercase text-[#5d4942] outline-none"/>
+            </label>
+            <button type="button" onClick={() => {
+              const value = wallColorDraft.trim().startsWith("#") ? wallColorDraft.trim().toLowerCase() : "#" + wallColorDraft.trim().toLowerCase();
+              if (!/^#[0-9a-f]{6}$/i.test(value)) { onNotice?.("色号格式应为 #RRGGBB，例如 #d98ca3。"); return; }
+              setWallBrushColor(value); setWallColorDraft(value); setWallBrushPalette(current => current.includes(value) ? current : [...current, value].slice(-20)); setWallSticker(null); setWallEraser(false);
+            }} className="border border-[#d8c6b5] px-2 py-1 text-[10px] text-[#7d6d5a]">添加色号</button>
+            <button type="button" onClick={() => {
+              const value = wallColorDraft.trim().startsWith("#") ? wallColorDraft.trim().toLowerCase() : "#" + wallColorDraft.trim().toLowerCase();
+              if (!/^#[0-9a-f]{6}$/i.test(value)) { onNotice?.("色号格式应为 #RRGGBB，例如 #d98ca3。"); return; }
+              const oldIndex = Math.max(0, wallBrushPalette.indexOf(wallBrushColor));
+              setWallBrushPalette(current => { const next = [...current]; if (!next.length) return [value]; next[Math.min(oldIndex, next.length - 1)] = value; return Array.from(new Set(next)).slice(0, 20); });
+              setWallBrushColor(value); setWallColorDraft(value); setWallSticker(null); setWallEraser(false);
+            }} className="border border-[#d8c6b5] px-2 py-1 text-[10px] text-[#7d6d5a]">替换当前色块</button>
             {[2,3,5,8].map(width => <button key={width} type="button" onClick={() => setWallBrushWidth(width)} aria-pressed={wallBrushWidth===width} className={wallBrushWidth===width?"border border-[#6b5c4a] bg-[#6b5c4a] px-2 py-1 text-[10px] text-white":"border border-[#d8c6b5] px-2 py-1 text-[10px] text-[#7d6d5a]"}>{width}</button>)}
             {["❤","✦","✿","☾","☘","♪","★","⌘"].map(item => <button key={item} type="button" onClick={() => {setWallSticker(wallSticker===item?null:item);setWallEraser(false)}} aria-pressed={wallSticker===item} className={wallSticker===item?"bg-[#6b5c4a] px-1.5 py-1 text-white":"bg-white/70 px-1.5 py-1 text-[#7d6d5a]"}>{item}</button>)}
             <button type="button" onClick={() => {setWallEraser(!wallEraser);setWallSticker(null)}} aria-pressed={wallEraser} className={wallEraser?"bg-[#a06a58] px-2 py-1 text-[10px] text-white":"border border-[#d8c6b5] px-2 py-1 text-[10px] text-[#7d6d5a]"}>橡皮</button>
@@ -1218,40 +1277,30 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           </article>)}
         </div> : <div className="grid min-h-[45dvh] place-items-center text-center text-[#8f806d]"><div><Feather size={28} className="mx-auto"/><p className="mt-3">还没有收录的回忆</p><button type="button" onClick={() => { setWallView("edit"); setShowAddMenu(true); }} className="mt-3 border-b border-[#bda28d] px-2 py-2 text-sm">添加第一张照片</button></div></div>}
       </div> : <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-24 pt-4 sm:px-7" style={{WebkitOverflowScrolling:"touch"}}>
-        <div className="sticky top-0 z-20 mx-auto mb-4 flex max-w-2xl items-center gap-2 border-b border-[#d8c4b4] bg-[#f3eadc]/95 px-2 py-2 backdrop-blur"><span className="shrink-0 text-[11px] text-[#8b7665]">时间</span><select value={timelineRange} onChange={event => setTimelineRange(event.target.value as typeof timelineRange)} aria-label="筛选照片时间" className="min-w-0 flex-1 rounded-lg border border-[#d8c4b4] bg-[#fffaf1] px-3 py-2 text-xs text-[#6d5946]"><option value="all">全部时间</option><option value="7d">最近 7 天</option><option value="30d">最近 30 天</option><option value="90d">最近 90 天</option><option value="year">今年</option></select><span className="shrink-0 text-[10px] text-[#a18e7a]">{timelinePhotos.length} 张</span></div>
-        {timelinePhotos.length === 0 ? <div className="grid min-h-[55dvh] place-items-center text-center text-[#8f806d]"><div><Feather size={28} className="mx-auto"/><p className="mt-3">还没有收录的回忆</p><p className="mt-1 text-xs">进入编辑，添加第一张照片。</p></div></div> : <div className="mx-auto max-w-2xl space-y-4">
-          {[...new Set([...timelinePhotos].sort((a,b)=>(b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt)).map(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return Number.isNaN(date.getTime()) ? "未知时间" : `${date.getFullYear()}.${String(date.getMonth()+1).padStart(2,"0")}`; }))].map(group => {
-            const items = timelinePhotos.filter(photo => { const date = new Date(photo.capturedAt || photo.createdAt); return (Number.isNaN(date.getTime()) ? "未知时间" : `${date.getFullYear()}.${String(date.getMonth()+1).padStart(2,"0")}`) === group; }).sort((a,b)=>(b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt));
-            return <section key={group} className="relative pl-5 before:absolute before:bottom-0 before:left-1 before:top-8 before:w-px before:bg-[#d8c4ab]">
-              <h2 className="sticky top-0 z-10 mb-3 border-b border-[#d8c4b4] bg-[#f3eadc]/95 px-1 py-2 font-serif text-base text-[#75624d] backdrop-blur">{group} <span className="mx-1 text-[#c4ad91]">｜</span><span className="text-sm">我们的时光</span></h2>
-              <div className="space-y-3">{items.map((photo,index) => <article key={photo.id} className="relative border-l border-[#d5bba7] pl-4 pb-2 text-left">
-                <span className="absolute -left-[5px] top-5 h-2 w-2 border border-[#b88c82] bg-[#f3eadc]"/>
-                <div className="mx-auto max-w-[260px] border border-[#e3d3c1] bg-[#fffdf8] p-2 pb-4 shadow-[2px_5px_12px_rgba(70,55,40,.13)]">
-                  {timelineFlippedPhotoIds.has(photo.id) ? (
-                    <button type="button" onClick={() => toggleTimelineFlip(photo.id)} aria-label="翻回照片正面" className="flex aspect-square w-full flex-col overflow-y-auto bg-[#fffaf2] p-4 text-left text-[#6b5947]">
-                      <div className="border-b border-[#dfcfbe] pb-2 text-[9px] tracking-[.2em] text-[#a58f77]">THE BACK · 照片背面</div>
-                      <h3 className="mt-3 break-words font-serif text-base leading-6">{photo.title || "未命名的瞬间"}</h3>
-                      <p className="mt-3 whitespace-pre-wrap break-words text-xs leading-6">{photo.backNote?.trim() || "这张照片的背面还空着。你可以打开详情，为它写下一段手记。"}</p>
-                      {photo.caption && <p className="mt-3 border-t border-[#e8dccd] pt-2 text-[11px] leading-5 text-[#8d7a65]">照片说明：{photo.caption}</p>}
-                      {photo.annotations.length > 0 && <div className="mt-3 border-t border-[#e8dccd] pt-2">{photo.annotations.map(note=><p key={note.id} className="mt-1 break-words text-xs leading-5">「{note.content}」<span className="ml-1 text-[10px] text-[#b29b88]">— {note.authorName}</span></p>)}</div>}
-                      <span className="mt-auto pt-3 text-center text-[10px] text-[#aa927d]">点击卡片翻回正面</span>
-                    </button>
-                  ) : (
-                    <>
-                      <div className="overflow-hidden bg-[#e9dfd0]"><PhotoThumbnail photo={photo} onOpen={() => toggleTimelineFlip(photo.id)} /></div>
-                      <button type="button" onClick={() => toggleTimelineFlip(photo.id)} className="mt-2 block w-full text-center font-serif text-sm leading-5 text-[#655342]">{photo.title || "未命名的瞬间"}</button>
-                      {photo.caption && <p className="mt-1 whitespace-pre-wrap text-center font-serif text-xs leading-5 text-[#8d7a65]">{photo.caption}</p>}
-                      {photo.tags.length > 0 && <p className="mt-2 text-center text-[10px] tracking-wide text-[#a18172]">{photo.tags.map(tag => "#" + tag).join("　")}</p>}
-                      <p className="mt-2 text-center text-[10px] tracking-wide text-[#b29b88]">点击照片翻面，查看背面的手记与留言</p>
-                    </>
-                  )}
-                  <button type="button" onClick={() => openPhoto(photo)} className="mt-3 block w-full rounded-lg border border-[#d8c4af] px-3 py-2 text-xs text-[#795b52]">查看大图 / 编辑</button>
-                  <p className="mt-2 text-center text-[10px] tracking-wider text-[#a08c74]">{formatDate(photo.capturedAt || photo.createdAt)}</p>
-                </div>
-              </article>)}</div>
-            </section>;
-          })}
-        </div>}
+        <div className="sticky top-0 z-20 mx-auto mb-4 flex max-w-4xl flex-wrap items-center gap-2 border-b border-[#d8c4b4] bg-[#f3eadc]/95 px-2 py-2 backdrop-blur">
+          <span className="shrink-0 text-[11px] text-[#8b7665]">日期区间</span>
+          <label className="flex items-center gap-1 text-[10px] text-[#8b7665]">从<input type="date" value={timelineStartDate} max={timelineEndDate || undefined} onChange={event => setTimelineStartDate(event.target.value)} aria-label="开始日期" className="min-w-0 rounded-lg border border-[#d8c4b4] bg-[#fffaf1] px-2 py-1.5 text-xs text-[#6d5946]"/></label>
+          <label className="flex items-center gap-1 text-[10px] text-[#8b7665]">到<input type="date" value={timelineEndDate} min={timelineStartDate || undefined} onChange={event => setTimelineEndDate(event.target.value)} aria-label="结束日期" className="min-w-0 rounded-lg border border-[#d8c4b4] bg-[#fffaf1] px-2 py-1.5 text-xs text-[#6d5946]"/></label>
+          <button type="button" onClick={() => { setTimelineStartDate(""); setTimelineEndDate(""); }} className="border-b border-[#d8c4b4] px-1.5 py-1 text-[10px] text-[#8b7665]">清除日期</button>
+          <label className="flex items-center gap-1 text-[10px] text-[#8b7665]">分组<select value={timelineGrouping} onChange={event => setTimelineGrouping(event.target.value as typeof timelineGrouping)} aria-label="时间轴分组方式" className="rounded-lg border border-[#d8c4b4] bg-[#fffaf1] px-2 py-1.5 text-xs text-[#6d5946]"><option value="photo">每张</option><option value="day">每天</option><option value="week">每周</option><option value="month">每月</option><option value="year">每年</option></select></label>
+          <span className="ml-auto shrink-0 text-[10px] text-[#a18e7a]">{timelinePhotos.length} 张</span>
+        </div>
+        {timelinePhotos.length === 0 ? <div className="grid min-h-[55dvh] place-items-center text-center text-[#8f806d]"><div><Feather size={28} className="mx-auto"/><p className="mt-3">这个日期范围里还没有照片</p><p className="mt-1 text-xs">可以调整日期，或清除日期重新查看全部。</p></div></div> : <div className="mx-auto max-w-5xl space-y-5">
+          {timelineGroups.map(group => <section key={group.key} className="relative">
+            <header className="sticky top-0 z-10 mb-3 flex items-center justify-between gap-2 border-b border-[#d8c4b4] bg-[#f3eadc]/95 px-2 py-2 backdrop-blur">
+              <h2 className="font-serif text-base text-[#75624d]">{group.label}</h2><span className="shrink-0 text-[10px] text-[#a18e7a]">{group.items.length} 张</span>
+            </header>
+            <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-3 lg:grid-cols-6">
+              {group.items.map(photo => <article key={photo.id} className="min-w-0 border border-[#e3d3c1] bg-[#fffdf8] p-1.5 pb-2 shadow-[1px_3px_8px_rgba(70,55,40,.09)]">
+                {timelineFlippedPhotoIds.has(photo.id) ? <button type="button" onClick={() => toggleTimelineFlip(photo.id)} aria-label="翻回照片正面" className="flex aspect-square w-full flex-col overflow-y-auto bg-[#fffaf2] p-2 text-left text-[#6b5947]">
+                  <span className="border-b border-[#dfcfbe] pb-1 text-[8px] tracking-wide text-[#a58f77]">照片背面</span><span className="mt-1 break-words font-serif text-[10px] leading-snug">{photo.title || "未命名"}</span><span className="mt-1 whitespace-pre-wrap break-words text-[9px] leading-snug">{photo.backNote?.trim() || "背面还没有手记"}</span>
+                </button> : <button type="button" onClick={() => toggleTimelineFlip(photo.id)} aria-label="翻看照片背面" className="block aspect-square w-full overflow-hidden bg-[#e9dfd0]"><PhotoThumbnail photo={photo} onOpen={() => toggleTimelineFlip(photo.id)} /></button>}
+                <button type="button" onClick={() => openPhoto(photo)} className="mt-1.5 block w-full truncate text-left font-serif text-[10px] leading-4 text-[#655342]">{photo.title || "未命名的瞬间"}</button>
+                <p className="mt-0.5 truncate text-[9px] text-[#a08c74]">{formatDate(photo.capturedAt || photo.createdAt)}</p>
+              </article>)}
+            </div>
+          </section>)}
+        </div>
       </div>}
     </main>
 

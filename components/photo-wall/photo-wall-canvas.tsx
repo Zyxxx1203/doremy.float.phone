@@ -271,6 +271,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
 
   const doodlePointerDown = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number) => {
     if (mode !== "doodle") return;
+    event.preventDefault();
     event.stopPropagation();
     const point = pointOn(event, photo, index);
     const existing = photo.doodles ?? [];
@@ -466,6 +467,7 @@ type FrameProps = {
 
 function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, onToggleFlip, doodleMode, draftPoints, onPointerDownMove, onPointerDownResize, onDoodlePointerDown, onDoodlePointerMove, onDoodlePointerUp, onOpenDetail, readOnly }: FrameProps) {
   const [src, setSrc] = useState("");
+  const objectUrlRef = useRef<string | null>(null);
   const [failed, setFailed] = useState(false);
   /** 无界画布可能很大：滚出视野的照片先不解码，回来再补，避免几十张图一起占内存。 */
   const [inView, setInView] = useState(true);
@@ -484,14 +486,18 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
   useEffect(() => {
     if (!inView || src) return;
     let active = true;
-    let url = "";
     setFailed(false);
     void loadMediaObjectUrl(photo.mediaRef).then(value => {
       if (!active) { if (value) URL.revokeObjectURL(value); return; }
-      if (value) { url = value; setSrc(value); } else setFailed(true);
+      if (value) { objectUrlRef.current = value; setSrc(value); } else setFailed(true);
     }).catch(() => { if (active) setFailed(true); });
-    return () => { active = false; if (url) URL.revokeObjectURL(url); };
+    // setSrc rerenders this component; don't revoke the URL in that effect cleanup.
+    return () => { active = false; };
   }, [photo.mediaRef, inView, src]);
+
+  useEffect(() => () => {
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+  }, []);
 
   const frame = placement.frame;
   const pad = FRAME_PADDING[frame];
@@ -519,9 +525,21 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
         borderRadius: frame === "thin" ? 1 : frame === "none" ? 2 : 1,
         boxShadow: frame === "none" ? "0 3px 8px rgba(70,55,38,.14)" : "0 4px 12px rgba(70,55,38,.13)",
       }}
-      onPointerDown={(event) => { if (!doodleMode) onPointerDownMove(event); }}
-      onClick={event => { event.stopPropagation(); if (!placementMode && !doodleMode) onToggleFlip(); }}
-       onDoubleClick={event => { event.stopPropagation(); if (!readOnly && !placementMode && !doodleMode) onOpenDetail(); }}
+      onPointerDown={(event) => {
+        if (doodleMode || readOnly) { event.preventDefault(); event.stopPropagation(); return; }
+        if (placementMode) { event.preventDefault(); event.stopPropagation(); }
+        onPointerDownMove(event);
+      }}
+      onClick={event => {
+        event.stopPropagation();
+        if (readOnly || placementMode || doodleMode) { event.preventDefault(); return; }
+        onToggleFlip();
+      }}
+       onDoubleClick={event => {
+        event.stopPropagation();
+        if (readOnly || placementMode || doodleMode) { event.preventDefault(); return; }
+        onOpenDetail();
+      }}
     >
       {flipped ? <div className="relative flex w-full flex-col overflow-y-auto rounded-sm bg-[#fffaf2] p-2.5 text-[#6b5947]" style={{ aspectRatio: "1 / 1", borderRadius: frame === "none" ? 2 : 1 }}>
         <div className="border-b border-[#dfcfbe] pb-1 text-[7px] tracking-[.2em] text-[#a58f77]">THE BACK · 背面</div>
@@ -559,11 +577,12 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
       {doodleMode && <div
         className="absolute inset-0 cursor-crosshair"
         style={{ touchAction: "none" }}
-        onPointerDown={onDoodlePointerDown}
-        onClick={event => event.stopPropagation()}
-        onPointerMove={onDoodlePointerMove}
-        onPointerUp={onDoodlePointerUp}
-        onPointerCancel={onDoodlePointerUp}
+        onPointerDown={event => { event.preventDefault(); event.stopPropagation(); onDoodlePointerDown(event); }}
+        onClick={event => { event.preventDefault(); event.stopPropagation(); }}
+        onDoubleClick={event => { event.preventDefault(); event.stopPropagation(); }}
+        onPointerMove={event => { event.stopPropagation(); onDoodlePointerMove(event); }}
+        onPointerUp={event => { event.preventDefault(); event.stopPropagation(); onDoodlePointerUp(event); }}
+        onPointerCancel={event => { event.stopPropagation(); onDoodlePointerUp(event); }}
       />}
 
       </>}
