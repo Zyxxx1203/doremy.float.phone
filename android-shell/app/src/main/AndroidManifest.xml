@@ -235,6 +235,10 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/phone_widget_info" />
         </receiver>
+        <receiver
+            android:name=".PhoneWidgetPinReceiver"
+            android:enabled="true"
+            android:exported="false" />
 
         <!-- 浮窗通知上的动作按钮（挂断/返回） -->
         <receiver

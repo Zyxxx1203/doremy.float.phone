@@ -2028,6 +2028,20 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
             true
         }.getOrDefault(false)
 
+        /** Update an independent profile without overwriting the legacy single-widget cache. */
+        @JavascriptInterface
+        fun updateProfile(profileId: String, html: String, widthDp: Int, heightDp: Int, scale: Int): Boolean = runCatching {
+            if (profileId.isBlank() || profileId == "default") return false
+            PhoneWidgetRenderer.renderAndPush(this@MainActivity, profileId, html, widthDp, heightDp, scale)
+            true
+        }.getOrDefault(false)
+
+        @JavascriptInterface
+        fun deleteProfile(profileId: String): Boolean = PhoneWidgetProvider.deleteProfile(this@MainActivity, profileId)
+
+        @JavascriptInterface
+        fun requestPinProfile(profileId: String): Boolean = PhoneWidgetProvider.requestPinProfile(this@MainActivity, profileId)
+
         /** 用上次缓存的 HTML 重画一次（用户改完尺寸/主题时调用）。 */
         @JavascriptInterface
         fun refresh(): Boolean = runCatching {
