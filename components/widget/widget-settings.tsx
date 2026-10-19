@@ -22,6 +22,15 @@ import {
   WIDGET_PLACEHOLDERS,
   WIDGET_UPDATED_EVENT,
   canGenerateAvatar,
+  deleteWidgetProfile,
+  deleteWidgetProfileNative,
+  injectWidgetCss,
+  loadWidgetProfiles,
+  pushWidgetProfileHtml,
+  requestPinWidgetProfile,
+  saveWidgetProfile,
+  syncWidgetProfilesToNative,
+  type WidgetProfile,
   hasWidgetBridge,
   isWidgetPlaced,
   loadWidgetConfig,
@@ -55,13 +64,17 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
   const [dataVersion, setDataVersion] = useState(0);
   /** 诊断结果（逐行）。null = 还没点过「检查」。 */
   const [diagnosis, setDiagnosis] = useState<string[] | null>(null);
+  const [profiles, setProfiles] = useState<WidgetProfile[]>(() => loadWidgetProfiles());
+  const [profileDraft, setProfileDraft] = useState<WidgetProfile | null>(null);
 
   const characters = useMemo(() => loadCharacters().map(c => ({ id: c.id, name: c.name, avatar: c.avatar ?? "" })), []);
 
   const refresh = useCallback(() => {
     setConfig(loadWidgetConfig());
     setPlaced(isWidgetPlaced());
+    setProfiles(loadWidgetProfiles());
     setDataVersion(v => v + 1);
+    syncWidgetProfilesToNative();
   }, []);
 
   useEffect(() => {
@@ -171,6 +184,86 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
     setDataVersion(v => v + 1);
     onNotice?.("已写入示例内容");
   }, [config.characterId, activeCharacterAvatar, onNotice]);
+
+  const createProfile = useCallback(() => {
+    const now = new Date().toISOString();
+    const profile: WidgetProfile = {
+      id: "widget-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
+      name: "自定义小组件 " + (profiles.length + 1),
+      characterId: config.characterId || characters[0]?.id || "",
+      template: templateDraft || DEFAULT_WIDGET_TEMPLATE,
+      customCss: "",
+      widthDp: config.widthDp,
+      heightDp: config.heightDp,
+      scale: config.scale,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setProfileDraft(profile);
+    onNotice?.("已创建独立配置。可以分别选择角色、编辑 HTML/CSS，再添加到真实桌面。");
+  }, [profiles.length, config, characters, templateDraft, onNotice]);
+
+  const profilePreviewHtml = useMemo(() => {
+    if (!profileDraft) return "";
+    const character = characters.find(item => item.id === profileDraft.characterId);
+    const actual = loadWidgetData(profileDraft.characterId);
+    const data = actual ?? {
+      characterId: profileDraft.characterId,
+      text: SAMPLE_TEXT,
+      status: SAMPLE_STATUS,
+      avatar: character?.avatar ?? "",
+      updatedAt: new Date().toISOString(),
+      source: "manual" as const,
+    };
+    return injectWidgetCss(
+      renderWidgetHtml(profileDraft.template || DEFAULT_WIDGET_TEMPLATE, data, character?.name ?? "角色", "你"),
+      profileDraft.customCss,
+    );
+  }, [profileDraft, characters, dataVersion]);
+
+  const patchProfileDraft = (patch: Partial<WidgetProfile>) => {
+    setProfileDraft(current => current ? { ...current, ...patch } : current);
+  };
+
+  const persistProfileDraft = () => {
+    if (!profileDraft) return;
+    saveWidgetProfile(profileDraft);
+    setProfiles(loadWidgetProfiles());
+    onNotice?.("已保存「" + profileDraft.name + "」配置。");
+  };
+
+  const pushProfileDraft = () => {
+    if (!profileDraft) return;
+    saveWidgetProfile(profileDraft);
+    setProfiles(loadWidgetProfiles());
+    if (!hasWidgetBridge()) { onNotice?.("当前 App 版本没有桌面小组件桥，请安装新版 APK。"); return; }
+    const ok = pushWidgetProfileHtml(profileDraft.id, profilePreviewHtml, {
+      widthDp: profileDraft.widthDp, heightDp: profileDraft.heightDp, scale: profileDraft.scale,
+    });
+    onNotice?.(ok ? "已提交该配置的原生渲染。添加前请确认桌面诊断显示渲染成功。" : "当前 APK 尚不支持独立小组件配置，需要更新安卓壳。");
+  };
+
+  const placeProfileDraft = () => {
+    if (!profileDraft) return;
+    saveWidgetProfile(profileDraft);
+    setProfiles(loadWidgetProfiles());
+    if (!hasWidgetBridge()) { onNotice?.("当前 App 版本没有桌面小组件桥，请安装新版 APK。"); return; }
+    const pushed = pushWidgetProfileHtml(profileDraft.id, profilePreviewHtml, {
+      widthDp: profileDraft.widthDp, heightDp: profileDraft.heightDp, scale: profileDraft.scale,
+    });
+    if (!pushed) { onNotice?.("原生侧没有接受这份模板，无法继续添加；请检查 APK 版本。"); return; }
+    const accepted = requestPinWidgetProfile(profileDraft.id);
+    onNotice?.(accepted ? "已请求系统添加「" + profileDraft.name + "」。请在桌面弹出的确认流程中完成添加；每次添加都会成为独立实例。" : "当前 APK 或启动器不支持按配置添加，需要更新安卓壳或在桌面手动添加默认小组件。");
+  };
+
+  const removeProfileDraft = () => {
+    if (!profileDraft) return;
+    const removed = deleteWidgetProfileNative(profileDraft.id);
+    deleteWidgetProfile(profileDraft.id);
+    setProfiles(loadWidgetProfiles());
+    setProfileDraft(null);
+    onNotice?.(removed ? "已删除配置；关联的桌面实例已恢复为默认小组件。" : "已删除本地配置。旧 APK 里的桌面实例无法按配置清理，更新新版 APK 后即可管理独立实例。");
+  };
 
   const bridgeOk = hasWidgetBridge();
   const previewWidth = clampInt(config.widthDp, WIDGET_LIMITS.widthDp.min, WIDGET_LIMITS.widthDp.max);
@@ -447,6 +540,61 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
           </div>
         </>
       ) : null}
+
+      {/* Independent desktop instances: each profile owns its HTML/CSS cache in the Android shell. */}
+      <div className="ws-card">
+        <div className="ws-card-head">
+          <span className="ws-card-title">自定义桌面小组件 · 多实例</span>
+          <button type="button" className="ws-link" onClick={createProfile}>＋ 新建配置</button>
+        </div>
+        <p className="ws-hint">可以保存任意多个配置：每个配置能选不同角色、单独写 HTML 和 CSS、分别设置尺寸；同一配置也能多次添加到真实手机桌面。实际实例数受 Android 启动器和设备资源限制，应用本身不设固定上限。</p>
+        {profiles.length ? <div className="ws-inline-row" style={{flexWrap:"wrap",gap:8}}>
+          <span>已保存 {profiles.length} 个配置</span>
+          {profiles.map(profile => <button key={profile.id} type="button" className="ws-link" onClick={() => setProfileDraft({...profile})}>{profile.name}</button>)}
+        </div> : <p className="ws-hint">还没有独立配置。点“新建配置”创建第一块自定义桌面组件。</p>}
+        {profileDraft ? <div className="ws-profile-editor" style={{display:"grid",gap:12,marginTop:14}}>
+          <label className="ws-field">配置名称
+            <input value={profileDraft.name} maxLength={60} onChange={event => patchProfileDraft({name:event.target.value})} />
+          </label>
+          <label className="ws-field">显示哪个角色
+            <select value={profileDraft.characterId} onChange={event => patchProfileDraft({characterId:event.target.value})}>
+              {characters.length === 0 ? <option value="">还没有角色</option> : null}
+              {characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}
+            </select>
+          </label>
+          <div className="ws-preview-card">
+            <div className="ws-preview-head"><b>该配置的实时预览</b><span>{profileDraft.widthDp} × {profileDraft.heightDp} dp</span></div>
+            <div className="ws-preview-stage"><iframe key={profilePreviewHtml} title="自定义小组件预览" className="ws-preview-frame" srcDoc={profilePreviewHtml} sandbox="" style={{width:clampInt(profileDraft.widthDp,WIDGET_LIMITS.widthDp.min,WIDGET_LIMITS.widthDp.max),height:clampInt(profileDraft.heightDp,WIDGET_LIMITS.heightDp.min,WIDGET_LIMITS.heightDp.max)}} /></div>
+          </div>
+          <div className="ws-grid2">
+            <label className="ws-field">宽（dp）<input type="number" min={WIDGET_LIMITS.widthDp.min} max={WIDGET_LIMITS.widthDp.max} value={profileDraft.widthDp} onChange={event => patchProfileDraft({widthDp:clampInt(Number(event.target.value)||profileDraft.widthDp,WIDGET_LIMITS.widthDp.min,WIDGET_LIMITS.widthDp.max)})}/></label>
+            <label className="ws-field">高（dp）<input type="number" min={WIDGET_LIMITS.heightDp.min} max={WIDGET_LIMITS.heightDp.max} value={profileDraft.heightDp} onChange={event => patchProfileDraft({heightDp:clampInt(Number(event.target.value)||profileDraft.heightDp,WIDGET_LIMITS.heightDp.min,WIDGET_LIMITS.heightDp.max)})}/></label>
+          </div>
+          <label className="ws-field">清晰度
+            <select value={profileDraft.scale} onChange={event => patchProfileDraft({scale:Number(event.target.value)})}><option value={1}>省空间</option><option value={2}>标准</option><option value={3}>更清晰</option></select>
+          </label>
+          <label className="ws-field">HTML 模板（支持参数替换）
+            <textarea className="ws-template" spellCheck={false} rows={14} value={profileDraft.template} onChange={event => patchProfileDraft({template:event.target.value})}/>
+          </label>
+          <label className="ws-field">独立 CSS（覆盖上方模板样式）
+            <textarea className="ws-template" spellCheck={false} rows={10} value={profileDraft.customCss} onChange={event => patchProfileDraft({customCss:event.target.value})} placeholder={"例如：\n.widget { background: #fff7f0; }\n.message { font-size: 18px; letter-spacing: .03em; }"}/>
+          </label>
+          <details className="ws-more">
+            <summary>可调用的参数与样式建议</summary>
+            <div className="ws-placeholders">{WIDGET_PLACEHOLDERS.map(item => <div className="ws-placeholder-row" key={item.token}><code>{item.token}</code><span>{item.desc}</span></div>)}
+              <div className="ws-placeholder-row"><code>{"{{avatarInner}}"}</code><span>头像图片或首字的 HTML 片段</span></div>
+              <div className="ws-placeholder-row"><code>{"{{statusChip}}"}</code><span>状态标签 HTML 片段；空状态时为空串</span></div>
+            </div>
+            <p className="ws-hint">CSS 可以使用常见布局、渐变、背景、阴影和字体。小组件最终由原生离屏 WebView 渲染成图片，因此模板内的按钮不会成为可单独点击的原生按钮；点击整个小组件会打开小手机。</p>
+          </details>
+          <div className="ws-template-actions" style={{display:"flex",flexWrap:"wrap",gap:8}}>
+            <button type="button" className="ws-btn ghost" onClick={persistProfileDraft}>保存配置</button>
+            <button type="button" className="ws-btn ghost" onClick={pushProfileDraft}>推送到该配置</button>
+            <button type="button" className="ws-btn" onClick={placeProfileDraft}>添加到真实桌面</button>
+            <button type="button" className="ws-btn ghost" onClick={removeProfileDraft}>删除配置</button>
+          </div>
+        </div> : null}
+      </div>
     </div>
   );
 }
