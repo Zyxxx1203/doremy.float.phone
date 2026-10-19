@@ -2650,7 +2650,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
             {(flatRuleEditor || wizStep === 5) ? (
             <div className="rb-wiz-page">
             <p className="rb-wiz-tip">要做什么（可多选，会按顺序执行）</p>
-            <p className="rb-help">这里不只有角色说话：每个动作都是独立可选的。只勾选“直接操作手机”就能做设备动作，不必勾选“告诉一个角色”；“调用一个工具”会执行你已经启用的工具。
+            <p className="rb-help">这里不只有角色说话：每个动作都是独立可选的。只勾选“直接操作手机”就能做设备动作，不必勾选“告诉一个角色”；“调用一个工具”会执行你已经启用的工具。</p>
 
             <div className="rb-action">
               <label className="rb-check">
