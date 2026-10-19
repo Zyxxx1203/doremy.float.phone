@@ -1300,7 +1300,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               </article>)}
             </div>
           </section>)}
-        </div>
+        </div>}
       </div>}
     </main>
 
