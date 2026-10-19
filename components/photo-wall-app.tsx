@@ -12,7 +12,7 @@ import { loadVirtualLifeState } from "@/lib/life/life-storage";
 import { generateChatCompletion, flattenCompletionResult, readCompressedImageDataUrl } from "@/lib/chat-engine";
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import {
-  createPhotoWallId, DEFAULT_PHOTO_WALL_SETTINGS, loadPhotoWallState, savePhotoWallState,
+  createPhotoWallId, DEFAULT_PHOTO_WALL_SETTINGS, loadPhotoWallState, savePhotoWallState, normalizeWorld,
   type PhotoWallDoodle, type PhotoWallPhoto, type PhotoWallPlacement, type PhotoWallState, type PhotoWallTemplate, type PhotoWallWorld,
 } from "@/lib/photo-wall-storage";
 import { PhotoWallCanvas, fallbackPlacement } from "@/components/photo-wall/photo-wall-canvas";
@@ -169,6 +169,13 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const panoramaZoomRef = useRef(100);
   /** 世界尺寸来自持久化状态：扩容后照片比例不变，只换分母。 */
   const world = wallWorldOf(state);
+  const [wallCanvasMode, setWallCanvasMode] = useState<"view" | "move" | "doodle">("view");
+  const [wallBrushColor, setWallBrushColor] = useState("#c2705a");
+  const [wallBrushWidth, setWallBrushWidth] = useState(3);
+  const [wallSticker, setWallSticker] = useState<string | null>(null);
+  const [wallEraser, setWallEraser] = useState(false);
+  const [wallWidthDraft, setWallWidthDraft] = useState(String(world.width));
+  const [wallHeightDraft, setWallHeightDraft] = useState(String(world.height));
   const zoomInitializedRef = useRef(false);
   /** 等待下一帧补偿的滚动量（扩容往左长、或缩放锚点变化时用）。 */
   const pendingScrollRef = useRef<{ left: number; top: number } | null>(null);
@@ -365,6 +372,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   }, [wallView, state.photos.length, filter]);
   const [selectedCharacterId, setSelectedCharacterId] = useState<string>(() => readPhotoWallCharacter());
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
+  const wallSelectedPhoto = state.photos.find(photo => photo.id === selectedPhotoId) ?? null;
   useEffect(() => {
     const backgroundRef = state.wallBackgroundRef;
     if (backgroundRef) void retainMediaRef(backgroundRef, "photo-wall-background").catch(error => console.warn("[照片墙] 背景引用保护失败", error));
@@ -696,6 +704,42 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     return true;
   }), [photos, filter]);
   const selectedPhoto = photos.find(photo => photo.id === selectedPhotoId) ?? null;
+
+  const applyWallDimensions = () => {
+    const current = stateRef.current;
+    const nextWorld = normalizeWorld({ width: Number(wallWidthDraft), height: Number(wallHeightDraft) });
+    const previousWorld = wallWorldOf(current);
+    if (nextWorld.width === previousWorld.width && nextWorld.height === previousWorld.height) { onNotice?.("画布尺寸没有变化。"); return; }
+    pushHistory(current);
+    persist({ ...current, world: nextWorld });
+    setWallCanvasMode("view");
+    onNotice?.("画布尺寸已调整为 " + nextWorld.width + " × " + nextWorld.height + "。照片和涂鸦会按比例保留位置。");
+  };
+
+  const patchWallSelectedPlacement = (patch: Partial<PhotoWallPlacement>) => {
+    const current = stateRef.current;
+    const photoIndex = current.photos.findIndex(photo => photo.id === selectedPhotoId);
+    if (photoIndex < 0) return;
+    const photo = current.photos[photoIndex];
+    const base = photo.placement ?? fallbackPlacement(photoIndex);
+    const presentationOnly = patch.frame !== undefined || patch.frameColor !== undefined || patch.locked !== undefined;
+    if (base.locked && !presentationOnly) { onNotice?.("这张照片已锁定，请先解锁再调整位置或大小。"); return; }
+    pushHistory(current);
+    const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
+    const nextPlacement = { ...base, ...patch } as PhotoWallPlacement;
+    if (patch.z === -1) nextPlacement.z = maxZ + 1;
+    changePlacement(photo.id, nextPlacement);
+  };
+
+  useEffect(() => {
+    setWallWidthDraft(String(world.width));
+    setWallHeightDraft(String(world.height));
+  }, [world.width, world.height]);
+
+  useEffect(() => {
+    if (wallView === "edit") return;
+    setWallCanvasMode("view"); setWallSticker(null); setWallEraser(false); setSelectedPhotoId(null);
+  }, [wallView]);
   const selectedCharacter = characters.find(char => char.id === selectedCharacterId) ?? null;
   const toggleTimelineFlip = (photoId: string) => setTimelineFlippedPhotoIds(current => { const next = new Set(current); if (next.has(photoId)) next.delete(photoId); else next.add(photoId); return next; });
   const commenter = characters.find(char => char.id === characterCommenterId) ?? characters[0] ?? null;
@@ -1116,7 +1160,37 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         {([{id:"all",label:"全部照片"},{id:"mine",label:"我收藏的"},{id:"characters",label:"角色留下的"}] as {id:Filter;label:string}[]).map(item => <button key={item.id} onClick={() => setFilter(item.id)} className={`shrink-0 border-b-2 px-0.5 py-2 text-xs font-medium tracking-wide transition duration-200 ${filter===item.id?"border-[#87565b] text-[#87565b]":"border-transparent text-[#8d7e6b] hover:text-[#70434a]"}`}>{item.label}</button>)}
       </nav>}
       <section className="flex h-full min-h-0 flex-col overflow-hidden px-3 pb-12 pt-3 sm:px-6">
-        {wallView === "edit" && <div className="mb-2 flex items-center justify-between gap-2 border-b border-[#e2d2c3] px-1 py-2"><p className="font-serif text-sm text-[#5d4942]">自由画布</p><span className="text-[10px] text-[#9b8774]">{visiblePhotos.length} 张照片</span></div>}
+        {wallView === "edit" && <>
+          <div className="mb-2 flex min-w-0 items-center gap-2 overflow-x-auto whitespace-nowrap border-b border-[#e2d2c3] px-1 py-2">
+            <p className="shrink-0 font-serif text-sm text-[#5d4942]">自由画布</p><span className="shrink-0 text-[10px] text-[#9b8774]">{visiblePhotos.length} 张</span>
+            <button type="button" onClick={undo} disabled={!canUndo} className="shrink-0 border border-[#d8c6b5] px-2 py-1.5 text-[10px] text-[#7d6d5a] disabled:opacity-30">撤销</button>
+            <button type="button" onClick={redo} disabled={!canRedo} className="shrink-0 border border-[#d8c6b5] px-2 py-1.5 text-[10px] text-[#7d6d5a] disabled:opacity-30">重做</button>
+            <button type="button" onClick={() => { setWallCanvasMode(wallCanvasMode === "move" ? "view" : "move"); setWallSticker(null); setWallEraser(false); }} aria-pressed={wallCanvasMode === "move"} className={wallCanvasMode === "move" ? "shrink-0 border border-[#87565b] bg-[#87565b] px-2.5 py-1.5 text-[11px] text-white" : "shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[11px] text-[#7d6d5a]"}>{wallCanvasMode === "move" ? "完成摆放" : "摆照片"}</button>
+            <button type="button" onClick={() => { setWallCanvasMode(wallCanvasMode === "doodle" ? "view" : "doodle"); setWallSticker(null); setWallEraser(false); }} aria-pressed={wallCanvasMode === "doodle"} className={wallCanvasMode === "doodle" ? "shrink-0 border border-[#a77b77] bg-[#a77b77] px-2.5 py-1.5 text-[11px] text-white" : "shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[11px] text-[#7d6d5a]"}>{wallCanvasMode === "doodle" ? "退出涂鸦" : "涂鸦"}</button>
+            <label className="flex shrink-0 items-center gap-1 text-[10px] text-[#8b7665]">宽<input type="number" min={1200} max={12000} step={100} value={wallWidthDraft} onChange={event => setWallWidthDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter") applyWallDimensions(); }} aria-label="画布宽度" className="w-[62px] border-b border-[#d8c6b5] bg-transparent px-1 py-1 text-[11px] text-[#5d4942] outline-none"/></label>
+            <label className="flex shrink-0 items-center gap-1 text-[10px] text-[#8b7665]">高<input type="number" min={1200} max={12000} step={100} value={wallHeightDraft} onChange={event => setWallHeightDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter") applyWallDimensions(); }} aria-label="画布高度" className="w-[62px] border-b border-[#d8c6b5] bg-transparent px-1 py-1 text-[11px] text-[#5d4942] outline-none"/></label>
+            <button type="button" onClick={applyWallDimensions} className="shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[10px] text-[#7d6d5a]">应用尺寸</button>
+          </div>
+          {wallCanvasMode === "doodle" && <div className="mb-2 flex flex-wrap items-center gap-2 border-b border-[#e6d9cb] bg-[#fffaf2]/85 px-2 py-2">
+            {["#c2705a","#a77b77","#b08a54","#5d6b8a","#8a6b8a","#3c3a36"].map(color => <button key={color} type="button" aria-label={"画笔颜色 "+color} onClick={() => { setWallBrushColor(color); setWallSticker(null); setWallEraser(false); }} className={wallBrushColor===color&&!wallSticker&&!wallEraser?"h-5 w-5 border border-[#6b5c4a] ring-2 ring-[#e7d6c6]":"h-5 w-5 border border-white/70"} style={{background:color}}/>)}
+            {[2,3,5,8].map(width => <button key={width} type="button" onClick={() => setWallBrushWidth(width)} aria-pressed={wallBrushWidth===width} className={wallBrushWidth===width?"border border-[#6b5c4a] bg-[#6b5c4a] px-2 py-1 text-[10px] text-white":"border border-[#d8c6b5] px-2 py-1 text-[10px] text-[#7d6d5a]"}>{width}</button>)}
+            {["❤","✦","✿","☾","☘","♪","★","⌘"].map(item => <button key={item} type="button" onClick={() => {setWallSticker(wallSticker===item?null:item);setWallEraser(false)}} aria-pressed={wallSticker===item} className={wallSticker===item?"bg-[#6b5c4a] px-1.5 py-1 text-white":"bg-white/70 px-1.5 py-1 text-[#7d6d5a]"}>{item}</button>)}
+            <button type="button" onClick={() => {setWallEraser(!wallEraser);setWallSticker(null)}} aria-pressed={wallEraser} className={wallEraser?"bg-[#a06a58] px-2 py-1 text-[10px] text-white":"border border-[#d8c6b5] px-2 py-1 text-[10px] text-[#7d6d5a]"}>橡皮</button>
+            <button type="button" onClick={() => {if(wallSelectedPhoto) changeDoodles(wallSelectedPhoto.id,[])}} disabled={!wallSelectedPhoto?.doodles?.length} className="border-b border-[#e0c8bd] px-1 py-1 text-[10px] text-[#a06a58] disabled:opacity-35">清空照片涂鸦</button>
+            <button type="button" onClick={() => changeWallDoodles([])} disabled={!(state.wallDoodles?.length)} className="border-b border-[#e0c8bd] px-1 py-1 text-[10px] text-[#a06a58] disabled:opacity-35">清空墙面涂鸦</button>
+          </div>}
+          {wallCanvasMode === "move" && wallSelectedPhoto && <div className="mb-2 flex flex-wrap items-center gap-1.5 border-b border-[#e6d9cb] bg-[#fffaf2]/85 px-2 py-2">
+            <span className="mr-1 max-w-[100px] truncate text-[10px] text-[#8b7665]">{wallSelectedPhoto.title || "已选照片"}</span>
+            <button type="button" onClick={() => patchWallSelectedPlacement({scale:Math.max(.35,(wallSelectedPhoto.placement?.scale??1)-.12)})} className="border-b border-[#d7c2b1] px-2 py-1 text-[11px]">缩小 −</button>
+            <button type="button" onClick={() => patchWallSelectedPlacement({scale:Math.min(3,(wallSelectedPhoto.placement?.scale??1)+.12)})} className="border-b border-[#d7c2b1] px-2 py-1 text-[11px]">放大 +</button>
+            <button type="button" onClick={() => patchWallSelectedPlacement({rotation:Math.max(-45,(wallSelectedPhoto.placement?.rotation??0)-3)})} className="border-b border-[#d7c2b1] px-2 py-1 text-[11px]">左转</button>
+            <button type="button" onClick={() => patchWallSelectedPlacement({rotation:Math.min(45,(wallSelectedPhoto.placement?.rotation??0)+3)})} className="border-b border-[#d7c2b1] px-2 py-1 text-[11px]">右转</button>
+            {([{key:"polaroid",label:"拍立得",color:"#fffdf8"},{key:"thin",label:"细框",color:"#fffdf8"},{key:"wood",label:"木框",color:"#d8c1a0"},{key:"tape",label:"胶带",color:"#fff4d7"},{key:"none",label:"无框",color:"transparent"}] as {key:PhotoWallPlacement["frame"];label:string;color:string}[]).map(frame=><button key={frame.key} type="button" aria-pressed={(wallSelectedPhoto.placement?.frame??"polaroid")===frame.key} onClick={() => patchWallSelectedPlacement({frame:frame.key,frameColor:frame.color})} className={(wallSelectedPhoto.placement?.frame??"polaroid")===frame.key?"border border-[#87565b] bg-[#f4e6e6] px-2 py-1 text-[10px] text-[#87565b]":"border border-[#d7c2b1] px-2 py-1 text-[10px] text-[#7d6d5a]"}>{frame.label}</button>)}
+            <button type="button" onClick={() => patchWallSelectedPlacement({locked:!wallSelectedPhoto.placement?.locked})} className={wallSelectedPhoto.placement?.locked?"border border-[#87565b] bg-[#87565b] px-2 py-1 text-[10px] text-white":"border border-[#d7c2b1] px-2 py-1 text-[10px] text-[#7d6d5a]"}>{wallSelectedPhoto.placement?.locked?"解锁":"锁定"}</button>
+            <button type="button" onClick={() => patchWallSelectedPlacement({z:-1})} className="border border-[#d7c2b1] px-2 py-1 text-[10px]">置顶</button>
+          </div>}
+          {wallCanvasMode === "view" && wallSelectedPhoto && <div className="mb-2 flex items-center justify-between gap-2 border-b border-[#e6d9cb] px-2 py-1.5"><span className="min-w-0 truncate text-[10px] text-[#8b7665]">已选：{wallSelectedPhoto.title||"未命名的瞬间"}</span><button type="button" onClick={() => openPhoto(wallSelectedPhoto)} className="shrink-0 border border-[#d7c2b1] px-2.5 py-1.5 text-[10px] text-[#7d6d5a]">查看详情</button></div>}
+        </>}
         {busy && <div className="mb-3 flex shrink-0 items-center gap-2 border border-[#e4d8c6] bg-[#faf7f0] px-3 py-2.5 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
         <div ref={panoramaViewportRef} data-photo-wall-viewport className="min-h-0 flex-1 w-full overflow-auto overscroll-contain" style={{ WebkitOverflowScrolling: "touch", touchAction: "none", overscrollBehavior: "contain" }}>
           <div className="relative shrink-0 overflow-hidden" style={{ width: world.width * panoramaZoom / 100, height: world.height * panoramaZoom / 100, touchAction: "none" }}>
@@ -1127,6 +1201,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               wallDoodles={state.wallDoodles ?? []} onChangeWallDoodles={changeWallDoodles}
               backgroundImage={wallBackgroundUrl} backgroundBox={state.wallBackgroundBox}
               wallWorld={world} canvasZoom={panoramaZoom / 100} readOnly={wallView === "panorama"}
+              mode={wallCanvasMode} onModeChange={setWallCanvasMode}
+              brushColor={wallBrushColor} brushWidth={wallBrushWidth}
+              sticker={wallSticker} onStickerChange={setWallSticker}
+              eraser={wallEraser} onEraserChange={setWallEraser}
               onOpenDetail={photo => openPhoto(photo)} />
           </div>
         </div>

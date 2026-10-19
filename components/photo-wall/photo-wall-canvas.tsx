@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Droplet, Eraser, ImagePlus, Lock, Minus, Palette, Plus, Redo2, RotateCcw, RotateCw, Sparkles, SquarePen, Smile, Undo2, Unlock } from "lucide-react";
+import { ImagePlus, Plus } from "lucide-react";
 import { loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import {
   createPhotoWallId,
@@ -84,6 +84,14 @@ type Props = {
   readOnly?: boolean;
   fitHeight?: boolean;
   canvasZoom?: number;
+  mode?: "view" | "move" | "doodle";
+  onModeChange?: (mode: "view" | "move" | "doodle") => void;
+  brushColor?: string;
+  brushWidth?: number;
+  sticker?: string | null;
+  onStickerChange?: (sticker: string | null) => void;
+  eraser?: boolean;
+  onEraserChange?: (enabled: boolean) => void;
 };
 
 type DragState = {
@@ -98,7 +106,7 @@ type DragState = {
   moved: boolean;
 };
 
-export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, backgroundBox, wallWorld, onOpenDetail, readOnly = false, fitHeight = false, canvasZoom = 1 }: Props) {
+export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, backgroundBox, wallWorld, onOpenDetail, readOnly = false, fitHeight = false, canvasZoom = 1, mode: controlledMode, onModeChange, brushColor: controlledBrushColor, brushWidth: controlledBrushWidth, sticker: controlledSticker, onStickerChange, eraser: controlledEraser, onEraserChange }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const strokeRef = useRef<{ id: string; photoId: string } | null>(null);
@@ -108,13 +116,26 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   const multiTouchRef = useRef(false);
   const [flippedPhotoIds, setFlippedPhotoIds] = useState<Set<string>>(new Set());
 
-  // Viewing is the safe default: taps flip; placement starts only on explicit opt-in.
-  const [mode, setMode] = useState<"view" | "move" | "doodle">("view");
-  const [brushColor, setBrushColor] = useState(BRUSH_COLORS[0]);
-  const [brushWidth, setBrushWidth] = useState(3);
-  const [sticker, setSticker] = useState<string | null>(null);
-  const [eraser, setEraser] = useState(false);
+  // Edit state is controlled by the parent so controls stay outside the zoomed canvas.
+  const [internalMode, setInternalMode] = useState<"view" | "move" | "doodle">("view");
+  const [internalBrushColor] = useState(BRUSH_COLORS[0]);
+  const [internalBrushWidth] = useState(3);
+  const [internalSticker, setInternalSticker] = useState<string | null>(null);
+  const [internalEraser, setInternalEraser] = useState(false);
+  const mode = controlledMode ?? internalMode;
+  const brushColor = controlledBrushColor ?? internalBrushColor;
+  const brushWidth = controlledBrushWidth ?? internalBrushWidth;
+  const sticker = controlledSticker === undefined ? internalSticker : controlledSticker;
+  const eraser = controlledEraser ?? internalEraser;
   const [draftPoints, setDraftPoints] = useState<{ x: number; y: number }[]>([]);
+  useEffect(() => {
+    if (!readOnly) return;
+    setInternalMode("view"); onModeChange?.("view");
+    setInternalSticker(null); onStickerChange?.(null);
+    setInternalEraser(false); onEraserChange?.(false);
+    setDraftPoints([]); wallStrokeRef.current = null; wallDraftPointsRef.current = [];
+    dragRef.current = null; strokeRef.current = null;
+  }, [readOnly, onModeChange, onStickerChange, onEraserChange]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -369,44 +390,6 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   };
 
   return <div className={fitHeight ? "relative flex h-full w-full items-center justify-center" : "relative"} style={wallWorld ? { width: wallWorld.width, height: wallWorld.height } : undefined}>
-    {/* 画布工具条 */}
-    {!readOnly && <div className="photo-wall-tools sticky left-0 z-[10000] mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-y border-[#e2d2c3] py-2.5" style={{ width: "min(420px, calc(100vw - 16px))", background: "rgba(255,250,242,.97)" }}>
-      <button type="button" onClick={() => onUndo?.()} disabled={!canUndo} aria-label="撤销上一步" title="撤销" className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#ddd1bd] bg-white/80 text-[#7d6d5a] transition disabled:opacity-30"><Undo2 size={14}/></button>
-      <button type="button" onClick={() => onRedo?.()} disabled={!canRedo} aria-label="重做" title="重做" className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#ddd1bd] bg-white/80 text-[#7d6d5a] transition disabled:opacity-30"><Redo2 size={14}/></button>
-      <span className="h-4 w-px shrink-0 bg-[#ddd1bd]" />
-      <button type="button" onClick={() => setMode(current => current === "move" ? "view" : "move")} className={`flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs transition ${mode === "move" ? "border-[#87565b] bg-[#87565b] text-white" : "border-[#ddd1bd] bg-white/80 text-[#7d6d5a]"}`}><Unlock size={13}/>{mode === "move" ? "完成摆放" : "摆照片"}</button>
-      <button type="button" onClick={() => { setMode(current => current === "doodle" ? "view" : "doodle"); if (selectedPhoto) setFlippedPhotoIds(current => { const next = new Set(current); next.delete(selectedPhoto.id); return next; }); }} title="进入涂鸦后可在整面墙任意位置按住并拖动画线或放置贴纸" className={`flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs transition ${mode === "doodle" ? "border-[#a77b77] bg-[#a77b77] text-white" : "border-[#ddd1bd] bg-white/80 text-[#7d6d5a]"}`}><SquarePen size={13}/>{mode === "doodle" ? "退出涂鸦" : "涂鸦"}</button>
-      {mode === "doodle" && <>
-        <span className="w-full basis-full text-[10px] leading-4 text-[#9a8973]">"在整面墙任意位置按住并划动即可涂鸦，可跨过照片；选贴纸后点画布放置。照片旧涂鸦仍保留。"</span>
-        <span className="mx-1 h-4 w-px bg-[#ddd1bd]" />
-        <span className="flex items-center gap-1"><Palette size={12} className="text-[#9a8973]"/>{BRUSH_COLORS.map(color => <button key={color} type="button" aria-label={`画笔颜色 ${color}`} onClick={() => { setBrushColor(color); setSticker(null); }} className={`h-5 w-5 rounded-full border ${brushColor === color && !sticker ? "border-[#6b5c4a] ring-2 ring-white" : "border-white/70"}`} style={{ background: color }} />)}</span>
-        <span className="flex items-center gap-1"><Droplet size={12} className="text-[#9a8973]"/>{[2, 3, 5, 8].map(width => <button key={width} type="button" onClick={() => setBrushWidth(width)} className={`grid h-6 w-6 place-items-center rounded-full text-[10px] ${brushWidth === width ? "bg-[#6b5c4a] text-white" : "bg-white/70 text-[#7d6d5a]"}`}>{width}</button>)}</span>
-        <span className="flex items-center gap-1"><Smile size={12} className="text-[#9a8973]"/>{STICKER_CHOICES.map(item => <button key={item} type="button" onClick={() => setSticker(current => current === item ? null : item)} className={`grid h-6 w-6 place-items-center rounded-full text-[13px] ${sticker === item ? "bg-[#6b5c4a] text-white" : "bg-white/70"}`}>{item}</button>)}</span>
-        <button type="button" onClick={() => { setEraser(value => !value); setSticker(null); }} aria-pressed={eraser} className={`ml-auto flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px] transition ${eraser ? "border-[#a06a58] bg-[#a06a58] text-white" : "border-[#e0c8bd] bg-white/70 text-[#8a6d5c]"}`}><Eraser size={12}/>橡皮</button>
-        <button type="button" onClick={clearPhotoDoodles} disabled={!selectedPhoto?.doodles?.length} title="只清除所选照片上的装饰" className="ml-1 flex items-center gap-1 border-b border-[#e0c8bd] px-2 py-1.5 text-[11px] text-[#a06a58] disabled:opacity-40"><Eraser size={12}/>清空照片</button>
-        <button type="button" onClick={clearWallDoodles} disabled={!wallDoodles.length} title="只清除固定在墙面上的涂鸦" className="flex items-center gap-1 border-b border-[#e0c8bd] px-2 py-1.5 text-[11px] text-[#a06a58] disabled:opacity-40"><Eraser size={12}/>清空墙面</button>
-      </>}
-    </div>}
-
-    {!readOnly && selectedPhoto && mode !== "view" && <div className="photo-wall-tools sticky left-0 z-[10000] mt-2 flex flex-wrap items-center gap-1.5 border-y border-[#e6dccd] bg-white/95 px-2 py-2" style={{ width: "min(420px, calc(100vw - 16px))" }}>
-      <span className="px-1 text-[11px] text-[#9a8973]">已选：{selectedPhoto.title || "未命名"}</span>
-      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.max(0.35, (selectedPhoto.placement?.scale ?? 1) - 0.12) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="缩小"><Minus size={14}/></button>
-      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { scale: Math.min(3, (selectedPhoto.placement?.scale ?? 1) + 0.12) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="放大"><Plus size={14}/></button>
-      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { rotation: Math.max(-45, (selectedPhoto.placement?.rotation ?? 0) - 3) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="左转"><RotateCcw size={14}/></button>
-      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { rotation: Math.min(45, (selectedPhoto.placement?.rotation ?? 0) + 3) })} className="grid h-8 w-8 place-items-center rounded-none border-b border-[#d7c2b1] bg-transparent text-[#7d6d5a]" aria-label="右转"><RotateCw size={14}/></button>
-      {mode === "move" && <>
-        <span className="ml-1 text-[10px] text-[#9a8973]">相框</span>
-        {(["polaroid", "thin", "wood", "tape", "none"] as PhotoWallFrameStyle[]).map(frame => <button key={frame} type="button"
-          aria-pressed={(selectedPhoto.placement?.frame ?? "polaroid") === frame}
-          onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { frame, frameColor: FRAME_BG[frame] })}
-          className={`rounded-full border px-2 py-1.5 text-[10px] ${(selectedPhoto.placement?.frame ?? "polaroid") === frame ? "border-[#87565b] bg-[#f4e6e6] text-[#87565b]" : "border-[#d7c2b1] bg-white/80 text-[#7d6d5a]"}`}>
-          {FRAME_LABEL[frame]}
-        </button>)}
-      </>}
-      <button type="button" onClick={() => nudge(selectedPhoto, ordered.indexOf(selectedPhoto), { locked: !selectedPhoto.placement?.locked })} title={selectedPhoto.placement?.locked ? "解除锁定后可移动照片" : "锁定后防止误拖动"} className={`flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[11px] ${selectedPhoto.placement?.locked ? "border-[#87565b] bg-[#87565b] text-white" : "border-[#d7c2b1] bg-white/80 text-[#7d6d5a]"}`}>{selectedPhoto.placement?.locked ? <Lock size={12}/> : <Unlock size={12}/>} {selectedPhoto.placement?.locked ? "已锁定" : "锁定照片"}</button>
-      <button type="button" onClick={() => onOpenDetail(selectedPhoto)} className="rounded-full border border-[#87565b] bg-[#87565b] px-3 py-1.5 text-[11px] text-white">查看详情</button>
-    </div>}
-
     <div
       ref={wallRef}
       data-photo-wall-mode={mode}
@@ -529,15 +512,16 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
     }}
   >
     <div
-      className={`relative ${selected ? "outline outline-2 outline-offset-2 outline-[#87565b]" : ""}`}
+      className={`relative ${selected && placementMode ? "outline outline-2 outline-offset-2 outline-[#87565b]" : ""}`}
       style={{
         background: FRAME_BG[frame] === "transparent" ? "transparent" : (placement.frameColor || FRAME_BG[frame]),
         padding: `${pad.y * 100}% ${pad.x * 100}% ${pad.bottom * 100}%`,
         borderRadius: frame === "thin" ? 1 : frame === "none" ? 2 : 1,
-        boxShadow: frame === "none" ? "0 6px 18px rgba(70,55,38,.22)" : "0 10px 24px rgba(70,55,38,.2)",
+        boxShadow: frame === "none" ? "0 3px 8px rgba(70,55,38,.14)" : "0 4px 12px rgba(70,55,38,.13)",
       }}
       onPointerDown={(event) => { if (!doodleMode) onPointerDownMove(event); }}
       onClick={event => { event.stopPropagation(); if (!placementMode && !doodleMode) onToggleFlip(); }}
+       onDoubleClick={event => { event.stopPropagation(); if (!readOnly && !placementMode && !doodleMode) onOpenDetail(); }}
     >
       {flipped ? <div className="relative flex w-full flex-col overflow-y-auto rounded-sm bg-[#fffaf2] p-2.5 text-[#6b5947]" style={{ aspectRatio: "1 / 1", borderRadius: frame === "none" ? 2 : 1 }}>
         <div className="border-b border-[#dfcfbe] pb-1 text-[7px] tracking-[.2em] text-[#a58f77]">THE BACK · 背面</div>
