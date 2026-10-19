@@ -697,6 +697,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
   const timelineGroups = useMemo(() => {
     const groups = new Map<string, { key: string; label: string; items: PhotoWallPhoto[] }>();
+    if (timelineGrouping === "photo") return [{ key: "all-photos", label: "所有照片", items: timelinePhotos }];
     const localKey = (date: Date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
     for (const photo of timelinePhotos) {
       const date = new Date(photo.capturedAt || photo.createdAt);

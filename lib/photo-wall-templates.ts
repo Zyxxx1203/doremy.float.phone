@@ -90,27 +90,25 @@ function scatterSlots(count: number): Slot[] {
   return slots;
 }
 
-/** 填充式：从中心开始，按一圈圈递增半径向外铺开，而不是沿边缘绕圈。 */
+/** 填充式：用黄金角螺旋从中心向外填满画布；照片数量增加时仍会继续铺开，不重复使用外圈坐标。 */
 function fillSlots(count: number): Slot[] {
   const total = Math.max(1, count);
-  const slots: Slot[] = [{ x: 0.5, y: 0.5, scale: 0.86, rotation: 0 }];
-  let ring = 1;
-  while (slots.length < total && ring < 32) {
-    const radius = Math.min(0.44, ring * 0.075);
-    const perRing = Math.max(5, Math.round((Math.PI * 2 * radius) / 0.115));
-    const offset = (ring % 2) * Math.PI / perRing;
-    for (let i = 0; i < perRing && slots.length < total; i += 1) {
-      const angle = (i / perRing) * Math.PI * 2 + offset;
-      slots.push({
-        x: round(clamp01(0.5 + Math.cos(angle) * radius)),
-        y: round(clamp01(0.5 + Math.sin(angle) * radius * 0.82)),
-        scale: round(Math.max(0.62, 0.82 - (ring % 3) * 0.035)),
-        rotation: round(Math.sin(angle * 2.7) * 5),
-      });
-    }
-    ring += 1;
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const slots: Slot[] = [];
+  for (let i = 0; i < total; i += 1) {
+    const progress = total === 1 ? 0 : i / (total - 1);
+    // sqrt distributes points evenly across the whole area instead of leaving a hollow centre.
+    const radius = 0.44 * Math.sqrt(progress);
+    const angle = i * goldenAngle;
+    const wave = Math.sin(i * 1.618);
+    slots.push({
+      x: round(clamp01(0.5 + Math.cos(angle) * radius)),
+      y: round(clamp01(0.5 + Math.sin(angle) * radius * 0.82)),
+      scale: round(Math.max(0.5, 0.88 - progress * 0.22 + wave * 0.025)),
+      rotation: round(Math.sin(angle * 1.7) * 5),
+    });
   }
-  return slots.slice(0, total);
+  return slots;
 }
 
 /**
