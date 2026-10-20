@@ -785,19 +785,34 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const start = timelineStartDate ? new Date(timelineStartDate + "T00:00:00").getTime() : Number.NEGATIVE_INFINITY;
     const end = timelineEndDate ? new Date(timelineEndDate + "T23:59:59.999").getTime() : Number.POSITIVE_INFINITY;
     return photos.filter(photo => {
-      const value = new Date(photo.capturedAt || photo.createdAt).getTime();
-      return Number.isFinite(value) && value >= start && value <= end;
-    }).sort((a, b) => (b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt));
+      const captureTime = photo.capturedAt ? new Date(photo.capturedAt).getTime() : Number.NaN;
+      // Unknown capture dates stay visible with no filter, but can never be matched using upload time.
+      if (!Number.isFinite(captureTime)) return !timelineStartDate && !timelineEndDate;
+      return captureTime >= start && captureTime <= end;
+    }).sort((a, b) => {
+      const aTime = a.capturedAt ? new Date(a.capturedAt).getTime() : Number.NaN;
+      const bTime = b.capturedAt ? new Date(b.capturedAt).getTime() : Number.NaN;
+      if (!Number.isFinite(aTime)) return Number.isFinite(bTime) ? 1 : b.createdAt.localeCompare(a.createdAt);
+      if (!Number.isFinite(bTime)) return -1;
+      return bTime - aTime;
+    });
   }, [photos, timelineStartDate, timelineEndDate]);
 
   const timelineGroups = useMemo(() => {
     const groups = new Map<string, { key: string; label: string; items: PhotoWallPhoto[] }>();
-    if (timelineGrouping === "photo") return timelinePhotos.map(photo => ({ key: "photo:" + photo.id, label: formatDate(photo.capturedAt || photo.createdAt), items: [photo] }));
+    if (timelineGrouping === "photo") return timelinePhotos.map(photo => ({
+      key: "photo:" + photo.id,
+      label: photo.capturedAt ? formatDate(photo.capturedAt) : "拍摄时间未记录 · " + (photo.title || "未命名照片"),
+      items: [photo],
+    }));
     const localKey = (date: Date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
     for (const photo of timelinePhotos) {
-      const date = new Date(photo.capturedAt || photo.createdAt);
+      const date = photo.capturedAt ? new Date(photo.capturedAt) : null;
       let key = "", label = "";
-      if (timelineGrouping === "day") {
+      if (!date || !Number.isFinite(date.getTime())) {
+        key = "capture-time-unknown";
+        label = "拍摄时间未记录";
+      } else if (timelineGrouping === "day") {
         key = localKey(date);
         label = date.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
       } else if (timelineGrouping === "week") {
@@ -1435,7 +1450,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           {photoViewOnly ? <h2 className="mt-3 font-serif text-xl text-[#5b4d3e]">{selectedPhoto.title || "未命名的瞬间"}</h2> : <input value={editTitle} onChange={event => setEditTitle(event.target.value)} className="mt-3 w-full border-b border-[#dfd3c1] bg-transparent pb-2 font-serif text-xl text-[#5b4d3e] outline-none focus:border-[#9e8b70]" placeholder="给这张照片起个名字"/>}
           <div className="mt-2 space-y-1 text-[10px] tracking-wider text-[#a39583]">
             <p>上传 / 收录时间：{formatDate(selectedPhoto.createdAt)}</p>
-            <p>拍摄时间：{selectedPhoto.capturedAt ? formatDate(selectedPhoto.capturedAt) : "尚未记录；时间轴暂按收录时间归档"}</p>
+            <p>拍摄时间：{selectedPhoto.capturedAt ? formatDate(selectedPhoto.capturedAt) : "尚未记录；时间轴会归入“拍摄时间未记录”分组"}</p>
           </div>
           {!photoViewOnly && <label className="mt-3 block text-xs text-[#857460]">拍摄日期与时间
             <input type="datetime-local" value={editCapturedAt} onChange={event => setEditCapturedAt(event.target.value)} className="mt-1 w-full border-b border-[#dfd3c1] bg-transparent px-1 py-2 text-xs text-[#5b4d3e] outline-none"/>

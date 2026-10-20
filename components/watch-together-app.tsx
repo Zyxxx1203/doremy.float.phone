@@ -10,7 +10,6 @@ import { kvGet, kvSet } from "@/lib/kv-db";
 import { resolveVoiceConfig, synthesizeSpeech } from "@/lib/tts-service";
 import { loadApiConfigs, loadBindingConfig, resolveBinding, resolveUserIdentity } from "@/lib/settings-storage";
 import { readCompressedImageDataUrl } from "@/lib/chat-engine";
-import { captureScreenshot, hasScreenshotBridge } from "@/lib/screenshot";
 import { formatTranscriptTime, parseVideoTranscript, type VideoTranscriptSegment } from "@/lib/video-transcript";
 
 /** 自动搭话的每日上限：护栏，避免暂停/挂机时白烧 API。 */
@@ -159,7 +158,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [urlInput, setUrlInput] = useState("");
   const [target, setTarget] = useState<VideoTarget | null>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
-  const screenshotFileInputRef = useRef<HTMLInputElement>(null);
   const transcriptFileInputRef = useRef<HTMLInputElement>(null);
   const localVideoObjectUrlRef = useRef<string | null>(null);
   const nativeVideoCacheRef = useRef<{ url: string; cacheId: string } | null>(null);
@@ -310,104 +308,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     window.addEventListener("floatphone-app-back", handleAppBack);
     return () => window.removeEventListener("floatphone-app-back", handleAppBack);
   }, [fullScreen, showSettings, showHistory]);
-
-  /**
-   * 跨站 iframe（B 站等）网页层取不到播放器像素，但壳能**静默截整屏**。
-   * 截完整屏后按播放器在屏幕上的位置裁一刀，只把视频画面交给角色：
-   * 不弹预览、不弹按钮、不打断观看。
-   */
-  const captureSilentScreenFrame = useCallback(async (): Promise<string | null> => {
-    if (!hasScreenshotBridge()) return null;
-    const player = playerRef.current;
-    if (!player) return null;
-    try {
-      const shot = await captureScreenshot(7000);
-      if (!shot.ok || !shot.base64) return null;
-      const binary = atob(shot.base64);
-      const bytes = new Uint8Array(binary.length);
-      for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-      const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
-      const rect = player.getBoundingClientRect();
-      const viewportWidth = Math.max(1, window.innerWidth);
-      const viewportHeight = Math.max(1, window.innerHeight);
-      const scaleX = bitmap.width / viewportWidth;
-      const scaleY = bitmap.height / viewportHeight;
-      const sourceX = Math.max(0, Math.min(bitmap.width - 1, rect.left * scaleX));
-      const sourceY = Math.max(0, Math.min(bitmap.height - 1, rect.top * scaleY));
-      const sourceWidth = Math.max(1, Math.min(bitmap.width - sourceX, rect.width * scaleX));
-      const sourceHeight = Math.max(1, Math.min(bitmap.height - sourceY, rect.height * scaleY));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(sourceWidth));
-      canvas.height = Math.max(1, Math.round(sourceHeight));
-      const context = canvas.getContext("2d");
-      if (!context) { bitmap.close(); return null; }
-      context.drawImage(bitmap, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
-      bitmap.close();
-      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", 0.62));
-      if (!blob) return null;
-      return await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = () => reject(reader.error ?? new Error("截图读取失败"));
-        reader.onload = () => resolve(String(reader.result ?? ""));
-        reader.readAsDataURL(blob);
-      });
-    } catch {
-      // 静默失败：截图拿不到就不给画面，绝不用提示打断观看。
-      return null;
-    }
-  }, []);
-
-  const captureCurrentVideoFrame = useCallback(async (): Promise<void> => {
-    if (!target) return;
-    const video = playerRef.current?.querySelector("video");
-    if (!video) {
-      const targetUrl = target.url;
-      if (target.embedUrl) {
-        const silent = await captureSilentScreenFrame();
-        if (silent) {
-          const seconds = iframeSecondsRef.current;
-          videoFramesRef.current = [
-            ...videoFramesRef.current.filter(item => item.targetUrl === targetUrl && Math.abs(item.seconds - seconds) > 4),
-            { targetUrl, seconds, timestamp: new Date().toISOString(), dataUrl: silent },
-          ].slice(-8);
-          frameCaptureFailedRef.current = null;
-          return;
-        }
-      }
-      frameCaptureFailedRef.current = target.embedUrl
-        ? "该平台使用跨站 iframe，网页拿不到播放器内部画面。"
-        : "该链接没有直接播放的 video 元素，因此网页无法截取当前画面。";
-      return;
-    }
-    if (video.readyState < 2 || !Number.isFinite(video.currentTime)) return;
-    const targetUrl = target.url;
-    const seconds = Math.max(0, video.currentTime);
-    try {
-      const maxSide = 640;
-      const scale = Math.min(1, maxSide / Math.max(video.videoWidth || 1, video.videoHeight || 1));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round((video.videoWidth || 640) * scale));
-      canvas.height = Math.max(1, Math.round((video.videoHeight || 360) * scale));
-      const context = canvas.getContext("2d");
-      if (!context) return;
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      // toBlob encodes off the synchronous toDataURL path so the playback thread is less likely to stutter.
-      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", 0.62));
-      if (!blob) return;
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = () => reject(reader.error ?? new Error("截图读取失败"));
-        reader.onload = () => resolve(String(reader.result ?? ""));
-        reader.readAsDataURL(blob);
-      });
-      if (!dataUrl) return;
-      const frame = { targetUrl, seconds, timestamp: new Date().toISOString(), dataUrl };
-      videoFramesRef.current = [...videoFramesRef.current.filter(item => item.targetUrl === targetUrl && Math.abs(item.seconds - seconds) > 1), frame].slice(-8);
-      frameCaptureFailedRef.current = null;
-    } catch {
-      frameCaptureFailedRef.current = "这个视频源不允许网页读取画面（常见于跨站 iframe 或启用防截取的视频）。";
-    }
-  }, [target]);
 
   useEffect(() => {
     // Script-first co-watching: don't silently sample the video or add screenshots to prompts.
@@ -623,44 +523,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice, transcriptSegments, transcriptName, timepointDraft]);
 
   /** 把一帧画面交给角色：手动截图和静默截屏共用这一条路径。 */
-  const submitFrameDataUrl = async (dataUrl: string, seconds: number, prefix = "用户附加截图") => {
-    if (!target) return;
-    const frame = { targetUrl: target.url, seconds, timestamp: new Date().toISOString(), dataUrl };
-    videoFramesRef.current = [...videoFramesRef.current.filter(item => item.targetUrl === target.url), frame].slice(-8);
-    const stamp = formatVideoTime(seconds);
-    const moment = [settings.currentMoment.trim(), prefix + "时间点：" + stamp + "。请仅讨论该画面，不要推测后续。"].filter(Boolean).join("\n").slice(0, 800);
-    if (commentBusyRef.current) pendingDiscussionRef.current.push({ moment, timepoint: stamp });
-    else void generateComment(true, moment, stamp);
-  };
-
-  const submitScreenshotForCharacter = async (file?: File) => {
-    if (!target || !file) return;
-    if (!file.type.startsWith("image/")) { onNotice?.("请选择一张截图图片。"); return; }
-    try {
-      const dataUrl = await readCompressedImageDataUrl(file);
-      const seconds = parseVideoTime(timepointDraft) ?? (() => {
-        const video = playerRef.current?.querySelector("video");
-        return video && Number.isFinite(video.currentTime) ? video.currentTime : iframeSecondsRef.current;
-      })();
-      await submitFrameDataUrl(dataUrl, seconds);
-    } catch (error) {
-      onNotice?.("截图读取失败：" + (error instanceof Error ? error.message : String(error)));
-    } finally {
-      if (screenshotFileInputRef.current) screenshotFileInputRef.current.value = "";
-    }
-  };
-
-  /**
-   * 「让 TA 看一眼」：壳里就静默截整屏（连跨站 iframe 一起拍到），
-   * 没有壳或没授权才退回选图。整个过程不弹预览、不打断播放。
-   */
-  const lookAtScreenNow = async () => {
-    const silent = await captureSilentScreenFrame();
-    if (!silent) { screenshotFileInputRef.current?.click(); return; }
-    const video = playerRef.current?.querySelector("video");
-    const seconds = video && Number.isFinite(video.currentTime) ? video.currentTime : iframeSecondsRef.current;
-    await submitFrameDataUrl(silent, seconds, "用户让你看了一眼当前屏幕，");
-  };
 
   const submitDiscussion = () => {
     const text=discussionDraft.trim(); if(!target||!text) return;

@@ -461,13 +461,16 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
             .map(element => element.closest?.("[data-photo-wall-photo-id]"))
             .find(element => element instanceof HTMLElement && Boolean(wallRef.current?.contains(element))) as HTMLElement | undefined;
           const photoId = photoElement?.dataset.photoWallPhotoId;
+          const photoAnchor = stack
+            .map(element => element.closest?.("[data-photo-wall-photo-anchor]"))
+            .find(element => element instanceof HTMLElement && Boolean(wallRef.current?.contains(element))) as HTMLElement | undefined;
           const index = ordered.findIndex(photo => photo.id === photoId);
           const photo = index >= 0 ? ordered[index] : null;
           if (mode === "move") {
             if (photo) beginDrag(event, photo, index, resizeTarget ? "resize" : "move");
           } else if (photo) {
             onSelect(photo.id);
-            doodlePointerDown(event, photo, index, photoElement);
+            doodlePointerDown(event, photo, index, photoAnchor ?? photoElement);
           } else {
             wallDoodlePointerDown(event);
           }
@@ -597,6 +600,7 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
     onDoubleClick={event => { event.stopPropagation(); event.preventDefault(); }}
   >
     <div
+      data-photo-wall-photo-anchor="true"
       className={"relative " + (selected && placementMode ? "outline outline-2 outline-offset-2 outline-[#87565b]" : "")}
       style={{
         background: FRAME_BG[frame] === "transparent" ? "transparent" : (placement.frameColor || FRAME_BG[frame]),
