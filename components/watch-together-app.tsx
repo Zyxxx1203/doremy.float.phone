@@ -12,6 +12,7 @@ import { loadApiConfigs, loadBindingConfig, resolveBinding, resolveUserIdentity 
 import { formatTranscriptTime, parseVideoTranscript, type VideoTranscriptSegment } from "@/lib/video-transcript";
 import { DanmakuLayer } from "@/components/watch/danmaku-layer";
 import { captureScreenshot, hasScreenshotBridge } from "@/lib/screenshot";
+import { analyzeWholeVideoWithGemini } from "@/lib/gemini-video-understanding";
 
 /** 自动搭话的每日上限：护栏，避免暂停/挂机时白烧 API。 */
 const WATCH_AUTO_DAILY_LIMIT = 24;
@@ -223,6 +224,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   });
   const [transcriberModel, setTranscriberModel] = useState<"tiny" | "base" | "small" | "medium">("small");
   const [transcribing, setTranscribing] = useState(false);
+  const [wholeVideoBusy, setWholeVideoBusy] = useState(false);
+  const [wholeVideoProgress, setWholeVideoProgress] = useState("");
+  const localVideoFileRef = useRef<File | null>(null);
+  const wholeVideoAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!target?.nativeVideoUrl || !target.nativeVideoUrl.toLowerCase().includes(".m3u8")) return;
@@ -456,6 +461,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   useEffect(() => () => {
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     if (localVideoObjectUrlRef.current) URL.revokeObjectURL(localVideoObjectUrlRef.current);
+    localVideoFileRef.current = null;
+    wholeVideoAbortRef.current?.abort();
     try { screen.orientation?.unlock?.(); } catch { /* orientation lock is optional */ }
   }, []);
 
@@ -492,6 +499,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       return;
     }
     if (localVideoObjectUrlRef.current) URL.revokeObjectURL(localVideoObjectUrlRef.current);
+    localVideoFileRef.current = file;
     const objectUrl = URL.createObjectURL(file);
     localVideoObjectUrlRef.current = objectUrl;
     const localTarget: VideoTarget = { url: objectUrl, embedUrl: null, platform: "other", platformName: "本地视频", supported: true, nativeVideo: true };
@@ -512,6 +520,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       URL.revokeObjectURL(localVideoObjectUrlRef.current);
       localVideoObjectUrlRef.current = null;
     }
+    localVideoFileRef.current = null;
     setTarget(parsed);
     setScreenshotDataUrl("");
     setTranscriptSegments([]); setTranscriptName("");
@@ -708,6 +717,103 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice, transcriptSegments, transcriptName, screenshotDataUrl, captureFrameForPrompt]);
 
   /** 把一帧画面交给角色：手动截图和静默截屏共用这一条路径。 */
+
+  /**
+   * 专注模式：将用户主动选择的本地视频作为完整文件交给 Gemini，
+   * 不再只依赖当前截图。使用角色在“一起看”中的现有 API 绑定与角色卡。
+   */
+  const analyzeWholeLocalVideo = async () => {
+    const file = localVideoFileRef.current;
+    if (!file || target?.platformName !== "本地视频") {
+      onNotice?.("请先在一起看里选择一个本地视频。");
+      return;
+    }
+    if (!character) {
+      onNotice?.("请先选择一个陪看角色。");
+      return;
+    }
+    if (wholeVideoBusy) return;
+
+    const binding = resolveBinding(loadBindingConfig(), character.id, "watch_together");
+    const apiConfig = loadApiConfigs().find(item => item.id === binding.apiConfigId);
+    if (!apiConfig || apiConfig.provider !== "Google" || (apiConfig.baseUrl && !/generativelanguage\.googleapis\.com/i.test(apiConfig.baseUrl))) {
+      onNotice?.("完整视频观看目前使用 Gemini 视频理解 API。请在绑定设置中为该角色的「一起看」绑定直连 Google Gemini API（不是 OpenAI 兼容中转地址）；原有陪看功能不受影响。");
+      return;
+    }
+    if (!apiConfig.apiKey?.trim()) {
+      onNotice?.("当前角色绑定的 Gemini API 没有填写密钥。");
+      return;
+    }
+
+    const controller = new AbortController();
+    wholeVideoAbortRef.current = controller;
+    setWholeVideoBusy(true);
+    setWholeVideoProgress("正在准备完整视频…");
+    try {
+      const sessions = loadChatSessions();
+      const contact = loadChatContacts().find(item => item.characterId === character.id);
+      const session = sessions.find(item => !item.isGroup && item.contactId === contact?.id)
+        ?? ({ id: `watch-together-${character.id}`, contactId: contact?.id ?? character.id, unreadCount: 0, updatedAt: new Date().toISOString(), isPinned: false, isGroup: false } as ChatSession);
+      const history = loadChatMessages(session.id).slice(-10)
+        .filter(item => item.status !== "failed" && !item.isRetracted)
+        .map(item => (item.role === "user" ? "用户" : character.name) + "：" + String(item.content || "").slice(0, 500))
+        .join("\n").slice(-3500);
+      const profile = character as unknown as Record<string, unknown>;
+      const roleDetails = [
+        typeof profile.description === "string" ? "角色介绍：" + profile.description : "",
+        typeof profile.personality === "string" ? "性格：" + profile.personality : "",
+        typeof profile.scenario === "string" ? "背景设定：" + profile.scenario : "",
+        typeof profile.systemPrompt === "string" ? "角色指令：" + profile.systemPrompt : "",
+      ].filter(Boolean).join("\n").slice(0, 5000);
+      const prompt = [
+        "请完整观看并理解用户上传的整段视频（包含可识别的画面、动作、场景变化以及模型可读取的音轨/对白），然后以角色身份与用户自然互动。",
+        "角色名：" + character.name + "。",
+        roleDetails,
+        "视频文件名：" + file.name + "；视频大小：" + (file.size / 1024 / 1024).toFixed(1) + " MB。",
+        videoTitle ? "用户给这段视频起的标题：" + videoTitle : "",
+        settings.currentMoment ? "用户补充的观看上下文：" + settings.currentMoment : "",
+        transcriptSegments.length ? "用户另行导入的字幕/脚本仅作为补充参考，不要用它替代实际视频内容。" : "",
+        history ? "近期聊天上下文：\n" + history : "",
+        "请像正在和用户一起看视频的角色一样说话，而不是冷冰冰的通用分析报告。先自然分享看完的感受，再提及几个确实来自视频的具体细节；如能可靠定位，可用时间点。不要编造看不清的细节，不要假装听清无法识别的音频，也不要剧透视频之外的内容。可指出剪辑节奏、镜头衔接、情绪或故事内容，但以真实视频为准。回复控制在约 150-350 字，使用角色自己的说话风格，并自然邀请用户继续聊。",
+      ].filter(Boolean).join("\n\n");
+
+      const responseText = await analyzeWholeVideoWithGemini({
+        file,
+        apiKey: apiConfig.apiKey,
+        model: apiConfig.defaultModel,
+        prompt,
+        signal: controller.signal,
+        onProgress: setWholeVideoProgress,
+      });
+      const comment: WatchComment = {
+        id: `whole-video-${Date.now()}`,
+        characterId: character.id,
+        characterName: character.name,
+        text: responseText,
+        createdAt: new Date().toISOString(),
+        kind: "character",
+        targetUrl: target.url,
+      };
+      setComments(current => {
+        const next = [...current, comment].slice(-100);
+        saveTargetComments(target.url, next);
+        return next;
+      });
+      if (settings.voiceEnabled) void speakComment(responseText, character.id);
+      setCompanionCollapsed(false);
+      onNotice?.("完整视频已观看完成，角色的回应已加入本次一起看记录。");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        onNotice?.("已取消完整视频分析。");
+      } else {
+        onNotice?.("完整视频观看失败：" + (error instanceof Error ? error.message : String(error)));
+      }
+    } finally {
+      if (wholeVideoAbortRef.current === controller) wholeVideoAbortRef.current = null;
+      setWholeVideoBusy(false);
+      setWholeVideoProgress("");
+    }
+  };
 
   const submitDiscussion = (rawText?: string) => {
     const text=(rawText ?? discussionDraft).trim(); if(!target||!text) return;
@@ -1149,6 +1255,16 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           <button type="button" onClick={() => videoFileInputRef.current?.click()} className="rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">选择本地视频</button>
           <button type="button" onClick={() => transcriptFileInputRef.current?.click()} className="rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">导入脚本 / 字幕</button>
         </div>
+        {target?.platformName === "本地视频" && localVideoFileRef.current && <div className="mt-3 rounded-2xl border border-[#c99a78]/45 bg-[#fffaf2]/90 p-3 text-[#735440]">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-semibold">专注模式 · 完整视频理解</div>
+              <div className="mt-1 break-words text-[11px] leading-5 text-[#8b7665]">将整个视频文件发送给 Gemini 视频理解 API，不只是截图。上传前请确认你愿意把视频发送给 Google 处理。</div>
+              {wholeVideoProgress && <div role="status" aria-live="polite" className="mt-1 text-[11px] text-[#98704c]">{wholeVideoProgress}</div>}
+            </div>
+            <button type="button" onClick={() => { if (wholeVideoBusy) wholeVideoAbortRef.current?.abort(); else void analyzeWholeLocalVideo(); }} disabled={!wholeVideoBusy && !character} className="shrink-0 rounded-xl border border-[#b88768] bg-[#e8c5a4] px-3 py-2 text-xs font-semibold text-[#39281b] disabled:opacity-50">{wholeVideoBusy ? "取消分析" : "让角色看完整视频"}</button>
+          </div>
+        </div>}
         <input ref={videoFileInputRef} type="file" accept="video/*,.mp4,.webm,.mov,.m4v,.ogv" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; openLocalVideo(file); }} />
         <input ref={screenshotFileInputRef} type="file" accept="image/*" className="hidden" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void loadScreenshotFile(file); }} />
         <input ref={transcriptFileInputRef} type="file" accept=".srt,.vtt,.txt,.json,text/plain,text/vtt,application/json" className="hidden" onChange={event => {
