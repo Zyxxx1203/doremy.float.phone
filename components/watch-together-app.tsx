@@ -471,8 +471,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       for (const captionUrl of Array.from(captionUrls).slice(0,3)) {
         try {
           const raw = await fetchViaCorsProxy(captionUrl, controller.signal);
-          let parsed = parseVideoTranscript(raw);
-          if (!parsed.length && /<(?:text|p)\b/i.test(raw)) {
+          let parsed: VideoTranscriptSegment[] = [];
+          if (/^\s*\{/.test(raw)) {
+            try {
+              const json = JSON.parse(raw) as { body?: Array<{ from?: number; to?: number; content?: string }>; segments?: unknown[] };
+              if (Array.isArray(json.body)) parsed = json.body.map(item => ({ start: Math.max(0, Number(item.from) || 0), end: Math.max(Number(item.from) || 0, Number(item.to) || (Number(item.from) || 0) + 4), text: String(item.content || "").trim() })).filter(item => item.text).slice(0,20000);
+              else parsed = parseVideoTranscript(raw);
+            } catch { parsed = parseVideoTranscript(raw); }
+          } else if (/<(?:text|p)\b/i.test(raw)) {
             const xml = new DOMParser().parseFromString(raw,"text/xml");
             parsed = Array.from(xml.querySelectorAll("text, p")).map(node => {
               const rawStart = Number(node.getAttribute("start") ?? node.getAttribute("t") ?? 0);
@@ -481,6 +487,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               const duration = rawDuration > 10000 ? rawDuration/1000 : rawDuration;
               return {start, end:start+Math.max(1,duration), text:(node.textContent || "").trim()};
             }).filter(item => item.text && Number.isFinite(item.start)).slice(0,20000);
+          } else {
+            parsed = parseVideoTranscript(raw);
           }
           if (parsed.length) { segments=parsed; captionHost=new URL(captionUrl).hostname; break; }
         } catch { /* try next public caption track */ }
