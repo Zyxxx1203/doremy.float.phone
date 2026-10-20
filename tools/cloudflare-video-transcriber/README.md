@@ -1,33 +1,58 @@
 # Cloudflare Workers AI transcription bridge
 
-This optional cloud endpoint uses Cloudflare Workers AI Whisper Large v3 Turbo for direct audio files. Once deployed, your computer does not need to stay on for supported audio URLs.
+This cloud endpoint uses Cloudflare Workers AI Whisper Large v3 Turbo for **direct audio files**. After deployment, your computer does not need to stay on.
 
-## Important boundary
+## One-time setup, then deploy from GitHub Actions
 
-This Worker does **not** extract audio from arbitrary video pages (Bilibili, YouTube, TikTok, etc.) and does not bypass login, region restrictions, DRM, or platform protections. A page URL is not an audio URL. For platform video pages, use captions you can lawfully obtain/import or the existing optional yt-dlp + FFmpeg + faster-whisper local bridge. This Worker accepts HTTPS direct audio files only, with a configured hostname allowlist and an 8 MB request limit. It is a first cloud integration, not a universal video parser.
+You do not need to install Node.js or run commands on your own computer for each deployment. GitHub Actions can deploy the Worker to **your own Cloudflare account**.
 
-## Deploy
+### 1. Create the required Cloudflare credentials
 
-1. Create a Cloudflare account and enable Workers AI for the account.
-2. Install Node.js locally once. From this directory run `npm install`, then `npx wrangler login`.
-3. Edit `wrangler.jsonc`:
-   - Set `ALLOWED_ORIGINS` to the exact origin of your deployed phone web app (scheme + host, no path).
-   - Set `ALLOWED_MEDIA_HOSTS` to the exact hostname(s) that host audio files you control or trust, comma-separated. Do not use `*`.
-4. Set a long secret token:
-   ```bash
-   npx wrangler secret put TRANSCRIBE_TOKEN
-   ```
-   Paste a random token when prompted. Use the same token in the app's transcription settings. Never commit it.
-5. Test locally with `npx wrangler dev`, then deploy with `npx wrangler deploy`.
-6. Check `https://YOUR-WORKER.workers.dev/health`. Configure the app service address as `https://YOUR-WORKER.workers.dev` (the app adds `/transcribe` automatically).
+1. Sign in to Cloudflare and copy your **Account ID** from the account overview.
+2. Create a Cloudflare API token with permission to deploy Workers and use Workers AI on that account. Keep it private.
+3. Generate a long random service token. This is separate from the Cloudflare API token; the app uses this service token to authenticate transcription requests.
 
-## App use
+### 2. Add three GitHub repository secrets
 
-In Watch Together, enter a **direct audio URL** (for example an authorized MP3, WAV, M4A, OGG, or audio WebM file) in the link field. Configure the deployed Worker URL and the same token, then choose “Parse link and generate script”. The Worker returns timestamped JSON segments for the app's existing script parser. Direct audio links must end in a recognized audio extension and their hostname must match `ALLOWED_MEDIA_HOSTS`.
+In your repository, open **Settings → Secrets and variables → Actions → New repository secret** and add:
 
-## Limits and cost
+- `CLOUDFLARE_API_TOKEN`: the Cloudflare API token.
+- `CLOUDFLARE_ACCOUNT_ID`: your Cloudflare account ID.
+- `TRANSCRIBE_TOKEN`: the random service token used by the app.
 
-- Audio payload limit: 8 MB per request. Use shorter clips if the file is larger.
-- The endpoint transcribes audio only; it does not understand video frames or images.
-- Workers AI usage is billed according to Cloudflare's current pricing and plan limits. Check the official model page: https://developers.cloudflare.com/workers-ai/models/whisper-large-v3-turbo/
-- The first deployment requires a one-time local Node.js/Wrangler setup, but the deployed Worker runs in Cloudflare; your computer does not need to stay on.
+Never put any of these secrets in source code, a chat message, or a public workflow input.
+
+### 3. Run the deployment workflow
+
+1. Open the repository's **Actions** tab.
+2. Choose **Deploy video transcription service** → **Run workflow**.
+3. Keep the branch set to `main`.
+4. Fill in:
+   - **Allowed origins**: exact origins for the deployed web app, comma-separated, e.g. `https://zfloat.netlify.app`. No trailing path.
+   - **Allowed media hosts**: exact hostnames serving direct audio files, comma-separated, e.g. `audio.example.com,cdn.example.com`. Do not include a scheme or path, and do not use `*`.
+5. Click **Run workflow**. The workflow installs dependencies, type-checks the Worker, configures the allowlists, stores the service token as a Cloudflare secret, and deploys the Worker. The deploy log prints the resulting `workers.dev` address.
+
+The deployment happens in GitHub's hosted runner and Cloudflare. Your own computer can be turned off. If the workflow fails, open its failed step; it will report whether a secret, configuration, type-check, or deploy step failed.
+
+## App configuration
+
+In Watch Together's transcription settings:
+
+- **Service URL**: `https://YOUR-WORKER.workers.dev` (do not add `/transcribe`; the app adds it).
+- **Service token**: the same value you saved as `TRANSCRIBE_TOKEN`.
+
+Use a **direct audio-file URL** (for example an authorized MP3, WAV, M4A, OGG, or audio WebM file) in the link field, then choose “Parse link and generate script”. The Worker returns timestamped segments compatible with the app's script parser.
+
+## Important boundary: this is not yet a universal video-link parser
+
+A Bilibili/YouTube/TikTok page URL is not an audio-file URL. This Worker does not extract audio from arbitrary platform pages, bypass login, regional restrictions, DRM, or platform protections, or analyze video frames. Platform captions that you can lawfully access/import should be preferred; the existing optional local `yt-dlp + FFmpeg + faster-whisper` bridge remains the fallback for supported platforms. A cloud-hosted general extractor would be a separate service and would need platform-specific maintenance and additional resource/security controls.
+
+The Worker currently accepts HTTPS direct audio URLs whose hostname is explicitly allowlisted, and caps the downloaded audio at 8 MB. Shorter clips may be needed for larger files.
+
+## Cost and limits
+
+Workers AI has usage-based pricing and plan limits that can change. Check the current official pages before relying on a particular allowance:
+
+- Model: https://developers.cloudflare.com/workers-ai/models/whisper-large-v3-turbo/
+- Pricing: https://developers.cloudflare.com/workers-ai/platform/pricing/
+- Limits: https://developers.cloudflare.com/workers-ai/platform/limits/
