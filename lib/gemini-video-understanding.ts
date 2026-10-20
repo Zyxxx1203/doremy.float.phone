@@ -28,6 +28,8 @@ export async function analyzeWholeVideoWithGemini(options: {
   apiKey: string;
   model: string;
   prompt: string;
+  provider?: "gemini" | "ark";
+  baseUrl?: string;
   maxFileSizeMb?: number;
   signal?: AbortSignal;
   onProgress?: GeminiVideoProgress;
@@ -44,7 +46,7 @@ export async function analyzeWholeVideoWithGemini(options: {
   const maxFileSizeMb = Math.min(2048, Math.max(50, options.maxFileSizeMb ?? 1024));
   if (file.size > maxFileSizeMb * 1024 * 1024) throw new Error("视频超过当前设置的 " + maxFileSizeMb + " MB 上限。请在系统设置 → 视频分析模型调整上限，或先压缩视频。");
 
-  const apiRoot = "https://generativelanguage.googleapis.com";
+  if (options.provider === "ark") return analyzeWholeVideoWithArk({ file, apiKey, model, prompt, baseUrl: options.baseUrl, maxFileSizeMb, signal, onProgress });\n\n  const apiRoot = "https://generativelanguage.googleapis.com";
   const authHeader = { "x-goog-api-key": apiKey.trim() };
   let uploadedName = "";
 
@@ -156,5 +158,70 @@ export async function analyzeWholeVideoWithGemini(options: {
         keepalive: true,
       }).catch(() => {});
     }
+  }
+}
+
+async function analyzeWholeVideoWithArk(options: {
+  file: File; apiKey: string; model: string; prompt: string; baseUrl?: string;
+  maxFileSizeMb: number; signal?: AbortSignal; onProgress?: GeminiVideoProgress;
+}): Promise<string> {
+  const { file, apiKey, model, prompt, signal, onProgress } = options;
+  const root = (options.baseUrl || "https://ark.cn-beijing.volces.com/api/v3").trim().replace(/\\/+$/, "");
+  if (!/^https:\/\//i.test(root)) throw new Error("方舟 API 地址必须使用 HTTPS。");
+  const headers = { Authorization: "Bearer " + apiKey.trim() };
+  let fileId = "";
+  try {
+    onProgress?.("正在向火山方舟上传完整视频…");
+    const form = new FormData();
+    form.append("file", file, file.name);
+    form.append("purpose", "user_data");
+    form.append("preprocess_configs[video][model]", model.trim());
+    form.append("preprocess_configs[video][fps]", "0.5");
+    const upload = await fetch(root + "/files", { method: "POST", headers, body: form, signal });
+    const uploadPayload = await upload.json().catch(() => null) as { id?: string; error?: { message?: string }; status?: string } | null;
+    if (!upload.ok || !uploadPayload?.id) throw new Error(readErrorMessage(uploadPayload, "火山方舟视频上传失败（HTTP " + upload.status + "）。"));
+    fileId = uploadPayload.id;
+
+    let status = uploadPayload.status || "";
+    for (let attempt = 0; status && !["active", "succeeded", "completed"].includes(status.toLowerCase()); attempt += 1) {
+      if (["failed", "error", "cancelled"].includes(status.toLowerCase())) throw new Error("火山方舟视频预处理失败。");
+      if (attempt >= 90) throw new Error("火山方舟视频预处理超时，请稍后重试。");
+      onProgress?.("火山方舟正在处理视频…");
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, Math.min(1500 + attempt * 150, 5000));
+        if (signal) {
+          const abort = () => { clearTimeout(timer); reject(new DOMException("已取消视频分析。", "AbortError")); };
+          if (signal.aborted) abort();
+          else signal.addEventListener("abort", abort, { once: true });
+        }
+      });
+      const poll = await fetch(root + "/files/" + encodeURIComponent(fileId), { headers, signal });
+      const payload = await poll.json().catch(() => null) as { status?: string; error?: { message?: string } } | null;
+      if (!poll.ok || !payload) throw new Error(readErrorMessage(payload, "读取方舟视频处理状态失败。"));
+      status = payload.status || "";
+    }
+
+    onProgress?.("视频已就绪，角色正在观看并组织回应…");
+    const response = await fetch(root + "/responses", {
+      method: "POST", headers: { ...headers, "Content-Type": "application/json" }, signal,
+      body: JSON.stringify({
+        model: model.trim(),
+        input: [{ role: "user", content: [
+          { type: "input_video", file_id: fileId },
+          { type: "input_text", text: prompt },
+        ] }],
+      }),
+    });
+    const result = await response.json().catch(() => null) as {
+      output_text?: string;
+      output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
+      error?: { message?: string };
+    } | null;
+    if (!response.ok) throw new Error(readErrorMessage(result, "方舟视频理解失败（HTTP " + response.status + "）。"));
+    const outputText = result?.output_text || result?.output?.flatMap(item => item.content || []).map(part => part.text || "").filter(Boolean).join("\\n") || "";
+    if (!outputText.trim()) throw new Error("方舟没有返回文字回应。请检查模型是否支持视频输入及 Responses API。");
+    return outputText.trim();
+  } finally {
+    if (fileId) void fetch(root + "/files/" + encodeURIComponent(fileId), { method: "DELETE", headers, keepalive: true }).catch(() => {});
   }
 }
