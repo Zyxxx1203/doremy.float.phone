@@ -135,11 +135,29 @@ function shapeOf(templateId: string): Shape {
   return SHAPES[templateId] ?? full;
 }
 
-/** 两张照片是否满足「重叠 ≤ 50%」：椭圆间距判定。 */
-function farEnough(a: { x: number; y: number }, b: { x: number; y: number }, scale: number): boolean {
-  const dx = (a.x - b.x) / (PHOTO_W * scale * MIN_GAP_RATIO);
-  const dy = (a.y - b.y) / (PHOTO_H * scale * MIN_GAP_RATIO);
-  return dx * dx + dy * dy >= 1;
+/** 
+ * 照片槽位的碰撞判定：按照片矩形包围盒计算交叠面积 / 较小照片面积，
+ * 必须 <= 50%。相比中心距椭圆近似，这个判定可解释、可复现。
+ * scale 是候选照片比例；已放置槽位使用各自的 scale。
+ */
+function farEnough(a: { x: number; y: number }, b: { x: number; y: number; scale?: number; rotation?: number }, scale: number): boolean {
+  const bounds = (itemScale: number, rotation = 0) => {
+    const radians = Math.abs(rotation) * Math.PI / 180;
+    const width = PHOTO_W * itemScale;
+    const height = PHOTO_H * itemScale;
+    // 旋转矩形的轴对齐包围盒，略偏保守，避免视觉上挤在一起。
+    return {
+      width: width * Math.abs(Math.cos(radians)) + height * Math.abs(Math.sin(radians)),
+      height: height * Math.abs(Math.cos(radians)) + width * Math.abs(Math.sin(radians)),
+    };
+  };
+  const aa = bounds(scale);
+  const bb = bounds(b.scale ?? scale, b.rotation ?? 0);
+  const overlapW = Math.max(0, (aa.width + bb.width) / 2 - Math.abs(a.x - b.x));
+  const overlapH = Math.max(0, (aa.height + bb.height) / 2 - Math.abs(a.y - b.y));
+  const overlapArea = overlapW * overlapH;
+  const smallerArea = Math.min(aa.width * aa.height, bb.width * bb.height);
+  return smallerArea <= 0 || overlapArea / smallerArea <= 0.5;
 }
 
 /**
@@ -170,8 +188,10 @@ function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
   if (!candidates.length) return layoutSlots("builtin-grid", total, true);
 
   const ordered = fill
+    // 先由中心开始向外铺，避免照片全部挤在轮廓一侧。
     ? candidates.sort((a, b) => a.radius - b.radius || a.x - b.x)
-    : candidates.sort((a, b) => a.radius - b.radius);
+    // 轮廓模式优先选择最外缘，再沿周边均匀铺开，形状更容易辨认。
+    : candidates.sort((a, b) => b.radius - a.radius || a.x - b.x);
 
   const picked: Slot[] = [];
   for (const candidate of ordered) {
@@ -188,7 +208,7 @@ function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
 
   // 形状太小放不下时，逐步缩小照片再补
   let shrink = 0.92;
-  while (picked.length < total && shrink > 0.45) {
+  while (picked.length < total && shrink > 0.18) {
     for (const candidate of ordered) {
       if (picked.length >= total) break;
       if (picked.some(slot => !farEnough(candidate, slot, Math.max(shrink, slot.scale)))) continue;
@@ -197,12 +217,15 @@ function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
     shrink -= 0.08;
   }
 
-  // 极少数极端情况：宁可重复落点也不返回空
-  let index = 0;
-  while (picked.length < total) {
-    const candidate = ordered[index % ordered.length];
-    picked.push({ x: candidate.x, y: candidate.y, scale: 0.5, rotation: 0 });
-    index += 1;
+  // 极端高照片数时，使用更小的唯一槽位补齐；绝不重复坐标造成整叠照片。
+  const used = new Set(picked.map(slot => `${slot.x},${slot.y}`));
+  for (const candidate of ordered) {
+    if (picked.length >= total) break;
+    const key = `${candidate.x},${candidate.y}`;
+    if (used.has(key)) continue;
+    if (picked.some(slot => !farEnough(candidate, slot, 0.12))) continue;
+    picked.push({ x: candidate.x, y: candidate.y, scale: 0.12, rotation: 0 });
+    used.add(key);
   }
   return picked.slice(0, total);
 }
