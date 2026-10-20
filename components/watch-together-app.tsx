@@ -656,14 +656,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   /** 全屏进入横屏沉浸模式；退出时尽可能恢复进入前的屏幕方向和播放器布局。 */
   const enterFullscreen = async () => {
-    if (!fullScreen) {
-      originalOrientationRef.current = screen.orientation?.type ?? null;
-      setFullScreen(true);
-      await tryLockLandscape();
-      return;
-    }
-    setFullScreen(false);
-    await restoreOrientation();
+    // Use an in-page immersive layout only. Calling ScreenOrientation.lock here can
+    // recreate/resume a WebView media surface on some Android builds and halt playback.
+    setFullScreen(current => !current);
   };
 
   const latestComment = comments[comments.length - 1];
@@ -723,29 +718,66 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app[data-watch-fullscreen="true"] .watch-player video,.watch-together-app[data-watch-fullscreen="true"] .watch-player iframe { display:block; width:100%; height:100%; max-height:100%; aspect-ratio:auto; object-fit:contain; }
       @media (orientation: portrait) { .watch-together-app[data-watch-fullscreen="true"] > main { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(120px,30dvh) minmax(0,1fr); grid-template-areas:"title" "player" "interaction"; overflow:hidden; } }\n      @media (orientation: landscape) and (min-width: 700px) {\n        .watch-together-main { display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(300px, .9fr); grid-template-rows:auto minmax(0, auto) minmax(0, 1fr); grid-template-areas:"title interaction" "player interaction" "link interaction"; gap:10px; overflow:hidden; padding-bottom:12px; }\n        .watch-player { grid-area:player; width:100%; max-width:none; align-self:start; }\n        .watch-link-panel { grid-area:link; min-width:0; overflow:auto; }\n        .watch-interaction-panel { grid-area:interaction; min-height:0; overflow-y:auto; overscroll-behavior:contain; margin-top:0!important; }\n      }\n
       .watch-together-app[data-watch-fullscreen="true"] > header {
-        position:absolute!important; inset:0 0 auto 0!important; z-index:1100!important;
-        display:flex; min-height:0!important; padding:calc(env(safe-area-inset-top,0px) + 5px) 10px 5px!important;
-        background:linear-gradient(180deg,rgba(0,0,0,.62),transparent)!important; color:#fff!important; pointer-events:none;
+        position:relative!important; inset:auto!important; z-index:1100!important;
+        display:flex!important; flex:0 0 auto!important; min-height:48px!important;
+        padding:calc(env(safe-area-inset-top,0px) + 5px) 10px 7px!important;
+        background:linear-gradient(180deg,rgba(0,0,0,.62),rgba(0,0,0,.24))!important;
+        color:#fff!important; pointer-events:auto!important;
       }
       .watch-together-app[data-watch-fullscreen="true"] > header button,
-      .watch-together-app[data-watch-fullscreen="true"] > header a { pointer-events:auto; }
+      .watch-together-app[data-watch-fullscreen="true"] > header a { pointer-events:auto!important; }
       .watch-together-app[data-watch-fullscreen="true"] > main {
-        display:block!important; position:absolute!important; inset:0!important; flex:none!important; min-height:0!important;
-        width:100%!important; overflow:hidden!important; padding:0!important; gap:0!important; background:none!important;
+        display:grid!important; position:relative!important; inset:auto!important;
+        grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr)!important;
+        grid-template-rows:minmax(0,1fr)!important;
+        grid-template-areas:"player interaction"!important;
+        flex:1 1 0!important; min-height:0!important; width:100%!important;
+        overflow:hidden!important; padding:8px 10px max(8px,env(safe-area-inset-bottom))!important;
+        gap:10px!important; background:none!important; box-sizing:border-box!important;
       }
       .watch-together-app[data-watch-fullscreen="true"] .watch-room-title,
-      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel,
-      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel { display:none!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel { display:none!important; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-player {
-        position:absolute!important; inset:0!important; width:100%!important; height:100%!important; max-width:none!important;
-        min-height:0!important; aspect-ratio:auto!important; margin:0!important; padding:0!important; overflow:hidden!important;
-        border:0!important; border-radius:0!important; box-shadow:none!important; background:#000!important;
+        grid-area:player!important; position:relative!important; inset:auto!important;
+        width:100%!important; height:100%!important; max-width:none!important;
+        min-height:0!important; aspect-ratio:auto!important; margin:0!important; padding:0!important;
+        overflow:hidden!important; border:0!important; border-radius:8px!important;
+        box-shadow:none!important; background:#000!important;
       }
       .watch-together-app[data-watch-fullscreen="true"] .watch-player > video,
       .watch-together-app[data-watch-fullscreen="true"] .watch-player > iframe {
         position:absolute!important; inset:0!important; display:block!important; width:100%!important; height:100%!important;
-        max-width:none!important; max-height:none!important; min-width:0!important; min-height:0!important;
+        max-width:none!important; max-height:100%!important; min-width:0!important; min-height:0!important;
         border:0!important; aspect-ratio:auto!important; object-fit:contain!important;
+      }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel {
+        display:block!important; grid-area:interaction!important; position:relative!important;
+        min-width:0!important; min-height:0!important; width:100%!important; height:100%!important;
+        overflow-y:auto!important; overflow-x:hidden!important; overscroll-behavior:contain!important;
+        margin:0!important; align-self:stretch!important; z-index:5!important;
+      }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div {
+        display:flex!important; flex-direction:column!important; height:100%!important; min-height:0!important;
+        overflow:hidden!important; padding:10px!important; border-radius:14px!important;
+      }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel section {
+        display:flex!important; flex-direction:column!important; flex:1 1 auto!important; min-height:0!important;
+        margin-top:8px!important; padding-top:8px!important; overflow:hidden!important;
+      }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .watch-comment-list {
+        flex:1 1 auto!important; min-height:80px!important; max-height:none!important;
+        overflow-y:auto!important; overscroll-behavior:contain!important;
+      }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .watch-discussion-composer { flex-shrink:0!important; }
+      @media (orientation:portrait) {
+        .watch-together-app[data-watch-fullscreen="true"] > main {
+          grid-template-columns:minmax(0,1fr)!important;
+          grid-template-rows:minmax(150px,34dvh) minmax(0,1fr)!important;
+          grid-template-areas:"player" "interaction"!important;
+          gap:8px!important; padding:6px 8px max(8px,env(safe-area-inset-bottom))!important;
+        }
+        .watch-together-app[data-watch-fullscreen="true"] .watch-player { min-height:150px!important; }
+        .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div { padding:8px!important; }
       }
       .watch-companion-overlay {
         max-height:calc(100dvh - 64px - env(safe-area-inset-bottom,0px)); overflow:visible;
