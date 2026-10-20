@@ -384,8 +384,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     };
   }, [wallView, state.photos.length, filter]);
   const [selectedCharacterId, setSelectedCharacterId] = useState<string>(() => readPhotoWallCharacter());
-  const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
-  const wallSelectedPhoto = state.photos.find(photo => photo.id === selectedPhotoId) ?? null;
+  const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null); // Modal editor only
+  const [wallActivePhotoId, setWallActivePhotoId] = useState<string | null>(null); // Canvas selection only
+  const wallSelectedPhoto = state.photos.find(photo => photo.id === wallActivePhotoId) ?? null;
   useEffect(() => {
     const backgroundRef = state.wallBackgroundRef;
     if (backgroundRef) void retainMediaRef(backgroundRef, "photo-wall-background").catch(error => console.warn("[照片墙] 背景引用保护失败", error));
@@ -573,9 +574,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   }, [applyImmediate, compensateViewportScroll]);
 
   /** 相框级涂鸦层：笔迹与贴纸跟着照片一起存。 */
-  const changeDoodles = useCallback((photoId: string, doodles: PhotoWallDoodle[]) => {
+  const changeDoodles = useCallback((photoId: string, doodles: PhotoWallDoodle[], side: "front" | "back" = "front") => {
     pushHistory(stateRef.current);
-    commitPhotos(stateRef.current.photos.map(photo => photo.id === photoId ? { ...photo, doodles } : photo));
+    commitPhotos(stateRef.current.photos.map(photo => photo.id === photoId
+      ? side === "back" ? { ...photo, backDoodles: doodles } : { ...photo, doodles }
+      : photo));
   }, [commitPhotos, pushHistory]);
 
   /** 套用模板骨架：照片按顺序吸附进槽位，套完仍然可以自由拖动。 */
@@ -759,7 +762,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
   const patchWallSelectedPlacement = (patch: Partial<PhotoWallPlacement>) => {
     const current = stateRef.current;
-    const photoIndex = current.photos.findIndex(photo => photo.id === selectedPhotoId);
+    const photoIndex = current.photos.findIndex(photo => photo.id === wallActivePhotoId);
     if (photoIndex < 0) return;
     const photo = current.photos[photoIndex];
     const base = photo.placement ?? fallbackPlacement(photoIndex);
@@ -779,7 +782,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
   useEffect(() => {
     if (wallView === "edit") return;
-    setWallCanvasMode("view"); setWallSticker(null); setWallEraser(false); setSelectedPhotoId(null);
+    setWallCanvasMode("view"); setWallSticker(null); setWallEraser(false); setWallActivePhotoId(null); setSelectedPhotoId(null);
   }, [wallView]);
   const selectedCharacter = characters.find(char => char.id === selectedCharacterId) ?? null;
   const toggleTimelineFlip = (photoId: string) => setTimelineFlippedPhotoIds(current => { const next = new Set(current); if (next.has(photoId)) next.delete(photoId); else next.add(photoId); return next; });
@@ -1251,10 +1254,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         {busy && <div className="mb-3 flex shrink-0 items-center gap-2 border border-[#e4d8c6] bg-[#faf7f0] px-3 py-2.5 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
         <div ref={panoramaViewportRef} data-photo-wall-viewport className="min-h-0 flex-1 w-full overflow-auto overscroll-contain" style={{ WebkitOverflowScrolling: "touch", touchAction: "none", overscrollBehavior: "contain" }}>
           <div className="relative shrink-0 overflow-hidden" style={{ width: world.width * panoramaZoom / 100, height: world.height * panoramaZoom / 100, touchAction: "none" }}>
-            <PhotoWallCanvas photos={visiblePhotos} selectedId={selectedPhotoId} onSelect={setSelectedPhotoId}
+            <PhotoWallCanvas photos={visiblePhotos} selectedId={wallActivePhotoId} onSelect={setWallActivePhotoId}
               onChangePlacement={changePlacement} onPlacementSettled={settlePlacement}
               onDragBegin={() => pushHistory(stateRef.current)} onUndo={undo} onRedo={redo}
-              canUndo={canUndo} canRedo={canRedo} onChangeDoodles={changeDoodles}
+              canUndo={canUndo} canRedo={canRedo} onChangeDoodles={(id, doodles, side) => changeDoodles(id, doodles, side)}
               wallDoodles={state.wallDoodles ?? []} onChangeWallDoodles={changeWallDoodles}
               backgroundImage={wallBackgroundUrl} backgroundBox={state.wallBackgroundBox}
               wallWorld={world} canvasZoom={panoramaZoom / 100} readOnly={wallView === "panorama"}
