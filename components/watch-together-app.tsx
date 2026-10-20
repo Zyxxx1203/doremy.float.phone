@@ -10,6 +10,7 @@ import { kvGet, kvSet } from "@/lib/kv-db";
 import { resolveVoiceConfig, synthesizeSpeech } from "@/lib/tts-service";
 import { loadApiConfigs, loadBindingConfig, resolveBinding, resolveUserIdentity } from "@/lib/settings-storage";
 import { formatTranscriptTime, parseVideoTranscript, type VideoTranscriptSegment } from "@/lib/video-transcript";
+import { DanmakuLayer } from "@/components/watch/danmaku-layer";
 
 /** 自动搭话的每日上限：护栏，避免暂停/挂机时白烧 API。 */
 const WATCH_AUTO_DAILY_LIMIT = 24;
@@ -199,6 +200,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const nativeVideoCacheRef = useRef<{ url: string; cacheId: string } | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
   const [resolverState, setResolverState] = useState<{ state: "idle" | "resolving" | "ok" | "failed"; message?: string }>({ state: "idle" });
+  const [mediaPaused, setMediaPaused] = useState(false);
+  const [danmakuDraft, setDanmakuDraft] = useState("");
   const [resolutionMessage, setResolutionMessage] = useState("");
   const [transcriberEndpoint, setTranscriberEndpoint] = useState(() => {
     try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_transcriber_endpoint_v1") || "" : ""; } catch { return ""; }
@@ -635,8 +638,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   /** 把一帧画面交给角色：手动截图和静默截屏共用这一条路径。 */
 
-  const submitDiscussion = () => {
-    const text=discussionDraft.trim(); if(!target||!text) return;
+  const submitDiscussion = (rawText?: string) => {
+    const text=(rawText ?? discussionDraft).trim(); if(!target||!text) return;
     const timepoint=timepointDraft.trim().slice(0,16);
     const comment:WatchComment={id:`user-${Date.now()}`,characterId:"user",characterName:"我",text,createdAt:new Date().toISOString(),kind:"user",timepoint:timepoint||undefined,targetUrl:target.url};
     setComments(current=>{const next=[...current.slice(-99),comment];saveTargetComments(target.url,next);return next;});
@@ -711,6 +714,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     window.requestAnimationFrame(() => window.requestAnimationFrame(restorePlayback));
   };
 
+  const danmakuItems = useMemo(() => comments
+    .filter(item => !target?.url || !item.targetUrl || item.targetUrl === target.url)
+    .map(item => ({ id: item.id, text: item.text, kind: item.kind === "user" ? ("user" as const) : ("character" as const), name: item.characterName })), [comments, target?.url]);
   const latestComment = comments[comments.length - 1];
   const platformNote = useMemo(() => {
     if (!target) return "";
@@ -969,7 +975,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         style={{ boxShadow: "0 0 0 1px rgba(255,214,170,.06), 0 28px 70px rgba(0,0,0,.6), 0 0 120px rgba(201,143,82,.16)" }}
       >
         {target?.nativeVideo ? (
-          <video key={target.nativeVideoUrl || target.url} src={target.nativeVideoUrl || target.url} controls playsInline className={fullScreen ? "h-full w-full object-contain bg-black" : "aspect-video w-full bg-black"} onEnded={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } }} onError={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } onNotice?.("视频无法在当前 WebView 播放，可能是格式、签名有效期或平台防盗链限制。"); }} />
+          <video key={target.nativeVideoUrl || target.url} src={target.nativeVideoUrl || target.url} controls playsInline onPlay={() => setMediaPaused(false)} onPause={() => setMediaPaused(true)} className={fullScreen ? "h-full w-full object-contain bg-black" : "aspect-video w-full bg-black"} onEnded={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } }} onError={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } onNotice?.("视频无法在当前 WebView 播放，可能是格式、签名有效期或平台防盗链限制。"); }} />
         ) : target?.embedUrl ? (
           <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className={fullScreen ? "h-full w-full border-0" : "aspect-video w-full border-0"} />
         ) : (
@@ -1020,13 +1026,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </form>}
           </div>}
         </div>}
-        {(target?.embedUrl || target?.nativeVideo) && settings.danmakuEnabled && comments.some(comment => comment.targetUrl === target.url) && <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
-          {comments.filter(comment => comment.targetUrl === target.url).slice(-8).map((comment, index) => {
-            const lane = 10 + ((index * 13 + comment.id.length * 7) % 7) * 10;
-            const duration = Math.max(8, Math.min(18, 8 + comment.text.length * 0.17));
-            return <div key={comment.id} data-kind={comment.kind === "user" ? "user" : "character"} className="watch-danmaku-track" style={{ top: lane + "%", animationDuration: duration + "s", animationDelay: (index * 0.28) + "s" }}><span>{comment.kind === "user" ? "我" : comment.characterName}：{comment.text}</span></div>;
-          })}
-        </div>}
+        <DanmakuLayer enabled={settings.danmakuEnabled && Boolean(target?.embedUrl || target?.nativeVideo)} paused={mediaPaused} items={danmakuItems} />
         <div className="absolute right-2 top-2 z-20 flex gap-1">
           <button type="button" onClick={() => void captureCurrentFrame()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/55 text-white/90 backdrop-blur transition active:scale-95" aria-label="截取当前画面并用于理解" title="截取当前画面"><ImagePlus size={14}/></button>
           <button type="button" onClick={() => screenshotFileInputRef.current?.click()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/55 text-white/90 backdrop-blur transition active:scale-95" aria-label="上传截图" title="上传截图"><FileText size={14}/></button>
@@ -1034,6 +1034,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         </div>
         {/* 屏幕洒在桌面上的余光 */}
         {!fullScreen && <div aria-hidden className="pointer-events-none absolute -bottom-6 left-1/2 h-6 w-[86%] -translate-x-1/2 rounded-[50%] opacity-40 blur-xl" style={{ background: "radial-gradient(ellipse, #d7a06a 0%, transparent 70%)" }} />}
+        {fullScreen && <form onSubmit={event => { event.preventDefault(); const text = danmakuDraft.trim(); if (!text) return; submitDiscussion(text); setDanmakuDraft(""); }} className="absolute bottom-3 left-1/2 z-30 w-[min(560px,88%)] -translate-x-1/2"><div className="flex items-center gap-2 rounded-full border border-white/20 bg-black/55 px-3 py-1.5 backdrop-blur"><input value={danmakuDraft} onChange={event => setDanmakuDraft(event.target.value.slice(0,120))} placeholder="发个弹幕…" className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/45"/><button type="submit" disabled={!danmakuDraft.trim()} className="shrink-0 rounded-full bg-[#e6c49d] px-3 py-1 text-xs text-[#302218] disabled:opacity-40">发送</button></div></form>}
       </section>
         {resolverState.state !== "idle" && <div className="mx-auto mt-2 flex w-full max-w-3xl items-start gap-1.5 px-1 text-[10px] leading-5" data-resolver-state={resolverState.state}><span className={resolverState.state==="ok"?"text-[#8fd0a2]":resolverState.state==="failed"?"text-[#e0938a]":"text-[#d9b489]"}>{resolverState.state==="resolving"?"正在解析视频链接…":resolverState.state==="ok"?"✓ 解析成功 · 已在应用内播放":"✕ 解析失败："+(resolverState.message||"未知原因")}</span></div>}
 
@@ -1118,7 +1119,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </div>
           </div>
 
-            <div data-part="composer" className="watch-discussion-composer mt-3 border-t border-[#d6b18c]/20 pt-3"><div className="flex items-center gap-2"><input value={timepointDraft} onPointerDown={event=>event.stopPropagation()} onTouchStart={event=>event.stopPropagation()} inputMode="numeric" autoComplete="off" maxLength={8} onChange={event=>{ const next=event.target.value.replace(/[^0-9:.]/g, "").slice(0,8); timepointDraftRef.current=next; setTimepointDraft(next); }} placeholder="时间点 03:12（可选）" aria-label="视频时间点，例如 03:12" className="w-[42%] min-w-0 border-b border-[#9c7b63]/60 bg-transparent px-1 py-2 text-xs text-[#f0dfcc] outline-none placeholder:text-[#907d6c] focus:border-[#e4c6a8]"/><span className="text-[10px] text-[#907d6c]">时间点 / 章节标记</span></div><textarea value={discussionDraft} onPointerDown={event=>event.stopPropagation()} onTouchStart={event=>event.stopPropagation()} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} maxLength={800} rows={2} placeholder={target ? "写下你对这一幕的看法……" : "先放上视频，再写下你对这一幕的看法……"} className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-black/20 p-3 text-sm leading-6 text-[#efe2d0] outline-none placeholder:text-[#907d6c] focus:border-[#c99a78]/60 focus:ring-2 focus:ring-[#c99a78]/10"/><div className="mt-2 flex justify-end"><button type="button" onClick={submitDiscussion} disabled={!target||!discussionDraft.trim()} className="inline-flex items-center rounded-full border border-[#c99a78]/60 bg-[#c99a78] px-4 py-2.5 text-xs font-medium text-[#2a1f16] shadow-sm transition hover:brightness-105 active:scale-[.98] disabled:opacity-40"><MessageCircle size={13} className="mr-1 inline"/>记下并问问 TA</button></div></div>
+            <div data-part="composer" className="watch-discussion-composer mt-3 border-t border-[#d6b18c]/20 pt-3"><div className="flex items-center gap-2"><input value={timepointDraft} onPointerDown={event=>event.stopPropagation()} onTouchStart={event=>event.stopPropagation()} inputMode="numeric" autoComplete="off" maxLength={8} onChange={event=>{ const next=event.target.value.replace(/[^0-9:.]/g, "").slice(0,8); timepointDraftRef.current=next; setTimepointDraft(next); }} placeholder="时间点 03:12（可选）" aria-label="视频时间点，例如 03:12" className="w-[42%] min-w-0 border-b border-[#9c7b63]/60 bg-transparent px-1 py-2 text-xs text-[#f0dfcc] outline-none placeholder:text-[#907d6c] focus:border-[#e4c6a8]"/><span className="text-[10px] text-[#907d6c]">时间点 / 章节标记</span></div><textarea value={discussionDraft} onPointerDown={event=>event.stopPropagation()} onTouchStart={event=>event.stopPropagation()} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} maxLength={800} rows={2} placeholder={target ? "写下你对这一幕的看法……" : "先放上视频，再写下你对这一幕的看法……"} className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-black/20 p-3 text-sm leading-6 text-[#efe2d0] outline-none placeholder:text-[#907d6c] focus:border-[#c99a78]/60 focus:ring-2 focus:ring-[#c99a78]/10"/><div className="mt-2 flex justify-end"><button type="button" onClick={() => submitDiscussion()} disabled={!target||!discussionDraft.trim()} className="inline-flex items-center rounded-full border border-[#c99a78]/60 bg-[#c99a78] px-4 py-2.5 text-xs font-medium text-[#2a1f16] shadow-sm transition hover:brightness-105 active:scale-[.98] disabled:opacity-40"><MessageCircle size={13} className="mr-1 inline"/>记下并问问 TA</button></div></div>
           <div data-part="actions" className="mt-3 flex flex-wrap items-center gap-2">
             <button onClick={() => void generateComment(true)} disabled={!target || !character || busy} className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs text-[#2a1f16] transition active:scale-95 disabled:opacity-40" style={{ background: "linear-gradient(135deg,#e8c39a,#c99a6a)" }}>
               {busy ? <LoaderCircle size={13} className="animate-spin"/> : <MessageCircle size={13}/>}让 TA 即时回应
