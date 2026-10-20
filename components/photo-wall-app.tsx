@@ -1038,6 +1038,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       }
       const current = stateRef.current;
       const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
+      // Only assign the newly appended photos to the tail slots; never recalculate existing placements on upload.
       const slots = buildTemplateSlots(activeTemplateId, current.photos.length + created.length, templateText, templateFill);
       const placedCreated = created.map((photo, index) => {
         const slot = slots[current.photos.length + index] ?? fallbackPlacement(current.photos.length + index);
