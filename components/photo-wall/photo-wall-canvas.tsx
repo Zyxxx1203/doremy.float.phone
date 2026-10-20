@@ -600,12 +600,17 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
           if (drawingIsEnabled) onDoodlePointerDown(event);
           else onPointerDownMove(event);
         }}
-        onPointerMove={event => { event.stopPropagation(); if (drawingIsEnabled) onDoodlePointerMove(event); }}
-        onPointerUp={event => {
-          event.preventDefault(); event.stopPropagation();
-          if (drawingIsEnabled) onDoodlePointerUp(event);
+        onPointerMove={event => {
+          if (drawingIsEnabled) { event.stopPropagation(); onDoodlePointerMove(event); }
+          // In move mode, let move events bubble to the wall surface's drag handler.
         }}
-        onPointerCancel={event => { event.stopPropagation(); if (drawingIsEnabled) onDoodlePointerUp(event); }}
+        onPointerUp={event => {
+          if (drawingIsEnabled) { event.preventDefault(); event.stopPropagation(); onDoodlePointerUp(event); }
+          // In move mode, pointer-up must bubble so endDrag can commit the final position.
+        }}
+        onPointerCancel={event => {
+          if (drawingIsEnabled) { event.stopPropagation(); onDoodlePointerUp(event); }
+        }}
         onClick={event => { event.preventDefault(); event.stopPropagation(); }}
         onDoubleClick={event => { event.preventDefault(); event.stopPropagation(); }}
       />}
