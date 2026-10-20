@@ -1396,8 +1396,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           <span className="ml-auto shrink-0 text-[10px] text-[#a18e7a]">{timelinePhotos.length} 张</span>
         </div>
         {timelinePhotos.length === 0 ? <div className="grid min-h-[55dvh] place-items-center text-center text-[#8f806d]"><div><Feather size={28} className="mx-auto"/><p className="mt-3">这个日期范围里还没有照片</p><p className="mt-1 text-xs">可以调整日期，或清除日期重新查看全部。</p></div></div> : <div className="mx-auto max-w-5xl space-y-5">
-          {timelineGroups.map(group => <section key={group.key} className="relative">
+          {timelineGroups.map(group => <section key={group.key} className="relative pl-6 before:absolute before:bottom-0 before:left-2 before:top-4 before:w-px before:bg-[#d8c4ab]">
             <header className="sticky top-0 z-10 mb-3 flex items-center justify-between gap-2 border-b border-[#d8c4b4] bg-[#f3eadc]/95 px-2 py-2 backdrop-blur">
+              <span aria-hidden="true" className="absolute -left-[21px] top-3 h-3 w-3 rounded-full border-2 border-[#b88c82] bg-[#f3eadc] shadow-[0_0_0_3px_rgba(243,234,220,.9)]"/>
               <h2 className="font-serif text-base text-[#75624d]">{group.label}</h2><span className="shrink-0 text-[10px] text-[#a18e7a]">{group.items.length} 张</span>
             </header>
             <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-3 lg:grid-cols-6">
