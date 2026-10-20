@@ -186,9 +186,9 @@ function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
   if (!candidates.length) return layoutSlots("builtin-grid", total, true);
 
   const ordered = fill
-    // 先由中心开始向外铺，避免照片全部挤在轮廓一侧。
-    ? candidates.sort((a, b) => a.radius - b.radius || a.x - b.x)
-    // 轮廓模式优先选择最外缘，再沿周边均匀铺开，形状更容易辨认。
+    // 即使照片较少也先保留形状外轮廓，再逐层向内填充，避免先挤成一团。
+    ? candidates.sort((a, b) => b.radius - a.radius || a.x - b.x)
+    // 轮廓模式的候选点已限制在边缘，按外缘优先铺开。
     : candidates.sort((a, b) => b.radius - a.radius || a.x - b.x);
 
   const picked: Slot[] = [];
