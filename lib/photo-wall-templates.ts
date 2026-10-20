@@ -195,7 +195,7 @@ function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
   for (const candidate of ordered) {
     if (picked.length >= total) break;
     const scale = 0.72 + ((picked.length * 7) % 5) * 0.03;
-    if (picked.some(slot => !farEnough(candidate, slot, Math.max(scale, slot.scale)))) continue;
+    if (picked.some(slot => !farEnough(candidate, slot, scale))) continue;
     picked.push({
       x: candidate.x,
       y: candidate.y,
@@ -209,7 +209,7 @@ function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
   while (picked.length < total && shrink > 0.18) {
     for (const candidate of ordered) {
       if (picked.length >= total) break;
-      if (picked.some(slot => !farEnough(candidate, slot, Math.max(shrink, slot.scale)))) continue;
+      if (picked.some(slot => !farEnough(candidate, slot, shrink))) continue;
       picked.push({ x: candidate.x, y: candidate.y, scale: round(shrink), rotation: round(((picked.length * 17) % 9) - 4) });
     }
     shrink -= 0.08;
