@@ -414,7 +414,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     localVideoObjectUrlRef.current = objectUrl;
     const localTarget: VideoTarget = { url: objectUrl, embedUrl: null, platform: "other", platformName: "本地视频", supported: true, nativeVideo: true };
     setTarget(localTarget);
-    setVideoDescription(""); setProxyStatus(""); setScreenshotDataUrl("");
+    setScreenshotDataUrl("");
     setTranscriptSegments([]); setTranscriptName("");
     setVideoTitle(file.name.replace(/\.[^.]+$/, "") || "本地视频");
     setComments([]);
@@ -431,7 +431,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       localVideoObjectUrlRef.current = null;
     }
     setTarget(parsed);
-    setVideoDescription(""); setProxyStatus(""); setScreenshotDataUrl("");
+    setScreenshotDataUrl("");
     setTranscriptSegments([]); setTranscriptName("");
     setVideoTitle(current => current || `${parsed.platformName}的一段视频`);
     setComments(loadTargetComments(parsed.url));
