@@ -399,7 +399,7 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-private data class CachedSharedVideo(val cacheId: String, val contentUri: String)
+private data class CachedSharedVideo(val cacheId: String, val contentUri: String, val mediaUrl: String? = null)
 private data class SharedVideoPage(val pageUrl: String, val html: String?, val directVideoUrl: String?)
 
 private val sharedVideoExecutor = Executors.newFixedThreadPool(2)
@@ -449,6 +449,12 @@ private fun isTrustedShellPage(): Boolean {
     val current = Uri.parse(webView.url ?: return false)
     return current.scheme in listOf("https", "http")
         && current.host?.equals(configuredHost, ignoreCase = true) == true
+}
+
+private fun isLikelyPublicHls(rawUrl: String): Boolean {
+    val url = rawUrl.toHttpUrlOrNull() ?: return false
+    if (!isAllowedVideoHost(url.host)) return false
+    return url.encodedPath.lowercase().endsWith(".m3u8")
 }
 
 private fun isLikelyPublicMp4(rawUrl: String): Boolean {
@@ -631,6 +637,16 @@ private fun extractPublicMp4Url(html: String): String? {
                 !path.endsWith(".gif") && !path.endsWith(".avif")
         }
 }
+
+private fun extractPublicHlsUrl(html: String): String? {
+    val normalized = html.replace("\\/", "/")
+        .replace("\\u002F", "/", ignoreCase = true)
+        .replace("&amp;", "&", ignoreCase = true)
+    return Regex("""https?://[^\\s"'<>\\\\]+""", RegexOption.IGNORE_CASE)
+        .findAll(normalized)
+        .map { it.value.trim().trimEnd(',', ';', ')', ']', '}', '\\', '.', '"') }
+        .firstOrNull(::isLikelyPublicHls)
+}
 private fun downloadPublicMp4(mediaUrl: String, pageUrl: String): CachedSharedVideo {
     var currentUrl = mediaUrl
     for (attempt in 0..5) {
@@ -733,8 +749,10 @@ private fun resolveAndCacheSharedVideo(rawUrl: String): CachedSharedVideo {
         val mediaUrl = page.directVideoUrl
             ?: page.html?.let { extractDouyinRouterPlayUrl(it) }
             ?: page.html?.let { extractPublicMp4Url(it) }
+            ?: page.html?.let { extractPublicHlsUrl(it) }
         if (mediaUrl != null) {
             return try {
+                if (isLikelyPublicHls(mediaUrl)) return CachedSharedVideo("", "", mediaUrl)
                 downloadPublicMp4(mediaUrl, page.pageUrl)
             } catch (error: Throwable) {
                 lastError = error
@@ -756,7 +774,10 @@ private fun emitSharedVideoResult(requestId: String, result: Result<CachedShared
     }
     val payload = org.json.JSONObject().put("requestId", requestId)
     result.onSuccess {
-        payload.put("ok", true).put("cacheId", it.cacheId).put("contentUri", it.contentUri)
+        payload.put("ok", true)
+        if (it.cacheId.isNotBlank()) payload.put("cacheId", it.cacheId)
+        if (it.contentUri.isNotBlank()) payload.put("contentUri", it.contentUri)
+        if (!it.mediaUrl.isNullOrBlank()) payload.put("mediaUrl", it.mediaUrl)
     }.onFailure { error ->
         payload.put("ok", false).put("message", (error.message ?: "公开视频解析失败").take(240))
     }
@@ -822,12 +843,15 @@ private fun resolveSharedVideoWithWebView(rawUrl: String, callback: (Result<Cach
             val mediaUrl = candidates?.let { array ->
                 (0 until array.length()).asSequence()
                     .mapNotNull { index -> array.optString(index).takeIf { it.startsWith("http://") || it.startsWith("https://") } }
-                    .firstOrNull { isLikelyPublicMp4(it) }
+                    .firstOrNull { isLikelyPublicMp4(it) || isLikelyPublicHls(it) }
             }
             if (mediaUrl != null && !mediaDownloadStarted) {
                 mediaDownloadStarted = true
                 sharedVideoExecutor.execute {
-                    val result = runCatching { downloadPublicMp4(mediaUrl, rawUrl) }
+                    val result = runCatching {
+                        if (isLikelyPublicHls(mediaUrl)) CachedSharedVideo("", "", mediaUrl)
+                        else downloadPublicMp4(mediaUrl, rawUrl)
+                    }
                     runOnUiThread { finish(result) }
                 }
             } else if (mediaUrl == null && (attempts >= 14 || System.currentTimeMillis() - startedAt > 18000L)) {
