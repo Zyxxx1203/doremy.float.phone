@@ -513,25 +513,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const session = sessions.find(item => !item.isGroup && item.contactId === contact?.id)
         ?? ({ id: `watch-together-${character.id}`, contactId: contact?.id ?? character.id, unreadCount: 0, updatedAt: new Date().toISOString(), isPinned: false, isGroup: false } as ChatSession);
       const history = loadChatMessages(session.id).slice(-12).filter(item => item.status !== "failed" && !item.isRetracted);
-      // Use cached samples only; never synchronously capture while a video is playing because some WebViews stall.
-      const framesToSend = videoFramesRef.current
-        .filter(frame => frame.targetUrl === target.url && Date.now() - new Date(frame.timestamp).getTime() <= 90000)
-        .slice(-3);
-      const activeBinding = resolveBinding(loadBindingConfig(), character.id, "watch_together");
-      const visionConfig = loadApiConfigs().find(config => config.id === activeBinding.apiConfigId);
-      const visionEnabled = visionConfig?.enableImageRecognition === true;
-      const framesVisibleToModel = visionEnabled ? framesToSend : [];
-      const frameMessages: ChatMessage[] = framesVisibleToModel.map((frame, index) => ({
-        id: "watch-frame-" + Date.now() + "-" + index,
-        sessionId: session.id,
-        role: "user",
-        content: "[视频画面截图，时间点 " + formatVideoTime(frame.seconds) + "。只评论这个时间点及之前已经出现的画面，绝不剧透后续内容。]",
-        status: "sent",
-        createdAt: frame.timestamp,
-        mediaType: "image",
-        mediaUrl: frame.dataUrl,
-        mediaData: { label: "视频当前画面 " + formatVideoTime(frame.seconds) },
-      }));
       const videoElement = playerRef.current?.querySelector("video");
       const draftSeconds = parseVideoTime(timepointOverride || timepointDraft);
       const playbackSeconds = videoElement && Number.isFinite(videoElement.currentTime) ? videoElement.currentTime : iframeSecondsRef.current;
@@ -551,25 +532,21 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         transcriptContext ? (transcriptHasTimestamps
           ? "当前播放时间附近的字幕脚本（含原始时间戳）：\n" + transcriptContext
           : "已导入脚本没有可用时间戳，以下只作为全片文字参考，不能假装与当前画面精确同步：\n" + transcriptContext) : "",
-        frameMessages.length
-          ? "附带多张带时间戳的视频截图。先读截图标签中的时间点，再依照时间顺序理解片段。只能评论这些截图中已经出现的内容；禁止猜测、提示或泄露后续剧情/反转，也不能根据标题或常识补全未显示情节。看不清时坦白说看不清，不能编造画面。"
-          : transcriptContext
-            ? "本轮没有可读取的真实视频画面；只能使用上面的字幕/脚本和用户提供的文字，不能声称看见了画面。"
-            : "本轮没有可供模型读取的视频截图或脚本。可能是跨站 iframe 无法截图，或图像识别没有开启。不得声称自己看见了画面；只能针对用户提供的文字内容自然回应。",
+        transcriptContext
+          ? "本轮只读取上面的字幕/时间戳脚本；不得声称看见实际画面。只根据已经出现的文字讨论，不能推测后续剧情。"
+          : "当前没有导入的字幕/脚本。只根据用户明确描述的片段与互动回应，不要声称读取到了视频画面。",
         "请结合角色自己的性格、兴趣和你们的关系，写一句自然的即时反应：可以吐槽、惊讶、共情、提问或分享感受。只输出角色会直接说的话，最多60个汉字。不搜寻或推断视频后续剧情。",
       ].filter(Boolean).join("\n");
       const userMessage: ChatMessage = { id: `watch-${Date.now()}`, sessionId: session.id, role: "user", content: prompt, status: "sent", createdAt: new Date().toISOString() };
-      const visionSession = { ...session, visionImagePromptLimit: 3, visionImagePromptLimitUsesGlobal: false };
-      const result = await generateChatCompletion(visionSession, [...history, ...frameMessages, userMessage], {
+      const result = await generateChatCompletion(session, [...history, userMessage], {
         appId: "watch_together",
         appTags: ["watch_together"],
         toolsAllowed: false,
-        ephemeralSystemNote: "你正在共同观影。只有请求中实际附带的图像才算你看见的内容。不要调用工具，不要复述任务，不要假装看见不可读取的 iframe。只输出一句自然简短的角色发言，并严格避免剧透。",
+        ephemeralSystemNote: "你正在根据字幕/时间戳脚本与用户一起看视频。你没有读取到真实视频画面；不要调用工具，不要假装看见画面，也不要剧透。只输出一句自然简短的角色发言。",
       });
       const responseText = flattenCompletionResult(result).trim().replace(/^["“]|["”]$/g, "");
       if (!responseText) return;
-      const lastFrame = framesVisibleToModel[framesVisibleToModel.length - 1];
-      const responseTimepoint = timepointOverride || (lastFrame ? formatVideoTime(lastFrame.seconds) : undefined);
+      const responseTimepoint = timepointOverride || (transcriptWindow.length ? formatVideoTime(transcriptWindow[0].start) : undefined);
       const comment: WatchComment = { id: `comment-${Date.now()}`, characterId: character.id, characterName: character.name, text: responseText, createdAt: new Date().toISOString(), kind: "character", timepoint: responseTimepoint, targetUrl: target.url };
       setComments(current => { const next = [...current.slice(-99), comment]; saveTargetComments(target.url, next); return next; });
       if (settings.voiceEnabled) void speakComment(responseText, character.id);
@@ -671,11 +648,21 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     return () => { disposed = true; window.clearTimeout(timer); };
   }, [watching, target, settings.intervalMinMinutes, settings.intervalMaxMinutes, generateComment]);
 
-  /** 全屏进入横屏沉浸模式；退出时尽可能恢复进入前的屏幕方向和播放器布局。 */
+  /** Fullscreen is an in-page layout change. Restore native video time/play state after CSS settles. */
   const enterFullscreen = async () => {
-    // Use an in-page immersive layout only. Calling ScreenOrientation.lock here can
-    // recreate/resume a WebView media surface on some Android builds and halt playback.
+    const video = playerRef.current?.querySelector("video") ?? null;
+    const wasPlaying = Boolean(video && !video.paused && !video.ended);
+    const currentTime = video && Number.isFinite(video.currentTime) ? video.currentTime : null;
     setFullScreen(current => !current);
+    if (!video || !wasPlaying) return;
+    const restorePlayback = () => {
+      if (!video.isConnected) return;
+      if (currentTime !== null && Number.isFinite(currentTime) && Math.abs(video.currentTime - currentTime) > 1) {
+        try { video.currentTime = currentTime; } catch { /* metadata may not be ready yet */ }
+      }
+      if (video.paused) void video.play().catch(() => { /* browser policy may require a direct play tap */ });
+    };
+    window.requestAnimationFrame(() => window.requestAnimationFrame(restorePlayback));
   };
 
   const latestComment = comments[comments.length - 1];
@@ -814,6 +801,20 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       }
     `}</style>
     <style>{`@keyframes watchDanmaku { 0% { transform: translateX(0); opacity: 0 } 6% { opacity: 1 } 92% { opacity: 1 } 100% { transform: translateX(calc(-100% - 100vw)); opacity: 0 } }`}</style>
+    <style>{`
+      /* Keep fullscreen in normal document flow; do not collapse the player into a clipped grid. */
+      .watch-together-app[data-watch-fullscreen="true"] > header { position:relative!important; z-index:20!important; flex:0 0 auto!important; }
+      .watch-together-app[data-watch-fullscreen="true"] > main.watch-together-main { position:relative!important; z-index:10!important; display:flex!important; flex-direction:column!important; flex:1 1 auto!important; min-height:0!important; overflow-x:hidden!important; overflow-y:auto!important; overscroll-behavior:contain; gap:12px!important; padding:10px 12px max(20px,env(safe-area-inset-bottom))!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-room-title { order:0!important; flex:0 0 auto!important; width:100%!important; max-width:1100px!important; margin:0 auto!important; padding:0!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player { position:relative!important; order:1!important; flex:0 0 auto!important; width:100%!important; max-width:1100px!important; height:auto!important; min-height:0!important; max-height:48dvh!important; aspect-ratio:16/9!important; margin:0 auto!important; overflow:hidden!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player > video, .watch-together-app[data-watch-fullscreen="true"] .watch-player > iframe { position:static!important; inset:auto!important; display:block!important; width:100%!important; height:100%!important; min-width:0!important; min-height:0!important; max-height:48dvh!important; aspect-ratio:16/9!important; object-fit:contain!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel { order:2!important; flex:0 0 auto!important; width:100%!important; max-width:1100px!important; height:auto!important; min-height:0!important; margin:0 auto!important; overflow:visible!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div { display:block!important; height:auto!important; min-height:0!important; overflow:visible!important; padding:12px!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel section { display:block!important; flex:none!important; height:auto!important; min-height:0!important; overflow:visible!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .watch-comment-list { min-height:100px!important; max-height:36vh!important; overflow-y:auto!important; overscroll-behavior:contain; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel { display:block!important; order:3!important; flex:0 0 auto!important; width:100%!important; max-width:1100px!important; max-height:none!important; height:auto!important; margin:0 auto!important; overflow:visible!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-companion-overlay { display:none!important; }
+    `}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
