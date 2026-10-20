@@ -267,7 +267,7 @@ class GlobalWatchCaptureService : Service() {
         val input = EditText(this).apply {
             hint = "直接回复角色…"
             textSize = 12f
-            singleLine = true
+            setSingleLine(true)
             setTextColor(0xFF49372D.toInt())
             setHintTextColor(0xFF9A8779.toInt())
             setPadding(dp(8), 0, dp(8), 0)
