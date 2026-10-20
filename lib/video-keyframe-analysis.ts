@@ -145,3 +145,70 @@ export async function analyzeVideoUsingKeyframes(options: {
   if (!text.trim()) throw new Error("视觉模型没有返回文字回应。");
   return text.trim();
 }
+
+
+export async function analyzeCapturedImage(options: {
+  dataUrl: string;
+  apiKey: string;
+  model: string;
+  prompt: string;
+  provider: "gemini" | "ark" | "openai-compatible" | "anthropic";
+  baseUrl?: string;
+  signal?: AbortSignal;
+}): Promise<string> {
+  const provider = options.provider;
+  const match = options.dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/);
+  if (!match) throw new Error("截屏图片数据无效。");
+  if (!options.model.trim()) throw new Error("请先配置视频分析模型 ID。");
+  const root = (options.baseUrl || (provider === "gemini" ? "https://generativelanguage.googleapis.com" : provider === "ark" ? "https://ark.cn-beijing.volces.com/api/v3" : provider === "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com/v1")).trim().replace(/\/+$/, "");
+  const local = /^(https?:\/\/)?(localhost|127\.0\.0\.1|10\.0\.2\.2|\[::1\]|192\.168\.)/i.test(root);
+  if (!options.apiKey.trim() && !(provider === "openai-compatible" && local)) throw new Error("请先在系统设置 → 视频分析模型填写 API Key。");
+  const imageBase64 = match[2];
+  const mimeType = match[1];
+  let response: Response;
+  let payload: Record<string, unknown> | null;
+  if (provider === "gemini") {
+    response = await fetch(root + "/v1beta/models/" + encodeURIComponent(options.model.trim().replace(/^models\//, "")) + ":generateContent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": options.apiKey.trim() },
+      body: JSON.stringify({ contents: [{ role: "user", parts: [{ inlineData: { mimeType, data: imageBase64 } }, { text: options.prompt }] }], generationConfig: { temperature: 0.8, maxOutputTokens: 1200 } }),
+      signal: options.signal
+    });
+    payload = await response.json().catch(() => null) as Record<string, unknown> | null;
+    if (!response.ok) throw new Error(apiError(payload, "Gemini 截屏理解失败（HTTP " + response.status + "）。"));
+    const candidates = Array.isArray(payload?.candidates) ? payload?.candidates as Array<{ content?: { parts?: Array<{ text?: string }> } }> : [];
+    const text = candidates[0]?.content?.parts?.map(part => part.text || "").filter(Boolean).join("\n") || "";
+    if (!text.trim()) throw new Error("Gemini 没有返回截屏评价。");
+    return text.trim();
+  }
+  if (provider === "anthropic") {
+    response = await fetch(root + "/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": options.apiKey.trim(), "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+      body: JSON.stringify({ model: options.model.trim(), max_tokens: 1200, messages: [{ role: "user", content: [{ type: "text", text: options.prompt }, { type: "image", source: { type: "base64", media_type: mimeType, data: imageBase64 } }] }] }),
+      signal: options.signal
+    });
+    payload = await response.json().catch(() => null) as Record<string, unknown> | null;
+    if (!response.ok) throw new Error(apiError(payload, "Claude 截屏理解失败（HTTP " + response.status + "）。"));
+    const parts = Array.isArray(payload?.content) ? payload?.content as Array<{ type?: string; text?: string }> : [];
+    const text = parts.filter(part => part.type === "text").map(part => part.text || "").filter(Boolean).join("\n");
+    if (!text.trim()) throw new Error("Claude 没有返回截屏评价。");
+    return text.trim();
+  }
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (options.apiKey.trim()) headers.Authorization = "Bearer " + options.apiKey.trim();
+  const endpoint = /\/chat\/completions$/i.test(root) ? root : root + "/chat/completions";
+  response = await fetch(endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ model: options.model.trim(), messages: [{ role: "user", content: [{ type: "text", text: options.prompt }, { type: "image_url", image_url: { url: options.dataUrl, detail: "high" } }] }], max_tokens: 1200, temperature: 0.7 }),
+    signal: options.signal
+  });
+  payload = await response.json().catch(() => null) as Record<string, unknown> | null;
+  if (!response.ok) throw new Error(apiError(payload, (provider === "ark" ? "豆包" : "兼容视觉模型") + "截屏理解失败（HTTP " + response.status + "）。"));
+  const choices = Array.isArray(payload?.choices) ? payload?.choices as Array<{ message?: { content?: string | Array<{ text?: string }> } }> : [];
+  const raw = choices[0]?.message?.content;
+  const text = typeof raw === "string" ? raw : Array.isArray(raw) ? raw.map(part => part.text || "").filter(Boolean).join("\n") : "";
+  if (!text.trim()) throw new Error("视觉模型没有返回截屏评价。");
+  return text.trim();
+}
