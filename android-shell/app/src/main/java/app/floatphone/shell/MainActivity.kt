@@ -715,7 +715,7 @@ private fun resolveSharedVideoWithWebView(rawUrl: String, callback: (Result<Cach
         val script = """
             (function() {
               const out = [];
-              const add = v => { if (typeof v === 'string' && /^https?:///i.test(v)) out.push(v); };
+              const add = v => { if (typeof v === 'string' && (v.startsWith('https://') || v.startsWith('http://'))) out.push(v); };
               document.querySelectorAll('video').forEach(v => { add(v.currentSrc); add(v.src); });
               document.querySelectorAll('video source, source').forEach(v => add(v.src));
               document.querySelectorAll('meta[property="og:video"],meta[property="og:video:url"],meta[name="twitter:player:stream"],meta[itemprop="contentUrl"]')
