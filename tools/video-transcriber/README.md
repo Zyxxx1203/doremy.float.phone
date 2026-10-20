@@ -1,6 +1,6 @@
 # Optional local video transcription service for momo.float.phone
 
-This optional bridge lets “Watch Together” send a video URL to a computer/server you control, then import timestamped JSON script segments. Audio download, FFmpeg conversion and faster-whisper inference run on that machine; the app does not send links to a third-party parsing API.
+This optional bridge lets “Watch Together” send a video URL to a computer/server you control, then import timestamped JSON script segments. It now tries platform-provided/manual/automatic captions first; when usable captions exist, it converts them into timestamped JSON and skips audio download and Whisper inference. Only when captions are unavailable does it download audio, run FFmpeg conversion and faster-whisper locally. The app does not send links to a third-party parsing API.
 
 Upstream CLI: https://github.com/quanji081/video-transcriber. The original CLI and MIT license are retained in this folder. Its stated platform support remains subject to authentication, network restrictions, anti-bot measures and upstream platform changes.
 
@@ -64,6 +64,8 @@ Open “Watch Together → Timestamp script · local transcription service”, f
 - A browser on an HTTPS page normally blocks a plain HTTP service on a LAN. For phone use, expose the service through a trusted HTTPS reverse proxy/VPN, then add the exact web-app Origin to the allowlist.
 - The service binds to 127.0.0.1 by default. Do not expose an unauthenticated or plain-HTTP service to the public internet. When binding to 0.0.0.0, use the token, firewall, TLS reverse proxy/VPN and strict Origin allowlist.
 - Localhost, private IP addresses, and .local-style targets are rejected to reduce SSRF risk. Only process videos you own or are authorized to access. The bridge does not bypass region, membership or login restrictions.
+- Subtitle-first behavior depends on the platform exposing captions through yt-dlp. If no suitable captions are available, the service falls back to audio download and local Whisper; this still requires the service machine to be online and running.
 - Some platforms require cookies or may return anti-bot errors. If the script fails, you can still import .srt, .vtt, .txt or .json manually in the app.
+- This bridge is the optional self-hosted fallback, not a Cloudflare-hosted service. It does not make the user's computer unnecessary; a Cloudflare Workers AI/container deployment is a separate deployment step and is not automatically created by this repository.
 
 See the upstream project README for detailed platform notes.
