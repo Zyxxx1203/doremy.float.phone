@@ -756,35 +756,30 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     return () => { disposed = true; window.clearTimeout(timer); };
   }, [watching, target, settings.intervalMinMinutes, settings.intervalMaxMinutes, generateComment]);
 
-  /** Fullscreen transition: request the native WebView custom view before changing layout,
-   * so the playing video is not resized/reparented before Chromium enters fullscreen. */
+  /** Keep the same player node mounted during fullscreen. Native WebView custom-view fullscreen
+   * can freeze the first frame when React simultaneously resizes/reparents the video surface. */
   const enterFullscreen = async () => {
     const entering = !fullScreen;
     const video = playerRef.current?.querySelector("video") ?? null;
     const wasPlaying = Boolean(video && !video.paused && !video.ended);
-
     if (entering) {
       try { originalOrientationRef.current = screen.orientation?.type ?? null; }
       catch { originalOrientationRef.current = null; }
-      // Call from the user's tap, before changing CSS. Avoid seeking/recreating the video surface:
-      // Android WebView can otherwise keep the first frame while the audio track continues.
-      try {
-        if (playerRef.current?.requestFullscreen) await playerRef.current.requestFullscreen();
-      } catch {
-        // CSS fallback remains usable when this WebView does not expose the Fullscreen API.
-      }
       setFullScreen(true);
       await tryLockLandscape();
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       if (video?.isConnected && wasPlaying && video.paused) {
         try { await video.play(); } catch { /* playback can require another user gesture */ }
       }
+      window.dispatchEvent(new Event("resize"));
     } else {
-      try { if (document.fullscreenElement) await document.exitFullscreen(); } catch { /* CSS fallback */ }
       setFullScreen(false);
       await restoreOrientation();
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       if (video?.isConnected && wasPlaying && video.paused) {
         try { await video.play(); } catch { /* playback can require another user gesture */ }
       }
+      window.dispatchEvent(new Event("resize"));
     }
   };
 
@@ -1034,6 +1029,21 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       @media (orientation:portrait) {
         .watch-together-app[data-watch-fullscreen="true"] .watch-player > video,
         .watch-together-app[data-watch-fullscreen="true"] .watch-player > iframe { object-fit:contain!important; }
+      }
+      /* Final fullscreen layout authority: preserve discussion and constrain media to viewport. */
+      .watch-together-app[data-watch-fullscreen="true"] { position:fixed!important; inset:0!important; width:100vw!important; height:100dvh!important; max-height:100dvh!important; overflow:hidden!important; box-sizing:border-box!important; }
+      .watch-together-app[data-watch-fullscreen="true"] > header { display:flex!important; flex:0 0 auto!important; min-height:42px!important; padding:4px 10px!important; background:rgba(0,0,0,.45)!important; color:#fff!important; }
+      .watch-together-app[data-watch-fullscreen="true"] > main.watch-together-main { display:grid!important; position:relative!important; inset:auto!important; grid-template-columns:minmax(0,1.2fr) minmax(220px,.8fr)!important; grid-template-rows:minmax(0,1fr)!important; grid-template-areas:"player interaction"!important; flex:1 1 0!important; min-height:0!important; width:100%!important; height:auto!important; overflow:hidden!important; padding:6px 8px max(8px,env(safe-area-inset-bottom))!important; gap:8px!important; box-sizing:border-box!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-room-title,
+      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel { display:none!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player { display:block!important; grid-area:player!important; position:relative!important; inset:auto!important; width:100%!important; height:100%!important; max-width:none!important; max-height:none!important; min-height:0!important; aspect-ratio:auto!important; margin:0!important; padding:0!important; overflow:hidden!important; border:0!important; border-radius:8px!important; box-shadow:none!important; background:#000!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player > video,
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player > iframe { position:absolute!important; inset:0!important; display:block!important; width:100%!important; height:100%!important; max-width:none!important; max-height:100%!important; min-width:0!important; min-height:0!important; border:0!important; aspect-ratio:auto!important; object-fit:contain!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel { display:block!important; grid-area:interaction!important; position:relative!important; min-width:0!important; min-height:0!important; width:100%!important; height:100%!important; overflow-y:auto!important; overflow-x:hidden!important; overscroll-behavior:contain!important; margin:0!important; z-index:5!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div { display:flex!important; flex-direction:column!important; height:100%!important; min-height:0!important; overflow:hidden!important; padding:8px!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .watch-comment-list { flex:1 1 auto!important; min-height:60px!important; max-height:none!important; overflow-y:auto!important; }
+      @media (orientation:portrait) {
+        .watch-together-app[data-watch-fullscreen="true"] > main.watch-together-main { grid-template-columns:minmax(0,1fr)!important; grid-template-rows:minmax(130px,34dvh) minmax(0,1fr)!important; grid-template-areas:"player" "interaction"!important; }
       }
     `}</style>
 
