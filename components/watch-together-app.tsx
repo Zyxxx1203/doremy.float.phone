@@ -947,7 +947,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app[data-watch-fullscreen="true"] .watch-player { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important; max-width: none !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; background: #000 !important; transform: none !important; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-player > video,
       .watch-together-app[data-watch-fullscreen="true"] .watch-player > iframe { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-      .watch-player > video { transform: translateZ(0); }
+      .watch-player > video { transform: none; backface-visibility: visible; }
       /* FINAL fullscreen contract: several legacy blocks above used contradictory !important rules.
          Keep one final authority so the app header can never cover the discussion area. */
       .watch-together-app[data-watch-fullscreen="true"] > header { display:none!important; }
