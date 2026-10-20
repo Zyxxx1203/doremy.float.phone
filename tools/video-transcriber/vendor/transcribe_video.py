@@ -564,6 +564,86 @@ def write_outputs(
     return written
 
 
+def try_download_subtitles(
+    url: str,
+    tmpdir: Path,
+    cookies: str | None,
+    cookies_from_browser: str | None,
+    verbose: bool,
+) -> tuple[list[dict], dict] | None:
+    """Try official/manual/automatic captions before downloading audio or running Whisper."""
+    from yt_dlp import YoutubeDL
+
+    opts = {
+        "skip_download": True,
+        "writesubtitles": True,
+        "writeautomaticsub": True,
+        "subtitleslangs": ["zh-Hans", "zh-Hant", "zh", "en"],
+        "subtitlesformat": "vtt/best",
+        "outtmpl": str(tmpdir / "%(id)s.%(ext)s"),
+        "noplaylist": True,
+        "quiet": not verbose,
+        "no_warnings": not verbose,
+        "no_color": True,
+        "ignoreerrors": True,
+    }
+    if cookies:
+        cookie_path = Path(cookies).expanduser()
+        if not cookie_path.is_file():
+            raise TranscribeError(f"cookie 文件不存在：{cookie_path}")
+        opts["cookiefile"] = str(cookie_path)
+    if cookies_from_browser:
+        opts["cookiesfrombrowser"] = (cookies_from_browser,)
+
+    try:
+        with YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+    except Exception as exc:
+        if verbose:
+            print(f"字幕优先尝试未成功，将回退到音频转写：{exc}", file=sys.stderr)
+        return None
+    if info and info.get("entries"):
+        info = next((item for item in info["entries"] if item), None)
+    if not info:
+        return None
+
+    caption_files = sorted(tmpdir.glob("*.vtt")) + sorted(tmpdir.glob("*.srt"))
+    for caption_path in caption_files:
+        raw = caption_path.read_text(encoding="utf-8", errors="ignore")
+        cues = re.split(r"\\n\\s*\\n", raw.replace("\\r", ""))
+        segments: list[dict] = []
+        for cue in cues:
+            lines = cue.splitlines()
+            time_index = next((i for i, line in enumerate(lines) if "-->" in line), -1)
+            if time_index < 0:
+                continue
+            match = re.match(r"\\s*((?:(\\d+):)?(\\d{2}):(\\d{2})[.,](\\d{3}))\\s*-->", lines[time_index])
+            if not match:
+                continue
+            hours = int(match.group(2) or 0)
+            start = hours * 3600 + int(match.group(3)) * 60 + int(match.group(4)) + int(match.group(5)) / 1000
+            right = re.search(r"-->\\s*((?:(?:\\d+):)?\\d{2}:\\d{2}[.,]\\d{3})", lines[time_index])
+            if not right:
+                continue
+            end_match = re.match(r"(?:(\\d+):)?(\\d{2}):(\\d{2})[.,](\\d{3})", right.group(1))
+            if not end_match:
+                continue
+            end = int(end_match.group(1) or 0) * 3600 + int(end_match.group(2)) * 60 + int(end_match.group(3)) + int(end_match.group(4)) / 1000
+            text_lines = lines[time_index + 1:]
+            text = " ".join(text_lines)
+            text = re.sub(r"<[^>]+>", "", text)
+            text = re.sub(r"&(?:amp|lt|gt|quot|apos|nbsp);", " ", text)
+            text = re.sub(r"\\s+", " ", text).strip()
+            if not text:
+                continue
+            if segments and segments[-1]["text"] == text and abs(segments[-1]["start"] - start) < 0.1:
+                continue
+            segments.append({"start": start, "end": max(start, end), "text": text})
+        if segments:
+            return segments, info
+    return None
+
+
 def process_source(source: str, args: argparse.Namespace) -> None:
     source = source.strip()
     url_input = is_url(source)
@@ -595,7 +675,41 @@ def process_source(source: str, args: argparse.Namespace) -> None:
         tmpdir = Path(tmp)
 
         if url_input:
-            print("步骤 1/4：下载最佳音轨…")
+            print("步骤 1/4：优先尝试现成字幕（含自动字幕）…")
+            caption_result = try_download_subtitles(
+                source, tmpdir, args.cookies, args.cookies_from_browser, args.verbose
+            )
+            if caption_result:
+                caption_segments, caption_info = caption_result
+                title = caption_info.get("title") or caption_info.get("id") or "video"
+                base = slugify(title)
+                duration = max((segment["end"] for segment in caption_segments), default=0)
+                payload = {
+                    "source": source,
+                    "model": "existing-subtitles",
+                    "device": "none",
+                    "compute_type": "none",
+                    "language": caption_info.get("language"),
+                    "duration_seconds": round(duration, 3),
+                    "segment_count": len(caption_segments),
+                    "segments": caption_segments,
+                    "text": " ".join(segment["text"] for segment in caption_segments),
+                    "generated_by": "video-transcriber-subtitles",
+                    "generated_at": _dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+                }
+                if "json" in formats:
+                    (output_dir / f"{base}.json").write_text(
+                        json.dumps(payload, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8"
+                    )
+                if "txt" in formats:
+                    (output_dir / f"{base}.txt").write_text(
+                        "\\n".join(segment["text"] for segment in caption_segments) + "\\n", encoding="utf-8"
+                    )
+                if "srt" in formats:
+                    (output_dir / f"{base}.srt").write_text(build_srt(caption_segments), encoding="utf-8")
+                print(f"已直接使用平台字幕：{len(caption_segments)} 段；跳过音频下载与 Whisper 推理。")
+                return
+            print("未找到可用字幕，回退到音频转写…")
             media_path, info = download_audio(
                 source,
                 tmpdir,
