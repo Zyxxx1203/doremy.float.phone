@@ -254,7 +254,7 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
 
   return <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background,#fbf6ef)] text-[var(--foreground,#4a352b)]">
     <header className="flex shrink-0 items-center gap-3 border-b border-[var(--border,rgba(120,80,55,.18))] px-4 py-3">
-      <button type="button" onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border,rgba(120,80,55,.2))]" aria-label="返回"><ArrowLeft size={18}/></button>
+      <button type="button" onClick={() => { if (running) onNotice?.("全局陪看运行时请保持此模块打开；你可以按手机 Home 键切换到其他应用。返回前请先停止全局陪看。"); else onClose(); }} className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border,rgba(120,80,55,.2))]" aria-label="返回"><ArrowLeft size={18}/></button>
       <div className="min-w-0 flex-1"><h1 className="text-base font-semibold">全局陪看</h1><p className="text-xs opacity-65">跨应用悬浮横幅 · 随机主动发言 · 记录写入短期记忆</p></div>
       <span className={"h-2.5 w-2.5 rounded-full " + (running && !paused ? "bg-emerald-500" : "bg-stone-400")}/>
     </header>
