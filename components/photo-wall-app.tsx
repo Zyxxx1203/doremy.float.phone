@@ -250,6 +250,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [timelineEndDate, setTimelineEndDate] = useState("");
   const [timelineGrouping, setTimelineGrouping] = useState<"photo" | "day" | "week" | "month" | "year">("month");
   const pinchStartRef = useRef<{ distance: number; zoom: number } | null>(null);
+  const pinchLastMidpointRef = useRef<{ x: number; y: number } | null>(null);
   const pinchPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinchModeRef = useRef(false);
   const singleTouchRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number; startedOnPhoto: boolean; panStarted?: boolean } | null>(null);
@@ -359,6 +360,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (pinchPointersRef.current.size < 2) return;
       const points = [...pinchPointersRef.current.values()].slice(0, 2);
       pinchStartRef.current = { distance: pointsDistance(points), zoom: panoramaZoomRef.current };
+      pinchLastMidpointRef.current = { x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 };
       pinchModeRef.current = true; singleTouchRef.current = null;
       window.dispatchEvent(new Event("photo-wall-pinch-start"));
       if (event.cancelable) event.preventDefault(); event.stopPropagation();
@@ -370,8 +372,16 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (pointers.size >= 2 && pinchModeRef.current && pinchStartRef.current) {
         if (event.cancelable) event.preventDefault(); event.stopPropagation();
         const points = [...pointers.values()].slice(0, 2), rect = viewport.getBoundingClientRect();
+        const midpoint = { x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 };
+        const previousMidpoint = pinchLastMidpointRef.current ?? midpoint;
+        // Two fingers navigate the canvas: midpoint motion pans, distance motion zooms.
+        // This remains available while drawing; a single finger is reserved for the stroke.
+        const panX = midpoint.x - previousMidpoint.x, panY = midpoint.y - previousMidpoint.y;
+        if (Math.abs(panX) > 0.01) viewport.scrollLeft -= panX;
+        if (Math.abs(panY) > 0.01) viewport.scrollTop -= panY;
+        pinchLastMidpointRef.current = midpoint;
         const nextZoom = Math.max(5, Math.min(300, Math.round(pinchStartRef.current.zoom * pointsDistance(points) / pinchStartRef.current.distance)));
-        applyZoom(nextZoom, { x: (points[0].x + points[1].x) / 2 - rect.left, y: (points[0].y + points[1].y) / 2 - rect.top });
+        applyZoom(nextZoom, { x: midpoint.x - rect.left, y: midpoint.y - rect.top });
         return;
       }
       if (supportsPointerEvents && pointers.size === 1 && !pinchModeRef.current) {
@@ -396,7 +406,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (!pointers.has(event.pointerId)) return;
       const wasPinching = pinchModeRef.current, wasPanning = singleTouchRef.current?.panStarted === true;
       pointers.delete(event.pointerId);
-      if (wasPinching && pointers.size < 2) { pinchModeRef.current = false; pinchStartRef.current = null; window.dispatchEvent(new Event("photo-wall-pinch-end")); }
+      if (wasPinching && pointers.size < 2) { pinchModeRef.current = false; pinchStartRef.current = null; pinchLastMidpointRef.current = null; window.dispatchEvent(new Event("photo-wall-pinch-end")); }
       if (wasPanning && pointers.size === 0) window.dispatchEvent(new Event("photo-wall-pan-end"));
       if (pointers.size === 0) singleTouchRef.current = null;
       else if (pointers.size === 1 && wasPinching) {
@@ -494,7 +504,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       window.removeEventListener("pointermove", onPointerMove, true);
       window.removeEventListener("pointerup", onPointerEnd, true);
       window.removeEventListener("pointercancel", onPointerEnd, true);
-      pinchPointersRef.current.clear(); pinchStartRef.current = null; pinchModeRef.current = false; singleTouchRef.current = null;
+      pinchPointersRef.current.clear(); pinchStartRef.current = null; pinchLastMidpointRef.current = null; pinchModeRef.current = false; singleTouchRef.current = null;
       if (!supportsPointerEvents) {
         viewport.removeEventListener("touchstart", onTouchStart, true);
         viewport.removeEventListener("touchmove", onTouchMove, true);
@@ -1355,7 +1365,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             <div className="flex items-center justify-between gap-3"><h2 className="font-serif text-lg text-[#5a403b]">摆放模板</h2><span className="text-[10px] text-[#a18172]">LAYOUT STUDIES</span></div>
             <p className="mt-2 text-xs leading-5 text-[#8b7569]">选一个构图骨架，照片会按相对位置排列；原始照片与内容不会被删除。</p>
             <label className="mt-3 flex items-center justify-between gap-3 border-y border-[#e5d6c7] py-2.5 text-xs text-[#6d594b]">
-              <span className="min-w-0"><span className="block">填充内部</span><span className="mt-0.5 block text-[10px] leading-4 text-[#9a8776]">从中心向外铺满形状，而不是只摆边缘；任意形状都适用，照片重叠不超过一半。</span></span>
+              <span className="min-w-0"><span className="block">填充内部</span><span className="mt-0.5 block text-[10px] leading-4 text-[#9a8776]">从中心向外铺满形状，而不是只摆边缘；任意形状都适用，照片重叠面积不超过较小照片的 20%。</span></span>
               <input type="checkbox" checked={templateFill} onChange={event => { const next = event.target.checked; setTemplateFill(next); saveTemplateFill(next); }} className="h-4 w-4 shrink-0 accent-[#87565b]"/>
             </label>
             <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
