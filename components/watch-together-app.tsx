@@ -674,6 +674,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       });
       const responseText = flattenCompletionResult(result).trim().replace(/^["“]|["”]$/g, "");
       if (!responseText) return;
+      // Treat a screenshot as a one-shot visual hint; do not resend the same frame on every auto-comment.
+      if (screenshotDataUrl) setScreenshotDataUrl("");
       const responseTimepoint = timepointOverride || (transcriptWindow.length ? formatVideoTime(transcriptWindow[0].start) : undefined);
       const comment: WatchComment = { id: `comment-${Date.now()}`, characterId: character.id, characterName: character.name, text: responseText, createdAt: new Date().toISOString(), kind: "character", timepoint: responseTimepoint, targetUrl: target.url };
       setComments(current => { const next = [...current.slice(-99), comment]; saveTargetComments(target.url, next); return next; });
