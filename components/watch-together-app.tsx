@@ -181,10 +181,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   });
   const [transcriberModel, setTranscriberModel] = useState<"tiny" | "base" | "small" | "medium">("small");
   const [transcribing, setTranscribing] = useState(false);
-  const [corsProxyEndpoint, setCorsProxyEndpoint] = useState(() => { try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_cors_proxy_endpoint_v1") || "https://proxy.cors.dev/" : "https://proxy.cors.dev/"; } catch { return "https://proxy.cors.dev/"; } });
-  const [proxyReading, setProxyReading] = useState(false);
-  const [proxyStatus, setProxyStatus] = useState("");
-  const [videoDescription, setVideoDescription] = useState("");
 
   useEffect(() => {
     const current = target;
@@ -307,13 +303,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   }, []);
   useEffect(() => { saveSettings(settings); }, [settings]);
   useEffect(() => {
-    try {
-      window.localStorage.setItem("watch_transcriber_endpoint_v1", transcriberEndpoint.trim());
-      window.localStorage.setItem("watch_transcriber_token_v1", transcriberToken);
-      window.localStorage.setItem("watch_cors_proxy_endpoint_v1", corsProxyEndpoint.trim());
-    } catch { /* service settings are local-only and optional */ }
-  }, [transcriberEndpoint, transcriberToken, corsProxyEndpoint]);
-  useEffect(() => {
     const handleAppBack = (event: Event) => {
       const detail = (event as CustomEvent<{ handled?: boolean }>).detail;
       if (fullScreen) { setFullScreen(false); void restoreOrientation(); if (detail) detail.handled = true; }
@@ -382,154 +371,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   }, []);
 
   const patchSettings = (patch: Partial<WatchSettings>) => setSettings(current => ({ ...current, ...patch }));
-
-  const buildProxyUrls = (source: string): string[] => {
-    const safeSource = new URL(source);
-    if (!["http:", "https:"].includes(safeSource.protocol) || safeSource.username || safeSource.password) throw new Error("只允许读取公开 HTTP/HTTPS 资源，不能包含用户名或密码。");
-    const host = safeSource.hostname.toLowerCase().replace(/\.$/, "");
-    if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal") ||
-      /^(10\.|127\.|192\.168\.|169\.254\.)/.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host) || host === "::1") {
-      throw new Error("出于安全原因，不允许代理访问本机或内网地址。");
-    }
-    const target = safeSource.toString();
-    const configured = corsProxyEndpoint.trim();
-    const urls: string[] = [];
-    if (configured) {
-      if (!/^https:\/\//i.test(configured)) throw new Error("公共代理地址必须使用 HTTPS。");
-      if (configured.includes("{url}")) urls.push(configured.replace("{url}", encodeURIComponent(target)));
-      else if (/[?&]url=$/i.test(configured)) urls.push(configured + encodeURIComponent(target));
-      else if (/[?&]quest=$/i.test(configured)) urls.push(configured + encodeURIComponent(target));
-      else urls.push(configured.replace(/\/+$/, "") + "/" + target);
-    }
-    // Public fallback pool: availability and target-site policies vary. Never send credentials/cookies.
-    urls.push(
-      "https://api.allorigins.win/raw?url=" + encodeURIComponent(target),
-      "https://api.codetabs.com/v1/proxy/?quest=" + encodeURIComponent(target),
-      "https://cors.eu.org/" + target,
-      "https://proxy.cors.dev/" + target
-    );
-    // corsproxy.io currently commonly requires a user API key; allow an explicitly configured URL/key,
-    // but don't silently call its unkeyed endpoint on every request.
-    return [...new Set(urls)];
-  };
-
-  const fetchViaCorsProxy = async (source: string, signal: AbortSignal): Promise<string> => {
-    const urls = buildProxyUrls(source);
-    const failures: string[] = [];
-    for (const proxyUrl of urls) {
-      try {
-        const response = await fetch(proxyUrl, { method: "GET", credentials: "omit", signal, headers: { Accept: "text/html,text/plain,text/vtt,application/json,application/xml,*/*;q=0.8" } });
-        if (!response.ok) {
-          failures.push(new URL(proxyUrl).hostname + ": HTTP " + response.status);
-          continue;
-        }
-        const text = await response.text();
-        if (!text.trim()) { failures.push(new URL(proxyUrl).hostname + ": 空内容"); continue; }
-        if (text.length > 2_000_000) throw new Error("代理返回内容超过 2 MB，已停止读取。");
-        return text;
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") throw error;
-        failures.push(new URL(proxyUrl).hostname + ": " + (error instanceof Error ? error.message : String(error)));
-      }
-    }
-    throw new Error("已尝试 " + urls.length + " 个公共代理，均未成功。" + failures.slice(0, 4).join("；"));
-  };
-
-  const readVideoInfoViaProxy = async () => {
-    const source = target?.url || urlInput.trim();
-    if (!source) { onNotice?.("先放上一个视频链接，再尝试公共 CORS 代理。"); return; }
-    setProxyReading(true); setProxyStatus("正在通过公共代理读取公开页面与字幕线索……");
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 18_000);
-    try {
-      const html = await fetchViaCorsProxy(source, controller.signal);
-      const doc = new DOMParser().parseFromString(html, "text/html");
-      const meta = (selectors: string[]) => {
-        for (const selector of selectors) { const value = doc.querySelector(selector)?.getAttribute("content")?.trim(); if (value) return value; }
-        return "";
-      };
-      const title = meta(['meta[property="og:title"]','meta[name="twitter:title"]']) || doc.title?.trim() || "";
-      const description = meta(['meta[property="og:description"]','meta[name="description"]','meta[name="twitter:description"]']);
-      if (title) setVideoTitle(title.slice(0, 240));
-      if (description) setVideoDescription(description.slice(0, 1800));
-      const captionUrls = new Set<string>();
-      for (const track of Array.from(doc.querySelectorAll('track[src]'))) {
-        const raw = track.getAttribute("src");
-        if (raw) { try { captionUrls.add(new URL(raw, source).toString()); } catch { /* ignore malformed track */ } }
-      }
-      const marker = html.indexOf('"captionTracks"');
-      if (marker >= 0) {
-        const open = html.indexOf("[", marker);
-        if (open >= 0) {
-          let depth = 0, quoted = false, escaped = false, close = -1;
-          for (let i = open; i < html.length; i++) {
-            const ch = html[i];
-            if (quoted) { if (escaped) escaped = false; else if (ch === "\\") escaped = true; else if (ch === '"') quoted = false; continue; }
-            if (ch === '"') quoted = true;
-            else if (ch === "[") depth++;
-            else if (ch === "]") { depth--; if (depth === 0) { close = i; break; } }
-          }
-          if (close > open) {
-            try {
-              const tracks = JSON.parse(html.slice(open, close + 1)) as Array<{baseUrl?: string; languageCode?: string}>;
-              tracks.sort((a,b) => Number((b.languageCode || "").startsWith("zh")) - Number((a.languageCode || "").startsWith("zh")));
-              for (const track of tracks.slice(0,3)) if (track.baseUrl) captionUrls.add(track.baseUrl.replace(/\\u0026/g,"&").replace(/\\u003d/g,"="));
-            } catch { /* platform page may not expose parseable caption metadata */ }
-          }
-        }
-      }
-      if (target?.platform === "bilibili") {
-        const bvid = /\/(BV[0-9A-Za-z]{10})/i.exec(new URL(source).pathname)?.[1];
-        const cid = /"videoData"\s*:\s*\{[\s\S]{0,100000}?"cid"\s*:\s*(\d+)/.exec(html)?.[1]
-          || /"cid"\s*:\s*(\d+)/.exec(html)?.[1];
-        if (bvid && cid) {
-          try {
-            const apiUrl = "https://api.bilibili.com/x/player/v2?bvid=" + encodeURIComponent(bvid) + "&cid=" + encodeURIComponent(cid);
-            const apiText = await fetchViaCorsProxy(apiUrl, controller.signal);
-            const api = JSON.parse(apiText) as { data?: { subtitle?: { subtitles?: Array<{ subtitle_url?: string; lan?: string }> } } };
-            const tracks = api.data?.subtitle?.subtitles ?? [];
-            tracks.sort((a,b) => Number((b.lan || "").startsWith("ai-zh") || (b.lan || "").startsWith("zh")) - Number((a.lan || "").startsWith("ai-zh") || (a.lan || "").startsWith("zh")));
-            for (const track of tracks.slice(0,3)) {
-              if (track.subtitle_url) captionUrls.add(new URL(track.subtitle_url, "https://www.bilibili.com").toString());
-            }
-          } catch { /* public subtitle API may reject anonymous requests */ }
-        }
-      }
-      let segments: VideoTranscriptSegment[] = []; let captionHost = "";
-      for (const captionUrl of Array.from(captionUrls).slice(0,3)) {
-        try {
-          const raw = await fetchViaCorsProxy(captionUrl, controller.signal);
-          let parsed: VideoTranscriptSegment[] = [];
-          if (/^\s*\{/.test(raw)) {
-            try {
-              const json = JSON.parse(raw) as { body?: Array<{ from?: number; to?: number; content?: string }>; segments?: unknown[] };
-              if (Array.isArray(json.body)) parsed = json.body.map(item => ({ start: Math.max(0, Number(item.from) || 0), end: Math.max(Number(item.from) || 0, Number(item.to) || (Number(item.from) || 0) + 4), text: String(item.content || "").trim() })).filter(item => item.text).slice(0,20000);
-              else parsed = parseVideoTranscript(raw);
-            } catch { parsed = parseVideoTranscript(raw); }
-          } else if (/<(?:text|p)\b/i.test(raw)) {
-            const xml = new DOMParser().parseFromString(raw,"text/xml");
-            parsed = Array.from(xml.querySelectorAll("text, p")).map(node => {
-              const rawStart = Number(node.getAttribute("start") ?? node.getAttribute("t") ?? 0);
-              const rawDuration = Number(node.getAttribute("dur") ?? node.getAttribute("d") ?? 4);
-              const start = rawStart > 10000 ? rawStart/1000 : rawStart;
-              const duration = rawDuration > 10000 ? rawDuration/1000 : rawDuration;
-              return {start, end:start+Math.max(1,duration), text:(node.textContent || "").trim()};
-            }).filter(item => item.text && Number.isFinite(item.start)).slice(0,20000);
-          } else {
-            parsed = parseVideoTranscript(raw);
-          }
-          if (parsed.length) { segments=parsed; captionHost=new URL(captionUrl).hostname; break; }
-        } catch { /* try next public caption track */ }
-      }
-      if (segments.length) { setTranscriptSegments(segments); setTranscriptName("公共代理字幕 · "+captionHost); }
-      const facts=[title?"标题已读取":"",description?"简介已读取":"",segments.length?"字幕 "+segments.length+" 段":captionUrls.size?"发现字幕线索但未能解析正文":"页面未公开可读取的字幕轨"].filter(Boolean);
-      const message="公共代理读取完成："+(facts.join("；") || "页面返回内容，但未提取到标题/简介/字幕")+"。";
-      setProxyStatus(message); onNotice?.(message);
-    } catch (error) {
-      const message=error instanceof DOMException && error.name==="AbortError" ? "公共代理请求超时（18 秒）。" : "公共代理读取失败："+(error instanceof Error ? error.message : String(error));
-      setProxyStatus(message+" 可继续导入字幕/截图；代理不能绕过登录、付费或 DRM 限制。"); onNotice?.(message);
-    } finally { window.clearTimeout(timeout); setProxyReading(false); }
-  };
 
   const captureCurrentFrame = async () => {
     const video=playerRef.current?.querySelector("video");
@@ -676,7 +517,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const prompt = [
         "你正在和用户一起看视频，是亲密、自然的陪伴，不是影评机器人。",
         "视频平台：" + target.platformName + "；视频标题（用户可编辑）：" + (videoTitle || "暂未命名") + "。",
-        videoDescription ? "已读取到的视频简介（只作为背景，不代表当前画面）：" + videoDescription : "",
         screenshotDataUrl ? "本轮附带了用户提供/截取的当前画面截图。结合截图与字幕判断人物、场景、动作和情绪；若截图无法辨认，不要编造。" : "",
         "用户描述的当前片段/时间点与两人的互动：" + ((momentOverride ?? settings.currentMoment).trim() || "用户暂未提供具体画面描述") + "。",
         transcriptName ? "已导入字幕/脚本文件：" + transcriptName : "",
@@ -717,7 +557,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       queuedAfterReply = pendingDiscussionRef.current.shift();
       if (queuedAfterReply) window.setTimeout(() => { void generateComment(true, queuedAfterReply!.moment, queuedAfterReply!.timepoint); }, 50);
     }
-  }, [target, character, videoTitle, videoDescription, settings.currentMoment, settings.voiceEnabled, onNotice, transcriptSegments, transcriptName, screenshotDataUrl]);
+  }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice, transcriptSegments, transcriptName, screenshotDataUrl]);
 
   /** 把一帧画面交给角色：手动截图和静默截屏共用这一条路径。 */
 
@@ -1104,14 +944,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         }} />
         {transcriptSegments.length > 0 && <div role="status" aria-live="polite" className="mt-2 flex items-start justify-between gap-3 rounded-xl border border-[#cdb79b]/60 bg-[#fffaf2] px-3 py-2 text-xs leading-5 text-[#82644c]"><span className="min-w-0">已载入脚本：{transcriptName} · {transcriptSegments.length} 段{transcriptSegments.length === 1 && transcriptSegments[0].end >= 86400 ? " · 无精确时间戳" : ""}</span><button type="button" onClick={() => { setTranscriptSegments([]); setTranscriptName(""); }} className="shrink-0 border-b border-[#cdb79b] text-[#8d6459]">移除</button></div>}
         {screenshotDataUrl && <div className="mt-2 flex items-center gap-3 rounded-xl border border-[#cdb79b]/60 bg-[#fffaf2] p-2 text-xs text-[#82644c]"><img src={screenshotDataUrl} alt="本轮陪看截图" className="h-14 w-20 rounded-lg object-contain bg-black/10"/><span className="min-w-0 flex-1">已附加画面截图 · 需绑定支持视觉的模型并开启图片识别</span><button type="button" onClick={() => setScreenshotDataUrl("")} className="shrink-0 border-b border-[#cdb79b] text-[#8d6459]">移除</button></div>}
-        <div className="mt-3 rounded-xl border border-[#cdb79b]/50 bg-[#fffaf2] p-3 text-[#82644c]">
-          <div className="text-xs font-medium">公共 CORS 代理 · 尝试读取页面信息与字幕</div>
-          <p className="mt-1 text-[10px] leading-5 text-[#8b7665]">默认使用公共代理通道，只读取公开页面/字幕，不发送登录凭证。成功与否取决于目标平台；不会绕过登录、付费、风控或 DRM。</p>
-          <label className="mt-2 block text-[10px]">代理地址（可更换；默认 cors.dev 公共代理）<input value={corsProxyEndpoint} onChange={event => setCorsProxyEndpoint(event.target.value)} className="mt-1 w-full rounded-lg border border-[#dac6ad] bg-white px-2.5 py-2 text-xs text-[#554437] outline-none" placeholder="https://proxy.cors.dev/ 或 https://你的代理/?url="/></label>
-          <button type="button" onClick={() => void readVideoInfoViaProxy()} disabled={proxyReading || !(target?.url || urlInput.trim())} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#87565b] px-3 py-2.5 text-xs text-white disabled:opacity-40">{proxyReading ? <LoaderCircle size={13} className="animate-spin"/> : <ExternalLink size={13} />}{proxyReading ? "正在读取公开信息…" : "尝试代理读取字幕 / 页面信息"}</button>
-          {proxyStatus && <p role="status" aria-live="polite" className="mt-2 text-[10px] leading-5">{proxyStatus}</p>}
-          {videoDescription && <p className="mt-1 text-[10px] leading-5">已取得简介：{videoDescription.slice(0,260)}{videoDescription.length>260?"…":""}</p>}
-        </div>
         {target && target.platformName !== "本地视频" && !target.embedUrl && !target.nativeVideoUrl && <p role="status" aria-live="polite" className="mt-2 rounded-xl bg-[#f4e7d6] px-3 py-2 text-xs leading-5 text-[#82644c]">{resolutionMessage || "等待检查视频链接……"}</p>}
         {resolutionMessage && (target?.embedUrl || target?.nativeVideoUrl) && <p role="status" aria-live="polite" className="mt-2 rounded-xl border border-[#cdb79b]/60 bg-[#fffaf2] px-3 py-2 text-xs leading-5 text-[#82644c]">{resolutionMessage}</p>}
         {target?.platformName === "本地视频" && <p className="mt-2 px-1 text-[11px] leading-5 text-[#8b7665]">当前播放的是本地文件；选择新文件或输入链接可以切换视频。</p>}
