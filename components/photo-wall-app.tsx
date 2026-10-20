@@ -697,15 +697,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
   const timelineGroups = useMemo(() => {
     const groups = new Map<string, { key: string; label: string; items: PhotoWallPhoto[] }>();
-    if (timelineGrouping === "photo") return [{ key: "all-photos", label: "所有照片", items: timelinePhotos }];
+    if (timelineGrouping === "photo") return timelinePhotos.map(photo => ({ key: "photo:" + photo.id, label: formatDate(photo.capturedAt || photo.createdAt), items: [photo] }));
     const localKey = (date: Date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
     for (const photo of timelinePhotos) {
       const date = new Date(photo.capturedAt || photo.createdAt);
       let key = "", label = "";
-      if (timelineGrouping === "photo") {
-        key = "photo:" + photo.id;
-        label = formatDate(photo.capturedAt || photo.createdAt);
-      } else if (timelineGrouping === "day") {
+      if (timelineGrouping === "day") {
         key = localKey(date);
         label = date.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
       } else if (timelineGrouping === "week") {
