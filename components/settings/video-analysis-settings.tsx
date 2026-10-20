@@ -38,7 +38,9 @@ export function VideoAnalysisSettingsPanel() {
       <label className="mt-5 block text-sm font-medium">视频分析服务</label>
       <select value={settings.provider} onChange={e => { const provider = e.target.value as VideoAnalysisSettings["provider"]; setSettings(current => ({ ...current, provider, baseUrl: provider === "ark" ? "https://ark.cn-beijing.volces.com/api/v3" : provider === "anthropic" ? "https://api.anthropic.com" : provider === "openai-compatible" ? "https://api.openai.com/v1" : "https://generativelanguage.googleapis.com", model: provider === "ark" ? (current.model.startsWith("gemini-") || current.model.startsWith("gpt-") || current.model.startsWith("claude-") ? "doubao-seed-2-1-pro-260915" : current.model) : provider === "anthropic" ? "claude-sonnet-4-5" : provider === "openai-compatible" ? (current.model.startsWith("gemini-") || current.model.startsWith("doubao-") || current.model.startsWith("claude-") ? "gpt-4.1-mini" : current.model) : (current.model.startsWith("doubao-") || current.model.startsWith("gpt-") || current.model.startsWith("claude-") ? "gemini-2.5-flash" : current.model) })); setSaved(false); }} className="mt-2 w-full rounded-xl border border-[var(--border,rgba(128,128,128,.25))] bg-[var(--background,transparent)] px-3 py-3 text-sm">
         <option value="gemini">Google Gemini 原生视频 API</option>
-        <option value="ark">火山方舟 / 豆包原生视频理解</option>\n        <option value="openai-compatible">OpenAI 兼容视觉模型（抽帧）</option>\n        <option value="anthropic">Anthropic Claude 视觉模型（抽帧）</option>
+        <option value="ark">火山方舟 / 豆包原生视频理解</option>
+        <option value="openai-compatible">OpenAI 兼容视觉模型（抽帧）</option>
+        <option value="anthropic">Anthropic Claude 视觉模型（抽帧）</option>
       </select>
       <p className="mt-2 text-xs leading-5 opacity-65">Gemini、豆包可走原生视频输入；OpenAI 兼容服务和 Claude 会从本地视频抽取关键帧再分析。抽帧模式不传原始音轨。</p>
 
@@ -53,7 +55,9 @@ export function VideoAnalysisSettingsPanel() {
       <input value={settings.model} onChange={e => update("model", e.target.value)} placeholder="例如 gemini-2.5-flash、doubao-seed-2-1-pro-260915、gpt-4.1-mini 或 claude-sonnet-4-5" spellCheck={false} className="mt-2 w-full rounded-xl border border-[var(--border,rgba(128,128,128,.25))] bg-[var(--background,transparent)] px-3 py-3 text-sm" />
       <p className="mt-1 text-xs leading-5 opacity-65">请填写该服务支持的视频输入模型（原生视频模式）或图片理解模型（抽帧模式）。模型 ID 必须与所选服务一致。</p>
 
-      {(settings.provider === "openai-compatible" || settings.provider === "anthropic") && <><label className="mt-4 block text-sm font-medium">视频关键帧数量</label><input type="number" min={4} max={24} step={2} value={settings.frameCount} onChange={e => update("frameCount", Number(e.target.value))} className="mt-2 w-full rounded-xl border border-[var(--border,rgba(128,128,128,.25))] bg-[var(--background,transparent)] px-3 py-3 text-sm" /><p className="mt-1 text-xs leading-5 opacity-65">从视频时长范围内均匀抽取 4–24 帧。帧数越多越能覆盖剪辑变化，但图片 token 和费用也越高；这两种模式不会分析原始音轨。</p></>}\n\n      <label className="mt-4 block text-sm font-medium">单个视频大小上限（MB）</label>
+      {(settings.provider === "openai-compatible" || settings.provider === "anthropic") && <><label className="mt-4 block text-sm font-medium">视频关键帧数量</label><input type="number" min={4} max={24} step={2} value={settings.frameCount} onChange={e => update("frameCount", Number(e.target.value))} className="mt-2 w-full rounded-xl border border-[var(--border,rgba(128,128,128,.25))] bg-[var(--background,transparent)] px-3 py-3 text-sm" /><p className="mt-1 text-xs leading-5 opacity-65">从视频时长范围内均匀抽取 4–24 帧。帧数越多越能覆盖剪辑变化，但图片 token 和费用也越高；这两种模式不会分析原始音轨。</p></>}
+
+      <label className="mt-4 block text-sm font-medium">单个视频大小上限（MB）</label>
       <input type="number" min={50} max={2048} step={50} value={settings.maxFileSizeMb} onChange={e => update("maxFileSizeMb", Number(e.target.value))} className="mt-2 w-full rounded-xl border border-[var(--border,rgba(128,128,128,.25))] bg-[var(--background,transparent)] px-3 py-3 text-sm" />
       <p className="mt-1 text-xs leading-5 opacity-65">建议根据网络和手机性能设置。服务商本身的文件大小、时长和计费限制仍然适用。</p>
 
