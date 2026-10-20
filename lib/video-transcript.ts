@@ -70,7 +70,11 @@ export function parseVideoTranscript(input: string): VideoTranscriptSegment[] {
       if (item) segments.push(item);
     }
   }
-  return segments.sort((a, b) => a.start - b.start).slice(0, 20000);
+  if (segments.length) return segments.sort((a, b) => a.start - b.start).slice(0, 20000);
+  // Plain .txt transcripts may lack timestamps. Keep them usable as broad context,
+  // but the caller should label them as unsynchronised instead of claiming exact timing.
+  const plainText = source.split(/\n+/).map(line => line.trim()).filter(Boolean).join(" ").slice(0, 16000);
+  return plainText ? [{ start: 0, end: 86400, text: plainText }] : [];
 }
 
 export function formatTranscriptTime(seconds: number): string {
