@@ -283,12 +283,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       if (detail.ok && ((detail.cacheId && detail.contentUri) || detail.mediaUrl)) {
         if (detail.cacheId) nativeVideoCacheRef.current = { url: current.url, cacheId: detail.cacheId };
         setTarget(previous => previous && previous.url === current.url ? { ...previous, nativeVideo: true, nativeVideoUrl: detail.mediaUrl || detail.contentUri, nativeCacheId: detail.cacheId, supported: true } : previous);
+        setResolutionState("success");
         const message = detail.mediaUrl?.toLowerCase().includes(".m3u8")
           ? "解析成功：已取得 HLS 视频流，正在尝试在小手机内播放。"
           : "解析成功：已取得可在小手机内播放的视频流。";
         setResolutionMessage(message);
         onNotice?.(message);
       } else {
+        setResolutionState("failed");
         const message = "解析失败：未取得可播放的视频流。" + (detail.message ? "原因：" + detail.message : "可能需要登录/会员权限，或平台使用防盗链与时效地址。") + " 可尝试站内嵌入、打开原视频或播放本地文件。";
         setResolutionMessage(message);
         onNotice?.(message);
@@ -297,12 +299,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     window.addEventListener("floatshell-shared-video-ready", onResolved);
     try {
       if (!native.resolveShortVideoShareUrl(current.url, requestId)) {
-        const message = "APK 没有接受解析请求，请检查 APK 版本及支持的平台。";
+        setResolutionState("failed");
+        const message = "当前网页没有调用到 APK 原生解析；目前仅尝试站内嵌入，不能据此判断视频流解析成功。";
         setResolutionMessage(message);
         onNotice?.(message);
       }
     } catch {
-      const message = "调用 APK 原生解析失败，请检查 APK 版本与原生桥状态。";
+      setResolutionState("failed");
+      const message = "调用 APK 原生解析失败；可继续尝试站内嵌入或打开原视频。";
       setResolutionMessage(message);
       onNotice?.(message);
     }
@@ -479,6 +483,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       URL.revokeObjectURL(localVideoObjectUrlRef.current);
       localVideoObjectUrlRef.current = null;
     }
+    setResolutionState(parsed.supported ? "embedded" : "checking");
+    setResolutionMessage(parsed.supported ? "链接格式已识别，正在载入站内播放器；这不代表已经取得可播放视频流。" : "正在尝试载入分享页或解析公开媒体流…");
     setTarget(parsed);
     setScreenshotDataUrl("");
     setTranscriptSegments([]); setTranscriptName("");
@@ -966,15 +972,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         )}
 
         {target && !target.supported && target.embedUrl === target.url && (
-          <a
-            href={target.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="absolute bottom-2 right-2 z-20 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-black/75 px-3 py-2 text-[10px] text-white shadow-lg backdrop-blur"
-            onClick={event => event.stopPropagation()}
-          >
-            <ExternalLink size={12}/>若无法播放，打开原网页
-          </a>
+          <a href={target.url} target="_blank" rel="noopener noreferrer" className="absolute bottom-2 right-2 z-[2147483000] inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-black/85 px-3 py-2 text-[10px] text-white shadow-lg backdrop-blur" onClick={event => event.stopPropagation()}><ExternalLink size={12}/>打开原视频</a>
         )}
 
         {fullScreen && target && <div className="watch-companion-overlay pointer-events-none absolute left-2 right-2 top-[max(48px,calc(env(safe-area-inset-top)+12px))] z-30">
@@ -1018,6 +1016,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
       {/* 没有视频时：链接输入放在「屏幕」下方，像往播放器里投一块碟 */}
       <div className="watch-link-panel mx-auto mt-4 w-full max-w-3xl rounded-3xl border border-[#b89979]/30 bg-[#fff8ed]/75 p-3 shadow-[0_12px_30px_rgba(96,67,43,.08)] backdrop-blur sm:p-4">
+        {target && <div role="status" aria-live="polite" className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-[#dac6ad] pb-2 text-xs text-[#735440]"><span>{resolutionState === "success" ? "✓ " : resolutionState === "failed" ? "! " : ""}{resolutionMessage || "正在检查链接…"}</span><a href={target.url} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1 border-b border-current px-1 py-1 font-medium" onClick={event => event.stopPropagation()}><ExternalLink size={12}/>外部打开</a></div>}
         <div className="flex flex-col gap-2 sm:flex-row">
           <input value={urlInput} onPointerDown={event => event.stopPropagation()} onTouchStart={event => event.stopPropagation()} onChange={event => setUrlInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter") openVideo(); }} placeholder="粘贴视频链接；短视频分享链接不保证能自动内嵌" className="min-w-0 flex-1 rounded-2xl border border-[#dac6ad] bg-white/90 px-4 py-3.5 text-sm text-[#554437] outline-none placeholder:text-[#a09383] focus:border-[#b88768] focus:ring-2 focus:ring-[#c99a6a]/15" />
           <button onClick={openVideo} className="rounded-2xl px-5 py-3.5 text-sm font-semibold tracking-wide text-[#2a1f16] shadow-sm transition hover:brightness-[1.02] active:scale-[.98]" style={{ background: "linear-gradient(135deg,#f0d0a8,#c99a6a)" }}>放上屏幕</button>
@@ -1096,7 +1095,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           <div className="relative z-10 flex items-start gap-3">
             {character && <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-[#4a3d33] text-xs text-[#e6d8c4]">{character.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character.name.slice(0, 1)}</span>}
             <div className="min-w-0 flex-1">
-              <div className="flex items-baseline gap-2"><span className="text-[11px] tracking-[.08em] text-[#d6b18c]">{latestComment?.characterName ?? character?.name ?? "角色"}</span><span className="text-[10px] text-[#a9937e]">{busy ? "正在回应…" : watching ? "同频陪看" : "等待交流"}</span></div>
+              
               <p className="mt-1.5 min-h-[22px] font-serif text-[15px] leading-7 text-[#efe2d0]">
                 {latestComment ? latestComment.text : <span className="text-[#8b8077]">TA 还没说话。可以自己先说说此刻看到了什么。</span>}
               </p>
@@ -1120,7 +1119,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             <div className="flex items-baseline justify-between gap-2"><h2 className="font-serif text-base tracking-wide text-[#f0dfcc]">一起讨论</h2><span className="text-[10px] tracking-[.12em] text-[#a9937e]">SCENE NOTES · {comments.length}</span></div>
             <p className="mt-1 text-[10px] leading-5 text-[#a9937e]">把某一幕或想说的话记在对应时间点；你的消息和 TA 的回应都会出现在画面弹幕与下方讨论记录里。</p>
             {comments.some(item=>item.timepoint) && <div className="mt-3 flex flex-wrap gap-2">{[...new Set(comments.filter(item=>item.timepoint).map(item=>item.timepoint!))].map(point=><button key={point} type="button" onClick={()=>{setTimepointDraft(point);setDiscussionDraft(`想再聊聊 ${point} 这一幕`);}} className="border-b border-[#c99a78]/60 px-1 py-1 text-[11px] text-[#e4c6a8]">{point} ↗</button>)}</div>}
-            <div ref={commentListRef} className="watch-comment-list mt-3 min-h-0 max-h-64 space-y-3 overflow-y-auto overscroll-contain pr-1">{comments.length ? comments.slice(-30).map(item=><div key={item.id} className={`flex ${item.kind==="user"?"justify-end":"justify-start"}`}><div className={`max-w-[88%] rounded-2xl border px-3 py-2.5 shadow-sm ${item.kind==="user"?"border-[#d6b18c]/35 bg-[#d6b18c]/10":"border-white/10 bg-white/[.045]"}`}><div className="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-[#c4a58a]"><span>{item.kind==="user"?"我":item.characterName}</span>{item.timepoint&&<button type="button" onClick={()=>setTimepointDraft(item.timepoint||"")} className="border-b border-[#c99a78]/50 text-[#e4c6a8]">{item.timepoint}</button>}<span className="text-[#85756a]">{new Date(item.createdAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</span></div><p className="whitespace-pre-wrap break-words font-serif text-sm leading-6 text-[#efe2d0]">{item.text}</p></div></div>) : <p className="border-l border-[#c99a78]/45 py-1 pl-3 text-xs leading-6 text-[#a9937e]">这里留给你们讨论剧情、吐槽片段，或标记想一起记住的时刻。</p>}</div>
+            <div ref={commentListRef} className="watch-comment-list mt-3 min-h-0 max-h-64 space-y-3 overflow-y-auto overscroll-contain pr-1">{comments.length ? comments.slice(-30).map(item=><div key={item.id} className={`flex ${item.kind==="user"?"justify-end":"justify-start"}`}><div className={`max-w-[88%] rounded-2xl border px-3 py-2.5 shadow-sm ${item.kind==="user"?"border-[#d6b18c]/35 bg-[#d6b18c]/10":"border-white/10 bg-white/[.045]"}`}>{item.timepoint && <div className="mb-1"><button type="button" onClick={() => setTimepointDraft(item.timepoint || "")} className="border-b border-[#c99a78]/50 text-[10px] text-[#e4c6a8]">{item.timepoint}</button></div>}<p className="whitespace-pre-wrap break-words font-serif text-sm leading-6 text-[#efe2d0]">{item.text}</p></div></div>) : <p className="border-l border-[#c99a78]/45 py-1 pl-3 text-xs leading-6 text-[#a9937e]">这里留给你们讨论剧情、吐槽片段，或标记想一起记住的时刻。</p>}</div>
             <div className="watch-discussion-composer mt-3 border-t border-[#d6b18c]/20 pt-3"><div className="flex items-center gap-2"><input value={timepointDraft} onPointerDown={event=>event.stopPropagation()} onTouchStart={event=>event.stopPropagation()} inputMode="numeric" autoComplete="off" maxLength={8} onChange={event=>{ const next=event.target.value.replace(/[^0-9:.]/g, "").slice(0,8); timepointDraftRef.current=next; setTimepointDraft(next); }} placeholder="时间点 03:12（可选）" aria-label="视频时间点，例如 03:12" className="w-[42%] min-w-0 border-b border-[#9c7b63]/60 bg-transparent px-1 py-2 text-xs text-[#f0dfcc] outline-none placeholder:text-[#907d6c] focus:border-[#e4c6a8]"/><span className="text-[10px] text-[#907d6c]">时间点 / 章节标记</span></div><textarea value={discussionDraft} onPointerDown={event=>event.stopPropagation()} onTouchStart={event=>event.stopPropagation()} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} maxLength={800} rows={2} placeholder={target ? "写下你对这一幕的看法……" : "先放上视频，再写下你对这一幕的看法……"} className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-black/20 p-3 text-sm leading-6 text-[#efe2d0] outline-none placeholder:text-[#907d6c] focus:border-[#c99a78]/60 focus:ring-2 focus:ring-[#c99a78]/10"/><div className="mt-2 flex justify-end"><button type="button" onClick={submitDiscussion} disabled={!target||!discussionDraft.trim()} className="inline-flex items-center rounded-full border border-[#c99a78]/60 bg-[#c99a78] px-4 py-2.5 text-xs font-medium text-[#2a1f16] shadow-sm transition hover:brightness-105 active:scale-[.98] disabled:opacity-40"><MessageCircle size={13} className="mr-1 inline"/>记下并问问 TA</button></div></div>
           </section>
           <div className="relative z-10 mt-2 flex flex-wrap gap-1.5">
