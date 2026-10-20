@@ -36,7 +36,7 @@ export function VideoAnalysisSettingsPanel() {
         </div>
       </div>
       <label className="mt-5 block text-sm font-medium">视频分析服务</label>
-      <select value={settings.provider} onChange={e => update("provider", e.target.value as VideoAnalysisSettings["provider"])} className="mt-2 w-full rounded-xl border border-[var(--border,rgba(128,128,128,.25))] bg-[var(--background,transparent)] px-3 py-3 text-sm">
+      <select value={settings.provider} onChange={e => { const provider = e.target.value as VideoAnalysisSettings["provider"]; setSettings(current => ({ ...current, provider, model: provider === "ark" ? (current.model.startsWith("gemini-") ? "doubao-seed-2-1-pro-260915" : current.model) : (current.model.startsWith("doubao-") ? "gemini-2.5-flash" : current.model) })); setSaved(false); }} className="mt-2 w-full rounded-xl border border-[var(--border,rgba(128,128,128,.25))] bg-[var(--background,transparent)] px-3 py-3 text-sm">
         <option value="gemini">Google Gemini 原生视频 API</option>\n        <option value="ark">火山方舟 / 豆包视频理解 API</option>
       </select>
       <p className="mt-2 text-xs leading-5 opacity-65">Gemini 与火山方舟采用不同的文件上传和视频输入协议；请按下方选择的服务填写对应密钥和模型 ID。</p>
