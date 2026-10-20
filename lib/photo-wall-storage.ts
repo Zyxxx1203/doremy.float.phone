@@ -33,8 +33,10 @@ export type PhotoWallPhoto = {
    * 这样不同屏宽下相对位置保持一致。
    */
   placement?: PhotoWallPlacement;
-  /** 相框级涂鸦层：笔迹与贴纸都画在相框之上、照片之下，随照片一起保存。 */
+  /** 照片正面涂鸦。 */
   doodles?: PhotoWallDoodle[];
+  /** 照片背面留言纸上的独立涂鸦。 */
+  backDoodles?: PhotoWallDoodle[];
 };
 
 /** 一张照片在墙上的摆放。坐标用画布比例，避免换屏幕后错位。 */
@@ -167,6 +169,7 @@ function normalizePhoto(value: unknown): PhotoWallPhoto | null {
     source: raw.source === "generated" || raw.source === "chat-favorite" || raw.source === "life-event" ? raw.source : "upload",
     placement: normalizePlacement(raw.placement),
     doodles: normalizeDoodles(raw.doodles),
+    backDoodles: normalizeDoodles(raw.backDoodles),
   };
 }
 

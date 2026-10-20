@@ -73,7 +73,7 @@ type Props = {
   onRedo?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
-  onChangeDoodles: (id: string, doodles: PhotoWallDoodle[]) => void;
+  onChangeDoodles: (id: string, doodles: PhotoWallDoodle[], side?: "front" | "back") => void;
   wallDoodles?: PhotoWallDoodle[];
   onChangeWallDoodles?: (doodles: PhotoWallDoodle[]) => void;
   backgroundImage?: string;
@@ -109,7 +109,7 @@ type DragState = {
 export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, backgroundBox, wallWorld, onOpenDetail, readOnly = false, fitHeight = false, canvasZoom = 1, mode: controlledMode, onModeChange, brushColor: controlledBrushColor, brushWidth: controlledBrushWidth, sticker: controlledSticker, onStickerChange, eraser: controlledEraser, onEraserChange }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
-  const strokeRef = useRef<{ id: string; photoId: string } | null>(null);
+  const strokeRef = useRef<{ id: string; photoId: string; side: "front" | "back" } | null>(null);
   const wallStrokeRef = useRef<{ id: string } | null>(null);
   const wallDraftPointsRef = useRef<{ x: number; y: number }[]>([]);
   const suppressClickRef = useRef(false);
@@ -190,7 +190,9 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   /* ── 拖动 / 缩放 ───────────────────────────────── */
   const beginDrag = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number, dragMode: "move" | "resize") => {
     if (multiTouchRef.current) return;
-    if (mode !== "move") { onSelect(photo.id); return; }
+    // A pointer-down outside move mode must not open the edit modal.
+    // Opening details is exclusively handled by the frame margin click.
+    if (mode !== "move") return;
     if (dragMode === "move" && event.button !== undefined && event.button !== 0) return;
     const wall = wallRef.current;
     if (!wall) return;
@@ -274,26 +276,27 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     event.preventDefault();
     event.stopPropagation();
     const point = pointOn(event, photo, index);
-    const existing = photo.doodles ?? [];
+    const side: "front" | "back" = flippedPhotoIds.has(photo.id) ? "back" : "front";
+    const existing = side === "back" ? (photo.backDoodles ?? []) : (photo.doodles ?? []);
     if (eraser) {
       const hit = [...existing].reverse().find(doodle => {
         const threshold = doodle.kind === "sticker" ? 0.05 : 0.035;
         return doodle.points.some(item => Math.hypot(item.x - point.x, item.y - point.y) < threshold);
       });
-      if (hit) onChangeDoodles(photo.id, existing.filter(item => item.id !== hit.id));
+      if (hit) onChangeDoodles(photo.id, existing.filter(item => item.id !== hit.id), side);
       return;
     }
     if (sticker) {
       onChangeDoodles(photo.id, [
         ...existing,
         { id: createPhotoWallId(), kind: "sticker", content: sticker, color: brushColor, width: brushWidth, points: [{ x: point.x, y: point.y }], createdAt: new Date().toISOString() },
-      ]);
+      ], side);
       return;
     }
     onSelect(photo.id);
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     const id = createPhotoWallId();
-    strokeRef.current = { id, photoId: photo.id };
+    strokeRef.current = { id, photoId: photo.id, side };
     setDraftPoints([{ x: point.x, y: point.y }]);
   };
 
@@ -314,10 +317,11 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     const points = draftPoints;
     setDraftPoints([]);
     if (points.length < 2) return;
+    const existing = stroke.side === "back" ? (photo.backDoodles ?? []) : (photo.doodles ?? []);
     onChangeDoodles(photo.id, [
-      ...(photo.doodles ?? []),
+      ...existing,
       { id: stroke.id, kind: "stroke", color: brushColor, width: brushWidth, points, createdAt: new Date().toISOString() },
-    ]);
+    ], stroke.side);
   };
 
   const wallPoint = (event: React.PointerEvent) => {
@@ -469,7 +473,6 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
   const [src, setSrc] = useState("");
   const objectUrlRef = useRef<string | null>(null);
   const [failed, setFailed] = useState(false);
-  /** 无界画布可能很大：滚出视野的照片先不解码，回来再补，避免几十张图一起占内存。 */
   const [inView, setInView] = useState(true);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -491,7 +494,7 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
       if (!active) { if (value) URL.revokeObjectURL(value); return; }
       if (value) { objectUrlRef.current = value; setSrc(value); } else setFailed(true);
     }).catch(() => { if (active) setFailed(true); });
-    // setSrc rerenders this component; don't revoke the URL in that effect cleanup.
+    // The URL lives until the frame unmounts; the src-driven rerender must not revoke it.
     return () => { active = false; };
   }, [photo.mediaRef, inView, src]);
 
@@ -501,98 +504,118 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
 
   const frame = placement.frame;
   const pad = FRAME_PADDING[frame];
-  // World dimensions stay stable; camera zoom scales cards and wall together.
-  const width = `${240 * placement.scale}px`;
+  const width = String(240 * placement.scale) + "px";
+  const visibleDoodles = flipped ? (photo.backDoodles ?? []) : (photo.doodles ?? []);
+  const drawingIsEnabled = doodleMode && !readOnly;
+  const movingIsEnabled = placementMode && !readOnly;
 
   return <div
     ref={rootRef}
     data-photo-wall-photo
     className="absolute"
     style={{
-      left: `${placement.x * 100}%`,
-      top: `${placement.y * 100}%`,
+      left: String(placement.x * 100) + "%",
+      top: String(placement.y * 100) + "%",
       width,
-      transform: `translate(-50%, -50%) rotate(${placement.rotation}deg)`,
+      transform: "translate(-50%, -50%) rotate(" + placement.rotation + "deg)",
       zIndex: placement.z,
-      touchAction: readOnly ? "auto" : "none",
+      touchAction: readOnly ? "pan-x pan-y" : "none",
     }}
+    onClick={event => {
+      event.stopPropagation();
+      if (placementMode || doodleMode) { event.preventDefault(); return; }
+      // The matte/frame is an explicit edit target; clicking the image itself only flips it.
+      if ((event.target as HTMLElement).closest("[data-photo-wall-photo-image]")) return;
+      onOpenDetail();
+    }}
+    onDoubleClick={event => { event.stopPropagation(); event.preventDefault(); }}
   >
     <div
-      className={`relative ${selected && placementMode ? "outline outline-2 outline-offset-2 outline-[#87565b]" : ""}`}
+      className={"relative " + (selected && placementMode ? "outline outline-2 outline-offset-2 outline-[#87565b]" : "")}
       style={{
         background: FRAME_BG[frame] === "transparent" ? "transparent" : (placement.frameColor || FRAME_BG[frame]),
-        padding: `${pad.y * 100}% ${pad.x * 100}% ${pad.bottom * 100}%`,
+        padding: String(pad.y * 100) + "% " + String(pad.x * 100) + "% " + String(pad.bottom * 100) + "%",
         borderRadius: frame === "thin" ? 1 : frame === "none" ? 2 : 1,
         boxShadow: frame === "none" ? "0 3px 8px rgba(70,55,38,.14)" : "0 4px 12px rgba(70,55,38,.13)",
       }}
-      onPointerDown={(event) => {
-        if (doodleMode || readOnly) { event.preventDefault(); event.stopPropagation(); return; }
-        if (placementMode) { event.preventDefault(); event.stopPropagation(); }
-        onPointerDownMove(event);
-      }}
-      onClick={event => {
-        event.stopPropagation();
-        if (readOnly || placementMode || doodleMode) { event.preventDefault(); return; }
-        onToggleFlip();
-      }}
-       onDoubleClick={event => {
-        event.stopPropagation();
-        if (readOnly || placementMode || doodleMode) { event.preventDefault(); return; }
-        onOpenDetail();
-      }}
     >
-      {flipped ? <div className="relative flex w-full flex-col overflow-y-auto rounded-sm bg-[#fffaf2] p-2.5 text-[#6b5947]" style={{ aspectRatio: "1 / 1", borderRadius: frame === "none" ? 2 : 1 }}>
-        <div className="border-b border-[#dfcfbe] pb-1 text-[7px] tracking-[.2em] text-[#a58f77]">THE BACK · 背面</div>
-        <div className="mt-1 break-words text-[9px] font-semibold leading-snug">{photo.title || "未命名的瞬间"}</div>
-        <p className="mt-1 whitespace-pre-wrap break-words text-[8px] leading-relaxed">{photo.backNote?.trim() || "还没有写下手记。打开详情可编辑背面内容。"}</p>
-        {photo.caption?.trim() && <p className="mt-1 break-words border-t border-[#e8dccd] pt-1 text-[7px] leading-snug">照片说明：{photo.caption}</p>}
-        {photo.annotations.length > 0 && <div className="mt-auto border-t border-[#e8dccd] pt-1">{photo.annotations.slice(-2).map(note => <p key={note.id} className="mt-0.5 break-words text-[7px] leading-snug"><span className="font-semibold">{note.authorName}：</span>{note.content}</p>)}</div>}
-      </div> : <>
-      <div className="relative overflow-hidden bg-[#e7dfd2]" style={{ aspectRatio: "1 / 1", borderRadius: frame === "none" ? 2 : 1 }}>
-        {src ? <img src={src} alt={photo.title} draggable={false} className="h-full w-full object-contain" /> : failed ? <div className="grid h-full place-items-center text-[9px] text-[#a06050]">图片无法显示</div> : <div className="grid h-full place-items-center text-[#a99a86]"><ImagePlus size={16}/></div>}
-        {frame === "tape" && <>
-          <span className="pointer-events-none absolute -left-2 -top-2 h-4 w-10 -rotate-12 bg-[#f3e9cf]/85 shadow-sm" />
-          <span className="pointer-events-none absolute -right-2 -top-2 h-4 w-10 rotate-12 bg-[#f3e9cf]/85 shadow-sm" />
-        </>}
-      </div>
-      {frame === "polaroid" && <div className="mt-1 truncate text-center font-serif text-[9px] text-[#8d7c66]">{photo.title}</div>}
+      {flipped ? (
+        <div
+          data-photo-wall-photo-image
+          role="button"
+          tabIndex={0}
+          aria-label="点击翻回照片正面"
+          className="relative flex w-full flex-col overflow-hidden rounded-sm bg-[#fffaf2] p-2.5 text-[#6b5947]"
+          style={{ aspectRatio: "1 / 1", borderRadius: frame === "none" ? 2 : 1 }}
+          onClick={event => {
+            event.preventDefault(); event.stopPropagation();
+            if (!placementMode && !doodleMode) onToggleFlip();
+          }}
+          onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); if (!placementMode && !doodleMode) onToggleFlip(); } }}
+        >
+          <div className="border-b border-[#dfcfbe] pb-1 text-[7px] tracking-[.2em] text-[#a58f77]">THE BACK · 背面</div>
+          <div className="mt-1 break-words text-[9px] font-semibold leading-snug">{photo.title || "未命名的瞬间"}</div>
+          <p className="mt-1 whitespace-pre-wrap break-words text-[8px] leading-relaxed">{photo.backNote?.trim() || "还没有写下手记。点击相框可编辑背面内容。"}</p>
+          {photo.caption?.trim() && <p className="mt-1 break-words border-t border-[#e8dccd] pt-1 text-[7px] leading-snug">{photo.caption}</p>}
+          {photo.annotations.length > 0 && <div className="mt-auto border-t border-[#e8dccd] pt-1">{photo.annotations.slice(-2).map(note => <p key={note.id} className="mt-0.5 break-words text-[7px] leading-snug"><span className="font-semibold">{note.authorName}：</span>{note.content}</p>)}</div>}
+        </div>
+      ) : (
+        <>
+          <div
+            data-photo-wall-photo-image
+            role="button"
+            tabIndex={0}
+            aria-label={"点击翻看照片：" + (photo.title || "未命名的瞬间")}
+            className="relative overflow-hidden bg-[#e7dfd2]"
+            style={{ aspectRatio: "1 / 1", borderRadius: frame === "none" ? 2 : 1 }}
+            onClick={event => {
+              event.preventDefault(); event.stopPropagation();
+              if (!placementMode && !doodleMode) onToggleFlip();
+            }}
+            onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); if (!placementMode && !doodleMode) onToggleFlip(); } }}
+          >
+            {src ? <img src={src} alt={photo.title} draggable={false} className="pointer-events-none h-full w-full object-contain" /> : failed ? <div className="grid h-full place-items-center text-[9px] text-[#a06050]">图片无法显示</div> : <div className="grid h-full place-items-center text-[#a99a86]"><ImagePlus size={16}/></div>}
+            {frame === "tape" && <>
+              <span className="pointer-events-none absolute -left-2 -top-2 h-4 w-10 -rotate-12 bg-[#f3e9cf]/85 shadow-sm" />
+              <span className="pointer-events-none absolute -right-2 -top-2 h-4 w-10 rotate-12 bg-[#f3e9cf]/85 shadow-sm" />
+            </>}
+          </div>
+          {frame === "polaroid" && <div className="mt-1 truncate text-center font-serif text-[9px] text-[#8d7c66]">{photo.title}</div>}
+        </>
+      )}
 
-      {/* 相框级涂鸦层：画在相框之上 */}
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full" style={{ overflow: "visible" }}>
-        {(photo.doodles ?? []).map(doodle => doodle.kind === "stroke"
-          ? <polyline
-              key={doodle.id}
-              points={doodle.points.map(point => `${point.x * 100},${point.y * 100}`).join(" ")}
-              fill="none"
-              stroke={doodle.color}
-              strokeWidth={doodle.width}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              vectorEffect="non-scaling-stroke"
-            />
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 z-10 h-full w-full" style={{ overflow: "visible" }}>
+        {visibleDoodles.map(doodle => doodle.kind === "stroke"
+          ? <polyline key={doodle.id} points={doodle.points.map(point => String(point.x * 100) + "," + String(point.y * 100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={doodle.width} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
           : <text key={doodle.id} x={(doodle.points[0]?.x ?? 0.5) * 100} y={(doodle.points[0]?.y ?? 0.5) * 100} fill={doodle.color} fontSize={12} textAnchor="middle" dominantBaseline="middle">{doodle.content}</text>)}
-        {draftPoints.length > 1 && <polyline points={draftPoints.map(point => `${point.x * 100},${point.y * 100}`).join(" ")} fill="none" stroke="#c2705a" strokeWidth={3} strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
+        {drawingIsEnabled && draftPoints.length > 1 && <polyline points={draftPoints.map(point => String(point.x * 100) + "," + String(point.y * 100)).join(" ")} fill="none" stroke="#c2705a" strokeWidth={3} strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
       </svg>
 
-      {doodleMode && <div
-        className="absolute inset-0 cursor-crosshair"
+      {(movingIsEnabled || drawingIsEnabled) && <div
+        data-photo-wall-tool-layer={drawingIsEnabled ? "doodle" : "move"}
+        className={"absolute inset-0 z-20 " + (drawingIsEnabled ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing")}
         style={{ touchAction: "none" }}
-        onPointerDown={event => { event.preventDefault(); event.stopPropagation(); onDoodlePointerDown(event); }}
+        onPointerDown={event => {
+          event.preventDefault(); event.stopPropagation();
+          if (drawingIsEnabled) onDoodlePointerDown(event);
+          else onPointerDownMove(event);
+        }}
+        onPointerMove={event => { event.stopPropagation(); if (drawingIsEnabled) onDoodlePointerMove(event); }}
+        onPointerUp={event => {
+          event.preventDefault(); event.stopPropagation();
+          if (drawingIsEnabled) onDoodlePointerUp(event);
+        }}
+        onPointerCancel={event => { event.stopPropagation(); if (drawingIsEnabled) onDoodlePointerUp(event); }}
         onClick={event => { event.preventDefault(); event.stopPropagation(); }}
         onDoubleClick={event => { event.preventDefault(); event.stopPropagation(); }}
-        onPointerMove={event => { event.stopPropagation(); onDoodlePointerMove(event); }}
-        onPointerUp={event => { event.preventDefault(); event.stopPropagation(); onDoodlePointerUp(event); }}
-        onPointerCancel={event => { event.stopPropagation(); onDoodlePointerUp(event); }}
       />}
 
-      </>}
-
-      {selected && placementMode && !doodleMode && !placement.locked && <button
+      {selected && movingIsEnabled && !placement.locked && <button
         type="button"
         aria-label="拖动调整大小"
-        onPointerDown={event => { event.stopPropagation(); onPointerDownResize(event); }}
-        onClick={event => event.stopPropagation()}
-        className="absolute -bottom-2 -right-2 grid h-6 w-6 place-items-center rounded-full border border-white bg-[#87565b] text-white shadow"
+        onPointerDown={event => { event.preventDefault(); event.stopPropagation(); onPointerDownResize(event); }}
+        onClick={event => { event.preventDefault(); event.stopPropagation(); }}
+        className="absolute -bottom-2 -right-2 z-30 grid h-6 w-6 place-items-center rounded-full border border-white bg-[#87565b] text-white shadow"
       ><Plus size={12}/></button>}
     </div>
   </div>;
