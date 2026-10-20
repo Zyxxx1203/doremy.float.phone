@@ -55,3 +55,13 @@ export function persistGlobalWatchMemory(record: GlobalWatchRecord): boolean {
     return false;
   }
 }
+
+
+export function clearGlobalWatchRecords(): void {
+  kvSet(GLOBAL_RECORDS_KEY, "[]");
+  try {
+    const shared = JSON.parse(kvGet(SHARED_WATCH_COMMENTS_KEY) || "{}") as Record<string, unknown>;
+    delete shared["global-watch"];
+    kvSet(SHARED_WATCH_COMMENTS_KEY, JSON.stringify(shared));
+  } catch { /* ignore */ }
+}
