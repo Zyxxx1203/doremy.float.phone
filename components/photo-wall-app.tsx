@@ -381,7 +381,13 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         const dx = event.clientX - start.x, dy = event.clientY - start.y;
         if (Math.abs(dx) + Math.abs(dy) < 3) return;
         if (event.cancelable) event.preventDefault();
-        if (!start.panStarted) { start.panStarted = true; window.dispatchEvent(new Event("photo-wall-pan-start")); }
+        if (!start.panStarted) {
+          start.panStarted = true;
+          // Once a drag crosses the tap threshold, keep receiving moves even if the finger
+          // leaves the canvas viewport. Tap-to-flip remains untouched because capture starts late.
+          try { viewport.setPointerCapture(event.pointerId); } catch { /* WebView may reject capture on an ancestor */ }
+          window.dispatchEvent(new Event("photo-wall-pan-start"));
+        }
         viewport.scrollLeft = start.scrollLeft - dx; viewport.scrollTop = start.scrollTop - dy;
       }
     };
