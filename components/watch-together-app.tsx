@@ -177,13 +177,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     if (current.nativeVideo) { setResolutionMessage("解析成功：已取得可播放的视频源，当前由小手机内置播放器播放。"); return; }
     setResolutionMessage("正在检查此链接是否支持站内播放……");
     /**
-     * 平台视频优先试一次「原生解析出真实视频流」：
-     * 成功就换成同源 <video> 播放——真正的站内播放，还能直接截帧给角色看；
-     * 失败就静默留在 iframe 上，不拿提示打扰用户。
-     * （B 站要生效，壳侧 isSupportedShareUrl 需要把 bilibili.com / b23.tv 加进白名单。）
+     * Keep supported platform embeds in their own player. The Android native resolver currently
+     * handles only public Douyin/Kuaishou/Xiaohongshu share pages; forcing Bilibili through it
+     * guarantees failure because its host is intentionally not in the native allowlist.
+     * Use native extraction only for the platforms the shell actually supports.
      */
-    const preferNativeStream = current.platform === "bilibili";
-    if ((current.embedUrl || current.supported) && !preferNativeStream) {
+    if (current.embedUrl || current.supported) {
       setResolutionMessage("已识别链接，当前使用平台站内播放器。这不代表已经解析出真实视频流。");
       return;
     }
