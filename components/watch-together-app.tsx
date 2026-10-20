@@ -200,24 +200,16 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
      * guarantees failure because its host is intentionally not in the native allowlist.
      * Use native extraction only for the platforms the shell actually supports.
      */
-    if (current.embedUrl || current.supported) {
+    if ((current.embedUrl && current.embedUrl !== current.url) || current.supported) {
       setResolutionMessage("已识别链接，当前使用平台站内播放器。这不代表已经解析出真实视频流。");
-      return;
-    }
-    let host = "";
-    try { host = new URL(current.url).hostname.toLowerCase(); } catch { return; }
-    const roots = ["xhslink.com", "xhslink.cn", "xiaohongshu.com", "douyin.com", "iesdouyin.com", "kuaishou.com", "bilibili.com", "b23.tv"];
-    if (!roots.some(root => host === root || host.endsWith("." + root))) {
-      setResolutionMessage("当前解析器不支持这个平台。可尝试站内嵌入、打开原视频或选择本地视频。");
       return;
     }
     const native = (window as WatchNativeWindow).AndroidShell;
     if (!native || !native.resolveShortVideoShareUrl) {
-      setResolutionMessage("当前 APK 没有提供原生视频解析能力。可以使用支持嵌入的平台，或选择本地视频。");
-      onNotice?.("原生解析不可用：请确认 APK 已更新并包含视频解析桥。");
+      setResolutionMessage("当前环境没有可用的原生提取桥，正在尝试网页内嵌播放；若平台禁止嵌入，请打开原网页或选择本地视频。");
       return;
     }
-    setResolutionMessage("正在请求 APK 原生解析视频流……");
+    setResolutionMessage("正在尝试提取公开视频资源；提取期间也会保留网页内嵌播放作为备用……");
     const requestId = "watch-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 9);
     let active = true;
     const onResolved = (event: Event) => {
