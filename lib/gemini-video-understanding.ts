@@ -28,15 +28,19 @@ export async function analyzeWholeVideoWithGemini(options: {
   apiKey: string;
   model: string;
   prompt: string;
-  provider?: "gemini" | "ark";
+  provider?: "gemini" | "ark" | "openai-compatible" | "anthropic";
   baseUrl?: string;
   maxFileSizeMb?: number;
+  frameCount?: number;
   signal?: AbortSignal;
   onProgress?: GeminiVideoProgress;
 }): Promise<string> {
   const { file, apiKey, model, prompt, signal, onProgress } = options;
-  if (!apiKey.trim()) throw new Error("请先在系统设置 → 视频分析模型填写 Gemini API Key。");
   if (!model.trim()) throw new Error("请先在系统设置 → 视频分析模型填写模型 ID。");
+  const provider = options.provider || "gemini";
+  const baseUrl = options.baseUrl?.trim() || "";
+  const isLocalEndpoint = /^(https?:\/\/)?(localhost|127\.0\.0\.1|10\.0\.2\.2|\[::1\]|192\.168\.)/i.test(baseUrl);
+  if (!apiKey.trim() && !(provider === "openai-compatible" && isLocalEndpoint)) throw new Error("请先在系统设置 → 视频分析模型填写所选服务的 API Key（本机兼容接口可按服务要求留空）。");
   const extension = file.name.toLowerCase().split(".").pop() || "";
   const inferredMime = ({ mp4: "video/mp4", m4v: "video/x-m4v", mov: "video/quicktime", webm: "video/webm", ogv: "video/ogg", ogg: "video/ogg", avi: "video/x-msvideo", wmv: "video/x-ms-wmv", mpeg: "video/mpeg", mpg: "video/mpeg", "3gp": "video/3gpp" } as Record<string, string>)[extension];
   const mimeType = file.type || inferredMime || "";
@@ -46,7 +50,8 @@ export async function analyzeWholeVideoWithGemini(options: {
   const maxFileSizeMb = Math.min(2048, Math.max(50, options.maxFileSizeMb ?? 1024));
   if (file.size > maxFileSizeMb * 1024 * 1024) throw new Error("视频超过当前设置的 " + maxFileSizeMb + " MB 上限。请在系统设置 → 视频分析模型调整上限，或先压缩视频。");
 
-  if (options.provider === "ark") return analyzeWholeVideoWithArk({ file, apiKey, model, prompt, baseUrl: options.baseUrl, maxFileSizeMb, signal, onProgress });
+  if (provider === "ark") return analyzeWholeVideoWithArk({ file, apiKey, model, prompt, baseUrl: options.baseUrl, maxFileSizeMb, signal, onProgress });
+  if (provider === "openai-compatible" || provider === "anthropic") return analyzeVideoByKeyframes({ file, apiKey, model, prompt, provider, baseUrl: options.baseUrl, frameCount: options.frameCount ?? 12, signal, onProgress });
 
   const apiRoot = "https://generativelanguage.googleapis.com";
   const authHeader = { "x-goog-api-key": apiKey.trim() };
