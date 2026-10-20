@@ -242,7 +242,7 @@ async function analyzeWholeVideoWithTwelveLabs(options: {
 }): Promise<string> {
   const { file, apiKey, model, prompt, signal, onProgress } = options;
   if (file.size > 200 * 1024 * 1024) throw new Error("TwelveLabs 本地视频上传上限约为 200 MB，请压缩视频或选择 Gemini/豆包。");
-  const root = (options.baseUrl || "https://api.twelvelabs.io/v1.3").trim().replace(/\\/+$/, "");
+  const root = (options.baseUrl || "https://api.twelvelabs.io/v1.3").trim().replace(/\/+$/, "");
   if (!/^https:\\/\\//i.test(root)) throw new Error("TwelveLabs API 地址必须使用 HTTPS。");
   const headers = { "x-api-key": apiKey.trim() };
   let assetId = "";
