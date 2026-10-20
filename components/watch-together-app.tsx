@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronDown, Expand, ExternalLink, FileText, Heart, ImagePlus, LoaderCircle, MessageCircle, Pause, Play, Settings2, Sparkles, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, Expand, ExternalLink, Eye, FileText, Heart, ImagePlus, LoaderCircle, MessageCircle, Pause, Play, Settings2, Sparkles, X } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import { generateChatCompletion, flattenCompletionResult, readCompressedImageDataUrl } from "@/lib/chat-engine";
