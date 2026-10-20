@@ -291,8 +291,16 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const ratio = clamped / previous;
     const anchorX = anchor?.x ?? viewport.clientWidth / 2;
     const anchorY = anchor?.y ?? viewport.clientHeight / 2;
+    // The canvas wrapper is centered while it is narrower than the viewport. Its left
+    // margin changes as zoom crosses the viewport width; omitting that offset makes the
+    // finger anchor drift sideways on phones even when scroll math is otherwise correct.
+    const wrapper = viewport.firstElementChild as HTMLElement | null;
+    const currentWidth = wrapper?.clientWidth ?? 0;
+    const currentMarginLeft = Math.max(0, (viewport.clientWidth - currentWidth) / 2);
+    const nextWidth = currentWidth * ratio;
+    const nextMarginLeft = Math.max(0, (viewport.clientWidth - nextWidth) / 2);
     pendingScrollRef.current = {
-      left: (viewport.scrollLeft + anchorX) * ratio - anchorX - viewport.scrollLeft,
+      left: nextMarginLeft + (viewport.scrollLeft + anchorX - currentMarginLeft) * ratio - anchorX - viewport.scrollLeft,
       top: (viewport.scrollTop + anchorY) * ratio - anchorY - viewport.scrollTop,
     };
   }, []);
