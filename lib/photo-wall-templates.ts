@@ -90,7 +90,7 @@ function scatterSlots(count: number): Slot[] {
   return slots;
 }
 
-/** 心形填充：始终在心形轮廓内排布，从中心的少量照片逐步向外长，中心不留空洞。 */
+/** 心形填充：使用带最小间距的网格采样，避免照片挤成一团。 */
 function fillSlots(count: number): Slot[] {
   const total = Math.max(1, count);
   const boundary = heartSlots(720).map(slot => ({ x: slot.x, y: slot.y }));
@@ -99,76 +99,80 @@ function fillSlots(count: number): Slot[] {
     let inside = false;
     for (let i = 0, j = boundary.length - 1; i < boundary.length; j = i++) {
       const a = boundary[i], b = boundary[j];
-      const crosses = (a.y > point.y) !== (b.y > point.y)
-        && point.x < (b.x - a.x) * (point.y - a.y) / ((b.y - a.y) || 0.000001) + a.x;
-      if (crosses) inside = !inside;
+      if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x-a.x)*(point.y-a.y)/((b.y-a.y)||0.000001)+a.x) inside = !inside;
     }
     return inside;
   };
-  // Analytically intersect a ray from the heart's centre with its polygon boundary.
-  // This keeps placement proportional to the actual heart silhouette, not an ellipse.
-  const edgeRadiusCache = new Map<number, number>();
-  const edgeRadius = (angle: number) => {
-    const cacheKey = Math.round(angle * 10000);
-    const cached = edgeRadiusCache.get(cacheKey);
-    if (cached !== undefined) return cached;
-    const dx = Math.cos(angle), dy = Math.sin(angle);
-    let radius = 0;
-    for (let i = 0; i < boundary.length; i += 1) {
-      const a = boundary[i], b = boundary[(i + 1) % boundary.length];
-      const vx = b.x - a.x, vy = b.y - a.y;
-      const denominator = dx * vy - dy * vx;
-      if (Math.abs(denominator) < 1e-8) continue;
-      const ax = a.x - center.x, ay = a.y - center.y;
-      const distance = (ax * vy - ay * vx) / denominator;
-      const segmentPosition = (ax * dy - ay * dx) / denominator;
-      if (distance >= 0 && segmentPosition >= 0 && segmentPosition <= 1) radius = Math.max(radius, distance);
-    }
-    const result = Math.max(radius, 0.002);
-    edgeRadiusCache.set(cacheKey, result);
-    return result;
-  };
-  const step = Math.max(0.004, Math.min(0.025, Math.sqrt(0.25 / (total * 2))));
-  const candidates: Array<{ x: number; y: number; progress: number; angle: number }> = [];
-  for (let y = 0.12; y <= 0.92; y += step) {
-    for (let x = 0.06; x <= 0.94; x += step) {
-      const point = { x: round(x), y: round(y) };
+  const candidates: Array<{x:number;y:number;radius:number;angle:number}> = [];
+  const step = Math.max(0.045, Math.min(0.105, 0.62 / Math.sqrt(total)));
+  for (let row=0, y=0.13; y<=0.91; row++, y+=step*0.866) {
+    for (let col=0, x=0.08+(row%2)*step/2; x<=0.92; col++, x+=step) {
+      const point={x:round(x),y:round(y)};
       if (!contains(point)) continue;
-      const dx = point.x - center.x, dy = point.y - center.y;
-      const angle = Math.atan2(dy, dx);
-      const progress = Math.hypot(dx, dy) / edgeRadius(angle);
-      candidates.push({ ...point, progress, angle });
+      candidates.push({...point,radius:Math.hypot(point.x-center.x,point.y-center.y),angle:Math.atan2(point.y-center.y,point.x-center.x)});
     }
   }
-  candidates.sort((a, b) => a.progress - b.progress || a.angle - b.angle);
-  const ordered = candidates.filter(point => point.progress > 0.025);
-  if (!ordered.length) return heartSlots(total);
-  // The first photo is in the core. New photos extend outwards in the same heart-shaped
-  // contour; positions never recycle, so a larger set has no repeated outer-ring slots.
-  const slots: Slot[] = [{ x: center.x, y: center.y, scale: 0.92, rotation: 0 }];
-  for (let index = 0; slots.length < total && index < ordered.length; index += 1) {
-    const point = ordered[index];
-    const progress = Math.min(1, point.progress);
-    slots.push({
-      x: point.x,
-      y: point.y,
-      scale: round(Math.max(0.48, 0.9 - progress * 0.18)),
-      rotation: round(Math.sin(point.angle * 2.2 + index * 0.035) * 4),
-    });
+  // 由中心向外挑选，但同一圈交错采样；照片中心之间保持间距。
+  candidates.sort((a,b)=>a.radius-b.radius || a.angle-b.angle);
+  const minDistance=Math.max(0.055,Math.min(0.105,0.42/Math.sqrt(total)));
+  const chosen:Array<{x:number;y:number;radius:number;angle:number}>=[];
+  const stride=Math.max(1,Math.floor(candidates.length/Math.max(total*3,total)));
+  const ordered=candidates.filter((_,i)=>i%stride===0).concat(candidates.filter((_,i)=>i%stride!==0));
+  for(const point of ordered){
+    if(chosen.every(other=>Math.hypot(other.x-point.x,other.y-point.y)>=minDistance)){
+      chosen.push(point);
+      if(chosen.length>=total) break;
+    }
   }
-  // Extremely large walls get additional unique slots by sampling the actual filled
-  // shape at a finer grid rather than recycling the same positions.
-  for (let turn = 1; slots.length < total; turn += 1) {
-    const progress = Math.min(1, Math.sqrt(turn / total));
-    const angle = turn * Math.PI * (3 - Math.sqrt(5));
-    const radius = edgeRadius(angle) * progress;
-    slots.push({
-      x: round(clamp01(center.x + Math.cos(angle) * radius)),
-      y: round(clamp01(center.y + Math.sin(angle) * radius)),
-      scale: round(Math.max(0.48, 0.9 - progress * 0.18)),
-      rotation: round(Math.sin(angle * 2.2 + turn * 0.035) * 4),
-    });
+  // Very large photo counts gradually relax spacing instead of stacking identical slots.
+  if(chosen.length<total){
+    for(const point of candidates){
+      if(chosen.some(other=>other.x===point.x&&other.y===point.y)) continue;
+      chosen.push(point);
+      if(chosen.length>=total) break;
+    }
   }
+  if(!chosen.length) return gridSlots(total);
+  return chosen.slice(0,total).map((point,index)=>({
+    x:point.x,y:point.y,
+    scale:round(Math.max(0.48,Math.min(0.76,0.76-(point.radius*0.18)))),
+    rotation:round(Math.sin(point.angle*2.2+index*0.035)*3),
+  }));
+}
+
+function starSlots(count:number): Slot[] {
+  const total=Math.max(1,count), outline:Array<{x:number;y:number}>=[];
+  for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,r=i%2===0?0.39:0.18;outline.push({x:0.5+Math.cos(a)*r,y:0.5+Math.sin(a)*r});}
+  const slots:Slot[]=[];
+  for(let i=0;i<total;i++){
+    const ring=Math.floor(Math.sqrt(i)), angle=i*2.399963229728653;
+    const radius=0.025+ring*0.052;
+    let x=0.5+Math.cos(angle)*radius, y=0.5+Math.sin(angle)*radius;
+    // Pull candidates back toward the star's centre if they leave the star silhouette.
+    const point={x,y}; let inside=false;
+    for(let j=0,k=outline.length-1;j<outline.length;k=j++){
+      const a=outline[j],b=outline[k];
+      if((a.y>y)!==(b.y>y)&&x<(b.x-a.x)*(y-a.y)/((b.y-a.y)||1e-6)+a.x)inside=!inside;
+    }
+    if(!inside){x=0.5+(x-0.5)*0.58;y=0.5+(y-0.5)*0.58;}
+    slots.push({x:round(clamp01(x)),y:round(clamp01(y)),scale:0.64,rotation:round(Math.sin(i*1.7)*4)});
+  }
+  return slots;
+}
+function flowerSlots(count:number): Slot[] {
+  const total=Math.max(1,count),slots:Slot[]=[];
+  for(let i=0;i<total;i++){const angle=i*2.399963229728653,ring=Math.floor(Math.sqrt(i));const radius=ring===0?0:ring*0.064;slots.push({x:round(clamp01(0.5+Math.cos(angle)*radius)),y:round(clamp01(0.5+Math.sin(angle)*radius)),scale:0.66,rotation:round((i%6-2.5)*3)});}
+  return slots;
+}
+function cloudSlots(count:number): Slot[] {
+  const total=Math.max(1,count),slots:Slot[]=[];
+  const lobes=[{x:-.22,y:.02,r:.14},{x:-.1,y:-.09,r:.17},{x:.08,y:-.08,r:.19},{x:.23,y:.01,r:.13},{x:.08,y:.1,r:.17},{x:-.12,y:.1,r:.17}];
+  for(let i=0;i<total;i++){const l=lobes[i%lobes.length],ring=Math.floor(i/lobes.length);const a=i*2.399963229728653;const rr=ring*0.045;slots.push({x:round(clamp01(0.5+l.x+Math.cos(a)*rr)),y:round(clamp01(0.5+l.y+Math.sin(a)*rr)),scale:0.62,rotation:round(Math.sin(i)*4)});}
+  return slots;
+}
+function spiralSlots(count:number):Slot[]{
+  const total=Math.max(1,count),slots:Slot[]=[];
+  for(let i=0;i<total;i++){const a=i*2.399963229728653,r=0.025+0.024*Math.sqrt(i);slots.push({x:round(clamp01(.5+Math.cos(a)*r)),y:round(clamp01(.5+Math.sin(a)*r)),scale:.66,rotation:round(Math.sin(a)*6)});}
   return slots;
 }
 
@@ -228,7 +232,11 @@ export const BUILTIN_TEMPLATES: PhotoWallTemplate[] = [
   { id: "builtin-grid", name: "整齐网格", builtin: true, slots: [] },
   { id: "builtin-ring", name: "环抱", builtin: true, slots: [] },
   { id: "builtin-scatter", name: "随手散落", builtin: true, slots: [] },
-  { id: "builtin-fill", name: "心形填满·由内向外", builtin: true, slots: [] },
+  { id: "builtin-fill", name: "心形填充·疏朗", builtin: true, slots: [] },
+  { id: "builtin-star", name: "星星", builtin: true, slots: [] },
+  { id: "builtin-flower", name: "花朵", builtin: true, slots: [] },
+  { id: "builtin-cloud", name: "云朵", builtin: true, slots: [] },
+  { id: "builtin-spiral", name: "星河螺旋", builtin: true, slots: [] },
 ];
 
 /** 按模板 id 现算骨架：数量随当前照片数变化，所以不预先固化 slots。 */
@@ -240,6 +248,10 @@ export function buildTemplateSlots(templateId: string, count: number, customText
     case "builtin-ring": slots = ringSlots(count); break;
     case "builtin-scatter": slots = scatterSlots(count); break;
     case "builtin-fill": slots = fillSlots(count); break;
+    case "builtin-star": slots = starSlots(count); break;
+    case "builtin-flower": slots = flowerSlots(count); break;
+    case "builtin-cloud": slots = cloudSlots(count); break;
+    case "builtin-spiral": slots = spiralSlots(count); break;
     case "builtin-text": slots = textSlots(customText || "LOVE", count); break;
     default: {
       // 自定义模板同样使用持久化的坐标骨架；此前这里只会退回网格，
