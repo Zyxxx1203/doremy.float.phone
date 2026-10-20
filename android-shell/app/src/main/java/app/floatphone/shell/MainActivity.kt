@@ -1354,6 +1354,18 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         @JavascriptInterface
         fun getVersion(): String = VERSION
 
+        /** Open a user-requested video URL in the device browser instead of WebView's blocked _blank window. */
+        @JavascriptInterface
+        fun openExternalUrl(rawUrl: String): Boolean {
+            if (!isTrustedShellPage()) return false
+            val uri = runCatching { Uri.parse(rawUrl.trim()) }.getOrNull() ?: return false
+            if (uri.scheme !in setOf("http", "https") || uri.host.isNullOrBlank()) return false
+            return runCatching {
+                startActivity(Intent(Intent.ACTION_VIEW, uri))
+                true
+            }.getOrDefault(false)
+        }
+
         /** Allow the trusted in-app player to request landscape, then restore normal sensor rotation. */
         @JavascriptInterface
         fun setScreenOrientation(mode: String): Boolean {
