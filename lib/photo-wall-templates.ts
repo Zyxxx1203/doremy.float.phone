@@ -144,9 +144,11 @@ function farEnough(a: { x: number; y: number }, b: { x: number; y: number; scale
     const width = PHOTO_W * itemScale;
     const height = PHOTO_H * itemScale;
     // 旋转矩形的轴对齐包围盒，略偏保守，避免视觉上挤在一起。
+    const rotatedExtent = Math.abs(Math.cos(radians)) + Math.abs(Math.sin(radians));
     return {
-      width: width * Math.abs(Math.cos(radians)) + height * Math.abs(Math.sin(radians)),
-      height: height * Math.abs(Math.cos(radians)) + width * Math.abs(Math.sin(radians)),
+      // Photos are square in pixel space; normalized X/Y units differ because the wall is 4:5.
+      width: width * rotatedExtent,
+      height: height * rotatedExtent,
     };
   };
   const aa = bounds(scale);
