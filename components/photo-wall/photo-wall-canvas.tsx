@@ -459,9 +459,11 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
           // transparent input layer sits above transformed photo cards. Resolve the hit using
           // the actual rendered card rectangles, front-to-back, then obtain that card's anchor.
           const wall = wallRef.current;
-          const resizeTarget = event.target instanceof Element
-            ? (event.target.closest("[data-photo-wall-resize]") as HTMLElement | null) ?? undefined
-            : undefined;
+          const resizeTarget = Array.from(wall?.querySelectorAll<HTMLElement>("[data-photo-wall-resize]") ?? []).find(element => {
+            const rect = element.getBoundingClientRect();
+            return event.clientX >= rect.left && event.clientX <= rect.right
+              && event.clientY >= rect.top && event.clientY <= rect.bottom;
+          });
           const renderedCards = Array.from(wall?.querySelectorAll<HTMLElement>("[data-photo-wall-photo-id]") ?? []);
           const hit = renderedCards.slice().reverse().find(element => {
             const rect = element.getBoundingClientRect();
