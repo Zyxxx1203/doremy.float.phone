@@ -103,11 +103,12 @@ export async function analyzeWholeVideoWithGemini(options: {
         }
       });
       const statusResponse = await fetch(apiRoot + "/v1beta/" + encodeURIComponent(uploadedName).replace(/%2F/g, "/") + keyQuery, { signal });
-      const statusPayload = await statusResponse.json().catch(() => null) as { file?: GeminiUploadedFile; error?: { message?: string } } | null;
-      if (!statusResponse.ok || !statusPayload?.file) {
+      const statusPayload = await statusResponse.json().catch(() => null) as (GeminiUploadedFile & { error?: { message?: string } }) | { file?: GeminiUploadedFile; error?: { message?: string } } | null;
+      const statusFile = statusPayload && "file" in statusPayload ? statusPayload.file : statusPayload as GeminiUploadedFile | null;
+      if (!statusResponse.ok || !statusFile?.name) {
         throw new Error(readErrorMessage(statusPayload, "读取 Gemini 视频处理状态失败。"));
       }
-      activeFile = statusPayload.file;
+      activeFile = statusFile;
     }
 
     onProgress?.("视频已就绪，角色正在完整观看并组织回应…");
