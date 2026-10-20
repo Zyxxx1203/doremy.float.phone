@@ -71,6 +71,7 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
   const frameRef = useRef("");
   const speechTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const busyRef = useRef(false);
+  const lastSpeechAtRef = useRef(Date.now());
   const native = typeof window !== "undefined" ? (window as GlobalWatchWindow).AndroidShell : undefined;
   const character = characters.find(item => item.id === settings.characterId) ?? characters[0] ?? null;
 
@@ -120,6 +121,7 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
   const analyzeFrame = useCallback(async (dataUrl: string, userReply = "") => {
     if (!character || busyRef.current || !dataUrl) return;
     busyRef.current = true;
+    lastSpeechAtRef.current = Date.now();
     setBusy(true);
     try {
       const videoSettings = loadVideoAnalysisSettings();
@@ -183,6 +185,13 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
         frameRef.current = detail.dataUrl;
         setLatestCapturedAt(Number(detail.capturedAt) || Date.now());
         setStatus("已收到屏幕帧；随机主动发言按设置的时间间隔触发。");
+        const elapsed = Date.now() - lastSpeechAtRef.current;
+        const minMs = settings.speechIntervalMinMinutes * 60_000;
+        const maxMs = settings.speechIntervalMaxMinutes * 60_000;
+        if (settings.randomSpeechEnabled && running && !paused && !busyRef.current && elapsed >= minMs && (elapsed >= maxMs || Math.random() < 0.28)) {
+          lastSpeechAtRef.current = Date.now();
+          void analyzeFrame(detail.dataUrl);
+        };
       }
     };
     const onReply = (event: Event) => {
@@ -206,7 +215,7 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
       window.removeEventListener("global-watch-reply", onReply);
       window.removeEventListener("global-watch-state", onState);
     };
-  }, [appendRecord, analyzeFrame]);
+  }, [appendRecord, analyzeFrame, settings.randomSpeechEnabled, settings.speechIntervalMinMinutes, settings.speechIntervalMaxMinutes, running, paused]);
 
   const start = () => {
     if (!character) { onNotice?.("请先创建并选择一个角色。"); return; }
@@ -233,10 +242,13 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
   const sendReply = () => {
     const text = replyDraft.trim();
     if (!text) return;
-    appendRecord("user", text);
-    native?.sendGlobalWatchReply?.(text);
     setReplyDraft("");
-    if (frameRef.current) void analyzeFrame(frameRef.current, text);
+    if (running && native?.sendGlobalWatchReply) {
+      native.sendGlobalWatchReply(text);
+    } else {
+      appendRecord("user", text);
+      if (frameRef.current) void analyzeFrame(frameRef.current, text);
+    }
   };
 
   return <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background,#fbf6ef)] text-[var(--foreground,#4a352b)]">
