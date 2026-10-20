@@ -1,5 +1,6 @@
 package app.floatphone.shell
 
+import android.content.pm.ActivityInfo
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.DownloadManager
@@ -1352,6 +1353,19 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
     inner class ShellBridge {
         @JavascriptInterface
         fun getVersion(): String = VERSION
+
+        /** Allow the trusted in-app player to request landscape, then restore normal sensor rotation. */
+        @JavascriptInterface
+        fun setScreenOrientation(mode: String): Boolean {
+            if (!isTrustedShellPage()) return false
+            val orientation = when (mode.trim().lowercase()) {
+                "landscape" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                "portrait" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
+            runOnUiThread { requestedOrientation = orientation }
+            return true
+        }
 
         /** Resolve public short-video share links to a bounded, app-private MP4 cache. */
         @JavascriptInterface
