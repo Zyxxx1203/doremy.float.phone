@@ -109,7 +109,7 @@ type DragState = {
 export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, backgroundBox, wallWorld, onOpenDetail, readOnly = false, fitHeight = false, canvasZoom = 1, mode: controlledMode, onModeChange, brushColor: controlledBrushColor, brushWidth: controlledBrushWidth, sticker: controlledSticker, onStickerChange, eraser: controlledEraser, onEraserChange }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
-  const strokeRef = useRef<{ id: string; photoId: string; side: "front" | "back" } | null>(null);
+  const strokeRef = useRef<{ id: string; photoId: string; side: "front" | "back"; anchorElement?: HTMLElement } | null>(null);
   const wallStrokeRef = useRef<{ id: string } | null>(null);
   const wallDraftPointsRef = useRef<{ x: number; y: number }[]>([]);
   const suppressClickRef = useRef(false);
