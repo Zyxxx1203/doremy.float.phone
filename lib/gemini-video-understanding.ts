@@ -41,15 +41,16 @@ export async function analyzeWholeVideoWithGemini(options: {
   if (file.size > 1024 * 1024 * 1024) throw new Error("视频超过 1 GB。请先压缩视频再发送，避免手机上传失败或产生过高费用。");
 
   const apiRoot = "https://generativelanguage.googleapis.com";
-  const keyQuery = "?key=" + encodeURIComponent(apiKey.trim());
+  const authHeader = { "x-goog-api-key": apiKey.trim() };
   let uploadedName = "";
   const mimeType = file.type || "video/mp4";
 
   try {
     onProgress?.("正在向 Gemini 上传完整视频…");
-    const startResponse = await fetch(apiRoot + "/upload/v1beta/files" + keyQuery, {
+    const startResponse = await fetch(apiRoot + "/upload/v1beta/files", {
       method: "POST",
       headers: {
+        ...authHeader,
         "X-Goog-Upload-Protocol": "resumable",
         "X-Goog-Upload-Command": "start",
         "X-Goog-Upload-Header-Content-Length": String(file.size),
@@ -102,7 +103,7 @@ export async function analyzeWholeVideoWithGemini(options: {
           else signal.addEventListener("abort", abort, { once: true });
         }
       });
-      const statusResponse = await fetch(apiRoot + "/v1beta/" + encodeURIComponent(uploadedName).replace(/%2F/g, "/") + keyQuery, { signal });
+      const statusResponse = await fetch(apiRoot + "/v1beta/" + encodeURIComponent(uploadedName).replace(/%2F/g, "/"), { headers: authHeader, signal });
       const statusPayload = await statusResponse.json().catch(() => null) as (GeminiUploadedFile & { error?: { message?: string } }) | { file?: GeminiUploadedFile; error?: { message?: string } } | null;
       const statusFile = statusPayload && "file" in statusPayload ? statusPayload.file : statusPayload as GeminiUploadedFile | null;
       if (!statusResponse.ok || !statusFile?.name) {
@@ -113,9 +114,9 @@ export async function analyzeWholeVideoWithGemini(options: {
 
     onProgress?.("视频已就绪，角色正在完整观看并组织回应…");
     const normalizedModel = model.trim().replace(/^models\//, "");
-    const generateResponse = await fetch(apiRoot + "/v1beta/models/" + encodeURIComponent(normalizedModel) + ":generateContent" + keyQuery, {
+    const generateResponse = await fetch(apiRoot + "/v1beta/models/" + encodeURIComponent(normalizedModel) + ":generateContent", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeader },
       body: JSON.stringify({
         contents: [{
           role: "user",
@@ -148,6 +149,7 @@ export async function analyzeWholeVideoWithGemini(options: {
       // user's personal video around until the provider's automatic expiry.
       void fetch(apiRoot + "/v1beta/" + encodeURIComponent(uploadedName).replace(/%2F/g, "/") + keyQuery, {
         method: "DELETE",
+        headers: authHeader,
         keepalive: true,
       }).catch(() => {});
     }
