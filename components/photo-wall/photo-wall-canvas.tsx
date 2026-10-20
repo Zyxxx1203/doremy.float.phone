@@ -276,6 +276,9 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     if (mode !== "doodle") return;
     event.preventDefault();
     event.stopPropagation();
+    // Capture on the actual interaction layer before hit-testing so the gesture cannot fall
+    // through to a photo's click-to-edit handler when the finger crosses a frame edge.
+    try { (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId); } catch { /* WebView fallback */ }
     const point = pointOn(event, photo, index, anchorElement);
     const side: "front" | "back" = flippedPhotoIds.has(photo.id) ? "back" : "front";
     const existing = side === "back" ? (photo.backDoodles ?? []) : (photo.doodles ?? []);
@@ -346,6 +349,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     if (readOnly || mode !== "doodle") return;
     event.preventDefault();
     event.stopPropagation();
+    // The wall's own pointer stream owns drawing; photo/frame click handlers must never receive it.
+    try { (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId); } catch { /* WebView fallback */ }
     const point = wallPoint(event);
     if (eraser) { eraseWallDoodleAt(point); return; }
     if (sticker) {
