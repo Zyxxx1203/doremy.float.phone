@@ -94,50 +94,30 @@ function scatterSlots(count: number): Slot[] {
 function fillSlots(count: number): Slot[] {
   const total = Math.max(1, count);
   const boundary = heartSlots(720).map(slot => ({ x: slot.x, y: slot.y }));
-  const center = { x: 0.5, y: 0.55 };
-  const contains = (point: { x: number; y: number }) => {
-    let inside = false;
+  const inside = (x: number, y: number) => {
+    let result = false;
     for (let i = 0, j = boundary.length - 1; i < boundary.length; j = i++) {
       const a = boundary[i], b = boundary[j];
-      if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x-a.x)*(point.y-a.y)/((b.y-a.y)||0.000001)+a.x) inside = !inside;
+      if ((a.y > y) !== (b.y > y) && x < (b.x-a.x)*(y-a.y)/((b.y-a.y)||0.000001)+a.x) result = !result;
     }
-    return inside;
+    return result;
   };
-  const candidates: Array<{x:number;y:number;radius:number;angle:number}> = [];
-  const step = Math.max(0.045, Math.min(0.105, 0.62 / Math.sqrt(total)));
-  for (let row=0, y=0.13; y<=0.91; row++, y+=step*0.866) {
-    for (let col=0, x=0.08+(row%2)*step/2; x<=0.92; col++, x+=step) {
-      const point={x:round(x),y:round(y)};
-      if (!contains(point)) continue;
-      candidates.push({...point,radius:Math.hypot(point.x-center.x,point.y-center.y),angle:Math.atan2(point.y-center.y,point.x-center.x)});
+  const perimeterCount = Math.min(total, Math.max(6, Math.ceil(total * 0.42)));
+  const outline = heartSlots(perimeterCount).map(slot => ({...slot, scale: total <= 8 ? 0.7 : 0.62}));
+  const candidates: Array<{x:number;y:number}> = [];
+  for (let y=0.12; y<=0.9; y+=0.045) for (let x=0.08; x<=0.92; x+=0.045) if (inside(x,y)) candidates.push({x:round(x),y:round(y)});
+  const slots = outline.slice();
+  while (slots.length < total && candidates.length) {
+    let bestIndex=0,bestDistance=-1;
+    for(let i=0;i<candidates.length;i++){
+      const point=candidates[i];
+      const distance=slots.length ? Math.min(...slots.map(slot=>(slot.x-point.x)**2+(slot.y-point.y)**2)) : 0;
+      if(distance>bestDistance){bestDistance=distance;bestIndex=i;}
     }
+    const point=candidates.splice(bestIndex,1)[0];
+    slots.push({x:point.x,y:point.y,scale:0.58,rotation:round(Math.sin(point.x*18+point.y*11)*2)});
   }
-  // 由中心向外挑选，但同一圈交错采样；照片中心之间保持间距。
-  candidates.sort((a,b)=>a.radius-b.radius || a.angle-b.angle);
-  const minDistance=Math.max(0.055,Math.min(0.105,0.42/Math.sqrt(total)));
-  const chosen:Array<{x:number;y:number;radius:number;angle:number}>=[];
-  const stride=Math.max(1,Math.floor(candidates.length/Math.max(total*3,total)));
-  const ordered=candidates.filter((_,i)=>i%stride===0).concat(candidates.filter((_,i)=>i%stride!==0));
-  for(const point of ordered){
-    if(chosen.every(other=>Math.hypot(other.x-point.x,other.y-point.y)>=minDistance)){
-      chosen.push(point);
-      if(chosen.length>=total) break;
-    }
-  }
-  // Very large photo counts gradually relax spacing instead of stacking identical slots.
-  if(chosen.length<total){
-    for(const point of candidates){
-      if(chosen.some(other=>other.x===point.x&&other.y===point.y)) continue;
-      chosen.push(point);
-      if(chosen.length>=total) break;
-    }
-  }
-  if(!chosen.length) return gridSlots(total);
-  return chosen.slice(0,total).map((point,index)=>({
-    x:point.x,y:point.y,
-    scale:round(Math.max(0.48,Math.min(0.76,0.76-(point.radius*0.18)))),
-    rotation:round(Math.sin(point.angle*2.2+index*0.035)*3),
-  }));
+  return slots.slice(0,total);
 }
 
 type ShapeKind = "star" | "flower" | "cloud" | "spiral";
