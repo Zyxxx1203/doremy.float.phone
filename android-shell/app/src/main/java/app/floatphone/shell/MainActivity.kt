@@ -714,7 +714,7 @@ private fun resolveAndCacheSharedVideo(rawUrl: String): CachedSharedVideo {
     // Mature Douyin parsers request the mobile SSR share route directly after resolving a
     // short link. Try those canonical routes too; the original URL often renders a shell page.
     val resolvedUrl = firstPage.pageUrl
-    val douyinId = Regex("""(?:douyin\\.com/(?:video|note|share/video|share/note)/|iesdouyin\\.com/share/(?:video|note)/)(\\d+)""", RegexOption.IGNORE_CASE)
+    val douyinId = Regex("""(?:douyin\.com/(?:video|note|share/video|share/note)/|iesdouyin\.com/share/(?:video|note)/)(\d+)""", RegexOption.IGNORE_CASE)
         .find(resolvedUrl)?.groupValues?.getOrNull(1)
     if (douyinId != null) {
         listOf(
