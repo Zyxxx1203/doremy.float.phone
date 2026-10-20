@@ -17,7 +17,7 @@ import {
 } from "@/lib/photo-wall-storage";
 import { PhotoWallCanvas, fallbackPlacement } from "@/components/photo-wall/photo-wall-canvas";
 import { applyWorldGrow, planWorldGrow, remapDoodles, remapPlacement, wallWorldOf, type WorldGrow } from "@/lib/photo-wall-world";
-import { buildTemplateSlots, listAllTemplates, loadCustomTemplates, saveCustomTemplates } from "@/lib/photo-wall-templates";
+import { buildTemplateSlots, listAllTemplates, loadCustomTemplates, loadTemplateFill, saveCustomTemplates, saveTemplateFill } from "@/lib/photo-wall-templates";
 import { downloadPhotoWallPng } from "@/lib/photo-wall-export";
 
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
@@ -552,6 +552,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   stateRef.current = state;
   const [templateText, setTemplateText] = useState("LOVE");
   const [activeTemplateId, setActiveTemplateId] = useState<string>(() => readPhotoWallTemplate());
+  const [templateFill, setTemplateFill] = useState<boolean>(() => loadTemplateFill());
   const [generationPromptTemplate, setGenerationPromptTemplate] = useState<string>(() => readPhotoWallPrompt());
   const [templateName, setTemplateName] = useState("");
   const [customTemplates, setCustomTemplates] = useState<PhotoWallTemplate[]>(() => loadCustomTemplates());
@@ -711,7 +712,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const current = stateRef.current;
     const ordered = current.photos.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     if (!ordered.length) { onNotice?.("墙上还没有照片。"); return; }
-    const slots = buildTemplateSlots(templateId, ordered.length, templateText);
+    const slots = buildTemplateSlots(templateId, ordered.length, templateText, templateFill);
     if (!slots.length) return;
     pushHistory(current);
     commitPhotos(current.photos.map(photo => {
@@ -725,7 +726,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     try { window.localStorage.setItem(PHOTO_WALL_ACTIVE_TEMPLATE_KEY, templateId); } catch { /* current placements remain saved */ }
     onNotice?.("已按模板重新摆放；新照片也会沿用这个摆放轨迹。");
     setWallView("edit");
-  }, [commitPhotos, onNotice, templateText, pushHistory]);
+  }, [commitPhotos, onNotice, templateText, pushHistory, templateFill]);
 
   /** 将当前墙面坐标保存为可重复使用的自定义模板。 */
   const saveCurrentLayoutAsTemplate = useCallback(() => {
@@ -949,7 +950,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     pushHistory(current);
     const order = current.photos.length;
     const explicitTemplate = Boolean(activeTemplateId) && activeTemplateId !== "builtin-scatter";
-    const slot = explicitTemplate ? buildTemplateSlots(activeTemplateId, order + 1, templateText)[order] : undefined;
+    const slot = explicitTemplate ? buildTemplateSlots(activeTemplateId, order + 1, templateText, templateFill)[order] : undefined;
     const anchor = placementAnchor();
     const jitter = ((order % 5) - 2) * 0.018;
     const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
@@ -958,7 +959,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const placed = { ...photo, placement: photo.placement ?? { x, y, scale: slot?.scale ?? 1, rotation: slot?.rotation ?? Math.round(jitter * 300), z: maxZ + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } };
     persist({ ...current, photos: [placed, ...current.photos.filter(item => item.id !== photo.id)] });
     setSelectedPhotoId(photo.id);
-  }, [persist, activeTemplateId, templateText, placementAnchor]);
+  }, [persist, activeTemplateId, templateText, placementAnchor, templateFill]);
 
   const openChatPicker = async () => {
     setShowAddMenu(false);
@@ -1031,7 +1032,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       }
       const current = stateRef.current;
       const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
-      const slots = buildTemplateSlots(activeTemplateId, current.photos.length + created.length, templateText);
+      const slots = buildTemplateSlots(activeTemplateId, current.photos.length + created.length, templateText, templateFill);
       const placedCreated = created.map((photo, index) => {
         const slot = slots[current.photos.length + index] ?? fallbackPlacement(current.photos.length + index);
         return { ...photo, placement: { ...slot, z: maxZ + index + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } };
@@ -1346,6 +1347,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           <section className="mt-6 border-y border-[#d9c6b6] bg-[#fffaf2]/75 px-4 py-4">
             <div className="flex items-center justify-between gap-3"><h2 className="font-serif text-lg text-[#5a403b]">摆放模板</h2><span className="text-[10px] text-[#a18172]">LAYOUT STUDIES</span></div>
             <p className="mt-2 text-xs leading-5 text-[#8b7569]">选一个构图骨架，照片会按相对位置排列；原始照片与内容不会被删除。</p>
+            <label className="mt-3 flex items-center justify-between gap-3 border-y border-[#e5d6c7] py-2.5 text-xs text-[#6d594b]">
+              <span className="min-w-0"><span className="block">填充内部</span><span className="mt-0.5 block text-[10px] leading-4 text-[#9a8776]">从中心向外铺满形状，而不是只摆边缘；任意形状都适用，照片重叠不超过一半。</span></span>
+              <input type="checkbox" checked={templateFill} onChange={event => { const next = event.target.checked; setTemplateFill(next); saveTemplateFill(next); }} className="h-4 w-4 shrink-0 accent-[#87565b]"/>
+            </label>
             <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
               {listAllTemplates().map(template => <div key={template.id} className="min-w-0 border-b border-[#eadfd3] py-2.5">
                 <button type="button" onClick={() => applyTemplate(template.id)} className="block w-full text-left font-serif text-sm leading-5 text-[#5d4942] hover:text-[#87565b]">{template.name}</button>

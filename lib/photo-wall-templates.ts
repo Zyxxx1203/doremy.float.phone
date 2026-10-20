@@ -3,195 +3,241 @@ import type { PhotoWallTemplate } from "@/lib/photo-wall-storage";
 
 /**
  * 摆放模板 = 一组可编辑的坐标骨架。照片按顺序吸附进槽位后仍可自由拖动，
- * 所以这里只负责「给出一组好看的落点」，不锁定照片。
- * 坐标一律 0~1 比例，换屏幕不会错位。
+ * 所以这里只负责「给出一组好看的落点」，不锁定照片。坐标一律 0~1 比例。
+ *
+ * 形状统一在「物理正方形」坐标系里定义：
+ *   画布默认 2400×3000，x 单位比 y 单位短，直接用 0~1 画圆会变成椭圆。
+ *   所以把 (x,y) 映射到 u,v（±1 对应画面宽度的 84%），所有形状都在同一个
+ *   等比空间里描述，换任何屏幕比例都不会被拉长。
+ *
+ * 落点用「候选网格 + 最小间距」挑选：
+ *   间距按照片实际宽高算，中心距 ≥ 半个照片宽 ⇒ 两张照片的重叠面积
+ *   一定不超过 50%。
  */
 
 export const TEMPLATES_STORAGE_KEY = "ai_phone_photo_wall_templates_v1";
+export const TEMPLATE_FILL_STORAGE_KEY = "ai_phone_photo_wall_template_fill_v1";
 registerKvMigration(TEMPLATES_STORAGE_KEY);
+registerKvMigration(TEMPLATE_FILL_STORAGE_KEY);
 
 type Slot = { x: number; y: number; scale: number; rotation: number };
 
 const clamp01 = (n: number) => Math.min(0.94, Math.max(0.06, n));
 const round = (n: number) => Math.round(n * 1000) / 1000;
 
-/** 心形：经典心形参数方程采样，按逆时针一圈均匀落点。 */
-function heartSlots(count: number): Slot[] {
-  const slots: Slot[] = [];
-  const total = Math.max(3, count);
-  for (let i = 0; i < total; i += 1) {
-    const t = (i / total) * Math.PI * 2;
-    const hx = 16 * Math.sin(t) ** 3;
-    const hy = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
-    // 心形原始范围 x∈[-16,16], y∈[-17,12]，归一化并留出安全边距
-    slots.push({
-      x: round(clamp01(0.5 + hx / 40)),
-      y: round(clamp01(0.46 - hy / 40)),
-      scale: round(0.72 + ((i * 7) % 5) * 0.03),
-      rotation: round(((i * 13) % 11) - 5),
-    });
-  }
-  return slots;
+/** 默认画布尺寸：照片是正方形，所以 x 方向 1 个单位 = 1.25 倍 y 方向长度。 */
+const CANVAS_W = 2400;
+const CANVAS_H = 3000;
+/** 形状占画面宽度的比例（留边距）。 */
+const SHAPE_SPAN = 0.84;
+/** 一张照片在归一化坐标里的宽高（240px 基准）。 */
+const PHOTO_W = 240 / CANVAS_W;
+const PHOTO_H = 240 / CANVAS_H;
+/** 最大重叠 50% ⇒ 中心距至少半个照片宽。 */
+const MIN_GAP_RATIO = 0.52;
+
+/** 归一化坐标 → 形状用的等比坐标（±1 = 形状外包框）。 */
+function toShapeSpace(x: number, y: number): { u: number; v: number } {
+  const halfW = SHAPE_SPAN / 2;
+  const halfH = (SHAPE_SPAN * (CANVAS_W / CANVAS_H)) / 2;
+  return { u: (x - 0.5) / halfW, v: (y - 0.5) / halfH };
 }
 
-/** 整齐网格：错落的经典相册排布。 */
-function gridSlots(count: number): Slot[] {
-  const total = Math.max(1, count);
-  const cols = Math.max(1, Math.ceil(Math.sqrt(total)));
-  const rows = Math.max(1, Math.ceil(total / cols));
-  const slots: Slot[] = [];
-  for (let i = 0; i < total; i += 1) {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    slots.push({
-      x: round(clamp01(0.5 + (col - (cols - 1) / 2) * (0.72 / cols))),
-      y: round(clamp01(0.5 + (row - (rows - 1) / 2) * (0.68 / rows))),
-      scale: 0.82,
-      rotation: round(((i * 17) % 7) - 3),
-    });
+type Shape = (u: number, v: number) => boolean;
+
+/** 点是否在多边形内（射线法）。 */
+function insidePolygon(u: number, v: number, points: Array<[number, number]>): boolean {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const [ui, vi] = points[i];
+    const [uj, vj] = points[j];
+    if ((vi > v) !== (vj > v) && u < ((uj - ui) * (v - vi)) / ((vj - vi) || 1e-6) + ui) inside = !inside;
   }
-  return slots;
+  return inside;
 }
 
-/** 环抱：一圈围着中心，像把某人圈在中间。 */
-function ringSlots(count: number): Slot[] {
-  const total = Math.max(4, count);
-  const slots: Slot[] = [];
-  for (let i = 0; i < total; i += 1) {
-    const angle = (i / total) * Math.PI * 2 - Math.PI / 2;
-    slots.push({
-      x: round(clamp01(0.5 + Math.cos(angle) * 0.31)),
-      y: round(clamp01(0.5 + Math.sin(angle) * 0.29)),
-      scale: round(0.7 + (i % 3) * 0.05),
-      rotation: round(Math.cos(angle) * 8),
-    });
+/** 经典心形隐式方程；屏幕 y 轴向下，所以取 -v。 */
+const heart: Shape = (u, v) => {
+  const x = u * 1.05;
+  const y = -v * 1.05 + 0.06;
+  const a = x * x + y * y - 1;
+  return a * a * a - x * x * y * y * y <= 0;
+};
+
+/** 五角星。 */
+const starPoints: Array<[number, number]> = (() => {
+  const points: Array<[number, number]> = [];
+  for (let i = 0; i < 10; i += 1) {
+    const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+    const radius = i % 2 === 0 ? 0.98 : 0.42;
+    points.push([Math.cos(angle) * radius, Math.sin(angle) * radius]);
   }
-  return slots;
+  return points;
+})();
+const star: Shape = (u, v) => insidePolygon(u, v, starPoints);
+
+/** 六瓣花：极坐标半径随角度起伏。 */
+const flower: Shape = (u, v) => {
+  const r = Math.hypot(u, v);
+  const angle = Math.atan2(v, u);
+  const edge = 0.66 + 0.24 * Math.cos(6 * angle);
+  return r <= edge;
+};
+
+/** 云朵：几个圆的并集。 */
+const cloud: Shape = (u, v) => {
+  if (v > 0.72) return false;
+  const circles: Array<[number, number, number]> = [
+    [-0.62, 0.1, 0.34],
+    [-0.24, -0.08, 0.42],
+    [0.18, -0.14, 0.44],
+    [0.55, 0.06, 0.34],
+    [0.05, 0.22, 0.36],
+  ];
+  return circles.some(([cx, cy, r]) => Math.hypot(u - cx, v - cy) <= r);
+};
+
+/** 阿基米德螺旋：到曲线的距离落在带宽内。 */
+const spiral: Shape = (u, v) => {
+  const r = Math.hypot(u, v);
+  const angle = Math.atan2(v, u);
+  if (r > 1.02) return false;
+  let best = Infinity;
+  for (let turn = 0; turn < 4; turn += 1) {
+    const theta = angle + turn * Math.PI * 2;
+    if (theta < 0) continue;
+    const expected = 0.12 + 0.085 * theta;
+    if (expected > 1.02) break;
+    best = Math.min(best, Math.abs(r - expected));
+  }
+  return best <= 0.13;
+};
+
+/** 圆环。 */
+const ring: Shape = (u, v) => {
+  const r = Math.hypot(u, v);
+  return r >= 0.56 && r <= 1.0;
+};
+
+/** 满屏。 */
+const full: Shape = (u, v) => Math.abs(u) <= 1 && Math.abs(v) <= 1;
+
+const SHAPES: Record<string, Shape> = {
+  "builtin-heart": heart,
+  "builtin-star": star,
+  "builtin-flower": flower,
+  "builtin-cloud": cloud,
+  "builtin-spiral": spiral,
+  "builtin-ring": ring,
+};
+
+function shapeOf(templateId: string): Shape {
+  return SHAPES[templateId] ?? full;
 }
 
-/** 散落：自然随手贴的感觉，带一点随机的错落与倾斜。 */
-function scatterSlots(count: number): Slot[] {
-  const total = Math.max(1, count);
-  const slots: Slot[] = [];
-  for (let i = 0; i < total; i += 1) {
-    const seed = (i * 9301 + 49297) % 233280;
-    const rand = seed / 233280;
-    const seed2 = (i * 4177 + 12345) % 233280;
-    const rand2 = seed2 / 233280;
-    const col = i % 3;
-    const row = Math.floor(i / 3);
-    slots.push({
-      x: round(clamp01(0.2 + col * 0.3 + (rand - 0.5) * 0.1)),
-      y: round(clamp01(0.12 + row * 0.26 + (rand2 - 0.5) * 0.08)),
-      scale: round(0.68 + rand2 * 0.22),
-      rotation: round((rand - 0.5) * 20),
-    });
-  }
-  return slots;
-}
-
-/** 心形填充：使用带最小间距的网格采样，避免照片挤成一团。 */
-function fillSlots(count: number): Slot[] {
-  const total = Math.max(1, count);
-  const boundary = heartSlots(720).map(slot => ({ x: slot.x, y: slot.y }));
-  const center = { x: 0.5, y: 0.55 };
-  const contains = (point: { x: number; y: number }) => {
-    let inside = false;
-    for (let i = 0, j = boundary.length - 1; i < boundary.length; j = i++) {
-      const a = boundary[i], b = boundary[j];
-      if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x-a.x)*(point.y-a.y)/((b.y-a.y)||0.000001)+a.x) inside = !inside;
-    }
-    return inside;
-  };
-  const candidates: Array<{x:number;y:number;radius:number;angle:number}> = [];
-  const step = Math.max(0.045, Math.min(0.105, 0.62 / Math.sqrt(total)));
-  for (let row=0, y=0.13; y<=0.91; row++, y+=step*0.866) {
-    for (let col=0, x=0.08+(row%2)*step/2; x<=0.92; col++, x+=step) {
-      const point={x:round(x),y:round(y)};
-      if (!contains(point)) continue;
-      candidates.push({...point,radius:Math.hypot(point.x-center.x,point.y-center.y),angle:Math.atan2(point.y-center.y,point.x-center.x)});
-    }
-  }
-  // 由中心向外挑选，但同一圈交错采样；照片中心之间保持间距。
-  candidates.sort((a,b)=>a.radius-b.radius || a.angle-b.angle);
-  const minDistance=Math.max(0.055,Math.min(0.105,0.42/Math.sqrt(total)));
-  const chosen:Array<{x:number;y:number;radius:number;angle:number}>=[];
-  const stride=Math.max(1,Math.floor(candidates.length/Math.max(total*3,total)));
-  const ordered=candidates.filter((_,i)=>i%stride===0).concat(candidates.filter((_,i)=>i%stride!==0));
-  for(const point of ordered){
-    if(chosen.every(other=>Math.hypot(other.x-point.x,other.y-point.y)>=minDistance)){
-      chosen.push(point);
-      if(chosen.length>=total) break;
-    }
-  }
-  // Very large photo counts gradually relax spacing instead of stacking identical slots.
-  if(chosen.length<total){
-    for(const point of candidates){
-      if(chosen.some(other=>other.x===point.x&&other.y===point.y)) continue;
-      chosen.push(point);
-      if(chosen.length>=total) break;
-    }
-  }
-  if(!chosen.length) return gridSlots(total);
-  return chosen.slice(0,total).map((point,index)=>({
-    x:point.x,y:point.y,
-    scale:round(Math.max(0.48,Math.min(0.76,0.76-(point.radius*0.18)))),
-    rotation:round(Math.sin(point.angle*2.2+index*0.035)*3),
-  }));
-}
-
-function starSlots(count:number): Slot[] {
-  const total=Math.max(1,count), outline:Array<{x:number;y:number}>=[];
-  for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,r=i%2===0?0.39:0.18;outline.push({x:0.5+Math.cos(a)*r,y:0.5+Math.sin(a)*r});}
-  const slots:Slot[]=[];
-  for(let i=0;i<total;i++){
-    const ring=Math.floor(Math.sqrt(i)), angle=i*2.399963229728653;
-    const radius=0.025+ring*0.052;
-    let x=0.5+Math.cos(angle)*radius, y=0.5+Math.sin(angle)*radius;
-    // Pull candidates back toward the star's centre if they leave the star silhouette.
-    const point={x,y}; let inside=false;
-    for(let j=0,k=outline.length-1;j<outline.length;k=j++){
-      const a=outline[j],b=outline[k];
-      if((a.y>y)!==(b.y>y)&&x<(b.x-a.x)*(y-a.y)/((b.y-a.y)||1e-6)+a.x)inside=!inside;
-    }
-    if(!inside){x=0.5+(x-0.5)*0.58;y=0.5+(y-0.5)*0.58;}
-    slots.push({x:round(clamp01(x)),y:round(clamp01(y)),scale:0.64,rotation:round(Math.sin(i*1.7)*4)});
-  }
-  return slots;
-}
-function flowerSlots(count:number): Slot[] {
-  const total=Math.max(1,count),slots:Slot[]=[];
-  for(let i=0;i<total;i++){const angle=i*2.399963229728653,ring=Math.floor(Math.sqrt(i));const radius=ring===0?0:ring*0.064;slots.push({x:round(clamp01(0.5+Math.cos(angle)*radius)),y:round(clamp01(0.5+Math.sin(angle)*radius)),scale:0.66,rotation:round((i%6-2.5)*3)});}
-  return slots;
-}
-function cloudSlots(count:number): Slot[] {
-  const total=Math.max(1,count),slots:Slot[]=[];
-  const lobes=[{x:-.22,y:.02,r:.14},{x:-.1,y:-.09,r:.17},{x:.08,y:-.08,r:.19},{x:.23,y:.01,r:.13},{x:.08,y:.1,r:.17},{x:-.12,y:.1,r:.17}];
-  for(let i=0;i<total;i++){const l=lobes[i%lobes.length],ring=Math.floor(i/lobes.length);const a=i*2.399963229728653;const rr=ring*0.045;slots.push({x:round(clamp01(0.5+l.x+Math.cos(a)*rr)),y:round(clamp01(0.5+l.y+Math.sin(a)*rr)),scale:0.62,rotation:round(Math.sin(i)*4)});}
-  return slots;
-}
-function spiralSlots(count:number):Slot[]{
-  const total=Math.max(1,count),slots:Slot[]=[];
-  for(let i=0;i<total;i++){const a=i*2.399963229728653,r=0.025+0.024*Math.sqrt(i);slots.push({x:round(clamp01(.5+Math.cos(a)*r)),y:round(clamp01(.5+Math.sin(a)*r)),scale:.66,rotation:round(Math.sin(a)*6)});}
-  return slots;
+/** 两张照片是否满足「重叠 ≤ 50%」：椭圆间距判定。 */
+function farEnough(a: { x: number; y: number }, b: { x: number; y: number }, scale: number): boolean {
+  const dx = (a.x - b.x) / (PHOTO_W * scale * MIN_GAP_RATIO);
+  const dy = (a.y - b.y) / (PHOTO_H * scale * MIN_GAP_RATIO);
+  return dx * dx + dy * dy >= 1;
 }
 
 /**
- * 文字骨架：用离屏 canvas 画一遍文字，采样像素点作为落点。
- * 这样「LOVE」「家」「2024.6.1」这类都能排出来，不需要为每个字硬编码。
+ * 通用落点生成：
+ *   fill=false → 只取形状边缘的一圈（轮廓）
+ *   fill=true  → 从中心向外一圈圈铺满内部
+ * 两种都用最小间距筛选，保证照片重叠不超过 50%。
  */
-function textSlots(text: string, count: number): Slot[] {
+function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
+  const total = Math.max(1, count);
+  const shape = shapeOf(templateId);
+  const center = { x: 0.5, y: 0.5 };
+
+  const step = Math.max(0.018, Math.min(0.045, 0.5 / Math.sqrt(total * 14)));
+  const candidates: Array<{ x: number; y: number; radius: number }> = [];
+  for (let y = 0.07; y <= 0.93; y += step) {
+    for (let x = 0.07; x <= 0.93; x += step) {
+      const { u, v } = toShapeSpace(x, y);
+      if (!shape(u, v)) continue;
+      if (!fill) {
+        // 轮廓：把这一点向外放大后落到形状外，说明它贴着边缘
+        const scaled = toShapeSpace(0.5 + (x - 0.5) * 1.12, 0.5 + (y - 0.5) * 1.12);
+        if (shape(scaled.u, scaled.v)) continue;
+      }
+      candidates.push({ x: round(x), y: round(y), radius: Math.hypot(x - center.x, (y - center.y) * (CANVAS_H / CANVAS_W)) });
+    }
+  }
+  if (!candidates.length) return layoutSlots("builtin-grid", total, true);
+
+  const ordered = fill
+    ? candidates.sort((a, b) => a.radius - b.radius || a.x - b.x)
+    : candidates.sort((a, b) => a.radius - b.radius);
+
+  const picked: Slot[] = [];
+  for (const candidate of ordered) {
+    if (picked.length >= total) break;
+    const scale = 0.72 + ((picked.length * 7) % 5) * 0.03;
+    if (picked.some(slot => !farEnough(candidate, slot, Math.max(scale, slot.scale)))) continue;
+    picked.push({
+      x: candidate.x,
+      y: candidate.y,
+      scale: round(scale),
+      rotation: round(((picked.length * 13) % 11) - 5),
+    });
+  }
+
+  // 形状太小放不下时，逐步缩小照片再补
+  let shrink = 0.92;
+  while (picked.length < total && shrink > 0.45) {
+    for (const candidate of ordered) {
+      if (picked.length >= total) break;
+      if (picked.some(slot => !farEnough(candidate, slot, Math.max(shrink, slot.scale)))) continue;
+      picked.push({ x: candidate.x, y: candidate.y, scale: round(shrink), rotation: round(((picked.length * 17) % 9) - 4) });
+    }
+    shrink -= 0.08;
+  }
+
+  // 极少数极端情况：宁可重复落点也不返回空
+  let index = 0;
+  while (picked.length < total) {
+    const candidate = ordered[index % ordered.length];
+    picked.push({ x: candidate.x, y: candidate.y, scale: 0.5, rotation: 0 });
+    index += 1;
+  }
+  return picked.slice(0, total);
+}
+
+/** 网格：等距排列，天然满足间距约束。 */
+function gridSlots(count: number): Slot[] {
+  const total = Math.max(1, count);
+  const columns = Math.max(1, Math.ceil(Math.sqrt(total)));
+  const rows = Math.max(1, Math.ceil(total / columns));
+  const slots: Slot[] = [];
+  for (let index = 0; index < total; index += 1) {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    slots.push({
+      x: round(0.5 + ((column + 0.5) / columns - 0.5) * 0.82),
+      y: round(0.5 + ((row + 0.5) / rows - 0.5) * 0.66),
+      scale: 0.72,
+      rotation: 0,
+    });
+  }
+  return slots;
+}
+
+/** 文字骨架：离屏 canvas 采样笔画，再用同一套间距筛选。 */
+function textSlots(text: string, count: number, fill: boolean): Slot[] {
   const clean = text.trim().slice(0, 12) || "LOVE";
   const width = 480;
   const height = 220;
   const canvas = typeof document !== "undefined" ? document.createElement("canvas") : null;
-  if (!canvas) return gridSlots(count);
+  if (!canvas) return layoutSlots("builtin-grid", count, true);
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
-  if (!context) return gridSlots(count);
+  if (!context) return layoutSlots("builtin-grid", count, true);
   context.fillStyle = "#000";
-  // 文字撑满画布高度，超出则缩字号
   let fontSize = 150;
   context.font = `700 ${fontSize}px sans-serif`;
   while (context.measureText(clean).width > width - 24 && fontSize > 24) {
@@ -202,104 +248,86 @@ function textSlots(text: string, count: number): Slot[] {
   context.textBaseline = "middle";
   context.fillText(clean, width / 2, height / 2);
   const data = context.getImageData(0, 0, width, height).data;
-  const hits: { x: number; y: number }[] = [];
+  const hits: Array<{ x: number; y: number }> = [];
   const step = 6;
   for (let y = 0; y < height; y += step) {
     for (let x = 0; x < width; x += step) {
-      if (data[(y * width + x) * 4 + 3] > 128) hits.push({ x: x / width, y: y / height });
+      if (data[(y * width + x) * 4 + 3] > 128) hits.push({ x: 0.1 + (x / width) * 0.8, y: 0.24 + (y / height) * 0.52 });
     }
   }
-  if (!hits.length) return gridSlots(count);
-  // 在笔画点集里均匀抽 count 个落点，保证铺满整个字形而不是挤在一角
+  if (!hits.length) return layoutSlots("builtin-grid", count, true);
+
   const total = Math.max(1, count);
-  const slots: Slot[] = [];
-  const stride = hits.length / total;
-  for (let i = 0; i < total; i += 1) {
-    const hit = hits[Math.min(hits.length - 1, Math.floor(i * stride + stride / 2))];
-    // 文字骨架落在画布 0.1~0.9 的视觉居中区域
-    slots.push({
-      x: round(clamp01(0.1 + hit.x * 0.8)),
-      y: round(clamp01(0.22 + hit.y * 0.56)),
-      scale: 0.46,
-      rotation: round(((i * 19) % 9) - 4),
-    });
+  const center = { x: 0.5, y: 0.5 };
+  const ordered = hits
+    .map(hit => ({ ...hit, radius: Math.hypot(hit.x - center.x, (hit.y - center.y) * (CANVAS_H / CANVAS_W)) }))
+    .sort((a, b) => (fill ? a.radius - b.radius : a.y - b.y || a.x - b.x));
+
+  const picked: Slot[] = [];
+  for (const hit of ordered) {
+    if (picked.length >= total) break;
+    if (picked.some(slot => !farEnough(hit, slot, 0.5))) continue;
+    picked.push({ x: round(clamp01(hit.x)), y: round(clamp01(hit.y)), scale: 0.5, rotation: round(((picked.length * 19) % 9) - 4) });
   }
-  return slots;
+  let index = 0;
+  while (picked.length < total) {
+    const hit = ordered[index % ordered.length];
+    picked.push({ x: round(clamp01(hit.x)), y: round(clamp01(hit.y)), scale: 0.42, rotation: 0 });
+    index += 1;
+  }
+  return picked.slice(0, total);
 }
 
 export const BUILTIN_TEMPLATES: PhotoWallTemplate[] = [
   { id: "builtin-heart", name: "心形", builtin: true, slots: [] },
-  { id: "builtin-grid", name: "整齐网格", builtin: true, slots: [] },
-  { id: "builtin-ring", name: "环抱", builtin: true, slots: [] },
-  { id: "builtin-scatter", name: "随手散落", builtin: true, slots: [] },
-  { id: "builtin-fill", name: "心形填充·疏朗", builtin: true, slots: [] },
   { id: "builtin-star", name: "星星", builtin: true, slots: [] },
   { id: "builtin-flower", name: "花朵", builtin: true, slots: [] },
   { id: "builtin-cloud", name: "云朵", builtin: true, slots: [] },
   { id: "builtin-spiral", name: "星河螺旋", builtin: true, slots: [] },
+  { id: "builtin-ring", name: "环抱", builtin: true, slots: [] },
+  { id: "builtin-grid", name: "整齐网格", builtin: true, slots: [] },
+  { id: "builtin-scatter", name: "随手散落", builtin: true, slots: [] },
+  { id: "builtin-text", name: "文字骨架", builtin: true, slots: [] },
 ];
 
+export function loadTemplateFill(): boolean {
+  try { return kvGet(TEMPLATE_FILL_STORAGE_KEY) === "1"; } catch { return false; }
+}
+
+export function saveTemplateFill(fill: boolean): void {
+  try { kvSet(TEMPLATE_FILL_STORAGE_KEY, fill ? "1" : "0"); } catch { /* 忽略配额错误 */ }
+}
+
 /** 按模板 id 现算骨架：数量随当前照片数变化，所以不预先固化 slots。 */
-export function buildTemplateSlots(templateId: string, count: number, customText?: string): Slot[] {
-  let slots: Slot[];
-  switch (templateId) {
-    case "builtin-heart": slots = heartSlots(count); break;
-    case "builtin-grid": slots = gridSlots(count); break;
-    case "builtin-ring": slots = ringSlots(count); break;
-    case "builtin-scatter": slots = scatterSlots(count); break;
-    case "builtin-fill": slots = fillSlots(count); break;
-    case "builtin-star": slots = starSlots(count); break;
-    case "builtin-flower": slots = flowerSlots(count); break;
-    case "builtin-cloud": slots = cloudSlots(count); break;
-    case "builtin-spiral": slots = spiralSlots(count); break;
-    case "builtin-text": slots = textSlots(customText || "LOVE", count); break;
-    default: {
-      // 自定义模板同样使用持久化的坐标骨架；此前这里只会退回网格，
-      // 导致用户保存的模板虽然出现在列表中，套用时却不会生效。
-      const template = loadCustomTemplates().find(item => item.id === templateId);
-      slots = template?.slots?.length
-        ? template.slots.map(slot => ({
-            x: round(clamp01(Number(slot.x) || 0.5)),
-            y: round(clamp01(Number(slot.y) || 0.5)),
-            scale: Math.min(3, Math.max(0.35, Number(slot.scale) || 0.82)),
-            rotation: Math.min(45, Math.max(-45, Number(slot.rotation) || 0)),
-          }))
-        : gridSlots(count);
-      break;
-    }
-  }
-  if (!slots.length) return gridSlots(count);
-  // 形状类的内置模板：按画布宽高比做纵向压缩，避免在竖画布上被拉长。
-  if (/^builtin-(heart|star|flower|cloud|spiral|ring)$/.test(templateId)) {
-    slots = slots.map(slot => ({
-      ...slot,
-      y: round(Math.min(0.94, Math.max(0.06, 0.5 + (slot.y - 0.5) * 0.8))),
+export function buildTemplateSlots(templateId: string, count: number, customText?: string, fill = false): Slot[] {
+  const total = Math.max(1, count);
+  // 兼容旧的独立「心形填充」模板：等价于心形 + 填充
+  if (templateId === "builtin-fill") return layoutSlots("builtin-heart", total, true);
+  if (templateId === "builtin-grid") return gridSlots(total);
+  if (templateId === "builtin-scatter") return layoutSlots("builtin-heart", total, true);
+  if (templateId === "builtin-text") return textSlots(customText || "LOVE", total, fill);
+  if (SHAPES[templateId]) return layoutSlots(templateId, total, fill);
+
+  // 自定义模板：用用户存的骨架；不够时用网格补，且不叠在已有照片上
+  const template = loadCustomTemplates().find(item => item.id === templateId);
+  if (template?.slots?.length) {
+    const slots: Slot[] = template.slots.map(slot => ({
+      x: round(clamp01(Number(slot.x) || 0.5)),
+      y: round(clamp01(Number(slot.y) || 0.5)),
+      scale: Math.min(3, Math.max(0.35, Number(slot.scale) || 0.82)),
+      rotation: Math.min(45, Math.max(-45, Number(slot.rotation) || 0)),
     }));
-  }
-  // Built-ins calculate the requested count. Custom templates must not recycle slots,
-  // or newly added photos land exactly on top of the saved cards.
-  if (!templateId.startsWith("builtin-") && slots.length < count) {
-    const originalSlots = slots.slice();
-    const candidates = gridSlots(Math.max(40, count * 4));
-    for (const candidate of candidates) {
-      if (slots.length >= count) break;
-      const nearest = Math.min(...slots.map(slot => Math.hypot(slot.x - candidate.x, slot.y - candidate.y)));
-      if (nearest > 0.06) slots.push({ ...candidate, scale: Math.min(candidate.scale, 0.72) });
+    const pool = gridSlots(Math.max(total, slots.length));
+    let index = 0;
+    while (slots.length < total && index < pool.length * 2) {
+      const candidate = pool[index % pool.length];
+      if (!slots.some(slot => !farEnough(candidate, slot, 0.72))) slots.push(candidate);
+      index += 1;
     }
-    while (slots.length < count) {
-      const index = slots.length - originalSlots.length;
-      const base = originalSlots[index % originalSlots.length];
-      const angle = index * 2.399963229728653;
-      const radius = 0.08 + (index % 4) * 0.025;
-      slots.push({
-        x: round(clamp01(base.x + Math.cos(angle) * radius)),
-        y: round(clamp01(base.y + Math.sin(angle) * radius)),
-        scale: Math.max(0.45, Math.min(0.68, base.scale * 0.72)),
-        rotation: Math.max(-20, Math.min(20, base.rotation + (index % 2 ? -5 : 5))),
-      });
-    }
+    return slots.slice(0, total);
   }
-  return Array.from({ length: Math.max(1, count) }, (_, index) => slots[index] ?? slots[index % slots.length]);
+
+  return gridSlots(total);
 }
 
 export function templateSlotCount(templateId: string, customText?: string): number {
