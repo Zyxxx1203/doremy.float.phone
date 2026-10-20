@@ -84,7 +84,7 @@ export async function analyzeVideoUsingKeyframes(options: {
   onProgress?: VideoFrameProgress;
 }): Promise<string> {
   const provider = options.provider;
-  const root = (options.baseUrl || (provider === "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com/v1")).trim().replace(/\/+$/, "");
+  const root = (options.baseUrl || (provider === "anthropic" ? "https://api.anthropic.com" : provider === "twelvelabs" ? "https://api.twelvelabs.io/v1.3" : "https://api.openai.com/v1")).trim().replace(/\/+$/, "");
   if (!/^https?:\/\//i.test(root)) throw new Error("API 地址必须以 http:// 或 https:// 开头。");
   options.onProgress?.("正在从本地视频提取关键帧…");
   const frames = await extractFrames(options.file, options.frameCount, options.signal, options.onProgress);
