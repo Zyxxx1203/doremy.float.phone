@@ -489,11 +489,13 @@ private fun fetchSharedVideoPage(startUrl: String): SharedVideoPage {
             throw IllegalArgumentException("跳转到了不支持的平台域名，已停止解析")
         }
 
-        val request = Request.Builder()
+        val requestBuilder = Request.Builder()
             .url(current)
             .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
             .header("Accept", "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8")
-            .build()
+        runCatching { CookieManager.getInstance().getCookie(current.toString()) }
+            .getOrNull()?.takeIf { it.isNotBlank() }?.let { requestBuilder.header("Cookie", it) }
+        val request = requestBuilder.build()
         val response = sharedVideoClient.newCall(request).execute()
         if (response.code in 300..399) {
             val location = response.header("Location")
@@ -526,17 +528,25 @@ private fun fetchSharedVideoPage(startUrl: String): SharedVideoPage {
 }
 
 private fun extractPublicMp4Url(html: String): String? {
+    // Platforms commonly serialize media URLs in escaped JSON, meta tags, or source elements.
     val normalized = html
         .replace("\\/", "/")
         .replace("\\u002F", "/", ignoreCase = true)
         .replace("\\u0026", "&", ignoreCase = true)
+        .replace("\\u003A", ":", ignoreCase = true)
         .replace("\\u003D", "=", ignoreCase = true)
+        .replace("\\u003F", "?", ignoreCase = true)
         .replace("&amp;", "&", ignoreCase = true)
+        .replace("&quot;", "\"")
+        .replace("&#x2F;", "/", ignoreCase = true)
+        .replace("&#47;", "/")
     val urlRegex = Regex("""https?://[^\s"'<>\\]+""", RegexOption.IGNORE_CASE)
     val markerNames = listOf(
         "playAddr", "play_addr", "playUrl", "play_url", "downloadAddr",
-        "download_addr", "srcNoMark", "src_no_mark", "og:video", "contentUrl",
-        "video_url", "videoUrl", "video_src"
+        "download_addr", "srcNoMark", "src_no_mark", "play_url_h264",
+        "video_url", "videoUrl", "video_src", "videoSrc", "contentUrl",
+        "og:video:secure_url", "og:video", "twitter:player:stream",
+        "<video", "<source", "currentSrc", "master_url", "originVideoKey"
     )
     val preferred = mutableListOf<String>()
     for (marker in markerNames) {
@@ -544,18 +554,30 @@ private fun extractPublicMp4Url(html: String): String? {
         while (true) {
             val index = normalized.indexOf(marker, from, ignoreCase = true)
             if (index < 0) break
-            val end = minOf(normalized.length, index + 6000)
+            val end = minOf(normalized.length, index + 12000)
             preferred.addAll(urlRegex.findAll(normalized.substring(index, end)).map { it.value })
             from = index + marker.length
         }
     }
-    val allCandidates = preferred + urlRegex.findAll(normalized).map { it.value }.toList()
-    return allCandidates.asSequence()
-        .map { it.trim().trimEnd(',', ';', ')', ']', '}', '\\') }
+    val decoded = normalized
+        .replace("%3A", ":", ignoreCase = true)
+        .replace("%2F", "/", ignoreCase = true)
+        .replace("%3F", "?", ignoreCase = true)
+        .replace("%26", "&", ignoreCase = true)
+        .replace("%3D", "=", ignoreCase = true)
+    val candidates = preferred + urlRegex.findAll(decoded).map { it.value }.toList() +
+        urlRegex.findAll(normalized).map { it.value }.toList()
+    return candidates.asSequence()
+        .map { it.trim().trimEnd(',', ';', ')', ']', '}', '\\', '.', '"') }
         .distinct()
-        .firstOrNull { isLikelyPublicMp4(it) }
+        .firstOrNull { candidate ->
+            val path = candidate.substringBefore('?').substringBefore('#').lowercase()
+            isLikelyPublicMp4(candidate) &&
+                !path.endsWith(".jpg") && !path.endsWith(".jpeg") &&
+                !path.endsWith(".png") && !path.endsWith(".webp") &&
+                !path.endsWith(".gif") && !path.endsWith(".avif")
+        }
 }
-
 private fun downloadPublicMp4(mediaUrl: String, pageUrl: String): CachedSharedVideo {
     var currentUrl = mediaUrl
     for (attempt in 0..5) {
@@ -564,12 +586,14 @@ private fun downloadPublicMp4(mediaUrl: String, pageUrl: String): CachedSharedVi
         if (!isLikelyPublicMp4(current.toString())) {
             throw IllegalStateException("只允许从支持的平台公开视频 CDN 获取 MP4")
         }
-        val request = Request.Builder()
+        val requestBuilder = Request.Builder()
             .url(current)
             .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
             .header("Accept", "video/mp4,video/*;q=0.9,application/octet-stream;q=0.8,*/*;q=0.5")
             .header("Referer", pageUrl)
-            .build()
+        runCatching { CookieManager.getInstance().getCookie(current.toString()) }
+            .getOrNull()?.takeIf { it.isNotBlank() }?.let { requestBuilder.header("Cookie", it) }
+        val request = requestBuilder.build()
         val response = sharedVideoClient.newCall(request).execute()
         if (response.code in 300..399) {
             val location = response.header("Location")
