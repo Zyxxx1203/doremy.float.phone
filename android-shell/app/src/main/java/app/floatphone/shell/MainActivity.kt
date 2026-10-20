@@ -663,6 +663,123 @@ private fun resolveAndCacheSharedVideo(rawUrl: String): CachedSharedVideo {
     return downloadPublicMp4(mediaUrl, page.pageUrl)
 }
 
+/** Dispatch a resolver result back into the trusted app page. Must be called on the UI thread. */
+private fun emitSharedVideoResult(requestId: String, result: Result<CachedSharedVideo>) {
+    if (!::webView.isInitialized || isFinishing || !isTrustedShellPage()) {
+        result.getOrNull()?.let { deleteCachedSharedVideoInternal(it.cacheId) }
+        return
+    }
+    val payload = org.json.JSONObject().put("requestId", requestId)
+    result.onSuccess {
+        payload.put("ok", true).put("cacheId", it.cacheId).put("contentUri", it.contentUri)
+    }.onFailure { error ->
+        payload.put("ok", false).put("message", (error.message ?: "公开视频解析失败").take(240))
+    }
+    val script = "window.dispatchEvent(new CustomEvent('floatshell-shared-video-ready',{detail:" + payload.toString() + "}));"
+    webView.evaluateJavascript(script, null)
+}
+
+/**
+ * Some platforms create the video URL only after JavaScript executes. Load the share page in
+ * an isolated WebView (no JavaScript bridge is installed), inspect video/source elements and
+ * performance resource URLs, then cache only a validated public MP4. The hidden view is always
+ * removed and destroyed after success or timeout.
+ */
+@SuppressLint("SetJavaScriptEnabled")
+private fun resolveSharedVideoWithWebView(rawUrl: String, callback: (Result<CachedSharedVideo>) -> Unit) {
+    if (!isSupportedShareUrl(rawUrl) || !::rootContainer.isInitialized) {
+        callback(Result.failure(IllegalArgumentException("分享链接无效")))
+        return
+    }
+    val resolverView = WebView(this)
+    val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    var finished = false
+    var attempts = 0
+    val startedAt = System.currentTimeMillis()
+    fun finish(result: Result<CachedSharedVideo>) {
+        if (finished) {
+            result.getOrNull()?.let { deleteCachedSharedVideoInternal(it.cacheId) }
+            return
+        }
+        finished = true
+        handler.removeCallbacksAndMessages(resolverView)
+        runCatching { resolverView.stopLoading() }
+        runCatching { (resolverView.parent as? android.view.ViewGroup)?.removeView(resolverView) }
+        runCatching { resolverView.destroy() }
+        callback(result)
+    }
+    fun inspectPage() {
+        if (finished) return
+        attempts++
+        val script = """
+            (function() {
+              const out = [];
+              const add = v => { if (typeof v === 'string' && /^https?:///i.test(v)) out.push(v); };
+              document.querySelectorAll('video').forEach(v => { add(v.currentSrc); add(v.src); });
+              document.querySelectorAll('video source, source').forEach(v => add(v.src));
+              document.querySelectorAll('meta[property="og:video"],meta[property="og:video:url"],meta[name="twitter:player:stream"],meta[itemprop="contentUrl"]')
+                .forEach(v => add(v.content));
+              try {
+                performance.getEntriesByType('resource').forEach(e => {
+                  if (/.mp4(?:[?#]|$)|.m3u8(?:[?#]|$)|video|playaddr|play_url/i.test(e.name)) add(e.name);
+                });
+              } catch (_) {}
+              return JSON.stringify(Array.from(new Set(out)).slice(0, 80));
+            })();
+        """.trimIndent()
+        resolverView.evaluateJavascript(script) { encoded ->
+            if (finished) return@evaluateJavascript
+            val candidates = runCatching {
+                val decoded = org.json.JSONTokener(encoded ?: "null").nextValue() as? String ?: "[]"
+                org.json.JSONArray(decoded)
+            }.getOrNull()
+            val mediaUrl = candidates?.let { array ->
+                (0 until array.length()).asSequence()
+                    .mapNotNull { index -> array.optString(index).takeIf { it.startsWith("http://") || it.startsWith("https://") } }
+                    .firstOrNull { isLikelyPublicMp4(it) }
+            }
+            if (mediaUrl != null) {
+                sharedVideoExecutor.execute {
+                    val result = runCatching { downloadPublicMp4(mediaUrl, rawUrl) }
+                    runOnUiThread { finish(result) }
+                }
+            } else if (attempts >= 14 || System.currentTimeMillis() - startedAt > 18000L) {
+                finish(Result.failure(IllegalStateException("动态页面加载后仍未发现可直接播放的 MP4；可能需要平台签名、登录或 HLS 播放支持")))
+            } else {
+                handler.postAtTime({ inspectPage() }, resolverView, android.os.SystemClock.uptimeMillis() + 1000L)
+            }
+        }
+    }
+    resolverView.settings.apply {
+        javaScriptEnabled = true
+        domStorageEnabled = true
+        mediaPlaybackRequiresUserGesture = false
+        allowFileAccess = false
+        allowContentAccess = false
+        userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+    }
+    CookieManager.getInstance().setAcceptCookie(true)
+    CookieManager.getInstance().setAcceptThirdPartyCookies(resolverView, true)
+    resolverView.alpha = 0.01f
+    resolverView.isFocusable = false
+    resolverView.isFocusableInTouchMode = false
+    rootContainer.addView(resolverView, FrameLayout.LayoutParams(1, 1))
+    resolverView.webViewClient = object : WebViewClient() {
+        override fun onPageFinished(view: WebView, url: String?) {
+            inspectPage()
+        }
+        override fun onReceivedError(view: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
+            if (request.isForMainFrame && !finished) {
+                finish(Result.failure(IllegalStateException("平台网页加载失败：" + error.description)))
+            }
+        }
+    }
+    handler.postAtTime({
+        if (!finished) finish(Result.failure(IllegalStateException("动态解析超时（18 秒）")))
+    }, resolverView, android.os.SystemClock.uptimeMillis() + 19000L)
+    resolverView.loadUrl(rawUrl)
+}
+
 private fun pruneCachedSharedVideos() {
     val directory = sharedVideoCacheDir()
     if (!directory.exists()) return
@@ -1132,23 +1249,24 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
             if (!isTrustedShellPage() || cleanRequestId.isBlank() || cleanRequestId.length > 120 || !isSupportedShareUrl(cleanUrl)) return false
             return runCatching {
                 sharedVideoExecutor.execute {
-                    val result = runCatching { resolveAndCacheSharedVideo(cleanUrl) }
-                    val payload = org.json.JSONObject().put("requestId", cleanRequestId)
-                    result.onSuccess {
-                        payload.put("ok", true)
-                            .put("cacheId", it.cacheId)
-                            .put("contentUri", it.contentUri)
-                    }.onFailure { error ->
-                        payload.put("ok", false)
-                            .put("message", (error.message ?: "公开视频解析失败").take(240))
-                    }
-                    runOnUiThread {
-                        if (!::webView.isInitialized || isFinishing || !isTrustedShellPage()) {
-                            result.getOrNull()?.let { deleteCachedSharedVideoInternal(it.cacheId) }
-                            return@runOnUiThread
+                    val staticResult = runCatching { resolveAndCacheSharedVideo(cleanUrl) }
+                    if (staticResult.isSuccess) {
+                        runOnUiThread { emitSharedVideoResult(cleanRequestId, staticResult) }
+                    } else {
+                        // Static HTML extraction misses videos injected by page JavaScript.
+                        // Retry in a separate, unprivileged WebView and inspect only public media URLs.
+                        runOnUiThread {
+                            if (!::webView.isInitialized || isFinishing || !isTrustedShellPage()) return@runOnUiThread
+                            resolveSharedVideoWithWebView(cleanUrl) { dynamicResult ->
+                                val finalResult = dynamicResult.recoverCatching { error ->
+                                    throw IllegalStateException(
+                                        (staticResult.exceptionOrNull()?.message ?: "静态网页解析失败") +
+                                            "；动态页面解析也失败：" + (error.message ?: "未发现可直接播放的 MP4")
+                                    )
+                                }
+                                emitSharedVideoResult(cleanRequestId, finalResult)
+                            }
                         }
-                        val script = "window.dispatchEvent(new CustomEvent('floatshell-shared-video-ready',{detail:" + payload.toString() + "}));"
-                        webView.evaluateJavascript(script, null)
                     }
                 }
                 true
