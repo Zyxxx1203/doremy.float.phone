@@ -207,7 +207,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       if (HlsCtor && (HlsCtor as unknown as { isSupported?: () => boolean }).isSupported?.()) {
         video.removeAttribute("src");
         video.load();
-        const instance = new HlsCtor({ enableWorker: true, lowLatencyMode: false });
+        const instance = new HlsCtor({ enableWorker: true, lowLatencyMode: false, xhrSetup: (xhr: XMLHttpRequest) => { xhr.withCredentials = true; } });
         hlsInstance = instance;
         instance.on("error", (...args: unknown[]) => {
           const data = args[1] as { fatal?: boolean; type?: string; details?: string } | undefined;
@@ -225,12 +225,25 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     const existing = (window as Window & { Hls?: unknown }).Hls;
     if (existing) attach();
     else {
-      const script = document.createElement("script");
-      script.src = "https://cdn.jsdelivr.net/npm/hls.js@1.6.13/dist/hls.min.js";
-      script.async = true;
-      script.onload = attach;
-      script.onerror = () => onNotice?.("HLS 播放组件加载失败；视频地址已解析，但当前网络无法下载播放组件。");
-      document.head.appendChild(script);
+      const sources = [
+        "https://cdn.jsdelivr.net/npm/hls.js@1.6.13/dist/hls.min.js",
+        "https://unpkg.com/hls.js@1.6.13/dist/hls.min.js",
+      ];
+      let sourceIndex = 0;
+      const loadNext = () => {
+        if (cancelled) return;
+        if (sourceIndex >= sources.length) {
+          onNotice?.("HLS 播放组件加载失败；视频地址已解析，但当前网络无法下载播放组件。");
+          return;
+        }
+        const script = document.createElement("script");
+        script.src = sources[sourceIndex++];
+        script.async = true;
+        script.onload = attach;
+        script.onerror = loadNext;
+        document.head.appendChild(script);
+      };
+      loadNext();
     }
     return () => { cancelled = true; hlsInstance?.destroy(); };
   }, [target?.nativeVideoUrl, onNotice]);
