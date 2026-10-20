@@ -119,6 +119,23 @@ async function readExifCapturedAt(file: File): Promise<string | undefined> {
   return undefined;
 }
 
+type PhotoAlbum = { id: string; title: string; coverPhotoId: string; pages: string[][] };
+const PHOTO_ALBUMS_KEY = "ai_phone_photo_albums_v1";
+function loadPhotoAlbums(): PhotoAlbum[] {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(PHOTO_ALBUMS_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(item => item && typeof item.id === "string" && typeof item.title === "string").map(item => ({
+      id: String(item.id),
+      title: String(item.title).slice(0, 80),
+      coverPhotoId: typeof item.coverPhotoId === "string" ? item.coverPhotoId : "",
+      pages: Array.isArray(item.pages) && item.pages.length
+        ? item.pages.map((page: unknown) => Array.isArray(page) ? page.slice(0, 9).map(String) : [])
+        : [[]],
+    }));
+  } catch { return []; }
+}
+
 function getPhotoBackText(photo: PhotoWallPhoto): string {
   const manual = photo.backNote?.trim() ?? "";
   const legacyNotes = (photo.annotations ?? []).map(note => {
