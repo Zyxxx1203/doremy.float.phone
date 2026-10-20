@@ -708,12 +708,43 @@ private fun resolveAndCacheSharedVideo(rawUrl: String): CachedSharedVideo {
     val trimmed = rawUrl.trim()
     if (!isSupportedShareUrl(trimmed)) throw IllegalArgumentException("仅支持公开 HTTP(S) 网页链接；本机、内网和非公开地址不支持")
     pruneCachedSharedVideos()
-    val page = fetchSharedVideoPage(trimmed)
-    val mediaUrl = page.directVideoUrl
-        ?: page.html?.let { extractDouyinRouterPlayUrl(it) }
-        ?: page.html?.let { extractPublicMp4Url(it) }
-        ?: throw IllegalStateException("页面中没有找到可直接播放的公开 MP4；可能需要登录、由 JavaScript 加载或使用了平台专有签名")
-    return downloadPublicMp4(mediaUrl, page.pageUrl)
+    val firstPage = fetchSharedVideoPage(trimmed)
+    val pages = mutableListOf(firstPage)
+
+    // Mature Douyin parsers request the mobile SSR share route directly after resolving a
+    // short link. Try those canonical routes too; the original URL often renders a shell page.
+    val resolvedUrl = firstPage.pageUrl
+    val douyinId = Regex("""(?:douyin\\.com/(?:video|note|share/video|share/note)/|iesdouyin\\.com/share/(?:video|note)/)(\\d+)""", RegexOption.IGNORE_CASE)
+        .find(resolvedUrl)?.groupValues?.getOrNull(1)
+    if (douyinId != null) {
+        listOf(
+            "https://m.douyin.com/share/video/$douyinId",
+            "https://www.iesdouyin.com/share/video/$douyinId"
+        ).forEach { candidate ->
+            if (pages.none { it.pageUrl == candidate }) {
+                runCatching { fetchSharedVideoPage(candidate) }.getOrNull()?.let(pages::add)
+            }
+        }
+    }
+
+    var lastError: Throwable? = null
+    for (page in pages) {
+        val mediaUrl = page.directVideoUrl
+            ?: page.html?.let { extractDouyinRouterPlayUrl(it) }
+            ?: page.html?.let { extractPublicMp4Url(it) }
+        if (mediaUrl != null) {
+            return try {
+                downloadPublicMp4(mediaUrl, page.pageUrl)
+            } catch (error: Throwable) {
+                lastError = error
+                continue
+            }
+        }
+    }
+    throw IllegalStateException(
+        lastError?.message
+            ?: "页面中没有找到可直接播放的公开 MP4；可能需要登录、由 JavaScript 加载或使用了平台专有签名"
+    )
 }
 
 /** Dispatch a resolver result back into the trusted app page. Must be called on the UI thread. */
