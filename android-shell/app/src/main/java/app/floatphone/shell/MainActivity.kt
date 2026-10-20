@@ -461,6 +461,7 @@ private fun isLikelyPublicMp4(rawUrl: String): Boolean {
         || isHostUnder(url.host, "douyinvod.com")
         || isHostUnder(url.host, "kwaicdn.com")
         || isHostUnder(url.host, "kwimgs.com")
+        || isHostUnder(url.host, "yximgs.com")
         || isHostUnder(url.host, "kspkg.com")
         || isHostUnder(url.host, "ks-cdn.com")
         // Douyin's SSR parser exposes signed playback URLs on aweme.snssdk.com.
