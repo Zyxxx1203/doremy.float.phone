@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Eye, EyeOff, Pause, Play, Send, ShieldCheck, Square, Camera, MessageCircle, Settings2 } from "lucide-react";
+import { ArrowLeft, Eye, Pause, Play, Send, ShieldCheck, Square, Camera, MessageCircle, Settings2 } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import { kvGet, kvSet } from "@/lib/kv-db";
@@ -127,6 +127,7 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
       const videoSettings = loadVideoAnalysisSettings();
       const profile = character as unknown as Record<string, unknown>;
       const roleDetails = [
+        typeof profile.persona === "string" ? "角色人设：" + profile.persona : "",
         typeof profile.description === "string" ? "角色介绍：" + profile.description : "",
         typeof profile.personality === "string" ? "性格：" + profile.personality : "",
         typeof profile.scenario === "string" ? "背景设定：" + profile.scenario : "",
