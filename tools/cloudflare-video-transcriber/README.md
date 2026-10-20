@@ -9,7 +9,7 @@ This Worker does **not** extract audio from arbitrary video pages (Bilibili, You
 ## Deploy
 
 1. Create a Cloudflare account and enable Workers AI for the account.
-2. Install Node.js locally once. From this directory run `npx wrangler login`.
+2. Install Node.js locally once. From this directory run `npm install`, then `npx wrangler login`.
 3. Edit `wrangler.jsonc`:
    - Set `ALLOWED_ORIGINS` to the exact origin of your deployed phone web app (scheme + host, no path).
    - Set `ALLOWED_MEDIA_HOSTS` to the exact hostname(s) that host audio files you control or trust, comma-separated. Do not use `*`.
