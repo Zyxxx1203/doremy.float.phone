@@ -888,6 +888,18 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </div>
         )}
 
+        {target && !target.supported && target.embedUrl === target.url && (
+          <a
+            href={target.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute bottom-2 right-2 z-20 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-black/75 px-3 py-2 text-[10px] text-white shadow-lg backdrop-blur"
+            onClick={event => event.stopPropagation()}
+          >
+            <ExternalLink size={12}/>若无法播放，打开原网页
+          </a>
+        )}
+
         {fullScreen && target && <div className="watch-companion-overlay pointer-events-none absolute left-2 right-2 top-[max(48px,calc(env(safe-area-inset-top)+12px))] z-30">
           {companionCollapsed ? <button type="button" onClick={() => setCompanionCollapsed(false)} className="watch-companion-pill pointer-events-auto flex max-w-full items-center gap-2 rounded-full border border-white/25 bg-black/65 px-3 py-2 text-left text-white shadow-lg backdrop-blur-xl">
             {character?.avatar ? <img src={character.avatar} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover"/> : <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#8b6b57] text-xs">{character?.name.slice(0,1) || "TA"}</span>}
