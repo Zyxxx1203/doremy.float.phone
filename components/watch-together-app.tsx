@@ -721,17 +721,24 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     <style>{`@keyframes watchDanmaku { 0% { transform: translateX(0); opacity: 0 } 6% { opacity: 1 } 92% { opacity: 1 } 100% { transform: translateX(calc(-100% - 100vw)); opacity: 0 } }`}</style>
     <style>{`
       /* Keep fullscreen in normal document flow; do not collapse the player into a clipped grid. */
-      .watch-together-app[data-watch-fullscreen="true"] > header { position:relative!important; z-index:20!important; flex:0 0 auto!important; }
-      .watch-together-app[data-watch-fullscreen="true"] > main.watch-together-main { position:relative!important; z-index:10!important; display:flex!important; flex-direction:column!important; flex:1 1 auto!important; min-height:0!important; overflow-x:hidden!important; overflow-y:auto!important; overscroll-behavior:contain; gap:12px!important; padding:10px 12px max(20px,env(safe-area-inset-bottom))!important; }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-room-title { order:0!important; flex:0 0 auto!important; width:100%!important; max-width:1100px!important; margin:0 auto!important; padding:0!important; }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-player { position:relative!important; order:1!important; flex:0 0 auto!important; width:100%!important; max-width:1100px!important; height:auto!important; min-height:0!important; max-height:48dvh!important; aspect-ratio:16/9!important; margin:0 auto!important; overflow:hidden!important; }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-player > video, .watch-together-app[data-watch-fullscreen="true"] .watch-player > iframe { position:static!important; inset:auto!important; display:block!important; width:100%!important; height:100%!important; min-width:0!important; min-height:0!important; max-height:48dvh!important; aspect-ratio:16/9!important; object-fit:contain!important; }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel { order:2!important; flex:0 0 auto!important; width:100%!important; max-width:1100px!important; height:auto!important; min-height:0!important; margin:0 auto!important; overflow:visible!important; }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div { display:block!important; height:auto!important; min-height:0!important; overflow:visible!important; padding:12px!important; }
+      /* Immersive mode must not leave the app header/title floating over discussion. Keep the
+         player mounted (same key) so a layout change does not recreate the media surface. */
+      .watch-together-app[data-watch-fullscreen="true"] > header { display:none!important; }
+      .watch-together-app[data-watch-fullscreen="true"] > main.watch-together-main { position:relative!important; z-index:10!important; display:flex!important; flex-direction:column!important; flex:1 1 auto!important; min-height:0!important; overflow-x:hidden!important; overflow-y:auto!important; overscroll-behavior:contain; gap:10px!important; padding: max(6px,env(safe-area-inset-top)) 8px max(12px,env(safe-area-inset-bottom))!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-room-title { display:none!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player { position:relative!important; order:0!important; flex:0 0 auto!important; width:100%!important; max-width:1400px!important; height:auto!important; min-height:0!important; max-height:62dvh!important; aspect-ratio:16/9!important; margin:0 auto!important; overflow:hidden!important; border-radius:12px!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player > video, .watch-together-app[data-watch-fullscreen="true"] .watch-player > iframe { position:static!important; inset:auto!important; display:block!important; width:100%!important; height:100%!important; min-width:0!important; min-height:0!important; max-height:62dvh!important; aspect-ratio:16/9!important; object-fit:contain!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel { order:1!important; flex:0 0 auto!important; width:100%!important; max-width:1100px!important; height:auto!important; min-height:0!important; margin:0 auto!important; overflow:visible!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div { display:block!important; height:auto!important; min-height:0!important; overflow:visible!important; padding:8px!important; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel section { display:block!important; flex:none!important; height:auto!important; min-height:0!important; overflow:visible!important; }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .watch-comment-list { min-height:100px!important; max-height:36vh!important; overflow-y:auto!important; overscroll-behavior:contain; }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel { display:block!important; order:3!important; flex:0 0 auto!important; width:100%!important; max-width:1100px!important; max-height:none!important; height:auto!important; margin:0 auto!important; overflow:visible!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .watch-comment-list { min-height:80px!important; max-height:32dvh!important; overflow-y:auto!important; overscroll-behavior:contain; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel { display:none!important; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-companion-overlay { display:none!important; }
+      @media (orientation:landscape) {
+        .watch-together-app[data-watch-fullscreen="true"] .watch-player { width:100%!important; max-width:none!important; max-height:76dvh!important; }
+        .watch-together-app[data-watch-fullscreen="true"] .watch-player > video, .watch-together-app[data-watch-fullscreen="true"] .watch-player > iframe { max-height:76dvh!important; }
+        .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .watch-comment-list { max-height:24dvh!important; }
+      }
     `}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
