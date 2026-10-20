@@ -10,9 +10,8 @@ import type { PhotoWallTemplate } from "@/lib/photo-wall-storage";
  *   所以把 (x,y) 映射到 u,v（±1 对应画面宽度的 84%），所有形状都在同一个
  *   等比空间里描述，换任何屏幕比例都不会被拉长。
  *
- * 落点用「候选网格 + 最小间距」挑选：
- *   间距按照片实际宽高算，中心距 ≥ 半个照片宽 ⇒ 两张照片的重叠面积
- *   一定不超过 50%。
+ * 落点用「候选网格 + 碰撞面积校验」挑选：
+ *   以照片旋转后的包围盒估算交叠面积，交叠面积 / 较小照片面积不得超过 50%。
  */
 
 export const TEMPLATES_STORAGE_KEY = "ai_phone_photo_wall_templates_v1";
