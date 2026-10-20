@@ -101,4 +101,4 @@ export default {
       return json({ ok: false, error: error instanceof Error ? error.message : "Transcription failed." }, 502, origin || undefined);
     }
   },
-} satisfies ExportedHandler<Env>;
+};
