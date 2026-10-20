@@ -8,6 +8,9 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.ContentValues
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import android.media.projection.MediaProjectionManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -128,6 +131,42 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var rootContainer: FrameLayout
     private lateinit var webView: WebView
+    private var pendingGlobalWatchConfig: String = "{}"
+    private val globalWatchProjectionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK && result.data != null) {
+            runCatching { GlobalWatchCaptureService.start(this, result.resultCode, result.data!!, pendingGlobalWatchConfig) }
+                .onFailure { dispatchGlobalWatchEvent("global-watch-state", org.json.JSONObject().put("message", "无法启动全局陪看：" + (it.message ?: "未知错误")).toString()) }
+        } else {
+            dispatchGlobalWatchEvent("global-watch-state", org.json.JSONObject().put("message", "你取消了屏幕捕获授权；全局陪看没有启动。").toString())
+        }
+    }
+    private val globalWatchReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent == null) return
+            when (intent.action) {
+                GlobalWatchCaptureService.ACTION_FRAME -> {
+                    val detail = org.json.JSONObject().put("dataUrl", intent.getStringExtra("dataUrl") ?: "").put("capturedAt", intent.getLongExtra("capturedAt", System.currentTimeMillis()))
+                    dispatchGlobalWatchEvent("global-watch-frame", detail.toString())
+                }
+                GlobalWatchCaptureService.ACTION_REPLY -> dispatchGlobalWatchEvent("global-watch-reply", org.json.JSONObject().put("text", intent.getStringExtra("text") ?: "").toString())
+                GlobalWatchCaptureService.ACTION_STATE -> {
+                    val detail = org.json.JSONObject().put("message", intent.getStringExtra("message") ?: "")
+                        .put("running", intent.getBooleanExtra("running", GlobalWatchCaptureService.isRunning(this@MainActivity)))
+                        .put("paused", intent.getBooleanExtra("paused", false))
+                    dispatchGlobalWatchEvent("global-watch-state", detail.toString())
+                }
+            }
+        }
+    }
+    private var globalWatchReceiverRegistered = false
+
+    private fun dispatchGlobalWatchEvent(name: String, detailJson: String) {
+        runOnUiThread {
+            if (::webView.isInitialized && !isFinishing) {
+                webView.evaluateJavascript("window.dispatchEvent(new CustomEvent(" + org.json.JSONObject.quote(name) + ",{detail:" + detailJson + "}));", null)
+            }
+        }
+    }
     private var recoveryOverlay: View? = null
     private var recoveryBoot = false
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
@@ -985,6 +1024,13 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
 
         webView.addJavascriptInterface(ShellBridge(), "AndroidShell")
+        val globalWatchFilter = IntentFilter().apply {
+            addAction(GlobalWatchCaptureService.ACTION_FRAME)
+            addAction(GlobalWatchCaptureService.ACTION_REPLY)
+            addAction(GlobalWatchCaptureService.ACTION_STATE)
+        }
+        ContextCompat.registerReceiver(this, globalWatchReceiver, globalWatchFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        globalWatchReceiverRegistered = true
         // 桌面小组件桥：独立命名空间，跟通话/截屏那套分开，
         // 免得以後加方法时和 AndroidShell 里几十个方法混在一起。
         webView.addJavascriptInterface(PhoneWidgetBridge(), "PhoneWidget")
@@ -1337,6 +1383,8 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
     }
 
     override fun onDestroy() {
+        if (globalWatchReceiverRegistered) runCatching { unregisterReceiver(globalWatchReceiver) }
+        globalWatchReceiverRegistered = false
         // Recovery mode intentionally returns before creating a WebView. Keep its
         // lifecycle safe: touching a lateinit WebView here would crash the recovery UI.
         if (::webView.isInitialized) {
@@ -1351,6 +1399,48 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
 
     /** 暴露给网页的原生桥（网页侧可用 window.AndroidShell 特性检测壳环境）。 */
     inner class ShellBridge {
+        @JavascriptInterface
+        fun startGlobalWatch(configJson: String): Boolean {
+            if (!isTrustedShellPage()) return false
+            pendingGlobalWatchConfig = configJson.take(4000)
+            if (!Settings.canDrawOverlays(this@MainActivity)) {
+                runOnUiThread {
+                    runCatching { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName))) }
+                        .onFailure { dispatchGlobalWatchEvent("global-watch-state", org.json.JSONObject().put("message", "无法打开悬浮窗权限设置。").toString()) }
+                }
+                return false
+            }
+            runOnUiThread {
+                val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                globalWatchProjectionLauncher.launch(manager.createScreenCaptureIntent())
+            }
+            return true
+        }
+
+        @JavascriptInterface
+        fun stopGlobalWatch() {
+            if (isTrustedShellPage()) GlobalWatchCaptureService.command(this@MainActivity, GlobalWatchCaptureService.ACTION_STOP)
+        }
+
+        @JavascriptInterface
+        fun pauseGlobalWatch(paused: Boolean) {
+            if (!isTrustedShellPage()) return
+            GlobalWatchCaptureService.command(this@MainActivity, if (paused) GlobalWatchCaptureService.ACTION_PAUSE else GlobalWatchCaptureService.ACTION_RESUME)
+        }
+
+        @JavascriptInterface
+        fun captureGlobalWatchNow() {
+            if (isTrustedShellPage()) GlobalWatchCaptureService.command(this@MainActivity, GlobalWatchCaptureService.ACTION_CAPTURE_NOW)
+        }
+
+        @JavascriptInterface
+        fun sendGlobalWatchReply(text: String) {
+            if (isTrustedShellPage() && text.isNotBlank()) GlobalWatchCaptureService.command(this@MainActivity, GlobalWatchCaptureService.ACTION_REPLY, text.take(1000))
+        }
+
+        @JavascriptInterface
+        fun isGlobalWatchRunning(): Boolean = GlobalWatchCaptureService.isRunning(this@MainActivity)
+
         @JavascriptInterface
         fun getVersion(): String = VERSION
 
