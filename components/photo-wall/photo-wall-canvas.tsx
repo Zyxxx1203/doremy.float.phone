@@ -175,13 +175,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
 
   const selectedPhoto = ordered.find(photo => photo.id === selectedId) ?? null;
 
-  /** 背景图按「上传时那块世界」铺：画布扩容后它不会被拉大拉糊，只是四周多出空白。 */
-  const backgroundSizing = backgroundBox && wallWorld && wallWorld.width > 0 && wallWorld.height > 0
-    ? {
-        size: `${(backgroundBox.width / wallWorld.width) * 100}% ${(backgroundBox.height / wallWorld.height) * 100}%`,
-        position: "left top" as const,
-      }
-    : { size: "cover", position: "center" as const };
+  /** 背景跟着画布一起缩放：画布多大，背景就铺多大。 */
+  const backgroundSizing = { size: "cover", position: "center" as const };
 
   const commit = useCallback((id: string, next: PhotoWallPlacement) => onChangePlacement(id, next), [onChangePlacement]);
   /** 松手时用来把「最终落点」交回给上层做扩容判断。 */
@@ -262,8 +257,10 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     const element = anchorElement ?? event.currentTarget as HTMLElement;
     const rect = element.getBoundingClientRect();
     const placement = placementOf(photo, index);
-    const width = rect.width || element.offsetWidth || 1;
-    const height = rect.height || element.offsetHeight || 1;
+    // 用未旋转的布局尺寸 × 画布缩放：getBoundingClientRect 给的是旋转后的外接矩形，
+    // 照片一倾斜就会算大，笔画自然落不准。
+    const width = Math.max(1, element.offsetWidth * canvasZoom);
+    const height = Math.max(1, element.offsetHeight * canvasZoom);
     // Invert visual rotation to store the stroke in the photo's own coordinates.
     const dx = event.clientX - (rect.left + rect.width / 2);
     const dy = event.clientY - (rect.top + rect.height / 2);

@@ -768,8 +768,19 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         originalOrientationRef.current = screen.orientation?.type ?? null;
       } catch { originalOrientationRef.current = null; }
       setFullScreen(true);
+      // 交给系统全屏：元素本身不换父容器、不改 CSS 盒模型，
+      // 避免 Android WebView 在视频尺寸剧变时丢掉画面（只剩音轨）。
+      try { await playerRef.current?.requestFullscreen?.(); } catch { /* WebView 不支持就退回 CSS 全屏 */ }
       await tryLockLandscape();
+      const nudge = () => {
+        const current = playerRef.current?.querySelector("video");
+        if (!current || !current.isConnected) return;
+        if (current.paused) void current.play().catch(() => { /* 需要用户手势 */ });
+        try { current.requestVideoFrameCallback?.(() => { /* 强制刷新一帧 */ }); } catch { /* 老内核没有 */ }
+      };
+      window.setTimeout(nudge, 120);
     } else {
+      try { if (document.fullscreenElement) await document.exitFullscreen(); } catch { /* ignore */ }
       setFullScreen(false);
       await restoreOrientation();
     }
@@ -784,6 +795,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     };
     window.requestAnimationFrame(() => window.requestAnimationFrame(restorePlayback));
   };
+
+  useEffect(() => {
+    const onChange = () => {
+      if (!document.fullscreenElement) setFullScreen(false);
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
 
   const danmakuItems = useMemo(() => comments
     .filter(item => !target?.url || !item.targetUrl || item.targetUrl === target.url)
@@ -925,6 +944,18 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       @media (prefers-reduced-motion:reduce) {
         .watch-together-app[data-watch-fullscreen="true"] .watch-danmaku-track { animation:none!important; left:10px!important; transform:none!important; }
       }
+
+      /* 真全屏：只保留播放器本身，其余 UI 全部让位 */
+      .watch-together-app[data-watch-fullscreen="true"] { position: fixed; inset: 0; z-index: 2147483000; background: #000; }
+      .watch-together-app[data-watch-fullscreen="true"] > header { display: none !important; }
+      .watch-together-app[data-watch-fullscreen="true"] > main { display: block !important; padding: 0 !important; height: 100% !important; overflow: hidden !important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-room-title,
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel,
+      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel { display: none !important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important; max-width: none !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; background: #000 !important; transform: none !important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player > video,
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player > iframe { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+      .watch-player > video { transform: translateZ(0); }
       /* FINAL fullscreen contract: several legacy blocks above used contradictory !important rules.
          Keep one final authority so the app header can never cover the discussion area. */
       .watch-together-app[data-watch-fullscreen="true"] > header { display:none!important; }
@@ -968,7 +999,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           grid-template-areas:"player" "interaction"!important;
         }
       }
-    `}</style>
+      /* 沉浸全屏最终裁决：video 铺满屏幕，其余 UI 让位 */
+      .watch-together-app[data-watch-fullscreen="true"] > main.watch-together-main { display:block!important; position:absolute!important; inset:0!important; width:100%!important; height:100%!important; padding:0!important; gap:0!important; overflow:hidden!important; background:#000!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel { display:none!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player { position:absolute!important; inset:0!important; width:100%!important; height:100%!important; max-width:none!important; border:0!important; border-radius:0!important; box-shadow:none!important; background:#000!important; transform:none!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player > video, .watch-together-app[data-watch-fullscreen="true"] .watch-player > iframe { position:absolute!important; inset:0!important; width:100%!important; height:100%!important; max-height:none!important; object-fit:contain!important; }
+    `}
+</style>
     <style>{`@keyframes watchDanmaku { 0% { transform: translateX(0); opacity: 0 } 6% { opacity: 1 } 92% { opacity: 1 } 100% { transform: translateX(calc(-100% - 100vw)); opacity: 0 } }`}</style>
     <style>{`
       /* One fullscreen layout authority: no legacy rules may cover the discussion composer. */
@@ -1052,9 +1089,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className={fullScreen ? "h-full w-full border-0" : "aspect-video w-full border-0"} />
         ) : (
           <div className="flex aspect-video flex-col items-center justify-center px-6 text-center">
-            <div className="grid h-16 w-16 place-items-center rounded-full border border-white/15 bg-white/5 text-[#d9b489]">
-              {target ? <ExternalLink size={24}/> : <Play size={24}/>}
-            </div>
             <div className="mt-5 font-serif text-lg tracking-wide text-[#efe2d0]">{target ? `${target.platformName}需要外部打开` : "把想看的放上屏幕"}</div>
             <p className="mt-2 max-w-xs text-[11px] leading-6 text-[#9c9086]">
               {target ? "目前无法在小手机内播放这个链接。若原生解析失败，可尝试打开原视频或选择本地视频；角色只有在成功取得字幕/脚本后才能理解视频内容，不会假装看到了画面。" : "粘贴一个视频链接，或选择本地视频，让你们在同一个页面里边看边聊。"}

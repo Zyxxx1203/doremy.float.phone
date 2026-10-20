@@ -269,6 +269,13 @@ export function buildTemplateSlots(templateId: string, count: number, customText
     }
   }
   if (!slots.length) return gridSlots(count);
+  // 形状类的内置模板：按画布宽高比做纵向压缩，避免在竖画布上被拉长。
+  if (/^builtin-(heart|star|flower|cloud|spiral|ring)$/.test(templateId)) {
+    slots = slots.map(slot => ({
+      ...slot,
+      y: round(Math.min(0.94, Math.max(0.06, 0.5 + (slot.y - 0.5) * 0.8))),
+    }));
+  }
   // Built-ins calculate the requested count. Custom templates must not recycle slots,
   // or newly added photos land exactly on top of the saved cards.
   if (!templateId.startsWith("builtin-") && slots.length < count) {
