@@ -54,6 +54,14 @@ function formatDate(value: string): string {
   if (Number.isNaN(date.getTime())) return "某个日子";
   return new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
 }
+function formatDateTimeInput(value?: string): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate()) + "T" + pad(date.getHours()) + ":" + pad(date.getMinutes());
+}
+
 function getPhotoBackText(photo: PhotoWallPhoto): string {
   const manual = photo.backNote?.trim() ?? "";
   const legacyNotes = (photo.annotations ?? []).map(note => {
@@ -409,6 +417,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [editNote, setEditNote] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [editTags, setEditTags] = useState("");
+  const [editCapturedAt, setEditCapturedAt] = useState("");
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState("");
   const [newKind, setNewKind] = useState<PhotoWallPhoto["kind"]>("favorite");
@@ -1058,7 +1067,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     if (!selectedPhoto) return;
     const currentState = stateRef.current;
     const latestPhoto = currentState.photos.find(photo => photo.id === selectedPhoto.id) ?? selectedPhoto;
-    const nextPhoto = { ...latestPhoto, title: editTitle.trim() || "未命名的瞬间", backNote: editNote, annotations: [], tags: editTags.split(/[,，#\n]/).map(tag => tag.trim()).filter(Boolean).slice(0, 20) };
+    const nextPhoto = { ...latestPhoto, title: editTitle.trim() || "未命名的瞬间", backNote: editNote, capturedAt: editCapturedAt ? new Date(editCapturedAt).toISOString() : undefined, annotations: [], tags: editTags.split(/[,，#\n]/).map(tag => tag.trim()).filter(Boolean).slice(0, 20) };
     persist({ ...currentState, photos: currentState.photos.map(photo => photo.id === nextPhoto.id ? nextPhoto : photo) });
     setPhotoViewOnly(true);
     onNotice?.("照片背面的内容已保存。");
@@ -1124,7 +1133,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
   const openPhoto = (photo: PhotoWallPhoto, viewOnly = true) => {
     setPhotoViewOnly(viewOnly);
-    setSelectedPhotoId(photo.id); setEditTitle(photo.title); setEditNote(getPhotoBackText(photo)); setEditTags(photo.tags.join("、"));
+    setWallActivePhotoId(photo.id);
+    setSelectedPhotoId(photo.id);
+    setEditTitle(photo.title); setEditNote(getPhotoBackText(photo)); setEditTags(photo.tags.join("、"));
+    setEditCapturedAt(formatDateTimeInput(photo.capturedAt));
   };
 
   return <div className="photo-wall-app pointer-events-auto isolate absolute inset-0 z-[1000] flex min-w-0 flex-col overflow-hidden bg-[radial-gradient(ellipse_at_top,#fffdf8_0%,#f4f0e7_58%,#e9e1d4_100%)] text-[#51483d]" style={{ fontFamily: '"Noto Serif SC", "Songti SC", serif' }}>
@@ -1323,8 +1335,15 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-5 pb-5 pt-6 sm:px-6 sm:pt-8" style={{ WebkitOverflowScrolling: "touch" }}>
           <div className="text-[10px] tracking-[.25em] text-[#aa987f]">{selectedPhoto.ownerName.toUpperCase()} · {KIND_LABEL[selectedPhoto.kind]}</div>
           {photoViewOnly ? <h2 className="mt-3 font-serif text-xl text-[#5b4d3e]">{selectedPhoto.title || "未命名的瞬间"}</h2> : <input value={editTitle} onChange={event => setEditTitle(event.target.value)} className="mt-3 w-full border-b border-[#dfd3c1] bg-transparent pb-2 font-serif text-xl text-[#5b4d3e] outline-none focus:border-[#9e8b70]" placeholder="给这张照片起个名字"/>}
-          <p className="mt-2 text-[10px] tracking-wider text-[#a39583]">{formatDate(selectedPhoto.createdAt)}</p>
-          {photoViewOnly && <button type="button" onClick={() => { setPhotoViewOnly(false); setEditTitle(selectedPhoto.title); setEditNote(getPhotoBackText(selectedPhoto)); setEditTags(selectedPhoto.tags.join("、")); }} className="mt-3 self-start rounded-full border border-[#cbbba6] px-3 py-2 text-xs text-[#796952]">编辑这张照片</button>}
+          <div className="mt-2 space-y-1 text-[10px] tracking-wider text-[#a39583]">
+            <p>上传 / 收录时间：{formatDate(selectedPhoto.createdAt)}</p>
+            <p>拍摄时间：{selectedPhoto.capturedAt ? formatDate(selectedPhoto.capturedAt) : "尚未记录；时间轴暂按收录时间归档"}</p>
+          </div>
+          {!photoViewOnly && <label className="mt-3 block text-xs text-[#857460]">拍摄日期与时间
+            <input type="datetime-local" value={editCapturedAt} onChange={event => setEditCapturedAt(event.target.value)} className="mt-1 w-full border-b border-[#dfd3c1] bg-transparent px-1 py-2 text-xs text-[#5b4d3e] outline-none"/>
+            <span className="mt-1 block text-[10px] leading-5 text-[#a39583]">只修改拍摄时间；上传 / 收录时间保持不变。没有 EXIF 信息时可以手动补齐。</span>
+          </label>}
+          {photoViewOnly && <button type="button" onClick={() => { setPhotoViewOnly(false); setEditTitle(selectedPhoto.title); setEditNote(getPhotoBackText(selectedPhoto)); setEditTags(selectedPhoto.tags.join("、")); setEditCapturedAt(formatDateTimeInput(selectedPhoto.capturedAt)); }} className="mt-3 self-start rounded-full border border-[#cbbba6] px-3 py-2 text-xs text-[#796952]">编辑这张照片</button>}
           <div className="mt-5 border-t border-[#e3d7c6] pt-3 font-serif text-base text-[#655342]">照片背面 · 手记与留言</div>
           {photoViewOnly ? <p className="mt-2 whitespace-pre-wrap rounded-sm bg-[#fcf9f2] p-3 font-serif text-sm leading-6 text-[#655647]">{getPhotoBackText(selectedPhoto) || selectedPhoto.caption || "还没有写下手记或留言。"}</p> : <textarea value={editNote} onChange={event => setEditNote(event.target.value)} rows={7} placeholder="把手记、你留下的话和角色回应都写在这里；它们共用这张照片的背面。" className="mt-2 w-full resize-y rounded-sm border border-[#e6dccd] bg-[#fcf9f2] p-3 font-serif text-sm leading-6 text-[#655647] outline-none placeholder:text-[#c1b5a4] focus:border-[#b5a18a]"/>}
           <label className="mt-3 block text-[10px] tracking-[.2em] text-[#9a8973]">标签 · TAGS</label>
