@@ -842,7 +842,18 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         {platformNote && <p className="mt-2 px-1 text-[11px] leading-5 text-[#8b7665]">{platformNote}</p>}
         <details className="mt-3 rounded-2xl border border-[#b89979]/30 bg-[#fffaf2]/80 p-3 text-[#71553f]">
           <summary className="cursor-pointer text-xs font-medium">从链接生成时间戳脚本 · 本地转写服务</summary>
-          <p className="mt-2 text-[11px] leading-5 text-[#8b7665]">转写运行在你自己的电脑或服务器上，不在 WebView 内下载模型。需先启动仓库 tools/video-transcriber 服务；首次运行要下载 Whisper 模型和视频音轨。请勿将服务裸露在公网。</p>
+          <p className="mt-2 text-[11px] leading-5 text-[#8b7665]">目标是让角色真正理解视频内容：优先使用平台可取得的字幕/时间戳，再用音轨转写补齐；脚本会按当前播放进度喂给角色，避免只凭标题猜剧情。视频播放和脚本解析是两条链路：某个平台能在这里播放，不代表它允许读取字幕或下载音轨。</p>
+          <details className="mt-2 rounded-xl border border-[#b89979]/25 bg-white/50 p-2.5">
+            <summary className="cursor-pointer text-[11px] font-medium">展开部署教程（只需自己的电脑；手机远程访问可选 Cloudflare）</summary>
+            <ol className="mt-2 list-decimal space-y-2 pl-4 text-[11px] leading-5 text-[#8b7665]">
+              <li>在电脑上安装 Python 3.10+ 和 FFmpeg；从项目仓库根目录运行 <code>pip install -r tools/video-transcriber/requirements.txt</code>。</li>
+              <li>Windows PowerShell 中运行：<code>$env:VIDEO_TRANSCRIBER_TOKEN = (python -c "import secrets; print(secrets.token_urlsafe(32))")</code>，再设置 <code>$env:VIDEO_TRANSCRIBER_ALLOWED_ORIGINS = "你当前小手机网页的完整 https 地址"</code>。</li>
+              <li>启动服务：<code>python tools/video-transcriber/server.py --host 127.0.0.1 --port 8765</code>。电脑需要保持开机；首次转写会下载语音模型，之后复用缓存。手机不能把电脑的 localhost 当成电脑地址。</li>
+              <li>如果手机需要跨网络访问，可选用 Cloudflare Tunnel：在电脑安装并登录 cloudflared，再将本地 <code>http://localhost:8765</code> 暴露为 HTTPS 隧道地址，把该 HTTPS 地址填入下方“服务地址”。隧道只负责安全转发，不替你运行转写；电脑关机或服务停止后就不可用。不要公开分享隧道地址或访问令牌。</li>
+              <li>把服务地址和令牌填入本页，粘贴视频链接后点“解析链接并生成脚本”。若平台限制下载、需要登录态或触发风控，转写可能失败；可尝试导入字幕文件，应用不会假装已经看懂未取得的内容。</li>
+            </ol>
+            <p className="mt-2 text-[10px] leading-4 text-[#8b7665]">Cloudflare Workers 本身不适合在请求内运行 Whisper 这类重型模型；本方案不需要部署独立 VPS 或第三方解析 API。Cloudflare Tunnel 是可选的远程入口，转写仍在你自己的电脑上完成。</p>
+          </details>
           <label className="mt-3 block text-[11px]">服务地址
             <input type="url" value={transcriberEndpoint} onChange={event => setTranscriberEndpoint(event.target.value)} placeholder="https://你的服务域名/transcribe" className="mt-1 w-full rounded-xl border border-[#dac6ad] bg-white px-3 py-2 text-xs outline-none focus:border-[#b88768]"/>
           </label>
