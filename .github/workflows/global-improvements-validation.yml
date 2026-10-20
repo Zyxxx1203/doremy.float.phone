@@ -20,6 +20,7 @@ on:
       - "components/photo-wall-app.tsx"
       - "components/photo-wall/**"
       - "components/watch-together-app.tsx"
+      - "lib/gemini-video-understanding.ts"
       - "components/chat/chat-contacts-list.tsx"
       - "components/ui/page-shell.tsx"
       - "lib/desktop-layout-storage.ts"
