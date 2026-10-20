@@ -183,6 +183,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const nativeVideoCacheRef = useRef<{ url: string; cacheId: string } | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
   const [resolutionMessage, setResolutionMessage] = useState("");
+  const [resolutionState, setResolutionState] = useState<"idle" | "checking" | "embedded" | "success" | "failed">("idle");
   const [transcriberEndpoint, setTranscriberEndpoint] = useState(() => {
     try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_transcriber_endpoint_v1") || "" : ""; } catch { return ""; }
   });
