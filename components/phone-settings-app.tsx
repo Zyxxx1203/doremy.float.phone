@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, createContext, type CSSProperties, type ReactNode } from "react";
-import { Activity, AlertTriangle, CalendarDays, Camera, Check, ChevronRight, Clock, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Laptop, Layers, LayoutTemplate, Link2, Loader2, LogOut, MessageSquare, Mic, PhoneCall, SlidersHorizontal, UserCircle, Wrench, X, CloudUpload, Zap, Smartphone } from "lucide-react";
+import { Activity, AlertTriangle, CalendarDays, Camera, Check, ChevronRight, Clock, Database, FileText, Film, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Laptop, Layers, LayoutTemplate, Link2, Loader2, LogOut, MessageSquare, Mic, PhoneCall, SlidersHorizontal, UserCircle, Wrench, X, CloudUpload, Zap, Smartphone } from "lucide-react";
 import { ConfirmDialog } from "./ui/modal";
 import { useAccount } from "@/lib/account-context";
 import { isSelfHostedModeEnabled } from "@/lib/self-hosting";
@@ -9,6 +9,7 @@ import { changeAccountPassword } from "@/lib/account-client";
 import { ApiSettings } from "./settings/api-settings";
 import { VoiceSettings } from "./settings/voice-settings";
 import { ImageGenerationSettings } from "./settings/image-generation-settings";
+import { VideoAnalysisSettingsPanel } from "./settings/video-analysis-settings";
 import { PresetManager } from "./settings/preset-manager";
 import { WorldBookManager } from "./settings/worldbook-manager";
 import { RegexManager } from "./settings/regex-manager";
@@ -54,6 +55,7 @@ type SubPage =
     | "api"
     | "voice"
     | "imageGeneration"
+    | "videoAnalysis"
     | "presets"
     | "worldbook"
     | "regex"
@@ -79,6 +81,7 @@ const SETTINGS_MENU = [
     { id: "api", icon: HardDrive, label: "API 设置", desc: "大模型接口", iconColor: BINDING_ACCENTS.api , glass: "api" },
     { id: "voice", icon: Mic, label: "语音 API", desc: "语音合成", iconColor: BINDING_ACCENTS.voice , glass: "voice" },
     { id: "imageGeneration", icon: Image, label: "图像生成 API", desc: "模型、参考图与提示词", iconColor: CONTENT_APP_ACCENTS.moments , glass: "image-generation" },
+    { id: "videoAnalysis", icon: Film, label: "视频分析模型", desc: "配置一起看的完整视频理解模型", iconColor: CONTENT_APP_ACCENTS.moments, glass: "image-generation" },
     { id: "presets", icon: Fingerprint, label: "预设", desc: "角色预设", iconColor: BINDING_ACCENTS.preset , glass: "presets" },
     { id: "worldbook", icon: Globe, label: "世界书", desc: "世界观设定", iconColor: BINDING_ACCENTS.worldBook , glass: "worldbook" },
     { id: "regex", icon: Database, label: "正则规则", desc: "文本替换", iconColor: BINDING_ACCENTS.regex , glass: "regex" },
@@ -327,6 +330,8 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                 return <VoiceSettings />;
             case "imageGeneration":
                 return <ImageGenerationSettings />;
+            case "videoAnalysis":
+                return <VideoAnalysisSettingsPanel />;
             case "presets":
                 return <PresetManager isActive />;
             case "worldbook":
@@ -502,7 +507,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                         <CardGrid
                             label="API Config"
                             labelClassName="settings-menu-section-title"
-                            items={SETTINGS_MENU.filter(item => ["api", "voice"].includes(item.id)).map(makeCardItem)}
+                            items={SETTINGS_MENU.filter(item => ["api", "voice", "videoAnalysis"].includes(item.id)).map(makeCardItem)}
                         />
                         <div className="settings-data-rules-section">
                             <h3 className="settings-menu-section-title">Data & Rules</h3>
