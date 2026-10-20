@@ -90,25 +90,45 @@ function scatterSlots(count: number): Slot[] {
   return slots;
 }
 
-/** 填充式：用黄金角螺旋从中心向外填满画布；照片数量增加时仍会继续铺开，不重复使用外圈坐标。 */
+/** 心形填充：始终在心形轮廓内排布，从中心的少量照片逐步向外长，中心不留空洞。 */
 function fillSlots(count: number): Slot[] {
   const total = Math.max(1, count);
-  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-  const slots: Slot[] = [];
-  for (let i = 0; i < total; i += 1) {
-    const progress = total === 1 ? 0 : i / (total - 1);
-    // sqrt distributes points evenly across the whole area instead of leaving a hollow centre.
-    const radius = 0.44 * Math.sqrt(progress);
-    const angle = i * goldenAngle;
-    const wave = Math.sin(i * 1.618);
-    slots.push({
-      x: round(clamp01(0.5 + Math.cos(angle) * radius)),
-      y: round(clamp01(0.5 + Math.sin(angle) * radius * 0.82)),
-      scale: round(Math.max(0.5, 0.88 - progress * 0.22 + wave * 0.025)),
-      rotation: round(Math.sin(angle * 1.7) * 5),
-    });
+  const boundary = heartSlots(320).map(slot => ({ x: slot.x, y: slot.y }));
+  const contains = (point: { x: number; y: number }) => {
+    let inside = false;
+    for (let i = 0, j = boundary.length - 1; i < boundary.length; j = i++) {
+      const a = boundary[i], b = boundary[j];
+      const crosses = (a.y > point.y) !== (b.y > point.y)
+        && point.x < (b.x - a.x) * (point.y - a.y) / ((b.y - a.y) || 0.000001) + a.x;
+      if (crosses) inside = !inside;
+    }
+    return inside;
+  };
+  const candidates: Array<{ x: number; y: number; radius: number; angle: number }> = [];
+  const step = 0.022;
+  for (let y = 0.18; y <= 0.90; y += step) {
+    for (let x = 0.08; x <= 0.92; x += step) {
+      const point = { x: round(x), y: round(y) };
+      if (!contains(point)) continue;
+      const dx = (point.x - 0.5) / 0.42;
+      const dy = (point.y - 0.55) / 0.34;
+      candidates.push({ ...point, radius: Math.hypot(dx, dy), angle: Math.atan2(dy, dx) });
+    }
   }
-  return slots;
+  // This order is independent of photo count, so adding photos fills outward without
+  // rearranging previously placed images or creating a hollow ring in the middle.
+  candidates.sort((a, b) => a.radius - b.radius || a.angle - b.angle);
+  const totalCandidates = candidates.length;
+  return Array.from({ length: total }, (_, i) => {
+    const point = candidates[i % Math.max(1, totalCandidates)] ?? { x: 0.5, y: 0.55, radius: 0.0, angle: 0.0 };
+    const scale = Math.max(0.38, 0.78 - point.radius * 0.16);
+    return {
+      x: point.x,
+      y: point.y,
+      scale: round(scale),
+      rotation: round(Math.sin(point.angle * 2.3 + i * 0.07) * 4),
+    };
+  });
 }
 
 /**
@@ -167,7 +187,7 @@ export const BUILTIN_TEMPLATES: PhotoWallTemplate[] = [
   { id: "builtin-grid", name: "整齐网格", builtin: true, slots: [] },
   { id: "builtin-ring", name: "环抱", builtin: true, slots: [] },
   { id: "builtin-scatter", name: "随手散落", builtin: true, slots: [] },
-  { id: "builtin-fill", name: "中心向外·填充", builtin: true, slots: [] },
+  { id: "builtin-fill", name: "心形填满·由内向外", builtin: true, slots: [] },
 ];
 
 /** 按模板 id 现算骨架：数量随当前照片数变化，所以不预先固化 slots。 */
