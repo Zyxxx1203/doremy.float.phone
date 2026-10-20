@@ -49,7 +49,7 @@ export function VideoAnalysisSettingsPanel() {
       </div>
 
       {settings.provider === "ark" && <><label className="mt-4 block text-sm font-medium">方舟 API 地址</label><input value={settings.baseUrl} onChange={e => update("baseUrl", e.target.value)} placeholder="https://ark.cn-beijing.volces.com/api/v3" className="mt-2 w-full rounded-xl border border-[var(--border,rgba(128,128,128,.25))] bg-[var(--background,transparent)] px-3 py-3 text-sm" /><p className="mt-1 text-xs leading-5 opacity-65">默认使用北京地域方舟 API；如使用其他地域，请填写对应的兼容 API 根地址。</p></>}
-      <label className="mt-4 block text-sm font-medium">视频分析模型 ID</label
+      <label className="mt-4 block text-sm font-medium">视频分析模型 ID</label>
       <input value={settings.model} onChange={e => update("model", e.target.value)} placeholder="例如 gemini-2.5-flash 或 doubao-seed-2-1-pro-260915" spellCheck={false} className="mt-2 w-full rounded-xl border border-[var(--border,rgba(128,128,128,.25))] bg-[var(--background,transparent)] px-3 py-3 text-sm" />
       <p className="mt-1 text-xs leading-5 opacity-65">请填写当前服务中已开通且支持视频输入的模型 ID。Gemini 与方舟的模型 ID 不能混用。</p>
 
