@@ -1644,10 +1644,10 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
           const sane = sanitizeDesktopFolders(hydratedFolders, normalized, hydratedDock, hydratedWidgets);
           const migratedLayout = migrateNewLifestyleAppsToPageFour(sane.layout, hydratedWidgets, hydratedDock, sane.folders);
           setFolders(sane.folders);
-          setLayout(globalWatchMigratedLayout);
+          setLayout(migratedLayout);
           if (sane.changed) writeDesktopFolders(sane.folders);
-          if (sane.changed || migratedLayout !== sane.layout || globalWatchMigratedLayout !== migratedLayout || kvGet(NEW_LIFESTYLE_APPS_PAGE_MIGRATION_KEY) === "1") {
-            kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(globalWatchMigratedLayout));
+          if (sane.changed || migratedLayout !== sane.layout || migratedLayout !== migratedLayout || kvGet(NEW_LIFESTYLE_APPS_PAGE_MIGRATION_KEY) === "1") {
+            kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(migratedLayout));
           }
           setDesktopReady(true);
           return;
