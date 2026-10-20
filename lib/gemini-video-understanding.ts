@@ -29,7 +29,7 @@ export async function analyzeWholeVideoWithGemini(options: {
   apiKey: string;
   model: string;
   prompt: string;
-  provider?: "gemini" | "ark" | "openai-compatible" | "anthropic";
+  provider?: "gemini" | "ark" | "openai-compatible" | "anthropic" | "twelvelabs";
   baseUrl?: string;
   maxFileSizeMb?: number;
   frameCount?: number;
@@ -52,6 +52,7 @@ export async function analyzeWholeVideoWithGemini(options: {
   if (file.size > maxFileSizeMb * 1024 * 1024) throw new Error("视频超过当前设置的 " + maxFileSizeMb + " MB 上限。请在系统设置 → 视频分析模型调整上限，或先压缩视频。");
 
   if (provider === "ark") return analyzeWholeVideoWithArk({ file, apiKey, model, prompt, baseUrl: options.baseUrl, maxFileSizeMb, signal, onProgress });
+  if (provider === "twelvelabs") return analyzeWholeVideoWithTwelveLabs({ file, apiKey, model, prompt, baseUrl: options.baseUrl, signal, onProgress });
   if (provider === "openai-compatible" || provider === "anthropic") return analyzeVideoUsingKeyframes({ file, apiKey, model, prompt, provider, baseUrl: options.baseUrl, frameCount: options.frameCount ?? 12, signal, onProgress });
 
   const apiRoot = "https://generativelanguage.googleapis.com";
@@ -231,5 +232,62 @@ async function analyzeWholeVideoWithArk(options: {
     return outputText.trim();
   } finally {
     if (fileId) void fetch(root + "/files/" + encodeURIComponent(fileId), { method: "DELETE", headers, keepalive: true }).catch(() => {});
+  }
+}
+
+
+async function analyzeWholeVideoWithTwelveLabs(options: {
+  file: File; apiKey: string; model: string; prompt: string; baseUrl?: string;
+  signal?: AbortSignal; onProgress?: GeminiVideoProgress;
+}): Promise<string> {
+  const { file, apiKey, model, prompt, signal, onProgress } = options;
+  if (file.size > 200 * 1024 * 1024) throw new Error("TwelveLabs 本地视频上传上限约为 200 MB，请压缩视频或选择 Gemini/豆包。");
+  const root = (options.baseUrl || "https://api.twelvelabs.io/v1.3").trim().replace(/\\/+$/, "");
+  if (!/^https:\\/\\//i.test(root)) throw new Error("TwelveLabs API 地址必须使用 HTTPS。");
+  const headers = { "x-api-key": apiKey.trim() };
+  let assetId = "";
+  try {
+    onProgress?.("正在向 TwelveLabs 上传视频资产…");
+    const form = new FormData();
+    form.append("method", "direct");
+    form.append("file", file, file.name);
+    form.append("enable_hls", "false");
+    form.append("enable_thumbnail", "false");
+    const upload = await fetch(root + "/assets", { method: "POST", headers, body: form, signal });
+    const uploadPayload = await upload.json().catch(() => null) as { _id?: string; status?: string; error?: { message?: string } } | null;
+    if (!upload.ok || !uploadPayload?._id) throw new Error(readErrorMessage(uploadPayload, "TwelveLabs 视频上传失败（HTTP " + upload.status + "）。"));
+    assetId = uploadPayload._id;
+    let status = uploadPayload.status || "processing";
+    for (let attempt = 0; status !== "ready"; attempt += 1) {
+      if (status === "failed") throw new Error("TwelveLabs 视频资产处理失败。请检查格式、时长与模型限制。");
+      if (attempt >= 90) throw new Error("TwelveLabs 视频预处理超时，请稍后重试。");
+      onProgress?.("TwelveLabs 正在处理视频资产…");
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 2000);
+        if (signal) {
+          const abort = () => { clearTimeout(timer); reject(new DOMException("已取消视频分析。", "AbortError")); };
+          if (signal.aborted) abort();
+          else signal.addEventListener("abort", abort, { once: true });
+        }
+      });
+      const poll = await fetch(root + "/assets/" + encodeURIComponent(assetId), { headers, signal });
+      const payload = await poll.json().catch(() => null) as { status?: string; error?: { message?: string } } | null;
+      if (!poll.ok || !payload?.status) throw new Error(readErrorMessage(payload, "读取 TwelveLabs 视频状态失败。"));
+      status = payload.status;
+    }
+    onProgress?.("视频已就绪，TwelveLabs 正在分析完整视频…");
+    const response = await fetch(root + "/analyze", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ model_name: model.trim() || "pegasus1.6", video: { type: "asset", asset_id: assetId }, prompt, stream: false, max_tokens: 1800, temperature: 0.6 }),
+      signal,
+    });
+    const result = await response.json().catch(() => null) as { data?: string; text?: string; output_text?: string; error?: { message?: string }; event_type?: string } | null;
+    if (!response.ok) throw new Error(readErrorMessage(result, "TwelveLabs 视频理解失败（HTTP " + response.status + "）。"));
+    const output = result?.data || result?.text || result?.output_text || "";
+    if (!output.trim()) throw new Error("TwelveLabs 没有返回文字回应。请检查模型 ID 是否为 pegasus1.5 或 pegasus1.6。");
+    return output.trim();
+  } finally {
+    if (assetId) void fetch(root + "/assets/" + encodeURIComponent(assetId), { method: "DELETE", headers, keepalive: true }).catch(() => {});
   }
 }
