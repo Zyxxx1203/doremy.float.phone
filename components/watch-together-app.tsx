@@ -396,18 +396,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   }, [target]);
 
   useEffect(() => {
-    videoFramesRef.current = videoFramesRef.current.filter(frame => frame.targetUrl === target?.url);
+    // Script-first co-watching: don't silently sample the video or add screenshots to prompts.
+    // The character uses the imported transcript around the current playback timestamp instead.
+    videoFramesRef.current = [];
     frameCaptureFailedRef.current = null;
     iframeSecondsRef.current = 0;
-    // Capture silently from native in-page video only. Avoid pixel readback on clicks or React state updates.
-    if (!target?.nativeVideo) return;
-    const timer = window.setInterval(() => {
-      const video = playerRef.current?.querySelector("video");
-      if (!video || video.paused || video.ended || video.readyState < 2) return;
-      captureCurrentVideoFrame();
-    }, 15000);
-    return () => window.clearInterval(timer);
-  }, [target?.url, target?.nativeVideo, captureCurrentVideoFrame]);
+  }, [target?.url]);
 
   // 跨站 iframe 拿不到 currentTime：用一张只在「正在看且页面可见」时走的秒表，
   // 给角色一个大致进度，弹幕说「第 12 分钟」时不至于永远是 0。
@@ -920,7 +914,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             onNotice?.("已导入 " + file.name + "，识别到 " + parsed.length + " 段" + (unsynced ? "（纯文本，无精确时间戳）" : "时间戳片段") + "。陪看会优先引用当前时间附近的脚本。");
           }).catch(error => onNotice?.("脚本读取失败：" + (error instanceof Error ? error.message : String(error))));
         }} />
-        <input ref={screenshotFileInputRef} type="file" accept="image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; void submitScreenshotForCharacter(file); }} />
         {transcriptSegments.length > 0 && <div role="status" aria-live="polite" className="mt-2 flex items-start justify-between gap-3 rounded-xl border border-[#cdb79b]/60 bg-[#fffaf2] px-3 py-2 text-xs leading-5 text-[#82644c]"><span className="min-w-0">已载入脚本：{transcriptName} · {transcriptSegments.length} 段{transcriptSegments.length === 1 && transcriptSegments[0].end >= 86400 ? " · 无精确时间戳" : ""}</span><button type="button" onClick={() => { setTranscriptSegments([]); setTranscriptName(""); }} className="shrink-0 border-b border-[#cdb79b] text-[#8d6459]">移除</button></div>}
         {target && target.platformName !== "本地视频" && !target.embedUrl && !target.nativeVideoUrl && <p role="status" aria-live="polite" className="mt-2 rounded-xl bg-[#f4e7d6] px-3 py-2 text-xs leading-5 text-[#82644c]">{resolutionMessage || "等待检查视频链接……"}</p>}
         {resolutionMessage && (target?.embedUrl || target?.nativeVideoUrl) && <p role="status" aria-live="polite" className="mt-2 rounded-xl border border-[#cdb79b]/60 bg-[#fffaf2] px-3 py-2 text-xs leading-5 text-[#82644c]">{resolutionMessage}</p>}
@@ -948,7 +941,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button onClick={() => void lookAtScreenNow()} disabled={!target || busy} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3.5 py-2 text-xs text-[#d8c9b6] transition active:scale-95 disabled:opacity-40"><ImagePlus size={13}/>让 TA 看一眼</button>
             <button onClick={() => void generateComment(true)} disabled={!target || !character || busy} className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs text-[#2a1f16] transition active:scale-95 disabled:opacity-40" style={{ background: "linear-gradient(135deg,#e8c39a,#c99a6a)" }}>
               {busy ? <LoaderCircle size={13} className="animate-spin"/> : <MessageCircle size={13}/>}让 TA 说一句
             </button>
