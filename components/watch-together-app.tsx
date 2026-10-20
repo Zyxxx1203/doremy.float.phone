@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ChevronDown, Expand, ExternalLink, FileText, Heart, ImagePlus, LoaderCircle, MessageCircle, Pause, Play, Settings2, Sparkles, X } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
-import { generateChatCompletion, flattenCompletionResult } from "@/lib/chat-engine";
+import { generateChatCompletion, flattenCompletionResult, readCompressedImageDataUrl } from "@/lib/chat-engine";
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { resolveVoiceConfig, synthesizeSpeech } from "@/lib/tts-service";
@@ -181,6 +181,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   });
   const [transcriberModel, setTranscriberModel] = useState<"tiny" | "base" | "small" | "medium">("small");
   const [transcribing, setTranscribing] = useState(false);
+  const [corsProxyEndpoint, setCorsProxyEndpoint] = useState(() => { try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_cors_proxy_endpoint_v1") || "https://proxy.cors.dev/" : "https://proxy.cors.dev/"; } catch { return "https://proxy.cors.dev/"; } });
+  const [proxyReading, setProxyReading] = useState(false);
+  const [proxyStatus, setProxyStatus] = useState("");
+  const [videoDescription, setVideoDescription] = useState("");
 
   useEffect(() => {
     const current = target;
@@ -268,6 +272,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [comments, setComments] = useState<WatchComment[]>([]);
   const [transcriptSegments, setTranscriptSegments] = useState<VideoTranscriptSegment[]>([]);
   const [transcriptName, setTranscriptName] = useState("");
+  const [screenshotDataUrl, setScreenshotDataUrl] = useState("");
+  const screenshotFileInputRef = useRef<HTMLInputElement>(null);
   const [companionCollapsed, setCompanionCollapsed] = useState(false);
   const [showQuickChat, setShowQuickChat] = useState(false);
   const pendingDiscussionRef = useRef<Array<{ moment: string; timepoint?: string }>>([]);
@@ -304,8 +310,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     try {
       window.localStorage.setItem("watch_transcriber_endpoint_v1", transcriberEndpoint.trim());
       window.localStorage.setItem("watch_transcriber_token_v1", transcriberToken);
+      window.localStorage.setItem("watch_cors_proxy_endpoint_v1", corsProxyEndpoint.trim());
     } catch { /* service settings are local-only and optional */ }
-  }, [transcriberEndpoint, transcriberToken]);
+  }, [transcriberEndpoint, transcriberToken, corsProxyEndpoint]);
   useEffect(() => {
     const handleAppBack = (event: Event) => {
       const detail = (event as CustomEvent<{ handled?: boolean }>).detail;
@@ -375,6 +382,126 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   }, []);
 
   const patchSettings = (patch: Partial<WatchSettings>) => setSettings(current => ({ ...current, ...patch }));
+
+  const buildProxyUrl = (source: string): string => {
+    const base = corsProxyEndpoint.trim() || "https://proxy.cors.dev/";
+    if (!/^https:\/\//i.test(base)) throw new Error("公共代理地址必须使用 HTTPS。");
+    const safeSource = new URL(source);
+    if (!["http:", "https:"].includes(safeSource.protocol) || safeSource.username || safeSource.password) throw new Error("只允许读取公开 HTTP/HTTPS 资源，不能包含用户名或密码。");
+    const host = safeSource.hostname.toLowerCase().replace(/\.$/, "");
+    if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal") ||
+      /^(10\.|127\.|192\.168\.|169\.254\.)/.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host) || host === "::1") {
+      throw new Error("出于安全原因，不允许代理访问本机或内网地址。");
+    }
+    if (base.includes("{url}")) return base.replace("{url}", encodeURIComponent(safeSource.toString()));
+    if (/[?&]url=$/i.test(base)) return base + encodeURIComponent(safeSource.toString());
+    return base.replace(/\/+$/, "") + "/" + safeSource.toString();
+  };
+
+  const fetchViaCorsProxy = async (source: string, signal: AbortSignal): Promise<string> => {
+    const response = await fetch(buildProxyUrl(source), { method: "GET", credentials: "omit", signal, headers: { Accept: "text/html,text/plain,text/vtt,application/json,application/xml,*/*;q=0.8" } });
+    if (!response.ok) throw new Error("代理返回 HTTP " + response.status + "：" + (await response.text().catch(() => "")).slice(0, 180));
+    const text = await response.text();
+    if (!text.trim()) throw new Error("代理返回空内容。");
+    if (text.length > 2_000_000) throw new Error("返回内容超过 2 MB，已停止读取。");
+    return text;
+  };
+
+  const readVideoInfoViaProxy = async () => {
+    const source = target?.url || urlInput.trim();
+    if (!source) { onNotice?.("先放上一个视频链接，再尝试公共 CORS 代理。"); return; }
+    setProxyReading(true); setProxyStatus("正在通过公共代理读取公开页面与字幕线索……");
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 18_000);
+    try {
+      const html = await fetchViaCorsProxy(source, controller.signal);
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const meta = (selectors: string[]) => {
+        for (const selector of selectors) { const value = doc.querySelector(selector)?.getAttribute("content")?.trim(); if (value) return value; }
+        return "";
+      };
+      const title = meta(['meta[property="og:title"]','meta[name="twitter:title"]']) || doc.title?.trim() || "";
+      const description = meta(['meta[property="og:description"]','meta[name="description"]','meta[name="twitter:description"]']);
+      if (title) setVideoTitle(title.slice(0, 240));
+      if (description) setVideoDescription(description.slice(0, 1800));
+      const captionUrls = new Set<string>();
+      for (const track of Array.from(doc.querySelectorAll('track[src]'))) {
+        const raw = track.getAttribute("src");
+        if (raw) { try { captionUrls.add(new URL(raw, source).toString()); } catch { /* ignore malformed track */ } }
+      }
+      const marker = html.indexOf('"captionTracks"');
+      if (marker >= 0) {
+        const open = html.indexOf("[", marker);
+        if (open >= 0) {
+          let depth = 0, quoted = false, escaped = false, close = -1;
+          for (let i = open; i < html.length; i++) {
+            const ch = html[i];
+            if (quoted) { if (escaped) escaped = false; else if (ch === "\\") escaped = true; else if (ch === '"') quoted = false; continue; }
+            if (ch === '"') quoted = true;
+            else if (ch === "[") depth++;
+            else if (ch === "]") { depth--; if (depth === 0) { close = i; break; } }
+          }
+          if (close > open) {
+            try {
+              const tracks = JSON.parse(html.slice(open, close + 1)) as Array<{baseUrl?: string; languageCode?: string}>;
+              tracks.sort((a,b) => Number((b.languageCode || "").startsWith("zh")) - Number((a.languageCode || "").startsWith("zh")));
+              for (const track of tracks.slice(0,3)) if (track.baseUrl) captionUrls.add(track.baseUrl.replace(/\\u0026/g,"&").replace(/\\u003d/g,"="));
+            } catch { /* platform page may not expose parseable caption metadata */ }
+          }
+        }
+      }
+      let segments: VideoTranscriptSegment[] = []; let captionHost = "";
+      for (const captionUrl of Array.from(captionUrls).slice(0,3)) {
+        try {
+          const raw = await fetchViaCorsProxy(captionUrl, controller.signal);
+          let parsed = parseVideoTranscript(raw);
+          if (!parsed.length && /<(?:text|p)\b/i.test(raw)) {
+            const xml = new DOMParser().parseFromString(raw,"text/xml");
+            parsed = Array.from(xml.querySelectorAll("text, p")).map(node => {
+              const rawStart = Number(node.getAttribute("start") ?? node.getAttribute("t") ?? 0);
+              const rawDuration = Number(node.getAttribute("dur") ?? node.getAttribute("d") ?? 4);
+              const start = rawStart > 10000 ? rawStart/1000 : rawStart;
+              const duration = rawDuration > 10000 ? rawDuration/1000 : rawDuration;
+              return {start, end:start+Math.max(1,duration), text:(node.textContent || "").trim()};
+            }).filter(item => item.text && Number.isFinite(item.start)).slice(0,20000);
+          }
+          if (parsed.length) { segments=parsed; captionHost=new URL(captionUrl).hostname; break; }
+        } catch { /* try next public caption track */ }
+      }
+      if (segments.length) { setTranscriptSegments(segments); setTranscriptName("公共代理字幕 · "+captionHost); }
+      const facts=[title?"标题已读取":"",description?"简介已读取":"",segments.length?"字幕 "+segments.length+" 段":captionUrls.size?"发现字幕线索但未能解析正文":"页面未公开可读取的字幕轨"].filter(Boolean);
+      const message="公共代理读取完成："+(facts.join("；") || "页面返回内容，但未提取到标题/简介/字幕")+"。";
+      setProxyStatus(message); onNotice?.(message);
+    } catch (error) {
+      const message=error instanceof DOMException && error.name==="AbortError" ? "公共代理请求超时（18 秒）。" : "公共代理读取失败："+(error instanceof Error ? error.message : String(error));
+      setProxyStatus(message+" 可继续导入字幕/截图；代理不能绕过登录、付费或 DRM 限制。"); onNotice?.(message);
+    } finally { window.clearTimeout(timeout); setProxyReading(false); }
+  };
+
+  const captureCurrentFrame = async () => {
+    const video=playerRef.current?.querySelector("video");
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      onNotice?.("当前播放器没有可读取的视频帧（外站 iframe 受浏览器隔离）。可点上传截图按钮选择一张画面。"); return;
+    }
+    try {
+      const scale=Math.min(1,1024/Math.max(video.videoWidth,video.videoHeight));
+      const canvas=document.createElement("canvas");
+      canvas.width=Math.max(1,Math.round(video.videoWidth*scale)); canvas.height=Math.max(1,Math.round(video.videoHeight*scale));
+      const context=canvas.getContext("2d"); if(!context) throw new Error("无法创建截图画布。");
+      context.drawImage(video,0,0,canvas.width,canvas.height);
+      const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,"image/jpeg",0.78));
+      if(!blob) throw new Error("截图编码失败。");
+      setScreenshotDataUrl(await readCompressedImageDataUrl(blob));
+      onNotice?.("已截取当前画面。下一次角色回应会结合截图、字幕和时间点理解。");
+    } catch { onNotice?.("当前视频帧受跨域安全策略保护，无法直接截取。请上传截图或使用本地视频。"); }
+  };
+  const loadScreenshotFile = async (file?: File) => {
+    if(!file) return;
+    if(!file.type.startsWith("image/")) { onNotice?.("请选择图片文件。"); return; }
+    if(file.size>12*1024*1024) { onNotice?.("截图超过 12 MB，请先压缩后再上传。"); return; }
+    try { setScreenshotDataUrl(await readCompressedImageDataUrl(file)); onNotice?.("截图已载入；下一次角色回应会尝试结合视觉理解。"); }
+    catch(error) { onNotice?.("截图读取失败："+(error instanceof Error?error.message:String(error))); }
+  };
   const openLocalVideo = (file?: File) => {
     if (!file) return;
     if (!file.type.startsWith("video/") && !/\.(mp4|webm|m4v|mov|ogv|ogg)$/i.test(file.name)) {
@@ -494,14 +621,18 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const prompt = [
         "你正在和用户一起看视频，是亲密、自然的陪伴，不是影评机器人。",
         "视频平台：" + target.platformName + "；视频标题（用户可编辑）：" + (videoTitle || "暂未命名") + "。",
+        videoDescription ? "已读取到的视频简介（只作为背景，不代表当前画面）：" + videoDescription : "",
+        screenshotDataUrl ? "本轮附带了用户提供/截取的当前画面截图。结合截图与字幕判断人物、场景、动作和情绪；若截图无法辨认，不要编造。" : "",
         "用户描述的当前片段/时间点与两人的互动：" + ((momentOverride ?? settings.currentMoment).trim() || "用户暂未提供具体画面描述") + "。",
         transcriptName ? "已导入字幕/脚本文件：" + transcriptName : "",
         transcriptContext ? (transcriptHasTimestamps
           ? "当前播放时间附近的字幕脚本（含原始时间戳）：\n" + transcriptContext
           : "已导入脚本没有可用时间戳，以下只作为全片文字参考，不能假装与当前画面精确同步：\n" + transcriptContext) : "",
-        transcriptContext
-          ? "本轮只读取上面的字幕/时间戳脚本；不得声称看见实际画面。只根据已经出现的文字讨论，不能推测后续剧情。"
-          : "当前没有导入的字幕/脚本。只根据用户明确描述的片段与互动回应，不要声称读取到了视频画面。",
+        screenshotDataUrl
+          ? "本轮可结合附带截图与字幕/时间点理解；截图只代表这一帧，不可据此推断未展示的后续剧情。"
+          : transcriptContext
+            ? "本轮只读取上面的字幕/时间戳脚本；不得声称看见实际画面。只根据已经出现的文字讨论，不能推测后续剧情。"
+            : "当前没有导入的字幕/脚本或可用截图。只根据用户明确描述的片段与互动回应，不要声称读取到了视频画面。",
         "请结合角色自己的性格、兴趣和你们的关系，写一句自然的即时反应：可以吐槽、惊讶、共情、提问或分享感受。只输出角色会直接说的话，最多60个汉字。不搜寻或推断视频后续剧情。",
       ].filter(Boolean).join("\n");
       const userMessage: ChatMessage = { id: `watch-${Date.now()}`, sessionId: session.id, role: "user", content: prompt, status: "sent", createdAt: new Date().toISOString() };
@@ -509,7 +640,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         appId: "watch_together",
         appTags: ["watch_together"],
         toolsAllowed: false,
-        ephemeralSystemNote: "你正在根据字幕/时间戳脚本与用户一起看视频。你没有读取到真实视频画面；不要调用工具，不要假装看见画面，也不要剧透。只输出一句自然简短的角色发言。",
+        attachedImages: screenshotDataUrl ? [screenshotDataUrl] : undefined,
+        ephemeralSystemNote: screenshotDataUrl
+          ? "你正在根据用户提供的当前视频截图、字幕/时间戳脚本与用户一起看视频。允许描述截图中清晰可见的内容，但不要推断截图之外的画面或后续剧情。不要调用工具，只输出一句自然简短的角色发言。"
+          : "你正在根据字幕/时间戳脚本与用户一起看视频。你没有读取到真实视频画面；不要调用工具，不要假装看见画面，也不要剧透。只输出一句自然简短的角色发言。",
       });
       const responseText = flattenCompletionResult(result).trim().replace(/^["“]|["”]$/g, "");
       if (!responseText) return;
@@ -526,7 +660,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       queuedAfterReply = pendingDiscussionRef.current.shift();
       if (queuedAfterReply) window.setTimeout(() => { void generateComment(true, queuedAfterReply!.moment, queuedAfterReply!.timepoint); }, 50);
     }
-  }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice, transcriptSegments, transcriptName]);
+  }, [target, character, videoTitle, videoDescription, settings.currentMoment, settings.voiceEnabled, onNotice, transcriptSegments, transcriptName, screenshotDataUrl]);
 
   /** 把一帧画面交给角色：手动截图和静默截屏共用这一条路径。 */
 
@@ -880,8 +1014,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             return <div key={comment.id} data-kind={comment.kind === "user" ? "user" : "character"} className="watch-danmaku-track" style={{ top: lane + "%", animationDuration: duration + "s", animationDelay: (index * 0.28) + "s" }}><span>{comment.kind === "user" ? "我" : comment.characterName}：{comment.text}</span></div>;
           })}
         </div>}
-        <div className="absolute right-2 top-2 flex gap-1">
-          <button onClick={() => void enterFullscreen()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/45 text-white/90 backdrop-blur transition active:scale-95" aria-label="全屏"><Expand size={15}/></button>
+        <div className="absolute right-2 top-2 z-20 flex gap-1">
+          <button type="button" onClick={() => void captureCurrentFrame()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/55 text-white/90 backdrop-blur transition active:scale-95" aria-label="截取当前画面并用于理解" title="截取当前画面"><ImagePlus size={14}/></button>
+          <button type="button" onClick={() => screenshotFileInputRef.current?.click()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/55 text-white/90 backdrop-blur transition active:scale-95" aria-label="上传截图" title="上传截图"><FileText size={14}/></button>
+          <button type="button" onClick={() => void enterFullscreen()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/45 text-white/90 backdrop-blur transition active:scale-95" aria-label="全屏"><Expand size={15}/></button>
         </div>
         {/* 屏幕洒在桌面上的余光 */}
         {!fullScreen && <div aria-hidden className="pointer-events-none absolute -bottom-6 left-1/2 h-6 w-[86%] -translate-x-1/2 rounded-[50%] opacity-40 blur-xl" style={{ background: "radial-gradient(ellipse, #d7a06a 0%, transparent 70%)" }} />}
@@ -896,6 +1032,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           <button type="button" onClick={() => transcriptFileInputRef.current?.click()} className="rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">导入脚本 / 字幕</button>
         </div>
         <input ref={videoFileInputRef} type="file" accept="video/*,.mp4,.webm,.mov,.m4v,.ogv" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; openLocalVideo(file); }} />
+        <input ref={screenshotFileInputRef} type="file" accept="image/*" className="hidden" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void loadScreenshotFile(file); }} />
         <input ref={transcriptFileInputRef} type="file" accept=".srt,.vtt,.txt,.json,text/plain,text/vtt,application/json" className="hidden" onChange={event => {
           const file = event.target.files?.[0]; event.currentTarget.value = "";
           if (!file) return;
@@ -909,6 +1046,15 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           }).catch(error => onNotice?.("脚本读取失败：" + (error instanceof Error ? error.message : String(error))));
         }} />
         {transcriptSegments.length > 0 && <div role="status" aria-live="polite" className="mt-2 flex items-start justify-between gap-3 rounded-xl border border-[#cdb79b]/60 bg-[#fffaf2] px-3 py-2 text-xs leading-5 text-[#82644c]"><span className="min-w-0">已载入脚本：{transcriptName} · {transcriptSegments.length} 段{transcriptSegments.length === 1 && transcriptSegments[0].end >= 86400 ? " · 无精确时间戳" : ""}</span><button type="button" onClick={() => { setTranscriptSegments([]); setTranscriptName(""); }} className="shrink-0 border-b border-[#cdb79b] text-[#8d6459]">移除</button></div>}
+        {screenshotDataUrl && <div className="mt-2 flex items-center gap-3 rounded-xl border border-[#cdb79b]/60 bg-[#fffaf2] p-2 text-xs text-[#82644c]"><img src={screenshotDataUrl} alt="本轮陪看截图" className="h-14 w-20 rounded-lg object-contain bg-black/10"/><span className="min-w-0 flex-1">已附加画面截图 · 下一次角色回应会尝试结合视觉理解</span><button type="button" onClick={() => setScreenshotDataUrl("")} className="shrink-0 border-b border-[#cdb79b] text-[#8d6459]">移除</button></div>}
+        <div className="mt-3 rounded-xl border border-[#cdb79b]/50 bg-[#fffaf2] p-3 text-[#82644c]">
+          <div className="text-xs font-medium">公共 CORS 代理 · 尝试读取页面信息与字幕</div>
+          <p className="mt-1 text-[10px] leading-5 text-[#8b7665]">默认使用公共代理通道，只读取公开页面/字幕，不发送登录凭证。成功与否取决于目标平台；不会绕过登录、付费、风控或 DRM。</p>
+          <label className="mt-2 block text-[10px]">代理地址（可更换；默认 cors.dev 公共代理）<input value={corsProxyEndpoint} onChange={event => setCorsProxyEndpoint(event.target.value)} className="mt-1 w-full rounded-lg border border-[#dac6ad] bg-white px-2.5 py-2 text-xs text-[#554437] outline-none" placeholder="https://proxy.cors.dev/ 或 https://你的代理/?url="/></label>
+          <button type="button" onClick={() => void readVideoInfoViaProxy()} disabled={proxyReading || !(target?.url || urlInput.trim())} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#87565b] px-3 py-2.5 text-xs text-white disabled:opacity-40">{proxyReading ? <LoaderCircle size={13} className="animate-spin"/> : <ExternalLink size={13}/ >}{proxyReading ? "正在读取公开信息…" : "尝试代理读取字幕 / 页面信息"}</button>
+          {proxyStatus && <p role="status" aria-live="polite" className="mt-2 text-[10px] leading-5">{proxyStatus}</p>}
+          {videoDescription && <p className="mt-1 text-[10px] leading-5">已取得简介：{videoDescription.slice(0,260)}{videoDescription.length>260?"…":""}</p>}
+        </div>
         {target && target.platformName !== "本地视频" && !target.embedUrl && !target.nativeVideoUrl && <p role="status" aria-live="polite" className="mt-2 rounded-xl bg-[#f4e7d6] px-3 py-2 text-xs leading-5 text-[#82644c]">{resolutionMessage || "等待检查视频链接……"}</p>}
         {resolutionMessage && (target?.embedUrl || target?.nativeVideoUrl) && <p role="status" aria-live="polite" className="mt-2 rounded-xl border border-[#cdb79b]/60 bg-[#fffaf2] px-3 py-2 text-xs leading-5 text-[#82644c]">{resolutionMessage}</p>}
         {target?.platformName === "本地视频" && <p className="mt-2 px-1 text-[11px] leading-5 text-[#8b7665]">当前播放的是本地文件；选择新文件或输入链接可以切换视频。</p>}
