@@ -168,8 +168,9 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
     const max = Math.max(min, settings.speechIntervalMaxMinutes);
     const delay = (min + Math.random() * (max - min)) * 60_000;
     speechTimerRef.current = setTimeout(() => {
-      if (frameRef.current && !busyRef.current) void analyzeFrame(frameRef.current);
-      else setStatus("等待下一帧屏幕画面，再进行随机主动发言。");
+      const cooldownPassed = Date.now() - lastSpeechAtRef.current >= settings.speechIntervalMinMinutes * 60_000;
+      if (frameRef.current && !busyRef.current && cooldownPassed) void analyzeFrame(frameRef.current);
+      else if (!frameRef.current) setStatus("等待下一帧屏幕画面，再进行随机主动发言。");
       scheduleNextSpeech();
     }, delay);
   }, [running, paused, settings.randomSpeechEnabled, settings.speechIntervalMinMinutes, settings.speechIntervalMaxMinutes, analyzeFrame]);
