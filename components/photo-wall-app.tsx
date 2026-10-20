@@ -272,7 +272,6 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   useEffect(() => {
     try { window.localStorage.setItem("photo_wall_brush_palette_v1", JSON.stringify(wallBrushPalette)); } catch { /* optional palette persistence */ }
   }, [wallBrushPalette]);
-  const zoomInitializedRef = useRef(false);
   /** 等待下一帧补偿的滚动量（扩容往左长、或缩放锚点变化时用）。 */
   const pendingScrollRef = useRef<{ left: number; top: number } | null>(null);
 
@@ -332,18 +331,6 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       window.removeEventListener("resize", fitCanvas);
     };
   }, [wallView, world.width, world.height]);
-  useEffect(() => {
-    if ((wallView !== "edit" && wallView !== "panorama") || zoomInitializedRef.current) return;
-    const viewport = panoramaViewportRef.current;
-    const width = viewport?.clientWidth ?? 0, height = viewport?.clientHeight ?? 0;
-    if (!width || !height) return;
-    zoomInitializedRef.current = true;
-    const fit = Math.min(width / Math.max(1, world.width), height / Math.max(1, world.height)) * 100;
-    const fittedZoom = Math.max(5, Math.min(180, Math.floor(fit)));
-    panoramaMinZoomRef.current = fittedZoom;
-    panoramaZoomRef.current = fittedZoom;
-    setPanoramaZoom(fittedZoom);
-  }, [wallView, world.width, state.photos.length]);
   useEffect(() => {
     if (wallView !== "edit" && wallView !== "panorama") return;
     const viewport = panoramaViewportRef.current;
