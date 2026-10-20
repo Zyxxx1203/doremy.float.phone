@@ -536,7 +536,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     };
     window.addEventListener("floatphone-app-back", handleAppBack);
     return () => window.removeEventListener("floatphone-app-back", handleAppBack);
-  }, [wallView, showAddMenu, showChatPicker, selectedPhotoId, settingsReturnView]);
+  }, [wallView, showAddMenu, showChatPicker, selectedPhotoId, settingsReturnView, activeAlbumId]);
 
   const scheduleSave = useCallback((_next: PhotoWallState) => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
