@@ -1511,8 +1511,6 @@ type PhotoAlbumViewProps = {
   onNotice?: (message: string) => void;
 };
 
-const PHOTO_ALBUM_PAGE_ANIMATION = true;
-
 function PhotoAlbumView({
   albums, photos, activeAlbumId, activePage, editMode, onSaveAlbums,
   onSelectAlbum, onSelectPage, onSetEditMode, onOpenPhoto, onNotice,
