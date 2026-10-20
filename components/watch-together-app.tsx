@@ -450,6 +450,23 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           }
         }
       }
+      if (target?.platform === "bilibili") {
+        const bvid = /\/(BV[0-9A-Za-z]{10})/i.exec(new URL(source).pathname)?.[1];
+        const cid = /"videoData"\s*:\s*\{[\s\S]{0,100000}?"cid"\s*:\s*(\d+)/.exec(html)?.[1]
+          || /"cid"\s*:\s*(\d+)/.exec(html)?.[1];
+        if (bvid && cid) {
+          try {
+            const apiUrl = "https://api.bilibili.com/x/player/v2?bvid=" + encodeURIComponent(bvid) + "&cid=" + encodeURIComponent(cid);
+            const apiText = await fetchViaCorsProxy(apiUrl, controller.signal);
+            const api = JSON.parse(apiText) as { data?: { subtitle?: { subtitles?: Array<{ subtitle_url?: string; lan?: string }> } } };
+            const tracks = api.data?.subtitle?.subtitles ?? [];
+            tracks.sort((a,b) => Number((b.lan || "").startsWith("ai-zh") || (b.lan || "").startsWith("zh")) - Number((a.lan || "").startsWith("ai-zh") || (a.lan || "").startsWith("zh")));
+            for (const track of tracks.slice(0,3)) {
+              if (track.subtitle_url) captionUrls.add(new URL(track.subtitle_url, "https://www.bilibili.com").toString());
+            }
+          } catch { /* public subtitle API may reject anonymous requests */ }
+        }
+      }
       let segments: VideoTranscriptSegment[] = []; let captionHost = "";
       for (const captionUrl of Array.from(captionUrls).slice(0,3)) {
         try {
