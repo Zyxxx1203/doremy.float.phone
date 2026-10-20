@@ -1367,7 +1367,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               </div>
               <button type="button" onClick={() => { if (wholeVideoBusy) wholeVideoAbortRef.current?.abort(); else void analyzeWholeLocalVideo(); }} disabled={!wholeVideoBusy && !character} className="shrink-0 rounded-full border border-[#c99a78]/60 bg-[#c99a78] px-3 py-2 text-[11px] font-semibold text-[#2a1f16] disabled:opacity-40">{wholeVideoBusy ? "取消分析" : "让角色看完整视频"}</button>
             </div>}
-            <button onClick={() => setShowHistory(true)} disabled={!comments.length} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3.5 py-2 text-xs text-[#d8c9b6] transition active:scale-95 disabled:opacity-40">
+            <button onClick={() => { setGlobalWatchRecords(loadGlobalWatchRecords()); setShowHistory(true); }} disabled={!comments.length && !globalWatchRecords.length} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3.5 py-2 text-xs text-[#d8c9b6] transition active:scale-95 disabled:opacity-40">
               <Heart size={13}/>回看悄悄话 {comments.length > 0 && <span className="text-[#c99a6a]">{comments.length}</span>}
             </button>
             <button onClick={() => setShowSettings(value => !value)} className="ml-auto flex items-center gap-1 rounded-full px-2 py-2 text-[11px] text-[#8b8077] transition active:scale-95"><ChevronDown size={13} className={showSettings ? "rotate-180 transition" : "transition"}/>陪看方式</button>
