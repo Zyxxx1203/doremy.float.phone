@@ -565,12 +565,24 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     return () => { disposed = true; window.clearTimeout(timer); };
   }, [watching, target, settings.intervalMinMinutes, settings.intervalMaxMinutes, generateComment]);
 
-  /** Fullscreen is an in-page layout change. Restore native video time/play state after CSS settles. */
+  /** Fullscreen is an in-page layout change. Lock landscape when supported and restore orientation on exit. */
   const enterFullscreen = async () => {
+    const entering = !fullScreen;
     const video = playerRef.current?.querySelector("video") ?? null;
     const wasPlaying = Boolean(video && !video.paused && !video.ended);
     const currentTime = video && Number.isFinite(video.currentTime) ? video.currentTime : null;
-    setFullScreen(current => !current);
+
+    if (entering) {
+      try {
+        originalOrientationRef.current = screen.orientation?.type ?? null;
+      } catch { originalOrientationRef.current = null; }
+      setFullScreen(true);
+      await tryLockLandscape();
+    } else {
+      setFullScreen(false);
+      await restoreOrientation();
+    }
+
     if (!video || !wasPlaying) return;
     const restorePlayback = () => {
       if (!video.isConnected) return;
