@@ -131,6 +131,10 @@ class MainActivity : AppCompatActivity() {
     private var recoveryBoot = false
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
+    // Native custom view used by HTML5 video players embedded in the WebView.
+    private var webVideoCustomView: View? = null
+    private var webVideoCustomViewCallback: WebChromeClient.CustomViewCallback? = null
+
     /** 系统状态栏实际高度（CSS px，即物理像素 / density），实时更新。 */
     @Volatile
     private var statusBarHeightCssPx: Int = 0
@@ -781,6 +785,36 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         }
 
         webView.webChromeClient = object : WebChromeClient() {
+            // Required by HTML5 video players inside cross-origin platform iframes.
+            override fun onShowCustomView(view: View, callback: WebChromeClient.CustomViewCallback) {
+                if (webVideoCustomView != null) {
+                    callback.onCustomViewHidden()
+                    return
+                }
+                webVideoCustomView = view
+                webVideoCustomViewCallback = callback
+                rootContainer.setPadding(0, 0, 0, 0)
+                webView.visibility = View.GONE
+                rootContainer.addView(view, FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    Gravity.CENTER,
+                ))
+                view.requestFocus()
+                hideSystemStatusBar()
+            }
+
+            override fun onHideCustomView() {
+                val view = webVideoCustomView ?: return
+                rootContainer.removeView(view)
+                webVideoCustomView = null
+                webView.visibility = View.VISIBLE
+                rootContainer.setPadding(0, 0, 0, imeInsetPx)
+                webVideoCustomViewCallback?.onCustomViewHidden()
+                webVideoCustomViewCallback = null
+                hideSystemStatusBar()
+            }
+
             // Capture WebView JavaScript warnings/errors locally for the diagnostics panel.
             override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage): Boolean {
                 val level = when (consoleMessage.messageLevel()) {
@@ -849,6 +883,10 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                if (webVideoCustomView != null) {
+                    webView.webChromeClient?.onHideCustomView()
+                    return
+                }
                 if (!::webView.isInitialized) {
                     moveTaskToBack(true)
                     return
