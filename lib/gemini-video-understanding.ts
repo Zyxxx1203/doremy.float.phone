@@ -34,7 +34,10 @@ export async function analyzeWholeVideoWithGemini(options: {
   const { file, apiKey, model, prompt, signal, onProgress } = options;
   if (!apiKey.trim()) throw new Error("当前角色绑定的 Gemini API 没有填写密钥。");
   if (!model.trim()) throw new Error("当前角色绑定的 Gemini API 没有设置模型。");
-  if (!file.type.startsWith("video/")) throw new Error("所选文件不是可识别的视频文件。");
+  const extension = file.name.toLowerCase().split(".").pop() || "";
+  const inferredMime = ({ mp4: "video/mp4", m4v: "video/x-m4v", mov: "video/quicktime", webm: "video/webm", ogv: "video/ogg", ogg: "video/ogg", avi: "video/x-msvideo", wmv: "video/x-ms-wmv", mpeg: "video/mpeg", mpg: "video/mpeg", "3gp": "video/3gpp" } as Record<string, string>)[extension];
+  const mimeType = file.type || inferredMime || "";
+  if (!mimeType.startsWith("video/")) throw new Error("所选文件不是可识别的视频文件。");
   if (file.size <= 0) throw new Error("视频文件为空。");
   // Files API can handle large files, but impose a conservative client guard to avoid
   // accidental huge mobile uploads and excessive data charges.
@@ -43,7 +46,6 @@ export async function analyzeWholeVideoWithGemini(options: {
   const apiRoot = "https://generativelanguage.googleapis.com";
   const authHeader = { "x-goog-api-key": apiKey.trim() };
   let uploadedName = "";
-  const mimeType = file.type || "video/mp4";
 
   try {
     onProgress?.("正在向 Gemini 上传完整视频…");
