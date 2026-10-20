@@ -91,24 +91,31 @@ function parseVideoUrl(value: string): VideoTarget | null {
       const aid = /\/av(\d+)/i.exec(url.pathname)?.[1];
       if (bvid) return { url: original, embedUrl: `https://player.bilibili.com/player.html?bvid=${bvid}&page=${url.searchParams.get("p") || "1"}&autoplay=0&danmaku=0`, platform: "bilibili", platformName: "哔哩哔哩", supported: true };
       if (aid) return { url: original, embedUrl: `https://player.bilibili.com/player.html?aid=${aid}&page=1&autoplay=0&danmaku=0`, platform: "bilibili", platformName: "哔哩哔哩", supported: true };
-      return { url: original, embedUrl: null, platform: "bilibili", platformName: "哔哩哔哩", supported: false };
+      // Short links and unusual Bilibili URL forms may not expose a BV/av id in the path.
+      // Attempt the original page in an iframe rather than failing before playback is tried.
+      return { url: original, embedUrl: original, platform: "bilibili", platformName: "哔哩哔哩", supported: false };
     }
     if (host === "youtube.com" || host === "youtu.be" || host === "youtube-nocookie.com") {
       const id = host === "youtu.be" ? url.pathname.slice(1).split("/")[0] : url.searchParams.get("v") || /\/embed\/([^/]+)/.exec(url.pathname)?.[1] || /\/shorts\/([^/]+)/.exec(url.pathname)?.[1];
-      return id ? { url: original, embedUrl: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=0&playsinline=1`, platform: "youtube", platformName: "YouTube", supported: true } : { url: original, embedUrl: null, platform: "youtube", platformName: "YouTube", supported: false };
+      return id ? { url: original, embedUrl: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=0&playsinline=1`, platform: "youtube", platformName: "YouTube", supported: true } : { url: original, embedUrl: original, platform: "youtube", platformName: "YouTube", supported: false };
     }
     if (host === "v.qq.com" || host.endsWith(".qq.com")) {
       const vid = url.searchParams.get("vid") || /\/([a-zA-Z0-9]+)\.html/.exec(url.pathname)?.[1];
-      return vid ? { url: original, embedUrl: `https://v.qq.com/txp/iframe/player.html?vid=${encodeURIComponent(vid)}`, platform: "tencent", platformName: "腾讯视频", supported: true } : { url: original, embedUrl: null, platform: "tencent", platformName: "腾讯视频", supported: false };
+      return vid ? { url: original, embedUrl: `https://v.qq.com/txp/iframe/player.html?vid=${encodeURIComponent(vid)}`, platform: "tencent", platformName: "腾讯视频", supported: true } : { url: original, embedUrl: original, platform: "tencent", platformName: "腾讯视频", supported: false };
     }
     if (host === "youku.com" || host.endsWith(".youku.com")) {
       const id = /id_([^/.]+)\.html/.exec(url.pathname)?.[1];
-      return id ? { url: original, embedUrl: `https://player.youku.com/embed/${encodeURIComponent(id)}`, platform: "youku", platformName: "优酷", supported: true } : { url: original, embedUrl: null, platform: "youku", platformName: "优酷", supported: false };
+      return id ? { url: original, embedUrl: `https://player.youku.com/embed/${encodeURIComponent(id)}`, platform: "youku", platformName: "优酷", supported: true } : { url: original, embedUrl: original, platform: "youku", platformName: "优酷", supported: false };
     }
-    if (host === "iqiyi.com" || host.endsWith(".iqiyi.com")) return { url: original, embedUrl: null, platform: "iqiyi", platformName: "爱奇艺", supported: false };
+    if (host === "iqiyi.com" || host.endsWith(".iqiyi.com")) return { url: original, embedUrl: original, platform: "iqiyi", platformName: "爱奇艺", supported: false };
+    // Keep native extraction first for short-video share links. If native extraction is unavailable,
+    // a direct iframe attempt remains a useful no-server fallback for pages that permit embedding.
     if (host === "douyin.com" || host.endsWith(".douyin.com")) return { url: original, embedUrl: null, platform: "douyin", platformName: "抖音", supported: false };
     if (host === "xiaohongshu.com" || host.endsWith(".xiaohongshu.com") || host === "xhslink.com" || host.endsWith(".xhslink.com") || host === "xhslink.cn" || host.endsWith(".xhslink.cn")) return { url: original, embedUrl: null, platform: "xiaohongshu", platformName: "小红书", supported: false };
-    return { url: original, embedUrl: null, platform: "other", platformName: host, supported: false };
+    // Generic fallback: try rendering the supplied page inside the player instead of stopping
+    // at "unsupported". Sites that set X-Frame-Options/CSP may still refuse embedding; the
+    // existing native/platform-specific paths above take precedence where available.
+    return { url: original, embedUrl: original, platform: "other", platformName: host, supported: false };
   } catch { return null; }
 }
 
