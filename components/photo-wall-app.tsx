@@ -1511,6 +1511,8 @@ type PhotoAlbumViewProps = {
   onNotice?: (message: string) => void;
 };
 
+const PHOTO_ALBUM_PAGE_ANIMATION = true;
+
 function PhotoAlbumView({
   albums, photos, activeAlbumId, activePage, editMode, onSaveAlbums,
   onSelectAlbum, onSelectPage, onSetEditMode, onOpenPhoto, onNotice,
@@ -1604,9 +1606,9 @@ function PhotoAlbumView({
         <label className="text-[11px] text-[#8b7665]">相册名称<input value={active.title} maxLength={80} onChange={event => updateAlbum(current => ({ ...current, title: event.target.value }))} className="mt-1 w-full border-b border-[#d8c4b4] bg-transparent px-1 py-2 text-sm text-[#5d4942]"/></label>
         <label className="text-[11px] text-[#8b7665]">封面照片<select value={active.coverPhotoId} onChange={event => updateAlbum(current => ({ ...current, coverPhotoId: event.target.value }))} className="mt-1 w-full border-b border-[#d8c4b4] bg-transparent px-1 py-2 text-sm text-[#5d4942]"><option value="">自动使用第一页第一张</option>{coverOptions}</select></label>
       </div>}
-      <div className="relative border border-[#d7c3ac] bg-[#fffaf0] p-2 shadow-[4px_8px_22px_rgba(70,55,40,.12)] sm:p-4">
-        <div className="mb-3 flex items-center justify-between gap-3 border-b border-[#e8d9c8] pb-2 text-[10px] tracking-[.16em] text-[#aa927d]"><span>ALBUM · {active.title}</span><span>PAGE {activePage + 1} / {active.pages.length}</span></div>
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">{slotGrid}</div>
+      <div key={activePage} className="relative border border-[#d7c3ac] bg-[#fffaf0] p-2 shadow-[8px_12px_30px_rgba(70,45,30,.16)] sm:p-4" style={{ backgroundImage: "linear-gradient(90deg,rgba(124,88,64,.09),transparent 5%,transparent 95%,rgba(124,88,64,.05)),repeating-linear-gradient(0deg,rgba(145,113,85,.025) 0,rgba(145,113,85,.025) 1px,transparent 1px,transparent 5px)", transformOrigin: "left center", animation: "photoAlbumPageTurn .34s ease-out" }}>
+        <div className="mb-3 flex items-center justify-between gap-3 border-b border-[#e8d9c8] pb-2 text-[10px] tracking-[.16em] text-[#aa927d]"><span>✦ ALBUM · {active.title}</span><span>PAGE {activePage + 1} / {active.pages.length}</span></div>
+        <div className="grid grid-cols-3 gap-2 border-l border-[#e8d9c8] pl-2 sm:gap-3 sm:pl-3">{slotGrid}</div>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#e8d9c8] pt-3">
           <button type="button" disabled={activePage <= 0} onClick={() => onSelectPage(Math.max(0, activePage - 1))} className="border border-[#d8c4b4] px-3 py-2 text-xs text-[#79545a] disabled:opacity-30">‹ 上一页</button>
           <span className="text-[10px] text-[#a08c74]">横图 / 竖图均完整显示，不裁切</span>
