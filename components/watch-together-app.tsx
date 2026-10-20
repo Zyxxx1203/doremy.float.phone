@@ -36,7 +36,7 @@ function bumpWatchAutoCount(): void {
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
 type Platform = "bilibili" | "youtube" | "tencent" | "youku" | "iqiyi" | "douyin" | "kuaishou" | "xiaohongshu" | "other";
 type VideoTarget = { url: string; embedUrl: string | null; platform: Platform; platformName: string; supported: boolean; nativeVideo?: boolean; nativeVideoUrl?: string; nativeCacheId?: string };
-type WatchNativeBridge = { resolveShortVideoShareUrl?: (url: string, requestId: string) => boolean; deleteCachedShortVideo?: (cacheId: string) => boolean; setScreenOrientation?: (mode: string) => boolean };
+type WatchNativeBridge = { resolveShortVideoShareUrl?: (url: string, requestId: string) => boolean; deleteCachedShortVideo?: (cacheId: string) => boolean; setScreenOrientation?: (mode: string) => boolean; openExternalUrl?: (url: string) => boolean };
 type WatchNativeWindow = Window & { AndroidShell?: WatchNativeBridge };
 type WatchNativeResolved = { requestId?: string; ok?: boolean; cacheId?: string; contentUri?: string; mediaUrl?: string; message?: string };
 type WatchComment = { id: string; characterId: string; characterName: string; text: string; createdAt: string; kind?: "character" | "user"; timepoint?: string; targetUrl?: string };
@@ -254,7 +254,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   useEffect(() => {
     const current = target;
     if (!current) { setResolutionMessage(""); return; }
-    if (current.nativeVideo) { setResolutionMessage("解析成功：已取得可播放的视频源，当前由小手机内置播放器播放。"); return; }
+    if (current.nativeVideo) { setResolutionState("success"); setResolutionMessage("解析成功：已取得可播放的视频源，当前由小手机内置播放器播放。"); return; }
     setResolutionMessage("正在检查此链接是否支持站内播放……");
     /**
      * Keep supported platform embeds in their own player. The Android native resolver currently
@@ -268,7 +268,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     }
     const native = (window as WatchNativeWindow).AndroidShell;
     if (!native || !native.resolveShortVideoShareUrl) {
-      setResolutionMessage("当前环境没有可用的原生提取桥，正在尝试网页内嵌播放；若平台禁止嵌入，请打开原网页或选择本地视频。");
+      setResolutionState("failed");
+      setResolutionMessage("网页端只识别分享链接并尝试站内嵌入，没有取得真实视频流；平台禁止嵌入时请打开原视频或选择本地视频。");
       return;
     }
     setResolutionMessage("正在尝试提取公开视频资源；提取期间也会保留网页内嵌播放作为备用……");
@@ -988,7 +989,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         )}
 
         {target && !target.supported && target.embedUrl === target.url && (
-          <a href={target.url} target="_blank" rel="noopener noreferrer" className="absolute bottom-2 right-2 z-[2147483000] inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-black/85 px-3 py-2 text-[10px] text-white shadow-lg backdrop-blur" onClick={event => event.stopPropagation()}><ExternalLink size={12}/>打开原视频</a>
+          <a href={target.url} target="_blank" rel="noopener noreferrer" className="absolute bottom-2 right-2 z-[2147483000] inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-black/85 px-3 py-2 text-[10px] text-white shadow-lg backdrop-blur" onClick={event => { event.stopPropagation(); const native = (window as WatchNativeWindow).AndroidShell; if (native?.openExternalUrl) { event.preventDefault(); try { if (!native.openExternalUrl(target.url)) window.open(target.url, "_blank", "noopener,noreferrer"); } catch { window.open(target.url, "_blank", "noopener,noreferrer"); } } }}><ExternalLink size={12}/>打开原视频</a>
         )}
 
         {fullScreen && target && <div className="watch-companion-overlay pointer-events-none absolute left-2 right-2 top-[max(48px,calc(env(safe-area-inset-top)+12px))] z-30">
