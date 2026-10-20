@@ -8,7 +8,7 @@ import { generateChatCompletion, flattenCompletionResult, readCompressedImageDat
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { resolveVoiceConfig, synthesizeSpeech } from "@/lib/tts-service";
-import { loadApiConfigs, resolveUserIdentity } from "@/lib/settings-storage";
+import { resolveUserIdentity } from "@/lib/settings-storage";
 import { loadVideoAnalysisSettings } from "@/lib/video-analysis-settings";
 import { formatTranscriptTime, parseVideoTranscript, type VideoTranscriptSegment } from "@/lib/video-transcript";
 import { DanmakuLayer } from "@/components/watch/danmaku-layer";
