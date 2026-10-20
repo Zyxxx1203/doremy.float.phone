@@ -5,7 +5,7 @@ import { ArrowLeft, ChevronDown, Expand, ExternalLink, FileText, Heart, ImagePlu
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import { generateChatCompletion, flattenCompletionResult, readCompressedImageDataUrl } from "@/lib/chat-engine";
-import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
+import { createOrGetSession, loadChatContacts, loadChatMessages, loadChatSessions, pushChatMessage, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { resolveVoiceConfig, synthesizeSpeech } from "@/lib/tts-service";
 import { resolveUserIdentity } from "@/lib/settings-storage";
@@ -723,6 +723,23 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
    * 专注模式：将用户主动选择的本地视频作为完整文件交给 Gemini，
    * 不再只依赖当前截图。使用角色在“一起看”中的现有 API 绑定与角色卡。
    */
+  const persistWatchShortTermMemory = (characterId: string, characterName: string, videoName: string, responseText: string) => {
+    try {
+      const contact = loadChatContacts().find(item => item.characterId === characterId);
+      if (!contact) {
+        onNotice?.("观影回应已保存在一起看记录；未找到该角色的聊天联系人，因此暂未写入聊天短期记忆。");
+        return;
+      }
+      const session = createOrGetSession(contact.id);
+      const summary = "【一起看短期记忆】" + characterName + "与用户于" + new Date().toLocaleString("zh-CN") +
+        "一起观看了视频《" + (videoName || "未命名视频") + "》。角色的观影回应与共同讨论内容：" + responseText.slice(0, 1200);
+      pushChatMessage({ sessionId: session.id, role: "assistant", content: summary, origin: "custom_app" });
+    } catch (error) {
+      console.warn("[TogetherWatch] 保存短期记忆失败", error);
+      onNotice?.("观影记录已保存，但写入短期记忆失败。");
+    }
+  };
+
   const analyzeWholeLocalVideo = async () => {
     const file = localVideoFileRef.current;
     if (!file || target?.platformName !== "本地视频") {
@@ -799,9 +816,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         saveTargetComments(target.url, next);
         return next;
       });
+      persistWatchShortTermMemory(character.id, character.name, videoTitle || file.name, responseText);
       if (settings.voiceEnabled) void speakComment(responseText, character.id);
       setCompanionCollapsed(false);
-      onNotice?.("完整视频已观看完成，角色的回应已加入本次一起看记录。");
+      onNotice?.("完整视频已观看完成，回应已加入一起看记录，并尝试写入角色短期记忆。");
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         onNotice?.("已取消完整视频分析。");
