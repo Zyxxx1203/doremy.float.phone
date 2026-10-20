@@ -610,22 +610,22 @@ def try_download_subtitles(
     caption_files = sorted(tmpdir.glob("*.vtt")) + sorted(tmpdir.glob("*.srt"))
     for caption_path in caption_files:
         raw = caption_path.read_text(encoding="utf-8", errors="ignore")
-        cues = re.split(r"\\n\\s*\\n", raw.replace("\\r", ""))
+        cues = re.split(r"\n\s*\n", raw.replace("\r", ""))
         segments: list[dict] = []
         for cue in cues:
             lines = cue.splitlines()
             time_index = next((i for i, line in enumerate(lines) if "-->" in line), -1)
             if time_index < 0:
                 continue
-            match = re.match(r"\\s*((?:(\\d+):)?(\\d{2}):(\\d{2})[.,](\\d{3}))\\s*-->", lines[time_index])
+            match = re.match(r"\s*((?:(\d+):)?(\d{2}):(\d{2})[.,](\d{3}))\s*-->", lines[time_index])
             if not match:
                 continue
             hours = int(match.group(2) or 0)
             start = hours * 3600 + int(match.group(3)) * 60 + int(match.group(4)) + int(match.group(5)) / 1000
-            right = re.search(r"-->\\s*((?:(?:\\d+):)?\\d{2}:\\d{2}[.,]\\d{3})", lines[time_index])
+            right = re.search(r"-->\s*((?:(?:\d+):)?\d{2}:\d{2}[.,]\d{3})", lines[time_index])
             if not right:
                 continue
-            end_match = re.match(r"(?:(\\d+):)?(\\d{2}):(\\d{2})[.,](\\d{3})", right.group(1))
+            end_match = re.match(r"(?:(\d+):)?(\d{2}):(\d{2})[.,](\d{3})", right.group(1))
             if not end_match:
                 continue
             end = int(end_match.group(1) or 0) * 3600 + int(end_match.group(2)) * 60 + int(end_match.group(3)) + int(end_match.group(4)) / 1000
@@ -633,7 +633,7 @@ def try_download_subtitles(
             text = " ".join(text_lines)
             text = re.sub(r"<[^>]+>", "", text)
             text = re.sub(r"&(?:amp|lt|gt|quot|apos|nbsp);", " ", text)
-            text = re.sub(r"\\s+", " ", text).strip()
+            text = re.sub(r"\s+", " ", text).strip()
             if not text:
                 continue
             if segments and segments[-1]["text"] == text and abs(segments[-1]["start"] - start) < 0.1:
