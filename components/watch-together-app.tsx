@@ -34,7 +34,7 @@ function bumpWatchAutoCount(): void {
 }
 
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
-type Platform = "bilibili" | "youtube" | "tencent" | "youku" | "iqiyi" | "douyin" | "xiaohongshu" | "other";
+type Platform = "bilibili" | "youtube" | "tencent" | "youku" | "iqiyi" | "douyin" | "kuaishou" | "xiaohongshu" | "other";
 type VideoTarget = { url: string; embedUrl: string | null; platform: Platform; platformName: string; supported: boolean; nativeVideo?: boolean; nativeVideoUrl?: string; nativeCacheId?: string };
 type WatchNativeBridge = { resolveShortVideoShareUrl?: (url: string, requestId: string) => boolean; deleteCachedShortVideo?: (cacheId: string) => boolean };
 type WatchNativeWindow = Window & { AndroidShell?: WatchNativeBridge };
@@ -111,6 +111,7 @@ function parseVideoUrl(value: string): VideoTarget | null {
     // Keep native extraction first for short-video share links. If native extraction is unavailable,
     // a direct iframe attempt remains a useful no-server fallback for pages that permit embedding.
     if (host === "douyin.com" || host.endsWith(".douyin.com")) return { url: original, embedUrl: null, platform: "douyin", platformName: "抖音", supported: false };
+    if (host === "kuaishou.com" || host.endsWith(".kuaishou.com") || host === "gifshow.com" || host.endsWith(".gifshow.com")) return { url: original, embedUrl: original, platform: "kuaishou", platformName: "快手", supported: false };
     if (host === "xiaohongshu.com" || host.endsWith(".xiaohongshu.com") || host === "xhslink.com" || host.endsWith(".xhslink.com") || host === "xhslink.cn" || host.endsWith(".xhslink.cn")) return { url: original, embedUrl: null, platform: "xiaohongshu", platformName: "小红书", supported: false };
     // Generic fallback: try rendering the supplied page inside the player instead of stopping
     // at "unsupported". Sites that set X-Frame-Options/CSP may still refuse embedding; the
