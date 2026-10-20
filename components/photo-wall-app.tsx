@@ -1376,9 +1376,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       {wallView === "edit" && <nav className="sticky top-0 z-10 flex min-h-11 items-center gap-5 overflow-x-auto border-b border-[#e4dbce]/80 bg-[#f7efe5]/95 px-4 py-2 sm:px-7">
         {([{id:"all",label:"全部照片"},{id:"mine",label:"我收藏的"},{id:"characters",label:"角色留下的"}] as {id:Filter;label:string}[]).map(item => <button key={item.id} onClick={() => setFilter(item.id)} className={`shrink-0 border-b-2 px-0.5 py-2 text-xs font-medium tracking-wide transition duration-200 ${filter===item.id?"border-[#87565b] text-[#87565b]":"border-transparent text-[#8d7e6b] hover:text-[#70434a]"}`}>{item.label}</button>)}
       </nav>}
-      <section className="flex h-full min-h-0 flex-col overflow-hidden px-3 pb-0 pt-3 sm:px-6">
+      <section className="flex flex-1 min-h-0 flex-col overflow-hidden px-3 pb-0 pt-3 sm:px-6">
         {wallView === "edit" && <>
-          <div className="mb-2 flex min-w-0 items-center gap-2 overflow-x-auto whitespace-nowrap border-b border-[#e2d2c3] px-1 py-2">
+          <div className="relative z-20 mb-2 flex min-h-10 shrink-0 min-w-0 items-center gap-2 overflow-x-auto whitespace-nowrap border-b border-[#e2d2c3] bg-[#f7efe5] px-1 py-2">
             <p className="shrink-0 font-serif text-sm text-[#5d4942]">自由画布</p><span className="shrink-0 text-[10px] text-[#9b8774]">{visiblePhotos.length} 张</span>
             <button type="button" onClick={undo} disabled={!canUndo} className="shrink-0 border border-[#d8c6b5] px-2 py-1.5 text-[10px] text-[#7d6d5a] disabled:opacity-30">撤销</button>
             <button type="button" onClick={redo} disabled={!canRedo} className="shrink-0 border border-[#d8c6b5] px-2 py-1.5 text-[10px] text-[#7d6d5a] disabled:opacity-30">重做</button>
@@ -1388,7 +1388,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             <label className="flex shrink-0 items-center gap-1 text-[10px] text-[#8b7665]">高<input type="number" min={1200} max={12000} step={100} value={wallHeightDraft} onChange={event => setWallHeightDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter") applyWallDimensions(); }} aria-label="画布高度" className="w-[62px] border-b border-[#d8c6b5] bg-transparent px-1 py-1 text-[11px] text-[#5d4942] outline-none"/></label>
             <button type="button" onClick={applyWallDimensions} className="shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[10px] text-[#7d6d5a]">应用尺寸</button>
           </div>
-          {wallCanvasMode === "doodle" && <div className="relative z-40 mb-2 flex shrink-0 flex-wrap items-center gap-2 border-b border-[#e6d9cb] bg-[#fffaf2]/85 px-2 py-2">
+          {wallCanvasMode === "doodle" && <div className="relative z-20 mb-2 flex max-h-[28dvh] shrink-0 flex-wrap items-center gap-2 overflow-y-auto border-b border-[#e6d9cb] bg-[#fffaf2] px-2 py-2">
             {wallBrushPalette.map(color => <button key={color} type="button" aria-label={"画笔颜色 "+color} title={"画笔颜色 "+color} onClick={() => { setWallBrushColor(color); setWallColorDraft(color); setWallSticker(null); setWallEraser(false); }} className={wallBrushColor===color&&!wallSticker&&!wallEraser?"h-5 w-5 border border-[#6b5c4a] ring-2 ring-[#e7d6c6]":"h-5 w-5 border border-white/70"} style={{background:color}}/>)}
             <label className="flex items-center gap-1 text-[10px] text-[#8b7665]">色号
               <input type="color" value={/^#[0-9a-f]{6}$/i.test(wallColorDraft) ? wallColorDraft : wallBrushColor} onChange={event => { setWallColorDraft(event.target.value); setWallBrushColor(event.target.value); setWallSticker(null); setWallEraser(false); }} aria-label="选择涂鸦颜色" className="h-6 w-7 cursor-pointer border-0 bg-transparent p-0"/>
