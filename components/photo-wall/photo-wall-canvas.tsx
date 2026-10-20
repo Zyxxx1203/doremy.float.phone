@@ -262,8 +262,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     const element = anchorElement ?? event.currentTarget as HTMLElement;
     const rect = element.getBoundingClientRect();
     const placement = placementOf(photo, index);
-    const width = rect.width || element.offsetWidth || 1;
-    const height = rect.height || element.offsetHeight || 1;
+    const width = Math.max(1, element.offsetWidth * canvasZoom);
+    const height = Math.max(1, element.offsetHeight * canvasZoom);
     // Invert visual rotation to store the stroke in the photo's own coordinates.
     const dx = event.clientX - (rect.left + rect.width / 2);
     const dy = event.clientY - (rect.top + rect.height / 2);
