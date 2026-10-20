@@ -1291,7 +1291,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={event => { if (event.target.files) void uploadFiles(event.target.files); event.currentTarget.value = ""; }}/>
     <input ref={wallBackgroundInputRef} type="file" accept="image/*" className="hidden" onChange={event => { const file = event.currentTarget.files?.[0]; if (file) void uploadCanvasBackground(file); event.currentTarget.value = ""; }}/>
 
-    <main className={wallView === "edit" || wallView === "panorama" ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-y-auto overscroll-contain"} style={{ paddingBottom: "calc(58px + env(safe-area-inset-bottom, 0px))" }}>
+    <main className={wallView === "edit" || wallView === "panorama" ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-y-auto overscroll-contain"} style={{ paddingBottom: wallView === "edit" || wallView === "panorama" ? 0 : "calc(58px + env(safe-area-inset-bottom, 0px))" }}>
       {wallView === "settings" ? <div className="min-h-full bg-[#f5ede3] px-4 pb-10 pt-5 sm:px-7" style={{backgroundImage:"repeating-linear-gradient(0deg,rgba(122,84,68,.025) 0,rgba(122,84,68,.025) 1px,transparent 1px,transparent 5px)"}}>
         <div className="mx-auto max-w-3xl">
           <p className="text-[10px] tracking-[.24em] text-[#a18172]">A QUIET CORNER FOR YOUR WALL</p>
@@ -1542,7 +1542,7 @@ function PhotoAlbumView({
     return <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-24 pt-5 sm:px-7" style={{ WebkitOverflowScrolling: "touch" }}>
       <div className="mx-auto max-w-4xl">
         <div className="mb-5 flex items-end justify-between gap-3 border-b border-[#d8c4b4] pb-3">
-          <div><h2 className="font-serif text-xl text-[#5d4942]">把重要的时光装订起来</h2><p className="mt-1 text-xs leading-5 text-[#9a8973]">每页九个位置，横向与竖向照片都会完整显示；你可以自己决定每个位置放什么。</p></div>
+          <div><h2 className="font-serif text-xl text-[#5d4942]">把重要的时光装订起来</h2></div>
           <button type="button" onClick={createAlbum} className="shrink-0 border border-[#87565b] bg-[#87565b] px-3 py-2 text-xs text-white">＋ 新建相册</button>
         </div>
         {albums.length ? <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
@@ -1609,7 +1609,7 @@ function PhotoAlbumView({
         <div className="grid grid-cols-3 gap-2 border-l border-[#e8d9c8] pl-2 sm:gap-3 sm:pl-3">{slotGrid}</div>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#e8d9c8] pt-3">
           <button type="button" disabled={activePage <= 0} onClick={() => onSelectPage(Math.max(0, activePage - 1))} className="border border-[#d8c4b4] px-3 py-2 text-xs text-[#79545a] disabled:opacity-30">‹ 上一页</button>
-          <span className="text-[10px] text-[#a08c74]">横图 / 竖图均完整显示，不裁切</span>
+          
           <button type="button" disabled={activePage >= active.pages.length - 1} onClick={() => onSelectPage(Math.min(active.pages.length - 1, activePage + 1))} className="border border-[#d8c4b4] px-3 py-2 text-xs text-[#79545a] disabled:opacity-30">下一页 ›</button>
         </div>
       </div>
