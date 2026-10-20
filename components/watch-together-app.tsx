@@ -383,9 +383,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   const patchSettings = (patch: Partial<WatchSettings>) => setSettings(current => ({ ...current, ...patch }));
 
-  const buildProxyUrl = (source: string): string => {
-    const base = corsProxyEndpoint.trim() || "https://proxy.cors.dev/";
-    if (!/^https:\/\//i.test(base)) throw new Error("公共代理地址必须使用 HTTPS。");
+  const buildProxyUrls = (source: string): string[] => {
     const safeSource = new URL(source);
     if (!["http:", "https:"].includes(safeSource.protocol) || safeSource.username || safeSource.password) throw new Error("只允许读取公开 HTTP/HTTPS 资源，不能包含用户名或密码。");
     const host = safeSource.hostname.toLowerCase().replace(/\.$/, "");
@@ -393,18 +391,48 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       /^(10\.|127\.|192\.168\.|169\.254\.)/.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host) || host === "::1") {
       throw new Error("出于安全原因，不允许代理访问本机或内网地址。");
     }
-    if (base.includes("{url}")) return base.replace("{url}", encodeURIComponent(safeSource.toString()));
-    if (/[?&]url=$/i.test(base)) return base + encodeURIComponent(safeSource.toString());
-    return base.replace(/\/+$/, "") + "/" + safeSource.toString();
+    const target = safeSource.toString();
+    const configured = corsProxyEndpoint.trim();
+    const urls: string[] = [];
+    if (configured) {
+      if (!/^https:\/\//i.test(configured)) throw new Error("公共代理地址必须使用 HTTPS。");
+      if (configured.includes("{url}")) urls.push(configured.replace("{url}", encodeURIComponent(target)));
+      else if (/[?&]url=$/i.test(configured)) urls.push(configured + encodeURIComponent(target));
+      else if (/[?&]quest=$/i.test(configured)) urls.push(configured + encodeURIComponent(target));
+      else urls.push(configured.replace(/\/+$/, "") + "/" + target);
+    }
+    // Public fallback pool: availability and target-site policies vary. Never send credentials/cookies.
+    urls.push(
+      "https://api.allorigins.win/raw?url=" + encodeURIComponent(target),
+      "https://api.codetabs.com/v1/proxy/?quest=" + encodeURIComponent(target),
+      "https://cors.eu.org/" + target,
+      "https://proxy.cors.dev/" + target
+    );
+    // corsproxy.io currently commonly requires a user API key; allow an explicitly configured URL/key,
+    // but don't silently call its unkeyed endpoint on every request.
+    return [...new Set(urls)];
   };
 
   const fetchViaCorsProxy = async (source: string, signal: AbortSignal): Promise<string> => {
-    const response = await fetch(buildProxyUrl(source), { method: "GET", credentials: "omit", signal, headers: { Accept: "text/html,text/plain,text/vtt,application/json,application/xml,*/*;q=0.8" } });
-    if (!response.ok) throw new Error("代理返回 HTTP " + response.status + "：" + (await response.text().catch(() => "")).slice(0, 180));
-    const text = await response.text();
-    if (!text.trim()) throw new Error("代理返回空内容。");
-    if (text.length > 2_000_000) throw new Error("返回内容超过 2 MB，已停止读取。");
-    return text;
+    const urls = buildProxyUrls(source);
+    const failures: string[] = [];
+    for (const proxyUrl of urls) {
+      try {
+        const response = await fetch(proxyUrl, { method: "GET", credentials: "omit", signal, headers: { Accept: "text/html,text/plain,text/vtt,application/json,application/xml,*/*;q=0.8" } });
+        if (!response.ok) {
+          failures.push(new URL(proxyUrl).hostname + ": HTTP " + response.status);
+          continue;
+        }
+        const text = await response.text();
+        if (!text.trim()) { failures.push(new URL(proxyUrl).hostname + ": 空内容"); continue; }
+        if (text.length > 2_000_000) throw new Error("代理返回内容超过 2 MB，已停止读取。");
+        return text;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") throw error;
+        failures.push(new URL(proxyUrl).hostname + ": " + (error instanceof Error ? error.message : String(error)));
+      }
+    }
+    throw new Error("已尝试 " + urls.length + " 个公共代理，均未成功。" + failures.slice(0, 4).join("；"));
   };
 
   const readVideoInfoViaProxy = async () => {
