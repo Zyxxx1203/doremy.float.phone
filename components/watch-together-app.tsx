@@ -736,10 +736,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     if (wholeVideoBusy) return;
 
     const videoSettings = loadVideoAnalysisSettings();
-    if (videoSettings.provider !== "gemini") {
-      onNotice?.("当前选择的视频分析服务暂不支持完整视频文件上传。");
-      return;
-    }
     if (!videoSettings.apiKey.trim()) {
       onNotice?.("请先到系统设置 → 视频分析模型填写 Gemini API Key。");
       return;
@@ -781,6 +777,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         file,
         apiKey: videoSettings.apiKey,
         model: videoSettings.model,
+        provider: videoSettings.provider,
+        baseUrl: videoSettings.baseUrl,
         maxFileSizeMb: videoSettings.maxFileSizeMb,
         prompt,
         signal: controller.signal,
