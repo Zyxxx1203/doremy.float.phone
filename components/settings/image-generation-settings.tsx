@@ -532,6 +532,29 @@ export function ImageGenerationSettings() {
                     </Select>
                 </div>
 
+                <div className="menu-group p-4 flex flex-col gap-3">
+                    <div className="min-w-0">
+                        <div className="menu-label">全员参考拼图 · 全局生效</div>
+                        <p className="menu-desc mt-1">上传一张把所有角色拼在一起、每张脸旁标注名字的图。之后任何涉及多个角色的生图（合照、群像、生活场景）都会把这张拼图作为身份参考，按标签锁住每个人的脸。它不替代单个角色自己的参考图。</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            <label className="ui-btn ui-btn-soft-action min-h-9 cursor-pointer px-3 py-2 text-xs">
+                                <Upload size={14} className="mr-1 inline"/> {settings.characterReferences?.__group__?.assetId ? "更换全员拼图" : "上传全员拼图"}
+                                <input type="file" accept="image/*" className="hidden" onChange={async event => {
+                                    const input = event.currentTarget; const file = input.files?.[0]; if (!file) return;
+                                    try {
+                                        const dataUrl = await fileToUserAvatarDataUrl(file, 1600, 0.9);
+                                        const blob = await (await fetch(dataUrl)).blob();
+                                        const assetId = await saveChatImageToIndexedDB(blob);
+                                        persist({ ...settings, characterReferences: { ...settings.characterReferences, __group__: { assetId, updatedAt: Date.now(), enabled: true } } });
+                                        setStatus({ success: true, message: "全员参考拼图已保存，之后的多人生图都会带上它。" });
+                                    } catch (error) { setStatus({ success: false, message: error instanceof Error ? error.message : "拼图保存失败" }); }
+                                    finally { input.value = ""; }
+                                }}/>
+                            </label>
+                            {settings.characterReferences?.__group__?.assetId && <button type="button" className="ui-btn min-h-9 px-3 py-2 text-xs text-red-600" onClick={() => { const next = { ...settings.characterReferences }; delete next.__group__; persist({ ...settings, characterReferences: next }); setStatus({ success: true, message: "已移除全员参考拼图。" }); }}>移除</button>}
+                        </div>
+                    </div>
+                </div>
                 {settings.provider === "novelai" && (
                     <div className="flex flex-col gap-1">
                         <label className="menu-desc ml-1">请求方式</label>

@@ -881,6 +881,14 @@ export async function generateImageFromConfiguredApi(params: {
       await appendCharacterReference(characterId);
       throwIfAborted(params.signal);
     }
+
+    // 全局「全员参考拼图」：一张带标签的拼图，锁住所有角色的脸。
+    // 存在 characterReferences 的保留键 __group__ 里，不需要新字段，老数据零迁移。
+    const groupReference = settings.characterReferences?.["__group__"];
+    if (groupReference?.assetId && groupReference.enabled !== false) {
+      const groupDataUrl = await getChatImageFromIndexedDB(groupReference.assetId);
+      if (groupDataUrl) referenceSources.push({ label: "全员身份参考（按图中标注对应每个人）", dataUrl: groupDataUrl });
+    }
   }
 
   // The global user reference is independent from any character's per-chat reference toggle.

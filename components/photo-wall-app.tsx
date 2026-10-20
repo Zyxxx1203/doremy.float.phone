@@ -1371,7 +1371,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       {wallView === "edit" && <nav className="sticky top-0 z-10 flex min-h-11 items-center gap-5 overflow-x-auto border-b border-[#e4dbce]/80 bg-[#f7efe5]/95 px-4 py-2 sm:px-7">
         {([{id:"all",label:"全部照片"},{id:"mine",label:"我收藏的"},{id:"characters",label:"角色留下的"}] as {id:Filter;label:string}[]).map(item => <button key={item.id} onClick={() => setFilter(item.id)} className={`shrink-0 border-b-2 px-0.5 py-2 text-xs font-medium tracking-wide transition duration-200 ${filter===item.id?"border-[#87565b] text-[#87565b]":"border-transparent text-[#8d7e6b] hover:text-[#70434a]"}`}>{item.label}</button>)}
       </nav>}
-      <section className="flex h-full min-h-0 flex-col overflow-hidden px-3 pb-[calc(56px+env(safe-area-inset-bottom))] pt-3 sm:px-6">
+      <section className="flex h-full min-h-0 flex-col overflow-hidden px-3 pb-0 pt-3 sm:px-6">
         {wallView === "edit" && <>
           <div className="mb-2 flex min-w-0 items-center gap-2 overflow-x-auto whitespace-nowrap border-b border-[#e2d2c3] px-1 py-2">
             <p className="shrink-0 font-serif text-sm text-[#5d4942]">自由画布</p><span className="shrink-0 text-[10px] text-[#9b8774]">{visiblePhotos.length} 张</span>
