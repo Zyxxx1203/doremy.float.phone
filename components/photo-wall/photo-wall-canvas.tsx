@@ -523,7 +523,7 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
     }}
     onClick={event => {
       event.stopPropagation();
-      if (placementMode || doodleMode) { event.preventDefault(); return; }
+      if (!readOnly || placementMode || doodleMode) { event.preventDefault(); return; }
       // The matte/frame is an explicit edit target; clicking the image itself only flips it.
       if ((event.target as HTMLElement).closest("[data-photo-wall-photo-image]")) return;
       onOpenDetail();
