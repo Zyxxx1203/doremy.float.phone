@@ -405,7 +405,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     const endpointBase = transcriberEndpoint.trim().replace(/\/+$/, "");
     const token = transcriberToken.trim();
     if (!sourceUrl) { onNotice?.("先粘贴一个视频链接，再生成脚本。"); return; }
-    if (!endpointBase || !token) { onNotice?.("先配置本地转写服务的 HTTPS 地址和访问令牌。"); return; }
+    if (!endpointBase || !token) { onNotice?.("先配置转写服务的 HTTPS 地址和访问令牌。"); return; }
     let endpoint: URL;
     try {
       endpoint = new URL(endpointBase.endsWith("/transcribe") ? endpointBase : endpointBase + "/transcribe");
@@ -434,11 +434,11 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       setTranscriptSegments(parsed);
       setTranscriptName((result.title || new URL(sourceUrl).hostname) + " · 本地转写");
       if (result.title) setVideoTitle(result.title);
-      onNotice?.("本地转写完成：已载入 " + parsed.length + " 段带时间戳脚本。开始播放后，陪看会引用当前播放时间附近的文字。");
+      onNotice?.("转写完成：已载入 " + parsed.length + " 段带时间戳脚本。开始播放后，陪看会引用当前播放时间附近的文字。");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const timedOut = error instanceof DOMException && error.name === "AbortError";
-      onNotice?.((timedOut ? "本地转写超时：" : "本地转写失败：") + message + "。请检查服务、CORS、令牌、平台登录状态或风控限制。");
+      onNotice?.((timedOut ? "转写超时：" : "转写失败：") + message + "。请检查服务、CORS、令牌、平台登录状态或风控限制。");
     } finally {
       window.clearTimeout(timeout);
       setTranscribing(false);
@@ -902,10 +902,19 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         {target?.platformName === "本地视频" && <p className="mt-2 px-1 text-[11px] leading-5 text-[#8b7665]">当前播放的是本地文件；选择新文件或输入链接可以切换视频。</p>}
         {platformNote && <p className="mt-2 px-1 text-[11px] leading-5 text-[#8b7665]">{platformNote}</p>}
         <details className="mt-3 rounded-2xl border border-[#b89979]/30 bg-[#fffaf2]/80 p-3 text-[#71553f]">
-          <summary className="cursor-pointer text-xs font-medium">从链接生成时间戳脚本 · 本地转写服务</summary>
+          <summary className="cursor-pointer text-xs font-medium">从链接生成时间戳脚本 · 本地 / Cloudflare 转写</summary>
           <p className="mt-2 text-[11px] leading-5 text-[#8b7665]">目标是让角色真正理解视频内容：优先使用平台可取得的字幕/时间戳，再用音轨转写补齐；脚本会按当前播放进度喂给角色，避免只凭标题猜剧情。视频播放和脚本解析是两条链路：某个平台能在这里播放，不代表它允许读取字幕或下载音轨。</p>
           <details className="mt-2 rounded-xl border border-[#b89979]/25 bg-white/50 p-2.5">
-            <summary className="cursor-pointer text-[11px] font-medium">展开部署教程（只需自己的电脑；手机远程访问可选 Cloudflare）</summary>
+            <summary className="cursor-pointer text-[11px] font-medium">Cloudflare Workers AI 云端部署（电脑不用常开）</summary>
+            <ol className="mt-2 list-decimal space-y-2 pl-4 text-[11px] leading-5 text-[#8b7665]">
+              <li>在 GitHub 仓库的 <code>tools/cloudflare-video-transcriber</code> 目录查看完整教程。首次部署需要电脑安装 Node.js，并登录 Cloudflare；部署成功后转写运行在 Cloudflare，不需要电脑持续开机。</li>
+              <li>在 Cloudflare Worker 配置里，把 <code>ALLOWED_ORIGINS</code> 改成当前小手机网页的准确源地址，把 <code>ALLOWED_MEDIA_HOSTS</code> 改成你信任且托管音频文件的域名；不要设为通配符。</li>
+              <li>在该目录执行 <code>npx wrangler secret put TRANSCRIBE_TOKEN</code> 设置访问令牌，再运行 <code>npx wrangler deploy</code>。把部署后的 <code>https://…workers.dev</code> 地址和同一令牌填到下面。</li>
+              <li><strong>当前云端版本只接收可直接访问的 HTTPS 音频文件</strong>（如 MP3/WAV/M4A/OGG，单个文件最多 8 MB），不能把 B 站、YouTube 等视频页面链接直接变成音轨。任意平台视频仍需要可获取的字幕，或使用下方本地转写服务。</li>
+            </ol>
+          </details>
+          <details className="mt-2 rounded-xl border border-[#b89979]/25 bg-white/50 p-2.5">
+            <summary className="cursor-pointer text-[11px] font-medium">本地转写服务部署（电脑需要运行）</summary>
             <ol className="mt-2 list-decimal space-y-2 pl-4 text-[11px] leading-5 text-[#8b7665]">
               <li>在电脑上安装 Python 3.10+ 和 FFmpeg；从项目仓库根目录运行 <code>pip install -r tools/video-transcriber/requirements.txt</code>。</li>
               <li>Windows PowerShell 中运行：<code>$env:VIDEO_TRANSCRIBER_TOKEN = (python -c "import secrets; print(secrets.token_urlsafe(32))")</code>，再设置 <code>$env:VIDEO_TRANSCRIBER_ALLOWED_ORIGINS = "你当前小手机网页的完整 https 地址"</code>。</li>
@@ -913,10 +922,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               <li>如果手机需要跨网络访问，可选用 Cloudflare Tunnel：在电脑安装 cloudflared 后，可先用临时隧道测试：<code>cloudflared tunnel --url http://localhost:8765</code>，将终端显示的 <code>https://…trycloudflare.com</code> 地址填入下方“服务地址”（应用会自动补上 <code>/transcribe</code>）。要长期使用再配置命名隧道。隧道只负责安全转发，不替你运行转写；电脑关机或服务停止后就不可用。不要公开分享隧道地址或访问令牌。</li>
               <li>把服务地址和令牌填入本页，粘贴视频链接后点“解析链接并生成脚本”。若平台限制下载、需要登录态或触发风控，转写可能失败；可尝试导入字幕文件，应用不会假装已经看懂未取得的内容。</li>
             </ol>
-            <p className="mt-2 text-[10px] leading-4 text-[#8b7665]">Cloudflare Workers 本身不适合在请求内运行 Whisper 这类重型模型；本方案不需要部署独立 VPS 或第三方解析 API。Cloudflare Tunnel 是可选的远程入口，转写仍在你自己的电脑上完成。</p>
+            <p className="mt-2 text-[10px] leading-4 text-[#8b7665]">本地方案能借助 yt-dlp 尝试获取部分平台字幕/音轨，兼容面更广但电脑必须运行。Cloudflare 云端方案无需电脑常开，但目前只支持配置白名单域名下的直接音频文件，不会解析任意视频平台页面。两种方案共用下面的服务地址和令牌输入框。</p>
           </details>
           <label className="mt-3 block text-[11px]">服务地址
-            <input type="url" value={transcriberEndpoint} onChange={event => setTranscriberEndpoint(event.target.value)} placeholder="https://你的服务域名/transcribe" className="mt-1 w-full rounded-xl border border-[#dac6ad] bg-white px-3 py-2 text-xs outline-none focus:border-[#b88768]"/>
+            <input type="url" value={transcriberEndpoint} onChange={event => setTranscriberEndpoint(event.target.value)} placeholder="https://你的-worker.workers.dev 或本地服务地址" className="mt-1 w-full rounded-xl border border-[#dac6ad] bg-white px-3 py-2 text-xs outline-none focus:border-[#b88768]"/>
           </label>
           <label className="mt-2 block text-[11px]">访问令牌（仅保存在此设备）
             <input type="password" autoComplete="off" value={transcriberToken} onChange={event => setTranscriberToken(event.target.value)} placeholder="VIDEO_TRANSCRIBER_TOKEN" className="mt-1 w-full rounded-xl border border-[#dac6ad] bg-white px-3 py-2 text-xs outline-none focus:border-[#b88768]"/>
