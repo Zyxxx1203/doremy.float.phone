@@ -11,6 +11,7 @@ import { resolveVoiceConfig, synthesizeSpeech } from "@/lib/tts-service";
 import { loadApiConfigs, loadBindingConfig, resolveBinding, resolveUserIdentity } from "@/lib/settings-storage";
 import { readCompressedImageDataUrl } from "@/lib/chat-engine";
 import { captureScreenshot, hasScreenshotBridge } from "@/lib/screenshot";
+import { formatTranscriptTime, parseVideoTranscript, type VideoTranscriptSegment } from "@/lib/video-transcript";
 
 /** 自动搭话的每日上限：护栏，避免暂停/挂机时白烧 API。 */
 const WATCH_AUTO_DAILY_LIMIT = 24;
@@ -159,6 +160,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [target, setTarget] = useState<VideoTarget | null>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
   const screenshotFileInputRef = useRef<HTMLInputElement>(null);
+  const transcriptFileInputRef = useRef<HTMLInputElement>(null);
   const localVideoObjectUrlRef = useRef<string | null>(null);
   const nativeVideoCacheRef = useRef<{ url: string; cacheId: string } | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
@@ -249,6 +251,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   }, []);
 
   const [comments, setComments] = useState<WatchComment[]>([]);
+  const [transcriptSegments, setTranscriptSegments] = useState<VideoTranscriptSegment[]>([]);
+  const [transcriptName, setTranscriptName] = useState("");
   const [companionCollapsed, setCompanionCollapsed] = useState(false);
   const [showQuickChat, setShowQuickChat] = useState(false);
   const pendingDiscussionRef = useRef<Array<{ moment: string; timepoint?: string }>>([]);
@@ -532,15 +536,32 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         mediaUrl: frame.dataUrl,
         mediaData: { label: "视频当前画面 " + formatVideoTime(frame.seconds) },
       }));
+      const videoElement = playerRef.current?.querySelector("video");
+      const draftSeconds = parseVideoTime(timepointOverride || timepointDraft);
+      const playbackSeconds = videoElement && Number.isFinite(videoElement.currentTime) ? videoElement.currentTime : iframeSecondsRef.current;
+      const transcriptSeconds = draftSeconds ?? playbackSeconds;
+      const transcriptWindow = transcriptSegments.filter(segment =>
+        segment.start <= transcriptSeconds + 18 && segment.end >= Math.max(0, transcriptSeconds - 12)
+      ).slice(0, 10);
+      const transcriptHasTimestamps = !(transcriptSegments.length === 1 && transcriptSegments[0].start === 0 && transcriptSegments[0].end >= 86400);
+      const transcriptContext = transcriptWindow.map(segment =>
+        (transcriptHasTimestamps ? "[" + formatTranscriptTime(segment.start) + "] " : "") + segment.text
+      ).join("\n").slice(0, 6000);
       const prompt = [
         "你正在和用户一起看视频，是亲密、自然的陪伴，不是影评机器人。",
-        `视频平台：${target.platformName}；视频标题（用户可编辑）：${videoTitle || "暂未命名"}。`,
-        `用户描述的当前片段/时间点与两人的互动：${(momentOverride ?? settings.currentMoment).trim() || "用户暂未提供具体画面描述"}。`,
+        "视频平台：" + target.platformName + "；视频标题（用户可编辑）：" + (videoTitle || "暂未命名") + "。",
+        "用户描述的当前片段/时间点与两人的互动：" + ((momentOverride ?? settings.currentMoment).trim() || "用户暂未提供具体画面描述") + "。",
+        transcriptName ? "已导入字幕/脚本文件：" + transcriptName : "",
+        transcriptContext ? (transcriptHasTimestamps
+          ? "当前播放时间附近的字幕脚本（含原始时间戳）：\n" + transcriptContext
+          : "已导入脚本没有可用时间戳，以下只作为全片文字参考，不能假装与当前画面精确同步：\n" + transcriptContext) : "",
         frameMessages.length
           ? "附带多张带时间戳的视频截图。先读截图标签中的时间点，再依照时间顺序理解片段。只能评论这些截图中已经出现的内容；禁止猜测、提示或泄露后续剧情/反转，也不能根据标题或常识补全未显示情节。看不清时坦白说看不清，不能编造画面。"
-          : "本轮没有可供模型读取的视频截图。可能是跨站 iframe 无法截图，或图像识别没有开启。不得声称自己看见了画面；只能针对用户提供的文字内容自然回应。",
+          : transcriptContext
+            ? "本轮没有可读取的真实视频画面；只能使用上面的字幕/脚本和用户提供的文字，不能声称看见了画面。"
+            : "本轮没有可供模型读取的视频截图或脚本。可能是跨站 iframe 无法截图，或图像识别没有开启。不得声称自己看见了画面；只能针对用户提供的文字内容自然回应。",
         "请结合角色自己的性格、兴趣和你们的关系，写一句自然的即时反应：可以吐槽、惊讶、共情、提问或分享感受。只输出角色会直接说的话，最多60个汉字。不搜寻或推断视频后续剧情。",
-      ].join("\n");
+      ].filter(Boolean).join("\n");
       const userMessage: ChatMessage = { id: `watch-${Date.now()}`, sessionId: session.id, role: "user", content: prompt, status: "sent", createdAt: new Date().toISOString() };
       const visionSession = { ...session, visionImagePromptLimit: 3, visionImagePromptLimitUsesGlobal: false };
       const result = await generateChatCompletion(visionSession, [...history, ...frameMessages, userMessage], {
@@ -565,7 +586,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       queuedAfterReply = pendingDiscussionRef.current.shift();
       if (queuedAfterReply) window.setTimeout(() => { void generateComment(true, queuedAfterReply!.moment, queuedAfterReply!.timepoint); }, 50);
     }
-  }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice]);
+  }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice, transcriptSegments, transcriptName, timepointDraft]);
 
   /** 把一帧画面交给角色：手动截图和静默截屏共用这一条路径。 */
   const submitFrameDataUrl = async (dataUrl: string, seconds: number, prefix = "用户附加截图") => {
@@ -884,9 +905,23 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           <input value={urlInput} onChange={event => setUrlInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter") openVideo(); }} placeholder="粘贴视频链接；短视频分享链接不保证能自动内嵌" className="min-w-0 flex-1 rounded-2xl border border-[#dac6ad] bg-white/90 px-4 py-3.5 text-sm text-[#554437] outline-none placeholder:text-[#a09383] focus:border-[#b88768] focus:ring-2 focus:ring-[#c99a6a]/15" />
           <button onClick={openVideo} className="rounded-2xl px-5 py-3.5 text-sm font-semibold tracking-wide text-[#2a1f16] shadow-sm transition hover:brightness-[1.02] active:scale-[.98]" style={{ background: "linear-gradient(135deg,#f0d0a8,#c99a6a)" }}>放上屏幕</button>
           <button type="button" onClick={() => videoFileInputRef.current?.click()} className="rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">选择本地视频</button>
+          <button type="button" onClick={() => transcriptFileInputRef.current?.click()} className="rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">导入脚本 / 字幕</button>
         </div>
         <input ref={videoFileInputRef} type="file" accept="video/*,.mp4,.webm,.mov,.m4v,.ogv" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; openLocalVideo(file); }} />
+        <input ref={transcriptFileInputRef} type="file" accept=".srt,.vtt,.txt,.json,text/plain,text/vtt,application/json" className="hidden" onChange={event => {
+          const file = event.target.files?.[0]; event.currentTarget.value = "";
+          if (!file) return;
+          void file.text().then(source => {
+            const parsed = parseVideoTranscript(source);
+            if (!parsed.length) { onNotice?.("没有识别到脚本正文或字幕时间轴。可导入 .srt、.vtt、.txt 或带 segments 的 .json。"); return; }
+            setTranscriptSegments(parsed);
+            setTranscriptName(file.name);
+            const unsynced = parsed.length === 1 && parsed[0].start === 0 && parsed[0].end >= 86400;
+            onNotice?.("已导入 " + file.name + "，识别到 " + parsed.length + " 段" + (unsynced ? "（纯文本，无精确时间戳）" : "时间戳片段") + "。陪看会优先引用当前时间附近的脚本。");
+          }).catch(error => onNotice?.("脚本读取失败：" + (error instanceof Error ? error.message : String(error))));
+        }} />
         <input ref={screenshotFileInputRef} type="file" accept="image/*" className="hidden" onChange={event => { const file = event.target.files?.[0]; void submitScreenshotForCharacter(file); }} />
+        {transcriptSegments.length > 0 && <div role="status" aria-live="polite" className="mt-2 flex items-start justify-between gap-3 rounded-xl border border-[#cdb79b]/60 bg-[#fffaf2] px-3 py-2 text-xs leading-5 text-[#82644c]"><span className="min-w-0">已载入脚本：{transcriptName} · {transcriptSegments.length} 段{transcriptSegments.length === 1 && transcriptSegments[0].end >= 86400 ? " · 无精确时间戳" : ""}</span><button type="button" onClick={() => { setTranscriptSegments([]); setTranscriptName(""); }} className="shrink-0 border-b border-[#cdb79b] text-[#8d6459]">移除</button></div>}
         {target && target.platformName !== "本地视频" && !target.embedUrl && !target.nativeVideoUrl && <p role="status" aria-live="polite" className="mt-2 rounded-xl bg-[#f4e7d6] px-3 py-2 text-xs leading-5 text-[#82644c]">{resolutionMessage || "等待检查视频链接……"}</p>}
         {resolutionMessage && (target?.embedUrl || target?.nativeVideoUrl) && <p role="status" aria-live="polite" className="mt-2 rounded-xl border border-[#cdb79b]/60 bg-[#fffaf2] px-3 py-2 text-xs leading-5 text-[#82644c]">{resolutionMessage}</p>}
         {target?.platformName === "本地视频" && <p className="mt-2 px-1 text-[11px] leading-5 text-[#8b7665]">当前播放的是本地文件；选择新文件或输入链接可以切换视频。</p>}
