@@ -733,7 +733,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     pushHistory(current);
     commitPhotos(current.photos.map(photo => {
       const index = ordered.findIndex(item => item.id === photo.id);
-      const slot = slots[index % slots.length];
+      // Never cycle through a shorter slot list: that would stack multiple photos at one point.
+      const slot = slots[index];
       if (!slot) return photo;
       const base = photo.placement;
       return { ...photo, placement: { x: slot.x, y: slot.y, scale: slot.scale, rotation: slot.rotation, z: index + 1, frame: base?.frame ?? "polaroid", locked: base?.locked ?? false, frameColor: base?.frameColor ?? "#fffdf8" } as PhotoWallPlacement };
