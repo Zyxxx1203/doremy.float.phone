@@ -694,6 +694,7 @@ private fun resolveSharedVideoWithWebView(rawUrl: String, callback: (Result<Cach
     val resolverView = WebView(this)
     val handler = android.os.Handler(android.os.Looper.getMainLooper())
     var finished = false
+    var mediaDownloadStarted = false
     var attempts = 0
     val startedAt = System.currentTimeMillis()
     fun finish(result: Result<CachedSharedVideo>) {
@@ -738,12 +739,13 @@ private fun resolveSharedVideoWithWebView(rawUrl: String, callback: (Result<Cach
                     .mapNotNull { index -> array.optString(index).takeIf { it.startsWith("http://") || it.startsWith("https://") } }
                     .firstOrNull { isLikelyPublicMp4(it) }
             }
-            if (mediaUrl != null) {
+            if (mediaUrl != null && !mediaDownloadStarted) {
+                mediaDownloadStarted = true
                 sharedVideoExecutor.execute {
                     val result = runCatching { downloadPublicMp4(mediaUrl, rawUrl) }
                     runOnUiThread { finish(result) }
                 }
-            } else if (attempts >= 14 || System.currentTimeMillis() - startedAt > 18000L) {
+            } else if (mediaUrl == null && (attempts >= 14 || System.currentTimeMillis() - startedAt > 18000L)) {
                 finish(Result.failure(IllegalStateException("动态页面加载后仍未发现可直接播放的 MP4；可能需要平台签名、登录或 HLS 播放支持")))
             } else {
                 handler.postAtTime({ inspectPage() }, resolverView, android.os.SystemClock.uptimeMillis() + 1000L)
@@ -775,7 +777,7 @@ private fun resolveSharedVideoWithWebView(rawUrl: String, callback: (Result<Cach
         }
     }
     handler.postAtTime({
-        if (!finished) finish(Result.failure(IllegalStateException("动态解析超时（18 秒）")))
+        if (!finished && !mediaDownloadStarted) finish(Result.failure(IllegalStateException("动态解析超时（18 秒）")))
     }, resolverView, android.os.SystemClock.uptimeMillis() + 19000L)
     resolverView.loadUrl(rawUrl)
 }
