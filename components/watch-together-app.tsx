@@ -1255,16 +1255,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           <button type="button" onClick={() => videoFileInputRef.current?.click()} className="rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">选择本地视频</button>
           <button type="button" onClick={() => transcriptFileInputRef.current?.click()} className="rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">导入脚本 / 字幕</button>
         </div>
-        {target?.platformName === "本地视频" && localVideoFileRef.current && <div className="mt-3 rounded-2xl border border-[#c99a78]/45 bg-[#fffaf2]/90 p-3 text-[#735440]">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <div className="text-xs font-semibold">专注模式 · 完整视频理解</div>
-              <div className="mt-1 break-words text-[11px] leading-5 text-[#8b7665]">将整个视频文件发送给 Gemini 视频理解 API，不只是截图。上传前请确认你愿意把视频发送给 Google 处理。</div>
-              {wholeVideoProgress && <div role="status" aria-live="polite" className="mt-1 text-[11px] text-[#98704c]">{wholeVideoProgress}</div>}
-            </div>
-            <button type="button" onClick={() => { if (wholeVideoBusy) wholeVideoAbortRef.current?.abort(); else void analyzeWholeLocalVideo(); }} disabled={!wholeVideoBusy && !character} className="shrink-0 rounded-xl border border-[#b88768] bg-[#e8c5a4] px-3 py-2 text-xs font-semibold text-[#39281b] disabled:opacity-50">{wholeVideoBusy ? "取消分析" : "让角色看完整视频"}</button>
-          </div>
-        </div>}
         <input ref={videoFileInputRef} type="file" accept="video/*,.mp4,.webm,.mov,.m4v,.ogv" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; openLocalVideo(file); }} />
         <input ref={screenshotFileInputRef} type="file" accept="image/*" className="hidden" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void loadScreenshotFile(file); }} />
         <input ref={transcriptFileInputRef} type="file" accept=".srt,.vtt,.txt,.json,text/plain,text/vtt,application/json" className="hidden" onChange={event => {
@@ -1346,6 +1336,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             <button onClick={() => { setWatching(value => !value); if (!watching) void generateComment(false); }} disabled={!target || !character} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3.5 py-2 text-xs text-[#d8c9b6] transition active:scale-95 disabled:opacity-40">
               {watching ? <Pause size={13}/> : <Play size={13}/>}{watching ? "暂停陪看" : "开始陪看"}
             </button>
+            {target?.platformName === "本地视频" && localVideoFileRef.current && <div className="flex min-w-0 basis-full flex-wrap items-center gap-2 rounded-xl border border-[#c99a78]/30 bg-white/[.04] px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-semibold text-[#e6c49d]">专注模式 · 完整视频理解</div>
+                <div className="mt-0.5 text-[10px] leading-4 text-[#a9937e]">把整个本地视频发送给 Gemini，而不只是当前截图；请确认允许将视频交给 Google 处理。</div>
+                {wholeVideoProgress && <div role="status" aria-live="polite" className="mt-1 text-[10px] text-[#e6c49d]">{wholeVideoProgress}</div>}
+              </div>
+              <button type="button" onClick={() => { if (wholeVideoBusy) wholeVideoAbortRef.current?.abort(); else void analyzeWholeLocalVideo(); }} disabled={!wholeVideoBusy && !character} className="shrink-0 rounded-full border border-[#c99a78]/60 bg-[#c99a78] px-3 py-2 text-[11px] font-semibold text-[#2a1f16] disabled:opacity-40">{wholeVideoBusy ? "取消分析" : "让角色看完整视频"}</button>
+            </div>}
             <button onClick={() => setShowHistory(true)} disabled={!comments.length} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3.5 py-2 text-xs text-[#d8c9b6] transition active:scale-95 disabled:opacity-40">
               <Heart size={13}/>回看悄悄话 {comments.length > 0 && <span className="text-[#c99a6a]">{comments.length}</span>}
             </button>
