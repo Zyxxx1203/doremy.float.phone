@@ -227,6 +227,31 @@ function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
   return picked.slice(0, total);
 }
 
+/** 随手散落：错列、轻微错位与小角度旋转，但仍经过 20% 碰撞校验。 */
+function scatterSlots(count: number): Slot[] {
+  const total = Math.max(1, count);
+  const columns = Math.max(1, Math.ceil(Math.sqrt(total * 1.12)));
+  const rows = Math.max(1, Math.ceil(total / columns));
+  const cellW = 0.82 / columns;
+  const cellH = 0.66 / rows;
+  const slots: Slot[] = [];
+  for (let index = 0; index < total; index += 1) {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const stagger = row % 2 ? cellW * 0.18 : 0;
+    const jitterX = Math.sin((index + 1) * 2.17) * cellW * 0.07;
+    const jitterY = Math.cos((index + 1) * 1.71) * cellH * 0.07;
+    const x = round(Math.min(0.94, Math.max(0.06, 0.09 + (column + 0.5) * cellW + stagger + jitterX)));
+    const y = round(Math.min(0.94, Math.max(0.06, 0.17 + (row + 0.5) * cellH + jitterY)));
+    const scale = Math.min(0.72, cellW / PHOTO_W * 0.72, cellH / PHOTO_H * 0.72);
+    const rotation = ((index * 7) % 7 - 3) * 3;
+    const candidate = { x, y, scale: round(scale), rotation };
+    if (slots.some(slot => !farEnough(candidate, slot, candidate.scale))) return gridSlots(total);
+    slots.push(candidate);
+  }
+  return slots;
+}
+
 /** 网格：等距排列，天然满足间距约束。 */
 function gridSlots(count: number): Slot[] {
   const total = Math.max(1, count);
@@ -332,7 +357,7 @@ export function buildTemplateSlots(templateId: string, count: number, customText
   const safeShapeSlots = (slots: Slot[]) => slots.length >= total ? slots.slice(0, total) : gridSlots(total);
   if (templateId === "builtin-fill") return safeShapeSlots(layoutSlots("builtin-heart", total, true));
   if (templateId === "builtin-grid") return gridSlots(total);
-  if (templateId === "builtin-scatter") return safeShapeSlots(layoutSlots("builtin-heart", total, true));
+  if (templateId === "builtin-scatter") return scatterSlots(total);
   if (templateId === "builtin-text") return safeShapeSlots(textSlots(customText || "LOVE", total, fill));
   if (SHAPES[templateId]) return safeShapeSlots(layoutSlots(templateId, total, fill));
 
