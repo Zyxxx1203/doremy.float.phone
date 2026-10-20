@@ -794,7 +794,6 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
                 webVideoCustomView = view
                 webVideoCustomViewCallback = callback
                 rootContainer.setPadding(0, 0, 0, 0)
-                webView.visibility = View.GONE
                 rootContainer.addView(view, FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
                     FrameLayout.LayoutParams.MATCH_PARENT,
@@ -956,7 +955,6 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         val view = webVideoCustomView ?: return
         rootContainer.removeView(view)
         webVideoCustomView = null
-        webView.visibility = View.VISIBLE
         rootContainer.setPadding(0, 0, 0, imeInsetPx)
         webVideoCustomViewCallback?.onCustomViewHidden()
         webVideoCustomViewCallback = null
