@@ -1670,8 +1670,8 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
           setFolders(sane.folders);
           setLayout(globalWatchMigratedLayout);
           if (sane.changed) writeDesktopFolders(sane.folders);
-          if (sane.changed || migratedLayout !== sane.layout || kvGet(NEW_LIFESTYLE_APPS_PAGE_MIGRATION_KEY) === "1") {
-            kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(migratedLayout));
+          if (sane.changed || migratedLayout !== sane.layout || globalWatchMigratedLayout !== migratedLayout || kvGet(NEW_LIFESTYLE_APPS_PAGE_MIGRATION_KEY) === "1") {
+            kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(globalWatchMigratedLayout));
           }
           setDesktopReady(true);
           return;
