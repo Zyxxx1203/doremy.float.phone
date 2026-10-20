@@ -36,7 +36,7 @@ function bumpWatchAutoCount(): void {
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
 type Platform = "bilibili" | "youtube" | "tencent" | "youku" | "iqiyi" | "douyin" | "kuaishou" | "xiaohongshu" | "other";
 type VideoTarget = { url: string; embedUrl: string | null; platform: Platform; platformName: string; supported: boolean; nativeVideo?: boolean; nativeVideoUrl?: string; nativeCacheId?: string };
-type WatchNativeBridge = { resolveShortVideoShareUrl?: (url: string, requestId: string) => boolean; deleteCachedShortVideo?: (cacheId: string) => boolean };
+type WatchNativeBridge = { resolveShortVideoShareUrl?: (url: string, requestId: string) => boolean; deleteCachedShortVideo?: (cacheId: string) => boolean; setScreenOrientation?: (mode: string) => boolean };
 type WatchNativeWindow = Window & { AndroidShell?: WatchNativeBridge };
 type WatchNativeResolved = { requestId?: string; ok?: boolean; cacheId?: string; contentUri?: string; mediaUrl?: string; message?: string };
 type WatchComment = { id: string; characterId: string; characterName: string; text: string; createdAt: string; kind?: "character" | "user"; timepoint?: string; targetUrl?: string };
@@ -161,6 +161,8 @@ function saveTargetComments(url: string, comments: WatchComment[]): void {
 /** Screen orientation locking is not included in every TypeScript DOM lib/browser. */
 async function tryLockLandscape(): Promise<void> {
   try {
+    const native = (window as WatchNativeWindow).AndroidShell;
+    if (native?.setScreenOrientation?.("landscape")) return;
     const orientation = screen.orientation as ScreenOrientation & {
       lock?: (value: "landscape") => Promise<void>;
     };
@@ -406,6 +408,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   }, [comments.length, fullScreen, busy]);
   const restoreOrientation = async () => {
     try { screen.orientation?.unlock?.(); } catch { /* orientation lock is optional */ }
+    try { (window as WatchNativeWindow).AndroidShell?.setScreenOrientation?.("restore"); } catch { /* browser fallback below */ }
     const original = originalOrientationRef.current;
     if (original) {
       try {
