@@ -8,7 +8,8 @@ import { generateChatCompletion, flattenCompletionResult, readCompressedImageDat
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { resolveVoiceConfig, synthesizeSpeech } from "@/lib/tts-service";
-import { loadApiConfigs, loadBindingConfig, resolveBinding, resolveUserIdentity } from "@/lib/settings-storage";
+import { loadApiConfigs, resolveUserIdentity } from "@/lib/settings-storage";
+import { loadVideoAnalysisSettings } from "@/lib/video-analysis-settings";
 import { formatTranscriptTime, parseVideoTranscript, type VideoTranscriptSegment } from "@/lib/video-transcript";
 import { DanmakuLayer } from "@/components/watch/danmaku-layer";
 import { captureScreenshot, hasScreenshotBridge } from "@/lib/screenshot";
@@ -734,14 +735,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     }
     if (wholeVideoBusy) return;
 
-    const binding = resolveBinding(loadBindingConfig(), character.id, "watch_together");
-    const apiConfig = loadApiConfigs().find(item => item.id === binding.apiConfigId);
-    if (!apiConfig || apiConfig.provider !== "Google" || (apiConfig.baseUrl && !/generativelanguage\.googleapis\.com/i.test(apiConfig.baseUrl))) {
-      onNotice?.("完整视频观看目前使用 Gemini 视频理解 API。请在绑定设置中为该角色的「一起看」绑定直连 Google Gemini API（不是 OpenAI 兼容中转地址）；原有陪看功能不受影响。");
+    const videoSettings = loadVideoAnalysisSettings();
+    if (videoSettings.provider !== "gemini") {
+      onNotice?.("当前选择的视频分析服务暂不支持完整视频文件上传。");
       return;
     }
-    if (!apiConfig.apiKey?.trim()) {
-      onNotice?.("当前角色绑定的 Gemini API 没有填写密钥。");
+    if (!videoSettings.apiKey.trim()) {
+      onNotice?.("请先到系统设置 → 视频分析模型填写 Gemini API Key。");
       return;
     }
 
@@ -779,8 +779,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
       const responseText = await analyzeWholeVideoWithGemini({
         file,
-        apiKey: apiConfig.apiKey,
-        model: apiConfig.defaultModel,
+        apiKey: videoSettings.apiKey,
+        model: videoSettings.model,
+        maxFileSizeMb: videoSettings.maxFileSizeMb,
         prompt,
         signal: controller.signal,
         onProgress: setWholeVideoProgress,
