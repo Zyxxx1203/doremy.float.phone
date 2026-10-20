@@ -23,14 +23,6 @@ function readErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
-async function readJson(response: Response): Promise<Record<string, unknown>> {
-  try {
-    return await response.json() as Record<string, unknown>;
-  } catch {
-    throw new Error("视频 API 返回了无法识别的响应。");
-  }
-}
-
 export async function analyzeWholeVideoWithGemini(options: {
   file: File;
   apiKey: string;
