@@ -1366,7 +1366,19 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           </div>
         </div>
       </section>
-      </> : wallView === "memories" ? <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-4 sm:px-7" style={{WebkitOverflowScrolling:"touch"}}>
+      </> : wallView === "album" ? <PhotoAlbumView
+        albums={albums}
+        photos={photos}
+        activeAlbumId={activeAlbumId}
+        activePage={activeAlbumPage}
+        editMode={albumEditMode}
+        onSaveAlbums={setAlbums}
+        onSelectAlbum={setActiveAlbumId}
+        onSelectPage={setActiveAlbumPage}
+        onSetEditMode={setAlbumEditMode}
+        onOpenPhoto={photo => openPhoto(photo)}
+        onNotice={onNotice}
+      /> : wallView === "memories" ? <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-4 sm:px-7" style={{WebkitOverflowScrolling:"touch"}}>
         {photos.length ? <div className="mx-auto grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {photos.map(photo => <article key={photo.id} className="min-w-0 border border-[#e3d3c1] bg-[#fffdf8] p-2 pb-3 shadow-[2px_5px_12px_rgba(70,55,40,.10)]">
             <PhotoThumbnail photo={photo} onOpen={() => openPhoto(photo)}/>
