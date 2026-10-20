@@ -160,7 +160,7 @@ export async function analyzeCapturedImage(options: {
   const match = options.dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/);
   if (!match) throw new Error("截屏图片数据无效。");
   if (!options.model.trim()) throw new Error("请先配置视频分析模型 ID。");
-  const root = (options.baseUrl || (provider === "gemini" ? "https://generativelanguage.googleapis.com" : provider === "ark" ? "https://ark.cn-beijing.volces.com/api/v3" : provider === "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com/v1")).trim().replace(/\/+$/, "");
+  const root = (options.baseUrl || (provider === "gemini" ? "https://generativelanguage.googleapis.com" : provider === "ark" ? "https://ark.cn-beijing.volces.com/api/v3" : provider === "anthropic" ? "https://api.anthropic.com" : provider === "twelvelabs" ? "https://api.twelvelabs.io/v1.3" : "https://api.openai.com/v1")).trim().replace(/\/+$/, "");
   const local = /^(https?:\/\/)?(localhost|127\.0\.0\.1|10\.0\.2\.2|\[::1\]|192\.168\.)/i.test(root);
   if (!options.apiKey.trim() && !(provider === "openai-compatible" && local)) throw new Error("请先在系统设置 → 视频分析模型填写 API Key。");
   const imageBase64 = match[2];
