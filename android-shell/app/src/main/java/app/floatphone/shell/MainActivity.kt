@@ -472,7 +472,7 @@ private fun isLikelyPublicMp4(rawUrl: String): Boolean {
         || isHostUnder(url.host, "ks-cdn.com")
         // Douyin's SSR parser exposes signed playback URLs on aweme.snssdk.com.
         || (isHostUnder(url.host, "snssdk.com") && path.contains("/aweme/v1/play"))
-        || (isHostUnder(url.host, "xhscdn.com") && (path.contains("video") || url.queryParameter("type") == "video"))
+        || (isHostUnder(url.host, "xhscdn.com") && (path.contains("video") || path.contains("stream") || path.contains("media") || url.queryParameter("type") == "video"))
 }
 
 private fun readBoundedText(input: java.io.InputStream, maxBytes: Int): String {
