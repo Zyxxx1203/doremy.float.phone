@@ -327,30 +327,35 @@ export function saveTemplateFill(fill: boolean): void {
 /** 按模板 id 现算骨架：数量随当前照片数变化，所以不预先固化 slots。 */
 export function buildTemplateSlots(templateId: string, count: number, customText?: string, fill = false): Slot[] {
   const total = Math.max(1, count);
-  // 兼容旧的独立「心形填充」模板：等价于心形 + 填充
-  if (templateId === "builtin-fill") return layoutSlots("builtin-heart", total, true);
+  // 每个分支都必须返回与照片数量相同的唯一槽位；否则上层不能循环复用槽位，
+  // 否则会把多张照片精确叠在一起。形状放不下时，安全退回间距合格的网格。
+  const safeShapeSlots = (slots: Slot[]) => slots.length >= total ? slots.slice(0, total) : gridSlots(total);
+  if (templateId === "builtin-fill") return safeShapeSlots(layoutSlots("builtin-heart", total, true));
   if (templateId === "builtin-grid") return gridSlots(total);
-  if (templateId === "builtin-scatter") return layoutSlots("builtin-heart", total, true);
-  if (templateId === "builtin-text") return textSlots(customText || "LOVE", total, fill);
-  if (SHAPES[templateId]) return layoutSlots(templateId, total, fill);
+  if (templateId === "builtin-scatter") return safeShapeSlots(layoutSlots("builtin-heart", total, true));
+  if (templateId === "builtin-text") return safeShapeSlots(textSlots(customText || "LOVE", total, fill));
+  if (SHAPES[templateId]) return safeShapeSlots(layoutSlots(templateId, total, fill));
 
-  // 自定义模板：用用户存的骨架；不够时用网格补，且不叠在已有照片上
+  // 自定义模板：保留用户骨架，但如果其位置互相重叠，就退回安全网格；
+  // 补位时同样做碰撞检测，不允许槽位不足时在上层重复套用。
   const template = loadCustomTemplates().find(item => item.id === templateId);
   if (template?.slots?.length) {
-    const slots: Slot[] = template.slots.map(slot => ({
+    const slots: Slot[] = template.slots.slice(0, total).map(slot => ({
       x: round(clamp01(Number(slot.x) || 0.5)),
       y: round(clamp01(Number(slot.y) || 0.5)),
-      scale: Math.min(3, Math.max(0.35, Number(slot.scale) || 0.82)),
+      scale: Math.min(3, Math.max(0.12, Number(slot.scale) || 0.82)),
       rotation: Math.min(45, Math.max(-45, Number(slot.rotation) || 0)),
     }));
-    const pool = gridSlots(Math.max(total, slots.length));
-    let index = 0;
-    while (slots.length < total && index < pool.length * 2) {
-      const candidate = pool[index % pool.length];
-      if (!slots.some(slot => !farEnough(candidate, slot, 0.72))) slots.push(candidate);
-      index += 1;
+    for (let i = 0; i < slots.length; i += 1) {
+      if (slots.slice(0, i).some(previous => !farEnough(slots[i], previous, slots[i].scale))) return gridSlots(total);
     }
-    return slots.slice(0, total);
+    const pool = gridSlots(Math.max(total * 3, slots.length + total));
+    let index = 0;
+    while (slots.length < total && index < pool.length) {
+      const candidate = pool[index++];
+      if (!slots.some(slot => !farEnough(candidate, slot, candidate.scale))) slots.push(candidate);
+    }
+    return slots.length === total ? slots : gridSlots(total);
   }
 
   return gridSlots(total);
