@@ -931,8 +931,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             <input type="password" autoComplete="off" value={transcriberToken} onChange={event => setTranscriberToken(event.target.value)} placeholder="VIDEO_TRANSCRIBER_TOKEN" className="mt-1 w-full rounded-xl border border-[#dac6ad] bg-white px-3 py-2 text-xs outline-none focus:border-[#b88768]"/>
           </label>
           <label className="mt-2 block text-[11px]">转写模型
-            <select value={transcriberModel} onChange={event => setTranscriberModel(event.target.value as typeof transcriberModel)} className="mt-1 w-full rounded-xl border border-[#dac6ad] bg-white px-3 py-2 text-xs outline-none"><option value="tiny">tiny · 最省资源</option><option value="base">base</option><option value="small">small · 中文均衡推荐</option><option value="medium">medium · 更高资源占用</option></select>
+            <select value={transcriberModel} onChange={event => setTranscriberModel(event.target.value as typeof transcriberModel)} className="mt-1 w-full rounded-xl border border-[#dac6ad] bg-white px-3 py-2 text-xs outline-none"><option value="tiny">tiny · 最省资源（本地服务）</option><option value="base">base（本地服务）</option><option value="small">small · 中文均衡推荐（本地服务）</option><option value="medium">medium · 更高资源占用（本地服务）</option></select>
           </label>
+          <p className="mt-1 text-[10px] leading-4 text-[#8b7665]">若服务地址是 Cloudflare Workers，模型固定使用 Cloudflare Whisper Large v3 Turbo，此处模型选项只影响本地转写服务。</p>
           <button type="button" disabled={transcribing || !(urlInput.trim() || target?.url)} onClick={() => void transcribeFromUrl()} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#87565b] px-3 py-2.5 text-xs text-white disabled:opacity-40">
             {transcribing ? <LoaderCircle size={13} className="animate-spin"/> : <FileText size={13}/>}
             {transcribing ? "正在生成脚本…" : "解析链接并生成脚本"}
