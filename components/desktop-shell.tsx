@@ -31,6 +31,7 @@ import { LifeEngineApp } from "@/components/life/life-engine-app";
 import { ArchiveRoomApp } from "@/components/archive-room-app";
 import { PhotoWallApp } from "@/components/photo-wall-app";
 import { WatchTogetherApp } from "@/components/watch-together-app";
+import { GlobalWatchCompanionApp } from "@/components/global-watch-companion-app";
 import { VnApp } from "@/components/vn/vn-app";
 import ReadingApp from "@/components/reading/reading-app";
 import MapApp from "@/components/map/map-app";
@@ -425,7 +426,7 @@ function migrateNewLifestyleAppsToPageFour(
   folders: DesktopFolderMap,
 ): DesktopLayout {
   if (kvGet(NEW_LIFESTYLE_APPS_PAGE_MIGRATION_KEY) === "1") return layout;
-  const movedIds = new Set<DesktopIconId>(["life", "archive", "photowall", "watchtogether"]);
+  const movedIds = new Set<DesktopIconId>(["life", "archive", "photowall", "watchtogether", "globalwatch"]);
   const next = cloneDesktopLayout(layout, widgets);
   for (const pageKey of getDesktopPageKeysForState(next, widgets)) {
     next[pageKey] = (next[pageKey] ?? []).filter(icon => !movedIds.has(icon.id));
@@ -434,12 +435,12 @@ function migrateNewLifestyleAppsToPageFour(
   const folderMembers = new Set(Object.values(folders).flatMap(folder => folder.icons));
   const widgetOcc = buildWidgetOccupancy(widgets.filter(widget => widget.page === 4));
   const usedCells = new Set((next.page4 ?? []).map(icon => `${icon.row},${icon.col}`));
-  for (const id of ["life", "archive", "photowall", "watchtogether"] as const) {
+  for (const id of ["life", "archive", "photowall", "watchtogether", "globalwatch"] as const) {
     if (dock.includes(id) || folderMembers.has(id)) continue;
     const desired = id === "life" ? { row: 3, col: 2 }
       : id === "archive" ? { row: 3, col: 3 }
       : id === "photowall" ? { row: 4, col: 2 }
-      : { row: 4, col: 3 };
+      : id === "watchtogether" ? { row: 4, col: 3 } : { row: 4, col: 4 };
     const free = findNearestFreeCell(desired.row, desired.col, widgetOcc, usedCells);
     if (!free) continue;
     next.page4.push({ id, ...free });
@@ -4460,6 +4461,10 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
     if (activeApp === "watchtogether") {
       return <WatchTogetherApp onClose={() => setActiveApp(null)} onNotice={setNotice} />;
+    }
+
+    if (activeApp === "globalwatch") {
+      return <GlobalWatchCompanionApp onClose={() => setActiveApp(null)} onNotice={setNotice} />;
     }
 
     if (activeApp === "vnmode") {
