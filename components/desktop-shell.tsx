@@ -31,7 +31,6 @@ import { LifeEngineApp } from "@/components/life/life-engine-app";
 import { ArchiveRoomApp } from "@/components/archive-room-app";
 import { PhotoWallApp } from "@/components/photo-wall-app";
 import { WatchTogetherApp } from "@/components/watch-together-app";
-import { GlobalWatchCompanionApp } from "@/components/global-watch-companion-app";
 import { VnApp } from "@/components/vn/vn-app";
 import ReadingApp from "@/components/reading/reading-app";
 import MapApp from "@/components/map/map-app";
@@ -420,28 +419,6 @@ function getInstalledCustomIconIds(): Set<string> {
 }
 
 
-const GLOBAL_WATCH_ICON_PAGE_MIGRATION_KEY = "global_watch_icon_page_migration_v1";
-function migrateGlobalWatchIconToPageFour(
-  layout: DesktopLayout,
-  widgets: WidgetInstance[],
-  dock: DesktopIconId[],
-  folders: DesktopFolderMap,
-): DesktopLayout {
-  if (kvGet(GLOBAL_WATCH_ICON_PAGE_MIGRATION_KEY) === "1") return layout;
-  const next = cloneDesktopLayout(layout, widgets);
-  const exists = getDesktopPageKeysForState(next, widgets).some(pageKey => (next[pageKey] ?? []).some(icon => icon.id === "globalwatch"));
-  const folderMembers = new Set(Object.values(folders).flatMap(folder => folder.icons));
-  if (!exists && !dock.includes("globalwatch") && !folderMembers.has("globalwatch")) {
-    ensureDesktopPage(next, "page4" as DesktopPageKey);
-    const widgetOcc = buildWidgetOccupancy(widgets.filter(widget => widget.page === 4));
-    const usedCells = new Set((next.page4 ?? []).map(icon => String(icon.row) + "," + String(icon.col)));
-    const free = findNearestFreeCell(4, 4, widgetOcc, usedCells);
-    if (free) next.page4.push({ id: "globalwatch", ...free });
-  }
-  kvSet(GLOBAL_WATCH_ICON_PAGE_MIGRATION_KEY, "1");
-  return next;
-}
-
 function migrateNewLifestyleAppsToPageFour(
   layout: DesktopLayout,
   widgets: WidgetInstance[],
@@ -449,7 +426,7 @@ function migrateNewLifestyleAppsToPageFour(
   folders: DesktopFolderMap,
 ): DesktopLayout {
   if (kvGet(NEW_LIFESTYLE_APPS_PAGE_MIGRATION_KEY) === "1") return layout;
-  const movedIds = new Set<DesktopIconId>(["life", "archive", "photowall", "watchtogether", "globalwatch"]);
+  const movedIds = new Set<DesktopIconId>(["life", "archive", "photowall", "watchtogether"]);
   const next = cloneDesktopLayout(layout, widgets);
   for (const pageKey of getDesktopPageKeysForState(next, widgets)) {
     next[pageKey] = (next[pageKey] ?? []).filter(icon => !movedIds.has(icon.id));
@@ -458,12 +435,12 @@ function migrateNewLifestyleAppsToPageFour(
   const folderMembers = new Set(Object.values(folders).flatMap(folder => folder.icons));
   const widgetOcc = buildWidgetOccupancy(widgets.filter(widget => widget.page === 4));
   const usedCells = new Set((next.page4 ?? []).map(icon => `${icon.row},${icon.col}`));
-  for (const id of ["life", "archive", "photowall", "watchtogether", "globalwatch"] as const) {
+  for (const id of ["life", "archive", "photowall", "watchtogether"] as const) {
     if (dock.includes(id) || folderMembers.has(id)) continue;
     const desired = id === "life" ? { row: 3, col: 2 }
       : id === "archive" ? { row: 3, col: 3 }
       : id === "photowall" ? { row: 4, col: 2 }
-      : id === "watchtogether" ? { row: 4, col: 3 } : { row: 4, col: 4 };
+      : { row: 4, col: 3 };
     const free = findNearestFreeCell(desired.row, desired.col, widgetOcc, usedCells);
     if (!free) continue;
     next.page4.push({ id, ...free });
@@ -1666,7 +1643,6 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
           const normalized = normalizeLayout(JSON.parse(rawV2), hydratedWidgets, dockIds, hydratedFolders);
           const sane = sanitizeDesktopFolders(hydratedFolders, normalized, hydratedDock, hydratedWidgets);
           const migratedLayout = migrateNewLifestyleAppsToPageFour(sane.layout, hydratedWidgets, hydratedDock, sane.folders);
-          const globalWatchMigratedLayout = migrateGlobalWatchIconToPageFour(migratedLayout, hydratedWidgets, hydratedDock, sane.folders);
           setFolders(sane.folders);
           setLayout(globalWatchMigratedLayout);
           if (sane.changed) writeDesktopFolders(sane.folders);
@@ -4485,10 +4461,6 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
     if (activeApp === "watchtogether") {
       return <WatchTogetherApp onClose={() => setActiveApp(null)} onNotice={setNotice} />;
-    }
-
-    if (activeApp === "globalwatch") {
-      return <GlobalWatchCompanionApp onClose={() => setActiveApp(null)} onNotice={setNotice} />;
     }
 
     if (activeApp === "vnmode") {
