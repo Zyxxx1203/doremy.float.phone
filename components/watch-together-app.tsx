@@ -784,12 +784,16 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   };
 
   useEffect(() => {
-    const onChange = () => {
-      if (!document.fullscreenElement) setFullScreen(false);
+    // The app uses CSS fullscreen rather than native media fullscreen. An iframe entering/exiting
+    // its own fullscreen must not collapse the app's immersive layout unexpectedly.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || !fullScreen) return;
+      setFullScreen(false);
+      void restoreOrientation();
     };
-    document.addEventListener("fullscreenchange", onChange);
-    return () => document.removeEventListener("fullscreenchange", onChange);
-  }, []);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [fullScreen]);
 
   const danmakuItems = useMemo(() => comments
     .filter(item => !target?.url || !item.targetUrl || item.targetUrl === target.url)
@@ -872,7 +876,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         gap:10px!important; background:none!important; box-sizing:border-box!important;
       }
       .watch-together-app[data-watch-fullscreen="true"] .watch-room-title,
-      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel { display:none!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel,
+      .watch-together-app[data-watch-fullscreen="true"] [data-resolver-state] { display:none!important; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-player {
         grid-area:player!important; position:relative!important; inset:auto!important;
         width:100%!important; height:100%!important; max-width:none!important;
@@ -955,7 +960,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         gap:8px!important; box-sizing:border-box!important;
       }
       .watch-together-app[data-watch-fullscreen="true"] .watch-room-title,
-      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel { display:none!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel,
+      .watch-together-app[data-watch-fullscreen="true"] [data-resolver-state] { display:none!important; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-player {
         grid-area:player!important; position:relative!important; inset:auto!important; width:100%!important;
         height:100%!important; max-width:none!important; max-height:none!important; min-height:0!important;
@@ -1035,7 +1041,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app[data-watch-fullscreen="true"] > header { display:flex!important; flex:0 0 auto!important; min-height:42px!important; padding:4px 10px!important; background:rgba(0,0,0,.45)!important; color:#fff!important; }
       .watch-together-app[data-watch-fullscreen="true"] > main.watch-together-main { display:grid!important; position:relative!important; inset:auto!important; grid-template-columns:minmax(0,1.2fr) minmax(220px,.8fr)!important; grid-template-rows:minmax(0,1fr)!important; grid-template-areas:"player interaction"!important; flex:1 1 0!important; min-height:0!important; width:100%!important; height:auto!important; overflow:hidden!important; padding:6px 8px max(8px,env(safe-area-inset-bottom))!important; gap:8px!important; box-sizing:border-box!important; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-room-title,
-      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel { display:none!important; }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel,
+      .watch-together-app[data-watch-fullscreen="true"] [data-resolver-state] { display:none!important; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-player { display:block!important; grid-area:player!important; position:relative!important; inset:auto!important; width:100%!important; height:100%!important; max-width:none!important; max-height:none!important; min-height:0!important; aspect-ratio:auto!important; margin:0!important; padding:0!important; overflow:hidden!important; border:0!important; border-radius:8px!important; box-shadow:none!important; background:#000!important; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-player > video,
       .watch-together-app[data-watch-fullscreen="true"] .watch-player > iframe { position:absolute!important; inset:0!important; display:block!important; width:100%!important; height:100%!important; max-width:none!important; max-height:100%!important; min-width:0!important; min-height:0!important; border:0!important; aspect-ratio:auto!important; object-fit:contain!important; }
