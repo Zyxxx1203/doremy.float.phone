@@ -642,7 +642,7 @@ private fun extractPublicHlsUrl(html: String): String? {
     val normalized = html.replace("\\/", "/")
         .replace("\\u002F", "/", ignoreCase = true)
         .replace("&amp;", "&", ignoreCase = true)
-    return Regex("""https?://[^\\s"'<>\\\\]+""", RegexOption.IGNORE_CASE)
+    return Regex("""https?://[^\s"'<>\\]+""", RegexOption.IGNORE_CASE)
         .findAll(normalized)
         .map { it.value.trim().trimEnd(',', ';', ')', ']', '}', '\\', '.', '"') }
         .firstOrNull(::isLikelyPublicHls)
