@@ -455,15 +455,22 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
           if (readOnly || mode === "view") return;
           event.preventDefault();
           event.stopPropagation();
-          const stack = document.elementsFromPoint(event.clientX, event.clientY);
-          const resizeTarget = stack.map(element => element.closest?.("[data-photo-wall-resize]")).find(Boolean) as HTMLElement | undefined;
-          const photoElement = stack
-            .map(element => element.closest?.("[data-photo-wall-photo-id]"))
-            .find(element => element instanceof HTMLElement && Boolean(wallRef.current?.contains(element))) as HTMLElement | undefined;
+          // elementsFromPoint is inconsistent in some Android WebViews when a full-wall
+          // transparent input layer sits above transformed photo cards. Resolve the hit using
+          // the actual rendered card rectangles, front-to-back, then obtain that card's anchor.
+          const wall = wallRef.current;
+          const resizeTarget = event.target instanceof Element
+            ? (event.target.closest("[data-photo-wall-resize]") as HTMLElement | null) ?? undefined
+            : undefined;
+          const renderedCards = Array.from(wall?.querySelectorAll<HTMLElement>("[data-photo-wall-photo-id]") ?? []);
+          const hit = renderedCards.slice().reverse().find(element => {
+            const rect = element.getBoundingClientRect();
+            return event.clientX >= rect.left && event.clientX <= rect.right
+              && event.clientY >= rect.top && event.clientY <= rect.bottom;
+          });
+          const photoElement = hit;
           const photoId = photoElement?.dataset.photoWallPhotoId;
-          const photoAnchor = stack
-            .map(element => element.closest?.("[data-photo-wall-photo-anchor]"))
-            .find(element => element instanceof HTMLElement && Boolean(wallRef.current?.contains(element))) as HTMLElement | undefined;
+          const photoAnchor = photoElement?.querySelector<HTMLElement>("[data-photo-wall-photo-anchor]") ?? undefined;
           const index = ordered.findIndex(photo => photo.id === photoId);
           const photo = index >= 0 ? ordered[index] : null;
           if (mode === "move") {
