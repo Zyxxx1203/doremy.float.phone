@@ -11,7 +11,7 @@ import type { PhotoWallTemplate } from "@/lib/photo-wall-storage";
  *   等比空间里描述，换任何屏幕比例都不会被拉长。
  *
  * 落点用「候选网格 + 碰撞面积校验」挑选：
- *   以照片旋转后的包围盒估算交叠面积，交叠面积 / 较小照片面积不得超过 50%。
+ *   以照片旋转后的包围盒估算交叠面积，交叠面积 / 较小照片面积不得超过 20%。
  */
 
 export const TEMPLATES_STORAGE_KEY = "ai_phone_photo_wall_templates_v1";
@@ -156,14 +156,14 @@ function farEnough(a: { x: number; y: number; rotation?: number }, b: { x: numbe
   const overlapH = Math.max(0, (aa.height + bb.height) / 2 - Math.abs(a.y - b.y));
   const overlapArea = overlapW * overlapH;
   const smallerArea = Math.min(aa.width * aa.height, bb.width * bb.height);
-  return smallerArea <= 0 || overlapArea / smallerArea <= 0.5;
+  return smallerArea <= 0 || overlapArea / smallerArea <= 0.2;
 }
 
 /**
  * 通用落点生成：
  *   fill=false → 只取形状边缘的一圈（轮廓）
  *   fill=true  → 从中心向外一圈圈铺满内部
- * 两种都用最小间距筛选，保证照片重叠不超过 50%。
+ * 两种都用最小间距筛选，保证照片重叠不超过较小照片面积的 20%。
  */
 function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
   const total = Math.max(1, count);
@@ -195,8 +195,9 @@ function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
   const picked: Slot[] = [];
   for (const candidate of ordered) {
     if (picked.length >= total) break;
-    const scale = 0.72 + ((picked.length * 7) % 5) * 0.03;
-    const rotation = round(((picked.length * 13) % 11) - 5);
+    // 轻微、规律的错落更接近精心排版的纪念墙，避免每张照片像随机散落。
+    const scale = 0.66 + ((picked.length * 3) % 5) * 0.025;
+    const rotation = ((picked.length % 5) - 2) * 2;
     if (picked.some(slot => !farEnough({ ...candidate, rotation }, slot, scale))) continue;
     picked.push({ x: candidate.x, y: candidate.y, scale: round(scale), rotation });
   }
@@ -238,7 +239,8 @@ function gridSlots(count: number): Slot[] {
     slots.push({
       x: round(0.5 + ((column + 0.5) / columns - 0.5) * 0.82),
       y: round(0.5 + ((row + 0.5) / rows - 0.5) * 0.66),
-      scale: 0.72,
+      // 随照片数量自动缩放，避免网格照片挤压重叠。
+      scale: Math.min(0.72, 10 / Math.max(columns, rows)),
       rotation: 0,
     });
   }
