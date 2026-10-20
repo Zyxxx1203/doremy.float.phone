@@ -140,41 +140,40 @@ function fillSlots(count: number): Slot[] {
   }));
 }
 
-function starSlots(count:number): Slot[] {
-  const total=Math.max(1,count), outline:Array<{x:number;y:number}>=[];
-  for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,r=i%2===0?0.39:0.18;outline.push({x:0.5+Math.cos(a)*r,y:0.5+Math.sin(a)*r});}
-  const slots:Slot[]=[];
-  for(let i=0;i<total;i++){
-    const ring=Math.floor(Math.sqrt(i)), angle=i*2.399963229728653;
-    const radius=0.025+ring*0.052;
-    let x=0.5+Math.cos(angle)*radius, y=0.5+Math.sin(angle)*radius;
-    // Pull candidates back toward the star's centre if they leave the star silhouette.
-    const point={x,y}; let inside=false;
-    for(let j=0,k=outline.length-1;j<outline.length;k=j++){
-      const a=outline[j],b=outline[k];
-      if((a.y>y)!==(b.y>y)&&x<(b.x-a.x)*(y-a.y)/((b.y-a.y)||1e-6)+a.x)inside=!inside;
-    }
-    if(!inside){x=0.5+(x-0.5)*0.58;y=0.5+(y-0.5)*0.58;}
-    slots.push({x:round(clamp01(x)),y:round(clamp01(y)),scale:0.64,rotation:round(Math.sin(i*1.7)*4)});
+type ShapeKind = "star" | "flower" | "cloud" | "spiral";
+function shapeRadius(kind: ShapeKind, angle: number): number {
+  if (kind === "star") return 0.39 * (0.59 + 0.41 * Math.cos(5 * (angle + Math.PI / 2)));
+  if (kind === "flower") return 0.31 + 0.105 * Math.cos(8 * angle);
+  if (kind === "cloud") return 0.34 + 0.075 * Math.max(0, Math.sin(angle * 3 + 0.35)) + 0.035 * Math.cos(2 * angle);
+  return 0.36;
+}
+function shapedSlots(count: number, kind: ShapeKind): Slot[] {
+  const total = Math.max(1, count), slots: Slot[] = [];
+  const cx = 0.5, cy = kind === "star" ? 0.51 : 0.52;
+  const radiusAt = (angle: number) => shapeRadius(kind, angle);
+  // The outline is placed first so even small photo sets visibly read as the selected shape.
+  const perimeterCount = Math.min(total, Math.max(5, Math.ceil(total * 0.58)));
+  for (let i = 0; i < perimeterCount; i++) {
+    const angle = -Math.PI / 2 + i / perimeterCount * Math.PI * 2;
+    const radius = radiusAt(angle);
+    slots.push({ x: round(clamp01(cx + Math.cos(angle) * radius)), y: round(clamp01(cy + Math.sin(angle) * radius * 0.86)), scale: total <= 8 ? 0.7 : 0.62, rotation: round(Math.sin(angle * 2) * 2) });
   }
-  return slots;
+  if (kind === "spiral") return Array.from({ length: total }, (_, i) => { const angle = i * 2.399963229728653, radius = 0.025 + 0.32 * Math.sqrt((i + 1) / total); return { x: round(clamp01(0.5 + Math.cos(angle) * radius)), y: round(clamp01(0.52 + Math.sin(angle) * radius * 0.86)), scale: 0.62, rotation: round(Math.sin(angle) * 3) }; });
+  const candidates: Array<{ x: number; y: number; angle: number }> = [];
+  const inside = (x: number, y: number) => { const dx = x - cx, dy = (y - cy) / 0.86, angle = Math.atan2(dy, dx); return Math.hypot(dx, dy) <= radiusAt(angle) - 0.035; };
+  for (let y = 0.12; y <= 0.9; y += 0.055) for (let x = 0.1; x <= 0.9; x += 0.055) if (inside(x, y)) candidates.push({ x: round(x), y: round(y), angle: Math.atan2(y - cy, x - cx) });
+  // Farthest-point sampling distributes inner photos across the whole silhouette.
+  while (slots.length < total && candidates.length) {
+    let bestIndex = 0, bestDistance = -1;
+    for (let i = 0; i < candidates.length; i++) { const p = candidates[i]; const d = slots.length ? Math.min(...slots.map(s => (s.x-p.x)**2 + (s.y-p.y)**2)) : 0; if (d > bestDistance) { bestDistance = d; bestIndex = i; } }
+    const p = candidates.splice(bestIndex, 1)[0]; slots.push({ x: p.x, y: p.y, scale: 0.58, rotation: round(Math.sin(p.angle * 2) * 2) });
+  }
+  return slots.slice(0, total);
 }
-function flowerSlots(count:number): Slot[] {
-  const total=Math.max(1,count),slots:Slot[]=[];
-  for(let i=0;i<total;i++){const angle=i*2.399963229728653,ring=Math.floor(Math.sqrt(i));const radius=ring===0?0:ring*0.064;slots.push({x:round(clamp01(0.5+Math.cos(angle)*radius)),y:round(clamp01(0.5+Math.sin(angle)*radius)),scale:0.66,rotation:round((i%6-2.5)*3)});}
-  return slots;
-}
-function cloudSlots(count:number): Slot[] {
-  const total=Math.max(1,count),slots:Slot[]=[];
-  const lobes=[{x:-.22,y:.02,r:.14},{x:-.1,y:-.09,r:.17},{x:.08,y:-.08,r:.19},{x:.23,y:.01,r:.13},{x:.08,y:.1,r:.17},{x:-.12,y:.1,r:.17}];
-  for(let i=0;i<total;i++){const l=lobes[i%lobes.length],ring=Math.floor(i/lobes.length);const a=i*2.399963229728653;const rr=ring*0.045;slots.push({x:round(clamp01(0.5+l.x+Math.cos(a)*rr)),y:round(clamp01(0.5+l.y+Math.sin(a)*rr)),scale:0.62,rotation:round(Math.sin(i)*4)});}
-  return slots;
-}
-function spiralSlots(count:number):Slot[]{
-  const total=Math.max(1,count),slots:Slot[]=[];
-  for(let i=0;i<total;i++){const a=i*2.399963229728653,r=0.025+0.024*Math.sqrt(i);slots.push({x:round(clamp01(.5+Math.cos(a)*r)),y:round(clamp01(.5+Math.sin(a)*r)),scale:.66,rotation:round(Math.sin(a)*6)});}
-  return slots;
-}
+function starSlots(count: number): Slot[] { return shapedSlots(count, "star"); }
+function flowerSlots(count: number): Slot[] { return shapedSlots(count, "flower"); }
+function cloudSlots(count: number): Slot[] { return shapedSlots(count, "cloud"); }
+function spiralSlots(count: number): Slot[] { return shapedSlots(count, "spiral"); }
 
 /**
  * 文字骨架：用离屏 canvas 画一遍文字，采样像素点作为落点。
