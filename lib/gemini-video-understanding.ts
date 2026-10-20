@@ -1,3 +1,4 @@
+import { analyzeVideoUsingKeyframes } from "@/lib/video-keyframe-analysis";
 /**
  * Gemini Files API video understanding.
  *
@@ -51,7 +52,7 @@ export async function analyzeWholeVideoWithGemini(options: {
   if (file.size > maxFileSizeMb * 1024 * 1024) throw new Error("视频超过当前设置的 " + maxFileSizeMb + " MB 上限。请在系统设置 → 视频分析模型调整上限，或先压缩视频。");
 
   if (provider === "ark") return analyzeWholeVideoWithArk({ file, apiKey, model, prompt, baseUrl: options.baseUrl, maxFileSizeMb, signal, onProgress });
-  if (provider === "openai-compatible" || provider === "anthropic") return analyzeVideoByKeyframes({ file, apiKey, model, prompt, provider, baseUrl: options.baseUrl, frameCount: options.frameCount ?? 12, signal, onProgress });
+  if (provider === "openai-compatible" || provider === "anthropic") return analyzeVideoUsingKeyframes({ file, apiKey, model, prompt, provider, baseUrl: options.baseUrl, frameCount: options.frameCount ?? 12, signal, onProgress });
 
   const apiRoot = "https://generativelanguage.googleapis.com";
   const authHeader = { "x-goog-api-key": apiKey.trim() };
