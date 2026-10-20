@@ -881,7 +881,22 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     <style>{`@keyframes watchDanmaku { 0% { transform: translateX(0); opacity: 0 } 6% { opacity: 1 } 92% { opacity: 1 } 100% { transform: translateX(calc(-100% - 100vw)); opacity: 0 } }`}</style>
     <style>{`
       /* One fullscreen layout authority: no legacy rules may cover the discussion composer. */
-      .watch-together-app[data-watch-fullscreen="true"] { position:fixed!important; inset:0!important; z-index:3000!important; width:100vw!important; height:100dvh!important; max-height:100dvh!important; }
+      .watch-together-app[data-watch-fullscreen="true"] {
+        position:fixed!important; inset:0!important; z-index:2147483000!important;
+        width:100vw!important; height:100dvh!important; max-height:100dvh!important;
+        margin:0!important; padding:0!important; overflow:hidden!important;
+        background:#0b0908!important; isolation:isolate!important;
+      }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel,
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .watch-comment-list {
+        touch-action:pan-y!important; -webkit-overflow-scrolling:touch!important;
+      }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .watch-discussion-composer,
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel input,
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel textarea,
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel button {
+        pointer-events:auto!important; touch-action:pan-y;
+      }
       .watch-together-app[data-watch-fullscreen="true"] > header { display:none!important; }
       .watch-together-app[data-watch-fullscreen="true"] > main.watch-together-main {
         display:grid!important; grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr)!important;
