@@ -168,7 +168,7 @@ async function analyzeWholeVideoWithArk(options: {
   maxFileSizeMb: number; signal?: AbortSignal; onProgress?: GeminiVideoProgress;
 }): Promise<string> {
   const { file, apiKey, model, prompt, signal, onProgress } = options;
-  const root = (options.baseUrl || "https://ark.cn-beijing.volces.com/api/v3").trim().replace(/\\/+$/, "");
+  const root = (options.baseUrl || "https://ark.cn-beijing.volces.com/api/v3").trim().replace(/\/+$/, "");
   if (!/^https:\/\//i.test(root)) throw new Error("方舟 API 地址必须使用 HTTPS。");
   const headers = { Authorization: "Bearer " + apiKey.trim() };
   let fileId = "";
