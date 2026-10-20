@@ -804,7 +804,7 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
             }
 
             override fun onHideCustomView() {
-                hideWebVideoCustomView()
+                hideWebVideoCustomView(notifyPage = false)
             }
 
             // Capture WebView JavaScript warnings/errors locally for the diagnostics panel.
@@ -876,7 +876,7 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (webVideoCustomView != null) {
-                    hideWebVideoCustomView()
+                    hideWebVideoCustomView(notifyPage = true)
                     return
                 }
                 if (!::webView.isInitialized) {
@@ -951,13 +951,14 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         }
     }
 
-    private fun hideWebVideoCustomView() {
+    private fun hideWebVideoCustomView(notifyPage: Boolean) {
         val view = webVideoCustomView ?: return
         rootContainer.removeView(view)
         webVideoCustomView = null
         rootContainer.setPadding(0, 0, 0, imeInsetPx)
-        webVideoCustomViewCallback?.onCustomViewHidden()
+        val callback = webVideoCustomViewCallback
         webVideoCustomViewCallback = null
+        if (notifyPage) callback?.onCustomViewHidden()
         hideSystemStatusBar()
     }
 
