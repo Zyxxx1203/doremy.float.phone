@@ -536,7 +536,7 @@ private fun fetchSharedVideoPage(startUrl: String): SharedVideoPage {
  */
 private fun extractDouyinRouterPlayUrl(html: String): String? {
     if (!html.contains("douyin.com", ignoreCase = true) && !html.contains("iesdouyin.com", ignoreCase = true)) return null
-    val match = Regex("""window\\._ROUTER_DATA\\s*=\\s*(.*?)</script>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)).find(html)
+    val match = Regex("""window\._ROUTER_DATA\s*=\s*(.*?)</script>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)).find(html)
         ?: return null
     var raw = match.groupValues[1].trim()
     // Find the matching JSON object end, ignoring braces inside quoted strings.
@@ -548,7 +548,7 @@ private fun extractDouyinRouterPlayUrl(html: String): String? {
         val c = raw[i]
         if (quoted) {
             if (escaped) escaped = false
-            else if (c == '\\\\') escaped = true
+            else if (c == '\\') escaped = true
             else if (c == '"') quoted = false
         } else {
             when (c) {
@@ -559,7 +559,7 @@ private fun extractDouyinRouterPlayUrl(html: String): String? {
         }
     }
     if (end <= 0) return null
-    raw = raw.substring(0, end).replace(Regex(""":\\s*undefined(?=[,\\s}\\]])"""), ": null")
+    raw = raw.substring(0, end).replace(Regex(""":\s*undefined(?=[,\s}\]])"""), ": null")
     return runCatching {
         val root = org.json.JSONObject(raw)
         val loader = root.optJSONObject("loaderData") ?: return@runCatching null
