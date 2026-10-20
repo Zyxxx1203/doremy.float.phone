@@ -147,7 +147,7 @@ export async function analyzeWholeVideoWithGemini(options: {
     if (uploadedName) {
       // Files API files are temporary, but delete promptly rather than leaving the
       // user's personal video around until the provider's automatic expiry.
-      void fetch(apiRoot + "/v1beta/" + encodeURIComponent(uploadedName).replace(/%2F/g, "/") + keyQuery, {
+      void fetch(apiRoot + "/v1beta/" + encodeURIComponent(uploadedName).replace(/%2F/g, "/"), {
         method: "DELETE",
         headers: authHeader,
         keepalive: true,
