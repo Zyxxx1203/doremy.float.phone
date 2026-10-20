@@ -28,20 +28,21 @@ export async function analyzeWholeVideoWithGemini(options: {
   apiKey: string;
   model: string;
   prompt: string;
+  maxFileSizeMb?: number;
   signal?: AbortSignal;
   onProgress?: GeminiVideoProgress;
 }): Promise<string> {
   const { file, apiKey, model, prompt, signal, onProgress } = options;
-  if (!apiKey.trim()) throw new Error("当前角色绑定的 Gemini API 没有填写密钥。");
-  if (!model.trim()) throw new Error("当前角色绑定的 Gemini API 没有设置模型。");
+  if (!apiKey.trim()) throw new Error("请先在系统设置 → 视频分析模型填写 Gemini API Key。");
+  if (!model.trim()) throw new Error("请先在系统设置 → 视频分析模型填写模型 ID。");
   const extension = file.name.toLowerCase().split(".").pop() || "";
   const inferredMime = ({ mp4: "video/mp4", m4v: "video/x-m4v", mov: "video/quicktime", webm: "video/webm", ogv: "video/ogg", ogg: "video/ogg", avi: "video/x-msvideo", wmv: "video/x-ms-wmv", mpeg: "video/mpeg", mpg: "video/mpeg", "3gp": "video/3gpp" } as Record<string, string>)[extension];
   const mimeType = file.type || inferredMime || "";
   if (!mimeType.startsWith("video/")) throw new Error("所选文件不是可识别的视频文件。");
   if (file.size <= 0) throw new Error("视频文件为空。");
-  // Files API can handle large files, but impose a conservative client guard to avoid
-  // accidental huge mobile uploads and excessive data charges.
-  if (file.size > 1024 * 1024 * 1024) throw new Error("视频超过 1 GB。请先压缩视频再发送，避免手机上传失败或产生过高费用。");
+  // Files API can handle large files, but respect the user-configured client guard.
+  const maxFileSizeMb = Math.min(2048, Math.max(50, options.maxFileSizeMb ?? 1024));
+  if (file.size > maxFileSizeMb * 1024 * 1024) throw new Error("视频超过当前设置的 " + maxFileSizeMb + " MB 上限。请在系统设置 → 视频分析模型调整上限，或先压缩视频。");
 
   const apiRoot = "https://generativelanguage.googleapis.com";
   const authHeader = { "x-goog-api-key": apiKey.trim() };
