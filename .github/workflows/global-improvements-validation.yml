@@ -37,6 +37,7 @@ on:
       - "styles/chat.css"
       - "lib/desktop-config.ts"
       - "lib/media-cache-storage.ts"
+      - "lib/photo-wall-templates.ts"
       - "lib/chat-engine.ts"
       - "app/layout.tsx"
       - "app/error.tsx"
