@@ -137,7 +137,7 @@ function shapeOf(templateId: string): Shape {
  * 必须 <= 50%。相比中心距椭圆近似，这个判定可解释、可复现。
  * scale 是候选照片比例；已放置槽位使用各自的 scale。
  */
-function farEnough(a: { x: number; y: number }, b: { x: number; y: number; scale?: number; rotation?: number }, scale: number): boolean {
+function farEnough(a: { x: number; y: number; rotation?: number }, b: { x: number; y: number; scale?: number; rotation?: number }, scale: number): boolean {
   const bounds = (itemScale: number, rotation = 0) => {
     const radians = Math.abs(rotation) * Math.PI / 180;
     const width = PHOTO_W * itemScale;
@@ -150,7 +150,7 @@ function farEnough(a: { x: number; y: number }, b: { x: number; y: number; scale
       height: height * rotatedExtent,
     };
   };
-  const aa = bounds(scale);
+  const aa = bounds(scale, a.rotation ?? 0);
   const bb = bounds(b.scale ?? scale, b.rotation ?? 0);
   const overlapW = Math.max(0, (aa.width + bb.width) / 2 - Math.abs(a.x - b.x));
   const overlapH = Math.max(0, (aa.height + bb.height) / 2 - Math.abs(a.y - b.y));
@@ -196,13 +196,9 @@ function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
   for (const candidate of ordered) {
     if (picked.length >= total) break;
     const scale = 0.72 + ((picked.length * 7) % 5) * 0.03;
-    if (picked.some(slot => !farEnough(candidate, slot, scale))) continue;
-    picked.push({
-      x: candidate.x,
-      y: candidate.y,
-      scale: round(scale),
-      rotation: round(((picked.length * 13) % 11) - 5),
-    });
+    const rotation = round(((picked.length * 13) % 11) - 5);
+    if (picked.some(slot => !farEnough({ ...candidate, rotation }, slot, scale))) continue;
+    picked.push({ x: candidate.x, y: candidate.y, scale: round(scale), rotation });
   }
 
   // 形状太小放不下时，逐步缩小照片再补
@@ -210,8 +206,9 @@ function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
   while (picked.length < total && shrink > 0.18) {
     for (const candidate of ordered) {
       if (picked.length >= total) break;
-      if (picked.some(slot => !farEnough(candidate, slot, shrink))) continue;
-      picked.push({ x: candidate.x, y: candidate.y, scale: round(shrink), rotation: round(((picked.length * 17) % 9) - 4) });
+      const rotation = round(((picked.length * 17) % 9) - 4);
+      if (picked.some(slot => !farEnough({ ...candidate, rotation }, slot, shrink))) continue;
+      picked.push({ x: candidate.x, y: candidate.y, scale: round(shrink), rotation });
     }
     shrink -= 0.08;
   }
@@ -288,8 +285,9 @@ function textSlots(text: string, count: number, fill: boolean): Slot[] {
   const picked: Slot[] = [];
   for (const hit of ordered) {
     if (picked.length >= total) break;
-    if (picked.some(slot => !farEnough(hit, slot, 0.5))) continue;
-    picked.push({ x: round(clamp01(hit.x)), y: round(clamp01(hit.y)), scale: 0.5, rotation: round(((picked.length * 19) % 9) - 4) });
+    const rotation = round(((picked.length * 19) % 9) - 4);
+    if (picked.some(slot => !farEnough({ ...hit, rotation }, slot, 0.5))) continue;
+    picked.push({ x: round(clamp01(hit.x)), y: round(clamp01(hit.y)), scale: 0.5, rotation });
   }
   // 文字采样点不足时也不重复叠放：遍历唯一点位并缩小到安全尺寸补齐。
   const used = new Set(picked.map(slot => `${slot.x},${slot.y}`));
