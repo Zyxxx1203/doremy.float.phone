@@ -15,6 +15,7 @@ import { DanmakuLayer } from "@/components/watch/danmaku-layer";
 import { captureScreenshot, hasScreenshotBridge } from "@/lib/screenshot";
 import { analyzeWholeVideoWithGemini } from "@/lib/gemini-video-understanding";
 import { clearGlobalWatchRecords, loadGlobalWatchRecords, type GlobalWatchRecord } from "@/lib/global-watch-storage";
+import { GlobalWatchCompanionApp } from "@/components/global-watch-companion-app";
 
 /** 自动搭话的每日上限：护栏，避免暂停/挂机时白烧 API。 */
 const WATCH_AUTO_DAILY_LIMIT = 24;
@@ -382,6 +383,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [busy, setBusy] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showGlobalCompanion, setShowGlobalCompanion] = useState(false);
   const [historyMode, setHistoryMode] = useState<"current" | "global">("current");
   const [globalWatchRecords, setGlobalWatchRecords] = useState<GlobalWatchRecord[]>(() => loadGlobalWatchRecords());
   const [fullScreen, setFullScreen] = useState(false);
@@ -937,6 +939,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     return `${target.platformName}还没有取得可播放的视频流；查看解析提示或选择本地视频，不会假称已实现站内播放。`;
   }, [target]);
 
+  if (showGlobalCompanion) return <GlobalWatchCompanionApp onClose={() => setShowGlobalCompanion(false)} onNotice={onNotice} />;
+
   return <div data-watch-fullscreen={fullScreen ? "true" : "false"} className={"watch-together-app pointer-events-auto isolate flex min-w-0 flex-col overflow-hidden text-[#f0e6d8] " + (fullScreen ? "fixed inset-0 z-[3000]" : "absolute inset-0 z-[1000]")} style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)", height: fullScreen ? "100dvh" : undefined, width: fullScreen ? "100vw" : undefined }}>
     {/* 弹幕动画：仓库里从未定义过 watchDanmaku，之前那条 animation 是空转，这里补上真实 keyframes */}
     <style>{`\n      .watch-together-main { display:flex; flex-direction:column; }
@@ -1199,6 +1203,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         <span className="grid h-6 w-6 place-items-center overflow-hidden rounded-full bg-[#4a3d33] text-[10px] text-[#e6d8c4]">{character.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character.name.slice(0, 1)}</span>
         <span className="max-w-[72px] truncate text-[11px] font-medium text-[#6d5141]">{character.name}</span>
       </div>}
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowGlobalCompanion(true); }} className="relative z-[1011] flex h-11 shrink-0 cursor-pointer touch-manipulation items-center gap-1.5 rounded-2xl border border-[#b89979]/45 bg-[#fffaf2]/80 px-2.5 text-[11px] text-[#6d4e47] shadow-sm transition hover:bg-white active:scale-95" aria-label="全局陪看"><Eye size={15}/>全局</button>
       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowSettings(value => !value); }} className="relative z-[1011] grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-[#b89979]/45 bg-[#fffaf2]/80 text-[#6d4e47] shadow-sm transition hover:bg-white active:scale-95" aria-label="观影设置" aria-expanded={showSettings}><Settings2 size={17}/></button>
     </header>
 
