@@ -44,7 +44,7 @@ export async function analyzeWholeVideoWithGemini(options: {
   if (!apiKey.trim() && !(provider === "openai-compatible" && isLocalEndpoint)) throw new Error("请先在系统设置 → 视频分析模型填写所选服务的 API Key（本机兼容接口可按服务要求留空）。");
   const extension = file.name.toLowerCase().split(".").pop() || "";
   const inferredMime = ({ mp4: "video/mp4", m4v: "video/x-m4v", mov: "video/quicktime", webm: "video/webm", ogv: "video/ogg", ogg: "video/ogg", avi: "video/x-msvideo", wmv: "video/x-ms-wmv", mpeg: "video/mpeg", mpg: "video/mpeg", "3gp": "video/3gpp" } as Record<string, string>)[extension];
-  const mimeType = file.type || inferredMime || "";
+  const mimeType = file.type.startsWith("video/") ? file.type : inferredMime || file.type || "";
   if (!mimeType.startsWith("video/")) throw new Error("所选文件不是可识别的视频文件。");
   if (file.size <= 0) throw new Error("视频文件为空。");
   // Files API can handle large files, but respect the user-configured client guard.
