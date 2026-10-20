@@ -14,6 +14,7 @@ import { formatTranscriptTime, parseVideoTranscript, type VideoTranscriptSegment
 import { DanmakuLayer } from "@/components/watch/danmaku-layer";
 import { captureScreenshot, hasScreenshotBridge } from "@/lib/screenshot";
 import { analyzeWholeVideoWithGemini } from "@/lib/gemini-video-understanding";
+import { clearGlobalWatchRecords, loadGlobalWatchRecords, type GlobalWatchRecord } from "@/lib/global-watch-storage";
 
 /** 自动搭话的每日上限：护栏，避免暂停/挂机时白烧 API。 */
 const WATCH_AUTO_DAILY_LIMIT = 24;
@@ -381,6 +382,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [busy, setBusy] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [historyMode, setHistoryMode] = useState<"current" | "global">("current");
+  const [globalWatchRecords, setGlobalWatchRecords] = useState<GlobalWatchRecord[]>(() => loadGlobalWatchRecords());
   const [fullScreen, setFullScreen] = useState(false);
   const originalOrientationRef = useRef<string | null>(null);
   const playerRef = useRef<HTMLDivElement>(null);
@@ -391,6 +394,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const commentBusyRef = useRef(false);
   const objectUrlRef = useRef<string | null>(null);
   const character = characters.find(item => item.id === settings.characterId) ?? characters[0] ?? null;
+  const historyComments = historyMode === "global" ? globalWatchRecords : comments;
+  useEffect(() => { if (showHistory) setGlobalWatchRecords(loadGlobalWatchRecords()); }, [showHistory]);
   const playerIdentity = resolveUserIdentity();
 
   useEffect(() => {
@@ -1431,23 +1436,24 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       <section className="flex max-h-[72%] flex-col overflow-hidden rounded-t-[26px] border-t border-white/12 bg-[#221c17]" onClick={event => event.stopPropagation()}>
         <header className="flex items-center justify-between border-b border-white/8 px-4 py-3.5">
           <div>
-            <div className="font-serif text-base tracking-wide text-[#efe2d0]">今晚说过的话</div>
-            <div className="mt-0.5 text-[10px] tracking-[.18em] text-[#7d7268]">{comments.length} 句 · 只属于你们</div>
+            <div className="font-serif text-base tracking-wide text-[#efe2d0]">{historyMode === "global" ? "全局陪看记录" : "今晚说过的话"}</div>
+            <div className="mt-0.5 text-[10px] tracking-[.18em] text-[#7d7268]">{historyComments.length} 条 · 保存在一起看</div>
+            <div className="mt-2 flex gap-2"><button type="button" onClick={() => setHistoryMode("current")} className={"rounded-full px-2.5 py-1 text-[10px] " + (historyMode === "current" ? "bg-[#c99a6a] text-[#241b15]" : "border border-white/10 text-[#a2948a]")}>应用内陪看</button><button type="button" onClick={() => { setGlobalWatchRecords(loadGlobalWatchRecords()); setHistoryMode("global"); }} className={"rounded-full px-2.5 py-1 text-[10px] " + (historyMode === "global" ? "bg-[#c99a6a] text-[#241b15]" : "border border-white/10 text-[#a2948a]")}>全局陪看</button></div>
           </div>
           <button onClick={() => setShowHistory(false)} aria-label="关闭" className="grid h-9 w-9 place-items-center rounded-full border border-white/10 text-[#a2948a]"><X size={15}/></button>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-          {comments.length ? <div className="space-y-3">{[...comments].reverse().map(comment => <div key={comment.id} className="rounded-2xl border border-white/8 bg-white/[.035] px-3.5 py-3">
+          {historyComments.length ? <div className="space-y-3">{[...historyComments].reverse().map(comment => <div key={comment.id} className="rounded-2xl border border-white/8 bg-white/[.035] px-3.5 py-3">
             <div className="flex items-baseline justify-between gap-3">
-              <span className="text-[11px] tracking-wide text-[#c99a6a]">{comment.characterName}</span>
+              <span className="text-[11px] tracking-wide text-[#c99a6a]">{comment.kind === "user" ? "我" : comment.characterName}</span>
               <span className="text-[10px] text-[#6f665e]">{new Date(comment.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</span>
             </div>
             <p className="mt-1 font-serif text-sm leading-6 text-[#ded0bd]">{comment.text}</p>
-          </div>)}</div> : <p className="py-10 text-center text-xs text-[#7d7268]">还没有说过话。</p>}
+          </div>)}</div> : <p className="py-10 text-center text-xs text-[#7d7268]">{historyMode === "global" ? "还没有全局陪看记录。" : "还没有说过话。"}</p>}
         </div>
         <footer className="flex items-center justify-between gap-3 border-t border-white/8 px-4 py-3" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
           <span className="text-[10px] text-[#6f665e]">{watching ? "正在陪看" : "已暂停"}</span>
-          <button onClick={() => { setComments([]); if (target) saveTargetComments(target.url, []); }} className="flex items-center gap-1.5 border-b border-white/12 px-2 py-2 text-[11px] text-[#a2948a] transition active:opacity-60"><Sparkles size={12}/>清空记录</button>
+          <button onClick={() => { if (historyMode === "global") { clearGlobalWatchRecords(); setGlobalWatchRecords([]); } else { setComments([]); if (target) saveTargetComments(target.url, []); } }} className="flex items-center gap-1.5 border-b border-white/12 px-2 py-2 text-[11px] text-[#a2948a] transition active:opacity-60"><Sparkles size={12}/>清空记录</button>
         </footer>
       </section>
     </div>}
