@@ -698,7 +698,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       }
       if (video.paused) void video.play().catch(() => { /* browser policy may require a direct play tap */ });
     };
-    window.requestAnimationFrame(() => window.requestAnimationFrame(restorePlayback));
+    window.setTimeout(restorePlayback, 420);
   };
 
   const latestComment = comments[comments.length - 1];
@@ -992,28 +992,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           <a href={target.url} target="_blank" rel="noopener noreferrer" className="absolute bottom-2 right-2 z-[2147483000] inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-black/85 px-3 py-2 text-[10px] text-white shadow-lg backdrop-blur" onClick={event => { event.stopPropagation(); const native = (window as WatchNativeWindow).AndroidShell; if (native?.openExternalUrl) { event.preventDefault(); try { if (!native.openExternalUrl(target.url)) window.open(target.url, "_blank", "noopener,noreferrer"); } catch { window.open(target.url, "_blank", "noopener,noreferrer"); } } }}><ExternalLink size={12}/>打开原视频</a>
         )}
 
-        {fullScreen && target && <div className="watch-companion-overlay pointer-events-none absolute left-2 right-2 top-[max(48px,calc(env(safe-area-inset-top)+12px))] z-30">
-          {companionCollapsed ? <button type="button" onClick={() => setCompanionCollapsed(false)} className="watch-companion-pill pointer-events-auto flex max-w-full items-center gap-2 rounded-full border border-white/25 bg-black/65 px-3 py-2 text-left text-white shadow-lg backdrop-blur-xl">
-            {character?.avatar ? <img src={character.avatar} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover"/> : <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#8b6b57] text-xs">{character?.name.slice(0,1) || "TA"}</span>}
-            <span className="min-w-0 flex-1 truncate text-xs">{latestComment?.text || "陪看已就绪"}</span><ChevronDown size={14} className="shrink-0"/>
-          </button> : <div className="watch-companion-card pointer-events-auto max-w-[min(540px,100%)] rounded-2xl border border-white/20 bg-black/62 p-2.5 text-white shadow-xl backdrop-blur-xl">
-            <div className="flex min-w-0 items-center gap-2">
-              {character?.avatar ? <img src={character.avatar} alt="" className="h-9 w-9 shrink-0 rounded-full border border-white/20 object-cover"/> : <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#8b6b57] text-sm">{character?.name.slice(0,1) || "TA"}</span>}
-              <div className="min-w-0 flex-1"><p className="truncate text-[10px] text-white/65">{character?.name || "TA"} · 陪你看</p><p className="mt-0.5 line-clamp-2 break-words text-xs leading-5">{latestComment ? latestComment.text : "开始播放后，TA 会把即时反应变成弹幕。"}</p></div>
-              <button type="button" onClick={() => { setCompanionCollapsed(true); setShowQuickChat(false); }} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/10" aria-label="收起陪看悬浮窗"><ChevronDown size={15}/></button>
-            </div>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <button type="button" onClick={() => actTogether("我们先停一下，聊聊刚才这一幕。")} disabled={!character} className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1.5 text-[10px] disabled:opacity-40">暂停聊聊</button>
-              <button type="button" onClick={() => actTogether("我想和你分享一下刚才这一幕带给我的感受。")} disabled={!character} className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1.5 text-[10px] disabled:opacity-40">说说感受</button>
-              <button type="button" onClick={() => actTogether("只根据已经出现的画面聊聊眼前线索，不推测或透露后续剧情。")} disabled={!character} className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1.5 text-[10px] disabled:opacity-40">聊聊线索</button>
-              <button type="button" onClick={() => setShowQuickChat(value => !value)} disabled={!character} className="rounded-full bg-[#e6c49d] px-2.5 py-1.5 text-[10px] text-[#302218] disabled:opacity-40">发弹幕 / 交流</button>
-              <button type="button" onClick={() => { setWatching(value => !value); if (!watching) void generateComment(false); }} disabled={!character} className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1.5 text-[10px] disabled:opacity-40">{watching ? "暂停自动搭话" : "开始自动陪看"}</button>
-            </div>
-            {showQuickChat && <form onSubmit={event => { event.preventDefault(); submitDiscussion(); }} className="mt-2 flex items-center gap-2 border-t border-white/15 pt-2">
-              <input autoComplete="off" value={discussionDraft} onChange={event => setDiscussionDraft(event.target.value.slice(0,800))} placeholder="发一条只属于你们的弹幕…" className="min-w-0 flex-1 rounded-full border border-white/15 bg-white/10 px-3 py-2 text-xs text-white outline-none placeholder:text-white/45"/>
-              <button type="submit" disabled={!discussionDraft.trim()} className="shrink-0 rounded-full bg-[#e6c49d] px-3 py-2 text-xs text-[#302218] disabled:opacity-40">发送</button>
-            </form>}
-          </div>}
+        {fullScreen && target && <div className="watch-companion-overlay pointer-events-none absolute left-3 top-[max(52px,calc(env(safe-area-inset-top)+14px))] z-30">
+          <div className="flex items-center gap-3 rounded-full border border-white/20 bg-black/55 px-3 py-2 shadow-lg backdrop-blur-xl">
+            <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full border border-white/25 bg-[#6d5141] text-sm text-white">{character?.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : (character?.name || "TA").slice(0,1)}</span>
+            <div className="flex h-8 items-center justify-center gap-[3px]" aria-label="双人同步电波">{Array.from({length:17},(_,i)=><span key={i} className="w-[2px] rounded-full bg-[#e6c49d]" style={{height:(5+((i*7+3)%13))+"px",opacity:watching?0.95:0.55,animation:watching?"watchWave 900ms ease-in-out "+(i*55)+"ms infinite alternate":undefined}}/>)}</div>
+            <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full border border-white/25 bg-[#8b6b57] text-sm text-white">{playerIdentity?.avatarUrl ? <img src={playerIdentity.avatarUrl} alt="" className="h-full w-full object-cover"/> : (playerIdentity?.name || "我").slice(0,1)}</span>
+          </div>
         </div>}
         {(target?.embedUrl || target?.nativeVideo) && settings.danmakuEnabled && comments.some(comment => comment.targetUrl === target.url) && <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
           {comments.filter(comment => comment.targetUrl === target.url).slice(-8).map((comment, index) => {
