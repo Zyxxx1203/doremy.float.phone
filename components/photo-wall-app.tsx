@@ -1446,6 +1446,131 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   </div>;
 }
 
+
+type PhotoAlbumViewProps = {
+  albums: PhotoAlbum[];
+  photos: PhotoWallPhoto[];
+  activeAlbumId: string | null;
+  activePage: number;
+  editMode: boolean;
+  onSaveAlbums: (next: PhotoAlbum[]) => void;
+  onSelectAlbum: (id: string | null) => void;
+  onSelectPage: (page: number) => void;
+  onSetEditMode: (enabled: boolean) => void;
+  onOpenPhoto: (photo: PhotoWallPhoto) => void;
+  onNotice?: (message: string) => void;
+};
+
+function PhotoAlbumView({
+  albums, photos, activeAlbumId, activePage, editMode, onSaveAlbums,
+  onSelectAlbum, onSelectPage, onSetEditMode, onOpenPhoto, onNotice,
+}: PhotoAlbumViewProps) {
+  const active = albums.find(album => album.id === activeAlbumId) ?? null;
+
+  const createAlbum = () => {
+    const id = createPhotoWallId();
+    const firstPage = photos.slice(0, 9).map(photo => photo.id);
+    const album: PhotoAlbum = {
+      id,
+      title: "我们的相册",
+      coverPhotoId: firstPage[0] ?? "",
+      pages: [firstPage],
+    };
+    onSaveAlbums([...albums, album]);
+    onSelectAlbum(id);
+    onSelectPage(0);
+    onSetEditMode(true);
+  };
+
+  const openAlbum = (id: string) => {
+    onSelectAlbum(id);
+    onSelectPage(0);
+    onSetEditMode(false);
+  };
+
+  if (!active) {
+    return <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-24 pt-5 sm:px-7" style={{ WebkitOverflowScrolling: "touch" }}>
+      <div className="mx-auto max-w-4xl">
+        <div className="mb-5 flex items-end justify-between gap-3 border-b border-[#d8c4b4] pb-3">
+          <div><h2 className="font-serif text-xl text-[#5d4942]">把重要的时光装订起来</h2><p className="mt-1 text-xs leading-5 text-[#9a8973]">每页九个位置，横向与竖向照片都会完整显示；你可以自己决定每个位置放什么。</p></div>
+          <button type="button" onClick={createAlbum} className="shrink-0 border border-[#87565b] bg-[#87565b] px-3 py-2 text-xs text-white">＋ 新建相册</button>
+        </div>
+        {albums.length ? <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          {albums.map(album => {
+            const cover = photos.find(photo => photo.id === album.coverPhotoId) ?? photos.find(photo => album.pages.some(page => page.includes(photo.id))) ?? null;
+            return <article key={album.id} className="min-w-0">
+              <div className="relative border border-[#d4bfa9] bg-[#fffaf0] p-2 shadow-[3px_5px_12px_rgba(70,55,40,.12)]">
+                <div className="aspect-[3/4] overflow-hidden border border-[#eadaca] bg-[#eee3d4]">
+                  {cover ? <PhotoThumbnail photo={cover} onOpen={() => openAlbum(album.id)} /> : <button type="button" onClick={() => openAlbum(album.id)} className="grid h-full w-full place-items-center text-center text-xs text-[#a08c74]"><span>空白封面</span></button>}
+                </div>
+                <div className="pointer-events-none absolute bottom-5 left-3 right-3 border-t border-[#d8c4b4] pt-2 text-center font-serif text-sm text-[#6a5146]">{album.title}</div>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <button type="button" onClick={() => openAlbum(album.id)} className="min-w-0 truncate text-left text-xs text-[#6d5946]">{album.title}</button>
+                <span className="shrink-0 text-[10px] text-[#a08c74]">{album.pages.length} 页</span>
+              </div>
+              <button type="button" onClick={() => { onSaveAlbums(albums.filter(item => item.id !== album.id)); if (activeAlbumId === album.id) onSelectAlbum(null); }} className="mt-1 text-[10px] text-[#a16d62] underline underline-offset-2">删除相册</button>
+            </article>;
+          })}
+        </div> : <div className="grid min-h-[45dvh] place-items-center border border-dashed border-[#d8c4b4] text-center text-[#907c67]"><div><p className="font-serif text-lg">还没有装订相册</p><p className="mt-2 text-xs">新建后可编辑封面、逐页翻阅，并手动安排九宫格。</p></div></div>}
+      </div>
+    </div>;
+  }
+
+  const pageIds = active.pages[activePage] ?? [];
+  const coverOptions = photos.map(photo => <option key={photo.id} value={photo.id}>{photo.title || "未命名的瞬间"}</option>);
+  const updateAlbum = (updater: (current: PhotoAlbum) => PhotoAlbum) => {
+    onSaveAlbums(albums.map(album => album.id === active.id ? updater(album) : album));
+  };
+  const updateSlot = (slotIndex: number, photoId: string) => updateAlbum(current => {
+    const pages = current.pages.map(page => page.slice());
+    while (pages.length <= activePage) pages.push([]);
+    const slots = Array.from({ length: 9 }, (_, index) => index === slotIndex ? photoId : (pages[activePage][index] ?? ""));
+    pages[activePage] = slots;
+    return { ...current, pages };
+  });
+  const slotGrid = Array.from({ length: 9 }, (_, index) => {
+    const photoId = pageIds[index] ?? "";
+    const photo = photos.find(item => item.id === photoId) ?? null;
+    return <article key={index} className="flex min-w-0 flex-col border border-[#e3d3c1] bg-[#fffdf8] p-1 shadow-[1px_3px_8px_rgba(70,55,40,.10)]">
+      <div className="aspect-square min-h-0 overflow-hidden bg-[#e9dfd0]">
+        {photo ? <PhotoThumbnail photo={photo} onOpen={() => onOpenPhoto(photo)} /> : <div className="grid h-full place-items-center text-[10px] text-[#b3a18b]">空白位置</div>}
+      </div>
+      {editMode && <select value={photoId} onChange={event => updateSlot(index, event.target.value)} aria-label={"相册第" + (activePage + 1) + "页第" + (index + 1) + "个照片位置"} className="mt-1 min-w-0 w-full border-t border-[#e5d7c6] bg-[#fffaf2] px-0.5 py-1.5 text-[10px] text-[#6d5946]">
+        <option value="">留空</option>{coverOptions}
+      </select>}
+      {!editMode && photo && <button type="button" onClick={() => onOpenPhoto(photo)} className="mt-1 truncate text-left text-[10px] text-[#6d5946]">{photo.title || "未命名的瞬间"}</button>}
+    </article>;
+  });
+
+  return <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-24 pt-4 sm:px-7" style={{ WebkitOverflowScrolling: "touch" }}>
+    <div className="mx-auto max-w-4xl">
+      <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-[#d8c4b4] pb-3">
+        <button type="button" onClick={() => onSelectAlbum(null)} className="border-b border-[#bda28d] px-1 py-1 text-xs text-[#79545a]">‹ 相册列表</button>
+        <span className="min-w-0 flex-1 font-serif text-lg text-[#5d4942]">{active.title}</span>
+        <button type="button" onClick={() => onSetEditMode(!editMode)} className={editMode ? "border border-[#87565b] bg-[#87565b] px-3 py-2 text-xs text-white" : "border border-[#d8c4b4] px-3 py-2 text-xs text-[#79545a]"}>{editMode ? "完成排版" : "编辑这一页"}</button>
+      </div>
+      {editMode && <div className="mb-3 grid gap-2 sm:grid-cols-2">
+        <label className="text-[11px] text-[#8b7665]">相册名称<input value={active.title} maxLength={80} onChange={event => updateAlbum(current => ({ ...current, title: event.target.value }))} className="mt-1 w-full border-b border-[#d8c4b4] bg-transparent px-1 py-2 text-sm text-[#5d4942]"/></label>
+        <label className="text-[11px] text-[#8b7665]">封面照片<select value={active.coverPhotoId} onChange={event => updateAlbum(current => ({ ...current, coverPhotoId: event.target.value }))} className="mt-1 w-full border-b border-[#d8c4b4] bg-transparent px-1 py-2 text-sm text-[#5d4942]"><option value="">自动使用第一页第一张</option>{coverOptions}</select></label>
+      </div>}
+      <div className="relative border border-[#d7c3ac] bg-[#fffaf0] p-2 shadow-[4px_8px_22px_rgba(70,55,40,.12)] sm:p-4">
+        <div className="mb-3 flex items-center justify-between gap-3 border-b border-[#e8d9c8] pb-2 text-[10px] tracking-[.16em] text-[#aa927d]"><span>ALBUM · {active.title}</span><span>PAGE {activePage + 1} / {active.pages.length}</span></div>
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">{slotGrid}</div>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#e8d9c8] pt-3">
+          <button type="button" disabled={activePage <= 0} onClick={() => onSelectPage(Math.max(0, activePage - 1))} className="border border-[#d8c4b4] px-3 py-2 text-xs text-[#79545a] disabled:opacity-30">‹ 上一页</button>
+          <span className="text-[10px] text-[#a08c74]">横图 / 竖图均完整显示，不裁切</span>
+          <button type="button" disabled={activePage >= active.pages.length - 1} onClick={() => onSelectPage(Math.min(active.pages.length - 1, activePage + 1))} className="border border-[#d8c4b4] px-3 py-2 text-xs text-[#79545a] disabled:opacity-30">下一页 ›</button>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" onClick={() => { updateAlbum(current => ({ ...current, pages: [...current.pages, Array(9).fill("")] })); onSelectPage(active.pages.length); onSetEditMode(true); }} className="border border-[#d8c4b4] px-3 py-2 text-xs text-[#79545a]">＋ 添加一页</button>
+        <button type="button" onClick={() => { onSaveAlbums(albums.filter(item => item.id !== active.id)); onSelectAlbum(null); onNotice?.("相册已删除，照片原件仍保留在照片墙。"); }} className="border border-[#e4c8bb] px-3 py-2 text-xs text-[#9c6c5f]">删除相册</button>
+      </div>
+    </div>
+  </div>;
+}
+
 function ChatCandidateThumb({ refId }: { refId: string }) {
   const [src, setSrc] = useState("");
   useEffect(() => {
