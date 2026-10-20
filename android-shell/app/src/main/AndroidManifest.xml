@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- 通话浮窗：浮在其他 App 上层（Android 6+ 需用户在系统设置里手动授予） -->
@@ -211,6 +212,12 @@
             android:name=".ScreenshotBallService"
             android:exported="false"
             android:foregroundServiceType="specialUse" />
+
+        <!-- 全局陪看：用户明确授权 MediaProjection 后捕获其他应用画面；常驻横幅提供暂停/停止和直接回复。 -->
+        <service
+            android:name=".GlobalWatchCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
 
         <!-- 媒体控制：持有「通知使用权」后才有资格读活跃媒体会话、直接控制播放。
              它**不读任何通知内容**（onNotificationPosted 刻意不重写），存在的唯一
