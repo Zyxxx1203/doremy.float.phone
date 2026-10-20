@@ -152,7 +152,7 @@ export async function analyzeCapturedImage(options: {
   apiKey: string;
   model: string;
   prompt: string;
-  provider: "gemini" | "ark" | "openai-compatible" | "anthropic";
+  provider: "gemini" | "ark" | "openai-compatible" | "anthropic" | "twelvelabs";
   baseUrl?: string;
   signal?: AbortSignal;
 }): Promise<string> {
@@ -166,6 +166,47 @@ export async function analyzeCapturedImage(options: {
   const imageBase64 = match[2];
   const mimeType = match[1];
   let response: Response;
+  if (provider === "twelvelabs") {
+    const headers = { "x-api-key": options.apiKey.trim() };
+    let assetId = "";
+    try {
+      const binary = atob(imageBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const file = new File([bytes], "global-watch-frame.jpg", { type: mimeType });
+      const form = new FormData();
+      form.append("method", "direct");
+      form.append("file", file, file.name);
+      form.append("enable_thumbnail", "false");
+      const upload = await fetch(root + "/assets", { method: "POST", headers, body: form, signal: options.signal });
+      const created = await upload.json().catch(() => null) as { _id?: string; status?: string; error?: { message?: string } } | null;
+      if (!upload.ok || !created?._id) throw new Error(apiError(created, "TwelveLabs 截屏上传失败（HTTP " + upload.status + "）。"));
+      assetId = created._id;
+      let status = created.status || "processing";
+      for (let attempt = 0; status !== "ready"; attempt++) {
+        if (status === "failed") throw new Error("TwelveLabs 截屏资产处理失败。");
+        if (attempt >= 30) throw new Error("TwelveLabs 截屏处理超时。");
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        const poll = await fetch(root + "/assets/" + encodeURIComponent(assetId), { headers, signal: options.signal });
+        const state = await poll.json().catch(() => null) as { status?: string; error?: { message?: string } } | null;
+        if (!poll.ok || !state?.status) throw new Error(apiError(state, "读取 TwelveLabs 截屏状态失败。"));
+        status = state.status;
+      }
+      const response = await fetch(root + "/analyze", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ model_name: options.model.trim() || "pegasus1.6", image: [{ type: "asset", asset_id: assetId }], prompt: options.prompt, stream: false, max_tokens: 1000 }),
+        signal: options.signal
+      });
+      const result = await response.json().catch(() => null) as { data?: string; text?: string; error?: { message?: string } } | null;
+      if (!response.ok) throw new Error(apiError(result, "TwelveLabs 屏幕画面理解失败（HTTP " + response.status + "）。"));
+      const text = result?.data || result?.text || "";
+      if (!text.trim()) throw new Error("TwelveLabs 没有返回屏幕评价。");
+      return text.trim();
+    } finally {
+      if (assetId) void fetch(root + "/assets/" + encodeURIComponent(assetId), { method: "DELETE", headers, keepalive: true }).catch(() => {});
+    }
+  }
   let payload: Record<string, unknown> | null;
   if (provider === "gemini") {
     response = await fetch(root + "/v1beta/models/" + encodeURIComponent(options.model.trim().replace(/^models\//, "")) + ":generateContent", {
