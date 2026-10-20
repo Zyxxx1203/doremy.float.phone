@@ -343,7 +343,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         return;
       }
       if (supportsPointerEvents && pointers.size === 1 && !pinchModeRef.current) {
-        if (viewport.querySelector('[data-photo-wall-mode="doodle"]')) return;
+        if (viewport.querySelector('[data-photo-wall-mode="move"], [data-photo-wall-mode="doodle"]')) return;
         const start = singleTouchRef.current;
         if (!start || (start.startedOnPhoto && wallView === "edit")) return;
         const dx = event.clientX - start.x, dy = event.clientY - start.y;
@@ -1362,7 +1362,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               brushColor={wallBrushColor} brushWidth={wallBrushWidth}
               sticker={wallSticker} onStickerChange={setWallSticker}
               eraser={wallEraser} onEraserChange={setWallEraser}
-              onOpenDetail={photo => openPhoto(photo)} />
+              onOpenDetail={photo => openPhoto(photo, false)} />
           </div>
         </div>
       </section>

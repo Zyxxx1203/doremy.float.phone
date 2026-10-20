@@ -258,24 +258,28 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   };
 
   /* ── 涂鸦绘制 ─────────────────────────────────── */
-  const pointOn = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number) => {
-    const target = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const pointOn = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number, anchorElement?: HTMLElement) => {
+    const element = anchorElement ?? event.currentTarget as HTMLElement;
+    const rect = element.getBoundingClientRect();
     const placement = placementOf(photo, index);
-    // 归一化到这张照片的相框范围内
-    const width = target.width || 1;
-    const height = target.height || 1;
+    const width = element.offsetWidth || rect.width || 1;
+    const height = element.offsetHeight || rect.height || 1;
+    // Invert visual rotation to store the stroke in the photo's own coordinates.
+    const dx = event.clientX - (rect.left + rect.width / 2);
+    const dy = event.clientY - (rect.top + rect.height / 2);
+    const angle = placement.rotation * Math.PI / 180;
     return {
-      x: Math.min(1, Math.max(0, (event.clientX - target.left) / width)),
-      y: Math.min(1, Math.max(0, (event.clientY - target.top) / height)),
+      x: Math.min(1, Math.max(0, (dx * Math.cos(angle) + dy * Math.sin(angle)) / width + 0.5)),
+      y: Math.min(1, Math.max(0, (-dx * Math.sin(angle) + dy * Math.cos(angle)) / height + 0.5)),
       placement,
     };
   };
 
-  const doodlePointerDown = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number) => {
+  const doodlePointerDown = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number, anchorElement?: HTMLElement) => {
     if (mode !== "doodle") return;
     event.preventDefault();
     event.stopPropagation();
-    const point = pointOn(event, photo, index);
+    const point = pointOn(event, photo, index, anchorElement);
     const side: "front" | "back" = flippedPhotoIds.has(photo.id) ? "back" : "front";
     const existing = side === "back" ? (photo.backDoodles ?? []) : (photo.doodles ?? []);
     if (eraser) {
@@ -296,13 +300,13 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     onSelect(photo.id);
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     const id = createPhotoWallId();
-    strokeRef.current = { id, photoId: photo.id, side };
+    strokeRef.current = { id, photoId: photo.id, side, anchorElement };
     setDraftPoints([{ x: point.x, y: point.y }]);
   };
 
   const doodlePointerMove = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number) => {
     if (!strokeRef.current || strokeRef.current.photoId !== photo.id) return;
-    const point = pointOn(event, photo, index);
+    const point = pointOn(event, photo, index, strokeRef.current.anchorElement);
     setDraftPoints(prev => {
       const last = prev[prev.length - 1];
       if (last && Math.hypot(last.x - point.x, last.y - point.y) < 0.004) return prev;
@@ -428,11 +432,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
           doodleMode={mode === "doodle"}
           placementMode={mode === "move"}
           draftPoints={isSelected && strokeRef.current?.photoId === photo.id ? draftPoints : []}
-          onPointerDownMove={(event) => { if (!readOnly) beginDrag(event, photo, index, "move"); }}
           onPointerDownResize={(event) => { if (!readOnly) beginDrag(event, photo, index, "resize"); }}
-          onDoodlePointerDown={(event) => { if (!readOnly) doodlePointerDown(event, photo, index); }}
-          onDoodlePointerMove={(event) => { if (!readOnly) doodlePointerMove(event, photo, index); }}
-          onDoodlePointerUp={(event) => { if (!readOnly) doodlePointerUp(event, photo); }}
           onOpenDetail={() => onOpenDetail(photo)}
           readOnly={readOnly}
         />;
@@ -444,8 +444,76 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
         {wallDoodles.map(doodle => doodle.kind === "stroke"
           ? <polyline key={doodle.id} points={doodle.points.map(point => (point.x * 100) + "," + (point.y * 100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(0.6, doodle.width / 2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
           : <text key={doodle.id} x={(doodle.points[0]?.x ?? 0.5) * 100} y={(doodle.points[0]?.y ?? 0.5) * 100} fill={doodle.color} fontSize={5} textAnchor="middle" dominantBaseline="middle">{doodle.content}</text>)}
-        {mode === "doodle" && draftPoints.length > 1 && <polyline points={draftPoints.map(point => (point.x * 100) + "," + (point.y * 100)).join(" ")} fill="none" stroke={brushColor} strokeWidth={Math.max(0.6, brushWidth / 2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>}
+        {mode === "doodle" && wallStrokeRef.current && draftPoints.length > 1 && <polyline points={draftPoints.map(point => (point.x * 100) + "," + (point.y * 100)).join(" ")} fill="none" stroke={brushColor} strokeWidth={Math.max(0.6, brushWidth / 2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>}
       </svg>
+      <div
+        aria-label={mode === "move" ? "照片摆放操作层" : "照片与背面留言涂鸦层"}
+        data-photo-wall-input-layer={mode}
+        className="absolute inset-0"
+        style={{ zIndex: 2147483000, pointerEvents: !readOnly && mode !== "view" ? "auto" : "none", touchAction: "none" }}
+        onPointerDown={event => {
+          if (readOnly || mode === "view") return;
+          event.preventDefault();
+          event.stopPropagation();
+          const stack = document.elementsFromPoint(event.clientX, event.clientY);
+          const resizeTarget = stack.map(element => element.closest?.("[data-photo-wall-resize]")).find(Boolean) as HTMLElement | undefined;
+          const photoElement = stack
+            .map(element => element.closest?.("[data-photo-wall-photo-id]"))
+            .find(element => element instanceof HTMLElement && Boolean(wallRef.current?.contains(element))) as HTMLElement | undefined;
+          const photoId = photoElement?.dataset.photoWallPhotoId;
+          const index = ordered.findIndex(photo => photo.id === photoId);
+          const photo = index >= 0 ? ordered[index] : null;
+          if (mode === "move") {
+            if (photo) beginDrag(event, photo, index, resizeTarget ? "resize" : "move");
+          } else if (photo) {
+            onSelect(photo.id);
+            doodlePointerDown(event, photo, index, photoElement);
+          } else {
+            wallDoodlePointerDown(event);
+          }
+        }}
+        onPointerMove={event => {
+          if (readOnly || mode !== "doodle") return;
+          if (strokeRef.current) {
+            event.preventDefault();
+            event.stopPropagation();
+            const index = ordered.findIndex(photo => photo.id === strokeRef.current?.photoId);
+            const photo = index >= 0 ? ordered[index] : null;
+            if (photo) doodlePointerMove(event, photo, index);
+          } else if (wallStrokeRef.current) {
+            event.preventDefault();
+            event.stopPropagation();
+            wallDoodlePointerMove(event);
+          }
+        }}
+        onPointerUp={event => {
+          if (readOnly || mode === "view") return;
+          if (mode === "doodle") {
+            event.preventDefault();
+            event.stopPropagation();
+            if (strokeRef.current) {
+              const index = ordered.findIndex(photo => photo.id === strokeRef.current?.photoId);
+              const photo = index >= 0 ? ordered[index] : null;
+              if (photo) doodlePointerUp(event, photo);
+            } else if (wallStrokeRef.current) wallDoodlePointerUp(event);
+          }
+          // Move mode intentionally bubbles to wallRef so endDrag can commit the final position.
+        }}
+        onPointerCancel={event => {
+          if (readOnly || mode === "view") return;
+          if (mode === "doodle") {
+            event.preventDefault();
+            event.stopPropagation();
+            if (strokeRef.current) {
+              const index = ordered.findIndex(photo => photo.id === strokeRef.current?.photoId);
+              const photo = index >= 0 ? ordered[index] : null;
+              if (photo) doodlePointerUp(event, photo);
+            } else if (wallStrokeRef.current) wallDoodlePointerUp(event);
+          }
+        }}
+        onClick={event => { if (!readOnly && mode !== "view") { event.preventDefault(); event.stopPropagation(); } }}
+        onDoubleClick={event => { if (!readOnly && mode !== "view") { event.preventDefault(); event.stopPropagation(); } }}
+      />
     </div>
 
   </div>;
@@ -460,16 +528,12 @@ type FrameProps = {
   onToggleFlip: () => void;
   doodleMode: boolean;
   draftPoints: { x: number; y: number }[];
-  onPointerDownMove: (event: React.PointerEvent) => void;
   onPointerDownResize: (event: React.PointerEvent) => void;
-  onDoodlePointerDown: (event: React.PointerEvent) => void;
-  onDoodlePointerMove: (event: React.PointerEvent) => void;
-  onDoodlePointerUp: (event: React.PointerEvent) => void;
   onOpenDetail: () => void;
   readOnly: boolean;
 };
 
-function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, onToggleFlip, doodleMode, draftPoints, onPointerDownMove, onPointerDownResize, onDoodlePointerDown, onDoodlePointerMove, onDoodlePointerUp, onOpenDetail, readOnly }: FrameProps) {
+function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, onToggleFlip, doodleMode, draftPoints, onPointerDownResize, onOpenDetail, readOnly }: FrameProps) {
   const [src, setSrc] = useState("");
   const objectUrlRef = useRef<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -512,6 +576,7 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
   return <div
     ref={rootRef}
     data-photo-wall-photo
+    data-photo-wall-photo-id={photo.id}
     className="absolute"
     style={{
       left: String(placement.x * 100) + "%",
@@ -523,8 +588,9 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
     }}
     onClick={event => {
       event.stopPropagation();
-      if (!readOnly || placementMode || doodleMode) { event.preventDefault(); return; }
-      // The matte/frame is an explicit edit target; clicking the image itself only flips it.
+      // Dragging and drawing are handled only by the canvas-wide input layer.
+      if (placementMode || doodleMode) { event.preventDefault(); return; }
+      // Face clicks flip in view mode; clicks on the matte open the editable photo details.
       if ((event.target as HTMLElement).closest("[data-photo-wall-photo-image]")) return;
       onOpenDetail();
     }}
@@ -591,33 +657,12 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
         {drawingIsEnabled && draftPoints.length > 1 && <polyline points={draftPoints.map(point => String(point.x * 100) + "," + String(point.y * 100)).join(" ")} fill="none" stroke="#c2705a" strokeWidth={3} strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
       </svg>
 
-      {(movingIsEnabled || drawingIsEnabled) && <div
-        data-photo-wall-tool-layer={drawingIsEnabled ? "doodle" : "move"}
-        className={"absolute inset-0 z-20 " + (drawingIsEnabled ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing")}
-        style={{ touchAction: "none" }}
-        onPointerDown={event => {
-          event.preventDefault(); event.stopPropagation();
-          if (drawingIsEnabled) onDoodlePointerDown(event);
-          else onPointerDownMove(event);
-        }}
-        onPointerMove={event => {
-          if (drawingIsEnabled) { event.stopPropagation(); onDoodlePointerMove(event); }
-          // In move mode, let move events bubble to the wall surface's drag handler.
-        }}
-        onPointerUp={event => {
-          if (drawingIsEnabled) { event.preventDefault(); event.stopPropagation(); onDoodlePointerUp(event); }
-          // In move mode, pointer-up must bubble so endDrag can commit the final position.
-        }}
-        onPointerCancel={event => {
-          if (drawingIsEnabled) { event.stopPropagation(); onDoodlePointerUp(event); }
-        }}
-        onClick={event => { event.preventDefault(); event.stopPropagation(); }}
-        onDoubleClick={event => { event.preventDefault(); event.stopPropagation(); }}
-      />}
+
 
       {selected && movingIsEnabled && !placement.locked && <button
         type="button"
         aria-label="拖动调整大小"
+        data-photo-wall-resize="true"
         onPointerDown={event => { event.preventDefault(); event.stopPropagation(); onPointerDownResize(event); }}
         onClick={event => { event.preventDefault(); event.stopPropagation(); }}
         className="absolute -bottom-2 -right-2 z-30 grid h-6 w-6 place-items-center rounded-full border border-white bg-[#87565b] text-white shadow"
