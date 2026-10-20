@@ -26,9 +26,14 @@ function parseVtt(vtt: string): Array<{ start: number; end: number; text: string
   const blocks = vtt.replace(/^\uFEFF/, "").replace(/\r/g, "").split(/\n\s*\n/);
   const segments: Array<{ start: number; end: number; text: string }> = [];
   const seconds = (value: string): number | null => {
-    const m = value.trim().match(/^(?:(\d{1,2}):)?(\d{2}):(\d{2})[.,](\d{3})$/);
-    if (!m) return null;
-    return Number(m[1] || 0) * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000;
+    const input = value.trim();
+    let m = input.match(/^(\d{1,2}):(\d{2}):(\d{2})[.,](\d{3})$/);
+    if (m) return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000;
+    m = input.match(/^(\d{1,2}):(\d{2})[.,](\d{3})$/);
+    if (m) return Number(m[1]) * 60 + Number(m[2]) + Number(m[3]) / 1000;
+    m = input.match(/^(\d{1,2})[.,](\d{3})$/);
+    if (m) return Number(m[1]) + Number(m[2]) / 1000;
+    return null;
   };
   for (const block of blocks) {
     const lines = block.split("\n");
