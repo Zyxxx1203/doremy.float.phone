@@ -165,6 +165,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const nativeVideoCacheRef = useRef<{ url: string; cacheId: string } | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
   const [resolutionMessage, setResolutionMessage] = useState("");
+  const [transcriberEndpoint, setTranscriberEndpoint] = useState(() => {
+    try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_transcriber_endpoint_v1") || "" : ""; } catch { return ""; }
+  });
+  const [transcriberToken, setTranscriberToken] = useState(() => {
+    try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_transcriber_token_v1") || "" : ""; } catch { return ""; }
+  });
+  const [transcriberModel, setTranscriberModel] = useState<"tiny" | "base" | "small" | "medium">("small");
+  const [transcribing, setTranscribing] = useState(false);
 
   useEffect(() => {
     const current = target;
@@ -286,6 +294,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     });
   }, []);
   useEffect(() => { saveSettings(settings); }, [settings]);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("watch_transcriber_endpoint_v1", transcriberEndpoint.trim());
+      window.localStorage.setItem("watch_transcriber_token_v1", transcriberToken);
+    } catch { /* service settings are local-only and optional */ }
+  }, [transcriberEndpoint, transcriberToken]);
   useEffect(() => {
     const handleAppBack = (event: Event) => {
       const detail = (event as CustomEvent<{ handled?: boolean }>).detail;
@@ -488,6 +502,53 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     setDiscussionDraft(""); setTimepointDraft("");
     setWatching(false);
     if (!parsed.supported && (parsed.platform === "xiaohongshu" || parsed.platform === "douyin")) onNotice?.("正在尝试在小手机内解析" + parsed.platformName + "的公开视频流；如果平台要求登录或启用了防盗链，解析可能失败。");
+  };
+
+
+  /** Request timestamped JSON from the user's own local/self-hosted transcription service. */
+  const transcribeFromUrl = async () => {
+    const sourceUrl = urlInput.trim() || target?.url || "";
+    const endpointBase = transcriberEndpoint.trim().replace(/\/+$/, "");
+    const token = transcriberToken.trim();
+    if (!sourceUrl) { onNotice?.("先粘贴一个视频链接，再生成脚本。"); return; }
+    if (!endpointBase || !token) { onNotice?.("先配置本地转写服务的 HTTPS 地址和访问令牌。"); return; }
+    let endpoint: URL;
+    try {
+      endpoint = new URL(endpointBase.endsWith("/transcribe") ? endpointBase : endpointBase + "/transcribe");
+      if (endpoint.protocol !== "https:" && !["localhost", "127.0.0.1", "::1"].includes(endpoint.hostname)) {
+        onNotice?.("手机访问部署中的转写服务时请使用受信任的 HTTPS 地址；浏览器会拦截 HTTPS 页面请求普通 HTTP 服务。");
+        return;
+      }
+    } catch { onNotice?.("转写服务地址无效，请检查 http(s) 地址。"); return; }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 30 * 60 * 1000);
+    setTranscribing(true);
+    try {
+      const response = await fetch(endpoint.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+        body: JSON.stringify({ url: sourceUrl, language: "zh", model: transcriberModel }),
+        signal: controller.signal,
+      });
+      const result = await response.json() as { ok?: boolean; error?: string; title?: string; transcript?: unknown };
+      if (!response.ok || result.ok !== true || !result.transcript) {
+        throw new Error(result.error || ("转写服务返回 HTTP " + response.status));
+      }
+      const source = typeof result.transcript === "string" ? result.transcript : JSON.stringify(result.transcript) || "";
+      const parsed = parseVideoTranscript(source);
+      if (!parsed.length) throw new Error("服务已返回结果，但没有识别到带时间戳的脚本片段。");
+      setTranscriptSegments(parsed);
+      setTranscriptName((result.title || new URL(sourceUrl).hostname) + " · 本地转写");
+      if (result.title) setVideoTitle(result.title);
+      onNotice?.("本地转写完成：已载入 " + parsed.length + " 段带时间戳脚本。开始播放后，陪看会引用当前播放时间附近的文字。");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const timedOut = error instanceof DOMException && error.name === "AbortError";
+      onNotice?.((timedOut ? "本地转写超时：" : "本地转写失败：") + message + "。请检查服务、CORS、令牌、平台登录状态或风控限制。");
+    } finally {
+      window.clearTimeout(timeout);
+      setTranscribing(false);
+    }
   };
 
   const speakComment = async (text: string, characterId: string) => {
@@ -922,6 +983,23 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         {resolutionMessage && (target?.embedUrl || target?.nativeVideoUrl) && <p role="status" aria-live="polite" className="mt-2 rounded-xl border border-[#cdb79b]/60 bg-[#fffaf2] px-3 py-2 text-xs leading-5 text-[#82644c]">{resolutionMessage}</p>}
         {target?.platformName === "本地视频" && <p className="mt-2 px-1 text-[11px] leading-5 text-[#8b7665]">当前播放的是本地文件；选择新文件或输入链接可以切换视频。</p>}
         {platformNote && <p className="mt-2 px-1 text-[11px] leading-5 text-[#8b7665]">{platformNote}</p>}
+        <details className="mt-3 rounded-2xl border border-[#b89979]/30 bg-[#fffaf2]/80 p-3 text-[#71553f]">
+          <summary className="cursor-pointer text-xs font-medium">从链接生成时间戳脚本 · 本地转写服务</summary>
+          <p className="mt-2 text-[11px] leading-5 text-[#8b7665]">转写运行在你自己的电脑或服务器上，不在 WebView 内下载模型。需先启动仓库 tools/video-transcriber 服务；首次运行要下载 Whisper 模型和视频音轨。请勿将服务裸露在公网。</p>
+          <label className="mt-3 block text-[11px]">服务地址
+            <input type="url" value={transcriberEndpoint} onChange={event => setTranscriberEndpoint(event.target.value)} placeholder="https://你的服务域名/transcribe" className="mt-1 w-full rounded-xl border border-[#dac6ad] bg-white px-3 py-2 text-xs outline-none focus:border-[#b88768]"/>
+          </label>
+          <label className="mt-2 block text-[11px]">访问令牌（仅保存在此设备）
+            <input type="password" autoComplete="off" value={transcriberToken} onChange={event => setTranscriberToken(event.target.value)} placeholder="VIDEO_TRANSCRIBER_TOKEN" className="mt-1 w-full rounded-xl border border-[#dac6ad] bg-white px-3 py-2 text-xs outline-none focus:border-[#b88768]"/>
+          </label>
+          <label className="mt-2 block text-[11px]">转写模型
+            <select value={transcriberModel} onChange={event => setTranscriberModel(event.target.value as typeof transcriberModel)} className="mt-1 w-full rounded-xl border border-[#dac6ad] bg-white px-3 py-2 text-xs outline-none"><option value="tiny">tiny · 最省资源</option><option value="base">base</option><option value="small">small · 中文均衡推荐</option><option value="medium">medium · 更高资源占用</option></select>
+          </label>
+          <button type="button" disabled={transcribing || !(urlInput.trim() || target?.url)} onClick={() => void transcribeFromUrl()} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#87565b] px-3 py-2.5 text-xs text-white disabled:opacity-40">
+            {transcribing ? <LoaderCircle size={13} className="animate-spin"/> : <FileText size={13}/>}
+            {transcribing ? "正在生成脚本…" : "解析链接并生成脚本"}
+          </button>
+        </details>
       </div>
 
       {/* 角色在屏幕下方轻声说话 */}
