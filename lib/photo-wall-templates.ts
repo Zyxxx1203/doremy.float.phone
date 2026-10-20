@@ -33,8 +33,6 @@ const SHAPE_SPAN = 0.84;
 /** 一张照片在归一化坐标里的宽高（240px 基准）。 */
 const PHOTO_W = 240 / CANVAS_W;
 const PHOTO_H = 240 / CANVAS_H;
-/** 最大重叠 50% ⇒ 中心距至少半个照片宽。 */
-const MIN_GAP_RATIO = 0.52;
 
 /** 归一化坐标 → 形状用的等比坐标（±1 = 形状外包框）。 */
 function toShapeSpace(x: number, y: number): { u: number; v: number } {
@@ -292,11 +290,15 @@ function textSlots(text: string, count: number, fill: boolean): Slot[] {
     if (picked.some(slot => !farEnough(hit, slot, 0.5))) continue;
     picked.push({ x: round(clamp01(hit.x)), y: round(clamp01(hit.y)), scale: 0.5, rotation: round(((picked.length * 19) % 9) - 4) });
   }
-  let index = 0;
-  while (picked.length < total) {
-    const hit = ordered[index % ordered.length];
-    picked.push({ x: round(clamp01(hit.x)), y: round(clamp01(hit.y)), scale: 0.42, rotation: 0 });
-    index += 1;
+  // 文字采样点不足时也不重复叠放：遍历唯一点位并缩小到安全尺寸补齐。
+  const used = new Set(picked.map(slot => `${slot.x},${slot.y}`));
+  for (const hit of ordered) {
+    if (picked.length >= total) break;
+    const x = round(clamp01(hit.x)), y = round(clamp01(hit.y));
+    const key = `${x},${y}`;
+    if (used.has(key) || picked.some(slot => !farEnough({ x, y }, slot, 0.12))) continue;
+    picked.push({ x, y, scale: 0.12, rotation: 0 });
+    used.add(key);
   }
   return picked.slice(0, total);
 }
