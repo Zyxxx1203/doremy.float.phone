@@ -198,6 +198,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const localVideoObjectUrlRef = useRef<string | null>(null);
   const nativeVideoCacheRef = useRef<{ url: string; cacheId: string } | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
+  const [resolverState, setResolverState] = useState<{ state: "idle" | "resolving" | "ok" | "failed"; message?: string }>({ state: "idle" });
   const [resolutionMessage, setResolutionMessage] = useState("");
   const [transcriberEndpoint, setTranscriberEndpoint] = useState(() => {
     try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_transcriber_endpoint_v1") || "" : ""; } catch { return ""; }
@@ -289,6 +290,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     setResolutionMessage("正在尝试提取公开视频资源；提取期间也会保留网页内嵌播放作为备用……");
     const requestId = "watch-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 9);
     let active = true;
+    setResolverState({ state: "resolving" });
     const onResolved = (event: Event) => {
       const detail = (event as CustomEvent<WatchNativeResolved>).detail;
       if (!detail || detail.requestId !== requestId) return;
@@ -721,7 +723,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   return <div data-watch-fullscreen={fullScreen ? "true" : "false"} className={"watch-together-app pointer-events-auto isolate flex min-w-0 flex-col overflow-hidden text-[#f0e6d8] " + (fullScreen ? "fixed inset-0 z-[3000]" : "absolute inset-0 z-[1000]")} style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)", height: fullScreen ? "100dvh" : undefined, width: fullScreen ? "100vw" : undefined }}>
     {/* 弹幕动画：仓库里从未定义过 watchDanmaku，之前那条 animation 是空转，这里补上真实 keyframes */}
     <style>{`\n      .watch-together-main { display:flex; flex-direction:column; }
-      @keyframes watchWave { from { transform:scaleY(.45); opacity:.45 } to { transform:scaleY(1.15); opacity:1 } }\n      .watch-player { flex-shrink:0; border:5px solid #342a21!important; border-radius:22px!important; background:#090807; box-shadow:0 0 0 1px rgba(255,247,233,.45),0 8px 0 #8c6847,0 24px 42px rgba(68,44,24,.26)!important; }\n      .watch-link-panel { flex-shrink:0; }\n      .watch-interaction-panel { min-width:0; }
+      @keyframes watchWave { from { transform:scaleY(.45); opacity:.45 } to { transform:scaleY(1.15); opacity:1 } }\n      .watch-together-app[data-watch-fullscreen="true"] .watch-player { border:0!important; border-radius:0!important; box-shadow:none!important; background:#000!important; }
+      .watch-player { flex-shrink:0; border:5px solid #342a21!important; border-radius:22px!important; background:#090807; box-shadow:0 0 0 1px rgba(255,247,233,.45),0 8px 0 #8c6847,0 24px 42px rgba(68,44,24,.26)!important; }\n      .watch-link-panel { flex-shrink:0; }\n      .watch-interaction-panel { min-width:0; }
       /* Portrait mode: natural page scrolling; do not compress chat into a fixed-height tile. */
        @media (max-width: 699px), (orientation: portrait) {
          .watch-together-app:not([data-watch-fullscreen="true"]) > main.watch-together-main {
@@ -1031,6 +1034,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         {/* 屏幕洒在桌面上的余光 */}
         {!fullScreen && <div aria-hidden className="pointer-events-none absolute -bottom-6 left-1/2 h-6 w-[86%] -translate-x-1/2 rounded-[50%] opacity-40 blur-xl" style={{ background: "radial-gradient(ellipse, #d7a06a 0%, transparent 70%)" }} />}
       </section>
+        {resolverState.state !== "idle" && <div className="mx-auto mt-2 flex w-full max-w-3xl items-start gap-1.5 px-1 text-[10px] leading-5" data-resolver-state={resolverState.state}><span className={resolverState.state==="ok"?"text-[#8fd0a2]":resolverState.state==="failed"?"text-[#e0938a]":"text-[#d9b489]"}>{resolverState.state==="resolving"?"正在解析视频链接…":resolverState.state==="ok"?"✓ 解析成功 · 已在应用内播放":"✕ 解析失败："+(resolverState.message||"未知原因")}</span></div>}
 
       {/* 没有视频时：链接输入放在「屏幕」下方，像往播放器里投一块碟 */}
       <div className="watch-link-panel mx-auto mt-4 w-full max-w-3xl rounded-3xl border border-[#b89979]/30 bg-[#fff8ed]/75 p-3 shadow-[0_12px_30px_rgba(96,67,43,.08)] backdrop-blur sm:p-4">
