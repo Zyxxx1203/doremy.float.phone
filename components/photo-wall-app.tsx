@@ -62,6 +62,63 @@ function formatDateTimeInput(value?: string): string {
   return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate()) + "T" + pad(date.getHours()) + ":" + pad(date.getMinutes());
 }
 
+async function readExifCapturedAt(file: File): Promise<string | undefined> {
+  if (!/jpe?g/i.test(file.type) && !/\.jpe?g$/i.test(file.name)) return undefined;
+  try {
+    const view = new DataView(await file.slice(0, 1024 * 1024).arrayBuffer());
+    if (view.byteLength < 12 || view.getUint16(0, false) !== 0xffd8) return undefined;
+    const ascii = (start: number, length: number) => {
+      let value = "";
+      for (let i = 0; i < length && start + i < view.byteLength; i += 1) value += String.fromCharCode(view.getUint8(start + i));
+      return value;
+    };
+    let offset = 2;
+    while (offset + 4 < view.byteLength) {
+      if (view.getUint8(offset) !== 0xff) { offset += 1; continue; }
+      const marker = view.getUint8(offset + 1);
+      const length = view.getUint16(offset + 2, false);
+      if (length < 2 || offset + 2 + length > view.byteLength) break;
+      const dataStart = offset + 4;
+      if (marker === 0xe1 && ascii(dataStart, 6) === "Exif\0\0") {
+        const tiff = dataStart + 6;
+        const order = ascii(tiff, 2);
+        const little = order === "II";
+        if (!little && order !== "MM") return undefined;
+        const u16 = (at: number) => view.getUint16(at, little);
+        const u32 = (at: number) => view.getUint32(at, little);
+        const ifd0 = tiff + u32(tiff + 4);
+        const entryCount = u16(ifd0);
+        let exifOffset = 0;
+        for (let i = 0; i < entryCount; i += 1) {
+          const entry = ifd0 + 2 + i * 12;
+          if (entry + 12 > view.byteLength) break;
+          if (u16(entry) === 0x8769) { exifOffset = u32(entry + 8); break; }
+        }
+        if (!exifOffset) return undefined;
+        const exifIfd = tiff + exifOffset;
+        const exifCount = u16(exifIfd);
+        for (let i = 0; i < exifCount; i += 1) {
+          const entry = exifIfd + 2 + i * 12;
+          if (entry + 12 > view.byteLength) break;
+          const tag = u16(entry);
+          if ((tag === 0x9003 || tag === 0x9004) && u16(entry + 2) === 2) {
+            const count = u32(entry + 4);
+            const textStart = count <= 4 ? entry + 8 : tiff + u32(entry + 8);
+            const raw = ascii(textStart, Math.min(count, 32)).replace(/\0.*$/, "").trim();
+            const match = raw.match(/^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+            if (!match) return undefined;
+            return match[1] + "-" + match[2] + "-" + match[3] + "T" + match[4] + ":" + match[5] + ":" + match[6];
+          }
+        }
+        return undefined;
+      }
+      if (marker === 0xda || marker === 0xd9) break;
+      offset += 2 + length;
+    }
+  } catch { /* Photos without EXIF are normal; use manual capture time instead. */ }
+  return undefined;
+}
+
 function getPhotoBackText(photo: PhotoWallPhoto): string {
   const manual = photo.backNote?.trim() ?? "";
   const legacyNotes = (photo.annotations ?? []).map(note => {
@@ -891,8 +948,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         const blob = await optimizeUpload(file);
         const mime = blob.type || file.type || "image/jpeg";
         const ref = await storeMediaBlob(blob, mime, "image");
+        const capturedAt = await readExifCapturedAt(file);
         created.push({
-          id: createPhotoWallId(), mediaRef: ref, createdAt: new Date().toISOString(),
+          id: createPhotoWallId(), mediaRef: ref, createdAt: new Date().toISOString(), capturedAt,
           ownerType: "user", ownerName: "我", kind: "favorite", title: file.name.replace(/\.[^.]+$/, "").slice(0, 60) || "一张喜欢的照片",
           caption: "", backNote: "", tags: [], annotations: [], shareWithCharacters: true, source: "upload",
         });
