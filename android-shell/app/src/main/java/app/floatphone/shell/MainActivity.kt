@@ -418,18 +418,29 @@ private fun sharedVideoCacheDir(): File = File(cacheDir, "shared-video")
 private fun isHostUnder(host: String, suffix: String): Boolean =
     host.equals(suffix, ignoreCase = true) || host.endsWith("." + suffix, ignoreCase = true)
 
-private fun isAllowedShareOrPageHost(host: String): Boolean =
-    listOf("douyin.com", "iesdouyin.com", "kuaishou.com", "xiaohongshu.com", "xhslink.com", "xhslink.cn")
-        .any { isHostUnder(host, it) }
+/**
+ * The native resolver runs only after a trusted app page explicitly asks for it.
+ * Accept public DNS hostnames so ordinary video pages can be inspected too, while
+ * rejecting local names and literal IPs to avoid turning the bridge into an SSRF tool.
+ * Media URLs are still restricted to public hosts and direct MP4-like resources below.
+ */
+private fun isPublicResolverHost(host: String): Boolean {
+    val lower = host.lowercase().trimEnd('.')
+    if (lower.isBlank() || lower == "localhost" || lower.endsWith(".localhost")
+        || lower.endsWith(".local") || lower.endsWith(".internal") || lower.endsWith(".lan")
+        || lower.endsWith(".test") || lower.endsWith(".invalid") || lower.endsWith(".example")
+        || lower.contains(":") || Regex("^(\\d{1,3}\\.){3}\\d{1,3}$").matches(lower)) return false
+    return lower.contains(".")
+}
 
-private fun isAllowedVideoHost(host: String): Boolean =
-    listOf("douyinvod.com", "kwaicdn.com", "kwimgs.com", "kspkg.com", "ks-cdn.com", "xhscdn.com")
-        .any { isHostUnder(host, it) }
+private fun isAllowedShareOrPageHost(host: String): Boolean = isPublicResolverHost(host)
+
+private fun isAllowedVideoHost(host: String): Boolean = isPublicResolverHost(host)
 
 private fun isSupportedShareUrl(rawUrl: String): Boolean {
     val url = rawUrl.trim().toHttpUrlOrNull() ?: return false
-    if (url.scheme != "http" && url.scheme != "https") return false
-    return isAllowedShareOrPageHost(url.host)
+    if (url.scheme != "http" && url.scheme != "https" || url.username.isNotEmpty() || url.password.isNotEmpty()) return false
+    return isPublicResolverHost(url.host)
 }
 
 private fun isTrustedShellPage(): Boolean {
@@ -474,7 +485,7 @@ private fun fetchSharedVideoPage(startUrl: String): SharedVideoPage {
     for (attempt in 0..6) {
         val current = currentUrl.toHttpUrlOrNull()
             ?: throw IllegalArgumentException("分享链接格式不正确")
-        if (!isAllowedShareOrPageHost(current.host)) {
+        if (!isPublicResolverHost(current.host)) {
             throw IllegalArgumentException("跳转到了不支持的平台域名，已停止解析")
         }
 
@@ -491,7 +502,7 @@ private fun fetchSharedVideoPage(startUrl: String): SharedVideoPage {
             if (next == null) throw IllegalStateException("分享页面返回了无效跳转")
             val nextUrl = next.toString()
             if (isLikelyPublicMp4(nextUrl)) return SharedVideoPage(currentUrl, null, nextUrl)
-            if (!isAllowedShareOrPageHost(next.host)) {
+            if (!isPublicResolverHost(next.host)) {
                 throw IllegalStateException("分享页面跳转到受限或不支持的地址，已停止解析")
             }
             currentUrl = nextUrl
@@ -619,7 +630,7 @@ private fun downloadPublicMp4(mediaUrl: String, pageUrl: String): CachedSharedVi
 
 private fun resolveAndCacheSharedVideo(rawUrl: String): CachedSharedVideo {
     val trimmed = rawUrl.trim()
-    if (!isSupportedShareUrl(trimmed)) throw IllegalArgumentException("仅支持抖音、快手和小红书的 HTTP(S) 分享链接")
+    if (!isSupportedShareUrl(trimmed)) throw IllegalArgumentException("仅支持公开 HTTP(S) 网页链接；本机、内网和非公开地址不支持")
     pruneCachedSharedVideos()
     val page = fetchSharedVideoPage(trimmed)
     val mediaUrl = page.directVideoUrl
