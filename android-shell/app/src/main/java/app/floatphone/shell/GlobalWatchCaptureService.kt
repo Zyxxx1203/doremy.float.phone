@@ -88,8 +88,8 @@ class GlobalWatchCaptureService : Service() {
     private var imageReader: ImageReader? = null
     private var overlay: LinearLayout? = null
     private var windowManager: WindowManager? = null
-    private var paused = false
-    private var capturePending = false
+    @Volatile private var paused = false
+    @Volatile private var capturePending = false
     private var config = JSONObject()
     private var minIntervalSeconds = 35
     private var maxIntervalSeconds = 95
@@ -301,7 +301,7 @@ class GlobalWatchCaptureService : Service() {
 
     private fun emitState(message: String) {
         mainHandler.post { statusText?.text = message }
-        sendBroadcast(Intent(ACTION_STATE).setPackage(packageName).putExtra("message", message).putExtra("paused", paused))
+        sendBroadcast(Intent(ACTION_STATE).setPackage(packageName).putExtra("message", message).putExtra("running", projection != null).putExtra("paused", paused))
     }
 
     private fun createNotificationChannel() {
