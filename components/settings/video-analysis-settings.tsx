@@ -37,7 +37,8 @@ export function VideoAnalysisSettingsPanel() {
       </div>
       <label className="mt-5 block text-sm font-medium">视频分析服务</label>
       <select value={settings.provider} onChange={e => { const provider = e.target.value as VideoAnalysisSettings["provider"]; setSettings(current => ({ ...current, provider, model: provider === "ark" ? (current.model.startsWith("gemini-") ? "doubao-seed-2-1-pro-260915" : current.model) : (current.model.startsWith("doubao-") ? "gemini-2.5-flash" : current.model) })); setSaved(false); }} className="mt-2 w-full rounded-xl border border-[var(--border,rgba(128,128,128,.25))] bg-[var(--background,transparent)] px-3 py-3 text-sm">
-        <option value="gemini">Google Gemini 原生视频 API</option>\n        <option value="ark">火山方舟 / 豆包视频理解 API</option>
+        <option value="gemini">Google Gemini 原生视频 API</option>
+        <option value="ark">火山方舟 / 豆包视频理解 API</option>
       </select>
       <p className="mt-2 text-xs leading-5 opacity-65">Gemini 与火山方舟采用不同的文件上传和视频输入协议；请按下方选择的服务填写对应密钥和模型 ID。</p>
 
@@ -47,7 +48,8 @@ export function VideoAnalysisSettingsPanel() {
         <button type="button" onClick={() => setShowKey(v => !v)} aria-label={showKey ? "隐藏 API Key" : "显示 API Key"} className="flex w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--border,rgba(128,128,128,.25))]">{showKey ? <EyeOff size={17} /> : <Eye size={17} />}</button>
       </div>
 
-      {settings.provider === "ark" && <><label className="mt-4 block text-sm font-medium">方舟 API 地址</label><input value={settings.baseUrl} onChange={e => update("baseUrl", e.target.value)} placeholder="https://ark.cn-beijing.volces.com/api/v3" className="mt-2 w-full rounded-xl border border-[var(--border,rgba(128,128,128,.25))] bg-[var(--background,transparent)] px-3 py-3 text-sm" /><p className="mt-1 text-xs leading-5 opacity-65">默认使用北京地域方舟 API；如使用其他地域，请填写对应的兼容 API 根地址。</p></>}\n      <label className="mt-4 block text-sm font-medium">视频分析模型 ID</label>
+      {settings.provider === "ark" && <><label className="mt-4 block text-sm font-medium">方舟 API 地址</label><input value={settings.baseUrl} onChange={e => update("baseUrl", e.target.value)} placeholder="https://ark.cn-beijing.volces.com/api/v3" className="mt-2 w-full rounded-xl border border-[var(--border,rgba(128,128,128,.25))] bg-[var(--background,transparent)] px-3 py-3 text-sm" /><p className="mt-1 text-xs leading-5 opacity-65">默认使用北京地域方舟 API；如使用其他地域，请填写对应的兼容 API 根地址。</p></>}
+      <label className="mt-4 block text-sm font-medium">视频分析模型 ID</label
       <input value={settings.model} onChange={e => update("model", e.target.value)} placeholder="例如 gemini-2.5-flash 或 doubao-seed-2-1-pro-260915" spellCheck={false} className="mt-2 w-full rounded-xl border border-[var(--border,rgba(128,128,128,.25))] bg-[var(--background,transparent)] px-3 py-3 text-sm" />
       <p className="mt-1 text-xs leading-5 opacity-65">请填写当前服务中已开通且支持视频输入的模型 ID。Gemini 与方舟的模型 ID 不能混用。</p>
 
