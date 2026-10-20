@@ -512,7 +512,7 @@ private fun fetchSharedVideoPage(startUrl: String): SharedVideoPage {
             response.close()
             if (next == null) throw IllegalStateException("分享页面返回了无效跳转")
             val nextUrl = next.toString()
-            if (isLikelyPublicMp4(nextUrl)) return SharedVideoPage(currentUrl, null, nextUrl)
+            if (isLikelyPublicMp4(nextUrl) || isLikelyPublicHls(nextUrl)) return SharedVideoPage(currentUrl, null, nextUrl)
             if (!isPublicResolverHost(next.host)) {
                 throw IllegalStateException("分享页面跳转到受限或不支持的地址，已停止解析")
             }
@@ -523,7 +523,8 @@ private fun fetchSharedVideoPage(startUrl: String): SharedVideoPage {
         response.use {
             if (!it.isSuccessful) throw IllegalStateException("平台页面返回 HTTP " + it.code)
             val contentType = (it.header("Content-Type") ?: "").lowercase()
-            if (contentType.startsWith("video/") && isLikelyPublicMp4(current.toString())) {
+            if ((contentType.startsWith("video/") && isLikelyPublicMp4(current.toString()))
+                || (contentType.contains("mpegurl") && isLikelyPublicHls(current.toString()))) {
                 return SharedVideoPage(current.toString(), null, current.toString())
             }
             val body = it.body ?: throw IllegalStateException("平台页面没有可读取的内容")
