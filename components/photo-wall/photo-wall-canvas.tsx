@@ -465,14 +465,22 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
               && event.clientY >= rect.top && event.clientY <= rect.bottom;
           });
           const renderedCards = Array.from(wall?.querySelectorAll<HTMLElement>("[data-photo-wall-photo-id]") ?? []);
-          const hit = renderedCards.slice().reverse().find(element => {
+          const containsPoint = (element: HTMLElement | null | undefined) => {
+            if (!element) return false;
             const rect = element.getBoundingClientRect();
             return event.clientX >= rect.left && event.clientX <= rect.right
               && event.clientY >= rect.top && event.clientY <= rect.bottom;
-          });
+          };
+          const frameHit = renderedCards.slice().reverse().find(containsPoint);
+          // In doodle mode, hit the actual image surface, not the larger polaroid/frame.
+          // Previously frame padding counted as a photo hit and clamped strokes onto the edge.
+          const hit = mode === "doodle"
+            ? renderedCards.slice().reverse().find(element => containsPoint(element.querySelector<HTMLElement>("[data-photo-wall-photo-image]")))
+            : frameHit;
+          if (mode === "doodle" && frameHit && !hit) return;
           const photoElement = hit;
           const photoId = photoElement?.dataset.photoWallPhotoId;
-          const photoAnchor = photoElement?.querySelector<HTMLElement>("[data-photo-wall-photo-anchor]") ?? undefined;
+          const photoAnchor = photoElement?.querySelector<HTMLElement>("[data-photo-wall-photo-image]") ?? undefined;
           const index = ordered.findIndex(photo => photo.id === photoId);
           const photo = index >= 0 ? ordered[index] : null;
           if (mode === "move") {
