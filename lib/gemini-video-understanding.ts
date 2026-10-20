@@ -46,7 +46,9 @@ export async function analyzeWholeVideoWithGemini(options: {
   const maxFileSizeMb = Math.min(2048, Math.max(50, options.maxFileSizeMb ?? 1024));
   if (file.size > maxFileSizeMb * 1024 * 1024) throw new Error("视频超过当前设置的 " + maxFileSizeMb + " MB 上限。请在系统设置 → 视频分析模型调整上限，或先压缩视频。");
 
-  if (options.provider === "ark") return analyzeWholeVideoWithArk({ file, apiKey, model, prompt, baseUrl: options.baseUrl, maxFileSizeMb, signal, onProgress });\n\n  const apiRoot = "https://generativelanguage.googleapis.com";
+  if (options.provider === "ark") return analyzeWholeVideoWithArk({ file, apiKey, model, prompt, baseUrl: options.baseUrl, maxFileSizeMb, signal, onProgress });
+
+  const apiRoot = "https://generativelanguage.googleapis.com";
   const authHeader = { "x-goog-api-key": apiKey.trim() };
   let uploadedName = "";
 
@@ -218,7 +220,7 @@ async function analyzeWholeVideoWithArk(options: {
       error?: { message?: string };
     } | null;
     if (!response.ok) throw new Error(readErrorMessage(result, "方舟视频理解失败（HTTP " + response.status + "）。"));
-    const outputText = result?.output_text || result?.output?.flatMap(item => item.content || []).map(part => part.text || "").filter(Boolean).join("\\n") || "";
+    const outputText = result?.output_text || result?.output?.flatMap(item => item.content || []).map(part => part.text || "").filter(Boolean).join("\n") || "";
     if (!outputText.trim()) throw new Error("方舟没有返回文字回应。请检查模型是否支持视频输入及 Responses API。");
     return outputText.trim();
   } finally {
