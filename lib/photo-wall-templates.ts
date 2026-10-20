@@ -93,7 +93,8 @@ function scatterSlots(count: number): Slot[] {
 /** 心形填充：始终在心形轮廓内排布，从中心的少量照片逐步向外长，中心不留空洞。 */
 function fillSlots(count: number): Slot[] {
   const total = Math.max(1, count);
-  const boundary = heartSlots(320).map(slot => ({ x: slot.x, y: slot.y }));
+  const boundary = heartSlots(720).map(slot => ({ x: slot.x, y: slot.y }));
+  const center = { x: 0.5, y: 0.55 };
   const contains = (point: { x: number; y: number }) => {
     let inside = false;
     for (let i = 0, j = boundary.length - 1; i < boundary.length; j = i++) {
@@ -104,31 +105,71 @@ function fillSlots(count: number): Slot[] {
     }
     return inside;
   };
-  const candidates: Array<{ x: number; y: number; radius: number; angle: number }> = [];
-  const step = 0.022;
-  for (let y = 0.18; y <= 0.90; y += step) {
-    for (let x = 0.08; x <= 0.92; x += step) {
+  // Analytically intersect a ray from the heart's centre with its polygon boundary.
+  // This keeps placement proportional to the actual heart silhouette, not an ellipse.
+  const edgeRadiusCache = new Map<number, number>();
+  const edgeRadius = (angle: number) => {
+    const cacheKey = Math.round(angle * 10000);
+    const cached = edgeRadiusCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+    const dx = Math.cos(angle), dy = Math.sin(angle);
+    let radius = 0;
+    for (let i = 0; i < boundary.length; i += 1) {
+      const a = boundary[i], b = boundary[(i + 1) % boundary.length];
+      const vx = b.x - a.x, vy = b.y - a.y;
+      const denominator = dx * vy - dy * vx;
+      if (Math.abs(denominator) < 1e-8) continue;
+      const ax = a.x - center.x, ay = a.y - center.y;
+      const distance = (ax * vy - ay * vx) / denominator;
+      const segmentPosition = (ax * dy - ay * dx) / denominator;
+      if (distance >= 0 && segmentPosition >= 0 && segmentPosition <= 1) radius = Math.max(radius, distance);
+    }
+    const result = Math.max(radius, 0.002);
+    edgeRadiusCache.set(cacheKey, result);
+    return result;
+  };
+  const step = Math.max(0.004, Math.min(0.025, Math.sqrt(0.25 / (total * 2))));
+  const candidates: Array<{ x: number; y: number; progress: number; angle: number }> = [];
+  for (let y = 0.12; y <= 0.92; y += step) {
+    for (let x = 0.06; x <= 0.94; x += step) {
       const point = { x: round(x), y: round(y) };
       if (!contains(point)) continue;
-      const dx = (point.x - 0.5) / 0.42;
-      const dy = (point.y - 0.55) / 0.34;
-      candidates.push({ ...point, radius: Math.hypot(dx, dy), angle: Math.atan2(dy, dx) });
+      const dx = point.x - center.x, dy = point.y - center.y;
+      const angle = Math.atan2(dy, dx);
+      const progress = Math.hypot(dx, dy) / edgeRadius(angle);
+      candidates.push({ ...point, progress, angle });
     }
   }
-  // This order is independent of photo count, so adding photos fills outward without
-  // rearranging previously placed images or creating a hollow ring in the middle.
-  candidates.sort((a, b) => a.radius - b.radius || a.angle - b.angle);
-  const totalCandidates = candidates.length;
-  return Array.from({ length: total }, (_, i) => {
-    const point = candidates[i % Math.max(1, totalCandidates)] ?? { x: 0.5, y: 0.55, radius: 0.0, angle: 0.0 };
-    const scale = Math.max(0.38, 0.78 - point.radius * 0.16);
-    return {
+  candidates.sort((a, b) => a.progress - b.progress || a.angle - b.angle);
+  const ordered = candidates.filter(point => point.progress > 0.025);
+  if (!ordered.length) return heartSlots(total);
+  // The first photo is in the core. New photos extend outwards in the same heart-shaped
+  // contour; positions never recycle, so a larger set has no repeated outer-ring slots.
+  const slots: Slot[] = [{ x: center.x, y: center.y, scale: 0.92, rotation: 0 }];
+  for (let index = 0; slots.length < total && index < ordered.length; index += 1) {
+    const point = ordered[index];
+    const progress = Math.min(1, point.progress);
+    slots.push({
       x: point.x,
       y: point.y,
-      scale: round(scale),
-      rotation: round(Math.sin(point.angle * 2.3 + i * 0.07) * 4),
-    };
-  });
+      scale: round(Math.max(0.48, 0.9 - progress * 0.18)),
+      rotation: round(Math.sin(point.angle * 2.2 + index * 0.035) * 4),
+    });
+  }
+  // Extremely large walls get additional unique slots by sampling the actual filled
+  // shape at a finer grid rather than recycling the same positions.
+  for (let turn = 1; slots.length < total; turn += 1) {
+    const progress = Math.min(1, Math.sqrt(turn / total));
+    const angle = turn * Math.PI * (3 - Math.sqrt(5));
+    const radius = edgeRadius(angle) * progress;
+    slots.push({
+      x: round(clamp01(center.x + Math.cos(angle) * radius)),
+      y: round(clamp01(center.y + Math.sin(angle) * radius)),
+      scale: round(Math.max(0.48, 0.9 - progress * 0.18)),
+      rotation: round(Math.sin(angle * 2.2 + turn * 0.035) * 4),
+    });
+  }
+  return slots;
 }
 
 /**
