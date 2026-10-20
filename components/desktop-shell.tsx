@@ -419,6 +419,29 @@ function getInstalledCustomIconIds(): Set<string> {
   return new Set(loadInstalledCustomApps().map(app => toCustomAppIconId(app.id)));
 }
 
+
+const GLOBAL_WATCH_ICON_PAGE_MIGRATION_KEY = "global_watch_icon_page_migration_v1";
+function migrateGlobalWatchIconToPageFour(
+  layout: DesktopLayout,
+  widgets: WidgetInstance[],
+  dock: DesktopIconId[],
+  folders: DesktopFolderMap,
+): DesktopLayout {
+  if (kvGet(GLOBAL_WATCH_ICON_PAGE_MIGRATION_KEY) === "1") return layout;
+  const next = cloneDesktopLayout(layout, widgets);
+  const exists = getDesktopPageKeysForState(next, widgets).some(pageKey => (next[pageKey] ?? []).some(icon => icon.id === "globalwatch"));
+  const folderMembers = new Set(Object.values(folders).flatMap(folder => folder.icons));
+  if (!exists && !dock.includes("globalwatch") && !folderMembers.has("globalwatch")) {
+    ensureDesktopPage(next, "page4" as DesktopPageKey);
+    const widgetOcc = buildWidgetOccupancy(widgets.filter(widget => widget.page === 4));
+    const usedCells = new Set((next.page4 ?? []).map(icon => String(icon.row) + "," + String(icon.col)));
+    const free = findNearestFreeCell(4, 4, widgetOcc, usedCells);
+    if (free) next.page4.push({ id: "globalwatch", ...free });
+  }
+  kvSet(GLOBAL_WATCH_ICON_PAGE_MIGRATION_KEY, "1");
+  return next;
+}
+
 function migrateNewLifestyleAppsToPageFour(
   layout: DesktopLayout,
   widgets: WidgetInstance[],
@@ -1643,8 +1666,9 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
           const normalized = normalizeLayout(JSON.parse(rawV2), hydratedWidgets, dockIds, hydratedFolders);
           const sane = sanitizeDesktopFolders(hydratedFolders, normalized, hydratedDock, hydratedWidgets);
           const migratedLayout = migrateNewLifestyleAppsToPageFour(sane.layout, hydratedWidgets, hydratedDock, sane.folders);
+          const globalWatchMigratedLayout = migrateGlobalWatchIconToPageFour(migratedLayout, hydratedWidgets, hydratedDock, sane.folders);
           setFolders(sane.folders);
-          setLayout(migratedLayout);
+          setLayout(globalWatchMigratedLayout);
           if (sane.changed) writeDesktopFolders(sane.folders);
           if (sane.changed || migratedLayout !== sane.layout || kvGet(NEW_LIFESTYLE_APPS_PAGE_MIGRATION_KEY) === "1") {
             kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(migratedLayout));
