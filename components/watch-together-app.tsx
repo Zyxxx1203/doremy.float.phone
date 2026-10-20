@@ -11,6 +11,7 @@ import { resolveVoiceConfig, synthesizeSpeech } from "@/lib/tts-service";
 import { loadApiConfigs, loadBindingConfig, resolveBinding, resolveUserIdentity } from "@/lib/settings-storage";
 import { formatTranscriptTime, parseVideoTranscript, type VideoTranscriptSegment } from "@/lib/video-transcript";
 import { DanmakuLayer } from "@/components/watch/danmaku-layer";
+import { captureScreenshot, hasScreenshotBridge } from "@/lib/screenshot";
 
 /** 自动搭话的每日上限：护栏，避免暂停/挂机时白烧 API。 */
 const WATCH_AUTO_DAILY_LIMIT = 24;
@@ -57,12 +58,13 @@ function openExternalUrl(url: string): void {
 }
 
 type WatchComment = { id: string; characterId: string; characterName: string; text: string; createdAt: string; kind?: "character" | "user"; timepoint?: string; targetUrl?: string };
-type WatchSettings = { characterId: string; intervalMinMinutes: number; intervalMaxMinutes: number; voiceEnabled: boolean; danmakuEnabled: boolean; subtitlesEnabled: boolean; currentMoment: string };
+type WatchSettings = { characterId: string; intervalMinMinutes: number; intervalMaxMinutes: number; voiceEnabled: boolean; danmakuEnabled: boolean; danmakuColor: string; subtitlesEnabled: boolean; currentMoment: string };
 
 const SETTINGS_KEY = "ai_phone_watch_together_v1";
 const SETTINGS_MIGRATION_KEY = "ai_phone_watch_together_schema_v2";
 const COMMENTS_KEY = "ai_phone_watch_together_comments_v1";
-const DEFAULT_SETTINGS: WatchSettings = { characterId: "", intervalMinMinutes: 3, intervalMaxMinutes: 8, voiceEnabled: true, danmakuEnabled: true, subtitlesEnabled: false, currentMoment: "" };
+const DANMAKU_COLORS = ["#ffd9a0", "#ff8fae", "#9ad0ff", "#b8e986", "#ffffff", "#e6c49d"];
+const DEFAULT_SETTINGS: WatchSettings = { characterId: "", intervalMinMinutes: 3, intervalMaxMinutes: 8, voiceEnabled: true, danmakuEnabled: true, danmakuColor: "#e6c49d", subtitlesEnabled: false, currentMoment: "" };
 function formatVideoTime(seconds: number): string {
   const safe = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
   const hours = Math.floor(safe / 3600);
@@ -137,6 +139,15 @@ function parseVideoUrl(value: string): VideoTarget | null {
   } catch { return null; }
 }
 
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("截图读取失败"));
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.readAsDataURL(blob);
+  });
+}
+
 function loadSettings(): WatchSettings {
   try {
     const raw = kvGet(SETTINGS_KEY);
@@ -152,6 +163,7 @@ function loadSettings(): WatchSettings {
       intervalMaxMinutes: untouchedDefault ? 2 : Math.max(Math.max(1, Math.min(60, previousMin)), Math.min(60, previousMax)),
       voiceEnabled: parsed.voiceEnabled !== false,
       danmakuEnabled: parsed.danmakuEnabled !== false,
+      danmakuColor: typeof parsed.danmakuColor === "string" && /^#[0-9a-f]{6}$/i.test(parsed.danmakuColor) ? parsed.danmakuColor : "#e6c49d",
       subtitlesEnabled: migrated ? parsed.subtitlesEnabled !== false : false,
       currentMoment: typeof parsed.currentMoment === "string" ? parsed.currentMoment.slice(0, 800) : "",
     };
@@ -570,6 +582,63 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     } catch (error) { onNotice?.("角色语音播放失败：" + (error instanceof Error ? error.message : String(error))); }
   };
 
+  /**
+   * 静默取一帧画面，作为本轮「角色看到的画面」。
+   * 同源 <video> 直接读像素；跨站 iframe 读不到，就用壳的无障碍整屏截图，
+   * 并裁到播放器区域——全程不弹任何 UI、不打断播放。
+   */
+  const captureFrameForPrompt = useCallback(async (): Promise<string> => {
+    const video = playerRef.current?.querySelector("video");
+    if (video && video.readyState >= 2 && video.videoWidth && video.videoHeight) {
+      try {
+        const maxSide = 720;
+        const scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+        canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+        const context = canvas.getContext("2d");
+        if (context) {
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", 0.62));
+          if (blob) return await blobToDataUrl(blob);
+        }
+      } catch {
+        // 跨域媒体会污染画布，继续走壳截图
+      }
+    }
+    if (!hasScreenshotBridge()) return "";
+    const player = playerRef.current;
+    if (!player) return "";
+    try {
+      const shot = await captureScreenshot(7000);
+      if (!shot.ok || !shot.base64) return "";
+      const binary = atob(shot.base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+      const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+      const rect = player.getBoundingClientRect();
+      const viewportWidth = Math.max(1, window.innerWidth);
+      const viewportHeight = Math.max(1, window.innerHeight);
+      const scaleX = bitmap.width / viewportWidth;
+      const scaleY = bitmap.height / viewportHeight;
+      const sourceX = Math.max(0, Math.min(bitmap.width - 1, rect.left * scaleX));
+      const sourceY = Math.max(0, Math.min(bitmap.height - 1, rect.top * scaleY));
+      const sourceWidth = Math.max(1, Math.min(bitmap.width - sourceX, rect.width * scaleX));
+      const sourceHeight = Math.max(1, Math.min(bitmap.height - sourceY, rect.height * scaleY));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(sourceWidth));
+      canvas.height = Math.max(1, Math.round(sourceHeight));
+      const context = canvas.getContext("2d");
+      if (!context) { bitmap.close(); return ""; }
+      context.drawImage(bitmap, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/jpeg", 0.7));
+      return blob ? await blobToDataUrl(blob) : "";
+    } catch {
+      return "";
+    }
+  }, []);
+
   const generateComment = useCallback(async (manual = false, momentOverride?: string, timepointOverride?: string) => {
     if (!target || !character || commentBusyRef.current) return;
     commentBusyRef.current = true; setBusy(true);
@@ -580,6 +649,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const session = sessions.find(item => !item.isGroup && item.contactId === contact?.id)
         ?? ({ id: `watch-together-${character.id}`, contactId: contact?.id ?? character.id, unreadCount: 0, updatedAt: new Date().toISOString(), isPinned: false, isGroup: false } as ChatSession);
       const history = loadChatMessages(session.id).slice(-12).filter(item => item.status !== "failed" && !item.isRetracted);
+      // 用户自己附过截图就优先用它；否则静默取一帧，别让角色「瞎看」
+      const frameDataUrl = screenshotDataUrl || (await captureFrameForPrompt());
       const videoElement = playerRef.current?.querySelector("video");
       const draftSeconds = parseVideoTime(timepointOverride || timepointDraftRef.current);
       const playbackSeconds = videoElement && Number.isFinite(videoElement.currentTime) ? videoElement.currentTime : iframeSecondsRef.current;
@@ -594,13 +665,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const prompt = [
         "你正在和用户一起看视频，是亲密、自然的陪伴，不是影评机器人。",
         "视频平台：" + target.platformName + "；视频标题（用户可编辑）：" + (videoTitle || "暂未命名") + "。",
-        screenshotDataUrl ? "本轮附带了用户提供/截取的当前画面截图。结合截图与字幕判断人物、场景、动作和情绪；若截图无法辨认，不要编造。" : "",
+        frameDataUrl ? "本轮附带了用户提供/截取的当前画面截图。结合截图与字幕判断人物、场景、动作和情绪；若截图无法辨认，不要编造。" : "",
         "用户描述的当前片段/时间点与两人的互动：" + ((momentOverride ?? settings.currentMoment).trim() || "用户暂未提供具体画面描述") + "。",
         transcriptName ? "已导入字幕/脚本文件：" + transcriptName : "",
         transcriptContext ? (transcriptHasTimestamps
           ? "当前播放时间附近的字幕脚本（含原始时间戳）：\n" + transcriptContext
           : "已导入脚本没有可用时间戳，以下只作为全片文字参考，不能假装与当前画面精确同步：\n" + transcriptContext) : "",
-        screenshotDataUrl
+        frameDataUrl
           ? "本轮可结合附带截图与字幕/时间点理解；截图只代表这一帧，不可据此推断未展示的后续剧情。"
           : transcriptContext
             ? "本轮只读取上面的字幕/时间戳脚本；不得声称看见实际画面。只根据已经出现的文字讨论，不能推测后续剧情。"
@@ -612,8 +683,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         appId: "watch_together",
         appTags: ["watch_together"],
         toolsAllowed: false,
-        attachedImages: screenshotDataUrl ? [screenshotDataUrl] : undefined,
-        ephemeralSystemNote: screenshotDataUrl
+        attachedImages: frameDataUrl ? [frameDataUrl] : undefined,
+        ephemeralSystemNote: frameDataUrl
           ? "你正在根据用户提供的当前视频截图、字幕/时间戳脚本与用户一起看视频。允许描述截图中清晰可见的内容，但不要推断截图之外的画面或后续剧情。不要调用工具，只输出一句自然简短的角色发言。"
           : "你正在根据字幕/时间戳脚本与用户一起看视频。你没有读取到真实视频画面；不要调用工具，不要假装看见画面，也不要剧透。只输出一句自然简短的角色发言。",
       });
@@ -634,7 +705,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       queuedAfterReply = pendingDiscussionRef.current.shift();
       if (queuedAfterReply) window.setTimeout(() => { void generateComment(true, queuedAfterReply!.moment, queuedAfterReply!.timepoint); }, 50);
     }
-  }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice, transcriptSegments, transcriptName, screenshotDataUrl]);
+  }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice, transcriptSegments, transcriptName, screenshotDataUrl, captureFrameForPrompt]);
 
   /** 把一帧画面交给角色：手动截图和静默截屏共用这一条路径。 */
 
@@ -716,6 +787,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   const danmakuItems = useMemo(() => comments
     .filter(item => !target?.url || !item.targetUrl || item.targetUrl === target.url)
+    .filter(item => item.kind === "user" || settings.danmakuEnabled)
     .map(item => ({ id: item.id, text: item.text, kind: item.kind === "user" ? ("user" as const) : ("character" as const), name: item.characterName })), [comments, target?.url]);
   const latestComment = comments[comments.length - 1];
   const platformNote = useMemo(() => {
@@ -1026,7 +1098,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </form>}
           </div>}
         </div>}
-        <DanmakuLayer enabled={settings.danmakuEnabled && Boolean(target?.embedUrl || target?.nativeVideo)} paused={mediaPaused} items={danmakuItems} />
+        <DanmakuLayer enabled={Boolean(target?.embedUrl || target?.nativeVideo)} paused={mediaPaused} items={danmakuItems} userColor={settings.danmakuColor} />
         <div className="absolute right-2 top-2 z-20 flex gap-1">
           <button type="button" onClick={() => void captureCurrentFrame()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/55 text-white/90 backdrop-blur transition active:scale-95" aria-label="截取当前画面并用于理解" title="截取当前画面"><ImagePlus size={14}/></button>
           <button type="button" onClick={() => screenshotFileInputRef.current?.click()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/55 text-white/90 backdrop-blur transition active:scale-95" aria-label="上传截图" title="上传截图"><FileText size={14}/></button>
@@ -1182,6 +1254,11 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               className={`rounded-full border px-3 py-2 text-[11px] transition active:scale-95 ${settings[key] ? "border-[#c99a6a]/60 bg-[#c99a6a]/15 text-[#e8c39a]" : "border-white/10 bg-white/5 text-[#8b8077]"}`}
             >{label}</button>)}
           </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-[11px] text-[#8b8077]">我的弹幕颜色</span>
+              {DANMAKU_COLORS.map(color => <button key={color} type="button" aria-label={color} onClick={() => patchSettings({ danmakuColor: color })} className={"h-6 w-6 rounded-full border " + ((settings.danmakuColor || "#e6c49d").toLowerCase() === color.toLowerCase() ? "border-white ring-2 ring-white/30" : "border-white/20")} style={{ background: color }} />)}
+              <label className="relative h-6 w-8 cursor-pointer overflow-hidden rounded border border-white/20" aria-label="自定义弹幕颜色"><input type="color" value={settings.danmakuColor} onChange={event => patchSettings({ danmakuColor: event.target.value })} className="absolute -left-1 -top-1 h-10 w-12 cursor-pointer border-0 bg-transparent p-0" /></label>
+            </div>
           <p className="mt-3 text-[10px] leading-5 text-[#7d7268]">角色发言使用你已配置的聊天模型与语音绑定。平台自带的字幕/弹幕开关无法跨站控制，这里的开关只作用于「角色陪看」这一层。</p>
       </section>
     </div>}

@@ -15,6 +15,8 @@ type Props = {
   enabled: boolean;
   /** 视频暂停时冻结弹幕 */
   paused?: boolean;
+  /** 自己发的弹幕颜色（#RRGGBB）；不合法就回退默认 */
+  userColor?: string;
   maxLanes?: number;
 };
 
@@ -38,7 +40,7 @@ const MAX_OVERLAP = 0.5;
 /** 队列积压上限，避免刷屏时无限排队 */
 const MAX_QUEUE = 12;
 
-export function DanmakuLayer({ items, enabled, paused = false, maxLanes = 9 }: Props) {
+export function DanmakuLayer({ items, enabled, paused = false, userColor, maxLanes = 9 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const seenRef = useRef<Set<string>>(new Set());
   const queueRef = useRef<DanmakuEntry[]>([]);
@@ -121,6 +123,7 @@ export function DanmakuLayer({ items, enabled, paused = false, maxLanes = 9 }: P
 
   if (!enabled) return null;
   const shift = hostWidth || 1200;
+  const safeColor = userColor && /^#[0-9a-f]{6}$/i.test(userColor) ? userColor : "#3b82c4";
 
   return (
     <div ref={hostRef} aria-hidden className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
@@ -142,7 +145,7 @@ export function DanmakuLayer({ items, enabled, paused = false, maxLanes = 9 }: P
             ["--dm-shift" as string]: `-${shift + item.width}px`,
           } as CSSProperties}
         >
-          <span>{item.text}</span>
+          <span style={item.kind === "user" ? { background: safeColor } : undefined}>{item.text}</span>
         </div>
       ))}
     </div>
