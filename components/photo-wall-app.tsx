@@ -240,7 +240,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [state, setState] = useState<PhotoWallState>(() => loadPhotoWallState());
   const [characters, setCharacters] = useState<Character[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
-  const [wallView, setWallView] = useState<"timeline" | "memories" | "panorama" | "edit" | "settings">("panorama");
+  const [wallView, setWallView] = useState<"timeline" | "memories" | "album" | "panorama" | "edit" | "settings">("panorama");
   const [settingsReturnView, setSettingsReturnView] = useState<"panorama" | "edit">("panorama");
   const [panoramaZoom, setPanoramaZoom] = useState(100);
   const [timelineStartDate, setTimelineStartDate] = useState("");
@@ -469,6 +469,14 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null); // Modal editor only
   const [wallActivePhotoId, setWallActivePhotoId] = useState<string | null>(null); // Canvas selection only
   const wallSelectedPhoto = state.photos.find(photo => photo.id === wallActivePhotoId) ?? null;
+  const [albums, setAlbums] = useState<PhotoAlbum[]>(() => loadPhotoAlbums());
+  const [activeAlbumId, setActiveAlbumId] = useState<string | null>(null);
+  const [activeAlbumPage, setActiveAlbumPage] = useState(0);
+  const [albumEditMode, setAlbumEditMode] = useState(false);
+  const activeAlbum = albums.find(album => album.id === activeAlbumId) ?? null;
+  useEffect(() => {
+    try { window.localStorage.setItem(PHOTO_ALBUMS_KEY, JSON.stringify(albums)); } catch { /* Album metadata is optional. */ }
+  }, [albums]);
   useEffect(() => {
     const backgroundRef = state.wallBackgroundRef;
     if (backgroundRef) void retainMediaRef(backgroundRef, "photo-wall-background").catch(error => console.warn("[照片墙] 背景引用保护失败", error));
