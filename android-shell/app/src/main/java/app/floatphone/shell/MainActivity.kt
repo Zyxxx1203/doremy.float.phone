@@ -463,6 +463,8 @@ private fun isLikelyPublicMp4(rawUrl: String): Boolean {
         || isHostUnder(url.host, "kwimgs.com")
         || isHostUnder(url.host, "kspkg.com")
         || isHostUnder(url.host, "ks-cdn.com")
+        // Douyin's SSR parser exposes signed playback URLs on aweme.snssdk.com.
+        || (isHostUnder(url.host, "snssdk.com") && path.contains("/aweme/v1/play"))
         || (isHostUnder(url.host, "xhscdn.com") && (path.contains("video") || url.queryParameter("type") == "video"))
 }
 
@@ -525,6 +527,56 @@ private fun fetchSharedVideoPage(startUrl: String): SharedVideoPage {
         }
     }
     throw IllegalStateException("分享链接跳转次数过多")
+}
+
+/**
+ * Parse Douyin's server-rendered window._ROUTER_DATA payload before falling back to URL scanning.
+ * This follows the established open-source parser strategy: loaderData -> video/note page ->
+ * videoInfoRes.item_list[0].video.play_addr.url_list. No signature or login bypass is attempted.
+ */
+private fun extractDouyinRouterPlayUrl(html: String): String? {
+    if (!html.contains("douyin.com", ignoreCase = true) && !html.contains("iesdouyin.com", ignoreCase = true)) return null
+    val match = Regex("""window\\._ROUTER_DATA\\s*=\\s*(.*?)</script>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)).find(html)
+        ?: return null
+    var raw = match.groupValues[1].trim()
+    // Find the matching JSON object end, ignoring braces inside quoted strings.
+    var depth = 0
+    var quoted = false
+    var escaped = false
+    var end = -1
+    for (i in raw.indices) {
+        val c = raw[i]
+        if (quoted) {
+            if (escaped) escaped = false
+            else if (c == '\\\\') escaped = true
+            else if (c == '"') quoted = false
+        } else {
+            when (c) {
+                '"' -> quoted = true
+                '{' -> depth++
+                '}' -> { depth--; if (depth == 0) { end = i + 1; break } }
+            }
+        }
+    }
+    if (end <= 0) return null
+    raw = raw.substring(0, end).replace(Regex(""":\\s*undefined(?=[,\\s}\\]])"""), ": null")
+    return runCatching {
+        val root = org.json.JSONObject(raw)
+        val loader = root.optJSONObject("loaderData") ?: return@runCatching null
+        val page = loader.keys().asSequence()
+            .filter { it.contains("video_(id)/page") || it.contains("note_(id)/page") }
+            .mapNotNull { loader.optJSONObject(it) }
+            .firstOrNull() ?: return@runCatching null
+        val items = page.optJSONObject("videoInfoRes")?.optJSONArray("item_list")
+            ?: return@runCatching null
+        val item = items.optJSONObject(0) ?: return@runCatching null
+        val urls = item.optJSONObject("video")?.optJSONObject("play_addr")?.optJSONArray("url_list")
+            ?: return@runCatching null
+        (0 until urls.length()).asSequence()
+            .mapNotNull { urls.optString(it).takeIf(String::isNotBlank) }
+            .map { it.replace("playwm", "play") }
+            .firstOrNull { isLikelyPublicMp4(it) }
+    }.getOrNull()
 }
 
 private fun extractPublicMp4Url(html: String): String? {
@@ -658,6 +710,7 @@ private fun resolveAndCacheSharedVideo(rawUrl: String): CachedSharedVideo {
     pruneCachedSharedVideos()
     val page = fetchSharedVideoPage(trimmed)
     val mediaUrl = page.directVideoUrl
+        ?: page.html?.let { extractDouyinRouterPlayUrl(it) }
         ?: page.html?.let { extractPublicMp4Url(it) }
         ?: throw IllegalStateException("页面中没有找到可直接播放的公开 MP4；可能需要登录、由 JavaScript 加载或使用了平台专有签名")
     return downloadPublicMp4(mediaUrl, page.pageUrl)
