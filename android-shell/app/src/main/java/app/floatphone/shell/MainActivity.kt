@@ -524,7 +524,7 @@ private fun fetchSharedVideoPage(startUrl: String): SharedVideoPage {
             if (!it.isSuccessful) throw IllegalStateException("平台页面返回 HTTP " + it.code)
             val contentType = (it.header("Content-Type") ?: "").lowercase()
             if ((contentType.startsWith("video/") && isLikelyPublicMp4(current.toString()))
-                || (contentType.contains("mpegurl") && isLikelyPublicHls(current.toString()))) {
+                || (contentType.contains("mpegurl") && isAllowedVideoHost(current.host))) {
                 return SharedVideoPage(current.toString(), null, current.toString())
             }
             val body = it.body ?: throw IllegalStateException("平台页面没有可读取的内容")
