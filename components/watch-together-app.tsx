@@ -492,14 +492,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,"image/jpeg",0.78));
       if(!blob) throw new Error("截图编码失败。");
       setScreenshotDataUrl(await readCompressedImageDataUrl(blob));
-      onNotice?.("已截取当前画面。下一次角色回应会结合截图、字幕和时间点理解。");
+      onNotice?.("已截取当前画面。下一次角色回应会尝试结合截图、字幕和时间点理解；请确认当前绑定的聊天 API 已开启图片识别，且模型支持看图。");
     } catch { onNotice?.("当前视频帧受跨域安全策略保护，无法直接截取。请上传截图或使用本地视频。"); }
   };
   const loadScreenshotFile = async (file?: File) => {
     if(!file) return;
     if(!file.type.startsWith("image/")) { onNotice?.("请选择图片文件。"); return; }
     if(file.size>12*1024*1024) { onNotice?.("截图超过 12 MB，请先压缩后再上传。"); return; }
-    try { setScreenshotDataUrl(await readCompressedImageDataUrl(file)); onNotice?.("截图已载入；下一次角色回应会尝试结合视觉理解。"); }
+    try { setScreenshotDataUrl(await readCompressedImageDataUrl(file)); onNotice?.("截图已载入；下一次角色回应会尝试结合视觉理解。请确认当前绑定的聊天 API 已开启图片识别，且模型支持看图。"); }
     catch(error) { onNotice?.("截图读取失败："+(error instanceof Error?error.message:String(error))); }
   };
   const openLocalVideo = (file?: File) => {
@@ -513,6 +513,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     localVideoObjectUrlRef.current = objectUrl;
     const localTarget: VideoTarget = { url: objectUrl, embedUrl: null, platform: "other", platformName: "本地视频", supported: true, nativeVideo: true };
     setTarget(localTarget);
+    setVideoDescription(""); setProxyStatus(""); setScreenshotDataUrl("");
     setTranscriptSegments([]); setTranscriptName("");
     setVideoTitle(file.name.replace(/\.[^.]+$/, "") || "本地视频");
     setComments([]);
@@ -529,6 +530,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       localVideoObjectUrlRef.current = null;
     }
     setTarget(parsed);
+    setVideoDescription(""); setProxyStatus(""); setScreenshotDataUrl("");
     setTranscriptSegments([]); setTranscriptName("");
     setVideoTitle(current => current || `${parsed.platformName}的一段视频`);
     setComments(loadTargetComments(parsed.url));
@@ -1046,12 +1048,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           }).catch(error => onNotice?.("脚本读取失败：" + (error instanceof Error ? error.message : String(error))));
         }} />
         {transcriptSegments.length > 0 && <div role="status" aria-live="polite" className="mt-2 flex items-start justify-between gap-3 rounded-xl border border-[#cdb79b]/60 bg-[#fffaf2] px-3 py-2 text-xs leading-5 text-[#82644c]"><span className="min-w-0">已载入脚本：{transcriptName} · {transcriptSegments.length} 段{transcriptSegments.length === 1 && transcriptSegments[0].end >= 86400 ? " · 无精确时间戳" : ""}</span><button type="button" onClick={() => { setTranscriptSegments([]); setTranscriptName(""); }} className="shrink-0 border-b border-[#cdb79b] text-[#8d6459]">移除</button></div>}
-        {screenshotDataUrl && <div className="mt-2 flex items-center gap-3 rounded-xl border border-[#cdb79b]/60 bg-[#fffaf2] p-2 text-xs text-[#82644c]"><img src={screenshotDataUrl} alt="本轮陪看截图" className="h-14 w-20 rounded-lg object-contain bg-black/10"/><span className="min-w-0 flex-1">已附加画面截图 · 下一次角色回应会尝试结合视觉理解</span><button type="button" onClick={() => setScreenshotDataUrl("")} className="shrink-0 border-b border-[#cdb79b] text-[#8d6459]">移除</button></div>}
+        {screenshotDataUrl && <div className="mt-2 flex items-center gap-3 rounded-xl border border-[#cdb79b]/60 bg-[#fffaf2] p-2 text-xs text-[#82644c]"><img src={screenshotDataUrl} alt="本轮陪看截图" className="h-14 w-20 rounded-lg object-contain bg-black/10"/><span className="min-w-0 flex-1">已附加画面截图 · 需绑定支持视觉的模型并开启图片识别</span><button type="button" onClick={() => setScreenshotDataUrl("")} className="shrink-0 border-b border-[#cdb79b] text-[#8d6459]">移除</button></div>}
         <div className="mt-3 rounded-xl border border-[#cdb79b]/50 bg-[#fffaf2] p-3 text-[#82644c]">
           <div className="text-xs font-medium">公共 CORS 代理 · 尝试读取页面信息与字幕</div>
           <p className="mt-1 text-[10px] leading-5 text-[#8b7665]">默认使用公共代理通道，只读取公开页面/字幕，不发送登录凭证。成功与否取决于目标平台；不会绕过登录、付费、风控或 DRM。</p>
           <label className="mt-2 block text-[10px]">代理地址（可更换；默认 cors.dev 公共代理）<input value={corsProxyEndpoint} onChange={event => setCorsProxyEndpoint(event.target.value)} className="mt-1 w-full rounded-lg border border-[#dac6ad] bg-white px-2.5 py-2 text-xs text-[#554437] outline-none" placeholder="https://proxy.cors.dev/ 或 https://你的代理/?url="/></label>
-          <button type="button" onClick={() => void readVideoInfoViaProxy()} disabled={proxyReading || !(target?.url || urlInput.trim())} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#87565b] px-3 py-2.5 text-xs text-white disabled:opacity-40">{proxyReading ? <LoaderCircle size={13} className="animate-spin"/> : <ExternalLink size={13}/ >}{proxyReading ? "正在读取公开信息…" : "尝试代理读取字幕 / 页面信息"}</button>
+          <button type="button" onClick={() => void readVideoInfoViaProxy()} disabled={proxyReading || !(target?.url || urlInput.trim())} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#87565b] px-3 py-2.5 text-xs text-white disabled:opacity-40">{proxyReading ? <LoaderCircle size={13} className="animate-spin"/> : <ExternalLink size={13} />}{proxyReading ? "正在读取公开信息…" : "尝试代理读取字幕 / 页面信息"}</button>
           {proxyStatus && <p role="status" aria-live="polite" className="mt-2 text-[10px] leading-5">{proxyStatus}</p>}
           {videoDescription && <p className="mt-1 text-[10px] leading-5">已取得简介：{videoDescription.slice(0,260)}{videoDescription.length>260?"…":""}</p>}
         </div>
