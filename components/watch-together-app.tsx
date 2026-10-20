@@ -737,7 +737,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
     const videoSettings = loadVideoAnalysisSettings();
     if (!videoSettings.apiKey.trim()) {
-      onNotice?.("请先到系统设置 → 视频分析模型填写 Gemini API Key。");
+      onNotice?.("请先到系统设置 → 视频分析模型填写所选服务的 API Key。");
       return;
     }
 
@@ -780,6 +780,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         provider: videoSettings.provider,
         baseUrl: videoSettings.baseUrl,
         maxFileSizeMb: videoSettings.maxFileSizeMb,
+        frameCount: videoSettings.frameCount,
         prompt,
         signal: controller.signal,
         onProgress: setWholeVideoProgress,
