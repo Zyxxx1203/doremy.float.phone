@@ -9,7 +9,6 @@ import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage,
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { resolveVoiceConfig, synthesizeSpeech } from "@/lib/tts-service";
 import { loadApiConfigs, loadBindingConfig, resolveBinding, resolveUserIdentity } from "@/lib/settings-storage";
-import { readCompressedImageDataUrl } from "@/lib/chat-engine";
 import { formatTranscriptTime, parseVideoTranscript, type VideoTranscriptSegment } from "@/lib/video-transcript";
 
 /** 自动搭话的每日上限：护栏，避免暂停/挂机时白烧 API。 */
@@ -272,10 +271,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const originalOrientationRef = useRef<string | null>(null);
   const playerRef = useRef<HTMLDivElement>(null);
   const commentListRef = useRef<HTMLDivElement>(null);
-  const videoFramesRef = useRef<Array<{ targetUrl: string; seconds: number; timestamp: string; dataUrl: string }>>([]);
   /** 跨站 iframe 读不到 currentTime，用观看秒表估一个时间点，让弹幕能对上进度。 */
   const iframeSecondsRef = useRef(0);
-  const frameCaptureFailedRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const commentBusyRef = useRef(false);
   const objectUrlRef = useRef<string | null>(null);
@@ -312,8 +309,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   useEffect(() => {
     // Script-first co-watching: don't silently sample the video or add screenshots to prompts.
     // The character uses the imported transcript around the current playback timestamp instead.
-    videoFramesRef.current = [];
-    frameCaptureFailedRef.current = null;
     iframeSecondsRef.current = 0;
   }, [target?.url]);
 
