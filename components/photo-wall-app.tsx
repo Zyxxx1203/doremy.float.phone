@@ -232,7 +232,7 @@ function PhotoThumbnail({ photo, onOpen }: { photo: PhotoWallPhoto; onOpen: () =
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full" style={{overflow:"visible"}}>
         {(photo.doodles ?? []).map(doodle => doodle.kind === "stroke" ? <polyline key={doodle.id} points={doodle.points.map(point=>`${point.x*100},${point.y*100}`).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(0.8,doodle.width/2)} strokeLinecap="round" strokeLinejoin="round"/> : <text key={doodle.id} x={(doodle.points[0]?.x ?? .5)*100} y={(doodle.points[0]?.y ?? .5)*100} fill={doodle.color} fontSize="12" textAnchor="middle" dominantBaseline="middle">{doodle.content || "✦"}</text>)}
       </svg>
-      <span className="absolute left-1.5 top-1.5 bg-[#fffaf0]/90 px-1.5 py-0.5 text-[9px] tracking-wide text-[#7f6b58]">{KIND_LABEL[photo.kind]}</span>
+      
     </div>
   </button>;
 }
@@ -243,6 +243,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [wallView, setWallView] = useState<"timeline" | "memories" | "album" | "panorama" | "edit" | "settings">("panorama");
   const [settingsReturnView, setSettingsReturnView] = useState<"panorama" | "edit">("panorama");
   const [panoramaZoom, setPanoramaZoom] = useState(100);
+  const panoramaMinZoomRef = useRef(5);
   const [timelineStartDate, setTimelineStartDate] = useState("");
   const [timelineEndDate, setTimelineEndDate] = useState("");
   const [timelineGrouping, setTimelineGrouping] = useState<"photo" | "day" | "week" | "month" | "year">("month");
@@ -281,7 +282,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
    * 这里按同一比例把滚动位置一起推过去，手感才对。
    */
   const applyZoom = useCallback((nextZoom: number, anchor?: { x: number; y: number }) => {
-    const clamped = Math.max(5, Math.min(300, Math.round(nextZoom)));
+    const clamped = Math.max(panoramaMinZoomRef.current, Math.min(300, Math.round(nextZoom)));
     const previous = panoramaZoomRef.current;
     panoramaZoomRef.current = clamped;
     setPanoramaZoom(clamped);
@@ -306,8 +307,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const width = viewport?.clientWidth ?? 0, height = viewport?.clientHeight ?? 0;
     if (!width || !height) return;
     zoomInitializedRef.current = true;
-    const fit = Math.min((96 * width) / Math.max(1, world.width), (88 * height) / Math.max(1, world.height));
-    setPanoramaZoom(Math.min(180, Math.max(5, Math.round(fit))));
+    const fit = Math.min(width / Math.max(1, world.width), height / Math.max(1, world.height)) * 100;
+    const fittedZoom = Math.max(5, Math.min(180, Math.floor(fit)));
+    panoramaMinZoomRef.current = fittedZoom;
+    panoramaZoomRef.current = fittedZoom;
+    setPanoramaZoom(fittedZoom);
   }, [wallView, world.width, state.photos.length]);
   useEffect(() => {
     if (wallView !== "edit" && wallView !== "panorama") return;
@@ -1364,8 +1368,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           {wallCanvasMode === "view" && wallSelectedPhoto && <div className="mb-2 flex items-center justify-between gap-2 border-b border-[#e6d9cb] px-2 py-1.5"><span className="min-w-0 truncate text-[10px] text-[#8b7665]">已选：{wallSelectedPhoto.title||"未命名的瞬间"}</span><button type="button" onClick={() => openPhoto(wallSelectedPhoto)} className="shrink-0 border border-[#d7c2b1] px-2.5 py-1.5 text-[10px] text-[#7d6d5a]">查看详情</button></div>}
         </>}
         {busy && <div className="mb-3 flex shrink-0 items-center gap-2 border border-[#e4d8c6] bg-[#faf7f0] px-3 py-2.5 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
-        <div ref={panoramaViewportRef} data-photo-wall-viewport className="min-h-0 flex-1 w-full overflow-auto overscroll-contain" style={{ WebkitOverflowScrolling: "touch", touchAction: "none", overscrollBehavior: "contain" }}>
-          <div className="relative shrink-0 overflow-hidden" style={{ width: world.width * panoramaZoom / 100, height: world.height * panoramaZoom / 100, touchAction: "none" }}>
+        <div ref={panoramaViewportRef} data-photo-wall-viewport className="min-h-0 flex-1 w-full overflow-auto overscroll-contain bg-[#e9dfd2]" style={{ WebkitOverflowScrolling: "touch", touchAction: "none", overscrollBehavior: "contain" }}>
+          <div className="relative shrink-0 overflow-hidden shadow-[0_8px_28px_rgba(72,48,34,.12)]" style={{ width: world.width * panoramaZoom / 100, height: world.height * panoramaZoom / 100, touchAction: "none", margin: "0 auto" }}>
             <PhotoWallCanvas photos={visiblePhotos} selectedId={wallActivePhotoId} onSelect={setWallActivePhotoId}
               onChangePlacement={changePlacement} onPlacementSettled={settlePlacement}
               onDragBegin={() => pushHistory(stateRef.current)} onUndo={undo} onRedo={redo}
