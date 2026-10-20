@@ -38,7 +38,7 @@ type Platform = "bilibili" | "youtube" | "tencent" | "youku" | "iqiyi" | "douyin
 type VideoTarget = { url: string; embedUrl: string | null; platform: Platform; platformName: string; supported: boolean; nativeVideo?: boolean; nativeVideoUrl?: string; nativeCacheId?: string };
 type WatchNativeBridge = { resolveShortVideoShareUrl?: (url: string, requestId: string) => boolean; deleteCachedShortVideo?: (cacheId: string) => boolean };
 type WatchNativeWindow = Window & { AndroidShell?: WatchNativeBridge };
-type WatchNativeResolved = { requestId?: string; ok?: boolean; cacheId?: string; contentUri?: string; message?: string };
+type WatchNativeResolved = { requestId?: string; ok?: boolean; cacheId?: string; contentUri?: string; mediaUrl?: string; message?: string };
 type WatchComment = { id: string; characterId: string; characterName: string; text: string; createdAt: string; kind?: "character" | "user"; timepoint?: string; targetUrl?: string };
 type WatchSettings = { characterId: string; intervalMinMinutes: number; intervalMaxMinutes: number; voiceEnabled: boolean; danmakuEnabled: boolean; subtitlesEnabled: boolean; currentMoment: string };
 
@@ -191,6 +191,51 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [transcribing, setTranscribing] = useState(false);
 
   useEffect(() => {
+    if (!target?.nativeVideoUrl || !target.nativeVideoUrl.toLowerCase().includes(".m3u8")) return;
+    const video = playerRef.current?.querySelector("video");
+    if (!video) return;
+    let cancelled = false;
+    let hlsInstance: { destroy: () => void } | null = null;
+    const attach = () => {
+      if (cancelled) return;
+      const HlsCtor = (window as Window & { Hls?: new (config?: Record<string, unknown>) => {
+        loadSource: (url: string) => void;
+        attachMedia: (media: HTMLMediaElement) => void;
+        on: (event: string, callback: (...args: unknown[]) => void) => void;
+        destroy: () => void;
+      } }).Hls;
+      if (HlsCtor && (HlsCtor as unknown as { isSupported?: () => boolean }).isSupported?.()) {
+        video.removeAttribute("src");
+        video.load();
+        const instance = new HlsCtor({ enableWorker: true, lowLatencyMode: false });
+        hlsInstance = instance;
+        instance.on("error", (...args: unknown[]) => {
+          const data = args[1] as { fatal?: boolean; type?: string; details?: string } | undefined;
+          if (data?.fatal) onNotice?.("HLS 流已找到，但播放失败：" + (data.details || data.type || "媒体流错误") + "。可能是平台防盗链、跨域或地址过期。");
+        });
+        instance.loadSource(target.nativeVideoUrl!);
+        instance.attachMedia(video);
+      } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        video.src = target.nativeVideoUrl!;
+        void video.play().catch(() => {});
+      } else {
+        onNotice?.("已解析到 HLS（m3u8）视频流，但当前环境缺少兼容解码器；请尝试 MP4 视频。");
+      }
+    };
+    const existing = (window as Window & { Hls?: unknown }).Hls;
+    if (existing) attach();
+    else {
+      const script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/npm/hls.js@1.6.13/dist/hls.min.js";
+      script.async = true;
+      script.onload = attach;
+      script.onerror = () => onNotice?.("HLS 播放组件加载失败；视频地址已解析，但当前网络无法下载播放组件。");
+      document.head.appendChild(script);
+    }
+    return () => { cancelled = true; hlsInstance?.destroy(); };
+  }, [target?.nativeVideoUrl, onNotice]);
+
+  useEffect(() => {
     const current = target;
     if (!current) { setResolutionMessage(""); return; }
     if (current.nativeVideo) { setResolutionMessage("解析成功：已取得可播放的视频源，当前由小手机内置播放器播放。"); return; }
@@ -220,10 +265,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         if (detail.cacheId) { try { native.deleteCachedShortVideo?.(detail.cacheId); } catch { /* native cache TTL is fallback */ } }
         return;
       }
-      if (detail.ok && detail.cacheId && detail.contentUri) {
-        nativeVideoCacheRef.current = { url: current.url, cacheId: detail.cacheId };
-        setTarget(previous => previous && previous.url === current.url ? { ...previous, nativeVideo: true, nativeVideoUrl: detail.contentUri, nativeCacheId: detail.cacheId, supported: true } : previous);
-        const message = "解析成功：已取得可在小手机内播放的视频流。";
+      if (detail.ok && ((detail.cacheId && detail.contentUri) || detail.mediaUrl)) {
+        if (detail.cacheId) nativeVideoCacheRef.current = { url: current.url, cacheId: detail.cacheId };
+        setTarget(previous => previous && previous.url === current.url ? { ...previous, nativeVideo: true, nativeVideoUrl: detail.mediaUrl || detail.contentUri, nativeCacheId: detail.cacheId, supported: true } : previous);
+        const message = detail.mediaUrl?.toLowerCase().includes(".m3u8")
+          ? "解析成功：已取得 HLS 视频流，正在尝试在小手机内播放。"
+          : "解析成功：已取得可在小手机内播放的视频流。";
         setResolutionMessage(message);
         onNotice?.(message);
       } else {
