@@ -300,7 +300,38 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [wallBackgroundUrl, setWallBackgroundUrl] = useState("");
   const wallBackgroundInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { panoramaZoomRef.current = panoramaZoom; }, [panoramaZoom]);
-  // 首次进入全景/编辑视图时将整面墙适配到可用区域；后续缩放由用户控制。
+  // 每次进入全景/编辑时都按真实可用视口重新适配；画布比例与导出一致。
+  // ResizeObserver 处理手机 WebView 首帧尺寸为 0 或地址栏收缩导致的空白。
+  useEffect(() => {
+    if (wallView !== "edit" && wallView !== "panorama") return;
+    const viewport = panoramaViewportRef.current;
+    if (!viewport) return;
+    let firstMeasure = true;
+    const fitCanvas = () => {
+      const width = viewport.clientWidth;
+      const height = viewport.clientHeight;
+      if (!width || !height) return;
+      const fit = Math.min(width / Math.max(1, world.width), height / Math.max(1, world.height)) * 100;
+      const fittedZoom = Math.max(5, Math.min(180, Math.floor(fit)));
+      panoramaMinZoomRef.current = fittedZoom;
+      if (firstMeasure) {
+        firstMeasure = false;
+        panoramaZoomRef.current = fittedZoom;
+        setPanoramaZoom(fittedZoom);
+      } else if (panoramaZoomRef.current < fittedZoom) {
+        panoramaZoomRef.current = fittedZoom;
+        setPanoramaZoom(fittedZoom);
+      }
+    };
+    fitCanvas();
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(fitCanvas) : null;
+    observer?.observe(viewport);
+    window.addEventListener("resize", fitCanvas);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", fitCanvas);
+    };
+  }, [wallView, world.width, world.height]);
   useEffect(() => {
     if ((wallView !== "edit" && wallView !== "panorama") || zoomInitializedRef.current) return;
     const viewport = panoramaViewportRef.current;
@@ -1417,7 +1448,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         {timelinePhotos.length === 0 ? <div className="grid min-h-[55dvh] place-items-center text-center text-[#8f806d]"><div><Feather size={28} className="mx-auto"/><p className="mt-3">这个日期范围里还没有照片</p><p className="mt-1 text-xs">可以调整日期，或清除日期重新查看全部。</p></div></div> : <div className="relative mx-auto max-w-5xl space-y-5 before:absolute before:bottom-0 before:left-2 before:top-2 before:w-px before:bg-[#d8c4ab]">
           {timelineGroups.map(group => <section key={group.key} className="relative pl-8">
             <header className="relative z-10 mb-3 flex items-center justify-between gap-2 border-b border-[#d8c4b4] bg-[#f3eadc]/95 px-2 py-2">
-              <span aria-hidden="true" className="absolute left-2 top-3 h-3 w-3 rounded-full border-2 border-[#b88c82] bg-[#f3eadc] shadow-[0_0_0_3px_rgba(243,234,220,.9)]"/>
+              <span aria-hidden="true" className="absolute -left-[26px] top-3 h-3 w-3 rounded-full border-2 border-[#b88c82] bg-[#f3eadc] shadow-[0_0_0_3px_rgba(243,234,220,.9)]"/>
               <h2 className="font-serif text-base text-[#75624d]">{group.label}</h2><span className="shrink-0 text-[10px] text-[#a18e7a]">{group.items.length} 张</span>
             </header>
             <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-3 lg:grid-cols-6">
