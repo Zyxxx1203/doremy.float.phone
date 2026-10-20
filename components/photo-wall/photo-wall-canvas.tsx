@@ -143,6 +143,9 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       multiTouchRef.current = true;
       dragRef.current = null;
       strokeRef.current = null;
+      wallStrokeRef.current = null;
+      wallDraftPointsRef.current = [];
+      setDraftPoints([]);
       suppressClickRef.current = true;
       if (timer) clearTimeout(timer);
     };
