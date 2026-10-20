@@ -171,7 +171,7 @@ function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
   const center = { x: 0.5, y: 0.5 };
 
   const step = Math.max(0.018, Math.min(0.045, 0.5 / Math.sqrt(total * 14)));
-  const candidates: Array<{ x: number; y: number; radius: number }> = [];
+  const candidates: Array<{ x: number; y: number; radius: number; angle: number }> = [];
   for (let y = 0.07; y <= 0.93; y += step) {
     for (let x = 0.07; x <= 0.93; x += step) {
       const { u, v } = toShapeSpace(x, y);
@@ -181,16 +181,16 @@ function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
         const scaled = toShapeSpace(0.5 + (x - 0.5) * 1.12, 0.5 + (y - 0.5) * 1.12);
         if (shape(scaled.u, scaled.v)) continue;
       }
-      candidates.push({ x: round(x), y: round(y), radius: Math.hypot(x - center.x, (y - center.y) * (CANVAS_H / CANVAS_W)) });
+      candidates.push({ x: round(x), y: round(y), radius: Math.hypot(x - center.x, (y - center.y) * (CANVAS_H / CANVAS_W)), angle: (Math.atan2(y - center.y, x - center.x) + Math.PI * 2) % (Math.PI * 2) });
     }
   }
   if (!candidates.length) return layoutSlots("builtin-grid", total, true);
 
   const ordered = fill
-    // 即使照片较少也先保留形状外轮廓，再逐层向内填充，避免先挤成一团。
-    ? candidates.sort((a, b) => b.radius - a.radius || a.x - b.x)
-    // 轮廓模式的候选点已限制在边缘，按外缘优先铺开。
-    : candidates.sort((a, b) => b.radius - a.radius || a.x - b.x);
+    // 先均匀绕外轮廓取点，再逐圈向内；同一圈按极角分布，避免照片挤在形状一侧。
+    ? candidates.sort((a, b) => b.radius - a.radius || a.angle - b.angle)
+    // 轮廓模式按角度绕形状一圈取点，保证心形、星形、花形轮廓都能被识别。
+    : candidates.sort((a, b) => a.angle - b.angle);
 
   const picked: Slot[] = [];
   for (const candidate of ordered) {
