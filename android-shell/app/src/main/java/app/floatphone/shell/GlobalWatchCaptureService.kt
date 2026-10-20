@@ -49,6 +49,7 @@ class GlobalWatchCaptureService : Service() {
         const val ACTION_PAUSE = "app.floatphone.shell.GLOBAL_WATCH_PAUSE"
         const val ACTION_RESUME = "app.floatphone.shell.GLOBAL_WATCH_RESUME"
         const val ACTION_CAPTURE_NOW = "app.floatphone.shell.GLOBAL_WATCH_CAPTURE_NOW"
+        const val ACTION_SHOW_COMMENT = "app.floatphone.shell.GLOBAL_WATCH_SHOW_COMMENT"
         const val ACTION_FRAME = "app.floatphone.shell.GLOBAL_WATCH_FRAME"
         const val ACTION_REPLY = "app.floatphone.shell.GLOBAL_WATCH_REPLY"
         const val ACTION_STATE = "app.floatphone.shell.GLOBAL_WATCH_STATE"
@@ -105,6 +106,10 @@ class GlobalWatchCaptureService : Service() {
             ACTION_PAUSE -> setPaused(true)
             ACTION_RESUME -> setPaused(false)
             ACTION_CAPTURE_NOW -> requestCapture()
+            ACTION_SHOW_COMMENT -> {
+                val comment = intent.getStringExtra("comment").orEmpty().trim()
+                if (comment.isNotEmpty()) emitState(characterName + "：" + comment.take(240))
+            }
             ACTION_REPLY -> {
                 val text = intent.getStringExtra("reply_text").orEmpty().trim()
                 if (text.isNotEmpty()) sendBroadcast(Intent(ACTION_REPLY).setPackage(packageName).putExtra("text", text))
