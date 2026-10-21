@@ -343,7 +343,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       pinchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (firstPointer) {
         const target = event.target instanceof Element ? event.target : null;
-        singleTouchRef.current = { x: event.clientX, y: event.clientY, scrollLeft: 0, scrollTop: 0, startedOnPhoto: Boolean(target?.closest("[data-photo-wall-photo]")), panStarted: false,  };
+        singleTouchRef.current = { x: event.clientX, y: event.clientY, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, startedOnPhoto: Boolean(target?.closest("[data-photo-wall-photo]")), panStarted: false };
       }
       if (pinchPointersRef.current.size < 2) return;
       const points = [...pinchPointersRef.current.values()].slice(0, 2);
@@ -421,9 +421,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         const target = event.target instanceof Element ? event.target : null;
         singleTouchRef.current = {
           x: event.touches[0].clientX, y: event.touches[0].clientY,
-          scrollLeft: 0, scrollTop: 0,
+          scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop,
           startedOnPhoto: Boolean(target?.closest("[data-photo-wall-photo]")), panStarted: false,
-          ,
         };
       }
     };
