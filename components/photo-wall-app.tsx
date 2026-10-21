@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Camera, Check, ChevronLeft, ChevronRight, Download, Feather, Heart, ImagePlus, LoaderCircle, MessageCircle, MoreHorizontal, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, Camera, Check, ChevronLeft, ChevronRight, Download, Feather, Heart, ImagePlus, LoaderCircle, MessageCircle, MoreHorizontal, Plus, RefreshCw, ZoomIn, Sparkles, Trash2, X } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { loadImageGenerationSettings } from "@/lib/settings-storage";
@@ -259,6 +259,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   /** 世界尺寸来自持久化状态：扩容后照片比例不变，只换分母。 */
   const world = wallWorldOf(state);
   const [wallCanvasMode, setWallCanvasMode] = useState<"view" | "move" | "doodle">("view");
+  const [zoomMode, setZoomMode] = useState(false);
   const [wallBrushColor, setWallBrushColor] = useState("#c2705a");
   const [wallColorDraft, setWallColorDraft] = useState("#c2705a");
   const [wallBrushPalette, setWallBrushPalette] = useState<string[]>(() => {
@@ -310,6 +311,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [wallBackgroundUrl, setWallBackgroundUrl] = useState("");
   const wallBackgroundInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { panoramaZoomRef.current = panoramaZoom; }, [panoramaZoom]);
+  useEffect(() => { if (wallView !== "edit" && wallView !== "panorama") setZoomMode(false); }, [wallView]);
   // 每次进入全景/编辑时都按真实可用视口重新适配；画布比例与导出一致。
   // ResizeObserver 处理手机 WebView 首帧尺寸为 0 或地址栏收缩导致的空白。
   useEffect(() => {
@@ -350,6 +352,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const pointsDistance = (points: { x: number; y: number }[]) => Math.max(1, Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y));
     const supportsPointerEvents = typeof window !== "undefined" && "PointerEvent" in window;
     const onPointerDown = (event: PointerEvent) => {
+      if (zoomMode) return; // 锚点放大模式优先于翻面、拖动、涂鸦与普通画布手势。
       if (event.pointerType !== "touch" || !(event.target instanceof Node) || !viewport.contains(event.target)) return;
       const firstPointer = pinchPointersRef.current.size === 0;
       pinchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -366,6 +369,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (event.cancelable) event.preventDefault(); event.stopPropagation();
     };
     const onPointerMove = (event: PointerEvent) => {
+      if (zoomMode) return;
       const pointers = pinchPointersRef.current;
       if (!pointers.has(event.pointerId)) return;
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -385,9 +389,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         return;
       }
       if (supportsPointerEvents && pointers.size === 1 && !pinchModeRef.current) {
-        if (viewport.querySelector('[data-photo-wall-mode="move"], [data-photo-wall-mode="doodle"]')) return;
         const start = singleTouchRef.current;
         if (!start) return;
+        const activeMode = viewport.querySelector<HTMLElement>("[data-photo-wall-mode]")?.dataset.photoWallMode;
+        // 在照片上时，摆放/涂鸦由照片自己的手势负责；从空白墙面起手则统一平移画布。
+        if ((activeMode === "move" || activeMode === "doodle") && start.startedOnPhoto) return;
         const dx = event.clientX - start.x, dy = event.clientY - start.y;
         if (Math.abs(dx) + Math.abs(dy) < 3) return;
         if (event.cancelable) event.preventDefault();
@@ -416,7 +422,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     };
 
     const onTouchStart = (event: TouchEvent) => {
-      if (supportsPointerEvents) return;
+      if (supportsPointerEvents || zoomMode) return;
       if (event.touches.length >= 2) {
         if (!pinchModeRef.current) {
           pinchStartRef.current = { distance: touchDistance(event.touches), zoom: panoramaZoomRef.current };
@@ -437,7 +443,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       }
     };
     const onTouchMove = (event: TouchEvent) => {
-      if (supportsPointerEvents) return;
+      if (supportsPointerEvents || zoomMode) return;
       if (event.touches.length >= 2) {
         if (event.cancelable) event.preventDefault();
         if (!pinchStartRef.current) pinchStartRef.current = { distance: touchDistance(event.touches), zoom: panoramaZoomRef.current };
@@ -457,9 +463,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         return;
       }
       if (event.touches.length !== 1 || pinchModeRef.current) return;
-      if (viewport.querySelector('[data-photo-wall-mode="doodle"]')) return;
       const start = singleTouchRef.current;
       if (!start) return;
+      const activeMode = viewport.querySelector<HTMLElement>("[data-photo-wall-mode]")?.dataset.photoWallMode;
+      if ((activeMode === "move" || activeMode === "doodle") && start.startedOnPhoto) return;
       const dx = event.touches[0].clientX - start.x, dy = event.touches[0].clientY - start.y;
       if (Math.abs(dx) + Math.abs(dy) < 3) return;
       if (event.cancelable) event.preventDefault();
@@ -512,7 +519,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         viewport.removeEventListener("touchcancel", onTouchEnd, true);
       }
     };
-  }, [wallView, state.photos.length, filter]);
+  }, [wallView, state.photos.length, filter, zoomMode]);
   const [selectedCharacterId, setSelectedCharacterId] = useState<string>(() => readPhotoWallCharacter());
   const [groupReferenceCharacterIds, setGroupReferenceCharacterIds] = useState<string[]>(() => readPhotoWallGroupReferences());
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null); // Modal editor only
@@ -1303,6 +1310,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       {(wallView === "edit" || wallView === "panorama") && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAddMenu(false); setSettingsReturnView(wallView === "edit" ? "edit" : "panorama"); setWallView("settings"); }} className="relative z-[1002] pointer-events-auto min-h-10 shrink-0 cursor-pointer touch-manipulation border-b border-[#bda28d] px-2 py-1 text-sm tracking-wider text-[#79545a] transition active:opacity-60">设置</button>}
       {wallView === "edit" && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAddMenu(value => !value); }} className="relative z-[1002] pointer-events-auto grid h-10 w-10 shrink-0 cursor-pointer touch-manipulation place-items-center border border-[#d8c4b4] bg-[#fffaf2] text-[#87565b] transition active:scale-95" aria-label="添加照片"><Plus size={18}/></button>}
       {(wallView === "edit" || wallView === "panorama" || wallView === "memories" || wallView === "timeline") && <button type="button" onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="grid h-10 w-10 shrink-0 place-items-center border border-[#d8c4b4] bg-[#fffaf3]/80 text-[#795b52] disabled:opacity-40" aria-label="导出整墙 PNG"><Download size={17}/></button>}
+      {(wallView === "edit" || wallView === "panorama") && <button type="button" onClick={() => setZoomMode(value => !value)} aria-pressed={zoomMode} title={zoomMode ? "退出锚点放大模式" : "进入锚点放大模式"} aria-label={zoomMode ? "退出锚点放大模式" : "进入锚点放大模式"} className={zoomMode ? "grid h-10 w-10 shrink-0 place-items-center border border-[#87565b] bg-[#87565b] text-white" : "grid h-10 w-10 shrink-0 place-items-center border border-[#d8c4b4] bg-[#fffaf3]/80 text-[#795b52]"}><ZoomIn size={17}/></button>}
       {wallView === "panorama" && <button type="button" onClick={() => setWallView("edit")} className="shrink-0 border-b border-[#bda28d] px-2 py-2 text-sm text-[#79545a]">编辑墙面</button>}
       {(wallView === "memories" || wallView === "timeline") && <button type="button" onClick={() => setWallView("edit")} className="shrink-0 border-b border-[#bda28d] px-2 py-2 text-sm text-[#79545a]">编辑</button>}
       {wallView === "edit" && <span className="shrink-0 text-xs tracking-wide text-[#87565b]">画布</span>}
@@ -1400,8 +1408,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             <p className="shrink-0 font-serif text-sm text-[#5d4942]">自由画布</p><span className="shrink-0 text-[10px] text-[#9b8774]">{visiblePhotos.length} 张</span>
             <button type="button" onClick={undo} disabled={!canUndo} className="shrink-0 border border-[#d8c6b5] px-2 py-1.5 text-[10px] text-[#7d6d5a] disabled:opacity-30">撤销</button>
             <button type="button" onClick={redo} disabled={!canRedo} className="shrink-0 border border-[#d8c6b5] px-2 py-1.5 text-[10px] text-[#7d6d5a] disabled:opacity-30">重做</button>
-            <button type="button" onClick={() => { setWallCanvasMode(wallCanvasMode === "move" ? "view" : "move"); setWallSticker(null); setWallEraser(false); }} aria-pressed={wallCanvasMode === "move"} className={wallCanvasMode === "move" ? "shrink-0 border border-[#87565b] bg-[#87565b] px-2.5 py-1.5 text-[11px] text-white" : "shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[11px] text-[#7d6d5a]"}>{wallCanvasMode === "move" ? "完成摆放" : "摆照片"}</button>
-            <button type="button" onClick={() => { setWallCanvasMode(wallCanvasMode === "doodle" ? "view" : "doodle"); setWallSticker(null); setWallEraser(false); }} aria-pressed={wallCanvasMode === "doodle"} className={wallCanvasMode === "doodle" ? "shrink-0 border border-[#a77b77] bg-[#a77b77] px-2.5 py-1.5 text-[11px] text-white" : "shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[11px] text-[#7d6d5a]"}>{wallCanvasMode === "doodle" ? "退出涂鸦" : "涂鸦"}</button>
+            <button type="button" onClick={() => { setZoomMode(false); setWallCanvasMode(wallCanvasMode === "move" ? "view" : "move"); setWallSticker(null); setWallEraser(false); }} aria-pressed={wallCanvasMode === "move"} className={wallCanvasMode === "move" ? "shrink-0 border border-[#87565b] bg-[#87565b] px-2.5 py-1.5 text-[11px] text-white" : "shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[11px] text-[#7d6d5a]"}>{wallCanvasMode === "move" ? "完成摆放" : "摆照片"}</button>
+            <button type="button" onClick={() => { setZoomMode(false); setWallCanvasMode(wallCanvasMode === "doodle" ? "view" : "doodle"); setWallSticker(null); setWallEraser(false); }} aria-pressed={wallCanvasMode === "doodle"} className={wallCanvasMode === "doodle" ? "shrink-0 border border-[#a77b77] bg-[#a77b77] px-2.5 py-1.5 text-[11px] text-white" : "shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[11px] text-[#7d6d5a]"}>{wallCanvasMode === "doodle" ? "退出涂鸦" : "涂鸦"}</button>
             <label className="flex shrink-0 items-center gap-1 text-[10px] text-[#8b7665]">宽<input type="number" min={1200} max={12000} step={100} value={wallWidthDraft} onChange={event => setWallWidthDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter") applyWallDimensions(); }} aria-label="画布宽度" className="w-[62px] border-b border-[#d8c6b5] bg-transparent px-1 py-1 text-[11px] text-[#5d4942] outline-none"/></label>
             <label className="flex shrink-0 items-center gap-1 text-[10px] text-[#8b7665]">高<input type="number" min={1200} max={12000} step={100} value={wallHeightDraft} onChange={event => setWallHeightDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter") applyWallDimensions(); }} aria-label="画布高度" className="w-[62px] border-b border-[#d8c6b5] bg-transparent px-1 py-1 text-[11px] text-[#5d4942] outline-none"/></label>
             <button type="button" onClick={applyWallDimensions} className="shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[10px] text-[#7d6d5a]">应用尺寸</button>
@@ -1443,7 +1451,14 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           {wallCanvasMode === "view" && wallSelectedPhoto && <div className="relative z-40 mb-2 flex shrink-0 items-center justify-between gap-2 border-b border-[#e6d9cb] px-2 py-1.5"><span className="min-w-0 truncate text-[10px] text-[#8b7665]">已选：{wallSelectedPhoto.title||"未命名的瞬间"}</span><button type="button" onClick={() => openPhoto(wallSelectedPhoto)} className="shrink-0 border border-[#d7c2b1] px-2.5 py-1.5 text-[10px] text-[#7d6d5a]">查看详情</button></div>}
         </>}
         {busy && <div className="mb-3 flex shrink-0 items-center gap-2 border border-[#e4d8c6] bg-[#faf7f0] px-3 py-2.5 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
-        <div ref={panoramaViewportRef} data-photo-wall-viewport className="min-h-0 flex-1 w-full overflow-auto overscroll-contain bg-[#e9dfd2]" style={{ WebkitOverflowScrolling: "touch", touchAction: wallCanvasMode === "view" ? "pan-x pan-y" : "none", overscrollBehavior: "contain" }}>
+        {zoomMode && <div className="shrink-0 border-b border-[#d8c4b4] bg-[#fffaf2] px-3 py-2 text-[11px] leading-5 text-[#87565b]">放大模式已优先接管手势：点击你想放大的位置，该点会作为锚点保持在视野中；再次点击放大镜退出。此模式不会翻转照片、拖动照片或绘制涂鸦。</div>}
+        <div ref={panoramaViewportRef} data-photo-wall-viewport className="min-h-0 flex-1 w-full overflow-auto overscroll-contain bg-[#e9dfd2]" onClickCapture={event => {
+          if (!zoomMode) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const rect = event.currentTarget.getBoundingClientRect();
+          applyZoom(Math.min(300, panoramaZoomRef.current * 1.25), { x: event.clientX - rect.left, y: event.clientY - rect.top });
+        }} style={{ WebkitOverflowScrolling: "touch", touchAction: zoomMode ? "none" : wallCanvasMode === "view" ? "pan-x pan-y" : "none", overscrollBehavior: "contain" }}>
           <div className="relative shrink-0 overflow-hidden shadow-[0_8px_28px_rgba(72,48,34,.12)]" style={{ width: world.width * panoramaZoom / 100, height: world.height * panoramaZoom / 100, touchAction: "none", margin: "0 auto" }}>
             <PhotoWallCanvas photos={visiblePhotos} selectedId={wallActivePhotoId} onSelect={setWallActivePhotoId}
               onChangePlacement={changePlacement} onPlacementSettled={settlePlacement}
