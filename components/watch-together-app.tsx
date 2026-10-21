@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronDown, Expand, ExternalLink, FileText, Heart, ImagePlus, LoaderCircle, MessageCircle, Pause, Play, Settings2, Sparkles, X } from "lucide-react";
+import { ChevronDown, ExternalLink, FileText, Heart, ImagePlus, LoaderCircle, MessageCircle, Pause, Play, Settings2, Sparkles, X } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import { generateChatCompletion, flattenCompletionResult, readCompressedImageDataUrl } from "@/lib/chat-engine";
@@ -11,7 +11,6 @@ import { resolveVoiceConfig, synthesizeSpeech } from "@/lib/tts-service";
 import { resolveUserIdentity } from "@/lib/settings-storage";
 import { loadVideoAnalysisSettings, saveVideoAnalysisSettings, type VideoAnalysisSettings } from "@/lib/video-analysis-settings";
 import { formatTranscriptTime, parseVideoTranscript, type VideoTranscriptSegment } from "@/lib/video-transcript";
-import { DanmakuLayer } from "@/components/watch/danmaku-layer";
 import { captureScreenshot, hasScreenshotBridge } from "@/lib/screenshot";
 import { analyzeWholeVideoWithGemini } from "@/lib/gemini-video-understanding";
 import { clearGlobalWatchRecords, loadGlobalWatchRecords, type GlobalWatchRecord } from "@/lib/global-watch-storage";
@@ -73,7 +72,6 @@ type WatchSettings = { characterId: string; intervalMinMinutes: number; interval
 const SETTINGS_KEY = "ai_phone_watch_together_v1";
 const SETTINGS_MIGRATION_KEY = "ai_phone_watch_together_schema_v2";
 const COMMENTS_KEY = "ai_phone_watch_together_comments_v1";
-const DANMAKU_COLORS = ["#ffd9a0", "#ff8fae", "#9ad0ff", "#b8e986", "#ffffff", "#e6c49d"];
 const DEFAULT_SETTINGS: WatchSettings = { characterId: "", intervalMinMinutes: 3, intervalMaxMinutes: 8, voiceEnabled: true, danmakuEnabled: true, danmakuColor: "#e6c49d", subtitlesEnabled: false, currentMoment: "" };
 function formatVideoTime(seconds: number): string {
   const safe = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
@@ -195,20 +193,6 @@ function saveTargetComments(url: string, comments: WatchComment[]): void {
   const keys=Object.keys(store);
   while(keys.length>20){const oldest=keys.shift();if(oldest)delete store[oldest];}
   kvSet(COMMENTS_KEY,JSON.stringify(store));
-}
-
-/** Screen orientation locking is not included in every TypeScript DOM lib/browser. */
-async function tryLockLandscape(): Promise<void> {
-  try {
-    const native = (window as WatchNativeWindow).AndroidShell;
-    if (native?.setScreenOrientation?.("landscape")) return;
-    const orientation = screen.orientation as ScreenOrientation & {
-      lock?: (value: "landscape") => Promise<void>;
-    };
-    await orientation.lock?.("landscape");
-  } catch {
-    // Orientation locking is optional; immersive playback still works without it.
-  }
 }
 
 export function WatchTogetherApp({ onClose, onNotice }: Props) {
@@ -414,9 +398,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [historyMode, setHistoryMode] = useState<"current" | "global">("current");
   const [globalWatchRecords, setGlobalWatchRecords] = useState<GlobalWatchRecord[]>(() => loadGlobalWatchRecords());
   const [fullScreen, setFullScreen] = useState(false);
-  const [landscapeMode, setLandscapeMode] = useState(false);
   const [showControlCapsule, setShowControlCapsule] = useState(true);
-  const originalOrientationRef = useRef<string | null>(null);
   const playerRef = useRef<HTMLDivElement>(null);
   const watchRootRef = useRef<HTMLDivElement>(null);
   const nativeFullscreenActiveRef = useRef(false);
@@ -596,18 +578,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     });
     return () => { cancelAnimationFrame(first); cancelAnimationFrame(second); };
   }, [comments.length, fullScreen, busy]);
-  const restoreOrientation = async () => {
-    try { screen.orientation?.unlock?.(); } catch { /* orientation lock is optional */ }
-    try { (window as WatchNativeWindow).AndroidShell?.setScreenOrientation?.("restore"); } catch { /* browser fallback below */ }
-    const original = originalOrientationRef.current;
-    if (original) {
-      try {
-        const orientation = screen.orientation as ScreenOrientation & { lock?: (value: string) => Promise<void> };
-        await orientation.lock?.(original);
-      } catch { /* Browsers may only permit orientation locks while fullscreen. */ }
-    }
-    originalOrientationRef.current = null;
-  };
   // This component owns an in-page immersive layout. Ignore document-wide fullscreen events:
   // platform iframe/player controls must never switch the entire app into our immersive layout.
   useEffect(() => () => {
@@ -1184,7 +1154,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       try { await document.exitFullscreen(); } catch { onNotice?.("退出原生全屏失败，请使用播放器自己的退出全屏控件。"); }
       return;
     }
-    try { originalOrientationRef.current = screen.orientation?.type ?? null; } catch { originalOrientationRef.current = null; }
     const requestFullscreen = media.requestFullscreen?.bind(media);
     if (!requestFullscreen) {
       onNotice?.("当前设备的 WebView 没有开放原生播放器全屏能力。为避免再次卡住，这里不会强行拉伸播放器；请更新应用壳或使用播放器自带的全屏按钮。");
@@ -1193,7 +1162,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     try {
       await requestFullscreen();
       nativeFullscreenActiveRef.current = true;
-      await tryLockLandscape();
     } catch (error) {
       nativeFullscreenActiveRef.current = false;
       onNotice?.("系统拒绝了播放器原生全屏请求。视频保持原尺寸继续播放，没有切换到会卡住的网页模拟全屏。" + (error instanceof Error ? "（" + error.message + "）" : ""));
@@ -1206,7 +1174,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       if (nativeFullscreenActiveRef.current || fullScreen) {
         nativeFullscreenActiveRef.current = false;
         setFullScreen(false);
-        void restoreOrientation();
         window.dispatchEvent(new Event("resize"));
       }
     };
@@ -1238,7 +1205,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   if (showGlobalCompanion) return <GlobalWatchCompanionApp onClose={() => setShowGlobalCompanion(false)} onNotice={onNotice} />;
 
-  return <div ref={watchRootRef} data-watch-fullscreen={fullScreen ? "true" : "false"} data-landscape-mode={landscapeMode ? "true" : "false"} data-source-panel={showVideoSourcePanel ? "true" : "false"} className={"watch-together-app pointer-events-auto isolate flex min-w-0 flex-col overflow-hidden text-[#f0e6d8] " + (fullScreen || landscapeMode ? "fixed inset-0 z-[3000]" : "absolute inset-0 z-[1000]")} style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)", height: fullScreen || landscapeMode ? "100dvh" : undefined, width: fullScreen || landscapeMode ? "100vw" : undefined }}>
+  return <div ref={watchRootRef} data-watch-fullscreen={fullScreen ? "true" : "false"} data-landscape-mode="false" data-source-panel={showVideoSourcePanel ? "true" : "false"} className={"watch-together-app pointer-events-auto isolate flex min-w-0 flex-col overflow-hidden text-[#f0e6d8] " + (fullScreen || landscapeMode ? "fixed inset-0 z-[3000]" : "absolute inset-0 z-[1000]")} style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)", height: fullScreen || landscapeMode ? "100dvh" : undefined, width: fullScreen || landscapeMode ? "100vw" : undefined }}>
     {/* 弹幕动画：仓库里从未定义过 watchDanmaku，之前那条 animation 是空转，这里补上真实 keyframes */}
     <style>{`
       .watch-together-main { display:flex; flex-direction:column; }
@@ -1628,7 +1595,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </div>
         )}
 
-        <DanmakuLayer items={comments.map(item => ({ id: item.id, text: item.text, kind: item.kind ?? "character", name: item.characterName }))} enabled={settings.danmakuEnabled} paused={mediaPaused} userColor={settings.danmakuColor} maxLanes={landscapeMode ? 6 : 9} />
         {target && !target.supported && target.embedUrl === target.url && (
           <a
             href={target.url}
@@ -1728,15 +1694,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         </details>
       </div>
 
-      {!landscapeMode && <nav className="watch-control-capsule mx-auto flex w-full max-w-3xl items-center justify-around gap-1.5 px-2 py-2" data-collapsed={showControlCapsule ? "false" : "true"} aria-label="一起看功能入口">
+      <nav className="watch-control-capsule mx-auto flex w-full max-w-3xl items-center justify-around gap-1.5 px-2 py-2" data-collapsed={showControlCapsule ? "false" : "true"} aria-label="一起看功能入口">
         <button type="button" onClick={() => setShowGlobalCompanion(true)} className="watch-capsule-button"><span>◉</span><small>全局入口</small></button>
-        <button type="button" onClick={async () => { setLandscapeMode(true); setShowVideoSourcePanel(false); try { await tryLockLandscape(); } catch { /* optional */ } }} className="watch-capsule-button"><Expand size={17}/><small>横屏入口</small></button>
         <button type="button" onClick={() => setShowVideoSourcePanel(value => !value)} className="watch-capsule-button"><ExternalLink size={17}/><small>上传视频</small></button>
         <button type="button" onClick={() => setShowMemoryRecords(true)} className="watch-capsule-button"><FileText size={17}/><small>观看记录</small></button>
         <button type="button" onClick={() => setShowSettings(true)} className="watch-capsule-button"><Settings2 size={17}/><small>设置</small></button>
         <button type="button" onClick={() => setShowControlCapsule(value => !value)} className="watch-capsule-toggle" aria-label={showControlCapsule ? "收起入口栏" : "展开入口栏"}><ChevronDown size={16} className={showControlCapsule ? "" : "rotate-180"}/></button>
-      </nav>}
-      {landscapeMode && <div className="watch-landscape-header flex shrink-0 items-center gap-3 px-3 py-2"><button type="button" onClick={() => { setLandscapeMode(false); void restoreOrientation(); }} className="grid h-9 w-9 place-items-center border border-white/20 bg-white/10" aria-label="返回竖屏"><ArrowLeft size={17}/></button><span className="grid h-9 w-9 place-items-center overflow-hidden rounded-full bg-[#6d5141]">{character?.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character?.name.slice(0,1) ?? "TA"}</span><span className="min-w-0 flex-1 truncate text-xs">{character?.name ?? "TA"} · 弹幕陪看</span><button type="button" onClick={() => setShowVideoSourcePanel(true)} className="grid h-9 w-9 shrink-0 place-items-center border border-white/20 bg-white/10" aria-label="打开视频"><ExternalLink size={16}/></button><button type="button" onClick={() => setShowSettings(true)} className="grid h-9 w-9 place-items-center border border-white/20 bg-white/10" aria-label="设置"><Settings2 size={17}/></button></div>}
+      </nav>
       {/* 角色在屏幕下方轻声说话 */}
       <section className="watch-interaction-panel mx-auto mt-4 w-full max-w-3xl">
         <div data-part="card" className="watch-room-card relative isolate overflow-hidden rounded-[28px] border border-[#d4a575]/25 bg-gradient-to-br from-[#49372b]/95 via-[#2d231d]/95 to-[#1c1714]/98 p-4 shadow-[0_18px_46px_rgba(57,37,24,.24),inset_0_1px_0_rgba(255,224,184,.12)] backdrop-blur-xl sm:p-5">
@@ -1813,18 +1777,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            {([["voiceEnabled", "角色语音"], ["danmakuEnabled", "角色弹幕"]] as [keyof WatchSettings, string][]).map(([key, label]) => <button
+            {([["voiceEnabled", "角色语音"]] as [keyof WatchSettings, string][]).map(([key, label]) => <button
               key={key}
               type="button"
               onClick={() => patchSettings({ [key]: !settings[key] } as Partial<WatchSettings>)}
               className={`rounded-full border px-3 py-2 text-[11px] transition active:scale-95 ${settings[key] ? "border-[#c99a6a]/60 bg-[#c99a6a]/15 text-[#e8c39a]" : "border-white/10 bg-white/5 text-[#8b8077]"}`}
             >{label}</button>)}
           </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-[11px] text-[#8b8077]">我的弹幕颜色</span>
-              {DANMAKU_COLORS.map(color => <button key={color} type="button" aria-label={color} onClick={() => patchSettings({ danmakuColor: color })} className={"h-6 w-6 rounded-full border " + ((settings.danmakuColor || "#e6c49d").toLowerCase() === color.toLowerCase() ? "border-white ring-2 ring-white/30" : "border-white/20")} style={{ background: color }} />)}
-              <label className="relative h-6 w-8 cursor-pointer overflow-hidden rounded border border-white/20" aria-label="自定义弹幕颜色"><input type="color" value={settings.danmakuColor} onChange={event => patchSettings({ danmakuColor: event.target.value })} className="absolute -left-1 -top-1 h-10 w-12 cursor-pointer border-0 bg-transparent p-0" /></label>
-            </div>
           <section className="mt-4 border-t border-white/10 pt-3">
             <h3 className="font-serif text-sm text-[#e8c39a]">联网资料获取</h3>
             <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">独立的数据获取步骤：先尝试读取公开页面元数据，再按配置提取正文或搜索背景；结果只作为参考资料传给角色 AI，不替代截图视觉理解。Tavily 可直接配置，自定义接口需遵循下方请求格式。</p>
