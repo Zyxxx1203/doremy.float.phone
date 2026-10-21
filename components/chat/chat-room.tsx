@@ -3808,21 +3808,41 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const schedule = getCurrentActorSchedule(life, "character", character.id, now);
         const presence = life.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === character.id);
         const sleeping = /睡眠|睡觉|入睡|午休/.test((presence?.activity || "") + " " + (schedule?.title || ""));
-        if (!sleeping) { kvRemove("life-sleep-pending-reply:" + session.id); return false; }
+        const pendingKey = "life-sleep-pending-reply:" + session.id;
+        if (!sleeping) { kvRemove(pendingKey); return false; }
+
+        // 睡着时不因单条消息或随机数醒来：统计最近一次角色回复之后积累的用户消息。
+        // 每个角色固定一个 5–10 条的唤醒阈值，避免同一条消息反复检查时结果变化。
+        const history = loadChatMessages(session.id);
+        let unansweredUserMessages = 0;
+        for (let i = history.length - 1; i >= 0; i--) {
+            const message = history[i];
+            if (message.role === "assistant") break;
+            if (message.role === "user" && message.content?.trim()) unansweredUserMessages++;
+        }
+        const thresholdSeed = [...character.id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+        const wakeThreshold = 5 + (thresholdSeed % 6);
         const urgent = /救命|紧急|出事了|危险|受伤|快来|急救/.test(latestUserText);
-        const lightSleeper = /浅眠|警觉|敏感|担心|保护欲|容易醒/.test(character.personality || "");
-        const seed = [...(character.id + latestUserText)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
-        const staysAsleep = !urgent && seed % 100 >= (lightSleeper ? 60 : 15);
+        const staysAsleep = !urgent && unansweredUserMessages < wakeThreshold;
         if (staysAsleep) {
-            kvSet("life-sleep-pending-reply:" + session.id, "true");
-            if (notify) showChatToast(character.name + "正在睡觉，没有被这条消息叫醒。TA醒来后会再查看消息。", 3500);
+            kvSet(pendingKey, "true");
+            if (notify && unansweredUserMessages === 1) {
+                showChatToast(character.name + "正在睡觉，暂时没有醒来。继续发消息或使用自动续写可以叫醒 TA。", 3500);
+            }
         } else {
-            kvRemove("life-sleep-pending-reply:" + session.id);
+            kvRemove(pendingKey);
         }
         return staysAsleep;
     };
 
     const triggerAIResponse = async () => {
+        // 手动点击生成/自动续写时，如果最后一条是角色消息，视为明确唤醒指令。
+        // 普通发送消息仍由 shouldSuppressLifeSleepReply 按 5–10 条未回复消息累计判断。
+        const newestBeforeGenerate = loadChatMessages(session.id);
+        const lastBeforeGenerate = newestBeforeGenerate[newestBeforeGenerate.length - 1];
+        if (!session.isGroup && character && lastBeforeGenerate?.role === "assistant") {
+            kvRemove("life-sleep-pending-reply:" + session.id);
+        }
         if (isGeneratingRef.current) {
             if (activeGenerationRuns.has(session.id)) return;
             // 上一轮被外部取消/顶替后收尾提前返回过，标记已是陈旧状态：复位后继续本次请求
