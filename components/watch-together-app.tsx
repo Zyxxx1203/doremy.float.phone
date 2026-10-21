@@ -377,8 +377,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [transcriptName, setTranscriptName] = useState("");
   const [screenshotDataUrl, setScreenshotDataUrl] = useState("");
   const screenshotFileInputRef = useRef<HTMLInputElement>(null);
-  const [companionCollapsed, setCompanionCollapsed] = useState(false);
-  const [showQuickChat, setShowQuickChat] = useState(false);
   const pendingDiscussionRef = useRef<Array<{ moment: string; timepoint?: string }>>([]);
   const [discussionDraft, setDiscussionDraft] = useState("");
   const [timepointDraft, setTimepointDraft] = useState("");
@@ -768,7 +766,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const comment: WatchComment = { id: `comment-${Date.now()}`, characterId: character.id, characterName: character.name, text: responseText, createdAt: new Date().toISOString(), kind: "character", timepoint: responseTimepoint, targetUrl: target.url };
       setComments(current => { const next = [...current.slice(-99), comment]; saveTargetComments(target.url, next); return next; });
       if (settings.voiceEnabled) void speakComment(responseText, character.id);
-      if (manual) setCompanionCollapsed(false);
     } catch (error) {
       onNotice?.("角色观影回应失败：" + (error instanceof Error ? error.message : String(error)));
     } finally {
@@ -880,7 +877,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       });
       persistWatchShortTermMemory(character.id, character.name, videoTitle || file.name, responseText);
       if (settings.voiceEnabled) void speakComment(responseText, character.id);
-      setCompanionCollapsed(false);
       onNotice?.("完整视频已观看完成，回应已加入一起看记录，并尝试写入角色短期记忆。");
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
