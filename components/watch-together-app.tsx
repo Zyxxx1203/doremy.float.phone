@@ -404,6 +404,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const originalOrientationRef = useRef<string | null>(null);
   const playerRef = useRef<HTMLDivElement>(null);
   const watchRootRef = useRef<HTMLDivElement>(null);
+  const nativeFullscreenActiveRef = useRef(false);
   const commentListRef = useRef<HTMLDivElement>(null);
   const commentListAtBottomRef = useRef(true);
   /** 跨站 iframe 读不到 currentTime，用观看秒表估一个时间点，让弹幕能对上进度。 */
@@ -1046,34 +1047,41 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     return () => { disposed = true; window.clearTimeout(timer); };
   }, [watching, target, settings.intervalMinMinutes, settings.intervalMaxMinutes, generateComment]);
 
-  /** Prefer real fullscreen on the existing root; never pause, seek, re-parent or remount media. */
+  /** Use the media element's native fullscreen. Never CSS-stretch third-party iframe players. */
   const enterFullscreen = async () => {
-    const root = watchRootRef.current;
-    if (!root) return;
-    if (!fullScreen) {
-      try { originalOrientationRef.current = screen.orientation?.type ?? null; } catch { originalOrientationRef.current = null; }
-      // Cross-origin iframe players can freeze when their wrapper enters native fullscreen.
-      // Prefer native fullscreen only when this page owns a video element.
-      const nativeVideo = Boolean(playerRef.current?.querySelector("video"));
-      const request = nativeVideo ? root.requestFullscreen?.bind(root) : undefined;
-      if (request) {
-        try { await request(); setFullScreen(true); await tryLockLandscape(); return; }
-        catch { /* Embedded WebViews may deny Fullscreen API; use the in-page fallback. */ }
-      }
-      setFullScreen(true);
-      await tryLockLandscape();
-      window.dispatchEvent(new Event("resize"));
+    const player = playerRef.current;
+    if (!player) return;
+    const media = player.querySelector("video, iframe") as (HTMLVideoElement | HTMLIFrameElement | null);
+    if (!media) return;
+    if (document.fullscreenElement) {
+      try { await document.exitFullscreen(); } catch { onNotice?.("退出原生全屏失败，请使用播放器自己的退出全屏控件。"); }
       return;
     }
-    if (document.fullscreenElement) { try { await document.exitFullscreen(); } catch { /* CSS exit below */ } }
-    setFullScreen(false); await restoreOrientation(); window.dispatchEvent(new Event("resize"));
+    try { originalOrientationRef.current = screen.orientation?.type ?? null; } catch { originalOrientationRef.current = null; }
+    const requestFullscreen = media.requestFullscreen?.bind(media);
+    if (!requestFullscreen) {
+      onNotice?.("当前设备的 WebView 没有开放原生播放器全屏能力。为避免再次卡住，这里不会强行拉伸播放器；请更新应用壳或使用播放器自带的全屏按钮。");
+      return;
+    }
+    try {
+      await requestFullscreen();
+      nativeFullscreenActiveRef.current = true;
+      await tryLockLandscape();
+    } catch (error) {
+      nativeFullscreenActiveRef.current = false;
+      onNotice?.("系统拒绝了播放器原生全屏请求。视频保持原尺寸继续播放，没有切换到会卡住的网页模拟全屏。" + (error instanceof Error ? "（" + error.message + "）" : ""));
+    }
   };
 
   useEffect(() => {
     const syncFullscreenState = () => {
-      const root = watchRootRef.current;
-      if (root && document.fullscreenElement === root) setFullScreen(true);
-      else if (!document.fullscreenElement && fullScreen) { setFullScreen(false); void restoreOrientation(); }
+      if (document.fullscreenElement) { nativeFullscreenActiveRef.current = true; return; }
+      if (nativeFullscreenActiveRef.current || fullScreen) {
+        nativeFullscreenActiveRef.current = false;
+        setFullScreen(false);
+        void restoreOrientation();
+        window.dispatchEvent(new Event("resize"));
+      }
     };
     document.addEventListener("fullscreenchange", syncFullscreenState);
     return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
@@ -1081,13 +1089,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !fullScreen) return;
-      if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
-      else { setFullScreen(false); void restoreOrientation(); }
+      if (event.key !== "Escape" || !document.fullscreenElement) return;
+      // Let the native player/browser handle Escape and then restore orientation on fullscreenchange.
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [fullScreen]);
+  }, []);
 
   const danmakuItems = useMemo(() => comments
     .filter(item => !target?.url || !item.targetUrl || item.targetUrl === target.url)
@@ -1128,9 +1135,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           flex:1 1 auto; min-height:0; overflow-x:hidden; overflow-y:auto!important; overscroll-behavior:contain;
         }
         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-room-title { order:0; width:100%; max-width:none; margin:0!important; padding:0!important; }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player { order:1; width:100%; max-width:none; height:auto; min-height:0; aspect-ratio:16/9; max-height:48dvh; align-self:stretch; border-width:3px!important; border-radius:14px!important; }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > video,
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > iframe { display:block; width:100%; height:100%; max-height:48dvh; aspect-ratio:16/9; object-fit:contain; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player { order:1; width:100%; max-width:none; height:min(56.25vw,48dvh); min-height:0; aspect-ratio:auto; max-height:48dvh; align-self:stretch; border-width:3px!important; border-radius:14px!important; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > video { display:block; width:100%; height:100%; max-height:none; aspect-ratio:auto; object-fit:contain; }
+         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > iframe { display:block; width:100%; height:100%; max-height:none; aspect-ratio:auto; object-fit:contain; }
         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel { order:2; width:100%; max-width:none; min-height:0; height:auto; overflow:visible; margin:0!important; flex-shrink:0; }
         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel > div { display:block; min-height:0; height:auto; overflow:visible; padding:12px!important; border-radius:18px!important; }
         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-comment-list { min-height:110px; max-height:38vh; overflow-y:auto; overscroll-behavior:contain; }
@@ -1280,7 +1287,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         {target?.nativeVideo ? (
           <video key={target.nativeVideoUrl || target.url} src={target.nativeVideoUrl || target.url} controls playsInline onPlay={() => setMediaPaused(false)} onPause={() => setMediaPaused(true)} className={fullScreen ? "h-full w-full object-contain bg-black" : "aspect-video w-full bg-black"} onEnded={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } }} onError={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } onNotice?.("视频无法在当前 WebView 播放，可能是格式、签名有效期或平台防盗链限制。"); }} />
         ) : target?.embedUrl ? (
-          <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerPolicy="strict-origin-when-cross-origin" className={fullScreen ? "h-full w-full border-0" : "aspect-video w-full border-0"} />
+          <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className={fullScreen ? "h-full w-full border-0" : "aspect-video w-full border-0"} />
         ) : (
           <div className="flex aspect-video flex-col items-center justify-center px-6 text-center">
             <div className="mt-5 font-serif text-lg tracking-wide text-[#efe2d0]">{target ? `${target.platformName}需要外部打开` : "把想看的放上屏幕"}</div>
