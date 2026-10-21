@@ -1495,11 +1495,17 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               + " photos=" + visiblePhotos.length}
           </div>
           <div
+            data-photo-wall-world-stage
             className="absolute left-0 top-0"
             style={{
-              transform: "translate(" + panRef.current.x + "px," + panRef.current.y + "px)",
+              // Explicit world dimensions are essential: this is the positioning stage
+              // for the entire canvas, not a shrink-to-fit overlay.
+              width: world.width,
+              height: world.height,
+              transform: "translate3d(" + panRef.current.x + "px," + panRef.current.y + "px,0)",
               transformOrigin: "top left",
               touchAction: "none",
+              overflow: "visible",
             }}
           >
             <PhotoWallCanvas photos={visiblePhotos} selectedId={wallActivePhotoId} onSelect={setWallActivePhotoId}
