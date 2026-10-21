@@ -415,6 +415,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [globalWatchRecords, setGlobalWatchRecords] = useState<GlobalWatchRecord[]>(() => loadGlobalWatchRecords());
   const [fullScreen, setFullScreen] = useState(false);
   const [landscapeMode, setLandscapeMode] = useState(false);
+  const [showControlCapsule, setShowControlCapsule] = useState(true);
   const originalOrientationRef = useRef<string | null>(null);
   const playerRef = useRef<HTMLDivElement>(null);
   const watchRootRef = useRef<HTMLDivElement>(null);
@@ -1577,6 +1578,11 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer>div:last-child{z-index:5!important}
       .watch-together-app:not([data-landscape-mode="true"]) .watch-landscape-header{display:none!important}
       .watch-together-app [data-part="composer"] textarea{font-family:inherit}
+      .watch-control-capsule[data-collapsed="true"] .watch-capsule-button{display:none!important}
+      .watch-capsule-toggle{display:grid;flex:0 0 22px;place-items:center;align-self:stretch;color:#8e6e55}
+      .watch-control-capsule[data-collapsed="true"]{width:auto!important;align-self:center!important;justify-content:center!important;padding:4px 10px!important;border-radius:999px!important}
+      .watch-control-capsule[data-collapsed="true"] .watch-capsule-toggle{width:28px;height:24px}
+      .watch-together-app [data-part="composer"] textarea{font-family:inherit}
     `}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
@@ -1713,12 +1719,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         </details>
       </div>
 
-      {!landscapeMode && <nav className="watch-control-capsule mx-auto flex w-full max-w-3xl items-center justify-around gap-1.5 px-2 py-2" aria-label="一起看功能入口">
+      {!landscapeMode && <nav className="watch-control-capsule mx-auto flex w-full max-w-3xl items-center justify-around gap-1.5 px-2 py-2" data-collapsed={showControlCapsule ? "false" : "true"} aria-label="一起看功能入口">
         <button type="button" onClick={() => setShowGlobalCompanion(true)} className="watch-capsule-button"><span>◉</span><small>全局入口</small></button>
         <button type="button" onClick={async () => { setLandscapeMode(true); setShowVideoSourcePanel(false); try { await tryLockLandscape(); } catch { /* optional */ } }} className="watch-capsule-button"><Expand size={17}/><small>横屏入口</small></button>
         <button type="button" onClick={() => setShowVideoSourcePanel(value => !value)} className="watch-capsule-button"><ExternalLink size={17}/><small>上传视频</small></button>
         <button type="button" onClick={() => setShowMemoryRecords(true)} className="watch-capsule-button"><FileText size={17}/><small>观看记录</small></button>
         <button type="button" onClick={() => setShowSettings(true)} className="watch-capsule-button"><Settings2 size={17}/><small>设置</small></button>
+        <button type="button" onClick={() => setShowControlCapsule(value => !value)} className="watch-capsule-toggle" aria-label={showControlCapsule ? "收起入口栏" : "展开入口栏"}><ChevronDown size={16} className={showControlCapsule ? "" : "rotate-180"}/></button>
       </nav>}
       {landscapeMode && <div className="watch-landscape-header flex shrink-0 items-center gap-3 px-3 py-2"><button type="button" onClick={() => { setLandscapeMode(false); void restoreOrientation(); }} className="grid h-9 w-9 place-items-center border border-white/20 bg-white/10" aria-label="返回竖屏"><ArrowLeft size={17}/></button><span className="grid h-9 w-9 place-items-center overflow-hidden rounded-full bg-[#6d5141]">{character?.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character?.name.slice(0,1) ?? "TA"}</span><span className="min-w-0 flex-1 truncate text-xs">{character?.name ?? "TA"} · 弹幕陪看</span><button type="button" onClick={() => setShowSettings(true)} className="grid h-9 w-9 place-items-center border border-white/20 bg-white/10" aria-label="设置"><Settings2 size={17}/></button></div>}
       {/* 角色在屏幕下方轻声说话 */}
@@ -1776,8 +1783,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       </section>
     </main>
 
-    {showSettings && <div className="absolute inset-0 z-[1012] flex items-end bg-black/45 backdrop-blur-sm" onClick={() => setShowSettings(false)}>
-      <section className="max-h-[78%] w-full overflow-y-auto border-t border-[#c99a78]/30 bg-[#2a211a] p-4 pb-[max(16px,env(safe-area-inset-bottom))]" onClick={event => event.stopPropagation()}>
+    {showSettings && <div className="absolute inset-0 z-[1012] flex items-stretch bg-black/55 backdrop-blur-sm" onClick={() => setShowSettings(false)}>
+      <section className="h-full max-h-none w-full overflow-y-auto border-0 bg-[#2a211a] p-4 pb-[max(16px,env(safe-area-inset-bottom))]" onClick={event => event.stopPropagation()}>
           <div className="flex items-center justify-between">
             <h2 className="font-serif text-base tracking-wide text-[#efe2d0]">陪看方式</h2>
             <button onClick={() => setShowSettings(false)} aria-label="收起设置" className="text-[#8b8077]"><X size={15}/></button>
@@ -1870,8 +1877,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
     {/* 轻量观看记录：不改变播放流程，每次观看独立留档 */}
     <button type="button" onClick={() => { setMemoryRecords(readWatchMemories()); setShowMemoryRecords(true); }} className="watch-legacy-record-button absolute right-3 top-[max(54px,calc(env(safe-area-inset-top)+48px))] z-[1011] flex items-center gap-1.5 rounded-full border border-[#d8b99b]/60 bg-[#fff8ed]/95 px-3 py-2 text-[11px] font-medium text-[#735440] shadow-lg backdrop-blur" aria-label="打开观看记录"><FileText size={14}/>观看记录{memoryRecords.length>0 && <span className="rounded-full bg-[#c99a6a] px-1.5 text-[9px] text-white">{memoryRecords.length}</span>}</button>
-    {showMemoryRecords && <div className="absolute inset-0 z-[1015] flex flex-col justify-end bg-black/55 backdrop-blur-sm" onClick={() => setShowMemoryRecords(false)}>
-      <section className="flex max-h-[88%] min-h-[55%] flex-col overflow-hidden rounded-t-[26px] border-t border-[#d6b99a]/50 bg-[#fbf3e8] text-[#594536]" onClick={event => event.stopPropagation()}>
+    {showMemoryRecords && <div className="absolute inset-0 z-[1015] flex flex-col bg-black/55 backdrop-blur-sm" onClick={() => setShowMemoryRecords(false)}>
+      <section className="flex h-full min-h-0 max-h-none flex-col overflow-hidden rounded-none border-0 bg-[#fbf3e8] text-[#594536]" onClick={event => event.stopPropagation()}>
         <header className="flex items-center justify-between border-b border-[#ddc9b3] px-4 py-4">
           <div><div className="font-serif text-lg tracking-wide">一起看 · 共同记忆</div><div className="mt-1 text-[10px] tracking-[.12em] text-[#9a7c64]">每一次观看，都是一份独立记录</div></div>
           <button type="button" onClick={() => setShowMemoryRecords(false)} aria-label="关闭观看记录" className="grid h-9 w-9 place-items-center rounded-full border border-[#ddc9b3] bg-white/70"><X size={16}/></button>
