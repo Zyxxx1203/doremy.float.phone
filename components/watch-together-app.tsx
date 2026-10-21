@@ -414,6 +414,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [historyMode, setHistoryMode] = useState<"current" | "global">("current");
   const [globalWatchRecords, setGlobalWatchRecords] = useState<GlobalWatchRecord[]>(() => loadGlobalWatchRecords());
   const [fullScreen, setFullScreen] = useState(false);
+  const [landscapeMode, setLandscapeMode] = useState(false);
   const originalOrientationRef = useRef<string | null>(null);
   const playerRef = useRef<HTMLDivElement>(null);
   const watchRootRef = useRef<HTMLDivElement>(null);
@@ -1236,7 +1237,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   if (showGlobalCompanion) return <GlobalWatchCompanionApp onClose={() => setShowGlobalCompanion(false)} onNotice={onNotice} />;
 
-  return <div ref={watchRootRef} data-watch-fullscreen={fullScreen ? "true" : "false"} data-source-panel={showVideoSourcePanel ? "true" : "false"} className={"watch-together-app pointer-events-auto isolate flex min-w-0 flex-col overflow-hidden text-[#f0e6d8] " + (fullScreen ? "fixed inset-0 z-[3000]" : "absolute inset-0 z-[1000]")} style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)", height: fullScreen ? "100dvh" : undefined, width: fullScreen ? "100vw" : undefined }}>
+  return <div ref={watchRootRef} data-watch-fullscreen={fullScreen ? "true" : "false"} data-landscape-mode={landscapeMode ? "true" : "false"} data-source-panel={showVideoSourcePanel ? "true" : "false"} className={"watch-together-app pointer-events-auto isolate flex min-w-0 flex-col overflow-hidden text-[#f0e6d8] " + (fullScreen || landscapeMode ? "fixed inset-0 z-[3000]" : "absolute inset-0 z-[1000]")} style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)", height: fullScreen || landscapeMode ? "100dvh" : undefined, width: fullScreen || landscapeMode ? "100vw" : undefined }}>
     {/* 弹幕动画：仓库里从未定义过 watchDanmaku，之前那条 animation 是空转，这里补上真实 keyframes */}
     <style>{`
       .watch-together-main { display:flex; flex-direction:column; }
@@ -1537,6 +1538,35 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         }
         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player { height:100%!important; max-height:none!important; }
       }
+      .watch-capsule-button{display:flex;min-width:0;flex:1 1 0;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:9px 2px;border:1px solid rgba(166,126,91,.24);background:rgba(255,250,242,.9);color:#765641;box-shadow:0 4px 12px rgba(96,67,43,.06)}
+      .watch-capsule-button small{font-size:10px;white-space:nowrap}
+      .watch-control-capsule{grid-area:toolbar;position:relative;z-index:50;border:1px solid rgba(185,153,122,.32);background:rgba(255,248,237,.8)}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"])>main.watch-together-main{display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr) auto minmax(0,1.3fr)!important;grid-template-areas:"player" "toolbar" "interaction"!important;gap:9px!important;padding:4px 12px max(10px,env(safe-area-inset-bottom))!important;overflow:hidden!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-title{display:none!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player{grid-area:player!important;align-self:center!important;width:100%!important;height:auto!important;aspect-ratio:16/9!important;min-height:0!important;max-height:34dvh!important;margin:0 auto!important;border-radius:15px!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player>video,.watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player>iframe{width:100%!important;height:100%!important;aspect-ratio:16/9!important;object-fit:contain!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-interaction-panel{grid-area:interaction!important;display:flex!important;min-height:0!important;height:100%!important;width:100%!important;max-width:none!important;margin:0!important;overflow:hidden!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card{width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;border-radius:16px!important;padding:12px!important;background:rgba(255,250,242,.96)!important;border:1px solid rgba(185,153,122,.3)!important;box-shadow:0 8px 20px rgba(96,67,43,.07)!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="message"],.watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="actions"],.watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="actions2"],.watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="history"]{display:none!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer{display:block!important;margin-top:auto!important;border:0!important;padding-top:0!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer>div:first-child{display:none!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer textarea{min-height:44px!important;max-height:100px!important;border-radius:14px!important;background:#fff!important;color:#5c4637!important;border-color:#e2d0bd!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-link-panel{display:none!important}
+      .watch-together-app[data-source-panel="true"] .watch-link-panel{display:block!important;position:fixed!important;z-index:4020!important;left:10px!important;right:10px!important;bottom:max(10px,env(safe-area-inset-bottom))!important;width:auto!important;max-width:760px!important;max-height:78dvh!important;overflow:auto!important;margin:0 auto!important}
+      .watch-together-app[data-landscape-mode="true"]{background:#100d0b!important}
+      .watch-together-app[data-landscape-mode="true"] .watch-landscape-header{background:#17120f!important;color:#f4e8d9!important}
+      .watch-together-app[data-landscape-mode="true"]>main.watch-together-main{display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr) auto!important;grid-template-areas:"player" "interaction"!important;gap:0!important;padding:0 12px max(8px,env(safe-area-inset-bottom))!important;overflow:hidden!important}
+      .watch-together-app[data-landscape-mode="true"] .watch-topbar,.watch-together-app[data-landscape-mode="true"] .watch-room-title,.watch-together-app[data-landscape-mode="true"] .watch-control-capsule,.watch-together-app[data-landscape-mode="true"] .watch-link-panel{display:none!important}
+      .watch-together-app[data-landscape-mode="true"] .watch-player{grid-area:player!important;width:100%!important;max-width:none!important;height:100%!important;max-height:none!important;aspect-ratio:auto!important;margin:0!important;border:0!important;border-radius:8px!important;box-shadow:none!important}
+      .watch-together-app[data-landscape-mode="true"] .watch-player>video,.watch-together-app[data-landscape-mode="true"] .watch-player>iframe{width:100%!important;height:100%!important;max-height:none!important;aspect-ratio:auto!important;object-fit:contain!important}
+      .watch-together-app[data-landscape-mode="true"] .watch-interaction-panel{grid-area:interaction!important;width:100%!important;max-width:none!important;min-height:0!important;margin:8px 0 0!important}
+      .watch-together-app[data-landscape-mode="true"] .watch-room-card{display:flex!important;flex-direction:column!important;height:auto!important;min-height:0!important;overflow:visible!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+      .watch-together-app[data-landscape-mode="true"] .watch-room-card [data-part="message"],.watch-together-app[data-landscape-mode="true"] .watch-room-card [data-part="actions"],.watch-together-app[data-landscape-mode="true"] .watch-room-card [data-part="actions2"],.watch-together-app[data-landscape-mode="true"] .watch-room-card [data-part="history"]{display:none!important}
+      .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer{margin:0!important;padding:0!important;border:0!important}
+      .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer>div:first-child{display:none!important}
+      .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer textarea{min-height:40px!important;max-height:70px!important;border-radius:999px!important;background:#2a211b!important;border-color:#5c4636!important;color:#fff!important}
+      .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer>div:last-child{position:absolute!important;right:18px!important;bottom:calc(max(8px,env(safe-area-inset-bottom)) + 4px)!important}
+      .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer button{border-radius:999px!important;background:#c99a78!important}
     `}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
@@ -1679,6 +1709,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         </details>
       </div>
 
+      {!landscapeMode && <nav className="watch-control-capsule mx-auto flex w-full max-w-3xl items-center justify-around gap-1.5 px-2 py-2" aria-label="一起看功能入口">
+        <button type="button" onClick={() => setShowGlobalCompanion(true)} className="watch-capsule-button"><span>◉</span><small>全局入口</small></button>
+        <button type="button" onClick={async () => { setLandscapeMode(true); setShowVideoSourcePanel(false); try { await tryLockLandscape(); } catch { /* optional */ } }} className="watch-capsule-button"><Expand size={17}/><small>横屏入口</small></button>
+        <button type="button" onClick={() => setShowVideoSourcePanel(value => !value)} className="watch-capsule-button"><ExternalLink size={17}/><small>上传视频</small></button>
+        <button type="button" onClick={() => setShowMemoryRecords(true)} className="watch-capsule-button"><FileText size={17}/><small>观看记录</small></button>
+        <button type="button" onClick={() => setShowSettings(true)} className="watch-capsule-button"><Settings2 size={17}/><small>设置</small></button>
+      </nav>}
+      {landscapeMode && <div className="watch-landscape-header flex shrink-0 items-center gap-3 px-3 py-2"><button type="button" onClick={() => { setLandscapeMode(false); void restoreOrientation(); }} className="grid h-9 w-9 place-items-center border border-white/20 bg-white/10" aria-label="返回竖屏"><ArrowLeft size={17}/></button><span className="grid h-9 w-9 place-items-center overflow-hidden rounded-full bg-[#6d5141]">{character?.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character?.name.slice(0,1) ?? "TA"}</span><span className="min-w-0 flex-1 truncate text-xs">{character?.name ?? "TA"} · 弹幕陪看</span><button type="button" onClick={() => setShowSettings(true)} className="grid h-9 w-9 place-items-center border border-white/20 bg-white/10" aria-label="设置"><Settings2 size={17}/></button></div>}
       {/* 角色在屏幕下方轻声说话 */}
       <section className="watch-interaction-panel mx-auto mt-4 w-full max-w-3xl">
         <div data-part="card" className="watch-room-card relative isolate overflow-hidden rounded-[28px] border border-[#d4a575]/25 bg-gradient-to-br from-[#49372b]/95 via-[#2d231d]/95 to-[#1c1714]/98 p-4 shadow-[0_18px_46px_rgba(57,37,24,.24),inset_0_1px_0_rgba(255,224,184,.12)] backdrop-blur-xl sm:p-5">
