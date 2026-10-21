@@ -1520,27 +1520,6 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
     }
     emitChatPluginEvent("message.persisted", { message: newMsg });
 
-    // If a character reply is persisted while the app is backgrounded, hand the
-    // message directly to the Android popup bridge. This does not create a second memory store.
-    if (newMsg.role === "assistant" && typeof window !== "undefined" && document.visibilityState !== "visible") {
-        try {
-            const popupSession = _sessionsCache.find(item => item.id === newMsg.sessionId);
-            if (popupSession && !popupSession.isGroup) {
-                const popupContact = loadChatContacts().find(item => item.id === popupSession.contactId);
-                const popupCharacter = popupContact ? loadCharacters().find(item => item.id === popupContact.characterId) : undefined;
-                const shell = (window as unknown as {
-                    AndroidShell?: { showCharacterBehaviorPopup?: (name: string, message: string) => boolean };
-                }).AndroidShell;
-                const plain = String(newMsg.content ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-                if (popupCharacter && plain && typeof shell?.showCharacterBehaviorPopup === "function") {
-                    shell.showCharacterBehaviorPopup(popupCharacter.name, plain.slice(0, 700));
-                }
-            }
-        } catch {
-            // Native popup is optional; never interrupt canonical chat persistence.
-        }
-    }
-
     // Keep a lightweight cross-app breadcrumb in the Life timeline. Do not copy full
     // chat history into Life; the canonical message remains in Chat storage.
     if ((newMsg.role === "user" || newMsg.role === "assistant") && typeof window !== "undefined") {
