@@ -84,8 +84,8 @@ type Props = {
   readOnly?: boolean;
   fitHeight?: boolean;
   canvasZoom?: number;
-  mode?: "view" | "move" | "doodle" | "pan";
-  onModeChange?: (mode: "view" | "move" | "doodle" | "pan") => void;
+  mode?: "view" | "move" | "doodle";
+  onModeChange?: (mode: "view" | "move" | "doodle") => void;
   brushColor?: string;
   brushWidth?: number;
   sticker?: string | null;
@@ -117,7 +117,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   const [flippedPhotoIds, setFlippedPhotoIds] = useState<Set<string>>(new Set());
 
   // Edit state is controlled by the parent so controls stay outside the zoomed canvas.
-  const [internalMode, setInternalMode] = useState<"view" | "move" | "doodle" | "pan">("view");
+  const [internalMode, setInternalMode] = useState<"view" | "move" | "doodle">("view");
   const [internalBrushColor] = useState(BRUSH_COLORS[0]);
   const [internalBrushWidth] = useState(3);
   const [internalSticker, setInternalSticker] = useState<string | null>(null);
