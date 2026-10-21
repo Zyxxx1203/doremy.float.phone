@@ -398,7 +398,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     nudge(photo, index, { z: maxZ + 1 });
   };
 
-  return <div className={fitHeight ? "relative flex h-full w-full items-center justify-center" : "relative"} style={wallWorld ? { width: wallWorld.width, height: wallWorld.height } : undefined}>
+  return <div className={fitHeight ? "relative flex h-full w-full items-center justify-center" : "relative h-full w-full"} style={wallWorld ? { width: wallWorld.width, height: wallWorld.height, minWidth: wallWorld.width, minHeight: wallWorld.height } : undefined}>
     <div
       ref={wallRef}
       data-photo-wall-mode={mode}
