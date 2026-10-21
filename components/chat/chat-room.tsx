@@ -6924,7 +6924,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 onStartVoiceCall={() => { cancelFollowUp(session.id); setShowPlusMenu(false); startCall({ sessionId: session.id, characterId: session.isGroup ? "" : session.contactId, kind: "voice", initiator: "user" }); }}
                 onSendText={handleSendText}
                 onStopGeneration={clearStuckGeneration}
-                onTriggerAIResponse={triggerAIResponse}
+                onTriggerAIResponse={() => { kvRemove("life-sleep-pending-reply:" + session.id); void triggerAIResponse(); }}
                 onSendSticker={(name, url) => { setShowStickerPanel(false); sendRichMessage("sticker", { label: name, stickerUrl: url }); }}
             />
             ))}
