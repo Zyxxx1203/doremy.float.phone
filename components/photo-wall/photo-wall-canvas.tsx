@@ -452,7 +452,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
         className="absolute inset-0"
         style={{ zIndex: 2147483000, pointerEvents: !readOnly && mode !== "view" ? "auto" : "none", touchAction: "none" }}
         onPointerDown={event => {
-          if (readOnly || mode === "view" || mode === "pan" || multiTouchRef.current) return; // 双指手势优先；不允许第二根手指重新起笔。
+          if (readOnly || mode === "view" || multiTouchRef.current) return; // 双指手势优先；不允许第二根手指重新起笔。
           event.preventDefault();
           event.stopPropagation();
           // elementsFromPoint is inconsistent in some Android WebViews when a full-wall
