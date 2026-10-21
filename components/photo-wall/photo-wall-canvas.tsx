@@ -457,7 +457,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
         className="absolute inset-0"
         style={{ zIndex: 2147483000, pointerEvents: !readOnly && mode !== "view" ? "auto" : "none", touchAction: "none" }}
         onPointerDown={event => {
-          if (readOnly || mode === "view") return;
+          if (readOnly || mode === "view" || mode === "pan") return; // 画布平移必须让事件冒泡给父级手势控制器。
           event.preventDefault();
           event.stopPropagation();
           // elementsFromPoint is inconsistent in some Android WebViews when a full-wall
