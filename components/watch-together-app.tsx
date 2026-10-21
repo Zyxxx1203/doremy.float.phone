@@ -1170,6 +1170,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         margin:0!important; padding:0!important; overflow:hidden!important; border:0!important;
         border-radius:8px!important; box-shadow:none!important; background:#000!important; transform:none!important;
       }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player-actions > button:nth-child(1),
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player-actions > button:nth-child(2) { display:none!important; }
       .watch-together-app[data-watch-fullscreen="true"] .watch-player > video,
       .watch-together-app[data-watch-fullscreen="true"] .watch-player > iframe {
         position:absolute!important; inset:0!important; display:block!important; width:100%!important; height:100%!important;
@@ -1296,14 +1298,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         )}
 
         <DanmakuLayer enabled={Boolean(target?.embedUrl || target?.nativeVideo)} paused={mediaPaused} items={danmakuItems} userColor={settings.danmakuColor} />
-        <div className="absolute right-2 top-2 z-20 flex gap-1">
+        <div className="watch-player-actions absolute right-2 top-2 z-20 flex gap-1">
           <button type="button" onClick={() => void captureCurrentFrame()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/55 text-white/90 backdrop-blur transition active:scale-95" aria-label="截取当前画面并用于理解" title="截取当前画面"><ImagePlus size={14}/></button>
           <button type="button" onClick={() => screenshotFileInputRef.current?.click()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/55 text-white/90 backdrop-blur transition active:scale-95" aria-label="上传截图" title="上传截图"><FileText size={14}/></button>
           <button type="button" disabled={!target} onClick={event => { event.preventDefault(); event.stopPropagation(); void enterFullscreen(); }} className="grid h-8 w-8 place-items-center rounded-lg bg-black/45 text-white/90 backdrop-blur transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-35" aria-label={fullScreen ? "退出全屏" : "全屏"} title={fullScreen ? "退出全屏" : "全屏"}><Expand size={15}/></button>
         </div>
         {/* 屏幕洒在桌面上的余光 */}
         {!fullScreen && <div aria-hidden className="pointer-events-none absolute -bottom-6 left-1/2 h-6 w-[86%] -translate-x-1/2 rounded-[50%] opacity-40 blur-xl" style={{ background: "radial-gradient(ellipse, #d7a06a 0%, transparent 70%)" }} />}
-        {fullScreen && <form onSubmit={event => { event.preventDefault(); const text = danmakuDraft.trim(); if (!text) return; submitDiscussion(text); setDanmakuDraft(""); }} className="absolute top-[max(12px,env(safe-area-inset-top))] left-1/2 z-30 w-[min(560px,88%)] -translate-x-1/2"><div className="flex items-center gap-2 rounded-full border border-white/20 bg-black/55 px-3 py-1.5 backdrop-blur"><input value={danmakuDraft} onChange={event => setDanmakuDraft(event.target.value.slice(0,120))} placeholder="发个弹幕…" className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/45"/><button type="submit" disabled={!danmakuDraft.trim()} className="shrink-0 rounded-full bg-[#e6c49d] px-3 py-1 text-xs text-[#302218] disabled:opacity-40">发送</button></div></form>}
+        {fullScreen && <form onSubmit={event => { event.preventDefault(); const text = danmakuDraft.trim(); if (!text) return; submitDiscussion(text); setDanmakuDraft(""); }} className="absolute top-[max(12px,env(safe-area-inset-top))] left-1/2 z-30 w-[min(560px,78%)] -translate-x-1/2"><div className="flex items-center gap-2 rounded-full border border-white/20 bg-black/55 px-3 py-1.5 backdrop-blur"><input value={danmakuDraft} onChange={event => setDanmakuDraft(event.target.value.slice(0,120))} placeholder="发个弹幕…" className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/45"/><button type="submit" disabled={!danmakuDraft.trim()} className="shrink-0 rounded-full bg-[#e6c49d] px-3 py-1 text-xs text-[#302218] disabled:opacity-40">发送</button></div></form>}
       </section>
         {resolverState.state !== "idle" && <div className="mx-auto mt-2 flex w-full max-w-3xl items-start gap-1.5 px-1 text-[10px] leading-5" data-resolver-state={resolverState.state}><span className={resolverState.state==="ok"?"text-[#8fd0a2]":resolverState.state==="failed"?"text-[#e0938a]":"text-[#d9b489]"}>{resolverState.state==="resolving"?"正在解析视频链接…":resolverState.state==="ok"?"✓ 解析成功 · 已在应用内播放":"✕ 解析失败："+(resolverState.message||"未知原因")}</span></div>}
 
