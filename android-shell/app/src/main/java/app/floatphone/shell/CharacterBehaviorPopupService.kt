@@ -33,7 +33,10 @@ class CharacterBehaviorPopupService : Service() {
         ensureForegroundNotification()
         if (intent?.getBooleanExtra(EXTRA_OPEN, false) == true) {
             openPhone()
-            return START_NOT_STICKY
+            return START_STICKY
+        }
+        if (intent?.getBooleanExtra(EXTRA_ARM, false) == true) {
+            return START_STICKY
         }
         if (!android.provider.Settings.canDrawOverlays(this)) {
             stopSelf()
@@ -83,7 +86,7 @@ class CharacterBehaviorPopupService : Service() {
             isFocusable = true
             isFocusableInTouchMode = true
             setOnKeyListener { _, keyCode, event ->
-                keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP
+                keyCode == KeyEvent.KEYCODE_BACK
             }
         }
         val card = LinearLayout(this).apply {
@@ -165,7 +168,6 @@ class CharacterBehaviorPopupService : Service() {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
         startActivity(intent)
-        stopSelf()
     }
 
     private fun removeOverlay() {
@@ -185,6 +187,17 @@ class CharacterBehaviorPopupService : Service() {
         private const val EXTRA_NAME = "behavior_name"
         private const val EXTRA_MESSAGE = "behavior_message"
         private const val EXTRA_OPEN = "behavior_open_phone"
+        private const val EXTRA_ARM = "behavior_arm_service"
+
+        fun arm(context: Context) {
+            val intent = Intent(context, CharacterBehaviorPopupService::class.java).apply {
+                putExtra(EXTRA_ARM, true)
+            }
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
+                else context.startService(intent)
+            }
+        }
 
         fun show(context: Context, name: String, message: String) {
             val intent = Intent(context, CharacterBehaviorPopupService::class.java).apply {
