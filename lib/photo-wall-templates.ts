@@ -181,50 +181,74 @@ function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
         const scaled = toShapeSpace(0.5 + (x - 0.5) * 1.12, 0.5 + (y - 0.5) * 1.12);
         if (shape(scaled.u, scaled.v)) continue;
       }
-      candidates.push({ x: round(x), y: round(y), radius: Math.hypot(x - center.x, (y - center.y) * (CANVAS_H / CANVAS_W)), angle: (Math.atan2(y - center.y, x - center.x) + Math.PI * 2) % (Math.PI * 2) });
+      const scaled = toShapeSpace(0.5 + (x - 0.5) * 1.10, 0.5 + (y - 0.5) * 1.10);
+      const boundary = !shape(scaled.u, scaled.v);
+      const { u, v } = toShapeSpace(x, y);
+      candidates.push({
+        x: round(x), y: round(y),
+        radius: Math.hypot(u, v),
+        angle: (Math.atan2(v, u) + Math.PI * 2) % (Math.PI * 2),
+        boundary,
+      });
     }
   }
   if (!candidates.length) return layoutSlots("builtin-grid", total, true);
 
-  const ordered = fill
-    // 先均匀绕外轮廓取点，再逐圈向内；同一圈按极角分布，避免照片挤在形状一侧。
-    ? candidates.sort((a, b) => b.radius - a.radius || a.angle - b.angle)
-    // 轮廓模式按角度绕形状一圈取点，保证心形、星形、花形轮廓都能被识别。
-    : candidates.sort((a, b) => a.angle - b.angle);
-
+  // 不能按角度直接从 0° 开始取前 N 个点，否则照片只会落在轮廓的一小段。
+  // 先按整圈角度均匀采样外轮廓，少量照片也尽可能覆盖形状的各个特征部位；
+  // 照片更多时再逐层填充内部，始终保留可辨识的整体轮廓。
+  const boundaryCandidates = candidates.filter(item => item.boundary).sort((a, b) => a.angle - b.angle);
+  const innerCandidates = candidates.filter(item => !item.boundary).sort((a, b) => b.radius - a.radius || a.angle - b.angle);
+  const outlineCount = fill
+    ? Math.min(total, Math.max(6, Math.min(24, Math.ceil(Math.sqrt(total) * 2.4))))
+    : total;
   const picked: Slot[] = [];
-  for (const candidate of ordered) {
+  const used = new Set<string>();
+  const addCandidate = (candidate: (typeof candidates)[number], scale: number, rotation: number) => {
+    const key = String(candidate.x) + "," + String(candidate.y);
+    if (used.has(key) || picked.length >= total) return false;
+    if (picked.some(slot => !farEnough({ ...candidate, rotation }, slot, scale))) return false;
+    picked.push({ x: candidate.x, y: candidate.y, scale: round(scale), rotation });
+    used.add(key);
+    return true;
+  };
+  const angularDistance = (a: number, b: number) => {
+    const delta = Math.abs(a - b) % (Math.PI * 2);
+    return Math.min(delta, Math.PI * 2 - delta);
+  };
+  for (let i = 0; i < outlineCount; i += 1) {
+    const targetAngle = -Math.PI / 2 + (i * Math.PI * 2) / outlineCount;
+    const choices = boundaryCandidates.slice().sort((a, b) => angularDistance(a.angle, targetAngle) - angularDistance(b.angle, targetAngle));
+    let added = false;
+    for (const candidate of choices) {
+      const scale = 0.66 + ((picked.length * 3) % 5) * 0.025;
+      const rotation = ((picked.length % 5) - 2) * 2;
+      if (addCandidate(candidate, scale, rotation)) { added = true; break; }
+    }
+    if (!added) {
+      for (const candidate of boundaryCandidates) {
+        if (addCandidate(candidate, 0.58, 0)) { added = true; break; }
+      }
+    }
+  }
+
+  const ordered = [...boundaryCandidates, ...innerCandidates];
+  for (const candidate of innerCandidates) {
     if (picked.length >= total) break;
-    // 轻微、规律的错落更接近精心排版的纪念墙，避免每张照片像随机散落。
     const scale = 0.66 + ((picked.length * 3) % 5) * 0.025;
     const rotation = ((picked.length % 5) - 2) * 2;
-    if (picked.some(slot => !farEnough({ ...candidate, rotation }, slot, scale))) continue;
-    picked.push({ x: candidate.x, y: candidate.y, scale: round(scale), rotation });
+    addCandidate(candidate, scale, rotation);
   }
 
-  // 形状太小放不下时，逐步缩小照片再补
-  let shrink = 0.92;
-  while (picked.length < total && shrink > 0.18) {
+  let shrink = 0.52;
+  while (picked.length < total && shrink >= 0.12) {
     for (const candidate of ordered) {
       if (picked.length >= total) break;
-      const rotation = round(((picked.length * 17) % 9) - 4);
-      if (picked.some(slot => !farEnough({ ...candidate, rotation }, slot, shrink))) continue;
-      picked.push({ x: candidate.x, y: candidate.y, scale: round(shrink), rotation });
+      addCandidate(candidate, shrink, 0);
     }
-    shrink -= 0.08;
+    shrink -= 0.06;
   }
-
-  // 极端高照片数时，使用更小的唯一槽位补齐；绝不重复坐标造成整叠照片。
-  const used = new Set(picked.map(slot => `${slot.x},${slot.y}`));
-  for (const candidate of ordered) {
-    if (picked.length >= total) break;
-    const key = `${candidate.x},${candidate.y}`;
-    if (used.has(key)) continue;
-    if (picked.some(slot => !farEnough(candidate, slot, 0.12))) continue;
-    picked.push({ x: candidate.x, y: candidate.y, scale: 0.12, rotation: 0 });
-    used.add(key);
-  }
-  return picked.slice(0, total);
+  return picked.length >= total ? picked.slice(0, total) : gridSlots(total);
 }
 
 /** 随手散落：错列、轻微错位与小角度旋转，但仍经过 20% 碰撞校验。 */
@@ -305,9 +329,25 @@ function textSlots(text: string, count: number, fill: boolean): Slot[] {
 
   const total = Math.max(1, count);
   const center = { x: 0.5, y: 0.5 };
-  const ordered = hits
-    .map(hit => ({ ...hit, radius: Math.hypot(hit.x - center.x, (hit.y - center.y) * (CANVAS_H / CANVAS_W)) }))
-    .sort((a, b) => (fill ? a.radius - b.radius : a.y - b.y || a.x - b.x));
+  // Farthest-point sampling distributes a small number of photos across all glyphs and
+  // across the full height of letters. Sorting by y/x made "LOVE" collapse into its top row.
+  const remaining = hits.map(hit => ({ ...hit, radius: Math.hypot(hit.x - center.x, (hit.y - center.y) * (CANVAS_H / CANVAS_W)) }));
+  const ordered: typeof remaining = [];
+  if (remaining.length) {
+    const seedIndex = remaining.reduce((best, hit, index) =>
+      hit.x + hit.y * 0.25 < remaining[best].x + remaining[best].y * 0.25 ? index : best, 0);
+    ordered.push(remaining.splice(seedIndex, 1)[0]);
+    while (remaining.length) {
+      let bestIndex = 0, bestDistance = -1;
+      for (let index = 0; index < remaining.length; index += 1) {
+        const candidate = remaining[index];
+        const nearest = ordered.reduce((min, chosen) => Math.min(min,
+          Math.hypot((candidate.x - chosen.x) * (CANVAS_W / CANVAS_H), candidate.y - chosen.y)), Infinity);
+        if (nearest > bestDistance) { bestDistance = nearest; bestIndex = index; }
+      }
+      ordered.push(remaining.splice(bestIndex, 1)[0]);
+    }
+  }
 
   const picked: Slot[] = [];
   for (const hit of ordered) {
