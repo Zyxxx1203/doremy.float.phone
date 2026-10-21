@@ -1452,7 +1452,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         </>}
         {busy && <div className="mb-3 flex shrink-0 items-center gap-2 border border-[#e4d8c6] bg-[#faf7f0] px-3 py-2.5 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
         <div ref={panoramaViewportRef} data-photo-wall-viewport className="relative min-h-0 flex-1 w-full overflow-hidden overscroll-contain bg-[#e9dfd2]" style={{ touchAction: "none", overscrollBehavior: "contain" }}>
-          <div className="absolute left-0 top-0 shadow-[0_8px_28px_rgba(72,48,34,.12)]" style={{ width: world.width, height: world.height, transform: `translate3d(${stageTranslation.x}px, ${stageTranslation.y}px, 0) scale(${panoramaZoom / 100})`, transformOrigin: "0 0", touchAction: "none", willChange: "transform" }}>
+          <div className="absolute left-0 top-0 overflow-hidden shadow-[0_8px_28px_rgba(72,48,34,.12)]" style={{ width: world.width * panoramaZoom / 100, height: world.height * panoramaZoom / 100, transform: `translate3d(${stageTranslation.x}px, ${stageTranslation.y}px, 0)`, transformOrigin: "0 0", touchAction: "none", willChange: "transform" }}>
             <PhotoWallCanvas photos={visiblePhotos} selectedId={wallActivePhotoId} onSelect={setWallActivePhotoId}
               onChangePlacement={changePlacement} onPlacementSettled={settlePlacement}
               onDragBegin={() => pushHistory(stateRef.current)} onUndo={undo} onRedo={redo}
