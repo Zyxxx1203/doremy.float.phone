@@ -954,8 +954,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       await new Promise<void>(resolve => window.setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())), 180));
       if (video?.isConnected) {
         try {
-          if (Number.isFinite(resumeTime) && Math.abs(video.currentTime - resumeTime) > 0.5) video.currentTime = resumeTime;
-          if (wasPlaying && video.paused) await video.play();
+          if (wasPlaying) {
+            video.pause();
+            if (Number.isFinite(resumeTime) && Math.abs(video.currentTime - resumeTime) > 0.5) video.currentTime = resumeTime;
+            await video.play();
+          } else if (Number.isFinite(resumeTime) && Math.abs(video.currentTime - resumeTime) > 0.5) {
+            video.currentTime = resumeTime;
+          }
         } catch { /* Protected streams may disallow seeking or scripted resume. */ }
       }
       window.dispatchEvent(new Event("resize"));
@@ -966,8 +971,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       await new Promise<void>(resolve => window.setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())), 120));
       if (video?.isConnected) {
         try {
-          if (Number.isFinite(resumeTime) && Math.abs(video.currentTime - resumeTime) > 0.5) video.currentTime = resumeTime;
-          if (wasPlaying && video.paused) await video.play();
+          if (wasPlaying) {
+            video.pause();
+            if (Number.isFinite(resumeTime) && Math.abs(video.currentTime - resumeTime) > 0.5) video.currentTime = resumeTime;
+            await video.play();
+          } else if (Number.isFinite(resumeTime) && Math.abs(video.currentTime - resumeTime) > 0.5) {
+            video.currentTime = resumeTime;
+          }
         } catch { /* Ignore autoplay restrictions and protected streams. */ }
       }
       window.dispatchEvent(new Event("resize"));
