@@ -62,7 +62,7 @@ function openExternalUrl(url: string): void {
 }
 
 
-type WatchMemoryRecord = { id:string; url:string; title:string; platform:string; startedAt:string; durationSeconds:number; characterName:string; comments:string[]; review:string; characterReview:string; favorite:boolean };
+type WatchMemoryRecord = { id:string; url:string; title:string; platform:string; startedAt:string; durationSeconds:number; characterName:string; comments:string[]; review:string; characterReview:string; favorite:boolean; memoryTitle?:string; quote?:string; mood?:string; note?:string };
 const WATCH_MEMORY_KEY = "ai_phone_watch_memory_records_v1";
 function readWatchMemories(): WatchMemoryRecord[] { try { const raw=window.localStorage.getItem(WATCH_MEMORY_KEY); const v=raw?JSON.parse(raw):[]; return Array.isArray(v)?v.filter((x)=>x&&typeof x.id==="string"):[]; } catch { return []; } }
 function writeWatchMemories(records: WatchMemoryRecord[]) { try { window.localStorage.setItem(WATCH_MEMORY_KEY,JSON.stringify(records.slice(0,300))); } catch { /* Keep playback working if local storage is full. */ } }
@@ -461,7 +461,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       url: target.url, title: videoTitle.trim() || (target.platformName + "视频"), platform: target.platformName,
       startedAt: now.toISOString(), durationSeconds: 0,
       characterName: characters.find(c => c.id === settings.characterId)?.name || "",
-      comments: [], review: "", characterReview: "", favorite: false
+      comments: [], review: "", characterReview: "", favorite: false, memoryTitle: "", quote: "", mood: "", note: ""
     };
     setMemoryRecords(previous => { const next=[record,...previous].slice(0,300); writeWatchMemories(next); return next; });
     activeMemoryIdRef.current = record.id;
@@ -502,6 +502,66 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   const patchMemoryRecord = (id: string, patch: Partial<WatchMemoryRecord>) => {
     setMemoryRecords(previous => { const next=previous.map(r => r.id===id?{...r,...patch}:r); writeWatchMemories(next); return next; });
+  };
+
+  const [generatingMemoryReviewId, setGeneratingMemoryReviewId] = useState<string | null>(null);
+  const generateMemoryReview = async (record: WatchMemoryRecord) => {
+    if (generatingMemoryReviewId) return;
+    const reviewCharacter = characters.find(item => item.name === record.characterName) ?? character;
+    if (!reviewCharacter) { onNotice?.("请先创建或选择一个陪看角色，再生成角色观后感。"); return; }
+    setGeneratingMemoryReviewId(record.id);
+    try {
+      const contact = loadChatContacts().find(item => item.characterId === reviewCharacter.id);
+      const sessions = loadChatSessions();
+      const session = sessions.find(item => !item.isGroup && item.contactId === contact?.id)
+        ?? ({ id: "watch-together-" + reviewCharacter.id, contactId: contact?.id ?? reviewCharacter.id, unreadCount: 0, updatedAt: new Date().toISOString(), isPinned: false, isGroup: false } as ChatSession);
+      const history = loadChatMessages(session.id).slice(-8).filter(item => item.status !== "failed" && !item.isRetracted);
+      const profile = reviewCharacter as unknown as Record<string, unknown>;
+      const roleDetails = [
+        typeof profile.description === "string" ? "角色介绍：" + profile.description : "",
+        typeof profile.personality === "string" ? "性格：" + profile.personality : "",
+        typeof profile.scenario === "string" ? "背景设定：" + profile.scenario : "",
+        typeof profile.systemPrompt === "string" ? "角色设定：" + profile.systemPrompt : "",
+      ].filter(Boolean).join("\n").slice(0, 3500);
+      const savedMoments = record.comments.slice(-8).join("\n").slice(0, 3000);
+      const prompt = [
+        "请为一次共同观影，写一段属于角色本人的观后感，并设计一张温柔精致的文字纪念卡。",
+        "角色是" + reviewCharacter.name + "。严格保持角色设定、说话习惯和与用户的关系，不要写成通用影评机器人。",
+        roleDetails,
+        "视频标题：" + record.title,
+        "视频平台：" + record.platform,
+        "共同观看时间：" + new Date(record.startedAt).toLocaleString("zh-CN"),
+        "本次陪看时长约：" + Math.floor(record.durationSeconds / 60) + " 分钟",
+        savedMoments ? "本次真实保存的互动片段：\n" + savedMoments : "本次没有保存具体对话片段。不要编造具体对话或声称看到了未提供的画面。",
+        "只根据标题、真实互动和角色设定写感受；如果没有字幕、画面分析或剧情信息，不要假装知道视频情节。",
+        "只输出有效 JSON，不要代码围栏，格式：{\"review\":\"角色第一人称观后感，80-160字\",\"memoryTitle\":\"不超过16字的纪念标题\",\"quote\":\"适合纪念卡的短句，不超过35字\",\"mood\":\"2-6字氛围词\",\"note\":\"共同记忆小记，40-90字\",\"characterReview\":\"对用户说的话，30-80字\"}"
+      ].filter(Boolean).join("\n");
+      const userMessage: ChatMessage = { id: "watch-memory-review-" + Date.now(), sessionId: session.id, role: "user", content: prompt, status: "sent", createdAt: new Date().toISOString() };
+      const result = await generateChatCompletion(session, [...history, userMessage], {
+        appId: "watch_together", appTags: ["watch_together"], toolsAllowed: false,
+        ephemeralSystemNote: "你是指定角色本人。根据提供的真实信息写观后感与纪念卡。不得捏造视频剧情、画面、台词或用户没说过的话。只返回有效 JSON，中文自然、有角色个性、有文学感但不浮夸。"
+      });
+      const raw = flattenCompletionResult(result).trim().replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/, "");
+      const parsedStart = raw.indexOf("{");
+      const parsedEnd = raw.lastIndexOf("}");
+      if (parsedStart < 0 || parsedEnd <= parsedStart) throw new Error("角色返回的纪念卡格式不完整，请重试。");
+      const data = JSON.parse(raw.slice(parsedStart, parsedEnd + 1)) as Record<string, unknown>;
+      const review = typeof data.review === "string" ? data.review.trim() : "";
+      const characterReview = typeof data.characterReview === "string" ? data.characterReview.trim() : "";
+      if (!review && !characterReview) throw new Error("角色没有生成有效内容，请重试。");
+      patchMemoryRecord(record.id, {
+        review, characterReview,
+        memoryTitle: typeof data.memoryTitle === "string" ? data.memoryTitle.trim() : "",
+        quote: typeof data.quote === "string" ? data.quote.trim() : "",
+        mood: typeof data.mood === "string" ? data.mood.trim() : "",
+        note: typeof data.note === "string" ? data.note.trim() : ""
+      });
+      onNotice?.("角色观后感与纪念卡已生成，并保存在这份观看记录里。");
+    } catch (error) {
+      onNotice?.("生成纪念记录失败：" + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setGeneratingMemoryReviewId(null);
+    }
   };
 
   useEffect(() => {
@@ -1783,11 +1843,16 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               <div className="min-w-0 flex-1"><div className="font-serif text-base leading-6">{record.title}</div><div className="mt-1 text-[10px] text-[#9a7c64]">{new Date(record.startedAt).toLocaleString("zh-CN",{month:"long",day:"numeric",hour:"2-digit",minute:"2-digit"})} · {record.platform}</div><div className="mt-1 text-[10px] text-[#9a7c64]">陪看约 {Math.floor(record.durationSeconds/60)} 分钟{record.characterName ? " · 和 "+record.characterName : ""}</div></div>
               <button type="button" onClick={() => patchMemoryRecord(record.id,{favorite:!record.favorite})} aria-label={record.favorite?"取消收藏":"收藏这份记录"} className="shrink-0 p-1 text-[#b47d66]"><Heart size={17} fill={record.favorite?"currentColor":"none"}/></button>
             </div>
+            {(record.memoryTitle || record.quote || record.mood) && <div className="relative mt-4 border-y border-[#d7b99a] bg-[linear-gradient(135deg,#fffaf2,#f4e4d1)] px-4 py-4 text-center"><div className="text-[9px] tracking-[.28em] text-[#a7876c]">A LITTLE MEMORY</div>{record.mood && <div className="mt-2 text-[10px] tracking-[.2em] text-[#a36f4e]">{record.mood}</div>}{record.memoryTitle && <h4 className="mt-1 font-serif text-lg tracking-wide text-[#77533d]">{record.memoryTitle}</h4>}{record.quote && <p className="mx-auto mt-2 max-w-[28rem] font-serif text-sm italic leading-6 text-[#745a46]">“{record.quote}”</p>}{record.note && <p className="mt-3 text-left text-xs leading-6 text-[#856c58]">{record.note}</p>}<div className="mt-3 text-[8px] tracking-[.25em] text-[#b49a82]">ONE MOMENT · KEPT TOGETHER</div></div>}
+            {record.review && <div className="mt-3"><div className="text-[9px] tracking-widest text-[#a7876c]">CHARACTER’S AFTERTHOUGHT</div><p className="mt-1 whitespace-pre-wrap font-serif text-sm leading-6 text-[#745a46]">{record.review}</p></div>}
             {record.comments.length>0 && <div className="mt-3 border-l-2 border-[#d7b99a] pl-3"><div className="text-[9px] tracking-widest text-[#a7876c]">SAVED MOMENT</div><p className="mt-1 line-clamp-3 text-xs leading-5 text-[#745a46]">{record.comments[record.comments.length-1]}</p></div>}
-            <button type="button" onClick={() => setEditingMemoryId(editingMemoryId===record.id?null:record.id)} className="mt-3 border-b border-[#c6a486] pb-0.5 text-[11px] text-[#936b50]">{editingMemoryId===record.id?"收起编辑":"写下观后感 / 回忆"}</button>
+            <div className="mt-4 flex flex-wrap items-center gap-3"><button type="button" disabled={generatingMemoryReviewId!==null} onClick={() => void generateMemoryReview(record)} className="flex items-center gap-1.5 border border-[#c9a17e] bg-[#f3e1ce] px-3 py-2 text-[11px] text-[#77533d] disabled:opacity-50"><Sparkles size={13}/>{generatingMemoryReviewId===record.id?"角色正在回想…":(record.review || record.quote)?"重新生成纪念卡":"生成角色观后感与纪念卡"}</button><button type="button" onClick={() => setEditingMemoryId(editingMemoryId===record.id?null:record.id)} className="border-b border-[#c6a486] pb-0.5 text-[11px] text-[#936b50]">{editingMemoryId===record.id?"收起编辑":"编辑回忆"}</button></div>
             {editingMemoryId===record.id && <div className="mt-3 space-y-3">
               <label className="block text-[11px] text-[#98785f]">我的观后感<textarea value={record.review} onChange={e=>patchMemoryRecord(record.id,{review:e.target.value})} rows={3} placeholder="这次一起看，给我留下了什么感觉？" className="mt-1 w-full resize-y rounded-none border border-[#dfcbb6] bg-white/75 p-2.5 text-sm text-[#594536] outline-none focus:border-[#b9906b]"/></label>
               <label className="block text-[11px] text-[#98785f]">角色的感想 / 这次的共同回忆<textarea value={record.characterReview} onChange={e=>patchMemoryRecord(record.id,{characterReview:e.target.value})} rows={3} placeholder="可以记录角色真实说过的话或你想留住的瞬间，不会自动编造。" className="mt-1 w-full resize-y rounded-none border border-[#dfcbb6] bg-white/75 p-2.5 text-sm text-[#594536] outline-none focus:border-[#b9906b]"/></label>
+              <label className="block text-[11px] text-[#98785f]">纪念卡标题<input value={record.memoryTitle || ""} onChange={e=>patchMemoryRecord(record.id,{memoryTitle:e.target.value})} className="mt-1 w-full border border-[#dfcbb6] bg-white/75 p-2.5 text-sm text-[#594536] outline-none"/></label>
+              <label className="block text-[11px] text-[#98785f]">纪念短句<textarea value={record.quote || ""} onChange={e=>patchMemoryRecord(record.id,{quote:e.target.value})} rows={2} className="mt-1 w-full resize-y border border-[#dfcbb6] bg-white/75 p-2.5 text-sm text-[#594536] outline-none"/></label>
+              <label className="block text-[11px] text-[#98785f]">共同记忆小记<textarea value={record.note || ""} onChange={e=>patchMemoryRecord(record.id,{note:e.target.value})} rows={3} className="mt-1 w-full resize-y border border-[#dfcbb6] bg-white/75 p-2.5 text-sm text-[#594536] outline-none"/></label>
               <label className="block text-[11px] text-[#98785f]">视频标题<input value={record.title} onChange={e=>patchMemoryRecord(record.id,{title:e.target.value})} className="mt-1 w-full border border-[#dfcbb6] bg-white/75 p-2.5 text-sm text-[#594536] outline-none focus:border-[#b9906b]"/></label>
               <button type="button" onClick={() => setEditingMemoryId(null)} className="bg-[#c99a6a] px-4 py-2 text-xs font-medium text-white">保存这份回忆</button>
             </div>}
