@@ -1531,7 +1531,7 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
                 const shell = (window as unknown as {
                     AndroidShell?: { showCharacterBehaviorPopup?: (name: string, message: string) => boolean };
                 }).AndroidShell;
-                const plain = String(newMsg.content ?? "").replace(/<[^>]*>/g, " ").replace(/\\s+/g, " ").trim();
+                const plain = String(newMsg.content ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
                 if (popupCharacter && plain && typeof shell?.showCharacterBehaviorPopup === "function") {
                     shell.showCharacterBehaviorPopup(popupCharacter.name, plain.slice(0, 700));
                 }
