@@ -2232,6 +2232,17 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         }
 
         /**
+         * Show a character's persisted background message above other apps.
+         * The native overlay has one exit action: return to this app.
+         */
+        @JavascriptInterface
+        fun showCharacterBehaviorPopup(name: String, message: String): Boolean {
+            if (!isTrustedShellPage() || !Settings.canDrawOverlays(this@MainActivity)) return false
+            CharacterBehaviorPopupService.show(this@MainActivity, name, message)
+            return true
+        }
+
+        /**
          * 读查岗 / 截屏确认浮层的配色（JSON 原文）。
          *
          * 与通话浮窗的 getOverlayThemeJson 分开走：两者配色互不影响，
