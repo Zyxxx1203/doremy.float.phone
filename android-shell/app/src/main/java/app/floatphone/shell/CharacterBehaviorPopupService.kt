@@ -1,6 +1,8 @@
 package app.floatphone.shell
 
-import android.app.Activity
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -28,6 +30,7 @@ class CharacterBehaviorPopupService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        ensureForegroundNotification()
         if (intent?.getBooleanExtra(EXTRA_OPEN, false) == true) {
             openPhone()
             return START_NOT_STICKY
@@ -41,6 +44,34 @@ class CharacterBehaviorPopupService : Service() {
             intent?.getStringExtra(EXTRA_MESSAGE).orEmpty().ifBlank { "有件事想和你说。" },
         )
         return START_NOT_STICKY
+    }
+
+    private fun ensureForegroundNotification() {
+        val channelId = "character_behavior_popup"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(channelId, "角色主动消息", NotificationManager.IMPORTANCE_LOW).apply {
+                    description = "角色主动来找你时用于维持弹窗服务"
+                    setShowBadge(false)
+                },
+            )
+        }
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, channelId)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        val notification = builder.setSmallIcon(R.drawable.ic_stat)
+            .setContentTitle("小手机")
+            .setContentText("角色有话想对你说")
+            .setOngoing(true)
+            .build()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(9137, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            startForeground(9137, notification)
+        }
     }
 
     private fun showPopup(name: String, message: String) {
