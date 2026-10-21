@@ -470,11 +470,29 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
               && event.clientY >= rect.top && event.clientY <= rect.bottom;
           });
           const renderedCards = Array.from(wall?.querySelectorAll<HTMLElement>("[data-photo-wall-photo-id]") ?? []);
-          const hit = renderedCards.slice().reverse().find(element => {
+          // Rotated photos have an axis-aligned bounding box larger than their visible shape.
+          // Hit-test in the photo's own rotated coordinate space so the empty corners remain
+          // genuine wall canvas and receive wall-level doodles instead of being misrouted.
+          const hitsPhotoShape = (element: HTMLElement) => {
             const rect = element.getBoundingClientRect();
-            return event.clientX >= rect.left && event.clientX <= rect.right
-              && event.clientY >= rect.top && event.clientY <= rect.bottom;
-          });
+            const transform = window.getComputedStyle(element).transform;
+            let angle = 0;
+            if (transform && transform !== "none") {
+              const match = transform.match(/^matrix\(([^)]+)\)$/);
+              if (match) {
+                const values = match[1].split(",").map(Number);
+                if (values.length >= 2 && Number.isFinite(values[0]) && Number.isFinite(values[1])) angle = Math.atan2(values[1], values[0]);
+              }
+            }
+            const dx = event.clientX - (rect.left + rect.width / 2);
+            const dy = event.clientY - (rect.top + rect.height / 2);
+            const localX = dx * Math.cos(angle) + dy * Math.sin(angle);
+            const localY = -dx * Math.sin(angle) + dy * Math.cos(angle);
+            const width = Math.max(1, element.offsetWidth * canvasZoom);
+            const height = Math.max(1, element.offsetHeight * canvasZoom);
+            return Math.abs(localX) <= width / 2 && Math.abs(localY) <= height / 2;
+          };
+          const hit = renderedCards.slice().reverse().find(hitsPhotoShape);
           const photoElement = hit;
           const photoId = photoElement?.dataset.photoWallPhotoId;
           const photoAnchor = photoElement?.querySelector<HTMLElement>("[data-photo-wall-photo-anchor]") ?? undefined;
