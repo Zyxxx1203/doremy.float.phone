@@ -138,35 +138,30 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   }, [readOnly, onModeChange, onStickerChange, onEraserChange]);
 
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const onPinchStart = () => {
+    const onGestureStart = () => {
       multiTouchRef.current = true;
+      // A second pointer cancels, rather than commits, any in-progress stroke or photo drag.
       dragRef.current = null;
       strokeRef.current = null;
       wallStrokeRef.current = null;
       wallDraftPointsRef.current = [];
       setDraftPoints([]);
       suppressClickRef.current = true;
-      if (timer) clearTimeout(timer);
     };
-    const onPinchEnd = () => {
+    const onGestureEnd = () => {
+      multiTouchRef.current = false;
       suppressClickRef.current = true;
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        multiTouchRef.current = false;
-        suppressClickRef.current = false;
-      }, 420);
+      window.setTimeout(() => { suppressClickRef.current = false; }, 0);
     };
-    window.addEventListener("photo-wall-pinch-start", onPinchStart);
-    window.addEventListener("photo-wall-pinch-end", onPinchEnd);
-    window.addEventListener("photo-wall-pan-start", onPinchStart);
-    window.addEventListener("photo-wall-pan-end", onPinchEnd);
+    window.addEventListener("photo-wall-pinch-start", onGestureStart);
+    window.addEventListener("photo-wall-pinch-end", onGestureEnd);
+    window.addEventListener("photo-wall-pan-start", onGestureStart);
+    window.addEventListener("photo-wall-pan-end", onGestureEnd);
     return () => {
-      window.removeEventListener("photo-wall-pinch-start", onPinchStart);
-      window.removeEventListener("photo-wall-pinch-end", onPinchEnd);
-      window.removeEventListener("photo-wall-pan-start", onPinchStart);
-      window.removeEventListener("photo-wall-pan-end", onPinchEnd);
-      if (timer) clearTimeout(timer);
+      window.removeEventListener("photo-wall-pinch-start", onGestureStart);
+      window.removeEventListener("photo-wall-pinch-end", onGestureEnd);
+      window.removeEventListener("photo-wall-pan-start", onGestureStart);
+      window.removeEventListener("photo-wall-pan-end", onGestureEnd);
     };
   }, []);
 
@@ -535,16 +530,15 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
           // Move mode intentionally bubbles to wallRef so endDrag can commit the final position.
         }}
         onPointerCancel={event => {
-          if (readOnly || mode === "view") return;
-          if (mode === "doodle") {
-            event.preventDefault();
-            event.stopPropagation();
-            if (strokeRef.current) {
-              const index = ordered.findIndex(photo => photo.id === strokeRef.current?.photoId);
-              const photo = index >= 0 ? ordered[index] : null;
-              if (photo) doodlePointerUp(event, photo);
-            } else if (wallStrokeRef.current) wallDoodlePointerUp(event);
-          }
+          // pointercancel means the browser/another finger interrupted this gesture:
+          // discard the draft; never persist a half-finished stroke.
+          if (readOnly) return;
+          if (strokeRef.current?.pointerId === event.pointerId) strokeRef.current = null;
+          if (wallStrokeRef.current?.pointerId === event.pointerId) wallStrokeRef.current = null;
+          wallDraftPointsRef.current = [];
+          setDraftPoints([]);
+          dragRef.current = null;
+          suppressClickRef.current = true;
         }}
         onClick={event => { if (!readOnly && mode !== "view") { event.preventDefault(); event.stopPropagation(); } }}
         onDoubleClick={event => { if (!readOnly && mode !== "view") { event.preventDefault(); event.stopPropagation(); } }}
