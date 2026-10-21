@@ -951,19 +951,27 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     if (entering) {
       try { originalOrientationRef.current = screen.orientation?.type ?? null; }
       catch { originalOrientationRef.current = null; }
+      const resumeTime = video?.currentTime ?? 0;
       setFullScreen(true);
       await tryLockLandscape();
-      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-      if (video?.isConnected && wasPlaying && video.paused) {
-        try { await video.play(); } catch { /* playback can require another user gesture */ }
+      await new Promise<void>(resolve => window.setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())), 180));
+      if (video?.isConnected) {
+        try {
+          if (Number.isFinite(resumeTime) && Math.abs(video.currentTime - resumeTime) > 0.5) video.currentTime = resumeTime;
+          if (wasPlaying && video.paused) await video.play();
+        } catch { /* Protected streams may disallow seeking or scripted resume. */ }
       }
       window.dispatchEvent(new Event("resize"));
     } else {
+      const resumeTime = video?.currentTime ?? 0;
       setFullScreen(false);
       await restoreOrientation();
-      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-      if (video?.isConnected && wasPlaying && video.paused) {
-        try { await video.play(); } catch { /* playback can require another user gesture */ }
+      await new Promise<void>(resolve => window.setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())), 120));
+      if (video?.isConnected) {
+        try {
+          if (Number.isFinite(resumeTime) && Math.abs(video.currentTime - resumeTime) > 0.5) video.currentTime = resumeTime;
+          if (wasPlaying && video.paused) await video.play();
+        } catch { /* Ignore autoplay restrictions and protected streams. */ }
       }
       window.dispatchEvent(new Event("resize"));
     }
