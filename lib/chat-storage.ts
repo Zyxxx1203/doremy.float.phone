@@ -16,7 +16,6 @@ import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import { findUserAvatarChangeIntent, inferAvatarDecisionFromReply } from "./chat-avatar-intent";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "./life/life-storage";
 import { getActorClock, resolveActorLifeNow } from "./life/life-runtime";
-import { recordCharacterConversationEvent } from "./character-behavior-memory";
 
 export const DEFAULT_VISION_IMAGE_PROMPT_LIMIT = 1;
 export const MAX_VISION_IMAGE_PROMPT_LIMIT = 20;
@@ -1521,41 +1520,24 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
     }
     emitChatPluginEvent("message.persisted", { message: newMsg });
 
-    // Record private conversation turns as a compact, persistent character memory ledger.
-    // This is deliberately independent of the optional Life-system toggle.
-    if ((newMsg.role === "user" || newMsg.role === "assistant") && typeof window !== "undefined") {
+    // If a character reply is persisted while the app is backgrounded, hand the
+    // message directly to the Android popup bridge. This does not create a second memory store.
+    if (newMsg.role === "assistant" && typeof window !== "undefined" && document.visibilityState !== "visible") {
         try {
-            const memorySession = _sessionsCache.find(item => item.id === newMsg.sessionId);
-            if (memorySession && !memorySession.isGroup) {
-                const memoryContact = loadChatContacts().find(item => item.id === memorySession.contactId);
-                const memoryCharacter = memoryContact ? loadCharacters().find(item => item.id === memoryContact.characterId) : undefined;
-                if (memoryCharacter) {
-                    recordCharacterConversationEvent({
-                        characterId: memoryCharacter.id,
-                        sessionId: memorySession.id,
-                        messageId: newMsg.id,
-                        role: newMsg.role,
-                        content: newMsg.content,
-                        createdAt: newMsg.createdAt,
-                    });
-                    // If a character proactively replies while the app is backgrounded,
-                    // hand the already-persisted message to the Android blocking overlay.
-                    if (newMsg.role === "assistant" && document.visibilityState !== "visible") {
-                        const shell = (window as unknown as {
-                            AndroidShell?: { showCharacterBehaviorPopup?: (name: string, message: string) => boolean };
-                        }).AndroidShell;
-                        if (typeof shell?.showCharacterBehaviorPopup === "function") {
-                            const plain = String(newMsg.content ?? "")
-                                .replace(/<[^>]*>/g, " ")
-                                .replace(/\s+/g, " ")
-                                .trim();
-                            if (plain) shell.showCharacterBehaviorPopup(memoryCharacter.name, plain.slice(0, 700));
-                        }
-                    }
+            const popupSession = _sessionsCache.find(item => item.id === newMsg.sessionId);
+            if (popupSession && !popupSession.isGroup) {
+                const popupContact = loadChatContacts().find(item => item.id === popupSession.contactId);
+                const popupCharacter = popupContact ? loadCharacters().find(item => item.id === popupContact.characterId) : undefined;
+                const shell = (window as unknown as {
+                    AndroidShell?: { showCharacterBehaviorPopup?: (name: string, message: string) => boolean };
+                }).AndroidShell;
+                const plain = String(newMsg.content ?? "").replace(/<[^>]*>/g, " ").replace(/\\s+/g, " ").trim();
+                if (popupCharacter && plain && typeof shell?.showCharacterBehaviorPopup === "function") {
+                    shell.showCharacterBehaviorPopup(popupCharacter.name, plain.slice(0, 700));
                 }
             }
         } catch {
-            // Memory bookkeeping must never interrupt chat persistence.
+            // Native popup is optional; never interrupt canonical chat persistence.
         }
     }
 
