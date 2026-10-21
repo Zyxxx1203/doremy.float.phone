@@ -498,7 +498,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       return next;
     });
   };
-  const fetchVideoModels = async () => {
+  const fetchVideoModels = async (testOnly = false) => {
     const cfg = videoAnalysisSettings;
     const root = cfg.baseUrl.trim().replace(/\/+$/, "");
     if (!root) { setVideoModelTestResult("请先填写服务地址。"); return; }
@@ -508,7 +508,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       let endpoint = "";
       const headers: Record<string, string> = {};
       if (cfg.provider === "gemini") {
-        endpoint = root + "/v1beta/models?key=" + encodeURIComponent(cfg.apiKey.trim());
+        endpoint = root + "/v1beta/models";
+        if (cfg.apiKey.trim()) headers["x-goog-api-key"] = cfg.apiKey.trim();
       } else if (cfg.provider === "anthropic") {
         endpoint = root + "/v1/models";
         if (cfg.apiKey.trim()) { headers["x-api-key"] = cfg.apiKey.trim(); headers["anthropic-version"] = "2023-06-01"; }
@@ -523,7 +524,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         ? (payload?.models || []).map(item => (item.name || "").replace(/^models\//, "")).filter(Boolean)
         : (payload?.data || payload?.models || []).map(item => item.id || item.name || "").filter(Boolean);
       setVideoModelOptions([...new Set(models)]);
-      setVideoModelTestResult(models.length ? ("连接成功，获取到 " + models.length + " 个模型。") : "接口可访问，但没有识别到模型列表；仍可手动填写模型 ID。");
+      setVideoModelTestResult(testOnly ? "API 连接成功。" + (models.length ? " 服务返回 " + models.length + " 个模型。" : " 但没有返回可识别的模型列表。") : (models.length ? ("刷新成功，获取到 " + models.length + " 个模型。") : "接口可访问，但没有识别到模型列表；仍可手动填写模型 ID。"));
     } catch (error) {
       setVideoModelTestResult("连接测试失败：" + (error instanceof Error ? error.message : String(error)) + "。若为 CORS/Failed to fetch，服务端可能未允许网页跨域访问。");
     } finally { setVideoModelBusy(false); }
@@ -1017,8 +1018,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-danmaku-track { position:absolute; left:100%; max-width:none; white-space:nowrap; animation-name:watchDanmaku; animation-timing-function:linear; animation-fill-mode:forwards; pointer-events:none; }
       .watch-danmaku-track > span { display:inline-block; border-radius:999px; background:rgba(0,0,0,.45); padding:4px 10px; color:rgba(255,255,255,.96); font-size:clamp(11px,1.2vw,15px); text-shadow:0 1px 3px rgba(0,0,0,.85); }
       .watch-danmaku-track[data-kind="user"] > span { background:rgba(54,101,144,.82); }
-      .watch-companion-overlay { max-height:calc(100dvh - 64px - env(safe-area-inset-bottom,0px)); overflow:visible; }
-      .watch-companion-card, .watch-companion-pill { background:rgba(13,12,12,.72)!important; backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); }
 
       @media (max-width:699px), (orientation:portrait) {
         .watch-together-app:not([data-watch-fullscreen="true"]) > main.watch-together-main {
@@ -1362,7 +1361,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </label>
             <div className="mt-2 flex gap-2">
               <button type="button" disabled={videoModelBusy} onClick={() => void fetchVideoModels()} className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#d8c9b6] disabled:opacity-40">{videoModelBusy ? "正在连接…" : "刷新模型列表"}</button>
-              <button type="button" disabled={videoModelBusy} onClick={() => void fetchVideoModels()} className="flex-1 rounded-lg bg-[#c99a6a] px-3 py-2 text-[11px] font-medium text-[#2a1f16] disabled:opacity-40">测试 API 连接</button>
+              <button type="button" disabled={videoModelBusy} onClick={() => void fetchVideoModels(true)} className="flex-1 rounded-lg bg-[#c99a6a] px-3 py-2 text-[11px] font-medium text-[#2a1f16] disabled:opacity-40">测试 API 连接</button>
             </div>
             {videoModelTestResult && <p role="status" aria-live="polite" className="mt-2 break-words text-[10px] leading-5 text-[#e6c49d]">{videoModelTestResult}</p>}
             <div className="mt-3 grid grid-cols-2 gap-2">
