@@ -428,7 +428,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   useEffect(() => {
     const handleAppBack = (event: Event) => {
       const detail = (event as CustomEvent<{ handled?: boolean }>).detail;
-      if (fullScreen) { setFullScreen(false); void restoreOrientation(); if (detail) detail.handled = true; }
+      if (fullScreen) { setFullScreen(false); if (detail) detail.handled = true; }
       else if (showSettings) { setShowSettings(false); if (detail) detail.handled = true; }
       else if (showHistory) { setShowHistory(false); if (detail) detail.handled = true; }
     };
@@ -1205,7 +1205,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   if (showGlobalCompanion) return <GlobalWatchCompanionApp onClose={() => setShowGlobalCompanion(false)} onNotice={onNotice} />;
 
-  return <div ref={watchRootRef} data-watch-fullscreen={fullScreen ? "true" : "false"} data-landscape-mode="false" data-source-panel={showVideoSourcePanel ? "true" : "false"} className={"watch-together-app pointer-events-auto isolate flex min-w-0 flex-col overflow-hidden text-[#f0e6d8] " + (fullScreen || landscapeMode ? "fixed inset-0 z-[3000]" : "absolute inset-0 z-[1000]")} style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)", height: fullScreen || landscapeMode ? "100dvh" : undefined, width: fullScreen || landscapeMode ? "100vw" : undefined }}>
+  return <div ref={watchRootRef} data-watch-fullscreen={fullScreen ? "true" : "false"} data-landscape-mode="false" data-source-panel={showVideoSourcePanel ? "true" : "false"} className={"watch-together-app pointer-events-auto isolate flex min-w-0 flex-col overflow-hidden text-[#f0e6d8] " + (fullScreen ? "fixed inset-0 z-[3000]" : "absolute inset-0 z-[1000]")} style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)", height: fullScreen ? "100dvh" : undefined, width: fullScreen ? "100vw" : undefined }}>
     {/* 弹幕动画：仓库里从未定义过 watchDanmaku，之前那条 animation 是空转，这里补上真实 keyframes */}
     <style>{`
       .watch-together-main { display:flex; flex-direction:column; }
