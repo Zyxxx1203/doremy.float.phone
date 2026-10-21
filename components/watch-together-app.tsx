@@ -1583,6 +1583,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-control-capsule[data-collapsed="true"]{width:auto!important;align-self:center!important;justify-content:center!important;padding:4px 10px!important;border-radius:999px!important}
       .watch-control-capsule[data-collapsed="true"] .watch-capsule-toggle{width:28px;height:24px}
       .watch-together-app [data-part="composer"] textarea{font-family:inherit}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="history"]{display:flex!important;flex:1 1 auto!important;flex-direction:column!important;min-height:0!important;margin:0!important;border:0!important;padding:0!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="history"]>div:first-child,.watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="history"]>p,.watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="history"]>div:not(.watch-comment-list){display:none!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-comment-list{display:flex!important;flex:1 1 auto!important;flex-direction:column!important;max-height:none!important;min-height:0!important;margin:0!important;padding:0 0 10px!important;overflow-y:auto!important}
+      .watch-together-app[data-landscape-mode="true"]>main.watch-together-main{padding-top:48px!important}
+      .watch-together-app[data-landscape-mode="true"] .watch-landscape-header{position:absolute!important;top:0!important;left:0!important;right:0!important;z-index:120!important}
+      .watch-together-app[data-landscape-mode="true"] .watch-player .watch-danmaku-fly{z-index:15!important}
+      .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer>div:last-child button{min-width:64px!important}
     `}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
@@ -1620,6 +1627,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </div>
         )}
 
+        <DanmakuLayer items={comments.map(item => ({ id: item.id, text: item.text, kind: item.kind, name: item.characterName }))} enabled={settings.danmakuEnabled} paused={mediaPaused} userColor={settings.danmakuColor} maxLanes={landscapeMode ? 6 : 9} />
         {target && !target.supported && target.embedUrl === target.url && (
           <a
             href={target.url}
