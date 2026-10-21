@@ -1366,7 +1366,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={event => { if (event.target.files) void uploadFiles(event.target.files); event.currentTarget.value = ""; }}/>
     <input ref={wallBackgroundInputRef} type="file" accept="image/*" className="hidden" onChange={event => { const file = event.currentTarget.files?.[0]; if (file) void uploadCanvasBackground(file); event.currentTarget.value = ""; }}/>
 
-    <main className={wallView === "edit" || wallView === "panorama" ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-y-auto overscroll-contain"} style={{ paddingBottom: wallView === "edit" || wallView === "panorama" ? 0 : "calc(58px + env(safe-area-inset-bottom, 0px))" }}>
+    <main className={wallView === "edit" || wallView === "panorama" ? "min-h-0 flex flex-1 flex-col overflow-hidden" : "min-h-0 flex-1 overflow-y-auto overscroll-contain"} style={{ paddingBottom: wallView === "edit" || wallView === "panorama" ? 0 : "calc(58px + env(safe-area-inset-bottom, 0px))" }}>
       {wallView === "settings" ? <div className="min-h-full bg-[#f5ede3] px-4 pb-10 pt-5 sm:px-7" style={{backgroundImage:"repeating-linear-gradient(0deg,rgba(122,84,68,.025) 0,rgba(122,84,68,.025) 1px,transparent 1px,transparent 5px)"}}>
         <div className="mx-auto max-w-3xl">
           <p className="text-[10px] tracking-[.24em] text-[#a18172]">A QUIET CORNER FOR YOUR WALL</p>
@@ -1432,7 +1432,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       {wallView === "edit" && <nav className="sticky top-0 z-10 flex min-h-11 items-center gap-5 overflow-x-auto border-b border-[#e4dbce]/80 bg-[#f7efe5]/95 px-4 py-2 sm:px-7">
         {([{id:"all",label:"全部照片"},{id:"mine",label:"我收藏的"},{id:"characters",label:"角色留下的"}] as {id:Filter;label:string}[]).map(item => <button key={item.id} onClick={() => setFilter(item.id)} className={`shrink-0 border-b-2 px-0.5 py-2 text-xs font-medium tracking-wide transition duration-200 ${filter===item.id?"border-[#87565b] text-[#87565b]":"border-transparent text-[#8d7e6b] hover:text-[#70434a]"}`}>{item.label}</button>)}
       </nav>}
-      <section className="flex flex-1 min-h-0 flex-col overflow-hidden px-3 pb-0 pt-3 sm:px-6">
+      <section className={wallView === "panorama" ? "flex flex-1 min-h-0 flex-col overflow-hidden p-0" : "flex flex-1 min-h-0 flex-col overflow-hidden px-3 pb-0 pt-3 sm:px-6"}>
         {wallView === "edit" && <>
           <div className="relative z-20 mb-2 flex min-h-10 shrink-0 min-w-0 items-center gap-2 overflow-x-auto whitespace-nowrap border-b border-[#e2d2c3] bg-[#f7efe5] px-1 py-2">
             <p className="shrink-0 font-serif text-sm text-[#5d4942]">自由画布</p><span className="shrink-0 text-[10px] text-[#9b8774]">{visiblePhotos.length} 张</span>
