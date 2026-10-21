@@ -393,7 +393,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         if (!start) return;
         const activeMode = viewport.querySelector<HTMLElement>("[data-photo-wall-mode]")?.dataset.photoWallMode;
         // 在照片上时，摆放/涂鸦由照片自己的手势负责；从空白墙面起手则统一平移画布。
-        if ((activeMode === "move" || activeMode === "doodle") && start.startedOnPhoto) return;
+        if (activeMode === "doodle") return; // 涂鸦时单指留给笔迹；要平移可切换“移动画布”或使用双指。
+        if (activeMode === "move" && start.startedOnPhoto) return;
         const dx = event.clientX - start.x, dy = event.clientY - start.y;
         if (Math.abs(dx) + Math.abs(dy) < 3) return;
         if (event.cancelable) event.preventDefault();
@@ -1435,6 +1436,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             <button type="button" onClick={undo} disabled={!canUndo} className="shrink-0 border border-[#d8c6b5] px-2 py-1.5 text-[10px] text-[#7d6d5a] disabled:opacity-30">撤销</button>
             <button type="button" onClick={redo} disabled={!canRedo} className="shrink-0 border border-[#d8c6b5] px-2 py-1.5 text-[10px] text-[#7d6d5a] disabled:opacity-30">重做</button>
             <button type="button" onClick={() => { setZoomMode(false); setWallCanvasMode(wallCanvasMode === "move" ? "view" : "move"); setWallSticker(null); setWallEraser(false); }} aria-pressed={wallCanvasMode === "move"} className={wallCanvasMode === "move" ? "shrink-0 border border-[#87565b] bg-[#87565b] px-2.5 py-1.5 text-[11px] text-white" : "shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[11px] text-[#7d6d5a]"}>{wallCanvasMode === "move" ? "完成摆放" : "摆照片"}</button>
+            <button type="button" onClick={() => { setZoomMode(false); setWallCanvasMode(wallCanvasMode === "pan" ? "view" : "pan"); setWallSticker(null); setWallEraser(false); }} aria-pressed={wallCanvasMode === "pan"} title="单指拖动画布，不会翻转、移动照片或画涂鸦" className={wallCanvasMode === "pan" ? "shrink-0 border border-[#6e7f8c] bg-[#6e7f8c] px-2.5 py-1.5 text-[11px] text-white" : "shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[11px] text-[#7d6d5a]"}>{wallCanvasMode === "pan" ? "完成移墙" : "移动画布"}</button>
             <button type="button" onClick={() => { setZoomMode(false); setWallCanvasMode(wallCanvasMode === "doodle" ? "view" : "doodle"); setWallSticker(null); setWallEraser(false); }} aria-pressed={wallCanvasMode === "doodle"} className={wallCanvasMode === "doodle" ? "shrink-0 border border-[#a77b77] bg-[#a77b77] px-2.5 py-1.5 text-[11px] text-white" : "shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[11px] text-[#7d6d5a]"}>{wallCanvasMode === "doodle" ? "退出涂鸦" : "涂鸦"}</button>
             <label className="flex shrink-0 items-center gap-1 text-[10px] text-[#8b7665]">宽<input type="number" min={1200} max={12000} step={100} value={wallWidthDraft} onChange={event => setWallWidthDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter") applyWallDimensions(); }} aria-label="画布宽度" className="w-[62px] border-b border-[#d8c6b5] bg-transparent px-1 py-1 text-[11px] text-[#5d4942] outline-none"/></label>
             <label className="flex shrink-0 items-center gap-1 text-[10px] text-[#8b7665]">高<input type="number" min={1200} max={12000} step={100} value={wallHeightDraft} onChange={event => setWallHeightDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter") applyWallDimensions(); }} aria-label="画布高度" className="w-[62px] border-b border-[#d8c6b5] bg-transparent px-1 py-1 text-[11px] text-[#5d4942] outline-none"/></label>
