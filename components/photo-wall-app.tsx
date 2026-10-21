@@ -389,19 +389,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         applyZoom(nextZoom, { x: midpoint.x - rect.left, y: midpoint.y - rect.top });
         return;
       }
-      if (supportsPointerEvents && pointers.size === 1 && !pinchModeRef.current) {
-        const touch = singleTouchRef.current;
-        if (!touch) return;
-        const mode = wallCanvasMode;
-        const shouldPan = mode !== "doodle" && !touch.startedOnPhoto;
-        if (!shouldPan) return;
-        if (event.cancelable) event.preventDefault();
-        const dx = event.clientX - touch.x, dy = event.clientY - touch.y;
-        if (!touch.panStarted) { touch.panStarted = true; window.dispatchEvent(new Event("photo-wall-pan-start")); }
-        viewport.scrollLeft = touch.scrollLeft - dx;
-        viewport.scrollTop = touch.scrollTop - dy;
-        return;
-      }
+      // 单指只交给当前工具（浏览、拖照片或涂鸦）；画布平移由双指手势统一处理。
+      // 不在 window capture 阶段 preventDefault，避免抢走浏览器/页面的纵向滚动。
+      if (supportsPointerEvents && pointers.size === 1 && !pinchModeRef.current) return;
     };
     const onPointerEnd = (event: PointerEvent) => {
       const pointers = pinchPointersRef.current;
@@ -466,24 +456,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         applyZoom(nextZoom, { x: midpoint.x - rect.left, y: midpoint.y - rect.top });
         return;
       }
-      // 非 PointerEvent WebView：单指按模式分流。摆照片时从空白处起手可平移，
-      // 涂鸦时单指留给画笔；显式手形模式始终平移。
-      if (event.touches.length === 1 && !pinchModeRef.current) {
-        const touch = singleTouchRef.current;
-        if (!touch) return;
-        const mode = wallCanvasMode;
-        const shouldPan = mode !== "doodle" && !touch.startedOnPhoto;
-        if (!shouldPan) return;
-        if (event.cancelable) event.preventDefault();
-        const point = event.touches[0];
-        const dx = point.clientX - touch.x, dy = point.clientY - touch.y;
-        if (!touch.panStarted) {
-          touch.panStarted = true;
-          window.dispatchEvent(new Event("photo-wall-pan-start"));
-        }
-        viewport.scrollLeft = touch.scrollLeft - dx;
-        viewport.scrollTop = touch.scrollTop - dy;
-      }
+      // 非 PointerEvent WebView 也不再用单指自定义平移抢占滚动；
+      // 双指仍由上面的 fallback 处理，单指交给照片操作/画笔或浏览器滚动。
     };
     const onTouchEnd = (event: TouchEvent) => {
       if (supportsPointerEvents) return;
@@ -1473,7 +1447,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           {wallCanvasMode === "view" && wallSelectedPhoto && <div className="relative z-40 mb-2 flex shrink-0 items-center justify-between gap-2 border-b border-[#e6d9cb] px-2 py-1.5"><span className="min-w-0 truncate text-[10px] text-[#8b7665]">已选：{wallSelectedPhoto.title||"未命名的瞬间"}</span><button type="button" onClick={() => openPhoto(wallSelectedPhoto)} className="shrink-0 border border-[#d7c2b1] px-2.5 py-1.5 text-[10px] text-[#7d6d5a]">查看详情</button></div>}
         </>}
         {busy && <div className="mb-3 flex shrink-0 items-center gap-2 border border-[#e4d8c6] bg-[#faf7f0] px-3 py-2.5 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
-        <div ref={panoramaViewportRef} data-photo-wall-viewport className="min-h-0 flex-1 w-full overflow-auto overscroll-contain bg-[#e9dfd2]" style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-x pan-y", overscrollBehavior: "contain" }}>
+        <div ref={panoramaViewportRef} data-photo-wall-viewport className="min-h-0 flex-1 w-full overflow-auto overscroll-contain bg-[#e9dfd2]" style={{ WebkitOverflowScrolling: "touch", touchAction: wallCanvasMode === "view" ? "pan-x pan-y" : "none", overscrollBehavior: "contain" }}>
           <div className="relative shrink-0 overflow-hidden shadow-[0_8px_28px_rgba(72,48,34,.12)]" style={{ width: world.width * panoramaZoom / 100, height: world.height * panoramaZoom / 100, touchAction: "none", margin: "0 auto" }}>
             <PhotoWallCanvas photos={visiblePhotos} selectedId={wallActivePhotoId} onSelect={setWallActivePhotoId}
               onChangePlacement={changePlacement} onPlacementSettled={settlePlacement}
