@@ -253,7 +253,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const pinchLastMidpointRef = useRef<{ x: number; y: number } | null>(null);
   const pinchPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinchModeRef = useRef(false);
-  const singleTouchRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number; startedOnPhoto: boolean; panStarted?: boolean } | null>(null);
+  const singleTouchRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number; stageX: number; stageY: number; startedOnPhoto: boolean; panStarted?: boolean } | null>(null);
   const panoramaViewportRef = useRef<HTMLDivElement>(null);
   const panoramaZoomRef = useRef(100);
   // 画布唯一视口变换：CSS 像素平移 + 百分比缩放，不再用 scrollLeft/scrollTop 补偿。
@@ -333,7 +333,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       observer?.disconnect();
       window.removeEventListener("resize", fitCanvas);
     };
-  }, [wallView, world.width, world.height]);
+  }, [wallView, world.width, world.height, setStagePosition]);
   useEffect(() => {
     if (wallView !== "edit" && wallView !== "panorama") return;
     const viewport = panoramaViewportRef.current;
@@ -347,7 +347,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       pinchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (firstPointer) {
         const target = event.target instanceof Element ? event.target : null;
-        singleTouchRef.current = { x: event.clientX, y: event.clientY, scrollLeft: 0, scrollTop: 0, startedOnPhoto: Boolean(target?.closest("[data-photo-wall-photo]")), panStarted: false, stageX: stageTranslationRef.current.x, stageY: stageTranslationRef.current.y } as typeof singleTouchRef.current;
+        singleTouchRef.current = { x: event.clientX, y: event.clientY, scrollLeft: 0, scrollTop: 0, startedOnPhoto: Boolean(target?.closest("[data-photo-wall-photo]")), panStarted: false, stageX: stageTranslationRef.current.x, stageY: stageTranslationRef.current.y };
       }
       if (pinchPointersRef.current.size < 2) return;
       const points = [...pinchPointersRef.current.values()].slice(0, 2);
@@ -387,7 +387,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         if (event.cancelable) event.preventDefault();
         const dx = event.clientX - touch.x, dy = event.clientY - touch.y;
         if (!touch.panStarted) { touch.panStarted = true; window.dispatchEvent(new Event("photo-wall-pan-start")); }
-        setStagePosition({ x: (touch as typeof touch & { stageX?: number; stageY?: number }).stageX! - dx, y: (touch as typeof touch & { stageX?: number; stageY?: number }).stageY! - dy });
+        setStagePosition({ x: touch.stageX - dx, y: touch.stageY - dy });
         return;
       }
     };
@@ -469,8 +469,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           touch.panStarted = true;
           window.dispatchEvent(new Event("photo-wall-pan-start"));
         }
-        viewport.scrollLeft = touch.scrollLeft - dx;
-        viewport.scrollTop = touch.scrollTop - dy;
+        setStagePosition({ x: touch.stageX - dx, y: touch.stageY - dy });
       }
     };
     const onTouchEnd = (event: TouchEvent) => {
@@ -666,25 +665,13 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const canRedo = futureRef.current.length > 0;
   void historyVersion; // 快照栈变化时触发一次重渲染，好让按钮的禁用态跟上
 
-  /**
-   * 向左/向上扩容时补偿滚动。
-   * 必须等到 React 把新的画布尺寸刷进 DOM 之后再改 scrollLeft——
-   * 提前改会被浏览器按旧的 scrollWidth 夹回去，画面就跳了。
-   */
+  /** 世界画布向左/向上扩容时，平移舞台抵消新增的世界坐标偏移。 */
   const compensateViewportScroll = useCallback((grow: WorldGrow) => {
     const zoom = panoramaZoomRef.current / 100;
     if (!grow.left && !grow.top) return;
-    pendingScrollRef.current = { left: grow.left * zoom, top: grow.top * zoom };
-  }, [wallCanvasMode, wallView]);
-  useLayoutEffect(() => {
-    const pending = pendingScrollRef.current;
-    if (!pending) return;
-    pendingScrollRef.current = null;
-    const viewport = panoramaViewportRef.current;
-    if (!viewport) return;
-    if (pending.left) viewport.scrollLeft += pending.left;
-    if (pending.top) viewport.scrollTop += pending.top;
-  });
+    const current = stageTranslationRef.current;
+    setStagePosition({ x: current.x - grow.left * zoom, y: current.y - grow.top * zoom });
+  }, [setStagePosition]);
 
   /**
    * 拖动/缩放/旋转：只改这一张照片的摆放，位置用 0~1 比例存，换屏幕不会错位。
