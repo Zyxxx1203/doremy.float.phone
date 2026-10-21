@@ -61,6 +61,12 @@ function openExternalUrl(url: string): void {
   try { window.open(url, "_blank", "noopener,noreferrer"); } catch { /* ignore */ }
 }
 
+
+type WatchMemoryRecord = { id:string; url:string; title:string; platform:string; startedAt:string; durationSeconds:number; characterName:string; comments:string[]; review:string; characterReview:string; favorite:boolean };
+const WATCH_MEMORY_KEY = "ai_phone_watch_memory_records_v1";
+function readWatchMemories(): WatchMemoryRecord[] { try { const raw=window.localStorage.getItem(WATCH_MEMORY_KEY); const v=raw?JSON.parse(raw):[]; return Array.isArray(v)?v.filter((x)=>x&&typeof x.id==="string"):[]; } catch { return []; } }
+function writeWatchMemories(records: WatchMemoryRecord[]) { try { window.localStorage.setItem(WATCH_MEMORY_KEY,JSON.stringify(records.slice(0,300))); } catch { /* Keep playback working if local storage is full. */ } }
+
 type WatchComment = { id: string; characterId: string; characterName: string; text: string; createdAt: string; kind?: "character" | "user"; timepoint?: string; targetUrl?: string };
 type WatchSettings = { characterId: string; intervalMinMinutes: number; intervalMaxMinutes: number; voiceEnabled: boolean; danmakuEnabled: boolean; danmakuColor: string; subtitlesEnabled: boolean; currentMoment: string };
 
@@ -398,6 +404,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [busy, setBusy] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showMemoryRecords, setShowMemoryRecords] = useState(false);
+  const [memoryRecords, setMemoryRecords] = useState<WatchMemoryRecord[]>(() => typeof window !== "undefined" ? readWatchMemories() : []);
+  const [editingMemoryId, setEditingMemoryId] = useState<string | null>(null);
+  const activeMemoryIdRef = useRef<string | null>(null);
+  const memoryStartedAtRef = useRef<number>(0);
+  const memoryElapsedRef = useRef<number>(0);
   const [showGlobalCompanion, setShowGlobalCompanion] = useState(false);
   const [historyMode, setHistoryMode] = useState<"current" | "global">("current");
   const [globalWatchRecords, setGlobalWatchRecords] = useState<GlobalWatchRecord[]>(() => loadGlobalWatchRecords());
@@ -439,6 +451,58 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     window.addEventListener("floatphone-app-back", handleAppBack);
     return () => window.removeEventListener("floatphone-app-back", handleAppBack);
   }, [fullScreen, showSettings, showHistory]);
+
+  // 每次切换到一个新视频时创建独立观看记录；记录只保存元数据和互动摘要，不上传视频内容。
+  useEffect(() => {
+    if (!target) return;
+    const now = new Date();
+    const record: WatchMemoryRecord = {
+      id: "watch-memory-" + now.getTime().toString(36) + "-" + Math.random().toString(36).slice(2,7),
+      url: target.url, title: videoTitle.trim() || (target.platformName + "视频"), platform: target.platformName,
+      startedAt: now.toISOString(), durationSeconds: 0,
+      characterName: characters.find(c => c.id === settings.characterId)?.name || "",
+      comments: [], review: "", characterReview: "", favorite: false
+    };
+    setMemoryRecords(previous => { const next=[record,...previous].slice(0,300); writeWatchMemories(next); return next; });
+    activeMemoryIdRef.current = record.id;
+    memoryStartedAtRef.current = Date.now();
+    memoryElapsedRef.current = 0;
+  // Intentionally create one record for each newly selected video target.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target?.url]);
+
+  useEffect(() => {
+    if (!target || !activeMemoryIdRef.current) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      const video = playerRef.current?.querySelector("video");
+      // Native video: count only while it is actually playing. Cross-origin embeds have no
+      // readable playback state, so count visible time while a target is loaded.
+      if (video ? (!video.paused && !video.ended) : true) {
+        memoryElapsedRef.current += 1;
+        const id = activeMemoryIdRef.current;
+        if (id) setMemoryRecords(previous => {
+          const next = previous.map(r => r.id === id ? {...r, durationSeconds: memoryElapsedRef.current} : r);
+          writeWatchMemories(next); return next;
+        });
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [target?.url]);
+
+  useEffect(() => {
+    const id = activeMemoryIdRef.current;
+    if (!id) return;
+    const summary = comments.filter(c => !c.targetUrl || c.targetUrl === target?.url).slice(-8).map(c => (c.kind === "user" ? "我：" : c.characterName + "：") + c.text);
+    setMemoryRecords(previous => {
+      const next = previous.map(r => r.id === id ? {...r, title: videoTitle.trim() || r.title, characterName: characters.find(c => c.id === settings.characterId)?.name || r.characterName, comments: summary} : r);
+      writeWatchMemories(next); return next;
+    });
+  }, [comments, videoTitle, characters, settings.characterId, target?.url]);
+
+  const patchMemoryRecord = (id: string, patch: Partial<WatchMemoryRecord>) => {
+    setMemoryRecords(previous => { const next=previous.map(r => r.id===id?{...r,...patch}:r); writeWatchMemories(next); return next; });
+  };
 
   useEffect(() => {
     // Script-first co-watching: don't silently sample the video or add screenshots to prompts.
@@ -1699,6 +1763,36 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </div>
           </section>
           <p className="mt-3 text-[10px] leading-5 text-[#7d7268]">角色发言使用你已配置的聊天模型与语音绑定。平台自带的字幕/弹幕开关无法跨站控制，这里的开关只作用于「角色陪看」这一层。</p>
+      </section>
+    </div>}
+
+    {/* 轻量观看记录：不改变播放流程，每次观看独立留档 */}
+    <button type="button" onClick={() => { setMemoryRecords(readWatchMemories()); setShowMemoryRecords(true); }} className="absolute right-3 top-[max(54px,calc(env(safe-area-inset-top)+48px))] z-[1011] flex items-center gap-1.5 rounded-full border border-[#d8b99b]/60 bg-[#fff8ed]/95 px-3 py-2 text-[11px] font-medium text-[#735440] shadow-lg backdrop-blur" aria-label="打开观看记录"><FileText size={14}/>观看记录{memoryRecords.length>0 && <span className="rounded-full bg-[#c99a6a] px-1.5 text-[9px] text-white">{memoryRecords.length}</span>}</button>
+    {showMemoryRecords && <div className="absolute inset-0 z-[1015] flex flex-col justify-end bg-black/55 backdrop-blur-sm" onClick={() => setShowMemoryRecords(false)}>
+      <section className="flex max-h-[88%] min-h-[55%] flex-col overflow-hidden rounded-t-[26px] border-t border-[#d6b99a]/50 bg-[#fbf3e8] text-[#594536]" onClick={event => event.stopPropagation()}>
+        <header className="flex items-center justify-between border-b border-[#ddc9b3] px-4 py-4">
+          <div><div className="font-serif text-lg tracking-wide">一起看 · 共同记忆</div><div className="mt-1 text-[10px] tracking-[.12em] text-[#9a7c64]">每一次观看，都是一份独立记录</div></div>
+          <button type="button" onClick={() => setShowMemoryRecords(false)} aria-label="关闭观看记录" className="grid h-9 w-9 place-items-center rounded-full border border-[#ddc9b3] bg-white/70"><X size={16}/></button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4" style={{paddingBottom:"max(18px,env(safe-area-inset-bottom))"}}>
+          {memoryRecords.length===0 ? <div className="py-12 text-center"><div className="font-serif text-base">这里会收藏你们看过的每一段</div><p className="mt-2 text-xs leading-5 text-[#9a7c64]">开始播放视频后，会自动生成第一份观看记录。</p></div> :
+          <div className="space-y-4">{memoryRecords.map((record,index) => <article key={record.id} className="relative overflow-hidden border border-[#d8b99b] bg-[#fffaf2] p-4 shadow-[0_4px_14px_rgba(100,70,40,.06)]">
+            <div className="absolute bottom-0 right-0 h-16 w-16 translate-x-5 translate-y-5 rounded-full border border-[#d8b99b]/45"/>
+            <div className="flex items-start gap-3">
+              <div className="grid h-16 w-12 shrink-0 place-items-center border border-dashed border-[#b9906b] bg-[#f4e4d1] text-center"><span className="text-[9px] tracking-widest text-[#9a7c64]">MEMORY</span><span className="font-serif text-xl text-[#a36f4e]">{String(memoryRecords.length-index).padStart(2,"0")}</span><span className="text-[8px] text-[#9a7c64]">TOGETHER</span></div>
+              <div className="min-w-0 flex-1"><div className="font-serif text-base leading-6">{record.title}</div><div className="mt-1 text-[10px] text-[#9a7c64]">{new Date(record.startedAt).toLocaleString("zh-CN",{month:"long",day:"numeric",hour:"2-digit",minute:"2-digit"})} · {record.platform}</div><div className="mt-1 text-[10px] text-[#9a7c64]">陪看约 {Math.floor(record.durationSeconds/60)} 分钟{record.characterName ? " · 和 "+record.characterName : ""}</div></div>
+              <button type="button" onClick={() => patchMemoryRecord(record.id,{favorite:!record.favorite})} aria-label={record.favorite?"取消收藏":"收藏这份记录"} className="shrink-0 p-1 text-[#b47d66]"><Heart size={17} fill={record.favorite?"currentColor":"none"}/></button>
+            </div>
+            {record.comments.length>0 && <div className="mt-3 border-l-2 border-[#d7b99a] pl-3"><div className="text-[9px] tracking-widest text-[#a7876c]">SAVED MOMENT</div><p className="mt-1 line-clamp-3 text-xs leading-5 text-[#745a46]">{record.comments[record.comments.length-1]}</p></div>}
+            <button type="button" onClick={() => setEditingMemoryId(editingMemoryId===record.id?null:record.id)} className="mt-3 border-b border-[#c6a486] pb-0.5 text-[11px] text-[#936b50]">{editingMemoryId===record.id?"收起编辑":"写下观后感 / 回忆"}</button>
+            {editingMemoryId===record.id && <div className="mt-3 space-y-3">
+              <label className="block text-[11px] text-[#98785f]">我的观后感<textarea value={record.review} onChange={e=>patchMemoryRecord(record.id,{review:e.target.value})} rows={3} placeholder="这次一起看，给我留下了什么感觉？" className="mt-1 w-full resize-y rounded-none border border-[#dfcbb6] bg-white/75 p-2.5 text-sm text-[#594536] outline-none focus:border-[#b9906b]"/></label>
+              <label className="block text-[11px] text-[#98785f]">角色的感想 / 这次的共同回忆<textarea value={record.characterReview} onChange={e=>patchMemoryRecord(record.id,{characterReview:e.target.value})} rows={3} placeholder="可以记录角色真实说过的话或你想留住的瞬间，不会自动编造。" className="mt-1 w-full resize-y rounded-none border border-[#dfcbb6] bg-white/75 p-2.5 text-sm text-[#594536] outline-none focus:border-[#b9906b]"/></label>
+              <label className="block text-[11px] text-[#98785f]">视频标题<input value={record.title} onChange={e=>patchMemoryRecord(record.id,{title:e.target.value})} className="mt-1 w-full border border-[#dfcbb6] bg-white/75 p-2.5 text-sm text-[#594536] outline-none focus:border-[#b9906b]"/></label>
+              <button type="button" onClick={() => setEditingMemoryId(null)} className="bg-[#c99a6a] px-4 py-2 text-xs font-medium text-white">保存这份回忆</button>
+            </div>}
+          </article>)}</div>}
+        </div>
       </section>
     </div>}
 
