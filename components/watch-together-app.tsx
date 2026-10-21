@@ -1594,7 +1594,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
                     animation: watching ? "watchWave 1100ms ease-in-out " + (i * 65) + "ms infinite alternate" : undefined,
                   }}
                 />
-              ))}}
+              ))}
             </div>
             <div className="flex min-w-0 flex-1 items-center justify-end gap-2 text-right">
               <span className="min-w-0"><span className="block truncate font-serif text-[12px] text-[#5c4031]">{playerIdentity?.name || "我"}</span><span className="mt-0.5 block truncate text-[10px] text-[#a07a5c]">与你同频</span></span>
