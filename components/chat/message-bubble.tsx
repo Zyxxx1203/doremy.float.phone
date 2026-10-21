@@ -103,8 +103,6 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
             return <ContactCardBubble msg={msg} characterId={characterId} />;
         case "payment_request":
             return <PaymentRequestBubble msg={msg} charName={charName} userName={userName} onShowDetail={onShowDetail} />;
-        case "relationship_artifact":
-            return <RelationshipArtifactBubble msg={msg} />;
         case "app_card":
             return <AppCardBubble msg={msg} characterId={characterId} characterName={msg.senderName || charName} />;
         case "image":
@@ -853,57 +851,6 @@ function PaymentRequestBubble({ msg, charName, userName, onShowDetail }: {
             </div>
         </div>
     );
-}
-
-// ── Relationship keepsake card ─────────────────────────────
-function RelationshipArtifactBubble({ msg }: { msg: ChatMessage }) {
-    const [open, setOpen] = useState(false);
-    const data = msg.mediaData;
-    const type = data?.relationshipArtifactType || "confession";
-    const themes: Record<string, { label: string; eyebrow: string; icon: string; accent: string }> = {
-        apology: { label: "道歉信", eyebrow: "A LETTER OF SORRY", icon: "✉", accent: "#b86b73" },
-        reflection: { label: "自省手记", eyebrow: "A MOMENT OF HONESTY", icon: "❧", accent: "#9b7a69" },
-        reconciliation: { label: "和好信", eyebrow: "BACK TO US", icon: "♡", accent: "#bd7189" },
-        confession: { label: "心动来信", eyebrow: "A LITTLE CONFESSION", icon: "♥", accent: "#c16e83" },
-        privilege: { label: "专属特权卡", eyebrow: "PERSONAL PRIVILEGE", icon: "✧", accent: "#b18b4f" },
-        jealousy: { label: "一点点醋意", eyebrow: "A JEALOUS LITTLE NOTE", icon: "♧", accent: "#a87883" },
-        candid_photo: { label: "视角收藏", eyebrow: "THROUGH MY EYES", icon: "⌁", accent: "#a77e6d" },
-        couple_photo: { label: "我们的合影", eyebrow: "A MEMORY OF US", icon: "♡", accent: "#bd7189" },
-        invitation: { label: "约会邀请", eyebrow: "AN INVITATION", icon: "✉", accent: "#b18b4f" },
-        promise: { label: "约定存根", eyebrow: "A PROMISE TO KEEP", icon: "✦", accent: "#a87883" },
-    };
-    const theme = themes[type] || themes.confession;
-    const title = data?.appCardTitle || theme.label;
-    const body = data?.relationshipArtifactBody || msg.content || "";
-    const accent = data?.relationshipArtifactAccent || theme.accent;
-    return <>
-        <button type="button" onClick={() => setOpen(true)} aria-label={`打开${title}`} style={{ display: "block", width: "min(292px, 76vw)", textAlign: "left", padding: 0, border: "0", background: "transparent", cursor: "pointer" }}>
-            <div style={{ position: "relative", overflow: "hidden", border: "1px solid #ead9cf", background: "linear-gradient(145deg,#fffdf8 0%,#fff5f3 100%)", padding: "15px 16px 13px", boxShadow: "0 5px 15px #8d625019", color: "#59484a" }}>
-                <div style={{ position: "absolute", right: 9, top: 4, fontFamily: "Georgia,serif", fontSize: 43, lineHeight: 1, color: accent, opacity: .17 }}>{theme.icon}</div>
-                <div style={{ fontSize: 9, letterSpacing: "2px", color: accent, fontFamily: "Georgia,serif" }}>{theme.eyebrow}</div>
-                <div style={{ fontSize: 17, marginTop: 7, marginBottom: 6, fontFamily: "Georgia,'Noto Serif SC',serif", fontWeight: 600 }}>{title}</div>
-                {data?.relationshipArtifactSubtitle && <div style={{ fontSize: 11, color: "#9a7e7d", marginBottom: 6 }}>{data.relationshipArtifactSubtitle}</div>}
-                {data?.relationshipArtifactImageUrl && <img src={data.relationshipArtifactImageUrl} alt="" style={{ display: "block", width: "100%", maxHeight: 118, objectFit: "cover", margin: "8px 0", border: "4px solid #fff", boxShadow: "0 1px 5px #8d625022" }} />}
-                <div style={{ fontSize: 12, lineHeight: 1.65, color: "#7d6868", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-wrap" }}>{body}</div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #eadbd4", marginTop: 10, paddingTop: 8, fontSize: 10, color: accent }}><span>{data?.relationshipArtifactSignature || "留给你的私藏"}</span><span>轻触展开 ↗</span></div>
-            </div>
-        </button>
-        {open && typeof document !== "undefined" && createPortal(
-            <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(48,32,36,.58)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, backdropFilter: "blur(5px)" }}>
-                <section role="dialog" aria-modal="true" aria-label={title} onClick={e => e.stopPropagation()} style={{ width: "min(440px,100%)", maxHeight: "86dvh", overflowY: "auto", position: "relative", background: "repeating-linear-gradient(0deg,#fffdf8,#fffdf8 31px,#f1e6df 32px)", border: "1px solid #e6cfc6", boxShadow: "0 18px 60px #20141955", padding: "28px 24px 26px", color: "#59484a" }}>
-                    <button type="button" onClick={() => setOpen(false)} aria-label="关闭" style={{ position: "absolute", top: 10, right: 12, border: 0, background: "transparent", fontSize: 24, color: "#9e777b" }}>×</button>
-                    <div style={{ textAlign: "center", color: accent, letterSpacing: "2.5px", fontSize: 10, fontFamily: "Georgia,serif" }}>{theme.eyebrow}</div>
-                    <div style={{ textAlign: "center", fontSize: 27, margin: "12px 0 18px", fontFamily: "Georgia,'Noto Serif SC',serif" }}>{title}</div>
-                    <div style={{ height: 1, background: "#d8b9ad", margin: "0 auto 20px", width: "42%" }} />
-                    {data?.relationshipArtifactImageUrl && <img src={data.relationshipArtifactImageUrl} alt="" style={{ width: "100%", maxHeight: "38dvh", objectFit: "contain", marginBottom: 20, background: "#fff", padding: 6, border: "1px solid #eadbd4" }} />}
-                    {data?.relationshipArtifactSubtitle && <div style={{ textAlign: "center", fontSize: 12, color: "#9a7e7d", marginBottom: 18 }}>{data.relationshipArtifactSubtitle}</div>}
-                    <div style={{ fontSize: 15, lineHeight: 2, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{body}</div>
-                    {data?.relationshipArtifactSignature && <div style={{ textAlign: "right", whiteSpace: "pre-wrap", marginTop: 28, color: accent, fontFamily: "Georgia,'Noto Serif SC',serif", lineHeight: 1.8 }}>{data.relationshipArtifactSignature}</div>}
-                    <div style={{ textAlign: "center", marginTop: 30, color: "#b99a91", fontSize: 10, letterSpacing: "2px" }}>✦ · MADE ESPECIALLY FOR YOU · ✦</div>
-                </section>
-            </div>, document.body
-        )}
-    </>;
 }
 
 // ── Custom App Card ─────────────────────────────
