@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Camera, Check, ChevronLeft, ChevronRight, Download, Feather, Heart, ImagePlus, LoaderCircle, MessageCircle, MoreHorizontal, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
@@ -444,8 +444,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         };
         const previousMidpoint = pinchLastMidpointRef.current ?? midpoint;
         // 兼容不支持 PointerEvent 的 WebView：中点位移平移，指距变化缩放。
-        viewport.scrollLeft -= midpoint.x - previousMidpoint.x;
-        viewport.scrollTop -= midpoint.y - previousMidpoint.y;
+        const panX = midpoint.x - previousMidpoint.x, panY = midpoint.y - previousMidpoint.y;
+        const current = stageTranslationRef.current;
+        setStagePosition({ x: current.x + panX, y: current.y + panY });
         pinchLastMidpointRef.current = midpoint;
         const rect = viewport.getBoundingClientRect();
         const nextZoom = Math.max(5, Math.min(300, Math.round(
