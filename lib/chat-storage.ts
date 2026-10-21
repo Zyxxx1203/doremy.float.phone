@@ -132,7 +132,6 @@ export type ChatMessage = {
         | "gift"
         | "contact_card"
         | "app_card"
-        | "relationship_artifact"
         | "tool_notice"
         | "tool_call"
         | "tool_result"
@@ -281,13 +280,6 @@ export type ChatMessage = {
         readingBookTitle?: string; // 阅读讨论所属书名，用于 prompt 短期记忆边界
         appId?: string;
         appName?: string;
-        relationshipArtifactId?: string;
-        relationshipArtifactType?: "apology" | "reflection" | "reconciliation" | "confession" | "privilege" | "jealousy" | "candid_photo" | "couple_photo" | "invitation" | "promise";
-        relationshipArtifactSubtitle?: string;
-        relationshipArtifactBody?: string;
-        relationshipArtifactSignature?: string;
-        relationshipArtifactAccent?: string;
-        relationshipArtifactImageUrl?: string;
         appCardTitle?: string;
         appCardBody?: string;
         appCardSummary?: string;
