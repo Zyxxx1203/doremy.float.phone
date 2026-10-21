@@ -404,12 +404,13 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (!pointers.has(event.pointerId)) return;
       const wasPinching = pinchModeRef.current, wasPanning = singleTouchRef.current?.panStarted === true;
       pointers.delete(event.pointerId);
-      if (wasPinching && pointers.size < 2) { pinchModeRef.current = false; pinchStartRef.current = null; pinchLastMidpointRef.current = null; window.dispatchEvent(new Event("photo-wall-pinch-end")); }
-      if (wasPanning && pointers.size === 0) window.dispatchEvent(new Event("photo-wall-pan-end"));
-      if (pointers.size === 0) singleTouchRef.current = null;
-      else if (pointers.size === 1 && wasPinching) {
-        const remaining = [...pointers.values()][0];
-        singleTouchRef.current = { x: remaining.x, y: remaining.y, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, startedOnPhoto: false, panStarted: false };
+      // Keep the multi-touch lock until every finger is lifted. The remaining finger
+      // must not unexpectedly resume drawing or dragging after a pinch ends.
+      if (pointers.size === 0) {
+        if (wasPinching) window.dispatchEvent(new Event("photo-wall-pinch-end"));
+        if (wasPanning) window.dispatchEvent(new Event("photo-wall-pan-end"));
+        pinchModeRef.current = false; pinchStartRef.current = null; pinchLastMidpointRef.current = null;
+        singleTouchRef.current = null;
       }
     };
 
@@ -464,20 +465,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     };
     const onTouchEnd = (event: TouchEvent) => {
       if (supportsPointerEvents) return;
-      if (event.touches.length < 2 && pinchModeRef.current) {
-        pinchModeRef.current = false;
-        pinchStartRef.current = null;
-        window.dispatchEvent(new Event("photo-wall-pinch-end"));
-      }
       if (event.touches.length === 0) {
+        if (pinchModeRef.current) window.dispatchEvent(new Event("photo-wall-pinch-end"));
         if (singleTouchRef.current?.panStarted) window.dispatchEvent(new Event("photo-wall-pan-end"));
+        pinchModeRef.current = false; pinchStartRef.current = null; pinchLastMidpointRef.current = null;
         singleTouchRef.current = null;
-      } else if (event.touches.length === 1) {
-        singleTouchRef.current = {
-          x: event.touches[0].clientX, y: event.touches[0].clientY,
-          scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop,
-          startedOnPhoto: false, panStarted: false,
-        };
       }
     };
     // Window capture keeps tracking both fingers even if one leaves a photo frame.
