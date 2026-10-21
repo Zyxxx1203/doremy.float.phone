@@ -562,7 +562,6 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   // 所以不能把写盘副作用塞进更新函数里。用 ref 保存最新状态快照供回调同步读取。
   const stateRef = useRef(state);
   stateRef.current = state;
-  const [templateText, setTemplateText] = useState("LOVE");
   const [activeTemplateId, setActiveTemplateId] = useState<string>(() => readPhotoWallTemplate());
   const [templateFill, setTemplateFill] = useState<boolean>(() => loadTemplateFill());
   const [generationPromptTemplate, setGenerationPromptTemplate] = useState<string>(() => readPhotoWallPrompt());
@@ -712,7 +711,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const current = stateRef.current;
     const ordered = current.photos.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     if (!ordered.length) { onNotice?.("墙上还没有照片。"); return; }
-    const slots = buildTemplateSlots(templateId, ordered.length, templateText, templateFill);
+    const slots = buildTemplateSlots(templateId, ordered.length, undefined, templateFill);
     if (!slots.length) return;
     pushHistory(current);
     commitPhotos(current.photos.map(photo => {
@@ -727,7 +726,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     try { window.localStorage.setItem(PHOTO_WALL_ACTIVE_TEMPLATE_KEY, templateId); } catch { /* current placements remain saved */ }
     onNotice?.("已按模板重新摆放；新照片也会沿用这个摆放轨迹。");
     setWallView("edit");
-  }, [commitPhotos, onNotice, templateText, pushHistory, templateFill]);
+  }, [commitPhotos, onNotice, pushHistory, templateFill]);
 
   /** 将当前墙面坐标保存为可重复使用的自定义模板。 */
   const saveCurrentLayoutAsTemplate = useCallback(() => {
@@ -954,7 +953,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     if (explicitTemplate) {
       // 新照片加入后按总数重新计算整套骨架；只给新照片分配尾槽会让形状越长越缺边。
       const ordered = combined.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-      const slots = buildTemplateSlots(activeTemplateId, ordered.length, templateText, templateFill);
+      const slots = buildTemplateSlots(activeTemplateId, ordered.length, undefined, templateFill);
       const slotById = new Map(ordered.map((item, index) => [item.id, { slot: slots[index], z: index + 1 }]));
       const rearranged = combined.map(item => {
         const arrangement = slotById.get(item.id);
@@ -972,7 +971,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       persist({ ...current, photos: [placed, ...current.photos.filter(item => item.id !== photo.id)] });
     }
     setSelectedPhotoId(photo.id);
-  }, [persist, activeTemplateId, templateText, placementAnchor, templateFill, pushHistory]);
+  }, [persist, activeTemplateId, placementAnchor, templateFill, pushHistory]);
 
   const openChatPicker = async () => {
     setShowAddMenu(false);
@@ -1048,7 +1047,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         // 保持模板完整性：每次批量加入照片都按新总数重排整套骨架，避免只扩展半边。
         const combined = [...created, ...current.photos];
         const ordered = combined.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-        const slots = buildTemplateSlots(activeTemplateId, ordered.length, templateText, templateFill);
+        const slots = buildTemplateSlots(activeTemplateId, ordered.length, undefined, templateFill);
         const slotById = new Map(ordered.map((item, index) => [item.id, { slot: slots[index], z: index + 1 }]));
         const rearranged = combined.map(item => {
           const arrangement = slotById.get(item.id);
@@ -1059,7 +1058,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         persist({ ...current, photos: rearranged });
       } else {
         const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
-        const slots = buildTemplateSlots(activeTemplateId, current.photos.length + created.length, templateText, templateFill);
+        const slots = buildTemplateSlots(activeTemplateId, current.photos.length + created.length, undefined, templateFill);
         const placedCreated = created.map((photo, index) => {
           const slot = slots[current.photos.length + index] ?? fallbackPlacement(current.photos.length + index);
           return { ...photo, placement: { ...slot, z: maxZ + index + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } };
