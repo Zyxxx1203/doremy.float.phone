@@ -9,7 +9,7 @@ import { createOrGetSession, loadChatContacts, loadChatMessages, loadChatSession
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { resolveVoiceConfig, synthesizeSpeech } from "@/lib/tts-service";
 import { resolveUserIdentity } from "@/lib/settings-storage";
-import { loadVideoAnalysisSettings } from "@/lib/video-analysis-settings";
+import { loadVideoAnalysisSettings, saveVideoAnalysisSettings, type VideoAnalysisSettings } from "@/lib/video-analysis-settings";
 import { formatTranscriptTime, parseVideoTranscript, type VideoTranscriptSegment } from "@/lib/video-transcript";
 import { DanmakuLayer } from "@/components/watch/danmaku-layer";
 import { captureScreenshot, hasScreenshotBridge } from "@/lib/screenshot";
@@ -229,6 +229,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [transcribing, setTranscribing] = useState(false);
   const [wholeVideoBusy, setWholeVideoBusy] = useState(false);
   const [wholeVideoProgress, setWholeVideoProgress] = useState("");
+  const [videoAnalysisSettings, setVideoAnalysisSettings] = useState<VideoAnalysisSettings>(() => loadVideoAnalysisSettings());
+  const [videoModelOptions, setVideoModelOptions] = useState<string[]>([]);
+  const [videoModelBusy, setVideoModelBusy] = useState(false);
+  const [videoModelTestResult, setVideoModelTestResult] = useState("");
   const localVideoFileRef = useRef<File | null>(null);
   const wholeVideoAbortRef = useRef<AbortController | null>(null);
 
@@ -411,6 +415,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     });
   }, []);
   useEffect(() => { saveSettings(settings); }, [settings]);
+  useEffect(() => { saveVideoAnalysisSettings(videoAnalysisSettings); }, [videoAnalysisSettings]);
   useEffect(() => {
     const handleAppBack = (event: Event) => {
       const detail = (event as CustomEvent<{ handled?: boolean }>).detail;
@@ -474,7 +479,57 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     try { screen.orientation?.unlock?.(); } catch { /* orientation lock is optional */ }
   }, []);
 
+
   const patchSettings = (patch: Partial<WatchSettings>) => setSettings(current => ({ ...current, ...patch }));
+  const patchVideoAnalysisSettings = (patch: Partial<VideoAnalysisSettings>) => {
+    setVideoAnalysisSettings(current => {
+      const next = { ...current, ...patch };
+      if (patch.provider && patch.provider !== current.provider) {
+        const defaults: Record<VideoAnalysisSettings["provider"], { baseUrl: string; model: string }> = {
+          gemini: { baseUrl: "https://generativelanguage.googleapis.com", model: "gemini-2.5-flash" },
+          ark: { baseUrl: "https://ark.cn-beijing.volces.com/api/v3", model: "doubao-seed-1-6-vision-250815" },
+          "openai-compatible": { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" },
+          anthropic: { baseUrl: "https://api.anthropic.com", model: "claude-3-7-sonnet-latest" },
+          twelvelabs: { baseUrl: "https://api.twelvelabs.io/v1.3", model: "pegasus1.2" },
+        };
+        next.baseUrl = defaults[patch.provider].baseUrl;
+        next.model = defaults[patch.provider].model;
+        setVideoModelOptions([]);
+        setVideoModelTestResult("");
+      }
+      return next;
+    });
+  };
+  const fetchVideoModels = async () => {
+    const cfg = videoAnalysisSettings;
+    const root = cfg.baseUrl.trim().replace(/\/+$/, "");
+    if (!root) { setVideoModelTestResult("请先填写服务地址。"); return; }
+    setVideoModelBusy(true);
+    setVideoModelTestResult("");
+    try {
+      let endpoint = "";
+      const headers: Record<string, string> = {};
+      if (cfg.provider === "gemini") {
+        endpoint = root + "/v1beta/models?key=" + encodeURIComponent(cfg.apiKey.trim());
+      } else if (cfg.provider === "anthropic") {
+        endpoint = root + "/v1/models";
+        if (cfg.apiKey.trim()) { headers["x-api-key"] = cfg.apiKey.trim(); headers["anthropic-version"] = "2023-06-01"; }
+      } else {
+        endpoint = root + "/models";
+        if (cfg.apiKey.trim()) headers.Authorization = "Bearer " + cfg.apiKey.trim();
+      }
+      const response = await fetch(endpoint, { headers, signal: AbortSignal.timeout(12000) });
+      const payload = await response.json().catch(() => null) as { models?: Array<{ name?: string; id?: string }>; data?: Array<{ id?: string; name?: string }>; error?: { message?: string } } | null;
+      if (!response.ok) throw new Error(payload?.error?.message || ("HTTP " + response.status));
+      const models = cfg.provider === "gemini"
+        ? (payload?.models || []).map(item => (item.name || "").replace(/^models\//, "")).filter(Boolean)
+        : (payload?.data || payload?.models || []).map(item => item.id || item.name || "").filter(Boolean);
+      setVideoModelOptions([...new Set(models)]);
+      setVideoModelTestResult(models.length ? ("连接成功，获取到 " + models.length + " 个模型。") : "接口可访问，但没有识别到模型列表；仍可手动填写模型 ID。");
+    } catch (error) {
+      setVideoModelTestResult("连接测试失败：" + (error instanceof Error ? error.message : String(error)) + "。若为 CORS/Failed to fetch，服务端可能未允许网页跨域访问。");
+    } finally { setVideoModelBusy(false); }
+  };
 
   const captureCurrentFrame = async () => {
     const video=playerRef.current?.querySelector("video");
@@ -1091,7 +1146,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         {target?.nativeVideo ? (
           <video key={target.nativeVideoUrl || target.url} src={target.nativeVideoUrl || target.url} controls playsInline onPlay={() => setMediaPaused(false)} onPause={() => setMediaPaused(true)} className={fullScreen ? "h-full w-full object-contain bg-black" : "aspect-video w-full bg-black"} onEnded={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } }} onError={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } onNotice?.("视频无法在当前 WebView 播放，可能是格式、签名有效期或平台防盗链限制。"); }} />
         ) : target?.embedUrl ? (
-          <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className={fullScreen ? "h-full w-full border-0" : "aspect-video w-full border-0"} />
+          <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerPolicy="strict-origin-when-cross-origin" className={fullScreen ? "h-full w-full border-0" : "aspect-video w-full border-0"} />
         ) : (
           <div className="flex aspect-video flex-col items-center justify-center px-6 text-center">
             <div className="mt-5 font-serif text-lg tracking-wide text-[#efe2d0]">{target ? `${target.platformName}需要外部打开` : "把想看的放上屏幕"}</div>
@@ -1114,29 +1169,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </a>
         )}
 
-        {fullScreen && target && <div className="watch-companion-overlay pointer-events-none absolute left-2 right-2 top-[max(48px,calc(env(safe-area-inset-top)+12px))] z-30">
-          {companionCollapsed ? <button type="button" onClick={() => setCompanionCollapsed(false)} className="watch-companion-pill pointer-events-auto flex max-w-full items-center gap-2 rounded-full border border-white/25 bg-black/65 px-3 py-2 text-left text-white shadow-lg backdrop-blur-xl">
-            {character?.avatar ? <img src={character.avatar} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover"/> : <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#8b6b57] text-xs">{character?.name.slice(0,1) || "TA"}</span>}
-            <span className="min-w-0 flex-1 truncate text-xs">{latestComment?.text || "陪看已就绪"}</span><ChevronDown size={14} className="shrink-0"/>
-          </button> : <div className="watch-companion-card pointer-events-auto max-w-[min(540px,100%)] rounded-2xl border border-white/20 bg-black/62 p-2.5 text-white shadow-xl backdrop-blur-xl">
-            <div className="flex min-w-0 items-center gap-2">
-              {character?.avatar ? <img src={character.avatar} alt="" className="h-9 w-9 shrink-0 rounded-full border border-white/20 object-cover"/> : <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#8b6b57] text-sm">{character?.name.slice(0,1) || "TA"}</span>}
-              <div className="min-w-0 flex-1"><p className="truncate text-[10px] text-white/65">{character?.name || "TA"} · 陪你看</p><p className="mt-0.5 line-clamp-2 break-words text-xs leading-5">{latestComment ? latestComment.text : "开始播放后，TA 会把即时反应变成弹幕。"}</p></div>
-              <button type="button" onClick={() => { setCompanionCollapsed(true); setShowQuickChat(false); }} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/10" aria-label="收起陪看悬浮窗"><ChevronDown size={15}/></button>
-            </div>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <button type="button" onClick={() => actTogether("我们先停一下，聊聊刚才这一幕。")} disabled={!character} className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1.5 text-[10px] disabled:opacity-40">暂停聊聊</button>
-              <button type="button" onClick={() => actTogether("我想和你分享一下刚才这一幕带给我的感受。")} disabled={!character} className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1.5 text-[10px] disabled:opacity-40">说说感受</button>
-              <button type="button" onClick={() => actTogether("只根据已经出现的画面聊聊眼前线索，不推测或透露后续剧情。")} disabled={!character} className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1.5 text-[10px] disabled:opacity-40">聊聊线索</button>
-              <button type="button" onClick={() => setShowQuickChat(value => !value)} disabled={!character} className="rounded-full bg-[#e6c49d] px-2.5 py-1.5 text-[10px] text-[#302218] disabled:opacity-40">发弹幕 / 交流</button>
-              <button type="button" onClick={() => { setWatching(value => !value); if (!watching) void generateComment(false); }} disabled={!character} className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1.5 text-[10px] disabled:opacity-40">{watching ? "暂停自动搭话" : "开始自动陪看"}</button>
-            </div>
-            {showQuickChat && <form onSubmit={event => { event.preventDefault(); submitDiscussion(); }} className="mt-2 flex items-center gap-2 border-t border-white/15 pt-2">
-              <input autoComplete="off" value={discussionDraft} onChange={event => setDiscussionDraft(event.target.value.slice(0,800))} placeholder="发一条只属于你们的弹幕…" className="min-w-0 flex-1 rounded-full border border-white/15 bg-white/10 px-3 py-2 text-xs text-white outline-none placeholder:text-white/45"/>
-              <button type="submit" disabled={!discussionDraft.trim()} className="shrink-0 rounded-full bg-[#e6c49d] px-3 py-2 text-xs text-[#302218] disabled:opacity-40">发送</button>
-            </form>}
-          </div>}
-        </div>}
         <DanmakuLayer enabled={Boolean(target?.embedUrl || target?.nativeVideo)} paused={mediaPaused} items={danmakuItems} userColor={settings.danmakuColor} />
         <div className="absolute right-2 top-2 z-20 flex gap-1">
           <button type="button" onClick={() => void captureCurrentFrame()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/55 text-white/90 backdrop-blur transition active:scale-95" aria-label="截取当前画面并用于理解" title="截取当前画面"><ImagePlus size={14}/></button>
@@ -1241,7 +1273,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             {target?.platformName === "本地视频" && localVideoFileRef.current && <div className="flex min-w-0 basis-full flex-wrap items-center gap-2 rounded-xl border border-[#c99a78]/30 bg-white/[.04] px-3 py-2">
               <div className="min-w-0 flex-1">
                 <div className="text-[11px] font-semibold text-[#e6c49d]">专注模式 · 完整视频理解</div>
-                <div className="mt-0.5 text-[10px] leading-4 text-[#a9937e]">把整个本地视频发送给 Gemini，而不只是当前截图；请确认允许将视频交给 Google 处理。</div>
+                <div className="mt-0.5 text-[10px] leading-4 text-[#a9937e]">将本地视频交给当前配置的视频理解服务处理。Gemini、火山方舟、TwelveLabs 按各自接口上传视频；OpenAI 兼容 / Claude 配置按关键帧方案抽取画面。继续即表示你允许向所选第三方服务发送该视频，请勿上传不愿分享的私人内容。</div>
                 {wholeVideoProgress && <div role="status" aria-live="polite" className="mt-1 text-[10px] text-[#e6c49d]">{wholeVideoProgress}</div>}
               </div>
               <button type="button" onClick={() => { if (wholeVideoBusy) wholeVideoAbortRef.current?.abort(); else void analyzeWholeLocalVideo(); }} disabled={!wholeVideoBusy && !character} className="shrink-0 rounded-full border border-[#c99a78]/60 bg-[#c99a78] px-3 py-2 text-[11px] font-semibold text-[#2a1f16] disabled:opacity-40">{wholeVideoBusy ? "取消分析" : "让角色看完整视频"}</button>
@@ -1306,6 +1338,34 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               {DANMAKU_COLORS.map(color => <button key={color} type="button" aria-label={color} onClick={() => patchSettings({ danmakuColor: color })} className={"h-6 w-6 rounded-full border " + ((settings.danmakuColor || "#e6c49d").toLowerCase() === color.toLowerCase() ? "border-white ring-2 ring-white/30" : "border-white/20")} style={{ background: color }} />)}
               <label className="relative h-6 w-8 cursor-pointer overflow-hidden rounded border border-white/20" aria-label="自定义弹幕颜色"><input type="color" value={settings.danmakuColor} onChange={event => patchSettings({ danmakuColor: event.target.value })} className="absolute -left-1 -top-1 h-10 w-12 cursor-pointer border-0 bg-transparent p-0" /></label>
             </div>
+          <section className="mt-4 border-t border-white/10 pt-3">
+            <h3 className="font-serif text-sm text-[#e8c39a]">视频理解模型</h3>
+            <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">独立于角色聊天模型。可手动输入 API 地址和模型 ID；刷新列表依赖服务商允许网页跨域访问。</p>
+            <label className="mt-2 block text-[11px] text-[#9c9086]">服务商
+              <select value={videoAnalysisSettings.provider} onChange={event => patchVideoAnalysisSettings({provider:event.target.value as VideoAnalysisSettings["provider"]})} className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none">
+                <option value="gemini">Google Gemini · 完整视频</option><option value="ark">火山方舟 / 豆包 · 完整视频</option><option value="twelvelabs">TwelveLabs · 视频理解</option><option value="openai-compatible">OpenAI 兼容 · 关键帧</option><option value="anthropic">Anthropic Claude · 关键帧</option>
+              </select>
+            </label>
+            <label className="mt-2 block text-[11px] text-[#9c9086]">视频模型 API URL
+              <input type="url" value={videoAnalysisSettings.baseUrl} onChange={event => patchVideoAnalysisSettings({baseUrl:event.target.value})} placeholder="https://api.example.com" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none placeholder:text-[#6f665e]"/>
+            </label>
+            <label className="mt-2 block text-[11px] text-[#9c9086]">API Key
+              <input type="password" autoComplete="off" value={videoAnalysisSettings.apiKey} onChange={event => patchVideoAnalysisSettings({apiKey:event.target.value})} placeholder="仅保存在此设备" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none placeholder:text-[#6f665e]"/>
+            </label>
+            <label className="mt-2 block text-[11px] text-[#9c9086]">模型 ID（可编辑 / 选择）
+              <input list="watch-video-model-options" value={videoAnalysisSettings.model} onChange={event => patchVideoAnalysisSettings({model:event.target.value})} placeholder="输入或从刷新后的列表选择" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none placeholder:text-[#6f665e]"/>
+              <datalist id="watch-video-model-options">{videoModelOptions.map(model => <option key={model} value={model}/>)}</datalist>
+            </label>
+            <div className="mt-2 flex gap-2">
+              <button type="button" disabled={videoModelBusy} onClick={() => void fetchVideoModels()} className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#d8c9b6] disabled:opacity-40">{videoModelBusy ? "正在连接…" : "刷新模型列表"}</button>
+              <button type="button" disabled={videoModelBusy} onClick={() => void fetchVideoModels()} className="flex-1 rounded-lg bg-[#c99a6a] px-3 py-2 text-[11px] font-medium text-[#2a1f16] disabled:opacity-40">测试 API 连接</button>
+            </div>
+            {videoModelTestResult && <p role="status" aria-live="polite" className="mt-2 break-words text-[10px] leading-5 text-[#e6c49d]">{videoModelTestResult}</p>}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <label className="text-[10px] text-[#9c9086]">视频上限（MB）<input type="number" min={50} max={2048} value={videoAnalysisSettings.maxFileSizeMb} onChange={event => patchVideoAnalysisSettings({maxFileSizeMb:Number(event.target.value)})} className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-2.5 py-2 text-xs text-[#efe2d0]"/></label>
+              <label className="text-[10px] text-[#9c9086]">关键帧数量（4–24）<input type="number" min={4} max={24} value={videoAnalysisSettings.frameCount} onChange={event => patchVideoAnalysisSettings({frameCount:Number(event.target.value)})} className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-2.5 py-2 text-xs text-[#efe2d0]"/></label>
+            </div>
+          </section>
           <p className="mt-3 text-[10px] leading-5 text-[#7d7268]">角色发言使用你已配置的聊天模型与语音绑定。平台自带的字幕/弹幕开关无法跨站控制，这里的开关只作用于「角色陪看」这一层。</p>
       </section>
     </div>}
