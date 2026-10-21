@@ -398,7 +398,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [historyMode, setHistoryMode] = useState<"current" | "global">("current");
   const [globalWatchRecords, setGlobalWatchRecords] = useState<GlobalWatchRecord[]>(() => loadGlobalWatchRecords());
   const [fullScreen, setFullScreen] = useState(false);
-  const [showControlCapsule, setShowControlCapsule] = useState(true);
+  const [showControlCapsule, setShowControlCapsule] = useState(false);
   const playerRef = useRef<HTMLDivElement>(null);
   const watchRootRef = useRef<HTMLDivElement>(null);
   const nativeFullscreenActiveRef = useRef(false);
@@ -1541,13 +1541,20 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       <div className="absolute -right-20 top-1/3 h-80 w-80 rounded-full opacity-25 blur-3xl" style={{ background: "radial-gradient(circle, #c99a78 0%, transparent 70%)" }} />
     </div>
 
-    <header className="watch-topbar relative z-[1010] flex shrink-0 items-center gap-2 px-3 pb-2 text-[#4e3a2b]" style={{ paddingTop: "max(8px, var(--page-header-safe-top, 48px))" }}>
-      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onClose(); }} className="grid h-9 w-9 shrink-0 place-items-center border border-[#b89979]/40 bg-[#fffaf2]/75 text-[#6d4e47]" aria-label="返回"><ArrowLeft size={16}/></button>
-      <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full border border-[#d6b18c]/45 bg-[#6d5141] text-xs text-[#f1dfc9]">{character?.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character?.name.slice(0,1) ?? "TA"}</span>
-      <div className="flex h-8 min-w-[54px] flex-1 items-center justify-center gap-[3px]" aria-label="双人同步电波">{Array.from({length:13},(_,i)=><span key={i} className="w-[2px] rounded-full bg-[#c99a78]" style={{height:(5+((i*7+3)%13))+"px",opacity:watching?0.95:0.45,animation:watching?"watchWave 900ms ease-in-out "+(i*55)+"ms infinite alternate":undefined}}/>)}</div>
-      <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full border border-[#d6b18c]/45 bg-[#6d5141] text-xs text-[#f1dfc9]">{playerIdentity?.avatarUrl ? <img src={playerIdentity.avatarUrl} alt="" className="h-full w-full object-cover"/> : (playerIdentity?.name || "我").slice(0,1)}</span>
-      <button type="button" onClick={() => setShowSettings(true)} className="grid h-9 w-9 shrink-0 place-items-center border border-[#b89979]/40 bg-[#fffaf2]/75 text-[#6d4e47]" aria-label="观影设置"><Settings2 size={16}/></button>
+    <header className="watch-topbar relative z-[1010] flex shrink-0 items-center gap-3 px-3 pb-2 text-[#5b4032]" style={{ paddingTop: "max(8px, var(--page-header-safe-top, 48px))" }}>
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onClose(); }} className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#b89979]/45 bg-[#fffaf2]/90 text-[#765646] shadow-sm" aria-label="返回"><ArrowLeft size={17}/></button>
+      <div className="min-w-0 flex-1"><div className="font-serif text-[17px] leading-5 tracking-wide">一起看</div><div className="mt-0.5 text-[9px] tracking-[.22em] text-[#9b7b62]">WATCH TOGETHER</div></div>
+      <button type="button" onClick={() => setShowSettings(true)} className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#b89979]/45 bg-[#fffaf2]/90 text-[#765646] shadow-sm" aria-label="观影设置"><Settings2 size={16}/></button>
     </header>
+
+    <nav className="watch-control-capsule mx-auto flex w-[calc(100%-24px)] max-w-3xl items-center justify-around gap-1.5 px-2 py-1.5" data-collapsed={showControlCapsule ? "false" : "true"} aria-label="一起看功能入口">
+      <span className="watch-capsule-collapsed-label" aria-hidden={showControlCapsule}>陪看工具</span>
+      <button type="button" onClick={() => setShowGlobalCompanion(true)} className="watch-capsule-button"><span>◉</span><small>全局陪看</small></button>
+      <button type="button" onClick={() => setShowVideoSourcePanel(value => !value)} className="watch-capsule-button"><ExternalLink size={17}/><small>选择视频</small></button>
+      <button type="button" onClick={() => setShowMemoryRecords(true)} className="watch-capsule-button"><FileText size={17}/><small>观看记录</small></button>
+      <button type="button" onClick={() => setShowSettings(true)} className="watch-capsule-button"><Settings2 size={17}/><small>设置</small></button>
+      <button type="button" onClick={() => setShowControlCapsule(value => !value)} className="watch-capsule-toggle" aria-label={showControlCapsule ? "收起入口栏" : "展开入口栏"}><ChevronDown size={15} className={showControlCapsule ? "" : "rotate-180"}/></button>
+    </nav>
 
     <main className="watch-together-mainmain relative z-[1001] min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-8" style={{backgroundImage:"radial-gradient(ellipse at 50% 0%,rgba(255,251,242,.72),transparent 62%)"}}>
       <div className="watch-room-title mx-auto mb-3 w-full max-w-3xl px-1 pt-1"><div className="relative isolate overflow-hidden rounded-2xl border border-[#b99b80]/30 bg-[#fffaf2]/80 px-3 py-2 shadow-[0_8px_22px_rgba(96,67,43,.07)] backdrop-blur"><div className="relative z-10 flex items-center gap-3 rounded-2xl border border-[#d6b18c]/15 bg-white/[.035] px-3 py-3"><div className="flex min-w-0 flex-1 items-center gap-2"><span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden border border-[#d6b18c]/45 bg-[#e6d4bf] text-xs text-[#694e43]">{character?.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character?.name.slice(0,1) ?? "TA"}</span><span className="min-w-0"><span className="block truncate text-xs text-[#f1dfc9]">{character?.name ?? "TA"}</span><span className="block text-[10px] text-[#a9937e]">{watching ? "正在陪你看" : "等你一起看"}</span></span></div><div className="flex h-10 min-w-[76px] flex-1 items-center justify-center gap-[3px]" aria-label="双人同步电波">{Array.from({length:15},(_,i)=><span key={i} className="w-[2px] rounded-full bg-[#c99a78]" style={{height:`${5+((i*7+3)%13)}px`,opacity:watching?0.95:0.45,animation:watching?`watchWave 900ms ease-in-out ${i*55}ms infinite alternate`:undefined}}/>)}</div><div className="flex min-w-0 flex-1 items-center justify-end gap-2 text-right"><span className="min-w-0"><span className="block truncate text-xs text-[#f1dfc9]">{playerIdentity?.name || "我"}</span><span className="block text-[10px] text-[#a9937e]">和你同频</span></span><span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden border border-[#d6b18c]/45 bg-[#6d5141] font-serif text-sm text-[#f1dfc9]">{playerIdentity?.avatarUrl ? <img src={playerIdentity.avatarUrl} alt="" className="h-full w-full object-cover"/> : (playerIdentity?.name || "我").slice(0, 1)}</span></div></div></div></div>
@@ -1562,9 +1569,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className={fullScreen ? "h-full w-full border-0" : "aspect-video w-full border-0"} />
         ) : (
           <div className="flex aspect-video flex-col items-center justify-center px-6 text-center">
-            <div className="mt-5 font-serif text-lg tracking-wide text-[#efe2d0]">{target ? `${target.platformName}需要外部打开` : "把想看的放上屏幕"}</div>
+            <div className="mt-5 font-serif text-lg tracking-wide text-[#efe2d0]">{target ? `${target.platformName}需要外部打开` : "还没有选择视频"}</div>
             <p className="mt-2 max-w-xs text-[11px] leading-6 text-[#9c9086]">
-              {target ? "目前无法在小手机内播放这个链接。若原生解析失败，可尝试打开原视频或选择本地视频；角色只有在成功取得字幕/脚本后才能理解视频内容，不会假装看到了画面。" : "粘贴一个视频链接，或选择本地视频，让你们在同一个页面里边看边聊。"}
+              {target ? "目前无法在小手机内播放这个链接。若原生解析失败，可尝试打开原视频或选择本地视频；角色只有在成功取得字幕/脚本后才能理解视频内容，不会假装看到了画面。" : "从顶部的「选择视频」入口添加视频，之后就能在这里边看边聊。"}
             </p>
             {target && <button onClick={() => openExternalUrl(target.url)} className="mt-5 flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-4 py-2 text-xs text-[#e6d8c4] transition active:scale-95"><ExternalLink size={13}/>打开原视频</button>}
           </div>
@@ -1582,12 +1589,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </a>
         )}
 
-        {/* 视频来源入口放在屏幕内，避免链接表单挤占聊天室空间。 */}
-        <div className="pointer-events-auto absolute bottom-2 left-2 z-[61]">
-          <button type="button" onClick={() => setShowVideoSourcePanel(value => !value)} className="flex items-center gap-1.5 rounded-full border border-white/25 bg-black/65 px-3 py-2 text-[11px] font-medium text-white shadow-lg backdrop-blur-md active:scale-95" aria-expanded={showVideoSourcePanel}>
-            <ExternalLink size={13}/>{target ? "换视频" : "放上屏幕"}
-          </button>
-        </div>
         {/* 弹幕已停用：优先保证聊天室交流体验。 */}
         <div className="watch-player-actions pointer-events-auto absolute right-2 top-2 z-[60] flex gap-1">
           <button type="button" onClick={() => void captureCurrentFrame()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/55 text-white/90 backdrop-blur transition active:scale-95" aria-label="截取当前画面并用于理解" title="截取当前画面"><ImagePlus size={14}/></button>
@@ -1605,7 +1606,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         <div className="mb-2 flex items-center justify-between gap-3"><span className="text-xs font-semibold text-[#735440]">把视频放上屏幕</span><button type="button" onClick={() => setShowVideoSourcePanel(false)} className="rounded-full border border-[#b89979]/45 bg-white/80 px-3 py-1.5 text-xs text-[#735440]">收起</button></div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input value={urlInput} onPointerDown={event => event.stopPropagation()} onTouchStart={event => event.stopPropagation()} onChange={event => setUrlInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter") openVideo(); }} placeholder="粘贴视频链接；短视频分享链接不保证能自动内嵌" className="min-w-0 flex-1 rounded-2xl border border-[#dac6ad] bg-white/90 px-4 py-3.5 text-sm text-[#554437] outline-none placeholder:text-[#a09383] focus:border-[#b88768] focus:ring-2 focus:ring-[#c99a6a]/15" />
-          <button onClick={openVideo} className="rounded-2xl px-5 py-3.5 text-sm font-semibold tracking-wide text-[#2a1f16] shadow-sm transition hover:brightness-[1.02] active:scale-[.98]" style={{ background: "linear-gradient(135deg,#f0d0a8,#c99a6a)" }}>放上屏幕</button>
+          <button onClick={openVideo} className="rounded-2xl px-5 py-3.5 text-sm font-semibold tracking-wide text-[#2a1f16] shadow-sm transition hover:brightness-[1.02] active:scale-[.98]" style={{ background: "linear-gradient(135deg,#f0d0a8,#c99a6a)" }}>开始播放</button>
           <button type="button" onClick={() => videoFileInputRef.current?.click()} className="rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">选择本地视频</button>
           <button type="button" onClick={() => transcriptFileInputRef.current?.click()} className="rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">导入脚本 / 字幕</button>
         </div>
@@ -1669,13 +1670,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         </details>
       </div>
 
-      <nav className="watch-control-capsule mx-auto flex w-full max-w-3xl items-center justify-around gap-1.5 px-2 py-2" data-collapsed={showControlCapsule ? "false" : "true"} aria-label="一起看功能入口">
-        <button type="button" onClick={() => setShowGlobalCompanion(true)} className="watch-capsule-button"><span>◉</span><small>全局入口</small></button>
-        <button type="button" onClick={() => setShowVideoSourcePanel(value => !value)} className="watch-capsule-button"><ExternalLink size={17}/><small>上传视频</small></button>
-        <button type="button" onClick={() => setShowMemoryRecords(true)} className="watch-capsule-button"><FileText size={17}/><small>观看记录</small></button>
-        <button type="button" onClick={() => setShowSettings(true)} className="watch-capsule-button"><Settings2 size={17}/><small>设置</small></button>
-        <button type="button" onClick={() => setShowControlCapsule(value => !value)} className="watch-capsule-toggle" aria-label={showControlCapsule ? "收起入口栏" : "展开入口栏"}><ChevronDown size={16} className={showControlCapsule ? "" : "rotate-180"}/></button>
-      </nav>
+>
       {/* 角色在屏幕下方轻声说话 */}
       <section className="watch-interaction-panel mx-auto mt-4 w-full max-w-3xl">
         <div data-part="card" className="watch-room-card relative isolate overflow-hidden rounded-[28px] border border-[#d4a575]/25 bg-gradient-to-br from-[#49372b]/95 via-[#2d231d]/95 to-[#1c1714]/98 p-4 shadow-[0_18px_46px_rgba(57,37,24,.24),inset_0_1px_0_rgba(255,224,184,.12)] backdrop-blur-xl sm:p-5">
@@ -1689,7 +1684,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </div>
           </div>
 
-            <div data-part="composer" className="watch-discussion-composer mt-3 border-t border-[#d6b18c]/20 pt-3"><textarea value={discussionDraft} onPointerDown={event=>event.stopPropagation()} onTouchStart={event=>event.stopPropagation()} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} maxLength={800} rows={2} placeholder={target ? "写下你对这一幕的看法……" : "先放上视频，再写下你对这一幕的看法……"} className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-black/20 p-3 text-sm leading-6 text-[#efe2d0] outline-none placeholder:text-[#907d6c] focus:border-[#c99a78]/60 focus:ring-2 focus:ring-[#c99a78]/10"/><div className="mt-2 flex justify-end"><button type="button" onClick={() => submitDiscussion()} disabled={!target||!discussionDraft.trim()} className="inline-flex items-center rounded-full border border-[#c99a78]/60 bg-[#c99a78] px-4 py-2.5 text-xs font-medium text-[#2a1f16] shadow-sm transition hover:brightness-105 active:scale-[.98] disabled:opacity-40"><MessageCircle size={13} className="mr-1 inline"/>发送</button></div></div>
+            <div data-part="composer" className="watch-discussion-composer mt-3 border-t border-[#d6b18c]/20 pt-3"><textarea value={discussionDraft} onPointerDown={event=>event.stopPropagation()} onTouchStart={event=>event.stopPropagation()} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} maxLength={800} rows={2} placeholder={target ? "写下你对这一幕的看法……" : "先从顶部选择视频，再聊聊这一幕……"} className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-black/20 p-3 text-sm leading-6 text-[#efe2d0] outline-none placeholder:text-[#907d6c] focus:border-[#c99a78]/60 focus:ring-2 focus:ring-[#c99a78]/10"/><div className="mt-2 flex justify-end"><button type="button" onClick={() => submitDiscussion()} disabled={!target||!discussionDraft.trim()} className="inline-flex items-center rounded-full border border-[#c99a78]/60 bg-[#c99a78] px-4 py-2.5 text-xs font-medium text-[#2a1f16] shadow-sm transition hover:brightness-105 active:scale-[.98] disabled:opacity-40"><MessageCircle size={13} className="mr-1 inline"/>发送</button></div></div>
           <div data-part="actions" className="mt-3 flex flex-wrap items-center gap-2">
             <button onClick={() => void generateComment(true)} disabled={!target || !character || busy} className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs text-[#2a1f16] transition active:scale-95 disabled:opacity-40" style={{ background: "linear-gradient(135deg,#e8c39a,#c99a6a)" }}>
               {busy ? <LoaderCircle size={13} className="animate-spin"/> : <MessageCircle size={13}/>}让 TA 即时回应
