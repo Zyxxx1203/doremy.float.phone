@@ -605,6 +605,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         kvSet(cacheKey, JSON.stringify(Object.fromEntries(entries)));
       } catch { /* Cache is optional; a successful lookup still works for this session. */ }
     } catch (error) {
+      videoBackgroundRequestedRef.current.delete(url);
       console.info("[TogetherWatch] 视频背景搜索未完成，继续使用截图和聊天上下文。", error);
     } finally {
       window.clearTimeout(timeout);
