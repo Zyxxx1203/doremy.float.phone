@@ -267,6 +267,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     panRef.current = { x, y };
     setPanVersion(value => value + 1);
   }, []);
+  /** 在视口真正测量出有效尺寸、算出正确的居中 pan 之前，画布先不渲染；
+   * 避免用初始的 pan={0,0}/zoom=100% 错误地渲染出第一帧（内容可能落在视口外）。 */
+  const [viewportReady, setViewportReady] = useState(false);
+  /** 整个组件生命周期只在真正第一次测量到视口尺寸时居中一次；
+   * 之后切换 wallView 或扩容都不应该把用户已经平移/缩放到的视角弹飞。 */
+  const hasCenteredRef = useRef(false);
   /** 世界尺寸来自持久化状态：扩容后照片比例不变，只换分母。 */
   const world = wallWorldOf(state);
   const [wallCanvasMode, setWallCanvasMode] = useState<"view" | "move" | "doodle">("view");
@@ -320,7 +326,6 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     if (wallView !== "edit" && wallView !== "panorama") return;
     const viewport = panoramaViewportRef.current;
     if (!viewport) return;
-    let firstMeasure = true;
     const fitCanvas = () => {
       const width = viewport.clientWidth;
       const height = viewport.clientHeight;
@@ -328,13 +333,15 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const fit = Math.min(width / Math.max(1, world.width), height / Math.max(1, world.height)) * 100;
       const fittedZoom = Math.max(5, Math.min(180, Math.floor(fit)));
       panoramaMinZoomRef.current = fittedZoom;
-      if (firstMeasure) {
-        firstMeasure = false;
+      if (!hasCenteredRef.current) {
+        hasCenteredRef.current = true;
         panoramaZoomRef.current = fittedZoom;
         setPanoramaZoom(fittedZoom);
-        // 首次测量时把画布居中摆进视口，等价于旧版 margin:0 auto 的默认视觉效果。
+        // 只在整个组件生命周期里真正第一次测量到视口时居中一次，等价于旧版 margin:0 auto 的默认效果；
+        // 之后切 tab 或扩容重新触发这个 effect 都不会再把用户已经平移/缩放好的视角弹飞。
         const scale = fittedZoom / 100;
         applyPan((width - world.width * scale) / 2, (height - world.height * scale) / 2);
+        setViewportReady(true);
       } else if (panoramaZoomRef.current < fittedZoom) {
         panoramaZoomRef.current = fittedZoom;
         setPanoramaZoom(fittedZoom);
@@ -1480,6 +1487,13 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           className="relative min-h-0 flex-1 w-full overflow-hidden bg-[#e9dfd2]"
           style={{ touchAction: "none", overscrollBehavior: "contain" }}
         >
+          <div style={{ position: "absolute", top: 4, left: 4, zIndex: 999999999, background: "#fff", color: "#000", fontSize: 11, padding: "4px 6px", fontFamily: "monospace", border: "1px solid #f00", pointerEvents: "none", whiteSpace: "pre" }}>
+            {"DEBUG pan=" + Math.round(panRef.current.x) + "," + Math.round(panRef.current.y)
+              + " zoom=" + panoramaZoom
+              + " world=" + world.width + "x" + world.height
+              + " viewport=" + (panoramaViewportRef.current?.clientWidth ?? "?") + "x" + (panoramaViewportRef.current?.clientHeight ?? "?")
+              + " photos=" + visiblePhotos.length}
+          </div>
           <div
             className="absolute left-0 top-0"
             style={{
