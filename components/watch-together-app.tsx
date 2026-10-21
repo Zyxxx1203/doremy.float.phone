@@ -1557,7 +1557,26 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     </nav>
 
     <main className="watch-together-mainmain relative z-[1001] min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-8" style={{backgroundImage:"radial-gradient(ellipse at 50% 0%,rgba(255,251,242,.72),transparent 62%)"}}>
-      <div className="watch-room-title mx-auto mb-3 w-full max-w-3xl px-1 pt-1"><div className="relative isolate overflow-hidden rounded-2xl border border-[#b99b80]/30 bg-[#fffaf2]/80 px-3 py-2 shadow-[0_8px_22px_rgba(96,67,43,.07)] backdrop-blur"><div className="relative z-10 flex items-center gap-3 rounded-2xl border border-[#d6b18c]/15 bg-white/[.035] px-3 py-3"><div className="flex min-w-0 flex-1 items-center gap-2"><span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden border border-[#d6b18c]/45 bg-[#e6d4bf] text-xs text-[#694e43]">{character?.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character?.name.slice(0,1) ?? "TA"}</span><span className="min-w-0"><span className="block truncate text-xs text-[#f1dfc9]">{character?.name ?? "TA"}</span><span className="block text-[10px] text-[#a9937e]">{watching ? "正在陪你看" : "等你一起看"}</span></span></div><div className="flex h-10 min-w-[76px] flex-1 items-center justify-center gap-[3px]" aria-label="双人同步电波">{Array.from({length:15},(_,i)=><span key={i} className="w-[2px] rounded-full bg-[#c99a78]" style={{height:`${5+((i*7+3)%13)}px`,opacity:watching?0.95:0.45,animation:watching?`watchWave 900ms ease-in-out ${i*55}ms infinite alternate`:undefined}}/>)}</div><div className="flex min-w-0 flex-1 items-center justify-end gap-2 text-right"><span className="min-w-0"><span className="block truncate text-xs text-[#f1dfc9]">{playerIdentity?.name || "我"}</span><span className="block text-[10px] text-[#a9937e]">和你同频</span></span><span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden border border-[#d6b18c]/45 bg-[#6d5141] font-serif text-sm text-[#f1dfc9]">{playerIdentity?.avatarUrl ? <img src={playerIdentity.avatarUrl} alt="" className="h-full w-full object-cover"/> : (playerIdentity?.name || "我").slice(0, 1)}</span></div></div></div></div>
+      <div className="watch-room-title mx-auto w-full max-w-3xl px-1">
+        <div className="watch-sync-card relative overflow-hidden rounded-[20px] border border-[#c6a17e]/65 bg-[linear-gradient(120deg,#fffaf1_0%,#f7ead9_52%,#fff8ee_100%)] px-3 py-2.5 shadow-[0_7px_18px_rgba(91,62,40,.10),inset_0_1px_0_rgba(255,255,255,.95)]">
+          <div aria-hidden className="pointer-events-none absolute inset-y-0 left-1/2 w-28 -translate-x-1/2 opacity-40" style={{background:"radial-gradient(ellipse at center,rgba(208,164,123,.24),transparent 72%)"}}/>
+          <div className="relative flex items-center gap-2.5">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="watch-sync-avatar grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full border-[2px] border-[#fffaf1] bg-[#e5c9ab] text-sm text-[#6f4e3b] shadow-[0_0_0_1px_#c7a17e]">{character?.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character?.name.slice(0,1) ?? "TA"}</span>
+              <span className="min-w-0"><span className="block truncate font-serif text-[12px] text-[#5c4031]">{character?.name ?? "TA"}</span><span className="mt-0.5 block truncate text-[10px] text-[#a07a5c]">{watching ? "正在陪你看" : "等你一起看"}</span></span>
+            </div>
+            <div className="watch-sync-connection relative flex h-9 w-[72px] shrink-0 items-center justify-center gap-[3px]" aria-label="双人同步电波">
+              <span className="watch-sync-thread" aria-hidden/>
+              {Array.from({length:11},(_,i)=><span key={i} className="watch-sync-wave relative z-10 w-[3px] rounded-full bg-[#b98565]" style={{height:(4+((i*5+2)%12))+"px",opacity:watching?0.95:0.52,animation:watching?"watchWave 1100ms ease-in-out "+(i*65)+"ms infinite alternate":undefined}/>)}
+            </div>
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-2 text-right">
+              <span className="min-w-0"><span className="block truncate font-serif text-[12px] text-[#5c4031]">{playerIdentity?.name || "我"}</span><span className="mt-0.5 block truncate text-[10px] text-[#a07a5c]">与你同频</span></span>
+              <span className="watch-sync-avatar grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full border-[2px] border-[#fffaf1] bg-[#d8b69a] font-serif text-sm text-[#6f4e3b] shadow-[0_0_0_1px_#c7a17e]">{playerIdentity?.avatarUrl ? <img src={playerIdentity.avatarUrl} alt="" className="h-full w-full object-cover"/> : (playerIdentity?.name || "我").slice(0,1)}</span>
+            </div>
+          </div>
+          <div className="relative mt-2 flex items-center justify-center gap-1.5 text-[9px] tracking-[.12em] text-[#ad8a6d]"><span className="h-px w-6 bg-[#d9bea3]"/><span>{watching ? "NOW IN SYNC · 正在陪看" : "A LITTLE TIME TOGETHER · 一起度过一点时间"}</span><span className="h-px w-6 bg-[#d9bea3]"/></div>
+        </div>
+      </div>
       <section
         ref={playerRef}
         className="watch-player relative mx-auto w-full max-w-3xl min-h-0 overflow-hidden rounded-[26px] border border-white/10 bg-[#0d0b09]"
