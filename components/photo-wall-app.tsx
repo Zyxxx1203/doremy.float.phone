@@ -302,10 +302,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const currentMarginLeft = Math.max(0, (viewport.clientWidth - currentWidth) / 2);
     const nextWidth = currentWidth * ratio;
     const nextMarginLeft = Math.max(0, (viewport.clientWidth - nextWidth) / 2);
-    pendingScrollRef.current = {
+    const delta = {
       left: nextMarginLeft + (viewport.scrollLeft + anchorX - currentMarginLeft) * ratio - anchorX - viewport.scrollLeft,
       top: (viewport.scrollTop + anchorY) * ratio - anchorY - viewport.scrollTop,
     };
+    const pending = pendingScrollRef.current;
+    pendingScrollRef.current = pending ? { left: pending.left + delta.left, top: pending.top + delta.top } : delta;
   }, []);
   const [wallBackgroundUrl, setWallBackgroundUrl] = useState("");
   const wallBackgroundInputRef = useRef<HTMLInputElement>(null);
@@ -384,9 +386,18 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         applyZoom(nextZoom, { x: midpoint.x - rect.left, y: midpoint.y - rect.top });
         return;
       }
-      // 单指不再移动画布：单指只执行当前工具（点按、拖照片、自由涂鸦）。
-      // 画布平移/缩放统一交给双指手势，避免拖照片与拖画布抢同一根手指。
-      if (supportsPointerEvents && pointers.size === 1 && !pinchModeRef.current) return;
+      if (supportsPointerEvents && pointers.size === 1 && !pinchModeRef.current) {
+        const touch = singleTouchRef.current;
+        if (!touch) return;
+        const mode = wallCanvasMode;
+        const shouldPan = mode === "pan" || (mode === "move" && !touch.startedOnPhoto) || (wallView === "panorama" && !touch.startedOnPhoto);
+        if (!shouldPan) return;
+        if (event.cancelable) event.preventDefault();
+        const dx = event.clientX - touch.x, dy = event.clientY - touch.y;
+        if (!touch.panStarted) { touch.panStarted = true; window.dispatchEvent(new Event("photo-wall-pan-start")); }
+        viewport.scrollLeft = touch.scrollLeft - dx; viewport.scrollTop = touch.scrollTop - dy;
+        return;
+      }
     };
     const onPointerEnd = (event: PointerEvent) => {
       const pointers = pinchPointersRef.current;
@@ -660,7 +671,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const zoom = panoramaZoomRef.current / 100;
     if (!grow.left && !grow.top) return;
     pendingScrollRef.current = { left: grow.left * zoom, top: grow.top * zoom };
-  }, []);
+  }, [wallCanvasMode, wallView]);
   useLayoutEffect(() => {
     const pending = pendingScrollRef.current;
     if (!pending) return;
