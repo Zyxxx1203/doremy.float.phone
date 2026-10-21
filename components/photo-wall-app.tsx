@@ -1484,15 +1484,16 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         <div
           ref={panoramaViewportRef}
           data-photo-wall-viewport
-          className="relative min-h-0 flex-1 w-full overflow-hidden bg-[#e9dfd2]"
-          style={{ touchAction: "none", overscrollBehavior: "contain" }}
+          className="relative min-h-[320px] flex-1 w-full overflow-hidden bg-[#e9dfd2]"
+          style={{ touchAction: "none", overscrollBehavior: "contain", height: "100%", flexBasis: 0 }}
         >
-          <div style={{ position: "absolute", top: 4, left: 4, zIndex: 999999999, background: "#fff", color: "#000", fontSize: 11, padding: "4px 6px", fontFamily: "monospace", border: "1px solid #f00", pointerEvents: "none", whiteSpace: "pre" }}>
-            {"DEBUG pan=" + Math.round(panRef.current.x) + "," + Math.round(panRef.current.y)
+          <div role="status" aria-live="polite" style={{ position: "fixed", top: "max(72px, env(safe-area-inset-top, 72px))", left: 8, zIndex: 2147483647, maxWidth: "calc(100vw - 16px)", background: "#fff", color: "#000", fontSize: 11, lineHeight: 1.45, padding: "6px 8px", fontFamily: "monospace", border: "2px solid #f00", pointerEvents: "none", whiteSpace: "pre-wrap", overflowWrap: "anywhere", boxShadow: "0 2px 8px #0004" }}>
+            {"PHOTO WALL DIAGNOSTIC\\nview=" + wallView + " ready=" + viewportReady
+              + "\\npan=" + Math.round(panRef.current.x) + "," + Math.round(panRef.current.y)
               + " zoom=" + panoramaZoom
-              + " world=" + world.width + "x" + world.height
+              + "\\nworld=" + world.width + "x" + world.height
               + " viewport=" + (panoramaViewportRef.current?.clientWidth ?? "?") + "x" + (panoramaViewportRef.current?.clientHeight ?? "?")
-              + " photos=" + visiblePhotos.length}
+              + "\\nphotos=" + photos.length + " visible=" + visiblePhotos.length}
           </div>
           <div
             data-photo-wall-world-stage
