@@ -1547,6 +1547,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app .watch-sync-avatar img{display:block;width:100%;height:100%;object-fit:cover}
       .watch-together-app .watch-sync-wave{transform-origin:center}
       .watch-together-app:not([data-watch-fullscreen="true"]) .watch-control-capsule{margin-top:0!important;margin-bottom:1px!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-control-capsule[data-collapsed="true"]{width:calc(100% - 24px)!important;align-self:stretch!important;justify-content:space-between!important;padding:4px 10px!important;border-radius:14px!important;margin-left:auto!important;margin-right:auto!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-control-capsule[data-collapsed="true"] .watch-capsule-toggle{width:28px!important;height:24px!important}
       .watch-together-app[data-watch-fullscreen="true"] .watch-control-capsule{display:none!important}
     `}</style>
 
