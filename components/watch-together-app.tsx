@@ -1627,7 +1627,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </div>
         )}
 
-        <DanmakuLayer items={comments.map(item => ({ id: item.id, text: item.text, kind: item.kind, name: item.characterName }))} enabled={settings.danmakuEnabled} paused={mediaPaused} userColor={settings.danmakuColor} maxLanes={landscapeMode ? 6 : 9} />
+        <DanmakuLayer items={comments.map(item => ({ id: item.id, text: item.text, kind: item.kind ?? "character", name: item.characterName }))} enabled={settings.danmakuEnabled} paused={mediaPaused} userColor={settings.danmakuColor} maxLanes={landscapeMode ? 6 : 9} />
         {target && !target.supported && target.embedUrl === target.url && (
           <a
             href={target.url}
