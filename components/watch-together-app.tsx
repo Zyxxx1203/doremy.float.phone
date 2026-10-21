@@ -209,6 +209,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [settings, setSettings] = useState<WatchSettings>(() => loadSettings());
   const [urlInput, setUrlInput] = useState("");
+  const [showVideoSourcePanel, setShowVideoSourcePanel] = useState(false);
   const [target, setTarget] = useState<VideoTarget | null>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
   const transcriptFileInputRef = useRef<HTMLInputElement>(null);
@@ -1111,7 +1112,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   if (showGlobalCompanion) return <GlobalWatchCompanionApp onClose={() => setShowGlobalCompanion(false)} onNotice={onNotice} />;
 
-  return <div ref={watchRootRef} data-watch-fullscreen={fullScreen ? "true" : "false"} className={"watch-together-app pointer-events-auto isolate flex min-w-0 flex-col overflow-hidden text-[#f0e6d8] " + (fullScreen ? "fixed inset-0 z-[3000]" : "absolute inset-0 z-[1000]")} style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)", height: fullScreen ? "100dvh" : undefined, width: fullScreen ? "100vw" : undefined }}>
+  return <div ref={watchRootRef} data-watch-fullscreen={fullScreen ? "true" : "false"} data-source-panel={showVideoSourcePanel ? "true" : "false"} className={"watch-together-app pointer-events-auto isolate flex min-w-0 flex-col overflow-hidden text-[#f0e6d8] " + (fullScreen ? "fixed inset-0 z-[3000]" : "absolute inset-0 z-[1000]")} style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)", height: fullScreen ? "100dvh" : undefined, width: fullScreen ? "100vw" : undefined }}>
     {/* 弹幕动画：仓库里从未定义过 watchDanmaku，之前那条 animation 是空转，这里补上真实 keyframes */}
     <style>{`
       .watch-together-main { display:flex; flex-direction:column; }
@@ -1342,6 +1343,76 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel { grid-area:interaction!important; min-height:0!important; height:100%!important; }
         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel { grid-area:link!important; max-height:25dvh!important; }
       }
+
+      /* 聊天室重排：视频更大，聊天占满剩余高度；视频来源控件收进播放器。 */
+      .watch-together-app:not([data-watch-fullscreen="true"]) > main.watch-together-main {
+        display:grid!important;
+        grid-template-columns:minmax(0,1fr)!important;
+        grid-template-rows:minmax(0, min(44dvh, 440px)) minmax(0,1fr)!important;
+        grid-template-areas:"player" "interaction"!important;
+        gap:8px!important;
+        min-height:0!important;
+        overflow:hidden!important;
+        padding:8px 10px max(8px,env(safe-area-inset-bottom))!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-room-title { display:none!important; }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player {
+        grid-area:player!important; align-self:stretch!important; width:100%!important;
+        height:100%!important; min-height:0!important; max-height:none!important;
+        aspect-ratio:auto!important; margin:0!important; border-width:2px!important;
+        border-radius:14px!important; overflow:hidden!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > video,
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > iframe {
+        display:block!important; width:100%!important; height:100%!important;
+        max-height:none!important; aspect-ratio:auto!important; object-fit:contain!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel {
+        grid-area:interaction!important; display:flex!important; flex-direction:column!important;
+        min-width:0!important; min-height:0!important; height:100%!important; max-height:none!important;
+        margin:0!important; overflow:hidden!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel > [data-part="card"] {
+        display:flex!important; flex:1 1 auto!important; flex-direction:column!important;
+        width:100%!important; height:100%!important; min-width:0!important; min-height:0!important;
+        max-height:none!important; overflow:hidden!important; box-sizing:border-box!important;
+        padding:10px!important; border-radius:18px!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="message"] { flex:0 0 auto!important; max-height:92px!important; overflow:auto!important; }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-discussion-composer { flex:0 0 auto!important; margin-top:6px!important; padding-top:6px!important; }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-discussion-composer textarea { min-height:42px!important; max-height:72px!important; }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="history"] {
+        display:flex!important; flex:1 1 0!important; flex-direction:column!important;
+        min-height:0!important; max-height:none!important; overflow:hidden!important;
+        margin-top:6px!important; padding-top:6px!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-comment-list {
+        flex:1 1 0!important; min-height:0!important; max-height:none!important;
+        overflow-y:auto!important; overflow-x:hidden!important; overscroll-behavior:contain!important;
+        -webkit-overflow-scrolling:touch!important; touch-action:pan-y!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) [data-resolver-state] { display:none!important; }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel { display:none!important; }
+      .watch-together-app[data-source-panel="true"] .watch-link-panel {
+        display:block!important; position:fixed!important; z-index:4000!important;
+        left:10px!important; right:10px!important; bottom:max(10px,env(safe-area-inset-bottom))!important;
+        width:auto!important; max-width:760px!important; max-height:76dvh!important;
+        overflow-y:auto!important; overscroll-behavior:contain!important;
+        margin:0 auto!important; box-sizing:border-box!important;
+        box-shadow:0 18px 60px rgba(0,0,0,.38)!important;
+      }
+      .watch-together-app[data-source-panel="true"]::after {
+        content:""; position:fixed; inset:0; z-index:3999; background:rgba(24,17,12,.45); pointer-events:none;
+      }
+      @media (orientation:landscape) and (min-width:700px) {
+        .watch-together-app:not([data-watch-fullscreen="true"]) > main.watch-together-main {
+          grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)!important;
+          grid-template-rows:minmax(0,1fr)!important;
+          grid-template-areas:"player interaction"!important;
+          gap:12px!important; padding:12px!important;
+        }
+        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player { height:100%!important; max-height:none!important; }
+      }
     `}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
@@ -1397,6 +1468,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </a>
         )}
 
+        {/* 视频来源入口放在屏幕内，避免链接表单挤占聊天室空间。 */}
+        <div className="pointer-events-auto absolute bottom-2 left-2 z-[61]">
+          <button type="button" onClick={() => setShowVideoSourcePanel(value => !value)} className="flex items-center gap-1.5 rounded-full border border-white/25 bg-black/65 px-3 py-2 text-[11px] font-medium text-white shadow-lg backdrop-blur-md active:scale-95" aria-expanded={showVideoSourcePanel}>
+            <ExternalLink size={13}/>{target ? "换视频" : "放上屏幕"}
+          </button>
+        </div>
         {/* 弹幕已停用：优先保证聊天室交流体验。 */}
         <div className="watch-player-actions pointer-events-auto absolute right-2 top-2 z-[60] flex gap-1">
           <button type="button" onClick={() => void captureCurrentFrame()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/55 text-white/90 backdrop-blur transition active:scale-95" aria-label="截取当前画面并用于理解" title="截取当前画面"><ImagePlus size={14}/></button>
