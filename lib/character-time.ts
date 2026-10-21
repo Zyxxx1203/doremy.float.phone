@@ -136,7 +136,7 @@ export function buildCharacterTimeContext(timeZone?: string | null, now = new Da
         "角色日程只是计划，不代表角色此刻一定正在做该事；不要仅凭睡眠时段就断言角色正在睡觉。",
         "如果角色此刻正在生成、回复或发出消息（包括主动消息、定时消息和离线推送），不要同时声称自己正在熟睡或完全无法回应；应按当前时间与角色设定自然解释。",
         "不要把历史消息时间、计划时间或上一次对话时的时间误当成现在；时间不确定时不要编造具体时刻。",
-      ].join("\\n"),
+      ].join("\n"),
       hasDifference: false,
     };
   }
@@ -157,7 +157,7 @@ export function buildCharacterTimeContext(timeZone?: string | null, now = new Da
       "角色日程只是计划，不代表角色此刻一定正在做该事；不要仅凭睡眠时段就断言角色正在睡觉。",
       "如果角色此刻正在生成、回复或发出消息（包括主动消息、定时消息和离线推送），不要同时声称自己正在熟睡或完全无法回应；应按当前时间与角色设定自然解释。",
       "不要把历史消息时间、计划时间或上一次对话时的时间误当成现在；时间不确定时不要编造具体时刻。",
-    ].join("\\n"),
+    ].join("\n"),
     hasDifference: true,
   };
 }
