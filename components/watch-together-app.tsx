@@ -1432,7 +1432,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         overflow:hidden!important;
         padding:8px 10px max(8px,env(safe-area-inset-bottom))!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-room-title { display:none!important; }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-room-title { display:block!important; }
       .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player {
         grid-area:player!important; align-self:stretch!important; width:100%!important;
         height:100%!important; min-height:0!important; max-height:none!important;
@@ -1481,11 +1481,18 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app[data-source-panel="true"]::after {
         content:""; position:fixed; inset:0; z-index:3999; background:rgba(24,17,12,.45); pointer-events:none;
       }
-      .watch-capsule-button{display:flex;min-width:0;flex:1 1 0;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:9px 2px;border:1px solid rgba(166,126,91,.24);background:rgba(255,250,242,.9);color:#765641;box-shadow:0 4px 12px rgba(96,67,43,.06)}
+      .watch-capsule-button{display:flex;min-width:0;flex:1 1 0;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:6px 2px;border:0;border-radius:11px;background:transparent;color:#765641;transition:background .18s ease}
+      .watch-capsule-button:active{background:rgba(201,154,120,.18)}
       .watch-capsule-button small{font-size:10px;white-space:nowrap}
-      .watch-control-capsule{grid-area:toolbar;position:relative;z-index:50;border:1px solid rgba(185,153,122,.32);background:rgba(255,248,237,.8)}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"])>main.watch-together-main{display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr) auto minmax(0,1.3fr)!important;grid-template-areas:"player" "toolbar" "interaction"!important;gap:9px!important;padding:4px 12px max(10px,env(safe-area-inset-bottom))!important;overflow:hidden!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-title{display:none!important}
+      .watch-control-capsule{position:relative;z-index:1011;flex:0 0 auto;border:1px solid rgba(185,153,122,.38);border-radius:16px;background:rgba(255,250,242,.94);box-shadow:0 5px 14px rgba(96,67,43,.07);backdrop-filter:blur(12px)}
+      .watch-capsule-collapsed-label{display:none;font-family:serif;font-size:12px;letter-spacing:.04em;color:#765641}
+      .watch-control-capsule[data-collapsed="true"]{justify-content:space-between!important;min-height:36px!important;padding:4px 10px!important}
+      .watch-control-capsule[data-collapsed="true"] .watch-capsule-collapsed-label{display:block}
+      .watch-control-capsule[data-collapsed="true"] .watch-capsule-button{display:none!important}
+      .watch-capsule-toggle{display:grid;flex:0 0 28px;place-items:center;align-self:center;color:#8e6e55;border-radius:999px}
+      .watch-capsule-toggle:active{background:rgba(201,154,120,.18)}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"])>main.watch-together-main{display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-rows:auto minmax(0,min(38dvh,390px)) minmax(0,1fr)!important;grid-template-areas:"title" "player" "interaction"!important;gap:8px!important;padding:7px 12px max(10px,env(safe-area-inset-bottom))!important;overflow:hidden!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-title{display:block!important;grid-area:title!important}
       .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player{grid-area:player!important;align-self:center!important;width:100%!important;height:auto!important;aspect-ratio:16/9!important;min-height:0!important;max-height:34dvh!important;margin:0 auto!important;border-radius:15px!important}
       .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player>video,.watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player>iframe{width:100%!important;height:100%!important;aspect-ratio:16/9!important;object-fit:contain!important}
       .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-interaction-panel{grid-area:interaction!important;display:flex!important;min-height:0!important;height:100%!important;width:100%!important;max-width:none!important;margin:0!important;overflow:hidden!important}
@@ -1533,6 +1540,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app[data-landscape-mode="true"] .watch-player .watch-danmaku-fly{z-index:15!important}
       .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer>div:last-child button{min-width:64px!important}
 .watch-together-app[data-landscape-mode="true"][data-source-panel="true"] .watch-link-panel{display:block!important;position:fixed!important;z-index:4020!important;left:10px!important;right:10px!important;bottom:max(10px,env(safe-area-inset-bottom))!important;width:auto!important;max-height:78dvh!important;overflow:auto!important;margin:0 auto!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-title{display:block!important;grid-area:title!important;min-width:0!important;margin:0!important;padding:0!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player{grid-area:player!important;align-self:stretch!important;width:100%!important;height:100%!important;max-height:none!important;min-height:0!important;aspect-ratio:auto!important;margin:0!important}
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player>video,.watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player>iframe{width:100%!important;height:100%!important;max-height:none!important;aspect-ratio:auto!important;object-fit:contain!important}
+      .watch-together-app .watch-sync-thread{position:absolute;width:43px;height:1px;background:linear-gradient(90deg,transparent,#c49a78,transparent);opacity:.7}
+      .watch-together-app .watch-sync-avatar img{display:block;width:100%;height:100%;object-fit:cover}
+      .watch-together-app .watch-sync-wave{transform-origin:center}
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-control-capsule{margin-top:0!important;margin-bottom:1px!important}
+      .watch-together-app[data-watch-fullscreen="true"] .watch-control-capsule{display:none!important}
     `}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
@@ -1556,7 +1571,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       <button type="button" onClick={() => setShowControlCapsule(value => !value)} className="watch-capsule-toggle" aria-label={showControlCapsule ? "收起入口栏" : "展开入口栏"}><ChevronDown size={15} className={showControlCapsule ? "" : "rotate-180"}/></button>
     </nav>
 
-    <main className="watch-together-mainmain relative z-[1001] min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-8" style={{backgroundImage:"radial-gradient(ellipse at 50% 0%,rgba(255,251,242,.72),transparent 62%)"}}>
+    <main className="watch-together-main relative z-[1001] min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-8" style={{backgroundImage:"radial-gradient(ellipse at 50% 0%,rgba(255,251,242,.72),transparent 62%)"}}>
       <div className="watch-room-title mx-auto w-full max-w-3xl px-1">
         <div className="watch-sync-card relative overflow-hidden rounded-[20px] border border-[#c6a17e]/65 bg-[linear-gradient(120deg,#fffaf1_0%,#f7ead9_52%,#fff8ee_100%)] px-3 py-2.5 shadow-[0_7px_18px_rgba(91,62,40,.10),inset_0_1px_0_rgba(255,255,255,.95)]">
           <div aria-hidden className="pointer-events-none absolute inset-y-0 left-1/2 w-28 -translate-x-1/2 opacity-40" style={{background:"radial-gradient(ellipse at center,rgba(208,164,123,.24),transparent 72%)"}}/>
