@@ -461,10 +461,29 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         applyZoom(nextZoom, { x: midpoint.x - rect.left, y: midpoint.y - rect.top });
         return;
       }
-      // 单指只执行照片拖动或自由涂鸦；画布平移必须双指。
+      // 非 PointerEvent WebView：单指按模式分流。摆照片时从空白处起手可平移，
+      // 涂鸦时单指留给画笔；显式手形模式始终平移。
+      if (event.touches.length === 1 && !pinchModeRef.current) {
+        const touch = singleTouchRef.current;
+        if (!touch) return;
+        const mode = wallCanvasMode;
+        const shouldPan = mode === "pan" || (mode === "move" && !touch.startedOnPhoto) || (wallView === "panorama" && !touch.startedOnPhoto);
+        if (!shouldPan) return;
+        if (event.cancelable) event.preventDefault();
+        const point = event.touches[0];
+        const dx = point.clientX - touch.x, dy = point.clientY - touch.y;
+        if (!touch.panStarted) {
+          touch.panStarted = true;
+          window.dispatchEvent(new Event("photo-wall-pan-start"));
+        }
+        viewport.scrollLeft = touch.scrollLeft - dx;
+        viewport.scrollTop = touch.scrollTop - dy;
+      }
     };
     const onTouchEnd = (event: TouchEvent) => {
       if (supportsPointerEvents) return;
+      // 双指手势期间只要还有手指留在屏幕上，就保持锁定，绝不把剩余手指
+      // 重新解释成画笔/照片拖动。
       if (event.touches.length === 0) {
         if (pinchModeRef.current) window.dispatchEvent(new Event("photo-wall-pinch-end"));
         if (singleTouchRef.current?.panStarted) window.dispatchEvent(new Event("photo-wall-pan-end"));
