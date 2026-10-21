@@ -261,7 +261,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [stageTranslation, setStageTranslation] = useState({ x: 0, y: 0 });
   /** 世界尺寸来自持久化状态：扩容后照片比例不变，只换分母。 */
   const world = wallWorldOf(state);
-  const [wallCanvasMode, setWallCanvasMode] = useState<"view" | "move" | "doodle" | "pan">("view");
+  const [wallCanvasMode, setWallCanvasMode] = useState<"view" | "move" | "doodle">("view");
   const [wallBrushColor, setWallBrushColor] = useState("#c2705a");
   const [wallColorDraft, setWallColorDraft] = useState("#c2705a");
   const [wallBrushPalette, setWallBrushPalette] = useState<string[]>(() => {
@@ -382,7 +382,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         const touch = singleTouchRef.current;
         if (!touch) return;
         const mode = wallCanvasMode;
-        const shouldPan = mode === "pan" || (mode === "move" && !touch.startedOnPhoto) || (wallView === "panorama" && !touch.startedOnPhoto);
+        const shouldPan = mode !== "doodle" && !touch.startedOnPhoto;
         if (!shouldPan) return;
         if (event.cancelable) event.preventDefault();
         const dx = event.clientX - touch.x, dy = event.clientY - touch.y;
@@ -461,7 +461,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         const touch = singleTouchRef.current;
         if (!touch) return;
         const mode = wallCanvasMode;
-        const shouldPan = mode === "pan" || (mode === "move" && !touch.startedOnPhoto) || (wallView === "panorama" && !touch.startedOnPhoto);
+        const shouldPan = mode !== "doodle" && !touch.startedOnPhoto;
         if (!shouldPan) return;
         if (event.cancelable) event.preventDefault();
         const point = event.touches[0];
@@ -1406,7 +1406,6 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             <button type="button" onClick={undo} disabled={!canUndo} className="shrink-0 border border-[#d8c6b5] px-2 py-1.5 text-[10px] text-[#7d6d5a] disabled:opacity-30">撤销</button>
             <button type="button" onClick={redo} disabled={!canRedo} className="shrink-0 border border-[#d8c6b5] px-2 py-1.5 text-[10px] text-[#7d6d5a] disabled:opacity-30">重做</button>
             <button type="button" onClick={() => { setWallCanvasMode(wallCanvasMode === "move" ? "view" : "move"); setWallSticker(null); setWallEraser(false); }} aria-pressed={wallCanvasMode === "move"} className={wallCanvasMode === "move" ? "shrink-0 border border-[#87565b] bg-[#87565b] px-2.5 py-1.5 text-[11px] text-white" : "shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[11px] text-[#7d6d5a]"}>{wallCanvasMode === "move" ? "完成摆放" : "摆照片"}</button>
-            <button type="button" onClick={() => { setWallCanvasMode(wallCanvasMode === "pan" ? "view" : "pan"); setWallSticker(null); setWallEraser(false); }} aria-pressed={wallCanvasMode === "pan"} title="双指平移或缩放画布；单指不会翻转、移动照片或画涂鸦" className={wallCanvasMode === "pan" ? "shrink-0 border border-[#6e7f8c] bg-[#6e7f8c] px-2.5 py-1.5 text-[11px] text-white" : "shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[11px] text-[#7d6d5a]"}>{wallCanvasMode === "pan" ? "完成移墙" : "移动画布"}</button>
             <button type="button" onClick={() => { setWallCanvasMode(wallCanvasMode === "doodle" ? "view" : "doodle"); setWallSticker(null); setWallEraser(false); }} aria-pressed={wallCanvasMode === "doodle"} className={wallCanvasMode === "doodle" ? "shrink-0 border border-[#a77b77] bg-[#a77b77] px-2.5 py-1.5 text-[11px] text-white" : "shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[11px] text-[#7d6d5a]"}>{wallCanvasMode === "doodle" ? "退出涂鸦" : "涂鸦"}</button>
             <label className="flex shrink-0 items-center gap-1 text-[10px] text-[#8b7665]">宽<input type="number" min={1200} max={12000} step={100} value={wallWidthDraft} onChange={event => setWallWidthDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter") applyWallDimensions(); }} aria-label="画布宽度" className="w-[62px] border-b border-[#d8c6b5] bg-transparent px-1 py-1 text-[11px] text-[#5d4942] outline-none"/></label>
             <label className="flex shrink-0 items-center gap-1 text-[10px] text-[#8b7665]">高<input type="number" min={1200} max={12000} step={100} value={wallHeightDraft} onChange={event => setWallHeightDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter") applyWallDimensions(); }} aria-label="画布高度" className="w-[62px] border-b border-[#d8c6b5] bg-transparent px-1 py-1 text-[11px] text-[#5d4942] outline-none"/></label>
