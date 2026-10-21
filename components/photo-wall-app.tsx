@@ -972,18 +972,30 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const addPhoto = useCallback((photo: PhotoWallPhoto) => {
     const current = stateRef.current;
     pushHistory(current);
-    const order = current.photos.length;
+    const combined = [photo, ...current.photos.filter(item => item.id !== photo.id)];
     const explicitTemplate = Boolean(activeTemplateId) && activeTemplateId !== "builtin-scatter";
-    const slot = explicitTemplate ? buildTemplateSlots(activeTemplateId, order + 1, templateText, templateFill)[order] : undefined;
-    const anchor = placementAnchor();
-    const jitter = ((order % 5) - 2) * 0.018;
-    const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
-    const x = slot ? slot.x : Math.min(0.92, Math.max(0.08, anchor.x + jitter));
-    const y = slot ? slot.y : Math.min(0.92, Math.max(0.08, anchor.y + jitter));
-    const placed = { ...photo, placement: photo.placement ?? { x, y, scale: slot?.scale ?? 1, rotation: slot?.rotation ?? Math.round(jitter * 300), z: maxZ + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } };
-    persist({ ...current, photos: [placed, ...current.photos.filter(item => item.id !== photo.id)] });
+    if (explicitTemplate) {
+      // 新照片加入后按总数重新计算整套骨架；只给新照片分配尾槽会让形状越长越缺边。
+      const ordered = combined.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const slots = buildTemplateSlots(activeTemplateId, ordered.length, templateText, templateFill);
+      const slotById = new Map(ordered.map((item, index) => [item.id, slots[index]]));
+      const rearranged = combined.map((item, index) => {
+        const slot = slotById.get(item.id);
+        if (!slot) return item;
+        const base = item.placement;
+        return { ...item, placement: { ...slot, z: index + 1, frame: base?.frame ?? "polaroid", locked: base?.locked ?? false, frameColor: base?.frameColor ?? "#fffdf8" } as PhotoWallPlacement };
+      });
+      persist({ ...current, photos: rearranged });
+    } else {
+      const order = current.photos.length;
+      const anchor = placementAnchor();
+      const jitter = ((order % 5) - 2) * 0.018;
+      const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
+      const placed = { ...photo, placement: photo.placement ?? { x: Math.min(0.92, Math.max(0.08, anchor.x + jitter)), y: Math.min(0.92, Math.max(0.08, anchor.y + jitter)), scale: 1, rotation: Math.round(jitter * 300), z: maxZ + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } };
+      persist({ ...current, photos: [placed, ...current.photos.filter(item => item.id !== photo.id)] });
+    }
     setSelectedPhotoId(photo.id);
-  }, [persist, activeTemplateId, templateText, placementAnchor, templateFill]);
+  }, [persist, activeTemplateId, templateText, placementAnchor, templateFill, pushHistory]);
 
   const openChatPicker = async () => {
     setShowAddMenu(false);
@@ -1055,14 +1067,29 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         });
       }
       const current = stateRef.current;
-      const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
-      // Only assign the newly appended photos to the tail slots; never recalculate existing placements on upload.
-      const slots = buildTemplateSlots(activeTemplateId, current.photos.length + created.length, templateText, templateFill);
-      const placedCreated = created.map((photo, index) => {
-        const slot = slots[current.photos.length + index] ?? fallbackPlacement(current.photos.length + index);
-        return { ...photo, placement: { ...slot, z: maxZ + index + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } };
-      });
-      persist({ ...current, photos: [...placedCreated, ...current.photos] });
+      if (activeTemplateId && activeTemplateId !== "builtin-scatter") {
+        // 保持模板完整性：每次批量加入照片都按新总数重排整套骨架，避免只扩展半边。
+        const combined = [...created, ...current.photos];
+        const ordered = combined.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        const slots = buildTemplateSlots(activeTemplateId, ordered.length, templateText, templateFill);
+        const slotById = new Map(ordered.map((item, index) => [item.id, slots[index]]));
+        const maxZ = combined.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
+        const rearranged = combined.map((item, index) => {
+          const slot = slotById.get(item.id);
+          if (!slot) return item;
+          const base = item.placement;
+          return { ...item, placement: { ...slot, z: index + 1, frame: base?.frame ?? "polaroid", locked: base?.locked ?? false, frameColor: base?.frameColor ?? "#fffdf8" } as PhotoWallPlacement };
+        });
+        persist({ ...current, photos: rearranged });
+      } else {
+        const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
+        const slots = buildTemplateSlots(activeTemplateId, current.photos.length + created.length, templateText, templateFill);
+        const placedCreated = created.map((photo, index) => {
+          const slot = slots[current.photos.length + index] ?? fallbackPlacement(current.photos.length + index);
+          return { ...photo, placement: { ...slot, z: maxZ + index + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } };
+        });
+        persist({ ...current, photos: [...placedCreated, ...current.photos] });
+      }
       setSelectedPhotoId(created[0]?.id ?? null);
       onNotice?.(`已收藏 ${created.length} 张照片。`);
     } catch (error) { onNotice?.("收藏失败：" + (error instanceof Error ? error.message : String(error))); }
