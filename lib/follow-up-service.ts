@@ -35,6 +35,8 @@ import type { ParsedMessagePart } from "./rich-message-parser";
 import { getStatusRegionConfig, isCustomStatusRegionActive } from "./chat-status-region";
 import { isKnownStickerLabel } from "./sticker-data";
 import { loadCharacters } from "./character-storage";
+import { loadVirtualLifeState, saveVirtualLifeState } from "./life/life-storage";
+import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow, settleActorTimelineToNow } from "./life/life-runtime";
 import { bgDelay, bgSetInterval, bgSetTimeout } from "./bg-timer";
 import { dispatchChatMessageNotice } from "./chat-notification-events";
 import { settleShoppingPaymentRequest } from "./shopping-payment-request";
@@ -63,6 +65,25 @@ const POLL_INTERVAL_MS = 3000; // check every 3 s
 const PERIOD_CARE_POLL_INTERVAL_MS = 60_000;
 const BACKGROUND_MESSAGE_STAGGER_MS = 800;
 const SCHEDULED_OUTBOX_GRACE_MS = 8000;
+
+
+// 睡眠状态统一拦截本地后台主动消息。只检查已有生活状态，不新建角色状态/记忆。
+function isLifeCharacterSleeping(sessionId: string): boolean {
+    if (typeof window === "undefined") return false;
+    const session = loadChatSessions().find(item => item.id === sessionId);
+    if (!session || session.isGroup) return false;
+    const character = loadCharacters().find(item => item.id === session.contactId);
+    if (!character) return false;
+    const loaded = loadVirtualLifeState();
+    if (!loaded.settings.enabled || !loaded.settings.allowCharactersToStaySilent) return false;
+    const settled = settleActorTimelineToNow(loaded, "character", character.id);
+    const life = settled === loaded ? loaded : saveVirtualLifeState(settled);
+    const clock = getActorClock(life, "character", character.id);
+    const now = resolveActorLifeNow(clock);
+    const schedule = getCurrentActorSchedule(life, "character", character.id, now);
+    const presence = life.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === character.id);
+    return /睡眠|睡觉|入睡|午休/.test((presence?.activity || "") + " " + (schedule?.title || ""));
+}
 
 function resolveFollowUpSenderName(sessionId: string): string {
     const sess = loadChatSessions().find(s => s.id === sessionId);
@@ -169,6 +190,11 @@ export function stopFollowUpService() {
 /** Schedule a follow-up for a session (called by ChatRoom after AI replies).
  *  Purely anxiety-driven: no anxiety field or below threshold → no follow-up. */
 export function scheduleFollowUp(sessionId: string, count: number, stateValues?: StateValue[]) {
+    if (isLifeCharacterSleeping(sessionId)) {
+        clearFollowUpSchedule(sessionId);
+        cancelFollowUpBailout(sessionId);
+        return;
+    }
     const config = loadFollowUpConfig();
 
     if (!stateValues || stateValues.length === 0) {
@@ -211,6 +237,7 @@ export async function requestBackgroundChatReply(
     if (backgroundReplyFiringSet.has(sessionId)) return { ok: false, skipped: "already_running" };
     const session = loadChatSessions().find(s => s.id === sessionId);
     if (!session) return { ok: false, skipped: "missing_session" };
+    if (isLifeCharacterSleeping(sessionId)) return { ok: false, skipped: "character_sleeping" };
 
     backgroundReplyFiringSet.add(sessionId);
     try {
@@ -668,6 +695,10 @@ async function fireIdleReconnect(rule: IdleReconnectRule, lastUserAt: number) {
     try {
         const session = loadChatSessions().find(s => s.id === rule.sessionId);
         if (!session || session.isGroup || session.contactId !== rule.characterId) return;
+        if (isLifeCharacterSleeping(session.id)) {
+            void cancelBailoutPrefix(`idle:${rule.id}:`);
+            return;
+        }
 
         // 先让服务端跑，别和它抢：它已经生成并推送过这一轮就不必再本地跑第二遍，
         // 否则通知栏（服务端那次输出）和聊天里（本地这次输出）会是两套不同的内容。
@@ -748,6 +779,10 @@ async function fireTimedWake(sched: TimedWakeSchedule) {
         const sessions = loadChatSessions();
         const session = sessions.find(s => s.id === sched.sessionId);
         if (!session || session.contactId !== sched.characterId) return;
+        if (isLifeCharacterSleeping(session.id)) {
+            void cancelBailoutKey(`timedwake:${sched.id}`);
+            return;
+        }
 
         const latestMessages = loadChatMessages(session.id);
         const elapsedMinutes = resolveTimedWakeElapsedMinutes(sched, latestMessages, Date.now());
