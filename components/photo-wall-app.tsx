@@ -940,8 +940,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const current = wallWorldOf(stateRef.current);
     const zoom = Math.max(0.05, panoramaZoomRef.current / 100);
     if (!viewport || !viewport.clientWidth) return { x: 0.5, y: 0.5 };
-    const x = (viewport.scrollLeft + viewport.clientWidth / 2) / Math.max(1, current.width * zoom);
-    const y = (viewport.scrollTop + viewport.clientHeight / 2) / Math.max(1, current.height * zoom);
+    // 视口现在不滚动；把屏幕中心通过舞台平移/缩放逆变换回世界坐标，
+    // 否则用户平移画布后，新照片仍会按未平移前的位置落下。
+    const stage = stageTranslationRef.current;
+    const x = (viewport.clientWidth / 2 - stage.x) / Math.max(1, current.width * zoom);
+    const y = (viewport.clientHeight / 2 - stage.y) / Math.max(1, current.height * zoom);
     return { x: Math.min(0.9, Math.max(0.1, x)), y: Math.min(0.9, Math.max(0.1, y)) };
   }, []);
 
