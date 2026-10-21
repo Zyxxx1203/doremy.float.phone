@@ -168,7 +168,9 @@ function farEnough(a: { x: number; y: number; rotation?: number }, b: { x: numbe
 function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
   const total = Math.max(1, count);
   const shape = shapeOf(templateId);
-  const center = { x: 0.5, y: 0.5 };
+  // 照片少时先形成紧凑的小型轮廓；随着数量增加，整套骨架逐圈向外扩展。
+  const shapeScale = Math.min(1, Math.max(0.28, Math.sqrt(total / 24)));
+  if (total === 1) return [{ x: 0.5, y: 0.5, scale: 0.72, rotation: 0 }];
 
   const step = Math.max(0.008, Math.min(0.045, 0.5 / Math.sqrt(total * 14)));
   const candidates: Array<{ x: number; y: number; radius: number; angle: number; boundary: boolean }> = [];
@@ -184,7 +186,7 @@ function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
       const scaled = toShapeSpace(0.5 + (x - 0.5) * 1.10, 0.5 + (y - 0.5) * 1.10);
       const boundary = !shape(scaled.u, scaled.v);
       candidates.push({
-        x: round(x), y: round(y),
+        x: round(0.5 + (x - 0.5) * shapeScale), y: round(0.5 + (y - 0.5) * shapeScale),
         radius: Math.hypot(u, v),
         angle: (Math.atan2(v, u) + Math.PI * 2) % (Math.PI * 2),
         boundary,
@@ -215,8 +217,26 @@ function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
     const delta = Math.abs(a - b) % (Math.PI * 2);
     return Math.min(delta, Math.PI * 2 - delta);
   };
+  const featureAnchors: Record<string, number[]> = {
+    // 心形优先放在左右上瓣与下尖端；否则少量照片只会落在一侧，看不出心形。
+    "builtin-heart": [Math.PI * 1.25, Math.PI * 1.75, Math.PI / 2, Math.PI * 1.5, Math.PI, 0, Math.PI * 0.75, Math.PI * 0.25],
+    "builtin-star": [-Math.PI / 2, -Math.PI / 10, Math.PI * 3 / 10, Math.PI * 7 / 10, Math.PI * 11 / 10].map(angle => (angle + Math.PI * 2) % (Math.PI * 2)),
+    "builtin-flower": [-Math.PI / 2, -Math.PI / 6, Math.PI / 6, Math.PI / 2, Math.PI * 5 / 6, Math.PI * 7 / 6].map(angle => (angle + Math.PI * 2) % (Math.PI * 2)),
+  };
+  const targetAngles = (featureAnchors[templateId] ?? []).slice(0, outlineCount);
+  while (targetAngles.length < outlineCount) {
+    let bestAngle = 0, bestGap = -1;
+    for (let stepIndex = 0; stepIndex < 360; stepIndex += 1) {
+      const candidateAngle = stepIndex * Math.PI / 180;
+      const nearestGap = targetAngles.length
+        ? Math.min(...targetAngles.map(angle => angularDistance(angle, candidateAngle)))
+        : Math.PI * 2;
+      if (nearestGap > bestGap) { bestGap = nearestGap; bestAngle = candidateAngle; }
+    }
+    targetAngles.push(bestAngle);
+  }
   for (let i = 0; i < outlineCount; i += 1) {
-    const targetAngle = -Math.PI / 2 + (i * Math.PI * 2) / outlineCount;
+    const targetAngle = targetAngles[i];
     const choices = boundaryCandidates.slice().sort((a, b) => angularDistance(a.angle, targetAngle) - angularDistance(b.angle, targetAngle));
     let added = false;
     for (const candidate of choices) {
