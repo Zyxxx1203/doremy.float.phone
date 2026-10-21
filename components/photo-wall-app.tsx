@@ -256,6 +256,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const singleTouchRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number; startedOnPhoto: boolean; panStarted?: boolean } | null>(null);
   const panoramaViewportRef = useRef<HTMLDivElement>(null);
   const panoramaZoomRef = useRef(100);
+  // 画布唯一视口变换：CSS 像素平移 + 百分比缩放，不再用 scrollLeft/scrollTop 补偿。
+  const stageTranslationRef = useRef({ x: 0, y: 0 });
+  const [stageTranslation, setStageTranslation] = useState({ x: 0, y: 0 });
   /** 世界尺寸来自持久化状态：扩容后照片比例不变，只换分母。 */
   const world = wallWorldOf(state);
   const [wallCanvasMode, setWallCanvasMode] = useState<"view" | "move" | "doodle" | "pan">("view");
@@ -275,40 +278,25 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   useEffect(() => {
     try { window.localStorage.setItem("photo_wall_brush_palette_v1", JSON.stringify(wallBrushPalette)); } catch { /* optional palette persistence */ }
   }, [wallBrushPalette]);
-  /** 等待下一帧补偿的滚动量（扩容往左长、或缩放锚点变化时用）。 */
-  const pendingScrollRef = useRef<{ left: number; top: number } | null>(null);
+  const setStagePosition = useCallback((next: { x: number; y: number }) => {
+    stageTranslationRef.current = next;
+    setStageTranslation(next);
+  }, []);
 
-  /**
-   * 缩放时保持用户指定的锚点不动。
-   * 只改 zoom 会让内容从左上角往外长，手指按住的地方就跑掉了；
-   * 这里按同一比例把滚动位置一起推过去，手感才对。
-   */
+  /** 缩放时保持锚点对应的世界坐标不动；平移和缩放共用同一组 stage 坐标。 */
   const applyZoom = useCallback((nextZoom: number, anchor?: { x: number; y: number }) => {
     const clamped = Math.max(panoramaMinZoomRef.current, Math.min(300, Math.round(nextZoom)));
     const previous = panoramaZoomRef.current;
+    if (!previous || previous === clamped) { panoramaZoomRef.current = clamped; setPanoramaZoom(clamped); return; }
+    const viewport = panoramaViewportRef.current;
+    const current = stageTranslationRef.current;
+    const ratio = clamped / previous;
+    const anchorX = anchor?.x ?? (viewport?.clientWidth ?? 0) / 2;
+    const anchorY = anchor?.y ?? (viewport?.clientHeight ?? 0) / 2;
+    setStagePosition({ x: anchorX - (anchorX - current.x) * ratio, y: anchorY - (anchorY - current.y) * ratio });
     panoramaZoomRef.current = clamped;
     setPanoramaZoom(clamped);
-    if (!previous || previous === clamped) return;
-    const viewport = panoramaViewportRef.current;
-    if (!viewport) return;
-    const ratio = clamped / previous;
-    const anchorX = anchor?.x ?? viewport.clientWidth / 2;
-    const anchorY = anchor?.y ?? viewport.clientHeight / 2;
-    // The canvas wrapper is centered while it is narrower than the viewport. Its left
-    // margin changes as zoom crosses the viewport width; omitting that offset makes the
-    // finger anchor drift sideways on phones even when scroll math is otherwise correct.
-    const wrapper = viewport.firstElementChild as HTMLElement | null;
-    const currentWidth = wrapper?.clientWidth ?? 0;
-    const currentMarginLeft = Math.max(0, (viewport.clientWidth - currentWidth) / 2);
-    const nextWidth = currentWidth * ratio;
-    const nextMarginLeft = Math.max(0, (viewport.clientWidth - nextWidth) / 2);
-    const delta = {
-      left: nextMarginLeft + (viewport.scrollLeft + anchorX - currentMarginLeft) * ratio - anchorX - viewport.scrollLeft,
-      top: (viewport.scrollTop + anchorY) * ratio - anchorY - viewport.scrollTop,
-    };
-    const pending = pendingScrollRef.current;
-    pendingScrollRef.current = pending ? { left: pending.left + delta.left, top: pending.top + delta.top } : delta;
-  }, []);
+  }, [setStagePosition]);
   const [wallBackgroundUrl, setWallBackgroundUrl] = useState("");
   const wallBackgroundInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { panoramaZoomRef.current = panoramaZoom; }, [panoramaZoom]);
@@ -330,9 +318,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         firstMeasure = false;
         panoramaZoomRef.current = fittedZoom;
         setPanoramaZoom(fittedZoom);
+        setStagePosition({ x: (width - world.width * fittedZoom / 100) / 2, y: (height - world.height * fittedZoom / 100) / 2 });
       } else if (panoramaZoomRef.current < fittedZoom) {
         panoramaZoomRef.current = fittedZoom;
         setPanoramaZoom(fittedZoom);
+        setStagePosition({ x: (width - world.width * fittedZoom / 100) / 2, y: (height - world.height * fittedZoom / 100) / 2 });
       }
     };
     fitCanvas();
@@ -357,7 +347,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       pinchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (firstPointer) {
         const target = event.target instanceof Element ? event.target : null;
-        singleTouchRef.current = { x: event.clientX, y: event.clientY, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, startedOnPhoto: Boolean(target?.closest("[data-photo-wall-photo]")), panStarted: false };
+        singleTouchRef.current = { x: event.clientX, y: event.clientY, scrollLeft: 0, scrollTop: 0, startedOnPhoto: Boolean(target?.closest("[data-photo-wall-photo]")), panStarted: false, stageX: stageTranslationRef.current.x, stageY: stageTranslationRef.current.y } as typeof singleTouchRef.current;
       }
       if (pinchPointersRef.current.size < 2) return;
       const points = [...pinchPointersRef.current.values()].slice(0, 2);
@@ -379,8 +369,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         // Two fingers navigate the canvas: midpoint motion pans, distance motion zooms.
         // This remains available while drawing; a single finger is reserved for the stroke.
         const panX = midpoint.x - previousMidpoint.x, panY = midpoint.y - previousMidpoint.y;
-        if (Math.abs(panX) > 0.01) viewport.scrollLeft -= panX;
-        if (Math.abs(panY) > 0.01) viewport.scrollTop -= panY;
+        if (Math.abs(panX) > 0.01 || Math.abs(panY) > 0.01) {
+          const current = stageTranslationRef.current;
+          setStagePosition({ x: current.x + panX, y: current.y + panY });
+        }
         pinchLastMidpointRef.current = midpoint;
         const nextZoom = Math.max(5, Math.min(300, Math.round(pinchStartRef.current.zoom * pointsDistance(points) / pinchStartRef.current.distance)));
         applyZoom(nextZoom, { x: midpoint.x - rect.left, y: midpoint.y - rect.top });
@@ -395,7 +387,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         if (event.cancelable) event.preventDefault();
         const dx = event.clientX - touch.x, dy = event.clientY - touch.y;
         if (!touch.panStarted) { touch.panStarted = true; window.dispatchEvent(new Event("photo-wall-pan-start")); }
-        viewport.scrollLeft = touch.scrollLeft - dx; viewport.scrollTop = touch.scrollTop - dy;
+        setStagePosition({ x: (touch as typeof touch & { stageX?: number; stageY?: number }).stageX! - dx, y: (touch as typeof touch & { stageX?: number; stageY?: number }).stageY! - dy });
         return;
       }
     };
@@ -431,8 +423,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         const target = event.target instanceof Element ? event.target : null;
         singleTouchRef.current = {
           x: event.touches[0].clientX, y: event.touches[0].clientY,
-          scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop,
+          scrollLeft: 0, scrollTop: 0,
           startedOnPhoto: Boolean(target?.closest("[data-photo-wall-photo]")), panStarted: false,
+          stageX: stageTranslationRef.current.x, stageY: stageTranslationRef.current.y,
         };
       }
     };
@@ -1469,8 +1462,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           {wallCanvasMode === "view" && wallSelectedPhoto && <div className="relative z-40 mb-2 flex shrink-0 items-center justify-between gap-2 border-b border-[#e6d9cb] px-2 py-1.5"><span className="min-w-0 truncate text-[10px] text-[#8b7665]">已选：{wallSelectedPhoto.title||"未命名的瞬间"}</span><button type="button" onClick={() => openPhoto(wallSelectedPhoto)} className="shrink-0 border border-[#d7c2b1] px-2.5 py-1.5 text-[10px] text-[#7d6d5a]">查看详情</button></div>}
         </>}
         {busy && <div className="mb-3 flex shrink-0 items-center gap-2 border border-[#e4d8c6] bg-[#faf7f0] px-3 py-2.5 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
-        <div ref={panoramaViewportRef} data-photo-wall-viewport className="min-h-0 flex-1 w-full overflow-auto overscroll-contain bg-[#e9dfd2]" style={{ WebkitOverflowScrolling: "touch", touchAction: "none", overscrollBehavior: "contain" }}>
-          <div className="relative shrink-0 overflow-hidden shadow-[0_8px_28px_rgba(72,48,34,.12)]" style={{ width: world.width * panoramaZoom / 100, height: world.height * panoramaZoom / 100, touchAction: "none", margin: "0 auto" }}>
+        <div ref={panoramaViewportRef} data-photo-wall-viewport className="relative min-h-0 flex-1 w-full overflow-hidden overscroll-contain bg-[#e9dfd2]" style={{ touchAction: "none", overscrollBehavior: "contain" }}>
+          <div className="absolute left-0 top-0 shadow-[0_8px_28px_rgba(72,48,34,.12)]" style={{ width: world.width, height: world.height, transform: `translate3d(${stageTranslation.x}px, ${stageTranslation.y}px, 0) scale(${panoramaZoom / 100})`, transformOrigin: "0 0", touchAction: "none", willChange: "transform" }}>
             <PhotoWallCanvas photos={visiblePhotos} selectedId={wallActivePhotoId} onSelect={setWallActivePhotoId}
               onChangePlacement={changePlacement} onPlacementSettled={settlePlacement}
               onDragBegin={() => pushHistory(stateRef.current)} onUndo={undo} onRedo={redo}
