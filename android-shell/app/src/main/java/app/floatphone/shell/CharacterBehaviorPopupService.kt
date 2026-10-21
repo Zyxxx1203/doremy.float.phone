@@ -49,6 +49,7 @@ class CharacterBehaviorPopupService : Service() {
         return START_NOT_STICKY
     }
 
+    @Suppress("DEPRECATION")
     private fun ensureForegroundNotification() {
         val channelId = "character_behavior_popup"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -62,7 +63,6 @@ class CharacterBehaviorPopupService : Service() {
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, channelId)
         } else {
-            @Suppress("DEPRECATION")
             Notification.Builder(this)
         }
         val notification = builder.setSmallIcon(R.drawable.ic_stat)
