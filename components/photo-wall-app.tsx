@@ -388,25 +388,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         applyZoom(nextZoom, { x: midpoint.x - rect.left, y: midpoint.y - rect.top });
         return;
       }
-      if (supportsPointerEvents && pointers.size === 1 && !pinchModeRef.current) {
-        const start = singleTouchRef.current;
-        if (!start) return;
-        const activeMode = viewport.querySelector<HTMLElement>("[data-photo-wall-mode]")?.dataset.photoWallMode;
-        // 在照片上时，摆放/涂鸦由照片自己的手势负责；从空白墙面起手则统一平移画布。
-        if (activeMode === "doodle") return; // 涂鸦时单指留给笔迹；要平移可切换“移动画布”或使用双指。
-        if (activeMode === "move" && start.startedOnPhoto) return;
-        const dx = event.clientX - start.x, dy = event.clientY - start.y;
-        if (Math.abs(dx) + Math.abs(dy) < 3) return;
-        if (event.cancelable) event.preventDefault();
-        if (!start.panStarted) {
-          start.panStarted = true;
-          // Once a drag crosses the tap threshold, keep receiving moves even if the finger
-          // leaves the canvas viewport. Tap-to-flip remains untouched because capture starts late.
-          try { viewport.setPointerCapture(event.pointerId); } catch { /* WebView may reject capture on an ancestor */ }
-          window.dispatchEvent(new Event("photo-wall-pan-start"));
-        }
-        viewport.scrollLeft = start.scrollLeft - dx; viewport.scrollTop = start.scrollTop - dy;
-      }
+      // 单指不再移动画布：单指只执行当前工具（点按、拖照片、自由涂鸦）。
+      // 画布平移/缩放统一交给双指手势，避免拖照片与拖画布抢同一根手指。
+      if (supportsPointerEvents && pointers.size === 1 && !pinchModeRef.current) return;
     };
     const onPointerEnd = (event: PointerEvent) => {
       const pointers = pinchPointersRef.current;
@@ -428,6 +412,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         if (!pinchModeRef.current) {
           pinchStartRef.current = { distance: touchDistance(event.touches), zoom: panoramaZoomRef.current };
           pinchModeRef.current = true;
+          pinchLastMidpointRef.current = { x: (event.touches[0].clientX + event.touches[1].clientX) / 2, y: (event.touches[0].clientY + event.touches[1].clientY) / 2 };
           window.dispatchEvent(new Event("photo-wall-pinch-start"));
         }
         singleTouchRef.current = null;
@@ -456,6 +441,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           x: (event.touches[0].clientX + event.touches[1].clientX) / 2,
           y: (event.touches[0].clientY + event.touches[1].clientY) / 2,
         };
+        const previousMidpoint = pinchLastMidpointRef.current ?? midpoint;
+        // 兼容不支持 PointerEvent 的 WebView：中点位移平移，指距变化缩放。
+        viewport.scrollLeft -= midpoint.x - previousMidpoint.x;
+        viewport.scrollTop -= midpoint.y - previousMidpoint.y;
+        pinchLastMidpointRef.current = midpoint;
         const rect = viewport.getBoundingClientRect();
         const nextZoom = Math.max(5, Math.min(300, Math.round(
           pinchStartRef.current.zoom * touchDistance(event.touches) / pinchStartRef.current.distance,
@@ -463,21 +453,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         applyZoom(nextZoom, { x: midpoint.x - rect.left, y: midpoint.y - rect.top });
         return;
       }
-      if (event.touches.length !== 1 || pinchModeRef.current) return;
-      const start = singleTouchRef.current;
-      if (!start) return;
-      const activeMode = viewport.querySelector<HTMLElement>("[data-photo-wall-mode]")?.dataset.photoWallMode;
-      if (activeMode === "doodle") return; // 保留墙面自由笔迹；需要平移时切换独立画布模式。
-      if (activeMode === "move" && start.startedOnPhoto) return;
-      const dx = event.touches[0].clientX - start.x, dy = event.touches[0].clientY - start.y;
-      if (Math.abs(dx) + Math.abs(dy) < 3) return;
-      if (event.cancelable) event.preventDefault();
-      if (!start.panStarted) {
-        start.panStarted = true;
-        window.dispatchEvent(new Event("photo-wall-pan-start"));
-      }
-      viewport.scrollLeft = start.scrollLeft - dx;
-      viewport.scrollTop = start.scrollTop - dy;
+      // 单指只执行照片拖动或自由涂鸦；画布平移必须双指。
     };
     const onTouchEnd = (event: TouchEvent) => {
       if (supportsPointerEvents) return;
