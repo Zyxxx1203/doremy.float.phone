@@ -39,6 +39,14 @@ const FIRST_SCAN_DELAY_MS = 5_000;
 
 export function CheckInScheduler() {
   useEffect(() => {
+    // 在应用仍处于前台时预热原生角色弹窗宿主；否则 Android 可能拒绝后台启动服务。
+    try {
+      const shell = (window as unknown as { AndroidShell?: { prepareCharacterBehaviorPopupService?: () => boolean } }).AndroidShell;
+      shell?.prepareCharacterBehaviorPopupService?.();
+    } catch {
+      // Web browser / old APK: native popup is simply unavailable.
+    }
+
     // 主动截屏接收端：挂载时补收一张，之后每次收到 checkIn 事件再拉一次。
     // 原生侧是「读到即空」，重复调用不会把同一张图发两遍。
     const stopUserShotBridge = startUserShotBridge();
