@@ -1497,15 +1497,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app[data-source-panel="true"]::after {
         content:""; position:fixed; inset:0; z-index:3999; background:rgba(24,17,12,.45); pointer-events:none;
       }
-      @media (orientation:landscape) and (min-width:700px) {
-        .watch-together-app:not([data-watch-fullscreen="true"]) > main.watch-together-main {
-          grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)!important;
-          grid-template-rows:minmax(0,1fr)!important;
-          grid-template-areas:"player interaction"!important;
-          gap:12px!important; padding:12px!important;
-        }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player { height:100%!important; max-height:none!important; }
-      }
       .watch-capsule-button{display:flex;min-width:0;flex:1 1 0;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:9px 2px;border:1px solid rgba(166,126,91,.24);background:rgba(255,250,242,.9);color:#765641;box-shadow:0 4px 12px rgba(96,67,43,.06)}
       .watch-capsule-button small{font-size:10px;white-space:nowrap}
       .watch-control-capsule{grid-area:toolbar;position:relative;z-index:50;border:1px solid rgba(185,153,122,.32);background:rgba(255,248,237,.8)}
@@ -1714,7 +1705,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </div>
           </div>
 
-            <div data-part="composer" className="watch-discussion-composer mt-3 border-t border-[#d6b18c]/20 pt-3"><div className="flex items-center gap-2"><input value={timepointDraft} onPointerDown={event=>event.stopPropagation()} onTouchStart={event=>event.stopPropagation()} inputMode="numeric" autoComplete="off" maxLength={8} onChange={event=>{ const next=event.target.value.replace(/[^0-9:.]/g, "").slice(0,8); timepointDraftRef.current=next; setTimepointDraft(next); }} placeholder="时间点 03:12（可选）" aria-label="视频时间点，例如 03:12" className="w-[42%] min-w-0 border-b border-[#9c7b63]/60 bg-transparent px-1 py-2 text-xs text-[#f0dfcc] outline-none placeholder:text-[#907d6c] focus:border-[#e4c6a8]"/><span className="text-[10px] text-[#907d6c]">时间点 / 章节标记</span></div><textarea value={discussionDraft} onPointerDown={event=>event.stopPropagation()} onTouchStart={event=>event.stopPropagation()} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} maxLength={800} rows={2} placeholder={target ? "写下你对这一幕的看法……" : "先放上视频，再写下你对这一幕的看法……"} className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-black/20 p-3 text-sm leading-6 text-[#efe2d0] outline-none placeholder:text-[#907d6c] focus:border-[#c99a78]/60 focus:ring-2 focus:ring-[#c99a78]/10"/><div className="mt-2 flex justify-end"><button type="button" onClick={() => submitDiscussion()} disabled={!target||!discussionDraft.trim()} className="inline-flex items-center rounded-full border border-[#c99a78]/60 bg-[#c99a78] px-4 py-2.5 text-xs font-medium text-[#2a1f16] shadow-sm transition hover:brightness-105 active:scale-[.98] disabled:opacity-40"><MessageCircle size={13} className="mr-1 inline"/>发送</button></div></div>
+            <div data-part="composer" className="watch-discussion-composer mt-3 border-t border-[#d6b18c]/20 pt-3"><textarea value={discussionDraft} onPointerDown={event=>event.stopPropagation()} onTouchStart={event=>event.stopPropagation()} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} maxLength={800} rows={2} placeholder={target ? "写下你对这一幕的看法……" : "先放上视频，再写下你对这一幕的看法……"} className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-black/20 p-3 text-sm leading-6 text-[#efe2d0] outline-none placeholder:text-[#907d6c] focus:border-[#c99a78]/60 focus:ring-2 focus:ring-[#c99a78]/10"/><div className="mt-2 flex justify-end"><button type="button" onClick={() => submitDiscussion()} disabled={!target||!discussionDraft.trim()} className="inline-flex items-center rounded-full border border-[#c99a78]/60 bg-[#c99a78] px-4 py-2.5 text-xs font-medium text-[#2a1f16] shadow-sm transition hover:brightness-105 active:scale-[.98] disabled:opacity-40"><MessageCircle size={13} className="mr-1 inline"/>发送</button></div></div>
           <div data-part="actions" className="mt-3 flex flex-wrap items-center gap-2">
             <button onClick={() => void generateComment(true)} disabled={!target || !character || busy} className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs text-[#2a1f16] transition active:scale-95 disabled:opacity-40" style={{ background: "linear-gradient(135deg,#e8c39a,#c99a6a)" }}>
               {busy ? <LoaderCircle size={13} className="animate-spin"/> : <MessageCircle size={13}/>}让 TA 即时回应
