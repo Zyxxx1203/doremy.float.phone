@@ -231,6 +231,16 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [wholeVideoProgress, setWholeVideoProgress] = useState("");
   const [videoAnalysisSettings, setVideoAnalysisSettings] = useState<VideoAnalysisSettings>(() => loadVideoAnalysisSettings());
   const [videoBackground, setVideoBackground] = useState<{ url: string; text: string } | null>(null);
+  type WatchContextSettings = { provider: "auto" | "tavily" | "custom"; apiUrl: string; apiKey: string };
+  const WATCH_CONTEXT_SETTINGS_KEY = "watch_context_provider_settings_v1";
+  const [watchContextSettings, setWatchContextSettings] = useState<WatchContextSettings>(() => {
+    try {
+      const raw = kvGet(WATCH_CONTEXT_SETTINGS_KEY);
+      const value = raw ? JSON.parse(raw) as Partial<WatchContextSettings> : {};
+      return { provider: value.provider === "tavily" || value.provider === "custom" ? value.provider : "auto", apiUrl: typeof value.apiUrl === "string" ? value.apiUrl : "https://api.tavily.com", apiKey: typeof value.apiKey === "string" ? value.apiKey : "" };
+    } catch { return { provider: "auto", apiUrl: "https://api.tavily.com", apiKey: "" }; }
+  });
+  const [contextFetchStatus, setContextFetchStatus] = useState("");
   const videoBackgroundRequestedRef = useRef<Set<string>>(new Set());
   const [videoModelOptions, setVideoModelOptions] = useState<string[]>([]);
   const [videoModelBusy, setVideoModelBusy] = useState(false);
@@ -532,86 +542,96 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     } finally { setVideoModelBusy(false); }
   };
 
-  /**
-   * 在用户开始观看时，先用已配置的 Gemini Google Search grounding 查找视频背景。
-   * 只缓存精简摘要和来源链接；不能访问网页时仍可使用截图与角色对话。
-   */
+  /** 外部资料获取与角色回复分开：先读公开页面/搜索资料，再将其作为不可信参考上下文交给角色。 */
+  useEffect(() => { kvSet(WATCH_CONTEXT_SETTINGS_KEY, JSON.stringify(watchContextSettings)); }, [watchContextSettings]);
+
   const lookupVideoBackground = useCallback(async (url: string, title: string) => {
-    const cfg = videoAnalysisSettings;
     if (!url || /^blob:|^data:/i.test(url) || videoBackgroundRequestedRef.current.has(url)) return;
     setVideoBackground(null);
+    setContextFetchStatus("正在读取视频页面公开资料…");
     const cacheKey = "watch_video_background_cache_v1";
     try {
       const cached = JSON.parse(kvGet(cacheKey) || "{}") as Record<string, string>;
       if (typeof cached[url] === "string" && cached[url].trim()) {
         videoBackgroundRequestedRef.current.add(url);
         setVideoBackground({ url, text: cached[url] });
+        setContextFetchStatus("已读取本地缓存的外部资料");
         return;
       }
-    } catch { /* Ignore a damaged cache and search again. */ }
-    if (cfg.provider !== "gemini" || !cfg.apiKey.trim() || !cfg.model.trim()) return;
+    } catch { /* 缓存损坏时重新读取 */ }
     videoBackgroundRequestedRef.current.add(url);
+    const cfg = watchContextSettings;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 18000);
+    const blocks: string[] = [];
     try {
-      let baseUrl = cfg.baseUrl.trim();
-      while (baseUrl.endsWith("/")) baseUrl = baseUrl.slice(0, -1);
-      const endpoint = baseUrl +
-        "/v1beta/models/" + encodeURIComponent(cfg.model.trim()) +
-        ":generateContent?key=" + encodeURIComponent(cfg.apiKey.trim());
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
-          contents: [{
-            role: "user",
-            parts: [{
-              text: [
-                "请使用 Google Search 搜索这个视频的公开背景资料，只整理对陪看讨论有帮助的信息。",
-                "视频链接：" + url,
-                "可能的标题：" + (title || "未知"),
-                "请优先确认作品/视频名称、类型、基本设定、主要人物及关系；若有可靠的公开剧情简介，可简要概括。",
-                "不要编造；不确定时明确标注不确定。默认避免关键后续剧情剧透。最多输出 5 条、约 800 个中文字，并尽可能引用来源标题和链接。"
-              ].join("\n")
-            }]
-          }],
-          tools: [{ google_search: {} }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 1200 }
-        })
-      });
-      const data = await response.json().catch(() => ({})) as {
-        error?: { message?: string };
-        candidates?: Array<{
-          content?: { parts?: Array<{ text?: string }> };
-          groundingMetadata?: { groundingChunks?: Array<{ web?: { title?: string; uri?: string } }> };
-        }>;
-      };
-      if (!response.ok) throw new Error(data.error?.message || "搜索请求失败（HTTP " + response.status + "）");
-      const candidate = data.candidates?.[0];
-      const summary = (candidate?.content?.parts ?? []).map(part => part.text || "").filter(Boolean).join("\n").trim();
-      if (!summary) throw new Error("搜索模型没有返回可用资料");
-      const sources = (candidate?.groundingMetadata?.groundingChunks ?? [])
-        .map(chunk => chunk.web)
-        .filter((web): web is { title?: string; uri?: string } => Boolean(web?.uri))
-        .slice(0, 6)
-        .map(web => "- " + (web.title || web.uri) + ": " + web.uri);
-      const text = (summary + (sources.length ? "\n\n搜索来源：\n" + sources.join("\n") : "")).slice(0, 6000);
-      setVideoBackground({ url, text });
+      // 先尝试公开页面 HTML 元数据。多数外站会限制浏览器 CORS，失败后继续使用配置的数据服务。
       try {
-        const cached = JSON.parse(kvGet(cacheKey) || "{}") as Record<string, string>;
-        cached[url] = text;
-        const entries = Object.entries(cached).slice(-20);
-        kvSet(cacheKey, JSON.stringify(Object.fromEntries(entries)));
-      } catch { /* Cache is optional; a successful lookup still works for this session. */ }
+        const response = await fetch(url, { signal: controller.signal, credentials: "omit" });
+        if (response.ok) {
+          const html = (await response.text()).slice(0, 1_500_000);
+          const decode = (value: string) => value.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+          const meta = (key: string) => {
+            const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const patterns = [
+              new RegExp('<meta[^>]+(?:property|name)=["\\']' + escaped + '["\\'][^>]+content=["\\']([^"\\']*)["\\'][^>]*>', "i"),
+              new RegExp('<meta[^>]+content=["\\']([^"\\']*)["\\'][^>]+(?:property|name)=["\\']' + escaped + '["\\'][^>]*>', "i"),
+            ];
+            for (const pattern of patterns) { const match = pattern.exec(html); if (match?.[1]) return decode(match[1]); }
+            return "";
+          };
+          const pageTitle = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]?.replace(/<[^>]+>/g, "").trim() || "";
+          const ogTitle = meta("og:title") || meta("twitter:title");
+          const description = meta("description") || meta("og:description") || meta("twitter:description");
+          const siteName = meta("og:site_name");
+          const data = [ogTitle || pageTitle ? "页面标题：" + (ogTitle || pageTitle) : "", siteName ? "网站：" + siteName : "", description ? "页面简介：" + description : ""].filter(Boolean);
+          if (data.length) blocks.push("【视频页面公开元数据】\n" + data.join("\n"));
+        }
+      } catch { /* CORS/反爬/动态页面时交由外部服务 */ }
+
+      if ((cfg.provider === "tavily" || cfg.provider === "auto") && cfg.apiKey.trim()) {
+        const root = (cfg.apiUrl.trim() || "https://api.tavily.com").replace(/\/+$/, "");
+        const headers = { "Content-Type": "application/json", Authorization: "Bearer " + cfg.apiKey.trim() };
+        // 直接提取原始链接正文；若提取失败/无正文，再通过 Search 找公开背景资料。
+        try {
+          const response = await fetch(root + "/extract", { method: "POST", headers, body: JSON.stringify({ urls: [url], extract_depth: "basic" }), signal: controller.signal });
+          const data = await response.json().catch(() => ({})) as { results?: Array<{ raw_content?: string; content?: string }> };
+          const extracted = (data.results || []).map(item => item.raw_content || item.content || "").filter(Boolean).join("\n").slice(0, 8000);
+          if (response.ok && extracted) blocks.push("【网页正文提取】\n" + extracted);
+        } catch { /* 继续尝试搜索 */ }
+        if (!blocks.some(item => item.includes("网页正文提取"))) {
+          const query = [title, url, "视频内容简介 作品背景 主要人物"].filter(Boolean).join(" ");
+          const response = await fetch(root + "/search", { method: "POST", headers, body: JSON.stringify({ query, search_depth: "basic", max_results: 5 }), signal: controller.signal });
+          const data = await response.json().catch(() => ({})) as { results?: Array<{ title?: string; url?: string; content?: string }>; detail?: string };
+          if (!response.ok) throw new Error(data.detail || "Tavily 搜索 HTTP " + response.status);
+          const results = (data.results || []).map(item => [item.title, item.content, item.url].filter(Boolean).join(" — ")).filter(Boolean);
+          if (results.length) blocks.push("【联网搜索结果】\n" + results.join("\n"));
+        }
+      } else if (cfg.provider === "custom" && cfg.apiUrl.trim()) {
+        const response = await fetch(cfg.apiUrl.trim(), { method: "POST", headers: { "Content-Type": "application/json", ...(cfg.apiKey.trim() ? { Authorization: "Bearer " + cfg.apiKey.trim() } : {}) }, body: JSON.stringify({ operation: "extract_and_search", url, title, query: [title, url, "视频内容简介 作品背景 主要人物"].filter(Boolean).join(" "), max_results: 5 }), signal: controller.signal });
+        const data = await response.json().catch(() => ({})) as { content?: string; text?: string; answer?: string; results?: Array<{ title?: string; url?: string; content?: string; snippet?: string }>; error?: string };
+        if (!response.ok) throw new Error(data.error || "自定义资料接口 HTTP " + response.status);
+        const resultText = [data.content, data.text, data.answer, ...(data.results || []).map(item => [item.title, item.content || item.snippet, item.url].filter(Boolean).join(" — "))].filter(Boolean).join("\n");
+        if (resultText) blocks.push("【自定义资料服务】\n" + resultText);
+      }
+      const summary = blocks.join("\n\n").slice(0, 9000);
+      if (summary) {
+        setVideoBackground({ url, text: summary });
+        setContextFetchStatus("资料已获取，将作为独立上下文交给角色 AI");
+        try {
+          const store = JSON.parse(kvGet(cacheKey) || "{}") as Record<string, string>;
+          store[url] = summary;
+          kvSet(cacheKey, JSON.stringify(Object.fromEntries(Object.entries(store).slice(-20))));
+        } catch { /* 缓存失败不影响本次使用 */ }
+      } else {
+        setContextFetchStatus(!cfg.apiKey.trim() && cfg.provider !== "custom" ? "未配置联网搜索 API，页面读取未成功；截图陪看仍可正常使用" : "未能读取到可用页面资料；截图陪看仍可正常使用");
+      }
     } catch (error) {
       videoBackgroundRequestedRef.current.delete(url);
-      console.info("[TogetherWatch] 视频背景搜索未完成，继续使用截图和聊天上下文。", error);
-    } finally {
-      window.clearTimeout(timeout);
-    }
-  }, [videoAnalysisSettings]);
-
+      setContextFetchStatus("外部资料读取失败，仍可继续截图陪看：" + (error instanceof Error ? error.message : String(error)));
+      console.info("[TogetherWatch] 外部资料获取失败，继续使用截图和角色对话。", error);
+    } finally { window.clearTimeout(timeout); }
+  }, [watchContextSettings]);
   useEffect(() => {
     if (!target?.url || target.platformName === "本地视频") {
       setVideoBackground(null);
@@ -1402,11 +1422,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </button>
             {target?.platformName === "本地视频" && localVideoFileRef.current && <div className="flex min-w-0 basis-full flex-wrap items-center gap-2 rounded-xl border border-[#c99a78]/30 bg-white/[.04] px-3 py-2">
               <div className="min-w-0 flex-1">
-                <div className="text-[11px] font-semibold text-[#e6c49d]">专注模式 · 完整视频理解</div>
-                <div className="mt-0.5 text-[10px] leading-4 text-[#a9937e]">将本地视频交给当前配置的视频理解服务处理。Gemini、火山方舟、TwelveLabs 按各自接口上传视频；OpenAI 兼容 / Claude 配置按关键帧方案抽取画面。继续即表示你允许向所选第三方服务发送该视频，请勿上传不愿分享的私人内容。</div>
-                {wholeVideoProgress && <div role="status" aria-live="polite" className="mt-1 text-[10px] text-[#e6c49d]">{wholeVideoProgress}</div>}
+                <div className="text-[11px] font-semibold text-[#e6c49d]">完整视频分析 · 待完善</div>
+                <div className="mt-0.5 text-[10px] leading-4 text-[#a9937e]">完整视频分析入口保留为待完善功能，当前不触发整段视频上传。现在可使用随机截图陪看、手动上传截图及导入字幕/脚本；外部公开资料会作为独立上下文交给角色 AI。</div>
               </div>
-              <button type="button" onClick={() => { if (wholeVideoBusy) wholeVideoAbortRef.current?.abort(); else void analyzeWholeLocalVideo(); }} disabled={!wholeVideoBusy && !character} className="shrink-0 rounded-full border border-[#c99a78]/60 bg-[#c99a78] px-3 py-2 text-[11px] font-semibold text-[#2a1f16] disabled:opacity-40">{wholeVideoBusy ? "取消分析" : "让角色看完整视频"}</button>
+              <button type="button" disabled className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-[#8b8077]">待完善</button>
             </div>}
             <button onClick={() => { setGlobalWatchRecords(loadGlobalWatchRecords()); setShowHistory(true); }} disabled={!comments.length && !globalWatchRecords.length} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3.5 py-2 text-xs text-[#d8c9b6] transition active:scale-95 disabled:opacity-40">
               <Heart size={13}/>回看悄悄话 {comments.length > 0 && <span className="text-[#c99a6a]">{comments.length}</span>}
@@ -1468,6 +1487,23 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               {DANMAKU_COLORS.map(color => <button key={color} type="button" aria-label={color} onClick={() => patchSettings({ danmakuColor: color })} className={"h-6 w-6 rounded-full border " + ((settings.danmakuColor || "#e6c49d").toLowerCase() === color.toLowerCase() ? "border-white ring-2 ring-white/30" : "border-white/20")} style={{ background: color }} />)}
               <label className="relative h-6 w-8 cursor-pointer overflow-hidden rounded border border-white/20" aria-label="自定义弹幕颜色"><input type="color" value={settings.danmakuColor} onChange={event => patchSettings({ danmakuColor: event.target.value })} className="absolute -left-1 -top-1 h-10 w-12 cursor-pointer border-0 bg-transparent p-0" /></label>
             </div>
+          <section className="mt-4 border-t border-white/10 pt-3">
+            <h3 className="font-serif text-sm text-[#e8c39a]">联网资料获取</h3>
+            <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">独立的数据获取步骤：先尝试读取公开页面元数据，再按配置提取正文或搜索背景；结果只作为参考资料传给角色 AI，不替代截图视觉理解。Tavily 可直接配置，自定义接口需遵循下方请求格式。</p>
+            <label className="mt-2 block text-[11px] text-[#9c9086]">资料来源
+              <select value={watchContextSettings.provider} onChange={event => setWatchContextSettings(value => ({...value, provider:event.target.value as WatchContextSettings["provider"]}))} className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none">
+                <option value="auto">自动：页面元数据 + Tavily（配置 Key 后）</option><option value="tavily">Tavily 网页提取 / 搜索</option><option value="custom">自定义资料获取 API</option>
+              </select>
+            </label>
+            <label className="mt-2 block text-[11px] text-[#9c9086]">资料 API 地址
+              <input type="url" value={watchContextSettings.apiUrl} onChange={event => setWatchContextSettings(value => ({...value, apiUrl:event.target.value}))} placeholder="https://api.tavily.com" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none"/>
+            </label>
+            <label className="mt-2 block text-[11px] text-[#9c9086]">资料 API Key
+              <input type="password" autoComplete="off" value={watchContextSettings.apiKey} onChange={event => setWatchContextSettings(value => ({...value, apiKey:event.target.value}))} placeholder="可留空；仅保存在此设备" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none"/>
+            </label>
+            {watchContextSettings.provider === "custom" && <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">自定义接口以 POST 发送 JSON：operation、url、title、query、max_results；Authorization: Bearer Key。返回 JSON 可含 content、text、answer 或 results 数组（title/url/content/snippet）。</p>}
+            {contextFetchStatus && <p role="status" aria-live="polite" className="mt-2 break-words text-[10px] leading-5 text-[#e6c49d]">{contextFetchStatus}</p>}
+          </section>
           <section className="mt-4 border-t border-white/10 pt-3">
             <h3 className="font-serif text-sm text-[#e8c39a]">视频理解模型</h3>
             <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">独立于角色聊天模型。可手动输入 API 地址和模型 ID；刷新列表依赖服务商允许网页跨域访问。</p>
