@@ -508,7 +508,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         viewport.removeEventListener("touchcancel", onTouchEnd, true);
       }
     };
-  }, [wallView, state.photos.length, filter]);
+  }, [wallView, wallCanvasMode, state.photos.length, filter, applyZoom, setStagePosition]);
   const [selectedCharacterId, setSelectedCharacterId] = useState<string>(() => readPhotoWallCharacter());
   const [groupReferenceCharacterIds, setGroupReferenceCharacterIds] = useState<string[]>(() => readPhotoWallGroupReferences());
   const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null); // Modal editor only
