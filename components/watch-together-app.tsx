@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronDown, Expand, ExternalLink, Eye, FileText, Heart, ImagePlus, LoaderCircle, MessageCircle, Pause, Play, Settings2, Sparkles, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, Expand, ExternalLink, FileText, Heart, ImagePlus, LoaderCircle, MessageCircle, Pause, Play, Settings2, Sparkles, X } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import { generateChatCompletion, flattenCompletionResult, readCompressedImageDataUrl } from "@/lib/chat-engine";
@@ -1203,7 +1203,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         <span className="grid h-6 w-6 place-items-center overflow-hidden rounded-full bg-[#4a3d33] text-[10px] text-[#e6d8c4]">{character.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character.name.slice(0, 1)}</span>
         <span className="max-w-[72px] truncate text-[11px] font-medium text-[#6d5141]">{character.name}</span>
       </div>}
-      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowGlobalCompanion(true); }} className="relative z-[1011] flex h-11 shrink-0 cursor-pointer touch-manipulation items-center gap-1.5 rounded-2xl border border-[#b89979]/45 bg-[#fffaf2]/80 px-2.5 text-[11px] text-[#6d4e47] shadow-sm transition hover:bg-white active:scale-95" aria-label="全局陪看"><Eye size={15}/>全局</button>
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowGlobalCompanion(true); }} className="relative z-[1011] flex h-11 shrink-0 cursor-pointer touch-manipulation items-center gap-1.5 rounded-2xl border border-[#b89979]/45 bg-[#fffaf2]/80 px-2.5 text-[11px] text-[#6d4e47] shadow-sm transition hover:bg-white active:scale-95" aria-label="全局陪看">全局</button>
       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowSettings(value => !value); }} className="relative z-[1011] grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-[#b89979]/45 bg-[#fffaf2]/80 text-[#6d4e47] shadow-sm transition hover:bg-white active:scale-95" aria-label="观影设置" aria-expanded={showSettings}><Settings2 size={17}/></button>
     </header>
 
