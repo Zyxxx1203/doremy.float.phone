@@ -16,6 +16,7 @@ import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import { findUserAvatarChangeIntent, inferAvatarDecisionFromReply } from "./chat-avatar-intent";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "./life/life-storage";
 import { getActorClock, resolveActorLifeNow } from "./life/life-runtime";
+import { recordCharacterConversationEvent } from "./character-behavior-memory";
 
 export const DEFAULT_VISION_IMAGE_PROMPT_LIMIT = 1;
 export const MAX_VISION_IMAGE_PROMPT_LIMIT = 20;
@@ -1519,6 +1520,30 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
         window.dispatchEvent(new CustomEvent(CHAT_MESSAGE_PUSHED_EVENT, { detail: { message: newMsg } }));
     }
     emitChatPluginEvent("message.persisted", { message: newMsg });
+
+    // Record private conversation turns as a compact, persistent character memory ledger.
+    // This is deliberately independent of the optional Life-system toggle.
+    if ((newMsg.role === "user" || newMsg.role === "assistant") && typeof window !== "undefined") {
+        try {
+            const memorySession = _sessionsCache.find(item => item.id === newMsg.sessionId);
+            if (memorySession && !memorySession.isGroup) {
+                const memoryContact = loadChatContacts().find(item => item.id === memorySession.contactId);
+                const memoryCharacter = memoryContact ? loadCharacters().find(item => item.id === memoryContact.characterId) : undefined;
+                if (memoryCharacter) {
+                    recordCharacterConversationEvent({
+                        characterId: memoryCharacter.id,
+                        sessionId: memorySession.id,
+                        messageId: newMsg.id,
+                        role: newMsg.role,
+                        content: newMsg.content,
+                        createdAt: newMsg.createdAt,
+                    });
+                }
+            }
+        } catch {
+            // Memory bookkeeping must never interrupt chat persistence.
+        }
+    }
 
     // Keep a lightweight cross-app breadcrumb in the Life timeline. Do not copy full
     // chat history into Life; the canonical message remains in Chat storage.
