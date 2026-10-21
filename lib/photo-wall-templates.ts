@@ -171,7 +171,7 @@ function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
   const center = { x: 0.5, y: 0.5 };
 
   const step = Math.max(0.018, Math.min(0.045, 0.5 / Math.sqrt(total * 14)));
-  const candidates: Array<{ x: number; y: number; radius: number; angle: number }> = [];
+  const candidates: Array<{ x: number; y: number; radius: number; angle: number; boundary: boolean }> = [];
   for (let y = 0.07; y <= 0.93; y += step) {
     for (let x = 0.07; x <= 0.93; x += step) {
       const { u, v } = toShapeSpace(x, y);
