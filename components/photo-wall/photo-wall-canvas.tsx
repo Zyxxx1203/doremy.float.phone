@@ -109,8 +109,8 @@ type DragState = {
 export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, backgroundBox, wallWorld, onOpenDetail, readOnly = false, fitHeight = false, canvasZoom = 1, mode: controlledMode, onModeChange, brushColor: controlledBrushColor, brushWidth: controlledBrushWidth, sticker: controlledSticker, onStickerChange, eraser: controlledEraser, onEraserChange }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
-  const strokeRef = useRef<{ id: string; photoId: string; side: "front" | "back"; anchorElement?: HTMLElement } | null>(null);
-  const wallStrokeRef = useRef<{ id: string } | null>(null);
+  const strokeRef = useRef<{ id: string; pointerId: number; photoId: string; side: "front" | "back"; anchorElement?: HTMLElement } | null>(null);
+  const wallStrokeRef = useRef<{ id: string; pointerId: number } | null>(null);
   const wallDraftPointsRef = useRef<{ x: number; y: number }[]>([]);
   const suppressClickRef = useRef(false);
   const multiTouchRef = useRef(false);
@@ -276,7 +276,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   };
 
   const doodlePointerDown = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number, anchorElement?: HTMLElement) => {
-    if (mode !== "doodle") return;
+    if (mode !== "doodle" || multiTouchRef.current) return;
     event.preventDefault();
     event.stopPropagation();
     // Capture on the actual interaction layer before hit-testing so the gesture cannot fall
@@ -303,12 +303,12 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     onSelect(photo.id);
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     const id = createPhotoWallId();
-    strokeRef.current = { id, photoId: photo.id, side, anchorElement };
+    strokeRef.current = { id, pointerId: event.pointerId, photoId: photo.id, side, anchorElement };
     setDraftPoints([{ x: point.x, y: point.y }]);
   };
 
   const doodlePointerMove = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number) => {
-    if (!strokeRef.current || strokeRef.current.photoId !== photo.id) return;
+    if (!strokeRef.current || strokeRef.current.pointerId !== event.pointerId || strokeRef.current.photoId !== photo.id || multiTouchRef.current) return;
     const point = pointOn(event, photo, index, strokeRef.current.anchorElement);
     setDraftPoints(prev => {
       const last = prev[prev.length - 1];
@@ -319,7 +319,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
 
   const doodlePointerUp = (event: React.PointerEvent, photo: PhotoWallPhoto) => {
     const stroke = strokeRef.current;
-    if (!stroke || stroke.photoId !== photo.id) return;
+    if (!stroke || stroke.pointerId !== event.pointerId || stroke.photoId !== photo.id) return;
     strokeRef.current = null;
     const points = draftPoints;
     setDraftPoints([]);
@@ -349,7 +349,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   };
 
   const wallDoodlePointerDown = (event: React.PointerEvent) => {
-    if (readOnly || mode !== "doodle") return;
+    if (readOnly || mode !== "doodle" || multiTouchRef.current) return;
     event.preventDefault();
     event.stopPropagation();
     // The wall's own pointer stream owns drawing; photo/frame click handlers must never receive it.
@@ -361,12 +361,12 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       return;
     }
     (event.currentTarget as SVGSVGElement).setPointerCapture(event.pointerId);
-    wallStrokeRef.current = { id: createPhotoWallId() };
+    wallStrokeRef.current = { id: createPhotoWallId(), pointerId: event.pointerId };
     wallDraftPointsRef.current = [point];
     setDraftPoints([point]);
   };
   const wallDoodlePointerMove = (event: React.PointerEvent) => {
-    if (!wallStrokeRef.current || mode !== "doodle") return;
+    if (!wallStrokeRef.current || wallStrokeRef.current.pointerId !== event.pointerId || mode !== "doodle" || multiTouchRef.current) return;
     const point = wallPoint(event);
     const last = wallDraftPointsRef.current[wallDraftPointsRef.current.length - 1];
     if (last && Math.hypot(last.x - point.x, last.y - point.y) < 0.003) return;
@@ -375,7 +375,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   };
   const wallDoodlePointerUp = (event: React.PointerEvent) => {
     const stroke = wallStrokeRef.current;
-    if (!stroke) return;
+    if (!stroke || stroke.pointerId !== event.pointerId) return;
     event.preventDefault();
     event.stopPropagation();
     wallStrokeRef.current = null;
@@ -457,7 +457,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
         className="absolute inset-0"
         style={{ zIndex: 2147483000, pointerEvents: !readOnly && mode !== "view" ? "auto" : "none", touchAction: "none" }}
         onPointerDown={event => {
-          if (readOnly || mode === "view" || mode === "pan") return; // 画布平移必须让事件冒泡给父级手势控制器。
+          if (readOnly || mode === "view" || mode === "pan" || multiTouchRef.current) return; // 双指手势优先；不允许第二根手指重新起笔。
           event.preventDefault();
           event.stopPropagation();
           // elementsFromPoint is inconsistent in some Android WebViews when a full-wall
