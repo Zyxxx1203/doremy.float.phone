@@ -1776,7 +1776,7 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
         ?? buildGroupTimeContext(members.map(member => ({
             name: member.character.name,
             timeZone: member.character.timeZone,
-        })));
+        })), new Date(), timeAware);
     const groupPromptTimestampOptions = input.promptTimestampOptions
         ?? getPromptTimestampOptionsForTimeContext(groupTimeContext);
     const beforeHistoryDepth = resolveBeforeHistoryDepth(history.length, unifiedRecentItems?.length);
@@ -1870,7 +1870,7 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
         const engine = new MacroEngine(char.name, resolvedUserName);
         applyTimeContextToMacroEngine(
             engine,
-            input.memberTimeContexts?.[char.id] ?? buildCharacterTimeContext(char.timeZone),
+            input.memberTimeContexts?.[char.id] ?? buildCharacterTimeContext(char.timeZone, new Date(), timeAware),
         );
         engine.description = char.persona ?? "";
         engine.personality = char.personality ?? "";
