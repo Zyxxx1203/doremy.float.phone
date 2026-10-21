@@ -230,6 +230,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [wholeVideoBusy, setWholeVideoBusy] = useState(false);
   const [wholeVideoProgress, setWholeVideoProgress] = useState("");
   const [videoAnalysisSettings, setVideoAnalysisSettings] = useState<VideoAnalysisSettings>(() => loadVideoAnalysisSettings());
+  const [videoBackground, setVideoBackground] = useState<{ url: string; text: string } | null>(null);
+  const videoBackgroundRequestedRef = useRef<Set<string>>(new Set());
   const [videoModelOptions, setVideoModelOptions] = useState<string[]>([]);
   const [videoModelBusy, setVideoModelBusy] = useState(false);
   const [videoModelTestResult, setVideoModelTestResult] = useState("");
@@ -530,6 +532,76 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     } finally { setVideoModelBusy(false); }
   };
 
+  /**
+   * 在用户开始观看时，先用已配置的 Gemini Google Search grounding 查找视频背景。
+   * 只缓存精简摘要和来源链接；不能访问网页时仍可使用截图与角色对话。
+   */
+  const lookupVideoBackground = useCallback(async (url: string, title: string) => {
+    const cfg = videoAnalysisSettings;
+    if (!url || /^blob:|^data:/i.test(url) || videoBackgroundRequestedRef.current.has(url)) return;
+    videoBackgroundRequestedRef.current.add(url);
+    setVideoBackground(null);
+    if (cfg.provider !== "gemini" || !cfg.apiKey.trim() || !cfg.model.trim()) return;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 18000);
+    try {
+      const endpoint = cfg.baseUrl.trim().replace(/\\/+$/, "") +
+        "/v1beta/models/" + encodeURIComponent(cfg.model.trim()) +
+        ":generateContent?key=" + encodeURIComponent(cfg.apiKey.trim());
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [{
+            role: "user",
+            parts: [{
+              text: [
+                "请使用 Google Search 搜索这个视频的公开背景资料，只整理对陪看讨论有帮助的信息。",
+                "视频链接：" + url,
+                "可能的标题：" + (title || "未知"),
+                "请优先确认作品/视频名称、类型、基本设定、主要人物及关系；若有可靠的公开剧情简介，可简要概括。",
+                "不要编造；不确定时明确标注不确定。默认避免关键后续剧情剧透。最多输出 5 条、约 800 个中文字，并尽可能引用来源标题和链接。"
+              ].join("\\n")
+            }]
+          }],
+          tools: [{ google_search: {} }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 1200 }
+        })
+      });
+      const data = await response.json().catch(() => ({})) as {
+        error?: { message?: string };
+        candidates?: Array<{
+          content?: { parts?: Array<{ text?: string }> };
+          groundingMetadata?: { groundingChunks?: Array<{ web?: { title?: string; uri?: string } }> };
+        }>;
+      };
+      if (!response.ok) throw new Error(data.error?.message || "搜索请求失败（HTTP " + response.status + "）");
+      const candidate = data.candidates?.[0];
+      const summary = (candidate?.content?.parts ?? []).map(part => part.text || "").filter(Boolean).join("\\n").trim();
+      if (!summary) throw new Error("搜索模型没有返回可用资料");
+      const sources = (candidate?.groundingMetadata?.groundingChunks ?? [])
+        .map(chunk => chunk.web)
+        .filter((web): web is { title?: string; uri?: string } => Boolean(web?.uri))
+        .slice(0, 6)
+        .map(web => "- " + (web.title || web.uri) + ": " + web.uri);
+      const text = (summary + (sources.length ? "\\n\\n搜索来源：\\n" + sources.join("\\n") : "")).slice(0, 6000);
+      setVideoBackground({ url, text });
+    } catch (error) {
+      console.info("[TogetherWatch] 视频背景搜索未完成，继续使用截图和聊天上下文。", error);
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }, [videoAnalysisSettings]);
+
+  useEffect(() => {
+    if (!target?.url || target.platformName === "本地视频") {
+      setVideoBackground(null);
+      return;
+    }
+    void lookupVideoBackground(target.url, videoTitle || target.platformName + "视频");
+  }, [target?.url, target?.platformName, videoTitle, lookupVideoBackground]);
+
   const captureCurrentFrame = async () => {
     const video=playerRef.current?.querySelector("video");
     if (!video || !video.videoWidth || !video.videoHeight) {
@@ -733,11 +805,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const transcriptContext = transcriptWindow.map(segment =>
         (transcriptHasTimestamps ? "[" + formatTranscriptTime(segment.start) + "] " : "") + segment.text
       ).join("\n").slice(0, 6000);
+      const backgroundContext = videoBackground?.url === target.url ? videoBackground.text : "";
       const prompt = [
         "你正在和用户一起看视频，是亲密、自然的陪伴，不是影评机器人。",
         "视频平台：" + target.platformName + "；视频标题（用户可编辑）：" + (videoTitle || "暂未命名") + "。",
         frameDataUrl ? "本轮附带了用户提供/截取的当前画面截图。结合截图与字幕判断人物、场景、动作和情绪；若截图无法辨认，不要编造。" : "",
         "用户描述的当前片段/时间点与两人的互动：" + ((momentOverride ?? settings.currentMoment).trim() || "用户暂未提供具体画面描述") + "。",
+        backgroundContext ? "根据当前视频链接预先联网搜索到的背景资料（用于辅助理解，不保证与当前画面完全对应）：\\n" + backgroundContext : "",
         transcriptName ? "已导入字幕/脚本文件：" + transcriptName : "",
         transcriptContext ? (transcriptHasTimestamps
           ? "当前播放时间附近的字幕脚本（含原始时间戳）：\n" + transcriptContext
@@ -747,7 +821,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           : transcriptContext
             ? "本轮只读取上面的字幕/时间戳脚本；不得声称看见实际画面。只根据已经出现的文字讨论，不能推测后续剧情。"
             : "当前没有导入的字幕/脚本或可用截图。只根据用户明确描述的片段与互动回应，不要声称读取到了视频画面。",
-        "请结合角色自己的性格、兴趣和你们的关系，写一句自然的即时反应：可以吐槽、惊讶、共情、提问或分享感受。只输出角色会直接说的话，最多60个汉字。不搜寻或推断视频后续剧情。",
+        "本轮由陪看触发器明确要求你发言，不要判断画面是否值得评论，也不要以“没什么可说”或沉默结束。必须结合当前截图、已有背景资料、字幕或用户发言，输出一条自然的角色反应；资料不足时也要针对可见细节或用户的话回应。只输出角色会直接说的话，最多60个汉字。不要把搜索背景当成截图里已确认的事实，也不要主动剧透。",
       ].filter(Boolean).join("\n");
       const userMessage: ChatMessage = { id: `watch-${Date.now()}`, sessionId: session.id, role: "user", content: prompt, status: "sent", createdAt: new Date().toISOString() };
       const result = await generateChatCompletion(session, [...history, userMessage], {
@@ -775,7 +849,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       queuedAfterReply = pendingDiscussionRef.current.shift();
       if (queuedAfterReply) window.setTimeout(() => { void generateComment(true, queuedAfterReply!.moment, queuedAfterReply!.timepoint); }, 50);
     }
-  }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice, transcriptSegments, transcriptName, screenshotDataUrl, captureFrameForPrompt]);
+  }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice, transcriptSegments, transcriptName, screenshotDataUrl, captureFrameForPrompt, videoBackground]);
 
   /** 把一帧画面交给角色：手动截图和静默截屏共用这一条路径。 */
 
@@ -1115,11 +1189,36 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         flex:1 1 auto!important; min-height:36px!important; max-height:none!important; overflow-y:auto!important;
         overscroll-behavior:contain!important; -webkit-overflow-scrolling:touch;
       }
+      .watch-together-app[data-watch-fullscreen="true"] header,
+      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel,
+      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel,
+      .watch-together-app[data-watch-fullscreen="true"] [data-resolver-state],
+      .watch-together-app[data-watch-fullscreen="true"] > main.watch-together-main > :not(.watch-player) {
+        display:none!important;
+      }
+      .watch-together-app[data-watch-fullscreen="true"] > main.watch-together-main {
+        grid-template-columns:minmax(0,1fr)!important;
+        grid-template-rows:minmax(0,1fr)!important;
+        grid-template-areas:"player"!important;
+        gap:0!important;
+        padding:0!important;
+      }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player {
+        grid-area:player!important;
+        width:100%!important;
+        height:100%!important;
+        max-height:none!important;
+        border:0!important;
+        border-radius:0!important;
+      }
+      .watch-together-app[data-watch-fullscreen="true"] .watch-player > .absolute.right-2.top-2 {
+        display:none!important;
+      }
       .watch-together-app[data-watch-fullscreen="true"] .watch-room-card { overflow:hidden!important; }
       @media (orientation:portrait) {
         .watch-together-app[data-watch-fullscreen="true"] > main.watch-together-main {
-          grid-template-columns:minmax(0,1fr)!important; grid-template-rows:minmax(130px,32dvh) minmax(0,1fr)!important;
-          grid-template-areas:"player" "interaction"!important; gap:6px!important; padding:4px 6px max(6px,env(safe-area-inset-bottom))!important;
+          grid-template-columns:minmax(0,1fr)!important; grid-template-rows:minmax(0,1fr)!important;
+          grid-template-areas:"player"!important; gap:0!important; padding:0!important;
         }
         .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div { padding:6px!important; }
         .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel section[data-part="history"] { margin-top:5px!important; padding-top:5px!important; }
