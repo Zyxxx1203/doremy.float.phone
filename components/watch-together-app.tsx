@@ -539,9 +539,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const lookupVideoBackground = useCallback(async (url: string, title: string) => {
     const cfg = videoAnalysisSettings;
     if (!url || /^blob:|^data:/i.test(url) || videoBackgroundRequestedRef.current.has(url)) return;
-    videoBackgroundRequestedRef.current.add(url);
     setVideoBackground(null);
     if (cfg.provider !== "gemini" || !cfg.apiKey.trim() || !cfg.model.trim()) return;
+    videoBackgroundRequestedRef.current.add(url);
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 18000);
     try {
@@ -562,7 +562,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
                 "可能的标题：" + (title || "未知"),
                 "请优先确认作品/视频名称、类型、基本设定、主要人物及关系；若有可靠的公开剧情简介，可简要概括。",
                 "不要编造；不确定时明确标注不确定。默认避免关键后续剧情剧透。最多输出 5 条、约 800 个中文字，并尽可能引用来源标题和链接。"
-              ].join("\\n")
+              ].join("\n")
             }]
           }],
           tools: [{ google_search: {} }],
@@ -578,14 +578,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       };
       if (!response.ok) throw new Error(data.error?.message || "搜索请求失败（HTTP " + response.status + "）");
       const candidate = data.candidates?.[0];
-      const summary = (candidate?.content?.parts ?? []).map(part => part.text || "").filter(Boolean).join("\\n").trim();
+      const summary = (candidate?.content?.parts ?? []).map(part => part.text || "").filter(Boolean).join("\n").trim();
       if (!summary) throw new Error("搜索模型没有返回可用资料");
       const sources = (candidate?.groundingMetadata?.groundingChunks ?? [])
         .map(chunk => chunk.web)
         .filter((web): web is { title?: string; uri?: string } => Boolean(web?.uri))
         .slice(0, 6)
         .map(web => "- " + (web.title || web.uri) + ": " + web.uri);
-      const text = (summary + (sources.length ? "\\n\\n搜索来源：\\n" + sources.join("\\n") : "")).slice(0, 6000);
+      const text = (summary + (sources.length ? "\n\n搜索来源：\n" + sources.join("\n") : "")).slice(0, 6000);
       setVideoBackground({ url, text });
     } catch (error) {
       console.info("[TogetherWatch] 视频背景搜索未完成，继续使用截图和聊天上下文。", error);
@@ -1189,6 +1189,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         flex:1 1 auto!important; min-height:36px!important; max-height:none!important; overflow-y:auto!important;
         overscroll-behavior:contain!important; -webkit-overflow-scrolling:touch;
       }
+      .watch-together-app[data-watch-fullscreen="true"] > :not(style):not(main),
       .watch-together-app[data-watch-fullscreen="true"] header,
       .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel,
       .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel,
