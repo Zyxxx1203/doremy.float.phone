@@ -1538,6 +1538,20 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
                         content: newMsg.content,
                         createdAt: newMsg.createdAt,
                     });
+                    // If a character proactively replies while the app is backgrounded,
+                    // hand the already-persisted message to the Android blocking overlay.
+                    if (newMsg.role === "assistant" && document.visibilityState !== "visible") {
+                        const shell = (window as unknown as {
+                            AndroidShell?: { showCharacterBehaviorPopup?: (name: string, message: string) => boolean };
+                        }).AndroidShell;
+                        if (typeof shell?.showCharacterBehaviorPopup === "function") {
+                            const plain = String(newMsg.content ?? "")
+                                .replace(/<[^>]*>/g, " ")
+                                .replace(/\\s+/g, " ")
+                                .trim();
+                            if (plain) shell.showCharacterBehaviorPopup(memoryCharacter.name, plain.slice(0, 700));
+                        }
+                    }
                 }
             }
         } catch {
