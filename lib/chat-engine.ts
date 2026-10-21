@@ -1885,7 +1885,7 @@ export async function buildChatPromptMessages(
         : history;
 
     const now = new Date();
-    const promptTimeContext = buildCharacterTimeContext(character.timeZone, now);
+    const promptTimeContext = buildCharacterTimeContext(character.timeZone, now, loadChatAppSettings().timeAware !== false);
     const promptTimestampOptions = getPromptTimestampOptionsForTimeContext(promptTimeContext);
     const memConfig = loadMemoryConfig();
     const isOfflineMode = options?.appTags?.includes("offline") === true;
