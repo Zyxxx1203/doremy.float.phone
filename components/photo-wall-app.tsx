@@ -978,12 +978,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       // 新照片加入后按总数重新计算整套骨架；只给新照片分配尾槽会让形状越长越缺边。
       const ordered = combined.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       const slots = buildTemplateSlots(activeTemplateId, ordered.length, templateText, templateFill);
-      const slotById = new Map(ordered.map((item, index) => [item.id, slots[index]]));
-      const rearranged = combined.map((item, index) => {
-        const slot = slotById.get(item.id);
-        if (!slot) return item;
+      const slotById = new Map(ordered.map((item, index) => [item.id, { slot: slots[index], z: index + 1 }]));
+      const rearranged = combined.map(item => {
+        const arrangement = slotById.get(item.id);
+        if (!arrangement?.slot) return item;
         const base = item.placement;
-        return { ...item, placement: { ...slot, z: index + 1, frame: base?.frame ?? "polaroid", locked: base?.locked ?? false, frameColor: base?.frameColor ?? "#fffdf8" } as PhotoWallPlacement };
+        return { ...item, placement: { ...arrangement.slot, z: arrangement.z, frame: base?.frame ?? "polaroid", locked: base?.locked ?? false, frameColor: base?.frameColor ?? "#fffdf8" } as PhotoWallPlacement };
       });
       persist({ ...current, photos: rearranged });
     } else {
@@ -1072,13 +1072,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         const combined = [...created, ...current.photos];
         const ordered = combined.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
         const slots = buildTemplateSlots(activeTemplateId, ordered.length, templateText, templateFill);
-        const slotById = new Map(ordered.map((item, index) => [item.id, slots[index]]));
-        const maxZ = combined.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
-        const rearranged = combined.map((item, index) => {
-          const slot = slotById.get(item.id);
-          if (!slot) return item;
+        const slotById = new Map(ordered.map((item, index) => [item.id, { slot: slots[index], z: index + 1 }]));
+        const rearranged = combined.map(item => {
+          const arrangement = slotById.get(item.id);
+          if (!arrangement?.slot) return item;
           const base = item.placement;
-          return { ...item, placement: { ...slot, z: index + 1, frame: base?.frame ?? "polaroid", locked: base?.locked ?? false, frameColor: base?.frameColor ?? "#fffdf8" } as PhotoWallPlacement };
+          return { ...item, placement: { ...arrangement.slot, z: arrangement.z, frame: base?.frame ?? "polaroid", locked: base?.locked ?? false, frameColor: base?.frameColor ?? "#fffdf8" } as PhotoWallPlacement };
         });
         persist({ ...current, photos: rearranged });
       } else {
