@@ -2231,6 +2231,14 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
             CheckInService.show(this@MainActivity, characterId, name, avatar)
         }
 
+        /** Start the native popup host while the app is foregrounded so later background replies can surface. */
+        @JavascriptInterface
+        fun prepareCharacterBehaviorPopupService(): Boolean {
+            if (!isTrustedShellPage() || !Settings.canDrawOverlays(this@MainActivity)) return false
+            CharacterBehaviorPopupService.arm(this@MainActivity)
+            return true
+        }
+
         /**
          * Show a character's persisted background message above other apps.
          * The native overlay has one exit action: return to this app.
