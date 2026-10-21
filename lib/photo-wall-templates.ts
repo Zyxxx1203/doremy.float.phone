@@ -183,7 +183,6 @@ function layoutSlots(templateId: string, count: number, fill: boolean): Slot[] {
       }
       const scaled = toShapeSpace(0.5 + (x - 0.5) * 1.10, 0.5 + (y - 0.5) * 1.10);
       const boundary = !shape(scaled.u, scaled.v);
-      const { u, v } = toShapeSpace(x, y);
       candidates.push({
         x: round(x), y: round(y),
         radius: Math.hypot(u, v),
