@@ -387,7 +387,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         if (event.cancelable) event.preventDefault();
         const dx = event.clientX - touch.x, dy = event.clientY - touch.y;
         if (!touch.panStarted) { touch.panStarted = true; window.dispatchEvent(new Event("photo-wall-pan-start")); }
-        setStagePosition({ x: touch.stageX - dx, y: touch.stageY - dy });
+        setStagePosition({ x: touch.stageX + dx, y: touch.stageY + dy });
         return;
       }
     };
@@ -470,7 +470,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           touch.panStarted = true;
           window.dispatchEvent(new Event("photo-wall-pan-start"));
         }
-        setStagePosition({ x: touch.stageX - dx, y: touch.stageY - dy });
+        setStagePosition({ x: touch.stageX + dx, y: touch.stageY + dy });
       }
     };
     const onTouchEnd = (event: TouchEvent) => {
