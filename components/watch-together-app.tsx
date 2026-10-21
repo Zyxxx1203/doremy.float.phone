@@ -545,7 +545,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 18000);
     try {
-      const endpoint = cfg.baseUrl.trim().replace(/\\/+$/, "") +
+      let baseUrl = cfg.baseUrl.trim();
+      while (baseUrl.endsWith("/")) baseUrl = baseUrl.slice(0, -1);
+      const endpoint = baseUrl +
         "/v1beta/models/" + encodeURIComponent(cfg.model.trim()) +
         ":generateContent?key=" + encodeURIComponent(cfg.apiKey.trim());
       const response = await fetch(endpoint, {
@@ -811,7 +813,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         "视频平台：" + target.platformName + "；视频标题（用户可编辑）：" + (videoTitle || "暂未命名") + "。",
         frameDataUrl ? "本轮附带了用户提供/截取的当前画面截图。结合截图与字幕判断人物、场景、动作和情绪；若截图无法辨认，不要编造。" : "",
         "用户描述的当前片段/时间点与两人的互动：" + ((momentOverride ?? settings.currentMoment).trim() || "用户暂未提供具体画面描述") + "。",
-        backgroundContext ? "根据当前视频链接预先联网搜索到的背景资料（用于辅助理解，不保证与当前画面完全对应）：\\n" + backgroundContext : "",
+        backgroundContext ? "根据当前视频链接预先联网搜索到的背景资料（用于辅助理解，不保证与当前画面完全对应）：\n" + backgroundContext : "",
         transcriptName ? "已导入字幕/脚本文件：" + transcriptName : "",
         transcriptContext ? (transcriptHasTimestamps
           ? "当前播放时间附近的字幕脚本（含原始时间戳）：\n" + transcriptContext
