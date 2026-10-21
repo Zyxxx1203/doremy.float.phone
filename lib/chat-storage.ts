@@ -1547,7 +1547,7 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
                         if (typeof shell?.showCharacterBehaviorPopup === "function") {
                             const plain = String(newMsg.content ?? "")
                                 .replace(/<[^>]*>/g, " ")
-                                .replace(/\\s+/g, " ")
+                                .replace(/\s+/g, " ")
                                 .trim();
                             if (plain) shell.showCharacterBehaviorPopup(memoryCharacter.name, plain.slice(0, 700));
                         }
