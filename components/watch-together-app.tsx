@@ -1498,6 +1498,16 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </label>
             {watchContextSettings.provider === "custom" && <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">自定义接口以 POST 发送 JSON：operation、url、title、query、max_results；Authorization: Bearer Key。返回 JSON 可含 content、text、answer 或 results 数组（title/url/content/snippet）。</p>}
             {contextFetchStatus && <p role="status" aria-live="polite" className="mt-2 break-words text-[10px] leading-5 text-[#e6c49d]">{contextFetchStatus}</p>}
+            <button type="button" disabled={!target || target.platformName === "本地视频"} onClick={() => {
+              if (!target) return;
+              try {
+                const cache = JSON.parse(kvGet("watch_video_background_cache_v1") || "{}") as Record<string, string>;
+                delete cache[target.url];
+                kvSet("watch_video_background_cache_v1", JSON.stringify(cache));
+              } catch { /* 忽略缓存错误 */ }
+              videoBackgroundRequestedRef.current.delete(target.url);
+              void lookupVideoBackground(target.url, videoTitle || target.platformName + "视频");
+            }} className="mt-2 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#d8c9b6] disabled:opacity-40">重新获取当前视频资料</button>
           </section>
           <section className="mt-4 border-t border-white/10 pt-3">
             <h3 className="font-serif text-sm text-[#e8c39a]">视频理解模型</h3>
