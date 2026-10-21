@@ -978,7 +978,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const explicitTemplate = Boolean(activeTemplateId) && activeTemplateId !== "builtin-scatter";
     if (explicitTemplate) {
       // 新照片加入后按总数重新计算整套骨架；只给新照片分配尾槽会让形状越长越缺边。
-      const ordered = combined.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const ordered = combined.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       const slots = buildTemplateSlots(activeTemplateId, ordered.length, templateText, templateFill);
       const slotById = new Map(ordered.map((item, index) => [item.id, { slot: slots[index], z: index + 1 }]));
       const rearranged = combined.map(item => {
@@ -1072,7 +1072,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (activeTemplateId && activeTemplateId !== "builtin-scatter") {
         // 保持模板完整性：每次批量加入照片都按新总数重排整套骨架，避免只扩展半边。
         const combined = [...created, ...current.photos];
-        const ordered = combined.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        const ordered = combined.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         const slots = buildTemplateSlots(activeTemplateId, ordered.length, templateText, templateFill);
         const slotById = new Map(ordered.map((item, index) => [item.id, { slot: slots[index], z: index + 1 }]));
         const rearranged = combined.map(item => {
