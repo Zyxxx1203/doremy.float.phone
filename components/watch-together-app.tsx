@@ -570,15 +570,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         const response = await fetch(url, { signal: controller.signal, credentials: "omit" });
         if (response.ok) {
           const html = (await response.text()).slice(0, 1_500_000);
-          const decode = (value: string) => value.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+          const parsedHtml = new DOMParser().parseFromString(html, "text/html");
           const meta = (key: string) => {
-            const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const patterns = [
-              new RegExp('<meta[^>]+(?:property|name)=["\\']' + escaped + '["\\'][^>]+content=["\\']([^"\\']*)["\\'][^>]*>', "i"),
-              new RegExp('<meta[^>]+content=["\\']([^"\\']*)["\\'][^>]+(?:property|name)=["\\']' + escaped + '["\\'][^>]*>', "i"),
-            ];
-            for (const pattern of patterns) { const match = pattern.exec(html); if (match?.[1]) return decode(match[1]); }
-            return "";
+            const node = parsedHtml.querySelector('meta[property="' + key + '"], meta[name="' + key + '"]');
+            return node?.getAttribute("content")?.trim() || "";
           };
           const pageTitle = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]?.replace(/<[^>]+>/g, "").trim() || "";
           const ogTitle = meta("og:title") || meta("twitter:title");
