@@ -342,8 +342,22 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const firstPointer = pinchPointersRef.current.size === 0;
       pinchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (firstPointer) {
-        const target = event.target instanceof Element ? event.target : null;
-        singleTouchRef.current = { x: event.clientX, y: event.clientY, scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop, startedOnPhoto: Boolean(target?.closest("[data-photo-wall-photo]")), panStarted: false };
+        // The edit input layer intentionally covers the whole wall, so event.target is
+        // usually that transparent layer even when the finger is on a photo. Hit-test the
+        // rendered photo rectangles instead; otherwise the global pan handler steals the
+        // drag and the photo never moves (especially in Android WebView).
+        const photoUnderFinger = Array.from(
+          viewport.querySelectorAll<HTMLElement>("[data-photo-wall-photo-id]")
+        ).some(element => {
+          const rect = element.getBoundingClientRect();
+          return event.clientX >= rect.left && event.clientX <= rect.right
+            && event.clientY >= rect.top && event.clientY <= rect.bottom;
+        });
+        singleTouchRef.current = {
+          x: event.clientX, y: event.clientY,
+          scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop,
+          startedOnPhoto: photoUnderFinger, panStarted: false
+        };
       }
       if (pinchPointersRef.current.size < 2) return;
       const points = [...pinchPointersRef.current.values()].slice(0, 2);
@@ -1459,7 +1473,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           {wallCanvasMode === "view" && wallSelectedPhoto && <div className="relative z-40 mb-2 flex shrink-0 items-center justify-between gap-2 border-b border-[#e6d9cb] px-2 py-1.5"><span className="min-w-0 truncate text-[10px] text-[#8b7665]">已选：{wallSelectedPhoto.title||"未命名的瞬间"}</span><button type="button" onClick={() => openPhoto(wallSelectedPhoto)} className="shrink-0 border border-[#d7c2b1] px-2.5 py-1.5 text-[10px] text-[#7d6d5a]">查看详情</button></div>}
         </>}
         {busy && <div className="mb-3 flex shrink-0 items-center gap-2 border border-[#e4d8c6] bg-[#faf7f0] px-3 py-2.5 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
-        <div ref={panoramaViewportRef} data-photo-wall-viewport className="min-h-0 flex-1 w-full overflow-auto overscroll-contain bg-[#e9dfd2]" style={{ WebkitOverflowScrolling: "touch", touchAction: "none", overscrollBehavior: "contain" }}>
+        <div ref={panoramaViewportRef} data-photo-wall-viewport className="min-h-0 flex-1 w-full overflow-auto overscroll-contain bg-[#e9dfd2]" style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-x pan-y", overscrollBehavior: "contain" }}>
           <div className="relative shrink-0 overflow-hidden shadow-[0_8px_28px_rgba(72,48,34,.12)]" style={{ width: world.width * panoramaZoom / 100, height: world.height * panoramaZoom / 100, touchAction: "none", margin: "0 auto" }}>
             <PhotoWallCanvas photos={visiblePhotos} selectedId={wallActivePhotoId} onSelect={setWallActivePhotoId}
               onChangePlacement={changePlacement} onPlacementSettled={settlePlacement}
