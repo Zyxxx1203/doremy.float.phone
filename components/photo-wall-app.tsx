@@ -1385,10 +1385,6 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
                 </div>
               </div>)}
             </div>
-            <div className="mt-4 flex items-center gap-2 border-t border-[#eadfd3] pt-4">
-              <input value={templateText} onChange={event => setTemplateText(event.target.value.slice(0, 12))} placeholder="文字骨架内容，如 LOVE / 家" className="min-w-0 flex-1 border-b border-[#d7c2b1] bg-transparent px-1 py-2 text-sm text-[#5d4942] outline-none focus:border-[#87565b]"/>
-              <button type="button" onClick={() => applyTemplate("builtin-text")} className="shrink-0 border border-[#d7c2b1] px-3 py-2 text-xs text-[#79545a]">排成这个字</button>
-            </div>
             <div className="mt-3 flex flex-col gap-2 border-t border-[#eadfd3] pt-3 sm:flex-row">
               <input value={templateName} onChange={event => setTemplateName(event.target.value.slice(0, 32))} placeholder="给当前布局命名" className="min-w-0 flex-1 border-b border-[#d7c2b1] bg-transparent px-1 py-2 text-sm text-[#5d4942] outline-none focus:border-[#87565b]"/>
               <button type="button" onClick={saveCurrentLayoutAsTemplate} disabled={!photos.length} className="shrink-0 border border-[#d7c2b1] px-3 py-2 text-xs text-[#79545a] disabled:opacity-40"><Check size={12} className="mr-1 inline"/>保存当前布局为模板</button>
