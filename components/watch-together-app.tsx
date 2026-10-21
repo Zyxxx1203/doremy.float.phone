@@ -1255,6 +1255,93 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       @media (prefers-reduced-motion:reduce) {
         .watch-together-app[data-watch-fullscreen="true"] .watch-danmaku-track { animation:none!important; }
       }
+      /* Chat-first redesign: stable inline video, conversation takes the main space. */
+      .watch-together-app:not([data-watch-fullscreen="true"]) > main.watch-together-main {
+        display:flex!important; flex-direction:column!important; gap:10px!important;
+        min-height:0!important; overflow:hidden!important; padding:10px 12px max(10px,env(safe-area-inset-bottom))!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-room-title {
+        order:0!important; flex:0 0 auto!important; width:100%!important; max-width:none!important; margin:0!important; padding:0!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player {
+        order:1!important; flex:0 0 auto!important; align-self:center!important;
+        width:min(100%,520px)!important; height:auto!important; aspect-ratio:16/9!important;
+        max-height:30dvh!important; min-height:0!important; border:2px solid rgba(201,154,120,.55)!important;
+        border-radius:14px!important; box-shadow:0 8px 24px rgba(60,38,25,.14)!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > video,
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > iframe {
+        display:block!important; width:100%!important; height:100%!important; max-height:30dvh!important;
+        aspect-ratio:16/9!important; object-fit:contain!important; border:0!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player-actions > button[aria-label="全屏"],
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player-actions > button[aria-label="退出全屏"] { display:none!important; }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel {
+        order:2!important; display:flex!important; flex:1 1 0!important; min-height:180px!important;
+        height:auto!important; width:100%!important; max-width:none!important; margin:0!important; overflow:hidden!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel > div {
+        display:flex!important; flex-direction:column!important; flex:1 1 auto!important; min-height:0!important;
+        width:100%!important; height:100%!important; max-width:none!important; overflow:hidden!important;
+        padding:14px!important; border-radius:22px!important; border:1px solid rgba(215,174,132,.34)!important;
+        background:linear-gradient(145deg,rgba(255,250,242,.98),rgba(246,233,218,.98))!important;
+        box-shadow:0 10px 28px rgba(91,62,40,.10),inset 0 1px 0 #fff!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="message"] {
+        flex:0 0 auto!important; border-radius:16px!important; padding:10px!important;
+        background:rgba(255,255,255,.7)!important; border:1px solid rgba(201,154,120,.2)!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="message"] p {
+        color:#574237!important; line-height:1.65!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="message"] span { color:#8b6a56!important; }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-discussion-composer {
+        flex:0 0 auto!important; margin-top:10px!important; padding-top:10px!important;
+        border-color:rgba(157,119,91,.22)!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel textarea {
+        background:#fffdf9!important; color:#574237!important; border-color:rgba(157,119,91,.28)!important;
+        border-radius:14px!important; min-height:66px!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel input { color:#574237!important; }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-comment-list {
+        flex:1 1 0!important; min-height:72px!important; max-height:none!important; overflow-y:auto!important;
+        padding:10px 2px!important; overscroll-behavior:contain!important; -webkit-overflow-scrolling:touch;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-comment-list > div > div {
+        border-radius:16px!important; padding:9px 12px!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-comment-list p {
+        color:#59483d!important; line-height:1.65!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="history"] {
+        display:flex!important; flex:1 1 0!important; flex-direction:column!important; min-height:0!important;
+        margin-top:10px!important; padding-top:10px!important; overflow:hidden!important;
+        border-color:rgba(157,119,91,.2)!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="history"] > p,
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="history"] h2 { color:#785b49!important; }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="actions"],
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="actions2"] { flex:0 0 auto!important; }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel {
+        order:3!important; flex:0 0 auto!important; max-height:24dvh!important; overflow:auto!important;
+        width:100%!important; max-width:none!important; margin:0!important;
+      }
+      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player-actions > button {
+        width:30px!important; height:30px!important;
+      }
+      @media (orientation:landscape) and (min-width:700px) {
+        .watch-together-app:not([data-watch-fullscreen="true"]) > main.watch-together-main {
+          display:grid!important; grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr)!important;
+          grid-template-rows:auto minmax(0,1fr) auto!important;
+          grid-template-areas:"title title" "player interaction" "link interaction"!important;
+          gap:12px!important; overflow:hidden!important; padding:12px!important;
+        }
+        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-room-title { grid-area:title!important; }
+        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player { grid-area:player!important; width:100%!important; max-height:40dvh!important; }
+        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel { grid-area:interaction!important; min-height:0!important; height:100%!important; }
+        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel { grid-area:link!important; max-height:25dvh!important; }
+      }
     `}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
@@ -1310,11 +1397,11 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </a>
         )}
 
-        <DanmakuLayer enabled={Boolean(target?.embedUrl || target?.nativeVideo)} paused={mediaPaused} items={danmakuItems} userColor={settings.danmakuColor} />
+        {/* 弹幕已停用：优先保证聊天室交流体验。 */}
         <div className="watch-player-actions pointer-events-auto absolute right-2 top-2 z-[60] flex gap-1">
           <button type="button" onClick={() => void captureCurrentFrame()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/55 text-white/90 backdrop-blur transition active:scale-95" aria-label="截取当前画面并用于理解" title="截取当前画面"><ImagePlus size={14}/></button>
           <button type="button" onClick={() => screenshotFileInputRef.current?.click()} className="grid h-8 w-8 place-items-center rounded-lg bg-black/55 text-white/90 backdrop-blur transition active:scale-95" aria-label="上传截图" title="上传截图"><FileText size={14}/></button>
-          <button type="button" disabled={!target} onClick={event => { event.preventDefault(); event.stopPropagation(); void enterFullscreen(); }} className="grid h-8 w-8 place-items-center rounded-lg bg-black/45 text-white/90 backdrop-blur transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-35" aria-label={fullScreen ? "退出全屏" : "全屏"} title={fullScreen ? "退出全屏" : "全屏"}><Expand size={15}/></button>
+          
         </div>
         {/* 屏幕洒在桌面上的余光 */}
         {!fullScreen && <div aria-hidden className="pointer-events-none absolute -bottom-6 left-1/2 h-6 w-[86%] -translate-x-1/2 rounded-[50%] opacity-40 blur-xl" style={{ background: "radial-gradient(ellipse, #d7a06a 0%, transparent 70%)" }} />}
