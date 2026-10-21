@@ -258,7 +258,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const panoramaZoomRef = useRef(100);
   /** 世界尺寸来自持久化状态：扩容后照片比例不变，只换分母。 */
   const world = wallWorldOf(state);
-  const [wallCanvasMode, setWallCanvasMode] = useState<"view" | "move" | "doodle">("view");
+  const [wallCanvasMode, setWallCanvasMode] = useState<"view" | "move" | "doodle" | "pan">("view");
   const [zoomMode, setZoomMode] = useState(false);
   const [wallBrushColor, setWallBrushColor] = useState("#c2705a");
   const [wallColorDraft, setWallColorDraft] = useState("#c2705a");
@@ -467,7 +467,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const start = singleTouchRef.current;
       if (!start) return;
       const activeMode = viewport.querySelector<HTMLElement>("[data-photo-wall-mode]")?.dataset.photoWallMode;
-      if ((activeMode === "move" || activeMode === "doodle") && start.startedOnPhoto) return;
+      if (activeMode === "doodle") return; // 保留墙面自由笔迹；需要平移时切换独立画布模式。
+      if (activeMode === "move" && start.startedOnPhoto) return;
       const dx = event.touches[0].clientX - start.x, dy = event.touches[0].clientY - start.y;
       if (Math.abs(dx) + Math.abs(dy) < 3) return;
       if (event.cancelable) event.preventDefault();
