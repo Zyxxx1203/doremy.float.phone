@@ -315,78 +315,7 @@ function gridSlots(count: number): Slot[] {
   return slots;
 }
 
-/** 文字骨架：离屏 canvas 采样笔画，再用同一套间距筛选。 */
-function textSlots(text: string, count: number, fill: boolean): Slot[] {
-  const clean = text.trim().slice(0, 12) || "LOVE";
-  const width = 480;
-  const height = 220;
-  const canvas = typeof document !== "undefined" ? document.createElement("canvas") : null;
-  if (!canvas) return layoutSlots("builtin-grid", count, true);
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d");
-  if (!context) return layoutSlots("builtin-grid", count, true);
-  context.fillStyle = "#000";
-  let fontSize = 150;
-  context.font = `700 ${fontSize}px sans-serif`;
-  while (context.measureText(clean).width > width - 24 && fontSize > 24) {
-    fontSize -= 6;
-    context.font = `700 ${fontSize}px sans-serif`;
-  }
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.fillText(clean, width / 2, height / 2);
-  const data = context.getImageData(0, 0, width, height).data;
-  const hits: Array<{ x: number; y: number }> = [];
-  const step = 6;
-  for (let y = 0; y < height; y += step) {
-    for (let x = 0; x < width; x += step) {
-      if (data[(y * width + x) * 4 + 3] > 128) hits.push({ x: 0.1 + (x / width) * 0.8, y: 0.24 + (y / height) * 0.52 });
-    }
-  }
-  if (!hits.length) return layoutSlots("builtin-grid", count, true);
-
-  const total = Math.max(1, count);
-  const center = { x: 0.5, y: 0.5 };
-  // Farthest-point sampling distributes a small number of photos across all glyphs and
-  // across the full height of letters. Sorting by y/x made "LOVE" collapse into its top row.
-  const remaining = hits.map(hit => ({ ...hit, radius: Math.hypot(hit.x - center.x, (hit.y - center.y) * (CANVAS_H / CANVAS_W)) }));
-  const ordered: typeof remaining = [];
-  if (remaining.length) {
-    const seedIndex = remaining.reduce((best, hit, index) =>
-      hit.x + hit.y * 0.25 < remaining[best].x + remaining[best].y * 0.25 ? index : best, 0);
-    ordered.push(remaining.splice(seedIndex, 1)[0]);
-    while (remaining.length) {
-      let bestIndex = 0, bestDistance = -1;
-      for (let index = 0; index < remaining.length; index += 1) {
-        const candidate = remaining[index];
-        const nearest = ordered.reduce((min, chosen) => Math.min(min,
-          Math.hypot((candidate.x - chosen.x) * (CANVAS_W / CANVAS_H), candidate.y - chosen.y)), Infinity);
-        if (nearest > bestDistance) { bestDistance = nearest; bestIndex = index; }
-      }
-      ordered.push(remaining.splice(bestIndex, 1)[0]);
-    }
-  }
-
-  const picked: Slot[] = [];
-  for (const hit of ordered) {
-    if (picked.length >= total) break;
-    const rotation = round(((picked.length * 19) % 9) - 4);
-    if (picked.some(slot => !farEnough({ ...hit, rotation }, slot, 0.5))) continue;
-    picked.push({ x: round(clamp01(hit.x)), y: round(clamp01(hit.y)), scale: 0.5, rotation });
-  }
-  // 文字采样点不足时也不重复叠放：遍历唯一点位并缩小到安全尺寸补齐。
-  const used = new Set(picked.map(slot => `${slot.x},${slot.y}`));
-  for (const hit of ordered) {
-    if (picked.length >= total) break;
-    const x = round(clamp01(hit.x)), y = round(clamp01(hit.y));
-    const key = `${x},${y}`;
-    if (used.has(key) || picked.some(slot => !farEnough({ x, y }, slot, 0.12))) continue;
-    picked.push({ x, y, scale: 0.12, rotation: 0 });
-    used.add(key);
-  }
-  return picked.slice(0, total);
-}
+/** 不可靠的文字轮廓模板已移除；旧数据中的 builtin-text 安全回退为网格。 */
 
 export const BUILTIN_TEMPLATES: PhotoWallTemplate[] = [
   { id: "builtin-heart", name: "心形", builtin: true, slots: [] },
@@ -397,7 +326,6 @@ export const BUILTIN_TEMPLATES: PhotoWallTemplate[] = [
   { id: "builtin-ring", name: "环抱", builtin: true, slots: [] },
   { id: "builtin-grid", name: "整齐网格", builtin: true, slots: [] },
   { id: "builtin-scatter", name: "随手散落", builtin: true, slots: [] },
-  { id: "builtin-text", name: "文字骨架", builtin: true, slots: [] },
 ];
 
 export function loadTemplateFill(): boolean {
@@ -418,7 +346,7 @@ export function buildTemplateSlots(templateId: string, count: number, customText
   if (templateId === "builtin-fill") return safeShapeSlots(layoutSlots("builtin-heart", total, true));
   if (templateId === "builtin-grid") return gridSlots(total);
   if (templateId === "builtin-scatter") return scatterSlots(total);
-  if (templateId === "builtin-text") return safeShapeSlots(textSlots(customText || "LOVE", total, fill));
+  if (templateId === "builtin-text") return gridSlots(total);
   if (SHAPES[templateId]) return safeShapeSlots(layoutSlots(templateId, total, fill));
 
   // 自定义模板：保留用户骨架，但如果其位置互相重叠，就退回安全网格；
