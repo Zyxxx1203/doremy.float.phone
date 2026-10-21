@@ -199,12 +199,6 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
-        <!-- 角色主动消息浮层：点击唯一操作后才回到小手机，不提供关闭按钮。 -->
-        <service
-            android:name=".CharacterBehaviorPopupService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
         <!-- 查岗预览浮层：角色想看你时截屏先弹窗给你过目，你同意才发给它。
              用 specialUse：它不做媒体播放，只是可被用户看见的一次性确认浮层。 -->
         <service
