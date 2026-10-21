@@ -403,6 +403,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [fullScreen, setFullScreen] = useState(false);
   const originalOrientationRef = useRef<string | null>(null);
   const playerRef = useRef<HTMLDivElement>(null);
+  const watchRootRef = useRef<HTMLDivElement>(null);
   const commentListRef = useRef<HTMLDivElement>(null);
   const commentListAtBottomRef = useRef(true);
   /** 跨站 iframe 读不到 currentTime，用观看秒表估一个时间点，让弹幕能对上进度。 */
@@ -1045,58 +1046,38 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     return () => { disposed = true; window.clearTimeout(timer); };
   }, [watching, target, settings.intervalMinMinutes, settings.intervalMaxMinutes, generateComment]);
 
-  /** Keep the same player node mounted during fullscreen. Native WebView custom-view fullscreen
-   * can freeze the first frame when React simultaneously resizes/reparents the video surface. */
+  /** Prefer real fullscreen on the existing root; never pause, seek, re-parent or remount media. */
   const enterFullscreen = async () => {
-    const entering = !fullScreen;
-    const video = playerRef.current?.querySelector("video") ?? null;
-    const wasPlaying = Boolean(video && !video.paused && !video.ended);
-    if (entering) {
-      try { originalOrientationRef.current = screen.orientation?.type ?? null; }
-      catch { originalOrientationRef.current = null; }
-      const resumeTime = video?.currentTime ?? 0;
-      setFullScreen(true);
-      await tryLockLandscape();
-      await new Promise<void>(resolve => window.setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())), 180));
-      if (video?.isConnected) {
-        try {
-          if (wasPlaying) {
-            video.pause();
-            if (Number.isFinite(resumeTime) && Math.abs(video.currentTime - resumeTime) > 0.5) video.currentTime = resumeTime;
-            await video.play();
-          } else if (Number.isFinite(resumeTime) && Math.abs(video.currentTime - resumeTime) > 0.5) {
-            video.currentTime = resumeTime;
-          }
-        } catch { /* Protected streams may disallow seeking or scripted resume. */ }
+    const root = watchRootRef.current;
+    if (!root) return;
+    if (!fullScreen) {
+      try { originalOrientationRef.current = screen.orientation?.type ?? null; } catch { originalOrientationRef.current = null; }
+      const request = root.requestFullscreen?.bind(root);
+      if (request) {
+        try { await request(); setFullScreen(true); await tryLockLandscape(); return; }
+        catch { /* Embedded WebViews may deny Fullscreen API; use the in-page fallback. */ }
       }
-      window.dispatchEvent(new Event("resize"));
-    } else {
-      const resumeTime = video?.currentTime ?? 0;
-      setFullScreen(false);
-      await restoreOrientation();
-      await new Promise<void>(resolve => window.setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())), 120));
-      if (video?.isConnected) {
-        try {
-          if (wasPlaying) {
-            video.pause();
-            if (Number.isFinite(resumeTime) && Math.abs(video.currentTime - resumeTime) > 0.5) video.currentTime = resumeTime;
-            await video.play();
-          } else if (Number.isFinite(resumeTime) && Math.abs(video.currentTime - resumeTime) > 0.5) {
-            video.currentTime = resumeTime;
-          }
-        } catch { /* Ignore autoplay restrictions and protected streams. */ }
-      }
-      window.dispatchEvent(new Event("resize"));
+      setFullScreen(true); await tryLockLandscape(); window.dispatchEvent(new Event("resize")); return;
     }
+    if (document.fullscreenElement) { try { await document.exitFullscreen(); } catch { /* CSS exit below */ } }
+    setFullScreen(false); await restoreOrientation(); window.dispatchEvent(new Event("resize"));
   };
 
   useEffect(() => {
-    // The app uses CSS fullscreen rather than native media fullscreen. An iframe entering/exiting
-    // its own fullscreen must not collapse the app's immersive layout unexpectedly.
+    const syncFullscreenState = () => {
+      const root = watchRootRef.current;
+      if (root && document.fullscreenElement === root) setFullScreen(true);
+      else if (!document.fullscreenElement && fullScreen) { setFullScreen(false); void restoreOrientation(); }
+    };
+    document.addEventListener("fullscreenchange", syncFullscreenState);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
+  }, [fullScreen]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || !fullScreen) return;
-      setFullScreen(false);
-      void restoreOrientation();
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+      else { setFullScreen(false); void restoreOrientation(); }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -1117,7 +1098,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   if (showGlobalCompanion) return <GlobalWatchCompanionApp onClose={() => setShowGlobalCompanion(false)} onNotice={onNotice} />;
 
-  return <div data-watch-fullscreen={fullScreen ? "true" : "false"} className={"watch-together-app pointer-events-auto isolate flex min-w-0 flex-col overflow-hidden text-[#f0e6d8] " + (fullScreen ? "fixed inset-0 z-[3000]" : "absolute inset-0 z-[1000]")} style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)", height: fullScreen ? "100dvh" : undefined, width: fullScreen ? "100vw" : undefined }}>
+  return <div ref={watchRootRef} data-watch-fullscreen={fullScreen ? "true" : "false"} className={"watch-together-app pointer-events-auto isolate flex min-w-0 flex-col overflow-hidden text-[#f0e6d8] " + (fullScreen ? "fixed inset-0 z-[3000]" : "absolute inset-0 z-[1000]")} style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)", height: fullScreen ? "100dvh" : undefined, width: fullScreen ? "100vw" : undefined }}>
     {/* 弹幕动画：仓库里从未定义过 watchDanmaku，之前那条 animation 是空转，这里补上真实 keyframes */}
     <style>{`
       .watch-together-main { display:flex; flex-direction:column; }
@@ -1173,10 +1154,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       }
       .watch-together-app[data-watch-fullscreen="true"] > main.watch-together-main {
         display:grid!important; position:relative!important; inset:auto!important;
-        grid-template-columns:minmax(0,1.2fr) minmax(260px,.8fr)!important;
-        grid-template-rows:minmax(0,1fr)!important; grid-template-areas:"player interaction"!important;
+        grid-template-columns:minmax(0,1fr)!important; grid-template-rows:minmax(0,1fr)!important;
+        grid-template-areas:"player"!important;
         flex:1 1 0!important; min-height:0!important; width:100%!important; height:auto!important;
-        overflow:hidden!important; padding:6px 8px max(8px,env(safe-area-inset-bottom))!important;
+        overflow:hidden!important; padding:0!important;
         gap:8px!important; box-sizing:border-box!important; background:#000!important;
       }
       .watch-together-app[data-watch-fullscreen="true"] .watch-room-title,
@@ -1196,7 +1177,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         border:0!important; aspect-ratio:auto!important; object-fit:contain!important; transform:none!important;
       }
       .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel {
-        display:block!important; grid-area:interaction!important; position:relative!important;
+        display:none!important; grid-area:interaction!important; position:relative!important;
         min-width:0!important; min-height:0!important; width:100%!important; height:100%!important;
         overflow:hidden!important; margin:0!important; z-index:5!important;
       }
@@ -1322,7 +1303,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         </div>
         {/* 屏幕洒在桌面上的余光 */}
         {!fullScreen && <div aria-hidden className="pointer-events-none absolute -bottom-6 left-1/2 h-6 w-[86%] -translate-x-1/2 rounded-[50%] opacity-40 blur-xl" style={{ background: "radial-gradient(ellipse, #d7a06a 0%, transparent 70%)" }} />}
-        {fullScreen && <form onSubmit={event => { event.preventDefault(); const text = danmakuDraft.trim(); if (!text) return; submitDiscussion(text); setDanmakuDraft(""); }} className="absolute bottom-3 left-1/2 z-30 w-[min(560px,88%)] -translate-x-1/2"><div className="flex items-center gap-2 rounded-full border border-white/20 bg-black/55 px-3 py-1.5 backdrop-blur"><input value={danmakuDraft} onChange={event => setDanmakuDraft(event.target.value.slice(0,120))} placeholder="发个弹幕…" className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/45"/><button type="submit" disabled={!danmakuDraft.trim()} className="shrink-0 rounded-full bg-[#e6c49d] px-3 py-1 text-xs text-[#302218] disabled:opacity-40">发送</button></div></form>}
+        {fullScreen && <form onSubmit={event => { event.preventDefault(); const text = danmakuDraft.trim(); if (!text) return; submitDiscussion(text); setDanmakuDraft(""); }} className="absolute top-[max(12px,env(safe-area-inset-top))] left-1/2 z-30 w-[min(560px,88%)] -translate-x-1/2"><div className="flex items-center gap-2 rounded-full border border-white/20 bg-black/55 px-3 py-1.5 backdrop-blur"><input value={danmakuDraft} onChange={event => setDanmakuDraft(event.target.value.slice(0,120))} placeholder="发个弹幕…" className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/45"/><button type="submit" disabled={!danmakuDraft.trim()} className="shrink-0 rounded-full bg-[#e6c49d] px-3 py-1 text-xs text-[#302218] disabled:opacity-40">发送</button></div></form>}
       </section>
         {resolverState.state !== "idle" && <div className="mx-auto mt-2 flex w-full max-w-3xl items-start gap-1.5 px-1 text-[10px] leading-5" data-resolver-state={resolverState.state}><span className={resolverState.state==="ok"?"text-[#8fd0a2]":resolverState.state==="failed"?"text-[#e0938a]":"text-[#d9b489]"}>{resolverState.state==="resolving"?"正在解析视频链接…":resolverState.state==="ok"?"✓ 解析成功 · 已在应用内播放":"✕ 解析失败："+(resolverState.message||"未知原因")}</span></div>}
 
