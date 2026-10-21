@@ -382,7 +382,8 @@ export const BUILTIN_TEMPLATES: PhotoWallTemplate[] = [
 ];
 
 export function loadTemplateFill(): boolean {
-  try { return kvGet(TEMPLATE_FILL_STORAGE_KEY) === "1"; } catch { return false; }
+  // 新安装默认使用“轮廓 + 内部填充”；显式保存为 0 的用户设置仍然尊重。
+  try { return kvGet(TEMPLATE_FILL_STORAGE_KEY) !== "0"; } catch { return true; }
 }
 
 export function saveTemplateFill(fill: boolean): void {
