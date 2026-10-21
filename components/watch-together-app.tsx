@@ -1584,7 +1584,17 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </div>
             <div className="watch-sync-connection relative flex h-9 w-[72px] shrink-0 items-center justify-center gap-[3px]" aria-label="双人同步电波">
               <span className="watch-sync-thread" aria-hidden/>
-              {Array.from({length:11},(_,i)=><span key={i} className="watch-sync-wave relative z-10 w-[3px] rounded-full bg-[#b98565]" style={{height:(4+((i*5+2)%12))+"px",opacity:watching?0.95:0.52,animation:watching?"watchWave 1100ms ease-in-out "+(i*65)+"ms infinite alternate":undefined}/>)}
+              {Array.from({ length: 11 }, (_, i) => (
+                <span
+                  key={i}
+                  className="watch-sync-wave relative z-10 w-[3px] rounded-full bg-[#b98565]"
+                  style={{
+                    height: (4 + ((i * 5 + 2) % 12)) + "px",
+                    opacity: watching ? 0.95 : 0.52,
+                    animation: watching ? "watchWave 1100ms ease-in-out " + (i * 65) + "ms infinite alternate" : undefined,
+                  }}
+                />
+              ))}}
             </div>
             <div className="flex min-w-0 flex-1 items-center justify-end gap-2 text-right">
               <span className="min-w-0"><span className="block truncate font-serif text-[12px] text-[#5c4031]">{playerIdentity?.name || "我"}</span><span className="mt-0.5 block truncate text-[10px] text-[#a07a5c]">与你同频</span></span>
