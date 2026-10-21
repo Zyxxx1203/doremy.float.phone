@@ -1240,12 +1240,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel input { padding-top:10px!important; padding-bottom:10px!important; }
         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel button { padding:9px 11px!important; }
       }
-      @media (orientation:landscape) and (min-width:700px) {
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-together-main { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(300px,.9fr); grid-template-rows:auto minmax(0,auto) minmax(0,1fr); grid-template-areas:"title interaction" "player interaction" "link interaction"; gap:10px; overflow:hidden; padding-bottom:12px; }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player { grid-area:player; width:100%; max-width:none; align-self:start; }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel { grid-area:link; min-width:0; overflow:auto; }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel { grid-area:interaction; min-height:0; overflow-y:auto; overscroll-behavior:contain; margin-top:0!important; }
-      }
+      
 
       /* Single fullscreen layout authority: keep playback and conversation visible together. */
       .watch-together-app[data-watch-fullscreen="true"] {
@@ -1424,18 +1419,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player-actions > button {
         width:30px!important; height:30px!important;
       }
-      @media (orientation:landscape) and (min-width:700px) {
-        .watch-together-app:not([data-watch-fullscreen="true"]) > main.watch-together-main {
-          display:grid!important; grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr)!important;
-          grid-template-rows:auto minmax(0,1fr) auto!important;
-          grid-template-areas:"title title" "player interaction" "link interaction"!important;
-          gap:12px!important; overflow:hidden!important; padding:12px!important;
-        }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-room-title { grid-area:title!important; }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player { grid-area:player!important; width:100%!important; max-height:40dvh!important; }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel { grid-area:interaction!important; min-height:0!important; height:100%!important; }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel { grid-area:link!important; max-height:25dvh!important; }
-      }
+      
 
       /* 聊天室重排：视频更大，聊天占满剩余高度；视频来源控件收进播放器。 */
       .watch-together-app:not([data-watch-fullscreen="true"]) > main.watch-together-main {
