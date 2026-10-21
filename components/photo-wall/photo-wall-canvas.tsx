@@ -85,7 +85,7 @@ type Props = {
   fitHeight?: boolean;
   canvasZoom?: number;
   mode?: "view" | "move" | "doodle" | "pan";
-  onModeChange?: (mode: "view" | "move" | "doodle") => void;
+  onModeChange?: (mode: "view" | "move" | "doodle" | "pan") => void;
   brushColor?: string;
   brushWidth?: number;
   sticker?: string | null;
