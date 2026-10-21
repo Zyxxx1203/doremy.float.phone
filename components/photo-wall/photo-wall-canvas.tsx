@@ -413,7 +413,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       onPointerUp={readOnly ? undefined : endDrag}
       onPointerCancel={readOnly ? undefined : endDrag}
       onTouchStart={event => { if (event.touches.length > 1) { multiTouchRef.current = true; dragRef.current = null; } }}
-      onTouchEnd={event => { if (event.touches.length < 2) multiTouchRef.current = false; }}
+      onTouchEnd={() => { /* 双指结束后由 pinch-end 的冷却计时统一恢复单指输入。 */ }}
       onClick={event => { if (event.target === event.currentTarget) onSelect(null); }}
     >
       {ordered.length === 0 && !readOnly && <div className="pointer-events-none absolute inset-0 grid place-items-center text-[#a99a86]"><div className="text-center"><ImagePlus size={26} className="mx-auto"/><p className="mt-2 text-xs">这面墙还空着</p></div></div>}
