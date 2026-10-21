@@ -5,7 +5,6 @@ import { maybeAppendShortcutCapability, maybeAppendPerceptionStatus } from "./of
 import { maybeBuildStatusInjection } from "./perception/describe";
 import { loadCharacters } from "./character-storage";
 import { buildLifeMemoryContext, buildLifePresenceContext } from "./life/life-memory-bridge";
-import { buildCharacterBehaviorMemoryContext } from "./character-behavior-memory";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
 import { emitChatPluginEvent, runChatPluginTransform } from "./chat-plugin-hooks";
 import { buildChatPluginPromptFragments } from "./chat-plugin-storage";
@@ -1952,7 +1951,6 @@ export async function buildChatPromptMessages(
         memResults ? formatLongTermMemories(memResults) : "",
         buildLifeMemoryContext(character.id),
         buildLifePresenceContext(character.id),
-        buildCharacterBehaviorMemoryContext(character.id),
     ].filter(Boolean).join("\\n\\n");
     const coreMemories = coreResults ? formatCoreMemories(coreResults) : "";
     const scheduleSummary = buildCalendarScheduleMarker("character", character.id, getWeekStartIso(now));
