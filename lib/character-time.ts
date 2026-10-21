@@ -112,8 +112,11 @@ export function hasTimeZoneDifference(date: Date, characterTimeZone: string, sys
     || systemParts.minute !== characterParts.minute;
 }
 
-export function buildCharacterTimeContext(timeZone?: string | null, now = new Date()): CharacterTimeContext {
+export function buildCharacterTimeContext(timeZone?: string | null, now = new Date(), enabled = true): CharacterTimeContext {
   const systemTimeZone = getSystemTimeZone();
+  if (!enabled) {
+    return { systemTime: "", systemWeekday: "", systemTimeZone: "", characterTime: "", characterWeekday: "", characterTimeZone: "", timeContext: "全局时间感知已关闭：不要根据系统当前时间推断时段或角色作息，也不要虚构具体时间。", hasDifference: false };
+  }
   const systemTime = formatZonedChineseDateTime(now, systemTimeZone);
   const systemWeekday = getZonedWeekday(now, systemTimeZone);
   const normalizedTimeZone = normalizeTimeZone(timeZone);
@@ -159,8 +162,11 @@ export function buildCharacterTimeContext(timeZone?: string | null, now = new Da
   };
 }
 
-export function buildGroupTimeContext(members: GroupTimeMember[], now = new Date()): CharacterTimeContext {
+export function buildGroupTimeContext(members: GroupTimeMember[], now = new Date(), enabled = true): CharacterTimeContext {
   const systemTimeZone = getSystemTimeZone();
+  if (!enabled) {
+    return { systemTime: "", systemWeekday: "", systemTimeZone: "", characterTime: "", characterWeekday: "", characterTimeZone: "", timeContext: "全局时间感知已关闭：不要根据系统当前时间推断时段或角色作息，也不要虚构具体时间。", hasDifference: false };
+  }
   const systemTime = formatZonedChineseDateTime(now, systemTimeZone);
   const systemWeekday = getZonedWeekday(now, systemTimeZone);
   const rows = members
