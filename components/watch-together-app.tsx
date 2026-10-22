@@ -196,6 +196,39 @@ function saveTargetComments(url: string, comments: WatchComment[]): void {
 }
 
 export function WatchTogetherApp({ onClose, onNotice }: Props) {
+  // Android WebView/IME: visualViewport 通常比 100dvh 更早反映软键盘后的可视区域。
+  useEffect(() => {
+    const root = watchRootRef.current;
+    if (!root || typeof window === "undefined") return;
+    const viewport = window.visualViewport;
+    const syncViewport = () => {
+      const height = viewport?.height || window.innerHeight;
+      const top = viewport?.offsetTop || 0;
+      root.style.setProperty("--watch-visible-height", `${Math.round(height)}px`);
+      root.style.setProperty("--watch-visible-top", `${Math.round(top)}px`);
+      root.toggleAttribute("data-keyboard-visible", !!viewport && window.innerHeight - viewport.height > 120);
+    };
+    syncViewport();
+    viewport?.addEventListener("resize", syncViewport);
+    viewport?.addEventListener("scroll", syncViewport);
+    window.addEventListener("resize", syncViewport);
+    const onFocus = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement)) return;
+      window.setTimeout(() => {
+        syncViewport();
+        target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }, 220);
+    };
+    root.addEventListener("focusin", onFocus);
+    return () => {
+      viewport?.removeEventListener("resize", syncViewport);
+      viewport?.removeEventListener("scroll", syncViewport);
+      window.removeEventListener("resize", syncViewport);
+      root.removeEventListener("focusin", onFocus);
+    };
+  }, []);
+
   const [characters, setCharacters] = useState<Character[]>([]);
   const [settings, setSettings] = useState<WatchSettings>(() => loadSettings());
   const [urlInput, setUrlInput] = useState("");
@@ -1668,6 +1701,56 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app[data-source-panel="true"] .watch-link-panel button { min-height:40px!important; }
       .watch-together-app[data-source-panel="true"]::after { position:fixed!important; inset:0!important; z-index:2147483000!important; background:rgba(34,24,17,.58)!important; pointer-events:none!important; }
       .watch-together-app .watch-comment-list [data-comment-text] { color:#59483d!important; }
+
+      /* Final mobile fixes: the SVG illustration sits higher instead of being cut off at the card edge. */
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [aria-hidden="true"] {
+        bottom:58px!important; transform:translateY(-12%)!important; width:100%!important; max-width:none!important;
+        opacity:.34!important; pointer-events:none!important;
+      }
+      /* Source picker must override every older mobile display:none rule and stay inside the visible viewport. */
+      .watch-together-app[data-source-panel="true"] .watch-link-panel,
+      .watch-together-app[data-source-panel="true"]:not([data-landscape-mode="true"]) .watch-link-panel {
+        display:block!important; visibility:visible!important; opacity:1!important; pointer-events:auto!important;
+        position:fixed!important; z-index:2147483647!important;
+        left:12px!important; right:12px!important;
+        top:calc(var(--watch-visible-top, 0px) + var(--watch-visible-height, 100dvh)/2)!important;
+        bottom:auto!important; transform:translateY(-50%)!important;
+        width:auto!important; max-width:680px!important;
+        max-height:min(78dvh, calc(var(--watch-visible-height, 100dvh) - 24px))!important;
+        overflow-x:hidden!important; overflow-y:auto!important; overscroll-behavior:contain!important;
+        margin:0 auto!important; padding:14px!important; box-sizing:border-box!important;
+        border-radius:18px!important; background:#fff9ef!important;
+        box-shadow:0 20px 70px rgba(30,18,10,.48)!important;
+      }
+      .watch-together-app[data-source-panel="true"] .watch-link-panel label,
+      .watch-together-app[data-source-panel="true"] .watch-link-panel button {
+        display:inline-flex!important; visibility:visible!important; opacity:1!important;
+        position:relative!important; min-height:44px!important; align-items:center!important;
+      }
+      .watch-together-app[data-source-panel="true"] .watch-link-panel label { cursor:pointer!important; }
+      .watch-together-app[data-source-panel="true"] .watch-link-panel label input[type="file"] {
+        position:absolute!important; inset:0!important; width:100%!important; height:100%!important;
+        opacity:0!important; cursor:pointer!important; z-index:5!important;
+      }
+      .watch-together-app[data-keyboard-visible="true"] {
+        height:var(--watch-visible-height)!important; max-height:var(--watch-visible-height)!important;
+        top:var(--watch-visible-top, 0px)!important; bottom:auto!important;
+      }
+      .watch-together-app[data-keyboard-visible="true"] > main.watch-together-main {
+        min-height:0!important; overflow-y:auto!important; padding-bottom:8px!important;
+      }
+      .watch-together-app[data-keyboard-visible="true"] .watch-interaction-panel,
+      .watch-together-app[data-keyboard-visible="true"] .watch-room-card {
+        min-height:0!important; max-height:100%!important;
+      }
+      .watch-together-app[data-keyboard-visible="true"] .watch-discussion-composer {
+        position:sticky!important; bottom:0!important; z-index:100!important;
+        background:linear-gradient(180deg,rgba(255,249,239,.92),#fff9ef 35%)!important;
+        padding-bottom:max(6px,env(safe-area-inset-bottom))!important;
+      }
+      .watch-together-app[data-keyboard-visible="true"] .watch-discussion-composer textarea {
+        scroll-margin-bottom:12px!important;
+      }
       /* Previous mobile CSS hid the first composer row, which also hid all chips. */
       .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer > div:first-child {
         display:flex!important; visibility:visible!important; opacity:1!important; position:relative!important;
