@@ -1441,7 +1441,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app .watch-control-capsule{margin-top:0!important;margin-bottom:1px!important}
       .watch-together-app:not([data-landscape-mode="true"]) .watch-control-capsule[data-collapsed="true"]{width:calc(100% - 24px)!important;align-self:stretch!important;justify-content:space-between!important;padding:4px 10px!important;border-radius:14px!important;margin-left:auto!important;margin-right:auto!important}
       .watch-together-app:not([data-landscape-mode="true"]) .watch-control-capsule[data-collapsed="true"] .watch-capsule-toggle{width:28px!important;height:24px!important}
-      .watch-together-app[data-watch-fullscreen="true"] .watch-control-capsule{display:none!important}
 
       /* Final mobile layout authority: fixed 16:9 screen and independently scrollable discussion. */
       .watch-together-app:not([data-landscape-mode="true"]) > main.watch-together-main {
