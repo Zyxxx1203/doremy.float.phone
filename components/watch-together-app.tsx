@@ -1047,7 +1047,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
     const videoSettings = loadVideoAnalysisSettings();
     if (!videoSettings.apiKey.trim()) {
-      onNotice?.("请先到系统设置 → 视频分析模型填写所选服务的 API Key。");
+      onNotice?.("请先打开「一起看 → 陪看方式 → 视频理解模型」配置所选服务的 API Key。");
       return;
     }
 
