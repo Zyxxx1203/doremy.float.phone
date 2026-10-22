@@ -1561,7 +1561,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       }
       .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player {
         grid-area:player!important; justify-self:center!important; align-self:center!important;
-        width:min(100%, calc(32dvh * 16 / 9))!important; height:auto!important;
+        width:min(100%, 56.888dvh)!important; height:auto!important;
         aspect-ratio:16 / 9!important; min-height:0!important; max-height:32dvh!important;
         margin:0 auto!important; overflow:hidden!important; position:relative!important;
       }
