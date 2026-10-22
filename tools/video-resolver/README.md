@@ -21,7 +21,7 @@ Termux 服务与 Android App 私有缓存不是同一个目录；本服务返回
 
 - `GET /health`
 - `POST /api/resolve` JSON：`{"url":"https://...","quality":"best","engine":"auto"}`；质量可选 `best/1080/720/480/360`，引擎可选 `auto/parse-video-py/yt-dlp`。响应中的 `engine` 字段表示实际成功使用的引擎。
-- `GET /api/videos/{id}` 播放/读取缓存视频
+- `GET /api/videos/{id}` 播放/读取缓存视频（视频标签无法附加自定义请求头，因此此路由使用高熵随机 job ID 作为短期访问凭据；不要公开分享播放地址）
 - `DELETE /api/videos/{id}` 删除缓存
 - 可选请求头 `X-Resolver-Token` 对应环境变量 `VIDEO_RESOLVER_TOKEN`。
 
