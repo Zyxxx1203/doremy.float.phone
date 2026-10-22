@@ -26,7 +26,7 @@ PORT = int(os.environ.get("VIDEO_RESOLVER_PORT", "8765"))
 JOBS: dict[str, dict] = {}
 LOCK = asyncio.Lock()
 app = FastAPI(title="Momo local video resolver", version="1.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost", "https://localhost", "http://127.0.0.1"], allow_credentials=False, allow_methods=["GET", "POST", "DELETE"], allow_headers=["Content-Type", "Authorization", "X-Resolver-Token"])
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["GET", "POST", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "Authorization", "X-Resolver-Token"])
 
 class ResolveRequest(BaseModel):
     url: str = Field(min_length=8, max_length=4096)
