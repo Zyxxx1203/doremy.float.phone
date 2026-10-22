@@ -123,9 +123,23 @@ export function normalizeWorld(value: unknown): PhotoWallWorld {
   };
 }
 
+/** 一次角色/用户共同创作的可追溯记录，保存笔迹快照，避免墙面后续编辑影响回忆。 */
+export type PhotoWallCreationRecord = {
+  id: string;
+  createdAt: string;
+  authorType: "user" | "character";
+  authorId?: string;
+  authorName: string;
+  narrative: string;
+  photoIds: string[];
+  doodles: PhotoWallDoodle[];
+};
+
 export type PhotoWallState = {
   version: 1;
   photos: PhotoWallPhoto[];
+  /** 独立创作日志：与当前墙面涂鸦分开保存，清空/编辑墙面不会抹掉回忆。 */
+  creationRecords?: PhotoWallCreationRecord[];
   wallDoodles?: PhotoWallDoodle[];
   wallBackgroundRef?: string;
   /** 背景图上传时绑定的世界尺寸：之后扩容不再拉伸这张图。 */
@@ -210,6 +224,30 @@ export function normalizeDoodles(value: unknown): PhotoWallDoodle[] | undefined 
   return result.length ? result : undefined;
 }
 
+/** 记录归一化：限制历史数量与文本/笔迹长度，旧版本没有该字段时自然为空。 */
+export function normalizePhotoWallCreationRecords(value: unknown): PhotoWallCreationRecord[] {
+  if (!Array.isArray(value)) return [];
+  const records: PhotoWallCreationRecord[] = [];
+  for (const item of value.slice(-500)) {
+    if (!item || typeof item !== "object") continue;
+    const raw = item as Partial<PhotoWallCreationRecord>;
+    if (typeof raw.id !== "string" || typeof raw.createdAt !== "string" || !Array.isArray(raw.doodles)) continue;
+    const doodles = normalizeDoodles(raw.doodles) ?? [];
+    if (!doodles.length) continue;
+    records.push({
+      id: raw.id,
+      createdAt: raw.createdAt,
+      authorType: raw.authorType === "user" ? "user" : "character",
+      authorId: typeof raw.authorId === "string" ? raw.authorId.slice(0, 160) : undefined,
+      authorName: typeof raw.authorName === "string" ? raw.authorName.slice(0, 80) : "角色",
+      narrative: typeof raw.narrative === "string" ? raw.narrative.slice(0, 1000) : "",
+      photoIds: Array.isArray(raw.photoIds) ? raw.photoIds.filter((id): id is string => typeof id === "string").slice(0, 20) : [],
+      doodles,
+    });
+  }
+  return records;
+}
+
 const FRAME_STYLES: PhotoWallFrameStyle[] = ["polaroid", "thin", "wood", "tape", "none"];
 
 function clamp01(value: unknown, fallback: number): number {
@@ -246,6 +284,7 @@ export function loadPhotoWallState(): PhotoWallState {
     return {
       version: 1,
       photos: Array.isArray(parsed.photos) ? parsed.photos.map(normalizePhoto).filter((photo): photo is PhotoWallPhoto => photo !== null) : [],
+      creationRecords: normalizePhotoWallCreationRecords(parsed.creationRecords),
       wallDoodles: normalizeDoodles(parsed.wallDoodles),
       wallBackgroundRef: typeof parsed.wallBackgroundRef === "string" && parsed.wallBackgroundRef.startsWith("media-store://") ? parsed.wallBackgroundRef : undefined,
       wallBackgroundBox: parsed.wallBackgroundBox && typeof parsed.wallBackgroundBox === "object" ? normalizeWorld(parsed.wallBackgroundBox) : undefined,
@@ -267,6 +306,7 @@ export function savePhotoWallState(state: PhotoWallState): void {
   const next: PhotoWallState = {
     version: 1,
     photos: state.photos.map(normalizePhoto).filter((photo): photo is PhotoWallPhoto => photo !== null),
+    creationRecords: normalizePhotoWallCreationRecords(state.creationRecords),
     wallDoodles: normalizeDoodles(state.wallDoodles),
     wallBackgroundRef: typeof state.wallBackgroundRef === "string" && state.wallBackgroundRef.startsWith("media-store://") ? state.wallBackgroundRef : undefined,
     wallBackgroundBox: state.wallBackgroundBox && typeof state.wallBackgroundBox === "object" ? normalizeWorld(state.wallBackgroundBox) : undefined,
