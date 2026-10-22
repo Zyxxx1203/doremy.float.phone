@@ -44,7 +44,7 @@ type VideoTarget = { url: string; embedUrl: string | null; platform: Platform; p
 type WatchNativeBridge = { resolveShortVideoShareUrl?: (url: string, requestId: string) => boolean; deleteCachedShortVideo?: (cacheId: string) => boolean; setScreenOrientation?: (mode: string) => boolean };
 type WatchNativeWindow = Window & { AndroidShell?: WatchNativeBridge };
 type WatchNativeResolved = { requestId?: string; ok?: boolean; cacheId?: string; contentUri?: string; mediaUrl?: string; message?: string };
-type WatchMemoryRecord = { id:string; url:string; title:string; platform:string; startedAt:string; durationSeconds:number; characterName:string; comments:string[]; review:string; characterReview:string; favorite:boolean; memoryTitle?:string; quote?:string; mood?:string; note?:string };
+type WatchMemoryRecord = { id:string; url:string; title:string; platform:string; startedAt:string; durationSeconds:number; characterName:string; comments:string[]; discussion?: WatchComment[]; review:string; characterReview:string; favorite:boolean; memoryTitle?:string; quote?:string; mood?:string; note?:string };
 const WATCH_MEMORY_KEY = "ai_phone_watch_memory_records_v1";
 function readWatchMemories(): WatchMemoryRecord[] { try { const raw=window.localStorage.getItem(WATCH_MEMORY_KEY); const v=raw?JSON.parse(raw):[]; return Array.isArray(v)?v.filter((x)=>x&&typeof x.id==="string"):[]; } catch { return []; } }
 function writeWatchMemories(records: WatchMemoryRecord[]) { try { window.localStorage.setItem(WATCH_MEMORY_KEY,JSON.stringify(records.slice(0,300))); } catch { /* Keep playback working if local storage is full. */ } }
@@ -471,7 +471,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       url: target.url, title: videoTitle.trim() || (target.platformName + "视频"), platform: target.platformName,
       startedAt: now.toISOString(), durationSeconds: 0,
       characterName: characters.find(c => c.id === settings.characterId)?.name || "",
-      comments: [], review: "", characterReview: "", favorite: false, memoryTitle: "", quote: "", mood: "", note: ""
+      comments: [], discussion: [], review: "", characterReview: "", favorite: false, memoryTitle: "", quote: "", mood: "", note: ""
     };
     setMemoryRecords(previous => { const next=[record,...previous].slice(0,300); writeWatchMemories(next); return next; });
     activeMemoryIdRef.current = record.id;
@@ -503,9 +503,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   useEffect(() => {
     const id = activeMemoryIdRef.current;
     if (!id) return;
-    const summary = comments.filter(c => !c.targetUrl || c.targetUrl === target?.url).slice(-8).map(c => (c.kind === "user" ? "我：" : c.characterName + "：") + c.text);
+    const fullDiscussion = comments.filter(c => !c.targetUrl || c.targetUrl === target?.url).slice(-300);
+    const summary = fullDiscussion.map(c => "[" + new Date(c.createdAt).toLocaleString("zh-CN") + (c.timepoint ? " · " + c.timepoint : "") + "] " + (c.kind === "user" ? "我" : c.characterName) + "：" + c.text);
     setMemoryRecords(previous => {
-      const next = previous.map(r => r.id === id ? {...r, title: videoTitle.trim() || r.title, characterName: characters.find(c => c.id === settings.characterId)?.name || r.characterName, comments: summary} : r);
+      const next = previous.map(r => r.id === id ? {...r, title: videoTitle.trim() || r.title, characterName: characters.find(c => c.id === settings.characterId)?.name || r.characterName, comments: summary, discussion: fullDiscussion} : r);
       writeWatchMemories(next); return next;
     });
   }, [comments, videoTitle, characters, settings.characterId, target?.url]);
@@ -533,7 +534,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         typeof profile.scenario === "string" ? "背景设定：" + profile.scenario : "",
         typeof profile.systemPrompt === "string" ? "角色设定：" + profile.systemPrompt : "",
       ].filter(Boolean).join("\n").slice(0, 3500);
-      const savedMoments = record.comments.slice(-8).join("\n").slice(0, 3000);
+      const savedMoments = (record.discussion?.length ? record.discussion.map(item => "[" + new Date(item.createdAt).toLocaleString("zh-CN") + (item.timepoint ? " · " + item.timepoint : "") + "] " + (item.kind === "user" ? "我" : item.characterName) + "：" + item.text) : record.comments).join("\n").slice(-12000);
       const prompt = [
         "请为一次共同观影，写一段属于角色本人的观后感，并设计一张温柔精致的文字纪念卡。",
         "角色是" + reviewCharacter.name + "。严格保持角色设定、说话习惯和与用户的关系，不要写成通用影评机器人。",
