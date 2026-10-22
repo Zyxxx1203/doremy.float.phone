@@ -725,13 +725,27 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     });
   }, [applyImmediate, compensateViewportScroll]);
 
-  /** 相框级涂鸦层：笔迹与贴纸跟着照片一起存。 */
+  /** 相框涂鸦与创作日志共用一次写入；擦除不会新增记录。 */
   const changeDoodles = useCallback((photoId: string, doodles: PhotoWallDoodle[], side: "front" | "back" = "front") => {
-    pushHistory(stateRef.current);
-    commitPhotos(stateRef.current.photos.map(photo => photo.id === photoId
-      ? side === "back" ? { ...photo, backDoodles: doodles } : { ...photo, doodles }
-      : photo));
-  }, [commitPhotos, pushHistory]);
+    const current = stateRef.current;
+    const photo = current.photos.find(item => item.id === photoId);
+    const existing = side === "back" ? (photo?.backDoodles ?? []) : (photo?.doodles ?? []);
+    const existingIds = new Set(existing.map(item => item.id));
+    const addedByUser = doodles.filter(item => !existingIds.has(item.id) && item.authorType === "user");
+    pushHistory(current);
+    commitPhotos(current.photos.map(item => item.id === photoId
+      ? side === "back" ? { ...item, backDoodles: doodles } : { ...item, doodles }
+      : item));
+    if (addedByUser.length) {
+      const latest = stateRef.current;
+      const record: PhotoWallCreationRecord = {
+        id: createPhotoWallId(), createdAt: new Date().toISOString(), authorType: "user",
+        authorName: "我", narrative: `我在「${photo?.title || "这张照片"}」的${side === "back" ? "背面留言纸" : "正面相框"}上留下了${addedByUser.length}笔涂鸦。`,
+        photoIds: [photoId], doodles: addedByUser,
+      };
+      persist({ ...latest, creationRecords: [...(latest.creationRecords ?? []), record] });
+    }
+  }, [commitPhotos, persist, pushHistory]);
 
   /** 套用模板骨架：照片按顺序吸附进槽位，套完仍然可以自由拖动。 */
   const applyTemplate = useCallback((templateId: string) => {
@@ -901,15 +915,39 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
    */
   const changeWallDoodles = useCallback((wallDoodles: PhotoWallDoodle[]) => {
     const current = stateRef.current;
+    const existingIds = new Set((current.wallDoodles ?? []).map(item => item.id));
+    const addedByUser = wallDoodles.filter(item => !existingIds.has(item.id) && item.authorType === "user");
     pushHistory(current);
     const grow = planWorldGrow(wallWorldOf(current), wallDoodles.flatMap(doodle => doodle.points));
+    const appendUserRecord = (source: PhotoWallState): PhotoWallState => {
+      if (!addedByUser.length) return source;
+      const photoIds = new Set<string>();
+      for (const doodle of addedByUser) {
+        const center = doodle.kind === "sticker"
+          ? (doodle.points[0] ?? { x: 0.5, y: 0.5 })
+          : doodle.points.reduce((sum, point) => ({ x: sum.x + point.x / doodle.points.length, y: sum.y + point.y / doodle.points.length }), { x: 0, y: 0 });
+        const nearest = source.photos.map((photo, index) => {
+          const placement = photo.placement ?? fallbackPlacement(index);
+          return { id: photo.id, distance: Math.hypot(placement.x - center.x, placement.y - center.y) };
+        }).sort((a, b) => a.distance - b.distance)[0];
+        if (nearest && nearest.distance <= 0.24) photoIds.add(nearest.id);
+      }
+      if (!photoIds.size && wallActivePhotoId && source.photos.some(photo => photo.id === wallActivePhotoId)) photoIds.add(wallActivePhotoId);
+      const record: PhotoWallCreationRecord = {
+        id: createPhotoWallId(), createdAt: new Date().toISOString(), authorType: "user", authorName: "我",
+        narrative: `我在照片墙上亲手添了${addedByUser.length}笔涂鸦，把这一点小心意也留了下来。`,
+        photoIds: [...photoIds], doodles: addedByUser,
+      };
+      return { ...source, creationRecords: [...(source.creationRecords ?? []), record] };
+    };
     if (!grow) {
-      persist({ ...current, wallDoodles });
+      persist(appendUserRecord({ ...current, wallDoodles }));
       return;
     }
     compensateViewportScroll(grow);
     applyImmediate({ ...applyWorldGrow(current, grow), wallDoodles: remapDoodles(wallDoodles, grow) });
-  }, [applyImmediate, compensateViewportScroll, persist, pushHistory]);
+    if (addedByUser.length) persist(appendUserRecord(stateRef.current));
+  }, [applyImmediate, compensateViewportScroll, persist, pushHistory, wallActivePhotoId]);
   const visiblePhotos = useMemo(() => photos.filter(photo => {
     if (filter === "mine") return photo.ownerType === "user";
     if (filter === "characters") return photo.ownerType === "character";
