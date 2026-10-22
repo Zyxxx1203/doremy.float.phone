@@ -1768,7 +1768,11 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [data-part="message"] p { display:-webkit-box!important; -webkit-box-orient:vertical!important; -webkit-line-clamp:2!important; overflow:hidden!important; }
       .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [data-part="history"] { position:relative!important; z-index:2!important; flex:1 1 0!important; min-height:0!important; overflow:hidden!important; }
       .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer { position:relative!important; z-index:3!important; flex:0 0 auto!important; margin-top:0!important; padding-top:8px!important; }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [aria-hidden="true"] { left:0!important; right:0!important; bottom:0!important; width:100%!important; max-width:none!important; opacity:.28!important; }
+      /* The room illustration is decorative, not a full-width background; keep it fully inside the card. */
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [aria-hidden="true"] {
+        left:auto!important; right:0!important; bottom:42px!important; width:min(72%,340px)!important;
+        max-width:340px!important; transform:none!important; opacity:.22!important; pointer-events:none!important;
+      }
     `}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
