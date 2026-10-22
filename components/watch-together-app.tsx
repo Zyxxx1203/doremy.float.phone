@@ -1638,6 +1638,17 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         white-space:nowrap; box-shadow:0 1px 3px rgba(93,61,39,.04);
       }
       .watch-chat-chip:disabled { opacity:.38; }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer textarea {
+        min-height:36px!important; height:36px!important; max-height:72px!important; padding-top:8px!important; padding-bottom:8px!important;
+        border:0!important; border-radius:0!important; background:transparent!important; color:#594536!important; box-shadow:none!important;
+      }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer form {
+        display:flex!important; flex-direction:row!important; align-items:center!important; gap:6px!important;
+      }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer form button {
+        position:static!important; height:36px!important; min-height:36px!important; margin:0!important;
+      }
+
       .watch-chat-chip-active { color:#fff9f0; background:#8e6247; border-color:#8e6247; box-shadow:0 2px 8px rgba(109,70,44,.2); }
       .watch-together-app[data-source-panel="true"] .watch-link-panel {
         top:max(62px,calc(env(safe-area-inset-top) + 54px))!important; bottom:auto!important;
@@ -1817,6 +1828,32 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       {/* 角色在屏幕下方轻声说话 */}
       <section className="watch-interaction-panel mx-auto mt-4 w-full max-w-3xl">
         <div data-part="card" className="watch-room-card relative isolate overflow-hidden rounded-[28px] border border-[#d4a575]/25 bg-gradient-to-br from-[#49372b]/95 via-[#2d231d]/95 to-[#1c1714]/98 p-4 shadow-[0_18px_46px_rgba(57,37,24,.24),inset_0_1px_0_rgba(255,224,184,.12)] backdrop-blur-xl sm:p-5">
+          <div aria-hidden="true" className="pointer-events-none absolute bottom-[7%] right-[-2%] z-0 w-[72%] max-w-[440px] opacity-[.16]">
+            <svg viewBox="0 0 520 300" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-auto w-full">
+              <defs>
+                <linearGradient id="watchWood" x1="90" y1="25" x2="440" y2="270" gradientUnits="userSpaceOnUse"><stop stopColor="#bd8a61"/><stop offset="1" stopColor="#694735"/></linearGradient>
+                <linearGradient id="watchScreen" x1="175" y1="42" x2="345" y2="145" gradientUnits="userSpaceOnUse"><stop stopColor="#e9bd8e"/><stop offset="1" stopColor="#9d6d51"/></linearGradient>
+              </defs>
+              <path d="M20 274H500" stroke="#76523a" strokeWidth="2" strokeLinecap="round"/>
+              <path d="M124 169V52Q124 36 141 36H378Q394 36 394 52V169" stroke="url(#watchWood)" strokeWidth="10" strokeLinejoin="round"/>
+              <rect x="140" y="50" width="238" height="112" rx="7" fill="url(#watchScreen)" stroke="#7a5138" strokeWidth="3"/>
+              <path d="M159 137L204 94L232 119L275 74L357 137" stroke="#f6dfbd" strokeWidth="3" strokeLinejoin="round" opacity=".8"/>
+              <circle cx="333" cy="75" r="13" fill="#f7dfb7" opacity=".9"/>
+              <path d="M228 164V180M289 164V180M210 182H307" stroke="#76523a" strokeWidth="5" strokeLinecap="round"/>
+              <path d="M83 245V216Q83 190 111 190H149Q175 190 175 216V246" stroke="#9a6e4e" strokeWidth="9" strokeLinecap="round"/>
+              <path d="M64 238Q64 215 89 215H169Q192 215 192 238V257H64V238Z" fill="#d0a17c" stroke="#80583e" strokeWidth="3"/>
+              <path d="M77 257L72 277M179 257L184 277" stroke="#80583e" strokeWidth="6" strokeLinecap="round"/>
+              <path d="M193 229Q208 210 235 216L258 222L284 215Q309 210 326 231L337 255H182L193 229Z" fill="#e5c7a7" stroke="#80583e" strokeWidth="3" strokeLinejoin="round"/>
+              <path d="M202 224L216 255M303 224L317 255" stroke="#b88b68" strokeWidth="2"/>
+              <path d="M346 244V222Q346 204 365 204H411Q431 204 431 224V257H346V244Z" fill="#bd906d" stroke="#80583e" strokeWidth="3"/>
+              <path d="M358 257L354 276M419 257L423 276" stroke="#80583e" strokeWidth="5" strokeLinecap="round"/>
+              <path d="M442 254V205M452 254V189M462 254V215" stroke="#8b9a73" strokeWidth="3" strokeLinecap="round"/>
+              <path d="M452 215C431 208 430 190 440 185C452 185 458 198 452 215ZM452 229C469 219 480 227 476 239C466 245 457 239 452 229Z" fill="#9aa17c" stroke="#78845f" strokeWidth="1.5"/>
+              <path d="M452 201C438 190 446 175 458 178C467 184 462 195 452 201Z" fill="#b5b18b" stroke="#78845f" strokeWidth="1.5"/>
+              <path d="M42 273C44 252 55 248 64 253C69 263 58 272 42 273ZM42 273C26 262 29 248 41 247C52 252 51 264 42 273Z" fill="#a3a17d" stroke="#78845f" strokeWidth="1.5"/>
+              <path d="M116 36C108 20 122 10 133 19C139 31 129 38 116 36ZM392 37C405 19 418 27 413 40C405 47 397 43 392 37Z" fill="#c4a07d"/>
+            </svg>
+          </div>
           <div data-part="message" className="relative z-10 flex items-start gap-3">
             {character && <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-[#4a3d33] text-xs text-[#e6d8c4]">{character.avatar ? <img src={character.avatar} alt="" className="h-full w-full object-cover"/> : character.name.slice(0, 1)}</span>}
             <div className="min-w-0 flex-1">
