@@ -439,7 +439,7 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-private data class CachedSharedVideo(val cacheId: String, val contentUri: String, val mediaUrl: String? = null)
+private data class CachedSharedVideo(val cacheId: String, val contentUri: String, val mediaUrl: String? = null, val embedUrl: String? = null)
 private data class SharedVideoPage(val pageUrl: String, val html: String?, val directVideoUrl: String?)
 
 private val sharedVideoExecutor = Executors.newFixedThreadPool(2)
@@ -807,6 +807,29 @@ private fun resolveAndCacheSharedVideo(rawUrl: String): CachedSharedVideo {
     )
 }
 
+/**
+ * Bilibili short links (b23.tv) often expose only the official player page, not a public
+ * MP4 stream. If stream extraction fails, resolve the canonical BV/av identifier and keep
+ * playback inside the app with Bilibili's official embedded player instead of a dead panel.
+ */
+private fun resolveBilibiliEmbedFallback(rawUrl: String): CachedSharedVideo? {
+    val input = rawUrl.toHttpUrlOrNull() ?: return null
+    if (!isHostUnder(input.host, "bilibili.com") && !input.host.equals("b23.tv", ignoreCase = true)) return null
+    val page = fetchSharedVideoPage(rawUrl)
+    val combined = page.pageUrl + "\n" + (page.html ?: "")
+    val bvid = Regex("""(?:/video/|bvid[=:])\s*(BV[0-9A-Za-z]{10})""", RegexOption.IGNORE_CASE)
+        .find(combined)?.groupValues?.getOrNull(1)
+    val aid = Regex("""(?:/av|aid[=:])\s*(\d+)""", RegexOption.IGNORE_CASE)
+        .find(combined)?.groupValues?.getOrNull(1)
+    val base = "https://player.bilibili.com/player.html"
+    val query = when {
+        !bvid.isNullOrBlank() -> "bvid=" + Uri.encode(bvid)
+        !aid.isNullOrBlank() -> "aid=" + Uri.encode(aid)
+        else -> return null
+    }
+    return CachedSharedVideo("", "", null, "$base?$query&autoplay=0&danmaku=0&high_quality=1")
+}
+
 /** Dispatch a resolver result back into the trusted app page. Must be called on the UI thread. */
 private fun emitSharedVideoResult(requestId: String, result: Result<CachedSharedVideo>) {
     if (!::webView.isInitialized || isFinishing || !isTrustedShellPage()) {
@@ -819,6 +842,7 @@ private fun emitSharedVideoResult(requestId: String, result: Result<CachedShared
         if (it.cacheId.isNotBlank()) payload.put("cacheId", it.cacheId)
         if (it.contentUri.isNotBlank()) payload.put("contentUri", it.contentUri)
         if (!it.mediaUrl.isNullOrBlank()) payload.put("mediaUrl", it.mediaUrl)
+        if (!it.embedUrl.isNullOrBlank()) payload.put("embedUrl", it.embedUrl)
     }.onFailure { error ->
         payload.put("ok", false).put("message", (error.message ?: "公开视频解析失败").take(240))
     }
@@ -1482,7 +1506,7 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
                             if (!::webView.isInitialized || isFinishing || !isTrustedShellPage()) return@runOnUiThread
                             resolveSharedVideoWithWebView(cleanUrl) { dynamicResult ->
                                 val finalResult = dynamicResult.recoverCatching { error ->
-                                    throw IllegalStateException(
+                                    resolveBilibiliEmbedFallback(cleanUrl) ?: throw IllegalStateException(
                                         (staticResult.exceptionOrNull()?.message ?: "静态网页解析失败") +
                                             "；动态页面解析也失败：" + (error.message ?: "未发现可直接播放的 MP4")
                                     )
