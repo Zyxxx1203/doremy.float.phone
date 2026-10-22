@@ -1670,7 +1670,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             <p className="mt-2 max-w-xs text-[11px] leading-6 text-[#9c9086]">
               {target ? "当前链接没有可用的站内播放器地址，或平台限制了 WebView 播放。小手机不会主动打开外部应用；可以尝试带 BV/av 号的标准视频链接，或选择本地视频。" : "从顶部的「选择视频」入口添加视频，之后就能在这里边看边聊。"}
             </p>
-            {target && <button type="button" onClick={() => setShowVideoSourcePanel(true)} className="mt-5 rounded-full border border-white/20 bg-white/5 px-4 py-2 text-xs text-[#e6d8c4] transition active:scale-95">重新选择视频</button>}
+            {target && <div className="mt-5 flex flex-wrap justify-center gap-2"><button type="button" onClick={() => { setShowVideoSourcePanel(true); }} className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-xs text-[#e6d8c4] transition active:scale-95">重新选择视频</button><button type="button" onClick={() => { try { window.open(target.url, "_blank", "noopener,noreferrer"); } catch { onNotice?.("无法直接打开外部页面，请复制原链接到浏览器。"); } }} className="inline-flex items-center gap-1.5 rounded-full border border-[#c99a6a]/50 bg-[#c99a6a]/15 px-4 py-2 text-xs text-[#f0d5b8] transition active:scale-95"><ExternalLink size={13}/>在平台打开原视频</button></div>}
           </div>
         )}
 
