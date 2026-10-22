@@ -1650,12 +1650,42 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       }
 
       .watch-chat-chip-active { color:#fff9f0; background:#8e6247; border-color:#8e6247; box-shadow:0 2px 8px rgba(109,70,44,.2); }
+      /* Video picker: centered modal with its own scroll area, so upload controls stay reachable. */
       .watch-together-app[data-source-panel="true"] .watch-link-panel {
-        top:max(62px,calc(env(safe-area-inset-top) + 54px))!important; bottom:auto!important;
-        max-height:48dvh!important; padding:12px!important; border-radius:18px!important;
+        display:block!important; position:fixed!important; z-index:2147483001!important;
+        left:12px!important; right:12px!important; top:50%!important; bottom:auto!important;
+        transform:translateY(-50%)!important; width:auto!important; max-width:680px!important;
+        max-height:min(78dvh,680px)!important; overflow-x:hidden!important; overflow-y:auto!important;
+        overscroll-behavior:contain!important; margin:0 auto!important; padding:14px!important;
+        box-sizing:border-box!important; border-radius:18px!important;
+        background:rgba(255,249,239,.99)!important; box-shadow:0 20px 70px rgba(30,18,10,.48)!important;
+        visibility:visible!important; opacity:1!important; pointer-events:auto!important;
       }
       .watch-together-app[data-source-panel="true"] .watch-link-panel input { padding-top:9px!important; padding-bottom:9px!important; }
+      .watch-together-app[data-source-panel="true"] .watch-link-panel > div:first-child { position:sticky!important; top:0!important; z-index:2!important; padding:3px 0 8px!important; background:#fff9ef!important; }
+      .watch-together-app[data-source-panel="true"] .watch-link-panel > div:nth-of-type(2) { display:flex!important; flex-direction:column!important; gap:8px!important; }
+      .watch-together-app[data-source-panel="true"] .watch-link-panel label,
+      .watch-together-app[data-source-panel="true"] .watch-link-panel button { min-height:40px!important; }
+      .watch-together-app[data-source-panel="true"]::after { position:fixed!important; inset:0!important; z-index:2147483000!important; background:rgba(34,24,17,.58)!important; pointer-events:none!important; }
       .watch-together-app .watch-comment-list [data-comment-text] { color:#59483d!important; }
+      /* Previous mobile CSS hid the first composer row, which also hid all chips. */
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer > div:first-child {
+        display:flex!important; visibility:visible!important; opacity:1!important; position:relative!important;
+        flex:0 0 auto!important; flex-wrap:wrap!important; gap:6px!important; margin:0 0 8px!important;
+        max-height:none!important; overflow:visible!important;
+      }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-chat-chip {
+        display:inline-flex!important; flex:0 0 auto!important; visibility:visible!important; align-items:center!important;
+        justify-content:center!important; min-height:30px!important; padding:6px 11px!important; font-size:11px!important;
+        color:#79573f!important; background:rgba(255,255,255,.92)!important; border:1px solid rgba(165,121,85,.4)!important;
+        border-radius:999px!important; white-space:nowrap!important; opacity:1!important;
+      }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-chat-chip-active { color:#fff9f0!important; background:#8e6247!important; border-color:#8e6247!important; }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [data-part="message"] { position:relative!important; z-index:2!important; flex:0 0 auto!important; max-height:84px!important; overflow:hidden!important; }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [data-part="message"] p { display:-webkit-box!important; -webkit-box-orient:vertical!important; -webkit-line-clamp:2!important; overflow:hidden!important; }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [data-part="history"] { position:relative!important; z-index:2!important; flex:1 1 0!important; min-height:0!important; overflow:hidden!important; }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer { position:relative!important; z-index:3!important; flex:0 0 auto!important; margin-top:0!important; padding-top:8px!important; }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [aria-hidden="true"] { left:0!important; right:0!important; bottom:0!important; width:100%!important; max-width:none!important; opacity:.28!important; }
     `}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
@@ -1828,7 +1858,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       {/* 角色在屏幕下方轻声说话 */}
       <section className="watch-interaction-panel mx-auto mt-4 w-full max-w-3xl">
         <div data-part="card" className="watch-room-card relative isolate overflow-hidden rounded-[28px] border border-[#d4a575]/25 bg-gradient-to-br from-[#49372b]/95 via-[#2d231d]/95 to-[#1c1714]/98 p-4 shadow-[0_18px_46px_rgba(57,37,24,.24),inset_0_1px_0_rgba(255,224,184,.12)] backdrop-blur-xl sm:p-5">
-          <div aria-hidden="true" className="pointer-events-none absolute bottom-[7%] right-[-2%] z-0 w-[72%] max-w-[440px] opacity-[.16]">
+          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 z-0 w-full max-w-none opacity-[.28]">
             <svg viewBox="0 0 520 300" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-auto w-full">
               <defs>
                 <linearGradient id="watchWood" x1="90" y1="25" x2="440" y2="270" gradientUnits="userSpaceOnUse"><stop stopColor="#bd8a61"/><stop offset="1" stopColor="#694735"/></linearGradient>
@@ -1866,10 +1896,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
             <div data-part="composer" className="watch-discussion-composer relative z-20 shrink-0 border-t border-[#d6b18c]/25 pt-2">
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
-                <button type="button" onClick={() => { const video=playerRef.current?.querySelector("video"); if (!video) return; video.pause(); setWatching(false); actTogether("我们暂停一下，聊聊刚才这一幕。"); }} disabled={!target?.nativeVideo || !playerRef.current?.querySelector("video")} className="watch-chat-chip" title="仅在本地/可控视频播放器中暂停"><Pause size={11}/>暂停聊聊</button>
-                <button type="button" onClick={() => actTogether("我们来聊聊刚才的剧情发展和人物动机，只根据已出现的内容讨论。")} disabled={!target||!character||busy} className="watch-chat-chip"><MessageCircle size={11}/>讨论剧情</button>
-                <button type="button" onClick={() => { const video=playerRef.current?.querySelector("video"); const point=video?formatVideoTime(video.currentTime):timepointDraft; setTimepointDraft(point); patchSettings({currentMoment:("重点片段 "+point+"：").slice(0,800)}); setDiscussionDraft(`请把 ${point} 这一幕标记为重点：`); onNotice?.(video ? `已标记重点时间点 ${point}，可补充说明后发送。` : "已打开重点标记草稿；外站播放器无法读取精确时间点。"); }} disabled={!target} className="watch-chat-chip"><Sparkles size={11}/>标记重点</button>
-                <button type="button" onClick={() => actTogether("说说这一幕带给我的感受，也问问我为什么会这样想。")} disabled={!target||!character||busy} className="watch-chat-chip"><Heart size={11}/>聊聊感受</button>
+                <button type="button" onClick={() => { const video=playerRef.current?.querySelector("video"); const point=video?formatVideoTime(video.currentTime):timepointDraft; setTimepointDraft(point); patchSettings({currentMoment:("重点片段 "+point+"：").slice(0,800)}); setDiscussionDraft("请把 "+point+" 这一幕标记为重点："); onNotice?.(video ? "已标记重点时间点 "+point+"，可补充说明后发送。" : "已打开重点标记草稿；外站播放器无法读取精确时间点。"); }} disabled={!target} className="watch-chat-chip"><Sparkles size={11}/>标记重点</button>
+                <button type="button" onClick={() => actTogether("我们来聊聊刚才的剧情发展和人物动机，只根据已出现的内容讨论。")} disabled={!target||!character||busy} className="watch-chat-chip"><MessageCircle size={11}/>讨论情节</button>
                 <button type="button" aria-pressed={videoUnderstandingEnabled} onClick={() => { setVideoUnderstandingEnabled(value => { const next=!value; try { window.localStorage.setItem("watch_video_understanding_enabled_v1", String(next)); } catch {} if(next) onNotice?.("已开启独立视频理解模式：发送讨论时会把本地视频交给已配置的视频分析模型；这与角色聊天模型不同。"); return next; }) }} className={"watch-chat-chip "+(videoUnderstandingEnabled?"watch-chat-chip-active":"")}><Sparkles size={11}/>{videoUnderstandingEnabled?"视频理解·开":"视频理解·关"}</button>
               </div>
               {videoUnderstandingEnabled && <div className="mb-2 text-[10px] leading-4 text-[#98795e]">{target?.platformName==="本地视频" ? (wholeVideoBusy ? (wholeVideoProgress || "视频模型正在分析…") : `独立视频模型：${videoAnalysisSettings.model || "尚未选择模型"} · ${videoAnalysisSettings.provider === "openai-compatible" || videoAnalysisSettings.provider === "anthropic" ? "发送时抽取关键帧进行视觉分析" : "发送时分析整段本地视频"}`) : "独立视频模型只接收本地视频文件；外站链接无法直接传入整段视频。"}</div>}
