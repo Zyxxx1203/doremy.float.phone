@@ -231,6 +231,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [resolverState, setResolverState] = useState<{ state: "idle" | "resolving" | "ok" | "failed"; message?: string }>({ state: "idle" });
   const [mediaPaused, setMediaPaused] = useState(false);
   const [resolutionMessage, setResolutionMessage] = useState("");
+  const [localResolverEndpoint, setLocalResolverEndpoint] = useState(() => {
+    try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_local_resolver_endpoint_v1") || "" : ""; } catch { return ""; }
+  });
+  const [localResolverToken, setLocalResolverToken] = useState(() => {
+    try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_local_resolver_token_v1") || "" : ""; } catch { return ""; }
+  });
+  const [localResolverStatus, setLocalResolverStatus] = useState("");
+  const localResolverJobRef = useRef<{ id: string; endpoint: string; token: string } | null>(null);
   const [transcriberEndpoint, setTranscriberEndpoint] = useState(() => {
     try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_transcriber_endpoint_v1") || "" : ""; } catch { return ""; }
   });
@@ -800,7 +808,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     setWatching(false);
     onNotice?.("已载入本地视频。默认只在设备内播放；只有开启「视频理解」并发送讨论时，才会按当前服务商配置发送整段视频或关键帧。切换文件或离开一起看后会释放临时引用。");
   };
-  const openVideo = () => {
+  const openVideo = async () => {
     const parsed = parseVideoUrl(urlInput);
     if (!parsed) { onNotice?.("请粘贴完整的视频分享链接（http/https）。"); return; }
     if (localVideoObjectUrlRef.current) {
@@ -816,6 +824,36 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     setComments(loadTargetComments(parsed.url));
     setDiscussionDraft(""); setTimepointDraft("");
     setWatching(false);
+    const endpoint = localResolverEndpoint.trim().replace(/\/+$/, "");
+    if (endpoint) {
+      try {
+        const base = new URL(endpoint);
+        if (base.protocol !== "http:" && base.protocol !== "https:") throw new Error("解析服务地址必须是 http(s)");
+        if (base.protocol === "http:" && !["localhost", "127.0.0.1", "::1"].includes(base.hostname) && window.location.protocol === "https:") throw new Error("HTTPS 页面不能安全访问普通 HTTP 服务；请使用本机回环地址或 HTTPS 服务地址。");
+        window.localStorage.setItem("watch_local_resolver_endpoint_v1", endpoint);
+        window.localStorage.setItem("watch_local_resolver_token_v1", localResolverToken);
+        setLocalResolverStatus("正在下载到本地缓存…");
+        setResolverState({ state: "resolving", message: "正在下载到本地缓存…" });
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (localResolverToken.trim()) headers["X-Resolver-Token"] = localResolverToken.trim();
+        const response = await fetch(base.toString().replace(/\/+$/, "") + "/api/resolve", { method: "POST", headers, body: JSON.stringify({ url: parsed.url, quality: "best" }), signal: AbortSignal.timeout(30 * 60 * 1000) });
+        const result = await response.json() as { ok?: boolean; id?: string; title?: string; downloadUrl?: string; message?: string; detail?: string };
+        if (!response.ok || !result.ok || !result.id || !result.downloadUrl) throw new Error(result.detail || result.message || "解析服务没有返回本地视频");
+        const serviceUrl = base.toString().replace(/\/+$/, "");
+        localResolverJobRef.current = { id: result.id, endpoint: serviceUrl, token: localResolverToken.trim() };
+        setTarget({ ...parsed, embedUrl: null, supported: true, nativeVideo: true, nativeVideoUrl: new URL(result.downloadUrl, base).toString(), nativeCacheId: result.id });
+        setVideoTitle(result.title || parsed.platformName + "视频");
+        setResolverState({ state: "ok", message: "视频已下载到本地缓存，正在播放。" });
+        setLocalResolverStatus("下载完成 · 本地缓存播放");
+        onNotice?.("已下载到本地缓存，开始播放。看完后可在设置中删除缓存。");
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "本地解析服务连接失败";
+        setLocalResolverStatus("本地解析失败：" + message);
+        setResolverState({ state: "failed", message });
+        onNotice?.("本地解析服务失败：" + message + "；继续尝试 APK 内置解析。");
+      }
+    }
     if (!parsed.supported && (parsed.platform === "xiaohongshu" || parsed.platform === "douyin")) onNotice?.("正在尝试在小手机内解析" + parsed.platformName + "的公开视频流；如果平台要求登录或启用了防盗链，解析可能失败。");
   };
 
@@ -1900,6 +1938,22 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               videoBackgroundRequestedRef.current.delete(target.url);
               void lookupVideoBackground(target.url, videoTitle || target.platformName + "视频");
             }} className="mt-2 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#d8c9b6] disabled:opacity-40">重新获取当前视频资料</button>
+          </section>
+          <section className="mt-4 border-t border-white/10 pt-3">
+            <h3 className="font-serif text-sm text-[#e8c39a]">本地视频下载引擎</h3>
+            <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">可连接 Windows 或手机 Termux 上运行的 yt-dlp 服务。填写地址后，粘贴视频链接会先下载再播放；留空则使用 APK 内置解析。默认本机地址：http://127.0.0.1:8765</p>
+            <label className="mt-2 block text-[11px] text-[#9c9086]">解析服务地址
+              <input type="url" value={localResolverEndpoint} onChange={event => setLocalResolverEndpoint(event.target.value)} placeholder="http://127.0.0.1:8765" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none"/>
+            </label>
+            <label className="mt-2 block text-[11px] text-[#9c9086]">本地服务令牌（可留空）
+              <input type="password" autoComplete="off" value={localResolverToken} onChange={event => setLocalResolverToken(event.target.value)} placeholder="仅保存在此设备" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none"/>
+            </label>
+            <div className="mt-2 flex gap-2">
+              <button type="button" onClick={() => { try { window.localStorage.setItem("watch_local_resolver_endpoint_v1", localResolverEndpoint.trim()); window.localStorage.setItem("watch_local_resolver_token_v1", localResolverToken); setLocalResolverStatus("设置已保存"); } catch { setLocalResolverStatus("保存失败"); } }} className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#d8c9b6]">保存设置</button>
+              <button type="button" onClick={async () => { try { const base = localResolverEndpoint.trim().replace(/\/+$/, ""); const headers: Record<string,string> = {}; if (localResolverToken.trim()) headers["X-Resolver-Token"] = localResolverToken.trim(); const response = await fetch(base + "/health", { headers }); if (!response.ok) throw new Error("HTTP " + response.status); const health = await response.json() as { version?: string }; setLocalResolverStatus("连接成功 · 版本 " + (health.version || "未知")); } catch (error) { setLocalResolverStatus("连接失败：" + (error instanceof Error ? error.message : "请检查服务是否启动")); } }} className="flex-1 rounded-lg bg-[#c99a6a] px-3 py-2 text-[11px] font-medium text-[#2a1f16]">测试连接</button>
+            </div>
+            {localResolverStatus && <p role="status" aria-live="polite" className="mt-2 break-words text-[10px] leading-5 text-[#e6c49d]">{localResolverStatus}</p>}
+            <button type="button" disabled={!localResolverJobRef.current} onClick={async () => { const job = localResolverJobRef.current; if (!job) return; try { await fetch(job.endpoint + "/api/videos/" + encodeURIComponent(job.id), { method: "DELETE", headers: job.token ? { "X-Resolver-Token": job.token } : {} }); setLocalResolverStatus("已请求删除本次本地缓存"); localResolverJobRef.current = null; } catch { setLocalResolverStatus("清理请求失败，请在服务端按缓存策略清理"); } }} className="mt-2 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#d8c9b6] disabled:opacity-40">删除本次本地缓存</button>
           </section>
           <section className="mt-4 border-t border-white/10 pt-3">
             <h3 className="font-serif text-sm text-[#e8c39a]">视频理解模型</h3>
