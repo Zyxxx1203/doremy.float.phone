@@ -521,11 +521,11 @@ export function findEnabledToolForSchema(name: string, appId?: string, macroCont
     // Match the runtime dispatcher priority: life-prefixed calls, internal, REST,
     // composite, MCP, then custom apps. This prevents a duplicate name from exposing
     // one tool's schema while executeSingleToolCall dispatches to another tool.
-    const direct = (name.startsWith("life_") ? enabled.find(t => t.source === "life" && matches(t)) : undefined)
-        ?? enabled.find(t => t.source === "internal" && matches(t))
-        ?? enabled.find(t => t.source === "rest" && matches(t))
-        ?? enabled.find(t => t.source === "rest_package" && matches(t));
-    if (direct) return direct;
+    const lifeDirect = name.startsWith("life_") ? enabled.find(t => t.source === "life" && matches(t)) : undefined;
+    if (lifeDirect) return lifeDirect;
+
+    const internalDirect = enabled.find(t => t.source === "internal" && matches(t));
+    if (internalDirect) return internalDirect;
 
     const internalSubTool = findEnabledInternalSubToolDefinition(name, appId);
     if (internalSubTool) {
@@ -538,6 +538,9 @@ export function findEnabledToolForSchema(name: string, appId?: string, macroCont
             sourceId: internalSubTool.capability.id,
         };
     }
+
+    const restDirect = enabled.find(t => (t.source === "rest" || t.source === "rest_package") && matches(t));
+    if (restDirect) return restDirect;
 
     const restPackages = loadRestToolPackages().filter(pkg => pkg.enabled);
     const restPackageIds = new Set(restPackages.map(pkg => pkg.id));
