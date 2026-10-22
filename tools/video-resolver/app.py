@@ -180,8 +180,8 @@ def _download(url: str, options: dict):
         ydl.download([url])
 
 @app.get("/api/videos/{job_id}")
-def get_video(job_id: str, x_resolver_token: str | None = Header(default=None)):
-    authorize(x_resolver_token)
+def get_video(job_id: str):
+    # The high-entropy job id is a short-lived capability URL; HTML video elements cannot attach custom auth headers.
     record = JOBS.get(job_id)
     if not record or record.get("state") != "ready":
         raise HTTPException(404, "本地缓存不存在或已清理")
