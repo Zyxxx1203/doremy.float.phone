@@ -1100,45 +1100,55 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const uploadFiles = async (files: FileList | File[]) => {
     const list = Array.from(files).filter(file => file.type.startsWith("image/"));
     if (!list.length) { onNotice?.("请选择图片文件。"); return; }
-    setBusy(true); setBusyLabel("正在把照片收进相册…");
+    setBusy(true); setBusyLabel("正在处理照片（0/" + list.length + "）…");
+    const created: PhotoWallPhoto[] = [];
+    const failed: string[] = [];
     try {
-      const created: PhotoWallPhoto[] = [];
-      for (const file of list.slice(0, 20)) {
-        const blob = await optimizeUpload(file);
-        const mime = blob.type || file.type || "image/jpeg";
-        const ref = await storeMediaBlob(blob, mime, "image");
-        const capturedAt = await readExifCapturedAt(file);
-        created.push({
-          id: createPhotoWallId(), mediaRef: ref, createdAt: new Date().toISOString(), capturedAt,
-          ownerType: "user", ownerName: "我", kind: "favorite", title: file.name.replace(/\.[^.]+$/, "").slice(0, 60) || "一张喜欢的照片",
-          caption: "", backNote: "", tags: [], annotations: [], shareWithCharacters: true, source: "upload",
-        });
+      // 不再静默截断为 20 张。每张图片独立处理，单张损坏/超限不应让整批已上传照片丢失。
+      for (let index = 0; index < list.length; index += 1) {
+        const file = list[index];
+        setBusyLabel("正在处理照片（" + (index + 1) + "/" + list.length + "）：" + file.name.slice(0, 24));
+        try {
+          const blob = await optimizeUpload(file);
+          const mime = blob.type || file.type || "image/jpeg";
+          const ref = await storeMediaBlob(blob, mime, "image");
+          const capturedAt = await readExifCapturedAt(file);
+          created.push({
+            id: createPhotoWallId(), mediaRef: ref, createdAt: new Date().toISOString(), capturedAt,
+            ownerType: "user", ownerName: "我", kind: "favorite", title: file.name.replace(/\\.[^.]+$/, "").slice(0, 60) || "一张喜欢的照片",
+            caption: "", backNote: "", tags: [], annotations: [], shareWithCharacters: true, source: "upload",
+          });
+        } catch (error) {
+          failed.push(file.name + "：" + (error instanceof Error ? error.message : String(error)));
+        }
       }
-      const current = stateRef.current;
-      if (activeTemplateId && activeTemplateId !== "builtin-scatter") {
-        // 保持模板完整性：每次批量加入照片都按新总数重排整套骨架，避免只扩展半边。
-        const combined = [...created, ...current.photos];
-        const ordered = combined.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-        const slots = buildTemplateSlots(activeTemplateId, ordered.length, undefined, templateFill);
-        const slotById = new Map(ordered.map((item, index) => [item.id, { slot: slots[index], z: index + 1 }]));
-        const rearranged = combined.map(item => {
-          const arrangement = slotById.get(item.id);
-          if (!arrangement?.slot) return item;
-          const base = item.placement;
-          return { ...item, placement: { ...arrangement.slot, z: arrangement.z, frame: base?.frame ?? "polaroid", locked: base?.locked ?? false, frameColor: base?.frameColor ?? "#fffdf8" } as PhotoWallPlacement };
-        });
-        persist({ ...current, photos: rearranged });
-      } else {
-        const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
-        const slots = buildTemplateSlots(activeTemplateId, current.photos.length + created.length, undefined, templateFill);
-        const placedCreated = created.map((photo, index) => {
-          const slot = slots[current.photos.length + index] ?? fallbackPlacement(current.photos.length + index);
-          return { ...photo, placement: { ...slot, z: maxZ + index + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } };
-        });
-        persist({ ...current, photos: [...placedCreated, ...current.photos] });
+      if (created.length) {
+        const current = stateRef.current;
+        if (activeTemplateId && activeTemplateId !== "builtin-scatter") {
+          const combined = [...created, ...current.photos];
+          const ordered = combined.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+          const slots = buildTemplateSlots(activeTemplateId, ordered.length, undefined, templateFill);
+          const slotById = new Map(ordered.map((item, index) => [item.id, { slot: slots[index], z: index + 1 }]));
+          const rearranged = combined.map(item => {
+            const arrangement = slotById.get(item.id);
+            if (!arrangement?.slot) return item;
+            const base = item.placement;
+            return { ...item, placement: { ...arrangement.slot, z: arrangement.z, frame: base?.frame ?? "polaroid", locked: base?.locked ?? false, frameColor: base?.frameColor ?? "#fffdf8" } as PhotoWallPlacement };
+          });
+          persist({ ...current, photos: rearranged });
+        } else {
+          const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
+          const slots = buildTemplateSlots(activeTemplateId, current.photos.length + created.length, undefined, templateFill);
+          const placedCreated = created.map((photo, index) => {
+            const slot = slots[current.photos.length + index] ?? fallbackPlacement(current.photos.length + index);
+            return { ...photo, placement: { ...slot, z: maxZ + index + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } };
+          });
+          persist({ ...current, photos: [...placedCreated, ...current.photos] });
+        }
+        setSelectedPhotoId(created[0]?.id ?? null);
       }
-      setSelectedPhotoId(created[0]?.id ?? null);
-      onNotice?.(`已收藏 ${created.length} 张照片。`);
+      if (failed.length) onNotice?.("已收藏 " + created.length + " 张；" + failed.length + " 张失败。失败项：" + failed.slice(0, 3).join("；") + (failed.length > 3 ? "；…" : ""));
+      else onNotice?.("已收藏 " + created.length + " 张照片。");
     } catch (error) { onNotice?.("收藏失败：" + (error instanceof Error ? error.message : String(error))); }
     finally { setBusy(false); setBusyLabel(""); }
   };
