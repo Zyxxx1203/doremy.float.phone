@@ -474,13 +474,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       }
       const actorNow = resolveActorLifeNow(getActorClock(next, owner.ownerType, owner.ownerId));
       const thisMonday = mondayStart(actorNow);
-      const nextMonday = new Date(thisMonday);
-      nextMonday.setDate(nextMonday.getDate() + 7);
-      // Each person's schedule follows their own virtual calendar, not the device date.
+      // Keep the visible planning horizon to one week. The next week is generated
+      // when the virtual clock enters it, not pre-filled as a 14-day schedule.
       next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, thisMonday, { id: "home", name: "家" }, [owner.profile, activePromptPreset.scheduleGenerationPrompt].filter(Boolean).join(" "), settings.generateSpecialEvents);
-      if (settings.autoGenerateWeeklyPlans) {
-        next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, nextMonday, { id: "home", name: "家" }, [owner.profile, activePromptPreset.scheduleGenerationPrompt].filter(Boolean).join(" "), settings.generateSpecialEvents);
-      }
     }
     if (next !== state) commit(next);
   }, [ready, settings.autoGenerateWeeklyPlans, settings.generateSpecialEvents, settings.defaultClockMode, settings.defaultSpeed, activePromptPreset.scheduleGenerationPrompt, characters, playerName, state, worldBooks, bindingConfig, commit]);
@@ -502,7 +498,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         let week = mondayStart(virtualNow);
         const target = mondayStart(virtualNow);
         const targetEnd = new Date(target);
-        targetEnd.setDate(targetEnd.getDate() + (liveSettings.autoGenerateWeeklyPlans ? 7 : 0));
+        // Auto-generation is still limited to the current 7-day week; don't expose
+        // a second pre-generated week in the schedule UI. The next week is added
+        // automatically once the actor's virtual clock reaches it.
         for (let guard = 0; week.getTime() <= targetEnd.getTime() && guard < 520; guard++) {
           next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, week, { id: "home", name: "家" }, [owner.profile, activePromptPreset.scheduleGenerationPrompt].filter(Boolean).join(" "), liveSettings.generateSpecialEvents);
           week.setDate(week.getDate() + 7);
@@ -2743,10 +2741,29 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               {character.avatar ? <img src={character.avatar} alt="" className="h-8 w-8 rounded-full object-cover"/> : <span className="grid h-8 w-8 place-items-center rounded-full bg-[#efe1d2]">{character.name.slice(0,1)}</span>}
               <span className="min-w-0 flex-1">{character.name}</span>
               <input type="checkbox" checked={(selectedLocation.residents ?? []).includes(character.id)} onChange={event => {
-                const residents = new Set(selectedLocation.residents ?? []);
-                if (event.target.checked) residents.add(character.id); else residents.delete(character.id);
-                commit({ ...stateRef.current, locations: stateRef.current.locations.map(location => location.id === "home" ? { ...location, residents: [...residents] } : location) });
-                setNotice(event.target.checked ? "已设置与" + character.name + "同居；后续居家日程会使用同一住处。" : "已取消与" + character.name + "同居；后续居家日程将恢复独立住处。");
+                const current = stateRef.current;
+                const enabled = event.target.checked;
+                const residents = new Set(current.locations.find(location => location.id === "home")?.residents ?? []);
+                if (enabled) residents.add(character.id); else residents.delete(character.id);
+                const personalHomeId = "home-" + character.id;
+                const nextLocations = current.locations.map(location => location.id === "home" ? { ...location, residents: [...residents] } : location);
+                // Apply cohabitation immediately to future home-related schedule slots only.
+                // Work, school, commute, outings and manually chosen places remain untouched.
+                const now = Date.now();
+                const nextSchedules = current.schedules.map(slot => {
+                  if (slot.ownerType !== "character" || slot.ownerId !== character.id || new Date(slot.endAt).getTime() <= now) return slot;
+                  const plannedName = (slot.plannedLocationName ?? "").trim();
+                  const isHomeSlot = slot.plannedLocationId === "home" || slot.plannedLocationId === personalHomeId || (!slot.plannedLocationId && /^(家|家里|家中|自己的家)$/.test(plannedName));
+                  if (!isHomeSlot) return slot;
+                  return enabled
+                    ? { ...slot, plannedLocationId: "home", plannedLocationName: nextLocations.find(location => location.id === "home")?.name ?? "家", updatedAt: new Date().toISOString() }
+                    : { ...slot, plannedLocationId: personalHomeId, plannedLocationName: character.name + "的家", updatedAt: new Date().toISOString() };
+                });
+                const next = { ...current, locations: nextLocations, schedules: nextSchedules };
+                commit(next);
+                setNotice(enabled
+                  ? "同居行程已实时更新：未来的居家时段已转到共同住处，工作、学习和外出安排保留。"
+                  : "已取消同居：未来居家时段已恢复到" + character.name + "自己的住处，其他行程不变。");
               }} className="h-4 w-4 accent-[var(--life-accent)]"/>
             </label>)}</div>
           </section>}
