@@ -465,7 +465,14 @@ export function parseToolCalls(text: string): { cleanText: string; toolCalls: To
 
 export async function executeToolCalls(toolCalls: ToolCall[], context?: ToolExecutionContext): Promise<ToolResult[]> {
     throwIfAborted(context?.signal);
-    const results = await Promise.all(toolCalls.map(call => executeSingleToolCall(call, context, { depth: 0 })));
+    // Tool calls can mutate shared browser state (life schedule, memory, storage, etc.).
+    // Execute in model-provided order so two calls in one turn cannot load the same old
+    // snapshot and overwrite each other. Results remain aligned with the original calls.
+    const results: ToolResult[] = [];
+    for (const call of toolCalls) {
+        throwIfAborted(context?.signal);
+        results.push(await executeSingleToolCall(call, context, { depth: 0 }));
+    }
     if ((context?.appId === "chat" || context?.appId === "group_chat") && context.characterId && typeof window !== "undefined") {
         try {
             let life = loadVirtualLifeState();
