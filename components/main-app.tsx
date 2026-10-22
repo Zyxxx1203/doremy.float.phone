@@ -298,6 +298,10 @@ export function MainApp() {
     };
     function tryFullscreen() {
       if (!shouldRequestPwaFullscreen()) return;
+      // A document-wide fullscreen request can stall Android WebView media surfaces
+      // (both local <video> and third-party iframe players). The watch app must keep
+      // its own viewport stable; use the player's native fullscreen control instead.
+      if (document.querySelector(".watch-together-app")) return;
       const doc = document.documentElement;
       if (document.fullscreenElement) return;
       if (typeof doc.requestFullscreen !== "function") {
