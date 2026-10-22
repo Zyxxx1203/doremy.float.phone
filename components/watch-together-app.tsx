@@ -221,6 +221,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [wholeVideoBusy, setWholeVideoBusy] = useState(false);
   const [wholeVideoProgress, setWholeVideoProgress] = useState("");
   const [videoAnalysisSettings, setVideoAnalysisSettings] = useState<VideoAnalysisSettings>(() => loadVideoAnalysisSettings());
+  const [videoUnderstandingEnabled, setVideoUnderstandingEnabled] = useState(() => { try { return typeof window !== "undefined" && window.localStorage.getItem("watch_video_understanding_enabled_v1") === "true"; } catch { return false; } });
   const [videoBackground, setVideoBackground] = useState<{ url: string; text: string } | null>(null);
   type WatchContextSettings = { provider: "auto" | "tavily" | "custom"; apiUrl: string; apiKey: string };
   const WATCH_CONTEXT_SETTINGS_KEY = "watch_context_provider_settings_v1";
@@ -770,6 +771,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     localVideoObjectUrlRef.current = objectUrl;
     const localTarget: VideoTarget = { url: objectUrl, embedUrl: null, platform: "other", platformName: "本地视频", supported: true, nativeVideo: true };
     setTarget(localTarget);
+    setShowVideoSourcePanel(false);
     setScreenshotDataUrl("");
     setTranscriptSegments([]); setTranscriptName("");
     setVideoTitle(file.name.replace(/\.[^.]+$/, "") || "本地视频");
@@ -788,6 +790,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     }
     localVideoFileRef.current = null;
     setTarget(parsed);
+    setShowVideoSourcePanel(false);
     setScreenshotDataUrl("");
     setTranscriptSegments([]); setTranscriptName("");
     setVideoTitle(current => current || `${parsed.platformName}的一段视频`);
@@ -1005,7 +1008,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     }
   };
 
-  const analyzeWholeLocalVideo = async () => {
+  const analyzeWholeLocalVideo = async (userQuestion?: string) => {
     const file = localVideoFileRef.current;
     if (!file || target?.platformName !== "本地视频") {
       onNotice?.("请先在一起看里选择一个本地视频。");
@@ -1050,6 +1053,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         "视频文件名：" + file.name + "；视频大小：" + (file.size / 1024 / 1024).toFixed(1) + " MB。",
         videoTitle ? "用户给这段视频起的标题：" + videoTitle : "",
         settings.currentMoment ? "用户补充的观看上下文：" + settings.currentMoment : "",
+        userQuestion ? "用户这次希望围绕视频回答的问题/讨论重点：" + userQuestion : "",
         transcriptSegments.length ? "用户另行导入的字幕/脚本仅作为补充参考，不要用它替代实际视频内容。" : "",
         history ? "近期聊天上下文：\n" + history : "",
         "请像正在和用户一起看视频的角色一样说话，而不是冷冰冰的通用分析报告。先自然分享看完的感受，再提及几个确实来自视频的具体细节；如能可靠定位，可用时间点。不要编造看不清的细节，不要假装听清无法识别的音频，也不要剧透视频之外的内容。可指出剪辑节奏、镜头衔接、情绪或故事内容，但以真实视频为准。回复控制在约 150-350 字，使用角色自己的说话风格，并自然邀请用户继续聊。",
@@ -1104,6 +1108,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     setComments(current=>{const next=[...current.slice(-99),comment];saveTargetComments(target.url,next);return next;});
     const moment=[timepoint ? `时间点 ${timepoint}` : "",text].filter(Boolean).join("：").slice(0,800);
     patchSettings({currentMoment:moment}); setDiscussionDraft("");
+    if (videoUnderstandingEnabled) {
+      if (localVideoFileRef.current && target.platformName === "本地视频") {
+        void analyzeWholeLocalVideo(moment);
+      } else {
+        onNotice?.("视频理解模式已开启，但当前是外站链接，无法直接把整段视频交给独立视频模型。请改选本地视频；外站只能通过截图/字幕让角色聊天模型辅助理解。");
+      }
+      return;
+    }
     if (commentBusyRef.current) {
       pendingDiscussionRef.current.push({ moment, timepoint: timepoint || undefined });
     } else void generateComment(true,moment,timepoint||undefined);
@@ -1594,6 +1606,45 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         display:block!important; white-space:pre-wrap!important; overflow-wrap:anywhere!important;
         word-break:break-word!important; -webkit-line-clamp:unset!important; max-height:none!important;
       }
+
+      /* Final mobile chat layout: history scrolls independently; compact composer is pinned at the bottom. */
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card {
+        display:flex!important; flex-direction:column!important; height:100%!important; min-height:0!important;
+        overflow:hidden!important; padding:10px 10px max(8px,env(safe-area-inset-bottom))!important;
+        background:linear-gradient(160deg,rgba(255,249,239,.97),rgba(244,226,205,.98))!important;
+        border:1px solid rgba(172,126,88,.48)!important; border-radius:18px!important;
+        box-shadow:0 8px 22px rgba(83,54,33,.12),inset 0 1px 0 rgba(255,255,255,.9)!important;
+      }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="message"],
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="actions"],
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="actions2"] { display:none!important; }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="history"] {
+        display:flex!important; order:1!important; flex:1 1 0!important; width:100%!important; min-height:0!important;
+        margin:0!important; padding:0 0 8px!important; border:0!important; overflow:hidden!important;
+      }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card .watch-comment-list {
+        display:flex!important; flex:1 1 0!important; min-height:0!important; max-height:none!important;
+        overflow-y:auto!important; overflow-x:hidden!important; overscroll-behavior:contain!important;
+        -webkit-overflow-scrolling:touch!important; touch-action:pan-y!important;
+      }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer {
+        order:2!important; display:block!important; flex:0 0 auto!important; width:100%!important; margin:0!important;
+        padding:8px 0 0!important; border-top:1px solid rgba(172,126,88,.25)!important;
+      }
+      .watch-chat-chip {
+        display:inline-flex; align-items:center; gap:4px; min-height:27px; padding:5px 9px;
+        border:1px solid rgba(165,121,85,.32); border-radius:999px;
+        background:rgba(255,255,255,.72); color:#79573f; font-size:10px; line-height:1;
+        white-space:nowrap; box-shadow:0 1px 3px rgba(93,61,39,.04);
+      }
+      .watch-chat-chip:disabled { opacity:.38; }
+      .watch-chat-chip-active { color:#fff9f0; background:#8e6247; border-color:#8e6247; box-shadow:0 2px 8px rgba(109,70,44,.2); }
+      .watch-together-app[data-source-panel="true"] .watch-link-panel {
+        top:max(62px,calc(env(safe-area-inset-top) + 54px))!important; bottom:auto!important;
+        max-height:48dvh!important; padding:12px!important; border-radius:18px!important;
+      }
+      .watch-together-app[data-source-panel="true"] .watch-link-panel input { padding-top:9px!important; padding-bottom:9px!important; }
+      .watch-together-app .watch-comment-list [data-comment-text] { color:#59483d!important; }
     `}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
@@ -1776,7 +1827,20 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </div>
           </div>
 
-            <div data-part="composer" className="watch-discussion-composer mt-3 border-t border-[#d6b18c]/20 pt-3"><textarea value={discussionDraft} onPointerDown={event=>event.stopPropagation()} onTouchStart={event=>event.stopPropagation()} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} maxLength={800} rows={2} placeholder={target ? "写下你对这一幕的看法……" : "先从顶部选择视频，再聊聊这一幕……"} className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-black/20 p-3 text-sm leading-6 text-[#efe2d0] outline-none placeholder:text-[#907d6c] focus:border-[#c99a78]/60 focus:ring-2 focus:ring-[#c99a78]/10"/><div className="mt-2 flex justify-end"><button type="button" onClick={() => submitDiscussion()} disabled={!target||!discussionDraft.trim()} className="inline-flex items-center rounded-full border border-[#c99a78]/60 bg-[#c99a78] px-4 py-2.5 text-xs font-medium text-[#2a1f16] shadow-sm transition hover:brightness-105 active:scale-[.98] disabled:opacity-40"><MessageCircle size={13} className="mr-1 inline"/>发送</button></div></div>
+            <div data-part="composer" className="watch-discussion-composer relative z-20 shrink-0 border-t border-[#d6b18c]/25 pt-2">
+              <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                <button type="button" onClick={() => { const video=playerRef.current?.querySelector("video"); if (!video) return; video.pause(); setWatching(false); actTogether("我们暂停一下，聊聊刚才这一幕。"); }} disabled={!target?.nativeVideo || !playerRef.current?.querySelector("video")} className="watch-chat-chip" title="仅在本地/可控视频播放器中暂停"><Pause size={11}/>暂停聊聊</button>
+                <button type="button" onClick={() => actTogether("我们来聊聊刚才的剧情发展和人物动机，只根据已出现的内容讨论。")} disabled={!target||!character||busy} className="watch-chat-chip"><MessageCircle size={11}/>讨论剧情</button>
+                <button type="button" onClick={() => { const video=playerRef.current?.querySelector("video"); const point=video?formatVideoTime(video.currentTime):timepointDraft; setTimepointDraft(point); patchSettings({currentMoment:("重点片段 "+point+"：").slice(0,800)}); setDiscussionDraft(`请把 ${point} 这一幕标记为重点：`); onNotice?.(video ? `已标记重点时间点 ${point}，可补充说明后发送。` : "已打开重点标记草稿；外站播放器无法读取精确时间点。"); }} disabled={!target} className="watch-chat-chip"><Sparkles size={11}/>标记重点</button>
+                <button type="button" onClick={() => actTogether("说说这一幕带给我的感受，也问问我为什么会这样想。")} disabled={!target||!character||busy} className="watch-chat-chip"><Heart size={11}/>聊聊感受</button>
+                <button type="button" aria-pressed={videoUnderstandingEnabled} onClick={() => { setVideoUnderstandingEnabled(value => { const next=!value; try { window.localStorage.setItem("watch_video_understanding_enabled_v1", String(next)); } catch {} if(next) onNotice?.("已开启独立视频理解模式：发送讨论时会把本地视频交给已配置的视频分析模型；这与角色聊天模型不同。"); return next; }) }} className={"watch-chat-chip "+(videoUnderstandingEnabled?"watch-chat-chip-active":"")}><Sparkles size={11}/>{videoUnderstandingEnabled?"视频理解·开":"视频理解·关"}</button>
+              </div>
+              {videoUnderstandingEnabled && <div className="mb-2 text-[10px] leading-4 text-[#98795e]">{target?.platformName==="本地视频" ? (wholeVideoBusy ? (wholeVideoProgress || "视频模型正在分析…") : `独立视频模型：${videoAnalysisSettings.model || "尚未选择模型"} · 发送时分析整段本地视频`) : "独立视频模型只接收本地视频文件；外站链接无法直接传入整段视频。"}</div>}
+              <form onSubmit={event=>{event.preventDefault();submitDiscussion();}} className="flex min-w-0 items-center gap-2 rounded-full border border-[#d9c3ac] bg-[#fffdf8] p-1.5 shadow-[0_3px_12px_rgba(98,65,40,.08)]">
+                <textarea value={discussionDraft} onPointerDown={event=>event.stopPropagation()} onTouchStart={event=>event.stopPropagation()} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} onKeyDown={event=>{if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();submitDiscussion();}}} maxLength={800} rows={1} placeholder={target ? "聊聊这一幕…" : "先选择视频，再开始讨论"} className="min-h-[36px] max-h-[72px] min-w-0 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-[13px] leading-5 text-[#594536] outline-none placeholder:text-[#aa9683]"/>
+                <button type="submit" disabled={!target||!discussionDraft.trim()||wholeVideoBusy} className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full bg-[#9b6b4c] px-3.5 text-xs font-semibold text-white shadow-sm disabled:opacity-35"><MessageCircle size={13}/>发送</button>
+              </form>
+            </div>
           <div data-part="actions" className="mt-3 flex flex-wrap items-center gap-2">
             <button onClick={() => void generateComment(true)} disabled={!target || !character || busy} className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs text-[#2a1f16] transition active:scale-95 disabled:opacity-40" style={{ background: "linear-gradient(135deg,#e8c39a,#c99a6a)" }}>
               {busy ? <LoaderCircle size={13} className="animate-spin"/> : <MessageCircle size={13}/>}让 TA 即时回应
