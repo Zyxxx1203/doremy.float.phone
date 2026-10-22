@@ -684,6 +684,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const virtualNowMs = virtualNow.getTime();
       const end = new Date(start.getTime()); end.setDate(end.getDate() + 7);
       const locations = current.locations.map(p => "- " + p.name + ((p.aliases?.length ?? 0) ? "（别名：" + p.aliases!.join("、") + "）" : "") + (p.characterHabits?.[character.id] ? "；角色习惯：" + p.characterHabits[character.id] : "")).join("\n");
+      const livesWithPlayer = (current.locations.find(location => location.id === "home")?.residents ?? []).includes(character.id);
       const memories = current.memories
         .filter(m => m.participants.includes(character.id) && m.participants.includes(PLAYER_ID))
         .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
@@ -711,6 +712,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           "为生活模拟系统生成角色未来七天日程。请按角色差异化思考，不可让所有角色套用相同模板。",
           "角色：" + character.name, "角色卡：" + (character.persona || "未填写"), "性格：" + (character.personality || "未填写"), "标签：" + (character.tags ?? []).join("、"),
           "用户补充规则：" + (activePromptPreset.scheduleGenerationPrompt || "无"),
+          "同居关系：" + (livesWithPlayer ? "该角色与用户同居。只把家作为合理的居家/共同生活地点之一；不得因此把工作、学习、通勤、个人安排和外出行程全部改成在家，也不得覆盖必须保留的固定安排。" : "该角色未设置与用户同居，按角色自己的居住与生活安排规划。"),
           "小手机当前预设规则：\n" + (activePromptPresetText || "无额外规则"),
           "世界书中与该角色相关的背景：\n" + (characterWorldBook || "暂无相关世界书条目"),
           "近期共同记忆：\n" + memories, "近期个人记录：\n" + events, "允许地点（只选这些）：\n" + locations, "必须保留的固定安排：\n" + fixed,
