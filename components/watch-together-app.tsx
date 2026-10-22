@@ -324,29 +324,26 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     if (!current) { setResolutionMessage(""); return; }
     if (current.nativeVideo) { setResolutionMessage("解析成功：已取得可播放的视频源，当前由小手机内置播放器播放。"); return; }
     setResolutionMessage("正在检查此链接是否支持站内播放……");
-    /**
-     * Keep supported platform embeds in their own player. The Android native resolver currently
-     * handles only public Douyin/Kuaishou/Xiaohongshu share pages; forcing Bilibili through it
-     * guarantees failure because its host is intentionally not in the native allowlist.
-     * Use native extraction only for the platforms the shell actually supports.
-     */
-    if ((current.embedUrl && current.embedUrl !== current.url) || current.supported) {
-      setResolutionMessage("已识别站内播放器，正在小手机内加载视频。若平台拒绝嵌入或要求登录，页面不会跳转到外部应用。");
+    // Use the platform iframe when available, but also try native extraction for Bilibili,
+    // whose iframe frequently fails inside WebView despite a valid share URL.
+    if (current.embedUrl && current.platform !== "bilibili") {
+      setResolutionMessage("已识别平台播放器；如果平台拒绝嵌入，可在 Android APK 中尝试原生媒体解析。");
       setResolverState({ state: "idle" });
-      return;
-    }
-    if (!["douyin", "kuaishou", "xiaohongshu"].includes(current.platform)) {
-      const message = `${current.platformName}链接暂时无法直接在小手机内播放。请使用该平台的标准视频链接，或选择本地视频；不会自动跳转到外部应用。`;
-      setResolutionMessage(message);
-      setResolverState({ state: "failed", message });
       return;
     }
     const native = (window as WatchNativeWindow).AndroidShell;
     if (!native || !native.resolveShortVideoShareUrl) {
-      setResolutionMessage("当前环境没有可用的原生解析桥。此链接无法在应用内解析时，请换用可嵌入的标准视频链接或选择本地视频；不会跳转外部。");
+      if (current.embedUrl) {
+        setResolutionMessage("当前网页环境无法提取平台媒体流，先尝试平台内嵌播放器；Android APK 可尝试原生解析与临时缓存。");
+        setResolverState({ state: "idle" });
+      } else {
+        const message = "当前网页环境没有原生媒体解析桥。请在 Android APK 中打开以尝试提取公开媒体源；也可选择本地视频。";
+        setResolutionMessage(message);
+        setResolverState({ state: "failed", message });
+      }
       return;
     }
-    setResolutionMessage("正在尝试在小手机内提取公开视频资源……");
+    setResolutionMessage("正在尝试提取公开视频源；若取得 MP4 文件，会先缓存到应用临时目录再播放……");
     const requestId = "watch-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 9);
     let active = true;
     setResolverState({ state: "resolving" });
