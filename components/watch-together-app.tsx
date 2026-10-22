@@ -1577,6 +1577,31 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         justify-content:center!important; text-align:center!important;
       }
       .watch-together-app:not([data-landscape-mode="true"]) .watch-link-panel button { display:flex!important; align-items:center!important; }
+
+      /* Reserved illustration slot: caption → illustration → chat capsules. */
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-empty-illustration {
+        position:relative!important; flex:0 0 auto!important; width:100%!important;
+        height:clamp(118px,20dvh,176px)!important; min-height:118px!important; max-height:176px!important;
+        margin:2px auto 4px!important; overflow:visible!important; align-self:center!important;
+      }
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-empty-illustration svg {
+        display:block!important; width:auto!important; height:100%!important; max-width:min(100%,330px)!important;
+        max-height:100%!important; margin:0 auto!important; object-fit:contain!important;
+      }
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-empty-discussion {
+        display:none!important;
+      }
+      .watch-together-app[data-source-panel="true"] .watch-link-panel button,
+      .watch-together-app[data-source-panel="true"] .watch-link-panel label {
+        display:inline-flex!important; align-items:center!important; justify-content:center!important; text-align:center!important;
+      }
+      .watch-together-app[data-source-panel="true"] .watch-link-panel > div:nth-of-type(2) > * {
+        min-width:0!important; text-align:center!important;
+      }
+      .watch-together-app .watch-player > iframe {
+        display:block!important; width:100%!important; height:100%!important; min-height:0!important;
+        border:0!important; background:#000!important;
+      }
     `}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
@@ -1639,12 +1664,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         {target?.nativeVideo ? (
           <video key={target.nativeVideoUrl || target.url} src={target.nativeVideoUrl || target.url} controls playsInline onPlay={() => setMediaPaused(false)} onPause={() => setMediaPaused(true)} className="aspect-video w-full bg-black object-contain" onEnded={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } }} onError={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } onNotice?.("视频无法在当前 WebView 播放，可能是格式、签名有效期或平台防盗链限制。"); }} />
         ) : target?.embedUrl ? (
-          <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="autoplay; accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className="aspect-video w-full border-0" />
+          <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-orientation-lock" allow="autoplay; accelerometer; encrypted-media; gyroscope; picture-in-picture" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className="aspect-video w-full border-0" />
         ) : (
           <div className="flex aspect-video flex-col items-center justify-center px-6 text-center">
             <div className="mt-5 font-serif text-lg tracking-wide text-[#efe2d0]">{target ? `${target.platformName}暂不支持站内播放` : "还没有选择视频"}</div>
             <p className="mt-2 max-w-xs text-[11px] leading-6 text-[#9c9086]">
-              {target ? "这个链接没有提供可嵌入的播放器地址，或平台限制了应用内播放。小手机不会跳转到外部应用；请尝试复制平台的标准视频链接，或选择本地视频。" : "从顶部的「选择视频」入口添加视频，之后就能在这里边看边聊。"}
+              {target ? "当前链接没有可用的站内播放器地址，或平台限制了 WebView 播放。小手机不会主动打开外部应用；可以尝试带 BV/av 号的标准视频链接，或选择本地视频。" : "从顶部的「选择视频」入口添加视频，之后就能在这里边看边聊。"}
             </p>
             {target && <button type="button" onClick={() => setShowVideoSourcePanel(true)} className="mt-5 rounded-full border border-white/20 bg-white/5 px-4 py-2 text-xs text-[#e6d8c4] transition active:scale-95">重新选择视频</button>}
           </div>
@@ -1666,13 +1691,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       <div className="watch-link-panel mx-auto mt-4 w-full max-w-3xl rounded-3xl border border-[#b89979]/30 bg-[#fff8ed]/75 p-3 shadow-[0_12px_30px_rgba(96,67,43,.08)] backdrop-blur sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-3"><span className="text-xs font-semibold text-[#735440]">选择一起看的视频</span><button type="button" onClick={() => setShowVideoSourcePanel(false)} className="rounded-full border border-[#b89979]/45 bg-white/80 px-3 py-1.5 text-xs text-[#735440]">收起</button></div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <input value={urlInput} onPointerDown={event => event.stopPropagation()} onTouchStart={event => event.stopPropagation()} onChange={event => setUrlInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter") openVideo(); }} placeholder="粘贴视频链接；短视频分享链接不保证能自动内嵌" className="min-w-0 flex-1 rounded-2xl border border-[#dac6ad] bg-white/90 px-4 py-3.5 text-sm text-[#554437] outline-none placeholder:text-[#a09383] focus:border-[#b88768] focus:ring-2 focus:ring-[#c99a6a]/15" />
-          <button onClick={openVideo} className="rounded-2xl px-5 py-3.5 text-sm font-semibold tracking-wide text-[#2a1f16] shadow-sm transition hover:brightness-[1.02] active:scale-[.98]" style={{ background: "linear-gradient(135deg,#f0d0a8,#c99a6a)" }}>开始播放</button>
-          <label className="relative inline-flex cursor-pointer items-center justify-center rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">
+          <input value={urlInput} onPointerDown={event => event.stopPropagation()} onTouchStart={event => event.stopPropagation()} onChange={event => setUrlInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter") openVideo(); }} placeholder="粘贴视频链接；粘贴视频链接（B站建议使用含 BV/av 号的标准链接）" className="min-w-0 flex-1 rounded-2xl border border-[#dac6ad] bg-white/90 px-4 py-3.5 text-sm text-[#554437] outline-none placeholder:text-[#a09383] focus:border-[#b88768] focus:ring-2 focus:ring-[#c99a6a]/15" />
+          <button onClick={openVideo} className="inline-flex items-center justify-center text-center rounded-2xl px-5 py-3.5 text-sm font-semibold tracking-wide text-[#2a1f16] shadow-sm transition hover:brightness-[1.02] active:scale-[.98]" style={{ background: "linear-gradient(135deg,#f0d0a8,#c99a6a)" }}>开始播放</button>
+          <label className="relative inline-flex cursor-pointer items-center justify-center text-center rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">
             选择本地视频
             <input ref={videoFileInputRef} type="file" accept="video/*,.mp4,.webm,.mov,.m4v,.ogv" aria-label="选择本地视频文件" className="absolute inset-0 h-full w-full cursor-pointer opacity-0" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) openLocalVideo(file); }} />
           </label>
-          <button type="button" onClick={() => transcriptFileInputRef.current?.click()} className="rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">导入脚本 / 字幕</button>
+          <button type="button" onClick={() => transcriptFileInputRef.current?.click()} className="inline-flex items-center justify-center text-center rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">导入脚本 / 字幕</button>
         </div>
         
         <input ref={screenshotFileInputRef} type="file" accept="image/*" className="hidden" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void loadScreenshotFile(file); }} />
@@ -1748,6 +1773,30 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </div>
           </div>
 
+          {!comments.length && <div aria-hidden="true" className="watch-empty-illustration pointer-events-none flex w-full items-center justify-center overflow-visible opacity-[.82]"><svg viewBox="0 0 520 300" preserveAspectRatio="xMidYMax meet" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-full w-auto max-w-full">
+              <defs>
+                <linearGradient id="watchWood" x1="90" y1="25" x2="440" y2="270" gradientUnits="userSpaceOnUse"><stop stopColor="#bd8a61"/><stop offset="1" stopColor="#694735"/></linearGradient>
+                <linearGradient id="watchScreen" x1="175" y1="42" x2="345" y2="145" gradientUnits="userSpaceOnUse"><stop stopColor="#e9bd8e"/><stop offset="1" stopColor="#9d6d51"/></linearGradient>
+              </defs>
+              <path d="M20 274H500" stroke="#76523a" strokeWidth="2" strokeLinecap="round"/>
+              <path d="M124 169V52Q124 36 141 36H378Q394 36 394 52V169" stroke="url(#watchWood)" strokeWidth="10" strokeLinejoin="round"/>
+              <rect x="140" y="50" width="238" height="112" rx="7" fill="url(#watchScreen)" stroke="#7a5138" strokeWidth="3"/>
+              <path d="M159 137L204 94L232 119L275 74L357 137" stroke="#f6dfbd" strokeWidth="3" strokeLinejoin="round" opacity=".8"/>
+              <circle cx="333" cy="75" r="13" fill="#f7dfb7" opacity=".9"/>
+              <path d="M228 164V180M289 164V180M210 182H307" stroke="#76523a" strokeWidth="5" strokeLinecap="round"/>
+              <path d="M83 245V216Q83 190 111 190H149Q175 190 175 216V246" stroke="#9a6e4e" strokeWidth="9" strokeLinecap="round"/>
+              <path d="M64 238Q64 215 89 215H169Q192 215 192 238V257H64V238Z" fill="#d0a17c" stroke="#80583e" strokeWidth="3"/>
+              <path d="M77 257L72 277M179 257L184 277" stroke="#80583e" strokeWidth="6" strokeLinecap="round"/>
+              <path d="M193 229Q208 210 235 216L258 222L284 215Q309 210 326 231L337 255H182L193 229Z" fill="#e5c7a7" stroke="#80583e" strokeWidth="3" strokeLinejoin="round"/>
+              <path d="M202 224L216 255M303 224L317 255" stroke="#b88b68" strokeWidth="2"/>
+              <path d="M346 244V222Q346 204 365 204H411Q431 204 431 224V257H346V244Z" fill="#bd906d" stroke="#80583e" strokeWidth="3"/>
+              <path d="M358 257L354 276M419 257L423 276" stroke="#80583e" strokeWidth="5" strokeLinecap="round"/>
+              <path d="M442 254V205M452 254V189M462 254V215" stroke="#8b9a73" strokeWidth="3" strokeLinecap="round"/>
+              <path d="M452 215C431 208 430 190 440 185C452 185 458 198 452 215ZM452 229C469 219 480 227 476 239C466 245 457 239 452 229Z" fill="#9aa17c" stroke="#78845f" strokeWidth="1.5"/>
+              <path d="M452 201C438 190 446 175 458 178C467 184 462 195 452 201Z" fill="#b5b18b" stroke="#78845f" strokeWidth="1.5"/>
+              <path d="M42 273C44 252 55 248 64 253C69 263 58 272 42 273ZM42 273C26 262 29 248 41 247C52 252 51 264 42 273Z" fill="#a3a17d" stroke="#78845f" strokeWidth="1.5"/>
+              <path d="M116 36C108 20 122 10 133 19C139 31 129 38 116 36ZM392 37C405 19 418 27 413 40C405 47 397 43 392 37Z" fill="#c4a07d"/>
+            </svg></div>}
             <div data-part="composer" className="watch-discussion-composer relative z-20 shrink-0 border-t border-[#d6b18c]/25 pt-2">
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
                 <button type="button" onClick={() => { const video=playerRef.current?.querySelector("video"); const point=video?formatVideoTime(video.currentTime):timepointDraft; setTimepointDraft(point); patchSettings({currentMoment:("重点片段 "+point+"：").slice(0,800)}); setDiscussionDraft("请把 "+point+" 这一幕标记为重点："); onNotice?.(video ? "已标记重点时间点 "+point+"，可补充说明后发送。" : "已打开重点标记草稿；外站播放器无法读取精确时间点。"); }} disabled={!target} className="watch-chat-chip"><Sparkles size={11}/>标记重点</button>
@@ -1756,7 +1805,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               </div>
               {videoUnderstandingEnabled && <div className="mb-2 text-[10px] leading-4 text-[#98795e]">{target?.platformName==="本地视频" ? (wholeVideoBusy ? (wholeVideoProgress || "视频模型正在分析…") : `独立视频模型：${videoAnalysisSettings.model || "尚未选择模型"} · ${videoAnalysisSettings.provider === "openai-compatible" || videoAnalysisSettings.provider === "anthropic" ? "发送时抽取关键帧进行视觉分析" : "发送时分析整段本地视频"}`) : "独立视频模型只接收本地视频文件；外站链接无法直接传入整段视频。"}</div>}
               <form onSubmit={event=>{event.preventDefault();submitDiscussion();}} className="flex min-w-0 items-center gap-2 rounded-full border border-[#d9c3ac] bg-[#fffdf8] p-1.5 shadow-[0_3px_12px_rgba(98,65,40,.08)]">
-                <textarea value={discussionDraft} onPointerDown={event=>event.stopPropagation()} onTouchStart={event=>event.stopPropagation()} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} onKeyDown={event=>{if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();submitDiscussion();}}} maxLength={800} rows={1} placeholder={target ? "把这一幕的心情、值得吐槽的细节，或想和 TA 一起珍藏的瞬间，留在这里。" : "先选一段能在小手机内播放的视频，再开始聊"} className="min-h-[36px] max-h-[72px] min-w-0 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-[13px] leading-5 text-[#594536] outline-none placeholder:text-[#aa9683]"/>
+                <textarea value={discussionDraft} onPointerDown={event=>event.stopPropagation()} onTouchStart={event=>event.stopPropagation()} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} onKeyDown={event=>{if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();submitDiscussion();}}} maxLength={800} rows={1} placeholder={target ? "把心动的片刻、想吐槽的细节，或只属于你们的默契，轻轻留在这里。" : "先选一段能在小手机内播放的视频，再开始聊"} className="min-h-[36px] max-h-[72px] min-w-0 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-[13px] leading-5 text-[#594536] outline-none placeholder:text-[#aa9683]"/>
                 <button type="submit" disabled={!target||!discussionDraft.trim()||wholeVideoBusy} className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full bg-[#9b6b4c] px-3.5 text-xs font-semibold text-white shadow-sm disabled:opacity-35"><MessageCircle size={13}/>发送</button>
               </form>
             </div>
@@ -1784,33 +1833,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             <div className="flex items-baseline justify-between gap-2"><h2 className="font-serif text-base tracking-wide text-[#f0dfcc]">一起讨论</h2><span className="text-[10px] tracking-[.12em] text-[#a9937e]">SCENE NOTES · {comments.length}</span></div>
             <p className="mt-1 text-[10px] leading-5 text-[#a9937e]">把某一幕或想说的话记在对应时间点；你的消息和 TA 的回应都会出现在画面弹幕与下方讨论记录里。</p>
             {comments.some(item=>item.timepoint) && <div className="mt-3 flex flex-wrap gap-2">{[...new Set(comments.filter(item=>item.timepoint).map(item=>item.timepoint!))].map(point=><button key={point} type="button" onClick={()=>{setTimepointDraft(point);setDiscussionDraft(`想再聊聊 ${point} 这一幕`);const seconds=parseVideoTime(point);const video=playerRef.current?.querySelector("video");if(seconds===null){onNotice?.("这个时间点格式无法识别，已填入笔记但没有跳转。");return;}if(video){try{video.currentTime=seconds;onNotice?.(`已跳转到 ${point}`);}catch{onNotice?.("当前视频暂时无法跳转到该时间点。");}}else{onNotice?.("当前使用第三方网页播放器，无法由小手机控制播放进度；时间点已填入，可继续记笔记。");}}} className="border-b border-[#c99a78]/60 px-1 py-1 text-[11px] text-[#e4c6a8]">{point} ↗</button>)}</div>}
-            <div ref={commentListRef} onScroll={event => { const list = event.currentTarget; commentListAtBottomRef.current = list.scrollHeight - list.scrollTop - list.clientHeight < 56; }} className="watch-comment-list mt-3 min-h-0 max-h-64 space-y-3 overflow-y-auto overscroll-contain pr-1">{comments.length ? comments.slice(-100).map(item=><div key={item.id} data-comment-kind={item.kind==="user"?"user":"character"} className={`flex w-full ${item.kind==="user"?"justify-end":"justify-start"}`}><div className={`min-w-0 max-w-[92%] rounded-[12px] border px-3 py-2.5 shadow-sm ${item.kind==="user"?"border-[#d6b18c]/45 bg-[#f3e4d3]":"border-[#e5d3c0] bg-white/90"}`}><span data-comment-author>{item.kind==="user" ? (playerIdentity?.name || "我") : item.characterName}</span><p data-comment-text className="whitespace-pre-wrap break-words font-serif text-sm leading-6 text-[#59483d]">{item.text}</p>{item.timepoint && <span className="mt-1 block text-[10px] text-[#9b7b62]">片段 · {item.timepoint}</span>}</div></div>) : <div className="watch-empty-discussion flex min-h-0 flex-col items-center justify-center gap-2 px-2 py-2 text-center"><p className="max-w-[28rem] text-xs leading-5 tracking-[.02em] text-[#a9937e]">把这一幕的心情、值得吐槽的细节，或想和 TA 一起珍藏的瞬间，留在这里。</p>
-          <div aria-hidden="true" className="watch-empty-illustration pointer-events-none flex w-full items-center justify-center overflow-visible opacity-[.72]">
-            <svg viewBox="0 0 520 300" preserveAspectRatio="xMidYMax meet" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-full w-auto max-w-full">
-              <defs>
-                <linearGradient id="watchWood" x1="90" y1="25" x2="440" y2="270" gradientUnits="userSpaceOnUse"><stop stopColor="#bd8a61"/><stop offset="1" stopColor="#694735"/></linearGradient>
-                <linearGradient id="watchScreen" x1="175" y1="42" x2="345" y2="145" gradientUnits="userSpaceOnUse"><stop stopColor="#e9bd8e"/><stop offset="1" stopColor="#9d6d51"/></linearGradient>
-              </defs>
-              <path d="M20 274H500" stroke="#76523a" strokeWidth="2" strokeLinecap="round"/>
-              <path d="M124 169V52Q124 36 141 36H378Q394 36 394 52V169" stroke="url(#watchWood)" strokeWidth="10" strokeLinejoin="round"/>
-              <rect x="140" y="50" width="238" height="112" rx="7" fill="url(#watchScreen)" stroke="#7a5138" strokeWidth="3"/>
-              <path d="M159 137L204 94L232 119L275 74L357 137" stroke="#f6dfbd" strokeWidth="3" strokeLinejoin="round" opacity=".8"/>
-              <circle cx="333" cy="75" r="13" fill="#f7dfb7" opacity=".9"/>
-              <path d="M228 164V180M289 164V180M210 182H307" stroke="#76523a" strokeWidth="5" strokeLinecap="round"/>
-              <path d="M83 245V216Q83 190 111 190H149Q175 190 175 216V246" stroke="#9a6e4e" strokeWidth="9" strokeLinecap="round"/>
-              <path d="M64 238Q64 215 89 215H169Q192 215 192 238V257H64V238Z" fill="#d0a17c" stroke="#80583e" strokeWidth="3"/>
-              <path d="M77 257L72 277M179 257L184 277" stroke="#80583e" strokeWidth="6" strokeLinecap="round"/>
-              <path d="M193 229Q208 210 235 216L258 222L284 215Q309 210 326 231L337 255H182L193 229Z" fill="#e5c7a7" stroke="#80583e" strokeWidth="3" strokeLinejoin="round"/>
-              <path d="M202 224L216 255M303 224L317 255" stroke="#b88b68" strokeWidth="2"/>
-              <path d="M346 244V222Q346 204 365 204H411Q431 204 431 224V257H346V244Z" fill="#bd906d" stroke="#80583e" strokeWidth="3"/>
-              <path d="M358 257L354 276M419 257L423 276" stroke="#80583e" strokeWidth="5" strokeLinecap="round"/>
-              <path d="M442 254V205M452 254V189M462 254V215" stroke="#8b9a73" strokeWidth="3" strokeLinecap="round"/>
-              <path d="M452 215C431 208 430 190 440 185C452 185 458 198 452 215ZM452 229C469 219 480 227 476 239C466 245 457 239 452 229Z" fill="#9aa17c" stroke="#78845f" strokeWidth="1.5"/>
-              <path d="M452 201C438 190 446 175 458 178C467 184 462 195 452 201Z" fill="#b5b18b" stroke="#78845f" strokeWidth="1.5"/>
-              <path d="M42 273C44 252 55 248 64 253C69 263 58 272 42 273ZM42 273C26 262 29 248 41 247C52 252 51 264 42 273Z" fill="#a3a17d" stroke="#78845f" strokeWidth="1.5"/>
-              <path d="M116 36C108 20 122 10 133 19C139 31 129 38 116 36ZM392 37C405 19 418 27 413 40C405 47 397 43 392 37Z" fill="#c4a07d"/>
-            </svg>
-          </div>
+            <div ref={commentListRef} onScroll={event => { const list = event.currentTarget; commentListAtBottomRef.current = list.scrollHeight - list.scrollTop - list.clientHeight < 56; }} className="watch-comment-list mt-3 min-h-0 max-h-64 space-y-3 overflow-y-auto overscroll-contain pr-1">{comments.length ? comments.slice(-100).map(item=><div key={item.id} data-comment-kind={item.kind==="user"?"user":"character"} className={`flex w-full ${item.kind==="user"?"justify-end":"justify-start"}`}><div className={`min-w-0 max-w-[92%] rounded-[12px] border px-3 py-2.5 shadow-sm ${item.kind==="user"?"border-[#d6b18c]/45 bg-[#f3e4d3]":"border-[#e5d3c0] bg-white/90"}`}><span data-comment-author>{item.kind==="user" ? (playerIdentity?.name || "我") : item.characterName}</span><p data-comment-text className="whitespace-pre-wrap break-words font-serif text-sm leading-6 text-[#59483d]">{item.text}</p>{item.timepoint && <span className="mt-1 block text-[10px] text-[#9b7b62]">片段 · {item.timepoint}</span>}</div></div>) : <div className="watch-empty-discussion flex min-h-0 flex-col items-center justify-center gap-2 px-2 py-2 text-center"><p className="max-w-[28rem] text-xs leading-5 tracking-[.02em] text-[#a9937e]">把心动的片刻、想吐槽的细节，或只属于你们的默契，轻轻留在这里。</p>
+          
 </div>}</div>
           </section>
           <div data-part="actions2" className="relative z-10 mt-2 flex flex-wrap gap-1.5">
