@@ -431,11 +431,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [showGlobalCompanion, setShowGlobalCompanion] = useState(false);
   const [historyMode, setHistoryMode] = useState<"current" | "global">("current");
   const [globalWatchRecords, setGlobalWatchRecords] = useState<GlobalWatchRecord[]>(() => loadGlobalWatchRecords());
-  const [fullScreen, setFullScreen] = useState(false);
   const [showControlCapsule, setShowControlCapsule] = useState(false);
   const playerRef = useRef<HTMLDivElement>(null);
   const watchRootRef = useRef<HTMLDivElement>(null);
-  const nativeFullscreenActiveRef = useRef(false);
   const commentListRef = useRef<HTMLDivElement>(null);
   const commentListAtBottomRef = useRef(true);
   /** 跨站 iframe 读不到 currentTime，用观看秒表估一个时间点，让弹幕能对上进度。 */
@@ -462,13 +460,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   useEffect(() => {
     const handleAppBack = (event: Event) => {
       const detail = (event as CustomEvent<{ handled?: boolean }>).detail;
-      if (fullScreen) { setFullScreen(false); if (detail) detail.handled = true; }
-      else if (showSettings) { setShowSettings(false); if (detail) detail.handled = true; }
+      if (showSettings) { setShowSettings(false); if (detail) detail.handled = true; }
       else if (showHistory) { setShowHistory(false); if (detail) detail.handled = true; }
     };
     window.addEventListener("floatphone-app-back", handleAppBack);
     return () => window.removeEventListener("floatphone-app-back", handleAppBack);
-  }, [fullScreen, showSettings, showHistory]);
+  }, [showSettings, showHistory]);
 
   // 每次切换到一个新视频时创建独立观看记录；记录只保存元数据和互动摘要，不上传视频内容。
   useEffect(() => {
@@ -611,7 +608,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       });
     });
     return () => { cancelAnimationFrame(first); cancelAnimationFrame(second); };
-  }, [comments.length, fullScreen, busy]);
+  }, [comments.length, busy]);
   // This component owns an in-page immersive layout. Ignore document-wide fullscreen events:
   // platform iframe/player controls must never switch the entire app into our immersive layout.
   useEffect(() => () => {
@@ -1189,52 +1186,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     return () => { disposed = true; window.clearTimeout(timer); };
   }, [watching, target, settings.intervalMinMinutes, settings.intervalMaxMinutes, generateComment]);
 
-  /** Use the media element's native fullscreen. Never CSS-stretch third-party iframe players. */
-  const enterFullscreen = async () => {
-    const player = playerRef.current;
-    if (!player) return;
-    const media = player.querySelector("video, iframe") as (HTMLVideoElement | HTMLIFrameElement | null);
-    if (!media) return;
-    if (document.fullscreenElement) {
-      try { await document.exitFullscreen(); } catch { onNotice?.("退出原生全屏失败，请使用播放器自己的退出全屏控件。"); }
-      return;
-    }
-    const requestFullscreen = media.requestFullscreen?.bind(media);
-    if (!requestFullscreen) {
-      onNotice?.("当前设备的 WebView 没有开放原生播放器全屏能力。为避免再次卡住，这里不会强行拉伸播放器；请更新应用壳或使用播放器自带的全屏按钮。");
-      return;
-    }
-    try {
-      await requestFullscreen();
-      nativeFullscreenActiveRef.current = true;
-    } catch (error) {
-      nativeFullscreenActiveRef.current = false;
-      onNotice?.("系统拒绝了播放器原生全屏请求。视频保持原尺寸继续播放，没有切换到会卡住的网页模拟全屏。" + (error instanceof Error ? "（" + error.message + "）" : ""));
-    }
-  };
-
-  useEffect(() => {
-    const syncFullscreenState = () => {
-      if (document.fullscreenElement) { nativeFullscreenActiveRef.current = true; return; }
-      if (nativeFullscreenActiveRef.current || fullScreen) {
-        nativeFullscreenActiveRef.current = false;
-        setFullScreen(false);
-        window.dispatchEvent(new Event("resize"));
-      }
-    };
-    document.addEventListener("fullscreenchange", syncFullscreenState);
-    return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
-  }, [fullScreen]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !document.fullscreenElement) return;
-      // Let the native player/browser handle Escape and then restore orientation on fullscreenchange.
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
   const danmakuItems = useMemo(() => comments
     .filter(item => !target?.url || !item.targetUrl || item.targetUrl === target.url)
     .filter(item => item.kind === "user" || settings.danmakuEnabled)
@@ -1250,7 +1201,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   if (showGlobalCompanion) return <GlobalWatchCompanionApp onClose={() => setShowGlobalCompanion(false)} onNotice={onNotice} />;
 
-  return <div ref={watchRootRef} data-watch-fullscreen={fullScreen ? "true" : "false"} data-landscape-mode="false" data-source-panel={showVideoSourcePanel ? "true" : "false"} className={"watch-together-app pointer-events-auto isolate flex min-w-0 flex-col overflow-hidden text-[#f0e6d8] " + (fullScreen ? "fixed inset-0 z-[3000]" : "absolute inset-0 z-[1000]")} style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)", height: fullScreen ? "100dvh" : undefined, width: fullScreen ? "100vw" : undefined }}>
+  return <div ref={watchRootRef} data-watch-fullscreen="false" data-landscape-mode="false" data-source-panel={showVideoSourcePanel ? "true" : "false"} className="watch-together-app pointer-events-auto isolate absolute inset-0 z-[1000] flex min-w-0 flex-col overflow-hidden text-[#f0e6d8]" style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)" }}>
     {/* 弹幕动画：仓库里从未定义过 watchDanmaku，之前那条 animation 是空转，这里补上真实 keyframes */}
     <style>{`
       .watch-together-main { display:flex; flex-direction:column; }
@@ -1287,108 +1238,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       }
       
 
-      /* Single fullscreen layout authority: keep playback and conversation visible together. */
-      .watch-together-app[data-watch-fullscreen="true"] {
-        position:fixed!important; inset:0!important; z-index:2147483000!important;
-        width:100vw!important; height:100dvh!important; max-height:100dvh!important;
-        display:flex!important; flex-direction:column!important; overflow:hidden!important;
-        box-sizing:border-box!important; background:#000!important;
-      }
-      .watch-together-app[data-watch-fullscreen="true"] > header {
-        position:relative!important; inset:auto!important; z-index:40!important; display:flex!important;
-        flex:0 0 auto!important; min-height:42px!important; padding: max(4px,env(safe-area-inset-top)) 10px 5px!important;
-        background:rgba(0,0,0,.72)!important; color:#fff!important;
-      }
-      .watch-together-app[data-watch-fullscreen="true"] > main.watch-together-main {
-        display:grid!important; position:relative!important; inset:auto!important;
-        grid-template-columns:minmax(0,1fr)!important; grid-template-rows:minmax(0,1fr)!important;
-        grid-template-areas:"player"!important;
-        flex:1 1 0!important; min-height:0!important; width:100%!important; height:auto!important;
-        overflow:hidden!important; padding:0!important;
-        gap:8px!important; box-sizing:border-box!important; background:#000!important;
-      }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-room-title,
-      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel,
-      .watch-together-app[data-watch-fullscreen="true"] [data-resolver-state] { display:none!important; }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-player {
-        display:block!important; grid-area:player!important; position:relative!important; inset:auto!important;
-        width:100%!important; height:100%!important; min-width:0!important; min-height:0!important;
-        max-width:none!important; max-height:none!important; aspect-ratio:auto!important;
-        margin:0!important; padding:0!important; overflow:hidden!important; border:0!important;
-        border-radius:8px!important; box-shadow:none!important; background:#000!important; transform:none!important;
-      }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-player-actions > button:nth-child(1),
-      .watch-together-app[data-watch-fullscreen="true"] .watch-player-actions > button:nth-child(2) { display:none!important; }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-player > video,
-      .watch-together-app[data-watch-fullscreen="true"] .watch-player > iframe {
-        position:absolute!important; z-index:1!important; inset:0!important; display:block!important; width:100%!important; height:100%!important;
-        min-width:0!important; min-height:0!important; max-width:none!important; max-height:100%!important;
-        border:0!important; aspect-ratio:auto!important; object-fit:contain!important; transform:none!important;
-      }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel {
-        display:none!important; grid-area:interaction!important; position:relative!important;
-        min-width:0!important; min-height:0!important; width:100%!important; height:100%!important;
-        overflow:hidden!important; margin:0!important; z-index:5!important;
-      }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div {
-        display:flex!important; flex-direction:column!important; width:100%!important; height:100%!important;
-        min-height:0!important; max-width:none!important; box-sizing:border-box!important;
-        overflow:hidden!important; padding:8px!important; border-radius:12px!important;
-      }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div > [data-part="message"] {
-        flex:0 0 auto!important; min-height:0!important; max-height:96px!important; overflow:hidden!important;
-      }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div > [data-part="message"] p {
-        display:-webkit-box!important; -webkit-line-clamp:2!important; -webkit-box-orient:vertical!important; overflow:hidden!important;
-      }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .watch-discussion-composer { flex:0 0 auto!important; }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel section[data-part="history"] {
-        display:flex!important; flex:1 1 auto!important; flex-direction:column!important; min-height:0!important;
-        margin-top:8px!important; padding-top:8px!important; overflow:hidden!important;
-      }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel section[data-part="history"] > p { flex:0 0 auto!important; }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel .watch-comment-list {
-        flex:1 1 auto!important; min-height:36px!important; max-height:none!important; overflow-y:auto!important;
-        overscroll-behavior:contain!important; -webkit-overflow-scrolling:touch;
-      }
-      .watch-together-app[data-watch-fullscreen="true"] > :not(style):not(main),
-      .watch-together-app[data-watch-fullscreen="true"] header,
-      .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel,
-      .watch-together-app[data-watch-fullscreen="true"] .watch-link-panel,
-      .watch-together-app[data-watch-fullscreen="true"] [data-resolver-state],
-      .watch-together-app[data-watch-fullscreen="true"] > main.watch-together-main > :not(.watch-player) {
-        display:none!important;
-      }
-      .watch-together-app[data-watch-fullscreen="true"] > main.watch-together-main {
-        grid-template-columns:minmax(0,1fr)!important;
-        grid-template-rows:minmax(0,1fr)!important;
-        grid-template-areas:"player"!important;
-        gap:0!important;
-        padding:0!important;
-      }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-player {
-        grid-area:player!important;
-        width:100%!important;
-        height:100%!important;
-        max-height:none!important;
-        border:0!important;
-        border-radius:0!important;
-      }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-player > .absolute.right-2.top-2 {
-        display:none!important;
-      }
-      .watch-together-app[data-watch-fullscreen="true"] .watch-room-card { overflow:hidden!important; }
-      @media (orientation:portrait) {
-        .watch-together-app[data-watch-fullscreen="true"] > main.watch-together-main {
-          grid-template-columns:minmax(0,1fr)!important; grid-template-rows:minmax(0,1fr)!important;
-          grid-template-areas:"player"!important; gap:0!important; padding:0!important;
-        }
-        .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel > div { padding:6px!important; }
-        .watch-together-app[data-watch-fullscreen="true"] .watch-interaction-panel section[data-part="history"] { margin-top:5px!important; padding-top:5px!important; }
-      }
-      @media (prefers-reduced-motion:reduce) {
-        .watch-together-app[data-watch-fullscreen="true"] .watch-danmaku-track { animation:none!important; }
-      }
+      /* Fullscreen is intentionally delegated to native player controls; never resize the whole WebView. */
       /* Chat-first redesign: stable inline video, conversation takes the main space. */
       .watch-together-app:not([data-watch-fullscreen="true"]) > main.watch-together-main {
         display:flex!important; flex-direction:column!important; gap:10px!important;
@@ -1833,9 +1683,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         style={{ boxShadow: "0 0 0 1px rgba(255,214,170,.06), 0 28px 70px rgba(0,0,0,.6), 0 0 120px rgba(201,143,82,.16)" }}
       >
         {target?.nativeVideo ? (
-          <video key={target.nativeVideoUrl || target.url} src={target.nativeVideoUrl || target.url} controls playsInline onPlay={() => setMediaPaused(false)} onPause={() => setMediaPaused(true)} className={fullScreen ? "h-full w-full object-contain bg-black" : "aspect-video w-full bg-black"} onEnded={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } }} onError={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } onNotice?.("视频无法在当前 WebView 播放，可能是格式、签名有效期或平台防盗链限制。"); }} />
+          <video key={target.nativeVideoUrl || target.url} src={target.nativeVideoUrl || target.url} controls playsInline onPlay={() => setMediaPaused(false)} onPause={() => setMediaPaused(true)} className="aspect-video w-full bg-black object-contain" onEnded={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } }} onError={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } onNotice?.("视频无法在当前 WebView 播放，可能是格式、签名有效期或平台防盗链限制。"); }} />
         ) : target?.embedUrl ? (
-          <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className={fullScreen ? "h-full w-full border-0" : "aspect-video w-full border-0"} />
+          <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className="aspect-video w-full border-0" />
         ) : (
           <div className="flex aspect-video flex-col items-center justify-center px-6 text-center">
             <div className="mt-5 font-serif text-lg tracking-wide text-[#efe2d0]">{target ? `${target.platformName}需要外部打开` : "还没有选择视频"}</div>
@@ -1865,8 +1715,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           
         </div>
         {/* 屏幕洒在桌面上的余光 */}
-        {!fullScreen && <div aria-hidden className="pointer-events-none absolute -bottom-6 left-1/2 h-6 w-[86%] -translate-x-1/2 rounded-[50%] opacity-40 blur-xl" style={{ background: "radial-gradient(ellipse, #d7a06a 0%, transparent 70%)" }} />}
-        {fullScreen && <form onSubmit={event => { event.preventDefault(); const text = danmakuDraft.trim(); if (!text) return; submitDiscussion(text); setDanmakuDraft(""); }} className="pointer-events-auto absolute top-[max(12px,env(safe-area-inset-top))] left-1/2 z-[70] w-[min(560px,78%)] -translate-x-1/2"><div className="flex items-center gap-2 rounded-full border border-white/20 bg-black/55 px-3 py-1.5 backdrop-blur"><input value={danmakuDraft} onChange={event => setDanmakuDraft(event.target.value.slice(0,120))} placeholder="发个弹幕…" className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/45"/><button type="submit" disabled={!danmakuDraft.trim()} className="shrink-0 rounded-full bg-[#e6c49d] px-3 py-1 text-xs text-[#302218] disabled:opacity-40">发送</button></div></form>}
+        <div aria-hidden className="pointer-events-none absolute -bottom-6 left-1/2 h-6 w-[86%] -translate-x-1/2 rounded-[50%] opacity-40 blur-xl" style={{ background: "radial-gradient(ellipse, #d7a06a 0%, transparent 70%)" }} />
+
       </section>
         {resolverState.state !== "idle" && <div className="mx-auto mt-2 flex w-full max-w-3xl items-start gap-1.5 px-1 text-[10px] leading-5" data-resolver-state={resolverState.state}><span className={resolverState.state==="ok"?"text-[#8fd0a2]":resolverState.state==="failed"?"text-[#e0938a]":"text-[#d9b489]"}>{resolverState.state==="resolving"?"正在解析视频链接…":resolverState.state==="ok"?"✓ 解析成功 · 已在应用内播放":"✕ 解析失败："+(resolverState.message||"未知原因")}</span></div>}
 
