@@ -1550,6 +1550,48 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-control-capsule[data-collapsed="true"]{width:calc(100% - 24px)!important;align-self:stretch!important;justify-content:space-between!important;padding:4px 10px!important;border-radius:14px!important;margin-left:auto!important;margin-right:auto!important}
       .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-control-capsule[data-collapsed="true"] .watch-capsule-toggle{width:28px!important;height:24px!important}
       .watch-together-app[data-watch-fullscreen="true"] .watch-control-capsule{display:none!important}
+
+      /* Final mobile layout authority: fixed 16:9 screen and independently scrollable discussion. */
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) > main.watch-together-main {
+        display:grid!important; grid-template-columns:minmax(0,1fr)!important;
+        grid-template-rows:auto auto minmax(0,1fr)!important;
+        grid-template-areas:"title" "player" "interaction"!important;
+        gap:8px!important; min-height:0!important; overflow:hidden!important;
+        padding:7px 12px max(10px,env(safe-area-inset-bottom))!important;
+      }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player {
+        grid-area:player!important; justify-self:center!important; align-self:center!important;
+        width:min(100%, calc(32dvh * 16 / 9))!important; height:auto!important;
+        aspect-ratio:16 / 9!important; min-height:0!important; max-height:32dvh!important;
+        margin:0 auto!important; overflow:hidden!important; position:relative!important;
+      }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player > video,
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player > iframe {
+        position:absolute!important; inset:0!important; display:block!important;
+        width:100%!important; height:100%!important; max-width:100%!important; max-height:100%!important;
+        aspect-ratio:auto!important; object-fit:contain!important; border:0!important;
+      }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-interaction-panel {
+        grid-area:interaction!important; display:flex!important; min-width:0!important; min-height:0!important;
+        height:100%!important; max-height:none!important; overflow:hidden!important;
+      }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="history"] {
+        display:flex!important; flex:1 1 auto!important; flex-direction:column!important;
+        min-height:0!important; overflow:hidden!important;
+      }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-comment-list {
+        display:flex!important; flex:1 1 auto!important; flex-direction:column!important;
+        min-height:0!important; max-height:none!important; overflow-y:auto!important; overflow-x:hidden!important;
+        overscroll-behavior:contain!important; -webkit-overflow-scrolling:touch!important; touch-action:pan-y!important;
+      }
+      .watch-together-app .watch-comment-list [data-comment-author] {
+        display:block!important; margin-bottom:3px!important; font:600 10px/1.4 system-ui,sans-serif!important;
+        letter-spacing:.04em!important; color:#a77c5d!important;
+      }
+      .watch-together-app .watch-comment-list [data-comment-text] {
+        display:block!important; white-space:pre-wrap!important; overflow-wrap:anywhere!important;
+        word-break:break-word!important; -webkit-line-clamp:unset!important; max-height:none!important;
+      }
     `}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
@@ -1653,10 +1695,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         <div className="flex flex-col gap-2 sm:flex-row">
           <input value={urlInput} onPointerDown={event => event.stopPropagation()} onTouchStart={event => event.stopPropagation()} onChange={event => setUrlInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter") openVideo(); }} placeholder="粘贴视频链接；短视频分享链接不保证能自动内嵌" className="min-w-0 flex-1 rounded-2xl border border-[#dac6ad] bg-white/90 px-4 py-3.5 text-sm text-[#554437] outline-none placeholder:text-[#a09383] focus:border-[#b88768] focus:ring-2 focus:ring-[#c99a6a]/15" />
           <button onClick={openVideo} className="rounded-2xl px-5 py-3.5 text-sm font-semibold tracking-wide text-[#2a1f16] shadow-sm transition hover:brightness-[1.02] active:scale-[.98]" style={{ background: "linear-gradient(135deg,#f0d0a8,#c99a6a)" }}>开始播放</button>
-          <button type="button" onClick={() => videoFileInputRef.current?.click()} className="rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">选择本地视频</button>
+          <label className="relative inline-flex cursor-pointer items-center justify-center rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">
+            选择本地视频
+            <input ref={videoFileInputRef} type="file" accept="video/*,.mp4,.webm,.mov,.m4v,.ogv" aria-label="选择本地视频文件" className="absolute inset-0 h-full w-full cursor-pointer opacity-0" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) openLocalVideo(file); }} />
+          </label>
           <button type="button" onClick={() => transcriptFileInputRef.current?.click()} className="rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">导入脚本 / 字幕</button>
         </div>
-        <input ref={videoFileInputRef} type="file" accept="video/*,.mp4,.webm,.mov,.m4v,.ogv" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; openLocalVideo(file); }} />
+        
         <input ref={screenshotFileInputRef} type="file" accept="image/*" className="hidden" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void loadScreenshotFile(file); }} />
         <input ref={transcriptFileInputRef} type="file" accept=".srt,.vtt,.txt,.json,text/plain,text/vtt,application/json" className="hidden" onChange={event => {
           const file = event.target.files?.[0]; event.currentTarget.value = "";
@@ -1754,7 +1799,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             <div className="flex items-baseline justify-between gap-2"><h2 className="font-serif text-base tracking-wide text-[#f0dfcc]">一起讨论</h2><span className="text-[10px] tracking-[.12em] text-[#a9937e]">SCENE NOTES · {comments.length}</span></div>
             <p className="mt-1 text-[10px] leading-5 text-[#a9937e]">把某一幕或想说的话记在对应时间点；你的消息和 TA 的回应都会出现在画面弹幕与下方讨论记录里。</p>
             {comments.some(item=>item.timepoint) && <div className="mt-3 flex flex-wrap gap-2">{[...new Set(comments.filter(item=>item.timepoint).map(item=>item.timepoint!))].map(point=><button key={point} type="button" onClick={()=>{setTimepointDraft(point);setDiscussionDraft(`想再聊聊 ${point} 这一幕`);const seconds=parseVideoTime(point);const video=playerRef.current?.querySelector("video");if(seconds===null){onNotice?.("这个时间点格式无法识别，已填入笔记但没有跳转。");return;}if(video){try{video.currentTime=seconds;onNotice?.(`已跳转到 ${point}`);}catch{onNotice?.("当前视频暂时无法跳转到该时间点。");}}else{onNotice?.("当前使用第三方网页播放器，无法由小手机控制播放进度；时间点已填入，可继续记笔记。");}}} className="border-b border-[#c99a78]/60 px-1 py-1 text-[11px] text-[#e4c6a8]">{point} ↗</button>)}</div>}
-            <div ref={commentListRef} onScroll={event => { const list = event.currentTarget; commentListAtBottomRef.current = list.scrollHeight - list.scrollTop - list.clientHeight < 56; }} className="watch-comment-list mt-3 min-h-0 max-h-64 space-y-3 overflow-y-auto overscroll-contain pr-1">{comments.length ? comments.slice(-30).map(item=><div key={item.id} className={`flex ${item.kind==="user"?"justify-end":"justify-start"}`}><div className={`max-w-[88%] rounded-2xl border px-3 py-2.5 shadow-sm ${item.kind==="user"?"border-[#d6b18c]/35 bg-[#d6b18c]/10":"border-white/10 bg-white/[.045]"}`}><p className="whitespace-pre-wrap break-words font-serif text-sm leading-6 text-[#efe2d0]">{item.text}</p></div></div>) : <p className="border-l border-[#c99a78]/45 py-1 pl-3 text-xs leading-6 text-[#a9937e]">这里留给你们讨论剧情、吐槽片段，或标记想一起记住的时刻。</p>}</div>
+            <div ref={commentListRef} onScroll={event => { const list = event.currentTarget; commentListAtBottomRef.current = list.scrollHeight - list.scrollTop - list.clientHeight < 56; }} className="watch-comment-list mt-3 min-h-0 max-h-64 space-y-3 overflow-y-auto overscroll-contain pr-1">{comments.length ? comments.slice(-100).map(item=><div key={item.id} data-comment-kind={item.kind==="user"?"user":"character"} className={`flex w-full ${item.kind==="user"?"justify-end":"justify-start"}`}><div className={`min-w-0 max-w-[92%] rounded-[12px] border px-3 py-2.5 shadow-sm ${item.kind==="user"?"border-[#d6b18c]/45 bg-[#f3e4d3]":"border-[#e5d3c0] bg-white/90"}`}><span data-comment-author>{item.kind==="user" ? (playerIdentity?.name || "我") : item.characterName}</span><p data-comment-text className="whitespace-pre-wrap break-words font-serif text-sm leading-6 text-[#59483d]">{item.text}</p>{item.timepoint && <span className="mt-1 block text-[10px] text-[#9b7b62]">片段 · {item.timepoint}</span>}</div></div>) : <p className="border-l border-[#c99a78]/45 py-1 pl-3 text-xs leading-6 text-[#a9937e]">这里留给你们讨论剧情、吐槽片段，或标记想一起记住的时刻。</p>}</div>
           </section>
           <div data-part="actions2" className="relative z-10 mt-2 flex flex-wrap gap-1.5">
             {[
