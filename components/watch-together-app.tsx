@@ -1498,14 +1498,15 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app[data-source-panel="true"]::after { position:fixed!important; inset:0!important; z-index:2147483000!important; background:rgba(34,24,17,.58)!important; pointer-events:none!important; }
       .watch-together-app .watch-comment-list [data-comment-text] { color:#59483d!important; }
 
-      .watch-together-app[data-source-panel="true"] .watch-link-panel,
+      /* 视频来源面板始终以 WebView 当前可视区域居中；软键盘弹出时同步缩小可用高度。 */
       .watch-together-app[data-source-panel="true"] .watch-link-panel {
         display:block!important; visibility:visible!important; opacity:1!important; pointer-events:auto!important;
         position:fixed!important; z-index:2147483647!important;
         left:12px!important; right:12px!important;
-        top:calc(var(--watch-visible-top, 0px) + 8px)!important; bottom:auto!important; transform:none!important;
+        top:calc(var(--watch-visible-top, 0px) + var(--watch-visible-height, 100dvh) / 2)!important;
+        bottom:auto!important; transform:translateY(-50%)!important;
         width:auto!important; max-width:680px!important;
-        max-height:min(78dvh, calc(var(--watch-visible-height, 100dvh) - 16px))!important;
+        max-height:min(78dvh, calc(var(--watch-visible-height, 100dvh) - 24px))!important;
         overflow-x:hidden!important; overflow-y:auto!important; overscroll-behavior:contain!important;
         margin:0 auto!important; padding:14px!important; box-sizing:border-box!important;
         border-radius:18px!important; background:#fff9ef!important;
