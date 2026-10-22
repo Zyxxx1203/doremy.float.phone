@@ -8,6 +8,8 @@ on:
     paths:
       - "components/life/**"
       - "lib/life/**"
+      - "lib/tool-executor.ts"
+      - "lib/tool-storage.ts"
       - "components/chat/chat-room.tsx"
       - "components/desktop-shell.tsx"
       - "components/phone-settings-app.tsx"
