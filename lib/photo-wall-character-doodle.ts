@@ -7,6 +7,7 @@ type CharacterArtist = { id: string; name: string };
 type CharacterDoodleResponse = {
   doodles: PhotoWallDoodle[];
   summary: string;
+  createdAt: string;
 };
 
 /**
@@ -87,5 +88,5 @@ export function parseCharacterWallDoodles(response: string, artist: CharacterArt
 
   if (!doodles.length) throw new Error("角色返回的涂鸦格式不完整，请再试一次。");
   const summary = typeof parsed.summary === "string" ? parsed.summary.trim().slice(0, 300) : "";
-  return { doodles, summary };
+  return { doodles, summary, createdAt };
 }
