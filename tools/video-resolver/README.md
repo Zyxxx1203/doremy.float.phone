@@ -1,6 +1,6 @@
 # Momo 本地视频解析服务（Windows / Termux）
 
-目标：先把平台视频下载到本机缓存，再播放本地文件，避免依赖平台网页播放器。Windows 与 Android Termux 使用同一套 Python API。该服务是可选的本地工具，不会把视频或 Cookie 上传到 Netlify/Supabase。
+目标：先把平台视频下载到本机缓存，再播放本地文件，避免依赖平台网页播放器。Windows 与 Android Termux 使用同一套 Python API。该服务内置两个独立解析引擎：`parse-video-py`（覆盖多个中文短视频分享链接）和 `yt-dlp`（平台提取器/下载器）。默认 `auto` 先试 parse-video-py，失败后自动回退 yt-dlp；也可在「一起看」设置中锁定某一个引擎。该服务是可选的本地工具，不会把视频或 Cookie 上传到 Netlify/Supabase。
 
 ## Windows
 
@@ -20,7 +20,7 @@ Termux 服务与 Android App 私有缓存不是同一个目录；本服务返回
 ## API
 
 - `GET /health`
-- `POST /api/resolve` JSON：`{"url":"https://...","quality":"best"}`；质量可选 `best/1080/720/480/360`。
+- `POST /api/resolve` JSON：`{"url":"https://...","quality":"best","engine":"auto"}`；质量可选 `best/1080/720/480/360`，引擎可选 `auto/parse-video-py/yt-dlp`。响应中的 `engine` 字段表示实际成功使用的引擎。
 - `GET /api/videos/{id}` 播放/读取缓存视频
 - `DELETE /api/videos/{id}` 删除缓存
 - 可选请求头 `X-Resolver-Token` 对应环境变量 `VIDEO_RESOLVER_TOKEN`。
