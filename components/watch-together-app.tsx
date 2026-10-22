@@ -1584,6 +1584,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         min-height:0!important; max-height:none!important; overflow-y:auto!important; overflow-x:hidden!important;
         overscroll-behavior:contain!important; -webkit-overflow-scrolling:touch!important; touch-action:pan-y!important;
       }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [data-part="history"] { order:1!important; }
+      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [data-part="composer"] { order:2!important; margin-top:0!important; padding-top:8px!important; }
       .watch-together-app .watch-comment-list [data-comment-author] {
         display:block!important; margin-bottom:3px!important; font:600 10px/1.4 system-ui,sans-serif!important;
         letter-spacing:.04em!important; color:#a77c5d!important;
