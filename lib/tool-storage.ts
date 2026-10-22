@@ -516,7 +516,21 @@ export function getEnabledTools(appId?: string): EnabledTool[] {
 }
 
 export function findEnabledToolForSchema(name: string, appId?: string, macroContext?: ToolNameMacroContext): EnabledTool | undefined {
-    const direct = getEnabledTools(appId).find(t => toolNameMatches(t.name, name, macroContext));
+    const enabled = getEnabledTools(appId);
+    const matches = (tool: EnabledTool) => toolNameMatches(tool.name, name, macroContext);
+    // Match the runtime dispatcher priority: life-prefixed calls, internal, REST,
+    // composite, MCP, then custom apps. This prevents a duplicate name from exposing
+    // one tool's schema while executeSingleToolCall dispatches to another tool.
+    const direct = (name.startsWith("life_") ? enabled.find(t => t.source === "life" && matches(t)) : undefined)
+        ?? enabled.find(t => t.source === "internal" && matches(t))
+        ?? enabled.find(t => t.source === "rest" && matches(t))
+        ?? enabled.find(t => t.source === "rest_package" && matches(t))
+        ?? enabled.find(t => t.source === "composite" && matches(t))
+        ?? enabled.find(t => t.source === "composite_package" && matches(t))
+        ?? enabled.find(t => t.source === "mcp_server" && matches(t))
+        ?? enabled.find(t => t.source === "custom_app" && matches(t))
+        ?? enabled.find(t => t.source === "custom_app_package" && matches(t))
+        ?? enabled.find(matches);
     if (direct) return direct;
 
     const compositePackages = loadCompositeToolPackages().filter(pkg => pkg.enabled);
