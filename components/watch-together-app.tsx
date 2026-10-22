@@ -1616,8 +1616,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app:not([data-landscape-mode="true"]) .watch-discussion-composer { position:relative!important; z-index:3!important; flex:0 0 auto!important; margin-top:0!important; padding-top:8px!important; }
       /* The room illustration is decorative, not a full-width background; keep it fully inside the card. */
       .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card > [aria-hidden="true"] {
-        left:auto!important; right:0!important; bottom:42px!important; width:min(72%,340px)!important;
-        max-width:340px!important; transform:none!important; opacity:.22!important; pointer-events:none!important;
+        left:auto!important; right:0!important; bottom:64px!important; width:min(64%,300px)!important;
+        max-width:300px!important; transform:none!important; opacity:.22!important; pointer-events:none!important;
       }
     `}</style>
 
