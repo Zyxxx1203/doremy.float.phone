@@ -10,7 +10,7 @@ import type { Character } from "@/lib/character-types";
 import { loadCharacters } from "@/lib/character-storage";
 import { hydrateKvDb } from "@/lib/kv-db";
 import { hydrateChatStorage } from "@/lib/chat-storage";
-import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
+import { addChatContact, createOrGetSession, loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { generateOfflineChatCompletion } from "@/lib/chat-engine";
 import {
   createEmptyVirtualLifeState,
@@ -1338,8 +1338,18 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const armOfflineBailout = async () => {
       if (disposed || settings.enableLifeOfflinePush === false) return;
       await cancelLifeSceneProactiveBailouts(activeScene.id);
-      const candidate = pickCandidate();
-      if (!candidate || candidate.session.id.startsWith("life-engine-")) return;
+      let candidate = pickCandidate();
+      if (!candidate) return;
+      if (candidate.session.id.startsWith("life-engine-")) {
+        let contact = loadChatContacts().find(item => item.characterId === candidate.character.id);
+        if (!contact) {
+          addChatContact(candidate.character.id);
+          contact = loadChatContacts().find(item => item.characterId === candidate.character.id);
+        }
+        if (!contact) return;
+        const session = createOrGetSession(candidate.character.id);
+        candidate = { ...candidate, session };
+      }
       const result = await armLifeSceneProactiveBailout({
         sessionId: candidate.session.id,
         sceneId: activeScene.id,
