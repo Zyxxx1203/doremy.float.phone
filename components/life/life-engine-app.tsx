@@ -1341,13 +1341,14 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       let candidate = pickCandidate();
       if (!candidate) return;
       if (candidate.session.id.startsWith("life-engine-")) {
-        let contact = loadChatContacts().find(item => item.characterId === candidate.character.id);
+        const characterId = candidate.character.id;
+        let contact = loadChatContacts().find(item => item.characterId === characterId);
         if (!contact) {
-          addChatContact(candidate.character.id);
-          contact = loadChatContacts().find(item => item.characterId === candidate.character.id);
+          addChatContact(characterId);
+          contact = loadChatContacts().find(item => item.characterId === characterId);
         }
         if (!contact) return;
-        const session = createOrGetSession(candidate.character.id);
+        const session = createOrGetSession(characterId);
         candidate = { ...candidate, session };
       }
       const result = await armLifeSceneProactiveBailout({
