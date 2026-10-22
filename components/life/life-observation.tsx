@@ -21,6 +21,9 @@ type ObservationEntry = {
   toAt: string;
   createdAt: string;
   content: string;
+  title?: string;
+  locationName?: string;
+  people?: string[];
   imageMediaRef?: string;
   imagePrompt?: string;
 };
@@ -172,12 +175,12 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
       const prompt: ChatMessage = {
         id: makeId(), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
         content: [
-          "【生活系统·观察TA的生活】请根据给定的行程和已记录事件，为角色写一段连续、细腻、可信的生活观察记录。不要把它写成对玩家说的话，也不要假装玩家在场。",
+          "【生活系统·观察TA的生活】请把这段时间拆成多个独立的重要事件卡片，而不是一大段长文。只输出 JSON 对象，包含 events 数组；每项包含 time（时间段）、location（地点）、people（人物数组）、title（事件标题）、description（具体描写）。每个事件必须是一个独立、可单独配图的连续场景；按时间顺序排列，通常生成2—8张，事件不足时不要凑数。不要把计划冒充已发生的事实，不要假装玩家在场，不要编造重大事件。",
           "时间范围：" + new Date(fromMs).toISOString() + " 至 " + virtualNow.toISOString(),
           "必须以时间顺序写清楚几点在哪里、做了什么；至少挑选1—2个片段进行具体镜头式描写（动作、光线、声音、手边物品、微小反应等），并穿插符合人设的内心活动/心声。不要每个时间段都写成流水账，也不要无依据地制造重大事件。",
           "行程是计划依据而非所有细节都已发生；遇到已记录事件以记录为准。没有证据的日常细节可以合理补充，但不得违背角色卡、地点设定、时间顺序或已记录事件。不要让角色突然知道玩家没告诉TA的事情。",
           "如果中间有空白时段，可以写成符合人设的普通生活，但不要编造戏剧性转折。结尾落在当前时间附近，并自然留下一点仍在继续的生活状态。",
-          "输出中文，建议按时间段分段，保留适度文学感，重点是具体生活而不是空泛总结。",
+          "每张卡片的描写要具体，有动作、光线、声音、物品或微小反应；中文自然、有适度文学感。",
           worldContext,
           "【角色行程】\n" + scheduleText,
           "【已记录的现实/互动事件】\n" + timelineText,
@@ -185,19 +188,35 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
         ].filter(Boolean).join("\n\n"),
       };
       const result = await generateOfflineChatCompletion(session, [...recent, prompt]);
-      const content = String(result.content ?? "").trim();
-      if (!content) throw new Error("模型返回了空内容");
-      const entry: ObservationEntry = { id: makeId(), characterId: character.id, characterName: character.name, fromAt: new Date(fromMs).toISOString(), toAt: virtualNow.toISOString(), createdAt: new Date().toISOString(), content };
+      const rawContent = String(result.content ?? "").trim();
+      if (!rawContent) throw new Error("模型返回了空内容");
+      const cleaned = rawContent.replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/, "");
+      let events: Array<{ time?: string; location?: string; people?: string[]; title?: string; description?: string }> = [];
+      try {
+        const first = cleaned.indexOf("{"), last = cleaned.lastIndexOf("}");
+        if (first >= 0 && last > first) {
+          const parsed = JSON.parse(cleaned.slice(first, last + 1)) as { events?: unknown };
+          if (Array.isArray(parsed.events)) events = parsed.events.filter((item): item is { time?: string; location?: string; people?: string[]; title?: string; description?: string } => Boolean(item && typeof item === "object" && typeof (item as { description?: unknown }).description === "string"));
+        }
+      } catch { /* 旧模型未按 JSON 返回时，继续用分段回退以保留内容。 */ }
+      if (!events.length) {
+        const paragraphs = cleaned.split(/\n\s*\n+/).map(item => item.trim()).filter(Boolean);
+        events = (paragraphs.length > 1 ? paragraphs : [cleaned]).map((description, index) => ({ title: "生活片段 " + (index + 1), description }));
+      }
+      const createdAt = new Date().toISOString();
+      const entries: ObservationEntry[] = events.slice(0, 12).map(event => ({
+        id: makeId(), characterId: character.id, characterName: character.name,
+        fromAt: new Date(fromMs).toISOString(), toAt: virtualNow.toISOString(), createdAt,
+        title: String(event.title || "生活片段").slice(0, 80), locationName: String(event.location || "").slice(0, 100),
+        people: Array.isArray(event.people) ? event.people.filter(item => typeof item === "string").slice(0, 8) : [],
+        content: String(event.description || "").trim(),
+      })).filter(entry => entry.content);
+      if (!entries.length) throw new Error("模型没有返回可保存的事件卡片");
       updateData(current => {
         const currentConfig = current.characters[character.id] ?? config;
-        const next = {
-          ...current,
-          entries: [...current.entries, entry],
-          characters: { ...current.characters, [character.id]: { ...currentConfig, lastGeneratedAt: entry.createdAt, coveredUntil: entry.toAt } },
-        };
-        return next;
+        return { ...current, entries: [...current.entries, ...entries], characters: { ...current.characters, [character.id]: { ...currentConfig, lastGeneratedAt: createdAt, coveredUntil: virtualNow.toISOString() } } };
       });
-      tell(`已补写「${character.name}」从 ${fmt(entry.fromAt)} 到 ${fmt(entry.toAt)} 的生活记录。`);
+      tell("已为「" + character.name + "」生成 " + entries.length + " 张独立生活事件卡片。");
     } catch (error) {
       tell(error instanceof Error ? "生活描写生成失败：" + error.message : "生活描写生成失败，请检查模型配置。");
     } finally {
@@ -302,7 +321,7 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
         <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-stone-100 bg-white/80 p-3"><div className="min-w-0"><p className="text-sm font-medium text-stone-700">自动生活描写</p><p className="mt-0.5 text-xs text-stone-500">每隔设定时间生成一次；仅在应用处于前台时自动触发，进入角色页面时也会补齐新行程。</p></div><input type="checkbox" aria-label="开启该角色自动生活描写" checked={selectedConfig?.enabled ?? false} onChange={event => updateData(current => ({ ...current, characters: { ...current.characters, [selectedCharacter.id]: { ...(current.characters[selectedCharacter.id] ?? { intervalMinutes: 180 }), enabled: event.target.checked } } }))}/></div>
       </article>
       {busyId === selectedCharacter.id && <div className="rounded-xl bg-white/80 p-3 text-sm text-stone-600">正在整理行程、时间线并生成生活描写……</div>}
-      {selectedEntries.map(entry => <article key={entry.id} className="rounded-2xl border border-stone-200/70 bg-white/85 p-4 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-2"><div className="flex items-center gap-2 text-xs font-semibold text-[var(--life-accent)]"><BookOpen size={15}/>{fmt(entry.fromAt)} — {fmt(entry.toAt)}</div><div className="flex items-center gap-3"><button type="button" disabled={imageBusyId === entry.id} onClick={() => void generateEntryImage(entry)} className="inline-flex items-center gap-1 text-xs text-[var(--life-accent)] disabled:opacity-50"><ImagePlus size={14}/>{imageBusyId === entry.id ? "正在生成…" : entry.imageMediaRef ? "重新生成场景图" : "生成场景图"}</button><button type="button" onClick={() => deleteEntry(entry.id)} className="text-xs text-stone-400 hover:text-red-600">删除</button></div></div><div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-stone-700">{entry.content}</div>{entry.imageMediaRef && (imageUrls[entry.id] ? <img src={imageUrls[entry.id]} alt={entry.characterName + "的生活场景图"} className="mt-3 max-h-[420px] w-full rounded-xl object-contain bg-stone-100"/> : <p className="mt-3 text-xs text-stone-400">场景图已保存，正在读取图片…</p>)}</article>)}
+      {selectedEntries.map(entry => <article key={entry.id} className="rounded-2xl border border-stone-200/70 bg-white/85 p-4 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-2"><div className="flex items-center gap-2 text-xs font-semibold text-[var(--life-accent)]"><BookOpen size={15}/>{fmt(entry.fromAt)} — {fmt(entry.toAt)}</div><div className="flex items-center gap-3"><button type="button" disabled={imageBusyId === entry.id} onClick={() => void generateEntryImage(entry)} className="inline-flex items-center gap-1 text-xs text-[var(--life-accent)] disabled:opacity-50"><ImagePlus size={14}/>{imageBusyId === entry.id ? "正在生成…" : entry.imageMediaRef ? "重新生成场景图" : "生成场景图"}</button><button type="button" onClick={() => deleteEntry(entry.id)} className="text-xs text-stone-400 hover:text-red-600">删除</button></div></div><div className="mt-3 border-l-2 border-[var(--life-accent)]/35 pl-3"><h3 className="font-serif text-base font-semibold text-stone-800">{entry.title || "生活片段"}</h3>{(entry.locationName || entry.people?.length) && <p className="mt-1 text-[11px] text-stone-500">{entry.locationName ? "地点：" + entry.locationName : ""}{entry.locationName && entry.people?.length ? " · " : ""}{entry.people?.length ? "人物：" + entry.people.join("、") : ""}</p>}<p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-stone-700">{entry.content}</p></div>{entry.imageMediaRef && (imageUrls[entry.id] ? <img src={imageUrls[entry.id]} alt={entry.characterName + "的生活场景图"} className="mt-3 max-h-[420px] w-full rounded-xl object-contain bg-stone-100"/> : <p className="mt-3 text-xs text-stone-400">场景图已保存，正在读取图片…</p>)}</article>)}
       {!selectedEntries.length && busyId !== selectedCharacter.id && <p className="rounded-2xl bg-white/70 p-5 text-sm text-stone-500">还没有生活描写。点击「继续补写」开始观察。</p>}
       <div className="flex flex-wrap gap-2"><button type="button" onClick={() => clearCharacter(selectedCharacter.id)} className="rounded-xl border border-red-100 bg-white px-3 py-2 text-xs text-red-600">清空该角色全部记录</button><button type="button" onClick={() => setSelectedId(null)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-600">返回角色列表</button></div>
     </div>}
