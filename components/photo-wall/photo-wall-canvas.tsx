@@ -379,11 +379,6 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     setDraftPoints([]);
     if (points.length >= 2) onChangeWallDoodles?.([...wallDoodles, { id: stroke.id, kind: "stroke", color: brushColor, width: brushWidth, points, createdAt: new Date().toISOString(), authorType: "user", authorName: "我" }]);
   };
-  const clearPhotoDoodles = () => {
-    if (selectedPhoto) onChangeDoodles(selectedPhoto.id, []);
-  };
-  const clearWallDoodles = () => onChangeWallDoodles?.([]);
-
   /* ── 选中照片的小工具条 ──────────────────────── */
   const nudge = (photo: PhotoWallPhoto, index: number, patch: Partial<PhotoWallPlacement>) => {
     const base = placementOf(photo, index);
