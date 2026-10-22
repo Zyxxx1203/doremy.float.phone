@@ -743,9 +743,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         authorName: "我", narrative: `我在「${photo?.title || "这张照片"}」的${side === "back" ? "背面留言纸" : "正面相框"}上留下了${addedByUser.length}笔涂鸦。`,
         photoIds: [photoId], doodles: addedByUser,
       };
-      persist({ ...latest, creationRecords: [...(latest.creationRecords ?? []), record] });
+      applyImmediate({ ...latest, creationRecords: [...(latest.creationRecords ?? []), record] });
     }
-  }, [commitPhotos, persist, pushHistory]);
+  }, [applyImmediate, commitPhotos, pushHistory]);
 
   /** 套用模板骨架：照片按顺序吸附进槽位，套完仍然可以自由拖动。 */
   const applyTemplate = useCallback((templateId: string) => {
