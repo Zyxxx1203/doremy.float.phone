@@ -1369,7 +1369,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer textarea{min-height:40px!important;max-height:70px!important;border-radius:999px!important;background:#2a211b!important;border-color:#5c4636!important;color:#fff!important}
       .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer>div:last-child{position:absolute!important;right:18px!important;bottom:calc(max(8px,env(safe-area-inset-bottom)) + 4px)!important}
       .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer button{border-radius:999px!important;background:#c99a78!important}
-      .watch-legacy-record-button{display:none!important}
+
       .watch-together-app:not([data-landscape-mode="true"]) [data-resolver-state]{display:none!important}
       .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="composer"]{margin-top:auto!important}
       .watch-together-app[data-landscape-mode="true"] .watch-topbar{display:none!important}
@@ -1773,7 +1773,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </div>
           </div>
 
-          {!comments.length && <div aria-hidden="true" className="watch-empty-illustration pointer-events-none flex w-full items-center justify-center overflow-visible opacity-[.82]"><svg viewBox="0 0 520 300" preserveAspectRatio="xMidYMax meet" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-full w-auto max-w-full">
+          {!comments.length && <div className="watch-empty-state flex w-full flex-col items-center justify-center"><p className="mb-1 px-2 text-center text-xs leading-5 tracking-[.02em] text-[#a9937e]">把心动的片刻、想吐槽的细节，或只属于你们的默契，轻轻留在这里。</p><div aria-hidden="true" className="watch-empty-illustration pointer-events-none flex w-full items-center justify-center overflow-visible opacity-[.82]"><svg viewBox="0 0 520 300" preserveAspectRatio="xMidYMax meet" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-full w-auto max-w-full">
               <defs>
                 <linearGradient id="watchWood" x1="90" y1="25" x2="440" y2="270" gradientUnits="userSpaceOnUse"><stop stopColor="#bd8a61"/><stop offset="1" stopColor="#694735"/></linearGradient>
                 <linearGradient id="watchScreen" x1="175" y1="42" x2="345" y2="145" gradientUnits="userSpaceOnUse"><stop stopColor="#e9bd8e"/><stop offset="1" stopColor="#9d6d51"/></linearGradient>
@@ -1940,7 +1940,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     </div>}
 
     {/* 轻量观看记录：不改变播放流程，每次观看独立留档 */}
-    <button type="button" onClick={() => { setMemoryRecords(readWatchMemories()); setShowMemoryRecords(true); }} className="watch-legacy-record-button absolute right-3 top-[max(54px,calc(env(safe-area-inset-top)+48px))] z-[1011] flex items-center gap-1.5 rounded-full border border-[#d8b99b]/60 bg-[#fff8ed]/95 px-3 py-2 text-[11px] font-medium text-[#735440] shadow-lg backdrop-blur" aria-label="打开观看记录"><FileText size={14}/>观看记录{memoryRecords.length>0 && <span className="rounded-full bg-[#c99a6a] px-1.5 text-[9px] text-white">{memoryRecords.length}</span>}</button>
     {showMemoryRecords && <div className="absolute inset-0 z-[1015] flex flex-col bg-black/55 backdrop-blur-sm" onClick={() => setShowMemoryRecords(false)}>
       <section className="flex h-full min-h-0 max-h-none flex-col overflow-hidden rounded-none border-0 bg-[#fbf3e8] text-[#594536]" onClick={event => event.stopPropagation()}>
         <header className="flex items-center justify-between border-b border-[#ddc9b3] px-4 py-4">
