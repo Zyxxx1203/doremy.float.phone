@@ -101,8 +101,9 @@ function parseVideoUrl(value: string): VideoTarget | null {
       const aid = /\/av(\d+)/i.exec(url.pathname)?.[1];
       const page = url.searchParams.get("p") || "1";
       // Compact H5 player keeps playback inside the app; iframe sandbox below blocks top-level redirects.
-      const playerBase = "https://www.bilibili.com/blackboard/html5mobileplayer.html";
-      const compactOptions = `page=${encodeURIComponent(page)}&autoplay=0&danmaku=0&hideCoverInfo=1&hideDanmakuButton=1&noFullScreenButton=1&isOutside=true`;
+      const playerBase = "https://player.bilibili.com/player.html";
+      // 官方站外播放器：关闭弹幕并留在 iframe 内。平台自身的登录/版权提示无法由宿主页面跨域移除。
+      const compactOptions = `p=${encodeURIComponent(page)}&autoplay=0&danmaku=0&high_quality=1`;
       if (bvid) return { url: original, embedUrl: `${playerBase}?bvid=${encodeURIComponent(bvid)}&${compactOptions}`, platform: "bilibili", platformName: "哔哩哔哩", supported: true };
       if (aid) return { url: original, embedUrl: `${playerBase}?aid=${encodeURIComponent(aid)}&${compactOptions}`, platform: "bilibili", platformName: "哔哩哔哩", supported: true };
       // Never embed the original Bilibili page: it may trigger an app/deep-link redirect.
@@ -1580,8 +1581,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       }
       .watch-together-app:not([data-landscape-mode="true"]) .watch-empty-illustration {
         position:relative!important; flex:0 0 auto!important; width:100%!important;
-        height:clamp(96px,14dvh,128px)!important; min-height:96px!important; max-height:128px!important;
-        margin:0 auto 2px!important; overflow:visible!important; align-self:center!important; opacity:.68!important;
+        height:clamp(112px,20dvh,180px)!important; min-height:112px!important; max-height:180px!important;
+        margin:0 auto 2px!important; overflow:visible!important; align-self:center!important; opacity:.48!important;
       }
       .watch-together-app:not([data-landscape-mode="true"]) .watch-empty-illustration svg {
         display:block!important; width:min(100%,280px)!important; height:100%!important; max-width:280px!important;
@@ -1768,7 +1769,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </div>
           </div>
 
-          {!comments.length && <div className="watch-empty-state flex w-full flex-col items-center justify-center"><p className="mb-1 px-2 text-center text-xs leading-5 tracking-[.02em] text-[#9a7f6d]">把这一帧的心动、剧情里的小心思，和只有你们懂的梗，收进共同观影手记。</p><div aria-hidden="true" className="watch-empty-illustration pointer-events-none flex w-full items-center justify-center overflow-visible"><svg viewBox="0 0 520 300" preserveAspectRatio="xMidYMid meet" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-full w-auto max-w-full">
+          {!comments.length && <div className="watch-empty-state flex w-full flex-col items-center justify-center"><p className="mb-1 px-2 text-center text-xs leading-5 tracking-[.02em] text-[#9a7f6d]">把此刻的心绪与剧情里的私语，留作只属于你们的片刻注脚。</p><div aria-hidden="true" className="watch-empty-illustration pointer-events-none flex w-full items-center justify-center overflow-visible"><svg viewBox="0 0 520 300" preserveAspectRatio="xMidYMid meet" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-full w-auto max-w-full">
               <defs>
                 <linearGradient id="watchWood" x1="90" y1="25" x2="440" y2="270" gradientUnits="userSpaceOnUse"><stop stopColor="#e0c9b1"/><stop offset="1" stopColor="#bba18a"/></linearGradient>
                 <linearGradient id="watchScreen" x1="175" y1="42" x2="345" y2="145" gradientUnits="userSpaceOnUse"><stop stopColor="#f3dfc6"/><stop offset="1" stopColor="#d5b99a"/></linearGradient>
