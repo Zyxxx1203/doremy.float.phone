@@ -524,14 +524,20 @@ export function findEnabledToolForSchema(name: string, appId?: string, macroCont
     const direct = (name.startsWith("life_") ? enabled.find(t => t.source === "life" && matches(t)) : undefined)
         ?? enabled.find(t => t.source === "internal" && matches(t))
         ?? enabled.find(t => t.source === "rest" && matches(t))
-        ?? enabled.find(t => t.source === "rest_package" && matches(t))
-        ?? enabled.find(t => t.source === "composite" && matches(t))
-        ?? enabled.find(t => t.source === "composite_package" && matches(t))
-        ?? enabled.find(t => t.source === "mcp_server" && matches(t))
-        ?? enabled.find(t => t.source === "custom_app" && matches(t))
-        ?? enabled.find(t => t.source === "custom_app_package" && matches(t))
-        ?? enabled.find(matches);
+        ?? enabled.find(t => t.source === "rest_package" && matches(t));
     if (direct) return direct;
+
+    const internalSubTool = findEnabledInternalSubToolDefinition(name, appId);
+    if (internalSubTool) {
+        return {
+            name: internalSubTool.tool.name,
+            description: internalSubTool.tool.description,
+            parameterSchema: internalSubTool.tool.parameterSchema,
+            usageGuide: internalSubTool.tool.usageGuide,
+            source: "internal",
+            sourceId: internalSubTool.capability.id,
+        };
+    }
 
     const compositePackages = loadCompositeToolPackages().filter(pkg => pkg.enabled);
     const compositePackageIds = new Set(compositePackages.map(pkg => pkg.id));
@@ -558,18 +564,6 @@ export function findEnabledToolForSchema(name: string, appId?: string, macroCont
             parameterSchema: tool.parameterSchema,
             source: "rest",
             sourceId: tool.id,
-        };
-    }
-
-    const internalSubTool = findEnabledInternalSubToolDefinition(name, appId);
-    if (internalSubTool) {
-        return {
-            name: internalSubTool.tool.name,
-            description: internalSubTool.tool.description,
-            parameterSchema: internalSubTool.tool.parameterSchema,
-            usageGuide: internalSubTool.tool.usageGuide,
-            source: "internal",
-            sourceId: internalSubTool.capability.id,
         };
     }
 
