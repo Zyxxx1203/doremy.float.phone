@@ -179,6 +179,9 @@ export async function POST(req: NextRequest) {
                     method: "POST",
                     headers: postHeaders,
                     body: typeof body === "string" ? body : JSON.stringify(body),
+                    // Share the request deadline with the SSE handshake. Otherwise the
+                    // message POST can hang even though the outer proxy has a timeout.
+                    signal: controller.signal,
                 });
 
                 if (!postRes.ok && postRes.status !== 202) {
