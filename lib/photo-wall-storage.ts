@@ -66,6 +66,10 @@ export type PhotoWallDoodle = {
   kind: "stroke" | "sticker";
   /** 贴纸用的 emoji 或短字符 */
   content?: string;
+  /** 可选创作者元数据，旧版用户涂鸦数据无需迁移。 */
+  authorType?: "user" | "character";
+  authorId?: string;
+  authorName?: string;
   color: string;
   width: number;
   /** 归一化到相框内的坐标点，0~1 */
@@ -194,6 +198,9 @@ export function normalizeDoodles(value: unknown): PhotoWallDoodle[] | undefined 
       id: raw.id,
       kind: raw.kind,
       content: typeof raw.content === "string" ? raw.content.slice(0, 8) : undefined,
+      authorType: raw.authorType === "character" || raw.authorType === "user" ? raw.authorType : undefined,
+      authorId: typeof raw.authorId === "string" ? raw.authorId.slice(0, 160) : undefined,
+      authorName: typeof raw.authorName === "string" ? raw.authorName.slice(0, 80) : undefined,
       color: typeof raw.color === "string" && /^#[0-9a-f]{3,8}$/i.test(raw.color) ? raw.color : "#c2705a",
       width: typeof raw.width === "number" && Number.isFinite(raw.width) ? Math.min(24, Math.max(1, raw.width)) : 3,
       points,
