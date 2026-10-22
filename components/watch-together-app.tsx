@@ -405,6 +405,15 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* native cache TTL is fallback */ }
       nativeVideoCacheRef.current = null;
     }
+    const job = localResolverJobRef.current;
+    if (job) {
+      try {
+        void fetch(job.endpoint + "/api/videos/" + encodeURIComponent(job.id), {
+          method: "DELETE", headers: job.token ? { "X-Resolver-Token": job.token } : {},
+        }).catch(() => undefined);
+      } catch { /* 服务未运行时由服务端过期清理兜底 */ }
+      localResolverJobRef.current = null;
+    }
   }, []);
 
   const [comments, setComments] = useState<WatchComment[]>([]);
