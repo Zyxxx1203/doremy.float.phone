@@ -43,7 +43,7 @@ type Platform = "bilibili" | "youtube" | "tencent" | "youku" | "iqiyi" | "douyin
 type VideoTarget = { url: string; embedUrl: string | null; platform: Platform; platformName: string; supported: boolean; nativeVideo?: boolean; nativeVideoUrl?: string; nativeCacheId?: string };
 type WatchNativeBridge = { resolveShortVideoShareUrl?: (url: string, requestId: string) => boolean; deleteCachedShortVideo?: (cacheId: string) => boolean; setScreenOrientation?: (mode: string) => boolean };
 type WatchNativeWindow = Window & { AndroidShell?: WatchNativeBridge };
-type WatchNativeResolved = { requestId?: string; ok?: boolean; cacheId?: string; contentUri?: string; mediaUrl?: string; message?: string };
+type WatchNativeResolved = { requestId?: string; ok?: boolean; cacheId?: string; contentUri?: string; mediaUrl?: string; embedUrl?: string; message?: string };
 type WatchMemoryRecord = { id:string; url:string; title:string; platform:string; startedAt:string; durationSeconds:number; characterName:string; comments:string[]; discussion?: WatchComment[]; review:string; characterReview:string; favorite:boolean; memoryTitle?:string; quote?:string; mood?:string; note?:string };
 const WATCH_MEMORY_KEY = "ai_phone_watch_memory_records_v1";
 function readWatchMemories(): WatchMemoryRecord[] { try { const raw=window.localStorage.getItem(WATCH_MEMORY_KEY); const v=raw?JSON.parse(raw):[]; return Array.isArray(v)?v.filter((x)=>x&&typeof x.id==="string"):[]; } catch { return []; } }
@@ -350,12 +350,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         if (detail.cacheId) { try { native.deleteCachedShortVideo?.(detail.cacheId); } catch { /* native cache TTL is fallback */ } }
         return;
       }
-      if (detail.ok && ((detail.cacheId && detail.contentUri) || detail.mediaUrl)) {
+      if (detail.ok && ((detail.cacheId && detail.contentUri) || detail.mediaUrl || detail.embedUrl)) {
         if (detail.cacheId) nativeVideoCacheRef.current = { url: current.url, cacheId: detail.cacheId };
-        setTarget(previous => previous && previous.url === current.url ? { ...previous, nativeVideo: true, nativeVideoUrl: detail.mediaUrl || detail.contentUri, nativeCacheId: detail.cacheId, supported: true } : previous);
-        const message = detail.mediaUrl?.toLowerCase().includes(".m3u8")
-          ? "解析成功：已取得 HLS 视频流，正在尝试在小手机内播放。"
-          : "解析成功：已取得可在小手机内播放的视频流。";
+        setTarget(previous => previous && previous.url === current.url ? (detail.embedUrl ? { ...previous, embedUrl: detail.embedUrl, nativeVideo: false, nativeVideoUrl: undefined, nativeCacheId: undefined, supported: true } : { ...previous, nativeVideo: true, nativeVideoUrl: detail.mediaUrl || detail.contentUri, nativeCacheId: detail.cacheId, supported: true }) : previous);
+        const message = detail.embedUrl
+          ? "已定位到哔哩哔哩官方站内播放器；该视频未能提取直连流，改用官方播放器继续在小手机内播放。"
+          : detail.mediaUrl?.toLowerCase().includes(".m3u8")
+            ? "解析成功：已取得 HLS 视频流，正在尝试在小手机内播放。"
+            : "解析成功：已取得可在小手机内播放的视频流。";
         setResolutionMessage(message);
         onNotice?.(message);
       } else {
