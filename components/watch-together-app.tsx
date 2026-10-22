@@ -99,8 +99,12 @@ function parseVideoUrl(value: string): VideoTarget | null {
     if (host === "bilibili.com" || host.endsWith(".bilibili.com") || host === "b23.tv") {
       const bvid = /\/(BV[0-9A-Za-z]{10})/i.exec(url.pathname)?.[1];
       const aid = /\/av(\d+)/i.exec(url.pathname)?.[1];
-      if (bvid) return { url: original, embedUrl: `https://player.bilibili.com/player.html?bvid=${bvid}&page=${url.searchParams.get("p") || "1"}&autoplay=1&danmaku=0`, platform: "bilibili", platformName: "哔哩哔哩", supported: true };
-      if (aid) return { url: original, embedUrl: `https://player.bilibili.com/player.html?aid=${aid}&page=1&autoplay=1&danmaku=0`, platform: "bilibili", platformName: "哔哩哔哩", supported: true };
+      const page = url.searchParams.get("p") || "1";
+      // Compact H5 player keeps playback inside the app; iframe sandbox below blocks top-level redirects.
+      const playerBase = "https://www.bilibili.com/blackboard/html5mobileplayer.html";
+      const compactOptions = `page=${encodeURIComponent(page)}&autoplay=0&danmaku=0&hideCoverInfo=1&hideDanmakuButton=1&noFullScreenButton=1&isOutside=true`;
+      if (bvid) return { url: original, embedUrl: `${playerBase}?bvid=${encodeURIComponent(bvid)}&${compactOptions}`, platform: "bilibili", platformName: "哔哩哔哩", supported: true };
+      if (aid) return { url: original, embedUrl: `${playerBase}?aid=${encodeURIComponent(aid)}&${compactOptions}`, platform: "bilibili", platformName: "哔哩哔哩", supported: true };
       // Never embed the original Bilibili page: it may trigger an app/deep-link redirect.
       // Without a BV/av identifier we cannot build a reliable in-app player URL.
       return { url: original, embedUrl: null, platform: "bilibili", platformName: "哔哩哔哩", supported: false };
@@ -188,7 +192,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const top = viewport?.offsetTop || 0;
       root.style.setProperty("--watch-visible-height", `${Math.round(height)}px`);
       root.style.setProperty("--watch-visible-top", `${Math.round(top)}px`);
-      root.toggleAttribute("data-keyboard-visible", !!viewport && window.innerHeight - viewport.height > 120);
+      const keyboardVisible = !!viewport && window.innerHeight - viewport.height > 120;
+      if (keyboardVisible) root.setAttribute("data-keyboard-visible", "true");
+      else root.removeAttribute("data-keyboard-visible");
     };
     syncViewport();
     viewport?.addEventListener("resize", syncViewport);
@@ -1488,45 +1494,30 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       }
 
       .watch-chat-chip-active { color:#fff9f0; background:#8e6247; border-color:#8e6247; box-shadow:0 2px 8px rgba(109,70,44,.2); }
-      /* Video picker: centered modal with its own scroll area, so upload controls stay reachable. */
-      .watch-together-app[data-source-panel="true"] .watch-link-panel {
-        display:block!important; position:fixed!important; z-index:2147483001!important;
-        left:12px!important; right:12px!important; top:50%!important; bottom:auto!important;
-        transform:translateY(-50%)!important; width:auto!important; max-width:680px!important;
-        max-height:min(78dvh,680px)!important; overflow-x:hidden!important; overflow-y:auto!important;
-        overscroll-behavior:contain!important; margin:0 auto!important; padding:14px!important;
-        box-sizing:border-box!important; border-radius:18px!important;
-        background:rgba(255,249,239,.99)!important; box-shadow:0 20px 70px rgba(30,18,10,.48)!important;
-        visibility:visible!important; opacity:1!important; pointer-events:auto!important;
-      }
-      .watch-together-app[data-source-panel="true"] .watch-link-panel input { padding-top:9px!important; padding-bottom:9px!important; }
-      .watch-together-app[data-source-panel="true"] .watch-link-panel > div:first-child { position:sticky!important; top:0!important; z-index:2!important; padding:3px 0 8px!important; background:#fff9ef!important; }
-      .watch-together-app[data-source-panel="true"] .watch-link-panel > div:nth-of-type(2) { display:flex!important; flex-direction:column!important; gap:8px!important; }
-      .watch-together-app[data-source-panel="true"] .watch-link-panel label,
-      .watch-together-app[data-source-panel="true"] .watch-link-panel button { min-height:40px!important; }
+      /* One source-picker overlay; keep the panel within the actual visible WebView area. */
       .watch-together-app[data-source-panel="true"]::after { position:fixed!important; inset:0!important; z-index:2147483000!important; background:rgba(34,24,17,.58)!important; pointer-events:none!important; }
       .watch-together-app .watch-comment-list [data-comment-text] { color:#59483d!important; }
 
-      /* Source picker must override every older mobile display:none rule and stay inside the visible viewport. */
       .watch-together-app[data-source-panel="true"] .watch-link-panel,
-      .watch-together-app[data-source-panel="true"]:not([data-landscape-mode="true"]) .watch-link-panel {
+      .watch-together-app[data-source-panel="true"] .watch-link-panel {
         display:block!important; visibility:visible!important; opacity:1!important; pointer-events:auto!important;
         position:fixed!important; z-index:2147483647!important;
         left:12px!important; right:12px!important;
-        top:calc(var(--watch-visible-top, 0px) + var(--watch-visible-height, 100dvh)/2)!important;
-        bottom:auto!important; transform:translateY(-50%)!important;
+        top:calc(var(--watch-visible-top, 0px) + 8px)!important; bottom:auto!important; transform:none!important;
         width:auto!important; max-width:680px!important;
-        max-height:min(78dvh, calc(var(--watch-visible-height, 100dvh) - 24px))!important;
+        max-height:min(78dvh, calc(var(--watch-visible-height, 100dvh) - 16px))!important;
         overflow-x:hidden!important; overflow-y:auto!important; overscroll-behavior:contain!important;
         margin:0 auto!important; padding:14px!important; box-sizing:border-box!important;
         border-radius:18px!important; background:#fff9ef!important;
         box-shadow:0 20px 70px rgba(30,18,10,.48)!important;
       }
-      .watch-together-app[data-source-panel="true"] .watch-link-panel label,
-      .watch-together-app[data-source-panel="true"] .watch-link-panel button {
-        display:inline-flex!important; visibility:visible!important; opacity:1!important;
-        position:relative!important; min-height:44px!important; align-items:center!important;
+      .watch-together-app[data-source-panel="true"] .watch-link-panel > div:nth-of-type(2) label,
+      .watch-together-app[data-source-panel="true"] .watch-link-panel > div:nth-of-type(2) button {
+        display:flex!important; width:100%!important; min-width:0!important; box-sizing:border-box!important;
+        visibility:visible!important; opacity:1!important; position:relative!important;
+        min-height:44px!important; align-items:center!important; justify-content:center!important; text-align:center!important;
       }
+      .watch-together-app[data-source-panel="true"] .watch-link-panel input:not([type="file"]) { width:100%!important; min-width:0!important; box-sizing:border-box!important; }
       .watch-together-app[data-source-panel="true"] .watch-link-panel label { cursor:pointer!important; }
       .watch-together-app[data-source-panel="true"] .watch-link-panel label input[type="file"] {
         position:absolute!important; inset:0!important; width:100%!important; height:100%!important;
@@ -1579,24 +1570,27 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app:not([data-landscape-mode="true"]) .watch-link-panel button { display:flex!important; align-items:center!important; }
 
       /* Reserved illustration slot: caption → illustration → chat capsules. */
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-empty-state {
+        display:flex!important; flex:0 0 auto!important; flex-direction:column!important; align-items:center!important;
+        justify-content:flex-start!important; width:100%!important; min-width:0!important; margin:2px auto 0!important;
+      }
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-empty-state > p {
+        width:100%!important; margin:0 auto 2px!important; text-align:center!important; color:#9a7f6d!important;
+      }
       .watch-together-app:not([data-landscape-mode="true"]) .watch-empty-illustration {
         position:relative!important; flex:0 0 auto!important; width:100%!important;
-        height:clamp(118px,20dvh,176px)!important; min-height:118px!important; max-height:176px!important;
-        margin:2px auto 4px!important; overflow:visible!important; align-self:center!important;
+        height:clamp(96px,14dvh,128px)!important; min-height:96px!important; max-height:128px!important;
+        margin:0 auto 2px!important; overflow:visible!important; align-self:center!important; opacity:.68!important;
       }
       .watch-together-app:not([data-landscape-mode="true"]) .watch-empty-illustration svg {
-        display:block!important; width:auto!important; height:100%!important; max-width:min(100%,330px)!important;
+        display:block!important; width:min(100%,280px)!important; height:100%!important; max-width:280px!important;
         max-height:100%!important; margin:0 auto!important; object-fit:contain!important;
       }
       .watch-together-app:not([data-landscape-mode="true"]) .watch-empty-discussion {
         display:none!important;
       }
-      .watch-together-app[data-source-panel="true"] .watch-link-panel button,
-      .watch-together-app[data-source-panel="true"] .watch-link-panel label {
-        display:inline-flex!important; align-items:center!important; justify-content:center!important; text-align:center!important;
-      }
       .watch-together-app[data-source-panel="true"] .watch-link-panel > div:nth-of-type(2) > * {
-        min-width:0!important; text-align:center!important;
+        min-width:0!important; max-width:100%!important; box-sizing:border-box!important; text-align:center!important;
       }
       .watch-together-app .watch-player > iframe {
         display:block!important; width:100%!important; height:100%!important; min-height:0!important;
@@ -1664,7 +1658,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         {target?.nativeVideo ? (
           <video key={target.nativeVideoUrl || target.url} src={target.nativeVideoUrl || target.url} controls playsInline onPlay={() => setMediaPaused(false)} onPause={() => setMediaPaused(true)} className="aspect-video w-full bg-black object-contain" onEnded={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } }} onError={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } onNotice?.("视频无法在当前 WebView 播放，可能是格式、签名有效期或平台防盗链限制。"); }} />
         ) : target?.embedUrl ? (
-          <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-orientation-lock" allow="autoplay; accelerometer; encrypted-media; gyroscope; picture-in-picture" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" className="aspect-video w-full border-0" />
+          <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-orientation-lock" allow="autoplay; accelerometer; encrypted-media; gyroscope; picture-in-picture" allowFullScreen referrerPolicy={target.platform === "bilibili" ? "origin" : "strict-origin-when-cross-origin"} className="aspect-video w-full border-0" />
         ) : (
           <div className="flex aspect-video flex-col items-center justify-center px-6 text-center">
             <div className="mt-5 font-serif text-lg tracking-wide text-[#efe2d0]">{target ? `${target.platformName}暂不支持站内播放` : "还没有选择视频"}</div>
@@ -1691,7 +1685,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       <div className="watch-link-panel mx-auto mt-4 w-full max-w-3xl rounded-3xl border border-[#b89979]/30 bg-[#fff8ed]/75 p-3 shadow-[0_12px_30px_rgba(96,67,43,.08)] backdrop-blur sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-3"><span className="text-xs font-semibold text-[#735440]">选择一起看的视频</span><button type="button" onClick={() => setShowVideoSourcePanel(false)} className="rounded-full border border-[#b89979]/45 bg-white/80 px-3 py-1.5 text-xs text-[#735440]">收起</button></div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <input value={urlInput} onPointerDown={event => event.stopPropagation()} onTouchStart={event => event.stopPropagation()} onChange={event => setUrlInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter") openVideo(); }} placeholder="粘贴视频链接；粘贴视频链接（B站建议使用含 BV/av 号的标准链接）" className="min-w-0 flex-1 rounded-2xl border border-[#dac6ad] bg-white/90 px-4 py-3.5 text-sm text-[#554437] outline-none placeholder:text-[#a09383] focus:border-[#b88768] focus:ring-2 focus:ring-[#c99a6a]/15" />
+          <input value={urlInput} onPointerDown={event => event.stopPropagation()} onTouchStart={event => event.stopPropagation()} onChange={event => setUrlInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter") openVideo(); }} placeholder="粘贴视频链接（B站建议使用 BV / av 标准链接）" className="min-w-0 flex-1 rounded-2xl border border-[#dac6ad] bg-white/90 px-4 py-3.5 text-sm text-[#554437] outline-none placeholder:text-[#a09383] focus:border-[#b88768] focus:ring-2 focus:ring-[#c99a6a]/15" />
           <button onClick={openVideo} className="inline-flex items-center justify-center text-center rounded-2xl px-5 py-3.5 text-sm font-semibold tracking-wide text-[#2a1f16] shadow-sm transition hover:brightness-[1.02] active:scale-[.98]" style={{ background: "linear-gradient(135deg,#f0d0a8,#c99a6a)" }}>开始播放</button>
           <label className="relative inline-flex cursor-pointer items-center justify-center text-center rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">
             选择本地视频
@@ -1773,29 +1767,29 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </div>
           </div>
 
-          {!comments.length && <div className="watch-empty-state flex w-full flex-col items-center justify-center"><p className="mb-1 px-2 text-center text-xs leading-5 tracking-[.02em] text-[#a9937e]">把心动的片刻、想吐槽的细节，或只属于你们的默契，轻轻留在这里。</p><div aria-hidden="true" className="watch-empty-illustration pointer-events-none flex w-full items-center justify-center overflow-visible opacity-[.82]"><svg viewBox="0 0 520 300" preserveAspectRatio="xMidYMax meet" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-full w-auto max-w-full">
+          {!comments.length && <div className="watch-empty-state flex w-full flex-col items-center justify-center"><p className="mb-1 px-2 text-center text-xs leading-5 tracking-[.02em] text-[#9a7f6d]">把这一帧的心动、剧情里的小心思，和只有你们懂的梗，收进共同观影手记。</p><div aria-hidden="true" className="watch-empty-illustration pointer-events-none flex w-full items-center justify-center overflow-visible"><svg viewBox="0 0 520 300" preserveAspectRatio="xMidYMid meet" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-full w-auto max-w-full">
               <defs>
-                <linearGradient id="watchWood" x1="90" y1="25" x2="440" y2="270" gradientUnits="userSpaceOnUse"><stop stopColor="#bd8a61"/><stop offset="1" stopColor="#694735"/></linearGradient>
-                <linearGradient id="watchScreen" x1="175" y1="42" x2="345" y2="145" gradientUnits="userSpaceOnUse"><stop stopColor="#e9bd8e"/><stop offset="1" stopColor="#9d6d51"/></linearGradient>
+                <linearGradient id="watchWood" x1="90" y1="25" x2="440" y2="270" gradientUnits="userSpaceOnUse"><stop stopColor="#e0c9b1"/><stop offset="1" stopColor="#bba18a"/></linearGradient>
+                <linearGradient id="watchScreen" x1="175" y1="42" x2="345" y2="145" gradientUnits="userSpaceOnUse"><stop stopColor="#f3dfc6"/><stop offset="1" stopColor="#d5b99a"/></linearGradient>
               </defs>
-              <path d="M20 274H500" stroke="#76523a" strokeWidth="2" strokeLinecap="round"/>
+              <path d="M20 274H500" stroke="#bba28a" strokeWidth="2" strokeLinecap="round"/>
               <path d="M124 169V52Q124 36 141 36H378Q394 36 394 52V169" stroke="url(#watchWood)" strokeWidth="10" strokeLinejoin="round"/>
-              <rect x="140" y="50" width="238" height="112" rx="7" fill="url(#watchScreen)" stroke="#7a5138" strokeWidth="3"/>
-              <path d="M159 137L204 94L232 119L275 74L357 137" stroke="#f6dfbd" strokeWidth="3" strokeLinejoin="round" opacity=".8"/>
-              <circle cx="333" cy="75" r="13" fill="#f7dfb7" opacity=".9"/>
-              <path d="M228 164V180M289 164V180M210 182H307" stroke="#76523a" strokeWidth="5" strokeLinecap="round"/>
-              <path d="M83 245V216Q83 190 111 190H149Q175 190 175 216V246" stroke="#9a6e4e" strokeWidth="9" strokeLinecap="round"/>
-              <path d="M64 238Q64 215 89 215H169Q192 215 192 238V257H64V238Z" fill="#d0a17c" stroke="#80583e" strokeWidth="3"/>
-              <path d="M77 257L72 277M179 257L184 277" stroke="#80583e" strokeWidth="6" strokeLinecap="round"/>
-              <path d="M193 229Q208 210 235 216L258 222L284 215Q309 210 326 231L337 255H182L193 229Z" fill="#e5c7a7" stroke="#80583e" strokeWidth="3" strokeLinejoin="round"/>
-              <path d="M202 224L216 255M303 224L317 255" stroke="#b88b68" strokeWidth="2"/>
-              <path d="M346 244V222Q346 204 365 204H411Q431 204 431 224V257H346V244Z" fill="#bd906d" stroke="#80583e" strokeWidth="3"/>
-              <path d="M358 257L354 276M419 257L423 276" stroke="#80583e" strokeWidth="5" strokeLinecap="round"/>
-              <path d="M442 254V205M452 254V189M462 254V215" stroke="#8b9a73" strokeWidth="3" strokeLinecap="round"/>
-              <path d="M452 215C431 208 430 190 440 185C452 185 458 198 452 215ZM452 229C469 219 480 227 476 239C466 245 457 239 452 229Z" fill="#9aa17c" stroke="#78845f" strokeWidth="1.5"/>
-              <path d="M452 201C438 190 446 175 458 178C467 184 462 195 452 201Z" fill="#b5b18b" stroke="#78845f" strokeWidth="1.5"/>
-              <path d="M42 273C44 252 55 248 64 253C69 263 58 272 42 273ZM42 273C26 262 29 248 41 247C52 252 51 264 42 273Z" fill="#a3a17d" stroke="#78845f" strokeWidth="1.5"/>
-              <path d="M116 36C108 20 122 10 133 19C139 31 129 38 116 36ZM392 37C405 19 418 27 413 40C405 47 397 43 392 37Z" fill="#c4a07d"/>
+              <rect x="140" y="50" width="238" height="112" rx="7" fill="url(#watchScreen)" stroke="#c4a68b" strokeWidth="3"/>
+              <path d="M159 137L204 94L232 119L275 74L357 137" stroke="#fff5e7" strokeWidth="3" strokeLinejoin="round" opacity=".8"/>
+              <circle cx="333" cy="75" r="13" fill="#fff0d8" opacity=".9"/>
+              <path d="M228 164V180M289 164V180M210 182H307" stroke="#bba28a" strokeWidth="5" strokeLinecap="round"/>
+              <path d="M83 245V216Q83 190 111 190H149Q175 190 175 216V246" stroke="#c8a88b" strokeWidth="9" strokeLinecap="round"/>
+              <path d="M64 238Q64 215 89 215H169Q192 215 192 238V257H64V238Z" fill="#e4cbb2" stroke="#b99b7e" strokeWidth="3"/>
+              <path d="M77 257L72 277M179 257L184 277" stroke="#b99b7e" strokeWidth="6" strokeLinecap="round"/>
+              <path d="M193 229Q208 210 235 216L258 222L284 215Q309 210 326 231L337 255H182L193 229Z" fill="#f0ddc8" stroke="#b99b7e" strokeWidth="3" strokeLinejoin="round"/>
+              <path d="M202 224L216 255M303 224L317 255" stroke="#d2b69b" strokeWidth="2"/>
+              <path d="M346 244V222Q346 204 365 204H411Q431 204 431 224V257H346V244Z" fill="#e0c2a5" stroke="#b99b7e" strokeWidth="3"/>
+              <path d="M358 257L354 276M419 257L423 276" stroke="#b99b7e" strokeWidth="5" strokeLinecap="round"/>
+              <path d="M442 254V205M452 254V189M462 254V215" stroke="#b6bd9b" strokeWidth="3" strokeLinecap="round"/>
+              <path d="M452 215C431 208 430 190 440 185C452 185 458 198 452 215ZM452 229C469 219 480 227 476 239C466 245 457 239 452 229Z" fill="#c4c9a9" stroke="#a1a982" strokeWidth="1.5"/>
+              <path d="M452 201C438 190 446 175 458 178C467 184 462 195 452 201Z" fill="#d7d4b5" stroke="#a1a982" strokeWidth="1.5"/>
+              <path d="M42 273C44 252 55 248 64 253C69 263 58 272 42 273ZM42 273C26 262 29 248 41 247C52 252 51 264 42 273Z" fill="#c9c9a8" stroke="#a1a982" strokeWidth="1.5"/>
+              <path d="M116 36C108 20 122 10 133 19C139 31 129 38 116 36ZM392 37C405 19 418 27 413 40C405 47 397 43 392 37Z" fill="#dfc6a9"/>
             </svg></div></div>}
             <div data-part="composer" className="watch-discussion-composer relative z-20 shrink-0 border-t border-[#d6b18c]/25 pt-2">
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
@@ -1805,7 +1799,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               </div>
               {videoUnderstandingEnabled && <div className="mb-2 text-[10px] leading-4 text-[#98795e]">{target?.platformName==="本地视频" ? (wholeVideoBusy ? (wholeVideoProgress || "视频模型正在分析…") : `独立视频模型：${videoAnalysisSettings.model || "尚未选择模型"} · ${videoAnalysisSettings.provider === "openai-compatible" || videoAnalysisSettings.provider === "anthropic" ? "发送时抽取关键帧进行视觉分析" : "发送时分析整段本地视频"}`) : "独立视频模型只接收本地视频文件；外站链接无法直接传入整段视频。"}</div>}
               <form onSubmit={event=>{event.preventDefault();submitDiscussion();}} className="flex min-w-0 items-center gap-2 rounded-full border border-[#d9c3ac] bg-[#fffdf8] p-1.5 shadow-[0_3px_12px_rgba(98,65,40,.08)]">
-                <textarea value={discussionDraft} onPointerDown={event=>event.stopPropagation()} onTouchStart={event=>event.stopPropagation()} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} onKeyDown={event=>{if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();submitDiscussion();}}} maxLength={800} rows={1} placeholder={target ? "把心动的片刻、想吐槽的细节，或只属于你们的默契，轻轻留在这里。" : "先选一段能在小手机内播放的视频，再开始聊"} className="min-h-[36px] max-h-[72px] min-w-0 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-[13px] leading-5 text-[#594536] outline-none placeholder:text-[#aa9683]"/>
+                <textarea value={discussionDraft} onPointerDown={event=>event.stopPropagation()} onTouchStart={event=>event.stopPropagation()} onChange={event=>setDiscussionDraft(event.target.value.slice(0,800))} onKeyDown={event=>{if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();submitDiscussion();}}} maxLength={800} rows={1} placeholder={target ? "聊聊这一帧，收藏心动与只有你们懂的梗……" : "先选一段能在小手机内播放的视频，再开始聊"} className="min-h-[36px] max-h-[72px] min-w-0 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-[13px] leading-5 text-[#594536] outline-none placeholder:text-[#aa9683]"/>
                 <button type="submit" disabled={!target||!discussionDraft.trim()||wholeVideoBusy} className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full bg-[#9b6b4c] px-3.5 text-xs font-semibold text-white shadow-sm disabled:opacity-35"><MessageCircle size={13}/>发送</button>
               </form>
             </div>
