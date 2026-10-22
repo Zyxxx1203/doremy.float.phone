@@ -324,13 +324,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     if (!current) { setResolutionMessage(""); return; }
     if (current.nativeVideo) { setResolutionMessage("解析成功：已取得可播放的视频源，当前由小手机内置播放器播放。"); return; }
     setResolutionMessage("正在检查此链接是否支持站内播放……");
-    // Use the platform iframe when available, but also try native extraction for Bilibili,
-    // whose iframe frequently fails inside WebView despite a valid share URL.
-    if (current.embedUrl && current.platform !== "bilibili") {
-      setResolutionMessage("已识别平台播放器；如果平台拒绝嵌入，可在 Android APK 中尝试原生媒体解析。");
-      setResolverState({ state: "idle" });
-      return;
-    }
+    // Keep any recognized iframe visible as a fallback, while Android attempts native
+    // media extraction in parallel. If a direct stream is found, the player switches to it;
+    // otherwise the platform embed remains usable without leaving the page.
     const native = (window as WatchNativeWindow).AndroidShell;
     if (!native || !native.resolveShortVideoShareUrl) {
       if (current.embedUrl) {
