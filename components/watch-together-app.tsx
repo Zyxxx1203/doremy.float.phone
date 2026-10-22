@@ -238,6 +238,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_local_resolver_token_v1") || "" : ""; } catch { return ""; }
   });
   const [localResolverStatus, setLocalResolverStatus] = useState("");
+  const [localResolverEngine, setLocalResolverEngine] = useState<"auto" | "parse-video-py" | "yt-dlp">(() => {
+    try {
+      const saved = typeof window !== "undefined" ? window.localStorage.getItem("watch_local_resolver_engine_v1") : null;
+      return saved === "parse-video-py" || saved === "yt-dlp" ? saved : "auto";
+    } catch { return "auto"; }
+  });
   const localResolverJobRef = useRef<{ id: string; endpoint: string; token: string } | null>(null);
   const [transcriberEndpoint, setTranscriberEndpoint] = useState(() => {
     try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_transcriber_endpoint_v1") || "" : ""; } catch { return ""; }
@@ -845,7 +851,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         setResolverState({ state: "resolving", message: "正在下载到本地缓存…" });
         const headers: Record<string, string> = { "Content-Type": "application/json" };
         if (localResolverToken.trim()) headers["X-Resolver-Token"] = localResolverToken.trim();
-        const response = await fetch(base.toString().replace(/\/+$/, "") + "/api/resolve", { method: "POST", headers, body: JSON.stringify({ url: parsed.url, quality: "best" }), signal: AbortSignal.timeout(30 * 60 * 1000) });
+        const response = await fetch(base.toString().replace(/\/+$/, "") + "/api/resolve", { method: "POST", headers, body: JSON.stringify({ url: parsed.url, quality: "best", engine: localResolverEngine }), signal: AbortSignal.timeout(30 * 60 * 1000) });
         const result = await response.json() as { ok?: boolean; id?: string; title?: string; downloadUrl?: string; message?: string; detail?: string };
         if (!response.ok || !result.ok || !result.id || !result.downloadUrl) throw new Error(result.detail || result.message || "解析服务没有返回本地视频");
         const serviceUrl = base.toString().replace(/\/+$/, "");
@@ -1951,9 +1957,16 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </section>
           <section className="mt-4 border-t border-white/10 pt-3">
             <h3 className="font-serif text-sm text-[#e8c39a]">本地视频下载引擎</h3>
-            <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">可连接 Windows 或手机 Termux 上运行的 yt-dlp 服务。填写地址后，粘贴视频链接会先下载再播放；留空则使用 APK 内置解析。默认本机地址：http://127.0.0.1:8765</p>
+            <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">可连接 Windows 或手机 Termux 上运行的本地下载服务。自动模式依次尝试 parse-video-py 和 yt-dlp；两者都失败后可再使用 APK 内置解析。默认地址：http://127.0.0.1:8765</p>
             <label className="mt-2 block text-[11px] text-[#9c9086]">解析服务地址
               <input type="url" value={localResolverEndpoint} onChange={event => setLocalResolverEndpoint(event.target.value)} placeholder="http://127.0.0.1:8765" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none"/>
+            </label>
+            <label className="mt-2 block text-[11px] text-[#9c9086]">解析策略
+              <select value={localResolverEngine} onChange={event => { const value = event.target.value as "auto" | "parse-video-py" | "yt-dlp"; setLocalResolverEngine(value); try { window.localStorage.setItem("watch_local_resolver_engine_v1", value); } catch {} }} className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none">
+                <option value="auto">自动兜底：parse-video-py → yt-dlp</option>
+                <option value="parse-video-py">仅使用 parse-video-py</option>
+                <option value="yt-dlp">仅使用 yt-dlp</option>
+              </select>
             </label>
             <label className="mt-2 block text-[11px] text-[#9c9086]">本地服务令牌（可留空）
               <input type="password" autoComplete="off" value={localResolverToken} onChange={event => setLocalResolverToken(event.target.value)} placeholder="仅保存在此设备" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none"/>
