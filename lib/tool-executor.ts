@@ -465,13 +465,22 @@ export function parseToolCalls(text: string): { cleanText: string; toolCalls: To
 
 export async function executeToolCalls(toolCalls: ToolCall[], context?: ToolExecutionContext): Promise<ToolResult[]> {
     throwIfAborted(context?.signal);
-    // Tool calls can mutate shared browser state (life schedule, memory, storage, etc.).
-    // Execute in model-provided order so two calls in one turn cannot load the same old
-    // snapshot and overwrite each other. Results remain aligned with the original calls.
-    const results: ToolResult[] = [];
-    for (const call of toolCalls) {
+    // Life tools read and write one shared snapshot. Serialize those calls to prevent
+    // concurrent invitations/schedule changes from overwriting one another, while keeping
+    // independent non-life tools parallel. Results stay aligned with the model's call order.
+    const results = new Array<ToolResult>(toolCalls.length);
+    const independentCalls = toolCalls
+        .map((call, index) => ({ call, index }))
+        .filter(item => !item.call.name.startsWith("life_"));
+    await Promise.all(independentCalls.map(async ({ call, index }) => {
         throwIfAborted(context?.signal);
-        results.push(await executeSingleToolCall(call, context, { depth: 0 }));
+        results[index] = await executeSingleToolCall(call, context, { depth: 0 });
+    }));
+    for (let index = 0; index < toolCalls.length; index++) {
+        const call = toolCalls[index];
+        if (!call.name.startsWith("life_")) continue;
+        throwIfAborted(context?.signal);
+        results[index] = await executeSingleToolCall(call, context, { depth: 0 });
     }
     if ((context?.appId === "chat" || context?.appId === "group_chat") && context.characterId && typeof window !== "undefined") {
         try {
