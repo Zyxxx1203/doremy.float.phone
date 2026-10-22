@@ -1796,7 +1796,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               <path d="M452 201C438 190 446 175 458 178C467 184 462 195 452 201Z" fill="#b5b18b" stroke="#78845f" strokeWidth="1.5"/>
               <path d="M42 273C44 252 55 248 64 253C69 263 58 272 42 273ZM42 273C26 262 29 248 41 247C52 252 51 264 42 273Z" fill="#a3a17d" stroke="#78845f" strokeWidth="1.5"/>
               <path d="M116 36C108 20 122 10 133 19C139 31 129 38 116 36ZM392 37C405 19 418 27 413 40C405 47 397 43 392 37Z" fill="#c4a07d"/>
-            </svg></div>}
+            </svg></div></div>}
             <div data-part="composer" className="watch-discussion-composer relative z-20 shrink-0 border-t border-[#d6b18c]/25 pt-2">
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
                 <button type="button" onClick={() => { const video=playerRef.current?.querySelector("video"); const point=video?formatVideoTime(video.currentTime):timepointDraft; setTimepointDraft(point); patchSettings({currentMoment:("重点片段 "+point+"：").slice(0,800)}); setDiscussionDraft("请把 "+point+" 这一幕标记为重点："); onNotice?.(video ? "已标记重点时间点 "+point+"，可补充说明后发送。" : "已打开重点标记草稿；外站播放器无法读取精确时间点。"); }} disabled={!target} className="watch-chat-chip"><Sparkles size={11}/>标记重点</button>
