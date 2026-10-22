@@ -600,6 +600,10 @@ export function findEnabledToolForSchema(name: string, appId?: string, macroCont
             customToolId: tool.id,
         };
     }
+
+    // Preserve the grouped custom-app entry when an app exposes multiple tools.
+    const customAppPackage = enabled.find(t => t.source === "custom_app_package" && matches(t));
+    if (customAppPackage) return customAppPackage;
     return undefined;
 }
 
