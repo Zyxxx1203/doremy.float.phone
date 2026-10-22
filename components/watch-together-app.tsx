@@ -1548,10 +1548,11 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app[data-source-panel="true"]::after { position:fixed!important; inset:0!important; z-index:2147483000!important; background:rgba(34,24,17,.58)!important; pointer-events:none!important; }
       .watch-together-app .watch-comment-list [data-comment-text] { color:#59483d!important; }
 
-      /* Final mobile fixes: the SVG illustration sits higher instead of being cut off at the card edge. */
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card > [aria-hidden="true"] {
-        bottom:58px!important; transform:translateY(-12%)!important; width:100%!important; max-width:none!important;
-        opacity:.34!important; pointer-events:none!important;
+      /* Keep the decorative SVG inside its card; one sizing rule replaces the old offset patch. */
+      .watch-together-app .watch-room-card > [aria-hidden="true"] {
+        bottom:0!important; top:auto!important; height:34%!important; max-height:220px!important;
+        width:100%!important; transform:none!important; opacity:.22!important; overflow:hidden!important;
+        pointer-events:none!important;
       }
       /* Source picker must override every older mobile display:none rule and stay inside the visible viewport. */
       .watch-together-app[data-source-panel="true"] .watch-link-panel,
@@ -1791,8 +1792,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       {/* 角色在屏幕下方轻声说话 */}
       <section className="watch-interaction-panel mx-auto mt-4 w-full max-w-3xl">
         <div data-part="card" className="watch-room-card relative isolate overflow-hidden rounded-[28px] border border-[#d4a575]/25 bg-gradient-to-br from-[#49372b]/95 via-[#2d231d]/95 to-[#1c1714]/98 p-4 shadow-[0_18px_46px_rgba(57,37,24,.24),inset_0_1px_0_rgba(255,224,184,.12)] backdrop-blur-xl sm:p-5">
-          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 z-0 w-full max-w-none opacity-[.28]">
-            <svg viewBox="0 0 520 300" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-auto w-full">
+          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 z-0 flex h-[34%] max-h-[220px] items-end justify-center overflow-hidden opacity-[.22]">
+            <svg viewBox="0 0 520 300" preserveAspectRatio="xMidYMax meet" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-full w-auto max-w-full">
               <defs>
                 <linearGradient id="watchWood" x1="90" y1="25" x2="440" y2="270" gradientUnits="userSpaceOnUse"><stop stopColor="#bd8a61"/><stop offset="1" stopColor="#694735"/></linearGradient>
                 <linearGradient id="watchScreen" x1="175" y1="42" x2="345" y2="145" gradientUnits="userSpaceOnUse"><stop stopColor="#e9bd8e"/><stop offset="1" stopColor="#9d6d51"/></linearGradient>
