@@ -13,7 +13,7 @@ import { generateChatCompletion, flattenCompletionResult, readCompressedImageDat
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import {
   createPhotoWallId, DEFAULT_PHOTO_WALL_SETTINGS, loadPhotoWallState, savePhotoWallState, normalizeWorld,
-  type PhotoWallDoodle, type PhotoWallPhoto, type PhotoWallPlacement, type PhotoWallState, type PhotoWallTemplate, type PhotoWallWorld,
+  type PhotoWallCreationRecord, type PhotoWallDoodle, type PhotoWallPhoto, type PhotoWallPlacement, type PhotoWallState, type PhotoWallTemplate, type PhotoWallWorld,
 } from "@/lib/photo-wall-storage";
 import { PhotoWallCanvas, fallbackPlacement } from "@/components/photo-wall/photo-wall-canvas";
 import { applyWorldGrow, planWorldGrow, remapDoodles, remapPlacement, wallWorldOf, type WorldGrow } from "@/lib/photo-wall-world";
@@ -242,7 +242,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const [state, setState] = useState<PhotoWallState>(() => loadPhotoWallState());
   const [characters, setCharacters] = useState<Character[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
-  const [wallView, setWallView] = useState<"timeline" | "memories" | "album" | "panorama" | "edit" | "settings">("panorama");
+  const [wallView, setWallView] = useState<"timeline" | "memories" | "album" | "panorama" | "edit" | "settings" | "creations">("panorama");
   const [settingsReturnView, setSettingsReturnView] = useState<"panorama" | "edit">("panorama");
   const [panoramaZoom, setPanoramaZoom] = useState(100);
   const panoramaMinZoomRef = useRef(5);
@@ -603,7 +603,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (showChatPicker) { setShowChatPicker(false); if (detail) detail.handled = true; return; }
       if (selectedPhotoId) { setSelectedPhotoId(null); if (detail) detail.handled = true; return; }
       if (wallView === "album" && activeAlbumId) { setActiveAlbumId(null); if (detail) detail.handled = true; return; }
-      if (wallView === "settings" || wallView === "timeline" || wallView === "memories" || wallView === "album") { setWallView(wallView === "settings" ? settingsReturnView : "panorama"); if (detail) detail.handled = true; return; }
+      if (wallView === "settings" || wallView === "timeline" || wallView === "memories" || wallView === "album" || wallView === "creations") { setWallView(wallView === "settings" ? settingsReturnView : "panorama"); if (detail) detail.handled = true; return; }
       if (wallView === "edit") { onClose(); if (detail) detail.handled = true; }
     };
     window.addEventListener("floatphone-app-back", handleAppBack);
@@ -1343,8 +1343,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         `角色设定：${(artist.persona || artist.personality || "").slice(0, 500)}`,
         `画布尺寸：${wallWorldOf(before).width} × ${wallWorldOf(before).height}；所有坐标必须是整个画布的 0 到 1 归一化坐标。`,
         `墙上照片（placement 的 x/y 是照片布局锚点，仅用于估计位置）：${JSON.stringify(layout)}`,
-        "只输出纯 JSON，不要 markdown，不要解释，格式：{\"elements\":[{\"kind\":\"sticker\",\"content\":\"✿\",\"x\":0.2,\"y\":0.3,\"color\":\"#d98ca3\"},{\"kind\":\"stroke\",\"points\":[{\"x\":0.3,\"y\":0.4},{\"x\":0.32,\"y\":0.42},{\"x\":0.34,\"y\":0.4}],\"color\":\"#d98ca3\",\"width\":3}]}",
-        "生成 3 到 6 个元素，优先使用小花、爱心、星星、弯弯月亮等简洁装饰；笔画由 3 到 18 个点组成。",
+        "只输出纯 JSON，不要 markdown，不要解释，格式：{\\\"summary\\\":\\\"用角色本人的口吻写一条温柔的共同创作回忆，最多100字\\\",\\\"elements\\\":[{\\\"kind\\\":\\\"sticker\\\",\\\"content\\\":\\\"✿\\\",\\\"x\\\":0.2,\\\"y\\\":0.3,\\\"color\\\":\\\"#d98ca3\\\"},{\\\"kind\\\":\\\"stroke\\\",\\\"points\\\":[{\\\"x\\\":0.3,\\\"y\\\":0.4},{\\\"x\\\":0.32,\\\"y\\\":0.42},{\\\"x\\\":0.34,\\\"y\\\":0.4}],\\\"color\\\":\\\"#d98ca3\\\",\\\"width\\\":3}]}";
+        "生成 3 到 6 个元素，优先使用小花、爱心、星星、弯弯月亮等简洁装饰；笔画由 3 到 18 个点组成。summary 写成一段可保存的共同回忆，像“今天你让我给我们的照片添一朵小花，我又偷偷画了一颗爱心”，不要声称用户没有说过的具体事情。",
         "把装饰放在照片周围或画布空白处，不要集中遮挡照片中心。无法判断空白时，选择分散的边缘区域。不要修改或删除已有照片、涂鸦。",
         "贴纸 content 只能从这些短字符中选择：♡、❤、✦、✿、☾、☘、♪、★、❀、✧。颜色使用柔和的粉色、暖棕或金色十六进制色号。",
       ].join("\n");
@@ -1359,7 +1359,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const raw = flattenCompletionResult(result).trim()
         .replace(/^```(?:json)?\s*/i, "")
         .replace(/\s*```$/, "");
-      const parsed = JSON.parse(raw) as { elements?: unknown; doodles?: unknown };
+      const parsed = JSON.parse(raw) as { elements?: unknown; doodles?: unknown; summary?: unknown };
       const candidates = Array.isArray(parsed.elements) ? parsed.elements : Array.isArray(parsed.doodles) ? parsed.doodles : [];
       const createdAt = new Date().toISOString();
       const allowedStickers = new Set(["♡", "❤", "✦", "✿", "☾", "☘", "♪", "★", "❀", "✧"]);
@@ -1387,8 +1387,30 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       }
       if (!created.length) throw new Error("角色返回的涂鸦格式不完整，请再试一次。");
       const latest = stateRef.current;
+      const photoIds = new Set<string>();
+      for (const doodle of created) {
+        const center = doodle.kind === "sticker"
+          ? (doodle.points[0] ?? { x: 0.5, y: 0.5 })
+          : doodle.points.reduce((sum, point) => ({ x: sum.x + point.x / doodle.points.length, y: sum.y + point.y / doodle.points.length }), { x: 0, y: 0 });
+        const nearest = latest.photos.map((photo, index) => {
+          const placement = photo.placement ?? fallbackPlacement(index);
+          return { id: photo.id, distance: Math.hypot(placement.x - center.x, placement.y - center.y) };
+        }).sort((a, b) => a.distance - b.distance)[0];
+        if (nearest && nearest.distance <= 0.24) photoIds.add(nearest.id);
+      }
+      const fallbackPhotoId = wallActivePhotoId ?? selectedPhotoId;
+      if (!photoIds.size && fallbackPhotoId && latest.photos.some(photo => photo.id === fallbackPhotoId)) photoIds.add(fallbackPhotoId);
+      const narrative = typeof parsed.summary === "string" && parsed.summary.trim()
+        ? parsed.summary.trim().slice(0, 300)
+        : `${artist.name}今天在照片墙上留下了${created.length}个小装饰。每一笔都被认真收进了我们的共同回忆里。`;
+      const record: PhotoWallCreationRecord = {
+        id: createPhotoWallId(), createdAt, authorType: "character", authorId: artist.id,
+        authorName: artist.name, narrative, photoIds: [...photoIds], doodles: created,
+      };
       changeWallDoodles([...(latest.wallDoodles ?? []), ...created]);
-      onNotice?.(`${artist.name}在照片墙上留下了 ${created.length} 个小装饰。`);
+      const afterDoodles = stateRef.current;
+      persist({ ...afterDoodles, creationRecords: [...(afterDoodles.creationRecords ?? []), record] });
+      onNotice?.(`${artist.name}留下了 ${created.length} 个小装饰；创作过程已保存到「共创记录」。`);
     } catch (error) {
       onNotice?.("请角色装饰照片墙失败：" + (error instanceof Error ? error.message : String(error)));
     } finally {
@@ -1426,13 +1448,13 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       className="relative z-10 flex shrink-0 items-center gap-3 border-b border-[#ded5c7]/80 bg-white/75 px-4 pb-3 shadow-[0_8px_28px_rgba(94,76,53,.06)] backdrop-blur-xl"
       style={{ paddingTop: "max(12px, var(--page-header-safe-top, 48px))" }}
     >
-      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); if (showAddMenu) setShowAddMenu(false); else if (showChatPicker) setShowChatPicker(false); else if (selectedPhotoId) setSelectedPhotoId(null); else if (wallView === "album" && activeAlbumId) setActiveAlbumId(null); else if (wallView === "settings" || wallView === "timeline" || wallView === "memories" || wallView === "album") setWallView(wallView === "settings" ? settingsReturnView : "panorama"); else onClose(); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-[#ded5c7] bg-white/80 text-[#7b6a58] shadow-sm transition hover:-translate-y-0.5 hover:bg-white active:scale-95" aria-label="返回上一级"><ArrowLeft size={17}/></button>
-      <div className="min-w-0 flex-1"><div className="whitespace-nowrap font-serif text-lg tracking-[.04em]">{wallView === "settings" ? "墙面与显影设置" : wallView === "album" ? (activeAlbum?.title || "相册") : wallView === "memories" ? "全部记忆" : wallView === "timeline" ? "时间轴" : "照片墙"}</div><div className="mt-0.5 truncate whitespace-nowrap text-[10px] tracking-[.1em] text-[#a09380]">{wallView === "settings" ? "WALL & DEVELOPING" : `A LITTLE ARCHIVE OF US · ${photos.length} PHOTOS`}</div></div>
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); if (showAddMenu) setShowAddMenu(false); else if (showChatPicker) setShowChatPicker(false); else if (selectedPhotoId) setSelectedPhotoId(null); else if (wallView === "album" && activeAlbumId) setActiveAlbumId(null); else if (wallView === "settings" || wallView === "timeline" || wallView === "memories" || wallView === "album" || wallView === "creations") setWallView(wallView === "settings" ? settingsReturnView : "panorama"); else onClose(); }} className="relative z-[1002] pointer-events-auto grid h-11 w-11 shrink-0 cursor-pointer touch-manipulation place-items-center rounded-2xl border border-[#ded5c7] bg-white/80 text-[#7b6a58] shadow-sm transition hover:-translate-y-0.5 hover:bg-white active:scale-95" aria-label="返回上一级"><ArrowLeft size={17}/></button>
+      <div className="min-w-0 flex-1"><div className="whitespace-nowrap font-serif text-lg tracking-[.04em]">{wallView === "settings" ? "墙面与显影设置" : wallView === "creations" ? "共同创作记录" : wallView === "album" ? (activeAlbum?.title || "相册") : wallView === "memories" ? "全部记忆" : wallView === "timeline" ? "时间轴" : "照片墙"}</div><div className="mt-0.5 truncate whitespace-nowrap text-[10px] tracking-[.1em] text-[#a09380]">{wallView === "settings" ? "WALL & DEVELOPING" : `A LITTLE ARCHIVE OF US · ${photos.length} PHOTOS`}</div></div>
       {(wallView === "edit" || wallView === "panorama") && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAddMenu(false); setSettingsReturnView(wallView === "edit" ? "edit" : "panorama"); setWallView("settings"); }} className="relative z-[1002] pointer-events-auto min-h-10 shrink-0 cursor-pointer touch-manipulation border-b border-[#bda28d] px-2 py-1 text-sm tracking-wider text-[#79545a] transition active:opacity-60">设置</button>}
       {wallView === "edit" && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowAddMenu(value => !value); }} className="relative z-[1002] pointer-events-auto grid h-10 w-10 shrink-0 cursor-pointer touch-manipulation place-items-center border border-[#d8c4b4] bg-[#fffaf2] text-[#87565b] transition active:scale-95" aria-label="添加照片"><Plus size={18}/></button>}
       {(wallView === "edit" || wallView === "panorama" || wallView === "memories" || wallView === "timeline") && <button type="button" onClick={() => void exportWall()} disabled={exportBusy || !photos.length} className="grid h-10 w-10 shrink-0 place-items-center border border-[#d8c4b4] bg-[#fffaf3]/80 text-[#795b52] disabled:opacity-40" aria-label="导出整墙 PNG"><Download size={17}/></button>}
       {wallView === "panorama" && <button type="button" onClick={() => setWallView("edit")} className="shrink-0 border-b border-[#bda28d] px-2 py-2 text-sm text-[#79545a]">编辑墙面</button>}
-      {(wallView === "memories" || wallView === "timeline") && <button type="button" onClick={() => setWallView("edit")} className="shrink-0 border-b border-[#bda28d] px-2 py-2 text-sm text-[#79545a]">编辑</button>}
+      {(wallView === "memories" || wallView === "timeline" || wallView === "creations") && <button type="button" onClick={() => setWallView("edit")} className="shrink-0 border-b border-[#bda28d] px-2 py-2 text-sm text-[#79545a]">编辑</button>}
       {wallView === "edit" && <span className="shrink-0 text-xs tracking-wide text-[#87565b]">画布</span>}
     </header>
 
@@ -1440,6 +1462,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       <button type="button" onClick={() => setWallView("panorama")} className={`border-b-2 px-1 py-2 text-sm ${wallView==="panorama"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>全景墙</button>
       <button type="button" onClick={() => setWallView("timeline")} className={`border-b-2 px-1 py-2 text-sm ${wallView==="timeline"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>时间轴</button>
       <button type="button" onClick={() => { setWallView("album"); setActiveAlbumId(null); setAlbumEditMode(false); }} className={`border-b-2 px-1 py-2 text-sm ${wallView==="album"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>相册</button>
+      <button type="button" onClick={() => setWallView("creations")} className={`border-b-2 px-1 py-2 text-sm ${wallView==="creations"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>共创记录</button>
     </nav>}
     {wallView === "edit" && showAddMenu && <div className="absolute right-3 z-30 w-[min(17rem,calc(100vw-1.5rem))] border border-[#d7c2b1] bg-[#fffaf2] p-1 shadow-[0_16px_44px_rgba(60,42,32,.22)]" style={{top:"calc(max(12px, var(--page-header-safe-top, 48px)) + 64px)"}}>
       <button onClick={() => { setShowAddMenu(false); fileRef.current?.click(); }} className="flex min-h-11 w-full items-center gap-3 border-b border-[#eadfd3] px-3 py-2.5 text-left text-sm leading-5 text-[#5d4942] last:border-b-0 hover:bg-[#f3e9df]"><ImagePlus size={17}/>收藏我的照片</button>
@@ -1604,7 +1627,53 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           </div>
         </div>
       </section>
-      </> : wallView === "album" ? <PhotoAlbumView
+      </> : wallView === "creations" ? <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-24 pt-4 sm:px-7" style={{WebkitOverflowScrolling:"touch"}}>
+        <div className="mx-auto max-w-3xl">
+          <div className="mb-5 border-b border-[#d8c4b4] pb-4">
+            <p className="text-[10px] tracking-[.22em] text-[#a18172]">LITTLE THINGS WE MADE TOGETHER</p>
+            <h2 className="mt-2 font-serif text-2xl font-normal text-[#5d4942]">把每一笔心意都留在这里</h2>
+            <p className="mt-2 text-xs leading-6 text-[#8b7569]">这里保存每次角色创作的时间、作者、原始笔迹和关联照片。即使之后清理或修改墙面，记录里的笔迹快照也会保留。</p>
+          </div>
+          {(state.creationRecords ?? []).length ? <div className="space-y-5">
+            {[...(state.creationRecords ?? [])].sort((a,b) => b.createdAt.localeCompare(a.createdAt)).map(record => {
+              const linkedPhotos = record.photoIds.map(id => state.photos.find(photo => photo.id === id)).filter((photo): photo is PhotoWallPhoto => Boolean(photo));
+              return <article key={record.id} className="overflow-hidden border border-[#dfcbb8] bg-[#fffaf2] shadow-[0_8px_22px_rgba(92,68,48,.08)]">
+                <header className="flex items-start gap-3 border-b border-[#eadbc9] px-4 py-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center border border-[#d9b9ae] bg-[#f8e9e6] font-serif text-[#87565b]">{record.authorName.slice(0,1)}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-serif text-sm text-[#5d4942]">{record.authorName} 的小小创作</div>
+                    <time className="mt-1 block text-[10px] tracking-wide text-[#a08c74]">{new Date(record.createdAt).toLocaleString("zh-CN",{year:"numeric",month:"long",day:"numeric",hour:"2-digit",minute:"2-digit"})}</time>
+                  </div>
+                  <span className="shrink-0 border-b border-[#d8c4b4] px-1 py-1 text-[10px] text-[#a18172]">{record.doodles.length} 笔心意</span>
+                </header>
+                <div className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(140px,.72fr)]">
+                  <div>
+                    <p className="whitespace-pre-wrap break-words font-serif text-sm leading-7 text-[#665246]">{record.narrative}</p>
+                    <div className="mt-4 flex flex-wrap gap-2 text-[10px] text-[#9b8774]">
+                      <span className="border border-[#eadbc9] px-2 py-1">{record.authorType === "character" ? "角色创作" : "共同创作"}</span>
+                      <span className="border border-[#eadbc9] px-2 py-1">{record.doodles.filter(item => item.kind === "stroke").length} 条笔迹</span>
+                      <span className="border border-[#eadbc9] px-2 py-1">{record.doodles.filter(item => item.kind === "sticker").length} 个贴纸</span>
+                    </div>
+                  </div>
+                  <div className="min-h-[130px] border border-[#e8d7c5] bg-[#f8f0e5] p-2">
+                    <svg viewBox="0 0 100 100" className="h-full min-h-[126px] w-full" role="img" aria-label={record.authorName + "留下的涂鸦笔迹"}>
+                      {record.doodles.map(doodle => doodle.kind === "stroke"
+                        ? <polyline key={doodle.id} points={doodle.points.map(point => (point.x*100)+","+(point.y*100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(1,doodle.width/2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
+                        : <text key={doodle.id} x={(doodle.points[0]?.x ?? .5)*100} y={(doodle.points[0]?.y ?? .5)*100} fill={doodle.color} fontSize="9" textAnchor="middle" dominantBaseline="middle">{doodle.content || "✦"}</text>)}
+                    </svg>
+                  </div>
+                </div>
+                <footer className="border-t border-[#eadbc9] px-4 py-3">
+                  <div className="mb-2 text-[10px] tracking-wide text-[#a08c74]">关联照片</div>
+                  {linkedPhotos.length ? <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">{linkedPhotos.map(photo => <div key={photo.id} className="min-w-0"><PhotoThumbnail photo={photo} onOpen={() => openPhoto(photo)}/><p className="mt-1 truncate text-[10px] text-[#806b58]">{photo.title || "未命名的瞬间"}</p></div>)}</div> : <p className="text-xs text-[#9a8776]">这次创作没有准确匹配到单张照片，笔迹已单独保存。</p>}
+                </footer>
+              </article>;
+            })}
+          </div> : <div className="grid min-h-[40dvh] place-items-center border border-dashed border-[#d8c4b4] bg-[#fffaf2]/60 px-5 text-center">
+            <div><Feather size={30} className="mx-auto text-[#b18c7d]"/><h3 className="mt-3 font-serif text-lg text-[#6b5547]">还没有共同创作记录</h3><p className="mt-2 max-w-sm text-xs leading-6 text-[#9a8776]">在编辑墙面中点击「角色涂鸦」，角色留下的每一笔、创作时间和关联照片都会保存到这里。</p><button type="button" onClick={() => setWallView("edit")} className="mt-4 border-b border-[#bda28d] px-2 py-2 text-sm text-[#87565b]">去邀请角色创作</button></div>
+          </div>}
+        </div>
+      </div> : wallView === "album" ? <PhotoAlbumView
         albums={albums}
         photos={photos}
         activeAlbumId={activeAlbumId}
