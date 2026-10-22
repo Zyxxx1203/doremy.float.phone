@@ -19,6 +19,7 @@ import { PhotoWallCanvas, fallbackPlacement } from "@/components/photo-wall/phot
 import { applyWorldGrow, planWorldGrow, remapDoodles, remapPlacement, wallWorldOf, type WorldGrow } from "@/lib/photo-wall-world";
 import { buildTemplateSlots, listAllTemplates, loadCustomTemplates, loadTemplateFill, saveCustomTemplates, saveTemplateFill } from "@/lib/photo-wall-templates";
 import { downloadPhotoWallPng } from "@/lib/photo-wall-export";
+import { parseCharacterWallDoodles } from "@/lib/photo-wall-character-doodle";
 
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
 type Filter = "all" | "mine" | "characters";
@@ -1394,36 +1395,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         appId: "photo_wall", appTags: ["photo_wall"], toolsAllowed: false,
         ephemeralSystemNote: "这是照片墙的一次性涂鸦创作任务。只输出符合要求的 JSON，不调用工具、不复述任务。坐标必须在 0 到 1 之间；只新增装饰元素，不输出照片操作。",
       });
-      const raw = flattenCompletionResult(result).trim()
-        .replace(/^```(?:json)?\s*/i, "")
-        .replace(/\s*```$/, "");
-      const parsed = JSON.parse(raw) as { elements?: unknown; doodles?: unknown; summary?: unknown };
-      const candidates = Array.isArray(parsed.elements) ? parsed.elements : Array.isArray(parsed.doodles) ? parsed.doodles : [];
-      const createdAt = new Date().toISOString();
-      const allowedStickers = new Set(["♡", "❤", "✦", "✿", "☾", "☘", "♪", "★", "❀", "✧"]);
-      const clamp = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? Math.min(0.98, Math.max(0.02, value)) : null;
-      const created: PhotoWallDoodle[] = [];
-      for (const candidate of candidates.slice(0, 8)) {
-        if (!candidate || typeof candidate !== "object") continue;
-        const item = candidate as { kind?: unknown; content?: unknown; x?: unknown; y?: unknown; points?: unknown; color?: unknown; width?: unknown };
-        const color = typeof item.color === "string" && /^#[0-9a-f]{6}$/i.test(item.color) ? item.color : "#d98ca3";
-        const width = typeof item.width === "number" && Number.isFinite(item.width) ? Math.min(5, Math.max(1, item.width)) : 2.5;
-        if (item.kind === "sticker") {
-          const x = clamp(item.x), y = clamp(item.y);
-          if (x === null || y === null || typeof item.content !== "string" || !allowedStickers.has(item.content)) continue;
-          created.push({ id: createPhotoWallId(), kind: "sticker", content: item.content, color, width, points: [{ x, y }], createdAt, authorType: "character", authorId: artist.id, authorName: artist.name });
-        } else if (item.kind === "stroke" && Array.isArray(item.points)) {
-          const points = item.points.slice(0, 18).flatMap(value => {
-            if (!value || typeof value !== "object") return [];
-            const point = value as { x?: unknown; y?: unknown };
-            const x = clamp(point.x), y = clamp(point.y);
-            return x === null || y === null ? [] : [{ x, y }];
-          });
-          if (points.length < 3) continue;
-          created.push({ id: createPhotoWallId(), kind: "stroke", color, width, points, createdAt, authorType: "character", authorId: artist.id, authorName: artist.name });
-        }
-      }
-      if (!created.length) throw new Error("角色返回的涂鸦格式不完整，请再试一次。");
+      const { doodles: created, summary: characterSummary } = parseCharacterWallDoodles(flattenCompletionResult(result), artist);
       const latest = stateRef.current;
       const photoIds = new Set<string>();
       for (const doodle of created) {
@@ -1438,9 +1410,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       }
       const fallbackPhotoId = wallActivePhotoId ?? selectedPhotoId;
       if (!photoIds.size && fallbackPhotoId && latest.photos.some(photo => photo.id === fallbackPhotoId)) photoIds.add(fallbackPhotoId);
-      const narrative = typeof parsed.summary === "string" && parsed.summary.trim()
-        ? parsed.summary.trim().slice(0, 300)
-        : `${artist.name}今天在照片墙上留下了${created.length}个小装饰。每一笔都被认真收进了我们的共同回忆里。`;
+      const narrative = characterSummary || `${artist.name}今天在照片墙上留下了${created.length}个小装饰。每一笔都被认真收进了我们的共同回忆里。`;
       const record: PhotoWallCreationRecord = {
         id: createPhotoWallId(), createdAt, authorType: "character", authorId: artist.id,
         authorName: artist.name, narrative, photoIds: [...photoIds], doodles: created,
