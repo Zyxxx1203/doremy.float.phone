@@ -561,12 +561,13 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
   const [src, setSrc] = useState("");
   const objectUrlRef = useRef<string | null>(null);
   const [failed, setFailed] = useState(false);
-  const [inView, setInView] = useState(true);
+  const [inView, setInView] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const node = rootRef.current;
-    if (!node || typeof IntersectionObserver === "undefined") return;
+    if (!node) return;
+    if (typeof IntersectionObserver === "undefined") { setInView(true); return; }
     const observer = new IntersectionObserver(entries => {
       for (const entry of entries) setInView(entry.isIntersecting);
     }, { rootMargin: "600px" });
