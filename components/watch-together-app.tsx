@@ -241,7 +241,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [videoTitle, setVideoTitle] = useState("");
   const [resolverState, setResolverState] = useState<{ state: "idle" | "resolving" | "ok" | "failed"; message?: string }>({ state: "idle" });
   const [mediaPaused, setMediaPaused] = useState(false);
-  const [danmakuDraft, setDanmakuDraft] = useState("");
   const [resolutionMessage, setResolutionMessage] = useState("");
   const [transcriberEndpoint, setTranscriberEndpoint] = useState(() => {
     try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_transcriber_endpoint_v1") || "" : ""; } catch { return ""; }
@@ -1201,7 +1200,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   if (showGlobalCompanion) return <GlobalWatchCompanionApp onClose={() => setShowGlobalCompanion(false)} onNotice={onNotice} />;
 
-  return <div ref={watchRootRef} data-watch-fullscreen="false" data-landscape-mode="false" data-source-panel={showVideoSourcePanel ? "true" : "false"} className="watch-together-app pointer-events-auto isolate absolute inset-0 z-[1000] flex min-w-0 flex-col overflow-hidden text-[#f0e6d8]" style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)" }}>
+  return <div ref={watchRootRef} data-landscape-mode="false" data-source-panel={showVideoSourcePanel ? "true" : "false"} className="watch-together-app pointer-events-auto isolate absolute inset-0 z-[1000] flex min-w-0 flex-col overflow-hidden text-[#f0e6d8]" style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)" }}>
     {/* 弹幕动画：仓库里从未定义过 watchDanmaku，之前那条 animation 是空转，这里补上真实 keyframes */}
     <style>{`
       .watch-together-main { display:flex; flex-direction:column; }
@@ -1220,104 +1219,104 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-danmaku-track[data-kind="user"] > span { background:rgba(54,101,144,.82); }
 
       @media (max-width:699px), (orientation:portrait) {
-        .watch-together-app:not([data-watch-fullscreen="true"]) > main.watch-together-main {
+        .watch-together-app > main.watch-together-main {
           display:flex; flex-direction:column; gap:12px; padding:10px 12px max(20px,env(safe-area-inset-bottom));
           flex:1 1 auto; min-height:0; overflow-x:hidden; overflow-y:auto!important; overscroll-behavior:contain;
         }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-room-title { order:0; width:100%; max-width:none; margin:0!important; padding:0!important; }
-         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player { order:1; width:100%; max-width:none; height:min(56.25vw,48dvh); min-height:0; aspect-ratio:auto; max-height:48dvh; align-self:stretch; border-width:3px!important; border-radius:14px!important; }
-         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > video { display:block; width:100%; height:100%; max-height:none; aspect-ratio:auto; object-fit:contain; }
-         .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > iframe { display:block; width:100%; height:100%; max-height:none; aspect-ratio:auto; object-fit:contain; }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel { order:2; width:100%; max-width:none; min-height:0; height:auto; overflow:visible; margin:0!important; flex-shrink:0; }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel > div { display:block; min-height:0; height:auto; overflow:visible; padding:12px!important; border-radius:18px!important; }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-comment-list { min-height:110px; max-height:38vh; overflow-y:auto; overscroll-behavior:contain; }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel section { flex:none; min-height:0; overflow:visible; display:block; margin-top:14px; padding-top:12px; }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel { order:3; width:100%; max-width:none; margin:0!important; padding:10px!important; max-height:none; overflow:visible; flex-shrink:0; border-radius:16px!important; }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel input { padding-top:10px!important; padding-bottom:10px!important; }
-        .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel button { padding:9px 11px!important; }
+        .watch-together-app .watch-room-title { order:0; width:100%; max-width:none; margin:0!important; padding:0!important; }
+         .watch-together-app .watch-player { order:1; width:100%; max-width:none; height:min(56.25vw,48dvh); min-height:0; aspect-ratio:auto; max-height:48dvh; align-self:stretch; border-width:3px!important; border-radius:14px!important; }
+         .watch-together-app .watch-player > video { display:block; width:100%; height:100%; max-height:none; aspect-ratio:auto; object-fit:contain; }
+         .watch-together-app .watch-player > iframe { display:block; width:100%; height:100%; max-height:none; aspect-ratio:auto; object-fit:contain; }
+        .watch-together-app .watch-interaction-panel { order:2; width:100%; max-width:none; min-height:0; height:auto; overflow:visible; margin:0!important; flex-shrink:0; }
+        .watch-together-app .watch-interaction-panel > div { display:block; min-height:0; height:auto; overflow:visible; padding:12px!important; border-radius:18px!important; }
+        .watch-together-app .watch-interaction-panel .watch-comment-list { min-height:110px; max-height:38vh; overflow-y:auto; overscroll-behavior:contain; }
+        .watch-together-app .watch-interaction-panel section { flex:none; min-height:0; overflow:visible; display:block; margin-top:14px; padding-top:12px; }
+        .watch-together-app .watch-link-panel { order:3; width:100%; max-width:none; margin:0!important; padding:10px!important; max-height:none; overflow:visible; flex-shrink:0; border-radius:16px!important; }
+        .watch-together-app .watch-link-panel input { padding-top:10px!important; padding-bottom:10px!important; }
+        .watch-together-app .watch-link-panel button { padding:9px 11px!important; }
       }
       
 
       /* Fullscreen is intentionally delegated to native player controls; never resize the whole WebView. */
       /* Chat-first redesign: stable inline video, conversation takes the main space. */
-      .watch-together-app:not([data-watch-fullscreen="true"]) > main.watch-together-main {
+      .watch-together-app > main.watch-together-main {
         display:flex!important; flex-direction:column!important; gap:10px!important;
         min-height:0!important; overflow:hidden!important; padding:10px 12px max(10px,env(safe-area-inset-bottom))!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-room-title {
+      .watch-together-app .watch-room-title {
         order:0!important; flex:0 0 auto!important; width:100%!important; max-width:none!important; margin:0!important; padding:0!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player {
+      .watch-together-app .watch-player {
         order:1!important; flex:0 0 auto!important; align-self:center!important;
         width:min(100%,520px)!important; height:auto!important; aspect-ratio:16/9!important;
         max-height:30dvh!important; min-height:0!important; border:2px solid rgba(201,154,120,.55)!important;
         border-radius:14px!important; box-shadow:0 8px 24px rgba(60,38,25,.14)!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > video,
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > iframe {
+      .watch-together-app .watch-player > video,
+      .watch-together-app .watch-player > iframe {
         display:block!important; width:100%!important; height:100%!important; max-height:30dvh!important;
         aspect-ratio:16/9!important; object-fit:contain!important; border:0!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player-actions > button[aria-label="全屏"],
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player-actions > button[aria-label="退出全屏"] { display:none!important; }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel {
+      .watch-together-app .watch-player-actions > button[aria-label="全屏"],
+      .watch-together-app .watch-player-actions > button[aria-label="退出全屏"] { display:none!important; }
+      .watch-together-app .watch-interaction-panel {
         order:2!important; display:flex!important; flex:1 1 0!important; min-height:180px!important;
         height:auto!important; width:100%!important; max-width:none!important; margin:0!important; overflow:hidden!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel > div {
+      .watch-together-app .watch-interaction-panel > div {
         display:flex!important; flex-direction:column!important; flex:1 1 auto!important; min-height:0!important;
         width:100%!important; height:100%!important; max-width:none!important; overflow:hidden!important;
         padding:14px!important; border-radius:22px!important; border:1px solid rgba(215,174,132,.34)!important;
         background:linear-gradient(145deg,rgba(255,250,242,.98),rgba(246,233,218,.98))!important;
         box-shadow:0 10px 28px rgba(91,62,40,.10),inset 0 1px 0 #fff!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="message"] {
+      .watch-together-app .watch-interaction-panel [data-part="message"] {
         flex:0 0 auto!important; border-radius:16px!important; padding:10px!important;
         background:rgba(255,255,255,.7)!important; border:1px solid rgba(201,154,120,.2)!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="message"] p {
+      .watch-together-app .watch-interaction-panel [data-part="message"] p {
         color:#574237!important; line-height:1.65!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="message"] span { color:#8b6a56!important; }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-discussion-composer {
+      .watch-together-app .watch-interaction-panel [data-part="message"] span { color:#8b6a56!important; }
+      .watch-together-app .watch-interaction-panel .watch-discussion-composer {
         flex:0 0 auto!important; margin-top:10px!important; padding-top:10px!important;
         border-color:rgba(157,119,91,.22)!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel textarea {
+      .watch-together-app .watch-interaction-panel textarea {
         background:#fffdf9!important; color:#574237!important; border-color:rgba(157,119,91,.28)!important;
         border-radius:14px!important; min-height:66px!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel input { color:#574237!important; }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-comment-list {
+      .watch-together-app .watch-interaction-panel input { color:#574237!important; }
+      .watch-together-app .watch-interaction-panel .watch-comment-list {
         flex:1 1 0!important; min-height:72px!important; max-height:none!important; overflow-y:auto!important;
         padding:10px 2px!important; overscroll-behavior:contain!important; -webkit-overflow-scrolling:touch;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-comment-list > div > div {
+      .watch-together-app .watch-interaction-panel .watch-comment-list > div > div {
         border-radius:16px!important; padding:9px 12px!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-comment-list p {
+      .watch-together-app .watch-interaction-panel .watch-comment-list p {
         color:#59483d!important; line-height:1.65!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="history"] {
+      .watch-together-app .watch-interaction-panel [data-part="history"] {
         display:flex!important; flex:1 1 0!important; flex-direction:column!important; min-height:0!important;
         margin-top:10px!important; padding-top:10px!important; overflow:hidden!important;
         border-color:rgba(157,119,91,.2)!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="history"] > p,
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="history"] h2 { color:#785b49!important; }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="actions"],
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="actions2"] { flex:0 0 auto!important; }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel {
+      .watch-together-app .watch-interaction-panel [data-part="history"] > p,
+      .watch-together-app .watch-interaction-panel [data-part="history"] h2 { color:#785b49!important; }
+      .watch-together-app .watch-interaction-panel [data-part="actions"],
+      .watch-together-app .watch-interaction-panel [data-part="actions2"] { flex:0 0 auto!important; }
+      .watch-together-app .watch-link-panel {
         order:3!important; flex:0 0 auto!important; max-height:24dvh!important; overflow:auto!important;
         width:100%!important; max-width:none!important; margin:0!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player-actions > button {
+      .watch-together-app .watch-player-actions > button {
         width:30px!important; height:30px!important;
       }
       
 
       /* 聊天室重排：视频更大，聊天占满剩余高度；视频来源控件收进播放器。 */
-      .watch-together-app:not([data-watch-fullscreen="true"]) > main.watch-together-main {
+      .watch-together-app > main.watch-together-main {
         display:grid!important;
         grid-template-columns:minmax(0,1fr)!important;
         grid-template-rows:minmax(0, min(44dvh, 440px)) minmax(0,1fr)!important;
@@ -1327,44 +1326,44 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         overflow:hidden!important;
         padding:8px 10px max(8px,env(safe-area-inset-bottom))!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-room-title { display:block!important; }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player {
+      .watch-together-app .watch-room-title { display:block!important; }
+      .watch-together-app .watch-player {
         grid-area:player!important; align-self:stretch!important; width:100%!important;
         height:100%!important; min-height:0!important; max-height:none!important;
         aspect-ratio:auto!important; margin:0!important; border-width:2px!important;
         border-radius:14px!important; overflow:hidden!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > video,
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-player > iframe {
+      .watch-together-app .watch-player > video,
+      .watch-together-app .watch-player > iframe {
         display:block!important; width:100%!important; height:100%!important;
         max-height:none!important; aspect-ratio:auto!important; object-fit:contain!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel {
+      .watch-together-app .watch-interaction-panel {
         grid-area:interaction!important; display:flex!important; flex-direction:column!important;
         min-width:0!important; min-height:0!important; height:100%!important; max-height:none!important;
         margin:0!important; overflow:hidden!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel > [data-part="card"] {
+      .watch-together-app .watch-interaction-panel > [data-part="card"] {
         display:flex!important; flex:1 1 auto!important; flex-direction:column!important;
         width:100%!important; height:100%!important; min-width:0!important; min-height:0!important;
         max-height:none!important; overflow:hidden!important; box-sizing:border-box!important;
         padding:10px!important; border-radius:18px!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="message"] { flex:0 0 auto!important; max-height:92px!important; overflow:auto!important; }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-discussion-composer { flex:0 0 auto!important; margin-top:6px!important; padding-top:6px!important; }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-discussion-composer textarea { min-height:42px!important; max-height:72px!important; }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel [data-part="history"] {
+      .watch-together-app .watch-interaction-panel [data-part="message"] { flex:0 0 auto!important; max-height:92px!important; overflow:auto!important; }
+      .watch-together-app .watch-interaction-panel .watch-discussion-composer { flex:0 0 auto!important; margin-top:6px!important; padding-top:6px!important; }
+      .watch-together-app .watch-interaction-panel .watch-discussion-composer textarea { min-height:42px!important; max-height:72px!important; }
+      .watch-together-app .watch-interaction-panel [data-part="history"] {
         display:flex!important; flex:1 1 0!important; flex-direction:column!important;
         min-height:0!important; max-height:none!important; overflow:hidden!important;
         margin-top:6px!important; padding-top:6px!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-interaction-panel .watch-comment-list {
+      .watch-together-app .watch-interaction-panel .watch-comment-list {
         flex:1 1 0!important; min-height:0!important; max-height:none!important;
         overflow-y:auto!important; overflow-x:hidden!important; overscroll-behavior:contain!important;
         -webkit-overflow-scrolling:touch!important; touch-action:pan-y!important;
       }
-      .watch-together-app:not([data-watch-fullscreen="true"]) [data-resolver-state] { display:none!important; }
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-link-panel { display:none!important; }
+      .watch-together-app [data-resolver-state] { display:none!important; }
+      .watch-together-app .watch-link-panel { display:none!important; }
       .watch-together-app[data-source-panel="true"] .watch-link-panel {
         display:block!important; position:fixed!important; z-index:4000!important;
         left:10px!important; right:10px!important; bottom:max(10px,env(safe-area-inset-bottom))!important;
@@ -1386,17 +1385,17 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-control-capsule[data-collapsed="true"] .watch-capsule-button{display:none!important}
       .watch-capsule-toggle{display:grid;flex:0 0 28px;place-items:center;align-self:center;color:#8e6e55;border-radius:999px}
       .watch-capsule-toggle:active{background:rgba(201,154,120,.18)}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"])>main.watch-together-main{display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-rows:auto minmax(0,min(38dvh,390px)) minmax(0,1fr)!important;grid-template-areas:"title" "player" "interaction"!important;gap:8px!important;padding:7px 12px max(10px,env(safe-area-inset-bottom))!important;overflow:hidden!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-title{display:block!important;grid-area:title!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player{grid-area:player!important;align-self:center!important;width:100%!important;height:auto!important;aspect-ratio:16/9!important;min-height:0!important;max-height:34dvh!important;margin:0 auto!important;border-radius:15px!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player>video,.watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player>iframe{width:100%!important;height:100%!important;aspect-ratio:16/9!important;object-fit:contain!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-interaction-panel{grid-area:interaction!important;display:flex!important;min-height:0!important;height:100%!important;width:100%!important;max-width:none!important;margin:0!important;overflow:hidden!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card{width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;border-radius:16px!important;padding:12px!important;background:rgba(255,250,242,.96)!important;border:1px solid rgba(185,153,122,.3)!important;box-shadow:0 8px 20px rgba(96,67,43,.07)!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="message"],.watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="actions"],.watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="actions2"],.watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="history"]{display:none!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer{display:block!important;margin-top:auto!important;border:0!important;padding-top:0!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer>div:first-child{display:none!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer textarea{min-height:44px!important;max-height:100px!important;border-radius:14px!important;background:#fff!important;color:#5c4637!important;border-color:#e2d0bd!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-link-panel{display:none!important}
+      .watch-together-app:not([data-landscape-mode="true"])>main.watch-together-main{display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-rows:auto minmax(0,min(38dvh,390px)) minmax(0,1fr)!important;grid-template-areas:"title" "player" "interaction"!important;gap:8px!important;padding:7px 12px max(10px,env(safe-area-inset-bottom))!important;overflow:hidden!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-title{display:block!important;grid-area:title!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-player{grid-area:player!important;align-self:center!important;width:100%!important;height:auto!important;aspect-ratio:16/9!important;min-height:0!important;max-height:34dvh!important;margin:0 auto!important;border-radius:15px!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-player>video,.watch-together-app:not([data-landscape-mode="true"]) .watch-player>iframe{width:100%!important;height:100%!important;aspect-ratio:16/9!important;object-fit:contain!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-interaction-panel{grid-area:interaction!important;display:flex!important;min-height:0!important;height:100%!important;width:100%!important;max-width:none!important;margin:0!important;overflow:hidden!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card{width:100%!important;height:100%!important;min-height:0!important;overflow:hidden!important;border-radius:16px!important;padding:12px!important;background:rgba(255,250,242,.96)!important;border:1px solid rgba(185,153,122,.3)!important;box-shadow:0 8px 20px rgba(96,67,43,.07)!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="message"],.watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="actions"],.watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="actions2"],.watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="history"]{display:none!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-discussion-composer{display:block!important;margin-top:auto!important;border:0!important;padding-top:0!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-discussion-composer>div:first-child{display:none!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-discussion-composer textarea{min-height:44px!important;max-height:100px!important;border-radius:14px!important;background:#fff!important;color:#5c4637!important;border-color:#e2d0bd!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-link-panel{display:none!important}
       .watch-together-app[data-source-panel="true"] .watch-link-panel{display:block!important;position:fixed!important;z-index:4020!important;left:10px!important;right:10px!important;bottom:max(10px,env(safe-area-inset-bottom))!important;width:auto!important;max-width:760px!important;max-height:78dvh!important;overflow:auto!important;margin:0 auto!important}
       .watch-together-app[data-landscape-mode="true"]{background:#100d0b!important}
       .watch-together-app[data-landscape-mode="true"] .watch-landscape-header{background:#17120f!important;color:#f4e8d9!important}
@@ -1413,8 +1412,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer>div:last-child{position:absolute!important;right:18px!important;bottom:calc(max(8px,env(safe-area-inset-bottom)) + 4px)!important}
       .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer button{border-radius:999px!important;background:#c99a78!important}
       .watch-legacy-record-button{display:none!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) [data-resolver-state]{display:none!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="composer"]{margin-top:auto!important}
+      .watch-together-app:not([data-landscape-mode="true"]) [data-resolver-state]{display:none!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="composer"]{margin-top:auto!important}
       .watch-together-app[data-landscape-mode="true"] .watch-topbar{display:none!important}
       .watch-together-app[data-landscape-mode="true"] .watch-landscape-header{display:flex!important}
       .watch-together-app[data-landscape-mode="true"] .watch-landscape-header button{color:#f4e8d9!important}
@@ -1427,60 +1426,60 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-control-capsule[data-collapsed="true"]{width:auto!important;align-self:center!important;justify-content:center!important;padding:4px 10px!important;border-radius:999px!important}
       .watch-control-capsule[data-collapsed="true"] .watch-capsule-toggle{width:28px;height:24px}
       .watch-together-app [data-part="composer"] textarea{font-family:inherit}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="history"]{display:flex!important;flex:1 1 auto!important;flex-direction:column!important;min-height:0!important;margin:0!important;border:0!important;padding:0!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="history"]>div:first-child,.watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="history"]>p,.watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="history"]>div:not(.watch-comment-list){display:none!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-comment-list{display:flex!important;flex:1 1 auto!important;flex-direction:column!important;max-height:none!important;min-height:0!important;margin:0!important;padding:0 0 10px!important;overflow-y:auto!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="history"]{display:flex!important;flex:1 1 auto!important;flex-direction:column!important;min-height:0!important;margin:0!important;border:0!important;padding:0!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="history"]>div:first-child,.watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="history"]>p,.watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="history"]>div:not(.watch-comment-list){display:none!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-comment-list{display:flex!important;flex:1 1 auto!important;flex-direction:column!important;max-height:none!important;min-height:0!important;margin:0!important;padding:0 0 10px!important;overflow-y:auto!important}
       .watch-together-app[data-landscape-mode="true"]>main.watch-together-main{padding-top:48px!important}
       .watch-together-app[data-landscape-mode="true"] .watch-landscape-header{position:absolute!important;top:0!important;left:0!important;right:0!important;z-index:120!important}
       .watch-together-app[data-landscape-mode="true"] .watch-player .watch-danmaku-fly{z-index:15!important}
       .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer>div:last-child button{min-width:64px!important}
 .watch-together-app[data-landscape-mode="true"][data-source-panel="true"] .watch-link-panel{display:block!important;position:fixed!important;z-index:4020!important;left:10px!important;right:10px!important;bottom:max(10px,env(safe-area-inset-bottom))!important;width:auto!important;max-height:78dvh!important;overflow:auto!important;margin:0 auto!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-title{display:block!important;grid-area:title!important;min-width:0!important;margin:0!important;padding:0!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player{grid-area:player!important;align-self:stretch!important;width:100%!important;height:100%!important;max-height:none!important;min-height:0!important;aspect-ratio:auto!important;margin:0!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player>video,.watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player>iframe{width:100%!important;height:100%!important;max-height:none!important;aspect-ratio:auto!important;object-fit:contain!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-title{display:block!important;grid-area:title!important;min-width:0!important;margin:0!important;padding:0!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-player{grid-area:player!important;align-self:stretch!important;width:100%!important;height:100%!important;max-height:none!important;min-height:0!important;aspect-ratio:auto!important;margin:0!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-player>video,.watch-together-app:not([data-landscape-mode="true"]) .watch-player>iframe{width:100%!important;height:100%!important;max-height:none!important;aspect-ratio:auto!important;object-fit:contain!important}
       .watch-together-app .watch-sync-thread{position:absolute;width:43px;height:1px;background:linear-gradient(90deg,transparent,#c49a78,transparent);opacity:.7}
       .watch-together-app .watch-sync-avatar img{display:block;width:100%;height:100%;object-fit:cover}
       .watch-together-app .watch-sync-wave{transform-origin:center}
-      .watch-together-app:not([data-watch-fullscreen="true"]) .watch-control-capsule{margin-top:0!important;margin-bottom:1px!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-control-capsule[data-collapsed="true"]{width:calc(100% - 24px)!important;align-self:stretch!important;justify-content:space-between!important;padding:4px 10px!important;border-radius:14px!important;margin-left:auto!important;margin-right:auto!important}
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-control-capsule[data-collapsed="true"] .watch-capsule-toggle{width:28px!important;height:24px!important}
+      .watch-together-app .watch-control-capsule{margin-top:0!important;margin-bottom:1px!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-control-capsule[data-collapsed="true"]{width:calc(100% - 24px)!important;align-self:stretch!important;justify-content:space-between!important;padding:4px 10px!important;border-radius:14px!important;margin-left:auto!important;margin-right:auto!important}
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-control-capsule[data-collapsed="true"] .watch-capsule-toggle{width:28px!important;height:24px!important}
       .watch-together-app[data-watch-fullscreen="true"] .watch-control-capsule{display:none!important}
 
       /* Final mobile layout authority: fixed 16:9 screen and independently scrollable discussion. */
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) > main.watch-together-main {
+      .watch-together-app:not([data-landscape-mode="true"]) > main.watch-together-main {
         display:grid!important; grid-template-columns:minmax(0,1fr)!important;
         grid-template-rows:auto auto minmax(0,1fr)!important;
         grid-template-areas:"title" "player" "interaction"!important;
         gap:8px!important; min-height:0!important; overflow:hidden!important;
         padding:7px 12px max(10px,env(safe-area-inset-bottom))!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player {
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-player {
         grid-area:player!important; justify-self:center!important; align-self:center!important;
         width:min(100%, 56.888dvh)!important; height:auto!important;
         aspect-ratio:16 / 9!important; min-height:0!important; max-height:32dvh!important;
         margin:0 auto!important; overflow:hidden!important; position:relative!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player > video,
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-player > iframe {
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-player > video,
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-player > iframe {
         position:absolute!important; inset:0!important; display:block!important;
         width:100%!important; height:100%!important; max-width:100%!important; max-height:100%!important;
         aspect-ratio:auto!important; object-fit:contain!important; border:0!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-interaction-panel {
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-interaction-panel {
         grid-area:interaction!important; display:flex!important; min-width:0!important; min-height:0!important;
         height:100%!important; max-height:none!important; overflow:hidden!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="history"] {
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="history"] {
         display:flex!important; flex:1 1 auto!important; flex-direction:column!important;
         min-height:0!important; overflow:hidden!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-comment-list {
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-comment-list {
         display:flex!important; flex:1 1 auto!important; flex-direction:column!important;
         min-height:0!important; max-height:none!important; overflow-y:auto!important; overflow-x:hidden!important;
         overscroll-behavior:contain!important; -webkit-overflow-scrolling:touch!important; touch-action:pan-y!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [data-part="history"] { order:1!important; }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [data-part="composer"] { order:2!important; margin-top:0!important; padding-top:8px!important; }
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card > [data-part="history"] { order:1!important; }
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card > [data-part="composer"] { order:2!important; margin-top:0!important; padding-top:8px!important; }
       .watch-together-app .watch-comment-list [data-comment-author] {
         display:block!important; margin-bottom:3px!important; font:600 10px/1.4 system-ui,sans-serif!important;
         letter-spacing:.04em!important; color:#a77c5d!important;
@@ -1491,26 +1490,26 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       }
 
       /* Final mobile chat layout: history scrolls independently; compact composer is pinned at the bottom. */
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card {
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card {
         display:flex!important; flex-direction:column!important; height:100%!important; min-height:0!important;
         overflow:hidden!important; padding:10px 10px max(8px,env(safe-area-inset-bottom))!important;
         background:linear-gradient(160deg,rgba(255,249,239,.97),rgba(244,226,205,.98))!important;
         border:1px solid rgba(172,126,88,.48)!important; border-radius:18px!important;
         box-shadow:0 8px 22px rgba(83,54,33,.12),inset 0 1px 0 rgba(255,255,255,.9)!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="message"],
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="actions"],
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="actions2"] { display:none!important; }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card [data-part="history"] {
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="message"],
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="actions"],
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="actions2"] { display:none!important; }
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="history"] {
         display:flex!important; order:1!important; flex:1 1 0!important; width:100%!important; min-height:0!important;
         margin:0!important; padding:0 0 8px!important; border:0!important; overflow:hidden!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card .watch-comment-list {
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card .watch-comment-list {
         display:flex!important; flex:1 1 0!important; min-height:0!important; max-height:none!important;
         overflow-y:auto!important; overflow-x:hidden!important; overscroll-behavior:contain!important;
         -webkit-overflow-scrolling:touch!important; touch-action:pan-y!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer {
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-discussion-composer {
         order:2!important; display:block!important; flex:0 0 auto!important; width:100%!important; margin:0!important;
         padding:8px 0 0!important; border-top:1px solid rgba(172,126,88,.25)!important;
       }
@@ -1521,14 +1520,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         white-space:nowrap; box-shadow:0 1px 3px rgba(93,61,39,.04);
       }
       .watch-chat-chip:disabled { opacity:.38; }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer textarea {
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-discussion-composer textarea {
         min-height:36px!important; height:36px!important; max-height:72px!important; padding-top:8px!important; padding-bottom:8px!important;
         border:0!important; border-radius:0!important; background:transparent!important; color:#594536!important; box-shadow:none!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer form {
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-discussion-composer form {
         display:flex!important; flex-direction:row!important; align-items:center!important; gap:6px!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer form button {
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-discussion-composer form button {
         position:static!important; height:36px!important; min-height:36px!important; margin:0!important;
       }
 
@@ -1553,7 +1552,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app .watch-comment-list [data-comment-text] { color:#59483d!important; }
 
       /* Final mobile fixes: the SVG illustration sits higher instead of being cut off at the card edge. */
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [aria-hidden="true"] {
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card > [aria-hidden="true"] {
         bottom:58px!important; transform:translateY(-12%)!important; width:100%!important; max-width:none!important;
         opacity:.34!important; pointer-events:none!important;
       }
@@ -1602,24 +1601,24 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         scroll-margin-bottom:12px!important;
       }
       /* Previous mobile CSS hid the first composer row, which also hid all chips. */
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer > div:first-child {
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-discussion-composer > div:first-child {
         display:flex!important; visibility:visible!important; opacity:1!important; position:relative!important;
         flex:0 0 auto!important; flex-wrap:wrap!important; gap:6px!important; margin:0 0 8px!important;
         max-height:none!important; overflow:visible!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-chat-chip {
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-chat-chip {
         display:inline-flex!important; flex:0 0 auto!important; visibility:visible!important; align-items:center!important;
         justify-content:center!important; min-height:30px!important; padding:6px 11px!important; font-size:11px!important;
         color:#79573f!important; background:rgba(255,255,255,.92)!important; border:1px solid rgba(165,121,85,.4)!important;
         border-radius:999px!important; white-space:nowrap!important; opacity:1!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-chat-chip-active { color:#fff9f0!important; background:#8e6247!important; border-color:#8e6247!important; }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [data-part="message"] { position:relative!important; z-index:2!important; flex:0 0 auto!important; max-height:84px!important; overflow:hidden!important; }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [data-part="message"] p { display:-webkit-box!important; -webkit-box-orient:vertical!important; -webkit-line-clamp:2!important; overflow:hidden!important; }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [data-part="history"] { position:relative!important; z-index:2!important; flex:1 1 0!important; min-height:0!important; overflow:hidden!important; }
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-discussion-composer { position:relative!important; z-index:3!important; flex:0 0 auto!important; margin-top:0!important; padding-top:8px!important; }
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-chat-chip-active { color:#fff9f0!important; background:#8e6247!important; border-color:#8e6247!important; }
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card > [data-part="message"] { position:relative!important; z-index:2!important; flex:0 0 auto!important; max-height:84px!important; overflow:hidden!important; }
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card > [data-part="message"] p { display:-webkit-box!important; -webkit-box-orient:vertical!important; -webkit-line-clamp:2!important; overflow:hidden!important; }
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card > [data-part="history"] { position:relative!important; z-index:2!important; flex:1 1 0!important; min-height:0!important; overflow:hidden!important; }
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-discussion-composer { position:relative!important; z-index:3!important; flex:0 0 auto!important; margin-top:0!important; padding-top:8px!important; }
       /* The room illustration is decorative, not a full-width background; keep it fully inside the card. */
-      .watch-together-app:not([data-landscape-mode="true"]):not([data-watch-fullscreen="true"]) .watch-room-card > [aria-hidden="true"] {
+      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card > [aria-hidden="true"] {
         left:auto!important; right:0!important; bottom:42px!important; width:min(72%,340px)!important;
         max-width:340px!important; transform:none!important; opacity:.22!important; pointer-events:none!important;
       }
