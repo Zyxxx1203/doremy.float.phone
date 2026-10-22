@@ -608,8 +608,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     });
     return () => { cancelAnimationFrame(first); cancelAnimationFrame(second); };
   }, [comments.length, busy]);
-  // This component owns an in-page immersive layout. Ignore document-wide fullscreen events:
-  // platform iframe/player controls must never switch the entire app into our immersive layout.
   useEffect(() => () => {
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     if (localVideoObjectUrlRef.current) URL.revokeObjectURL(localVideoObjectUrlRef.current);
