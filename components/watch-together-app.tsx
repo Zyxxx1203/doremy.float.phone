@@ -1216,26 +1216,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-danmaku-track > span { display:inline-block; border-radius:999px; background:rgba(0,0,0,.45); padding:4px 10px; color:rgba(255,255,255,.96); font-size:clamp(11px,1.2vw,15px); text-shadow:0 1px 3px rgba(0,0,0,.85); }
       .watch-danmaku-track[data-kind="user"] > span { background:rgba(54,101,144,.82); }
 
-      @media (max-width:699px), (orientation:portrait) {
-        .watch-together-app > main.watch-together-main {
-          display:flex; flex-direction:column; gap:12px; padding:10px 12px max(20px,env(safe-area-inset-bottom));
-          flex:1 1 auto; min-height:0; overflow-x:hidden; overflow-y:auto!important; overscroll-behavior:contain;
-        }
-        .watch-together-app .watch-room-title { order:0; width:100%; max-width:none; margin:0!important; padding:0!important; }
-         .watch-together-app .watch-player { order:1; width:100%; max-width:none; height:min(56.25vw,48dvh); min-height:0; aspect-ratio:auto; max-height:48dvh; align-self:stretch; border-width:3px!important; border-radius:14px!important; }
-         .watch-together-app .watch-player > video { display:block; width:100%; height:100%; max-height:none; aspect-ratio:auto; object-fit:contain; }
-         .watch-together-app .watch-player > iframe { display:block; width:100%; height:100%; max-height:none; aspect-ratio:auto; object-fit:contain; }
-        .watch-together-app .watch-interaction-panel { order:2; width:100%; max-width:none; min-height:0; height:auto; overflow:visible; margin:0!important; flex-shrink:0; }
-        .watch-together-app .watch-interaction-panel > div { display:block; min-height:0; height:auto; overflow:visible; padding:12px!important; border-radius:18px!important; }
-        .watch-together-app .watch-interaction-panel .watch-comment-list { min-height:110px; max-height:38vh; overflow-y:auto; overscroll-behavior:contain; }
-        .watch-together-app .watch-interaction-panel section { flex:none; min-height:0; overflow:visible; display:block; margin-top:14px; padding-top:12px; }
-        .watch-together-app .watch-link-panel { order:3; width:100%; max-width:none; margin:0!important; padding:10px!important; max-height:none; overflow:visible; flex-shrink:0; border-radius:16px!important; }
-        .watch-together-app .watch-link-panel input { padding-top:10px!important; padding-bottom:10px!important; }
-        .watch-together-app .watch-link-panel button { padding:9px 11px!important; }
-      }
-      
-
-      /* Fullscreen is intentionally delegated to native player controls; never resize the whole WebView. */
+      /* Mobile layout is defined once in the consolidated responsive rules below. */
+            /* Fullscreen is intentionally delegated to native player controls; never resize the whole WebView. */
       /* Chat-first redesign: stable inline video, conversation takes the main space. */
       .watch-together-app > main.watch-together-main {
         display:flex!important; flex-direction:column!important; gap:10px!important;
