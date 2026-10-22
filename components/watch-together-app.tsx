@@ -825,7 +825,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       localVideoObjectUrlRef.current = null;
     }
     localVideoFileRef.current = null;
-    setTarget(parsed);
+    if (!localResolverEndpoint.trim()) setTarget(parsed);
     setShowVideoSourcePanel(false);
     setScreenshotDataUrl("");
     setTranscriptSegments([]); setTranscriptName("");
@@ -860,6 +860,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         const message = error instanceof Error ? error.message : "本地解析服务连接失败";
         setLocalResolverStatus("本地解析失败：" + message);
         setResolverState({ state: "failed", message });
+        setTarget(parsed);
         onNotice?.("本地解析服务失败：" + message + "；继续尝试 APK 内置解析。");
       }
     }
