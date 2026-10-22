@@ -1395,7 +1395,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         appId: "photo_wall", appTags: ["photo_wall"], toolsAllowed: false,
         ephemeralSystemNote: "这是照片墙的一次性涂鸦创作任务。只输出符合要求的 JSON，不调用工具、不复述任务。坐标必须在 0 到 1 之间；只新增装饰元素，不输出照片操作。",
       });
-      const { doodles: created, summary: characterSummary } = parseCharacterWallDoodles(flattenCompletionResult(result), artist);
+      const { doodles: created, summary: characterSummary, createdAt } = parseCharacterWallDoodles(flattenCompletionResult(result), artist);
       const latest = stateRef.current;
       const photoIds = new Set<string>();
       for (const doodle of created) {
