@@ -291,7 +291,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     if (sticker) {
       onChangeDoodles(photo.id, [
         ...existing,
-        { id: createPhotoWallId(), kind: "sticker", content: sticker, color: brushColor, width: brushWidth, points: [{ x: point.x, y: point.y }], createdAt: new Date().toISOString() },
+        { id: createPhotoWallId(), kind: "sticker", content: sticker, color: brushColor, width: brushWidth, points: [{ x: point.x, y: point.y }], createdAt: new Date().toISOString(), authorType: "user", authorName: "我" },
       ], side);
       return;
     }
@@ -322,7 +322,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     const existing = stroke.side === "back" ? (photo.backDoodles ?? []) : (photo.doodles ?? []);
     onChangeDoodles(photo.id, [
       ...existing,
-      { id: stroke.id, kind: "stroke", color: brushColor, width: brushWidth, points, createdAt: new Date().toISOString() },
+      { id: stroke.id, kind: "stroke", color: brushColor, width: brushWidth, points, createdAt: new Date().toISOString(), authorType: "user", authorName: "我" },
     ], stroke.side);
   };
 
@@ -352,7 +352,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     const point = wallPoint(event);
     if (eraser) { eraseWallDoodleAt(point); return; }
     if (sticker) {
-      onChangeWallDoodles?.([...wallDoodles, { id: createPhotoWallId(), kind: "sticker", content: sticker, color: brushColor, width: brushWidth, points: [point], createdAt: new Date().toISOString() }]);
+      onChangeWallDoodles?.([...wallDoodles, { id: createPhotoWallId(), kind: "sticker", content: sticker, color: brushColor, width: brushWidth, points: [point], createdAt: new Date().toISOString(), authorType: "user", authorName: "我" }]);
       return;
     }
     (event.currentTarget as SVGSVGElement).setPointerCapture(event.pointerId);
@@ -377,7 +377,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     const points = wallDraftPointsRef.current;
     wallDraftPointsRef.current = [];
     setDraftPoints([]);
-    if (points.length >= 2) onChangeWallDoodles?.([...wallDoodles, { id: stroke.id, kind: "stroke", color: brushColor, width: brushWidth, points, createdAt: new Date().toISOString() }]);
+    if (points.length >= 2) onChangeWallDoodles?.([...wallDoodles, { id: stroke.id, kind: "stroke", color: brushColor, width: brushWidth, points, createdAt: new Date().toISOString(), authorType: "user", authorName: "我" }]);
   };
   const clearPhotoDoodles = () => {
     if (selectedPhoto) onChangeDoodles(selectedPhoto.id, []);
