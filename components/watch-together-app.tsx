@@ -1507,12 +1507,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app[data-source-panel="true"]::after { position:fixed!important; inset:0!important; z-index:2147483000!important; background:rgba(34,24,17,.58)!important; pointer-events:none!important; }
       .watch-together-app .watch-comment-list [data-comment-text] { color:#59483d!important; }
 
-      /* Keep the decorative SVG inside its card; one sizing rule replaces the old offset patch. */
-      .watch-together-app .watch-room-card > [aria-hidden="true"] {
-        bottom:0!important; top:auto!important; height:34%!important; max-height:220px!important;
-        width:100%!important; transform:none!important; opacity:.22!important; overflow:hidden!important;
-        pointer-events:none!important;
-      }
       /* Source picker must override every older mobile display:none rule and stay inside the visible viewport. */
       .watch-together-app[data-source-panel="true"] .watch-link-panel,
       .watch-together-app[data-source-panel="true"]:not([data-landscape-mode="true"]) .watch-link-panel {
@@ -1574,7 +1568,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card > [data-part="message"] p { display:-webkit-box!important; -webkit-box-orient:vertical!important; -webkit-line-clamp:2!important; overflow:hidden!important; }
       .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card > [data-part="history"] { position:relative!important; z-index:2!important; flex:1 1 0!important; min-height:0!important; overflow:hidden!important; }
       .watch-together-app:not([data-landscape-mode="true"]) .watch-discussion-composer { position:relative!important; z-index:3!important; flex:0 0 auto!important; margin-top:0!important; padding-top:8px!important; }
-      /* The room illustration is decorative, not a full-width background; keep it fully inside the card. */
+      /* Illustration now lives in the empty-state flow; no absolute overlay can cover text or controls. */
       .watch-empty-discussion { flex:0 0 auto; }
       .watch-empty-discussion svg { display:block; width:auto; height:clamp(112px, 20dvh, 180px); max-width:100%; margin:0 auto; overflow:visible; }
       .watch-empty-illustration { position:relative; flex:0 0 auto; min-height:0; }
@@ -1583,7 +1577,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         justify-content:center!important; text-align:center!important;
       }
       .watch-together-app:not([data-landscape-mode="true"]) .watch-link-panel button { display:flex!important; align-items:center!important; }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card > [aria-hidden="true"] { display:none!important; }
     `}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
