@@ -31,6 +31,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False,
 class ResolveRequest(BaseModel):
     url: str = Field(min_length=8, max_length=4096)
     quality: str = Field(default="best", pattern="^(best|1080|720|480|360)$")
+    engine: str = Field(default="auto", pattern="^(auto|parse-video-py|yt-dlp)$")
     cookies: str | None = Field(default=None, max_length=200000)
 
 def authorize(token: str | None):
@@ -91,7 +92,7 @@ def cleanup_old():
 
 @app.get("/health")
 def health():
-    return {"ok": True, "service": "momo-video-resolver", "version": "1.0.0", "cache_mb": round(sum(p.stat().st_size for p in ROOT.iterdir() if p.is_file()) / 1048576, 1)}
+    return {"ok": True, "service": "momo-video-resolver", "version": "1.1.0", "engines": ["parse-video-py", "yt-dlp"], "cache_mb": round(sum(p.stat().st_size for p in ROOT.iterdir() if p.is_file()) / 1048576, 1)}
 
 @app.post("/api/resolve")
 async def resolve(body: ResolveRequest, x_resolver_token: str | None = Header(default=None)):
@@ -109,10 +110,35 @@ async def resolve(body: ResolveRequest, x_resolver_token: str | None = Header(de
             cookie_path.write_text(body.cookies, encoding="utf-8")
         output = str(tempdir / "video.%(ext)s")
         opts = ydl_options(output, body.quality, str(cookie_path) if cookie_path else None)
-        await asyncio.to_thread(_download, url, opts)
+        engine_used = "yt-dlp"
+        failures: list[str] = []
+        if body.engine in ("auto", "parse-video-py"):
+            try:
+                direct_url = await asyncio.to_thread(_parse_with_parse_video_py, url)
+                if not direct_url:
+                    raise RuntimeError("parse-video-py 未返回 video_url")
+                direct_opts = dict(opts)
+                direct_opts["http_headers"] = {
+                    **direct_opts.get("http_headers", {}),
+                    "Referer": url,
+                }
+                await asyncio.to_thread(_download, direct_url, direct_opts)
+                engine_used = "parse-video-py"
+            except Exception as exc:
+                failures.append("parse-video-py: " + str(exc)[:180])
+                if body.engine == "parse-video-py":
+                    raise RuntimeError("parse-video-py 解析/下载失败：" + str(exc)[:250]) from exc
+                for partial in tempdir.glob("video.*"):
+                    partial.unlink(missing_ok=True)
+        if engine_used != "parse-video-py":
+            try:
+                await asyncio.to_thread(_download, url, opts)
+            except Exception as exc:
+                failures.append("yt-dlp: " + str(exc)[:180])
+                raise RuntimeError("所有解析引擎均失败。 " + "；".join(failures)) from exc
         media = next((p for p in tempdir.iterdir() if p.is_file() and p.name != "cookies.txt" and p.stat().st_size > 1024), None)
         if media is None:
-            raise RuntimeError("平台没有返回可播放的视频文件")
+            raise RuntimeError("解析引擎没有返回可播放的视频文件。 " + "；".join(failures))
         if media.stat().st_size > MAX_BYTES:
             raise RuntimeError("视频超过本地缓存大小限制")
         suffix = media.suffix.lower()
@@ -121,9 +147,9 @@ async def resolve(body: ResolveRequest, x_resolver_token: str | None = Header(de
         final = ROOT / f"{job_id}{suffix}"
         media.replace(final)
         async with LOCK:
-            JOBS[job_id] = {"state": "ready", "file": final.name, "title": final.stem, "size": final.stat().st_size, "created": time.time()}
+            JOBS[job_id] = {"state": "ready", "file": final.name, "title": final.stem, "size": final.stat().st_size, "engine": engine_used, "created": time.time()}
         cleanup_old()
-        return {"ok": True, "id": job_id, "title": final.stem, "size": final.stat().st_size, "mime": "video/mp4" if suffix in (".mp4", ".m4v") else "video/" + suffix[1:], "downloadUrl": f"/api/videos/{job_id}"}
+        return {"ok": True, "id": job_id, "title": final.stem, "size": final.stat().st_size, "mime": "video/mp4" if suffix in (".mp4", ".m4v") else "video/" + suffix[1:], "engine": engine_used, "downloadUrl": f"/api/videos/{job_id}"}
     except HTTPException:
         raise
     except Exception as exc:
@@ -132,6 +158,22 @@ async def resolve(body: ResolveRequest, x_resolver_token: str | None = Header(de
         raise HTTPException(422, f"解析或下载失败：{str(exc)[:300]}") from exc
     finally:
         shutil.rmtree(tempdir, ignore_errors=True)
+
+def _parse_with_parse_video_py(url: str) -> str:
+    """Use parse-video-py as an independent resolver, returning its direct media URL."""
+    import asyncio as _asyncio
+    from parse_video_py import parse_video_share_url
+
+    result = _asyncio.run(parse_video_share_url(url))
+    if result is None:
+        raise RuntimeError("没有解析结果")
+    if isinstance(result, dict):
+        media_url = result.get("video_url") or result.get("url")
+    else:
+        media_url = getattr(result, "video_url", None) or getattr(result, "url", None)
+    if not isinstance(media_url, str) or not media_url.startswith(("http://", "https://")):
+        raise RuntimeError("解析结果中没有有效 video_url")
+    return media_url
 
 def _download(url: str, options: dict):
     with yt_dlp.YoutubeDL(options) as ydl:
