@@ -6,7 +6,7 @@ import { getOrCreatePushPayloadKey } from "@/lib/server/push-service";
 import { encodeSupabaseFilter, formatSupabaseRestError, getSupabaseServerConfig, supabaseRestFetch } from "@/lib/server/supabase-rest";
 
 type BridgeConfigRow = { cloud_config?: EncryptedPayload | null };
-type NativeEventBody = { id?: unknown; type?: unknown; payload?: unknown; createdAt?: unknown };
+type NativeEventBody = { id?: unknown; type?: unknown; payload?: unknown; createdAt?: unknown; notifyAlreadyShown?: unknown };
 
 /**
  * Android 原生后台感知事件入口。
@@ -27,8 +27,9 @@ export async function POST(request: Request) {
     const id = String(body.id ?? "").trim().slice(0, 100);
     const type = String(body.type ?? "").trim().slice(0, 60);
     const payload = String(body.payload ?? "").trim().slice(0, 1000);
-    const createdAt = String(body.createdAt ?? "");
-    const timestamp = Date.parse(createdAt);
+    const timestamp = typeof body.createdAt === "number" && Number.isFinite(body.createdAt)
+      ? body.createdAt
+      : Date.parse(String(body.createdAt ?? ""));
     if (!/^[a-zA-Z0-9_-]{8,100}$/.test(id) || !["长时间使用", "应用用太久"].includes(type) || !payload) {
       return NextResponse.json({ ok: false, error: "事件格式无效。" }, { status: 400 });
     }
