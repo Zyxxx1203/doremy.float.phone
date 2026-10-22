@@ -311,6 +311,22 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         };
         saveVirtualLifeState(normalized);
       }
+      // One-time migration: remove only auto-generated future-week slots that caused
+      // the schedule screen to look like a 14-day plan. Keep manual plans and history.
+      if ((normalized.scheduleProfileVersion ?? 0) < 4) {
+        const schedules = normalized.schedules.filter(slot => {
+          if (slot.source !== "weekly-generation") return true;
+          const startAt = new Date(slot.startAt).getTime();
+          const endAt = new Date(slot.endAt).getTime();
+          const actorNow = resolveActorLifeNow(getActorClock(normalized, slot.ownerType, slot.ownerId));
+          const weekStart = mondayStart(actorNow);
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekEnd.getDate() + 7);
+          return !(Number.isFinite(startAt) && Number.isFinite(endAt) && endAt > actorNow.getTime() && startAt >= weekEnd.getTime());
+        });
+        normalized = { ...normalized, scheduleProfileVersion: 4, schedules };
+        saveVirtualLifeState(normalized);
+      }
       const hasContinuingScene = normalized.scenes.some(scene => scene.status === "active" || scene.status === "paused");
       if (!hasContinuingScene && normalized.settings.enabled) {
         const player = normalized.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
