@@ -779,7 +779,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     setDiscussionDraft("");
     setTimepointDraft("");
     setWatching(false);
-    onNotice?.("已载入本地视频。视频在当前页面内播放，不会上传；切换文件或离开一起看后会释放临时引用。");
+    onNotice?.("已载入本地视频。默认只在设备内播放；只有开启「视频理解」并发送讨论时，才会按当前服务商配置发送整段视频或关键帧。切换文件或离开一起看后会释放临时引用。");
   };
   const openVideo = () => {
     const parsed = parseVideoUrl(urlInput);
