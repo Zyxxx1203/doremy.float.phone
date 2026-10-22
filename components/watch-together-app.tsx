@@ -998,6 +998,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const responseTimepoint = timepointOverride || formatVideoTime(transcriptSeconds);
       const comment: WatchComment = { id: `comment-${Date.now()}`, characterId: character.id, characterName: character.name, text: responseText, createdAt: new Date().toISOString(), kind: "character", timepoint: responseTimepoint, targetUrl: target.url };
       setComments(current => { const next = [...current.slice(-99), comment]; saveTargetComments(target.url, next); return next; });
+      persistWatchShortTermMemory(character.id, character.name, videoTitle || target.platformName + "视频", responseText, "assistant");
       if (settings.voiceEnabled) void speakComment(responseText, character.id);
     } catch (error) {
       onNotice?.("角色观影回应失败：" + (error instanceof Error ? error.message : String(error)));
@@ -1015,7 +1016,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
    * 专注模式：将用户主动选择的本地视频作为完整文件交给 Gemini，
    * 不再只依赖当前截图。使用角色在“一起看”中的现有 API 绑定与角色卡。
    */
-  const persistWatchShortTermMemory = (characterId: string, characterName: string, videoName: string, responseText: string) => {
+  const persistWatchShortTermMemory = (characterId: string, characterName: string, videoName: string, responseText: string, role: "user" | "assistant" = "assistant") => {
     try {
       const contact = loadChatContacts().find(item => item.characterId === characterId);
       if (!contact) {
@@ -1023,9 +1024,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         return;
       }
       const session = createOrGetSession(contact.id);
-      const summary = "【一起看短期记忆】" + characterName + "与用户于" + new Date().toLocaleString("zh-CN") +
-        "一起观看了视频《" + (videoName || "未命名视频") + "》。角色的观影回应与共同讨论内容：" + responseText.slice(0, 1200);
-      pushChatMessage({ sessionId: session.id, role: "assistant", content: summary, origin: "custom_app" });
+      const summary = "【一起看讨论记录 · " + (role === "user" ? "用户发言" : "角色回应") + "】" + new Date().toLocaleString("zh-CN") +
+        " · 视频《" + (videoName || "未命名视频") + "》\\n" + (role === "user" ? "用户：" : characterName + "：") + responseText.slice(0, 1800);
+      pushChatMessage({ sessionId: session.id, role, content: summary, origin: "custom_app" });
     } catch (error) {
       console.warn("[TogetherWatch] 保存短期记忆失败", error);
       onNotice?.("观影记录已保存，但写入短期记忆失败。");
@@ -1130,6 +1131,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     const timepoint=timepointDraft.trim().slice(0,16);
     const comment:WatchComment={id:`user-${Date.now()}`,characterId:"user",characterName:"我",text,createdAt:new Date().toISOString(),kind:"user",timepoint:timepoint||undefined,targetUrl:target.url};
     setComments(current=>{const next=[...current.slice(-99),comment];saveTargetComments(target.url,next);return next;});
+    persistWatchShortTermMemory(character?.id ?? settings.characterId, character?.name ?? "角色", videoTitle || target.platformName + "视频", (timepoint ? "[" + timepoint + "] " : "") + text, "user");
     const moment=[timepoint ? `时间点 ${timepoint}` : "",text].filter(Boolean).join("：").slice(0,800);
     patchSettings({currentMoment:moment}); setDiscussionDraft("");
     if (videoUnderstandingEnabled) {
