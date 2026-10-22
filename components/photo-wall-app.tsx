@@ -1311,6 +1311,92 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     finally { setBusy(false); setBusyLabel(""); }
   };
 
+  /** 角色直接写入现有画布数据；不模拟触屏，也不改变手动涂鸦/手势状态。 */
+  const askCharacterToDecorateWall = async () => {
+    const artist = selectedCharacter;
+    if (!artist || busy) return;
+    const before = stateRef.current;
+    if (!before.photos.length) { onNotice?.("先在照片墙收录几张照片，再邀请角色装饰。"); return; }
+    setBusy(true);
+    setBusyLabel(`${artist.name}正在给照片墙添上小小的心意…`);
+    try {
+      const sessions = loadChatSessions();
+      const contact = loadChatContacts().find(item => item.characterId === artist.id);
+      const session = sessions.find(item => !item.isGroup && item.contactId === contact?.id)
+        ?? ({ id: `photo-wall-${artist.id}`, contactId: contact?.id ?? artist.id, unreadCount: 0, updatedAt: new Date().toISOString(), isPinned: false, isGroup: false } as ChatSession);
+      const history = loadChatMessages(session.id).slice(-12);
+      const layout = before.photos.slice(0, 40).map((photo, index) => ({
+        index,
+        title: photo.title || "未命名照片",
+        owner: photo.ownerName,
+        kind: KIND_LABEL[photo.kind],
+        placement: photo.placement ? {
+          x: Number(photo.placement.x.toFixed(3)),
+          y: Number(photo.placement.y.toFixed(3)),
+          scale: Number(photo.placement.scale.toFixed(2)),
+          rotation: photo.placement.rotation,
+        } : null,
+      }));
+      const instruction = [
+        "你是正在和亲近的人一起装饰私人照片墙的角色。请根据你的性格和照片墙布局，创作一小组温柔、自然的装饰涂鸦。",
+        `你的名字：${artist.name}。`,
+        `角色设定：${(artist.persona || artist.personality || "").slice(0, 500)}`,
+        `画布尺寸：${wallWorldOf(before).width} × ${wallWorldOf(before).height}；所有坐标必须是整个画布的 0 到 1 归一化坐标。`,
+        `墙上照片（placement 的 x/y 是照片布局锚点，仅用于估计位置）：${JSON.stringify(layout)}`,
+        "只输出纯 JSON，不要 markdown，不要解释，格式：{\"elements\":[{\"kind\":\"sticker\",\"content\":\"✿\",\"x\":0.2,\"y\":0.3,\"color\":\"#d98ca3\"},{\"kind\":\"stroke\",\"points\":[{\"x\":0.3,\"y\":0.4},{\"x\":0.32,\"y\":0.42},{\"x\":0.34,\"y\":0.4}],\"color\":\"#d98ca3\",\"width\":3}]}",
+        "生成 3 到 6 个元素，优先使用小花、爱心、星星、弯弯月亮等简洁装饰；笔画由 3 到 18 个点组成。",
+        "把装饰放在照片周围或画布空白处，不要集中遮挡照片中心。无法判断空白时，选择分散的边缘区域。不要修改或删除已有照片、涂鸦。",
+        "贴纸 content 只能从这些短字符中选择：♡、❤、✦、✿、☾、☘、♪、★、❀、✧。颜色使用柔和的粉色、暖棕或金色十六进制色号。",
+      ].join("\n");
+      const promptMessage: ChatMessage = {
+        id: createPhotoWallId(), sessionId: session.id, role: "user", content: instruction,
+        status: "sent", createdAt: new Date().toISOString(),
+      };
+      const result = await generateChatCompletion(session, [...history, promptMessage], {
+        appId: "photo_wall", appTags: ["photo_wall"], toolsAllowed: false,
+        ephemeralSystemNote: "这是照片墙的一次性涂鸦创作任务。只输出符合要求的 JSON，不调用工具、不复述任务。坐标必须在 0 到 1 之间；只新增装饰元素，不输出照片操作。",
+      });
+      const raw = flattenCompletionResult(result).trim()
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/, "");
+      const parsed = JSON.parse(raw) as { elements?: unknown; doodles?: unknown };
+      const candidates = Array.isArray(parsed.elements) ? parsed.elements : Array.isArray(parsed.doodles) ? parsed.doodles : [];
+      const createdAt = new Date().toISOString();
+      const allowedStickers = new Set(["♡", "❤", "✦", "✿", "☾", "☘", "♪", "★", "❀", "✧"]);
+      const clamp = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? Math.min(0.98, Math.max(0.02, value)) : null;
+      const created: PhotoWallDoodle[] = [];
+      for (const candidate of candidates.slice(0, 8)) {
+        if (!candidate || typeof candidate !== "object") continue;
+        const item = candidate as { kind?: unknown; content?: unknown; x?: unknown; y?: unknown; points?: unknown; color?: unknown; width?: unknown };
+        const color = typeof item.color === "string" && /^#[0-9a-f]{6}$/i.test(item.color) ? item.color : "#d98ca3";
+        const width = typeof item.width === "number" && Number.isFinite(item.width) ? Math.min(5, Math.max(1, item.width)) : 2.5;
+        if (item.kind === "sticker") {
+          const x = clamp(item.x), y = clamp(item.y);
+          if (x === null || y === null || typeof item.content !== "string" || !allowedStickers.has(item.content)) continue;
+          created.push({ id: createPhotoWallId(), kind: "sticker", content: item.content, color, width, points: [{ x, y }], createdAt, authorType: "character", authorId: artist.id, authorName: artist.name });
+        } else if (item.kind === "stroke" && Array.isArray(item.points)) {
+          const points = item.points.slice(0, 18).flatMap(value => {
+            if (!value || typeof value !== "object") return [];
+            const point = value as { x?: unknown; y?: unknown };
+            const x = clamp(point.x), y = clamp(point.y);
+            return x === null || y === null ? [] : [{ x, y }];
+          });
+          if (points.length < 3) continue;
+          created.push({ id: createPhotoWallId(), kind: "stroke", color, width, points, createdAt, authorType: "character", authorId: artist.id, authorName: artist.name });
+        }
+      }
+      if (!created.length) throw new Error("角色返回的涂鸦格式不完整，请再试一次。");
+      const latest = stateRef.current;
+      changeWallDoodles([...(latest.wallDoodles ?? []), ...created]);
+      onNotice?.(`${artist.name}在照片墙上留下了 ${created.length} 个小装饰。`);
+    } catch (error) {
+      onNotice?.("请角色装饰照片墙失败：" + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setBusy(false);
+      setBusyLabel("");
+    }
+  };
+
   const deleteSelectedPhoto = async () => {
     if (!selectedPhoto || !window.confirm("确定把这张照片从照片墙移除吗？这会删除图片文件，但不会删除其他照片或聊天记录。")) return;
     try {
@@ -1440,6 +1526,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             <button type="button" onClick={redo} disabled={!canRedo} className="shrink-0 border border-[#d8c6b5] px-2 py-1.5 text-[10px] text-[#7d6d5a] disabled:opacity-30">重做</button>
             <button type="button" onClick={() => { setWallCanvasMode(wallCanvasMode === "move" ? "view" : "move"); setWallSticker(null); setWallEraser(false); }} aria-pressed={wallCanvasMode === "move"} className={wallCanvasMode === "move" ? "shrink-0 border border-[#87565b] bg-[#87565b] px-2.5 py-1.5 text-[11px] text-white" : "shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[11px] text-[#7d6d5a]"}>{wallCanvasMode === "move" ? "完成摆放" : "摆照片"}</button>
             <button type="button" onClick={() => { setWallCanvasMode(wallCanvasMode === "doodle" ? "view" : "doodle"); setWallSticker(null); setWallEraser(false); }} aria-pressed={wallCanvasMode === "doodle"} className={wallCanvasMode === "doodle" ? "shrink-0 border border-[#a77b77] bg-[#a77b77] px-2.5 py-1.5 text-[11px] text-white" : "shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[11px] text-[#7d6d5a]"}>{wallCanvasMode === "doodle" ? "退出涂鸦" : "涂鸦"}</button>
+            <button type="button" onClick={() => void askCharacterToDecorateWall()} disabled={busy || !selectedCharacter || !visiblePhotos.length} title={selectedCharacter ? `邀请 ${selectedCharacter.name} 装饰照片墙` : "请先在设置中选择角色"} className="shrink-0 border border-[#d8c6b5] bg-[#fffaf2] px-2.5 py-1.5 text-[11px] text-[#87565b] disabled:opacity-35"><Sparkles size={12} className="mr-1 inline"/>角色涂鸦</button>
             <label className="flex shrink-0 items-center gap-1 text-[10px] text-[#8b7665]">宽<input type="number" min={1200} max={12000} step={100} value={wallWidthDraft} onChange={event => setWallWidthDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter") applyWallDimensions(); }} aria-label="画布宽度" className="w-[62px] border-b border-[#d8c6b5] bg-transparent px-1 py-1 text-[11px] text-[#5d4942] outline-none"/></label>
             <label className="flex shrink-0 items-center gap-1 text-[10px] text-[#8b7665]">高<input type="number" min={1200} max={12000} step={100} value={wallHeightDraft} onChange={event => setWallHeightDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter") applyWallDimensions(); }} aria-label="画布高度" className="w-[62px] border-b border-[#d8c6b5] bg-transparent px-1 py-1 text-[11px] text-[#5d4942] outline-none"/></label>
             <button type="button" onClick={applyWallDimensions} className="shrink-0 border border-[#d8c6b5] px-2.5 py-1.5 text-[10px] text-[#7d6d5a]">应用尺寸</button>
