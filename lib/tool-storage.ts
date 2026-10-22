@@ -539,6 +539,23 @@ export function findEnabledToolForSchema(name: string, appId?: string, macroCont
         };
     }
 
+    const restPackages = loadRestToolPackages().filter(pkg => pkg.enabled);
+    const restPackageIds = new Set(restPackages.map(pkg => pkg.id));
+    for (const tool of loadRestTools()) {
+        if (!tool.enabled || !tool.packageId || !restPackageIds.has(tool.packageId)) continue;
+        if (!toolNameMatches(tool.name, name, macroContext)) continue;
+        return {
+            name: tool.name,
+            description: tool.description,
+            parameterSchema: tool.parameterSchema,
+            source: "rest",
+            sourceId: tool.id,
+        };
+    }
+
+    const compositeDirect = enabled.find(t => (t.source === "composite" || t.source === "composite_package") && matches(t));
+    if (compositeDirect) return compositeDirect;
+
     const compositePackages = loadCompositeToolPackages().filter(pkg => pkg.enabled);
     const compositePackageIds = new Set(compositePackages.map(pkg => pkg.id));
     for (const tool of loadCompositeTools()) {
@@ -553,19 +570,8 @@ export function findEnabledToolForSchema(name: string, appId?: string, macroCont
         };
     }
 
-    const packages = loadRestToolPackages().filter(pkg => pkg.enabled);
-    const packageIds = new Set(packages.map(pkg => pkg.id));
-    for (const tool of loadRestTools()) {
-        if (!tool.enabled || !tool.packageId || !packageIds.has(tool.packageId)) continue;
-        if (!toolNameMatches(tool.name, name, macroContext)) continue;
-        return {
-            name: tool.name,
-            description: tool.description,
-            parameterSchema: tool.parameterSchema,
-            source: "rest",
-            sourceId: tool.id,
-        };
-    }
+    const mcpServerDirect = enabled.find(t => t.source === "mcp_server" && matches(t));
+    if (mcpServerDirect) return mcpServerDirect;
 
     for (const s of loadMcpServers()) {
         if (!s.enabled || !s.discoveredTools) continue;
