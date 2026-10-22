@@ -165,10 +165,29 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
       onNotice?.("当前 App 版本不支持桌面小组件，需要更新安卓壳");
       return;
     }
-    if (!requestPinWidget()) {
-      onNotice?.("这个系统不支持一键添加，请长按桌面手动添加「float」小组件");
-    }
-  }, [onNotice]);
+
+    // Never add another instance through the legacy "default" profile: Android
+    // would intentionally render every such instance from the same cached HTML/PNG.
+    // Start a separately persisted profile draft instead, so each added instance
+    // gets its own profile ID, character, template, CSS and size.
+    const now = new Date().toISOString();
+    const profile: WidgetProfile = {
+      id: "widget-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
+      name: "桌面实例 " + (profiles.length + 1),
+      characterId: config.characterId || characters[0]?.id || "",
+      template: config.useCustomTemplate && config.customTemplate ? config.customTemplate : templateDraft || DEFAULT_WIDGET_TEMPLATE,
+      customCss: "",
+      widthDp: config.widthDp,
+      heightDp: config.heightDp,
+      scale: config.scale,
+      createdAt: now,
+      updatedAt: now,
+    };
+    saveWidgetProfile(profile);
+    setProfiles(loadWidgetProfiles());
+    setProfileDraft(profile);
+    onNotice?.("已创建独立桌面实例配置。请先选择角色、调整样式，再点击「添加到真实桌面」；不会复用默认实例的缓存。");
+  }, [onNotice, profiles.length, config, characters, templateDraft]);
 
   /** 手动塞一条示例内容，方便用户先看看桌面上长什么样。 */
   const writeSample = useCallback(() => {
@@ -387,7 +406,7 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
             ) : (
               <div className="ws-inline-row">
                 <span>{placed ? "桌面已有实例，可再添加一个同款小组件" : "还没有放到桌面上"}</span>
-                <button type="button" className="ws-link" onClick={placeWidget}>{placed ? "再添加一个" : "添加到桌面"}</button>
+                <button type="button" className="ws-link" onClick={placeWidget}>{placed ? "新建独立实例" : "创建桌面实例"}</button>
               </div>
             )}
             <p className="ws-hint">目前多个桌面实例共用同一份角色、内容和样式设置；暂不支持每个实例分别选择不同角色。</p>
