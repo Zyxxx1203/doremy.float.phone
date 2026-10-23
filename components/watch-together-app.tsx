@@ -238,6 +238,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_local_resolver_token_v1") || "" : ""; } catch { return ""; }
   });
   const [localResolverStatus, setLocalResolverStatus] = useState("");
+  const [termuxDeployStatus, setTermuxDeployStatus] = useState("");
   const [localResolverEngine, setLocalResolverEngine] = useState<"auto" | "parse-video-py" | "yt-dlp">(() => {
     try {
       const saved = typeof window !== "undefined" ? window.localStorage.getItem("watch_local_resolver_engine_v1") : null;
@@ -1957,7 +1958,19 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </section>
           <section className="mt-4 border-t border-white/10 pt-3">
             <h3 className="font-serif text-sm text-[#e8c39a]">本地视频下载引擎</h3>
-            <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">操作说明：①在 Termux 粘贴项目提供的一键部署命令，等待安装并启动完成；②服务默认地址为 http://127.0.0.1:8765，点「测试连接」确认；③再粘贴视频分享链接，系统会先尝试本地解析/缓存，失败时继续尝试 APK 内置解析或平台官方 iframe。Termux 被系统停止后，打开 Termux 执行 momo-video-start。</p>
+             <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">可选安装 Termux 本地解析服务。安装失败或未安装时，仍会尝试当前平台支持的内嵌播放器；部分平台会限制 WebView/iframe 播放，不能保证所有链接都可播。</p>
+             <button type="button" onClick={async () => {
+               const command = "curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/momo.float.phone/main/tools/video-resolver/install-termux.sh | bash";
+               try {
+                 await navigator.clipboard.writeText(command);
+                 setTermuxDeployStatus("部署命令已复制。现在切换到 Termux，粘贴并执行；安装完成后返回这里点「测试连接」。安装过程需要网络和一些存储空间。");
+                 onNotice?.("已复制 Termux 一键部署命令，请切换到 Termux 粘贴执行。");
+               } catch {
+                 setTermuxDeployStatus("自动复制不可用。请长按下方命令文本复制，再切换到 Termux 粘贴执行。");
+               }
+             }} className="mt-3 w-full rounded-xl border border-[#c99a6a]/60 bg-[#c99a6a]/15 px-3 py-2.5 text-xs font-medium text-[#f0d5b8]">复制 Termux 一键部署命令</button>
+             {termuxDeployStatus && <div role="status" aria-live="polite" className="mt-2 rounded-lg bg-black/20 p-2 text-[10px] leading-5 text-[#e6c49d]">{termuxDeployStatus}<code onClick={async () => { try { await navigator.clipboard.writeText("curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/momo.float.phone/main/tools/video-resolver/install-termux.sh | bash"); onNotice?.("部署命令已复制"); } catch { onNotice?.("请长按命令复制"); } }} className="mt-1 block select-all break-all rounded bg-black/20 p-2 text-[10px]">curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/momo.float.phone/main/tools/video-resolver/install-termux.sh | bash</code></div>}
+             <p className="mt-2 text-[10px] leading-5 text-[#8b8077]">安装完成后服务地址为 http://127.0.0.1:8765。Termux 被系统停止时，重新打开 Termux 执行 momo-video-start。</p>
             <label className="mt-2 block text-[11px] text-[#9c9086]">解析服务地址
               <input type="url" value={localResolverEndpoint} onChange={event => setLocalResolverEndpoint(event.target.value)} placeholder="http://127.0.0.1:8765" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none"/>
             </label>
