@@ -30,6 +30,8 @@ function normalizeActorClock(value: unknown): LifeActorClock | null {
 function normalizeSettings(value: unknown): LifeEngineSettings {
   const raw = value && typeof value === "object" ? value as Partial<LifeEngineSettings> : {};
   const settings = { ...DEFAULT_LIFE_ENGINE_SETTINGS, ...raw };
+  // Drop the retired life-system offline-push flag from legacy saved settings.
+  delete (settings as LifeEngineSettings & { enableLifeOfflinePush?: boolean }).enableLifeOfflinePush;
   settings.defaultSpeed = Number.isFinite(settings.defaultSpeed) ? Math.max(0.01, Math.min(settings.defaultSpeed, 1000)) : 1;
   settings.panelOpacity = Number.isFinite(settings.panelOpacity) ? Math.max(50, Math.min(settings.panelOpacity, 100)) : 96;
   settings.dialogueFontSize = Number.isFinite(settings.dialogueFontSize) ? Math.max(8, Math.min(settings.dialogueFontSize, 48)) : 15;
