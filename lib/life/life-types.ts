@@ -71,6 +71,11 @@ export type LifeEngineSettings = {
   narrationFontSize: number;
   /** CSS font-family for dialogue; accepts a system font name or CSS font stack. */
   dialogueFontFamily: string;
+  /** Optional Life app-wide background image; locations can override it in scene chat. */
+  globalBackgroundImage?: string;
+  globalBackgroundBlur?: number;
+  globalBackgroundBrightness?: number;
+  globalBackgroundOverlay?: number;
   /** CSS font-family for narration and scene cards. */
   narrationFontFamily: string;
   /** Inner padding for life-scene dialogue bubbles, in pixels. */
@@ -194,6 +199,11 @@ export type LifeLocation = {
   layout?: string;
   /** Persistent props/objects that can be referenced by later actions and dialogue. */
   props?: string[];
+  /** Optional per-location chat-room background image (compressed data URL). */
+  backgroundImage?: string;
+  backgroundBlur?: number;
+  backgroundBrightness?: number;
+  backgroundOverlay?: number;
   visibility: "public" | "private";
 };
 
