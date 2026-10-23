@@ -106,8 +106,11 @@ function parseVideoUrl(value: string): VideoTarget | null {
       const compactOptions = `p=${encodeURIComponent(page)}&autoplay=0&danmaku=0&high_quality=1`;
       if (bvid) return { url: original, embedUrl: `${playerBase}?bvid=${encodeURIComponent(bvid)}&${compactOptions}`, platform: "bilibili", platformName: "哔哩哔哩", supported: true };
       if (aid) return { url: original, embedUrl: `${playerBase}?aid=${encodeURIComponent(aid)}&${compactOptions}`, platform: "bilibili", platformName: "哔哩哔哩", supported: true };
-      // Never embed the original Bilibili page: it may trigger an app/deep-link redirect.
-      // Without a BV/av identifier we cannot build a reliable in-app player URL.
+      // Standard BV/av links use the official player above. For b23.tv short links
+      // without a visible BV/av ID, allow a constrained in-frame redirect as a fallback:
+      // the iframe sandbox intentionally does not grant top-level navigation.
+      if (host === "b23.tv") return { url: original, embedUrl: original, platform: "bilibili", platformName: "哔哩哔哩短链接", supported: true };
+      // Do not embed arbitrary Bilibili pages without an identifiable video.
       return { url: original, embedUrl: null, platform: "bilibili", platformName: "哔哩哔哩", supported: false };
     }
     if (host === "youtube.com" || host === "youtu.be" || host === "youtube-nocookie.com") {
