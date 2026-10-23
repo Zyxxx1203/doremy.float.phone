@@ -34,6 +34,18 @@ function recentErrors(): QaErrorEntry[] {
 
 export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) => void }) {
   const [checks, setChecks] = useState<CheckItem[]>([]);
+  const [termuxCommandCopied, setTermuxCommandCopied] = useState(false);
+  const termuxInstallCommand = "curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/momo.float.phone/main/tools/video-resolver/install-termux.sh | bash";
+  const copyTermuxInstallCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(termuxInstallCommand);
+      setTermuxCommandCopied(true);
+      onNotice?.("Termux 部署命令已复制。请切换到 Termux 粘贴并执行。");
+    } catch {
+      setTermuxCommandCopied(false);
+      onNotice?.("自动复制不可用，请长按下方命令复制后到 Termux 执行。");
+    }
+  };
   const [busy, setBusy] = useState(false);
   const [lastRun, setLastRun] = useState<number | null>(null);
   const [errors, setErrors] = useState<QaErrorEntry[]>([]);
@@ -179,6 +191,13 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
         <div style={{ paddingTop: 2, color: item.status === "ok" ? "#16a34a" : item.status === "fail" ? "#dc2626" : item.status === "warn" ? "#d97706" : "var(--muted-foreground, #888)" }}>{iconFor(item.status)}</div>
         <div style={{ minWidth: 0 }}><div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}><strong style={{ fontSize: 13 }}>{item.title}</strong><span style={{ fontSize: 10, opacity: .65 }}>{labelFor(item.status)}</span></div><p style={{ fontSize: 12, lineHeight: 1.6, margin: "5px 0 0", overflowWrap: "anywhere" }}>{item.detail}</p>{item.fix && <p style={{ fontSize: 12, lineHeight: 1.6, margin: "5px 0 0", opacity: .75 }}>建议：{item.fix}</p>}</div>
       </article>)}
+    </section>
+    <section style={{ border: "1px solid var(--border, rgba(128,128,128,.18))", borderRadius: 16, padding: 14 }}>
+      <div style={{ fontWeight: 700, fontSize: 14 }}>一起看 · Termux 一键部署</div>
+      <p style={{ fontSize: 12, lineHeight: 1.7, opacity: .75, margin: "7px 0 10px" }}>点击复制命令后，切换到 Termux 粘贴并执行。它会安装 Python、FFmpeg 和解析依赖，并启动本机服务。执行完成后返回本页点击“重新检查”。</p>
+      <button type="button" onClick={() => void copyTermuxInstallCommand()} style={{ display: "inline-flex", alignItems: "center", gap: 7, borderRadius: 10, padding: "10px 12px", border: "1px solid var(--border, #c99a6a)", background: "var(--surface-secondary, rgba(201,154,106,.12))", color: "inherit", fontSize: 12, fontWeight: 600 }}><Clipboard size={15} />{termuxCommandCopied ? "已复制 · 再次复制命令" : "复制 Termux 部署命令"}</button>
+      <code onClick={() => void copyTermuxInstallCommand()} style={{ display: "block", userSelect: "all", overflowWrap: "anywhere", fontSize: 10, lineHeight: 1.6, marginTop: 9, padding: 10, borderRadius: 9, background: "var(--surface-secondary, rgba(128,128,128,.08))", cursor: "pointer" }}>{termuxInstallCommand}</code>
+      <p style={{ fontSize: 11, lineHeight: 1.6, opacity: .7, marginTop: 8 }}>注意：这里的“本地解析链路”检查只验证服务健康状态与引擎存在，不等于已验证某个视频解析成功或 APK 内播放成功。未连接解析服务时，播放器仍会尝试支持的官方内嵌播放器。</p>
     </section>
     <section style={{ border: "1px solid var(--border, rgba(128,128,128,.18))", borderRadius: 16, padding: 14 }}>
       <div style={{ fontWeight: 700, fontSize: 14 }}>上一次原生崩溃</div>
