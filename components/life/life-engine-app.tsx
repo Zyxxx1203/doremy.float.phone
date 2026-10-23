@@ -437,7 +437,6 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
   const selectedLocation = state.locations.find(location => location.id === selectedLocationId) ?? state.locations[0];
   const sceneBackgroundLocation = state.locations.find(location => location.id === activeScene?.locationId) ?? selectedLocation;
-  const effectiveSceneBackground = sceneBackgroundLocation?.backgroundImage || settings.globalBackgroundImage || "";
   const selectedLocationVisitStats = useMemo(() => {
     if (!selectedLocation) return { visits: 0, minutes: 0, activeMinutes: 0 };
     const virtualNow = resolveActorLifeNow(getActorClock(state, "player", PLAYER_ID));
