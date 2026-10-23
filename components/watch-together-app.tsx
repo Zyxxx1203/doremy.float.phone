@@ -41,7 +41,7 @@ function bumpWatchAutoCount(): void {
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
 type Platform = "bilibili" | "youtube" | "tencent" | "youku" | "iqiyi" | "douyin" | "kuaishou" | "xiaohongshu" | "other";
 type VideoTarget = { url: string; embedUrl: string | null; platform: Platform; platformName: string; supported: boolean; nativeVideo?: boolean; nativeVideoUrl?: string; nativeCacheId?: string };
-type WatchNativeBridge = { resolveShortVideoShareUrl?: (url: string, requestId: string) => boolean; deleteCachedShortVideo?: (cacheId: string) => boolean; setScreenOrientation?: (mode: string) => boolean; openUrl?: (url: string) => boolean };
+type WatchNativeBridge = { resolveShortVideoShareUrl?: (url: string, requestId: string) => boolean; deleteCachedShortVideo?: (cacheId: string) => boolean; setScreenOrientation?: (mode: string) => boolean; openUrl?: (url: string) => boolean; getWebConsoleLogs?: () => string; getDiagnosticsSnapshot?: () => string; clearWebConsoleLogs?: () => boolean };
 type WatchNativeWindow = Window & { AndroidShell?: WatchNativeBridge };
 type WatchNativeResolved = { requestId?: string; ok?: boolean; cacheId?: string; contentUri?: string; mediaUrl?: string; embedUrl?: string; message?: string };
 type WatchMemoryRecord = { id:string; url:string; title:string; platform:string; startedAt:string; durationSeconds:number; characterName:string; comments:string[]; discussion?: WatchComment[]; review:string; characterReview:string; favorite:boolean; memoryTitle?:string; quote?:string; mood?:string; note?:string };
@@ -234,6 +234,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [resolverState, setResolverState] = useState<{ state: "idle" | "resolving" | "ok" | "failed"; message?: string }>({ state: "idle" });
   const [mediaPaused, setMediaPaused] = useState(false);
   const [resolutionMessage, setResolutionMessage] = useState("");
+  const [iframeLoadedAt, setIframeLoadedAt] = useState<string | null>(null);
+  const [watchDiagnosticReport, setWatchDiagnosticReport] = useState("");
   const [localResolverEndpoint, setLocalResolverEndpoint] = useState(() => {
     try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_local_resolver_endpoint_v1") || "http://127.0.0.1:8765" : ""; } catch { return ""; }
   });
@@ -836,6 +838,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     }
     localVideoFileRef.current = null;
     setTarget(parsed);
+    setIframeLoadedAt(null);
+    setWatchDiagnosticReport("");
     setShowVideoSourcePanel(false);
     setScreenshotDataUrl("");
     setTranscriptSegments([]); setTranscriptName("");
@@ -1727,6 +1731,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               referrerPolicy={target.platform === "bilibili" ? "origin" : "strict-origin-when-cross-origin"}
               className="absolute inset-0 h-full w-full border-0"
               loading="eager"
+              onLoad={() => setIframeLoadedAt(new Date().toISOString())}
             />
           </div>
         ) : (
@@ -2033,6 +2038,54 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               <label className="text-[10px] text-[#9c9086]">视频上限（MB）<input type="number" min={50} max={2048} value={videoAnalysisSettings.maxFileSizeMb} onChange={event => patchVideoAnalysisSettings({maxFileSizeMb:Number(event.target.value)})} className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-2.5 py-2 text-xs text-[#efe2d0]"/></label>
               <label className="text-[10px] text-[#9c9086]">关键帧数量（4–24）<input type="number" min={4} max={24} value={videoAnalysisSettings.frameCount} onChange={event => patchVideoAnalysisSettings({frameCount:Number(event.target.value)})} className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-2.5 py-2 text-xs text-[#efe2d0]"/></label>
             </div>
+          </section>
+          <section className="mt-4 border-t border-white/10 pt-3">
+            <h3 className="font-serif text-sm text-[#e8c39a]">一起看 · 播放诊断</h3>
+            <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">采集播放器外层状态、WebView 环境与可获取的控制台错误，帮助区分加载、解码和渲染问题。跨域 iframe 内部视频帧状态无法由宿主页面直接读取；报告只在本机生成，不会自动上传。</p>
+            <div className="mt-2 rounded-lg border border-white/10 bg-black/20 p-3 text-[10px] leading-5 text-[#cbb9a5]">
+              <div>当前平台：{target?.platformName || "尚未选择视频"}</div>
+              <div>播放方式：{target?.nativeVideo ? "小手机内置 video" : target?.embedUrl ? "平台 iframe" : "尚无可用播放器"}</div>
+              <div>iframe 状态：{target?.embedUrl ? (iframeLoadedAt ? "已触发 load（不代表视频已出画）" : "等待 load") : "不适用"}</div>
+              <div>最近 load：{iframeLoadedAt || "暂无"}</div>
+            </div>
+            <button type="button" onClick={() => {
+              const native = (window as WatchNativeWindow).AndroidShell;
+              const video = playerRef.current?.querySelector("video");
+              const safeUrl = (() => { try { const u = new URL(target?.url || window.location.href); return u.origin + u.pathname; } catch { return "unavailable"; } })();
+              let shell = "非 AndroidShell WebView 或原生诊断桥不可用";
+              let logs: string[] = [];
+              try { if (native?.getDiagnosticsSnapshot) shell = native.getDiagnosticsSnapshot(); } catch (error) { shell = "读取原生环境失败：" + String(error); }
+              try {
+                const raw = native?.getWebConsoleLogs?.();
+                const values = raw ? JSON.parse(raw) as unknown : [];
+                if (Array.isArray(values)) logs = values.slice(-30).map(value => String(value).replace(/((?:token|api[_-]?key|authorization|cookie|password)\s*[:=]\s*)[^\s,;]+/ig, "$1[REDACTED]").slice(0, 500));
+              } catch { logs = ["无法读取 WebView 控制台日志"]; }
+              const report = [
+                "小手机一起看播放诊断",
+                "时间：" + new Date().toISOString(),
+                "平台：" + (target?.platformName || "未选择"),
+                "播放方式：" + (target?.nativeVideo ? "native-video" : target?.embedUrl ? "iframe" : "none"),
+                "链接（不含查询参数）：" + safeUrl,
+                "iframe load：" + (iframeLoadedAt || "未记录；load 不代表成功出画"),
+                "UA：" + navigator.userAgent,
+                "在线状态：" + (navigator.onLine ? "online" : "offline"),
+                "可视区：" + window.innerWidth + "x" + window.innerHeight + " / DPR " + window.devicePixelRatio,
+                "内置 video：" + (video ? JSON.stringify({readyState:video.readyState,networkState:video.networkState,paused:video.paused,ended:video.ended,currentTime:Number.isFinite(video.currentTime)?Math.round(video.currentTime*10)/10:null,duration:Number.isFinite(video.duration)?video.duration:null,videoWidth:video.videoWidth,videoHeight:video.videoHeight,error:video.error?{code:video.error.code,message:video.error.message}:null}) : "无内置 video；跨域 iframe 内部状态不可读取"),
+                "原生环境：" + shell,
+                "最近 WebView 控制台警告/错误：",
+                ...(logs.length ? logs : ["暂无可读取的控制台错误记录"]),
+                "提示：复制前请检查是否包含隐私信息。"
+              ].join("\n");
+              setWatchDiagnosticReport(report);
+              onNotice?.("播放诊断已生成，可在下方查看并复制。");
+            }} className="mt-3 w-full rounded-lg bg-[#c99a6a] px-3 py-2.5 text-[11px] font-medium text-[#2a1f16]">生成播放诊断报告</button>
+            {watchDiagnosticReport && <div className="mt-2">
+              <textarea readOnly value={watchDiagnosticReport} aria-label="播放诊断报告" rows={8} onFocus={event => event.currentTarget.select()} className="w-full select-text rounded-lg border border-white/10 bg-black/30 p-2 text-[10px] leading-5 text-[#d8c9b6] outline-none"/>
+              <div className="mt-2 flex gap-2">
+                <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(watchDiagnosticReport); onNotice?.("诊断报告已复制"); } catch { onNotice?.("自动复制不可用，请长按上方报告文本选择复制"); } }} className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#d8c9b6]">复制报告</button>
+                <button type="button" onClick={() => { try { (window as WatchNativeWindow).AndroidShell?.clearWebConsoleLogs?.(); } catch {} setWatchDiagnosticReport(""); onNotice?.("已清除可清除的控制台日志"); }} className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#d8c9b6]">清除日志并收起</button>
+              </div>
+            </div>}
           </section>
           <p className="mt-3 text-[10px] leading-5 text-[#7d7268]">角色发言使用你已配置的聊天模型与语音绑定。平台自带的字幕/弹幕开关无法跨站控制，这里的开关只作用于「角色陪看」这一层。</p>
       </section>
