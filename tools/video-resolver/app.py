@@ -99,7 +99,28 @@ def cleanup_old():
 
 @app.get("/health")
 def health():
-    return {"ok": True, "service": "momo-video-resolver", "version": "1.1.0", "engines": ["parse-video-py", "yt-dlp"], "cache_mb": round(sum(p.stat().st_size for p in ROOT.iterdir() if p.is_file()) / 1048576, 1)}
+    try:
+        import parse_video_py  # noqa: F401
+        parse_video_available = True
+    except Exception:
+        parse_video_available = False
+    try:
+        import yt_dlp
+        yt_dlp_version = getattr(yt_dlp.version, "__version__", "installed")
+    except Exception:
+        yt_dlp_version = None
+    return {
+        "ok": bool(yt_dlp_version),
+        "service": "momo-video-resolver",
+        "version": "1.2.0",
+        "engines": {
+            "parse-video-py": parse_video_available,
+            "yt-dlp": bool(yt_dlp_version),
+        },
+        "ffmpeg": bool(shutil.which("ffmpeg")),
+        "ffmpeg_required_for_separate_audio": True,
+        "cache_mb": round(sum(p.stat().st_size for p in ROOT.iterdir() if p.is_file()) / 1048576, 1),
+    }
 
 @app.post("/api/resolve")
 async def resolve(body: ResolveRequest, x_resolver_token: str | None = Header(default=None)):
