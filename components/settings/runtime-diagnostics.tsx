@@ -63,7 +63,7 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
     }
 
     // Optional Termux video resolver: absence is informational because platform iframe fallback may still work.
-    const resolverEndpoint = safeRead(() => (localStorage.getItem("watch_local_resolver_endpoint_v1") || "http://127.0.0.1:8765").trim().replace(/\\/+$/, ""), "http://127.0.0.1:8765");
+    const resolverEndpoint = safeRead(() => (localStorage.getItem("watch_local_resolver_endpoint_v1") || "http://127.0.0.1:8765").trim().replace(/\/+$/, ""), "http://127.0.0.1:8765");
     const resolverToken = safeRead(() => localStorage.getItem("watch_local_resolver_token_v1") || "", "");
     try {
       const headers: Record<string, string> = {};
