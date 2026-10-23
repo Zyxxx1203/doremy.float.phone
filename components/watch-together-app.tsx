@@ -1957,7 +1957,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </section>
           <section className="mt-4 border-t border-white/10 pt-3">
             <h3 className="font-serif text-sm text-[#e8c39a]">本地视频下载引擎</h3>
-            <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">操作说明：①先在本机安装并启动一个兼容的本地视频解析服务；②让服务监听本机 8765 端口，并确认健康检查地址 /health 可访问；③在这里填入服务地址并点「测试连接」；④保持服务运行，再粘贴视频分享链接。手机本机服务通常填 http://127.0.0.1:8765；如果服务运行在另一台电脑，请填写电脑的局域网地址，并确保手机能访问。HTTPS 网页可能拦截不安全的 HTTP 地址。</p>
+            <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">操作说明：①先在 Termux 中单独安装并启动兼容的本地视频解析服务（本项目只提供连接入口，没有内置这项服务）；②服务需监听 8765 端口，并提供 /health 与 /api/resolve 接口；③在这里填服务地址，点击「测试连接」确认可达；④保持 Termux 中的服务持续运行，再粘贴视频分享链接。服务运行在当前手机时填 http://127.0.0.1:8765；运行在另一台电脑时填电脑的局域网地址，并确保手机可访问。若连接失败，先检查服务是否启动、端口是否正确及系统是否限制后台运行。</p>
             <label className="mt-2 block text-[11px] text-[#9c9086]">解析服务地址
               <input type="url" value={localResolverEndpoint} onChange={event => setLocalResolverEndpoint(event.target.value)} placeholder="http://127.0.0.1:8765" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none"/>
             </label>
