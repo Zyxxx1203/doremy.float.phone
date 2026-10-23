@@ -403,13 +403,23 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         const midpoint = { x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 };
         const previousMidpoint = pinchLastMidpointRef.current ?? midpoint;
         pinchLastMidpointRef.current = midpoint;
-        // 双指中点移动（平移）与指距变化（缩放）在同一次状态更新里一起算，
-        // 避免「先改平移再改缩放」两步分开写导致锚点漂移。
-        const panDX = midpoint.x - previousMidpoint.x, panDY = midpoint.y - previousMidpoint.y;
+        // 用「上一帧中点下的世界坐标」直接反算本帧 pan + zoom，
+        // 一次性写入两者，避免先平移再缩放时 React/WebView 布局时序造成落点漂移。
         const pan = panRef.current;
-        applyPan(pan.x + panDX, pan.y + panDY);
-        const nextZoom = Math.max(5, Math.min(300, Math.round(pinchStartRef.current.zoom * pointsDistance(points) / pinchStartRef.current.distance)));
-        applyZoom(nextZoom, { x: midpoint.x - rect.left, y: midpoint.y - rect.top });
+        const previousZoom = Math.max(0.01, panoramaZoomRef.current / 100);
+        const nextZoomValue = Math.max(panoramaMinZoomRef.current, Math.min(300, Math.round(
+          pinchStartRef.current.zoom * pointsDistance(points) / Math.max(1, pinchStartRef.current.distance),
+        )));
+        const nextScale = nextZoomValue / 100;
+        const previousLocalX = previousMidpoint.x - rect.left;
+        const previousLocalY = previousMidpoint.y - rect.top;
+        const currentLocalX = midpoint.x - rect.left;
+        const currentLocalY = midpoint.y - rect.top;
+        const worldX = (previousLocalX - pan.x) / previousZoom;
+        const worldY = (previousLocalY - pan.y) / previousZoom;
+        applyPan(currentLocalX - worldX * nextScale, currentLocalY - worldY * nextScale);
+        panoramaZoomRef.current = nextZoomValue;
+        setPanoramaZoom(nextZoomValue);
         return;
       }
       // 单指：只有「浏览模式 + 起点是空白画布」才走自定义平移；摆照片/涂鸦/翻面继续交给画布自身的指针逻辑。
@@ -477,14 +487,22 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         };
         const previousMidpoint = pinchLastMidpointRef.current ?? midpoint;
         pinchLastMidpointRef.current = midpoint;
-        const panDX = midpoint.x - previousMidpoint.x, panDY = midpoint.y - previousMidpoint.y;
         const pan = panRef.current;
-        applyPan(pan.x + panDX, pan.y + panDY);
         const rect = viewport.getBoundingClientRect();
-        const nextZoom = Math.max(5, Math.min(300, Math.round(
-          pinchStartRef.current.zoom * touchDistance(event.touches) / pinchStartRef.current.distance,
+        const previousZoom = Math.max(0.01, panoramaZoomRef.current / 100);
+        const nextZoomValue = Math.max(panoramaMinZoomRef.current, Math.min(300, Math.round(
+          pinchStartRef.current.zoom * touchDistance(event.touches) / Math.max(1, pinchStartRef.current.distance),
         )));
-        applyZoom(nextZoom, { x: midpoint.x - rect.left, y: midpoint.y - rect.top });
+        const nextScale = nextZoomValue / 100;
+        const previousLocalX = previousMidpoint.x - rect.left;
+        const previousLocalY = previousMidpoint.y - rect.top;
+        const currentLocalX = midpoint.x - rect.left;
+        const currentLocalY = midpoint.y - rect.top;
+        const worldX = (previousLocalX - pan.x) / previousZoom;
+        const worldY = (previousLocalY - pan.y) / previousZoom;
+        applyPan(currentLocalX - worldX * nextScale, currentLocalY - worldY * nextScale);
+        panoramaZoomRef.current = nextZoomValue;
+        setPanoramaZoom(nextZoomValue);
         return;
       }
       if (event.touches.length === 1) {
