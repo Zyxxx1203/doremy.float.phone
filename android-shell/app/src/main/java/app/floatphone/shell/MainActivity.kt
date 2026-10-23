@@ -1106,7 +1106,11 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url
                 val scheme = url.scheme ?: return false
-                // 站内导航留在壳里；http(s) 外链和自定义协议（shortcuts:// 等）交给系统
+                // 跨站播放器通常运行在 iframe 内。不要把 iframe 的导航交给系统浏览器，
+                // 否则 B 站官方 player.bilibili.com 等嵌入播放器可能被踢出小手机页面。
+                // 仅顶层页面导航才按外链策略交给系统；子框架保持在当前 WebView。
+                if (!request.isForMainFrame) return false
+                // 站内导航留在壳里；顶层 http(s) 外链和自定义协议交给系统
                 if (scheme == "http" || scheme == "https") {
                     if (url.host == Uri.parse(SITE_URL).host) return false
                     return runCatching {
