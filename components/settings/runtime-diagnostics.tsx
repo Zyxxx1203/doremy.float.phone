@@ -62,6 +62,22 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
       result.push({ id: "site", title: "站点连通性", status: "fail", detail: "同源请求失败：" + (error instanceof Error ? error.message : String(error)), fix: "检查网络、域名和站点部署状态。" });
     }
 
+    // Optional Termux video resolver: absence is informational because platform iframe fallback may still work.
+    const resolverEndpoint = safeRead(() => (localStorage.getItem("watch_local_resolver_endpoint_v1") || "http://127.0.0.1:8765").trim().replace(/\\/+$/, ""), "http://127.0.0.1:8765");
+    const resolverToken = safeRead(() => localStorage.getItem("watch_local_resolver_token_v1") || "", "");
+    try {
+      const headers: Record<string, string> = {};
+      if (resolverToken) headers["X-Resolver-Token"] = resolverToken;
+      const response = await fetch(resolverEndpoint + "/health", { headers, cache: "no-store", signal: AbortSignal.timeout(3500) });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const health = await response.json() as { ok?: boolean; version?: string; engines?: Record<string, boolean>; ffmpeg?: boolean };
+      const engines = health.engines ? Object.entries(health.engines).map(([name, ready]) => name + (ready ? "✓" : "×")).join(" / ") : "引擎状态未知";
+      const ready = health.ok !== false && Boolean(health.engines?.["yt-dlp"] || health.engines?.["parse-video-py"]);
+      result.push({ id: "video-resolver", title: "一起看本地解析链路", status: ready ? "ok" : "warn", detail: "服务已响应 · v" + (health.version || "未知") + " · " + engines + " · FFmpeg " + (health.ffmpeg ? "可用" : "未检测到"), fix: !ready ? "检查 Termux 服务和解析引擎；安装/启动命令可在一起看 → 设置 → 本地视频下载引擎中复制。" : undefined });
+    } catch (error) {
+      result.push({ id: "video-resolver", title: "一起看本地解析链路", status: "info", detail: "未连接到本机解析服务（" + (error instanceof Error ? error.message : String(error)) + "）。这不代表播放器整体不可用：支持的 B 站/YouTube 等链接仍会尝试内嵌播放器；部分平台会限制 iframe。", fix: "如需启用本地解析，在一起看设置中复制 Termux 一键部署命令，执行后返回此处重新检测。" });
+    }
+
     const storage = safeRead(() => { const key = "__float_diag_test__"; localStorage.setItem(key, "1"); localStorage.removeItem(key); return true; }, false);
     result.push({ id: "storage", title: "本地存储", status: storage ? "ok" : "fail", detail: storage ? "localStorage 可读写。" : "localStorage 写入失败，可能是存储受限或空间异常。", fix: !storage ? "检查浏览器/应用存储；不要直接清除应用数据，以免丢失本地数据。" : undefined });
     const indexedDb = typeof indexedDB !== "undefined";
@@ -109,6 +125,7 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
       "用户代理：" + safeRead(() => navigator.userAgent, "未知"),
       "屏幕：" + safeRead(() => screen.width + "×" + screen.height + "，DPR " + devicePixelRatio, "未知"),
       "网络在线标志：" + safeRead(() => String(navigator.onLine), "未知"),
+      "一起看本地解析地址：" + safeRead(() => localStorage.getItem("watch_local_resolver_endpoint_v1") || "http://127.0.0.1:8765（默认）", "读取失败"),
       "", "检查结果：",
       ...checks.map(item => "[" + labelFor(item.status) + "] " + item.title + "：" + item.detail + (item.fix ? "；建议：" + item.fix : "")),
       "", "原生信息：", nativeInfo ? JSON.stringify(nativeInfo, null, 2) : "无（浏览器/PWA 或当前 APK 不支持）",
