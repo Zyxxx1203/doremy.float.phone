@@ -1334,7 +1334,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup);
       return { character, session: session ?? createLifeVirtualSession(character.id, character.name) };
     };
-bailout function    const tick = async () => {
+    const tick = async () => {
       if (disposed || document.visibilityState !== "visible" || busyRef.current || proactiveBusyRef.current) return;
       const now = Date.now();
       const previousAttempt = proactiveAttemptAtRef.current[activeScene.id];
