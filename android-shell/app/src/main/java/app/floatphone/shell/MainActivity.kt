@@ -1045,7 +1045,10 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
             userAgentString = "$userAgentString FloatShell/$VERSION"
         }
         CookieManager.getInstance().setAcceptCookie(true)
-        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
+        // The app embeds cross-site video players (notably Bilibili's official iframe).
+        // Third-party cookies must be permitted for those embeds to retain supported session state.
+        // This does not bypass platform login/permission checks; it only removes our WebView-level block.
+        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
 
         webView.addJavascriptInterface(ShellBridge(), "AndroidShell")
         val globalWatchFilter = IntentFilter().apply {
