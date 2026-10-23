@@ -16,7 +16,7 @@
 2. 启动 `python app.py`，检查 `http://127.0.0.1:8765/health`；返回内容会显示两个解析引擎和 FFmpeg 是否真正可用。
 3. 为防系统休眠中断下载，必要时执行 `termux-wake-lock` 并将 Termux 加入电池优化白名单。
 
-Termux 服务与 Android App 私有缓存不是同一个目录；本服务返回本地下载 API 地址。浏览器/WebView 播放需要设备允许访问本机回环地址，Android WebView 的混合内容与 cleartext 策略可能影响访问。集成时优先通过原生桥将文件复制到 App 私有缓存并返回 `content://` URI，不能把 Termux 路径误当成 App 路径。
+Termux 服务与 Android App 私有缓存不是同一个目录；本服务返回本地下载 API 地址。APK 已配置仅允许 `localhost` / `127.0.0.1` 的 HTTP 回环访问，不会全局放开明文 HTTP；在 APK 中请将服务地址设为 `http://127.0.0.1:8765`。普通浏览器仍受浏览器自身的混合内容和 CORS 策略影响。Termux 下载缓存与 App 私有缓存相互独立，不能把 Termux 文件路径误当成 App 文件路径。
 
 ## API
 
