@@ -726,7 +726,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     });
   }, [applyImmediate, compensateViewportScroll]);
 
-  /** 相框涂鸦与创作日志共用一次写入；擦除不会新增记录。 */
+  /** 相框涂鸦即时保存画面；同一段涂鸦模式内的笔迹合并成一份创作记录。 */
+  const doodleSessionRecordIdRef = useRef<string | null>(null);
   const changeDoodles = useCallback((photoId: string, doodles: PhotoWallDoodle[], side: "front" | "back" = "front") => {
     const current = stateRef.current;
     const photo = current.photos.find(item => item.id === photoId);
@@ -739,14 +740,26 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       : item));
     if (addedByUser.length) {
       const latest = stateRef.current;
-      const record: PhotoWallCreationRecord = {
-        id: createPhotoWallId(), createdAt: new Date().toISOString(), authorType: "user",
-        authorName: "我", narrative: `我在「${photo?.title || "这张照片"}」的${side === "back" ? "背面留言纸" : "正面相框"}上留下了${addedByUser.length}笔涂鸦。`,
-        photoIds: [photoId], doodles: addedByUser,
-      };
-      applyImmediate({ ...latest, creationRecords: [...(latest.creationRecords ?? []), record] });
+      const recordId = wallCanvasMode === "doodle" ? doodleSessionRecordIdRef.current : null;
+      const previous = recordId ? (latest.creationRecords ?? []).find(item => item.id === recordId) : undefined;
+      if (previous) {
+        applyImmediate({ ...latest, creationRecords: (latest.creationRecords ?? []).map(item => item.id === recordId
+          ? { ...item, photoIds: [...new Set([...item.photoIds, photoId])], doodles: [...item.doodles, ...addedByUser],
+              narrative: `我在照片墙涂鸦模式里留下了${item.doodles.length + addedByUser.length}笔心意。` }
+          : item) });
+      } else {
+        const record: PhotoWallCreationRecord = {
+          id: createPhotoWallId(), createdAt: new Date().toISOString(), authorType: "user",
+          authorName: "我", narrative: wallCanvasMode === "doodle"
+            ? `我在照片墙涂鸦模式里留下了${addedByUser.length}笔心意。`
+            : `我在「${photo?.title || "这张照片"}」的${side === "back" ? "背面留言纸" : "正面相框"}上留下了${addedByUser.length}笔涂鸦。`,
+          photoIds: [photoId], doodles: addedByUser,
+        };
+        if (wallCanvasMode === "doodle") doodleSessionRecordIdRef.current = record.id;
+        applyImmediate({ ...latest, creationRecords: [...(latest.creationRecords ?? []), record] });
+      }
     }
-  }, [applyImmediate, commitPhotos, pushHistory]);
+  }, [applyImmediate, commitPhotos, pushHistory, wallCanvasMode]);
 
   /** 套用模板骨架：照片按顺序吸附进槽位，套完仍然可以自由拖动。 */
   const applyTemplate = useCallback((templateId: string) => {
@@ -934,11 +947,18 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         if (nearest && nearest.distance <= 0.24) photoIds.add(nearest.id);
       }
       if (!photoIds.size && wallActivePhotoId && source.photos.some(photo => photo.id === wallActivePhotoId)) photoIds.add(wallActivePhotoId);
+      const recordId = wallCanvasMode === "doodle" ? doodleSessionRecordIdRef.current : null;
+      const previous = recordId ? (source.creationRecords ?? []).find(item => item.id === recordId) : undefined;
+      if (previous) return { ...source, creationRecords: (source.creationRecords ?? []).map(item => item.id === recordId
+        ? { ...item, photoIds: [...new Set([...item.photoIds, ...photoIds])], doodles: [...item.doodles, ...addedByUser],
+            narrative: `我在这次涂鸦里亲手添了${item.doodles.length + addedByUser.length}笔心意。` }
+        : item) };
       const record: PhotoWallCreationRecord = {
         id: createPhotoWallId(), createdAt: new Date().toISOString(), authorType: "user", authorName: "我",
-        narrative: `我在照片墙上亲手添了${addedByUser.length}笔涂鸦，把这一点小心意也留了下来。`,
+        narrative: wallCanvasMode === "doodle" ? `我在这次涂鸦里亲手添了${addedByUser.length}笔心意。` : `我在照片墙上亲手添了${addedByUser.length}笔涂鸦，把这一点小心意也留了下来。`,
         photoIds: [...photoIds], doodles: addedByUser,
       };
+      if (wallCanvasMode === "doodle") doodleSessionRecordIdRef.current = record.id;
       return { ...source, creationRecords: [...(source.creationRecords ?? []), record] };
     };
     if (!grow) {
@@ -948,7 +968,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     compensateViewportScroll(grow);
     applyImmediate({ ...applyWorldGrow(current, grow), wallDoodles: remapDoodles(wallDoodles, grow) });
     if (addedByUser.length) persist(appendUserRecord(stateRef.current));
-  }, [applyImmediate, compensateViewportScroll, persist, pushHistory, wallActivePhotoId]);
+  }, [applyImmediate, compensateViewportScroll, persist, pushHistory, wallActivePhotoId, wallCanvasMode]);
   const visiblePhotos = useMemo(() => photos.filter(photo => {
     if (filter === "mine") return photo.ownerType === "user";
     if (filter === "characters") return photo.ownerType === "character";
@@ -1637,7 +1657,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               wallDoodles={state.wallDoodles ?? []} onChangeWallDoodles={changeWallDoodles}
               backgroundImage={wallBackgroundUrl} backgroundBox={state.wallBackgroundBox}
               wallWorld={world} canvasZoom={panoramaZoom / 100} readOnly={wallView === "panorama"}
-              mode={wallCanvasMode} onModeChange={setWallCanvasMode}
+              mode={wallCanvasMode} onModeChange={(nextMode) => { if (nextMode !== wallCanvasMode) { if (nextMode === "doodle") doodleSessionRecordIdRef.current = null; else if (wallCanvasMode === "doodle") doodleSessionRecordIdRef.current = null; setWallCanvasMode(nextMode); } }}
               brushColor={wallBrushColor} brushWidth={wallBrushWidth}
               sticker={wallSticker} onStickerChange={setWallSticker}
               eraser={wallEraser} onEraserChange={setWallEraser}
