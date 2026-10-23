@@ -2403,7 +2403,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     "--life-global-bg-blur": `${Math.max(0, Math.min(18, settings.globalBackgroundBlur ?? 0))}px`,
     "--life-global-bg-brightness": String(Math.max(0.45, Math.min(1.4, (settings.globalBackgroundBrightness ?? 100) / 100))),
     "--life-global-bg-overlay": String(Math.max(0, Math.min(85, settings.globalBackgroundOverlay ?? 18)) / 100),
-    "--life-scene-bg": effectiveSceneBackground ? `url("${effectiveSceneBackground}")` : "none",
+    "--life-scene-bg": sceneBackgroundLocation?.backgroundImage ? `url("${sceneBackgroundLocation.backgroundImage}")` : "var(--life-global-bg, none)",
     "--life-scene-bg-blur": `${Math.max(0, Math.min(18, sceneBackgroundLocation?.backgroundImage ? sceneBackgroundLocation.backgroundBlur ?? 0 : settings.globalBackgroundBlur ?? 0))}px`,
     "--life-scene-bg-brightness": String(Math.max(0.45, Math.min(1.4, ((sceneBackgroundLocation?.backgroundImage ? sceneBackgroundLocation.backgroundBrightness : settings.globalBackgroundBrightness) ?? 100) / 100))),
     "--life-scene-bg-overlay": String(Math.max(0, Math.min(85, (sceneBackgroundLocation?.backgroundImage ? sceneBackgroundLocation.backgroundOverlay : settings.globalBackgroundOverlay) ?? 18)) / 100),
