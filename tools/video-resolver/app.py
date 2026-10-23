@@ -59,7 +59,15 @@ def validate_url(value: str) -> str:
 
 def ydl_options(outtmpl: str, quality: str, cookiefile: str | None = None):
     height = {"1080": 1080, "720": 720, "480": 480, "360": 360}.get(quality)
-    fmt = f"best[height<={height}]/best" if height else "best"
+    # DASH platforms (notably Bilibili) often separate video and audio. Merge them
+    # when FFmpeg exists; keep a single-file fallback for minimal Windows installs.
+    if shutil.which("ffmpeg"):
+        fmt = (
+            f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
+            if height else "bestvideo*+bestaudio/best"
+        )
+    else:
+        fmt = f"best[height<={height}]/best" if height else "best"
     return {
         "format": fmt,
         "outtmpl": outtmpl,
@@ -109,32 +117,49 @@ async def resolve(body: ResolveRequest, x_resolver_token: str | None = Header(de
             cookie_path.write_text(body.cookies, encoding="utf-8")
         output = str(tempdir / "video.%(ext)s")
         opts = ydl_options(output, body.quality, str(cookie_path) if cookie_path else None)
-        engine_used = "yt-dlp"
         failures: list[str] = []
-        if body.engine in ("auto", "parse-video-py"):
+        if body.engine == "auto":
+            host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+            # parse-video-py is strongest on Chinese short-video share links. For
+            # Bilibili/YouTube/long-form sites, yt-dlp must get the original page
+            # so it can select matching audio/video tracks instead of downloading
+            # a silent video-only URL returned by a generic share parser.
+            parse_first_hosts = (
+                "douyin.com", "iesdouyin.com", "kuaishou.com", "gifshow.com",
+                "xiaohongshu.com", "xhslink.com", "pipix.com", "huoshan.com",
+                "ixigua.com", "weishi.qq.com", "zuiyou.com",
+            )
+            parse_first = any(host == domain or host.endswith("." + domain) for domain in parse_first_hosts)
+            engines = ["parse-video-py", "yt-dlp"] if parse_first else ["yt-dlp", "parse-video-py"]
+        else:
+            engines = [body.engine]
+
+        engine_used = ""
+        for engine in engines:
             try:
-                direct_url = await asyncio.to_thread(_parse_with_parse_video_py, url)
-                if not direct_url:
-                    raise RuntimeError("parse-video-py 未返回 video_url")
-                direct_opts = dict(opts)
-                direct_opts["http_headers"] = {
-                    **direct_opts.get("http_headers", {}),
-                    "Referer": url,
-                }
-                await asyncio.to_thread(_download, direct_url, direct_opts)
-                engine_used = "parse-video-py"
+                if engine == "parse-video-py":
+                    direct_url = await asyncio.to_thread(_parse_with_parse_video_py, url)
+                    if not direct_url:
+                        raise RuntimeError("parse-video-py 未返回 video_url")
+                    # Do not let a third-party parser turn this local service into
+                    # a downloader for private/internal addresses.
+                    direct_url = validate_url(direct_url)
+                    direct_opts = dict(opts)
+                    direct_opts["http_headers"] = {
+                        **direct_opts.get("http_headers", {}),
+                        "Referer": url,
+                    }
+                    await asyncio.to_thread(_download, direct_url, direct_opts)
+                else:
+                    await asyncio.to_thread(_download, url, opts)
+                engine_used = engine
+                break
             except Exception as exc:
-                failures.append("parse-video-py: " + str(exc)[:180])
-                if body.engine == "parse-video-py":
-                    raise RuntimeError("parse-video-py 解析/下载失败：" + str(exc)[:250]) from exc
+                failures.append(engine + ": " + str(exc)[:180])
                 for partial in tempdir.glob("video.*"):
                     partial.unlink(missing_ok=True)
-        if engine_used != "parse-video-py":
-            try:
-                await asyncio.to_thread(_download, url, opts)
-            except Exception as exc:
-                failures.append("yt-dlp: " + str(exc)[:180])
-                raise RuntimeError("所有解析引擎均失败。 " + "；".join(failures)) from exc
+        if not engine_used:
+            raise RuntimeError("所有解析引擎均失败。 " + "；".join(failures))
         media = next((p for p in tempdir.iterdir() if p.is_file() and p.name != "cookies.txt" and p.stat().st_size > 1024), None)
         if media is None:
             raise RuntimeError("解析引擎没有返回可播放的视频文件。 " + "；".join(failures))
