@@ -1693,7 +1693,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           {(state.creationRecords ?? []).length ? <div className="space-y-5">
             {[...(state.creationRecords ?? [])].sort((a,b) => b.createdAt.localeCompare(a.createdAt)).map(record => {
               const linkedPhotos = record.photoIds.map(id => state.photos.find(photo => photo.id === id)).filter((photo): photo is PhotoWallPhoto => Boolean(photo));
-              return <article key={record.id} className="overflow-hidden border border-[#dfcbb8] bg-[#fffaf2] shadow-[0_8px_22px_rgba(92,68,48,.08)]">
+              return <details key={record.id} className="overflow-hidden border border-[#dfcbb8] bg-[#fffaf2] shadow-[0_8px_22px_rgba(92,68,48,.08)]">
+                <summary className="cursor-pointer list-none px-4 py-3 text-[#5d4942]"><span className="font-serif text-sm">{record.authorName} 的小小创作</span><span className="mt-1 block text-[10px] text-[#a08c74]">{new Date(record.createdAt).toLocaleString("zh-CN",{month:"long",day:"numeric",hour:"2-digit",minute:"2-digit"})} · {record.doodles.length} 笔心意 · 点按展开</span></summary>
+                <article className="border-t border-[#eadbc9]">
                 <header className="flex items-start gap-3 border-b border-[#eadbc9] px-4 py-3">
                   <span className="grid h-10 w-10 shrink-0 place-items-center border border-[#d9b9ae] bg-[#f8e9e6] font-serif text-[#87565b]">{record.authorName.slice(0,1)}</span>
                   <div className="min-w-0 flex-1">
@@ -1723,7 +1725,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
                   <div className="mb-2 text-[10px] tracking-wide text-[#a08c74]">关联照片</div>
                   {linkedPhotos.length ? <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">{linkedPhotos.map(photo => <div key={photo.id} className="min-w-0"><PhotoThumbnail photo={photo} onOpen={() => openPhoto(photo)}/><p className="mt-1 truncate text-[10px] text-[#806b58]">{photo.title || "未命名的瞬间"}</p></div>)}</div> : <p className="text-xs text-[#9a8776]">这次创作没有准确匹配到单张照片，笔迹已单独保存。</p>}
                 </footer>
-              </article>;
+                </article>
+              </details>;
             })}
           </div> : <div className="grid min-h-[40dvh] place-items-center border border-dashed border-[#d8c4b4] bg-[#fffaf2]/60 px-5 text-center">
             <div><Feather size={30} className="mx-auto text-[#b18c7d]"/><h3 className="mt-3 font-serif text-lg text-[#6b5547]">还没有共同创作记录</h3><p className="mt-2 max-w-sm text-xs leading-6 text-[#9a8776]">在编辑墙面中点击「角色涂鸦」，角色留下的每一笔、创作时间和关联照片都会保存到这里。</p><button type="button" onClick={() => setWallView("edit")} className="mt-4 border-b border-[#bda28d] px-2 py-2 text-sm text-[#87565b]">去邀请角色创作</button></div>
