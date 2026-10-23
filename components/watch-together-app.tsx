@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronDown, ExternalLink, FileText, Heart, ImagePlus, LoaderCircle, MessageCircle, Pause, Play, Settings2, Sparkles, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, ExternalLink, FileText, Heart, ImagePlus, LoaderCircle, MessageCircle, Pause, Play, Settings2, Sparkles, Trash2, X } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import { generateChatCompletion, flattenCompletionResult, readCompressedImageDataUrl } from "@/lib/chat-engine";
@@ -831,7 +831,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       localVideoObjectUrlRef.current = null;
     }
     localVideoFileRef.current = null;
-    if (!localResolverEndpoint.trim()) setTarget(parsed);
+    setTarget(parsed);
     setShowVideoSourcePanel(false);
     setScreenshotDataUrl("");
     setTranscriptSegments([]); setTranscriptName("");
@@ -1957,15 +1957,15 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </section>
           <section className="mt-4 border-t border-white/10 pt-3">
             <h3 className="font-serif text-sm text-[#e8c39a]">本地视频下载引擎</h3>
-            <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">可连接 Windows 或手机 Termux 上运行的本地下载服务。自动模式依次尝试 parse-video-py 和 yt-dlp；两者都失败后可再使用 APK 内置解析。默认地址：http://127.0.0.1:8765</p>
+            <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">操作说明：①先在本机安装并启动一个兼容的本地视频解析服务；②让服务监听本机 8765 端口，并确认健康检查地址 /health 可访问；③在这里填入服务地址并点「测试连接」；④保持服务运行，再粘贴视频分享链接。手机本机服务通常填 http://127.0.0.1:8765；如果服务运行在另一台电脑，请填写电脑的局域网地址，并确保手机能访问。HTTPS 网页可能拦截不安全的 HTTP 地址。</p>
             <label className="mt-2 block text-[11px] text-[#9c9086]">解析服务地址
               <input type="url" value={localResolverEndpoint} onChange={event => setLocalResolverEndpoint(event.target.value)} placeholder="http://127.0.0.1:8765" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none"/>
             </label>
             <label className="mt-2 block text-[11px] text-[#9c9086]">解析策略
               <select value={localResolverEngine} onChange={event => { const value = event.target.value as "auto" | "parse-video-py" | "yt-dlp"; setLocalResolverEngine(value); try { window.localStorage.setItem("watch_local_resolver_engine_v1", value); } catch {} }} className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none">
-                <option value="auto">自动兜底：parse-video-py → yt-dlp</option>
-                <option value="parse-video-py">仅使用 parse-video-py</option>
-                <option value="yt-dlp">仅使用 yt-dlp</option>
+                <option value="auto">自动选择可用的解析方式</option>
+                <option value="parse-video-py">方式一</option>
+                <option value="yt-dlp">方式二</option>
               </select>
             </label>
             <label className="mt-2 block text-[11px] text-[#9c9086]">本地服务令牌（可留空）
@@ -2024,7 +2024,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             <div className="flex items-start gap-3">
               <div className="grid h-16 w-12 shrink-0 place-items-center border border-dashed border-[#b9906b] bg-[#f4e4d1] text-center"><span className="text-[9px] tracking-widest text-[#9a7c64]">MEMORY</span><span className="font-serif text-xl text-[#a36f4e]">{String(memoryRecords.length-index).padStart(2,"0")}</span><span className="text-[8px] text-[#9a7c64]">TOGETHER</span></div>
               <div className="min-w-0 flex-1"><div className="font-serif text-base leading-6">{record.title}</div><div className="mt-1 text-[10px] text-[#9a7c64]">{new Date(record.startedAt).toLocaleString("zh-CN",{month:"long",day:"numeric",hour:"2-digit",minute:"2-digit"})} · {record.platform}</div><div className="mt-1 text-[10px] text-[#9a7c64]">陪看约 {Math.floor(record.durationSeconds/60)} 分钟{record.characterName ? " · 和 "+record.characterName : ""}</div></div>
-              <button type="button" onClick={() => patchMemoryRecord(record.id,{favorite:!record.favorite})} aria-label={record.favorite?"取消收藏":"收藏这份记录"} className="shrink-0 p-1 text-[#b47d66]"><Heart size={17} fill={record.favorite?"currentColor":"none"}/></button>
+              <div className="flex shrink-0 items-center gap-2"><button type="button" onClick={() => patchMemoryRecord(record.id,{favorite:!record.favorite})} aria-label={record.favorite?"取消收藏":"收藏这份记录"} className="p-1 text-[#b47d66]"><Heart size={17} fill={record.favorite?"currentColor":"none"}/></button><button type="button" onClick={() => { setMemoryRecords(previous => { const next = previous.filter(item => item.id !== record.id); writeWatchMemories(next); return next; }); if (activeMemoryIdRef.current === record.id) activeMemoryIdRef.current = null; if (editingMemoryId === record.id) setEditingMemoryId(null); onNotice?.("已删除这份共同回忆。"); }} aria-label="删除这份共同回忆" title="删除回忆" className="p-1 text-[#9a6b58]"><Trash2 size={16}/></button></div>
             </div>
             {(record.memoryTitle || record.quote || record.mood) && <div className="relative mt-4 border-y border-[#d7b99a] bg-[linear-gradient(135deg,#fffaf2,#f4e4d1)] px-4 py-4 text-center"><div className="text-[9px] tracking-[.28em] text-[#a7876c]">A LITTLE MEMORY</div>{record.mood && <div className="mt-2 text-[10px] tracking-[.2em] text-[#a36f4e]">{record.mood}</div>}{record.memoryTitle && <h4 className="mt-1 font-serif text-lg tracking-wide text-[#77533d]">{record.memoryTitle}</h4>}{record.quote && <p className="mx-auto mt-2 max-w-[28rem] font-serif text-sm italic leading-6 text-[#745a46]">“{record.quote}”</p>}{record.note && <p className="mt-3 text-left text-xs leading-6 text-[#856c58]">{record.note}</p>}<div className="mt-3 text-[8px] tracking-[.25em] text-[#b49a82]">ONE MOMENT · KEPT TOGETHER</div></div>}
             {record.review && <div className="mt-3"><div className="text-[9px] tracking-widest text-[#a7876c]">CHARACTER’S AFTERTHOUGHT</div><p className="mt-1 whitespace-pre-wrap font-serif text-sm leading-6 text-[#745a46]">{record.review}</p></div>}
