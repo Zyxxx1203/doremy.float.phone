@@ -71,13 +71,12 @@ const contacts = [{ id: "contact-uuid-123", characterId: "character-id-456" }];
 assert.equal(resolveLifeCharacterIdForContact("contact-uuid-123", contacts), "character-id-456", "contact ID must resolve to the linked character ID");
 assert.equal(resolveLifeCharacterIdForContact("character-id-456", contacts), null, "character ID must not be treated as a contact ID");
 assert.equal(resolveLifeCharacterIdForContact("missing-contact", contacts), null, "unknown contact IDs must not resolve");
-const bailoutSource = readFileSync(new URL("../lib/push-bailout-client.ts", import.meta.url), "utf8");
 const chatRoomSource = readFileSync(new URL("../components/chat/chat-room.tsx", import.meta.url), "utf8");
-assert.ok(bailoutSource.includes("resolveLifeCharacterIdForContact(session.contactId, loadChatContacts())"), "background life push must map contact ID to character ID");
 const lifeUiSource = readFileSync(new URL("../components/life/life-engine-app.tsx", import.meta.url), "utf8");
-assert.ok(lifeUiSource.includes("addChatContact(candidate.character.id)"), "life-scene offline bailout must create a prompt contact when only a virtual life session exists");
-assert.ok(lifeUiSource.includes("createOrGetSession(candidate.character.id)"), "life-scene offline bailout must use a persisted session as a prompt snapshot anchor");
-assert.ok(!lifeUiSource.includes('if (!candidate || candidate.session.id.startsWith("life-engine-")) return;'), "life-scene offline bailout must not silently skip virtual sessions");
+assert.ok(!lifeUiSource.includes("armLifeSceneProactiveBailout"), "life system must not schedule server-side offline push jobs");
+assert.ok(!lifeUiSource.includes("cancelLifeSceneProactiveBailouts"), "life system must not manage offline push jobs");
+assert.ok(!lifeUiSource.includes("后台/关闭应用时继续主动推送"), "life settings must not expose offline push");
+assert.ok(lifeUiSource.includes("evaluateLifeAutonomyWindow"), "foreground life-scene autonomy must remain enabled");
 assert.ok(chatRoomSource.includes("resolveLifeCharacterIdForContact(session.contactId, loadChatContacts())"), "online follow-up arbitration must map contact ID to character ID");
 
 console.log("Life autonomy guardrail tests passed.");
