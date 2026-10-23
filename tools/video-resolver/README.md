@@ -12,9 +12,13 @@
 
 ## Android Termux
 
-1. 安装 Termux，执行 `bash install-termux.sh`。
-2. 启动 `python app.py`，检查 `http://127.0.0.1:8765/health`；返回内容会显示两个解析引擎和 FFmpeg 是否真正可用。
-3. 为防系统休眠中断下载，必要时执行 `termux-wake-lock` 并将 Termux 加入电池优化白名单。
+先安装 Termux（建议使用官方 GitHub/F-Droid 发行版），打开后只需粘贴这一条命令，即可自动下载服务文件、安装 Python/FFmpeg/解析依赖、启动服务并检查健康状态：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/momo.float.phone/main/tools/video-resolver/install-termux.sh | bash
+```
+
+安装完成后可用 `momo-video-status` 检查，`momo-video-start` 启动，`momo-video-stop` 停止。程序安装在 `~/.momo-video-resolver`，日志在 `~/.momo-video-resolver/service.log`。这一步只负责当前 Termux 环境；若系统强制杀掉 Termux，重新打开后运行 `momo-video-start` 即可。需要长时间后台运行时，可执行 `termux-wake-lock` 并把 Termux 加入电池优化白名单。
 
 Termux 服务与 Android App 私有缓存不是同一个目录；本服务返回本地下载 API 地址。APK 已配置仅允许 `localhost` / `127.0.0.1` 的 HTTP 回环访问，不会全局放开明文 HTTP；在 APK 中请将服务地址设为 `http://127.0.0.1:8765`。普通浏览器仍受浏览器自身的混合内容和 CORS 策略影响。Termux 下载缓存与 App 私有缓存相互独立，不能把 Termux 文件路径误当成 App 文件路径。
 
