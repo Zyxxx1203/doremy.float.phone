@@ -1,18 +1,19 @@
 # Momo 本地视频解析服务（Windows / Termux）
 
-目标：先把平台视频下载到本机缓存，再播放本地文件，避免依赖平台网页播放器。Windows 与 Android Termux 使用同一套 Python API。该服务内置两个独立解析引擎：`parse-video-py`（覆盖多个中文短视频分享链接）和 `yt-dlp`（平台提取器/下载器）。默认 `auto` 先试 parse-video-py，失败后自动回退 yt-dlp；也可在「一起看」设置中锁定某一个引擎。该服务是可选的本地工具，不会把视频或 Cookie 上传到 Netlify/Supabase。
+目标：先把平台视频下载到本机缓存，再播放本地文件，避免依赖平台网页播放器。Windows 与 Android Termux 使用同一套 Python API。该服务内置两个独立解析引擎：`parse-video-py`（覆盖多个中文短视频分享链接）和 `yt-dlp`（平台提取器/下载器）。`auto` 会按平台选择顺序：抖音/快手/小红书等短视频分享链接优先 `parse-video-py`，B站/YouTube 等长视频平台优先 `yt-dlp`，失败后再尝试另一个引擎；这样可避免把 B 站分离的无声视频轨误当成完整视频。也可在「一起看」设置中锁定某一个引擎。该服务是可选的本地工具，不会把视频或 Cookie 上传到 Netlify/Supabase。
 
 ## Windows
 
 1. 安装 Python 3.11 或更新版本。
 2. PowerShell 进入此目录，运行 `Set-ExecutionPolicy -Scope Process Bypass`（如脚本被策略拦截）和 `./install-windows.ps1`。
-3. 启动：`.\.venv\Scripts\python.exe app.py`
-4. 检查 `http://127.0.0.1:8765/health`。
+3. 若要播放 B 站等分离视频/音频轨的平台，请另外安装 FFmpeg 并确保 `ffmpeg.exe` 在 PATH 中；安装脚本会检测并提示。缺少 FFmpeg 时会退回单文件格式，最高画质/音轨合并可能不可用。
+4. 启动：`.\.venv\Scripts\python.exe app.py`
+5. 检查 `http://127.0.0.1:8765/health`。
 
 ## Android Termux
 
 1. 安装 Termux，执行 `bash install-termux.sh`。
-2. 启动 `python app.py`，检查 `http://127.0.0.1:8765/health`。
+2. 启动 `python app.py`，检查 `http://127.0.0.1:8765/health`；返回内容会显示两个解析引擎和 FFmpeg 是否真正可用。
 3. 为防系统休眠中断下载，必要时执行 `termux-wake-lock` 并将 Termux 加入电池优化白名单。
 
 Termux 服务与 Android App 私有缓存不是同一个目录；本服务返回本地下载 API 地址。浏览器/WebView 播放需要设备允许访问本机回环地址，Android WebView 的混合内容与 cleartext 策略可能影响访问。集成时优先通过原生桥将文件复制到 App 私有缓存并返回 `content://` URI，不能把 Termux 路径误当成 App 路径。
