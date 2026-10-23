@@ -34,7 +34,7 @@ import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } f
 import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
-import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts, suspendIdleReconnectForLifeScene, refreshScheduledBailouts } from "@/lib/push-bailout-client";
+import { suspendIdleReconnectForLifeScene } from "@/lib/push-bailout-client";
 import { cancelFollowUp } from "@/lib/follow-up-service";
 import { loadBindingConfig, loadImageGenerationSettings, loadPresets, loadWorldBooks, resolveBinding, resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
 import type { BindingConfig, PresetConfig, WorldBookConfig } from "@/lib/settings-types";
@@ -1291,8 +1291,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (typeof window !== "undefined") window.dispatchEvent(new Event("life-scene-message-added"));
   };
 
-  // Foreground life-scene autonomy plus a server snapshot as a background/terminated-app fallback.
-  // When the app is visible, local scene generation wins and cancels the queued server turn.
+  // Life-scene autonomy runs only while the app is open and the scene is visible.
   useEffect(() => {
     if (!ready || !settings.enabled || !settings.enableCharacterAutonomy || settings.enableProactiveSceneMessages === false || !activeScene || activeScene.status !== "active" || !immersiveScene) return;
     let disposed = false;
@@ -1335,36 +1334,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup);
       return { character, session: session ?? createLifeVirtualSession(character.id, character.name) };
     };
-    const armOfflineBailout = async () => {
-      if (disposed || settings.enableLifeOfflinePush === false) return;
-      await cancelLifeSceneProactiveBailouts(activeScene.id);
-      let candidate = pickCandidate();
-      if (!candidate) return;
-      if (candidate.session.id.startsWith("life-engine-")) {
-        const characterId = candidate.character.id;
-        let contact = loadChatContacts().find(item => item.characterId === characterId);
-        if (!contact) {
-          addChatContact(characterId);
-          contact = loadChatContacts().find(item => item.characterId === characterId);
-        }
-        if (!contact) return;
-        const session = createOrGetSession(characterId);
-        candidate = { ...candidate, session };
-      }
-      const result = await armLifeSceneProactiveBailout({
-        sessionId: candidate.session.id,
-        sceneId: activeScene.id,
-        characterId: candidate.character.id,
-        characterName: candidate.character.name,
-        prompt: buildPrompt(candidate.character),
-        // Give the foreground 1-2 ticks to cancel and take over before the server runs.
-        executeAtMs: Date.now() + getRandomIntervalMs() + LIFE_AUTONOMY_TICK_MS * 2,
-      });
-      if (!result.ok && result.reason !== "当前账号没有可用的离线推送订阅" && result.reason !== "当前环境不支持服务端离线预约") {
-        console.debug("[LifeAutonomy] background fallback not armed:", result.reason);
-      }
-    };
-    const tick = async () => {
+bailout function    const tick = async () => {
       if (disposed || document.visibilityState !== "visible" || busyRef.current || proactiveBusyRef.current) return;
       const now = Date.now();
       const previousAttempt = proactiveAttemptAtRef.current[activeScene.id];
@@ -1389,7 +1359,6 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       proactiveNextAtRef.current[activeScene.id] = now + getRandomIntervalMs();
       proactiveLastSpeakerRef.current[activeScene.id] = character.id;
       proactiveBusyRef.current = true;
-      await cancelLifeSceneProactiveBailouts(activeScene.id);
       setBusy(true);
       try {
         const history = loadChatMessages(session.id, 10).filter(item => item.status !== "failed" && !item.isRetracted);
@@ -1422,23 +1391,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         proactiveBusyRef.current = false;
         if (!disposed) {
           setBusy(false);
-          void armOfflineBailout();
         }
       }
     };
-    const onSceneMessageAdded = () => {
-      // The proactive loop re-arms once in finally; don't race a second job against it.
-      if (proactiveBusyRef.current) return;
-      // A manual player/character turn invalidates the old snapshot; replace it with fresh context.
-      void armOfflineBailout();
-    };
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        cancelLifeSceneProactiveBailouts(activeScene.id);
-        void tick();
-      } else {
-        void armOfflineBailout();
-      }
+      // No background fallback: autonomous turns resume only when the scene is visible.
+      if (document.visibilityState === "visible") void tick();
     };
     // Clear any locally scheduled online-chat follow-up for characters currently in this scene.
     for (const characterId of candidateIds) {
@@ -1447,29 +1405,15 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       if (session) cancelFollowUp(session.id);
     }
     void suspendIdleReconnectForLifeScene(candidateIds);
-    void armOfflineBailout();
     const timer = window.setInterval(() => void tick(), LIFE_AUTONOMY_TICK_MS);
     document.addEventListener("visibilitychange", onVisibilityChange);
-    window.addEventListener("life-scene-message-added", onSceneMessageAdded);
     return () => {
       disposed = true;
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("life-scene-message-added", onSceneMessageAdded);
-      const latestSettings = stateRef.current.settings;
-      const latestScene = stateRef.current.scenes.find(scene => scene.id === activeScene.id);
-      // Keep the snapshot on ordinary page close/backgrounding, but cancel it when the
-      // scene ends or the user explicitly disables proactive/offline behavior.
-      if (!latestScene || latestScene.status !== "active" || !latestSettings.enabled
-        || !latestSettings.enableCharacterAutonomy || latestSettings.enableProactiveSceneMessages === false
-        || latestSettings.enableLifeOfflinePush === false) {
-        cancelLifeSceneProactiveBailouts(activeScene.id);
-      }
-      // Refresh rules against the latest persisted scene state. The co-presence guard
-      // keeps idle reconnect suspended while this scene remains active.
-      void refreshScheduledBailouts();
+      // No server-side life-scene job is created or maintained.
     };
-  }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.enableLifeOfflinePush, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.showActionNarration, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, playerName]);
+  }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.showActionNarration, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, playerName]);
   const sendSceneTurn = async (event?: FormEvent, forceReaction = false) => {
     event?.preventDefault();
     const userText = sceneInput.trim();
@@ -3063,8 +3007,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               </div>
               <p className="mt-2 text-[10px] leading-relaxed text-stone-500">每次自主互动会在最短与最长间隔之间随机安排，不再固定按同一个周期触发。</p>
               <div className="mt-3"><Toggle checked={settings.enableLifeMessageNotifications !== false} onChange={async v=>{if(v && typeof Notification!=="undefined" && Notification.permission==="default"){try{await Notification.requestPermission();}catch{/* permission prompt may be unavailable in WebView */}}patchSettings({enableLifeMessageNotifications:v});}} label="主动消息弹窗提示"/></div>
-              <div className="mt-3"><Toggle checked={settings.enableLifeOfflinePush !== false} onChange={v=>patchSettings({enableLifeOfflinePush:v})} label="后台/关闭应用时继续主动推送" hint="需要已配置推送订阅和服务端任务；关闭后只在前台生活现场主动互动。"/></div>
-              <p className="mt-2 text-[10px] leading-relaxed text-stone-500">前台优先在生活现场生成；进入后台或应用被关闭时，会尝试交给已配置的服务端离线推送任务。需要先启用推送订阅与个人 Supabase/自部署推送服务；无订阅时只保留前台主动性。离线生成结果会在下次打开应用后合并回原生活场景，不写入线上聊天记录。</p>
+               <p className="mt-2 text-[10px] leading-relaxed text-stone-500">角色主动互动只在应用打开且生活现场处于前台时运行；切到后台或关闭应用后会暂停，不会创建后台推送任务。</p>
             </div>
             <Toggle checked={settings.enableAmbientDetails} onChange={v=>patchSettings({enableAmbientDetails:v})} label="启用环境细节"/>
           </div>
