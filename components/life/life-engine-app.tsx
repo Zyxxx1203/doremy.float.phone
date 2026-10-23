@@ -168,6 +168,31 @@ function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange
   </div>;
 }
 
+async function compressLifeBackground(file: File): Promise<string> {
+  if (!file.type.startsWith("image/")) throw new Error("请选择图片文件。");
+  const sourceUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.decoding = "async";
+    image.src = sourceUrl;
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("图片读取失败，请换一张图片再试。"));
+    });
+    const maxSide = 1800;
+    const ratio = Math.min(1, maxSide / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round((image.naturalWidth || image.width) * ratio));
+    canvas.height = Math.max(1, Math.round((image.naturalHeight || image.height) * ratio));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("当前设备无法处理这张图片。");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.82);
+  } finally {
+    URL.revokeObjectURL(sourceUrl);
+  }
+}
+
 function SectionTitle({ eyebrow, title, note }: { eyebrow: string; title: string; note?: string }) {
   return <div className="mb-4"><p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#a4775d]">{eyebrow}</p><h2 className="mt-1 text-xl font-semibold tracking-tight text-stone-800">{title}</h2>{note && <p className="mt-1 text-sm leading-relaxed text-stone-500">{note}</p>}</div>;
 }
@@ -210,6 +235,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [locationAtmosphereDraft, setLocationAtmosphereDraft] = useState("");
   const [locationLayoutDraft, setLocationLayoutDraft] = useState("");
   const [locationPropsDraft, setLocationPropsDraft] = useState("");
+  const [backgroundUploadBusy, setBackgroundUploadBusy] = useState<"global" | "location" | null>(null);
   const [locationHabitDrafts, setLocationHabitDrafts] = useState<Record<string, string>>({});
 
   const [quickPlanText, setQuickPlanText] = useState("");
@@ -410,6 +436,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const activeScene = useMemo(() => state.scenes.find(scene => scene.status === "active") ?? state.scenes.filter(scene => scene.status === "paused").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0], [state.scenes]);
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
   const selectedLocation = state.locations.find(location => location.id === selectedLocationId) ?? state.locations[0];
+  const sceneBackgroundLocation = state.locations.find(location => location.id === activeScene?.locationId) ?? selectedLocation;
+  const effectiveSceneBackground = sceneBackgroundLocation?.backgroundImage || settings.globalBackgroundImage || "";
   const selectedLocationVisitStats = useMemo(() => {
     if (!selectedLocation) return { visits: 0, minutes: 0, activeMinutes: 0 };
     const virtualNow = resolveActorLifeNow(getActorClock(state, "player", PLAYER_ID));
@@ -1602,6 +1630,32 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (!presets.some(preset => preset.id === presetId)) presets = [{ id: presetId, name: "生活现场默认预设" }, ...presets];
     commit({ ...stateRef.current, settings: { ...currentSettings, promptPresets: presets, activePromptPresetId: presetId } });
   };
+  const updateSelectedLocationBackground = (patch: Partial<LifeLocation>) => {
+    if (!selectedLocation) return;
+    commit({
+      ...stateRef.current,
+      locations: stateRef.current.locations.map(location => location.id === selectedLocation.id ? { ...location, ...patch } : location),
+    });
+  };
+  const handleLifeBackgroundUpload = async (file: File | undefined, scope: "global" | "location") => {
+    if (!file) return;
+    setBackgroundUploadBusy(scope);
+    try {
+      const backgroundImage = await compressLifeBackground(file);
+      if (scope === "global") {
+        patchSettings({ globalBackgroundImage: backgroundImage });
+        setNotice("生活系统全局背景已保存；没有单独背景的地点聊天室会自动使用它。");
+      } else {
+        updateSelectedLocationBackground({ backgroundImage });
+        setNotice("「" + (selectedLocation?.name ?? "当前地点") + "」的聊天室背景已保存。");
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "背景图片处理失败，请重试。");
+    } finally {
+      setBackgroundUploadBusy(null);
+    }
+  };
+
   const saveLocationDetails = () => {
     if (!selectedLocation) return;
     const next = {
@@ -2342,8 +2396,36 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   if (!ready) return <main className="flex min-h-screen items-center justify-center bg-[#f7efe4] text-stone-500">正在打开生活档案…</main>;
 
-  return <main style={{ ...cssVars, ...(immersiveScene ? { height: "var(--life-viewport-height, 100dvh)" } : {}) }} className={`life-rose-garden ${immersiveScene ? "flex flex-col overflow-hidden overscroll-none" : "min-h-screen min-h-[100dvh] overflow-y-auto overscroll-y-contain touch-pan-y"} bg-gradient-to-br ${themeClass} ${settings.compactLayout ? "px-1.5 py-1.5 sm:px-3 sm:py-3" : "px-2 py-2 sm:px-4 sm:py-4"}`}>
+  return <main style={{
+    ...cssVars,
+    ...(immersiveScene ? { height: "var(--life-viewport-height, 100dvh)" } : {}),
+    "--life-global-bg": settings.globalBackgroundImage ? `url("${settings.globalBackgroundImage}")` : "none",
+    "--life-global-bg-blur": `${Math.max(0, Math.min(18, settings.globalBackgroundBlur ?? 0))}px`,
+    "--life-global-bg-brightness": String(Math.max(0.45, Math.min(1.4, (settings.globalBackgroundBrightness ?? 100) / 100))),
+    "--life-global-bg-overlay": String(Math.max(0, Math.min(85, settings.globalBackgroundOverlay ?? 18)) / 100),
+    "--life-scene-bg": effectiveSceneBackground ? `url("${effectiveSceneBackground}")` : "none",
+    "--life-scene-bg-blur": `${Math.max(0, Math.min(18, sceneBackgroundLocation?.backgroundImage ? sceneBackgroundLocation.backgroundBlur ?? 0 : settings.globalBackgroundBlur ?? 0))}px`,
+    "--life-scene-bg-brightness": String(Math.max(0.45, Math.min(1.4, ((sceneBackgroundLocation?.backgroundImage ? sceneBackgroundLocation.backgroundBrightness : settings.globalBackgroundBrightness) ?? 100) / 100))),
+    "--life-scene-bg-overlay": String(Math.max(0, Math.min(85, (sceneBackgroundLocation?.backgroundImage ? sceneBackgroundLocation.backgroundOverlay : settings.globalBackgroundOverlay) ?? 18)) / 100),
+    backgroundImage: settings.globalBackgroundImage ? "none" : undefined,
+    backgroundColor: settings.globalBackgroundImage ? "transparent" : undefined,
+  } as CSSProperties} className={`life-rose-garden ${immersiveScene ? "flex flex-col overflow-hidden overscroll-none" : "min-h-screen min-h-[100dvh] overflow-y-auto overscroll-y-contain touch-pan-y"} bg-gradient-to-br ${themeClass} ${settings.compactLayout ? "px-1.5 py-1.5 sm:px-3 sm:py-3" : "px-2 py-2 sm:px-4 sm:py-4"}`}>
     <style>{`
+      .life-rose-garden { position: relative; isolation: isolate; }
+      .life-rose-garden::before {
+        content: ""; position: fixed; inset: -18px; z-index: -1; pointer-events: none;
+        background-image: linear-gradient(rgba(255,250,245,var(--life-global-bg-overlay,.18)), rgba(255,250,245,var(--life-global-bg-overlay,.18))), var(--life-global-bg, none);
+        background-position: center; background-size: cover; background-repeat: no-repeat;
+        filter: blur(var(--life-global-bg-blur,0px)) brightness(var(--life-global-bg-brightness,1));
+      }
+      .life-scene-panel { position: relative; isolation: isolate; background-color: transparent !important; }
+      .life-scene-panel::before {
+        content: ""; position: absolute; inset: -8px; z-index: 0; pointer-events: none;
+        background-image: linear-gradient(rgba(255,250,245,var(--life-scene-bg-overlay,.18)), rgba(255,250,245,var(--life-scene-bg-overlay,.18))), var(--life-scene-bg, none);
+        background-position: center; background-size: cover; background-repeat: no-repeat;
+        filter: blur(var(--life-scene-bg-blur,0px)) brightness(var(--life-scene-bg-brightness,1));
+      }
+      .life-scene-panel > * { position: relative; z-index: 1; }
       /* Tie the spatial transition to the real scene-state update; no artificial waiting screen. */
       @keyframes life-view-leave {
         from { opacity: 1; transform: scale(1); }
@@ -2705,6 +2787,19 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           <label className="mb-3 block text-sm font-medium text-stone-700">氛围<textarea value={locationAtmosphereDraft} onChange={event => setLocationAtmosphereDraft(event.target.value)} rows={2} placeholder="时段、天气、人声、气味、情绪氛围……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
           <label className="mb-3 block text-sm font-medium text-stone-700">固定空间布局<textarea value={locationLayoutDraft} onChange={event => setLocationLayoutDraft(event.target.value)} rows={3} placeholder="门窗、家具、通道、柜台、座位之间的空间关系……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
           <label className="mb-4 block text-sm font-medium text-stone-700">可用道具<textarea value={locationPropsDraft} onChange={event => setLocationPropsDraft(event.target.value)} rows={2} placeholder="用顿号或逗号分隔，例如：花剪、包装纸、玻璃花瓶" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+          <section className="mb-4 rounded-2xl border border-rose-200/70 bg-rose-50/50 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-stone-700">专属聊天室背景</h3><p className="mt-1 text-[11px] leading-relaxed text-stone-500">只影响「{selectedLocation.name}」的生活现场，不会改变全局背景或其他地点。</p></div>
+              {selectedLocation.backgroundImage && <button type="button" onClick={()=>updateSelectedLocationBackground({backgroundImage:undefined})} className="shrink-0 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs text-stone-600">移除</button>}
+            </div>
+            {selectedLocation.backgroundImage ? <div className="relative mb-3 h-32 overflow-hidden rounded-xl border border-white/80"><img src={selectedLocation.backgroundImage} alt={selectedLocation.name+"聊天室背景预览"} className="h-full w-full object-cover" style={{filter:`blur(${Math.max(0,Math.min(18,selectedLocation.backgroundBlur??0))}px) brightness(${Math.max(.45,Math.min(1.4,(selectedLocation.backgroundBrightness??100)/100))})`}}/><div className="absolute inset-0" style={{backgroundColor:`rgba(255,250,245,${Math.max(0,Math.min(85,selectedLocation.backgroundOverlay??18))/100})`}}/></div> : <div className="mb-3 grid h-24 place-items-center rounded-xl border border-dashed border-rose-200 bg-white/60 text-center text-xs text-stone-500">当前继承全局背景<br/>上传后仅覆盖这个地点</div>}
+            <label className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-2 text-sm font-medium text-white"><Upload size={15}/>{backgroundUploadBusy==="location"?"正在处理…":selectedLocation.backgroundImage?"更换此地点背景":"上传此地点背景"}<input type="file" accept="image/*" className="hidden" disabled={backgroundUploadBusy!==null} onChange={event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value="";void handleLifeBackgroundUpload(file,"location");}}/></label>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <label className="block text-[11px] text-stone-600">模糊 · {selectedLocation.backgroundBlur??0}px<input type="range" min="0" max="18" value={selectedLocation.backgroundBlur??0} onChange={e=>updateSelectedLocationBackground({backgroundBlur:Number(e.target.value)})} className="mt-1.5 w-full"/></label>
+              <label className="block text-[11px] text-stone-600">亮度 · {selectedLocation.backgroundBrightness??100}%<input type="range" min="45" max="140" value={selectedLocation.backgroundBrightness??100} onChange={e=>updateSelectedLocationBackground({backgroundBrightness:Number(e.target.value)})} className="mt-1.5 w-full"/></label>
+              <label className="block text-[11px] text-stone-600">遮罩 · {selectedLocation.backgroundOverlay??18}%<input type="range" min="0" max="85" value={selectedLocation.backgroundOverlay??18} onChange={e=>updateSelectedLocationBackground({backgroundOverlay:Number(e.target.value)})} className="mt-1.5 w-full"/></label>
+            </div>
+            <p className="mt-2 text-[10px] leading-relaxed text-stone-500">移除专属背景后会自动恢复全局背景。背景层不拦截触控，不影响聊天室滚动、输入与发送。</p>
+          </section>
           {selectedLocation.id === "home" && <section className="mb-4 rounded-xl border border-stone-200/80 bg-white/80 p-3">
             <h3 className="text-sm font-semibold text-stone-700">同居设置</h3>
             <p className="mt-1 text-xs leading-relaxed text-stone-500">默认每个角色拥有独立住处。勾选后，TA 的后续居家日程会转到你的「家」。</p>
@@ -2964,6 +3059,31 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         </div>}
       </section>}
       {tab === "settings" && <div className="grid gap-4 lg:grid-cols-2">
+        <section className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm sm:p-6 lg:col-span-2">
+          <SectionTitle eyebrow="Life appearance" title="生活系统全局背景" note="设置后会用于生活首页、日程、地点库与设置等页面。某个地点拥有专属聊天室背景时，进入该地点会优先显示专属背景。"/>
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+            <div>
+              <div className="relative grid min-h-36 place-items-center overflow-hidden rounded-2xl border border-rose-200/70 bg-[#fbf5ee]">
+                {settings.globalBackgroundImage ? <img src={settings.globalBackgroundImage} alt="全局背景预览" className="absolute inset-0 h-full w-full object-cover" style={{filter:`blur(${Math.max(0,Math.min(18,settings.globalBackgroundBlur??0))}px) brightness(${Math.max(.45,Math.min(1.4,(settings.globalBackgroundBrightness??100)/100))})`}}/> : <div className="px-4 py-6 text-center text-xs text-stone-500"><Wallpaper size={22} className="mx-auto mb-2"/>尚未设置全局背景，将使用原有主题样式</div>}
+                {settings.globalBackgroundImage && <div className="absolute inset-0" style={{backgroundColor:`rgba(255,250,245,${Math.max(0,Math.min(85,settings.globalBackgroundOverlay??18))/100})`}}/>}
+                {settings.globalBackgroundImage && <span className="relative rounded-full bg-white/85 px-3 py-1.5 text-xs text-stone-700">全局背景预览</span>}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <label className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-2 text-sm font-medium text-white">
+                  <Upload size={15}/>{backgroundUploadBusy==="global"?"正在处理…":settings.globalBackgroundImage?"更换全局背景":"上传全局背景"}
+                  <input type="file" accept="image/*" className="hidden" disabled={backgroundUploadBusy!==null} onChange={event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value="";void handleLifeBackgroundUpload(file,"global");}}/>
+                </label>
+                {settings.globalBackgroundImage && <button type="button" onClick={()=>patchSettings({globalBackgroundImage:undefined})} className="min-h-10 rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm text-stone-600">移除背景</button>}
+              </div>
+            </div>
+            <div className="space-y-3">
+              <label className="block text-xs text-stone-600">模糊程度 · {settings.globalBackgroundBlur??0}px<input type="range" min="0" max="18" value={settings.globalBackgroundBlur??0} onChange={e=>patchSettings({globalBackgroundBlur:Number(e.target.value)})} className="mt-2 w-full"/></label>
+              <label className="block text-xs text-stone-600">背景亮度 · {settings.globalBackgroundBrightness??100}%<input type="range" min="45" max="140" value={settings.globalBackgroundBrightness??100} onChange={e=>patchSettings({globalBackgroundBrightness:Number(e.target.value)})} className="mt-2 w-full"/></label>
+              <label className="block text-xs text-stone-600">浅色遮罩 · {settings.globalBackgroundOverlay??18}%<input type="range" min="0" max="85" value={settings.globalBackgroundOverlay??18} onChange={e=>patchSettings({globalBackgroundOverlay:Number(e.target.value)})} className="mt-2 w-full"/></label>
+              <p className="rounded-xl bg-white/65 p-3 text-[11px] leading-relaxed text-stone-500">图片会压缩后保存在生活系统数据中，不使用临时 blob 地址；移除全局背景不会影响各地点已设置的专属背景。</p>
+            </div>
+          </div>
+        </section>
         <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Behavior switches" title="生活模拟规则" note="你可以把它调成轻量陪伴，也可以打开更多自主生活细节。" />
           <div className="space-y-2">
             <Toggle checked={settings.enabled} onChange={v=>patchSettings({enabled:v})} label="启用虚拟生活引擎" hint="关闭后保留数据，但暂停新生活场景功能。"/>
