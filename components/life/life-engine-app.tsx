@@ -2401,11 +2401,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     "--life-global-bg": settings.globalBackgroundImage ? `url("${settings.globalBackgroundImage}")` : "none",
     "--life-global-bg-blur": `${Math.max(0, Math.min(18, settings.globalBackgroundBlur ?? 0))}px`,
     "--life-global-bg-brightness": String(Math.max(0.45, Math.min(1.4, (settings.globalBackgroundBrightness ?? 100) / 100))),
-    "--life-global-bg-overlay": String(Math.max(0, Math.min(85, settings.globalBackgroundOverlay ?? 18)) / 100),
+    "--life-global-bg-overlay": settings.globalBackgroundImage ? String(Math.max(0, Math.min(85, settings.globalBackgroundOverlay ?? 18)) / 100) : "0",
     "--life-scene-bg": sceneBackgroundLocation?.backgroundImage ? `url("${sceneBackgroundLocation.backgroundImage}")` : "var(--life-global-bg, none)",
     "--life-scene-bg-blur": `${Math.max(0, Math.min(18, sceneBackgroundLocation?.backgroundImage ? sceneBackgroundLocation.backgroundBlur ?? 0 : settings.globalBackgroundBlur ?? 0))}px`,
     "--life-scene-bg-brightness": String(Math.max(0.45, Math.min(1.4, ((sceneBackgroundLocation?.backgroundImage ? sceneBackgroundLocation.backgroundBrightness : settings.globalBackgroundBrightness) ?? 100) / 100))),
-    "--life-scene-bg-overlay": String(Math.max(0, Math.min(85, (sceneBackgroundLocation?.backgroundImage ? sceneBackgroundLocation.backgroundOverlay : settings.globalBackgroundOverlay) ?? 18)) / 100),
+    "--life-scene-bg-overlay": (sceneBackgroundLocation?.backgroundImage || settings.globalBackgroundImage) ? String(Math.max(0, Math.min(85, (sceneBackgroundLocation?.backgroundImage ? sceneBackgroundLocation.backgroundOverlay : settings.globalBackgroundOverlay) ?? 18)) / 100) : "0",
     backgroundImage: settings.globalBackgroundImage ? "none" : undefined,
     backgroundColor: settings.globalBackgroundImage ? "transparent" : undefined,
   } as CSSProperties} className={`life-rose-garden ${immersiveScene ? "flex flex-col overflow-hidden overscroll-none" : "min-h-screen min-h-[100dvh] overflow-y-auto overscroll-y-contain touch-pan-y"} bg-gradient-to-br ${themeClass} ${settings.compactLayout ? "px-1.5 py-1.5 sm:px-3 sm:py-3" : "px-2 py-2 sm:px-4 sm:py-4"}`}>
