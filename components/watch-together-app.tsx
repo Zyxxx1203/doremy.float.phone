@@ -97,8 +97,8 @@ function parseVideoUrl(value: string): VideoTarget | null {
     const original = url.toString();
     if (new RegExp("\\.(mp4|webm|ogg|ogv|m3u8)$", "i").test(url.pathname)) return { url: original, embedUrl: null, platform: "other", platformName: "视频文件", supported: true, nativeVideo: true };
     if (host === "bilibili.com" || host.endsWith(".bilibili.com") || host === "b23.tv") {
-      const bvid = /\/(BV[0-9A-Za-z]{10})/i.exec(url.pathname)?.[1];
-      const aid = /\/av(\d+)/i.exec(url.pathname)?.[1];
+      const bvid = /\/(BV[0-9A-Za-z]{10})/i.exec(url.pathname)?.[1] || url.searchParams.get("bvid") || undefined;
+      const aid = /\/av(\d+)/i.exec(url.pathname)?.[1] || url.searchParams.get("aid") || undefined;
       const page = url.searchParams.get("p") || "1";
       // Compact H5 player keeps playback inside the app; iframe sandbox below blocks top-level redirects.
       const playerBase = "https://player.bilibili.com/player.html";
@@ -232,7 +232,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [mediaPaused, setMediaPaused] = useState(false);
   const [resolutionMessage, setResolutionMessage] = useState("");
   const [localResolverEndpoint, setLocalResolverEndpoint] = useState(() => {
-    try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_local_resolver_endpoint_v1") || "" : ""; } catch { return ""; }
+    try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_local_resolver_endpoint_v1") || "http://127.0.0.1:8765" : ""; } catch { return ""; }
   });
   const [localResolverToken, setLocalResolverToken] = useState(() => {
     try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_local_resolver_token_v1") || "" : ""; } catch { return ""; }
