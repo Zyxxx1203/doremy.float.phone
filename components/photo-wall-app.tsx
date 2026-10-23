@@ -746,6 +746,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
   /** 相框涂鸦即时保存画面；同一段涂鸦模式内的笔迹合并成一份创作记录。 */
   const doodleSessionRecordIdRef = useRef<string | null>(null);
+  const handleWallCanvasModeChange = useCallback((nextMode: "view" | "move" | "doodle") => {
+    if (nextMode === wallCanvasMode) return;
+    if (nextMode === "doodle" || wallCanvasMode === "doodle") doodleSessionRecordIdRef.current = null;
+    setWallCanvasMode(nextMode);
+  }, [wallCanvasMode]);
   const changeDoodles = useCallback((photoId: string, doodles: PhotoWallDoodle[], side: "front" | "back" = "front") => {
     const current = stateRef.current;
     const photo = current.photos.find(item => item.id === photoId);
@@ -1675,7 +1680,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               wallDoodles={state.wallDoodles ?? []} onChangeWallDoodles={changeWallDoodles}
               backgroundImage={wallBackgroundUrl} backgroundBox={state.wallBackgroundBox}
               wallWorld={world} canvasZoom={panoramaZoom / 100} readOnly={wallView === "panorama"}
-              mode={wallCanvasMode} onModeChange={(nextMode) => { if (nextMode !== wallCanvasMode) { if (nextMode === "doodle") doodleSessionRecordIdRef.current = null; else if (wallCanvasMode === "doodle") doodleSessionRecordIdRef.current = null; setWallCanvasMode(nextMode); } }}
+              mode={wallCanvasMode} onModeChange={handleWallCanvasModeChange}
               brushColor={wallBrushColor} brushWidth={wallBrushWidth}
               sticker={wallSticker} onStickerChange={setWallSticker}
               eraser={wallEraser} onEraserChange={setWallEraser}
