@@ -1716,7 +1716,19 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         {target?.nativeVideo ? (
           <video key={target.nativeVideoUrl || target.url} src={target.nativeVideoUrl || target.url} controls playsInline onPlay={() => setMediaPaused(false)} onPause={() => setMediaPaused(true)} className="aspect-video w-full bg-black object-contain" onEnded={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } }} onError={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } onNotice?.("视频无法在当前 WebView 播放，可能是格式、签名有效期或平台防盗链限制。"); }} />
         ) : target?.embedUrl ? (
-          <iframe key={target.embedUrl} src={target.embedUrl} title={videoTitle || target.platformName} sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-orientation-lock allow-popups" allow="autoplay; accelerometer; encrypted-media; gyroscope; picture-in-picture" allowFullScreen referrerPolicy={target.platform === "bilibili" ? "origin" : "strict-origin-when-cross-origin"} className="aspect-video w-full border-0" />
+          <div className="relative aspect-video w-full overflow-hidden bg-black">
+            <iframe
+              key={target.embedUrl}
+              src={target.embedUrl}
+              title={videoTitle || target.platformName}
+              sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-orientation-lock allow-popups"
+              allow="autoplay; accelerometer; encrypted-media; gyroscope; picture-in-picture"
+              {...(target.platform !== "bilibili" ? { allowFullScreen: true } : {})}
+              referrerPolicy={target.platform === "bilibili" ? "origin" : "strict-origin-when-cross-origin"}
+              className="absolute inset-0 h-full w-full border-0"
+              loading="eager"
+            />
+          </div>
         ) : (
           <div className="flex aspect-video flex-col items-center justify-center px-6 text-center">
             <div className="mt-5 font-serif text-lg tracking-wide text-[#efe2d0]">{target ? `${target.platformName}暂不支持站内播放` : "还没有选择视频"}</div>
