@@ -2,4 +2,4 @@ fastapi>=0.115,<1
 uvicorn[standard]>=0.30,<1
 yt-dlp>=2025.1.15
 pydantic>=2.8,<3
-parse-video-py>=0.0.3
+parse-video-py[all] @ git+https://github.com/wujunwei928/parse-video-py.git
