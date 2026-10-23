@@ -57,6 +57,21 @@ def validate_url(value: str) -> str:
         raise HTTPException(400, "无法解析链接域名")
     return value.strip()
 
+def _engine_order(url: str, requested: str) -> list[str]:
+    if requested != "auto":
+        return [requested]
+    host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+    # Short-video share parsers excel on these hosts. For long-form platforms,
+    # yt-dlp must inspect the original page to select/merge audio and video tracks.
+    parse_first_hosts = (
+        "douyin.com", "iesdouyin.com", "kuaishou.com", "gifshow.com",
+        "xiaohongshu.com", "xhslink.com", "pipix.com", "huoshan.com",
+        "ixigua.com", "weishi.qq.com", "zuiyou.com",
+    )
+    parse_first = any(host == domain or host.endswith("." + domain) for domain in parse_first_hosts)
+    return ["parse-video-py", "yt-dlp"] if parse_first else ["yt-dlp", "parse-video-py"]
+
+
 def ydl_options(outtmpl: str, quality: str, cookiefile: str | None = None):
     height = {"1080": 1080, "720": 720, "480": 480, "360": 360}.get(quality)
     # DASH platforms (notably Bilibili) often separate video and audio. Merge them
@@ -139,21 +154,7 @@ async def resolve(body: ResolveRequest, x_resolver_token: str | None = Header(de
         output = str(tempdir / "video.%(ext)s")
         opts = ydl_options(output, body.quality, str(cookie_path) if cookie_path else None)
         failures: list[str] = []
-        if body.engine == "auto":
-            host = (urlparse(url).hostname or "").lower().removeprefix("www.")
-            # parse-video-py is strongest on Chinese short-video share links. For
-            # Bilibili/YouTube/long-form sites, yt-dlp must get the original page
-            # so it can select matching audio/video tracks instead of downloading
-            # a silent video-only URL returned by a generic share parser.
-            parse_first_hosts = (
-                "douyin.com", "iesdouyin.com", "kuaishou.com", "gifshow.com",
-                "xiaohongshu.com", "xhslink.com", "pipix.com", "huoshan.com",
-                "ixigua.com", "weishi.qq.com", "zuiyou.com",
-            )
-            parse_first = any(host == domain or host.endswith("." + domain) for domain in parse_first_hosts)
-            engines = ["parse-video-py", "yt-dlp"] if parse_first else ["yt-dlp", "parse-video-py"]
-        else:
-            engines = [body.engine]
+        engines = _engine_order(url, body.engine)
 
         engine_used = ""
         for engine in engines:
