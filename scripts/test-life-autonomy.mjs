@@ -74,10 +74,13 @@ assert.equal(resolveLifeCharacterIdForContact("missing-contact", contacts), null
 const chatRoomSource = readFileSync(new URL("../components/chat/chat-room.tsx", import.meta.url), "utf8");
 const lifeUiSource = readFileSync(new URL("../components/life/life-engine-app.tsx", import.meta.url), "utf8");
 const pushBailoutSource = readFileSync(new URL("../lib/push-bailout-client.ts", import.meta.url), "utf8");
-assert.ok(!lifeUiSource.includes("armLifeSceneProactiveBailout"), "life system must not schedule server-side offline push jobs");
-assert.ok(!lifeUiSource.includes("cancelLifeSceneProactiveBailouts"), "life system must not manage offline push jobs");
+const notificationReplySource = readFileSync(new URL("../lib/notification-reply.ts", import.meta.url), "utf8");
+assert.ok(lifeUiSource.includes("armLifeSceneProactiveBailout"), "active life scenes must arm a server-side proactive fallback while the WebView is available");
+assert.ok(lifeUiSource.includes("cancelLifeSceneProactiveBailouts"), "foreground takeover must cancel the matching server fallback to avoid duplicate turns");
 assert.ok(!lifeUiSource.includes("后台/关闭应用时继续主动推送"), "life settings must not expose offline push");
 assert.ok(lifeUiSource.includes("evaluateLifeAutonomyWindow"), "foreground life-scene autonomy must remain enabled");
+assert.ok(notificationReplySource.includes("mirrorNotificationReplyToLifeScene"), "notification replies must be mirrored into the active life scene");
+assert.ok(notificationReplySource.includes("notification-reply-"), "life-scene notification writeback must use a dedupe key");
 assert.ok(chatRoomSource.includes("resolveLifeCharacterIdForContact(session.contactId, loadChatContacts())"), "online follow-up arbitration must map contact ID to character ID");
 assert.ok(pushBailoutSource.includes("if (characterId && isCharacterCoPresentInLifeScene(characterId)) return null;"), "normal online-reply offline fallback must not race a co-present life-scene character");
 assert.ok(pushBailoutSource.includes("resolveSessionCharacterId(session)"), "offline follow-up and idle-reconnect guards must resolve contact IDs to character IDs");
