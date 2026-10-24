@@ -1410,6 +1410,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   return <div ref={watchRootRef} data-landscape-mode="false" data-source-panel={showVideoSourcePanel ? "true" : "false"} className="watch-together-app pointer-events-auto isolate absolute inset-0 z-[1000] flex min-w-0 flex-col overflow-hidden text-[#f0e6d8]" style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)" }}>
     <style>{`
       .watch-together-main { display:flex; flex-direction:column; }
+      .watch-player { overflow:hidden; aspect-ratio:16/9 !important; height:auto !important; max-height:62dvh; }
       .watch-room-card { display:flex; flex-direction:column; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
       .watch-room-card>[data-part="message"] { order:1; }
       .watch-room-card>[data-part="composer"] { order:2; }
