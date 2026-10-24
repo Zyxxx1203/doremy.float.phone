@@ -1414,8 +1414,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-room-card { display:flex; flex-direction:column; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
       .watch-room-card>[data-part="message"] { order:1; }
       .watch-room-card>[data-part="composer"] { order:2; }
-      .watch-room-card>[data-part="actions"], .watch-room-card>[data-part="actions2"] { order:3; }
-      .watch-room-card>[data-part="history"] { order:4; }
       @keyframes watchWave { from { transform:scaleY(.45); opacity:.45 } to { transform:scaleY(1.15); opacity:1 } }
       .watch-player { flex-shrink:0; border:5px solid #342a21!important; border-radius:22px!important; background:#090807; box-shadow:0 0 0 1px rgba(255,247,233,.45),0 8px 0 #8c6847,0 24px 42px rgba(68,44,24,.26)!important; }
       .watch-link-panel { flex-shrink:0; }
@@ -1911,42 +1909,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
                 <button type="submit" disabled={!target||!discussionDraft.trim()||wholeVideoBusy} className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full bg-[#9b6b4c] px-3.5 text-xs font-semibold text-white shadow-sm disabled:opacity-35"><MessageCircle size={13}/>发送</button>
               </form>
             </div>
-          <div data-part="actions" className="mt-3 flex flex-wrap items-center gap-2">
-            <button onClick={() => void generateComment(true)} disabled={!target || !character || busy} className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs text-[#2a1f16] transition active:scale-95 disabled:opacity-40" style={{ background: "linear-gradient(135deg,#e8c39a,#c99a6a)" }}>
-              {busy ? <LoaderCircle size={13} className="animate-spin"/> : <MessageCircle size={13}/>}让 TA 即时回应
-            </button>
-            <button onClick={() => { setWatching(value => !value); if (!watching) void generateComment(false); }} disabled={!target || !character} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3.5 py-2 text-xs text-[#d8c9b6] transition active:scale-95 disabled:opacity-40">
-              {watching ? <Pause size={13}/> : <Play size={13}/>}{watching ? "暂停陪看" : "开始陪看"}
-            </button>
-            {target?.platformName === "本地视频" && localVideoFileRef.current && <div className="flex min-w-0 basis-full flex-wrap items-center gap-2 rounded-xl border border-[#c99a78]/30 bg-white/[.04] px-3 py-2">
-              <div className="min-w-0 flex-1">
-                <div className="text-[11px] font-semibold text-[#e6c49d]">整段视频理解已就绪</div>
-                <div className="mt-0.5 text-[10px] leading-4 text-[#a9937e]">打开顶部的「视频理解」开关后，发送讨论会把整段本地视频交给独立视频模型分析（产生 API 费用）；开关关闭时走截图 + 字幕 + 时间点的聊天模型路径。</div>
-              </div>
-              <span className="shrink-0 rounded-full border border-[#c99a6a]/50 bg-[#c99a6a]/15 px-3 py-2 text-[11px] text-[#f0d5b8]">{videoUnderstandingEnabled ? "随讨论触发" : "开关未打开"}</span>
-            </div>}
-            <button onClick={() => { setGlobalWatchRecords(loadGlobalWatchRecords()); setShowHistory(true); }} disabled={!comments.length && !globalWatchRecords.length} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3.5 py-2 text-xs text-[#d8c9b6] transition active:scale-95 disabled:opacity-40">
-              <Heart size={13}/>回看悄悄话 {comments.length > 0 && <span className="text-[#c99a6a]">{comments.length}</span>}
-            </button>
-            <button onClick={() => setShowSettings(value => !value)} className="ml-auto flex items-center gap-1 rounded-full px-2 py-2 text-[11px] text-[#8b8077] transition active:scale-95"><ChevronDown size={13} className={showSettings ? "rotate-180 transition" : "transition"}/>陪看方式</button>
-          </div>
 
-          <section data-part="history" className="relative z-10 mt-5 min-h-0 border-t border-[#d6b18c]/20 pt-4">
-            <div className="flex items-baseline justify-between gap-2"><h2 className="font-serif text-base tracking-wide text-[#f0dfcc]">一起讨论</h2><span className="text-[10px] tracking-[.12em] text-[#a9937e]">SCENE NOTES · {comments.length}</span></div>
-            <p className="mt-1 text-[10px] leading-5 text-[#a9937e]">把某一幕或想说的话记在对应时间点；你的消息和 TA 的回应都会出现在画面弹幕与下方讨论记录里。</p>
-            {comments.some(item=>item.timepoint) && <div className="mt-3 flex flex-wrap gap-2">{[...new Set(comments.filter(item=>item.timepoint).map(item=>item.timepoint!))].map(point=><button key={point} type="button" onClick={()=>{setTimepointDraft(point);setDiscussionDraft(`想再聊聊 ${point} 这一幕`);const seconds=parseVideoTime(point);const video=playerRef.current?.querySelector("video");if(seconds===null){onNotice?.("这个时间点格式无法识别，已填入笔记但没有跳转。");return;}if(video){try{video.currentTime=seconds;onNotice?.(`已跳转到 ${point}`);}catch{onNotice?.("当前视频暂时无法跳转到该时间点。");}}else{onNotice?.("当前使用第三方网页播放器，无法由小手机控制播放进度；时间点已填入，可继续记笔记。");}}} className="border-b border-[#c99a78]/60 px-1 py-1 text-[11px] text-[#e4c6a8]">{point} ↗</button>)}</div>}
-            <div ref={commentListRef} onScroll={event => { const list = event.currentTarget; commentListAtBottomRef.current = list.scrollHeight - list.scrollTop - list.clientHeight < 56; }} className="watch-comment-list mt-3 min-h-0 max-h-64 space-y-3 overflow-y-auto overscroll-contain pr-1">{comments.length ? comments.slice(-100).map(item=><div key={item.id} data-comment-kind={item.kind==="user"?"user":"character"} className={`flex w-full ${item.kind==="user"?"justify-end":"justify-start"}`}><div className={`min-w-0 max-w-[92%] rounded-[12px] border px-3 py-2.5 shadow-sm ${item.kind==="user"?"border-[#d6b18c]/45 bg-[#f3e4d3]":"border-[#e5d3c0] bg-white/90"}`}><span data-comment-author>{item.kind==="user" ? (playerIdentity?.name || "我") : item.characterName}</span><p data-comment-text className="whitespace-pre-wrap break-words font-serif text-sm leading-6 text-[#59483d]">{item.text}</p>{item.timepoint && <span className="mt-1 block text-[10px] text-[#9b7b62]">片段 · {item.timepoint}</span>}</div></div>) : <div className="watch-empty-discussion flex min-h-0 flex-col items-center justify-center gap-2 px-2 py-2 text-center"><p className="max-w-[28rem] text-xs leading-5 tracking-[.02em] text-[#a9937e]">把心动的片刻、想吐槽的细节，或只属于你们的默契，轻轻留在这里。</p>
-          
-</div>}</div>
-          </section>
-          <div data-part="actions2" className="relative z-10 mt-2 flex flex-wrap gap-1.5">
-            {[
-              ["✦", "暂停聊聊", "我们先停一下，聊聊刚才这一幕。"],
-              ["◌", "标记这一幕", "这段值得记下来，之后我们再一起回看。"],
-              ["♡", "说说感受", "我想和你分享一下刚才这一幕带给我的感受。"],
-              ["↗", "聊聊眼前线索", "只根据已经出现的画面聊聊眼前线索，不推测或透露后续剧情。"],
-            ].map(([icon, label, cue]) => <button key={label} type="button" onClick={() => actTogether(cue)} disabled={!target || busy || !character} className="rounded-full border border-[#d6b18c]/15 bg-[#d6b18c]/[.07] px-2.5 py-1.5 text-[10px] text-[#d8c2aa] transition hover:border-[#d6b18c]/35 hover:bg-[#d6b18c]/[.13] active:scale-95 disabled:opacity-40"><span className="mr-1">{icon}</span>{label}</button>)}
-          </div>
         </div>
 
         {/* 陪看设置：抽屉式，默认收起，避免占据屏幕空间 */}
