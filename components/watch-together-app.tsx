@@ -1346,7 +1346,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
    * 外站 iframe 读不到时间轴时保留旧的草稿行为。
    */
   const markHighlightAndDiscuss = () => {
-    if (!target) return;
+    if (!target) { onNotice?.("先选择一段视频，再标记重点。"); return; }
     const video = playerRef.current?.querySelector("video");
     const point = video ? formatVideoTime(video.currentTime) : timepointDraft.trim();
     if (!character) { onNotice?.("还没有可回应的陪看角色。请先在「观影设置」里绑定角色，或先去聊天 App 创建角色。"); return; }
@@ -1621,10 +1621,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         padding:8px 0 0!important; border-top:1px solid rgba(172,126,88,.25)!important;
       }
       .watch-chat-chip {
-        display:inline-flex; align-items:center; gap:4px; min-height:27px; padding:5px 9px;
+        display:inline-flex; align-items:center; gap:4px; min-height:34px; padding:7px 12px;
         border:1px solid rgba(165,121,85,.32); border-radius:999px;
-        background:rgba(255,255,255,.72); color:#79573f; font-size:10px; line-height:1;
+        background:rgba(255,255,255,.72); color:#79573f; font-size:11px; line-height:1;
         white-space:nowrap; box-shadow:0 1px 3px rgba(93,61,39,.04);
+        /* 防止被相邻绝对定位浮层/滚动容器遮挡点击 */
+        position:relative; z-index:5; touch-action:manipulation;
       }
       .watch-chat-chip:disabled { opacity:.38; }
         min-height:36px!important; height:36px!important; max-height:72px!important; padding-top:8px!important; padding-bottom:8px!important;
@@ -1920,7 +1922,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               <path d="M42 273C44 252 55 248 64 253C69 263 58 272 42 273ZM42 273C26 262 29 248 41 247C52 252 51 264 42 273Z" fill="#c9c9a8" stroke="#a1a982" strokeWidth="1.5"/>
               <path d="M116 36C108 20 122 10 133 19C139 31 129 38 116 36ZM392 37C405 19 418 27 413 40C405 47 397 43 392 37Z" fill="#dfc6a9"/>
             </svg></div></div>}
-            <div data-part="composer" className="watch-discussion-composer relative z-20 shrink-0 border-t border-[#d6b18c]/25 pt-2">
+            <div data-part="composer" className="watch-discussion-composer relative z-[60] shrink-0 border-t border-[#d6b18c]/25 pt-2">
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
                 <button type="button" onClick={markHighlightAndDiscuss} disabled={!target} className="watch-chat-chip"><Sparkles size={11}/>标记重点</button>
                 <button type="button" onClick={() => actTogether("我们来聊聊刚才的剧情发展和人物动机，只根据已出现的内容讨论。")} disabled={!target||!character||busy} className="watch-chat-chip"><MessageCircle size={11}/>讨论情节</button>
