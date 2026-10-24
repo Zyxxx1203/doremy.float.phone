@@ -34,7 +34,7 @@ import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } f
 import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
-import { reconcileIdleReconnectWithLifeScenes, suspendIdleReconnectForLifeScene } from "@/lib/push-bailout-client";
+import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts, reconcileIdleReconnectWithLifeScenes, suspendIdleReconnectForLifeScene } from "@/lib/push-bailout-client";
 
 import { cancelFollowUp } from "@/lib/follow-up-service";
 import { loadBindingConfig, loadImageGenerationSettings, loadPresets, loadWorldBooks, resolveBinding, resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
@@ -1368,7 +1368,22 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const previousAttempt = proactiveAttemptAtRef.current[activeScene.id];
       if (previousAttempt == null) {
         proactiveAttemptAtRef.current[activeScene.id] = now;
-        proactiveNextAtRef.current[activeScene.id] = now + getRandomIntervalMs();
+        const firstDelay = getRandomIntervalMs();
+        proactiveNextAtRef.current[activeScene.id] = now + firstDelay;
+        // Arm one server-side turn while the WebView is alive. If the app is killed,
+        // push-generate can still generate and notify at the scheduled time.
+        const candidate = pickCandidate();
+        if (candidate) {
+          const { character, session } = candidate;
+          void armLifeSceneProactiveBailout({
+            sessionId: session.id,
+            sceneId: activeScene.id,
+            characterId: character.id,
+            characterName: character.name,
+            prompt: buildPrompt(character),
+            executeAtMs: now + firstDelay,
+          });
+        }
         return;
       }
       const nextAllowedAt = proactiveNextAtRef.current[activeScene.id];
@@ -1384,6 +1399,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const candidate = pickCandidate();
       if (!candidate) return;
       const { character, session } = candidate;
+      void cancelLifeSceneProactiveBailouts(activeScene.id);
       proactiveAttemptAtRef.current[activeScene.id] = now;
       proactiveNextAtRef.current[activeScene.id] = now + getRandomIntervalMs();
       proactiveLastSpeakerRef.current[activeScene.id] = character.id;
