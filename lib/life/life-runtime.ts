@@ -628,7 +628,8 @@ export function settleActorTimelineToNow(
           : previous?.activity ?? current?.title ?? "自由活动";
   // A missing current slot must clear the old slot reference. Otherwise deleting
   // or editing a schedule can leave an actor permanently attached to stale activity.
-  const scheduleMovementDue = !!current && (slotChanged || stayExpired || !previous?.actualLocationId);
+  const manualStayActive = !!previous?.actualLocationUntil && new Date(previous.actualLocationUntil).getTime() > virtualNow.getTime();
+  const scheduleMovementDue = !!current && !manualStayActive && (slotChanged || stayExpired || !previous?.actualLocationId);
   const nextLocationId = activeAppointment || scheduleMovementDue
     ? current?.plannedLocationId ?? previous?.actualLocationId ?? null
     : previous?.actualLocationId ?? current?.plannedLocationId ?? null;
