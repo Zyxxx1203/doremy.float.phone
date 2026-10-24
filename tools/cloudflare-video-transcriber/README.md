@@ -56,3 +56,8 @@ Workers AI has usage-based pricing and plan limits that can change. Check the cu
 - Model: https://developers.cloudflare.com/workers-ai/models/whisper-large-v3-turbo/
 - Pricing: https://developers.cloudflare.com/workers-ai/platform/pricing/
 - Limits: https://developers.cloudflare.com/workers-ai/platform/limits/
+
+
+## 与当前一起看解析链路的边界
+
+该 Worker 是独立的转写组件，不是网页端内置视频解析 API，也不是通用平台视频下载器。当前一起看可先尝试内置解析/同源缓存；需要本机提取器时可配置 `tools/video-resolver`；有可用字幕或音频时再使用转写链路。成功播放不表示已有字幕/转写或完整视频理解结果。同步部署时请分别检查 Worker、站点环境变量与本地服务，不能用其中一个的部署成功代替另外两个的验收。
