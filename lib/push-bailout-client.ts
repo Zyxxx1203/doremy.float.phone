@@ -537,15 +537,30 @@ function isCharacterCoPresentInLifeScene(characterId: string): boolean {
     }
 }
 
-/** Cancel already queued idle-reconnect messages for characters currently in the life scene. */
+/** Keep online cold-reconnect and life-scene autonomy mutually exclusive per character.
+ * Re-evaluate persisted scene presence every time the life scene changes or resumes:
+ * cancel queued online tasks only for genuinely co-present characters; re-arm the
+ * existing online rule as soon as the character is no longer in the player's scene. */
+export async function reconcileIdleReconnectWithLifeScenes(characterIds?: string[]): Promise<void> {
+    if (!bailoutEnabled()) return;
+    const rules = loadIdleReconnectRules();
+    const filter = characterIds?.length ? new Set(characterIds) : null;
+    for (const rule of rules) {
+        if (filter && !filter.has(rule.characterId)) continue;
+        if (isCharacterCoPresentInLifeScene(rule.characterId)) {
+            await cancelBailoutPrefix("idle:" + rule.id + ":");
+            const session = loadChatSessions().find(item => item.id === rule.sessionId);
+            if (session) await cancelBailoutPrefix("followup:" + session.id + ":");
+        } else {
+            await armIdleReconnectBailout(rule);
+        }
+    }
+}
+
+/** Backward-compatible helper used when entering a life scene. */
 export async function suspendIdleReconnectForLifeScene(characterIds: string[]): Promise<void> {
     if (!characterIds.length) return;
-    for (const rule of loadIdleReconnectRules()) {
-        if (!characterIds.includes(rule.characterId)) continue;
-        await cancelBailoutPrefix("idle:" + rule.id + ":");
-        const session = loadChatSessions().find(item => item.id === rule.sessionId);
-        if (session) await cancelBailoutPrefix("followup:" + session.id + ":");
-    }
+    await reconcileIdleReconnectWithLifeScenes(characterIds);
 }
 /**
  * 通话开始/结束时处理这个会话的离线预约。
