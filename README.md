@@ -13,7 +13,10 @@
 | [android-shell/README.md](./android-shell/README.md) | Android 壳构建配置、签名、站点地址 | 构建 APK 的用户 |
 | [docs/fork-changes-overview.md](./docs/fork-changes-overview.md) | 相对官方上游的改动总台账（逐文件实证） | 维护者 / 二次开发者 |
 | [docs/本次功能同步说明.md](./docs/本次功能同步说明.md) | 最近一次功能同步进 main 的改动索引 | 回顾与测试 |
+| [docs/开发进度与验证清单.md](./docs/开发进度与验证清单.md) | 2026-10-24 更新摘要、已实现能力与仍需模拟/真机验证项 | 维护者 / 测试者 |
 | [docs/verify-setup.md](./docs/verify-setup.md) 等其余 docs | 各云端功能的部署说明 | 需要对应功能的用户 |
+
+> **最近更新（2026-10-24）**：`main` 已包含一起看内置视频解析与播放缓存、B 站短链换算、生活系统时钟/提示修复、照片墙缩略图与导出/手势修复、桌面小组件按实例存储，以及内置通话统计。功能代码已提交不等于所有平台均已实测；验收边界见 [开发进度与验证清单](./docs/开发进度与验证清单.md)。
 
 ## 功能总览
 

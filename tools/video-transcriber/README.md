@@ -1,6 +1,6 @@
 # Optional local video transcription service for momo.float.phone
 
-This optional bridge lets “Watch Together” send a video URL to a computer/server you control, then import timestamped JSON script segments. It now tries platform-provided/manual/automatic captions first; when usable captions exist, it converts them into timestamped JSON and skips audio download and Whisper inference. Only when captions are unavailable does it download audio, run FFmpeg conversion and faster-whisper locally. The app does not send links to a third-party parsing API.
+This optional bridge is the self-hosted transcription fallback, not the built-in playback resolver. “Watch Together” can send a video URL to a computer/server you control, then import timestamped JSON script segments. The main app's built-in video resolver handles supported playback URLs separately; successful playback does not mean transcription or full video understanding is available. It now tries platform-provided/manual/automatic captions first; when usable captions exist, it converts them into timestamped JSON and skips audio download and Whisper inference. Only when captions are unavailable does it download audio, run FFmpeg conversion and faster-whisper locally. The app does not send links to a third-party parsing API.
 
 Upstream CLI: https://github.com/quanji081/video-transcriber. The original CLI and MIT license are retained in this folder. Its stated platform support remains subject to authentication, network restrictions, anti-bot measures and upstream platform changes.
 

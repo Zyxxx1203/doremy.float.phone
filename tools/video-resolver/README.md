@@ -1,6 +1,6 @@
 # Momo 本地视频解析服务（Windows / Termux）
 
-目标：先把平台视频下载到本机缓存，再播放本地文件，避免依赖平台网页播放器。Windows 与 Android Termux 使用同一套 Python API。该服务内置两个独立解析引擎：`parse-video-py`（覆盖多个中文短视频分享链接）和 `yt-dlp`（平台提取器/下载器）。`auto` 会按平台选择顺序：抖音/快手/小红书等短视频分享链接优先 `parse-video-py`，B站/YouTube 等长视频平台优先 `yt-dlp`，失败后再尝试另一个引擎；这样可避免把 B 站分离的无声视频轨误当成完整视频。也可在「一起看」设置中锁定某一个引擎。该服务是可选的本地工具，不会把视频或 Cookie 上传到 Netlify/Supabase。
+定位：这是可选的本地解析服务（Windows / Termux）。当前网页端已另有内置解析 API，优先尝试内置解析；当平台不受内置解析支持、需要本机工具链或希望在本地处理时，再配置本服务。该服务先把平台视频下载到本机缓存，再播放本地文件，避免依赖平台网页播放器。Windows 与 Android Termux 使用同一套 Python API。该服务内置两个独立解析引擎：`parse-video-py`（覆盖多个中文短视频分享链接）和 `yt-dlp`（平台提取器/下载器）。`auto` 会按平台选择顺序：抖音/快手/小红书等短视频分享链接优先 `parse-video-py`，B站/YouTube 等长视频平台优先 `yt-dlp`，失败后再尝试另一个引擎；这样可避免把 B 站分离的无声视频轨误当成完整视频。也可在「一起看」设置中锁定某一个引擎。该服务是可选的本地工具，不会把视频或 Cookie 上传到 Netlify/Supabase。
 
 ## Windows
 

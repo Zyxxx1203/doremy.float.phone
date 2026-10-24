@@ -591,3 +591,19 @@
 
 **还要重申一句**：本文档描述的是**已经提交在 `main` 上**的改动。任何尚未提交的实验性改动不在此列。
 
+
+
+---
+
+## 2026-10-24 增量：视频解析、照片墙、生活系统与内置 App
+
+当前 `main` 最新记录为提交 `151528895b8c15761e814a51e89942d4be98e84a`。本节是按该提交摘要补充的增量索引，不替代逐文件核查，也不将代码存在等同于真机通过。
+
+- **一起看**：新增 `lib/watch-resolver.ts` 和 `app/api/watch-resolver/*` 内置解析/缓存 API；新增 `app/api/resolve-short-link/route.ts` 处理 B 站短链；观看记录关联缓存与播放进度；标记重点改为时间点反馈。
+- **生活**：`components/life/life-engine-app.tsx`、`lib/life/life-runtime.ts` 修复时钟控制区可达性、沉浸提示显示和行程地点写入/中文 slug 转义。
+- **照片墙**：`components/photo-wall-app.tsx`、`components/photo-wall/photo-wall-canvas.tsx`、`lib/photo-wall-export.ts` 更新缩略图管线、当前视野批量上传、画布背景导出一致性、世界分辨率导出和壳缩放坐标折算。
+- **桌面小组件**：`lib/widget/storage.ts` 与 `lib/tool-executor.ts` 支持通过 `profileId` 指定实例和隔离存储。
+- **通话统计**：新增 `lib/builtin-apps/call-stats-source.ts`，将 `call.stats 2.1.0` 以内置 App 方式接入。
+- **工程**：`next.config.mjs` 恢复构建期类型检查；删除未使用的弹幕层和周计划模块；新增 `scripts/sync-to-public.mjs`。
+
+若要确认某一项的实际完成度，请以 [开发进度与验证清单](./开发进度与验证清单.md) 中的代码状态、自动化证据和设备验收状态分栏为准。
