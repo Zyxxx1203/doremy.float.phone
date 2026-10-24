@@ -1197,6 +1197,14 @@ Deno.serve(async (req: Request) => {
                   ...(typeof payload.notify?.avatar === "string" && payload.notify.avatar
                     ? { avatar: payload.notify.avatar }
                     : {}),
+                  ...(isLifeSceneJob ? {
+                    kind: "life_scene",
+                    sceneId: String(payload.merge?.lifeScene?.sceneId ?? ""),
+                    characterId: String(payload.merge?.lifeScene?.characterId ?? ""),
+                    characterName: String(payload.merge?.lifeScene?.characterName ?? title),
+                    actionText: String(rawText.match(/<life_action\b[^>]*>([\s\S]*?)<\/life_action\s*>/i)?.[1]?.trim() ?? ""),
+                    dialogueText: String(rawText.match(/<life_dialogue\b[^>]*>([\s\S]*?)<\/life_dialogue\s*>/i)?.[1]?.trim() ?? ""),
+                  } : {}),
                   ...(deliverAsCall ? { kind: "call", characterName: title, callTs: Date.now() } : {}),
                 },
               })),
