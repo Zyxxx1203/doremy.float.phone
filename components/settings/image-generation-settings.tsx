@@ -1136,7 +1136,7 @@ export function ImageGenerationSettings() {
                                 <span className="menu-right settings-tools-menu-toggle">
                                     <Toggle
                                         checked={selectedReference?.novelAiFeaturePromptEnabled !== false}
-                                        onChange={(novelAiFeaturePromptEnabled) => updateCharacterReference(selectedCharacter.id, { novelAiFeaturePromptEnabled })}
+                                        onChange={(novelAiFeaturePromptEnabled) => updateCharacterReference(selectedCharacterId || "__user__", { novelAiFeaturePromptEnabled })}
                                         className="settings-toggle-control"
                                     />
                                 </span>
