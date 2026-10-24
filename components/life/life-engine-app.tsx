@@ -34,8 +34,8 @@ import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } f
 import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
-import { armIdleReconnectBailout, suspendIdleReconnectForLifeScene } from "@/lib/push-bailout-client";
-import { loadIdleReconnectRules } from "@/lib/idle-reconnect-storage";
+import { reconcileIdleReconnectWithLifeScenes, suspendIdleReconnectForLifeScene } from "@/lib/push-bailout-client";
+
 import { cancelFollowUp } from "@/lib/follow-up-service";
 import { loadBindingConfig, loadImageGenerationSettings, loadPresets, loadWorldBooks, resolveBinding, resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
 import type { BindingConfig, PresetConfig, WorldBookConfig } from "@/lib/settings-types";
@@ -1448,11 +1448,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         && scene.participants.some(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID)
         && scene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === characterId && participant.activity !== "离开")
       );
-      for (const rule of loadIdleReconnectRules()) {
-        if (candidateIds.includes(rule.characterId) && !stillCoPresent(rule.characterId)) {
-          void armIdleReconnectBailout(rule);
-        }
-      }
+      // Reconcile only the characters from the scene this effect owned. If they
+      // left, their online reconnect is re-armed; if still co-present, it stays
+      // suppressed. The bailout layer independently rechecks presence before POST.
+      void reconcileIdleReconnectWithLifeScenes(candidateIds);
     };
   }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.showActionNarration, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, playerName]);
   const sendSceneTurn = async (event?: FormEvent, forceReaction = false) => {
