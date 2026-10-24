@@ -122,33 +122,29 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
 }
 
 
-function rebuildSceneDialogueTimeline(state: VirtualLifeState, sceneId: string, batchSizeValue: number): VirtualLifeState {
-  const batchSize = Math.max(1, Math.min(100, Math.floor(batchSizeValue || 10)));
+function rebuildSceneDialogueTimeline(state: VirtualLifeState, sceneId: string, _batchSizeValue: number): VirtualLifeState {
+  // The life timeline mirrors each original utterance; summarization belongs to scene.currentDescription,
+  // never to a synthetic "N messages" record that obscures the live chat.
   const messages = state.sceneMessages
     .filter(message => message.sceneId === sceneId && message.role !== "system" && Boolean(message.dialogue?.trim()))
     .slice()
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const previous = state.timeline.filter(entry => entry.category === "dialogue" && entry.sceneId === sceneId);
   let next: VirtualLifeState = { ...state, timeline: state.timeline.filter(entry => !(entry.category === "dialogue" && entry.sceneId === sceneId)) };
-  for (let offset = 0; offset < messages.length; offset += batchSize) {
-    const group = messages.slice(offset, offset + batchSize);
-    const last = group[group.length - 1];
-    const groupNumber = Math.floor(offset / batchSize) + 1;
-    const sourceId = "scene-dialogue-batch:" + sceneId + ":" + groupNumber;
-    const oldEntry = previous.find(entry => entry.sourceId === sourceId);
-    const details = group.map(message => (message.speakerName || message.speakerId) + "：" + message.dialogue.trim()).join("\n");
+  for (const message of messages) {
+    const oldEntry = previous.find(entry => entry.sourceId === message.id);
     next = appendLifeTimelineEntry(next, {
       id: oldEntry?.id,
       category: "dialogue",
-      occurredAt: last.createdAt,
-      recordedAt: new Date().toISOString(),
-      title: "生活现场对话 · " + group.length + "/" + batchSize + " 条",
-      details,
-      actorId: last.speakerId,
-      actorName: last.speakerName,
+      occurredAt: message.createdAt,
+      recordedAt: oldEntry?.recordedAt ?? message.createdAt,
+      title: (message.speakerName || message.speakerId) + "说",
+      details: message.dialogue.trim(),
+      actorId: message.speakerId,
+      actorName: message.speakerName,
       locationName: next.scenes.find(scene => scene.id === sceneId)?.locationName,
       sceneId,
-      sourceId,
+      sourceId: message.id,
     });
   }
   return next;
@@ -1065,6 +1061,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       "为虚拟生活场景生成一张单帧画面，不是拼贴、漫画分格或文字海报。",
       "当前场景："+(activeScene?.locationName || selectedLocation?.name || "日常场景"),
       "场景状态："+(activeScene?.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);return (actor?.name||p.ownerId)+"正在"+p.activity;}).join("；") || playerActivity),
+      activeScene?.currentDescription?.trim() ? "当前现场描述（独立于地点固定描写，依据本场景真实记录保持连续性）："+activeScene.currentDescription.trim() : "",
       participantIds.includes(PLAYER_ID) && imageSettings.userAppearanceDescription?.trim() ? "玩家固定外观："+imageSettings.userAppearanceDescription.trim() : "",
       participantIds.includes(PLAYER_ID) && imageSettings.userAppearanceReferenceAssetId ? "玩家本人使用独立脸部参考图保持身份；不要把玩家与角色混为一人，也不要复制参考图的服装或站位。" : "",
       ...participantIds.map(pid=>{
@@ -2687,7 +2684,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         <div className="mb-1 flex shrink-0 items-center justify-between gap-2 border-b border-stone-200/60 px-1.5 py-1.5 sm:px-2 sm:py-2"><div className="min-w-0 flex-1"><p className="truncate text-base font-semibold text-stone-800">{activeScene ? activeScene.locationName : "还没有正在进行的场景"}</p><p className="truncate text-[11px] text-stone-500">{activeScene ? `${activeScene.participants.length} 位在场 · ${state.locations.find(location => location.id === activeScene.locationId)?.atmosphere || "生活现场"}` : "先从地点列表选择一个地点。"}</p></div><div className="flex shrink-0 items-center gap-2"><button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); transitionSceneAction(() => { setSceneView(false); setTab("home"); setLocationDossierOpen(false); }); }} className="relative z-[100] isolate pointer-events-auto inline-flex min-h-11 min-w-[112px] touch-manipulation select-none cursor-pointer items-center justify-center gap-1 rounded-xl border border-stone-300 bg-white px-2 py-2 text-xs font-semibold text-stone-700 shadow-sm active:scale-[0.98]"><ArrowLeft size={16} className="pointer-events-none" aria-hidden/><span>返回地点列表</span></button>{activeScene && <button type="button" onClick={(event)=>{event.preventDefault();event.stopPropagation();transitionSceneAction(() => {const now=new Date().toISOString();const wasPaused=activeScene.status==="paused";const returnNarrationId=wasPaused?id("turn"):undefined;let next={...stateRef.current,scenes:stateRef.current.scenes.map(scene=>scene.id===activeScene.id?{...scene,status:(wasPaused?"active":"paused") as "active"|"paused",updatedAt:now}:{...scene,status:scene.status==="active"?"paused" as const:scene.status})};next=appendLifeTimelineEntry(next,{category:"scene",title:(wasPaused?"你回到了":"你暂时离开了")+activeScene.locationName,details:wasPaused?"继续之前的场景，保留原有互动记录。":"场景已暂停；再次点击继续时才在现场添加返回旁白。",actorName:playerName,locationName:activeScene.locationName,sceneId:activeScene.id,sourceId:returnNarrationId});if(wasPaused){const narration:LifeSceneMessage={id:returnNarrationId??id("turn"),sceneId:activeScene.id,speakerType:"player",speakerId:PLAYER_ID,speakerName:"场景旁白",role:"system",action:"你回到了"+activeScene.locationName+"。先前的场景与互动仍在继续。",dialogue:"",createdAt:now};next={...next,sceneMessages:[...next.sceneMessages,narration]};}commit(next);setNotice(wasPaused?"已回到原场景；返回记录以旁白形式加入聊天。":"你暂时离开了场景；再次点继续时才会添加返回旁白。")})}} className="relative z-[100] isolate pointer-events-auto inline-flex min-h-11 min-w-[104px] touch-manipulation select-none items-center justify-center gap-1 rounded-xl border border-stone-300 bg-white px-2 py-2 text-xs font-semibold shadow-sm active:scale-[0.98]">{activeScene.status==="active"?<><Pause size={14} className="pointer-events-none" aria-hidden/><span>暂时离开</span></>:<><Play size={14} className="pointer-events-none" aria-hidden/><span>回到场景</span></>}</button>}</div></div>
         <details open={!activeScene} className="mb-1 shrink-0 rounded-xl border border-stone-200/70 bg-white/65"><summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-stone-600">场景设置 · {activeScene ? activeScene.locationName : "选择地点并开始互动"}</summary><div className="max-h-[45dvh] overflow-y-auto overscroll-contain touch-pan-y px-3 pb-3 sm:px-4" style={{ WebkitOverflowScrolling: "touch" }}>
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-            <label className="block text-sm font-medium">当前地点
+            {activeScene && <label className="mt-3 block text-sm font-medium text-stone-700">当前现场描述（用于后续生图）<textarea value={activeScene.currentDescription ?? ""} onChange={event=>{const description=event.target.value;const latest=stateRef.current;const scene=latest.scenes.find(item=>item.id===activeScene.id);if(!scene)return;const next={...latest,scenes:latest.scenes.map(item=>item.id===scene.id?{...item,currentDescription:description,updatedAt:new Date().toISOString()}:item)};commit(next);}} rows={3} placeholder="记录当前场景中实际发生的事、人物位置、手中物品和氛围变化。之后由 AI 根据原始对话持续整理。" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm font-normal"/></label>}
+           <label className="block text-sm font-medium">当前地点
               <select value={selectedLocationId} onChange={e=>setSelectedLocationId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">{state.locations.map(loc=><option key={loc.id} value={loc.id}>{loc.name} · {loc.visibility==="public"?"公共":"私人"}</option>)}</select>
             </label>
             <div className="flex items-end gap-2"><button type="button" onClick={() => enterLocationSolo()} disabled={!settings.enabled} className="flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm disabled:opacity-40">前往地点</button><button type="button" onClick={createScene} disabled={!characters.length||!settings.enabled} className="flex-1 rounded-xl bg-[var(--life-accent)] px-3 py-2.5 text-sm text-white disabled:opacity-40">进入互动</button></div>
