@@ -408,13 +408,6 @@ export function ImageGenerationSettings() {
         });
     };
 
-    const openUserFaceCrop = () => {
-        const crop = settings.characterReferences?.["__user__"]?.faceCrop || { x: 0.27, y: 0.12, size: 0.46 };
-        setCropDraft(crop);
-        setCropViewport({ width: 0, height: 0 });
-        setCropCharacterId("__user__");
-    };
-
     const openFaceCrop = (characterId: string) => {
         const crop = settings.characterReferences?.[characterId]?.faceCrop || { x: 0.27, y: 0.12, size: 0.46 };
         setCropDraft(crop);
@@ -487,7 +480,7 @@ export function ImageGenerationSettings() {
 
     const selectedCharacter = characters.find(character => character.id === selectedCharacterId) || null;
     const activeCropPreview = cropCharacterId === "__user__" ? userReferencePreview : (cropCharacterId ? referencePreviews[cropCharacterId] : null);
-    const selectedReference = selectedCharacter ? settings.characterReferences?.[selectedCharacter.id] : undefined;
+    const selectedReference = selectedCharacterId ? settings.characterReferences?.[selectedCharacterId] : undefined;
     const characterListOverflows = characterScrollMetrics.scrollHeight > characterScrollMetrics.clientHeight + 1;
     const characterScrollThumbPercent = characterListOverflows
         ? Math.max(14, characterScrollMetrics.clientHeight / characterScrollMetrics.scrollHeight * 100)
@@ -1038,50 +1031,25 @@ export function ImageGenerationSettings() {
                         <span className="leading-[1.5]">NovelAI 当前适配器只使用角色文字特征，不读取脸部参考图；为了避免多角色身份被模型融合，不会把多人参考图硬塞成一张。切回支持多图编辑的 OpenAI 兼容模型后，已保存的参考图仍会保留。</span>
                     </Alert>
                 )}
-                <div className="menu-group p-4 flex flex-col gap-3">
-                    <div className="flex items-start gap-3">
-                        <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-input)]">
-                            {userReferencePreview ? <img src={userReferencePreview} alt="玩家参考图" className="h-full w-full object-cover"/> : <div className="grid h-full place-items-center text-[var(--c-icon)]"><Camera size={22}/></div>}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                            <div className="menu-label">人物身份参考 · 用户本人</div>
-                            <p className="menu-desc mt-1">与角色形象参考共用同一套人物身份数据。只有用户本人被列入本次场景出镜名单时才会自动加入；不需要在每次生图时手动选择。</p>
-                            <div className="mt-3 flex flex-wrap gap-2">
-                                <label className="ui-btn ui-btn-soft-action min-h-9 cursor-pointer px-3 py-2 text-xs">
-                                    <Upload size={14} className="mr-1 inline"/> {settings.characterReferences?.["__user__"]?.assetId ? "更换用户参考图" : "上传用户参考图"}
-                                    <input type="file" accept="image/*" className="hidden" onChange={async event => {
-                                        const input = event.currentTarget; const file = input.files?.[0]; if (!file) return;
-                                        try {
-                                            const dataUrl = await fileToUserAvatarDataUrl(file, 1200, 0.88);
-                                            const blob = await (await fetch(dataUrl)).blob();
-                                            const assetId = await saveChatImageToIndexedDB(blob);
-                                            persist({ ...settings, characterReferences: { ...(settings.characterReferences || {}), "__user__": { ...(settings.characterReferences?.["__user__"] || {}), assetId, updatedAt: Date.now(), featurePrompt: settings.characterReferences?.["__user__"]?.featurePrompt || "", faceCrop: settings.characterReferences?.["__user__"]?.faceCrop || { x: 0.27, y: 0.12, size: 0.46 } } } });
-                                            setUserReferencePreview(dataUrl);
-                                            setCropDraft(settings.characterReferences?.["__user__"]?.faceCrop || { x: 0.27, y: 0.12, size: 0.46 });
-                                            setCropViewport({ width: 0, height: 0 });
-                                            setCropCharacterId("__user__");
-                                            setStatus({ success: true, message: "玩家参考图已保存，请框选脸部区域以便锁定形象。" });
-                                        } catch (error) { setStatus({ success: false, message: error instanceof Error ? error.message : "参考图保存失败" }); }
-                                        finally { input.value = ""; }
-                                    }}/>
-                                </label>
-                                {userReferencePreview && <button type="button" className="ui-btn ui-btn-outline min-h-9 px-3 py-2 text-xs" onClick={openUserFaceCrop}><ScanFace size={14} className="mr-1 inline"/>选取脸部 / 锁定形象</button>}
-                                {settings.characterReferences?.["__user__"]?.assetId && <button type="button" className="ui-btn min-h-9 px-3 py-2 text-xs text-red-600" onClick={() => { const next = { ...(settings.characterReferences || {}) }; delete next["__user__"]; persist({ ...settings, characterReferences: next }); setUserReferencePreview(null); }}>移除</button>}
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                        <label className="menu-desc ml-1">用户稳定身份特征</label>
-                        <Textarea value={settings.characterReferences?.["__user__"]?.featurePrompt || ""} onChange={event => updateCharacterReference("__user__", { featurePrompt: event.target.value })} rows={2} placeholder="只写稳定特征，如五官、发色、发型、明显标记；服装和姿态由本次场景决定。" />
-                    </div>
-                    {settings.characterReferences?.["__user__"]?.assetId && <p className="menu-desc">脸部选区：{settings.characterReferences["__user__"]?.faceCrop ? "已保存" : "使用默认区域"}。支持多图编辑的后端会在用户本人出镜时自动传入这张参考图；NovelAI 当前适配器仅使用文字身份特征。</p>}
-                </div>
                 <div className="relative">
                     <div
                         ref={characterListRef}
                         className="menu-group max-h-[292px] overflow-y-auto overscroll-contain pr-3"
                         onScroll={syncCharacterScrollMetrics}
                     >
+                        <button
+                            type="button"
+                            className={`menu-item w-full text-left ${selectedCharacterId === "__user__" ? "bg-[var(--c-input)]" : ""}`}
+                            onClick={() => setSelectedCharacterId("__user__")}
+                        >
+                            <span className="h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-[var(--c-input)]">
+                                {userReferencePreview ? <img src={userReferencePreview} alt="" className="h-full w-full object-cover" /> : <span className="flex h-full w-full items-center justify-center"><Camera size={18} /></span>}
+                            </span>
+                            <span className="min-w-0 flex flex-1 flex-col">
+                                <span className="menu-label truncate">用户本人</span>
+                                <span className="menu-desc truncate">{userReferencePreview ? "用户身份参考已配置" : "上传用户本人参考图"}</span>
+                            </span>
+                        </button>
                         {characters.length === 0 ? (
                             <div className="ui-empty py-8">
                                 <Camera size={22} />
@@ -1139,12 +1107,12 @@ export function ImageGenerationSettings() {
                     )}
                 </div>
 
-                {selectedCharacter && (
+                {(selectedCharacter || selectedCharacterId === "__user__") && (
                     <div className="menu-group p-4 flex flex-col gap-4">
                         <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
-                                <div className="menu-label truncate">{selectedCharacter.name} · 专属生图设定</div>
-                                <div className="menu-desc">只影响这个角色，不会改动角色卡正文。</div>
+                                <div className="menu-label truncate">{selectedCharacter?.name || "用户本人"} · 身份参考设定</div>
+                                <div className="menu-desc">仅用于稳定人物身份，不会改动角色卡正文。</div>
                             </div>
                         </div>
 
@@ -1152,7 +1120,7 @@ export function ImageGenerationSettings() {
                             <label className="menu-desc ml-1">专属人物特征提示词</label>
                             <Textarea
                                 value={selectedReference?.featurePrompt || ""}
-                                onChange={(event) => updateCharacterReference(selectedCharacter.id, { featurePrompt: event.target.value })}
+                                onChange={(event) => updateCharacterReference(selectedCharacterId || "__user__", { featurePrompt: event.target.value })}
                                 placeholder="例如：黑色长卷发、灰蓝色眼睛、左眼下有一颗小痣、清冷气质……"
                                 rows={4}
                             />
@@ -1186,16 +1154,16 @@ export function ImageGenerationSettings() {
                                         input.accept = "image/*";
                                         input.onchange = async () => {
                                             const file = input.files?.[0];
-                                            if (file) await uploadReference(selectedCharacter.id, file);
+                                            if (file && selectedCharacterId) await uploadReference(selectedCharacterId, file);
                                         };
                                         input.click();
                                     }}
                                 >
                                     <Upload size={16} />
-                                    {referencePreviews[selectedCharacter.id] ? "更换参考图" : "选择参考图"}
+                                    {(selectedCharacterId === "__user__" ? userReferencePreview : referencePreviews[selectedCharacterId || ""]) ? "更换参考图" : "上传参考图"}
                                 </button>
-                                {referencePreviews[selectedCharacter.id] && (
-                                    <button type="button" className="ui-btn ui-btn-outline flex-1" onClick={() => openFaceCrop(selectedCharacter.id)}>
+                                {(selectedCharacterId === "__user__" ? userReferencePreview : referencePreviews[selectedCharacterId || ""]) && (
+                                    <button type="button" className="ui-btn ui-btn-outline flex-1" onClick={() => selectedCharacterId && openFaceCrop(selectedCharacterId)}>
                                         <ScanFace size={16} />
                                         选取脸部
                                     </button>
