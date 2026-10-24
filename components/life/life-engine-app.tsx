@@ -34,7 +34,8 @@ import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } f
 import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
-import { suspendIdleReconnectForLifeScene } from "@/lib/push-bailout-client";
+import { armIdleReconnectBailout, suspendIdleReconnectForLifeScene } from "@/lib/push-bailout-client";
+import { loadIdleReconnectRules } from "@/lib/idle-reconnect-storage";
 import { cancelFollowUp } from "@/lib/follow-up-service";
 import { loadBindingConfig, loadImageGenerationSettings, loadPresets, loadWorldBooks, resolveBinding, resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
 import type { BindingConfig, PresetConfig, WorldBookConfig } from "@/lib/settings-types";
@@ -1439,7 +1440,19 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       disposed = true;
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      // No server-side life-scene job is created or maintained.
+      // Restore online idle reconnect when the character is no longer co-present.
+      // Cleanup also runs for settings changes, so check persisted scene state first.
+      const latestLifeState = loadVirtualLifeState();
+      const stillCoPresent = (characterId: string) => latestLifeState.settings.enabled && latestLifeState.scenes.some(scene =>
+        scene.status === "active"
+        && scene.participants.some(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID)
+        && scene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === characterId && participant.activity !== "离开")
+      );
+      for (const rule of loadIdleReconnectRules()) {
+        if (candidateIds.includes(rule.characterId) && !stillCoPresent(rule.characterId)) {
+          void armIdleReconnectBailout(rule);
+        }
+      }
     };
   }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.showActionNarration, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, playerName]);
   const sendSceneTurn = async (event?: FormEvent, forceReaction = false) => {
