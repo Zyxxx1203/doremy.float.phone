@@ -1143,8 +1143,7 @@ export function ImageGenerationSettings() {
                             </div>
                         )}
 
-                        {settings.provider !== "novelai" && (
-                            <div className="flex gap-2">
+                        <div className="flex gap-2">
                                 <button
                                     type="button"
                                     className="ui-btn ui-btn-soft-action flex-1"
@@ -1168,8 +1167,8 @@ export function ImageGenerationSettings() {
                                         选取脸部
                                     </button>
                                 )}
-                            </div>
-                        )}
+                        </div>
+                        <p className="menu-desc">OpenAI 兼容生图会自动传入出镜人员的参考图；NovelAI 暂不接收参考图片，但会使用上方填写的身份特征描述。</p>
                     </div>
                 )}
             </div>
@@ -1186,7 +1185,7 @@ export function ImageGenerationSettings() {
                     }}
                 >
                     <div className="flex flex-col gap-3">
-                        <p className="menu-desc">拖动方框覆盖脸部；生活场景参考板会优先使用这个区域，减少服装和背景干扰。</p>
+                        <p className="menu-desc">拖动方框覆盖脸部，生图时会优先使用选中的身份区域，尽量减少服装和背景干扰。</p>
                         <div ref={cropContainerRef} className="relative mx-auto w-fit max-h-[52vh] max-w-full overflow-hidden rounded-xl bg-black/80">
                             <img
                                 src={activeCropPreview || ""}
