@@ -1621,11 +1621,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         padding:8px 0 0!important; border-top:1px solid rgba(172,126,88,.25)!important;
       }
       .watch-chat-chip {
-        display:inline-flex; align-items:center; gap:4px; min-height:34px; padding:7px 12px;
+        display:inline-flex; align-items:center; gap:4px; min-height:27px; padding:5px 9px;
         border:1px solid rgba(165,121,85,.32); border-radius:999px;
-        background:rgba(255,255,255,.72); color:#79573f; font-size:11px; line-height:1;
+        background:rgba(255,255,255,.72); color:#79573f; font-size:10px; line-height:1;
         white-space:nowrap; box-shadow:0 1px 3px rgba(93,61,39,.04);
-        /* 防止被相邻绝对定位浮层/滚动容器遮挡点击 */
         position:relative; z-index:5; touch-action:manipulation;
       }
       .watch-chat-chip:disabled { opacity:.38; }
@@ -1700,7 +1699,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       /* Illustration now lives in the empty-state flow; no absolute overlay can cover text or controls. */
       .watch-empty-discussion { flex:0 0 auto; }
       .watch-empty-discussion svg { display:block; width:auto; height:clamp(112px, 20dvh, 180px); max-width:100%; margin:0 auto; overflow:visible; }
-      .watch-empty-illustration { position:relative; flex:0 0 auto; min-height:0; }
+      .watch-empty-illustration { position:relative; flex:0 0 auto; min-height:0; max-height:120px; } .watch-empty-illustration svg { max-height:120px; }
         justify-content:center!important; text-align:center!important;
       }
 
