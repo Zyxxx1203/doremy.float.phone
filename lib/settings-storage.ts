@@ -744,8 +744,10 @@ function normalizeOpenAiPreset(preset: Partial<OpenAiImagePreset> | null | undef
 }
 
 function normalizeImageGenerationSettings(settings: Partial<ImageGenerationSettings> | null | undefined): ImageGenerationSettings {
-    const rawSettings = (settings || {}) as Partial<ImageGenerationSettings> & Record<string, unknown>;
-    const { userAppearanceDescription: _legacyUserDescription, userAppearanceReferenceAssetId: _legacyUserAsset, userAppearanceFaceCrop: _legacyUserCrop, ...settingsWithoutLegacyUserFields } = rawSettings;
+    const settingsWithoutLegacyUserFields = { ...(settings || {}) } as Partial<ImageGenerationSettings> & Record<string, unknown>;
+    delete settingsWithoutLegacyUserFields.userAppearanceDescription;
+    delete settingsWithoutLegacyUserFields.userAppearanceReferenceAssetId;
+    delete settingsWithoutLegacyUserFields.userAppearanceFaceCrop;
     const rawRefs = settings?.characterReferences && typeof settings.characterReferences === "object"
         ? settings.characterReferences
         : {};
