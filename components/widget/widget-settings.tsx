@@ -577,6 +577,7 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
           </label>
           <label className="ws-field">显示哪个角色
             <select value={profileDraft.characterId} onChange={event => patchProfileDraft({characterId:event.target.value})}>
+              <option value="">（不绑定角色 · 自由内容）</option>
               {characters.length === 0 ? <option value="">还没有角色</option> : null}
               {characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}
             </select>

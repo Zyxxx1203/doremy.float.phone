@@ -106,12 +106,17 @@ export function chooseLifeAutonomyCharacter(
   return leastRecentlyHeard[Math.floor(Math.random() * leastRecentlyHeard.length)] ?? null;
 }
 
-export function notifyLifeSceneMessage(title: string, body: string, onClick?: () => void): void {
+export async function notifyLifeSceneMessage(title: string, body: string, onClick?: () => void): Promise<void> {
   if (typeof window === "undefined") return;
   const safeBody = body.trim().slice(0, 180);
   window.dispatchEvent(new CustomEvent("life-scene-proactive-message", {
     detail: { title, body: safeBody, at: Date.now() },
   }));
+  // Android 壳：走原生通知横幅（应用切后台/被关时也能送达）。浏览器壳桥不存在时返回 false，静默跳过。
+  try {
+    const { sendShellNotification } = await import("../shell-notify");
+    if (sendShellNotification(title, safeBody, null, null)) return;
+  } catch { /* 非壳环境 */ }
   if (document.visibilityState === "visible" || !("Notification" in window) || Notification.permission !== "granted") return;
   try {
     const notification = new Notification(title, { body: safeBody, tag: "life-scene-proactive" });
