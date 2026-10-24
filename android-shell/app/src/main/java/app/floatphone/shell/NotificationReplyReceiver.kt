@@ -105,7 +105,7 @@ class NotificationReplyReceiver : BroadcastReceiver() {
                     putExtra(
                         MainActivity.EXTRA_OPEN_URL,
                         MainActivity.SITE_URL.trimEnd('/') +
-                            "/#open-chat=" + android.net.Uri.encode(sessionId),
+                            (if (sceneId.isNotEmpty()) "/life?sceneId=" + android.net.Uri.encode(sceneId) else "/#open-chat=" + android.net.Uri.encode(sessionId)),
                     )
                 },
             )
