@@ -1117,8 +1117,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       "当前场景："+(activeScene?.locationName || selectedLocation?.name || "日常场景"),
       "场景状态："+(activeScene?.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);return (actor?.name||p.ownerId)+"正在"+p.activity;}).join("；") || playerActivity),
       activeScene?.currentDescription?.trim() ? "当前现场描述（独立于地点固定描写，依据本场景真实记录保持连续性）："+activeScene.currentDescription.trim() : "",
-      participantIds.includes(PLAYER_ID) && imageSettings.userAppearanceDescription?.trim() ? "玩家固定外观："+imageSettings.userAppearanceDescription.trim() : "",
-      participantIds.includes(PLAYER_ID) && imageSettings.userAppearanceReferenceAssetId ? "玩家本人使用独立脸部参考图保持身份；不要把玩家与角色混为一人，也不要复制参考图的服装或站位。" : "",
+      participantIds.includes(PLAYER_ID) && imageSettings.characterReferences?.["__user__"]?.featurePrompt?.trim() ? "玩家固定外观："+imageSettings.characterReferences["__user__"].featurePrompt.trim() : "",
+      participantIds.includes(PLAYER_ID) && imageSettings.characterReferences?.["__user__"]?.assetId ? "用户本人使用人物身份参考图保持身份；不要把用户与角色混为一人，也不要复制参考图的服装或站位。" : "",
       ...participantIds.map(pid=>{
         const char=characters.find(item=>item.id===pid);
         if(!char)return "";
@@ -1139,9 +1139,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       ? imageParticipantIds
       : [
           ...(activeScene.participants.some(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID)
-            && (imageSettings.userAppearanceReferenceAssetId || imageSettings.userAppearanceDescription?.trim())
-            ? [PLAYER_ID]
-            : []),
+            ? [PLAYER_ID] : []),
           ...activeScene.participants.filter(participant => participant.ownerType === "character").map(participant => participant.ownerId),
         ]);
     const prompt = buildSceneImagePrompt(participantIds, options?.prompt ?? sceneImagePrompt);
@@ -1150,24 +1148,16 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setNotice("正在生成场景图。每张图会独立保存，失败的图片不会影响已有图库。");
     const generated: LifeSceneImage[] = [];
     try {
-      const referenceCharacterId = participantIds.find(pid=>pid !== PLAYER_ID && imageSettings.characterReferences?.[pid]?.assetId && imageSettings.characterReferences?.[pid]?.enabled !== false);
+      const referenceCharacterId = participantIds.find(pid => pid !== PLAYER_ID && characters.some(character => character.id === pid));
       const characterIds = participantIds.filter(pid => pid !== PLAYER_ID && characters.some(character => character.id === pid));
-      const includeUserAppearance = participantIds.includes(PLAYER_ID);
-      const hasCharacterReferences = characterIds.some(pid => Boolean(imageSettings.characterReferences?.[pid]?.assetId) && imageSettings.characterReferences?.[pid]?.enabled !== false)
-        // The global labelled group collage is a valid identity source by itself.
-        // Without including it here, life-scene generation explicitly passed false
-        // to useReferenceImage and silently skipped the collage when individual
-        // portraits had not also been uploaded.
-        || Boolean(imageSettings.characterReferences?.["__group__"]?.assetId && imageSettings.characterReferences?.["__group__"]?.enabled !== false);
-      const hasPlayerReference = includeUserAppearance && Boolean(imageSettings.userAppearanceReferenceAssetId);
+      const explicitParticipants = participantIds.map(pid => pid === PLAYER_ID ? "__user__" : pid);
       for(let index=0;index<count;index++){
         const result = await generateImageFromConfiguredApi({
           description: prompt+(count>1?"\n画面方案："+(index+1)+"，请在同一场景和角色外观基础上尝试不同自然构图。":""),
           characterId: referenceCharacterId || characterIds[0],
           characterIds,
-          includeUserAppearance,
+          participantIds: explicitParticipants,
           appId: "story",
-          useReferenceImage: hasCharacterReferences || hasPlayerReference,
         });
         if(!result) throw new Error("生图服务未返回图片，请检查 API 配置和启用状态。");
         generated.push({id:id("scene-image"),sceneId:activeScene.id,mediaRef:result.mediaRef,prompt:result.prompt,participantIds:[...participantIds],createdAt:new Date().toISOString(),status:"active",alt:activeScene.locationName+"场景图"});
@@ -2450,9 +2440,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           "尽量表现记录中真实发生的瞬间，不要凭空添加无关人物或戏剧化情节。"
         ].filter(Boolean).join("\n"),
         characterId,
+        participantIds: entry.actorId === PLAYER_ID ? ["__user__"] : (characterId ? [characterId] : []),
         appId: "story",
-        useReferenceImage: Boolean(characterId),
-        includeUserAppearance: entry.actorId === PLAYER_ID ? true : undefined,
       });
       if (!result) throw new Error("生图服务未返回图片，请检查 API 配置。");
       const latest = stateRef.current;
