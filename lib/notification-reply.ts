@@ -10,7 +10,8 @@
 // 消息落库）整个跑在 WebView 的 JS 里，原生没有那套逻辑。原生只负责
 // 「别把用户打的字弄丢」——这是它唯一能可靠承担的职责。
 
-import { loadChatSessions, pushChatMessage } from "./chat-storage";
+import { loadChatContacts, loadChatSessions, pushChatMessage } from "./chat-storage";
+import { loadVirtualLifeState, saveVirtualLifeState, appendLifeTimelineEntry } from "./life/life-storage";
 import { requestBackgroundChatReply } from "./follow-up-service";
 import { ensureShellOverlayListener, subscribeShellOverlayEvents } from "./shell-call-overlay";
 
@@ -63,6 +64,68 @@ export function readPendingReplies(): PendingNotificationReply[] {
  * 会话已被删除时跳过——一条无归属的回复写不进去，也不该硬造一个会话。
  * 返回实际发出的条数。
  */
+/**
+ * Life-scene replies arrive through the same native queue as ordinary chat replies.
+ * Preserve the existing chat delivery, but also mirror the user's words into the
+ * active scene when the notification belongs to a character who is physically
+ * present with the player. The stable native reply id makes this idempotent.
+ */
+function mirrorNotificationReplyToLifeScene(item: PendingNotificationReply, text: string): boolean {
+    try {
+        const session = loadChatSessions().find(candidate => candidate.id === item.sessionId);
+        if (!session || session.isGroup) return false;
+        const contact = loadChatContacts().find(candidate => candidate.id === session.contactId);
+        const characterId = contact?.characterId;
+        if (!characterId) return false;
+
+        const state = loadVirtualLifeState();
+        if (!state.settings.enabled || state.settings.recordSceneMessages === false) return false;
+        const scene = state.scenes.find(candidate =>
+            candidate.status === "active"
+            && candidate.participants.some(participant => participant.ownerType === "player" && participant.ownerId === "player")
+            && candidate.participants.some(participant => participant.ownerType === "character" && participant.ownerId === characterId && participant.activity !== "离开")
+        );
+        if (!scene) return false;
+
+        const messageId = item.id ? "notification-reply-" + item.id : "";
+        if (messageId && state.sceneMessages.some(message => message.id === messageId)) return true;
+        const createdAt = Number.isFinite(item.at) && item.at > 0 ? new Date(item.at).toISOString() : new Date().toISOString();
+        const playerName = state.settings.playerDisplayName || "我";
+        const message = {
+            id: messageId || "notification-reply-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
+            sceneId: scene.id,
+            speakerType: "player" as const,
+            speakerId: "player",
+            speakerName: playerName,
+            role: "player" as const,
+            dialogue: text,
+            createdAt,
+        };
+        let next = {
+            ...state,
+            scenes: state.scenes.map(candidate => candidate.id === scene.id ? { ...candidate, updatedAt: new Date().toISOString() } : candidate),
+            sceneMessages: [...state.sceneMessages, message],
+        };
+        next = appendLifeTimelineEntry(next, {
+            category: "dialogue",
+            occurredAt: createdAt,
+            title: playerName + "通过通知回复",
+            details: text,
+            actorId: "player",
+            actorName: playerName,
+            locationName: scene.locationName,
+            sceneId: scene.id,
+            sourceId: message.id,
+        });
+        saveVirtualLifeState(next);
+        if (typeof window !== "undefined") window.dispatchEvent(new Event("life-scene-message-added"));
+        return true;
+    } catch (error) {
+        console.warn("[NotificationReply] life-scene writeback failed:", error);
+        return false;
+    }
+}
+
 export async function flushPendingNotificationReplies(): Promise<number> {
     const pending = readPendingReplies();
     if (pending.length === 0) return 0;
@@ -75,6 +138,9 @@ export async function flushPendingNotificationReplies(): Promise<number> {
         const text = item.text.trim();
         if (!text) continue;
         pushChatMessage({ sessionId: item.sessionId, role: "user", content: text });
+        // Write the same user input into the active life scene when the replying
+        // character is co-present. Ordinary chat replies retain their old path.
+        mirrorNotificationReplyToLifeScene(item, text);
         touched.add(item.sessionId);
         sent += 1;
     }
