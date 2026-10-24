@@ -263,6 +263,8 @@ export type LifeSceneState = {
   participants: LifeSceneParticipant[];
   lastSettledEventIds: string[];
   images?: LifeSceneImage[];
+  /** AI-maintained summary of what is currently true in this specific scene; separate from the location dossier and raw chat log. */
+  currentDescription?: string;
   /** Last scene-state fingerprint successfully auto-rendered; prevents duplicate cost after reopening. */
   lastAutoImageFingerprint?: string;
 };
