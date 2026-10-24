@@ -54,7 +54,10 @@ export function evaluateLifeAutonomyWindow(input: {
   // its own inactivity timer and never follow the user's configured threshold.
   const lastPlayerMessage = [...sceneMessages].reverse().find(m => m.role === "player");
   const silenceMinutes = Math.max(0, Math.min(24 * 60, input.silenceMinutes ?? 5));
-  if (lastPlayerMessage && now - new Date(lastPlayerMessage.createdAt).getTime() < silenceMinutes * 60_000) {
+  const lastPlayerContactAt = lastPlayerMessage
+    ? new Date(lastPlayerMessage.createdAt).getTime()
+    : new Date(scene.startedAt).getTime();
+  if (Number.isFinite(lastPlayerContactAt) && now - lastPlayerContactAt < silenceMinutes * 60_000) {
     return { eligible: false, reason: "player-still-active", characterIds };
   }
 
