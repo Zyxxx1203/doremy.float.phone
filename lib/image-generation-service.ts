@@ -759,7 +759,9 @@ export async function generateImageFromConfiguredApi(params: {
   characterId?: string;
   /** 画面中实际出镜的角色 ID；多角色图片会逐个附加身份参考，而不是拼成固定合照。 */
   characterIds?: string[];
-  /** 只有用户本人实际入镜时才开启；未显式指定时根据提示词中对用户的明确描述判断。 */
+  /** 本次场景的明确出镜人员 ID；用户本人使用保留 ID "__user__"。 */
+  participantIds?: string[];
+  /** 兼容旧调用方；新调用方应使用 participantIds。 */
   includeUserAppearance?: boolean;
   /** 内容所属 APP；用于按“角色 > APP > 全局”解析生图方案。 */
   appId?: string;
@@ -792,7 +794,10 @@ export async function generateImageFromConfiguredApi(params: {
     ...(params.characterIds ?? []),
     ...matchedIds,
   ])).filter(characterId => characterById.has(characterId)).slice(0, 16);
-  const includeUserAppearance = params.includeUserAppearance ?? descriptionExplicitlyIncludesPlayer(description);
+  const participantIds = params.participantIds;
+  const includeUserAppearance = participantIds
+    ? participantIds.includes("__user__")
+    : (params.includeUserAppearance ?? descriptionExplicitlyIncludesPlayer(description));
 
   const characterIdentityPrompt = involvedCharacterIds.map(characterId => {
     const character = characterById.get(characterId);
@@ -801,8 +806,9 @@ export async function generateImageFromConfiguredApi(params: {
     if (!character || !featurePrompt || (settings.provider === "novelai" && characterReference?.novelAiFeaturePromptEnabled === false)) return "";
     return `${character.name}的稳定身份特征（不固定临时服装和姿态）：${featurePrompt}`;
   }).filter(Boolean);
-  const userAppearancePrompt = includeUserAppearance && settings.userAppearanceDescription?.trim()
-    ? `玩家本人稳定外观（只用于识别本人；服装、姿势、表情和场景以本次提示词为准）：${settings.userAppearanceDescription.trim()}`
+  const userReference = settings.characterReferences?.["__user__"];
+  const userAppearancePrompt = includeUserAppearance && userReference?.featurePrompt?.trim()
+    ? `玩家本人稳定外观（只用于识别本人；服装、姿势、表情和场景以本次提示词为准）：${userReference.featurePrompt.trim()}`
     : "";
   const identityPolicy = (involvedCharacterIds.length || includeUserAppearance)
     ? "身份参考规则：只保持每个人可识别的身份特征，例如面部、五官、发色、发型及明显识别标记。不要照搬参考图的服装、姿势、表情、站位、镜头、构图、背景或光线；这些内容必须服从本次场景描述，可以每次变化。"
@@ -856,13 +862,13 @@ export async function generateImageFromConfiguredApi(params: {
 
   const referenceSources: Array<{ label: string; dataUrl: string; crop?: { x: number; y: number; size: number } }> = [];
   const suppliedReferenceImageDataUrl = params.referenceImageDataUrl?.trim() || null;
-  if (params.useReferenceImage !== false && suppliedReferenceImageDataUrl) {
+  if (suppliedReferenceImageDataUrl) {
     referenceSources.push({ label: "补充场景参考", dataUrl: suppliedReferenceImageDataUrl });
   }
 
   const appendCharacterReference = async (characterId: string) => {
     const reference = settings.characterReferences?.[characterId];
-    if (!reference?.assetId || reference.enabled === false) return;
+    if (!reference?.assetId) return;
     const dataUrl = await getChatImageFromIndexedDB(reference.assetId);
     if (dataUrl) {
       const character = characterById.get(characterId);
@@ -874,7 +880,7 @@ export async function generateImageFromConfiguredApi(params: {
     }
   };
 
-  if (params.useReferenceImage !== false) {
+  {
     // Identity references are automatic by default; only an explicit per-image opt-out disables them.
     // Primary character is first. This ensures the current chat speaker's identity remains the anchor.
     for (const characterId of involvedCharacterIds) {
@@ -882,24 +888,15 @@ export async function generateImageFromConfiguredApi(params: {
       throwIfAborted(params.signal);
     }
 
-    // 全局「全员参考拼图」：一张带标签的拼图，锁住所有角色的脸。
-    // 存在 characterReferences 的保留键 __group__ 里，不需要新字段，老数据零迁移。
-    const groupReference = settings.characterReferences?.["__group__"];
-    if (groupReference?.assetId && groupReference.enabled !== false) {
-      const groupDataUrl = await getChatImageFromIndexedDB(groupReference.assetId);
-      if (groupDataUrl) referenceSources.push({ label: "全员身份参考（按图中标注对应每个人）", dataUrl: groupDataUrl });
-    }
   }
 
-  // The global user reference is independent from any character's per-chat reference toggle.
-  // It is added only when the user is explicitly/clearly part of the requested image.
-  if (params.useReferenceImage !== false && includeUserAppearance && settings.userAppearanceReferenceAssetId) {
-    const dataUrl = await getChatImageFromIndexedDB(settings.userAppearanceReferenceAssetId);
-    if (dataUrl) {
-      referenceSources.splice(suppliedReferenceImageDataUrl ? 1 : 0, 0, {
-        label: "玩家本人",
-        dataUrl,
-        crop: settings.userAppearanceFaceCrop || DEFAULT_IDENTITY_FACE_CROP,
+  // 用户本人使用与普通角色相同的身份参考结构，只有明确列入本次出镜名单时才加入。
+  if (includeUserAppearance) {
+    const user = settings.characterReferences?.["__user__"];
+    if (user?.assetId) {
+      const dataUrl = await getChatImageFromIndexedDB(user.assetId);
+      if (dataUrl) referenceSources.splice(suppliedReferenceImageDataUrl ? 1 : 0, 0, {
+        label: "用户本人", dataUrl, crop: user.faceCrop || DEFAULT_IDENTITY_FACE_CROP,
       });
     }
   }
