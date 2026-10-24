@@ -789,15 +789,17 @@ export async function generateImageFromConfiguredApi(params: {
   const matchedIds = allCharacters
     .filter(character => character.id !== params.characterId && Boolean(character.name?.trim()) && description.includes(character.name.trim()))
     .map(character => character.id);
-  const involvedCharacterIds = Array.from(new Set([
+  const inferredCharacterIds = Array.from(new Set([
     ...(params.characterId ? [params.characterId] : []),
     ...(params.characterIds ?? []),
     ...matchedIds,
   ])).filter(characterId => characterById.has(characterId)).slice(0, 16);
-  const participantIds = params.participantIds;
-  const includeUserAppearance = participantIds
-    ? participantIds.includes("__user__")
-    : (params.includeUserAppearance ?? descriptionExplicitlyIncludesPlayer(description));
+  // 所有生图调用最终都归一化为一份明确的出镜名单；调用方名单优先，旧调用方才回退到描述识别。
+  const resolvedParticipantIds = params.participantIds
+    ? Array.from(new Set(params.participantIds)).filter(id => id === "__user__" || characterById.has(id))
+    : [...inferredCharacterIds, ...((params.includeUserAppearance ?? descriptionExplicitlyIncludesPlayer(description)) ? ["__user__"] : [])];
+  const involvedCharacterIds = resolvedParticipantIds.filter(id => id !== "__user__" && characterById.has(id)).slice(0, 16);
+  const includeUserAppearance = resolvedParticipantIds.includes("__user__");
 
   const characterIdentityPrompt = involvedCharacterIds.map(characterId => {
     const character = characterById.get(characterId);
