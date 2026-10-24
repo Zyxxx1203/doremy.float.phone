@@ -21,12 +21,13 @@ Float is a personalised Android phone shell with many different mini-apps. A sin
 - Use Polaroids, handwritten notes, paper, tape and subtle shadows. The wall itself should feel like a composition, not a grid of generic cards.
 - Never let decorative overlays block selecting, flipping, moving, zooming, drawing or exporting photos.
 
-### Watch together — warm, cinematic companionship
+### Watch together — portrait chat-first companionship
 
-- The video remains the visual anchor; discussion and composition controls must not resize it based on message length.
-- Prefer a floating cinema frame, subtle ambient light and a living avatar-to-avatar radio-wave connection over a literal TV/sofa illustration.
-- Danmaku, transcript, discussion and video controls must remain distinct layers with reliable touch targets.
-- Full-screen layout must preserve the stable player box, safe areas, scrolling discussion and the existing restore/exit behaviour.
+- Keep the default experience portrait-oriented, with a responsive 16:9 video area, an avatar/radio-wave companion header, and a discussion area that scrolls independently.
+- Do not redesign this app as a cinema/landscape/fullscreen experience. Do not reintroduce danmaku or fullscreen overlays that compete with the WebView video surface.
+- Keep video selection, global companion controls, settings and discussion actions reachable without covering the player or pushing the message composer off-screen.
+- External content retrieval, playback resolution, transcription, keyframe analysis and full-video understanding are separate stages and must be labelled/configured accordingly.
+- Prefer stable touch targets and explicit fallback states. A URL that cannot be extracted may still use an official embedded player when supported.
 
 ## Shape, type and hierarchy
 
@@ -57,3 +58,8 @@ Float is a personalised Android phone shell with many different mini-apps. A sin
 - Keep editable prompts and user customisations intact.
 - Preserve keyboard focus, full-button hit targets, reduced-motion support, responsive layout and viewport safe areas.
 - Before accepting visual work, run TypeScript and production build validation and inspect the relevant screen at a narrow mobile viewport and a desktop viewport.
+
+
+## Current implementation alignment (2026-10-24)
+
+The design contract follows the current app architecture, not abandoned intermediate experiments. The photo wall is a panoramic scrapbook canvas with isolated browse/edit/placement/doodle modes. The life system preserves its established scene theme and separates narration/actions from dialogue. Watch Together remains portrait chat-first rather than a cinema/fullscreen/danmaku interface. See [the audited development diff timeline](./docs/从诊断开始的开发差异台账.md) for the evolution and the current cross-repository baseline.
