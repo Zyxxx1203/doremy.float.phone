@@ -1501,21 +1501,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       
 
       /* 聊天室重排：视频更大，聊天占满剩余高度；视频来源控件收进播放器。 */
-      .watch-together-app > main.watch-together-main {
-        display:grid!important;
-        grid-template-columns:minmax(0,1fr)!important;
-        grid-template-rows:minmax(0, min(44dvh, 440px)) minmax(0,1fr)!important;
-        grid-template-areas:"player" "interaction"!important;
-        gap:8px!important;
-        min-height:0!important;
-        overflow:hidden!important;
-        padding:8px 10px max(8px,env(safe-area-inset-bottom))!important;
-      }
-      .watch-together-app .watch-room-title { display:block!important; }
+            .watch-together-app .watch-room-title { display:block!important; }
       .watch-together-app .watch-player {
-        grid-area:player!important; align-self:stretch!important; width:100%!important;
-        height:100%!important; min-height:0!important; max-height:none!important;
-        aspect-ratio:auto!important; margin:0!important; border-width:2px!important;
+        width:100%!important;
+        /* 原规则是配合已删除的横屏 grid 布局的（grid-area:player + height:100% +
+           aspect:auto），grid 没了之后被内容撑爆。改回严格 16:9 锁定。 */
+        height:auto!important; min-height:0!important; max-height:48dvh!important;
+        aspect-ratio:16/9!important; margin:0!important; border-width:2px!important;
         border-radius:14px!important; overflow:hidden!important;
       }
       .watch-together-app .watch-player > video,
@@ -1523,8 +1515,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         display:block!important; width:100%!important; height:100%!important;
         max-height:none!important; aspect-ratio:auto!important; object-fit:contain!important;
       }
-      .watch-together-app .watch-interaction-panel {
-        grid-area:interaction!important; display:flex!important; flex-direction:column!important;
+      .watch-together-app .watch-interaction-panel { display:flex!important; flex-direction:column!important;
         min-width:0!important; min-height:0!important; height:100%!important; max-height:none!important;
         margin:0!important; overflow:hidden!important;
       }
@@ -1587,8 +1578,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         grid-template-areas:"title" "player" "interaction"!important;
         gap:8px!important; min-height:0!important; overflow:hidden!important;
         padding:7px 12px max(10px,env(safe-area-inset-bottom))!important;
-      }
-        grid-area:player!important; justify-self:center!important; align-self:center!important;
+      } justify-self:center!important; align-self:center!important;
         width:min(100%, 56.888dvh)!important; height:auto!important;
         aspect-ratio:16 / 9!important; min-height:0!important; max-height:32dvh!important;
         margin:0 auto!important; overflow:hidden!important; position:relative!important;
@@ -1596,8 +1586,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         position:absolute!important; inset:0!important; display:block!important;
         width:100%!important; height:100%!important; max-width:100%!important; max-height:100%!important;
         aspect-ratio:auto!important; object-fit:contain!important; border:0!important;
-      }
-        grid-area:interaction!important; display:flex!important; min-width:0!important; min-height:0!important;
+      } display:flex!important; min-width:0!important; min-height:0!important;
         height:100%!important; max-height:none!important; overflow:hidden!important;
       }
         display:flex!important; flex:1 1 auto!important; flex-direction:column!important;
