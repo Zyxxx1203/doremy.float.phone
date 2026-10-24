@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clipboard, Download, RefreshCw, ShieldCheck, Smartphone, Wifi, XCircle } from "lucide-react";
 import { getQaErrorEntries, type QaErrorEntry } from "@/lib/qa-error-log";
+import { loadVirtualLifeState } from "@/lib/life/life-storage";
+import { hasNotificationReplyBridge } from "@/lib/notification-reply";
+import { isPersonalPushCloudActive } from "@/lib/personal-push-cloud";
+import { consumeServerOutbox } from "@/lib/push-outbox-client";
 
 type CheckStatus = "ok" | "warn" | "fail" | "info";
 type CheckItem = { id: string; title: string; status: CheckStatus; detail: string; fix?: string };
@@ -72,6 +76,81 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
       result.push({ id: "site", title: "站点连通性", status: response.ok ? "ok" : "warn", detail: response.ok ? "同源静态资源可访问。" : "同源请求返回 HTTP " + response.status, fix: !response.ok ? "检查站点部署、网络代理或静态资源路径。" : undefined });
     } catch (error) {
       result.push({ id: "site", title: "站点连通性", status: "fail", detail: "同源请求失败：" + (error instanceof Error ? error.message : String(error)), fix: "检查网络、域名和站点部署状态。" });
+    }
+
+    // Life-scene notification/reply chain: reuse the production outbox consumer so
+    // diagnostics exercise the same return path instead of maintaining a parallel parser.
+    try {
+      const before = loadVirtualLifeState();
+      const activeScene = before.scenes.find(scene => scene.status === "active");
+      const sceneCharacters = activeScene?.participants.filter(participant =>
+        participant.ownerType === "character" && participant.activity !== "离开"
+      ) ?? [];
+      const sceneReady = Boolean(
+        before.settings.enabled
+        && before.settings.enableCharacterAutonomy
+        && before.settings.enableProactiveSceneMessages !== false
+        && activeScene?.participants.some(participant => participant.ownerType === "player" && participant.ownerId === "player")
+        && sceneCharacters.length > 0
+      );
+      result.push({
+        id: "life-scene-autonomy",
+        title: "生活现场主动消息条件",
+        status: sceneReady ? "ok" : "warn",
+        detail: sceneReady
+          ? \`主动消息开关已启用；当前现场「\${activeScene?.locationName || "未命名地点"}」有 \${sceneCharacters.length} 位在场角色。\`
+          : "当前没有满足条件的活动现场，或生活系统/角色自主发言开关未启用。",
+        fix: sceneReady ? undefined : "进入生活现场，确认玩家与至少一位角色在场，并检查生活系统、角色自主行为和主动消息开关。"
+      });
+
+      const shellReplyBridge = hasNotificationReplyBridge();
+      result.push({
+        id: "life-notification-reply-bridge",
+        title: "通知栏回复接收桥",
+        status: shellReplyBridge ? "ok" : isShell ? "warn" : "info",
+        detail: shellReplyBridge
+          ? "AndroidShell 提供 consumePendingReplies；可以从原生队列接收通知栏回复。"
+          : isShell
+            ? "检测到原生壳，但没有通知回复桥接方法；回复可能留在原生队列而无法回写。"
+            : "当前不是带原生回复桥的 Android 壳，跳过通知栏直回检测。",
+        fix: isShell && !shellReplyBridge ? "安装包含 NotificationReplyReceiver / consumePendingReplies 桥接的最新 APK。" : undefined
+      });
+
+      const cloudReady = isShell || isPersonalPushCloudActive();
+      if (cloudReady) {
+        await consumeServerOutbox({ force: true, silent: true });
+      }
+      const after = loadVirtualLifeState();
+      const latestSceneMessage = [...after.sceneMessages].reverse().find(message => message.id.startsWith("life-outbox-"));
+      const latestReply = [...after.sceneMessages].reverse().find(message => message.id.startsWith("notification-reply-"));
+      result.push({
+        id: "life-scene-outbox",
+        title: "后台主动消息回写",
+        status: !cloudReady ? "warn" : latestSceneMessage ? "ok" : "info",
+        detail: !cloudReady
+          ? "当前环境没有可用的后台回传箱路径，无法验证云端主动消息回写。"
+          : latestSceneMessage
+            ? \`已找到云端回写记录（\${new Date(latestSceneMessage.createdAt).toLocaleString()}）；本次已通过正式回传箱消费链路检查待处理记录。\`
+            : "回传箱消费已尝试，但本地没有云端生活现场记录。仅凭空回传箱不能证明后台调度持续运行。",
+        fix: !cloudReady ? "安卓壳应走站点任务/回传箱；浏览器需启用个人云推送并部署对应 Edge Functions。" : !latestSceneMessage ? "保持一个角色在活动生活现场，等待下一次后台主动触发后重跑检测；同时检查 push_jobs 与 push_outbox 服务端记录。" : undefined
+      });
+      result.push({
+        id: "life-notification-reply-writeback",
+        title: "通知回复生活现场回写",
+        status: latestReply ? "ok" : "info",
+        detail: latestReply
+          ? \`已找到通知回复写回记录（\${new Date(latestReply.createdAt).toLocaleString()}），对应现场 \${latestReply.sceneId}。\`
+          : "尚未发现通知回复写回记录；需从在场角色的通知栏直接回复一条消息后再次检测。",
+        fix: latestReply ? undefined : "从当前在场角色的通知栏直接回复测试文本，然后重新运行诊断。"
+      });
+    } catch (error) {
+      result.push({
+        id: "life-chain-diagnostics",
+        title: "生活现场通知链路",
+        status: "fail",
+        detail: "检测或回传箱消费异常：" + (error instanceof Error ? error.message : String(error)),
+        fix: "复制完整诊断报告，检查浏览器控制台与 push_outbox 服务端日志。"
+      });
     }
 
     // Optional Termux video resolver: absence is informational because platform iframe fallback may still work.
