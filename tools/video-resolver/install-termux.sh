@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # One-command Termux deployment:
-# curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/momo.float.phone/main/tools/video-resolver/install-termux.sh | bash
+# curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver/install-termux.sh | bash
 
 APP_DIR="$HOME/.momo-video-resolver"
-RAW_BASE="https://raw.githubusercontent.com/Zyxxx1203/momo.float.phone/main/tools/video-resolver"
+RAW_BASE="https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver"
 SOURCE_DIR=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
 if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/app.py" && -f "$SCRIPT_DIR/requirements.txt" ]]; then
