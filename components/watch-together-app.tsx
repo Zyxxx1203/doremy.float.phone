@@ -1895,8 +1895,31 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
       {/* 角色在屏幕下方轻声说话 */}
       <section className="watch-interaction-panel mx-auto mt-4 w-full max-w-3xl">
-        <div data-part="card" className="watch-room-card relative isolate overflow-hidden rounded-[28px] border border-[#d4a575]/25 bg-gradient-to-br from-[#49372b]/95 via-[#2d231d]/95 to-[#1c1714]/98 p-4 shadow-[0_18px_46px_rgba(57,37,24,.24),inset_0_1px_0_rgba(255,224,184,.12)] backdrop-blur-xl sm:p-5">
-          {!comments.length && <div className="watch-empty-state flex w-full flex-col items-center justify-center"><p className="mb-1 px-2 text-center text-xs leading-5 tracking-[.02em] text-[#9a7f6d]">把此刻的心绪与剧情里的私语，留作只属于你们的片刻注脚。</p></div>}
+        <div data-part="card" className="watch-room-card relative isolate flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-[#d4a575]/25 bg-gradient-to-br from-[#49372b]/95 via-[#2d231d]/95 to-[#1c1714]/98 p-4 shadow-[0_18px_46px_rgba(57,37,24,.24),inset_0_1px_0_rgba(255,224,184,.12)] backdrop-blur-xl sm:p-5">
+          {!comments.length && <div className="watch-empty-state flex w-full flex-col items-center justify-center"><p className="mb-1 px-2 text-center text-xs leading-5 tracking-[.02em] text-[#9a7f6d]">把此刻的心绪与剧情里的私语，留作只属于你们的片刻注脚。</p><div aria-hidden="true" className="watch-empty-illustration pointer-events-none flex w-full items-center justify-center overflow-visible"><svg viewBox="0 0 520 300" preserveAspectRatio="xMidYMid meet" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-full w-auto max-w-full">
+              <defs>
+                <linearGradient id="watchWood" x1="90" y1="25" x2="440" y2="270" gradientUnits="userSpaceOnUse"><stop stopColor="#e0c9b1"/><stop offset="1" stopColor="#bba18a"/></linearGradient>
+                <linearGradient id="watchScreen" x1="175" y1="42" x2="345" y2="145" gradientUnits="userSpaceOnUse"><stop stopColor="#f3dfc6"/><stop offset="1" stopColor="#d5b99a"/></linearGradient>
+              </defs>
+              <path d="M20 274H500" stroke="#bba28a" strokeWidth="2" strokeLinecap="round"/>
+              <path d="M124 169V52Q124 36 141 36H378Q394 36 394 52V169" stroke="url(#watchWood)" strokeWidth="10" strokeLinejoin="round"/>
+              <rect x="140" y="50" width="238" height="112" rx="7" fill="url(#watchScreen)" stroke="#c4a68b" strokeWidth="3"/>
+              <path d="M159 137L204 94L232 119L275 74L357 137" stroke="#fff5e7" strokeWidth="3" strokeLinejoin="round" opacity=".8"/>
+              <circle cx="333" cy="75" r="13" fill="#fff0d8" opacity=".9"/>
+              <path d="M228 164V180M289 164V180M210 182H307" stroke="#bba28a" strokeWidth="5" strokeLinecap="round"/>
+              <path d="M83 245V216Q83 190 111 190H149Q175 190 175 216V246" stroke="#c8a88b" strokeWidth="9" strokeLinecap="round"/>
+              <path d="M64 238Q64 215 89 215H169Q192 215 192 238V257H64V238Z" fill="#e4cbb2" stroke="#b99b7e" strokeWidth="3"/>
+              <path d="M77 257L72 277M179 257L184 277" stroke="#b99b7e" strokeWidth="6" strokeLinecap="round"/>
+              <path d="M193 229Q208 210 235 216L258 222L284 215Q309 210 326 231L337 255H182L193 229Z" fill="#f0ddc8" stroke="#b99b7e" strokeWidth="3" strokeLinejoin="round"/>
+              <path d="M202 224L216 255M303 224L317 255" stroke="#d2b69b" strokeWidth="2"/>
+              <path d="M346 244V222Q346 204 365 204H411Q431 204 431 224V257H346V244Z" fill="#e0c2a5" stroke="#b99b7e" strokeWidth="3"/>
+              <path d="M358 257L354 276M419 257L423 276" stroke="#b99b7e" strokeWidth="5" strokeLinecap="round"/>
+              <path d="M442 254V205M452 254V189M462 254V215" stroke="#b6bd9b" strokeWidth="3" strokeLinecap="round"/>
+              <path d="M452 215C431 208 430 190 440 185C452 185 458 198 452 215ZM452 229C469 219 480 227 476 239C466 245 457 239 452 229Z" fill="#c4c9a9" stroke="#a1a982" strokeWidth="1.5"/>
+              <path d="M452 201C438 190 446 175 458 178C467 184 462 195 452 201Z" fill="#d7d4b5" stroke="#a1a982" strokeWidth="1.5"/>
+              <path d="M42 273C44 252 55 248 64 253C69 263 58 272 42 273ZM42 273C26 262 29 248 41 247C52 252 51 264 42 273Z" fill="#c9c9a8" stroke="#a1a982" strokeWidth="1.5"/>
+              <path d="M116 36C108 20 122 10 133 19C139 31 129 38 116 36ZM392 37C405 19 418 27 413 40C405 47 397 43 392 37Z" fill="#dfc6a9"/>
+            </svg></div></div>}
             <div data-part="composer" className="watch-discussion-composer relative z-20 shrink-0 border-t border-[#d6b18c]/25 pt-2">
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
                 <button type="button" onClick={markHighlightAndDiscuss} disabled={!target} className="watch-chat-chip"><Sparkles size={11}/>标记重点</button>
