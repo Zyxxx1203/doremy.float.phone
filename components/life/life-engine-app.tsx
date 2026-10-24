@@ -1442,12 +1442,6 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       // Restore online idle reconnect when the character is no longer co-present.
       // Cleanup also runs for settings changes, so check persisted scene state first.
-      const latestLifeState = loadVirtualLifeState();
-      const stillCoPresent = (characterId: string) => latestLifeState.settings.enabled && latestLifeState.scenes.some(scene =>
-        scene.status === "active"
-        && scene.participants.some(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID)
-        && scene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === characterId && participant.activity !== "离开")
-      );
       // Reconcile only the characters from the scene this effect owned. If they
       // left, their online reconnect is re-armed; if still co-present, it stays
       // suppressed. The bailout layer independently rechecks presence before POST.
