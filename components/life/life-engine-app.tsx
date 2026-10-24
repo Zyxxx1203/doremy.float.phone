@@ -1038,6 +1038,61 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     return () => window.removeEventListener("settings-image-generation-updated", maybeGenerate);
   }, [ready, autoImageFingerprint, settings.autoGenerateSceneImages, settings.sceneImageCount]);
 
+  const [sceneDescriptionBusy, setSceneDescriptionBusy] = useState(false);
+  const summarizeCurrentScene = async () => {
+    if (!activeScene || sceneDescriptionBusy) return;
+    const scene = activeScene;
+    const current = stateRef.current;
+    const messages = current.sceneMessages
+      .filter(message => message.sceneId === scene.id && message.role !== "system")
+      .slice(-80)
+      .map(message => [message.createdAt, message.speakerName, message.action ? "行动：" + message.action : "", message.dialogue ? "对白：" + message.dialogue : ""].filter(Boolean).join(" · "));
+    if (!messages.length) { setNotice("当前现场还没有可供整理的原始对话。"); return; }
+    const character = characters.find(item => scene.participants.some(p => p.ownerType === "character" && p.ownerId === item.id));
+    if (!character) { setNotice("请先让至少一位角色进入现场，再生成现场描述。"); return; }
+    const contact = loadChatContacts().find(item => item.characterId === character.id || item.id === character.id);
+    const session = contact ? createOrGetSession(contact.id) : createLifeVirtualSession(character.id, character.name);
+    setSceneDescriptionBusy(true);
+    setNotice("AI 正在根据现场原始记录整理当前现场描述……");
+    try {
+      const location = current.locations.find(item => item.id === scene.locationId);
+      const prompt: ChatMessage = {
+        id: id("life-scene-description"),
+        sessionId: session.id,
+        role: "user",
+        status: "sent",
+        createdAt: new Date().toISOString(),
+        content: [
+          "你是生活现场连续性整理器。请根据下面的真实场景资料，更新一段用于后续图像生成的【当前现场描述】。",
+          "只输出描述正文，中文，约 100—220 字。说明当前人物位置、姿态、正在进行的事情、已经出现且仍在场的物品、光线与氛围。保持能确认的事实，不确定的内容不要编造。",
+          "地点固定环境（不可改写成临时变化）：", location?.description || "",
+          "固定布局：", location?.layout || "",
+          "固定氛围：", location?.atmosphere || "",
+          "上一次现场描述（若有，保留仍然成立的细节并按新事实更新）：", scene.currentDescription || "尚无",
+          "当前在场者：", scene.participants.map(p => {
+            const actor = p.ownerType === "player" ? null : characters.find(item => item.id === p.ownerId);
+            return (actor?.name || (p.ownerType === "player" ? playerName : p.ownerId)) + "；活动：" + (p.activity || "未知");
+          }).join("\n"),
+          "本场景原始记录（按时间顺序；它们是事实来源，不得把总结当作新事件）：",
+          messages.join("\n"),
+          "禁止：不要替玩家添加没有发生的动作或台词；不要把已经离开的人写成仍在场；不要把地点固定描述覆盖掉；不要输出标题、分析、列表或总结标签。"
+        ].join("\n\n")
+      };
+      const result = await generateOfflineChatCompletion(session, [prompt]);
+      const description = result.content.trim().replace(/^["“”]+|["“”]+$/g, "").slice(0, 5000);
+      if (!description) throw new Error("模型没有返回现场描述。");
+      const latest = stateRef.current;
+      const latestScene = latest.scenes.find(item => item.id === scene.id);
+      if (!latestScene) throw new Error("生成期间当前场景已不存在，未覆盖其他场景。");
+      commit({ ...latest, scenes: latest.scenes.map(item => item.id === scene.id ? { ...item, currentDescription: description, updatedAt: new Date().toISOString() } : item) });
+      setNotice("现场描述已更新；原始对话记录没有被合并或删除。");
+    } catch (error) {
+      setNotice("整理现场描述失败：" + (error instanceof Error ? error.message : "未知错误"));
+    } finally {
+      setSceneDescriptionBusy(false);
+    }
+  };
+
   const sceneImageRecords = activeScene?.images ?? [];
   useEffect(() => {
     let alive = true;
@@ -2684,7 +2739,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         <div className="mb-1 flex shrink-0 items-center justify-between gap-2 border-b border-stone-200/60 px-1.5 py-1.5 sm:px-2 sm:py-2"><div className="min-w-0 flex-1"><p className="truncate text-base font-semibold text-stone-800">{activeScene ? activeScene.locationName : "还没有正在进行的场景"}</p><p className="truncate text-[11px] text-stone-500">{activeScene ? `${activeScene.participants.length} 位在场 · ${state.locations.find(location => location.id === activeScene.locationId)?.atmosphere || "生活现场"}` : "先从地点列表选择一个地点。"}</p></div><div className="flex shrink-0 items-center gap-2"><button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); transitionSceneAction(() => { setSceneView(false); setTab("home"); setLocationDossierOpen(false); }); }} className="relative z-[100] isolate pointer-events-auto inline-flex min-h-11 min-w-[112px] touch-manipulation select-none cursor-pointer items-center justify-center gap-1 rounded-xl border border-stone-300 bg-white px-2 py-2 text-xs font-semibold text-stone-700 shadow-sm active:scale-[0.98]"><ArrowLeft size={16} className="pointer-events-none" aria-hidden/><span>返回地点列表</span></button>{activeScene && <button type="button" onClick={(event)=>{event.preventDefault();event.stopPropagation();transitionSceneAction(() => {const now=new Date().toISOString();const wasPaused=activeScene.status==="paused";const returnNarrationId=wasPaused?id("turn"):undefined;let next={...stateRef.current,scenes:stateRef.current.scenes.map(scene=>scene.id===activeScene.id?{...scene,status:(wasPaused?"active":"paused") as "active"|"paused",updatedAt:now}:{...scene,status:scene.status==="active"?"paused" as const:scene.status})};next=appendLifeTimelineEntry(next,{category:"scene",title:(wasPaused?"你回到了":"你暂时离开了")+activeScene.locationName,details:wasPaused?"继续之前的场景，保留原有互动记录。":"场景已暂停；再次点击继续时才在现场添加返回旁白。",actorName:playerName,locationName:activeScene.locationName,sceneId:activeScene.id,sourceId:returnNarrationId});if(wasPaused){const narration:LifeSceneMessage={id:returnNarrationId??id("turn"),sceneId:activeScene.id,speakerType:"player",speakerId:PLAYER_ID,speakerName:"场景旁白",role:"system",action:"你回到了"+activeScene.locationName+"。先前的场景与互动仍在继续。",dialogue:"",createdAt:now};next={...next,sceneMessages:[...next.sceneMessages,narration]};}commit(next);setNotice(wasPaused?"已回到原场景；返回记录以旁白形式加入聊天。":"你暂时离开了场景；再次点继续时才会添加返回旁白。")})}} className="relative z-[100] isolate pointer-events-auto inline-flex min-h-11 min-w-[104px] touch-manipulation select-none items-center justify-center gap-1 rounded-xl border border-stone-300 bg-white px-2 py-2 text-xs font-semibold shadow-sm active:scale-[0.98]">{activeScene.status==="active"?<><Pause size={14} className="pointer-events-none" aria-hidden/><span>暂时离开</span></>:<><Play size={14} className="pointer-events-none" aria-hidden/><span>回到场景</span></>}</button>}</div></div>
         <details open={!activeScene} className="mb-1 shrink-0 rounded-xl border border-stone-200/70 bg-white/65"><summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-stone-600">场景设置 · {activeScene ? activeScene.locationName : "选择地点并开始互动"}</summary><div className="max-h-[45dvh] overflow-y-auto overscroll-contain touch-pan-y px-3 pb-3 sm:px-4" style={{ WebkitOverflowScrolling: "touch" }}>
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-            {activeScene && <label className="mt-3 block text-sm font-medium text-stone-700">当前现场描述（用于后续生图）<textarea value={activeScene.currentDescription ?? ""} onChange={event=>{const description=event.target.value;const latest=stateRef.current;const scene=latest.scenes.find(item=>item.id===activeScene.id);if(!scene)return;const next={...latest,scenes:latest.scenes.map(item=>item.id===scene.id?{...item,currentDescription:description,updatedAt:new Date().toISOString()}:item)};commit(next);}} rows={3} placeholder="记录当前场景中实际发生的事、人物位置、手中物品和氛围变化。之后由 AI 根据原始对话持续整理。" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm font-normal"/></label>}
+            {activeScene && <div className="mt-3"><label className="block text-sm font-medium text-stone-700">当前现场描述（用于后续生图）<textarea value={activeScene.currentDescription ?? ""} onChange={event=>{const description=event.target.value;const latest=stateRef.current;const scene=latest.scenes.find(item=>item.id===activeScene.id);if(!scene)return;const next={...latest,scenes:latest.scenes.map(item=>item.id===scene.id?{...item,currentDescription:description,updatedAt:new Date().toISOString()}:item)};commit(next);}} rows={3} placeholder="AI 根据原始行动与对白整理当前现场；也可以在这里手动修正。" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm font-normal"/></label><button type="button" disabled={sceneDescriptionBusy || busy} onClick={()=>void summarizeCurrentScene()} className="mt-2 w-full rounded-xl border border-[var(--life-accent)]/40 bg-white px-3 py-2 text-xs font-medium text-[var(--life-accent)] disabled:opacity-50">{sceneDescriptionBusy ? "正在整理现场描述…" : "根据原始记录更新现场描述"}</button></div>}
            <label className="block text-sm font-medium">当前地点
               <select value={selectedLocationId} onChange={e=>setSelectedLocationId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">{state.locations.map(loc=><option key={loc.id} value={loc.id}>{loc.name} · {loc.visibility==="public"?"公共":"私人"}</option>)}</select>
             </label>
