@@ -36,9 +36,11 @@ import {
     markQueryPerformed,
 } from "./perception";
 import { notifyDeviceAction, runDeviceAction } from "./device-action";
-import { renderWidgetHtml } from "./widget/template";
+import { renderWidgetHtml, injectWidgetCss } from "./widget/template";
 import { canGenerateAvatar, generateWidgetAvatar } from "./widget/avatar";
-import { loadWidgetConfig, saveWidgetData, loadWidgetData } from "./widget/storage";
+import { loadWidgetConfig, saveWidgetData, loadWidgetData, loadWidgetProfiles, loadWidgetProfileData, saveWidgetProfileData } from "./widget/storage";
+import { pushWidgetProfileHtml } from "./widget/bridge";
+import type { WidgetData } from "./widget/types";
 import { syncWidgetToNative } from "./widget/bridge";
 import {
     formatEventTime,
@@ -971,45 +973,83 @@ async function executePhoneWidgetTool(call: ToolCall, context?: ToolExecutionCon
         };
     }
 
-    const text = String(call.args?.text ?? "").trim().slice(0, 300);
-    if (!text) return { name: call.name, success: false, error: "需要 text 参数" };
-    const status = String(call.args?.status ?? "").trim().slice(0, 30);
+    // 参数健壮化：模型偶尔会把 text 包进代码围栏/引号，或用 content/message 传参——
+    // 都接住并清理，不要一遇到就「需要 text 参数」报错。
+    const rawText = String(call.args?.text ?? call.args?.content ?? call.args?.message ?? "");
+    const text = rawText
+        .replace(/^```(?:json|text|markdown)?\s*/i, "")
+        .replace(/```\s*$/i, "")
+        .trim()
+        .replace(/^["「『“]|["」』”]$/g, "")
+        .slice(0, 300);
+    if (!text) return { name: call.name, success: false, error: "需要 text 参数：要留在桌面上的那句话（60 字内效果最好）" };
+    const status = String(call.args?.status ?? "").replace(/^["「『“]|["」』”]$/g, "").trim().slice(0, 30);
+    // 可选：指定写入哪个桌面实例（设置 → 桌面小组件里创建的独立配置）。
+    // 不传时写默认实例——多实例用户可以让不同小组件显示不同角色/不同内容。
+    const profileId = String(call.args?.profileId ?? call.args?.instance ?? "").trim();
 
     const character = loadCharacters().find(item => item.id === context.characterId);
     const userName = resolveUserIdentity(context.characterId, context.appId)?.name || "用户";
 
     // 配了生图且用户开了开关时，顺带换一张配当前状态的头像。
     // 失败/没配都静默沿用旧头像——不能因为头像让「留话」整体失败。
-    let avatar = loadWidgetData()?.avatar ?? "";
+    const previousData = profileId ? loadWidgetProfileData(profileId) ?? loadWidgetData() : loadWidgetData();
+    let avatar = previousData?.avatar ?? "";
     if (config.useGeneratedAvatar && canGenerateAvatar() && character) {
         const generated = await generateWidgetAvatar(character, status, text, context.signal);
         if (generated) avatar = generated;
     }
 
-    saveWidgetData({
+    const widgetData: WidgetData = {
         characterId: context.characterId,
         text,
         status,
         avatar,
         updatedAt: new Date().toISOString(),
         source: "tool",
-    });
-
-    // 立刻推给桌面。没装壳/老壳时这一步失败也无所谓——
-    // 内容已经存下了，用户下次打开设置页会看到，装壳后自然同步过去。
-    try {
-        const html = renderWidgetHtml(config.customTemplate, loadWidgetData()!, character?.name ?? "角色", userName);
-        syncWidgetToNative(html);
-    } catch (err) {
-        console.warn("[Widget] 推送原生失败", err);
-    }
-
-    return {
-        name: call.name,
-        success: true,
-        data: `已在 TA 的桌面上留下：「${text}」${status ? `（状态：${status}）` : ""}`,
-        userNotice: "在桌面上留了句话",
     };
+
+    try {
+        if (profileId) {
+            const profile = loadWidgetProfiles().find(item => item.id === profileId);
+            if (!profile) {
+                return { name: call.name, success: false, error: `没有找到桌面实例 ${profileId}；可在设置 → 桌面小组件查看已有实例 ID` };
+            }
+            saveWidgetProfileData(profileId, widgetData);
+            const html = injectWidgetCss(
+                renderWidgetHtml(profile.template, loadWidgetProfileData(profileId)!, character?.name ?? "角色", userName),
+                profile.customCss,
+            );
+            const pushed = pushWidgetProfileHtml(profileId, html, { widthDp: profile.widthDp, heightDp: profile.heightDp, scale: profile.scale });
+            if (!pushed) console.warn("[Widget] 推送独立实例失败（可能是旧壳），内容已保存");
+            return {
+                name: call.name,
+                success: true,
+                data: `已在桌面实例「${profile.name}」留下：「${text}」${status ? `（状态：${status}）` : ""}`,
+                userNotice: "在桌面实例上留了句话",
+            };
+        }
+
+        saveWidgetData(widgetData);
+
+        // 立刻推给桌面。没装壳/老壳时这一步失败也无所谓——
+        // 内容已经存下了，用户下次打开设置页会看到，装壳后自然同步过去。
+        try {
+            const html = renderWidgetHtml(config.customTemplate, loadWidgetData()!, character?.name ?? "角色", userName);
+            syncWidgetToNative(html);
+        } catch (err) {
+            console.warn("[Widget] 推送原生失败", err);
+        }
+
+        return {
+            name: call.name,
+            success: true,
+            data: `已在 TA 的桌面上留下：「${text}」${status ? `（状态：${status}）` : ""}`,
+            userNotice: "在桌面上留了句话",
+        };
+    } catch (err) {
+        return { name: call.name, success: false, error: err instanceof Error ? err.message : "桌面留话失败" };
+    }
 }
 
 /** 角色查看用户真实手机的系统日历（只读，且只读摘要字段）。 */

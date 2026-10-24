@@ -13,11 +13,13 @@ import { WIDGET_DEFAULTS, WIDGET_LIMITS, WIDGET_UPDATED_EVENT, type WidgetConfig
 const CONFIG_KEY = "ai_phone_widget_config_v1";
 const DATA_KEY = "ai_phone_widget_data_v1";
 const DATA_BY_CHARACTER_KEY = "ai_phone_widget_data_by_character_v1";
+const DATA_BY_PROFILE_KEY = "ai_phone_widget_data_by_profile_v1";
 const PROFILES_KEY = "ai_phone_widget_profiles_v1";
 
 registerKvMigration(CONFIG_KEY);
 registerKvMigration(DATA_KEY);
 registerKvMigration(DATA_BY_CHARACTER_KEY);
+registerKvMigration(DATA_BY_PROFILE_KEY);
 registerKvMigration(PROFILES_KEY);
 
 function clamp(value: unknown, min: number, max: number, fallback: number): number {
@@ -99,6 +101,25 @@ export function saveWidgetData(data: WidgetData): void {
     }
   }
   notifyUpdated();
+}
+
+/** 每个独立小组件实例（profile）自己的内容：角色对某个实例「留句话」时写到这。 */
+export function saveWidgetProfileData(profileId: string, data: WidgetData): void {
+  try {
+    const byProfile = JSON.parse(kvGet(DATA_BY_PROFILE_KEY) || "{}") as Record<string, WidgetData>;
+    byProfile[profileId] = data;
+    kvSet(DATA_BY_PROFILE_KEY, JSON.stringify(byProfile));
+  } catch {
+    kvSet(DATA_BY_PROFILE_KEY, JSON.stringify({ [profileId]: data }));
+  }
+  notifyUpdated();
+}
+
+export function loadWidgetProfileData(profileId: string): WidgetData | null {
+  try {
+    const byProfile = JSON.parse(kvGet(DATA_BY_PROFILE_KEY) || "{}") as Record<string, WidgetData>;
+    return normalizeWidgetData(byProfile[profileId]);
+  } catch { return null; }
 }
 
 /** Custom widget profiles are local-only and have no app-imposed count limit. */

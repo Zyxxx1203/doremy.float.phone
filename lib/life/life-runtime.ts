@@ -362,7 +362,7 @@ export function generateWeeklyLifePlan(
  * never overwrite user-authored location metadata or remove existing locations.
  */
 export function syncScheduleLocationsToLibrary(state: VirtualLifeState): VirtualLifeState {
-  const normalize = (value: string) => value.trim().replace(/\\s+/g, " ").toLocaleLowerCase();
+  const normalize = (value: string) => value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
   const locations = [...(state.locations ?? [])];
   const byId = new Map(locations.map(location => [location.id, location]));
   const findByName = (name: string) => {
@@ -378,7 +378,7 @@ export function syncScheduleLocationsToLibrary(state: VirtualLifeState): Virtual
     if (!location) location = findByName(name);
     if (!location) {
       const base = "schedule-place-" + normalize(name).normalize("NFKD")
-        .replace(/[^\\p{L}\\p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 48) || "place";
+        .replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 48) || "place";
       let id = base;
       let suffix = 2;
       while (byId.has(id)) id = base + "-" + suffix++;

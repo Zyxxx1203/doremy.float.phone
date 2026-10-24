@@ -35,7 +35,6 @@ const FRAME_LABEL: Record<PhotoWallFrameStyle, string> = {
   none: "无框",
 };
 
-export const STICKER_CHOICES = ["❤", "✦", "✿", "☾", "☘", "♪", "★", "⌘"];
 const BRUSH_COLORS = ["#c2705a", "#a77b77", "#b08a54", "#5d6b8a", "#8a6b8a", "#3c3a36"];
 
 /** 固定在舒服的阅读尺寸；画布变大时照片不跟着膨胀。 */
@@ -106,6 +105,43 @@ type DragState = {
   moved: boolean;
 };
 
+/**
+ * 会话级缩略图缓存：照片墙卡顿的主要原因是几十张原图同时解码常驻内存。
+ * 照片进入视口后先解码为最长边 1024px 的 WebP 缩略图再显示（整墙导出走原图，
+ * 不受影响）；同一 mediaRef 全局只解一次。缩略图很小，不设淘汰也不会撑爆内存。
+ */
+const wallThumbCache = new Map<string, string>();
+
+async function loadWallThumbUrl(mediaRef: string): Promise<string> {
+  const cached = wallThumbCache.get(mediaRef);
+  if (cached) return cached;
+  const full = await loadMediaObjectUrl(mediaRef);
+  if (!full) return "";
+  try {
+    const blob = await fetch(full).then(res => res.blob());
+    const bitmap = await createImageBitmap(blob);
+    const longest = Math.max(bitmap.width, bitmap.height);
+    let url = full;
+    if (longest > 1024) {
+      const scale = 1024 / longest;
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      const thumb = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/webp", 0.85));
+      if (thumb) url = URL.createObjectURL(thumb);
+    }
+    if (url !== full) URL.revokeObjectURL(full);
+    wallThumbCache.set(mediaRef, url);
+    return url;
+  } catch {
+    // 解码失败（格式罕见等）退回原图，宁可慢也不能不显示。
+    wallThumbCache.set(mediaRef, full);
+    return full;
+  }
+}
+
 export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, backgroundBox, wallWorld, onOpenDetail, readOnly = false, fitHeight = false, canvasZoom = 1, mode: controlledMode, onModeChange, brushColor: controlledBrushColor, brushWidth: controlledBrushWidth, sticker: controlledSticker, onStickerChange, eraser: controlledEraser, onEraserChange }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -173,8 +209,13 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
 
   const selectedPhoto = ordered.find(photo => photo.id === selectedId) ?? null;
 
-  /** 背景跟着画布一起缩放：画布多大，背景就铺多大。 */
-  const backgroundSizing = { size: "cover", position: "center" as const };
+  /** 背景跟着画布一起缩放：画布多大，背景就铺多大。
+   * 有 backgroundBox（世界坐标盒子）时按盒子尺寸、锚定左上角铺放，与整墙导出的绘制
+   * 规则一致（photo-wall-export.ts 同款）；无盒子才退回 cover 铺满。此前这里恒用 cover，
+   * 画布扩容后实时背景被拉伸变形，导出却不变形，所见非所得。 */
+  const backgroundSizing = backgroundBox
+    ? { size: `${Math.max(1, backgroundBox.width)}px ${Math.max(1, backgroundBox.height)}px`, position: "top left" as const }
+    : { size: "cover", position: "center" as const };
 
   const commit = useCallback((id: string, next: PhotoWallPlacement) => onChangePlacement(id, next), [onChangePlacement]);
   /** 松手时用来把「最终落点」交回给上层做扩容判断。 */
@@ -251,14 +292,24 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   };
 
   /* ── 涂鸦绘制 ─────────────────────────────────── */
+  /**
+   * 手机壳兼容性缩放（--compat-layout-scale）作用于 .phone-shell-wrap：client 像素 =
+   * 布局像素 × k。涂鸦要把屏幕位移换算回照片自身坐标，必须除回 k；画布本体没有旋转，
+   * 用它的 getBoundingClientRect 与 offsetWidth 同源相除即可得到精确 k。
+   */
+  const wallShellScale = () => {
+    const wall = wallRef.current;
+    return wall && wall.offsetWidth > 0 ? wall.getBoundingClientRect().width / wall.offsetWidth : 1;
+  };
   const pointOn = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number, anchorElement?: HTMLElement) => {
     const element = anchorElement ?? event.currentTarget as HTMLElement;
     const rect = element.getBoundingClientRect();
     const placement = placementOf(photo, index);
-    // 用未旋转的布局尺寸 × 画布缩放：getBoundingClientRect 给的是旋转后的外接矩形，
-    // 照片一倾斜就会算大，笔画自然落不准。
-    const width = Math.max(1, element.offsetWidth * canvasZoom);
-    const height = Math.max(1, element.offsetHeight * canvasZoom);
+    // 用未旋转的布局尺寸 × 画布缩放 × 壳缩放：getBoundingClientRect 给的是旋转后的外接矩形，
+    // 照片一倾斜就会算大，笔画自然落不准；漏算壳缩放则任何设备上 k≠1 时整体漂移。
+    const shell = wallShellScale();
+    const width = Math.max(1, element.offsetWidth * canvasZoom * shell);
+    const height = Math.max(1, element.offsetHeight * canvasZoom * shell);
     // Invert visual rotation to store the stroke in the photo's own coordinates.
     const dx = event.clientX - (rect.left + rect.width / 2);
     const dy = event.clientY - (rect.top + rect.height / 2);
@@ -478,8 +529,9 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
             const dy = event.clientY - (rect.top + rect.height / 2);
             const localX = dx * Math.cos(angle) + dy * Math.sin(angle);
             const localY = -dx * Math.sin(angle) + dy * Math.cos(angle);
-            const width = Math.max(1, element.offsetWidth * canvasZoom);
-            const height = Math.max(1, element.offsetHeight * canvasZoom);
+            const shell = wallShellScale();
+            const width = Math.max(1, element.offsetWidth * canvasZoom * shell);
+            const height = Math.max(1, element.offsetHeight * canvasZoom * shell);
             return Math.abs(localX) <= width / 2 && Math.abs(localY) <= height / 2;
           };
           const hit = renderedCards.slice().reverse().find(hitsPhotoShape);
@@ -559,7 +611,6 @@ type FrameProps = {
 
 function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, onToggleFlip, doodleMode, draftPoints, onPointerDownResize, onOpenDetail, readOnly }: FrameProps) {
   const [src, setSrc] = useState("");
-  const objectUrlRef = useRef<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [inView, setInView] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -579,17 +630,12 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
     if (!inView || src) return;
     let active = true;
     setFailed(false);
-    void loadMediaObjectUrl(photo.mediaRef).then(value => {
-      if (!active) { if (value) URL.revokeObjectURL(value); return; }
-      if (value) { objectUrlRef.current = value; setSrc(value); } else setFailed(true);
+    void loadWallThumbUrl(photo.mediaRef).then(value => {
+      if (!active) return;
+      if (value) setSrc(value); else setFailed(true);
     }).catch(() => { if (active) setFailed(true); });
-    // The URL lives until the frame unmounts; the src-driven rerender must not revoke it.
     return () => { active = false; };
   }, [photo.mediaRef, inView, src]);
-
-  useEffect(() => () => {
-    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-  }, []);
 
   const frame = placement.frame;
   const pad = FRAME_PADDING[frame];

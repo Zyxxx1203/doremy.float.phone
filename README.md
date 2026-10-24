@@ -1,269 +1,229 @@
-# AI Virtual Phone
+# Float Phone · AI 虚拟互动手机
 
-一个基于 Next.js 的 AI 虚拟互动手机：在浏览器中模拟一部完整的手机，支持与你创建的 AI 角色进行仿真聊天、朋友圈互动与剧情创作。
+一个基于 Next.js 的 AI 虚拟手机：在浏览器（或 Android 壳）里模拟一部完整的手机，与你创建的 AI 角色聊天、共同生活、一起看视频、拼贴照片墙。所有 LLM 调用都使用**你自己的 API Key**，本项目不内置任何模型服务，也不上传你的数据。
 
-主要功能：
+> 本仓库是个人自部署 fork，在官方上游基础上新增了 **生活、照片墙、一起看、档案室** 四个核心 App 与整套 Android 原生壳。改动台账见 [docs/fork-changes-overview.md](./docs/fork-changes-overview.md)。
 
-- 仿真聊天：私聊 / 群聊 / 朋友圈 / 语音消息 / 转账红包卡片，AI 角色有作息、记忆和长期关系
-- 创作系统：角色卡、世界书、预设、正则，附带桌面 AI 助手「小卷」帮你写这些内容
+## 📚 文档导航
+
+| 文档 | 内容 | 适合谁 |
+|---|---|---|
+| 本页 README | 项目简介、快速开始、功能总览、来源与致谢 | 所有人 |
+| [DEVICE_SETUP_GUIDE.md](./DEVICE_SETUP_GUIDE.md) | Fork 仓库 → 构建 APK → 安装 → 机型适配 → 验收清单 | 想在 Android 上完整体验的用户 |
+| [android-shell/README.md](./android-shell/README.md) | Android 壳构建配置、签名、站点地址 | 构建 APK 的用户 |
+| [docs/fork-changes-overview.md](./docs/fork-changes-overview.md) | 相对官方上游的改动总台账（逐文件实证） | 维护者 / 二次开发者 |
+| [docs/本次功能同步说明.md](./docs/本次功能同步说明.md) | 最近一次功能同步进 main 的改动索引 | 回顾与测试 |
+| [docs/verify-setup.md](./docs/verify-setup.md) 等其余 docs | 各云端功能的部署说明 | 需要对应功能的用户 |
+
+## 功能总览
+
+**核心系统**
+
+- 仿真聊天：私聊 / 群聊 / 朋友圈 / 语音消息 / 转账红包卡片，角色有作息、记忆与长期关系
+- 创作系统：角色卡、世界书、预设、正则；桌面 AI 助手「工坊」可以帮你写内容、装应用、连 GitHub 改代码
 - 剧情玩法：剧情模式、视觉小说、查手机、访谈、地图冒险、日记、便签墙
-- 扩展生态：应用市场（用 SDK 写自定义 APP）、游戏大厅、内置小游戏
-- 多媒体：AI 生图、Minimax 语音合成、网易云在线音乐（需自配 API）、3D 世界搭建（Tripo）
-- 个人云：可把云备份、微信助手、离线回复、定时消息、快捷动作与云端来电部署到用户自己的 Supabase
-- 现实桥：角色可调用用户映射的 iPhone 快捷指令，并在文本/图片结果回传后继续回复
-- 屏幕速聊（iOS）：通过辅助触控截取当前屏幕，在系统弹窗里与角色连续对话，并同步回唯一聊天窗口
+- 扩展生态：应用市场（SDK 自定义 App）、游戏大厅、黑市剧场、多人联机房间
+- 多媒体：AI 生图、Minimax 语音克隆、网易云在线音乐、3D 世界搭建（Tripo）
+- 个人云：一键把备份、微信助手、离线回复、定时消息部署到你自己的 Supabase
+- 现实桥：角色可调用你 iPhone 的快捷指令，支持 通知点击 / 屏幕速聊 / 邮件自动 三种回传方式
 - 桌面美化：主题、壁纸、贴纸小组件、自定义 CSS，支持 PWA 安装到手机桌面
 
-所有 LLM 调用都使用**你自己的 API key**，本项目不内置任何模型服务。
+**四个重点 App**
 
-## 运行要求
+| App | 一句话 | 详见 |
+|---|---|---|
+| 🌆 生活 | 角色有自己的日程、地点与自主行动，你可随时进入现场陪 TA | [生活](#-生活-app) |
+| 🖼 照片墙 | 你与角色的共同回忆拼贴墙：拍照、收藏、AI 生成、涂鸦、导出 | [照片墙](#-照片墙-app) |
+| 📺 一起看 | 和角色一起看 B站/小红书/本地视频，边看边聊，角色能看懂画面 | [一起看](#-一起看-app) |
+| 🗄 档案室 | 角色与世界的资料档案管理 | 应用内查看 |
 
-- Node.js 20+（Next.js 15 要求 ≥ 18.18）
-- 任意 OpenAI 兼容的 LLM API（OpenAI / DeepSeek / 中转站等），或 Anthropic / Google Gemini 官方 API
+## 快速开始
 
-## 快速开始（本地运行）
+要求 Node.js 20+。
 
 ```bash
 git clone -b main <repo-url>
 cd <repo-dir>
 npm install
-cp .env.example .env.local
+cp .env.example .env.local   # 默认已开启 NEXT_PUBLIC_SELF_HOSTED_MODE=true
 npm run dev
 ```
 
-浏览器打开 `http://localhost:3001`（默认端口 3001，可用 `PORT` 环境变量修改）。
+浏览器打开 `http://localhost:3001`（默认端口 3001，`PORT` 可改）。单机模式跳过账号系统，直接进入后：
 
-`.env.example` 已默认开启：
+1. **设置 → API 设置**：添加你的 LLM API（OpenAI 兼容 / Anthropic / Google Gemini）；
+2. 创建或导入角色卡，开始聊天；
+3. 可选：继续配置生图、语音、音乐等增强功能。
 
-```env
-NEXT_PUBLIC_SELF_HOSTED_MODE=true
+## 🌆 生活 App
+
+角色不再只是等你发消息——TA 有自己的虚拟时钟、每周日程、常去地点和自主行动。
+
+- **生活现场**：9 个默认地点（家 / 咖啡店 / 公园 / 图书馆…），可自定义地点库（布局、道具、角色习惯、专属背景）；进入现场后与角色沉浸式对话，支持行动 / 对白分离输入、场景生图
+- **角色日程**：按角色卡与世界书自动生成七日周计划，也可手动或用一句中文（"周五下午三点去咖啡店"）快速添加；AI 可整周重排
+- **邀约活动**：你发出的邀约由角色按人设决定是否接受；角色也会主动邀请你；双方同意后同步日程，不会瞬间跳到约定时间
+- **共同经历**：按实际发生时间整理生活记录（地点变化 / 对话 / 日程 / 工具调用…），可筛选、分组、生成场景图
+- **自主行动**：角色可在现场主动搭话（有冷却与每日上限），也可通过邀约 / 陪伴 / 调整日程三个工具改变自己的行程
+- **与聊天联动**：聊天时角色的实时生活状态会注入上下文；角色睡觉时消息会延迟回复
+
+数据全部保存在本机（IndexedDB KV），可随数据管理一起备份。生命周期回归测试：`npm run test:life`。
+
+## 🖼 照片墙 App
+
+一整面可以自由布置的拍立得墙：
+
+- **添加照片**：本地上传（自动压缩 / EXIF 拍摄时间）、从聊天收藏、请角色生成（每日显影可自动生成，支持设定角色与提示词模板）
+- **自由布置**：拖拽 / 缩放 / 旋转 / 层级 / 锁定，5 种相框；双指缩放与平移全程锚点跟随（手机 / 平板）
+- **摆放模板**：心形、星河、随手散落等 8 种内置构图，可保存自定义布局
+- **涂鸦**：画笔 / 贴纸 / 橡皮，可写在照片正面、背面或整面墙上；角色也可以帮你涂鸦装饰（LLM 输出经白名单校验）
+- **翻面与批注**：点击照片翻到背面写手记，角色也能留下批注
+- **导出**：整面墙一键导出 PNG；相册视图、时间轴视图、共创记录一应俱全
+
+## 📺 一起看 App
+
+和角色坐在同一块屏幕前看视频，角色能看懂剧情：
+
+- **视频源**（按优先级自动回退）：
+  - B站 BV/av 直链 → 官方站内播放器；`b23.tv` 短链会自动在服务端换算成真实视频
+  - 腾讯视频 / 优酷 / YouTube → 对应官方嵌入播放器
+  - 直链视频文件（`.mp4` / `.webm` / `.m3u8`，HLS 由 hls.js 支持）与本地视频文件
+  - 小红书 / 抖音 / 快手 → 通过**本地解析服务**提取直连流后下载到本地缓存播放（见下）
+- **AI 陪看**：绑定角色后，角色按随机间隔主动聊剧情（每日上限护栏，挂机不烧 API）；可截取当前画面 / 上传截图 / 导入字幕脚本，配合「视频理解」模型（Gemini / 方舟 / TwelveLabs / OpenAI 兼容 / Claude）让角色真正看懂视频
+- **标记重点**：看片途中一键标记当前时间点，角色立刻就该时间点给出反馈；历史评论的时间点可点击回跳
+- **观看记录**：每次一起看自动建档计时，积累共同记忆
+- **全局陪看**（Android APK）：离开 App 后继续截屏陪看
+
+### 本地解析服务（可选，用于小红书 / 抖音 / 快手等平台）
+
+站内无法直接嵌入的短视频平台，由一个跑在你自己设备上的小服务完成「解析 → 下载 → 本地缓存播放」：
+
+```bash
+cd tools/video-resolver
+pip install -r requirements.txt
+python app.py                # 默认 http://127.0.0.1:8765
 ```
 
-这个模式跳过账号/激活码门禁，用本地单机账号直接进入，适合个人使用。其余环境变量全部可选，功能按需启用（见下表）。
+- Android 上可用 Termux 一键部署：App 内「一起看 → 设置 → 本地视频下载引擎 → 复制 Termux 一键部署命令」
+- **平台支持现状**（实测）：
+  - 小红书（含 `xhslink.cn` 短链）：✅ 免登录直接解析
+  - 抖音：⚠️ 平台风控严格，**必须**在「设置 → 本地视频下载引擎 → 平台 Cookies」粘贴从电脑浏览器导出的 Netscape 格式 Cookies（无需登录，浏览任意视频后导出即可）
+  - 快手：支持同链路，未逐一验证
+  - 网盘分享页（夸克 / 百度网盘）：❌ 需要登录与私有接口，不支持；请下载后用「本地视频」播放
+- 服务支持访问令牌（`VIDEO_RESOLVER_TOKEN`）与缓存上限（`VIDEO_RESOLVER_MAX_MB`），缓存 24 小时自动清理
 
-## 首次使用
+链接转写（生成时间戳字幕脚本）需要另行部署 [tools/video-transcriber](./tools/video-transcriber/README.md)（Whisper / Cloudflare Worker）。
 
-进入应用后只差一步就能开聊：
+## Android 壳（可选）
 
-1. 打开**设置 → API 设置**，添加你的 LLM API（填 Base URL + API Key，支持 OpenAI 兼容接口、Anthropic、Google Gemini）；
-2. 创建或导入角色卡，开始聊天；
-3. 可选：在设置里继续配置生图、Minimax 语音、网易云音乐 API 等增强功能。
+[android-shell/](./android-shell/README.md) 提供全屏 WebView 原生壳：状态栏注入、来电提醒、通知回复、截屏速聊、全局陪看截屏、推送唤醒等。网页端功能不受影响，壳只是增强。
 
 ## 部署到 Netlify / Vercel
 
-两个平台都可以直接导入本仓库部署：
+1. 新建站点并关联本仓库，选择 `main`（正常设备）或 `test`（兼容设备，部分设备全屏异常时用）分支；
+2. 构建设置保持默认（Netlify 自动读取 `netlify.toml`，Vercel 自动识别 Next.js）；
+3. 在平台后台添加环境变量 `NEXT_PUBLIC_SELF_HOSTED_MODE=true`（平台不会读取 `.env.example`）；
+4. 部署完成后按「快速开始」配置即可。
 
-1. 新建站点 / 项目，关联你 fork 或 clone 的仓库，选择 `main` 或 `test` 分支；
-2. 构建设置保持默认即可（Netlify 会自动读取仓库里的 `netlify.toml`；Vercel 自动识别 Next.js）；
-3. **在平台后台添加环境变量**（平台不会读取仓库里的 `.env.example`）：
-
-   ```env
-   NEXT_PUBLIC_SELF_HOSTED_MODE=true
-   ```
-
-4. 部署完成后打开站点，按「首次使用」配置即可。
-
-## 环境变量总表
+### 环境变量总表
 
 除 `NEXT_PUBLIC_SELF_HOSTED_MODE` 外全部可选，不填时对应功能自动隐藏或停用。
 
 | 变量 | 用途 |
 |---|---|
-| `NEXT_PUBLIC_SELF_HOSTED_MODE` | `true`=单机模式（推荐自部署开启）；`false`=启用账号/激活码门禁（需配 Supabase） |
-| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | 站点账号、社区功能和现实桥邮件自动化使用的 Supabase 项目（服务端专用，勿放进 NEXT_PUBLIC）；应用内创建的个人云不需要把密钥填到这里 |
-| `MIXOLOGY_SUPABASE_URL` / `MIXOLOGY_SUPABASE_SERVICE_ROLE_KEY` | 独家特调专用的独立 Supabase 项目（酒材/配方/点赞/入柜/评论）。特调数据只走这里，不填则特调云端不开张，不会回退主库 |
-| `ACCOUNT_GATE_SECRET` | 账号门禁签名密钥，启用账号系统时设为随机长字符串 |
-| `VERIFY_ADMIN_KEY` | 成年审核/激活码管理后台密钥 |
-| `APP_MARKET_ADMIN_KEY` | 应用市场审核后台密钥（不填回退用 `VERIFY_ADMIN_KEY`） |
-| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | 便签墙实时刷新用（anon key 本身可公开） |
-| `NEXT_PUBLIC_IMAGE_GEN_PROXY_URL` | 通用生图代理地址，需自己部署代理服务 |
-| `NEXT_PUBLIC_DEFAULT_NETEASE_API_BASE` | 网易云音乐 API 默认地址（NeteaseCloudMusicApi 兼容实例，请自行部署）。留空时在线音乐隐藏，用户也可在音乐 APP 设置里自填 |
-| `NEXT_PUBLIC_NETEASE_REAL_IP` | 网易云 API 的 X-Real-IP 参数（海外部署解锁地区限制用） |
-| `TRIPO_API_KEY` | 可选的服务端兜底，一般不用填——用户在世界搭建界面内自行填写 Tripo key |
-| `IMGBB_API_KEY` | 可选的服务端兜底，一般不用填——用户在应用内生图/图床设置里自行填写 |
-| `WEIXIN_PROXY` | 微信本地助手代理，见 `tools/weixin-local-assistant/README.md` |
-| `RESEND_API_KEY` / `REALITY_BRIDGE_EMAIL_FROM` / `SHORTCUT_EMAIL_VERIFICATION_SECRET` | 可选的现实桥“邮件自动”实验通道；普通推送快捷动作不需要 |
+| `NEXT_PUBLIC_SELF_HOSTED_MODE` | `true`=单机模式（自部署推荐）；`false`=启用账号/激活码门禁（需配 Supabase） |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | 站点账号、社区功能使用的 Supabase（服务端专用） |
+| `MIXOLOGY_SUPABASE_URL` / `MIXOLOGY_SUPABASE_SERVICE_ROLE_KEY` | 独家特调专用独立 Supabase |
+| `ACCOUNT_GATE_SECRET` | 账号门禁签名密钥 |
+| `VERIFY_ADMIN_KEY` / `APP_MARKET_ADMIN_KEY` | 成年审核 / 应用市场后台密钥 |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 便签墙实时刷新与多人联机 |
+| `NEXT_PUBLIC_IMAGE_GEN_PROXY_URL` | 通用生图代理地址 |
+| `NEXT_PUBLIC_DEFAULT_NETEASE_API_BASE` | 网易云音乐 API（自部署 NeteaseCloudMusicApi 兼容实例） |
+| `NEXT_PUBLIC_NETEASE_REAL_IP` | 网易云 API 解锁地区限制用 |
+| `TRIPO_API_KEY` / `IMGBB_API_KEY` | 服务端兜底，一般不用填 |
+| `WEIXIN_PROXY` | 微信本地助手代理 |
+| `RESEND_API_KEY` / `REALITY_BRIDGE_EMAIL_FROM` / `SHORTCUT_EMAIL_VERIFICATION_SECRET` | 现实桥「邮件自动」实验通道（普通推送快捷动作不需要） |
+
+> ⚠️ `NEXT_PUBLIC_*` 变量会打包进浏览器代码、完全公开。不要把 Supabase `service_role`、后台密钥、第三方 API 私钥写进任何 `NEXT_PUBLIC_*` 变量。
 
 ## 启用自己的 Supabase（可选云端功能）
 
-账号、激活码、成年审核、便签墙、游戏大厅、应用市场、黑市等云端功能需要你自己的 Supabase 项目。推荐在 Supabase SQL Editor 直接执行 `docs/supabase-all-in-one.sql` 一键建齐全部云端功能（幂等脚本，重复执行不会破坏已有数据；粘贴后先确认最后一行是「全部结束」标记再 Run，防止复制被截断）。也可按需执行下列单个脚本：
-
-- `docs/account-supabase.sql`：账号、会话、激活码
-- `docs/verify-supabase.sql`：成年审核与审核图片桶（部署说明见 `docs/verify-setup.md`）
-- `docs/notewall-supabase.sql`：便签墙
-- `docs/game-hall-supabase.sql`：游戏大厅
-- `docs/custom-app-market-supabase.sql`：应用市场
-- `docs/black-market-supabase.sql`：黑市
-- `docs/online-play-supabase.sql`：多人联机（自定义APP/游戏的实时房间与云端共享；已并入一体脚本，另需站点环境变量 `SUPABASE_ANON_KEY`）
-- `docs/moderation-supabase.sql`：内容管理（举报/管理员/下架/封号；已并入一体脚本，执行后用 SQL 把自己的账号 role 设为 admin，即可在 设置 → 管理中心 处理举报）
-- `docs/push-supabase.sql`：现实桥「邮件自动」所需的表已并入一体脚本；这个文件本身是旧的站点共享推送，新部署不要单独执行
-
-然后关闭单机模式并填入服务端密钥：
+账号、激活码、成年审核、便签墙、游戏大厅、应用市场、黑市等云端共享功能需要你自己的 Supabase。推荐在 Supabase SQL Editor 直接执行 [docs/supabase-all-in-one.sql](./docs/supabase-all-in-one.sql) 一键建齐（幂等），然后：
 
 ```env
 NEXT_PUBLIC_SELF_HOSTED_MODE=false
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ACCOUNT_GATE_SECRET=your-random-long-secret
-# 可选：启用多人联机（Project Settings → API 的 anon public key）
-SUPABASE_ANON_KEY=your-anon-key
 ```
 
-不要把 `.env.local` 提交到 Git。
+也可以按需执行 `docs/` 下的单个脚本（`account` / `verify` / `notewall` / `game-hall` / `custom-app-market` / `black-market` / `online-play` / `moderation`）。不配置任何 Supabase 也能完整使用单机模式。
 
-## 个人云、离线推送与微信接入
+**个人云**（每位用户自己的 Supabase 项目）与站点运营库是两件事：在「设置 → 云服务部署」粘贴你自己的 Supabase Access Token，应用会自动创建 `AI Phone Personal Cloud` 项目并部署备份 / 微信助手 / 离线推送等云函数。详见应用内引导。
 
-这套功能不要求站点维护者把所有用户数据放进同一个 Supabase。每位用户可在
-**设置 → 云服务部署**里粘贴自己的 Supabase Access Token、选择自己的组织，应用会：
+## iOS 现实桥
 
-1. 自动创建一个名为 `AI Phone Personal Cloud` 的独立项目；
-2. 按用户勾选范围部署云备份、微信 Edge Function、离线推送与快捷动作函数；
-3. 把该项目的地址和密钥只保存在用户自己的小手机数据中，Access Token 仅在本次部署请求中透传，不保存；
-4. 用项目标记和数据库表检查阻止误装进已有业务库。
+角色可以调用你 iPhone 的快捷指令，并在结果回传后继续对话。三种送达方式：
 
-个人云与上文的站点运营库是两件事：`SUPABASE_URL` 用于账号、市场等站点级功能；
-个人云由用户在界面中创建，默认不会复用或修改站点运营库。自部署者只想个人使用时，
-保持 `NEXT_PUBLIC_SELF_HOSTED_MODE=true`，无需先配置站点运营库，也能使用个人云。
-
-部署完成后，在聊天信息页开启「离线推送与定时消息」；微信 Bot 则在
-**设置 → 微信接入**中添加。云端与本地使用相同的角色运行包，微信消息、离线回复、
-快捷动作结果和来电留痕会按因果顺序合并回小手机。
-
-### iOS 屏幕速聊（辅助触控双击）
-
-屏幕速聊是现实桥的一个 iOS 入口：双击辅助触控悬浮球后，快捷指令截取当前屏幕，
-角色的回复直接显示在系统弹窗里；你可以在弹窗中继续回复。每一轮对话都会按顺序写回
-该角色原有的唯一聊天窗口，不会每 15/30 轮另开一段会话。
-
-使用前请先在 **设置 → 云服务部署**完成或重新执行一次个人云部署。屏幕速聊要求
-个人云 Schema v3；旧版个人云不会被静默复用，页面会提示重新部署。部署完成后：
-
-1. 打开 **现实桥 → 屏幕速聊**，开启功能并选择一个角色；
-2. 在第三步点“一键导入屏幕速聊”，导入项目提供的通用 iCloud 快捷指令；
-3. 按导入问题填写页面显示的“接口地址”和“令牌”。共享快捷指令本身不包含你的地址、
-   令牌或角色资料；
-4. 到 iPhone **设置 → 辅助功能 → 触控 → 辅助触控 → 轻点两下**，选择“屏幕速聊”；
-5. 首次运行时允许“截屏”“访问网络”和“显示提醒”等系统权限。
-
-如果一键导入不可用，页面仍保留完整的手动搭建步骤。该功能不需要 Resend，也不需要
-站点运营库；它只访问用户自己创建的个人云项目。截图原图不会写入 Supabase 数据库或
-Storage，只存在于本次 Edge Function 内存和本次模型请求中。个人云仅暂存尚未合并回
-小手机的文本轮次；应用启动或从后台回到前台时会立即补拉，而不是持续高频轮询。
-
-### iOS 现实桥：通知点击运行
-
-现实桥默认使用“通知点击运行”：角色触发快捷动作后，个人云向 iPhone 发送系统通知，
-用户点击通知即可运行快捷指令。该模式随上面的个人云一起部署，**不需要 Resend**，
-也不需要额外的站点 Supabase 环境变量，是推荐的默认选择。
-
-### iOS 现实桥：邮件自动运行（实验）
-
-“邮件自动”利用 iOS 的“收到指定邮件时立即运行”自动化，因此必须有服务负责发送触发
-邮件。目前项目使用 [Resend](https://resend.com)：
-
-- 自己部署、自己使用时，由站点主人配置一次 Resend。
-- 多人共用一个站点时，由站点运营者配置一次；普通用户只在小手机里验证接收邮箱，
-  不需要各自注册 Resend。
-- 不配置 Resend 不影响云备份、微信、离线回复或“通知点击运行”，只是邮件模式不可用。
-
-#### 1. 配置 Resend
-
-1. 注册 Resend，在 Domains 中添加自己拥有的域名。推荐使用独立子域名，例如
-   `notify.example.com`。
-2. 按页面提示添加 DNS 记录，等待状态变成 `Verified`。参见
-   [Resend 域名验证文档](https://resend.com/docs/dashboard/domains/introduction)。
-3. 在 [Resend API Keys](https://resend.com/api-keys) 创建 API Key。密钥只显示一次，
-   请立即保存，不要提交到 Git。
-
-域名验证后可以直接使用该域名下的任意发件地址，例如
-`bridge@notify.example.com`，该地址不要求拥有独立收件箱。
-
-#### 2. 配置站点环境变量与数据库
-
-在 Netlify / Vercel 的环境变量中增加：
-
-```env
-RESEND_API_KEY=re_xxxxxxxxx
-REALITY_BRIDGE_EMAIL_FROM="Float Reality Bridge <bridge@notify.example.com>"
-SHORTCUT_EMAIL_VERIFICATION_SECRET=独立随机长字符串
-```
-
-可用下面的命令生成验证码签名密钥：
-
-```bash
-openssl rand -hex 32
-```
-
-以上都是服务端秘密，不要添加 `NEXT_PUBLIC_` 前缀。发件邮箱的域名必须与 Resend
-中已经验证的域名一致。
-
-邮件验证记录和邮件型快捷指令目前存放在**站点 Supabase**，不是用户一键创建的个人云。
-因此还需要配置：
-
-```env
-SUPABASE_URL=https://your-site-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-```
-
-然后在这个站点 Supabase 项目的 SQL Editor 执行
-[`docs/supabase-all-in-one.sql`](./docs/supabase-all-in-one.sql)（邮件自动所需的表已在其中；
-跑过一体脚本的直接重跑一遍即可，幂等），再重新部署站点。若已为账号或其他
-站点功能配置过这两个变量，可以继续使用同一个站点项目。注意这里说的是部署环境的
-服务端变量，不是应用内「云服务部署」一键创建的个人云——两者是不同的 Supabase 项目。不要把 `service_role` 密钥
-交给浏览器或写进任何 `NEXT_PUBLIC_*` 变量。
-
-#### 3. 配置 iPhone
-
-1. 打开“现实桥 → iOS 快捷动作”，将送达方式选为“邮件自动（实验）”。
-2. 填写 iPhone“邮件”App 能及时收信的邮箱，接收并输入六位验证码。
-3. 把页面显示的发件人加入白名单，避免触发邮件进入垃圾箱。
-4. 在“快捷指令 → 自动化”中新建“电子邮件”自动化：发件人填写页面显示的地址，
-   主题选择“包含”页面显示的主题标记，运行方式选“立即运行”。
-5. 自动化动作设置为运行页面生成的快捷指令，并把邮件正文作为快捷指令输入。
-
-为减少延迟，推荐使用在 iPhone 邮件 App 中支持实时推送的 iCloud 或 Exchange 邮箱。
-首次运行仍可能要求 iOS 权限确认，部分动作在锁屏状态下也可能受到系统限制，因此该
-模式仍标记为实验功能。
-
-维护者修改云函数源文件后运行：
-
-```bash
-npm run push:build-dist   # 生成浏览器一键部署包
-npm run check:push        # 校验源文件与部署包一致，且不含私有站点地址
-npm run weixin:build-dist # 生成微信本地/云端分发包
-npm run check:weixin      # 校验微信提示词与分发文件
-```
-
-## 分支选择
-
-本仓库长期保留两个设备兼容版本：
-
-- `main`：正常设备版
-- `test`：兼容设备版，部分设备全屏或显示异常时部署此分支
+1. **通知点击运行**（推荐）：随个人云一起部署，无需 Resend；
+2. **屏幕速聊**：双击辅助触控球截取当前屏幕，在系统弹窗里与角色连续对话；要求个人云 Schema v3，App 内「现实桥 → 屏幕速聊」有一键导入步骤；
+3. **邮件自动**（实验）：通过 Resend 发送触发邮件自动运行快捷指令，需要站点配置 Resend 与验证域名，步骤见 App 内「现实桥 → iOS 快捷动作」页的完整引导。
 
 ## 常用命令
 
 ```bash
-npm run dev     # 本地开发（端口 3001）
-npm run build   # 生产构建
-npm run start   # 生产运行
-npm run lint    # 代码检查
-npm run check:push # 校验个人云部署包
+npm run dev            # 本地开发（端口 3001）
+npm run build          # 生产构建
+npm run start          # 生产运行
+npm run lint           # 代码检查
+npm run test:life      # 生活系统回归测试
+npm run check:push     # 校验个人云部署包一致性
+npm run check:weixin   # 校验微信分发文件
+npm run check:sdk      # 校验自定义 App SDK 一致性
 ```
+
+## 目录速览
+
+```
+app/                 Next.js 路由与 API（auth / push / image-generation / resolve-short-link …）
+components/          UI 组件（desktop-shell、聊天、生活、照片墙、一起看…）
+lib/                 核心逻辑（存储、聊天引擎、生活运行时、照片墙存储…）
+tools/video-resolver 视频解析服务（FastAPI + yt-dlp + parse-video-py）
+tools/video-transcriber  视频转写服务
+tools/weixin-local-assistant  微信本地助手
+android-shell/       Android 原生壳
+docs/                Supabase SQL、部署与移植指南、改动台账
+scripts/             构建、校验与测试脚本
+```
+
+## 🧭 项目来源与致谢
+
+### 上游继承关系
+
+- **小笼包老师（原始项目）**：建立了核心框架——仿真手机界面与 AI 角色互动、私聊/群聊/朋友圈、角色卡/世界书/预设/记忆与剧情创作、小手机内应用与多媒体扩展、本地运行与部署基础架构。
+  原始项目：https://github.com/xiaolongbao0709/ai-virtual-phone
+- **末末老师（直接上游）**：持续二次开发——剧情分页/分支/多人剧情、动态邀请见面卡片、公共方案仓库与备份迁移、记忆标签筛选与私聊拉黑、聊天记录导入数据保护、全局聊天设置与新消息音效等。
+  直接上游仓库：https://github.com/jianchu-in/momo.float.phone
+
+### 本仓库的二次开发方向
+
+以下为继承上游后持续开发的方向（归纳而非完整清单；具体归属以代码和提交记录为准）：
+
+| 方向 | 主要内容 |
+|---|---|
+| 全局通话与持续互动 | 通话状态全局化、可拖动缩放的通话小窗与原生浮窗、自动搭话与消息排队补发、语音留档、浮窗设置与自检诊断 |
+| 安卓原生能力与 APK 适配 | 壳与网页端通信桥扩展、原生通知与通知回复、系统级通话浮窗、桌面小组件、设备感知、状态栏/安全区/权限/设备兼容性维护 |
+| 离线推送与定时消息 | 离线推送长连接与原生通知链路、定时任务保存/撤销/同步、推送自检与断线重连 |
+| 现实桥与设备联动 | 设备感知与动作执行、快捷动作与任务调度、设备端与云端状态同步 |
+| 新增独立 App | 生活（角色自主生活）、照片墙（共同回忆拼贴）、一起看（AI 陪看与视频解析）、档案室 |
+
+### 致谢
+
+再次感谢小笼包老师提供原始项目基础，感谢末末老师在直接上游版本中的持续开发与维护。本仓库只是在两位老师的成果上做维护、补充和适配。开源项目的贡献关系有时比较复杂，如果来源标注不清或归属错误，欢迎指出，我会及时更正。也希望大家在尊重原有成果的前提下，继续探索和开发。
 
 ## License
 
-本项目采用 GNU Affero General Public License v3.0 only（AGPL-3.0-only）开源。详见 [LICENSE](./LICENSE)。
+本项目基于 [AGPL-3.0-only](./LICENSE) 开源。
 
 ## Credits
 
-本项目为独立实现，但部分产品设计和系统抽象受 SillyTavern 启发，包括预设、正则处理、世界书 / lorebook / WorldInfo 等概念。
-
-- SillyTavern: https://github.com/SillyTavern/SillyTavern
-- SillyTavern 使用 AGPL-3.0 许可证。
-
-字体、贴纸素材、3D 模型等第三方资源的授权说明见 [NOTICE](./NOTICE)。
-
-## 备注
-
-`NEXT_PUBLIC_*` 变量会打包进浏览器代码、完全公开。不要把 Supabase `service_role`、后台管理密钥、第三方 API 私钥写进任何 `NEXT_PUBLIC_*` 变量。
+本项目为独立实现，但部分产品设计和系统抽象受 [SillyTavern](https://github.com/SillyTavern/SillyTavern)（AGPL-3.0）启发，包括预设、正则处理、世界书 / lorebook / WorldInfo 等概念。视频解析依赖 [yt-dlp](https://github.com/yt-dlp/yt-dlp) 与 [parse-video-py](https://github.com/wujunwei928/parse-video-py)。字体、贴纸素材、3D 模型等第三方资源的授权说明见 [NOTICE](./NOTICE)。

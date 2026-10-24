@@ -23,7 +23,7 @@ Set a random bearer token and start the service:
 # Linux/macOS
 export VIDEO_TRANSCRIBER_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 export VIDEO_TRANSCRIBER_ALLOWED_ORIGINS="https://your-web-app.example"
-python tools/video-transcriber/server.py --host 127.0.0.1 --port 8765
+python tools/video-transcriber/server.py --host 127.0.0.1 --port 8766
 ~~~
 
 Windows PowerShell:
@@ -31,7 +31,7 @@ Windows PowerShell:
 ~~~powershell
 $env:VIDEO_TRANSCRIBER_TOKEN = (python -c "import secrets; print(secrets.token_urlsafe(32))")
 $env:VIDEO_TRANSCRIBER_ALLOWED_ORIGINS = "https://your-web-app.example"
-python tools/video-transcriber/server.py --host 127.0.0.1 --port 8765
+python tools/video-transcriber/server.py --host 127.0.0.1 --port 8766
 ~~~
 
 The first transcription may download the model. Later runs reuse the local model cache. Optional environment variables:
@@ -47,7 +47,7 @@ From the repository root:
 
 ~~~bash
 docker build -f tools/video-transcriber/Dockerfile -t momo-video-transcriber .
-docker run --rm -p 8765:8765 \
+docker run --rm -p 8766:8766 \
   -e VIDEO_TRANSCRIBER_TOKEN="replace-with-a-long-random-token" \
   -e VIDEO_TRANSCRIBER_ALLOWED_ORIGINS="https://your-web-app.example" \
   -e VIDEO_TRANSCRIBER_HOST=0.0.0.0 \

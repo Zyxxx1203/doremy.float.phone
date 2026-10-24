@@ -69,7 +69,10 @@ export type ExportOptions = { width?: number; height?: number; background?: stri
 /** 返回 PNG 的 dataURL；没有任何照片时返回 null。 */
 export async function renderPhotoWallPng(photos: PhotoWallPhoto[], options: ExportOptions = {}): Promise<string | null> {
   if (!photos.length) return null;
-  const width = Math.min(3200, Math.max(720, Math.round(options.width ?? 1600)));
+  // 默认按世界宽度导出（此前固定 1600px，2400 宽的世界被缩到 0.67 倍，放大会糊）；
+  // 显式传 width 仍然生效。上限 6400 防止极端大墙把移动端 canvas 撑爆。
+  const worldWidth = options.world?.width && options.world.width > 0 ? options.world.width : 2400;
+  const width = Math.min(6400, Math.max(1200, Math.round(options.width ?? worldWidth)));
   const aspect = typeof options.aspect === "number" && Number.isFinite(options.aspect) && options.aspect > 0.2 && options.aspect < 5 ? options.aspect : 0.8;
   const height = Math.round(options.height ?? width / aspect);
   const canvas = document.createElement("canvas");

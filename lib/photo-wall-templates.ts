@@ -374,9 +374,6 @@ export function buildTemplateSlots(templateId: string, count: number, customText
   return gridSlots(total);
 }
 
-export function templateSlotCount(templateId: string, customText?: string): number {
-  return buildTemplateSlots(templateId, 12, customText).length;
-}
 
 export function loadCustomTemplates(): PhotoWallTemplate[] {
   try {

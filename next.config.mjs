@@ -28,10 +28,9 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   typescript: {
-    // 项目有若干历史 TS 错误（chat-message-list 缺模块、weixin 路由 socket 字段、
-    // world-builder SceneViewport prop 不匹配 等），不影响 dev 但 production build 会卡。
-    // 跳过 typecheck 让 build 通过；IDE 和 `npx tsc --noEmit` 仍能看到错误。
-    ignoreBuildErrors: true,
+    // 历史注释里的 TS 错误均已修复（2026-10 全仓 tsc --noEmit 零错误），构建期类型检查重新打开，
+    // 防止类型回归悄悄溜进 main。若个别文件需要豁免，用 // @ts-expect-error 精确标注，不要整体关闭。
+    ignoreBuildErrors: false,
   },
   outputFileTracingIncludes: {
     "/api/**": ["./data/**"],

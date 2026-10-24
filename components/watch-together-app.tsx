@@ -44,18 +44,18 @@ type VideoTarget = { url: string; embedUrl: string | null; platform: Platform; p
 type WatchNativeBridge = { resolveShortVideoShareUrl?: (url: string, requestId: string) => boolean; deleteCachedShortVideo?: (cacheId: string) => boolean; setScreenOrientation?: (mode: string) => boolean; openUrl?: (url: string) => boolean; getWebConsoleLogs?: () => string; getDiagnosticsSnapshot?: () => string; clearWebConsoleLogs?: () => boolean };
 type WatchNativeWindow = Window & { AndroidShell?: WatchNativeBridge };
 type WatchNativeResolved = { requestId?: string; ok?: boolean; cacheId?: string; contentUri?: string; mediaUrl?: string; embedUrl?: string; message?: string };
-type WatchMemoryRecord = { id:string; url:string; title:string; platform:string; startedAt:string; durationSeconds:number; characterName:string; comments:string[]; discussion?: WatchComment[]; review:string; characterReview:string; favorite:boolean; memoryTitle?:string; quote?:string; mood?:string; note?:string };
+type WatchMemoryRecord = { id:string; url:string; title:string; platform:string; startedAt:string; durationSeconds:number; characterName:string; comments:string[]; discussion?: WatchComment[]; review:string; characterReview:string; favorite:boolean; memoryTitle?:string; quote?:string; mood?:string; note?:string; cacheId?:string; cacheSize?:number };
 const WATCH_MEMORY_KEY = "ai_phone_watch_memory_records_v1";
 function readWatchMemories(): WatchMemoryRecord[] { try { const raw=window.localStorage.getItem(WATCH_MEMORY_KEY); const v=raw?JSON.parse(raw):[]; return Array.isArray(v)?v.filter((x)=>x&&typeof x.id==="string"):[]; } catch { return []; } }
 function writeWatchMemories(records: WatchMemoryRecord[]) { try { window.localStorage.setItem(WATCH_MEMORY_KEY,JSON.stringify(records.slice(0,300))); } catch { /* Keep playback working if local storage is full. */ } }
 
 type WatchComment = { id: string; characterId: string; characterName: string; text: string; createdAt: string; kind?: "character" | "user"; timepoint?: string; targetUrl?: string };
-type WatchSettings = { characterId: string; intervalMinMinutes: number; intervalMaxMinutes: number; voiceEnabled: boolean; danmakuEnabled: boolean; danmakuColor: string; subtitlesEnabled: boolean; currentMoment: string };
+type WatchSettings = { characterId: string; intervalMinMinutes: number; intervalMaxMinutes: number; voiceEnabled: boolean; subtitlesEnabled: boolean; currentMoment: string };
 
 const SETTINGS_KEY = "ai_phone_watch_together_v1";
 const SETTINGS_MIGRATION_KEY = "ai_phone_watch_together_schema_v2";
 const COMMENTS_KEY = "ai_phone_watch_together_comments_v1";
-const DEFAULT_SETTINGS: WatchSettings = { characterId: "", intervalMinMinutes: 3, intervalMaxMinutes: 8, voiceEnabled: true, danmakuEnabled: true, danmakuColor: "#e6c49d", subtitlesEnabled: false, currentMoment: "" };
+const DEFAULT_SETTINGS: WatchSettings = { characterId: "", intervalMinMinutes: 3, intervalMaxMinutes: 8, voiceEnabled: true, subtitlesEnabled: false, currentMoment: "" };
 function formatVideoTime(seconds: number): string {
   const safe = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
   const hours = Math.floor(safe / 3600);
@@ -147,6 +147,44 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+/**
+ * 播放位置记忆：按视频 URL 记录最近进度（本地 localStorage，最多 50 条）。
+ * 长视频下次打开同一链接时自动跳回上次位置，配合持久缓存实现「下次接着一起看」。
+ */
+function readWatchResumeMap(): Record<string, { t: number; at: number }> {
+  try { return JSON.parse(window.localStorage.getItem("watch_resume_pos_v1") || "{}") as Record<string, { t: number; at: number }>; } catch { return {}; }
+}
+function saveWatchResumePosition(url: string, t: number): void {
+  try {
+    const map = readWatchResumeMap();
+    map[url] = { t, at: Date.now() };
+    const entries = Object.entries(map).sort((a, b) => b[1].at - a[1].at).slice(0, 50);
+    window.localStorage.setItem("watch_resume_pos_v1", JSON.stringify(Object.fromEntries(entries)));
+  } catch { /* 隐私模式等，忽略 */ }
+}
+
+/**
+ * b23.tv 短链接不能直接塞进 iframe：分享页会整页重定向（桌面端直接空白，
+ * 手机端把 B 站顶栏一起嵌进来导致画面被截断、进度条错位）。这里在服务端跟随
+ * 一次重定向拿到真实视频地址（/api/resolve-short-link），再换回官方站外播放器。
+ * 拿不到时返回 null，调用方保留原有降级路径。
+ */
+async function resolveBiliShortLinkViaProxy(shortUrl: string): Promise<VideoTarget | null> {
+  try {
+    const res = await fetch("/api/resolve-short-link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: shortUrl }),
+    });
+    if (!res.ok) return null;
+    const result = await res.json() as { ok?: boolean; url?: string };
+    if (!result.ok || !result.url) return null;
+    const bvid = /\/video\/(BV[0-9A-Za-z]{10})/.exec(result.url)?.[1];
+    if (!bvid) return null;
+    return parseVideoUrl(`https://www.bilibili.com/video/${bvid}/`);
+  } catch { return null; }
+}
+
 function loadSettings(): WatchSettings {
   try {
     const raw = kvGet(SETTINGS_KEY);
@@ -161,8 +199,6 @@ function loadSettings(): WatchSettings {
       intervalMinMinutes: untouchedDefault ? 1 : Math.max(1, Math.min(60, previousMin)),
       intervalMaxMinutes: untouchedDefault ? 2 : Math.max(Math.max(1, Math.min(60, previousMin)), Math.min(60, previousMax)),
       voiceEnabled: parsed.voiceEnabled !== false,
-      danmakuEnabled: parsed.danmakuEnabled !== false,
-      danmakuColor: typeof parsed.danmakuColor === "string" && /^#[0-9a-f]{6}$/i.test(parsed.danmakuColor) ? parsed.danmakuColor : "#e6c49d",
       subtitlesEnabled: migrated ? parsed.subtitlesEnabled !== false : false,
       currentMoment: typeof parsed.currentMoment === "string" ? parsed.currentMoment.slice(0, 800) : "",
     };
@@ -233,7 +269,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const nativeVideoCacheRef = useRef<{ url: string; cacheId: string } | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
   const [resolverState, setResolverState] = useState<{ state: "idle" | "resolving" | "ok" | "failed"; message?: string }>({ state: "idle" });
-  const [mediaPaused, setMediaPaused] = useState(false);
   const [resolutionMessage, setResolutionMessage] = useState("");
   const [iframeLoadedAt, setIframeLoadedAt] = useState<string | null>(null);
   const [watchDiagnosticReport, setWatchDiagnosticReport] = useState("");
@@ -243,6 +278,11 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [localResolverToken, setLocalResolverToken] = useState(() => {
     try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_local_resolver_token_v1") || "" : ""; } catch { return ""; }
   });
+  // 抖音等平台对匿名请求弹 JS 风控，yt-dlp 需要"新鲜 cookies"（不一定要登录）。
+  // 用户从浏览器导出 Netscape 格式 cookies 后粘进来，随解析请求透传给本地服务。
+  const [localResolverCookies, setLocalResolverCookies] = useState(() => {
+    try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_local_resolver_cookies_v1") || "" : ""; } catch { return ""; }
+  });
   const [localResolverStatus, setLocalResolverStatus] = useState("");
   const [termuxDeployStatus, setTermuxDeployStatus] = useState("");
   const [localResolverEngine, setLocalResolverEngine] = useState<"auto" | "parse-video-py" | "yt-dlp">(() => {
@@ -251,7 +291,17 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       return saved === "parse-video-py" || saved === "yt-dlp" ? saved : "auto";
     } catch { return "auto"; }
   });
-  const localResolverJobRef = useRef<{ id: string; endpoint: string; token: string } | null>(null);
+  const localResolverJobRef = useRef<{ id: string; endpoint: string; token: string; builtin?: boolean } | null>(null);
+  // 本地解析可能下载几十分钟；期间用户随时可能换别的视频。每次 openVideo 递增此序号，
+  // 解析完成后序号不一致就丢弃结果，防止迟到的下载覆盖用户当前正在看的视频。
+  const openVideoSeqRef = useRef(0);
+  // 续播提示每个视频只弹一次
+  const resumeNoticeUrlRef = useRef("");
+  // 全局陪看全屏接管期间，主播放器的秒表/自动搭话要通过 ref 感知并暂停（避免 effect 重排）
+  const showGlobalCompanionRef = useRef(false);
+  // 站内解析成功后暂存缓存信息：观看记录的创建 effect 晚于 setTarget，这里按 URL 暂存，
+  // 记录落库时一并写入 cacheId/cacheSize，供「观看记录 → 接着看 / 删缓存」使用。
+  const pendingWatchCacheRef = useRef<Record<string, { cacheId: string; cacheSize: number }>>({});
   const [transcriberEndpoint, setTranscriberEndpoint] = useState(() => {
     try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_transcriber_endpoint_v1") || "" : ""; } catch { return ""; }
   });
@@ -420,11 +470,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     }
     const job = localResolverJobRef.current;
     if (job) {
-      try {
-        void fetch(job.endpoint + "/api/videos/" + encodeURIComponent(job.id), {
-          method: "DELETE", headers: job.token ? { "X-Resolver-Token": job.token } : {},
-        }).catch(() => undefined);
-      } catch { /* 服务未运行时由服务端过期清理兜底 */ }
+      // 缓存默认**保留**：长视频下次打开同一链接直接秒开续看，只有用户在设置里
+      // 点「删除本次本地缓存」才真正删除。这里仅释放引用，不再顺手删文件。
       localResolverJobRef.current = null;
     }
   }, []);
@@ -449,6 +496,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const memoryStartedAtRef = useRef<number>(0);
   const memoryElapsedRef = useRef<number>(0);
   const [showGlobalCompanion, setShowGlobalCompanion] = useState(false);
+  useEffect(() => { showGlobalCompanionRef.current = showGlobalCompanion; }, [showGlobalCompanion]);
   const [historyMode, setHistoryMode] = useState<"current" | "global">("current");
   const [globalWatchRecords, setGlobalWatchRecords] = useState<GlobalWatchRecord[]>(() => loadGlobalWatchRecords());
   const [showControlCapsule, setShowControlCapsule] = useState(false);
@@ -480,23 +528,29 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   useEffect(() => {
     const handleAppBack = (event: Event) => {
       const detail = (event as CustomEvent<{ handled?: boolean }>).detail;
-      if (showSettings) { setShowSettings(false); if (detail) detail.handled = true; }
+      // 自上而下关闭最顶层的覆盖层；漏掉任何一个，安卓返回键都会把整个一起看杀掉。
+      if (showGlobalCompanion) { setShowGlobalCompanion(false); if (detail) detail.handled = true; }
+      else if (showMemoryRecords) { setShowMemoryRecords(false); if (detail) detail.handled = true; }
+      else if (showVideoSourcePanel) { setShowVideoSourcePanel(false); if (detail) detail.handled = true; }
       else if (showHistory) { setShowHistory(false); if (detail) detail.handled = true; }
+      else if (showSettings) { setShowSettings(false); if (detail) detail.handled = true; }
     };
     window.addEventListener("floatphone-app-back", handleAppBack);
     return () => window.removeEventListener("floatphone-app-back", handleAppBack);
-  }, [showSettings, showHistory]);
+  }, [showSettings, showHistory, showGlobalCompanion, showMemoryRecords, showVideoSourcePanel]);
 
   // 每次切换到一个新视频时创建独立观看记录；记录只保存元数据和互动摘要，不上传视频内容。
   useEffect(() => {
     if (!target) return;
     const now = new Date();
+    const cacheInfo = pendingWatchCacheRef.current[target.url];
     const record: WatchMemoryRecord = {
       id: "watch-memory-" + now.getTime().toString(36) + "-" + Math.random().toString(36).slice(2,7),
       url: target.url, title: videoTitle.trim() || (target.platformName + "视频"), platform: target.platformName,
       startedAt: now.toISOString(), durationSeconds: 0,
       characterName: characters.find(c => c.id === settings.characterId)?.name || "",
-      comments: [], discussion: [], review: "", characterReview: "", favorite: false, memoryTitle: "", quote: "", mood: "", note: ""
+      comments: [], discussion: [], review: "", characterReview: "", favorite: false, memoryTitle: "", quote: "", mood: "", note: "",
+      cacheId: cacheInfo?.cacheId, cacheSize: cacheInfo?.cacheSize,
     };
     setMemoryRecords(previous => { const next=[record,...previous].slice(0,300); writeWatchMemories(next); return next; });
     activeMemoryIdRef.current = record.id;
@@ -508,13 +562,19 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   useEffect(() => {
     if (!target || !activeMemoryIdRef.current) return;
+    // 全局陪看全屏接管期间暂停主播放器的计时与落盘；落盘从每秒一次节流到每 30 秒一次，
+    // 避免长视频挂机时对 localStorage 的高频全量写入。
+    if (showGlobalCompanionRef.current) return;
+    let tickSinceFlush = 0;
     const timer = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
+      if (document.visibilityState !== "visible" || showGlobalCompanionRef.current) return;
       const video = playerRef.current?.querySelector("video");
       // Native video: count only while it is actually playing. Cross-origin embeds have no
       // readable playback state, so count visible time while a target is loaded.
       if (video ? (!video.paused && !video.ended) : true) {
         memoryElapsedRef.current += 1;
+        tickSinceFlush += 1;
+        if (tickSinceFlush % 30 !== 0) return;
         const id = activeMemoryIdRef.current;
         if (id) setMemoryRecords(previous => {
           const next = previous.map(r => r.id === id ? {...r, durationSeconds: memoryElapsedRef.current} : r);
@@ -830,8 +890,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     setWatching(false);
     onNotice?.("已载入本地视频。默认只在设备内播放；只有开启「视频理解」并发送讨论时，才会按当前服务商配置发送整段视频或关键帧。切换文件或离开一起看后会释放临时引用。");
   };
-  const openVideo = async () => {
-    const parsed = parseVideoUrl(urlInput);
+  /** overrideUrl：从「观看记录 → 接着看」进入时直接传入链接，不依赖输入框状态。 */
+  const openVideo = async (overrideUrl?: string) => {
+    if (overrideUrl) setUrlInput(overrideUrl);
+    const parsed = parseVideoUrl(overrideUrl ?? urlInput);
     if (!parsed) { onNotice?.("请粘贴完整的视频分享链接（http/https）。"); return; }
     if (localVideoObjectUrlRef.current) {
       URL.revokeObjectURL(localVideoObjectUrlRef.current);
@@ -849,7 +911,44 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     setDiscussionDraft(""); setTimepointDraft("");
     setWatching(false);
     const endpoint = localResolverEndpoint.trim().replace(/\/+$/, "");
-    if (endpoint) {
+    // 直链视频文件（.mp4/.webm/.m3u8…）本身就是可播放源，不需要也不应该先送去
+    // 本地解析服务下载一遍——否则每次播放都会先弹一条「本地解析服务失败」的假警报。
+    // 同理，已有官方站内嵌入的链接（B站 BV/YouTube/腾讯/优酷）也不该先走解析服务。
+    const goodEmbed = Boolean(parsed.embedUrl) && parsed.embedUrl !== parsed.url;
+    // ① 站内内置解析（自部署零配置、同源缓存可截帧）：小红书已支持，抖音/快手交给
+    //    它尝试并如实转述失败原因。同一视频按 URL 哈希命中缓存，第二次播放秒开。
+    if (!parsed.nativeVideo && !goodEmbed && (parsed.platform === "xiaohongshu" || parsed.platform === "douyin" || parsed.platform === "kuaishou")) {
+      const seq = ++openVideoSeqRef.current;
+      try {
+        setResolutionMessage("正在通过站内解析获取视频，首次需要下载到本地缓存…");
+        setResolverState({ state: "resolving", message: "站内解析中…" });
+        const res = await fetch("/api/watch-resolver/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: parsed.url }), signal: AbortSignal.timeout(30 * 60 * 1000) });
+        const result = await res.json() as { ok?: boolean; id?: string; downloadUrl?: string; title?: string; size?: number; cacheHit?: boolean; error?: string };
+        if (seq !== openVideoSeqRef.current) return;
+        if (!res.ok || !result.ok || !result.id || !result.downloadUrl) throw new Error(result.error || "站内解析没有返回视频");
+        localResolverJobRef.current = { id: result.id, endpoint: "", token: "", builtin: true };
+        pendingWatchCacheRef.current[parsed.url] = { cacheId: result.id, cacheSize: result.size ?? 0 };
+        // 观看记录在 setTarget(parsed) 时就已创建（早于解析完成），这里直接把缓存
+        // 信息补写到活跃记录上，否则 cacheId 永远落不了库，「观看记录 → 删缓存」无从谈起。
+        if (activeMemoryIdRef.current) patchMemoryRecord(activeMemoryIdRef.current, { cacheId: result.id, cacheSize: result.size ?? 0 });
+        if (result.title) setVideoTitle(result.title);
+        setTarget({ ...parsed, embedUrl: null, supported: true, nativeVideo: true, nativeVideoUrl: result.downloadUrl, nativeCacheId: result.id });
+        setVideoTitle(current => current || result.title || parsed.platformName + "视频");
+        setResolverState({ state: "ok", message: result.cacheHit ? "缓存命中，直接接着看。" : "已下载到本地缓存，正在播放。" });
+        setLocalResolverStatus(result.cacheHit ? "缓存命中 · 秒开" : "下载完成 · 本地缓存播放");
+        onNotice?.(result.cacheHit ? "缓存命中，直接接着上次的一起看。" : "已下载到本地缓存，开始播放；下次打开同一链接会直接秒开。看完可在设置中删除缓存。");
+        return;
+      } catch (error) {
+        if (seq !== openVideoSeqRef.current) return;
+        const message = error instanceof Error ? error.message : "站内解析失败";
+        setResolverState({ state: "failed", message });
+        setLocalResolverStatus("站内解析失败：" + message);
+        onNotice?.("站内解析失败：" + message + (localResolverEndpoint.trim() ? "；继续尝试外部解析服务。" : "；将尝试平台嵌入播放。"));
+      }
+    }
+    // ② 外部解析服务（Termux / 电脑 Python，可选）：抖音等需要 cookies 或 yt-dlp 的平台。
+    if (endpoint && !parsed.nativeVideo && !goodEmbed) {
+      const seq = ++openVideoSeqRef.current;
       try {
         const base = new URL(endpoint);
         if (base.protocol !== "http:" && base.protocol !== "https:") throw new Error("解析服务地址必须是 http(s)");
@@ -860,9 +959,19 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         setResolverState({ state: "resolving", message: "正在下载到本地缓存…" });
         const headers: Record<string, string> = { "Content-Type": "application/json" };
         if (localResolverToken.trim()) headers["X-Resolver-Token"] = localResolverToken.trim();
-        const response = await fetch(base.toString().replace(/\/+$/, "") + "/api/resolve", { method: "POST", headers, body: JSON.stringify({ url: parsed.url, quality: "best", engine: localResolverEngine }), signal: AbortSignal.timeout(30 * 60 * 1000) });
+        const response = await fetch(base.toString().replace(/\/+$/, "") + "/api/resolve", { method: "POST", headers, body: JSON.stringify({ url: parsed.url, quality: "best", engine: localResolverEngine, cookies: localResolverCookies.trim() || undefined }), signal: AbortSignal.timeout(30 * 60 * 1000) });
         const result = await response.json() as { ok?: boolean; id?: string; title?: string; downloadUrl?: string; message?: string; detail?: string };
         if (!response.ok || !result.ok || !result.id || !result.downloadUrl) throw new Error(result.detail || result.message || "解析服务没有返回本地视频");
+        // 下载可能长达几十分钟；期间用户多半已经换了视频。序号对不上就把迟到的
+        // 结果连同刚下载的缓存一起丢弃，绝不能覆盖用户当前正在看的视频。
+        if (seq !== openVideoSeqRef.current) {
+          try {
+            void fetch(base.toString().replace(/\/+$/, "") + "/api/videos/" + encodeURIComponent(String(result.id)), {
+              method: "DELETE", headers: localResolverToken.trim() ? { "X-Resolver-Token": localResolverToken.trim() } : {},
+            }).catch(() => undefined);
+          } catch { /* 服务端过期清理兜底 */ }
+          return;
+        }
         const serviceUrl = base.toString().replace(/\/+$/, "");
         localResolverJobRef.current = { id: result.id, endpoint: serviceUrl, token: localResolverToken.trim() };
         setTarget({ ...parsed, embedUrl: null, supported: true, nativeVideo: true, nativeVideoUrl: new URL(result.downloadUrl, base).toString(), nativeCacheId: result.id });
@@ -872,11 +981,25 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         onNotice?.("已下载到本地缓存，开始播放。看完后可在设置中删除缓存。");
         return;
       } catch (error) {
+        if (seq !== openVideoSeqRef.current) return;
         const message = error instanceof Error ? error.message : "本地解析服务连接失败";
         setLocalResolverStatus("本地解析失败：" + message);
         setResolverState({ state: "failed", message });
         setTarget(parsed);
         onNotice?.("本地解析服务失败：" + message + "；继续尝试 APK 内置解析。");
+      }
+    }
+    // b23.tv 短链接：分享页不能作为 iframe 兜底（顶栏截断/整页空白）。解析服务
+    // 不可用或失败时，先在服务端把短链接换算成真实 BV 号，改用官方站内播放器。
+    if (parsed.platform === "bilibili" && parsed.url.includes("b23.tv") && !goodEmbed) {
+      const resolved = await resolveBiliShortLinkViaProxy(parsed.url);
+      if (resolved?.embedUrl) {
+        setTarget(resolved);
+        setVideoTitle(current => current || `${resolved.platformName}的一段视频`);
+        setComments(loadTargetComments(resolved.url));
+        setResolutionMessage("已把 b23.tv 短链接换算成真实视频，正在使用 B 站官方站内播放器。");
+        onNotice?.("短链接已换算成功；若要提取直连流（供 AI 看画面），仍可配置本地解析服务。");
+        return;
       }
     }
     if (!parsed.supported && (parsed.platform === "xiaohongshu" || parsed.platform === "douyin")) onNotice?.("正在尝试在小手机内解析" + parsed.platformName + "的公开视频流；如果平台要求登录或启用了防盗链，解析可能失败。");
@@ -1067,6 +1190,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       if (queuedAfterReply) window.setTimeout(() => { void generateComment(true, queuedAfterReply!.moment, queuedAfterReply!.timepoint); }, 50);
     }
   }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice, transcriptSegments, transcriptName, screenshotDataUrl, captureFrameForPrompt, videoBackground]);
+  // 自动搭话定时器通过 ref 读取最新版本，避免它随讨论内容变化而不断重排随机间隔。
+  const generateCommentRef = useRef(generateComment);
+  useEffect(() => { generateCommentRef.current = generateComment; });
 
   /** 把一帧画面交给角色：手动截图和静默截屏共用这一条路径。 */
 
@@ -1083,7 +1209,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       }
       const session = createOrGetSession(contact.id);
       const summary = "【一起看讨论记录 · " + (role === "user" ? "用户发言" : "角色回应") + "】" + new Date().toLocaleString("zh-CN") +
-        " · 视频《" + (videoName || "未命名视频") + "》\\n" + (role === "user" ? "用户：" : characterName + "：") + responseText.slice(0, 1800);
+        " · 视频《" + (videoName || "未命名视频") + "》\n" + (role === "user" ? "用户：" : characterName + "：") + responseText.slice(0, 1800);
       pushChatMessage({ sessionId: session.id, role, content: summary, origin: "custom_app" });
     } catch (error) {
       console.warn("[TogetherWatch] 保存短期记忆失败", error);
@@ -1186,6 +1312,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   const submitDiscussion = (rawText?: string) => {
     const text=(rawText ?? discussionDraft).trim(); if(!target||!text) return;
+    if (wholeVideoBusy) { onNotice?.("视频理解正在分析整段视频，请等这轮回应完成后再发送。"); return; }
     const timepoint=timepointDraft.trim().slice(0,16);
     const comment:WatchComment={id:`user-${Date.now()}`,characterId:"user",characterName:"我",text,createdAt:new Date().toISOString(),kind:"user",timepoint:timepoint||undefined,targetUrl:target.url};
     setComments(current=>{const next=[...current.slice(-99),comment];saveTargetComments(target.url,next);return next;});
@@ -1200,6 +1327,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       }
       return;
     }
+    if (!character) { onNotice?.("还没有可回应的陪看角色。请先在「观影设置」选择角色，或先去聊天 App 创建角色；这条讨论已为你留档。"); return; }
     if (commentBusyRef.current) {
       pendingDiscussionRef.current.push({ moment, timepoint: timepoint || undefined });
     } else void generateComment(true,moment,timepoint||undefined);
@@ -1213,9 +1341,37 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   };
 
   /**
+   * 「标记重点」一键完成：取当前播放时间 → 记一条带时间点的用户评论 → 让角色
+   * 就该时间点作出反馈。不再只是往输入框塞一句草稿让用户自己再点发送。
+   * 外站 iframe 读不到时间轴时保留旧的草稿行为。
+   */
+  const markHighlightAndDiscuss = () => {
+    if (!target) return;
+    const video = playerRef.current?.querySelector("video");
+    const point = video ? formatVideoTime(video.currentTime) : timepointDraft.trim();
+    if (!character) { onNotice?.("还没有可回应的陪看角色。请先在「观影设置」里绑定角色，或先去聊天 App 创建角色。"); return; }
+    if (!video) {
+      patchSettings({ currentMoment: ("重点片段 " + (point || "") + "：").slice(0, 800) });
+      setDiscussionDraft("请把 " + (point || "重点片段") + " 这一幕标记为重点：");
+      onNotice?.("外站播放器无法读取精确时间点；已填好草稿，可补充后发送。");
+      return;
+    }
+    const text = "我们聊聊 " + point + " 这一幕";
+    const comment: WatchComment = { id: `user-${Date.now()}`, characterId: "user", characterName: "我", text, createdAt: new Date().toISOString(), kind: "user", timepoint: point, targetUrl: target.url };
+    setComments(current => { const next = [...current.slice(-99), comment]; saveTargetComments(target.url, next); return next; });
+    persistWatchShortTermMemory(character.id, character.name, videoTitle || target.platformName + "视频", "[" + point + "] " + text, "user");
+    const moment = ("时间点 " + point + "：重点片段。请结合视频剧情，自然地和我聊聊此刻的画面与感受。").slice(0, 800);
+    patchSettings({ currentMoment: moment });
+    if (commentBusyRef.current) pendingDiscussionRef.current.push({ moment, timepoint: point });
+    else void generateComment(true, moment, point);
+    onNotice?.("已标记 " + point + "，正在请" + character.name + "聊聊这一幕。");
+  };
+
+  /**
    * 角色主动搭话的护栏（一起看专属，不和生活系统共用）：
-   * 页面不可见、视频暂停/播完、超过当日上限，都只跳过这一轮并继续排下一次，
-   * 不会因为暂停挂机白烧 API。弹幕仍然是角色**主动**说的，不改成手动触发。
+   * 页面不可见、视频暂停/播完、超过当日上限、正在回应、全局陪看接管，都只跳过这一轮
+   * 并继续排下一次，不会白烧 API，也不会消耗每日配额。generateComment 通过 ref 读取，
+   * 避免它随讨论内容变化而把随机间隔不断重排（聊天越频繁角色越沉默的旧问题）。
    */
   useEffect(() => {
     if (!watching || !target) return;
@@ -1229,8 +1385,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         const video = playerRef.current?.querySelector("video");
         const paused = Boolean(video && (video.paused || video.ended));
         const overLimit = readWatchAutoCount() >= WATCH_AUTO_DAILY_LIMIT;
-        if (document.visibilityState === "visible" && !paused && !overLimit) {
-          await generateComment(false);
+        if (document.visibilityState === "visible" && !paused && !overLimit && !showGlobalCompanionRef.current && !commentBusyRef.current) {
+          await generateCommentRef.current(false);
           bumpWatchAutoCount();
         }
         if (!disposed) scheduleNext();
@@ -1238,12 +1394,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     };
     scheduleNext();
     return () => { disposed = true; window.clearTimeout(timer); };
-  }, [watching, target, settings.intervalMinMinutes, settings.intervalMaxMinutes, generateComment]);
+  }, [watching, target?.url, settings.intervalMinMinutes, settings.intervalMaxMinutes]);
 
-  const danmakuItems = useMemo(() => comments
-    .filter(item => !target?.url || !item.targetUrl || item.targetUrl === target.url)
-    .filter(item => item.kind === "user" || settings.danmakuEnabled)
-    .map(item => ({ id: item.id, text: item.text, kind: item.kind === "user" ? ("user" as const) : ("character" as const), name: item.characterName })), [comments, target?.url]);
   const latestComment = comments[comments.length - 1];
   const platformNote = useMemo(() => {
     if (!target) return "";
@@ -1256,7 +1408,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   if (showGlobalCompanion) return <GlobalWatchCompanionApp onClose={() => setShowGlobalCompanion(false)} onNotice={onNotice} />;
 
   return <div ref={watchRootRef} data-landscape-mode="false" data-source-panel={showVideoSourcePanel ? "true" : "false"} className="watch-together-app pointer-events-auto isolate absolute inset-0 z-[1000] flex min-w-0 flex-col overflow-hidden text-[#f0e6d8]" style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)" }}>
-    {/* 弹幕动画：仓库里从未定义过 watchDanmaku，之前那条 animation 是空转，这里补上真实 keyframes */}
     <style>{`
       .watch-together-main { display:flex; flex-direction:column; }
       .watch-room-card { display:flex; flex-direction:column; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
@@ -1265,13 +1416,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-room-card>[data-part="actions"], .watch-room-card>[data-part="actions2"] { order:3; }
       .watch-room-card>[data-part="history"] { order:4; }
       @keyframes watchWave { from { transform:scaleY(.45); opacity:.45 } to { transform:scaleY(1.15); opacity:1 } }
-      @keyframes watchDanmaku { 0% { transform:translateX(0); opacity:0 } 6% { opacity:1 } 92% { opacity:1 } 100% { transform:translateX(calc(-100% - 100vw)); opacity:0 } }
       .watch-player { flex-shrink:0; border:5px solid #342a21!important; border-radius:22px!important; background:#090807; box-shadow:0 0 0 1px rgba(255,247,233,.45),0 8px 0 #8c6847,0 24px 42px rgba(68,44,24,.26)!important; }
       .watch-link-panel { flex-shrink:0; }
       .watch-interaction-panel { min-width:0; }
-      .watch-danmaku-track { position:absolute; left:100%; max-width:none; white-space:nowrap; animation-name:watchDanmaku; animation-timing-function:linear; animation-fill-mode:forwards; pointer-events:none; }
-      .watch-danmaku-track > span { display:inline-block; border-radius:999px; background:rgba(0,0,0,.45); padding:4px 10px; color:rgba(255,255,255,.96); font-size:clamp(11px,1.2vw,15px); text-shadow:0 1px 3px rgba(0,0,0,.85); }
-      .watch-danmaku-track[data-kind="user"] > span { background:rgba(54,101,144,.82); }
 
       /* Mobile layout is defined once in the consolidated responsive rules below. */
             /* Fullscreen is intentionally delegated to native player controls; never resize the whole WebView. */
@@ -1399,7 +1546,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         overflow-y:auto!important; overflow-x:hidden!important; overscroll-behavior:contain!important;
         -webkit-overflow-scrolling:touch!important; touch-action:pan-y!important;
       }
-      .watch-together-app [data-resolver-state] { display:none!important; }
       .watch-together-app .watch-link-panel { display:none!important; }
       .watch-together-app[data-source-panel="true"] .watch-link-panel {
         display:block!important; position:fixed!important; z-index:4000!important;
@@ -1423,87 +1569,43 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-capsule-toggle{display:grid;flex:0 0 28px;place-items:center;align-self:center;color:#8e6e55;border-radius:999px}
       .watch-capsule-toggle:active{background:rgba(201,154,120,.18)}
       /* Legacy mobile layout removed: the final mobile layout block below is authoritative. */
-      .watch-together-app[data-landscape-mode="true"]{background:#100d0b!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-landscape-header{background:#17120f!important;color:#f4e8d9!important}
-      .watch-together-app[data-landscape-mode="true"]>main.watch-together-main{display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr) auto!important;grid-template-areas:"player" "interaction"!important;gap:0!important;padding:0 12px max(8px,env(safe-area-inset-bottom))!important;overflow:hidden!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-topbar,.watch-together-app[data-landscape-mode="true"] .watch-room-title,.watch-together-app[data-landscape-mode="true"] .watch-control-capsule,.watch-together-app[data-landscape-mode="true"] .watch-link-panel{display:none!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-player{grid-area:player!important;width:100%!important;max-width:none!important;height:100%!important;max-height:none!important;aspect-ratio:auto!important;margin:0!important;border:0!important;border-radius:8px!important;box-shadow:none!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-player>video,.watch-together-app[data-landscape-mode="true"] .watch-player>iframe{width:100%!important;height:100%!important;max-height:none!important;aspect-ratio:auto!important;object-fit:contain!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-interaction-panel{grid-area:interaction!important;width:100%!important;max-width:none!important;min-height:0!important;margin:8px 0 0!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-room-card{display:flex!important;flex-direction:column!important;height:auto!important;min-height:0!important;overflow:visible!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-room-card [data-part="message"],.watch-together-app[data-landscape-mode="true"] .watch-room-card [data-part="actions"],.watch-together-app[data-landscape-mode="true"] .watch-room-card [data-part="actions2"],.watch-together-app[data-landscape-mode="true"] .watch-room-card [data-part="history"]{display:none!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer{margin:0!important;padding:0!important;border:0!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer>div:first-child{display:none!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer textarea{min-height:40px!important;max-height:70px!important;border-radius:999px!important;background:#2a211b!important;border-color:#5c4636!important;color:#fff!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer>div:last-child{position:absolute!important;right:18px!important;bottom:calc(max(8px,env(safe-area-inset-bottom)) + 4px)!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer button{border-radius:999px!important;background:#c99a78!important}
 
-      .watch-together-app:not([data-landscape-mode="true"]) [data-resolver-state]{display:none!important}
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="composer"]{margin-top:auto!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-topbar{display:none!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-landscape-header{display:flex!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-landscape-header button{color:#f4e8d9!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer textarea{padding-right:82px!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer>div:last-child{z-index:5!important}
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-landscape-header{display:none!important}
       .watch-together-app [data-part="composer"] textarea{font-family:inherit}
       .watch-control-capsule[data-collapsed="true"] .watch-capsule-button{display:none!important}
       .watch-capsule-toggle{display:grid;flex:0 0 22px;place-items:center;align-self:stretch;color:#8e6e55}
       .watch-control-capsule[data-collapsed="true"]{width:auto!important;align-self:center!important;justify-content:center!important;padding:4px 10px!important;border-radius:999px!important}
       .watch-control-capsule[data-collapsed="true"] .watch-capsule-toggle{width:28px;height:24px}
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="history"]{display:flex!important;flex:1 1 auto!important;flex-direction:column!important;min-height:0!important;margin:0!important;border:0!important;padding:0!important}
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="history"]>div:first-child,.watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="history"]>p,.watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="history"]>div:not(.watch-comment-list){display:none!important}
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-comment-list{display:flex!important;flex:1 1 auto!important;flex-direction:column!important;max-height:none!important;min-height:0!important;margin:0!important;padding:0 0 10px!important;overflow-y:auto!important}
-      .watch-together-app[data-landscape-mode="true"]>main.watch-together-main{padding-top:48px!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-landscape-header{position:absolute!important;top:0!important;left:0!important;right:0!important;z-index:120!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-player .watch-danmaku-fly{z-index:15!important}
-      .watch-together-app[data-landscape-mode="true"] .watch-discussion-composer>div:last-child button{min-width:64px!important}
-.watch-together-app[data-landscape-mode="true"][data-source-panel="true"] .watch-link-panel{display:block!important;position:fixed!important;z-index:4020!important;left:10px!important;right:10px!important;bottom:max(10px,env(safe-area-inset-bottom))!important;width:auto!important;max-height:78dvh!important;overflow:auto!important;margin:0 auto!important}
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-title{display:block!important;grid-area:title!important;min-width:0!important;margin:0!important;padding:0!important}
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-player{grid-area:player!important;align-self:stretch!important;width:100%!important;height:100%!important;max-height:none!important;min-height:0!important;aspect-ratio:auto!important;margin:0!important}
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-player>video,.watch-together-app:not([data-landscape-mode="true"]) .watch-player>iframe{width:100%!important;height:100%!important;max-height:none!important;aspect-ratio:auto!important;object-fit:contain!important}
       .watch-together-app .watch-sync-thread{position:absolute;width:43px;height:1px;background:linear-gradient(90deg,transparent,#c49a78,transparent);opacity:.7}
       .watch-together-app .watch-sync-avatar img{display:block;width:100%;height:100%;object-fit:cover}
       .watch-together-app .watch-sync-wave{transform-origin:center}
       .watch-together-app .watch-control-capsule{margin-top:0!important;margin-bottom:1px!important}
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-control-capsule[data-collapsed="true"]{width:calc(100% - 24px)!important;align-self:stretch!important;justify-content:space-between!important;padding:4px 10px!important;border-radius:14px!important;margin-left:auto!important;margin-right:auto!important}
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-control-capsule[data-collapsed="true"] .watch-capsule-toggle{width:28px!important;height:24px!important}
 
       /* Final mobile layout authority: fixed 16:9 screen and independently scrollable discussion. */
-      .watch-together-app:not([data-landscape-mode="true"]) > main.watch-together-main {
         display:grid!important; grid-template-columns:minmax(0,1fr)!important;
         grid-template-rows:auto auto minmax(0,1fr)!important;
         grid-template-areas:"title" "player" "interaction"!important;
         gap:8px!important; min-height:0!important; overflow:hidden!important;
         padding:7px 12px max(10px,env(safe-area-inset-bottom))!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-player {
         grid-area:player!important; justify-self:center!important; align-self:center!important;
         width:min(100%, 56.888dvh)!important; height:auto!important;
         aspect-ratio:16 / 9!important; min-height:0!important; max-height:32dvh!important;
         margin:0 auto!important; overflow:hidden!important; position:relative!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-player > video,
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-player > iframe {
         position:absolute!important; inset:0!important; display:block!important;
         width:100%!important; height:100%!important; max-width:100%!important; max-height:100%!important;
         aspect-ratio:auto!important; object-fit:contain!important; border:0!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-interaction-panel {
         grid-area:interaction!important; display:flex!important; min-width:0!important; min-height:0!important;
         height:100%!important; max-height:none!important; overflow:hidden!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="history"] {
         display:flex!important; flex:1 1 auto!important; flex-direction:column!important;
         min-height:0!important; overflow:hidden!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-comment-list {
         display:flex!important; flex:1 1 auto!important; flex-direction:column!important;
         min-height:0!important; max-height:none!important; overflow-y:auto!important; overflow-x:hidden!important;
         overscroll-behavior:contain!important; -webkit-overflow-scrolling:touch!important; touch-action:pan-y!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card > [data-part="history"] { order:1!important; }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card > [data-part="composer"] { order:2!important; margin-top:0!important; padding-top:8px!important; }
       .watch-together-app .watch-comment-list [data-comment-author] {
         display:block!important; margin-bottom:3px!important; font:600 10px/1.4 system-ui,sans-serif!important;
         letter-spacing:.04em!important; color:#a77c5d!important;
@@ -1514,26 +1616,19 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       }
 
       /* Final mobile chat layout: history scrolls independently; compact composer is pinned at the bottom. */
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card {
         display:flex!important; flex-direction:column!important; height:100%!important; min-height:0!important;
         overflow:hidden!important; padding:10px 10px max(8px,env(safe-area-inset-bottom))!important;
         background:linear-gradient(160deg,rgba(255,249,239,.97),rgba(244,226,205,.98))!important;
         border:1px solid rgba(172,126,88,.48)!important; border-radius:18px!important;
         box-shadow:0 8px 22px rgba(83,54,33,.12),inset 0 1px 0 rgba(255,255,255,.9)!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="message"],
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="actions"],
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="actions2"] { display:none!important; }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card [data-part="history"] {
         display:flex!important; order:1!important; flex:1 1 0!important; width:100%!important; min-height:0!important;
         margin:0!important; padding:0 0 8px!important; border:0!important; overflow:hidden!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card .watch-comment-list {
         display:flex!important; flex:1 1 0!important; min-height:0!important; max-height:none!important;
         overflow-y:auto!important; overflow-x:hidden!important; overscroll-behavior:contain!important;
         -webkit-overflow-scrolling:touch!important; touch-action:pan-y!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-discussion-composer {
         order:2!important; display:block!important; flex:0 0 auto!important; width:100%!important; margin:0!important;
         padding:8px 0 0!important; border-top:1px solid rgba(172,126,88,.25)!important;
       }
@@ -1544,14 +1639,11 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         white-space:nowrap; box-shadow:0 1px 3px rgba(93,61,39,.04);
       }
       .watch-chat-chip:disabled { opacity:.38; }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-discussion-composer textarea {
         min-height:36px!important; height:36px!important; max-height:72px!important; padding-top:8px!important; padding-bottom:8px!important;
         border:0!important; border-radius:0!important; background:transparent!important; color:#594536!important; box-shadow:none!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-discussion-composer form {
         display:flex!important; flex-direction:row!important; align-items:center!important; gap:6px!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-discussion-composer form button {
         position:static!important; height:36px!important; min-height:36px!important; margin:0!important;
       }
 
@@ -1606,50 +1698,35 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         scroll-margin-bottom:12px!important;
       }
       /* Previous mobile CSS hid the first composer row, which also hid all chips. */
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-discussion-composer > div:first-child {
         display:flex!important; visibility:visible!important; opacity:1!important; position:relative!important;
         flex:0 0 auto!important; flex-wrap:wrap!important; gap:6px!important; margin:0 0 8px!important;
         max-height:none!important; overflow:visible!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-chat-chip {
         display:inline-flex!important; flex:0 0 auto!important; visibility:visible!important; align-items:center!important;
         justify-content:center!important; min-height:30px!important; padding:6px 11px!important; font-size:11px!important;
         color:#79573f!important; background:rgba(255,255,255,.92)!important; border:1px solid rgba(165,121,85,.4)!important;
         border-radius:999px!important; white-space:nowrap!important; opacity:1!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-chat-chip-active { color:#fff9f0!important; background:#8e6247!important; border-color:#8e6247!important; }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card > [data-part="message"] { position:relative!important; z-index:2!important; flex:0 0 auto!important; max-height:84px!important; overflow:hidden!important; }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card > [data-part="message"] p { display:-webkit-box!important; -webkit-box-orient:vertical!important; -webkit-line-clamp:2!important; overflow:hidden!important; }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-room-card > [data-part="history"] { position:relative!important; z-index:2!important; flex:1 1 0!important; min-height:0!important; overflow:hidden!important; }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-discussion-composer { position:relative!important; z-index:3!important; flex:0 0 auto!important; margin-top:0!important; padding-top:8px!important; }
       /* Illustration now lives in the empty-state flow; no absolute overlay can cover text or controls. */
       .watch-empty-discussion { flex:0 0 auto; }
       .watch-empty-discussion svg { display:block; width:auto; height:clamp(112px, 20dvh, 180px); max-width:100%; margin:0 auto; overflow:visible; }
       .watch-empty-illustration { position:relative; flex:0 0 auto; min-height:0; }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-link-panel button,
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-link-panel label {
         justify-content:center!important; text-align:center!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-link-panel button { display:flex!important; align-items:center!important; }
 
       /* Reserved illustration slot: caption → illustration → chat capsules. */
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-empty-state {
         display:flex!important; flex:0 0 auto!important; flex-direction:column!important; align-items:center!important;
         justify-content:flex-start!important; width:100%!important; min-width:0!important; margin:2px auto 0!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-empty-state > p {
         width:100%!important; margin:0 auto 2px!important; text-align:center!important; color:#9a7f6d!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-empty-illustration {
         position:relative!important; flex:0 0 auto!important; width:100%!important;
         height:clamp(112px,20dvh,180px)!important; min-height:112px!important; max-height:180px!important;
         margin:0 auto 2px!important; overflow:visible!important; align-self:center!important; opacity:.48!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-empty-illustration svg {
         display:block!important; width:min(100%,280px)!important; height:100%!important; max-width:280px!important;
         max-height:100%!important; margin:0 auto!important; object-fit:contain!important;
       }
-      .watch-together-app:not([data-landscape-mode="true"]) .watch-empty-discussion {
         display:none!important;
       }
       .watch-together-app[data-source-panel="true"] .watch-link-panel > div:nth-of-type(2) > * {
@@ -1719,7 +1796,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         style={{ boxShadow: "0 0 0 1px rgba(255,214,170,.06), 0 28px 70px rgba(0,0,0,.6), 0 0 120px rgba(201,143,82,.16)" }}
       >
         {target?.nativeVideo ? (
-          <video key={target.nativeVideoUrl || target.url} src={target.nativeVideoUrl || target.url} controls playsInline onPlay={() => setMediaPaused(false)} onPause={() => setMediaPaused(true)} className="aspect-video w-full bg-black object-contain" onEnded={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } }} onError={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } onNotice?.("视频无法在当前 WebView 播放，可能是格式、签名有效期或平台防盗链限制。"); }} />
+          <video key={target.nativeVideoUrl || target.url} src={target.nativeVideoUrl || target.url} controls playsInline {...(target.nativeCacheId ? { crossOrigin: "anonymous" as const } : {})} onLoadedMetadata={event => { const v = event.currentTarget; const saved = readWatchResumeMap()[target.url]?.t ?? 0; if (saved > 15 && v.duration && saved < v.duration - 45) { v.currentTime = saved; if (resumeNoticeUrlRef.current !== target.url) { resumeNoticeUrlRef.current = target.url; onNotice?.("已恢复到上次播放位置，接着一起看。"); } } }} onTimeUpdate={event => { const v = event.currentTarget; const last = Number(v.dataset.lastSave ?? "0"); if (Math.abs(v.currentTime - last) >= 5) { v.dataset.lastSave = String(v.currentTime); saveWatchResumePosition(target.url, v.currentTime); } }} className="aspect-video w-full bg-black object-contain" onEnded={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } }} onError={() => { const cached = nativeVideoCacheRef.current; if (cached && cached.url === target.url) { try { (window as WatchNativeWindow).AndroidShell?.deleteCachedShortVideo?.(cached.cacheId); } catch { /* cache TTL fallback */ } nativeVideoCacheRef.current = null; } onNotice?.("视频无法在当前 WebView 播放，可能是格式、签名有效期或平台防盗链限制。"); }} />
         ) : target?.embedUrl ? (
           <div className="relative aspect-video w-full overflow-hidden bg-black">
             <iframe
@@ -1755,14 +1832,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         <div aria-hidden className="pointer-events-none absolute -bottom-6 left-1/2 h-6 w-[86%] -translate-x-1/2 rounded-[50%] opacity-40 blur-xl" style={{ background: "radial-gradient(ellipse, #d7a06a 0%, transparent 70%)" }} />
 
       </section>
-        {resolverState.state !== "idle" && <div className="mx-auto mt-2 flex w-full max-w-3xl items-start gap-1.5 px-1 text-[10px] leading-5" data-resolver-state={resolverState.state}><span className={resolverState.state==="ok"?"text-[#8fd0a2]":resolverState.state==="failed"?"text-[#e0938a]":"text-[#d9b489]"}>{resolverState.state==="resolving"?"正在解析视频链接…":resolverState.state==="ok"?"✓ 解析成功 · 已在应用内播放":"✕ 解析失败："+(resolverState.message||"未知原因")}</span></div>}
 
       {/* 没有视频时：链接输入放在「屏幕」下方，像往播放器里投一块碟 */}
       <div className="watch-link-panel mx-auto mt-4 w-full max-w-3xl rounded-3xl border border-[#b89979]/30 bg-[#fff8ed]/75 p-3 shadow-[0_12px_30px_rgba(96,67,43,.08)] backdrop-blur sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-3"><span className="text-xs font-semibold text-[#735440]">选择一起看的视频</span><button type="button" onClick={() => setShowVideoSourcePanel(false)} className="rounded-full border border-[#b89979]/45 bg-white/80 px-3 py-1.5 text-xs text-[#735440]">收起</button></div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input value={urlInput} onPointerDown={event => event.stopPropagation()} onTouchStart={event => event.stopPropagation()} onChange={event => setUrlInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter") openVideo(); }} placeholder="粘贴视频链接（B站建议使用 BV / av 标准链接）" className="min-w-0 flex-1 rounded-2xl border border-[#dac6ad] bg-white/90 px-4 py-3.5 text-sm text-[#554437] outline-none placeholder:text-[#a09383] focus:border-[#b88768] focus:ring-2 focus:ring-[#c99a6a]/15" />
-          <button onClick={openVideo} className="inline-flex items-center justify-center text-center rounded-2xl px-5 py-3.5 text-sm font-semibold tracking-wide text-[#2a1f16] shadow-sm transition hover:brightness-[1.02] active:scale-[.98]" style={{ background: "linear-gradient(135deg,#f0d0a8,#c99a6a)" }}>开始播放</button>
+          <button onClick={() => void openVideo()} className="inline-flex items-center justify-center text-center rounded-2xl px-5 py-3.5 text-sm font-semibold tracking-wide text-[#2a1f16] shadow-sm transition hover:brightness-[1.02] active:scale-[.98]" style={{ background: "linear-gradient(135deg,#f0d0a8,#c99a6a)" }}>开始播放</button>
           <label className="relative inline-flex cursor-pointer items-center justify-center text-center rounded-2xl border border-[#b89979]/50 bg-white/90 px-4 py-3.5 text-sm font-medium text-[#735440] transition hover:bg-white active:scale-[.98]">
             选择本地视频
             <input ref={videoFileInputRef} type="file" accept="video/*,.mp4,.webm,.mov,.m4v,.ogv" aria-label="选择本地视频文件" className="absolute inset-0 h-full w-full cursor-pointer opacity-0" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) openLocalVideo(file); }} />
@@ -1806,8 +1882,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             <ol className="mt-2 list-decimal space-y-2 pl-4 text-[11px] leading-5 text-[#8b7665]">
               <li>在电脑上安装 Python 3.10+ 和 FFmpeg；从项目仓库根目录运行 <code>pip install -r tools/video-transcriber/requirements.txt</code>。</li>
               <li>Windows PowerShell 中运行：<code>$env:VIDEO_TRANSCRIBER_TOKEN = (python -c "import secrets; print(secrets.token_urlsafe(32))")</code>，再设置 <code>$env:VIDEO_TRANSCRIBER_ALLOWED_ORIGINS = "你当前小手机网页的完整 https 地址"</code>。</li>
-              <li>启动服务：<code>python tools/video-transcriber/server.py --host 127.0.0.1 --port 8765</code>。电脑需要保持开机；首次转写会下载语音模型，之后复用缓存。手机不能把电脑的 localhost 当成电脑地址。</li>
-              <li>如果手机需要跨网络访问，可选用 Cloudflare Tunnel：在电脑安装 cloudflared 后，可先用临时隧道测试：<code>cloudflared tunnel --url http://localhost:8765</code>，将终端显示的 <code>https://…trycloudflare.com</code> 地址填入下方“服务地址”（应用会自动补上 <code>/transcribe</code>）。要长期使用再配置命名隧道。隧道只负责安全转发，不替你运行转写；电脑关机或服务停止后就不可用。不要公开分享隧道地址或访问令牌。</li>
+              <li>启动服务：<code>python tools/video-transcriber/server.py --host 127.0.0.1 --port 8766</code>。电脑需要保持开机；首次转写会下载语音模型，之后复用缓存。手机不能把电脑的 localhost 当成电脑地址。</li>
+              <li>如果手机需要跨网络访问，可选用 Cloudflare Tunnel：在电脑安装 cloudflared 后，可先用临时隧道测试：<code>cloudflared tunnel --url http://localhost:8766</code>，将终端显示的 <code>https://…trycloudflare.com</code> 地址填入下方“服务地址”（应用会自动补上 <code>/transcribe</code>）。要长期使用再配置命名隧道。隧道只负责安全转发，不替你运行转写；电脑关机或服务停止后就不可用。不要公开分享隧道地址或访问令牌。</li>
               <li>把服务地址和令牌填入本页，粘贴视频链接后点“解析链接并生成脚本”。若平台限制下载、需要登录态或触发风控，转写可能失败；可尝试导入字幕文件，应用不会假装已经看懂未取得的内容。</li>
             </ol>
             <p className="mt-2 text-[10px] leading-4 text-[#8b7665]">本地方案能借助 yt-dlp 尝试获取部分平台字幕/音轨，兼容面更广但电脑必须运行。Cloudflare 云端方案无需电脑常开，但目前只支持配置白名单域名下的直接音频文件，不会解析任意视频平台页面。两种方案共用下面的服务地址和令牌输入框。</p>
@@ -1869,7 +1945,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </svg></div></div>}
             <div data-part="composer" className="watch-discussion-composer relative z-20 shrink-0 border-t border-[#d6b18c]/25 pt-2">
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
-                <button type="button" onClick={() => { const video=playerRef.current?.querySelector("video"); const point=video?formatVideoTime(video.currentTime):timepointDraft; setTimepointDraft(point); patchSettings({currentMoment:("重点片段 "+point+"：").slice(0,800)}); setDiscussionDraft("请把 "+point+" 这一幕标记为重点："); onNotice?.(video ? "已标记重点时间点 "+point+"，可补充说明后发送。" : "已打开重点标记草稿；外站播放器无法读取精确时间点。"); }} disabled={!target} className="watch-chat-chip"><Sparkles size={11}/>标记重点</button>
+                <button type="button" onClick={markHighlightAndDiscuss} disabled={!target} className="watch-chat-chip"><Sparkles size={11}/>标记重点</button>
                 <button type="button" onClick={() => actTogether("我们来聊聊刚才的剧情发展和人物动机，只根据已出现的内容讨论。")} disabled={!target||!character||busy} className="watch-chat-chip"><MessageCircle size={11}/>讨论情节</button>
                 <button type="button" aria-pressed={videoUnderstandingEnabled} onClick={() => { setVideoUnderstandingEnabled(value => { const next=!value; try { window.localStorage.setItem("watch_video_understanding_enabled_v1", String(next)); } catch {} if(next) onNotice?.("已开启独立视频理解模式：发送讨论时会把本地视频交给已配置的视频分析模型；这与角色聊天模型不同。"); return next; }) }} className={"watch-chat-chip "+(videoUnderstandingEnabled?"watch-chat-chip-active":"")}><Sparkles size={11}/>{videoUnderstandingEnabled?"视频理解·开":"视频理解·关"}</button>
               </div>
@@ -1888,10 +1964,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             </button>
             {target?.platformName === "本地视频" && localVideoFileRef.current && <div className="flex min-w-0 basis-full flex-wrap items-center gap-2 rounded-xl border border-[#c99a78]/30 bg-white/[.04] px-3 py-2">
               <div className="min-w-0 flex-1">
-                <div className="text-[11px] font-semibold text-[#e6c49d]">完整视频分析 · 待完善</div>
-                <div className="mt-0.5 text-[10px] leading-4 text-[#a9937e]">完整视频分析入口保留为待完善功能，当前不触发整段视频上传。现在可使用随机截图陪看、手动上传截图及导入字幕/脚本；外部公开资料会作为独立上下文交给角色 AI。</div>
+                <div className="text-[11px] font-semibold text-[#e6c49d]">整段视频理解已就绪</div>
+                <div className="mt-0.5 text-[10px] leading-4 text-[#a9937e]">打开顶部的「视频理解」开关后，发送讨论会把整段本地视频交给独立视频模型分析（产生 API 费用）；开关关闭时走截图 + 字幕 + 时间点的聊天模型路径。</div>
               </div>
-              <button type="button" disabled className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-[#8b8077]">待完善</button>
+              <span className="shrink-0 rounded-full border border-[#c99a6a]/50 bg-[#c99a6a]/15 px-3 py-2 text-[11px] text-[#f0d5b8]">{videoUnderstandingEnabled ? "随讨论触发" : "开关未打开"}</span>
             </div>}
             <button onClick={() => { setGlobalWatchRecords(loadGlobalWatchRecords()); setShowHistory(true); }} disabled={!comments.length && !globalWatchRecords.length} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3.5 py-2 text-xs text-[#d8c9b6] transition active:scale-95 disabled:opacity-40">
               <Heart size={13}/>回看悄悄话 {comments.length > 0 && <span className="text-[#c99a6a]">{comments.length}</span>}
@@ -1978,8 +2054,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             }} className="mt-2 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#d8c9b6] disabled:opacity-40">重新获取当前视频资料</button>
           </section>
           <section className="mt-4 border-t border-white/10 pt-3">
-            <h3 className="font-serif text-sm text-[#e8c39a]">本地视频下载引擎</h3>
-             <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">可选安装 Termux 本地解析服务。安装失败或未安装时，仍会尝试当前平台支持的内嵌播放器；部分平台会限制 WebView/iframe 播放，不能保证所有链接都可播。</p>
+            <h3 className="font-serif text-sm text-[#e8c39a]">视频解析与本地缓存</h3>
+             <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">站内解析已内置，自部署直接可用：小红书（含 xhslink 短链）免登录解析并缓存到本机；抖音/快手需在下方配置外部解析服务（抖音必须粘贴 Cookies）。B站/直链/本地文件无需解析。缓存长期保留——同一链接下次秒开、长视频自动续播；仅超过总容量上限（默认 4 GB）才按最久未看清理。删除单条缓存请到「观看记录」对应卡片。</p>
+             <button type="button" onClick={async () => { try { const res = await fetch("/api/watch-resolver/cache", { method: "DELETE" }); const result = await res.json() as { ok?: boolean; removed?: number }; setLocalResolverStatus(result.ok ? `已清空站内缓存（${result.removed ?? 0} 个文件）。` : "清空失败：" + (result as { error?: string }).error); } catch (error) { setLocalResolverStatus("清空失败：" + (error instanceof Error ? error.message : String(error))); } }} className="mt-2 w-full rounded-xl border border-[#c99a6a]/60 bg-[#c99a6a]/15 px-3 py-2.5 text-xs font-medium text-[#f0d5b8]">清空全部站内缓存</button>
+             <p className="mt-3 text-[10px] font-medium tracking-wide text-[#c9a887]">外部解析服务（可选进阶 · Termux / 电脑 Python）——想要 yt-dlp 级别能力（如带 Cookies 的抖音）时才需要：</p>
              <button type="button" onClick={async () => {
                const command = "curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver/install-termux.sh | bash";
                try {
@@ -1989,9 +2067,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
                } catch {
                  setTermuxDeployStatus("自动复制不可用。请长按下方命令文本复制，再切换到 Termux 粘贴执行。");
                }
-             }} className="mt-3 w-full rounded-xl border border-[#c99a6a]/60 bg-[#c99a6a]/15 px-3 py-2.5 text-xs font-medium text-[#f0d5b8]">复制 Termux 一键部署命令</button>
+             }} className="mt-2 w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-xs text-[#d8c9b6]">复制 Termux 一键部署命令</button>
              {termuxDeployStatus && <div role="status" aria-live="polite" className="mt-2 rounded-lg bg-black/20 p-2 text-[10px] leading-5 text-[#e6c49d]">{termuxDeployStatus}<code onClick={async () => { try { await navigator.clipboard.writeText("curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver/install-termux.sh | bash"); onNotice?.("部署命令已复制"); } catch { onNotice?.("请长按命令复制"); } }} className="mt-1 block select-all break-all rounded bg-black/20 p-2 text-[10px]">curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver/install-termux.sh | bash</code></div>}
-             <p className="mt-2 text-[10px] leading-5 text-[#8b8077]">安装完成后服务地址为 http://127.0.0.1:8765。Termux 被系统停止时，重新打开 Termux 执行 momo-video-start。</p>
+             <p className="mt-2 text-[10px] leading-5 text-[#8b8077]">安装完成后服务地址为 http://127.0.0.1:8765。Termux 被系统停止时，重新打开 Termux 执行 momo-video-start。未配置时站内解析与平台内嵌播放器照常工作。</p>
             <label className="mt-2 block text-[11px] text-[#9c9086]">解析服务地址
               <input type="url" value={localResolverEndpoint} onChange={event => setLocalResolverEndpoint(event.target.value)} placeholder="http://127.0.0.1:8765" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none"/>
             </label>
@@ -2005,12 +2083,15 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             <label className="mt-2 block text-[11px] text-[#9c9086]">本地服务令牌（可留空）
               <input type="password" autoComplete="off" value={localResolverToken} onChange={event => setLocalResolverToken(event.target.value)} placeholder="仅保存在此设备" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none"/>
             </label>
+            <label className="mt-2 block text-[11px] text-[#9c9086]">平台 Cookies（可选，Netscape 格式）
+              <textarea value={localResolverCookies} onChange={event => setLocalResolverCookies(event.target.value)} rows={3} placeholder="抖音必须：电脑浏览器打开 douyin.com 浏览任意视频后，用 cookies 导出扩展（Get cookies.txt LOCALLY 等）导出 Netscape 格式粘贴到这里，随外部解析请求使用。小红书/B站不需要。" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-xs text-[#efe2d0] outline-none"/>
+            </label>
             <div className="mt-2 flex gap-2">
-              <button type="button" onClick={() => { try { window.localStorage.setItem("watch_local_resolver_endpoint_v1", localResolverEndpoint.trim()); window.localStorage.setItem("watch_local_resolver_token_v1", localResolverToken); setLocalResolverStatus("设置已保存"); } catch { setLocalResolverStatus("保存失败"); } }} className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#d8c9b6]">保存设置</button>
+              <button type="button" onClick={() => { try { window.localStorage.setItem("watch_local_resolver_endpoint_v1", localResolverEndpoint.trim()); window.localStorage.setItem("watch_local_resolver_token_v1", localResolverToken); window.localStorage.setItem("watch_local_resolver_cookies_v1", localResolverCookies); setLocalResolverStatus("设置已保存"); } catch { setLocalResolverStatus("保存失败"); } }} className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#d8c9b6]">保存设置</button>
               <button type="button" onClick={async () => { try { const base = localResolverEndpoint.trim().replace(/\/+$/, ""); const headers: Record<string,string> = {}; if (localResolverToken.trim()) headers["X-Resolver-Token"] = localResolverToken.trim(); const response = await fetch(base + "/health", { headers, signal: AbortSignal.timeout(5000) }); if (!response.ok) throw new Error("HTTP " + response.status); const health = await response.json() as { ok?: boolean; version?: string; engines?: Record<string, boolean>; ffmpeg?: boolean }; if (health.ok === false) throw new Error("服务已启动，但 yt-dlp 引擎不可用"); const engines = health.engines ? Object.entries(health.engines).map(([name, ready]) => name + (ready ? "✓" : "×")).join(" / ") : "引擎状态未知"; setLocalResolverStatus("连接成功 · v" + (health.version || "未知") + " · " + engines + " · FFmpeg " + (health.ffmpeg ? "可用" : "未安装（可能无法合并独立音轨）")); } catch (error) { setLocalResolverStatus("连接失败：" + (error instanceof Error ? error.message : "请检查服务是否启动")); } }} className="flex-1 rounded-lg bg-[#c99a6a] px-3 py-2 text-[11px] font-medium text-[#2a1f16]">测试连接</button>
             </div>
             {localResolverStatus && <p role="status" aria-live="polite" className="mt-2 break-words text-[10px] leading-5 text-[#e6c49d]">{localResolverStatus}</p>}
-            <button type="button" disabled={!localResolverJobRef.current} onClick={async () => { const job = localResolverJobRef.current; if (!job) return; try { await fetch(job.endpoint + "/api/videos/" + encodeURIComponent(job.id), { method: "DELETE", headers: job.token ? { "X-Resolver-Token": job.token } : {} }); setLocalResolverStatus("已请求删除本次本地缓存"); localResolverJobRef.current = null; } catch { setLocalResolverStatus("清理请求失败，请在服务端按缓存策略清理"); } }} className="mt-2 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#d8c9b6] disabled:opacity-40">删除本次本地缓存</button>
+            <button type="button" disabled={!localResolverJobRef.current} onClick={async () => { const job = localResolverJobRef.current; if (!job) return; try { const url = job.builtin ? "/api/watch-resolver/video/" + encodeURIComponent(job.id) : job.endpoint + "/api/videos/" + encodeURIComponent(job.id); await fetch(url, { method: "DELETE", headers: job.token ? { "X-Resolver-Token": job.token } : {} }); setLocalResolverStatus("已删除本次本地缓存；下次播放同一链接会重新下载。"); localResolverJobRef.current = null; } catch { setLocalResolverStatus("清理请求失败，请在服务端按缓存策略清理"); } }} className="mt-2 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#d8c9b6] disabled:opacity-40">删除本次本地缓存</button>
           </section>
           <section className="mt-4 border-t border-white/10 pt-3">
             <h3 className="font-serif text-sm text-[#e8c39a]">视频理解模型</h3>
@@ -2112,7 +2193,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             {record.review && <div className="mt-3"><div className="text-[9px] tracking-widest text-[#a7876c]">CHARACTER’S AFTERTHOUGHT</div><p className="mt-1 whitespace-pre-wrap font-serif text-sm leading-6 text-[#745a46]">{record.review}</p></div>}
             {record.comments.length>0 && <div className="mt-3 border-l-2 border-[#d7b99a] pl-3"><div className="text-[9px] tracking-widest text-[#a7876c]">SAVED MOMENT</div><p className="mt-1 line-clamp-3 text-xs leading-5 text-[#745a46]">{record.comments[record.comments.length-1]}</p></div>}
                          {(record.discussion?.length || record.comments.length > 0) && <details className="mt-3 border-t border-[#e4d0bb] pt-3"><summary className="cursor-pointer text-[11px] text-[#936b50]">查看完整讨论 · {record.discussion?.length ?? record.comments.length} 条</summary><div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">{record.discussion?.length ? record.discussion.map(item => <div key={item.id} className={"border-l-2 px-3 py-2 " + (item.kind === "user" ? "border-[#c99a6a] bg-[#f5e6d7]" : "border-[#d7b99a] bg-white/70")}><div className="flex flex-wrap justify-between gap-2 text-[10px] text-[#9a7c64]"><span>{item.kind === "user" ? "我" : item.characterName}</span><time>{new Date(item.createdAt).toLocaleString("zh-CN")}{item.timepoint ? " · " + item.timepoint : ""}</time></div><p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-[#745a46]">{item.text}</p></div>) : record.comments.map((item,index) => <p key={index} className="whitespace-pre-wrap text-xs leading-5 text-[#745a46]">{item}</p>)}</div></details>}
-<div className="mt-4 flex flex-wrap items-center gap-3"><button type="button" disabled={generatingMemoryReviewId!==null} onClick={() => void generateMemoryReview(record)} className="flex items-center gap-1.5 border border-[#c9a17e] bg-[#f3e1ce] px-3 py-2 text-[11px] text-[#77533d] disabled:opacity-50"><Sparkles size={13}/>{generatingMemoryReviewId===record.id?"角色正在回想…":(record.review || record.quote)?"重新生成纪念卡":"生成角色观后感与纪念卡"}</button><button type="button" onClick={() => setEditingMemoryId(editingMemoryId===record.id?null:record.id)} className="border-b border-[#c6a486] pb-0.5 text-[11px] text-[#936b50]">{editingMemoryId===record.id?"收起编辑":"编辑回忆"}</button></div>
+<div className="mt-4 flex flex-wrap items-center gap-3"><button type="button" onClick={() => { setShowMemoryRecords(false); void openVideo(record.url); }} className="flex items-center gap-1.5 border border-[#c9a17e] bg-[#f3e1ce] px-3 py-2 text-[11px] text-[#77533d]"><Play size={13}/>接着看</button>{record.cacheId ? <span className="flex items-center gap-1.5 rounded-full border border-[#d8c6ad] bg-white/70 px-2.5 py-1.5 text-[10px] text-[#8b6b4e]" title="站内解析的本地缓存：下次打开秒开并自动续播">缓存 {((record.cacheSize ?? 0)/1048576).toFixed(1)} MB<button type="button" onClick={async () => { try { const res = await fetch("/api/watch-resolver/video/" + encodeURIComponent(record.cacheId!), { method: "DELETE" }); if (res.ok) { patchMemoryRecord(record.id, { cacheId: undefined, cacheSize: undefined }); onNotice?.("已删除这条记录的本地缓存；下次播放会重新下载。"); } else onNotice?.("删除缓存失败。"); } catch { onNotice?.("删除缓存失败。"); } }} className="border-b border-[#c6a486] text-[#936b50]">删缓存</button></span> : null}<button type="button" disabled={generatingMemoryReviewId!==null} onClick={() => void generateMemoryReview(record)} className="flex items-center gap-1.5 border border-[#c9a17e] bg-[#f3e1ce] px-3 py-2 text-[11px] text-[#77533d] disabled:opacity-50"><Sparkles size={13}/>{generatingMemoryReviewId===record.id?"角色正在回想…":(record.review || record.quote)?"重新生成纪念卡":"生成角色观后感与纪念卡"}</button><button type="button" onClick={() => setEditingMemoryId(editingMemoryId===record.id?null:record.id)} className="border-b border-[#c6a486] pb-0.5 text-[11px] text-[#936b50]">{editingMemoryId===record.id?"收起编辑":"编辑回忆"}</button></div>
             {editingMemoryId===record.id && <div className="mt-3 space-y-3">
               <label className="block text-[11px] text-[#98785f]">我的观后感<textarea value={record.review} onChange={e=>patchMemoryRecord(record.id,{review:e.target.value})} rows={3} placeholder="这次一起看，给我留下了什么感觉？" className="mt-1 w-full resize-y rounded-none border border-[#dfcbb6] bg-white/75 p-2.5 text-sm text-[#594536] outline-none focus:border-[#b9906b]"/></label>
               <label className="block text-[11px] text-[#98785f]">角色的感想 / 这次的共同回忆<textarea value={record.characterReview} onChange={e=>patchMemoryRecord(record.id,{characterReview:e.target.value})} rows={3} placeholder="可以记录角色真实说过的话或你想留住的瞬间，不会自动编造。" className="mt-1 w-full resize-y rounded-none border border-[#dfcbb6] bg-white/75 p-2.5 text-sm text-[#594536] outline-none focus:border-[#b9906b]"/></label>

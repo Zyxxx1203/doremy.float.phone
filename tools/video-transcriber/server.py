@@ -195,7 +195,7 @@ def main() -> int:
     import argparse
     parser = argparse.ArgumentParser(description="Authenticated local HTTP bridge for video-transcriber")
     parser.add_argument("--host", default=os.environ.get("VIDEO_TRANSCRIBER_HOST", "127.0.0.1"))
-    parser.add_argument("--port", default=int(os.environ.get("VIDEO_TRANSCRIBER_PORT", "8765")), type=int)
+    parser.add_argument("--port", default=int(os.environ.get("VIDEO_TRANSCRIBER_PORT", "8766")), type=int)
     args = parser.parse_args()
     if len(TOKEN) < 24:
         parser.error("Set VIDEO_TRANSCRIBER_TOKEN to a random secret with at least 24 characters.")

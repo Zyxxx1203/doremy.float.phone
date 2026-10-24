@@ -57,6 +57,38 @@ def validate_url(value: str) -> str:
         raise HTTPException(400, "无法解析链接域名")
     return value.strip()
 
+SHORT_LINK_HOSTS = ("xhslink.cn", "xhslink.com", "b23.tv", "v.douyin.com")
+
+def expand_short_url(url: str) -> str:
+    """短链域名（xhslink.cn 等）必须先在服务端展开成正式域：parse-video-py 只认
+    xiaohongshu.com/discovery/... 这类正式地址，yt-dlp 直连短域又会超时。展开时
+    顺便把分享参数里的 xsec_token 一并带过去，匿名访问笔记必需。展开结果同样要过
+    validate_url，防止短链把本服务变成内网下载器。"""
+    try:
+        host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+        if host not in SHORT_LINK_HOSTS:
+            return url
+        import httpx
+        current = url
+        for _ in range(5):
+            resp = httpx.get(current, follow_redirects=False, timeout=20, headers={
+                "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+            })
+            if resp.status_code in (301, 302, 303, 307, 308):
+                location = resp.headers.get("location")
+                if not location:
+                    break
+                from urllib.parse import urljoin
+                current = urljoin(current, location)
+                continue
+            break
+        expanded = current
+        return validate_url(expanded) if expanded != url else url
+    except HTTPException:
+        raise
+    except Exception:
+        return url
+
 def _engine_order(url: str, requested: str) -> list[str]:
     if requested != "auto":
         return [requested]
@@ -65,7 +97,7 @@ def _engine_order(url: str, requested: str) -> list[str]:
     # yt-dlp must inspect the original page to select/merge audio and video tracks.
     parse_first_hosts = (
         "douyin.com", "iesdouyin.com", "kuaishou.com", "gifshow.com",
-        "xiaohongshu.com", "xhslink.com", "pipix.com", "huoshan.com",
+        "xiaohongshu.com", "xhslink.com", "xhslink.cn", "pipix.com", "huoshan.com",
         "ixigua.com", "weishi.qq.com", "zuiyou.com",
     )
     parse_first = any(host == domain or host.endswith("." + domain) for domain in parse_first_hosts)
@@ -141,6 +173,7 @@ def health():
 async def resolve(body: ResolveRequest, x_resolver_token: str | None = Header(default=None)):
     authorize(x_resolver_token)
     url = validate_url(body.url)
+    url = expand_short_url(url)
     job_id = secrets.token_urlsafe(12)
     async with LOCK:
         JOBS[job_id] = {"state": "downloading", "message": "正在获取视频并保存到本地", "created": time.time()}

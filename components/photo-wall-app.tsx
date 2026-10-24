@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Camera, Check, ChevronLeft, ChevronRight, Download, Feather, Heart, ImagePlus, LoaderCircle, MessageCircle, MoreHorizontal, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, Camera, Check, Download, Feather, Heart, ImagePlus, LoaderCircle, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import { loadImageGenerationSettings } from "@/lib/settings-storage";
 import type { Character } from "@/lib/character-types";
@@ -323,6 +323,17 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const touchDistance = (touches: TouchList) => Math.max(1, Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY));
     const pointsDistance = (points: { x: number; y: number }[]) => Math.max(1, Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y));
     const supportsPointerEvents = typeof window !== "undefined" && "PointerEvent" in window;
+    /**
+     * 手机壳的兼容性缩放（--compat-layout-scale）作用在整个 .phone-shell-wrap 上，
+     * 使 client 坐标 = 布局坐标 × k。pan/zoom 状态是布局像素，而事件的 clientX/Y 是
+     * 屏幕像素；k≠1 的设备（UI 缩放 75–125% / 手动屏幕适配）必须先除回 k，否则
+     * 双指缩放锚点、单指平移速度都会按比例漂移。getBoundingClientRect 与 clientWidth
+     * 同源相除即可得到当前真实 k（默认 1，成本可忽略）。
+     */
+    const shellScale = () => {
+      const rect = viewport.getBoundingClientRect();
+      return rect.width > 0 && viewport.clientWidth > 0 ? rect.width / viewport.clientWidth : 1;
+    };
     /** 单指平移：只有「浏览模式 + 落点是空白画布」才启动，摆照片/涂鸦/翻面都要原样把单指交给画布自己处理。 */
     const singlePanEligible = (clientX: number, clientY: number) => {
       if (wallCanvasMode !== "view") return false;
@@ -370,10 +381,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           pinchStartRef.current.zoom * pointsDistance(points) / Math.max(1, pinchStartRef.current.distance),
         )));
         const nextScale = nextZoomValue / 100;
-        const previousLocalX = previousMidpoint.x - rect.left;
-        const previousLocalY = previousMidpoint.y - rect.top;
-        const currentLocalX = midpoint.x - rect.left;
-        const currentLocalY = midpoint.y - rect.top;
+        const anchorScale = shellScale();
+        const previousLocalX = (previousMidpoint.x - rect.left) / anchorScale;
+        const previousLocalY = (previousMidpoint.y - rect.top) / anchorScale;
+        const currentLocalX = (midpoint.x - rect.left) / anchorScale;
+        const currentLocalY = (midpoint.y - rect.top) / anchorScale;
         const worldX = (previousLocalX - pan.x) / previousZoom;
         const worldY = (previousLocalY - pan.y) / previousZoom;
         applyPan(currentLocalX - worldX * nextScale, currentLocalY - worldY * nextScale);
@@ -393,7 +405,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         const dx = event.clientX - touch.x, dy = event.clientY - touch.y;
         touch.x = event.clientX; touch.y = event.clientY;
         const pan = panRef.current;
-        applyPan(pan.x + dx, pan.y + dy);
+        const anchorScale = shellScale();
+        applyPan(pan.x + dx / anchorScale, pan.y + dy / anchorScale);
       }
     };
     const onPointerEnd = (event: PointerEvent) => {
@@ -453,10 +466,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           pinchStartRef.current.zoom * touchDistance(event.touches) / Math.max(1, pinchStartRef.current.distance),
         )));
         const nextScale = nextZoomValue / 100;
-        const previousLocalX = previousMidpoint.x - rect.left;
-        const previousLocalY = previousMidpoint.y - rect.top;
-        const currentLocalX = midpoint.x - rect.left;
-        const currentLocalY = midpoint.y - rect.top;
+        const anchorScale = shellScale();
+        const previousLocalX = (previousMidpoint.x - rect.left) / anchorScale;
+        const previousLocalY = (previousMidpoint.y - rect.top) / anchorScale;
+        const currentLocalX = (midpoint.x - rect.left) / anchorScale;
+        const currentLocalY = (midpoint.y - rect.top) / anchorScale;
         const worldX = (previousLocalX - pan.x) / previousZoom;
         const worldY = (previousLocalY - pan.y) / previousZoom;
         applyPan(currentLocalX - worldX * nextScale, currentLocalY - worldY * nextScale);
@@ -475,7 +489,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         const dx = event.touches[0].clientX - touch.x, dy = event.touches[0].clientY - touch.y;
         touch.x = event.touches[0].clientX; touch.y = event.touches[0].clientY;
         const pan = panRef.current;
-        applyPan(pan.x + dx, pan.y + dy);
+        const anchorScale = shellScale();
+        applyPan(pan.x + dx / anchorScale, pan.y + dy / anchorScale);
       }
     };
     const onTouchEnd = (event: TouchEvent) => {
@@ -1140,10 +1155,14 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           persist({ ...current, photos: rearranged });
         } else {
           const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
-          const slots = buildTemplateSlots(activeTemplateId, current.photos.length + created.length, undefined, templateFill);
+          // 批量上传与单张 addPhoto 一致：以当前视野中心为锚点做小网格抖动散开，
+          // 不再落到固定 scatter 槽位——用户平移到画布远端后上传，照片就落在眼前。
+          const anchor = placementAnchor();
           const placedCreated = created.map((photo, index) => {
-            const slot = slots[current.photos.length + index] ?? fallbackPlacement(current.photos.length + index);
-            return { ...photo, placement: { ...slot, z: maxZ + index + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } };
+            const col = index % 3, row = Math.floor(index / 3) % 3;
+            const jx = (col - 1) * 0.055 + ((index % 2) - 0.5) * 0.014;
+            const jy = (row - 1) * 0.055 + ((Math.floor(index / 2) % 2) - 0.5) * 0.014;
+            return { ...photo, placement: { x: Math.min(0.92, Math.max(0.08, anchor.x + jx)), y: Math.min(0.92, Math.max(0.08, anchor.y + jy)), scale: 1, rotation: Math.round(((index % 5) - 2) * 3), z: maxZ + index + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } as PhotoWallPlacement };
           });
           persist({ ...current, photos: [...placedCreated, ...current.photos] });
         }
@@ -1274,23 +1293,28 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     autoRunRef.current = true;
     const count = current.settings.dailyPhotoCount;
     let generated = 0;
+    let lastError = "";
     try {
       for (let index = 0; index < count; index += 1) {
         const fresh = loadPhotoWallState();
-        const owner = characters[(new Date().getDate() + index) % characters.length];
+        // 尊重设置页「让谁生成照片」的选择；未选择时才在全部角色间轮换。
+        const preferred = characters.find(char => char.id === selectedCharacterId);
+        const owner = preferred ?? characters[(new Date().getDate() + index) % characters.length];
         const kinds: PhotoWallPhoto["kind"][] = ["selfie", "candid", "scenery", "object", "moment"];
         const kind = kinds[(new Date().getDate() + index * 2) % kinds.length];
         const result = await generatePhoto(owner, kind, true);
-        if (!result) break;
+        if (!result) { lastError = fresh.settings.lastDailyGenerationError || "未知原因"; break; }
         generated += 1;
         if (index < count - 1) await new Promise(resolve => window.setTimeout(resolve, 900));
       }
+      // 无论成败都把今天标记为已尝试：失败也无限重试只会反复白烧生图 API；
+      // 失败原因保留在 lastDailyGenerationError 里，成功后清除。
       const fresh = loadPhotoWallState();
-      persist({ ...fresh, settings: { ...fresh.settings, lastDailyGenerationDay: generated ? today : fresh.settings.lastDailyGenerationDay, lastDailyGenerationAt: generated ? new Date().toISOString() : fresh.settings.lastDailyGenerationAt, lastDailyGenerationError: generated ? undefined : fresh.settings.lastDailyGenerationError } });
+      persist({ ...fresh, settings: { ...fresh.settings, lastDailyGenerationDay: today, lastDailyGenerationAt: generated ? new Date().toISOString() : fresh.settings.lastDailyGenerationAt, lastDailyGenerationError: generated ? undefined : (lastError || fresh.settings.lastDailyGenerationError) } });
       if (generated) onNotice?.(`今日照片已显影：${generated} 张。`);
     } finally { autoRunRef.current = false; }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [characters, persist, state.settings.dailyGenerationEnabled, state.settings.dailyPhotoCount]);
+  }, [characters, persist, state.settings.dailyGenerationEnabled, state.settings.dailyPhotoCount, selectedCharacterId]);
 
   useEffect(() => {
     if (!state.settings.dailyGenerationEnabled || characters.length === 0) return;
@@ -1468,6 +1492,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
     {wallView !== "settings" && <nav className="absolute bottom-0 left-0 right-0 z-20 flex shrink-0 items-center justify-center gap-7 border-t border-[#d8c4b4] bg-[#f8f0e6]/96 px-3 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur">
       <button type="button" onClick={() => setWallView("panorama")} className={`border-b-2 px-1 py-2 text-sm ${wallView==="panorama"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>全景墙</button>
+      <button type="button" onClick={() => setWallView("memories")} className={`border-b-2 px-1 py-2 text-sm ${wallView==="memories"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>全部记忆</button>
       <button type="button" onClick={() => setWallView("timeline")} className={`border-b-2 px-1 py-2 text-sm ${wallView==="timeline"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>时间轴</button>
       <button type="button" onClick={() => { setWallView("album"); setActiveAlbumId(null); setAlbumEditMode(false); }} className={`border-b-2 px-1 py-2 text-sm ${wallView==="album"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>相册</button>
       <button type="button" onClick={() => setWallView("creations")} className={`border-b-2 px-1 py-2 text-sm ${wallView==="creations"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>共创记录</button>
@@ -1489,6 +1514,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           <p className="text-[10px] tracking-[.24em] text-[#a18172]">A QUIET CORNER FOR YOUR WALL</p>
           <h1 className="mt-2 font-serif text-2xl font-normal text-[#503d38]">把墙面布置成你喜欢的样子</h1>
           <p className="mt-2 text-xs leading-6 text-[#8b7569]">模板只保存摆放骨架，不会覆盖照片内容；应用后仍可回到画布继续拖动、缩放和涂鸦。</p>
+          <p className="mt-2 rounded-xl border border-[#e2c9a8] bg-[#fdf6e9] px-3 py-2.5 text-[11px] leading-5 text-[#7c5f46]">备份提示：「设置 → 数据管理」的云备份默认不包含媒体文件本体（excludeMedia）。恢复备份后，若本机媒体库没有对应图片，照片墙里的照片会显示为缺失。需要完整迁移照片墙时，请使用包含媒体库的完整备份，或先导出整墙 PNG 留底。</p>
           <section className="mt-5 border-y border-[#d9c6b6] bg-[#fffaf2]/75 px-4 py-4 shadow-[0_8px_24px_rgba(83,55,39,.05)]">
             <div className="flex items-center justify-between gap-3"><h2 className="font-serif text-lg text-[#5a403b]">日常显影</h2><span className="text-[10px] tracking-[.12em] text-[#a18172]">DAILY DEVELOPING</span></div>
             <p className="mt-2 text-xs leading-6 text-[#8b7569]">每天首次打开照片墙时，可依据最近生活记录生成照片。仅在应用运行时触发；图片由你配置的生图服务生成，可能产生 API 费用。</p>

@@ -1382,7 +1382,7 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
     {
         id: PHONE_WIDGET_CAPABILITY_ID,
         name: "在桌面留句话",
-        description: "在{{user}}手机桌面的小组件里留一句话。TA 不用打开聊天就能看见，像你不经意留下的状态。留的话会盖掉上一句，所以别频繁换。",
+        description: "在{{user}}手机桌面的小组件里留一句话。TA 不用打开聊天就能看见，像你不经意留下的状态。留的话会盖掉上一句，所以别频繁换。text 是要说的话（60字内），status 是 2-5 字状态标签；桌面有多个小组件实例时可用 profileId 指定写到哪一个（实例 ID 在 设置→桌面小组件）。",
         enabled: false,
         mode: "auto",
         createdAt: 0,

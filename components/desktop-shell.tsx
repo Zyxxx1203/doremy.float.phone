@@ -31,6 +31,7 @@ import { LifeEngineApp } from "@/components/life/life-engine-app";
 import { ArchiveRoomApp } from "@/components/archive-room-app";
 import { PhotoWallApp } from "@/components/photo-wall-app";
 import { WatchTogetherApp } from "@/components/watch-together-app";
+import { CALL_STATS_ENTRY_HTML } from "@/lib/builtin-apps/call-stats-source";
 import { VnApp } from "@/components/vn/vn-app";
 import ReadingApp from "@/components/reading/reading-app";
 import MapApp from "@/components/map/map-app";
@@ -4150,6 +4151,20 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     setShoppingMounted(false);
   }, [shoppingBusy]);
 
+  /** 内置「通话统计」：1:1 复用 call.stats 2.1.0 的 HTML，由 CustomAppRunner 挂载。 */
+  const CALL_STATS_BUILTIN_APP: InstalledCustomApp = {
+    id: "callstats-builtin",
+    name: "通话统计",
+    version: "2.1.0",
+    description: "通话中心：时长统计与图表、日历视图、逐通回看完整对话、角色语音复听、通话总结。数据全部来自本机聊天记录，不上传。",
+    entryHtml: CALL_STATS_ENTRY_HTML,
+    permissions: ["chat.read", "characters.read", "ai.generate", "app.data.read", "app.data.write", "ui.toast", "voice.tts"] as InstalledCustomApp["permissions"],
+    manifest: { id: "call.stats", name: "通话统计", version: "2.1.0", sdkVersion: "1.0", entry: "index.html", permissions: ["chat.read", "characters.read", "ai.generate", "app.data.read", "app.data.write", "ui.toast", "voice.tts"] },
+    assets: {},
+    installedAt: "2026-10-24T00:00:00.000Z",
+    updatedAt: "2026-10-24T00:00:00.000Z",
+  };
+
   function closeCustomAppRunner(app: InstalledCustomApp): void {
     const launchState = customAppLaunchContext?.appId === app.id ? customAppLaunchContext : null;
     setCustomAppLaunchContext(null);
@@ -4461,6 +4476,25 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
     if (activeApp === "watchtogether") {
       return <WatchTogetherApp onClose={() => setActiveApp(null)} onNotice={setNotice} />;
+    }
+
+    if (activeApp === "callstats") {
+      return (
+        <CustomAppForegroundBoundary
+          key={CALL_STATS_BUILTIN_APP.id}
+          appName={CALL_STATS_BUILTIN_APP.name}
+          appId={CALL_STATS_BUILTIN_APP.id}
+          appVersion={CALL_STATS_BUILTIN_APP.version}
+          manifestId={CALL_STATS_BUILTIN_APP.manifest?.id}
+          onClose={() => setActiveApp(null)}
+        >
+          <CustomAppRunner
+            app={CALL_STATS_BUILTIN_APP}
+            onClose={() => setActiveApp(null)}
+            onNotice={setNotice}
+          />
+        </CustomAppForegroundBoundary>
+      );
     }
 
     if (activeApp === "vnmode") {
