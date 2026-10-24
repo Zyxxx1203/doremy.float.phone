@@ -62,7 +62,8 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
   const lines = [
     "【当前生活场景状态】",
     `场景：${scene.locationName}（locationId=${scene.locationId}）`,
-    location?.description ? `地点描写：${location.description}` : "",
+    location?.description ? `地点固定描写：${location.description}` : "",
+    scene.currentDescription?.trim() ? `【当前现场描述（由本场景原始行动与对白整理；用于保持连续性，不得覆盖原始记录）】\n${scene.currentDescription.trim()}` : "",
     location?.atmosphere ? `地点氛围：${location.atmosphere}` : "",
     location?.layout ? `固定空间布局：${location.layout}` : "",
     location?.props?.length ? `场景中可持续使用的道具：${location.props.join("、")}` : "",
