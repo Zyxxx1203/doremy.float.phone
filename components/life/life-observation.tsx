@@ -133,7 +133,9 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
     const config = latestData.characters[character.id] ?? { enabled: false, intervalMinutes: 180 };
     if (!manual && !config.enabled) return;
     const { schedules, timeline, virtualNow, state } = relevantContext(character.id, 0, Date.now() + 1);
-    const nowMs = virtualNow.getTime();
+    // 观察只能写**已发生**的事情：虚拟时钟可以因倍速跑到现实前面，
+    // 但观察窗口的上限永远是现实当前时间，绝不允许把卡片写到未来。
+    const nowMs = Math.min(virtualNow.getTime(), Date.now());
     const maxBackfillMs = clamp(latestData.settings.maxBackfillDays, 1, 30) * 86_400_000;
     const defaultStart = nowMs - maxBackfillMs;
     const previousCovered = config.coveredUntil ? new Date(config.coveredUntil).getTime() : defaultStart;
@@ -145,7 +147,7 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
     const coveredSchedules = schedules.filter(slot => new Date(slot.endAt).getTime() > fromMs && new Date(slot.startAt).getTime() < nowMs);
     const coveredTimeline = timeline.filter(entry => new Date(entry.occurredAt).getTime() >= fromMs && new Date(entry.occurredAt).getTime() <= nowMs);
     if (!coveredSchedules.length && !coveredTimeline.length) {
-      updateData(current => ({ ...current, characters: { ...current.characters, [character.id]: { ...config, coveredUntil: virtualNow.toISOString(), lastGeneratedAt: new Date().toISOString() } } }));
+      updateData(current => ({ ...current, characters: { ...current.characters, [character.id]: { ...config, coveredUntil: new Date(nowMs).toISOString(), lastGeneratedAt: new Date().toISOString() } } }));
       if (manual) tell("这段时间没有可用的行程或生活事件记录，已推进观察时间；可以在角色日常里先补全行程。");
       return;
     }
@@ -176,7 +178,7 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
       const prompt: ChatMessage = {
         id: makeId(), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
         content: [
-          "【生活系统·观察TA的生活】请把这段时间拆成多个独立的重要事件卡片，而不是一大段长文。只输出 JSON 对象，包含 events 数组；每项包含 time（时间段）、location（地点）、people（人物数组）、title（事件标题）、description（具体描写）。每个事件必须是一个独立、可单独配图的连续场景；按时间顺序排列，通常生成2—8张，事件不足时不要凑数。不要把计划冒充已发生的事实，不要假装玩家在场，不要编造重大事件。",
+          "【生活系统·观察TA的生活】请把这段时间拆成多个独立的重要事件卡片，而不是一大段长文。只输出 JSON 对象，包含 events 数组；每项包含 time（时间段）、location（地点）、people（人物数组）、title（事件标题）、description（具体描写）。每个事件必须是一个独立、可单独配图的连续场景；按时间顺序排列，通常生成2—8张，事件不足时不要凑数。不要把计划冒充已发生的事实，不要假装玩家在场，不要编造重大事件。所有事件的 time 必须是这段时间内已经过去的具体时刻，禁止出现任何未来时间。",
           "时间范围：" + new Date(fromMs).toISOString() + " 至 " + virtualNow.toISOString(),
           "必须以时间顺序写清楚几点在哪里、做了什么；至少挑选1—2个片段进行具体镜头式描写（动作、光线、声音、手边物品、微小反应等），并穿插符合人设的内心活动/心声。不要每个时间段都写成流水账，也不要无依据地制造重大事件。",
           "行程是计划依据而非所有细节都已发生；遇到已记录事件以记录为准。没有证据的日常细节可以合理补充，但不得违背角色卡、地点设定、时间顺序或已记录事件。不要让角色突然知道玩家没告诉TA的事情。",
@@ -215,7 +217,7 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
       if (!entries.length) throw new Error("模型没有返回可保存的事件卡片");
       updateData(current => {
         const currentConfig = current.characters[character.id] ?? config;
-        return { ...current, entries: [...current.entries, ...entries], characters: { ...current.characters, [character.id]: { ...currentConfig, lastGeneratedAt: createdAt, coveredUntil: virtualNow.toISOString() } } };
+        return { ...current, entries: [...current.entries, ...entries], characters: { ...current.characters, [character.id]: { ...currentConfig, lastGeneratedAt: createdAt, coveredUntil: new Date(nowMs).toISOString() } } };
       });
       tell("已为「" + character.name + "」生成 " + entries.length + " 张独立生活事件卡片。");
     } catch (error) {

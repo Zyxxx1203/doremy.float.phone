@@ -1525,9 +1525,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         if (!parsed.action?.trim() && !parsed.dialogue.trim()) return;
         const responseAt = new Date().toISOString();
         const actionText = settings.showActionNarration ? (parsed.action ?? "").trim() : "";
-        const mergedDialogue = splitLifeReplySegments(parsed.dialogue).join("\n");
+        const dialogueSegments = splitLifeReplySegments(parsed.dialogue);
+        const mergedDialogue = dialogueSegments.join("\n");
         const responseMessages: LifeSceneMessage[] = [
-          { id: id("life-proactive-turn"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: character.id, speakerName: character.name, role: "character" as const, action: actionText, dialogue: mergedDialogue, createdAt: responseAt },
+          ...(actionText ? [{ id: id("life-proactive-action"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: character.id, speakerName: character.name, role: "character" as const, action: actionText, dialogue: "", createdAt: responseAt }] : []),
+          ...dialogueSegments.map(dialogue => ({ id: id("life-proactive-dialogue"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: character.id, speakerName: character.name, role: "character" as const, dialogue, createdAt: responseAt })),
         ];
         responseMessages.forEach(pushSceneMessage);
         const body = responseMessages.map(message => [message.action, message.dialogue].filter(Boolean).join(" ")).filter(Boolean).join(" ");
@@ -1707,12 +1709,14 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       }
       if (structuredNext !== stateRef.current) commit(structuredNext);
       const replyAt = new Date().toISOString();
-      // 一轮回复 = 一张卡片：动作写进 action、对白合并进 dialogue，不再按段拆开。
+      // 动作一轮只出**一张**卡片（整段动作合并在内）；对白保持独立气泡按段显示。
       const actionText = settings.showActionNarration ? (parsed.action ?? "").trim() : "";
-      const mergedDialogue = splitLifeReplySegments(parsed.dialogue).join("\n");
+      const dialogueSegments = splitLifeReplySegments(parsed.dialogue);
       const replyMessages: LifeSceneMessage[] = [
-        { id: id("turn"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, action: actionText, dialogue: mergedDialogue, createdAt: replyAt },
+        ...(actionText ? [{ id: id("turn-action"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, action: actionText, dialogue: "", createdAt: replyAt }] : []),
+        ...dialogueSegments.map(dialogue => ({ id: id("turn-dialogue"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, dialogue, createdAt: replyAt })),
       ];
+      if (!replyMessages.length) replyMessages.push({ id: id("turn"), sceneId: activeScene.id, speakerType: "character", speakerId: target.id, speakerName: target.name, role: "character", dialogue: "", createdAt: replyAt });
       replyMessages.forEach(pushSceneMessage);
       if (forceReaction) setNotice(target.name + "已回应最近的互动。");
       if (settings.saveConfirmedEventsToMemory && (userText.trim() || userAction.trim()) && (parsed.dialogue.trim() || parsed.action?.trim())) {
@@ -2942,36 +2946,45 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             </div>
             <p className="mt-2 text-[10px] leading-relaxed text-stone-500">移除专属背景后会自动恢复全局背景。背景层不拦截触控，不影响聊天室滚动、输入与发送。</p>
           </section>
-          {selectedLocation.id === "home" && <section className="mb-4 rounded-xl border border-stone-200/80 bg-white/80 p-3">
-            <h3 className="text-sm font-semibold text-stone-700">同居设置</h3>
-            <p className="mt-1 text-xs leading-relaxed text-stone-500">默认每个角色拥有独立住处。勾选后，TA 的后续居家日程会转到你的「家」。</p>
+          {(selectedLocation.id === "home" || selectedLocation.id.startsWith("home-")) && <section className="mb-4 rounded-xl border border-stone-200/80 bg-white/80 p-3">
+            <h3 className="text-sm font-semibold text-stone-700">同住设置</h3>
+            <p className="mt-1 text-xs leading-relaxed text-stone-500">{selectedLocation.id === "home" ? "默认每个角色拥有独立住处。勾选后，TA 的后续居家日程会转到你的「家」。" : "勾选后，这些角色会住进这个住处；TA 的后续居家日程会转到这里。每个角色同一时间只有一个住处。"}</p>
             <div className="mt-3 space-y-2">{characters.map(character => <label key={character.id} className="flex min-h-11 items-center gap-3 border-b border-stone-100 py-2 text-sm text-stone-700 last:border-0">
               {character.avatar ? <img src={character.avatar} alt="" className="h-8 w-8 rounded-full object-cover"/> : <span className="grid h-8 w-8 place-items-center rounded-full bg-[#efe1d2]">{character.name.slice(0,1)}</span>}
               <span className="min-w-0 flex-1">{character.name}</span>
-              <input type="checkbox" checked={(selectedLocation.residents ?? []).includes(character.id)} onChange={event => {
+              <input type="checkbox" checked={(selectedLocation.residents ?? []).includes(character.id) || selectedLocation.id === "home-" + character.id} disabled={selectedLocation.id === "home-" + character.id} onChange={event => {
                 const current = stateRef.current;
                 const enabled = event.target.checked;
-                const residents = new Set(current.locations.find(location => location.id === "home")?.residents ?? []);
-                if (enabled) residents.add(character.id); else residents.delete(character.id);
+                const homeLocationId = selectedLocation.id;
+                // 一个角色同一时间只有一个住处：勾选时从其他 home 型地点移除，取消时补建自己的独居住处。
+                let nextLocations = current.locations.map(location => {
+                  if (!(location.id === "home" || location.id.startsWith("home-"))) return location;
+                  let residents = new Set(location.residents ?? []);
+                  if (location.id === homeLocationId && enabled) residents.add(character.id); else residents.delete(character.id);
+                  return { ...location, residents: [...residents] };
+                });
                 const personalHomeId = "home-" + character.id;
-                const nextLocations = current.locations.map(location => location.id === "home" ? { ...location, residents: [...residents] } : location);
+                if (!enabled && !nextLocations.some(location => location.id === personalHomeId)) {
+                  nextLocations = [...nextLocations, { id: personalHomeId, name: character.name + "的家", description: character.name + "自己的私人住处。", atmosphere: "熟悉、私密、可以放松的空间。", layout: "有自己的起居区域与休息空间。", props: ["沙发", "茶几", "水杯", "床头灯"], visibility: "private" as const, residents: [character.id] }];
+                }
                 // Apply cohabitation immediately to future home-related schedule slots only.
                 // Work, school, commute, outings and manually chosen places remain untouched.
                 const now = Date.now();
                 const nextSchedules = current.schedules.map(slot => {
                   if (slot.ownerType !== "character" || slot.ownerId !== character.id || new Date(slot.endAt).getTime() <= now) return slot;
+                  const plannedId = slot.plannedLocationId ?? "";
                   const plannedName = (slot.plannedLocationName ?? "").trim();
-                  const isHomeSlot = slot.plannedLocationId === "home" || slot.plannedLocationId === personalHomeId || (!slot.plannedLocationId && /^(家|家里|家中|自己的家)$/.test(plannedName));
+                  const isHomeSlot = plannedId === "home" || plannedId.startsWith("home-") || (!plannedId && /^(家|家里|家中|自己的家)$/.test(plannedName));
                   if (!isHomeSlot) return slot;
-                  return enabled
-                    ? { ...slot, plannedLocationId: "home", plannedLocationName: nextLocations.find(location => location.id === "home")?.name ?? "家", updatedAt: new Date().toISOString() }
-                    : { ...slot, plannedLocationId: personalHomeId, plannedLocationName: character.name + "的家", updatedAt: new Date().toISOString() };
+                  if (enabled && plannedId !== homeLocationId) return { ...slot, plannedLocationId: homeLocationId, plannedLocationName: nextLocations.find(location => location.id === homeLocationId)?.name ?? selectedLocation.name, updatedAt: new Date().toISOString() };
+                  if (!enabled && plannedId === homeLocationId) return { ...slot, plannedLocationId: personalHomeId, plannedLocationName: character.name + "的家", updatedAt: new Date().toISOString() };
+                  return slot;
                 });
                 const next = { ...current, locations: nextLocations, schedules: nextSchedules };
                 commit(next);
                 setNotice(enabled
-                  ? "同居行程已实时更新：未来的居家时段已转到共同住处，工作、学习和外出安排保留。"
-                  : "已取消同居：未来居家时段已恢复到" + character.name + "自己的住处，其他行程不变。");
+                  ? "同住行程已实时更新：未来的居家时段已转到这个住处，工作、学习和外出安排保留。"
+                  : "已取消同住：未来居家时段已恢复到" + character.name + "自己的住处，其他行程不变。");
               }} className="h-4 w-4 accent-[var(--life-accent)]"/>
             </label>)}</div>
           </section>}

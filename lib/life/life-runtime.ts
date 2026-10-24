@@ -76,8 +76,12 @@ export function generateWeeklyLifePlan(
 ): VirtualLifeState {
   const currentLocations = state.locations ?? [];
   const playerHome = currentLocations.find(location => location.id === "home");
+  // 家的解析泛化：角色可以住进玩家家、别的角色家（home-*）或自己独居。
+  // 居住地 = 把该角色列为 residents 的 home 型地点；没有则视为独居（home-<id>）。
+  const homeLocations = currentLocations.filter(location => location.id === "home" || location.id.startsWith("home-"));
+  const livedHome = ownerType === "character" ? homeLocations.find(location => (location.residents ?? []).includes(ownerId)) : undefined;
   const livesWithPlayer = ownerType === "character" && Boolean(playerHome?.residents?.includes(ownerId));
-  const personalHomeId = ownerType === "character" && !livesWithPlayer ? "home-" + ownerId : "home";
+  const personalHomeId = ownerType === "character" ? (livedHome ? livedHome.id : livesWithPlayer ? "home" : "home-" + ownerId) : "home";
   const personalHome: LifeLocation = currentLocations.find(location => location.id === personalHomeId) ?? {
     id: personalHomeId,
     name: ownerType === "character" ? ownerName + "的家" : "家",
@@ -88,12 +92,11 @@ export function generateWeeklyLifePlan(
     visibility: "private",
   };
   if (ownerType === "character") {
-    const oldHomeId = livesWithPlayer ? "home-" + ownerId : "home";
     const now = Date.now();
     const migratedSchedules = state.schedules.map(slot =>
       slot.ownerType === "character" && slot.ownerId === ownerId &&
       new Date(slot.endAt).getTime() > now &&
-      (slot.plannedLocationId === oldHomeId || (!slot.plannedLocationId && slot.plannedLocationName === "家"))
+      ((slot.plannedLocationId && slot.plannedLocationId !== personalHomeId && (slot.plannedLocationId === "home" || slot.plannedLocationId.startsWith("home-"))) || (!slot.plannedLocationId && slot.plannedLocationName === "家"))
         ? { ...slot, plannedLocationId: personalHomeId, plannedLocationName: personalHome.name }
         : slot
     );
