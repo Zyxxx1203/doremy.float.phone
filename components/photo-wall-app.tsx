@@ -1261,29 +1261,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (refPhoto) {
         const stored = await loadMediaBlob(refPhoto.mediaRef);
         if (stored) referenceImageDataUrl = await blobToDataUrl(stored.blob);
-      } else if (kind === "candid" || kind === "moment") {
-        // These photo types may depict the player, so use the player's global
-        // reference and the character's own reference together when available.
-        const imageSettings = loadImageGenerationSettings();
-        const sources: Array<{ label: string; dataUrl: string; crop?: { x: number; y: number; size: number } }> = [];
-        if (imageSettings.userAppearanceReferenceAssetId) {
-          const dataUrl = await getChatImageFromIndexedDB(imageSettings.userAppearanceReferenceAssetId);
-          if (dataUrl) sources.push({ label: "玩家本人", dataUrl, crop: imageSettings.userAppearanceFaceCrop });
-        }
-        const referenceIds = Array.from(new Set([owner.id, ...(kind === "moment" ? groupReferenceCharacterIds : [])]));
-        for (const characterId of referenceIds) {
-          const characterReference = imageSettings.characterReferences?.[characterId];
-          if (!characterReference?.assetId || characterReference.enabled === false) continue;
-          const dataUrl = await getChatImageFromIndexedDB(characterReference.assetId);
-          const referenceCharacter = characters.find(item => item.id === characterId);
-          if (dataUrl) sources.push({ label: referenceCharacter?.name || (characterId === owner.id ? owner.name : "角色"), dataUrl, crop: characterReference.faceCrop });
-        }
-        referenceImageDataUrl = await composePhotoReferenceSheet(sources);
       }
       const referenceText = referenceImageDataUrl
-        ? (kind === "candid" || kind === "moment"
-          ? (kind === "moment" && groupReferenceCharacterIds.length ? "请参考图中标注的玩家本人及所有已选角色，按各自标签准确保持身份特征，并让这些角色自然出现在同一张合照中；只参考身份，不复制参考图构图、服装、姿势或背景。" : "请参考图中标注的玩家本人和角色外观，分别保持身份特征一致；参考图只用于人物身份，不要复制原图构图。")
-          : "请严格参考提供的参考照片中可见人物/物件的视觉特征，保持一致，不要复制原图构图。")
+        ? "请参考用户额外提供的这张照片中的视觉信息，但不要机械复制原图构图；角色与用户的身份分别以各自的人物身份参考为准。"
         : "";
       const description = (generationPromptTemplate.trim() || DEFAULT_PHOTO_WALL_PROMPT)
         .split("{characterName}").join(owner.name)
@@ -1291,9 +1271,17 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         .split("{photoType}").join(kindPrompt[kind])
         .split("{lifeEvent}").join(eventText)
         .split("{referenceText}").join(referenceText);
+      const participantIds = kind === "selfie"
+        ? [owner.id]
+        : kind === "candid"
+          ? [owner.id, "__user__"]
+          : kind === "moment"
+            ? Array.from(new Set([owner.id, ...groupReferenceCharacterIds, "__user__"]))
+            : [];
       const result = await generateImageFromConfiguredApi({
         description, characterId: owner.id, appId: "photo_wall",
-        useReferenceImage: Boolean(referenceImageDataUrl) || kind === "selfie",
+        participantIds,
+        useReferenceImage: true,
         referenceImageDataUrl,
       });
       if (!result) throw new Error("没有可用的生图方案。请在系统设置中启用并配置图片生成服务。");
