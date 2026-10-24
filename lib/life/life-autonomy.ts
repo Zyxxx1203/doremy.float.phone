@@ -23,6 +23,8 @@ export function evaluateLifeAutonomyWindow(input: {
   now?: number;
   lastAttemptAt?: number;
   intervalMinutes?: number;
+  /** Require this much silence from the player before a character may initiate. */
+  silenceMinutes?: number;
   busy: boolean;
   visible: boolean;
   enabled: boolean;
@@ -42,9 +44,18 @@ export function evaluateLifeAutonomyWindow(input: {
     .map(p => p.ownerId))];
   if (!characterIds.length) return { eligible: false, reason: "no-character-present", characterIds: [] };
 
-  const lastMessage = [...input.messages].reverse().find(m => m.sceneId === scene.id);
+  const sceneMessages = input.messages.filter(m => m.sceneId === scene.id);
+  const lastMessage = sceneMessages[sceneMessages.length - 1];
   if (lastMessage && now - new Date(lastMessage.createdAt).getTime() < LIFE_AUTONOMY_SCENE_COOLDOWN_MS) {
     return { eligible: false, reason: "recent-scene-message", characterIds };
+  }
+  // Silence is measured from the player's latest action/dialogue, not from
+  // the latest character message; otherwise a character can keep resetting
+  // its own inactivity timer and never follow the user's configured threshold.
+  const lastPlayerMessage = [...sceneMessages].reverse().find(m => m.role === "player");
+  const silenceMinutes = Math.max(0, Math.min(24 * 60, input.silenceMinutes ?? 5));
+  if (lastPlayerMessage && now - new Date(lastPlayerMessage.createdAt).getTime() < silenceMinutes * 60_000) {
+    return { eligible: false, reason: "player-still-active", characterIds };
   }
 
   const minimumGap = Math.max(2, input.intervalMinutes ?? 5) * 60_000;
