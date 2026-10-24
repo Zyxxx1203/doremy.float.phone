@@ -15,7 +15,7 @@
 先安装 Termux（建议使用官方 GitHub/F-Droid 发行版），打开后只需粘贴这一条命令，即可自动下载服务文件、安装 Python/FFmpeg/解析依赖、启动服务并检查健康状态：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/momo.float.phone/main/tools/video-resolver/install-termux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver/install-termux.sh | bash
 ```
 
 安装完成后可用 `momo-video-status` 检查，`momo-video-start` 启动，`momo-video-stop` 停止。程序安装在 `~/.momo-video-resolver`，日志在 `~/.momo-video-resolver/service.log`。这一步只负责当前 Termux 环境；若系统强制杀掉 Termux，重新打开后运行 `momo-video-start` 即可。需要长时间后台运行时，可执行 `termux-wake-lock` 并把 Termux 加入电池优化白名单。
