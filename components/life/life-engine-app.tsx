@@ -1153,7 +1153,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const referenceCharacterId = participantIds.find(pid=>pid !== PLAYER_ID && imageSettings.characterReferences?.[pid]?.assetId && imageSettings.characterReferences?.[pid]?.enabled !== false);
       const characterIds = participantIds.filter(pid => pid !== PLAYER_ID && characters.some(character => character.id === pid));
       const includeUserAppearance = participantIds.includes(PLAYER_ID);
-      const hasCharacterReferences = characterIds.some(pid => Boolean(imageSettings.characterReferences?.[pid]?.assetId) && imageSettings.characterReferences?.[pid]?.enabled !== false);
+      const hasCharacterReferences = characterIds.some(pid => Boolean(imageSettings.characterReferences?.[pid]?.assetId) && imageSettings.characterReferences?.[pid]?.enabled !== false)
+        // The global labelled group collage is a valid identity source by itself.
+        // Without including it here, life-scene generation explicitly passed false
+        // to useReferenceImage and silently skipped the collage when individual
+        // portraits had not also been uploaded.
+        || Boolean(imageSettings.characterReferences?.["__group__"]?.assetId && imageSettings.characterReferences?.["__group__"]?.enabled !== false);
       const hasPlayerReference = includeUserAppearance && Boolean(imageSettings.userAppearanceReferenceAssetId);
       for(let index=0;index<count;index++){
         const result = await generateImageFromConfiguredApi({
