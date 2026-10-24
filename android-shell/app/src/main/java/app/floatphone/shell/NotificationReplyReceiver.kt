@@ -28,6 +28,8 @@ class NotificationReplyReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_REPLY = "app.floatphone.shell.NOTIF_REPLY"
         const val EXTRA_SESSION_ID = "session_id"
+        const val EXTRA_SCENE_ID = "life_scene_id"
+        const val EXTRA_REPLY_MODE = "life_reply_mode"
 
         /** RemoteInput 的键名；发通知与读结果必须用同一个。 */
         const val KEY_REPLY_TEXT = "reply_text"
@@ -39,7 +41,7 @@ class NotificationReplyReceiver : BroadcastReceiver() {
         private const val MAX_QUEUE = 20
 
         /** 追加一条待发回复。 */
-        fun enqueue(context: Context, sessionId: String, text: String) {
+        fun enqueue(context: Context, sessionId: String, text: String, sceneId: String = "", replyMode: String = "chat") {
             runCatching {
                 val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 val current = JSONArray(prefs.getString(KEY_QUEUE, "[]") ?: "[]")
@@ -48,6 +50,8 @@ class NotificationReplyReceiver : BroadcastReceiver() {
                         .put("id", "r_${System.currentTimeMillis()}_${(0..9999).random()}")
                         .put("sessionId", sessionId)
                         .put("text", text)
+                        .put("sceneId", sceneId)
+                        .put("replyMode", replyMode)
                         .put("at", System.currentTimeMillis()),
                 )
                 // 只留最近 MAX_QUEUE 条：队列是「怕丢」的兜底，不是历史存档。
@@ -71,6 +75,8 @@ class NotificationReplyReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_REPLY) return
         val sessionId = intent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
+        val sceneId = intent.getStringExtra(EXTRA_SCENE_ID).orEmpty()
+        val replyMode = intent.getStringExtra(EXTRA_REPLY_MODE).orEmpty().ifEmpty { "chat" }
         if (sessionId.isEmpty()) return
 
         val results = RemoteInput.getResultsFromIntent(intent) ?: return
@@ -78,13 +84,13 @@ class NotificationReplyReceiver : BroadcastReceiver() {
         if (text.isEmpty()) return
 
         // 先落队列：无论页面现在活不活着，这句话都不会丢。
-        enqueue(context, sessionId, text)
+        enqueue(context, sessionId, text, sceneId, replyMode)
 
         if (ShellBus.isWebAlive()) {
             // 页面还在（App 只是切到后台）：戳一下，它立刻把队列拉走发出去。
             ShellBus.dispatchOverlayEvent(
                 "userReply",
-                JSONObject().put("sessionId", sessionId),
+                JSONObject().put("sessionId", sessionId).put("sceneId", sceneId).put("replyMode", replyMode),
             )
             return
         }
