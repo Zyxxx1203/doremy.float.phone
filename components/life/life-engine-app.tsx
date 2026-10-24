@@ -1375,6 +1375,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const decision = evaluateLifeAutonomyWindow({
         scene: activeScene, playerId: PLAYER_ID, messages: stateRef.current.sceneMessages, now,
         lastAttemptAt: previousAttempt, intervalMinutes: settings.proactiveSceneIntervalMinutes ?? 5,
+        silenceMinutes: settings.proactiveSceneSilenceMinutes ?? 10,
         busy: busyRef.current, visible: document.visibilityState === "visible",
         enabled: settings.enableProactiveSceneMessages !== false && settings.enableCharacterAutonomy,
       });
@@ -3116,17 +3117,22 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               <p className="text-sm font-semibold">生活现场主动性</p>
               <p className="mt-1 text-xs leading-relaxed text-stone-500">角色与玩家同处一个正在进行的场景时，可以在没有新输入的情况下自主发起简短互动。系统有冷却和每日上限，不会每隔几秒强制刷消息。</p>
               <div className="mt-3"><Toggle checked={settings.enableProactiveSceneMessages !== false} onChange={v=>patchSettings({enableProactiveSceneMessages:v})} label="允许角色在生活现场主动说话"/></div>
+              <div className="mt-3">
+                <label className="block min-w-0 text-xs text-stone-600">玩家多久没联系后，角色才可以主动行动（分钟）
+                  <input type="number" inputMode="numeric" min={0} max={1440} step={1} value={settings.proactiveSceneSilenceMinutes ?? 10} onChange={e=>patchSettings({proactiveSceneSilenceMinutes:Math.max(0,Math.min(1440,Number(e.target.value)||0))})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/>
+                </label>
+              </div>
               <div className="mt-3 grid grid-cols-2 gap-3">
-                <label className="block min-w-0 text-xs text-stone-600">最短间隔（分钟）
+                <label className="block min-w-0 text-xs text-stone-600">主动尝试最短间隔（分钟）
                   <input type="number" inputMode="numeric" min={2} max={60} step={1} value={settings.proactiveSceneIntervalMinutes ?? 5} onChange={e=>{const min=Math.max(2,Math.min(60,Number(e.target.value)||2));patchSettings({proactiveSceneIntervalMinutes:min,proactiveSceneIntervalMaxMinutes:Math.max(min,settings.proactiveSceneIntervalMaxMinutes??15)});}} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/>
                 </label>
                 <label className="block min-w-0 text-xs text-stone-600">最长间隔（分钟）
                   <input type="number" inputMode="numeric" min={2} max={60} step={1} value={settings.proactiveSceneIntervalMaxMinutes ?? 15} onChange={e=>{const max=Math.max(settings.proactiveSceneIntervalMinutes??5,Math.min(60,Number(e.target.value)||2));patchSettings({proactiveSceneIntervalMaxMinutes:max});}} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/>
                 </label>
               </div>
-              <p className="mt-2 text-[10px] leading-relaxed text-stone-500">每次自主互动会在最短与最长间隔之间随机安排，不再固定按同一个周期触发。</p>
+              <p className="mt-2 text-[10px] leading-relaxed text-stone-500">先等待玩家达到上面的静默时长，再按下方随机间隔尝试一次；角色主动发出的消息不会重置玩家静默计时。</p>
               <div className="mt-3"><Toggle checked={settings.enableLifeMessageNotifications !== false} onChange={async v=>{if(v && typeof Notification!=="undefined" && Notification.permission==="default"){try{await Notification.requestPermission();}catch{/* permission prompt may be unavailable in WebView */}}patchSettings({enableLifeMessageNotifications:v});}} label="主动消息弹窗提示"/></div>
-               <p className="mt-2 text-[10px] leading-relaxed text-stone-500">角色主动互动只在应用打开且生活现场处于前台时运行；切到后台或关闭应用后会暂停，不会创建后台推送任务。</p>
+               <p className="mt-2 text-[10px] leading-relaxed text-stone-500">当前版本的主动生成仍依赖生活现场在前台运行；系统原生离线通知与后台接管还需接入离线任务链路，不能用网页通知代替。</p>
             </div>
             <Toggle checked={settings.enableAmbientDetails} onChange={v=>patchSettings({enableAmbientDetails:v})} label="启用环境细节"/>
           </div>
