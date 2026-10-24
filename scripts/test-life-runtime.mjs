@@ -10,7 +10,7 @@ const compiled = ts.transpileModule(source, {
 const moduleBox = { exports: {} };
 const sandbox = { module: moduleBox, exports: moduleBox.exports, Date, Math, console };
 vm.runInNewContext(compiled, sandbox, { filename: "life-runtime.cjs" });
-const { advanceActorTimeline, confirmLifeInvitation, generateWeeklyLifePlan, getCurrentActorSchedule, insertManualLifeScheduleSlot, placeAppointmentInActorSchedule, settleActorTimelineToNow } = moduleBox.exports;
+const { advanceActorTimeline, confirmLifeInvitation, generateWeeklyLifePlan, getCurrentActorSchedule, insertManualLifeScheduleSlot, placeAppointmentInActorSchedule, settleActorTimelineToNow, syncScheduleLocationsToLibrary } = moduleBox.exports;
 assert.equal(typeof advanceActorTimeline, "function", "timeline fast-forward should be exported");
 assert.equal(typeof generateWeeklyLifePlan, "function", "weekly planner should be exported");
 assert.equal(typeof getCurrentActorSchedule, "function", "current schedule selector should be exported");
@@ -515,3 +515,30 @@ const placedAppointment = placeAppointmentInActorSchedule(
 assert.ok(placedAppointment.schedules.some(slot => slot.id === "legacy-invalid-slot"), "appointment placement must not silently delete malformed legacy slots");
 
 console.log("Life schedule regression tests passed.");
+
+
+// Schedule place names become editable library entries, while only the slot active
+// at the actor's virtual now controls movement (future plans must not teleport).
+assert.equal(typeof syncScheduleLocationsToLibrary, "function");
+const movementNow = new Date("2026-10-15T10:30:00.000Z");
+const movementState = {
+  ...makeState([
+    { id: "active-slot", ownerType: "character", ownerId: "c-move", startAt: "2026-10-15T10:00:00.000Z", endAt: "2026-10-15T11:00:00.000Z", title: "在咖啡店工作", kind: "habit", source: "weekly-generation", plannedLocationName: "街角咖啡店" },
+    { id: "future-slot", ownerType: "character", ownerId: "c-move", startAt: "2026-10-15T12:00:00.000Z", endAt: "2026-10-15T13:00:00.000Z", title: "去图书馆", kind: "habit", source: "weekly-generation", plannedLocationName: "城市图书馆" },
+  ]),
+  actorClocks: [{ ownerType: "character", ownerId: "c-move", mode: "simulation", realAnchorAt: movementNow.toISOString(), virtualAnchorAt: movementNow.toISOString(), speed: 1, updatedAt: movementNow.toISOString() }],
+  actorStates: [],
+  events: [],
+  memories: [],
+  invitations: [],
+  scenes: [],
+  timeline: [],
+  locations: [{ id: "home", name: "家", visibility: "private" }],
+  settings: { defaultClockMode: "simulation", defaultSpeed: 1, playerDisplayName: "我", saveConfirmedEventsToMemory: true },
+};
+const settledMovement = settleActorTimelineToNow(movementState, "character", "c-move", movementNow);
+const movedActor = settledMovement.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === "c-move");
+assert.equal(movedActor.actualLocationName, "街角咖啡店", "actor should move to the currently active schedule location");
+assert.ok(settledMovement.locations.some(location => location.name === "街角咖啡店"), "active schedule location should sync to library");
+assert.ok(settledMovement.locations.some(location => location.name === "城市图书馆"), "future schedule location should sync to library without moving actor there");
+assert.notEqual(movedActor.actualLocationName, "城市图书馆", "future schedule must not teleport actor");
