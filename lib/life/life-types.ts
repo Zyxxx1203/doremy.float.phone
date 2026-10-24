@@ -166,7 +166,7 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   enableLifeMessageNotifications: true,
   proactiveSceneSilenceMinutes: 10,
   autoGenerateSceneImages: false,
-  sceneImageCount: 2,
+  sceneImageCount: 1,
   sceneImageStyle: "温暖自然的生活感，电影级构图，表情与动作自然，保持角色外观一致",
   sceneImagePrompt: "",
   customPrompt: "",

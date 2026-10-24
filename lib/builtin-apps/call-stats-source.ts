@@ -863,7 +863,7 @@ export const CALL_STATS_ENTRY_HTML = String.raw`<!doctype html>
     var html = '<div class="bars">';
     cols.forEach(function (c) {
       var h = c.sec ? Math.max(4, Math.round((c.sec / max) * 82)) : 0;
-      html += '<div class="col' + (c.isToday ? ' today' : '') + '" title="' + c.key + ' · ' + (c.sec ? formatDuration(c.sec) : '无通话') + '">'
+      html += '<div class="col' + (c.isToday ? ' today' : '') + '" title="' + c.key + ' · ' + (c.sec ? formatDuration(c.sec) : '未接通') + '">'
         + '<div class="bar" style="height:' + h + 'px"></div>'
         + '<div class="lab">' + (c.d.getDate()) + '</div>'
         + '</div>';
@@ -1048,7 +1048,7 @@ export const CALL_STATS_ENTRY_HTML = String.raw`<!doctype html>
     var note = state.notes[call.key];
     if (note && (note.note || note.aiSummary)) tags.push('<span class="tag ai">有总结</span>');
     if (call.unresolved) tags.push('<span class="tag">待标记结尾</span>');
-    else if (!call.connected) tags.push('<span class="tag gray">未接通</span>');
+    else if (!call.connected) tags.push('<span class="tag gray">未接来电</span>');
 
     var durText = call.unresolved ? "—"
       : call.seconds ? ((call.approximate ? "≈" : "") + formatDuration(call.seconds))

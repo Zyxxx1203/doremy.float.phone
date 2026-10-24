@@ -1492,7 +1492,6 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
     {wallView !== "settings" && <nav className="absolute bottom-0 left-0 right-0 z-20 flex shrink-0 items-center justify-center gap-7 border-t border-[#d8c4b4] bg-[#f8f0e6]/96 px-3 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur">
       <button type="button" onClick={() => setWallView("panorama")} className={`border-b-2 px-1 py-2 text-sm ${wallView==="panorama"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>全景墙</button>
-      <button type="button" onClick={() => setWallView("memories")} className={`border-b-2 px-1 py-2 text-sm ${wallView==="memories"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>全部记忆</button>
       <button type="button" onClick={() => setWallView("timeline")} className={`border-b-2 px-1 py-2 text-sm ${wallView==="timeline"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>时间轴</button>
       <button type="button" onClick={() => { setWallView("album"); setActiveAlbumId(null); setAlbumEditMode(false); }} className={`border-b-2 px-1 py-2 text-sm ${wallView==="album"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>相册</button>
       <button type="button" onClick={() => setWallView("creations")} className={`border-b-2 px-1 py-2 text-sm ${wallView==="creations"?"border-[#87565b] text-[#87565b]":"border-transparent text-[#85735f]"}`}>共创记录</button>
