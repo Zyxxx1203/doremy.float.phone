@@ -1181,6 +1181,32 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     } finally { setSceneImageBusy(false); }
   };
 
+  const setSceneImageAsBackground = async (imageId: string) => {
+    if (!activeScene || backgroundUploadBusy) return;
+    const image = (activeScene.images ?? []).find(item => item.id === imageId && item.status === "active");
+    if (!image) return;
+    setBackgroundUploadBusy("location");
+    try {
+      const objectUrl = await loadMediaObjectUrl(image.mediaRef);
+      if (!objectUrl) throw new Error("无法读取这张场景图的媒体缓存。");
+      const response = await fetch(objectUrl);
+      if (!response.ok) throw new Error("读取场景图失败。");
+      const blob = await response.blob();
+      const file = new File([blob], "life-scene-background.jpg", { type: blob.type || "image/jpeg" });
+      const backgroundImage = await compressLifeBackground(file);
+      const latest = stateRef.current;
+      const locationId = activeScene.locationId;
+      const location = latest.locations.find(item => item.id === locationId);
+      if (!location) throw new Error("当前场景对应的地点已不存在。");
+      commit({ ...latest, locations: latest.locations.map(item => item.id === locationId ? { ...item, backgroundImage } : item) });
+      setNotice("已将这张场景图设为「" + location.name + "」的聊天室背景；地点固定描写和场景记录不会改变。");
+    } catch (error) {
+      setNotice("设置聊天室背景失败：" + (error instanceof Error ? error.message : "未知错误"));
+    } finally {
+      setBackgroundUploadBusy(null);
+    }
+  };
+
   const setSceneImageStatus = (imageId:string,status:"active"|"archived") => {
     if(!activeScene)return;
     const next={...stateRef.current,scenes:stateRef.current.scenes.map(scene=>scene.id!==activeScene.id?scene:{...scene,images:(scene.images??[]).map(image=>image.id===imageId?{...image,status}:image),updatedAt:new Date().toISOString()})};
@@ -2794,7 +2820,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
              <div className="mt-2 flex items-center justify-end gap-3">
                <button type="button" disabled={sceneImageBusy} onClick={()=>void generateSceneImages({count:settings.sceneImageCount,participantIds:imageParticipantIds.length?imageParticipantIds:activeScene.participants.filter(p=>p.ownerType==="character").map(p=>p.ownerId),prompt:sceneImagePrompt})} className="inline-flex items-center gap-2 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs font-medium text-white disabled:opacity-50"><Sparkles size={14}/>{sceneImageBusy?"正在生成…":"生成场景"}</button>
              </div>
-             {sceneImageRecords.filter(image=>image.status==="active").length>0&&<div className="mt-2 flex gap-2 overflow-x-auto pb-1">{sceneImageRecords.filter(image=>image.status==="active").map((image,index)=><button type="button" key={image.id} onClick={()=>setImageViewerIndex(index)} aria-label={`查看第 ${index+1} 张场景图`} className={`shrink-0 overflow-hidden rounded-xl border ${index===imageViewerIndex?"border-[var(--life-accent)]":"border-stone-200"}`}>{imageObjectUrls[image.id]?<img src={imageObjectUrls[image.id]} alt={image.alt||"场景图"} className="h-16 w-16 object-cover"/>:<span className="grid h-16 w-16 place-items-center text-[10px] text-stone-400">加载中</span>}</button>)}</div>}
+             {sceneImageRecords.filter(image=>image.status==="active").length>0&&<div className="mt-2 flex gap-2 overflow-x-auto pb-1">{sceneImageRecords.filter(image=>image.status==="active").map((image,index)=><button type="button" key={image.id} onClick={()=>setImageViewerIndex(index)} aria-label={`查看第 ${index+1} 张场景图`} className={`shrink-0 overflow-hidden rounded-xl border ${index===imageViewerIndex?"border-[var(--life-accent)]":"border-stone-200"}`}>{imageObjectUrls[image.id]?<img src={imageObjectUrls[image.id]} alt={image.alt||"场景图"} className="h-16 w-16 object-cover"/>:<span className="grid h-16 w-16 place-items-center text-[10px] text-stone-400">加载中</span>}</button>)}</div>}{sceneImageRecords.filter(image=>image.status==="active").length>0&&<div className="mt-2 flex gap-2 overflow-x-auto pb-1">{sceneImageRecords.filter(image=>image.status==="active").map((image,index)=><button key={"bg-"+image.id} type="button" disabled={backgroundUploadBusy!==null} onClick={()=>void setSceneImageAsBackground(image.id)} className="shrink-0 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[10px] text-stone-600 disabled:opacity-50">{backgroundUploadBusy==="location"?"处理中…":`第 ${index+1} 张设为地点背景`}</button>)}</div>}
            </details>
           
           
