@@ -701,8 +701,6 @@ export const DEFAULT_IMAGE_GENERATION_SETTINGS: ImageGenerationSettings = {
         presets: [DEFAULT_NOVELAI_PRESET],
     },
     characterReferences: {},
-    userAppearanceDescription: "",
-    userAppearanceReferenceAssetId: undefined,
     imageHosting: {
         provider: "none",
         imgbbApiKey: "",
