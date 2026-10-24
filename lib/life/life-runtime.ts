@@ -356,12 +356,59 @@ export function generateWeeklyLifePlan(
  * settled idempotently, and the current slot updates their real activity/location.
  * This runs on app resume and after explicit fast-forward; it never advances another actor.
  */
+/**
+ * Keep schedule place references canonical and make every itinerary place discoverable
+ * in the editable location library. Match existing names/aliases case-insensitively;
+ * never overwrite user-authored location metadata or remove existing locations.
+ */
+export function syncScheduleLocationsToLibrary(state: VirtualLifeState): VirtualLifeState {
+  const normalize = (value: string) => value.trim().replace(/\\s+/g, " ").toLocaleLowerCase();
+  const locations = [...(state.locations ?? [])];
+  const byId = new Map(locations.map(location => [location.id, location]));
+  const findByName = (name: string) => {
+    const key = normalize(name);
+    return locations.find(location => normalize(location.name) === key
+      || (location.aliases ?? []).some(alias => normalize(alias) === key));
+  };
+  let changed = false;
+  const schedules = state.schedules.map(slot => {
+    const name = (slot.plannedLocationName ?? "").trim();
+    if (!name) return slot;
+    let location = slot.plannedLocationId ? byId.get(slot.plannedLocationId) : undefined;
+    if (!location) location = findByName(name);
+    if (!location) {
+      const base = "schedule-place-" + normalize(name).normalize("NFKD")
+        .replace(/[^\\p{L}\\p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 48) || "place";
+      let id = base;
+      let suffix = 2;
+      while (byId.has(id)) id = base + "-" + suffix++;
+      location = {
+        id, name, description: "由角色日程自动同步建立；可在地点库中继续编辑。",
+        atmosphere: "", layout: "", props: [], visibility: "public" as const,
+      };
+      locations.push(location);
+      byId.set(id, location);
+      changed = true;
+    }
+    const canonicalName = location.name;
+    if (slot.plannedLocationId !== location.id || slot.plannedLocationName !== canonicalName) {
+      changed = true;
+      return { ...slot, plannedLocationId: location.id, plannedLocationName: canonicalName };
+    }
+    return slot;
+  });
+  return changed ? { ...state, locations, schedules } : state;
+}
+
 export function settleActorTimelineToNow(
   state: VirtualLifeState,
   ownerType: LifeOwnerType,
   ownerId: string,
   realNow = new Date(),
 ): VirtualLifeState {
+  // Synchronize places referenced by schedules before resolving today's active slot.
+  // Only the slot active at virtualNow can affect position; future plans never teleport actors.
+  state = syncScheduleLocationsToLibrary(state);
   const clock = getActorClock(state, ownerType, ownerId);
   const virtualNow = resolveActorLifeNow(clock, realNow);
   const nowIso = realNow.toISOString();
@@ -556,9 +603,8 @@ export function settleActorTimelineToNow(
   const current = getCurrentActorSchedule(state, ownerType, ownerId, virtualNow);
   const previous = findActorState(state, ownerType, ownerId);
   const slotChanged = !!current && previous?.scheduleSlotId !== current.id;
-  // A schedule is a plan, not physical movement. A manually chosen location is
-  // respected until its expected stay expires; confirmed shared appointments are
-  // the exception because reaching their start time begins the agreed activity.
+  // The current virtual-time slot drives routine movement. Respect a manual stay
+  // only until its explicit expiry; never apply a future slot before its start time.
   const stayExpired = !!previous?.actualLocationUntil && new Date(previous.actualLocationUntil).getTime() <= virtualNow.getTime();
   const activeAppointment = current?.kind === "appointment" && current.source === "event"
     ? events.find(event =>
@@ -582,19 +628,16 @@ export function settleActorTimelineToNow(
           : previous?.activity ?? current?.title ?? "自由活动";
   // A missing current slot must clear the old slot reference. Otherwise deleting
   // or editing a schedule can leave an actor permanently attached to stale activity.
-  const nextLocationId = activeAppointment
+  const scheduleMovementDue = !!current && (slotChanged || stayExpired || !previous?.actualLocationId);
+  const nextLocationId = activeAppointment || scheduleMovementDue
     ? current?.plannedLocationId ?? previous?.actualLocationId ?? null
-    : stayExpired
-      ? current?.plannedLocationId ?? previous?.actualLocationId ?? null
-      : previous?.actualLocationId ?? current?.plannedLocationId ?? null;
-  const nextLocationName = activeAppointment
+    : previous?.actualLocationId ?? current?.plannedLocationId ?? null;
+  const nextLocationName = activeAppointment || scheduleMovementDue
     ? current?.plannedLocationName ?? previous?.actualLocationName ?? null
-    : stayExpired
-      ? current?.plannedLocationName ?? previous?.actualLocationName ?? null
-      : previous?.actualLocationName ?? current?.plannedLocationName ?? null;
+    : previous?.actualLocationName ?? current?.plannedLocationName ?? null;
   const nextLocationUntil = activeAppointment
     ? current?.endAt ?? previous?.actualLocationUntil ?? null
-    : stayExpired ? null : previous?.actualLocationUntil ?? null;
+    : scheduleMovementDue ? null : previous?.actualLocationUntil ?? null;
   const nextSlotId = current?.id ?? null;
   const actorChanged = !previous || previous.activity !== nextActivity || (previous.actualLocationId ?? null) !== nextLocationId || (previous.actualLocationName ?? null) !== nextLocationName || (previous.actualLocationUntil ?? null) !== nextLocationUntil || (previous.scheduleSlotId ?? null) !== nextSlotId;
   const actorStates = actorChanged
