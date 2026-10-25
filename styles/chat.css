@@ -56,7 +56,8 @@
   top: 0;
   left: 0;
   right: 0;
-  z-index: 10;
+  /* Stay above active message rows (z-index:45), including expanded photo collections. */
+  z-index: 100;
 }
 
 /* 聊天插件 chat.header 坑位：头部与消息区都是 absolute 浮层，坑位必须自己定位，
