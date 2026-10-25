@@ -46,13 +46,13 @@ The first transcription may download the model. Later runs reuse the local model
 From the repository root:
 
 ~~~bash
-docker build -f tools/video-transcriber/Dockerfile -t momo-video-transcriber .
+docker build -f tools/video-transcriber/Dockerfile -t doremy-video-transcriber .
 docker run --rm -p 8766:8766 \
   -e VIDEO_TRANSCRIBER_TOKEN="replace-with-a-long-random-token" \
   -e VIDEO_TRANSCRIBER_ALLOWED_ORIGINS="https://your-web-app.example" \
   -e VIDEO_TRANSCRIBER_HOST=0.0.0.0 \
   -v video-transcriber-models:/models \
-  momo-video-transcriber
+  doremy-video-transcriber
 ~~~
 
 Model cache persists in the /models volume. The first setup still needs internet access to download packages/model data.

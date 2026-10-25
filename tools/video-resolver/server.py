@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Momo 本地视频解析服务 —— 纯标准库实现（Android / DSH 环境可用）。
+"""Doremy 本地视频解析服务 —— 纯标准库实现（Android / DSH 环境可用）。
 
 与上游 tools/video-resolver/app.py 的 HTTP 契约保持一致：
   GET    /health                 健康检查
@@ -29,7 +29,7 @@ from urllib.request import Request, urlopen
 
 import yt_dlp
 
-ROOT = Path(os.environ.get("VIDEO_RESOLVER_CACHE", Path.home() / ".momo-video-cache")).expanduser().resolve()
+ROOT = Path(os.environ.get("VIDEO_RESOLVER_CACHE", Path.home() / ".doremy-video-cache")).expanduser().resolve()
 ROOT.mkdir(parents=True, exist_ok=True)
 MAX_BYTES = max(50, int(os.environ.get("VIDEO_RESOLVER_MAX_MB", "2048"))) * 1024 * 1024
 API_TOKEN = os.environ.get("VIDEO_RESOLVER_TOKEN", "").strip()
@@ -172,7 +172,7 @@ def resolve_video(body: dict) -> dict:
         JOBS[job_id] = {"state": "downloading", "message": "正在获取视频并保存到本地", "created": time.time()}
 
     import tempfile
-    tempdir = Path(tempfile.mkdtemp(prefix="momo-", dir=ROOT))
+    tempdir = Path(tempfile.mkdtemp(prefix="doremy-", dir=ROOT))
     cookie_path = None
     try:
         cookies = body.get("cookies")
@@ -236,7 +236,7 @@ def health_payload() -> dict:
         pass
     return {
         "ok": bool(yt_version),
-        "service": "momo-video-resolver",
+        "service": "doremy-video-resolver",
         "version": VERSION,
         "engines": {"parse-video-py": False, "yt-dlp": bool(yt_version)},
         "ffmpeg": bool(shutil.which("ffmpeg")),
@@ -247,7 +247,7 @@ def health_payload() -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "MomoResolver/" + VERSION
+    server_version = "DoremyResolver/" + VERSION
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):  # 安静一点，日志走 stdout 重定向
@@ -314,7 +314,7 @@ class Handler(BaseHTTPRequestHandler):
                         (ROOT / record["file"]).unlink(missing_ok=True)
                     return self._json(200, {"ok": True, "deleted": bool(record)})
             if path == "/" and method == "GET":
-                return self._json(200, {"ok": True, "service": "momo-video-resolver",
+                return self._json(200, {"ok": True, "service": "doremy-video-resolver",
                                         "hint": "POST /api/resolve 解析视频；GET /health 查看状态"})
             raise HttpError(404, "接口不存在")
         except HttpError as exc:
@@ -397,7 +397,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     server.daemon_threads = True
-    print(f"momo-video-resolver {VERSION} listening on http://{HOST}:{PORT}", flush=True)
+    print(f"doremy-video-resolver {VERSION} listening on http://{HOST}:{PORT}", flush=True)
     print(f"cache: {ROOT}", flush=True)
     try:
         server.serve_forever()

@@ -39,7 +39,7 @@ function recentErrors(): QaErrorEntry[] {
 export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) => void }) {
   const [checks, setChecks] = useState<CheckItem[]>([]);
   const [termuxCommandCopied, setTermuxCommandCopied] = useState(false);
-  const termuxInstallCommand = "curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/momo.float.phone/main/tools/video-resolver/install-termux.sh | bash";
+  const termuxInstallCommand = "curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver/install-android.sh | bash";
   const copyTermuxInstallCommand = async () => {
     try {
       await navigator.clipboard.writeText(termuxInstallCommand);

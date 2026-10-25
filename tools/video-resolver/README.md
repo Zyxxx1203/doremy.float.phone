@@ -1,4 +1,4 @@
-# Momo 本地视频解析服务（Termux / Windows）
+# Doremy 本地视频解析服务（Termux / Windows）
 
 「一起看」的可选本地解析服务：把平台视频**下载到本机缓存**再交给原生播放器播放，避免依赖平台网页播放器（也避免 iframe 跨域读不到状态、截不到画面）。
 
@@ -16,15 +16,15 @@
 curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver/install-android.sh | bash
 ```
 
-脚本会 `pkg install python ffmpeg curl`、`pip install yt-dlp`，把服务装到 `~/.momo-video-resolver`，并写入三个命令：
+脚本会 `pkg install python ffmpeg curl`、`pip install yt-dlp`，把服务装到 `~/.doremy-video-resolver`，并写入三个命令：
 
 | 命令 | 作用 |
 | --- | --- |
-| `momo-video-start` | 启动（已在跑就直接提示） |
-| `momo-video-status` | 健康检查 |
-| `momo-video-stop` | 停止 |
+| `doremy-video-start` | 启动（已在跑就直接提示） |
+| `doremy-video-status` | 健康检查 |
+| `doremy-video-stop` | 停止 |
 
-装完记得 `termux-wake-lock` 并把 Termux 加入电池优化白名单，否则被系统回收后服务会停，重开 Termux 执行 `momo-video-start` 即可。
+装完记得 `termux-wake-lock` 并把 Termux 加入电池优化白名单，否则被系统回收后服务会停，重开 Termux 执行 `doremy-video-start` 即可。
 
 ### Windows
 
