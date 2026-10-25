@@ -1045,7 +1045,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
             </div>
 
             {showPlusMenu && (
-                <div className="chat-plus-menu" ref={plusMenuContainerRef} aria-label="聊天工具栏，可拖动排序，左右滑动查看更多">
+                <div className="chat-plus-menu" ref={plusMenuContainerRef} aria-label="聊天工具栏">
                     {orderedPlusMenuItems.map((item, i) => (
                         <button
                             key={item.label + "-" + i}
@@ -1059,8 +1059,14 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                             className={"chat-plus-menu-item flex flex-col items-center gap-1.5 cursor-pointer" + (draggingPlusItem === item.label ? " is-dragging" : "") + (dropTargetPlusItem === item.label ? " is-drop-target" : "")}
                             {...(item.active ? { "data-active": "" } : {})}
                             {...(dropTargetPlusItem === item.label ? { "data-drop-index": "第" + (i + 1) + "位" } : {})}
-                            aria-label={item.label + "，可拖动排序"}
+                            style={dropTargetPlusItem === item.label ? { position: "relative" } : undefined}
+                            aria-label={item.label}
                         >
+                            {dropTargetPlusItem === item.label && (
+                                <span aria-hidden="true" style={{ position: "absolute", zIndex: 5, top: -7, right: -7, padding: "2px 5px", borderRadius: 999, background: "var(--c-icon-active, #a65d83)", color: "#fff", fontSize: 9, lineHeight: 1.35, whiteSpace: "nowrap", boxShadow: "0 1px 4px rgba(0,0,0,.18)", pointerEvents: "none" }}>
+                                    第{i + 1}位
+                                </span>
+                            )}
                             <span className="chat-plus-icon-box" aria-hidden="true">{item.icon}</span>
                             <span className="chat-plus-tool-label ts-11 text-[var(--c-text)]">{item.label}</span>
                         </button>
