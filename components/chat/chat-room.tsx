@@ -4301,10 +4301,12 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const trimmed = text.trim();
         if (!trimmed) return false;
 
-        // A newer user turn wins over an unfinished AI reply or a queued
-        // background/life-system follow-up. Abort the old generation before the
-        // new message is committed, so its late stream cannot answer out of order.
+        // A newer user turn wins over unfinished foreground, offline, or background
+        // replies. The follow-up service owns a separate task registry, so cancelling
+        // only the visible stream leaves an old unsolicited reply able to commit later.
         const supersedingInFlightTurn = isGeneratingRef.current || activeGenerationRuns.has(session.id);
+        cancelBackgroundGeneration(session.id);
+        cancelOfflineGenerationRun(session.id);
         if (supersedingInFlightTurn) {
             cancelGenerationRun(session.id);
             pendingReplyRequestRef.current = false;
