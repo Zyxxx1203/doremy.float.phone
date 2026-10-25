@@ -59,6 +59,17 @@ function loadSettings(): GlobalWatchSettings {
 }
 function saveSettings(value: GlobalWatchSettings) { kvSet(SETTINGS_KEY, JSON.stringify(value)); }
 
+const NATIVE_MEMORY_SYNC_KEY = "global_watch_native_memory_synced_ids_v1";
+function persistNativeMemoryOnce(record: GlobalWatchRecord) {
+  try {
+    const raw = kvGet(NATIVE_MEMORY_SYNC_KEY);
+    const ids = raw ? JSON.parse(raw) as string[] : [];
+    if (ids.includes(record.id)) return;
+    persistGlobalWatchMemory(record);
+    kvSet(NATIVE_MEMORY_SYNC_KEY, JSON.stringify([...ids, record.id].slice(-500)));
+  } catch { /* global watch records remain saved even if memory sync fails */ }
+}
+
 export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [settings, setSettings] = useState<GlobalWatchSettings>(() => loadSettings());
@@ -99,7 +110,7 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
             targetUrl: "global-watch",
           };
           saveGlobalWatchRecord(record);
-          if (item.kind === "user" || item.kind === "character") persistGlobalWatchMemory(record);
+          if (item.kind === "user" || item.kind === "character") persistNativeMemoryOnce(record);
           existing.add(item.id);
         }
         setRecords(loadGlobalWatchRecords());
