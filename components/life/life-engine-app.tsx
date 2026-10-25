@@ -3198,24 +3198,45 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
                 const knownHomeNames = current.locations.filter(location => location.id === "home" || location.id.startsWith("home-")).map(location => location.name.trim()).filter(Boolean);
                 const destinationHome = nextLocations.find(location => location.id === (enabled ? homeLocationId : personalHomeId));
                 const destinationName = destinationHome?.name ?? (enabled ? selectedLocation.name : character.name + "的家");
-                const nextSchedules = current.schedules.map(slot => {
-                  if (slot.ownerType !== "character" || slot.ownerId !== character.id || new Date(slot.endAt).getTime() <= now) return slot;
+                const isHomeScheduleSlot = (slot: LifeScheduleSlot) => {
                   const plannedId = slot.plannedLocationId ?? "";
                   const plannedName = (slot.plannedLocationName ?? "").trim();
-                  const homeLikeActivity = /回家|在家|居家|家中|家里|做饭|家庭|睡觉|起床|休息/.test(slot.title)
+                  const homeLikeActivity = /回家|在家|居家|家中|家里|做饭|家庭|睡觉|起床|休息|家务|整理房间|打扫房间|睡前/.test(slot.title)
                     && ["habit", "meal", "free-time"].includes(slot.kind);
-                  const isHomeSlot = plannedId === "home" || plannedId.startsWith("home-")
+                  return plannedId === "home" || plannedId.startsWith("home-")
                     || knownHomeNames.includes(plannedName)
                     || plannedName === character.name + "的家" || plannedName === character.name + "家"
                     || /^(家|家里|家中|自己的家|回家|在家|居家|休息在家)$/.test(plannedName)
                     || /(?:回家|在家|居家|家中休息|家里休息)/.test(plannedName)
                     || homeLikeActivity;
-                  if (!isHomeSlot) return slot;
-                  if (slot.plannedLocationId === (enabled ? homeLocationId : personalHomeId) && plannedName === destinationName) return slot;
+                };
+                const destinationHomeId = enabled ? homeLocationId : personalHomeId;
+                const nextSchedules = current.schedules.map(slot => {
+                  if (slot.ownerType !== "character" || slot.ownerId !== character.id || new Date(slot.endAt).getTime() <= now) return slot;
+                  if (!isHomeScheduleSlot(slot)) return slot;
+                  const plannedName = (slot.plannedLocationName ?? "").trim();
+                  if (slot.plannedLocationId === destinationHomeId && plannedName === destinationName) return slot;
                   synchronizedScheduleCount++;
-                  return { ...slot, plannedLocationId: enabled ? homeLocationId : personalHomeId, plannedLocationName: destinationName, updatedAt: new Date().toISOString() };
+                  return { ...slot, plannedLocationId: destinationHomeId, plannedLocationName: destinationName, updatedAt: new Date().toISOString() };
                 });
-                const next = { ...current, locations: nextLocations, schedules: nextSchedules };
+                // If the character is physically at a home while their active slot is a
+                // home slot, update actual presence too. Changing only the slot's place
+                // leaves scheduleSlotId unchanged, so the clock engine would otherwise
+                // keep the stale personal-home actualLocationId until the next slot.
+                const activeSlot = getCurrentActorSchedule(current, "character", character.id, new Date(now));
+                const activeSlotIsHome = !!activeSlot && isHomeScheduleSlot(activeSlot);
+                const currentActual = current.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === character.id);
+                const currentActualId = currentActual?.actualLocationId ?? "";
+                const currentActualName = (currentActual?.actualLocationName ?? "").trim();
+                const actualIsHome = currentActualId === "home" || currentActualId.startsWith("home-")
+                  || knownHomeNames.includes(currentActualName)
+                  || currentActualName === character.name + "的家";
+                const nextActorStates = current.actorStates.map(actor => {
+                  if (actor.ownerType !== "character" || actor.ownerId !== character.id || !activeSlotIsHome || !actualIsHome) return actor;
+                  if (actor.actualLocationId === destinationHomeId && actor.actualLocationName === destinationName) return actor;
+                  return { ...actor, actualLocationId: destinationHomeId, actualLocationName: destinationName, actualLocationUntil: undefined, updatedAt: new Date().toISOString() };
+                });
+                const next = { ...current, locations: nextLocations, schedules: nextSchedules, actorStates: nextActorStates };
                 commit(next);
                 setNotice(enabled
                   ? synchronizedScheduleCount
