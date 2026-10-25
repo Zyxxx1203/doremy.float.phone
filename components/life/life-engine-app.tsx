@@ -145,10 +145,16 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
     if (quoted.length) {
       if (outside && actionVerb.test(outside)) extractedActions.push(outside.replace(/[，,：:]?(?:说道|说着|开口道|问道|答道)$/g, "").trim());
       normalizedDialogueLines.push(...quoted.filter(Boolean));
-    } else if (actionVerb.test(line) && !conversational.test(line)) {
-      extractedActions.push(line.replace(/^(?:动作|行动|旁白|场景描写)\s*[:：]\s*/, "").trim());
     } else {
-      normalizedDialogueLines.push(line);
+      const speechSplit = line.match(/^(.*?)([，,。]?(?:开口说道|轻声地说|低声地说|笑着说|轻声说|低声说|笑着问|开口问|开口说|说道|问道|答道|说着|笑道|轻声|低声|说|问|答)[:：，,\s]+)(.+)$/);
+      if (speechSplit && actionVerb.test(speechSplit[1]) && speechSplit[3].trim()) {
+        extractedActions.push((speechSplit[1] + speechSplit[2]).replace(/^[，,。\s]+|[，,。\s]+$/g, "").trim());
+        normalizedDialogueLines.push(speechSplit[3].trim());
+      } else if (actionVerb.test(line) && !conversational.test(line)) {
+        extractedActions.push(line.replace(/^(?:动作|行动|旁白|场景描写)\s*[:：]\s*/, "").trim());
+      } else {
+        normalizedDialogueLines.push(line);
+      }
     }
   }
   const dialogue = normalizedDialogueLines.join("\n").replace(/\s+([，。！？；：])/g, "$1").trim();
@@ -3138,32 +3144,34 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
                 // Compare against this character's own virtual clock, not wall-clock time.
                 // Otherwise a simulated timeline can treat its upcoming home slots as past.
                 const now = resolveActorLifeNow(getActorClock(current, "character", character.id)).getTime();
+                let synchronizedScheduleCount = 0;
+                const knownHomeNames = current.locations.filter(location => location.id === "home" || location.id.startsWith("home-")).map(location => location.name.trim()).filter(Boolean);
+                const destinationHome = nextLocations.find(location => location.id === (enabled ? homeLocationId : personalHomeId));
+                const destinationName = destinationHome?.name ?? (enabled ? selectedLocation.name : character.name + "的家");
                 const nextSchedules = current.schedules.map(slot => {
                   if (slot.ownerType !== "character" || slot.ownerId !== character.id || new Date(slot.endAt).getTime() <= now) return slot;
                   const plannedId = slot.plannedLocationId ?? "";
                   const plannedName = (slot.plannedLocationName ?? "").trim();
-                  const knownHomeNames = current.locations.filter(location => location.id === "home" || location.id.startsWith("home-")).map(location => location.name.trim()).filter(Boolean);
+                  const homeLikeActivity = /回家|在家|居家|家中|家里|做饭|家庭|睡觉|起床|休息/.test(slot.title)
+                    && ["habit", "meal", "free-time"].includes(slot.kind);
                   const isHomeSlot = plannedId === "home" || plannedId.startsWith("home-")
                     || knownHomeNames.includes(plannedName)
                     || plannedName === character.name + "的家" || plannedName === character.name + "家"
                     || /^(家|家里|家中|自己的家|回家|在家|居家|休息在家)$/.test(plannedName)
-                    || /(?:回家|在家|居家|家中休息|家里休息)/.test(plannedName);
+                    || /(?:回家|在家|居家|家中休息|家里休息)/.test(plannedName)
+                    || homeLikeActivity;
                   if (!isHomeSlot) return slot;
-                  const destinationHome = nextLocations.find(location => location.id === (enabled ? homeLocationId : personalHomeId));
-                  const destinationName = destinationHome?.name ?? (enabled ? selectedLocation.name : character.name + "的家");
-                  if (enabled && (plannedId !== homeLocationId || plannedName !== destinationName)) {
-                    return { ...slot, plannedLocationId: homeLocationId, plannedLocationName: destinationName, updatedAt: new Date().toISOString() };
-                  }
-                  if (!enabled && (plannedId === homeLocationId || plannedName !== destinationName)) {
-                    return { ...slot, plannedLocationId: personalHomeId, plannedLocationName: destinationName, updatedAt: new Date().toISOString() };
-                  }
-                  return slot;
+                  if (slot.plannedLocationId === (enabled ? homeLocationId : personalHomeId) && plannedName === destinationName) return slot;
+                  synchronizedScheduleCount++;
+                  return { ...slot, plannedLocationId: enabled ? homeLocationId : personalHomeId, plannedLocationName: destinationName, updatedAt: new Date().toISOString() };
                 });
                 const next = { ...current, locations: nextLocations, schedules: nextSchedules };
                 commit(next);
                 setNotice(enabled
-                  ? "同住行程已实时更新：未来的居家时段已转到这个住处，工作、学习和外出安排保留。"
-                  : "已取消同住：未来居家时段已恢复到" + character.name + "自己的住处，其他行程不变。");
+                  ? synchronizedScheduleCount
+                    ? "同住已保存：已同步 " + synchronizedScheduleCount + " 个未来居家时段到「" + destinationName + "」，工作、学习和外出安排保留。"
+                    : "同住关系已保存到「" + destinationName + "」，但当前没有识别到未来居家时段。原有行程未被删除；请检查七日日程中的地点名称，后续生成的居家安排会使用新住处。"
+                  : "已取消同住：" + synchronizedScheduleCount + " 个未来居家时段已恢复到" + character.name + "自己的住处，其他行程不变。");
               }} className="h-4 w-4 accent-[var(--life-accent)]"/>
             </label>)}</div>
           </section>}
