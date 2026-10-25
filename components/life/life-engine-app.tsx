@@ -135,7 +135,7 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
   // Fallback for models that ignore XML tags: quoted speech remains dialogue, while
   // clearly narrated movement/expressions become the scene action card.
   const normalizedDialogueLines: string[] = [];
-  const actionVerb = /笑了笑|笑着|看向|看着|望向|望着|转过身|转身|低下头|低头|抬起头|抬头|抬手|伸出手|伸手|靠近|走到|走向|坐下|起身|站起|点点头|点头|摇摇头|摇头|叹了口气|叹气|皱起眉|皱眉|眨了眨眼|眨眼|抱住|拿起|放下|注视|呼吸|轻轻地|轻轻|慢慢地|慢慢|停下脚步|停住脚步|移开视线|别开目光|耳尖泛红|脸颊泛红|动作|神情|姿态|把.+递给|将.+放在/;
+  const actionVerb = /笑了笑|笑着|看向|看着|望向|望着|转过身|转身|低下头|低头|抬起头|抬头|抬手|伸出手|伸手|靠近|走到|走向|坐下|起身|站起|点点头|点头|摇摇头|摇头|叹了口气|叹气|皱起眉|皱眉|眨了眨眼|眨眼|抱住|拿起|放下|注视|呼吸|轻轻地|轻轻|慢慢地|慢慢|停下脚步|停住脚步|移开视线|别开目光|耳尖泛红|脸颊泛红|动作|神情|姿态|抚摸|轻抚|摸了摸|拍了拍|拉住|牵起|牵住|搂住|拥抱|贴近|挪了挪|向前一步|后退一步|倚着|靠在|倚靠|拨开|整理|掀开|合上|翻开|抿唇|扬起嘴角|唇角|眼神|视线|目光|把.+(?:递给|放在|拿起|放下|推到|移到|收起)|将.+(?:递给|放在|拿起|放下|推到|移到|收起)/;
   const conversational = /^(?:我|你|我们|咱们|其实|嗯|啊|哦|欸|诶|对了|所以|但是|不过|因为|如果|那|好|好的|行|可以|不行|别|不要|谢谢|抱歉|对不起|想问|觉得|认为|知道|记得|希望|喜欢|讨厌|想要|想去|想做|告诉你|跟你说|我说|你说)/;
   for (const sourceLine of dialogueLines) {
     const line = sourceLine.trim();
@@ -148,7 +148,7 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
     } else {
       // Split common untagged narration-plus-speech output into an action card and a dialogue bubble.
       const speechSplit = line.match(/^(.{1,100}?)(?:轻声说|低声说|开口道|说道|说着|问道|答道|回答道|说|问|答)\s*[:：，,]?\s*(.+)$/);
-      if (speechSplit && actionVerb.test(speechSplit[1]) && !conversational.test(speechSplit[1])) {
+      if (speechSplit && actionVerb.test(speechSplit[1]) && (!conversational.test(speechSplit[1]) || /^(?:我|我们)?(?:笑|看|望|转身|低头|抬手|伸手|靠近|走到|走向|坐下|起身|点头|摇头|叹气|皱眉|眨眼|抱住|拿起|放下|注视|轻抚|摸了摸|牵起|搂住|拥抱|倚着|靠在)/.test(speechSplit[1]))) {
         extractedActions.push(speechSplit[1].trim().replace(/[，,：:]$/, ""));
         normalizedDialogueLines.push(speechSplit[2].trim().replace(/^[“「『"]|[”」』"]$/g, ""));
       } else if (actionVerb.test(line) && !conversational.test(line)) {
