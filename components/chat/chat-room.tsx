@@ -6103,6 +6103,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                         )}
                     </span>
                     <span className="page-header-right">
+                        {/* 历史检索入口统一放在聊天信息页，避免聊天室顶栏重复放置。 */}
                         <button className="page-back-btn" type="button" onClick={() => setShowSettings(true)} aria-label="更多">
                             <MoreHorizontal size={22} strokeWidth={1.5} />
                         </button>
