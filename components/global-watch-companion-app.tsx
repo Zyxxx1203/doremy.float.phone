@@ -22,6 +22,7 @@ type GlobalWatchNative = {
   stopGlobalWatch?: () => void;
   pauseGlobalWatch?: (paused: boolean) => void;
   captureGlobalWatchNow?: () => void;
+  setGlobalWatchSpeechEnabled?: (enabled: boolean) => void;
   sendGlobalWatchReply?: (text: string) => void;
   showGlobalWatchComment?: (text: string) => void;
   isGlobalWatchRunning?: () => boolean;
@@ -394,7 +395,7 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
           <label className="text-sm">主动发言最短间隔（分）<input type="number" min={1} max={60} value={settings.speechIntervalMinMinutes} onChange={e => patchSettings("speechIntervalMinMinutes", Number(e.target.value))} className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3 py-2"/></label>
           <label className="text-sm">主动发言最长间隔（分）<input type="number" min={1} max={120} value={settings.speechIntervalMaxMinutes} onChange={e => patchSettings("speechIntervalMaxMinutes", Number(e.target.value))} className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3 py-2"/></label>
         </div>
-        <button type="button" onClick={() => patchSettings("randomSpeechEnabled", !settings.randomSpeechEnabled)} className={"mt-4 flex w-full items-center justify-between rounded-xl border px-3 py-3 text-sm " + (settings.randomSpeechEnabled ? "border-emerald-600/30 bg-emerald-50" : "border-stone-300 bg-white")}>
+        <button type="button" onClick={() => { const enabled = !settings.randomSpeechEnabled; patchSettings("randomSpeechEnabled", enabled); native?.setGlobalWatchSpeechEnabled?.(enabled); }} className={"mt-4 flex w-full items-center justify-between rounded-xl border px-3 py-3 text-sm " + (settings.randomSpeechEnabled ? "border-emerald-600/30 bg-emerald-50" : "border-stone-300 bg-white")}>
           <span>随机主动发言</span><span>{settings.randomSpeechEnabled ? "已开启" : "已关闭"}</span>
         </button>
         <button type="button" role="checkbox" aria-checked={consentChecked} onClick={() => setConsentChecked(value => !value)} className={"mt-4 flex min-h-[76px] w-full items-center gap-3 rounded-2xl border-2 p-4 text-left transition " + (consentChecked ? "border-emerald-600 bg-emerald-50" : "border-amber-500 bg-amber-50 shadow-sm")}>
