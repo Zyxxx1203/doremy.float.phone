@@ -83,8 +83,9 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
   const planChange = planTag ? { title: attribute(planTag[1], "title"), locationId: attribute(planTag[1], "locationId") || "home", startAt: attribute(planTag[1], "startAt"), endAt: attribute(planTag[1], "endAt") } : undefined;
   const inviteDuration = Number(attribute(inviteTag?.[1] || "", "durationMinutes"));
   const invitation = inviteTag ? { time: attribute(inviteTag[1], "time"), locationId: attribute(inviteTag[1], "locationId") || "cafe", activity: attribute(inviteTag[1], "activity") || "一起做点什么", reason: attribute(inviteTag[1], "reason"), durationMinutes: Math.max(15, Math.min(Number.isFinite(inviteDuration) && inviteDuration ? inviteDuration : 60, 24 * 60)) } : undefined;
-  const actionTags = [...text.matchAll(/<life_action\b[^>]*>([\s\S]*?)<\/life_action\s*>/ig)];
-  const dialogueTags = [...text.matchAll(/<life_dialogue\b[^>]*>([\s\S]*?)<\/life_dialogue\s*>/ig)];
+  // Some providers omit a closing tag; stop action capture at the dialogue tag.
+  const actionTags = [...text.matchAll(/<life_action\b[^>]*>([\s\S]*?)(?:<\/life_action\s*>|(?=<life_dialogue\b)|$)/ig)];
+  const dialogueTags = [...text.matchAll(/<life_dialogue\b[^>]*>([\s\S]*?)(?:<\/life_dialogue\s*>|$)/ig)];
   const actionTag = actionTags[0];
   const dialogueTag = dialogueTags[0];
   const stripControlTags = (value: string) => value
@@ -118,7 +119,26 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
     if (actionLabel) extractedActions.push(actionLabel[1].trim());
     else dialogueLines.push(dialogueLabel ? dialogueLabel[1].trim() : line);
   }
-  const dialogue = dialogueLines.join("\n").replace(/\s+([，。！？；：])/g, "$1").trim();
+  // Fallback for models that ignore XML tags: quoted speech remains dialogue, while
+  // clearly narrated movement/expressions become the scene action card.
+  const normalizedDialogueLines: string[] = [];
+  const actionVerb = /笑了笑|笑着|看向|看着|望向|望着|转过身|转身|低下头|低头|抬起头|抬头|抬手|伸出手|伸手|靠近|走到|走向|坐下|起身|站起|点点头|点头|摇摇头|摇头|叹了口气|叹气|皱起眉|皱眉|眨了眨眼|眨眼|抱住|拿起|放下|注视|呼吸|轻轻地|轻轻|慢慢地|慢慢|停下脚步|停住脚步|移开视线|别开目光|耳尖泛红|脸颊泛红|动作|神情|姿态|把.+递给|将.+放在/;
+  const conversational = /^(?:我|你|我们|咱们|其实|嗯|啊|哦|欸|诶|对了|所以|但是|不过|因为|如果|那|好|好的|行|可以|不行|别|不要|谢谢|抱歉|对不起|想问|觉得|认为|知道|记得|希望|喜欢|讨厌|想要|想去|想做|告诉你|跟你说|我说|你说)/;
+  for (const sourceLine of dialogueLines) {
+    const line = sourceLine.trim();
+    if (!line) continue;
+    const quoted: string[] = [];
+    const outside = line.replace(/[“「『\"]([^”」』\"]+)[”」』\"]/g, (_whole, spoken: string) => { quoted.push(spoken.trim()); return " "; }).trim();
+    if (quoted.length) {
+      if (outside && actionVerb.test(outside)) extractedActions.push(outside.replace(/[，,：:]?(?:说道|说着|开口道|问道|答道)$/g, "").trim());
+      normalizedDialogueLines.push(...quoted.filter(Boolean));
+    } else if (actionVerb.test(line) && !conversational.test(line)) {
+      extractedActions.push(line.replace(/^(?:动作|行动|旁白|场景描写)\s*[:：]\s*/, "").trim());
+    } else {
+      normalizedDialogueLines.push(line);
+    }
+  }
+  const dialogue = normalizedDialogueLines.join("\n").replace(/\s+([，。！？；：])/g, "$1").trim();
   return { action: extractedActions.filter(Boolean).join("\n"), dialogue, followRequest, planChange, invitation };
 }
 
@@ -742,13 +762,13 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const virtualNowMs = virtualNow.getTime();
       const end = new Date(start.getTime()); end.setDate(end.getDate() + 7);
       const locations = current.locations.filter(location => {
-        // Do not offer a solo home as a scheduling destination once its resident shares another home.
-        if (!location.id.startsWith("home-") || (location.residents ?? []).length > 1) return true;
-        const residents = location.residents ?? [];
+        // The home-<characterId> ID is canonical even if older data has an empty residents list.
+        if (!location.id.startsWith("home-")) return true;
+        const ownerId = location.id.slice("home-".length);
         return !current.locations.some(shared => shared.id !== location.id
           && (shared.id === "home" || shared.id.startsWith("home-"))
-          && (shared.residents ?? []).length > 1
-          && (shared.residents ?? []).some(residentId => residents.includes(residentId)));
+          && (shared.id === "home" || (shared.residents ?? []).length > 1)
+          && (shared.residents ?? []).includes(ownerId));
       }).map(p => "- " + p.name + ((p.aliases?.length ?? 0) ? "（别名：" + p.aliases!.join("、") + "）" : "") + (p.characterHabits?.[character.id] ? "；角色习惯：" + p.characterHabits[character.id] : "")).join("\n");
       const livesWithPlayer = current.locations.some(location =>
         (location.id === "home" || location.id.startsWith("home-"))
@@ -997,7 +1017,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     let next = stateRef.current;
     const travelStartedAt = new Date().toISOString();
     for (const char of companions) {
-      next = upsertActorState(next, { ownerType: "character", ownerId: char.id, activity: "跟随" + playerName + "前往" + destination.name, actualLocationId: destination.id, actualLocationName: destination.name, updatedAt: travelStartedAt });
+      const companionNow = resolveActorLifeNow(getActorClock(next, "character", char.id));
+      next = upsertActorState(next, { ownerType: "character", ownerId: char.id, activity: "跟随" + playerName + "前往" + destination.name, actualLocationId: destination.id, actualLocationName: destination.name, actualLocationUntil: new Date(companionNow.getTime() + stayDurationMinutes * 60_000).toISOString(), updatedAt: travelStartedAt });
       // Reflect the companion's current itinerary slot as travel together; later slots remain intact.
       const actorNow = resolveActorLifeNow(getActorClock(next, "character", char.id)).getTime();
       next = {
@@ -1032,14 +1053,16 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
     if (!destination) return;
     const now = new Date().toISOString();
+    // Use the latest committed state: a companion-transfer commit may not have rendered yet.
+    const arrivalState = stateRef.current;
     const actualCharacters = settings.enableCoincidences
-      ? characters.filter(char => state.actorStates.some(actor => actor.ownerType === "character" && actor.ownerId === char.id && actor.actualLocationId === destination.id))
+      ? characters.filter(char => arrivalState.actorStates.some(actor => actor.ownerType === "character" && actor.ownerId === char.id && actor.actualLocationId === destination.id))
       : [];
     const participants: LifeSceneParticipant[] = [{
       ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "刚来到这里", awarenessByActorId: {},
     }];
     for (const char of actualCharacters) {
-      const actor = state.actorStates.find(item => item.ownerType === "character" && item.ownerId === char.id);
+      const actor = arrivalState.actorStates.find(item => item.ownerType === "character" && item.ownerId === char.id);
       if (!actor) continue;
       const perception = {
         distance: "medium" as const,
@@ -2497,7 +2520,14 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const playerPresence = actorState(playerActor);
   const nearbyCharacters = characters.map(character => ({ character, presence: state.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === character.id) })).filter(item => !!playerPresence?.actualLocationId && item.presence?.actualLocationId === playerPresence.actualLocationId);
   const playerLocationId = playerPresence?.actualLocationId || playerCurrentSlot?.plannedLocationId || activeScene?.locationId || "home";
-  const locationCards = state.locations.map(location => {
+  const locationCards = state.locations.filter(location => {
+    if (!location.id.startsWith("home-")) return true;
+    const ownerId = location.id.slice("home-".length);
+    return !state.locations.some(shared => shared.id !== location.id
+      && (shared.id === "home" || shared.id.startsWith("home-"))
+      && (shared.id === "home" || (shared.residents ?? []).length > 1)
+      && (shared.residents ?? []).includes(ownerId));
+  }).map(location => {
     const people = characters.map(character => {
       const presence = state.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === character.id);
       const currentSlot = getCurrentActorSchedule(state, "character", character.id, resolveActorLifeNow(getActorClock(state, "character", character.id)));
@@ -2988,14 +3018,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           </form>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {state.locations.filter(location => {
-              // Keep shared homes visible even when their IDs use the home- prefix; hide only obsolete solo homes.
               if (!location.id.startsWith("home-")) return true;
-              const residents = location.residents ?? [];
-              if (residents.length > 1) return true;
+              const ownerId = location.id.slice("home-".length);
               return !state.locations.some(shared => shared.id !== location.id
                 && (shared.id === "home" || shared.id.startsWith("home-"))
-                && (shared.residents ?? []).length > 1
-                && (shared.residents ?? []).some(residentId => residents.includes(residentId)));
+                && (shared.id === "home" || (shared.residents ?? []).length > 1)
+                && (shared.residents ?? []).includes(ownerId));
             }).map(location => {
               const entries = state.timeline.filter(entry => entry.locationName === location.name);
               const eventCount = state.events.filter(event => event.locationId === location.id || event.locationName === location.name).length;
@@ -3073,7 +3101,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
                   if (slot.ownerType !== "character" || slot.ownerId !== character.id || new Date(slot.endAt).getTime() <= now) return slot;
                   const plannedId = slot.plannedLocationId ?? "";
                   const plannedName = (slot.plannedLocationName ?? "").trim();
-                  const isHomeSlot = plannedId === "home" || plannedId.startsWith("home-") || (!plannedId && /^(家|家里|家中|自己的家)$/.test(plannedName));
+                  const isHomeSlot = plannedId === "home" || plannedId.startsWith("home-") || plannedName === character.name + "的家" || plannedName === character.name + "家" || (!plannedId && /^(家|家里|家中|自己的家)$/.test(plannedName));
                   if (!isHomeSlot) return slot;
                   if (enabled && plannedId !== homeLocationId) return { ...slot, plannedLocationId: homeLocationId, plannedLocationName: nextLocations.find(location => location.id === homeLocationId)?.name ?? selectedLocation.name, updatedAt: new Date().toISOString() };
                   if (!enabled && plannedId === homeLocationId) return { ...slot, plannedLocationId: personalHomeId, plannedLocationName: character.name + "的家", updatedAt: new Date().toISOString() };
