@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useSyncExternalStore } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, SlidersHorizontal } from "lucide-react";
 import { CHAT_MESSAGE_PUSHED_EVENT, loadChatSessions, loadChatContacts, ChatSession, createOrGetSession, createGroupSession, pushChatMessage, addChatContact, loadChatMessages, getLastVisibleSessionMessage, getChatMessagePreview } from "@/lib/chat-storage";
 import { loadCharacters } from "@/lib/character-storage";
 import { Character } from "@/lib/character-types";
@@ -271,7 +271,7 @@ export function ChatMessageList({ onCloseApp, onOpenHistorySearch, activeSession
                             value={listFilter}
                             onChange={(e) => setListFilter(e.target.value)}
                         />
-                        <button type="button" onClick={onOpenHistorySearch} className="shrink-0 rounded-lg border border-[var(--c-border)] bg-[var(--c-card)] px-2.5 py-1.5 text-[11px] text-[var(--c-text-title)]" aria-label="筛选聊天记录" title="筛选聊天记录">记录筛选</button>
+                        <button type="button" onClick={onOpenHistorySearch} className="shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-full text-[var(--c-icon)] transition-colors hover:bg-[var(--c-input)] hover:text-[var(--c-text-title)] active:scale-95" aria-label="筛选聊天记录" title="筛选聊天记录"><SlidersHorizontal size={17} strokeWidth={1.7} /></button>
                     </div>
                 </div>
                 <div className="chat-list-tabs" style={{ paddingLeft: 20, paddingRight: 20 }}>
