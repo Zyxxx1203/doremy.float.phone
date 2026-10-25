@@ -3570,9 +3570,21 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               </div>
               <p className="mt-2 text-[10px] leading-relaxed text-stone-500">先等待玩家达到上面的静默时长，再按下方随机间隔尝试一次；角色主动发出的消息不会重置玩家静默计时。</p>
               <div className="mt-3"><Toggle checked={settings.enableLifeMessageNotifications !== false} onChange={async v=>{if(v && typeof Notification!=="undefined" && Notification.permission==="default"){try{await Notification.requestPermission();}catch{/* permission prompt may be unavailable in WebView */}}patchSettings({enableLifeMessageNotifications:v});}} label="主动消息弹窗提示"/></div>
-               <p className="mt-2 text-[10px] leading-relaxed text-stone-500">角色同场时会优先使用生活现场专属主动互动，不走普通聊天冷场追问。已配置云端任务与推送订阅时，会预约生活现场离线任务；应用被杀后由服务端生成系统通知，回传只写入生活现场，不混入普通聊天室。下方按钮仅测试站内横幅样式。</p>
-              <button type="button" onClick={() => { const character = characters[0]; if (!character) { setNotice("没有可用于预览横幅的角色。"); return; } const activeSceneForTest = stateRef.current.scenes.find(item => item.status === "active" && item.participants.some(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID)) ?? stateRef.current.scenes.find(item => item.status === "active"); setToastReplyMode("hidden"); setToastReplyDraft(""); setSceneToast({ kind: "dialogue", characterId: character.id, characterName: character.name, avatar: character.avatar ?? "", location: activeSceneForTest?.locationName ?? "生活现场", body: "这是一条生活系统通知横幅测试。真实角色消息会显示在这里。", sceneId: activeSceneForTest?.id ?? "", isTest: true }); window.setTimeout(() => setSceneToast(current => current?.isTest ? null : current), 6500); setNotice("已显示生活系统样式的站内横幅；这只测试界面样式，不代表离线推送订阅已验证。"); }} className="mt-2 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 active:opacity-70">测试生活系统通知横幅</button>
-              <p className="mt-1.5 text-[10px] leading-4 text-stone-400">预览使用生活现场实际横幅样式，不写入生活记录，也不会伪装成离线推送测试。</p>
+               <p className="mt-2 text-[10px] leading-relaxed text-stone-500">此测试会通过 Supabase Realtime 向安卓壳推送原生系统通知，不使用网页内横幅。通知应带有「回复行动」和「回复对话」两个系统级快捷回复入口。</p>
+              <button type="button" onClick={async () => {
+                const activeSceneForTest = stateRef.current.scenes.find(item => item.status === "active" && item.participants.some(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID));
+                if (!activeSceneForTest) { setNotice("请先进入一个包含玩家的进行中生活现场，再测试原生通知。"); return; }
+                const participant = activeSceneForTest.participants.find(item => item.ownerType === "character" && item.activity !== "离开");
+                const character = participant ? characters.find(item => item.id === participant.ownerId) : undefined;
+                if (!character) { setNotice("当前生活现场没有可用于测试的在场角色。"); return; }
+                setNotice("正在向安卓原生通知通道发送测试……");
+                try {
+                  const response = await fetch("/api/push/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "life_scene", sessionId: "life-engine-" + character.id, sceneId: activeSceneForTest.id, characterName: character.name, avatar: character.avatar || "", body: "这是一条生活现场原生通知测试。请检查是否同时出现「回复行动」和「回复对话」。" }) });
+                  const result = await response.json().catch(() => ({}));
+                  setNotice(response.ok && result.ok ? "测试通知已发往安卓壳通道。请在系统通知横幅上确认两个回复入口；若未出现，检查壳常驻通知是否显示“已连接，等待角色消息”。" : "原生通知发送失败：" + (result.error || result.message || response.status));
+                } catch (error) { setNotice("原生通知请求失败：" + (error instanceof Error ? error.message : String(error))); }
+              }} className="mt-2 w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-700 active:opacity-70">测试安卓原生生活通知</button>
+              <p className="mt-1.5 text-[10px] leading-4 text-stone-400">需要安卓壳已连上推送通道且当前存在进行中的生活现场；这会发真实系统通知，不会写入生活记录。</p>
             </div>
             <Toggle checked={settings.enableAmbientDetails} onChange={v=>patchSettings({enableAmbientDetails:v})} label="启用环境细节"/>
           </div>
