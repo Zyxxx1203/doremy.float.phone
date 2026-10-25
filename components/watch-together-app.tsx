@@ -244,10 +244,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     const onFocus = (event: Event) => {
       const target = event.target;
       if (!(target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement)) return;
-      window.setTimeout(() => {
-        syncViewport();
-        target.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      }, 220);
+      // Do not call scrollIntoView here: on Android WebView it may scroll the whole
+      // watch page when the IME opens, moving the composer over the conversation.
+      window.setTimeout(syncViewport, 220);
     };
     root.addEventListener("focusin", onFocus);
     return () => {
@@ -1611,73 +1610,121 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       .watch-together-app .watch-sync-wave{transform-origin:center}
       .watch-together-app .watch-control-capsule{margin-top:0!important;margin-bottom:1px!important}
 
-      /* Final mobile layout authority: fixed 16:9 screen and independently scrollable discussion. */
+      /* Final mobile layout authority: the conversation owns the remaining space. */
+      .watch-together-app > main.watch-together-main {
         display:grid!important; grid-template-columns:minmax(0,1fr)!important;
         grid-template-rows:auto auto minmax(0,1fr)!important;
         grid-template-areas:"title" "player" "interaction"!important;
         gap:8px!important; min-height:0!important; overflow:hidden!important;
-        padding:7px 12px max(10px,env(safe-area-inset-bottom))!important;
-      } justify-self:center!important; align-self:center!important;
-        width:min(100%, 56.888dvh)!important; height:auto!important;
-        aspect-ratio:16 / 9!important; min-height:0!important; max-height:32dvh!important;
-        margin:0 auto!important; overflow:hidden!important; position:relative!important;
+        padding:7px 12px max(8px,env(safe-area-inset-bottom))!important;
       }
-        position:absolute!important; inset:0!important; display:block!important;
-        width:100%!important; height:100%!important; max-width:100%!important; max-height:100%!important;
-        aspect-ratio:auto!important; object-fit:contain!important; border:0!important;
-      } display:flex!important; min-width:0!important; min-height:0!important;
-        height:100%!important; max-height:none!important; overflow:hidden!important;
+      .watch-together-app .watch-room-title { grid-area:title!important; min-width:0!important; }
+      .watch-together-app .watch-player {
+        grid-area:player!important; justify-self:center!important; align-self:center!important;
+        width:min(100%,56.888dvh)!important; height:auto!important; aspect-ratio:16 / 9!important;
+        min-height:0!important; max-height:32dvh!important; margin:0 auto!important;
+        overflow:hidden!important; position:relative!important; flex-shrink:0!important;
       }
+      .watch-together-app .watch-player > video,
+      .watch-together-app .watch-player > iframe,
+      .watch-together-app .watch-player > div:has(> iframe) {
+        display:block!important; width:100%!important; height:100%!important;
+        max-width:100%!important; max-height:100%!important; aspect-ratio:auto!important;
+        object-fit:contain!important; border:0!important;
+      }
+      .watch-together-app .watch-interaction-panel {
+        grid-area:interaction!important; display:flex!important; flex-direction:column!important;
+        min-width:0!important; min-height:0!important; height:100%!important;
+        max-height:none!important; margin:0!important; overflow:hidden!important;
+      }
+      .watch-together-app .watch-interaction-panel > [data-part="card"] {
         display:flex!important; flex:1 1 auto!important; flex-direction:column!important;
-        min-height:0!important; overflow:hidden!important;
+        width:100%!important; height:100%!important; min-width:0!important; min-height:0!important;
+        max-height:none!important; overflow:hidden!important; box-sizing:border-box!important;
+        padding:10px!important; border-radius:18px!important;
+        background:linear-gradient(160deg,rgba(255,249,239,.97),rgba(244,226,205,.98))!important;
+        border:1px solid rgba(172,126,88,.48)!important;
+        box-shadow:0 8px 22px rgba(83,54,33,.12),inset 0 1px 0 rgba(255,255,255,.9)!important;
       }
-        display:flex!important; flex:1 1 auto!important; flex-direction:column!important;
-        min-height:0!important; max-height:none!important; overflow-y:auto!important; overflow-x:hidden!important;
-        overscroll-behavior:contain!important; -webkit-overflow-scrolling:touch!important; touch-action:pan-y!important;
+      .watch-together-app .watch-interaction-panel .watch-empty-state {
+        flex:1 1 auto!important; min-height:0!important; overflow:hidden!important;
+      }
+      .watch-together-app .watch-interaction-panel [data-part="history"] {
+        display:flex!important; flex:1 1 0!important; flex-direction:column!important;
+        min-width:0!important; min-height:0!important; max-height:none!important;
+        margin:0!important; padding:0 0 8px!important; border:0!important; overflow:hidden!important;
+      }
+      .watch-together-app .watch-interaction-panel .watch-comment-list {
+        display:flex!important; flex:1 1 0!important; flex-direction:column!important;
+        min-width:0!important; min-height:0!important; max-height:none!important;
+        overflow-y:auto!important; overflow-x:hidden!important; overscroll-behavior:contain!important;
+        -webkit-overflow-scrolling:touch!important; touch-action:pan-y!important;
+      }
+      .watch-together-app .watch-comment-list > article {
+        flex:0 0 auto!important; margin:0 0 8px!important; padding:9px 11px!important;
+        border:1px solid rgba(201,154,120,.24)!important; border-radius:14px!important;
+        background:rgba(255,255,255,.72)!important; color:#594536!important;
       }
       .watch-together-app .watch-comment-list [data-comment-author] {
-        display:block!important; margin-bottom:3px!important; font:600 10px/1.4 system-ui,sans-serif!important;
-        letter-spacing:.04em!important; color:#a77c5d!important;
+        display:block!important; margin-bottom:3px!important;
+        font:600 10px/1.4 system-ui,sans-serif!important; letter-spacing:.04em!important; color:#a77c5d!important;
       }
       .watch-together-app .watch-comment-list [data-comment-text] {
         display:block!important; white-space:pre-wrap!important; overflow-wrap:anywhere!important;
         word-break:break-word!important; -webkit-line-clamp:unset!important; max-height:none!important;
+        color:#59483d!important; font-size:13px!important; line-height:1.55!important;
       }
-
-      /* Final mobile chat layout: history scrolls independently; compact composer is pinned at the bottom. */
-        display:flex!important; flex-direction:column!important; height:100%!important; min-height:0!important;
-        overflow:hidden!important; padding:10px 10px max(8px,env(safe-area-inset-bottom))!important;
-        background:linear-gradient(160deg,rgba(255,249,239,.97),rgba(244,226,205,.98))!important;
-        border:1px solid rgba(172,126,88,.48)!important; border-radius:18px!important;
-        box-shadow:0 8px 22px rgba(83,54,33,.12),inset 0 1px 0 rgba(255,255,255,.9)!important;
+      .watch-together-app .watch-discussion-composer {
+        order:2!important; position:relative!important; display:flex!important; flex-direction:column!important;
+        flex:0 0 auto!important; width:100%!important; min-width:0!important; margin:0!important;
+        padding:8px 0 max(6px,env(safe-area-inset-bottom))!important;
+        border-top:1px solid rgba(172,126,88,.25)!important; background:#fff9ef!important;
+        opacity:1!important; filter:none!important; isolation:isolate!important;
       }
-        display:flex!important; order:1!important; flex:1 1 0!important; width:100%!important; min-height:0!important;
-        margin:0!important; padding:0 0 8px!important; border:0!important; overflow:hidden!important;
+      .watch-together-app .watch-discussion-composer > div:first-child {
+        display:flex!important; flex-direction:row!important; flex-wrap:nowrap!important;
+        align-items:center!important; justify-content:flex-start!important; gap:7px!important;
+        width:100%!important; margin:0 0 7px!important; padding:0!important;
+        background:transparent!important; border:0!important; box-shadow:none!important;
+        opacity:1!important; filter:none!important; overflow-x:auto!important; overflow-y:hidden!important;
+        scrollbar-width:none!important; -webkit-overflow-scrolling:touch!important;
       }
-        display:flex!important; flex:1 1 0!important; min-height:0!important; max-height:none!important;
-        overflow-y:auto!important; overflow-x:hidden!important; overscroll-behavior:contain!important;
-        -webkit-overflow-scrolling:touch!important; touch-action:pan-y!important;
+      .watch-together-app .watch-discussion-composer > div:first-child::-webkit-scrollbar { display:none!important; }
+      .watch-together-app .watch-discussion-composer .watch-chat-chip {
+        display:inline-flex!important; flex:0 0 auto!important; align-items:center!important; justify-content:center!important;
+        gap:5px!important; min-height:30px!important; height:30px!important; padding:0 11px!important;
+        border:1px solid #d7b99d!important; border-radius:999px!important;
+        background:#fffaf2!important; color:#75513a!important; font-size:11px!important; font-weight:500!important;
+        line-height:1!important; white-space:nowrap!important; box-shadow:0 1px 2px rgba(80,52,32,.06)!important;
+        opacity:1!important; filter:none!important; transform:none!important; backdrop-filter:none!important;
       }
-        order:2!important; display:block!important; flex:0 0 auto!important; width:100%!important; margin:0!important;
-        padding:8px 0 0!important; border-top:1px solid rgba(172,126,88,.25)!important;
+      .watch-together-app .watch-discussion-composer .watch-chat-chip:disabled {
+        color:#9b826d!important; background:#f8eee2!important; border-color:#e7d6c4!important; opacity:1!important;
       }
-      .watch-chat-chip {
-        display:inline-flex; align-items:center; gap:4px; min-height:27px; padding:5px 9px;
-        border:1px solid rgba(165,121,85,.32); border-radius:999px;
-        background:rgba(255,255,255,.72); color:#79573f; font-size:10px; line-height:1;
-        white-space:nowrap; box-shadow:0 1px 3px rgba(93,61,39,.04);
-        position:relative; z-index:5; touch-action:manipulation;
+      .watch-together-app .watch-discussion-composer .watch-chat-chip-active {
+        color:#fffaf2!important; background:#8e6247!important; border-color:#8e6247!important;
+        box-shadow:0 2px 5px rgba(109,70,44,.16)!important;
       }
-      .watch-chat-chip:disabled { opacity:.38; }
-        min-height:36px!important; height:36px!important; max-height:72px!important; padding-top:8px!important; padding-bottom:8px!important;
-        border:0!important; border-radius:0!important; background:transparent!important; color:#594536!important; box-shadow:none!important;
+      .watch-together-app .watch-discussion-composer form {
+        display:flex!important; flex:0 0 auto!important; align-items:center!important; gap:7px!important;
+        width:100%!important; min-width:0!important; margin:0!important; padding:4px 5px 4px 10px!important;
+        border:1px solid #d8bea4!important; border-radius:18px!important;
+        background:#fffdf8!important; box-shadow:0 2px 6px rgba(98,65,40,.06)!important;
+        opacity:1!important; filter:none!important; backdrop-filter:none!important; box-sizing:border-box!important;
       }
-        display:flex!important; flex-direction:row!important; align-items:center!important; gap:6px!important;
+      .watch-together-app .watch-discussion-composer form textarea {
+        flex:1 1 auto!important; min-width:0!important; width:0!important; height:36px!important;
+        min-height:36px!important; max-height:36px!important; padding:8px 2px!important;
+        border:0!important; border-radius:0!important; background:transparent!important;
+        color:#594536!important; opacity:1!important; filter:none!important;
       }
-        position:static!important; height:36px!important; min-height:36px!important; margin:0!important;
+      .watch-together-app .watch-discussion-composer form button[type="submit"] {
+        position:static!important; flex:0 0 auto!important; min-width:max-content!important;
+        min-height:32px!important; height:32px!important; margin:0!important; padding:0 12px!important;
+        border-radius:13px!important; background:#956546!important; color:#fffaf2!important;
+        opacity:1!important; filter:none!important; box-shadow:none!important;
       }
-
-      .watch-chat-chip-active { color:#fff9f0; background:#8e6247; border-color:#8e6247; box-shadow:0 2px 8px rgba(109,70,44,.2); }
+      .watch-together-app .watch-discussion-composer form button[type="submit"]:disabled { opacity:.48!important; }
       /* One source-picker overlay; keep the panel within the actual visible WebView area. */
       .watch-together-app[data-source-panel="true"]::after { position:fixed!important; inset:0!important; z-index:2147483000!important; background:rgba(34,24,17,.58)!important; pointer-events:none!important; }
       .watch-together-app .watch-comment-list [data-comment-text] { color:#59483d!important; }
@@ -1713,16 +1760,15 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         top:var(--watch-visible-top, 0px)!important; bottom:auto!important;
       }
       .watch-together-app[data-keyboard-visible="true"] > main.watch-together-main {
-        min-height:0!important; overflow-y:auto!important; padding-bottom:8px!important;
+        min-height:0!important; height:auto!important; overflow:hidden!important; padding-bottom:4px!important;
       }
       .watch-together-app[data-keyboard-visible="true"] .watch-interaction-panel,
       .watch-together-app[data-keyboard-visible="true"] .watch-room-card {
-        min-height:0!important; max-height:100%!important;
+        min-height:0!important; max-height:none!important; overflow:hidden!important;
       }
       .watch-together-app[data-keyboard-visible="true"] .watch-discussion-composer {
-        position:sticky!important; bottom:0!important; z-index:100!important;
-        background:linear-gradient(180deg,rgba(255,249,239,.92),#fff9ef 35%)!important;
-        padding-bottom:max(6px,env(safe-area-inset-bottom))!important;
+        position:relative!important; bottom:auto!important; z-index:60!important;
+        flex:0 0 auto!important; padding-bottom:6px!important;
       }
       .watch-together-app[data-keyboard-visible="true"] .watch-discussion-composer textarea {
         scroll-margin-bottom:12px!important;
@@ -2048,6 +2094,19 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               <path d="M42 273C44 252 55 248 64 253C69 263 58 272 42 273ZM42 273C26 262 29 248 41 247C52 252 51 264 42 273Z" fill="#c9c9a8" stroke="#a1a982" strokeWidth="1.5"/>
               <path d="M116 36C108 20 122 10 133 19C139 31 129 38 116 36ZM392 37C405 19 418 27 413 40C405 47 397 43 392 37Z" fill="#dfc6a9"/>
             </svg></div></div>}
+            {comments.length > 0 && <div data-part="history" className="watch-comment-list" ref={commentListRef} onScroll={event => {
+              const list = event.currentTarget;
+              commentListAtBottomRef.current = list.scrollHeight - list.scrollTop - list.clientHeight < 48;
+            }} aria-label="聊天记录" aria-live="polite">
+              {comments.map(comment => <article key={comment.id} className={comment.kind === "user" ? "watch-comment-user" : "watch-comment-character"}>
+                <span data-comment-author>{comment.kind === "user" ? "我" : comment.characterName}</span>
+                <p data-comment-text>{comment.text}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-[#9a7c64]">
+                  <time>{new Date(comment.createdAt).toLocaleTimeString("zh-CN", {hour:"2-digit",minute:"2-digit"})}</time>
+                  {comment.timepoint && <span>视频时间 {comment.timepoint}</span>}
+                </div>
+              </article>)}
+            </div>}
             <div data-part="composer" className="watch-discussion-composer relative z-[60] shrink-0 border-t border-[#d6b18c]/25 pt-2" style={{flex:"0 0 auto",marginTop:"auto",paddingBottom:"max(6px, env(safe-area-inset-bottom))",background:"linear-gradient(180deg,rgba(255,249,239,.94),#fff9ef 35%)"}}>
               <div className="mb-2 flex flex-wrap items-center gap-1.5" style={{display:"flex",flex:"0 0 auto",flexWrap:"wrap",alignItems:"center",gap:6,visibility:"visible",opacity:1,overflow:"visible"}}>
                 <button type="button" onClick={markHighlightAndDiscuss} disabled={!target} className="watch-chat-chip" style={{display:"inline-flex",flex:"0 0 auto",alignItems:"center",visibility:"visible",opacity:1}}><Sparkles size={11}/>标记重点</button>
