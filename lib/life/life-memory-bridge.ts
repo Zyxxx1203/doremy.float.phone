@@ -31,8 +31,11 @@ function loadSettledCharacterLifeState(characterId: string) {
  */
 export function buildLifeMemoryContext(characterId: string, limit = 10): string {
   const state = loadSettledCharacterLifeState(characterId);
-  if (!state.settings.enabled || !state.settings.saveConfirmedEventsToMemory) return "";
-  const facts = state.memories
+  if (!state.settings.enabled) return "";
+  // Schedule settlement context is a separate source from confirmed shared memories.
+  // Disabling shared-memory writes must not silently remove the character's dated
+  // schedule history from chat prompts.
+  const facts = (state.settings.saveConfirmedEventsToMemory ? state.memories : [])
     .filter(memory => memory.participants.includes(characterId) && memory.fact.trim())
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
     .slice(0, Math.max(0, Math.min(limit, 30)))
