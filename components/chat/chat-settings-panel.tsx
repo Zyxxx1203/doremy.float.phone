@@ -559,7 +559,7 @@ export function ChatSettingsPanel({
                         : media === "video" || /video/.test(media) ? "video"
                         : media === "audio" || /audio|voice/.test(media) ? "audio"
                         : media === "media_file" || /file|document|attachment/.test(media) || (Boolean(msg.mediaUrl) && !media) ? "file"
-                        : media && media !== "text" ? "rich" : "text";
+                        : media ? "rich" : "text";
                     if (searchKind !== "all" && kind !== searchKind) continue;
                     const haystack = getSearchHaystack(msg);
                     if (needle && (!haystack || !haystack.toLowerCase().includes(needle))) continue;
