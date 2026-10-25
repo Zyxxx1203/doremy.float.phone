@@ -922,7 +922,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     const goodEmbed = Boolean(parsed.embedUrl) && parsed.embedUrl !== parsed.url;
     // 需要逐个尝试时先列步骤：直链/可直接嵌入的链接不走解析，直接给播放器。
     const plan: { key: string; label: string; state: "pending" | "active" | "ok" | "fail" | "skip"; detail?: string }[] = [];
-    if (!parsed.nativeVideo && !goodEmbed) {
+    const platformBlocked = parsed.platform === "douyin" || parsed.platform === "kuaishou";
+    if (!parsed.nativeVideo && !goodEmbed && !platformBlocked) {
       if (parsed.platform === "xiaohongshu") plan.push({ key: "builtin", label: "站内解析（下载到本机缓存）", state: "pending" });
       if (endpoint) plan.push({ key: "local", label: "本地解析服务（Termux / 电脑）", state: "pending" });
       if (parsed.platform === "bilibili" && parsed.url.includes("b23.tv")) plan.push({ key: "shortlink", label: "把短链接换算成 B 站播放器", state: "pending" });
@@ -972,7 +973,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       }
     }
     // ② 外部解析服务（Termux / 电脑 Python，可选）：server.py 走 yt-dlp，主要服务于 B 站等长视频平台。
-    if (endpoint && !parsed.nativeVideo && !goodEmbed) {
+    if (endpoint && !parsed.nativeVideo && !goodEmbed && !platformBlocked) {
       const seq = ++openVideoSeqRef.current;
       markStep("local", "active");
       try {
