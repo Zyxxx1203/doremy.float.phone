@@ -3142,10 +3142,17 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
                   const isHomeSlot = plannedId === "home" || plannedId.startsWith("home-")
                     || knownHomeNames.includes(plannedName)
                     || plannedName === character.name + "的家" || plannedName === character.name + "家"
-                    || /^(家|家里|家中|自己的家|回家|在家|居家|休息在家)$/.test(plannedName);
+                    || /^(家|家里|家中|自己的家|回家|在家|居家|休息在家)$/.test(plannedName)
+                    || /(?:回家|在家|居家|家中休息|家里休息)/.test(plannedName);
                   if (!isHomeSlot) return slot;
-                  if (enabled && plannedId !== homeLocationId) return { ...slot, plannedLocationId: homeLocationId, plannedLocationName: nextLocations.find(location => location.id === homeLocationId)?.name ?? selectedLocation.name, updatedAt: new Date().toISOString() };
-                  if (!enabled && plannedId === homeLocationId) return { ...slot, plannedLocationId: personalHomeId, plannedLocationName: character.name + "的家", updatedAt: new Date().toISOString() };
+                  const destinationHome = nextLocations.find(location => location.id === (enabled ? homeLocationId : personalHomeId));
+                  const destinationName = destinationHome?.name ?? (enabled ? selectedLocation.name : character.name + "的家");
+                  if (enabled && (plannedId !== homeLocationId || plannedName !== destinationName)) {
+                    return { ...slot, plannedLocationId: homeLocationId, plannedLocationName: destinationName, updatedAt: new Date().toISOString() };
+                  }
+                  if (!enabled && (plannedId === homeLocationId || plannedName !== destinationName)) {
+                    return { ...slot, plannedLocationId: personalHomeId, plannedLocationName: destinationName, updatedAt: new Date().toISOString() };
+                  }
                   return slot;
                 });
                 const next = { ...current, locations: nextLocations, schedules: nextSchedules };
