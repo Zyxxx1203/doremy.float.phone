@@ -167,10 +167,20 @@ class GlobalWatchCaptureService : Service() {
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
         val resultData = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
             else @Suppress("DEPRECATION") (intent.getParcelableExtra(EXTRA_RESULT_DATA) as? Intent)
-        if (resultData == null) { stopSelf(); return }
+        if (resultData == null) {
+            saveRecord("error", "系统未返回屏幕捕获授权数据。", System.currentTimeMillis())
+            emitState("启动失败：系统未返回屏幕捕获授权数据")
+            stopSelf()
+            return
+        }
         val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         projection = runCatching { manager.getMediaProjection(resultCode, resultData) }.getOrNull()
-        if (projection == null) { stopSelf(); return }
+        if (projection == null) {
+            saveRecord("error", "Android 未能创建 MediaProjection；请重新授权屏幕捕获。", System.currentTimeMillis())
+            emitState("启动失败：Android 未能创建屏幕捕获会话，请重新授权")
+            stopSelf()
+            return
+        }
 
         workerThread = HandlerThread("GlobalWatchCapture").also { it.start() }
         worker = Handler(workerThread!!.looper)
@@ -195,7 +205,12 @@ class GlobalWatchCaptureService : Service() {
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             imageReader?.surface, null, worker
         )
-        if (display == null) { stopSelf(); return }
+        if (display == null) {
+            saveRecord("error", "无法创建屏幕虚拟显示。", System.currentTimeMillis())
+            emitState("启动失败：无法创建屏幕虚拟显示")
+            stopSelf()
+            return
+        }
         getSharedPreferences("global_watch_state", Context.MODE_PRIVATE).edit().putBoolean("running", true).putBoolean("paused", false).apply()
         showOverlay()
         emitState("正在捕获屏幕；仅在本横幅可见且服务运行时工作")
@@ -486,7 +501,12 @@ class GlobalWatchCaptureService : Service() {
         try {
             windowManager?.addView(root, params)
             overlay = root
-        } catch (_: Throwable) { stopSelf() }
+        } catch (error: Throwable) {
+            val message = (error.message ?: "系统拒绝添加悬浮窗").take(200)
+            saveRecord("error", "悬浮横幅创建失败：" + message, System.currentTimeMillis())
+            emitState("启动失败：悬浮横幅创建失败：" + message)
+            stopSelf()
+        }
     }
 
     private fun emitState(message: String) {
