@@ -325,8 +325,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         applyPan((width - world.width * scale) / 2, (height - world.height * scale) / 2);
         setViewportReady(true);
       } else if (panoramaZoomRef.current < fittedZoom) {
-        panoramaZoomRef.current = fittedZoom;
-        setPanoramaZoom(fittedZoom);
+        // If the viewport becomes smaller (rotation, shell resize, browser chrome), raise the
+        // minimum zoom while keeping the world point under the viewport center anchored.
+        // Updating zoom alone leaves pan in the old coordinate scale and can crop the wall.
+        applyZoom(fittedZoom);
       }
     };
     fitCanvas();
@@ -337,7 +339,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       observer?.disconnect();
       window.removeEventListener("resize", fitCanvas);
     };
-  }, [wallView, world.width, world.height, applyPan]);
+  }, [wallView, world.width, world.height, applyPan, applyZoom]);
   useEffect(() => {
     if (wallView !== "edit" && wallView !== "panorama") return;
     const viewport = panoramaViewportRef.current;
