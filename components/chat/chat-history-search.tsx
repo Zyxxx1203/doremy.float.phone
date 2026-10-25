@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { CalendarDays, FileSearch, Search, X } from "lucide-react";
 import { loadChatMessages, loadChatSessions, loadChatContacts, type ChatMessage } from "@/lib/chat-storage";
+import { loadCharacters } from "@/lib/character-storage";
 
 type HistoryKind = "all" | "text" | "image" | "video" | "audio" | "file" | "rich";
 type HistoryHit = { message: ChatMessage; sessionId: string; sessionName: string };
@@ -39,11 +40,18 @@ export function ChatHistorySearch({ onClose, onJump, fixedSessionId }: {
     const hits = useMemo(() => {
         const sessions = loadChatSessions();
         const contacts = loadChatContacts();
-        const contactNames = new Map(contacts.map(contact => [contact.id, contact.nickname || contact.characterId]));
-        const names = new Map(sessions.map(session => [
-            session.id,
-            session.isGroup ? (session.groupName || "群聊") : (session.alias || contactNames.get(session.contactId) || "聊天"),
-        ]));
+        const characters = loadCharacters();
+        // 联系人通过 characterId 关联会话，而不是 contact.id；角色档案作为第二层兜底。
+        const contactNames = new Map(contacts.map(contact => [contact.characterId, contact.nickname || ""]));
+        const characterNames = new Map(characters.map(character => [character.id, character.name]));
+        const getSessionName = (session: ReturnType<typeof loadChatSessions>[number]) => {
+            if (session.isGroup) return session.groupName?.trim() || "未命名群聊";
+            return session.alias?.trim()
+                || contactNames.get(session.contactId)?.trim()
+                || characterNames.get(session.contactId)?.trim()
+                || "未命名角色私聊";
+        };
+        const names = new Map(sessions.map(session => [session.id, getSessionName(session)]));
         const needle = query.trim().toLocaleLowerCase();
         const start = from ? new Date(from + "T00:00:00").getTime() : -Infinity;
         const end = to ? new Date(to + "T23:59:59.999").getTime() : Infinity;
@@ -85,7 +93,7 @@ export function ChatHistorySearch({ onClose, onJump, fixedSessionId }: {
                 <label style={labelStyle}><span><CalendarDays size={12} style={{ display: "inline", marginRight: 4 }} />开始日期</span><input type="date" value={from} max={to || undefined} onChange={e => setFrom(e.target.value)} style={inputStyle} /></label>
                 <label style={labelStyle}><span><CalendarDays size={12} style={{ display: "inline", marginRight: 4 }} />结束日期</span><input type="date" value={to} min={from || undefined} onChange={e => setTo(e.target.value)} style={inputStyle} /></label>
             </div>
-            {!fixedSessionId && <label style={labelStyle}><span>聊天对象</span><select value={sessionFilter} onChange={e => setSessionFilter(e.target.value)} style={inputStyle}><option value="all">所有聊天</option>{loadChatSessions().map(session => <option key={session.id} value={session.id}>{session.isGroup ? session.groupName || "群聊" : session.alias || loadChatContacts().find(c => c.id === session.contactId)?.nickname || "私聊"}</option>)}</select></label>}
+            {!fixedSessionId && <label style={labelStyle}><span>聊天对象</span><select value={sessionFilter} onChange={e => setSessionFilter(e.target.value)} style={inputStyle}><option value="all">所有聊天</option>{loadChatSessions().map(session => <option key={session.id} value={session.id}>{session.isGroup ? session.groupName?.trim() || "未命名群聊" : session.alias?.trim() || loadChatContacts().find(contact => contact.characterId === session.contactId)?.nickname?.trim() || loadCharacters().find(character => character.id === session.contactId)?.name?.trim() || "未命名角色私聊"}</option>)}</select></label>}
             <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}><div style={{ display: "flex", flex: 1, minWidth: 0, gap: 7, overflowX: "auto", paddingBottom: 2 }}>{kinds.map(item => <button key={item.id} type="button" onClick={() => setKind(item.id)} style={{ whiteSpace: "nowrap", borderRadius: 999, padding: "7px 11px", border: "1px solid var(--c-border, #e7dce3)", background: kind === item.id ? "var(--c-text-title, #52525b)" : "var(--c-card, #fff)", color: kind === item.id ? "#fff" : "var(--c-text, #332832)", fontSize: 12 }}>{item.label}</button>)}</div><button type="button" onClick={() => { setQuery(""); setFrom(""); setTo(""); setKind("all"); if (!fixedSessionId) setSessionFilter("all"); }} style={{ flexShrink: 0, border: "1px solid var(--c-border, #e7dce3)", background: "var(--c-card, #fff)", color: "var(--c-subtext, #80717e)", borderRadius: 999, padding: "7px 10px", fontSize: 11 }}>重置</button></div>
         </div>
         <div style={{ padding: "10px 14px", fontSize: 12, opacity: .72 }}>{hits.length ? `找到 ${hits.length} 条记录${hits.length === 300 ? "（仅展示最新 300 条，请缩小筛选范围）" : ""}` : "没有符合条件的记录"}</div>
