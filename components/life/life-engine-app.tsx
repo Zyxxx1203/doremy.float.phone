@@ -95,8 +95,19 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
   if (actionTag || dialogueTag) {
     const action = actionTags.map(tag => stripControlTags(tag[1] || "").replace(/^\*+|\*+$/g, "").trim()).filter(Boolean).join("\n");
     const rawDialogue = dialogueTags.map(tag => stripControlTags(tag[1] || "").trim()).filter(Boolean).join("\n");
+    // Do not discard narrative accidentally emitted outside tags by a non-compliant model.
+    const outsideText = text
+      .replace(/<life_action\b[^>]*>[\s\S]*?(?:<\/life_action\s*>|(?=<life_dialogue\b)|$)/ig, " ")
+      .replace(/<\/?life_dialogue\b[^>]*>/ig, " ")
+      .replace(/<life_(?:follow_request|plan_change|invitation)\b[^>]*\/?\s*>/ig, " ")
+      .trim();
+    const outside = outsideText ? parseLifeOutput(outsideText) : { dialogue: "" };
     const separated = parseLifeOutput(rawDialogue);
-    return { action: [action, separated.action].filter(Boolean).join("\n"), dialogue: separated.dialogue, followRequest, planChange, invitation };
+    return {
+      action: [action, outside.action, separated.action].filter(Boolean).join("\n"),
+      dialogue: [outside.dialogue, separated.dialogue].filter(Boolean).join("\n"),
+      followRequest, planChange, invitation,
+    };
   }
   const clean = stripControlTags(text);
   const extractedActions: string[] = [];
