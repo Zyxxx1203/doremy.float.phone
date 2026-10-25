@@ -444,7 +444,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const previous = grouped[grouped.length - 1];
       const actionOnly = Boolean(message.action?.trim()) && !message.dialogue?.trim() && message.role === "character";
       const previousActionOnly = Boolean(previous?.action?.trim()) && !previous?.dialogue?.trim() && previous?.role === "character";
-      if (actionOnly && previousActionOnly && previous.sceneId === message.sceneId && previous.speakerId === message.speakerId) {
+      if (actionOnly && previous && previousActionOnly && previous.sceneId === message.sceneId && previous.speakerId === message.speakerId) {
         grouped[grouped.length - 1] = { ...previous, action: [previous.action, message.action].filter(Boolean).join("\n"), createdAt: message.createdAt };
       } else grouped.push(message);
     }
