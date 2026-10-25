@@ -67,7 +67,7 @@ function roundedRect(context: CanvasRenderingContext2D, x: number, y: number, wi
 export type ExportOptions = { width?: number; height?: number; /** Export resolution multiplier; defaults to 2x the wall's world dimensions. */ scale?: number; background?: string; aspect?: number; world?: PhotoWallWorld; backgroundRef?: string; backgroundBox?: PhotoWallWorld; wallDoodles?: PhotoWallDoodle[] };
 
 /** 返回 PNG 的 dataURL；没有任何照片时返回 null。默认按世界尺寸的 2 倍导出。 */
-export async function renderPhotoWallPng(photos: PhotoWallPhoto[], options: ExportOptions = {}): Promise<string | null> {
+async function renderPhotoWallCanvas(photos: PhotoWallPhoto[], options: ExportOptions = {}): Promise<HTMLCanvasElement | null> {
   if (!photos.length) return null;
   const worldWidth = options.world?.width && options.world.width > 0 ? options.world.width : 2400;
   const worldHeight = options.world?.height && options.world.height > 0 ? options.world.height : 3000;
@@ -223,17 +223,26 @@ export async function renderPhotoWallPng(photos: PhotoWallPhoto[], options: Expo
       context.fillText(doodle.content, (doodle.points[0]?.x ?? 0.5) * width, (doodle.points[0]?.y ?? 0.5) * height); context.restore();
     }
   }
-  return canvas.toDataURL("image/png");
+  return canvas;
+}
+
+/** 返回 PNG 的 dataURL；没有任何照片时返回 null。 */
+export async function renderPhotoWallPng(photos: PhotoWallPhoto[], options: ExportOptions = {}): Promise<string | null> {
+  const canvas = await renderPhotoWallCanvas(photos, options);
+  if (!canvas) return null;
+  try { return canvas.toDataURL("image/png"); }
+  catch { return null; }
 }
 
 /** 导出并交给统一下载入口，兼容 Android 原生壳、浏览器与 iOS 分享兜底。 */
 export async function downloadPhotoWallPng(photos: PhotoWallPhoto[], options: ExportOptions = {}): Promise<boolean> {
-  const dataUrl = await renderPhotoWallPng(photos, options);
-  if (!dataUrl) return false;
-  const response = await fetch(dataUrl);
-  if (!response.ok) throw new Error("PNG 图片数据读取失败");
-  const blob = await response.blob();
-  if (!blob.size) throw new Error("生成的 PNG 文件为空");
+  const canvas = await renderPhotoWallCanvas(photos, options);
+  if (!canvas) return false;
+  // toBlob avoids a huge base64 dataURL copy on high-resolution mobile exports.
+  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/png"));
+  canvas.width = 1;
+  canvas.height = 1;
+  if (!blob?.size) throw new Error("生成的 PNG 文件为空，可能是画布超出设备可用内存。");
   const filename = `照片墙-${new Date().toISOString().slice(0, 10)}.png`;
   await downloadFile(blob, filename);
   return true;
