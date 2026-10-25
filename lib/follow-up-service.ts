@@ -115,6 +115,9 @@ const backgroundReplyFiringSet = new Set<string>();
 // 聊天室挂载时查询它：中途进入也能立刻显示「正在输入」，补上事件错过的缝
 const backgroundGeneratingSessions = new Set<string>();
 const cancelledBackgroundSessions = new Set<string>();
+// Background completions have their own request lifecycle. Keep the controller so a
+// newer user turn can abort the actual provider request, not merely mark its result stale.
+const backgroundAbortControllers = new Map<string, AbortController>();
 
 /** 该会话是否正有后台回复在生成（聊天室中途挂载时用来恢复输入中状态）。 */
 export function isBackgroundReplyGenerating(sessionId: string): boolean {
@@ -122,8 +125,10 @@ export function isBackgroundReplyGenerating(sessionId: string): boolean {
 }
 
 export function cancelBackgroundGeneration(sessionId: string): void {
-    if (!backgroundGeneratingSessions.has(sessionId) && !firingSet.has(sessionId)) return;
+    const controller = backgroundAbortControllers.get(sessionId);
+    if (!backgroundGeneratingSessions.has(sessionId) && !firingSet.has(sessionId) && !controller) return;
     cancelledBackgroundSessions.add(sessionId);
+    controller?.abort();
     if (firingSet.has(sessionId)) cancelledWhileFiring.add(sessionId);
     cancelFollowUpBailout(sessionId);
 }
@@ -240,6 +245,8 @@ export async function requestBackgroundChatReply(
     if (isLifeCharacterSleeping(sessionId)) return { ok: false, skipped: "character_sleeping" };
 
     backgroundReplyFiringSet.add(sessionId);
+    const backgroundController = new AbortController();
+    backgroundAbortControllers.set(sessionId, backgroundController);
     try {
         const latestMessages = loadChatMessages(session.id);
         backgroundGeneratingSessions.add(session.id);
@@ -249,11 +256,12 @@ export async function requestBackgroundChatReply(
             latestMessages,
             {
                 appTags: session.isGroup ? undefined : ["chat", "text"],
+                signal: backgroundController.signal,
                 // 定时查岗等事件可带一句「该怎么回应」，只作用于这一轮
                 ephemeralSystemNote: options?.ephemeralSystemNote,
             },
         );
-        if (isBackgroundGenerationCancelled(session.id)) return { ok: false, skipped: "cancelled" };
+        if (backgroundController.signal.aborted || isBackgroundGenerationCancelled(session.id)) return { ok: false, skipped: "cancelled" };
         const { hasVisible, stateValues } = await saveBackgroundCompletionRounds(
             rounds,
             session.id,
@@ -265,6 +273,11 @@ export async function requestBackgroundChatReply(
         window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId: session.id } }));
         return { ok: true };
     } catch (error: any) {
+        // Aborting because a newer user turn arrived is normal control flow, not an error
+        // to append to the chat (which itself would be an out-of-context late write).
+        if (backgroundController.signal.aborted || isBackgroundGenerationCancelled(sessionId)) {
+            return { ok: false, skipped: "cancelled" };
+        }
         console.error("[BackgroundReply] Error:", error);
         pushChatMessage({
             sessionId,
@@ -274,6 +287,7 @@ export async function requestBackgroundChatReply(
         window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId } }));
         return { ok: false };
     } finally {
+        if (backgroundAbortControllers.get(sessionId) === backgroundController) backgroundAbortControllers.delete(sessionId);
         backgroundGeneratingSessions.delete(sessionId);
         cancelledBackgroundSessions.delete(sessionId);
         backgroundReplyFiringSet.delete(sessionId);
