@@ -183,10 +183,9 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
       createdAt: now,
       updatedAt: now,
     };
-    saveWidgetProfile(profile);
-    setProfiles(loadWidgetProfiles());
+    // 先作为未保存草稿编辑；只有真正添加/保存时才写入配置列表，避免留下无桌面实例的重复配置。
     setProfileDraft(profile);
-    onNotice?.("已创建独立桌面实例配置。请先选择角色、调整样式，再点击「添加到真实桌面」；不会复用默认实例的缓存。");
+    onNotice?.("已创建独立桌面实例草稿。请先选择角色、调整样式，再点击「添加到真实桌面」。");
   }, [onNotice, profiles.length, config, characters, templateDraft]);
 
   /** 手动塞一条示例内容，方便用户先看看桌面上长什么样。 */
@@ -272,7 +271,7 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
     const instanceProfile: WidgetProfile = {
       ...profileDraft,
       id: "widget-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
-      name: profileDraft.name.trim() || ("桌面实例 " + (profiles.length + 1)),
+      name: (profileDraft.name.trim() || "桌面实例") + " · 实例 " + (profiles.length + 1),
       createdAt: now,
       updatedAt: now,
     };
