@@ -26,6 +26,7 @@ type GlobalWatchNative = {
   showGlobalWatchComment?: (text: string) => void;
   isGlobalWatchRunning?: () => boolean;
   getGlobalWatchDiagnostics?: () => string;
+  getGlobalWatchRecords?: () => string;
 };
 type GlobalWatchWindow = Window & { AndroidShell?: GlobalWatchNative };
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
@@ -262,9 +263,20 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
       return;
     }
     const ok = native.startGlobalWatch(JSON.stringify({
+      characterId: character.id,
       characterName: character.name,
+      rolePrompt: [
+        typeof (character as unknown as Record<string, unknown>).persona === "string" ? String((character as unknown as Record<string, unknown>).persona) : "",
+        typeof (character as unknown as Record<string, unknown>).description === "string" ? String((character as unknown as Record<string, unknown>).description) : "",
+        typeof (character as unknown as Record<string, unknown>).personality === "string" ? String((character as unknown as Record<string, unknown>).personality) : "",
+        typeof (character as unknown as Record<string, unknown>).scenario === "string" ? String((character as unknown as Record<string, unknown>).scenario) : "",
+        typeof (character as unknown as Record<string, unknown>).systemPrompt === "string" ? String((character as unknown as Record<string, unknown>).systemPrompt) : "",
+      ].filter(Boolean).join("\n").slice(0, 3500),
       captureIntervalMinSeconds: settings.captureIntervalMinSeconds,
       captureIntervalMaxSeconds: settings.captureIntervalMaxSeconds,
+      speechIntervalMinMinutes: settings.speechIntervalMinMinutes,
+      speechIntervalMaxMinutes: settings.speechIntervalMaxMinutes,
+      video: loadVideoAnalysisSettings(),
     }));
     if (!ok) {
       let reason = "原生桥拒绝启动。请打开「诊断与故障排查」查看权限和服务状态。";
