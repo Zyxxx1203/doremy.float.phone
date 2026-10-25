@@ -739,6 +739,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
         } catch { /* storage may be unavailable */ }
     }, []);
     const [draggingPlusItem, setDraggingPlusItem] = useState<string | null>(null);
+    const [dropTargetPlusItem, setDropTargetPlusItem] = useState<string | null>(null);
     const plusMenuContainerRef = useRef<HTMLDivElement | null>(null);
     const plusMenuDragTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const plusMenuDragRef = useRef<{ label: string; x: number; y: number; scrollLeft: number; started: boolean; moved: boolean; targetLabel?: string } | null>(null);
@@ -867,7 +868,13 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
         event.preventDefault();
         const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-plus-tool-label]");
         const targetLabel = target?.dataset.plusToolLabel;
-        if (targetLabel && targetLabel !== drag.label) drag.targetLabel = targetLabel;
+        if (targetLabel && targetLabel !== drag.label) {
+            drag.targetLabel = targetLabel;
+            setDropTargetPlusItem(targetLabel);
+        } else {
+            drag.targetLabel = undefined;
+            setDropTargetPlusItem(null);
+        }
     };
     const handlePlusPointerUp = () => {
         if (plusMenuDragTimerRef.current) clearTimeout(plusMenuDragTimerRef.current);
@@ -880,6 +887,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
         }
         plusMenuDragRef.current = null;
         setDraggingPlusItem(null);
+        setDropTargetPlusItem(null);
     };
 
     return (
@@ -1029,7 +1037,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
             </div>
 
             {showPlusMenu && (
-                <div className="chat-plus-menu" ref={plusMenuContainerRef} aria-label="聊天工具栏，长按可拖动排序，左右滑动查看更多">
+                <div className="chat-plus-menu" ref={plusMenuContainerRef} aria-label="聊天工具栏，可拖动排序，左右滑动查看更多">
                     {orderedPlusMenuItems.map((item, i) => (
                         <button
                             key={item.label + "-" + i}
@@ -1040,9 +1048,10 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                             onPointerUp={handlePlusPointerUp}
                             onPointerCancel={handlePlusPointerUp}
                             onClick={() => { if (suppressPlusClickRef.current) return; item.onClick(); }}
-                            className={"chat-plus-menu-item flex flex-col items-center gap-1.5 cursor-pointer" + (draggingPlusItem === item.label ? " is-dragging" : "")}
+                            className={"chat-plus-menu-item flex flex-col items-center gap-1.5 cursor-pointer" + (draggingPlusItem === item.label ? " is-dragging" : "") + (dropTargetPlusItem === item.label ? " is-drop-target" : "")}
                             {...(item.active ? { "data-active": "" } : {})}
-                            aria-label={item.label + "，长按可拖动排序"}
+                            {...(dropTargetPlusItem === item.label ? { "data-drop-index": "第" + (i + 1) + "位" } : {})}
+                            aria-label={item.label + "，可拖动排序"}
                         >
                             <span className="chat-plus-icon-box" aria-hidden="true">{item.icon}</span>
                             <span className="chat-plus-tool-label ts-11 text-[var(--c-text)]">{item.label}</span>
