@@ -106,40 +106,55 @@ type DragState = {
 };
 
 /**
- * 会话级缩略图缓存：照片墙卡顿的主要原因是几十张原图同时解码常驻内存。
- * 照片进入视口后先解码为最长边 1024px 的 WebP 缩略图再显示（整墙导出走原图，
- * 不受影响）；同一 mediaRef 全局只解一次。缩略图很小，不设淘汰也不会撑爆内存。
+ * 视口内缩略图缓存。缓存 Promise 而不只是最终 URL，避免批量照片同时进入视口时
+ * 对同一 mediaRef 重复读取、重复解码；整墙导出仍走原图读取链路。
  */
 const wallThumbCache = new Map<string, string>();
+const wallThumbPending = new Map<string, Promise<string>>();
 
 async function loadWallThumbUrl(mediaRef: string): Promise<string> {
   const cached = wallThumbCache.get(mediaRef);
   if (cached) return cached;
-  const full = await loadMediaObjectUrl(mediaRef);
-  if (!full) return "";
-  try {
-    const blob = await fetch(full).then(res => res.blob());
-    const bitmap = await createImageBitmap(blob);
-    const longest = Math.max(bitmap.width, bitmap.height);
-    let url = full;
-    if (longest > 1024) {
-      const scale = 1024 / longest;
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-      canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      bitmap.close();
-      const thumb = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/webp", 0.85));
-      if (thumb) url = URL.createObjectURL(thumb);
+  const pending = wallThumbPending.get(mediaRef);
+  if (pending) return pending;
+
+  const task = (async () => {
+    const full = await loadMediaObjectUrl(mediaRef);
+    if (!full) return "";
+    let bitmap: ImageBitmap | null = null;
+    try {
+      const response = await fetch(full);
+      if (!response.ok) throw new Error("照片资源读取失败");
+      const blob = await response.blob();
+      bitmap = await createImageBitmap(blob);
+      const longest = Math.max(bitmap.width, bitmap.height);
+      let url = full;
+      if (longest > 1024) {
+        const scale = 1024 / longest;
+        const thumbCanvas = document.createElement("canvas");
+        thumbCanvas.width = Math.max(1, Math.round(bitmap.width * scale));
+        thumbCanvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        const context = thumbCanvas.getContext("2d");
+        if (!context) throw new Error("无法创建照片缩略图");
+        context.drawImage(bitmap, 0, 0, thumbCanvas.width, thumbCanvas.height);
+        const thumb = await new Promise<Blob | null>(resolve => thumbCanvas.toBlob(resolve, "image/webp", 0.82));
+        if (thumb) url = URL.createObjectURL(thumb);
+      }
+      if (url !== full) URL.revokeObjectURL(full);
+      wallThumbCache.set(mediaRef, url);
+      return url;
+    } catch {
+      // 缩略图失败时保留原图 URL；不能因压缩失败让照片永久空白。
+      wallThumbCache.set(mediaRef, full);
+      return full;
+    } finally {
+      bitmap?.close();
     }
-    if (url !== full) URL.revokeObjectURL(full);
-    wallThumbCache.set(mediaRef, url);
-    return url;
-  } catch {
-    // 解码失败（格式罕见等）退回原图，宁可慢也不能不显示。
-    wallThumbCache.set(mediaRef, full);
-    return full;
-  }
+  })().finally(() => {
+    wallThumbPending.delete(mediaRef);
+  });
+  wallThumbPending.set(mediaRef, task);
+  return task;
 }
 
 export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, backgroundBox, wallWorld, onOpenDetail, readOnly = false, fitHeight = false, canvasZoom = 1, mode: controlledMode, onModeChange, brushColor: controlledBrushColor, brushWidth: controlledBrushWidth, sticker: controlledSticker, onStickerChange, eraser: controlledEraser, onEraserChange }: Props) {
@@ -624,9 +639,12 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
     const node = rootRef.current;
     if (!node) return;
     if (typeof IntersectionObserver === "undefined") { setInView(true); return; }
+    // Observe against the actual photo-wall viewport, not the outer browser viewport.
+    // The world stage is transformed and may be much larger than the phone screen.
+    const viewport = node.closest<HTMLElement>("[data-photo-wall-viewport]");
     const observer = new IntersectionObserver(entries => {
       for (const entry of entries) setInView(entry.isIntersecting);
-    }, { rootMargin: "600px" });
+    }, { root: viewport, rootMargin: "600px" });
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
