@@ -1862,6 +1862,59 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         opacity:1!important; filter:none!important; box-shadow:none!important;
       }
       .watch-together-app .watch-discussion-composer form button[type="submit"]:disabled { opacity:.48!important; }
+
+      /* Final layout guard: history owns the flexible scroll area; composer stays in normal flow. */
+      .watch-together-app > main.watch-together-main {
+        display:flex!important; flex-direction:column!important; gap:8px!important;
+        min-width:0!important; min-height:0!important; overflow:hidden!important;
+        box-sizing:border-box!important;
+      }
+      .watch-together-app .watch-room-title,
+      .watch-together-app .watch-player,
+      .watch-together-app .watch-link-panel { flex:0 0 auto!important; }
+      .watch-together-app .watch-interaction-panel {
+        display:flex!important; flex:1 1 0!important; flex-direction:column!important;
+        width:100%!important; min-width:0!important; min-height:0!important;
+        height:auto!important; max-height:none!important; overflow:hidden!important;
+        margin:0!important;
+      }
+      .watch-together-app .watch-interaction-panel > [data-part="card"] {
+        display:flex!important; flex:1 1 auto!important; flex-direction:column!important;
+        width:100%!important; min-width:0!important; min-height:0!important;
+        height:100%!important; max-height:none!important; overflow:hidden!important;
+        box-sizing:border-box!important;
+      }
+      .watch-together-app .watch-room-card > [data-part="history"] {
+        display:flex!important; flex:1 1 0!important; flex-direction:column!important;
+        min-width:0!important; min-height:0!important; max-height:none!important;
+        overflow-x:hidden!important; overflow-y:auto!important;
+        overscroll-behavior:contain!important; -webkit-overflow-scrolling:touch!important;
+        touch-action:pan-y!important; margin:6px 0 0!important; padding:6px 0!important;
+        order:1!important;
+      }
+      .watch-together-app .watch-room-card > [data-part="history"] > article {
+        flex:0 0 auto!important; min-width:0!important; margin:0 0 7px!important;
+        overflow-wrap:anywhere!important; word-break:break-word!important;
+      }
+      .watch-together-app .watch-room-card > [data-part="composer"] {
+        position:relative!important; inset:auto!important; z-index:2!important;
+        display:flex!important; flex:0 0 auto!important; flex-direction:column!important;
+        width:100%!important; min-width:0!important; margin-top:0!important;
+        order:2!important; overflow:visible!important; box-sizing:border-box!important;
+      }
+      .watch-together-app .watch-room-card > [data-part="composer"] form {
+        position:relative!important; flex:0 0 auto!important; min-width:0!important;
+      }
+      .watch-together-app[data-keyboard-visible="true"] > main.watch-together-main {
+        flex:1 1 0!important; min-height:0!important; height:auto!important; overflow:hidden!important;
+        padding-bottom:4px!important;
+      }
+      .watch-together-app[data-keyboard-visible="true"] .watch-room-card > [data-part="history"] {
+        min-height:0!important; flex:1 1 0!important; overflow-y:auto!important;
+      }
+      .watch-together-app[data-keyboard-visible="true"] .watch-room-card > [data-part="composer"] {
+        position:relative!important; flex:0 0 auto!important; bottom:auto!important; z-index:2!important;
+      }
     `}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
@@ -2098,7 +2151,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               const list = event.currentTarget;
               commentListAtBottomRef.current = list.scrollHeight - list.scrollTop - list.clientHeight < 48;
             }} aria-label="聊天记录" aria-live="polite">
-              {comments.map(comment => <article key={comment.id} className={comment.kind === "user" ? "watch-comment-user" : "watch-comment-character"}>
+              {comments.slice(-30).map(comment => <article key={comment.id} className={comment.kind === "user" ? "watch-comment-user" : "watch-comment-character"}>
                 <span data-comment-author>{comment.kind === "user" ? "我" : comment.characterName}</span>
                 <p data-comment-text>{comment.text}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-[#9a7c64]">
