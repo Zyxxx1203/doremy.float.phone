@@ -17,7 +17,7 @@ import { isCompatibilityFeatureEnabled } from "../device-compatibility";
  * 所有方法在非壳环境安全降级为 no-op / false。
  */
 
-import { loadWidgetConfig, loadWidgetData, loadWidgetProfiles } from "./storage";
+import { loadWidgetConfig, loadWidgetData, loadWidgetProfileData, loadWidgetProfiles } from "./storage";
 import { injectWidgetCss, renderWidgetHtml } from "./template";
 import { loadCharacters } from "../character-storage";
 
@@ -179,7 +179,8 @@ export function syncWidgetProfilesToNative(): void {
   const characters = loadCharacters();
   for (const profile of loadWidgetProfiles()) {
     const character = characters.find(item => item.id === profile.characterId);
-    const data = loadWidgetData(profile.characterId) ?? {
+    const profileData = loadWidgetProfileData(profile.id);
+    const data = (profileData?.characterId === profile.characterId ? profileData : null) ?? loadWidgetData(profile.characterId) ?? {
       characterId: profile.characterId, text: "还没有新的留言", status: "", avatar: character?.avatar ?? "",
       updatedAt: new Date().toISOString(), source: "manual" as const,
     };

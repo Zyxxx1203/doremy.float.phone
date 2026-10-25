@@ -81,12 +81,13 @@ function getLastNonEmptyPreview(sessionId: string): string {
 
 type ChatMessageListProps = {
     onCloseApp: () => void;
+    onOpenHistorySearch?: () => void;
     activeSession: ChatSession | null;
     onSelectSession: (session: ChatSession | null) => void;
     onSelectMascot: () => void;
 };
 
-export function ChatMessageList({ onCloseApp, activeSession, onSelectSession, onSelectMascot }: ChatMessageListProps) {
+export function ChatMessageList({ onCloseApp, onOpenHistorySearch, activeSession, onSelectSession, onSelectMascot }: ChatMessageListProps) {
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [listFilter, setListFilter] = useState("");
     const [listTab, setListTab] = useState<"all" | "private" | "group">("all");
@@ -260,8 +261,12 @@ export function ChatMessageList({ onCloseApp, activeSession, onSelectSession, on
             >
                 <div className="px-5 pt-5 pb-3">
                     <div className="flex items-center justify-between mb-4 mt-2">
-                        <span className="ts-28 font-bold text-[var(--c-text-title)]">Chats</span>
-                    </div>
+                         <span className="ts-28 font-bold text-[var(--c-text-title)]">Chats</span>
+                         <button type="button" onClick={onOpenHistorySearch} className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium border border-[var(--c-border)] bg-[var(--c-card)] text-[var(--c-text-title)]" aria-label="查找聊天记录" title="查找聊天记录">
+                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.2 4.2"/></svg>
+                             查找记录
+                         </button>
+                     </div>
                     <div className="chat-search-bar">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--c-icon)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                         <input

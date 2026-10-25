@@ -5976,6 +5976,16 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         setMessages(nextMessages);
     }, [session.id, stopLoadMoreAnchorTracking]);
 
+    useEffect(() => {
+        const handler = (event: Event) => {
+            const detail = (event as CustomEvent<{ sessionId?: string; messageId?: string }>).detail;
+            if (detail?.sessionId !== session.id || !detail.messageId) return;
+            jumpToStoredMessage(detail.messageId);
+        };
+        window.addEventListener("chat-history-jump-to-message", handler);
+        return () => window.removeEventListener("chat-history-jump-to-message", handler);
+    }, [session.id, jumpToStoredMessage]);
+
     // 通话挂断的收尾：通话屏已提升到全局 CallLayer，聊天室不再是它的父级、
     // 收不到 onEnd 回调。全局层在挂断时广播 chat-call-ended，这里只做界面刷新
     //（通话留痕已由通话屏落库）；「让角色回应一次」由 desktop-shell 统一触发，
