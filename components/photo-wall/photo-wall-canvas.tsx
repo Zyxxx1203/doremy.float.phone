@@ -705,7 +705,7 @@ function WallPhotoFrame({ photo, placement, canvasZoom, selected, flipped, place
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [photo.mediaRef, inView, needsOriginal, originalSrc]);
+  }, [photo.mediaRef, inView, needsOriginal]);
 
   const frame = placement.frame;
   const pad = FRAME_PADDING[frame];
