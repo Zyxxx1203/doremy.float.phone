@@ -262,7 +262,6 @@ export function ChatMessageList({ onCloseApp, onOpenHistorySearch, activeSession
                 <div className="px-5 pt-5 pb-3">
                     <div className="flex items-center justify-between mb-4 mt-2">
                          <span className="ts-28 font-bold text-[var(--c-text-title)]">Chats</span>
-                         <span className="text-xs text-[var(--c-icon)]">消息与聊天</span>
                      </div>
                     <div className="chat-search-bar">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--c-icon)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
