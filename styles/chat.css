@@ -109,6 +109,31 @@
 }
 
 
+/* 多图展开必须参与消息正文的正常排版流：展开时把后续消息向下推，不能覆盖相邻消息。
+   同时让面板留在消息滚动容器内，滚动到顶栏后由滚动视口裁切，不能越过固定顶栏。 */
+.chat-app .chat-room-wrapper .chat-photo-carousel-expanded {
+  position: static !important;
+  inset: auto !important;
+  transform: none !important;
+  z-index: auto !important;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  max-width: 100%;
+  margin-block: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 消息正文允许多图展开后的自然高度撑开；避免旧样式的固定高度/裁切造成内容叠压。 */
+.chat-app .chat-room-wrapper .chat-photo-carousel-expanded img {
+  flex: 0 0 auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+
 /* Scroll anchoring: keep scroll pinned to bottom when images/media load */
 .chat-scroll-anchored > *:not(:last-child) {
   overflow-anchor: none;
