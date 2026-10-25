@@ -659,7 +659,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             if (beforeEventIds.has(event.id) || event.kind !== "activity" || event.status !== "completed" || !event.settlementKey?.startsWith("schedule:")) continue;
             const ended = new Date(event.endsAt ?? event.createdAt).getTime();
             if (!Number.isFinite(ended) || ended < recentCutoff) continue;
-            next = appendLifeTimelineEntry(next, { category: "schedule", occurredAt: event.endsAt ?? event.createdAt, title: owner.name + "结束了一个时段：" + event.title, details: event.locationName ? "地点：" + event.locationName : undefined, actorId: owner.ownerId, actorName: owner.name, locationName: event.locationName ?? undefined, sourceId: event.id });
+            const startLabel = event.startsAt ? new Date(event.startsAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) : "开始时间未记录";
+            const endLabel = event.endsAt ? new Date(event.endsAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) : "结束时间未记录";
+            next = appendLifeTimelineEntry(next, { category: "schedule", occurredAt: event.endsAt ?? event.createdAt, title: owner.name + "结束了日程：" + event.title, details: "计划时间：" + startLabel + "—" + endLabel + (event.locationName ? "；地点：" + event.locationName : "") + "；仅表示日程时段已结算，不代表计划细节均已实际发生。", actorId: owner.ownerId, actorName: owner.name, locationName: event.locationName ?? undefined, sourceId: event.id });
           }
           const afterActor = next.actorStates.find(item => item.ownerType === owner.ownerType && item.ownerId === owner.ownerId);
           if (beforeActor && afterActor && (beforeActor.activity !== afterActor.activity || beforeActor.actualLocationId !== afterActor.actualLocationId)) {
