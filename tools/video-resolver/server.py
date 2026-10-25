@@ -84,28 +84,29 @@ def validate_url(value: str) -> str:
 
 
 def expand_short_url(url: str) -> str:
-    """短链先展开成正式地址，顺带保留 xsec_token 等分享参数。"""
-    try:
-        host = (urlparse(url).hostname or "").lower().removeprefix("www.")
-        if host not in SHORT_LINK_HOSTS:
-            return url
-        current = url
-        for _ in range(5):
-            req = Request(current, headers={"User-Agent": UA_MOBILE})
-            with urlopen(req, timeout=20) as resp:  # noqa: S310 - 已在 validate_url 中限制
-                status = resp.status
-                location = resp.headers.get("Location")
-            if status in (301, 302, 303, 307, 308) and location:
-                current = urljoin(current, location)
-                continue
-            break
-        return validate_url(current) if current != url else url
-    except HttpError:
-        raise
-    except Exception:
+    """短链先展开成正式地址，顺带保留 xsec_token 等分享参数。网络抖动时重试一次。"""
+    host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+    if host not in SHORT_LINK_HOSTS:
         return url
-
-
+    last: Exception | None = None
+    for _attempt in range(2):
+        try:
+            current = url
+            for _hop in range(5):
+                req = Request(current, headers={"User-Agent": UA_MOBILE})
+                with urlopen(req, timeout=15) as resp:  # noqa: S310 - 已在 validate_url 中限制
+                    status = resp.status
+                    location = resp.headers.get("Location")
+                if status in (301, 302, 303, 307, 308) and location:
+                    current = urljoin(current, location)
+                    continue
+                break
+            return validate_url(current) if current != url else url
+        except HttpError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+    raise HttpError(504, f"短链展开失败（{type(last).__name__}: {str(last)[:80]}）。网络抖动时常见，请重试一次；仍然失败就换成不经过短链的完整链接。")
 def ydl_options(outtmpl: str, quality: str, cookiefile: str | None = None) -> dict:
     height = {"1080": 1080, "720": 720, "480": 480, "360": 360}.get(quality)
     # 手机端优先 H.264：B 站默认给 AV1，部分机型/WebView 硬解不了，会表现为“点了没反应/黑屏”。
@@ -281,10 +282,11 @@ def resolve_video(body: dict) -> dict:
                 message = str(exc)
                 low = message.lower()
                 if ("douyin" in host or "iesdouyin" in host) and ("cookie" in low or "uifid" in low or "argus" in low):
+                    # 实测（2026-10）：抖音 web 接口要 a_bogus 请求签名，由浏览器 JS 现场计算，
+                    # yt-dlp 没有实现；带不带 cookies 都会被 Argus 拦，所以直接给出可用替代方案。
                     cookie_count = _netscape_cookie_count(cookies_text)
-                    if cookie_count:
-                        raise HttpError(422, f"已收到 {cookie_count} 条 cookies，但抖音仍然拒绝：多半是过期了，或导出时没带上 ttwid / s_v_web_id / __ac_signature。请在 douyin.com 重新导出一次（Netscape 格式）再粘贴。")
-                    raise HttpError(422, "抖音需要 cookies：它用 Argus 风控挡住了无 cookie 的请求。请在「一起看 → 设置 → 平台 Cookies」粘贴从电脑浏览器导出的 douyin.com cookies（无需登录，浏览任意视频后导出即可）")
+                    prefix = f"已收到 {cookie_count} 条 cookies，但" if cookie_count else ""
+                    raise HttpError(422, prefix + "抖音拒绝了这次请求：它现在要求 a_bogus 请求签名（浏览器 JS 现场计算），yt-dlp 无法生成，粘贴 cookies 也基本无效。最稳的做法是在抖音 App 里把视频保存到相册，再用一起看的「选择本地视频」播放。")
                 failures.append("yt-dlp: " + message[:180])
 
         media = next((p for p in tempdir.iterdir()
