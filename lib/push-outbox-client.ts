@@ -201,6 +201,23 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                                     sceneId: scene.id, sourceId: message.id,
                                 });
                                 saveVirtualLifeState(next);
+                                const bannerDetail = {
+                                    sceneId: scene.id,
+                                    characterId: lifeScene.characterId,
+                                    characterName: speakerName,
+                                    avatar: "",
+                                    locationName: scene.locationName,
+                                    action: message.action || "",
+                                    dialogue: message.dialogue || "",
+                                    createdAt: now,
+                                };
+                                // Persist a short-lived banner handoff as well as dispatching it.
+                                // If the life page is not mounted during outbox consumption, it can
+                                // still display the same life-scene banner when opened moments later.
+                                try {
+                                    localStorage.setItem("life-scene-pending-banner-v1", JSON.stringify(bannerDetail));
+                                } catch { /* banner is best-effort; the scene message is already saved */ }
+                                window.dispatchEvent(new CustomEvent("life-scene-proactive-message", { detail: bannerDetail }));
                             }
                         }
                         // If the scene ended while the app was offline, consume the stale turn
