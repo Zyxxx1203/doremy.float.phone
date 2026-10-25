@@ -656,7 +656,7 @@ Deno.serve(async (req: Request) => {
     // Re-check after generation; otherwise the stale snapshot still writes an outbox
     // row and sends a push after the user has already started a newer turn.
     if (await isCancelled()) {
-      await finish("done", "cancelled after generate");
+      // Keep the cancelled status intact for diagnostics; do not overwrite it with done.
       return;
     }
 
@@ -1110,7 +1110,6 @@ Deno.serve(async (req: Request) => {
     // before returning so the client cannot merge a superseded reply later.
     if (await isCancelled()) {
       await rest(`push_outbox?job_id=eq.${encodeURIComponent(job.id)}`, { method: "DELETE" }).catch(() => undefined);
-      await finish("done", "cancelled before push");
       return;
     }
 
@@ -1162,6 +1161,13 @@ Deno.serve(async (req: Request) => {
       ? ["来电话了…"]
       : splitResponseForPushPreview(lifeScenePreview).slice(0, 6);
     if (parts.length === 0) parts = ["发来一条消息"];
+
+    // Notification setup may take additional time after outbox persistence. Check once
+    // more immediately before the first push to narrow the stale-notification race.
+    if (await isCancelled()) {
+      await rest(`push_outbox?job_id=eq.${encodeURIComponent(job.id)}`, { method: "DELETE" }).catch(() => undefined);
+      return;
+    }
 
     for (let index = 0; index < parts.length; index += 1) {
       if (index > 0) await sleep(500);
