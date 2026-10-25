@@ -514,6 +514,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
           key={photo.id}
           photo={photo}
           placement={placement}
+          canvasZoom={canvasZoom}
           selected={isSelected}
           flipped={flippedPhotoIds.has(photo.id)}
           onToggleFlip={() => {
@@ -645,6 +646,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
 type FrameProps = {
   photo: PhotoWallPhoto;
   placement: PhotoWallPlacement;
+  canvasZoom: number;
   selected: boolean;
   flipped: boolean;
   placementMode: boolean;
@@ -656,8 +658,9 @@ type FrameProps = {
   readOnly: boolean;
 };
 
-function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, onToggleFlip, doodleMode, draftPoints, onPointerDownResize, onOpenDetail, readOnly }: FrameProps) {
+function WallPhotoFrame({ photo, placement, canvasZoom, selected, flipped, placementMode, onToggleFlip, doodleMode, draftPoints, onPointerDownResize, onOpenDetail, readOnly }: FrameProps) {
   const [src, setSrc] = useState("");
+  const [originalSrc, setOriginalSrc] = useState("");
   const [failed, setFailed] = useState(false);
   const [inView, setInView] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -686,6 +689,23 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
     }).catch(() => { if (active) setFailed(true); });
     return () => { active = false; };
   }, [photo.mediaRef, inView, src]);
+
+  // Keep the lightweight derivative for ordinary viewing, but switch to the original
+  // when zoom + device pixel ratio means the thumbnail would visibly lose detail.
+  const needsOriginal = canvasZoom * placement.scale * 240 * (typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1) > 2048;
+  useEffect(() => {
+    if (!inView || !needsOriginal || originalSrc) return;
+    let active = true;
+    let objectUrl = "";
+    void loadMediaObjectUrl(photo.mediaRef).then(value => {
+      if (!active) { if (value) URL.revokeObjectURL(value); return; }
+      if (value) { objectUrl = value; setOriginalSrc(value); }
+    }).catch(() => undefined);
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [photo.mediaRef, inView, needsOriginal, originalSrc]);
 
   const frame = placement.frame;
   const pad = FRAME_PADDING[frame];
@@ -762,7 +782,7 @@ function WallPhotoFrame({ photo, placement, selected, flipped, placementMode, on
             }}
             onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); if (!placementMode && !doodleMode) onToggleFlip(); } }}
           >
-            {src ? <img src={src} alt={photo.title} draggable={false} className="pointer-events-none h-full w-full object-contain" /> : failed ? <div className="grid h-full place-items-center text-[9px] text-[#a06050]">图片无法显示</div> : <div className="grid h-full place-items-center text-[#a99a86]"><ImagePlus size={16}/></div>}
+            {src ? <img src={needsOriginal && originalSrc ? originalSrc : src} alt={photo.title} draggable={false} className="pointer-events-none h-full w-full object-contain" /> : failed ? <div className="grid h-full place-items-center text-[9px] text-[#a06050]">图片无法显示</div> : <div className="grid h-full place-items-center text-[#a99a86]"><ImagePlus size={16}/></div>}
             {frame === "tape" && <>
               <span className="pointer-events-none absolute -left-2 -top-2 h-4 w-10 -rotate-12 bg-[#f3e9cf]/85 shadow-sm" />
               <span className="pointer-events-none absolute -right-2 -top-2 h-4 w-10 rotate-12 bg-[#f3e9cf]/85 shadow-sm" />
