@@ -215,11 +215,10 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
   useEffect(() => {
     const onFrame = (event: Event) => {
       const detail = (event as CustomEvent<{ dataUrl?: string; capturedAt?: number }>).detail;
-      if (detail?.dataUrl) {
-        frameRef.current = detail.dataUrl;
+      if (detail?.capturedAt) {
+        // Raw pixels stay inside the native service; WebView only mirrors a timestamp.
         setLatestCapturedAt(Number(detail.capturedAt) || Date.now());
-        setStatus("已收到屏幕帧；原生服务负责分析与记录。");
-        // Android native service owns AI scheduling and requests. The WebView only mirrors capture status.
+        setStatus("已捕获屏幕帧；原生服务负责分析与记录。");
       }
     };
     const onReply = (event: Event) => {
