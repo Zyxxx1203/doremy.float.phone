@@ -64,22 +64,29 @@ function roundedRect(context: CanvasRenderingContext2D, x: number, y: number, wi
  * aspect：画布宽高比。无界墙扩容后世界不再是固定 4:5，
  * 导出要跟着世界比例走，否则照片会被横向压扁。
  */
-export type ExportOptions = { width?: number; height?: number; background?: string; aspect?: number; world?: PhotoWallWorld; backgroundRef?: string; backgroundBox?: PhotoWallWorld; wallDoodles?: PhotoWallDoodle[] };
+export type ExportOptions = { width?: number; height?: number; /** Export resolution multiplier; defaults to 2x the wall's world dimensions. */ scale?: number; background?: string; aspect?: number; world?: PhotoWallWorld; backgroundRef?: string; backgroundBox?: PhotoWallWorld; wallDoodles?: PhotoWallDoodle[] };
 
-/** 返回 PNG 的 dataURL；没有任何照片时返回 null。 */
+/** 返回 PNG 的 dataURL；没有任何照片时返回 null。默认按世界尺寸的 2 倍导出。 */
 export async function renderPhotoWallPng(photos: PhotoWallPhoto[], options: ExportOptions = {}): Promise<string | null> {
   if (!photos.length) return null;
-  // 默认按世界宽度导出（此前固定 1600px，2400 宽的世界被缩到 0.67 倍，放大会糊）；
-  // 显式传 width 仍然生效。上限 6400 防止极端大墙把移动端 canvas 撑爆。
   const worldWidth = options.world?.width && options.world.width > 0 ? options.world.width : 2400;
-  const width = Math.min(6400, Math.max(1200, Math.round(options.width ?? worldWidth)));
-  const aspect = typeof options.aspect === "number" && Number.isFinite(options.aspect) && options.aspect > 0.2 && options.aspect < 5 ? options.aspect : 0.8;
-  const height = Math.round(options.height ?? width / aspect);
+  const worldHeight = options.world?.height && options.world.height > 0 ? options.world.height : 3000;
+  const aspect = typeof options.aspect === "number" && Number.isFinite(options.aspect) && options.aspect > 0.2 && options.aspect < 5
+    ? options.aspect : worldWidth / worldHeight;
+  // Keep exports genuinely high-resolution while avoiding mobile WebView canvas OOMs.
+  // 32 MP is a conservative working limit for a canvas that also decodes source photos.
+  const requestedScale = Number.isFinite(options.scale) ? Math.max(1, Math.min(4, options.scale!)) : 2;
+  const pixelLimitScale = Math.sqrt(32_000_000 / Math.max(1, worldWidth * worldHeight));
+  const safeScale = Math.max(0.1, Math.min(requestedScale, 10000 / worldWidth, 10000 / worldHeight, pixelLimitScale));
+  const width = Math.max(1, Math.round(options.width ?? worldWidth * safeScale));
+  const height = Math.max(1, Math.round(options.height ?? (options.width ? width / aspect : worldHeight * safeScale)));
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
   if (!context) return null;
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
 
   // 墙面底色 + 细微纹理
   context.fillStyle = options.background || "#f7f1e6";
