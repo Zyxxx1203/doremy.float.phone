@@ -984,9 +984,26 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const companions = characters.filter(char => selectedCharacterIds.includes(char.id));
     const oldLocationName = playerPresence?.actualLocationName;
     let next = stateRef.current;
+    const travelStartedAt = new Date().toISOString();
     for (const char of companions) {
-      next = upsertActorState(next, { ownerType: "character", ownerId: char.id, activity: "跟随" + playerName + "移动", actualLocationId: destination.id, actualLocationName: destination.name, updatedAt: new Date().toISOString() });
+      next = upsertActorState(next, { ownerType: "character", ownerId: char.id, activity: "跟随" + playerName + "前往" + destination.name, actualLocationId: destination.id, actualLocationName: destination.name, updatedAt: travelStartedAt });
+      // Reflect the companion's current itinerary slot as travel together; later slots remain intact.
+      const actorNow = resolveActorLifeNow(getActorClock(next, "character", char.id)).getTime();
+      next = {
+        ...next,
+        schedules: next.schedules.map(slot => {
+          if (slot.ownerType !== "character" || slot.ownerId !== char.id) return slot;
+          const start = new Date(slot.startAt).getTime();
+          const end = new Date(slot.endAt).getTime();
+          if (!(start <= actorNow && end > actorNow)) return slot;
+          const baseTitle = slot.title.replace(/^与.+同行：/, "");
+          return { ...slot, title: "与" + playerName + "同行：" + baseTitle, plannedLocationId: destination.id, plannedLocationName: destination.name, updatedAt: travelStartedAt };
+        }),
+      };
     }
+    // Important: persist companion presence before the solo arrival flow reloads the latest state.
+    // Without this commit the prepared companion states were discarded, so they never actually travelled.
+    commit(next);
     performEnterLocationSolo(targetLocationId);
     // solo 流程内部已 commit；这里只补一条展示用的时间线（离开/到达），不写角色记忆。
     const latest = stateRef.current;
