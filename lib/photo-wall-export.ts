@@ -76,10 +76,18 @@ async function renderPhotoWallCanvas(photos: PhotoWallPhoto[], options: ExportOp
   // Keep exports genuinely high-resolution while avoiding mobile WebView canvas OOMs.
   // 32 MP is a conservative working limit for a canvas that also decodes source photos.
   const requestedScale = Number.isFinite(options.scale) ? Math.max(1, Math.min(4, options.scale!)) : 2;
-  const pixelLimitScale = Math.sqrt(32_000_000 / Math.max(1, worldWidth * worldHeight));
-  const safeScale = Math.max(0.1, Math.min(requestedScale, 10000 / worldWidth, 10000 / worldHeight, pixelLimitScale));
-  const width = Math.max(1, Math.round(options.width ?? worldWidth * safeScale));
-  const height = Math.max(1, Math.round(options.height ?? (options.width ? width / aspect : worldHeight * safeScale)));
+  const desiredWidth = Math.max(1, Math.round(options.width ?? worldWidth * requestedScale));
+  const desiredHeight = Math.max(1, Math.round(options.height ?? (options.width ? desiredWidth / aspect : worldHeight * requestedScale)));
+  // Apply the safety cap after explicit width/height too, so custom export options cannot
+  // accidentally bypass the mobile memory guard. Keep the requested aspect ratio intact.
+  const outputScale = Math.min(
+    1,
+    10000 / desiredWidth,
+    10000 / desiredHeight,
+    Math.sqrt(32_000_000 / Math.max(1, desiredWidth * desiredHeight)),
+  );
+  const width = Math.max(1, Math.floor(desiredWidth * outputScale));
+  const height = Math.max(1, Math.floor(desiredHeight * outputScale));
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
