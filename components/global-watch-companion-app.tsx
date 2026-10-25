@@ -218,7 +218,7 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
       if (detail?.dataUrl) {
         frameRef.current = detail.dataUrl;
         setLatestCapturedAt(Number(detail.capturedAt) || Date.now());
-        setStatus("已收到屏幕帧；随机主动发言按设置的时间间隔触发。");
+        setStatus("已收到屏幕帧；原生服务负责分析与记录。");
         // Android native service owns AI scheduling and requests. The WebView only mirrors capture status.
       }
     };
@@ -229,7 +229,6 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
         // The native service persists the reply and invokes the model; don't duplicate it in WebView.
         return;
       }
-      if (running && native?.sendGlobalWatchReply) return;
       appendRecord("user", text);
       if (frameRef.current) void analyzeFrame(frameRef.current, text);
       else setStatus("已保存你的回复；等待屏幕捕获后角色会回应。");
@@ -268,7 +267,7 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
       window.removeEventListener("global-watch-state", onState);
       window.removeEventListener("global-watch-record", onNativeRecord);
     };
-  }, [appendRecord, analyzeFrame, settings.randomSpeechEnabled, settings.speechIntervalMinMinutes, settings.speechIntervalMaxMinutes, running, paused]);
+  }, [appendRecord, analyzeFrame, settings.randomSpeechEnabled, settings.speechIntervalMinMinutes, settings.speechIntervalMaxMinutes, running, paused, native, character]);
 
   const runDiagnostics = () => {
     const lines: string[] = [];
