@@ -1498,6 +1498,13 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         }
 
         @JavascriptInterface
+        fun setGlobalWatchSpeechEnabled(enabled: Boolean) {
+            if (isTrustedShellPage() && GlobalWatchCaptureService.isRunning(this@MainActivity)) {
+                GlobalWatchCaptureService.setSpeechEnabled(this@MainActivity, enabled)
+            }
+        }
+
+        @JavascriptInterface
         fun showGlobalWatchComment(text: String) {
             if (isTrustedShellPage() && text.isNotBlank()) GlobalWatchCaptureService.command(this@MainActivity, GlobalWatchCaptureService.ACTION_SHOW_COMMENT, text.take(1000))
         }
