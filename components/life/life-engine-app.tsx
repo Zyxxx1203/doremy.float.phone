@@ -436,20 +436,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const selectedActor = actors.find(actor => `${actor.ownerType}:${actor.ownerId}` === selectedActorKey) ?? actors[0];
   const activeScene = useMemo(() => state.scenes.find(scene => scene.status === "active") ?? state.scenes.filter(scene => scene.status === "paused").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0], [state.scenes]);
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
-  // Consecutive action-only entries from the same character form one visual card.
-  // Dialogue messages are never merged: each utterance keeps its own bubble.
-  const displaySceneMessages = useMemo(() => {
-    const grouped: LifeSceneMessage[] = [];
-    for (const message of sceneMessages) {
-      const previous = grouped[grouped.length - 1];
-      const actionOnly = Boolean(message.action?.trim()) && !message.dialogue?.trim() && message.role === "character";
-      const previousActionOnly = Boolean(previous?.action?.trim()) && !previous?.dialogue?.trim() && previous?.role === "character";
-      if (actionOnly && previous && previousActionOnly && previous.sceneId === message.sceneId && previous.speakerId === message.speakerId) {
-        grouped[grouped.length - 1] = { ...previous, action: [previous.action, message.action].filter(Boolean).join("\n"), createdAt: message.createdAt };
-      } else grouped.push(message);
-    }
-    return grouped;
-  }, [sceneMessages]);
+  // 每轮动作在生成阶段就保存为一条消息；这里不再合并多条动作记录。
+  // 对白消息仍逐条显示，编辑/删除/重新生成均对应真实消息。
+  const displaySceneMessages = sceneMessages;
   const selectedLocation = state.locations.find(location => location.id === selectedLocationId) ?? state.locations[0];
   const sceneBackgroundLocation = state.locations.find(location => location.id === activeScene?.locationId) ?? selectedLocation;
   const selectedLocationVisitStats = useMemo(() => {
@@ -1378,7 +1367,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         content: [
           "【仅本轮使用生活场景模式规则，不要写入线上聊天历史】",
           activeSceneOutputPrompt,
-          "有可观察的动作、神态、移动或环境反应时，必须写入 <life_action>...</life_action>；真正说出口的话只放进 <life_dialogue>...</life_dialogue>。没有实际动作时才可留空。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。",
+          "每轮全部动作、神态、移动和环境反应必须完整写在且只写在一个 <life_action>...</life_action> 标签中；不要拆成多个 life_action 标签，不要把一个连续动作拆成多条。真正说出口的话只放进 <life_dialogue>...</life_dialogue>，对白可按自然语义分段，但动作必须合并为一段完整描写。没有实际动作时可以省略动作标签或留空。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。",
           settings.keepDialogueConcise ? "一轮通常 1-3 句，保持实时互动感。" : "允许适度展开，但保持实时互动感。",
           activePromptPresetText ? "小手机预设继承内容与当前生活预设规则：\n" + activePromptPresetText : "",
           activePromptPreset.locationHabitPrompt ? "地点习惯规则：\n" + activePromptPreset.locationHabitPrompt : "",
@@ -1489,7 +1478,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       return [
         "【生活现场自主回合：不是对玩家新消息的回复】",
         activeSceneOutputPrompt,
-         "有可观察的动作、神态、移动或环境反应时，必须写入 <life_action>...</life_action>；真正说出口的话只放进 <life_dialogue>...</life_dialogue>。没有实际动作时才可留空。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。",
+         "每轮全部动作、神态、移动和环境反应必须完整写在且只写在一个 <life_action>...</life_action> 标签中；不要拆成多个 life_action 标签，不要把一个连续动作拆成多条。真正说出口的话只放进 <life_dialogue>...</life_dialogue>，对白可按自然语义分段，但动作必须合并为一段完整描写。没有实际动作时可以省略动作标签或留空。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。",
         settings.keepDialogueConcise ? "保持自然简短，像真实相处时的一小句或一个小动作。" : "可以适度展开，但不要写成长篇故事。",
         "当前没有新的玩家输入。请结合角色正在做的事、性格、地点习惯、最近发生的事情和场景气氛，自主判断是否有自然的发言或行动动机。可以主动搭话、分享正在做的事、提出轻微互动，也可以继续忙自己的事或保持沉默。不要为了触发功能强行说话；不要替玩家行动或发言；不要重复上一条内容。",
         activePromptPresetText,
@@ -1668,7 +1657,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const sceneContext = buildLifeScenePromptContext(stateRef.current, activeScene, target.id);
       const settingsInstructions = [
         activeSceneOutputPrompt,
-        "有可观察的动作、神态、移动或环境反应时，必须写入 <life_action>...</life_action>；真正说出口的话只放进 <life_dialogue>...</life_dialogue>。没有实际动作时才可留空。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。",
+        "每轮全部动作、神态、移动和环境反应必须完整写在且只写在一个 <life_action>...</life_action> 标签中；不要拆成多个 life_action 标签，不要把一个连续动作拆成多条。真正说出口的话只放进 <life_dialogue>...</life_dialogue>，对白可按自然语义分段，但动作必须合并为一段完整描写。没有实际动作时可以省略动作标签或留空。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。",
         settings.keepDialogueConcise ? "一轮通常 1-3 句，除非用户明确要求展开。" : "允许适度展开，但仍保持实时互动感。",
         forceReaction ? "本轮由玩家手动强制触发反馈。必须结合最近已经发生的动作或对白，输出可见且符合角色性格的反应；不能空白，也不要只泛泛问候。" : settings.allowCharactersToStaySilent ? "如果角色当下忙碌、没注意到或不想说话，可以自然沉默。" : "本轮需要对玩家的输入作出回应。",
         wokeFromSleep ? "角色原本正在睡觉，本轮是被消息或紧急情况吵醒；要表现困倦、反应迟缓或不想立刻长谈，不要突然精神饱满。" : "",
@@ -3011,8 +3000,15 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
                   return { ...location, residents: [...residents] };
                 });
                 const personalHomeId = "home-" + character.id;
-                if (!enabled && !nextLocations.some(location => location.id === personalHomeId)) {
-                  nextLocations = [...nextLocations, { id: personalHomeId, name: character.name + "的家", description: character.name + "自己的私人住处。", atmosphere: "熟悉、私密、可以放松的空间。", layout: "有自己的起居区域与休息空间。", props: ["沙发", "茶几", "水杯", "床头灯"], visibility: "private" as const, residents: [character.id] }];
+                if (!enabled) {
+                  const existingPersonalHome = nextLocations.find(location => location.id === personalHomeId);
+                  if (existingPersonalHome) {
+                    nextLocations = nextLocations.map(location => location.id === personalHomeId
+                      ? { ...location, residents: [...new Set([...(location.residents ?? []), character.id])] }
+                      : location);
+                  } else {
+                    nextLocations = [...nextLocations, { id: personalHomeId, name: character.name + "的家", description: character.name + "自己的私人住处。", atmosphere: "熟悉、私密、可以放松的空间。", layout: "有自己的起居区域与休息空间。", props: ["沙发", "茶几", "水杯", "床头灯"], visibility: "private" as const, residents: [character.id] }];
+                  }
                 }
                 // Apply cohabitation immediately to future home-related schedule slots only.
                 // Work, school, commute, outings and manually chosen places remain untouched.
