@@ -661,6 +661,7 @@ type FrameProps = {
 function WallPhotoFrame({ photo, placement, canvasZoom, selected, flipped, placementMode, onToggleFlip, doodleMode, draftPoints, onPointerDownResize, onOpenDetail, readOnly }: FrameProps) {
   const [src, setSrc] = useState("");
   const [originalSrc, setOriginalSrc] = useState("");
+  const originalUrlRef = useRef("");
   const [failed, setFailed] = useState(false);
   const [inView, setInView] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -694,18 +695,19 @@ function WallPhotoFrame({ photo, placement, canvasZoom, selected, flipped, place
   // when zoom + device pixel ratio means the thumbnail would visibly lose detail.
   const needsOriginal = canvasZoom * placement.scale * 240 * (typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1) > 2048;
   useEffect(() => {
-    if (!inView || !needsOriginal || originalSrc) return;
+    if (!inView || !needsOriginal || originalUrlRef.current) return;
     let active = true;
-    let objectUrl = "";
     void loadMediaObjectUrl(photo.mediaRef).then(value => {
       if (!active) { if (value) URL.revokeObjectURL(value); return; }
-      if (value) { objectUrl = value; setOriginalSrc(value); }
+      if (value) { originalUrlRef.current = value; setOriginalSrc(value); }
     }).catch(() => undefined);
-    return () => {
-      active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
+    return () => { active = false; };
   }, [photo.mediaRef, inView, needsOriginal]);
+
+  // Keep the original URL cached across zoom toggles; release it only when this frame unmounts.
+  useEffect(() => () => {
+    if (originalUrlRef.current) URL.revokeObjectURL(originalUrlRef.current);
+  }, []);
 
   const frame = placement.frame;
   const pad = FRAME_PADDING[frame];
