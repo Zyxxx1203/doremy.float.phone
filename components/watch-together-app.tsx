@@ -281,7 +281,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [localResolverToken, setLocalResolverToken] = useState(() => {
     try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_local_resolver_token_v1") || "" : ""; } catch { return ""; }
   });
-  // 抖音等平台对匿名请求弹 JS 风控，yt-dlp 需要"新鲜 cookies"（不一定要登录）。
+  // 抖音/快手已确认无法直接解析（要 a_bogus 签名），cookies 字段保留但基本用不到。
   // 用户从浏览器导出 Netscape 格式 cookies 后粘进来，随解析请求透传给本地服务。
   const [localResolverCookies, setLocalResolverCookies] = useState(() => {
     try { return typeof window !== "undefined" ? window.localStorage.getItem("watch_local_resolver_cookies_v1") || "" : ""; } catch { return ""; }
@@ -923,17 +923,22 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     // 需要逐个尝试时先列步骤：直链/可直接嵌入的链接不走解析，直接给播放器。
     const plan: { key: string; label: string; state: "pending" | "active" | "ok" | "fail" | "skip"; detail?: string }[] = [];
     if (!parsed.nativeVideo && !goodEmbed) {
-      if (parsed.platform === "xiaohongshu" || parsed.platform === "douyin" || parsed.platform === "kuaishou") plan.push({ key: "builtin", label: "站内解析（下载到本机缓存）", state: "pending" });
+      if (parsed.platform === "xiaohongshu") plan.push({ key: "builtin", label: "站内解析（下载到本机缓存）", state: "pending" });
       if (endpoint) plan.push({ key: "local", label: "本地解析服务（Termux / 电脑）", state: "pending" });
       if (parsed.platform === "bilibili" && parsed.url.includes("b23.tv")) plan.push({ key: "shortlink", label: "把短链接换算成 B 站播放器", state: "pending" });
+    }
+    if (parsed.platform === "douyin" || parsed.platform === "kuaishou") {
+      // 实测（2026-10）：抖音 web 接口要 a_bogus 签名，带完整匿名 cookies 仍 403；
+      // 快手同属封闭短链体系。不再假装能解析，直接引导「保存到相册 → 本地视频」。
+      setResolutionMessage(`${parsed.platformName}目前不支持直接解析：平台要求 a_bogus 一类的请求签名（浏览器 JS 现场计算），服务端无法生成，贴 cookies 也无效。请在${parsed.platformName} App 里把视频保存到相册，再用下方「选择本地视频」播放。`);
     }
     setResolveSteps(plan);
     setResolveSettled(plan.length === 0);
     const markStep = (key: string, state: "pending" | "active" | "ok" | "fail" | "skip", detail?: string) =>
       setResolveSteps(previous => previous.map(item => item.key === key ? { ...item, state, detail: detail ?? item.detail } : item));
-    // ① 站内内置解析（自部署零配置、同源缓存可截帧）：小红书已支持，抖音/快手交给
-    //    它尝试并如实转述失败原因。同一视频按 URL 哈希命中缓存，第二次播放秒开。
-    if (!parsed.nativeVideo && !goodEmbed && (parsed.platform === "xiaohongshu" || parsed.platform === "douyin" || parsed.platform === "kuaishou")) {
+    // ① 站内内置解析（自部署零配置、同源缓存可截帧）：目前只支持小红书。
+    //    同一视频按 URL 哈希命中缓存，第二次播放秒开。
+    if (!parsed.nativeVideo && !goodEmbed && parsed.platform === "xiaohongshu") {
       const seq = ++openVideoSeqRef.current;
       markStep("builtin", "active");
       try {
@@ -966,7 +971,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         onNotice?.("站内解析失败：" + message + (localResolverEndpoint.trim() ? "；继续尝试外部解析服务。" : "；将尝试平台嵌入播放。"));
       }
     }
-    // ② 外部解析服务（Termux / 电脑 Python，可选）：server.py 单引擎 yt-dlp，抖音等风控平台可带 cookies。
+    // ② 外部解析服务（Termux / 电脑 Python，可选）：server.py 走 yt-dlp，主要服务于 B 站等长视频平台。
     if (endpoint && !parsed.nativeVideo && !goodEmbed) {
       const seq = ++openVideoSeqRef.current;
       markStep("local", "active");
@@ -1912,7 +1917,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             <p className="mt-2 max-w-xs text-[11px] leading-6 text-[#9c9086]">
               {!target ? "从顶部的「选择视频」入口添加视频，之后就能在这里边看边聊。"
                 : resolveSteps.length > 0 ? "所有播放方法都试过了，都没能拿到可播放的地址。下面是每一步的结果。"
-                  : "当前链接没有可用的站内播放器地址，或平台限制了 WebView 播放。小手机不会主动打开外部应用；可以尝试带 BV/av 号的标准视频链接，或选择本地视频。"}
+                  : resolutionMessage || "当前链接没有可用的站内播放器地址，或平台限制了 WebView 播放。小手机不会主动打开外部应用；可以尝试带 BV/av 号的标准视频链接，或选择本地视频。"}
             </p>
             {target && resolveSteps.length > 0 && (
               <ul className="mt-3 w-full max-w-[300px] space-y-1.5 text-left">
@@ -1928,7 +1933,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
                 ))}
               </ul>
             )}
-            {target && <div className="mt-5 flex flex-wrap justify-center gap-2"><button type="button" onClick={() => { setShowVideoSourcePanel(true); }} className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-xs text-[#e6d8c4] transition active:scale-95">重新选择视频</button><button type="button" onClick={() => { try { const native = (window as WatchNativeWindow).AndroidShell; if (native?.openUrl) { if (!native.openUrl(target.url)) onNotice?.("系统未能打开此链接，请复制原链接到浏览器。"); } else { const opened = window.open(target.url, "_blank", "noopener,noreferrer"); if (!opened) onNotice?.("浏览器拦截了新窗口，请复制原链接到浏览器。"); } } catch { onNotice?.("无法直接打开外部页面，请复制原链接到浏览器。"); } }} className="inline-flex items-center gap-1.5 rounded-full border border-[#c99a6a]/50 bg-[#c99a6a]/15 px-4 py-2 text-xs text-[#f0d5b8] transition active:scale-95"><ExternalLink size={13}/>在平台打开原视频</button></div>}
+            {target && <div className="mt-5 flex flex-wrap justify-center gap-2"><button type="button" onClick={() => videoFileInputRef.current?.click()} className="rounded-full border border-[#c99a6a]/60 bg-[#c99a6a]/20 px-4 py-2 text-xs text-[#f0d5b8] transition active:scale-95">选择本地视频</button><button type="button" onClick={() => { setShowVideoSourcePanel(true); }} className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-xs text-[#e6d8c4] transition active:scale-95">重新选择视频</button><button type="button" onClick={() => { try { const native = (window as WatchNativeWindow).AndroidShell; if (native?.openUrl) { if (!native.openUrl(target.url)) onNotice?.("系统未能打开此链接，请复制原链接到浏览器。"); } else { const opened = window.open(target.url, "_blank", "noopener,noreferrer"); if (!opened) onNotice?.("浏览器拦截了新窗口，请复制原链接到浏览器。"); } } catch { onNotice?.("无法直接打开外部页面，请复制原链接到浏览器。"); } }} className="inline-flex items-center gap-1.5 rounded-full border border-[#c99a6a]/50 bg-[#c99a6a]/15 px-4 py-2 text-xs text-[#f0d5b8] transition active:scale-95"><ExternalLink size={13}/>在平台打开原视频</button></div>}
           </div>
         )}
 
@@ -2118,9 +2123,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </section>
           <section className="mt-4 border-t border-white/10 pt-3">
             <h3 className="font-serif text-sm text-[#e8c39a]">视频解析与本地缓存</h3>
-             <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">站内解析已内置，自部署直接可用：小红书（含 xhslink 短链）免登录解析并缓存到本机。抖音、快手、B 站等需要 yt-dlp 能力的平台，在下方配置外部解析服务即可（抖音风控严，需粘贴 Cookies）。直链 / 本地文件无需解析。缓存长期保留——同一链接下次秒开、长视频自动续播；仅超过总容量上限（默认 4 GB）才按最久未看清理。删除单条缓存请到「观看记录」对应卡片。</p>
+             <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">目前支持的平台只有两个：小红书（含 xhslink 短链，站内解析、免登录、缓存到本机）和 B 站（BV 号走官方播放器；需要直连流时由下方外部解析服务下载）。抖音、快手已确认无法直接解析——它们要求浏览器 JS 现场生成的请求签名，服务端算不出来，贴 Cookies 也无效，请先在 App 里把视频保存到相册，再用「选择本地视频」。直链 / 本地文件无需解析。缓存长期保留——同一链接下次秒开、长视频自动续播；仅超过总容量上限（默认 4 GB）才按最久未看清理。删除单条缓存请到「观看记录」对应卡片。</p>
              <button type="button" onClick={async () => { try { const res = await fetch("/api/watch-resolver/cache", { method: "DELETE" }); const result = await res.json() as { ok?: boolean; removed?: number }; setLocalResolverStatus(result.ok ? `已清空站内缓存（${result.removed ?? 0} 个文件）。` : "清空失败：" + (result as { error?: string }).error); } catch (error) { setLocalResolverStatus("清空失败：" + (error instanceof Error ? error.message : String(error))); } }} className="mt-2 w-full rounded-xl border border-[#c99a6a]/60 bg-[#c99a6a]/15 px-3 py-2.5 text-xs font-medium text-[#f0d5b8]">清空全部站内缓存</button>
-             <p className="mt-3 text-[10px] font-medium tracking-wide text-[#c9a887]">外部解析服务（可选 · Termux / 电脑 Python）——纯标准库实现，Android 上不需要编译，一条命令装好；支持抖音 / 快手 / B 站 / YouTube 等 yt-dlp 能解析的平台：</p>
+             <p className="mt-3 text-[10px] font-medium tracking-wide text-[#c9a887]">外部解析服务（可选 · Termux / 电脑 Python）——纯标准库实现，Android 上不需要编译，一条命令装好；主要用于 B 站这类需要 yt-dlp 的站点：</p>
              <button type="button" onClick={async () => {
                const command = "curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver/install-android.sh | bash";
                try {
@@ -2146,7 +2151,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               <input type="password" autoComplete="off" value={localResolverToken} onChange={event => setLocalResolverToken(event.target.value)} placeholder="仅保存在此设备" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none"/>
             </label>
             <label className="mt-2 block text-[11px] text-[#9c9086]">平台 Cookies（可选，Netscape 格式）
-              <textarea value={localResolverCookies} onChange={event => setLocalResolverCookies(event.target.value)} rows={3} placeholder="抖音必须：电脑浏览器打开 douyin.com 浏览任意视频后，用 cookies 导出扩展（Get cookies.txt LOCALLY 等）导出 Netscape 格式粘贴到这里，随外部解析请求使用。小红书/B站不需要。" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-xs text-[#efe2d0] outline-none"/>
+              <textarea value={localResolverCookies} onChange={event => setLocalResolverCookies(event.target.value)} rows={3} placeholder="目前基本用不到：小红书和 B 站都不需要 Cookies，抖音即使贴了也会被签名校验拦下。保留此字段只为兼容个别需要登录的平台。" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-xs text-[#efe2d0] outline-none"/>
             </label>
             <div className="mt-2 flex gap-2">
               <button type="button" onClick={() => { try { window.localStorage.setItem("watch_local_resolver_endpoint_v1", localResolverEndpoint.trim()); window.localStorage.setItem("watch_local_resolver_token_v1", localResolverToken); window.localStorage.setItem("watch_local_resolver_cookies_v1", localResolverCookies); setLocalResolverStatus("设置已保存"); } catch { setLocalResolverStatus("保存失败"); } }} className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#d8c9b6]">保存设置</button>

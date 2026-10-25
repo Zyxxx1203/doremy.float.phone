@@ -153,7 +153,7 @@ export async function resolveAndCache(videoUrl: string): Promise<BuiltInResolveR
   const parsed = new URL(finalUrl);
   const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
   const isXhs = host === "xiaohongshu.com" || host.endsWith(".xiaohongshu.com");
-  if (!isXhs) throw new Error("内置解析器暂只支持小红书链接；抖音/快手请配置外部解析服务");
+  if (!isXhs) throw new Error("内置解析器目前只支持小红书；抖音/快手需要平台签名，无法直接解析，请先保存视频再用本地视频播放");
 
   const id = cacheKeyFor(finalUrl);
   const index = await readIndex();

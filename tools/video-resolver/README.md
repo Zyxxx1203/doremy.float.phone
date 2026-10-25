@@ -4,6 +4,17 @@
 
 单文件实现 [server.py](./server.py)，**只用 Python 标准库 + yt-dlp**，没有任何需要编译的依赖，Android / Windows / Linux 跑的是同一份代码。
 
+## 支持范围
+
+| 平台 | 状态 | 说明 |
+| --- | --- | --- |
+| 小红书（`xhslink` 短链 / 笔记长链） | ✅ 支持 | 内置通道，从页面提取 `masterUrl` 直链，免登录 |
+| B 站（`BV`/`av`、`b23.tv` 短链） | ✅ 支持 | 走 yt-dlp，DASH 音视频用 ffmpeg 合并，默认优先 H.264 |
+| 抖音 / 快手 | ❌ 不支持 | 平台要求 `a_bogus` 一类请求签名（浏览器 JS 现场计算），实测带上完整匿名 cookies 仍 `403 Blocked by ArgusSecurityPlugin` |
+| 其它站点 | ⚠️ 看运气 | 取决于 yt-dlp 是否有对应 extractor，未逐一验证 |
+
+抖音 / 快手的替代做法：在 App 内把视频保存到相册，再用「一起看 → 选择本地视频」。本地文件还能截帧给 AI 看画面。
+
 ## 为什么不再是 FastAPI 那版
 
 旧实现 `app.py` 依赖 `fastapi + pydantic + parse-video-py`。在 Android 上这条路走不通：pip 只接受 `android_arm64` 平台的 wheel，`pydantic-core`（Rust）、`lxml`/`aiohttp`（C 扩展）在 PyPI 上只有 manylinux 轮子，落到源码编译就必然失败（`maturin: Rust not found`）。所以改成标准库实现，接口保持完全一致，网页端无需改动。
@@ -69,6 +80,6 @@ python server.py          # 默认 http://127.0.0.1:8765
 
 小红书靠独立通道，其余平台靠 yt-dlp；两者都只处理各自支持的内容。会员/登录限制、地区限制、签名变更、DRM 或平台策略都可能失败；本工具不会绕过 DRM、付费墙或访问控制。
 
-**抖音自 2026-10 起不可用**：web 接口要求 `a_bogus` 请求签名（浏览器 JS 现场计算），yt-dlp 没有实现。实测带上完整的匿名 cookies（`ttwid` / `s_v_web_id` / `__ac_signature` / `UIFID_TEMP`）后，接口依然返回 `403 Blocked by ArgusSecurityPlugin`，所以让用户贴 cookies 是无效引导。替代做法：在抖音 App 内把视频保存到相册，再用「一起看 → 选择本地视频」。签名算法属于对抗平台风控，本项目不实现。
+抖音 / 快手的原因与替代做法见上面的「支持范围」，本项目不实现对抗平台风控的签名算法。
 
 大文件需要足够磁盘空间，播完可 `DELETE` 清理。遵守平台条款与内容版权。
