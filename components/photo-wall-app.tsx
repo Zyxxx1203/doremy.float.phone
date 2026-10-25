@@ -1639,7 +1639,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               // for the entire canvas, not a shrink-to-fit overlay.
               width: world.width,
               height: world.height,
-              transform: "translate3d(" + panRef.current.x + "px," + panRef.current.y + "px,0)",
+              transform: "translate3d(" + panRef.current.x + "px," + panRef.current.y + "px,0) scale(" + (panoramaZoom / 100) + ")",
               transformOrigin: "top left",
               touchAction: "none",
               overflow: "visible",
