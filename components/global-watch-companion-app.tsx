@@ -261,7 +261,7 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
           targetUrl: "global-watch",
         };
         saveGlobalWatchRecord(record);
-        if (item.kind === "user" || item.kind === "character") persistGlobalWatchMemory(record);
+        if (item.kind === "user" || item.kind === "character") persistNativeMemoryOnce(record);
         setRecords(loadGlobalWatchRecords());
       } catch { /* ignore malformed native event */ }
     };
