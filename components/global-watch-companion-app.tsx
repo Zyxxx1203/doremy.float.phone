@@ -25,6 +25,7 @@ type GlobalWatchNative = {
   sendGlobalWatchReply?: (text: string) => void;
   showGlobalWatchComment?: (text: string) => void;
   isGlobalWatchRunning?: () => boolean;
+  getGlobalWatchDiagnostics?: () => string;
 };
 type GlobalWatchWindow = Window & { AndroidShell?: GlobalWatchNative };
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
@@ -67,6 +68,8 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
   const [replyDraft, setReplyDraft] = useState("");
   const [records, setRecords] = useState<GlobalWatchRecord[]>(() => loadGlobalWatchRecords());
   const [busy, setBusy] = useState(false);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [diagnosticsText, setDiagnosticsText] = useState("尚未运行诊断。");
   const [latestCapturedAt, setLatestCapturedAt] = useState(0);
   const frameRef = useRef("");
   const speechTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -219,6 +222,35 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
     };
   }, [appendRecord, analyzeFrame, settings.randomSpeechEnabled, settings.speechIntervalMinMinutes, settings.speechIntervalMaxMinutes, running, paused]);
 
+  const runDiagnostics = () => {
+    const lines: string[] = [];
+    lines.push("检查时间：" + new Date().toLocaleString());
+    lines.push("运行环境：" + (native ? "检测到 AndroidShell 原生桥" : "未检测到 AndroidShell 原生桥（浏览器无法启动跨应用陪看）"));
+    try {
+      const raw = native?.getGlobalWatchDiagnostics?.();
+      if (raw) {
+        const d = JSON.parse(raw) as Record<string, unknown>;
+        lines.push("原生桥可信页面：" + (d.trustedPage ? "通过" : "未通过"));
+        lines.push("悬浮窗权限：" + (d.overlayPermission ? "已授予" : "未授予"));
+        lines.push("原生服务：" + (d.running ? "运行中" : "未运行"));
+        lines.push("暂停状态：" + (d.paused ? "已暂停" : "未暂停"));
+        if (typeof d.sdkInt === "number") lines.push("Android API：" + d.sdkInt);
+        if (typeof d.message === "string" && d.message) lines.push("原生提示：" + d.message);
+      } else lines.push("原生诊断接口：当前 APK 未提供，请更新 APK。");
+    } catch (error) {
+      lines.push("读取原生诊断失败：" + (error instanceof Error ? error.message : String(error)));
+    }
+    lines.push("已选择角色：" + (character?.name || "未选择"));
+    const video = loadVideoAnalysisSettings();
+    lines.push("视频分析模型：" + (video.model ? video.model : "未配置模型 ID"));
+    lines.push("API Key：" + (video.apiKey ? "已配置（不显示密钥）" : "未配置"));
+    lines.push("最近捕获：" + (latestCapturedAt ? new Date(latestCapturedAt).toLocaleString() : "本次页面尚未收到屏幕帧"));
+    lines.push("最近记录数：" + records.length);
+    const report = lines.join("\\n");
+    setDiagnosticsText(report);
+    return report;
+  };
+
   const start = () => {
     if (!character) { onNotice?.("请先创建并选择一个角色。"); return; }
     if (!consentChecked) { onNotice?.("请先确认你理解全局陪看会捕获其他应用画面。"); return; }
@@ -231,8 +263,22 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
       captureIntervalMinSeconds: settings.captureIntervalMinSeconds,
       captureIntervalMaxSeconds: settings.captureIntervalMaxSeconds,
     }));
-    if (!ok) setStatus("请先授予悬浮窗权限，然后返回此页再次点击启动；之后还需在 Android 系统弹窗中同意屏幕捕获。");
-    else setStatus("已请求启动。请在 Android 系统弹窗中确认屏幕捕获。");
+    if (!ok) {
+      let reason = "原生桥拒绝启动。请打开「诊断与故障排查」查看权限和服务状态。";
+      try {
+        const raw = native.getGlobalWatchDiagnostics?.();
+        if (raw) {
+          const d = JSON.parse(raw) as { message?: string; overlayPermission?: boolean; running?: boolean; trustedPage?: boolean };
+          reason = d.message || (!d.overlayPermission
+            ? "尚未授予悬浮窗权限。系统设置页可能已打开，请授权后返回再启动。"
+            : !d.trustedPage ? "当前页面未通过原生桥可信校验，请从已安装的正式 APK 首页进入。"
+            : d.running ? "原生服务报告正在运行，但启动调用未成功；请查看诊断详情。"
+            : reason);
+        }
+      } catch { /* retain actionable fallback */ }
+      setStatus(reason);
+      setDiagnosticsText(reason);
+    } else setStatus("已请求启动。请在 Android 系统弹窗中确认屏幕捕获；授权后等待「捕获成功」状态。");
   };
   const stop = () => {
     native?.stopGlobalWatch?.();
@@ -275,20 +321,34 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
         <button type="button" onClick={() => patchSettings("randomSpeechEnabled", !settings.randomSpeechEnabled)} className={"mt-4 flex w-full items-center justify-between rounded-xl border px-3 py-3 text-sm " + (settings.randomSpeechEnabled ? "border-emerald-600/30 bg-emerald-50" : "border-stone-300 bg-white")}>
           <span>随机主动发言</span><span>{settings.randomSpeechEnabled ? "已开启" : "已关闭"}</span>
         </button>
-        <label className="mt-4 flex items-start gap-2 rounded-xl border border-amber-700/20 bg-amber-50 p-3 text-xs leading-5">
-          <input type="checkbox" checked={consentChecked} onChange={e => setConsentChecked(e.target.checked)} className="mt-1"/>
-          <span>我知道全局陪看会在其他应用上方显示悬浮横幅，并按设置的随机间隔捕获屏幕画面；我会避免在密码、支付、验证码和私人聊天等敏感画面下运行，并可随时暂停或停止。</span>
-        </label>
+        <button type="button" role="checkbox" aria-checked={consentChecked} onClick={() => setConsentChecked(value => !value)} className={"mt-4 flex min-h-[76px] w-full items-center gap-3 rounded-2xl border-2 p-4 text-left transition " + (consentChecked ? "border-emerald-600 bg-emerald-50" : "border-amber-500 bg-amber-50 shadow-sm")}>
+          <span className={"flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 text-lg font-bold " + (consentChecked ? "border-emerald-600 bg-emerald-600 text-white" : "border-amber-600 bg-white text-amber-700")}>{consentChecked ? "✓" : "!"}</span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold">{consentChecked ? "已确认全局陪看授权说明" : "启动前请点此确认授权说明"}</span><span className="mt-1 block text-xs leading-5 opacity-80">允许在其他应用上方显示悬浮横幅并捕获屏幕画面。敏感页面请暂停或停止；Android 仍会单独请求系统屏幕捕获授权。</span></span>
+        </button>
         <div className="mt-4 grid grid-cols-2 gap-2">
           {!running ? <button type="button" onClick={start} className="flex items-center justify-center gap-2 rounded-xl bg-[#b88768] px-3 py-3 text-sm font-semibold text-white"><Eye size={16}/>启动全局陪看</button> : <button type="button" onClick={() => { native?.pauseGlobalWatch?.(!paused); setPaused(!paused); }} className="flex items-center justify-center gap-2 rounded-xl bg-[#b88768] px-3 py-3 text-sm font-semibold text-white">{paused ? <Play size={16}/> : <Pause size={16}/>} {paused ? "继续陪看" : "暂停陪看"}</button>}
-          {running ? <button type="button" onClick={stop} className="flex items-center justify-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-3 text-sm font-semibold text-rose-700"><Square size={15}/>停止并关闭横幅</button> : <button type="button" onClick={() => native?.captureGlobalWatchNow?.()} disabled className="flex items-center justify-center gap-2 rounded-xl border border-stone-300 px-3 py-3 text-sm opacity-50"><Camera size={15}/>立即捕获</button>}
+          {running ? <button type="button" onClick={() => native?.captureGlobalWatchNow?.()} className="flex items-center justify-center gap-2 rounded-xl border border-stone-300 bg-white px-3 py-3 text-sm font-semibold"><Camera size={15}/>立即捕获</button> : <button type="button" onClick={() => { setDiagnosticsOpen(true); runDiagnostics(); }} className="flex items-center justify-center gap-2 rounded-xl border border-stone-300 bg-white px-3 py-3 text-sm"><Camera size={15}/>检查捕获条件</button>}
+          {running ? <button type="button" onClick={stop} className="col-span-2 flex items-center justify-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-3 text-sm font-semibold text-rose-700"><Square size={15}/>停止并关闭横幅</button> : null}
         </div>
         <p role="status" aria-live="polite" className="mt-3 break-words text-xs leading-5 opacity-75">{status}</p>
         {latestCapturedAt > 0 && <p className="mt-1 text-[11px] opacity-50">最近捕获：{new Date(latestCapturedAt).toLocaleTimeString()}</p>}
       </section>
 
+      <section className="mt-4 rounded-2xl border-2 border-amber-600/40 bg-amber-50/80 p-3">
+        <button type="button" onClick={() => { const next = !diagnosticsOpen; setDiagnosticsOpen(next); if (next) runDiagnostics(); }} className="flex min-h-[52px] w-full items-center justify-between rounded-xl bg-white px-3 py-3 text-left font-semibold shadow-sm">
+          <span className="flex items-center gap-2"><Settings2 size={18}/>诊断与故障排查</span><span className="text-xs text-amber-800">{diagnosticsOpen ? "收起" : "打开诊断"}</span>
+        </button>
+        {diagnosticsOpen && <div className="mt-3">
+          <pre className="whitespace-pre-wrap break-words rounded-xl border border-amber-700/20 bg-white p-3 text-xs leading-5">{diagnosticsText}</pre>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button type="button" onClick={runDiagnostics} className="rounded-xl border border-stone-300 bg-white px-3 py-3 text-sm font-medium">重新检查</button>
+            <button type="button" onClick={() => { if (navigator.clipboard?.writeText) void navigator.clipboard.writeText(diagnosticsText).then(() => setStatus("诊断报告已复制。")).catch(() => setStatus("无法自动复制，请长按诊断文本手动复制。")); else setStatus("当前环境不支持自动复制，请长按诊断文本手动复制。"); }} className="rounded-xl border border-stone-300 bg-white px-3 py-3 text-sm font-medium">复制诊断报告</button>
+          </div>
+        </div>}
+      </section>
+
       <section className="mt-4 rounded-2xl border border-amber-700/20 bg-white/75 p-4">
-        <div className="flex items-center gap-2 font-semibold"><MessageCircle size={17}/>横幅回复测试 / 记录</div>
+        <div className="flex items-center gap-2 font-semibold"><MessageCircle size={17}/>全局陪看记录</div>
         <form onSubmit={e => { e.preventDefault(); sendReply(); }} className="mt-3 flex gap-2">
           <input value={replyDraft} onChange={e => setReplyDraft(e.target.value)} placeholder="直接回复陪看角色…" className="min-w-0 flex-1 rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm"/>
           <button type="submit" disabled={!replyDraft.trim()} className="flex shrink-0 items-center gap-1 rounded-xl bg-[#b88768] px-3 py-2 text-sm text-white disabled:opacity-40"><Send size={14}/>发送</button>
