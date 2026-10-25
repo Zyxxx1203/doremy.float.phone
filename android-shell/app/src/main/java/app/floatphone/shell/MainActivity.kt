@@ -1445,6 +1445,9 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
                 .put("running", running)
                 .put("paused", prefs.getBoolean("paused", false))
                 .put("sdkInt", Build.VERSION.SDK_INT)
+                .put("recordCount", runCatching { org.json.JSONArray(prefs.getString("records", "[]")).length() }.getOrDefault(0))
+                .put("lastRecordAt", prefs.getLong("lastRecordAt", 0L))
+                .put("lastError", prefs.getString("lastError", "") ?: "")
                 .put("message", when {
                     !trusted -> "当前页面未通过原生桥可信校验。请从已安装 APK 的正式首页进入。"
                     !overlayAllowed -> "尚未授予悬浮窗权限。请先授权，再返回全局陪看重试。"
