@@ -156,46 +156,13 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+/**
+ * Preserve the uploaded original byte-for-byte. Display thumbnails are generated lazily
+ * by PhotoWallCanvas; resizing here permanently loses detail in both photos and backgrounds,
+ * and makes the exported wall impossible to zoom into cleanly.
+ */
 async function optimizeUpload(file: File): Promise<Blob> {
-  // Animated images and vector artwork must keep their original representation.
-  if (!file.type.startsWith("image/") || file.type === "image/gif" || file.type === "image/svg+xml") return file;
-  try {
-    const url = URL.createObjectURL(file);
-    const image = new Image();
-    try {
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error("图片无法读取"));
-        image.src = url;
-      });
-      // Large camera images make IndexedDB hit quota quickly and force the wall to decode
-      // huge bitmaps. Bound both dimensions and prefer WebP (including alpha) where supported.
-      const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-      const context = canvas.getContext("2d");
-      if (!context) return file;
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-
-      const encode = (type: string, quality: number) =>
-        new Promise<Blob | null>(resolve => canvas.toBlob(resolve, type, quality));
-      const webp = await encode("image/webp", 0.82);
-      if (webp && webp.type === "image/webp" && webp.size < file.size) return webp;
-
-      // Fallback for older WebViews without WebP encoding. Preserve PNG transparency;
-      // JPEG sources can be recompressed, but never replace a file with a larger result.
-      const fallbackType = file.type === "image/png" ? "image/png" : "image/jpeg";
-      const fallback = await encode(fallbackType, 0.82);
-      return fallback && fallback.size < file.size ? fallback : file;
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-  } catch {
-    // Keep import resilient for unusual decoders; IndexedDB will report a real quota error
-    // to the per-file upload handler rather than aborting the rest of the batch.
-    return file;
-  }
+  return file;
 }
 
 function PhotoThumbnail({ photo, onOpen }: { photo: PhotoWallPhoto; onOpen: () => void }) {
