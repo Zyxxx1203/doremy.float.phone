@@ -71,21 +71,23 @@ const fromLocalDateTimeInput = (value: string) => { const d = new Date(value); r
 const mondayStart = (date: Date) => { const d = new Date(date); d.setHours(0,0,0,0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
 
 function parseLifeOutput(text: string): { action?: string; dialogue: string; followRequest?: { durationMinutes: number; reason: string }; planChange?: { title: string; locationId: string; startAt: string; endAt: string }; invitation?: { time: string; locationId: string; activity: string; reason: string; durationMinutes: number } } {
+  // Some OpenAI-compatible providers return XML-like tags HTML-escaped; decode before parsing.
+  const sourceText = text.replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, "\"").replace(/&amp;/gi, "&");
   const attribute = (source: string, name: string) => {
     const match = source.match(new RegExp(name + "\\s*=\\s*[\"']([^\"']*)[\"']", "i"));
     return (match?.[1] || "").replace(/&quot;/g, "\"").replace(/&amp;/g, "&").trim();
   };
-  const followTag = text.match(/<life_follow_request\b([^>]*)\/?\s*>/i);
-  const planTag = text.match(/<life_plan_change\b([^>]*)\/?\s*>/i);
-  const inviteTag = text.match(/<life_invitation\b([^>]*)\/?\s*>/i);
+  const followTag = sourceText.match(/<life_follow_request\b([^>]*)\/?\s*>/i);
+  const planTag = sourceText.match(/<life_plan_change\b([^>]*)\/?\s*>/i);
+  const inviteTag = sourceText.match(/<life_invitation\b([^>]*)\/?\s*>/i);
   const duration = Number(attribute(followTag?.[1] || "", "durationMinutes"));
   const followRequest = followTag ? { durationMinutes: Math.max(15, Math.min(Number.isFinite(duration) && duration ? duration : 120, 24 * 60)), reason: attribute(followTag[1], "reason") } : undefined;
   const planChange = planTag ? { title: attribute(planTag[1], "title"), locationId: attribute(planTag[1], "locationId") || "home", startAt: attribute(planTag[1], "startAt"), endAt: attribute(planTag[1], "endAt") } : undefined;
   const inviteDuration = Number(attribute(inviteTag?.[1] || "", "durationMinutes"));
   const invitation = inviteTag ? { time: attribute(inviteTag[1], "time"), locationId: attribute(inviteTag[1], "locationId") || "cafe", activity: attribute(inviteTag[1], "activity") || "一起做点什么", reason: attribute(inviteTag[1], "reason"), durationMinutes: Math.max(15, Math.min(Number.isFinite(inviteDuration) && inviteDuration ? inviteDuration : 60, 24 * 60)) } : undefined;
   // Some providers omit a closing tag; stop action capture at the dialogue tag.
-  const actionTags = [...text.matchAll(/<life_action\b[^>]*>([\s\S]*?)(?:<\/life_action\s*>|(?=<life_dialogue\b)|$)/ig)];
-  const dialogueTags = [...text.matchAll(/<life_dialogue\b[^>]*>([\s\S]*?)(?:<\/life_dialogue\s*>|$)/ig)];
+  const actionTags = [...sourceText.matchAll(/<life_action\b[^>]*>([\s\S]*?)(?:<\/life_action\s*>|(?=<life_dialogue\b)|$)/ig)];
+  const dialogueTags = [...sourceText.matchAll(/<life_dialogue\b[^>]*>([\s\S]*?)(?:<\/life_dialogue\s*>|$)/ig)];
   const actionTag = actionTags[0];
   const dialogueTag = dialogueTags[0];
   const stripControlTags = (value: string) => value
@@ -96,7 +98,7 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
     const action = actionTags.map(tag => stripControlTags(tag[1] || "").replace(/^\*+|\*+$/g, "").trim()).filter(Boolean).join("\n");
     const rawDialogue = dialogueTags.map(tag => stripControlTags(tag[1] || "").trim()).filter(Boolean).join("\n");
     // Do not discard narrative accidentally emitted outside tags by a non-compliant model.
-    const outsideText = text
+    const outsideText = sourceText
       .replace(/<life_action\b[^>]*>[\s\S]*?(?:<\/life_action\s*>|(?=<life_dialogue\b)|$)/ig, " ")
       .replace(/<\/?life_dialogue\b[^>]*>/ig, " ")
       .replace(/<life_(?:follow_request|plan_change|invitation)\b[^>]*\/?\s*>/ig, " ")
@@ -109,7 +111,7 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
       followRequest, planChange, invitation,
     };
   }
-  const clean = stripControlTags(text);
+  const clean = stripControlTags(sourceText);
   const extractedActions: string[] = [];
   let dialogueSource = clean.replace(/\*([^*\n]+)\*/g, (_match, action: string) => {
     if (action.trim()) extractedActions.push(action.trim());
@@ -1029,20 +1031,42 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const travelStartedAt = new Date().toISOString();
     for (const char of companions) {
       const companionNow = resolveActorLifeNow(getActorClock(next, "character", char.id));
-      next = upsertActorState(next, { ownerType: "character", ownerId: char.id, activity: "跟随" + playerName + "前往" + destination.name, actualLocationId: destination.id, actualLocationName: destination.name, actualLocationUntil: new Date(companionNow.getTime() + stayDurationMinutes * 60_000).toISOString(), updatedAt: travelStartedAt });
-      // Reflect the companion's current itinerary slot as travel together; later slots remain intact.
-      const actorNow = resolveActorLifeNow(getActorClock(next, "character", char.id)).getTime();
-      next = {
-        ...next,
-        schedules: next.schedules.map(slot => {
-          if (slot.ownerType !== "character" || slot.ownerId !== char.id) return slot;
-          const start = new Date(slot.startAt).getTime();
-          const end = new Date(slot.endAt).getTime();
-          if (!(start <= actorNow && end > actorNow)) return slot;
-          const baseTitle = slot.title.replace(/^与.+同行：/, "");
-          return { ...slot, title: "与" + playerName + "同行：" + baseTitle, plannedLocationId: destination.id, plannedLocationName: destination.name, updatedAt: travelStartedAt };
-        }),
-      };
+      const companionStayUntil = new Date(companionNow.getTime() + stayDurationMinutes * 60_000);
+      const actorNow = companionNow.getTime();
+      const actorNowIso = companionNow.toISOString();
+      const stayUntilIso = companionStayUntil.toISOString();
+      next = upsertActorState(next, { ownerType: "character", ownerId: char.id, activity: "跟随" + playerName + "前往" + destination.name, actualLocationId: destination.id, actualLocationName: destination.name, actualLocationUntil: stayUntilIso, updatedAt: travelStartedAt });
+      // Reserve the whole visit in the itinerary. Otherwise the clock engine can settle
+      // the actor back to the old planned location as soon as their previous slot ends.
+      const retainedSlots: LifeScheduleSlot[] = [];
+      for (const slot of next.schedules) {
+        if (slot.ownerType !== "character" || slot.ownerId !== char.id) {
+          retainedSlots.push(slot);
+          continue;
+        }
+        const slotStart = new Date(slot.startAt).getTime();
+        const slotEnd = new Date(slot.endAt).getTime();
+        if (!Number.isFinite(slotStart) || !Number.isFinite(slotEnd) || slotEnd <= actorNow || slotStart >= companionStayUntil.getTime()) {
+          retainedSlots.push(slot);
+          continue;
+        }
+        if (slotStart < actorNow) retainedSlots.push({ ...slot, endAt: actorNowIso, updatedAt: travelStartedAt });
+        if (slotEnd > companionStayUntil.getTime()) retainedSlots.push({ ...slot, id: id("resume-after-companion-trip"), startAt: stayUntilIso, updatedAt: travelStartedAt });
+      }
+      retainedSlots.push({
+        id: id("companion-follow"),
+        ownerType: "character",
+        ownerId: char.id,
+        startAt: actorNowIso,
+        endAt: stayUntilIso,
+        title: "与" + playerName + "同行：前往" + destination.name,
+        plannedLocationId: destination.id,
+        plannedLocationName: destination.name,
+        kind: "free-time",
+        source: "manual",
+        updatedAt: travelStartedAt,
+      });
+      next = { ...next, schedules: retainedSlots };
     }
     // Important: persist companion presence before the solo arrival flow reloads the latest state.
     // Without this commit the prepared companion states were discarded, so they never actually travelled.
@@ -3114,7 +3138,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
                   if (slot.ownerType !== "character" || slot.ownerId !== character.id || new Date(slot.endAt).getTime() <= now) return slot;
                   const plannedId = slot.plannedLocationId ?? "";
                   const plannedName = (slot.plannedLocationName ?? "").trim();
-                  const isHomeSlot = plannedId === "home" || plannedId.startsWith("home-") || plannedName === character.name + "的家" || plannedName === character.name + "家" || (!plannedId && /^(家|家里|家中|自己的家)$/.test(plannedName));
+                  const knownHomeNames = current.locations.filter(location => location.id === "home" || location.id.startsWith("home-")).map(location => location.name.trim()).filter(Boolean);
+                  const isHomeSlot = plannedId === "home" || plannedId.startsWith("home-")
+                    || knownHomeNames.includes(plannedName)
+                    || plannedName === character.name + "的家" || plannedName === character.name + "家"
+                    || /^(家|家里|家中|自己的家|回家|在家|居家|休息在家)$/.test(plannedName);
                   if (!isHomeSlot) return slot;
                   if (enabled && plannedId !== homeLocationId) return { ...slot, plannedLocationId: homeLocationId, plannedLocationName: nextLocations.find(location => location.id === homeLocationId)?.name ?? selectedLocation.name, updatedAt: new Date().toISOString() };
                   if (!enabled && plannedId === homeLocationId) return { ...slot, plannedLocationId: personalHomeId, plannedLocationName: character.name + "的家", updatedAt: new Date().toISOString() };
