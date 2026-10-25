@@ -324,46 +324,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (characters.some(character => character.id === rawId)) return rawId;
     return loadChatContacts().find(contact => contact.id === rawId)?.characterId ?? "";
   };
-  useEffect(() => {
-    const key = "life-scene-pending-banner-v1";
-    const presentBanner = (value: unknown) => {
-      if (!value || typeof value !== "object") return;
-      const detail = value as { sceneId?: string; characterId?: string; characterName?: string; avatar?: string; locationName?: string; action?: string; dialogue?: string; createdAt?: string };
-      const createdAtMs = Date.parse(detail.createdAt || "");
-      if (!detail.sceneId || !detail.characterId || !Number.isFinite(createdAtMs) || Date.now() - createdAtMs > 120_000) return;
-      if (settings.enableLifeMessageNotifications === false) return;
-      const character = characters.find(item => item.id === detail.characterId);
-      const body = [detail.action?.trim(), detail.dialogue?.trim()].filter(Boolean).join(" ");
-      if (!body) return;
-      setToastReplyMode("hidden");
-      setToastReplyDraft("");
-      setSceneToast({
-        kind: detail.action?.trim() ? "action" : "dialogue",
-        characterId: detail.characterId,
-        characterName: detail.characterName || character?.name || "角色",
-        avatar: detail.avatar || character?.avatar || "",
-        location: detail.locationName || "生活现场",
-        body,
-        sceneId: detail.sceneId,
-      });
-      window.setTimeout(() => setSceneToast(current =>
-        current && !current.isTest && current.sceneId === detail.sceneId && current.body === body ? null : current
-      ), 6500);
-    };
-    const onOfflineLifeSceneMessage = (event: Event) => {
-      try { localStorage.removeItem(key); } catch { /* ignore storage restrictions */ }
-      presentBanner((event as CustomEvent).detail);
-    };
-    window.addEventListener("life-scene-proactive-message", onOfflineLifeSceneMessage);
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw) {
-        localStorage.removeItem(key);
-        presentBanner(JSON.parse(raw));
-      }
-    } catch { /* the persisted banner handoff is best-effort */ }
-    return () => window.removeEventListener("life-scene-proactive-message", onOfflineLifeSceneMessage);
-  }, [characters, settings.enableLifeMessageNotifications]);
+
 
   const openDaily = (subtab: "people" | "plans") => { setDailySubtab(subtab); setTab("daily"); };
   useEffect(() => {
@@ -492,6 +453,47 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   }, [ready, state.actorClocks, inviteAtEdited]);
 
   const settings = state.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;
+
+  useEffect(() => {
+    const key = "life-scene-pending-banner-v1";
+    const presentBanner = (value: unknown) => {
+      if (!value || typeof value !== "object") return;
+      const detail = value as { sceneId?: string; characterId?: string; characterName?: string; avatar?: string; locationName?: string; action?: string; dialogue?: string; createdAt?: string };
+      const createdAtMs = Date.parse(detail.createdAt || "");
+      if (!detail.sceneId || !detail.characterId || !Number.isFinite(createdAtMs) || Date.now() - createdAtMs > 120_000) return;
+      if (settings.enableLifeMessageNotifications === false) return;
+      const character = characters.find(item => item.id === detail.characterId);
+      const body = [detail.action?.trim(), detail.dialogue?.trim()].filter(Boolean).join(" ");
+      if (!body) return;
+      setToastReplyMode("hidden");
+      setToastReplyDraft("");
+      setSceneToast({
+        kind: detail.action?.trim() ? "action" : "dialogue",
+        characterId: detail.characterId,
+        characterName: detail.characterName || character?.name || "角色",
+        avatar: detail.avatar || character?.avatar || "",
+        location: detail.locationName || "生活现场",
+        body,
+        sceneId: detail.sceneId,
+      });
+      window.setTimeout(() => setSceneToast(current =>
+        current && !current.isTest && current.sceneId === detail.sceneId && current.body === body ? null : current
+      ), 6500);
+    };
+    const onOfflineLifeSceneMessage = (event: Event) => {
+      try { localStorage.removeItem(key); } catch { /* ignore storage restrictions */ }
+      presentBanner((event as CustomEvent).detail);
+    };
+    window.addEventListener("life-scene-proactive-message", onOfflineLifeSceneMessage);
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        localStorage.removeItem(key);
+        presentBanner(JSON.parse(raw));
+      }
+    } catch { /* the persisted banner handoff is best-effort */ }
+    return () => window.removeEventListener("life-scene-proactive-message", onOfflineLifeSceneMessage);
+  }, [characters, settings.enableLifeMessageNotifications]);
   const promptPresets = settings.promptPresets ?? [];
   const activePromptPreset: LifePromptPreset = promptPresets.find(preset => preset.id === settings.activePromptPresetId) ?? promptPresets[0] ?? { id: "life-default", name: "生活现场默认预设" };
   const activePromptPresetText = [activePromptPreset.basePresetPrompt, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.customPrompt].filter(value => typeof value === "string" && value.trim()).join("\n\n");
