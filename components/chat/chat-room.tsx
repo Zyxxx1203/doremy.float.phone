@@ -782,14 +782,16 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     }), [appendText]);
 
     const handleSubmit = () => {
-        if (inputLocked) return;
-        if (isGenerating) {
+        const trimmed = inputText.trim();
+        // If a reply is still running, an empty send button stops it; typed text
+        // instead supersedes the stale turn and immediately requests a reply to
+        // the newest user message.
+        if (isGenerating && !trimmed) {
             onStopGeneration();
             return;
         }
-        const trimmed = inputText.trim();
-        if (!trimmed) return;
-        if (!onSendText(trimmed)) return;
+        if (inputLocked || !trimmed) return;
+        if (!onSendText(trimmed, { autoReply: isGenerating })) return;
         setInputText("");
         resetTextareaHeight();
         onClosePanels();
@@ -4282,12 +4284,26 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 
     const handleSendText = (text: string, options?: { autoReply?: boolean }): boolean => {
         if (!ensureGroupSpeakPermission()) return false;
-        if (isGenerating) {
-            showChatToast("请先等待对方回复");
-            return false;
-        }
         const trimmed = text.trim();
         if (!trimmed) return false;
+
+        // A newer user turn wins over an unfinished AI reply or a queued
+        // background/life-system follow-up. Abort the old generation before the
+        // new message is committed, so its late stream cannot answer out of order.
+        const supersedingInFlightTurn = isGeneratingRef.current || activeGenerationRuns.has(session.id);
+        if (supersedingInFlightTurn) {
+            cancelGenerationRun(session.id);
+            pendingReplyRequestRef.current = false;
+            isGeneratingRef.current = false;
+            setIsGenerating(false);
+            clearGenerationLock(session.id);
+            streamAccumRef.current = "";
+            setStreamPreview(null);
+            if (streamParseFrameRef.current) {
+                cancelAnimationFrame(streamParseFrameRef.current);
+                streamParseFrameRef.current = 0;
+            }
+        }
 
         // Cancel any pending follow-up for this session
         cancelFollowUp(session.id);
@@ -4302,6 +4318,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         setQuotingMessage(null);
 
         const commitSendText = (currentText: string) => {
+            // A new user message supersedes stale requests raised by older life/system events.
+            pendingReplyRequestRef.current = false;
             // 掷骰子：整条消息就是骰子图标时，发骰子气泡（内容仅图标），
             // 点数由系统旁白公布——避免结果挂在 user 消息上被角色模仿格式
             const diceOnly = !isQuoting && isDiceOnlyMessage(currentText);
