@@ -31,6 +31,10 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import org.json.JSONObject
+import org.json.JSONArray
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.UUID
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import kotlin.math.max
@@ -53,6 +57,7 @@ class GlobalWatchCaptureService : Service() {
         const val ACTION_FRAME = "app.floatphone.shell.GLOBAL_WATCH_FRAME"
         const val ACTION_REPLY = "app.floatphone.shell.GLOBAL_WATCH_REPLY"
         const val ACTION_STATE = "app.floatphone.shell.GLOBAL_WATCH_STATE"
+        const val ACTION_RECORD = "app.floatphone.shell.GLOBAL_WATCH_RECORD"
         const val EXTRA_RESULT_CODE = "projection_result_code"
         const val EXTRA_RESULT_DATA = "projection_result_data"
         const val EXTRA_CONFIG = "global_watch_config"
@@ -78,6 +83,8 @@ class GlobalWatchCaptureService : Service() {
 
         fun isRunning(context: Context): Boolean =
             context.getSharedPreferences("global_watch_state", Context.MODE_PRIVATE).getBoolean("running", false)
+        fun recordsJson(context: Context): String =
+            context.getSharedPreferences("global_watch_state", Context.MODE_PRIVATE).getString("records", "[]") ?: "[]"
     }
 
     private val mainHandler = Handler(android.os.Looper.getMainLooper())
@@ -96,6 +103,12 @@ class GlobalWatchCaptureService : Service() {
     private var characterName = "陪看角色"
     private var statusText: TextView? = null
     private var pauseButton: Button? = null
+    @Volatile private var latestFrameDataUrl = ""
+    @Volatile private var aiBusy = false
+    private var sessionId = UUID.randomUUID().toString()
+    private var speechIntervalMinMinutes = 2
+    private var speechIntervalMaxMinutes = 5
+    private var nextAiAt = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -112,7 +125,13 @@ class GlobalWatchCaptureService : Service() {
             }
             ACTION_REPLY -> {
                 val text = intent.getStringExtra("reply_text").orEmpty().trim()
-                if (text.isNotEmpty()) sendBroadcast(Intent(ACTION_REPLY).setPackage(packageName).putExtra("text", text))
+                if (text.isNotEmpty()) {
+                    saveRecord("user", text, System.currentTimeMillis())
+                    sendBroadcast(Intent(ACTION_REPLY).setPackage(packageName).putExtra("text", text))
+                    val frame = latestFrameDataUrl
+                    if (frame.isNotEmpty()) requestNativeAnalysis(frame, System.currentTimeMillis(), text)
+                    else emitState("回复已记录；正在等待第一帧屏幕画面")
+                }
             }
         }
         return START_NOT_STICKY
@@ -122,6 +141,11 @@ class GlobalWatchCaptureService : Service() {
         if (projection != null) return
         config = runCatching { JSONObject(intent.getStringExtra(EXTRA_CONFIG).orEmpty()) }.getOrDefault(JSONObject())
         characterName = config.optString("characterName", "陪看角色").take(40)
+        sessionId = UUID.randomUUID().toString()
+        speechIntervalMinMinutes = config.optInt("speechIntervalMinMinutes", 2).coerceIn(1, 60)
+        speechIntervalMaxMinutes = config.optInt("speechIntervalMaxMinutes", 5).coerceIn(speechIntervalMinMinutes, 120)
+        nextAiAt = System.currentTimeMillis()
+        saveRecord("system", "全局陪看会话开始", System.currentTimeMillis())
         minIntervalSeconds = config.optInt("captureIntervalMinSeconds", 35).coerceIn(15, 600)
         maxIntervalSeconds = config.optInt("captureIntervalMaxSeconds", 95).coerceIn(minIntervalSeconds, 900)
         createNotificationChannel()
@@ -193,11 +217,13 @@ class GlobalWatchCaptureService : Service() {
         if (output !== cropped) output.recycle()
         cropped.recycle()
         val data = Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)
-        sendBroadcast(Intent(ACTION_FRAME).setPackage(packageName)
-            .putExtra("dataUrl", "data:image/jpeg;base64," + data)
-            .putExtra("capturedAt", System.currentTimeMillis()))
+        val dataUrl = "data:image/jpeg;base64," + data
+        val capturedAt = System.currentTimeMillis()
+        latestFrameDataUrl = dataUrl
+        sendBroadcast(Intent(ACTION_FRAME).setPackage(packageName).putExtra("dataUrl", dataUrl).putExtra("capturedAt", capturedAt))
         bytes.close()
-        emitState("已捕获一帧；等待陪看模型分析")
+        if (capturedAt >= nextAiAt) requestNativeAnalysis(dataUrl, capturedAt, "")
+        else emitState("屏幕捕获正常；等待下一次主动陪看分析间隔")
     }
 
     private fun scheduleNextCapture() {
