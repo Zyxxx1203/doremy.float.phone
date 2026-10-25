@@ -227,9 +227,27 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
         // The native service persists the reply and invokes the model; don't duplicate it in WebView.
         return;
       }
+      if (running && native?.sendGlobalWatchReply) return;
       appendRecord("user", text);
       if (frameRef.current) void analyzeFrame(frameRef.current, text);
       else setStatus("已保存你的回复；等待屏幕捕获后角色会回应。");
+    };
+    const onNativeRecord = (event: Event) => {
+      try {
+        const item = JSON.parse(String((event as CustomEvent<string>).detail || "{}")) as { id?: string; kind?: string; text?: string; createdAt?: number; characterId?: string; characterName?: string };
+        if (!item.id || !item.text || loadGlobalWatchRecords().some(record => record.id === item.id)) return;
+        const record: GlobalWatchRecord = {
+          id: item.id,
+          characterId: item.characterId || "",
+          characterName: item.characterName || character?.name || "陪看角色",
+          text: (item.kind === "error" ? "【分析失败】" : item.kind === "system" ? "【会话记录】" : "") + item.text,
+          createdAt: new Date(typeof item.createdAt === "number" ? item.createdAt : Date.now()).toISOString(),
+          kind: item.kind === "user" ? "user" : "character",
+          targetUrl: "global-watch",
+        };
+        saveGlobalWatchRecord(record);
+        setRecords(loadGlobalWatchRecords());
+      } catch { /* ignore malformed native event */ }
     };
     const onState = (event: Event) => {
       const detail = (event as CustomEvent<{ message?: string; running?: boolean; paused?: boolean }>).detail || {};
@@ -240,10 +258,12 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
     window.addEventListener("global-watch-frame", onFrame);
     window.addEventListener("global-watch-reply", onReply);
     window.addEventListener("global-watch-state", onState);
+    window.addEventListener("global-watch-record", onNativeRecord);
     return () => {
       window.removeEventListener("global-watch-frame", onFrame);
       window.removeEventListener("global-watch-reply", onReply);
       window.removeEventListener("global-watch-state", onState);
+      window.removeEventListener("global-watch-record", onNativeRecord);
     };
   }, [appendRecord, analyzeFrame, settings.randomSpeechEnabled, settings.speechIntervalMinMinutes, settings.speechIntervalMaxMinutes, running, paused]);
 
