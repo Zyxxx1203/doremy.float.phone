@@ -50,7 +50,7 @@ python server.py          # 默认 http://127.0.0.1:8765
 - `GET /health` → `{ok, service, version, engines:{yt-dlp}, ffmpeg, cache_mb}`
 - `POST /api/resolve` JSON `{"url":"https://...","quality":"best","cookies":"<Netscape 文本，可选>"}`
   - `quality`：`best` / `1080` / `720` / `480` / `360`
-  - 返回 `{ok, id, title, size, mime, engine, downloadUrl}`
+  - 返回 `{ok, id, title, size, mime, engine, downloadUrl}`，`engine` 为 `yt-dlp` 或 `xiaohongshu`
 - `GET /api/videos/{id}` 播放/读取缓存，支持 `Range`（206）与 `HEAD`
 - `DELETE /api/videos/{id}` 删除缓存
 - 可选请求头 `X-Resolver-Token`，对应环境变量 `VIDEO_RESOLVER_TOKEN`
@@ -59,6 +59,7 @@ python server.py          # 默认 http://127.0.0.1:8765
 
 ## 行为细节
 
+- **小红书走独立通道**：yt-dlp 没有小红书 extractor（直接喂会报 `Unsupported URL`），所以命中 `xiaohongshu.com` / `xhslink.*` 时改用内置提取——取页面里的 `masterUrl` 直链，带 `Referer: xiaohongshu.com` 下载。笔记页需要有效的 `xsec_token`，所以要用 App 里「分享 → 复制链接」得到的完整短链；页面被登录墙挡住时按提示粘贴 Cookies。
 - **优先 H.264**：B 站等平台的 `bestvideo` 默认给 AV1，部分机型/WebView 硬解不了会黑屏，所以格式选择先挑 `vcodec^=avc1`，再退回任意编码（同画质体积约大 60%）。
 - **短链先在服务端展开**：`b23.tv`、`v.douyin.com`、`xhslink.com` 等先 302 跟到正式地址再解析；展开结果同样过安全校验。
 - **SSRF 防护**：拒绝内网 / 回环 / 保留地址，但放行 `198.18.0.0/15` —— 那是手机代理 Fake-IP 模式分配的假地址，实际指向公网。
@@ -66,4 +67,4 @@ python server.py          # 默认 http://127.0.0.1:8765
 
 ## 限制
 
-只支持 yt-dlp 能处理的平台与内容。会员/登录限制、地区限制、签名变更、DRM 或平台策略都可能失败；本工具不会绕过 DRM、付费墙或访问控制。抖音风控较严，通常需要粘贴电脑浏览器导出的 Netscape 格式 Cookies。大文件需要足够磁盘空间，播完可 `DELETE` 清理。遵守平台条款与内容版权。
+小红书靠独立通道，其余平台靠 yt-dlp；两者都只处理各自支持的内容。会员/登录限制、地区限制、签名变更、DRM 或平台策略都可能失败；本工具不会绕过 DRM、付费墙或访问控制。抖音风控较严，通常需要粘贴电脑浏览器导出的 Netscape 格式 Cookies。大文件需要足够磁盘空间，播完可 `DELETE` 清理。遵守平台条款与内容版权。

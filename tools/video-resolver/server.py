@@ -156,6 +156,83 @@ def cleanup_old() -> None:
             pass
 
 
+XHS_HOSTS = ("xiaohongshu.com", "xhslink.com", "xhslink.cn")
+
+
+def _xhs_cookie_header(cookies_text: str | None) -> str:
+    """把 Netscape 格式 cookies 里属于小红书的部分转成 Cookie 请求头。"""
+    if not cookies_text:
+        return ""
+    pairs = []
+    for line in cookies_text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) < 7:
+            continue
+        domain, _flag, _path, _secure, _expiry, name, value = parts[:7]
+        if "xiaohongshu" not in domain:
+            continue
+        pairs.append(f"{name}={value}")
+    return "; ".join(pairs)
+
+
+def _xhs_page(url: str, cookie_header: str) -> str:
+    headers = {"User-Agent": UA_MOBILE, "Accept-Language": "zh-CN,zh;q=0.9"}
+    if cookie_header:
+        headers["Cookie"] = cookie_header
+    with urlopen(Request(url, headers=headers), timeout=25) as resp:  # noqa: S310
+        final = resp.geturl()
+        html = resp.read().decode("utf-8", "replace")
+    if "/login" in final:
+        raise HttpError(422, "小红书要求登录：请在「一起看 → 设置 → 平台 Cookies」粘贴小红书 cookies 后重试")
+    if "/404/" in final or "sec_" in final:
+        raise HttpError(422, "小红书笔记打不开：链接可能已失效或缺 xsec_token。请用 App 里「分享 → 复制链接」得到的完整链接（xhslink 短链会自动展开）")
+    return html
+
+
+def _xhs_master_url(html: str) -> tuple[str, str]:
+    match = re.search(r'"masterUrl"\s*:\s*"((?:[^"\\]|\\.)*)"', html)
+    if not match:
+        if '"imageList"' in html or '"noteType":"normal"' in html or '"type":"normal"' in html:
+            raise HttpError(422, "这是小红书的图文笔记，没有视频可下载")
+        raise HttpError(422, "没能从小红书页面里找到视频直链（可能需要登录，或平台改了页面结构）")
+    try:
+        direct = json.loads('"' + match.group(1) + '"')
+    except Exception:  # noqa: BLE001
+        raise HttpError(422, "小红书视频直链解析失败")
+    if not direct.startswith(("http://", "https://")):
+        raise HttpError(422, "小红书返回的视频直链不合法")
+    title_match = (re.search(r'<meta[^>]+name="og:title"[^>]+content="([^"]*)"', html)
+                   or re.search(r"<title[^>]*>([^<]*)</title>", html))
+    title = (title_match.group(1) if title_match else "").replace("_小红书", "").strip(" -")
+    return direct, title
+
+
+def _download_xhs(url: str, target_dir: Path, cookie_header: str) -> str:
+    """小红书：页面里直接提取 masterUrl 再下载，绕开 yt-dlp（它没有小红书 extractor）。"""
+    html = _xhs_page(url, cookie_header)
+    direct, title = _xhs_master_url(html)
+    headers = {"User-Agent": UA_MOBILE, "Referer": "https://www.xiaohongshu.com/"}
+    if cookie_header:
+        headers["Cookie"] = cookie_header
+    dest = target_dir / "video.mp4"
+    written = 0
+    with urlopen(Request(direct, headers=headers), timeout=180) as resp, open(dest, "wb") as fh:  # noqa: S310
+        while True:
+            chunk = resp.read(1 << 18)
+            if not chunk:
+                break
+            written += len(chunk)
+            if written > MAX_BYTES:
+                raise HttpError(422, "视频超过本地缓存大小限制")
+            fh.write(chunk)
+    if written < 1024:
+        raise HttpError(422, "小红书视频下载内容异常（过小）")
+    return title
+
+
 def _download(url: str, options: dict) -> None:
     with yt_dlp.YoutubeDL(options) as ydl:
         ydl.download([url])
@@ -182,10 +259,18 @@ def resolve_video(body: dict) -> dict:
         output = str(tempdir / "video.%(ext)s")
         opts = ydl_options(output, quality, str(cookie_path) if cookie_path else None)
         failures: list[str] = []
-        try:
-            _download(url, opts)
-        except Exception as exc:  # noqa: BLE001
-            failures.append("yt-dlp: " + str(exc)[:180])
+        engine_used = "yt-dlp"
+        video_title = ""
+        host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+        cookies_text = cookies if isinstance(cookies, str) else None
+        if any(host == suffix or host.endswith("." + suffix) for suffix in XHS_HOSTS):
+            engine_used = "xiaohongshu"
+            video_title = _download_xhs(url, tempdir, _xhs_cookie_header(cookies_text))
+        else:
+            try:
+                _download(url, opts)
+            except Exception as exc:  # noqa: BLE001
+                failures.append("yt-dlp: " + str(exc)[:180])
 
         media = next((p for p in tempdir.iterdir()
                       if p.is_file() and p.name != "cookies.txt" and p.stat().st_size > 1024), None)
@@ -198,10 +283,10 @@ def resolve_video(body: dict) -> dict:
             raise RuntimeError(f"暂不支持该平台输出格式：{suffix or '未知'}")
         final = ROOT / f"{job_id}{suffix}"
         media.replace(final)
-        title = final.stem
+        title = video_title or final.stem
         with LOCK:
             JOBS[job_id] = {"state": "ready", "file": final.name, "title": title,
-                            "size": final.stat().st_size, "engine": "yt-dlp", "created": time.time()}
+                            "size": final.stat().st_size, "engine": engine_used, "created": time.time()}
         cleanup_old()
         return {
             "ok": True,
@@ -209,12 +294,12 @@ def resolve_video(body: dict) -> dict:
             "title": title,
             "size": final.stat().st_size,
             "mime": "video/mp4" if suffix in (".mp4", ".m4v") else "video/" + suffix[1:],
-            "engine": "yt-dlp",
+            "engine": engine_used,
             "downloadUrl": f"/api/videos/{job_id}",
         }
-    except HttpError:
+    except HttpError as exc:
         with LOCK:
-            JOBS[job_id] = {"state": "failed", "message": "请求参数不合法", "created": time.time()}
+            JOBS[job_id] = {"state": "failed", "message": exc.detail, "created": time.time()}
         raise
     except Exception as exc:  # noqa: BLE001
         with LOCK:
@@ -238,7 +323,7 @@ def health_payload() -> dict:
         "ok": bool(yt_version),
         "service": "doremy-video-resolver",
         "version": VERSION,
-        "engines": {"parse-video-py": False, "yt-dlp": bool(yt_version)},
+        "engines": {"parse-video-py": False, "yt-dlp": bool(yt_version), "xiaohongshu": True},
         "ffmpeg": bool(shutil.which("ffmpeg")),
         "ffmpeg_required_for_separate_audio": True,
         "cache_mb": round(cache / 1048576, 1),

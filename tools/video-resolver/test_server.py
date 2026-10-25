@@ -46,5 +46,32 @@ class UrlGuardTests(unittest.TestCase):
                 server.validate_url("https://nonexistent.invalid/v.mp4")
 
 
+class XiaohongshuTests(unittest.TestCase):
+    PAGE = (
+        '<html><head><meta name="og:title" content="深夜食堂探店_小红书"></head><body>'
+        '<script>window.__INITIAL_STATE__={"note":{"video":{"media":{"stream":{"h264":[{"masterUrl":"https:\\/\\/sns-video-bd.xhscdn.com\\/abc.mp4"}]}}}}}}</script>'
+        '</body></html>'
+    )
+
+    def test_extracts_master_url_and_title(self):
+        direct, title = server._xhs_master_url(self.PAGE)
+        self.assertEqual(direct, "https://sns-video-bd.xhscdn.com/abc.mp4")
+        self.assertEqual(title, "深夜食堂探店")
+
+    def test_image_note_is_reported_clearly(self):
+        with self.assertRaises(server.HttpError) as ctx:
+            server._xhs_master_url('<html>{"imageList":[{"url":"x"}]}</html>')
+        self.assertEqual(ctx.exception.status, 422)
+        self.assertIn("图文笔记", ctx.exception.detail)
+
+    def test_cookie_header_only_keeps_xiaohongshu_cookies(self):
+        cookies = (
+            "# Netscape HTTP Cookie File\n"
+            ".xiaohongshu.com\tTRUE\t/\tFALSE\t0\ta1\tweb_session\n"
+            ".douyin.com\tTRUE\t/\tFALSE\t0\tsid\txyz\n"
+        )
+        self.assertEqual(server._xhs_cookie_header(cookies), "a1=web_session")
+
+
 if __name__ == "__main__":
     unittest.main()
