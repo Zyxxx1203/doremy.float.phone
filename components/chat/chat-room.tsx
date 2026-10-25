@@ -1504,6 +1504,38 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     const [hasMore, setHasMore] = useState(false);
     const INITIAL_LOAD = CHAT_INITIAL_VISIBLE_MESSAGE_COUNT;
     const LOAD_MORE_COUNT = CHAT_LOAD_MORE_MESSAGE_COUNT;
+    
+    // Additive history-search jump: hydrate a small window around the requested message,
+    // then scroll to its stable data-msg-id marker. No chat records are modified.
+    useEffect(() => {
+        const handler = (event: Event) => {
+            const detail = (event as CustomEvent<{ sessionId?: string; messageId?: string }>).detail;
+            if (!detail?.sessionId || detail.sessionId !== session.id || !detail.messageId) return;
+            const allMessages = loadChatMessages(session.id);
+            const targetIndex = allMessages.findIndex(item => item.id === detail.messageId);
+            if (targetIndex < 0) return;
+            const start = Math.max(0, targetIndex - 24);
+            const end = Math.min(allMessages.length, targetIndex + 25);
+            setMessages(allMessages.slice(start, end));
+            setHasMore(start > 0);
+            setHighlightMessageId(detail.messageId);
+            let attempts = 0;
+            const reveal = () => {
+                const element = document.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(detail.messageId!)}"]`);
+                if (element) {
+                    element.scrollIntoView({ behavior: "smooth", block: "center" });
+                    window.setTimeout(() => setHighlightMessageId(current => current === detail.messageId ? null : current), 2200);
+                    return;
+                }
+                attempts += 1;
+                if (attempts < 12) window.setTimeout(reveal, 80);
+            };
+            window.setTimeout(reveal, 80);
+        };
+        window.addEventListener("chat-history-jump-to-message", handler);
+        return () => window.removeEventListener("chat-history-jump-to-message", handler);
+    }, [session.id]);
+
 
 
     const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
