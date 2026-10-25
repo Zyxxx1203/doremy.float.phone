@@ -68,10 +68,10 @@ async function generateLine(
     .join("\n");
 
   const persona = [
-    character.persona?.trim() ? `【角色人设】\n${character.persona.trim()}` : "",
-    character.personality?.trim() ? `【性格补充】\n${character.personality.trim()}` : "",
-    character.briefPersona?.trim() ? `【简量人设】\n${character.briefPersona.trim()}` : "",
-    character.tags?.length ? `【角色标签】${character.tags.join("、")}` : "",
+    character.persona?.trim() ? `【角色人设】\n${character.persona.trim().slice(0, 1200)}` : "",
+    character.personality?.trim() ? `【性格补充】\n${character.personality.trim().slice(0, 500)}` : "",
+    character.briefPersona?.trim() ? `【简量人设】\n${character.briefPersona.trim().slice(0, 300)}` : "",
+    character.tags?.length ? `【角色标签】${character.tags.slice(0, 8).join("、")}` : "",
   ].filter(Boolean).join("\n\n");
   const avoid = previous?.text ? `\n【避免重复】你上次留在桌面上的话是：「${previous.text}」，这次请换一个自然的角度，不要换几个词后重复。` : "";
 
