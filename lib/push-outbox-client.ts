@@ -58,11 +58,11 @@ function clearTimedWakeIfHandled(triggerKey: string | null): void {
 }
 function parseLifeSceneProactiveOutput(raw: string): { action: string; dialogue: string } {
     const source = raw.replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
-    const actionMatch = source.match(/<life_action\\b[^>]*>([\\s\\S]*?)<\\/life_action\\s*>/i);
-    const dialogueMatch = source.match(/<life_dialogue\\b[^>]*>([\\s\\S]*?)<\\/life_dialogue\\s*>/i);
+    const actionMatch = source.match(/<life_action\b[^>]*>([\s\S]*?)<\/life_action\s*>/i);
+    const dialogueMatch = source.match(/<life_dialogue\b[^>]*>([\s\S]*?)<\/life_dialogue\s*>/i);
     const clean = (value: string) => value
-        .replace(/<\\/?(?:content|summary|thinking)>/ig, "")
-        .replace(/<\\/?life_(?:action|dialogue)\\b[^>]*>/ig, "")
+        .replace(/<\/?(?:content|summary|thinking)>/ig, "")
+        .replace(/<\/?life_(?:action|dialogue)\b[^>]*>/ig, "")
         .replace(/&quot;/g, '"').replace(/&amp;/g, "&").trim();
     if (actionMatch || dialogueMatch) return { action: clean(actionMatch?.[1] || ""), dialogue: clean(dialogueMatch?.[1] || "") };
 
@@ -72,9 +72,9 @@ function parseLifeSceneProactiveOutput(raw: string): { action: string; dialogue:
     const dialogue: string[] = [];
     const actionVerb = /笑了笑|笑着|看向|看着|望向|望着|转过身|转身|低下头|低头|抬起头|抬头|抬手|伸出手|伸手|靠近|走到|走向|坐下|起身|站起|点点头|点头|摇摇头|摇头|叹了口气|叹气|皱起眉|皱眉|眨了眨眼|眨眼|抱住|拿起|放下|注视|轻轻|慢慢|停下脚步|移开视线|别开目光|耳尖泛红|脸颊泛红|抚摸|轻抚|拍了拍|拉住|牵起|搂住|贴近|倚着|靠在|抿唇|扬起嘴角|眼神|目光|把.+(?:递给|放在|拿起|放下)|将.+(?:递给|放在|拿起|放下)/;
     const text = clean(source.replace(/<[^>]+>/g, ""));
-    for (const line of text.split(/\\r?\\n/).map(item => item.trim()).filter(Boolean)) {
-        const labelledAction = line.match(/^(?:动作|行动|旁白|场景描写)\\s*[:：]\\s*(.+)$/);
-        const labelledDialogue = line.match(/^对白\\s*[:：]\\s*(.+)$/);
+    for (const line of text.split(/\r?\n/).map(item => item.trim()).filter(Boolean)) {
+        const labelledAction = line.match(/^(?:动作|行动|旁白|场景描写)\s*[:：]\s*(.+)$/);
+        const labelledDialogue = line.match(/^对白\s*[:：]\s*(.+)$/);
         if (labelledAction) { action.push(labelledAction[1].trim()); continue; }
         if (labelledDialogue) { dialogue.push(labelledDialogue[1].trim()); continue; }
         const quoted: string[] = [];
@@ -84,17 +84,17 @@ function parseLifeSceneProactiveOutput(raw: string): { action: string; dialogue:
             dialogue.push(...quoted.filter(Boolean));
             continue;
         }
-        const speechSplit = line.match(/^(.{1,100}?)(?:轻声说|低声说|开口道|说道|说着|问道|答道|回答道|说|问|答)\\s*[:：，,]?\\s*(.+)$/);
+        const speechSplit = line.match(/^(.{1,100}?)(?:轻声说|低声说|开口道|说道|说着|问道|答道|回答道|说|问|答)\s*[:：，,]?\s*(.+)$/);
         if (speechSplit && actionVerb.test(speechSplit[1])) {
             action.push(speechSplit[1].trim());
             dialogue.push(speechSplit[2].trim());
         } else if (actionVerb.test(line) && !/^(?:我|你|我们|其实|嗯|啊|哦|对了|所以|但是|因为|那|好|好的|谢谢|抱歉|想问|觉得|知道|希望|喜欢|告诉你)/.test(line)) {
-            action.push(line.replace(/^\\*+|\\*+$/g, "").trim());
+            action.push(line.replace(/^\*+|\*+$/g, "").trim());
         } else {
-            dialogue.push(line.replace(/^\\*+|\\*+$/g, "").trim());
+            dialogue.push(line.replace(/^\*+|\*+$/g, "").trim());
         }
     }
-    return { action: action.join("\\n"), dialogue: dialogue.join("\\n") };
+    return { action: action.join("\n"), dialogue: dialogue.join("\n") };
 }
 
 export async function consumeServerOutbox(options?: { silent?: boolean; force?: boolean }): Promise<void> {
