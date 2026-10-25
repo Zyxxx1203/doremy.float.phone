@@ -113,6 +113,22 @@ type DragState = {
  */
 const wallThumbCache = new Map<string, string>();
 const wallThumbPending = new Map<string, Promise<string>>();
+const MAX_PARALLEL_THUMB_LOADS = 3;
+let activeThumbLoads = 0;
+const thumbLoadQueue: Array<() => void> = [];
+
+async function withThumbLoadSlot<T>(work: () => Promise<T>): Promise<T> {
+  if (activeThumbLoads >= MAX_PARALLEL_THUMB_LOADS) {
+    await new Promise<void>(resolve => thumbLoadQueue.push(resolve));
+  }
+  activeThumbLoads += 1;
+  try {
+    return await work();
+  } finally {
+    activeThumbLoads -= 1;
+    thumbLoadQueue.shift()?.();
+  }
+}
 
 async function loadWallThumbUrl(mediaRef: string): Promise<string> {
   const cached = wallThumbCache.get(mediaRef);
@@ -120,7 +136,7 @@ async function loadWallThumbUrl(mediaRef: string): Promise<string> {
   const pending = wallThumbPending.get(mediaRef);
   if (pending) return pending;
 
-  const task = (async () => {
+  const task = withThumbLoadSlot(async () => {
     const full = await loadMediaObjectUrl(mediaRef);
     if (!full) return "";
     let bitmap: ImageBitmap | null = null;
@@ -152,7 +168,7 @@ async function loadWallThumbUrl(mediaRef: string): Promise<string> {
     } finally {
       bitmap?.close();
     }
-  })().finally(() => {
+  }).finally(() => {
     wallThumbPending.delete(mediaRef);
   });
   wallThumbPending.set(mediaRef, task);
