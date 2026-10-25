@@ -447,7 +447,7 @@ class GlobalWatchCaptureService : Service() {
             setOnClickListener {
                 val message = input.text?.toString().orEmpty().trim()
                 if (message.isNotEmpty()) {
-                    sendBroadcast(Intent(ACTION_REPLY).setPackage(packageName).putExtra("text", message))
+                    command(this@GlobalWatchCaptureService, ACTION_REPLY, message)
                     input.setText("")
                     emitState("回复已发送给陪看模块")
                 }
@@ -487,6 +487,7 @@ class GlobalWatchCaptureService : Service() {
 
     override fun onDestroy() {
         worker?.removeCallbacksAndMessages(null)
+        if (projection != null) saveRecord("system", "全局陪看会话结束", System.currentTimeMillis())
         try { overlay?.let { windowManager?.removeView(it) } } catch (_: Throwable) { }
         overlay = null
         display?.release()
