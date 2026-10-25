@@ -3130,6 +3130,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
                 let nextLocations = current.locations.map(location => {
                   if (!(location.id === "home" || location.id.startsWith("home-"))) return location;
                   let residents = new Set(location.residents ?? []);
+                  // Repair older saved home records whose owner was never stored in residents.
+                  if (location.id.startsWith("home-")) residents.add(location.id.slice("home-".length));
                   if (location.id === homeLocationId && enabled) residents.add(character.id); else residents.delete(character.id);
                   return { ...location, residents: [...residents] };
                 });
