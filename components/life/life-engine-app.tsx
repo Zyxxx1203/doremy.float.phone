@@ -479,6 +479,14 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const immersiveScene = !!activeScene && ((tab === "home" && sceneView) || tab === "scene");
 
   useEffect(() => {
+    if (!immersiveScene) return;
+    // Entering a different scene/view starts at its newest message; scrolling up afterwards is respected.
+    sceneChatAtBottomRef.current = true;
+    const scroller = sceneChatScrollRef.current;
+    if (!scroller) return;
+    requestAnimationFrame(() => scroller.scrollTo({ top: scroller.scrollHeight, behavior: "auto" }));
+  }, [immersiveScene, activeScene?.id]);
+  useEffect(() => {
     if (!immersiveScene || !sceneChatAtBottomRef.current) return;
     const scroller = sceneChatScrollRef.current;
     if (!scroller) return;
@@ -1587,7 +1595,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       // suppressed. The bailout layer independently rechecks presence before POST.
       void reconcileIdleReconnectWithLifeScenes(candidateIds);
     };
-  }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.showActionNarration, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, playerName]);
+  }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, playerName]);
   const sendSceneTurn = async (event?: FormEvent, forceReaction = false) => {
     event?.preventDefault();
     const userText = sceneInput.trim();
