@@ -102,6 +102,8 @@ type DragState = {
   base: PhotoWallPlacement;
   wallWidth: number;
   wallHeight: number;
+  /** CSS pixels per world pixel, including canvas zoom and phone-shell scaling. */
+  wallScale: number;
   moved: boolean;
 };
 
@@ -251,6 +253,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       return;
     }
     const rect = wall.getBoundingClientRect();
+    const wallScale = rect.width > 0 && wall.offsetWidth > 0 ? rect.width / wall.offsetWidth : 1;
     // 不在 pointerdown 时抢占指针，否则普通轻触的 click 会落到墙容器上，
     // 照片卡片收不到 click，用户就无法翻面。只有真正开始拖动时再捕获。
     dragRef.current = {
@@ -262,6 +265,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       base: placementOf(photo, index),
       wallWidth: rect.width || 1,
       wallHeight: rect.height || 1,
+      wallScale,
       moved: false,
     };
     onSelect(photo.id);
@@ -286,8 +290,10 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       settledRef.current = { id: drag.id, placement: { ...drag.base, x: nextX, y: nextY } };
       commit(drag.id, settledRef.current.placement);
     } else {
-      const delta = (dx + dy) / 2 / drag.wallWidth;
-      const scale = Math.min(3, Math.max(0.35, drag.base.scale + delta * 2));
+      // A photo is 240 world-pixels wide per scale unit. Divide by the actual
+      // rendered world scale so resizing feels the same at every canvas zoom level.
+      const delta = ((dx + dy) / 2) / Math.max(1, 240 * drag.wallScale);
+      const scale = Math.min(3, Math.max(0.35, drag.base.scale + delta));
       settledRef.current = { id: drag.id, placement: { ...drag.base, scale } };
       commit(drag.id, settledRef.current.placement);
     }
