@@ -80,6 +80,29 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
   const character = characters.find(item => item.id === settings.characterId) ?? characters[0] ?? null;
 
   useEffect(() => {
+    // Merge native service records after reopening the app; the Android service remains the source of truth in background.
+    try {
+      const raw = (window as GlobalWatchWindow).AndroidShell?.getGlobalWatchRecords?.();
+      if (raw) {
+        const items = JSON.parse(raw) as Array<{ id?: string; kind?: string; text?: string; createdAt?: number; characterId?: string; characterName?: string }>;
+        const existing = new Set(loadGlobalWatchRecords().map(item => item.id));
+        for (const item of items) {
+          if (!item?.id || !item.text || existing.has(item.id)) continue;
+          const record: GlobalWatchRecord = {
+            id: item.id,
+            characterId: item.characterId || "",
+            characterName: item.characterName || "陪看角色",
+            text: (item.kind === "error" ? "【分析失败】" : item.kind === "system" ? "【会话记录】" : "") + item.text,
+            createdAt: new Date(typeof item.createdAt === "number" ? item.createdAt : Date.now()).toISOString(),
+            kind: item.kind === "user" ? "user" : "character",
+            targetUrl: "global-watch",
+          };
+          saveGlobalWatchRecord(record);
+          existing.add(item.id);
+        }
+        setRecords(loadGlobalWatchRecords());
+      }
+    } catch { /* browser-only mode or native bridge unavailable */ }
     const list = loadCharacters();
     setCharacters(list);
     setSettings(current => {
@@ -194,18 +217,16 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
         frameRef.current = detail.dataUrl;
         setLatestCapturedAt(Number(detail.capturedAt) || Date.now());
         setStatus("已收到屏幕帧；随机主动发言按设置的时间间隔触发。");
-        const elapsed = Date.now() - lastSpeechAtRef.current;
-        const minMs = settings.speechIntervalMinMinutes * 60_000;
-        const maxMs = settings.speechIntervalMaxMinutes * 60_000;
-        if (settings.randomSpeechEnabled && running && !paused && !busyRef.current && elapsed >= minMs && (elapsed >= maxMs || Math.random() < 0.28)) {
-          lastSpeechAtRef.current = Date.now();
-          void analyzeFrame(detail.dataUrl);
-        };
+        // Android native service owns AI scheduling and requests. The WebView only mirrors capture status.
       }
     };
     const onReply = (event: Event) => {
       const text = String((event as CustomEvent<{ text?: string }>).detail?.text || "").trim();
       if (!text) return;
+      if (running && native?.sendGlobalWatchReply) {
+        // The native service persists the reply and invokes the model; don't duplicate it in WebView.
+        return;
+      }
       appendRecord("user", text);
       if (frameRef.current) void analyzeFrame(frameRef.current, text);
       else setStatus("已保存你的回复；等待屏幕捕获后角色会回应。");
