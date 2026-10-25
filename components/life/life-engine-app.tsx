@@ -324,6 +324,47 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (characters.some(character => character.id === rawId)) return rawId;
     return loadChatContacts().find(contact => contact.id === rawId)?.characterId ?? "";
   };
+  useEffect(() => {
+    const key = "life-scene-pending-banner-v1";
+    const presentBanner = (value: unknown) => {
+      if (!value || typeof value !== "object") return;
+      const detail = value as { sceneId?: string; characterId?: string; characterName?: string; avatar?: string; locationName?: string; action?: string; dialogue?: string; createdAt?: string };
+      const createdAtMs = Date.parse(detail.createdAt || "");
+      if (!detail.sceneId || !detail.characterId || !Number.isFinite(createdAtMs) || Date.now() - createdAtMs > 120_000) return;
+      if (settings.enableLifeMessageNotifications === false) return;
+      const character = characters.find(item => item.id === detail.characterId);
+      const body = [detail.action?.trim(), detail.dialogue?.trim()].filter(Boolean).join(" ");
+      if (!body) return;
+      setToastReplyMode("hidden");
+      setToastReplyDraft("");
+      setSceneToast({
+        kind: detail.action?.trim() ? "action" : "dialogue",
+        characterId: detail.characterId,
+        characterName: detail.characterName || character?.name || "角色",
+        avatar: detail.avatar || character?.avatar || "",
+        location: detail.locationName || "生活现场",
+        body,
+        sceneId: detail.sceneId,
+      });
+      window.setTimeout(() => setSceneToast(current =>
+        current && !current.isTest && current.sceneId === detail.sceneId && current.body === body ? null : current
+      ), 6500);
+    };
+    const onOfflineLifeSceneMessage = (event: Event) => {
+      try { localStorage.removeItem(key); } catch { /* ignore storage restrictions */ }
+      presentBanner((event as CustomEvent).detail);
+    };
+    window.addEventListener("life-scene-proactive-message", onOfflineLifeSceneMessage);
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        localStorage.removeItem(key);
+        presentBanner(JSON.parse(raw));
+      }
+    } catch { /* the persisted banner handoff is best-effort */ }
+    return () => window.removeEventListener("life-scene-proactive-message", onOfflineLifeSceneMessage);
+  }, [characters, settings.enableLifeMessageNotifications]);
+
   const openDaily = (subtab: "people" | "plans") => { setDailySubtab(subtab); setTab("daily"); };
   useEffect(() => {
     const refreshPhonePresets = () => setPhonePresets(loadPresets());
@@ -3481,7 +3522,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               </div>
               <p className="mt-2 text-[10px] leading-relaxed text-stone-500">先等待玩家达到上面的静默时长，再按下方随机间隔尝试一次；角色主动发出的消息不会重置玩家静默计时。</p>
               <div className="mt-3"><Toggle checked={settings.enableLifeMessageNotifications !== false} onChange={async v=>{if(v && typeof Notification!=="undefined" && Notification.permission==="default"){try{await Notification.requestPermission();}catch{/* permission prompt may be unavailable in WebView */}}patchSettings({enableLifeMessageNotifications:v});}} label="主动消息弹窗提示"/></div>
-               <p className="mt-2 text-[10px] leading-relaxed text-stone-500">当前版本的主动生成仍依赖生活现场在前台运行；系统原生离线通知与后台接管还需接入离线任务链路，不能用网页通知代替。</p>
+               <p className="mt-2 text-[10px] leading-relaxed text-stone-500">角色同场时会优先使用生活现场专属主动互动，不走普通聊天冷场追问。已配置云端任务与推送订阅时，会预约生活现场离线任务；应用被杀后由服务端生成系统通知，回传只写入生活现场，不混入普通聊天室。下方按钮仅测试站内横幅样式。</p>
               <button type="button" onClick={() => { const character = characters[0]; if (!character) { setNotice("没有可用于预览横幅的角色。"); return; } const activeSceneForTest = stateRef.current.scenes.find(item => item.status === "active" && item.participants.some(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID)) ?? stateRef.current.scenes.find(item => item.status === "active"); setToastReplyMode("hidden"); setToastReplyDraft(""); setSceneToast({ kind: "dialogue", characterId: character.id, characterName: character.name, avatar: character.avatar ?? "", location: activeSceneForTest?.locationName ?? "生活现场", body: "这是一条生活系统通知横幅测试。真实角色消息会显示在这里。", sceneId: activeSceneForTest?.id ?? "", isTest: true }); window.setTimeout(() => setSceneToast(current => current?.isTest ? null : current), 6500); setNotice("已显示生活系统样式的站内横幅；这只测试界面样式，不代表离线推送订阅已验证。"); }} className="mt-2 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-700 active:opacity-70">测试生活系统通知横幅</button>
               <p className="mt-1.5 text-[10px] leading-4 text-stone-400">预览使用生活现场实际横幅样式，不写入生活记录，也不会伪装成离线推送测试。</p>
             </div>
