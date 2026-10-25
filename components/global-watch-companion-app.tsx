@@ -156,7 +156,10 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
       setStatus("角色已发言并保存记录。");
       try { (window as GlobalWatchWindow).AndroidShell?.showGlobalWatchComment?.(result); } catch { /* overlay may have stopped */ }
     } catch (error) {
-      setStatus("屏幕分析失败：" + (error instanceof Error ? error.message : String(error)));
+      const message = error instanceof Error ? error.message : String(error);
+      // Failed model calls are part of the session audit trail too; never silently discard them.
+      appendRecord("character", "【陪看分析失败】" + message);
+      setStatus("屏幕分析失败，错误已写入全局陪看记录：" + message);
     } finally {
       busyRef.current = false;
       setBusy(false);
