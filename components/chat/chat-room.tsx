@@ -4320,6 +4320,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const commitSendText = (currentText: string) => {
             // A new user message supersedes stale requests raised by older life/system events.
             pendingReplyRequestRef.current = false;
+            // A newly committed user turn invalidates any server-side fallback for the older turn.
+            void cancelBailoutKey("reply:" + session.id);
             // 掷骰子：整条消息就是骰子图标时，发骰子气泡（内容仅图标），
             // 点数由系统旁白公布——避免结果挂在 user 消息上被角色模仿格式
             const diceOnly = !isQuoting && isDiceOnlyMessage(currentText);
