@@ -1055,6 +1055,7 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         val globalWatchFilter = IntentFilter().apply {
             addAction(GlobalWatchCaptureService.ACTION_FRAME)
             addAction(GlobalWatchCaptureService.ACTION_REPLY)
+            addAction(GlobalWatchCaptureService.ACTION_RECORD)
             addAction(GlobalWatchCaptureService.ACTION_STATE)
         }
         ContextCompat.registerReceiver(this, globalWatchReceiver, globalWatchFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
