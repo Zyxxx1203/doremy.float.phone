@@ -270,6 +270,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [videoTitle, setVideoTitle] = useState("");
   const [resolverState, setResolverState] = useState<{ state: "idle" | "resolving" | "ok" | "failed"; message?: string }>({ state: "idle" });
   const [resolutionMessage, setResolutionMessage] = useState("");
+  // 一起看：选视频后逐个方法尝试。未结束前只显示转圈和步骤清单，全部失败后才落错误提示。
+  const [resolveSteps, setResolveSteps] = useState<{ key: string; label: string; state: "pending" | "active" | "ok" | "fail" | "skip"; detail?: string }[]>([]);
+  const [resolveSettled, setResolveSettled] = useState(true);
   const [iframeLoadedAt, setIframeLoadedAt] = useState<string | null>(null);
   const [watchDiagnosticReport, setWatchDiagnosticReport] = useState("");
   const [localResolverEndpoint, setLocalResolverEndpoint] = useState(() => {
@@ -917,10 +920,22 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     // 本地解析服务下载一遍——否则每次播放都会先弹一条「本地解析服务失败」的假警报。
     // 同理，已有官方站内嵌入的链接（B站 BV/YouTube/腾讯/优酷）也不该先走解析服务。
     const goodEmbed = Boolean(parsed.embedUrl) && parsed.embedUrl !== parsed.url;
+    // 需要逐个尝试时先列步骤：直链/可直接嵌入的链接不走解析，直接给播放器。
+    const plan: { key: string; label: string; state: "pending" | "active" | "ok" | "fail" | "skip"; detail?: string }[] = [];
+    if (!parsed.nativeVideo && !goodEmbed) {
+      if (parsed.platform === "xiaohongshu" || parsed.platform === "douyin" || parsed.platform === "kuaishou") plan.push({ key: "builtin", label: "站内解析（下载到本机缓存）", state: "pending" });
+      if (endpoint) plan.push({ key: "local", label: "本地解析服务（Termux / 电脑）", state: "pending" });
+      if (parsed.platform === "bilibili" && parsed.url.includes("b23.tv")) plan.push({ key: "shortlink", label: "把短链接换算成 B 站播放器", state: "pending" });
+    }
+    setResolveSteps(plan);
+    setResolveSettled(plan.length === 0);
+    const markStep = (key: string, state: "pending" | "active" | "ok" | "fail" | "skip", detail?: string) =>
+      setResolveSteps(previous => previous.map(item => item.key === key ? { ...item, state, detail: detail ?? item.detail } : item));
     // ① 站内内置解析（自部署零配置、同源缓存可截帧）：小红书已支持，抖音/快手交给
     //    它尝试并如实转述失败原因。同一视频按 URL 哈希命中缓存，第二次播放秒开。
     if (!parsed.nativeVideo && !goodEmbed && (parsed.platform === "xiaohongshu" || parsed.platform === "douyin" || parsed.platform === "kuaishou")) {
       const seq = ++openVideoSeqRef.current;
+      markStep("builtin", "active");
       try {
         setResolutionMessage("正在通过站内解析获取视频，首次需要下载到本地缓存…");
         setResolverState({ state: "resolving", message: "站内解析中…" });
@@ -939,18 +954,22 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         setResolverState({ state: "ok", message: result.cacheHit ? "缓存命中，直接接着看。" : "已下载到本地缓存，正在播放。" });
         setLocalResolverStatus(result.cacheHit ? "缓存命中 · 秒开" : "下载完成 · 本地缓存播放");
         onNotice?.(result.cacheHit ? "缓存命中，直接接着上次的一起看。" : "已下载到本地缓存，开始播放；下次打开同一链接会直接秒开。看完可在设置中删除缓存。");
+        markStep("builtin", "ok", result.cacheHit ? "缓存命中" : "下载完成");
+        setResolveSettled(true);
         return;
       } catch (error) {
         if (seq !== openVideoSeqRef.current) return;
         const message = error instanceof Error ? error.message : "站内解析失败";
         setResolverState({ state: "failed", message });
         setLocalResolverStatus("站内解析失败：" + message);
+        markStep("builtin", "fail", message.slice(0, 40));
         onNotice?.("站内解析失败：" + message + (localResolverEndpoint.trim() ? "；继续尝试外部解析服务。" : "；将尝试平台嵌入播放。"));
       }
     }
     // ② 外部解析服务（Termux / 电脑 Python，可选）：server.py 单引擎 yt-dlp，抖音等风控平台可带 cookies。
     if (endpoint && !parsed.nativeVideo && !goodEmbed) {
       const seq = ++openVideoSeqRef.current;
+      markStep("local", "active");
       try {
         const base = new URL(endpoint);
         if (base.protocol !== "http:" && base.protocol !== "https:") throw new Error("解析服务地址必须是 http(s)");
@@ -981,6 +1000,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         setResolverState({ state: "ok", message: "视频已下载到本地缓存，正在播放。" });
         setLocalResolverStatus("下载完成 · 本地缓存播放");
         onNotice?.("已下载到本地缓存，开始播放。看完后可在设置中删除缓存。");
+        markStep("local", "ok", "下载完成");
+        setResolveSettled(true);
         return;
       } catch (error) {
         if (seq !== openVideoSeqRef.current) return;
@@ -988,12 +1009,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         setLocalResolverStatus("本地解析失败：" + message);
         setResolverState({ state: "failed", message });
         setTarget(parsed);
+        markStep("local", "fail", message.slice(0, 40));
         onNotice?.("本地解析服务失败：" + message + "；继续尝试 APK 内置解析。");
       }
     }
     // b23.tv 短链接：分享页不能作为 iframe 兜底（顶栏截断/整页空白）。解析服务
     // 不可用或失败时，先在服务端把短链接换算成真实 BV 号，改用官方站内播放器。
     if (parsed.platform === "bilibili" && parsed.url.includes("b23.tv") && !goodEmbed) {
+      markStep("shortlink", "active");
       const resolved = await resolveBiliShortLinkViaProxy(parsed.url);
       if (resolved?.embedUrl) {
         setTarget(resolved);
@@ -1001,8 +1024,18 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         setComments(loadTargetComments(resolved.url));
         setResolutionMessage("已把 b23.tv 短链接换算成真实视频，正在使用 B 站官方站内播放器。");
         onNotice?.("短链接已换算成功；若要提取直连流（供 AI 看画面），仍可配置本地解析服务。");
+        markStep("shortlink", "ok");
+        setResolveSettled(true);
         return;
       }
+    }
+    if (plan.length > 0) {
+      // 所有方法都试完：把没走到的步骤标成跳过，结束转圈，交给下面的错误卡片。
+      setResolveSteps(previous => previous.map(item =>
+        item.state === "pending" ? { ...item, state: "skip" }
+          : item.state === "active" ? { ...item, state: "fail", detail: item.detail || "没有可播放的结果" }
+            : item));
+      setResolveSettled(true);
     }
     if (!parsed.supported && (parsed.platform === "xiaohongshu" || parsed.platform === "douyin")) onNotice?.("正在尝试在小手机内解析" + parsed.platformName + "的公开视频流；如果平台要求登录或启用了防盗链，解析可能失败。");
   };
@@ -1853,12 +1886,48 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               onLoad={() => setIframeLoadedAt(new Date().toISOString())}
             />
           </div>
+        ) : resolveSteps.length > 0 && !resolveSettled ? (
+          <div className="flex aspect-video flex-col items-center justify-center px-6 text-center">
+            <LoaderCircle size={26} className="mt-5 animate-spin text-[#e6c49d]" />
+            <div className="mt-3 font-serif text-sm tracking-wide text-[#efe2d0]">正在逐个尝试播放这条视频…</div>
+            <ul className="mt-3 w-full max-w-[300px] space-y-1.5 text-left">
+              {resolveSteps.map(step => (
+                <li key={step.key} className="flex items-start gap-2 text-[11px] leading-5">
+                  <span className="mt-[3px] inline-flex h-3 w-3 shrink-0 items-center justify-center text-[10px]">
+                    {step.state === "active" ? <LoaderCircle size={11} className="animate-spin text-[#e6c49d]" />
+                      : step.state === "ok" ? <span className="text-[#8fd39a]">✓</span>
+                        : step.state === "fail" ? <span className="text-[#e08a7a]">✕</span>
+                          : <span className="text-[#7c7268]">{step.state === "skip" ? "–" : "○"}</span>}
+                  </span>
+                  <span className={step.state === "active" ? "text-[#efe2d0]" : step.state === "ok" ? "text-[#c9d8c5]" : "text-[#9c9086]"}>
+                    {step.label}{step.detail ? ` · ${step.detail}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
         ) : (
           <div className="flex aspect-video flex-col items-center justify-center px-6 text-center">
             <div className="mt-5 font-serif text-lg tracking-wide text-[#efe2d0]">{target ? `${target.platformName}暂不支持站内播放` : "还没有选择视频"}</div>
             <p className="mt-2 max-w-xs text-[11px] leading-6 text-[#9c9086]">
-              {target ? "当前链接没有可用的站内播放器地址，或平台限制了 WebView 播放。小手机不会主动打开外部应用；可以尝试带 BV/av 号的标准视频链接，或选择本地视频。" : "从顶部的「选择视频」入口添加视频，之后就能在这里边看边聊。"}
+              {!target ? "从顶部的「选择视频」入口添加视频，之后就能在这里边看边聊。"
+                : resolveSteps.length > 0 ? "所有播放方法都试过了，都没能拿到可播放的地址。下面是每一步的结果。"
+                  : "当前链接没有可用的站内播放器地址，或平台限制了 WebView 播放。小手机不会主动打开外部应用；可以尝试带 BV/av 号的标准视频链接，或选择本地视频。"}
             </p>
+            {target && resolveSteps.length > 0 && (
+              <ul className="mt-3 w-full max-w-[300px] space-y-1.5 text-left">
+                {resolveSteps.map(step => (
+                  <li key={step.key} className="flex items-start gap-2 text-[11px] leading-5 text-[#9c9086]">
+                    <span className="mt-[3px] inline-flex h-3 w-3 shrink-0 items-center justify-center text-[10px]">
+                      {step.state === "ok" ? <span className="text-[#8fd39a]">✓</span>
+                        : step.state === "fail" ? <span className="text-[#e08a7a]">✕</span>
+                          : <span className="text-[#7c7268]">–</span>}
+                    </span>
+                    <span>{step.label}{step.detail ? ` · ${step.detail}` : ""}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
             {target && <div className="mt-5 flex flex-wrap justify-center gap-2"><button type="button" onClick={() => { setShowVideoSourcePanel(true); }} className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-xs text-[#e6d8c4] transition active:scale-95">重新选择视频</button><button type="button" onClick={() => { try { const native = (window as WatchNativeWindow).AndroidShell; if (native?.openUrl) { if (!native.openUrl(target.url)) onNotice?.("系统未能打开此链接，请复制原链接到浏览器。"); } else { const opened = window.open(target.url, "_blank", "noopener,noreferrer"); if (!opened) onNotice?.("浏览器拦截了新窗口，请复制原链接到浏览器。"); } } catch { onNotice?.("无法直接打开外部页面，请复制原链接到浏览器。"); } }} className="inline-flex items-center gap-1.5 rounded-full border border-[#c99a6a]/50 bg-[#c99a6a]/15 px-4 py-2 text-xs text-[#f0d5b8] transition active:scale-95"><ExternalLink size={13}/>在平台打开原视频</button></div>}
           </div>
         )}
