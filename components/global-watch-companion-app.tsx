@@ -323,6 +323,7 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
       captureIntervalMaxSeconds: settings.captureIntervalMaxSeconds,
       speechIntervalMinMinutes: settings.speechIntervalMinMinutes,
       speechIntervalMaxMinutes: settings.speechIntervalMaxMinutes,
+      randomSpeechEnabled: settings.randomSpeechEnabled,
       video: loadVideoAnalysisSettings(),
     }));
     if (!ok) {
