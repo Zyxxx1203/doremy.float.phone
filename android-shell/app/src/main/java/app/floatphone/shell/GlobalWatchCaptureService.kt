@@ -221,7 +221,8 @@ class GlobalWatchCaptureService : Service() {
         val dataUrl = "data:image/jpeg;base64," + data
         val capturedAt = System.currentTimeMillis()
         latestFrameDataUrl = dataUrl
-        sendBroadcast(Intent(ACTION_FRAME).setPackage(packageName).putExtra("dataUrl", dataUrl).putExtra("capturedAt", capturedAt))
+        // Keep raw screen pixels inside the native service; the WebView only receives a timestamp.
+        sendBroadcast(Intent(ACTION_FRAME).setPackage(packageName).putExtra("capturedAt", capturedAt))
         bytes.close()
         if (capturedAt >= nextAiAt) requestNativeAnalysis(dataUrl, capturedAt, "")
         else emitState("屏幕捕获正常；等待下一次主动陪看分析间隔")
