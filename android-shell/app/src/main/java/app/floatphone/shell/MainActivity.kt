@@ -149,6 +149,7 @@ class MainActivity : AppCompatActivity() {
                     dispatchGlobalWatchEvent("global-watch-frame", detail.toString())
                 }
                 GlobalWatchCaptureService.ACTION_REPLY -> dispatchGlobalWatchEvent("global-watch-reply", org.json.JSONObject().put("text", intent.getStringExtra("text") ?: "").toString())
+                GlobalWatchCaptureService.ACTION_RECORD -> dispatchGlobalWatchEvent("global-watch-record", intent.getStringExtra("record") ?: "{}")
                 GlobalWatchCaptureService.ACTION_STATE -> {
                     val detail = org.json.JSONObject().put("message", intent.getStringExtra("message") ?: "")
                         .put("running", intent.getBooleanExtra("running", GlobalWatchCaptureService.isRunning(this@MainActivity)))
@@ -1459,7 +1460,7 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
                 dispatchGlobalWatchEvent("global-watch-state", org.json.JSONObject().put("message", "启动失败：当前页面未通过原生桥可信校验。请从正式 APK 首页进入。").put("running", false).toString())
                 return false
             }
-            pendingGlobalWatchConfig = configJson.take(4000)
+            pendingGlobalWatchConfig = configJson.take(12000)
             if (!Settings.canDrawOverlays(this@MainActivity)) {
                 runOnUiThread {
                     runCatching { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName))) }
@@ -1501,6 +1502,9 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         fun sendGlobalWatchReply(text: String) {
             if (isTrustedShellPage() && text.isNotBlank()) GlobalWatchCaptureService.command(this@MainActivity, GlobalWatchCaptureService.ACTION_REPLY, text.take(1000))
         }
+
+        @JavascriptInterface
+        fun getGlobalWatchRecords(): String = if (isTrustedShellPage()) GlobalWatchCaptureService.recordsJson(this@MainActivity) else "[]"
 
         @JavascriptInterface
         fun isGlobalWatchRunning(): Boolean = GlobalWatchCaptureService.isRunning(this@MainActivity)
