@@ -296,9 +296,11 @@ export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSession
                         setActiveTab("messages");
                         setActiveSession(targetSession);
                         setShowHistorySearch(false);
+                        // Switching from the global search also mounts a new ChatRoom. Wait for its
+                        // message listener and storage-backed list to be ready before dispatching the jump.
                         window.setTimeout(() => {
                             window.dispatchEvent(new CustomEvent("chat-history-jump-to-message", { detail: { sessionId, messageId } }));
-                        }, 160);
+                        }, 360);
                     }}
                 />
             )}
