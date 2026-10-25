@@ -77,7 +77,7 @@ class GlobalWatchCaptureService : Service() {
         fun command(context: Context, action: String, text: String? = null) {
             context.startService(Intent(context, GlobalWatchCaptureService::class.java).apply {
                 this.action = action
-                if (text != null) putExtra("reply_text", text)
+                if (text != null) { putExtra("reply_text", text); putExtra("comment", text) }
             })
         }
 
@@ -347,7 +347,7 @@ class GlobalWatchCaptureService : Service() {
             }.trim()
             if (result.isBlank()) throw IllegalStateException("模型返回了空结果")
             saveRecord("character", result, System.currentTimeMillis())
-            sendBroadcast(Intent(ACTION_SHOW_COMMENT).setPackage(packageName).putExtra("comment", result))
+            command(this, ACTION_SHOW_COMMENT, result)
             emitState("原生模型分析完成，结果已保存")
         } catch (error: Exception) {
             val message = (error.message ?: "未知错误").take(300)
