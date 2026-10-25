@@ -498,7 +498,8 @@ export async function armLifeSceneProactiveBailout(input: {
             kind: "timed_task",
             executeAtMs: input.executeAtMs,
             request,
-            notifyTitle: input.characterName || character.name,
+            // Make the life-scene channel visually distinct from normal online-chat push.
+            notifyTitle: "生活现场 · " + (input.characterName || character.name),
             merge: {
                 sessionId: session.id,
                 prevCount: 0,
