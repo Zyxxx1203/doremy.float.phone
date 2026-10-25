@@ -652,6 +652,14 @@ Deno.serve(async (req: Request) => {
       return;
     }
 
+    // A user can cancel a running job while the provider request is in flight.
+    // Re-check after generation; otherwise the stale snapshot still writes an outbox
+    // row and sends a push after the user has already started a newer turn.
+    if (await isCancelled()) {
+      await finish("done", "cancelled after generate");
+      return;
+    }
+
     // ── 离线来电：复用小手机既有的通话协议，并兼容已经预约的旧任务 ──
     // 仅在回复开头 200 字内识别严格的「我（向某人）发起了语音通话」标签，
     // 普通叙述中的“某人发起了通话”不会误触发。标签从正文剥离，不进聊天记录。
@@ -1096,6 +1104,15 @@ Deno.serve(async (req: Request) => {
       return;
     }
     await progress("outbox written, pushing");
+
+    // Close the remaining cancellation window between outbox persistence and delivery.
+    // If the job was cancelled after the row was written, remove the undelivered row
+    // before returning so the client cannot merge a superseded reply later.
+    if (await isCancelled()) {
+      await rest(`push_outbox?job_id=eq.${encodeURIComponent(job.id)}`, { method: "DELETE" }).catch(() => undefined);
+      await finish("done", "cancelled before push");
+      return;
+    }
 
     if (shortcutStoragePath) {
       await fetch(`${supabaseUrl}/storage/v1/object/shortcut-command-media/${shortcutStoragePath}`, {
