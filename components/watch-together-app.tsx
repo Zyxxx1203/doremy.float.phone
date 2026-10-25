@@ -1727,6 +1727,56 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         display:block!important; width:100%!important; height:100%!important; min-height:0!important;
         border:0!important; background:#000!important;
       }
+
+      /* Final composer visual authority: chips and input share one solid surface. */
+      .watch-together-app .watch-discussion-composer {
+        display:flex!important; flex-direction:column!important; gap:7px!important;
+        flex:0 0 auto!important; margin:0!important; padding:8px 0 max(6px,env(safe-area-inset-bottom))!important;
+        border-top:0!important; background:transparent!important; box-shadow:none!important;
+        opacity:1!important; filter:none!important; isolation:isolate!important;
+      }
+      .watch-together-app .watch-discussion-composer > div:first-child {
+        display:flex!important; flex-direction:row!important; flex-wrap:nowrap!important;
+        align-items:center!important; justify-content:flex-start!important; gap:7px!important;
+        width:100%!important; margin:0!important; padding:0!important;
+        background:transparent!important; border:0!important; box-shadow:none!important;
+        opacity:1!important; filter:none!important; overflow-x:auto!important; overflow-y:hidden!important;
+        scrollbar-width:none!important; -webkit-overflow-scrolling:touch!important;
+      }
+      .watch-together-app .watch-discussion-composer > div:first-child::-webkit-scrollbar { display:none!important; }
+      .watch-together-app .watch-discussion-composer .watch-chat-chip {
+        display:inline-flex!important; flex:0 0 auto!important; align-items:center!important; justify-content:center!important;
+        gap:5px!important; min-height:30px!important; height:30px!important; padding:0 11px!important;
+        border:1px solid #d7b99d!important; border-radius:999px!important;
+        background:#fffaf2!important; color:#75513a!important; font-size:11px!important; font-weight:500!important;
+        line-height:1!important; white-space:nowrap!important; box-shadow:0 1px 2px rgba(80,52,32,.06)!important;
+        opacity:1!important; filter:none!important; transform:none!important; backdrop-filter:none!important;
+      }
+      .watch-together-app .watch-discussion-composer .watch-chat-chip:disabled {
+        color:#9b826d!important; background:#f8eee2!important; border-color:#e7d6c4!important; opacity:1!important;
+      }
+      .watch-together-app .watch-discussion-composer .watch-chat-chip-active {
+        color:#fffaf2!important; background:#8e6247!important; border-color:#8e6247!important;
+        box-shadow:0 2px 5px rgba(109,70,44,.16)!important;
+      }
+      .watch-together-app .watch-discussion-composer form {
+        display:flex!important; flex:0 0 auto!important; align-items:center!important; gap:7px!important;
+        width:100%!important; min-width:0!important; margin:0!important; padding:4px 5px 4px 10px!important;
+        border:1px solid #d8bea4!important; border-radius:18px!important;
+        background:#fffdf8!important; box-shadow:0 2px 6px rgba(98,65,40,.06)!important;
+        opacity:1!important; filter:none!important; backdrop-filter:none!important; box-sizing:border-box!important;
+      }
+      .watch-together-app .watch-discussion-composer form textarea {
+        flex:1 1 auto!important; min-width:0!important; width:0!important; height:36px!important;
+        min-height:36px!important; max-height:36px!important; padding:8px 2px!important;
+        color:#594536!important; background:transparent!important; opacity:1!important; filter:none!important;
+      }
+      .watch-together-app .watch-discussion-composer form button[type="submit"] {
+        flex:0 0 auto!important; min-height:32px!important; height:32px!important; padding:0 12px!important;
+        border-radius:13px!important; background:#956546!important; color:#fffaf2!important;
+        opacity:1!important; filter:none!important; box-shadow:none!important;
+      }
+      .watch-together-app .watch-discussion-composer form button[type="submit"]:disabled { opacity:.48!important; }
     `}</style>
 
     {/* 房间里的一点暖光：模拟落地灯与屏幕溢出的光晕 */}
