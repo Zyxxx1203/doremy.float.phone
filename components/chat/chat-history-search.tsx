@@ -70,7 +70,7 @@ export function ChatHistorySearch({ onClose, onJump, fixedSessionId }: {
         { id: "video", label: "视频" }, { id: "audio", label: "音频/语音" }, { id: "file", label: "文件" }, { id: "rich", label: "卡片/其他" },
     ];
 
-    return <div role="dialog" aria-modal="true" aria-label="聊天记录检索" style={{ position: "absolute", inset: 0, zIndex: 120, display: "flex", flexDirection: "column", background: "var(--c-bg, #fff9fc)", color: "var(--c-text, #332832)" }}>
+    return <div role="dialog" aria-modal="true" aria-label="聊天记录检索" style={{ position: "absolute", inset: 0, zIndex: 300, display: "flex", flexDirection: "column", background: "var(--c-bg, #fff9fc)", color: "var(--c-text, #332832)" }}>
         <header style={{ display: "flex", alignItems: "center", gap: 10, padding: "max(12px, env(safe-area-inset-top)) 14px 12px", borderBottom: "1px solid var(--c-border, #eee2e9)" }}>
             <FileSearch size={21} />
             <strong style={{ flex: 1, fontSize: 17 }}>聊天记录检索</strong>
