@@ -147,15 +147,20 @@ async function loadWallThumbUrl(mediaRef: string): Promise<string> {
       bitmap = await createImageBitmap(blob);
       const longest = Math.max(bitmap.width, bitmap.height);
       let url = full;
-      if (longest > 1024) {
-        const scale = 1024 / longest;
+      if (longest > 2048) {
+        // This is only a display derivative; the original Blob remains untouched for detail
+        // view and export. Keep enough pixels for zooming on high-DPR phones without decoding
+        // every original camera image at full size at once.
+        const scale = 2048 / longest;
         const thumbCanvas = document.createElement("canvas");
         thumbCanvas.width = Math.max(1, Math.round(bitmap.width * scale));
         thumbCanvas.height = Math.max(1, Math.round(bitmap.height * scale));
         const context = thumbCanvas.getContext("2d");
         if (!context) throw new Error("无法创建照片缩略图");
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = "high";
         context.drawImage(bitmap, 0, 0, thumbCanvas.width, thumbCanvas.height);
-        const thumb = await new Promise<Blob | null>(resolve => thumbCanvas.toBlob(resolve, "image/webp", 0.82));
+        const thumb = await new Promise<Blob | null>(resolve => thumbCanvas.toBlob(resolve, "image/webp", 0.94));
         if (thumb) url = URL.createObjectURL(thumb);
       }
       if (url !== full) URL.revokeObjectURL(full);
