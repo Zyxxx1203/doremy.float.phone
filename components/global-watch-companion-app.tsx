@@ -247,6 +247,7 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
           targetUrl: "global-watch",
         };
         saveGlobalWatchRecord(record);
+        if (item.kind === "user" || item.kind === "character") persistGlobalWatchMemory(record);
         setRecords(loadGlobalWatchRecords());
       } catch { /* ignore malformed native event */ }
     };
@@ -383,7 +384,7 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
         </button>
         <button type="button" role="checkbox" aria-checked={consentChecked} onClick={() => setConsentChecked(value => !value)} className={"mt-4 flex min-h-[76px] w-full items-center gap-3 rounded-2xl border-2 p-4 text-left transition " + (consentChecked ? "border-emerald-600 bg-emerald-50" : "border-amber-500 bg-amber-50 shadow-sm")}>
           <span className={"flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 text-lg font-bold " + (consentChecked ? "border-emerald-600 bg-emerald-600 text-white" : "border-amber-600 bg-white text-amber-700")}>{consentChecked ? "✓" : "!"}</span>
-          <span className="min-w-0 flex-1"><span className="block text-sm font-bold">{consentChecked ? "已确认全局陪看授权说明" : "启动前请点此确认授权说明"}</span><span className="mt-1 block text-xs leading-5 opacity-80">允许在其他应用上方显示悬浮横幅并捕获屏幕画面。敏感页面请暂停或停止；Android 仍会单独请求系统屏幕捕获授权。</span></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold">{consentChecked ? "已确认全局陪看授权说明" : "启动前请点此确认授权说明"}</span><span className="mt-1 block text-xs leading-5 opacity-80">允许在其他应用上方显示悬浮横幅并捕获屏幕画面；捕获的画面会发送给你配置的视频分析 AI 生成角色回应并保存记录。敏感页面请暂停或停止；Android 仍会单独请求系统屏幕捕获授权。</span></span>
         </button>
         <div className="mt-4 grid grid-cols-2 gap-2">
           {!running ? <button type="button" onClick={start} className="flex items-center justify-center gap-2 rounded-xl bg-[#b88768] px-3 py-3 text-sm font-semibold text-white"><Eye size={16}/>启动全局陪看</button> : <button type="button" onClick={() => { native?.pauseGlobalWatch?.(!paused); setPaused(!paused); }} className="flex items-center justify-center gap-2 rounded-xl bg-[#b88768] px-3 py-3 text-sm font-semibold text-white">{paused ? <Play size={16}/> : <Pause size={16}/>} {paused ? "继续陪看" : "暂停陪看"}</button>}
