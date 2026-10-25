@@ -1154,11 +1154,11 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
     }), [setTextAndResize]);
 
     const handleSubmit = () => {
-        if (isOfflineGenerating) {
-            onSendText(inputTextRef.current);
+        const trimmed = inputTextRef.current.trim();
+        if (isOfflineGenerating && !trimmed) {
+            onStopGeneration();
             return;
         }
-        const trimmed = inputTextRef.current.trim();
         if (!trimmed && !isSpectator) return;
         if (!onSendText(trimmed)) return;
         inputTextRef.current = "";
@@ -4563,11 +4563,19 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     };
 
     const handleOfflineSend = (inputText: string): boolean => {
-        if (isOfflineGenerating) {
-            showChatToast("线下回复生成中");
-            return false;
-        }
         const currentText = inputText.trim();
+        if (isOfflineGenerating) {
+            if (!currentText) return false;
+            // Replace the unfinished offline turn with the newest typed message.
+            // Offline turns are committed only after completion, so aborting here
+            // prevents stale output from being appended ahead of the new request.
+            cancelOfflineGenerationRun(session.id);
+            setPendingOfflineUserText("");
+            offlineGenerationInputRef.current = "";
+            setIsOfflineGenerating(false);
+            offlineStreamAccumRef.current = "";
+            setOfflineStreamPreview(null);
+        }
         if (!currentText && !(session.isGroup && session.isSpectator)) return false;
 
         cancelFollowUp(session.id);
