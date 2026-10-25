@@ -1392,7 +1392,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         sceneMessages,
         timeline: latest.timeline.filter(entry => !(entry.sourceId === targetMessage.id && (entry.category === "action" || entry.category === "dialogue"))),
       };
-      if (settings.showActionNarration && parsed.action) {
+      if (parsed.action) {
         next = appendLifeTimelineEntry(next, { category: "action", title: character.name + "的行动", details: parsed.action, actorId: character.id, actorName: character.name, locationName: scene.locationName, sceneId: scene.id, sourceId: targetMessage.id });
       }
       if (parsed.dialogue.trim()) {
