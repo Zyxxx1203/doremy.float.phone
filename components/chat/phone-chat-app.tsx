@@ -7,7 +7,8 @@ import { MomentsFeed } from "./moments-feed";
 import { ChatRoom } from "./chat-room";
 import { MascotChatRoom } from "./mascot-chat-room";
 import { UserProfilePanel } from "./user-profile-panel";
-import { MessageCircle, Users, Aperture, UserRound } from "lucide-react";
+import { MessageCircle, Users, Aperture, UserRound, Search } from "lucide-react";
+import { ChatHistorySearch } from "./chat-history-search";
 import { ChatSession, loadChatSessions, pushChatMessage, hydrateChatStorage, markChatSessionRead, setActiveChatSessionId } from "@/lib/chat-storage";
 import { notifyMascotPageContext } from "@/lib/mascot-events";
 import { loadCharacters } from "@/lib/character-storage";
@@ -40,6 +41,8 @@ export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSession
     const [visitedSessions, setVisitedSessions] = useState<Map<string, ChatSession>>(new Map());
     const [dbReady, setDbReady] = useState(false);
     const [hideTabBar, setHideTabBar] = useState(false);
+    const [showHistorySearch, setShowHistorySearch] = useState(false);
+    const [pendingHistoryJump, setPendingHistoryJump] = useState<{ sessionId: string; messageId: string } | null>(null);
 
     // Hydrate IndexedDB → in-memory caches on mount
     useEffect(() => {
@@ -248,6 +251,17 @@ export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSession
         return () => window.removeEventListener("chat-hide-tabbar", onHide);
     }, []);
 
+    // New additive history search: open the matching room, then ask that room to reveal the exact message.
+    useEffect(() => {
+        if (!pendingHistoryJump || activeSession?.id !== pendingHistoryJump.sessionId) return;
+        const target = pendingHistoryJump;
+        const timer = window.setTimeout(() => {
+            window.dispatchEvent(new CustomEvent("chat-history-jump-to-message", { detail: target }));
+            setPendingHistoryJump(null);
+        }, 450);
+        return () => window.clearTimeout(timer);
+    }, [activeSession?.id, pendingHistoryJump]);
+
     // Wait for IndexedDB hydration before rendering
     if (!dbReady) return null;
 
@@ -259,6 +273,26 @@ export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSession
         >
             {/* Homepage appearance CSS is the lowest chat styling layer. */}
             {chatAppCSS && <SessionCustomCSS css={chatAppCSS} scope=".chat-app" />}
+            {!activeSession && !activeMascot && !showHistorySearch && (
+                <button type="button" onClick={() => setShowHistorySearch(true)} aria-label="查找聊天记录"
+                    style={{ position: "absolute", right: 14, bottom: "calc(76px + env(safe-area-inset-bottom))", zIndex: 30, display: "flex", alignItems: "center", gap: 7, border: "1px solid var(--c-border, #eadce4)", borderRadius: 999, padding: "10px 14px", background: "var(--c-card, #fff)", color: "var(--c-text, #4c3745)", boxShadow: "0 5px 18px rgba(90,50,70,.14)", fontSize: 13 }}>
+                    <Search size={16} /> 查找记录
+                </button>
+            )}
+            {showHistorySearch && (
+                <ChatHistorySearch
+                    onClose={() => setShowHistorySearch(false)}
+                    onJump={(sessionId, messageId) => {
+                        const targetSession = loadChatSessions().find(item => item.id === sessionId);
+                        if (!targetSession) return;
+                        setShowHistorySearch(false);
+                        setActiveMascot(false);
+                        setActiveSession(targetSession);
+                        setActiveTab("messages");
+                        setPendingHistoryJump({ sessionId, messageId });
+                    }}
+                />
+            )}
             {/* The Main Content Area */}
             <div className="chat-main-content relative flex-1 flex flex-col overflow-hidden" {...(activeSession || activeMascot ? { "data-covered-by-room": "" } : {})}>
                 {activeTab === "messages" && <ChatMessageList onCloseApp={onClose} activeSession={activeSession} onSelectSession={(session) => { setActiveMascot(false); setActiveSession(session); }} onSelectMascot={handleSelectMascot} />}
