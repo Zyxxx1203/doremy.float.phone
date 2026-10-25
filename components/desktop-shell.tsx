@@ -5000,6 +5000,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                                       justifySelf: "start",
                                       alignSelf: "start",
                                       marginLeft: "var(--slot-icon-offset-x)",
+                                      position: "relative",
                                     }}
                                   >
                                     <span className="drop-position-label" style={{ position: "absolute", zIndex: 3, top: 2, left: 2, padding: "2px 5px", borderRadius: 6, background: "var(--c-accent, #8b5cf6)", color: "#fff", fontSize: 9, lineHeight: 1.3, whiteSpace: "nowrap", pointerEvents: "none" }}>
