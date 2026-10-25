@@ -2823,10 +2823,10 @@
   margin: 8px 0 0;
   border-radius: var(--ui-radius-card);
   position: relative;
-  padding-top: 30px;
+  padding: 28px 12px 8px;
   display: grid;
   grid-auto-flow: column;
-  grid-template-rows: repeat(3, 74px);
+  grid-template-rows: repeat(3, 69px);
   grid-auto-columns: 66px;
   grid-template-columns: none;
   gap: 8px 7px;
