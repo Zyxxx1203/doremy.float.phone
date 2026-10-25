@@ -1,6 +1,21 @@
 import { loadVirtualLifeState, saveVirtualLifeState } from "./life-storage";
 import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow, settleActorTimelineToNow } from "./life-runtime";
 
+function formatLifeDateTime(value?: string | null): string {
+  if (!value) return "时间未记录";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "时间未记录";
+  return date.toLocaleString("zh-CN", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+}
+
+function formatLifeRange(startAt?: string | null, endAt?: string | null): string {
+  if (!startAt || !endAt) return formatLifeDateTime(startAt || endAt);
+  return formatLifeDateTime(startAt) + "—" + formatLifeDateTime(endAt);
+}
+
 function loadSettledCharacterLifeState(characterId: string) {
   let state = loadVirtualLifeState();
   if (!state.settings.enabled) return state;
@@ -22,12 +37,33 @@ export function buildLifeMemoryContext(characterId: string, limit = 10): string 
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
     .slice(0, Math.max(0, Math.min(limit, 30)))
     .reverse();
-  if (!facts.length) return "";
+  // Completed schedule slots are synced separately from confirmed shared memories.
+  // Keep their planned time range explicit so “that period ended” cannot be mistaken
+  // for an untimed event or merged with a different day.
+  const completedScheduleEvents = state.events
+    .filter(event => event.kind === "activity"
+      && event.status === "completed"
+      && event.participantIds.includes(characterId)
+      && event.settlementKey?.startsWith("schedule:")
+      && event.startsAt && event.endsAt)
+    .sort((a, b) => (b.endsAt || "").localeCompare(a.endsAt || ""))
+    .slice(0, 6)
+    .reverse();
+  if (!facts.length && !completedScheduleEvents.length) return "";
   return [
-    "【虚拟生活共同记忆｜已发生事实】",
-    "以下是角色本人参与过的生活场景事件摘要。它们是已记录事实，不是猜测；不要擅自扩写成未发生的细节。",
-    ...facts.map(fact => `- ${new Date(fact.occurredAt).toLocaleString("zh-CN")}：${fact.fact}`),
-  ].join("\n");
+    facts.length ? "【虚拟生活共同记忆｜已发生事实】" : "",
+    facts.length ? "以下是角色本人参与过的生活场景事件摘要。它们是已记录事实，不是猜测；不要擅自扩写成未发生的细节。" : "",
+    ...facts.map(fact => {
+      const linkedEvent = state.events.find(event => event.id === fact.eventId);
+      const timeRange = linkedEvent?.startsAt && linkedEvent.endsAt
+        ? "（活动时间：" + formatLifeRange(linkedEvent.startsAt, linkedEvent.endsAt) + "）"
+        : "";
+      return `- ${formatLifeDateTime(fact.occurredAt)}${timeRange}：${fact.fact}`;
+    }),
+    completedScheduleEvents.length ? "【近期已结算日程｜含明确时间段】" : "",
+    completedScheduleEvents.length ? "以下是已到结束时间的行程计划记录，只能说明日程时段已经结算，不代表计划中的每个细节都已被确认发生。" : "",
+    ...completedScheduleEvents.map(event => `- ${formatLifeRange(event.startsAt, event.endsAt)}｜${event.title}${event.locationName ? "｜地点：" + event.locationName : ""}`),
+  ].filter(Boolean).join("\n");
 }
 
 /**
@@ -56,6 +92,8 @@ export function buildLifePresenceContext(characterId: string): string {
     "当前活动：" + activity,
     "实际地点：" + (actor?.actualLocationName || "未记录"),
     "日程计划：" + (schedule?.title || "当前时段暂无计划"),
+    schedule ? "当前日程的完整时间段：" + formatLifeRange(schedule.startAt, schedule.endAt) : "",
+    schedule ? "日程语义：这是角色当前计划时段；请明确区分开始时间、结束时间和当前实际活动。" : "",
     scene ? "关联场景：" + scene.locationName + "（场景已保存；只记得自己参与或实际感知到的内容）" : "",
     sleeping
       ? "当前处于睡眠/休息时段。不要因为玩家发来一条线上消息就默认角色已清醒并立刻完整回复。应根据性格、消息紧急程度、是否开启消息提示和既有关系，表现为继续睡、被通知吵醒、迷迷糊糊查看、醒后再回复或第二天解释；不得把未发生的醒来或对话写成事实。"
