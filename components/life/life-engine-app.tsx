@@ -229,6 +229,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [selectedLocationId, setSelectedLocationId] = useState("cafe");
   const [stayDurationMinutes, setStayDurationMinutes] = useState(120);
   const [newLocationName, setNewLocationName] = useState("");
+  const [locationNameDraft, setLocationNameDraft] = useState("");
+  const [locationSaveFeedback, setLocationSaveFeedback] = useState(false);
   const [locationDescriptionDraft, setLocationDescriptionDraft] = useState("");
   const [locationAtmosphereDraft, setLocationAtmosphereDraft] = useState("");
   const [locationLayoutDraft, setLocationLayoutDraft] = useState("");
@@ -500,6 +502,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   }, [immersiveScene]);
 
   useEffect(() => {
+    setLocationNameDraft(selectedLocation?.name ?? "");
+    setLocationSaveFeedback(false);
     setLocationDescriptionDraft(selectedLocation?.description ?? "");
     setLocationAtmosphereDraft(selectedLocation?.atmosphere ?? "");
     setLocationLayoutDraft(selectedLocation?.layout ?? "");
@@ -1826,18 +1830,33 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   const saveLocationDetails = () => {
     if (!selectedLocation) return;
-    const next = {
+    const previousName = selectedLocation.name.trim();
+    const nextName = locationNameDraft.trim() || previousName;
+    const renamed = nextName !== previousName;
+    const now = new Date().toISOString();
+    let next = {
       ...stateRef.current,
       locations: stateRef.current.locations.map(location => location.id !== selectedLocation.id ? location : {
         ...location,
+        name: nextName,
+        aliases: renamed ? [...new Set([...(location.aliases ?? []), previousName].filter(Boolean))] : location.aliases,
         description: locationDescriptionDraft.trim(),
         atmosphere: locationAtmosphereDraft.trim(),
         layout: locationLayoutDraft.trim(),
         props: [...new Set(locationPropsDraft.split(/[、,，;；\n]/).map(prop => prop.trim()).filter(Boolean))],
       }),
     };
+    if (renamed) next = {
+      ...next,
+      actorStates: next.actorStates.map(actor => actor.actualLocationId === selectedLocation.id ? { ...actor, actualLocationName: nextName, updatedAt: now } : actor),
+      schedules: next.schedules.map(slot => slot.plannedLocationId === selectedLocation.id ? { ...slot, plannedLocationName: nextName, updatedAt: now } : slot),
+      scenes: next.scenes.map(scene => scene.locationId === selectedLocation.id ? { ...scene, locationName: nextName, updatedAt: now } : scene),
+    };
     commit(next);
-    setNotice(`已保存「${selectedLocation.name}」的环境描写、空间布局与道具；后续场景互动会读取这些设定。`);
+    setLocationNameDraft(nextName);
+    setLocationSaveFeedback(true);
+    window.setTimeout(() => setLocationSaveFeedback(false), 2400);
+    setNotice(`已保存「${nextName}」的地点名称、环境、空间布局与道具。${renamed ? " 当前地点状态、场景和日程地点名也已同步；历史生活记录保留当时的名称。" : " 后续场景互动会读取这些设定。"}`);
   };
 
   const addInvitation = async (event: FormEvent) => {
@@ -2934,13 +2953,20 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
       {tab === "locations" && <div className="space-y-4">
         <section className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm sm:p-6">
-          {!locationDossierOpen && <><SectionTitle eyebrow="Canonical location library" title="地点库" note="点开地点卡片进入独立档案页，编辑设定、添加角色习惯并查看历史。角色生成日程时会优先复用这里已有的地点。"/>
+          {!locationDossierOpen && <><SectionTitle eyebrow="Canonical location library" title="地点库" note="点开地点卡片进入独立档案页，编辑设定、添加角色习惯并查看历史。同居后角色自己的家会暂时从地点列表隐藏；取消同居后会自动重新显示，不会删除住处或历史数据。"/>
           <form onSubmit={event => { event.preventDefault(); addLocation(); }} className="flex gap-2">
             <input value={newLocationName} onChange={event => setNewLocationName(event.target.value)} placeholder="创建一个新地点，例如：旧城区的花店" className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/>
             <button type="submit" className="shrink-0 rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white"><Plus size={15} className="mr-1 inline"/>添加地点</button>
           </form>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {state.locations.map(location => {
+            {state.locations.filter(location => {
+              // Keep personal homes in storage, but hide them from the general location library while that character shares another home.
+              if (!location.id.startsWith("home-")) return true;
+              const residents = location.residents ?? [];
+              return !state.locations.some(shared => shared.id !== location.id
+                && (shared.id === "home" || shared.id.startsWith("home-"))
+                && (shared.residents ?? []).some(residentId => residents.includes(residentId)));
+            }).map(location => {
               const entries = state.timeline.filter(entry => entry.locationName === location.name);
               const eventCount = state.events.filter(event => event.locationId === location.id || event.locationName === location.name).length;
               const actualPeople = characters.filter(character => state.actorStates.some(actor => actor.ownerType === "character" && actor.ownerId === character.id && actor.actualLocationId === location.id));
@@ -2963,7 +2989,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           </div>
           <p className="mb-4 text-xs leading-relaxed text-stone-500">统计按生活系统的虚拟时间计算：每次前往会记入生活时间线，离开或临时停留到期后自动结算。它是实际到访记录，不会把尚未发生的计划误记为已到访。</p>
           <SectionTitle eyebrow="Location dossier" title={selectedLocation.name + " · 地点档案"} note="这些设定会持久保存，并注入后续场景提示词。布局定义空间关系，道具可在行动中被引用，角色习惯会影响其在此处的行为，但不应限制角色临时做出新行动。"/>
-          <label className="mb-3 block text-sm font-medium text-stone-700">地点名称<input value={selectedLocation.name} onChange={event => commit({ ...stateRef.current, locations: stateRef.current.locations.map(location => location.id === selectedLocation.id ? { ...location, name: event.target.value } : location) })} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label>
+          <label className="mb-3 block text-sm font-medium text-stone-700">地点名称<input value={locationNameDraft} onChange={event => { setLocationNameDraft(event.target.value); setLocationSaveFeedback(false); }} placeholder="例如：我们的小家" className="mt-1.5 w-full min-w-0 rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label>
           <label className="mb-3 block text-sm font-medium text-stone-700">别名 / 日程匹配关键词<textarea value={(selectedLocation.aliases ?? []).join("、")} onChange={event => commit({ ...stateRef.current, locations: stateRef.current.locations.map(location => location.id === selectedLocation.id ? { ...location, aliases: event.target.value.split(/[、,，;；\n]/).map(value => value.trim()).filter(Boolean) } : location) })} rows={2} placeholder="例如：旧城区花店、花店、花房" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
           <label className="mb-3 block text-sm font-medium text-stone-700">环境描写<textarea value={locationDescriptionDraft} onChange={event => setLocationDescriptionDraft(event.target.value)} rows={3} placeholder="空间是什么样的？光线、声音、气味、固定陈设……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
           <label className="mb-3 block text-sm font-medium text-stone-700">氛围<textarea value={locationAtmosphereDraft} onChange={event => setLocationAtmosphereDraft(event.target.value)} rows={2} placeholder="时段、天气、人声、气味、情绪氛围……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
@@ -3031,7 +3057,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               }} className="h-4 w-4 accent-[var(--life-accent)]"/>
             </label>)}</div>
           </section>}
-          <button type="button" onClick={saveLocationDetails} className="w-full rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white">保存地点设定</button>
+          <button type="button" onClick={saveLocationDetails} className="w-full rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white active:scale-[.99]">{locationSaveFeedback ? "✓ 已保存" : "保存地点设定"}</button><p aria-live="polite" className={`mt-1.5 min-h-4 text-center text-[11px] ${locationSaveFeedback ? "text-emerald-700" : "text-stone-400"}`}>{locationSaveFeedback ? "地点名称、环境与空间设定已保存" : "修改名称、环境、布局或道具后，点击保存生效"}</p>
           <div className="mt-5 border-t border-stone-200/70 pt-4">
             <SectionTitle eyebrow="Character habits" title="角色在这里的习惯" note="写长期倾向，不是强制动作。比如某角色每次来书店会先看新书区、习惯坐最里面的位置，或会顺手给别人带一杯热饮。"/>
             <div className="space-y-3">{characters.map(character => {
