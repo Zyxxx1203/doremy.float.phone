@@ -1689,7 +1689,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const candidate = pickCandidate();
       if (!candidate) return;
       const { character, session } = candidate;
-      void cancelLifeSceneProactiveBailouts(activeScene.id);
+      // Wait for the old server snapshot to be cancelled before starting a new local turn.
+      // Fire-and-forget cancellation can race a replacement task and deliver an obsolete turn.
+      await cancelLifeSceneProactiveBailouts(activeScene.id);
       proactiveAttemptAtRef.current[activeScene.id] = now;
       proactiveNextAtRef.current[activeScene.id] = now + getRandomIntervalMs();
       proactiveLastSpeakerRef.current[activeScene.id] = character.id;
@@ -1724,6 +1726,27 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       } catch (error) {
         console.warn("[LifeAutonomy] proactive scene turn failed:", error);
       } finally {
+        // Keep exactly one fresh server-side fallback armed for the next interval while
+        // the app is alive. The server can execute this snapshot if Android kills the WebView;
+        // when the app returns, it rebuilds a new snapshot from current scene state.
+        const latestState = stateRef.current;
+        const stillActiveScene = latestState.scenes.find(item => item.id === activeScene.id && item.status === "active");
+        if (!disposed && stillActiveScene && latestState.settings.enabled
+          && latestState.settings.enableCharacterAutonomy
+          && latestState.settings.enableProactiveSceneMessages !== false) {
+          const nextCandidate = pickCandidate();
+          if (nextCandidate) {
+            const scheduledAt = proactiveNextAtRef.current[activeScene.id] ?? (Date.now() + getRandomIntervalMs());
+            void armLifeSceneProactiveBailout({
+              sessionId: nextCandidate.session.id,
+              sceneId: activeScene.id,
+              characterId: nextCandidate.character.id,
+              characterName: nextCandidate.character.name,
+              prompt: buildPrompt(nextCandidate.character),
+              executeAtMs: Math.max(Date.now() + 30_000, scheduledAt),
+            });
+          }
+        }
         proactiveBusyRef.current = false;
         if (!disposed) {
           setBusy(false);
