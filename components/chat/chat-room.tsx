@@ -58,8 +58,7 @@ import { useKeyboardDismissAutoSend } from "@/components/chat/use-keyboard-dismi
 import { cancelBailoutKey } from "@/lib/push-bailout-client";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import type { UserIdentity } from "@/components/settings/user-identity";
-import { AlertCircle, Blocks, Check, Trash2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, X, FileSearch } from "lucide-react";
-import { ChatHistorySearch } from "./chat-history-search";
+import { AlertCircle, Blocks, Check, Trash2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, X } from "lucide-react";
 import { setDebugChatState } from "@/lib/debug-store";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import { setChatActive } from "@/lib/music-action-queue";
@@ -1307,7 +1306,6 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     const [customPlusActions, setCustomPlusActions] = useState<RegisteredCustomAppChatPlusAction[]>(() => loadCustomAppChatPlusActions());
     const [activeCustomChatPlus, setActiveCustomChatPlus] = useState<ActiveCustomChatPlus | null>(null);
     const [showSettings, setShowSettings] = useState(false);
-    const [showHistorySearch, setShowHistorySearch] = useState(false);
     // 通话状态已提升到全局 store（lib/call-session-store），聊天室不再持有。
     const [userIdentity, setUserIdentity] = useState<UserIdentity | null>(null);
     const [enterToSendEnabled, setEnterToSendEnabled] = useState(() => loadChatAppSettings().enterToSendEnabled === true);
@@ -6105,23 +6103,12 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                         )}
                     </span>
                     <span className="page-header-right">
-                        <button className="page-back-btn" type="button" onClick={() => setShowHistorySearch(true)} aria-label="查找当前聊天记录" title="查找当前聊天记录">
-                            <FileSearch size={20} strokeWidth={1.7} />
-                        </button>
                         <button className="page-back-btn" type="button" onClick={() => setShowSettings(true)} aria-label="更多">
                             <MoreHorizontal size={22} strokeWidth={1.5} />
                         </button>
                     </span>
                 </div>
             </header>
-            {showHistorySearch && <ChatHistorySearch
-                fixedSessionId={session.id}
-                onClose={() => setShowHistorySearch(false)}
-                onJump={(sessionId, messageId) => {
-                    setShowHistorySearch(false);
-                    window.setTimeout(() => window.dispatchEvent(new CustomEvent("chat-history-jump-to-message", { detail: { sessionId, messageId } })), 80);
-                }}
-            />}
             <ChatPluginSlot
                 name="chat.header"
                 slotProps={{ sessionId: session.id, isGroup: !!session.isGroup }}
