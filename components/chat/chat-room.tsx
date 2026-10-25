@@ -4180,7 +4180,16 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 // 「最后一条是用户消息」的 pendingGenerate 兜底条件，必须单独处理
                 if (pendingReplyRequestRef.current) {
                     pendingReplyRequestRef.current = false;
-                    void triggerAIResponse();
+                    const latestMsgs = loadChatMessages(session.id);
+                    const latestUser = [...latestMsgs].reverse().find(message => message.role === "user");
+                    const latestSystem = [...latestMsgs].reverse().find(message => message.role === "system");
+                    const userSupersededSystemEvent = !!latestUser && !!latestSystem
+                        && new Date(latestUser.createdAt).getTime() > new Date(latestSystem.createdAt).getTime();
+                    if (!userSupersededSystemEvent) {
+                        void triggerAIResponse();
+                    }
+                    // If the user spoke after the queued system event, the newest user turn
+                    // wins; do not launch a stale second generation that can answer off-topic.
                 } else {
                     // If user sent more messages while AI was generating, show the generate button again
                     const latestMsgs = loadChatMessages(session.id);
