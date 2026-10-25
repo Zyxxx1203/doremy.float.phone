@@ -194,6 +194,8 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
     if (speechTimerRef.current) clearTimeout(speechTimerRef.current);
     speechTimerRef.current = null;
     if (!running || paused || !settings.randomSpeechEnabled) return;
+    // When the Android service is active it owns the capture cadence and model calls.
+    if (native && running) return;
     const min = settings.speechIntervalMinMinutes;
     const max = Math.max(min, settings.speechIntervalMaxMinutes);
     const delay = (min + Math.random() * (max - min)) * 60_000;
@@ -203,7 +205,7 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
       else if (!frameRef.current) setStatus("等待下一帧屏幕画面，再进行随机主动发言。");
       scheduleNextSpeech();
     }, delay);
-  }, [running, paused, settings.randomSpeechEnabled, settings.speechIntervalMinMinutes, settings.speechIntervalMaxMinutes, analyzeFrame]);
+  }, [running, paused, settings.randomSpeechEnabled, settings.speechIntervalMinMinutes, settings.speechIntervalMaxMinutes, analyzeFrame, native]);
 
   useEffect(() => {
     scheduleNextSpeech();
