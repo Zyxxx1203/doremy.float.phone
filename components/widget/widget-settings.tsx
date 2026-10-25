@@ -264,15 +264,30 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
 
   const placeProfileDraft = () => {
     if (!profileDraft) return;
-    saveWidgetProfile(profileDraft);
-    setProfiles(loadWidgetProfiles());
     if (!hasWidgetBridge()) { onNotice?.("当前 App 版本没有桌面小组件桥，请安装新版 APK。"); return; }
-    const pushed = pushWidgetProfileHtml(profileDraft.id, profilePreviewHtml, {
-      widthDp: profileDraft.widthDp, heightDp: profileDraft.heightDp, scale: profileDraft.scale,
+
+    // 每次「添加到真实桌面」都生成新的 profile ID。否则重复添加同一份草稿时，
+    // Android 会把多个 appWidgetId 绑定到同一缓存，导致第二块小组件与第一块完全相同。
+    const now = new Date().toISOString();
+    const instanceProfile: WidgetProfile = {
+      ...profileDraft,
+      id: "widget-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
+      name: profileDraft.name.trim() || ("桌面实例 " + (profiles.length + 1)),
+      createdAt: now,
+      updatedAt: now,
+    };
+    saveWidgetProfile(instanceProfile);
+    setProfiles(loadWidgetProfiles());
+
+    const pushed = pushWidgetProfileHtml(instanceProfile.id, profilePreviewHtml, {
+      widthDp: instanceProfile.widthDp, heightDp: instanceProfile.heightDp, scale: instanceProfile.scale,
     });
-    if (!pushed) { onNotice?.("原生侧没有接受这份模板，无法继续添加；请检查 APK 版本。"); return; }
-    const accepted = requestPinWidgetProfile(profileDraft.id);
-    onNotice?.(accepted ? "已请求系统添加「" + profileDraft.name + "」。请在桌面弹出的确认流程中完成添加；每次添加都会成为独立实例。" : "当前 APK 或启动器不支持按配置添加，需要更新安卓壳或在桌面手动添加默认小组件。");
+    if (!pushed) { onNotice?.("原生侧没有接受这份模板，无法继续添加；配置已保留，可检查 APK 版本后重试。"); return; }
+    const accepted = requestPinWidgetProfile(instanceProfile.id);
+    if (accepted) setProfileDraft(instanceProfile);
+    onNotice?.(accepted
+      ? "已请求系统添加「" + instanceProfile.name + "」。每次添加都会使用新的实例 ID 和独立缓存；请在桌面确认流程中完成添加。"
+      : "当前 APK 或启动器不支持按配置添加，需要更新安卓壳或在桌面手动添加默认小组件。");
   };
 
   const removeProfileDraft = () => {
@@ -566,7 +581,7 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
           <span className="ws-card-title">自定义桌面小组件 · 多实例</span>
           <button type="button" className="ws-link" onClick={createProfile}>＋ 新建配置</button>
         </div>
-        <p className="ws-hint">可以保存任意多个配置：每个配置能选不同角色、单独写 HTML 和 CSS、分别设置尺寸；同一配置也能多次添加到真实手机桌面。实际实例数受 Android 启动器和设备资源限制，应用本身不设固定上限。</p>
+        <p className="ws-hint">可以保存任意多个配置：每个配置能选不同角色、单独写 HTML 和 CSS、分别设置尺寸。每次点击「添加到真实桌面」都会生成新的实例 ID 与独立缓存，避免多个桌面组件串用同一张图；实际实例数受 Android 启动器和设备资源限制，应用本身不设固定上限。</p>
         {profiles.length ? <div className="ws-inline-row" style={{flexWrap:"wrap",gap:8}}>
           <span>已保存 {profiles.length} 个配置</span>
           {profiles.map(profile => <button key={profile.id} type="button" className="ws-link" onClick={() => setProfileDraft({...profile})}>{profile.name}</button>)}
