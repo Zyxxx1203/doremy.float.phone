@@ -54,17 +54,27 @@ async function generateLine(
   );
   // 桌面小组件只需要最近几条真实聊天，不拉取整段时间线/长期记忆，
   // 避免大量旧上下文把当前话题挤掉或诱发答非所问。
-  const recentMessages = sessions
-    .flatMap(session => loadChatMessages(session.id, 8).map(message => ({ session, message })))
-    .filter(({ message }) =>
-      (message.role === "user" || message.role === "assistant") &&
-      !message.isRetracted &&
-      typeof message.content === "string" &&
-      message.content.trim()
-    )
-    .sort((a, b) => a.message.createdAt.localeCompare(b.message.createdAt))
+  // Use one conversation only: merging several sessions for the same character can
+  // make the widget treat unrelated threads as one continuous conversation.
+  const sessionCandidates = sessions.map(session => {
+    const messages = loadChatMessages(session.id, 8)
+      .filter(message =>
+        (message.role === "user" || message.role === "assistant") &&
+        !message.isRetracted &&
+        typeof message.content === "string" &&
+        message.content.trim()
+      );
+    const latestAt = messages.reduce((latest, message) => {
+      const at = Date.parse(message.createdAt);
+      return Number.isFinite(at) ? Math.max(latest, at) : latest;
+    }, 0);
+    return { session, messages, latestAt };
+  }).filter(item => item.messages.length > 0)
+    .sort((a, b) => b.latestAt - a.latestAt);
+  const activeConversation = sessionCandidates[0];
+  const recentMessages = (activeConversation?.messages ?? [])
     .slice(-6)
-    .map(({ message }) => `${message.role === "user" ? userName : character.name}：${message.content.trim().replace(/\s+/g, " ").slice(0, 240)}`)
+    .map(message => `${message.role === "user" ? userName : character.name}：${message.content.trim().replace(/\s+/g, " ").slice(0, 240)}`)
     .join("\n");
 
   const persona = [
