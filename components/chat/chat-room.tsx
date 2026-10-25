@@ -373,6 +373,9 @@ function hasActiveGenerationLock(sessionId: string): boolean {
 }
 
 function createGenerationRun(sessionId: string): ActiveGenerationRun {
+    // A session must not generate an online reply and an offline reply at the same time.
+    // Otherwise a stale offline turn can finish after the user's newest online message.
+    cancelOfflineGenerationRun(sessionId);
     const existing = activeGenerationRuns.get(sessionId);
     existing?.controller.abort();
     const run: ActiveGenerationRun = {
@@ -439,6 +442,8 @@ function throwIfGenerationStopped(guard?: GenerationRunGuard): void {
 }
 
 function createOfflineGenerationRun(sessionId: string): Omit<ActiveGenerationRun, "pendingNativeToolCalls"> {
+    // Offline generation also supersedes any foreground generation for this session.
+    cancelGenerationRun(sessionId);
     const existing = activeOfflineGenerationRuns.get(sessionId);
     existing?.controller.abort();
     const run = {
