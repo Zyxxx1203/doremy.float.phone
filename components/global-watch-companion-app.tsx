@@ -236,7 +236,8 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
     };
     const onNativeRecord = (event: Event) => {
       try {
-        const item = JSON.parse(String((event as CustomEvent<string>).detail || "{}")) as { id?: string; kind?: string; text?: string; createdAt?: number; characterId?: string; characterName?: string };
+        const detail = (event as CustomEvent<unknown>).detail;
+        const item = (typeof detail === "string" ? JSON.parse(detail || "{}") : detail || {}) as { id?: string; kind?: string; text?: string; createdAt?: number; characterId?: string; characterName?: string };
         if (!item.id || !item.text || loadGlobalWatchRecords().some(record => record.id === item.id)) return;
         const record: GlobalWatchRecord = {
           id: item.id,
@@ -283,6 +284,9 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
         lines.push("暂停状态：" + (d.paused ? "已暂停" : "未暂停"));
         if (typeof d.sdkInt === "number") lines.push("Android API：" + d.sdkInt);
         if (typeof d.message === "string" && d.message) lines.push("原生提示：" + d.message);
+        if (typeof d.recordCount === "number") lines.push("原生持久化记录数：" + d.recordCount);
+        if (typeof d.lastRecordAt === "number" && d.lastRecordAt > 0) lines.push("最近原生记录：" + new Date(d.lastRecordAt).toLocaleString());
+        if (typeof d.lastError === "string" && d.lastError) lines.push("最近错误：" + d.lastError);
       } else lines.push("原生诊断接口：当前 APK 未提供，请更新 APK。");
     } catch (error) {
       lines.push("读取原生诊断失败：" + (error instanceof Error ? error.message : String(error)));
