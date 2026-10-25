@@ -24,15 +24,17 @@ function previewOf(message: ChatMessage): string {
     return ({ image: "图片消息", video: "视频消息", audio: "音频 / 语音消息", file: "文件或附件", rich: "卡片 / 特殊消息", text: "文本消息" } as const)[kind];
 }
 
-export function ChatHistorySearch({ onClose, onJump }: {
+export function ChatHistorySearch({ onClose, onJump, fixedSessionId }: {
     onClose: () => void;
     onJump: (sessionId: string, messageId: string) => void;
+    /** When opened from inside a chat room, keep the search scoped to that conversation. */
+    fixedSessionId?: string;
 }) {
     const [query, setQuery] = useState("");
     const [from, setFrom] = useState("");
     const [to, setTo] = useState("");
     const [kind, setKind] = useState<HistoryKind>("all");
-    const [sessionFilter, setSessionFilter] = useState("all");
+    const [sessionFilter, setSessionFilter] = useState(fixedSessionId ?? "all");
 
     const hits = useMemo(() => {
         const sessions = loadChatSessions();
@@ -83,7 +85,7 @@ export function ChatHistorySearch({ onClose, onJump }: {
                 <label style={labelStyle}><span><CalendarDays size={12} style={{ display: "inline", marginRight: 4 }} />开始日期</span><input type="date" value={from} max={to || undefined} onChange={e => setFrom(e.target.value)} style={inputStyle} /></label>
                 <label style={labelStyle}><span><CalendarDays size={12} style={{ display: "inline", marginRight: 4 }} />结束日期</span><input type="date" value={to} min={from || undefined} onChange={e => setTo(e.target.value)} style={inputStyle} /></label>
             </div>
-            <label style={labelStyle}><span>聊天对象</span><select value={sessionFilter} onChange={e => setSessionFilter(e.target.value)} style={inputStyle}><option value="all">所有聊天</option>{loadChatSessions().map(session => <option key={session.id} value={session.id}>{session.isGroup ? session.groupName || "群聊" : session.alias || loadChatContacts().find(c => c.id === session.contactId)?.nickname || "私聊"}</option>)}</select></label>
+            {!fixedSessionId && <label style={labelStyle}><span>聊天对象</span><select value={sessionFilter} onChange={e => setSessionFilter(e.target.value)} style={inputStyle}><option value="all">所有聊天</option>{loadChatSessions().map(session => <option key={session.id} value={session.id}>{session.isGroup ? session.groupName || "群聊" : session.alias || loadChatContacts().find(c => c.id === session.contactId)?.nickname || "私聊"}</option>)}</select></label>}
             <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 2 }}>{kinds.map(item => <button key={item.id} type="button" onClick={() => setKind(item.id)} style={{ whiteSpace: "nowrap", borderRadius: 999, padding: "7px 11px", border: "1px solid var(--c-border, #e7dce3)", background: kind === item.id ? "var(--c-accent, #d987aa)" : "var(--c-card, #fff)", color: kind === item.id ? "#fff" : "var(--c-text, #332832)", fontSize: 12 }}>{item.label}</button>)}</div>
         </div>
         <div style={{ padding: "10px 14px", fontSize: 12, opacity: .72 }}>{hits.length ? `找到 ${hits.length} 条记录${hits.length === 300 ? "（仅展示最新 300 条，请缩小筛选范围）" : ""}` : "没有符合条件的记录"}</div>
