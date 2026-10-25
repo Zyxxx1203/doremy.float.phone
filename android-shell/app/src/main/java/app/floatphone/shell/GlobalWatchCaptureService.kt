@@ -53,6 +53,7 @@ class GlobalWatchCaptureService : Service() {
         const val ACTION_PAUSE = "app.floatphone.shell.GLOBAL_WATCH_PAUSE"
         const val ACTION_RESUME = "app.floatphone.shell.GLOBAL_WATCH_RESUME"
         const val ACTION_CAPTURE_NOW = "app.floatphone.shell.GLOBAL_WATCH_CAPTURE_NOW"
+        const val ACTION_SET_SPEECH = "app.floatphone.shell.GLOBAL_WATCH_SET_SPEECH"
         const val ACTION_SHOW_COMMENT = "app.floatphone.shell.GLOBAL_WATCH_SHOW_COMMENT"
         const val ACTION_FRAME = "app.floatphone.shell.GLOBAL_WATCH_FRAME"
         const val ACTION_REPLY = "app.floatphone.shell.GLOBAL_WATCH_REPLY"
@@ -78,6 +79,13 @@ class GlobalWatchCaptureService : Service() {
             context.startService(Intent(context, GlobalWatchCaptureService::class.java).apply {
                 this.action = action
                 if (text != null) { putExtra("reply_text", text); putExtra("comment", text) }
+            })
+        }
+
+        fun setSpeechEnabled(context: Context, enabled: Boolean) {
+            context.startService(Intent(context, GlobalWatchCaptureService::class.java).apply {
+                action = ACTION_SET_SPEECH
+                putExtra("speech_enabled", enabled)
             })
         }
 
@@ -122,6 +130,11 @@ class GlobalWatchCaptureService : Service() {
             ACTION_PAUSE -> setPaused(true)
             ACTION_RESUME -> setPaused(false)
             ACTION_CAPTURE_NOW -> { forceNextAnalysis = true; requestCapture() }
+            ACTION_SET_SPEECH -> {
+                randomSpeechEnabled = intent.getBooleanExtra("speech_enabled", true)
+                nextAiAt = if (randomSpeechEnabled) System.currentTimeMillis() else Long.MAX_VALUE
+                emitState(if (randomSpeechEnabled) "随机主动发言已开启" else "随机主动发言已关闭；仍可手动捕获分析和回复角色")
+            }
             ACTION_SHOW_COMMENT -> {
                 val comment = intent.getStringExtra("comment").orEmpty().trim()
                 if (comment.isNotEmpty()) emitState(characterName + "：" + comment.take(240))
