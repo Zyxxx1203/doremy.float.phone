@@ -226,6 +226,150 @@ class GlobalWatchCaptureService : Service() {
         else emitState("屏幕捕获正常；等待下一次主动陪看分析间隔")
     }
 
+
+    private fun requestNativeAnalysis(dataUrl: String, capturedAt: Long, userReply: String) {
+        if (aiBusy) {
+            if (userReply.isNotBlank()) emitState("上一轮模型请求仍在进行；你的回复已保存")
+            return
+        }
+        aiBusy = true
+        nextAiAt = System.currentTimeMillis() +
+            (speechIntervalMinMinutes + kotlin.random.Random.nextInt(speechIntervalMaxMinutes - speechIntervalMinMinutes + 1)) * 60000L
+        worker?.post {
+            try { analyzeFrameNative(dataUrl, capturedAt, userReply) }
+            finally { aiBusy = false }
+        }
+    }
+
+    private fun analyzeFrameNative(dataUrl: String, capturedAt: Long, userReply: String) {
+        val video = config.optJSONObject("video") ?: JSONObject()
+        val provider = video.optString("provider", "gemini")
+        val apiKey = video.optString("apiKey", "").trim()
+        val model = video.optString("model", "").trim()
+        val baseUrl = video.optString("baseUrl", "").trim().trimEnd('/')
+        val rolePrompt = config.optString("rolePrompt", "保持角色口吻，简短自然回应。").take(3500)
+        val prompt = "你正在通过 Android 原生全局陪看悬浮横幅陪伴用户。请以角色身份自然回应屏幕，不要输出通用图像识别报告。角色名：" +
+            characterName + "\n" + rolePrompt +
+            (if (userReply.isNotBlank()) "\n用户刚刚回复你：" + userReply.take(1000) else "\n请结合画面分享一个简短观察或感受。") +
+            "\n忽略密码、验证码、支付信息和私人聊天，不要复述敏感内容。回复1-3句话。"
+        if (model.isBlank()) {
+            saveRecord("error", "未配置视频分析模型 ID。", capturedAt)
+            emitState("未配置视频分析模型 ID")
+            return
+        }
+        if (provider == "twelvelabs") {
+            saveRecord("error", "TwelveLabs 当前截图接口不支持全局陪看对话，请选择其他视觉模型。", capturedAt)
+            emitState("TwelveLabs 截图对话接口不支持，请更换视觉模型")
+            return
+        }
+        val localEndpoint = baseUrl.contains("localhost") || baseUrl.contains("127.0.0.1") ||
+            baseUrl.contains("10.0.2.2") || baseUrl.contains("192.168.")
+        if (apiKey.isBlank() && !(provider == "openai-compatible" && localEndpoint)) {
+            saveRecord("error", "未配置 API Key。", capturedAt)
+            emitState("未配置 API Key，请检查视频分析模型设置")
+            return
+        }
+        try {
+            val match = Regex("^data:(image/[A-Za-z0-9.+-]+);base64,([\\s\\S]+)$").find(dataUrl)
+                ?: throw IllegalArgumentException("截屏图片数据无效")
+            val mime = match.groupValues[1]
+            val base64 = match.groupValues[2]
+            val root = if (baseUrl.isNotBlank()) baseUrl else when (provider) {
+                "gemini" -> "https://generativelanguage.googleapis.com"
+                "anthropic" -> "https://api.anthropic.com"
+                "ark" -> "https://ark.cn-beijing.volces.com/api/v3"
+                else -> "https://api.openai.com/v1"
+            }
+            val endpoint: String
+            val body: JSONObject
+            val headers = mutableMapOf("Content-Type" to "application/json")
+            when (provider) {
+                "gemini" -> {
+                    endpoint = root.removeSuffix("/v1beta") + "/v1beta/models/" +
+                        java.net.URLEncoder.encode(model.removePrefix("models/"), "UTF-8") + ":generateContent"
+                    headers["x-goog-api-key"] = apiKey
+                    val parts = JSONArray()
+                        .put(JSONObject().put("inlineData", JSONObject().put("mimeType", mime).put("data", base64)))
+                        .put(JSONObject().put("text", prompt))
+                    body = JSONObject().put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", parts)))
+                        .put("generationConfig", JSONObject().put("temperature", 0.8).put("maxOutputTokens", 1200))
+                }
+                "anthropic" -> {
+                    endpoint = root.removeSuffix("/v1") + "/v1/messages"
+                    headers["x-api-key"] = apiKey
+                    headers["anthropic-version"] = "2023-06-01"
+                    val content = JSONArray()
+                        .put(JSONObject().put("type", "text").put("text", prompt))
+                        .put(JSONObject().put("type", "image").put("source", JSONObject().put("type", "base64")
+                            .put("media_type", mime).put("data", base64)))
+                    body = JSONObject().put("model", model).put("max_tokens", 1200)
+                        .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", content)))
+                }
+                else -> {
+                    val normalized = if (provider == "ark") root.removeSuffix("/chat/completions") else root
+                    endpoint = if (normalized.endsWith("/chat/completions")) normalized else normalized + "/chat/completions"
+                    if (apiKey.isNotBlank()) headers["Authorization"] = "Bearer " + apiKey
+                    val content = JSONArray()
+                        .put(JSONObject().put("type", "text").put("text", prompt))
+                        .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", dataUrl).put("detail", "high")))
+                    body = JSONObject().put("model", model).put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", content)))
+                        .put("max_tokens", 1200).put("temperature", 0.7)
+                }
+            }
+            val conn = URL(endpoint).openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 20000
+            conn.readTimeout = 45000
+            conn.doOutput = true
+            headers.forEach { (key, value) -> conn.setRequestProperty(key, value) }
+            conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            val raw = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            conn.disconnect()
+            if (code !in 200..299) {
+                val detail = runCatching { JSONObject(raw).optJSONObject("error")?.optString("message") }
+                    .getOrNull().orEmpty().take(240)
+                throw IllegalStateException("模型请求失败 HTTP " + code + if (detail.isNotBlank()) "：" + detail else "")
+            }
+            val json = JSONObject(raw)
+            val result = when (provider) {
+                "gemini" -> json.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")
+                    ?.optJSONArray("parts")?.let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it)?.optString("text") }.joinToString("\n") }.orEmpty()
+                "anthropic" -> json.optJSONArray("content")?.let { a ->
+                    (0 until a.length()).mapNotNull { a.optJSONObject(it)?.takeIf { p -> p.optString("type") == "text" }?.optString("text") }.joinToString("\n")
+                }.orEmpty()
+                else -> json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.opt("content")?.let { value ->
+                    if (value is String) value else if (value is JSONArray)
+                        (0 until value.length()).mapNotNull { value.optJSONObject(it)?.optString("text") }.joinToString("\n")
+                    else value.toString()
+                }.orEmpty()
+            }.trim()
+            if (result.isBlank()) throw IllegalStateException("模型返回了空结果")
+            saveRecord("character", result, System.currentTimeMillis())
+            sendBroadcast(Intent(ACTION_SHOW_COMMENT).setPackage(packageName).putExtra("comment", result))
+            emitState("原生模型分析完成，结果已保存")
+        } catch (error: Exception) {
+            val message = (error.message ?: "未知错误").take(300)
+            saveRecord("error", "模型分析失败：" + message, System.currentTimeMillis())
+            emitState("模型分析失败：" + message)
+        }
+    }
+
+    private fun saveRecord(kind: String, text: String, createdAt: Long) {
+        val prefs = getSharedPreferences("global_watch_state", Context.MODE_PRIVATE)
+        val old = runCatching { JSONArray(prefs.getString("records", "[]")) }.getOrDefault(JSONArray())
+        val arr = JSONArray()
+        for (i in max(0, old.length() - 299) until old.length()) arr.put(old.get(i))
+        val item = JSONObject().put("id", "native-watch-" + UUID.randomUUID()).put("sessionId", sessionId)
+            .put("kind", kind).put("text", text.take(2000)).put("createdAt", createdAt)
+            .put("characterName", characterName).put("characterId", config.optString("characterId", ""))
+        arr.put(item)
+        prefs.edit().putString("records", arr.toString()).putLong("lastRecordAt", createdAt)
+            .putString("lastError", if (kind == "error") text else prefs.getString("lastError", "")).apply()
+        sendBroadcast(Intent(ACTION_RECORD).setPackage(packageName).putExtra("record", item.toString()))
+    }
+
     private fun scheduleNextCapture() {
         worker?.removeCallbacks(captureRunnable)
         if (paused || projection == null) return
