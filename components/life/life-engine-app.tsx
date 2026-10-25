@@ -100,7 +100,7 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
     // Do not discard narrative accidentally emitted outside tags by a non-compliant model.
     const outsideText = sourceText
       .replace(/<life_action\b[^>]*>[\s\S]*?(?:<\/life_action\s*>|(?=<life_dialogue\b)|$)/ig, " ")
-      .replace(/<\/?life_dialogue\b[^>]*>/ig, " ")
+      .replace(/<life_dialogue\b[^>]*>[\s\S]*?(?:<\/life_dialogue\s*>|$)/ig, " ")
       .replace(/<life_(?:follow_request|plan_change|invitation)\b[^>]*\/?\s*>/ig, " ")
       .trim();
     const outside = outsideText ? parseLifeOutput(outsideText) : { dialogue: "" };
