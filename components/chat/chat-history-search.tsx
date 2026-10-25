@@ -54,7 +54,7 @@ export function ChatHistorySearch({ onClose, onJump, fixedSessionId }: {
                 const time = new Date(message.createdAt).getTime();
                 if (!Number.isFinite(time) || time < start || time > end) continue;
                 if (kind !== "all" && classify(message) !== kind) continue;
-                const searchable = [message.content, message.role, message.mediaType, message.mediaUrl, message.mediaData?.label, message.mediaData?.musicTitle, message.mediaData?.musicArtist, message.mediaData?.fileName].filter(Boolean).join(" ").toLocaleLowerCase();
+                const searchable = [message.content, message.role, message.mediaType, message.mediaData?.label, message.mediaData?.musicTitle, message.mediaData?.musicArtist, message.mediaData?.fileName].filter(Boolean).join(" ").toLocaleLowerCase();
                 if (needle && !searchable.includes(needle)) continue;
                 if (message.isRetracted) continue;
                 results.push({ message, sessionId: session.id, sessionName: names.get(session.id) || "聊天" });
