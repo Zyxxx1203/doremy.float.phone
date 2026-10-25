@@ -234,6 +234,13 @@ def _download_xhs(url: str, target_dir: Path, cookie_header: str) -> str:
     return title
 
 
+def _netscape_cookie_count(text: str | None) -> int:
+    """数一下用户到底贴了几条有效 cookie（Netscape 格式每行 7 列）。"""
+    if not text:
+        return 0
+    return sum(1 for line in text.splitlines() if not line.startswith("#") and len(line.split("\t")) >= 7)
+
+
 def _download(url: str, options: dict) -> None:
     with yt_dlp.YoutubeDL(options) as ydl:
         ydl.download([url])
@@ -274,6 +281,9 @@ def resolve_video(body: dict) -> dict:
                 message = str(exc)
                 low = message.lower()
                 if ("douyin" in host or "iesdouyin" in host) and ("cookie" in low or "uifid" in low or "argus" in low):
+                    cookie_count = _netscape_cookie_count(cookies_text)
+                    if cookie_count:
+                        raise HttpError(422, f"已收到 {cookie_count} 条 cookies，但抖音仍然拒绝：多半是过期了，或导出时没带上 ttwid / s_v_web_id / __ac_signature。请在 douyin.com 重新导出一次（Netscape 格式）再粘贴。")
                     raise HttpError(422, "抖音需要 cookies：它用 Argus 风控挡住了无 cookie 的请求。请在「一起看 → 设置 → 平台 Cookies」粘贴从电脑浏览器导出的 douyin.com cookies（无需登录，浏览任意视频后导出即可）")
                 failures.append("yt-dlp: " + message[:180])
 
@@ -409,8 +419,9 @@ class Handler(BaseHTTPRequestHandler):
             raise HttpError(404, "接口不存在")
         except HttpError as exc:
             self._json(exc.status, {"detail": exc.detail})
-        except BrokenPipeError:
-            pass
+        except (BrokenPipeError, ConnectionResetError):
+            # 播放器拖动进度或关页时会主动断开，这不是服务端错误，不该回 500。
+            self.close_connection = True
         except Exception as exc:  # noqa: BLE001
             self._json(500, {"detail": f"服务内部错误：{str(exc)[:200]}"})
 
@@ -458,15 +469,18 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         if head_only:
             return
-        with path.open("rb") as fh:
-            fh.seek(start)
-            remaining = length
-            while remaining > 0:
-                chunk = fh.read(min(256 * 1024, remaining))
-                if not chunk:
-                    break
-                self.wfile.write(chunk)
-                remaining -= len(chunk)
+        try:
+            with path.open("rb") as fh:
+                fh.seek(start)
+                remaining = length
+                while remaining > 0:
+                    chunk = fh.read(min(256 * 1024, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
 
     def do_GET(self):
         self._dispatch("GET")
