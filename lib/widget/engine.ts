@@ -45,8 +45,8 @@ async function generateLine(
   const config = resolveAuxiliaryApiConfig("memorySummaryApiConfigId") ?? loadApiConfigs()[0];
   if (!config) return null;
 
-  // 角色卡是人格依据；最近聊天与角色记忆是当前状态依据。
-  // 不再只把角色名字交给模型，否则模型只能用通用语气猜人设。
+  // 角色卡提供必要的人设边界；当前状态只看最近几条聊天和上次桌面内容。
+  // 不加载长期记忆、应用时间线或其他历史，避免上下文过载。
   const characterId = character.id;
   const contact = loadChatContacts().find(item => item.characterId === characterId);
   const sessions = loadChatSessions().filter(session =>
@@ -95,7 +95,7 @@ async function generateLine(
         "status 是 2-5 字的简短状态标签，也必须符合角色当前情绪；不要默认使用「在想你」之类的亲密状态。",
       ].join("\n\n"),
     },
-    { role: "user", content: `请结合你的人设、近期互动和已有记忆，留下一句自然、不重复的桌面状态。${avoid}` },
+    { role: "user", content: `请只根据你的人设、最近几条聊天和上次桌面内容，留下一句自然、不重复的桌面状态。${avoid}` },
   ], { temperature: 0.8, max_tokens: 220, label: "widget-auto-generate" });
 
   const raw = (result.content ?? "").trim();
