@@ -3096,7 +3096,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
                 }
                 // Apply cohabitation immediately to future home-related schedule slots only.
                 // Work, school, commute, outings and manually chosen places remain untouched.
-                const now = Date.now();
+                // Compare against this character's own virtual clock, not wall-clock time.
+                // Otherwise a simulated timeline can treat its upcoming home slots as past.
+                const now = resolveActorLifeNow(getActorClock(current, "character", character.id)).getTime();
                 const nextSchedules = current.schedules.map(slot => {
                   if (slot.ownerType !== "character" || slot.ownerId !== character.id || new Date(slot.endAt).getTime() <= now) return slot;
                   const plannedId = slot.plannedLocationId ?? "";
