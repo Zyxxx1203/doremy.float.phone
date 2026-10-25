@@ -1623,6 +1623,15 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           </div>}
           {wallCanvasMode === "view" && wallSelectedPhoto && <div className="relative z-40 mb-2 flex shrink-0 items-center justify-between gap-2 border-b border-[#e6d9cb] px-2 py-1.5"><span className="min-w-0 truncate text-[10px] text-[#8b7665]">已选：{wallSelectedPhoto.title||"未命名的瞬间"}</span><button type="button" onClick={() => openPhoto(wallSelectedPhoto)} className="shrink-0 border border-[#d7c2b1] px-2.5 py-1.5 text-[10px] text-[#7d6d5a]">查看详情</button></div>}
         </>}
+        {wallView === "panorama" && wallCanvasMode === "move" && wallSelectedPhoto && <div data-photo-wall-panorama-placement-toolbar className="relative z-30 flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[#e6d9cb] bg-[#fffaf2]/95 px-2 py-2">
+          <span className="mr-1 max-w-[88px] truncate text-[10px] text-[#8b7665]">{wallSelectedPhoto.title || "已选照片"}</span>
+          <button type="button" onClick={() => patchWallSelectedPlacement({scale:Math.max(.35,(wallSelectedPhoto.placement?.scale??1)-.12)})} className="border-b border-[#d7c2b1] px-2 py-1 text-[11px]">缩小 −</button>
+          <button type="button" onClick={() => patchWallSelectedPlacement({scale:Math.min(3,(wallSelectedPhoto.placement?.scale??1)+.12)})} className="border-b border-[#d7c2b1] px-2 py-1 text-[11px]">放大 +</button>
+          <button type="button" onClick={() => patchWallSelectedPlacement({rotation:Math.max(-45,(wallSelectedPhoto.placement?.rotation??0)-3)})} className="border-b border-[#d7c2b1] px-2 py-1 text-[11px]">左转</button>
+          <button type="button" onClick={() => patchWallSelectedPlacement({rotation:Math.min(45,(wallSelectedPhoto.placement?.rotation??0)+3)})} className="border-b border-[#d7c2b1] px-2 py-1 text-[11px]">右转</button>
+          <button type="button" onClick={() => patchWallSelectedPlacement({locked:!wallSelectedPhoto.placement?.locked})} className={wallSelectedPhoto.placement?.locked?"border border-[#87565b] bg-[#87565b] px-2 py-1 text-[10px] text-white":"border border-[#d7c2b1] px-2 py-1 text-[10px] text-[#7d6d5a]"}>{wallSelectedPhoto.placement?.locked?"解锁":"锁定"}</button>
+          <button type="button" onClick={() => setWallCanvasMode("view")} className="ml-auto border border-[#d7c2b1] px-2 py-1 text-[10px] text-[#7d6d5a]">完成</button>
+        </div>}
         {busy && <div className="mb-3 flex shrink-0 items-center gap-2 border border-[#e4d8c6] bg-[#faf7f0] px-3 py-2.5 text-xs text-[#83725d]"><LoaderCircle size={15} className="animate-spin"/>{busyLabel || "请稍候…"}</div>}
         <div
           ref={panoramaViewportRef}
