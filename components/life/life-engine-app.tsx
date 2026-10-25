@@ -741,8 +741,19 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const start = new Date(virtualNow.getTime()); start.setHours(0, 0, 0, 0);
       const virtualNowMs = virtualNow.getTime();
       const end = new Date(start.getTime()); end.setDate(end.getDate() + 7);
-      const locations = current.locations.map(p => "- " + p.name + ((p.aliases?.length ?? 0) ? "（别名：" + p.aliases!.join("、") + "）" : "") + (p.characterHabits?.[character.id] ? "；角色习惯：" + p.characterHabits[character.id] : "")).join("\n");
-      const livesWithPlayer = (current.locations.find(location => location.id === "home")?.residents ?? []).includes(character.id);
+      const locations = current.locations.filter(location => {
+        // Do not offer a solo home as a scheduling destination once its resident shares another home.
+        if (!location.id.startsWith("home-") || (location.residents ?? []).length > 1) return true;
+        const residents = location.residents ?? [];
+        return !current.locations.some(shared => shared.id !== location.id
+          && (shared.id === "home" || shared.id.startsWith("home-"))
+          && (shared.residents ?? []).length > 1
+          && (shared.residents ?? []).some(residentId => residents.includes(residentId)));
+      }).map(p => "- " + p.name + ((p.aliases?.length ?? 0) ? "（别名：" + p.aliases!.join("、") + "）" : "") + (p.characterHabits?.[character.id] ? "；角色习惯：" + p.characterHabits[character.id] : "")).join("\n");
+      const livesWithPlayer = current.locations.some(location =>
+        (location.id === "home" || location.id.startsWith("home-"))
+        && (location.residents ?? []).includes(character.id)
+        && (location.id === "home" || (location.residents ?? []).length > 1));
       const memories = current.memories
         .filter(m => m.participants.includes(character.id) && m.participants.includes(PLAYER_ID))
         .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
@@ -2977,11 +2988,13 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           </form>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {state.locations.filter(location => {
-              // Keep personal homes in storage, but hide them from the general location library while that character shares another home.
+              // Keep shared homes visible even when their IDs use the home- prefix; hide only obsolete solo homes.
               if (!location.id.startsWith("home-")) return true;
               const residents = location.residents ?? [];
+              if (residents.length > 1) return true;
               return !state.locations.some(shared => shared.id !== location.id
                 && (shared.id === "home" || shared.id.startsWith("home-"))
+                && (shared.residents ?? []).length > 1
                 && (shared.residents ?? []).some(residentId => residents.includes(residentId)));
             }).map(location => {
               const entries = state.timeline.filter(entry => entry.locationName === location.name);
