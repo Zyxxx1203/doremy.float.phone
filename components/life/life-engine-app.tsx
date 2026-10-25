@@ -141,7 +141,7 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
     const line = sourceLine.trim();
     if (!line) continue;
     const quoted: string[] = [];
-    const outside = line.replace(/[“「『\"]([^”」』\"]+)[”」』\"]/g, (_whole, spoken: string) => { quoted.push(spoken.trim()); return " "; }).trim();
+    const outside = line.replace(/[“「『"]([^”」』"]+)[”」』"]/g, (_whole, spoken: string) => { quoted.push(spoken.trim()); return " "; }).trim();
     if (quoted.length) {
       if (outside && actionVerb.test(outside)) extractedActions.push(outside.replace(/[，,：:]?(?:说道|说着|开口道|问道|答道)$/g, "").trim());
       normalizedDialogueLines.push(...quoted.filter(Boolean));
