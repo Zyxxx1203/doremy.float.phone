@@ -1433,19 +1433,45 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
     /** 暴露给网页的原生桥（网页侧可用 window.AndroidShell 特性检测壳环境）。 */
     inner class ShellBridge {
         @JavascriptInterface
+        fun getGlobalWatchDiagnostics(): String {
+            val trusted = isTrustedShellPage()
+            val overlayAllowed = Settings.canDrawOverlays(this@MainActivity)
+            val running = GlobalWatchCaptureService.isRunning(this@MainActivity)
+            val prefs = getSharedPreferences("global_watch_state", Context.MODE_PRIVATE)
+            return org.json.JSONObject()
+                .put("trustedPage", trusted)
+                .put("overlayPermission", overlayAllowed)
+                .put("running", running)
+                .put("paused", prefs.getBoolean("paused", false))
+                .put("sdkInt", Build.VERSION.SDK_INT)
+                .put("message", when {
+                    !trusted -> "当前页面未通过原生桥可信校验。请从已安装 APK 的正式首页进入。"
+                    !overlayAllowed -> "尚未授予悬浮窗权限。请先授权，再返回全局陪看重试。"
+                    running -> "原生服务正在运行。接下来应验证是否收到屏幕帧和 AI 回复。"
+                    else -> "原生桥可用，悬浮窗权限已授予，但服务当前未运行。点击启动并完成系统屏幕捕获授权。"
+                })
+                .toString()
+        }
+
+        @JavascriptInterface
         fun startGlobalWatch(configJson: String): Boolean {
-            if (!isTrustedShellPage()) return false
+            if (!isTrustedShellPage()) {
+                dispatchGlobalWatchEvent("global-watch-state", org.json.JSONObject().put("message", "启动失败：当前页面未通过原生桥可信校验。请从正式 APK 首页进入。").put("running", false).toString())
+                return false
+            }
             pendingGlobalWatchConfig = configJson.take(4000)
             if (!Settings.canDrawOverlays(this@MainActivity)) {
                 runOnUiThread {
                     runCatching { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName))) }
-                        .onFailure { dispatchGlobalWatchEvent("global-watch-state", org.json.JSONObject().put("message", "无法打开悬浮窗权限设置。").toString()) }
+                        .onFailure { dispatchGlobalWatchEvent("global-watch-state", org.json.JSONObject().put("message", "启动失败：无法打开悬浮窗权限设置：" + (it.message ?: "未知错误")).put("running", false).toString()) }
                 }
+                dispatchGlobalWatchEvent("global-watch-state", org.json.JSONObject().put("message", "启动未完成：缺少悬浮窗权限，已尝试打开系统授权页面。授权后请返回再次点击启动。").put("running", false).toString())
                 return false
             }
             runOnUiThread {
                 val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                globalWatchProjectionLauncher.launch(manager.createScreenCaptureIntent())
+                runCatching { globalWatchProjectionLauncher.launch(manager.createScreenCaptureIntent()) }
+                    .onFailure { dispatchGlobalWatchEvent("global-watch-state", org.json.JSONObject().put("message", "启动失败：无法打开屏幕捕获授权：" + (it.message ?: "未知错误")).put("running", false).toString()) }
             }
             return true
         }
