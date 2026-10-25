@@ -109,6 +109,8 @@ class GlobalWatchCaptureService : Service() {
     private var sessionId = UUID.randomUUID().toString()
     private var speechIntervalMinMinutes = 2
     private var speechIntervalMaxMinutes = 5
+    private var randomSpeechEnabled = true
+    @Volatile private var forceNextAnalysis = false
     private var nextAiAt = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -119,7 +121,7 @@ class GlobalWatchCaptureService : Service() {
             ACTION_STOP -> stopSelf()
             ACTION_PAUSE -> setPaused(true)
             ACTION_RESUME -> setPaused(false)
-            ACTION_CAPTURE_NOW -> requestCapture()
+            ACTION_CAPTURE_NOW -> { forceNextAnalysis = true; requestCapture() }
             ACTION_SHOW_COMMENT -> {
                 val comment = intent.getStringExtra("comment").orEmpty().trim()
                 if (comment.isNotEmpty()) emitState(characterName + "：" + comment.take(240))
@@ -145,7 +147,8 @@ class GlobalWatchCaptureService : Service() {
         sessionId = UUID.randomUUID().toString()
         speechIntervalMinMinutes = config.optInt("speechIntervalMinMinutes", 2).coerceIn(1, 60)
         speechIntervalMaxMinutes = config.optInt("speechIntervalMaxMinutes", 5).coerceIn(speechIntervalMinMinutes, 120)
-        nextAiAt = System.currentTimeMillis()
+        randomSpeechEnabled = config.optBoolean("randomSpeechEnabled", true)
+        nextAiAt = if (randomSpeechEnabled) System.currentTimeMillis() else Long.MAX_VALUE
         saveRecord("system", "全局陪看会话开始", System.currentTimeMillis())
         minIntervalSeconds = config.optInt("captureIntervalMinSeconds", 35).coerceIn(15, 600)
         maxIntervalSeconds = config.optInt("captureIntervalMaxSeconds", 95).coerceIn(minIntervalSeconds, 900)
@@ -224,8 +227,12 @@ class GlobalWatchCaptureService : Service() {
         // Keep raw screen pixels inside the native service; the WebView only receives a timestamp.
         sendBroadcast(Intent(ACTION_FRAME).setPackage(packageName).putExtra("capturedAt", capturedAt))
         bytes.close()
-        if (capturedAt >= nextAiAt) requestNativeAnalysis(dataUrl, capturedAt, "")
-        else emitState("屏幕捕获正常；等待下一次主动陪看分析间隔")
+        if (forceNextAnalysis) {
+            forceNextAnalysis = false
+            requestNativeAnalysis(dataUrl, capturedAt, "")
+        } else if (randomSpeechEnabled && capturedAt >= nextAiAt) {
+            requestNativeAnalysis(dataUrl, capturedAt, "")
+        } else emitState("屏幕捕获正常；随机主动发言已关闭或尚未到分析间隔")
     }
 
 
