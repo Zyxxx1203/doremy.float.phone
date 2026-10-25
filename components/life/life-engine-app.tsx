@@ -3570,7 +3570,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               </div>
               <p className="mt-2 text-[10px] leading-relaxed text-stone-500">先等待玩家达到上面的静默时长，再按下方随机间隔尝试一次；角色主动发出的消息不会重置玩家静默计时。</p>
               <div className="mt-3"><Toggle checked={settings.enableLifeMessageNotifications !== false} onChange={async v=>{if(v && typeof Notification!=="undefined" && Notification.permission==="default"){try{await Notification.requestPermission();}catch{/* permission prompt may be unavailable in WebView */}}patchSettings({enableLifeMessageNotifications:v});}} label="主动消息弹窗提示"/></div>
-               <p className="mt-2 text-[10px] leading-relaxed text-stone-500">此测试会通过 Supabase Realtime 向安卓壳推送原生系统通知，不使用网页内横幅。通知应带有「回复行动」和「回复对话」两个系统级快捷回复入口。</p>
+               <p className="mt-2 text-[10px] leading-relaxed text-stone-500">此测试会通过 Supabase Realtime 向安卓壳推送 Android 系统通知栏横幅，不使用网页内横幅。通知应带有「回复行动」和「回复对话」两个系统级快捷回复入口。</p>
               <button type="button" onClick={async () => {
                 const activeSceneForTest = stateRef.current.scenes.find(item => item.status === "active" && item.participants.some(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID));
                 if (!activeSceneForTest) { setNotice("请先进入一个包含玩家的进行中生活现场，再测试原生通知。"); return; }
