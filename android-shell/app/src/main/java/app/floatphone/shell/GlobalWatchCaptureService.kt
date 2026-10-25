@@ -105,6 +105,7 @@ class GlobalWatchCaptureService : Service() {
     private var pauseButton: Button? = null
     @Volatile private var latestFrameDataUrl = ""
     @Volatile private var aiBusy = false
+    @Volatile private var pendingUserReply = ""
     private var sessionId = UUID.randomUUID().toString()
     private var speechIntervalMinMinutes = 2
     private var speechIntervalMaxMinutes = 5
@@ -229,7 +230,10 @@ class GlobalWatchCaptureService : Service() {
 
     private fun requestNativeAnalysis(dataUrl: String, capturedAt: Long, userReply: String) {
         if (aiBusy) {
-            if (userReply.isNotBlank()) emitState("上一轮模型请求仍在进行；你的回复已保存")
+            if (userReply.isNotBlank()) {
+                pendingUserReply = userReply.take(1000)
+                emitState("上一轮模型请求仍在进行；你的回复已排队，完成后会继续回应")
+            }
             return
         }
         aiBusy = true
@@ -237,7 +241,15 @@ class GlobalWatchCaptureService : Service() {
             (speechIntervalMinMinutes + kotlin.random.Random.nextInt(speechIntervalMaxMinutes - speechIntervalMinMinutes + 1)) * 60000L
         worker?.post {
             try { analyzeFrameNative(dataUrl, capturedAt, userReply) }
-            finally { aiBusy = false }
+            finally {
+                aiBusy = false
+                val queuedReply = pendingUserReply
+                if (queuedReply.isNotBlank()) {
+                    pendingUserReply = ""
+                    val latest = latestFrameDataUrl
+                    if (latest.isNotBlank()) requestNativeAnalysis(latest, System.currentTimeMillis(), queuedReply)
+                }
+            }
         }
     }
 
