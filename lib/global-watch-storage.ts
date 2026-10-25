@@ -9,6 +9,7 @@ export type GlobalWatchRecord = {
   createdAt: string;
   kind: "character" | "user";
   targetUrl: "global-watch";
+  sessionId?: string;
 };
 
 const SHARED_WATCH_COMMENTS_KEY = "ai_phone_watch_together_comments_v1";
