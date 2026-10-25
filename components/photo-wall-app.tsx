@@ -45,7 +45,7 @@ const DEFAULT_PHOTO_WALL_PROMPT = [
   "不要出现文字、水印、拼接边框或不自然的手指。",
 ].join("\n");
 function readPhotoWallPrompt(): string { try { return typeof window !== "undefined" ? window.localStorage.getItem(PHOTO_WALL_PROMPT_KEY) || DEFAULT_PHOTO_WALL_PROMPT : DEFAULT_PHOTO_WALL_PROMPT; } catch { return DEFAULT_PHOTO_WALL_PROMPT; } }
-function readPhotoWallTemplate(): string { try { return typeof window !== "undefined" ? window.localStorage.getItem(PHOTO_WALL_ACTIVE_TEMPLATE_KEY) || "builtin-scatter" : "builtin-scatter"; } catch { return "builtin-scatter"; } }
+function readPhotoWallTemplate(): string { try { return typeof window !== "undefined" ? window.localStorage.getItem(PHOTO_WALL_ACTIVE_TEMPLATE_KEY) || "builtin-grid" : "builtin-grid"; } catch { return "builtin-grid"; } }
 function readPhotoWallCharacter(): string { try { return typeof window !== "undefined" ? window.localStorage.getItem(PHOTO_WALL_CHARACTER_KEY) || "" : ""; } catch { return ""; } }
 
 function dayKey(date = new Date()): string {
@@ -1008,9 +1008,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
 
   /**
    * 新照片的落点：跟着你当前看到的位置走。
-   * 无界画布变大了以后，如果还按模板的绝对坐标散落，新照片会掉到视野外，
-   * 用户会以为"没加上"。默认（builtin-scatter）就落在视野中心附近；
-   * 只有用户明确挑过别的骨架模板时，才按模板槽位摆放。
+   * 无界画布变大后，新照片仍需落在当前视野附近；默认模板为整齐网格，
+   * 避免用户未选择模板时批量添加的照片互相叠压。
    */
   const placementAnchor = useCallback((): { x: number; y: number } => {
     const viewport = panoramaViewportRef.current;
