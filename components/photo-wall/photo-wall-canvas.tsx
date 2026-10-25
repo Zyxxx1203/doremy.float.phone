@@ -299,7 +299,12 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
    */
   const wallShellScale = () => {
     const wall = wallRef.current;
-    return wall && wall.offsetWidth > 0 ? wall.getBoundingClientRect().width / wall.offsetWidth : 1;
+    if (!wall || wall.offsetWidth <= 0) return 1;
+    // wallRef 自身已经应用了 canvasZoom；直接用 rect.width / offsetWidth
+    // 会把画布缩放也误算成手机壳缩放，后续再乘 canvasZoom 时就会重复缩放
+    // （例如 200% 视图下按 4 倍尺寸计算），导致照片涂鸦落点偏移。
+    const renderedScale = wall.getBoundingClientRect().width / wall.offsetWidth;
+    return renderedScale / Math.max(0.01, canvasZoom);
   };
   const pointOn = (event: React.PointerEvent, photo: PhotoWallPhoto, index: number, anchorElement?: HTMLElement) => {
     const element = anchorElement ?? event.currentTarget as HTMLElement;
