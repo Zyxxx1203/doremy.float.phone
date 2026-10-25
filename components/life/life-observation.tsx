@@ -179,7 +179,7 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
         id: makeId(), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
         content: [
           "【生活系统·观察TA的生活】请把这段时间拆成多个独立的重要事件卡片，而不是一大段长文。只输出 JSON 对象，包含 events 数组；每项包含 time（时间段）、location（地点）、people（人物数组）、title（事件标题）、description（具体描写）。每个事件必须是一个独立、可单独配图的连续场景；按时间顺序排列，通常生成2—8张，事件不足时不要凑数。不要把计划冒充已发生的事实，不要假装玩家在场，不要编造重大事件。所有事件的 time 必须是这段时间内已经过去的具体时刻，禁止出现任何未来时间。",
-          "时间范围：" + new Date(fromMs).toISOString() + " 至 " + virtualNow.toISOString(),
+          "时间范围：" + new Date(fromMs).toISOString() + " 至 " + new Date(nowMs).toISOString(),
           "必须以时间顺序写清楚几点在哪里、做了什么；至少挑选1—2个片段进行具体镜头式描写（动作、光线、声音、手边物品、微小反应等），并穿插符合人设的内心活动/心声。不要每个时间段都写成流水账，也不要无依据地制造重大事件。",
           "行程是计划依据而非所有细节都已发生；遇到已记录事件以记录为准。没有证据的日常细节可以合理补充，但不得违背角色卡、地点设定、时间顺序或已记录事件。不要让角色突然知道玩家没告诉TA的事情。",
           "如果中间有空白时段，可以写成符合人设的普通生活，但不要编造戏剧性转折。结尾落在当前时间附近，并自然留下一点仍在继续的生活状态。",
@@ -209,7 +209,7 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
       const createdAt = new Date().toISOString();
       const entries: ObservationEntry[] = events.slice(0, 12).map(event => ({
         id: makeId(), characterId: character.id, characterName: character.name,
-        fromAt: new Date(fromMs).toISOString(), toAt: virtualNow.toISOString(), createdAt,
+        fromAt: new Date(fromMs).toISOString(), toAt: new Date(nowMs).toISOString(), createdAt,
         title: String(event.title || "生活片段").slice(0, 80), eventTime: String(event.time || "").slice(0, 100), locationName: String(event.location || "").slice(0, 100),
         people: Array.isArray(event.people) ? event.people.filter(item => typeof item === "string").slice(0, 8) : [],
         content: String(event.description || "").trim(),
