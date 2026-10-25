@@ -239,7 +239,7 @@ class GlobalWatchCaptureService : Service() {
     private fun requestNativeAnalysis(dataUrl: String, capturedAt: Long, userReply: String) {
         if (aiBusy) {
             if (userReply.isNotBlank()) {
-                pendingUserReply = userReply.take(1000)
+                pendingUserReply = listOf(pendingUserReply, userReply).filter { it.isNotBlank() }.joinToString("\n").takeLast(1000)
                 emitState("上一轮模型请求仍在进行；你的回复已排队，完成后会继续回应")
             }
             return
