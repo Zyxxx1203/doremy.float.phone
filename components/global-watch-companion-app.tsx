@@ -84,12 +84,13 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
     try {
       const raw = (window as GlobalWatchWindow).AndroidShell?.getGlobalWatchRecords?.();
       if (raw) {
-        const items = JSON.parse(raw) as Array<{ id?: string; kind?: string; text?: string; createdAt?: number; characterId?: string; characterName?: string }>;
+        const items = JSON.parse(raw) as Array<{ id?: string; sessionId?: string; kind?: string; text?: string; createdAt?: number; characterId?: string; characterName?: string }>;
         const existing = new Set(loadGlobalWatchRecords().map(item => item.id));
         for (const item of items) {
           if (!item?.id || !item.text || existing.has(item.id)) continue;
           const record: GlobalWatchRecord = {
             id: item.id,
+            sessionId: item.sessionId,
             characterId: item.characterId || "",
             characterName: item.characterName || "陪看角色",
             text: (item.kind === "error" ? "【分析失败】" : item.kind === "system" ? "【会话记录】" : "") + item.text,
@@ -236,10 +237,11 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
     const onNativeRecord = (event: Event) => {
       try {
         const detail = (event as CustomEvent<unknown>).detail;
-        const item = (typeof detail === "string" ? JSON.parse(detail || "{}") : detail || {}) as { id?: string; kind?: string; text?: string; createdAt?: number; characterId?: string; characterName?: string };
+        const item = (typeof detail === "string" ? JSON.parse(detail || "{}") : detail || {}) as { id?: string; sessionId?: string; kind?: string; text?: string; createdAt?: number; characterId?: string; characterName?: string };
         if (!item.id || !item.text || loadGlobalWatchRecords().some(record => record.id === item.id)) return;
         const record: GlobalWatchRecord = {
           id: item.id,
+          sessionId: item.sessionId,
           characterId: item.characterId || "",
           characterName: item.characterName || character?.name || "陪看角色",
           text: (item.kind === "error" ? "【分析失败】" : item.kind === "system" ? "【会话记录】" : "") + item.text,
