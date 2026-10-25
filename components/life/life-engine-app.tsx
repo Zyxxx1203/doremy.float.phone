@@ -1391,23 +1391,47 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       };
       const result = await generateOfflineChatCompletion(session, [...previous, prompt]);
       const parsed = parseLifeOutput(result.content);
+      if (!parsed.action?.trim() && !parsed.dialogue.trim()) throw new Error("模型返回了空回应，请检查当前角色绑定的模型或输出格式设置后重试。");
       const latest = stateRef.current;
-      const sceneMessages = latest.sceneMessages.map(item => item.id === targetMessage.id
-        ? { ...item, action: parsed.action, dialogue: parsed.dialogue, createdAt: new Date().toISOString() }
-        : item);
+      // A single turn may be stored as one action card plus several dialogue bubbles.
+      // Replace the entire original turn, otherwise regeneration leaves stale sibling bubbles behind.
+      const turnMessages = latest.sceneMessages.filter(item =>
+        item.sceneId === targetMessage.sceneId && item.role === "character"
+        && item.speakerId === targetMessage.speakerId && item.createdAt === targetMessage.createdAt
+      );
+      const turnIds = new Set(turnMessages.map(item => item.id));
+      turnIds.add(targetMessage.id);
+      const replyAt = new Date().toISOString();
+      const actionText = (parsed.action ?? "").trim();
+      const dialogueSegments = splitLifeReplySegments(parsed.dialogue);
+      const replacementMessages: LifeSceneMessage[] = [
+        ...(actionText ? [{ ...targetMessage, action: actionText, dialogue: "", createdAt: replyAt }] : []),
+        ...dialogueSegments.map((dialogue, index) => ({
+          ...targetMessage,
+          id: !actionText && index === 0 ? targetMessage.id : id("turn-dialogue-regenerated"),
+          action: undefined,
+          dialogue,
+          createdAt: replyAt,
+        })),
+      ];
+      const firstTurnIndex = latest.sceneMessages.findIndex(item => turnIds.has(item.id));
+      const sceneMessages = [
+        ...latest.sceneMessages.slice(0, firstTurnIndex).filter(item => !turnIds.has(item.id)),
+        ...replacementMessages,
+        ...latest.sceneMessages.slice(firstTurnIndex).filter(item => !turnIds.has(item.id)),
+      ];
       let next: VirtualLifeState = {
         ...latest,
         sceneMessages,
-        timeline: latest.timeline.filter(entry => !(entry.sourceId === targetMessage.id && (entry.category === "action" || entry.category === "dialogue"))),
+        timeline: latest.timeline.filter(entry => !(turnIds.has(entry.sourceId || "") && (entry.category === "action" || entry.category === "dialogue"))),
       };
-      if (parsed.action) {
-        next = appendLifeTimelineEntry(next, { category: "action", title: character.name + "的行动", details: parsed.action, actorId: character.id, actorName: character.name, locationName: scene.locationName, sceneId: scene.id, sourceId: targetMessage.id });
+      if (actionText) {
+        const actionMessage = replacementMessages.find(item => item.action?.trim());
+        next = appendLifeTimelineEntry(next, { category: "action", title: character.name + "的行动", details: actionText, actorId: character.id, actorName: character.name, locationName: scene.locationName, sceneId: scene.id, sourceId: actionMessage?.id || targetMessage.id });
       }
-      if (parsed.dialogue.trim()) {
-        next = appendLifeTimelineEntry(next, { category: "dialogue", title: character.name + "说", details: parsed.dialogue, actorId: character.id, actorName: character.name, locationName: scene.locationName, sceneId: scene.id, sourceId: targetMessage.id });
-      }
+      next = rebuildSceneDialogueTimeline(next, scene.id, latest.settings.sceneRecordBatchSize ?? 10);
       commit(next);
-      setNotice("角色回复已重新生成，生活时间线也已同步。");
+      setNotice("角色回复已重新生成，整轮动作卡片、对白分条和生活时间线已同步。");
     } catch (error) {
       setNotice(error instanceof Error ? "重新生成失败：" + error.message : "重新生成失败，请检查模型配置。");
     } finally {
