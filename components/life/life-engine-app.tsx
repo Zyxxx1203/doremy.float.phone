@@ -144,7 +144,22 @@ function parseLifeOutput(text: string): { action?: string; dialogue: string; fol
     if (!line) continue;
     const quoted: string[] = [];
     const outside = line.replace(/[“「『\"]([^”」』\"]+)[”」』\"]/g, (_whole, spoken: string) => { quoted.push(spoken.trim()); return " "; }).trim();
-    if (quoted.length) {,      if (outside && actionVerb.test(outside)) extractedActions.push(outside.replace(/[，,：:]?(?:说道|说着|开口道|问道|答道)$/g, "").trim());,      normalizedDialogueLines.push(...quoted.filter(Boolean));,    } else {,      // Split common untagged narration-plus-speech output into an action card and a dialogue bubble.,      const speechSplit = line.match(/^(.{1,100}?)(?:轻声说|低声说|开口道|说道|说着|问道|答道|回答道|说|问|答)\s*[:：，,]?\s*(.+)$/);,      if (speechSplit && actionVerb.test(speechSplit[1]) && !conversational.test(speechSplit[1])) {,        extractedActions.push(speechSplit[1].trim().replace(/[，,：:]$/, ""));,        normalizedDialogueLines.push(speechSplit[2].trim().replace(/^[“「『"]|[”」』"]$/g, ""));,      } else if (actionVerb.test(line) && !conversational.test(line)) {,        extractedActions.push(line.replace(/^(?:动作|行动|旁白|场景描写)\s*[:：]\s*/, "").trim());,      } else {,        normalizedDialogueLines.push(line);,      },    }
+    if (quoted.length) {
+      if (outside && actionVerb.test(outside)) extractedActions.push(outside.replace(/[，,：:]?(?:说道|说着|开口道|问道|答道)$/g, "").trim());
+      normalizedDialogueLines.push(...quoted.filter(Boolean));
+    } else {
+      // Split common untagged narration-plus-speech output into an action card and a dialogue bubble.
+      const speechSplit = line.match(/^(.{1,100}?)(?:轻声说|低声说|开口道|说道|说着|问道|答道|回答道|说|问|答)\s*[:：，,]?\s*(.+)$/);
+      if (speechSplit && actionVerb.test(speechSplit[1]) && !conversational.test(speechSplit[1])) {
+        extractedActions.push(speechSplit[1].trim().replace(/[，,：:]$/, ""));
+        normalizedDialogueLines.push(speechSplit[2].trim().replace(/^[“「『"]|[”」』"]$/g, ""));
+      } else if (actionVerb.test(line) && !conversational.test(line)) {
+        extractedActions.push(line.replace(/^(?:动作|行动|旁白|场景描写)\s*[:：]\s*/, "").trim());
+      } else {
+        normalizedDialogueLines.push(line);
+      }
+    }
+  }
   const dialogue = normalizedDialogueLines.join("\n").replace(/\s+([，。！？；：])/g, "$1").trim();
   return { action: extractedActions.filter(Boolean).join("\n"), dialogue, followRequest, planChange, invitation };
 }
