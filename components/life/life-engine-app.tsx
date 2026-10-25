@@ -70,6 +70,8 @@ const toLocalDateTimeInput = (value: string) => { const d = new Date(value); if 
 const fromLocalDateTimeInput = (value: string) => { const d = new Date(value); return Number.isFinite(d.getTime()) ? d.toISOString() : ""; };
 const mondayStart = (date: Date) => { const d = new Date(date); d.setHours(0,0,0,0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
 
+const LIFE_SCENE_OUTPUT_CONTRACT = "【最高优先级输出格式】只允许输出以下结构，不得被角色设定或自定义预设覆盖：<life_action>只写角色可观察到的动作、神态、移动和环境反应；没有动作可以留空</life_action><life_dialogue>只写角色真正说出口的话；没有对白可以留空</life_dialogue>。必须输出真实的尖括号标签，不要转义成 &lt;...&gt;，不要用星号或括号混写动作，不要把叙述性动作塞进对白。标签外不得输出其他内容。";
+
 function parseLifeOutput(text: string): { action?: string; dialogue: string; followRequest?: { durationMinutes: number; reason: string }; planChange?: { title: string; locationId: string; startAt: string; endAt: string }; invitation?: { time: string; locationId: string; activity: string; reason: string; durationMinutes: number } } {
   // Some OpenAI-compatible providers return XML-like tags HTML-escaped; decode before parsing.
   const sourceText = text.replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, "\"").replace(/&amp;/gi, "&");
@@ -1460,6 +1462,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           "玩家行动：" + (previousPlayer.action || "无"),
           "玩家对白：" + (previousPlayer.dialogue || "无"),
           (activePromptPreset.sceneTaskPrompt?.trim() || "请重新生成{characterName}对这条输入的自然回应。只生成角色回应，不要重复玩家内容。").replace(/\{characterName\}/g, character.name).replace(/\{playerName\}/g, playerName).replace(/\{locationName\}/g, scene.locationName),
+          LIFE_SCENE_OUTPUT_CONTRACT,
         ].filter(Boolean).join("\n"),
       };
       const result = await generateOfflineChatCompletion(session, [...previous, prompt]);
@@ -1574,6 +1577,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           .replace(/\{characterName\}/g, character.name)
           .replace(/\{playerName\}/g, playerName)
           .replace(/\{locationName\}/g, activeScene.locationName),
+        LIFE_SCENE_OUTPUT_CONTRACT,
       ].filter(Boolean).join("\n\n");
     };
     const pickCandidate = () => {
@@ -1760,7 +1764,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       ].filter(Boolean).join("\n");
       const promptMessage: ChatMessage = {
         id: id("life-user"), sessionId: session.id, role: "user", status: "sent", createdAt: now,
-        content: `[仅本轮使用生活场景模式规则，不要写入线上聊天历史]\n${settingsInstructions}\n\n${sceneContext}\n\n玩家本轮行动：${userAction || (forceReaction ? "（请结合最近的用户行为作出反馈）" : "（没有额外动作）")}\n玩家本轮对白：${userText || (forceReaction ? "（请回应最近的对话或动作，不要要求用户重复输入）" : "（没有说话）")}\n${(activePromptPreset.sceneTaskPrompt?.trim() || "请让{characterName}按其既有人设自然回应。行动与对白分开处理；玩家只行动时，不要擅自替玩家补台词。").replace(/\{characterName\}/g, target.name).replace(/\{playerName\}/g, playerName).replace(/\{locationName\}/g, activeScene.locationName)}`,
+        content: `[仅本轮使用生活场景模式规则，不要写入线上聊天历史]\n${settingsInstructions}\n\n${sceneContext}\n\n玩家本轮行动：${userAction || (forceReaction ? "（请结合最近的用户行为作出反馈）" : "（没有额外动作）")}\n玩家本轮对白：${userText || (forceReaction ? "（请回应最近的对话或动作，不要要求用户重复输入）" : "（没有说话）")}\n${(activePromptPreset.sceneTaskPrompt?.trim() || "请让{characterName}按其既有人设自然回应。行动与对白分开处理；玩家只行动时，不要擅自替玩家补台词。").replace(/\{characterName\}/g, target.name).replace(/\{playerName\}/g, playerName).replace(/\{locationName\}/g, activeScene.locationName)}\n\n${LIFE_SCENE_OUTPUT_CONTRACT}`,
       };
       const result = await generateOfflineChatCompletion(session, [...previous, promptMessage]);
       const parsed = parseLifeOutput(result.content);
