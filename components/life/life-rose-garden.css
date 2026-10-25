@@ -5,7 +5,8 @@
 
 
 /* Keep the life system within the actual mobile viewport; settings grids must shrink rather than widen the page. */
-.life-rose-garden { width: 100%; max-width: 100vw; box-sizing: border-box; overflow-x: clip; }
+.life-rose-garden { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; overflow-x: hidden; }
+.life-rose-garden .grid, .life-rose-garden section, .life-rose-garden article { min-width: 0; max-width: 100%; box-sizing: border-box; }
 .life-rose-garden > * { min-width: 0; max-width: 100%; box-sizing: border-box; }
 .life-rose-garden input, .life-rose-garden textarea, .life-rose-garden select, .life-rose-garden button, .life-rose-garden img { max-width: 100%; box-sizing: border-box; }
 .life-rose-garden textarea, .life-rose-garden input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), .life-rose-garden select { min-width: 0; }
