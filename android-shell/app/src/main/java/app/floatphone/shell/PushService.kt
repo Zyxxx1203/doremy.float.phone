@@ -289,18 +289,23 @@ class PushService : Service() {
      * 点通知的落点：带 sessionId 时经深链直达对应会话，否则回首页。
      * 深链与 MainActivity 共用 EXTRA_OPEN_URL 通道。
      */
-    private fun contentIntent(sessionId: String? = null): PendingIntent {
+    private fun contentIntent(sessionId: String? = null, lifeScene: Boolean = false, sceneId: String? = null): PendingIntent {
         val intent = Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val id = sessionId?.trim().orEmpty()
-        if (id.isNotEmpty()) {
-            intent.putExtra(
-                MainActivity.EXTRA_OPEN_URL,
-                "${MainActivity.SITE_URL.trimEnd('/')}/#open-chat=${android.net.Uri.encode(id)}",
-            )
+        val targetUrl = if (lifeScene) {
+            // Life-scene push taps must return to the living-world screen, not the
+            // normal chat session used only to build the offline model snapshot.
+            "${MainActivity.SITE_URL.trimEnd('/')}/life"
+        } else if (id.isNotEmpty()) {
+            "${MainActivity.SITE_URL.trimEnd('/')}/#open-chat=${android.net.Uri.encode(id)}"
+        } else {
+            ""
         }
+        if (targetUrl.isNotEmpty()) intent.putExtra(MainActivity.EXTRA_OPEN_URL, targetUrl)
+        val requestCode = if (lifeScene) ("life:" + sceneId.orEmpty()).hashCode() else id.hashCode()
         return PendingIntent.getActivity(
-            this, 0, intent,
+            this, requestCode, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
     }
@@ -385,7 +390,7 @@ class PushService : Service() {
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setAutoCancel(true)
-            .setContentIntent(contentIntent(sessionId))
+            .setContentIntent(contentIntent(sessionId, kind == "life_scene", sceneId))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
         // 角色头像当通知大图标（服务端随广播带的 avatar：data URL 或直链）。
         // 取不到就退回默认图标——头像只是锦上添花，绝不能拖住或搞丢通知。
