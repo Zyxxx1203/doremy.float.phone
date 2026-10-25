@@ -285,10 +285,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   });
   const [localResolverStatus, setLocalResolverStatus] = useState("");
   const [termuxDeployStatus, setTermuxDeployStatus] = useState("");
-  const [localResolverEngine, setLocalResolverEngine] = useState<"auto" | "parse-video-py" | "yt-dlp">(() => {
+  const [localResolverEngine, setLocalResolverEngine] = useState<"auto" | "yt-dlp">(() => {
     try {
       const saved = typeof window !== "undefined" ? window.localStorage.getItem("watch_local_resolver_engine_v1") : null;
-      return saved === "parse-video-py" || saved === "yt-dlp" ? saved : "auto";
+      // 旧版本曾提供 parse-video-py 引擎（需要 Rust/C 编译，Android 上装不上），已下线；
+      // 存过该值的老用户一律回落到自动。
+      return saved === "yt-dlp" ? saved : "auto";
     } catch { return "auto"; }
   });
   const localResolverJobRef = useRef<{ id: string; endpoint: string; token: string; builtin?: boolean } | null>(null);
@@ -946,7 +948,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         onNotice?.("站内解析失败：" + message + (localResolverEndpoint.trim() ? "；继续尝试外部解析服务。" : "；将尝试平台嵌入播放。"));
       }
     }
-    // ② 外部解析服务（Termux / 电脑 Python，可选）：抖音等需要 cookies 或 yt-dlp 的平台。
+    // ② 外部解析服务（Termux / 电脑 Python，可选）：server.py 单引擎 yt-dlp，抖音等风控平台可带 cookies。
     if (endpoint && !parsed.nativeVideo && !goodEmbed) {
       const seq = ++openVideoSeqRef.current;
       try {
@@ -1997,29 +1999,28 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           </section>
           <section className="mt-4 border-t border-white/10 pt-3">
             <h3 className="font-serif text-sm text-[#e8c39a]">视频解析与本地缓存</h3>
-             <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">站内解析已内置，自部署直接可用：小红书（含 xhslink 短链）免登录解析并缓存到本机；抖音/快手需在下方配置外部解析服务（抖音必须粘贴 Cookies）。B站/直链/本地文件无需解析。缓存长期保留——同一链接下次秒开、长视频自动续播；仅超过总容量上限（默认 4 GB）才按最久未看清理。删除单条缓存请到「观看记录」对应卡片。</p>
+             <p className="mt-1 text-[10px] leading-5 text-[#8b8077]">站内解析已内置，自部署直接可用：小红书（含 xhslink 短链）免登录解析并缓存到本机。抖音、快手、B 站等需要 yt-dlp 能力的平台，在下方配置外部解析服务即可（抖音风控严，需粘贴 Cookies）。直链 / 本地文件无需解析。缓存长期保留——同一链接下次秒开、长视频自动续播；仅超过总容量上限（默认 4 GB）才按最久未看清理。删除单条缓存请到「观看记录」对应卡片。</p>
              <button type="button" onClick={async () => { try { const res = await fetch("/api/watch-resolver/cache", { method: "DELETE" }); const result = await res.json() as { ok?: boolean; removed?: number }; setLocalResolverStatus(result.ok ? `已清空站内缓存（${result.removed ?? 0} 个文件）。` : "清空失败：" + (result as { error?: string }).error); } catch (error) { setLocalResolverStatus("清空失败：" + (error instanceof Error ? error.message : String(error))); } }} className="mt-2 w-full rounded-xl border border-[#c99a6a]/60 bg-[#c99a6a]/15 px-3 py-2.5 text-xs font-medium text-[#f0d5b8]">清空全部站内缓存</button>
-             <p className="mt-3 text-[10px] font-medium tracking-wide text-[#c9a887]">外部解析服务（可选进阶 · Termux / 电脑 Python）——想要 yt-dlp 级别能力（如带 Cookies 的抖音）时才需要：</p>
+             <p className="mt-3 text-[10px] font-medium tracking-wide text-[#c9a887]">外部解析服务（可选 · Termux / 电脑 Python）——纯标准库实现，Android 上不需要编译，一条命令装好；支持抖音 / 快手 / B 站 / YouTube 等 yt-dlp 能解析的平台：</p>
              <button type="button" onClick={async () => {
-               const command = "curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver/install-termux.sh | bash";
+               const command = "curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver/install-android.sh | bash";
                try {
                  await navigator.clipboard.writeText(command);
-                 setTermuxDeployStatus("部署命令已复制。现在切换到 Termux，粘贴并执行；安装完成后返回这里点「测试连接」。安装过程需要网络和一些存储空间。");
+                 setTermuxDeployStatus("部署命令已复制。现在切换到 Termux，粘贴并执行；装完会打印健康状态，再返回这里点「测试连接」。安装会装 python + ffmpeg（约 200 MB），需要网络。");
                  onNotice?.("已复制 Termux 一键部署命令，请切换到 Termux 粘贴执行。");
                } catch {
                  setTermuxDeployStatus("自动复制不可用。请长按下方命令文本复制，再切换到 Termux 粘贴执行。");
                }
              }} className="mt-2 w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-xs text-[#d8c9b6]">复制 Termux 一键部署命令</button>
-             {termuxDeployStatus && <div role="status" aria-live="polite" className="mt-2 rounded-lg bg-black/20 p-2 text-[10px] leading-5 text-[#e6c49d]">{termuxDeployStatus}<code onClick={async () => { try { await navigator.clipboard.writeText("curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver/install-termux.sh | bash"); onNotice?.("部署命令已复制"); } catch { onNotice?.("请长按命令复制"); } }} className="mt-1 block select-all break-all rounded bg-black/20 p-2 text-[10px]">curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver/install-termux.sh | bash</code></div>}
-             <p className="mt-2 text-[10px] leading-5 text-[#8b8077]">安装完成后服务地址为 http://127.0.0.1:8765。Termux 被系统停止时，重新打开 Termux 执行 momo-video-start。未配置时站内解析与平台内嵌播放器照常工作。</p>
+             {termuxDeployStatus && <div role="status" aria-live="polite" className="mt-2 rounded-lg bg-black/20 p-2 text-[10px] leading-5 text-[#e6c49d]">{termuxDeployStatus}<code onClick={async () => { try { await navigator.clipboard.writeText("curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver/install-android.sh | bash"); onNotice?.("部署命令已复制"); } catch { onNotice?.("请长按命令复制"); } }} className="mt-1 block select-all break-all rounded bg-black/20 p-2 text-[10px]">curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver/install-android.sh | bash</code></div>}
+             <p className="mt-2 text-[10px] leading-5 text-[#8b8077]">安装完成后服务地址为 http://127.0.0.1:8765：momo-video-status 看状态、momo-video-start 启动、momo-video-stop 停止。Termux 被系统停止后重开 Termux 执行 momo-video-start 即可，建议同时执行 termux-wake-lock 并把 Termux 加入电池优化白名单。未配置时站内解析与平台内嵌播放器照常工作。</p>
             <label className="mt-2 block text-[11px] text-[#9c9086]">解析服务地址
               <input type="url" value={localResolverEndpoint} onChange={event => setLocalResolverEndpoint(event.target.value)} placeholder="http://127.0.0.1:8765" className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none"/>
             </label>
             <label className="mt-2 block text-[11px] text-[#9c9086]">解析策略
-              <select value={localResolverEngine} onChange={event => { const value = event.target.value as "auto" | "parse-video-py" | "yt-dlp"; setLocalResolverEngine(value); try { window.localStorage.setItem("watch_local_resolver_engine_v1", value); } catch {} }} className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none">
-                <option value="auto">自动选择可用的解析方式</option>
-                <option value="parse-video-py">方式一</option>
-                <option value="yt-dlp">方式二</option>
+              <select value={localResolverEngine} onChange={event => { const value = event.target.value as "auto" | "yt-dlp"; setLocalResolverEngine(value); try { window.localStorage.setItem("watch_local_resolver_engine_v1", value); } catch {} }} className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-[#efe2d0] outline-none">
+                <option value="auto">自动（推荐）</option>
+                <option value="yt-dlp">仅 yt-dlp</option>
               </select>
             </label>
             <label className="mt-2 block text-[11px] text-[#9c9086]">本地服务令牌（可留空）

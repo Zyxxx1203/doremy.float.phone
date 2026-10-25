@@ -24,11 +24,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: tools/video-resolver/requirements.txt
-      - name: Install resolver dependencies
-        run: python -m pip install -r tools/video-resolver/requirements.txt
+      - name: Install yt-dlp
+        run: python -m pip install --upgrade yt-dlp
       - name: Compile Python source
-        run: python -m py_compile tools/video-resolver/app.py
-      - name: Run resolver strategy regression tests
+        run: python -m py_compile tools/video-resolver/server.py
+      - name: Run resolver regression tests
         run: python -m unittest discover -s tools/video-resolver -p "test_*.py" -v

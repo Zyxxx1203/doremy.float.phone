@@ -1,0 +1,50 @@
+import unittest
+from unittest.mock import patch
+
+import server
+
+
+class FormatSelectionTests(unittest.TestCase):
+    def test_prefers_h264_when_ffmpeg_available(self):
+        with patch.object(server.shutil, "which", return_value="/usr/bin/ffmpeg"):
+            options = server.ydl_options("/tmp/video.%(ext)s", "720")
+        self.assertIn("vcodec^=avc1", options["format"])
+        self.assertIn("height<=720", options["format"])
+
+    def test_merges_audio_when_ffmpeg_available(self):
+        with patch.object(server.shutil, "which", return_value="/usr/bin/ffmpeg"):
+            options = server.ydl_options("/tmp/video.%(ext)s", "best")
+        self.assertEqual(options["merge_output_format"], "mp4")
+        self.assertIn("bestaudio", options["format"])
+
+    def test_single_file_fallback_without_ffmpeg(self):
+        with patch.object(server.shutil, "which", return_value=None):
+            options = server.ydl_options("/tmp/video.%(ext)s", "720")
+        self.assertEqual(options["format"], "best[height<=720][vcodec^=avc1]/best[height<=720]/best")
+
+
+class UrlGuardTests(unittest.TestCase):
+    def test_rejects_non_http_scheme(self):
+        with self.assertRaises(server.HttpError) as ctx:
+            server.validate_url("ftp://example.com/v.mp4")
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_rejects_loopback_and_private(self):
+        for url in ("http://127.0.0.1/v.mp4", "http://localhost/v.mp4", "http://192.168.1.10/v.mp4"):
+            with self.assertRaises(server.HttpError):
+                server.validate_url(url)
+
+    def test_allows_proxy_fake_ip_range(self):
+        # 手机代理的 Fake-IP 段（RFC2544）实际映射公网域名，不能当成内网拒绝。
+        with patch.object(server.socket, "getaddrinfo", return_value=[(None, None, None, None, ("198.18.0.13", 443))]):
+            self.assertEqual(server.validate_url("https://www.bilibili.com/video/BV1xx411c7mD"),
+                             "https://www.bilibili.com/video/BV1xx411c7mD")
+
+    def test_rejects_unresolvable_host(self):
+        with patch.object(server.socket, "getaddrinfo", side_effect=OSError("dns fail")):
+            with self.assertRaises(server.HttpError):
+                server.validate_url("https://nonexistent.invalid/v.mp4")
+
+
+if __name__ == "__main__":
+    unittest.main()

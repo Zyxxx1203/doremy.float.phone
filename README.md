@@ -93,29 +93,32 @@ npm run dev
   - B站 BV/av 直链 → 官方站内播放器；`b23.tv` 短链会自动在服务端换算成真实视频
   - 腾讯视频 / 优酷 / YouTube → 对应官方嵌入播放器
   - 直链视频文件（`.mp4` / `.webm` / `.m3u8`，HLS 由 hls.js 支持）与本地视频文件
-  - 小红书 / 抖音 / 快手 → 通过**本地解析服务**提取直连流后下载到本地缓存播放（见下）
+  - 小红书 → 站内解析（免登录、缓存秒开）；抖音 / 快手 / B站直链 → 通过**本地解析服务**提取直连流后下载到本地缓存播放（见下）
 - **AI 陪看**：绑定角色后，角色按随机间隔主动聊剧情（每日上限护栏，挂机不烧 API）；可截取当前画面 / 上传截图 / 导入字幕脚本，配合「视频理解」模型（Gemini / 方舟 / TwelveLabs / OpenAI 兼容 / Claude）让角色真正看懂视频
 - **标记重点**：看片途中一键标记当前时间点，角色立刻就该时间点给出反馈；历史评论的时间点可点击回跳
 - **观看记录**：每次一起看自动建档计时，积累共同记忆
 - **全局陪看**（Android APK）：离开 App 后继续截屏陪看
 
-### 本地解析服务（可选，用于小红书 / 抖音 / 快手等平台）
+### 本地解析服务（可选，用于抖音 / 快手 / B站 / YouTube 等平台）
 
-站内无法直接嵌入的短视频平台，由一个跑在你自己设备上的小服务完成「解析 → 下载 → 本地缓存播放」：
+站内无法直接嵌入或需要直连流的平台，由一个跑在你自己设备上的小服务完成「解析 → 下载 → 本地缓存播放」。单文件实现 `server.py`，只用 Python 标准库 + yt-dlp，**没有任何需要编译的依赖**：
 
 ```bash
 cd tools/video-resolver
-pip install -r requirements.txt
-python app.py                # 默认 http://127.0.0.1:8765
+python -m pip install yt-dlp
+python server.py             # 默认 http://127.0.0.1:8765
 ```
 
-- Android 上可用 Termux 一键部署：App 内「一起看 → 设置 → 本地视频下载引擎 → 复制 Termux 一键部署命令」
-- **平台支持现状**（实测）：
-  - 小红书（含 `xhslink.cn` 短链）：✅ 免登录直接解析
-  - 抖音：⚠️ 平台风控严格，**必须**在「设置 → 本地视频下载引擎 → 平台 Cookies」粘贴从电脑浏览器导出的 Netscape 格式 Cookies（无需登录，浏览任意视频后导出即可）
-  - 快手：支持同链路，未逐一验证
+- Android 上可用 Termux 一键部署：App 内「一起看 → 设置 → 视频解析与本地缓存 → 复制 Termux 一键部署命令」，或直接执行
+  `curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver/install-android.sh | bash`
+- Windows 用 `install-windows.ps1`（装好 yt-dlp 后运行 `python server.py`），需要 ffmpeg 在 PATH 中
+- **平台支持现状**：
+  - 小红书（含 `xhslink.cn` 短链）：✅ 站内解析直接支持，无需本服务
+  - B 站：✅ 直链提取（音视频分离，需要 ffmpeg 合并；默认优先 H.264 以便手机硬解）
+  - 抖音：⚠️ 平台风控严格，**必须**在「设置 → 平台 Cookies」粘贴从电脑浏览器导出的 Netscape 格式 Cookies
+  - 快手 / YouTube：走 yt-dlp，支持同链路，未逐一验证
   - 网盘分享页（夸克 / 百度网盘）：❌ 需要登录与私有接口，不支持；请下载后用「本地视频」播放
-- 服务支持访问令牌（`VIDEO_RESOLVER_TOKEN`）与缓存上限（`VIDEO_RESOLVER_MAX_MB`），缓存 24 小时自动清理
+- 服务支持访问令牌（`VIDEO_RESOLVER_TOKEN`）与缓存上限（`VIDEO_RESOLVER_MAX_MB`），缓存 24 小时自动清理；支持 `Range` 拖动进度
 
 链接转写（生成时间戳字幕脚本）需要另行部署 [tools/video-transcriber](./tools/video-transcriber/README.md)（Whisper / Cloudflare Worker）。
 
@@ -193,7 +196,7 @@ npm run check:sdk      # 校验自定义 App SDK 一致性
 app/                 Next.js 路由与 API（auth / push / image-generation / resolve-short-link …）
 components/          UI 组件（desktop-shell、聊天、生活、照片墙、一起看…）
 lib/                 核心逻辑（存储、聊天引擎、生活运行时、照片墙存储…）
-tools/video-resolver 视频解析服务（FastAPI + yt-dlp + parse-video-py）
+tools/video-resolver 视频解析服务（标准库 + yt-dlp，Termux / Windows 通用）
 tools/video-transcriber  视频转写服务
 tools/weixin-local-assistant  微信本地助手
 android-shell/       Android 原生壳
@@ -232,4 +235,4 @@ scripts/             构建、校验与测试脚本
 
 ## Credits
 
-本项目为独立实现，但部分产品设计和系统抽象受 [SillyTavern](https://github.com/SillyTavern/SillyTavern)（AGPL-3.0）启发，包括预设、正则处理、世界书 / lorebook / WorldInfo 等概念。视频解析依赖 [yt-dlp](https://github.com/yt-dlp/yt-dlp) 与 [parse-video-py](https://github.com/wujunwei928/parse-video-py)。字体、贴纸素材、3D 模型等第三方资源的授权说明见 [NOTICE](./NOTICE)。
+本项目为独立实现，但部分产品设计和系统抽象受 [SillyTavern](https://github.com/SillyTavern/SillyTavern)（AGPL-3.0）启发，包括预设、正则处理、世界书 / lorebook / WorldInfo 等概念。视频解析依赖 [yt-dlp](https://github.com/yt-dlp/yt-dlp) 与 FFmpeg。字体、贴纸素材、3D 模型等第三方资源的授权说明见 [NOTICE](./NOTICE)。

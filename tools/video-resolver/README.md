@@ -1,37 +1,69 @@
-# Momo 本地视频解析服务（Windows / Termux）
+# Momo 本地视频解析服务（Termux / Windows）
 
-定位：这是可选的本地解析服务（Windows / Termux）。当前网页端已另有内置解析 API，优先尝试内置解析；当平台不受内置解析支持、需要本机工具链或希望在本地处理时，再配置本服务。该服务先把平台视频下载到本机缓存，再播放本地文件，避免依赖平台网页播放器。Windows 与 Android Termux 使用同一套 Python API。该服务内置两个独立解析引擎：`parse-video-py`（覆盖多个中文短视频分享链接）和 `yt-dlp`（平台提取器/下载器）。`auto` 会按平台选择顺序：抖音/快手/小红书等短视频分享链接优先 `parse-video-py`，B站/YouTube 等长视频平台优先 `yt-dlp`，失败后再尝试另一个引擎；这样可避免把 B 站分离的无声视频轨误当成完整视频。也可在「一起看」设置中锁定某一个引擎。该服务是可选的本地工具，不会把视频或 Cookie 上传到 Netlify/Supabase。
+「一起看」的可选本地解析服务：把平台视频**下载到本机缓存**再交给原生播放器播放，避免依赖平台网页播放器（也避免 iframe 跨域读不到状态、截不到画面）。
 
-## Windows
+单文件实现 [server.py](./server.py)，**只用 Python 标准库 + yt-dlp**，没有任何需要编译的依赖，Android / Windows / Linux 跑的是同一份代码。
 
-1. 安装 Python 3.11 或更新版本。
-2. PowerShell 进入此目录，运行 `Set-ExecutionPolicy -Scope Process Bypass`（如脚本被策略拦截）和 `./install-windows.ps1`。
-3. 若要播放 B 站等分离视频/音频轨的平台，请另外安装 FFmpeg 并确保 `ffmpeg.exe` 在 PATH 中；安装脚本会检测并提示。缺少 FFmpeg 时会退回单文件格式，最高画质/音轨合并可能不可用。
-4. 启动：`.\.venv\Scripts\python.exe app.py`
-5. 检查 `http://127.0.0.1:8765/health`。
+## 为什么不再是 FastAPI 那版
 
-## Android Termux
+旧实现 `app.py` 依赖 `fastapi + pydantic + parse-video-py`。在 Android 上这条路走不通：pip 只接受 `android_arm64` 平台的 wheel，`pydantic-core`（Rust）、`lxml`/`aiohttp`（C 扩展）在 PyPI 上只有 manylinux 轮子，落到源码编译就必然失败（`maturin: Rust not found`）。所以改成标准库实现，接口保持完全一致，网页端无需改动。
 
-先安装 Termux（建议使用官方 GitHub/F-Droid 发行版），打开后只需粘贴这一条命令，即可自动下载服务文件、安装 Python/FFmpeg/解析依赖、启动服务并检查健康状态：
+## 安装
+
+### Android / Termux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver/install-termux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Zyxxx1203/doremy.float.phone/main/tools/video-resolver/install-android.sh | bash
 ```
 
-安装完成后可用 `momo-video-status` 检查，`momo-video-start` 启动，`momo-video-stop` 停止。程序安装在 `~/.momo-video-resolver`，日志在 `~/.momo-video-resolver/service.log`。这一步只负责当前 Termux 环境；若系统强制杀掉 Termux，重新打开后运行 `momo-video-start` 即可。需要长时间后台运行时，可执行 `termux-wake-lock` 并把 Termux 加入电池优化白名单。
+脚本会 `pkg install python ffmpeg curl`、`pip install yt-dlp`，把服务装到 `~/.momo-video-resolver`，并写入三个命令：
 
-Termux 服务与 Android App 私有缓存不是同一个目录；本服务返回本地下载 API 地址。APK 已配置仅允许 `localhost` / `127.0.0.1` 的 HTTP 回环访问，不会全局放开明文 HTTP；在 APK 中请将服务地址设为 `http://127.0.0.1:8765`。普通浏览器仍受浏览器自身的混合内容和 CORS 策略影响。Termux 下载缓存与 App 私有缓存相互独立，不能把 Termux 文件路径误当成 App 文件路径。
+| 命令 | 作用 |
+| --- | --- |
+| `momo-video-start` | 启动（已在跑就直接提示） |
+| `momo-video-status` | 健康检查 |
+| `momo-video-stop` | 停止 |
+
+装完记得 `termux-wake-lock` 并把 Termux 加入电池优化白名单，否则被系统回收后服务会停，重开 Termux 执行 `momo-video-start` 即可。
+
+### Windows
+
+PowerShell 进入此目录：
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass   # 如脚本被策略拦截
+./install-windows.ps1
+.\.venv\Scripts\python.exe server.py
+```
+
+需要 ffmpeg（`ffmpeg.exe` 在 PATH 中）；脚本会检测并提示。B 站等音视频分离的平台缺 ffmpeg 就只能拿单文件格式。
+
+### 任意平台手动
+
+```bash
+python -m pip install yt-dlp
+python server.py          # 默认 http://127.0.0.1:8765
+```
 
 ## API
 
-- `GET /health`
-- `POST /api/resolve` JSON：`{"url":"https://...","quality":"best","engine":"auto"}`；质量可选 `best/1080/720/480/360`，引擎可选 `auto/parse-video-py/yt-dlp`。响应中的 `engine` 字段表示实际成功使用的引擎。
-- `GET /api/videos/{id}` 播放/读取缓存视频（视频标签无法附加自定义请求头，因此此路由使用高熵随机 job ID 作为短期访问凭据；不要公开分享播放地址）
+- `GET /health` → `{ok, service, version, engines:{yt-dlp}, ffmpeg, cache_mb}`
+- `POST /api/resolve` JSON `{"url":"https://...","quality":"best","cookies":"<Netscape 文本，可选>"}`
+  - `quality`：`best` / `1080` / `720` / `480` / `360`
+  - 返回 `{ok, id, title, size, mime, engine, downloadUrl}`
+- `GET /api/videos/{id}` 播放/读取缓存，支持 `Range`（206）与 `HEAD`
 - `DELETE /api/videos/{id}` 删除缓存
-- 可选请求头 `X-Resolver-Token` 对应环境变量 `VIDEO_RESOLVER_TOKEN`。
+- 可选请求头 `X-Resolver-Token`，对应环境变量 `VIDEO_RESOLVER_TOKEN`
 
-默认仅监听 `127.0.0.1`，不要无保护地绑定公网或局域网。需要远程访问时设置强随机 token、限制网络访问并只允许可信来源。服务会拒绝明显内网/本机 URL，避免成为 SSRF 代理。Cookie 只接受用户主动提供的 Netscape 格式文本，仅用于当前下载任务，结束后临时文件即删除；不要把 Cookie 发给不可信服务。
+环境变量见 [.env.example](./.env.example)。默认只监听 `127.0.0.1`。
+
+## 行为细节
+
+- **优先 H.264**：B 站等平台的 `bestvideo` 默认给 AV1，部分机型/WebView 硬解不了会黑屏，所以格式选择先挑 `vcodec^=avc1`，再退回任意编码（同画质体积约大 60%）。
+- **短链先在服务端展开**：`b23.tv`、`v.douyin.com`、`xhslink.com` 等先 302 跟到正式地址再解析；展开结果同样过安全校验。
+- **SSRF 防护**：拒绝内网 / 回环 / 保留地址，但放行 `198.18.0.0/15` —— 那是手机代理 Fake-IP 模式分配的假地址，实际指向公网。
+- **缓存策略**：24 小时或超过 `VIDEO_RESOLVER_MAX_MB`（默认 2048 MB）自动清理，`DELETE` 可手动删。
 
 ## 限制
 
-yt-dlp 只能处理平台当前允许访问且工具支持的内容。会员/登录限制、地区限制、签名变更、DRM 或平台策略可能导致失败；本工具不会绕过 DRM、付费墙或访问控制。遵守平台条款和内容版权。大文件需要足够磁盘空间；播放后可调用 DELETE 清理。
+只支持 yt-dlp 能处理的平台与内容。会员/登录限制、地区限制、签名变更、DRM 或平台策略都可能失败；本工具不会绕过 DRM、付费墙或访问控制。抖音风控较严，通常需要粘贴电脑浏览器导出的 Netscape 格式 Cookies。大文件需要足够磁盘空间，播完可 `DELETE` 清理。遵守平台条款与内容版权。
