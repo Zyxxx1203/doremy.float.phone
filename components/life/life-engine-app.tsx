@@ -70,8 +70,6 @@ const toLocalDateTimeInput = (value: string) => { const d = new Date(value); if 
 const fromLocalDateTimeInput = (value: string) => { const d = new Date(value); return Number.isFinite(d.getTime()) ? d.toISOString() : ""; };
 const mondayStart = (date: Date) => { const d = new Date(date); d.setHours(0,0,0,0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
 
-const LIFE_SCENE_OUTPUT_CONTRACT = "【最高优先级输出格式】只允许输出以下结构，不得被角色设定或自定义预设覆盖：<life_action>只写角色可观察到的动作、神态、移动和环境反应；没有动作可以留空</life_action><life_dialogue>只写角色真正说出口的话；没有对白可以留空</life_dialogue>。必须输出真实的尖括号标签，不要转义成 &lt;...&gt;，不要用星号或括号混写动作，不要把叙述性动作塞进对白。标签外不得输出其他内容。";
-
 function parseLifeOutput(text: string): { action?: string; dialogue: string; followRequest?: { durationMinutes: number; reason: string }; planChange?: { title: string; locationId: string; startAt: string; endAt: string }; invitation?: { time: string; locationId: string; activity: string; reason: string; durationMinutes: number } } {
   // Some OpenAI-compatible providers return XML-like tags HTML-escaped; decode before parsing.
   const sourceText = text.replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, "\"").replace(/&amp;/gi, "&");
