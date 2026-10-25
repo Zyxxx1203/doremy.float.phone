@@ -187,7 +187,8 @@ def _xhs_page(url: str, cookie_header: str) -> str:
         html = resp.read().decode("utf-8", "replace")
     if "/login" in final:
         raise HttpError(422, "小红书要求登录：请在「一起看 → 设置 → 平台 Cookies」粘贴小红书 cookies 后重试")
-    if "/404/" in final or "sec_" in final:
+    # 注意：不能直接匹配 "sec_"，正常链接里的 xsec_token 也会命中。
+    if "/404/" in final or "/sec_" in final or "你访问的页面不见了" in html or "页面不见了" in html:
         raise HttpError(422, "小红书笔记打不开：链接可能已失效或缺 xsec_token。请用 App 里「分享 → 复制链接」得到的完整链接（xhslink 短链会自动展开）")
     return html
 
@@ -270,7 +271,11 @@ def resolve_video(body: dict) -> dict:
             try:
                 _download(url, opts)
             except Exception as exc:  # noqa: BLE001
-                failures.append("yt-dlp: " + str(exc)[:180])
+                message = str(exc)
+                low = message.lower()
+                if ("douyin" in host or "iesdouyin" in host) and ("cookie" in low or "uifid" in low or "argus" in low):
+                    raise HttpError(422, "抖音需要 cookies：它用 Argus 风控挡住了无 cookie 的请求。请在「一起看 → 设置 → 平台 Cookies」粘贴从电脑浏览器导出的 douyin.com cookies（无需登录，浏览任意视频后导出即可）")
+                failures.append("yt-dlp: " + message[:180])
 
         media = next((p for p in tempdir.iterdir()
                       if p.is_file() and p.name != "cookies.txt" and p.stat().st_size > 1024), None)

@@ -73,5 +73,39 @@ class XiaohongshuTests(unittest.TestCase):
         self.assertEqual(server._xhs_cookie_header(cookies), "a1=web_session")
 
 
+class _FakeResponse:
+    def __init__(self, url, body):
+        self._url, self._body = url, body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def geturl(self):
+        return self._url
+
+    def read(self):
+        return self._body.encode()
+
+
+class XhsPageTests(unittest.TestCase):
+    def test_xsec_token_in_url_is_not_a_security_page(self):
+        # 回归：早期实现用 `"sec_" in final_url` 判断安全页，把正常链接里的
+        # xsec_token 也命中了，导致所有带 token 的笔记都被误判成「打不开」。
+        url = "https://www.xiaohongshu.com/discovery/item/abc?xsec_token=XYZ"
+        with patch.object(server, "urlopen", return_value=_FakeResponse(url, XiaohongshuTests.PAGE)):
+            html = server._xhs_page(url, "")
+        self.assertIn("masterUrl", html)
+
+    def test_login_wall_reports_actionable_error(self):
+        url = "https://www.xiaohongshu.com/login?redirectPath=%2Fdiscovery%2Fitem%2Fabc"
+        with patch.object(server, "urlopen", return_value=_FakeResponse(url, "<html></html>")):
+            with self.assertRaises(server.HttpError) as ctx:
+                server._xhs_page("https://www.xiaohongshu.com/discovery/item/abc", "")
+        self.assertIn("Cookies", ctx.exception.detail)
+
+
 if __name__ == "__main__":
     unittest.main()
