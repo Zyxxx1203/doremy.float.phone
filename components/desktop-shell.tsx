@@ -5001,14 +5001,22 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                                       alignSelf: "start",
                                       marginLeft: "var(--slot-icon-offset-x)",
                                     }}
-                                  />
+                                  >
+                                    <span className="drop-position-label" style={{ position: "absolute", zIndex: 3, top: 2, left: 2, padding: "2px 5px", borderRadius: 6, background: "var(--c-accent, #8b5cf6)", color: "#fff", fontSize: 9, lineHeight: 1.3, whiteSpace: "nowrap", pointerEvents: "none" }}>
+                                      第{dropTarget.row}行 · 第{dropTarget.col}列
+                                    </span>
+                                  </div>
                                 );
                               }
                               return (
                                 <div
                                   className="drop-indicator"
-                                  style={{ gridRow: dropTarget.row, gridColumn: dropTarget.col }}
-                                />
+                                  style={{ gridRow: dropTarget.row, gridColumn: dropTarget.col, position: "relative" }}
+                                >
+                                  <span className="drop-position-label" style={{ position: "absolute", zIndex: 3, top: 2, left: 2, padding: "2px 5px", borderRadius: 6, background: "var(--c-accent, #8b5cf6)", color: "#fff", fontSize: 9, lineHeight: 1.3, whiteSpace: "nowrap", pointerEvents: "none" }}>
+                                    第{dropTarget.row}行 · 第{dropTarget.col}列
+                                  </span>
+                                </div>
                               );
                             })()}
 
