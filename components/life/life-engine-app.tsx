@@ -436,6 +436,20 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const selectedActor = actors.find(actor => `${actor.ownerType}:${actor.ownerId}` === selectedActorKey) ?? actors[0];
   const activeScene = useMemo(() => state.scenes.find(scene => scene.status === "active") ?? state.scenes.filter(scene => scene.status === "paused").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0], [state.scenes]);
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
+  // Consecutive action-only entries from the same character form one visual card.
+  // Dialogue messages are never merged: each utterance keeps its own bubble.
+  const displaySceneMessages = useMemo(() => {
+    const grouped: LifeSceneMessage[] = [];
+    for (const message of sceneMessages) {
+      const previous = grouped[grouped.length - 1];
+      const actionOnly = Boolean(message.action?.trim()) && !message.dialogue?.trim() && message.role === "character";
+      const previousActionOnly = Boolean(previous?.action?.trim()) && !previous?.dialogue?.trim() && previous?.role === "character";
+      if (actionOnly && previousActionOnly && previous.sceneId === message.sceneId && previous.speakerId === message.speakerId) {
+        grouped[grouped.length - 1] = { ...previous, action: [previous.action, message.action].filter(Boolean).join("\n"), createdAt: message.createdAt };
+      } else grouped.push(message);
+    }
+    return grouped;
+  }, [sceneMessages]);
   const selectedLocation = state.locations.find(location => location.id === selectedLocationId) ?? state.locations[0];
   const sceneBackgroundLocation = state.locations.find(location => location.id === activeScene?.locationId) ?? selectedLocation;
   const selectedLocationVisitStats = useMemo(() => {
@@ -460,14 +474,15 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     });
     return { visits: count, minutes, activeMinutes };
   }, [state.timeline, state.actorStates, state.actorClocks, selectedLocation, locationStatsTick]);
-  // In a live scene, the viewport belongs to the scene itself rather than the document.
+  // Keep the chat pinned to the latest message only when the reader was already at the bottom.
+  const sceneChatAtBottomRef = useRef(true);
   const immersiveScene = !!activeScene && ((tab === "home" && sceneView) || tab === "scene");
 
   useEffect(() => {
-    if (!immersiveScene) return;
+    if (!immersiveScene || !sceneChatAtBottomRef.current) return;
     const scroller = sceneChatScrollRef.current;
     if (!scroller) return;
-    scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
+    requestAnimationFrame(() => scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" }));
   }, [immersiveScene, activeScene?.id, sceneMessages.length, busy]);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1355,7 +1370,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         content: [
           "【仅本轮使用生活场景模式规则，不要写入线上聊天历史】",
           activeSceneOutputPrompt,
-          settings.showActionNarration ? "动作、神态、移动和环境旁白只放进 <life_action>...</life_action>；真正说出口的话只放进 <life_dialogue>...</life_dialogue>。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。" : "仍须使用 <life_action></life_action> 与 <life_dialogue>...</life_dialogue>，把 life_action 留空；标签外不要输出文字。",
+          "有可观察的动作、神态、移动或环境反应时，必须写入 <life_action>...</life_action>；真正说出口的话只放进 <life_dialogue>...</life_dialogue>。没有实际动作时才可留空。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。",
           settings.keepDialogueConcise ? "一轮通常 1-3 句，保持实时互动感。" : "允许适度展开，但保持实时互动感。",
           activePromptPresetText ? "小手机预设继承内容与当前生活预设规则：\n" + activePromptPresetText : "",
           activePromptPreset.locationHabitPrompt ? "地点习惯规则：\n" + activePromptPreset.locationHabitPrompt : "",
@@ -1370,7 +1385,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const parsed = parseLifeOutput(result.content);
       const latest = stateRef.current;
       const sceneMessages = latest.sceneMessages.map(item => item.id === targetMessage.id
-        ? { ...item, action: settings.showActionNarration ? parsed.action : undefined, dialogue: parsed.dialogue, createdAt: new Date().toISOString() }
+        ? { ...item, action: parsed.action, dialogue: parsed.dialogue, createdAt: new Date().toISOString() }
         : item);
       let next: VirtualLifeState = {
         ...latest,
@@ -1442,7 +1457,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       return [
         "【生活现场自主回合：不是对玩家新消息的回复】",
         activeSceneOutputPrompt,
-         settings.showActionNarration ? "动作、神态、移动和环境旁白只放进 <life_action>...</life_action>；真正说出口的话只放进 <life_dialogue>...</life_dialogue>。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。" : "仍使用 <life_action></life_action> 与 <life_dialogue>...</life_dialogue>，把 life_action 留空，标签外不要输出文字。",
+         "有可观察的动作、神态、移动或环境反应时，必须写入 <life_action>...</life_action>；真正说出口的话只放进 <life_dialogue>...</life_dialogue>。没有实际动作时才可留空。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。",
         settings.keepDialogueConcise ? "保持自然简短，像真实相处时的一小句或一个小动作。" : "可以适度展开，但不要写成长篇故事。",
         "当前没有新的玩家输入。请结合角色正在做的事、性格、地点习惯、最近发生的事情和场景气氛，自主判断是否有自然的发言或行动动机。可以主动搭话、分享正在做的事、提出轻微互动，也可以继续忙自己的事或保持沉默。不要为了触发功能强行说话；不要替玩家行动或发言；不要重复上一条内容。",
         activePromptPresetText,
@@ -1524,7 +1539,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         const parsed = parseLifeOutput(result.content);
         if (!parsed.action?.trim() && !parsed.dialogue.trim()) return;
         const responseAt = new Date().toISOString();
-        const actionText = settings.showActionNarration ? (parsed.action ?? "").trim() : "";
+        const actionText = (parsed.action ?? "").trim();
         const dialogueSegments = splitLifeReplySegments(parsed.dialogue);
         const mergedDialogue = dialogueSegments.join("\n");
         const responseMessages: LifeSceneMessage[] = [
@@ -1621,7 +1636,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const sceneContext = buildLifeScenePromptContext(stateRef.current, activeScene, target.id);
       const settingsInstructions = [
         activeSceneOutputPrompt,
-        settings.showActionNarration ? "动作、神态、移动和环境旁白只放进 <life_action>...</life_action>；真正说出口的话只放进 <life_dialogue>...</life_dialogue>。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。" : "仍须使用 <life_action></life_action> 与 <life_dialogue>...</life_dialogue>，把 life_action 留空；标签外不要输出文字。",
+        "有可观察的动作、神态、移动或环境反应时，必须写入 <life_action>...</life_action>；真正说出口的话只放进 <life_dialogue>...</life_dialogue>。没有实际动作时才可留空。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。",
         settings.keepDialogueConcise ? "一轮通常 1-3 句，除非用户明确要求展开。" : "允许适度展开，但仍保持实时互动感。",
         forceReaction ? "本轮由玩家手动强制触发反馈。必须结合最近已经发生的动作或对白，输出可见且符合角色性格的反应；不能空白，也不要只泛泛问候。" : settings.allowCharactersToStaySilent ? "如果角色当下忙碌、没注意到或不想说话，可以自然沉默。" : "本轮需要对玩家的输入作出回应。",
         wokeFromSleep ? "角色原本正在睡觉，本轮是被消息或紧急情况吵醒；要表现困倦、反应迟缓或不想立刻长谈，不要突然精神饱满。" : "",
@@ -1710,7 +1725,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       if (structuredNext !== stateRef.current) commit(structuredNext);
       const replyAt = new Date().toISOString();
       // 动作一轮只出**一张**卡片（整段动作合并在内）；对白保持独立气泡按段显示。
-      const actionText = settings.showActionNarration ? (parsed.action ?? "").trim() : "";
+      const actionText = (parsed.action ?? "").trim();
       const dialogueSegments = splitLifeReplySegments(parsed.dialogue);
       const replyMessages: LifeSceneMessage[] = [
         ...(actionText ? [{ id: id("turn-action"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, action: actionText, dialogue: "", createdAt: replyAt }] : []),
@@ -2850,9 +2865,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         </div></details>
         {activeScene && <>
           <div className={`mb-1 flex shrink-0 items-center gap-1.5 overflow-x-auto pb-0.5 ${settings.compactLayout ? "max-h-8" : "max-h-10"}`}>{activeScene.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);const awareness=p.awarenessByActorId.player;const status=awareness==="unaware"?"还没注意到你":awareness==="suspects"?"似乎察觉到你":awareness==="aware"?"注意到你":p.activity;return <button key={p.ownerType+":"+p.ownerId} onClick={()=>p.ownerType==="character"&&setSelectedSpeakerId(p.ownerId)} className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] ${selectedSpeakerId===p.ownerId?"border-[var(--life-accent)] bg-white shadow-sm":"border-white/70 bg-white/55"}`}><span className="grid h-6 w-6 shrink-0 place-items-center overflow-hidden rounded-full bg-[#efe1d2] text-[10px] text-stone-700">{actor?.avatar?<img src={actor.avatar} alt="" className="h-full w-full object-cover"/>:(actor?.name??p.ownerId).slice(0,1)}</span><span className="text-left"><span className="block font-medium">{actor?.name??p.ownerId}</span><span className="block max-w-28 truncate text-[9px] opacity-60">{status}</span></span></button>})}</div>
-          <div ref={sceneChatScrollRef} className={`life-scene-chat mb-1 min-h-0 min-w-0 flex-1 flex flex-col overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y rounded-xl bg-white/80 ${settings.compactLayout ? "p-1 sm:p-1.5" : "p-1.5 sm:p-2"} ${immersiveScene ? "" : "h-[58dvh] min-h-[280px] max-h-[760px]"}`} style={{fontSize:"var(--life-font)", rowGap: `${settings.messageGapPx ?? 4}px`, WebkitOverflowScrolling:"touch"}}>
+          <div ref={sceneChatScrollRef} onScroll={event => { const el = event.currentTarget; sceneChatAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 56; }} className={`life-scene-chat mb-1 min-h-0 min-w-0 flex-1 flex flex-col overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y rounded-xl bg-white/80 ${settings.compactLayout ? "p-1 sm:p-1.5" : "p-1.5 sm:p-2"} ${immersiveScene ? "" : "h-[58dvh] min-h-[280px] max-h-[760px]"}`} style={{fontSize:"var(--life-font)", rowGap: `${settings.messageGapPx ?? 4}px`, WebkitOverflowScrolling:"touch"}}>
             {sceneMessages.length===0 && <div className="grid min-h-36 place-items-center text-center text-sm text-stone-400"><div><Sparkles className="mx-auto mb-2" size={22}/><p>场景已经准备好了。</p><p className="mt-1 text-xs">角色可以忙自己的事，也可以回应你；不会自动写成长篇剧情。</p></div></div>}
-            {sceneMessages.map(message=><div key={message.id} className="group flex min-w-0 max-w-full flex-col rounded-xl transition-colors" onTouchStart={() => { longPressTriggeredRef.current = false; clearMessageLongPress(); longPressTimerRef.current = window.setTimeout(() => { longPressTriggeredRef.current = true; openMessageActions(message); }, 550); }} onTouchEnd={clearMessageLongPress} onTouchMove={clearMessageLongPress} onTouchCancel={clearMessageLongPress} onContextMenu={event => { event.preventDefault(); clearMessageLongPress(); openMessageActions(message); }}>
+            {displaySceneMessages.map(message=><div key={message.id} className="group flex min-w-0 max-w-full flex-col rounded-xl transition-colors" onTouchStart={() => { longPressTriggeredRef.current = false; clearMessageLongPress(); longPressTimerRef.current = window.setTimeout(() => { longPressTriggeredRef.current = true; openMessageActions(message); }, 550); }} onTouchEnd={clearMessageLongPress} onTouchMove={clearMessageLongPress} onTouchCancel={clearMessageLongPress} onContextMenu={event => { event.preventDefault(); clearMessageLongPress(); openMessageActions(message); }}>
               {message.role==="system" ? <div className="mx-auto max-w-[92%] px-2 py-1 text-center italic leading-relaxed text-stone-500"><p className="whitespace-pre-wrap text-center leading-snug" style={{fontSize:"var(--life-narration-font)",fontFamily:settings.narrationFontFamily || undefined}}>{message.action || message.dialogue}</p></div> : <>
                 {message.action&&(message.role==="player"?<div className="flex items-center gap-2 px-1" style={{marginBlock: `${settings.narrationGapPx ?? 4}px`}} aria-label="我的行动"><span className="h-px flex-1 bg-stone-300/80"/><p className="min-w-0 max-w-[82%] break-words text-center italic leading-relaxed text-stone-500 [overflow-wrap:anywhere]" style={{fontSize:"var(--life-narration-font)",fontFamily:settings.narrationFontFamily || undefined}}>{message.action}</p><span className="h-px flex-1 bg-stone-300/80"/></div>:<div className="relative mx-auto w-full max-w-[94%] py-1" style={{marginBlock: `${settings.narrationGapPx ?? 4}px`}} aria-label="角色行动卡片"><svg viewBox="0 0 320 96" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true"><rect x="1" y="1" width="318" height="94" rx="3" fill="#fffaf4" fillOpacity=".92" stroke="#d8b89c" strokeWidth="1.2"/><rect x="5" y="5" width="310" height="86" rx="2" fill="none" stroke="#ead8c4" strokeWidth=".7"/></svg><div className="relative px-4 py-2.5 text-center"><div className="mb-1 text-[9px] tracking-[.22em] text-[#b08b6c]">✦  MOMENT  ✦</div><p className="whitespace-pre-wrap break-words text-center italic leading-relaxed text-[#806957] [overflow-wrap:anywhere]" style={{fontSize:"var(--life-narration-font)",fontFamily:settings.narrationFontFamily || undefined}}>{message.action}</p></div></div>)}
                 {message.dialogue&&<div className={`flex min-w-0 max-w-full items-end gap-1.5 ${message.role==="player"?"justify-end":"justify-start"}`}>{message.role!=="player"&&<span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full bg-[#efe1d2] text-[11px] text-stone-700">{actors.find(actor=>actor.ownerType==="character"&&actor.ownerId===message.speakerId)?.avatar?<img src={actors.find(actor=>actor.ownerType==="character"&&actor.ownerId===message.speakerId)?.avatar??undefined} alt="" className="h-full w-full object-cover"/>:(message.speakerName||"角").slice(0,1)}</span>}<div style={{fontSize:"var(--life-font)", fontFamily:settings.dialogueFontFamily || undefined, padding: `${settings.bubblePadding}px ${settings.bubblePadding}px`}} className={`life-scene-bubble min-w-0 max-w-[88%] border border-stone-200/70 break-words [overflow-wrap:anywhere] ${settings.dialogueBubbleStyle==="square"?"rounded-md":settings.dialogueBubbleStyle==="soft"?"rounded-xl":"rounded-lg"} ${message.role==="player"?"bg-[#f0dfcf] text-stone-800":"bg-white/95 text-stone-800"}`}><p className="min-w-0 whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">{message.dialogue}</p></div>{message.role==="player"&&<span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full bg-[#e9d4c0] text-[11px] text-stone-700">{playerIdentity?.avatarUrl?<img src={playerIdentity.avatarUrl} alt="" className="h-full w-full object-cover"/>:playerName.slice(0,1)}</span>}</div>}
@@ -3249,7 +3264,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             <p className="ml-3 rounded-xl bg-white/60 p-3 text-xs leading-relaxed text-stone-500">具体生活工具的独立开关已放入现场聊天工具箱；这里仅保留角色自主行动总开关。</p>
 
             <Toggle checked={settings.saveConfirmedEventsToMemory} onChange={v=>patchSettings({saveConfirmedEventsToMemory:v})} label="将已发生的事件写入生活记忆"/>
-            <Toggle checked={settings.showActionNarration} onChange={v=>patchSettings({showActionNarration:v})} label="显示简短动作旁白"/>
+            <div className="rounded-lg border border-stone-200/70 bg-white/60 px-3 py-2 text-xs leading-relaxed text-stone-500">角色动作卡片已启用：连续动作合并显示，对白仍按消息分条显示。</div>
             <Toggle checked={settings.keepDialogueConcise} onChange={v=>patchSettings({keepDialogueConcise:v})} label="默认保持短回合对话"/>
             <Toggle checked={settings.allowCharactersToStaySilent} onChange={v=>patchSettings({allowCharactersToStaySilent:v})} label="允许角色沉默或专注做自己的事"/>
             <Toggle checked={settings.showTimeline} onChange={v=>patchSettings({showTimeline:v})} label="显示日程时间线"/>
