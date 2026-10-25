@@ -266,9 +266,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const viewport = panoramaViewportRef.current;
     if (!previous || previous === clamped) { panoramaZoomRef.current = clamped; setPanoramaZoom(clamped); return; }
     if (viewport) {
-      const rect = viewport.getBoundingClientRect();
-      const anchorX = anchor?.x ?? rect.width / 2;
-      const anchorY = anchor?.y ?? rect.height / 2;
+      // Anchor coordinates are viewport-local layout pixels, never rect pixels.
+      // getBoundingClientRect includes the phone-shell compatibility transform.
+      const anchorX = anchor?.x ?? viewport.clientWidth / 2;
+      const anchorY = anchor?.y ?? viewport.clientHeight / 2;
       const pan = panRef.current;
       const worldX = (anchorX - pan.x) / (previous / 100);
       const worldY = (anchorY - pan.y) / (previous / 100);
@@ -332,7 +333,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
      */
     const shellScale = () => {
       const rect = viewport.getBoundingClientRect();
-      return rect.width > 0 && viewport.clientWidth > 0 ? rect.width / viewport.clientWidth : 1;
+      return {
+        x: rect.width > 0 && viewport.clientWidth > 0 ? rect.width / viewport.clientWidth : 1,
+        y: rect.height > 0 && viewport.clientHeight > 0 ? rect.height / viewport.clientHeight : 1,
+      };
     };
     /** 单指平移：只有「浏览模式 + 落点是空白画布」才启动，摆照片/涂鸦/翻面都要原样把单指交给画布自己处理。 */
     const singlePanEligible = (clientX: number, clientY: number) => {
@@ -382,10 +386,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         )));
         const nextScale = nextZoomValue / 100;
         const anchorScale = shellScale();
-        const previousLocalX = (previousMidpoint.x - rect.left) / anchorScale;
-        const previousLocalY = (previousMidpoint.y - rect.top) / anchorScale;
-        const currentLocalX = (midpoint.x - rect.left) / anchorScale;
-        const currentLocalY = (midpoint.y - rect.top) / anchorScale;
+        const previousLocalX = (previousMidpoint.x - rect.left) / anchorScale.x;
+        const previousLocalY = (previousMidpoint.y - rect.top) / anchorScale.y;
+        const currentLocalX = (midpoint.x - rect.left) / anchorScale.x;
+        const currentLocalY = (midpoint.y - rect.top) / anchorScale.y;
         const worldX = (previousLocalX - pan.x) / previousZoom;
         const worldY = (previousLocalY - pan.y) / previousZoom;
         applyPan(currentLocalX - worldX * nextScale, currentLocalY - worldY * nextScale);
@@ -406,7 +410,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         touch.x = event.clientX; touch.y = event.clientY;
         const pan = panRef.current;
         const anchorScale = shellScale();
-        applyPan(pan.x + dx / anchorScale, pan.y + dy / anchorScale);
+        applyPan(pan.x + dx / anchorScale.x, pan.y + dy / anchorScale.y);
       }
     };
     const onPointerEnd = (event: PointerEvent) => {
@@ -467,10 +471,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         )));
         const nextScale = nextZoomValue / 100;
         const anchorScale = shellScale();
-        const previousLocalX = (previousMidpoint.x - rect.left) / anchorScale;
-        const previousLocalY = (previousMidpoint.y - rect.top) / anchorScale;
-        const currentLocalX = (midpoint.x - rect.left) / anchorScale;
-        const currentLocalY = (midpoint.y - rect.top) / anchorScale;
+        const previousLocalX = (previousMidpoint.x - rect.left) / anchorScale.x;
+        const previousLocalY = (previousMidpoint.y - rect.top) / anchorScale.y;
+        const currentLocalX = (midpoint.x - rect.left) / anchorScale.x;
+        const currentLocalY = (midpoint.y - rect.top) / anchorScale.y;
         const worldX = (previousLocalX - pan.x) / previousZoom;
         const worldY = (previousLocalY - pan.y) / previousZoom;
         applyPan(currentLocalX - worldX * nextScale, currentLocalY - worldY * nextScale);
@@ -490,7 +494,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         touch.x = event.touches[0].clientX; touch.y = event.touches[0].clientY;
         const pan = panRef.current;
         const anchorScale = shellScale();
-        applyPan(pan.x + dx / anchorScale, pan.y + dy / anchorScale);
+        applyPan(pan.x + dx / anchorScale.x, pan.y + dy / anchorScale.y);
       }
     };
     const onTouchEnd = (event: TouchEvent) => {
@@ -1648,7 +1652,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               // for the entire canvas, not a shrink-to-fit overlay.
               width: world.width,
               height: world.height,
-              transform: "translate3d(" + panRef.current.x + "px," + panRef.current.y + "px,0) scale(" + (panoramaZoom / 100) + ")",
+              // Avoid forcing a huge 2400–12000px world into a single GPU-composited 3D layer.
+              transform: "translate(" + panRef.current.x + "px," + panRef.current.y + "px) scale(" + (panoramaZoom / 100) + ")",
               transformOrigin: "top left",
               touchAction: "none",
               overflow: "visible",
