@@ -415,6 +415,12 @@ export function settleActorTimelineToNow(
   const clock = getActorClock(state, ownerType, ownerId);
   const virtualNow = resolveActorLifeNow(clock, realNow);
   const nowIso = realNow.toISOString();
+  const formatScheduleTime = (value: string) => {
+    const date = new Date(value);
+    return Number.isFinite(date.getTime())
+      ? date.toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })
+      : value;
+  };
   let events = state.events;
   let memories = state.memories;
   let invitations = state.invitations;
@@ -436,7 +442,7 @@ export function settleActorTimelineToNow(
       locationName: slot.plannedLocationName ?? undefined,
       participantIds: [ownerId],
       title: slot.title,
-      details: "该时段已按个人时间线经过并结算。",
+      details: "日程时间：" + formatScheduleTime(slot.startAt) + " 至 " + formatScheduleTime(slot.endAt) + "。该时段已按个人时间线经过并结算；此记录只确认计划时段结束，不确认活动中的其他细节。",
       createdAt: nowIso,
       updatedAt: nowIso,
       completedAt: nowIso,
