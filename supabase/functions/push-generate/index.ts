@@ -1193,7 +1193,10 @@ Deno.serve(async (req: Request) => {
                   // 老壳不认识这些字段 → 照常显示普通通知，自然向下兼容。
                   // sessionId 让壳点击通知直达对应会话（普通消息原先没有，点开只回桌面）；
                   // avatar 是角色头像（data URL 或直链），有就当通知大图标，没有壳用默认图。
-                  ...(callSessionId ? { sessionId: callSessionId } : {}),
+                  // Life-scene notifications need the chat session ID only for the native quick-reply action; taps still open /life.
+                  ...(isLifeSceneJob && typeof payload.merge?.sessionId === "string"
+                    ? { sessionId: payload.merge.sessionId }
+                    : callSessionId ? { sessionId: callSessionId } : {}),
                   ...(typeof payload.notify?.avatar === "string" && payload.notify.avatar
                     ? { avatar: payload.notify.avatar }
                     : {}),
