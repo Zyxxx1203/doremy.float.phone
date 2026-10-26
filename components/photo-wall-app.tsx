@@ -771,7 +771,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     setActiveTemplateId(templateId);
     try { window.localStorage.setItem(PHOTO_WALL_ACTIVE_TEMPLATE_KEY, templateId); } catch { /* current placements remain saved */ }
     onNotice?.("已按模板重新摆放；新照片也会沿用这个摆放轨迹。");
-    setWallView("edit");
+    // 不要在这里强制切到 edit：全景/编辑的视口高度不同，会让画布看起来突然变尺寸。
   }, [commitPhotos, onNotice, pushHistory, templateFill]);
 
   /** 将当前墙面坐标保存为可重复使用的自定义模板。 */

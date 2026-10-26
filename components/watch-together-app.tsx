@@ -904,7 +904,16 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       localVideoObjectUrlRef.current = null;
     }
     localVideoFileRef.current = null;
-    setTarget(parsed);
+    // 需要解析时先不要挂 iframe：否则 iframe 会立刻出现，把“本地解析/进度”
+    // 挡在后面，看起来就像又回到了先 iframe 的旧顺序。
+    const willResolve = !parsed.nativeVideo
+      && parsed.platform !== "douyin" && parsed.platform !== "kuaishou"
+      && (
+        Boolean(localResolverEndpoint.trim())
+        || (parsed.platform === "bilibili" && parsed.url.includes("b23.tv"))
+        || (parsed.platform === "xiaohongshu" && !(parsed.embedUrl && parsed.embedUrl !== parsed.url))
+      );
+    setTarget(willResolve ? { ...parsed, embedUrl: null } : parsed);
     setIframeLoadedAt(null);
     setWatchDiagnosticReport("");
     setShowVideoSourcePanel(false);
@@ -1049,6 +1058,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         return;
       }
     }
+    // 所有解析都没成功：把官方 iframe 作为最后的可播放兜底。
+    if (willResolve) setTarget(parsed);
     if (plan.length > 0) {
       // 所有方法都试完：把没走到的步骤标成跳过，结束转圈，交给下面的错误卡片。
       setResolveSteps(previous => previous.map(item =>
