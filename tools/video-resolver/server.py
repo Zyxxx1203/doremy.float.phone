@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import json
 import mimetypes
@@ -35,8 +36,9 @@ MAX_BYTES = max(50, int(os.environ.get("VIDEO_RESOLVER_MAX_MB", "2048"))) * 1024
 API_TOKEN = os.environ.get("VIDEO_RESOLVER_TOKEN", "").strip()
 HOST = os.environ.get("VIDEO_RESOLVER_HOST", "127.0.0.1")
 PORT = int(os.environ.get("VIDEO_RESOLVER_PORT", "8765"))
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
+INDEX_FILE = ROOT / "index.json"
 JOBS: dict[str, dict] = {}
 LOCK = threading.Lock()
 
@@ -138,8 +140,30 @@ def ydl_options(outtmpl: str, quality: str, cookiefile: str | None = None) -> di
     }
 
 
+def _load_index() -> dict[str, dict]:
+    try:
+        data = json.loads(INDEX_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _save_index(index: dict[str, dict]) -> None:
+    try:
+        tmp = INDEX_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(INDEX_FILE)
+    except OSError:
+        pass
+
+
+def cache_key(url: str, quality: str) -> str:
+    return hashlib.sha1((url + "\n" + quality).encode("utf-8")).hexdigest()[:20]
+
+
 def cleanup_old() -> None:
-    cutoff = time.time() - 24 * 3600
+    # 本地缓存长期保留；只按总容量淘汰最久未访问的文件，不再 24 小时后无条件删除。
+    cutoff = 0
     total = 0
     try:
         paths = sorted(ROOT.iterdir(), key=lambda p: p.stat().st_mtime if p.exists() else 0)
@@ -155,6 +179,15 @@ def cleanup_old() -> None:
                 total += path.stat().st_size
         except OSError:
             pass
+    try:
+        index = _load_index()
+        stale = [key for key, item in index.items() if not (ROOT / str(item.get("file", ""))).is_file()]
+        if stale:
+            for key in stale:
+                index.pop(key, None)
+            _save_index(index)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 XHS_HOSTS = ("xiaohongshu.com", "xhslink.com", "xhslink.cn")
@@ -253,7 +286,32 @@ def resolve_video(body: dict) -> dict:
     if quality not in ("best", "1080", "720", "480", "360"):
         raise HttpError(422, "quality 只能是 best/1080/720/480/360")
     url = expand_short_url(url)
-    job_id = secrets.token_urlsafe(12)
+    job_id = cache_key(url, quality)
+    index = _load_index()
+    existing = index.get(job_id)
+    if existing:
+        cached_path = ROOT / str(existing.get("file", ""))
+        try:
+            if cached_path.is_file() and cached_path.stat().st_size > 1024:
+                with LOCK:
+                    JOBS[job_id] = {
+                        "state": "ready", "file": cached_path.name,
+                        "title": existing.get("title", cached_path.stem),
+                        "size": cached_path.stat().st_size,
+                        "engine": existing.get("engine", "cache"),
+                        "created": existing.get("created", time.time()),
+                    }
+                return {
+                    "ok": True, "id": job_id, "title": existing.get("title", cached_path.stem),
+                    "size": cached_path.stat().st_size,
+                    "mime": "video/mp4" if cached_path.suffix.lower() in (".mp4", ".m4v") else "video/" + cached_path.suffix.lower()[1:],
+                    "engine": existing.get("engine", "cache"),
+                    "cacheHit": True,
+                    "downloadUrl": f"/api/videos/{job_id}",
+                }
+        except OSError:
+            pass
+        index.pop(job_id, None)
     with LOCK:
         JOBS[job_id] = {"state": "downloading", "message": "正在获取视频并保存到本地", "created": time.time()}
 
@@ -304,6 +362,11 @@ def resolve_video(body: dict) -> dict:
         with LOCK:
             JOBS[job_id] = {"state": "ready", "file": final.name, "title": title,
                             "size": final.stat().st_size, "engine": engine_used, "created": time.time()}
+        index[job_id] = {
+            "id": job_id, "url": url, "title": title, "file": final.name,
+            "size": final.stat().st_size, "engine": engine_used, "created": time.time(),
+        }
+        _save_index(index)
         cleanup_old()
         return {
             "ok": True,
@@ -312,6 +375,7 @@ def resolve_video(body: dict) -> dict:
             "size": final.stat().st_size,
             "mime": "video/mp4" if suffix in (".mp4", ".m4v") else "video/" + suffix[1:],
             "engine": engine_used,
+            "cacheHit": False,
             "downloadUrl": f"/api/videos/{job_id}",
         }
     except HttpError as exc:
@@ -414,7 +478,11 @@ class Handler(BaseHTTPRequestHandler):
                     record = JOBS.pop(job_id, None)
                     if record and record.get("file"):
                         (ROOT / record["file"]).unlink(missing_ok=True)
-                    return self._json(200, {"ok": True, "deleted": bool(record)})
+                    index = _load_index()
+                    had_index = job_id in index
+                    index.pop(job_id, None)
+                    _save_index(index)
+                    return self._json(200, {"ok": True, "deleted": bool(record) or had_index})
             if path == "/" and method == "GET":
                 return self._json(200, {"ok": True, "service": "doremy-video-resolver",
                                         "hint": "POST /api/resolve 解析视频；GET /health 查看状态"})
@@ -430,6 +498,11 @@ class Handler(BaseHTTPRequestHandler):
     # ---------- 视频文件（支持 Range，便于 <video> 拖动进度） ----------
     def _video(self, job_id: str, head_only: bool = False):
         record = JOBS.get(job_id)
+        if not record or record.get("state") != "ready":
+            indexed = _load_index().get(job_id)
+            if indexed:
+                record = {"state": "ready", "file": indexed.get("file"), "title": indexed.get("title", ""), "size": indexed.get("size", 0)}
+                JOBS[job_id] = record
         if not record or record.get("state") != "ready":
             raise HttpError(404, "本地缓存不存在或已清理")
         path = (ROOT / record["file"]).resolve()

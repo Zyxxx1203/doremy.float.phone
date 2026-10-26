@@ -694,6 +694,7 @@ export const DEFAULT_IMAGE_GENERATION_SETTINGS: ImageGenerationSettings = {
     size: "1024x1024",
     quality: "auto",
     extraPrompt: "",
+    referenceImageMode: "multi",
     novelai: {
         apiKey: "",
         requestMode: "direct",

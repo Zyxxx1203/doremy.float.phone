@@ -1642,7 +1642,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               width: world.width,
               height: world.height,
               // Avoid forcing a huge 2400–12000px world into a single GPU-composited 3D layer.
-              transform: "translate(" + panRef.current.x + "px," + panRef.current.y + "px) scale(" + (panoramaZoom / 100) + ")",
+              // 用 ref 而不是状态：pinch 的 pan 和 zoom 必须在同一帧生效。
+              // 之前 pan 用 ref（立即更新）、zoom 用 state（下一帧才更新），第二次
+              // 缩放会从“新 pan + 旧 zoom”的错位变换起步，表现为向右下/左上漂移。
+              transform: "translate(" + panRef.current.x + "px," + panRef.current.y + "px) scale(" + (panoramaZoomRef.current / 100) + ")",
               transformOrigin: "top left",
               touchAction: "none",
               overflow: "visible",

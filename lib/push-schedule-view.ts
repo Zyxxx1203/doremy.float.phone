@@ -147,6 +147,20 @@ function describeTriggerKey(triggerKey: string): Described {
       system: false,
     };
   }
+  if (key.startsWith("life-scene:")) {
+    // life-scene:<sceneId>:<characterId>
+    const rest = key.slice("life-scene:".length);
+    const sep = rest.lastIndexOf(":");
+    const sceneId = sep > 0 ? rest.slice(0, sep) : "";
+    const characterId = sep > 0 ? rest.slice(sep + 1) : rest;
+    return {
+      characterId,
+      sessionId: "",
+      characterName: characterNameFor(characterId),
+      label: "生活现场主动" + (sceneId ? "" : "（场景未知）"),
+      system: false,
+    };
+  }
   if (key.startsWith("bridge:")) {
     return { ...none, characterName: "", label: "现实桥扫描（系统任务）", system: true };
   }

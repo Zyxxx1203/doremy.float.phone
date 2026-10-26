@@ -922,9 +922,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     // 需要逐个尝试时先列步骤：直链/可直接嵌入的链接不走解析，直接给播放器。
     const plan: { key: string; label: string; state: "pending" | "active" | "ok" | "fail" | "skip"; detail?: string }[] = [];
     const platformBlocked = parsed.platform === "douyin" || parsed.platform === "kuaishou";
-    if (!parsed.nativeVideo && !goodEmbed && !platformBlocked) {
+    const localEligible = Boolean(endpoint) && !parsed.nativeVideo && !platformBlocked;
+    if (!parsed.nativeVideo && !platformBlocked) {
+      // 用户选择：配置了本地解析就优先本地，官方播放器/短链只做兜底。
+      // 本地直连流才能让 AI 截帧；官方 iframe 跨域读不到画面。
+      if (localEligible) plan.push({ key: "local", label: "本地解析服务（优先）", state: "pending" });
       if (parsed.platform === "xiaohongshu") plan.push({ key: "builtin", label: "站内解析（下载到本机缓存）", state: "pending" });
-      if (endpoint) plan.push({ key: "local", label: "本地解析服务（Termux / 电脑）", state: "pending" });
       if (parsed.platform === "bilibili" && parsed.url.includes("b23.tv")) plan.push({ key: "shortlink", label: "把短链接换算成 B 站播放器", state: "pending" });
     }
     if (parsed.platform === "douyin" || parsed.platform === "kuaishou") {
@@ -971,8 +974,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         onNotice?.("站内解析失败：" + message + (localResolverEndpoint.trim() ? "；继续尝试外部解析服务。" : "；将尝试平台嵌入播放。"));
       }
     }
-    // ② 外部解析服务（Termux / 电脑 Python，可选）：server.py 走 yt-dlp，主要服务于 B 站等长视频平台。
-    if (endpoint && !parsed.nativeVideo && !goodEmbed && !platformBlocked) {
+    // ② 外部解析服务（Termux / 电脑 Python，可选）：配置后优先于官方 iframe。
+    // 先做 3 秒探活，避免服务没开时把 30 分钟下载请求挂死成 signal timed out。
+    if (localEligible) {
       const seq = ++openVideoSeqRef.current;
       markStep("local", "active");
       try {
@@ -981,31 +985,42 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         if (base.protocol === "http:" && !["localhost", "127.0.0.1", "::1"].includes(base.hostname) && window.location.protocol === "https:") throw new Error("HTTPS 页面不能安全访问普通 HTTP 服务；请使用本机回环地址或 HTTPS 服务地址。");
         window.localStorage.setItem("watch_local_resolver_endpoint_v1", endpoint);
         window.localStorage.setItem("watch_local_resolver_token_v1", localResolverToken);
-        setLocalResolverStatus("正在下载到本地缓存…");
-        setResolverState({ state: "resolving", message: "正在下载到本地缓存…" });
+        const baseUrl = base.toString().replace(/\/+$/, "");
         const headers: Record<string, string> = { "Content-Type": "application/json" };
         if (localResolverToken.trim()) headers["X-Resolver-Token"] = localResolverToken.trim();
-        const response = await fetch(base.toString().replace(/\/+$/, "") + "/api/resolve", { method: "POST", headers, body: JSON.stringify({ url: parsed.url, quality: "best", engine: localResolverEngine, cookies: localResolverCookies.trim() || undefined }), signal: AbortSignal.timeout(30 * 60 * 1000) });
-        const result = await response.json() as { ok?: boolean; id?: string; title?: string; downloadUrl?: string; message?: string; detail?: string };
+        setLocalResolverStatus("正在检查本地解析服务…");
+        setResolverState({ state: "resolving", message: "正在检查本地解析服务…" });
+        try {
+          const health = await fetch(baseUrl + "/health", { headers: localResolverToken.trim() ? { "X-Resolver-Token": localResolverToken.trim() } : {}, cache: "no-store", signal: AbortSignal.timeout(3000) });
+          if (!health.ok) throw new Error("HTTP " + health.status);
+        } catch {
+          throw new Error("本地解析服务不可达（3 秒探活失败）；请确认 Termux 服务已启动，或暂时关闭本地解析地址");
+        }
+        setLocalResolverStatus("正在下载到本地缓存…");
+        setResolverState({ state: "resolving", message: "正在下载到本地缓存…" });
+        const response = await fetch(baseUrl + "/api/resolve", { method: "POST", headers, body: JSON.stringify({ url: parsed.url, quality: "best", engine: localResolverEngine, cookies: localResolverCookies.trim() || undefined }), signal: AbortSignal.timeout(30 * 60 * 1000) });
+        const result = await response.json() as { ok?: boolean; id?: string; title?: string; downloadUrl?: string; size?: number; cacheHit?: boolean; message?: string; detail?: string };
         if (!response.ok || !result.ok || !result.id || !result.downloadUrl) throw new Error(result.detail || result.message || "解析服务没有返回本地视频");
         // 下载可能长达几十分钟；期间用户多半已经换了视频。序号对不上就把迟到的
         // 结果连同刚下载的缓存一起丢弃，绝不能覆盖用户当前正在看的视频。
         if (seq !== openVideoSeqRef.current) {
           try {
-            void fetch(base.toString().replace(/\/+$/, "") + "/api/videos/" + encodeURIComponent(String(result.id)), {
+            void fetch(baseUrl + "/api/videos/" + encodeURIComponent(String(result.id)), {
               method: "DELETE", headers: localResolverToken.trim() ? { "X-Resolver-Token": localResolverToken.trim() } : {},
             }).catch(() => undefined);
           } catch { /* 服务端过期清理兜底 */ }
           return;
         }
-        const serviceUrl = base.toString().replace(/\/+$/, "");
+        const serviceUrl = baseUrl;
         localResolverJobRef.current = { id: result.id, endpoint: serviceUrl, token: localResolverToken.trim() };
+        if (result.size) pendingWatchCacheRef.current[parsed.url] = { cacheId: result.id, cacheSize: result.size };
+        if (activeMemoryIdRef.current && result.size) patchMemoryRecord(activeMemoryIdRef.current, { cacheId: result.id, cacheSize: result.size });
         setTarget({ ...parsed, embedUrl: null, supported: true, nativeVideo: true, nativeVideoUrl: new URL(result.downloadUrl, base).toString(), nativeCacheId: result.id });
         setVideoTitle(result.title || parsed.platformName + "视频");
-        setResolverState({ state: "ok", message: "视频已下载到本地缓存，正在播放。" });
-        setLocalResolverStatus("下载完成 · 本地缓存播放");
-        onNotice?.("已下载到本地缓存，开始播放。看完后可在设置中删除缓存。");
-        markStep("local", "ok", "下载完成");
+        setResolverState({ state: "ok", message: result.cacheHit ? "本地缓存命中，直接接着看。" : "视频已下载到本地缓存，正在播放。" });
+        setLocalResolverStatus(result.cacheHit ? "缓存命中 · 秒开" : "下载完成 · 本地缓存播放");
+        onNotice?.(result.cacheHit ? "缓存命中，直接接着上次的一起看。" : "已下载到本地缓存，开始播放。看完后可在设置中删除缓存。");
+        markStep("local", "ok", result.cacheHit ? "缓存命中" : "下载完成");
         setResolveSettled(true);
         return;
       } catch (error) {

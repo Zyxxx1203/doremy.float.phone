@@ -1168,7 +1168,15 @@ export function ImageGenerationSettings() {
                                     </button>
                                 )}
                         </div>
-                        <p className="menu-desc">OpenAI 兼容生图会自动传入出镜人员的参考图；NovelAI 暂不接收参考图片，但会使用上方填写的身份特征描述。</p>
+                        <label className="menu-item">
+                            <span className="menu-label">身份参考图发送模式</span>
+                            <select value={settings.referenceImageMode ?? "multi"} onChange={event => updateSettings({ referenceImageMode: event.target.value as "multi" | "collage" | "current" })} className="rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-xs">
+                                <option value="multi">多图上传（推荐，支持多图的 OpenAI 兼容服务）</option>
+                                <option value="collage">拼成一张带编号参考图（兼容只收单图的服务）</option>
+                                <option value="current">仅当前主角色参考图</option>
+                            </select>
+                        </label>
+                        <p className="menu-desc">OpenAI 兼容生图会自动传入出镜人员的参考图；若服务只认第一张，可切到「拼图」。NovelAI 暂不接收参考图片，但会使用上方填写的身份特征描述。</p>
                     </div>
                 )}
             </div>

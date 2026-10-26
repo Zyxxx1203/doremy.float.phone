@@ -50,14 +50,15 @@ const FEATURE_ROWS: Array<{
   title: string;
   description: string;
   supported: (native: NativeApi | undefined) => boolean;
+  probeKeys?: string[];
 }> = [
-  { id: "notifications", title: "网页即时系统通知", description: "网页仍在运行时通过原生桥发通知；关闭后退回浏览器/站内通知，不影响 APK 被杀后的原生离线推送。", supported: (api) => typeof api?.notify === "function" },
-  { id: "callOverlay", title: "原生浮窗接口（通话/查岗）", description: "跨应用显示通话小窗与相关浮层；需要新版 APK、悬浮窗权限与系统允许。", supported: (api) => typeof api?.startCallOverlay === "function" },
-  { id: "deviceActions", title: "设备操作接口", description: "手电筒、音量、亮度、闹钟、打开应用等；每个动作仍可能需要独立权限。", supported: (api) => typeof api?.getDeviceActionCapabilities === "function" || typeof api?.setTorch === "function" || typeof api?.setVolume === "function" || typeof api?.setBrightness === "function" || typeof api?.openApp === "function" || typeof api?.setAlarm === "function" || typeof api?.setTimer === "function" },
-  { id: "perception", title: "设备感知接口", description: "电量、网络、应用使用情况、定位和健康等读取能力。", supported: (api) => typeof api?.getPerceptionCapabilities === "function" || typeof api?.getPerceptionSnapshot === "function" || typeof api?.getLocationCapabilities === "function" || typeof api?.getHealthCapabilities === "function" || typeof api?.readUsageStats === "function" },
-  { id: "calendar", title: "系统日历接口", description: "读取或写入 Android 系统日历；读写权限独立。", supported: (api) => typeof api?.readCalendarEvents === "function" },
-  { id: "screenshot", title: "屏幕捕获接口", description: "控制网页发起原生截屏；查岗浮层还会受「原生浮窗接口」开关、无障碍和临时截屏授权影响。", supported: (api) => typeof api?.captureScreenshot === "function" },
-  { id: "widgets", title: "桌面小组件接口", description: "把网页模板交给 APK 原生小组件渲染；需要支持该能力的 APK。", supported: () => typeof getWidgetApi()?.update === "function" },
+  { id: "notifications", title: "网页即时系统通知", description: "网页仍在运行时通过原生桥发通知；关闭后退回浏览器/站内通知，不影响 APK 被杀后的原生离线推送。", supported: (api) => typeof api?.notify === "function", probeKeys: [] },
+  { id: "callOverlay", title: "原生浮窗接口（通话/查岗）", description: "跨应用显示通话小窗与相关浮层；需要新版 APK、悬浮窗权限与系统允许。", supported: (api) => typeof api?.startCallOverlay === "function", probeKeys: [] },
+  { id: "deviceActions", title: "设备操作接口", description: "手电筒、音量、亮度、闹钟、打开应用等；每个动作仍可能需要独立权限。", supported: (api) => typeof api?.getDeviceActionCapabilities === "function" || typeof api?.setTorch === "function" || typeof api?.setVolume === "function" || typeof api?.setBrightness === "function" || typeof api?.openApp === "function" || typeof api?.setAlarm === "function" || typeof api?.setTimer === "function", probeKeys: ["deviceActions"] },
+  { id: "perception", title: "设备感知接口", description: "电量、网络、应用使用情况、定位和健康等读取能力。", supported: (api) => typeof api?.getPerceptionCapabilities === "function" || typeof api?.getPerceptionSnapshot === "function" || typeof api?.getLocationCapabilities === "function" || typeof api?.getHealthCapabilities === "function" || typeof api?.readUsageStats === "function", probeKeys: ["perception", "location", "health"] },
+  { id: "calendar", title: "系统日历接口", description: "读取或写入 Android 系统日历；读写权限独立。", supported: (api) => typeof api?.readCalendarEvents === "function", probeKeys: ["systemCalendar"] },
+  { id: "screenshot", title: "屏幕捕获接口", description: "控制网页发起原生截屏；查岗浮层还会受「原生浮窗接口」开关、无障碍和临时截屏授权影响。", supported: (api) => typeof api?.captureScreenshot === "function", probeKeys: ["screenshot", "screenshotDiagnostics"] },
+  { id: "widgets", title: "桌面小组件接口", description: "把网页模板交给 APK 原生小组件渲染；需要支持该能力的 APK。", supported: () => typeof getWidgetApi()?.update === "function", probeKeys: ["widgets"] },
 ];
 
 const panelStyle: React.CSSProperties = {
@@ -293,14 +294,16 @@ export function DeviceCompatibilitySettings({ onNotice }: { onNotice?: (message:
         {FEATURE_ROWS.map((row) => {
           const supported = row.supported(native);
           const enabled = !settings.disabledFeatures.includes(row.id);
+          const probeFailed = Boolean(row.probeKeys?.some(key => (apiSnapshots[key] as { readError?: boolean } | undefined)?.readError) || nativeSnapshot?.diagnosticsError);
           return <article key={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "start", padding: 11, borderRadius: 12, border: "1px solid var(--border, rgba(128,128,128,.16))" }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <strong style={{ fontSize: 13 }}>{row.title}</strong>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, color: supported ? "#16a34a" : "#d97706" }}>{supported ? <CheckCircle2 size={12} /> : <XCircle size={12} />}{supported ? "检测到接口" : "未检测到接口"}</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, color: supported && !probeFailed ? "#16a34a" : "#d97706" }}>{supported && !probeFailed ? <CheckCircle2 size={12} /> : <XCircle size={12} />}{supported ? (probeFailed ? "接口存在但调用失败" : "检测到接口") : "未检测到接口"}</span>
               </div>
               <p style={{ fontSize: 11, lineHeight: 1.55, opacity: .72, margin: "5px 0 0" }}>{row.description}</p>
               {!supported && <p style={{ fontSize: 11, lineHeight: 1.5, color: "#d97706", margin: "4px 0 0" }}>此能力在当前环境可能不可用；请检查 APK 版本、系统权限或改用浏览器替代功能。</p>}
+              {supported && probeFailed && <p style={{ fontSize: 11, lineHeight: 1.5, color: "#d97706", margin: "4px 0 0" }}>接口存在，但实际读取失败（可能是原生桥 Java exception、权限或服务未启动）。请查看下方原始快照。</p>}
               {!supported && row.id === "notifications" && typeof window !== "undefined" && "Notification" in window && <p style={{ fontSize: 11, lineHeight: 1.5, opacity: .72, margin: "4px 0 0" }}>未检测到 AndroidShell.notify；当前浏览器有 Notification API，可尝试使用浏览器通知作为替代。</p>}
               {supported && row.id === "notifications" && (nativeSnapshot?.permissions as Record<string, unknown> | undefined)?.notifications === false && <p style={{ fontSize: 11, lineHeight: 1.5, color: "#d97706", margin: "4px 0 0" }}>接口存在，但系统通知权限未开启；请到 Android 应用设置中允许通知。</p>}
               {supported && row.id === "callOverlay" && (nativeSnapshot?.permissions as Record<string, unknown> | undefined)?.overlay === false && <p style={{ fontSize: 11, lineHeight: 1.5, color: "#d97706", margin: "4px 0 0" }}>接口存在，但悬浮窗权限未开启；请到 Android 特殊权限设置中允许显示在其他应用上层。</p>}

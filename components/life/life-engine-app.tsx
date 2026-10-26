@@ -739,11 +739,13 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     settleAll();
     const timer = window.setInterval(settleAll, 30_000);
     window.addEventListener("focus", settleAll);
+    window.addEventListener("life-force-sync", settleAll);
     const onVisibility = () => { if (document.visibilityState === "visible") settleAll(); };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("focus", settleAll);
+      window.removeEventListener("life-force-sync", settleAll);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [ready, commit, worldBooks, bindingConfig, activePromptPreset.scheduleGenerationPrompt]);
@@ -1885,7 +1887,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           structuredNext = appendLifeTimelineEntry(changed.state, {
             category: "schedule",
             title: target.name + "调整了日程：" + parsed.planChange.title,
-            details: startText + " – " + endText,
+            details: "计划时间：" + new Date(startText).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) + "—" + new Date(endText).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }),
             actorId: target.id,
             actorName: target.name,
             locationName: location?.name,
@@ -1926,7 +1928,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         });
         setNotice(target.name + "提出了陪伴申请；你可以在「邀约活动」中确认或拒绝。");
       }
-      if (structuredNext !== stateRef.current) commit(structuredNext);
+      if (structuredNext !== stateRef.current) {
+        commit(structuredNext);
+        if (typeof window !== "undefined") window.dispatchEvent(new Event("life-force-sync"));
+      }
       const replyAt = new Date().toISOString();
       // 动作一轮只出**一张**卡片（整段动作合并在内）；对白保持独立气泡按段显示。
       const actionText = (parsed.action ?? "").trim();
@@ -2531,13 +2536,16 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     // 编辑改成新地点名时，把地点同步进地点库——否则场景/地点档案/AI 提示词都找不到它，
     // 表现为「行程地点改了却不生效」。这正是 syncScheduleLocationsToLibrary 的设计用途。
     commit(syncScheduleLocationsToLibrary(inserted.state));
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("life-force-sync"));
   };
 
   const recordManualPlanEdit = (slot: LifeScheduleSlot) => {
     const current = stateRef.current.schedules.find(item => item.id === slot.id);
     if (!current) return;
-    const next = appendLifeTimelineEntry(stateRef.current, { category: "schedule", title: "修改了日程：" + current.title, details: current.startAt + " – " + current.endAt + " · " + (current.plannedLocationName || "地点待定"), actorId: current.ownerId, actorName: actors.find(actor => actor.ownerId === current.ownerId && actor.ownerType === current.ownerType)?.name, locationName: current.plannedLocationName ?? undefined, sourceId: current.id });
+    const fmtDateTime = (value: string) => new Date(value).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+    const next = appendLifeTimelineEntry(stateRef.current, { category: "schedule", title: "修改了日程：" + current.title, details: "计划时间：" + fmtDateTime(current.startAt) + "—" + fmtDateTime(current.endAt) + " · " + (current.plannedLocationName || "地点待定"), actorId: current.ownerId, actorName: actors.find(actor => actor.ownerId === current.ownerId && actor.ownerType === current.ownerType)?.name, locationName: current.plannedLocationName ?? undefined, sourceId: current.id });
     commit(next);
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("life-force-sync"));
   };
 
   const addManualPlan = (actor: ActorChoice) => {
@@ -3095,6 +3103,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         </div></details>
         {activeScene && <>
           <div className={`mb-1 flex shrink-0 items-center gap-1.5 overflow-x-auto pb-0.5 ${settings.compactLayout ? "max-h-8" : "max-h-10"}`}>{activeScene.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);const awareness=p.awarenessByActorId.player;const status=awareness==="unaware"?"还没注意到你":awareness==="suspects"?"似乎察觉到你":awareness==="aware"?"注意到你":p.activity;return <button key={p.ownerType+":"+p.ownerId} onClick={()=>p.ownerType==="character"&&setSelectedSpeakerId(p.ownerId)} className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] ${selectedSpeakerId===p.ownerId?"border-[var(--life-accent)] bg-white shadow-sm":"border-white/70 bg-white/55"}`}><span className="grid h-6 w-6 shrink-0 place-items-center overflow-hidden rounded-full bg-[#efe1d2] text-[10px] text-stone-700">{actor?.avatar?<img src={actor.avatar} alt="" className="h-full w-full object-cover"/>:(actor?.name??p.ownerId).slice(0,1)}</span><span className="text-left"><span className="block font-medium">{actor?.name??p.ownerId}</span><span className="block max-w-28 truncate text-[9px] opacity-60">{status}</span></span></button>})}</div>
+          <div className="mb-1 flex shrink-0 items-center justify-end gap-2">
+            <button type="button" onClick={() => { window.dispatchEvent(new Event("life-force-sync")); setNotice("已按当前日程同步角色位置与场景。"); }} className="rounded-lg border border-stone-200 bg-white/80 px-2.5 py-1 text-[10px] text-stone-600">同步当前位置</button>
+          </div>
           <div ref={sceneChatScrollRef} onScroll={event => { const el = event.currentTarget; sceneChatAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 56; }} className={`life-scene-chat mb-1 min-h-0 min-w-0 flex-1 flex flex-col overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y rounded-xl bg-white/80 ${settings.compactLayout ? "p-1 sm:p-1.5" : "p-1.5 sm:p-2"} ${immersiveScene ? "" : "h-[58dvh] min-h-[280px] max-h-[760px]"}`} style={{fontSize:"var(--life-font)", rowGap: `${settings.messageGapPx ?? 4}px`, WebkitOverflowScrolling:"touch"}}>
             {sceneMessages.length===0 && <div className="grid min-h-36 place-items-center text-center text-sm text-stone-400"><div><Sparkles className="mx-auto mb-2" size={22}/><p>场景已经准备好了。</p><p className="mt-1 text-xs">角色可以忙自己的事，也可以回应你；不会自动写成长篇剧情。</p></div></div>}
             {displaySceneMessages.map(message=><div key={message.id} className="group flex min-w-0 max-w-full flex-col rounded-xl transition-colors" onTouchStart={() => { longPressTriggeredRef.current = false; clearMessageLongPress(); longPressTimerRef.current = window.setTimeout(() => { longPressTriggeredRef.current = true; openMessageActions(message); }, 550); }} onTouchEnd={clearMessageLongPress} onTouchMove={clearMessageLongPress} onTouchCancel={clearMessageLongPress} onContextMenu={event => { event.preventDefault(); clearMessageLongPress(); openMessageActions(message); }}>
