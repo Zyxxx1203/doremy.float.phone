@@ -300,14 +300,9 @@ class GlobalWatchCaptureService : Service() {
             characterName + "\n" + rolePrompt +
             (if (userReply.isNotBlank()) "\n用户刚刚回复你：" + userReply.take(1000) else "\n请结合画面分享一个简短观察或感受。") +
             "\n忽略密码、验证码、支付信息和私人聊天，不要复述敏感内容。回复1-3句话。"
-        if (model.isBlank()) {
-            saveRecord("error", "未配置视频分析模型 ID。", capturedAt)
-            emitState("未配置视频分析模型 ID")
-            return
-        }
-        if (provider == "twelvelabs") {
-            saveRecord("error", "TwelveLabs 当前截图接口不支持全局陪看对话，请选择其他视觉模型。", capturedAt)
-            emitState("TwelveLabs 截图对话接口不支持，请更换视觉模型")
+        if (model.isBlank() || provider.isBlank()) {
+            saveRecord("error", "未找到可用的主聊天视觉模型配置。", capturedAt)
+            emitState("未找到可用的主聊天视觉模型配置，请在 API 设置中启用图片识别并配置模型")
             return
         }
         val localEndpoint = baseUrl.contains("localhost") || baseUrl.contains("127.0.0.1") ||
