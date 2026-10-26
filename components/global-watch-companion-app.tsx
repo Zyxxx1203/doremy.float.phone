@@ -340,6 +340,13 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
   const start = () => {
     if (!character) { onNotice?.("请先创建并选择一个角色。"); return; }
     if (!consentChecked) { onNotice?.("请先确认你理解全局陪看会捕获其他应用画面。"); return; }
+    const imageModel = getGlobalWatchImageModel(character.id);
+    if (!imageModel) {
+      const message = "没有可用于截图识别的主聊天模型。请到「设置 → API 设置」配置可识图的模型，并启用「图片识别」；全局陪看会自动复用该配置，不需要单独设置视频模型。";
+      setStatus(message);
+      onNotice?.(message);
+      return;
+    }
     if (!native?.startGlobalWatch) {
       setStatus("当前网页或 APK 尚未提供全局陪看原生桥。请更新 APK 后在 Android 壳内启动。");
       return;
