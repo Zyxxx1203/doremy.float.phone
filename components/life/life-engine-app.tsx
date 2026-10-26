@@ -12,7 +12,7 @@ import { loadCharacters } from "@/lib/character-storage";
 import { hydrateKvDb } from "@/lib/kv-db";
 import { hydrateChatStorage } from "@/lib/chat-storage";
 import { addChatContact, createOrGetSession, loadChatContacts, loadChatMessages, loadChatSessions, resolveSessionCharacterId, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
-import { generateOfflineChatCompletion } from "@/lib/chat-engine";
+import { generateOfflineChatCompletion, type LifeScenePromptOverride } from "@/lib/chat-engine";
 import {
   createEmptyVirtualLifeState,
   DEFAULT_LIFE_ENGINE_SETTINGS,
@@ -33,6 +33,8 @@ import {
 import { advanceActorTimeline, applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, insertManualLifeScheduleSlot, syncScheduleLocationsToLibrary, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, upsertActorClock, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { LIFE_SCENE_OUTPUT_CONTRACT, buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
+import { buildLifeScenePromptOverride, getActiveLifePromptPreset, getLifePromptPresets } from "@/lib/life/life-presets";
+import { describeLifeOutputIssues, parseLifeOutput, validateLifeOutput, type LifeOutputIssue } from "@/lib/life/life-output";
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
 import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts, reconcileIdleReconnectWithLifeScenes, suspendIdleReconnectForLifeScene } from "@/lib/push-bailout-client";
@@ -96,99 +98,6 @@ const toLocalDateTimeInput = (value: string) => { const d = new Date(value); if 
 const fromLocalDateTimeInput = (value: string) => { const d = new Date(value); return Number.isFinite(d.getTime()) ? d.toISOString() : ""; };
 const mondayStart = (date: Date) => { const d = new Date(date); d.setHours(0,0,0,0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
 
-function parseLifeOutput(text: string): { action?: string; dialogue: string; followRequest?: { durationMinutes: number; reason: string }; planChange?: { title: string; locationId: string; startAt: string; endAt: string }; invitation?: { time: string; locationId: string; activity: string; reason: string; durationMinutes: number } } {
-  // Some OpenAI-compatible providers return XML-like tags HTML-escaped; decode before parsing.
-  const sourceText = text.replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, "\"").replace(/&amp;/gi, "&");
-  const attribute = (source: string, name: string) => {
-    const match = source.match(new RegExp(name + "\\s*=\\s*[\"']([^\"']*)[\"']", "i"));
-    return (match?.[1] || "").replace(/&quot;/g, "\"").replace(/&amp;/g, "&").trim();
-  };
-  const followTag = sourceText.match(/<life_follow_request\b([^>]*)\/?\s*>/i);
-  const planTag = sourceText.match(/<life_plan_change\b([^>]*)\/?\s*>/i);
-  const inviteTag = sourceText.match(/<life_invitation\b([^>]*)\/?\s*>/i);
-  const duration = Number(attribute(followTag?.[1] || "", "durationMinutes"));
-  const followRequest = followTag ? { durationMinutes: Math.max(15, Math.min(Number.isFinite(duration) && duration ? duration : 120, 24 * 60)), reason: attribute(followTag[1], "reason") } : undefined;
-  const planChange = planTag ? { title: attribute(planTag[1], "title"), locationId: attribute(planTag[1], "locationId") || "home", startAt: attribute(planTag[1], "startAt"), endAt: attribute(planTag[1], "endAt") } : undefined;
-  const inviteDuration = Number(attribute(inviteTag?.[1] || "", "durationMinutes"));
-  const invitation = inviteTag ? { time: attribute(inviteTag[1], "time"), locationId: attribute(inviteTag[1], "locationId") || "cafe", activity: attribute(inviteTag[1], "activity") || "一起做点什么", reason: attribute(inviteTag[1], "reason"), durationMinutes: Math.max(15, Math.min(Number.isFinite(inviteDuration) && inviteDuration ? inviteDuration : 60, 24 * 60)) } : undefined;
-  // Some providers omit a closing tag; stop action capture at the dialogue tag.
-  const actionTags = [...sourceText.matchAll(/<life_action\b[^>]*>([\s\S]*?)(?:<\/life_action\s*>|(?=<life_dialogue\b)|$)/ig)];
-  const dialogueTags = [...sourceText.matchAll(/<life_dialogue\b[^>]*>([\s\S]*?)(?:<\/life_dialogue\s*>|$)/ig)];
-  const actionTag = actionTags[0];
-  const dialogueTag = dialogueTags[0];
-  const stripControlTags = (value: string) => value
-    .replace(/<life_(?:action|dialogue|follow_request|plan_change|invitation)\b[^>]*\/?\s*>/ig, "")
-    .replace(/<\/?(?:content|summary|thinking)>/ig, "")
-    .trim();
-  if (actionTag || dialogueTag) {
-    const action = actionTags.map(tag => stripControlTags(tag[1] || "").replace(/^\*+|\*+$/g, "").trim()).filter(Boolean).join("\n");
-    const rawDialogue = dialogueTags.map(tag => stripControlTags(tag[1] || "").trim()).filter(Boolean).join("\n");
-    // Do not discard narrative accidentally emitted outside tags by a non-compliant model.
-    const outsideText = sourceText
-      .replace(/<life_action\b[^>]*>[\s\S]*?(?:<\/life_action\s*>|(?=<life_dialogue\b)|$)/ig, " ")
-      .replace(/<life_dialogue\b[^>]*>[\s\S]*?(?:<\/life_dialogue\s*>|$)/ig, " ")
-      .replace(/<life_(?:follow_request|plan_change|invitation)\b[^>]*\/?\s*>/ig, " ")
-      .trim();
-    const outside = outsideText ? parseLifeOutput(outsideText) : { dialogue: "" };
-    const separated = parseLifeOutput(rawDialogue);
-    return {
-      action: [action, outside.action, separated.action].filter(Boolean).join("\n"),
-      dialogue: [outside.dialogue, separated.dialogue].filter(Boolean).join("\n"),
-      followRequest, planChange, invitation,
-    };
-  }
-  const clean = stripControlTags(sourceText);
-  const extractedActions: string[] = [];
-  let dialogueSource = clean.replace(/\*([^*\n]+)\*/g, (_match, action: string) => {
-    if (action.trim()) extractedActions.push(action.trim());
-    return " ";
-  });
-  dialogueSource = dialogueSource.replace(/（([^（）\n]+)）/g, (whole, action: string) => {
-    const value = action.trim();
-    if (/笑|看|望|转身|低头|抬手|靠近|走到|坐下|起身|点头|摇头|伸手|叹气|皱眉|眨眼|抱住|拿起|放下|注视|呼吸|动作|神情|轻轻|轻声|语气/.test(value)) {
-      extractedActions.push(value);
-      return " ";
-    }
-    return whole;
-  });
-  const dialogueLines: string[] = [];
-  for (const line of dialogueSource.split(/\r?\n/).map(item => item.trim()).filter(Boolean)) {
-    const actionLabel = line.match(/^(?:动作|行动|旁白|场景描写)\s*[:：]\s*(.+)$/);
-    const dialogueLabel = line.match(/^对白\s*[:：]\s*(.+)$/);
-    if (actionLabel) extractedActions.push(actionLabel[1].trim());
-    else dialogueLines.push(dialogueLabel ? dialogueLabel[1].trim() : line);
-  }
-  // Fallback for models that ignore XML tags: quoted speech remains dialogue, while
-  // clearly narrated movement/expressions become the scene action card.
-  const normalizedDialogueLines: string[] = [];
-  const actionVerb = /笑了笑|笑着|看向|看着|望向|望着|转过身|转身|低下头|低头|抬起头|抬头|抬手|伸出手|伸手|靠近|走到|走向|坐下|起身|站起|点点头|点头|摇摇头|摇头|叹了口气|叹气|皱起眉|皱眉|眨了眨眼|眨眼|抱住|拿起|放下|注视|呼吸|轻轻地|轻轻|慢慢地|慢慢|停下脚步|停住脚步|移开视线|别开目光|耳尖泛红|脸颊泛红|动作|神情|姿态|抚摸|轻抚|摸了摸|拍了拍|拉住|牵起|牵住|搂住|拥抱|贴近|挪了挪|向前一步|后退一步|倚着|靠在|倚靠|拨开|整理|掀开|合上|翻开|抿唇|扬起嘴角|唇角|眼神|视线|目光|把.+(?:递给|放在|拿起|放下|推到|移到|收起)|将.+(?:递给|放在|拿起|放下|推到|移到|收起)/;
-  const conversational = /^(?:我|你|我们|咱们|其实|嗯|啊|哦|欸|诶|对了|所以|但是|不过|因为|如果|那|好|好的|行|可以|不行|别|不要|谢谢|抱歉|对不起|想问|觉得|认为|知道|记得|希望|喜欢|讨厌|想要|想去|想做|告诉你|跟你说|我说|你说)/;
-  for (const sourceLine of dialogueLines) {
-    const line = sourceLine.trim();
-    if (!line) continue;
-    const quoted: string[] = [];
-    const outside = line.replace(/[“「『"]([^”」』"]+)[”」』"]/g, (_whole, spoken: string) => { quoted.push(spoken.trim()); return " "; }).trim();
-    if (quoted.length) {
-      if (outside && actionVerb.test(outside)) extractedActions.push(outside.replace(/[，,：:]?(?:说道|说着|开口道|问道|答道)$/g, "").trim());
-      normalizedDialogueLines.push(...quoted.filter(Boolean));
-    } else {
-      // Split common untagged narration-plus-speech output into an action card and a dialogue bubble.
-      const speechSplit = line.match(/^(.{1,100}?)(?:轻声说|低声说|开口道|说道|说着|问道|答道|回答道|说|问|答)\s*[:：，,]?\s*(.+)$/);
-      if (speechSplit && actionVerb.test(speechSplit[1]) && (!conversational.test(speechSplit[1]) || /^(?:我|我们)?(?:笑|看|望|转身|低头|抬手|伸手|靠近|走到|走向|坐下|起身|点头|摇头|叹气|皱眉|眨眼|抱住|拿起|放下|注视|轻抚|摸了摸|牵起|搂住|拥抱|倚着|靠在)/.test(speechSplit[1]))) {
-        extractedActions.push(speechSplit[1].trim().replace(/[，,：:]$/, ""));
-        normalizedDialogueLines.push(speechSplit[2].trim().replace(/^[“「『"]|[”」』"]$/g, ""));
-      } else if (actionVerb.test(line) && !conversational.test(line)) {
-        extractedActions.push(line.replace(/^(?:动作|行动|旁白|场景描写)\s*[:：]\s*/, "").trim());
-      } else {
-        normalizedDialogueLines.push(line);
-      }
-    }
-  }
-  const dialogue = normalizedDialogueLines.join("\n").replace(/\s+([，。！？；：])/g, "$1").trim();
-  return { action: extractedActions.filter(Boolean).join("\n"), dialogue, followRequest, planChange, invitation };
-}
-
-
 function rebuildSceneDialogueTimeline(state: VirtualLifeState, sceneId: string, _batchSizeValue: number): VirtualLifeState {
   // The life timeline mirrors each original utterance; summarization belongs to scene.currentDescription,
   // never to a synthetic "N messages" record that obscures the live chat.
@@ -215,6 +124,14 @@ function rebuildSceneDialogueTimeline(state: VirtualLifeState, sceneId: string, 
     });
   }
   return next;
+}
+
+function isLastCharacterTurnActionOnly(state: VirtualLifeState, sceneId: string, characterId: string): boolean {
+  const messages = state.sceneMessages.filter(message => message.sceneId === sceneId && message.role === "character" && message.speakerId === characterId);
+  const lastAt = messages[messages.length - 1]?.createdAt;
+  if (!lastAt) return false;
+  const lastTurn = messages.filter(message => message.createdAt === lastAt);
+  return lastTurn.some(message => Boolean(message.action?.trim())) && !lastTurn.some(message => Boolean(message.dialogue?.trim()));
 }
 
 function splitLifeReplySegments(value: string): string[] {
@@ -369,11 +286,15 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     void hydrateKvDb().then(() => hydrateChatStorage()).catch(() => undefined).finally(() => {
       if (!alive) return;
       const loaded = loadVirtualLifeState();
+      const loadedPresets = getLifePromptPresets(loaded.settings?.promptPresets);
+      const activeLifePreset = getActiveLifePromptPreset(loadedPresets, loaded.settings?.activePromptPresetId);
       let normalized: VirtualLifeState = {
         ...loaded,
         settings: {
           ...DEFAULT_LIFE_ENGINE_SETTINGS,
           ...loaded.settings,
+          promptPresets: loadedPresets,
+          activePromptPresetId: activeLifePreset.id,
           dialogueFontSize: loaded.settings?.dialogueFontSize === 15 ? 13 : loaded.settings?.dialogueFontSize ?? 13,
           bubblePadding: loaded.settings?.bubblePadding === 4 ? 3 : loaded.settings?.bubblePadding ?? 3,
           sceneRecordBatchSize: Math.max(1, Math.min(100, Number(loaded.settings?.sceneRecordBatchSize) || 10)),
@@ -520,10 +441,70 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     } catch { /* the persisted banner handoff is best-effort */ }
     return () => window.removeEventListener("life-scene-proactive-message", onOfflineLifeSceneMessage);
   }, [characters, settings.enableLifeMessageNotifications]);
-  const promptPresets = settings.promptPresets ?? [];
-  const activePromptPreset: LifePromptPreset = promptPresets.find(preset => preset.id === settings.activePromptPresetId) ?? promptPresets[0] ?? { id: "life-default", name: "生活现场默认预设" };
+  const promptPresets = useMemo(() => getLifePromptPresets(settings.promptPresets), [settings.promptPresets]);
+  const activePromptPreset: LifePromptPreset = getActiveLifePromptPreset(promptPresets, settings.activePromptPresetId);
   const activePromptPresetText = [activePromptPreset.basePresetPrompt, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.customPrompt].filter(value => typeof value === "string" && value.trim()).join("\n\n");
-  const activeSceneOutputPrompt = activePromptPreset.sceneOutputPrompt?.trim() || LIFE_SCENE_OUTPUT_CONTRACT;
+  const activeMaxConsecutiveActionOnly = activePromptPreset.maxConsecutiveActionOnly ?? settings.maxConsecutiveActionOnly ?? 1;
+  const activeLifeScenePrompt = useMemo<LifeScenePromptOverride>(() => {
+    const override = buildLifeScenePromptOverride(activePromptPreset, settings.customPrompt);
+    // 角色自主工具关闭时，不要把工具协议送进 system，避免模型白白输出工具字段。
+    return settings.enableCharacterAutonomy ? override : { ...override, toolPrompt: "" };
+  }, [activePromptPreset, settings.customPrompt, settings.enableCharacterAutonomy]);
+
+  const generateValidatedLifeTurn = useCallback(async (input: {
+    session: ChatSession;
+    promptMessage: ChatMessage;
+    signal?: AbortSignal;
+    previousActionOnly: boolean;
+    allowEmpty: boolean;
+  }): Promise<{ parsed: ReturnType<typeof parseLifeOutput>; issues: LifeOutputIssue[]; raw: string }> => {
+    const requestOptions = {
+      includeDirectChatEntries: false,
+      signal: input.signal,
+      lifeScenePrompt: activeLifeScenePrompt,
+    };
+    let raw = "";
+    let parsed = parseLifeOutput("");
+    let issues: LifeOutputIssue[] = [];
+    try {
+      let result = await generateOfflineChatCompletion(input.session, [input.promptMessage], requestOptions);
+      raw = result.content;
+      parsed = parseLifeOutput(raw);
+      issues = validateLifeOutput(parsed, {
+        previousActionOnly: input.previousActionOnly,
+        maxConsecutiveActionOnly: activeMaxConsecutiveActionOnly,
+        allowEmpty: input.allowEmpty,
+      });
+      if (issues.length > 0 && settings.enableLifeFormatRepair !== false && !input.signal?.aborted) {
+        const repairPrompt: ChatMessage = {
+          ...input.promptMessage,
+          id: id("life-format-repair"),
+          content: [
+            input.promptMessage.content,
+            "【格式修复】你上一轮输出不符合生活现场 JSON 协议。",
+            "问题：" + describeLifeOutputIssues(issues),
+            "上一轮原始输出：",
+            raw.slice(0, 4000),
+            "请只输出一个合法 JSON 对象，保持同一角色、同一场景、同一回合；这是格式修复，不是新回合。",
+            "不要解释，不要输出 JSON 以外的文字；工具字段格式不合格时填 null，系统不会执行。",
+          ].join("\n\n"),
+        };
+        result = await generateOfflineChatCompletion(input.session, [repairPrompt], requestOptions);
+        raw = result.content;
+        parsed = parseLifeOutput(raw);
+        issues = validateLifeOutput(parsed, {
+          previousActionOnly: input.previousActionOnly,
+          maxConsecutiveActionOnly: activeMaxConsecutiveActionOnly,
+          allowEmpty: input.allowEmpty,
+        });
+      }
+    } catch (error) {
+      if (input.signal?.aborted) throw error;
+      console.warn("[LifeScene] generation failed:", error);
+      throw error;
+    }
+    return { parsed, issues, raw };
+  }, [activeLifeScenePrompt, activeMaxConsecutiveActionOnly, settings.enableLifeFormatRepair]);
   const sceneImagePrompt = settings.sceneImagePrompt;
   const playerName = settings.playerDisplayName || "我";
   useEffect(() => {
@@ -770,23 +751,20 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const patchSettings = (patch: Partial<LifeEngineSettings>) => commit({ ...stateRef.current, settings: { ...stateRef.current.settings, ...patch } });
   const patchActivePromptPreset = (patch: Partial<LifePromptPreset>) => {
     const currentSettings = stateRef.current.settings;
-    let presets = [...(currentSettings.promptPresets ?? [])];
+    let presets = getLifePromptPresets(currentSettings.promptPresets);
     let activeId = currentSettings.activePromptPresetId;
-    if (!presets.length) {
-      presets = [{ id: "life-default", name: "生活现场默认预设" }];
-      activeId = "life-default";
-    }
+    if (!activeId || !presets.some(preset => preset.id === activeId)) activeId = getActiveLifePromptPreset(presets, activeId).id;
     if (!activeId || !presets.some(preset => preset.id === activeId)) activeId = presets[0].id;
     presets = presets.map(preset => preset.id === activeId ? { ...preset, ...patch } : preset);
     commit({ ...stateRef.current, settings: { ...currentSettings, promptPresets: presets, activePromptPresetId: activeId } });
   };
   const createLifePromptPreset = () => {
-    const presets = [...(stateRef.current.settings.promptPresets ?? [])];
+    const presets = getLifePromptPresets(stateRef.current.settings.promptPresets);
     const preset: LifePromptPreset = { id: id("life-prompt-preset"), name: `生活预设 ${presets.length + 1}` };
     commit({ ...stateRef.current, settings: { ...stateRef.current.settings, promptPresets: [...presets, preset], activePromptPresetId: preset.id } });
   };
   const deleteActiveLifePromptPreset = () => {
-    const presets = stateRef.current.settings.promptPresets ?? [];
+    const presets = getLifePromptPresets(stateRef.current.settings.promptPresets);
     if (presets.length <= 1) { setNotice("至少保留一个生活预设；可以清空其中的内容恢复默认。"); return; }
     const next = presets.filter(preset => preset.id !== activePromptPreset.id);
     commit({ ...stateRef.current, settings: { ...stateRef.current.settings, promptPresets: next, activePromptPresetId: next[0]?.id } });
@@ -1530,28 +1508,26 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setBusy(true);
     setMessageActionTarget(null);
     try {
-      const previous = loadChatMessages(session.id, 12).filter(item => item.status !== "failed" && !item.isRetracted);
       const sceneContext = buildLifeScenePromptContext(stateRef.current, scene, character.id);
       const prompt: ChatMessage = {
         id: id("life-regenerate"), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
         content: [
           "【仅本轮使用生活场景模式规则，不要写入线上聊天历史】",
-          activeSceneOutputPrompt,
-          "每轮全部动作、神态、移动和环境反应必须完整写在且只写在一个 <life_action>...</life_action> 标签中；不要拆成多个 life_action 标签，不要把一个连续动作拆成多条。真正说出口的话只放进 <life_dialogue>...</life_dialogue>，对白可按自然语义分段，但动作必须合并为一段完整描写。没有实际动作时可以省略动作标签或留空。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。",
-          settings.keepDialogueConcise ? "一轮通常 1-3 句，保持实时互动感。" : "允许适度展开，但保持实时互动感。",
-          activePromptPresetText ? "小手机预设继承内容与当前生活预设规则：\n" + activePromptPresetText : "",
-          activePromptPreset.locationHabitPrompt ? "地点习惯规则：\n" + activePromptPreset.locationHabitPrompt : "",
-          settings.customPrompt ? "用户自定义规则：" + settings.customPrompt : "",
+          settings.keepDialogueConcise ? "保持简短：一句对白，必要时附一个动作。" : "允许适度展开，但保持实时互动感。",
           buildOnlineChatBackground(character.id),
           sceneContext,
           "玩家行动：" + (previousPlayer.action || "无"),
           "玩家对白：" + (previousPlayer.dialogue || "无"),
-          (activePromptPreset.sceneTaskPrompt?.trim() || "请重新生成{characterName}对这条输入的自然回应。只生成角色回应，不要重复玩家内容。").replace(/\{characterName\}/g, character.name).replace(/\{playerName\}/g, playerName).replace(/\{locationName\}/g, scene.locationName),
-          LIFE_SCENE_OUTPUT_CONTRACT,
+          (activePromptPreset.sceneTaskPrompt?.trim() || "请重新生成{characterName}对这条输入的自然回应：优先一句对白；没有对白时不要输出 action；不要重复玩家内容。").replace(/\{characterName\}/g, character.name).replace(/\{playerName\}/g, playerName).replace(/\{locationName\}/g, scene.locationName),
         ].filter(Boolean).join("\n"),
       };
-      const result = await generateOfflineChatCompletion(session, [prompt], { includeDirectChatEntries: false });
-      const parsed = parseLifeOutput(result.content);
+      const { parsed, issues } = await generateValidatedLifeTurn({
+        session,
+        promptMessage: prompt,
+        previousActionOnly: false,
+        allowEmpty: false,
+      });
+      if (issues.length > 0) throw new Error("本轮输出格式异常，已阻止写入：" + describeLifeOutputIssues(issues));
       if (!parsed.action?.trim() && !parsed.dialogue.trim()) throw new Error("模型返回了空回应，请检查当前角色绑定的模型或输出格式设置后重试。");
       const latest = stateRef.current;
       // A single turn may be stored as one action card plus several dialogue bubbles.
@@ -1650,21 +1626,14 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const sceneContext = buildLifeScenePromptContext(stateRef.current, activeScene, character.id);
       return [
         "【生活现场自主回合：不是对玩家新消息的回复】",
-        activeSceneOutputPrompt,
-         "每轮全部动作、神态、移动和环境反应必须完整写在且只写在一个 <life_action>...</life_action> 标签中；不要拆成多个 life_action 标签，不要把一个连续动作拆成多条。真正说出口的话只放进 <life_dialogue>...</life_dialogue>，对白可按自然语义分段，但动作必须合并为一段完整描写。没有实际动作时可以省略动作标签或留空。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。",
-        settings.keepDialogueConcise ? "保持自然简短，像真实相处时的一小句或一个小动作。" : "可以适度展开，但不要写成长篇故事。",
-        "当前没有新的玩家输入。请结合角色正在做的事、性格、地点习惯、最近发生的事情和场景气氛，自主判断是否有自然的发言或行动动机。可以主动搭话、分享正在做的事、提出轻微互动，也可以继续忙自己的事或保持沉默。不要为了触发功能强行说话；不要替玩家行动或发言；不要重复上一条内容。",
-        activePromptPresetText,
-        activePromptPreset.sceneBehaviorPrompt || "",
-        activePromptPreset.locationHabitPrompt || "",
-        settings.customPrompt || "",
+        settings.keepDialogueConcise ? "保持自然简短：一句对白，必要时附一个动作。" : "可以适度展开，但不要写成长篇故事。",
+        "当前没有新的玩家输入。先判断角色是否有自然的发言或行动动机；优先写一句有来由的对白。可以继续忙自己的事或保持安静，但没有对白时不要只发行动卡；上一轮已经是纯行动时，本轮必须至少一句对白。不要为了触发功能强行说话；不要替玩家行动或发言；不要重复上一条内容。",
         buildOnlineChatBackground(character.id),
         sceneContext,
-        (activePromptPreset.sceneTaskPrompt?.trim() || "请生成{characterName}此刻自然、自主的一小回合。没有值得说的话时，动作和对白都可以留空。")
+        (activePromptPreset.sceneTaskPrompt?.trim() || "请生成{characterName}此刻自然、自主的一小回合：优先一句对白；需要时附一个动作；没有对白时不要输出 action。")
           .replace(/\{characterName\}/g, character.name)
           .replace(/\{playerName\}/g, playerName)
           .replace(/\{locationName\}/g, activeScene.locationName),
-        LIFE_SCENE_OUTPUT_CONTRACT,
       ].filter(Boolean).join("\n\n");
     };
     const pickCandidate = () => {
@@ -1700,6 +1669,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             characterId: character.id,
             characterName: character.name,
             prompt: buildPrompt(character),
+            lifeScenePrompt: activeLifeScenePrompt,
             executeAtMs: now + firstDelay,
           });
         }
@@ -1729,14 +1699,19 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       proactiveBusyRef.current = true;
       setBusy(true);
       try {
-        const history = loadChatMessages(session.id, 10).filter(item => item.status !== "failed" && !item.isRetracted);
         const proactivePrompt: ChatMessage = {
           id: id("life-autonomy"), sessionId: session.id, role: "user", status: "sent",
           createdAt: new Date().toISOString(), content: buildPrompt(character),
         };
-        const result = await generateOfflineChatCompletion(session, [proactivePrompt], { includeDirectChatEntries: false, signal: lifeTurn.signal });
-        if (disposed) return;
-        const parsed = parseLifeOutput(result.content);
+        const previousActionOnly = isLastCharacterTurnActionOnly(stateRef.current, activeScene.id, character.id);
+        const { parsed, issues } = await generateValidatedLifeTurn({
+          session,
+          promptMessage: proactivePrompt,
+          signal: lifeTurn.signal,
+          previousActionOnly,
+          allowEmpty: true,
+        });
+        if (disposed || issues.length > 0) return;
         if (!parsed.action?.trim() && !parsed.dialogue.trim()) return;
         const responseAt = new Date().toISOString();
         const actionText = (parsed.action ?? "").trim();
@@ -1775,6 +1750,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               characterId: nextCandidate.character.id,
               characterName: nextCandidate.character.name,
               prompt: buildPrompt(nextCandidate.character),
+              lifeScenePrompt: activeLifeScenePrompt,
               executeAtMs: Math.max(Date.now() + 30_000, scheduledAt),
             });
           }
@@ -1809,7 +1785,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       // suppressed. The bailout layer independently rechecks presence before POST.
       void reconcileIdleReconnectWithLifeScenes(candidateIds);
     };
-  }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, activeSceneOutputPrompt, activePromptPresetText, activePromptPreset.sceneBehaviorPrompt, activePromptPreset.locationHabitPrompt, activePromptPreset.sceneTaskPrompt, playerName]);
+  }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.keepDialogueConcise, settings.customPrompt, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, activeLifeScenePrompt, activeMaxConsecutiveActionOnly, settings.enableLifeFormatRepair, activePromptPreset.sceneTaskPrompt, playerName]);
   const sendSceneTurn = async (event?: FormEvent, forceReaction = false) => {
     event?.preventDefault();
     const userText = sceneInput.trim();
@@ -1856,33 +1832,37 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setBusy(true);
     if (forceReaction) setNotice(target.name + "正在回应最近的互动……");
     try {
-      const previous = loadChatMessages(session.id, 12).filter(message => message.status !== "failed" && !message.isRetracted);
       const sceneContext = buildLifeScenePromptContext(stateRef.current, activeScene, target.id);
       const settingsInstructions = [
-        activeSceneOutputPrompt,
-        "每轮全部动作、神态、移动和环境反应必须完整写在且只写在一个 <life_action>...</life_action> 标签中；不要拆成多个 life_action 标签，不要把一个连续动作拆成多条。真正说出口的话只放进 <life_dialogue>...</life_dialogue>，对白可按自然语义分段，但动作必须合并为一段完整描写。没有实际动作时可以省略动作标签或留空。禁止用星号或括号把动作混进对白，禁止把动作和对白混在同一标签，标签外不要输出文字。",
-        settings.keepDialogueConcise ? "一轮通常 1-3 句，除非用户明确要求展开。" : "允许适度展开，但仍保持实时互动感。",
-        forceReaction ? "本轮由玩家手动强制触发反馈。必须结合最近已经发生的动作或对白，输出可见且符合角色性格的反应；不能空白，也不要只泛泛问候。" : settings.allowCharactersToStaySilent ? "如果角色当下忙碌、没注意到或不想说话，可以自然沉默。" : "本轮需要对玩家的输入作出回应。",
+        settings.keepDialogueConcise ? "保持简短：一句对白，必要时附一个动作。" : "允许适度展开，但仍保持实时互动感。",
+        forceReaction
+          ? "本轮由玩家手动强制触发反馈。必须结合最近已经发生的动作或对白，输出可见且符合角色性格的反应；不能空白，也不要只泛泛问候。"
+          : settings.allowCharactersToStaySilent
+            ? "如果角色不想说话，可以整轮不输出；但没有对白时不要只发 action。"
+            : "本轮需要对玩家的输入作出回应。",
         wokeFromSleep ? "角色原本正在睡觉，本轮是被消息或紧急情况吵醒；要表现困倦、反应迟缓或不想立刻长谈，不要突然精神饱满。" : "",
         settings.enableAmbientDetails ? "可以用一两笔简短环境细节营造现场感，不要扩写成长篇旁白。" : "不需要环境氛围描写，直接进行实时互动。",
-        settings.enableCharacterAutonomy ? (activePromptPreset.toolCallingPrompt?.trim() || [
-          "你可以按需调用下列已启用的生活工具，通过隐藏标签调用，不要向玩家解释标签。",
-          settings.enableScheduleChangeTool ? "change_schedule：<life_plan_change startAt=\"ISO-8601开始时间\" endAt=\"ISO-8601结束时间\" title=\"新的安排\" locationId=\"home\" />。只调整当前虚拟日未来时段，保留前后日程，不覆盖确认约会。" : "",
-          settings.enableInvitations ? "propose_invitation：<life_invitation time=\"ISO-8601时间\" locationId=\"cafe\" activity=\"活动\" durationMinutes=\"60\" />。这是待确认邀约，玩家确认后才同步日程。" : "",
-          settings.enableFollowRequestTool ? "request_follow：<life_follow_request durationMinutes=\"120\" reason=\"简短原因\" />。需要玩家确认，可被拒绝。" : "",
-          "每轮最多调用一个工具，仅在角色有真实动机时调用，不要为了展示功能调用。",
-          "决定是否改日程前，综合当前对话、近期共同记忆、角色性格与关系状态、当前活动和接下来安排。只有当本轮互动真正改变了角色计划且符合其意愿时，才输出 life_plan_change；不能仅因玩家提出要求就自动改期。优先保留手动安排和已确认邀约；不要更改已发生的时段。"
-        ].filter(Boolean).join(" ")) : "角色自主行动工具已关闭，不要输出生活工具标签.",
-        activePromptPresetText ? `小手机预设继承内容与当前生活预设规则：\n${activePromptPresetText}` : "",
-        activePromptPreset.locationHabitPrompt ? `地点习惯规则：\n${activePromptPreset.locationHabitPrompt}` : "",
-        settings.customPrompt ? `用户自定义规则：${settings.customPrompt}` : "",
       ].filter(Boolean).join("\n");
       const promptMessage: ChatMessage = {
         id: id("life-user"), sessionId: session.id, role: "user", status: "sent", createdAt: now,
-        content: `[仅本轮使用生活场景模式规则，不要写入线上聊天历史]\n${settingsInstructions}\n\n${buildOnlineChatBackground(target.id)}\n\n${sceneContext}\n\n玩家本轮行动：${userAction || (forceReaction ? "（请结合最近的用户行为作出反馈）" : "（没有额外动作）")}\n玩家本轮对白：${userText || (forceReaction ? "（请回应最近的对话或动作，不要要求用户重复输入）" : "（没有说话）")}\n${(activePromptPreset.sceneTaskPrompt?.trim() || "请让{characterName}按其既有人设自然回应。行动与对白分开处理；玩家只行动时，不要擅自替玩家补台词。").replace(/\{characterName\}/g, target.name).replace(/\{playerName\}/g, playerName).replace(/\{locationName\}/g, activeScene.locationName)}\n\n${LIFE_SCENE_OUTPUT_CONTRACT}`,
+        content: `[仅本轮使用生活场景模式规则，不要写入线上聊天历史]\n${settingsInstructions}\n\n${buildOnlineChatBackground(target.id)}\n\n${sceneContext}\n\n玩家本轮行动：${userAction || (forceReaction ? "（请结合最近的用户行为作出反馈）" : "（没有额外动作）")}\n玩家本轮对白：${userText || (forceReaction ? "（请回应最近的对话或动作，不要要求用户重复输入）" : "（没有说话）")}\n${(activePromptPreset.sceneTaskPrompt?.trim() || "请让{characterName}先判断是否看见/听见玩家本轮的行动，再给出符合性格的回应：优先一句对白；没有对白时不要输出 action；不要替玩家行动或发言。").replace(/\{characterName\}/g, target.name).replace(/\{playerName\}/g, playerName).replace(/\{locationName\}/g, activeScene.locationName)}`,
       };
-      const result = await generateOfflineChatCompletion(session, [promptMessage], { includeDirectChatEntries: false, signal: lifeTurn.signal });
-      const parsed = parseLifeOutput(result.content);
+      const previousActionOnly = isLastCharacterTurnActionOnly(stateRef.current, activeScene.id, target.id);
+      const { parsed, issues } = await generateValidatedLifeTurn({
+        session,
+        promptMessage,
+        signal: lifeTurn.signal,
+        previousActionOnly,
+        allowEmpty: settings.allowCharactersToStaySilent === true && !forceReaction,
+      });
+      if (issues.length > 0) {
+        setNotice("本轮输出格式异常，已阻止写入：" + describeLifeOutputIssues(issues) + "。可重新生成。");
+        return;
+      }
+      if (!parsed.action?.trim() && !parsed.dialogue.trim()) {
+        setNotice(target.name + "这一轮没有开口，也没有做动作。");
+        return;
+      }
       if (forceReaction && !parsed.dialogue.trim() && !parsed.action?.trim()) {
         throw new Error("模型返回了空回应，请检查当前角色绑定的模型或输出格式设置后重试。");
       }
@@ -1997,7 +1977,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   };
   const selectLifePromptPreset = (presetId: string) => {
     const currentSettings = stateRef.current.settings;
-    let presets = [...(currentSettings.promptPresets ?? [])];
+    let presets = getLifePromptPresets(currentSettings.promptPresets);
     if (!presets.some(preset => preset.id === presetId)) presets = [{ id: presetId, name: "生活现场默认预设" }, ...presets];
     commit({ ...stateRef.current, settings: { ...currentSettings, promptPresets: presets, activePromptPresetId: presetId } });
   };
@@ -3569,6 +3549,15 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             <div className="rounded-lg border border-stone-200/70 bg-white/60 px-3 py-2 text-xs leading-relaxed text-stone-500">角色动作卡片已启用：连续动作合并显示，对白仍按消息分条显示。</div>
             <Toggle checked={settings.keepDialogueConcise} onChange={v=>patchSettings({keepDialogueConcise:v})} label="默认保持短回合对话"/>
             <Toggle checked={settings.allowCharactersToStaySilent} onChange={v=>patchSettings({allowCharactersToStaySilent:v})} label="允许角色沉默或专注做自己的事"/>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-stone-200/70 bg-white/60 px-3 py-2 text-xs text-stone-700">
+              <span>连续纯行动上限</span>
+              <select value={activeMaxConsecutiveActionOnly} onChange={event => patchActivePromptPreset({ maxConsecutiveActionOnly: Number(event.target.value) as 0 | 1 | 2 })} className="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs">
+                <option value={0}>0（不允许）</option>
+                <option value={1}>1（推荐）</option>
+                <option value={2}>2</option>
+              </select>
+            </div>
+            <Toggle checked={settings.enableLifeFormatRepair !== false} onChange={v=>patchSettings({enableLifeFormatRepair:v})} label="格式异常自动修复重试一次"/>
             <Toggle checked={settings.showTimeline} onChange={v=>patchSettings({showTimeline:v})} label="显示日程时间线"/>
             <Toggle checked={settings.showLocationHints} onChange={v=>patchSettings({showLocationHints:v})} label="显示计划地点线索"/>
             <div className="mt-3 rounded-2xl border border-stone-200/70 bg-white/60 p-3"><p className="mb-2 text-xs font-semibold text-stone-700">生活记录显示筛选</p><div className="space-y-2">
@@ -3698,6 +3687,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             </div>
             <label className="mt-4 block text-sm font-medium">导入的小手机提示词 / 基础上下文<textarea value={activePromptPreset.basePresetPrompt ?? ""} onChange={event => patchActivePromptPreset({ basePresetPrompt: event.target.value })} rows={5} placeholder="可直接粘贴小手机预设中的规则、格式约定或角色互动约束。" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
             <label className="mt-4 block text-sm font-medium">生活现场输出协议<textarea value={activePromptPreset.sceneOutputPrompt ?? LIFE_SCENE_OUTPUT_CONTRACT} onChange={event => patchActivePromptPreset({ sceneOutputPrompt: event.target.value })} rows={10} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+            <div className="mt-1.5 flex justify-end"><button type="button" onClick={() => patchActivePromptPreset({ sceneOutputPrompt: LIFE_SCENE_OUTPUT_CONTRACT })} className="rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-[11px] text-stone-600">恢复默认 JSON 协议</button></div>
             <label className="mt-4 block text-sm font-medium">角色行为 / 沉浸感补充规则<textarea value={activePromptPreset.sceneBehaviorPrompt ?? ""} onChange={event => patchActivePromptPreset({ sceneBehaviorPrompt: event.target.value })} rows={4} placeholder="角色如何使用场景、道具、习惯和空间；如何保持自然互动、不抢玩家控制权……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
             <label className="mt-4 block text-sm font-medium">每轮回应任务提示词<textarea value={activePromptPreset.sceneTaskPrompt ?? ""} onChange={event => patchActivePromptPreset({ sceneTaskPrompt: event.target.value })} rows={3} placeholder="留空使用默认任务。可用占位符：{characterName}、{playerName}、{locationName}。" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
             <label className="mt-4 block text-sm font-medium">生活工具调用完整提示词<textarea value={activePromptPreset.toolCallingPrompt ?? ""} onChange={event => patchActivePromptPreset({ toolCallingPrompt: event.target.value })} rows={7} placeholder="留空使用系统默认的邀约、陪伴申请和日程调整工具说明。填写后将替换默认工具调用说明。" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
