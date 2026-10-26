@@ -3820,7 +3820,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     };
 
     const shouldSuppressLifeSleepReply = (userText?: string, notify = true): boolean => {
-        if (session.isGroup || offlineMode || !character) return false;
+        if (session.isGroup || !character) return false;
         const loadedLife = loadVirtualLifeState();
         const settledLife = settleActorTimelineToNow(loadedLife, "character", character.id);
         const life = settledLife === loadedLife ? loadedLife : saveVirtualLifeState(settledLife);
@@ -3833,7 +3833,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const presence = life.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === character.id);
         const sleeping = /睡眠|睡觉|入睡|午休/.test((presence?.activity || "") + " " + (schedule?.title || ""));
         const pendingKey = "life-sleep-pending-reply:" + session.id;
-        if (!sleeping) { kvRemove(pendingKey); kvRemove("life-sleep-wake-threshold:" + session.id); setSleepNotice(null); return false; }
+        if (!sleeping) { kvRemove(pendingKey); kvRemove("life-sleep-wake-threshold:" + session.id + ":offline"); kvRemove("life-sleep-wake-threshold:" + session.id + ":online"); setSleepNotice(null); return false; }
 
         // 睡着时不因单条消息或随机数醒来：统计最近一次角色回复之后积累的用户消息。
         // 每个角色固定一个 5–10 条的唤醒阈值，避免同一条消息反复检查时结果变化。
@@ -3845,10 +3845,14 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             if (message.role === "user" && message.content?.trim()) unansweredUserMessages++;
         }
         // 每个睡眠周期随机 5-10 条唤醒阈值；同一周期稳定，醒来/起床后清掉。
-        const thresholdKey = "life-sleep-wake-threshold:" + session.id;
+        // 线下比线上更容易被吵醒：线下 1–3 条，线上 5–10 条。阈值按模式分开存，
+        // 避免在线下设了 1、切回线上后仍然一条就醒。
+        const thresholdKey = "life-sleep-wake-threshold:" + session.id + ":" + (offlineMode ? "offline" : "online");
+        const minThreshold = offlineMode ? 1 : 5;
+        const maxThreshold = offlineMode ? 3 : 10;
         let wakeThreshold = Number(kvGet(thresholdKey) || 0);
-        if (!Number.isFinite(wakeThreshold) || wakeThreshold < 5 || wakeThreshold > 10) {
-            wakeThreshold = 5 + Math.floor(Math.random() * 6);
+        if (!Number.isFinite(wakeThreshold) || wakeThreshold < minThreshold || wakeThreshold > maxThreshold) {
+            wakeThreshold = minThreshold + Math.floor(Math.random() * (maxThreshold - minThreshold + 1));
             kvSet(thresholdKey, String(wakeThreshold));
         }
         const urgent = /救命|紧急|出事了|危险|受伤|快来|急救/.test(latestUserText);
@@ -4285,7 +4289,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 
     // 围观群/被禁言时用户不能发言
     useEffect(() => {
-        if (session.isGroup || offlineMode || !character) return;
+        if (session.isGroup || !character) return;
         const key = "life-sleep-pending-reply:" + session.id;
         const checkPendingSleepReply = () => {
             if (kvGet(key) !== "true" || isGeneratingRef.current) return;
@@ -6130,12 +6134,13 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     </span>
                 </div>
             </header>
-            {sleepNotice && !session.isGroup && !offlineMode && (
+            {sleepNotice && !session.isGroup && (
                 <div className="chat-room-main-pane" style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 12px 8px", padding: "8px 12px", borderRadius: 12, background: "rgba(118, 83, 77, 0.10)", border: "1px solid rgba(118, 83, 77, 0.18)", fontSize: 12, color: "var(--c-text, #493c34)" }}>
-                    <span style={{ flex: 1, minWidth: 0 }}>🌙 {character?.name || "TA"} 正在睡觉，已收到你 {sleepNotice.pending} 条消息。继续发 5-10 条会随机吵醒，也可以直接叫醒 TA。</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>🌙 {character?.name || "TA"} 正在睡觉，已收到你 {sleepNotice.pending} 条消息。再发 {Math.max(0, sleepNotice.threshold - sleepNotice.pending)} 条左右会随机吵醒，也可以直接叫醒 TA。</span>
                     <button type="button" style={{ flexShrink: 0, border: 0, borderRadius: 999, padding: "6px 10px", background: "var(--c-icon, #76534d)", color: "#fff", fontSize: 12 }} onClick={() => {
                         kvRemove("life-sleep-pending-reply:" + session.id);
-                        kvRemove("life-sleep-wake-threshold:" + session.id);
+                        kvRemove("life-sleep-wake-threshold:" + session.id + ":offline");
+                        kvRemove("life-sleep-wake-threshold:" + session.id + ":online");
                         setSleepNotice(null);
                         void triggerAIResponse();
                     }}>叫醒 TA</button>

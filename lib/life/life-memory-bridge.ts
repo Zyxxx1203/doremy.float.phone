@@ -16,6 +16,11 @@ function formatLifeRange(startAt?: string | null, endAt?: string | null): string
   return formatLifeDateTime(startAt) + "—" + formatLifeDateTime(endAt);
 }
 
+/** 生活记忆里的玩家统一用 {{user}}；显示时再由页面/宏系统解析成实际称呼。 */
+function normalizeLifeMemoryUserReference(text: string): string {
+  return text.replace(/你/g, "{{user}}");
+}
+
 function loadSettledCharacterLifeState(characterId: string) {
   let state = loadVirtualLifeState();
   if (!state.settings.enabled) return state;
@@ -61,7 +66,7 @@ export function buildLifeMemoryContext(characterId: string, limit = 10): string 
       const timeRange = linkedEvent?.startsAt && linkedEvent.endsAt
         ? "（活动时间：" + formatLifeRange(linkedEvent.startsAt, linkedEvent.endsAt) + "）"
         : "";
-      return `- ${formatLifeDateTime(fact.occurredAt)}${timeRange}：${fact.fact}`;
+      return `- ${formatLifeDateTime(fact.occurredAt)}${timeRange}：${normalizeLifeMemoryUserReference(fact.fact)}`;
     }),
     completedScheduleEvents.length ? "【近期已结算日程｜含明确时间段】" : "",
     completedScheduleEvents.length ? "以下是已到结束时间的行程计划记录，只能说明日程时段已经结算，不代表计划中的每个细节都已被确认发生。" : "",

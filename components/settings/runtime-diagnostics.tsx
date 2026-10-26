@@ -17,6 +17,14 @@ type AndroidShellDiagnostics = {
   clearLastNativeCrashLog?: () => boolean;
   getWebConsoleLogs?: () => string;
   clearWebConsoleLogs?: () => boolean;
+  getGlobalWatchDiagnostics?: () => string;
+  getDeviceActionCapabilities?: () => string;
+  getPerceptionCapabilities?: () => string;
+  getLocationCapabilities?: () => string;
+  getHealthCapabilities?: () => string;
+  getCalendarCapabilities?: () => string;
+  getScreenshotCapabilities?: () => string;
+  getScreenshotDiagnostics?: () => string;
 };
 declare global { interface Window { AndroidShell?: AndroidShellDiagnostics; } }
 
@@ -67,6 +75,38 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
     if (isShell) {
       const version = safeRead(() => String(shell!.getVersion!()), "读取失败");
       result.push({ id: "version", title: "原生壳版本", status: version === "读取失败" ? "warn" : "ok", detail: "原生版本：" + version });
+      // 真实调用一遍桥方法：接口存在不代表能调用。Java exception 必须显示在这里，
+      // 而不是被“版本正常/接口存在”掩盖。
+      const probes: Array<[string, (() => unknown) | undefined]> = [
+        ["getDiagnosticsSnapshot", shell!.getDiagnosticsSnapshot ? () => shell!.getDiagnosticsSnapshot!() : undefined],
+        ["getWebConsoleLogs", shell!.getWebConsoleLogs ? () => shell!.getWebConsoleLogs!() : undefined],
+        ["getLastNativeCrashLog", shell!.getLastNativeCrashLog ? () => shell!.getLastNativeCrashLog!() : undefined],
+        ["getGlobalWatchDiagnostics", shell!.getGlobalWatchDiagnostics ? () => shell!.getGlobalWatchDiagnostics!() : undefined],
+        ["getDeviceActionCapabilities", shell!.getDeviceActionCapabilities ? () => shell!.getDeviceActionCapabilities!() : undefined],
+        ["getPerceptionCapabilities", shell!.getPerceptionCapabilities ? () => shell!.getPerceptionCapabilities!() : undefined],
+        ["getLocationCapabilities", shell!.getLocationCapabilities ? () => shell!.getLocationCapabilities!() : undefined],
+        ["getHealthCapabilities", shell!.getHealthCapabilities ? () => shell!.getHealthCapabilities!() : undefined],
+        ["getCalendarCapabilities", shell!.getCalendarCapabilities ? () => shell!.getCalendarCapabilities!() : undefined],
+        ["getScreenshotDiagnostics", shell!.getScreenshotDiagnostics ? () => shell!.getScreenshotDiagnostics!() : undefined],
+      ];
+      const failures: string[] = [];
+      for (const [name, probe] of probes) {
+        if (!probe) continue;
+        try {
+          probe();
+        } catch (error) {
+          failures.push(name + "：" + (error instanceof Error ? error.message : String(error)));
+        }
+      }
+      result.push({
+        id: "native-bridge-calls",
+        title: "原生桥方法调用",
+        status: failures.length > 0 ? "fail" : "ok",
+        detail: failures.length > 0
+          ? "以下方法实际调用失败：" + failures.join("；")
+          : "已实际调用诊断/能力方法，未抛 Java exception。",
+        fix: failures.length > 0 ? "更新到包含“UI 线程缓存页面 URL”修复的 APK；若仍失败，复制完整报告检查具体方法。" : undefined,
+      });
     }
 
     result.push({ id: "online", title: "网络状态", status: navigator.onLine ? "ok" : "fail", detail: navigator.onLine ? "浏览器报告网络在线；不代表云端 API 一定可访问。" : "浏览器报告当前离线。", fix: !navigator.onLine ? "检查 Wi-Fi / 移动数据后重试。" : undefined });
@@ -186,6 +226,9 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
     if (hasDiag) {
       try {
         parsed = JSON.parse(shell!.getDiagnosticsSnapshot!()) as Record<string, unknown>;
+        if (typeof parsed.diagnosticsError === "string" && parsed.diagnosticsError) {
+          result.push({ id: "native-diag-error", title: "原生诊断返回错误", status: "fail", detail: parsed.diagnosticsError, fix: "更新 APK；若仍出现，记录具体机型/版本。" });
+        }
         const perms = parsed.permissions && typeof parsed.permissions === "object" ? parsed.permissions as Record<string, unknown> : {};
         const items = [["notifications", "通知权限", "到系统应用设置中允许通知。"], ["overlay", "悬浮窗权限", "在系统特殊权限中允许显示在其他应用上层。"], ["usageAccess", "应用使用情况访问", "在系统设置中为小手机开启“使用情况访问权限”。"], ["accessibility", "无障碍服务", "在系统无障碍设置中启用小手机对应服务。"]] as const;
         for (const item of items) {

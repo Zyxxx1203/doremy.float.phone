@@ -96,6 +96,54 @@ function loadDataUrlImage(dataUrl: string): Promise<HTMLImageElement> {
   });
 }
 
+type ReferenceSource = { label: string; dataUrl: string; crop?: { x: number; y: number; size: number } };
+
+/**
+ * 兼容“只接受一张参考图”的 OpenAI 兼容服务：把本次出镜人物拼成一张带编号的
+ * 身份参考图。多图仍优先；拼图只在用户显式选择时启用。
+ */
+async function buildReferenceCollage(sources: ReferenceSource[]): Promise<{ dataUrl: string; legend: string } | null> {
+  if (typeof document === "undefined" || sources.length < 2) return null;
+  const cell = 512;
+  const labelHeight = 46;
+  const cols = Math.ceil(Math.sqrt(sources.length));
+  const rows = Math.ceil(sources.length / cols);
+  const canvas = document.createElement("canvas");
+  canvas.width = cols * cell;
+  canvas.height = rows * (cell + labelHeight);
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  context.fillStyle = "#111111";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  const legend: string[] = [];
+  for (let index = 0; index < sources.length; index++) {
+    const source = sources[index];
+    const image = await loadDataUrlImage(source.dataUrl).catch(() => null);
+    if (!image) continue;
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    const x = col * cell;
+    const y = row * (cell + labelHeight);
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    const crop = source.crop;
+    const sourceSize = crop ? Math.max(1, Math.round(Math.min(width, height) * Math.max(0.18, Math.min(1, crop.size)))) : Math.min(width, height);
+    const sourceX = crop ? Math.round(Math.max(0, Math.min(width - sourceSize, crop.x * width))) : Math.max(0, Math.floor((width - sourceSize) / 2));
+    const sourceY = crop ? Math.round(Math.max(0, Math.min(height - sourceSize, crop.y * height))) : Math.max(0, Math.floor((height - sourceSize) / 2));
+    context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, x, y, cell, cell);
+    context.fillStyle = "rgba(0,0,0,.72)";
+    context.fillRect(x, y + cell, cell, labelHeight);
+    context.fillStyle = "#ffffff";
+    context.font = "28px sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(`${index + 1}. ${source.label}`, x + cell / 2, y + cell + labelHeight / 2);
+    legend.push(`${index + 1}=${source.label}`);
+  }
+  if (!legend.length) return null;
+  return { dataUrl: canvas.toDataURL("image/png"), legend: legend.join("、") };
+}
+
 async function normalizeReferenceImageForEdit(
   dataUrl: string,
   crop?: { x: number; y: number; size: number },
@@ -862,7 +910,7 @@ export async function generateImageFromConfiguredApi(params: {
   const openaiSettings = openaiPreset ? { ...settings, ...openaiPreset } : settings;
   if (!openaiSettings.apiKey.trim() || !openaiSettings.baseUrl.trim() || !openaiSettings.model.trim()) return null;
 
-  const referenceSources: Array<{ label: string; dataUrl: string; crop?: { x: number; y: number; size: number } }> = [];
+  let referenceSources: ReferenceSource[] = [];
   const suppliedReferenceImageDataUrl = params.referenceImageDataUrl?.trim() || null;
   if (suppliedReferenceImageDataUrl) {
     referenceSources.push({ label: "补充场景参考", dataUrl: suppliedReferenceImageDataUrl });
@@ -885,7 +933,10 @@ export async function generateImageFromConfiguredApi(params: {
   {
     // Identity references are automatic by default; only an explicit per-image opt-out disables them.
     // Primary character is first. This ensures the current chat speaker's identity remains the anchor.
-    for (const characterId of involvedCharacterIds) {
+    const referenceCharacterIds = settings.referenceImageMode === "current"
+      ? involvedCharacterIds.slice(0, 1)
+      : involvedCharacterIds;
+    for (const characterId of referenceCharacterIds) {
       await appendCharacterReference(characterId);
       throwIfAborted(params.signal);
     }
@@ -903,6 +954,15 @@ export async function generateImageFromConfiguredApi(params: {
     }
   }
 
+  let collageLegend = "";
+  if (settings.referenceImageMode === "collage" && referenceSources.length > 1) {
+    const collage = await buildReferenceCollage(referenceSources);
+    if (collage) {
+      collageLegend = collage.legend;
+      referenceSources = [{ label: `多人身份参考拼图（${collage.legend}）`, dataUrl: collage.dataUrl }];
+    }
+  }
+
   const limitedSources = referenceSources.slice(0, 16);
   const referenceImageDataUrls: string[] = [];
   const referenceLabels: string[] = [];
@@ -916,7 +976,9 @@ export async function generateImageFromConfiguredApi(params: {
   const referenceMapPrompt = referenceLabels.length
     ? [
         "【身份参考图对应关系】",
-        ...referenceLabels.map((label, index) => `参考图${index + 1}对应：${label}。只参考该人物的身份特征，不代表固定服装或固定构图。`),
+        ...(collageLegend
+          ? [`参考图1是多人身份参考拼图，编号对应：${collageLegend}。只按编号参考对应人物的脸，不要互换、复制或融合不同角色的身份。`]
+          : referenceLabels.map((label, index) => `参考图${index + 1}对应：${label}。只参考该人物的身份特征，不代表固定服装或固定构图。`)),
         "每位出镜人物都必须对应自己的参考图，不要互换、复制或融合不同角色的脸。"
       ].join("\n")
     : "";
