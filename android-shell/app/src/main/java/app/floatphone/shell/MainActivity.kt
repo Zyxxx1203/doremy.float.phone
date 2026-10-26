@@ -73,7 +73,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         val SITE_URL: String = BuildConfig.SITE_URL
-        const val VERSION = "1.0.17"
+        const val VERSION = "1.0.18"
         /** 来电接听等场景的站内深链（必须以 SITE_URL 开头，否则忽略） */
         const val EXTRA_OPEN_URL = "open_url"
         /** 外部 App（如桌宠）唤起本壳用的自定义 scheme：floatshell://open?url=<站内地址> */
@@ -131,6 +131,15 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var rootContainer: FrameLayout
     private lateinit var webView: WebView
+    /**
+     * 主文档 URL 的 UI 线程快照。
+     *
+     * @JavascriptInterface 方法运行在 WebView 的私有后台线程；直接读 webView.url
+     * 会触发 “Java exception was raised during method invocation”，表现为保存图片、
+     * 陪看诊断、位置读取等原生桥全部失败。这里只缓存 WebView 主线程回调里的 URL，
+     * 桥方法只做纯字符串比较，不再跨线程访问 WebView。
+     */
+    @Volatile private var trustedShellUrl: String? = null
     private var pendingGlobalWatchConfig: String = "{}"
     private val globalWatchProjectionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
@@ -485,9 +494,9 @@ private fun isSupportedShareUrl(rawUrl: String): Boolean {
 }
 
 private fun isTrustedShellPage(): Boolean {
-    if (!::webView.isInitialized) return false
     val configuredHost = Uri.parse(SITE_URL).host ?: return false
-    val current = Uri.parse(webView.url ?: return false)
+    val currentUrl = trustedShellUrl ?: return false
+    val current = Uri.parse(currentUrl)
     return current.scheme in listOf("https", "http")
         && current.host?.equals(configuredHost, ignoreCase = true) == true
 }
@@ -1072,12 +1081,24 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
 
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                trustedShellUrl = url ?: trustedShellUrl
                 recoveryOverlay?.let { rootContainer.removeView(it) }
                 recoveryOverlay = null
             }
 
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                trustedShellUrl = request.url?.toString() ?: trustedShellUrl
+                return false
+            }
+
+            override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
+                super.doUpdateVisitedHistory(view, url, isReload)
+                trustedShellUrl = url ?: trustedShellUrl
+            }
+
             override fun onPageFinished(view: WebView, url: String?) {
                 super.onPageFinished(view, url)
+                trustedShellUrl = url ?: trustedShellUrl
                 if (url != null && Uri.parse(url).host == Uri.parse(SITE_URL).host) {
                     getSharedPreferences("float_startup_diagnostics", Context.MODE_PRIVATE)
                         .edit()

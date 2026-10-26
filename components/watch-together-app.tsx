@@ -924,8 +924,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     const platformBlocked = parsed.platform === "douyin" || parsed.platform === "kuaishou";
     if (!parsed.nativeVideo && !goodEmbed && !platformBlocked) {
       if (parsed.platform === "xiaohongshu") plan.push({ key: "builtin", label: "站内解析（下载到本机缓存）", state: "pending" });
-      if (endpoint) plan.push({ key: "local", label: "本地解析服务（Termux / 电脑）", state: "pending" });
       if (parsed.platform === "bilibili" && parsed.url.includes("b23.tv")) plan.push({ key: "shortlink", label: "把短链接换算成 B 站播放器", state: "pending" });
+      if (endpoint) plan.push({ key: "local", label: "本地解析服务（Termux / 电脑）", state: "pending" });
     }
     if (parsed.platform === "douyin" || parsed.platform === "kuaishou") {
       // 实测（2026-10）：抖音 web 接口要 a_bogus 签名，带完整匿名 cookies 仍 403；
@@ -971,7 +971,23 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         onNotice?.("站内解析失败：" + message + (localResolverEndpoint.trim() ? "；继续尝试外部解析服务。" : "；将尝试平台嵌入播放。"));
       }
     }
-    // ② 外部解析服务（Termux / 电脑 Python，可选）：server.py 走 yt-dlp，主要服务于 B 站等长视频平台。
+    // b23.tv 短链接：分享页不能作为 iframe 兜底（顶栏截断/整页空白）。解析服务
+    // 不可用或失败时，先在服务端把短链接换算成真实 BV 号，改用官方站内播放器。
+    if (parsed.platform === "bilibili" && parsed.url.includes("b23.tv") && !goodEmbed) {
+      markStep("shortlink", "active");
+      const resolved = await resolveBiliShortLinkViaProxy(parsed.url);
+      if (resolved?.embedUrl) {
+        setTarget(resolved);
+        setVideoTitle(current => current || `${resolved.platformName}的一段视频`);
+        setComments(loadTargetComments(resolved.url));
+        setResolutionMessage("已把 b23.tv 短链接换算成真实视频，正在使用 B 站官方站内播放器。");
+        onNotice?.("短链接已换算成功；若要提取直连流（供 AI 看画面），仍可配置本地解析服务。");
+        markStep("shortlink", "ok");
+        setResolveSettled(true);
+        return;
+      }
+    }
+    // ③ 外部解析服务（Termux / 电脑 Python，可选）：server.py 走 yt-dlp，主要服务于 B 站等长视频平台。
     if (endpoint && !parsed.nativeVideo && !goodEmbed && !platformBlocked) {
       const seq = ++openVideoSeqRef.current;
       markStep("local", "active");
@@ -1016,22 +1032,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         setTarget(parsed);
         markStep("local", "fail", message.slice(0, 40));
         onNotice?.("本地解析服务失败：" + message + "；继续尝试 APK 内置解析。");
-      }
-    }
-    // b23.tv 短链接：分享页不能作为 iframe 兜底（顶栏截断/整页空白）。解析服务
-    // 不可用或失败时，先在服务端把短链接换算成真实 BV 号，改用官方站内播放器。
-    if (parsed.platform === "bilibili" && parsed.url.includes("b23.tv") && !goodEmbed) {
-      markStep("shortlink", "active");
-      const resolved = await resolveBiliShortLinkViaProxy(parsed.url);
-      if (resolved?.embedUrl) {
-        setTarget(resolved);
-        setVideoTitle(current => current || `${resolved.platformName}的一段视频`);
-        setComments(loadTargetComments(resolved.url));
-        setResolutionMessage("已把 b23.tv 短链接换算成真实视频，正在使用 B 站官方站内播放器。");
-        onNotice?.("短链接已换算成功；若要提取直连流（供 AI 看画面），仍可配置本地解析服务。");
-        markStep("shortlink", "ok");
-        setResolveSettled(true);
-        return;
       }
     }
     if (plan.length > 0) {
