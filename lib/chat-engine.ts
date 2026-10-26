@@ -5,6 +5,7 @@ import { maybeAppendShortcutCapability, maybeAppendPerceptionStatus } from "./of
 import { maybeBuildStatusInjection } from "./perception/describe";
 import { loadCharacters } from "./character-storage";
 import { createBuiltinPreset } from "./builtin-preset";
+import { IMAGE_CHARACTER_NAMING_RULE } from "./image-prompt-rules";
 import { buildLifeMemoryContext, buildLifePresenceContext } from "./life/life-memory-bridge";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
 import { emitChatPluginEvent, runChatPluginTransform } from "./chat-plugin-hooks";
@@ -2132,6 +2133,12 @@ export async function buildChatPromptMessages(
                 "如果当前提供的是文本动作协议，必须按可用动作说明中的格式先获取所需参数规范，再输出执行动作指令；如果使用原生工具调用，直接调用对应工具，不要把工具调用伪装成普通文字。",
             ].join("\n"),
         });
+    }
+
+    // 全局生图身份规则：所有非生活场景的文本生成都带一条，避免朋友圈/聊天/
+    // 自定义 App 的照片描述只写代词，导致其他角色参考图无法匹配。
+    if (!options?.lifeScenePrompt) {
+        llmMessages.push({ role: "system", content: IMAGE_CHARACTER_NAMING_RULE });
     }
 
     const avatarChangeIntent = !session.isGroup
