@@ -109,3 +109,29 @@ export function applyWorldGrow(state: PhotoWallState, grow: WorldGrow): PhotoWal
     wallDoodles: state.wallDoodles ? remapDoodles(state.wallDoodles, grow) : state.wallDoodles,
   };
 }
+
+/**
+ * 手动调整画布尺寸时，保持每张照片/每笔涂鸦的“世界像素位置”不变。
+ *
+ * 存储里的 x/y 是相对当前世界的 0~1 比例；直接改 world 会让所有内容
+ * 按比例移动。这里按旧/新尺寸换算比例，视觉落点不动。
+ */
+export function resizeWorldPreservingPositions(
+  state: PhotoWallState,
+  nextWorld: PhotoWallWorld,
+): PhotoWallState {
+  const previous = wallWorldOf(state);
+  if (previous.width === nextWorld.width && previous.height === nextWorld.height) return state;
+  const scaleX = previous.width / Math.max(1, nextWorld.width);
+  const scaleY = previous.height / Math.max(1, nextWorld.height);
+  const remapPoint = (point: { x: number; y: number }) => ({ x: point.x * scaleX, y: point.y * scaleY });
+  return {
+    ...state,
+    world: nextWorld,
+    photos: state.photos.map((photo, index) => {
+      const placement = photo.placement ?? legacyPlacement(index);
+      return { ...photo, placement: { ...placement, x: placement.x * scaleX, y: placement.y * scaleY } };
+    }),
+    wallDoodles: state.wallDoodles?.map(doodle => ({ ...doodle, points: doodle.points.map(remapPoint) })),
+  };
+}

@@ -15,7 +15,7 @@ import {
   type PhotoWallCreationRecord, type PhotoWallDoodle, type PhotoWallPhoto, type PhotoWallPlacement, type PhotoWallState, type PhotoWallTemplate, type PhotoWallWorld,
 } from "@/lib/photo-wall-storage";
 import { PhotoWallCanvas, fallbackPlacement } from "@/components/photo-wall/photo-wall-canvas";
-import { wallWorldOf } from "@/lib/photo-wall-world";
+import { resizeWorldPreservingPositions, wallWorldOf } from "@/lib/photo-wall-world";
 import { buildTemplateSlots, listAllTemplates, loadCustomTemplates, loadTemplateFill, saveCustomTemplates, saveTemplateFill } from "@/lib/photo-wall-templates";
 import { downloadPhotoWallPng } from "@/lib/photo-wall-export";
 import { parseCharacterWallDoodles } from "@/lib/photo-wall-character-doodle";
@@ -954,9 +954,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const previousWorld = wallWorldOf(current);
     if (nextWorld.width === previousWorld.width && nextWorld.height === previousWorld.height) { onNotice?.("画布尺寸没有变化。"); return; }
     pushHistory(current);
-    persist({ ...current, world: nextWorld });
+    persist(resizeWorldPreservingPositions(current, nextWorld));
     setWallCanvasMode("view");
-    onNotice?.("画布尺寸已调整为 " + nextWorld.width + " × " + nextWorld.height + "。照片和涂鸦会按比例保留位置。");
+    onNotice?.("画布尺寸已调整为 " + nextWorld.width + " × " + nextWorld.height + "。已有照片和涂鸦的像素位置保持不变。");
   };
 
   const patchWallSelectedPlacement = (patch: Partial<PhotoWallPlacement>) => {
