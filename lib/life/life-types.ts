@@ -239,6 +239,8 @@ export type LifeSceneMessage = {
   action?: string;
   dialogue: string;
   createdAt: string;
+  /** 场景消息来源：现场回复 / 角色自主 / 离线推送。只做追溯，不改变渲染。 */
+  channel?: "life_scene" | "life_autonomy" | "life_offline";
 };
 
 export type LifeSceneImage = {

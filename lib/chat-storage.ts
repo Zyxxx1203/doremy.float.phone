@@ -99,6 +99,20 @@ export type ChatSession = {
     isSpectator?: boolean; // 围观群：用户不在群内，只能生成/线下
 };
 
+export type ChatChannel =
+    | "chat"
+    | "group_chat"
+    | "offline"
+    | "call"
+    | "call_end"
+    | "story"
+    | "watch_together"
+    | "photo_wall"
+    | "custom_app"
+    | "weixin"
+    | "reality_bridge"
+    | "life_scene";
+
 export type ChatMessageStatus = "sending" | "sent" | "read" | "failed" | "rejected";
 export type ChatMessageRole = "user" | "assistant" | "system" | "tool";
 
@@ -149,6 +163,11 @@ export type ChatMessage = {
      * 于是通话期间在聊天室发的消息、卡片也被一起折进去了（用户实报）。
      */
     origin?: "chat" | "reading_discuss" | "custom_app" | "custom_app_background" | "story_floating_phone" | "call";
+    /**
+     * 更细的来源标记：只用于提示词/记忆/UI 追溯，不参与通话折叠判定。
+     * 旧消息没有该字段时按 origin/session 推断。
+     */
+    channel?: ChatChannel;
     mediaUrl?: string;
     mediaData?: {
         amount?: number;          // 红包/转账金额
@@ -1308,6 +1327,21 @@ export function saveChatContacts(contacts: ChatContact[]) {
     dbReplaceContacts(normalized.items);
 }
 
+/**
+ * 统一解析「私聊会话 → 角色 ID」。
+ *
+ * 历史数据里 session.contactId 既可能是 Character.id，也可能是
+ * ChatContact.id（contact_...）；所有需要按会话找角色的链路都必须走这里，
+ * 否则会出现「聊天能回、但记忆/睡眠/冷场静默跳过」的分裂行为。
+ */
+export function resolveSessionCharacterId(session: Pick<ChatSession, "contactId">): string | null {
+    const contactId = session.contactId?.trim();
+    if (!contactId) return null;
+    const contact = loadChatContacts().find(item => item.id === contactId);
+    if (contact?.characterId) return contact.characterId;
+    return loadCharacters().some(character => character.id === contactId) ? contactId : null;
+}
+
 export function addChatContact(characterId: string): ChatContact | null {
     // 任何一条"重新加上好友"的路径都会走到这里（通过好友申请、搜索添加、
     // 后台引擎重新建联系），统一在这里解除删除状态，不会漏。
@@ -1456,6 +1490,20 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
         order: getNextMessageOrder(msg.sessionId),
         status: msg.status || "sent"
     };
+
+    // 来源推断：旧调用方没传 channel 时按 origin/session 兜底，保证每条消息都能追溯。
+    if (!newMsg.channel) {
+        const sessionForChannel = _sessionsCache.find(session => session.id === newMsg.sessionId);
+        newMsg.channel = sessionForChannel?.isGroup
+            ? "group_chat"
+            : newMsg.origin === "call"
+                ? "call"
+                : newMsg.origin === "story_floating_phone"
+                    ? "story"
+                    : newMsg.origin === "custom_app" || newMsg.origin === "custom_app_background"
+                        ? "custom_app"
+                        : "chat";
+    }
 
     // 聊天插件织入点：消息落库前同步改写（全部消息路径都会经过这里）
     const pluginResult = runChatPluginTransformSync("message.beforePersist", { message: newMsg });

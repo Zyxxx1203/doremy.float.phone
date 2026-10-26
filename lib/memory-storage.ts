@@ -203,6 +203,33 @@ registerDynamicPrefix(LAST_SUMMARY_TS_PREFIX);
 registerDynamicPrefix(CORE_COUNTER_PREFIX);
 registerDynamicPrefix(LAST_CORE_SUMMARY_TS_PREFIX);
 
+export type MemorySummaryStatus = {
+    at: string;
+    ok: boolean;
+    error?: string;
+    eventCount?: number;
+};
+
+const SUMMARY_STATUS_PREFIX = "ai_phone_memory_summary_status:";
+registerDynamicPrefix(SUMMARY_STATUS_PREFIX);
+
+export function saveMemorySummaryStatus(characterId: string, status: MemorySummaryStatus): void {
+    if (typeof window === "undefined") return;
+    kvSet(SUMMARY_STATUS_PREFIX + characterId, JSON.stringify(status));
+}
+
+export function loadMemorySummaryStatus(characterId: string): MemorySummaryStatus | null {
+    if (typeof window === "undefined") return null;
+    try {
+        const raw = kvGet(SUMMARY_STATUS_PREFIX + characterId);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as Partial<MemorySummaryStatus>;
+        return typeof parsed?.at === "string" && typeof parsed?.ok === "boolean"
+            ? { at: parsed.at, ok: parsed.ok, error: typeof parsed.error === "string" ? parsed.error : undefined, eventCount: typeof parsed.eventCount === "number" ? parsed.eventCount : undefined }
+            : null;
+    } catch { return null; }
+}
+
 export function getEventCounter(characterId: string): number {
     if (typeof window === "undefined") return 0;
     const val = kvGet(EVENT_COUNTER_PREFIX + characterId);

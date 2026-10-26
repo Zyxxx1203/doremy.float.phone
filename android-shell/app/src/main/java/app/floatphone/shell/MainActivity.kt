@@ -1687,7 +1687,10 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
          * 会构成 JVM 平台声明冲突（之前 openUrl 就这么炸过一次）。
          */
         @JavascriptInterface
-        fun readUsageStats(maxEntries: Int): String = perception.usageStatsJson(maxEntries)
+        fun readUsageStats(maxEntries: Int): String {
+            if (!isTrustedShellPage()) return "[]"
+            return perception.usageStatsJson(maxEntries)
+        }
 
         /**
          * 把网页端感知开关/连续使用阈值持久化给原生无障碍服务。
@@ -1784,7 +1787,10 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
 
         /** 按包名打开另一个应用。 */
         @JavascriptInterface
-        fun openApp(packageName: String): String = deviceAction.openApp(packageName).toString()
+        fun openApp(packageName: String): String {
+            if (!isTrustedShellPage()) return "{\"ok\":false,\"reason\":\"blocked\"}"
+            return deviceAction.openApp(packageName).toString()
+        }
 
         /** 按应用显示名找包名（找不到返回空串）。 */
         @JavascriptInterface
@@ -1848,8 +1854,10 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
 
         /** 读未来 daysAhead 天（可含过去 daysBack 天）的系统日程，返回 JSON 数组。 */
         @JavascriptInterface
-        fun readCalendarEvents(daysAhead: Int, daysBack: Int): String =
-            calendar.readEventsJson(daysAhead, daysBack)
+        fun readCalendarEvents(daysAhead: Int, daysBack: Int): String {
+            if (!isTrustedShellPage()) return "[]"
+            return calendar.readEventsJson(daysAhead, daysBack)
+        }
 
         /**
          * 往系统日历新增一条日程。只新增，不修改不删除用户已有安排。
@@ -1913,7 +1921,10 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
          * 同步返回缓存值：定位本身是异步的，网页按采样周期先 refresh 再读。
          */
         @JavascriptInterface
-        fun readLocation(): String = locationBridge.readJson().toString()
+        fun readLocation(): String {
+            if (!isTrustedShellPage()) return "{}"
+            return locationBridge.readJson().toString()
+        }
 
         /**
          * 主动取一次实时位置（一次性，不是持续追踪）。
@@ -1961,7 +1972,10 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
 
         /** 读缓存的最近一觉（JSON；读不到返回空对象）。 */
         @JavascriptInterface
-        fun readSleep(): String = healthBridge.readJson().toString()
+        fun readSleep(): String {
+            if (!isTrustedShellPage()) return "{}"
+            return healthBridge.readJson().toString()
+        }
 
         /** 请健康桥在后台取一次睡眠数据（结果落缓存，随后的 readSleep 能读到）。 */
         @JavascriptInterface
@@ -2000,7 +2014,9 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
          * @return 是否已发出（JS 端据此决定要不要退回浏览器通知路径）。
          */
         @JavascriptInterface
-        fun notify(title: String, body: String, avatarUrl: String, sessionId: String?): Boolean = runCatching {
+        fun notify(title: String, body: String, avatarUrl: String, sessionId: String?): Boolean {
+            if (!isTrustedShellPage()) return false
+            return runCatching {
             ensureMessageChannel()
             val manager = getSystemService(NotificationManager::class.java)
             val icon = loadAvatarBitmap(avatarUrl)
@@ -2049,7 +2065,8 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
             manager.notify(webNotifId++, builder.build())
             if (webNotifId > 900) webNotifId = 500
             true
-        }.getOrDefault(false)
+            }.getOrDefault(false)
+        }
 
         /**
          * 按直链交给系统下载管理器下载（真·后台）。
@@ -2060,7 +2077,9 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
          * 完成后通知栏提示。返回是否成功入队。
          */
         @JavascriptInterface
-        fun downloadUrl(url: String, fileName: String): Boolean = runCatching {
+        fun downloadUrl(url: String, fileName: String): Boolean {
+            if (!isTrustedShellPage()) return false
+            return runCatching {
             if (!url.startsWith("http://") && !url.startsWith("https://")) return@runCatching false
             val request = DownloadManager.Request(Uri.parse(url)).apply {
                 addRequestHeader("Cookie", CookieManager.getInstance().getCookie(url) ?: "")
@@ -2069,7 +2088,8 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
             }
             (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
             true
-        }.getOrDefault(false)
+            }.getOrDefault(false)
+        }
 
         // ── 通话浮窗 ──────────────────────────────
 
@@ -2198,7 +2218,10 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
          * takeScreenshot 是回调式 API，且编码几 MB 的 PNG 不能阻塞主线程。
          */
         @JavascriptInterface
-        fun captureScreenshot(): String = ScreenshotBridge.capture().toString()
+        fun captureScreenshot(): String {
+            if (!isTrustedShellPage()) return "{\"ok\":false,\"error\":\"blocked\"}"
+            return ScreenshotBridge.capture().toString()
+        }
 
         // ── 查岗预览浮层（截屏先给用户过目，同意才发给角色）────
 
@@ -2356,7 +2379,9 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
          * 返回是否写入成功；文件名里的非法字符会被替换，避免路径穿越。
          */
         @JavascriptInterface
-        fun saveBase64File(fileName: String, base64: String): Boolean = runCatching {
+        fun saveBase64File(fileName: String, base64: String): Boolean {
+            if (!isTrustedShellPage()) return false
+            return runCatching {
             val safeName = fileName
                 .replace(Regex("[\\\\/:*?\"<>|]"), "_")
                 .trim()
@@ -2383,7 +2408,8 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
                 FileOutputStream(File(dir, safeName)).use { it.write(bytes) }
             }
             true
-        }.getOrDefault(false)
+            }.getOrDefault(false)
+        }
 
         /**
          * 打开另一个 App（桌宠联动用）。给出目标包名；可选的 dataUrl 会作为
@@ -2391,14 +2417,17 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
          * 返回是否成功发起跳转——目标未安装时返回 false，页面据此提示。
          */
         @JavascriptInterface
-        fun launchExternalApp(packageName: String, dataUrl: String): Boolean = runCatching {
+        fun launchExternalApp(packageName: String, dataUrl: String): Boolean {
+            if (!isTrustedShellPage()) return false
+            return runCatching {
             val intent = packageManager.getLaunchIntentForPackage(packageName)
                 ?: return@runCatching false
             if (dataUrl.isNotBlank()) intent.data = Uri.parse(dataUrl)
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
             true
-        }.getOrDefault(false)
+            }.getOrDefault(false)
+        }
 
         /**
          * 用 ACTION_VIEW 打开任意 URL / 自定义 scheme（如桌宠的 deskpet://xxx）。
@@ -2407,13 +2436,16 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
          * 而且对方没在运行时也能把它的入口 Activity 拉起来。
          */
         @JavascriptInterface
-        fun openUrl(url: String): Boolean = runCatching {
+        fun openUrl(url: String): Boolean {
+            if (!isTrustedShellPage()) return false
+            return runCatching {
             startActivity(
                 Intent(Intent.ACTION_VIEW, Uri.parse(url))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
             true
-        }.getOrDefault(false)
+            }.getOrDefault(false)
+        }
     }
 
     /**
@@ -2510,20 +2542,26 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
          * 网页不该把返回值当作「已经显示出来了」。
          */
         @JavascriptInterface
-        fun update(html: String, widthDp: Int, heightDp: Int, scale: Int): Boolean = runCatching {
+        fun update(html: String, widthDp: Int, heightDp: Int, scale: Int): Boolean {
+            if (!isTrustedShellPage()) return false
+            return runCatching {
             // 尺寸记一份：系统定时刷新（onUpdate）时网页不在场，只能靠这里存的值。
             PhoneWidgetProvider.saveSize(this@MainActivity, widthDp, heightDp, scale)
             PhoneWidgetRenderer.renderAndPush(this@MainActivity, html, widthDp, heightDp, scale)
             true
-        }.getOrDefault(false)
+            }.getOrDefault(false)
+        }
 
         /** Update an independent profile without overwriting the legacy single-widget cache. */
         @JavascriptInterface
-        fun updateProfile(profileId: String, html: String, widthDp: Int, heightDp: Int, scale: Int): Boolean = runCatching {
+        fun updateProfile(profileId: String, html: String, widthDp: Int, heightDp: Int, scale: Int): Boolean {
+            if (!isTrustedShellPage()) return false
+            return runCatching {
             if (profileId.isBlank() || profileId == "default") return false
             PhoneWidgetRenderer.renderAndPush(this@MainActivity, profileId, html, widthDp, heightDp, scale)
             true
-        }.getOrDefault(false)
+            }.getOrDefault(false)
+        }
 
         @JavascriptInterface
         fun deleteProfile(profileId: String): Boolean = PhoneWidgetProvider.deleteProfile(this@MainActivity, profileId)

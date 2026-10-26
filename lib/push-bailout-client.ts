@@ -10,7 +10,7 @@ import { buildChatPromptMessages } from "./chat-engine";
 import { resolveLifeCharacterIdForContact } from "./life/life-autonomy";
 import { isCallActiveForSession } from "./call-session-store";
 import { buildProviderRequest, toLlmRequestMessages, type LlmRequestPayload } from "./llm-provider-adapter";
-import { loadChatContacts, loadChatMessages, loadChatSessions, loadFollowUpSchedule, type ChatMessage, type ChatSession } from "./chat-storage";
+import { loadChatContacts, loadChatMessages, loadChatSessions, loadFollowUpSchedule, resolveSessionCharacterId as resolveChatSessionCharacterId, type ChatMessage, type ChatSession } from "./chat-storage";
 import { hasAccountPushSubscription, isShellEnvironment, isWithinPushQuietHours, loadPushQuietHours, peekAccountPushSubscribed } from "./push-client";
 import { isPersonalPushCloudActive, pushJobsFetch } from "./personal-push-cloud";
 import {
@@ -139,8 +139,7 @@ function bailoutEnabled(): boolean {
 
 /** Session.contactId is a contact-record ID in newer data; life scenes use character IDs. */
 function resolveSessionCharacterId(session: Pick<ChatSession, "contactId">): string | null {
-    return resolveLifeCharacterIdForContact(session.contactId, loadChatContacts())
-        ?? (loadCharacters().some(character => character.id === session.contactId) ? session.contactId : null);
+    return resolveChatSessionCharacterId(session);
 }
 
 /**
@@ -505,7 +504,7 @@ export async function armLifeSceneProactiveBailout(input: {
         if (isWithinPushQuietHours(input.executeAtMs)) return { ok: false, reason: "触发时间落在推送安静时段内" };
         const session = loadChatSessions().find(item => item.id === input.sessionId);
         if (!session || session.isGroup || resolveLifeCharacterIdForContact(session.contactId, loadChatContacts()) !== input.characterId) return { ok: false, reason: "找不到对应的单聊会话" };
-        const history = loadChatMessages(session.id, 10).filter(item => item.status !== "failed" && !item.isRetracted);
+        if (isCallActiveForSession(session.id)) return { ok: false, reason: "会话正在通话中" };
         const promptMessage: ChatMessage = {
             id: "life-autonomy-snapshot-" + Date.now().toString(36),
             sessionId: session.id,
@@ -516,8 +515,8 @@ export async function armLifeSceneProactiveBailout(input: {
         };
         const { llmMessages, character, config, preset, regexes, userIdentity } = await buildChatPromptMessages(
             session,
-            [...history, promptMessage],
-            { appTags: ["chat", "text", "offline", "life-scene"] },
+            [promptMessage],
+            { appTags: ["chat", "text", "offline", "life-scene"], includeDirectChatEntries: false },
         );
         const request = buildProviderRequest(config, preset, toLlmRequestMessages(llmMessages));
         const posted = await postBailoutJob({
@@ -553,7 +552,7 @@ export function cancelLifeSceneProactiveBailouts(sceneId: string): Promise<void>
 }
 
 /** Prevent a second proactive channel from talking while a character is physically co-present. */
-function isCharacterCoPresentInLifeScene(characterId: string): boolean {
+export function isCharacterCoPresentInLifeScene(characterId: string): boolean {
     try {
         const state = loadVirtualLifeState();
         if (!state.settings.enabled) return false;

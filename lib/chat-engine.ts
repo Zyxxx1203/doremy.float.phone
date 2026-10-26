@@ -427,6 +427,9 @@ type ChatPromptBuildOptions = {
     /** 只随本次请求送出的系统提示：不落库、不进历史、下一轮读不到。
      *  定时查岗这类「一次性事件」用它告诉角色此刻该怎么回应。 */
     ephemeralSystemNote?: string;
+    /** 是否把当前角色的线上私聊作为 recent_chat 注入短期时间线。
+     *  默认按 offline 判断；生活场景/日程等显式传 false，避免线上话题串味。 */
+    includeDirectChatEntries?: boolean;
 };
 
 function matchesPromptProfileRef(prompt: { identifier: string; name?: string }, refs: Set<string>): boolean {
@@ -1939,7 +1942,7 @@ export async function buildChatPromptMessages(
     const historyForPromptExpanded = expandVisionImageHistoryForPrompt(historyForPrompt);
     const { recentBlocks, truncatedHistory, wbActivationContext, unifiedRecentItems } = prepareShortTermContext(character.id, resolvedAppId, {
         history: historyForPromptExpanded,
-        includeDirectChatEntries: isOfflineMode,
+        includeDirectChatEntries: options?.includeDirectChatEntries ?? isOfflineMode,
         includeNativeToolHistory: usesNativeActions,
         excludeOfflineSessionId: options?.excludeOfflineSessionId,
         promptTimestampOptions,
@@ -2185,7 +2188,7 @@ export type OfflineChatCompletionResult = ParsedOfflineResponse & {
 export async function generateOfflineChatCompletion(
     session: ChatSession,
     history: ChatMessage[],
-    options?: { signal?: AbortSignal; onStreamDelta?: (delta: string) => void },
+    options?: { signal?: AbortSignal; onStreamDelta?: (delta: string) => void; includeDirectChatEntries?: boolean },
 ): Promise<OfflineChatCompletionResult> {
     const { llmMessages, character, config, preset, regexes, userIdentity } = await buildChatPromptMessages(
         session,
@@ -2193,6 +2196,7 @@ export async function generateOfflineChatCompletion(
         {
             appTags: ["chat", "offline"],
             excludeOfflineSessionId: session.id,
+            includeDirectChatEntries: options?.includeDirectChatEntries,
         },
     );
     const summaryTag = preset?.story_summary_tag?.trim() || "summary";
