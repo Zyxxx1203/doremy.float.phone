@@ -218,6 +218,7 @@ function escapeHtmlAttribute(value: string): string {
 
 const DOMPURIFY_CONFIG: any = {
     ADD_TAGS: ["style"],
+    ADD_ATTR: ["style"],
     FORBID_TAGS: ["script", "iframe", "object", "embed", "form", "input", "textarea", "select", "option", "meta", "link", "base"],
     FORBID_ATTR: ["srcdoc"],
     ALLOW_DATA_ATTR: true,
