@@ -89,6 +89,7 @@ type Props = {
   brushWidth?: number;
   sticker?: string | null;
   onStickerChange?: (sticker: string | null) => void;
+  stickerRotation?: number;
   eraser?: boolean;
   onEraserChange?: (enabled: boolean) => void;
 };
@@ -180,7 +181,7 @@ async function loadWallThumbUrl(mediaRef: string): Promise<string> {
   return task;
 }
 
-export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, backgroundBox, wallWorld, onOpenDetail, readOnly = false, fitHeight = false, canvasZoom = 1, mode: controlledMode, onModeChange, brushColor: controlledBrushColor, brushWidth: controlledBrushWidth, sticker: controlledSticker, onStickerChange, eraser: controlledEraser, onEraserChange }: Props) {
+export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, backgroundBox, wallWorld, onOpenDetail, readOnly = false, fitHeight = false, canvasZoom = 1, mode: controlledMode, onModeChange, brushColor: controlledBrushColor, brushWidth: controlledBrushWidth, sticker: controlledSticker, onStickerChange, stickerRotation: controlledStickerRotation = 0, eraser: controlledEraser, onEraserChange }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const strokeRef = useRef<{ id: string; pointerId: number; photoId: string; side: "front" | "back"; anchorElement?: HTMLElement } | null>(null);
@@ -389,7 +390,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     if (sticker) {
       onChangeDoodles(photo.id, [
         ...existing,
-        { id: createPhotoWallId(), kind: "sticker", content: sticker, color: brushColor, width: brushWidth, points: [{ x: point.x, y: point.y }], createdAt: new Date().toISOString(), authorType: "user", authorName: "我" },
+        { id: createPhotoWallId(), kind: "sticker", content: sticker, rotation: controlledStickerRotation, color: brushColor, width: brushWidth, points: [{ x: point.x, y: point.y }], createdAt: new Date().toISOString(), authorType: "user", authorName: "我" },
       ], side);
       return;
     }
@@ -450,7 +451,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     const point = wallPoint(event);
     if (eraser) { eraseWallDoodleAt(point); return; }
     if (sticker) {
-      onChangeWallDoodles?.([...wallDoodles, { id: createPhotoWallId(), kind: "sticker", content: sticker, color: brushColor, width: brushWidth, points: [point], createdAt: new Date().toISOString(), authorType: "user", authorName: "我" }]);
+      onChangeWallDoodles?.([...wallDoodles, { id: createPhotoWallId(), kind: "sticker", content: sticker, rotation: controlledStickerRotation, color: brushColor, width: brushWidth, points: [point], createdAt: new Date().toISOString(), authorType: "user", authorName: "我" }]);
       return;
     }
     (event.currentTarget as SVGSVGElement).setPointerCapture(event.pointerId);
@@ -537,7 +538,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
         {mode === "doodle" && !readOnly && <rect x="0" y="0" width="100" height="100" fill="transparent" />}
         {wallDoodles.map(doodle => doodle.kind === "stroke"
           ? <polyline key={doodle.id} points={doodle.points.map(point => (point.x * 100) + "," + (point.y * 100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(0.6, doodle.width / 2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
-          : <text key={doodle.id} x={(doodle.points[0]?.x ?? 0.5) * 100} y={(doodle.points[0]?.y ?? 0.5) * 100} fill={doodle.color} fontSize={5} textAnchor="middle" dominantBaseline="middle">{doodle.content}</text>)}
+          : <text key={doodle.id} x={(doodle.points[0]?.x ?? 0.5) * 100} y={(doodle.points[0]?.y ?? 0.5) * 100} fill={doodle.color} fontSize={5} textAnchor="middle" dominantBaseline="middle" transform={`rotate(${doodle.rotation ?? 0} ${(doodle.points[0]?.x ?? 0.5) * 100} ${(doodle.points[0]?.y ?? 0.5) * 100})`}>{doodle.content}</text>)}
         {mode === "doodle" && wallStrokeRef.current && draftPoints.length > 1 && <polyline points={draftPoints.map(point => (point.x * 100) + "," + (point.y * 100)).join(" ")} fill="none" stroke={brushColor} strokeWidth={Math.max(0.6, brushWidth / 2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>}
       </svg>
       <div
@@ -797,7 +798,7 @@ function WallPhotoFrame({ photo, placement, canvasZoom, selected, flipped, place
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 z-10 h-full w-full" style={{ overflow: "visible" }}>
         {visibleDoodles.map(doodle => doodle.kind === "stroke"
           ? <polyline key={doodle.id} points={doodle.points.map(point => String(point.x * 100) + "," + String(point.y * 100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={doodle.width} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-          : <text key={doodle.id} x={(doodle.points[0]?.x ?? 0.5) * 100} y={(doodle.points[0]?.y ?? 0.5) * 100} fill={doodle.color} fontSize={12} textAnchor="middle" dominantBaseline="middle">{doodle.content}</text>)}
+          : <text key={doodle.id} x={(doodle.points[0]?.x ?? 0.5) * 100} y={(doodle.points[0]?.y ?? 0.5) * 100} fill={doodle.color} fontSize={12} textAnchor="middle" dominantBaseline="middle" transform={`rotate(${doodle.rotation ?? 0} ${(doodle.points[0]?.x ?? 0.5) * 100} ${(doodle.points[0]?.y ?? 0.5) * 100})`}>{doodle.content}</text>)}
         {drawingIsEnabled && draftPoints.length > 1 && <polyline points={draftPoints.map(point => String(point.x * 100) + "," + String(point.y * 100)).join(" ")} fill="none" stroke="#c2705a" strokeWidth={3} strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
       </svg>
 

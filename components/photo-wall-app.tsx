@@ -203,6 +203,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const pinchModeRef = useRef(false);
   const singleTouchRef = useRef<{ x: number; y: number; startedOnPhoto: boolean; panStarted: boolean } | null>(null);
   const panoramaViewportRef = useRef<HTMLDivElement>(null);
+  const worldStageRef = useRef<HTMLDivElement>(null);
   const panoramaZoomRef = useRef(100);
   /**
    * 画布不再用原生滚动：viewport 固定不动，内部 wrapper 用 translate(x,y) scale(zoom) 定位。
@@ -211,10 +212,33 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
    */
   const panRef = useRef({ x: 0, y: 0 });
   const [, setPanVersion] = useState(0);
-  const applyPan = useCallback((x: number, y: number) => {
-    panRef.current = { x, y };
-    setPanVersion(value => value + 1);
+  /** 读屏幕上真正生效的 transform，而不是读 state。pinch 开始时用它对齐。 */
+  const readStageTransform = useCallback((): { x: number; y: number; zoom: number } => {
+    const stage = worldStageRef.current;
+    if (!stage) return { ...panRef.current, zoom: panoramaZoomRef.current };
+    try {
+      const matrix = new DOMMatrixReadOnly(getComputedStyle(stage).transform === "none" ? "" : getComputedStyle(stage).transform);
+      const zoom = Number.isFinite(matrix.a) && matrix.a > 0 ? matrix.a * 100 : panoramaZoomRef.current;
+      const x = Number.isFinite(matrix.e) ? matrix.e : panRef.current.x;
+      const y = Number.isFinite(matrix.f) ? matrix.f : panRef.current.y;
+      return { x, y, zoom };
+    } catch {
+      return { ...panRef.current, zoom: panoramaZoomRef.current };
+    }
   }, []);
+  /** 一次写入 pan+zoom：ref、DOM transform、React 镜像同帧，避免新 pan+旧 zoom。 */
+  const applyTransform = useCallback((x: number, y: number, zoom: number) => {
+    const safeZoom = Math.max(1, Math.min(300, zoom));
+    panRef.current = { x, y };
+    panoramaZoomRef.current = safeZoom;
+    const stage = worldStageRef.current;
+    if (stage) stage.style.transform = "translate(" + x + "px," + y + "px) scale(" + (safeZoom / 100) + ")";
+    setPanVersion(value => value + 1);
+    setPanoramaZoom(safeZoom);
+  }, []);
+  const applyPan = useCallback((x: number, y: number) => {
+    applyTransform(x, y, panoramaZoomRef.current);
+  }, [applyTransform]);
   /** 在视口真正测量出有效尺寸、算出正确的居中 pan 之前，画布先不渲染；
    * 避免用初始的 pan={0,0}/zoom=100% 错误地渲染出第一帧（内容可能落在视口外）。 */
   const [viewportReady, setViewportReady] = useState(false);
@@ -234,6 +258,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   });
   const [wallBrushWidth, setWallBrushWidth] = useState(3);
   const [wallSticker, setWallSticker] = useState<string | null>(null);
+  const [wallStickerRotation, setWallStickerRotation] = useState(0);
   const [wallEraser, setWallEraser] = useState(false);
   const [wallWidthDraft, setWallWidthDraft] = useState(String(world.width));
   const [wallHeightDraft, setWallHeightDraft] = useState(String(world.height));
@@ -252,7 +277,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const clamped = Math.max(panoramaMinZoomRef.current, Math.min(300, Math.round(nextZoom)));
     const previous = panoramaZoomRef.current;
     const viewport = panoramaViewportRef.current;
-    if (!previous || previous === clamped) { panoramaZoomRef.current = clamped; setPanoramaZoom(clamped); return; }
+    if (!previous || previous === clamped) { applyTransform(panRef.current.x, panRef.current.y, clamped); return; }
     if (viewport) {
       // Anchor coordinates are viewport-local layout pixels, never rect pixels.
       // getBoundingClientRect includes the phone-shell compatibility transform.
@@ -261,14 +286,13 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const pan = panRef.current;
       const worldX = (anchorX - pan.x) / (previous / 100);
       const worldY = (anchorY - pan.y) / (previous / 100);
-      applyPan(anchorX - worldX * (clamped / 100), anchorY - worldY * (clamped / 100));
+      applyTransform(anchorX - worldX * (clamped / 100), anchorY - worldY * (clamped / 100), clamped);
+    } else {
+      applyTransform(panRef.current.x, panRef.current.y, clamped);
     }
-    panoramaZoomRef.current = clamped;
-    setPanoramaZoom(clamped);
-  }, [applyPan]);
+  }, [applyTransform]);
   const [wallBackgroundUrl, setWallBackgroundUrl] = useState("");
   const wallBackgroundInputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { panoramaZoomRef.current = panoramaZoom; }, [panoramaZoom]);
   // 每次进入全景/编辑时都按真实可用视口重新适配；画布比例与导出一致。
   // ResizeObserver 处理手机 WebView 首帧尺寸为 0 或地址栏收缩导致的空白。
   useEffect(() => {
@@ -276,6 +300,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const viewport = panoramaViewportRef.current;
     if (!viewport) return;
     const fitCanvas = () => {
+      if (pinchModeRef.current) return;
       const width = viewport.clientWidth;
       const height = viewport.clientHeight;
       if (!width || !height) return;
@@ -351,7 +376,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       }
       if (pinchPointersRef.current.size < 2) return;
       const points = [...pinchPointersRef.current.values()].slice(0, 2);
-      pinchStartRef.current = { distance: pointsDistance(points), zoom: panoramaZoomRef.current };
+      const actual = readStageTransform();
+      panRef.current = { x: actual.x, y: actual.y };
+      panoramaZoomRef.current = actual.zoom;
+      pinchStartRef.current = { distance: pointsDistance(points), zoom: actual.zoom };
       pinchLastMidpointRef.current = { x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 };
       pinchModeRef.current = true; singleTouchRef.current = null;
       window.dispatchEvent(new Event("photo-wall-pinch-start"));
@@ -382,9 +410,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         const currentLocalY = (midpoint.y - rect.top) / anchorScale.y;
         const worldX = (previousLocalX - pan.x) / previousZoom;
         const worldY = (previousLocalY - pan.y) / previousZoom;
-        applyPan(currentLocalX - worldX * nextScale, currentLocalY - worldY * nextScale);
-        panoramaZoomRef.current = nextZoomValue;
-        setPanoramaZoom(nextZoomValue);
+        applyTransform(currentLocalX - worldX * nextScale, currentLocalY - worldY * nextScale, nextZoomValue);
         return;
       }
       // 单指：只有「浏览模式 + 起点是空白画布」才走自定义平移；摆照片/涂鸦/翻面继续交给画布自身的指针逻辑。
@@ -422,7 +448,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (supportsPointerEvents) return;
       if (event.touches.length >= 2) {
         if (!pinchModeRef.current) {
-          pinchStartRef.current = { distance: touchDistance(event.touches), zoom: panoramaZoomRef.current };
+          const actual = readStageTransform();
+          panRef.current = { x: actual.x, y: actual.y };
+          panoramaZoomRef.current = actual.zoom;
+          pinchStartRef.current = { distance: touchDistance(event.touches), zoom: actual.zoom };
           pinchModeRef.current = true;
           pinchLastMidpointRef.current = { x: (event.touches[0].clientX + event.touches[1].clientX) / 2, y: (event.touches[0].clientY + event.touches[1].clientY) / 2 };
           window.dispatchEvent(new Event("photo-wall-pinch-start"));
@@ -467,9 +496,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         const currentLocalY = (midpoint.y - rect.top) / anchorScale.y;
         const worldX = (previousLocalX - pan.x) / previousZoom;
         const worldY = (previousLocalY - pan.y) / previousZoom;
-        applyPan(currentLocalX - worldX * nextScale, currentLocalY - worldY * nextScale);
-        panoramaZoomRef.current = nextZoomValue;
-        setPanoramaZoom(nextZoomValue);
+        applyTransform(currentLocalX - worldX * nextScale, currentLocalY - worldY * nextScale, nextZoomValue);
         return;
       }
       if (event.touches.length === 1) {
@@ -743,16 +770,19 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const current = stateRef.current;
     const ordered = current.photos.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     if (!ordered.length) { onNotice?.("墙上还没有照片。"); return; }
-    const slots = buildTemplateSlots(templateId, ordered.length, undefined, templateFill);
+    // 锁定照片是固定锚点：不参与模板重排，位置/大小/旋转/层级全部保持。
+    const editable = ordered.filter(photo => !photo.placement?.locked);
+    if (!editable.length) { onNotice?.("所有照片都已锁定，没有可套用模板的照片。"); return; }
+    const slots = buildTemplateSlots(templateId, editable.length, undefined, templateFill);
     if (!slots.length) return;
     pushHistory(current);
+    const slotById = new Map(editable.map((photo, index) => [photo.id, { slot: slots[index], z: index + 1 }]));
     commitPhotos(current.photos.map(photo => {
-      const index = ordered.findIndex(item => item.id === photo.id);
-      // Never cycle through a shorter slot list: that would stack multiple photos at one point.
-      const slot = slots[index];
-      if (!slot) return photo;
+      if (photo.placement?.locked) return photo;
+      const arrangement = slotById.get(photo.id);
+      if (!arrangement?.slot) return photo;
       const base = photo.placement;
-      return { ...photo, placement: { x: slot.x, y: slot.y, scale: slot.scale, rotation: slot.rotation, z: index + 1, frame: base?.frame ?? "polaroid", locked: base?.locked ?? false, frameColor: base?.frameColor ?? "#fffdf8" } as PhotoWallPlacement };
+      return { ...photo, placement: { ...arrangement.slot, z: arrangement.z, frame: base?.frame ?? "polaroid", locked: base?.locked ?? false, frameColor: base?.frameColor ?? "#fffdf8" } as PhotoWallPlacement };
     }));
     setActiveTemplateId(templateId);
     try { window.localStorage.setItem(PHOTO_WALL_ACTIVE_TEMPLATE_KEY, templateId); } catch { /* current placements remain saved */ }
@@ -1016,9 +1046,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     if (explicitTemplate) {
       // 新照片加入后按总数重新计算整套骨架；只给新照片分配尾槽会让形状越长越缺边。
       const ordered = combined.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-      const slots = buildTemplateSlots(activeTemplateId, ordered.length, undefined, templateFill);
-      const slotById = new Map(ordered.map((item, index) => [item.id, { slot: slots[index], z: index + 1 }]));
+      const editable = ordered.filter(item => !item.placement?.locked);
+      const slots = buildTemplateSlots(activeTemplateId, editable.length, undefined, templateFill);
+      const slotById = new Map(editable.map((item, index) => [item.id, { slot: slots[index], z: index + 1 }]));
       const rearranged = combined.map(item => {
+        if (item.placement?.locked) return item;
         const arrangement = slotById.get(item.id);
         if (!arrangement?.slot) return item;
         const base = item.placement;
@@ -1118,9 +1150,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         if (activeTemplateId && activeTemplateId !== "builtin-scatter") {
           const combined = [...created, ...current.photos];
           const ordered = combined.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-          const slots = buildTemplateSlots(activeTemplateId, ordered.length, undefined, templateFill);
-          const slotById = new Map(ordered.map((item, index) => [item.id, { slot: slots[index], z: index + 1 }]));
+          const editable = ordered.filter(item => !item.placement?.locked);
+          const slots = buildTemplateSlots(activeTemplateId, editable.length, undefined, templateFill);
+          const slotById = new Map(editable.map((item, index) => [item.id, { slot: slots[index], z: index + 1 }]));
           const rearranged = combined.map(item => {
+            if (item.placement?.locked) return item;
             const arrangement = slotById.get(item.id);
             if (!arrangement?.slot) return item;
             const base = item.placement;
@@ -1581,6 +1615,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             }} className="border border-[#d8c6b5] px-2 py-1 text-[10px] text-[#7d6d5a]">替换当前色块</button>
             {[2,3,5,8].map(width => <button key={width} type="button" onClick={() => setWallBrushWidth(width)} aria-pressed={wallBrushWidth===width} className={wallBrushWidth===width?"border border-[#6b5c4a] bg-[#6b5c4a] px-2 py-1 text-[10px] text-white":"border border-[#d8c6b5] px-2 py-1 text-[10px] text-[#7d6d5a]"}>{width}</button>)}
             {["❤","✦","✿","☾","☘","♪","★","⌘"].map(item => <button key={item} type="button" onClick={() => {setWallSticker(wallSticker===item?null:item);setWallEraser(false)}} aria-pressed={wallSticker===item} className={wallSticker===item?"bg-[#6b5c4a] px-1.5 py-1 text-white":"bg-white/70 px-1.5 py-1 text-[#7d6d5a]"}>{item}</button>)}
+            <span className="ml-1 inline-flex items-center gap-1 border border-[#d8c6b5] bg-white/70 px-1.5 py-1 text-[10px] text-[#7d6d5a]">
+              印章
+              <button type="button" aria-label="印章左转 15 度" onClick={() => setWallStickerRotation(value => Math.max(-180, value - 15))} className="px-1 text-[12px]">−</button>
+              <span className="min-w-8 text-center tabular-nums">{wallStickerRotation}°</span>
+              <button type="button" aria-label="印章右转 15 度" onClick={() => setWallStickerRotation(value => Math.min(180, value + 15))} className="px-1 text-[12px]">+</button>
+            </span>
             <button type="button" onClick={() => {setWallEraser(!wallEraser);setWallSticker(null)}} aria-pressed={wallEraser} className={wallEraser?"bg-[#a06a58] px-2 py-1 text-[10px] text-white":"border border-[#d8c6b5] px-2 py-1 text-[10px] text-[#7d6d5a]"}>橡皮</button>
             <button type="button" onClick={() => {if(wallSelectedPhoto) changeDoodles(wallSelectedPhoto.id,[])}} disabled={!wallSelectedPhoto?.doodles?.length} className="border-b border-[#e0c8bd] px-1 py-1 text-[10px] text-[#a06a58] disabled:opacity-35">清空照片涂鸦</button>
             <button type="button" onClick={() => changeWallDoodles([])} disabled={!(state.wallDoodles?.length)} className="border-b border-[#e0c8bd] px-1 py-1 text-[10px] text-[#a06a58] disabled:opacity-35">清空墙面涂鸦</button>
@@ -1615,6 +1655,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         >
 
           <div
+            ref={worldStageRef}
             data-photo-wall-world-stage
             className="absolute left-0 top-0"
             style={{
@@ -1623,7 +1664,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               width: world.width,
               height: world.height,
               // Avoid forcing a huge 2400–12000px world into a single GPU-composited 3D layer.
-              transform: "translate(" + panRef.current.x + "px," + panRef.current.y + "px) scale(" + (panoramaZoom / 100) + ")",
+              transform: "translate(" + panRef.current.x + "px," + panRef.current.y + "px) scale(" + (panoramaZoomRef.current / 100) + ")",
               transformOrigin: "top left",
               touchAction: "none",
               overflow: "visible",
@@ -1638,7 +1679,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               wallWorld={world} canvasZoom={panoramaZoom / 100} readOnly={wallView === "panorama"}
               mode={wallCanvasMode} onModeChange={handleWallCanvasModeChange}
               brushColor={wallBrushColor} brushWidth={wallBrushWidth}
-              sticker={wallSticker} onStickerChange={setWallSticker}
+              sticker={wallSticker} onStickerChange={setWallSticker} stickerRotation={wallStickerRotation}
               eraser={wallEraser} onEraserChange={setWallEraser}
               onOpenDetail={photo => openPhoto(photo, false)} />
           </div>

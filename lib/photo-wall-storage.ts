@@ -66,6 +66,8 @@ export type PhotoWallDoodle = {
   kind: "stroke" | "sticker";
   /** 贴纸用的 emoji 或短字符 */
   content?: string;
+  /** 贴纸/印章旋转角度（度）。旧数据缺省为 0。 */
+  rotation?: number;
   /** 可选创作者元数据，旧版用户涂鸦数据无需迁移。 */
   authorType?: "user" | "character";
   authorId?: string;
