@@ -220,7 +220,7 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                                 const message = {
                                     id: messageId, sceneId: scene.id, speakerType: "character" as const,
                                     speakerId: lifeScene.characterId, speakerName, role: "character" as const,
-                                    action: parsed.action || undefined, dialogue: parsed.dialogue, createdAt: now,
+                                    action: parsed.action || undefined, dialogue: parsed.dialogue, createdAt: now, channel: "life_offline" as const,
                                 };
                                 let next = {
                                     ...state, sceneMessages: [...state.sceneMessages, message],

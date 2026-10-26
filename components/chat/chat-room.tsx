@@ -54,6 +54,7 @@ import { generateGroupChatCompletion, generateGroupOfflineChatCompletion, parseG
 import { appendChatOfflineTurn, deleteChatOfflineTurn, deleteChatOfflineTurnsFrom, extractThinkingTag, loadChatOfflineTurns, parseOfflineResponse, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
 import { applyDisplayRegex, applyEditRegex } from "@/lib/llm-prompt-assembler";
 import { scheduleFollowUp, cancelFollowUp, cancelBackgroundGeneration, isBackgroundReplyGenerating } from "@/lib/follow-up-service";
+import { beginTurn } from "@/lib/turn-coordinator";
 import { useKeyboardDismissAutoSend } from "@/components/chat/use-keyboard-dismiss-auto-send";
 import { cancelBailoutKey } from "@/lib/push-bailout-client";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
@@ -1269,6 +1270,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         return chars.find(c => c.id === session.contactId) || null;
     });
     const [isGenerating, setIsGenerating] = useState(false);
+    const [sleepNotice, setSleepNotice] = useState<{ pending: number; threshold: number } | null>(null);
     const [offlineMode, setOfflineMode] = useState(false);
     const [theaterMode, setTheaterMode] = useState(() => kvGet(CHAT_THEATER_MODE_PREFIX + session.id) === "1");
     const [offlineTurns, setOfflineTurns] = useState<ChatOfflineTurn[]>([]);
@@ -3831,7 +3833,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const presence = life.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === character.id);
         const sleeping = /睡眠|睡觉|入睡|午休/.test((presence?.activity || "") + " " + (schedule?.title || ""));
         const pendingKey = "life-sleep-pending-reply:" + session.id;
-        if (!sleeping) { kvRemove(pendingKey); return false; }
+        if (!sleeping) { kvRemove(pendingKey); kvRemove("life-sleep-wake-threshold:" + session.id); setSleepNotice(null); return false; }
 
         // 睡着时不因单条消息或随机数醒来：统计最近一次角色回复之后积累的用户消息。
         // 每个角色固定一个 5–10 条的唤醒阈值，避免同一条消息反复检查时结果变化。
@@ -3842,17 +3844,25 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             if (message.role === "assistant") break;
             if (message.role === "user" && message.content?.trim()) unansweredUserMessages++;
         }
-        const thresholdSeed = [...character.id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
-        const wakeThreshold = 5 + (thresholdSeed % 6);
+        // 每个睡眠周期随机 5-10 条唤醒阈值；同一周期稳定，醒来/起床后清掉。
+        const thresholdKey = "life-sleep-wake-threshold:" + session.id;
+        let wakeThreshold = Number(kvGet(thresholdKey) || 0);
+        if (!Number.isFinite(wakeThreshold) || wakeThreshold < 5 || wakeThreshold > 10) {
+            wakeThreshold = 5 + Math.floor(Math.random() * 6);
+            kvSet(thresholdKey, String(wakeThreshold));
+        }
         const urgent = /救命|紧急|出事了|危险|受伤|快来|急救/.test(latestUserText);
         const staysAsleep = !urgent && unansweredUserMessages < wakeThreshold;
         if (staysAsleep) {
             kvSet(pendingKey, "true");
+            setSleepNotice({ pending: unansweredUserMessages, threshold: wakeThreshold });
             if (notify && unansweredUserMessages === 1) {
                 showChatToast(character.name + "正在睡觉，暂时没有醒来。继续发消息或使用自动续写可以叫醒 TA。", 3500);
             }
         } else {
             kvRemove(pendingKey);
+            kvRemove(thresholdKey);
+            setSleepNotice(null);
         }
         return staysAsleep;
     };
@@ -3874,6 +3884,14 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         }
         const generationRun = createGenerationRun(session.id);
         const generationRunId = generationRun.runId;
+        const turn = beginTurn({
+            kind: "user_reply",
+            characterId: character?.id ?? session.contactId,
+            sessionId: session.id,
+        });
+        if (!turn) return;
+        const onTurnAbort = () => { if (isCurrentGeneration()) cancelGenerationRun(session.id); };
+        turn.signal.addEventListener("abort", onTurnAbort, { once: true });
         const isCurrentGeneration = () => isGenerationRunActive(session.id, generationRunId);
         const generationGuard: GenerationRunGuard = { signal: generationRun.controller.signal, isActive: isCurrentGeneration };
         let shouldRunDeclineReply = false;
@@ -4177,6 +4195,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             });
             setMessages(prev => [...prev, errorMsg]);
         } finally {
+            turn.end();
+            turn.signal.removeEventListener("abort", onTurnAbort);
             if (finishGenerationRun(session.id, generationRunId)) {
                 isGeneratingRef.current = false;
                 setIsGenerating(false);
@@ -6110,6 +6130,17 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     </span>
                 </div>
             </header>
+            {sleepNotice && !session.isGroup && !offlineMode && (
+                <div className="chat-room-main-pane" style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 12px 8px", padding: "8px 12px", borderRadius: 12, background: "rgba(118, 83, 77, 0.10)", border: "1px solid rgba(118, 83, 77, 0.18)", fontSize: 12, color: "var(--c-text, #493c34)" }}>
+                    <span style={{ flex: 1, minWidth: 0 }}>🌙 {character?.name || "TA"} 正在睡觉，已收到你 {sleepNotice.pending} 条消息。继续发 5-10 条会随机吵醒，也可以直接叫醒 TA。</span>
+                    <button type="button" style={{ flexShrink: 0, border: 0, borderRadius: 999, padding: "6px 10px", background: "var(--c-icon, #76534d)", color: "#fff", fontSize: 12 }} onClick={() => {
+                        kvRemove("life-sleep-pending-reply:" + session.id);
+                        kvRemove("life-sleep-wake-threshold:" + session.id);
+                        setSleepNotice(null);
+                        void triggerAIResponse();
+                    }}>叫醒 TA</button>
+                </div>
+            )}
             <ChatPluginSlot
                 name="chat.header"
                 slotProps={{ sessionId: session.id, isGroup: !!session.isGroup }}

@@ -29,6 +29,7 @@ import { CallMiniWindow } from "./call-mini-window";
 import { CallSubtitleItem, type CallSubtitleAction } from "./call-subtitle-item";
 import { type CallAutoChatConfig, MAX_TURNS_LIMIT, MIN_INTERVAL_SECONDS, loadCallAutoChatConfig, randomAutoChatDelaySeconds, saveCallAutoChatConfig } from "@/lib/call-auto-chat";
 import { isShellEnvironment, stopShellCallOverlay } from "@/lib/shell-call-overlay";
+import { beginTurn, type TurnHandle } from "@/lib/turn-coordinator";
 import { useShellCallOverlay } from "./use-shell-call-overlay";
 import { useCallReplyQueue } from "./use-call-reply-queue";
 
@@ -127,6 +128,18 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
     const [inputMode, setInputMode] = useState<"voice" | "text">(() => androidTextInputOnly ? "text" : "voice");
     const [typedText, setTypedText] = useState("");
     const [bgImageResolved, setBgImageResolved] = useState<string | null>(null);
+
+    // 通话是交互阻塞态：通话期间所有主动消息让路；挂断/卸载时 abort 当前通话 turn。
+    const callTurnRef = useRef<TurnHandle | null>(null);
+    useEffect(() => {
+        const turn = beginTurn({ kind: "call", characterId: character.id, sessionId: session.id });
+        callTurnRef.current = turn;
+        return () => {
+            turn?.abort();
+            turn?.end();
+            callTurnRef.current = null;
+        };
+    }, [character.id, session.id]);
     const [showSttWarning, setShowSttWarning] = useState(false);
     // 正在重听的字幕 id（按钮据此高亮）
     const [replayingId, setReplayingId] = useState<string | null>(null);
@@ -510,6 +523,7 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
             // 3. Generate AI response
             const aiResponseText = flattenCompletionResult(await generateChatCompletion(session, messagesRef.current, {
                 appTags: ["chat", "voice"],
+                signal: callTurnRef.current?.signal,
             }));
 
             // Bail if call ended during generation

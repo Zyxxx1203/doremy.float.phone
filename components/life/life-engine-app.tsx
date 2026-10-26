@@ -11,7 +11,7 @@ import type { Character } from "@/lib/character-types";
 import { loadCharacters } from "@/lib/character-storage";
 import { hydrateKvDb } from "@/lib/kv-db";
 import { hydrateChatStorage } from "@/lib/chat-storage";
-import { addChatContact, createOrGetSession, loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
+import { addChatContact, createOrGetSession, loadChatContacts, loadChatMessages, loadChatSessions, resolveSessionCharacterId, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { generateOfflineChatCompletion } from "@/lib/chat-engine";
 import {
   createEmptyVirtualLifeState,
@@ -38,6 +38,7 @@ import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeScen
 import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts, reconcileIdleReconnectWithLifeScenes, suspendIdleReconnectForLifeScene } from "@/lib/push-bailout-client";
 
 import { cancelFollowUp } from "@/lib/follow-up-service";
+import { beginTurn } from "@/lib/turn-coordinator";
 import { loadBindingConfig, loadImageGenerationSettings, loadPresets, loadWorldBooks, resolveBinding, resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
 import type { BindingConfig, PresetConfig, WorldBookConfig } from "@/lib/settings-types";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
@@ -64,6 +65,31 @@ const INITIAL_LOCATIONS: LifeLocation[] = [
 const id = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 function createLifeVirtualSession(characterId: string, characterName: string): ChatSession {
   return { id: "life-engine-" + characterId, contactId: characterId, unreadCount: 0, updatedAt: new Date().toISOString(), isPinned: false, isGroup: false, alias: characterName };
+}
+
+/**
+ * 生活/线下不再把线上 chat 全量塞进 history；但保留最近 6 条作为“背景”，
+ * 让角色仍然知道自己和玩家线上聊过什么，同时不会被旧话题抢走当前场景。
+ */
+function buildOnlineChatBackground(characterId: string): string {
+  const contact = loadChatContacts().find(item => item.characterId === characterId);
+  const session = loadChatSessions().find(item =>
+    !item.isGroup && (item.contactId === contact?.id || resolveSessionCharacterId(item) === characterId),
+  );
+  if (!session) return "";
+  const messages = loadChatMessages(session.id)
+    .filter(message => !message.isRetracted && (message.role === "user" || message.role === "assistant") && message.content.trim())
+    .slice(-6);
+  if (messages.length === 0) return "";
+  const lines = messages.map(message => {
+    const who = message.role === "user" ? "用户" : "角色";
+    const text = message.content.replace(/\s+/g, " ").trim().slice(0, 220);
+    return `- [来源：线上聊天] ${who}：${text}`;
+  });
+  return [
+    "【线上聊天最近背景（不是当前生活现场，仅供回忆；不要把它当成本轮对话）】",
+    ...lines,
+  ].join("\n");
 }
 const fmt = (value: Date | string) => new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(typeof value === "string" ? new Date(value) : value);
 const toLocalDateTimeInput = (value: string) => { const d = new Date(value); if (!Number.isFinite(d.getTime())) return ""; const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000); return local.toISOString().slice(0, 16); };
@@ -1516,6 +1542,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           activePromptPresetText ? "小手机预设继承内容与当前生活预设规则：\n" + activePromptPresetText : "",
           activePromptPreset.locationHabitPrompt ? "地点习惯规则：\n" + activePromptPreset.locationHabitPrompt : "",
           settings.customPrompt ? "用户自定义规则：" + settings.customPrompt : "",
+          buildOnlineChatBackground(character.id),
           sceneContext,
           "玩家行动：" + (previousPlayer.action || "无"),
           "玩家对白：" + (previousPlayer.dialogue || "无"),
@@ -1523,7 +1550,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           LIFE_SCENE_OUTPUT_CONTRACT,
         ].filter(Boolean).join("\n"),
       };
-      const result = await generateOfflineChatCompletion(session, [...previous, prompt]);
+      const result = await generateOfflineChatCompletion(session, [prompt], { includeDirectChatEntries: false });
       const parsed = parseLifeOutput(result.content);
       if (!parsed.action?.trim() && !parsed.dialogue.trim()) throw new Error("模型返回了空回应，请检查当前角色绑定的模型或输出格式设置后重试。");
       const latest = stateRef.current;
@@ -1587,6 +1614,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   };
 
   const pushSceneMessage = (message: LifeSceneMessage) => {
+    if (!message.channel) message.channel = "life_scene";
     const latest = stateRef.current;
     const currentScene = latest.scenes.find(scene => scene.id === message.sceneId);
     const updatedScene = currentScene ? { ...currentScene, updatedAt: new Date().toISOString() } : null;
@@ -1630,6 +1658,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         activePromptPreset.sceneBehaviorPrompt || "",
         activePromptPreset.locationHabitPrompt || "",
         settings.customPrompt || "",
+        buildOnlineChatBackground(character.id),
         sceneContext,
         (activePromptPreset.sceneTaskPrompt?.trim() || "请生成{characterName}此刻自然、自主的一小回合。没有值得说的话时，动作和对白都可以留空。")
           .replace(/\{characterName\}/g, character.name)
@@ -1689,6 +1718,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const candidate = pickCandidate();
       if (!candidate) return;
       const { character, session } = candidate;
+      const lifeTurn = beginTurn({ kind: "life_scene", characterId: character.id, sessionId: session.id });
+      if (!lifeTurn) return;
       // Wait for the old server snapshot to be cancelled before starting a new local turn.
       // Fire-and-forget cancellation can race a replacement task and deliver an obsolete turn.
       await cancelLifeSceneProactiveBailouts(activeScene.id);
@@ -1703,7 +1734,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           id: id("life-autonomy"), sessionId: session.id, role: "user", status: "sent",
           createdAt: new Date().toISOString(), content: buildPrompt(character),
         };
-        const result = await generateOfflineChatCompletion(session, [...history, proactivePrompt]);
+        const result = await generateOfflineChatCompletion(session, [proactivePrompt], { includeDirectChatEntries: false, signal: lifeTurn.signal });
         if (disposed) return;
         const parsed = parseLifeOutput(result.content);
         if (!parsed.action?.trim() && !parsed.dialogue.trim()) return;
@@ -1712,8 +1743,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         const dialogueSegments = splitLifeReplySegments(parsed.dialogue);
         const mergedDialogue = dialogueSegments.join("\n");
         const responseMessages: LifeSceneMessage[] = [
-          ...(actionText ? [{ id: id("life-proactive-action"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: character.id, speakerName: character.name, role: "character" as const, action: actionText, dialogue: "", createdAt: responseAt }] : []),
-          ...dialogueSegments.map(dialogue => ({ id: id("life-proactive-dialogue"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: character.id, speakerName: character.name, role: "character" as const, dialogue, createdAt: responseAt })),
+          ...(actionText ? [{ id: id("life-proactive-action"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: character.id, speakerName: character.name, role: "character" as const, action: actionText, dialogue: "", createdAt: responseAt, channel: "life_autonomy" as const }] : []),
+          ...dialogueSegments.map(dialogue => ({ id: id("life-proactive-dialogue"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: character.id, speakerName: character.name, role: "character" as const, dialogue, createdAt: responseAt, channel: "life_autonomy" as const })),
         ];
         responseMessages.forEach(pushSceneMessage);
         const body = responseMessages.map(message => [message.action, message.dialogue].filter(Boolean).join(" ")).filter(Boolean).join(" ");
@@ -1726,6 +1757,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       } catch (error) {
         console.warn("[LifeAutonomy] proactive scene turn failed:", error);
       } finally {
+        lifeTurn.end();
         // Keep exactly one fresh server-side fallback armed for the next interval while
         // the app is alive. The server can execute this snapshot if Android kills the WebView;
         // when the app returns, it rebuilds a new snapshot from current scene state.
@@ -1819,6 +1851,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const sessions = loadChatSessions();
     const contact = contacts.find(item => item.characterId === target.id);
     const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeVirtualSession(target.id, target.name);
+    const lifeTurn = beginTurn({ kind: "life_scene", characterId: target.id, sessionId: session.id });
+    if (!lifeTurn) return;
     setBusy(true);
     if (forceReaction) setNotice(target.name + "正在回应最近的互动……");
     try {
@@ -1845,9 +1879,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       ].filter(Boolean).join("\n");
       const promptMessage: ChatMessage = {
         id: id("life-user"), sessionId: session.id, role: "user", status: "sent", createdAt: now,
-        content: `[仅本轮使用生活场景模式规则，不要写入线上聊天历史]\n${settingsInstructions}\n\n${sceneContext}\n\n玩家本轮行动：${userAction || (forceReaction ? "（请结合最近的用户行为作出反馈）" : "（没有额外动作）")}\n玩家本轮对白：${userText || (forceReaction ? "（请回应最近的对话或动作，不要要求用户重复输入）" : "（没有说话）")}\n${(activePromptPreset.sceneTaskPrompt?.trim() || "请让{characterName}按其既有人设自然回应。行动与对白分开处理；玩家只行动时，不要擅自替玩家补台词。").replace(/\{characterName\}/g, target.name).replace(/\{playerName\}/g, playerName).replace(/\{locationName\}/g, activeScene.locationName)}\n\n${LIFE_SCENE_OUTPUT_CONTRACT}`,
+        content: `[仅本轮使用生活场景模式规则，不要写入线上聊天历史]\n${settingsInstructions}\n\n${buildOnlineChatBackground(target.id)}\n\n${sceneContext}\n\n玩家本轮行动：${userAction || (forceReaction ? "（请结合最近的用户行为作出反馈）" : "（没有额外动作）")}\n玩家本轮对白：${userText || (forceReaction ? "（请回应最近的对话或动作，不要要求用户重复输入）" : "（没有说话）")}\n${(activePromptPreset.sceneTaskPrompt?.trim() || "请让{characterName}按其既有人设自然回应。行动与对白分开处理；玩家只行动时，不要擅自替玩家补台词。").replace(/\{characterName\}/g, target.name).replace(/\{playerName\}/g, playerName).replace(/\{locationName\}/g, activeScene.locationName)}\n\n${LIFE_SCENE_OUTPUT_CONTRACT}`,
       };
-      const result = await generateOfflineChatCompletion(session, [...previous, promptMessage]);
+      const result = await generateOfflineChatCompletion(session, [promptMessage], { includeDirectChatEntries: false, signal: lifeTurn.signal });
       const parsed = parseLifeOutput(result.content);
       if (forceReaction && !parsed.dialogue.trim() && !parsed.action?.trim()) {
         throw new Error("模型返回了空回应，请检查当前角色绑定的模型或输出格式设置后重试。");
@@ -1933,7 +1967,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       }
     } catch (error) {
       setNotice(error instanceof Error ? `角色生成失败：${error.message}` : "角色生成失败，请检查聊天模型配置。");
-    } finally { setBusy(false); }
+    } finally { lifeTurn.end(); setBusy(false); }
   };
 
   const addLocation = () => {
@@ -2096,7 +2130,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           "只输出一个机器可读标签，并可在 reason 中写一句简短自然的理由：<life_invitation_response decision=\"accept|decline\" reason=\"理由\" />。没有明确接受就视为拒绝；不要改动日程，系统会在接受后处理冲突和排期。",
         ].join("\n"),
       };
-      const result = await generateOfflineChatCompletion(session, [...previous, prompt]);
+      const result = await generateOfflineChatCompletion(session, [prompt], { includeDirectChatEntries: false });
       const tag = result.content.match(/<life_invitation_response\b([^>]*)\/?\s*>/i);
       const attribute = (source: string, name: string) => source.match(new RegExp(name + "\\s*=\\s*[\"']([^\"']*)[\"']", "i"))?.[1]?.trim() ?? "";
       const decision = attribute(tag?.[1] ?? "", "decision").toLowerCase();

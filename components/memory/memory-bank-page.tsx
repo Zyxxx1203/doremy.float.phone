@@ -20,6 +20,8 @@ import {
     getMemoryCountByType,
     getLastSummarizedTimestamp,
     getLastCoreSummarizedTimestamp,
+    getEventCounter,
+    loadMemorySummaryStatus,
 } from "@/lib/memory-storage";
 import { hydrateChatStorage } from "@/lib/chat-storage";
 import { loadNativeTimeline, type NativeTimelineEntry } from "@/lib/short-term-assembler";
@@ -28,6 +30,7 @@ import { runCoreMemoryPipeline } from "@/lib/core-memory-builder";
 import { resolveAuxiliaryApiConfig, resolveUserIdentity } from "@/lib/settings-storage";
 import { generateEmbedding, resolveEmbeddingModel } from "@/lib/memory-embedding";
 import { BINDING_ACCENTS } from "@/lib/ui-accent-colors";
+import { memorySourceLabel } from "@/lib/memory-injector";
 
 type MemoryView = "list" | "detail" | "settings";
 type MemoryTab = "short" | "shared" | "core" | "long";
@@ -685,6 +688,7 @@ export function MemoryBankPage({
                                 </div>
                             </div>
                             <div className="ts-12 leading-[1.7]">
+                                <div className="mb-1 text-[10px] uppercase tracking-wide opacity-60">来源：{memorySourceLabel(entry)}</div>
                                 {expandedId === entry.id
                                     ? entry.content
                                     : entry.content.length > 100
@@ -913,6 +917,8 @@ export function MemoryBankPage({
 
     // ── Settings View ──
     if (view === "settings") {
+        const summaryStatus = selectedCharId ? loadMemorySummaryStatus(selectedCharId) : null;
+        const summaryEventCount = selectedCharId ? getEventCounter(selectedCharId) : 0;
         const currentPrompt = editingPrompt ?? config.summarizationPrompt ?? DEFAULT_SUMMARIZATION_PROMPT;
         const currentCorePrompt = editingCorePrompt ?? config.coreMemoryPrompt ?? DEFAULT_CORE_MEMORY_PROMPT;
         const isModified = currentPrompt !== (config.summarizationPrompt ?? DEFAULT_SUMMARIZATION_PROMPT);
@@ -1064,6 +1070,17 @@ export function MemoryBankPage({
                                 setConfig(next);
                                 saveMemoryConfig(next);
                             }} />
+                        </div>
+                    </div>
+                    <div className="menu-item">
+                        <MemorySettingsIcon icon={Clock} color={BINDING_ACCENTS.api} />
+                        <div className="menu-label-group">
+                            <span className="menu-label">上次总结状态</span>
+                            <span className="menu-desc">
+                                {summaryStatus
+                                    ? `${summaryStatus.ok ? "成功" : "失败"} · ${new Date(summaryStatus.at).toLocaleString("zh-CN")}${summaryStatus.error ? ` · ${summaryStatus.error}` : ""} · 当前计数 ${summaryEventCount}`
+                                    : `暂无记录 · 当前计数 ${summaryEventCount}`}
+                            </span>
                         </div>
                     </div>
                     <div className="menu-item">

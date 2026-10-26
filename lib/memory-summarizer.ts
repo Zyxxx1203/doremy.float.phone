@@ -10,6 +10,7 @@ import {
     saveMemoryEntry,
     deleteMemoryEntries,
     getEventCounter,
+    saveMemorySummaryStatus,
     resetEventCounter,
     getLastSummarizedTimestamp,
     getLastCoreSummarizedTimestamp,
@@ -44,7 +45,13 @@ export async function maybeRunSummarization(
     if (summarizingSet.has(characterId)) return;
     summarizingSet.add(characterId);
     try {
-        await runSummarizationPipeline(characterId, characterName, memoryWrites);
+        const result = await runSummarizationPipeline(characterId, characterName, memoryWrites);
+        saveMemorySummaryStatus(characterId, {
+            at: new Date().toISOString(),
+            ok: result.success,
+            error: result.success ? undefined : result.error,
+            eventCount: counter,
+        });
     } finally {
         summarizingSet.delete(characterId);
     }

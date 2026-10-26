@@ -10,6 +10,9 @@ on:
   push:
     branches: [main, feature/life-system, feature/life-system-mainline]
     paths: ["android-shell/**", ".github/workflows/android-shell.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["android-shell/**", ".github/workflows/android-shell.yml"]
 
 jobs:
   build:

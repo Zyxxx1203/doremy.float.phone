@@ -2671,7 +2671,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     const handler = (e: Event) => {
       const sessionId = (e as CustomEvent<{ sessionId?: string }>).detail?.sessionId;
       if (!sessionId) return;
-      window.setTimeout(() => { void requestBackgroundChatReply(sessionId); }, 0);
+      window.setTimeout(() => { void requestBackgroundChatReply(sessionId, { channel: "call_end" }); }, 0);
     };
     window.addEventListener("chat-call-ended", handler);
     return () => window.removeEventListener("chat-call-ended", handler);
