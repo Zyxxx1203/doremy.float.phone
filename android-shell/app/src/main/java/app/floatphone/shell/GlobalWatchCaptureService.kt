@@ -290,8 +290,8 @@ class GlobalWatchCaptureService : Service() {
     }
 
     private fun analyzeFrameNative(dataUrl: String, capturedAt: Long, userReply: String) {
-        val video = config.optJSONObject("video") ?: JSONObject()
-        val provider = video.optString("provider", "gemini")
+        val video = config.optJSONObject("imageModel") ?: JSONObject()
+        val provider = video.optString("provider", "")
         val apiKey = video.optString("apiKey", "").trim()
         val model = video.optString("model", "").trim()
         val baseUrl = video.optString("baseUrl", "").trim().trimEnd('/')
