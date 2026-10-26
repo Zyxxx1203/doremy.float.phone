@@ -1020,6 +1020,11 @@ export function prepareShortTermContext(
     const budget = memConfig.shortTermTokenBudget;
     const currentTag = getFeatureTag(appId);
     const history = options?.history ?? [];
+    // Offline/life callers often pass the online chat as `history`; keep those
+    // messages once (in history) instead of injecting the same rows again as
+    // `recent_chat`. This preserves the online-chat memory while avoiding the
+    // duplicate block that used to over-weight old topics.
+    const historyMessageIds = new Set(history.map(message => message.id));
     const characterName = loadCharacters().find(c => c.id === characterId)?.name ?? "角色";
     const wrapsCurrentHistory = appId === "chat" || appId === "group_chat" || appId === "story" || appId === "vn" || appId === "adventure";
     const skipDirectChatEntries = appId === "chat" && !options?.includeDirectChatEntries;
@@ -1114,8 +1119,13 @@ export function prepareShortTermContext(
     }
 
     // Direct chat from timeline — skipped only when the current history already comes from chat/group_chat.
+    // Also skip rows already present in `history` (offline/life callers pass online chat as history).
     if (!skipDirectChatEntries) {
-        const chatEntries = timeline.filter(e => e.sourceApp === "chat" && e.sourceDetail === "direct");
+        const chatEntries = timeline.filter(e =>
+            e.sourceApp === "chat"
+            && e.sourceDetail === "direct"
+            && !historyMessageIds.has(e.id),
+        );
         if (chatEntries.length > 0) {
             raw.push({ tag: "recent_chat", order: FEATURE_ORDER.chat, entries: chatEntries });
         }

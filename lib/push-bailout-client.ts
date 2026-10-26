@@ -143,6 +143,19 @@ function resolveSessionCharacterId(session: Pick<ChatSession, "contactId">): str
         ?? (loadCharacters().some(character => character.id === session.contactId) ? session.contactId : null);
 }
 
+/**
+ * 主动消息快照的因果锚点：记录挂单时最后一条用户消息。
+ * 回端时如果用户已经发了更新消息，这条主动消息必须丢弃，否则会被排到
+ * 新用户消息后面，模型就会接着旧话题说。
+ */
+function buildCausalSnapshot(sessionId: string): { lastUserMessageId: string; lastUserMessageAt: string } | null {
+    const messages = loadChatMessages(sessionId);
+    const lastUser = [...messages].reverse().find(message =>
+        message.role === "user" && message.status !== "failed" && !message.isRetracted,
+    );
+    return lastUser ? { lastUserMessageId: lastUser.id, lastUserMessageAt: lastUser.createdAt } : null;
+}
+
 function resolveTimedWakeElapsedMinutes(schedule: TimedWakeSchedule, history: ChatMessage[]): number {
     if (schedule.source === "user") {
         const lastUser = [...history].reverse().find(message => message.role === "user");
@@ -196,6 +209,7 @@ export async function armReplyBailout(params: {
 
     const triggerKey = `reply:${params.sessionId}`;
     const armAt = new Date().toISOString();
+    const causalSnapshot = buildCausalSnapshot(params.sessionId);
     const response = await pushJobsFetch({
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -220,6 +234,12 @@ export async function armReplyBailout(params: {
                     appId: "chat",
                     appTags: ["chat", "text"],
                     armAt,
+                    ...(causalSnapshot
+                        ? {
+                            snapshotLastUserMessageId: causalSnapshot.lastUserMessageId,
+                            snapshotLastUserMessageAt: causalSnapshot.lastUserMessageAt,
+                        }
+                        : {}),
                     ...(params.replyAfter?.localMessageId
                         ? {
                             replyAfterLocalMessageId: params.replyAfter.localMessageId,
@@ -331,6 +351,7 @@ export async function armFollowUpBailout(
         // 人明明在电话里聊着（用户实报）。通话本身就是最强的「在场」信号。
         if (isCallActiveForSession(sessionId)) return;
         const latestMessages = loadChatMessages(sessionId);
+        const causalSnapshot = buildCausalSnapshot(sessionId);
         const count = prevCount + 1;
         const messagesWithHint = buildFollowUpSilenceMessages(session, latestMessages, fireAt);
 
@@ -379,6 +400,12 @@ export async function armFollowUpBailout(
                         appId: "chat",
                         appTags: ["chat", "text", "followup"],
                         followUpCount: count,
+                        ...(causalSnapshot
+                            ? {
+                                snapshotLastUserMessageId: causalSnapshot.lastUserMessageId,
+                                snapshotLastUserMessageAt: causalSnapshot.lastUserMessageAt,
+                            }
+                            : {}),
                     },
                 },
             }),
@@ -613,6 +640,7 @@ export async function armIdleReconnectBailout(rule: IdleReconnectRule): Promise<
         const lastUser = [...history].reverse().find(m => m.role === "user");
         if (!lastUser) return { ok: false, reason: "这个会话还没有你的消息，无法计算沉默时间" };
         const lastUserAt = new Date(lastUser.createdAt).getTime();
+        const causalSnapshot = { lastUserMessageId: lastUser.id, lastUserMessageAt: lastUser.createdAt };
 
         const effectiveConsecutive = rule.lastFiredAt && rule.lastFiredAt > lastUserAt ? rule.consecutiveCount : 0;
         if (effectiveConsecutive >= IDLE_RECONNECT_MAX_CONSECUTIVE) {
@@ -670,6 +698,12 @@ export async function armIdleReconnectBailout(rule: IdleReconnectRule): Promise<
                 appId: "chat",
                 appTags: ["chat", "text", "idle_wake"],
                 armAt: new Date(fireAt).toISOString(),
+                ...(causalSnapshot
+                    ? {
+                        snapshotLastUserMessageId: causalSnapshot.lastUserMessageId,
+                        snapshotLastUserMessageAt: causalSnapshot.lastUserMessageAt,
+                    }
+                    : {}),
                 idleReconnect: { ruleId: rule.id, firedAt: fireAt },
                 ...(remaining > 0 ? { idleRepeat: { intervalMs, remaining, quietWin: buildQuietWindowMeta() } } : {}),
             },

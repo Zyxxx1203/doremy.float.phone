@@ -30,6 +30,11 @@ type OutboxEntry = {
         appTags?: string[];
         followUpCount?: number;
         armAt?: string;
+        /** 挂单时最后一条用户消息的因果锚点；回端时若用户已发新消息，旧回复必须丢弃 */
+        snapshotLastUserMessageId?: string;
+        snapshotLastUserMessageAt?: string;
+        replyAfterLocalMessageId?: string;
+        replyAfterCreatedAt?: string;
         /** 云端触发快捷动作失败的摘要；成功时不带这个字段 */
         shortcutDeliveryError?: string;
         /** Server-generated proactive life-scene turn; must never be merged into online chat. */
@@ -288,14 +293,58 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                         saveMenstrualPeriodCareTrigger({ characterId: periodCare.characterId, sessionId, cycleKey: periodCare.cycleKey });
                     }
 
+                    const followUpIndex = typeof meta.followUpIndex === "number" ? meta.followUpIndex : undefined;
+                    const existingMessages = loadChatMessages(sessionId);
+
+                    // 因果锚点：服务端回复必须仍然接在挂单时那条用户消息后面。
+                    // 如果用户已经发了更新的消息，这条旧回复一旦落库就会被排到新消息后面，
+                    // 下一轮模型会接着旧话题说——宁可丢弃，也不能污染上下文。
+                    const latestUserMessage = [...existingMessages].reverse().find(message =>
+                        message.role === "user" && message.status !== "failed" && !message.isRetracted,
+                    );
+                    const snapshotUserId = typeof meta.snapshotLastUserMessageId === "string"
+                        ? meta.snapshotLastUserMessageId
+                        : "";
+                    const snapshotUserAt = typeof meta.snapshotLastUserMessageAt === "string"
+                        ? meta.snapshotLastUserMessageAt
+                        : "";
+                    const replyAfterId = typeof meta.replyAfterLocalMessageId === "string"
+                        ? meta.replyAfterLocalMessageId
+                        : "";
+                    const replyAfterAt = typeof meta.replyAfterCreatedAt === "string"
+                        ? meta.replyAfterCreatedAt
+                        : "";
+                    const replyAfterMessage = replyAfterId
+                        ? existingMessages.find(message => message.id === replyAfterId)
+                        : undefined;
+                    const replyAfterIsUser = replyAfterMessage?.role === "user" && !replyAfterMessage.isRetracted;
+                    const anchorUserId = snapshotUserId || (replyAfterIsUser ? replyAfterId : "");
+                    const anchorUserAt = snapshotUserAt || (replyAfterIsUser ? replyAfterAt : "");
+                    const anchorTime = anchorUserAt ? Date.parse(anchorUserAt) : NaN;
+                    const latestUserTime = latestUserMessage ? Date.parse(latestUserMessage.createdAt) : NaN;
+                    const staleByUser = Boolean(anchorUserId) && (!latestUserMessage || latestUserMessage.id !== anchorUserId);
+                    const staleByTime = Number.isFinite(anchorTime) && Number.isFinite(latestUserTime) && latestUserTime > anchorTime;
+                    if (staleByUser || staleByTime) {
+                        console.info("[PushOutbox] Dropped stale proactive reply", {
+                            entryId: entry.id,
+                            triggerKey: entry.trigger_key,
+                            anchorUserId,
+                            latestUserId: latestUserMessage?.id,
+                            anchorUserAt,
+                            latestUserAt: latestUserMessage?.createdAt,
+                        });
+                        clearTimedWakeIfHandled(entry.trigger_key);
+                        consumedIds.push(entry.id);
+                        if (entry.trigger_key) handledTriggerKeys.add(entry.trigger_key);
+                        continue;
+                    }
+
                     const idleMeta = (meta as { idleReconnect?: { ruleId?: string; firedAt?: number } }).idleReconnect;
                     if (idleMeta?.ruleId) {
                         const { markIdleReconnectFired } = await import("./idle-reconnect-storage");
                         markIdleReconnectFired(idleMeta.ruleId, typeof idleMeta.firedAt === "number" ? idleMeta.firedAt : Date.now());
                     }
 
-                    const followUpIndex = typeof meta.followUpIndex === "number" ? meta.followUpIndex : undefined;
-                    const existingMessages = loadChatMessages(sessionId);
                     if (followUpIndex && existingMessages.some(m => m.role === "assistant" && m.followUpIndex === followUpIndex)) {
                         clearTimedWakeIfHandled(entry.trigger_key);
                         consumedIds.push(entry.id);
