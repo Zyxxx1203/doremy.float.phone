@@ -504,6 +504,7 @@ export async function armLifeSceneProactiveBailout(input: {
         if (isWithinPushQuietHours(input.executeAtMs)) return { ok: false, reason: "触发时间落在推送安静时段内" };
         const session = loadChatSessions().find(item => item.id === input.sessionId);
         if (!session || session.isGroup || resolveLifeCharacterIdForContact(session.contactId, loadChatContacts()) !== input.characterId) return { ok: false, reason: "找不到对应的单聊会话" };
+        if (isCallActiveForSession(session.id)) return { ok: false, reason: "会话正在通话中" };
         const promptMessage: ChatMessage = {
             id: "life-autonomy-snapshot-" + Date.now().toString(36),
             sessionId: session.id,
