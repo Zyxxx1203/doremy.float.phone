@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "lib/chat-engine.ts"
+      - "lib/turn-coordinator.ts"
       - "lib/short-term-assembler.ts"
       - "lib/push-bailout-client.ts"
       - "lib/push-outbox-client.ts"
@@ -19,6 +20,7 @@ on:
     branches: [main]
     paths:
       - "lib/chat-engine.ts"
+      - "lib/turn-coordinator.ts"
       - "lib/short-term-assembler.ts"
       - "lib/push-bailout-client.ts"
       - "lib/push-outbox-client.ts"
