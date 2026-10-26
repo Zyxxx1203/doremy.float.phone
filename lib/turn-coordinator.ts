@@ -100,9 +100,12 @@ export function beginTurn(input: {
     const current = activeBySession.get(key);
 
     if (current) {
-        // 同优先级的 user_reply 允许“新消息顶掉旧生成”；其余同优先级直接拒绝。
+        // 同优先级：新 user_reply 顶掉旧 user_reply；call_end 顶掉 call；新 call 顶掉旧 call_end。
+        // 其余同优先级直接拒绝，避免重复主动消息。
         const samePriorityUserReply = current.priority === priority && current.kind === "user_reply" && kind === "user_reply";
-        if (current.priority > priority || (current.priority === priority && !samePriorityUserReply)) return null;
+        const callEndReplacesCall = current.priority === priority && current.kind === "call" && kind === "call_end";
+        const callReplacesCallEnd = current.priority === priority && current.kind === "call_end" && kind === "call";
+        if (current.priority > priority || (current.priority === priority && !samePriorityUserReply && !callEndReplacesCall && !callReplacesCallEnd)) return null;
         if (!observeOnly && !current.observeOnly) {
             current.controller.abort();
         }
