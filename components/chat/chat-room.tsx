@@ -3882,17 +3882,17 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             setIsGenerating(false);
             clearGenerationLock(session.id);
         }
-        const generationRun = createGenerationRun(session.id);
-        const generationRunId = generationRun.runId;
         const turn = beginTurn({
             kind: "user_reply",
             characterId: character?.id ?? session.contactId,
             sessionId: session.id,
         });
         if (!turn) return;
+        const generationRun = createGenerationRun(session.id);
+        const generationRunId = generationRun.runId;
+        const isCurrentGeneration = () => isGenerationRunActive(session.id, generationRunId);
         const onTurnAbort = () => { if (isCurrentGeneration()) cancelGenerationRun(session.id); };
         turn.signal.addEventListener("abort", onTurnAbort, { once: true });
-        const isCurrentGeneration = () => isGenerationRunActive(session.id, generationRunId);
         const generationGuard: GenerationRunGuard = { signal: generationRun.controller.signal, isActive: isCurrentGeneration };
         let shouldRunDeclineReply = false;
         isGeneratingRef.current = true;
