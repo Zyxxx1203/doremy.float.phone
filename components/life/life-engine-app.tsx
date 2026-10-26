@@ -750,6 +750,57 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     };
   }, [ready, commit, worldBooks, bindingConfig, activePromptPreset.scheduleGenerationPrompt]);
 
+  const syncAllCharactersToSchedules = useCallback(() => {
+    let next = stateRef.current;
+    const moved: string[] = [];
+    for (const character of loadCharacters()) {
+      const now = resolveActorLifeNow(getActorClock(next, "character", character.id));
+      const slot = getCurrentActorSchedule(next, "character", character.id, now);
+      const before = next.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === character.id);
+      const targetLocationId = slot?.plannedLocationId ?? before?.actualLocationId ?? null;
+      const targetLocationName = slot?.plannedLocationName ?? before?.actualLocationName ?? null;
+      const targetActivity = slot?.title ?? before?.activity ?? "自由活动";
+      if (!targetLocationId) continue;
+      if (before?.actualLocationId === targetLocationId && before?.activity === targetActivity) continue;
+      next = upsertActorState(next, {
+        ownerType: "character",
+        ownerId: character.id,
+        activity: targetActivity,
+        scheduleSlotId: slot?.id ?? before?.scheduleSlotId ?? null,
+        actualLocationId: targetLocationId,
+        actualLocationName: targetLocationName,
+        actualLocationUntil: null,
+        updatedAt: new Date().toISOString(),
+      });
+      next = appendLifeTimelineEntry(next, {
+        category: "location",
+        title: character.name + "按日程来到" + (targetLocationName || "新的地点"),
+        details: "计划时段：" + (slot ? new Date(slot.startAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) + "—" + new Date(slot.endAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) : "无") + "；" + targetActivity,
+        actorId: character.id,
+        actorName: character.name,
+        locationName: targetLocationName ?? undefined,
+      });
+      moved.push(character.name);
+    }
+    const player = next.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
+    const active = next.scenes.find(scene => scene.status === "active");
+    if (active && player?.actualLocationId) {
+      const here = next.actorStates.filter(actor => actor.ownerType === "character" && actor.actualLocationId === player.actualLocationId);
+      const participants = [
+        ...active.participants.filter(participant => participant.ownerType === "player"),
+        ...here.map(actor => ({
+          ownerType: "character" as const,
+          ownerId: actor.ownerId,
+          activity: actor.activity,
+          awarenessByActorId: { [PLAYER_ID]: "aware" as const },
+        })),
+      ];
+      next = upsertLifeScene(next, { ...active, participants, updatedAt: new Date().toISOString() });
+    }
+    commit(next);
+    setNotice(moved.length ? "已按当前日程同步 " + moved.length + " 位角色的位置与场景。" : "所有角色的实际位置已与当前日程一致。");
+  }, [commit]);
+
   const patchSettings = (patch: Partial<LifeEngineSettings>) => commit({ ...stateRef.current, settings: { ...stateRef.current.settings, ...patch } });
   const patchActivePromptPreset = (patch: Partial<LifePromptPreset>) => {
     const currentSettings = stateRef.current.settings;
@@ -3103,9 +3154,6 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         </div></details>
         {activeScene && <>
           <div className={`mb-1 flex shrink-0 items-center gap-1.5 overflow-x-auto pb-0.5 ${settings.compactLayout ? "max-h-8" : "max-h-10"}`}>{activeScene.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);const awareness=p.awarenessByActorId.player;const status=awareness==="unaware"?"还没注意到你":awareness==="suspects"?"似乎察觉到你":awareness==="aware"?"注意到你":p.activity;return <button key={p.ownerType+":"+p.ownerId} onClick={()=>p.ownerType==="character"&&setSelectedSpeakerId(p.ownerId)} className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] ${selectedSpeakerId===p.ownerId?"border-[var(--life-accent)] bg-white shadow-sm":"border-white/70 bg-white/55"}`}><span className="grid h-6 w-6 shrink-0 place-items-center overflow-hidden rounded-full bg-[#efe1d2] text-[10px] text-stone-700">{actor?.avatar?<img src={actor.avatar} alt="" className="h-full w-full object-cover"/>:(actor?.name??p.ownerId).slice(0,1)}</span><span className="text-left"><span className="block font-medium">{actor?.name??p.ownerId}</span><span className="block max-w-28 truncate text-[9px] opacity-60">{status}</span></span></button>})}</div>
-          <div className="mb-1 flex shrink-0 items-center justify-end gap-2">
-            <button type="button" onClick={() => { window.dispatchEvent(new Event("life-force-sync")); setNotice("已按当前日程同步角色位置与场景。"); }} className="rounded-lg border border-stone-200 bg-white/80 px-2.5 py-1 text-[10px] text-stone-600">同步当前位置</button>
-          </div>
           <div ref={sceneChatScrollRef} onScroll={event => { const el = event.currentTarget; sceneChatAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 56; }} className={`life-scene-chat mb-1 min-h-0 min-w-0 flex-1 flex flex-col overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y rounded-xl bg-white/80 ${settings.compactLayout ? "p-1 sm:p-1.5" : "p-1.5 sm:p-2"} ${immersiveScene ? "" : "h-[58dvh] min-h-[280px] max-h-[760px]"}`} style={{fontSize:"var(--life-font)", rowGap: `${settings.messageGapPx ?? 4}px`, WebkitOverflowScrolling:"touch"}}>
             {sceneMessages.length===0 && <div className="grid min-h-36 place-items-center text-center text-sm text-stone-400"><div><Sparkles className="mx-auto mb-2" size={22}/><p>场景已经准备好了。</p><p className="mt-1 text-xs">角色可以忙自己的事，也可以回应你；不会自动写成长篇剧情。</p></div></div>}
             {displaySceneMessages.map(message=><div key={message.id} className="group flex min-w-0 max-w-full flex-col rounded-xl transition-colors" onTouchStart={() => { longPressTriggeredRef.current = false; clearMessageLongPress(); longPressTimerRef.current = window.setTimeout(() => { longPressTriggeredRef.current = true; openMessageActions(message); }, 550); }} onTouchEnd={clearMessageLongPress} onTouchMove={clearMessageLongPress} onTouchCancel={clearMessageLongPress} onContextMenu={event => { event.preventDefault(); clearMessageLongPress(); openMessageActions(message); }}>
@@ -3347,7 +3395,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         <div className="mb-4 rounded-2xl border border-[#d9c2ae] bg-[#fbf5ee] p-3 sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0"><p className="text-sm font-semibold text-stone-800">AI 自动规划角色七日日程</p><p className="mt-1 max-w-xl text-xs leading-relaxed text-stone-500">不用手动填。AI 会读取每个角色的人设、近期共同记忆、生活记录、世界书、地点习惯和当前预设；生成后仍可微调。</p></div>
-            <button type="button" onClick={() => void regenerateAllCharacterSchedulesWithAI()} disabled={batchScheduleGenerating || scheduleRegenerationOwnerId !== null || characters.length === 0} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-3 text-sm font-semibold text-white shadow-sm disabled:opacity-50"><Sparkles size={15}/>{batchScheduleGenerating ? "AI 正在逐个规划…" : "AI 生成全部角色日程"}</button>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <button type="button" onClick={syncAllCharactersToSchedules} className="rounded-xl border border-[#d9c2ae] bg-white px-4 py-3 text-sm font-semibold text-stone-700">同步全部角色当前位置</button>
+              <button type="button" onClick={() => void regenerateAllCharacterSchedulesWithAI()} disabled={batchScheduleGenerating || scheduleRegenerationOwnerId !== null || characters.length === 0} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-3 text-sm font-semibold text-white shadow-sm disabled:opacity-50"><Sparkles size={15}/>{batchScheduleGenerating ? "AI 正在逐个规划…" : "AI 生成全部角色日程"}</button>
+            </div>
           </div>
           <div className="mt-4 border-t border-[#e6d5c4] pt-3"><p className="text-sm font-semibold text-stone-800">手动补充 · 一句话安排日程</p>
           <p className="mt-1 text-xs leading-relaxed text-stone-500">这是可选的手动入口。支持“明天下午3点到5点在家睡觉”或“角色名：周五晚上7点去公园散步”；识别后仍可编辑，不再要求你手动写完整行程。</p></div>

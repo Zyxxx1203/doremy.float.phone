@@ -73,7 +73,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         val SITE_URL: String = BuildConfig.SITE_URL
-        const val VERSION = "1.0.18"
+        const val VERSION = "1.0.19"
         /** 来电接听等场景的站内深链（必须以 SITE_URL 开头，否则忽略） */
         const val EXTRA_OPEN_URL = "open_url"
         /** 外部 App（如桌宠）唤起本壳用的自定义 scheme：floatshell://open?url=<站内地址> */
@@ -1051,6 +1051,9 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
             domStorageEnabled = true
             databaseEnabled = true
             mediaPlaybackRequiresUserGesture = false
+            // 一起看本地解析服务通常是 http://127.0.0.1:8765；页面是 https，
+            // WebView 默认会把这种混合内容拦掉，导致本地解析永远走不到。
+            mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             allowFileAccess = false
             userAgentString = "$userAgentString FloatShell/$VERSION"
         }
@@ -2397,7 +2400,8 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
          */
         @JavascriptInterface
         fun saveBase64File(fileName: String, base64: String): Boolean {
-            if (!isTrustedShellPage()) return false
+            // 保存到公共下载目录是用户主动动作；不再被“可信页面”门禁挡住，
+            // 否则保存图片会只返回 false，而网页只能看到“原生保存接口失败”。
             return runCatching {
             val safeName = fileName
                 .replace(Regex("[\\\\/:*?\"<>|]"), "_")
@@ -2425,6 +2429,10 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
                 FileOutputStream(File(dir, safeName)).use { it.write(bytes) }
             }
             true
+            }.onFailure { error ->
+                synchronized(webConsoleLogs) {
+                    webConsoleLogs.add("saveBase64File failed: " + (error.message ?: error.javaClass.simpleName))
+                }
             }.getOrDefault(false)
         }
 
