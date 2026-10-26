@@ -15,7 +15,7 @@ import {
   type PhotoWallCreationRecord, type PhotoWallDoodle, type PhotoWallPhoto, type PhotoWallPlacement, type PhotoWallState, type PhotoWallTemplate, type PhotoWallWorld,
 } from "@/lib/photo-wall-storage";
 import { PhotoWallCanvas, fallbackPlacement } from "@/components/photo-wall/photo-wall-canvas";
-import { applyWorldGrow, planWorldGrow, remapDoodles, remapPlacement, wallWorldOf, type WorldGrow } from "@/lib/photo-wall-world";
+import { wallWorldOf } from "@/lib/photo-wall-world";
 import { buildTemplateSlots, listAllTemplates, loadCustomTemplates, loadTemplateFill, saveCustomTemplates, saveTemplateFill } from "@/lib/photo-wall-templates";
 import { downloadPhotoWallPng } from "@/lib/photo-wall-export";
 import { parseCharacterWallDoodles } from "@/lib/photo-wall-character-doodle";
@@ -679,14 +679,6 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const canRedo = futureRef.current.length > 0;
   void historyVersion; // 快照栈变化时触发一次重渲染，好让按钮的禁用态跟上
 
-  /** 向左/向上扩容时补偿画布平移，让照片和涂鸦在屏幕上的视觉位置保持不变。 */
-  const compensateViewportScroll = useCallback((grow: WorldGrow) => {
-    if (!grow.left && !grow.top) return;
-    const zoom = panoramaZoomRef.current / 100;
-    const pan = panRef.current;
-    applyPan(pan.x + grow.left * zoom, pan.y + grow.top * zoom);
-  }, [applyPan]);
-
   /**
    * 拖动/缩放/旋转：只改这一张照片的摆放，位置用 0~1 比例存，换屏幕不会错位。
    * 注意这里**不扩容**——拖动中途改世界尺寸会让画布的拖拽基准失效，照片会跳。
@@ -701,16 +693,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
    * 只是可滚动范围变大——「无限画布」就是这一步攒出来的。
    */
   const settlePlacement = useCallback((photoId: string, placement: PhotoWallPlacement) => {
-    const current = stateRef.current;
-    const grow = planWorldGrow(wallWorldOf(current), [{ x: placement.x, y: placement.y }]);
-    if (!grow) return;
-    const grown = applyWorldGrow(current, grow);
-    compensateViewportScroll(grow);
-    applyImmediate({
-      ...grown,
-      photos: grown.photos.map(photo => photo.id === photoId ? { ...photo, placement: remapPlacement(placement, grow) } : photo),
-    });
-  }, [applyImmediate, compensateViewportScroll]);
+    // 世界扩容会把照片/涂鸦重映射，但背景图盒子目前没有偏移量，扩容后
+    // 背景和照片会分离。先停止自动扩容，保证画布与照片/涂鸦始终同坐标。
+    commitPhotos(stateRef.current.photos.map(photo => photo.id === photoId ? { ...photo, placement } : photo));
+  }, [commitPhotos]);
 
   /** 相框涂鸦即时保存画面；同一段涂鸦模式内的笔迹合并成一份创作记录。 */
   const doodleSessionRecordIdRef = useRef<string | null>(null);
@@ -923,7 +909,6 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const existingIds = new Set((current.wallDoodles ?? []).map(item => item.id));
     const addedByUser = wallDoodles.filter(item => !existingIds.has(item.id) && item.authorType === "user");
     pushHistory(current);
-    const grow = planWorldGrow(wallWorldOf(current), wallDoodles.flatMap(doodle => doodle.points));
     const appendUserRecord = (source: PhotoWallState): PhotoWallState => {
       if (!addedByUser.length) return source;
       const photoIds = new Set<string>();
@@ -952,14 +937,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (wallCanvasMode === "doodle") doodleSessionRecordIdRef.current = record.id;
       return { ...source, creationRecords: [...(source.creationRecords ?? []), record] };
     };
-    if (!grow) {
-      persist(appendUserRecord({ ...current, wallDoodles }));
-      return;
-    }
-    compensateViewportScroll(grow);
-    applyImmediate({ ...applyWorldGrow(current, grow), wallDoodles: remapDoodles(wallDoodles, grow) });
-    if (addedByUser.length) persist(appendUserRecord(stateRef.current));
-  }, [applyImmediate, compensateViewportScroll, persist, pushHistory, wallActivePhotoId, wallCanvasMode]);
+    // 涂鸦过程中不要扩容：扩容会重映射照片/涂鸦，但背景图盒子没有偏移量，
+    // 会出现“画布和照片分离”。保持世界固定，笔迹始终落在同一画布上。
+    persist(appendUserRecord({ ...current, wallDoodles }));
+  }, [persist, pushHistory, wallActivePhotoId, wallCanvasMode]);
   const visiblePhotos = useMemo(() => photos.filter(photo => {
     if (filter === "mine") return photo.ownerType === "user";
     if (filter === "characters") return photo.ownerType === "character";
