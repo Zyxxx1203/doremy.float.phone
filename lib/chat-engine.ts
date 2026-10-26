@@ -4,6 +4,7 @@ import { createSseJsonParser } from "./sse-json";
 import { maybeAppendShortcutCapability, maybeAppendPerceptionStatus } from "./offline-shortcut-capability";
 import { maybeBuildStatusInjection } from "./perception/describe";
 import { loadCharacters } from "./character-storage";
+import { createBuiltinPreset } from "./builtin-preset";
 import { buildLifeMemoryContext, buildLifePresenceContext } from "./life/life-memory-bridge";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
 import { emitChatPluginEvent, runChatPluginTransform } from "./chat-plugin-hooks";
@@ -408,6 +409,12 @@ export type DebugPromptRequestOptions = {
     debugSessionId?: string;
 };
 
+export type LifeScenePromptOverride = {
+    outputContract: string;
+    behaviorPrompt?: string;
+    toolPrompt?: string;
+};
+
 type ChatPromptBuildOptions = {
     followUpCount?: number;
     followUpDelay?: number;
@@ -430,6 +437,9 @@ type ChatPromptBuildOptions = {
     /** 是否把当前角色的线上私聊作为 recent_chat 注入短期时间线。
      *  默认按 offline 判断；生活场景/日程等显式传 false，避免线上话题串味。 */
     includeDirectChatEntries?: boolean;
+    /** 仅生活现场使用：把生活 preset 注入成独立 system，并停用 chat 格式条目。
+     *  其它聊天/App 不传，完全不受影响。 */
+    lifeScenePrompt?: LifeScenePromptOverride;
 };
 
 function matchesPromptProfileRef(prompt: { identifier: string; name?: string }, refs: Set<string>): boolean {
@@ -458,6 +468,74 @@ export function applyCustomPromptProfileToPreset(preset: PresetConfig, profile: 
         ...preset,
         prompts: allowedPrompts.map(prompt => ({ ...prompt })),
         prompt_order: promptOrder,
+    };
+}
+
+const LIFE_SCENE_DISABLED_PROMPTS = new Set([
+    "chat_immersion_instruction",
+    "chat_output_format",
+    "chat_offline_format",
+    "chat_optional_actions",
+    "chat_tools",
+    "group_chat_tools",
+    "chat_followup",
+    "chat_timed_wake",
+    "chat_user_timed_wake",
+    "chat_idle_reconnect",
+    "chat_period_care",
+    "chat_voice_format",
+    "chat_video_format",
+    "story_output_format",
+    "vn_output_format",
+    "vn_story_beats",
+    "group_chat_format",
+    "group_voice_call_format",
+    "group_video_call_format",
+    "group_chat_offline_format",
+    "group_chat_optional_actions",
+    "calendar_plan_generation",
+]);
+
+function applyLifeScenePromptOverride(preset: PresetConfig | null, override: LifeScenePromptOverride): PresetConfig {
+    const source = preset ?? createBuiltinPreset();
+    const prompts = source.prompts.map(prompt =>
+        LIFE_SCENE_DISABLED_PROMPTS.has(prompt.identifier) ? { ...prompt, enabled: false } : { ...prompt },
+    );
+    const extras: PresetConfig["prompts"] = [];
+    const addExtra = (identifier: string, name: string, content: string) => {
+        const value = content.trim();
+        if (!value) return;
+        extras.push({
+            identifier,
+            name,
+            role: "system",
+            content: value,
+            injection_depth: 0,
+            enabled: true,
+            system_prompt: true,
+        });
+    };
+    addExtra("life_scene_output_contract", "生活现场输出协议", override.outputContract);
+    addExtra("life_scene_behavior", "生活现场行为规则", override.behaviorPrompt ?? "");
+    addExtra("life_scene_tools", "生活现场工具规则", override.toolPrompt ?? "");
+    const extraIds = new Set(extras.map(item => item.identifier));
+    const order = (source.prompt_order ?? source.prompts.map(prompt => ({ identifier: prompt.identifier, enabled: prompt.enabled })))
+        .filter(entry => !extraIds.has(entry.identifier))
+        .map(entry => ({
+            ...entry,
+            enabled: LIFE_SCENE_DISABLED_PROMPTS.has(entry.identifier) ? false : entry.enabled,
+        }));
+    const anchor = order.findIndex(entry => entry.identifier === "shortTermMemory");
+    const extraOrder = extras.map(item => ({ identifier: item.identifier, enabled: true }));
+    if (anchor >= 0) order.splice(anchor, 0, ...extraOrder);
+    else order.push(...extraOrder);
+    return {
+        ...source,
+        id: `${source.id}::life`,
+        name: `${source.name}（生活场景）`,
+        builtIn: false,
+        prompts: [...prompts, ...extras],
+        prompt_order: order,
     };
 }
 
@@ -1889,6 +1967,7 @@ export async function buildChatPromptMessages(
     const presets = loadPresets();
     let preset = activeSlot.presetId ? presets.find(p => p.id === activeSlot.presetId) || null : null;
     if (!preset) preset = presets.find(p => p.builtIn) ?? null;
+    if (options?.lifeScenePrompt) preset = applyLifeScenePromptOverride(preset, options.lifeScenePrompt);
     const promptProfile = options?.promptProfile;
     if (preset && promptProfile) {
         preset = applyCustomPromptProfileToPreset(preset, promptProfile);
@@ -2188,7 +2267,7 @@ export type OfflineChatCompletionResult = ParsedOfflineResponse & {
 export async function generateOfflineChatCompletion(
     session: ChatSession,
     history: ChatMessage[],
-    options?: { signal?: AbortSignal; onStreamDelta?: (delta: string) => void; includeDirectChatEntries?: boolean },
+    options?: { signal?: AbortSignal; onStreamDelta?: (delta: string) => void; includeDirectChatEntries?: boolean; lifeScenePrompt?: LifeScenePromptOverride },
 ): Promise<OfflineChatCompletionResult> {
     const { llmMessages, character, config, preset, regexes, userIdentity } = await buildChatPromptMessages(
         session,
@@ -2197,6 +2276,7 @@ export async function generateOfflineChatCompletion(
             appTags: ["chat", "offline"],
             excludeOfflineSessionId: session.id,
             includeDirectChatEntries: options?.includeDirectChatEntries,
+            lifeScenePrompt: options?.lifeScenePrompt,
         },
     );
     const summaryTag = preset?.story_summary_tag?.trim() || "summary";

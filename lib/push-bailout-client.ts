@@ -6,7 +6,7 @@
 import { bgSetInterval, bgSetTimeout } from "./bg-timer";
 import { BAILOUT_DIRTY_EVENT } from "./bailout-dirty";
 import { BAILOUT_CANCEL_EVENT, type BailoutCancelDetail } from "./bailout-cancel";
-import { buildChatPromptMessages } from "./chat-engine";
+import { buildChatPromptMessages, type LifeScenePromptOverride } from "./chat-engine";
 import { resolveLifeCharacterIdForContact } from "./life/life-autonomy";
 import { isCallActiveForSession } from "./call-session-store";
 import { buildProviderRequest, toLlmRequestMessages, type LlmRequestPayload } from "./llm-provider-adapter";
@@ -496,6 +496,7 @@ export async function armLifeSceneProactiveBailout(input: {
     characterId: string;
     characterName: string;
     prompt: string;
+    lifeScenePrompt?: LifeScenePromptOverride;
     executeAtMs: number;
 }): Promise<BailoutArmResult> {
     if (!bailoutEnabled()) return { ok: false, reason: "当前环境不支持服务端离线预约" };
@@ -516,7 +517,7 @@ export async function armLifeSceneProactiveBailout(input: {
         const { llmMessages, character, config, preset, regexes, userIdentity } = await buildChatPromptMessages(
             session,
             [promptMessage],
-            { appTags: ["chat", "text", "offline", "life-scene"], includeDirectChatEntries: false },
+            { appTags: ["chat", "text", "offline", "life-scene"], includeDirectChatEntries: false, lifeScenePrompt: input.lifeScenePrompt },
         );
         const request = buildProviderRequest(config, preset, toLlmRequestMessages(llmMessages));
         const posted = await postBailoutJob({

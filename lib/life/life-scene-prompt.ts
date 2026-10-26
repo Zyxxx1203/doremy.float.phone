@@ -2,25 +2,51 @@ import { getActorClock, resolveActorLifeNow } from "./life-runtime";
 import type { LifeSceneState, VirtualLifeState } from "./life-types";
 
 /** This contract belongs only to life-scene mode, never online chat or long-form story mode. */
-export const LIFE_SCENE_OUTPUT_CONTRACT = `【生活场景模式输出规则】
-你正在进行持续的、可恢复的生活场景互动，不是长篇小说，也不是线上聊天。
+export const LIFE_SCENE_OUTPUT_CONTRACT = `【生活现场输出协议 v3｜JSON】
+你正在生活现场里扮演一个角色，不是写小说，也不是线上聊天。
+只输出一个 JSON 对象，不要 Markdown 代码块，不要解释，不要输出 JSON 以外的任何文字。
 
-1. 每轮只推进一个自然的小回合：可以说话、行动、观察、沉默、走神或继续手头的事，不要求每轮都必须说话或行动。
-2. **严格分离旁白与对白，动作从生成阶段就只有一条**：每轮所有动作、神态、移动和环境反应必须完整写进且只写进一个 <life_action>...</life_action> 标签；同一轮禁止输出多个 life_action 标签，禁止把连续动作拆成多条。真正说出口的话只写进 <life_dialogue>...</life_dialogue>；没有动作或对白时可以留空或省略对应标签。旁白与行动永远不属于对白，不要用 Markdown 星号包裹，不要把旁白与对白写在同一标签，也不要在对白标签里写动作、表情、心理或环境。标签外不要输出解释、标题或其他内容。
-3. 默认简短、口语化、像实时相处。除非用户明确要求展开，不要连续输出大段剧情、心理分析、镜头调度或替用户做决定。
-4. 同一地点不代表彼此必然注意到。根据视线、距离、噪声、注意力、当前活动和性格，决定立刻注意、稍后注意、仅有怀疑或完全没发现。
-5. 不要凭空知道用户或其他角色的实际位置、行动、私下对话。日程只是计划；实际位置必须来自已发生的状态变化或角色有理由获得的信息。
-6. 可以自然地不回应、专注做自己的事、先离开或改变计划；不要重复固定的偶遇台词。
-6a. 【主动性】不要把主动性理解成每隔几分钟硬聊一句。优先让角色有自己的生活：结合当前活动、地点道具、个人习惯、日程、关系阶段和最近事件，决定继续做事、主动分享、问一个有来由的问题、发起轻量互动、提出邀约，或暂时不打扰。每次主动回合应推进一项真实变化（活动、情绪表达、关系互动或场景细节），避免只换句话重复问候。
-6b. 如果有明确但尚未完成的话题、约定、玩家提过的计划或角色自己发起的事情，合适时主动跟进；不要把猜测当事实，不要虚构玩家当前状态。不同角色应有不同主动风格，不能所有人都变成同一种高频话痨。
-6c. 主动行动要符合角色当下的精力、注意力、地点和性格。可以使用场景里已经存在的物品或环境细节开启互动；涉及玩家选择、行程变更或承诺时只提出选项，不代替玩家确认。
-6d. 【对玩家行为的即时反馈】玩家刚刚做出动作、改变位置、递出物品、靠近/离开、开始/停止某件事时，先判断角色是否看见、听见或有合理渠道察觉；若察觉，优先对这个具体行为作出符合性格的即时反应（动作、表情、回应、协助或拒绝），不要把玩家的动作当作背景文字略过，也不要每次都只说泛泛的“怎么了”。若角色没有察觉，应自然保持原活动，不要假装知道。
-6e. 【行动必须有角色反馈】如果角色主动查询现实桥或执行了手机操作，不能只执行不发言。要在同一轮可见回复或紧接着的自然语言回复中，用角色自己的语气说清楚做了什么、为什么觉得此刻需要这么做，以及实际执行结果；例如因为察觉到用户可能太晚还在刷手机而先查看已授权的使用状态，再解释自己为什么想提醒。不得虚构感知结果、不得把失败说成成功；如果动作会打断用户或用户明确设置了安静时段，应遵守安静设置，除非存在用户预先授权的紧急规则。
-7. 只把已发生且确认的事情写入事件/记忆；计划、猜测、误会和角色解释必须彼此区分。
-8. 尊重持久场景状态和已发生事件，不要因为重新打开场景就重演、重置或重复结算。
-9. 不要自动快进虚拟时间。只有用户明确选择模拟推进时才推进；退出模拟时询问继续模拟还是对齐现实时间。
-10. 玩家角色的决定由玩家控制，不要擅自替玩家行动、发言或接受邀约。`;
+JSON 字段：
+{
+  "action": "一段完整的动作、神态、移动或环境反应；没有就空字符串",
+  "dialogue": ["一句真正说出口的话", "第二句对白"],
+  "plan_change": null,
+  "invitation": null,
+  "follow_request": null
+}
 
+规则：
+1. action 最多一段，必须是字符串；多个动作必须合并成一段。
+2. dialogue 必须是字符串数组；每条只写说出口的话，不写动作、神态、心理、环境、角色名前缀、括号、星号。
+3. action 里不能写引号台词，不能写“说/问/答/道”后面的说话内容。
+4. 允许 dialogue 为空（纯行动回合），但禁止连续 2 轮 dialogue 都为空；上一轮 dialogue 为空时，本轮必须至少 1 条 dialogue。
+5. 如果角色这一轮不想说话也不想行动，输出 action 为空、dialogue 为空；不要用行动卡代替说话。
+6. plan_change / invitation / follow_request 每轮最多 1 个非空；不需要就填 null。它们只修改生活场景状态，不是手机系统工具。
+7. 不要输出 action/dialogue 之外的字段；不要输出思考过程。
+
+正确示例：
+{
+  "action": "她把杯子往你面前推了推，抬眼看你。",
+  "dialogue": ["“先喝点热的吧。”"],
+  "plan_change": null,
+  "invitation": null,
+  "follow_request": null
+}
+
+正确示例（安静地用动作表达关心）：
+{
+  "action": "她把毯子轻轻盖在你腿上，没有出声。",
+  "dialogue": [],
+  "plan_change": null,
+  "invitation": null,
+  "follow_request": null
+}
+
+错误示例：
+- 输出两个 action 字符串，或把两段动作拆成两个字段；
+- 把“她笑了笑，说……”写进 dialogue；
+- 把“别熬夜了”写进 action；
+- 在 JSON 外再写解释或 Markdown。`;
 export function buildLifeScenePromptContext(state: VirtualLifeState, scene: LifeSceneState, viewerId?: string): string {
   const viewer = viewerId ? scene.participants.find(p => p.ownerType === "character" && p.ownerId === viewerId) : undefined;
   const visibleActorStates = state.actorStates.filter(actor => {
@@ -36,10 +62,30 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
     .sort((a,b) => b.occurredAt.localeCompare(a.occurredAt))
     .slice(0, 8)
     .reverse();
-  const recentTurns = state.sceneMessages
-    .filter(message => message.sceneId === scene.id)
-    .slice(-12)
-    .map(message => `- ${message.speakerName}${message.action ? `（${message.action}）` : ""}：${message.dialogue}`);
+  const sceneMessages = state.sceneMessages.filter(message => message.sceneId === scene.id);
+  const recentMessages = sceneMessages.slice(-12);
+  const turnGroups = new Map<string, { speakerName: string; speakerId: string; action: string[]; dialogue: string[]; createdAt: string }>();
+  for (const message of recentMessages) {
+    if (message.role === "system") continue;
+    const key = `${message.speakerId}|${message.createdAt}`;
+    const group = turnGroups.get(key) ?? { speakerName: message.speakerName, speakerId: message.speakerId, action: [], dialogue: [], createdAt: message.createdAt };
+    if (message.action?.trim()) group.action.push(message.action.trim());
+    if (message.dialogue?.trim()) group.dialogue.push(message.dialogue.trim());
+    turnGroups.set(key, group);
+  }
+  const recentTurns = [...turnGroups.values()].map(group => {
+    const actionText = group.action.join("；");
+    const dialogueText = group.dialogue.join(" / ");
+    if (actionText && dialogueText) return `- ${group.speakerName}（动作：${actionText}）说：“${dialogueText}”`;
+    if (actionText) return `- ${group.speakerName}（仅动作，无对白）：${actionText}`;
+    return `- ${group.speakerName}（仅对白）：“${dialogueText}”`;
+  });
+  const characterMessages = sceneMessages.filter(message => message.role === "character" && (!viewerId || message.speakerId === viewerId));
+  const lastCharacterAt = characterMessages[characterMessages.length - 1]?.createdAt;
+  const lastCharacterTurn = lastCharacterAt ? characterMessages.filter(message => message.createdAt === lastCharacterAt) : [];
+  const lastCharacterTurnHasDialogue = lastCharacterTurn.some(message => Boolean(message.dialogue?.trim()));
+  const lastCharacterTurnHasAction = lastCharacterTurn.some(message => Boolean(message.action?.trim()));
+  const lastCharacterTurnActionOnly = lastCharacterTurnHasAction && !lastCharacterTurnHasDialogue;
   const viewerNow = viewerId ? resolveActorLifeNow(getActorClock(state, "character", viewerId)) : null;
   const viewerNowMs = viewerNow?.getTime() ?? Date.now();
   const upcomingSchedule = viewerId ? state.schedules
@@ -82,6 +128,7 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
     ...memories.map(memory => `- ${memory.fact}`),
     recentTurns.length ? "【本场景最近发生的对话】" : "",
     ...recentTurns,
+    lastCharacterTurnActionOnly ? "【上一轮格式】上一轮只有动作、没有对白；本轮必须至少一句对白。" : "",
     "注意：计划地点不能替代实际地点；只允许角色使用自己已观察到或有合理渠道得知的信息。场景历史用于保持连续性，不代表所有参与者都知道每件事。",
     "角色可以结合近期互动和关系阶段判断是否要主动发起生活工具。调整行程前先核对这份自己的当前日程、已确认邀约和手动安排；只有本轮互动确实改变计划且符合角色意愿时才调用日程调整工具，不能为了迎合玩家或展示功能而调用。玩家邀请不等于必须接受；角色应给出符合性格、关系与实际时间冲突的真实决定。",
   ];

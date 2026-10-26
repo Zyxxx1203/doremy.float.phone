@@ -42,6 +42,8 @@ export type LifePromptPreset = {
   invitationResponsePrompt?: string;
   locationHabitPrompt?: string;
   customPrompt?: string;
+  /** 该预设的连续纯行动上限；未设置时用 settings.maxConsecutiveActionOnly。 */
+  maxConsecutiveActionOnly?: 0 | 1 | 2;
 };
 
 export type LifeEngineSettings = {
@@ -60,6 +62,10 @@ export type LifeEngineSettings = {
   showActionNarration: boolean;
   keepDialogueConcise: boolean;
   allowCharactersToStaySilent: boolean;
+  /** 连续纯行动回合上限：0=不允许，1=最多 1 连，2=最多 2 连。 */
+  maxConsecutiveActionOnly?: 0 | 1 | 2;
+  /** 生活输出格式异常时是否自动修复重试一次。 */
+  enableLifeFormatRepair?: boolean;
   revealExactLocations: "ask-only" | "clues" | "open";
   defaultClockMode: LifeClockMode;
   defaultSpeed: number;
@@ -131,6 +137,8 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   showActionNarration: true,
   keepDialogueConcise: true,
   allowCharactersToStaySilent: true,
+  maxConsecutiveActionOnly: 1,
+  enableLifeFormatRepair: true,
   revealExactLocations: "clues",
   defaultClockMode: "real-time",
   defaultSpeed: 1,
