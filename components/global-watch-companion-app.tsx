@@ -69,7 +69,7 @@ function getGlobalWatchImageModel(characterId: string) {
   const fallback = configs.find(item => item.enableImageRecognition !== false && item.apiKey && item.defaultModel);
   const config = selected || fallback;
   if (!config) return null;
-  const provider = config.provider === "Google" ? "gemini"
+  const provider: "gemini" | "ark" | "openai-compatible" | "anthropic" | "twelvelabs" = config.provider === "Google" ? "gemini"
     : config.provider === "Anthropic" && !config.baseUrl ? "anthropic" : "openai-compatible";
   return {
     provider,
