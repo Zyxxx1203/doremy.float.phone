@@ -185,7 +185,8 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
     lastSpeechAtRef.current = Date.now();
     setBusy(true);
     try {
-      const videoSettings = loadVideoAnalysisSettings();
+      const videoSettings = getGlobalWatchImageModel(character.id);
+      if (!videoSettings) throw new Error("没有可用于截图识别的主聊天模型，请到 API 设置启用图片识别。");
       const profile = character as unknown as Record<string, unknown>;
       const roleDetails = [
         typeof profile.persona === "string" ? "角色人设：" + profile.persona : "",
