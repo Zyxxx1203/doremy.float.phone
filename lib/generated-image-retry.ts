@@ -82,6 +82,7 @@ export async function generateAndApplyChatGeneratedImage(
             appId: "chat",
             useReferenceImage: effectiveUseReference,
             characterIds: effectiveCharacterIds,
+            participantIds: effectiveCharacterIds,
             signal: options?.signal,
         });
         if (!generated) throw new Error("生图配置未启用或不完整");
@@ -133,10 +134,12 @@ export async function retryChatGeneratedImage(
     characterId?: string,
     nextDescription?: string,
     useReferenceImage?: boolean,
+    characterIds?: string[],
 ): Promise<ChatMessage> {
     return generateAndApplyChatGeneratedImage(message, characterId, {
         description: nextDescription,
         useReferenceImage,
+        characterIds,
     });
 }
 
@@ -144,6 +147,7 @@ export async function retryMomentGeneratedPhoto(
     post: MomentPost,
     nextDescription?: string,
     useReferenceImage?: boolean,
+    characterIds?: string[],
 ): Promise<MomentPost> {
     const description = (nextDescription ?? post.photoDescription)?.trim();
     if (!description) throw new Error("缺少图片描述，无法重新生成");
@@ -156,6 +160,7 @@ export async function retryMomentGeneratedPhoto(
     updateMomentPost(post.id, {
         photoDescription: description,
         photoUseReferenceImage: effectiveUseReference,
+        ...(characterIds ? { photoGenerationCharacterIds: characterIds } : {}),
         photoGenerationStatus: "pending",
         photoGenerationError: undefined,
     });
@@ -167,6 +172,8 @@ export async function retryMomentGeneratedPhoto(
             characterId: post.authorType === "character" ? post.authorId : undefined,
             appId: "moments",
             useReferenceImage: effectiveUseReference,
+            characterIds,
+            participantIds: characterIds,
         });
         if (!generated) throw new Error("生图配置未启用或不完整");
 
@@ -177,6 +184,7 @@ export async function retryMomentGeneratedPhoto(
             photoUseReferenceImage: effectiveUseReference,
             photoGenerationStatus: "generated",
             photoGenerationPrompt: generated.prompt,
+            ...(characterIds ? { photoGenerationCharacterIds: characterIds } : {}),
             photoGenerationError: undefined,
         });
         if (!updated) throw new Error("原朋友圈不存在，无法替换图片");
