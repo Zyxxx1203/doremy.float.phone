@@ -5,7 +5,7 @@ import { ArrowLeft, Eye, Pause, Play, Send, ShieldCheck, Square, Camera, Message
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import { kvGet, kvSet } from "@/lib/kv-db";
-import { loadVideoAnalysisSettings } from "@/lib/video-analysis-settings";
+import { loadApiConfigs, loadBindingConfig } from "@/lib/settings-storage";
 import { analyzeCapturedImage } from "@/lib/video-keyframe-analysis";
 import { loadGlobalWatchRecords, persistGlobalWatchMemory, saveGlobalWatchRecord, type GlobalWatchRecord } from "@/lib/global-watch-storage";
 
@@ -59,6 +59,26 @@ function loadSettings(): GlobalWatchSettings {
   } catch { return { ...DEFAULT_SETTINGS }; }
 }
 function saveSettings(value: GlobalWatchSettings) { kvSet(SETTINGS_KEY, JSON.stringify(value)); }
+
+function getGlobalWatchImageModel(characterId: string) {
+  const configs = loadApiConfigs();
+  const bindings = loadBindingConfig();
+  const characterBinding = bindings.characterBindings.find(item => item.characterId === characterId);
+  const selectedId = characterBinding?.defaults?.apiConfigId || bindings.globalDefaults?.apiConfigId;
+  const selected = configs.find(item => item.id === selectedId && item.enableImageRecognition !== false && item.apiKey && item.defaultModel);
+  const fallback = configs.find(item => item.enableImageRecognition !== false && item.apiKey && item.defaultModel);
+  const config = selected || fallback;
+  if (!config) return null;
+  const provider = config.provider === "Google" ? "gemini"
+    : config.provider === "Anthropic" && !config.baseUrl ? "anthropic" : "openai-compatible";
+  return {
+    provider,
+    apiKey: config.apiKey,
+    model: config.defaultModel,
+    baseUrl: config.baseUrl || "",
+    configName: config.name || config.provider,
+  };
+}
 
 const NATIVE_MEMORY_SYNC_KEY = "global_watch_native_memory_synced_ids_v1";
 function persistNativeMemoryOnce(record: GlobalWatchRecord) {
@@ -306,9 +326,10 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
       lines.push("读取原生诊断失败：" + (error instanceof Error ? error.message : String(error)));
     }
     lines.push("已选择角色：" + (character?.name || "未选择"));
-    const video = loadVideoAnalysisSettings();
-    lines.push("视频分析模型：" + (video.model ? video.model : "未配置模型 ID"));
-    lines.push("API Key：" + (video.apiKey ? "已配置（不显示密钥）" : "未配置"));
+    const imageModel = character ? getGlobalWatchImageModel(character.id) : null;
+    lines.push("陪看视觉模型：" + (imageModel ? imageModel.configName + " / " + imageModel.model : "未找到可用的主聊天视觉模型配置"));
+    lines.push("模型来源：角色/全局 API 绑定（复用现有 API 设置）");
+    lines.push("API Key：" + (imageModel?.apiKey ? "已配置（不显示密钥）" : "未配置"));
     lines.push("最近捕获：" + (latestCapturedAt ? new Date(latestCapturedAt).toLocaleString() : "本次页面尚未收到屏幕帧"));
     lines.push("最近记录数：" + records.length);
     const report = lines.join("\\n");
@@ -338,7 +359,7 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
       speechIntervalMinMinutes: settings.speechIntervalMinMinutes,
       speechIntervalMaxMinutes: settings.speechIntervalMaxMinutes,
       randomSpeechEnabled: settings.randomSpeechEnabled,
-      video: loadVideoAnalysisSettings(),
+      imageModel: getGlobalWatchImageModel(character.id),
     }));
     if (!ok) {
       let reason = "原生桥拒绝启动。请打开「诊断与故障排查」查看权限和服务状态。";
