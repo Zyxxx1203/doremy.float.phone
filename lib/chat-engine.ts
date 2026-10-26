@@ -361,6 +361,44 @@ export function applyVisionImagePromptLimit(history: ChatMessage[], limitValue: 
     return history;
 }
 
+/**
+ * Expand a merged multi-image chat message into one prompt message per image.
+ *
+ * IMPORTANT: this must run BEFORE prepareShortTermContext(), because
+ * prepareShortTermContext() returns unifiedRecentItems whose historyIndex values
+ * point into the history array it was given. If we expand the array afterwards,
+ * every history item after a multi-image message shifts and the assembler reads
+ * the wrong message (often dropping the newest user/assistant turns).
+ */
+export function expandVisionImageHistoryForPrompt(history: ChatMessage[]): ChatMessage[] {
+    return history.flatMap(msg => {
+        const extraRefs = msg.mediaType === "image" && Array.isArray(msg.mediaData?.imageRefs)
+            ? msg.mediaData.imageRefs.filter((ref): ref is string => typeof ref === "string" && Boolean(ref))
+            : [];
+        // 新数据通过 imageRefsExcludePrimary 明确表示只存额外图；旧版数组常包含主图。
+        // 不能简单按 URL 去重：用户可能重复选择同一张图片，必须保留那一张。
+        const legacyFullRefs = msg.mediaData?.imageRefsExcludePrimary !== true
+            && Boolean(msg.mediaUrl)
+            && extraRefs[0] === msg.mediaUrl;
+        const normalizedExtraRefs = legacyFullRefs ? extraRefs.slice(1) : extraRefs;
+        const refs = msg.mediaUrl ? [msg.mediaUrl, ...normalizedExtraRefs] : extraRefs;
+        if (refs.length < 2) return [{ ...msg }];
+        return refs.map((ref, index) => ({
+            ...msg,
+            id: `${msg.id}__group_image_${index + 1}`,
+            mediaUrl: ref,
+            mediaData: {
+                ...msg.mediaData,
+                imageRefs: undefined,
+                imageGroupId: msg.id,
+                imageGroupIndex: index,
+                imageGroupCount: refs.length,
+                label: msg.mediaData?.label ? `${msg.mediaData.label}（第 ${index + 1} 张，共 ${refs.length} 张）` : `合并图片（第 ${index + 1} 张，共 ${refs.length} 张）`,
+            },
+        }));
+    });
+}
+
 // API 调用日志存储已抽到 ./api-log-store（聊天引擎与 simpleLLMCall 通用），
 // 本文件通过上方 re-export 保持 getApiLogs/clearApiLogs/DebugInfo 的对外路径不变。
 
@@ -1896,41 +1934,18 @@ export async function buildChatPromptMessages(
     const toolsEnabled = enabledTools.length > 0
         && (options?.forceEnableTools === true || hasLifeTools || presetIncludesToolsMacro(preset, resolvedAppId, effectiveAppTags));
     const usesNativeActions = Boolean(toolsEnabled && nativeToolProtocolForConfig(config));
+    // 多图必须在 prepareShortTermContext 之前展开：后者的 unifiedRecentItems 下标
+    // 指向传入的 history 数组；先展开才能保证下标和最终 promptHistory 一致。
+    const historyForPromptExpanded = expandVisionImageHistoryForPrompt(historyForPrompt);
     const { recentBlocks, truncatedHistory, wbActivationContext, unifiedRecentItems } = prepareShortTermContext(character.id, resolvedAppId, {
-        history: historyForPrompt,
+        history: historyForPromptExpanded,
         includeDirectChatEntries: isOfflineMode,
         includeNativeToolHistory: usesNativeActions,
         excludeOfflineSessionId: options?.excludeOfflineSessionId,
         promptTimestampOptions,
     });
-    const expandedVisionHistory = truncatedHistory.flatMap(msg => {
-        const extraRefs = msg.mediaType === "image" && Array.isArray(msg.mediaData?.imageRefs)
-            ? msg.mediaData.imageRefs.filter((ref): ref is string => typeof ref === "string" && Boolean(ref))
-            : [];
-        // 新数据通过 imageRefsExcludePrimary 明确表示只存额外图；旧版数组常包含主图。
-        // 不能简单按 URL 去重：用户可能重复选择同一张图片，必须保留那一张。
-        const legacyFullRefs = msg.mediaData?.imageRefsExcludePrimary !== true
-            && Boolean(msg.mediaUrl)
-            && extraRefs[0] === msg.mediaUrl;
-        const normalizedExtraRefs = legacyFullRefs ? extraRefs.slice(1) : extraRefs;
-        const refs = msg.mediaUrl ? [msg.mediaUrl, ...normalizedExtraRefs] : extraRefs;
-        if (refs.length < 2) return [{ ...msg }];
-        return refs.map((ref, index) => ({
-            ...msg,
-            id: `${msg.id}__group_image_${index + 1}`,
-            mediaUrl: ref,
-            mediaData: {
-                ...msg.mediaData,
-                imageRefs: undefined,
-                imageGroupId: msg.id,
-                imageGroupIndex: index,
-                imageGroupCount: refs.length,
-                label: msg.mediaData?.label ? `${msg.mediaData.label}（第 ${index + 1} 张，共 ${refs.length} 张）` : `合并图片（第 ${index + 1} 张，共 ${refs.length} 张）`,
-            },
-        }));
-    });
     const promptHistory = applyVisionImagePromptLimit(
-        expandedVisionHistory,
+        truncatedHistory.map(msg => ({ ...msg })),
         resolveVisionImagePromptLimit(session),
     );
 
@@ -1951,7 +1966,7 @@ export async function buildChatPromptMessages(
         memResults ? formatLongTermMemories(memResults) : "",
         buildLifeMemoryContext(character.id),
         buildLifePresenceContext(character.id),
-    ].filter(Boolean).join("\\n\\n");
+    ].filter(Boolean).join("\n\n");
     const coreMemories = coreResults ? formatCoreMemories(coreResults) : "";
     const scheduleSummary = buildCalendarScheduleMarker("character", character.id, getWeekStartIso(now));
     const currentSchedule = getCurrentCalendarScheduleForPrompt("character", character.id, now);
@@ -2033,7 +2048,7 @@ export async function buildChatPromptMessages(
                 "工具结果：执行后检查成功/失败及返回内容；失败时如有安全且合理的修复方式可调整参数重试一次，否则如实说明。不要重复执行已经成功且没有必要重复的操作。",
                 "不应滥用工具：纯闲聊、创作、解释常识、仅提出想法而未要求查询或保存时，可以直接回答；不要为了展示能力调用无关工具。涉及删除、对外发送、付费或其他高影响操作时，遵循工具权限和必要的用户确认。",
                 "如果当前提供的是文本动作协议，必须按可用动作说明中的格式先获取所需参数规范，再输出执行动作指令；如果使用原生工具调用，直接调用对应工具，不要把工具调用伪装成普通文字。",
-            ].join("\\n"),
+            ].join("\n"),
         });
     }
 
