@@ -74,7 +74,6 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
     setPlaced(isWidgetPlaced());
     setProfiles(loadWidgetProfiles());
     setDataVersion(v => v + 1);
-    syncWidgetProfilesToNative();
   }, []);
 
   useEffect(() => {
@@ -165,28 +164,9 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
       onNotice?.("当前 App 版本不支持桌面小组件，需要更新安卓壳");
       return;
     }
-
-    // Never add another instance through the legacy "default" profile: Android
-    // would intentionally render every such instance from the same cached HTML/PNG.
-    // Start a separately persisted profile draft instead, so each added instance
-    // gets its own profile ID, character, template, CSS and size.
-    const now = new Date().toISOString();
-    const profile: WidgetProfile = {
-      id: "widget-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
-      name: "桌面实例 " + (profiles.length + 1),
-      characterId: config.characterId || characters[0]?.id || "",
-      template: config.useCustomTemplate && config.customTemplate ? config.customTemplate : templateDraft || DEFAULT_WIDGET_TEMPLATE,
-      customCss: "",
-      widthDp: config.widthDp,
-      heightDp: config.heightDp,
-      scale: config.scale,
-      createdAt: now,
-      updatedAt: now,
-    };
-    // 先作为未保存草稿编辑；只有真正添加/保存时才写入配置列表，避免留下无桌面实例的重复配置。
-    setProfileDraft(profile);
-    onNotice?.("已创建独立桌面实例草稿。请先选择角色、调整样式，再点击「添加到真实桌面」。");
-  }, [onNotice, profiles.length, config, characters, templateDraft]);
+    const ok = requestPinWidget();
+    onNotice?.(ok ? "已请求系统添加桌面小组件。所有实例共用当前角色、内容和样式。" : "当前启动器不支持从应用内添加，请手动在桌面添加小组件。");
+  }, [onNotice]);
 
   /** 手动塞一条示例内容，方便用户先看看桌面上长什么样。 */
   const writeSample = useCallback(() => {
@@ -423,7 +403,7 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
                 <button type="button" className="ws-link" onClick={placeWidget}>{placed ? "新建独立实例" : "创建桌面实例"}</button>
               </div>
             )}
-            <p className="ws-hint">目前多个桌面实例共用同一份角色、内容和样式设置；暂不支持每个实例分别选择不同角色。</p>
+            <p className="ws-hint">桌面实例共用当前角色、内容和样式；不支持按实例分别配置。</p>
           </>
         ) : null}
       </div>
@@ -574,61 +554,6 @@ export function WidgetSettings({ onNotice }: { onNotice?: (msg: string) => void 
         </>
       ) : null}
 
-      {/* Independent desktop instances: each profile owns its HTML/CSS cache in the Android shell. */}
-      <div className="ws-card">
-        <div className="ws-card-head">
-          <span className="ws-card-title">自定义桌面小组件 · 多实例</span>
-          <button type="button" className="ws-link" onClick={createProfile}>＋ 新建配置</button>
-        </div>
-        <p className="ws-hint">可以保存任意多个配置：每个配置能选不同角色、单独写 HTML 和 CSS、分别设置尺寸。每次点击「添加到真实桌面」都会生成新的实例 ID 与独立缓存，避免多个桌面组件串用同一张图；实际实例数受 Android 启动器和设备资源限制，应用本身不设固定上限。</p>
-        {profiles.length ? <div className="ws-inline-row" style={{flexWrap:"wrap",gap:8}}>
-          <span>已保存 {profiles.length} 个配置</span>
-          {profiles.map(profile => <button key={profile.id} type="button" className="ws-link" onClick={() => setProfileDraft({...profile})}>{profile.name}</button>)}
-        </div> : <p className="ws-hint">还没有独立配置。点“新建配置”创建第一块自定义桌面组件。</p>}
-        {profileDraft ? <div className="ws-profile-editor" style={{display:"grid",gap:12,marginTop:14}}>
-          <label className="ws-field">配置名称
-            <input value={profileDraft.name} maxLength={60} onChange={event => patchProfileDraft({name:event.target.value})} />
-          </label>
-          <label className="ws-field">显示哪个角色
-            <select value={profileDraft.characterId} onChange={event => patchProfileDraft({characterId:event.target.value})}>
-              <option value="">（不绑定角色 · 自由内容）</option>
-              {characters.length === 0 ? <option value="">还没有角色</option> : null}
-              {characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}
-            </select>
-          </label>
-          <div className="ws-preview-card">
-            <div className="ws-preview-head"><b>该配置的实时预览</b><span>{profileDraft.widthDp} × {profileDraft.heightDp} dp</span></div>
-            <div className="ws-preview-stage"><iframe key={profilePreviewHtml} title="自定义小组件预览" className="ws-preview-frame" srcDoc={profilePreviewHtml} sandbox="" style={{width:clampInt(profileDraft.widthDp,WIDGET_LIMITS.widthDp.min,WIDGET_LIMITS.widthDp.max),height:clampInt(profileDraft.heightDp,WIDGET_LIMITS.heightDp.min,WIDGET_LIMITS.heightDp.max)}} /></div>
-          </div>
-          <div className="ws-grid2">
-            <label className="ws-field">宽（dp）<input type="number" min={WIDGET_LIMITS.widthDp.min} max={WIDGET_LIMITS.widthDp.max} value={profileDraft.widthDp} onChange={event => patchProfileDraft({widthDp:clampInt(Number(event.target.value)||profileDraft.widthDp,WIDGET_LIMITS.widthDp.min,WIDGET_LIMITS.widthDp.max)})}/></label>
-            <label className="ws-field">高（dp）<input type="number" min={WIDGET_LIMITS.heightDp.min} max={WIDGET_LIMITS.heightDp.max} value={profileDraft.heightDp} onChange={event => patchProfileDraft({heightDp:clampInt(Number(event.target.value)||profileDraft.heightDp,WIDGET_LIMITS.heightDp.min,WIDGET_LIMITS.heightDp.max)})}/></label>
-          </div>
-          <label className="ws-field">清晰度
-            <select value={profileDraft.scale} onChange={event => patchProfileDraft({scale:Number(event.target.value)})}><option value={1}>省空间</option><option value={2}>标准</option><option value={3}>更清晰</option></select>
-          </label>
-          <label className="ws-field">HTML 模板（支持参数替换）
-            <textarea className="ws-template" spellCheck={false} rows={14} value={profileDraft.template} onChange={event => patchProfileDraft({template:event.target.value})}/>
-          </label>
-          <label className="ws-field">独立 CSS（覆盖上方模板样式）
-            <textarea className="ws-template" spellCheck={false} rows={10} value={profileDraft.customCss} onChange={event => patchProfileDraft({customCss:event.target.value})} placeholder={"例如：\n.widget { background: #fff7f0; }\n.message { font-size: 18px; letter-spacing: .03em; }"}/>
-          </label>
-          <details className="ws-more">
-            <summary>可调用的参数与样式建议</summary>
-            <div className="ws-placeholders">{WIDGET_PLACEHOLDERS.map(item => <div className="ws-placeholder-row" key={item.token}><code>{item.token}</code><span>{item.desc}</span></div>)}
-              <div className="ws-placeholder-row"><code>{"{{avatarInner}}"}</code><span>头像图片或首字的 HTML 片段</span></div>
-              <div className="ws-placeholder-row"><code>{"{{statusChip}}"}</code><span>状态标签 HTML 片段；空状态时为空串</span></div>
-            </div>
-            <p className="ws-hint">CSS 可以使用常见布局、渐变、背景、阴影和字体。小组件最终由原生离屏 WebView 渲染成图片，因此模板内的按钮不会成为可单独点击的原生按钮；点击整个小组件会打开小手机。</p>
-          </details>
-          <div className="ws-template-actions" style={{display:"flex",flexWrap:"wrap",gap:8}}>
-            <button type="button" className="ws-btn ghost" onClick={persistProfileDraft}>保存配置</button>
-            <button type="button" className="ws-btn ghost" onClick={pushProfileDraft}>推送到该配置</button>
-            <button type="button" className="ws-btn" onClick={placeProfileDraft}>添加到真实桌面</button>
-            <button type="button" className="ws-btn ghost" onClick={removeProfileDraft}>删除配置</button>
-          </div>
-        </div> : null}
-      </div>
     </div>
   );
 }
