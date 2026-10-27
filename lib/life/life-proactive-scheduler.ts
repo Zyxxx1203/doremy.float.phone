@@ -10,7 +10,7 @@
  */
 import { loadCharacters } from "@/lib/character-storage";
 import { loadChatContacts, loadChatSessions } from "@/lib/chat-storage";
-import { armLifeSceneProactiveBailout } from "@/lib/push-bailout-client";
+import { armLifeSceneProactiveBailout, cancelBailoutPrefix } from "@/lib/push-bailout-client";
 import { buildLifeScenePromptOverride, getActiveLifePromptPreset, getLifePromptPresets } from "./life-presets";
 import { loadVirtualLifeState, saveVirtualLifeState } from "./life-storage";
 import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow, upsertLifeScene } from "./life-runtime";
@@ -87,6 +87,8 @@ function nextArmAt(triggerKey: string, now: number): number {
 }
 
 const armedCache = new Map<string, number>();
+/** 已取消过线下循环的 scene:character，避免每 60 秒重复 DELETE。 */
+const cancelledOffline = new Set<string>();
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let running = false;
@@ -101,6 +103,25 @@ async function runOnce(): Promise<void> {
     const player = playerLocation(state);
     if (!player) return;
     const characters = loadCharacters();
+    // 玩家离开后，旧地点的线下循环立即撤销；角色离开玩家地点也撤销它自己的链。
+    const coLocated = new Set(
+      characters.filter(character => characterLocation(state, character.id) === player.id).map(character => "life-scene:" + character.id),
+    );
+    for (const scene of state.scenes) {
+      for (const participant of scene.participants) {
+        if (participant.ownerType !== "character") continue;
+        const exact = "life-scene:" + participant.ownerId;
+        const triggerPrefix = "life-scene:" + scene.id + ":" + participant.ownerId;
+        const isCoLocated = scene.locationId === player.id && coLocated.has(exact);
+        if (!isCoLocated && !cancelledOffline.has(triggerPrefix)) {
+          cancelledOffline.add(triggerPrefix);
+          try { localStorage.removeItem(ARM_META_PREFIX + scene.id + ":" + participant.ownerId); } catch { /* best effort */ }
+          void cancelBailoutPrefix(triggerPrefix).catch(() => undefined);
+        } else if (isCoLocated) {
+          cancelledOffline.delete(triggerPrefix);
+        }
+      }
+    }
     const presets = getLifePromptPresets(state.settings.promptPresets);
     const preset = getActiveLifePromptPreset(presets, state.settings.activePromptPresetId);
     const lifeScenePrompt = buildLifeScenePromptOverride(preset, state.settings.customPrompt);
