@@ -180,7 +180,19 @@ export function loadMemoryConfig(): MemoryConfig {
     try {
         const raw = kvGet(CONFIG_KEY);
         if (!raw) return { ...DEFAULT_MEMORY_CONFIG };
-        return { ...DEFAULT_MEMORY_CONFIG, ...JSON.parse(raw) };
+        const parsed = JSON.parse(raw) as Partial<MemoryConfig>;
+        return {
+            ...DEFAULT_MEMORY_CONFIG,
+            ...parsed,
+            shortTermAllowedSources: {
+                ...DEFAULT_MEMORY_CONFIG.shortTermAllowedSources,
+                ...(parsed.shortTermAllowedSources ?? {}),
+            },
+            shortTermSourceLimits: {
+                ...DEFAULT_MEMORY_CONFIG.shortTermSourceLimits,
+                ...(parsed.shortTermSourceLimits ?? {}),
+            },
+        };
     } catch {
         return { ...DEFAULT_MEMORY_CONFIG };
     }
