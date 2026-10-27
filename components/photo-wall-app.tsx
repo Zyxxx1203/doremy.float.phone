@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Camera, Check, Download, Feather, Heart, ImagePlus, LoaderCircle, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
+import { appendCustomAppTimelineEntry } from "@/lib/custom-app-storage";
 import { loadImageGenerationSettings } from "@/lib/settings-storage";
 import type { Character } from "@/lib/character-types";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
@@ -198,6 +199,19 @@ function PhotoThumbnail({ photo, onOpen }: { photo: PhotoWallPhoto; onOpen: () =
   </button>;
 }
 export function PhotoWallApp({ onClose, onNotice }: Props) {
+  const recordPhotoWallMemory = useCallback((summary: string, characterId?: string) => {
+    try {
+      const ids = characterId ? [characterId] : loadCharacters().map(character => character.id);
+      for (const id of ids) {
+        appendCustomAppTimelineEntry({ id: "photo_wall", name: "照片墙" }, {
+          characterId: id,
+          summary: summary.slice(0, 500),
+          appLabel: "照片墙",
+        });
+      }
+    } catch { /* 记忆失败不影响照片墙 */ }
+  }, []);
+
   const [state, setState] = useState<PhotoWallState>(() => loadPhotoWallState());
   const [characters, setCharacters] = useState<Character[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
@@ -748,7 +762,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const photo = current.photos.find(item => item.id === photoId);
     const existing = side === "back" ? (photo?.backDoodles ?? []) : (photo?.doodles ?? []);
     const existingIds = new Set(existing.map(item => item.id));
-    const addedByUser = doodles.filter(item => !existingIds.has(item.id) && item.authorType === "user");
+    const added = doodles.filter(item => !existingIds.has(item.id));
+    const addedByUser = added.filter(item => item.authorType === "user");
     pushHistory(current);
     commitPhotos(current.photos.map(item => item.id === photoId
       ? side === "back" ? { ...item, backDoodles: doodles } : { ...item, doodles }
@@ -774,7 +789,16 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         applyImmediate({ ...latest, creationRecords: [...(latest.creationRecords ?? []), record] });
       }
     }
-  }, [applyImmediate, commitPhotos, pushHistory, wallCanvasMode]);
+    if (added.length) {
+      const characterDoodle = added.find(item => item.authorType === "character");
+      recordPhotoWallMemory(
+        characterDoodle
+          ? characterDoodle.authorName + "在" + (photo?.title || "照片墙上") + "留下了贴纸或涂鸦"
+          : "用户在" + (photo?.title || "照片墙上") + "留下了贴纸或涂鸦",
+        characterDoodle?.authorId,
+      );
+    }
+  }, [applyImmediate, commitPhotos, pushHistory, wallCanvasMode, recordPhotoWallMemory]);
 
   /** 套用模板骨架：照片按顺序吸附进槽位，套完仍然可以自由拖动。 */
   const applyTemplate = useCallback((templateId: string) => {
@@ -981,7 +1005,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     // 涂鸦过程中不要扩容：扩容会重映射照片/涂鸦，但背景图盒子没有偏移量，
     // 会出现“画布和照片分离”。保持世界固定，笔迹始终落在同一画布上。
     persist(appendUserRecord({ ...current, wallDoodles }));
-  }, [persist, pushHistory, wallActivePhotoId, wallCanvasMode]);
+    if (addedByUser.length) recordPhotoWallMemory("用户在整个照片墙上添加了" + addedByUser.length + "笔涂鸦或贴纸");
+  }, [persist, pushHistory, wallActivePhotoId, wallCanvasMode, recordPhotoWallMemory]);
   const visiblePhotos = useMemo(() => photos.filter(photo => {
     if (filter === "mine") return photo.ownerType === "user";
     if (filter === "characters") return photo.ownerType === "character";
@@ -1076,6 +1101,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const placed = { ...photo, placement: photo.placement ?? { x: Math.min(0.92, Math.max(0.08, anchor.x + jitter)), y: Math.min(0.92, Math.max(0.08, anchor.y + jitter)), scale: 1, rotation: Math.round(jitter * 300), z: maxZ + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } };
       persist({ ...current, photos: [placed, ...current.photos.filter(item => item.id !== photo.id)] });
     }
+    recordPhotoWallMemory(
+      (photo.ownerType === "character" ? photo.ownerName + "把一张照片放进了照片墙：" : "用户上传了一张照片到照片墙：") + (photo.title || "未命名的瞬间"),
+      photo.ownerType === "character" ? photo.ownerId : undefined,
+    );
     setSelectedPhotoId(photo.id);
   }, [persist, activeTemplateId, placementAnchor, templateFill, pushHistory]);
 
@@ -1386,6 +1415,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const baseText = editNote.trim() || getPhotoBackText(existing);
       const nextBackNote = [baseText, `${commenter.name}：${content}`].filter(Boolean).join("\n\n");
       persist({ ...fresh, photos: fresh.photos.map(photo => photo.id === selectedPhoto.id ? { ...photo, backNote: nextBackNote, annotations: [] } : photo) });
+      recordPhotoWallMemory("照片背面写了：" + nextBackNote.slice(0, 300), selectedPhoto.ownerType === "character" ? selectedPhoto.ownerId : undefined);
       setEditNote(nextBackNote);
       setPhotoViewOnly(false);
       onNotice?.(`${commenter.name}已经把一句话写进照片背面。`);

@@ -15,6 +15,7 @@
 import { simpleLLMCall } from "../api-helpers";
 import { loadCharacters } from "../character-storage";
 import { loadChatContacts, loadChatSessions, loadChatMessages } from "../chat-storage";
+import { prepareShortTermContext } from "../short-term-assembler";
 import { loadApiConfigs, resolveAuxiliaryApiConfig, resolveUserIdentity } from "../settings-storage";
 import { appendCustomAppTimelineEntry } from "../custom-app-storage";
 import { loadWidgetAutoLastRun, loadWidgetConfig, loadWidgetData, markWidgetAutoRun, saveWidgetData } from "./storage";
@@ -47,35 +48,15 @@ async function generateLine(
 
   // 角色卡提供必要的人设边界；当前状态只看最近几条聊天和上次桌面内容。
   // 不加载长期记忆、应用时间线或其他历史，避免上下文过载。
-  const characterId = character.id;
-  const contact = loadChatContacts().find(item => item.characterId === characterId);
-  const sessions = loadChatSessions().filter(session =>
-    !session.isGroup && session.contactId === contact?.id
-  );
-  // 桌面小组件只需要最近几条真实聊天，不拉取整段时间线/长期记忆，
-  // 避免大量旧上下文把当前话题挤掉或诱发答非所问。
-  // Use one conversation only: merging several sessions for the same character can
-  // make the widget treat unrelated threads as one continuous conversation.
-  const sessionCandidates = sessions.map(session => {
-    const messages = loadChatMessages(session.id, 8)
-      .filter(message =>
-        (message.role === "user" || message.role === "assistant") &&
-        !message.isRetracted &&
-        typeof message.content === "string" &&
-        message.content.trim()
-      );
-    const latestAt = messages.reduce((latest, message) => {
-      const at = Date.parse(message.createdAt);
-      return Number.isFinite(at) ? Math.max(latest, at) : latest;
-    }, 0);
-    return { session, messages, latestAt };
-  }).filter(item => item.messages.length > 0)
-    .sort((a, b) => b.latestAt - a.latestAt);
-  const activeConversation = sessionCandidates[0];
-  const recentMessages = (activeConversation?.messages ?? [])
-    .slice(-6)
-    .map(message => `${message.role === "user" ? userName : character.name}：${message.content.trim().replace(/\s+/g, " ").slice(0, 240)}`)
-    .join("\n");
+  // 走系统短期记忆，而不是自己读最后几条聊天。
+  // 这样照片墙/生活/一起看/自定义 APP 的事件都按统一来源和上限进入；
+  // Widget 只读少量上下文，避免把整段聊天或无关应用记忆灌进桌面文案。
+  const shortTerm = prepareShortTermContext(character.id, "phone_widget", { history: [] });
+  const recentMessages = shortTerm.recentBlocks
+    .map(block => block.content)
+    .filter(Boolean)
+    .join("\n\n")
+    .slice(0, 6000);
 
   const persona = [
     character.persona?.trim() ? `【角色人设】\n${character.persona.trim().slice(0, 1200)}` : "",

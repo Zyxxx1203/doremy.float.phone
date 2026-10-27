@@ -1,5 +1,5 @@
 import { kvGet, kvSet } from "@/lib/kv-db";
-import { createOrGetSession, loadChatContacts, pushChatMessage } from "@/lib/chat-storage";
+import { appendCustomAppTimelineEntry } from "@/lib/custom-app-storage";
 
 export type GlobalWatchRecord = {
   id: string;
@@ -40,15 +40,11 @@ export function saveGlobalWatchRecord(record: GlobalWatchRecord): void {
 
 export function persistGlobalWatchMemory(record: GlobalWatchRecord): boolean {
   try {
-    const contact = loadChatContacts().find(item => item.characterId === record.characterId);
-    if (!contact) return false;
-    const session = createOrGetSession(contact.id);
-    const prefix = record.kind === "user" ? "用户在全局陪看横幅中回复：" : "角色在全局陪看中主动评价：";
-    pushChatMessage({
-      sessionId: session.id,
-      role: record.kind === "user" ? "user" : "assistant",
-      content: "【全局陪看短期记忆】" + record.characterName + "｜" + new Date(record.createdAt).toLocaleString("zh-CN") + "｜" + prefix + record.text.slice(0, 1500),
-      origin: "custom_app",
+    appendCustomAppTimelineEntry({ id: "global_watch", name: "全局陪看" }, {
+      characterId: record.characterId,
+      summary: "【全局陪看】" + (record.kind === "user" ? "用户回复：" : "角色主动说：") + record.text.slice(0, 1500),
+      appLabel: "全局陪看",
+      data: { kind: record.kind },
     });
     return true;
   } catch (error) {

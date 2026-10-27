@@ -5,7 +5,8 @@ import { ArrowLeft, ChevronDown, ExternalLink, FileText, Heart, ImagePlus, Loade
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import { generateChatCompletion, flattenCompletionResult, readCompressedImageDataUrl } from "@/lib/chat-engine";
-import { createOrGetSession, loadChatContacts, loadChatMessages, loadChatSessions, pushChatMessage, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
+import { createOrGetSession, loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
+import { appendCustomAppTimelineEntry } from "@/lib/custom-app-storage";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { resolveVoiceConfig, synthesizeSpeech } from "@/lib/tts-service";
 import { resolveUserIdentity } from "@/lib/settings-storage";
@@ -1268,15 +1269,12 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
    */
   const persistWatchShortTermMemory = (characterId: string, characterName: string, videoName: string, responseText: string, role: "user" | "assistant" = "assistant") => {
     try {
-      const contact = loadChatContacts().find(item => item.characterId === characterId);
-      if (!contact) {
-        onNotice?.("观影回应已保存在一起看记录；未找到该角色的聊天联系人，因此暂未写入聊天短期记忆。");
-        return;
-      }
-      const session = createOrGetSession(contact.id);
-      const summary = "【一起看讨论记录 · " + (role === "user" ? "用户发言" : "角色回应") + "】" + new Date().toLocaleString("zh-CN") +
-        " · 视频《" + (videoName || "未命名视频") + "》\n" + (role === "user" ? "用户：" : characterName + "：") + responseText.slice(0, 1800);
-      pushChatMessage({ sessionId: session.id, role, content: summary, origin: "custom_app" });
+      appendCustomAppTimelineEntry({ id: "watch", name: "一起看" }, {
+        characterId,
+        summary: "【一起看讨论】视频《" + (videoName || "未命名视频") + "》 · " + (role === "user" ? "用户" : characterName) + "：" + responseText.slice(0, 1800),
+        appLabel: "一起看",
+        data: { role, video: videoName },
+      });
     } catch (error) {
       console.warn("[TogetherWatch] 保存短期记忆失败", error);
       onNotice?.("观影记录已保存，但写入短期记忆失败。");

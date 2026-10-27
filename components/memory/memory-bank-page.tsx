@@ -93,6 +93,12 @@ const MEMORY_SOURCE_OPTIONS: Array<{ key: MemorySourceKey; label: string }> = [
     { key: "vn", label: "漫卷" },
     { key: "adventure", label: "地图冒险" },
     { key: "custom_app", label: "自定义应用" },
+    { key: "photo_wall", label: "照片墙" },
+    { key: "life", label: "生活系统" },
+    { key: "phone_widget", label: "桌面小组件" },
+    { key: "watch", label: "一起看" },
+    { key: "global_watch", label: "全局陪看" },
+    { key: "checkin", label: "查岗" },
 ];
 
 type MemoryEditorState = {
@@ -1048,6 +1054,25 @@ export function MemoryBankPage({
                                                 {source.label}
                                             </button>
                                         );
+                                    })}
+                                </div>
+                                <div style={{ marginTop: 14, display: "grid", gap: 7 }}>
+                                    <div className="menu-desc">每个来源最多注入多少条短期事件（0 = 不限制）</div>
+                                    {([
+                                        ["chat", "私聊"], ["group_chat", "群聊"], ["moments", "朋友圈"],
+                                        ["checkphone", "查手机"], ["checkin", "查岗"], ["photo_wall", "照片墙"],
+                                        ["life", "生活系统"], ["phone_widget", "桌面小组件"], ["watch", "一起看"],
+                                        ["global_watch", "全局陪看"], ["story", "剧情"], ["custom_app", "自定义应用"],
+                                    ] as const).map(([key, label]) => {
+                                        const limits = config.shortTermSourceLimits ?? {};
+                                        return <label key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
+                                            <span>{label}</span>
+                                            <input type="number" min={0} max={200} value={Number(limits[key] ?? 0)} onChange={event => {
+                                                const value = Math.max(0, Math.min(200, Number(event.target.value) || 0));
+                                                const next = { ...config, shortTermSourceLimits: { ...limits, [key]: value } };
+                                                setConfig(next); saveMemoryConfig(next);
+                                            }} style={{ width: 70, padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border, #ddd)", background: "var(--surface, #fff)", color: "inherit" }} />
+                                        </label>;
                                     })}
                                 </div>
                             </div>

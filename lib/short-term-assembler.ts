@@ -52,7 +52,7 @@ function formatPhotoDirectiveForPrompt(msg: ChatMessage): string {
 
 export type NativeTimelineEntry = {
     id: string;
-    sourceApp: "chat" | "moments" | "story" | "vn" | "map" | "game" | "diary" | "xiaohongshu" | "interview_magazine" | "cocreate" | "checkphone" | "custom_app";
+    sourceApp: "chat" | "moments" | "story" | "vn" | "map" | "game" | "diary" | "xiaohongshu" | "interview_magazine" | "cocreate" | "checkphone" | "custom_app" | "photo_wall" | "life" | "phone_widget" | "watch" | "global_watch" | "checkin";
     sourceDetail?: "direct" | "group" | "system" | "story" | "chat_offline" | "game" | "diary_entry" | "notewall" | "xiaohongshu" | "black_market_theater" | "interview_issue" | "interview_shared_issue" | "cocreate_project" | "checkphone" | "custom_app_event"; // chat sub-type: 1:1 vs group chat vs system note
     authorType?: "user" | "character" | "npc"; // who authored this entry
     postAuthorType?: "user" | "character"; // for moments: who owns the parent post
@@ -775,9 +775,16 @@ export function loadNativeTimeline(
     });
     for (const customEntry of customAppEntries) {
         const label = customEntry.appLabel || customEntry.appName || "APP";
+        const specialSource = customEntry.appId === "life" ? "life"
+            : customEntry.appId === "photo_wall" ? "photo_wall"
+            : customEntry.appId === "phone_widget" ? "phone_widget"
+            : customEntry.appId === "watch" ? "watch"
+            : customEntry.appId === "global_watch" ? "global_watch"
+            : customEntry.appId === "checkin" ? "checkin"
+            : "custom_app";
         entries.push({
             id: customEntry.id,
-            sourceApp: "custom_app",
+            sourceApp: specialSource,
             sourceDetail: "custom_app_event",
             authorType: "user",
             timestamp: customEntry.createdAt,
@@ -827,7 +834,7 @@ export function loadNativeTimeline(
                 : "生活记录";
             entries.push({
                 id: "life:" + lifeEntry.id,
-                sourceApp: "custom_app",
+                sourceApp: "life",
                 sourceDetail: "custom_app_event",
                 authorType: lifeEntry.actorId === characterId ? "character" : "user",
                 timestamp: lifeEntry.occurredAt,
@@ -974,6 +981,25 @@ export function filterTimelineByAllowedSources(
  * For history-style appIds, the current feature's block has empty content because
  * the actual content is the history turns (wrapped by the assembler).
  */
+/** 按来源保留最近 N 条；未配置的来源不裁剪。 */
+function limitTimelineBySource<T extends { sourceApp: string }>(entries: T[], limits?: Record<string, unknown>): T[] {
+    if (!limits) return entries;
+    const groups = new Map<string, T[]>();
+    for (const entry of entries) {
+        const list = groups.get(entry.sourceApp) ?? [];
+        list.push(entry);
+        groups.set(entry.sourceApp, list);
+    }
+    const kept = new Set<T>();
+    for (const [source, list] of groups) {
+        const raw = limits[source];
+        const limit = typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+        if (!limit) { list.forEach(item => kept.add(item)); continue; }
+        list.slice(-limit).forEach(item => kept.add(item));
+    }
+    return entries.filter(entry => kept.has(entry));
+}
+
 export function prepareShortTermContext(
     characterId: string,
     appId: string,
@@ -1014,6 +1040,7 @@ export function prepareShortTermContext(
     }
     const memConfig = loadMemoryConfig();
     timeline = filterTimelineByAllowedSources(timeline, memConfig.shortTermAllowedSources);
+    timeline = limitTimelineBySource(timeline, memConfig.shortTermSourceLimits as Record<string, unknown> | undefined);
 
     // Activation context: full timeline for keyword matching (not truncated)
     const wbActivationContext = timeline.slice(-10).map(e => e.content).join("\n");
@@ -1284,6 +1311,7 @@ export function prepareGroupShortTermContext(
             promptTimestampOptions: options?.promptTimestampOptions,
         });
         timeline = filterTimelineByAllowedSources(timeline, allowed);
+        timeline = limitTimelineBySource(timeline, memConfig.shortTermSourceLimits as Record<string, unknown> | undefined);
         for (const entry of timeline) {
             if (entry.sourceApp === "chat" && entry.sourceDetail === "group" && entry.groupSessionId === options?.excludeGroupSessionId) {
                 continue;

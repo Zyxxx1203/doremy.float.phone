@@ -43,6 +43,34 @@ export type MemoryConfig = {
         vn?: boolean;
         adventure?: boolean;
         custom_app?: boolean;
+        photo_wall?: boolean;
+        life?: boolean;
+        phone_widget?: boolean;
+        watch?: boolean;
+        global_watch?: boolean;
+        checkin?: boolean;
+    };
+    /** 每个来源最多注入多少条短期事件；缺省由 DEFAULT_MEMORY_CONFIG 提供。 */
+    shortTermSourceLimits?: {
+        chat?: number;
+        group_chat?: number;
+        moments?: number;
+        checkphone?: number;
+        checkin?: number;
+        photo_wall?: number;
+        life?: number;
+        phone_widget?: number;
+        watch?: number;
+        global_watch?: number;
+        story?: number;
+        vn?: number;
+        map?: number;
+        game?: number;
+        diary?: number;
+        xiaohongshu?: number;
+        interview_magazine?: number;
+        cocreate?: number;
+        custom_app?: number;
     };
 };
 
@@ -130,5 +158,17 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
         vn: true,
         adventure: true,
         custom_app: true,
+        photo_wall: true,
+        life: true,
+        phone_widget: true,
+        watch: true,
+        global_watch: true,
+        checkin: false,
+    },
+    shortTermSourceLimits: {
+        chat: 30, group_chat: 20, moments: 10, checkphone: 6, checkin: 3,
+        photo_wall: 8, life: 10, phone_widget: 4, watch: 5, global_watch: 4,
+        story: 10, vn: 10, map: 8, game: 8, diary: 8, xiaohongshu: 8,
+        interview_magazine: 8, cocreate: 8, custom_app: 10,
     },
 };
