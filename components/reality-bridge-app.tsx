@@ -5,7 +5,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { loadCharacters } from "@/lib/character-storage";
 import { CLOUD_BACKUP_BUCKET, normalizeBackupUrl } from "@/lib/cloud-backup/config";
 import { pollRealityBridgeNow, REALITY_BRIDGE_FEED_UPDATED_EVENT } from "@/components/reality-bridge-scheduler";
-import { testRunRule } from "@/lib/reality-bridge/engine";
+import { previewBridgeRuleText, testRunRule } from "@/lib/reality-bridge/engine";
 import {
   bridgeConnection,
   clearBridgeFeed,
@@ -708,6 +708,8 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
   const [ruleTest, setRuleTest] = useState<{ type: string; payload: string }>({ type: "", payload: "" });
   const [ruleTestBusy, setRuleTestBusy] = useState(false);
   const [ruleTestResult, setRuleTestResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewResult, setPreviewResult] = useState("");
 
   // 换一个动作/重新打开向导时清掉上次的测试结果
   useEffect(() => { setTestResult(null); }, [editingShortcut?.id]);
@@ -1331,6 +1333,25 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
       setRuleTestBusy(false);
     }
   }, [editing, ruleTest, ruleTestBusy]);
+
+  const runPreview = useCallback(async () => {
+    if (!editing || previewBusy) return;
+    setPreviewBusy(true);
+    setPreviewResult("");
+    try {
+      const text = await previewBridgeRuleText(editing, {
+        id: "preview-" + Date.now().toString(36),
+        type: ruleTest.type.trim() || editing.matchType.trim() || editing.name.trim() || "试跑数据",
+        payload: ruleTest.payload.trim() || "抖音 今天已累计使用 90 分钟",
+        createdAt: new Date().toISOString(),
+      });
+      setPreviewResult(text);
+    } catch (error) {
+      setPreviewResult("预览失败：" + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setPreviewBusy(false);
+    }
+  }, [editing, ruleTest, previewBusy]);
 
   const wizNext = useCallback(() => {
     if (!editing) return;
@@ -3055,6 +3076,14 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
                   <button type="button" className="rb-btn ghost" disabled={ruleTestBusy} onClick={() => void runRuleTest()}>
                     {ruleTestBusy ? "正在试跑…" : "试跑一次"}
                   </button>
+                  <button type="button" className="rb-btn ghost" disabled={previewBusy} onClick={() => void runPreview()}>
+                    {previewBusy ? "正在生成预览…" : "只预览角色会说的话（不执行动作）"}
+                  </button>
+                  {previewResult && (
+                    <div className="rb-hint" style={{ marginTop: 8, padding: 10, borderRadius: 10, background: "rgba(0,0,0,.04)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                      <b>加工预览：</b>{previewResult}
+                    </div>
+                  )}
                   {ruleTestResult && (
                     <p className="rb-hint" style={{ color: ruleTestResult.ok ? "var(--c-success, #16a34a)" : "var(--c-danger, #dc2626)", wordBreak: "break-word", whiteSpace: "pre-wrap" }} role="status">
                       {ruleTestResult.text}

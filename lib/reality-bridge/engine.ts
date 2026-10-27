@@ -143,6 +143,11 @@ async function processText(rule: BridgeRule, item: BridgeItem): Promise<string> 
   return item.payload;
 }
 
+/** 只预览加工后的文本，不执行任何动作；供规则编辑器“模拟测试”使用。 */
+export async function previewBridgeRuleText(rule: BridgeRule, item: BridgeItem): Promise<string> {
+  return processText(upgradeUsageReminderRule(rule), item);
+}
+
 /** 广播 bridge.data 事件给已订阅的自定义 APP（规则动作与「允许自定义APP订阅」总开关共用） */
 function broadcastBridgeItemToApps(item: BridgeItem, text: string): void {
   if (typeof window === "undefined") return;
