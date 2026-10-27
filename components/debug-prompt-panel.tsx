@@ -50,6 +50,7 @@ import { previewShoppingPromptPayload } from "@/lib/shopping-engine";
 import { previewInterviewMagazinePromptPayload } from "@/lib/interview-magazine-engine";
 import { hydrateMapStorage, loadMapWorlds, getLatestSave } from "@/lib/map-storage";
 import { previewAdventureCompanionPromptPayload } from "@/lib/map-rpg-engine";
+import { getApiLogs, type DebugInfo } from "@/lib/api-log-store";
 import { resolveUserIdentity } from "@/lib/settings-storage";
 import type { BookChapter } from "@/lib/reading-types";
 import type { CoCreateMode } from "@/lib/cocreate-types";
@@ -57,7 +58,7 @@ import type { MapWorld, GameSave } from "@/lib/map-types";
 
 
 type CoreDebugMode = "chat" | "moments" | "calendar" | "story" | "vn";
-type DebugMode = CoreDebugMode | ExtraPromptAppId;
+type DebugMode = CoreDebugMode | ExtraPromptAppId | "actual";
 
 type UnifiedMessage = {
     role: string;
@@ -108,6 +109,8 @@ export function DebugPromptPanel() {
     const [collapsed, setCollapsed] = useState(true);
     const [enabled, setEnabled] = useState(false);
     const [mode, setMode] = useState<DebugMode>("chat");
+    const [actualLogs, setActualLogs] = useState<DebugInfo[]>([]);
+    const [actualSelectedId, setActualSelectedId] = useState("");
     const [floatingPosition, setFloatingPosition] = useState<FloatingPosition | null>(null);
     const [draggingFloatingButton, setDraggingFloatingButton] = useState(false);
     const [floatingDockEnabled, setFloatingDockEnabled] = useState(false);
@@ -300,6 +303,13 @@ export function DebugPromptPanel() {
         setExpandedIdx(new Set()); setBadgesShownIdx(new Set());
         requestAnimationFrame(() => { scrollRef.current?.scrollTo(0, 0); });
     }, [activeChatSnapshot?.id, mode]);
+    useEffect(() => {
+        if (mode !== "actual") return;
+        const logs = getApiLogs().slice().reverse();
+        setActualLogs(logs);
+        setActualSelectedId(current => current && logs.some(log => log.id === current) ? current : (logs[0]?.id ?? ""));
+        setExpandedIdx(new Set()); setBadgesShownIdx(new Set());
+    }, [mode]);
 
     // Get unified messages for display.
     const displayMessages: UnifiedMessage[] = (() => {
@@ -346,6 +356,10 @@ export function DebugPromptPanel() {
                 order: m._debugMeta?.order,
             }));
         }
+        if (mode === "actual") {
+            const log = actualLogs.find(item => item.id === actualSelectedId);
+            return log ? log.messages.map(message => ({ role: message.role, content: message.content, marker: message.marker })) : [];
+        }
         if (isExtraPromptMode(mode) && extraResult) {
             return extraResult.messages.map(m => ({
                 role: m.role,
@@ -358,7 +372,10 @@ export function DebugPromptPanel() {
         return [];
     })();
 
-    const resultMeta = mode === "chat"
+    const actualLog = mode === "actual" ? actualLogs.find(item => item.id === actualSelectedId) ?? null : null;
+    const resultMeta = mode === "actual"
+        ? (actualLog ? { characterName: actualLog.characterName || "实际调用", model: actualLog.model || "", presetName: "实际调用", messages: [] } : null)
+        : mode === "chat"
         ? activeChatSnapshot
         : mode === "moments"
             ? momentsResult
@@ -758,6 +775,7 @@ export function DebugPromptPanel() {
         ["story", "剧情"],
         ["vn", "漫卷"],
         ...EXTRA_PROMPT_APPS.map(app => [app.id, app.label] as [DebugMode, string]),
+        ["actual", "实际调用"],
     ];
 
     // ── Character/Post options for moments (memoized) ──
@@ -1088,6 +1106,15 @@ export function DebugPromptPanel() {
 
             {/* Toolbar */}
             <div className="pv-toolbar">
+                {mode === "actual" && (
+                    <>
+                        <select value={actualSelectedId} onChange={e => setActualSelectedId(e.target.value)} className="pv-select">
+                            {actualLogs.length === 0 ? <option value="">没有实际调用记录</option> : null}
+                            {actualLogs.map(log => <option key={log.id} value={log.id}>{(log.characterName || "未命名") + " · " + (log.model || "未知模型") + " · " + new Date(log.timestamp).toLocaleTimeString("zh-CN") + (log.source === "qa" ? " · 工坊" : "")}</option>)}
+                        </select>
+                        <button onClick={() => { const logs = getApiLogs().slice().reverse(); setActualLogs(logs); setActualSelectedId(logs[0]?.id ?? ""); }} className="pv-btn">刷新</button>
+                    </>
+                )}
                 {mode === "chat" && (
                     <>
                         <select
@@ -1238,6 +1265,8 @@ export function DebugPromptPanel() {
                             : mode === "calendar" ? "选择角色与日期后点击「预览」"
                             : mode === "vn" ? "选择角色后点击「预览」查看漫卷 Prompt"
                             : mode === "story" ? "选择角色后点击「预览」查看剧情 Prompt"
+                            : mode === "actual"
+                                ? (actualLogs.length ? "上方选择一条实际调用查看完整 messages" : "还没有底层模型调用记录。发一次消息、生成一次内容后再来。")
                             : isExtraPromptMode(mode)
                                 ? EXTRA_PROMPT_APPS.find(app => app.id === mode)?.emptyText ?? "选择 APP 后点击「预览」"
                                 : "选择 APP 后点击「预览」"
