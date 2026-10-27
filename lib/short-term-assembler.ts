@@ -1014,6 +1014,8 @@ export function prepareShortTermContext(
         afterTimestamp?: string;
         /** false 时仅保留剧情 APP 时间线，不读取其他 APP 的相关事件。 */
         includeOtherApps?: boolean;
+        /** false 时排除其他剧情分线写入公共时间线的事件（只影响 story）。 */
+        includeStoryPublic?: boolean;
         memoryTarget?: "short_term" | "long_term" | "core";
         timeAware?: boolean;
         promptTimestampOptions?: PromptTimestampOptions;
@@ -1037,6 +1039,9 @@ export function prepareShortTermContext(
 
     if (options?.includeOtherApps === false) {
         timeline = timeline.filter((entry) => entry.sourceApp === "story");
+    }
+    if (options?.includeStoryPublic === false) {
+        timeline = timeline.filter((entry) => entry.sourceApp !== "story");
     }
     const memConfig = loadMemoryConfig();
     timeline = filterTimelineByAllowedSources(timeline, memConfig.shortTermAllowedSources);

@@ -280,6 +280,7 @@ async function buildStoryPromptMessages(
       history: historyMessages,
       afterTimestamp: !storyMemory?.memorySettings && storyMemory?.inheritRecentMemory === false ? storyMemory.startedAt : undefined,
       includeOtherApps: memorySettings.readOtherAppsMemory,
+      includeStoryPublic: memorySettings.readPublicShortTermMemory,
     })
     : {
       recentBlocks: [],
