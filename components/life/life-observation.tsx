@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Clock3, RefreshCw, Settings2, Eye, ChevronLeft, Save, ImagePlus } from "lucide-react";
 import type { Character } from "@/lib/character-types";
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage } from "@/lib/chat-storage";
-import { generateOfflineChatCompletion } from "@/lib/chat-engine";
+import { simpleLLMCall } from "@/lib/api-helpers";
+import { loadApiConfigs, resolveAuxiliaryApiConfig } from "@/lib/settings-storage";
 import { kvGet, kvSet, hydrateKvDb } from "@/lib/kv-db";
 import { getActorClock, resolveActorLifeNow } from "@/lib/life/life-runtime";
 import { loadVirtualLifeState } from "@/lib/life/life-storage";
@@ -190,8 +191,16 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
           "【最近私聊仅供人设语气参考，不要把私聊内容当作本时间段发生的事件】\n" + recent.slice(-4).map(item => (item.role === "assistant" ? character.name : "用户") + "：" + item.content).join("\n"),
         ].filter(Boolean).join("\n\n"),
       };
-      const result = await generateOfflineChatCompletion(session, [...recent, prompt]);
-      const rawContent = String(result.content ?? "").trim();
+      const config = resolveAuxiliaryApiConfig("memorySummaryApiConfigId") ?? loadApiConfigs()[0];
+      if (!config) throw new Error("没有可用的 API 配置");
+      let rawContent = "";
+      for (let attempt = 0; attempt < 2 && !rawContent; attempt += 1) {
+        const result = await simpleLLMCall(config, [
+          { role: "system", content: "你是生活观察记录器。只输出严格 JSON 对象：{\"events\":[...]}。不要解释、不要 markdown、不要线下聊天 XML。" },
+          { role: "user", content: String(prompt.content) + (attempt ? "\n\n上次输出不是合法 JSON。请只返回 JSON 对象。" : "") },
+        ], { temperature: 0.4 });
+        rawContent = String(result.content ?? "").trim();
+      }
       if (!rawContent) throw new Error("模型返回了空内容");
       const cleaned = rawContent.replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/, "");
       let events: Array<{ time?: string; location?: string; people?: string[]; title?: string; description?: string }> = [];
@@ -202,10 +211,7 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
           if (Array.isArray(parsed.events)) events = parsed.events.filter((item): item is { time?: string; location?: string; people?: string[]; title?: string; description?: string } => Boolean(item && typeof item === "object" && typeof (item as { description?: unknown }).description === "string"));
         }
       } catch { /* 旧模型未按 JSON 返回时，继续用分段回退以保留内容。 */ }
-      if (!events.length) {
-        const paragraphs = cleaned.split(/\n\s*\n+/).map(item => item.trim()).filter(Boolean);
-        events = (paragraphs.length > 1 ? paragraphs : [cleaned]).map((description, index) => ({ title: "生活片段 " + (index + 1), description }));
-      }
+      if (!events.length) throw new Error("模型没有按 JSON 返回 events；请重试，不会保存散文兜底");
       const createdAt = new Date().toISOString();
       const entries: ObservationEntry[] = events.slice(0, 12).map(event => ({
         id: makeId(), characterId: character.id, characterName: character.name,
