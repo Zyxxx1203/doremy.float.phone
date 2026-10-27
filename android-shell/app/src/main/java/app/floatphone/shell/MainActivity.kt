@@ -24,6 +24,8 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Base64
+import java.io.OutputStream
+import java.util.concurrent.ConcurrentHashMap
 import android.view.WindowManager
 import android.view.Gravity
 import android.view.View
@@ -73,7 +75,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         val SITE_URL: String = BuildConfig.SITE_URL
-        const val VERSION = "1.0.19"
+        const val VERSION = "1.0.20"
         /** 来电接听等场景的站内深链（必须以 SITE_URL 开头，否则忽略） */
         const val EXTRA_OPEN_URL = "open_url"
         /** 外部 App（如桌宠）唤起本壳用的自定义 scheme：floatshell://open?url=<站内地址> */
@@ -140,6 +142,15 @@ class MainActivity : AppCompatActivity() {
      * 桥方法只做纯字符串比较，不再跨线程访问 WebView。
      */
     @Volatile private var trustedShellUrl: String? = null
+
+    /** 大文件分块写入会话：避免一次把几百 MB 的 Base64 字符串塞进 JS Bridge。 */
+    private data class ChunkedFileWrite(
+        val uri: Uri?,
+        val file: File?,
+        val stream: OutputStream,
+        var bytes: Long = 0L,
+    )
+    private val chunkedFileWrites = ConcurrentHashMap<String, ChunkedFileWrite>()
     private var pendingGlobalWatchConfig: String = "{}"
     private val globalWatchProjectionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
@@ -364,6 +375,20 @@ class MainActivity : AppCompatActivity() {
      * Native recovery UI: remains usable when the website fails to load or the WebView
      * renderer dies. This is intentionally native, so it does not depend on React/JS.
      */
+    /** WebView 渲染进程崩溃后落盘；下次启动恢复页和诊断报告都能看到。 */
+    private fun recordWebViewCrash(reason: String, detail: String) {
+        runCatching {
+            val stamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+            val report = "time=$stamp\nreason=$reason\ndetail=$detail"
+            File(filesDir, "last-webview-crash.txt").writeText(report)
+            getSharedPreferences("float_startup_diagnostics", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("launch_in_progress", true)
+                .putLong("last_webview_crash_at", System.currentTimeMillis())
+                .apply()
+        }
+    }
+
     private fun showNativeRecoveryScreen(title: String, detail: String) {
         if (!::rootContainer.isInitialized) return
         runOnUiThread {
@@ -426,13 +451,20 @@ class MainActivity : AppCompatActivity() {
                     appendLine("详情：$detail")
                     val crashFile = File(filesDir, "last-native-crash.txt")
                     if (crashFile.exists()) appendLine("上次原生崩溃：${crashFile.readText().takeLast(12000)}")
+                    val webCrashFile = File(filesDir, "last-webview-crash.txt")
+                    if (webCrashFile.exists()) appendLine("上次 WebView 崩溃：${webCrashFile.readText().takeLast(12000)}")
                 }
                 runCatching {
-                    (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                        .setPrimaryClip(ClipData.newPlainText("小手机诊断摘要", summary))
+                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("小手机诊断摘要", summary))
+                    val copied = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString().orEmpty()
+                    if (copied.isBlank()) throw IllegalStateException("系统剪贴板没有写入内容")
                     android.widget.Toast.makeText(this, "诊断摘要已复制；发送前请检查隐私信息", android.widget.Toast.LENGTH_LONG).show()
                 }.onFailure {
-                    showNativeRecoveryScreen("复制失败", it.message ?: "系统剪贴板不可用")
+                    // Android 13+ 某些 WebView/后台状态会静默拒绝剪贴板；至少把摘要落成文件。
+                    val fallback = File(getExternalFilesDir(null) ?: filesDir, "last-diagnostic.txt")
+                    runCatching { fallback.writeText(summary) }
+                    android.widget.Toast.makeText(this, "剪贴板不可用，已保存诊断到：" + fallback.absolutePath, android.widget.Toast.LENGTH_LONG).show()
                 }
             }
             recoveryOverlay = ScrollView(this).apply {
@@ -1009,9 +1041,11 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
             rootContainer = FrameLayout(this)
             setContentView(rootContainer)
             val lastCrash = if (crashFile.exists()) crashFile.readText().takeLast(6000) else "没有捕获到未捕获异常堆栈；也可能是系统强制结束、ANR 或崩溃发生在记录器安装前。"
+            val webCrashFile = File(filesDir, "last-webview-crash.txt")
+            val lastWebCrash = if (webCrashFile.isFile) webCrashFile.readText().takeLast(6000) else ""
             showNativeRecoveryScreen(
                 "检测到上次启动未完成",
-                "已进入原生恢复模式，暂不启动网页和原生桥，避免反复闪退。请先复制诊断摘要；确认后再点“退出恢复模式并重试”。\n\n上次异常摘要：\n" + lastCrash
+                "已进入原生恢复模式，暂不启动网页和原生桥，避免反复闪退。请先复制诊断摘要；确认后再点“退出恢复模式并重试”。\n\n上次异常摘要：\n" + lastCrash + (if (lastWebCrash.isNotBlank()) "\n\n上次 WebView 崩溃：\n" + lastWebCrash else "")
             )
             return
         }
@@ -1123,7 +1157,9 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
 
             override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
                 val reason = if (detail.didCrash()) "WebView 渲染进程崩溃" else "WebView 渲染进程被系统回收"
-                showNativeRecoveryScreen("网页进程异常退出", "$reason；系统优先级：${detail.rendererPriorityAtExit()}")
+                val detailText = "$reason；系统优先级：${detail.rendererPriorityAtExit()}"
+                recordWebViewCrash(reason, detailText)
+                showNativeRecoveryScreen("网页进程异常退出", detailText)
                 return true
             }
 
@@ -1601,15 +1637,21 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
          */
         @JavascriptInterface
         fun getLastNativeCrashLog(): String = try {
-            val file = File(filesDir, "last-native-crash.txt")
-            if (!file.isFile) "" else file.readText().takeLast(30000)
+            val native = File(filesDir, "last-native-crash.txt")
+            val web = File(filesDir, "last-webview-crash.txt")
+            listOfNotNull(
+                native.takeIf { it.isFile }?.readText(),
+                web.takeIf { it.isFile }?.readText()?.let { "\n[WebView 渲染进程]\n$it" },
+            ).joinToString("\n").takeLast(30000)
         } catch (_: Throwable) {
             ""
         }
 
         @JavascriptInterface
         fun clearLastNativeCrashLog(): Boolean = try {
-            File(filesDir, "last-native-crash.txt").delete() || !File(filesDir, "last-native-crash.txt").exists()
+            File(filesDir, "last-native-crash.txt").delete()
+            File(filesDir, "last-webview-crash.txt").delete()
+            true
         } catch (_: Throwable) {
             false
         }
@@ -2434,6 +2476,88 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
                     webConsoleLogs.add("saveBase64File failed: " + (error.message ?: error.javaClass.simpleName))
                 }
             }.getOrDefault(false)
+        }
+
+        /** 原生剪贴板兜底：WebView 的 navigator.clipboard 在部分机型会静默失败。 */
+        @JavascriptInterface
+        fun copyText(text: String): Boolean = runCatching {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("小手机", text))
+            true
+        }.getOrDefault(false)
+
+        /**
+         * 大文件分块写入：网页先 begin，拿 token 后逐块 append，最后 finish。
+         * 这样不用把整个备份文件序列化成一个巨大的 Base64 字符串，避免 WebView OOM。
+         */
+        @JavascriptInterface
+        fun beginChunkedFile(fileName: String): String {
+            val safeName = fileName
+                .replace(Regex("[\\/:*?\"<>|]"), "_")
+                .trim()
+                .ifBlank { "download" }
+                .take(120)
+            return runCatching {
+                val token = UUID.randomUUID().toString()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val values = ContentValues().apply {
+                        put(MediaStore.Downloads.DISPLAY_NAME, safeName)
+                        put(MediaStore.Downloads.MIME_TYPE, guessMimeType(safeName))
+                        put(MediaStore.Downloads.IS_PENDING, 1)
+                    }
+                    val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                        ?: return@runCatching ""
+                    val stream = contentResolver.openOutputStream(uri)
+                        ?: run { contentResolver.delete(uri, null, null); return@runCatching "" }
+                    chunkedFileWrites[token] = ChunkedFileWrite(uri, null, stream)
+                } else {
+                    @Suppress("DEPRECATION")
+                    val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    if (!dir.exists()) dir.mkdirs()
+                    val file = File(dir, safeName)
+                    chunkedFileWrites[token] = ChunkedFileWrite(null, file, FileOutputStream(file))
+                }
+                token
+            }.getOrDefault("")
+        }
+
+        @JavascriptInterface
+        fun appendChunkedFile(token: String, base64: String): Boolean {
+            val session = chunkedFileWrites[token] ?: return false
+            return runCatching {
+                val bytes = Base64.decode(base64, Base64.DEFAULT)
+                synchronized(session) {
+                    session.stream.write(bytes)
+                    session.bytes += bytes.size
+                }
+                true
+            }.getOrDefault(false)
+        }
+
+        @JavascriptInterface
+        fun finishChunkedFile(token: String): Boolean {
+            val session = chunkedFileWrites.remove(token) ?: return false
+            return runCatching {
+                synchronized(session) { session.stream.flush(); session.stream.close() }
+                if (session.bytes <= 0L) throw IllegalStateException("没有写入任何字节")
+                val uri = session.uri
+                if (uri != null) {
+                    val values = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
+                    contentResolver.update(uri, values, null, null)
+                }
+                true
+            }.onFailure {
+                session.uri?.let { uri -> runCatching { contentResolver.delete(uri, null, null) } }
+                session.file?.delete()
+            }.getOrDefault(false)
+        }
+
+        @JavascriptInterface
+        fun abortChunkedFile(token: String) {
+            val session = chunkedFileWrites.remove(token) ?: return
+            runCatching { synchronized(session) { session.stream.close() } }
+            session.uri?.let { uri -> runCatching { contentResolver.delete(uri, null, null) } }
+            session.file?.delete()
         }
 
         /**

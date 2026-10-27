@@ -18,6 +18,13 @@ type FloatShellBridge = {
     launchExternalApp?: (packageName: string, dataUrl: string) => boolean;
     /** 直链交给系统下载管理器（真后台）；返回是否成功入队 */
     downloadUrl?: (url: string, fileName: string) => boolean;
+    /** 大文件分块写入，避免整个备份变成单个 base64 字符串 */
+    beginChunkedFile?: (fileName: string) => string;
+    appendChunkedFile?: (token: string, base64Chunk: string) => boolean;
+    finishChunkedFile?: (token: string) => boolean;
+    abortChunkedFile?: (token: string) => void;
+    /** 原生剪贴板兜底 */
+    copyText?: (text: string) => boolean;
 };
 
 function readFloatShellBridge(): FloatShellBridge | null {
@@ -66,6 +73,48 @@ export function isIOSBrowser(): boolean {
     const ua = navigator.userAgent || "";
     const platform = navigator.platform || "";
     return /iPad|iPhone|iPod/i.test(ua) || (platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+/** 2MB 一块：足够小，避免 WebView JS Bridge 单次字符串和 Java Base64 峰值。 */
+const NATIVE_CHUNK_BYTES = 2 * 1024 * 1024;
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    const step = 0x8000;
+    for (let index = 0; index < bytes.length; index += step) {
+        binary += String.fromCharCode(...bytes.subarray(index, Math.min(bytes.length, index + step)));
+    }
+    return btoa(binary);
+}
+
+/** 分块把 Blob 交给壳写盘；返回 false 表示当前 APK 不支持分块。 */
+async function saveBlobInChunks(blob: Blob, filename: string, bridge: FloatShellBridge): Promise<boolean> {
+    if (blob.size <= 0) throw new Error("导出内容为空，未写入文件");
+    if (!bridge.beginChunkedFile || !bridge.appendChunkedFile || !bridge.finishChunkedFile) return false;
+    const token = bridge.beginChunkedFile(filename);
+    if (!token) return false;
+    try {
+        let offset = 0;
+        let lastProgress = 0;
+        while (offset < blob.size) {
+            const end = Math.min(blob.size, offset + NATIVE_CHUNK_BYTES);
+            const chunk = await blob.slice(offset, end).arrayBuffer();
+            if (!bridge.appendChunkedFile(token, arrayBufferToBase64(chunk))) {
+                throw new Error("原生写入分块失败");
+            }
+            offset = end;
+            const progress = blob.size > 8 * 1024 * 1024 ? Math.floor((offset / blob.size) * 100) : 0;
+            if (progress >= lastProgress + 25) {
+                lastProgress = progress;
+                emitDownloadNotice("info", `正在保存 ${filename}：${progress}%`);
+            }
+        }
+        return bridge.finishChunkedFile(token);
+    } catch (error) {
+        bridge.abortChunkedFile?.(token);
+        throw error;
+    }
 }
 
 async function downloadFileInternal(blob: Blob, filename: string, options: DownloadFileOptions = {}): Promise<void> {
@@ -122,6 +171,17 @@ async function downloadFileInternal(blob: Blob, filename: string, options: Downl
             return;
         }
         try {
+            // 优先分块：备份动辄几百 MB，整块 base64 会直接把 WebView 堆撑爆。
+            if (await saveBlobInChunks(blob, filename, shell)) {
+                emitDownloadNotice("success", `已保存到系统下载目录：${filename}`);
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                return;
+            }
+            if (blob.size > 8 * 1024 * 1024) {
+                emitDownloadNotice("error", `${filename} 保存失败：当前 APK 不支持大文件分块写入，请更新 APK 后重试。`);
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                return;
+            }
             const base64 = await blobToBase64(blob);
             if (shell.saveBase64File(filename, base64)) {
                 emitDownloadNotice("success", `已保存到系统下载目录：${filename}`);

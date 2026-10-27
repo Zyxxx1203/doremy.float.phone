@@ -7,6 +7,7 @@ import { loadVirtualLifeState } from "@/lib/life/life-storage";
 import { hasNotificationReplyBridge } from "@/lib/notification-reply";
 import { isPersonalPushCloudActive } from "@/lib/personal-push-cloud";
 import { consumeServerOutbox } from "@/lib/push-outbox-client";
+import { copyTextToClipboard } from "@/lib/clipboard-utils";
 
 type CheckStatus = "ok" | "warn" | "fail" | "info";
 type CheckItem = { id: string; title: string; status: CheckStatus; detail: string; fix?: string };
@@ -274,8 +275,8 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
   }, [checks, errors, lastRun, nativeInfo, nativeCrashLog, webConsoleLogs]);
 
   const copyReport = async () => {
-    try { await navigator.clipboard.writeText(report); onNotice?.("诊断报告已复制；发送前请先检查内容。"); }
-    catch { onNotice?.("自动复制失败，请在下方文本框中手动复制。"); }
+    const copied = await copyTextToClipboard(report);
+    onNotice?.(copied ? "诊断报告已复制；发送前请先检查内容。" : "自动复制失败，请在下方文本框中手动复制。");
   };
   const downloadReport = () => {
     const blob = new Blob([report], { type: "text/plain;charset=utf-8" });

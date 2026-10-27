@@ -8,6 +8,7 @@ import { kvGet, kvSet } from "@/lib/kv-db";
 import { loadApiConfigs, loadBindingConfig } from "@/lib/settings-storage";
 import { analyzeCapturedImage } from "@/lib/video-keyframe-analysis";
 import { loadGlobalWatchRecords, persistGlobalWatchMemory, saveGlobalWatchRecord, type GlobalWatchRecord } from "@/lib/global-watch-storage";
+import { copyTextToClipboard } from "@/lib/clipboard-utils";
 
 type GlobalWatchSettings = {
   characterId: string;
@@ -448,7 +449,7 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
           <pre className="whitespace-pre-wrap break-words rounded-xl border border-amber-700/20 bg-white p-3 text-xs leading-5">{diagnosticsText}</pre>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <button type="button" onClick={runDiagnostics} className="rounded-xl border border-stone-300 bg-white px-3 py-3 text-sm font-medium">重新检查</button>
-            <button type="button" onClick={() => { if (navigator.clipboard?.writeText) void navigator.clipboard.writeText(diagnosticsText).then(() => setStatus("诊断报告已复制。")).catch(() => setStatus("无法自动复制，请长按诊断文本手动复制。")); else setStatus("当前环境不支持自动复制，请长按诊断文本手动复制。"); }} className="rounded-xl border border-stone-300 bg-white px-3 py-3 text-sm font-medium">复制诊断报告</button>
+            <button type="button" onClick={() => { void copyTextToClipboard(diagnosticsText).then(ok => setStatus(ok ? "诊断报告已复制。" : "无法自动复制，请长按诊断文本手动复制。")); }} className="rounded-xl border border-stone-300 bg-white px-3 py-3 text-sm font-medium">复制诊断报告</button>
           </div>
         </div>}
       </section>
