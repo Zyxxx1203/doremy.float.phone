@@ -538,7 +538,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
         {mode === "doodle" && !readOnly && <rect x="0" y="0" width="100" height="100" fill="transparent" />}
         {wallDoodles.map(doodle => doodle.kind === "stroke"
           ? <polyline key={doodle.id} points={doodle.points.map(point => (point.x * 100) + "," + (point.y * 100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(0.6, doodle.width / 2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
-          : <text key={doodle.id} x={(doodle.points[0]?.x ?? 0.5) * 100} y={(doodle.points[0]?.y ?? 0.5) * 100} fill={doodle.color} fontSize={5} textAnchor="middle" dominantBaseline="middle" transform={`rotate(${doodle.rotation ?? 0} ${(doodle.points[0]?.x ?? 0.5) * 100} ${(doodle.points[0]?.y ?? 0.5) * 100})`}>{doodle.content}</text>)}
+          : <g key={doodle.id} transform={`translate(${(doodle.points[0]?.x ?? 0.5) * 100} ${(doodle.points[0]?.y ?? 0.5) * 100}) rotate(${doodle.rotation ?? 0})`}><text x={0} y={0} fill={doodle.color} fontSize={5} textAnchor="middle" dominantBaseline="middle">{doodle.content}</text></g>)}
         {mode === "doodle" && wallStrokeRef.current && draftPoints.length > 1 && <polyline points={draftPoints.map(point => (point.x * 100) + "," + (point.y * 100)).join(" ")} fill="none" stroke={brushColor} strokeWidth={Math.max(0.6, brushWidth / 2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>}
       </svg>
       <div
@@ -798,7 +798,7 @@ function WallPhotoFrame({ photo, placement, canvasZoom, selected, flipped, place
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 z-10 h-full w-full" style={{ overflow: "visible" }}>
         {visibleDoodles.map(doodle => doodle.kind === "stroke"
           ? <polyline key={doodle.id} points={doodle.points.map(point => String(point.x * 100) + "," + String(point.y * 100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={doodle.width} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-          : <text key={doodle.id} x={(doodle.points[0]?.x ?? 0.5) * 100} y={(doodle.points[0]?.y ?? 0.5) * 100} fill={doodle.color} fontSize={12} textAnchor="middle" dominantBaseline="middle" transform={`rotate(${doodle.rotation ?? 0} ${(doodle.points[0]?.x ?? 0.5) * 100} ${(doodle.points[0]?.y ?? 0.5) * 100})`}>{doodle.content}</text>)}
+          : <g key={doodle.id} transform={`translate(${(doodle.points[0]?.x ?? 0.5) * 100} ${(doodle.points[0]?.y ?? 0.5) * 100}) rotate(${doodle.rotation ?? 0})`}><text x={0} y={0} fill={doodle.color} fontSize={12} textAnchor="middle" dominantBaseline="middle">{doodle.content}</text></g>)}
         {drawingIsEnabled && draftPoints.length > 1 && <polyline points={draftPoints.map(point => String(point.x * 100) + "," + String(point.y * 100)).join(" ")} fill="none" stroke="#c2705a" strokeWidth={3} strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
       </svg>
 
