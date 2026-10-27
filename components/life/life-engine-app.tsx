@@ -668,11 +668,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             if (!Number.isFinite(ended) || ended < recentCutoff) continue;
             const startLabel = event.startsAt ? new Date(event.startsAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) : "开始时间未记录";
             const endLabel = event.endsAt ? new Date(event.endsAt).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) : "结束时间未记录";
-            next = appendLifeTimelineEntry(next, { category: "schedule", occurredAt: event.endsAt ?? event.createdAt, title: owner.name + "结束了日程：" + event.title, details: "计划时间：" + startLabel + "—" + endLabel + (event.locationName ? "；地点：" + event.locationName : "") + "；仅表示日程时段已结算，不代表计划细节均已实际发生。", actorId: owner.ownerId, actorName: owner.name, locationName: event.locationName ?? undefined, sourceId: event.id });
+            next = appendLifeTimelineEntry(next, { category: "schedule", occurredAt: event.endsAt ?? event.createdAt, title: owner.name + "结束了日程：" + event.title + "（结束：" + endLabel + "）", details: "计划时间：" + startLabel + "—" + endLabel + (event.locationName ? "；地点：" + event.locationName : ""), actorId: owner.ownerId, actorName: owner.name, locationName: event.locationName ?? undefined, sourceId: event.id });
           }
           const afterActor = next.actorStates.find(item => item.ownerType === owner.ownerType && item.ownerId === owner.ownerId);
           if (beforeActor && afterActor && (beforeActor.activity !== afterActor.activity || beforeActor.actualLocationId !== afterActor.actualLocationId)) {
-            next = appendLifeTimelineEntry(next, { category: "schedule", title: owner.name + "现在" + afterActor.activity, details: afterActor.actualLocationName ? "当前地点：" + afterActor.actualLocationName : undefined, actorId: owner.ownerId, actorName: owner.name, locationName: afterActor.actualLocationName ?? undefined });
+            const changedAt = nowForOwner.toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+            next = appendLifeTimelineEntry(next, { category: "schedule", occurredAt: nowForOwner.toISOString(), title: owner.name + "现在" + afterActor.activity + "（" + changedAt + "）", details: afterActor.actualLocationName ? "当前地点：" + afterActor.actualLocationName : undefined, actorId: owner.ownerId, actorName: owner.name, locationName: afterActor.actualLocationName ?? undefined });
           }
           if (beforeActor && afterActor && beforeActor.actualLocationId !== afterActor.actualLocationId && afterActor.actualLocationName) {
             next = appendLifeTimelineEntry(next, {
