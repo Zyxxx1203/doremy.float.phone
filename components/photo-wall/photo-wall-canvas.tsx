@@ -181,6 +181,19 @@ async function loadWallThumbUrl(mediaRef: string): Promise<string> {
   return task;
 }
 
+/** 可调色的心形贴纸：不再使用 ❤ emoji。 */
+const HEART_STICKER_PATH = "M0,6 C-1.4,3.8 -6,1 -6,-2 C-6,-5 -3,-6 0,-4 C3,-6 6,-5 6,-2 C6,1 1.4,3.8 0,6 Z";
+
+function StickerMark({ doodle, textSize }: { doodle: PhotoWallDoodle; textSize: number }) {
+  const x = (doodle.points[0]?.x ?? 0.5) * 100;
+  const y = (doodle.points[0]?.y ?? 0.5) * 100;
+  const isHeart = doodle.content === "heart" || doodle.content === "❤";
+  if (isHeart) {
+    return <g transform={`translate(${x} ${y}) rotate(${doodle.rotation ?? 0}) scale(${textSize / 10})`}><path d={HEART_STICKER_PATH} fill={doodle.color} /></g>;
+  }
+  return <g transform={`translate(${x} ${y}) rotate(${doodle.rotation ?? 0})`}><text x={0} y={0} fill={doodle.color} fontSize={textSize} textAnchor="middle" dominantBaseline="middle">{doodle.content}</text></g>;
+}
+
 export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, backgroundBox, wallWorld, onOpenDetail, readOnly = false, fitHeight = false, canvasZoom = 1, mode: controlledMode, onModeChange, brushColor: controlledBrushColor, brushWidth: controlledBrushWidth, sticker: controlledSticker, onStickerChange, stickerRotation: controlledStickerRotation = 0, eraser: controlledEraser, onEraserChange }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -538,7 +551,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
         {mode === "doodle" && !readOnly && <rect x="0" y="0" width="100" height="100" fill="transparent" />}
         {wallDoodles.map(doodle => doodle.kind === "stroke"
           ? <polyline key={doodle.id} points={doodle.points.map(point => (point.x * 100) + "," + (point.y * 100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(0.6, doodle.width / 2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
-          : <g key={doodle.id} transform={`translate(${(doodle.points[0]?.x ?? 0.5) * 100} ${(doodle.points[0]?.y ?? 0.5) * 100}) rotate(${doodle.rotation ?? 0})`}><text x={0} y={0} fill={doodle.color} fontSize={5} textAnchor="middle" dominantBaseline="middle">{doodle.content}</text></g>)}
+          : <g key={doodle.id}><StickerMark doodle={doodle} textSize={5} /></g>)}
         {mode === "doodle" && wallStrokeRef.current && draftPoints.length > 1 && <polyline points={draftPoints.map(point => (point.x * 100) + "," + (point.y * 100)).join(" ")} fill="none" stroke={brushColor} strokeWidth={Math.max(0.6, brushWidth / 2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>}
       </svg>
       <div
@@ -798,7 +811,7 @@ function WallPhotoFrame({ photo, placement, canvasZoom, selected, flipped, place
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 z-10 h-full w-full" style={{ overflow: "visible" }}>
         {visibleDoodles.map(doodle => doodle.kind === "stroke"
           ? <polyline key={doodle.id} points={doodle.points.map(point => String(point.x * 100) + "," + String(point.y * 100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={doodle.width} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-          : <g key={doodle.id} transform={`translate(${(doodle.points[0]?.x ?? 0.5) * 100} ${(doodle.points[0]?.y ?? 0.5) * 100}) rotate(${doodle.rotation ?? 0})`}><text x={0} y={0} fill={doodle.color} fontSize={12} textAnchor="middle" dominantBaseline="middle">{doodle.content}</text></g>)}
+          : <g key={doodle.id}><StickerMark doodle={doodle} textSize={12} /></g>)}
         {drawingIsEnabled && draftPoints.length > 1 && <polyline points={draftPoints.map(point => String(point.x * 100) + "," + String(point.y * 100)).join(" ")} fill="none" stroke="#c2705a" strokeWidth={3} strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
       </svg>
 

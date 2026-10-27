@@ -64,6 +64,22 @@ function roundedRect(context: CanvasRenderingContext2D, x: number, y: number, wi
  * aspect：画布宽高比。无界墙扩容后世界不再是固定 4:5，
  * 导出要跟着世界比例走，否则照片会被横向压扁。
  */
+function drawHeartSticker(context: CanvasRenderingContext2D, x: number, y: number, size: number, color: string, rotation: number): void {
+  context.save();
+  context.translate(x, y);
+  context.rotate((rotation * Math.PI) / 180);
+  context.fillStyle = color;
+  context.beginPath();
+  context.moveTo(0, size * 0.6);
+  context.bezierCurveTo(-size * 0.14, size * 0.38, -size * 0.6, size * 0.1, -size * 0.6, -size * 0.2);
+  context.bezierCurveTo(-size * 0.6, -size * 0.5, -size * 0.3, -size * 0.6, 0, -size * 0.4);
+  context.bezierCurveTo(size * 0.3, -size * 0.6, size * 0.6, -size * 0.5, size * 0.6, -size * 0.2);
+  context.bezierCurveTo(size * 0.6, size * 0.1, size * 0.14, size * 0.38, 0, size * 0.6);
+  context.closePath();
+  context.fill();
+  context.restore();
+}
+
 export type ExportOptions = { width?: number; height?: number; /** Export resolution multiplier; defaults to 2x the wall's world dimensions. */ scale?: number; background?: string; aspect?: number; world?: PhotoWallWorld; backgroundRef?: string; backgroundBox?: PhotoWallWorld; wallDoodles?: PhotoWallDoodle[] };
 
 /** 返回 PNG 的 dataURL；没有任何照片时返回 null。默认按世界尺寸的 2 倍导出。 */
@@ -206,12 +222,16 @@ async function renderPhotoWallCanvas(photos: PhotoWallPhoto[], options: ExportOp
         context.stroke();
       } else if (doodle.kind === "sticker" && doodle.content) {
         const point = doodle.points[0] ?? { x: 0.5, y: 0.5 };
-        context.fillStyle = doodle.color;
-        context.font = `${Math.round(frameWidth * 0.18)}px sans-serif`;
-        context.textAlign = "center";
-        context.textBaseline = "middle";
-        context.fillText(doodle.content, -frameWidth / 2 + point.x * frameWidth, -frameHeight / 2 + point.y * frameHeight);
-        context.textBaseline = "alphabetic";
+        if (doodle.content === "heart" || doodle.content === "❤") {
+          drawHeartSticker(context, -frameWidth / 2 + point.x * frameWidth, -frameHeight / 2 + point.y * frameHeight, frameWidth * 0.16, doodle.color, doodle.rotation ?? 0);
+        } else {
+          context.fillStyle = doodle.color;
+          context.font = `${Math.round(frameWidth * 0.18)}px sans-serif`;
+          context.textAlign = "center";
+          context.textBaseline = "middle";
+          context.fillText(doodle.content, -frameWidth / 2 + point.x * frameWidth, -frameHeight / 2 + point.y * frameHeight);
+          context.textBaseline = "alphabetic";
+        }
       }
     }
 
@@ -226,9 +246,15 @@ async function renderPhotoWallCanvas(photos: PhotoWallPhoto[], options: ExportOp
       doodle.points.forEach((point, index) => { if (index === 0) context.moveTo(point.x * width, point.y * height); else context.lineTo(point.x * width, point.y * height); });
       context.stroke(); context.restore();
     } else if (doodle.kind === "sticker" && doodle.content) {
-      context.save(); context.fillStyle = doodle.color; context.font = `${Math.max(12, Math.round(width * 0.05))}px sans-serif`;
-      context.textAlign = "center"; context.textBaseline = "middle";
-      context.fillText(doodle.content, (doodle.points[0]?.x ?? 0.5) * width, (doodle.points[0]?.y ?? 0.5) * height); context.restore();
+      const px = (doodle.points[0]?.x ?? 0.5) * width;
+      const py = (doodle.points[0]?.y ?? 0.5) * height;
+      if (doodle.content === "heart" || doodle.content === "❤") {
+        drawHeartSticker(context, px, py, width * 0.05, doodle.color, doodle.rotation ?? 0);
+      } else {
+        context.save(); context.fillStyle = doodle.color; context.font = `${Math.max(12, Math.round(width * 0.05))}px sans-serif`;
+        context.textAlign = "center"; context.textBaseline = "middle";
+        context.fillText(doodle.content, px, py); context.restore();
+      }
     }
   }
   return canvas;
