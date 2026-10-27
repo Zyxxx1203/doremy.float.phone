@@ -75,7 +75,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         val SITE_URL: String = BuildConfig.SITE_URL
-        const val VERSION = "1.0.23"
+        const val VERSION = "1.0.24"
         /** 来电接听等场景的站内深链（必须以 SITE_URL 开头，否则忽略） */
         const val EXTRA_OPEN_URL = "open_url"
         /** 外部 App（如桌宠）唤起本壳用的自定义 scheme：floatshell://open?url=<站内地址> */
@@ -2740,6 +2740,14 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
          * 用户在设置页看到的预览又是正常的（那是 iframe 渲染的，走不到原生）。
          * 有了它，设置页能如实列出「HTML 推到了没 / PNG 落盘了没 / 最后一次渲染成败」。
          */
+        /** 保存网页侧的小组件 profile 列表，供系统配置 Activity 选择。 */
+        @JavascriptInterface
+        fun setProfiles(json: String): Boolean = runCatching {
+            getSharedPreferences("shell_phone_widget", Context.MODE_PRIVATE).edit()
+                .putString("profiles_json", json.take(30000)).apply()
+            true
+        }.getOrDefault(false)
+
         @JavascriptInterface
         fun diagnostics(): String = PhoneWidgetRenderer.diagnosticsJson(this@MainActivity)
 

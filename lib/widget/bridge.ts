@@ -28,6 +28,8 @@ type PhoneWidgetBridge = {
   update?: (html: string, widthDp: number, heightDp: number, scale: number) => boolean;
   updateProfile?: (profileId: string, html: string, widthDp: number, heightDp: number, scale: number) => boolean;
   deleteProfile?: (profileId: string) => boolean;
+  /** 保存 profile 列表供系统添加小组件时选择 */
+  setProfiles?: (json: string) => boolean;
   /** 让原生立刻重画一次（用上次缓存的 HTML） */
   refresh?: () => boolean;
   /** 是否已添加小组件到桌面（未添加时引导用户去加） */
@@ -177,7 +179,12 @@ export function readWidgetDiagnostics(): WidgetDiagnostics | null {
  */
 export function syncWidgetProfilesToNative(): void {
   const characters = loadCharacters();
-  for (const profile of loadWidgetProfiles()) {
+  const profiles = loadWidgetProfiles();
+  const bridge = getBridge();
+  try {
+    bridge?.setProfiles?.(JSON.stringify(profiles.map(profile => ({ id: profile.id, name: profile.name }))));
+  } catch { /* 老壳没有这个方法 */ }
+  for (const profile of profiles) {
     const character = characters.find(item => item.id === profile.characterId);
     const profileData = loadWidgetProfileData(profile.id);
     const data = (profileData?.characterId === profile.characterId ? profileData : null) ?? loadWidgetData(profile.characterId) ?? {

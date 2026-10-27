@@ -243,6 +243,10 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/phone_widget_info" />
         </receiver>
+        <activity
+            android:name=".PhoneWidgetConfigActivity"
+            android:exported="true"
+            android:theme="@style/Theme.FloatShell" />
         <receiver
             android:name=".PhoneWidgetPinReceiver"
             android:enabled="true"

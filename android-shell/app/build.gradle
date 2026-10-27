@@ -35,8 +35,9 @@ android {
         // 1.0.21：全局陪看改走无障碍截屏 + 网页分析，原生不再二次解析 API Key。
         // 1.0.22：全局陪看横幅折叠/贴顶；小组件 pin 回调 profileId 双通道。
         // 1.0.23：全局陪看横幅改为 WebView，支持用户 CSS + 预览。
-        versionCode 22
-        versionName "1.0.23"
+        // 1.0.24：小组件增加系统配置 Activity，多实例显式绑定 profile。
+        versionCode 23
+        versionName "1.0.24"
         buildConfigField "String", "SITE_URL", "\"${siteUrl}\""
     }
 
