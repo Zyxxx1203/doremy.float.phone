@@ -1215,6 +1215,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           persist({ ...current, photos: [...placedCreated, ...current.photos] });
         }
         setSelectedPhotoId(created[0]?.id ?? null);
+        recordPhotoWallMemory("用户一次上传了" + created.length + "张照片到照片墙");
       }
       if (failed.length) onNotice?.("已收藏 " + created.length + " 张；" + failed.length + " 张失败。失败项：" + failed.slice(0, 3).join("；") + (failed.length > 3 ? "；…" : ""));
       else onNotice?.("已收藏 " + created.length + " 张照片。");
@@ -1491,6 +1492,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       changeWallDoodles([...(latest.wallDoodles ?? []), ...created]);
       const afterDoodles = stateRef.current;
       persist({ ...afterDoodles, creationRecords: [...(afterDoodles.creationRecords ?? []), record] });
+      recordPhotoWallMemory(artist.name + "在照片墙上留下了" + created.length + "个贴纸或涂鸦", artist.id);
       onNotice?.(`${artist.name}留下了 ${created.length} 个小装饰；创作过程已保存到「共创记录」。`);
     } catch (error) {
       onNotice?.("请角色装饰照片墙失败：" + (error instanceof Error ? error.message : String(error)));
