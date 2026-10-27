@@ -19,6 +19,18 @@ import type { LifeSceneState, VirtualLifeState } from "./life-types";
 
 const PLAYER_ID = "player";
 const ARM_META_PREFIX = "life-schedule-arm:";
+const STATUS_KEY = "life-proactive-last-status-v1";
+
+export type LifeProactiveStatus = { at: string; ok: boolean; character?: string; reason?: string };
+export function readLifeProactiveStatus(): LifeProactiveStatus | null {
+  try {
+    const raw = localStorage.getItem(STATUS_KEY);
+    return raw ? JSON.parse(raw) as LifeProactiveStatus : null;
+  } catch { return null; }
+}
+function writeLifeProactiveStatus(status: LifeProactiveStatus) {
+  try { localStorage.setItem(STATUS_KEY, JSON.stringify(status)); } catch { /* best effort */ }
+}
 const TICK_MS = 60_000;
 const MIN_DELAY_MS = 3 * 60_000;
 const MAX_DELAY_MS = 9 * 60_000;
@@ -162,6 +174,7 @@ async function runOnce(): Promise<void> {
         // 因此 App 完全关闭也能持续主动搭话。
         repeat: { intervalMs: 20 * 60_000, remaining: 24 },
       });
+      writeLifeProactiveStatus({ at: new Date().toISOString(), ok: result.ok, character: character.name, reason: result.ok ? undefined : result.reason });
       if (!result.ok) {
         // 没挂上就清掉“已挂”标记，下一轮继续重试，不能一次失败永远不排。
         try { localStorage.removeItem(ARM_META_PREFIX + trigger); } catch { /* best effort */ }

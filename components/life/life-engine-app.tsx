@@ -38,6 +38,7 @@ import { describeLifeOutputIssues, parseLifeOutput, validateLifeOutput, type Lif
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
 import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts, reconcileIdleReconnectWithLifeScenes, suspendIdleReconnectForLifeScene } from "@/lib/push-bailout-client";
+import { readLifeProactiveStatus } from "@/lib/life/life-proactive-scheduler";
 
 import { cancelFollowUp } from "@/lib/follow-up-service";
 import { beginTurn } from "@/lib/turn-coordinator";
@@ -249,6 +250,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const proactiveNextAtRef = useRef<Record<string, number>>({});
   const proactiveBusyRef = useRef(false);
   const proactiveLastSpeakerRef = useRef<Record<string, string>>({});
+  const [proactiveStatus, setProactiveStatus] = useState(() => readLifeProactiveStatus());
   const [inviteCharacterId, setInviteCharacterId] = useState("");
   const [inviteLocationId, setInviteLocationId] = useState("cafe");
   const [inviteActivity, setInviteActivity] = useState("一起喝杯咖啡");
@@ -3433,9 +3435,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             <div className="flex w-full min-w-0 flex-wrap gap-2 sm:w-auto sm:shrink-0">
               <button type="button" onClick={syncAllCharactersToSchedules} className="min-w-0 w-full whitespace-nowrap rounded-xl border border-[#d9c2ae] bg-white px-3 py-3 text-center text-sm font-semibold text-stone-700 sm:w-auto sm:px-4">同步全部角色当前位置</button>
               <button type="button" onClick={() => void armProactiveNow()} className="min-w-0 w-full whitespace-nowrap rounded-xl border border-[#d9c2ae] bg-white px-3 py-3 text-center text-sm font-semibold text-stone-700 sm:w-auto sm:px-4">现在挂起一条主动消息</button>
+              <button type="button" onClick={() => setProactiveStatus(readLifeProactiveStatus())} className="min-w-0 w-full whitespace-nowrap rounded-xl border border-[#d9c2ae] bg-white px-3 py-3 text-center text-sm font-semibold text-stone-700 sm:w-auto sm:px-4">检查主动消息状态</button>
+              <button type="button" onClick={() => setSceneToast({ kind: "dialogue", characterId: characters[0]?.id || "", characterName: characters[0]?.name || "角色", avatar: characters[0]?.avatar || "", location: state.locations[0]?.name || "家", body: "这是一条测试主动横幅，用来检查弹出、折叠和回复入口。", sceneId: "", isTest: true })} className="min-w-0 w-full whitespace-nowrap rounded-xl border border-[#d9c2ae] bg-white px-3 py-3 text-center text-sm font-semibold text-stone-700 sm:w-auto sm:px-4">测试主动横幅</button>
               <button type="button" onClick={() => void regenerateAllCharacterSchedulesWithAI()} disabled={batchScheduleGenerating || scheduleRegenerationOwnerId !== null || characters.length === 0} className="inline-flex min-w-0 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-[var(--life-accent)] px-3 py-3 text-sm font-semibold text-white shadow-sm disabled:opacity-50 sm:w-auto sm:shrink-0 sm:px-4"><Sparkles size={15}/>{batchScheduleGenerating ? "AI 正在逐个规划…" : "AI 生成全部角色日程"}</button>
             </div>
           </div>
+          <p className="mt-2 text-[11px] leading-relaxed text-stone-500">{proactiveStatus ? "最近主动消息：" + (proactiveStatus.ok ? "已挂上" : "未挂上：" + (proactiveStatus.reason || "未知原因")) + " · " + proactiveStatus.character + " · " + new Date(proactiveStatus.at).toLocaleString("zh-CN") : "还没有主动消息挂载记录；点“现在挂起”或等待自动调度。"}</p>
           <div className="mt-4 border-t border-[#e6d5c4] pt-3"><p className="text-sm font-semibold text-stone-800">手动补充 · 一句话安排日程</p>
           <p className="mt-1 text-xs leading-relaxed text-stone-500">这是可选的手动入口。支持“明天下午3点到5点在家睡觉”或“角色名：周五晚上7点去公园散步”；识别后仍可编辑，不再要求你手动写完整行程。</p></div>
           <textarea value={quickPlanText} onChange={e=>setQuickPlanText(e.target.value)} rows={3} placeholder={"明天下午3点到5点在咖啡馆画画\n周五晚上7点去公园散步"} className="mt-3 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/>
