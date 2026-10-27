@@ -98,7 +98,6 @@ const MEMORY_SOURCE_OPTIONS: Array<{ key: MemorySourceKey; label: string }> = [
     { key: "phone_widget", label: "桌面小组件" },
     { key: "watch", label: "一起看" },
     { key: "global_watch", label: "全局陪看" },
-    { key: "checkin", label: "查岗" },
 ];
 
 type MemoryEditorState = {
@@ -1060,7 +1059,7 @@ export function MemoryBankPage({
                                     <div className="menu-desc">每个来源最多注入多少条短期事件（0 = 不限制）</div>
                                     {([
                                         ["chat", "私聊"], ["group_chat", "群聊"], ["moments", "朋友圈"],
-                                        ["checkphone", "查手机"], ["checkin", "查岗"], ["photo_wall", "照片墙"],
+                                        ["checkphone", "查手机"], ["photo_wall", "照片墙"],
                                         ["life", "生活系统"], ["phone_widget", "桌面小组件"], ["watch", "一起看"],
                                         ["global_watch", "全局陪看"], ["story", "剧情"], ["custom_app", "自定义应用"],
                                     ] as const).map(([key, label]) => {

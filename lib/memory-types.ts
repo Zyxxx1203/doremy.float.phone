@@ -48,7 +48,6 @@ export type MemoryConfig = {
         phone_widget?: boolean;
         watch?: boolean;
         global_watch?: boolean;
-        checkin?: boolean;
     };
     /** 每个来源最多注入多少条短期事件；缺省由 DEFAULT_MEMORY_CONFIG 提供。 */
     shortTermSourceLimits?: {
@@ -56,7 +55,6 @@ export type MemoryConfig = {
         group_chat?: number;
         moments?: number;
         checkphone?: number;
-        checkin?: number;
         photo_wall?: number;
         life?: number;
         phone_widget?: number;
@@ -163,10 +161,9 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
         phone_widget: true,
         watch: true,
         global_watch: true,
-        checkin: false,
     },
     shortTermSourceLimits: {
-        chat: 30, group_chat: 20, moments: 10, checkphone: 6, checkin: 3,
+        chat: 30, group_chat: 20, moments: 10, checkphone: 6,
         photo_wall: 8, life: 10, phone_widget: 4, watch: 5, global_watch: 4,
         story: 10, vn: 10, map: 8, game: 8, diary: 8, xiaohongshu: 8,
         interview_magazine: 8, cocreate: 8, custom_app: 10,

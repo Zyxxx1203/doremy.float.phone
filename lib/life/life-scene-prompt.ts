@@ -76,9 +76,11 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
   const recentTurns = [...turnGroups.values()].map(group => {
     const actionText = group.action.join("；");
     const dialogueText = group.dialogue.join(" / ");
-    if (actionText && dialogueText) return `- ${group.speakerName}（动作：${actionText}）说：“${dialogueText}”`;
-    if (actionText) return `- ${group.speakerName}（仅动作，无对白）：${actionText}`;
-    return `- ${group.speakerName}（仅对白）：“${dialogueText}”`;
+    const at = new Date(group.createdAt);
+    const stamp = Number.isFinite(at.getTime()) ? at.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) : "时间未记录";
+    if (actionText && dialogueText) return `- [${stamp}] ${group.speakerName}（动作：${actionText}）说：“${dialogueText}”`;
+    if (actionText) return `- [${stamp}] ${group.speakerName}（仅动作，无对白）：${actionText}`;
+    return `- [${stamp}] ${group.speakerName}（仅对白）：“${dialogueText}”`;
   });
   const characterMessages = sceneMessages.filter(message => message.role === "character" && (!viewerId || message.speakerId === viewerId));
   const lastCharacterAt = characterMessages[characterMessages.length - 1]?.createdAt;
@@ -125,7 +127,7 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
     ...recentInvitations.map(invitation => `- 既有邀约：${invitation.status}；${invitation.proposedBy === "player" ? "玩家发起" : "角色发起"}；${invitation.activity}；${new Date(invitation.proposedAt).toLocaleString("zh-CN")}；地点：${invitation.locationName || "未确定"}；理由：${invitation.reason || "无"}；回应：${invitation.responseReason || "无"}`),
     ...recentCharacterEvents.map(entry => `- 近期生活记录：${new Date(entry.occurredAt).toLocaleString("zh-CN")}；${entry.actorName || "参与者"}；${entry.title}${entry.details ? "；" + entry.details : ""}`),
     memories.length ? "【该角色参与过的共同记忆事实】" : "",
-    ...memories.map(memory => `- ${memory.fact}`),
+    ...memories.map(memory => `- ${new Date(memory.occurredAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}：${memory.fact}`),
     recentTurns.length ? "【本场景最近发生的对话】" : "",
     ...recentTurns,
     lastCharacterTurnActionOnly ? "【上一轮格式】上一轮只有动作、没有对白；本轮必须至少一句对白。" : "",
