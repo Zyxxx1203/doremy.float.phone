@@ -1616,10 +1616,10 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             {[2,3,5,8].map(width => <button key={width} type="button" onClick={() => setWallBrushWidth(width)} aria-pressed={wallBrushWidth===width} className={wallBrushWidth===width?"border border-[#6b5c4a] bg-[#6b5c4a] px-2 py-1 text-[10px] text-white":"border border-[#d8c6b5] px-2 py-1 text-[10px] text-[#7d6d5a]"}>{width}</button>)}
             {["❤","✦","✿","☾","☘","♪","★","⌘"].map(item => <button key={item} type="button" onClick={() => {setWallSticker(wallSticker===item?null:item);setWallEraser(false)}} aria-pressed={wallSticker===item} className={wallSticker===item?"bg-[#6b5c4a] px-1.5 py-1 text-white":"bg-white/70 px-1.5 py-1 text-[#7d6d5a]"}>{item}</button>)}
             <span className="ml-1 inline-flex items-center gap-1 border border-[#d8c6b5] bg-white/70 px-1.5 py-1 text-[10px] text-[#7d6d5a]">
-              印章
-              <button type="button" aria-label="印章左转 15 度" onClick={() => setWallStickerRotation(value => Math.max(-180, value - 15))} className="px-1 text-[12px]">−</button>
+              贴纸角度
+              <button type="button" aria-label="贴纸左转 15 度" onClick={() => setWallStickerRotation(value => Math.max(-180, value - 15))} className="px-1 text-[12px]">−</button>
               <span className="min-w-8 text-center tabular-nums">{wallStickerRotation}°</span>
-              <button type="button" aria-label="印章右转 15 度" onClick={() => setWallStickerRotation(value => Math.min(180, value + 15))} className="px-1 text-[12px]">+</button>
+              <button type="button" aria-label="贴纸右转 15 度" onClick={() => setWallStickerRotation(value => Math.min(180, value + 15))} className="px-1 text-[12px]">+</button>
             </span>
             <button type="button" onClick={() => {setWallEraser(!wallEraser);setWallSticker(null)}} aria-pressed={wallEraser} className={wallEraser?"bg-[#a06a58] px-2 py-1 text-[10px] text-white":"border border-[#d8c6b5] px-2 py-1 text-[10px] text-[#7d6d5a]"}>橡皮</button>
             <button type="button" onClick={() => {if(wallSelectedPhoto) changeDoodles(wallSelectedPhoto.id,[])}} disabled={!wallSelectedPhoto?.doodles?.length} className="border-b border-[#e0c8bd] px-1 py-1 text-[10px] text-[#a06a58] disabled:opacity-35">清空照片涂鸦</button>

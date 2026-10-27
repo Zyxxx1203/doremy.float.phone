@@ -214,6 +214,9 @@ export function normalizeDoodles(value: unknown): PhotoWallDoodle[] | undefined 
       id: raw.id,
       kind: raw.kind,
       content: typeof raw.content === "string" ? raw.content.slice(0, 8) : undefined,
+      rotation: typeof raw.rotation === "number" && Number.isFinite(raw.rotation)
+        ? Math.max(-180, Math.min(180, raw.rotation))
+        : undefined,
       authorType: raw.authorType === "character" || raw.authorType === "user" ? raw.authorType : undefined,
       authorId: typeof raw.authorId === "string" ? raw.authorId.slice(0, 160) : undefined,
       authorName: typeof raw.authorName === "string" ? raw.authorName.slice(0, 80) : undefined,
