@@ -142,11 +142,8 @@ class GlobalWatchCaptureService : Service() {
             ACTION_REPLY -> {
                 val text = intent.getStringExtra("reply_text").orEmpty().trim()
                 if (text.isNotEmpty()) {
-                    saveRecord("user", text, System.currentTimeMillis())
+                    // 用户回复由网页保存并调用模型；原生只转发，避免重复记录/重复请求。
                     sendBroadcast(Intent(ACTION_REPLY).setPackage(packageName).putExtra("text", text))
-                    val frame = latestFrameDataUrl
-                    if (frame.isNotEmpty()) requestNativeAnalysis(frame, System.currentTimeMillis(), text)
-                    else emitState("回复已记录；正在等待第一帧屏幕画面")
                 }
             }
         }
@@ -244,6 +241,13 @@ class GlobalWatchCaptureService : Service() {
         val maxSide = 900
         val scale = min(1f, maxSide.toFloat() / max(cropped.width, cropped.height).toFloat())
         val output = if (scale < 1f) Bitmap.createScaledBitmap(cropped, max(1, (cropped.width * scale).toInt()), max(1, (cropped.height * scale).toInt()), true) else cropped
+        if (isLikelyBlack(output)) {
+            if (output !== cropped) output.recycle()
+            cropped.recycle()
+            saveRecord("error", "屏幕画面几乎全黑，可能是目标应用禁止截屏（FLAG_SECURE）。", System.currentTimeMillis())
+            emitState("该应用禁止截屏/画面全黑；跳过本次分析")
+            return
+        }
         val bytes = ByteArrayOutputStream()
         output.compress(Bitmap.CompressFormat.JPEG, 48, bytes)
         if (output !== cropped) output.recycle()
@@ -253,16 +257,40 @@ class GlobalWatchCaptureService : Service() {
         val capturedAt = System.currentTimeMillis()
         latestFrameDataUrl = dataUrl
         // Keep raw screen pixels inside the native service; the WebView only receives a timestamp.
-        sendBroadcast(Intent(ACTION_FRAME).setPackage(packageName).putExtra("capturedAt", capturedAt))
+        sendBroadcast(Intent(ACTION_FRAME).setPackage(packageName)
+            .putExtra("capturedAt", capturedAt)
+            .putExtra("dataUrl", dataUrl)
+            .putExtra("force", forceNextAnalysis))
         bytes.close()
-        if (forceNextAnalysis) {
-            forceNextAnalysis = false
-            requestNativeAnalysis(dataUrl, capturedAt, "")
-        } else if (randomSpeechEnabled && capturedAt >= nextAiAt) {
-            requestNativeAnalysis(dataUrl, capturedAt, "")
-        } else emitState("屏幕捕获正常；随机主动发言已关闭或尚未到分析间隔")
+        // 分析统一交给网页侧（和查岗/语音通话同一条 API 配置链路）。
+        // 原生只负责捕获、折叠横幅和显示回复，避免在 Service 里二次解析 API Key。
+        forceNextAnalysis = false
+        emitState("已捕获屏幕帧，等待网页分析")
     }
 
+
+    /** 近似黑帧检测：全黑/全透明通常是 FLAG_SECURE，别把黑图送给模型。 */
+    private fun isLikelyBlack(bitmap: Bitmap): Boolean {
+        val stepX = max(1, bitmap.width / 32)
+        val stepY = max(1, bitmap.height / 32)
+        var sum = 0L
+        var count = 0
+        var maxLum = 0
+        var y = 0
+        while (y < bitmap.height) {
+            var x = 0
+            while (x < bitmap.width) {
+                val color = bitmap.getPixel(x, y)
+                val lum = ((color shr 16 and 0xFF) * 299 + (color shr 8 and 0xFF) * 587 + (color and 0xFF) * 114) / 1000
+                sum += lum
+                count += 1
+                if (lum > maxLum) maxLum = lum
+                x += stepX
+            }
+            y += stepY
+        }
+        return count > 0 && sum / count < 5 && maxLum < 20
+    }
 
     private fun requestNativeAnalysis(dataUrl: String, capturedAt: Long, userReply: String) {
         if (aiBusy) {
@@ -423,7 +451,23 @@ class GlobalWatchCaptureService : Service() {
     private val captureRunnable = Runnable { requestCapture() }
 
     private fun requestCapture() {
-        if (paused || projection == null) return
+        if (paused) return
+        // 优先复用查岗的 AccessibilityService.takeScreenshot：不需要每次让用户
+        // 重新确认 MediaProjection，也没有虚拟显示；失败再退回当前投影。
+        if (ScreenshotBridge.canCapture()) {
+            worker?.post {
+                ScreenshotBridge.captureBitmap { bitmap, error ->
+                    if (bitmap == null) {
+                        emitState("无障碍截屏失败：" + (error ?: "未知原因") + "；下个间隔重试")
+                    } else {
+                        try { emitBitmapFrame(bitmap) } finally { bitmap.recycle() }
+                    }
+                    scheduleNextCapture()
+                }
+            }
+            return
+        }
+        if (projection == null) return
         capturePending = true
         worker?.postDelayed({
             if (capturePending) {
@@ -432,6 +476,30 @@ class GlobalWatchCaptureService : Service() {
             }
             scheduleNextCapture()
         }, 2200L)
+    }
+
+    /** 无障碍截屏和投影共用：编码并通过广播交给 WebView 分析。 */
+    private fun emitBitmapFrame(bitmap: Bitmap) {
+        if (isLikelyBlack(bitmap)) {
+            saveRecord("error", "屏幕画面几乎全黑，可能是目标应用禁止截屏（FLAG_SECURE）。", System.currentTimeMillis())
+            emitState("该应用禁止截屏/画面全黑；跳过本次分析")
+            return
+        }
+        val bytes = ByteArrayOutputStream()
+        if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 48, bytes)) {
+            emitState("截图编码失败；下个间隔重试")
+            return
+        }
+        val dataUrl = "data:image/jpeg;base64," + Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)
+        bytes.close()
+        val capturedAt = System.currentTimeMillis()
+        latestFrameDataUrl = dataUrl
+        sendBroadcast(Intent(ACTION_FRAME).setPackage(packageName)
+            .putExtra("capturedAt", capturedAt)
+            .putExtra("dataUrl", dataUrl)
+            .putExtra("force", forceNextAnalysis))
+        forceNextAnalysis = false
+        emitState("已捕获屏幕帧，等待网页分析")
     }
 
     private fun setPaused(value: Boolean) {

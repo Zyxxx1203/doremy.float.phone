@@ -108,7 +108,8 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
   const frameRef = useRef("");
   const speechTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const busyRef = useRef(false);
-  const lastSpeechAtRef = useRef(Date.now());
+  // 0 = 还没有主动发言过：允许第一帧就说话，不必等到首个随机间隔。
+  const lastSpeechAtRef = useRef(0);
   const native = typeof window !== "undefined" ? (window as GlobalWatchWindow).AndroidShell : undefined;
   const character = characters.find(item => item.id === settings.characterId) ?? characters[0] ?? null;
 
@@ -250,20 +251,22 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
 
   useEffect(() => {
     const onFrame = (event: Event) => {
-      const detail = (event as CustomEvent<{ dataUrl?: string; capturedAt?: number }>).detail;
-      if (detail?.capturedAt) {
-        // Raw pixels stay inside the native service; WebView only mirrors a timestamp.
-        setLatestCapturedAt(Number(detail.capturedAt) || Date.now());
-        setStatus("已捕获屏幕帧；原生服务负责分析与记录。");
+      const detail = (event as CustomEvent<{ dataUrl?: string; capturedAt?: number; force?: boolean }>).detail;
+      if (!detail?.capturedAt) return;
+      setLatestCapturedAt(Number(detail.capturedAt) || Date.now());
+      if (detail.dataUrl) frameRef.current = detail.dataUrl;
+      const shouldSpeak = detail.force === true
+        || (settings.randomSpeechEnabled
+          && Date.now() - lastSpeechAtRef.current >= settings.speechIntervalMinMinutes * 60_000);
+      if (detail.dataUrl && shouldSpeak) {
+        void analyzeFrame(detail.dataUrl);
+      } else {
+        setStatus("已捕获屏幕帧；等待下一次主动发言间隔或手动看一帧。");
       }
     };
     const onReply = (event: Event) => {
       const text = String((event as CustomEvent<{ text?: string }>).detail?.text || "").trim();
       if (!text) return;
-      if (running && native?.sendGlobalWatchReply) {
-        // The native service persists the reply and invokes the model; don't duplicate it in WebView.
-        return;
-      }
       appendRecord("user", text);
       if (frameRef.current) void analyzeFrame(frameRef.current, text);
       else setStatus("已保存你的回复；等待屏幕捕获后角色会回应。");
@@ -368,7 +371,8 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
       speechIntervalMinMinutes: settings.speechIntervalMinMinutes,
       speechIntervalMaxMinutes: settings.speechIntervalMaxMinutes,
       randomSpeechEnabled: settings.randomSpeechEnabled,
-      imageModel: getGlobalWatchImageModel(character.id),
+      // API 配置不进入原生 Service：帧通过 global-watch-frame 交给网页分析，
+      // 和查岗/语音通话使用同一套 API Key 链路。
     }));
     if (!ok) {
       let reason = "原生桥拒绝启动。请打开「诊断与故障排查」查看权限和服务状态。";
