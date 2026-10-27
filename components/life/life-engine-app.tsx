@@ -801,6 +801,34 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setNotice(moved.length ? "已按当前日程同步 " + moved.length + " 位角色的位置与场景。" : "所有角色的实际位置已与当前日程一致。");
   }, [commit]);
 
+  const armProactiveNow = useCallback(async () => {
+    const scene = stateRef.current.scenes.find(item => item.status === "active");
+    if (!scene) { setNotice("当前没有活动生活现场；先进入一个地点。"); return; }
+    const candidateId = scene.participants.find(participant => participant.ownerType === "character")?.ownerId;
+    const character = characters.find(item => item.id === candidateId) ?? characters[0];
+    if (!character) { setNotice("没有可用的角色，无法挂起主动消息。"); return; }
+    const contact = loadChatContacts().find(item => item.characterId === character.id);
+    const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeVirtualSession(character.id, character.name);
+    const result = await armLifeSceneProactiveBailout({
+      sessionId: session.id,
+      sceneId: scene.id,
+      characterId: character.id,
+      characterName: character.name,
+      prompt: [
+        "【生活现场自主回合：不是对玩家新消息的回复】",
+        "当前地点：" + scene.locationName,
+        "角色：" + character.name,
+        "请以角色身份自然发起一小回合生活现场对话/行动；不要替玩家发言。",
+        buildOnlineChatBackground(character.id),
+      ].filter(Boolean).join("\n\n"),
+      lifeScenePrompt: activeLifeScenePrompt,
+      executeAtMs: Date.now() + 60_000,
+    });
+    setNotice(result.ok
+      ? "已挂起一条主动消息；1 分钟后由服务端生成。可在「主动消息排期」查看。"
+      : "挂起失败：" + result.reason);
+  }, [characters, activeLifeScenePrompt]);
+
   const patchSettings = (patch: Partial<LifeEngineSettings>) => commit({ ...stateRef.current, settings: { ...stateRef.current.settings, ...patch } });
   const patchActivePromptPreset = (patch: Partial<LifePromptPreset>) => {
     const currentSettings = stateRef.current.settings;
@@ -1724,6 +1752,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             prompt: buildPrompt(character),
             lifeScenePrompt: activeLifeScenePrompt,
             executeAtMs: now + firstDelay,
+          }).then(result => {
+            if (!result.ok) console.warn("[LifeAutonomy] 首次服务端预约未挂上：", result.reason);
           });
         }
         return;
@@ -3400,6 +3430,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             <div className="min-w-0"><p className="text-sm font-semibold text-stone-800">AI 自动规划角色七日日程</p><p className="mt-1 max-w-xl text-xs leading-relaxed text-stone-500">不用手动填。AI 会读取每个角色的人设、近期共同记忆、生活记录、世界书、地点习惯和当前预设；生成后仍可微调。</p></div>
             <div className="flex shrink-0 flex-wrap gap-2">
               <button type="button" onClick={syncAllCharactersToSchedules} className="rounded-xl border border-[#d9c2ae] bg-white px-4 py-3 text-sm font-semibold text-stone-700">同步全部角色当前位置</button>
+              <button type="button" onClick={() => void armProactiveNow()} className="rounded-xl border border-[#d9c2ae] bg-white px-4 py-3 text-sm font-semibold text-stone-700">现在挂起一条主动消息</button>
               <button type="button" onClick={() => void regenerateAllCharacterSchedulesWithAI()} disabled={batchScheduleGenerating || scheduleRegenerationOwnerId !== null || characters.length === 0} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-3 text-sm font-semibold text-white shadow-sm disabled:opacity-50"><Sparkles size={15}/>{batchScheduleGenerating ? "AI 正在逐个规划…" : "AI 生成全部角色日程"}</button>
             </div>
           </div>
