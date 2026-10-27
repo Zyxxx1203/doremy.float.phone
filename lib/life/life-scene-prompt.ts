@@ -1,5 +1,8 @@
 import { getActorClock, resolveActorLifeNow } from "./life-runtime";
 import type { LifeSceneState, VirtualLifeState } from "./life-types";
+import { asPlayerRecordSubject } from "./life-timeline-subject";
+import { renderUserNameMacro, USER_NAME_MACRO } from "../user-macro";
+import { resolveUserIdentity } from "../settings-storage";
 
 /** This contract belongs only to life-scene mode, never online chat or long-form story mode. */
 export const LIFE_SCENE_OUTPUT_CONTRACT = `【生活现场输出协议 v3｜JSON】
@@ -48,6 +51,8 @@ JSON 字段：
 - 把“别熬夜了”写进 action；
 - 在 JSON 外再写解释或 Markdown。`;
 export function buildLifeScenePromptContext(state: VirtualLifeState, scene: LifeSceneState, viewerId?: string): string {
+  // 玩家记录在角色记忆里统一用 {{user}}，发送前再解析成该角色当前人设的称呼。
+  const playerRefName = resolveUserIdentity(viewerId, "chat")?.name;
   const viewer = viewerId ? scene.participants.find(p => p.ownerType === "character" && p.ownerId === viewerId) : undefined;
   const visibleActorStates = state.actorStates.filter(actor => {
     if (!viewerId) return actor.ownerType === "player" || scene.participants.some(p => p.ownerType === actor.ownerType && p.ownerId === actor.ownerId);
@@ -64,11 +69,11 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
     .reverse();
   const sceneMessages = state.sceneMessages.filter(message => message.sceneId === scene.id);
   const recentMessages = sceneMessages.slice(-12);
-  const turnGroups = new Map<string, { speakerName: string; speakerId: string; action: string[]; dialogue: string[]; createdAt: string }>();
+  const turnGroups = new Map<string, { speakerName: string; speakerId: string; isPlayer: boolean; action: string[]; dialogue: string[]; createdAt: string }>();
   for (const message of recentMessages) {
     if (message.role === "system") continue;
     const key = `${message.speakerId}|${message.createdAt}`;
-    const group = turnGroups.get(key) ?? { speakerName: message.speakerName, speakerId: message.speakerId, action: [], dialogue: [], createdAt: message.createdAt };
+    const group = turnGroups.get(key) ?? { speakerName: message.speakerName, speakerId: message.speakerId, isPlayer: message.role === "player", action: [], dialogue: [], createdAt: message.createdAt };
     if (message.action?.trim()) group.action.push(message.action.trim());
     if (message.dialogue?.trim()) group.dialogue.push(message.dialogue.trim());
     turnGroups.set(key, group);
@@ -78,9 +83,10 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
     const dialogueText = group.dialogue.join(" / ");
     const at = new Date(group.createdAt);
     const stamp = Number.isFinite(at.getTime()) ? at.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) : "时间未记录";
-    if (actionText && dialogueText) return `- [${stamp}] ${group.speakerName}（动作：${actionText}）说：“${dialogueText}”`;
-    if (actionText) return `- [${stamp}] ${group.speakerName}（仅动作，无对白）：${actionText}`;
-    return `- [${stamp}] ${group.speakerName}（仅对白）：“${dialogueText}”`;
+    const speaker = group.isPlayer ? USER_NAME_MACRO : group.speakerName;
+    if (actionText && dialogueText) return renderUserNameMacro(`- [${stamp}] ${speaker}（动作：${actionText}）说：“${dialogueText}”`, playerRefName);
+    if (actionText) return renderUserNameMacro(`- [${stamp}] ${speaker}（仅动作，无对白）：${actionText}`, playerRefName);
+    return renderUserNameMacro(`- [${stamp}] ${speaker}（仅对白）：“${dialogueText}”`, playerRefName);
   });
   const characterMessages = sceneMessages.filter(message => message.role === "character" && (!viewerId || message.speakerId === viewerId));
   const lastCharacterAt = characterMessages[characterMessages.length - 1]?.createdAt;
@@ -125,7 +131,11 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
     viewerNow ? `角色当前虚拟时间：${viewerNow.toLocaleString("zh-CN")}` : "",
     ...upcomingSchedule.map(slot => `- ${new Date(slot.startAt).toLocaleString("zh-CN")}–${new Date(slot.endAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}：${slot.title}；地点：${slot.plannedLocationName || "未确定"}；来源：${slot.source}${slot.source === "manual" ? "（玩家手动安排，优先尊重）" : slot.source === "character-tool" ? "（角色主动调整）" : ""}`),
     ...recentInvitations.map(invitation => `- 既有邀约：${invitation.status}；${invitation.proposedBy === "player" ? "玩家发起" : "角色发起"}；${invitation.activity}；${new Date(invitation.proposedAt).toLocaleString("zh-CN")}；地点：${invitation.locationName || "未确定"}；理由：${invitation.reason || "无"}；回应：${invitation.responseReason || "无"}`),
-    ...recentCharacterEvents.map(entry => `- 近期生活记录：${new Date(entry.occurredAt).toLocaleString("zh-CN")}；${entry.actorName || "参与者"}；${entry.title}${entry.details ? "；" + entry.details : ""}`),
+    ...recentCharacterEvents.map(entry => {
+      // 玩家自己的生活记录改写成 {{user}} 主语，再解析成该角色人设里的称呼。
+      const subject = asPlayerRecordSubject(entry, state.settings.playerDisplayName);
+      return renderUserNameMacro(`- 近期生活记录：${new Date(entry.occurredAt).toLocaleString("zh-CN")}；${subject.actorName || "参与者"}；${subject.title}${entry.details ? "；" + entry.details : ""}`, playerRefName);
+    }),
     memories.length ? "【该角色参与过的共同记忆事实】" : "",
     ...memories.map(memory => `- ${new Date(memory.occurredAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}：${memory.fact}`),
     recentTurns.length ? "【本场景最近发生的对话】" : "",

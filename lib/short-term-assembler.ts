@@ -18,6 +18,7 @@ import { loadMapProjectionEntries, loadMapSharedProjectionEntries } from "./map-
 import { loadGameProjectionEntries } from "./game-storage";
 import { loadDiaryEntries } from "./diary-entry-storage";
 import { loadVirtualLifeState } from "./life/life-storage";
+import { asPlayerRecordSubject } from "./life/life-timeline-subject";
 import type { DiaryEntry, DiaryEntryBlock } from "./diary-entry-types";
 import { loadNoteWallProjectionEntries } from "./notewall-memory";
 import { loadXiaohongshuProjectionEntries } from "./xiaohongshu-memory";
@@ -823,7 +824,9 @@ export function loadNativeTimeline(
                 || (!!lifeEntry.sceneId && characterSceneIds.has(lifeEntry.sceneId))
                 || (!!lifeEntry.sourceId && characterInvitationIds.has(lifeEntry.sourceId));
             if (!belongsToCharacter) continue;
-            const title = clipTimelineText(lifeEntry.title, 180);
+            // 玩家自己的生活记录在角色记忆里用 {{user}} 做主语，避免第一人称“我”被当成角色自己的经历。
+            const subject = asPlayerRecordSubject(lifeEntry, lifeState.settings.playerDisplayName);
+            const title = clipTimelineText(subject.title, 180);
             const details = clipTimelineText(lifeEntry.details ?? "", 500);
             const label = lifeEntry.category === "dialogue" ? "共同场景对话"
                 : lifeEntry.category === "action" ? "共同场景行动"
@@ -841,7 +844,7 @@ export function loadNativeTimeline(
                 customAppName: "生活",
                 customAppLabel: label,
                 content: formatStoredPromptEventContent(
-                    [title, details].filter(Boolean).join("："),
+                    renderUserNameMacro([title, details].filter(Boolean).join("："), userName),
                     { label: "生活", timestamp: lifeEntry.occurredAt, timeAware, timestampOptions },
                 ),
             });
