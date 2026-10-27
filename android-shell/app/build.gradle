@@ -36,8 +36,9 @@ android {
         // 1.0.22：全局陪看横幅折叠/贴顶；小组件 pin 回调 profileId 双通道。
         // 1.0.23：全局陪看横幅改为 WebView，支持用户 CSS + 预览。
         // 1.0.24：小组件增加系统配置 Activity，多实例显式绑定 profile。
-        versionCode 23
-        versionName "1.0.24"
+        // 1.0.25：查岗浮层横屏滚动/关闭按钮/动态高度。
+        versionCode 24
+        versionName "1.0.25"
         buildConfigField "String", "SITE_URL", "\"${siteUrl}\""
     }
 
