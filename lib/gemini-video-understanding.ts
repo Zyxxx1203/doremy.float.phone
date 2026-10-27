@@ -1,4 +1,5 @@
 import { analyzeVideoUsingKeyframes } from "@/lib/video-keyframe-analysis";
+import { pushApiLog } from "./api-log-store";
 /**
  * Gemini Files API video understanding.
  *
@@ -24,7 +25,7 @@ function readErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
-export async function analyzeWholeVideoWithGemini(options: {
+async function analyzeWholeVideoWithGeminiCore(options: {
   file: File;
   apiKey: string;
   model: string;
@@ -289,5 +290,31 @@ async function analyzeWholeVideoWithTwelveLabs(options: {
     return output.trim();
   } finally {
     if (assetId) void fetch(root + "/assets/" + encodeURIComponent(assetId), { method: "DELETE", headers, keepalive: true }).catch(() => {});
+  }
+}
+
+
+export async function analyzeWholeVideoWithGemini(
+  options: Parameters<typeof analyzeWholeVideoWithGeminiCore>[0],
+): Promise<string> {
+  try {
+    const text = await analyzeWholeVideoWithGeminiCore(options);
+    pushApiLog({
+      characterName: "视频分析",
+      source: "background",
+      model: options.model,
+      messages: [{ role: "user", content: options.prompt + "\n[视频]" }],
+      rawResponse: text,
+    });
+    return text;
+  } catch (error) {
+    pushApiLog({
+      characterName: "视频分析",
+      source: "background",
+      model: options.model,
+      messages: [{ role: "user", content: options.prompt + "\n[视频]" }],
+      rawResponse: "[错误] " + (error instanceof Error ? error.message : String(error)),
+    });
+    throw error;
   }
 }

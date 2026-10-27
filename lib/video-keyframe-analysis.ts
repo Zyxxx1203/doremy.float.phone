@@ -1,3 +1,5 @@
+import { pushApiLog } from "./api-log-store";
+
 export type VideoFrameProgress = (message: string) => void;
 type SampledFrame = { seconds: number; dataUrl: string; base64: string };
 
@@ -72,7 +74,7 @@ async function extractFrames(file: File, requestedCount: number, signal?: AbortS
   }
 }
 
-export async function analyzeVideoUsingKeyframes(options: {
+async function analyzeVideoUsingKeyframesCore(options: {
   file: File;
   apiKey: string;
   model: string;
@@ -147,7 +149,7 @@ export async function analyzeVideoUsingKeyframes(options: {
 }
 
 
-export async function analyzeCapturedImage(options: {
+async function analyzeCapturedImageCore(options: {
   dataUrl: string;
   apiKey: string;
   model: string;
@@ -252,4 +254,56 @@ export async function analyzeCapturedImage(options: {
   const text = typeof raw === "string" ? raw : Array.isArray(raw) ? raw.map(part => part.text || "").filter(Boolean).join("\n") : "";
   if (!text.trim()) throw new Error("视觉模型没有返回截屏评价。");
   return text.trim();
+}
+
+
+/** 统一记录直接 fetch 的视觉模型调用，供“底层调用大模型日志”查看。 */
+export async function analyzeVideoUsingKeyframes(
+  options: Parameters<typeof analyzeVideoUsingKeyframesCore>[0],
+): Promise<string> {
+  try {
+    const text = await analyzeVideoUsingKeyframesCore(options);
+    pushApiLog({
+      characterName: "视频分析",
+      source: "background",
+      model: options.model,
+      messages: [{ role: "user", content: options.prompt + "\n[视频关键帧]" }],
+      rawResponse: text,
+    });
+    return text;
+  } catch (error) {
+    pushApiLog({
+      characterName: "视频分析",
+      source: "background",
+      model: options.model,
+      messages: [{ role: "user", content: options.prompt + "\n[视频关键帧]" }],
+      rawResponse: "[错误] " + (error instanceof Error ? error.message : String(error)),
+    });
+    throw error;
+  }
+}
+
+export async function analyzeCapturedImage(
+  options: Parameters<typeof analyzeCapturedImageCore>[0],
+): Promise<string> {
+  try {
+    const text = await analyzeCapturedImageCore(options);
+    pushApiLog({
+      characterName: "全局陪看",
+      source: "background",
+      model: options.model,
+      messages: [{ role: "user", content: options.prompt + "\n[屏幕截图]" }],
+      rawResponse: text,
+    });
+    return text;
+  } catch (error) {
+    pushApiLog({
+      characterName: "全局陪看",
+      source: "background",
+      model: options.model,
+      messages: [{ role: "user", content: options.prompt + "\n[屏幕截图]" }],
+      rawResponse: "[错误] " + (error instanceof Error ? error.message : String(error)),
+    });
+    throw error;
+  }
 }
