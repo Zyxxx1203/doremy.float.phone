@@ -25,6 +25,9 @@ import android.view.Gravity
 import android.view.WindowManager
 import android.view.View
 import android.view.inputmethod.InputMethodManager
+import android.webkit.JavascriptInterface
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -105,6 +108,10 @@ class GlobalWatchCaptureService : Service() {
     private var overlayControls: LinearLayout? = null
     private var overlayReply: LinearLayout? = null
     private var overlayStatus: TextView? = null
+    private var bannerWebView: WebView? = null
+    private var bannerExpanded = false
+    private var bannerStatus = "屏幕捕获已开启（点击暂停可立即停止捕获）"
+    private var bannerMessage = ""
     private var overlayExpanded = false
     private var windowManager: WindowManager? = null
     @Volatile private var paused = false
@@ -142,6 +149,7 @@ class GlobalWatchCaptureService : Service() {
             ACTION_SHOW_COMMENT -> {
                 val comment = intent.getStringExtra("comment").orEmpty().trim()
                 if (comment.isNotEmpty()) {
+                    bannerMessage = comment.take(1000)
                     setOverlayExpanded(true)
                     emitState(characterName + "：" + comment.take(240))
                 }
@@ -517,7 +525,112 @@ class GlobalWatchCaptureService : Service() {
         emitState(if (value) "全局陪看已暂停；不会继续捕获屏幕" else "全局陪看已恢复")
     }
 
+    /** 悬浮横幅：WebView 渲染，用户 CSS 才会生效；失败时退回原生布局。 */
     private fun showOverlay() {
+        if (bannerWebView != null || overlay != null) return
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        val web = WebView(this)
+        web.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        web.settings.javaScriptEnabled = true
+        web.settings.domStorageEnabled = false
+        web.settings.allowFileAccess = false
+        web.settings.allowContentAccess = false
+        web.webViewClient = WebViewClient()
+        web.addJavascriptInterface(BannerBridge(), "AndroidBanner")
+        val css = config.optString("bannerCss", "").replace("</style", "<\\/style").take(20000)
+        web.loadDataWithBaseURL("https://banner.local/", buildBannerHtml(css), "text/html", "utf-8", null)
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            dp(if (bannerExpanded) 260 else 64),
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            y = 0
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            }
+        }
+        try {
+            windowManager?.addView(web, params)
+            bannerWebView = web
+        } catch (error: Throwable) {
+            val message = (error.message ?: "系统拒绝添加悬浮窗").take(200)
+            saveRecord("error", "WebView 横幅创建失败，退回原生横幅：" + message, System.currentTimeMillis())
+            showNativeOverlay()
+        }
+    }
+
+    private fun buildBannerHtml(userCss: String): String {
+        val defaultCss = """
+            *{box-sizing:border-box}html,body{margin:0;padding:0;background:transparent;font-family:-apple-system,BlinkMacSystemFont,'Noto Sans SC',sans-serif;color:#5a3b2d}
+            .gw-banner{margin:6px 10px;padding:10px 12px;border-radius:18px;background:#fff8f1;border:1px solid #d4ac8e;box-shadow:0 8px 24px rgba(50,30,15,.18);overflow:hidden}
+            .gw-head{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;white-space:nowrap}
+            .gw-dot{color:#b88768}.gw-title{min-width:0;overflow:hidden;text-overflow:ellipsis;flex:1}
+            .gw-toggle{border:0;background:transparent;color:#8a6c58;font-size:13px;padding:4px 2px}
+            .gw-body{display:none;margin-top:8px}.gw-banner.gw-open .gw-body{display:block}
+            .gw-status{font-size:10px;line-height:1.5;color:#806c5c;margin-bottom:7px;word-break:break-word}
+            .gw-controls{display:flex;gap:6px}.gw-controls button{flex:1;height:34px;border:1px solid #d8c2b1;border-radius:10px;background:#fffdf9;color:#6b5243;font-size:12px}
+            .gw-controls button.gw-primary{background:#b88768;border-color:#b88768;color:#fff}
+            .gw-reply{display:flex;gap:6px;margin-top:7px}.gw-reply input{min-width:0;flex:1;height:36px;border:1px solid #d8c2b1;border-radius:10px;background:#fff;padding:0 9px;font-size:12px;color:#4a352b}
+            .gw-reply button{width:62px;height:36px;border:0;border-radius:10px;background:#b88768;color:#fff;font-size:12px}
+        """.trimIndent()
+        val safeName = characterName.replace("<", "&lt;").replace(">", "&gt;")
+        return """<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<style>$defaultCss
+$userCss
+</style></head><body>
+<div id="banner" class="gw-banner${if (bannerExpanded) " gw-open" else ""}">
+  <div class="gw-head"><span class="gw-dot">◉</span><span class="gw-title">全局陪看 · $safeName</span><button class="gw-toggle" onclick="toggle()">${if (bannerExpanded) "收起" else "展开"}</button></div>
+  <div class="gw-body">
+    <div id="status" class="gw-status">${escapeHtml(bannerStatus)}</div>
+    <div class="gw-controls"><button id="pause" onclick="cmd('pause','')">暂停</button><button onclick="cmd('capture','')">看一帧</button><button onclick="cmd('stop','')">停止</button></div>
+    <div class="gw-reply"><input id="reply" placeholder="直接回复角色…"><button onclick="send()">发送</button></div>
+  </div>
+</div>
+<script>
+function setStatus(t){document.getElementById('status').textContent=t;}
+function setExpanded(v){document.getElementById('banner').classList.toggle('gw-open',!!v);document.querySelector('.gw-toggle').textContent=v?'收起':'展开';AndroidBanner.resize(!!v);}
+function toggle(){setExpanded(!document.getElementById('banner').classList.contains('gw-open'));}
+function cmd(a,t){AndroidBanner.command(a,t||'');}
+function send(){var i=document.getElementById('reply');var t=(i.value||'').trim();if(!t)return;i.value='';AndroidBanner.command('reply',t);}
+</script></body></html>"""
+    }
+
+    private fun escapeHtml(value: String): String =
+        value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+
+    private inner class BannerBridge {
+        @JavascriptInterface fun command(action: String, text: String) {
+            when (action) {
+                "pause" -> setPaused(!paused)
+                "capture" -> { forceNextAnalysis = true; requestCapture() }
+                "stop" -> stopSelf()
+                "reply" -> if (text.isNotBlank()) GlobalWatchCaptureService.command(this@GlobalWatchCaptureService, ACTION_REPLY, text.take(1000))
+            }
+        }
+        @JavascriptInterface fun resize(expanded: Boolean) {
+            bannerExpanded = expanded
+            bannerWebView?.let { web ->
+                val params = web.layoutParams as WindowManager.LayoutParams
+                params.height = dp(if (expanded) 260 else 64)
+                windowManager?.updateViewLayout(web, params)
+            }
+        }
+    }
+
+    private fun updateBannerState() {
+        val web = bannerWebView ?: return
+        val status = org.json.JSONObject.quote(bannerStatus)
+        val message = org.json.JSONObject.quote(bannerMessage)
+        web.evaluateJavascript("setStatus($status);", null)
+    }
+
+    private fun showNativeOverlay() {
         if (overlay != null) return
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val root = LinearLayout(this).apply {
@@ -610,13 +723,21 @@ class GlobalWatchCaptureService : Service() {
 
     private fun setOverlayExpanded(expanded: Boolean) {
         overlayExpanded = expanded
+        bannerExpanded = expanded
+        bannerWebView?.let { web ->
+            web.evaluateJavascript("setExpanded(${if (expanded) "true" else "false"});", null)
+            val params = web.layoutParams as WindowManager.LayoutParams
+            params.height = dp(if (expanded) 260 else 64)
+            windowManager?.updateViewLayout(web, params)
+        }
         overlayStatus?.visibility = if (expanded) View.VISIBLE else View.GONE
         overlayControls?.visibility = if (expanded) View.VISIBLE else View.GONE
         overlayReply?.visibility = if (expanded) View.VISIBLE else View.GONE
     }
 
     private fun emitState(message: String) {
-        mainHandler.post { statusText?.text = message }
+        bannerStatus = message
+        mainHandler.post { statusText?.text = message; updateBannerState() }
         sendBroadcast(Intent(ACTION_STATE).setPackage(packageName).putExtra("message", message).putExtra("running", projection != null).putExtra("paused", paused))
     }
 

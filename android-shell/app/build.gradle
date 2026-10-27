@@ -34,8 +34,9 @@ android {
         // 1.0.20：大文件分块写入，修复导出/下载大备份时 WebView OOM；持久化 WebView 崩溃报告。
         // 1.0.21：全局陪看改走无障碍截屏 + 网页分析，原生不再二次解析 API Key。
         // 1.0.22：全局陪看横幅折叠/贴顶；小组件 pin 回调 profileId 双通道。
-        versionCode 21
-        versionName "1.0.22"
+        // 1.0.23：全局陪看横幅改为 WebView，支持用户 CSS + 预览。
+        versionCode 22
+        versionName "1.0.23"
         buildConfigField "String", "SITE_URL", "\"${siteUrl}\""
     }
 

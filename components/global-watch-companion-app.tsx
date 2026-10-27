@@ -33,6 +33,22 @@ type GlobalWatchNative = {
 type GlobalWatchWindow = Window & { AndroidShell?: GlobalWatchNative };
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
 
+const BANNER_CSS_KEY = "global_watch_banner_css_v1";
+const DEFAULT_BANNER_CSS = `.gw-banner{margin:6px 10px;padding:10px 12px;border-radius:18px;background:#fff8f1;border:1px solid #d4ac8e;box-shadow:0 8px 24px rgba(50,30,15,.18);overflow:hidden}
+.gw-head{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;white-space:nowrap}
+.gw-dot{color:#b88768}.gw-title{min-width:0;overflow:hidden;text-overflow:ellipsis;flex:1}
+.gw-toggle{border:0;background:transparent;color:#8a6c58;font-size:13px;padding:4px 2px}
+.gw-body{display:none;margin-top:8px}.gw-banner.gw-open .gw-body{display:block}
+.gw-status{font-size:10px;line-height:1.5;color:#806c5c;margin-bottom:7px;word-break:break-word}
+.gw-controls{display:flex;gap:6px}.gw-controls button{flex:1;height:34px;border:1px solid #d8c2b1;border-radius:10px;background:#fffdf9;color:#6b5243;font-size:12px}
+.gw-controls button.gw-primary{background:#b88768;border-color:#b88768;color:#fff}
+.gw-reply{display:flex;gap:6px;margin-top:7px}.gw-reply input{min-width:0;flex:1;height:36px;border:1px solid #d8c2b1;border-radius:10px;background:#fff;padding:0 9px;font-size:12px;color:#4a352b}
+.gw-reply button{width:62px;height:36px;border:0;border-radius:10px;background:#b88768;color:#fff;font-size:12px}`;
+
+function bannerPreviewHtml(css: string, expanded: boolean): string {
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;background:#efe4d7;font-family:-apple-system,BlinkMacSystemFont,'Noto Sans SC',sans-serif;color:#5a3b2d}${css}</style></head><body><div class="gw-banner${expanded ? " gw-open" : ""}"><div class="gw-head"><span class="gw-dot">◉</span><span class="gw-title">全局陪看 · 角色名</span><button class="gw-toggle">${expanded ? "收起" : "展开"}</button></div><div class="gw-body"><div class="gw-status">屏幕捕获已开启（点击暂停可立即停止捕获）</div><div class="gw-controls"><button>暂停</button><button class="gw-primary">看一帧</button><button>停止</button></div><div class="gw-reply"><input placeholder="直接回复角色…"><button>发送</button></div></div></div></body></html>`;
+}
+
 const SETTINGS_KEY = "global_watch_companion_settings_v1";
 const DEFAULT_SETTINGS: GlobalWatchSettings = {
   characterId: "",
@@ -100,6 +116,10 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
   const [status, setStatus] = useState("尚未启动。启动后，Android 会再次询问是否允许捕获屏幕。");
   const [consentChecked, setConsentChecked] = useState(false);
   const [replyDraft, setReplyDraft] = useState("");
+  const [bannerCss, setBannerCss] = useState(() => {
+    try { return localStorage.getItem(BANNER_CSS_KEY) || DEFAULT_BANNER_CSS; } catch { return DEFAULT_BANNER_CSS; }
+  });
+  const [bannerPreviewExpanded, setBannerPreviewExpanded] = useState(true);
   const [records, setRecords] = useState<GlobalWatchRecord[]>(() => loadGlobalWatchRecords());
   const [busy, setBusy] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
@@ -371,6 +391,7 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
       speechIntervalMinMinutes: settings.speechIntervalMinMinutes,
       speechIntervalMaxMinutes: settings.speechIntervalMaxMinutes,
       randomSpeechEnabled: settings.randomSpeechEnabled,
+      bannerCss,
       // API 配置不进入原生 Service：帧通过 global-watch-frame 交给网页分析，
       // 和查岗/语音通话使用同一套 API Key 链路。
     }));
@@ -456,6 +477,22 @@ export function GlobalWatchCompanionApp({ onClose, onNotice }: Props) {
             <button type="button" onClick={() => { void copyTextToClipboard(diagnosticsText).then(ok => setStatus(ok ? "诊断报告已复制。" : "无法自动复制，请长按诊断文本手动复制。")); }} className="rounded-xl border border-stone-300 bg-white px-3 py-3 text-sm font-medium">复制诊断报告</button>
           </div>
         </div>}
+      </section>
+
+      <section className="mt-4 rounded-2xl border border-amber-700/20 bg-white/75 p-4">
+        <div className="flex items-center gap-2 font-semibold"><Settings2 size={17}/>横幅 CSS 与预览</div>
+        <p className="mt-2 text-xs leading-5 opacity-70">这些 CSS 会作用于悬浮横幅的 HTML；预览使用同一套类名。原生只保留窗口/权限/高度，不再写死按钮颜色。</p>
+        <div className="mt-3 grid gap-3">
+          <div className="rounded-xl border border-stone-200 bg-[#efe4d7] p-2">
+            <iframe title="全局陪看横幅预览" srcDoc={bannerPreviewHtml(bannerCss, bannerPreviewExpanded)} sandbox="" className="h-[230px] w-full rounded-lg border-0 bg-transparent" />
+          </div>
+          <div className="flex items-center justify-between text-xs"><span>预览：{bannerPreviewExpanded ? "展开" : "折叠"}</span><button type="button" onClick={() => setBannerPreviewExpanded(v => !v)} className="rounded-lg border border-stone-300 bg-white px-2.5 py-1.5">{bannerPreviewExpanded ? "看折叠态" : "看展开态"}</button></div>
+          <textarea value={bannerCss} onChange={e => setBannerCss(e.target.value)} spellCheck={false} aria-label="横幅 CSS" className="min-h-[220px] w-full rounded-xl border border-stone-300 bg-[#fffaf5] p-3 font-mono text-[11px] leading-5 outline-none" />
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => { try { localStorage.setItem(BANNER_CSS_KEY, bannerCss); setStatus("横幅 CSS 已保存；下次启动/重载横幅生效。"); } catch { setStatus("CSS 保存失败。"); } }} className="rounded-xl bg-[#b88768] px-3 py-3 text-sm font-semibold text-white">保存 CSS</button>
+            <button type="button" onClick={() => { setBannerCss(DEFAULT_BANNER_CSS); try { localStorage.setItem(BANNER_CSS_KEY, DEFAULT_BANNER_CSS); } catch { /* ignore */ } }} className="rounded-xl border border-stone-300 bg-white px-3 py-3 text-sm font-medium">恢复默认</button>
+          </div>
+        </div>
       </section>
 
       <section className="mt-4 rounded-2xl border border-amber-700/20 bg-white/75 p-4">
