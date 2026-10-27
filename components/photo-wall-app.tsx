@@ -165,6 +165,17 @@ async function optimizeUpload(file: File): Promise<Blob> {
   return file;
 }
 
+const RECORD_HEART_PATH = "M0,6 C-1.4,3.8 -6,1 -6,-2 C-6,-5 -3,-6 0,-4 C3,-6 6,-5 6,-2 C6,1 1.4,3.8 0,6 Z";
+
+function DoodleMark({ doodle, size }: { doodle: import("@/lib/photo-wall-storage").PhotoWallDoodle; size: number }) {
+  const x = (doodle.points[0]?.x ?? 0.5) * 100;
+  const y = (doodle.points[0]?.y ?? 0.5) * 100;
+  if (doodle.content === "heart" || doodle.content === "❤") {
+    return <g transform={`translate(${x} ${y}) rotate(${doodle.rotation ?? 0}) scale(${size / 10})`}><path d={RECORD_HEART_PATH} fill={doodle.color}/></g>;
+  }
+  return <g transform={`translate(${x} ${y}) rotate(${doodle.rotation ?? 0})`}><text x={0} y={0} fill={doodle.color} fontSize={size} textAnchor="middle" dominantBaseline="middle">{doodle.content || "✦"}</text></g>;
+}
+
 function PhotoThumbnail({ photo, onOpen }: { photo: PhotoWallPhoto; onOpen: () => void }) {
   const [src, setSrc] = useState("");
   useEffect(() => {
@@ -180,7 +191,7 @@ function PhotoThumbnail({ photo, onOpen }: { photo: PhotoWallPhoto; onOpen: () =
     <div className="relative aspect-square overflow-hidden bg-[#e9e3d8]">
       {src ? <img src={src} alt={photo.title} loading="lazy" className="h-full w-full object-contain transition duration-500 group-hover:scale-[1.01]" /> : <div className="grid h-full place-items-center text-[#9c907f]"><ImagePlus size={25}/></div>}
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full" style={{overflow:"visible"}}>
-        {(photo.doodles ?? []).map(doodle => doodle.kind === "stroke" ? <polyline key={doodle.id} points={doodle.points.map(point=>`${point.x*100},${point.y*100}`).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(0.8,doodle.width/2)} strokeLinecap="round" strokeLinejoin="round"/> : <text key={doodle.id} x={(doodle.points[0]?.x ?? .5)*100} y={(doodle.points[0]?.y ?? .5)*100} fill={doodle.color} fontSize="12" textAnchor="middle" dominantBaseline="middle">{doodle.content || "✦"}</text>)}
+        {(photo.doodles ?? []).map(doodle => doodle.kind === "stroke" ? <polyline key={doodle.id} points={doodle.points.map(point=>`${point.x*100},${point.y*100}`).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(0.8,doodle.width/2)} strokeLinecap="round" strokeLinejoin="round"/> : <g key={doodle.id}><DoodleMark doodle={doodle} size={12}/></g>)}
       </svg>
       
     </div>
@@ -1719,7 +1730,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
                     <svg viewBox="0 0 100 100" className="h-full min-h-[126px] w-full" role="img" aria-label={record.authorName + "留下的涂鸦笔迹"}>
                       {record.doodles.map(doodle => doodle.kind === "stroke"
                         ? <polyline key={doodle.id} points={doodle.points.map(point => (point.x*100)+","+(point.y*100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(1,doodle.width/2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
-                        : <text key={doodle.id} x={(doodle.points[0]?.x ?? .5)*100} y={(doodle.points[0]?.y ?? .5)*100} fill={doodle.color} fontSize="9" textAnchor="middle" dominantBaseline="middle">{doodle.content || "✦"}</text>)}
+                        : <g key={doodle.id}><DoodleMark doodle={doodle} size={9}/></g>)}
                     </svg>
                   </div>
                 </div>
