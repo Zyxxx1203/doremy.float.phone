@@ -102,6 +102,10 @@ class GlobalWatchCaptureService : Service() {
     private var display: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
     private var overlay: LinearLayout? = null
+    private var overlayControls: LinearLayout? = null
+    private var overlayReply: LinearLayout? = null
+    private var overlayStatus: TextView? = null
+    private var overlayExpanded = false
     private var windowManager: WindowManager? = null
     @Volatile private var paused = false
     @Volatile private var capturePending = false
@@ -137,7 +141,10 @@ class GlobalWatchCaptureService : Service() {
             }
             ACTION_SHOW_COMMENT -> {
                 val comment = intent.getStringExtra("comment").orEmpty().trim()
-                if (comment.isNotEmpty()) emitState(characterName + "：" + comment.take(240))
+                if (comment.isNotEmpty()) {
+                    setOverlayExpanded(true)
+                    emitState(characterName + "：" + comment.take(240))
+                }
             }
             ACTION_REPLY -> {
                 val text = intent.getStringExtra("reply_text").orEmpty().trim()
@@ -526,6 +533,8 @@ class GlobalWatchCaptureService : Service() {
         val title = TextView(this).apply {
             text = "◉ 全局陪看 · " + characterName
             textSize = 13f
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
             setTextColor(0xFF5A3B2D.toInt())
             setPadding(0, 0, 0, dp(5))
         }
@@ -534,6 +543,8 @@ class GlobalWatchCaptureService : Service() {
             textSize = 10f
             setTextColor(0xFF806C5C.toInt())
         }
+        overlayStatus = statusText
+        title.setOnClickListener { setOverlayExpanded(!overlayExpanded) }
         root.addView(title)
         root.addView(statusText)
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -544,6 +555,7 @@ class GlobalWatchCaptureService : Service() {
         controls.addView(capture, LinearLayout.LayoutParams(0, dp(40), 1f))
         controls.addView(stop, LinearLayout.LayoutParams(0, dp(40), 1f))
         root.addView(controls)
+        overlayControls = controls
         val replyRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val input = EditText(this).apply {
             hint = "直接回复角色…"
@@ -567,13 +579,24 @@ class GlobalWatchCaptureService : Service() {
         replyRow.addView(input, LinearLayout.LayoutParams(0, dp(44), 1f))
         replyRow.addView(send, LinearLayout.LayoutParams(dp(72), dp(44)))
         root.addView(replyRow)
+        overlayReply = replyRow
+        setOverlayExpanded(false)
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
-        ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; y = dp(32); softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE }
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            y = 0
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            }
+        }
         try {
             windowManager?.addView(root, params)
             overlay = root
@@ -583,6 +606,13 @@ class GlobalWatchCaptureService : Service() {
             emitState("启动失败：悬浮横幅创建失败：" + message)
             stopSelf()
         }
+    }
+
+    private fun setOverlayExpanded(expanded: Boolean) {
+        overlayExpanded = expanded
+        overlayStatus?.visibility = if (expanded) View.VISIBLE else View.GONE
+        overlayControls?.visibility = if (expanded) View.VISIBLE else View.GONE
+        overlayReply?.visibility = if (expanded) View.VISIBLE else View.GONE
     }
 
     private fun emitState(message: String) {

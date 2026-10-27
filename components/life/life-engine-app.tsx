@@ -1826,6 +1826,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     }
     void suspendIdleReconnectForLifeScene(candidateIds);
     const timer = window.setInterval(() => void tick(), LIFE_AUTONOMY_TICK_MS);
+    // 首次进入生活现场就挂一条服务端预约，不能等第一个 5 分钟 tick：
+    // 用户通常不会在生活页停留那么久，旧逻辑会导致 push_jobs 永远没有 life-scene 任务。
+    void tick();
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       disposed = true;

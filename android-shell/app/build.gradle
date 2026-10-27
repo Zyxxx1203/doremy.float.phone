@@ -33,8 +33,9 @@ android {
         // 1.0.19：保存图片不再被可信页面门禁挡住；允许本地解析 localhost 明文 + WebView 混合内容。
         // 1.0.20：大文件分块写入，修复导出/下载大备份时 WebView OOM；持久化 WebView 崩溃报告。
         // 1.0.21：全局陪看改走无障碍截屏 + 网页分析，原生不再二次解析 API Key。
-        versionCode 20
-        versionName "1.0.21"
+        // 1.0.22：全局陪看横幅折叠/贴顶；小组件 pin 回调 profileId 双通道。
+        versionCode 21
+        versionName "1.0.22"
         buildConfigField "String", "SITE_URL", "\"${siteUrl}\""
     }
 

@@ -8,6 +8,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Bundle
 import android.widget.RemoteViews
 
@@ -101,9 +102,12 @@ class PhoneWidgetProvider : AppWidgetProvider() {
             val manager = AppWidgetManager.getInstance(app)
             if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O || !manager.isRequestPinAppWidgetSupported) return false
             val provider = ComponentName(app, PhoneWidgetProvider::class.java)
+            val safeProfile = profileId.ifBlank { "default" }
             val callbackIntent = Intent(app, PhoneWidgetPinReceiver::class.java)
                 .setAction(ACTION_WIDGET_PINNED)
-                .putExtra(EXTRA_PROFILE_ID, profileId.ifBlank { "default" })
+                // 某些启动器/系统版本会丢掉自定义 extra；data URI 作为第二份身份。
+                .setData(Uri.parse("floatshell://widget-pin/" + Uri.encode(safeProfile)))
+                .putExtra(EXTRA_PROFILE_ID, safeProfile)
             val requestCode = 7100 + kotlin.math.abs(profileId.hashCode() % 100000)
             val callback = PendingIntent.getBroadcast(app, requestCode, callbackIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -221,7 +225,9 @@ class PhoneWidgetPinReceiver : BroadcastReceiver() {
         val widgetId = intent?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
             ?: AppWidgetManager.INVALID_APPWIDGET_ID
         if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) return
-        val profileId = intent?.getStringExtra(PhoneWidgetProvider.EXTRA_PROFILE_ID) ?: "default"
+        val profileId = intent?.getStringExtra(PhoneWidgetProvider.EXTRA_PROFILE_ID)
+            ?: intent?.data?.lastPathSegment?.let { Uri.decode(it) }
+            ?: "default"
         PhoneWidgetProvider.assignProfile(context, widgetId, profileId)
         val (widthDp, heightDp, scale) = PhoneWidgetProvider.loadSize(context, profileId)
         PhoneWidgetRenderer.renderCached(context, profileId, widthDp, heightDp, scale)
