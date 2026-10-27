@@ -3427,12 +3427,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
       {(tab === "plans" || (tab === "daily" && dailySubtab === "plans")) && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
         <div className="mb-4 rounded-2xl border border-[#d9c2ae] bg-[#fbf5ee] p-3 sm:p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
             <div className="min-w-0"><p className="text-sm font-semibold text-stone-800">AI 自动规划角色七日日程</p><p className="mt-1 max-w-xl text-xs leading-relaxed text-stone-500">不用手动填。AI 会读取每个角色的人设、近期共同记忆、生活记录、世界书、地点习惯和当前预设；生成后仍可微调。</p></div>
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <button type="button" onClick={syncAllCharactersToSchedules} className="rounded-xl border border-[#d9c2ae] bg-white px-4 py-3 text-sm font-semibold text-stone-700">同步全部角色当前位置</button>
-              <button type="button" onClick={() => void armProactiveNow()} className="rounded-xl border border-[#d9c2ae] bg-white px-4 py-3 text-sm font-semibold text-stone-700">现在挂起一条主动消息</button>
-              <button type="button" onClick={() => void regenerateAllCharacterSchedulesWithAI()} disabled={batchScheduleGenerating || scheduleRegenerationOwnerId !== null || characters.length === 0} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-3 text-sm font-semibold text-white shadow-sm disabled:opacity-50"><Sparkles size={15}/>{batchScheduleGenerating ? "AI 正在逐个规划…" : "AI 生成全部角色日程"}</button>
+            <div className="flex w-full min-w-0 flex-wrap gap-2 sm:w-auto sm:shrink-0">
+              <button type="button" onClick={syncAllCharactersToSchedules} className="min-w-0 w-full rounded-xl border border-[#d9c2ae] bg-white px-3 py-3 text-sm font-semibold leading-snug text-stone-700 sm:w-auto sm:px-4">同步全部角色当前位置</button>
+              <button type="button" onClick={() => void armProactiveNow()} className="min-w-0 w-full rounded-xl border border-[#d9c2ae] bg-white px-3 py-3 text-sm font-semibold leading-snug text-stone-700 sm:w-auto sm:px-4">现在挂起一条主动消息</button>
+              <button type="button" onClick={() => void regenerateAllCharacterSchedulesWithAI()} disabled={batchScheduleGenerating || scheduleRegenerationOwnerId !== null || characters.length === 0} className="inline-flex min-w-0 w-full items-center justify-center gap-2 rounded-xl bg-[var(--life-accent)] px-3 py-3 text-sm font-semibold leading-snug text-white shadow-sm disabled:opacity-50 sm:w-auto sm:shrink-0 sm:px-4"><Sparkles size={15}/>{batchScheduleGenerating ? "AI 正在逐个规划…" : "AI 生成全部角色日程"}</button>
             </div>
           </div>
           <div className="mt-4 border-t border-[#e6d5c4] pt-3"><p className="text-sm font-semibold text-stone-800">手动补充 · 一句话安排日程</p>
