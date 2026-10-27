@@ -525,6 +525,36 @@ Deno.serve(async (req: Request) => {
       return;
     }
     const payload = JSON.parse(await decryptPayload(job.payload, payloadKey)) as JobPayload;
+    // 生活主动消息：服务端执行前复核日程同场快照。客户端每次日程/场景更新都会
+    // 覆盖 push_bridge_snapshots 里的 life-schedule 快照；不在同场就不生成、不续排。
+    const lifeSceneMeta = payload.merge?.lifeScene as { sceneId?: string; characterId?: string } | undefined;
+    if (lifeSceneMeta?.sceneId && lifeSceneMeta.characterId) {
+      const snapResponse = await rest(
+        `push_bridge_snapshots?user_id=eq.${encodeURIComponent(job.user_id)}`
+        + `&rule_id=eq.life-schedule&select=payload&limit=1`,
+      );
+      const snapRows = snapResponse.ok ? await snapResponse.json() as { payload?: EncryptedPayload }[] : [];
+      if (snapRows[0]?.payload) {
+        try {
+          const snapshot = JSON.parse(await decryptPayload(snapRows[0].payload, payloadKey)) as {
+            playerLocationId?: string;
+            scenes?: { id?: string; locationId?: string; characterIds?: string[] }[];
+            characterLocations?: Record<string, string>;
+          };
+          const scene = (snapshot.scenes ?? []).find(item => item.id === lifeSceneMeta.sceneId);
+          const characterLocation = snapshot.characterLocations?.[lifeSceneMeta.characterId];
+          const sameScene = Boolean(scene)
+            && scene?.locationId === snapshot.playerLocationId
+            && (characterLocation === snapshot.playerLocationId || scene?.characterIds?.includes(lifeSceneMeta.characterId) === true);
+          if (!sameScene) {
+            await finish("done", "life schedule: player/character left the shared location");
+            return;
+          }
+        } catch {
+          // 快照损坏时退回旧行为，不让一条坏快照永久堵住主动消息。
+        }
+      }
+    }
     let shortcutStoragePath = "";
 
     if (job.kind === "shortcut_resume" && payload.shortcut) {
