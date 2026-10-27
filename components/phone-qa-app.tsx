@@ -897,8 +897,12 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
   const searchMatches = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return [];
-    return messages.filter(message => (message.content || "").toLowerCase().includes(query));
-  }, [messages, searchQuery]);
+    return snapshot.sessions.flatMap(session =>
+      session.messages
+        .filter(message => (message.content || "").toLowerCase().includes(query))
+        .map(message => ({ sessionId: session.id, sessionTitle: session.title, message })),
+    );
+  }, [snapshot.sessions, searchQuery]);
   const createdContent = useMemo(() => activeSession?.createdContent ?? [], [activeSession]);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewItem, setPreviewItem] = useState<QaCreatedContent | null>(null);
@@ -938,9 +942,15 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
     const match = searchMatches[index];
     if (!match) return;
     setSearchCursor(index);
-    const node = bodyRef.current?.querySelector<HTMLElement>(`[data-qa-message-id="${match.id.replace(/"/g, '\"')}"]`);
-    node?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [searchMatches]);
+    if (match.sessionId !== snapshot.activeSessionId) {
+      switchQaSession(match.sessionId);
+      setDrawerOpen(false);
+    }
+    window.setTimeout(() => {
+      const node = bodyRef.current?.querySelector<HTMLElement>(`[data-qa-message-id="${match.message.id.replace(/"/g, '\"')}"]`);
+      node?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 160);
+  }, [searchMatches, snapshot.activeSessionId]);
 
   const handleScroll = useCallback(() => {
     const el = bodyRef.current;
@@ -1152,7 +1162,7 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
       {searchOpen && (
         <div className="qa-search-panel" style={{ margin: "0 12px 8px", padding: 10, borderRadius: 12, background: "rgba(128,128,128,.08)", display: "grid", gap: 8 }}>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <input value={searchQuery} onChange={event => { setSearchQuery(event.target.value); setSearchCursor(0); }} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); jumpToSearchMatch(searchCursor); } }} placeholder="搜索当前对话的关键词…" autoFocus style={{ flex: 1, minWidth: 0, padding: "8px 10px", borderRadius: 9, border: "1px solid var(--border, #ddd)", background: "var(--surface, #fff)", fontSize: 13 }} />
+            <input value={searchQuery} onChange={event => { setSearchQuery(event.target.value); setSearchCursor(0); }} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); jumpToSearchMatch(searchCursor); } }} placeholder="搜索全部对话的关键词…" autoFocus style={{ flex: 1, minWidth: 0, padding: "8px 10px", borderRadius: 9, border: "1px solid var(--border, #ddd)", background: "var(--surface, #fff)", fontSize: 13 }} />
             <button type="button" onClick={() => jumpToSearchMatch(Math.max(0, searchCursor - 1))} disabled={!searchMatches.length} className="qa-icon-btn" aria-label="上一个匹配">‹</button>
             <button type="button" onClick={() => jumpToSearchMatch(Math.min(searchMatches.length - 1, searchCursor + 1))} disabled={!searchMatches.length} className="qa-icon-btn" aria-label="下一个匹配">›</button>
             <button type="button" onClick={() => { setSearchOpen(false); setSearchQuery(""); }} className="qa-icon-btn" aria-label="关闭搜索">×</button>
@@ -1165,8 +1175,9 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
           {searchMatches.length > 0 && (
             <div style={{ display: "grid", gap: 4, maxHeight: 170, overflowY: "auto" }}>
               {searchMatches.map((match, index) => (
-                <button key={match.id} type="button" onClick={() => jumpToSearchMatch(index)} style={{ textAlign: "left", padding: "7px 9px", borderRadius: 8, background: index === searchCursor ? "rgba(184,135,104,.18)" : "transparent", border: 0, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {match.content.trim().slice(0, 120)}
+                <button key={match.sessionId + ":" + match.message.id} type="button" onClick={() => jumpToSearchMatch(index)} style={{ textAlign: "left", padding: "7px 9px", borderRadius: 8, background: index === searchCursor ? "rgba(184,135,104,.18)" : "transparent", border: 0, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={{ opacity: .55, marginRight: 6 }}>{match.sessionTitle}</span>
+                  {match.message.content.trim().slice(0, 120)}
                 </button>
               ))}
             </div>
