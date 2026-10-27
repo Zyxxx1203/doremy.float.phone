@@ -6,6 +6,7 @@ import { updateStatusBarTone } from "@/lib/bg-tone";
 import { loadDeviceCompatibilitySettings } from "@/lib/device-compatibility";
 import { startDiaryEntryTimerService, stopDiaryEntryTimerService } from "@/lib/diary-entry-timer-service";
 import { startFollowUpService, stopFollowUpService } from "@/lib/follow-up-service";
+import { installLifeScheduleProactiveScheduler } from "@/lib/life/life-proactive-scheduler";
 import { startMomentsService, stopMomentsService } from "@/lib/moments-engine";
 import { bgTimerCleanup } from "@/lib/bg-timer";
 import { PhoneThemeApp } from "@/components/phone-theme-app";
@@ -1929,6 +1930,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     let cancelled = false;
     let servicesStarted = false;
     let cleanupWeixinCloudRealtimeSync: (() => void) | null = null;
+    let cleanupLifeScheduleScheduler: (() => void) | null = null;
 
     void (async () => {
       try {
@@ -1965,6 +1967,8 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
       if (cancelled) return;
       startFollowUpService();
       startMomentsService();
+      const stopLifeScheduleScheduler = installLifeScheduleProactiveScheduler();
+      cleanupLifeScheduleScheduler = stopLifeScheduleScheduler;
       startDiaryEntryTimerService();
       const stopWeixinCloudRealtimeSync = startWeixinCloudRealtimeSync();
       servicesStarted = true;
@@ -1983,6 +1987,8 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
       if (servicesStarted) {
         stopFollowUpService();
         stopMomentsService();
+        cleanupLifeScheduleScheduler?.();
+        cleanupLifeScheduleScheduler = null;
         stopDiaryEntryTimerService();
       }
       bgTimerCleanup();
