@@ -11,6 +11,7 @@
 import { loadCharacters } from "@/lib/character-storage";
 import { loadChatContacts, loadChatSessions } from "@/lib/chat-storage";
 import { armLifeSceneProactiveBailout, cancelBailoutPrefix } from "@/lib/push-bailout-client";
+import { syncLifeScheduleSnapshot } from "./life-schedule-cloud";
 import { buildLifeScenePromptOverride, getActiveLifePromptPreset, getLifePromptPresets } from "./life-presets";
 import { loadVirtualLifeState, saveVirtualLifeState } from "./life-storage";
 import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow, upsertLifeScene } from "./life-runtime";
@@ -100,6 +101,7 @@ async function runOnce(): Promise<void> {
   try {
     const state = loadVirtualLifeState();
     if (!state.settings.enabled || !state.settings.enableCharacterAutonomy || state.settings.enableProactiveSceneMessages === false) return;
+    void syncLifeScheduleSnapshot();
     const player = playerLocation(state);
     if (!player) return;
     const characters = loadCharacters();
@@ -180,11 +182,16 @@ export function installLifeScheduleProactiveScheduler(): () => void {
   start();
   timer = setInterval(start, TICK_MS);
   const onVisible = () => { if (document.visibilityState === "visible") start(); };
+  const onScheduleChanged = () => { void syncLifeScheduleSnapshot(true); start(); };
   document.addEventListener("visibilitychange", onVisible);
+  window.addEventListener("life-force-sync", onScheduleChanged);
+  window.addEventListener("virtual-life-state-updated", onScheduleChanged);
   return () => {
     stopped = true;
     if (timer) clearInterval(timer);
     timer = null;
     document.removeEventListener("visibilitychange", onVisible);
+    window.removeEventListener("life-force-sync", onScheduleChanged);
+    window.removeEventListener("virtual-life-state-updated", onScheduleChanged);
   };
 }
