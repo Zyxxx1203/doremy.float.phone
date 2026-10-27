@@ -194,6 +194,14 @@ function StickerMark({ doodle, textSize }: { doodle: PhotoWallDoodle; textSize: 
   return <g transform={`translate(${x} ${y}) rotate(${doodle.rotation ?? 0})`}><text x={0} y={0} fill={doodle.color} fontSize={textSize} textAnchor="middle" dominantBaseline="middle">{doodle.content}</text></g>;
 }
 
+/** 贴纸用 HTML 图层渲染，避免 SVG preserveAspectRatio=none 随画布比例拉伸变形。 */
+function StickerGlyph({ doodle, size }: { doodle: PhotoWallDoodle; size: number }) {
+  if (doodle.content === "heart" || doodle.content === "❤") {
+    return <svg width={size} height={size} viewBox="-8 -8 16 16" aria-hidden="true"><path d={HEART_STICKER_PATH} fill={doodle.color}/></svg>;
+  }
+  return <span style={{ display: "inline-block", fontSize: size, lineHeight: 1, color: doodle.color }}>{doodle.content || "✦"}</span>;
+}
+
 export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, backgroundBox, wallWorld, onOpenDetail, readOnly = false, fitHeight = false, canvasZoom = 1, mode: controlledMode, onModeChange, brushColor: controlledBrushColor, brushWidth: controlledBrushWidth, sticker: controlledSticker, onStickerChange, stickerRotation: controlledStickerRotation = 0, eraser: controlledEraser, onEraserChange }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -549,11 +557,20 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
         className="pointer-events-none absolute inset-0 h-full w-full"
         style={{ zIndex: 9999, pointerEvents: "none", touchAction: "none", overflow: "visible" }}>
         {mode === "doodle" && !readOnly && <rect x="0" y="0" width="100" height="100" fill="transparent" />}
-        {wallDoodles.map(doodle => doodle.kind === "stroke"
-          ? <polyline key={doodle.id} points={doodle.points.map(point => (point.x * 100) + "," + (point.y * 100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(0.6, doodle.width / 2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
-          : <g key={doodle.id}><StickerMark doodle={doodle} textSize={5} /></g>)}
+        {wallDoodles.filter(doodle => doodle.kind === "stroke").map(doodle =>
+          <polyline key={doodle.id} points={doodle.points.map(point => (point.x * 100) + "," + (point.y * 100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(0.6, doodle.width / 2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>)}
         {mode === "doodle" && wallStrokeRef.current && draftPoints.length > 1 && <polyline points={draftPoints.map(point => (point.x * 100) + "," + (point.y * 100)).join(" ")} fill="none" stroke={brushColor} strokeWidth={Math.max(0.6, brushWidth / 2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>}
       </svg>
+      {/* 贴纸用独立 HTML 图层：固定宽高比，不随画布宽高比拉伸。 */}
+      <div className="pointer-events-none absolute inset-0" style={{ zIndex: 10000 }} aria-hidden="true">
+        {wallDoodles.filter(doodle => doodle.kind === "sticker").map(doodle => {
+          const x = doodle.points[0]?.x ?? 0.5;
+          const y = doodle.points[0]?.y ?? 0.5;
+          const size = Math.max(14, (wallWorld?.width ?? 2400) * 0.05);
+          return <div key={doodle.id} style={{ position: "absolute", left: `${x * 100}%`, top: `${y * 100}%`, transform: `translate(-50%, -50%) rotate(${doodle.rotation ?? 0}deg)`, lineHeight: 1 }}><StickerGlyph doodle={doodle} size={size} /></div>;
+        })}
+      </div>
+
       <div
         aria-label={mode === "move" ? "照片摆放操作层" : "照片与背面留言涂鸦层"}
         data-photo-wall-input-layer={mode}
@@ -809,13 +826,20 @@ function WallPhotoFrame({ photo, placement, canvasZoom, selected, flipped, place
       )}
 
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 z-10 h-full w-full" style={{ overflow: "visible" }}>
-        {visibleDoodles.map(doodle => doodle.kind === "stroke"
-          ? <polyline key={doodle.id} points={doodle.points.map(point => String(point.x * 100) + "," + String(point.y * 100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={doodle.width} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-          : <g key={doodle.id}><StickerMark doodle={doodle} textSize={12} /></g>)}
+        {visibleDoodles.filter(doodle => doodle.kind === "stroke").map(doodle =>
+          <polyline key={doodle.id} points={doodle.points.map(point => String(point.x * 100) + "," + String(point.y * 100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={doodle.width} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />)}
         {drawingIsEnabled && draftPoints.length > 1 && <polyline points={draftPoints.map(point => String(point.x * 100) + "," + String(point.y * 100)).join(" ")} fill="none" stroke="#c2705a" strokeWidth={3} strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
       </svg>
 
 
+
+      <div className="pointer-events-none absolute inset-0 z-20" aria-hidden="true">
+        {visibleDoodles.filter(doodle => doodle.kind === "sticker").map(doodle => {
+          const x = doodle.points[0]?.x ?? 0.5;
+          const y = doodle.points[0]?.y ?? 0.5;
+          return <div key={doodle.id} style={{ position: "absolute", left: `${x * 100}%`, top: `${y * 100}%`, transform: `translate(-50%, -50%) rotate(${doodle.rotation ?? 0}deg)`, lineHeight: 1 }}><StickerGlyph doodle={doodle} size={240 * placement.scale * 0.14} /></div>;
+        })}
+      </div>
 
       {selected && movingIsEnabled && !placement.locked && <button
         type="button"
