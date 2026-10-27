@@ -71,11 +71,18 @@ function nextArmAt(triggerKey: string, now: number): number {
     if (raw) {
       const parsed = JSON.parse(raw) as { executeAt?: number };
       // 还未到执行时刻：沿用，避免每分钟 POST 把任务不断往后推。
+      // 已经挂过服务端循环链的，不在客户端重复续排；让服务端 idleRepeat 继续。
+      if ((parsed as { repeat?: boolean }).repeat === true) {
+        const repeatUntil = Number((parsed as { repeatUntil?: number }).repeatUntil) || 0;
+        if (repeatUntil > now) return 0;
+        localStorage.removeItem(ARM_META_PREFIX + triggerKey);
+      }
       if (typeof parsed.executeAt === "number" && parsed.executeAt > now + 60_000) return parsed.executeAt;
     }
   } catch { /* fall through */ }
   const executeAt = now + MIN_DELAY_MS + Math.floor(Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS));
-  try { localStorage.setItem(ARM_META_PREFIX + triggerKey, JSON.stringify({ executeAt })); } catch { /* best effort */ }
+  const repeatUntil = executeAt + 20 * 60_000 * 24;
+  try { localStorage.setItem(ARM_META_PREFIX + triggerKey, JSON.stringify({ executeAt, repeat: true, repeatUntil })); } catch { /* best effort */ }
   return executeAt;
 }
 
@@ -111,6 +118,7 @@ async function runOnce(): Promise<void> {
       saveVirtualLifeState(sceneResult.state);
       const trigger = scene.id + ":" + character.id;
       const executeAtMs = nextArmAt(trigger, now);
+      if (!executeAtMs) continue;
       if (armedCache.get(trigger) === executeAtMs) continue;
       armedCache.set(trigger, executeAtMs);
       const result = await armLifeSceneProactiveBailout({
@@ -127,8 +135,15 @@ async function runOnce(): Promise<void> {
         ].join("\n\n"),
         lifeScenePrompt,
         executeAtMs,
+        // 20 分钟一轮，最多 24 轮（约 8 小时）；服务端执行完一单后自己续下一单，
+        // 因此 App 完全关闭也能持续主动搭话。
+        repeat: { intervalMs: 20 * 60_000, remaining: 24 },
       });
-      if (!result.ok) console.warn("[LifeSchedule] 主动消息未挂上：", character.name, result.reason);
+      if (!result.ok) {
+        // 没挂上就清掉“已挂”标记，下一轮继续重试，不能一次失败永远不排。
+        try { localStorage.removeItem(ARM_META_PREFIX + trigger); } catch { /* best effort */ }
+        console.warn("[LifeSchedule] 主动消息未挂上：", character.name, result.reason);
+      }
     }
   } catch (error) {
     console.warn("[LifeSchedule] scheduler failed:", error);

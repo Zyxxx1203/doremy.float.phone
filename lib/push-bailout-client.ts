@@ -498,6 +498,8 @@ export async function armLifeSceneProactiveBailout(input: {
     prompt: string;
     lifeScenePrompt?: LifeScenePromptOverride;
     executeAtMs: number;
+    /** 可选：服务端在这一单完成后继续按 interval 续排，实现 App 关闭后的循环主动消息。 */
+    repeat?: { intervalMs: number; remaining: number };
 }): Promise<BailoutArmResult> {
     if (!bailoutEnabled()) return { ok: false, reason: "当前环境不支持服务端离线预约" };
     try {
@@ -537,6 +539,9 @@ export async function armLifeSceneProactiveBailout(input: {
                 appTags: ["chat", "text", "offline", "life-scene"],
                 armAt: new Date(input.executeAtMs).toISOString(),
                 lifeScene: { sceneId: input.sceneId, characterId: input.characterId, characterName: input.characterName || character.name },
+                ...(input.repeat && input.repeat.intervalMs > 0 && input.repeat.remaining > 0
+                    ? { idleRepeat: { intervalMs: input.repeat.intervalMs, remaining: input.repeat.remaining, quietWin: null } }
+                    : {}),
             },
         });
         return posted ? { ok: true } : { ok: false, reason: "服务端预约接口没有确认成功" };

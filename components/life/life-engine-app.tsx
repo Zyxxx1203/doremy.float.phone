@@ -823,6 +823,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       ].filter(Boolean).join("\n\n"),
       lifeScenePrompt: activeLifeScenePrompt,
       executeAtMs: Date.now() + 60_000,
+      repeat: { intervalMs: 20 * 60_000, remaining: 3 },
     });
     setNotice(result.ok
       ? "已挂起一条主动消息；1 分钟后由服务端生成。可在「主动消息排期」查看。"
