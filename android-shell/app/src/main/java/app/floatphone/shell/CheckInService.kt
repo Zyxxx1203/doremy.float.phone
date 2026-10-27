@@ -19,6 +19,7 @@ import android.util.Base64
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -27,6 +28,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import org.json.JSONArray
@@ -974,8 +976,31 @@ class CheckInService : Service() {
             maxLines = 2
             text = "想看看你在干嘛…"
         }
-        container.addView(
+        val titleRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        titleRow.addView(
             titleView,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        val closeButton = Button(this).apply {
+            text = "×"
+            contentDescription = "关闭查岗浮层"
+            setTextColor(t.mutedText)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(dp(10), 0, dp(10), 0)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setColor(t.muted)
+            }
+            setOnClickListener { rejectCheckIn() }
+        }
+        titleRow.addView(closeButton, LinearLayout.LayoutParams(dp(48), dp(40)))
+        container.addView(
+            titleRow,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -1100,7 +1125,11 @@ class CheckInService : Service() {
             ),
         )
 
-        rootView = container
+        rootView = ScrollView(this).apply {
+            isFillViewport = true
+            setBackgroundColor(Color.TRANSPARENT)
+            addView(container, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
     }
 
     /**
@@ -1119,9 +1148,11 @@ class CheckInService : Service() {
                     @Suppress("DEPRECATION")
                     WindowManager.LayoutParams.TYPE_PHONE
                 }
+                val metrics = resources.displayMetrics
+                val availableHeight = (metrics.heightPixels - dp(32)).coerceAtLeast(dp(260))
                 val params = WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT,
-                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    minOf(availableHeight, dp(620)),
                     type,
                     // NOT_FOCUSABLE：默认不抢你正在用的 App 的输入焦点（你还能继续打字）；
                     // FLAG_LAYOUT_IN_SCREEN 让它能盖到状态栏区域，居中显示。
@@ -1131,8 +1162,10 @@ class CheckInService : Service() {
                     android.graphics.PixelFormat.TRANSLUCENT,
                 ).apply {
                     gravity = Gravity.CENTER
-                    val edge = dp(20)
-                    width = resources.displayMetrics.widthPixels - edge * 2
+                    width = minOf(metrics.widthPixels - dp(40), dp(620)).coerceAtLeast(dp(240))
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                    }
                 }
                 layoutParams = params
                 val added = runCatching { windowManager.addView(view, params) }
@@ -1160,13 +1193,16 @@ class CheckInService : Service() {
         val screenWidth = resources.displayMetrics.widthPixels.coerceAtLeast(dp(1))
         val screenHeight = resources.displayMetrics.heightPixels.coerceAtLeast(dp(1))
         val params = layoutParams ?: (view.layoutParams as? WindowManager.LayoutParams) ?: return
-        params.width = (screenWidth - dp(40)).coerceAtLeast(dp(240))
-        params.height = WindowManager.LayoutParams.WRAP_CONTENT
+        params.width = minOf(screenWidth - dp(40), dp(620)).coerceAtLeast(dp(240))
+        params.height = minOf((screenHeight - dp(32)).coerceAtLeast(dp(260)), dp(620))
         params.gravity = Gravity.CENTER
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        }
         val previewFrame = previewView?.parent as? View
         val previewLayout = previewFrame?.layoutParams as? LinearLayout.LayoutParams
         if (previewFrame != null && previewLayout != null) {
-            previewLayout.height = minOf(dp(280), (screenHeight - dp(240)).coerceAtLeast(dp(100)))
+            previewLayout.height = minOf(dp(280), (screenHeight - dp(300)).coerceAtLeast(dp(96)))
             previewFrame.layoutParams = previewLayout
             previewFrame.requestLayout()
         }
