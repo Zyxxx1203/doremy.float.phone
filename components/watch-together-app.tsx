@@ -1000,10 +1000,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         setLocalResolverStatus("正在检查本地解析服务…");
         setResolverState({ state: "resolving", message: "正在检查本地解析服务…" });
         try {
-          const health = await fetch(baseUrl + "/health", { headers: localResolverToken.trim() ? { "X-Resolver-Token": localResolverToken.trim() } : {}, cache: "no-store", signal: AbortSignal.timeout(3000) });
+          const health = await fetch(baseUrl + "/health", { headers: localResolverToken.trim() ? { "X-Resolver-Token": localResolverToken.trim() } : {}, cache: "no-store", signal: AbortSignal.timeout(8000) });
           if (!health.ok) throw new Error("HTTP " + health.status);
         } catch {
-          throw new Error("本地解析服务不可达（3 秒探活失败）；请确认 Termux 服务已启动，或暂时关闭本地解析地址");
+          throw new Error("本地解析服务不可达（8 秒探活失败）；请确认 Termux 服务已启动，或暂时关闭本地解析地址");
         }
         setLocalResolverStatus("正在下载到本地缓存…");
         setResolverState({ state: "resolving", message: "正在下载到本地缓存…" });

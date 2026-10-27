@@ -21,6 +21,7 @@ import re
 import secrets
 import shutil
 import socket
+import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -356,6 +357,21 @@ def resolve_video(body: dict) -> dict:
         suffix = media.suffix.lower()
         if suffix not in (".mp4", ".webm", ".mkv", ".mov", ".m4v"):
             raise RuntimeError(f"暂不支持该平台输出格式：{suffix or '未知'}")
+        if suffix in (".mp4", ".m4v", ".mov") and shutil.which("ffmpeg"):
+            # moov atom 在文件尾部时，Android 播放器拖进度会先卡住等元数据。
+            # 统一再 remux 一次 faststart（不重编码），让 Range 跳转稳定。
+            faststart = tempdir / ("faststart" + suffix)
+            try:
+                result = subprocess.run(
+                    ["ffmpeg", "-y", "-loglevel", "error", "-i", str(media),
+                     "-c", "copy", "-movflags", "+faststart", str(faststart)],
+                    capture_output=True, timeout=180,
+                )
+                if result.returncode == 0 and faststart.is_file() and faststart.stat().st_size > 1024:
+                    media.unlink(missing_ok=True)
+                    media = faststart
+            except Exception:
+                faststart.unlink(missing_ok=True)
         final = ROOT / f"{job_id}{suffix}"
         media.replace(final)
         title = video_title or final.stem
