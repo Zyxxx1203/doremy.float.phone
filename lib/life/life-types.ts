@@ -27,28 +27,7 @@ export type LifeActorClock = {
   updatedAt: string;
 };
 
-export type LifePromptPreset = {
-  id: string;
-  name: string;
-  description?: string;
-  sourcePresetId?: string;
-  sourcePresetName?: string;
-  basePresetPrompt?: string;
-  sceneOutputPrompt?: string;
-  sceneBehaviorPrompt?: string;
-  sceneTaskPrompt?: string;
-  toolCallingPrompt?: string;
-  scheduleGenerationPrompt?: string;
-  invitationResponsePrompt?: string;
-  locationHabitPrompt?: string;
-  customPrompt?: string;
-  /** 该预设的连续纯行动上限；未设置时用 settings.maxConsecutiveActionOnly。 */
-  maxConsecutiveActionOnly?: 0 | 1 | 2;
-};
-
 export type LifeEngineSettings = {
-  promptPresets?: LifePromptPreset[];
-  activePromptPresetId?: string;
   playerDisplayName: string;
   enabled: boolean;
   autoGenerateWeeklyPlans: boolean;
@@ -121,7 +100,6 @@ export type LifeEngineSettings = {
   sceneImageCount: 1 | 2 | 3 | 4;
   sceneImageStyle: string;
   sceneImagePrompt: string;
-  customPrompt: string;
 };
 export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   playerDisplayName: "我",
@@ -177,7 +155,6 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   sceneImageCount: 1,
   sceneImageStyle: "温暖自然的生活感，电影级构图，表情与动作自然，保持角色外观一致",
   sceneImagePrompt: "",
-  customPrompt: "",
 };
 
 export type LifeScheduleSlot = {

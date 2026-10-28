@@ -384,6 +384,36 @@ function isPromptEnabled(prompt: Prompt, promptOrder?: PromptOrderEntry[]): bool
     return prompt.enabled;
 }
 
+export type PresetPromptHit = {
+    identifier: string;
+    name: string;
+    tags?: string[];
+    enabled: boolean;
+    included: boolean;
+    reason?: "disabled" | "tag-mismatch";
+};
+
+/**
+ * 只读地列出预设条目在当前 appTags 下是否命中，供提示词查看器展示“命中/未命中”。
+ * 与组装共用同一套排序、启用与标签判断，避免预览和实际发送不一致。
+ */
+export function classifyPresetPrompts(preset: PresetConfig | null, activeTags: string[]): PresetPromptHit[] {
+    if (!preset) return [];
+    return buildProcessingOrder(preset).map(prompt => {
+        const tags = getPromptTags(prompt) ?? undefined;
+        const enabled = isPromptEnabled(prompt, preset.prompt_order);
+        const tagMatched = !tags || tags.every(tag => activeTags.includes(tag));
+        return {
+            identifier: prompt.identifier,
+            name: prompt.name || prompt.identifier,
+            tags,
+            enabled,
+            included: enabled && tagMatched,
+            reason: !enabled ? "disabled" as const : !tagMatched ? "tag-mismatch" as const : undefined,
+        };
+    });
+}
+
 
 // ── Helper: sanitize identifier into valid XML tag name ──
 function toXmlTag(identifier: string): string {

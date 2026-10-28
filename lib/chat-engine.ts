@@ -410,12 +410,6 @@ export type DebugPromptRequestOptions = {
     debugSessionId?: string;
 };
 
-export type LifeScenePromptOverride = {
-    outputContract: string;
-    behaviorPrompt?: string;
-    toolPrompt?: string;
-};
-
 type ChatPromptBuildOptions = {
     followUpCount?: number;
     followUpDelay?: number;
@@ -438,9 +432,6 @@ type ChatPromptBuildOptions = {
     /** 是否把当前角色的线上私聊作为 recent_chat 注入短期时间线。
      *  默认按 offline 判断；生活场景/日程等显式传 false，避免线上话题串味。 */
     includeDirectChatEntries?: boolean;
-    /** 仅生活现场使用：把生活 preset 注入成独立 system，并停用 chat 格式条目。
-     *  其它聊天/App 不传，完全不受影响。 */
-    lifeScenePrompt?: LifeScenePromptOverride;
 };
 
 function matchesPromptProfileRef(prompt: { identifier: string; name?: string }, refs: Set<string>): boolean {
@@ -469,74 +460,6 @@ export function applyCustomPromptProfileToPreset(preset: PresetConfig, profile: 
         ...preset,
         prompts: allowedPrompts.map(prompt => ({ ...prompt })),
         prompt_order: promptOrder,
-    };
-}
-
-const LIFE_SCENE_DISABLED_PROMPTS = new Set([
-    "chat_immersion_instruction",
-    "chat_output_format",
-    "chat_offline_format",
-    "chat_optional_actions",
-    "chat_tools",
-    "group_chat_tools",
-    "chat_followup",
-    "chat_timed_wake",
-    "chat_user_timed_wake",
-    "chat_idle_reconnect",
-    "chat_period_care",
-    "chat_voice_format",
-    "chat_video_format",
-    "story_output_format",
-    "vn_output_format",
-    "vn_story_beats",
-    "group_chat_format",
-    "group_voice_call_format",
-    "group_video_call_format",
-    "group_chat_offline_format",
-    "group_chat_optional_actions",
-    "calendar_plan_generation",
-]);
-
-function applyLifeScenePromptOverride(preset: PresetConfig | null, override: LifeScenePromptOverride): PresetConfig {
-    const source = preset ?? createBuiltinPreset();
-    const prompts = source.prompts.map(prompt =>
-        LIFE_SCENE_DISABLED_PROMPTS.has(prompt.identifier) ? { ...prompt, enabled: false } : { ...prompt },
-    );
-    const extras: PresetConfig["prompts"] = [];
-    const addExtra = (identifier: string, name: string, content: string) => {
-        const value = content.trim();
-        if (!value) return;
-        extras.push({
-            identifier,
-            name,
-            role: "system",
-            content: value,
-            injection_depth: 0,
-            enabled: true,
-            system_prompt: true,
-        });
-    };
-    addExtra("life_scene_output_contract", "生活现场输出协议", override.outputContract);
-    addExtra("life_scene_behavior", "生活现场行为规则", override.behaviorPrompt ?? "");
-    addExtra("life_scene_tools", "生活现场工具规则", override.toolPrompt ?? "");
-    const extraIds = new Set(extras.map(item => item.identifier));
-    const order = (source.prompt_order ?? source.prompts.map(prompt => ({ identifier: prompt.identifier, enabled: prompt.enabled })))
-        .filter(entry => !extraIds.has(entry.identifier))
-        .map(entry => ({
-            ...entry,
-            enabled: LIFE_SCENE_DISABLED_PROMPTS.has(entry.identifier) ? false : entry.enabled,
-        }));
-    const anchor = order.findIndex(entry => entry.identifier === "shortTermMemory");
-    const extraOrder = extras.map(item => ({ identifier: item.identifier, enabled: true }));
-    if (anchor >= 0) order.splice(anchor, 0, ...extraOrder);
-    else order.push(...extraOrder);
-    return {
-        ...source,
-        id: `${source.id}::life`,
-        name: `${source.name}（生活场景）`,
-        builtIn: false,
-        prompts: [...prompts, ...extras],
-        prompt_order: order,
     };
 }
 
@@ -1968,7 +1891,6 @@ export async function buildChatPromptMessages(
     const presets = loadPresets();
     let preset = activeSlot.presetId ? presets.find(p => p.id === activeSlot.presetId) || null : null;
     if (!preset) preset = presets.find(p => p.builtIn) ?? null;
-    if (options?.lifeScenePrompt) preset = applyLifeScenePromptOverride(preset, options.lifeScenePrompt);
     const promptProfile = options?.promptProfile;
     if (preset && promptProfile) {
         preset = applyCustomPromptProfileToPreset(preset, promptProfile);
@@ -2137,7 +2059,7 @@ export async function buildChatPromptMessages(
 
     // 全局生图身份规则：所有非生活场景的文本生成都带一条，避免朋友圈/聊天/
     // 自定义 App 的照片描述只写代词，导致其他角色参考图无法匹配。
-    if (!options?.lifeScenePrompt) {
+    if (!options?.appTags?.includes("life")) {
         llmMessages.push({ role: "system", content: IMAGE_CHARACTER_NAMING_RULE });
     }
 
@@ -2274,16 +2196,18 @@ export type OfflineChatCompletionResult = ParsedOfflineResponse & {
 export async function generateOfflineChatCompletion(
     session: ChatSession,
     history: ChatMessage[],
-    options?: { signal?: AbortSignal; onStreamDelta?: (delta: string) => void; includeDirectChatEntries?: boolean; lifeScenePrompt?: LifeScenePromptOverride },
+    options?: { signal?: AbortSignal; onStreamDelta?: (delta: string) => void; includeDirectChatEntries?: boolean; appId?: string; appTags?: string[] },
 ): Promise<OfflineChatCompletionResult> {
+    const appId = options?.appId ?? "chat";
+    const appTags = options?.appTags ?? ["chat", "offline"];
     const { llmMessages, character, config, preset, regexes, userIdentity } = await buildChatPromptMessages(
         session,
         history,
         {
-            appTags: ["chat", "offline"],
+            appId,
+            appTags,
             excludeOfflineSessionId: session.id,
             includeDirectChatEntries: options?.includeDirectChatEntries,
-            lifeScenePrompt: options?.lifeScenePrompt,
         },
     );
     const summaryTag = preset?.story_summary_tag?.trim() || "summary";
@@ -2292,7 +2216,8 @@ export async function generateOfflineChatCompletion(
     let reasoning = "";
     const meta = { characterName: character.name, userName: userIdentity?.name };
     const requestOptions = {
-        appTags: ["chat", "offline"],
+        appId,
+        appTags,
         debugSessionId: session.id,
         signal: options?.signal,
         onReasoning: (t: string) => { reasoning = t; },
@@ -2302,8 +2227,8 @@ export async function generateOfflineChatCompletion(
         // 线下流式：正文边生成边通过 onStreamDelta 交给 UI 做实时预览；
         // 摘要补提仍走整段请求（输出短，无需流式）。
         const streamResult = await sendLLMStreamRequest(config, preset, llmMessages, regexes, meta, {
-            appId: "chat",
-            appTags: ["chat", "offline"],
+            appId,
+            appTags,
             debugSessionId: session.id,
             signal: options?.signal,
         }, {

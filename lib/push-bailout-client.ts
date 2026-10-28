@@ -6,7 +6,7 @@
 import { bgSetInterval, bgSetTimeout } from "./bg-timer";
 import { BAILOUT_DIRTY_EVENT } from "./bailout-dirty";
 import { BAILOUT_CANCEL_EVENT, type BailoutCancelDetail } from "./bailout-cancel";
-import { buildChatPromptMessages, type LifeScenePromptOverride } from "./chat-engine";
+import { buildChatPromptMessages } from "./chat-engine";
 import { resolveLifeCharacterIdForContact } from "./life/life-autonomy";
 import { isCallActiveForSession } from "./call-session-store";
 import { buildProviderRequest, toLlmRequestMessages, type LlmRequestPayload } from "./llm-provider-adapter";
@@ -496,7 +496,8 @@ export async function armLifeSceneProactiveBailout(input: {
     characterId: string;
     characterName: string;
     prompt: string;
-    lifeScenePrompt?: LifeScenePromptOverride;
+    appId?: string;
+    appTags?: string[];
     executeAtMs: number;
     /** 可选：服务端在这一单完成后继续按 interval 续排，实现 App 关闭后的循环主动消息。 */
     repeat?: { intervalMs: number; remaining: number };
@@ -519,7 +520,7 @@ export async function armLifeSceneProactiveBailout(input: {
         const { llmMessages, character, config, preset, regexes, userIdentity } = await buildChatPromptMessages(
             session,
             [promptMessage],
-            { appTags: ["chat", "text", "offline", "life-scene"], includeDirectChatEntries: false, lifeScenePrompt: input.lifeScenePrompt },
+            { appId: input.appId ?? "life", appTags: input.appTags ?? ["life", "turn", "autonomy"], includeDirectChatEntries: false },
         );
         const request = buildProviderRequest(config, preset, toLlmRequestMessages(llmMessages));
         const posted = await postBailoutJob({

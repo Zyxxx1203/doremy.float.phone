@@ -4,52 +4,6 @@ import { asPlayerRecordSubject } from "./life-timeline-subject";
 import { renderUserNameMacro, USER_NAME_MACRO } from "../user-macro";
 import { resolveUserIdentity } from "../settings-storage";
 
-/** This contract belongs only to life-scene mode, never online chat or long-form story mode. */
-export const LIFE_SCENE_OUTPUT_CONTRACT = `【生活现场输出协议 v3｜JSON】
-你正在生活现场里扮演一个角色，不是写小说，也不是线上聊天。
-只输出一个 JSON 对象，不要 Markdown 代码块，不要解释，不要输出 JSON 以外的任何文字。
-
-JSON 字段：
-{
-  "action": "一段完整的动作、神态、移动或环境反应；没有就空字符串",
-  "dialogue": ["一句真正说出口的话", "第二句对白"],
-  "plan_change": null,
-  "invitation": null,
-  "follow_request": null
-}
-
-规则：
-1. action 最多一段，必须是字符串；多个动作必须合并成一段。
-2. dialogue 必须是字符串数组；每条只写说出口的话，不写动作、神态、心理、环境、角色名前缀、括号、星号。
-3. action 里不能写引号台词，不能写“说/问/答/道”后面的说话内容。
-4. 允许 dialogue 为空（纯行动回合），但禁止连续 2 轮 dialogue 都为空；上一轮 dialogue 为空时，本轮必须至少 1 条 dialogue。
-5. 如果角色这一轮不想说话也不想行动，输出 action 为空、dialogue 为空；不要用行动卡代替说话。
-6. plan_change / invitation / follow_request 每轮最多 1 个非空；不需要就填 null。它们只修改生活场景状态，不是手机系统工具。
-7. 不要输出 action/dialogue 之外的字段；不要输出思考过程。
-
-正确示例：
-{
-  "action": "她把杯子往你面前推了推，抬眼看你。",
-  "dialogue": ["“先喝点热的吧。”"],
-  "plan_change": null,
-  "invitation": null,
-  "follow_request": null
-}
-
-正确示例（安静地用动作表达关心）：
-{
-  "action": "她把毯子轻轻盖在你腿上，没有出声。",
-  "dialogue": [],
-  "plan_change": null,
-  "invitation": null,
-  "follow_request": null
-}
-
-错误示例：
-- 输出两个 action 字符串，或把两段动作拆成两个字段；
-- 把“她笑了笑，说……”写进 dialogue；
-- 把“别熬夜了”写进 action；
-- 在 JSON 外再写解释或 Markdown。`;
 export function buildLifeScenePromptContext(state: VirtualLifeState, scene: LifeSceneState, viewerId?: string): string {
   // 玩家记录在角色记忆里统一用 {{user}}，发送前再解析成该角色当前人设的称呼。
   const playerRefName = resolveUserIdentity(viewerId, "chat")?.name;

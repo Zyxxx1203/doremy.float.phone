@@ -12,7 +12,6 @@ import { loadCharacters } from "@/lib/character-storage";
 import { loadChatContacts, loadChatSessions } from "@/lib/chat-storage";
 import { armLifeSceneProactiveBailout, cancelBailoutPrefix } from "@/lib/push-bailout-client";
 import { syncLifeScheduleSnapshot } from "./life-schedule-cloud";
-import { buildLifeScenePromptOverride, getActiveLifePromptPreset, getLifePromptPresets } from "./life-presets";
 import { loadVirtualLifeState, saveVirtualLifeState } from "./life-storage";
 import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow, upsertLifeScene } from "./life-runtime";
 import type { LifeSceneState, VirtualLifeState } from "./life-types";
@@ -136,9 +135,6 @@ async function runOnce(): Promise<void> {
         }
       }
     }
-    const presets = getLifePromptPresets(state.settings.promptPresets);
-    const preset = getActiveLifePromptPreset(presets, state.settings.activePromptPresetId);
-    const lifeScenePrompt = buildLifeScenePromptOverride(preset, state.settings.customPrompt);
     const now = Date.now();
     for (const character of characters) {
       if (characterLocation(state, character.id) !== player.id) continue;
@@ -168,9 +164,9 @@ async function runOnce(): Promise<void> {
           "请以角色身份自然发起一小回合生活现场对话或行动；不要替玩家发言，不要写成长篇。",
           "如果此刻没有自然的话可说，可以保持安静，但本轮优先给一句有来由的对白。",
         ].join("\n\n"),
-        lifeScenePrompt,
-        executeAtMs,
-        // 20 分钟一轮，最多 24 轮（约 8 小时）；服务端执行完一单后自己续下一单，
+        appId: "life",
+        appTags: ["life", "turn", "autonomy", ...(state.settings.enableCharacterAutonomy ? ["tools"] : [])],
+        executeAtMs,        // 20 分钟一轮，最多 24 轮（约 8 小时）；服务端执行完一单后自己续下一单，
         // 因此 App 完全关闭也能持续主动搭话。
         repeat: { intervalMs: 20 * 60_000, remaining: 24 },
       });

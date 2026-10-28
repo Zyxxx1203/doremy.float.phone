@@ -8,7 +8,12 @@ export type ExtraPromptAppId =
     | "cocreate"
     | "shopping"
     | "interview"
-    | "adventure";
+    | "adventure"
+    | "photo_wall"
+    | "life"
+    | "reality_bridge"
+    | "widget"
+    | "watch_together";
 
 export type ExtraPromptAppDefinition = {
     id: ExtraPromptAppId;
@@ -27,6 +32,11 @@ export const EXTRA_PROMPT_APPS: ExtraPromptAppDefinition[] = [
     { id: "shopping", label: "购物", emptyText: "选择购物任务后点击「预览」" },
     { id: "interview", label: "在场", emptyText: "选择角色与在场任务后点击「预览」" },
     { id: "adventure", label: "冒险", emptyText: "选择角色与冒险存档后点击「预览」" },
+    { id: "photo_wall", label: "照片墙", emptyText: "选择角色后点击「预览」查看照片墙批注 Prompt" },
+    { id: "life", label: "生活", emptyText: "选择角色后点击「预览」查看生活现场 Prompt" },
+    { id: "reality_bridge", label: "现实桥", emptyText: "选择角色后点击「预览」查看离线回复库 Prompt" },
+    { id: "widget", label: "小组件", emptyText: "选择角色后点击「预览」查看桌面状态 Prompt" },
+    { id: "watch_together", label: "一起看", emptyText: "选择角色后点击「预览」查看观后感 Prompt" },
 ];
 
 export const EXTRA_PROMPT_APP_LABELS = Object.fromEntries(
