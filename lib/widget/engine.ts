@@ -12,11 +12,10 @@
  * 该由用户明确开启。
  */
 
-import { simpleLLMCall } from "../api-helpers";
 import { loadCharacters } from "../character-storage";
-import { loadChatContacts, loadChatSessions, loadChatMessages } from "../chat-storage";
-import { prepareShortTermContext } from "../short-term-assembler";
-import { loadApiConfigs, resolveAuxiliaryApiConfig, resolveUserIdentity } from "../settings-storage";
+import { type ChatMessage, type ChatSession } from "../chat-storage";
+import { buildChatPromptMessages, sendLLMRequest } from "../chat-engine";
+import { resolveUserIdentity } from "../settings-storage";
 import { appendCustomAppTimelineEntry } from "../custom-app-storage";
 import { loadWidgetAutoLastRun, loadWidgetConfig, loadWidgetData, markWidgetAutoRun, saveWidgetData } from "./storage";
 
@@ -43,53 +42,46 @@ async function generateLine(
   userName: string,
   previous: WidgetData | null,
 ): Promise<{ text: string; status: string } | null> {
-  const config = resolveAuxiliaryApiConfig("memorySummaryApiConfigId") ?? loadApiConfigs()[0];
-  if (!config) return null;
+  // Widget 现在走统一预设管线：角色卡、世界书、记忆和提示词都从该 APP 的绑定/预设读取，
+  // 提示词本身不再硬编码在代码里（预设条目 tags: ["phone_widget","status"]）。
+  const session: ChatSession = {
+    id: `phone-widget-${character.id}`,
+    contactId: character.id,
+    unreadCount: 0,
+    updatedAt: new Date().toISOString(),
+    isPinned: false,
+    isGroup: false,
+  };
+  const trigger = previous?.text
+    ? `请留下一句今天的桌面状态。不要重复上次留在桌面上的话：「${previous.text}」，换一个自然的角度。`
+    : "请留下一句今天的桌面状态。";
+  const userMessage: ChatMessage = {
+    id: `widget-${Date.now()}`,
+    sessionId: session.id,
+    role: "user",
+    content: trigger,
+    status: "sent",
+    createdAt: new Date().toISOString(),
+  };
 
-  // 角色卡提供必要的人设边界；当前状态只看最近几条聊天和上次桌面内容。
-  // 不加载长期记忆、应用时间线或其他历史，避免上下文过载。
-  // 走系统短期记忆，而不是自己读最后几条聊天。
-  // 这样照片墙/生活/一起看/自定义 APP 的事件都按统一来源和上限进入；
-  // Widget 只读少量上下文，避免把整段聊天或无关应用记忆灌进桌面文案。
-  const shortTerm = prepareShortTermContext(character.id, "phone_widget", { history: [] });
-  const recentMessages = shortTerm.recentBlocks
-    .map(block => block.content)
-    .filter(Boolean)
-    .join("\n\n")
-    .slice(0, 6000);
+  let built: Awaited<ReturnType<typeof buildChatPromptMessages>>;
+  try {
+    built = await buildChatPromptMessages(session, [userMessage], {
+      appId: "phone_widget",
+      appTags: ["phone_widget", "status"],
+    });
+  } catch {
+    return null;
+  }
 
-  const persona = [
-    character.persona?.trim() ? `【角色人设】\n${character.persona.trim().slice(0, 1200)}` : "",
-    character.personality?.trim() ? `【性格补充】\n${character.personality.trim().slice(0, 500)}` : "",
-    character.briefPersona?.trim() ? `【简量人设】\n${character.briefPersona.trim().slice(0, 300)}` : "",
-    character.tags?.length ? `【角色标签】${character.tags.slice(0, 8).join("、")}` : "",
-  ].filter(Boolean).join("\n\n");
-  const avoid = previous?.text ? `\n【避免重复】你上次留在桌面上的话是：「${previous.text}」，这次请换一个自然的角度，不要换几个词后重复。` : "";
-
-  const result = await simpleLLMCall(config, [
-    {
-      role: "system",
-      content: [
-        `你正在以角色「${character.name}」本人的身份，为${userName}手机桌面留下一句短短的日常状态。`,
-        "【最高优先级：严格遵守角色卡】",
-        persona || "角色卡暂时没有填写详细人设；不要擅自补充具体背景或关系设定。",
-        "你必须保持角色原本的性格、价值观、身份、关系边界、说话习惯和情感表达方式。不要把所有角色都写成温柔、黏人、主动表达爱意的通用陪伴型 AI；角色没有表现出的情绪和经历，不要凭空编造。",
-        "【近期聊天】以下内容只用于理解最近发生的事、双方正在聊什么以及角色当下的语气。请勿复述整段聊天，也不要把用户的话冒充成角色说过的话。",
-        recentMessages || "没有读取到近期私聊记录。不要假装记得不存在的对话。",
-        "只参考上面最近几条聊天，不要从旧事件、未出现的记忆或其他应用记录补写背景。",
-        "【输出要求】",
-        `1. 正文只写一句，不超过 ${AUTO_TEXT_LIMIT} 字，像这个角色自然留下的一瞬间状态；具体但不刻意煽情。`,
-        "2. 不要强迫所有角色都向用户表达思念；可以写正在做的事、观察、心情或符合人设的简短念头。",
-        "3. 不要像正式聊天消息，不强制称呼用户、不强制问句；保持角色自己的口吻。",
-        "4. 不要添加人设中没有的重大事件、关系进展、地点或经历。",
-        "5. 只输出严格 JSON，不要任何额外文字：{\"text\":\"...\",\"status\":\"...\"}",
-        "status 是 2-5 字的简短状态标签，也必须符合角色当前情绪；不要默认使用「在想你」之类的亲密状态。",
-      ].join("\n\n"),
-    },
-    { role: "user", content: `请只根据你的人设、最近几条聊天和上次桌面内容，留下一句自然、不重复的桌面状态。${avoid}` },
-  ], { temperature: 0.8, max_tokens: 220, label: "widget-auto-generate" });
-
-  const raw = (result.content ?? "").trim();
+  const raw = (await sendLLMRequest(
+    built.config,
+    built.preset,
+    built.llmMessages,
+    built.regexes,
+    { characterName: character.name, userName },
+    { appId: "phone_widget", appTags: ["phone_widget", "status"] },
+  )).trim();
   if (!raw) return null;
   const cleaned = raw.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   try {

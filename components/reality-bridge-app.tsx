@@ -960,13 +960,10 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     try {
       const history = loadChatMessages(session.id, 30);
       const instruction = [
-        "你正在为角色的现实桥制作离线回复库。请严格遵守当前角色卡、已注入的世界书、预设、记忆与聊天语境，不要改变角色人设。",
-        "请针对下面这条现实事件规则，写 8 条彼此不同、自然简短、像该角色本人会说的话。",
-        "要求：每条 1-2 句；不提模型、提示词、离线库或系统；不要假装已经执行没有发生的事情；避免重复同一套句式。",
         `规则名称：${editing.name || "现实桥联动"}`,
         `触发信号：${editing.matchType || "任意信号"}`,
         `事件正文：{payload}（这是运行时会替换的占位符）`,
-        "请保留 {payload} 作为可选占位符，输出纯文本，每行一条回复，不要编号、不要解释。"
+        "请据此生成离线回复库。",
       ].join("\n");
       const syntheticMessage = {
         id: `offline-library-${Date.now()}`,
@@ -976,14 +973,17 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
         status: "sent" as const,
         createdAt: new Date().toISOString(),
       };
-      const built = await buildChatPromptMessages(session, [...history, syntheticMessage], { appId: "chat" });
+      const built = await buildChatPromptMessages(session, [...history, syntheticMessage], {
+        appId: "reality_bridge",
+        appTags: ["reality_bridge", "offline_library"],
+      });
       const generated = await sendLLMRequest(
         built.config,
         built.preset,
         built.llmMessages,
         built.regexes,
         { characterName: character.name },
-        { appId: "reality-bridge-offline-library", skipOutputRegex: true },
+        { appId: "reality_bridge", appTags: ["reality_bridge", "offline_library"], skipOutputRegex: true },
       );
       const lines = generated.split(/\r?\n/)
         .map(line => line.replace(/^\s*(?:[-*•]|\d+[.)、])\s*/, "").trim())

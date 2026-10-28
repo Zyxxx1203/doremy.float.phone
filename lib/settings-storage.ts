@@ -17,6 +17,7 @@ import type {
 } from "./settings-types";
 import type { UserIdentity } from "@/components/settings/user-identity";
 import { createBuiltinPreset, BUILTIN_PRESET_VERSION } from "./builtin-preset";
+import { createBuiltinAppPrompts } from "./builtin-app-prompts";
 import {
     NOVELAI_DEFAULT_MODEL,
     NOVELAI_DEFAULT_NOISE_SCHEDULE,
@@ -176,6 +177,27 @@ function preserveCustomAppPresetPrompts(fresh: PresetConfig, previous: PresetCon
     };
 }
 
+/**
+ * 内置 APP 的提示词条目按需补齐：只追加缺失项并插入到 shortTermMemory 之前，
+ * 不覆盖用户已修改的内容，也不升 BUILTIN_PRESET_VERSION（升版本会冲掉用户自定义）。
+ */
+function mergeMissingBuiltinAppPrompts(existing: PresetConfig): PresetConfig {
+    const freshPrompts = createBuiltinAppPrompts();
+    const existingIds = new Set((existing.prompts ?? []).map(prompt => prompt.identifier));
+    const missing = freshPrompts.filter(prompt => !existingIds.has(prompt.identifier));
+    if (missing.length === 0) return existing;
+
+    const order = [...(existing.prompt_order ?? [])];
+    let cursor = order.findIndex(entry => entry.identifier === "shortTermMemory" || entry.identifier === "chatHistory");
+    if (cursor < 0) cursor = order.length;
+    for (const prompt of missing) {
+        if (order.some(entry => entry.identifier === prompt.identifier)) continue;
+        order.splice(cursor, 0, { identifier: prompt.identifier, enabled: true });
+        cursor += 1;
+    }
+    return { ...existing, prompts: [...(existing.prompts ?? []), ...missing], prompt_order: order };
+}
+
 
 // --- Presets ──────────────────────────────────────────
 
@@ -202,6 +224,16 @@ export function loadPresets(): PresetConfig[] {
             shouldPersistCleanup = false;
         } else if (shouldPersistCleanup) {
             savePresets(presets);
+        }
+
+        // 内置 APP 的提示词条目按需补齐（只追加缺失项，保留用户已改内容）。
+        const builtinPreset = presets.find(p => p.builtIn);
+        if (builtinPreset) {
+            const merged = mergeMissingBuiltinAppPrompts(builtinPreset);
+            if (merged !== builtinPreset) {
+                presets[presets.indexOf(builtinPreset)] = merged;
+                savePresets(presets);
+            }
         }
 
         return presets;

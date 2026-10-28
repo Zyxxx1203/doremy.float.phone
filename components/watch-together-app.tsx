@@ -626,21 +626,18 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       ].filter(Boolean).join("\n").slice(0, 3500);
       const savedMoments = (record.discussion?.length ? record.discussion.map(item => "[" + new Date(item.createdAt).toLocaleString("zh-CN") + (item.timepoint ? " · " + item.timepoint : "") + "] " + (item.kind === "user" ? "我" : item.characterName) + "：" + item.text) : record.comments).join("\n").slice(-12000);
       const prompt = [
-        "请为一次共同观影，写一段属于角色本人的观后感，并设计一张温柔精致的文字纪念卡。",
-        "角色是" + reviewCharacter.name + "。严格保持角色设定、说话习惯和与用户的关系，不要写成通用影评机器人。",
+        "角色是" + reviewCharacter.name + "。",
         roleDetails,
         "视频标题：" + record.title,
         "视频平台：" + record.platform,
         "共同观看时间：" + new Date(record.startedAt).toLocaleString("zh-CN"),
         "本次陪看时长约：" + Math.floor(record.durationSeconds / 60) + " 分钟",
-        savedMoments ? "本次真实保存的互动片段：\n" + savedMoments : "本次没有保存具体对话片段。不要编造具体对话或声称看到了未提供的画面。",
-        "只根据标题、真实互动和角色设定写感受；如果没有字幕、画面分析或剧情信息，不要假装知道视频情节。",
-        "只输出有效 JSON，不要代码围栏，格式：{\"review\":\"角色第一人称观后感，80-160字\",\"memoryTitle\":\"不超过16字的纪念标题\",\"quote\":\"适合纪念卡的短句，不超过35字\",\"mood\":\"2-6字氛围词\",\"note\":\"共同记忆小记，40-90字\",\"characterReview\":\"对用户说的话，30-80字\"}"
+        savedMoments ? "本次真实保存的互动片段：\n" + savedMoments : "本次没有保存具体对话片段。",
+        "请据此写观后感与纪念卡。",
       ].filter(Boolean).join("\n");
       const userMessage: ChatMessage = { id: "watch-memory-review-" + Date.now(), sessionId: session.id, role: "user", content: prompt, status: "sent", createdAt: new Date().toISOString() };
       const result = await generateChatCompletion(session, [...history, userMessage], {
-        appId: "watch_together", appTags: ["watch_together"], toolsAllowed: false,
-        ephemeralSystemNote: "你是指定角色本人。根据提供的真实信息写观后感与纪念卡。不得捏造视频剧情、画面、台词或用户没说过的话。只返回有效 JSON，中文自然、有角色个性、有文学感但不浮夸。"
+        appId: "watch_together", appTags: ["watch_together", "review"], toolsAllowed: false,
       });
       const raw = flattenCompletionResult(result).trim().replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/, "");
       const parsedStart = raw.indexOf("{");
@@ -1214,7 +1211,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       ).join("\n").slice(0, 6000);
       const backgroundContext = videoBackground?.url === target.url ? videoBackground.text : "";
       const prompt = [
-        "你正在和用户一起看视频，是亲密、自然的陪伴，不是影评机器人。",
         "视频平台：" + target.platformName + "；视频标题（用户可编辑）：" + (videoTitle || "暂未命名") + "。",
         frameDataUrl ? "本轮附带了用户提供/截取的当前画面截图。结合截图与字幕判断人物、场景、动作和情绪；若截图无法辨认，不要编造。" : "",
         "用户描述的当前片段/时间点与两人的互动：" + ((momentOverride ?? settings.currentMoment).trim() || "用户暂未提供具体画面描述") + "。",
@@ -1224,21 +1220,18 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
           ? "当前播放时间附近的字幕脚本（含原始时间戳）：\n" + transcriptContext
           : "已导入脚本没有可用时间戳，以下只作为全片文字参考，不能假装与当前画面精确同步：\n" + transcriptContext) : "",
         frameDataUrl
-          ? "本轮可结合附带截图与字幕/时间点理解；截图只代表这一帧，不可据此推断未展示的后续剧情。"
+          ? "本轮可结合附带截图与字幕/时间点理解。"
           : transcriptContext
             ? "本轮只读取上面的字幕/时间戳脚本；不得声称看见实际画面。只根据已经出现的文字讨论，不能推测后续剧情。"
             : "当前没有导入的字幕/脚本或可用截图。只根据用户明确描述的片段与互动回应，不要声称读取到了视频画面。",
-        "本轮由陪看触发器明确要求你发言，不要判断画面是否值得评论，也不要以“没什么可说”或沉默结束。必须结合当前截图、已有背景资料、字幕或用户发言，输出一条自然的角色反应；资料不足时也要针对可见细节或用户的话回应。只输出角色会直接说的话，最多60个汉字。不要把搜索背景当成截图里已确认的事实，也不要主动剧透。",
+        "本轮由陪看触发器明确要求你发言，请输出一句自然的角色反应。",
       ].filter(Boolean).join("\n");
       const userMessage: ChatMessage = { id: `watch-${Date.now()}`, sessionId: session.id, role: "user", content: prompt, status: "sent", createdAt: new Date().toISOString() };
       const result = await generateChatCompletion(session, [...history, userMessage], {
         appId: "watch_together",
-        appTags: ["watch_together"],
+        appTags: ["watch_together", "watch"],
         toolsAllowed: false,
         attachedImages: frameDataUrl ? [frameDataUrl] : undefined,
-        ephemeralSystemNote: frameDataUrl
-          ? "你正在根据用户提供的当前视频截图、字幕/时间戳脚本与用户一起看视频。允许描述截图中清晰可见的内容，但不要推断截图之外的画面或后续剧情。不要调用工具，只输出一句自然简短的角色发言。"
-          : "你正在根据字幕/时间戳脚本与用户一起看视频。你没有读取到真实视频画面；不要调用工具，不要假装看见画面，也不要剧透。只输出一句自然简短的角色发言。",
       });
       const responseText = flattenCompletionResult(result).trim().replace(/^["“]|["”]$/g, "") || "我刚刚看了这一段，感觉有些细节值得留意。你怎么看？";
       // Treat a screenshot as a one-shot visual hint; do not resend the same frame on every auto-comment.

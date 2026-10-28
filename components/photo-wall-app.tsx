@@ -1391,12 +1391,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         ?? ({ id: `photo-wall-${commenter.id}`, contactId: contact?.id ?? commenter.id, unreadCount: 0, updatedAt: new Date().toISOString(), isPinned: false, isGroup: false } as ChatSession);
       const history = loadChatMessages(session.id).slice(-16);
       const instruction = [
-        "你正在和亲近的人一起翻看一张私人照片墙。",
         `照片标题：${selectedPhoto.title}。`,
         `照片背面已有内容：${editNote || getPhotoBackText(selectedPhoto) || selectedPhoto.caption || "还没有写下记录"}。`,
         `标签：${selectedPhoto.tags.join("、") || "没有标签"}。`,
         `照片类型：${KIND_LABEL[selectedPhoto.kind]}；拍摄者：${selectedPhoto.ownerName}。`,
-        "请以角色本人的口吻写一条自然、具体、真诚的短批注，像在照片背面留下的一句话。不要解释任务，不要说自己是AI，最多80个汉字。若照片内容信息不足，不要编造看不见的细节。",
+        "请据此写一条照片背面的批注。",
       ].join("\n");
       const promptMessage: ChatMessage = {
         id: createPhotoWallId(), sessionId: session.id, role: "user", content: instruction,
@@ -1405,9 +1404,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const storedPhoto = await loadMediaBlob(selectedPhoto.mediaRef).catch(() => null);
       const attachedImages = storedPhoto ? [await readCompressedImageDataUrl(storedPhoto.blob)] : [];
       const result = await generateChatCompletion(session, [...history, promptMessage], {
-        appId: "photo_wall", appTags: ["photo_wall"], toolsAllowed: false,
+        appId: "photo_wall", appTags: ["photo_wall", "annotation"], toolsAllowed: false,
         attachedImages,
-        ephemeralSystemNote: "这是照片墙上的一次性批注请求。若当前模型支持视觉识别，请结合附带的照片本身来写批注；如果没有读取到图片，不要猜测画面细节。只输出角色会写在照片背面的简短批注，不要调用工具，也不要将任务说明复述出来。",
       });
       const content = flattenCompletionResult(result).trim().replace(/^["“]|["”]$/g, "");
       if (!content) throw new Error("角色没有生成批注，请稍后再试。");
@@ -1451,23 +1449,18 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         } : null,
       }));
       const instruction = [
-        "你是正在和亲近的人一起装饰私人照片墙的角色。请根据你的性格和照片墙布局，创作一小组温柔、自然的装饰涂鸦。",
         `你的名字：${artist.name}。`,
         `角色设定：${(artist.persona || artist.personality || "").slice(0, 500)}`,
-        `画布尺寸：${wallWorldOf(before).width} × ${wallWorldOf(before).height}；所有坐标必须是整个画布的 0 到 1 归一化坐标。`,
+        `画布尺寸：${wallWorldOf(before).width} × ${wallWorldOf(before).height}。`,
         `墙上照片（placement 的 x/y 是照片布局锚点，仅用于估计位置）：${JSON.stringify(layout)}`,
-        "只输出纯 JSON，不要 markdown，不要解释，格式：{\"summary\":\"用角色本人的口吻写一条温柔的共同创作回忆，最多100字\",\"elements\":[{\"kind\":\"sticker\",\"content\":\"✿\",\"x\":0.2,\"y\":0.3,\"color\":\"#d98ca3\"},{\"kind\":\"stroke\",\"points\":[{\"x\":0.3,\"y\":0.4},{\"x\":0.32,\"y\":0.42},{\"x\":0.34,\"y\":0.4}],\"color\":\"#d98ca3\",\"width\":3}]}",
-        "生成 3 到 6 个元素，优先使用小花、爱心、星星、弯弯月亮等简洁装饰；笔画由 3 到 18 个点组成。summary 写成一段可保存的共同回忆，像“今天你让我给我们的照片添一朵小花，我又偷偷画了一颗爱心”，不要声称用户没有说过的具体事情。",
-        "把装饰放在照片周围或画布空白处，不要集中遮挡照片中心。无法判断空白时，选择分散的边缘区域。不要修改或删除已有照片、涂鸦。",
-        "贴纸 content 只能从这些短字符中选择：♡、❤、✦、✿、☾、☘、♪、★、❀、✧。颜色使用柔和的粉色、暖棕或金色十六进制色号。",
+        "请按要求创作装饰涂鸦 JSON。",
       ].join("\n");
       const promptMessage: ChatMessage = {
         id: createPhotoWallId(), sessionId: session.id, role: "user", content: instruction,
         status: "sent", createdAt: new Date().toISOString(),
       };
       const result = await generateChatCompletion(session, [...history, promptMessage], {
-        appId: "photo_wall", appTags: ["photo_wall"], toolsAllowed: false,
-        ephemeralSystemNote: "这是照片墙的一次性涂鸦创作任务。只输出符合要求的 JSON，不调用工具、不复述任务。坐标必须在 0 到 1 之间；只新增装饰元素，不输出照片操作。",
+        appId: "photo_wall", appTags: ["photo_wall", "doodle"], toolsAllowed: false,
       });
       const { doodles: created, summary: characterSummary, createdAt } = parseCharacterWallDoodles(flattenCompletionResult(result), artist);
       const latest = stateRef.current;
