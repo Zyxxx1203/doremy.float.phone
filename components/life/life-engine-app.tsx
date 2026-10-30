@@ -1651,8 +1651,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   useEffect(() => {
     if (!ready || !settings.enabled || !settings.enableCharacterAutonomy || settings.enableProactiveSceneMessages === false || !activeScene || activeScene.status !== "active" || !immersiveScene) return;
     let disposed = false;
-    setLifeSceneForegroundLease(activeScene.id, true);
-    const leaseTimer = window.setInterval(() => setLifeSceneForegroundLease(activeScene.id, true), 30_000);
+    const refreshForegroundLease = () => setLifeSceneForegroundLease(activeScene.id, document.visibilityState === "visible");
+    refreshForegroundLease();
+    const leaseTimer = window.setInterval(refreshForegroundLease, 30_000);
+    document.addEventListener("visibilitychange", refreshForegroundLease);
     const minIntervalMinutes = Math.max(2, Math.min(60, settings.proactiveSceneIntervalMinutes ?? 2));
     const maxIntervalMinutes = Math.max(minIntervalMinutes, Math.min(60, settings.proactiveSceneIntervalMaxMinutes ?? 4));
     const getRandomIntervalMs = () => (minIntervalMinutes + Math.floor(Math.random() * (maxIntervalMinutes - minIntervalMinutes + 1))) * 60_000;
@@ -1820,6 +1822,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       window.clearInterval(timer);
       window.clearInterval(leaseTimer);
       setLifeSceneForegroundLease(activeScene.id, false);
+      document.removeEventListener("visibilitychange", refreshForegroundLease);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       // Restore online idle reconnect when the character is no longer co-present.
       // Cleanup also runs for settings changes, so check persisted scene state first.
