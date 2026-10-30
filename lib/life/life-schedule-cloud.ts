@@ -3,6 +3,7 @@
  * 执行生活主动消息前复核：玩家和角色是否仍在同一个日程地点。
  */
 import { loadVirtualLifeState } from "./life-storage";
+import { recordLifeDiagnostic } from "./life-diagnostics";
 import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "./life-runtime";
 
 const SNAPSHOT_RULE_ID = "life-schedule";
@@ -32,16 +33,14 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<void> {
           return [id, slot?.plannedLocationId ?? ""];
         }),
     );
+    const fingerprint = JSON.stringify({ version: 1, playerLocationId, scenes, characterLocations });
+    if (!force && fingerprint === lastJson) return;
     const payload = { version: 1, updatedAt: new Date().toISOString(), playerLocationId, scenes, characterLocations };
-    const json = JSON.stringify(payload);
-    if (!force && json === lastJson) return;
     const response = await fetch("/api/push/bridge-snapshots", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ snapshots: [{ ruleId: SNAPSHOT_RULE_ID, payload }] }),
     });
-    if (response.ok) lastJson = json;
-  } catch {
-    // 云端未配置/未登录时静默；服务端会按无快照兼容旧任务。
-  }
+    if (response.ok) { lastJson = fingerprint; recordLifeDiagnostic({ source: "云端快照", event: "日程位置同步", status: "ok", detail: "玩家地点与 " + Object.keys(characterLocations).length + " 个角色位置已同步。", meta: { sceneCount: scenes.length, playerLocationId } }); } else { recordLifeDiagnostic({ source: "云端快照", event: "日程位置同步", status: "error", detail: "快照接口返回 HTTP " + response.status, meta: { playerLocationId } }); }
+  } catch (error) { recordLifeDiagnostic({ source: "云端快照", event: "日程位置同步", status: "error", detail: error instanceof Error ? error.message : String(error) }); }
 }
