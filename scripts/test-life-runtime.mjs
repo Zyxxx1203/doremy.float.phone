@@ -24,6 +24,9 @@ assert.equal(typeof placeAppointmentInActorSchedule, "function", "appointment pl
 function makeState(schedules = []) {
   return {
     schedules,
+    actorClocks: [],
+    actorStates: [],
+    locations: [],
     settings: { defaultClockMode: "real-time", defaultSpeed: 1 },
   };
 }
