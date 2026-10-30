@@ -10,7 +10,7 @@ const compiled = ts.transpileModule(source, {
 const moduleBox = { exports: {} };
 const sandbox = { module: moduleBox, exports: moduleBox.exports, Date, Math, console };
 vm.runInNewContext(compiled, sandbox, { filename: "life-runtime.cjs" });
-const { advanceActorTimeline, confirmLifeInvitation, generateWeeklyLifePlan, getCurrentActorSchedule, insertManualLifeScheduleSlot, placeAppointmentInActorSchedule, settleActorTimelineToNow, syncScheduleLocationsToLibrary } = moduleBox.exports;
+const { advanceActorTimeline, confirmLifeInvitation, generateWeeklyLifePlan, getCurrentActorSchedule, insertManualLifeScheduleSlot, placeAppointmentInActorSchedule, settleActorTimelineToNow, syncScheduleLocationsToLibrary, synchronizeCharacterHomeSchedule } = moduleBox.exports;
 assert.equal(typeof advanceActorTimeline, "function", "timeline fast-forward should be exported");
 assert.equal(typeof generateWeeklyLifePlan, "function", "weekly planner should be exported");
 assert.equal(typeof getCurrentActorSchedule, "function", "current schedule selector should be exported");
@@ -513,6 +513,47 @@ const placedAppointment = placeAppointmentInActorSchedule(
   },
 );
 assert.ok(placedAppointment.schedules.some(slot => slot.id === "legacy-invalid-slot"), "appointment placement must not silently delete malformed legacy slots");
+
+
+assert.equal(typeof synchronizeCharacterHomeSchedule, "function", "cohabitation migration should be a testable runtime operation");
+const homeMigrationNow = new Date("2026-10-15T10:30:00.000Z");
+const homeMigrationState = {
+  ...makeState([
+    { id: "past-home", ownerType: "character", ownerId: "c-home", startAt: "2026-10-15T08:00:00.000Z", endAt: "2026-10-15T09:00:00.000Z", title: "在家休息", kind: "habit", source: "weekly-generation", plannedLocationId: "home-c-home", plannedLocationName: "小明的家", updatedAt: "2026-10-15T08:00:00.000Z" },
+    { id: "active-home", ownerType: "character", ownerId: "c-home", startAt: "2026-10-15T10:00:00.000Z", endAt: "2026-10-15T11:00:00.000Z", title: "在家休息", kind: "habit", source: "weekly-generation", plannedLocationId: "home-c-home", plannedLocationName: "小明的家", updatedAt: "2026-10-15T10:00:00.000Z" },
+    { id: "future-home", ownerType: "character", ownerId: "c-home", startAt: "2026-10-15T13:00:00.000Z", endAt: "2026-10-15T14:00:00.000Z", title: "回家做自己的事", kind: "free-time", source: "weekly-generation", plannedLocationId: "home-c-home", plannedLocationName: "小明的家", updatedAt: "2026-10-15T13:00:00.000Z" },
+    { id: "future-work", ownerType: "character", ownerId: "c-home", startAt: "2026-10-15T14:00:00.000Z", endAt: "2026-10-15T15:00:00.000Z", title: "公司工作", kind: "work", source: "weekly-generation", plannedLocationId: "office", plannedLocationName: "公司", updatedAt: "2026-10-15T14:00:00.000Z" },
+    { id: "manual-home", ownerType: "character", ownerId: "c-home", startAt: "2026-10-15T15:00:00.000Z", endAt: "2026-10-15T16:00:00.000Z", title: "手动安排在家", kind: "free-time", source: "manual", plannedLocationId: "home-c-home", plannedLocationName: "小明的家", updatedAt: "2026-10-15T15:00:00.000Z" },
+    { id: "generic-rest-outing", ownerType: "character", ownerId: "c-home", startAt: "2026-10-15T16:00:00.000Z", endAt: "2026-10-15T17:00:00.000Z", title: "休息", kind: "free-time", source: "weekly-generation", plannedLocationId: "park", plannedLocationName: "公园", updatedAt: "2026-10-15T16:00:00.000Z" },
+  ]),
+  locations: [
+    { id: "home", name: "我的家", visibility: "private" },
+    { id: "home-c-home", name: "小明的家", visibility: "private" },
+    { id: "home-shared", name: "我们的家", visibility: "private" },
+    { id: "office", name: "公司", visibility: "public" },
+    { id: "park", name: "公园", visibility: "public" },
+  ],
+  actorStates: [{ ownerType: "character", ownerId: "c-home", activity: "在家休息", actualLocationId: "home-c-home", actualLocationName: "小明的家", updatedAt: homeMigrationNow.toISOString() }],
+};
+const movedHome = synchronizeCharacterHomeSchedule(homeMigrationState, {
+  characterId: "c-home", destinationHomeId: "home-shared", destinationHomeName: "我们的家", now: homeMigrationNow,
+});
+assert.equal(movedHome.synchronizedScheduleCount, 2, "only active/future generated home slots should migrate");
+const movedHomeSlots = Object.fromEntries(movedHome.state.schedules.map(slot => [slot.id, slot]));
+assert.equal(movedHomeSlots["active-home"].plannedLocationId, "home-shared");
+assert.equal(movedHomeSlots["future-home"].plannedLocationName, "我们的家");
+assert.equal(movedHomeSlots["past-home"].plannedLocationId, "home-c-home", "past home slots remain historical");
+assert.equal(movedHomeSlots["future-work"].plannedLocationId, "office", "work schedule remains unchanged");
+assert.equal(movedHomeSlots["manual-home"].plannedLocationId, "home-c-home", "explicit manual places are never rewritten");
+assert.equal(movedHomeSlots["generic-rest-outing"].plannedLocationId, "park", "generic rest at a non-home location is not misclassified");
+const movedHomeActor = movedHome.state.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === "c-home");
+assert.equal(movedHomeActor.actualLocationId, "home-shared", "an actor currently at their home should move to the shared home");
+const restoredHome = synchronizeCharacterHomeSchedule(movedHome.state, {
+  characterId: "c-home", destinationHomeId: "home-c-home", destinationHomeName: "小明的家", now: homeMigrationNow,
+});
+assert.equal(restoredHome.state.schedules.find(slot => slot.id === "future-home").plannedLocationId, "home-c-home", "ending cohabitation restores generated future home slots");
+assert.equal(restoredHome.state.schedules.find(slot => slot.id === "manual-home").plannedLocationId, "home-c-home", "manual locations remain untouched when ending cohabitation");
+assert.equal(restoredHome.state.actorStates.find(actor => actor.ownerType === "character").actualLocationId, "home-c-home", "an actor at the shared home returns to their personal home when cohabitation ends");
 
 console.log("Life schedule regression tests passed.");
 
