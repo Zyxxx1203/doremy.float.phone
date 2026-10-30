@@ -151,6 +151,7 @@ async function runOnce(): Promise<void> {
         executeAtMs,        // 20 分钟一轮，最多 24 轮（约 8 小时）；服务端执行完一单后自己续下一单，
         // 因此 App 完全关闭也能持续主动搭话。
         repeat: { intervalMs: 20 * 60_000, remaining: 24 },
+        source: "schedule",
       });
       writeLifeProactiveStatus({ at: new Date().toISOString(), ok: result.ok, character: character.name, reason: result.ok ? undefined : result.reason });
       recordLifeDiagnostic({ source: "主动调度", event: result.ok ? "离线主动任务已挂载" : "离线主动任务挂载失败", status: result.ok ? "ok" : "error", detail: result.ok ? character.name + " 的主动消息已提交服务端预约。" : character.name + "：" + (result.reason || "未知原因"), meta: { sceneId: scene.id, characterId: character.id, sessionId: session.id, executeAt: new Date(executeAtMs).toISOString() } });
