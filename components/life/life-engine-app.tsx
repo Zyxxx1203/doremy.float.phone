@@ -612,7 +612,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
 
   useEffect(() => {
-    if (!ready || !settings.autoGenerateWeeklyPlans) return;
+    if (!ready) return;
     let next = state;
     const owners = [
       { ownerType: "player" as const, ownerId: PLAYER_ID, name: playerName, profile: "" },
@@ -626,7 +626,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const thisMonday = mondayStart(actorNow);
       // Keep the visible planning horizon to one week. The next week is generated
       // when the virtual clock enters it, not pre-filled as a 14-day schedule.
-      next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, thisMonday, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), settings.generateSpecialEvents);
+      if (settings.autoGenerateWeeklyPlans) {
+        next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, thisMonday, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), settings.generateSpecialEvents);
+      }
     }
     if (next !== state) commit(next);
   }, [ready, settings.autoGenerateWeeklyPlans, settings.generateSpecialEvents, settings.defaultClockMode, settings.defaultSpeed, characters, playerName, state, worldBooks, bindingConfig, commit]);
