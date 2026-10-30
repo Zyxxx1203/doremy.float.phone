@@ -1199,7 +1199,6 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const transferSceneWithCompanions = () => transitionSceneAction(() => performTransferSceneWithCompanions());
 
   /** Arrival uses actual-location state only; planned locations never create encounters. */
-  /** Arrival uses actual-location state only; planned locations never create encounters. */
   const performEnterLocationSolo = (targetLocationId = selectedLocationId) => {
     const destination = stateRef.current.locations.find(location => location.id === targetLocationId);
     if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
