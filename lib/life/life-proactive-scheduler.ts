@@ -12,9 +12,9 @@ import { loadCharacters } from "@/lib/character-storage";
 import { loadChatContacts, loadChatSessions } from "@/lib/chat-storage";
 import { armLifeSceneProactiveBailout, cancelBailoutPrefix } from "@/lib/push-bailout-client";
 import { syncLifeScheduleSnapshot } from "./life-schedule-cloud";
-import { loadVirtualLifeState, saveVirtualLifeState } from "./life-storage";
-import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow, upsertLifeScene } from "./life-runtime";
-import type { LifeSceneState, VirtualLifeState } from "./life-types";
+import { loadVirtualLifeState } from "./life-storage";
+import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "./life-runtime";
+import type { VirtualLifeState } from "./life-types";
 
 const PLAYER_ID = "player";
 const ARM_META_PREFIX = "life-schedule-arm:";
@@ -52,29 +52,6 @@ function characterLocation(state: VirtualLifeState, characterId: string): string
   const slot = getCurrentActorSchedule(state, "character", characterId, now);
   if (slot?.plannedLocationId) return slot.plannedLocationId;
   return state.actorStates.find(item => item.ownerType === "character" && item.ownerId === characterId)?.actualLocationId ?? null;
-}
-
-function ensureScene(state: VirtualLifeState, locationId: string, locationName: string, characterId: string): { state: VirtualLifeState; scene: LifeSceneState } {
-  const now = new Date().toISOString();
-  const existing = state.scenes.find(scene => scene.locationId === locationId && scene.status === "active")
-    ?? state.scenes.find(scene => scene.locationId === locationId)
-    ?? null;
-  const participants = [
-    { ownerType: "player" as const, ownerId: PLAYER_ID, activity: "在当前地点", awarenessByActorId: { [PLAYER_ID]: "aware" as const } },
-    { ownerType: "character" as const, ownerId: characterId, activity: "在同一地点", awarenessByActorId: { [PLAYER_ID]: "aware" as const } },
-  ];
-  const scene: LifeSceneState = existing
-    ? { ...existing, participants: [...existing.participants.filter(p => p.ownerType === "player" || p.ownerId !== characterId), ...participants.filter(p => !existing.participants.some(old => old.ownerType === p.ownerType && old.ownerId === p.ownerId))], updatedAt: now, status: "active" }
-    : { id: "life-schedule-" + Date.now().toString(36), locationId, locationName, startedAt: now, updatedAt: now, status: "active", participants, lastSettledEventIds: [] };
-  // 只保留一个 active scene，避免服务端回写时找不到当前场景。
-  const next: VirtualLifeState = {
-    ...state,
-    scenes: [
-      ...state.scenes.filter(item => item.id !== scene.id).map(item => item.status === "active" && item.locationId !== locationId ? { ...item, status: "paused" as const, updatedAt: now } : item),
-      scene,
-    ],
-  };
-  return { state: upsertLifeScene(next, scene), scene };
 }
 
 function nextArmAt(triggerKey: string, now: number): number {
@@ -137,16 +114,17 @@ async function runOnce(): Promise<void> {
     }
     const now = Date.now();
     for (const character of characters) {
-      if (characterLocation(state, character.id) !== player.id) continue;
       const actor = state.actorStates.find(item => item.ownerType === "character" && item.ownerId === character.id);
       if (/睡眠|睡觉|入睡|午休/.test(actor?.activity || "")) continue;
       const contact = loadChatContacts().find(item => item.characterId === character.id);
       const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup);
       if (!session) continue;
-      const sceneResult = ensureScene(state, player.id, player.name, character.id);
-      const scene = sceneResult.scene;
-      // 把场景持久化，outbox 回写时才能找到 active scene。
-      saveVirtualLifeState(sceneResult.state);
+      // 只在玩家当前所在的现场里触发：角色必须是 active scene 的参与者。
+      // 不再按角色新建场景，避免同一地点出现多个互不相干的“生活现场”。
+      const scene = state.scenes.find(item => item.status === "active"
+        && item.participants.some(p => p.ownerType === "player")
+        && item.participants.some(p => p.ownerType === "character" && p.ownerId === character.id && p.activity !== "离开"));
+      if (!scene) continue;
       const trigger = scene.id + ":" + character.id;
       const executeAtMs = nextArmAt(trigger, now);
       if (!executeAtMs) continue;

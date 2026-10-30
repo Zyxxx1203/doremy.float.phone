@@ -62,10 +62,13 @@ function clearTimedWakeIfHandled(triggerKey: string | null): void {
     const timedWakeId = getTimedWakeIdFromTriggerKey(triggerKey);
     if (timedWakeId) removeTimedWakeSchedule(timedWakeId);
 }
-function parseLifeSceneProactiveOutput(raw: string): { action: string; dialogue: string } {
+function parseLifeSceneProactiveOutput(raw: string): { action: string; dialogues: string[] } {
     // 服务端离线生活主动现在也走 JSON 协议；保留旧 XML/纯文本兜底。
     const parsed = parseLifeOutput(raw);
-    return { action: parsed.action?.trim() || "", dialogue: parsed.dialogue.trim() };
+    return {
+        action: parsed.action?.trim() || "",
+        dialogues: parsed.dialogues.map(item => item.trim()).filter(Boolean),
+    };
 }
 
 export async function consumeServerOutbox(options?: { silent?: boolean; force?: boolean }): Promise<void> {
@@ -172,35 +175,46 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                     // only to build the provider snapshot and carry notification metadata.
                     const lifeScene = meta.lifeScene;
                     if (lifeScene?.sceneId && lifeScene.characterId) {
+                        const lifeCharacterId = lifeScene.characterId;
                         const { loadVirtualLifeState, saveVirtualLifeState, appendLifeTimelineEntry } = await import("./life/life-storage");
                         const state = loadVirtualLifeState();
                         const scene = state.scenes.find(item => item.id === lifeScene.sceneId && item.status === "active");
                         const playerPresent = scene?.participants.some(item => item.ownerType === "player" && item.ownerId === "player");
-                        const characterPresent = scene?.participants.some(item => item.ownerType === "character" && item.ownerId === lifeScene.characterId && item.activity !== "离开");
-                        const messageId = "life-outbox-" + entry.id;
-                        if (scene && playerPresent && characterPresent && !state.sceneMessages.some(item => item.id === messageId)) {
+                        const characterPresent = scene?.participants.some(item => item.ownerType === "character" && item.ownerId === lifeCharacterId && item.activity !== "离开");
+                        const messageBaseId = "life-outbox-" + entry.id;
+                        if (scene && playerPresent && characterPresent && !state.sceneMessages.some(item => item.id.startsWith(messageBaseId))) {
                             const parsed = parseLifeSceneProactiveOutput(entry.raw_text);
-                            if (parsed.action || parsed.dialogue) {
+                            if (parsed.action || parsed.dialogues.length > 0) {
                                 const now = new Date().toISOString();
                                 const speakerName = lifeScene.characterName || meta.characterName || "角色";
-                                const message = {
-                                    id: messageId, sceneId: scene.id, speakerType: "character" as const,
-                                    speakerId: lifeScene.characterId, speakerName, role: "character" as const,
-                                    action: parsed.action || undefined, dialogue: parsed.dialogue, createdAt: now, channel: "life_offline" as const,
-                                };
+                                // 与在线路径保持一致：action 单独一张卡，dialogue 按段拆成多条气泡。
+                                const newMessages = [
+                                    ...(parsed.action ? [{
+                                        id: `${messageBaseId}-action`, sceneId: scene.id, speakerType: "character" as const,
+                                        speakerId: lifeCharacterId, speakerName, role: "character" as const,
+                                        action: parsed.action, dialogue: "", createdAt: now, channel: "life_offline" as const,
+                                    }] : []),
+                                    ...parsed.dialogues.map((text, index) => ({
+                                        id: `${messageBaseId}-dialogue-${index}`, sceneId: scene.id, speakerType: "character" as const,
+                                        speakerId: lifeCharacterId, speakerName, role: "character" as const,
+                                        action: undefined, dialogue: text, createdAt: now, channel: "life_offline" as const,
+                                    })),
+                                ];
                                 let next = {
-                                    ...state, sceneMessages: [...state.sceneMessages, message],
+                                    ...state, sceneMessages: [...state.sceneMessages, ...newMessages],
                                     scenes: state.scenes.map(item => item.id === scene.id ? { ...item, updatedAt: now } : item),
                                 };
-                                if (message.action) next = appendLifeTimelineEntry(next, {
-                                    category: "action", title: speakerName + "的行动", details: message.action,
-                                    actorId: message.speakerId, actorName: speakerName, locationName: scene.locationName,
-                                    sceneId: scene.id, sourceId: message.id,
+                                if (parsed.action) next = appendLifeTimelineEntry(next, {
+                                    category: "action", title: speakerName + "的行动", details: parsed.action,
+                                    actorId: lifeCharacterId, actorName: speakerName, locationName: scene.locationName,
+                                    sceneId: scene.id, sourceId: `${messageBaseId}-action`,
                                 });
-                                if (message.dialogue.trim()) next = appendLifeTimelineEntry(next, {
-                                    category: "dialogue", title: speakerName + "说", details: message.dialogue,
-                                    actorId: message.speakerId, actorName: speakerName, locationName: scene.locationName,
-                                    sceneId: scene.id, sourceId: message.id,
+                                parsed.dialogues.forEach((text, index) => {
+                                    next = appendLifeTimelineEntry(next, {
+                                        category: "dialogue", title: speakerName + "说", details: text,
+                                        actorId: lifeCharacterId, actorName: speakerName, locationName: scene.locationName,
+                                        sceneId: scene.id, sourceId: `${messageBaseId}-dialogue-${index}`,
+                                    });
                                 });
                                 saveVirtualLifeState(next);
                                 const bannerDetail = {
@@ -209,8 +223,8 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                                     characterName: speakerName,
                                     avatar: "",
                                     locationName: scene.locationName,
-                                    action: message.action || "",
-                                    dialogue: message.dialogue || "",
+                                    action: parsed.action || "",
+                                    dialogue: parsed.dialogues[0] || "",
                                     createdAt: now,
                                 };
                                 // Persist a short-lived banner handoff as well as dispatching it.

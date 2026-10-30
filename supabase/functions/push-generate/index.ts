@@ -207,13 +207,37 @@ function humanizeSegment(segment: string): string {
 function splitResponseForPushPreview(rawText: string): string[] {
   let text = stripStateValues(rawText);
   text = stripBracketBlock(text, "状态栏");
-  text = stripBracketBlock(text, "内心");
-  text = text.replace(/\n{3,}/g, "\n\n").trim();
+  text = stripBracketBlock(text, "内心");  text = text.replace(/\n{3,}/g, "\n\n").trim();
   return text
     .split(/\n\n+/)
     .map(segment => humanizeSegment(segment.trim()))
     .map(segment => segment.replace(/\s+/g, " ").trim())
     .filter(Boolean);
+}
+
+/**
+ * 生活现场输出走 JSON 协议（兼容旧 XML/纯文本）。
+ * 通知和快捷回复都只认解析后的 action/dialogue，避免把原始 JSON 推给用户。
+ */
+function parseLifeSceneOutput(rawText: string): { action: string; dialogues: string[] } {
+  const text = String(rawText ?? "").replace(/```(?:json)?/gi, "").trim();
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try {
+      const value = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
+      const action = typeof value.action === "string" ? value.action.trim() : "";
+      const rawDialogue = value.dialogue;
+      const dialogues = (Array.isArray(rawDialogue) ? rawDialogue : typeof rawDialogue === "string" ? [rawDialogue] : [])
+        .map(item => String(item ?? "").trim())
+        .filter(Boolean);
+      return { action, dialogues };
+    } catch { /* fall through to legacy formats */ }
+  }
+  const action = text.match(/<life_action\b[^>]*>([\s\S]*?)<\/life_action\s*>/i)?.[1]?.trim() ?? "";
+  const dialogue = text.match(/<life_dialogue\b[^>]*>([\s\S]*?)<\/life_dialogue\s*>/i)?.[1]?.trim() ?? "";
+  const fallback = text.replace(/<[^>]+>/g, "").trim();
+  return { action, dialogues: dialogue ? [dialogue] : fallback ? [fallback] : [] };
 }
 
 // ── 内嵌：lib/server/push-job-crypto 的解密（Web Crypto 实现，格式兼容） ──
@@ -1182,14 +1206,16 @@ Deno.serve(async (req: Request) => {
     const targetUrl = deliverAsCall && callSessionId
       ? `/?ring=${encodeURIComponent(callSessionId)}&rt=${Date.now()}`
       : (isLifeSceneJob ? "/life" : (payload.notify?.url || "/"));
-    const lifeScenePreview = payload.merge?.lifeScene ? (() => {
-      const action = rawText.match(/<life_action\b[^>]*>([\s\S]*?)<\/life_action\s*>/i)?.[1]?.trim() ?? "";
-      const dialogue = rawText.match(/<life_dialogue\b[^>]*>([\s\S]*?)<\/life_dialogue\s*>/i)?.[1]?.trim() ?? "";
-      return [action, dialogue].filter(Boolean).join(" ") || rawText.replace(/<[^>]+>/g, "").trim();
-    })() : rawText;
+    const lifeSceneOutput = isLifeSceneJob ? parseLifeSceneOutput(rawText) : null;
+    const lifeScenePreview = lifeSceneOutput
+      ? [lifeSceneOutput.action, ...lifeSceneOutput.dialogues].filter(Boolean).join("\n\n")
+      : rawText;
+    // 生活现场一轮就是一条通知；不能把 JSON 或长文本按句子拆成多条推送。
     let parts = deliverAsCall
       ? ["来电话了…"]
-      : splitResponseForPushPreview(lifeScenePreview).slice(0, 6);
+      : isLifeSceneJob && lifeScenePreview.trim()
+        ? [lifeScenePreview.trim()]
+        : splitResponseForPushPreview(lifeScenePreview).slice(0, 6);
     if (parts.length === 0) parts = ["发来一条消息"];
 
     // Notification setup may take additional time after outbox persistence. Check once
@@ -1258,8 +1284,8 @@ Deno.serve(async (req: Request) => {
                     sceneId: String(payload.merge?.lifeScene?.sceneId ?? ""),
                     characterId: String(payload.merge?.lifeScene?.characterId ?? ""),
                     characterName: String(payload.merge?.lifeScene?.characterName ?? title),
-                    actionText: String(rawText.match(/<life_action\b[^>]*>([\s\S]*?)<\/life_action\s*>/i)?.[1]?.trim() ?? ""),
-                    dialogueText: String(rawText.match(/<life_dialogue\b[^>]*>([\s\S]*?)<\/life_dialogue\s*>/i)?.[1]?.trim() ?? ""),
+                    actionText: lifeSceneOutput?.action ?? "",
+                    dialogueText: lifeSceneOutput?.dialogues[0] ?? "",
                   } : {}),
                   ...(deliverAsCall ? { kind: "call", characterName: title, callTs: Date.now() } : {}),
                 },

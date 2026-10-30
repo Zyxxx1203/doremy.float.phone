@@ -1194,10 +1194,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const now = new Date().toISOString();
     // Use the latest committed state: a companion-transfer commit may not have rendered yet.
     const arrivalState = stateRef.current;
-    // Explicitly selected companions enter the destination scene even when random encounters are disabled.
+    // 进入现场以“实际地点”为准：所有 actualLocationId 指向该地点的角色都应在场。
+    // 是否容易注意到（awareness）仍由性格/环境决定，但“偶遇开关”和上一次点击的
+    // 异步 state 不再决定谁被排除，避免外面显示 N 人、点进去只剩 1 人。
     const actualCharacters = characters.filter(char =>
-      (settings.enableCoincidences || selectedCharacterIds.includes(char.id))
-      && arrivalState.actorStates.some(actor => actor.ownerType === "character" && actor.ownerId === char.id && actor.actualLocationId === destination.id)
+      arrivalState.actorStates.some(actor => actor.ownerType === "character" && actor.ownerId === char.id && actor.actualLocationId === destination.id)
     );
     const participants: LifeSceneParticipant[] = [{
       ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "刚来到这里", awarenessByActorId: {},
@@ -1229,7 +1230,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const isFirstSceneEntry = !existingScene || !hasRecordedEntry;
     let next: VirtualLifeState = { ...stateRef.current, scenes: stateRef.current.scenes.map(scene => (scene.status === "active" || scene.status === "paused") ? { ...scene, status: "paused" as const, updatedAt: now } : scene) };
     const scene: LifeSceneState = existingScene
-      ? { ...existingScene, locationId: destination.id, locationName: destination.name, updatedAt: now, status: "active", participants: [{ ...participants[0], activity: playerActivity || "正在这里活动" }, ...existingScene.participants.filter(p => p.ownerType === "character" && participants.some(candidate => candidate.ownerType === "character" && candidate.ownerId === p.ownerId))] }
+      ? { ...existingScene, locationId: destination.id, locationName: destination.name, updatedAt: now, status: "active", participants: [{ ...participants[0], activity: playerActivity || "正在这里活动" }, ...participants.slice(1)] }
       : { id: id("scene"), locationId: destination.id, locationName: destination.name, startedAt: now, updatedAt: now, status: "active", participants, lastSettledEventIds: [] };
     next = upsertLifeScene(next, scene);
     next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "正在这里活动", actualLocationId: destination.id, actualLocationName: destination.name, actualLocationUntil: new Date(resolveActorLifeNow(getActorClock(stateRef.current, "player", PLAYER_ID)).getTime() + stayDurationMinutes * 60_000).toISOString(), updatedAt: now });
