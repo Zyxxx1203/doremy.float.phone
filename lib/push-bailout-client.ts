@@ -557,12 +557,8 @@ export async function armLifeSceneProactiveBailout(input: {
 /** Cancel only stale foreground fallbacks when a local foreground turn takes over.
  * Background schedule/manual jobs remain armed and are deferred by the foreground lease.
  */
-export async function cancelLifeSceneProactiveBailouts(sceneId: string, characterIds: string[] = []): Promise<void> {
-    if (!sceneId) return;
-    if (!characterIds.length) {
-        await cancelBailoutPrefix("life-scene:" + sceneId + ":");
-        return;
-    }
+export async function cancelLifeSceneProactiveBailouts(sceneId: string, characterIds: string[]): Promise<void> {
+    if (!sceneId || !characterIds.length) return;
     await Promise.all([...new Set(characterIds)].map(characterId =>
         cancelBailoutPrefix("life-scene:" + sceneId + ":" + characterId + ":foreground"),
     ));
