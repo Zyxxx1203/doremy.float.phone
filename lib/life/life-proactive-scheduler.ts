@@ -20,6 +20,23 @@ import { recordLifeDiagnostic } from "./life-diagnostics";
 const PLAYER_ID = "player";
 const ARM_META_PREFIX = "life-schedule-arm:";
 const STATUS_KEY = "life-proactive-last-status-v1";
+const FOREGROUND_LEASE_KEY = "life-scene-foreground-lease-v1";
+
+export function setLifeSceneForegroundLease(sceneId: string, active: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    const current = JSON.parse(localStorage.getItem(FOREGROUND_LEASE_KEY) || "null") as { sceneId?: string } | null;
+    if (active && sceneId) localStorage.setItem(FOREGROUND_LEASE_KEY, JSON.stringify({ sceneId, expiresAt: Date.now() + 120_000 }));
+    else if (!sceneId || current?.sceneId === sceneId) localStorage.removeItem(FOREGROUND_LEASE_KEY);
+  } catch { /* best effort lease */ }
+}
+
+function hasForegroundLease(sceneId: string, now: number): boolean {
+  try {
+    const lease = JSON.parse(localStorage.getItem(FOREGROUND_LEASE_KEY) || "null") as { sceneId?: string; expiresAt?: number } | null;
+    return lease?.sceneId === sceneId && Number(lease.expiresAt) > now;
+  } catch { return false; }
+}
 
 export type LifeProactiveStatus = { at: string; ok: boolean; character?: string; reason?: string };
 export function readLifeProactiveStatus(): LifeProactiveStatus | null {
@@ -94,6 +111,16 @@ async function runOnce(): Promise<void> {
     const state = loadVirtualLifeState();
     if (!state.settings.enabled || !state.settings.enableCharacterAutonomy || state.settings.enableProactiveSceneMessages === false) { recordLifeDiagnostic({ source: "主动调度", event: "调度巡检跳过", status: "info", detail: "生活引擎、自主行动或主动消息开关处于关闭状态。", meta: { enabled: state.settings.enabled, autonomy: state.settings.enableCharacterAutonomy, proactive: state.settings.enableProactiveSceneMessages } }); return; }
     void syncLifeScheduleSnapshot();
+    const foregroundScene = state.scenes.find(scene => scene.status === "active" && hasForegroundLease(scene.id, Date.now()));
+    if (foregroundScene) {
+      for (const participant of foregroundScene.participants) {
+        if (participant.ownerType !== "character") continue;
+        const prefix = "life-scene:" + foregroundScene.id + ":" + participant.ownerId + ":schedule";
+        void cancelBailoutPrefix(prefix).catch(() => undefined);
+        try { localStorage.removeItem(ARM_META_PREFIX + foregroundScene.id + ":" + participant.ownerId); } catch { /* best effort */ }
+      }
+      return;
+    }
     const player = playerLocation(state);
     if (!player) return;
     const characters = loadCharacters();
