@@ -516,6 +516,16 @@ Deno.serve(async (req: Request) => {
     body: JSON.stringify({ status, result_note: note.slice(0, 300), updated_at: new Date().toISOString() }),
   }).catch(() => undefined);
 
+  const deferUntil = (executeAtMs: number, note: string) => rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      status: "pending",
+      execute_at: new Date(executeAtMs).toISOString(),
+      result_note: note.slice(0, 300),
+      updated_at: new Date().toISOString(),
+    }),
+  }).catch(() => null);
+
   /**
    * 这一单是否已被客户端撤销。
    *
@@ -573,6 +583,8 @@ Deno.serve(async (req: Request) => {
         const snapshot = JSON.parse(await decryptPayload(snapRows[0].payload, payloadKey)) as {
           updatedAt?: string;
           playerLocationId?: string;
+          foregroundSceneId?: string;
+          foregroundLeaseUntil?: string;
           scenes?: { id?: string; locationId?: string; characterIds?: string[] }[];
           characterLocations?: Record<string, string>;
         };
@@ -586,6 +598,17 @@ Deno.serve(async (req: Request) => {
           && characterLocation === snapshot.playerLocationId;
         if (!sameScene) {
           await finish("done", "life schedule: player/character no longer share the exact scene location");
+          return;
+        }
+        const foregroundLeaseUntil = Date.parse(snapshot.foregroundLeaseUntil || "");
+        if (snapshot.foregroundSceneId === lifeSceneMeta.sceneId
+          && Number.isFinite(foregroundLeaseUntil)
+          && foregroundLeaseUntil > Date.now()) {
+          // Do not race a visible foreground scene. Requeue this same server job instead
+          // of marking it done, so the 24-turn offline chain survives abrupt WebView death.
+          const deferAt = Math.max(Date.now() + 60_000, foregroundLeaseUntil + 10 * 60_000);
+          const deferred = await deferUntil(deferAt, "life schedule: foreground scene lease active; deferred until " + new Date(deferAt).toISOString());
+          if (!deferred?.ok) await finish("done", "life schedule: foreground lease active; defer failed safely");
           return;
         }
       } catch {
