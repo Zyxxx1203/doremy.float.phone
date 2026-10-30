@@ -20,7 +20,7 @@ export function setLifeSceneForegroundLease(sceneId: string, active: boolean): v
       localStorage.removeItem(LIFE_SCENE_FOREGROUND_LEASE_KEY);
     }
   } catch {
-    // Storage can be unavailable in restricted WebViews; server validation still fails closed on scene/location.
+    // Storage can be unavailable in restricted WebViews; in that case foreground arbitration degrades.
   }
 }
 
