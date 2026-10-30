@@ -1729,7 +1729,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       if (!lifeTurn) return;
       // Wait for the old server snapshot to be cancelled before starting a new local turn.
       // Fire-and-forget cancellation can race a replacement task and deliver an obsolete turn.
-      await cancelLifeSceneProactiveBailouts(activeScene.id);
+      await cancelLifeSceneProactiveBailouts(activeScene.id, candidateIds);
       proactiveAttemptAtRef.current[activeScene.id] = now;
       proactiveNextAtRef.current[activeScene.id] = now + getRandomIntervalMs();
       proactiveLastSpeakerRef.current[activeScene.id] = character.id;
