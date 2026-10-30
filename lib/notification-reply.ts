@@ -61,12 +61,7 @@ export function readPendingReplies(): PendingNotificationReply[] {
     }
 }
 
-/**
- * 把待发队列里的回复逐条写进聊天并触发角色回应。
- *
- * 会话已被删除时跳过——一条无归属的回复写不进去，也不该硬造一个会话。
- * 返回实际发出的条数。
- */
+/** Mirror a native life-scene reply into its exact active scene; non-life replies use chat fallback. */
 /**
  * Life-scene replies arrive through the same native queue as ordinary chat replies.
  * Preserve the existing chat delivery, but also mirror the user's words into the
