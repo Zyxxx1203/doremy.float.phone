@@ -8,6 +8,7 @@ on:
     paths:
       - "components/life/**"
       - "lib/life/**"
+      - "supabase/functions/push-generate/**"
       - "lib/tool-executor.ts"
       - "lib/tool-storage.ts"
       - "components/chat/chat-room.tsx"
