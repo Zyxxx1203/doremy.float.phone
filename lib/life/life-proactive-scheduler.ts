@@ -29,12 +29,6 @@ export function setLifeSceneForegroundLease(sceneId: string, active: boolean): v
   } catch { /* best effort lease */ }
 }
 
-function hasForegroundLease(sceneId: string, now: number): boolean {
-  try {
-    const lease = JSON.parse(localStorage.getItem(FOREGROUND_LEASE_KEY) || "null") as { sceneId?: string; expiresAt?: number } | null;
-    return lease?.sceneId === sceneId && Number(lease.expiresAt) > now;
-  } catch { return false; }
-}
 
 export type LifeProactiveStatus = { at: string; ok: boolean; character?: string; reason?: string };
 export function readLifeProactiveStatus(): LifeProactiveStatus | null {
