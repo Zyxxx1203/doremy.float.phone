@@ -109,7 +109,10 @@ function mirrorNotificationReplyToLifeScene(item: PendingNotificationReply, text
             locationName: scene.locationName, sceneId: scene.id, sourceId: message.id,
         });
         saveVirtualLifeState(next);
-        if (typeof window !== "undefined") window.dispatchEvent(new Event("life-scene-message-added"));
+        if (typeof window !== "undefined") {
+            window.dispatchEvent(new Event("life-scene-message-added"));
+            window.dispatchEvent(new CustomEvent("life-scene-notification-reply", { detail: { sceneId: scene.id, characterId, replyMode: item.replyMode } }));
+        }
         recordLifeDiagnostic({ source: "通知回复", event: isAction ? "行动已写入生活现场" : "对白已写入生活现场", status: "ok", detail: "通知回复已写入指定现场并保留回复类型。", meta: { replyId: item.id, sceneId: scene.id, characterId, replyMode: item.replyMode } });
         return "written";
     } catch (error) {
