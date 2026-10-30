@@ -53,9 +53,11 @@ const MAX_DELAY_MS = 9 * 60_000;
 function resolvedLocation(state: VirtualLifeState, ownerType: "player" | "character", ownerId: string): { id: string; name: string } | null {
   const now = resolveActorLifeNow(getActorClock(state, ownerType, ownerId));
   const actor = state.actorStates.find(item => item.ownerType === ownerType && item.ownerId === ownerId);
-  const until = actor?.actualLocationUntil ? Date.parse(actor.actualLocationUntil) : Number.NaN;
-  const useActual = Boolean(actor?.actualLocationId && Number.isFinite(until) && until > now.getTime());
   const slot = getCurrentActorSchedule(state, ownerType, ownerId, now);
+  const until = actor?.actualLocationUntil ? Date.parse(actor.actualLocationUntil) : Number.NaN;
+  const temporaryOverride = Boolean(actor?.actualLocationId && Number.isFinite(until) && until > now.getTime());
+  const manualOverride = Boolean(actor?.actualLocationId && actor.actualLocationUntil == null && actor.actualLocationId !== slot?.plannedLocationId);
+  const useActual = temporaryOverride || manualOverride;
   const locationId = (useActual ? actor?.actualLocationId : slot?.plannedLocationId) || actor?.actualLocationId || "";
   if (!locationId) return null;
   const locationName = (useActual ? actor?.actualLocationName : slot?.plannedLocationName)
