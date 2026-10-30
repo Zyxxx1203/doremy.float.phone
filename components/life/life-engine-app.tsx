@@ -501,8 +501,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     } catch (error) {
       if (input.signal?.aborted) throw error;
       console.warn("[LifeScene] generation failed:", error);
+      recordLifeDiagnostic({ source: "生活现场 AI", event: "角色回合生成失败", status: "error", detail: error instanceof Error ? error.message : String(error), meta: { appTags: input.appTags } });
       throw error;
     }
+    recordLifeDiagnostic({ source: "生活现场 AI", event: issues.length ? "输出格式仍有问题" : "角色回合生成完成", status: issues.length ? "warning" : "ok", detail: issues.length ? describeLifeOutputIssues(issues) : "模型输出已通过生活现场格式校验。", meta: { appTags: input.appTags, action: Boolean(parsed.action), dialogueCount: parsed.dialogues.length, repaired: raw !== "" } });
     return { parsed, issues, raw };
   }, [activeMaxConsecutiveActionOnly, settings.enableLifeFormatRepair]);
   const sceneImagePrompt = settings.sceneImagePrompt;
