@@ -1,16 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Clock3, RefreshCw, Settings2, Eye, ChevronLeft, Save, ImagePlus } from "lucide-react";
+import { BookOpen, Clock3, RefreshCw, Settings2, Eye, ChevronLeft, ImagePlus } from "lucide-react";
 import type { Character } from "@/lib/character-types";
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage } from "@/lib/chat-storage";
 import { simpleLLMCall } from "@/lib/api-helpers";
-import { loadApiConfigs, resolveAuxiliaryApiConfig } from "@/lib/settings-storage";
+import { loadApiConfigs, resolveAuxiliaryApiConfig, loadImageGenerationSettings } from "@/lib/settings-storage";
 import { kvGet, kvSet, hydrateKvDb } from "@/lib/kv-db";
 import { getActorClock, resolveActorLifeNow } from "@/lib/life/life-runtime";
 import { loadVirtualLifeState } from "@/lib/life/life-storage";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
-import { loadImageGenerationSettings } from "@/lib/settings-storage";
 import { loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import type { LifeScheduleSlot, LifeTimelineEntry } from "@/lib/life/life-types";
 import { recordLifeDiagnostic } from "@/lib/life/life-diagnostics";
