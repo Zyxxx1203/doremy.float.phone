@@ -97,6 +97,65 @@ export function synchronizeCharacterHomeSchedule(
   if (schedules === state.schedules && actorStates === state.actorStates) return { state, synchronizedScheduleCount };
   return { state: { ...state, schedules, actorStates }, synchronizedScheduleCount };
 }
+
+/**
+ * Reserve a character's visit at a manually selected location and split overlapping
+ * itinerary slots around the visit. The pre-visit and post-visit portions survive.
+ */
+export function reserveCharacterLocationStay(
+  state: VirtualLifeState,
+  input: { characterId: string; locationId: string; locationName: string; startAt: Date; endAt: Date; title: string },
+): VirtualLifeState {
+  const { characterId, locationId, locationName, startAt, endAt, title } = input;
+  const startMs = startAt.getTime();
+  const endMs = endAt.getTime();
+  if (!characterId || !locationId || !locationName || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return state;
+  const startIso = startAt.toISOString();
+  const endIso = endAt.toISOString();
+  const updatedAt = new Date().toISOString();
+  const retainedSlots: LifeScheduleSlot[] = [];
+  for (const slot of state.schedules) {
+    if (slot.ownerType !== "character" || slot.ownerId !== characterId) {
+      retainedSlots.push(slot);
+      continue;
+    }
+    const slotStart = new Date(slot.startAt).getTime();
+    const slotEnd = new Date(slot.endAt).getTime();
+    if (!Number.isFinite(slotStart) || !Number.isFinite(slotEnd) || slotEnd <= startMs || slotStart >= endMs) {
+      retainedSlots.push(slot);
+      continue;
+    }
+    if (slotStart < startMs) retainedSlots.push({ ...slot, endAt: startIso, updatedAt });
+    if (slotEnd > endMs) retainedSlots.push({ ...slot, id: makeId("resume-after-location-stay"), startAt: endIso, updatedAt });
+  }
+  retainedSlots.push({
+    id: makeId("companion-follow"),
+    ownerType: "character",
+    ownerId: characterId,
+    startAt: startIso,
+    endAt: endIso,
+    title,
+    plannedLocationId: locationId,
+    plannedLocationName: locationName,
+    kind: "free-time",
+    source: "manual",
+    updatedAt,
+  });
+  const existing = state.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === characterId);
+  const nextActor = {
+    ...(existing ?? { ownerType: "character" as const, ownerId: characterId }),
+    activity: title,
+    actualLocationId: locationId,
+    actualLocationName: locationName,
+    actualLocationUntil: endIso,
+    updatedAt,
+  };
+  return {
+    ...state,
+    schedules: retainedSlots,
+    actorStates: [...state.actorStates.filter(actor => !(actor.ownerType === "character" && actor.ownerId === characterId)), nextActor],
+  };
+}
 export function upsertLifeEvent(state: VirtualLifeState, nextEvent: LifeEvent): VirtualLifeState {
   return { ...state, events: [...state.events.filter(event => event.id !== nextEvent.id), nextEvent].sort((a,b) => (a.startsAt || a.createdAt).localeCompare(b.startsAt || b.createdAt)) };
 }
