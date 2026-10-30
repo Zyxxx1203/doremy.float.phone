@@ -32,6 +32,7 @@ assert.match(scheduler, /await syncLifeScheduleSnapshot\(\)/);
 assert.match(scheduler, /source: "schedule"/);
 assert.doesNotMatch(scheduler, /cancelBailoutPrefix\(prefix\)/);
 assert.match(bailout, /input\.source \?\? "foreground"/);
+assert.match(bailout, /characterId \+ ":foreground"/);
 assert.match(reply, /action: isAction \? text : ""/);
 assert.match(reply, /dialogue: isAction \? "" : text/);
 assert.match(reply, /场景回复闭环完成/);
