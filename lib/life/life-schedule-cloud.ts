@@ -11,9 +11,11 @@ let lastJson = "";
 function actorLocation(state: ReturnType<typeof loadVirtualLifeState>, ownerType: "player" | "character", ownerId: string): string {
   const now = resolveActorLifeNow(getActorClock(state, ownerType, ownerId));
   const actor = state.actorStates.find(item => item.ownerType === ownerType && item.ownerId === ownerId);
-  const temporaryUntil = actor?.actualLocationUntil ? Date.parse(actor.actualLocationUntil) : Number.NaN;
-  if (actor?.actualLocationId && Number.isFinite(temporaryUntil) && temporaryUntil > now.getTime()) return actor.actualLocationId;
   const slot = getCurrentActorSchedule(state, ownerType, ownerId, now);
+  const temporaryUntil = actor?.actualLocationUntil ? Date.parse(actor.actualLocationUntil) : Number.NaN;
+  const temporaryOverride = actor?.actualLocationId && Number.isFinite(temporaryUntil) && temporaryUntil > now.getTime();
+  const manualOverride = actor?.actualLocationId && actor.actualLocationUntil == null && actor.actualLocationId !== slot?.plannedLocationId;
+  if (temporaryOverride || manualOverride) return actor!.actualLocationId!;
   return slot?.plannedLocationId || actor?.actualLocationId || "";
 }
 
