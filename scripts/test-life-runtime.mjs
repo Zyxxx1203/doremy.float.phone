@@ -10,7 +10,7 @@ const compiled = ts.transpileModule(source, {
 const moduleBox = { exports: {} };
 const sandbox = { module: moduleBox, exports: moduleBox.exports, Date, Math, console };
 vm.runInNewContext(compiled, sandbox, { filename: "life-runtime.cjs" });
-const { advanceActorTimeline, confirmLifeInvitation, generateWeeklyLifePlan, getCurrentActorSchedule, insertManualLifeScheduleSlot, placeAppointmentInActorSchedule, settleActorTimelineToNow, syncScheduleLocationsToLibrary, synchronizeCharacterHomeSchedule } = moduleBox.exports;
+const { advanceActorTimeline, confirmLifeInvitation, generateWeeklyLifePlan, getCurrentActorSchedule, insertManualLifeScheduleSlot, placeAppointmentInActorSchedule, settleActorTimelineToNow, syncScheduleLocationsToLibrary, synchronizeCharacterHomeSchedule, reserveCharacterLocationStay } = moduleBox.exports;
 assert.equal(typeof advanceActorTimeline, "function", "timeline fast-forward should be exported");
 assert.equal(typeof generateWeeklyLifePlan, "function", "weekly planner should be exported");
 assert.equal(typeof getCurrentActorSchedule, "function", "current schedule selector should be exported");
@@ -554,6 +554,40 @@ const restoredHome = synchronizeCharacterHomeSchedule(movedHome.state, {
 assert.equal(restoredHome.state.schedules.find(slot => slot.id === "future-home").plannedLocationId, "home-c-home", "ending cohabitation restores generated future home slots");
 assert.equal(restoredHome.state.schedules.find(slot => slot.id === "manual-home").plannedLocationId, "home-c-home", "manual locations remain untouched when ending cohabitation");
 assert.equal(restoredHome.state.actorStates.find(actor => actor.ownerType === "character").actualLocationId, "home-c-home", "an actor at the shared home returns to their personal home when cohabitation ends");
+
+
+assert.equal(typeof reserveCharacterLocationStay, "function", "manual companion transfer should be a testable runtime operation");
+const tripStart = new Date("2026-10-15T10:30:00.000Z");
+const tripEnd = new Date("2026-10-15T12:30:00.000Z");
+const transferState = {
+  ...makeState([
+    { id: "before-trip", ownerType: "character", ownerId: "c-trip", startAt: "2026-10-15T09:00:00.000Z", endAt: "2026-10-15T11:00:00.000Z", title: "原地点上午安排", kind: "work", source: "weekly-generation", plannedLocationId: "office", plannedLocationName: "公司", updatedAt: "2026-10-15T09:00:00.000Z" },
+    { id: "during-trip", ownerType: "character", ownerId: "c-trip", startAt: "2026-10-15T11:00:00.000Z", endAt: "2026-10-15T12:00:00.000Z", title: "原地点中间安排", kind: "free-time", source: "weekly-generation", plannedLocationId: "park", plannedLocationName: "公园", updatedAt: "2026-10-15T11:00:00.000Z" },
+    { id: "crossing-trip-end", ownerType: "character", ownerId: "c-trip", startAt: "2026-10-15T12:00:00.000Z", endAt: "2026-10-15T13:00:00.000Z", title: "原地点下午安排", kind: "study", source: "weekly-generation", plannedLocationId: "library", plannedLocationName: "图书馆", updatedAt: "2026-10-15T12:00:00.000Z" },
+    { id: "after-trip", ownerType: "character", ownerId: "c-trip", startAt: "2026-10-15T13:00:00.000Z", endAt: "2026-10-15T14:00:00.000Z", title: "后续安排", kind: "work", source: "weekly-generation", plannedLocationId: "office", plannedLocationName: "公司", updatedAt: "2026-10-15T13:00:00.000Z" },
+    { id: "other-character", ownerType: "character", ownerId: "c-other", startAt: "2026-10-15T10:00:00.000Z", endAt: "2026-10-15T11:00:00.000Z", title: "其他角色安排", kind: "work", source: "weekly-generation", plannedLocationId: "office", plannedLocationName: "公司", updatedAt: "2026-10-15T10:00:00.000Z" },
+  ]),
+  actorStates: [],
+  locations: [],
+};
+const transferred = reserveCharacterLocationStay(transferState, {
+  characterId: "c-trip",
+  locationId: "cafe",
+  locationName: "街角咖啡店",
+  startAt: tripStart,
+  endAt: tripEnd,
+  title: "与我同行：前往街角咖啡店",
+});
+const tripSlots = transferred.schedules.filter(slot => slot.ownerType === "character" && slot.ownerId === "c-trip");
+const truncated = tripSlots.find(slot => slot.id === "before-trip");
+assert.equal(truncated.endAt, tripStart.toISOString(), "the active itinerary slot is truncated at departure");
+assert.ok(tripSlots.some(slot => slot.source === "manual" && slot.plannedLocationId === "cafe" && slot.startAt === tripStart.toISOString() && slot.endAt === tripEnd.toISOString()), "a manual visit reservation covers the full stay");
+assert.ok(tripSlots.some(slot => slot.title === "原地点下午安排" && slot.startAt === tripEnd.toISOString() && slot.endAt === "2026-10-15T13:00:00.000Z"), "a slot crossing the return time resumes after the visit");
+assert.ok(tripSlots.some(slot => slot.id === "after-trip" && slot.plannedLocationId === "office"), "future slots after the visit remain intact");
+assert.ok(transferred.schedules.some(slot => slot.id === "other-character"), "other characters' itineraries remain untouched");
+const tripActor = transferred.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === "c-trip");
+assert.equal(tripActor.actualLocationId, "cafe", "the companion's actual location follows the player");
+assert.equal(tripActor.actualLocationUntil, tripEnd.toISOString(), "the temporary location override expires at the planned return time");
 
 console.log("Life schedule regression tests passed.");
 
