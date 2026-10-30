@@ -50,8 +50,6 @@ import { previewShoppingPromptPayload } from "@/lib/shopping-engine";
 import { previewInterviewMagazinePromptPayload } from "@/lib/interview-magazine-engine";
 import { hydrateMapStorage, loadMapWorlds, getLatestSave } from "@/lib/map-storage";
 import { previewAdventureCompanionPromptPayload } from "@/lib/map-rpg-engine";
-import { previewBuiltinAppPrompt, type BuiltinAppPreviewId } from "@/lib/prompt-preview-apps";
-import type { PresetPromptHit } from "@/lib/llm-prompt-assembler";
 import { getApiLogs, type DebugInfo } from "@/lib/api-log-store";
 import { resolveUserIdentity } from "@/lib/settings-storage";
 import type { BookChapter } from "@/lib/reading-types";
@@ -75,9 +73,6 @@ type PromptPreviewResult = {
     characterName: string;
     model: string;
     presetName: string;
-    /** 当前 appTags 下预设条目的命中情况（内置 APP 预览提供）。 */
-    presetHits?: PresetPromptHit[];
-    appTags?: string[];
 };
 
 type FloatingPosition = {
@@ -595,14 +590,6 @@ export function DebugPromptPanel() {
                     mode: interviewMode,
                     transcript: [],
                 });
-            } else if (
-                extraAppId === "photo_wall"
-                || extraAppId === "life"
-                || extraAppId === "reality_bridge"
-                || extraAppId === "widget"
-                || extraAppId === "watch_together"
-            ) {
-                result = await previewBuiltinAppPrompt(extraAppId as BuiltinAppPreviewId, extraCharacterId);
             } else {
                 if (!selectedAdventureSave) throw new Error("请先选择一个有存档的冒险世界");
                 const agent = selectedAdventureSave.agents.find(item => item.characterId === extraCharacterId);
@@ -1217,30 +1204,6 @@ export function DebugPromptPanel() {
             {/* Body */}
             <div ref={scrollRef} className="pv-body">
                 {error && <div className="pv-error">{error}</div>}
-
-                {extraResult?.presetHits?.length ? (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "2px 0 10px" }}>
-                        <span style={{ fontSize: 11, opacity: 0.6, width: "100%" }}>
-                            预设条目命中（appTags: {extraResult.appTags?.join(" / ") || "-"}）
-                        </span>
-                        {extraResult.presetHits.filter(hit => hit.tags?.length).map(hit => (
-                            <span
-                                key={hit.identifier}
-                                title={hit.reason === "tag-mismatch" ? "标签不匹配" : hit.reason === "disabled" ? "条目被关闭" : "已命中"}
-                                style={{
-                                    fontSize: 11,
-                                    padding: "2px 7px",
-                                    borderRadius: 999,
-                                    border: "1px solid " + (hit.included ? "rgba(34,150,90,.45)" : "rgba(150,60,60,.35)"),
-                                    background: hit.included ? "rgba(34,150,90,.10)" : "rgba(150,60,60,.07)",
-                                    opacity: hit.included ? 1 : 0.65,
-                                }}
-                            >
-                                {hit.included ? "✓" : "✕"} {hit.name}
-                            </span>
-                        ))}
-                    </div>
-                ) : null}
 
                 {displayMessages.map((msg, idx) => {
                     const isExpanded = expandedIdx.has(idx);
