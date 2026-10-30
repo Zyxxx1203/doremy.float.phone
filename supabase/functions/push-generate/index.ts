@@ -549,34 +549,44 @@ Deno.serve(async (req: Request) => {
       return;
     }
     const payload = JSON.parse(await decryptPayload(job.payload, payloadKey)) as JobPayload;
-    // 生活主动消息：服务端执行前复核日程同场快照。客户端每次日程/场景更新都会
-    // 覆盖 push_bridge_snapshots 里的 life-schedule 快照；不在同场就不生成、不续排。
+    // 生活主动消息必须通过最新可用快照验证；缺失、损坏或位置不一致一律 fail closed。
     const lifeSceneMeta = payload.merge?.lifeScene as { sceneId?: string; characterId?: string } | undefined;
     if (lifeSceneMeta?.sceneId && lifeSceneMeta.characterId) {
       const snapResponse = await rest(
         `push_bridge_snapshots?user_id=eq.${encodeURIComponent(job.user_id)}`
         + `&rule_id=eq.life-schedule&select=payload&limit=1`,
       );
-      const snapRows = snapResponse.ok ? await snapResponse.json() as { payload?: EncryptedPayload }[] : [];
-      if (snapRows[0]?.payload) {
-        try {
-          const snapshot = JSON.parse(await decryptPayload(snapRows[0].payload, payloadKey)) as {
-            playerLocationId?: string;
-            scenes?: { id?: string; locationId?: string; characterIds?: string[] }[];
-            characterLocations?: Record<string, string>;
-          };
-          const scene = (snapshot.scenes ?? []).find(item => item.id === lifeSceneMeta.sceneId);
-          const characterLocation = snapshot.characterLocations?.[lifeSceneMeta.characterId];
-          const sameScene = Boolean(scene)
-            && scene?.locationId === snapshot.playerLocationId
-            && (characterLocation === snapshot.playerLocationId || scene?.characterIds?.includes(lifeSceneMeta.characterId) === true);
-          if (!sameScene) {
-            await finish("done", "life schedule: player/character left the shared location");
-            return;
-          }
-        } catch {
-          // 快照损坏时退回旧行为，不让一条坏快照永久堵住主动消息。
+      if (!snapResponse.ok) {
+        await finish("done", "life schedule: snapshot lookup failed; rejected safely");
+        return;
+      }
+      const snapRows = await snapResponse.json() as { payload?: EncryptedPayload }[];
+      if (!snapRows[0]?.payload) {
+        await finish("done", "life schedule: snapshot missing; rejected safely");
+        return;
+      }
+      try {
+        const snapshot = JSON.parse(await decryptPayload(snapRows[0].payload, payloadKey)) as {
+          updatedAt?: string;
+          playerLocationId?: string;
+          scenes?: { id?: string; locationId?: string; characterIds?: string[] }[];
+          characterLocations?: Record<string, string>;
+        };
+        const scene = (snapshot.scenes ?? []).find(item => item.id === lifeSceneMeta.sceneId);
+        const characterLocation = snapshot.characterLocations?.[lifeSceneMeta.characterId];
+        const hasPlayerLocation = typeof snapshot.playerLocationId === "string" && snapshot.playerLocationId.length > 0;
+        const hasCharacterLocation = typeof characterLocation === "string" && characterLocation.length > 0;
+        const isParticipant = scene?.characterIds?.includes(lifeSceneMeta.characterId) === true;
+        const sameScene = Boolean(scene && hasPlayerLocation && hasCharacterLocation && isParticipant)
+          && scene?.locationId === snapshot.playerLocationId
+          && characterLocation === snapshot.playerLocationId;
+        if (!sameScene) {
+          await finish("done", "life schedule: player/character no longer share the exact scene location");
+          return;
         }
+      } catch {
+        await finish("done", "life schedule: snapshot invalid; rejected safely");
+        return;
       }
     }
     let shortcutStoragePath = "";
