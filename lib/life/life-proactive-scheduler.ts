@@ -86,6 +86,7 @@ let timer: ReturnType<typeof setInterval> | null = null;
 let running = false;
 let rerunRequested = false;
 let stopped = false;
+let lastDisabledCleanupKey = "";
 
 async function runOnce(): Promise<void> {
   if (stopped || typeof document === "undefined") return;
@@ -97,17 +98,22 @@ async function runOnce(): Promise<void> {
   try {
     const state = loadVirtualLifeState();
     if (!state.settings.enabled || !state.settings.enableCharacterAutonomy || state.settings.enableProactiveSceneMessages === false) {
-      const obsoleteJobs = state.scenes.flatMap(scene => scene.participants
-        .filter(participant => participant.ownerType === "character")
-        .map(participant => ({ sceneId: scene.id, characterId: participant.ownerId })));
-      await Promise.all(obsoleteJobs.map(async item => {
-        const key = item.sceneId + ":" + item.characterId;
-        try { localStorage.removeItem(ARM_META_PREFIX + key); } catch { /* best effort */ }
-        await cancelBailoutPrefix("life-scene:" + item.sceneId + ":" + item.characterId);
-      }));
-      recordLifeDiagnostic({ source: "主动调度", event: "主动消息已关闭，撤销待执行任务", status: "info", detail: "生活引擎、自主行动或主动消息开关处于关闭状态；已清理相关服务端预约。", meta: { enabled: state.settings.enabled, autonomy: state.settings.enableCharacterAutonomy, proactive: state.settings.enableProactiveSceneMessages, cancelled: obsoleteJobs.length } });
+      const disabledKey = [state.settings.enabled, state.settings.enableCharacterAutonomy, state.settings.enableProactiveSceneMessages].join(":");
+      if (disabledKey !== lastDisabledCleanupKey) {
+        lastDisabledCleanupKey = disabledKey;
+        const obsoleteJobs = state.scenes.flatMap(scene => scene.participants
+          .filter(participant => participant.ownerType === "character")
+          .map(participant => ({ sceneId: scene.id, characterId: participant.ownerId })));
+        await Promise.all(obsoleteJobs.map(async item => {
+          const key = item.sceneId + ":" + item.characterId;
+          try { localStorage.removeItem(ARM_META_PREFIX + key); } catch { /* best effort */ }
+          await cancelBailoutPrefix("life-scene:" + item.sceneId + ":" + item.characterId);
+        }));
+        recordLifeDiagnostic({ source: "主动调度", event: "主动消息已关闭，撤销待执行任务", status: "info", detail: "生活引擎、自主行动或主动消息开关处于关闭状态；已清理相关服务端预约。", meta: { enabled: state.settings.enabled, autonomy: state.settings.enableCharacterAutonomy, proactive: state.settings.enableProactiveSceneMessages, cancelled: obsoleteJobs.length } });
+      }
       return;
     }
+    lastDisabledCleanupKey = "";
     const snapshotSynced = await syncLifeScheduleSnapshot();
     if (!snapshotSynced) {
       recordLifeDiagnostic({ source: "主动调度", event: "快照未同步，暂停挂载", status: "error", detail: "无法确认最新玩家/角色地点，本轮不创建离线主动任务。" });
