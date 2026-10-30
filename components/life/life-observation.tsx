@@ -13,6 +13,7 @@ import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { loadImageGenerationSettings } from "@/lib/settings-storage";
 import { loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import type { LifeScheduleSlot, LifeTimelineEntry } from "@/lib/life/life-types";
+import { recordLifeDiagnostic } from "@/lib/life/life-diagnostics";
 
 type ObservationEntry = {
   id: string;
@@ -225,8 +226,10 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
         const currentConfig = current.characters[character.id] ?? config;
         return { ...current, entries: [...current.entries, ...entries], characters: { ...current.characters, [character.id]: { ...currentConfig, lastGeneratedAt: createdAt, coveredUntil: new Date(nowMs).toISOString() } } };
       });
+      recordLifeDiagnostic({ source: "生活观察", event: "生活片段补写完成", status: "ok", detail: "已为 " + character.name + " 生成 " + entries.length + " 张事件卡片。", meta: { characterId: character.id, fromAt: new Date(fromMs).toISOString(), toAt: new Date(nowMs).toISOString(), manual } });
       tell("已为「" + character.name + "」生成 " + entries.length + " 张独立生活事件卡片。");
     } catch (error) {
+      recordLifeDiagnostic({ source: "生活观察", event: "生活片段补写失败", status: "error", detail: error instanceof Error ? error.message : String(error), meta: { characterId: character.id, manual } });
       tell(error instanceof Error ? "生活描写生成失败：" + error.message : "生活描写生成失败，请检查模型配置。");
     } finally {
       busyRef.current.delete(character.id);
