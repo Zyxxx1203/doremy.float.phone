@@ -23,7 +23,9 @@ export function readLifeDiagnostics(): LifeDiagnosticEntry[] {
             item
             && typeof item.id === "string"
             && typeof item.at === "string"
-            && typeof item.source === "string",
+            && typeof item.source === "string"
+            && ["ok", "warning", "error", "info"].includes(item.status)
+            && typeof item.detail === "string",
           )
           .slice(0, LIMIT)
       : [];
