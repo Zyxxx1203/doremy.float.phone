@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [app, cloud, scheduler, bailout, reply, push] = await Promise.all([
+const [app, observation, cloud, scheduler, bailout, reply, push] = await Promise.all([
   read("../components/life/life-engine-app.tsx"),
+  read("../components/life/life-observation.tsx"),
   read("../lib/life/life-schedule-cloud.ts"),
   read("../lib/life/life-proactive-scheduler.ts"),
   read("../lib/push-bailout-client.ts"),
@@ -14,6 +15,8 @@ const [app, cloud, scheduler, bailout, reply, push] = await Promise.all([
 assert.match(app, /if \(settings\.autoGenerateWeeklyPlans\)\s*\{\s*next = generateWeeklyLifePlan/);
 assert.match(app, /if \(liveSettings\.autoGenerateWeeklyPlans\)/);
 assert.match(app, /<LifeDiagnosticsPanel\s*\/>/);
+assert.match(observation, /生活片段补写完成/);
+assert.match(observation, /生活片段补写失败/);
 assert.match(app, /life-scene-notification-reply/);
 assert.match(app, /setLifeSceneForegroundLease\(activeScene\.id, true\)/);
 assert.match(cloud, /const fingerprint = JSON\.stringify\(\{ version: 1, playerLocationId, scenes, characterLocations \}\)/);
