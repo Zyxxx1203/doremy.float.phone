@@ -7,7 +7,9 @@ import { recordLifeDiagnostic } from "./life-diagnostics";
 import { readLifeSceneForegroundLease } from "./life-scheduler-coordinator";
 
 const SNAPSHOT_RULE_ID = "life-schedule";
+const MAX_SNAPSHOT_AGE_MS = 5 * 60_000;
 let lastJson = "";
+let lastSyncedAt = 0;
 
 function foregroundLeaseSnapshot(): { foregroundSceneId: string; foregroundLeaseUntil: string } {
   const lease = readLifeSceneForegroundLease();
@@ -36,7 +38,7 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> 
     const characterLocations = Object.fromEntries([...characterIds].map(id => [id, resolveActorLocation(state, "character", id)?.id ?? ""]));
     const foregroundLease = foregroundLeaseSnapshot();
     const fingerprint = JSON.stringify({ version: 2, playerLocationId, scenes, characterLocations, ...foregroundLease });
-    if (!force && fingerprint === lastJson) return true;
+    if (!force && fingerprint === lastJson && Date.now() - lastSyncedAt < MAX_SNAPSHOT_AGE_MS) return true;
     const payload = { version: 2, updatedAt: new Date().toISOString(), playerLocationId, scenes, characterLocations, ...foregroundLease };
     const response = await fetch("/api/push/bridge-snapshots", {
       method: "POST",
@@ -45,6 +47,7 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> 
     });
     if (response.ok) {
       lastJson = fingerprint;
+      lastSyncedAt = Date.now();
       recordLifeDiagnostic({ source: "云端快照", event: "日程位置同步", status: "ok", detail: "玩家地点与 " + Object.keys(characterLocations).length + " 个角色地点已同步。", meta: { sceneCount: scenes.length, playerLocationId } });
       return true;
     }
