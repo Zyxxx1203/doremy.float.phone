@@ -115,16 +115,9 @@ async function runOnce(): Promise<void> {
       recordLifeDiagnostic({ source: "主动调度", event: "快照未同步，暂停挂载", status: "error", detail: "无法确认最新玩家/角色地点，本轮不创建离线主动任务。" });
       return;
     }
-    const foregroundScene = state.scenes.find(scene => scene.status === "active" && hasForegroundLease(scene.id, Date.now()));
-    if (foregroundScene) {
-      for (const participant of foregroundScene.participants) {
-        if (participant.ownerType !== "character") continue;
-        const prefix = "life-scene:" + foregroundScene.id + ":" + participant.ownerId + ":schedule";
-        void cancelBailoutPrefix(prefix).catch(() => undefined);
-        try { localStorage.removeItem(ARM_META_PREFIX + foregroundScene.id + ":" + participant.ownerId); } catch { /* best effort */ }
-      }
-      return;
-    }
+    // Keep a server-side schedule chain armed even while the scene is foregrounded.
+    // push-generate reads the lease in the snapshot and defers, rather than losing the
+    // 24-turn background fallback if Android kills the WebView without a clean unload.
     const player = playerLocation(state);
     if (!player) return;
     const characters = loadCharacters();
