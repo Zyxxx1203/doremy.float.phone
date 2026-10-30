@@ -501,6 +501,8 @@ export async function armLifeSceneProactiveBailout(input: {
     executeAtMs: number;
     /** 可选：服务端在这一单完成后继续按 interval 续排，实现 App 关闭后的循环主动消息。 */
     repeat?: { intervalMs: number; remaining: number };
+    /** Separate foreground, manual and schedule-owned jobs so they cannot overwrite one another. */
+    source?: "foreground" | "manual" | "schedule";
 }): Promise<BailoutArmResult> {
     if (!bailoutEnabled()) return { ok: false, reason: "当前环境不支持服务端离线预约" };
     try {
@@ -524,7 +526,7 @@ export async function armLifeSceneProactiveBailout(input: {
         );
         const request = buildProviderRequest(config, preset, toLlmRequestMessages(llmMessages));
         const posted = await postBailoutJob({
-            triggerKey: "life-scene:" + input.sceneId + ":" + input.characterId,
+            triggerKey: "life-scene:" + input.sceneId + ":" + input.characterId + ":" + (input.source ?? "foreground"),
             kind: "timed_task",
             executeAtMs: input.executeAtMs,
             request,
