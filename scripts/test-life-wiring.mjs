@@ -39,6 +39,8 @@ assert.match(coordinator, /export function readLifeSceneForegroundLease/);
 assert.match(coordinator, /120_000/);
 assert.match(cloud, /Promise<boolean>/);
 assert.match(scheduler, /await syncLifeScheduleSnapshot\(\)/);
+assert.match(scheduler, /rerunRequested = true/);
+assert.match(scheduler, /const onScheduleChanged = \(\) => \{ start\(\); \}/);
 assert.match(scheduler, /source: "schedule"/);
 assert.match(scheduler, /主动消息已关闭，撤销待执行任务/);
 assert.match(scheduler, /scene\.status === "active" && scene\.locationId === player\.id/);
