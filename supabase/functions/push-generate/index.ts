@@ -606,7 +606,7 @@ Deno.serve(async (req: Request) => {
           && foregroundLeaseUntil > Date.now()) {
           // Do not race a visible foreground scene. Requeue this same server job instead
           // of marking it done, so the 24-turn offline chain survives abrupt WebView death.
-          const deferAt = Math.max(Date.now() + 60_000, foregroundLeaseUntil + 10 * 60_000);
+          const deferAt = Math.max(Date.now() + 60_000, foregroundLeaseUntil + 90_000);
           const deferred = await deferUntil(deferAt, "life schedule: foreground scene lease active; deferred until " + new Date(deferAt).toISOString());
           if (!deferred?.ok) await finish("done", "life schedule: foreground lease active; defer failed safely");
           return;
