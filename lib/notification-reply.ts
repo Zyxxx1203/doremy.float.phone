@@ -14,6 +14,7 @@ import { loadChatContacts, loadChatSessions, pushChatMessage } from "./chat-stor
 import { loadVirtualLifeState, saveVirtualLifeState, appendLifeTimelineEntry } from "./life/life-storage";
 import { requestBackgroundChatReply } from "./follow-up-service";
 import { ensureShellOverlayListener, subscribeShellOverlayEvents } from "./shell-call-overlay";
+import { recordLifeDiagnostic } from "./life/life-diagnostics";
 
 type ReplyBridge = {
     consumePendingReplies?: () => string;
@@ -37,6 +38,8 @@ export type PendingNotificationReply = {
     text: string;
     /** 用户按下发送的时刻（原生记的墙钟），仅用于排查 */
     at: number;
+    sceneId?: string;
+    replyMode?: "action" | "dialogue" | "chat" | string;
 };
 
 /** 读走并清空原生队列。壳不支持或解析失败都返回空数组。 */
@@ -70,36 +73,29 @@ export function readPendingReplies(): PendingNotificationReply[] {
  * active scene when the notification belongs to a character who is physically
  * present with the player. The stable native reply id makes this idempotent.
  */
-function mirrorNotificationReplyToLifeScene(item: PendingNotificationReply, text: string): boolean {
+function mirrorNotificationReplyToLifeScene(item: PendingNotificationReply, text: string): "written" | "missing-scene" | "not-life" | "failed" {
     try {
+        if (!item.sceneId || !["action", "dialogue"].includes(item.replyMode || "")) return "not-life";
         const session = loadChatSessions().find(candidate => candidate.id === item.sessionId);
-        if (!session || session.isGroup) return false;
+        if (!session || session.isGroup) return "failed";
         const contact = loadChatContacts().find(candidate => candidate.id === session.contactId);
         const characterId = contact?.characterId;
-        if (!characterId) return false;
-
+        if (!characterId) return "failed";
         const state = loadVirtualLifeState();
-        if (!state.settings.enabled || state.settings.recordSceneMessages === false) return false;
-        const scene = state.scenes.find(candidate =>
-            candidate.status === "active"
+        if (!state.settings.enabled || state.settings.recordSceneMessages === false) return "missing-scene";
+        const scene = state.scenes.find(candidate => candidate.id === item.sceneId && candidate.status === "active"
             && candidate.participants.some(participant => participant.ownerType === "player" && participant.ownerId === "player")
-            && candidate.participants.some(participant => participant.ownerType === "character" && participant.ownerId === characterId && participant.activity !== "离开")
-        );
-        if (!scene) return false;
-
-        const messageId = item.id ? "notification-reply-" + item.id : "";
-        if (messageId && state.sceneMessages.some(message => message.id === messageId)) return true;
+            && candidate.participants.some(participant => participant.ownerType === "character" && participant.ownerId === characterId && participant.activity !== "离开"));
+        if (!scene) return "missing-scene";
+        const messageId = "notification-reply-" + item.id;
+        if (state.sceneMessages.some(message => message.id === messageId)) return "written";
         const createdAt = Number.isFinite(item.at) && item.at > 0 ? new Date(item.at).toISOString() : new Date().toISOString();
         const playerName = state.settings.playerDisplayName || "我";
+        const isAction = item.replyMode === "action";
         const message = {
-            id: messageId || "notification-reply-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
-            sceneId: scene.id,
-            speakerType: "player" as const,
-            speakerId: "player",
-            speakerName: playerName,
-            role: "player" as const,
-            dialogue: text,
-            createdAt,
+            id: messageId, sceneId: scene.id, speakerType: "player" as const, speakerId: "player",
+            speakerName: playerName, role: "player" as const,
+            action: isAction ? text : "", dialogue: isAction ? "" : text, createdAt,
         };
         let next = {
             ...state,
@@ -107,22 +103,19 @@ function mirrorNotificationReplyToLifeScene(item: PendingNotificationReply, text
             sceneMessages: [...state.sceneMessages, message],
         };
         next = appendLifeTimelineEntry(next, {
-            category: "dialogue",
-            occurredAt: createdAt,
-            title: playerName + "通过通知回复",
-            details: text,
-            actorId: "player",
-            actorName: playerName,
-            locationName: scene.locationName,
-            sceneId: scene.id,
-            sourceId: message.id,
+            category: isAction ? "action" : "dialogue", occurredAt: createdAt,
+            title: playerName + (isAction ? "通过通知回复行动" : "通过通知回复"),
+            details: text, actorId: "player", actorName: playerName,
+            locationName: scene.locationName, sceneId: scene.id, sourceId: message.id,
         });
         saveVirtualLifeState(next);
         if (typeof window !== "undefined") window.dispatchEvent(new Event("life-scene-message-added"));
-        return true;
+        recordLifeDiagnostic({ source: "通知回复", event: isAction ? "行动已写入生活现场" : "对白已写入生活现场", status: "ok", detail: "通知回复已写入指定现场并保留回复类型。", meta: { replyId: item.id, sceneId: scene.id, characterId, replyMode: item.replyMode } });
+        return "written";
     } catch (error) {
+        recordLifeDiagnostic({ source: "通知回复", event: "生活现场写回异常", status: "error", detail: error instanceof Error ? error.message : String(error), meta: { replyId: item.id, sceneId: item.sceneId } });
         console.warn("[NotificationReply] life-scene writeback failed:", error);
-        return false;
+        return "failed";
     }
 }
 
@@ -130,25 +123,28 @@ export async function flushPendingNotificationReplies(): Promise<number> {
     const pending = readPendingReplies();
     if (pending.length === 0) return 0;
 
-    const sessionIds = new Set(loadChatSessions().map(s => s.id));
+    const sessions = new Set(loadChatSessions().map(session => session.id));
     let sent = 0;
-    const touched = new Set<string>();
+    const chatReplies = new Set<string>();
     for (const item of pending) {
-        if (!sessionIds.has(item.sessionId)) continue;
+        if (!sessions.has(item.sessionId)) {
+            recordLifeDiagnostic({ source: "通知回复", event: "回复丢弃", status: "warning", detail: "对应会话已不存在。", meta: { replyId: item.id, sessionId: item.sessionId } });
+            continue;
+        }
         const text = item.text.trim();
         if (!text) continue;
-        pushChatMessage({ sessionId: item.sessionId, role: "user", content: text });
-        // Write the same user input into the active life scene when the replying
-        // character is co-present. Ordinary chat replies retain their old path.
-        mirrorNotificationReplyToLifeScene(item, text);
-        touched.add(item.sessionId);
+        const result = mirrorNotificationReplyToLifeScene(item, text);
+        if (result === "written") {
+            recordLifeDiagnostic({ source: "通知回复", event: "场景回复闭环完成", status: "ok", detail: "生活现场已写回，不再重复触发普通聊天回复。", meta: { replyId: item.id, sceneId: item.sceneId, replyMode: item.replyMode } });
+        } else {
+            pushChatMessage({ sessionId: item.sessionId, role: "user", content: text });
+            chatReplies.add(item.sessionId);
+            recordLifeDiagnostic({ source: "通知回复", event: "普通聊天回复入队", status: "info", detail: result === "missing-scene" ? "原现场不存在，按普通聊天兼容处理。" : "已写入普通聊天会话。", meta: { replyId: item.id, sessionId: item.sessionId, replyMode: item.replyMode || "chat" } });
+        }
         sent += 1;
     }
-
-    // 每个会话只触发一次回复：同一会话连回几句时，一次生成就该看到全部，
-    // 逐条触发会连出好几轮，读起来像角色在自说自话。
-    for (const sessionId of touched) {
-        void requestBackgroundChatReply(sessionId).catch(() => undefined);
+    for (const sessionId of chatReplies) {
+        void requestBackgroundChatReply(sessionId).catch(error => recordLifeDiagnostic({ source: "通知回复", event: "普通聊天回复生成失败", status: "error", detail: error instanceof Error ? error.message : String(error), meta: { sessionId } }));
     }
     return sent;
 }
