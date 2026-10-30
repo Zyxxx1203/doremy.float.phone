@@ -19,11 +19,11 @@ function actorLocation(state: ReturnType<typeof loadVirtualLifeState>, ownerType
   return slot?.plannedLocationId || actor?.actualLocationId || "";
 }
 
-export async function syncLifeScheduleSnapshot(force = false): Promise<void> {
-  if (typeof window === "undefined" || typeof fetch !== "function") return;
+export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> {
+  if (typeof window === "undefined" || typeof fetch !== "function") return false;
   try {
     const state = loadVirtualLifeState();
-    if (!state.settings.enabled) return;
+    if (!state.settings.enabled) return false;
     const playerLocationId = actorLocation(state, "player", "player");
     const characterIds = new Set([
       ...state.actorStates.filter(actor => actor.ownerType === "character").map(actor => actor.ownerId),
@@ -37,7 +37,7 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<void> {
     }));
     const characterLocations = Object.fromEntries([...characterIds].map(id => [id, actorLocation(state, "character", id)]));
     const fingerprint = JSON.stringify({ version: 1, playerLocationId, scenes, characterLocations });
-    if (!force && fingerprint === lastJson) return;
+    if (!force && fingerprint === lastJson) return true;
     const payload = { version: 1, updatedAt: new Date().toISOString(), playerLocationId, scenes, characterLocations };
     const response = await fetch("/api/push/bridge-snapshots", {
       method: "POST",
@@ -47,10 +47,12 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<void> {
     if (response.ok) {
       lastJson = fingerprint;
       recordLifeDiagnostic({ source: "云端快照", event: "日程位置同步", status: "ok", detail: "玩家地点与 " + Object.keys(characterLocations).length + " 个角色地点已同步。", meta: { sceneCount: scenes.length, playerLocationId } });
-    } else {
-      recordLifeDiagnostic({ source: "云端快照", event: "日程位置同步", status: "error", detail: "快照接口返回 HTTP " + response.status, meta: { playerLocationId } });
+      return true;
     }
+    recordLifeDiagnostic({ source: "云端快照", event: "日程位置同步", status: "error", detail: "快照接口返回 HTTP " + response.status, meta: { playerLocationId } });
+    return false;
   } catch (error) {
     recordLifeDiagnostic({ source: "云端快照", event: "日程位置同步", status: "error", detail: error instanceof Error ? error.message : String(error) });
+    return false;
   }
 }
