@@ -47,6 +47,7 @@ import "./life-rose-garden.css";
 import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
 import { LifeObservation } from "@/components/life/life-observation";
 import { LifeDiagnosticsPanel } from "@/components/life/life-diagnostics-panel";
+import { recordLifeDiagnostic } from "@/lib/life/life-diagnostics";
 
 type Tab = "home" | "scene" | "daily" | "people" | "plans" | "invitations" | "experiences" | "locations" | "observe" | "settings";
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
@@ -610,7 +611,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !settings.autoGenerateWeeklyPlans) return;
     let next = state;
     const owners = [
       { ownerType: "player" as const, ownerId: PLAYER_ID, name: playerName, profile: "" },
@@ -649,9 +650,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         // Auto-generation is still limited to the current 7-day week; don't expose
         // a second pre-generated week in the schedule UI. The next week is added
         // automatically once the actor's virtual clock reaches it.
-        for (let guard = 0; week.getTime() <= targetEnd.getTime() && guard < 520; guard++) {
-          next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, week, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), liveSettings.generateSpecialEvents);
-          week.setDate(week.getDate() + 7);
+        if (liveSettings.autoGenerateWeeklyPlans) {
+          for (let guard = 0; week.getTime() <= targetEnd.getTime() && guard < 520; guard++) {
+            next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, week, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), liveSettings.generateSpecialEvents);
+            week.setDate(week.getDate() + 7);
+          }
         }
         const beforeSettle = next;
         const beforeActor = beforeSettle.actorStates.find(item => item.ownerType === owner.ownerType && item.ownerId === owner.ownerId);
@@ -823,6 +826,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       executeAtMs: Date.now() + 60_000,
       repeat: { intervalMs: 20 * 60_000, remaining: 3 },
     });
+    recordLifeDiagnostic({ source: "主动调度", event: result.ok ? "手动主动任务已挂载" : "手动主动任务挂载失败", status: result.ok ? "ok" : "error", detail: result.ok ? "手动主动消息预约已提交。" : result.reason, meta: { sceneId: scene.id, characterId: character.id, sessionId: session.id } });
     setNotice(result.ok
       ? "已挂起一条主动消息；1 分钟后由服务端生成。可在「主动消息排期」查看。"
       : "挂起失败：" + result.reason);
