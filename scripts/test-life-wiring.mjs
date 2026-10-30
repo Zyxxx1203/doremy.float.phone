@@ -27,6 +27,7 @@ assert.match(app, /document\.visibilityState === "visible"/);
 assert.match(app, /synchronizeCharacterHomeSchedule/);
 assert.match(app, /reserveCharacterLocationStay/);
 assert.match(app, /前台后续兜底任务已挂载/);
+assert.match(app, /请先启用生活系统、角色自主行动和主动消息/);
 assert.match(runtime, /export function synchronizeCharacterHomeSchedule/);
 assert.match(runtime, /export function reserveCharacterLocationStay/);
 assert.match(observation, /生活片段补写完成/);
