@@ -3,8 +3,8 @@
  *
  * 和 life-engine 里的“前台场景自主回合”不同：这里负责 App 退到后台后的日程同场兜底。
  * 角色必须同时满足：当前日程/实际地点与玩家一致，并且已经是当前 active scene 的参与者；
- * 不再凭地点相同就伪造一个场景。前台场景持有短租约时，本调度器暂停并撤销自己的任务，
- * 由前台回合接管；前台退出或进程被系统回收后，租约过期，后台调度重新接手。
+ * 不再凭地点相同就伪造一个场景。前台场景持有短租约时，后台任务仍保留在服务端，
+ * push-generate 会按快照租约延后执行；前台停止刷新租约后，后台链自动恢复。
  */
 import { loadCharacters } from "@/lib/character-storage";
 import { loadChatContacts, loadChatSessions } from "@/lib/chat-storage";
