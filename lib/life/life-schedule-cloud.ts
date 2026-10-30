@@ -2,7 +2,7 @@
  * Synchronize authoritative player/character presence and active scenes for offline validation.
  */
 import { loadVirtualLifeState } from "./life-storage";
-import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "./life-runtime";
+import { resolveActorLocation } from "./life-runtime";
 import { recordLifeDiagnostic } from "./life-diagnostics";
 import { readLifeSceneForegroundLease } from "./life-scheduler-coordinator";
 
@@ -16,23 +16,13 @@ function foregroundLeaseSnapshot(): { foregroundSceneId: string; foregroundLease
     : { foregroundSceneId: "", foregroundLeaseUntil: "" };
 }
 
-function actorLocation(state: ReturnType<typeof loadVirtualLifeState>, ownerType: "player" | "character", ownerId: string): string {
-  const now = resolveActorLifeNow(getActorClock(state, ownerType, ownerId));
-  const actor = state.actorStates.find(item => item.ownerType === ownerType && item.ownerId === ownerId);
-  const slot = getCurrentActorSchedule(state, ownerType, ownerId, now);
-  const temporaryUntil = actor?.actualLocationUntil ? Date.parse(actor.actualLocationUntil) : Number.NaN;
-  const temporaryOverride = actor?.actualLocationId && Number.isFinite(temporaryUntil) && temporaryUntil > now.getTime();
-  const manualOverride = actor?.actualLocationId && actor.actualLocationUntil == null && actor.actualLocationId !== slot?.plannedLocationId;
-  if (temporaryOverride || manualOverride) return actor!.actualLocationId!;
-  return slot?.plannedLocationId || actor?.actualLocationId || "";
-}
 
 export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> {
   if (typeof window === "undefined" || typeof fetch !== "function") return false;
   try {
     const state = loadVirtualLifeState();
     if (!state.settings.enabled) return false;
-    const playerLocationId = actorLocation(state, "player", "player");
+    const playerLocationId = resolveActorLocation(state, "player", "player")?.id ?? "";
     const characterIds = new Set([
       ...state.actorStates.filter(actor => actor.ownerType === "character").map(actor => actor.ownerId),
       ...state.schedules.filter(slot => slot.ownerType === "character").map(slot => slot.ownerId),
@@ -43,7 +33,7 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> 
       locationId: scene.locationId,
       characterIds: scene.participants.filter(p => p.ownerType === "character" && p.activity !== "离开").map(p => p.ownerId),
     }));
-    const characterLocations = Object.fromEntries([...characterIds].map(id => [id, actorLocation(state, "character", id)]));
+    const characterLocations = Object.fromEntries([...characterIds].map(id => [id, resolveActorLocation(state, "character", id)?.id ?? ""]));
     const foregroundLease = foregroundLeaseSnapshot();
     const fingerprint = JSON.stringify({ version: 2, playerLocationId, scenes, characterLocations, ...foregroundLease });
     if (!force && fingerprint === lastJson) return true;
