@@ -812,7 +812,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   }, [commit]);
 
   const armProactiveNow = useCallback(async () => {
-    const scene = stateRef.current.scenes.find(item => item.status === "active");
+    if (!settings.enabled || !settings.enableCharacterAutonomy || settings.enableProactiveSceneMessages === false) {
+      setNotice("请先启用生活系统、角色自主行动和主动消息，再挂起后台主动任务。");
+      return;
+    }
+    const scene = stateRef.current.scenes.find(item => item.status === "active"
+      && item.participants.some(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID));
     if (!scene) { setNotice("当前没有活动生活现场；先进入一个地点。"); return; }
     const candidateId = scene.participants.find(participant => participant.ownerType === "character")?.ownerId;
     const character = characters.find(item => item.id === candidateId) ?? characters[0];
@@ -839,7 +844,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setNotice(result.ok
       ? "已挂起一条主动消息；1 分钟后由服务端生成。可在「主动消息排期」查看。"
       : "挂起失败：" + result.reason);
-  }, [characters, lifeAppTags]);
+  }, [characters, lifeAppTags, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages]);
 
   const patchSettings = (patch: Partial<LifeEngineSettings>) => commit({ ...stateRef.current, settings: { ...stateRef.current.settings, ...patch } });
   const patchActorClock = (actor: ActorChoice, patch: Partial<Pick<LifeActorClock, "mode" | "speed">>) => {
