@@ -48,6 +48,7 @@ import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
 import { LifeObservation } from "@/components/life/life-observation";
 import { LifeDiagnosticsPanel } from "@/components/life/life-diagnostics-panel";
 import { recordLifeDiagnostic } from "@/lib/life/life-diagnostics";
+import { acknowledgePendingLifeSceneReply, peekPendingLifeSceneReply } from "@/lib/life/life-notification-queue";
 
 type Tab = "home" | "scene" | "daily" | "people" | "plans" | "invitations" | "experiences" | "locations" | "observe" | "settings";
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
@@ -225,7 +226,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [playerActivity, setPlayerActivity] = useState("");
   const [sceneInput, setSceneInput] = useState("");
   const sceneChatScrollRef = useRef<HTMLDivElement | null>(null);
-  const pendingNotificationSceneReplyRef = useRef<{ sceneId: string; characterId: string } | null>(null);
+  const pendingNotificationSceneReplyRef = useRef<{ replyId: string; sceneId: string; characterId: string; replyMode: "action" | "dialogue" } | null>(null);
   const [sceneActionInput, setSceneActionInput] = useState("");
   const [messageActionTarget, setMessageActionTarget] = useState<LifeSceneMessage | null>(null);
   const [messageActionMode, setMessageActionMode] = useState<"menu" | "edit" | "delete-confirm">("menu");
@@ -2016,24 +2017,48 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   };
 
   useEffect(() => {
-    const onNotificationReply = (event: Event) => {
-      const detail = (event as CustomEvent<{ sceneId?: string; characterId?: string }>).detail;
-      if (!detail?.sceneId || !detail.characterId) return;
-      pendingNotificationSceneReplyRef.current = { sceneId: detail.sceneId, characterId: detail.characterId };
-      setSelectedSpeakerId(detail.characterId);
+    const resumePendingReply = () => {
+      const pending = peekPendingLifeSceneReply();
+      if (!pending) return;
+      pendingNotificationSceneReplyRef.current = pending;
+      const scene = stateRef.current.scenes.find(item => item.id === pending.sceneId);
+      if (scene) setSelectedLocationId(scene.locationId);
+      setSelectedSpeakerId(pending.characterId);
       setTab("home");
       setSceneView(true);
     };
+    const onNotificationReply = () => resumePendingReply();
     window.addEventListener("life-scene-notification-reply", onNotificationReply);
+    // The native queue may have been consumed while the WebView was on another page.
+    // Resume from the persistent local queue when the life app mounts.
+    resumePendingReply();
     return () => window.removeEventListener("life-scene-notification-reply", onNotificationReply);
   }, []);
 
   useEffect(() => {
-    const pending = pendingNotificationSceneReplyRef.current;
-    if (!pending || !immersiveScene || activeScene?.id !== pending.sceneId || selectedSpeakerId !== pending.characterId || busy) return;
+    if (busy) return;
+    const pending = pendingNotificationSceneReplyRef.current ?? peekPendingLifeSceneReply();
+    if (!pending) return;
+    pendingNotificationSceneReplyRef.current = pending;
+    const scene = stateRef.current.scenes.find(item => item.id === pending.sceneId);
+    if (scene && selectedLocationId !== scene.locationId) {
+      setSelectedLocationId(scene.locationId);
+      return;
+    }
+    if (selectedSpeakerId !== pending.characterId) {
+      setSelectedSpeakerId(pending.characterId);
+      return;
+    }
+    if (!immersiveScene) {
+      setTab("home");
+      setSceneView(true);
+      return;
+    }
+    if (activeScene?.id !== pending.sceneId) return;
     pendingNotificationSceneReplyRef.current = null;
+    acknowledgePendingLifeSceneReply(pending.replyId);
     void sendSceneTurn(undefined, true);
-  }, [activeScene?.id, immersiveScene, selectedSpeakerId, busy, sendSceneTurn]);
+  }, [activeScene?.id, immersiveScene, selectedLocationId, selectedSpeakerId, busy, sendSceneTurn]);
 
   const addLocation = () => {
     const name = newLocationName.trim();
