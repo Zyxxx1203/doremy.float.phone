@@ -17,7 +17,7 @@ assert.match(app, /if \(settings\.autoGenerateWeeklyPlans\)\s*\{\s*next = genera
 assert.match(app, /if \(liveSettings\.autoGenerateWeeklyPlans\)/);
 assert.match(app, /<LifeDiagnosticsPanel\s*\/>/);
 assert.match(app, /life-scene-notification-reply/);
-assert.match(app, /setLifeSceneForegroundLease\(activeScene\.id, true\)/);
+assert.match(app, /refreshForegroundLease/);\nassert.match(app, /document\.visibilityState === "visible"/);
 assert.match(app, /synchronizeCharacterHomeSchedule/);
 assert.match(app, /reserveCharacterLocationStay/);
 assert.match(runtime, /export function synchronizeCharacterHomeSchedule/);
