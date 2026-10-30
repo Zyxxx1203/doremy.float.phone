@@ -15,6 +15,7 @@ import { syncLifeScheduleSnapshot } from "./life-schedule-cloud";
 import { loadVirtualLifeState } from "./life-storage";
 import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "./life-runtime";
 import type { VirtualLifeState } from "./life-types";
+import { recordLifeDiagnostic } from "./life-diagnostics";
 
 const PLAYER_ID = "player";
 const ARM_META_PREFIX = "life-schedule-arm:";
@@ -88,7 +89,7 @@ async function runOnce(): Promise<void> {
   running = true;
   try {
     const state = loadVirtualLifeState();
-    if (!state.settings.enabled || !state.settings.enableCharacterAutonomy || state.settings.enableProactiveSceneMessages === false) return;
+    if (!state.settings.enabled || !state.settings.enableCharacterAutonomy || state.settings.enableProactiveSceneMessages === false) { recordLifeDiagnostic({ source: "主动调度", event: "调度巡检跳过", status: "info", detail: "生活引擎、自主行动或主动消息开关处于关闭状态。", meta: { enabled: state.settings.enabled, autonomy: state.settings.enableCharacterAutonomy, proactive: state.settings.enableProactiveSceneMessages } }); return; }
     void syncLifeScheduleSnapshot();
     const player = playerLocation(state);
     if (!player) return;
@@ -149,6 +150,7 @@ async function runOnce(): Promise<void> {
         repeat: { intervalMs: 20 * 60_000, remaining: 24 },
       });
       writeLifeProactiveStatus({ at: new Date().toISOString(), ok: result.ok, character: character.name, reason: result.ok ? undefined : result.reason });
+      recordLifeDiagnostic({ source: "主动调度", event: result.ok ? "离线主动任务已挂载" : "离线主动任务挂载失败", status: result.ok ? "ok" : "error", detail: result.ok ? character.name + " 的主动消息已提交服务端预约。" : character.name + "：" + (result.reason || "未知原因"), meta: { sceneId: scene.id, characterId: character.id, sessionId: session.id, executeAt: new Date(executeAtMs).toISOString() } });
       if (!result.ok) {
         // 没挂上就清掉“已挂”标记，下一轮继续重试，不能一次失败永远不排。
         try { localStorage.removeItem(ARM_META_PREFIX + trigger); } catch { /* best effort */ }
@@ -157,6 +159,7 @@ async function runOnce(): Promise<void> {
     }
   } catch (error) {
     console.warn("[LifeSchedule] scheduler failed:", error);
+    recordLifeDiagnostic({ source: "主动调度", event: "调度器异常", status: "error", detail: error instanceof Error ? error.message : String(error) });
   } finally {
     running = false;
   }
