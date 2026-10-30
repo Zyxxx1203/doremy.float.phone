@@ -3590,7 +3590,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           </section>)}
         </div>}
       </section>}
-      {tab === "settings" && <div className="grid gap-4 lg:grid-cols-2">\n        <LifeDiagnosticsPanel />
+      {tab === "settings" && <div className="grid gap-4 lg:grid-cols-2">
+        <LifeDiagnosticsPanel />
         <section className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm sm:p-6 lg:col-span-2">
           <SectionTitle eyebrow="Life appearance" title="生活系统全局背景" note="设置后会用于生活首页、日程、地点库与设置等页面。某个地点拥有专属聊天室背景时，进入该地点会优先显示专属背景。"/>
           <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
