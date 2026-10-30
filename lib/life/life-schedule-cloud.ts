@@ -6,7 +6,20 @@ import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "./l
 import { recordLifeDiagnostic } from "./life-diagnostics";
 
 const SNAPSHOT_RULE_ID = "life-schedule";
+const FOREGROUND_LEASE_KEY = "life-scene-foreground-lease-v1";
 let lastJson = "";
+
+function foregroundLeaseSnapshot(): { foregroundSceneId: string; foregroundLeaseUntil: string } {
+  try {
+    const lease = JSON.parse(localStorage.getItem(FOREGROUND_LEASE_KEY) || "null") as { sceneId?: string; expiresAt?: number } | null;
+    if (!lease?.sceneId || !Number.isFinite(lease.expiresAt) || Number(lease.expiresAt) <= Date.now()) {
+      return { foregroundSceneId: "", foregroundLeaseUntil: "" };
+    }
+    return { foregroundSceneId: lease.sceneId, foregroundLeaseUntil: new Date(Number(lease.expiresAt)).toISOString() };
+  } catch {
+    return { foregroundSceneId: "", foregroundLeaseUntil: "" };
+  }
+}
 
 function actorLocation(state: ReturnType<typeof loadVirtualLifeState>, ownerType: "player" | "character", ownerId: string): string {
   const now = resolveActorLifeNow(getActorClock(state, ownerType, ownerId));
@@ -36,9 +49,10 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> 
       characterIds: scene.participants.filter(p => p.ownerType === "character" && p.activity !== "离开").map(p => p.ownerId),
     }));
     const characterLocations = Object.fromEntries([...characterIds].map(id => [id, actorLocation(state, "character", id)]));
-    const fingerprint = JSON.stringify({ version: 1, playerLocationId, scenes, characterLocations });
+    const foregroundLease = foregroundLeaseSnapshot();
+    const fingerprint = JSON.stringify({ version: 2, playerLocationId, scenes, characterLocations, ...foregroundLease });
     if (!force && fingerprint === lastJson) return true;
-    const payload = { version: 1, updatedAt: new Date().toISOString(), playerLocationId, scenes, characterLocations };
+    const payload = { version: 2, updatedAt: new Date().toISOString(), playerLocationId, scenes, characterLocations, ...foregroundLease };
     const response = await fetch("/api/push/bridge-snapshots", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
