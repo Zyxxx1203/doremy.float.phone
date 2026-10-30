@@ -1868,7 +1868,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const rawTargetId = selectedSpeakerId || activeScene.participants.find(p => p.ownerType === "character")?.ownerId || "";
     const targetId = resolveLifeCharacterId(rawTargetId);
     const target = characters.find(char => char.id === targetId);
-    if (!target) { setNotice("没有找到可回应的角色。请检查该场景参与者是否关联到现有角色卡。"); return; }
+    if (!target) {
+      if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应无法启动", status: "error", detail: "找不到通知回复对应的角色卡。", meta: { sceneId: activeScene.id, targetId } });
+      setNotice("没有找到可回应的角色。请检查该场景参与者是否关联到现有角色卡。");
+      return;
+    }
     if (userText || userAction) {
       const latest = stateRef.current;
       const scene = latest.scenes.find(item => item.id === activeScene.id);
@@ -1895,7 +1899,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const contact = contacts.find(item => item.characterId === target.id);
     const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeVirtualSession(target.id, target.name);
     const lifeTurn = beginTurn({ kind: "life_scene", characterId: target.id, sessionId: session.id });
-    if (!lifeTurn) return;
+    if (!lifeTurn) {
+      if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应被其他回合占用", status: "warning", detail: target.name + " 的回应未启动，因为当前已有其他角色回合正在执行。", meta: { sceneId: activeScene.id, characterId: target.id, sessionId: session.id } });
+      return;
+    }
     setBusy(true);
     if (forceReaction) setNotice(target.name + "正在回应最近的互动……");
     try {
@@ -2008,7 +2015,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       ];
       if (!replyMessages.length) replyMessages.push({ id: id("turn"), sceneId: activeScene.id, speakerType: "character", speakerId: target.id, speakerName: target.name, role: "character", dialogue: "", createdAt: replyAt });
       replyMessages.forEach(pushSceneMessage);
-      if (forceReaction) setNotice(target.name + "已回应最近的互动。");
+      if (forceReaction) {
+        recordLifeDiagnostic({ source: "通知回复", event: "生活现场已生成角色回应", status: "ok", detail: target.name + " 已完成通知回复后的现场回应。", meta: { sceneId: activeScene.id, characterId: target.id, action: Boolean(actionText), dialogueCount: dialogueSegments.length } });
+        setNotice(target.name + "已回应最近的互动。");
+      }
       if (settings.saveConfirmedEventsToMemory && (userText.trim() || userAction.trim()) && (parsed.dialogue.trim() || parsed.action?.trim())) {
         const eventId = id("event"), eventNow = new Date().toISOString();
         const event = { id: eventId, kind: "activity" as const, status: "completed" as const, locationId: activeScene.locationId, locationName: activeScene.locationName, participantIds: ["player", target.id], title: userAction.trim() && !userText.trim() ? "生活场景行动" : "生活场景互动", details: `${playerName}行动：${userAction || "无"}\n{{user}}对白：${userText || "无"}\n${target.name}行动：${parsed.action || "无"}\n${target.name}对白：${parsed.dialogue || "无"}`, createdAt: eventNow, updatedAt: eventNow, completedAt: eventNow };
@@ -2017,6 +2027,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         commit({ ...latest, events: [event, ...latest.events], memories: [{ id: id("memory"), eventId, occurredAt: eventNow, participants: ["player", target.id], fact }, ...latest.memories].slice(0, 500) });
       }
     } catch (error) {
+      if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应生成失败", status: "error", detail: error instanceof Error ? error.message : String(error), meta: { sceneId: activeScene.id, characterId: target.id } });
       setNotice(error instanceof Error ? `角色生成失败：${error.message}` : "角色生成失败，请检查聊天模型配置。");
     } finally { lifeTurn.end(); setBusy(false); }
   };
@@ -2062,6 +2073,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (activeScene?.id !== pending.sceneId) return;
     pendingNotificationSceneReplyRef.current = null;
     acknowledgePendingLifeSceneReply(pending.replyId);
+    recordLifeDiagnostic({ source: "通知回复", event: "待处理回复已交给生活现场 AI", status: "info", detail: "已恢复通知回复队列并启动对应角色回合。", meta: { replyId: pending.replyId, sceneId: pending.sceneId, characterId: pending.characterId, replyMode: pending.replyMode } });
     void sendSceneTurn(undefined, true);
   }, [activeScene?.id, immersiveScene, selectedLocationId, selectedSpeakerId, busy, sendSceneTurn]);
 
