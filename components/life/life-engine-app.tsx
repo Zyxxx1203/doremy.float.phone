@@ -225,6 +225,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [playerActivity, setPlayerActivity] = useState("");
   const [sceneInput, setSceneInput] = useState("");
   const sceneChatScrollRef = useRef<HTMLDivElement | null>(null);
+  const pendingNotificationSceneReplyRef = useRef<{ sceneId: string; characterId: string } | null>(null);
   const [sceneActionInput, setSceneActionInput] = useState("");
   const [messageActionTarget, setMessageActionTarget] = useState<LifeSceneMessage | null>(null);
   const [messageActionMode, setMessageActionMode] = useState<"menu" | "edit" | "delete-confirm">("menu");
@@ -2010,6 +2011,26 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       setNotice(error instanceof Error ? `角色生成失败：${error.message}` : "角色生成失败，请检查聊天模型配置。");
     } finally { lifeTurn.end(); setBusy(false); }
   };
+
+  useEffect(() => {
+    const onNotificationReply = (event: Event) => {
+      const detail = (event as CustomEvent<{ sceneId?: string; characterId?: string }>).detail;
+      if (!detail?.sceneId || !detail.characterId) return;
+      pendingNotificationSceneReplyRef.current = { sceneId: detail.sceneId, characterId: detail.characterId };
+      setSelectedSpeakerId(detail.characterId);
+      setTab("home");
+      setSceneView(true);
+    };
+    window.addEventListener("life-scene-notification-reply", onNotificationReply);
+    return () => window.removeEventListener("life-scene-notification-reply", onNotificationReply);
+  }, []);
+
+  useEffect(() => {
+    const pending = pendingNotificationSceneReplyRef.current;
+    if (!pending || !immersiveScene || activeScene?.id !== pending.sceneId || selectedSpeakerId !== pending.characterId || busy) return;
+    pendingNotificationSceneReplyRef.current = null;
+    void sendSceneTurn(undefined, true);
+  }, [activeScene?.id, immersiveScene, selectedSpeakerId, busy, sendSceneTurn]);
 
   const addLocation = () => {
     const name = newLocationName.trim();
