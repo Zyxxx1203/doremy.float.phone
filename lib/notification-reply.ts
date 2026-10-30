@@ -139,7 +139,7 @@ export async function flushPendingNotificationReplies(): Promise<number> {
         if (!text) continue;
         const result = mirrorNotificationReplyToLifeScene(item, text);
         if (result === "written") {
-            recordLifeDiagnostic({ source: "通知回复", event: "场景回复闭环完成", status: "ok", detail: "生活现场已写回，不再重复触发普通聊天回复。", meta: { replyId: item.id, sceneId: item.sceneId, replyMode: item.replyMode } });
+            recordLifeDiagnostic({ source: "通知回复", event: "通知回复已写入并排队", status: "ok", detail: "生活现场已写回，不再重复触发普通聊天回复。", meta: { replyId: item.id, sceneId: item.sceneId, replyMode: item.replyMode } });
         } else {
             pushChatMessage({ sessionId: item.sessionId, role: "user", content: text });
             chatReplies.add(item.sessionId);
