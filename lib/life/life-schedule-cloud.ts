@@ -4,21 +4,16 @@
 import { loadVirtualLifeState } from "./life-storage";
 import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "./life-runtime";
 import { recordLifeDiagnostic } from "./life-diagnostics";
+import { readLifeSceneForegroundLease } from "./life-scheduler-coordinator";
 
 const SNAPSHOT_RULE_ID = "life-schedule";
-const FOREGROUND_LEASE_KEY = "life-scene-foreground-lease-v1";
 let lastJson = "";
 
 function foregroundLeaseSnapshot(): { foregroundSceneId: string; foregroundLeaseUntil: string } {
-  try {
-    const lease = JSON.parse(localStorage.getItem(FOREGROUND_LEASE_KEY) || "null") as { sceneId?: string; expiresAt?: number } | null;
-    if (!lease?.sceneId || !Number.isFinite(lease.expiresAt) || Number(lease.expiresAt) <= Date.now()) {
-      return { foregroundSceneId: "", foregroundLeaseUntil: "" };
-    }
-    return { foregroundSceneId: lease.sceneId, foregroundLeaseUntil: new Date(Number(lease.expiresAt)).toISOString() };
-  } catch {
-    return { foregroundSceneId: "", foregroundLeaseUntil: "" };
-  }
+  const lease = readLifeSceneForegroundLease();
+  return lease
+    ? { foregroundSceneId: lease.sceneId, foregroundLeaseUntil: new Date(lease.expiresAt).toISOString() }
+    : { foregroundSceneId: "", foregroundLeaseUntil: "" };
 }
 
 function actorLocation(state: ReturnType<typeof loadVirtualLifeState>, ownerType: "player" | "character", ownerId: string): string {
