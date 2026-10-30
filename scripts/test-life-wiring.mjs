@@ -41,6 +41,7 @@ assert.match(cloud, /Promise<boolean>/);
 assert.match(scheduler, /await syncLifeScheduleSnapshot\(\)/);
 assert.match(scheduler, /rerunRequested = true/);
 assert.match(scheduler, /const onScheduleChanged = \(\) => \{ start\(\); \}/);
+assert.match(scheduler, /const scene = state\.scenes\.find\(item => item\.status === "active"\s*&& item\.locationId === player\.id/);
 assert.match(scheduler, /source: "schedule"/);
 assert.match(scheduler, /主动消息已关闭，撤销待执行任务/);
 assert.match(scheduler, /scene\.status === "active" && scene\.locationId === player\.id/);
