@@ -35,24 +35,27 @@ const TICK_MS = 60_000;
 const MIN_DELAY_MS = 3 * 60_000;
 const MAX_DELAY_MS = 9 * 60_000;
 
+function resolvedLocation(state: VirtualLifeState, ownerType: "player" | "character", ownerId: string): { id: string; name: string } | null {
+  const now = resolveActorLifeNow(getActorClock(state, ownerType, ownerId));
+  const actor = state.actorStates.find(item => item.ownerType === ownerType && item.ownerId === ownerId);
+  const until = actor?.actualLocationUntil ? Date.parse(actor.actualLocationUntil) : Number.NaN;
+  const useActual = Boolean(actor?.actualLocationId && Number.isFinite(until) && until > now.getTime());
+  const slot = getCurrentActorSchedule(state, ownerType, ownerId, now);
+  const locationId = (useActual ? actor?.actualLocationId : slot?.plannedLocationId) || actor?.actualLocationId || "";
+  if (!locationId) return null;
+  const locationName = (useActual ? actor?.actualLocationName : slot?.plannedLocationName)
+    || actor?.actualLocationName
+    || state.locations.find(location => location.id === locationId)?.name
+    || "当前地点";
+  return { id: locationId, name: locationName };
+}
+
 function playerLocation(state: VirtualLifeState): { id: string; name: string } | null {
-  const now = resolveActorLifeNow(getActorClock(state, "player", PLAYER_ID));
-  const slot = getCurrentActorSchedule(state, "player", PLAYER_ID, now);
-  if (slot?.plannedLocationId) {
-    return { id: slot.plannedLocationId, name: slot.plannedLocationName || state.locations.find(l => l.id === slot.plannedLocationId)?.name || "当前地点" };
-  }
-  const actor = state.actorStates.find(item => item.ownerType === "player" && item.ownerId === PLAYER_ID);
-  if (actor?.actualLocationId) {
-    return { id: actor.actualLocationId, name: actor.actualLocationName || state.locations.find(l => l.id === actor.actualLocationId)?.name || "当前地点" };
-  }
-  return null;
+  return resolvedLocation(state, "player", PLAYER_ID);
 }
 
 function characterLocation(state: VirtualLifeState, characterId: string): string | null {
-  const now = resolveActorLifeNow(getActorClock(state, "character", characterId));
-  const slot = getCurrentActorSchedule(state, "character", characterId, now);
-  if (slot?.plannedLocationId) return slot.plannedLocationId;
-  return state.actorStates.find(item => item.ownerType === "character" && item.ownerId === characterId)?.actualLocationId ?? null;
+  return resolvedLocation(state, "character", characterId)?.id ?? null;
 }
 
 function nextArmAt(triggerKey: string, now: number): number {
