@@ -116,7 +116,7 @@ function mirrorNotificationReplyToLifeScene(item: PendingNotificationReply, text
             window.dispatchEvent(new CustomEvent("life-scene-notification-reply", { detail: { replyId: item.id, sceneId: scene.id, characterId, replyMode: item.replyMode } }));
             // The reply can arrive while the WebView is alive on another app/page.
             // Navigate to the life scene so the queued reaction is not lost with an absent listener.
-            if (window.location.pathname.replace(/\\/+$/, "") !== "/life") {
+            if (window.location.pathname !== "/life" && window.location.pathname !== "/life/") {
                 window.location.assign("/life?sceneId=" + encodeURIComponent(scene.id));
             }
         }
