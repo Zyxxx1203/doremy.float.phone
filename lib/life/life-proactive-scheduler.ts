@@ -14,22 +14,11 @@ import { loadVirtualLifeState } from "./life-storage";
 import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "./life-runtime";
 import type { VirtualLifeState } from "./life-types";
 import { recordLifeDiagnostic } from "./life-diagnostics";
+import { setLifeSceneForegroundLease } from "./life-scheduler-coordinator";
 
 const PLAYER_ID = "player";
 const ARM_META_PREFIX = "life-schedule-arm:";
 const STATUS_KEY = "life-proactive-last-status-v1";
-const FOREGROUND_LEASE_KEY = "life-scene-foreground-lease-v1";
-
-export function setLifeSceneForegroundLease(sceneId: string, active: boolean): void {
-  if (typeof window === "undefined") return;
-  try {
-    const current = JSON.parse(localStorage.getItem(FOREGROUND_LEASE_KEY) || "null") as { sceneId?: string } | null;
-    if (active && sceneId) localStorage.setItem(FOREGROUND_LEASE_KEY, JSON.stringify({ sceneId, expiresAt: Date.now() + 120_000 }));
-    else if (!sceneId || current?.sceneId === sceneId) localStorage.removeItem(FOREGROUND_LEASE_KEY);
-  } catch { /* best effort lease */ }
-}
-
-
 export type LifeProactiveStatus = { at: string; ok: boolean; character?: string; reason?: string };
 export function readLifeProactiveStatus(): LifeProactiveStatus | null {
   try {
