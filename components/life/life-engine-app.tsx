@@ -832,6 +832,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       appTags: lifeAppTags("autonomy"),
       executeAtMs: Date.now() + 60_000,
       repeat: { intervalMs: 20 * 60_000, remaining: 3 },
+      source: "manual",
     });
     recordLifeDiagnostic({ source: "主动调度", event: result.ok ? "手动主动任务已挂载" : "手动主动任务挂载失败", status: result.ok ? "ok" : "error", detail: result.ok ? "手动主动消息预约已提交。" : result.reason, meta: { sceneId: scene.id, characterId: character.id, sessionId: session.id } });
     setNotice(result.ok
@@ -1728,6 +1729,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             appId: "life",
             appTags: lifeAppTags("autonomy"),
             executeAtMs: now + firstDelay,
+            source: "foreground",
           }).then(result => {
             if (!result.ok) console.warn("[LifeAutonomy] 首次服务端预约未挂上：", result.reason);
           });
@@ -1813,6 +1815,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               appId: "life",
               appTags: lifeAppTags("autonomy"),
               executeAtMs: Math.max(Date.now() + 30_000, scheduledAt),
+              source: "foreground",
             });
           }
         }
