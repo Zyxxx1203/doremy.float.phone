@@ -207,13 +207,37 @@ function humanizeSegment(segment: string): string {
 function splitResponseForPushPreview(rawText: string): string[] {
   let text = stripStateValues(rawText);
   text = stripBracketBlock(text, "状态栏");
-  text = stripBracketBlock(text, "内心");
-  text = text.replace(/\n{3,}/g, "\n\n").trim();
+  text = stripBracketBlock(text, "内心");  text = text.replace(/\n{3,}/g, "\n\n").trim();
   return text
     .split(/\n\n+/)
     .map(segment => humanizeSegment(segment.trim()))
     .map(segment => segment.replace(/\s+/g, " ").trim())
     .filter(Boolean);
+}
+
+/**
+ * 生活现场输出走 JSON 协议（兼容旧 XML/纯文本）。
+ * 通知和快捷回复都只认解析后的 action/dialogue，避免把原始 JSON 推给用户。
+ */
+function parseLifeSceneOutput(rawText: string): { action: string; dialogues: string[] } {
+  const text = String(rawText ?? "").replace(/```(?:json)?/gi, "").trim();
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try {
+      const value = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
+      const action = typeof value.action === "string" ? value.action.trim() : "";
+      const rawDialogue = value.dialogue;
+      const dialogues = (Array.isArray(rawDialogue) ? rawDialogue : typeof rawDialogue === "string" ? [rawDialogue] : [])
+        .map(item => String(item ?? "").trim())
+        .filter(Boolean);
+      return { action, dialogues };
+    } catch { /* fall through to legacy formats */ }
+  }
+  const action = text.match(/<life_action\b[^>]*>([\s\S]*?)<\/life_action\s*>/i)?.[1]?.trim() ?? "";
+  const dialogue = text.match(/<life_dialogue\b[^>]*>([\s\S]*?)<\/life_dialogue\s*>/i)?.[1]?.trim() ?? "";
+  const fallback = text.replace(/<[^>]+>/g, "").trim();
+  return { action, dialogues: dialogue ? [dialogue] : fallback ? [fallback] : [] };
 }
 
 // ── 内嵌：lib/server/push-job-crypto 的解密（Web Crypto 实现，格式兼容） ──
@@ -492,6 +516,16 @@ Deno.serve(async (req: Request) => {
     body: JSON.stringify({ status, result_note: note.slice(0, 300), updated_at: new Date().toISOString() }),
   }).catch(() => undefined);
 
+  const deferUntil = (executeAtMs: number, note: string) => rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      status: "pending",
+      execute_at: new Date(executeAtMs).toISOString(),
+      result_note: note.slice(0, 300),
+      updated_at: new Date().toISOString(),
+    }),
+  }).catch(() => null);
+
   /**
    * 这一单是否已被客户端撤销。
    *
@@ -525,34 +559,61 @@ Deno.serve(async (req: Request) => {
       return;
     }
     const payload = JSON.parse(await decryptPayload(job.payload, payloadKey)) as JobPayload;
-    // 生活主动消息：服务端执行前复核日程同场快照。客户端每次日程/场景更新都会
-    // 覆盖 push_bridge_snapshots 里的 life-schedule 快照；不在同场就不生成、不续排。
+    // 生活主动消息必须通过最新可用快照验证；缺失、损坏或位置不一致一律 fail closed。
     const lifeSceneMeta = payload.merge?.lifeScene as { sceneId?: string; characterId?: string } | undefined;
-    if (lifeSceneMeta?.sceneId && lifeSceneMeta.characterId) {
+    if (payload.merge?.lifeScene) {
+      if (!lifeSceneMeta?.sceneId || !lifeSceneMeta.characterId) {
+        await finish("done", "life schedule: incomplete scene metadata; rejected safely");
+        return;
+      }
       const snapResponse = await rest(
         `push_bridge_snapshots?user_id=eq.${encodeURIComponent(job.user_id)}`
         + `&rule_id=eq.life-schedule&select=payload&limit=1`,
       );
-      const snapRows = snapResponse.ok ? await snapResponse.json() as { payload?: EncryptedPayload }[] : [];
-      if (snapRows[0]?.payload) {
-        try {
-          const snapshot = JSON.parse(await decryptPayload(snapRows[0].payload, payloadKey)) as {
-            playerLocationId?: string;
-            scenes?: { id?: string; locationId?: string; characterIds?: string[] }[];
-            characterLocations?: Record<string, string>;
-          };
-          const scene = (snapshot.scenes ?? []).find(item => item.id === lifeSceneMeta.sceneId);
-          const characterLocation = snapshot.characterLocations?.[lifeSceneMeta.characterId];
-          const sameScene = Boolean(scene)
-            && scene?.locationId === snapshot.playerLocationId
-            && (characterLocation === snapshot.playerLocationId || scene?.characterIds?.includes(lifeSceneMeta.characterId) === true);
-          if (!sameScene) {
-            await finish("done", "life schedule: player/character left the shared location");
-            return;
-          }
-        } catch {
-          // 快照损坏时退回旧行为，不让一条坏快照永久堵住主动消息。
+      if (!snapResponse.ok) {
+        await finish("done", "life schedule: snapshot lookup failed; rejected safely");
+        return;
+      }
+      const snapRows = await snapResponse.json() as { payload?: EncryptedPayload }[];
+      if (!snapRows[0]?.payload) {
+        await finish("done", "life schedule: snapshot missing; rejected safely");
+        return;
+      }
+      try {
+        const snapshot = JSON.parse(await decryptPayload(snapRows[0].payload, payloadKey)) as {
+          updatedAt?: string;
+          playerLocationId?: string;
+          foregroundSceneId?: string;
+          foregroundLeaseUntil?: string;
+          scenes?: { id?: string; locationId?: string; characterIds?: string[] }[];
+          characterLocations?: Record<string, string>;
+        };
+        const scene = (snapshot.scenes ?? []).find(item => item.id === lifeSceneMeta.sceneId);
+        const characterLocation = snapshot.characterLocations?.[lifeSceneMeta.characterId];
+        const hasPlayerLocation = typeof snapshot.playerLocationId === "string" && snapshot.playerLocationId.length > 0;
+        const hasCharacterLocation = typeof characterLocation === "string" && characterLocation.length > 0;
+        const isParticipant = scene?.characterIds?.includes(lifeSceneMeta.characterId) === true;
+        const sameScene = Boolean(scene && hasPlayerLocation && hasCharacterLocation && isParticipant)
+          && scene?.locationId === snapshot.playerLocationId
+          && characterLocation === snapshot.playerLocationId;
+        if (!sameScene) {
+          await finish("done", "life schedule: player/character no longer share the exact scene location");
+          return;
         }
+        const foregroundLeaseUntil = Date.parse(snapshot.foregroundLeaseUntil || "");
+        if (snapshot.foregroundSceneId === lifeSceneMeta.sceneId
+          && Number.isFinite(foregroundLeaseUntil)
+          && foregroundLeaseUntil > Date.now()) {
+          // Do not race a visible foreground scene. Requeue this same server job instead
+          // of marking it done, so the 24-turn offline chain survives abrupt WebView death.
+          const deferAt = Math.max(Date.now() + 60_000, foregroundLeaseUntil + 90_000);
+          const deferred = await deferUntil(deferAt, "life schedule: foreground scene lease active; deferred until " + new Date(deferAt).toISOString());
+          if (!deferred?.ok) await finish("done", "life schedule: foreground lease active; defer failed safely");
+          return;
+        }
+      } catch {
+        await finish("done", "life schedule: snapshot invalid; rejected safely");
+        return;
       }
     }
     let shortcutStoragePath = "";
@@ -1182,14 +1243,16 @@ Deno.serve(async (req: Request) => {
     const targetUrl = deliverAsCall && callSessionId
       ? `/?ring=${encodeURIComponent(callSessionId)}&rt=${Date.now()}`
       : (isLifeSceneJob ? "/life" : (payload.notify?.url || "/"));
-    const lifeScenePreview = payload.merge?.lifeScene ? (() => {
-      const action = rawText.match(/<life_action\b[^>]*>([\s\S]*?)<\/life_action\s*>/i)?.[1]?.trim() ?? "";
-      const dialogue = rawText.match(/<life_dialogue\b[^>]*>([\s\S]*?)<\/life_dialogue\s*>/i)?.[1]?.trim() ?? "";
-      return [action, dialogue].filter(Boolean).join(" ") || rawText.replace(/<[^>]+>/g, "").trim();
-    })() : rawText;
+    const lifeSceneOutput = isLifeSceneJob ? parseLifeSceneOutput(rawText) : null;
+    const lifeScenePreview = lifeSceneOutput
+      ? [lifeSceneOutput.action, ...lifeSceneOutput.dialogues].filter(Boolean).join("\n\n")
+      : rawText;
+    // 生活现场一轮就是一条通知；不能把 JSON 或长文本按句子拆成多条推送。
     let parts = deliverAsCall
       ? ["来电话了…"]
-      : splitResponseForPushPreview(lifeScenePreview).slice(0, 6);
+      : isLifeSceneJob && lifeScenePreview.trim()
+        ? [lifeScenePreview.trim()]
+        : splitResponseForPushPreview(lifeScenePreview).slice(0, 6);
     if (parts.length === 0) parts = ["发来一条消息"];
 
     // Notification setup may take additional time after outbox persistence. Check once
@@ -1258,8 +1321,8 @@ Deno.serve(async (req: Request) => {
                     sceneId: String(payload.merge?.lifeScene?.sceneId ?? ""),
                     characterId: String(payload.merge?.lifeScene?.characterId ?? ""),
                     characterName: String(payload.merge?.lifeScene?.characterName ?? title),
-                    actionText: String(rawText.match(/<life_action\b[^>]*>([\s\S]*?)<\/life_action\s*>/i)?.[1]?.trim() ?? ""),
-                    dialogueText: String(rawText.match(/<life_dialogue\b[^>]*>([\s\S]*?)<\/life_dialogue\s*>/i)?.[1]?.trim() ?? ""),
+                    actionText: lifeSceneOutput?.action ?? "",
+                    dialogueText: lifeSceneOutput?.dialogues[0] ?? "",
                   } : {}),
                   ...(deliverAsCall ? { kind: "call", characterName: title, callTs: Date.now() } : {}),
                 },
