@@ -42,6 +42,31 @@ export function upsertActorState(state: VirtualLifeState, nextActor: LifeActorSt
 }
 
 /**
+ * Resolve the actual location consistently for UI snapshots and proactive scheduling.
+ * A temporary or manually selected actual location wins; otherwise use the current schedule.
+ */
+export function resolveActorLocation(
+  state: VirtualLifeState,
+  ownerType: LifeOwnerType,
+  ownerId: string,
+  now = resolveActorLifeNow(getActorClock(state, ownerType, ownerId)),
+): { id: string; name: string } | null {
+  const actor = state.actorStates.find(item => item.ownerType === ownerType && item.ownerId === ownerId);
+  const slot = getCurrentActorSchedule(state, ownerType, ownerId, now);
+  const until = actor?.actualLocationUntil ? Date.parse(actor.actualLocationUntil) : Number.NaN;
+  const temporaryOverride = Boolean(actor?.actualLocationId && Number.isFinite(until) && until > now.getTime());
+  const manualOverride = Boolean(actor?.actualLocationId && actor.actualLocationUntil == null && actor.actualLocationId !== slot?.plannedLocationId);
+  const useActual = temporaryOverride || manualOverride;
+  const locationId = (useActual ? actor?.actualLocationId : slot?.plannedLocationId) || actor?.actualLocationId || "";
+  if (!locationId) return null;
+  const locationName = (useActual ? actor?.actualLocationName : slot?.plannedLocationName)
+    || actor?.actualLocationName
+    || state.locations.find(location => location.id === locationId)?.name
+    || "当前地点";
+  return { id: locationId, name: locationName };
+}
+
+/**
  * Move only future, automatically generated home slots when a character's residence changes.
  * Explicit manual locations, work/study/commute and non-home outings are never rewritten.
  */
