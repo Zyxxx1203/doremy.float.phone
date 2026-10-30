@@ -29,7 +29,7 @@ import {
   type LifeScheduleSlot,
   type VirtualLifeState,
 } from "@/lib/life/life-types";
-import { advanceActorTimeline, applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, insertManualLifeScheduleSlot, syncScheduleLocationsToLibrary, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, synchronizeCharacterHomeSchedule, upsertActorClock, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
+import { advanceActorTimeline, applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, insertManualLifeScheduleSlot, syncScheduleLocationsToLibrary, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, synchronizeCharacterHomeSchedule, reserveCharacterLocationStay, upsertActorClock, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { describeLifeOutputIssues, parseLifeOutput, validateLifeOutput, type LifeOutputIssue } from "@/lib/life/life-output";
@@ -1149,41 +1149,14 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     for (const char of companions) {
       const companionNow = resolveActorLifeNow(getActorClock(next, "character", char.id));
       const companionStayUntil = new Date(companionNow.getTime() + stayDurationMinutes * 60_000);
-      const actorNow = companionNow.getTime();
-      const actorNowIso = companionNow.toISOString();
-      const stayUntilIso = companionStayUntil.toISOString();
-      next = upsertActorState(next, { ownerType: "character", ownerId: char.id, activity: "跟随" + playerName + "前往" + destination.name, actualLocationId: destination.id, actualLocationName: destination.name, actualLocationUntil: stayUntilIso, updatedAt: travelStartedAt });
-      // Reserve the whole visit in the itinerary. Otherwise the clock engine can settle
-      // the actor back to the old planned location as soon as their previous slot ends.
-      const retainedSlots: LifeScheduleSlot[] = [];
-      for (const slot of next.schedules) {
-        if (slot.ownerType !== "character" || slot.ownerId !== char.id) {
-          retainedSlots.push(slot);
-          continue;
-        }
-        const slotStart = new Date(slot.startAt).getTime();
-        const slotEnd = new Date(slot.endAt).getTime();
-        if (!Number.isFinite(slotStart) || !Number.isFinite(slotEnd) || slotEnd <= actorNow || slotStart >= companionStayUntil.getTime()) {
-          retainedSlots.push(slot);
-          continue;
-        }
-        if (slotStart < actorNow) retainedSlots.push({ ...slot, endAt: actorNowIso, updatedAt: travelStartedAt });
-        if (slotEnd > companionStayUntil.getTime()) retainedSlots.push({ ...slot, id: id("resume-after-companion-trip"), startAt: stayUntilIso, updatedAt: travelStartedAt });
-      }
-      retainedSlots.push({
-        id: id("companion-follow"),
-        ownerType: "character",
-        ownerId: char.id,
-        startAt: actorNowIso,
-        endAt: stayUntilIso,
+      next = reserveCharacterLocationStay(next, {
+        characterId: char.id,
+        locationId: destination.id,
+        locationName: destination.name,
+        startAt: companionNow,
+        endAt: companionStayUntil,
         title: "与" + playerName + "同行：前往" + destination.name,
-        plannedLocationId: destination.id,
-        plannedLocationName: destination.name,
-        kind: "free-time",
-        source: "manual",
-        updatedAt: travelStartedAt,
       });
-      next = { ...next, schedules: retainedSlots };
     }
     // Important: persist companion presence before the solo arrival flow reloads the latest state.
     // Without this commit the prepared companion states were discarded, so they never actually travelled.
