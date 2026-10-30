@@ -1707,6 +1707,13 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             executeAtMs: now + firstDelay,
             source: "foreground",
           }).then(result => {
+            recordLifeDiagnostic({
+              source: "主动调度",
+              event: result.ok ? "前台首次兜底任务已挂载" : "前台首次兜底任务挂载失败",
+              status: result.ok ? "ok" : "error",
+              detail: result.ok ? character.name + " 的前台兜底已提交。" : character.name + "：" + (result.reason || "未知原因"),
+              meta: { sceneId: activeScene.id, characterId: character.id, sessionId: session.id, executeAt: new Date(now + firstDelay).toISOString() },
+            });
             if (!result.ok) console.warn("[LifeAutonomy] 首次服务端预约未挂上：", result.reason);
           });
         }
@@ -1768,6 +1775,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           window.setTimeout(() => setSceneToast(current => current?.body === body ? null : current), 6500);
         }
       } catch (error) {
+        recordLifeDiagnostic({ source: "生活现场 AI", event: "前台主动回合失败", status: "error", detail: error instanceof Error ? error.message : String(error), meta: { sceneId: activeScene.id } });
         console.warn("[LifeAutonomy] proactive scene turn failed:", error);
       } finally {
         lifeTurn.end();
@@ -1782,6 +1790,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           const nextCandidate = pickCandidate();
           if (nextCandidate) {
             const scheduledAt = proactiveNextAtRef.current[activeScene.id] ?? (Date.now() + getRandomIntervalMs());
+            const fallbackAt = Math.max(Date.now() + 30_000, scheduledAt);
             void armLifeSceneProactiveBailout({
               sessionId: nextCandidate.session.id,
               sceneId: activeScene.id,
@@ -1790,9 +1799,15 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
               prompt: buildPrompt(nextCandidate.character),
               appId: "life",
               appTags: lifeAppTags("autonomy"),
-              executeAtMs: Math.max(Date.now() + 30_000, scheduledAt),
+              executeAtMs: fallbackAt,
               source: "foreground",
-            });
+            }).then(result => recordLifeDiagnostic({
+              source: "主动调度",
+              event: result.ok ? "前台后续兜底任务已挂载" : "前台后续兜底任务挂载失败",
+              status: result.ok ? "ok" : "error",
+              detail: result.ok ? nextCandidate.character.name + " 的下一轮兜底已提交。" : nextCandidate.character.name + "：" + (result.reason || "未知原因"),
+              meta: { sceneId: activeScene.id, characterId: nextCandidate.character.id, sessionId: nextCandidate.session.id, executeAt: new Date(fallbackAt).toISOString() },
+            }));
           }
         }
         proactiveBusyRef.current = false;
