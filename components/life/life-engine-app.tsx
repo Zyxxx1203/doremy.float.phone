@@ -1740,8 +1740,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const { character, session } = candidate;
       const lifeTurn = beginTurn({ kind: "life_scene", characterId: character.id, sessionId: session.id });
       if (!lifeTurn) return;
-      // Wait for the old server snapshot to be cancelled before starting a new local turn.
-      // Fire-and-forget cancellation can race a replacement task and deliver an obsolete turn.
+      // Replace only the old foreground one-shot fallbacks before starting a local turn.
+      // The independent 20-minute schedule chain stays armed and defers against the foreground lease.
       await cancelLifeSceneProactiveBailouts(activeScene.id, candidateIds);
       proactiveAttemptAtRef.current[activeScene.id] = now;
       proactiveNextAtRef.current[activeScene.id] = now + getRandomIntervalMs();
@@ -1823,7 +1823,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       }
     };
     const onVisibilityChange = () => {
-      // No background fallback: autonomous turns resume only when the scene is visible.
+      // Local AI turns run only while visible; the server-side schedule chain remains the offline fallback.
       if (document.visibilityState === "visible") void tick();
     };
     // Clear any locally scheduled online-chat follow-up for characters currently in this scene.
