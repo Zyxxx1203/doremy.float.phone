@@ -35,7 +35,8 @@ import { describeLifeOutputIssues, parseLifeOutput, validateLifeOutput, type Lif
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
 import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts, reconcileIdleReconnectWithLifeScenes, suspendIdleReconnectForLifeScene } from "@/lib/push-bailout-client";
-import { readLifeProactiveStatus, setLifeSceneForegroundLease } from "@/lib/life/life-proactive-scheduler";
+import { readLifeProactiveStatus } from "@/lib/life/life-proactive-scheduler";
+import { setLifeSceneForegroundLease } from "@/lib/life/life-scheduler-coordinator";
 
 import { cancelFollowUp } from "@/lib/follow-up-service";
 import { beginTurn } from "@/lib/turn-coordinator";
