@@ -11,7 +11,7 @@ import { loadChatContacts, loadChatSessions } from "@/lib/chat-storage";
 import { armLifeSceneProactiveBailout, cancelBailoutPrefix } from "@/lib/push-bailout-client";
 import { syncLifeScheduleSnapshot } from "./life-schedule-cloud";
 import { loadVirtualLifeState } from "./life-storage";
-import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "./life-runtime";
+import { resolveActorLocation } from "./life-runtime";
 import type { VirtualLifeState } from "./life-types";
 import { recordLifeDiagnostic } from "./life-diagnostics";
 
@@ -32,30 +32,14 @@ const TICK_MS = 60_000;
 const MIN_DELAY_MS = 3 * 60_000;
 const MAX_DELAY_MS = 9 * 60_000;
 
-function resolvedLocation(state: VirtualLifeState, ownerType: "player" | "character", ownerId: string): { id: string; name: string } | null {
-  const now = resolveActorLifeNow(getActorClock(state, ownerType, ownerId));
-  const actor = state.actorStates.find(item => item.ownerType === ownerType && item.ownerId === ownerId);
-  const slot = getCurrentActorSchedule(state, ownerType, ownerId, now);
-  const until = actor?.actualLocationUntil ? Date.parse(actor.actualLocationUntil) : Number.NaN;
-  const temporaryOverride = Boolean(actor?.actualLocationId && Number.isFinite(until) && until > now.getTime());
-  const manualOverride = Boolean(actor?.actualLocationId && actor.actualLocationUntil == null && actor.actualLocationId !== slot?.plannedLocationId);
-  const useActual = temporaryOverride || manualOverride;
-  const locationId = (useActual ? actor?.actualLocationId : slot?.plannedLocationId) || actor?.actualLocationId || "";
-  if (!locationId) return null;
-  const locationName = (useActual ? actor?.actualLocationName : slot?.plannedLocationName)
-    || actor?.actualLocationName
-    || state.locations.find(location => location.id === locationId)?.name
-    || "当前地点";
-  return { id: locationId, name: locationName };
-}
-
 function playerLocation(state: VirtualLifeState): { id: string; name: string } | null {
-  return resolvedLocation(state, "player", PLAYER_ID);
+  return resolveActorLocation(state, "player", PLAYER_ID);
 }
 
 function characterLocation(state: VirtualLifeState, characterId: string): string | null {
-  return resolvedLocation(state, "character", characterId)?.id ?? null;
+  return resolveActorLocation(state, "character", characterId)?.id ?? null;
 }
+
 
 function nextArmAt(triggerKey: string, now: number): number {
   try {
