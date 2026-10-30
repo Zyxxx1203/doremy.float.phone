@@ -10,7 +10,7 @@ const compiled = ts.transpileModule(source, {
 const moduleBox = { exports: {} };
 const sandbox = { module: moduleBox, exports: moduleBox.exports, Date, Math, console };
 vm.runInNewContext(compiled, sandbox, { filename: "life-runtime.cjs" });
-const { advanceActorTimeline, confirmLifeInvitation, generateWeeklyLifePlan, getCurrentActorSchedule, insertManualLifeScheduleSlot, placeAppointmentInActorSchedule, settleActorTimelineToNow, syncScheduleLocationsToLibrary, synchronizeCharacterHomeSchedule, reserveCharacterLocationStay } = moduleBox.exports;
+const { advanceActorTimeline, confirmLifeInvitation, generateWeeklyLifePlan, getCurrentActorSchedule, insertManualLifeScheduleSlot, placeAppointmentInActorSchedule, settleActorTimelineToNow, syncScheduleLocationsToLibrary, synchronizeCharacterHomeSchedule, reserveCharacterLocationStay, resolveActorLocation } = moduleBox.exports;
 assert.equal(typeof advanceActorTimeline, "function", "timeline fast-forward should be exported");
 assert.equal(typeof generateWeeklyLifePlan, "function", "weekly planner should be exported");
 assert.equal(typeof getCurrentActorSchedule, "function", "current schedule selector should be exported");
@@ -616,5 +616,27 @@ assert.equal(movedActor.actualLocationName, "街角咖啡店", "actor should mov
 assert.ok(settledMovement.locations.some(location => location.name === "街角咖啡店"), "active schedule location should sync to library");
 assert.ok(settledMovement.locations.some(location => location.name === "城市图书馆"), "future schedule location should sync to library without moving actor there");
 assert.notEqual(movedActor.actualLocationName, "城市图书馆", "future schedule must not teleport actor");
+
+
+assert.equal(typeof resolveActorLocation, "function", "all life subsystems should share one location resolver");
+const locationNow = new Date("2026-10-15T10:30:00.000Z");
+const locationState = {
+  ...makeState([
+    { id: "current-office", ownerType: "character", ownerId: "c-location", startAt: "2026-10-15T10:00:00.000Z", endAt: "2026-10-15T11:00:00.000Z", title: "工作", kind: "work", source: "weekly-generation", plannedLocationId: "office", plannedLocationName: "公司", updatedAt: "2026-10-15T10:00:00.000Z" },
+  ]),
+  locations: [{ id: "office", name: "公司" }, { id: "cafe", name: "咖啡店" }],
+  actorStates: [{ ownerType: "character", ownerId: "c-location", actualLocationId: "cafe", actualLocationName: "咖啡店", updatedAt: locationNow.toISOString() }],
+};
+assert.equal(resolveActorLocation(locationState, "character", "c-location", locationNow).id, "cafe", "manual actual location should override a different planned location");
+const expiredLocationState = {
+  ...locationState,
+  actorStates: [{ ...locationState.actorStates[0], actualLocationUntil: "2026-10-15T10:00:00.000Z" }],
+};
+assert.equal(resolveActorLocation(expiredLocationState, "character", "c-location", locationNow).id, "office", "an expired temporary override should resume the current schedule");
+const temporaryLocationState = {
+  ...locationState,
+  actorStates: [{ ...locationState.actorStates[0], actualLocationUntil: "2026-10-15T12:00:00.000Z" }],
+};
+assert.equal(resolveActorLocation(temporaryLocationState, "character", "c-location", locationNow).id, "cafe", "an active temporary location should override the schedule");
 
 console.log("Life schedule regression tests passed.");
