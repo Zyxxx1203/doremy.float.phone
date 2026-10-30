@@ -40,6 +40,63 @@ export function upsertActorState(state: VirtualLifeState, nextActor: LifeActorSt
   actorStates.push({ ...nextActor, updatedAt: new Date().toISOString() });
   return { ...state, actorStates };
 }
+
+/**
+ * Move only future, automatically generated home slots when a character's residence changes.
+ * Explicit manual locations, work/study/commute and non-home outings are never rewritten.
+ */
+export function synchronizeCharacterHomeSchedule(
+  state: VirtualLifeState,
+  input: { characterId: string; destinationHomeId: string; destinationHomeName: string; now: Date },
+): { state: VirtualLifeState; synchronizedScheduleCount: number } {
+  const { characterId, destinationHomeId, destinationHomeName, now } = input;
+  const nowMs = now.getTime();
+  if (!characterId || !destinationHomeId || !destinationHomeName || !Number.isFinite(nowMs)) {
+    return { state, synchronizedScheduleCount: 0 };
+  }
+  const knownHomeNames = state.locations
+    .filter(location => location.id === "home" || location.id.startsWith("home-"))
+    .map(location => location.name.trim())
+    .filter(Boolean);
+  const isHomeSlot = (slot: LifeScheduleSlot): boolean => {
+    if (slot.source === "manual") return false;
+    const plannedId = slot.plannedLocationId ?? "";
+    const plannedName = (slot.plannedLocationName ?? "").trim();
+    const explicitHomeActivity = slot.source === "weekly-generation"
+      && ["habit", "meal", "free-time"].includes(slot.kind)
+      && /回家|在家|居家|家中|家里|家庭|家务|整理房间|打扫房间|睡前/.test(slot.title);
+    return plannedId === "home" || plannedId.startsWith("home-")
+      || knownHomeNames.includes(plannedName)
+      || plannedName === "家" || plannedName === "家里" || plannedName === "家中"
+      || plannedName === "自己的家"
+      || explicitHomeActivity;
+  };
+  let synchronizedScheduleCount = 0;
+  const schedules = state.schedules.map(slot => {
+    if (slot.ownerType !== "character" || slot.ownerId !== characterId
+      || slot.source === "manual" || new Date(slot.endAt).getTime() <= nowMs
+      || !isHomeSlot(slot)) return slot;
+    if (slot.plannedLocationId === destinationHomeId && (slot.plannedLocationName ?? "") === destinationHomeName) return slot;
+    synchronizedScheduleCount += 1;
+    return { ...slot, plannedLocationId: destinationHomeId, plannedLocationName: destinationHomeName, updatedAt: now.toISOString() };
+  });
+  const activeSlot = getCurrentActorSchedule(state, "character", characterId, now);
+  const currentActor = state.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === characterId);
+  const currentActualId = currentActor?.actualLocationId ?? "";
+  const currentActualName = (currentActor?.actualLocationName ?? "").trim();
+  const actualIsHome = currentActualId === "home" || currentActualId.startsWith("home-")
+    || knownHomeNames.includes(currentActualName)
+    || currentActualName === "家" || currentActualName === "家里" || currentActualName === "家中";
+  let actorStates = state.actorStates;
+  if (activeSlot && isHomeSlot(activeSlot) && actualIsHome && currentActor
+    && (currentActor.actualLocationId !== destinationHomeId || currentActor.actualLocationName !== destinationHomeName)) {
+    actorStates = state.actorStates.map(actor => actor.ownerType === "character" && actor.ownerId === characterId
+      ? { ...actor, actualLocationId: destinationHomeId, actualLocationName: destinationHomeName, actualLocationUntil: undefined, updatedAt: now.toISOString() }
+      : actor);
+  }
+  if (schedules === state.schedules && actorStates === state.actorStates) return { state, synchronizedScheduleCount };
+  return { state: { ...state, schedules, actorStates }, synchronizedScheduleCount };
+}
 export function upsertLifeEvent(state: VirtualLifeState, nextEvent: LifeEvent): VirtualLifeState {
   return { ...state, events: [...state.events.filter(event => event.id !== nextEvent.id), nextEvent].sort((a,b) => (a.startsAt || a.createdAt).localeCompare(b.startsAt || b.createdAt)) };
 }
