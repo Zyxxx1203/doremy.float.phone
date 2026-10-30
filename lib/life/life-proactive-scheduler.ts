@@ -110,7 +110,11 @@ async function runOnce(): Promise<void> {
   try {
     const state = loadVirtualLifeState();
     if (!state.settings.enabled || !state.settings.enableCharacterAutonomy || state.settings.enableProactiveSceneMessages === false) { recordLifeDiagnostic({ source: "主动调度", event: "调度巡检跳过", status: "info", detail: "生活引擎、自主行动或主动消息开关处于关闭状态。", meta: { enabled: state.settings.enabled, autonomy: state.settings.enableCharacterAutonomy, proactive: state.settings.enableProactiveSceneMessages } }); return; }
-    void syncLifeScheduleSnapshot();
+    const snapshotSynced = await syncLifeScheduleSnapshot();
+    if (!snapshotSynced) {
+      recordLifeDiagnostic({ source: "主动调度", event: "快照未同步，暂停挂载", status: "error", detail: "无法确认最新玩家/角色地点，本轮不创建离线主动任务。" });
+      return;
+    }
     const foregroundScene = state.scenes.find(scene => scene.status === "active" && hasForegroundLease(scene.id, Date.now()));
     if (foregroundScene) {
       for (const participant of foregroundScene.participants) {
