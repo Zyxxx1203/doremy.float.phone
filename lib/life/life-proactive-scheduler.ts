@@ -193,7 +193,7 @@ export function installLifeScheduleProactiveScheduler(): () => void {
   start();
   timer = setInterval(start, TICK_MS);
   const onVisible = () => { if (document.visibilityState === "visible") start(); };
-  const onScheduleChanged = () => { void syncLifeScheduleSnapshot(true); start(); };
+  const onScheduleChanged = () => { start(); };
   document.addEventListener("visibilitychange", onVisible);
   window.addEventListener("life-force-sync", onScheduleChanged);
   window.addEventListener("virtual-life-state-updated", onScheduleChanged);
