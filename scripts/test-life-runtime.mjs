@@ -589,7 +589,6 @@ const tripActor = transferred.actorStates.find(actor => actor.ownerType === "cha
 assert.equal(tripActor.actualLocationId, "cafe", "the companion's actual location follows the player");
 assert.equal(tripActor.actualLocationUntil, tripEnd.toISOString(), "the temporary location override expires at the planned return time");
 
-console.log("Life schedule regression tests passed.");
 
 
 // Schedule place names become editable library entries, while only the slot active
@@ -617,3 +616,5 @@ assert.equal(movedActor.actualLocationName, "街角咖啡店", "actor should mov
 assert.ok(settledMovement.locations.some(location => location.name === "街角咖啡店"), "active schedule location should sync to library");
 assert.ok(settledMovement.locations.some(location => location.name === "城市图书馆"), "future schedule location should sync to library without moving actor there");
 assert.notEqual(movedActor.actualLocationName, "城市图书馆", "future schedule must not teleport actor");
+
+console.log("Life schedule regression tests passed.");
