@@ -36,7 +36,7 @@ import { describeLifeOutputIssues, parseLifeOutput, validateLifeOutput, type Lif
 import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
 import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts, reconcileIdleReconnectWithLifeScenes, suspendIdleReconnectForLifeScene } from "@/lib/push-bailout-client";
-import { readLifeProactiveStatus } from "@/lib/life/life-proactive-scheduler";
+import { readLifeProactiveStatus, setLifeSceneForegroundLease } from "@/lib/life/life-proactive-scheduler";
 
 import { cancelFollowUp } from "@/lib/follow-up-service";
 import { beginTurn } from "@/lib/turn-coordinator";
@@ -1679,6 +1679,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   useEffect(() => {
     if (!ready || !settings.enabled || !settings.enableCharacterAutonomy || settings.enableProactiveSceneMessages === false || !activeScene || activeScene.status !== "active" || !immersiveScene) return;
     let disposed = false;
+    setLifeSceneForegroundLease(activeScene.id, true);
+    const leaseTimer = window.setInterval(() => setLifeSceneForegroundLease(activeScene.id, true), 30_000);
     const minIntervalMinutes = Math.max(2, Math.min(60, settings.proactiveSceneIntervalMinutes ?? 2));
     const maxIntervalMinutes = Math.max(minIntervalMinutes, Math.min(60, settings.proactiveSceneIntervalMaxMinutes ?? 4));
     const getRandomIntervalMs = () => (minIntervalMinutes + Math.floor(Math.random() * (maxIntervalMinutes - minIntervalMinutes + 1))) * 60_000;
@@ -1844,6 +1846,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     return () => {
       disposed = true;
       window.clearInterval(timer);
+      window.clearInterval(leaseTimer);
+      setLifeSceneForegroundLease(activeScene.id, false);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       // Restore online idle reconnect when the character is no longer co-present.
       // Cleanup also runs for settings changes, so check persisted scene state first.
