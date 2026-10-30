@@ -84,10 +84,15 @@ const cancelledOffline = new Set<string>();
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let running = false;
+let rerunRequested = false;
 let stopped = false;
 
 async function runOnce(): Promise<void> {
-  if (running || stopped || typeof document === "undefined") return;
+  if (stopped || typeof document === "undefined") return;
+  if (running) {
+    rerunRequested = true;
+    return;
+  }
   running = true;
   try {
     const state = loadVirtualLifeState();
@@ -183,6 +188,10 @@ async function runOnce(): Promise<void> {
     recordLifeDiagnostic({ source: "主动调度", event: "调度器异常", status: "error", detail: error instanceof Error ? error.message : String(error) });
   } finally {
     running = false;
+    if (rerunRequested && !stopped) {
+      rerunRequested = false;
+      void runOnce();
+    }
   }
 }
 
