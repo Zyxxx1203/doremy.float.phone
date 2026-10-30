@@ -14,7 +14,6 @@ import { loadVirtualLifeState } from "./life-storage";
 import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "./life-runtime";
 import type { VirtualLifeState } from "./life-types";
 import { recordLifeDiagnostic } from "./life-diagnostics";
-import { setLifeSceneForegroundLease } from "./life-scheduler-coordinator";
 
 const PLAYER_ID = "player";
 const ARM_META_PREFIX = "life-schedule-arm:";
