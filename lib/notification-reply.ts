@@ -15,6 +15,7 @@ import { loadVirtualLifeState, saveVirtualLifeState, appendLifeTimelineEntry } f
 import { requestBackgroundChatReply } from "./follow-up-service";
 import { ensureShellOverlayListener, subscribeShellOverlayEvents } from "./shell-call-overlay";
 import { recordLifeDiagnostic } from "./life/life-diagnostics";
+import { enqueuePendingLifeSceneReply } from "./life/life-notification-queue";
 
 type ReplyBridge = {
     consumePendingReplies?: () => string;
@@ -104,9 +105,20 @@ function mirrorNotificationReplyToLifeScene(item: PendingNotificationReply, text
             locationName: scene.locationName, sceneId: scene.id, sourceId: message.id,
         });
         saveVirtualLifeState(next);
+        enqueuePendingLifeSceneReply({
+            replyId: item.id,
+            sceneId: scene.id,
+            characterId,
+            replyMode: isAction ? "action" : "dialogue",
+        });
         if (typeof window !== "undefined") {
             window.dispatchEvent(new Event("life-scene-message-added"));
-            window.dispatchEvent(new CustomEvent("life-scene-notification-reply", { detail: { sceneId: scene.id, characterId, replyMode: item.replyMode } }));
+            window.dispatchEvent(new CustomEvent("life-scene-notification-reply", { detail: { replyId: item.id, sceneId: scene.id, characterId, replyMode: item.replyMode } }));
+            // The reply can arrive while the WebView is alive on another app/page.
+            // Navigate to the life scene so the queued reaction is not lost with an absent listener.
+            if (window.location.pathname.replace(/\\/+$/, "") !== "/life") {
+                window.location.assign("/life?sceneId=" + encodeURIComponent(scene.id));
+            }
         }
         recordLifeDiagnostic({ source: "通知回复", event: isAction ? "行动已写入生活现场" : "对白已写入生活现场", status: "ok", detail: "通知回复已写入指定现场并保留回复类型。", meta: { replyId: item.id, sceneId: scene.id, characterId, replyMode: item.replyMode } });
         return "written";
