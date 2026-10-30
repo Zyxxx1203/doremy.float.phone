@@ -154,7 +154,8 @@ async function runOnce(): Promise<void> {
       // 只在玩家当前所在的现场里触发：角色必须是 active scene 的参与者。
       // 不再按角色新建场景，避免同一地点出现多个互不相干的“生活现场”。
       const scene = state.scenes.find(item => item.status === "active"
-        && item.participants.some(p => p.ownerType === "player")
+        && item.locationId === player.id
+        && item.participants.some(p => p.ownerType === "player" && p.ownerId === PLAYER_ID)
         && item.participants.some(p => p.ownerType === "character" && p.ownerId === character.id && p.activity !== "离开"));
       if (!scene) continue;
       const trigger = scene.id + ":" + character.id;
