@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [app, observation, cloud, scheduler, bailout, reply, push] = await Promise.all([
+const [app, runtime, observation, cloud, scheduler, bailout, reply, push] = await Promise.all([
   read("../components/life/life-engine-app.tsx"),
+  read("../lib/life/life-runtime.ts"),
   read("../components/life/life-observation.tsx"),
   read("../lib/life/life-schedule-cloud.ts"),
   read("../lib/life/life-proactive-scheduler.ts"),
@@ -27,7 +28,7 @@ assert.match(bailout, /input\.source \?\? "foreground"/);
 assert.match(reply, /action: isAction \? text : ""/);
 assert.match(reply, /dialogue: isAction \? "" : text/);
 assert.match(reply, /场景回复闭环完成/);
-assert.match(push, /snapshot missing; rejected safely/);
+assert.match(push, /snapshot missing; rejected safely/);\nassert.match(push, /foreground scene lease active; deferred until/);\nassert.match(push, /status: "pending"/);
 assert.match(push, /characterLocation === snapshot\.playerLocationId/);
 assert.doesNotMatch(push, /characterLocation === snapshot\.playerLocationId \|\| scene\?\.characterIds/);
 
