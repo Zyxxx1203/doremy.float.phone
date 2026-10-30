@@ -466,6 +466,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     let raw = "";
     let parsed = parseLifeOutput("");
     let issues: LifeOutputIssue[] = [];
+    let repaired = false;
     try {
       let result = await generateOfflineChatCompletion(input.session, [input.promptMessage], requestOptions);
       raw = result.content;
@@ -476,6 +477,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         allowEmpty: input.allowEmpty,
       });
       if (issues.length > 0 && settings.enableLifeFormatRepair !== false && !input.signal?.aborted) {
+        repaired = true;
         const repairPrompt: ChatMessage = {
           ...input.promptMessage,
           id: id("life-format-repair"),
@@ -504,7 +506,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       recordLifeDiagnostic({ source: "生活现场 AI", event: "角色回合生成失败", status: "error", detail: error instanceof Error ? error.message : String(error), meta: { appTags: input.appTags } });
       throw error;
     }
-    recordLifeDiagnostic({ source: "生活现场 AI", event: issues.length ? "输出格式仍有问题" : "角色回合生成完成", status: issues.length ? "warning" : "ok", detail: issues.length ? describeLifeOutputIssues(issues) : "模型输出已通过生活现场格式校验。", meta: { appTags: input.appTags, action: Boolean(parsed.action), dialogueCount: parsed.dialogues.length, repaired: raw !== "" } });
+    recordLifeDiagnostic({ source: "生活现场 AI", event: issues.length ? "输出格式仍有问题" : "角色回合生成完成", status: issues.length ? "warning" : "ok", detail: issues.length ? describeLifeOutputIssues(issues) : "模型输出已通过生活现场格式校验。", meta: { appTags: input.appTags, action: Boolean(parsed.action), dialogueCount: parsed.dialogues.length, repaired } });
     return { parsed, issues, raw };
   }, [activeMaxConsecutiveActionOnly, settings.enableLifeFormatRepair]);
   const sceneImagePrompt = settings.sceneImagePrompt;
