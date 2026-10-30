@@ -1,14 +1,8 @@
 "use client";
 
-// 通知栏「直接回复」的网页侧处理。
-//
-// 链路：用户在消息通知横幅上回一句 → 原生 NotificationReplyReceiver 落队列
-//       → 戳一下页面（event=userReply）或等页面下次挂载 → 本模块拉队列 →
-//         以「用户发言」写进对应会话 → 触发角色回复。
-//
-// 为什么由网页来写消息而不是原生直接写：聊天引擎（上下文组装、模型调用、
-// 消息落库）整个跑在 WebView 的 JS 里，原生没有那套逻辑。原生只负责
-// 「别把用户打的字弄丢」——这是它唯一能可靠承担的职责。
+// 通知栏「直接回复」的网页侧处理：普通聊天写回会话，生活现场回复写回原场景。
+// 原生只负责把文本、sceneId 和回复类型可靠落入持久队列；上下文组装、模型回应
+// 与生活现场时间线仍由 WebView 中的 JS 引擎完成。
 
 import { loadChatContacts, loadChatSessions, pushChatMessage } from "./chat-storage";
 import { loadVirtualLifeState, saveVirtualLifeState, appendLifeTimelineEntry } from "./life/life-storage";
