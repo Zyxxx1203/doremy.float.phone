@@ -42,6 +42,7 @@ assert.match(coordinator, /export function setLifeSceneForegroundLease/);
 assert.match(coordinator, /export function readLifeSceneForegroundLease/);
 assert.match(coordinator, /120_000/);
 assert.match(cloud, /Promise<boolean>/);
+assert.match(cloud, /MAX_SNAPSHOT_AGE_MS = 5 \* 60_000/);
 assert.match(scheduler, /await syncLifeScheduleSnapshot\(\)/);
 assert.match(scheduler, /rerunRequested = true/);
 assert.match(scheduler, /const onScheduleChanged = \(\) => \{ start\(\); \}/);
