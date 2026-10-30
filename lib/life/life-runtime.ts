@@ -72,12 +72,14 @@ export function synchronizeCharacterHomeSchedule(
       || explicitHomeActivity;
   };
   let synchronizedScheduleCount = 0;
+  let schedulesChanged = false;
   const schedules = state.schedules.map(slot => {
     if (slot.ownerType !== "character" || slot.ownerId !== characterId
       || slot.source === "manual" || new Date(slot.endAt).getTime() <= nowMs
       || !isHomeSlot(slot)) return slot;
     if (slot.plannedLocationId === destinationHomeId && (slot.plannedLocationName ?? "") === destinationHomeName) return slot;
     synchronizedScheduleCount += 1;
+    schedulesChanged = true;
     return { ...slot, plannedLocationId: destinationHomeId, plannedLocationName: destinationHomeName, updatedAt: now.toISOString() };
   });
   const activeSlot = getCurrentActorSchedule(state, "character", characterId, now);
@@ -94,7 +96,7 @@ export function synchronizeCharacterHomeSchedule(
       ? { ...actor, actualLocationId: destinationHomeId, actualLocationName: destinationHomeName, actualLocationUntil: undefined, updatedAt: now.toISOString() }
       : actor);
   }
-  if (schedules === state.schedules && actorStates === state.actorStates) return { state, synchronizedScheduleCount };
+  if (!schedulesChanged && actorStates === state.actorStates) return { state, synchronizedScheduleCount };
   return { state: { ...state, schedules, actorStates }, synchronizedScheduleCount };
 }
 
