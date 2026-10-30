@@ -551,7 +551,11 @@ Deno.serve(async (req: Request) => {
     const payload = JSON.parse(await decryptPayload(job.payload, payloadKey)) as JobPayload;
     // 生活主动消息必须通过最新可用快照验证；缺失、损坏或位置不一致一律 fail closed。
     const lifeSceneMeta = payload.merge?.lifeScene as { sceneId?: string; characterId?: string } | undefined;
-    if (lifeSceneMeta?.sceneId && lifeSceneMeta.characterId) {
+    if (payload.merge?.lifeScene) {
+      if (!lifeSceneMeta?.sceneId || !lifeSceneMeta.characterId) {
+        await finish("done", "life schedule: incomplete scene metadata; rejected safely");
+        return;
+      }
       const snapResponse = await rest(
         `push_bridge_snapshots?user_id=eq.${encodeURIComponent(job.user_id)}`
         + `&rule_id=eq.life-schedule&select=payload&limit=1`,
