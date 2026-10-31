@@ -2091,6 +2091,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         } else {
           const reason = outcome === "deferred" ? "当前有其他回合占用，等待空闲后重试。" : "本次角色回应未成功完成，保留任务并按退避策略重试。";
           retryPendingLifeSceneReply(pending.replyId, reason, Date.now(), outcome !== "deferred");
+          refreshNotificationReplyQueue(value => value + 1);
           recordLifeDiagnostic({ source: "通知回复", event: outcome === "deferred" ? "回复处理延期" : "回复处理失败待重试", status: outcome === "deferred" ? "warning" : "error", detail: reason, meta: { replyId: pending.replyId, sceneId: pending.sceneId, attempt: claimed.attempts } });
         }
       } finally { window.clearInterval(leaseHeartbeat); }
