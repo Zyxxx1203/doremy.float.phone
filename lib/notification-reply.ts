@@ -132,26 +132,47 @@ function mirrorNotificationReplyToLifeScene(item: PendingNotificationReply, text
 }
 
 export async function flushPendingNotificationReplies(): Promise<number> {
+    const api = bridge();
+    const durableNativeQueue = typeof api?.peekPendingReplies === "function" && typeof api?.acknowledgePendingReplies === "function";
     const pending = readPendingReplies();
     if (pending.length === 0) return 0;
 
     const sessions = new Set(loadChatSessions().map(session => session.id));
     let sent = 0;
     const chatReplies = new Set<string>();
+    const acknowledge = (replyId: string) => {
+        if (!durableNativeQueue) return true; // Legacy APK already consumed the native queue.
+        try { return api?.acknowledgePendingReplies?.(JSON.stringify([replyId])) === true; }
+        catch { return false; }
+    };
+
     for (const item of pending) {
+        if (!item.id) continue;
         if (!sessions.has(item.sessionId)) {
-            recordLifeDiagnostic({ source: "通知回复", event: "回复丢弃", status: "warning", detail: "对应会话已不存在。", meta: { replyId: item.id, sessionId: item.sessionId } });
+            recordLifeDiagnostic({ source: "通知回复", event: "回复丢弃", status: "warning", detail: "对应会话已不存在，已从原生队列确认丢弃。", meta: { replyId: item.id, sessionId: item.sessionId } });
+            if (!acknowledge(item.id)) recordLifeDiagnostic({ source: "通知回复", event: "原生回复队列确认失败", status: "error", detail: "会话已不存在，但原生队列未能确认删除；下次启动会再次检查。", meta: { replyId: item.id } });
             continue;
         }
         const text = item.text.trim();
-        if (!text) continue;
+        if (!text) { acknowledge(item.id); continue; }
         const result = mirrorNotificationReplyToLifeScene(item, text);
+        if (result === "failed") {
+            // Keep the native item. A transient storage failure must not turn a life-scene reply into a duplicate chat message.
+            recordLifeDiagnostic({ source: "通知回复", event: "原生回复暂未确认", status: "warning", detail: "生活现场写回失败，原生队列保留该回复，等待下次重试。", meta: { replyId: item.id, sceneId: item.sceneId } });
+            continue;
+        }
         if (result === "written") {
-            recordLifeDiagnostic({ source: "通知回复", event: "通知回复已写入并排队", status: "ok", detail: "生活现场已写回，不再重复触发普通聊天回复。", meta: { replyId: item.id, sceneId: item.sceneId, replyMode: item.replyMode } });
+            recordLifeDiagnostic({ source: "通知回复", event: "通知回复已写入并排队", status: "ok", detail: "生活现场与本机自动回应队列均已持久化。", meta: { replyId: item.id, sceneId: item.sceneId, replyMode: item.replyMode } });
         } else {
-            pushChatMessage({ sessionId: item.sessionId, role: "user", content: text });
+            const stableMessageId = "notification-reply-" + item.id;
+            if (!loadChatMessages(item.sessionId).some(message => message.id === stableMessageId)) {
+                pushChatMessage({ id: stableMessageId, sessionId: item.sessionId, role: "user", content: text });
+            }
             chatReplies.add(item.sessionId);
             recordLifeDiagnostic({ source: "通知回复", event: "普通聊天回复入队", status: "info", detail: result === "missing-scene" ? "原现场不存在，按普通聊天兼容处理。" : "已写入普通聊天会话。", meta: { replyId: item.id, sessionId: item.sessionId, replyMode: item.replyMode || "chat" } });
+        }
+        if (!acknowledge(item.id)) {
+            recordLifeDiagnostic({ source: "通知回复", event: "原生回复队列确认失败", status: "warning", detail: "网页数据已持久化，但原生队列确认失败；下次读取会通过稳定 ID 去重。", meta: { replyId: item.id, sessionId: item.sessionId } });
         }
         sent += 1;
     }
