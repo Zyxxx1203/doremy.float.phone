@@ -60,6 +60,11 @@ for (let attempt = 0; attempt < 5; attempt++) {
   retryPendingLifeSceneReply("reply-4", "persistent error", 20000 + attempt * 600000, true);
 }
 assert.equal(peekPendingLifeSceneReply(9999999), null, "exhausted items should stop retrying after the configured attempt limit");
+
+const stale = { replyId: "reply-stale", sceneId: "scene-gone", characterId: "char-gone", replyMode: "dialogue" };
+enqueuePendingLifeSceneReply(stale);
+failPendingLifeSceneReply("reply-stale", "scene no longer exists");
+assert.equal(peekPendingLifeSceneReply(), null, "terminal stale-scene replies must not block the queue");
 assert.equal(readFailedLifeSceneReplies().length, 1, "exhausted replies should remain visible for manual recovery");
 resetFailedLifeSceneReply("reply-4");
 assert.equal(readFailedLifeSceneReplies().length, 0, "manual retry should clear the exhausted state");
