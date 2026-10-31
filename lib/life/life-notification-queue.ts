@@ -36,17 +36,18 @@ function writeQueue(queue: PendingLifeSceneNotificationReply[]): void {
   try { localStorage.removeItem(LEGACY_KEY); } catch { /* migration cleanup is best effort */ }
 }
 
-export function enqueuePendingLifeSceneReply(item: PendingLifeSceneNotificationReply): void {
-  if (typeof window === "undefined" || !item.replyId || !item.sceneId || !item.characterId) return;
+export function enqueuePendingLifeSceneReply(item: PendingLifeSceneNotificationReply): boolean {
+  if (typeof window === "undefined" || !item.replyId || !item.sceneId || !item.characterId) return false;
   const queue = readQueue();
-  if (queue.some(existing => existing.replyId === item.replyId)) return;
+  if (queue.some(existing => existing.replyId === item.replyId)) return true;
   try {
     writeQueue([...queue, { ...item, status: "pending", attempts: 0 }]);
+    return true;
   } catch {
-    // The life-scene message itself is already persisted; queue failure only skips auto-reaction.
+    // The native queue remains unacknowledged and will retry the web-side write.
+    return false;
   }
 }
-
 /** Return the oldest unfinished reply; expired processing leases become retryable. */
 export function peekPendingLifeSceneReply(now = Date.now()): PendingLifeSceneNotificationReply | null {
   const queue = readQueue();
