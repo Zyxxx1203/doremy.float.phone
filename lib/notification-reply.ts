@@ -132,7 +132,16 @@ function mirrorNotificationReplyToLifeScene(item: PendingNotificationReply, text
     }
 }
 
-export async function flushPendingNotificationReplies(): Promise<number> {
+let notificationReplyFlushPromise: Promise<number> | null = null;
+
+export function flushPendingNotificationReplies(): Promise<number> {
+    if (notificationReplyFlushPromise) return notificationReplyFlushPromise;
+    const task = flushPendingNotificationRepliesInternal();
+    notificationReplyFlushPromise = task.finally(() => { notificationReplyFlushPromise = null; });
+    return notificationReplyFlushPromise;
+}
+
+async function flushPendingNotificationRepliesInternal(): Promise<number> {
     const api = bridge();
     const durableBridge = typeof api?.peekPendingReplies === "function" && typeof api?.acknowledgePendingReplies === "function";
     const pending = readPendingReplies();
