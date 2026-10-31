@@ -9,19 +9,7 @@ import org.json.JSONObject
 
 /**
  * 通知栏「直接回复」的接收端。
- *
- * 场景：角色发来一条消息（含查岗的反馈），通知横幅上带一个回复框，
- * 用户就地打一句发出去——不用点开 App。
- *
- * 为什么走「先入队、再戳网页」两步，而不是直接把文本塞给 WebView：
- *   聊天引擎整个跑在 WebView 的 JS 里。App 切到后台时页面还在，但 App 被系统
- *   回收时页面就没了——那一刻事件根本送不到。若只走事件，用户从通知里打的
- *   那句话会凭空消失。所以先把回复落进持久队列（SharedPreferences），
- *   页面活着就当场拉走，页面没了就等它下次挂载时补发。
- *
- * 边界：
- *  - 只处理「用户主动从通知里回的话」，不读通知内容、不改任何会话数据。
- *  - 队列有上限，超出后丢最旧的，不会无限增长。
+ * 原生队列采用 peek + ack：网页完成本地持久化后才确认，避免读走即清空造成进程中断丢消息。
  */
 class NotificationReplyReceiver : BroadcastReceiver() {
 
@@ -30,46 +18,69 @@ class NotificationReplyReceiver : BroadcastReceiver() {
         const val EXTRA_SESSION_ID = "session_id"
         const val EXTRA_SCENE_ID = "life_scene_id"
         const val EXTRA_REPLY_MODE = "life_reply_mode"
-
-        /** RemoteInput 的键名；发通知与读结果必须用同一个。 */
         const val KEY_REPLY_TEXT = "reply_text"
 
         private const val PREFS = "shell_pending_replies"
         private const val KEY_QUEUE = "queue"
-
-        /** 队列上限：够覆盖「用户连回几句、页面一直没起来」的情况。 */
         private const val MAX_QUEUE = 20
+        private val queueLock = Any()
 
-        /** 追加一条待发回复。 */
+        /** Append and synchronously persist a reply before notifying the WebView. */
         fun enqueue(context: Context, sessionId: String, text: String, sceneId: String = "", replyMode: String = "chat") {
-            runCatching {
-                val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                val current = JSONArray(prefs.getString(KEY_QUEUE, "[]") ?: "[]")
-                current.put(
-                    JSONObject()
-                        .put("id", "r_${System.currentTimeMillis()}_${(0..9999).random()}")
-                        .put("sessionId", sessionId)
-                        .put("text", text)
-                        .put("sceneId", sceneId)
-                        .put("replyMode", replyMode)
-                        .put("at", System.currentTimeMillis()),
-                )
-                // 只留最近 MAX_QUEUE 条：队列是「怕丢」的兜底，不是历史存档。
-                val trimmed = JSONArray()
-                val start = (current.length() - MAX_QUEUE).coerceAtLeast(0)
-                for (i in start until current.length()) trimmed.put(current.get(i))
-                prefs.edit().putString(KEY_QUEUE, trimmed.toString()).apply()
+            synchronized(queueLock) {
+                runCatching {
+                    val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    val current = JSONArray(prefs.getString(KEY_QUEUE, "[]") ?: "[]")
+                    current.put(
+                        JSONObject()
+                            .put("id", "r_${System.currentTimeMillis()}_${(0..9999).random()}")
+                            .put("sessionId", sessionId)
+                            .put("text", text)
+                            .put("sceneId", sceneId)
+                            .put("replyMode", replyMode)
+                            .put("at", System.currentTimeMillis()),
+                    )
+                    val trimmed = JSONArray()
+                    val start = (current.length() - MAX_QUEUE).coerceAtLeast(0)
+                    for (i in start until current.length()) trimmed.put(current.get(i))
+                    check(prefs.edit().putString(KEY_QUEUE, trimmed.toString()).commit()) { "无法持久化通知回复队列" }
+                }
             }
         }
 
-        /** 读走并清空待发队列（JSON 数组字符串）。网页拉到后逐条发送。 */
-        fun consumePendingReplies(context: Context): String =
+        /** Read without removing; JavaScript must acknowledge only after its own write succeeds. */
+        fun peekPendingReplies(context: Context): String = synchronized(queueLock) {
+            runCatching {
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_QUEUE, "[]") ?: "[]"
+            }.getOrDefault("[]")
+        }
+
+        /** Remove only the IDs whose web-side persistence has completed. */
+        fun acknowledgePendingReplies(context: Context, idsJson: String): Boolean = synchronized(queueLock) {
+            runCatching {
+                val idsArray = JSONArray(idsJson)
+                val ids = buildSet { for (i in 0 until idsArray.length()) add(idsArray.optString(i)) }
+                if (ids.isEmpty()) return@synchronized true
+                val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                val current = JSONArray(prefs.getString(KEY_QUEUE, "[]") ?: "[]")
+                val remaining = JSONArray()
+                for (i in 0 until current.length()) {
+                    val item = current.optJSONObject(i) ?: continue
+                    if (!ids.contains(item.optString("id"))) remaining.put(item)
+                }
+                prefs.edit().putString(KEY_QUEUE, remaining.toString()).commit()
+            }.getOrDefault(false)
+        }
+
+        /** Legacy bridge for older web builds; new builds use peek + acknowledge. */
+        fun consumePendingReplies(context: Context): String = synchronized(queueLock) {
             runCatching {
                 val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 val raw = prefs.getString(KEY_QUEUE, "[]") ?: "[]"
-                prefs.edit().putString(KEY_QUEUE, "[]").apply()
+                prefs.edit().putString(KEY_QUEUE, "[]").commit()
                 raw
             }.getOrDefault("[]")
+        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -78,26 +89,17 @@ class NotificationReplyReceiver : BroadcastReceiver() {
         val sceneId = intent.getStringExtra(EXTRA_SCENE_ID).orEmpty()
         val replyMode = intent.getStringExtra(EXTRA_REPLY_MODE).orEmpty().ifEmpty { "chat" }
         if (sessionId.isEmpty()) return
-
         val results = RemoteInput.getResultsFromIntent(intent) ?: return
         val text = results.getCharSequence(KEY_REPLY_TEXT)?.toString()?.trim().orEmpty()
         if (text.isEmpty()) return
-
-        // 先落队列：无论页面现在活不活着，这句话都不会丢。
         enqueue(context, sessionId, text, sceneId, replyMode)
-
         if (ShellBus.isWebAlive()) {
-            // 页面还在（App 只是切到后台）：戳一下，它立刻把队列拉走发出去。
             ShellBus.dispatchOverlayEvent(
                 "userReply",
                 JSONObject().put("sessionId", sessionId).put("sceneId", sceneId).put("replyMode", replyMode),
             )
             return
         }
-
-        // 页面已被系统回收：必须把 App 拉起来才能跑聊天引擎（它整个在 JS 里）。
-        // 这是本地方案的真实代价——页面活着时回复无感，页面没了就得开一次 App。
-        // 回复本身仍在队列里，不会因为这次拉起失败而丢。
         runCatching {
             context.startActivity(
                 Intent(context, MainActivity::class.java).apply {
