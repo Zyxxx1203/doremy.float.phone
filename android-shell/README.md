@@ -28,7 +28,7 @@
    （改动 `android-shell/**` 并推到 main 也会自动触发。）
 3. 跑完后在该次运行的 **Artifacts** 里下载：
    - `float-shell-debug` —— debug 签名，**下载即可直接安装**，日常自用选这个；
-   - `float-shell-release` —— 未配置签名密钥时是未签名包（装不了），配置后是正式签名包。
+   - `float-shell-release-signed` —— 仅在配置完整正式签名密钥时生成并上传，可用于长期分发和覆盖更新。未配置密钥时不会产出未签名 release Artifact。
 
 ### 正式签名（可选，想长期分发再做）
 
@@ -62,8 +62,7 @@ base64 -w0 shell.keystore   # 得到一长串 base64
    apksigner verify --print-certs app-release.apk
    ```
    输出里的证书指纹应与你 keytool 生成的那把完全一致。
-3. 四个 Secret 缺任何一个都会静默退化成「未签名包」，此时 release 装不上——
-   以 Actions 日志第 1 步是否执行为准。
+3. 只要配置了 `SHELL_KEYSTORE_BASE64`，其余三个 Secret 就必须同时存在；缺少任意一项，工作流会明确失败，而不是悄悄产出不可安装的 release 包。没有配置 keystore 时只发布可安装的 debug APK。
 
 ## 安装与首次设置
 
