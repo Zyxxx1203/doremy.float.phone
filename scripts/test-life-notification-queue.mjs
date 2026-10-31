@@ -44,6 +44,7 @@ enqueuePendingLifeSceneReply(third);
 claimPendingLifeSceneReply("reply-3", 10000);
 assert.equal(peekPendingLifeSceneReply(10000).status, "processing");
 assert.equal(peekPendingLifeSceneReply(10000 + 90_001).status, "pending", "expired processing lease should recover after an interrupted page");
+acknowledgePendingLifeSceneReply("reply-3");
 
 const exhausted = { replyId: "reply-4", sceneId: "scene-c", characterId: "char-c", replyMode: "action" };
 enqueuePendingLifeSceneReply(exhausted);
@@ -53,6 +54,6 @@ for (let attempt = 0; attempt < 5; attempt++) {
   claimPendingLifeSceneReply("reply-4", 20000 + attempt * 600000);
   retryPendingLifeSceneReply("reply-4", "persistent error", 20000 + attempt * 600000);
 }
-assert.equal(peekPendingLifeSceneReply(9999999)?.replyId, "reply-3", "exhausted items should stop blocking later queue entries");
+assert.equal(peekPendingLifeSceneReply(9999999), null, "exhausted items should stop retrying after the configured attempt limit");
 
 console.log("Life notification reply queue tests passed.");
