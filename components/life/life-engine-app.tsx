@@ -226,7 +226,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [playerActivity, setPlayerActivity] = useState("");
   const [sceneInput, setSceneInput] = useState("");
   const sceneChatScrollRef = useRef<HTMLDivElement | null>(null);
-  const pendingNotificationSceneReplyRef = useRef<{ replyId: string; sceneId: string; characterId: string; replyMode: "action" | "dialogue" } | null>(null);
+  const pendingNotificationSceneReplyRef = useRef<NonNullable<ReturnType<typeof peekPendingLifeSceneReply>> | null>(null);
   const [sceneActionInput, setSceneActionInput] = useState("");
   const [messageActionTarget, setMessageActionTarget] = useState<LifeSceneMessage | null>(null);
   const [messageActionMode, setMessageActionMode] = useState<"menu" | "edit" | "delete-confirm">("menu");
