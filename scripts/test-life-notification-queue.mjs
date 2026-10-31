@@ -35,7 +35,7 @@ assert.equal(peekPendingLifeSceneReply(6999).replyId, "reply-1", "retry delay mu
 const claimedAgain = claimPendingLifeSceneReply("reply-1", 7000);
 assert.equal(claimedAgain.status, "processing", "reply should be claimable after backoff");
 acknowledgePendingLifeSceneReply("reply-1");
-assert.equal(peekPendingLifeSceneReply(), "reply-2" === "reply-2" ? second : null, "acknowledging a completed reply should expose the next queue item");
+assert.deepEqual(JSON.parse(JSON.stringify(peekPendingLifeSceneReply())), second, "acknowledging a completed reply should expose the next queue item");
 acknowledgePendingLifeSceneReply("reply-2");
 assert.equal(peekPendingLifeSceneReply(), null, "queue should become empty after all replies are acknowledged");
 
