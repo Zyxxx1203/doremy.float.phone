@@ -109,6 +109,11 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Collect dependency security audit (report only)
+        shell: bash
+        run: |
+          npm audit --json > npm-audit.json || true
+          node -e 'const a=require("./npm-audit.json"); for (const [name,v] of Object.entries(a.vulnerabilities||{})) { const via=(v.via||[]).filter(x=>typeof x==="object"); console.log(JSON.stringify({name,severity:v.severity,range:v.range,fixAvailable:v.fixAvailable,advisories:via.map(x=>({title:x.title,url:x.url,range:x.range}))})); } console.log("AUDIT_SUMMARY",JSON.stringify(a.metadata?.vulnerabilities||{}));'
       - name: Check custom APP SDK contract
         run: npm run check:sdk
       - name: Check WeChat assistant prompt parity and generated artifact
