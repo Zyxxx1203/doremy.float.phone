@@ -71,7 +71,7 @@ export function readPendingReplies(): PendingNotificationReply[] {
  * active scene when the notification belongs to a character who is physically
  * present with the player. The stable native reply id makes this idempotent.
  */
-function mirrorNotificationReplyToLifeScene(item: PendingNotificationReply, text: string): "written" | "missing-scene" | "not-life" | "failed" {
+function mirrorNotificationReplyToLifeScene(item: PendingNotificationReply, text: string): "written" | "missing-scene" | "not-life" | "retry" {
     try {
         if (!item.sceneId || !["action", "dialogue"].includes(item.replyMode || "")) return "not-life";
         const session = loadChatSessions().find(candidate => candidate.id === item.sessionId);
@@ -114,7 +114,7 @@ function mirrorNotificationReplyToLifeScene(item: PendingNotificationReply, text
         });
         if (!queued) {
             recordLifeDiagnostic({ source: "通知回复", event: "生活现场回复队列持久化失败", status: "error", detail: "现场消息已写入，但本机自动回应队列未能保存；原生通知队列将保留并重试。", meta: { replyId: item.id, sceneId: scene.id, characterId } });
-            return "failed";
+            return "retry";
         }
         if (typeof window !== "undefined") {
             window.dispatchEvent(new Event("life-scene-message-added"));
@@ -128,55 +128,63 @@ function mirrorNotificationReplyToLifeScene(item: PendingNotificationReply, text
     } catch (error) {
         recordLifeDiagnostic({ source: "通知回复", event: "生活现场写回异常", status: "error", detail: error instanceof Error ? error.message : String(error), meta: { replyId: item.id, sceneId: item.sceneId } });
         console.warn("[NotificationReply] life-scene writeback failed:", error);
-        return "failed";
+        return "retry";
     }
 }
 
 export async function flushPendingNotificationReplies(): Promise<number> {
     const api = bridge();
-    const durableNativeQueue = typeof api?.peekPendingReplies === "function" && typeof api?.acknowledgePendingReplies === "function";
+    const durableBridge = typeof api?.peekPendingReplies === "function" && typeof api?.acknowledgePendingReplies === "function";
     const pending = readPendingReplies();
     if (pending.length === 0) return 0;
 
     const sessions = new Set(loadChatSessions().map(session => session.id));
+    const completedIds: string[] = [];
     let sent = 0;
     const chatReplies = new Set<string>();
-    const acknowledge = (replyId: string) => {
-        if (!durableNativeQueue) return true; // Legacy APK already consumed the native queue.
-        try { return api?.acknowledgePendingReplies?.(JSON.stringify([replyId])) === true; }
-        catch { return false; }
-    };
-
     for (const item of pending) {
-        if (!item.id) continue;
         if (!sessions.has(item.sessionId)) {
-            recordLifeDiagnostic({ source: "通知回复", event: "回复丢弃", status: "warning", detail: "对应会话已不存在，已从原生队列确认丢弃。", meta: { replyId: item.id, sessionId: item.sessionId } });
-            if (!acknowledge(item.id)) recordLifeDiagnostic({ source: "通知回复", event: "原生回复队列确认失败", status: "error", detail: "会话已不存在，但原生队列未能确认删除；下次启动会再次检查。", meta: { replyId: item.id } });
+            recordLifeDiagnostic({ source: "通知回复", event: "回复丢弃", status: "warning", detail: "对应会话已不存在，已将原生队列项标记为终态。", meta: { replyId: item.id, sessionId: item.sessionId } });
+            completedIds.push(item.id);
             continue;
         }
         const text = item.text.trim();
-        if (!text) { acknowledge(item.id); continue; }
+        if (!text) { completedIds.push(item.id); continue; }
         const result = mirrorNotificationReplyToLifeScene(item, text);
-        if (result === "failed") {
-            // Keep the native item. A transient storage failure must not turn a life-scene reply into a duplicate chat message.
-            recordLifeDiagnostic({ source: "通知回复", event: "原生回复暂未确认", status: "warning", detail: "生活现场写回失败，原生队列保留该回复，等待下次重试。", meta: { replyId: item.id, sceneId: item.sceneId } });
+        if (result === "written") {
+            recordLifeDiagnostic({ source: "通知回复", event: "通知回复已写入并排队", status: "ok", detail: "生活现场消息和本机 AI 回复任务均已持久化。", meta: { replyId: item.id, sceneId: item.sceneId, replyMode: item.replyMode } });
+            completedIds.push(item.id);
+            sent += 1;
             continue;
         }
-        if (result === "written") {
-            recordLifeDiagnostic({ source: "通知回复", event: "通知回复已写入并排队", status: "ok", detail: "生活现场与本机自动回应队列均已持久化。", meta: { replyId: item.id, sceneId: item.sceneId, replyMode: item.replyMode } });
-        } else {
-            const stableMessageId = "notification-reply-" + item.id;
-            if (!loadChatMessages(item.sessionId).some(message => message.id === stableMessageId)) {
-                pushChatMessage({ id: stableMessageId, sessionId: item.sessionId, role: "user", content: text });
+        if (result === "retry") {
+            recordLifeDiagnostic({ source: "通知回复", event: "原生回复保留待重试", status: "error", detail: "网页侧持久化未完整成功，未确认原生通知队列；下次恢复时会再次处理。", meta: { replyId: item.id, sessionId: item.sessionId, sceneId: item.sceneId } });
+            continue;
+        }
+
+        // Ordinary-chat fallback uses a stable message ID. If native acknowledgement
+        // fails, the next flush sees the same ID and will not create a duplicate bubble.
+        const chatMessageId = "notification-reply-chat-" + item.id;
+        try {
+            const alreadyPersisted = loadChatMessages(item.sessionId).some(message => message.id === chatMessageId);
+            if (!alreadyPersisted) {
+                pushChatMessage({ id: chatMessageId, sessionId: item.sessionId, role: "user", content: text });
+                chatReplies.add(item.sessionId);
             }
-            chatReplies.add(item.sessionId);
-            recordLifeDiagnostic({ source: "通知回复", event: "普通聊天回复入队", status: "info", detail: result === "missing-scene" ? "原现场不存在，按普通聊天兼容处理。" : "已写入普通聊天会话。", meta: { replyId: item.id, sessionId: item.sessionId, replyMode: item.replyMode || "chat" } });
+            completedIds.push(item.id);
+            sent += 1;
+            recordLifeDiagnostic({ source: "通知回复", event: "普通聊天回复已持久化", status: "info", detail: result === "missing-scene" ? "原生活现场不可用，已按普通聊天兼容处理。" : "通知回复已写入普通聊天会话。", meta: { replyId: item.id, sessionId: item.sessionId, replyMode: item.replyMode || "chat" } });
+        } catch (error) {
+            recordLifeDiagnostic({ source: "通知回复", event: "普通聊天回复持久化失败", status: "error", detail: error instanceof Error ? error.message : String(error), meta: { replyId: item.id, sessionId: item.sessionId } });
         }
-        if (!acknowledge(item.id)) {
-            recordLifeDiagnostic({ source: "通知回复", event: "原生回复队列确认失败", status: "warning", detail: "网页数据已持久化，但原生队列确认失败；下次读取会通过稳定 ID 去重。", meta: { replyId: item.id, sessionId: item.sessionId } });
-        }
-        sent += 1;
     }
+
+    if (durableBridge && completedIds.length > 0) {
+        const acknowledged = api?.acknowledgePendingReplies?.(JSON.stringify(completedIds)) === true;
+        if (!acknowledged) recordLifeDiagnostic({ source: "通知回复", event: "原生队列确认失败", status: "warning", detail: "网页侧数据已持久化，但原生队列仍保留；稳定消息 ID 会阻止重复写入。", meta: { replyIds: completedIds } });
+        else recordLifeDiagnostic({ source: "通知回复", event: "原生通知队列已确认", status: "ok", detail: "仅确认已成功写入本机数据库/生活队列的回复。", meta: { replyIds: completedIds } });
+    }
+
     for (const sessionId of chatReplies) {
         void requestBackgroundChatReply(sessionId).catch(error => recordLifeDiagnostic({ source: "通知回复", event: "普通聊天回复生成失败", status: "error", detail: error instanceof Error ? error.message : String(error), meta: { sessionId } }));
     }
