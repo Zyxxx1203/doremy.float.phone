@@ -117,4 +117,5 @@ export function resetFailedLifeSceneReply(replyId: string): void {
   if (index < 0) return;
   queue[index] = { ...queue[index], status: "pending", attempts: 0, processingAt: undefined, nextAttemptAt: Date.now(), lastError: undefined };
   writeQueue(queue);
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("life-scene-notification-reply"));
 }
