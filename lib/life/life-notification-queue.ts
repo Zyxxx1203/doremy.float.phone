@@ -73,6 +73,14 @@ export function claimPendingLifeSceneReply(replyId: string, now = Date.now()): P
   return claimed;
 }
 
+/** Extend the processing lease while a model request is still actively running. */
+export function renewPendingLifeSceneReply(replyId: string, now = Date.now()): void {
+  const queue = readQueue();
+  const index = queue.findIndex(item => item.replyId === replyId && item.status === "processing");
+  if (index < 0) return;
+  queue[index] = { ...queue[index], processingAt: now };
+  writeQueue(queue);
+}
 /** Keep failed/deferred work durable; retry with bounded exponential backoff. */
 export function retryPendingLifeSceneReply(replyId: string, error: string, now = Date.now()): void {
   const queue = readQueue();
