@@ -8,6 +8,7 @@ import {
   type LifeDiagnosticEntry,
   type LifeDiagnosticStatus,
 } from "@/lib/life/life-diagnostics";
+import { readFailedLifeSceneReplies, resetFailedLifeSceneReply, type PendingLifeSceneNotificationReply } from "@/lib/life/life-notification-queue";
 
 const STATUS_LABEL: Record<LifeDiagnosticStatus, string> = {
   ok: "成功",
@@ -28,8 +29,10 @@ type DiagnosticFilter = "all" | LifeDiagnosticStatus;
 export function LifeDiagnosticsPanel() {
   const [entries, setEntries] = useState<LifeDiagnosticEntry[]>([]);
   const [filter, setFilter] = useState<DiagnosticFilter>("all");
+  const [failedReplies, setFailedReplies] = useState<PendingLifeSceneNotificationReply[]>([]);
 
-  const refresh = () => setEntries(readLifeDiagnostics());
+  const refresh = () => { setEntries(readLifeDiagnostics()); setFailedReplies(readFailedLifeSceneReplies()); };
+  const retryFailedReply = (replyId: string) => { resetFailedLifeSceneReply(replyId); refresh(); };
 
   useEffect(() => {
     refresh();
@@ -108,6 +111,24 @@ export function LifeDiagnosticsPanel() {
           </button>
         </div>
       </div>
+
+      {failedReplies.length > 0 && (
+        <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/80 p-3">
+          <b className="text-sm text-rose-800">有 {failedReplies.length} 条通知回复需要人工重试</b>
+          <p className="mt-1 text-[11px] leading-relaxed text-rose-700">自动重试次数已用尽，原始现场消息仍保留在本机。确认模型配置正常后可重新排队。</p>
+          <div className="mt-2 space-y-2">
+            {failedReplies.map(reply => (
+              <div key={reply.replyId} className="flex flex-wrap items-center gap-2 rounded-xl border border-rose-200/80 bg-white/80 p-2">
+                <div className="min-w-0 flex-1">
+                  <p className="break-all text-[10px] text-stone-600">角色 {reply.characterId} · 场景 {reply.sceneId}</p>
+                  <p className="mt-0.5 break-words text-[10px] text-rose-700">{reply.lastError || "角色回应连续失败。"}</p>
+                </div>
+                <button type="button" onClick={() => retryFailedReply(reply.replyId)} className="min-h-9 rounded-lg border border-rose-300 bg-white px-3 text-xs font-medium text-rose-700">重新排队</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mt-4 grid grid-cols-4 gap-2">
         {(["ok", "warning", "error", "info"] as const).map(status => (
