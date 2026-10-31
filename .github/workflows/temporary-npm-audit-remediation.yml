@@ -27,12 +27,12 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-      - name: Install current lockfile
-        run: npm ci
+      - name: Synchronize dependencies and lockfile
+        run: npm install --ignore-scripts
       - name: Apply non-breaking security updates
         shell: bash
         run: |
-          npm audit fix || true
+          npm audit fix --ignore-scripts || true
           npm audit --json > npm-audit-after.json || true
           node -e 'const a=require("./npm-audit-after.json"); console.log("AUDIT_AFTER",JSON.stringify(a.metadata?.vulnerabilities||{})); for (const [name,v] of Object.entries(a.vulnerabilities||{})) console.log(name, v.severity, "fixAvailable="+JSON.stringify(v.fixAvailable));'
       - name: Commit updated dependency lockfile
