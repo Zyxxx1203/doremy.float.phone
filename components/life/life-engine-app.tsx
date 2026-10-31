@@ -48,7 +48,7 @@ import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
 import { LifeObservation } from "@/components/life/life-observation";
 import { LifeDiagnosticsPanel } from "@/components/life/life-diagnostics-panel";
 import { recordLifeDiagnostic } from "@/lib/life/life-diagnostics";
-import { acknowledgePendingLifeSceneReply, claimPendingLifeSceneReply, peekPendingLifeSceneReply, renewPendingLifeSceneReply, retryPendingLifeSceneReply } from "@/lib/life/life-notification-queue";
+import { acknowledgePendingLifeSceneReply, claimPendingLifeSceneReply, failPendingLifeSceneReply, peekPendingLifeSceneReply, renewPendingLifeSceneReply, retryPendingLifeSceneReply } from "@/lib/life/life-notification-queue";
 
 type Tab = "home" | "scene" | "daily" | "people" | "plans" | "invitations" | "experiences" | "locations" | "observe" | "settings";
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
@@ -2058,12 +2058,21 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   }, []);
 
   useEffect(() => {
-    if (busy) return;
+    if (!ready || busy) return;
     const pending = pendingNotificationSceneReplyRef.current ?? peekPendingLifeSceneReply();
     if (!pending) return;
     pendingNotificationSceneReplyRef.current = pending;
     const scene = stateRef.current.scenes.find(item => item.id === pending.sceneId);
-    if (scene && selectedLocationId !== scene.locationId) { setSelectedLocationId(scene.locationId); return; }
+    const participantStillPresent = scene?.participants.some(participant => participant.ownerType === "character" && participant.ownerId === pending.characterId && participant.activity !== "离开");
+    if (!scene || scene.status !== "active" || !participantStillPresent) {
+      const reason = !scene || scene.status !== "active" ? "通知回复对应的生活现场已不存在或已结束。" : "通知回复对应的角色已不在该现场。";
+      failPendingLifeSceneReply(pending.replyId, reason);
+      pendingNotificationSceneReplyRef.current = null;
+      recordLifeDiagnostic({ source: "通知回复", event: "回复任务已终止", status: "warning", detail: reason, meta: { replyId: pending.replyId, sceneId: pending.sceneId, characterId: pending.characterId } });
+      refreshNotificationReplyQueue(value => value + 1);
+      return;
+    }
+    if (selectedLocationId !== scene.locationId) { setSelectedLocationId(scene.locationId); return; }
     if (selectedSpeakerId !== pending.characterId) { setSelectedSpeakerId(pending.characterId); return; }
     if (!immersiveScene) { setTab("home"); setSceneView(true); return; }
     if (activeScene?.id !== pending.sceneId) return;
@@ -2096,7 +2105,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         }
       } finally { window.clearInterval(leaseHeartbeat); }
     })();
-  }, [activeScene?.id, immersiveScene, selectedLocationId, selectedSpeakerId, busy, sendSceneTurn, refreshNotificationReplyQueue]);
+  }, [activeScene?.id, immersiveScene, selectedLocationId, selectedSpeakerId, busy, ready, sendSceneTurn, refreshNotificationReplyQueue]);
 
   const addLocation = () => {
     const name = newLocationName.trim();
