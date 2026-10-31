@@ -44,8 +44,26 @@ jobs:
           echo "$SHELL_KEYSTORE_BASE64" | base64 -d > /tmp/shell.keystore
           echo "SHELL_KEYSTORE_FILE=/tmp/shell.keystore" >> "$GITHUB_ENV"
 
-      - name: Build APKs
-        run: gradle -p android-shell assembleDebug assembleRelease
+      - name: Validate optional release signing secrets
+        shell: bash
+        run: |
+          if [[ -n "$SHELL_KEYSTORE_BASE64" ]]; then
+            for key in SHELL_KEYSTORE_PASSWORD SHELL_KEY_ALIAS SHELL_KEY_PASSWORD; do
+              if [[ -z "${!key}" ]]; then
+                echo "::error::$key is required when SHELL_KEYSTORE_BASE64 is configured."
+                exit 1
+              fi
+            done
+          else
+            echo "No release keystore configured. Only the installable debug APK will be published; unsigned release APKs are intentionally skipped."
+          fi
+
+      - name: Build debug APK
+        run: gradle -p android-shell assembleDebug
+
+      - name: Build signed release APK
+        if: ${{ env.SHELL_KEYSTORE_FILE != '' }}
+        run: gradle -p android-shell assembleRelease
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -53,8 +71,9 @@ jobs:
           name: float-shell-debug
           path: android-shell/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Upload release APK
+      - name: Upload signed release APK
+        if: ${{ env.SHELL_KEYSTORE_FILE != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: float-shell-release
+          name: float-shell-release-signed
           path: android-shell/app/build/outputs/apk/release/*.apk
