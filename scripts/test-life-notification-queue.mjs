@@ -13,9 +13,9 @@ const localStorage = {
   setItem: (key, value) => values.set(key, String(value)),
 };
 const moduleBox = { exports: {} };
-const sandbox = { module: moduleBox, exports: moduleBox.exports, window: {}, localStorage, Date, Math, console };
+const sandbox = { module: moduleBox, exports: moduleBox.exports, window: { dispatchEvent() {} }, localStorage, Date, Math, console };
 vm.runInNewContext(compiled, sandbox, { filename: "life-notification-queue.cjs" });
-const { enqueuePendingLifeSceneReply, peekPendingLifeSceneReply, claimPendingLifeSceneReply, retryPendingLifeSceneReply, acknowledgePendingLifeSceneReply } = moduleBox.exports;
+const { enqueuePendingLifeSceneReply, peekPendingLifeSceneReply, claimPendingLifeSceneReply, retryPendingLifeSceneReply, acknowledgePendingLifeSceneReply, readFailedLifeSceneReplies, resetFailedLifeSceneReply } = moduleBox.exports;
 
 const first = { replyId: "reply-1", sceneId: "scene-a", characterId: "char-a", replyMode: "action" };
 const second = { replyId: "reply-2", sceneId: "scene-a", characterId: "char-a", replyMode: "dialogue" };
@@ -60,5 +60,9 @@ for (let attempt = 0; attempt < 5; attempt++) {
   retryPendingLifeSceneReply("reply-4", "persistent error", 20000 + attempt * 600000, true);
 }
 assert.equal(peekPendingLifeSceneReply(9999999), null, "exhausted items should stop retrying after the configured attempt limit");
+assert.equal(readFailedLifeSceneReplies().length, 1, "exhausted replies should remain visible for manual recovery");
+resetFailedLifeSceneReply("reply-4");
+assert.equal(readFailedLifeSceneReplies().length, 0, "manual retry should clear the exhausted state");
+assert.equal(peekPendingLifeSceneReply().replyId, "reply-4", "manual retry should return the reply to the pending queue");
 
 console.log("Life notification reply queue tests passed.");
