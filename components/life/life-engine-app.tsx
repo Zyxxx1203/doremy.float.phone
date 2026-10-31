@@ -48,7 +48,7 @@ import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
 import { LifeObservation } from "@/components/life/life-observation";
 import { LifeDiagnosticsPanel } from "@/components/life/life-diagnostics-panel";
 import { recordLifeDiagnostic } from "@/lib/life/life-diagnostics";
-import { acknowledgePendingLifeSceneReply, peekPendingLifeSceneReply } from "@/lib/life/life-notification-queue";
+import { acknowledgePendingLifeSceneReply, claimPendingLifeSceneReply, peekPendingLifeSceneReply, retryPendingLifeSceneReply } from "@/lib/life/life-notification-queue";
 
 type Tab = "home" | "scene" | "daily" | "people" | "plans" | "invitations" | "experiences" | "locations" | "observe" | "settings";
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
@@ -1853,11 +1853,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       void reconcileIdleReconnectWithLifeScenes(candidateIds);
     };
   }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.keepDialogueConcise, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, lifeAppTags, activeMaxConsecutiveActionOnly, settings.enableLifeFormatRepair, playerName]);
-  const sendSceneTurn = async (event?: FormEvent, forceReaction = false) => {
+  const sendSceneTurn = async (event?: FormEvent, forceReaction = false): Promise<"completed" | "deferred" | "failed"> => {
     event?.preventDefault();
     const userText = sceneInput.trim();
     const userAction = sceneActionInput.trim();
-    if (!activeScene || (!userText && !userAction && !forceReaction) || busy) return;
+    if (!activeScene || (!userText && !userAction && !forceReaction)) return "failed";
+    if (busy) return forceReaction ? "deferred" : "failed";
     const userTurn = [userAction ? `行动：${userAction}` : "", userText ? `说话：${userText}` : ""].filter(Boolean).join("\n") || "玩家手动请求角色对最近行为作出反馈";
     const now = new Date().toISOString();
     if (userText || userAction) {
@@ -1871,7 +1872,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (!target) {
       if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应无法启动", status: "error", detail: "找不到通知回复对应的角色卡。", meta: { sceneId: activeScene.id, targetId } });
       setNotice("没有找到可回应的角色。请检查该场景参与者是否关联到现有角色卡。");
-      return;
+      return "failed";
     }
     if (userText || userAction) {
       const latest = stateRef.current;
@@ -1892,7 +1893,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const wokeFromSleep = isSleeping && (forceReaction || urgentMessage || wakeSeed % 100 < (easySleeper ? 60 : 15));
     if (isSleeping && settings.allowCharactersToStaySilent && !wokeFromSleep && !forceReaction) {
       setNotice(target.name + "正在睡觉，没有被这条消息叫醒。消息留在当前场景里；TA醒来后才可能回应。");
-      return;
+      return "failed";
     }
     const contacts = loadChatContacts();
     const sessions = loadChatSessions();
@@ -1901,7 +1902,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const lifeTurn = beginTurn({ kind: "life_scene", characterId: target.id, sessionId: session.id });
     if (!lifeTurn) {
       if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应被其他回合占用", status: "warning", detail: target.name + " 的回应未启动，因为当前已有其他角色回合正在执行。", meta: { sceneId: activeScene.id, characterId: target.id, sessionId: session.id } });
-      return;
+      return forceReaction ? "deferred" : "failed";
     }
     setBusy(true);
     if (forceReaction) setNotice(target.name + "正在回应最近的互动……");
@@ -1932,11 +1933,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       });
       if (issues.length > 0) {
         setNotice("本轮输出格式异常，已阻止写入：" + describeLifeOutputIssues(issues) + "。可重新生成。");
-        return;
+        return "failed";
       }
       if (!parsed.action?.trim() && !parsed.dialogue.trim()) {
         setNotice(target.name + "这一轮没有开口，也没有做动作。");
-        return;
+        return "failed";
       }
       if (forceReaction && !parsed.dialogue.trim() && !parsed.action?.trim()) {
         throw new Error("模型返回了空回应，请检查当前角色绑定的模型或输出格式设置后重试。");
@@ -2026,9 +2027,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         const fact = `在${activeScene.locationName}，{{user}}${userAction.trim() ? "行动：“" + userAction.trim().slice(0, 120) + "”" : ""}${userText.trim() ? "说：“" + userText.trim().slice(0, 120) + "”" : ""}；${target.name}${parsed.action?.trim() ? "行动：“" + parsed.action.trim().slice(0, 120) + "”" : ""}${parsed.dialogue.trim() ? "说：“" + parsed.dialogue.trim().slice(0, 120) + "”" : ""}。`;
         commit({ ...latest, events: [event, ...latest.events], memories: [{ id: id("memory"), eventId, occurredAt: eventNow, participants: ["player", target.id], fact }, ...latest.memories].slice(0, 500) });
       }
+      return "completed";
     } catch (error) {
       if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应生成失败", status: "error", detail: error instanceof Error ? error.message : String(error), meta: { sceneId: activeScene.id, characterId: target.id } });
       setNotice(error instanceof Error ? `角色生成失败：${error.message}` : "角色生成失败，请检查聊天模型配置。");
+      return "failed";
     } finally { lifeTurn.end(); setBusy(false); }
   };
 
@@ -2057,24 +2060,33 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (!pending) return;
     pendingNotificationSceneReplyRef.current = pending;
     const scene = stateRef.current.scenes.find(item => item.id === pending.sceneId);
-    if (scene && selectedLocationId !== scene.locationId) {
-      setSelectedLocationId(scene.locationId);
-      return;
-    }
-    if (selectedSpeakerId !== pending.characterId) {
-      setSelectedSpeakerId(pending.characterId);
-      return;
-    }
-    if (!immersiveScene) {
-      setTab("home");
-      setSceneView(true);
-      return;
-    }
+    if (scene && selectedLocationId !== scene.locationId) { setSelectedLocationId(scene.locationId); return; }
+    if (selectedSpeakerId !== pending.characterId) { setSelectedSpeakerId(pending.characterId); return; }
+    if (!immersiveScene) { setTab("home"); setSceneView(true); return; }
     if (activeScene?.id !== pending.sceneId) return;
+    const retryAt = pending.nextAttemptAt || 0;
+    if (retryAt > Date.now()) {
+      const timer = window.setTimeout(() => { pendingNotificationSceneReplyRef.current = pending; setNotice("通知回复将在稍后自动重试。"); }, Math.min(retryAt - Date.now(), 60_000));
+      return () => window.clearTimeout(timer);
+    }
+    const claimed = claimPendingLifeSceneReply(pending.replyId);
+    if (!claimed) return;
     pendingNotificationSceneReplyRef.current = null;
-    acknowledgePendingLifeSceneReply(pending.replyId);
-    recordLifeDiagnostic({ source: "通知回复", event: "待处理回复已交给生活现场 AI", status: "info", detail: "已恢复通知回复队列并启动对应角色回合。", meta: { replyId: pending.replyId, sceneId: pending.sceneId, characterId: pending.characterId, replyMode: pending.replyMode } });
-    void sendSceneTurn(undefined, true);
+    recordLifeDiagnostic({ source: "通知回复", event: "待处理回复已交给生活现场 AI", status: "info", detail: "已取得该回复的处理租约，开始生成角色回应。", meta: { replyId: pending.replyId, sceneId: pending.sceneId, characterId: pending.characterId, replyMode: pending.replyMode, attempt: claimed.attempts } });
+    let disposed = false;
+    void (async () => {
+      const outcome = await sendSceneTurn(undefined, true);
+      if (disposed) return;
+      if (outcome === "completed") {
+        acknowledgePendingLifeSceneReply(pending.replyId);
+        recordLifeDiagnostic({ source: "通知回复", event: "回复队列已确认完成", status: "ok", detail: "角色回应已成功写入生活现场，队列任务已确认。", meta: { replyId: pending.replyId, sceneId: pending.sceneId, attempt: claimed.attempts } });
+      } else {
+        const reason = outcome === "deferred" ? "当前有其他回合占用，等待空闲后重试。" : "本次角色回应未成功完成，保留任务并按退避策略重试。";
+        retryPendingLifeSceneReply(pending.replyId, reason);
+        recordLifeDiagnostic({ source: "通知回复", event: outcome === "deferred" ? "回复处理延期" : "回复处理失败待重试", status: outcome === "deferred" ? "warning" : "error", detail: reason, meta: { replyId: pending.replyId, sceneId: pending.sceneId, attempt: claimed.attempts } });
+      }
+    })();
+    return () => { disposed = true; };
   }, [activeScene?.id, immersiveScene, selectedLocationId, selectedSpeakerId, busy, sendSceneTurn]);
 
   const addLocation = () => {
