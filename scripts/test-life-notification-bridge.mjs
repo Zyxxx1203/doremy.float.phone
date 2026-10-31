@@ -26,6 +26,8 @@ const persistIndex = bridge.indexOf("const result = mirrorNotificationReplyToLif
 const ackIndex = bridge.indexOf("if (!acknowledge(item.id))", persistIndex);
 assert.ok(persistIndex >= 0 && ackIndex > persistIndex, "native reply must be acknowledged only after web persistence");
 assert.match(bridge, /result === "failed"/);
+assert.match(bridge, /notificationReplyFlushPromise/);
+assert.match(bridge, /flushPendingNotificationRepliesInternal/);
 assert.match(bridge, /Keep the native item/);
 
 console.log("Life notification bridge durability checks passed.");
