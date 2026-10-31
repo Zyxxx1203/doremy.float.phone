@@ -2064,6 +2064,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (selectedSpeakerId !== pending.characterId) { setSelectedSpeakerId(pending.characterId); return; }
     if (!immersiveScene) { setTab("home"); setSceneView(true); return; }
     if (activeScene?.id !== pending.sceneId) return;
+    if (pending.status === "processing") {
+      const processingExpiry = (pending.processingAt || Date.now()) + 90_500;
+      const timer = window.setTimeout(() => setNotice("检测到通知回复处理可能中断，正在恢复任务。"), Math.max(1_000, processingExpiry - Date.now()));
+      return () => window.clearTimeout(timer);
+    }
     const retryAt = pending.nextAttemptAt || 0;
     if (retryAt > Date.now()) {
       const timer = window.setTimeout(() => { pendingNotificationSceneReplyRef.current = pending; setNotice("通知回复将在稍后自动重试。"); }, Math.min(retryAt - Date.now(), 60_000));
