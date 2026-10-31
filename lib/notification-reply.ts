@@ -41,7 +41,7 @@ export type PendingNotificationReply = {
     replyMode?: "action" | "dialogue" | "chat" | string;
 };
 
-/** 读走并清空原生队列。壳不支持或解析失败都返回空数组。 */
+/** 优先 peek 原生队列，等网页数据持久化后再 ack；旧 APK 退回 read-and-clear。 */
 export function readPendingReplies(): PendingNotificationReply[] {
     try {
         const api = bridge();
@@ -54,6 +54,7 @@ export function readPendingReplies(): PendingNotificationReply[] {
         return parsed.filter((item): item is PendingNotificationReply => (
             !!item
             && typeof item === "object"
+            && typeof (item as PendingNotificationReply).id === "string"
             && typeof (item as PendingNotificationReply).sessionId === "string"
             && typeof (item as PendingNotificationReply).text === "string"
             && (item as PendingNotificationReply).text.trim().length > 0
