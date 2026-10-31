@@ -1480,12 +1480,13 @@ export function createToolExecutionId(): string {
 }
 
 export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "status"> & {
+    id?: string;
     status?: ChatMessageStatus;
     createdAt?: string;
 }): ChatMessage {
     let newMsg: ChatMessage = {
         ...msg,
-        id: createMessageId(),
+        id: msg.id || createMessageId(),
         createdAt: msg.createdAt || new Date().toISOString(),
         order: getNextMessageOrder(msg.sessionId),
         status: msg.status || "sent"
