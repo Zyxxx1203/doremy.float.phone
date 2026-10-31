@@ -3,23 +3,37 @@ export type PendingLifeSceneNotificationReply = {
   sceneId: string;
   characterId: string;
   replyMode: "action" | "dialogue";
+  status?: "pending" | "processing" | "failed";
+  attempts?: number;
+  processingAt?: number;
+  nextAttemptAt?: number;
+  lastError?: string;
 };
 
-const KEY = "life-scene-notification-reply-queue-v1";
+const KEY = "life-scene-notification-reply-queue-v2";
+const LEGACY_KEY = "life-scene-notification-reply-queue-v1";
 const LIMIT = 20;
+const PROCESSING_LEASE_MS = 90_000;
+const MAX_ATTEMPTS = 5;
 
 function readQueue(): PendingLifeSceneNotificationReply[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = JSON.parse(localStorage.getItem(KEY) || "[]");
+    const raw = JSON.parse(localStorage.getItem(KEY) || localStorage.getItem(LEGACY_KEY) || "[]");
     if (!Array.isArray(raw)) return [];
     return raw.filter((item): item is PendingLifeSceneNotificationReply =>
       !!item && typeof item.replyId === "string" && typeof item.sceneId === "string"
       && typeof item.characterId === "string" && (item.replyMode === "action" || item.replyMode === "dialogue"),
-    ).slice(0, LIMIT);
+    ).slice(0, LIMIT).map(item => ({ ...item, status: item.status || "pending", attempts: Number(item.attempts) || 0 }));
   } catch {
     return [];
   }
+}
+
+function writeQueue(queue: PendingLifeSceneNotificationReply[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(KEY, JSON.stringify(queue.slice(-LIMIT)));
+  try { localStorage.removeItem(LEGACY_KEY); } catch { /* migration cleanup is best effort */ }
 }
 
 export function enqueuePendingLifeSceneReply(item: PendingLifeSceneNotificationReply): void {
@@ -27,21 +41,67 @@ export function enqueuePendingLifeSceneReply(item: PendingLifeSceneNotificationR
   const queue = readQueue();
   if (queue.some(existing => existing.replyId === item.replyId)) return;
   try {
-    localStorage.setItem(KEY, JSON.stringify([...queue, item].slice(-LIMIT)));
+    writeQueue([...queue, { ...item, status: "pending", attempts: 0 }]);
   } catch {
     // The life-scene message itself is already persisted; queue failure only skips auto-reaction.
   }
 }
 
-export function peekPendingLifeSceneReply(): PendingLifeSceneNotificationReply | null {
-  return readQueue()[0] ?? null;
+/** Return the oldest unfinished reply; expired processing leases become retryable. */
+export function peekPendingLifeSceneReply(now = Date.now()): PendingLifeSceneNotificationReply | null {
+  const queue = readQueue();
+  let changed = false;
+  const recovered = queue.map(item => {
+    if (item.status === "processing" && now - (item.processingAt || 0) >= PROCESSING_LEASE_MS) {
+      changed = true;
+      return { ...item, status: "pending" as const, processingAt: undefined, nextAttemptAt: now, lastError: "上次处理被中断，已恢复重试。" };
+    }
+    return item;
+  });
+  if (changed) writeQueue(recovered);
+  return recovered.find(item => item.status !== "failed") ?? null;
 }
 
+/** Claim before invoking the model so multiple page effects cannot run the same reply. */
+export function claimPendingLifeSceneReply(replyId: string, now = Date.now()): PendingLifeSceneNotificationReply | null {
+  const queue = readQueue();
+  const index = queue.findIndex(item => item.replyId === replyId && item.status === "pending" && (item.nextAttemptAt || 0) <= now);
+  if (index < 0) return null;
+  const claimed = { ...queue[index], status: "processing" as const, processingAt: now, attempts: (queue[index].attempts || 0) + 1 };
+  queue[index] = claimed;
+  writeQueue(queue);
+  return claimed;
+}
+
+/** Keep failed/deferred work durable; retry with bounded exponential backoff. */
+export function retryPendingLifeSceneReply(replyId: string, error: string, now = Date.now()): void {
+  const queue = readQueue();
+  const index = queue.findIndex(item => item.replyId === replyId);
+  if (index < 0) return;
+  const attempts = queue[index].attempts || 0;
+  const exhausted = attempts >= MAX_ATTEMPTS;
+  const delay = Math.min(5 * 60_000, 5_000 * Math.pow(2, Math.max(0, attempts - 1)));
+  queue[index] = {
+    ...queue[index],
+    status: exhausted ? "failed" : "pending",
+    processingAt: undefined,
+    nextAttemptAt: exhausted ? undefined : now + delay,
+    lastError: error.slice(0, 500),
+  };
+  writeQueue(queue);
+}
+
+/** Acknowledge only after the character response has been persisted to the scene. */
 export function acknowledgePendingLifeSceneReply(replyId: string): void {
   if (typeof window === "undefined" || !replyId) return;
-  try {
-    localStorage.setItem(KEY, JSON.stringify(readQueue().filter(item => item.replyId !== replyId)));
-  } catch {
-    // Best effort; the reply's stable ID prevents duplicate scene-message writes.
-  }
+  try { writeQueue(readQueue().filter(item => item.replyId !== replyId)); } catch { /* stable reply ID prevents duplicate user-message writes */ }
+}
+
+/** Explicit recovery hook for a user retry action or a fresh manual retry flow. */
+export function resetFailedLifeSceneReply(replyId: string): void {
+  const queue = readQueue();
+  const index = queue.findIndex(item => item.replyId === replyId && item.status === "failed");
+  if (index < 0) return;
+  queue[index] = { ...queue[index], status: "pending", attempts: 0, processingAt: undefined, nextAttemptAt: Date.now(), lastError: undefined };
+  writeQueue(queue);
 }
