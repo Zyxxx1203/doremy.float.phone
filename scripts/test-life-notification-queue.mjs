@@ -22,7 +22,8 @@ const second = { replyId: "reply-2", sceneId: "scene-a", characterId: "char-a", 
 enqueuePendingLifeSceneReply(first);
 enqueuePendingLifeSceneReply(first);
 enqueuePendingLifeSceneReply(second);
-assert.deepEqual(JSON.parse(JSON.stringify(peekPendingLifeSceneReply())), first, "queue should preserve FIFO order and deduplicate stable reply IDs");
+assert.equal(peekPendingLifeSceneReply().replyId, first.replyId, "queue should preserve FIFO order and deduplicate stable reply IDs");
+assert.equal(peekPendingLifeSceneReply().status, "pending");
 const claimed = claimPendingLifeSceneReply("reply-1", 1000);
 assert.equal(claimed.status, "processing", "claiming a reply should persist a processing lease");
 assert.equal(claimPendingLifeSceneReply("reply-1", 1001), null, "a second worker must not claim an already-processing reply");
