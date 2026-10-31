@@ -75,10 +75,10 @@ function mirrorNotificationReplyToLifeScene(item: PendingNotificationReply, text
     try {
         if (!item.sceneId || !["action", "dialogue"].includes(item.replyMode || "")) return "not-life";
         const session = loadChatSessions().find(candidate => candidate.id === item.sessionId);
-        if (!session || session.isGroup) return "failed";
+        if (!session || session.isGroup) return "not-life";
         const contact = loadChatContacts().find(candidate => candidate.id === session.contactId);
         const characterId = contact?.characterId;
-        if (!characterId) return "failed";
+        if (!characterId) return "not-life";
         const state = loadVirtualLifeState();
         if (!state.settings.enabled || state.settings.recordSceneMessages === false) return "missing-scene";
         const scene = state.scenes.find(candidate => candidate.id === item.sceneId && candidate.status === "active"
