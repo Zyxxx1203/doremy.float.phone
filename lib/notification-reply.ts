@@ -4,7 +4,7 @@
 // 原生只负责把文本、sceneId 和回复类型可靠落入持久队列；上下文组装、模型回应
 // 与生活现场时间线仍由 WebView 中的 JS 引擎完成。
 
-import { loadChatContacts, loadChatSessions, pushChatMessage } from "./chat-storage";
+import { loadChatContacts, loadChatMessages, loadChatSessions, pushChatMessage } from "./chat-storage";
 import { loadVirtualLifeState, saveVirtualLifeState, appendLifeTimelineEntry } from "./life/life-storage";
 import { requestBackgroundChatReply } from "./follow-up-service";
 import { ensureShellOverlayListener, subscribeShellOverlayEvents } from "./shell-call-overlay";
@@ -13,6 +13,8 @@ import { enqueuePendingLifeSceneReply } from "./life/life-notification-queue";
 
 type ReplyBridge = {
     consumePendingReplies?: () => string;
+    peekPendingReplies?: () => string;
+    acknowledgePendingReplies?: (idsJson: string) => boolean;
 };
 
 function bridge(): ReplyBridge | null {
@@ -23,7 +25,9 @@ function bridge(): ReplyBridge | null {
 
 /** 壳是否支持通知栏直接回复（老 APK 没有）。 */
 export function hasNotificationReplyBridge(): boolean {
-    return typeof bridge()?.consumePendingReplies === "function";
+    const api = bridge();
+    return typeof api?.consumePendingReplies === "function"
+        || (typeof api?.peekPendingReplies === "function" && typeof api?.acknowledgePendingReplies === "function");
 }
 
 /** 原生队列里的一条待发回复。 */
@@ -40,7 +44,10 @@ export type PendingNotificationReply = {
 /** 读走并清空原生队列。壳不支持或解析失败都返回空数组。 */
 export function readPendingReplies(): PendingNotificationReply[] {
     try {
-        const raw = bridge()?.consumePendingReplies?.();
+        const api = bridge();
+        const raw = typeof api?.peekPendingReplies === "function" && typeof api?.acknowledgePendingReplies === "function"
+            ? api.peekPendingReplies()
+            : api?.consumePendingReplies?.();
         if (!raw) return [];
         const parsed = JSON.parse(raw) as unknown;
         if (!Array.isArray(parsed)) return [];
