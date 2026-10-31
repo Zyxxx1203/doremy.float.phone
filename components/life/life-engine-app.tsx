@@ -48,7 +48,7 @@ import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
 import { LifeObservation } from "@/components/life/life-observation";
 import { LifeDiagnosticsPanel } from "@/components/life/life-diagnostics-panel";
 import { recordLifeDiagnostic } from "@/lib/life/life-diagnostics";
-import { acknowledgePendingLifeSceneReply, claimPendingLifeSceneReply, peekPendingLifeSceneReply, retryPendingLifeSceneReply } from "@/lib/life/life-notification-queue";
+import { acknowledgePendingLifeSceneReply, claimPendingLifeSceneReply, peekPendingLifeSceneReply, renewPendingLifeSceneReply, retryPendingLifeSceneReply } from "@/lib/life/life-notification-queue";
 
 type Tab = "home" | "scene" | "daily" | "people" | "plans" | "invitations" | "experiences" | "locations" | "observe" | "settings";
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
@@ -2081,16 +2081,19 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (!claimed) return;
     pendingNotificationSceneReplyRef.current = null;
     recordLifeDiagnostic({ source: "通知回复", event: "待处理回复已交给生活现场 AI", status: "info", detail: "已取得该回复的处理租约，开始生成角色回应。", meta: { replyId: pending.replyId, sceneId: pending.sceneId, characterId: pending.characterId, replyMode: pending.replyMode, attempt: claimed.attempts } });
+    const leaseHeartbeat = window.setInterval(() => renewPendingLifeSceneReply(pending.replyId), 30_000);
     void (async () => {
-      const outcome = await sendSceneTurn(undefined, true, pending.replyId);
-      if (outcome === "completed") {
-        acknowledgePendingLifeSceneReply(pending.replyId);
-        recordLifeDiagnostic({ source: "通知回复", event: "回复队列已确认完成", status: "ok", detail: "角色回应已成功写入生活现场，队列任务已确认。", meta: { replyId: pending.replyId, sceneId: pending.sceneId, attempt: claimed.attempts } });
-      } else {
-        const reason = outcome === "deferred" ? "当前有其他回合占用，等待空闲后重试。" : "本次角色回应未成功完成，保留任务并按退避策略重试。";
-        retryPendingLifeSceneReply(pending.replyId, reason);
-        recordLifeDiagnostic({ source: "通知回复", event: outcome === "deferred" ? "回复处理延期" : "回复处理失败待重试", status: outcome === "deferred" ? "warning" : "error", detail: reason, meta: { replyId: pending.replyId, sceneId: pending.sceneId, attempt: claimed.attempts } });
-      }
+      try {
+        const outcome = await sendSceneTurn(undefined, true, pending.replyId);
+        if (outcome === "completed") {
+          acknowledgePendingLifeSceneReply(pending.replyId);
+          recordLifeDiagnostic({ source: "通知回复", event: "回复队列已确认完成", status: "ok", detail: "角色回应已成功写入生活现场，队列任务已确认。", meta: { replyId: pending.replyId, sceneId: pending.sceneId, attempt: claimed.attempts } });
+        } else {
+          const reason = outcome === "deferred" ? "当前有其他回合占用，等待空闲后重试。" : "本次角色回应未成功完成，保留任务并按退避策略重试。";
+          retryPendingLifeSceneReply(pending.replyId, reason);
+          recordLifeDiagnostic({ source: "通知回复", event: outcome === "deferred" ? "回复处理延期" : "回复处理失败待重试", status: outcome === "deferred" ? "warning" : "error", detail: reason, meta: { replyId: pending.replyId, sceneId: pending.sceneId, attempt: claimed.attempts } });
+        }
+      } finally { window.clearInterval(leaseHeartbeat); }
     })();
   }, [activeScene?.id, immersiveScene, selectedLocationId, selectedSpeakerId, busy, sendSceneTurn, refreshNotificationReplyQueue]);
 
