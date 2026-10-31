@@ -242,6 +242,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const busyRef = useRef(false);
   busyRef.current = busy;
   const [notice, setNotice] = useState("");
+  const [, refreshNotificationReplyQueue] = useState(0);
   // 生活现场主动通知横幅（规格：头像 + 标签 + 地点 + 内容 + 回复行动/回复对话双入口）
   const [sceneToast, setSceneToast] = useState<{ kind: "action" | "dialogue"; characterId: string; characterName: string; avatar: string; location: string; body: string; sceneId: string; isTest?: boolean } | null>(null);
   const [toastReplyMode, setToastReplyMode] = useState<"hidden" | "action" | "dialogue">("hidden");
@@ -1853,12 +1854,14 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       void reconcileIdleReconnectWithLifeScenes(candidateIds);
     };
   }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.keepDialogueConcise, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, lifeAppTags, activeMaxConsecutiveActionOnly, settings.enableLifeFormatRepair, playerName]);
-  const sendSceneTurn = async (event?: FormEvent, forceReaction = false): Promise<"completed" | "deferred" | "failed"> => {
+  const sendSceneTurn = async (event?: FormEvent, forceReaction = false, notificationReplyId?: string): Promise<"completed" | "deferred" | "failed"> => {
     event?.preventDefault();
     const userText = sceneInput.trim();
     const userAction = sceneActionInput.trim();
     if (!activeScene || (!userText && !userAction && !forceReaction)) return "failed";
     if (busy) return forceReaction ? "deferred" : "failed";
+    const notificationResponsePrefix = notificationReplyId ? "notification-reply-response-" + notificationReplyId : "";
+    if (notificationResponsePrefix && stateRef.current.sceneMessages.some(message => message.id.startsWith(notificationResponsePrefix))) return "completed";
     const userTurn = [userAction ? `行动：${userAction}` : "", userText ? `说话：${userText}` : ""].filter(Boolean).join("\n") || "玩家手动请求角色对最近行为作出反馈";
     const now = new Date().toISOString();
     if (userText || userAction) {
@@ -2011,8 +2014,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const actionText = (parsed.action ?? "").trim();
       const dialogueSegments = splitLifeReplySegments(parsed.dialogue);
       const replyMessages: LifeSceneMessage[] = [
-        ...(actionText ? [{ id: id("turn-action"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, action: actionText, dialogue: "", createdAt: replyAt }] : []),
-        ...dialogueSegments.map(dialogue => ({ id: id("turn-dialogue"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, dialogue, createdAt: replyAt })),
+        ...(actionText ? [{ id: notificationResponsePrefix ? notificationResponsePrefix + "-action" : id("turn-action"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, action: actionText, dialogue: "", createdAt: replyAt }] : []),
+        ...dialogueSegments.map((dialogue, index) => ({ id: notificationResponsePrefix ? notificationResponsePrefix + "-dialogue-" + index : id("turn-dialogue"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, dialogue, createdAt: replyAt })),
       ];
       if (!replyMessages.length) replyMessages.push({ id: id("turn"), sceneId: activeScene.id, speakerType: "character", speakerId: target.id, speakerName: target.name, role: "character", dialogue: "", createdAt: replyAt });
       replyMessages.forEach(pushSceneMessage);
@@ -2066,12 +2069,12 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (activeScene?.id !== pending.sceneId) return;
     if (pending.status === "processing") {
       const processingExpiry = (pending.processingAt || Date.now()) + 90_500;
-      const timer = window.setTimeout(() => setNotice("检测到通知回复处理可能中断，正在恢复任务。"), Math.max(1_000, processingExpiry - Date.now()));
+      const timer = window.setTimeout(() => { refreshNotificationReplyQueue(value => value + 1); }, Math.max(1_000, processingExpiry - Date.now()));
       return () => window.clearTimeout(timer);
     }
     const retryAt = pending.nextAttemptAt || 0;
     if (retryAt > Date.now()) {
-      const timer = window.setTimeout(() => { pendingNotificationSceneReplyRef.current = pending; setNotice("通知回复将在稍后自动重试。"); }, Math.min(retryAt - Date.now(), 60_000));
+      const timer = window.setTimeout(() => { pendingNotificationSceneReplyRef.current = pending; refreshNotificationReplyQueue(value => value + 1); }, Math.min(retryAt - Date.now(), 60_000));
       return () => window.clearTimeout(timer);
     }
     const claimed = claimPendingLifeSceneReply(pending.replyId);
@@ -2079,7 +2082,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     pendingNotificationSceneReplyRef.current = null;
     recordLifeDiagnostic({ source: "通知回复", event: "待处理回复已交给生活现场 AI", status: "info", detail: "已取得该回复的处理租约，开始生成角色回应。", meta: { replyId: pending.replyId, sceneId: pending.sceneId, characterId: pending.characterId, replyMode: pending.replyMode, attempt: claimed.attempts } });
     void (async () => {
-      const outcome = await sendSceneTurn(undefined, true);
+      const outcome = await sendSceneTurn(undefined, true, pending.replyId);
       if (outcome === "completed") {
         acknowledgePendingLifeSceneReply(pending.replyId);
         recordLifeDiagnostic({ source: "通知回复", event: "回复队列已确认完成", status: "ok", detail: "角色回应已成功写入生活现场，队列任务已确认。", meta: { replyId: pending.replyId, sceneId: pending.sceneId, attempt: claimed.attempts } });
@@ -2089,7 +2092,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         recordLifeDiagnostic({ source: "通知回复", event: outcome === "deferred" ? "回复处理延期" : "回复处理失败待重试", status: outcome === "deferred" ? "warning" : "error", detail: reason, meta: { replyId: pending.replyId, sceneId: pending.sceneId, attempt: claimed.attempts } });
       }
     })();
-  }, [activeScene?.id, immersiveScene, selectedLocationId, selectedSpeakerId, busy, sendSceneTurn]);
+  }, [activeScene?.id, immersiveScene, selectedLocationId, selectedSpeakerId, busy, sendSceneTurn, refreshNotificationReplyQueue]);
 
   const addLocation = () => {
     const name = newLocationName.trim();
