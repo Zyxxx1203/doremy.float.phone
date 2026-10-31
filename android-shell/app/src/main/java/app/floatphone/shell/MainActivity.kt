@@ -2374,13 +2374,16 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
             CheckInService.stop(this@MainActivity)
         }
 
-        /**
-         * 读走并清空「通知栏直接回复」的待发队列（JSON 数组字符串）。
-         *
-         * 网页在页面挂载时、以及收到 userReply 事件时各拉一次：前者补发
-         * 「页面被回收期间用户从通知里回的话」，后者处理当场送达的。
-         * 拉到即清空，所以同一句不会被发两遍。
-         */
+        /** Read pending notification replies without deleting them; JS acknowledges after persistence. */
+        @JavascriptInterface
+        fun peekPendingReplies(): String = NotificationReplyReceiver.peekPendingReplies(this@MainActivity)
+
+        /** Acknowledge only successfully persisted reply IDs (JSON string array). */
+        @JavascriptInterface
+        fun acknowledgePendingReplies(idsJson: String): Boolean =
+            NotificationReplyReceiver.acknowledgePendingReplies(this@MainActivity, idsJson)
+
+        /** Legacy read-and-clear bridge retained for older web builds. */
         @JavascriptInterface
         fun consumePendingReplies(): String = NotificationReplyReceiver.consumePendingReplies(this@MainActivity)
 
