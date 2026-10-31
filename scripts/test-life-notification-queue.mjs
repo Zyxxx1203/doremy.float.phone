@@ -8,9 +8,10 @@ const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
 const values = new Map();
+let failWrites = false;
 const localStorage = {
   getItem: key => values.has(key) ? values.get(key) : null,
-  setItem: (key, value) => values.set(key, String(value)),
+  setItem: (key, value) => { if (failWrites) throw new Error("quota exceeded"); values.set(key, String(value)); },
 };
 const moduleBox = { exports: {} };
 const sandbox = { module: moduleBox, exports: moduleBox.exports, window: { dispatchEvent() {} }, localStorage, Date, Math, console };
@@ -69,5 +70,9 @@ assert.equal(readFailedLifeSceneReplies().length, 1, "exhausted replies should r
 resetFailedLifeSceneReply("reply-4");
 assert.equal(readFailedLifeSceneReplies().length, 0, "manual retry should clear the exhausted state");
 assert.equal(peekPendingLifeSceneReply().replyId, "reply-4", "manual retry should return the reply to the pending queue");
+
+failWrites = true;
+assert.equal(enqueuePendingLifeSceneReply({ replyId: "quota-reply", sceneId: "scene-z", characterId: "char-z", replyMode: "dialogue" }), false, "queue storage failure must be reported so the native queue is not acknowledged");
+failWrites = false;
 
 console.log("Life notification reply queue tests passed.");
