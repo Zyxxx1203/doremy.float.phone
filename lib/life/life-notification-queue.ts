@@ -82,15 +82,16 @@ export function renewPendingLifeSceneReply(replyId: string, now = Date.now()): v
   writeQueue(queue);
 }
 /** Keep failed/deferred work durable; retry with bounded exponential backoff. */
-export function retryPendingLifeSceneReply(replyId: string, error: string, now = Date.now()): void {
+export function retryPendingLifeSceneReply(replyId: string, error: string, now = Date.now(), countAttempt = true): void {
   const queue = readQueue();
   const index = queue.findIndex(item => item.replyId === replyId);
   if (index < 0) return;
-  const attempts = queue[index].attempts || 0;
+  const attempts = Math.max(0, (queue[index].attempts || 0) - (countAttempt ? 0 : 1));
   const exhausted = attempts >= MAX_ATTEMPTS;
   const delay = Math.min(5 * 60_000, 5_000 * Math.pow(2, Math.max(0, attempts - 1)));
   queue[index] = {
     ...queue[index],
+    attempts,
     status: exhausted ? "failed" : "pending",
     processingAt: undefined,
     nextAttemptAt: exhausted ? undefined : now + delay,
