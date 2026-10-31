@@ -29,6 +29,7 @@ assert.equal(claimed.status, "processing", "claiming a reply should persist a pr
 assert.equal(claimPendingLifeSceneReply("reply-1", 1001), null, "a second worker must not claim an already-processing reply");
 assert.equal(peekPendingLifeSceneReply(2000).replyId, "reply-1", "processing replies remain durable until acknowledged");
 retryPendingLifeSceneReply("reply-1", "model temporarily busy", 2000);
+assert.equal(peekPendingLifeSceneReply(2001).attempts, 1, "real model failures should retain their attempt count");
 const retryable = peekPendingLifeSceneReply(2001);
 assert.equal(retryable.replyId, "reply-1", "failed attempts should remain in the durable queue");
 assert.equal(retryable.status, "pending", "retry should return the item to pending");
@@ -44,7 +45,10 @@ const third = { replyId: "reply-3", sceneId: "scene-b", characterId: "char-b", r
 enqueuePendingLifeSceneReply(third);
 claimPendingLifeSceneReply("reply-3", 10000);
 assert.equal(peekPendingLifeSceneReply(10000).status, "processing");
-assert.equal(peekPendingLifeSceneReply(10000 + 90_001).status, "pending", "expired processing lease should recover after an interrupted page");
+const { renewPendingLifeSceneReply } = moduleBox.exports;
+renewPendingLifeSceneReply("reply-3", 90000);
+assert.equal(peekPendingLifeSceneReply(10000 + 90_001).status, "processing", "heartbeat should keep a long-running model request claimed");
+assert.equal(peekPendingLifeSceneReply(180001).status, "pending", "expired processing lease should recover after an interrupted page");
 acknowledgePendingLifeSceneReply("reply-3");
 
 const exhausted = { replyId: "reply-4", sceneId: "scene-c", characterId: "char-c", replyMode: "action" };
@@ -53,7 +57,7 @@ for (let attempt = 0; attempt < 5; attempt++) {
   const item = peekPendingLifeSceneReply(20000 + attempt * 600000);
   if (item.replyId !== "reply-4") break;
   claimPendingLifeSceneReply("reply-4", 20000 + attempt * 600000);
-  retryPendingLifeSceneReply("reply-4", "persistent error", 20000 + attempt * 600000);
+  retryPendingLifeSceneReply("reply-4", "persistent error", 20000 + attempt * 600000, true);
 }
 assert.equal(peekPendingLifeSceneReply(9999999), null, "exhausted items should stop retrying after the configured attempt limit");
 
