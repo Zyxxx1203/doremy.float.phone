@@ -2073,10 +2073,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (!claimed) return;
     pendingNotificationSceneReplyRef.current = null;
     recordLifeDiagnostic({ source: "通知回复", event: "待处理回复已交给生活现场 AI", status: "info", detail: "已取得该回复的处理租约，开始生成角色回应。", meta: { replyId: pending.replyId, sceneId: pending.sceneId, characterId: pending.characterId, replyMode: pending.replyMode, attempt: claimed.attempts } });
-    let disposed = false;
     void (async () => {
       const outcome = await sendSceneTurn(undefined, true);
-      if (disposed) return;
       if (outcome === "completed") {
         acknowledgePendingLifeSceneReply(pending.replyId);
         recordLifeDiagnostic({ source: "通知回复", event: "回复队列已确认完成", status: "ok", detail: "角色回应已成功写入生活现场，队列任务已确认。", meta: { replyId: pending.replyId, sceneId: pending.sceneId, attempt: claimed.attempts } });
@@ -2086,7 +2084,6 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         recordLifeDiagnostic({ source: "通知回复", event: outcome === "deferred" ? "回复处理延期" : "回复处理失败待重试", status: outcome === "deferred" ? "warning" : "error", detail: reason, meta: { replyId: pending.replyId, sceneId: pending.sceneId, attempt: claimed.attempts } });
       }
     })();
-    return () => { disposed = true; };
   }, [activeScene?.id, immersiveScene, selectedLocationId, selectedSpeakerId, busy, sendSceneTurn]);
 
   const addLocation = () => {
