@@ -85,38 +85,39 @@ function mirrorNotificationReplyToLifeScene(item: PendingNotificationReply, text
             && candidate.participants.some(participant => participant.ownerType === "character" && participant.ownerId === characterId && participant.activity !== "离开"));
         if (!scene) return "missing-scene";
         const messageId = "notification-reply-" + item.id;
-        if (state.sceneMessages.some(message => message.id === messageId)) return "written";
+        const alreadyWritten = state.sceneMessages.some(message => message.id === messageId);
         const createdAt = Number.isFinite(item.at) && item.at > 0 ? new Date(item.at).toISOString() : new Date().toISOString();
         const playerName = state.settings.playerDisplayName || "我";
         const isAction = item.replyMode === "action";
-        const message = {
-            id: messageId, sceneId: scene.id, speakerType: "player" as const, speakerId: "player",
-            speakerName: playerName, role: "player" as const,
-            action: isAction ? text : "", dialogue: isAction ? "" : text, createdAt,
-        };
-        let next = {
-            ...state,
-            scenes: state.scenes.map(candidate => candidate.id === scene.id ? { ...candidate, updatedAt: new Date().toISOString() } : candidate),
-            sceneMessages: [...state.sceneMessages, message],
-        };
-        next = appendLifeTimelineEntry(next, {
-            category: isAction ? "action" : "dialogue", occurredAt: createdAt,
-            title: playerName + (isAction ? "通过通知回复行动" : "通过通知回复"),
-            details: text, actorId: "player", actorName: playerName,
-            locationName: scene.locationName, sceneId: scene.id, sourceId: message.id,
+        if (!alreadyWritten) {
+            const message = {
+                id: messageId, sceneId: scene.id, speakerType: "player" as const, speakerId: "player",
+                speakerName: playerName, role: "player" as const,
+                action: isAction ? text : "", dialogue: isAction ? "" : text, createdAt,
+            };
+            let next = {
+                ...state,
+                scenes: state.scenes.map(candidate => candidate.id === scene.id ? { ...candidate, updatedAt: new Date().toISOString() } : candidate),
+                sceneMessages: [...state.sceneMessages, message],
+            };
+            next = appendLifeTimelineEntry(next, {
+                category: isAction ? "action" : "dialogue", occurredAt: createdAt,
+                title: playerName + (isAction ? "通过通知回复行动" : "通过通知回复"),
+                details: text, actorId: "player", actorName: playerName,
+                locationName: scene.locationName, sceneId: scene.id, sourceId: message.id,
+            });
+            saveVirtualLifeState(next);
+        }
+        const queued = enqueuePendingLifeSceneReply({
+            replyId: item.id, sceneId: scene.id, characterId, replyMode: isAction ? "action" : "dialogue",
         });
-        saveVirtualLifeState(next);
-        enqueuePendingLifeSceneReply({
-            replyId: item.id,
-            sceneId: scene.id,
-            characterId,
-            replyMode: isAction ? "action" : "dialogue",
-        });
+        if (!queued) {
+            recordLifeDiagnostic({ source: "通知回复", event: "生活现场回复队列持久化失败", status: "error", detail: "现场消息已写入，但本机自动回应队列未能保存；原生通知队列将保留并重试。", meta: { replyId: item.id, sceneId: scene.id, characterId } });
+            return "failed";
+        }
         if (typeof window !== "undefined") {
             window.dispatchEvent(new Event("life-scene-message-added"));
             window.dispatchEvent(new CustomEvent("life-scene-notification-reply", { detail: { replyId: item.id, sceneId: scene.id, characterId, replyMode: item.replyMode } }));
-            // The reply can arrive while the WebView is alive on another app/page.
-            // Navigate to the life scene so the queued reaction is not lost with an absent listener.
             if (window.location.pathname !== "/life" && window.location.pathname !== "/life/") {
                 window.location.assign("/life?sceneId=" + encodeURIComponent(scene.id));
             }
