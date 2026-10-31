@@ -106,6 +106,10 @@ export function acknowledgePendingLifeSceneReply(replyId: string): void {
   try { writeQueue(readQueue().filter(item => item.replyId !== replyId)); } catch { /* stable reply ID prevents duplicate user-message writes */ }
 }
 
+/** List exhausted replies so the diagnostics UI can offer an explicit manual retry. */
+export function readFailedLifeSceneReplies(): PendingLifeSceneNotificationReply[] {
+  return readQueue().filter(item => item.status === "failed");
+}
 /** Explicit recovery hook for a user retry action or a fresh manual retry flow. */
 export function resetFailedLifeSceneReply(replyId: string): void {
   const queue = readQueue();
