@@ -1484,6 +1484,12 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
     status?: ChatMessageStatus;
     createdAt?: string;
 }): ChatMessage {
+    // Explicit IDs are used by retryable imports/notification delivery. Treat them as
+    // idempotency keys so a native queue replay cannot duplicate the same chat bubble.
+    if (msg.id) {
+        const existing = getSortedSessionMessages(msg.sessionId).find(item => item.id === msg.id);
+        if (existing) return existing;
+    }
     let newMsg: ChatMessage = {
         ...msg,
         id: msg.id || createMessageId(),
