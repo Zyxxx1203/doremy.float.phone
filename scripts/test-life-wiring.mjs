@@ -31,10 +31,7 @@ assert.match(app, /refreshNotificationReplyQueue\(value => value \+ 1\)/);
 const notificationOutcomeIndex = app.indexOf("const outcome = await sendSceneTurn(undefined, true, pending.replyId)");
 const notificationAckIndex = app.indexOf("acknowledgePendingLifeSceneReply(pending.replyId)", notificationOutcomeIndex);
 assert.ok(notificationOutcomeIndex >= 0 && notificationAckIndex > notificationOutcomeIndex, "notification queue must only acknowledge after the AI turn completes");
-assert.match(app, /refreshNotificationReplyQueue\(value => value \+ 1\)/);
-const notificationOutcomeIndex = app.indexOf("const outcome = await sendSceneTurn(undefined, true, pending.replyId)");
-const notificationAckIndex = app.indexOf("acknowledgePendingLifeSceneReply(pending.replyId)", notificationOutcomeIndex);
-assert.ok(notificationOutcomeIndex >= 0 && notificationAckIndex > notificationOutcomeIndex, "notification queue must only acknowledge after the AI turn completes");
+
 assert.match(app, /return "completed"/);
 assert.match(app, /return forceReaction \? "deferred" : "failed"/);
 assert.match(app, /refreshForegroundLease/);
