@@ -175,11 +175,13 @@ async function flushPendingNotificationRepliesInternal(): Promise<number> {
         // fails, the next flush sees the same ID and will not create a duplicate bubble.
         const chatMessageId = "notification-reply-chat-" + item.id;
         try {
-            const alreadyPersisted = loadChatMessages(item.sessionId).some(message => message.id === chatMessageId);
-            if (!alreadyPersisted) {
-                pushChatMessage({ id: chatMessageId, sessionId: item.sessionId, role: "user", content: text });
-                chatReplies.add(item.sessionId);
-            }
+            const messagesBefore = loadChatMessages(item.sessionId);
+            const alreadyPersisted = messagesBefore.some(message => message.id === chatMessageId);
+            if (!alreadyPersisted) pushChatMessage({ id: chatMessageId, sessionId: item.sessionId, role: "user", content: text });
+            const messagesAfter = alreadyPersisted ? messagesBefore : loadChatMessages(item.sessionId);
+            const userIndex = messagesAfter.findIndex(message => message.id === chatMessageId);
+            const hasAssistantResponse = userIndex >= 0 && messagesAfter.slice(userIndex + 1).some(message => message.role === "assistant" && message.status !== "failed" && !message.isRetracted);
+            if (!hasAssistantResponse) chatReplies.add(item.sessionId);
             completedIds.push(item.id);
             sent += 1;
             recordLifeDiagnostic({ source: "通知回复", event: "普通聊天回复已持久化", status: "info", detail: result === "missing-scene" ? "原生活现场不可用，已按普通聊天兼容处理。" : "通知回复已写入普通聊天会话。", meta: { replyId: item.id, sessionId: item.sessionId, replyMode: item.replyMode || "chat" } });
