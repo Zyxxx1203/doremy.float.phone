@@ -160,9 +160,9 @@ function parseSourcePath(path?: string): SourcePath | { kind: "missing"; message
     const segments = splitPath(path);
     if (segments.length === 0) return { kind: "root" };
 
-    const module = getModule(segments[0]);
-    if (!module) return { kind: "missing", message: `资料模块不存在：/${segments[0]}` };
-    if (segments.length === 1) return { kind: "module", module };
+    const dataModule = getModule(segments[0]);
+    if (!dataModule) return { kind: "missing", message: `资料模块不存在：/${segments[0]}` };
+    if (segments.length === 1) return { kind: "module", module: dataModule };
 
     const sourceType = segments[1];
     if (sourceType !== "indexeddb" && sourceType !== "kv" && sourceType !== "localStorage") {
@@ -845,10 +845,10 @@ async function searchPath(path: SourcePath, input: LocalDataSearchInput, remaini
             : [];
     const results: unknown[] = [];
 
-    for (const module of modules) {
+    for (const dataModule of modules) {
         const sources = path.kind === "indexeddb"
             ? [path.source]
-            : module.sources.filter(source => {
+            : dataModule.sources.filter(source => {
                 if (path.kind !== "sourceRoot") return true;
                 return source.type === path.sourceType;
             });
