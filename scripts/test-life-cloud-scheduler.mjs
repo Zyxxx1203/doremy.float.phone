@@ -65,6 +65,9 @@ assert.match(generator, /sendWebPushRaw/);
 assert.match(generator, /!payload\.merge\?\.lifeScene && idleRepeat/);
 assert.match(generator, /autonomous life actions disabled by latest cloud settings/);
 assert.match(generator, /if \(!rows.length\) return isLifeSceneJob/);
+assert.match(generator, /Revalidate after the provider call/);
+assert.match(generator, /direct chat opened during generation/);
+assert.match(generator, /actor activity\\/location changed during generation/);
 
 assert.match(schema, /values\s*\('personal-cloud', 4, now\(\)\)/);
 assert.match(schema, /create table if not exists public\.life_schedule_runtime/);
