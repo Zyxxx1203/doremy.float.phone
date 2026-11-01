@@ -287,7 +287,10 @@ function SceneModel({
   // 拖拽时实时吸附
   useEffect(() => {
     if (!selected || !tcRef.current || !settings.snap) return;
-    const tc = tcRef.current;
+    const tc = tcRef.current as unknown as {
+      addEventListener: (type: "objectChange", listener: () => void) => void;
+      removeEventListener: (type: "objectChange", listener: () => void) => void;
+    };
     const handleChange = () => {
       if (!groupRef.current) return;
       const others: THREE.Object3D[] = [];
