@@ -20,7 +20,7 @@ type Snapshot = {
 };
 type JobRow = { id: string; trigger_key: string; status: string; execute_at: string; result_note?: string | null };
 type RuntimeRow = {
-  user_id: string; scene_id: string; character_id: string; state_version: number;
+  user_id: string; scene_id: string; character_id: string; schedule_version: string; state_version: number;
   activity: string; location_id: string; location_name: string; next_transition_at: string | null;
   next_run_at: string | null; last_status: string; last_error: string | null; updated_at: string;
 };
@@ -230,11 +230,13 @@ Deno.serve(async (req: Request) => {
           const currentLocationId = character.id || "";
           const currentLocationName = character.name || "";
           const previousResponse = await rest(
-            `life_schedule_runtime?user_id=eq.${encodeURIComponent(row.user_id)}&scene_id=eq.${encodeURIComponent(scene.id!)}&character_id=eq.${encodeURIComponent(characterId)}&select=state_version,next_run_at,activity,location_id,last_status&limit=1`,
+            `life_schedule_runtime?user_id=eq.${encodeURIComponent(row.user_id)}&scene_id=eq.${encodeURIComponent(scene.id!)}&character_id=eq.${encodeURIComponent(characterId)}&select=schedule_version,state_version,next_run_at,activity,location_id,last_status&limit=1`,
           );
           const previousRows = previousResponse.ok ? await previousResponse.json() as Array<Partial<RuntimeRow>> : [];
           const previous = previousRows[0];
-          const changed = previous?.activity !== activity || previous?.location_id !== currentLocationId;
+          const scheduleVersion = String(snapshot.scheduleVersion || "");
+          const changed = previous?.activity !== activity || previous?.location_id !== currentLocationId
+            || previous?.schedule_version !== scheduleVersion;
           const stateVersion = (Number(previous?.state_version) || 0) + (changed ? 1 : 0);
           const awakeAt = Math.max(
             playerSleeping ? nextAwake(snapshot, "player", "player", now) : now,
@@ -251,7 +253,8 @@ Deno.serve(async (req: Request) => {
           );
           runtimeUpdates.push({
             user_id: row.user_id, scene_id: scene.id!, character_id: characterId,
-            state_version: stateVersion, activity, location_id: currentLocationId, location_name: currentLocationName,
+            schedule_version: scheduleVersion, state_version: stateVersion,
+            activity, location_id: currentLocationId, location_name: currentLocationName,
             next_transition_at: Number.isFinite(transition) ? iso(transition) : null,
             next_run_at: nextRun, last_status: !enabled ? "disabled" : !samePlace ? "not_co_located" : characterSleeping || playerSleeping ? "sleeping" : chatActive ? "chat_active" : "ready",
             last_error: null, updated_at: new Date().toISOString(),
