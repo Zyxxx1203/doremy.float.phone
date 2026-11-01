@@ -4190,12 +4190,12 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     shouldRunDeclineReply = Boolean(lastSendResult.hasDecline);
                 }
             }
-        } catch (error: any) {
+        } catch (error: unknown) {
             if (!isCurrentGeneration() || isAbortLikeError(error)) return;
             const errorMsg = pushChatMessage({
                 sessionId: session.id,
                 role: "system",
-                content: `⚠️ 发送失败: ${error?.message || String(error)}`
+                content: `⚠️ 发送失败: ${error instanceof Error ? error.message : String(error)}`
             });
             setMessages(prev => [...prev, errorMsg]);
         } finally {
@@ -4680,10 +4680,10 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     thinkingTag: result.thinkingTag,
                 });
                 setOfflineTurns(prev => [...prev, saved]);
-            } catch (error: any) {
+            } catch (error: unknown) {
                 if (!isCurrentOfflineRun() || isAbortLikeError(error)) return;
                 offlineTextInputRef.current?.setText(currentText);
-                showChatToast(`线下生成失败: ${error?.message || String(error)}`, 3000);
+                showChatToast(`线下生成失败: ${error instanceof Error ? error.message : String(error)}`, 3000);
             } finally {
                 if (!finishOfflineGenerationRun(session.id, offlineRunId)) return;
                 setPendingOfflineUserText("");
@@ -4830,10 +4830,10 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 thinkingTag: result.thinkingTag,
             });
             setOfflineTurns([...baseTurns, saved]);
-        } catch (error: any) {
+        } catch (error: unknown) {
             if (!isCurrentOfflineRun() || isAbortLikeError(error)) return;
             offlineTextInputRef.current?.setText(retryInput);
-            showChatToast(`线下重试失败: ${error?.message || String(error)}`, 3000);
+            showChatToast(`线下重试失败: ${error instanceof Error ? error.message : String(error)}`, 3000);
         } finally {
             if (!finishOfflineGenerationRun(session.id, offlineRunId)) return;
             setPendingOfflineUserText("");
