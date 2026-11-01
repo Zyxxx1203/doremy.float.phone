@@ -291,13 +291,21 @@ Deno.serve(async (req: Request) => {
   if (!snapshotsResponse.ok) return new Response("schedule snapshot lookup failed", { status: 502 });
   const rows = await snapshotsResponse.json() as Array<{ user_id: string; payload: EncryptedPayload; updated_at: string }>;
   const now = Date.now();
-  const summary = { users: rows.length, evaluated: 0, armed: 0, cancelled: 0, errors: 0 };
+  const summary = { users: rows.length, evaluated: 0, armed: 0, cancelled: 0, skipped: 0, errors: 0 };
 
   for (const row of rows) {
     try {
       const snapshot = JSON.parse(await decryptPayload(row.payload, payloadKey)) as Snapshot;
       if (!snapshot || !Array.isArray(snapshot.scheduleSlots) || !Array.isArray(snapshot.scenes)) {
         throw new Error("schedule snapshot missing scheduleSlots/scenes");
+      }
+      const initialMetaResponse = await rest(
+        `push_bridge_snapshots?user_id=eq.${encodeURIComponent(row.user_id)}&rule_id=eq.life-schedule&select=updated_at&limit=1`,
+      );
+      const initialMetaRows = initialMetaResponse.ok ? await initialMetaResponse.json() as Array<{ updated_at?: string }> : [];
+      if (!initialMetaRows[0] || initialMetaRows[0].updated_at !== row.updated_at) {
+        summary.skipped += 1;
+        continue; // Client published a newer snapshot while this invocation was starting.
       }
       const enabled = snapshot.enabled !== false && snapshot.autonomyEnabled !== false && snapshot.proactiveEnabled !== false;
       // Remove old finite-repeat children created by earlier life-scene releases.
@@ -472,27 +480,33 @@ Deno.serve(async (req: Request) => {
       }
 
       // Cancel orphaned schedule tasks when a scene/participant disappears from the latest snapshot.
-      const jobsResponse = await rest(
-        `push_jobs?user_id=eq.${encodeURIComponent(row.user_id)}&trigger_key=like.life-scene:*:schedule&select=id,trigger_key,status`,
+      const latestMetaResponse = await rest(
+        `push_bridge_snapshots?user_id=eq.${encodeURIComponent(row.user_id)}&rule_id=eq.life-schedule&select=updated_at&limit=1`,
       );
-      if (jobsResponse.ok) {
-        const jobs = await jobsResponse.json() as Array<{ id: string; trigger_key: string; status: string }>;
-        for (const job of jobs) {
-          const match = job.trigger_key.match(/^life-scene:(.+):([^:]+):schedule$/);
-          if (!match || !activePairs.has(`${match[1]}:${match[2]}`) || !enabled) {
-            const orphanDiagnosticId = match ? `life-scheduler:job:${match[1]}:${match[2]}` : "";
-            if (job.status === "pending" || job.status === "running") {
-              await rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}`, {
-                method: "PATCH", body: JSON.stringify({ status: "cancelled", result_note: "life schedule: scene/participant removed or autonomy disabled", updated_at: new Date().toISOString() }),
-              });
-              summary.cancelled += 1;
-            } else {
-              await rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}`, { method: "DELETE" });
-            }
-            if (orphanDiagnosticId) {
-              await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent(orphanDiagnosticId)}`, {
-                method: "PATCH", body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
-              }).catch(() => undefined);
+      const latestMetaRows = latestMetaResponse.ok ? await latestMetaResponse.json() as Array<{ updated_at?: string }> : [];
+      if (latestMetaRows[0]?.updated_at === row.updated_at) {
+        const jobsResponse = await rest(
+          `push_jobs?user_id=eq.${encodeURIComponent(row.user_id)}&trigger_key=like.life-scene:*:schedule&select=id,trigger_key,status`,
+        );
+        if (jobsResponse.ok) {
+          const jobs = await jobsResponse.json() as Array<{ id: string; trigger_key: string; status: string }>;
+          for (const job of jobs) {
+            const match = job.trigger_key.match(/^life-scene:(.+):([^:]+):schedule$/);
+            if (!match || !activePairs.has(`${match[1]}:${match[2]}`) || !enabled) {
+              const orphanDiagnosticId = match ? `life-scheduler:job:${match[1]}:${match[2]}` : "";
+              if (job.status === "pending" || job.status === "running") {
+                await rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}`, {
+                  method: "PATCH", body: JSON.stringify({ status: "cancelled", result_note: "life schedule: scene/participant removed or autonomy disabled", updated_at: new Date().toISOString() }),
+                });
+                summary.cancelled += 1;
+              } else {
+                await rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}`, { method: "DELETE" });
+              }
+              if (orphanDiagnosticId) {
+                await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent(orphanDiagnosticId)}`, {
+                  method: "PATCH", body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+                }).catch(() => undefined);
+              }
             }
           }
         }
@@ -536,7 +550,7 @@ Deno.serve(async (req: Request) => {
       });
       const updatedPayload = await encryptPayload(JSON.stringify({ ...snapshot, updatedAt: new Date().toISOString() }), payloadKey);
       await rest(
-        `push_bridge_snapshots?user_id=eq.${encodeURIComponent(row.user_id)}&rule_id=eq.life-schedule`,
+        `push_bridge_snapshots?user_id=eq.${encodeURIComponent(row.user_id)}&rule_id=eq.life-schedule&updated_at=eq.${encodeURIComponent(row.updated_at)}`,
         { method: "PATCH", body: JSON.stringify({ payload: updatedPayload, updated_at: new Date().toISOString() }) },
       );
       await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent("life-scheduler:" + row.user_id)}`, {
