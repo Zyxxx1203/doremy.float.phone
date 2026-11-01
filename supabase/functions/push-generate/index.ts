@@ -798,7 +798,17 @@ Deno.serve(async (req: Request) => {
     );
     const todayRows = capResponse.ok ? await capResponse.json() as unknown[] : [];
     if (todayRows.length >= DAILY_GENERATION_CAP) {
-      await finish("done", `daily cap (${DAILY_GENERATION_CAP}) reached`);
+      if (payload.merge?.lifeScene) {
+        // Life autonomy is a durable schedule, not a disposable one-shot. Preserve
+        // its current turn until the daily token budget resets instead of silently
+        // terminating the background chain at the cap.
+        const tomorrowUtc = new Date();
+        tomorrowUtc.setUTCHours(24, 0, 30, 0);
+        const deferred = await deferUntil(tomorrowUtc.getTime(), `life schedule: daily generation cap reached; retry after ${tomorrowUtc.toISOString()}`);
+        if (!deferred?.ok) await finish("done", "life schedule: daily generation cap reached; retry deferral failed");
+      } else {
+        await finish("done", `daily cap (${DAILY_GENERATION_CAP}) reached`);
+      }
       return;
     }
 
