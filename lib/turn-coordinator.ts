@@ -68,7 +68,7 @@ type ActiveTurn = {
     observeOnly: boolean;
 };
 
-const activeBySession = new Map<string, ActiveTurn>();
+const activeByCharacter = new Map<string, ActiveTurn>();
 let turnSequence = 0;
 
 // A character is one person across channels. Key by character rather than session so
@@ -99,7 +99,7 @@ export function beginTurn(input: {
     if (!characterId || !sessionId) return null;
     const key = sessionKey(characterId, sessionId);
     const priority = TURN_PRIORITY[kind];
-    const current = activeBySession.get(key);
+    const current = activeByCharacter.get(key);
 
     if (current) {
         // 同优先级：新 user_reply 顶掉旧 user_reply；call_end 顶掉 call；新 call 顶掉旧 call_end。
