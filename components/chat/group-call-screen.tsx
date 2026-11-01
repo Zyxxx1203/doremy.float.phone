@@ -343,7 +343,7 @@ export function GroupCallScreen({ type, session, characters, onEnd, initiator = 
                 autoChatNotifyRef.current?.assistantSpoke(true);
                 setCallState("IDLE");
             }
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("[GroupCall] Error:", error);
             if (stateRef.current !== "ENDED") {
                 setSubtitles(prev => [...prev, {
