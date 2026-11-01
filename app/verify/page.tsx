@@ -1,6 +1,7 @@
 "use client";
 
-import Link from "next/link";\nimport { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 
 import "./verify.css";
 
