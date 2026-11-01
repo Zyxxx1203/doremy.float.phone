@@ -142,6 +142,45 @@ Deno.serve(async (req: Request) => {
   const rest = (path: string, init?: RequestInit) => fetch(`${supabaseUrl}/rest/v1/${path}`, {
     ...init, headers: { ...headers, ...(init?.headers || {}) },
   });
+
+  const writeDiagnostic = async (
+    userId: string, id: string, severity: "error" | "warning" | "info",
+    code: string, detail: string, repairHint: string,
+  ) => {
+    const existingResponse = await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent(id)}&select=id,resolved_at&limit=1`);
+    const existingRows = existingResponse.ok ? await existingResponse.json() as Array<{ resolved_at?: string | null }> : [];
+    const shouldNotify = !existingRows[0] || Boolean(existingRows[0].resolved_at);
+    await rest("life_schedule_diagnostics?on_conflict=id", {
+      method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify([{
+        id, user_id: userId, severity, code, detail: detail.slice(0, 500),
+        repair_hint: repairHint.slice(0, 500), updated_at: new Date().toISOString(), resolved_at: null,
+      }]),
+    });
+    if (!shouldNotify) return;
+    // Android shell has a persistent Realtime channel. Send one alert when a new
+    // unresolved cloud fault appears; repeated cron ticks only update the same row.
+    const shellResponse = await rest("push_subscriptions?endpoint=like.shell:*&select=endpoint&limit=50");
+    const topics = shellResponse.ok
+      ? (await shellResponse.json() as Array<{ endpoint: string }>)
+          .map(item => String(item.endpoint || "").slice("shell:".length).trim())
+          .filter(Boolean).map(owner => `shellpush:${owner}`)
+      : [];
+    if (topics.length) {
+      await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
+        method: "POST", headers,
+        body: JSON.stringify({ messages: topics.map(topic => ({
+          topic, event: "notify",
+          payload: {
+            title: "生活系统 · 云端诊断",
+            body: (code + "：" + detail).slice(0, 180),
+            url: "/life",
+            kind: "life_diagnostic",
+          },
+        })) }),
+      }).catch(() => undefined);
+    }
+  };
   const configResponse = await rest("push_server_config?id=eq.main&select=cron_secret,payload_key&limit=1");
   if (!configResponse.ok) return new Response("config lookup failed", { status: 502 });
   const configs = await configResponse.json() as Array<{ cron_secret?: string; payload_key?: string }>;
@@ -165,6 +204,17 @@ Deno.serve(async (req: Request) => {
       const activePairs = new Set<string>();
       const runtimeUpdates: RuntimeRow[] = [];
       const scenes = snapshot.scenes.filter(scene => Boolean(scene.id));
+      const subscriptionResponse = await rest("push_subscriptions?select=endpoint&limit=1");
+      const hasSubscription = subscriptionResponse.ok && (await subscriptionResponse.json() as unknown[]).length > 0;
+      if (!hasSubscription && enabled) {
+        await writeDiagnostic(row.user_id, "life-scheduler:subscription", "warning", "life_push_subscription_missing",
+          "云端生活日程已保存，但当前个人云没有可用的 Web Push / Android 壳订阅，角色主动消息无法投递。",
+          "重新打开小手机并在设置中启用离线推送；Android 壳需要先成功建立常驻通知长连接。");
+      } else {
+        await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent("life-scheduler:subscription")}`, {
+          method: "PATCH", body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+        }).catch(() => undefined);
+      }
       for (const scene of scenes) {
         for (const characterId of scene.characterIds || []) {
           const key = `${scene.id}:${characterId}`;
@@ -226,7 +276,17 @@ Deno.serve(async (req: Request) => {
             continue;
           }
           if (job.status === "cancelled" || job.status === "pending" || job.status === "running") continue;
-          if (!samePlace || characterSleeping || playerSleeping || chatActive) continue;
+          const jobDiagnosticId = `life-scheduler:job:${scene.id}:${characterId}`;
+          if (job.status === "failed") {
+            await writeDiagnostic(row.user_id, jobDiagnosticId, "error", "life_generation_failed",
+              job.result_note || "生活主动生成任务失败。",
+              "检查角色模型配置、API额度、个人云 push-generate 部署和 push_jobs.result_note；修复后云端会自动重试。");
+          } else {
+            await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent(jobDiagnosticId)}`, {
+              method: "PATCH", body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+            }).catch(() => undefined);
+          }
+          if (!hasSubscription || !samePlace || characterSleeping || playerSleeping || chatActive) continue;
           const nextRunAt = parseTime(previous?.next_run_at);
           if (Number.isFinite(nextRunAt) && nextRunAt > now) continue;
           const executeAt = now + jitterInterval(snapshot);
@@ -310,15 +370,9 @@ Deno.serve(async (req: Request) => {
     } catch (error) {
       summary.errors += 1;
       const detail = (error instanceof Error ? error.message : String(error)).slice(0, 500);
-      const diagnosticId = `life-scheduler:${row.user_id}`;
-      await rest("life_schedule_diagnostics?on_conflict=id", {
-        method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-        body: JSON.stringify([{
-          id: diagnosticId, user_id: row.user_id, severity: "error", code: "cloud_schedule_evaluation_failed",
-          detail, repair_hint: "检查个人云部署、life-schedule 快照和 life_schedule_runtime 表；重新打开生活系统同步日程后再运行云服务自检。",
-          updated_at: new Date().toISOString(), resolved_at: null,
-        }]),
-      }).catch(() => undefined);
+      await writeDiagnostic(row.user_id, `life-scheduler:${row.user_id}`, "error", "cloud_schedule_evaluation_failed",
+        detail,
+        "检查个人云部署、life-schedule 快照和 life_schedule_runtime 表；重新打开生活系统同步日程后再运行云服务自检。").catch(() => undefined);
     }
   }
   return Response.json({ ok: true, ...summary });
