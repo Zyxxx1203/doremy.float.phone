@@ -260,7 +260,6 @@ function SceneModel({
     });
   }, [clone, settings.shadows, settings.doubleSide]);
   const groupRef = useRef<THREE.Group>(null!);
-  const tcRef = useRef<any>(null);
 
   // 计算包围盒，用作透明点击热区
   const hitBox = useMemo(() => {
@@ -348,7 +347,6 @@ function SceneModel({
       </group>
       {selected && groupRef.current && (
         <TransformControls
-          ref={tcRef}
           object={groupRef.current}
           space="local"
           onMouseUp={() => {
