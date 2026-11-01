@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [scheduler, snapshot, client, generator, deployRoute, deployClient, schema, build, diagnosticsRoute, diagnosticsPanel] = await Promise.all([
+const [scheduler, snapshot, client, generator, deployRoute, deployClient, schema, build, diagnosticsRoute, diagnosticsPanel, gateway] = await Promise.all([
   read("../supabase/functions/life-scheduler/index.ts"),
   read("../lib/life/life-schedule-cloud.ts"),
   read("../lib/life/life-proactive-scheduler.ts"),
@@ -13,6 +13,7 @@ const [scheduler, snapshot, client, generator, deployRoute, deployClient, schema
   read("../scripts/build-personal-push-dist.mjs"),
   read("../app/api/life/schedule-diagnostics/route.ts"),
   read("../components/life/life-diagnostics-panel.tsx"),
+  read("../supabase/functions/ai-phone-push/index.ts"),
 ]);
 
 assert.match(scheduler, /Deno\.serve/);
@@ -92,6 +93,13 @@ assert.match(deployRoute, /lifeSchedulerCode/);
 assert.match(deployRoute, /部署云端生活日程引擎失败/);
 assert.match(deployClient, /life-scheduler\.mjs/);
 assert.match(deployClient, /PERSONAL_PUSH_SCHEMA_VERSION = 4/);
+assert.match(snapshot, /life-schedule-snapshot/);
+assert.match(snapshot, /isPersonalPushCloudActive\(\) && !isShellEnvironment\(\)/);
+assert.match(diagnosticsPanel, /life-schedule-diagnostics/);
+assert.match(diagnosticsPanel, /personalPushFetch/);
+assert.match(gateway, /action === "life-schedule-snapshot"/);
+assert.match(gateway, /action === "life-schedule-diagnostics"/);
+assert.match(gateway, /user_id=eq.\$\{OWNER_ID\}/);
 assert.match(diagnosticsRoute, /life_schedule_diagnostics/);
 assert.match(diagnosticsPanel, /api\/life\/schedule-diagnostics/);
 assert.match(diagnosticsPanel, /云端生活引擎/);
