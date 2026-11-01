@@ -20,7 +20,6 @@ const {
   LIFE_SCENE_FOREGROUND_LEASE_KEY,
   setLifeSceneForegroundLease,
   readLifeSceneForegroundLease,
-  ONLINE_CHAT_FOREGROUND_LEASE_KEY,
   setOnlineChatForegroundLease,
   readOnlineChatForegroundLease,
 } = moduleBox.exports;
