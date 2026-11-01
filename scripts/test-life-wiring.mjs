@@ -90,6 +90,8 @@ assert.match(nativeBridge, /fun peekPendingReplies/);
 assert.match(nativeBridge, /fun acknowledgePendingReplies/);
 assert.match(nativeReceiver, /fun peekPendingReplies/);
 assert.match(nativeReceiver, /fun acknowledgePendingReplies/);
+assert.match(nativeReceiver, /import androidx\.core\.app\.RemoteInput/);
+assert.doesNotMatch(nativeReceiver, /import android\.app\.RemoteInput/);
 assert.match(nativeReceiver, /fun enqueue\([^\n]+\): Boolean/);
 assert.match(nativeReceiver, /MAX_QUEUE = 100/);
 assert.match(nativeReceiver, /if \(!enqueue\(context, sessionId, text, sceneId, replyMode\)\)/);
