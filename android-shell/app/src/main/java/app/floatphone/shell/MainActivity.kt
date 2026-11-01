@@ -557,6 +557,7 @@ private fun secureBridgeBootstrapScript(): String {
           if (window !== window.top) return;
           const nonce = $nonceJson;
           const attach = (publicName, privateName) => {
+            if (Object.prototype.hasOwnProperty.call(window, publicName)) return;
             const nativeApi = window[privateName];
             if (!nativeApi || typeof nativeApi.getMethodNames !== "function") return;
             let names;
