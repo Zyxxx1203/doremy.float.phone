@@ -3574,12 +3574,12 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 handleCallTrigger(result.triggerCall);
                 shouldRunDeclineReply = Boolean(result.hasDecline);
             }
-        } catch (error: any) {
+        } catch (error: unknown) {
             if (!isCurrentGeneration() || isAbortLikeError(error)) return;
             const errorMsg = pushChatMessage({
                 sessionId: session.id,
                 role: "system",
-                content: `⚠️ ${errorPrefix}: ${error?.message || String(error)}`,
+                content: `⚠️ ${errorPrefix}: ${error instanceof Error ? error.message : String(error)}`,
             });
             setMessages(prev => [...prev, errorMsg]);
         } finally {
