@@ -9,7 +9,7 @@ import {
   type LifeDiagnosticStatus,
 } from "@/lib/life/life-diagnostics";
 import { readFailedLifeSceneReplies, resetFailedLifeSceneReply, type PendingLifeSceneNotificationReply } from "@/lib/life/life-notification-queue";
-import { isPersonalPushCloudActive, personalPushFetch } from "@/lib/personal-push-cloud";
+import { isPersonalPushCloudActive, loadPersonalPushCloudState, personalPushFetch } from "@/lib/personal-push-cloud";
 import { isShellEnvironment } from "@/lib/shell-detect";
 
 const STATUS_LABEL: Record<LifeDiagnosticStatus, string> = {
@@ -38,7 +38,10 @@ export function LifeDiagnosticsPanel() {
     setEntries(readLifeDiagnostics());
     setFailedReplies(readFailedLifeSceneReplies());
     try {
-      const response = isPersonalPushCloudActive() && !isShellEnvironment()
+      const personalCloudReady = isPersonalPushCloudActive()
+        && !isShellEnvironment()
+        && (loadPersonalPushCloudState()?.schemaVersion ?? 0) >= 4;
+      const response = personalCloudReady
         ? await personalPushFetch("life-schedule-diagnostics", { method: "GET" })
         : await fetch("/api/life/schedule-diagnostics", { cache: "no-store" });
       const data = await response.json().catch(() => ({})) as {
