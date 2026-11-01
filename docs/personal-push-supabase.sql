@@ -175,6 +175,7 @@ create table if not exists public.life_schedule_runtime (
   user_id text not null,
   scene_id text not null,
   character_id text not null,
+  schedule_version text not null default '',
   state_version bigint not null default 0,
   activity text not null default '',
   location_id text not null default '',
