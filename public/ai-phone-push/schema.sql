@@ -18,7 +18,8 @@ begin
         'ai_phone_cloud_meta',
         'push_server_config', 'push_subscriptions', 'push_jobs', 'push_outbox',
         'push_shortcut_commands', 'push_bridge_config', 'push_bridge_snapshots',
-        'push_screen_sessions', 'push_screen_threads'
+        'push_screen_sessions', 'push_screen_threads',
+        'life_schedule_runtime', 'life_schedule_diagnostics'
       ])
   ) into has_unknown_public_table;
 
@@ -34,7 +35,7 @@ create table if not exists public.ai_phone_cloud_meta (
   updated_at timestamptz not null default now()
 );
 insert into public.ai_phone_cloud_meta (id, schema_version, updated_at)
-values ('personal-cloud', 3, now())
+values ('personal-cloud', 4, now())
 on conflict (id) do update set schema_version = excluded.schema_version, updated_at = excluded.updated_at;
 
 create table if not exists public.push_server_config (
@@ -88,6 +89,13 @@ alter table public.push_jobs add constraint push_jobs_kind_check
   check (kind in ('followup', 'reply_bailout', 'timed_task', 'bridge_scan', 'shortcut_resume'));
 create unique index if not exists push_jobs_trigger_idx on public.push_jobs (user_id, trigger_key);
 create index if not exists push_jobs_due_idx on public.push_jobs (status, execute_at);
+-- Remove finite '+' children from the former 72-turn life-scene repeat chain.
+-- The unsuffixed row remains the single durable task owned by life-scheduler.
+update public.push_jobs
+   set status = 'cancelled', result_note = 'legacy finite life repeat chain retired', updated_at = now()
+ where trigger_key like 'life-scene:%:schedule+%' and status in ('pending', 'running');
+delete from public.push_jobs
+ where trigger_key like 'life-scene:%:schedule+%' and status in ('done', 'failed', 'cancelled');
 
 create table if not exists public.push_outbox (
   id text primary key,
@@ -167,6 +175,50 @@ create table if not exists public.push_bridge_snapshots (
   updated_at timestamptz not null default now(),
   primary key (user_id, rule_id)
 );
+
+-- Durable cloud-computed state for the life engine. The encrypted life-schedule
+-- snapshot stores the complete rolling seven-day itinerary; this table stores only
+-- the latest derived state and one next-run timestamp per scene/character.
+create table if not exists public.life_schedule_runtime (
+  user_id text not null,
+  scene_id text not null,
+  character_id text not null,
+  schedule_version text not null default '',
+  state_version bigint not null default 0,
+  activity text not null default '',
+  location_id text not null default '',
+  player_activity text not null default '',
+  player_location_id text not null default '',
+  player_location_name text not null default '',
+  location_name text not null default '',
+  next_transition_at timestamptz,
+  next_run_at timestamptz,
+  last_status text not null default 'unknown',
+  last_error text,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, scene_id, character_id)
+);
+create index if not exists life_schedule_runtime_updated_idx
+  on public.life_schedule_runtime (user_id, updated_at desc);
+alter table public.life_schedule_runtime add column if not exists schedule_version text not null default '';
+alter table public.life_schedule_runtime add column if not exists player_activity text not null default '';
+alter table public.life_schedule_runtime add column if not exists player_location_id text not null default '';
+alter table public.life_schedule_runtime add column if not exists player_location_name text not null default '';
+
+-- One current diagnostic per cloud scheduler failure. Resolved rows are retained
+-- for inspection and overwritten on the next failure instead of growing forever.
+create table if not exists public.life_schedule_diagnostics (
+  id text primary key,
+  user_id text not null,
+  severity text not null default 'error',
+  code text not null,
+  detail text not null,
+  repair_hint text not null default '',
+  updated_at timestamptz not null default now(),
+  resolved_at timestamptz
+);
+create index if not exists life_schedule_diagnostics_user_idx
+  on public.life_schedule_diagnostics (user_id, updated_at desc);
 
 -- v2 的 push_screen_sessions 是按时间切分的第二套聊天记录，还会持久化原始截图。
 -- 屏幕速聊现在只是小手机唯一聊天窗口的远程入口，因此升级时移除这份临时缓存。
@@ -306,10 +358,13 @@ alter table public.push_outbox enable row level security;
 alter table public.push_shortcut_commands enable row level security;
 alter table public.push_bridge_config enable row level security;
 alter table public.push_bridge_snapshots enable row level security;
+alter table public.life_schedule_runtime enable row level security;
+alter table public.life_schedule_diagnostics enable row level security;
 alter table public.push_screen_threads enable row level security;
 
 -- 屏幕速聊表和 RPC 只由 Edge Function 的 service_role 使用；客户端角色没有表级权限。
 revoke all on table public.push_screen_threads from public, anon, authenticated;
+revoke all on table public.life_schedule_runtime, public.life_schedule_diagnostics from public, anon, authenticated;
 
 -- 2026 年起新项目不会自动把 public 新表暴露给 Data API。
 -- 网关和生成器只以 service_role 访问，绝不授予 anon 或 authenticated。
@@ -323,6 +378,8 @@ grant select, insert, update, delete on table
   public.push_shortcut_commands,
   public.push_bridge_config,
   public.push_bridge_snapshots,
+  public.life_schedule_runtime,
+  public.life_schedule_diagnostics,
   public.push_screen_threads
 to service_role;
 
@@ -381,6 +438,23 @@ select cron.schedule('ai-phone-personal-push-jobs-scan', '* * * * *', $CRON$
      order by execute_at asc
      limit 5
   ) j;
+$CRON$);
+
+-- 每分钟重算云端生活状态。只更新运行态，并复用已有 life-scene 任务行；
+-- 不创建无限重复预约，也不依赖 WebView/客户端定时器常驻。
+select cron.unschedule(jobid)
+  from cron.job
+ where jobname = 'ai-phone-life-schedule-evaluate';
+
+select cron.schedule('ai-phone-life-schedule-evaluate', '* * * * *', $CRON$
+  select net.http_post(
+    url := 'https://__PROJECT_REF__.supabase.co/functions/v1/life-scheduler',
+    headers := jsonb_build_object('Content-Type', 'application/json'),
+    body := jsonb_build_object(
+      'token', (select cron_secret from public.push_server_config where id = 'main')
+    ),
+    timeout_milliseconds := 5000
+  );
 $CRON$);
 
 -- pg_cron 运行日志清理：只保留最近 3 天，防止 cron.job_run_details 无限增长。
