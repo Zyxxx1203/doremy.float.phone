@@ -1654,9 +1654,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (typeof window !== "undefined") window.dispatchEvent(new Event("life-scene-message-added"));
   };
 
-  const pushSceneMessages = (messages: LifeSceneMessage[]) => {
+  const pushSceneMessages = (messages: LifeSceneMessage[], baseState: VirtualLifeState = stateRef.current) => {
     if (!messages.length) return;
-    const latest = stateRef.current;
+    const latest = baseState;
     const normalized = messages.map(message => ({ ...message, channel: message.channel || "life_scene" }));
     const touchedSceneIds = [...new Set(normalized.map(message => message.sceneId))];
     let next: VirtualLifeState = { ...latest, sceneMessages: [...latest.sceneMessages, ...normalized] };
@@ -2034,10 +2034,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         });
         setNotice(target.name + "提出了陪伴申请；你可以在「邀约活动」中确认或拒绝。");
       }
-      if (structuredNext !== stateRef.current) {
-        commit(structuredNext);
-        if (typeof window !== "undefined") window.dispatchEvent(new Event("life-force-sync"));
-      }
+      const hasStructuredChanges = structuredNext !== stateRef.current;
       const replyAt = new Date().toISOString();
       // 动作一轮只出**一张**卡片（整段动作合并在内）；对白保持独立气泡按段显示。
       const actionText = (parsed.action ?? "").trim();
@@ -2047,7 +2044,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         ...dialogueSegments.map((dialogue, index) => ({ id: notificationResponsePrefix ? notificationResponsePrefix + "-dialogue-" + index : id("turn-dialogue"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, dialogue, createdAt: replyAt })),
       ];
       if (!replyMessages.length) replyMessages.push({ id: id("turn"), sceneId: activeScene.id, speakerType: "character", speakerId: target.id, speakerName: target.name, role: "character", dialogue: "", createdAt: replyAt });
-      pushSceneMessages(replyMessages);
+      pushSceneMessages(replyMessages, structuredNext);
+      if (hasStructuredChanges && typeof window !== "undefined") window.dispatchEvent(new Event("life-force-sync"));
       if (forceReaction) {
         recordLifeDiagnostic({ source: "通知回复", event: "生活现场已生成角色回应", status: "ok", detail: target.name + " 已完成通知回复后的现场回应。", meta: { sceneId: activeScene.id, characterId: target.id, action: Boolean(actionText), dialogueCount: dialogueSegments.length } });
         setNotice(target.name + "已回应最近的互动。");
