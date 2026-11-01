@@ -31,6 +31,8 @@ assert.match(app, /if \(!ready \|\| busy\) return/);
 assert.match(app, /acknowledgePendingLifeSceneReply\(pending\.replyId\)/);
 assert.match(app, /outcome === "completed"/);
 assert.match(app, /sendSceneTurn\(undefined, true, pending\.replyId\)/);
+assert.match(app, /const userText = forceReaction \? "" : sceneInput\.trim\(\)/);
+assert.match(app, /const userAction = forceReaction \? "" : sceneActionInput\.trim\(\)/);
 assert.match(app, /notification-reply-response-/);
 assert.match(app, /outcome !== "deferred"/);
 assert.match(app, /refreshNotificationReplyQueue\(value => value \+ 1\)/);
