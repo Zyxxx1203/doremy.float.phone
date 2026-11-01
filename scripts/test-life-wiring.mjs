@@ -63,7 +63,7 @@ assert.match(observation, /生活片段补写失败/);
 assert.match(observation, /const fromMs = Math\.max\(previousCovered, defaultStart\)/);
 assert.match(observation, /coveredUntil: new Date\(nowMs\)\.toISOString\(\)/);
 assert.match(observation, /busyRef\.current\.add\(character\.id\)/);
-assert.match(cloud, /const fingerprint = JSON\.stringify\(\{ version: 4, playerLocationId, scenes, characterLocations, scheduleSlots, actorStates, \.\.\.foregroundLease, \.\.\.onlineChatLeaseSnapshot \}\)/);
+assert.match(cloud, /const fingerprint = JSON\.stringify\(\{ version: 5, playerLocationId, scenes, characterLocations, scheduleSlots, actorStates, scheduleSettings, \.\.\.foregroundLease, \.\.\.onlineChatLeaseSnapshot \}\)/);
 assert.match(cloud, /const scheduleSlots = state\.schedules/);
 assert.match(cloud, /readOnlineChatForegroundLease/);
 assert.match(cloud, /onlineChatLeaseUntil/);
