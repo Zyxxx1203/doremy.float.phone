@@ -177,15 +177,18 @@ function locationAt(snapshot: Snapshot, ownerType: string, ownerId: string, at: 
   const slot = activeSlot(snapshot, ownerType, ownerId, at);
   const until = parseTime(current?.actualLocationUntil);
   const temporary = Boolean(current?.actualLocationId && Number.isFinite(until) && until > at);
+  const expiredOverride = Boolean(current?.actualLocationUntil && Number.isFinite(until) && until <= at);
   const manual = Boolean(current?.actualLocationId && current.actualLocationUntil == null
     && current.actualLocationId !== (slot?.plannedLocationId || ""));
   const useActual = temporary || manual;
+  const fallbackActualId = expiredOverride ? "" : current?.actualLocationId;
+  const fallbackActualName = expiredOverride ? "" : current?.actualLocationName;
   const id = (useActual ? current?.actualLocationId : slot?.plannedLocationId)
-    || current?.actualLocationId
+    || fallbackActualId
     || (ownerType === "player" ? snapshot.playerLocationId : snapshot.characterLocations?.[ownerId])
     || "";
   const name = (useActual ? current?.actualLocationName : slot?.plannedLocationName)
-    || current?.actualLocationName || "";
+    || fallbackActualName || "";
   return { id, name, activity: slot?.title || current?.activity || "自由活动", slot };
 }
 function nextTransition(snapshot: Snapshot, ownerType: string, ownerId: string, now: number): number | null {
