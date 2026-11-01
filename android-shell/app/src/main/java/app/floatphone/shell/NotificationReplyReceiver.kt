@@ -1,6 +1,6 @@
 package app.floatphone.shell
 
-import android.app.RemoteInput
+import androidx.core.app.RemoteInput
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
