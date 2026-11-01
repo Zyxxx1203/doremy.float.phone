@@ -79,7 +79,7 @@ assert.match(reply, /action: isAction \? text : ""/);
 assert.match(reply, /dialogue: isAction \? "" : text/);
 assert.match(reply, /通知回复已写入并排队/);
 assert.match(reply, /peekPendingReplies/);
-assert.match(reply, /acknowledgePendingReplies\(JSON\.stringify\(completedIds\)\)/);
+assert.match(reply, /acknowledgePendingReplies\?\.\(JSON\.stringify\(completedIds\)\)/);
 assert.match(reply, /notification-reply-chat-/);
 assert.match(reply, /notificationReplyFlushPromise/);
 assert.match(reply, /window\.addEventListener\("life-scene-notification-queue-updated"/);
