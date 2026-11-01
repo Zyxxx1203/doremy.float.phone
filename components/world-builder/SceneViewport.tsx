@@ -127,7 +127,6 @@ function LightSceneModel({
   onTransformEnd: (id: string, pos: [number, number, number], rot: [number, number, number], scale: [number, number, number]) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
-  const tcRef = useRef<ComponentRef<typeof TransformControls> | null>(null);
   const [mounted, setMounted] = useState(false);
   const light = obj.light!;
 
@@ -192,7 +191,6 @@ function LightSceneModel({
 
       {selected && groupRef.current && (
         <TransformControls
-          ref={tcRef}
           object={groupRef.current}
           space="local"
           onMouseUp={() => {
@@ -262,6 +260,7 @@ function SceneModel({
     });
   }, [clone, settings.shadows, settings.doubleSide]);
   const groupRef = useRef<THREE.Group>(null!);
+  const tcRef = useRef<ComponentRef<typeof TransformControls> | null>(null);
 
   // 计算包围盒，用作透明点击热区
   const hitBox = useMemo(() => {
@@ -349,6 +348,7 @@ function SceneModel({
       </group>
       {selected && groupRef.current && (
         <TransformControls
+          ref={tcRef}
           object={groupRef.current}
           space="local"
           onMouseUp={() => {
