@@ -64,6 +64,10 @@ base64 -w0 shell.keystore   # 得到一长串 base64
    输出里的证书指纹应与你 keytool 生成的那把完全一致。
 3. 只要配置了 `SHELL_KEYSTORE_BASE64`，其余三个 Secret 就必须同时存在；缺少任意一项，工作流会明确失败，而不是悄悄产出不可安装的 release 包。没有配置 keystore 时只发布可安装的 debug APK。
 
+## 通知栏回复可靠性版本要求
+
+从 **1.0.26（versionCode 25）** 起，原生通知回复队列采用 `peek → 网页持久化 → ack`：WebView 中断时，尚未成功写入本机数据的回复不会被原生提前清除。旧 APK 仍由网页端兼容 `consumePendingReplies`，但不具备这项原生确认保障；如需可靠通知回复，请升级到 1.0.26 或更新版本。
+
 ## 安装与首次设置
 
 1. 把 APK 传到手机（微信文件传输助手 / 网盘 / 数据线均可），点开安装，
