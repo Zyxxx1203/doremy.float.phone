@@ -99,9 +99,8 @@ async function runOnce(): Promise<void> {
       recordLifeDiagnostic({ source: "主动调度", event: "快照未同步，暂停挂载", status: "error", detail: "无法确认最新玩家/角色地点，本轮不创建离线主动任务。" });
       return;
     }
-    // Keep a server-side schedule chain armed even while the scene is foregrounded.
-    // push-generate reads the lease in the snapshot and defers, rather than losing the
-    // 24-turn background fallback if Android kills the WebView without a clean unload.
+    // Create only the initial durable row. The cloud evaluator reuses that same row
+    // after each turn; foreground/chat leases defer it without blocking either interface.
     const player = playerLocation(state);
     if (!player) return;
     const characters = loadCharacters();
