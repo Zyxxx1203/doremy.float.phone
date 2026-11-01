@@ -206,12 +206,18 @@ Deno.serve(async (req: Request) => {
       // Remove old finite-repeat children created by earlier life-scene releases.
       // The unsuffixed schedule row is retained and reused; '+' rows are obsolete history.
       const legacyJobsResponse = await rest(
-        `push_jobs?user_id=eq.${encodeURIComponent(row.user_id)}&trigger_key=like.${encodeURIComponent("life-scene:%:schedule+%")}&select=id`,
+        `push_jobs?user_id=eq.${encodeURIComponent(row.user_id)}&trigger_key=like.${encodeURIComponent("life-scene:%:schedule+%")}&select=id,status`,
       );
       if (legacyJobsResponse.ok) {
-        const legacyJobs = await legacyJobsResponse.json() as Array<{ id: string }>;
+        const legacyJobs = await legacyJobsResponse.json() as Array<{ id: string; status: string }>;
         for (const legacyJob of legacyJobs) {
-          await rest(`push_jobs?id=eq.${encodeURIComponent(legacyJob.id)}`, { method: "DELETE" });
+          if (legacyJob.status === "pending" || legacyJob.status === "running") {
+            await rest(`push_jobs?id=eq.${encodeURIComponent(legacyJob.id)}`, {
+              method: "PATCH", body: JSON.stringify({ status: "cancelled", result_note: "legacy finite life repeat chain retired", updated_at: new Date().toISOString() }),
+            });
+          } else {
+            await rest(`push_jobs?id=eq.${encodeURIComponent(legacyJob.id)}`, { method: "DELETE" });
+          }
         }
       }
       const activePairs = new Set<string>();
@@ -340,17 +346,21 @@ Deno.serve(async (req: Request) => {
 
       // Cancel orphaned schedule tasks when a scene/participant disappears from the latest snapshot.
       const jobsResponse = await rest(
-        `push_jobs?user_id=eq.${encodeURIComponent(row.user_id)}&trigger_key=like.life-scene:*:schedule&status=in.(pending,running)&select=id,trigger_key`,
+        `push_jobs?user_id=eq.${encodeURIComponent(row.user_id)}&trigger_key=like.life-scene:*:schedule&select=id,trigger_key,status`,
       );
       if (jobsResponse.ok) {
-        const jobs = await jobsResponse.json() as Array<{ id: string; trigger_key: string }>;
+        const jobs = await jobsResponse.json() as Array<{ id: string; trigger_key: string; status: string }>;
         for (const job of jobs) {
           const match = job.trigger_key.match(/^life-scene:(.+):([^:]+):schedule$/);
           if (!match || !activePairs.has(`${match[1]}:${match[2]}`) || !enabled) {
-            await rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}`, {
-              method: "PATCH", body: JSON.stringify({ status: "cancelled", result_note: "life schedule: scene/participant removed or autonomy disabled", updated_at: new Date().toISOString() }),
-            });
-            summary.cancelled += 1;
+            if (job.status === "pending" || job.status === "running") {
+              await rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}`, {
+                method: "PATCH", body: JSON.stringify({ status: "cancelled", result_note: "life schedule: scene/participant removed or autonomy disabled", updated_at: new Date().toISOString() }),
+              });
+              summary.cancelled += 1;
+            } else {
+              await rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}`, { method: "DELETE" });
+            }
           }
         }
       }
