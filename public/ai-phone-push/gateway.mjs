@@ -564,7 +564,10 @@ Deno.serve(async (request: Request) => {
         service: "ai-phone-personal-push",
         version: 2,
         schemaVersion,
-        capabilities: schemaVersion >= 3 ? ["screen-chat-continuous"] : [],
+        capabilities: [
+          ...(schemaVersion >= 3 ? ["screen-chat-continuous"] : []),
+          ...(schemaVersion >= 4 ? ["life-schedule-cloud"] : []),
+        ],
       });
     }
 
