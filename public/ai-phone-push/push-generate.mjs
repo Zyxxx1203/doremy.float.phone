@@ -1052,7 +1052,6 @@ Deno.serve(async (req: Request) => {
       }
       const latestPlayerActivity = latestSnapshot.actorStates?.find(item => item.ownerType === "player" && item.ownerId === "player")?.activity || "";
       const latestCharacterActivity = latestSnapshot.actorStates?.find(item => item.ownerType === "character" && item.ownerId === lifeSceneMeta.characterId)?.activity || "";
-      const latestCharacterLocation = latestSnapshot.characterLocations?.[lifeSceneMeta.characterId] || "";
       if ((lifePlayerLocationAtStart && latestSnapshot.playerLocationId !== lifePlayerLocationAtStart)
         || (lifeCharacterLocationAtStart && latestCharacterLocation !== lifeCharacterLocationAtStart)
         || latestPlayerActivity !== lifePlayerActivityAtStart
