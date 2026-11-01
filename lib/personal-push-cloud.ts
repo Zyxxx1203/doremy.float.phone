@@ -240,7 +240,8 @@ export async function connectPersonalPushCloud(): Promise<PersonalPushConnectOut
 
   const reported = Number(data.schemaVersion);
   const upToDate = reported >= PERSONAL_PUSH_SCHEMA_VERSION
-    && Boolean(data.capabilities?.includes("screen-chat-continuous"));
+    && Boolean(data.capabilities?.includes("screen-chat-continuous"))
+    && Boolean(data.capabilities?.includes("life-schedule-cloud"));
   savePersonalPushState({
     enabled: true,
     projectRef,
@@ -255,7 +256,7 @@ export async function connectPersonalPushCloud(): Promise<PersonalPushConnectOut
   });
   return {
     status: "connected",
-    note: upToDate ? undefined : "云函数版本较旧：基础离线推送可用，屏幕速聊等新能力需重新部署升级（云端数据不受影响）。",
+    note: upToDate ? undefined : "云函数版本较旧：基础离线推送可用，屏幕速聊与云端常驻生活日程需重新部署升级（云端数据不受影响）。",
   };
 }
 
