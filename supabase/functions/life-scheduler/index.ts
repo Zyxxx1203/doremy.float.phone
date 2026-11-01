@@ -8,7 +8,7 @@ type ScheduleSlot = {
 };
 type ActorState = {
   ownerType?: string; ownerId?: string; activity?: string;
-  actualLocationId?: string; actualLocationName?: string; actualLocationUntil?: string | null;
+  actualLocationId?: string; actualLocationName?: string; actualLocationUntil?: string | null; currentLocationName?: string;
 };
 type Snapshot = {
   version?: number; updatedAt?: string; scheduleVersion?: string;
@@ -106,10 +106,10 @@ function locationAt(snapshot: Snapshot, ownerType: string, ownerId: string, at: 
 }
 function nextTransition(snapshot: Snapshot, ownerType: string, ownerId: string, now: number): number | null {
   const boundaries = allScheduleSlots(snapshot, ownerType, ownerId, now)
-    .flatMap(slot => [parseTime(slot.startAt), parseTime(slot.endAt)])
-    .filter(value => Number.isFinite(value) && value > now)
-    .sort((a, b) => a - b);
-  return boundaries[0] ?? null;
+    .flatMap(slot => [parseTime(slot.startAt), parseTime(slot.endAt)]);
+  const overrideUntil = parseTime(actor(snapshot, ownerType, ownerId)?.actualLocationUntil);
+  if (Number.isFinite(overrideUntil)) boundaries.push(overrideUntil);
+  return boundaries.filter(value => Number.isFinite(value) && value > now).sort((a, b) => a - b)[0] ?? null;
 }
 function nextOverlap(snapshot: Snapshot, characterId: string, now: number): number {
   const boundaries = [
@@ -281,6 +281,8 @@ Deno.serve(async (req: Request) => {
           if (job.status === "cancelled" || job.status === "pending" || job.status === "running") continue;
           const jobDiagnosticId = `life-scheduler:job:${scene.id}:${characterId}`;
           if (job.status === "failed") {
+            runtimeUpdates[runtimeUpdates.length - 1].last_status = "generation_failed";
+            runtimeUpdates[runtimeUpdates.length - 1].last_error = job.result_note || "生活主动生成任务失败。";
             await writeDiagnostic(row.user_id, jobDiagnosticId, "error", "life_generation_failed",
               job.result_note || "生活主动生成任务失败。",
               "检查角色模型配置、API额度、个人云 push-generate 部署和 push_jobs.result_note；修复后云端会自动重试。");
@@ -357,7 +359,7 @@ Deno.serve(async (req: Request) => {
       });
       snapshot.scenes = (snapshot.scenes || []).map(scene => {
         const participantLocations = (scene.characterIds || []).map(id => locationAt(snapshot, "character", id, now).id);
-        return scene.characterIds?.length && participantLocations.every(id => id && id === playerNow.id)
+        return scene.characterIds?.length && participantLocations.some(id => id && id === playerNow.id)
           ? { ...scene, locationId: playerNow.id }
           : scene;
       });
