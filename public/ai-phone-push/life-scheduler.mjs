@@ -436,10 +436,11 @@ Deno.serve(async (req: Request) => {
             continue;
           }
           if (job.status === "cancelled") {
+            const cancelledAt = parseTime(job.updated_at);
+            if (Number.isFinite(cancelledAt) && now - cancelledAt < 5 * 60_000) continue;
             await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent(jobDiagnosticId)}`, {
               method: "PATCH", body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
             }).catch(() => undefined);
-            continue;
           }
           if (job.status === "failed") {
             runtimeUpdates[runtimeUpdates.length - 1].last_status = "generation_failed";
@@ -494,13 +495,11 @@ Deno.serve(async (req: Request) => {
             const match = job.trigger_key.match(/^life-scene:(.+):([^:]+):schedule$/);
             if (!match || !activePairs.has(`${match[1]}:${match[2]}`) || !enabled) {
               const orphanDiagnosticId = match ? `life-scheduler:job:${match[1]}:${match[2]}` : "";
-              if (job.status === "pending" || job.status === "running") {
+              if (job.status !== "cancelled") {
                 await rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}`, {
                   method: "PATCH", body: JSON.stringify({ status: "cancelled", result_note: "life schedule: scene/participant removed or autonomy disabled", updated_at: new Date().toISOString() }),
                 });
                 summary.cancelled += 1;
-              } else {
-                await rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}`, { method: "DELETE" });
               }
               if (orphanDiagnosticId) {
                 await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent(orphanDiagnosticId)}`, {
