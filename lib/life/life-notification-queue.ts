@@ -107,14 +107,6 @@ export function retryPendingLifeSceneReply(replyId: string, error: string, now =
   writeQueue(queue);
 }
 
-/** Mark work as terminal when its scene/participant no longer exists. */
-export function failPendingLifeSceneReply(replyId: string, error: string): void {
-  const queue = readQueue();
-  const index = queue.findIndex(item => item.replyId === replyId);
-  if (index < 0) return;
-  queue[index] = { ...queue[index], status: "failed", processingAt: undefined, nextAttemptAt: undefined, lastError: error.slice(0, 500) };
-  writeQueue(queue);
-}
 /** Acknowledge only after the character response has been persisted to the scene. */
 export function acknowledgePendingLifeSceneReply(replyId: string): void {
   if (typeof window === "undefined" || !replyId) return;
