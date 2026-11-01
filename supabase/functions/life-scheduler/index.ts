@@ -100,7 +100,7 @@ type Snapshot = {
   onlineChatCharacterId?: string; onlineChatLeaseUntil?: string;
   proactiveIntervalMin?: number; proactiveIntervalMax?: number;
 };
-type JobRow = { id: string; trigger_key: string; status: string; execute_at: string; result_note?: string | null };
+type JobRow = { id: string; trigger_key: string; status: string; execute_at: string; updated_at?: string; result_note?: string | null };
 type RuntimeRow = {
   user_id: string; scene_id: string; character_id: string; schedule_version: string; state_version: number;
   activity: string; location_id: string; location_name: string;
@@ -380,7 +380,7 @@ Deno.serve(async (req: Request) => {
 
           const triggerKey = `life-scene:${scene.id}:${characterId}:schedule`;
           const jobResponse = await rest(
-            `push_jobs?user_id=eq.${encodeURIComponent(row.user_id)}&trigger_key=eq.${encodeURIComponent(triggerKey)}&select=id,status,execute_at,result_note&limit=1`,
+            `push_jobs?user_id=eq.${encodeURIComponent(row.user_id)}&trigger_key=eq.${encodeURIComponent(triggerKey)}&select=id,status,execute_at,updated_at,result_note&limit=1`,
           );
           if (!jobResponse.ok) throw new Error("push_jobs lookup failed: " + jobResponse.status);
           const jobs = await jobResponse.json() as JobRow[];
@@ -397,6 +397,24 @@ Deno.serve(async (req: Request) => {
           }
           const jobDiagnosticId = `life-scheduler:job:${scene.id}:${characterId}`;
           if (job.status === "pending" || job.status === "running") {
+            const overdueBy = now - parseTime(job.execute_at);
+            const runningFor = now - parseTime(job.updated_at);
+            if (job.status === "pending" && Number.isFinite(overdueBy) && overdueBy > 5 * 60_000) {
+              runtimeUpdates[runtimeUpdates.length - 1].last_status = "dispatch_stalled";
+              runtimeUpdates[runtimeUpdates.length - 1].last_error = "到期生活任务超过 5 分钟仍未被云端执行器领取。";
+              await writeDiagnostic(row.user_id, jobDiagnosticId, "error", "life_job_dispatch_stalled",
+                "到期生活任务超过 5 分钟仍未被 push-generate 执行器领取。",
+                "检查个人云 ai-phone-personal-push-jobs-scan Cron、push-generate Edge Function 部署和 push_jobs 表权限。");
+              continue;
+            }
+            if (job.status === "running" && Number.isFinite(runningFor) && runningFor > 20 * 60_000) {
+              runtimeUpdates[runtimeUpdates.length - 1].last_status = "execution_stalled";
+              runtimeUpdates[runtimeUpdates.length - 1].last_error = "生活任务运行超过 20 分钟未完成。";
+              await writeDiagnostic(row.user_id, jobDiagnosticId, "error", "life_job_execution_stalled",
+                "生活任务运行超过 20 分钟未完成，可能卡在模型请求或消息写入。",
+                "检查 push-generate Edge Function 日志、模型 API 超时和 push_outbox 写入；任务扫描器会尝试回收超时锁。");
+              continue;
+            }
             if (/daily generation cap reached/i.test(job.result_note || "")) {
               await writeDiagnostic(row.user_id, jobDiagnosticId, "warning", "life_generation_daily_cap",
                 job.result_note || "云端生活主动生成达到每日额度上限，任务已延后。",
