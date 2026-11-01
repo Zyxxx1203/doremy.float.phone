@@ -145,7 +145,7 @@ class MainActivity : AppCompatActivity() {
      */
     @Volatile private var trustedShellUrl: String? = null
     private val bridgeNonce = UUID.randomUUID().toString()
-    private var documentStartBridgeReady = false
+    private var secureBridgeDocumentStartInstalled = false
 
     /** 大文件分块写入会话：避免一次把几百 MB 的 Base64 字符串塞进 JS Bridge。 */
     private data class ChunkedFileWrite(
@@ -1178,9 +1178,6 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
                 trustedShellUrl = url ?: trustedShellUrl
-                if (!secureBridgeDocumentStartInstalled && isTrustedShellPage()) {
-                    view.evaluateJavascript(secureBridgeBootstrapScript(), null)
-                }
                 if (!secureBridgeDocumentStartInstalled && isTrustedShellPage()) {
                     view.evaluateJavascript(secureBridgeBootstrapScript(), null)
                 }

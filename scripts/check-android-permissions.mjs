@@ -31,6 +31,8 @@ assert.ok(!activity.includes('addJavascriptInterface(PhoneWidgetBridge(), "Phone
 assert.match(activity, /SecureJavascriptBridge\(ShellBridge\(\)\)/, "Shell bridge must use the nonce-gated dispatcher.");
 assert.match(activity, /SecureJavascriptBridge\(PhoneWidgetBridge\(\)\)/, "Widget bridge must use the nonce-gated dispatcher.");
 assert.match(activity, /WebViewCompat\.addDocumentStartJavaScript/, "Trusted bridge wrapper must be installed at document start.");
+assert.match(activity, /private var secureBridgeDocumentStartInstalled = false/, "Document-start bridge readiness state must be declared.");
+assert.equal((activity.match(/view\.evaluateJavascript\(secureBridgeBootstrapScript\(\), null\)/g) || []).length, 1, "Fallback bridge bootstrap must be injected exactly once per trusted main-frame navigation.");
 assert.match(activity, /nonce != bridgeNonce/, "Every native bridge invocation must validate the top-level nonce.");
 assert.match(activity, /window !== window\.top/, "The bridge wrapper must not be installed inside frames.");
 
