@@ -2,6 +2,88 @@
 // One durable push_jobs row is reused per scene/character. This function never
 // creates an unbounded chain of + suffixed jobs.
 type EncryptedPayload = { v: 1; iv: string; tag: string; ct: string };
+type LifePushSubscription = { endpoint: string; p256dh: string; auth: string };
+
+function b64urlToBytes(value: string): Uint8Array {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  const raw = atob(padded);
+  const out = new Uint8Array(raw.length);
+  for (let index = 0; index < raw.length; index += 1) out[index] = raw.charCodeAt(index);
+  return out;
+}
+function bytesToB64url(bytes: Uint8Array): string {
+  let raw = "";
+  for (const byte of bytes) raw += String.fromCharCode(byte);
+  return btoa(raw).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function concatBytes(...parts: Uint8Array[]): Uint8Array {
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  const output = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) { output.set(part, offset); offset += part.length; }
+  return output;
+}
+const utf8 = (value: string) => new TextEncoder().encode(value);
+async function hkdf(salt: Uint8Array, ikm: Uint8Array, info: Uint8Array, length: number): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey("raw", ikm as unknown as BufferSource, "HKDF", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "HKDF", hash: "SHA-256", salt: salt as unknown as BufferSource, info: info as unknown as BufferSource },
+    key, length * 8,
+  );
+  return new Uint8Array(bits);
+}
+async function encryptWebPushPayload(p256dhB64: string, authB64: string, payload: string): Promise<Uint8Array> {
+  const uaPublic = b64urlToBytes(p256dhB64), authSecret = b64urlToBytes(authB64);
+  const ephemeral = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  const uaKey = await crypto.subtle.importKey("raw", uaPublic as unknown as BufferSource, { name: "ECDH", namedCurve: "P-256" }, false, []);
+  const ecdh = new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: uaKey }, ephemeral.privateKey, 256));
+  const asPublic = new Uint8Array(await crypto.subtle.exportKey("raw", ephemeral.publicKey));
+  const ikm = await hkdf(authSecret, ecdh, concatBytes(utf8("WebPush: info\0"), uaPublic, asPublic), 32);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const cek = await hkdf(salt, ikm, utf8("Content-Encoding: aes128gcm\0"), 16);
+  const nonce = await hkdf(salt, ikm, utf8("Content-Encoding: nonce\0"), 12);
+  const aesKey = await crypto.subtle.importKey("raw", cek as unknown as BufferSource, "AES-GCM", false, ["encrypt"]);
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: nonce as unknown as BufferSource }, aesKey,
+    concatBytes(utf8(payload), new Uint8Array([2])) as unknown as BufferSource,
+  ));
+  const header = new Uint8Array(16 + 4 + 1 + asPublic.length);
+  header.set(salt, 0); new DataView(header.buffer).setUint32(16, 4096);
+  header[20] = asPublic.length; header.set(asPublic, 21);
+  return concatBytes(header, ciphertext);
+}
+async function buildVapidAuth(endpoint: string, subject: string, publicKeyB64: string, privateKeyB64: string): Promise<string> {
+  const publicBytes = b64urlToBytes(publicKeyB64);
+  const key = await crypto.subtle.importKey("jwk", {
+    kty: "EC", crv: "P-256", d: privateKeyB64,
+    x: bytesToB64url(publicBytes.slice(1, 33)), y: bytesToB64url(publicBytes.slice(33, 65)),
+  }, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  const header = bytesToB64url(utf8(JSON.stringify({ typ: "JWT", alg: "ES256" })));
+  const claims = bytesToB64url(utf8(JSON.stringify({
+    aud: new URL(endpoint).origin, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: subject,
+  })));
+  const signingInput = `${header}.${claims}`;
+  const signature = new Uint8Array(await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" }, key, utf8(signingInput) as unknown as BufferSource,
+  ));
+  return `vapid t=${signingInput}.${bytesToB64url(signature)}, k=${publicKeyB64}`;
+}
+async function sendWebPushRaw(
+  subscription: LifePushSubscription,
+  payload: string,
+  vapid: { publicKey: string; privateKey: string; subject: string },
+): Promise<number> {
+  const body = await encryptWebPushPayload(subscription.p256dh, subscription.auth, payload);
+  const authorization = await buildVapidAuth(subscription.endpoint, vapid.subject, vapid.publicKey, vapid.privateKey);
+  const response = await fetch(subscription.endpoint, {
+    method: "POST",
+    headers: { Authorization: authorization, "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream", TTL: "3600", Urgency: "high" },
+    body: body as unknown as BodyInit,
+  });
+  await response.text().catch(() => "");
+  return response.status;
+}
+
 type ScheduleSlot = {
   ownerType?: string; ownerId?: string; startAt?: string; endAt?: string;
   title?: string; kind?: string; source?: string; plannedLocationId?: string; plannedLocationName?: string;
@@ -162,31 +244,46 @@ Deno.serve(async (req: Request) => {
     if (!shouldNotify) return;
     // Android shell has a persistent Realtime channel. Send one alert when a new
     // unresolved cloud fault appears; repeated cron ticks only update the same row.
-    const shellResponse = await rest("push_subscriptions?endpoint=like.shell:*&select=endpoint&limit=50");
-    const topics = shellResponse.ok
-      ? (await shellResponse.json() as Array<{ endpoint: string }>)
-          .map(item => String(item.endpoint || "").slice("shell:".length).trim())
-          .filter(Boolean).map(owner => `shellpush:${owner}`)
+    const subscriptionsResponse = await rest("push_subscriptions?select=endpoint,p256dh,auth&limit=50");
+    const subscriptions = subscriptionsResponse.ok
+      ? await subscriptionsResponse.json() as LifePushSubscription[]
       : [];
+    const topics = subscriptions.filter(item => item.endpoint.startsWith("shell:"))
+      .map(item => item.endpoint.slice("shell:".length).trim()).filter(Boolean)
+      .map(owner => `shellpush:${owner}`);
+    const notificationBody = (code + "：" + detail + "；修复：" + repairHint).slice(0, 180);
     if (topics.length) {
       await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
         method: "POST", headers,
         body: JSON.stringify({ messages: topics.map(topic => ({
           topic, event: "notify",
-          payload: {
-            title: "生活系统 · 云端诊断",
-            body: (code + "：" + detail + "；修复：" + repairHint).slice(0, 180),
-            url: "/life",
-            kind: "life_diagnostic",
-          },
+          payload: { title: "生活系统 · 云端诊断", body: notificationBody, url: "/life", kind: "life_diagnostic" },
         })) }),
       }).catch(() => undefined);
     }
+    if (vapidPublicKey && vapidPrivateKey) {
+      const webSubscriptions = subscriptions.filter(item => !item.endpoint.startsWith("shell:"));
+      for (const subscription of webSubscriptions) {
+        try {
+          const status = await sendWebPushRaw(subscription, JSON.stringify({
+            title: "生活系统 · 云端诊断", body: notificationBody, url: "/life", kind: "life_diagnostic",
+          }), { publicKey: vapidPublicKey, privateKey: vapidPrivateKey, subject: vapidSubject });
+          if (status === 404 || status === 410) {
+            await rest(`push_subscriptions?endpoint=eq.${encodeURIComponent(subscription.endpoint)}`, { method: "DELETE" });
+          }
+        } catch { /* notification failure remains visible in the cloud diagnostic panel */ }
+      }
+    }
   };
-  const configResponse = await rest("push_server_config?id=eq.main&select=cron_secret,payload_key&limit=1");
+  const configResponse = await rest("push_server_config?id=eq.main&select=cron_secret,payload_key,vapid_public_key,vapid_private_key,site_origin&limit=1");
   if (!configResponse.ok) return new Response("config lookup failed", { status: 502 });
-  const configs = await configResponse.json() as Array<{ cron_secret?: string; payload_key?: string }>;
+  const configs = await configResponse.json() as Array<{
+    cron_secret?: string; payload_key?: string; vapid_public_key?: string; vapid_private_key?: string; site_origin?: string;
+  }>;
   const cronSecret = configs[0]?.cron_secret || "", payloadKey = configs[0]?.payload_key || "";
+  const vapidPublicKey = configs[0]?.vapid_public_key || "";
+  const vapidPrivateKey = configs[0]?.vapid_private_key || "";
+  const vapidSubject = configs[0]?.site_origin || "mailto:admin@localhost";
   if (!cronSecret || body.token !== cronSecret) return new Response("forbidden", { status: 403 });
   if (!payloadKey) return new Response("payload_key missing", { status: 503 });
 
