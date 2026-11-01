@@ -5,6 +5,8 @@ import { loadVirtualLifeState } from "./life-storage";
 import { resolveActorLocation } from "./life-runtime";
 import { recordLifeDiagnostic } from "./life-diagnostics";
 import { readLifeSceneForegroundLease, readOnlineChatForegroundLease } from "./life-scheduler-coordinator";
+import { isPersonalPushCloudActive, personalPushFetch } from "@/lib/personal-push-cloud";
+import { isShellEnvironment } from "@/lib/shell-detect";
 
 const PLAYER_ID = "player";
 const SNAPSHOT_RULE_ID = "life-schedule";
@@ -92,11 +94,16 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> 
     const fingerprint = JSON.stringify({ version: 5, playerLocationId, scenes, characterLocations, scheduleSlots, actorStates, scheduleSettings, ...foregroundLease, ...onlineChatLeaseSnapshot });
     if (!force && fingerprint === lastJson && Date.now() - lastSyncedAt < MAX_SNAPSHOT_AGE_MS) return true;
     const payload = { version: 5, updatedAt: new Date().toISOString(), playerLocationId, scenes, characterLocations, scheduleSlots, actorStates, ...scheduleSettings, ...foregroundLease, ...onlineChatLeaseSnapshot };
-    const response = await fetch("/api/push/bridge-snapshots", {
+    const requestInit: RequestInit = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ snapshots: [{ ruleId: SNAPSHOT_RULE_ID, payload }] }),
-    });
+    };
+    // Browser personal-cloud jobs use OWNER_ID in the independent project; shell
+    // jobs stay on the site Supabase so shellpush:<account-id> matches their owner.
+    const response = isPersonalPushCloudActive() && !isShellEnvironment()
+      ? await personalPushFetch("life-schedule-snapshot", requestInit)
+      : await fetch("/api/push/bridge-snapshots", requestInit);
     if (response.ok) {
       lastJson = fingerprint;
       lastSyncedAt = Date.now();
