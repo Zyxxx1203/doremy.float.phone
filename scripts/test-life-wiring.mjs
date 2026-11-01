@@ -81,6 +81,8 @@ assert.match(reply, /peekPendingReplies/);
 assert.match(reply, /acknowledgePendingReplies\(JSON\.stringify\(completedIds\)\)/);
 assert.match(reply, /notification-reply-chat-/);
 assert.match(reply, /notificationReplyFlushPromise/);
+assert.match(reply, /window\.addEventListener\("life-scene-notification-queue-updated"/);
+assert.match(reply, /window\.removeEventListener\("life-scene-notification-queue-updated"/);
 assert.match(reply, /if \(result === "retry"\)/);
 assert.match(reply, /enqueuePendingLifeSceneReply/);
 assert.match(reply, /if \(!queued\)/);
