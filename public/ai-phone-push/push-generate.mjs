@@ -1474,7 +1474,7 @@ Deno.serve(async (req: Request) => {
     const idleRepeat = payload.merge?.idleRepeat as
       | { intervalMs?: number; remaining?: number; quietWin?: { startMin: number; endMin: number; tzOffsetMin: number } | null }
       | undefined;
-    if (idleRepeat && Number(idleRepeat.remaining) > 0 && Number(idleRepeat.intervalMs) > 0) {
+    if (!payload.merge?.lifeScene && idleRepeat && Number(idleRepeat.remaining) > 0 && Number(idleRepeat.intervalMs) > 0) {
       const intervalMs = Number(idleRepeat.intervalMs);
       let nextFire = Date.now() + intervalMs;
       // 落在安静时段内则顺延到时段结束
