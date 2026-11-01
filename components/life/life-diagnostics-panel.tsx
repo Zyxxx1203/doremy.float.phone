@@ -9,6 +9,8 @@ import {
   type LifeDiagnosticStatus,
 } from "@/lib/life/life-diagnostics";
 import { readFailedLifeSceneReplies, resetFailedLifeSceneReply, type PendingLifeSceneNotificationReply } from "@/lib/life/life-notification-queue";
+import { isPersonalPushCloudActive, personalPushFetch } from "@/lib/personal-push-cloud";
+import { isShellEnvironment } from "@/lib/shell-detect";
 
 const STATUS_LABEL: Record<LifeDiagnosticStatus, string> = {
   ok: "成功",
@@ -36,7 +38,9 @@ export function LifeDiagnosticsPanel() {
     setEntries(readLifeDiagnostics());
     setFailedReplies(readFailedLifeSceneReplies());
     try {
-      const response = await fetch("/api/life/schedule-diagnostics", { cache: "no-store" });
+      const response = isPersonalPushCloudActive() && !isShellEnvironment()
+        ? await personalPushFetch("life-schedule-diagnostics", { method: "GET" })
+        : await fetch("/api/life/schedule-diagnostics", { cache: "no-store" });
       const data = await response.json().catch(() => ({})) as {
         ok?: boolean;
         diagnostics?: Array<{ id: string; severity: string; code: string; detail: string; repair_hint: string; updated_at: string }>;
