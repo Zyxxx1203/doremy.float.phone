@@ -76,7 +76,7 @@ assert.match(schema, /ai-phone-life-schedule-evaluate/);
 assert.match(schema, /functions\/v1\/life-scheduler/);
 assert.match(schema, /alter table public\.life_schedule_runtime enable row level security/);
 assert.match(schema, /public\.life_schedule_diagnostics/);
-assert.match(schema, /delete from public\.push_jobs where trigger_key like 'life-scene:%:schedule\+%'/);
+assert.match(schema, /delete from public\.push_jobs\s+where trigger_key like 'life-scene:%:schedule\+%'/);
 assert.match(schema, /cron\.unschedule\(jobid\)/);
 
 assert.match(build, /life-scheduler\.mjs/);
