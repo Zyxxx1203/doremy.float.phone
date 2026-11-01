@@ -71,8 +71,10 @@ type ActiveTurn = {
 const activeBySession = new Map<string, ActiveTurn>();
 let turnSequence = 0;
 
-function sessionKey(characterId: string, sessionId: string): string {
-    return `${characterId}:${sessionId}`;
+// A character is one person across channels. Key by character rather than session so
+// a life-scene turn cannot race the same character's direct-chat turn in another session.
+function sessionKey(characterId: string, _sessionId: string): string {
+    return characterId;
 }
 
 function makeTurnId(kind: TurnKind): string {
@@ -143,7 +145,7 @@ export function beginTurn(input: {
     };
 }
 
-/** 取消该会话所有 active turn（用户发消息/开始通话/进入生活现场时用）。 */
+/** 取消该会话所属的 active turn（用户发消息/开始通话时用）。 */
 export function abortTurnsForSession(sessionId: string, exceptTurnId?: string): number {
     let count = 0;
     for (const [key, turn] of activeBySession) {
