@@ -2836,8 +2836,11 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
 
         @JavascriptInterface
         fun invoke(nonce: String, methodName: String, argsJson: String): String {
-            if (!isTrustedShellPage() || nonce != bridgeNonce) {
+            if (!isTrustedShellPage() || !java.security.MessageDigest.isEqual(nonce.toByteArray(Charsets.UTF_8), bridgeNonce.toByteArray(Charsets.UTF_8))) {
                 return org.json.JSONObject().put("ok", false).put("error", "Untrusted native bridge caller").toString()
+            }
+            if (argsJson.length > 8_000_000) {
+                return org.json.JSONObject().put("ok", false).put("error", "Native bridge payload too large").toString()
             }
             return try {
                 val args = org.json.JSONArray(argsJson)
@@ -2847,6 +2850,7 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
                 val methodAndArgs = candidates.firstNotNullOfOrNull { method ->
                     runCatching { method to convertBridgeArguments(method.parameterTypes, args) }.getOrNull()
                 } ?: throw IllegalArgumentException("Unsupported native bridge method or arguments")
+                methodAndArgs.first.isAccessible = true
                 val result = methodAndArgs.first.invoke(target, *methodAndArgs.second)
                 val value = if (result == Unit || result == null) org.json.JSONObject.NULL else result
                 org.json.JSONObject().put("ok", true).put("value", value).toString()

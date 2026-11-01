@@ -33,7 +33,9 @@ assert.match(activity, /SecureJavascriptBridge\(PhoneWidgetBridge\(\)\)/, "Widge
 assert.match(activity, /WebViewCompat\.addDocumentStartJavaScript/, "Trusted bridge wrapper must be installed at document start.");
 assert.match(activity, /private var secureBridgeDocumentStartInstalled = false/, "Document-start bridge readiness state must be declared.");
 assert.equal((activity.match(/view\.evaluateJavascript\(secureBridgeBootstrapScript\(\), null\)/g) || []).length, 1, "Fallback bridge bootstrap must be injected exactly once per trusted main-frame navigation.");
-assert.match(activity, /nonce != bridgeNonce/, "Every native bridge invocation must validate the top-level nonce.");
+assert.match(activity, /MessageDigest\.isEqual\(nonce\.toByteArray\(Charsets\.UTF_8\), bridgeNonce\.toByteArray\(Charsets\.UTF_8\)\)/, "Every native bridge invocation must compare the nonce in constant time.");
+assert.match(activity, /methodAndArgs\.first\.isAccessible = true/, "Reflection must be able to invoke the private PhoneWidget bridge implementation safely.");
+assert.match(activity, /argsJson\.length > 8_000_000/, "Native bridge calls must reject oversized payloads before JSON parsing.");
 assert.match(activity, /window !== window\.top/, "The bridge wrapper must not be installed inside frames.");
 
 const versionCode = Number(gradle.match(/versionCode\s+(\d+)/)?.[1]);
