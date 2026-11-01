@@ -611,6 +611,9 @@ Deno.serve(async (req: Request) => {
         const snapshot = JSON.parse(await decryptPayload(snapRows[0].payload, payloadKey)) as {
           updatedAt?: string;
           scheduleVersion?: string;
+          enabled?: boolean;
+          autonomyEnabled?: boolean;
+          proactiveEnabled?: boolean;
           playerLocationId?: string;
           foregroundSceneId?: string;
           foregroundLeaseUntil?: string;
@@ -663,6 +666,10 @@ Deno.serve(async (req: Request) => {
               return item;
             });
           }
+        }
+        if (snapshot.enabled === false || snapshot.autonomyEnabled === false || snapshot.proactiveEnabled === false) {
+          await finish("done", "life schedule: autonomous life actions disabled by latest cloud settings");
+          return;
         }
         const scene = (snapshot.scenes ?? []).find(item => item.id === lifeSceneMeta.sceneId);
         const characterLocation = snapshot.characterLocations?.[lifeSceneMeta.characterId];
