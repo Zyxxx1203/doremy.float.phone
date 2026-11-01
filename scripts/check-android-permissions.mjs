@@ -27,7 +27,7 @@ assert.deepEqual(declared, [], "Manifest must not regain unused sensitive permis
 const versionCode = Number(gradle.match(/versionCode\s+(\d+)/)?.[1]);
 const versionName = gradle.match(/versionName\s+"([^"]+)"/)?.[1];
 const bridgeVersion = activity.match(/const val VERSION = "([^"]+)"/)?.[1];
-const usesBuildConfigVersion = /val VERSION:\\s*String\\s*=\\s*BuildConfig\\.VERSION_NAME/.test(activity);
+const usesBuildConfigVersion = activity.includes("val VERSION: String = BuildConfig.VERSION_NAME");
 assert.ok(Number.isInteger(versionCode) && versionCode > 0, "Gradle versionCode must be a positive integer.");
 assert.ok(versionName, "Gradle versionName must be present.");
 assert.ok(bridgeVersion === versionName || usesBuildConfigVersion, "MainActivity.VERSION must match the APK versionName or read BuildConfig.VERSION_NAME directly.");
