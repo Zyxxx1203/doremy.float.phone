@@ -621,7 +621,7 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
         pushChatMessage({
             sessionId: sched.sessionId,
             role: "system",
-            content: `⚠️ 追发失败: ${error?.message || String(error)}`,
+            content: `⚠️ 追发失败: ${errorMessage(error)}`,
         });
         window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId: sched.sessionId } }));
     } finally {
@@ -897,7 +897,7 @@ async function fireTimedWake(sched: TimedWakeSchedule) {
         pushChatMessage({
             sessionId: sched.sessionId,
             role: "system",
-            content: `⚠️ ${failureLabel}失败: ${error?.message || String(error)}`,
+            content: `⚠️ ${failureLabel}失败: ${errorMessage(error)}`,
         });
         window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId: sched.sessionId } }));
     } finally {
@@ -976,7 +976,7 @@ async function fireMenstrualPeriodCare(input: {
         pushChatMessage({
             sessionId: input.sessionId,
             role: "system",
-            content: `⚠️ 经期关心失败: ${error?.message || String(error)}`,
+            content: `⚠️ 经期关心失败: ${errorMessage(error)}`,
         });
         window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId: input.sessionId } }));
     } finally {
