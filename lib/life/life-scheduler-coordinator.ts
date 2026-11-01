@@ -34,3 +34,42 @@ export function readLifeSceneForegroundLease(now = Date.now()): LifeSceneForegro
     return null;
   }
 }
+
+
+/** A visible direct-chat lease temporarily protects the user's active conversation.
+ * Life schedule jobs remain queued and resume after the chat is hidden or closed. */
+export const ONLINE_CHAT_FOREGROUND_LEASE_KEY = "online-chat-foreground-lease-v1";
+export type OnlineChatForegroundLease = {
+  characterId: string;
+  sessionId: string;
+  expiresAt: number;
+};
+
+export function setOnlineChatForegroundLease(characterId: string, sessionId: string, active: boolean): void {
+  if (typeof window === "undefined" || !characterId || !sessionId) return;
+  try {
+    if (active) {
+      localStorage.setItem(ONLINE_CHAT_FOREGROUND_LEASE_KEY, JSON.stringify({
+        characterId,
+        sessionId,
+        expiresAt: Date.now() + 90_000,
+      }));
+    } else {
+      const current = JSON.parse(localStorage.getItem(ONLINE_CHAT_FOREGROUND_LEASE_KEY) || "null") as { sessionId?: string } | null;
+      if (!current?.sessionId || current.sessionId === sessionId) localStorage.removeItem(ONLINE_CHAT_FOREGROUND_LEASE_KEY);
+    }
+  } catch {
+    // The lease is advisory; character-wide local turn arbitration still protects live replies.
+  }
+}
+
+export function readOnlineChatForegroundLease(now = Date.now()): OnlineChatForegroundLease | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const lease = JSON.parse(localStorage.getItem(ONLINE_CHAT_FOREGROUND_LEASE_KEY) || "null") as Partial<OnlineChatForegroundLease> | null;
+    if (!lease?.characterId || !lease.sessionId || !Number.isFinite(lease.expiresAt) || Number(lease.expiresAt) <= now) return null;
+    return { characterId: lease.characterId, sessionId: lease.sessionId, expiresAt: Number(lease.expiresAt) };
+  } catch {
+    return null;
+  }
+}
