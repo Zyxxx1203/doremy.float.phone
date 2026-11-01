@@ -34,7 +34,7 @@ assert.match(app, /sendSceneTurn\(undefined, true, pending\.replyId\)/);
 assert.match(app, /const userText = forceReaction \? "" : sceneInput\.trim\(\)/);
 assert.match(app, /const userAction = forceReaction \? "" : sceneActionInput\.trim\(\)/);
 assert.match(app, /notification-reply-response-/);
-assert.match(app, /const pushSceneMessages = \(messages: LifeSceneMessage\[\]\)/);
+assert.match(app, /const pushSceneMessages = \(messages: LifeSceneMessage\[\], baseState: VirtualLifeState = stateRef\.current\)/);
 assert.match(app, /pushSceneMessages\(replyMessages, structuredNext\)/);
 assert.match(app, /message\.id === notificationResponsePrefix \+ "-action"/);
 assert.match(app, /outcome !== "deferred"/);
