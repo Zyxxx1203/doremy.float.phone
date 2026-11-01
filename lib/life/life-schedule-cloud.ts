@@ -55,11 +55,12 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> 
         plannedLocationId: slot.plannedLocationId ?? "",
         plannedLocationName: slot.plannedLocationName ?? "",
       }));
-    const scheduleVersion = [
-      String(state.scheduleProfileVersion ?? 0),
-      String(state.updatedAt ?? ""),
-      String(scheduleSlots.length),
-    ].join(":");
+    const scheduleJson = JSON.stringify(scheduleSlots);
+    let scheduleHash = 2166136261;
+    for (let index = 0; index < scheduleJson.length; index += 1) {
+      scheduleHash = Math.imul(scheduleHash ^ scheduleJson.charCodeAt(index), 16777619);
+    }
+    const scheduleVersion = String(state.scheduleProfileVersion ?? 0) + ":" + (scheduleHash >>> 0).toString(36);
     const actorStates = state.actorStates
       .filter(actor => relevantOwnerIds.has(actor.ownerId))
       .map(actor => ({
