@@ -360,7 +360,7 @@ Deno.serve(async (req: Request) => {
             playerSleeping ? nextAwake(snapshot, "player", "player", now) : now,
             characterSleeping ? nextAwake(snapshot, "character", characterId, now) : now,
           );
-          const nextRun = !enabled ? null
+          const nextRun = !enabled || !hasSubscription ? null
             : playerSleeping || characterSleeping ? iso(awakeAt)
             : chatActive ? iso(chatUntil + 15_000)
             : !samePlace ? iso(nextOverlap(snapshot, characterId, now))
@@ -375,7 +375,7 @@ Deno.serve(async (req: Request) => {
             activity, location_id: currentLocationId, location_name: currentLocationName,
             player_activity: player.activity, player_location_id: player.id, player_location_name: player.name,
             next_transition_at: Number.isFinite(transition) ? iso(transition) : null,
-            next_run_at: nextRun, last_status: !enabled ? "disabled" : !samePlace ? "not_co_located" : characterSleeping || playerSleeping ? "sleeping" : chatActive ? "chat_active" : "ready",
+            next_run_at: nextRun, last_status: !enabled ? "disabled" : !hasSubscription ? "no_subscription" : !samePlace ? "not_co_located" : characterSleeping || playerSleeping ? "sleeping" : chatActive ? "chat_active" : "ready",
             last_error: null, updated_at: new Date().toISOString(),
           });
           summary.evaluated += 1;
