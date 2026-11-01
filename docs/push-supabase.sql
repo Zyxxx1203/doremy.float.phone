@@ -332,3 +332,6 @@ select cron.schedule('push-jobs-scan', '10 seconds', $CRON$
      limit 10
   ) j;
 $CRON$);
+
+-- Ask PostgREST to refresh its schema cache after the idempotent deployment/migration.
+notify pgrst, 'reload schema';
