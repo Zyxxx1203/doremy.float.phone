@@ -859,7 +859,7 @@ export function advanceActorTimeline(
 ): VirtualLifeState {
   const current = resolveActorLifeNow(getActorClock(state, ownerType, ownerId), realNow);
   const target = new Date(current.getTime() + Math.max(0, minutes) * 60_000);
-  let week = mondayStartLife(current);
+  const week = mondayStartLife(current);
   const targetWeek = mondayStartLife(target);
   let next = state;
   // Always begin at the current virtual week. A single manually authored slot
