@@ -24,7 +24,6 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> 
   if (typeof window === "undefined" || typeof fetch !== "function") return false;
   try {
     const state = loadVirtualLifeState();
-    if (!state.settings.enabled) return false;
     const playerLocationId = resolveActorLocation(state, "player", "player")?.id ?? "";
     const characterIds = new Set([
       ...state.actorStates.filter(actor => actor.ownerType === "character").map(actor => actor.ownerId),
@@ -33,7 +32,8 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> 
     ]);
     const scenes = state.scenes.filter(scene => scene.status === "active").map(scene => ({
       id: scene.id,
-      locationId: scene.locationId,
+      // The cloud evaluator recomputes this from the complete schedule on every tick.
+      locationId: playerLocationId || scene.locationId,
       characterIds: scene.participants.filter(p => p.ownerType === "character" && p.activity !== "离开").map(p => p.ownerId),
     }));
     const characterLocations = Object.fromEntries([...characterIds].map(id => [id, resolveActorLocation(state, "character", id)?.id ?? ""]));
@@ -54,9 +54,22 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> 
         plannedLocationId: slot.plannedLocationId ?? "",
         plannedLocationName: slot.plannedLocationName ?? "",
       }));
+    const scheduleVersion = [
+      String(state.scheduleProfileVersion ?? 0),
+      String(state.updatedAt ?? ""),
+      String(scheduleSlots.length),
+    ].join(":");
     const actorStates = state.actorStates
       .filter(actor => relevantOwnerIds.has(actor.ownerId))
-      .map(actor => ({ ownerType: actor.ownerType, ownerId: actor.ownerId, activity: actor.activity }));
+      .map(actor => ({
+        ownerType: actor.ownerType,
+        ownerId: actor.ownerId,
+        activity: actor.activity,
+        scheduleSlotId: actor.scheduleSlotId ?? "",
+        actualLocationId: actor.actualLocationId ?? "",
+        actualLocationName: actor.actualLocationName ?? "",
+        actualLocationUntil: actor.actualLocationUntil ?? null,
+      }));
     const foregroundLease = foregroundLeaseSnapshot();
     const onlineChatLease = readOnlineChatForegroundLease();
     const onlineChatLeaseSnapshot = onlineChatLease ? {
@@ -64,9 +77,17 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> 
       onlineChatSessionId: onlineChatLease.sessionId,
       onlineChatLeaseUntil: new Date(onlineChatLease.expiresAt).toISOString(),
     } : { onlineChatCharacterId: "", onlineChatSessionId: "", onlineChatLeaseUntil: "" };
-    const fingerprint = JSON.stringify({ version: 4, playerLocationId, scenes, characterLocations, scheduleSlots, actorStates, ...foregroundLease, ...onlineChatLeaseSnapshot });
+    const scheduleSettings = {
+      enabled: state.settings.enabled,
+      autonomyEnabled: state.settings.enableCharacterAutonomy,
+      proactiveEnabled: state.settings.enableProactiveSceneMessages !== false,
+      proactiveIntervalMin: state.settings.proactiveSceneIntervalMinutes ?? 5,
+      proactiveIntervalMax: state.settings.proactiveSceneIntervalMaxMinutes ?? 15,
+      scheduleVersion,
+    };
+    const fingerprint = JSON.stringify({ version: 5, playerLocationId, scenes, characterLocations, scheduleSlots, actorStates, scheduleSettings, ...foregroundLease, ...onlineChatLeaseSnapshot });
     if (!force && fingerprint === lastJson && Date.now() - lastSyncedAt < MAX_SNAPSHOT_AGE_MS) return true;
-    const payload = { version: 4, updatedAt: new Date().toISOString(), playerLocationId, scenes, characterLocations, scheduleSlots, actorStates, ...foregroundLease, ...onlineChatLeaseSnapshot };
+    const payload = { version: 5, updatedAt: new Date().toISOString(), playerLocationId, scenes, characterLocations, scheduleSlots, actorStates, ...scheduleSettings, ...foregroundLease, ...onlineChatLeaseSnapshot };
     const response = await fetch("/api/push/bridge-snapshots", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
