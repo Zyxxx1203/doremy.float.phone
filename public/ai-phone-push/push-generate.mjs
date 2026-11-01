@@ -603,24 +603,46 @@ Deno.serve(async (req: Request) => {
         }]),
       });
       if (!shouldNotify) return;
-      const shellResponse = await rest("push_subscriptions?endpoint=like.shell:*&select=endpoint&limit=50");
-      const topics = shellResponse.ok
-        ? (await shellResponse.json() as Array<{ endpoint: string }>)
-            .map(item => String(item.endpoint || "").slice("shell:".length).trim())
-            .filter(Boolean).map(owner => `shellpush:${owner}`)
+      const subscriptionsResponse = await rest("push_subscriptions?select=endpoint,p256dh,auth&limit=50");
+      const subscriptions = subscriptionsResponse.ok
+        ? await subscriptionsResponse.json() as SubscriptionRow[]
         : [];
+      const topics = subscriptions.filter(item => item.endpoint.startsWith("shell:"))
+        .map(item => item.endpoint.slice("shell:".length).trim()).filter(Boolean)
+        .map(owner => `shellpush:${owner}`);
+      const notificationBody = (code + "：" + detail + "；修复：" + repairHint).slice(0, 180);
       if (topics.length) {
         await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
           method: "POST", headers: restHeaders,
           body: JSON.stringify({ messages: topics.map(topic => ({
             topic, event: "notify",
-            payload: {
-              title: "生活系统 · 云端诊断",
-              body: (code + "：" + detail + "；修复：" + repairHint).slice(0, 180),
-              url: "/life", kind: "life_diagnostic",
-            },
+            payload: { title: "生活系统 · 云端诊断", body: notificationBody, url: "/life", kind: "life_diagnostic" },
           })) }),
         }).catch(() => undefined);
+      }
+      const webSubscriptions = subscriptions.filter(item => !item.endpoint.startsWith("shell:"));
+      if (webSubscriptions.length) {
+        const configResponse = await rest("push_server_config?id=eq.main&select=vapid_public_key,vapid_private_key,site_origin&limit=1");
+        const configRows = configResponse.ok ? await configResponse.json() as Array<{
+          vapid_public_key?: string; vapid_private_key?: string; site_origin?: string;
+        }> : [];
+        const config = configRows[0];
+        if (config?.vapid_public_key && config.vapid_private_key) {
+          for (const subscription of webSubscriptions) {
+            try {
+              const status = await sendWebPushRaw(subscription, JSON.stringify({
+                title: "生活系统 · 云端诊断", body: notificationBody, url: "/life", kind: "life_diagnostic",
+              }), {
+                publicKey: config.vapid_public_key,
+                privateKey: config.vapid_private_key,
+                subject: config.site_origin || "mailto:admin@localhost",
+              });
+              if (status === 404 || status === 410) {
+                await rest(`push_subscriptions?endpoint=eq.${encodeURIComponent(subscription.endpoint)}`, { method: "DELETE" });
+              }
+            } catch { /* cloud diagnostic remains visible in the app */ }
+          }
+        }
       }
     };
     if (payload.merge?.lifeScene) {
