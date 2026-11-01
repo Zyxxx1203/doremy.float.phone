@@ -1856,8 +1856,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.keepDialogueConcise, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, lifeAppTags, activeMaxConsecutiveActionOnly, settings.enableLifeFormatRepair, playerName]);
   const sendSceneTurn = async (event?: FormEvent, forceReaction = false, notificationReplyId?: string): Promise<"completed" | "deferred" | "failed"> => {
     event?.preventDefault();
-    const userText = sceneInput.trim();
-    const userAction = sceneActionInput.trim();
+    // Notification / forced reactions must use the already-persisted scene history, never an unsent composer draft.
+    const userText = forceReaction ? "" : sceneInput.trim();
+    const userAction = forceReaction ? "" : sceneActionInput.trim();
     if (!activeScene || (!userText && !userAction && !forceReaction)) return "failed";
     if (busy) return forceReaction ? "deferred" : "failed";
     const notificationResponsePrefix = notificationReplyId ? "notification-reply-response-" + notificationReplyId : "";
