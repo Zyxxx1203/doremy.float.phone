@@ -1180,6 +1180,9 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
                 if (!secureBridgeDocumentStartInstalled && isTrustedShellPage()) {
                     view.evaluateJavascript(secureBridgeBootstrapScript(), null)
                 }
+                if (!secureBridgeDocumentStartInstalled && isTrustedShellPage()) {
+                    view.evaluateJavascript(secureBridgeBootstrapScript(), null)
+                }
                 recoveryOverlay?.let { rootContainer.removeView(it) }
                 recoveryOverlay = null
             }
