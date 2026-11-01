@@ -113,7 +113,7 @@ async function runOnce(): Promise<void> {
         if (participant.ownerType !== "character") continue;
         const exact = "life-scene:" + participant.ownerId;
         const triggerPrefix = "life-scene:" + scene.id + ":" + participant.ownerId;
-        const isCoLocated = scene.status === "active" && coLocated.has(exact);
+        const isCoLocated = scene.status === "active" && participant.activity !== "离开" && coLocated.has(exact);
         if (!isCoLocated && !cancelledOffline.has(triggerPrefix)) {
           cancelledOffline.add(triggerPrefix);
           try { localStorage.removeItem(ARM_META_PREFIX + scene.id + ":" + participant.ownerId); } catch { /* best effort */ }
