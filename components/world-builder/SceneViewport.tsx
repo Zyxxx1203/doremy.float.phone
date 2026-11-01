@@ -22,7 +22,7 @@ function getModelBox(group: THREE.Object3D): THREE.Box3 {
   group.traverse((child) => {
     if (!(child as THREE.Mesh).isMesh) return;
     const mat = (child as THREE.Mesh).material as THREE.Material;
-    if (mat && (mat as any).opacity < 0.1) return; // 跳过 hitbox
+    if (mat && mat.opacity < 0.1) return; // 跳过 hitbox
     const mesh = child as THREE.Mesh;
     mesh.geometry.computeBoundingBox();
     const meshBox = mesh.geometry.boundingBox!.clone();
@@ -100,7 +100,7 @@ function AreaLight({ color, intensity, width, height }: { color: string; intensi
     if (!ref.current) return;
     // 清理旧灯
     ref.current.children.forEach((c) => {
-      if ((c as any).isRectAreaLight) ref.current.remove(c);
+      if (c instanceof THREE.RectAreaLight) ref.current.remove(c);
     });
     const light = new THREE.RectAreaLight(color, intensity, width, height);
     ref.current.add(light);
@@ -127,7 +127,6 @@ function LightSceneModel({
   onTransformEnd: (id: string, pos: [number, number, number], rot: [number, number, number], scale: [number, number, number]) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
-  const tcRef = useRef<any>(null);
   const [mounted, setMounted] = useState(false);
   const light = obj.light!;
 
@@ -192,7 +191,6 @@ function LightSceneModel({
 
       {selected && groupRef.current && (
         <TransformControls
-          ref={tcRef}
           object={groupRef.current}
           space="local"
           onMouseUp={() => {
@@ -313,8 +311,8 @@ function SceneModel({
         {/* 漫步是纯视觉偏移；选中/关闭漫步时由 R3F 按 props 归位 */}
         <primitive
           object={clone}
-          onPointerDown={(e: any) => e.stopPropagation()}
-          onClick={(e: any) => {
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
             e.stopPropagation();
             if (placing) {
               onPlace([e.point.x, e.point.y, e.point.z]);
