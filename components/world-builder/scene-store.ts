@@ -5,6 +5,8 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three-stdlib";
 
+type LoadedGLTF = Awaited<ReturnType<GLTFLoader["loadAsync"]>>;
+
 export interface SceneObject {
   id: string;
   modelUrl: string;
@@ -101,7 +103,7 @@ export async function getModelSize(url: string): Promise<[number, number, number
     return [s.x, s.y, s.z];
   }
   const loader = new GLTFLoader();
-  const gltf: any = await new Promise((resolve, reject) => {
+  const gltf: LoadedGLTF = await new Promise<LoadedGLTF>((resolve, reject) => {
     loader.load(url, resolve, undefined, reject);
   });
   const box = new THREE.Box3().setFromObject(gltf.scene);
