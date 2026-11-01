@@ -4,7 +4,7 @@
 import { loadVirtualLifeState } from "./life-storage";
 import { resolveActorLocation } from "./life-runtime";
 import { recordLifeDiagnostic } from "./life-diagnostics";
-import { readLifeSceneForegroundLease } from "./life-scheduler-coordinator";
+import { readLifeSceneForegroundLease, readOnlineChatForegroundLease } from "./life-scheduler-coordinator";
 
 const PLAYER_ID = "player";
 const SNAPSHOT_RULE_ID = "life-schedule";
@@ -58,9 +58,15 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> 
       .filter(actor => relevantOwnerIds.has(actor.ownerId))
       .map(actor => ({ ownerType: actor.ownerType, ownerId: actor.ownerId, activity: actor.activity }));
     const foregroundLease = foregroundLeaseSnapshot();
-    const fingerprint = JSON.stringify({ version: 3, playerLocationId, scenes, characterLocations, scheduleSlots, actorStates, ...foregroundLease });
+    const onlineChatLease = readOnlineChatForegroundLease();
+    const onlineChatLeaseSnapshot = onlineChatLease ? {
+      onlineChatCharacterId: onlineChatLease.characterId,
+      onlineChatSessionId: onlineChatLease.sessionId,
+      onlineChatLeaseUntil: new Date(onlineChatLease.expiresAt).toISOString(),
+    } : { onlineChatCharacterId: "", onlineChatSessionId: "", onlineChatLeaseUntil: "" };
+    const fingerprint = JSON.stringify({ version: 4, playerLocationId, scenes, characterLocations, scheduleSlots, actorStates, ...foregroundLease, ...onlineChatLeaseSnapshot });
     if (!force && fingerprint === lastJson && Date.now() - lastSyncedAt < MAX_SNAPSHOT_AGE_MS) return true;
-    const payload = { version: 3, updatedAt: new Date().toISOString(), playerLocationId, scenes, characterLocations, scheduleSlots, actorStates, ...foregroundLease };
+    const payload = { version: 4, updatedAt: new Date().toISOString(), playerLocationId, scenes, characterLocations, scheduleSlots, actorStates, ...foregroundLease, ...onlineChatLeaseSnapshot };
     const response = await fetch("/api/push/bridge-snapshots", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
