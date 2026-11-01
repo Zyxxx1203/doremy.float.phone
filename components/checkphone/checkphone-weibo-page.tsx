@@ -17,7 +17,8 @@ import {
   ThumbsUp,
   MoreHorizontal,
   ChevronDown,
-} from "lucide-react";\nimport type { LucideIcon } from "lucide-react";
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { CheckPhoneBilingualText, normalizeCheckPhoneText } from "@/components/checkphone/checkphone-bilingual-text";
 import { CheckPhoneDebugErrorCard } from "@/components/checkphone/checkphone-debug-error-card";
 import { ConfirmDialog } from "@/components/ui";
