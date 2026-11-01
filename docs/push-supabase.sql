@@ -50,6 +50,14 @@ create table if not exists public.push_jobs (
   constraint push_jobs_kind_check check (kind in ('followup', 'reply_bailout', 'timed_task'))
 );
 
+-- Upgrade pre-existing push_jobs tables created before trigger_key was introduced.
+-- Preserve queued jobs with deterministic unique keys instead of dropping/recreating data.
+alter table public.push_jobs add column if not exists trigger_key text;
+update public.push_jobs
+   set trigger_key = 'legacy:' || id
+ where trigger_key is null or btrim(trigger_key) = '';
+alter table public.push_jobs alter column trigger_key set not null;
+
 create unique index if not exists push_jobs_trigger_idx
   on public.push_jobs (user_id, trigger_key);
 
