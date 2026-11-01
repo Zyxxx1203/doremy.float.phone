@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo, memo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, memo, type ComponentPropsWithoutRef, type HTMLAttributes } from "react";
 import { findCustomStickerByName, resolveCustomStickerUrl } from "@/lib/custom-sticker-storage";
 import { isMediaStoreRef, loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
@@ -13,7 +13,7 @@ import { MediaPreviewOverlay } from "@/components/chat/media-preview-overlay";
 import { findStickerByName } from "@/lib/sticker-data";
 import { splitBilingualText } from "@/lib/bilingual-text";
 import { isInvisibleOrWhitespaceOnly } from "@/lib/rich-message-parser";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 // CommonMark 的 flanking 规则会让 **「加粗」** 这类紧贴全角标点的写法解析失败
@@ -528,33 +528,35 @@ function linkifyBareUrls(text: string): string {
     });
 }
 
+type MarkdownNodeProps = { node?: unknown };
+function withoutMarkdownNode<T extends MarkdownNodeProps>(props: T): Omit<T, "node"> {
+    const { node, ...htmlProps } = props;
+    void node;
+    return htmlProps;
+}
+
 const MARKDOWN_COMPONENTS = {
-    p: ({ node, className, ...props }: any) => (
-        <div
-            className={["chat-markdown-paragraph", className].filter(Boolean).join(" ")}
-            {...props}
-        />
-    ),
-    li: ({ node, ...props }: any) => <li {...props} />,
-    blockquote: ({ node, ...props }: any) => <blockquote {...props} />,
-    table: ({ node, ...props }: any) => (
-        <div className="chat-markdown-table-wrap">
-            <table {...props} />
-        </div>
-    ),
-    a: ({ node, href, children, ...props }: any) => {
-        const targetUrl = typeof href === "string" ? href : "";
-        if (targetUrl && isShortVideoShareUrl(targetUrl)) {
-            return <SharedVideoLinkCard url={targetUrl} />;
-        }
-        return <a className="chat-markdown-link" {...props} href={targetUrl} target="_blank" rel="noreferrer">{children}</a>;
+    p: (props: ComponentPropsWithoutRef<"p"> & MarkdownNodeProps) => {
+        const { className, ...htmlProps } = withoutMarkdownNode(props);
+        return <div className={["chat-markdown-paragraph", className].filter(Boolean).join(" ")} {...htmlProps} />;
     },
-    user: ({ node, ...props }: any) => <span className="rm-user" {...props} />,
-    prologue: ({ node, ...props }: any) => <div className="rm-prologue" {...props} />,
-    profile: ({ node, ...props }: any) => <div className="rm-profile" {...props} />,
-    branches: ({ node, ...props }: any) => <div className="rm-branches" {...props} />,
-    content: ({ node, ...props }: any) => <div className="rm-content" {...props} />
-} as any;
+    li: (props: ComponentPropsWithoutRef<"li"> & MarkdownNodeProps) => <li {...withoutMarkdownNode(props)} />,
+    blockquote: (props: ComponentPropsWithoutRef<"blockquote"> & MarkdownNodeProps) => <blockquote {...withoutMarkdownNode(props)} />,
+    table: (props: ComponentPropsWithoutRef<"table"> & MarkdownNodeProps) => (
+        <div className="chat-markdown-table-wrap"><table {...withoutMarkdownNode(props)} /></div>
+    ),
+    a: (props: ComponentPropsWithoutRef<"a"> & MarkdownNodeProps) => {
+        const { href, children, ...htmlProps } = withoutMarkdownNode(props);
+        const targetUrl = typeof href === "string" ? href : "";
+        if (targetUrl && isShortVideoShareUrl(targetUrl)) return <SharedVideoLinkCard url={targetUrl} />;
+        return <a className="chat-markdown-link" {...htmlProps} href={targetUrl} target="_blank" rel="noreferrer">{children}</a>;
+    },
+    user: (props: HTMLAttributes<HTMLSpanElement> & MarkdownNodeProps) => <span className="rm-user" {...withoutMarkdownNode(props)} />,
+    prologue: (props: HTMLAttributes<HTMLDivElement> & MarkdownNodeProps) => <div className="rm-prologue" {...withoutMarkdownNode(props)} />,
+    profile: (props: HTMLAttributes<HTMLDivElement> & MarkdownNodeProps) => <div className="rm-profile" {...withoutMarkdownNode(props)} />,
+    branches: (props: HTMLAttributes<HTMLDivElement> & MarkdownNodeProps) => <div className="rm-branches" {...withoutMarkdownNode(props)} />,
+    content: (props: HTMLAttributes<HTMLDivElement> & MarkdownNodeProps) => <div className="rm-content" {...withoutMarkdownNode(props)} />
+} as unknown as Components;
 
 function MarkdownTextContent({
     content,
