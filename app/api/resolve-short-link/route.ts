@@ -13,8 +13,8 @@ function hostAllowed(rawUrl: string): boolean {
     try {
         const url = new URL(rawUrl);
         if (url.protocol !== "https:" && url.protocol !== "http:") return false;
-        const host = url.hostname.toLowerCase().replace(/^www\./, "");
-        return host === "b23.tv" || host === "bilibili.com" || host === "m.bilibili.com";
+        const host = url.hostname.toLowerCase();
+        return ALLOWED_HOSTS.has(host) || ALLOWED_HOSTS.has(host.replace(/^www\./, ""));
     } catch {
         return false;
     }
