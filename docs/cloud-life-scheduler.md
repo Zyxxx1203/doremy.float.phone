@@ -4,7 +4,7 @@ The life system's background schedule is owned by the user's personal Supabase p
 
 ## Data model
 
-- `push_bridge_snapshots` keeps the encrypted `life-schedule` snapshot: the rolling seven-day itinerary, scene membership, actor overrides, autonomy switches and foreground/chat leases.
+- `push_bridge_snapshots` keeps the encrypted `life-schedule` snapshot: the rolling seven-day itinerary, scene membership, actor overrides, autonomy switches and foreground/chat leases. Server writes use an `updated_at` compare-and-swap filter so a concurrent client schedule edit cannot be overwritten by an older evaluator read.
 - `life_schedule_runtime` stores the latest server-derived activity/location for each `user_id + scene_id + character_id`, together with `schedule_version`, `state_version`, the next schedule transition and the next proactive run.
 - `life_schedule_diagnostics` stores the latest unresolved fault per diagnostic key. The table is service-role-only.
 
