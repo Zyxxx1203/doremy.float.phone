@@ -596,6 +596,10 @@ Deno.serve(async (req: Request) => {
     const lifeSceneMeta = payload.merge?.lifeScene as { sceneId?: string; characterId?: string } | undefined;
     let lifeScheduleVersionAtStart: string | null = null;
     let lifeRuntimeStateVersionAtStart: number | null = null;
+    let lifePlayerLocationAtStart: string | null = null;
+    let lifeCharacterLocationAtStart: string | null = null;
+    let lifePlayerActivityAtStart = "";
+    let lifeCharacterActivityAtStart = "";
     const writeLifeDiagnostic = async (code: string, detail: string, repairHint: string) => {
       const diagnosticId = `life-scheduler:${job.user_id}:stale`;
       const existingResponse = await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent(diagnosticId)}&select=id,resolved_at&limit=1`);
@@ -745,6 +749,10 @@ Deno.serve(async (req: Request) => {
           method: "PATCH",
           body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
         }).catch(() => undefined);
+        lifePlayerLocationAtStart = snapshot.playerLocationId || null;
+        lifeCharacterLocationAtStart = snapshot.characterLocations?.[lifeSceneMeta.characterId] || null;
+        lifePlayerActivityAtStart = snapshot.actorStates?.find(item => item.ownerType === "player" && item.ownerId === "player")?.activity || "";
+        lifeCharacterActivityAtStart = snapshot.actorStates?.find(item => item.ownerType === "character" && item.ownerId === lifeSceneMeta.characterId)?.activity || "";
         const scene = (snapshot.scenes ?? []).find(item => item.id === lifeSceneMeta.sceneId);
         const characterLocation = snapshot.characterLocations?.[lifeSceneMeta.characterId];
         const hasPlayerLocation = typeof snapshot.playerLocationId === "string" && snapshot.playerLocationId.length > 0;
@@ -1015,6 +1023,7 @@ Deno.serve(async (req: Request) => {
         scenes?: Array<{ id?: string; status?: string; locationId?: string; characterIds?: string[] }>;
         onlineChatCharacterId?: string; onlineChatLeaseUntil?: string;
         foregroundSceneId?: string; foregroundLeaseUntil?: string;
+        actorStates?: Array<{ ownerType?: string; ownerId?: string; activity?: string }>;
       };
       const latestNow = Date.now();
       const latestAt = Date.parse(latestSnapshot.updatedAt || latestRow.updated_at || "");
@@ -1039,6 +1048,16 @@ Deno.serve(async (req: Request) => {
       }
       if (lifeScheduleVersionAtStart && latestSnapshot.scheduleVersion !== lifeScheduleVersionAtStart) {
         await deferUntil(latestNow + 60_000, "life schedule: schedule changed during generation; retry with latest state");
+        return;
+      }
+      const latestPlayerActivity = latestSnapshot.actorStates?.find(item => item.ownerType === "player" && item.ownerId === "player")?.activity || "";
+      const latestCharacterActivity = latestSnapshot.actorStates?.find(item => item.ownerType === "character" && item.ownerId === lifeSceneMeta.characterId)?.activity || "";
+      const latestCharacterLocation = latestSnapshot.characterLocations?.[lifeSceneMeta.characterId] || "";
+      if ((lifePlayerLocationAtStart && latestSnapshot.playerLocationId !== lifePlayerLocationAtStart)
+        || (lifeCharacterLocationAtStart && latestCharacterLocation !== lifeCharacterLocationAtStart)
+        || latestPlayerActivity !== lifePlayerActivityAtStart
+        || latestCharacterActivity !== lifeCharacterActivityAtStart) {
+        await deferUntil(latestNow + 60_000, "life schedule: actor activity/location changed during generation; retry with latest state");
         return;
       }
       const chatLeaseUntil = Date.parse(latestSnapshot.onlineChatLeaseUntil || "");
