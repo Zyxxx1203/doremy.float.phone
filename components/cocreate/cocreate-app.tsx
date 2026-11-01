@@ -1941,7 +1941,7 @@ export function CoCreateApp({ onClose, onNotice }: CoCreateAppProps) {
                 return (
                   <article key={message.id} className="cocreate-write-block">
                     <div className="cocreate-block-meta">
-                      <span>// AI</span>
+                      <span>{"// AI"}</span>
                       <strong>{partner?.name || "AI"}</strong>
                       <i />
                       <span>{formatDate(message.createdAt)}</span>
@@ -1975,7 +1975,7 @@ export function CoCreateApp({ onClose, onNotice }: CoCreateAppProps) {
                 return (
                   <article key={message.id} className="cocreate-tool-step" data-running={isRunningTool ? "1" : undefined}>
                     <div className="cocreate-tool-step-head">
-                      <strong>// AI {partner?.name || "AI"}</strong>
+                      <strong>{"// AI "}{partner?.name || "AI"}</strong>
                       {isRunningTool ? <Loader2 size={14} /> : <Check size={14} />}
                       <span>{isRunningTool ? "ACTION RUNNING" : "ACTION RESULT"}</span>
                       {isRunningTool && (
@@ -2346,17 +2346,17 @@ export function CoCreateApp({ onClose, onNotice }: CoCreateAppProps) {
             </div>
             <div className="cocreate-stat-row">
               <div>
-                <span>// WORDS</span>
+                <span>{"// WORDS"}</span>
                 <strong>{chapterWords.toLocaleString()}</strong>
                 <small>总字数</small>
               </div>
               <div>
-                <span>// CHAPTERS</span>
+                <span>{"// CHAPTERS"}</span>
                 <strong>{session.chapters.filter((chapter) => Boolean(chapter.archivedAt)).length}/{session.chapters.length}</strong>
                 <small>完成章节</small>
               </div>
               <div>
-                <span>// MEMORY</span>
+                <span>{"// MEMORY"}</span>
                 <strong>{session.rollingSummary ? "ON" : "READY"}</strong>
                 <small>共享记忆</small>
               </div>
