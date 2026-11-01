@@ -27,8 +27,9 @@ assert.deepEqual(declared, [], "Manifest must not regain unused sensitive permis
 const versionCode = Number(gradle.match(/versionCode\s+(\d+)/)?.[1]);
 const versionName = gradle.match(/versionName\s+"([^"]+)"/)?.[1];
 const bridgeVersion = activity.match(/const val VERSION = "([^"]+)"/)?.[1];
+const usesBuildConfigVersion = /val VERSION:\\s*String\\s*=\\s*BuildConfig\\.VERSION_NAME/.test(activity);
 assert.ok(Number.isInteger(versionCode) && versionCode > 0, "Gradle versionCode must be a positive integer.");
 assert.ok(versionName, "Gradle versionName must be present.");
-assert.equal(bridgeVersion, versionName, "MainActivity.VERSION must match the APK versionName so diagnostics never report a stale version.");
+assert.ok(bridgeVersion === versionName || usesBuildConfigVersion, "MainActivity.VERSION must match the APK versionName or read BuildConfig.VERSION_NAME directly.");
 
 console.log("Android permission baseline and version parity checks passed.");
