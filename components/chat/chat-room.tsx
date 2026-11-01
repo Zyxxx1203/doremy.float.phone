@@ -3,6 +3,7 @@
 import { loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { resolveLifeCharacterIdForContact } from "@/lib/life/life-autonomy";
 import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow, settleActorTimelineToNow } from "@/lib/life/life-runtime";
+import { setOnlineChatForegroundLease } from "@/lib/life/life-scheduler-coordinator";
 
 import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { storeMediaBase64 } from "@/lib/media-cache-storage";
@@ -1261,6 +1262,28 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
 }));
 
 export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
+    // Protect an actively visible direct conversation from a simultaneous cloud
+    // life-scene notification. The life task is deferred, not cancelled; hiding or
+    // leaving this chat releases the lease and lets the schedule continue.
+    useEffect(() => {
+        if (session.isGroup) return;
+        const characterId = resolveLifeCharacterIdForContact(session.contactId, loadChatContacts());
+        if (!characterId) return;
+        const refresh = () => setOnlineChatForegroundLease(
+            characterId,
+            session.id,
+            document.visibilityState === "visible",
+        );
+        refresh();
+        const timer = window.setInterval(refresh, 20_000);
+        document.addEventListener("visibilitychange", refresh);
+        return () => {
+            window.clearInterval(timer);
+            document.removeEventListener("visibilitychange", refresh);
+            setOnlineChatForegroundLease(characterId, session.id, false);
+        };
+    }, [session.id, session.contactId, session.isGroup]);
+
     const [liveCSS, setLiveCSS] = useState(session.customCSS || "");
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [transientMessages, setTransientMessages] = useState<ChatMessage[]>([]);
