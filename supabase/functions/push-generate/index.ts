@@ -589,6 +589,40 @@ Deno.serve(async (req: Request) => {
     const payload = JSON.parse(await decryptPayload(job.payload, payloadKey)) as JobPayload;
     // 生活主动消息必须通过最新可用快照验证；缺失、损坏或位置不一致一律 fail closed。
     const lifeSceneMeta = payload.merge?.lifeScene as { sceneId?: string; characterId?: string } | undefined;
+    const writeLifeDiagnostic = async (code: string, detail: string, repairHint: string) => {
+      const diagnosticId = `life-scheduler:${job.user_id}:stale`;
+      const existingResponse = await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent(diagnosticId)}&select=id,resolved_at&limit=1`);
+      const existingRows = existingResponse.ok ? await existingResponse.json() as Array<{ resolved_at?: string | null }> : [];
+      const shouldNotify = !existingRows[0] || Boolean(existingRows[0].resolved_at);
+      await rest("life_schedule_diagnostics?on_conflict=id", {
+        method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify([{
+          id: diagnosticId, user_id: job.user_id, severity: "error", code,
+          detail: detail.slice(0, 500), repair_hint: repairHint.slice(0, 500),
+          updated_at: new Date().toISOString(), resolved_at: null,
+        }]),
+      });
+      if (!shouldNotify) return;
+      const shellResponse = await rest("push_subscriptions?endpoint=like.shell:*&select=endpoint&limit=50");
+      const topics = shellResponse.ok
+        ? (await shellResponse.json() as Array<{ endpoint: string }>)
+            .map(item => String(item.endpoint || "").slice("shell:".length).trim())
+            .filter(Boolean).map(owner => `shellpush:${owner}`)
+        : [];
+      if (topics.length) {
+        await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
+          method: "POST", headers: restHeaders,
+          body: JSON.stringify({ messages: topics.map(topic => ({
+            topic, event: "notify",
+            payload: {
+              title: "生活系统 · 云端诊断",
+              body: (code + "：" + detail + "；修复：" + repairHint).slice(0, 180),
+              url: "/life", kind: "life_diagnostic",
+            },
+          })) }),
+        }).catch(() => undefined);
+      }
+    };
     if (payload.merge?.lifeScene) {
       if (!lifeSceneMeta?.sceneId || !lifeSceneMeta.characterId) {
         await finish("done", "life schedule: incomplete scene metadata; rejected safely");
@@ -628,6 +662,11 @@ Deno.serve(async (req: Request) => {
         const now = Date.now();
         const snapshotAt = Date.parse(snapshot.updatedAt || "");
         if (!Number.isFinite(snapshotAt) || now - snapshotAt > 3 * 60_000) {
+          await writeLifeDiagnostic(
+            "life_schedule_snapshot_stale",
+            "云端日程快照超过 3 分钟未更新，已暂停主动生成，避免角色依据过期地点行动。",
+            "检查 Supabase life-scheduler Cron 是否启用、life_schedule_runtime 表是否可读；恢复后任务会自动续跑。",
+          ).catch(() => undefined);
           const deferAt = now + 60_000;
           const deferred = await deferUntil(deferAt, "life schedule: cloud schedule state is stale; waiting for the next server evaluation");
           if (!deferred?.ok) await finish("done", "life schedule: stale cloud state; defer failed safely");
@@ -671,6 +710,10 @@ Deno.serve(async (req: Request) => {
           await finish("done", "life schedule: autonomous life actions disabled by latest cloud settings");
           return;
         }
+        await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent("life-scheduler:" + job.user_id + ":stale")}`, {
+          method: "PATCH",
+          body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+        }).catch(() => undefined);
         const scene = (snapshot.scenes ?? []).find(item => item.id === lifeSceneMeta.sceneId);
         const characterLocation = snapshot.characterLocations?.[lifeSceneMeta.characterId];
         const hasPlayerLocation = typeof snapshot.playerLocationId === "string" && snapshot.playerLocationId.length > 0;
