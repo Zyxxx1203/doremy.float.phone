@@ -16,7 +16,7 @@ const localStorage = {
 const moduleBox = { exports: {} };
 const sandbox = { module: moduleBox, exports: moduleBox.exports, window: { dispatchEvent() {} }, localStorage, Date, Math, console };
 vm.runInNewContext(compiled, sandbox, { filename: "life-notification-queue.cjs" });
-const { enqueuePendingLifeSceneReply, peekPendingLifeSceneReply, claimPendingLifeSceneReply, retryPendingLifeSceneReply, acknowledgePendingLifeSceneReply, readFailedLifeSceneReplies, resetFailedLifeSceneReply } = moduleBox.exports;
+const { enqueuePendingLifeSceneReply, peekPendingLifeSceneReply, claimPendingLifeSceneReply, failPendingLifeSceneReply, retryPendingLifeSceneReply, acknowledgePendingLifeSceneReply, readFailedLifeSceneReplies, resetFailedLifeSceneReply } = moduleBox.exports;
 
 const first = { replyId: "reply-1", sceneId: "scene-a", characterId: "char-a", replyMode: "action" };
 const second = { replyId: "reply-2", sceneId: "scene-a", characterId: "char-a", replyMode: "dialogue" };
