@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/global-improvements-validation.yml"
+      - "app/**"
+      - "components/**"
+      - "lib/**"
+      - "scripts/**"
       - "DESIGN.md"
       - "app/globals.css"
       - "styles/immersive-design.css"
