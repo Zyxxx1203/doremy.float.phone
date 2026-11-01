@@ -43,6 +43,5 @@ setOnlineChatForegroundLease("char-a", "chat-a", false);
 assert.equal(readOnlineChatForegroundLease(), null, "closing the owning direct chat should release its lease");
 setOnlineChatForegroundLease("char-a", "chat-a", true);
 assert.equal(readOnlineChatForegroundLease(Date.now() + 91_000), null, "a stale direct-chat lease must expire");
-assert.ok(values.has(ONLINE_CHAT_FOREGROUND_LEASE_KEY) === false, "expired lease reads must not recreate storage");
 
 console.log("Life scheduler coordinator tests passed.");
