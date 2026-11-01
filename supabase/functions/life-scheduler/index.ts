@@ -472,7 +472,7 @@ Deno.serve(async (req: Request) => {
           const nextRunAt = parseTime(previous?.next_run_at);
           if (Number.isFinite(nextRunAt) && nextRunAt > now) continue;
           const executeAt = now + jitterInterval(snapshot);
-          const patch = await rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}&status=in.(done,failed)`, {
+          const patch = await rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}&status=in.(done,failed,cancelled)`, {
             method: "PATCH", headers: { Prefer: "return=representation" },
             body: JSON.stringify({
               status: "pending", execute_at: iso(executeAt),
