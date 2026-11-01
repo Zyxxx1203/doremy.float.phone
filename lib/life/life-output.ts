@@ -175,7 +175,7 @@ function cleanDialogue(raw: string, actions: string[]): string | null {
         stageDirections.push(cleanStageAction(speech[1]));
         text = speech[2].trim();
     }
-    let dialogue = text
+    const dialogue = text
         .replace(/^[-•]\s*/, "")
         .replace(/^[“「『"]+|[”」』"]+$/g, "")
         .replace(/\s+/g, " ")
@@ -241,7 +241,7 @@ function parseJsonObject(raw: string): ParsedLifeOutput | null {
     const issues: LifeOutputIssue[] = [];
     if (text.slice(0, start).trim() || text.slice(end + 1).trim()) issues.push("outside_text");
     const rawAction = record.action;
-    let actionSource = typeof rawAction === "string" ? rawAction : Array.isArray(rawAction) ? rawAction.map(asString).filter(Boolean).join("；") : "";
+    const actionSource = typeof rawAction === "string" ? rawAction : Array.isArray(rawAction) ? rawAction.map(asString).filter(Boolean).join("；") : "";
     let rawDialogues: unknown = record.dialogue ?? record.dialogues;
     const dialogues: string[] = [];
     const actions: string[] = [];
