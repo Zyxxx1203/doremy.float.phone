@@ -57,7 +57,7 @@ function nextArmAt(triggerKey: string, now: number): number {
     }
   } catch { /* fall through */ }
   const executeAt = now + MIN_DELAY_MS + Math.floor(Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS));
-  const repeatUntil = executeAt + 20 * 60_000 * 24;
+  const repeatUntil = executeAt + 20 * 60_000 * 72;
   try { localStorage.setItem(ARM_META_PREFIX + triggerKey, JSON.stringify({ executeAt, repeat: true, repeatUntil })); } catch { /* best effort */ }
   return executeAt;
 }
@@ -161,9 +161,9 @@ async function runOnce(): Promise<void> {
         ].join("\n\n"),
         appId: "life",
         appTags: ["life", "turn", "autonomy", ...(state.settings.enableCharacterAutonomy ? ["tools"] : [])],
-        executeAtMs,        // 20 分钟一轮，最多 24 轮（约 8 小时）；服务端执行完一单后自己续下一单，
+        executeAtMs,        // 20 分钟一轮，最多 72 轮（约 24 小时）；睡眠时服务端会延后当前任务，不消耗轮次。
         // 因此 App 完全关闭也能持续主动搭话。
-        repeat: { intervalMs: 20 * 60_000, remaining: 24 },
+        repeat: { intervalMs: 20 * 60_000, remaining: 72 },
         source: "schedule",
       });
       writeLifeProactiveStatus({ at: new Date().toISOString(), ok: result.ok, character: character.name, reason: result.ok ? undefined : result.reason });
