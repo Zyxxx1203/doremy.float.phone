@@ -183,6 +183,9 @@ create table if not exists public.life_schedule_runtime (
   state_version bigint not null default 0,
   activity text not null default '',
   location_id text not null default '',
+  player_activity text not null default '',
+  player_location_id text not null default '',
+  player_location_name text not null default '',
   location_name text not null default '',
   next_transition_at timestamptz,
   next_run_at timestamptz,
@@ -194,6 +197,9 @@ create table if not exists public.life_schedule_runtime (
 create index if not exists life_schedule_runtime_updated_idx
   on public.life_schedule_runtime (user_id, updated_at desc);
 alter table public.life_schedule_runtime add column if not exists schedule_version text not null default '';
+alter table public.life_schedule_runtime add column if not exists player_activity text not null default '';
+alter table public.life_schedule_runtime add column if not exists player_location_id text not null default '';
+alter table public.life_schedule_runtime add column if not exists player_location_name text not null default '';
 
 -- One current diagnostic per cloud scheduler failure. Resolved rows are retained
 -- for inspection and overwritten on the next failure instead of growing forever.
