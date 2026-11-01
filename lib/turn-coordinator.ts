@@ -172,6 +172,8 @@ export function abortTurnsForCharacter(characterId: string, exceptTurnId?: strin
 }
 
 export function getActiveTurn(characterId: string, sessionId: string): TurnHandle | null {
+    // Kept in the public signature for compatibility; ownership is now character-wide.
+    void sessionId;
     const turn = activeByCharacter.get(characterKey(characterId));
     if (!turn) return null;
     return {
