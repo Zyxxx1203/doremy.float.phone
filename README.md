@@ -46,7 +46,7 @@
 
 ## 快速开始
 
-要求 Node.js 20+。
+要求 **Node.js 22+**（当前 Supabase JS 依赖要求 Node 22 或更高版本）；建议使用 npm 10.8+。
 
 ```bash
 git clone -b main <repo-url>
