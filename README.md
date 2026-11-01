@@ -9,6 +9,8 @@
 | 文档 | 内容 | 适合谁 |
 |---|---|---|
 | 本页 README | 项目简介、快速开始、功能总览、来源与致谢 | 所有人 |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | 本地开发、测试、提交与第三方素材注意事项 | 贡献者 |
+| [SECURITY.md](./SECURITY.md) | 漏洞私下报告与凭据泄露处理 | 所有人 / 维护者 |
 | [DEVICE_SETUP_GUIDE.md](./DEVICE_SETUP_GUIDE.md) | Fork 仓库 → 构建 APK → 安装 → 机型适配 → 验收清单 | 想在 Android 上完整体验的用户 |
 | [docs/隐私与权限说明.md](./docs/隐私与权限说明.md) | 本地数据、外部服务数据流、Android 权限用途与撤销方式 | 所有用户 / 自部署维护者 |
 | [android-shell/README.md](./android-shell/README.md) | Android 壳构建配置、签名、站点地址 | 构建 APK 的用户 |
