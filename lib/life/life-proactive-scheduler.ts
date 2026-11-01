@@ -48,11 +48,9 @@ function nextArmAt(triggerKey: string, now: number): number {
       const parsed = JSON.parse(raw) as { executeAt?: number };
       // 还未到执行时刻：沿用，避免每分钟 POST 把任务不断往后推。
       // 已经挂过服务端循环链的，不在客户端重复续排；让服务端 idleRepeat 继续。
-      if ((parsed as { repeat?: boolean }).repeat === true) {
-        const repeatUntil = Number((parsed as { repeatUntil?: number }).repeatUntil) || 0;
-        if (repeatUntil > now) return 0;
-        localStorage.removeItem(ARM_META_PREFIX + triggerKey);
-      }
+      // Once the cloud owns this scene/character, the durable server row is re-armed
+      // in place. The browser must not create a second timer chain.
+      if ((parsed as { cloudManaged?: boolean }).cloudManaged === true) return 0;
       if (typeof parsed.executeAt === "number" && parsed.executeAt > now + 60_000) return parsed.executeAt;
     }
   } catch { /* fall through */ }
@@ -85,6 +83,7 @@ async function runOnce(): Promise<void> {
       const disabledKey = [state.settings.enabled, state.settings.enableCharacterAutonomy, state.settings.enableProactiveSceneMessages].join(":");
       if (disabledKey !== lastDisabledCleanupKey) {
         lastDisabledCleanupKey = disabledKey;
+        await syncLifeScheduleSnapshot(true);
         const obsoleteJobs = state.scenes.flatMap(scene => scene.participants
           .filter(participant => participant.ownerType === "character")
           .map(participant => ({ sceneId: scene.id, characterId: participant.ownerId })));
@@ -118,7 +117,7 @@ async function runOnce(): Promise<void> {
         if (participant.ownerType !== "character") continue;
         const exact = "life-scene:" + participant.ownerId;
         const triggerPrefix = "life-scene:" + scene.id + ":" + participant.ownerId;
-        const isCoLocated = scene.status === "active" && scene.locationId === player.id && coLocated.has(exact);
+        const isCoLocated = scene.status === "active" && coLocated.has(exact);
         if (!isCoLocated && !cancelledOffline.has(triggerPrefix)) {
           cancelledOffline.add(triggerPrefix);
           try { localStorage.removeItem(ARM_META_PREFIX + scene.id + ":" + participant.ownerId); } catch { /* best effort */ }
@@ -138,7 +137,6 @@ async function runOnce(): Promise<void> {
       // 只在玩家当前所在的现场里触发：角色必须是 active scene 的参与者。
       // 不再按角色新建场景，避免同一地点出现多个互不相干的“生活现场”。
       const scene = state.scenes.find(item => item.status === "active"
-        && item.locationId === player.id
         && item.participants.some(p => p.ownerType === "player" && p.ownerId === PLAYER_ID)
         && item.participants.some(p => p.ownerType === "character" && p.ownerId === character.id && p.activity !== "离开"));
       if (!scene) continue;
@@ -154,16 +152,14 @@ async function runOnce(): Promise<void> {
         characterName: character.name,
         prompt: [
           "【日程同场自动搭话：不是对玩家新消息的回复】",
-          "你和玩家当前都在：" + player.name,
+          "请先读取系统在本轮生成前注入的最新云端日程、活动与地点状态。",
           "角色：" + character.name,
           "请以角色身份自然发起一小回合生活现场对话或行动；不要替玩家发言，不要写成长篇。",
-          "如果此刻没有自然的话可说，可以保持安静，但本轮优先给一句有来由的对白。",
+          "不得沿用预约时的旧地点或旧活动；若当前没有自然的话可说，可以保持安静。",
         ].join("\n\n"),
         appId: "life",
         appTags: ["life", "turn", "autonomy", ...(state.settings.enableCharacterAutonomy ? ["tools"] : [])],
-        executeAtMs,        // 20 分钟一轮，最多 72 轮（约 24 小时）；睡眠时服务端会延后当前任务，不消耗轮次。
-        // 因此 App 完全关闭也能持续主动搭话。
-        repeat: { intervalMs: 20 * 60_000, remaining: 72 },
+        executeAtMs,        // No repeat counter: the cloud scheduler reuses this one durable row forever.
         source: "schedule",
       });
       writeLifeProactiveStatus({ at: new Date().toISOString(), ok: result.ok, character: character.name, reason: result.ok ? undefined : result.reason });
