@@ -87,4 +87,24 @@ failWrites = true;
 assert.equal(enqueuePendingLifeSceneReply({ replyId: "quota-reply", sceneId: "scene-z", characterId: "char-z", replyMode: "dialogue" }), false, "queue storage failure must be reported so the native queue is not acknowledged");
 failWrites = false;
 
+
+localStorage.setItem("life-scene-notification-reply-queue-v2", JSON.stringify([
+  { replyId: "malformed-processing", sceneId: "scene-m", characterId: "char-m", replyMode: "dialogue", status: "processing", processingAt: "not-a-time", attempts: "bad" },
+  { replyId: "malformed-status", sceneId: "scene-m", characterId: "char-m", replyMode: "action", status: "unknown", attempts: -4 },
+]));
+const normalized = peekPendingLifeSceneReply();
+assert.equal(normalized.replyId, "malformed-processing");
+assert.equal(normalized.status, "pending", "invalid processing leases must recover instead of blocking FIFO");
+assert.equal(normalized.attempts, 0, "invalid retry counters must be normalized");
+acknowledgePendingLifeSceneReply("malformed-processing");
+assert.equal(peekPendingLifeSceneReply().status, "pending", "unknown queue states must recover as pending");
+
+localStorage.setItem("life-scene-notification-reply-queue-v1", JSON.stringify([
+  { replyId: "legacy-reply", sceneId: "scene-old", characterId: "char-old", replyMode: "dialogue" },
+]));
+localStorage.setItem("life-scene-notification-reply-queue-v2", "{corrupted");
+assert.equal(peekPendingLifeSceneReply().replyId, "legacy-reply", "corrupted v2 storage should recover legacy queued replies");
+localStorage.setItem("life-scene-notification-reply-queue-v2", "[]");
+assert.equal(peekPendingLifeSceneReply(), null, "an intentional empty v2 queue must not resurrect stale legacy replies");
+
 console.log("Life notification reply queue tests passed.");
