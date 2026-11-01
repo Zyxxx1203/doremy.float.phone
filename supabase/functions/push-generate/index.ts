@@ -714,33 +714,45 @@ Deno.serve(async (req: Request) => {
           + `&character_id=eq.${encodeURIComponent(lifeSceneMeta.characterId)}`
           + "&select=schedule_version,state_version,activity,location_id,location_name,player_activity,player_location_id,player_location_name,updated_at&limit=1",
         ).catch(() => null);
-        if (runtimeResponse?.ok) {
-          const runtimeRows = await runtimeResponse.json().catch(() => []) as Array<{
+        const runtimeRows = runtimeResponse?.ok
+          ? await runtimeResponse.json().catch(() => []) as Array<{
             schedule_version?: string; state_version?: number; activity?: string; location_id?: string;
             location_name?: string; player_activity?: string; player_location_id?: string;
             player_location_name?: string; updated_at?: string;
-          }>;
-          const runtime = runtimeRows[0];
-          const runtimeAt = Date.parse(runtime?.updated_at || "");
-          if (runtime && runtime.schedule_version === snapshot.scheduleVersion
-            && Number.isFinite(runtimeAt) && now - runtimeAt <= 2 * 60_000) {
-            lifeRuntimeStateVersionAtStart = Number(runtime.state_version);
-            snapshot.playerLocationId = runtime.player_location_id || snapshot.playerLocationId;
-            snapshot.characterLocations = {
-              ...(snapshot.characterLocations || {}),
-              [lifeSceneMeta.characterId]: runtime.location_id || "",
-            };
-            snapshot.actorStates = (snapshot.actorStates || []).map(item => {
-              if (item.ownerType === "player" && item.ownerId === "player") {
-                return { ...item, activity: runtime.player_activity || item.activity, currentLocationName: runtime.player_location_name || item.currentLocationName };
-              }
-              if (item.ownerType === "character" && item.ownerId === lifeSceneMeta.characterId) {
-                return { ...item, activity: runtime.activity || item.activity, currentLocationName: runtime.location_name || item.currentLocationName };
-              }
-              return item;
-            });
-          }
+          }>
+          : [];
+        const runtime = runtimeRows[0];
+        const runtimeAt = Date.parse(runtime?.updated_at || "");
+        const runtimeReady = Boolean(runtime
+          && runtime.schedule_version === snapshot.scheduleVersion
+          && Number.isFinite(Number(runtime.state_version))
+          && Number.isFinite(runtimeAt) && now - runtimeAt <= 2 * 60_000
+          && runtime.location_id && runtime.player_location_id);
+        if (!runtimeReady || !runtime) {
+          await writeLifeDiagnostic(
+            "life_schedule_runtime_unavailable",
+            "角色最新云端运行态不存在、版本不匹配或超过 2 分钟未更新，已阻止使用旧快照生成主动消息。",
+            "等待 life-scheduler 下一分钟完成运行态计算；若持续发生，检查 life_schedule_runtime 表、Cron 和 life-scheduler 日志。",
+          ).catch(() => undefined);
+          const deferred = await deferUntil(now + 60_000, "life schedule: authoritative runtime unavailable; waiting for cloud evaluation");
+          if (!deferred?.ok) await finish("done", "life schedule: runtime unavailable; defer failed safely");
+          return;
         }
+        lifeRuntimeStateVersionAtStart = Number(runtime.state_version);
+        snapshot.playerLocationId = runtime.player_location_id || snapshot.playerLocationId;
+        snapshot.characterLocations = {
+          ...(snapshot.characterLocations || {}),
+          [lifeSceneMeta.characterId]: runtime.location_id || "",
+        };
+        snapshot.actorStates = (snapshot.actorStates || []).map(item => {
+          if (item.ownerType === "player" && item.ownerId === "player") {
+            return { ...item, activity: runtime.player_activity || item.activity, currentLocationName: runtime.player_location_name || item.currentLocationName };
+          }
+          if (item.ownerType === "character" && item.ownerId === lifeSceneMeta.characterId) {
+            return { ...item, activity: runtime.activity || item.activity, currentLocationName: runtime.location_name || item.currentLocationName };
+          }
+          return item;
+        });
         if (snapshot.enabled === false || snapshot.autonomyEnabled === false || snapshot.proactiveEnabled === false) {
           await finish("done", "life schedule: autonomous life actions disabled by latest cloud settings");
           return;
