@@ -594,6 +594,8 @@ Deno.serve(async (req: Request) => {
     isLifeSceneJob = Boolean(payload.merge?.lifeScene);
     // 生活主动消息必须通过最新可用快照验证；缺失、损坏或位置不一致一律 fail closed。
     const lifeSceneMeta = payload.merge?.lifeScene as { sceneId?: string; characterId?: string } | undefined;
+    let lifeScheduleVersionAtStart: string | null = null;
+    let lifeRuntimeStateVersionAtStart: number | null = null;
     const writeLifeDiagnostic = async (code: string, detail: string, repairHint: string) => {
       const diagnosticId = `life-scheduler:${job.user_id}:stale`;
       const existingResponse = await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent(diagnosticId)}&select=id,resolved_at&limit=1`);
@@ -687,6 +689,7 @@ Deno.serve(async (req: Request) => {
           onlineChatLeaseUntil?: string;
         };
         const now = Date.now();
+        lifeScheduleVersionAtStart = snapshot.scheduleVersion || null;
         const snapshotAt = Date.parse(snapshot.updatedAt || "");
         if (!Number.isFinite(snapshotAt) || now - snapshotAt > 3 * 60_000) {
           await writeLifeDiagnostic(
@@ -717,6 +720,7 @@ Deno.serve(async (req: Request) => {
           const runtimeAt = Date.parse(runtime?.updated_at || "");
           if (runtime && runtime.schedule_version === snapshot.scheduleVersion
             && Number.isFinite(runtimeAt) && now - runtimeAt <= 2 * 60_000) {
+            lifeRuntimeStateVersionAtStart = Number(runtime.state_version);
             snapshot.playerLocationId = runtime.player_location_id || snapshot.playerLocationId;
             snapshot.characterLocations = {
               ...(snapshot.characterLocations || {}),
@@ -988,6 +992,79 @@ Deno.serve(async (req: Request) => {
     if (await isCancelled()) {
       // Keep the cancelled status intact for diagnostics; do not overwrite it with done.
       return;
+    }
+
+    // Revalidate after the provider call. A chat can open or the schedule/location can
+    // change while the model is thinking; discard/defer rather than deliver stale context.
+    if (isLifeSceneJob && lifeSceneMeta?.sceneId && lifeSceneMeta.characterId) {
+      const latestResponse = await rest(
+        `push_bridge_snapshots?user_id=eq.${encodeURIComponent(job.user_id)}&rule_id=eq.life-schedule&select=payload,updated_at&limit=1`,
+      ).catch(() => null);
+      const latestRows = latestResponse?.ok
+        ? await latestResponse.json().catch(() => []) as Array<{ payload: EncryptedPayload; updated_at?: string }>
+        : [];
+      const latestRow = latestRows[0];
+      if (!latestRow) {
+        await writeLifeDiagnostic("life_schedule_snapshot_missing", "生成期间无法重新读取最新生活日程快照，已暂停发送。", "检查 push_bridge_snapshots 表、个人云 service-role 权限和 life-scheduler 部署。").catch(() => undefined);
+        await deferUntil(Date.now() + 60_000, "life schedule: latest snapshot missing during generation");
+        return;
+      }
+      const latestSnapshot = JSON.parse(await decryptPayload(latestRow.payload, payloadKey)) as {
+        updatedAt?: string; scheduleVersion?: string; enabled?: boolean; autonomyEnabled?: boolean; proactiveEnabled?: boolean;
+        playerLocationId?: string; characterLocations?: Record<string, string>;
+        scenes?: Array<{ id?: string; status?: string; locationId?: string; characterIds?: string[] }>;
+        onlineChatCharacterId?: string; onlineChatLeaseUntil?: string;
+        foregroundSceneId?: string; foregroundLeaseUntil?: string;
+      };
+      const latestNow = Date.now();
+      const latestAt = Date.parse(latestSnapshot.updatedAt || latestRow.updated_at || "");
+      if (!Number.isFinite(latestAt) || latestNow - latestAt > 3 * 60_000) {
+        await writeLifeDiagnostic("life_schedule_snapshot_stale", "生成期间发现生活日程快照已过期，已暂停发送。", "检查 life-scheduler Cron 和 life_schedule_runtime；恢复后任务会自动续跑。").catch(() => undefined);
+        await deferUntil(latestNow + 60_000, "life schedule: latest snapshot stale during generation");
+        return;
+      }
+      if (latestSnapshot.enabled === false || latestSnapshot.autonomyEnabled === false || latestSnapshot.proactiveEnabled === false) {
+        await finish("done", "life schedule: autonomy disabled while generation was running");
+        return;
+      }
+      const latestScene = (latestSnapshot.scenes || []).find(item => item.id === lifeSceneMeta.sceneId);
+      const latestCharacterLocation = latestSnapshot.characterLocations?.[lifeSceneMeta.characterId] || "";
+      if (!latestScene || latestScene.status !== "active"
+        || !latestScene.characterIds?.includes(lifeSceneMeta.characterId)
+        || !latestSnapshot.playerLocationId
+        || latestScene.locationId !== latestSnapshot.playerLocationId
+        || latestCharacterLocation !== latestSnapshot.playerLocationId) {
+        await finish("done", "life schedule: scene or co-location changed during generation; stale turn discarded");
+        return;
+      }
+      if (lifeScheduleVersionAtStart && latestSnapshot.scheduleVersion !== lifeScheduleVersionAtStart) {
+        await deferUntil(latestNow + 60_000, "life schedule: schedule changed during generation; retry with latest state");
+        return;
+      }
+      const chatLeaseUntil = Date.parse(latestSnapshot.onlineChatLeaseUntil || "");
+      if (latestSnapshot.onlineChatCharacterId === lifeSceneMeta.characterId && Number.isFinite(chatLeaseUntil) && chatLeaseUntil > latestNow) {
+        await deferUntil(chatLeaseUntil + 15_000, "life schedule: direct chat opened during generation; defer life action");
+        return;
+      }
+      const foregroundLeaseUntil = Date.parse(latestSnapshot.foregroundLeaseUntil || "");
+      if (latestSnapshot.foregroundSceneId === lifeSceneMeta.sceneId && Number.isFinite(foregroundLeaseUntil) && foregroundLeaseUntil > latestNow) {
+        await deferUntil(foregroundLeaseUntil + 15_000, "life schedule: foreground scene active during generation; defer background action");
+        return;
+      }
+      if (lifeRuntimeStateVersionAtStart !== null) {
+        const latestRuntimeResponse = await rest(
+          `life_schedule_runtime?user_id=eq.${encodeURIComponent(job.user_id)}&scene_id=eq.${encodeURIComponent(lifeSceneMeta.sceneId)}&character_id=eq.${encodeURIComponent(lifeSceneMeta.characterId)}&select=schedule_version,state_version,updated_at&limit=1`,
+        ).catch(() => null);
+        if (latestRuntimeResponse?.ok) {
+          const latestRuntimeRows = await latestRuntimeResponse.json().catch(() => []) as Array<{ schedule_version?: string; state_version?: number; updated_at?: string }>;
+          const latestRuntime = latestRuntimeRows[0];
+          if (latestRuntime && latestRuntime.schedule_version === latestSnapshot.scheduleVersion
+            && Number(latestRuntime.state_version) !== lifeRuntimeStateVersionAtStart) {
+            await deferUntil(latestNow + 60_000, "life schedule: actor activity/location changed during generation; retry with latest state");
+            return;
+          }
+        }
+      }
     }
 
     // ── 离线来电：复用小手机既有的通话协议，并兼容已经预约的旧任务 ──
