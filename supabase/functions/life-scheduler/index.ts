@@ -347,12 +347,13 @@ Deno.serve(async (req: Request) => {
           const currentLocationId = character.id || "";
           const currentLocationName = character.name || "";
           const previousResponse = await rest(
-            `life_schedule_runtime?user_id=eq.${encodeURIComponent(row.user_id)}&scene_id=eq.${encodeURIComponent(scene.id!)}&character_id=eq.${encodeURIComponent(characterId)}&select=schedule_version,state_version,next_run_at,activity,location_id,last_status&limit=1`,
+            `life_schedule_runtime?user_id=eq.${encodeURIComponent(row.user_id)}&scene_id=eq.${encodeURIComponent(scene.id!)}&character_id=eq.${encodeURIComponent(characterId)}&select=schedule_version,state_version,next_run_at,activity,location_id,player_activity,player_location_id,last_status&limit=1`,
           );
           const previousRows = previousResponse.ok ? await previousResponse.json() as Array<Partial<RuntimeRow>> : [];
           const previous = previousRows[0];
           const scheduleVersion = String(snapshot.scheduleVersion || "");
           const changed = previous?.activity !== activity || previous?.location_id !== currentLocationId
+            || previous?.player_activity !== player.activity || previous?.player_location_id !== player.id
             || previous?.schedule_version !== scheduleVersion;
           const stateVersion = (Number(previous?.state_version) || 0) + (changed ? 1 : 0);
           const awakeAt = Math.max(
