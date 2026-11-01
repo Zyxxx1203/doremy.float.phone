@@ -75,7 +75,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         val SITE_URL: String = BuildConfig.SITE_URL
-        const val VERSION = "1.0.27"
+        val VERSION: String = BuildConfig.VERSION_NAME
         /** 来电接听等场景的站内深链（必须以 SITE_URL 开头，否则忽略） */
         const val EXTRA_OPEN_URL = "open_url"
         /** 外部 App（如桌宠）唤起本壳用的自定义 scheme：floatshell://open?url=<站内地址> */
@@ -1066,7 +1066,7 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         // 打开 WebView 远程调试通道。Android 默认是关闭的，导致在电脑上
         // chrome://inspect 根本看不到这台设备——排查推送/后台任务时没有任何日志可看。
         // 打开后仅在「USB 调试 + chrome://inspect」时可见，不影响正常使用。
-        WebView.setWebContentsDebuggingEnabled(true)
+        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         rootContainer = FrameLayout(this).apply {
             addView(
                 webView,
