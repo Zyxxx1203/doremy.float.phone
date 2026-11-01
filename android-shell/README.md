@@ -72,6 +72,8 @@ base64 -w0 shell.keystore   # 得到一长串 base64
 
 从 **1.0.26（versionCode 25）** 起，原生通知回复队列采用 `peek → 网页持久化 → ack`：WebView 中断时，尚未成功写入本机数据的回复不会被原生提前清除。旧 APK 仍由网页端兼容 `consumePendingReplies`，但不具备这项原生确认保障；如需可靠通知回复，请升级到 1.0.26 或更新版本。
 
+当前最新壳版本为 **1.0.28（versionCode 27）**。Release 构建关闭 WebView 远程调试；Android 系统自动备份关闭，数据迁移请使用应用内显式导出。
+
 ## 安装与首次设置
 
 1. 把 APK 传到手机（微信文件传输助手 / 网盘 / 数据线均可），点开安装，
