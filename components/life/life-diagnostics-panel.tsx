@@ -28,10 +28,33 @@ type DiagnosticFilter = "all" | LifeDiagnosticStatus;
 
 export function LifeDiagnosticsPanel() {
   const [entries, setEntries] = useState<LifeDiagnosticEntry[]>([]);
+  const [cloudEntries, setCloudEntries] = useState<LifeDiagnosticEntry[]>([]);
   const [filter, setFilter] = useState<DiagnosticFilter>("all");
   const [failedReplies, setFailedReplies] = useState<PendingLifeSceneNotificationReply[]>([]);
 
-  const refresh = () => { setEntries(readLifeDiagnostics()); setFailedReplies(readFailedLifeSceneReplies()); };
+  const refresh = async () => {
+    setEntries(readLifeDiagnostics());
+    setFailedReplies(readFailedLifeSceneReplies());
+    try {
+      const response = await fetch("/api/life/schedule-diagnostics", { cache: "no-store" });
+      const data = await response.json().catch(() => ({})) as {
+        ok?: boolean;
+        diagnostics?: Array<{ id: string; severity: string; code: string; detail: string; repair_hint: string; updated_at: string }>;
+      };
+      if (!response.ok || !data.ok || !Array.isArray(data.diagnostics)) return;
+      setCloudEntries(data.diagnostics.map(item => ({
+        id: "cloud:" + item.id,
+        at: item.updated_at,
+        source: "云端生活引擎",
+        event: item.code || "日程诊断",
+        status: item.severity === "warning" ? "warning" : item.severity === "info" ? "info" : "error",
+        detail: [item.detail, item.repair_hint ? "修复建议：" + item.repair_hint : ""].filter(Boolean).join("\\n"),
+        meta: { cloudDiagnosticId: item.id },
+      })));
+    } catch {
+      // Cloud diagnostics are additive; local diagnostics remain available offline.
+    }
+  };
   const retryFailedReply = (replyId: string) => { resetFailedLifeSceneReply(replyId); refresh(); };
 
   useEffect(() => {
@@ -41,11 +64,12 @@ export function LifeDiagnosticsPanel() {
     return () => window.removeEventListener("life-diagnostics-updated", onUpdated);
   }, []);
 
+  const allEntries = [...entries, ...cloudEntries].sort((a, b) => b.at.localeCompare(a.at));
   const visible = filter === "all"
-    ? entries
-    : entries.filter(entry => entry.status === filter);
+    ? allEntries
+    : allEntries.filter(entry => entry.status === filter);
 
-  const counts = entries.reduce<Record<LifeDiagnosticStatus, number>>(
+  const counts = allEntries.reduce<Record<LifeDiagnosticStatus, number>>(
     (result, entry) => {
       result[entry.status] += 1;
       return result;
@@ -54,7 +78,7 @@ export function LifeDiagnosticsPanel() {
   );
 
   const exportLog = () => {
-    const blob = new Blob([JSON.stringify(entries, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(allEntries, null, 2)], { type: "application/json" });
     const objectUrl = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = objectUrl;
@@ -78,7 +102,7 @@ export function LifeDiagnosticsPanel() {
           </p>
           <h2 className="mt-1 text-lg font-semibold text-stone-800">生活系统诊断记录</h2>
           <p className="mt-1 text-xs leading-relaxed text-stone-500">
-            自动记录日程同步、主动消息调度、通知回复等关键链路。仅保存在本设备，最多 300 条。
+            汇总本机链路记录与云端常驻日程引擎故障；本机最多保留 300 条，云端只保留未解决故障。
           </p>
         </div>
 
@@ -197,13 +221,13 @@ export function LifeDiagnosticsPanel() {
 
         {!visible.length && (
           <p className="rounded-xl bg-white/70 p-4 text-center text-xs text-stone-500">
-            暂无记录；执行日程同步或主动消息链路后会自动显示。
+            暂无记录；执行日程同步或云端调度后会自动显示。
           </p>
         )}
       </div>
 
       <p className="mt-2 text-[10px] text-stone-400">
-        导出前请检查是否包含不想分享的角色名称或错误详情；诊断不会自动上传。
+        导出前请检查是否包含不想分享的角色名称或错误详情；导出内容包含本机记录和云端未解决故障。
       </p>
     </section>
   );
