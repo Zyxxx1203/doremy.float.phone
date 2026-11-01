@@ -207,8 +207,7 @@ async function flushPendingNotificationRepliesInternal(): Promise<number> {
 /**
  * 启动通知回复的处理：页面挂载时补发一次，之后每次收到 userReply 事件再拉一次。
  *
- * 返回取消函数（组件卸载时用）。重复调用无害——壳侧队列是「读到即清空」，
- * 拉两次不会把同一句话发两遍。
+ * 返回取消函数（组件卸载时用）。重复调用无害——新壳侧队列使用 peek + ack；旧壳兼容 read-and-clear，网页侧稳定 ID 可避免重复写入。
  */
 export function startNotificationReplyBridge(): () => void {
     if (typeof window === "undefined") return () => { /* noop */ };
@@ -218,8 +217,14 @@ export function startNotificationReplyBridge(): () => void {
     void flushPendingNotificationReplies().catch(() => undefined);
 
     ensureShellOverlayListener();
-    return subscribeShellOverlayEvents((event) => {
+    const unsubscribeShell = subscribeShellOverlayEvents((event) => {
         if (event.action !== "userReply") return;
         void flushPendingNotificationReplies().catch(() => undefined);
     });
+    const onLifeQueueUpdated = () => { void flushPendingNotificationReplies().catch(() => undefined); };
+    window.addEventListener("life-scene-notification-queue-updated", onLifeQueueUpdated);
+    return () => {
+        unsubscribeShell();
+        window.removeEventListener("life-scene-notification-queue-updated", onLifeQueueUpdated);
+    };
 }
