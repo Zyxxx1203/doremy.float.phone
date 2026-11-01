@@ -465,7 +465,7 @@ Deno.serve(async (req: Request) => {
           if (!patch.ok) throw new Error("life job re-arm failed: " + patch.status);
           const patched = await patch.json().catch(() => []) as unknown[];
           if (patched.length) summary.armed += 1;
-          runtimeUpdates[runtimeUpdates.length - 1].next_run_at = iso(executeAt + 60_000);
+          runtimeUpdates[runtimeUpdates.length - 1].next_run_at = iso(executeAt + jitterInterval(snapshot));
         }
       }
 
