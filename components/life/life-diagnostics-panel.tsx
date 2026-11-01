@@ -114,8 +114,8 @@ export function LifeDiagnosticsPanel() {
 
       {failedReplies.length > 0 && (
         <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/80 p-3">
-          <b className="text-sm text-rose-800">有 {failedReplies.length} 条通知回复需要人工重试</b>
-          <p className="mt-1 text-[11px] leading-relaxed text-rose-700">自动重试次数已用尽，原始现场消息仍保留在本机。确认模型配置正常后可重新排队。</p>
+          <b className="text-sm text-rose-800">有 {failedReplies.length} 条通知回复已暂停</b>
+          <p className="mt-1 text-[11px] leading-relaxed text-rose-700">可能是自动重试次数已用尽，或原现场/角色已失效。原始现场消息仍保留在本机；修复对应问题后可重新排队。</p>
           <div className="mt-2 space-y-2">
             {failedReplies.map(reply => (
               <div key={reply.replyId} className="flex flex-wrap items-center gap-2 rounded-xl border border-rose-200/80 bg-white/80 p-2">
