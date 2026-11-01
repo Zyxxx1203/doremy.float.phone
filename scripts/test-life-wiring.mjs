@@ -35,7 +35,7 @@ assert.match(app, /const userText = forceReaction \? "" : sceneInput\.trim\(\)/)
 assert.match(app, /const userAction = forceReaction \? "" : sceneActionInput\.trim\(\)/);
 assert.match(app, /notification-reply-response-/);
 assert.match(app, /const pushSceneMessages = \(messages: LifeSceneMessage\[\]\)/);
-assert.match(app, /pushSceneMessages\(replyMessages\)/);
+assert.match(app, /pushSceneMessages\(replyMessages, structuredNext\)/);
 assert.match(app, /message\.id === notificationResponsePrefix \+ "-action"/);
 assert.match(app, /outcome !== "deferred"/);
 assert.match(app, /refreshNotificationReplyQueue\(value => value \+ 1\)/);
