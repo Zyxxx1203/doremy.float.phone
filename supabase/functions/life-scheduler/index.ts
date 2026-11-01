@@ -386,6 +386,7 @@ Deno.serve(async (req: Request) => {
           const jobs = await jobResponse.json() as JobRow[];
           const job = jobs[0];
           if (!job) continue; // Client creates the first prompt/request template while the scene is open.
+          const jobDiagnosticId = `life-scheduler:job:${scene.id}:${characterId}`;
           if (!enabled) {
             if (job.status === "pending" || job.status === "running") {
               await rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}`, {
@@ -393,9 +394,11 @@ Deno.serve(async (req: Request) => {
               });
               summary.cancelled += 1;
             }
+            await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent(jobDiagnosticId)}`, {
+              method: "PATCH", body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+            }).catch(() => undefined);
             continue;
           }
-          const jobDiagnosticId = `life-scheduler:job:${scene.id}:${characterId}`;
           if (job.status === "pending" || job.status === "running") {
             const overdueBy = now - parseTime(job.execute_at);
             const runningFor = now - parseTime(job.updated_at);
@@ -422,7 +425,12 @@ Deno.serve(async (req: Request) => {
             }
             continue;
           }
-          if (job.status === "cancelled") continue;
+          if (job.status === "cancelled") {
+            await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent(jobDiagnosticId)}`, {
+              method: "PATCH", body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+            }).catch(() => undefined);
+            continue;
+          }
           if (job.status === "failed") {
             runtimeUpdates[runtimeUpdates.length - 1].last_status = "generation_failed";
             runtimeUpdates[runtimeUpdates.length - 1].last_error = job.result_note || "生活主动生成任务失败。";
@@ -468,6 +476,7 @@ Deno.serve(async (req: Request) => {
         for (const job of jobs) {
           const match = job.trigger_key.match(/^life-scene:(.+):([^:]+):schedule$/);
           if (!match || !activePairs.has(`${match[1]}:${match[2]}`) || !enabled) {
+            const orphanDiagnosticId = match ? `life-scheduler:job:${match[1]}:${match[2]}` : "";
             if (job.status === "pending" || job.status === "running") {
               await rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}`, {
                 method: "PATCH", body: JSON.stringify({ status: "cancelled", result_note: "life schedule: scene/participant removed or autonomy disabled", updated_at: new Date().toISOString() }),
@@ -475,6 +484,11 @@ Deno.serve(async (req: Request) => {
               summary.cancelled += 1;
             } else {
               await rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}`, { method: "DELETE" });
+            }
+            if (orphanDiagnosticId) {
+              await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent(orphanDiagnosticId)}`, {
+                method: "PATCH", body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+              }).catch(() => undefined);
             }
           }
         }
