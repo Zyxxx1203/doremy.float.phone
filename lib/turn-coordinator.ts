@@ -125,12 +125,12 @@ export function beginTurn(input: {
         controller,
         observeOnly,
     };
-    activeBySession.set(key, turn);
+    activeByCharacter.set(key, turn);
 
-    const isCurrent = () => activeBySession.get(key)?.turnId === turnId;
+    const isCurrent = () => activeByCharacter.get(key)?.turnId === turnId;
     const end = () => {
-        if (activeBySession.get(key)?.turnId !== turnId) return;
-        activeBySession.delete(key);
+        if (activeByCharacter.get(key)?.turnId !== turnId) return;
+        activeByCharacter.delete(key);
     };
 
     return {
@@ -148,11 +148,11 @@ export function beginTurn(input: {
 /** 取消该会话所属的 active turn（用户发消息/开始通话时用）。 */
 export function abortTurnsForSession(sessionId: string, exceptTurnId?: string): number {
     let count = 0;
-    for (const [key, turn] of activeBySession) {
+    for (const [key, turn] of activeByCharacter) {
         if (turn.sessionId !== sessionId) continue;
         if (exceptTurnId && turn.turnId === exceptTurnId) continue;
         turn.controller.abort();
-        activeBySession.delete(key);
+        activeByCharacter.delete(key);
         count += 1;
     }
     return count;
@@ -161,18 +161,18 @@ export function abortTurnsForSession(sessionId: string, exceptTurnId?: string): 
 /** 取消该角色所有 active turn（切换角色/删除会话时用）。 */
 export function abortTurnsForCharacter(characterId: string, exceptTurnId?: string): number {
     let count = 0;
-    for (const [key, turn] of activeBySession) {
+    for (const [key, turn] of activeByCharacter) {
         if (turn.characterId !== characterId) continue;
         if (exceptTurnId && turn.turnId === exceptTurnId) continue;
         turn.controller.abort();
-        activeBySession.delete(key);
+        activeByCharacter.delete(key);
         count += 1;
     }
     return count;
 }
 
 export function getActiveTurn(characterId: string, sessionId: string): TurnHandle | null {
-    const turn = activeBySession.get(sessionKey(characterId, sessionId));
+    const turn = activeByCharacter.get(sessionKey(characterId, sessionId));
     if (!turn) return null;
     return {
         turnId: turn.turnId,
@@ -180,10 +180,10 @@ export function getActiveTurn(characterId: string, sessionId: string): TurnHandl
         priority: turn.priority,
         signal: turn.controller.signal,
         startedAt: turn.startedAt,
-        isCurrent: () => activeBySession.get(sessionKey(characterId, sessionId))?.turnId === turn.turnId,
+        isCurrent: () => activeByCharacter.get(sessionKey(characterId, sessionId))?.turnId === turn.turnId,
         end: () => {
-            if (activeBySession.get(sessionKey(characterId, sessionId))?.turnId === turn.turnId) {
-                activeBySession.delete(sessionKey(characterId, sessionId));
+            if (activeByCharacter.get(sessionKey(characterId, sessionId))?.turnId === turn.turnId) {
+                activeByCharacter.delete(sessionKey(characterId, sessionId));
             }
         },
         abort: () => turn.controller.abort(),
@@ -199,7 +199,7 @@ export function listActiveTurns(): Array<{
     sessionId: string;
     startedAt: number;
 }> {
-    return [...activeBySession.values()].map(turn => ({
+    return [...activeByCharacter.values()].map(turn => ({
         turnId: turn.turnId,
         kind: turn.kind,
         priority: turn.priority,
