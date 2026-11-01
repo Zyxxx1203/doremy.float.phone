@@ -44,7 +44,7 @@ assert.match(snapshot, /version: 5/);
 assert.doesNotMatch(snapshot, /if \(!state\.settings\.enabled\) return false/);
 
 assert.match(client, /cloudManaged: true/);
-assert.match(client, /setLifeSceneForegroundLease/);
+assert.match(client, /armLifeSceneProactiveBailout/);
 assert.doesNotMatch(client, /remaining: 72/);
 assert.doesNotMatch(client, /repeatUntil/);
 assert.doesNotMatch(client, /repeat: \{ intervalMs/);
