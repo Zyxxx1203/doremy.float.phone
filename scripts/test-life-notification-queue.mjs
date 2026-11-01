@@ -78,6 +78,7 @@ for (let index = 0; index < 100; index++) {
 }
 assert.equal(enqueuePendingLifeSceneReply({ replyId: "capacity-overflow", sceneId: "scene-capacity", characterId: "char-capacity", replyMode: "dialogue" }), false, "a full queue must reject new work instead of evicting older replies");
 assert.equal(peekPendingLifeSceneReply().replyId, "capacity-0", "queue overflow must preserve the oldest unprocessed reply");
+for (let index = 0; index < 100; index++) acknowledgePendingLifeSceneReply("capacity-" + index);
 
 failWrites = true;
 assert.equal(enqueuePendingLifeSceneReply({ replyId: "quota-reply", sceneId: "scene-z", characterId: "char-z", replyMode: "dialogue" }), false, "queue storage failure must be reported so the native queue is not acknowledged");
