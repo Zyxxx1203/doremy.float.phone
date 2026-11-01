@@ -2058,6 +2058,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   }, []);
 
   useEffect(() => {
+    const onQueueUpdated = () => refreshNotificationReplyQueue(value => value + 1);
+    window.addEventListener("life-scene-notification-queue-updated", onQueueUpdated);
+    return () => window.removeEventListener("life-scene-notification-queue-updated", onQueueUpdated);
+  }, []);
+  useEffect(() => {
     if (!ready || busy) return;
     const pending = pendingNotificationSceneReplyRef.current ?? peekPendingLifeSceneReply();
     if (!pending) return;
