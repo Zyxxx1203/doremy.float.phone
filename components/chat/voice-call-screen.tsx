@@ -595,7 +595,7 @@ export function VoiceCallScreen({ session, character, onEnd, onConnect, initiato
                 scheduleNextAutoChat();
                 setCallState("IDLE");
             }
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("[VoiceCall] Error:", error);
             if (stateRef.current !== "ENDED") {
                 setSubtitles(prev => [...prev, {
