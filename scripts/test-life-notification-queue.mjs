@@ -14,13 +14,15 @@ const localStorage = {
   setItem: (key, value) => { if (failWrites) throw new Error("quota exceeded"); values.set(key, String(value)); },
 };
 const moduleBox = { exports: {} };
-const sandbox = { module: moduleBox, exports: moduleBox.exports, window: { dispatchEvent() {} }, localStorage, Date, Math, console };
+const dispatchedEvents = [];
+const sandbox = { module: moduleBox, exports: moduleBox.exports, window: { dispatchEvent(event) { dispatchedEvents.push(event.type); } }, localStorage, Date, Math, Event, console };
 vm.runInNewContext(compiled, sandbox, { filename: "life-notification-queue.cjs" });
 const { enqueuePendingLifeSceneReply, peekPendingLifeSceneReply, claimPendingLifeSceneReply, failPendingLifeSceneReply, retryPendingLifeSceneReply, acknowledgePendingLifeSceneReply, readFailedLifeSceneReplies, resetFailedLifeSceneReply } = moduleBox.exports;
 
 const first = { replyId: "reply-1", sceneId: "scene-a", characterId: "char-a", replyMode: "action" };
 const second = { replyId: "reply-2", sceneId: "scene-a", characterId: "char-a", replyMode: "dialogue" };
 enqueuePendingLifeSceneReply(first);
+assert.ok(dispatchedEvents.includes("life-scene-notification-queue-updated"), "queue writes should notify the life app to resume pending work");
 enqueuePendingLifeSceneReply(first);
 enqueuePendingLifeSceneReply(second);
 assert.equal(peekPendingLifeSceneReply().replyId, first.replyId, "queue should preserve FIFO order and deduplicate stable reply IDs");
