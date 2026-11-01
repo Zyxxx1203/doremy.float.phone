@@ -563,12 +563,16 @@ Deno.serve(async (req: Request) => {
    * 用户看到的就是「根本没关上」。
    * 查不到（网络抖动等）按「未被撤销」处理，宁可多发一次也不误杀正常消息。
    */
+  let isLifeSceneJob = false;
   const isCancelled = async (): Promise<boolean> => {
     const response = await rest(
       `push_jobs?id=eq.${encodeURIComponent(job.id)}&select=status&limit=1`,
     ).catch(() => null);
     if (!response || !response.ok) return false;
     const rows = await response.json().catch(() => []) as { status?: string }[];
+    // A deleted life-scene row means the scene/participant was removed. Do not let
+    // an already-running model call send a stale action after the user cancelled it.
+    if (!rows.length) return isLifeSceneJob;
     return rows[0]?.status === "cancelled";
   };
 
@@ -587,6 +591,7 @@ Deno.serve(async (req: Request) => {
       return;
     }
     const payload = JSON.parse(await decryptPayload(job.payload, payloadKey)) as JobPayload;
+    isLifeSceneJob = Boolean(payload.merge?.lifeScene);
     // 生活主动消息必须通过最新可用快照验证；缺失、损坏或位置不一致一律 fail closed。
     const lifeSceneMeta = payload.merge?.lifeScene as { sceneId?: string; characterId?: string } | undefined;
     const writeLifeDiagnostic = async (code: string, detail: string, repairHint: string) => {
