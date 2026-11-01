@@ -26,6 +26,13 @@ assert.deepEqual(declared, [], "Manifest must not regain unused sensitive permis
 assert.match(manifest, /android:allowBackup="false"/, "Android automatic backup must stay disabled; use explicit in-app export.");
 assert.ok(!manifest.includes('android:usesCleartextTraffic="true"'), "Cleartext must remain controlled by the restrictive network security config.");
 assert.match(activity, /WebView\.setWebContentsDebuggingEnabled\(BuildConfig\.DEBUG\)/, "WebView debugging must be disabled in release builds.");
+assert.ok(!activity.includes('addJavascriptInterface(ShellBridge(), "AndroidShell")'), "Raw ShellBridge must never be exposed to every WebView frame.");
+assert.ok(!activity.includes('addJavascriptInterface(PhoneWidgetBridge(), "PhoneWidget")'), "Raw PhoneWidgetBridge must never be exposed to every WebView frame.");
+assert.match(activity, /SecureJavascriptBridge\(ShellBridge\(\)\)/, "Shell bridge must use the nonce-gated dispatcher.");
+assert.match(activity, /SecureJavascriptBridge\(PhoneWidgetBridge\(\)\)/, "Widget bridge must use the nonce-gated dispatcher.");
+assert.match(activity, /WebViewCompat\.addDocumentStartJavaScript/, "Trusted bridge wrapper must be installed at document start.");
+assert.match(activity, /nonce != bridgeNonce/, "Every native bridge invocation must validate the top-level nonce.");
+assert.match(activity, /window !== window\.top/, "The bridge wrapper must not be installed inside frames.");
 
 const versionCode = Number(gradle.match(/versionCode\s+(\d+)/)?.[1]);
 const versionName = gradle.match(/versionName\s+"([^"]+)"/)?.[1];
