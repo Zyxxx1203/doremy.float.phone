@@ -73,7 +73,7 @@ let turnSequence = 0;
 
 // A character is one person across channels. Key by character rather than session so
 // a life-scene turn cannot race the same character's direct-chat turn in another session.
-function sessionKey(characterId: string, _sessionId: string): string {
+function characterKey(characterId: string): string {
     return characterId;
 }
 
@@ -97,7 +97,7 @@ export function beginTurn(input: {
 }): TurnHandle | null {
     const { kind, characterId, sessionId, observeOnly = false } = input;
     if (!characterId || !sessionId) return null;
-    const key = sessionKey(characterId, sessionId);
+    const key = characterKey(characterId);
     const priority = TURN_PRIORITY[kind];
     const current = activeByCharacter.get(key);
 
