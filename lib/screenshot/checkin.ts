@@ -187,21 +187,20 @@ export function requestCheckIn(
     }
 
     let settled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let unsubscribe: (() => void) | undefined;
+    const cleanup: { timer?: ReturnType<typeof setTimeout>; unsubscribe?: () => void } = {};
 
     // 用户随口说的那句话（同意/拒绝都可能有），统一在下面几处带进结果里。
     const finish = (result: CheckInOutcome) => {
       if (settled) return;
       settled = true;
-      if (timer) clearTimeout(timer);
-      unsubscribe?.();
+      if (cleanup.timer) clearTimeout(cleanup.timer);
+      cleanup.unsubscribe?.();
       resolve(result);
     };
 
     // 先订阅、再请求：浮层若很快出结果，反过来会漏掉事件。
     ensureShellOverlayListener();
-    unsubscribe = subscribeShellOverlayEvents((event) => {
+    cleanup.unsubscribe = subscribeShellOverlayEvents((event) => {
       if (event.action !== "checkIn") return;
       // 同一时刻可能只有一次查岗，但仍按 characterId 校验，避免张冠李戴
       if (event.characterId && event.characterId !== characterId) return;
@@ -219,7 +218,7 @@ export function requestCheckIn(
       finish({ accepted: false, reason: event.reason || "user_rejected", reply });
     });
 
-    timer = setTimeout(() => {
+    cleanup.timer = setTimeout(() => {
       finish({ accepted: false, reason: "timeout" });
     }, Math.max(1000, timeoutMs));
 
