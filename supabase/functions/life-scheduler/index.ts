@@ -278,14 +278,28 @@ Deno.serve(async (req: Request) => {
             }
             continue;
           }
-          if (job.status === "cancelled" || job.status === "pending" || job.status === "running") continue;
           const jobDiagnosticId = `life-scheduler:job:${scene.id}:${characterId}`;
+          if (job.status === "pending" || job.status === "running") {
+            if (/daily generation cap reached/i.test(job.result_note || "")) {
+              await writeDiagnostic(row.user_id, jobDiagnosticId, "warning", "life_generation_daily_cap",
+                job.result_note || "云端生活主动生成达到每日额度上限，任务已延后。",
+                "这不是日程故障；额度窗口重置后会自动恢复。可在个人云任务记录中查看下一次执行时间。");
+            }
+            continue;
+          }
+          if (job.status === "cancelled") continue;
           if (job.status === "failed") {
             runtimeUpdates[runtimeUpdates.length - 1].last_status = "generation_failed";
             runtimeUpdates[runtimeUpdates.length - 1].last_error = job.result_note || "生活主动生成任务失败。";
             await writeDiagnostic(row.user_id, jobDiagnosticId, "error", "life_generation_failed",
               job.result_note || "生活主动生成任务失败。",
               "检查角色模型配置、API额度、个人云 push-generate 部署和 push_jobs.result_note；修复后云端会自动重试。");
+          } else if (/errors:|pushed 0/i.test(job.result_note || "")) {
+            runtimeUpdates[runtimeUpdates.length - 1].last_status = "notification_delivery_warning";
+            runtimeUpdates[runtimeUpdates.length - 1].last_error = job.result_note || "生活消息通知投递异常。";
+            await writeDiagnostic(row.user_id, jobDiagnosticId, "warning", "life_notification_delivery_failed",
+              job.result_note || "生活消息已生成，但通知投递可能失败。",
+              "检查个人云 VAPID 配置、Android 壳 Realtime 连接和系统通知权限；聊天回传箱仍可在打开小手机后取回消息。");
           } else {
             await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent(jobDiagnosticId)}`, {
               method: "PATCH", body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
