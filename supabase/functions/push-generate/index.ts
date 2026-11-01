@@ -610,6 +610,7 @@ Deno.serve(async (req: Request) => {
       try {
         const snapshot = JSON.parse(await decryptPayload(snapRows[0].payload, payloadKey)) as {
           updatedAt?: string;
+          scheduleVersion?: string;
           playerLocationId?: string;
           foregroundSceneId?: string;
           foregroundLeaseUntil?: string;
@@ -621,6 +622,48 @@ Deno.serve(async (req: Request) => {
           onlineChatSessionId?: string;
           onlineChatLeaseUntil?: string;
         };
+        const now = Date.now();
+        const snapshotAt = Date.parse(snapshot.updatedAt || "");
+        if (!Number.isFinite(snapshotAt) || now - snapshotAt > 3 * 60_000) {
+          const deferAt = now + 60_000;
+          const deferred = await deferUntil(deferAt, "life schedule: cloud schedule state is stale; waiting for the next server evaluation");
+          if (!deferred?.ok) await finish("done", "life schedule: stale cloud state; defer failed safely");
+          return;
+        }
+        // Read the per-character authoritative runtime row immediately before generation.
+        // Only apply it when it was computed from the same schedule version as the snapshot.
+        const runtimeResponse = await rest(
+          `life_schedule_runtime?user_id=eq.${encodeURIComponent(job.user_id)}`
+          + `&scene_id=eq.${encodeURIComponent(lifeSceneMeta.sceneId)}`
+          + `&character_id=eq.${encodeURIComponent(lifeSceneMeta.characterId)}`
+          + "&select=schedule_version,state_version,activity,location_id,location_name,player_activity,player_location_id,player_location_name,updated_at&limit=1",
+        ).catch(() => null);
+        if (runtimeResponse?.ok) {
+          const runtimeRows = await runtimeResponse.json().catch(() => []) as Array<{
+            schedule_version?: string; state_version?: number; activity?: string; location_id?: string;
+            location_name?: string; player_activity?: string; player_location_id?: string;
+            player_location_name?: string; updated_at?: string;
+          }>;
+          const runtime = runtimeRows[0];
+          const runtimeAt = Date.parse(runtime?.updated_at || "");
+          if (runtime && runtime.schedule_version === snapshot.scheduleVersion
+            && Number.isFinite(runtimeAt) && now - runtimeAt <= 2 * 60_000) {
+            snapshot.playerLocationId = runtime.player_location_id || snapshot.playerLocationId;
+            snapshot.characterLocations = {
+              ...(snapshot.characterLocations || {}),
+              [lifeSceneMeta.characterId]: runtime.location_id || "",
+            };
+            snapshot.actorStates = (snapshot.actorStates || []).map(item => {
+              if (item.ownerType === "player" && item.ownerId === "player") {
+                return { ...item, activity: runtime.player_activity || item.activity, currentLocationName: runtime.player_location_name || item.currentLocationName };
+              }
+              if (item.ownerType === "character" && item.ownerId === lifeSceneMeta.characterId) {
+                return { ...item, activity: runtime.activity || item.activity, currentLocationName: runtime.location_name || item.currentLocationName };
+              }
+              return item;
+            });
+          }
+        }
         const scene = (snapshot.scenes ?? []).find(item => item.id === lifeSceneMeta.sceneId);
         const characterLocation = snapshot.characterLocations?.[lifeSceneMeta.characterId];
         const hasPlayerLocation = typeof snapshot.playerLocationId === "string" && snapshot.playerLocationId.length > 0;
@@ -633,7 +676,6 @@ Deno.serve(async (req: Request) => {
           await finish("done", "life schedule: player/character no longer share the exact scene location");
           return;
         }
-        const now = Date.now();
         const slots = snapshot.scheduleSlots ?? [];
         const actors = snapshot.actorStates ?? [];
         const activeSlot = (ownerType: string, ownerId: string) => slots.find(slot => {
