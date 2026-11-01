@@ -201,6 +201,17 @@ Deno.serve(async (req: Request) => {
         throw new Error("schedule snapshot missing scheduleSlots/scenes");
       }
       const enabled = snapshot.enabled !== false && snapshot.autonomyEnabled !== false && snapshot.proactiveEnabled !== false;
+      // Remove old finite-repeat children created by earlier life-scene releases.
+      // The unsuffixed schedule row is retained and reused; '+' rows are obsolete history.
+      const legacyJobsResponse = await rest(
+        `push_jobs?user_id=eq.${encodeURIComponent(row.user_id)}&trigger_key=like.${encodeURIComponent("life-scene:%:schedule+%")}&select=id`,
+      );
+      if (legacyJobsResponse.ok) {
+        const legacyJobs = await legacyJobsResponse.json() as Array<{ id: string }>;
+        for (const legacyJob of legacyJobs) {
+          await rest(`push_jobs?id=eq.${encodeURIComponent(legacyJob.id)}`, { method: "DELETE" });
+        }
+      }
       const activePairs = new Set<string>();
       const runtimeUpdates: RuntimeRow[] = [];
       const scenes = snapshot.scenes.filter(scene => Boolean(scene.id));
