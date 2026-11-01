@@ -8,6 +8,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pairs = [
   ["supabase/functions/ai-phone-push/index.ts", "public/ai-phone-push/gateway.mjs"],
   ["supabase/functions/push-generate/index.ts", "public/ai-phone-push/push-generate.mjs"],
+  ["supabase/functions/life-scheduler/index.ts", "public/ai-phone-push/life-scheduler.mjs"],
   ["supabase/functions/push-shortcut-result/index.ts", "public/ai-phone-push/push-shortcut-result.mjs"],
   ["supabase/functions/push-bridge/index.ts", "public/ai-phone-push/push-bridge.mjs"],
   ["supabase/functions/screen-chat/index.ts", "public/ai-phone-push/screen-chat.mjs"],
