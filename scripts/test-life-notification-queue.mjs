@@ -66,15 +66,13 @@ assert.equal(peekPendingLifeSceneReply(9999999), null, "exhausted items should s
 
 const stale = { replyId: "reply-stale", sceneId: "scene-gone", characterId: "char-gone", replyMode: "dialogue" };
 enqueuePendingLifeSceneReply(stale);
-failPendingLifeSceneReply("reply-stale", "scene no longer exists");
-assert.equal(peekPendingLifeSceneReply(), null, "terminal stale-scene replies must not block the queue");
-assert.equal(readFailedLifeSceneReplies().length, 2, "exhausted and terminal stale replies should remain visible for manual recovery");
+acknowledgePendingLifeSceneReply("reply-stale");
+assert.equal(peekPendingLifeSceneReply(), null, "stale-scene replies should be removed from the retry queue after a terminal diagnostic");
+assert.equal(readFailedLifeSceneReplies().length, 1, "only exhausted model failures should remain available for manual recovery");
 resetFailedLifeSceneReply("reply-4");
-assert.equal(readFailedLifeSceneReplies().length, 1, "manual retry should clear only the selected exhausted item");
+assert.equal(readFailedLifeSceneReplies().length, 0, "manual retry should clear the selected exhausted state");
 assert.equal(peekPendingLifeSceneReply().replyId, "reply-4", "manual retry should return the reply to the pending queue");
 acknowledgePendingLifeSceneReply("reply-4");
-acknowledgePendingLifeSceneReply("reply-stale");
-assert.equal(readFailedLifeSceneReplies().length, 0, "acknowledging terminal items should clear them from recovery history");
 for (let index = 0; index < 100; index++) {
   assert.equal(enqueuePendingLifeSceneReply({ replyId: "capacity-" + index, sceneId: "scene-capacity", characterId: "char-capacity", replyMode: "dialogue" }), true);
 }
