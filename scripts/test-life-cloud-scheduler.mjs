@@ -47,7 +47,7 @@ assert.match(generator, /weekly-generation/);
 assert.match(generator, /当前生活状态/);
 assert.match(generator, /lifeSceneMeta/);
 
-assert.match(schema, /values \('personal-cloud', 4, now\)/);
+assert.match(schema, /values\\s*\\('personal-cloud', 4, now\\)/);
 assert.match(schema, /create table if not exists public\.life_schedule_runtime/);
 assert.match(schema, /create table if not exists public\.life_schedule_diagnostics/);
 assert.match(schema, /ai-phone-life-schedule-evaluate/);
