@@ -100,20 +100,19 @@ export function captureScreenshot(timeoutMs = 8000): Promise<ScreenshotCaptureRe
     }
 
     let settled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let unsubscribe: (() => void) | undefined;
+    const cleanup: { timer?: ReturnType<typeof setTimeout>; unsubscribe?: () => void } = {};
 
     const finish = (result: ScreenshotCaptureResult) => {
       if (settled) return;
       settled = true;
-      if (timer) clearTimeout(timer);
-      unsubscribe?.();
+      if (cleanup.timer) clearTimeout(cleanup.timer);
+      cleanup.unsubscribe?.();
       resolve(result);
     };
 
     // 先订阅、再发起：原生回调可能很快，若反过来会漏掉事件。
     ensureShellOverlayListener();
-    unsubscribe = subscribeShellOverlayEvents((event) => {
+    cleanup.unsubscribe = subscribeShellOverlayEvents((event) => {
       if (event.action !== "screenshot") return;
       if (event.ok === false) {
         finish({ ok: false, reason: event.reason || "截屏失败" });
@@ -130,7 +129,7 @@ export function captureScreenshot(timeoutMs = 8000): Promise<ScreenshotCaptureRe
       }
     });
 
-    timer = setTimeout(() => {
+    cleanup.timer = setTimeout(() => {
       finish({ ok: false, reason: "截屏超时了，请确认无障碍服务还开着，然后重试" });
     }, Math.max(1000, timeoutMs));
 
