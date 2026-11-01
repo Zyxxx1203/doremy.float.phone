@@ -475,7 +475,7 @@ Deno.serve(async (req: Request) => {
           const patched = await patch.json().catch(() => []) as unknown[];
           if (patched.length) {
             summary.armed += 1;
-            runtimeUpdates[runtimeUpdates.length - 1].next_run_at = iso(executeAt + jitterInterval(snapshot));
+            runtimeUpdates[runtimeUpdates.length - 1].next_run_at = iso(executeAt);
           }
         }
       }
