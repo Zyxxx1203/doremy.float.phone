@@ -55,7 +55,8 @@ function readQueue(): PendingLifeSceneNotificationReply[] {
 
 function writeQueue(queue: PendingLifeSceneNotificationReply[]): void {
   if (typeof window === "undefined") return;
-  if (queue.length > LIMIT) throw new Error("生活现场通知回复队列已满，不能覆盖未处理的旧回复。");
+  // Existing queues may be larger than the current limit after migration. Let them drain;
+  // enqueuePendingLifeSceneReply alone enforces the cap for new work.
   localStorage.setItem(KEY, JSON.stringify(queue));
   try { localStorage.removeItem(LEGACY_KEY); } catch { /* migration cleanup is best effort */ }
   if (typeof window !== "undefined") {
