@@ -27,6 +27,8 @@ assert.match(scheduler, /nextOverlap/);
 assert.match(scheduler, /onlineChatCharacterId/);
 assert.match(scheduler, /life_push_subscription_missing/);
 assert.match(scheduler, /life_generation_failed/);
+assert.match(scheduler, /life_notification_delivery_failed/);
+assert.match(scheduler, /schedule_version/);
 
 assert.match(snapshot, /const scheduleSlots = state\\.schedules/);
 assert.match(snapshot, /actualLocationUntil/);
@@ -46,6 +48,9 @@ assert.match(generator, /currentLocationName/);
 assert.match(generator, /weekly-generation/);
 assert.match(generator, /当前生活状态/);
 assert.match(generator, /lifeSceneMeta/);
+assert.match(generator, /runtimeResponse/);
+assert.match(generator, /cloud schedule state is stale/);
+assert.match(generator, /!payload\\.merge\\?\\.lifeScene && idleRepeat/);
 
 assert.match(schema, /values\\s*\\('personal-cloud', 4, now\\)/);
 assert.match(schema, /create table if not exists public\.life_schedule_runtime/);
