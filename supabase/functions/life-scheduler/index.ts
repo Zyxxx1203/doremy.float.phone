@@ -320,13 +320,14 @@ Deno.serve(async (req: Request) => {
       const activePairs = new Set<string>();
       const runtimeUpdates: RuntimeRow[] = [];
       const scenes = snapshot.scenes.filter(scene => Boolean(scene.id));
+      const needsSubscription = scenes.some(scene => (scene.characterIds || []).length > 0);
       const subscriptionResponse = await rest("push_subscriptions?select=endpoint&limit=1");
       const hasSubscription = subscriptionResponse.ok && (await subscriptionResponse.json() as unknown[]).length > 0;
-      if (!hasSubscription && enabled) {
+      if (!hasSubscription && enabled && needsSubscription) {
         await writeDiagnostic(row.user_id, "life-scheduler:subscription", "warning", "life_push_subscription_missing",
           "云端生活日程已保存，但当前个人云没有可用的 Web Push / Android 壳订阅，角色主动消息无法投递。",
           "重新打开小手机并在设置中启用离线推送；Android 壳需要先成功建立常驻通知长连接。");
-      } else {
+      } else if (hasSubscription || !enabled || !needsSubscription) {
         await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent("life-scheduler:subscription")}`, {
           method: "PATCH", body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
         }).catch(() => undefined);
