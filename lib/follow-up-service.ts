@@ -1,7 +1,3 @@
-function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-}
-
 /**
  * Background follow-up service.
  * Runs independently of any React component — fires follow-ups
@@ -64,6 +60,10 @@ import {
     saveMenstrualPeriodCareTrigger,
     type MenstrualPeriodCareEvent,
 } from "./menstrual-storage";
+
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
 
 // ── Constants ──────────────────────────────────────────────
 const MAX_FOLLOW_UPS = 10;
