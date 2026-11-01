@@ -938,6 +938,60 @@ $CRON$)`);
       return json({ ok: true, saved, deleted: deleteIds.length });
     }
 
+    if (action === "life-schedule-snapshot" && request.method === "POST") {
+      // 独立个人云专用生活快照入口。不能复用 bridge-sync，否则仅同步日程时会把
+      // 已有现实桥规则/云配置覆盖为空数组。
+      const body = await request.json().catch(() => ({})) as {
+        snapshots?: Array<{ ruleId?: unknown; payload?: unknown }>;
+        deleteRuleIds?: unknown;
+      };
+      const config = await loadConfig();
+      if (!config.payload_key) throw new Error("生活日程快照加密密钥未初始化。");
+      const deleteIds = Array.isArray(body.deleteRuleIds)
+        ? body.deleteRuleIds.filter((id): id is string => typeof id === "string" && id.length > 0 && id.length < 100).slice(0, 30)
+        : [];
+      for (const ruleId of deleteIds) {
+        await readJson(await rest(
+          `push_bridge_snapshots?user_id=eq.${OWNER_ID}&rule_id=eq.${encodeURIComponent(ruleId)}`,
+          { method: "DELETE", headers: { Prefer: "return=representation" } },
+        ));
+      }
+      const snapshots = Array.isArray(body.snapshots) ? body.snapshots.slice(0, 5) : [];
+      let saved = 0;
+      for (const snapshot of snapshots) {
+        const ruleId = cleanText(snapshot?.ruleId, 100);
+        if (!ruleId || !snapshot?.payload || typeof snapshot.payload !== "object") continue;
+        const plainJson = JSON.stringify(snapshot.payload);
+        if (plainJson.length > MAX_PAYLOAD_BYTES) return json({ ok: false, error: "生活日程快照超过 900KB。" }, 413);
+        await readJson(await rest(
+          `push_bridge_snapshots?user_id=eq.${OWNER_ID}&rule_id=eq.${encodeURIComponent(ruleId)}`,
+          { method: "DELETE", headers: { Prefer: "return=representation" } },
+        ));
+        await readJson(await rest("push_bridge_snapshots", {
+          method: "POST",
+          headers: { Prefer: "return=representation" },
+          body: JSON.stringify([{
+            user_id: OWNER_ID, rule_id: ruleId,
+            payload: await encryptPayload(plainJson, config.payload_key),
+            updated_at: new Date().toISOString(),
+          }]),
+        }));
+        saved += 1;
+      }
+      return json({ ok: true, saved, deleted: deleteIds.length });
+    }
+
+    if (action === "life-schedule-diagnostics" && request.method === "GET") {
+      const diagnostics = await readJson<Array<{
+        id: string; severity: string; code: string; detail: string;
+        repair_hint: string; updated_at: string; resolved_at: string | null;
+      }>>(await rest(
+        `life_schedule_diagnostics?user_id=eq.${OWNER_ID}&resolved_at=is.null`
+        + "&select=id,severity,code,detail,repair_hint,updated_at,resolved_at&order=updated_at.desc&limit=20",
+      ));
+      return json({ ok: true, diagnostics });
+    }
+
     if (action === "shortcut-create" && request.method === "POST") {
       const body = await request.json().catch(() => ({})) as Record<string, unknown>;
       const actionId = cleanText(body.actionId, 100);
