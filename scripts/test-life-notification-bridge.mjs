@@ -13,6 +13,9 @@ assert.match(receiver, /fun acknowledgePendingReplies\(context: Context, idsJson
 assert.match(receiver, /synchronized\(queueLock\)/);
 assert.match(receiver, /prefs\.edit\(\)\.putString\(KEY_QUEUE, remaining\.toString\(\)\)\.commit\(\)/);
 assert.match(receiver, /fun consumePendingReplies\(context: Context\): String/);
+assert.match(receiver, /import androidx\.core\.app\.RemoteInput/);
+assert.match(receiver, /current\.length\(\) >= MAX_QUEUE/);
+assert.match(receiver, /refusing to drop an older reply/);
 
 assert.match(activity, /fun peekPendingReplies\(\): String = NotificationReplyReceiver\.peekPendingReplies/);
 assert.match(activity, /fun acknowledgePendingReplies\(idsJson: String\): Boolean/);
@@ -28,6 +31,8 @@ assert.ok(persistIndex >= 0 && ackIndex > persistIndex, "native reply must be ac
 assert.match(bridge, /result === "retry"/);
 assert.match(bridge, /notificationReplyFlushPromise/);
 assert.match(bridge, /flushPendingNotificationRepliesInternal/);
+assert.match(bridge, /life-scene-notification-queue-updated/);
+assert.match(bridge, /onLifeQueueUpdated/);
 assert.match(bridge, /未确认原生通知队列/);
 
 console.log("Life notification bridge durability checks passed.");
