@@ -1177,6 +1177,9 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
                 trustedShellUrl = url ?: trustedShellUrl
+                if (!secureBridgeDocumentStartInstalled && isTrustedShellPage()) {
+                    view.evaluateJavascript(secureBridgeBootstrapScript(), null)
+                }
                 recoveryOverlay?.let { rootContainer.removeView(it) }
                 recoveryOverlay = null
             }
