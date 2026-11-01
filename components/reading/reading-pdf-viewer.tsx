@@ -84,7 +84,7 @@ export function PdfPageRenderer({
     const [loading, setLoading] = useState(true);
     const [docVersion, setDocVersion] = useState(0);
     /** 上一次完成渲染的 pdf 文档对象：换书（docVersion 变化）时旧 canvas 一律不复用，防止串书 */
-    const renderedPdfRef = useRef<any | null>(null);
+    const renderedPdfRef = useRef<PdfJsDocument | null>(null);
     const scaleRef = useRef(1);
     const [scale, setScale] = useState(1);
     const renderedPagesRef = useRef(new Set<number>());
