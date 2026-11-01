@@ -1085,14 +1085,22 @@ Deno.serve(async (req: Request) => {
         const latestRuntimeResponse = await rest(
           `life_schedule_runtime?user_id=eq.${encodeURIComponent(job.user_id)}&scene_id=eq.${encodeURIComponent(lifeSceneMeta.sceneId)}&character_id=eq.${encodeURIComponent(lifeSceneMeta.characterId)}&select=schedule_version,state_version,updated_at&limit=1`,
         ).catch(() => null);
-        if (latestRuntimeResponse?.ok) {
-          const latestRuntimeRows = await latestRuntimeResponse.json().catch(() => []) as Array<{ schedule_version?: string; state_version?: number; updated_at?: string }>;
-          const latestRuntime = latestRuntimeRows[0];
-          if (latestRuntime && latestRuntime.schedule_version === latestSnapshot.scheduleVersion
-            && Number(latestRuntime.state_version) !== lifeRuntimeStateVersionAtStart) {
-            await deferUntil(latestNow + 60_000, "life schedule: actor activity/location changed during generation; retry with latest state");
-            return;
-          }
+        const latestRuntimeRows = latestRuntimeResponse?.ok
+          ? await latestRuntimeResponse.json().catch(() => []) as Array<{ schedule_version?: string; state_version?: number; updated_at?: string }>
+          : [];
+        const latestRuntime = latestRuntimeRows[0];
+        const latestRuntimeAt = Date.parse(latestRuntime?.updated_at || "");
+        if (!latestRuntime || !latestRuntimeResponse?.ok
+          || latestRuntime.schedule_version !== latestSnapshot.scheduleVersion
+          || !Number.isFinite(latestRuntimeAt) || latestNow - latestRuntimeAt > 2 * 60_000
+          || Number(latestRuntime.state_version) !== lifeRuntimeStateVersionAtStart) {
+          await writeLifeDiagnostic(
+            "life_schedule_runtime_changed_during_generation",
+            "生成期间无法确认角色最新云端运行态，或活动/地点版本已变化；本次生成结果已丢弃。",
+            "等待下一轮 life-scheduler 更新运行态后自动重试；若持续发生，检查 Cron 和 life_schedule_runtime 表权限。",
+          ).catch(() => undefined);
+          await deferUntil(latestNow + 60_000, "life schedule: latest authoritative runtime changed or unavailable during generation");
+          return;
         }
       }
     }
