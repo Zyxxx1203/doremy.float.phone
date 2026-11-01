@@ -168,7 +168,7 @@ function parseSourcePath(path?: string): SourcePath | { kind: "missing"; message
     if (sourceType !== "indexeddb" && sourceType !== "kv" && sourceType !== "localStorage") {
         return { kind: "missing", message: `资料源不存在：/${segments[0]}/${sourceType}` };
     }
-    if (segments.length === 2) return { kind: "sourceRoot", dataModule, sourceType };
+    if (segments.length === 2) return { kind: "sourceRoot", module: dataModule, sourceType };
 
     if (sourceType === "indexeddb") {
         const dbName = segments[2];
@@ -176,8 +176,8 @@ function parseSourcePath(path?: string): SourcePath | { kind: "missing"; message
             item.type === "indexeddb" && item.dbName === dbName
         );
         if (!source) return { kind: "missing", message: `IndexedDB 不在该模块中：${dbName}` };
-        if (segments.length === 3) return { kind: "indexeddb", dataModule, source, dbName };
-        return { kind: "indexeddbStore", dataModule, source, dbName, storeName: segments[3] };
+        if (segments.length === 3) return { kind: "indexeddb", module: dataModule, source, dbName };
+        return { kind: "indexeddbStore", module: dataModule, source, dbName, storeName: segments[3] };
     }
 
     const fileName = segments[2];
@@ -185,12 +185,12 @@ function parseSourcePath(path?: string): SourcePath | { kind: "missing"; message
     if (sourceType === "kv") {
         const source = dataModule.sources.find((item): item is KvSource => item.type === "kv" && matchesKey(key, item));
         if (!source) return { kind: "missing", message: `KV 文件不在该模块中：${key}` };
-        return { kind: "kvFile", dataModule, source, key };
+        return { kind: "kvFile", module: dataModule, source, key };
     }
 
     const source = dataModule.sources.find((item): item is LocalStorageSource => item.type === "localStorage" && matchesKey(key, item));
     if (!source) return { kind: "missing", message: `localStorage 文件不在该模块中：${key}` };
-    return { kind: "localStorageFile", dataModule, source, key };
+    return { kind: "localStorageFile", module: dataModule, source, key };
 }
 
 async function countStore(dbName: string, storeName: string): Promise<number> {
@@ -875,7 +875,7 @@ async function searchPath(path: SourcePath, input: LocalDataSearchInput, remaini
                         if (results.length >= remaining) break;
                         const storePath: Extract<SourcePath, { kind: "indexeddbStore" }> = {
                             kind: "indexeddbStore",
-                            dataModule,
+                            module: dataModule,
                             source,
                             dbName: source.dbName,
                             storeName,
