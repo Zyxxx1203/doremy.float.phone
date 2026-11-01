@@ -28,7 +28,7 @@ assert.match(scheduler, /onlineChatCharacterId/);
 assert.match(scheduler, /life_push_subscription_missing/);
 assert.match(scheduler, /life_generation_failed/);
 
-assert.match(snapshot, /scheduleSlots: state\.schedules/);
+assert.match(snapshot, /const scheduleSlots = state\\.schedules/);
 assert.match(snapshot, /actualLocationUntil/);
 assert.match(snapshot, /autonomyEnabled/);
 assert.match(snapshot, /proactiveIntervalMax/);
