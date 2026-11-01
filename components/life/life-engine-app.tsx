@@ -2122,7 +2122,10 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (!claimed) return;
     pendingNotificationSceneReplyRef.current = null;
     recordLifeDiagnostic({ source: "通知回复", event: "待处理回复已交给生活现场 AI", status: "info", detail: "已取得该回复的处理租约，开始生成角色回应。", meta: { replyId: pending.replyId, sceneId: pending.sceneId, characterId: pending.characterId, replyMode: pending.replyMode, attempt: claimed.attempts } });
-    const leaseHeartbeat = window.setInterval(() => renewPendingLifeSceneReply(pending.replyId), 30_000);
+    const leaseHeartbeat = window.setInterval(() => {
+      try { renewPendingLifeSceneReply(pending.replyId); }
+      catch (error) { recordLifeDiagnostic({ source: "通知回复", event: "回复处理租约续期失败", status: "warning", detail: error instanceof Error ? error.message : String(error), meta: { replyId: pending.replyId, sceneId: pending.sceneId } }); }
+    }, 30_000);
     void (async () => {
       try {
         const outcome = await sendSceneTurn(undefined, true, pending.replyId);
@@ -2135,6 +2138,11 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           refreshNotificationReplyQueue(value => value + 1);
           recordLifeDiagnostic({ source: "通知回复", event: outcome === "deferred" ? "回复处理延期" : "回复处理失败待重试", status: outcome === "deferred" ? "warning" : "error", detail: reason, meta: { replyId: pending.replyId, sceneId: pending.sceneId, attempt: claimed.attempts } });
         }
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        try { retryPendingLifeSceneReply(pending.replyId, detail); } catch { /* keep the processing lease; recovery will retry after it expires */ }
+        recordLifeDiagnostic({ source: "通知回复", event: "回复处理出现未捕获异常", status: "error", detail, meta: { replyId: pending.replyId, sceneId: pending.sceneId, attempt: claimed.attempts } });
+        refreshNotificationReplyQueue(value => value + 1);
       } finally { window.clearInterval(leaseHeartbeat); }
     })();
   }, [activeScene?.id, immersiveScene, selectedLocationId, selectedSpeakerId, busy, ready, sendSceneTurn, refreshNotificationReplyQueue]);
