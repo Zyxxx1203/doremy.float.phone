@@ -83,6 +83,7 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.activity:activity-ktx:1.9.0'
+    implementation 'androidx.webkit:webkit:1.12.1'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     // Health Connect：读睡眠。选它而不是各厂商自己的运动 App SDK，
     // 是因为它由系统统一汇聚（华为/小米/三星健康都往里写），接一次就够，
