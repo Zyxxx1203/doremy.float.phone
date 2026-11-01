@@ -34,6 +34,10 @@ function writeQueue(queue: PendingLifeSceneNotificationReply[]): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(KEY, JSON.stringify(queue.slice(-LIMIT)));
   try { localStorage.removeItem(LEGACY_KEY); } catch { /* migration cleanup is best effort */ }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("life-scene-notification-queue-updated"));
+    window.dispatchEvent(new Event("life-diagnostics-updated"));
+  }
 }
 
 export function enqueuePendingLifeSceneReply(item: PendingLifeSceneNotificationReply): boolean {
