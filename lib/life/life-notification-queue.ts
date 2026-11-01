@@ -12,7 +12,7 @@ export type PendingLifeSceneNotificationReply = {
 
 const KEY = "life-scene-notification-reply-queue-v2";
 const LEGACY_KEY = "life-scene-notification-reply-queue-v1";
-const LIMIT = 20;
+const LIMIT = 100;
 const PROCESSING_LEASE_MS = 90_000;
 const MAX_ATTEMPTS = 5;
 
@@ -24,7 +24,7 @@ function readQueue(): PendingLifeSceneNotificationReply[] {
     return raw.filter((item): item is PendingLifeSceneNotificationReply =>
       !!item && typeof item.replyId === "string" && typeof item.sceneId === "string"
       && typeof item.characterId === "string" && (item.replyMode === "action" || item.replyMode === "dialogue"),
-    ).slice(0, LIMIT).map(item => ({ ...item, status: item.status || "pending", attempts: Number(item.attempts) || 0 }));
+    ).map(item => ({ ...item, status: item.status || "pending", attempts: Number(item.attempts) || 0 }));
   } catch {
     return [];
   }
@@ -32,7 +32,8 @@ function readQueue(): PendingLifeSceneNotificationReply[] {
 
 function writeQueue(queue: PendingLifeSceneNotificationReply[]): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(KEY, JSON.stringify(queue.slice(-LIMIT)));
+  if (queue.length > LIMIT) throw new Error("生活现场通知回复队列已满，不能覆盖未处理的旧回复。");
+  localStorage.setItem(KEY, JSON.stringify(queue));
   try { localStorage.removeItem(LEGACY_KEY); } catch { /* migration cleanup is best effort */ }
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event("life-scene-notification-queue-updated"));
@@ -44,6 +45,7 @@ export function enqueuePendingLifeSceneReply(item: PendingLifeSceneNotificationR
   if (typeof window === "undefined" || !item.replyId || !item.sceneId || !item.characterId) return false;
   const queue = readQueue();
   if (queue.some(existing => existing.replyId === item.replyId)) return true;
+  if (queue.length >= LIMIT) return false;
   try {
     writeQueue([...queue, { ...item, status: "pending", attempts: 0 }]);
     return true;
