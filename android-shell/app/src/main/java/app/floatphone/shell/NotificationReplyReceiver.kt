@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -100,6 +101,7 @@ class NotificationReplyReceiver : BroadcastReceiver() {
         if (text.isEmpty()) return
         if (!enqueue(context, sessionId, text, sceneId, replyMode)) {
             Log.e(TAG, "Notification reply was not queued; refusing to report successful delivery.")
+            Toast.makeText(context, "回复暂时未保存，请打开小手机后重试。", Toast.LENGTH_LONG).show()
             return
         }
         if (ShellBus.isWebAlive()) {
