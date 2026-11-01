@@ -2113,7 +2113,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
             <summary className="cursor-pointer text-[11px] font-medium">本地转写服务部署（电脑需要运行）</summary>
             <ol className="mt-2 list-decimal space-y-2 pl-4 text-[11px] leading-5 text-[#8b7665]">
               <li>在电脑上安装 Python 3.10+ 和 FFmpeg；从项目仓库根目录运行 <code>pip install -r tools/video-transcriber/requirements.txt</code>。</li>
-              <li>Windows PowerShell 中运行：<code>$env:VIDEO_TRANSCRIBER_TOKEN = (python -c "import secrets; print(secrets.token_urlsafe(32))")</code>，再设置 <code>$env:VIDEO_TRANSCRIBER_ALLOWED_ORIGINS = "你当前小手机网页的完整 https 地址"</code>。</li>
+              <li>Windows PowerShell 中运行：<code>$env:VIDEO_TRANSCRIBER_TOKEN = (python -c &quot;import secrets; print(secrets.token_urlsafe(32))&quot;)</code>，再设置 <code>$env:VIDEO_TRANSCRIBER_ALLOWED_ORIGINS = &quot;你当前小手机网页的完整 https 地址&quot;</code>。</li>
               <li>启动服务：<code>python tools/video-transcriber/server.py --host 127.0.0.1 --port 8766</code>。电脑需要保持开机；首次转写会下载语音模型，之后复用缓存。手机不能把电脑的 localhost 当成电脑地址。</li>
               <li>如果手机需要跨网络访问，可选用 Cloudflare Tunnel：在电脑安装 cloudflared 后，可先用临时隧道测试：<code>cloudflared tunnel --url http://localhost:8766</code>，将终端显示的 <code>https://…trycloudflare.com</code> 地址填入下方“服务地址”（应用会自动补上 <code>/transcribe</code>）。要长期使用再配置命名隧道。隧道只负责安全转发，不替你运行转写；电脑关机或服务停止后就不可用。不要公开分享隧道地址或访问令牌。</li>
               <li>把服务地址和令牌填入本页，粘贴视频链接后点“解析链接并生成脚本”。若平台限制下载、需要登录态或触发风控，转写可能失败；可尝试导入字幕文件，应用不会假装已经看懂未取得的内容。</li>
