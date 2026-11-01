@@ -13,7 +13,7 @@ const PUSH_SUBSCRIPTION_GATE_KEY = "push_account_subscribed_v1";
 export const PERSONAL_PUSH_GATEWAY_SLUG = "ai-phone-push";
 export const PERSONAL_PUSH_GENERATE_SLUG = "push-generate";
 export const PERSONAL_PUSH_SW_SCOPE = "/personal-push/";
-export const PERSONAL_PUSH_SCHEMA_VERSION = 3;
+export const PERSONAL_PUSH_SCHEMA_VERSION = 4;
 
 registerKvMigration(PERSONAL_PUSH_STATE_KEY);
 
@@ -269,19 +269,20 @@ export async function deployPersonalPushCloud(accessToken: string): Promise<Pers
   const projectRef = projectRefFromUrl(url);
   if (!projectRef) throw new Error("无法从 Supabase URL 解析项目标识。");
 
-  const [gatewayRes, generateRes, resultRes, bridgeRes, screenRes, schemaRes] = await Promise.all([
+  const [gatewayRes, generateRes, lifeSchedulerRes, resultRes, bridgeRes, screenRes, schemaRes] = await Promise.all([
     fetch("/ai-phone-push/gateway.mjs", { cache: "no-store" }),
     fetch("/ai-phone-push/push-generate.mjs", { cache: "no-store" }),
+    fetch("/ai-phone-push/life-scheduler.mjs", { cache: "no-store" }),
     fetch("/ai-phone-push/push-shortcut-result.mjs", { cache: "no-store" }),
     fetch("/ai-phone-push/push-bridge.mjs", { cache: "no-store" }),
     fetch("/ai-phone-push/screen-chat.mjs", { cache: "no-store" }),
     fetch("/ai-phone-push/schema.sql", { cache: "no-store" }),
   ]);
-  if (!gatewayRes.ok || !generateRes.ok || !resultRes.ok || !bridgeRes.ok || !screenRes.ok || !schemaRes.ok) {
+  if (!gatewayRes.ok || !generateRes.ok || !lifeSchedulerRes.ok || !resultRes.ok || !bridgeRes.ok || !screenRes.ok || !schemaRes.ok) {
     throw new Error("获取离线推送部署包失败，请刷新页面后重试。");
   }
-  const [gatewayCode, generateCode, resultCode, bridgeCode, screenChatCode, schemaSql] = await Promise.all([
-    gatewayRes.text(), generateRes.text(), resultRes.text(), bridgeRes.text(), screenRes.text(), schemaRes.text(),
+  const [gatewayCode, generateCode, lifeSchedulerCode, resultCode, bridgeCode, screenChatCode, schemaSql] = await Promise.all([
+    gatewayRes.text(), generateRes.text(), lifeSchedulerRes.text(), resultRes.text(), bridgeRes.text(), screenRes.text(), schemaRes.text(),
   ]);
 
   let response: Response;
@@ -289,7 +290,7 @@ export async function deployPersonalPushCloud(accessToken: string): Promise<Pers
     response = await fetch("/api/push/deploy-personal", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectRef, token, gatewayCode, generateCode, resultCode, bridgeCode, screenChatCode, schemaSql }),
+      body: JSON.stringify({ projectRef, token, gatewayCode, generateCode, lifeSchedulerCode, resultCode, bridgeCode, screenChatCode, schemaSql }),
     });
   } catch {
     throw new Error("无法访问站点部署接口，请检查网络后重试。");
