@@ -25,6 +25,46 @@ type WidgetRendererProps = {
   onConfigChange?: (widgetId: string, config: Record<string, unknown>) => void;
 };
 
+type WidgetComponentProps = {
+  config?: Record<string, unknown>;
+  widgetId: string;
+  onConfigChange?: WidgetRendererProps["onConfigChange"];
+  preview?: boolean;
+};
+
+type LifeWidgetState = ReturnType<typeof loadVirtualLifeState>;
+type LifeWidgetActor = LifeWidgetState["actorStates"][number];
+type LifeWidgetScene = LifeWidgetState["scenes"][number];
+type LifeWidgetSchedule = LifeWidgetState["schedules"][number];
+type LifeWidgetTimelineEntry = NonNullable<LifeWidgetState["timeline"]>[number];
+type LifeWidgetCharacter = ReturnType<typeof loadCharacters>[number];
+
+type LifeNowWidgetSnapshot = {
+  now: Date;
+  current: ReturnType<typeof getCurrentActorSchedule>;
+  actual?: LifeWidgetActor;
+  scene?: LifeWidgetScene;
+  enabled: boolean;
+};
+
+type LifeTimelineWidgetSnapshot = {
+  now: Date;
+  current: ReturnType<typeof getCurrentActorSchedule>;
+  next?: LifeWidgetSchedule;
+  actual?: LifeWidgetActor;
+  latestEvent?: LifeWidgetTimelineEntry;
+  settings: LifeWidgetState["settings"];
+};
+
+type LifeCharacterWidgetSnapshot = {
+  selected: LifeWidgetCharacter;
+  now: Date;
+  current: ReturnType<typeof getCurrentActorSchedule>;
+  next?: LifeWidgetSchedule;
+  actual?: LifeWidgetActor;
+  location: string;
+};
+
 export function WidgetRenderer({ widget, preview, onConfigChange }: WidgetRendererProps) {
   const [rows, cols] = WIDGET_SIZE_CELLS[widget.size];
   const sizeClass = `widget-${widget.size}`;
@@ -96,7 +136,7 @@ function WidgetContent({
     case "lifeTimeline":
       return <LifeTimelineWidget config={config} widgetId={widgetId} onConfigChange={onConfigChange} preview={preview} />;
     case "lifeNow":
-      return <LifeNowWidget config={config} preview={preview} />;
+      return <LifeNowWidget config={config} widgetId={widgetId} preview={preview} />;
     case "lifeCharacter":
       return <LifeCharacterWidget config={config} widgetId={widgetId} onConfigChange={onConfigChange} preview={preview} />;
     case "calendar":
@@ -172,17 +212,17 @@ function WidgetContent({
 // ----------------------------------------------------
 //   Virtual Life Widgets
 // ----------------------------------------------------
-function LifeNowWidget({ config }: any) {
-  const [snapshot, setSnapshot] = useState<any>(null);
+function LifeNowWidget({ config }: WidgetComponentProps) {
+  const [snapshot, setSnapshot] = useState<LifeNowWidgetSnapshot | null>(null);
   useEffect(() => {
     let alive = true;
     const refresh = () => {
       const state = loadVirtualLifeState();
       const now = resolveActorLifeNow(getActorClock(state, "player", "player"));
       const current = getCurrentActorSchedule(state, "player", "player", now);
-      const actual = state.actorStates.find((actor: any) => actor.ownerType === "player" && actor.ownerId === "player");
-      const belongsToPlayer = (item: any) => item.participants?.some((participant: any) => participant.ownerType === "player" && participant.ownerId === "player");
-      const scene = state.scenes.find((item: any) => item.status === "active" && belongsToPlayer(item)) ?? state.scenes.filter((item: any) => item.status === "paused" && belongsToPlayer(item)).sort((a: any, b: any) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))[0];
+      const actual = state.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === "player");
+      const belongsToPlayer = (item: LifeWidgetScene) => item.participants?.some(participant => participant.ownerType === "player" && participant.ownerId === "player");
+      const scene = state.scenes.find(item => item.status === "active" && belongsToPlayer(item)) ?? state.scenes.filter(item => item.status === "paused" && belongsToPlayer(item)).sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))[0];
       if (alive) setSnapshot({ now, current, actual, scene, enabled: state.settings.enabled });
     };
     refresh();
@@ -200,8 +240,8 @@ function LifeNowWidget({ config }: any) {
   </div>;
 }
 
-function LifeTimelineWidget({ config, widgetId, onConfigChange, preview }: any) {
-  const [snapshot, setSnapshot] = useState<any>(null);
+function LifeTimelineWidget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
+  const [snapshot, setSnapshot] = useState<LifeTimelineWidgetSnapshot | null>(null);
   const [showNext, setShowNext] = useState(true);
   useEffect(() => {
     let alive = true;
@@ -248,9 +288,9 @@ function LifeTimelineWidget({ config, widgetId, onConfigChange, preview }: any) 
   </div>;
 }
 
-function LifeCharacterWidget({ config, widgetId, onConfigChange, preview }: any) {
-  const [characters, setCharacters] = useState<any[]>([]);
-  const [snapshot, setSnapshot] = useState<any>(null);
+function LifeCharacterWidget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
+  const [characters, setCharacters] = useState<LifeWidgetCharacter[]>([]);
+  const [snapshot, setSnapshot] = useState<LifeCharacterWidgetSnapshot | null>(null);
   useEffect(() => {
     let alive = true;
     const refresh = () => {
@@ -301,7 +341,7 @@ function LifeCharacterWidget({ config, widgetId, onConfigChange, preview }: any)
 // ----------------------------------------------------
 //   Camera Frame Widget (Freestyle)
 // ----------------------------------------------------
-function CameraFrameWidget({ config, widgetId, onConfigChange, preview }: any) {
+function CameraFrameWidget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const bgUrl = typeof config?.avatarUrl === "string" ? config.avatarUrl : "";
   const { triggerUpload, input } = useImageUpload(widgetId, "avatarUrl", onConfigChange);
   
@@ -327,7 +367,7 @@ function CameraFrameWidget({ config, widgetId, onConfigChange, preview }: any) {
 // ----------------------------------------------------
 //   Color Picker Frame Widget (Freestyle)
 // ----------------------------------------------------
-function ColorPickerFrameWidget({ config, widgetId, onConfigChange, preview }: any) {
+function ColorPickerFrameWidget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const bgUrl = typeof config?.avatarUrl === "string" ? config.avatarUrl : "";
   const { triggerUpload, input } = useImageUpload(widgetId, "avatarUrl", onConfigChange);
   
@@ -356,7 +396,7 @@ function ColorPickerFrameWidget({ config, widgetId, onConfigChange, preview }: a
 // ----------------------------------------------------
 //   Frame 18 Widget (Freestyle)
 // ----------------------------------------------------
-function FreestyleFrame18Widget({ config, widgetId, onConfigChange, preview }: any) {
+function FreestyleFrame18Widget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   return (
     <div 
       className="wg-frame18" 
@@ -376,7 +416,7 @@ function FreestyleFrame18Widget({ config, widgetId, onConfigChange, preview }: a
 // ----------------------------------------------------
 //   Frame 4 Widget (Freestyle)
 // ----------------------------------------------------
-function FreestyleFrame4Widget({ config, widgetId, onConfigChange, preview }: any) {
+function FreestyleFrame4Widget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const bgUrl = typeof config?.avatarUrl === "string" ? config.avatarUrl : "";
   const { triggerUpload, input } = useImageUpload(widgetId, "avatarUrl", onConfigChange);
   
@@ -405,7 +445,7 @@ function FreestyleFrame4Widget({ config, widgetId, onConfigChange, preview }: an
 // ----------------------------------------------------
 //   Frame 31 Widget (Freestyle)
 // ----------------------------------------------------
-function FreestyleFrame31Widget({ config, widgetId, onConfigChange, preview }: any) {
+function FreestyleFrame31Widget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const bgUrl = typeof config?.avatarUrl === "string" ? config.avatarUrl : "";
   const { triggerUpload, input } = useImageUpload(widgetId, "avatarUrl", onConfigChange);
   
@@ -434,7 +474,7 @@ function FreestyleFrame31Widget({ config, widgetId, onConfigChange, preview }: a
 // ----------------------------------------------------
 //   Frame 33 Widget (Freestyle)
 // ----------------------------------------------------
-function FreestyleFrame33Widget({ config, widgetId, onConfigChange, preview }: any) {
+function FreestyleFrame33Widget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const bgUrl = typeof config?.avatarUrl === "string" ? config.avatarUrl : "";
   const { triggerUpload, input } = useImageUpload(widgetId, "avatarUrl", onConfigChange);
   
@@ -488,7 +528,7 @@ function FreestyleFrame36Widget(_props: {
 // ----------------------------------------------------
 //   Frame 49 Widget (Freestyle)
 // ----------------------------------------------------
-function FreestyleFrame49Widget({ config, widgetId, onConfigChange, preview }: any) {
+function FreestyleFrame49Widget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const bgUrl = typeof config?.avatarUrl === "string" ? config.avatarUrl : "";
   const { triggerUpload, input } = useImageUpload(widgetId, "avatarUrl", onConfigChange);
   
@@ -517,7 +557,7 @@ function FreestyleFrame49Widget({ config, widgetId, onConfigChange, preview }: a
 // ----------------------------------------------------
 //   Frame 54 Widget (Freestyle)
 // ----------------------------------------------------
-function FreestyleFrame54Widget({ config, widgetId, onConfigChange, preview }: any) {
+function FreestyleFrame54Widget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const bgUrl = typeof config?.avatarUrl === "string" ? config.avatarUrl : "";
   const { triggerUpload, input } = useImageUpload(widgetId, "avatarUrl", onConfigChange);
   
@@ -546,7 +586,7 @@ function FreestyleFrame54Widget({ config, widgetId, onConfigChange, preview }: a
 // ----------------------------------------------------
 //   Frame 68 Widget (Freestyle)
 // ----------------------------------------------------
-function FreestyleFrame68Widget({ config, widgetId, onConfigChange, preview }: any) {
+function FreestyleFrame68Widget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   return (
     <div className="wg-frame68">
       <div className="wg-f68-wrapper">
@@ -563,7 +603,7 @@ function FreestyleFrame68Widget({ config, widgetId, onConfigChange, preview }: a
 // ----------------------------------------------------
 //   Frame 72 Widget (Freestyle 4×4)
 // ----------------------------------------------------
-function FreestyleFrame72Widget({ config, widgetId, onConfigChange, preview }: any) {
+function FreestyleFrame72Widget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const img1 = typeof config?.img1 === "string" ? config.img1 : "";
   const img2 = typeof config?.img2 === "string" ? config.img2 : "";
   const img3 = typeof config?.img3 === "string" ? config.img3 : "";
@@ -619,7 +659,7 @@ function FreestyleFrame72Widget({ config, widgetId, onConfigChange, preview }: a
 // ----------------------------------------------------
 //   Frame 88 Widget (Freestyle 2x4)
 // ----------------------------------------------------
-function FreestyleFrame88Widget({ config, widgetId, onConfigChange, preview }: any) {
+function FreestyleFrame88Widget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const bgUrl = typeof config?.avatarUrl === "string" ? config.avatarUrl : "";
   const { triggerUpload, input } = useImageUpload(widgetId, "avatarUrl", onConfigChange);
   
@@ -648,7 +688,7 @@ function FreestyleFrame88Widget({ config, widgetId, onConfigChange, preview }: a
 // ----------------------------------------------------
 //   Frame 90 Widget (Freestyle 2x4)
 // ----------------------------------------------------
-function FreestyleFrame90Widget({ config, widgetId, onConfigChange, preview }: any) {
+function FreestyleFrame90Widget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const img1 = typeof config?.img1 === "string" ? config.img1 : "";
   const img2 = typeof config?.img2 === "string" ? config.img2 : "";
   const img3 = typeof config?.img3 === "string" ? config.img3 : "";
@@ -711,7 +751,7 @@ const PROFILE_CARD_DEFAULTS = {
   location: "雲の上",
 };
 
-function ProfileCardWidget({ config, widgetId, onConfigChange, preview }: any) {
+function ProfileCardWidget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const coverUrl = typeof config?.coverUrl === "string" ? config.coverUrl : "";
   const cardUrl = typeof config?.cardUrl === "string" ? config.cardUrl : "";
   const avatarUrl = typeof config?.avatarUrl === "string" ? config.avatarUrl : "";
@@ -852,7 +892,7 @@ function ProfileCardWidget({ config, widgetId, onConfigChange, preview }: any) {
 //   My Space Personal Profile Widget (2×2)
 // ----------------------------------------------------
 
-function MySpaceWidget({ config, widgetId, onConfigChange, preview }: any) {
+function MySpaceWidget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const avatarUrl = typeof config?.avatarUrl === "string" ? config.avatarUrl : undefined;
   const username = typeof config?.username === "string" ? config.username : "OLD ORANGE";
   
@@ -943,7 +983,7 @@ function MySpaceWidget({ config, widgetId, onConfigChange, preview }: any) {
 //   Social Post Widget (4×4)
 // ----------------------------------------------------
 
-function SocialPostWidget({ config, widgetId, onConfigChange, preview }: any) {
+function SocialPostWidget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const avatarUrl = typeof config?.avatarUrl === "string" ? config.avatarUrl : undefined;
   const postImageUrl = typeof config?.postImageUrl === "string" ? config.postImageUrl : undefined;
   const username = typeof config?.username === "string" ? config.username : "YOUR NAME";
@@ -1793,7 +1833,7 @@ function MascotWidget() {
    🌸 KAWAII AESTHETIC SERIES 
    ══════════════════════════════════════════ */
 
-function KawaiiMusicPlayerWidget({ config, widgetId, onConfigChange, preview }: any) {
+function KawaiiMusicPlayerWidget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const albumUrl = typeof config?.albumUrl === "string" ? config.albumUrl : undefined;
   const { triggerUpload, input } = useImageUpload(widgetId, "albumUrl", onConfigChange);
   return (
@@ -1942,7 +1982,7 @@ function IosMenuWidget() {
 //   Couple Chat Widget (2×4)
 // ----------------------------------------------------
 
-function CoupleChatWidget({ config, widgetId, onConfigChange, preview }: any) {
+function CoupleChatWidget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const { triggerUpload: triggerLeft, input: leftInput } = useImageUpload(widgetId, "leftAvatar", onConfigChange);
   const { triggerUpload: triggerRight, input: rightInput } = useImageUpload(widgetId, "rightAvatar", onConfigChange);
 
@@ -2035,7 +2075,7 @@ function CoupleChatWidget({ config, widgetId, onConfigChange, preview }: any) {
 // ----------------------------------------------------
 //   Mood Pill Widget (4x1)
 // ----------------------------------------------------
-function MoodPillWidget({ config, widgetId, onConfigChange, preview }: any) {
+function MoodPillWidget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const defaultText = ".*I ENJOY LIFE NOW ☁ 63°.*";
   const text = typeof config?.text === "string" ? config.text : defaultText;
   
@@ -2106,7 +2146,7 @@ function VinylRecordWidget() {
 // ----------------------------------------------------
 //   Receipt Widget (2x4)
 // ----------------------------------------------------
-function ReceiptWidget({ config, widgetId, onConfigChange, preview }: any) {
+function ReceiptWidget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const defaultItems = [
     { title: "MORNING COFFEE", qty: 1, price: "4.50" },
     { title: "AFTERNOON NAP", qty: 1, price: "0.00" },
@@ -2147,7 +2187,7 @@ function ReceiptWidget({ config, widgetId, onConfigChange, preview }: any) {
 // ----------------------------------------------------
 //   Ticket Stub Widget (2x4)
 // ----------------------------------------------------
-function TicketStubWidget({ config, widgetId, onConfigChange, preview }: any) {
+function TicketStubWidget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const posterUrl = typeof config?.posterUrl === "string" ? config.posterUrl : "";
   const { triggerUpload, input } = useImageUpload(widgetId, "posterUrl", onConfigChange);
 
@@ -2196,7 +2236,7 @@ function TicketStubWidget({ config, widgetId, onConfigChange, preview }: any) {
 // ----------------------------------------------------
 //   Postcard Widget (4x4)
 // ----------------------------------------------------
-function PostcardWidget({ config, widgetId, onConfigChange, preview }: any) {
+function PostcardWidget({ config, widgetId, onConfigChange, preview }: WidgetComponentProps) {
   const bgUrl = typeof config?.avatarUrl === "string" ? config.avatarUrl : "";
   const { triggerUpload, input } = useImageUpload(widgetId, "avatarUrl", onConfigChange);
   
