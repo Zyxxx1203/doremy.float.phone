@@ -28,6 +28,7 @@ assert.match(scheduler, /onlineChatCharacterId/);
 assert.match(scheduler, /life_push_subscription_missing/);
 assert.match(scheduler, /life_generation_failed/);
 assert.match(scheduler, /life_notification_delivery_failed/);
+assert.match(scheduler, /life_generation_daily_cap/);
 assert.match(scheduler, /sendWebPushRaw/);
 assert.match(scheduler, /生活系统 · 云端诊断/);
 assert.match(scheduler, /schedule_version/);
@@ -53,6 +54,7 @@ assert.match(generator, /lifeSceneMeta/);
 assert.match(generator, /runtimeResponse/);
 assert.match(generator, /cloud schedule state is stale/);
 assert.match(generator, /life_schedule_snapshot_stale/);
+assert.match(generator, /sendWebPushRaw/);
 assert.match(generator, /!payload\\.merge\\?\\.lifeScene && idleRepeat/);
 assert.match(generator, /autonomous life actions disabled by latest cloud settings/);
 
