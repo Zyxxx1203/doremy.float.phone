@@ -55,7 +55,7 @@ export function LifeDiagnosticsPanel() {
         source: "云端生活引擎",
         event: item.code || "日程诊断",
         status: item.severity === "warning" ? "warning" : item.severity === "info" ? "info" : "error",
-        detail: [item.detail, item.repair_hint ? "修复建议：" + item.repair_hint : ""].filter(Boolean).join("\\n"),
+        detail: [item.detail, item.repair_hint ? "修复建议：" + item.repair_hint : ""].filter(Boolean).join("\n"),
         meta: { cloudDiagnosticId: item.id },
       })));
     } catch {
