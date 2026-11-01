@@ -191,7 +191,9 @@ async function flushPendingNotificationRepliesInternal(): Promise<number> {
     }
 
     if (durableBridge && completedIds.length > 0) {
-        const acknowledged = api?.acknowledgePendingReplies?.(JSON.stringify(completedIds)) === true;
+        let acknowledged = false;
+        try { acknowledged = api?.acknowledgePendingReplies?.(JSON.stringify(completedIds)) === true; }
+        catch (error) { recordLifeDiagnostic({ source: "通知回复", event: "原生队列确认异常", status: "warning", detail: error instanceof Error ? error.message : String(error), meta: { replyIds: completedIds } }); }
         if (!acknowledged) recordLifeDiagnostic({ source: "通知回复", event: "原生队列确认失败", status: "warning", detail: "网页侧数据已持久化，但原生队列仍保留；稳定消息 ID 会阻止重复写入。", meta: { replyIds: completedIds } });
         else recordLifeDiagnostic({ source: "通知回复", event: "原生通知队列已确认", status: "ok", detail: "仅确认已成功写入本机数据库/生活队列的回复。", meta: { replyIds: completedIds } });
     }
