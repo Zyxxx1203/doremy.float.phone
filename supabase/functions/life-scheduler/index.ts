@@ -541,6 +541,10 @@ Deno.serve(async (req: Request) => {
         method: "PATCH",
         body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
       }).catch(() => undefined);
+      await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent("life-scheduler:" + row.user_id + ":stale")}`, {
+        method: "PATCH",
+        body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+      }).catch(() => undefined);
     } catch (error) {
       summary.errors += 1;
       const detail = (error instanceof Error ? error.message : String(error)).slice(0, 500);
