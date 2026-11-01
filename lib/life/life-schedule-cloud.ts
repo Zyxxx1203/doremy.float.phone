@@ -6,6 +6,7 @@ import { resolveActorLocation } from "./life-runtime";
 import { recordLifeDiagnostic } from "./life-diagnostics";
 import { readLifeSceneForegroundLease } from "./life-scheduler-coordinator";
 
+const PLAYER_ID = "player";
 const SNAPSHOT_RULE_ID = "life-schedule";
 const MAX_SNAPSHOT_AGE_MS = 5 * 60_000;
 let lastJson = "";
