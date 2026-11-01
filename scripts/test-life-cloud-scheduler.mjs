@@ -24,6 +24,8 @@ assert.doesNotMatch(scheduler, /push_jobs",\s*\{\s*method:\s*"POST"/);
 assert.match(scheduler, /weekly-generation/);
 assert.match(scheduler, /projectedWeeklySlots/);
 assert.match(scheduler, /nextOverlap/);
+assert.match(scheduler, /expiredOverride/);
+assert.match(scheduler, /next_run_at = iso\(executeAt\)/);
 assert.match(scheduler, /onlineChatCharacterId/);
 assert.match(scheduler, /life_push_subscription_missing/);
 assert.match(scheduler, /life_generation_failed/);
