@@ -51,6 +51,7 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> 
         endAt: slot.endAt,
         title: slot.title,
         kind: slot.kind,
+        source: slot.source,
         plannedLocationId: slot.plannedLocationId ?? "",
         plannedLocationName: slot.plannedLocationName ?? "",
       }));
