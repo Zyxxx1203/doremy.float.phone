@@ -108,7 +108,7 @@ export function DesktopCustomizer({ draft, onDraftChange, onApply, onClose }: De
     onDraftChange(next)
   }
 
-  const handlePropUpdate = (key: keyof ThemeProfile, value: ThemeProfile[keyof ThemeProfile]) => {
+  const handlePropUpdate = <K extends keyof ThemeProfile,>(key: K, value: ThemeProfile[K]) => {
     const next = { ...draft, [key]: value } as ThemeProfile;
     onDraftChange(next);
   }
