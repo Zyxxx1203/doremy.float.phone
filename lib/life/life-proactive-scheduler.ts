@@ -99,6 +99,30 @@ async function runOnce(): Promise<void> {
       recordLifeDiagnostic({ source: "主动调度", event: "快照未同步，暂停挂载", status: "error", detail: "无法确认最新玩家/角色地点，本轮不创建离线主动任务。" });
       return;
     }
+    // Remove local ownership markers for participants/scenes that no longer exist.
+    // This lets a character re-entering a scene acquire a fresh durable cloud row.
+    const activeScenePairs = new Set(state.scenes
+      .filter(scene => scene.status === "active")
+      .flatMap(scene => scene.participants
+        .filter(participant => participant.ownerType === "character" && participant.activity !== "离开")
+        .map(participant => scene.id + ":" + participant.ownerId)));
+    const staleMarkers: string[] = [];
+    try {
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (!key?.startsWith(ARM_META_PREFIX)) continue;
+        const pairKey = key.slice(ARM_META_PREFIX.length);
+        if (!activeScenePairs.has(pairKey)) staleMarkers.push(pairKey);
+      }
+    } catch { /* best effort */ }
+    for (const pairKey of staleMarkers) {
+      try { localStorage.removeItem(ARM_META_PREFIX + pairKey); } catch { /* best effort */ }
+      const splitAt = pairKey.lastIndexOf(":");
+      if (splitAt > 0) {
+        await cancelBailoutPrefix("life-scene:" + pairKey.slice(0, splitAt) + ":" + pairKey.slice(splitAt + 1));
+      }
+      armedCache.delete(pairKey);
+    }
     // Create only the initial durable row. The cloud evaluator reuses that same row
     // after each turn; foreground/chat leases defer it without blocking either interface.
     const player = playerLocation(state);
