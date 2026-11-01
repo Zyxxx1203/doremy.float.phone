@@ -202,9 +202,14 @@ function nextOverlap(snapshot: Snapshot, characterId: string, now: number): numb
   const boundaries = [
     ...allScheduleSlots(snapshot, "player", "player", now),
     ...allScheduleSlots(snapshot, "character", characterId, now),
-  ].flatMap(slot => [parseTime(slot.startAt), parseTime(slot.endAt)])
+  ].flatMap(slot => [parseTime(slot.startAt), parseTime(slot.endAt)]);
+  boundaries.push(
+    parseTime(actor(snapshot, "player", "player")?.actualLocationUntil),
+    parseTime(actor(snapshot, "character", characterId)?.actualLocationUntil),
+  );
+  boundaries.splice(0, boundaries.length, ...boundaries
     .filter(value => Number.isFinite(value) && value > now)
-    .sort((a, b) => a - b);
+    .sort((a, b) => a - b));
   for (const boundary of boundaries) {
     const at = boundary + 1000;
     const player = locationAt(snapshot, "player", "player", at);
@@ -375,6 +380,7 @@ Deno.serve(async (req: Request) => {
             : playerSleeping || characterSleeping ? iso(awakeAt)
             : chatActive ? iso(chatUntil + 15_000)
             : !samePlace ? iso(nextOverlap(snapshot, characterId, now))
+            : changed ? null
             : previous?.next_run_at || null;
           const transition = Math.min(
             nextTransition(snapshot, "player", "player", now) ?? Number.POSITIVE_INFINITY,
