@@ -357,7 +357,7 @@ export async function getNeteaseSongDetail(songId: number): Promise<{ coverUrl?:
             coverUrl: secureHttpUrl(song.al?.picUrl),
             name: song.name,
             artists: (song.ar || []).map((a: NeteaseApiRecord) => a.name).join("/"),
-            artistList: (song.ar || []).filter((a: any) => a?.id && a?.name).map((a: NeteaseApiArtist) => ({ id: a.id, name: a.name })),
+            artistList: (song.ar || []).filter((a: NeteaseApiRecord) => a?.id && a?.name).map((a: NeteaseApiArtist) => ({ id: a.id, name: a.name })),
             album: song.al?.name || "",
         };
     } catch {
@@ -494,7 +494,7 @@ export async function getPersonalizedPlaylists(limit = 12): Promise<NeteasePlayl
     try {
         const resp = await fetch(withNeteaseParams(`${base}/personalized?limit=${limit}&timestamp=${Date.now()}`));
         const data = await resp.json();
-        return (data?.result || []).map((p: any) => ({
+        return (data?.result || []).map((p: NeteaseApiRecord) => ({
             id: p.id,
             name: p.name,
             coverUrl: secureHttpUrl(p.picUrl || p.coverImgUrl),
@@ -511,7 +511,7 @@ export async function getRecommendResource(): Promise<NeteasePlaylist[]> {
     try {
         const resp = await fetch(withNeteaseParams(`${base}/recommend/resource?timestamp=${Date.now()}`));
         const data = await resp.json();
-        return (data?.recommend || []).map((p: any) => ({
+        return (data?.recommend || []).map((p: NeteaseApiRecord) => ({
             id: p.id,
             name: p.name,
             coverUrl: secureHttpUrl(p.picUrl || p.coverImgUrl),
@@ -543,7 +543,7 @@ export async function getToplists(): Promise<NeteaseToplist[]> {
     try {
         const resp = await fetch(withNeteaseParams(`${base}/toplist/detail?timestamp=${Date.now()}`));
         const data = await resp.json();
-        return (data?.list || []).map((p: any) => ({
+        return (data?.list || []).map((p: NeteaseApiRecord) => ({
             id: p.id,
             name: p.name,
             coverUrl: secureHttpUrl(p.coverImgUrl),
@@ -707,7 +707,7 @@ export async function getArtistAlbums(artistId: number, limit = 20): Promise<Net
     try {
         const resp = await fetch(withNeteaseParams(`${base}/artist/album?id=${artistId}&limit=${limit}&timestamp=${Date.now()}`));
         const data = await resp.json();
-        return (data?.hotAlbums || []).map((a: any) => ({
+        return (data?.hotAlbums || []).map((a: NeteaseApiRecord) => ({
             id: a.id,
             name: a.name || "",
             coverUrl: secureHttpUrl(a.picUrl),
@@ -950,7 +950,7 @@ export async function getDjSublist(): Promise<NeteaseDjRadio[]> {
     try {
         const resp = await fetch(withNeteaseParams(`${base}/dj/sublist?timestamp=${Date.now()}`));
         const data = await resp.json();
-        return (data?.djRadios || []).map((r: any) => ({
+        return (data?.djRadios || []).map((r: NeteaseApiRecord) => ({
             id: r.id,
             name: r.name || "",
             picUrl: secureHttpUrl(r.picUrl),
@@ -978,7 +978,7 @@ export async function getDjPrograms(radioId: number, limit = 50): Promise<Neteas
     try {
         const resp = await fetch(withNeteaseParams(`${base}/dj/program?rid=${radioId}&limit=${limit}&timestamp=${Date.now()}`));
         const data = await resp.json();
-        return (data?.programs || []).map((p: any) => ({
+        return (data?.programs || []).map((p: NeteaseApiRecord) => ({
             id: p.id,
             name: p.name || "",
             mainSongId: p.mainSong?.id || 0,
@@ -1005,11 +1005,11 @@ export async function getAlbumSublist(): Promise<NeteaseAlbumSub[]> {
     try {
         const resp = await fetch(withNeteaseParams(`${base}/album/sublist?timestamp=${Date.now()}`));
         const data = await resp.json();
-        return (data?.data || []).map((a: any) => ({
+        return (data?.data || []).map((a: NeteaseApiRecord) => ({
             id: a.id,
             name: a.name || "",
             picUrl: secureHttpUrl(a.picUrl),
-            artist: (a.artists || []).map((x: any) => x.name).filter(Boolean).join("/"),
+            artist: (a.artists || []).map((x: NeteaseApiArtist) => x.name).filter(Boolean).join("/"),
             size: a.size,
         }));
     } catch { return []; }
@@ -1065,7 +1065,7 @@ export async function getRecentSongs(limit = 100): Promise<NeteaseSearchResult[]
     try {
         const resp = await fetch(withNeteaseParams(`${base}/record/recent/song?limit=${limit}&timestamp=${Date.now()}`));
         const data = await resp.json();
-        return (data?.data?.list || []).map((item: any) => mapSongToSearchResult(item.data || {})).filter((s: NeteaseSearchResult) => s.id);
+        return (data?.data?.list || []).map((item: NeteaseApiRecord) => mapSongToSearchResult(item.data || {})).filter((s: NeteaseSearchResult) => s.id);
     } catch { return []; }
 }
 
@@ -1076,6 +1076,6 @@ export async function getIntelligenceList(seedSongId: number, likePlaylistId: nu
     try {
         const resp = await fetch(withNeteaseParams(`${base}/playmode/intelligence/list?id=${seedSongId}&pid=${likePlaylistId}&timestamp=${Date.now()}`));
         const data = await resp.json();
-        return (data?.data || []).map((item: any) => mapSongToSearchResult(item.songInfo || {})).filter((s: NeteaseSearchResult) => s.id);
+        return (data?.data || []).map((item: NeteaseApiRecord) => mapSongToSearchResult(item.songInfo || {})).filter((s: NeteaseSearchResult) => s.id);
     } catch { return []; }
 }
