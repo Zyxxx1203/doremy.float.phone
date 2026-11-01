@@ -19,7 +19,7 @@
 
 ## 当前版本
 
-当前原生壳版本：1.0.27（versionCode 26）。通知栏回复的原生持久队列（peek/ack）从 1.0.26 起提供；建议新用户直接构建当前版本。网页端更新通常不要求重打 APK，只有 Kotlin、Manifest、原生桥、权限或资源变化才需要重新构建。
+当前原生壳版本：**1.0.29（versionCode 28）**。通知栏回复的原生持久队列（peek/ack）从 1.0.26（versionCode 25）起提供；顶层 nonce 门控原生桥从 1.0.29 起提供。建议新用户直接构建当前版本。网页端更新通常不要求重打 APK，只有 Kotlin、Manifest、原生桥、权限或资源变化才需要重新构建。
 
 ## 一键构建（GitHub Actions）
 
@@ -72,7 +72,7 @@ base64 -w0 shell.keystore   # 得到一长串 base64
 
 从 **1.0.26（versionCode 25）** 起，原生通知回复队列采用 `peek → 网页持久化 → ack`：WebView 中断时，尚未成功写入本机数据的回复不会被原生提前清除。旧 APK 仍由网页端兼容 `consumePendingReplies`，但不具备这项原生确认保障；如需可靠通知回复，请升级到 1.0.26 或更新版本。
 
-当前最新壳版本为 **1.0.28（versionCode 27）**。Release 构建关闭 WebView 远程调试；Android 系统自动备份关闭，数据迁移请使用应用内显式导出。
+从 **1.0.28（versionCode 27）** 起，Release 构建关闭 WebView 远程调试，Android 系统自动备份关闭，数据迁移请使用应用内显式导出。当前最新壳版本为 **1.0.29（versionCode 28）**，原生桥改为顶层 origin + nonce 门控，隔离第三方 iframe。
 
 ## 安装与首次设置
 
