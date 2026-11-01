@@ -23,6 +23,9 @@ const intentionallyUnusedPermissions = [
 ];
 const declared = intentionallyUnusedPermissions.filter(permission => manifest.includes(permission));
 assert.deepEqual(declared, [], "Manifest must not regain unused sensitive permissions without an explicit code and privacy review.");
+assert.match(manifest, /android:allowBackup="false"/, "Android automatic backup must stay disabled; use explicit in-app export.");
+assert.ok(!manifest.includes('android:usesCleartextTraffic="true"'), "Cleartext must remain controlled by the restrictive network security config.");
+assert.match(activity, /WebView\.setWebContentsDebuggingEnabled\(BuildConfig\.DEBUG\)/, "WebView debugging must be disabled in release builds.");
 
 const versionCode = Number(gradle.match(/versionCode\s+(\d+)/)?.[1]);
 const versionName = gradle.match(/versionName\s+"([^"]+)"/)?.[1];
