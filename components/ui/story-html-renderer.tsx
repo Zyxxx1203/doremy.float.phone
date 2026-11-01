@@ -4,7 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "reac
 import { Loader2 } from "lucide-react";
 import { LanguageIcon } from "@heroicons/react/24/solid";
 import { marked } from "marked";
-import DOMPurify from "dompurify";
+import DOMPurify, { type Config as DOMPurifyConfig } from "dompurify";
 import { translateReasoningText } from "@/lib/reasoning-translate";
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 
@@ -216,7 +216,7 @@ function escapeHtmlAttribute(value: string): string {
         .replace(/>/g, "&gt;");
 }
 
-const DOMPURIFY_CONFIG: any = {
+const DOMPURIFY_CONFIG: DOMPurifyConfig = {
     ADD_TAGS: ["style"],
     ADD_ATTR: ["style"],
     FORBID_TAGS: ["script", "iframe", "object", "embed", "form", "input", "textarea", "select", "option", "meta", "link", "base"],
