@@ -36,7 +36,7 @@ assert.match(scheduler, /生活系统 · 云端诊断/);
 assert.match(scheduler, /schedule_version/);
 assert.match(scheduler, /player_activity/);
 
-assert.match(snapshot, /const scheduleSlots = state\\.schedules/);
+assert.match(snapshot, /const scheduleSlots = state\.schedules/);
 assert.match(snapshot, /actualLocationUntil/);
 assert.match(snapshot, /autonomyEnabled/);
 assert.match(snapshot, /proactiveIntervalMax/);
@@ -58,16 +58,18 @@ assert.match(generator, /runtimeResponse/);
 assert.match(generator, /cloud schedule state is stale/);
 assert.match(generator, /life_schedule_snapshot_stale/);
 assert.match(generator, /sendWebPushRaw/);
-assert.match(generator, /!payload\\.merge\\?\\.lifeScene && idleRepeat/);
+assert.match(generator, /!payload\.merge\?\.lifeScene && idleRepeat/);
 assert.match(generator, /autonomous life actions disabled by latest cloud settings/);
 
-assert.match(schema, /values\\s*\\('personal-cloud', 4, now\\(\\)\\)/);
+assert.match(schema, /values\s*\('personal-cloud', 4, now\(\)\)/);
 assert.match(schema, /create table if not exists public\.life_schedule_runtime/);
 assert.match(schema, /create table if not exists public\.life_schedule_diagnostics/);
 assert.match(schema, /ai-phone-life-schedule-evaluate/);
 assert.match(schema, /functions\/v1\/life-scheduler/);
 assert.match(schema, /alter table public\.life_schedule_runtime enable row level security/);
 assert.match(schema, /public\.life_schedule_diagnostics/);
+assert.match(schema, /delete from public\.push_jobs where trigger_key like 'life-scene:%:schedule\+%'/);
+assert.match(schema, /cron\.unschedule\(jobid\)/);
 
 assert.match(build, /life-scheduler\.mjs/);
 assert.match(deployRoute, /LIFE_SCHEDULER_SLUG/);
