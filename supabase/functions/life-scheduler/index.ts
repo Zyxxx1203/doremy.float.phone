@@ -244,7 +244,7 @@ Deno.serve(async (req: Request) => {
     if (!shouldNotify) return;
     // Android shell has a persistent Realtime channel. Send one alert when a new
     // unresolved cloud fault appears; repeated cron ticks only update the same row.
-    const subscriptionsResponse = await rest("push_subscriptions?user_id=eq.${encodeURIComponent(userId)}&select=endpoint,p256dh,auth&limit=50");
+    const subscriptionsResponse = await rest(`push_subscriptions?user_id=eq.${encodeURIComponent(userId)}&select=endpoint,p256dh,auth&limit=50`);
     const subscriptions = subscriptionsResponse.ok
       ? await subscriptionsResponse.json() as LifePushSubscription[]
       : [];
@@ -329,7 +329,7 @@ Deno.serve(async (req: Request) => {
       const runtimeUpdates: RuntimeRow[] = [];
       const scenes = snapshot.scenes.filter(scene => Boolean(scene.id));
       const needsSubscription = scenes.some(scene => (scene.characterIds || []).length > 0);
-      const subscriptionResponse = await rest("push_subscriptions?user_id=eq.${encodeURIComponent(row.user_id)}&select=endpoint&limit=1");
+      const subscriptionResponse = await rest(`push_subscriptions?user_id=eq.${encodeURIComponent(row.user_id)}&select=endpoint&limit=1`);
       const hasSubscription = subscriptionResponse.ok && (await subscriptionResponse.json() as unknown[]).length > 0;
       if (!hasSubscription && enabled && needsSubscription) {
         await writeDiagnostic(row.user_id, "life-scheduler:subscription", "warning", "life_push_subscription_missing",
