@@ -241,6 +241,34 @@ function parseLifeSceneOutput(rawText: string): { action: string; dialogues: str
 }
 
 // ── 内嵌：lib/server/push-job-crypto 的解密（Web Crypto 实现，格式兼容） ──
+function appendLifeScheduleContext(body: Record<string, unknown>, providerKind: ProviderKind, context: string): void {
+  const appendToMessage = (message: Record<string, unknown>) => {
+    const content = message.content;
+    if (typeof content === "string") {
+      message.content = content + "\n\n" + context;
+    } else if (Array.isArray(content)) {
+      content.push(providerKind === "gemini" ? { text: context } : { type: "text", text: context });
+    }
+  };
+  const messages = Array.isArray(body.messages) ? body.messages as Record<string, unknown>[] : null;
+  if (messages) {
+    const target = [...messages].reverse().find(message => message.role === "user");
+    if (target) appendToMessage(target);
+    return;
+  }
+  const contents = Array.isArray(body.contents) ? body.contents as Record<string, unknown>[] : null;
+  if (contents) {
+    const target = [...contents].reverse().find(message => message.role === "user");
+    if (target && Array.isArray(target.parts)) {
+      (target.parts as unknown[]).push({ text: context });
+    }
+  }
+}
+
+function isLifeSleepActivity(value: string): boolean {
+  return /睡眠|睡觉|入睡|午休/.test(value);
+}
+
 type EncryptedPayload = { v: 1; iv: string; tag: string; ct: string };
 
 function base64ToBytes(value: string): Uint8Array {
@@ -587,6 +615,8 @@ Deno.serve(async (req: Request) => {
           foregroundLeaseUntil?: string;
           scenes?: { id?: string; locationId?: string; characterIds?: string[] }[];
           characterLocations?: Record<string, string>;
+          scheduleSlots?: { ownerType?: string; ownerId?: string; startAt?: string; endAt?: string; title?: string; kind?: string; plannedLocationName?: string }[];
+          actorStates?: { ownerType?: string; ownerId?: string; activity?: string }[];
         };
         const scene = (snapshot.scenes ?? []).find(item => item.id === lifeSceneMeta.sceneId);
         const characterLocation = snapshot.characterLocations?.[lifeSceneMeta.characterId];
@@ -600,15 +630,62 @@ Deno.serve(async (req: Request) => {
           await finish("done", "life schedule: player/character no longer share the exact scene location");
           return;
         }
+        const now = Date.now();
+        const slots = snapshot.scheduleSlots ?? [];
+        const actors = snapshot.actorStates ?? [];
+        const activeSlot = (ownerType: string, ownerId: string) => slots.find(slot => {
+          if (slot.ownerType !== ownerType || slot.ownerId !== ownerId) return false;
+          const start = Date.parse(slot.startAt || "");
+          const end = Date.parse(slot.endAt || "");
+          return Number.isFinite(start) && Number.isFinite(end) && start <= now && now < end;
+        });
+        const actorIsSleeping = (ownerType: string, ownerId: string): boolean => {
+          const slot = activeSlot(ownerType, ownerId);
+          const actor = actors.find(item => item.ownerType === ownerType && item.ownerId === ownerId);
+          return isLifeSleepActivity(slot?.title || actor?.activity || "");
+        };
+        const nextAwakeAt = (ownerType: string, ownerId: string): number => {
+          const future = slots
+            .filter(slot => slot.ownerType === ownerType && slot.ownerId === ownerId
+              && Number.isFinite(Date.parse(slot.startAt || ""))
+              && Date.parse(slot.startAt || "") > now
+              && !isLifeSleepActivity(slot.title || ""))
+            .sort((a, b) => Date.parse(a.startAt || "") - Date.parse(b.startAt || ""));
+          return future.length ? Date.parse(future[0].startAt || "") : now + 30 * 60_000;
+        };
+        const playerSleeping = actorIsSleeping("player", "player");
+        const characterSleeping = actorIsSleeping("character", lifeSceneMeta.characterId);
+        if (playerSleeping || characterSleeping) {
+          // Keep the same durable job pending until both participants' next awake slot.
+          // Do not spend a repeat turn or send a notification during sleep.
+          const wakeTimes = [
+            ...(playerSleeping ? [nextAwakeAt("player", "player")] : []),
+            ...(characterSleeping ? [nextAwakeAt("character", lifeSceneMeta.characterId)] : []),
+          ];
+          const deferAt = Math.max(now + 60_000, ...wakeTimes);
+          const deferred = await deferUntil(deferAt, "life schedule: sleep window; deferred until " + new Date(deferAt).toISOString());
+          if (!deferred?.ok) await finish("done", "life schedule: sleep window; defer failed safely");
+          return;
+        }
+        const playerSlot = activeSlot("player", "player");
+        const characterSlot = activeSlot("character", lifeSceneMeta.characterId);
+        const scheduleContext = [
+          "【当前真实日程上下文，以此刻系统时间和已同步日程为准】",
+          playerSlot ? "玩家正在：" + (playerSlot.title || "按当前日程活动") + (playerSlot.plannedLocationName ? "；地点：" + playerSlot.plannedLocationName : "") : "玩家当前没有明确的日程安排。",
+          characterSlot ? "角色正在：" + (characterSlot.title || "按当前日程活动") + (characterSlot.plannedLocationName ? "；地点：" + characterSlot.plannedLocationName : "") : "角色当前没有明确的日程安排。",
+          "请让生活现场行动贴合双方当前安排。例如玩家学习时，可以轻声递来咖啡、放下点心或低声搭话；不要打断专注，不要替玩家决定行动。",
+        ].join("\n");
+        appendLifeScheduleContext(payload.request.body, payload.request.providerKind, scheduleContext);
+
         const foregroundLeaseUntil = Date.parse(snapshot.foregroundLeaseUntil || "");
         if (snapshot.foregroundSceneId === lifeSceneMeta.sceneId
           && Number.isFinite(foregroundLeaseUntil)
-          && foregroundLeaseUntil > Date.now()) {
-          // Do not race a visible foreground scene. Requeue this same server job instead
-          // of marking it done, so the 24-turn offline chain survives abrupt WebView death.
-          const deferAt = Math.max(Date.now() + 60_000, foregroundLeaseUntil + 90_000);
+          && foregroundLeaseUntil > now) {
+          // A visible life scene owns its local turn. Defer the durable background job;
+          // it is not discarded, so it resumes if the app is hidden or terminated.
+          const deferAt = Math.max(now + 60_000, foregroundLeaseUntil + 90_000);
           const deferred = await deferUntil(deferAt, "life schedule: foreground scene lease active; deferred until " + new Date(deferAt).toISOString());
-          if (!deferred?.ok) await finish("done", "life schedule: foreground lease active; defer failed safely");
+          if (!deferred?.ok) await finish("done", "life schedule: foreground scene lease active; defer failed safely");
           return;
         }
       } catch {
