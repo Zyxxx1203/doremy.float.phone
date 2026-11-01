@@ -852,7 +852,7 @@ function ApiLogViewer({ onBack }: { onBack: () => void }) {
                                                             <span className="font-bold text-[var(--log-role-color)]">
                                                                 [{i}] {m.role}
                                                             </span>
-                                                            {(m as any).marker && (
+                                                            {m.marker && (
                                                                 <span className="api-log-marker">
                                                                     {(m as any).marker}
                                                                 </span>
