@@ -1145,7 +1145,17 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         // This does not bypass platform login/permission checks; it only removes our WebView-level block.
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
 
-        webView.addJavascriptInterface(ShellBridge(), "AndroidShell")
+        // The raw Android interfaces are never exposed under the app-facing names.
+        // Cross-origin frames can see JavascriptInterface objects, so they receive only a nonce-gated RPC endpoint.
+        webView.addJavascriptInterface(SecureJavascriptBridge(ShellBridge()), "AndroidShellSecure")
+        webView.addJavascriptInterface(SecureJavascriptBridge(PhoneWidgetBridge()), "PhoneWidgetSecure")
+        val originRule = shellOriginRule()
+        if (originRule != null && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            secureBridgeDocumentStartInstalled = runCatching {
+                WebViewCompat.addDocumentStartJavaScript(webView, secureBridgeBootstrapScript(), setOf(originRule))
+                true
+            }.getOrDefault(false)
+        }
         val globalWatchFilter = IntentFilter().apply {
             addAction(GlobalWatchCaptureService.ACTION_FRAME)
             addAction(GlobalWatchCaptureService.ACTION_REPLY)
@@ -1156,7 +1166,7 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         globalWatchReceiverRegistered = true
         // 桌面小组件桥：独立命名空间，跟通话/截屏那套分开，
         // 免得以後加方法时和 AndroidShell 里几十个方法混在一起。
-        webView.addJavascriptInterface(PhoneWidgetBridge(), "PhoneWidget")
+        // PhoneWidgetSecure is registered above through the same nonce-gated wrapper.
         // 步数传感器是异步的（没有同步取值接口），必须提前挂上才有值可读。
         // 这里只是「挂监听」，不申请权限；没授权时 attachStepSensor 内部会直接返回。
         PerceptionBridge.attachStepSensor(this)
