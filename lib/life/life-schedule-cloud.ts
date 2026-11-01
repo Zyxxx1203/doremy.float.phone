@@ -55,12 +55,6 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> 
         plannedLocationId: slot.plannedLocationId ?? "",
         plannedLocationName: slot.plannedLocationName ?? "",
       }));
-    const scheduleJson = JSON.stringify(scheduleSlots);
-    let scheduleHash = 2166136261;
-    for (let index = 0; index < scheduleJson.length; index += 1) {
-      scheduleHash = Math.imul(scheduleHash ^ scheduleJson.charCodeAt(index), 16777619);
-    }
-    const scheduleVersion = String(state.scheduleProfileVersion ?? 0) + ":" + (scheduleHash >>> 0).toString(36);
     const actorStates = state.actorStates
       .filter(actor => relevantOwnerIds.has(actor.ownerId))
       .map(actor => ({
@@ -72,6 +66,14 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> 
         actualLocationName: actor.actualLocationName ?? "",
         actualLocationUntil: actor.actualLocationUntil ?? null,
       }));
+    // Version the full actor/schedule state, not just the timetable. A manual move
+    // or activity override must invalidate a runtime row computed before that change.
+    const scheduleJson = JSON.stringify({ scheduleSlots, actorStates, playerLocationId, characterLocations, scenes });
+    let scheduleHash = 2166136261;
+    for (let index = 0; index < scheduleJson.length; index += 1) {
+      scheduleHash = Math.imul(scheduleHash ^ scheduleJson.charCodeAt(index), 16777619);
+    }
+    const scheduleVersion = String(state.scheduleProfileVersion ?? 0) + ":" + (scheduleHash >>> 0).toString(36);
     const foregroundLease = foregroundLeaseSnapshot();
     const onlineChatLease = readOnlineChatForegroundLease();
     const onlineChatLeaseSnapshot = onlineChatLease ? {
