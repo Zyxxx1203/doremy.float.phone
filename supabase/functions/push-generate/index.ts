@@ -603,7 +603,7 @@ Deno.serve(async (req: Request) => {
         }]),
       });
       if (!shouldNotify) return;
-      const subscriptionsResponse = await rest("push_subscriptions?select=endpoint,p256dh,auth&limit=50");
+      const subscriptionsResponse = await rest("push_subscriptions?user_id=eq.${encodeURIComponent(job.user_id)}&select=endpoint,p256dh,auth&limit=50");
       const subscriptions = subscriptionsResponse.ok
         ? await subscriptionsResponse.json() as SubscriptionRow[]
         : [];
