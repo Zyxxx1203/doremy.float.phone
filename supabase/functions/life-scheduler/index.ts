@@ -21,7 +21,9 @@ type Snapshot = {
 type JobRow = { id: string; trigger_key: string; status: string; execute_at: string; result_note?: string | null };
 type RuntimeRow = {
   user_id: string; scene_id: string; character_id: string; schedule_version: string; state_version: number;
-  activity: string; location_id: string; location_name: string; next_transition_at: string | null;
+  activity: string; location_id: string; location_name: string;
+  player_activity: string; player_location_id: string; player_location_name: string;
+  next_transition_at: string | null;
   next_run_at: string | null; last_status: string; last_error: string | null; updated_at: string;
 };
 
@@ -266,6 +268,7 @@ Deno.serve(async (req: Request) => {
             user_id: row.user_id, scene_id: scene.id!, character_id: characterId,
             schedule_version: scheduleVersion, state_version: stateVersion,
             activity, location_id: currentLocationId, location_name: currentLocationName,
+            player_activity: player.activity, player_location_id: player.id, player_location_name: player.name,
             next_transition_at: Number.isFinite(transition) ? iso(transition) : null,
             next_run_at: nextRun, last_status: !enabled ? "disabled" : !samePlace ? "not_co_located" : characterSleeping || playerSleeping ? "sleeping" : chatActive ? "chat_active" : "ready",
             last_error: null, updated_at: new Date().toISOString(),
