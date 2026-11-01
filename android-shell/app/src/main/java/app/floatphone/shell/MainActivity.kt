@@ -60,6 +60,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import java.io.File
 import java.io.FileOutputStream
 import java.io.ByteArrayOutputStream
@@ -142,6 +144,8 @@ class MainActivity : AppCompatActivity() {
      * 桥方法只做纯字符串比较，不再跨线程访问 WebView。
      */
     @Volatile private var trustedShellUrl: String? = null
+    private val bridgeNonce = UUID.randomUUID().toString()
+    private var documentStartBridgeReady = false
 
     /** 大文件分块写入会话：避免一次把几百 MB 的 Base64 字符串塞进 JS Bridge。 */
     private data class ChunkedFileWrite(
