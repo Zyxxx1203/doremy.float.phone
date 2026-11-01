@@ -428,6 +428,10 @@ $CRON$);
 
 -- 每分钟重算云端生活状态。只更新运行态，并复用已有 life-scene 任务行；
 -- 不创建无限重复预约，也不依赖 WebView/客户端定时器常驻。
+select cron.unschedule(jobid)
+  from cron.job
+ where jobname = 'ai-phone-life-schedule-evaluate';
+
 select cron.schedule('ai-phone-life-schedule-evaluate', '* * * * *', $CRON$
   select net.http_post(
     url := 'https://__PROJECT_REF__.supabase.co/functions/v1/life-scheduler',
