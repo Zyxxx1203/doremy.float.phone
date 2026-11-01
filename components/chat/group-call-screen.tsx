@@ -348,7 +348,7 @@ export function GroupCallScreen({ type, session, characters, onEnd, initiator = 
             if (stateRef.current !== "ENDED") {
                 setSubtitles(prev => [...prev, {
                     id: `err-${Date.now()}`, role: "assistant",
-                    text: `⚠️ ${error?.message || "发送失败"}`,
+                    text: `⚠️ ${error instanceof Error ? error.message : String(error)}`,
                 }]);
                 autoChatNotifyRef.current?.assistantSpoke(false);
                 setCallState("IDLE");
