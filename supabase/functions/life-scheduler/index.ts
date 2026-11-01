@@ -175,7 +175,7 @@ Deno.serve(async (req: Request) => {
           topic, event: "notify",
           payload: {
             title: "生活系统 · 云端诊断",
-            body: (code + "：" + detail).slice(0, 180),
+            body: (code + "：" + detail + "；修复：" + repairHint).slice(0, 180),
             url: "/life",
             kind: "life_diagnostic",
           },
