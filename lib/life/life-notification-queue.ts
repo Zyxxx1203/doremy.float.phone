@@ -18,13 +18,36 @@ const MAX_ATTEMPTS = 5;
 
 function readQueue(): PendingLifeSceneNotificationReply[] {
   if (typeof window === "undefined") return [];
+  const parse = (raw: string | null): unknown => {
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return null; }
+  };
   try {
-    const raw = JSON.parse(localStorage.getItem(KEY) || localStorage.getItem(LEGACY_KEY) || "[]");
+    const currentRaw = localStorage.getItem(KEY);
+    const current = parse(currentRaw);
+    // Only fall back to v1 when v2 is absent or corrupted; an intentional empty v2
+    // queue must never resurrect already-acknowledged legacy replies.
+    const raw = Array.isArray(current) ? current : parse(localStorage.getItem(LEGACY_KEY));
     if (!Array.isArray(raw)) return [];
-    return raw.filter((item): item is PendingLifeSceneNotificationReply =>
-      !!item && typeof item.replyId === "string" && typeof item.sceneId === "string"
-      && typeof item.characterId === "string" && (item.replyMode === "action" || item.replyMode === "dialogue"),
-    ).map(item => ({ ...item, status: item.status || "pending", attempts: Number(item.attempts) || 0 }));
+    return raw.flatMap(item => {
+      if (!item || typeof item.replyId !== "string" || typeof item.sceneId !== "string"
+        || typeof item.characterId !== "string" || (item.replyMode !== "action" && item.replyMode !== "dialogue")) return [];
+      const status = item.status === "processing" || item.status === "failed" ? item.status : "pending";
+      const attempts = Number(item.attempts);
+      const processingAt = Number(item.processingAt);
+      const nextAttemptAt = Number(item.nextAttemptAt);
+      return [{
+        replyId: item.replyId,
+        sceneId: item.sceneId,
+        characterId: item.characterId,
+        replyMode: item.replyMode,
+        status: status === "processing" && Number.isFinite(processingAt) && processingAt > 0 ? "processing" : status === "failed" ? "failed" : "pending",
+        attempts: Number.isFinite(attempts) && attempts >= 0 ? Math.floor(attempts) : 0,
+        processingAt: Number.isFinite(processingAt) && processingAt > 0 ? processingAt : undefined,
+        nextAttemptAt: Number.isFinite(nextAttemptAt) && nextAttemptAt > 0 ? nextAttemptAt : undefined,
+        lastError: typeof item.lastError === "string" ? item.lastError.slice(0, 500) : undefined,
+      }];
+    });
   } catch {
     return [];
   }
