@@ -83,6 +83,15 @@ assert.equal(enqueuePendingLifeSceneReply({ replyId: "capacity-overflow", sceneI
 assert.equal(peekPendingLifeSceneReply().replyId, "capacity-0", "queue overflow must preserve the oldest unprocessed reply");
 for (let index = 0; index < 100; index++) acknowledgePendingLifeSceneReply("capacity-" + index);
 
+const migratedOverflow = Array.from({ length: 101 }, (_, index) => ({
+  replyId: "migrated-" + index, sceneId: "scene-migrated", characterId: "char-migrated", replyMode: "dialogue", status: "pending", attempts: 0,
+}));
+localStorage.setItem("life-scene-notification-reply-queue-v2", JSON.stringify(migratedOverflow));
+assert.equal(peekPendingLifeSceneReply().replyId, "migrated-0");
+assert.ok(claimPendingLifeSceneReply("migrated-0", 50000), "oversized migrated queues must still be processable");
+acknowledgePendingLifeSceneReply("migrated-0");
+assert.equal(peekPendingLifeSceneReply().replyId, "migrated-1", "draining a legacy overflow must preserve FIFO order");
+
 failWrites = true;
 assert.equal(enqueuePendingLifeSceneReply({ replyId: "quota-reply", sceneId: "scene-z", characterId: "char-z", replyMode: "dialogue" }), false, "queue storage failure must be reported so the native queue is not acknowledged");
 failWrites = false;
