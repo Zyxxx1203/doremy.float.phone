@@ -37,15 +37,14 @@ if (failures.length > 0) {
 const personalSchema = readFileSync(resolve(root, "docs/personal-push-supabase.sql"), "utf8");
 const siteSchema = readFileSync(resolve(root, "docs/push-supabase.sql"), "utf8");
 for (const [name, schema] of [["personal", personalSchema], ["site", siteSchema]]) {
-  if (!/alter table public\\.push_jobs add column if not exists trigger_key text;/i.test(schema)) {
+  if (!schema.includes("alter table public.push_jobs add column if not exists trigger_key text;")) {
     failures.push(`${name} push schema does not migrate legacy push_jobs.trigger_key`);
   }
-  if (!/update public\\.push_jobs[\\s\\S]*?set trigger_key = 'legacy:' \\|\\| id[\\s\\S]*?where trigger_key is null or btrim\\(trigger_key\\) = '';/i.test(schema)) {
+  if (!schema.includes("set trigger_key = 'legacy:' || id") || !schema.includes("where trigger_key is null or btrim(trigger_key) = '';")) {
     failures.push(`${name} push schema does not backfill existing jobs before enforcing NOT NULL`);
   }
-  if (!/alter table public\\.push_jobs alter column trigger_key set not null;/i.test(schema)) {
+  if (!schema.includes("alter table public.push_jobs alter column trigger_key set not null;")) {
     failures.push(`${name} push schema does not enforce trigger_key after backfill`);
   }
 }
-
 console.log("[personal-push-dist] 源文件、公开部署包与通用站点配置一致。");
