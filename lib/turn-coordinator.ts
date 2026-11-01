@@ -180,10 +180,10 @@ export function getActiveTurn(characterId: string, sessionId: string): TurnHandl
         priority: turn.priority,
         signal: turn.controller.signal,
         startedAt: turn.startedAt,
-        isCurrent: () => activeByCharacter.get(sessionKey(characterId, sessionId))?.turnId === turn.turnId,
+        isCurrent: () => activeByCharacter.get(characterKey(characterId))?.turnId === turn.turnId,
         end: () => {
-            if (activeByCharacter.get(sessionKey(characterId, sessionId))?.turnId === turn.turnId) {
-                activeByCharacter.delete(sessionKey(characterId, sessionId));
+            if (activeByCharacter.get(characterKey(characterId))?.turnId === turn.turnId) {
+                activeByCharacter.delete(characterKey(characterId));
             }
         },
         abort: () => turn.controller.abort(),
