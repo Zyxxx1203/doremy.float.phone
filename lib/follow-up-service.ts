@@ -1,3 +1,7 @@
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * Background follow-up service.
  * Runs independently of any React component — fires follow-ups
@@ -276,7 +280,7 @@ export async function requestBackgroundChatReply(
         if (hasVisible) scheduleFollowUp(session.id, 0, stateValues);
         window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId: session.id } }));
         return { ok: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
         // Aborting because a newer user turn arrived is normal control flow, not an error
         // to append to the chat (which itself would be an out-of-context late write).
         if (backgroundController.signal.aborted || isBackgroundGenerationCancelled(sessionId)) {
@@ -286,7 +290,7 @@ export async function requestBackgroundChatReply(
         pushChatMessage({
             sessionId,
             role: "system",
-            content: `⚠️ 后台回复失败: ${error?.message || String(error)}`,
+            content: `⚠️ 后台回复失败: ${errorMessage(error)}`,
         });
         window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId } }));
         return { ok: false };
