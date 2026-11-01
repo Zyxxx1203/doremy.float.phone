@@ -2823,4 +2823,56 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
             true
         }.getOrDefault(false)
     }
+    /**
+     * The only object exposed to every WebView frame. It reveals method names, but every
+     * invocation requires a nonce that is injected into the trusted top-level document only.
+     */
+    private inner class SecureJavascriptBridge(private val target: Any) {
+        @JavascriptInterface
+        fun getMethodNames(): String = org.json.JSONArray(
+            target.javaClass.methods
+                .filter { it.isAnnotationPresent(JavascriptInterface::class.java) }
+                .map { it.name }
+                .distinct()
+                .sorted(),
+        ).toString()
+
+        @JavascriptInterface
+        fun invoke(nonce: String, methodName: String, argsJson: String): String {
+            if (!isTrustedShellPage() || nonce != bridgeNonce) {
+                return org.json.JSONObject().put("ok", false).put("error", "Untrusted native bridge caller").toString()
+            }
+            return try {
+                val args = org.json.JSONArray(argsJson)
+                val candidates = target.javaClass.methods.filter {
+                    it.name == methodName && it.isAnnotationPresent(JavascriptInterface::class.java) && it.parameterCount == args.length()
+                }
+                val methodAndArgs = candidates.firstNotNullOfOrNull { method ->
+                    runCatching { method to convertBridgeArguments(method.parameterTypes, args) }.getOrNull()
+                } ?: throw IllegalArgumentException("Unsupported native bridge method or arguments")
+                val result = methodAndArgs.first.invoke(target, *methodAndArgs.second)
+                val value = if (result == Unit || result == null) org.json.JSONObject.NULL else result
+                org.json.JSONObject().put("ok", true).put("value", value).toString()
+            } catch (error: Throwable) {
+                val cause = (error as? java.lang.reflect.InvocationTargetException)?.targetException ?: error
+                org.json.JSONObject().put("ok", false).put("error", (cause.message ?: cause.javaClass.simpleName).take(500)).toString()
+            }
+        }
+
+        private fun convertBridgeArguments(types: Array<Class<*>>, args: org.json.JSONArray): Array<Any?> {
+            return Array(types.size) { index ->
+                val raw = args.opt(index)
+                val type = types[index]
+                when {
+                    type == String::class.java -> if (raw == org.json.JSONObject.NULL) null else raw.toString()
+                    type == java.lang.Boolean.TYPE || type == java.lang.Boolean::class.java -> raw as? Boolean ?: throw IllegalArgumentException("Expected boolean argument")
+                    type == java.lang.Integer.TYPE || type == java.lang.Integer::class.java -> (raw as? Number)?.toInt() ?: throw IllegalArgumentException("Expected integer argument")
+                    type == java.lang.Long.TYPE || type == java.lang.Long::class.java -> (raw as? Number)?.toLong() ?: throw IllegalArgumentException("Expected long argument")
+                    type == java.lang.Double.TYPE || type == java.lang.Double::class.java -> (raw as? Number)?.toDouble() ?: throw IllegalArgumentException("Expected number argument")
+                    type == java.lang.Float.TYPE || type == java.lang.Float::class.java -> (raw as? Number)?.toFloat() ?: throw IllegalArgumentException("Expected number argument")
+                    else -> throw IllegalArgumentException("Unsupported native bridge argument type: ${type.simpleName}")
+                }
+            }
+        }
+    }
 }
