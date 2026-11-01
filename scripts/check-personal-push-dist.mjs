@@ -43,6 +43,9 @@ for (const [name, schema] of [["personal", personalSchema], ["site", siteSchema]
   if (!schema.includes("set trigger_key = 'legacy:' || id") || !schema.includes("where trigger_key is null or btrim(trigger_key) = '';")) {
     failures.push(`${name} push schema does not backfill existing jobs before enforcing NOT NULL`);
   }
+  if (!schema.includes("notify pgrst, 'reload schema';")) {
+    failures.push(`${name} push schema does not request a PostgREST schema-cache refresh`);
+  }
   if (!schema.includes("alter table public.push_jobs alter column trigger_key set not null;")) {
     failures.push(`${name} push schema does not enforce trigger_key after backfill`);
   }
