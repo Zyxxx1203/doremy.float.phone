@@ -3402,7 +3402,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
                 // 一个角色同一时间只有一个住处：勾选时从其他 home 型地点移除，取消时补建自己的独居住处。
                 let nextLocations = current.locations.map(location => {
                   if (!(location.id === "home" || location.id.startsWith("home-"))) return location;
-                  let residents = new Set(location.residents ?? []);
+                  const residents = new Set(location.residents ?? []);
                   // Repair older saved home records whose owner was never stored in residents.
                   if (location.id.startsWith("home-")) residents.add(location.id.slice("home-".length));
                   if (location.id === homeLocationId && enabled) residents.add(character.id); else residents.delete(character.id);
@@ -3513,7 +3513,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             const parseClock=(raw:string, fallbackHour:number)=>{
               const m=raw.trim().match(/^(上午|早上|清晨|中午|下午|傍晚|晚上|夜里|凌晨)?\s*(\d{1,2})(?:(?:\s*[:：]\s*(\d{1,2}))|(?:\s*点(?:\s*(\d{1,2})\s*分?)?)|(?:\s*时(?:\s*(\d{1,2})\s*分?)?))?$/);
               if(!m)return {hour:fallbackHour,minute:0};
-              let hour=Number(m[2]),minute=Number(m[3]??m[4]??m[5]??0);const period=m[1]||"";
+              let hour=Number(m[2]);const minute=Number(m[3]??m[4]??m[5]??0);const period=m[1]||"";
               if(["下午","傍晚","晚上","夜里"].includes(period)&&hour<12)hour+=12;
               if(["凌晨"].includes(period)&&hour===12)hour=0;
               if(["中午"].includes(period)&&hour<11)hour+=12;
