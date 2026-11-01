@@ -170,7 +170,7 @@ export type NeteaseToplist = NeteasePlaylist & {
 
 function mapSongToSearchResult(s: NeteaseApiRecord): NeteaseSearchResult {
     return {
-        id: s.id,
+        id: s.id ?? 0,
         name: s.name || "",
         artists: (s.ar || s.artists || []).map((a: NeteaseApiArtist) => a.name).filter(Boolean).join("/"),
         album: s.al?.name || s.album?.name || "",
@@ -585,7 +585,7 @@ export async function getPlaylistDetail(playlistId: number): Promise<NeteasePlay
 
 function mapComment(c: NeteaseApiRecord): NeteaseComment {
     return {
-        id: c.commentId,
+        id: c.commentId ?? c.id ?? 0,
         userName: c.user?.nickname || "网易云用户",
         avatarUrl: secureHttpUrl(c.user?.avatarUrl),
         content: c.content || "",
