@@ -101,6 +101,8 @@ assert.match(queue, /export function enqueuePendingLifeSceneReply/);
 assert.match(queue, /export function claimPendingLifeSceneReply/);
 assert.match(queue, /export function retryPendingLifeSceneReply/);
 assert.match(queue, /export function failPendingLifeSceneReply/);
+assert.match(queue, /life-scene-notification-queue-updated/);
+assert.match(app, /life-scene-notification-queue-updated/);
 assert.match(queue, /export function renewPendingLifeSceneReply/);
 assert.match(app, /renewPendingLifeSceneReply\(pending\.replyId\)/);
 assert.match(queue, /PROCESSING_LEASE_MS/);
