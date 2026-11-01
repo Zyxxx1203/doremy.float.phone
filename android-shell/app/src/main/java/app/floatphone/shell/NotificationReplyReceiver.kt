@@ -4,8 +4,10 @@ import android.app.RemoteInput
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 
 /**
  * 通知栏「直接回复」的接收端。
@@ -22,32 +24,36 @@ class NotificationReplyReceiver : BroadcastReceiver() {
 
         private const val PREFS = "shell_pending_replies"
         private const val KEY_QUEUE = "queue"
-        private const val MAX_QUEUE = 20
+        private const val MAX_QUEUE = 100
+        private const val TAG = "NotificationReply"
         private val queueLock = Any()
 
         /** Append and synchronously persist a reply before notifying the WebView. */
-        fun enqueue(context: Context, sessionId: String, text: String, sceneId: String = "", replyMode: String = "chat") {
-            synchronized(queueLock) {
-                runCatching {
-                    val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    val current = JSONArray(prefs.getString(KEY_QUEUE, "[]") ?: "[]")
+        fun enqueue(context: Context, sessionId: String, text: String, sceneId: String = "", replyMode: String = "chat"): Boolean = synchronized(queueLock) {
+            runCatching {
+                val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                val current = JSONArray(prefs.getString(KEY_QUEUE, "[]") ?: "[]")
+                if (current.length() >= MAX_QUEUE) {
+                    Log.w(TAG, "Pending notification reply queue is full; refusing to drop an older reply.")
+                    false
+                } else {
                     current.put(
                         JSONObject()
-                            .put("id", "r_${System.currentTimeMillis()}_${(0..9999).random()}")
+                            .put("id", "r_" + UUID.randomUUID().toString())
                             .put("sessionId", sessionId)
                             .put("text", text)
                             .put("sceneId", sceneId)
                             .put("replyMode", replyMode)
                             .put("at", System.currentTimeMillis()),
                     )
-                    val trimmed = JSONArray()
-                    val start = (current.length() - MAX_QUEUE).coerceAtLeast(0)
-                    for (i in start until current.length()) trimmed.put(current.get(i))
-                    check(prefs.edit().putString(KEY_QUEUE, trimmed.toString()).commit()) { "无法持久化通知回复队列" }
+                    check(prefs.edit().putString(KEY_QUEUE, current.toString()).commit()) { "无法持久化通知回复队列" }
+                    true
                 }
+            }.getOrElse { error ->
+                Log.e(TAG, "Unable to persist notification reply.", error)
+                false
             }
         }
-
         /** Read without removing; JavaScript must acknowledge only after its own write succeeds. */
         fun peekPendingReplies(context: Context): String = synchronized(queueLock) {
             runCatching {
@@ -92,7 +98,10 @@ class NotificationReplyReceiver : BroadcastReceiver() {
         val results = RemoteInput.getResultsFromIntent(intent) ?: return
         val text = results.getCharSequence(KEY_REPLY_TEXT)?.toString()?.trim().orEmpty()
         if (text.isEmpty()) return
-        enqueue(context, sessionId, text, sceneId, replyMode)
+        if (!enqueue(context, sessionId, text, sceneId, replyMode)) {
+            Log.e(TAG, "Notification reply was not queued; refusing to report successful delivery.")
+            return
+        }
         if (ShellBus.isWebAlive()) {
             ShellBus.dispatchOverlayEvent(
                 "userReply",
