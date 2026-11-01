@@ -37,6 +37,11 @@ assert.match(activity, /MessageDigest\.isEqual\(nonce\.toByteArray\(Charsets\.UT
 assert.match(activity, /methodAndArgs\.first\.isAccessible = true/, "Reflection must be able to invoke the private PhoneWidget bridge implementation safely.");
 assert.match(activity, /argsJson\.length > 8_000_000/, "Native bridge calls must reject oversized payloads before JSON parsing.");
 assert.match(activity, /window !== window\.top/, "The bridge wrapper must not be installed inside frames.");
+const shouldOverrideStart = activity.indexOf("override fun shouldOverrideUrlLoading");
+const shouldOverrideEnd = activity.indexOf("\n            }", shouldOverrideStart);
+const shouldOverrideBlock = activity.slice(shouldOverrideStart, shouldOverrideEnd);
+assert.ok(shouldOverrideBlock.indexOf("if (!request.isForMainFrame) return false") < shouldOverrideBlock.indexOf("trustedShellUrl = url.toString()"), "Subframe navigations must not overwrite the trusted top-level URL snapshot.");
+assert.match(activity, /private fun isTrustedShellOrigin\(rawUrl: String\?\)/, "Trusted-origin checks must be centralized and exact.");
 
 const versionCode = Number(gradle.match(/versionCode\s+(\d+)/)?.[1]);
 const versionName = gradle.match(/versionName\s+"([^"]+)"/)?.[1];

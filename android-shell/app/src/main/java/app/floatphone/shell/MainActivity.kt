@@ -532,24 +532,35 @@ private fun isSupportedShareUrl(rawUrl: String): Boolean {
     return isPublicResolverHost(url.host)
 }
 
-private fun isTrustedShellPage(): Boolean {
+private fun isTrustedShellOrigin(rawUrl: String?): Boolean {
+    if (rawUrl.isNullOrBlank()) return false
     val configured = Uri.parse(SITE_URL)
+    val current = Uri.parse(rawUrl)
+    val configuredScheme = configured.scheme ?: return false
+    val currentScheme = current.scheme ?: return false
     val configuredHost = configured.host ?: return false
-    val currentUrl = trustedShellUrl ?: return false
-    val current = Uri.parse(currentUrl)
-    return current.scheme == configured.scheme
-        && current.host?.equals(configuredHost, ignoreCase = true) == true
-        && current.port == configured.port
+    val currentHost = current.host ?: return false
+    fun normalizedPort(uri: Uri): Int = when {
+        uri.port >= 0 -> uri.port
+        uri.scheme.equals("https", ignoreCase = true) -> 443
+        uri.scheme.equals("http", ignoreCase = true) -> 80
+        else -> -1
+    }
+    return currentScheme.equals(configuredScheme, ignoreCase = true)
+        && currentHost.equals(configuredHost, ignoreCase = true)
+        && normalizedPort(current) == normalizedPort(configured)
 }
+
+private fun isTrustedShellPage(): Boolean = isTrustedShellOrigin(trustedShellUrl)
 
 private fun shellOriginRule(): String? {
     val uri = Uri.parse(SITE_URL)
     val scheme = uri.scheme ?: return null
     val host = uri.host ?: return null
-    val port = if (uri.port >= 0) ":${uri.port}" else ""
+    val defaultPort = if (scheme.equals("https", true)) 443 else if (scheme.equals("http", true)) 80 else -1
+    val port = if (uri.port >= 0 && uri.port != defaultPort) ":${uri.port}" else ""
     return "$scheme://$host$port"
 }
-
 private fun secureBridgeBootstrapScript(): String {
     val nonceJson = org.json.JSONObject.quote(bridgeNonce)
     return """
@@ -1187,13 +1198,13 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
 
             override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
                 super.doUpdateVisitedHistory(view, url, isReload)
-                trustedShellUrl = url ?: trustedShellUrl
+                if (isTrustedShellOrigin(url)) trustedShellUrl = url
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
                 super.onPageFinished(view, url)
-                trustedShellUrl = url ?: trustedShellUrl
-                if (url != null && Uri.parse(url).host == Uri.parse(SITE_URL).host) {
+                if (isTrustedShellOrigin(url)) {
+                    trustedShellUrl = url
                     getSharedPreferences("float_startup_diagnostics", Context.MODE_PRIVATE)
                         .edit()
                         .putBoolean("launch_in_progress", false)
@@ -1226,13 +1237,12 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
             }
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                trustedShellUrl = request.url?.toString() ?: trustedShellUrl
                 val url = request.url
-                val scheme = url.scheme ?: return false
-                // 跨站播放器通常运行在 iframe 内。不要把 iframe 的导航交给系统浏览器，
-                // 否则 B 站官方 player.bilibili.com 等嵌入播放器可能被踢出小手机页面。
-                // 仅顶层页面导航才按外链策略交给系统；子框架保持在当前 WebView。
+                // Subframe navigations must never replace the trusted top-level URL snapshot.
+                // Otherwise a cross-origin video iframe would revoke the bridge for the real app page.
                 if (!request.isForMainFrame) return false
+                trustedShellUrl = url.toString()
+                val scheme = url.scheme ?: return false
                 // 站内导航留在壳里；顶层 http(s) 外链和自定义协议交给系统
                 if (scheme == "http" || scheme == "https") {
                     if (url.host == Uri.parse(SITE_URL).host) return false
