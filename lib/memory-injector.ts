@@ -37,8 +37,8 @@ const SOURCE_LABELS: Record<string, string> = {
 export function memorySourceLabel(entry: MemoryEntry): string {
     const metadata = entry.metadata ?? {};
     const channel = typeof metadata.sourceChannel === "string" ? metadata.sourceChannel : "";
-    const module = typeof metadata.sourceModule === "string" ? metadata.sourceModule : "";
-    return SOURCE_LABELS[channel] || SOURCE_LABELS[module] || SOURCE_LABELS[entry.sourceApp] || entry.sourceApp;
+    const sourceModule = typeof metadata.sourceModule === "string" ? metadata.sourceModule : "";
+    return SOURCE_LABELS[channel] || SOURCE_LABELS[sourceModule] || SOURCE_LABELS[entry.sourceApp] || entry.sourceApp;
 }
 
 function formatMemoryLine(entry: MemoryEntry): string {
