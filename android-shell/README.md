@@ -17,6 +17,10 @@
 壳内前台服务保持一条 WebSocket 长连接订阅该频道，收到即弹系统通知。
 设置页的「测试」按钮走同一条链路，可直接验证。
 
+## 当前版本
+
+当前原生壳版本：1.0.27（versionCode 26）。通知栏回复的原生持久队列（peek/ack）从 1.0.26 起提供；建议新用户直接构建当前版本。网页端更新通常不要求重打 APK，只有 Kotlin、Manifest、原生桥、权限或资源变化才需要重新构建。
+
 ## 一键构建（GitHub Actions）
 
 仓库已带工作流 `.github/workflows/android-shell.yml`：

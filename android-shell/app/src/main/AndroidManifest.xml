@@ -52,30 +52,18 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
-    <uses-permission android:name="android.permission.BODY_SENSORS" />
 
     <!-- 健康数据（睡眠）：经 Health Connect 读，不是直接读厂商运动 App。
          这是 Health Connect 自己的权限（Android 14+ 由系统管），请求时由
          系统弹出授权，用户拒绝也不影响 App 其余部分。 -->
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
 
-    <!-- 日程与通讯录：角色记你的安排、认你的朋友 -->
+    <!-- 日程：仅在用户启用日历联动时读取或写入系统日历。 -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
-    <uses-permission android:name="android.permission.READ_CONTACTS" />
 
-    <!-- 媒体：读相册/音乐，为后续「角色看照片、一起听歌」留口子 -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
+    <!-- 文件导入通过系统文件选择器授予单个 URI，不申请整库媒体读取权限。 -->
 
-    <!-- 电话与短信：来电识别、通话状态感知 -->
-    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
-    <uses-permission android:name="android.permission.READ_CALL_LOG" />
-    <uses-permission android:name="android.permission.READ_SMS" />
-    <uses-permission android:name="android.permission.RECEIVE_SMS" />
 
     <!-- 系统能力：常驻、精确闹钟、设置项、状态栏 -->
     <!-- 设闹钟的**调用方权限**。系统时钟（AOSP 的 HandleSetAlarm、
@@ -95,13 +83,10 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
-    <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
 
-    <!-- 蓝牙与传感：耳机状态、贴贴等联动 -->
+    <!-- 蓝牙音频路由：用于通话时连接已配对耳机；不扫描附近设备。 -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
-    <uses-permission android:name="android.permission.NFC" />
 
     <!-- 前台服务扩展类型（Android 14+ 要求逐项声明） -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />

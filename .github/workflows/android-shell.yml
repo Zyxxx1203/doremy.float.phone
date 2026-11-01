@@ -9,10 +9,10 @@ on:
         type: string
   push:
     branches: [main, feature/life-system, feature/life-system-mainline]
-    paths: ["android-shell/**", ".github/workflows/android-shell.yml"]
+    paths: ["android-shell/**", ".github/workflows/android-shell.yml", "scripts/check-android-permissions.mjs"]
   pull_request:
     branches: [main]
-    paths: ["android-shell/**", ".github/workflows/android-shell.yml"]
+    paths: ["android-shell/**", ".github/workflows/android-shell.yml", "scripts/check-android-permissions.mjs"]
 
 jobs:
   build:
@@ -26,6 +26,9 @@ jobs:
       SHELL_SITE_URL: ${{ inputs.site_url || vars.SHELL_SITE_URL }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check Android manifest permission baseline and version parity
+        run: node scripts/check-android-permissions.mjs
 
       - uses: actions/setup-java@v4
         with:

@@ -1,6 +1,6 @@
 # Float Phone · AI 虚拟互动手机
 
-一个基于 Next.js 的 AI 虚拟手机：在浏览器（或 Android 壳）里模拟一部完整的手机，与你创建的 AI 角色聊天、共同生活、一起看视频、拼贴照片墙。LLM 调用使用**你自行配置的服务商与 API Key**。默认本机数据不会自动上传；当你主动调用外部模型、图床、语音/视频服务，或启用 Supabase 云同步、推送等功能时，相关请求或数据会发送到你配置的服务商。请在使用前阅读隐私与部署说明。
+一个基于 Next.js 的 AI 虚拟手机：在浏览器（或 Android 壳）里模拟一部完整的手机，与你创建的 AI 角色聊天、共同生活、一起看视频、拼贴照片墙。LLM 调用使用**你自行配置的服务商与 API Key**。默认本机数据不会自动上传；当你主动调用外部模型、图床、语音/视频服务，或启用 Supabase 云同步、推送等功能时，相关请求或数据会发送到你配置的服务商。请在使用前阅读[隐私、数据流与 Android 权限说明](./docs/隐私与权限说明.md)和部署说明。
 
 > 本仓库是个人自部署 fork，在官方上游基础上新增了 **生活、照片墙、一起看、档案室** 四个核心 App 与整套 Android 原生壳。改动台账见 [docs/fork-changes-overview.md](./docs/fork-changes-overview.md)。
 
@@ -10,6 +10,7 @@
 |---|---|---|
 | 本页 README | 项目简介、快速开始、功能总览、来源与致谢 | 所有人 |
 | [DEVICE_SETUP_GUIDE.md](./DEVICE_SETUP_GUIDE.md) | Fork 仓库 → 构建 APK → 安装 → 机型适配 → 验收清单 | 想在 Android 上完整体验的用户 |
+| [docs/隐私与权限说明.md](./docs/隐私与权限说明.md) | 本地数据、外部服务数据流、Android 权限用途与撤销方式 | 所有用户 / 自部署维护者 |
 | [android-shell/README.md](./android-shell/README.md) | Android 壳构建配置、签名、站点地址 | 构建 APK 的用户 |
 | [docs/fork-changes-overview.md](./docs/fork-changes-overview.md) | 相对官方上游的改动总台账（逐文件实证） | 维护者 / 二次开发者 |
 | [docs/本次功能同步说明.md](./docs/本次功能同步说明.md) | 最近一次功能同步进 main 的改动索引 | 回顾与测试 |
@@ -20,7 +21,7 @@
 
 > **差异审计（2026-10-24）**：开发仓库与分享仓库当前文件树有 83 个开发仓库独有路径、115 个同路径内容不同、0 个分享仓库独有路径；这不是功能数量。完整时间线、14 份有差异 Markdown 清单与同步注意事项见 [差异台账](./docs/从诊断开始的开发差异台账.md)。
 >
-> **最近更新（2026-11-01）**：生活系统通知回复队列增加处理租约、失败退避重试、长请求租约续期，以及 AI 回应成功后再确认和回复结果幂等保护；Android 1.0.26 增加原生通知回复 peek/ack，网页持久化完成后才确认；Android CI 不再上传未签名 release APK，并在发布前校验 APK 签名；依赖更新修复了当前扫描中的高危/严重生产依赖问题。功能代码已提交不等于所有平台均已实测；公开分享门禁与未验证项见 [公开分享发布门禁](./docs/公开分享发布门禁.md)。
+> **最近更新（2026-11-01）**：生活系统通知回复队列增加处理租约、失败退避重试、长请求租约续期，以及 AI 回应成功后再确认和回复结果幂等保护；Android 1.0.26 增加原生通知回复 peek/ack，网页持久化完成后才确认；Android CI 不再上传未签名 release APK，并在发布前校验 APK 签名；原生壳更新至 1.0.27，移除未使用的短信、通话记录、通讯录与整库媒体读取权限，并加入权限/版本一致性检查；依赖更新修复了当前扫描中的高危/严重生产依赖问题。功能代码已提交不等于所有平台均已实测；公开分享门禁与未验证项见 [公开分享发布门禁](./docs/公开分享发布门禁.md)。
 
 ## 功能总览
 
@@ -237,4 +238,4 @@ scripts/             构建、校验与测试脚本
 
 ## Credits
 
-本项目为独立实现，但部分产品设计和系统抽象受 [SillyTavern](https://github.com/SillyTavern/SillyTavern)（AGPL-3.0）启发，包括预设、正则处理、世界书 / lorebook / WorldInfo 等概念。视频解析依赖 [yt-dlp](https://github.com/yt-dlp/yt-dlp) 与 FFmpeg。字体、贴纸素材、3D 模型等第三方资源的授权说明见 [NOTICE](./NOTICE)。
+本仓库在小笼包原始项目与末末直接上游版本基础上持续二次开发；部分产品设计和系统抽象也受 [SillyTavern](https://github.com/SillyTavern/SillyTavern)（AGPL-3.0）启发，包括预设、正则处理、世界书 / lorebook / WorldInfo 等概念。视频解析依赖 [yt-dlp](https://github.com/yt-dlp/yt-dlp) 与 FFmpeg。字体、贴纸素材、3D 模型等第三方资源的授权说明见 [NOTICE](./NOTICE)。
