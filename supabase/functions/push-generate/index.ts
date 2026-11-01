@@ -617,6 +617,9 @@ Deno.serve(async (req: Request) => {
           characterLocations?: Record<string, string>;
           scheduleSlots?: { ownerType?: string; ownerId?: string; startAt?: string; endAt?: string; title?: string; kind?: string; plannedLocationName?: string }[];
           actorStates?: { ownerType?: string; ownerId?: string; activity?: string }[];
+          onlineChatCharacterId?: string;
+          onlineChatSessionId?: string;
+          onlineChatLeaseUntil?: string;
         };
         const scene = (snapshot.scenes ?? []).find(item => item.id === lifeSceneMeta.sceneId);
         const characterLocation = snapshot.characterLocations?.[lifeSceneMeta.characterId];
@@ -667,6 +670,18 @@ Deno.serve(async (req: Request) => {
           if (!deferred?.ok) await finish("done", "life schedule: sleep window; defer failed safely");
           return;
         }
+        const onlineChatLeaseUntil = Date.parse(snapshot.onlineChatLeaseUntil || "");
+        if (snapshot.onlineChatCharacterId === lifeSceneMeta.characterId
+          && Number.isFinite(onlineChatLeaseUntil)
+          && onlineChatLeaseUntil > now) {
+          // User's active direct conversation wins over a proactive life dialogue.
+          // The life event remains durable and is retried after the conversation lease.
+          const deferAt = Math.max(now + 60_000, onlineChatLeaseUntil + 15_000);
+          const deferred = await deferUntil(deferAt, "life schedule: direct chat is active; deferred until " + new Date(deferAt).toISOString());
+          if (!deferred?.ok) await finish("done", "life schedule: direct chat active; defer failed safely");
+          return;
+        }
+
         const playerSlot = activeSlot("player", "player");
         const characterSlot = activeSlot("character", lifeSceneMeta.characterId);
         const scheduleContext = [
