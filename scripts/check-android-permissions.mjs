@@ -42,6 +42,7 @@ const shouldOverrideEnd = activity.indexOf("\n            }", shouldOverrideStar
 const shouldOverrideBlock = activity.slice(shouldOverrideStart, shouldOverrideEnd);
 assert.ok(shouldOverrideBlock.indexOf("if (!request.isForMainFrame) return false") < shouldOverrideBlock.indexOf("trustedShellUrl = url.toString()"), "Subframe navigations must not overwrite the trusted top-level URL snapshot.");
 assert.match(activity, /private fun isTrustedShellOrigin\(rawUrl: String\?\)/, "Trusted-origin checks must be centralized and exact.");
+assert.match(activity, /private var trustedShellUrl: String\? = SITE_URL/, "The trusted origin snapshot must be initialized before the first document-start bridge call.");
 
 const versionCode = Number(gradle.match(/versionCode\s+(\d+)/)?.[1]);
 const versionName = gradle.match(/versionName\s+"([^"]+)"/)?.[1];

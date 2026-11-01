@@ -143,7 +143,7 @@ class MainActivity : AppCompatActivity() {
      * 陪看诊断、位置读取等原生桥全部失败。这里只缓存 WebView 主线程回调里的 URL，
      * 桥方法只做纯字符串比较，不再跨线程访问 WebView。
      */
-    @Volatile private var trustedShellUrl: String? = null
+    @Volatile private var trustedShellUrl: String? = SITE_URL
     private val bridgeNonce = UUID.randomUUID().toString()
     private var secureBridgeDocumentStartInstalled = false
 
