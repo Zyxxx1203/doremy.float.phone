@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useMemo, useEffect, Suspense, useState, type ComponentProps } from "react";
+import { useRef, useCallback, useMemo, useEffect, Suspense, useState, type ComponentProps, type ComponentRef } from "react";
 import { Canvas, useThree, useFrame, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls, TransformControls, useGLTF, PerspectiveCamera, ContactShadows, Environment, Html } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette, HueSaturation, BrightnessContrast } from "@react-three/postprocessing";
@@ -127,6 +127,7 @@ function LightSceneModel({
   onTransformEnd: (id: string, pos: [number, number, number], rot: [number, number, number], scale: [number, number, number]) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null!);
+  const tcRef = useRef<ComponentRef<typeof TransformControls> | null>(null);
   const [mounted, setMounted] = useState(false);
   const light = obj.light!;
 
@@ -191,6 +192,7 @@ function LightSceneModel({
 
       {selected && groupRef.current && (
         <TransformControls
+          ref={tcRef}
           object={groupRef.current}
           space="local"
           onMouseUp={() => {
@@ -310,8 +312,8 @@ function SceneModel({
         {/* 漫步是纯视觉偏移；选中/关闭漫步时由 R3F 按 props 归位 */}
         <primitive
           object={clone}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
+          onPointerDown={(e: ThreeEvent<PointerEvent>) => e.stopPropagation()}
+          onClick={(e: ThreeEvent<MouseEvent>) => {
             e.stopPropagation();
             if (placing) {
               onPlace([e.point.x, e.point.y, e.point.z]);
