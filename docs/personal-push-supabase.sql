@@ -91,7 +91,11 @@ create unique index if not exists push_jobs_trigger_idx on public.push_jobs (use
 create index if not exists push_jobs_due_idx on public.push_jobs (status, execute_at);
 -- Remove finite '+' children from the former 72-turn life-scene repeat chain.
 -- The unsuffixed row remains the single durable task owned by life-scheduler.
-delete from public.push_jobs where trigger_key like 'life-scene:%:schedule+%';
+update public.push_jobs
+   set status = 'cancelled', result_note = 'legacy finite life repeat chain retired', updated_at = now()
+ where trigger_key like 'life-scene:%:schedule+%' and status in ('pending', 'running');
+delete from public.push_jobs
+ where trigger_key like 'life-scene:%:schedule+%' and status in ('done', 'failed', 'cancelled');
 
 create table if not exists public.push_outbox (
   id text primary key,
