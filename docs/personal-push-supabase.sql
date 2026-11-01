@@ -364,6 +364,7 @@ alter table public.push_screen_threads enable row level security;
 
 -- 屏幕速聊表和 RPC 只由 Edge Function 的 service_role 使用；客户端角色没有表级权限。
 revoke all on table public.push_screen_threads from public, anon, authenticated;
+revoke all on table public.life_schedule_runtime, public.life_schedule_diagnostics from public, anon, authenticated;
 
 -- 2026 年起新项目不会自动把 public 新表暴露给 Data API。
 -- 网关和生成器只以 service_role 访问，绝不授予 anon 或 authenticated。
