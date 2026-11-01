@@ -391,3 +391,6 @@ select cron.unschedule(jobid)
 select cron.schedule('ai-phone-personal-push-cron-cleanup', '0 3 * * *', $CRON$
   delete from cron.job_run_details where end_time < now() - interval '3 days';
 $CRON$);
+
+-- Ask PostgREST to refresh its schema cache after the idempotent deployment/migration.
+notify pgrst, 'reload schema';
