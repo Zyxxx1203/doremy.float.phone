@@ -21,7 +21,7 @@ npm run check:push
 npm run build
 ```
 
-The existing codebase has a legacy ESLint warning backlog; CI currently allows at most 350 warnings while still failing on lint errors. Please do not add warnings in touched code, and reduce nearby warnings when changes make that safe.
+The existing codebase has a legacy ESLint warning backlog; CI currently allows a fixed baseline of at most 755 legacy warnings while still failing on lint errors. Explicit `any` usage is reported as a warning during the migration; do not add new instances, and reduce the baseline as files are properly typed. Please do not add warnings in touched code, and reduce nearby warnings when changes make that safe.
 
 If a change affects Android, also run the Android shell build and permission / bridge contract checks through the repository workflows. If it changes a Supabase Edge Function, SQL schema, deployment artifact, or environment variable, update the corresponding deployment documentation and generated artifacts where required.
 
