@@ -3911,7 +3911,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         }
         const turn = beginTurn({
             kind: "user_reply",
-            characterId: character?.id ?? session.contactId,
+            characterId: character?.id ?? resolveLifeCharacterIdForContact(session.contactId, loadChatContacts()) ?? session.contactId,
             sessionId: session.id,
         });
         if (!turn) return;
