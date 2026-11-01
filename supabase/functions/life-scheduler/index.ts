@@ -250,13 +250,22 @@ Deno.serve(async (req: Request) => {
       const playerNow = locationAt(snapshot, "player", "player", now);
       snapshot.playerLocationId = playerNow.id;
       snapshot.characterLocations = { ...(snapshot.characterLocations || {}) };
+      const allCharacterIds = new Set([
+        ...Object.keys(snapshot.characterLocations || {}),
+        ...(snapshot.scheduleSlots || []).filter(slot => slot.ownerType === "character" && slot.ownerId).map(slot => slot.ownerId!),
+        ...(snapshot.scenes || []).flatMap(scene => scene.characterIds || []),
+      ]);
+      for (const characterId of allCharacterIds) {
+        snapshot.characterLocations[characterId] = locationAt(snapshot, "character", characterId, now).id;
+      }
       snapshot.actorStates = (snapshot.actorStates || []).map(item => {
         const current = item.ownerType === "player"
           ? playerNow
           : item.ownerType === "character" && item.ownerId
             ? locationAt(snapshot, "character", item.ownerId, now)
             : null;
-        return current ? { ...item, activity: current.activity, actualLocationId: current.id, actualLocationName: current.name } : item;
+        // Keep manual override metadata intact; only refresh the derived activity.
+        return current ? { ...item, activity: current.activity } : item;
       });
       snapshot.scenes = (snapshot.scenes || []).map(scene => {
         const participantLocations = (scene.characterIds || []).map(id => locationAt(snapshot, "character", id, now).id);
