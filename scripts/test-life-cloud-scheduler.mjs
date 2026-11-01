@@ -52,7 +52,7 @@ assert.match(generator, /runtimeResponse/);
 assert.match(generator, /cloud schedule state is stale/);
 assert.match(generator, /!payload\\.merge\\?\\.lifeScene && idleRepeat/);
 
-assert.match(schema, /values\\s*\\('personal-cloud', 4, now\\)/);
+assert.match(schema, /values\\s*\\('personal-cloud', 4, now\\(\\)\\)/);
 assert.match(schema, /create table if not exists public\.life_schedule_runtime/);
 assert.match(schema, /create table if not exists public\.life_schedule_diagnostics/);
 assert.match(schema, /ai-phone-life-schedule-evaluate/);
