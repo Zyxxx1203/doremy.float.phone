@@ -189,6 +189,7 @@ create table if not exists public.life_schedule_runtime (
 );
 create index if not exists life_schedule_runtime_updated_idx
   on public.life_schedule_runtime (user_id, updated_at desc);
+alter table public.life_schedule_runtime add column if not exists schedule_version text not null default '';
 
 -- One current diagnostic per cloud scheduler failure. Resolved rows are retained
 -- for inspection and overwritten on the next failure instead of growing forever.
