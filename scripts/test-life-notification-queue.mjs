@@ -91,6 +91,8 @@ assert.equal(peekPendingLifeSceneReply().replyId, "migrated-0");
 assert.ok(claimPendingLifeSceneReply("migrated-0", 50000), "oversized migrated queues must still be processable");
 acknowledgePendingLifeSceneReply("migrated-0");
 assert.equal(peekPendingLifeSceneReply().replyId, "migrated-1", "draining a legacy overflow must preserve FIFO order");
+for (let index = 1; index < 101; index++) acknowledgePendingLifeSceneReply("migrated-" + index);
+assert.equal(peekPendingLifeSceneReply(), null, "all migrated legacy entries should be drainable");
 
 failWrites = true;
 assert.equal(enqueuePendingLifeSceneReply({ replyId: "quota-reply", sceneId: "scene-z", characterId: "char-z", replyMode: "dialogue" }), false, "queue storage failure must be reported so the native queue is not acknowledged");
