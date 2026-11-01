@@ -571,9 +571,9 @@ export function VideoCallScreen({ session, character, onEnd, onConnect, initiato
                 autoChatNotifyRef.current?.assistantSpoke(true);
                 setCallState("IDLE");
             }
-        } catch (error: any) {
+        } catch (error: unknown) {
             if (stateRef.current !== "ENDED") {
-                setSubtitles(prev => [...prev, { id: `err-${Date.now()}`, role: "assistant", text: `⚠️ ${error?.message || "发送失败"}` }]);
+                setSubtitles(prev => [...prev, { id: `err-${Date.now()}`, role: "assistant", text: `⚠️ ${error instanceof Error ? error.message : String(error)}` }]);
                 autoChatNotifyRef.current?.assistantSpoke(false);
                 setCallState("IDLE");
             }
