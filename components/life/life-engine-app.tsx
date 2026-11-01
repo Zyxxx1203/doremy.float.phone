@@ -1654,6 +1654,32 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (typeof window !== "undefined") window.dispatchEvent(new Event("life-scene-message-added"));
   };
 
+  const pushSceneMessages = (messages: LifeSceneMessage[]) => {
+    if (!messages.length) return;
+    const latest = stateRef.current;
+    const normalized = messages.map(message => ({ ...message, channel: message.channel || "life_scene" }));
+    const touchedSceneIds = [...new Set(normalized.map(message => message.sceneId))];
+    let next: VirtualLifeState = { ...latest, sceneMessages: [...latest.sceneMessages, ...normalized] };
+    for (const sceneId of touchedSceneIds) {
+      const scene = next.scenes.find(item => item.id === sceneId);
+      if (scene) next = upsertLifeScene(next, { ...scene, updatedAt: new Date().toISOString() });
+    }
+    const dialogueSceneIds = new Set<string>();
+    for (const message of normalized) {
+      const scene = latest.scenes.find(item => item.id === message.sceneId);
+      const actorName = message.speakerName || (message.role === "player" ? playerName : "生活记录");
+      if (message.role === "system") {
+        const text = message.action || message.dialogue;
+        next = appendLifeTimelineEntry(next, { category: "scene", title: text.slice(0, 100), details: text, actorName, locationName: scene?.locationName, sceneId: message.sceneId, sourceId: message.id });
+      } else {
+        if (message.action) next = appendLifeTimelineEntry(next, { category: "action", title: actorName + (message.role === "player" ? "进行了行动" : "的行动"), details: message.action, actorId: message.speakerId, actorName, locationName: scene?.locationName, sceneId: message.sceneId, sourceId: message.id });
+        if (message.dialogue.trim()) dialogueSceneIds.add(message.sceneId);
+      }
+    }
+    for (const sceneId of dialogueSceneIds) next = rebuildSceneDialogueTimeline(next, sceneId, latest.settings.sceneRecordBatchSize ?? 10);
+    commit(next);
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("life-scene-message-added"));
+  };
   // Life-scene autonomy runs only while the app is open and the scene is visible.
   useEffect(() => {
     if (!ready || !settings.enabled || !settings.enableCharacterAutonomy || settings.enableProactiveSceneMessages === false || !activeScene || activeScene.status !== "active" || !immersiveScene) return;
@@ -1862,7 +1888,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     if (!activeScene || (!userText && !userAction && !forceReaction)) return "failed";
     if (busy) return forceReaction ? "deferred" : "failed";
     const notificationResponsePrefix = notificationReplyId ? "notification-reply-response-" + notificationReplyId : "";
-    if (notificationResponsePrefix && stateRef.current.sceneMessages.some(message => message.id.startsWith(notificationResponsePrefix))) return "completed";
+    if (notificationResponsePrefix && stateRef.current.sceneMessages.some(message =>
+      message.id === notificationResponsePrefix + "-action" || message.id.startsWith(notificationResponsePrefix + "-dialogue-")
+    )) return "completed";
     const userTurn = [userAction ? `行动：${userAction}` : "", userText ? `说话：${userText}` : ""].filter(Boolean).join("\n") || "玩家手动请求角色对最近行为作出反馈";
     const now = new Date().toISOString();
     if (userText || userAction) {
@@ -2019,7 +2047,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         ...dialogueSegments.map((dialogue, index) => ({ id: notificationResponsePrefix ? notificationResponsePrefix + "-dialogue-" + index : id("turn-dialogue"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, dialogue, createdAt: replyAt })),
       ];
       if (!replyMessages.length) replyMessages.push({ id: id("turn"), sceneId: activeScene.id, speakerType: "character", speakerId: target.id, speakerName: target.name, role: "character", dialogue: "", createdAt: replyAt });
-      replyMessages.forEach(pushSceneMessage);
+      pushSceneMessages(replyMessages);
       if (forceReaction) {
         recordLifeDiagnostic({ source: "通知回复", event: "生活现场已生成角色回应", status: "ok", detail: target.name + " 已完成通知回复后的现场回应。", meta: { sceneId: activeScene.id, characterId: target.id, action: Boolean(actionText), dialogueCount: dialogueSegments.length } });
         setNotice(target.name + "已回应最近的互动。");
