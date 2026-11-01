@@ -533,11 +533,52 @@ private fun isSupportedShareUrl(rawUrl: String): Boolean {
 }
 
 private fun isTrustedShellPage(): Boolean {
-    val configuredHost = Uri.parse(SITE_URL).host ?: return false
+    val configured = Uri.parse(SITE_URL)
+    val configuredHost = configured.host ?: return false
     val currentUrl = trustedShellUrl ?: return false
     val current = Uri.parse(currentUrl)
-    return current.scheme in listOf("https", "http")
+    return current.scheme == configured.scheme
         && current.host?.equals(configuredHost, ignoreCase = true) == true
+        && current.port == configured.port
+}
+
+private fun shellOriginRule(): String? {
+    val uri = Uri.parse(SITE_URL)
+    val scheme = uri.scheme ?: return null
+    val host = uri.host ?: return null
+    val port = if (uri.port >= 0) ":${uri.port}" else ""
+    return "$scheme://$host$port"
+}
+
+private fun secureBridgeBootstrapScript(): String {
+    val nonceJson = org.json.JSONObject.quote(bridgeNonce)
+    return """
+        (function () {
+          if (window !== window.top) return;
+          const nonce = $nonceJson;
+          const attach = (publicName, privateName) => {
+            const nativeApi = window[privateName];
+            if (!nativeApi || typeof nativeApi.getMethodNames !== "function") return;
+            let names;
+            try { names = JSON.parse(nativeApi.getMethodNames()); } catch (_) { return; }
+            const wrapper = Object.create(null);
+            for (const methodName of names) {
+              wrapper[methodName] = (...args) => {
+                const raw = nativeApi.invoke(nonce, methodName, JSON.stringify(args));
+                let result;
+                try { result = JSON.parse(raw); } catch (_) { throw new Error("Invalid native bridge response"); }
+                if (!result || result.ok !== true) throw new Error(result && result.error ? result.error : "Native bridge call rejected");
+                return result.value;
+              };
+            }
+            Object.freeze(wrapper);
+            Object.defineProperty(window, publicName, { value: wrapper, configurable: false, writable: false });
+          };
+          attach("AndroidShell", "AndroidShellSecure");
+          attach("PhoneWidget", "PhoneWidgetSecure");
+          window.dispatchEvent(new Event("floatshell-bridge-ready"));
+        })();
+    """.trimIndent()
 }
 
 private fun isLikelyPublicHls(rawUrl: String): Boolean {
