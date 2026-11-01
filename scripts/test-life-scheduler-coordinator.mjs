@@ -16,7 +16,14 @@ const localStorage = {
 const moduleBox = { exports: {} };
 const sandbox = { module: moduleBox, exports: moduleBox.exports, window: {}, localStorage, Date, Math, console };
 vm.runInNewContext(compiled, sandbox, { filename: "life-scheduler-coordinator.cjs" });
-const { LIFE_SCENE_FOREGROUND_LEASE_KEY, setLifeSceneForegroundLease, readLifeSceneForegroundLease } = moduleBox.exports;
+const {
+  LIFE_SCENE_FOREGROUND_LEASE_KEY,
+  setLifeSceneForegroundLease,
+  readLifeSceneForegroundLease,
+  ONLINE_CHAT_FOREGROUND_LEASE_KEY,
+  setOnlineChatForegroundLease,
+  readOnlineChatForegroundLease,
+} = moduleBox.exports;
 
 setLifeSceneForegroundLease("scene-a", true);
 assert.equal(readLifeSceneForegroundLease().sceneId, "scene-a", "visible scene should own the lease");
@@ -27,5 +34,15 @@ setLifeSceneForegroundLease("scene-a", false);
 assert.equal(readLifeSceneForegroundLease(), null, "the owning scene should be able to release its lease");
 setLifeSceneForegroundLease("scene-a", true);
 assert.equal(readLifeSceneForegroundLease(Date.now() + 121_000), null, "an expired lease must not block offline jobs");
+
+setOnlineChatForegroundLease("char-a", "chat-a", true);
+assert.equal(readOnlineChatForegroundLease().characterId, "char-a", "visible direct chat should publish its character lease");
+setOnlineChatForegroundLease("char-b", "chat-b", false);
+assert.equal(readOnlineChatForegroundLease().sessionId, "chat-a", "a different chat must not clear the active lease");
+setOnlineChatForegroundLease("char-a", "chat-a", false);
+assert.equal(readOnlineChatForegroundLease(), null, "closing the owning direct chat should release its lease");
+setOnlineChatForegroundLease("char-a", "chat-a", true);
+assert.equal(readOnlineChatForegroundLease(Date.now() + 91_000), null, "a stale direct-chat lease must expire");
+assert.ok(values.has(ONLINE_CHAT_FOREGROUND_LEASE_KEY) === false, "expired lease reads must not recreate storage");
 
 console.log("Life scheduler coordinator tests passed.");
