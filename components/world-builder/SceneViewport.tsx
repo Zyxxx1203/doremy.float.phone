@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useCallback, useMemo, useEffect, Suspense, useState, type ComponentProps } from "react";
-import { Canvas, useThree, useFrame } from "@react-three/fiber";
+import { Canvas, useThree, useFrame, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls, TransformControls, useGLTF, PerspectiveCamera, ContactShadows, Environment, Html } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette, HueSaturation, BrightnessContrast } from "@react-three/postprocessing";
 import * as THREE from "three";
@@ -169,12 +169,12 @@ function LightSceneModel({
 
         {/* 可视化小球（选中用） */}
         <mesh
-          onClick={(e) => {
+          onClick={(e: ThreeEvent<MouseEvent>) => {
             e.stopPropagation();
             if (placing) onPlace([e.point.x, e.point.y, e.point.z]);
             else onSelect();
           }}
-          onPointerDown={(e) => e.stopPropagation()}
+          onPointerDown={(e: ThreeEvent<PointerEvent>) => e.stopPropagation()}
         >
           <sphereGeometry args={[0.15, 12, 8]} />
           <meshBasicMaterial color={helperColor} transparent opacity={selected ? 1 : 0.6} />
