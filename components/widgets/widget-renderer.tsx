@@ -2017,7 +2017,7 @@ function CoupleChatWidget({ config, widgetId, onConfigChange, preview }: any) {
                ))}
              </svg>
            </div>
-           <span className="wg-hw-time">0:12"</span>
+           <span className="wg-hw-time">0:12&quot;</span>
         </div>
         <div 
           className="wg-chat-avatar" 
