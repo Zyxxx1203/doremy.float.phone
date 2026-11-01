@@ -653,7 +653,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         const virtualNow = resolveActorLifeNow(getActorClock(next, owner.ownerType, owner.ownerId));
         // Always inspect the current virtual week first. A future manual slot
         // must not prevent missing baseline days from being generated.
-        let week = mondayStart(virtualNow);
+        const week = mondayStart(virtualNow);
         const target = mondayStart(virtualNow);
         const targetEnd = new Date(target);
         // Auto-generation is still limited to the current 7-day week; don't expose
