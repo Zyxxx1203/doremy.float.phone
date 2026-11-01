@@ -45,9 +45,7 @@ function nextArmAt(triggerKey: string, now: number): number {
   try {
     const raw = localStorage.getItem(ARM_META_PREFIX + triggerKey);
     if (raw) {
-      const parsed = JSON.parse(raw) as { executeAt?: number };
-      // 还未到执行时刻：沿用，避免每分钟 POST 把任务不断往后推。
-      // 已经挂过服务端循环链的，不在客户端重复续排；让服务端 idleRepeat 继续。
+      const parsed = JSON.parse(raw) as { executeAt?: number; cloudManaged?: boolean };
       // Once the cloud owns this scene/character, the durable server row is re-armed
       // in place. The browser must not create a second timer chain.
       if ((parsed as { cloudManaged?: boolean }).cloudManaged === true) return 0;
@@ -55,8 +53,7 @@ function nextArmAt(triggerKey: string, now: number): number {
     }
   } catch { /* fall through */ }
   const executeAt = now + MIN_DELAY_MS + Math.floor(Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS));
-  const repeatUntil = executeAt + 20 * 60_000 * 72;
-  try { localStorage.setItem(ARM_META_PREFIX + triggerKey, JSON.stringify({ executeAt, repeat: true, repeatUntil })); } catch { /* best effort */ }
+  try { localStorage.setItem(ARM_META_PREFIX + triggerKey, JSON.stringify({ executeAt, cloudManaged: true })); } catch { /* best effort */ }
   return executeAt;
 }
 
