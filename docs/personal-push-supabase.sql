@@ -89,6 +89,9 @@ alter table public.push_jobs add constraint push_jobs_kind_check
   check (kind in ('followup', 'reply_bailout', 'timed_task', 'bridge_scan', 'shortcut_resume'));
 create unique index if not exists push_jobs_trigger_idx on public.push_jobs (user_id, trigger_key);
 create index if not exists push_jobs_due_idx on public.push_jobs (status, execute_at);
+-- Remove finite '+' children from the former 72-turn life-scene repeat chain.
+-- The unsuffixed row remains the single durable task owned by life-scheduler.
+delete from public.push_jobs where trigger_key like 'life-scene:%:schedule+%';
 
 create table if not exists public.push_outbox (
   id text primary key,
