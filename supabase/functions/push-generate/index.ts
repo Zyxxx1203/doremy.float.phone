@@ -615,8 +615,8 @@ Deno.serve(async (req: Request) => {
           foregroundLeaseUntil?: string;
           scenes?: { id?: string; locationId?: string; characterIds?: string[] }[];
           characterLocations?: Record<string, string>;
-          scheduleSlots?: { ownerType?: string; ownerId?: string; startAt?: string; endAt?: string; title?: string; kind?: string; plannedLocationName?: string }[];
-          actorStates?: { ownerType?: string; ownerId?: string; activity?: string }[];
+          scheduleSlots?: { ownerType?: string; ownerId?: string; startAt?: string; endAt?: string; title?: string; kind?: string; source?: string; plannedLocationName?: string }[];
+          actorStates?: { ownerType?: string; ownerId?: string; activity?: string; currentLocationName?: string }[];
           onlineChatCharacterId?: string;
           onlineChatSessionId?: string;
           onlineChatLeaseUntil?: string;
@@ -653,8 +653,20 @@ Deno.serve(async (req: Request) => {
               && Number.isFinite(Date.parse(slot.startAt || ""))
               && Date.parse(slot.startAt || "") > now
               && !isLifeSleepActivity(slot.title || ""))
-            .sort((a, b) => Date.parse(a.startAt || "") - Date.parse(b.startAt || ""));
-          return future.length ? Date.parse(future[0].startAt || "") : now + 30 * 60_000;
+            .map(slot => Date.parse(slot.startAt || ""));
+          const weekMs = 7 * 24 * 60 * 60_000;
+          for (const slot of slots.filter(item => item.ownerType === ownerType && item.ownerId === ownerId
+            && item.source === "weekly-generation" && !["special", "appointment"].includes(item.kind || "")
+            && !isLifeSleepActivity(item.title || ""))) {
+            const start = Date.parse(slot.startAt || ""), end = Date.parse(slot.endAt || "");
+            if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+            const offset = Math.max(0, Math.floor((now - start) / weekMs));
+            for (let week = offset; week <= offset + 2; week += 1) {
+              const projected = start + week * weekMs;
+              if (projected > now) future.push(projected);
+            }
+          }
+          return future.length ? Math.min(...future) : now + 30 * 60_000;
         };
         const playerSleeping = actorIsSleeping("player", "player");
         const characterSleeping = actorIsSleeping("character", lifeSceneMeta.characterId);
@@ -684,11 +696,17 @@ Deno.serve(async (req: Request) => {
 
         const playerSlot = activeSlot("player", "player");
         const characterSlot = activeSlot("character", lifeSceneMeta.characterId);
+        const playerActor = actors.find(item => item.ownerType === "player" && item.ownerId === "player");
+        const characterActor = actors.find(item => item.ownerType === "character" && item.ownerId === lifeSceneMeta.characterId);
+        const playerActivity = playerSlot?.title || playerActor?.activity || "";
+        const characterActivity = characterSlot?.title || characterActor?.activity || "";
+        const playerLocationName = playerSlot?.plannedLocationName || playerActor?.currentLocationName || "";
+        const characterLocationName = characterSlot?.plannedLocationName || characterActor?.currentLocationName || "";
         const scheduleContext = [
-          "【当前真实日程上下文，以此刻系统时间和已同步日程为准】",
-          playerSlot ? "玩家正在：" + (playerSlot.title || "按当前日程活动") + (playerSlot.plannedLocationName ? "；地点：" + playerSlot.plannedLocationName : "") : "玩家当前没有明确的日程安排。",
-          characterSlot ? "角色正在：" + (characterSlot.title || "按当前日程活动") + (characterSlot.plannedLocationName ? "；地点：" + characterSlot.plannedLocationName : "") : "角色当前没有明确的日程安排。",
-          "请让生活现场行动贴合双方当前安排。例如玩家学习时，可以轻声递来咖啡、放下点心或低声搭话；不要打断专注，不要替玩家决定行动。",
+          "【云端当前生活状态：本段为本轮生成前重新计算的权威状态，优先级高于旧聊天、旧预约提示和历史地点】",
+          "玩家当前活动：" + (playerActivity || "没有明确日程") + (playerLocationName ? "；当前地点：" + playerLocationName : ""),
+          "角色当前活动：" + (characterActivity || "自由活动") + (characterLocationName ? "；当前地点：" + characterLocationName : ""),
+          "不要沿用旧地点或旧活动；行动必须符合当前活动、地点和睡眠状态。玩家专注时只做轻量陪伴，不替玩家决定行动。",
         ].join("\n");
         appendLifeScheduleContext(payload.request.body, payload.request.providerKind, scheduleContext);
 
