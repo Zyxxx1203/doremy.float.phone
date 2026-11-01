@@ -612,7 +612,7 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
         // Notify any mounted UI
         window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId: session.id } }));
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         if (turn?.signal.aborted) {
             window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId: sched.sessionId } }));
             return;
@@ -887,7 +887,7 @@ async function fireTimedWake(sched: TimedWakeSchedule) {
         }
 
         window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId: session.id } }));
-    } catch (error: any) {
+    } catch (error: unknown) {
         if (turn?.signal.aborted) {
             window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId: sched.sessionId } }));
             return;
@@ -967,7 +967,7 @@ async function fireMenstrualPeriodCare(input: {
         }
 
         window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId: session.id } }));
-    } catch (error: any) {
+    } catch (error: unknown) {
         if (turn?.signal.aborted) {
             window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId: input.sessionId } }));
             return;
