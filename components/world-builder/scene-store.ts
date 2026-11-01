@@ -110,10 +110,11 @@ export async function getModelSize(url: string): Promise<[number, number, number
   const size = box.getSize(new THREE.Vector3());
   boxCache.set(url, size);
   // 清理
-  gltf.scene.traverse((child: any) => {
-    child.geometry?.dispose();
-    const mats = Array.isArray(child.material) ? child.material : [child.material];
-    mats.forEach((m: any) => m?.dispose?.());
+  gltf.scene.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    child.geometry.dispose();
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((material) => material.dispose());
   });
   return [size.x, size.y, size.z];
 }
