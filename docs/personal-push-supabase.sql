@@ -34,7 +34,7 @@ create table if not exists public.ai_phone_cloud_meta (
   updated_at timestamptz not null default now()
 );
 insert into public.ai_phone_cloud_meta (id, schema_version, updated_at)
-values ('personal-cloud', 3, now())
+values ('personal-cloud', 4, now())
 on conflict (id) do update set schema_version = excluded.schema_version, updated_at = excluded.updated_at;
 
 create table if not exists public.push_server_config (
@@ -167,6 +167,42 @@ create table if not exists public.push_bridge_snapshots (
   updated_at timestamptz not null default now(),
   primary key (user_id, rule_id)
 );
+
+-- Durable cloud-computed state for the life engine. The encrypted life-schedule
+-- snapshot stores the complete rolling seven-day itinerary; this table stores only
+-- the latest derived state and one next-run timestamp per scene/character.
+create table if not exists public.life_schedule_runtime (
+  user_id text not null,
+  scene_id text not null,
+  character_id text not null,
+  state_version bigint not null default 0,
+  activity text not null default '',
+  location_id text not null default '',
+  location_name text not null default '',
+  next_transition_at timestamptz,
+  next_run_at timestamptz,
+  last_status text not null default 'unknown',
+  last_error text,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, scene_id, character_id)
+);
+create index if not exists life_schedule_runtime_updated_idx
+  on public.life_schedule_runtime (user_id, updated_at desc);
+
+-- One current diagnostic per cloud scheduler failure. Resolved rows are retained
+-- for inspection and overwritten on the next failure instead of growing forever.
+create table if not exists public.life_schedule_diagnostics (
+  id text primary key,
+  user_id text not null,
+  severity text not null default 'error',
+  code text not null,
+  detail text not null,
+  repair_hint text not null default '',
+  updated_at timestamptz not null default now(),
+  resolved_at timestamptz
+);
+create index if not exists life_schedule_diagnostics_user_idx
+  on public.life_schedule_diagnostics (user_id, updated_at desc);
 
 -- v2 的 push_screen_sessions 是按时间切分的第二套聊天记录，还会持久化原始截图。
 -- 屏幕速聊现在只是小手机唯一聊天窗口的远程入口，因此升级时移除这份临时缓存。
@@ -306,6 +342,8 @@ alter table public.push_outbox enable row level security;
 alter table public.push_shortcut_commands enable row level security;
 alter table public.push_bridge_config enable row level security;
 alter table public.push_bridge_snapshots enable row level security;
+alter table public.life_schedule_runtime enable row level security;
+alter table public.life_schedule_diagnostics enable row level security;
 alter table public.push_screen_threads enable row level security;
 
 -- 屏幕速聊表和 RPC 只由 Edge Function 的 service_role 使用；客户端角色没有表级权限。
@@ -323,6 +361,8 @@ grant select, insert, update, delete on table
   public.push_shortcut_commands,
   public.push_bridge_config,
   public.push_bridge_snapshots,
+  public.life_schedule_runtime,
+  public.life_schedule_diagnostics,
   public.push_screen_threads
 to service_role;
 
@@ -381,6 +421,19 @@ select cron.schedule('ai-phone-personal-push-jobs-scan', '* * * * *', $CRON$
      order by execute_at asc
      limit 5
   ) j;
+$CRON$);
+
+-- 每 10 秒重算云端生活状态。只更新运行态，并复用已有 life-scene 任务行；
+-- 不创建无限重复预约，也不依赖 WebView/客户端定时器常驻。
+select cron.schedule('ai-phone-life-schedule-evaluate', '10 seconds', $CRON$
+  select net.http_post(
+    url := 'https://__PROJECT_REF__.supabase.co/functions/v1/life-scheduler',
+    headers := jsonb_build_object('Content-Type', 'application/json'),
+    body := jsonb_build_object(
+      'token', (select cron_secret from public.push_server_config where id = 'main')
+    ),
+    timeout_milliseconds := 5000
+  );
 $CRON$);
 
 -- pg_cron 运行日志清理：只保留最近 3 天，防止 cron.job_run_details 无限增长。
