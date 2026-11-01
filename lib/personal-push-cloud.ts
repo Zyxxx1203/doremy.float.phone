@@ -186,6 +186,7 @@ async function waitForPersonalPushHealth(
       && data?.ok === true
       && Number(data.schemaVersion) >= PERSONAL_PUSH_SCHEMA_VERSION
       && data.capabilities?.includes("screen-chat-continuous")
+      && data.capabilities?.includes("life-schedule-cloud")
     ) return { ready: true };
     if (health?.ok && data?.ok === true) {
       lastError = "个人云版本较旧，请重新部署后再启用屏幕速聊。";
