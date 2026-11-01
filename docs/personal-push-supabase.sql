@@ -18,7 +18,8 @@ begin
         'ai_phone_cloud_meta',
         'push_server_config', 'push_subscriptions', 'push_jobs', 'push_outbox',
         'push_shortcut_commands', 'push_bridge_config', 'push_bridge_snapshots',
-        'push_screen_sessions', 'push_screen_threads'
+        'push_screen_sessions', 'push_screen_threads',
+        'life_schedule_runtime', 'life_schedule_diagnostics'
       ])
   ) into has_unknown_public_table;
 
@@ -425,9 +426,9 @@ select cron.schedule('ai-phone-personal-push-jobs-scan', '* * * * *', $CRON$
   ) j;
 $CRON$);
 
--- 每 10 秒重算云端生活状态。只更新运行态，并复用已有 life-scene 任务行；
+-- 每分钟重算云端生活状态。只更新运行态，并复用已有 life-scene 任务行；
 -- 不创建无限重复预约，也不依赖 WebView/客户端定时器常驻。
-select cron.schedule('ai-phone-life-schedule-evaluate', '10 seconds', $CRON$
+select cron.schedule('ai-phone-life-schedule-evaluate', '* * * * *', $CRON$
   select net.http_post(
     url := 'https://__PROJECT_REF__.supabase.co/functions/v1/life-scheduler',
     headers := jsonb_build_object('Content-Type', 'application/json'),
