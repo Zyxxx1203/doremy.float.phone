@@ -46,7 +46,7 @@ assert.doesNotMatch(snapshot, /if \(!state\.settings\.enabled\) return false/);
 assert.match(client, /cloudManaged: true/);
 assert.match(client, /armLifeSceneProactiveBailout/);
 assert.match(client, /activeScenePairs/);
-assert.match(client, /participant\\.activity !== "离开"/);
+assert.match(client, /participant\.activity !== "离开"/);
 assert.doesNotMatch(client, /remaining: 72/);
 assert.doesNotMatch(client, /repeatUntil/);
 assert.doesNotMatch(client, /repeat: \{ intervalMs/);
