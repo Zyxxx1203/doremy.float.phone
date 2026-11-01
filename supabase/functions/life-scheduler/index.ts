@@ -4,7 +4,7 @@
 type EncryptedPayload = { v: 1; iv: string; tag: string; ct: string };
 type ScheduleSlot = {
   ownerType?: string; ownerId?: string; startAt?: string; endAt?: string;
-  title?: string; kind?: string; plannedLocationId?: string; plannedLocationName?: string;
+  title?: string; kind?: string; source?: string; plannedLocationId?: string; plannedLocationName?: string;
 };
 type ActorState = {
   ownerType?: string; ownerId?: string; activity?: string;
@@ -29,6 +29,8 @@ const jsonHeaders = (serviceKey: string) => ({
   apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json",
 });
 const sleepPattern = /睡眠|睡觉|入睡|午休|休息中/;
+const WEEK_MS = 7 * 24 * 60 * 60_000;
+const isWeeklyRule = (slot: ScheduleSlot) => slot.source === "weekly-generation" && !["special", "appointment"].includes(slot.kind || "");
 const isSleep = (value: string) => sleepPattern.test(value || "");
 const parseTime = (value?: string | null) => value ? Date.parse(value) : Number.NaN;
 const iso = (value: number) => new Date(value).toISOString();
@@ -57,9 +59,30 @@ async function encryptPayload(plain: string, secret: string): Promise<EncryptedP
   const combined = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(plain)));
   return { v: 1, iv: toBase64(iv), tag: toBase64(combined.slice(-16)), ct: toBase64(combined.slice(0, -16)) };
 }
+function projectedWeeklySlots(snapshot: Snapshot, ownerType: string, ownerId: string, now: number, weeks = 2): ScheduleSlot[] {
+  const projected: ScheduleSlot[] = [];
+  for (const slot of snapshot.scheduleSlots || []) {
+    if (slot.ownerType !== ownerType || slot.ownerId !== ownerId || !isWeeklyRule(slot)) continue;
+    const start = parseTime(slot.startAt), end = parseTime(slot.endAt);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+    const duration = end - start;
+    const offset = Math.max(0, Math.floor((now - start) / WEEK_MS));
+    for (let week = offset; week <= offset + weeks; week += 1) {
+      const projectedStart = start + week * WEEK_MS;
+      projected.push({ ...slot, startAt: iso(projectedStart), endAt: iso(projectedStart + duration) });
+    }
+  }
+  return projected;
+}
+function allScheduleSlots(snapshot: Snapshot, ownerType: string, ownerId: string, now: number): ScheduleSlot[] {
+  return [
+    ...(snapshot.scheduleSlots || []).filter(slot => slot.ownerType === ownerType && slot.ownerId === ownerId),
+    ...projectedWeeklySlots(snapshot, ownerType, ownerId, now),
+  ];
+}
 function activeSlot(snapshot: Snapshot, ownerType: string, ownerId: string, at: number): ScheduleSlot | null {
-  return (snapshot.scheduleSlots || []).find(slot => slot.ownerType === ownerType && slot.ownerId === ownerId
-    && Number.isFinite(parseTime(slot.startAt)) && Number.isFinite(parseTime(slot.endAt))
+  const slots = allScheduleSlots(snapshot, ownerType, ownerId, at);
+  return slots.find(slot => Number.isFinite(parseTime(slot.startAt)) && Number.isFinite(parseTime(slot.endAt))
     && parseTime(slot.startAt) <= at && at < parseTime(slot.endAt)) || null;
 }
 function actor(snapshot: Snapshot, ownerType: string, ownerId: string): ActorState | null {
@@ -82,18 +105,17 @@ function locationAt(snapshot: Snapshot, ownerType: string, ownerId: string, at: 
   return { id, name, activity: slot?.title || current?.activity || "自由活动", slot };
 }
 function nextTransition(snapshot: Snapshot, ownerType: string, ownerId: string, now: number): number | null {
-  const boundaries = (snapshot.scheduleSlots || [])
-    .filter(slot => slot.ownerType === ownerType && slot.ownerId === ownerId)
+  const boundaries = allScheduleSlots(snapshot, ownerType, ownerId, now)
     .flatMap(slot => [parseTime(slot.startAt), parseTime(slot.endAt)])
     .filter(value => Number.isFinite(value) && value > now)
     .sort((a, b) => a - b);
   return boundaries[0] ?? null;
 }
 function nextOverlap(snapshot: Snapshot, characterId: string, now: number): number {
-  const boundaries = (snapshot.scheduleSlots || [])
-    .filter(slot => (slot.ownerType === "player" && slot.ownerId === "player")
-      || (slot.ownerType === "character" && slot.ownerId === characterId))
-    .flatMap(slot => [parseTime(slot.startAt), parseTime(slot.endAt)])
+  const boundaries = [
+    ...allScheduleSlots(snapshot, "player", "player", now),
+    ...allScheduleSlots(snapshot, "character", characterId, now),
+  ].flatMap(slot => [parseTime(slot.startAt), parseTime(slot.endAt)])
     .filter(value => Number.isFinite(value) && value > now)
     .sort((a, b) => a - b);
   for (const boundary of boundaries) {
@@ -268,7 +290,7 @@ Deno.serve(async (req: Request) => {
             ? locationAt(snapshot, "character", item.ownerId, now)
             : null;
         // Keep manual override metadata intact; only refresh the derived activity.
-        return current ? { ...item, activity: current.activity } : item;
+        return current ? { ...item, activity: current.activity, currentLocationName: current.name } : item;
       });
       snapshot.scenes = (snapshot.scenes || []).map(scene => {
         const participantLocations = (scene.characterIds || []).map(id => locationAt(snapshot, "character", id, now).id);
@@ -303,9 +325,8 @@ Deno.serve(async (req: Request) => {
 });
 
 function nextAwake(snapshot: Snapshot, ownerType: string, ownerId: string, now: number): number {
-  const future = (snapshot.scheduleSlots || [])
-    .filter(slot => slot.ownerType === ownerType && slot.ownerId === ownerId
-      && parseTime(slot.startAt) > now && !isSleep(slot.title || ""))
+  const future = allScheduleSlots(snapshot, ownerType, ownerId, now)
+    .filter(slot => parseTime(slot.startAt) > now && !isSleep(slot.title || ""))
     .sort((a, b) => parseTime(a.startAt) - parseTime(b.startAt));
   return future.length ? parseTime(future[0].startAt) : now + 30 * 60_000;
 }
