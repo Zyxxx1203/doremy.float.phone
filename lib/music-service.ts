@@ -168,11 +168,11 @@ export type NeteaseToplist = NeteasePlaylist & {
     tracks?: Array<{ first: string; second: string }>;
 };
 
-function mapSongToSearchResult(s: any): NeteaseSearchResult {
+function mapSongToSearchResult(s: NeteaseApiRecord): NeteaseSearchResult {
     return {
         id: s.id,
         name: s.name || "",
-        artists: (s.ar || s.artists || []).map((a: any) => a.name).filter(Boolean).join("/"),
+        artists: (s.ar || s.artists || []).map((a: NeteaseApiArtist) => a.name).filter(Boolean).join("/"),
         album: s.al?.name || s.album?.name || "",
         duration: s.dt || s.duration || 0,
         coverUrl: secureHttpUrl(s.al?.picUrl || s.album?.picUrl),
@@ -186,6 +186,71 @@ function secureHttpUrl(url: string | undefined): string | undefined;
 function secureHttpUrl(url: string | undefined): string | undefined {
     return typeof url === "string" ? url.replace(/^http:\/\//, "https://") : url;
 }
+
+type NeteaseApiArtist = {
+    id?: number;
+    name?: string;
+    nickname?: string;
+    avatarUrl?: string;
+    picUrl?: string;
+};
+
+type NeteaseApiAlbumInfo = { name?: string; picUrl?: string };
+type NeteaseApiTrack = { first?: string; second?: string };
+type NeteaseApiPicture = { originUrl?: string; pcSquareUrl?: string; squareUrl?: string };
+
+type NeteaseApiRecord = {
+    [key: string]: unknown;
+    id?: number;
+    name?: string;
+    ar?: NeteaseApiArtist[];
+    artists?: NeteaseApiArtist[];
+    al?: NeteaseApiAlbumInfo;
+    album?: NeteaseApiAlbumInfo;
+    dt?: number;
+    duration?: number;
+    picUrl?: string;
+    coverImgUrl?: string;
+    coverUrl?: string;
+    trackCount?: number;
+    creator?: NeteaseApiArtist;
+    subscribed?: boolean;
+    playCount?: number;
+    playcount?: number;
+    specialType?: number;
+    searchWord?: string;
+    keyword?: string;
+    score?: number;
+    content?: string;
+    iconType?: number;
+    tracks?: NeteaseApiTrack[];
+    updateFrequency?: string;
+    description?: string;
+    tags?: string[];
+    subscribedCount?: number;
+    commentCount?: number;
+    shareCount?: number;
+    commentId?: number;
+    user?: NeteaseApiArtist;
+    likedCount?: number;
+    time?: number;
+    ipLocation?: { location?: string };
+    replyCount?: number;
+    publishTime?: number;
+    dj?: NeteaseApiArtist;
+    programCount?: number;
+    lastProgramName?: string;
+    mainSong?: { id?: number; duration?: number };
+    createTime?: number;
+    listenerCount?: number;
+    size?: number;
+    eventTime?: number;
+    json?: string;
+    pics?: NeteaseApiPicture[];
+    song?: NeteaseApiRecord;
+    songInfo?: NeteaseApiRecord;
+    data?: NeteaseApiRecord;
+};
 
 // ── API Calls ──
 
@@ -291,8 +356,8 @@ export async function getNeteaseSongDetail(songId: number): Promise<{ coverUrl?:
         return {
             coverUrl: secureHttpUrl(song.al?.picUrl),
             name: song.name,
-            artists: (song.ar || []).map((a: any) => a.name).join("/"),
-            artistList: (song.ar || []).filter((a: any) => a?.id && a?.name).map((a: any) => ({ id: a.id, name: a.name })),
+            artists: (song.ar || []).map((a: NeteaseApiRecord) => a.name).join("/"),
+            artistList: (song.ar || []).filter((a: any) => a?.id && a?.name).map((a: NeteaseApiArtist) => ({ id: a.id, name: a.name })),
             album: song.al?.name || "",
         };
     } catch {
@@ -377,7 +442,7 @@ export async function getUserPlaylists(): Promise<NeteasePlaylist[]> {
     try {
         const resp = await fetch(withNeteaseParams(`${base}/user/playlist?uid=${uid}&timestamp=${Date.now()}`));
         const data = await resp.json();
-        return (data?.playlist || []).map((p: any) => ({
+        return (data?.playlist || []).map((p: NeteaseApiRecord) => ({
             id: p.id,
             name: p.name,
             coverUrl: secureHttpUrl(p.coverImgUrl),
@@ -463,7 +528,7 @@ export async function getHotSearchDetail(): Promise<NeteaseHotSearch[]> {
     try {
         const resp = await fetch(withNeteaseParams(`${base}/search/hot/detail?timestamp=${Date.now()}`));
         const data = await resp.json();
-        return (data?.data || []).map((item: any) => ({
+        return (data?.data || []).map((item: NeteaseApiRecord) => ({
             keyword: item.searchWord || item.keyword || "",
             score: item.score,
             content: item.content,
@@ -485,7 +550,7 @@ export async function getToplists(): Promise<NeteaseToplist[]> {
             trackCount: p.trackCount || p.tracks?.length || 0,
             creator: "",
             updateFrequency: p.updateFrequency,
-            tracks: Array.isArray(p.tracks) ? p.tracks.slice(0, 3).map((t: any) => ({
+            tracks: Array.isArray(p.tracks) ? p.tracks.slice(0, 3).map((t: NeteaseApiTrack) => ({
                 first: t.first || "",
                 second: t.second || "",
             })) : [],
@@ -518,7 +583,7 @@ export async function getPlaylistDetail(playlistId: number): Promise<NeteasePlay
     } catch { return null; }
 }
 
-function mapComment(c: any): NeteaseComment {
+function mapComment(c: NeteaseApiRecord): NeteaseComment {
     return {
         id: c.commentId,
         userName: c.user?.nickname || "网易云用户",
@@ -548,7 +613,7 @@ export async function getSongCommentPage(songId: number, offset = 0, limit = 20,
         const endpoint = resType === 2 ? "comment/playlist" : "comment/music";
         const resp = await fetch(withNeteaseParams(`${base}/${endpoint}?id=${songId}&limit=${limit}&offset=${offset}&timestamp=${Date.now()}`));
         const data = await resp.json();
-        const mapList = (list: any) => (Array.isArray(list) ? list.map(mapComment).filter((c: NeteaseComment) => c.content) : []);
+        const mapList = (list: unknown) => (Array.isArray(list) ? list.map((comment: NeteaseApiRecord) => mapComment(comment)).filter(comment => comment.content) : []);
         return {
             hotComments: offset === 0 ? mapList(data?.hotComments) : [],
             comments: mapList(data?.comments),
@@ -695,7 +760,7 @@ export async function getUserRecordWithCounts(type: 0 | 1 = 1): Promise<NeteaseP
         const records = data?.weekData || data?.allData || [];
         if (!Array.isArray(records)) return [];
         return records
-            .map((r: any) => ({ song: mapSongToSearchResult(r.song), playCount: r.playCount || 0 }))
+            .map((r: NeteaseApiRecord) => ({ song: mapSongToSearchResult(r.song), playCount: r.playCount || 0 }))
             .filter((r: NeteasePlayRecord) => r.song.id);
     } catch { return []; }
 }
@@ -978,15 +1043,15 @@ export async function getUserEvents(limit = 30): Promise<NeteaseUserEvent[]> {
     try {
         const resp = await fetch(withNeteaseParams(`${base}/user/event?uid=${uid}&limit=${limit}&timestamp=${Date.now()}`));
         const data = await resp.json();
-        return (data?.events || []).map((ev: any) => {
-            let payload: any = {};
+        return (data?.events || []).map((ev: NeteaseApiRecord) => {
+            let payload: NeteaseApiRecord = {};
             try { payload = JSON.parse(ev.json || "{}"); } catch { /* 保底空载荷 */ }
             const song = payload?.song ? mapSongToSearchResult(payload.song) : null;
             return {
                 id: ev.id,
                 time: ev.eventTime,
-                text: payload?.msg || "",
-                pics: (ev.pics || []).map((p: any) => secureHttpUrl(p.originUrl || p.pcSquareUrl || p.squareUrl)).filter(Boolean),
+                text: typeof payload.msg === "string" ? payload.msg : "",
+                pics: (ev.pics || []).map((p: NeteaseApiPicture) => secureHttpUrl(p.originUrl || p.pcSquareUrl || p.squareUrl)).filter(Boolean),
                 song: song && song.id ? song : null,
             };
         }).filter((ev: NeteaseUserEvent) => ev.text || ev.pics.length > 0 || ev.song);
