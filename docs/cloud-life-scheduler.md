@@ -18,7 +18,7 @@ Weekly-generated routine slots (`source = weekly-generation`) are projected forw
 4. Immediately before generation, `push-generate` reads the latest encrypted snapshot and a version-matched `life_schedule_runtime` row. It defers if the snapshot is older than three minutes, rejects disabled autonomy or a stale scene/location, and injects the current activity/location into the prompt.
 5. Active direct chat and the visible foreground life scene take priority. Background life actions defer rather than block chat.
 
-A scene/participant removal or autonomy-off update cancels pending/running tasks. Completed tasks for removed scenes are deleted; one active scene/character retains at most one reusable task row.
+A scene/participant removal or autonomy-off update cancels the row. The same row is reused if that scene/character becomes active again; each scene/character has at most one durable task row, rather than an unbounded chain of child jobs.
 
 ## Diagnostics and notifications
 
