@@ -663,13 +663,13 @@ Deno.serve(async (req: Request) => {
       }
       const snapResponse = await rest(
         `push_bridge_snapshots?user_id=eq.${encodeURIComponent(job.user_id)}`
-        + `&rule_id=eq.life-schedule&select=payload&limit=1`,
+        + `&rule_id=eq.life-schedule&select=payload,updated_at&limit=1`,
       );
       if (!snapResponse.ok) {
         await finish("done", "life schedule: snapshot lookup failed; rejected safely");
         return;
       }
-      const snapRows = await snapResponse.json() as { payload?: EncryptedPayload }[];
+      const snapRows = await snapResponse.json() as { payload?: EncryptedPayload; updated_at?: string }[];
       if (!snapRows[0]?.payload) {
         await finish("done", "life schedule: snapshot missing; rejected safely");
         return;
@@ -694,7 +694,7 @@ Deno.serve(async (req: Request) => {
         };
         const now = Date.now();
         lifeScheduleVersionAtStart = snapshot.scheduleVersion || null;
-        const snapshotAt = Date.parse(snapshot.updatedAt || "");
+        const snapshotAt = Date.parse(snapRows[0].updated_at || snapshot.updatedAt || "");
         if (!Number.isFinite(snapshotAt) || now - snapshotAt > 3 * 60_000) {
           await writeLifeDiagnostic(
             "life_schedule_snapshot_stale",
@@ -1026,7 +1026,7 @@ Deno.serve(async (req: Request) => {
         actorStates?: Array<{ ownerType?: string; ownerId?: string; activity?: string }>;
       };
       const latestNow = Date.now();
-      const latestAt = Date.parse(latestSnapshot.updatedAt || latestRow.updated_at || "");
+      const latestAt = Date.parse(latestRow.updated_at || latestSnapshot.updatedAt || "");
       if (!Number.isFinite(latestAt) || latestNow - latestAt > 3 * 60_000) {
         await writeLifeDiagnostic("life_schedule_snapshot_stale", "生成期间发现生活日程快照已过期，已暂停发送。", "检查 life-scheduler Cron 和 life_schedule_runtime；恢复后任务会自动续跑。").catch(() => undefined);
         await deferUntil(latestNow + 60_000, "life schedule: latest snapshot stale during generation");
