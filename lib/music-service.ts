@@ -760,7 +760,7 @@ export async function getUserRecordWithCounts(type: 0 | 1 = 1): Promise<NeteaseP
         const records = data?.weekData || data?.allData || [];
         if (!Array.isArray(records)) return [];
         return records
-            .map((r: NeteaseApiRecord) => ({ song: mapSongToSearchResult(r.song), playCount: r.playCount || 0 }))
+            .map((r: NeteaseApiRecord) => ({ song: mapSongToSearchResult(r.song || {}), playCount: r.playCount || 0 }))
             .filter((r: NeteasePlayRecord) => r.song.id);
     } catch { return []; }
 }
