@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver] = await Promise.all([
+const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom] = await Promise.all([
   read("../components/life/life-engine-app.tsx"),
   read("../lib/life/life-runtime.ts"),
   read("../components/life/life-observation.tsx"),
@@ -16,6 +16,7 @@ const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply,
   read("../lib/chat-storage.ts"),
   read("../android-shell/app/src/main/java/app/floatphone/shell/MainActivity.kt"),
   read("../android-shell/app/src/main/java/app/floatphone/shell/NotificationReplyReceiver.kt"),
+  read("../components/chat/chat-room.tsx"),
 ]);
 
 assert.match(app, /if \(settings\.autoGenerateWeeklyPlans\)\s*\{\s*next = generateWeeklyLifePlan/);
@@ -73,6 +74,15 @@ assert.match(coordinator, /export function readLifeSceneForegroundLease/);
 assert.match(coordinator, /120_000/);
 assert.match(cloud, /Promise<boolean>/);
 assert.match(cloud, /MAX_SNAPSHOT_AGE_MS = 5 \* 60_000/);
+assert.match(cloud, /const scheduleSlots = state\.schedules/);
+assert.match(cloud, /readOnlineChatForegroundLease/);
+assert.match(chatRoom, /setOnlineChatForegroundLease/);
+assert.match(push, /isLifeSleepActivity/);
+assert.match(push, /appendLifeScheduleContext/);
+assert.match(push, /onlineChatCharacterId === lifeSceneMeta\.characterId/);
+assert.match(push, /daily generation cap reached/);
+assert.match(scheduler, /remaining: 72/);
+
 assert.match(scheduler, /await syncLifeScheduleSnapshot\(\)/);
 assert.match(scheduler, /rerunRequested = true/);
 assert.match(scheduler, /const onScheduleChanged = \(\) => \{ start\(\); \}/);
