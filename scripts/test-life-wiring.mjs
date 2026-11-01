@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push] = await Promise.all([
+const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver] = await Promise.all([
   read("../components/life/life-engine-app.tsx"),
   read("../lib/life/life-runtime.ts"),
   read("../components/life/life-observation.tsx"),
@@ -13,6 +13,9 @@ const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply,
   read("../lib/notification-reply.ts"),
   read("../lib/life/life-notification-queue.ts"),
   read("../supabase/functions/push-generate/index.ts"),
+  read("../lib/chat-storage.ts"),
+  read("../android-shell/app/src/main/java/app/floatphone/shell/MainActivity.kt"),
+  read("../android-shell/app/src/main/java/app/floatphone/shell/NotificationReplyReceiver.kt"),
 ]);
 
 assert.match(app, /if \(settings\.autoGenerateWeeklyPlans\)\s*\{\s*next = generateWeeklyLifePlan/);
@@ -81,7 +84,12 @@ assert.match(reply, /notificationReplyFlushPromise/);
 assert.match(reply, /if \(result === "retry"\)/);
 assert.match(reply, /enqueuePendingLifeSceneReply/);
 assert.match(reply, /if \(!queued\)/);
-assert.match(reply, /if \(msg\.id\)/);
+assert.match(chatStorage, /if \(msg\.id\)/);
+assert.match(chatStorage, /getSortedSessionMessages\(msg\.sessionId\)\.find/);
+assert.match(nativeBridge, /fun peekPendingReplies/);
+assert.match(nativeBridge, /fun acknowledgePendingReplies/);
+assert.match(nativeReceiver, /fun peekPendingReplies/);
+assert.match(nativeReceiver, /fun acknowledgePendingReplies/);
 assert.match(app, /待处理回复已交给生活现场 AI/);
 assert.match(app, /生活现场已生成角色回应/);
 assert.match(reply, /enqueuePendingLifeSceneReply/);
