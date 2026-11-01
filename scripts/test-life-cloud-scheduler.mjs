@@ -32,7 +32,7 @@ assert.match(scheduler, /life_generation_daily_cap/);
 assert.match(scheduler, /life_job_dispatch_stalled/);
 assert.match(scheduler, /life_job_execution_stalled/);
 assert.match(scheduler, /cancelledAt/);
-assert.match(scheduler, /status=in\\.\\(done,failed,cancelled\\)/);
+assert.match(scheduler, /status=in\.\(done,failed,cancelled\)/);
 assert.match(scheduler, /sendWebPushRaw/);
 assert.match(scheduler, /生活系统 · 云端诊断/);
 assert.match(scheduler, /schedule_version/);
