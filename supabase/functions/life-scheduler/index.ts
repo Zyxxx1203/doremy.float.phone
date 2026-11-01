@@ -73,7 +73,10 @@ function locationAt(snapshot: Snapshot, ownerType: string, ownerId: string, at: 
   const manual = Boolean(current?.actualLocationId && current.actualLocationUntil == null
     && current.actualLocationId !== (slot?.plannedLocationId || ""));
   const useActual = temporary || manual;
-  const id = (useActual ? current?.actualLocationId : slot?.plannedLocationId) || current?.actualLocationId || "";
+  const id = (useActual ? current?.actualLocationId : slot?.plannedLocationId)
+    || current?.actualLocationId
+    || (ownerType === "player" ? snapshot.playerLocationId : snapshot.characterLocations?.[ownerId])
+    || "";
   const name = (useActual ? current?.actualLocationName : slot?.plannedLocationName)
     || current?.actualLocationName || "";
   return { id, name, activity: slot?.title || current?.activity || "自由活动", slot };
@@ -278,6 +281,10 @@ Deno.serve(async (req: Request) => {
         `push_bridge_snapshots?user_id=eq.${encodeURIComponent(row.user_id)}&rule_id=eq.life-schedule`,
         { method: "PATCH", body: JSON.stringify({ payload: updatedPayload, updated_at: new Date().toISOString() }) },
       );
+      await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent("life-scheduler:" + row.user_id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+      }).catch(() => undefined);
     } catch (error) {
       summary.errors += 1;
       const detail = (error instanceof Error ? error.message : String(error)).slice(0, 500);
