@@ -307,7 +307,7 @@ function LifeCharacterWidget({ config, widgetId, onConfigChange, preview }: Widg
       const actual = state.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === selected.id);
       const player = state.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === "player");
       const locationKnown = state.settings?.revealExactLocations === "open" || (!!player?.actualLocationId && player.actualLocationId === actual?.actualLocationId);
-      const location = locationKnown ? actual?.actualLocationName : state.settings?.revealExactLocations === "ask-only" ? "地点暂不公开" : current?.plannedLocationName ? "地点线索：" + current.plannedLocationName : "地点未知";
+      const location = (locationKnown ? actual?.actualLocationName : state.settings?.revealExactLocations === "ask-only" ? "地点暂不公开" : current?.plannedLocationName ? "地点线索：" + current.plannedLocationName : "") || "地点未知";
       setSnapshot({ selected, now, current, next, actual, location });
     };
     refresh();
