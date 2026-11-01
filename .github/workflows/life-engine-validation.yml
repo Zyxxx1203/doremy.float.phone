@@ -1,11 +1,6 @@
 # Mainline life-system validation.
 name: Validate life system and compatibility
 
-concurrency:
-  group: life-validation-${{ github.ref }}
-  cancel-in-progress: true
-
-
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
