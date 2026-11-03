@@ -601,7 +601,9 @@ Deno.serve(async (req: Request) => {
     let lifePlayerActivityAtStart = "";
     let lifeCharacterActivityAtStart = "";
     const writeLifeDiagnostic = async (code: string, detail: string, repairHint: string) => {
-      const diagnosticId = `life-scheduler:${job.user_id}:stale`;
+      const diagnosticId = code === "life_schedule_snapshot_stale" || code === "life_schedule_runtime_unavailable" || code === "life_schedule_runtime_changed_during_generation" || code === "life_schedule_snapshot_missing"
+        ? `life-scheduler:${job.user_id}:stale`
+        : `life-scheduler:${job.user_id}:${code}`;
       const existingResponse = await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent(diagnosticId)}&select=id,resolved_at&limit=1`);
       const existingRows = existingResponse.ok ? await existingResponse.json() as Array<{ resolved_at?: string | null }> : [];
       const shouldNotify = !existingRows[0] || Boolean(existingRows[0].resolved_at);
@@ -1545,6 +1547,11 @@ Deno.serve(async (req: Request) => {
     });
     if (!outboxResponse.ok) {
       const detail = await outboxResponse.text().catch(() => "");
+      if (isLifeSceneJob) await writeLifeDiagnostic(
+        "life_outbox_write_failed",
+        `AI 已生成内容，但生活消息写入 push_outbox 失败：${detail.slice(0, 220) || outboxResponse.status}`,
+        "检查 push_outbox 表结构、service-role 权限和 Supabase 日志；修复后等待云端任务重试。",
+      ).catch(() => undefined);
       await finish("failed", `outbox write failed: ${detail.slice(0, 180) || outboxResponse.status}`);
       return;
     }
@@ -1691,6 +1698,18 @@ Deno.serve(async (req: Request) => {
         }
       }
       await progress(`pushed ${index + 1}/${parts.length}${pushErrors.length ? `, errors: ${pushErrors[0]}` : ""}`);
+    }
+
+    if (isLifeSceneJob && pushErrors.length) {
+      await writeLifeDiagnostic(
+        "life_notification_delivery_failed",
+        `生活消息已写入云端，但有通知通道投递失败：${pushErrors.slice(0, 3).join(" | ")}`,
+        "检查 Web Push 订阅是否过期、VAPID 配置及 Android Realtime 广播权限；消息仍保留在 push_outbox，可在客户端同步时取回。",
+      ).catch(() => undefined);
+    } else if (isLifeSceneJob && pushed > 0) {
+      await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent(`life-scheduler:${job.user_id}:life_notification_delivery_failed`)}`, {
+        method: "PATCH", body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+      }).catch(() => undefined);
     }
 
     // 第一轮正文已经落库并完成推送后，再发“运行快捷指令”通知。用户看到的
