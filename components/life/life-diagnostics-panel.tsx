@@ -65,10 +65,20 @@ export function LifeDiagnosticsPanel() {
   const retryFailedReply = (replyId: string) => { resetFailedLifeSceneReply(replyId); refresh(); };
 
   useEffect(() => {
-    refresh();
-    const onUpdated = () => refresh();
+    let active = true;
+    const poll = () => { if (active && document.visibilityState === "visible") void refresh(); };
+    poll();
+    const timer = window.setInterval(poll, 60_000);
+    const onUpdated = () => { void refresh(); };
+    const onVisibility = () => { if (document.visibilityState === "visible") void refresh(); };
     window.addEventListener("life-diagnostics-updated", onUpdated);
-    return () => window.removeEventListener("life-diagnostics-updated", onUpdated);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener("life-diagnostics-updated", onUpdated);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
   const allEntries = [...entries, ...cloudEntries].sort((a, b) => b.at.localeCompare(a.at));
