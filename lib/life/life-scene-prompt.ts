@@ -7,7 +7,6 @@ import { resolveUserIdentity } from "../settings-storage";
 export function buildLifeScenePromptContext(state: VirtualLifeState, scene: LifeSceneState, viewerId?: string): string {
   // 玩家记录在角色记忆里统一用 {{user}}，发送前再解析成该角色当前人设的称呼。
   const playerRefName = resolveUserIdentity(viewerId, "chat")?.name;
-  const viewer = viewerId ? scene.participants.find(p => p.ownerType === "character" && p.ownerId === viewerId) : undefined;
   const visibleActorStates = state.actorStates.filter(actor => {
     // Scene membership is the visibility boundary: participants in this exact
     // scene can perceive one another's current activity. Actors in other scenes
