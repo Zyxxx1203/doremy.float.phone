@@ -20,6 +20,7 @@ import { resizeWorldPreservingPositions, wallWorldOf } from "@/lib/photo-wall-wo
 import { buildTemplateSlots, listAllTemplates, loadCustomTemplates, loadTemplateFill, saveCustomTemplates, saveTemplateFill } from "@/lib/photo-wall-templates";
 import { downloadPhotoWallPng } from "@/lib/photo-wall-export";
 import { parseCharacterWallDoodles } from "@/lib/photo-wall-character-doodle";
+import { stickerSizeFromBrushWidth } from "@/lib/photo-wall-doodle-sizing";
 
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
 type Filter = "all" | "mine" | "characters";
@@ -1649,7 +1650,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               setWallBrushPalette(current => { const next = [...current]; if (!next.length) return [value]; next[Math.min(oldIndex, next.length - 1)] = value; return Array.from(new Set(next)).slice(0, 20); });
               setWallBrushColor(value); setWallColorDraft(value); setWallSticker(null); setWallEraser(false);
             }} className="border border-[#d8c6b5] px-2 py-1 text-[10px] text-[#7d6d5a]">替换当前色块</button>
-            {[2,3,5,8].map(width => <button key={width} type="button" onClick={() => setWallBrushWidth(width)} aria-pressed={wallBrushWidth===width} className={wallBrushWidth===width?"border border-[#6b5c4a] bg-[#6b5c4a] px-2 py-1 text-[10px] text-white":"border border-[#d8c6b5] px-2 py-1 text-[10px] text-[#7d6d5a]"}>{width}</button>)}
+            <span className="text-[10px] text-[#8b7665]">{wallSticker ? "贴纸大小" : "画笔粗细"}</span>
+            {[2,3,5,8].map(width => <button key={width} type="button" onClick={() => setWallBrushWidth(width)} aria-label={wallSticker ? `贴纸大小 ${stickerSizeFromBrushWidth(width)} 像素` : `画笔粗细 ${width}`} title={wallSticker ? `贴纸大小：${stickerSizeFromBrushWidth(width)}px` : `画笔粗细：${width}`} aria-pressed={wallBrushWidth===width} className={wallBrushWidth===width?"border border-[#6b5c4a] bg-[#6b5c4a] px-2 py-1 text-[10px] text-white":"border border-[#d8c6b5] px-2 py-1 text-[10px] text-[#7d6d5a]"}>{wallSticker ? stickerSizeFromBrushWidth(width) : width}</button>)}
             {["heart","✦","✿","☾","☘","♪","★","⌘"].map(item => <button key={item} type="button" aria-label={item === "heart" ? "心形贴纸" : item} onClick={() => {setWallSticker(wallSticker===item?null:item);setWallEraser(false)}} aria-pressed={wallSticker===item} className={wallSticker===item?"bg-[#6b5c4a] px-1.5 py-1 text-white":"bg-white/70 px-1.5 py-1 text-[#7d6d5a]"}>{item === "heart" ? <svg viewBox="-8 -8 16 16" width="14" height="14" aria-hidden="true"><path d="M0,6 C-1.4,3.8 -6,1 -6,-2 C-6,-5 -3,-6 0,-4 C3,-6 6,-5 6,-2 C6,1 1.4,3.8 0,6 Z" fill="currentColor"/></svg> : item}</button>)}
             <span className="ml-1 inline-flex items-center gap-1 border border-[#d8c6b5] bg-white/70 px-1.5 py-1 text-[10px] text-[#7d6d5a]">
               贴纸角度
