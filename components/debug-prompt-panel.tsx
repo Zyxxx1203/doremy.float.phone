@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useSyncExternalStore, useMemo, useCallback, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type CSSProperties } from "react";
-import { getDebugChatState, getDebugPromptSnapshot, subscribeDebugChatState, subscribeDebugPromptSnapshot, type DebugPromptSnapshot } from "@/lib/debug-store";
+import { getDebugChatState, getDebugPromptSnapshot, getDebugPromptSnapshotByApp, subscribeDebugChatState, subscribeDebugPromptSnapshot, type DebugPromptSnapshot } from "@/lib/debug-store";
 import { previewPromptRequestSnapshot, ChatEngineError } from "@/lib/chat-engine";
 import { previewGroupPromptRequestSnapshot } from "@/lib/group-chat-engine";
 import { FileText, Tags, X } from "lucide-react";
@@ -245,6 +245,11 @@ export function DebugPromptPanel() {
         if (!isExtraPromptMode(mode) || !promptSnapshot) return null;
         const definition = EXTRA_PROMPT_APPS.find(app => app.id === mode);
         if (!definition?.snapshotOnly) return null;
+        const retained = (definition.snapshotAppIds ?? [])
+            .map(appId => getDebugPromptSnapshotByApp(appId))
+            .filter((snapshot): snapshot is DebugPromptSnapshot => Boolean(snapshot))
+            .sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0];
+        if (retained) return retained;
         const appIdMatches = definition.snapshotAppIds?.includes(promptSnapshot.appId) ?? false;
         const tagMatches = definition.snapshotTags?.some(tag => promptSnapshot.appTags?.includes(tag)) ?? false;
         return appIdMatches || tagMatches ? promptSnapshot : null;
