@@ -596,13 +596,13 @@ export function DebugPromptPanel() {
     }
 
     async function handleExtraPreview() {
+        const previewCharacterId = extraCharacterId || (extraAppId === "phone_widget" ? loadWidgetConfig().characterId : "");
         const requiresCharacter = extraAppId !== "shopping";
-        if (requiresCharacter && !extraCharacterId) return;
+        if (requiresCharacter && !previewCharacterId) return;
         setError(null);
         setLoading(true);
         try {
             let result: PromptPreviewResult;
-            const previewCharacterId = extraCharacterId || (extraAppId === "phone_widget" ? loadWidgetConfig().characterId : "");
             if (extraAppId === "life") {
                 const character = characters.find(item => item.id === previewCharacterId);
                 if (!character) throw new Error("请先选择生活系统中的角色");
@@ -624,12 +624,12 @@ export function DebugPromptPanel() {
                         actor?.activity ? "角色当前活动：" + actor.activity : "",
                         actor?.actualLocationName ? "角色实际地点：" + actor.actualLocationName : "",
                         schedule ? "最近日程：" + schedule.title + "；" + schedule.startAt + "–" + schedule.endAt + "；地点：" + (schedule.plannedLocationName || "未确定") : "当前没有可用的近期日程。",
-                    ].filter(Boolean).join("\\n");
+                    ].filter(Boolean).join("\n");
                 const prompt = [
                     state.settings.keepDialogueConcise ? "保持自然简短：一句对白，必要时附一个动作。" : "可以适度展开，但不要写成长篇故事。",
                     "这是生活系统的自主现场回合预览。请以角色身份结合当前生活状态自然行动或回应，不要把生活现场写成普通线上聊天。",
                     sceneContext,
-                ].filter(Boolean).join("\\n\\n");
+                ].filter(Boolean).join("\n\n");
                 const session = createPromptPreviewSession(character.id, "life-preview");
                 const message = createPromptPreviewMessage(session.id, prompt, "life-preview");
                 result = await previewPromptPayload(session, [message], {
@@ -655,7 +655,7 @@ export function DebugPromptPanel() {
                         `标签：${photo.tags.join("、") || "没有标签"}。`,
                         `照片类型：${({ favorite: "珍藏", selfie: "自拍", candid: "不经意的你", scenery: "沿途风景", object: "喜欢的小物", moment: "共同瞬间" } as Record<string, string>)[photo.kind]}；拍摄者：${photo.ownerName}。`,
                         "请据此写一条照片背面的批注。",
-                    ].join("\\n");
+                    ].join("\n");
                     const stored = await loadMediaBlob(photo.mediaRef).catch(() => null);
                     attachedImages = stored ? [await readCompressedImageDataUrl(stored.blob)] : undefined;
                 } else {
@@ -677,7 +677,7 @@ export function DebugPromptPanel() {
                         `画布尺寸：${wallWorldOf(wall).width} × ${wallWorldOf(wall).height}。`,
                         `墙上照片（placement 的 x/y 是照片布局锚点，仅用于估计位置）：${JSON.stringify(layout)}`,
                         "请按要求创作装饰涂鸦 JSON。",
-                    ].join("\\n");
+                    ].join("\n");
                 }
                 const message = createPromptPreviewMessage(session.id, instruction, "photo-wall-preview");
                 result = await previewPromptPayload(session, [...history, message], {
@@ -708,7 +708,7 @@ export function DebugPromptPanel() {
                 result = await previewPromptPayload(session, [...history, eventMessage], {
                     appId: "checkin",
                     appTags: ["checkin", "screenshot", checkInPreviewKind],
-                    ephemeralSystemNote: [guidance, lifeNote].filter(Boolean).join("\\n\\n"),
+                    ephemeralSystemNote: [guidance, lifeNote].filter(Boolean).join("\n\n"),
                 });
             } else if (extraAppId === "watch_together") {
                 const character = characters.find(item => item.id === previewCharacterId);
@@ -729,10 +729,10 @@ export function DebugPromptPanel() {
                     typeof profile.personality === "string" ? "性格：" + profile.personality : "",
                     typeof profile.scenario === "string" ? "背景设定：" + profile.scenario : "",
                     typeof profile.systemPrompt === "string" ? "角色设定：" + profile.systemPrompt : "",
-                ].filter(Boolean).join("\\n").slice(0, 3500);
+                ].filter(Boolean).join("\n").slice(0, 3500);
                 const savedMoments = (memory?.discussion?.length
                     ? memory.discussion.map(item => "[" + (item.createdAt ? new Date(item.createdAt).toLocaleString("zh-CN") : "已保存") + (item.timepoint ? " · " + item.timepoint : "") + "] " + (item.kind === "user" ? "我" : item.characterName || "角色") + "：" + (item.text || ""))
-                    : memory?.comments || []).join("\\n").slice(-12000);
+                    : memory?.comments || []).join("\n").slice(-12000);
                 let prompt: string;
                 let appTags: string[];
                 if (watchPreviewMode === "review") {
@@ -743,9 +743,9 @@ export function DebugPromptPanel() {
                         "视频平台：" + (memory?.platform || "未知平台"),
                         "共同观看时间：" + (memory?.startedAt ? new Date(memory.startedAt).toLocaleString("zh-CN") : "本次预览时间"),
                         "本次陪看时长约：" + Math.floor(Math.max(0, Number(memory?.durationSeconds) || 0) / 60) + " 分钟",
-                        savedMoments ? "本次真实保存的互动片段：\\n" + savedMoments : "本次没有保存具体对话片段。",
+                        savedMoments ? "本次真实保存的互动片段：\n" + savedMoments : "本次没有保存具体对话片段。",
                         "请据此写观后感与纪念卡。",
-                    ].filter(Boolean).join("\\n");
+                    ].filter(Boolean).join("\n");
                     appTags = ["watch_together", "review"];
                 } else {
                     let watchSettings: { currentMoment?: string } = {};
@@ -754,10 +754,10 @@ export function DebugPromptPanel() {
                         "视频平台：" + (memory?.platform || "当前陪看平台"),
                         "视频标题（用户可编辑）：" + (memory?.title || "暂未命名") + "。",
                         "用户描述的当前片段/时间点与两人的互动：" + ((watchSettings.currentMoment || "").trim() || "用户暂未提供具体画面描述") + "。",
-                        savedMoments ? "本次已保存的互动片段：\\n" + savedMoments.slice(-4000) : "",
+                        savedMoments ? "本次已保存的互动片段：\n" + savedMoments.slice(-4000) : "",
                         "当前提示词预览没有读取播放器实时截图或未保存字幕；不得声称看见实际画面。只根据用户描述和已有文字互动回应。",
                         "本轮由陪看触发器明确要求你发言，请输出一句自然的角色反应。",
-                    ].filter(Boolean).join("\\n");
+                    ].filter(Boolean).join("\n");
                     appTags = ["watch_together", "watch"];
                 }
                 const message = createPromptPreviewMessage(session.id, prompt, "watch-preview");
@@ -792,7 +792,7 @@ export function DebugPromptPanel() {
                     `触发信号：${rule.matchType || "任意信号"}`,
                     "事件正文：{payload}（这是运行时会替换的占位符）",
                     "请据此生成离线回复库。",
-                ].join("\\n");
+                ].join("\n");
                 const message = createPromptPreviewMessage(session.id, instruction, "reality-bridge-preview");
                 result = await previewPromptPayload(session, [...history, message], {
                     appId: "reality_bridge", appTags: ["reality_bridge", "offline_library"],
