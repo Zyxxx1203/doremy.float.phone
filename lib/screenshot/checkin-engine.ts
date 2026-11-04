@@ -53,7 +53,7 @@ function isCheckInAllowedByLifeContext(characterId: string): boolean {
   return !sharedScene;
 }
 
-function buildCheckInLifeContextNote(characterId: string): string {
+export function buildCheckInLifeContextNote(characterId: string): string {
   const life = loadVirtualLifeState();
   if (!life.settings.enabled) return "";
   const character = loadCharacters().find(item => item.id === characterId);

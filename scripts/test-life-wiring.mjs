@@ -53,6 +53,16 @@ assert.match(debugPromptPanel, /getDebugPromptSnapshotByApp/);
 assert.match(debugStore, /_promptSnapshotsByApp\.set/);
 assert.match(debugPromptRegistry, /id: "checkin", label: "签到", snapshotOnly: true, snapshotAppIds: \["checkin"\]/);
 assert.match(checkinEngine, /appId: "checkin"/);
+for (const appId of ["life", "photo_wall", "checkin", "watch_together", "phone_widget", "reality_bridge"]) {
+  assert.match(debugPromptPanel, new RegExp('extraAppId === "' + appId + '"'));
+}
+assert.match(debugPromptPanel, /previewPromptPayload\\(session/);
+assert.match(debugPromptPanel, /lifePreviewMode/);
+assert.match(debugPromptPanel, /photoWallPreviewMode/);
+assert.match(debugPromptPanel, /checkInPreviewKind/);
+assert.match(debugPromptPanel, /watchPreviewMode/);
+assert.match(debugPromptPanel, /loadWidgetConfig\\(\\)/);
+assert.match(debugPromptPanel, /loadBridgeRules\\(\\)/);
 assert.match(followUpService, /appId: options\?\.appId/);
 assert.match(followUpService, /appTags: options\?\.appTags/);
 assert.match(watchApp, /frameOverride !== undefined/);

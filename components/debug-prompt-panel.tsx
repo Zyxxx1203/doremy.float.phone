@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useSyncExternalStore, useMemo, useCallback, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type CSSProperties } from "react";
 import { getDebugChatState, getDebugPromptSnapshot, getDebugPromptSnapshotByApp, subscribeDebugChatState, subscribeDebugPromptSnapshot, type DebugPromptSnapshot } from "@/lib/debug-store";
-import { previewPromptRequestSnapshot, ChatEngineError } from "@/lib/chat-engine";
+import { previewPromptRequestSnapshot, previewPromptPayload, readCompressedImageDataUrl, ChatEngineError } from "@/lib/chat-engine";
 import { previewGroupPromptRequestSnapshot } from "@/lib/group-chat-engine";
 import { FileText, Tags, X } from "lucide-react";
 import {
@@ -21,7 +21,7 @@ import {
     type MomentsPreviewResult,
 } from "@/lib/moments-engine";
 import { previewCalendarPromptPayload } from "@/lib/calendar-engine";
-import { CHAT_APP_SETTINGS_UPDATED_EVENT, hydrateChatStorage, loadChatAppSettings, loadChatContacts, loadChatMessages, loadChatSessions, type ChatSession } from "@/lib/chat-storage";
+import { CHAT_APP_SETTINGS_UPDATED_EVENT, hydrateChatStorage, loadChatAppSettings, loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { loadCharacters } from "@/lib/character-storage";
 import { getAllPosts } from "@/lib/moments-storage";
 import type { LLMMessage } from "@/lib/llm-prompt-assembler";
@@ -55,6 +55,15 @@ import { resolveUserIdentity } from "@/lib/settings-storage";
 import type { BookChapter } from "@/lib/reading-types";
 import type { CoCreateMode } from "@/lib/cocreate-types";
 import type { MapWorld, GameSave } from "@/lib/map-types";
+import { loadVirtualLifeState } from "@/lib/life/life-storage";
+import { buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
+import { loadPhotoWallState } from "@/lib/photo-wall-storage";
+import { wallWorldOf } from "@/lib/photo-wall-world";
+import { loadMediaBlob } from "@/lib/media-cache-storage";
+import { loadCheckInGuidance, resolveCheckInGuidance } from "@/lib/screenshot/checkin-guidance";
+import { buildCheckInLifeContextNote } from "@/lib/screenshot/checkin-engine";
+import { loadWidgetConfig, loadWidgetData } from "@/lib/widget/storage";
+import { loadBridgeRules } from "@/lib/reality-bridge/storage";
 
 
 type CoreDebugMode = "chat" | "moments" | "calendar" | "story" | "vn";
@@ -101,6 +110,32 @@ function splitMarkerBadges(marker?: string): string[] {
 
 function isExtraPromptMode(mode: DebugMode): mode is ExtraPromptAppId {
     return EXTRA_PROMPT_APPS.some(app => app.id === mode);
+}
+
+function createPromptPreviewSession(characterId: string, prefix: string): ChatSession {
+    const contact = loadChatContacts().find(item => item.characterId === characterId);
+    const session = loadChatSessions().find(item =>
+        !item.isGroup && (item.contactId === contact?.id || item.contactId === characterId)
+    );
+    return session ?? {
+        id: `${prefix}-${characterId}`,
+        contactId: contact?.id ?? characterId,
+        unreadCount: 0,
+        updatedAt: new Date().toISOString(),
+        isPinned: false,
+        isGroup: false,
+    };
+}
+
+function createPromptPreviewMessage(sessionId: string, content: string, prefix: string): ChatMessage {
+    return {
+        id: `${prefix}-${Date.now()}`,
+        sessionId,
+        role: "user",
+        content,
+        status: "sent",
+        createdAt: new Date().toISOString(),
+    };
 }
 
 export function DebugPromptPanel() {
@@ -161,6 +196,10 @@ export function DebugPromptPanel() {
     const [extraResult, setExtraResult] = useState<PromptPreviewResult | null>(null);
     const [extraAppId, setExtraAppId] = useState<ExtraPromptAppId>("checkphone");
     const [extraCharacterId, setExtraCharacterId] = useState<string>("");
+    const [lifePreviewMode, setLifePreviewMode] = useState<"autonomy" | "scene">("autonomy");
+    const [photoWallPreviewMode, setPhotoWallPreviewMode] = useState<"annotation" | "doodle">("annotation");
+    const [checkInPreviewKind, setCheckInPreviewKind] = useState<"accepted" | "declined" | "timeout" | "failed">("accepted");
+    const [watchPreviewMode, setWatchPreviewMode] = useState<"watch" | "review">("watch");
     const [checkPhoneAppId, setCheckPhoneAppId] = useState<CheckPhoneAppId | "manifest">("manifest");
     const [readingBookId, setReadingBookId] = useState<string>("");
     const [readingChapterIndex, setReadingChapterIndex] = useState<string>("");
@@ -563,7 +602,203 @@ export function DebugPromptPanel() {
         setLoading(true);
         try {
             let result: PromptPreviewResult;
-            if (extraAppId === "checkphone") {
+            const previewCharacterId = extraCharacterId || (extraAppId === "phone_widget" ? loadWidgetConfig().characterId : "");
+            if (extraAppId === "life") {
+                const character = characters.find(item => item.id === previewCharacterId);
+                if (!character) throw new Error("请先选择生活系统中的角色");
+                const state = loadVirtualLifeState();
+                const activeScene = state.scenes.find(scene =>
+                    scene.status === "active" && scene.participants.some(participant =>
+                        participant.ownerType === "character" && participant.ownerId === character.id
+                    )
+                );
+                const actor = state.actorStates.find(item => item.ownerType === "character" && item.ownerId === character.id);
+                const schedule = state.schedules
+                    .filter(item => item.ownerType === "character" && item.ownerId === character.id)
+                    .sort((a, b) => a.startAt.localeCompare(b.startAt))
+                    .find(item => new Date(item.endAt).getTime() >= Date.now());
+                const sceneContext = activeScene
+                    ? buildLifeScenePromptContext(state, activeScene, character.id)
+                    : [
+                        "【生活系统预览：当前没有该角色参与的活动现场】",
+                        actor?.activity ? "角色当前活动：" + actor.activity : "",
+                        actor?.actualLocationName ? "角色实际地点：" + actor.actualLocationName : "",
+                        schedule ? "最近日程：" + schedule.title + "；" + schedule.startAt + "–" + schedule.endAt + "；地点：" + (schedule.plannedLocationName || "未确定") : "当前没有可用的近期日程。",
+                    ].filter(Boolean).join("\\n");
+                const prompt = [
+                    state.settings.keepDialogueConcise ? "保持自然简短：一句对白，必要时附一个动作。" : "可以适度展开，但不要写成长篇故事。",
+                    "这是生活系统的自主现场回合预览。请以角色身份结合当前生活状态自然行动或回应，不要把生活现场写成普通线上聊天。",
+                    sceneContext,
+                ].filter(Boolean).join("\\n\\n");
+                const session = createPromptPreviewSession(character.id, "life-preview");
+                const message = createPromptPreviewMessage(session.id, prompt, "life-preview");
+                result = await previewPromptPayload(session, [message], {
+                    appId: "life",
+                    appTags: ["life", "turn", lifePreviewMode, ...(state.settings.enableCharacterAutonomy ? ["tools"] : [])],
+                    excludeOfflineSessionId: session.id,
+                    includeDirectChatEntries: false,
+                });
+            } else if (extraAppId === "photo_wall") {
+                const character = characters.find(item => item.id === previewCharacterId);
+                if (!character) throw new Error("请先选择照片墙中出镜的角色");
+                const wall = loadPhotoWallState();
+                if (!wall.photos.length) throw new Error("照片墙目前没有照片，先添加一张照片再预览");
+                const photo = wall.photos[0];
+                const contact = loadChatContacts().find(item => item.characterId === character.id);
+                const session = createPromptPreviewSession(character.id, "photo-wall");
+                const history = loadChatMessages(session.id).slice(-(photoWallPreviewMode === "annotation" ? 16 : 12));
+                let instruction = "";
+                let attachedImages: string[] | undefined;
+                if (photoWallPreviewMode === "annotation") {
+                    instruction = [
+                        `照片标题：${photo.title}。`,
+                        `照片背面已有内容：${photo.backNote || photo.caption || "还没有写下记录"}。`,
+                        `标签：${photo.tags.join("、") || "没有标签"}。`,
+                        `照片类型：${({ favorite: "珍藏", selfie: "自拍", candid: "不经意的你", scenery: "沿途风景", object: "喜欢的小物", moment: "共同瞬间" } as Record<string, string>)[photo.kind]}；拍摄者：${photo.ownerName}。`,
+                        "请据此写一条照片背面的批注。",
+                    ].join("\\n");
+                    const stored = await loadMediaBlob(photo.mediaRef).catch(() => null);
+                    attachedImages = stored ? [await readCompressedImageDataUrl(stored.blob)] : undefined;
+                } else {
+                    const layout = wall.photos.slice(0, 40).map((item, index) => ({
+                        index,
+                        title: item.title || "未命名照片",
+                        owner: item.ownerName,
+                        kind: ({ favorite: "珍藏", selfie: "自拍", candid: "不经意的你", scenery: "沿途风景", object: "喜欢的小物", moment: "共同瞬间" } as Record<string, string>)[item.kind],
+                        placement: item.placement ? {
+                            x: Number(item.placement.x.toFixed(3)),
+                            y: Number(item.placement.y.toFixed(3)),
+                            scale: Number(item.placement.scale.toFixed(2)),
+                            rotation: item.placement.rotation,
+                        } : null,
+                    }));
+                    instruction = [
+                        `你的名字：${character.name}。`,
+                        `角色设定：${(character.persona || character.personality || "").slice(0, 500)}`,
+                        `画布尺寸：${wallWorldOf(wall).width} × ${wallWorldOf(wall).height}。`,
+                        `墙上照片（placement 的 x/y 是照片布局锚点，仅用于估计位置）：${JSON.stringify(layout)}`,
+                        "请按要求创作装饰涂鸦 JSON。",
+                    ].join("\\n");
+                }
+                const message = createPromptPreviewMessage(session.id, instruction, "photo-wall-preview");
+                result = await previewPromptPayload(session, [...history, message], {
+                    appId: "photo_wall",
+                    appTags: ["photo_wall", photoWallPreviewMode === "annotation" ? "annotation" : "doodle"],
+                    toolsAllowed: false,
+                    attachedImages,
+                });
+            } else if (extraAppId === "checkin") {
+                const character = characters.find(item => item.id === previewCharacterId);
+                if (!character) throw new Error("请先选择查岗角色");
+                const session = createPromptPreviewSession(character.id, "checkin-preview");
+                const history = loadChatMessages(session.id);
+                const name = character.name || "TA";
+                const eventText = checkInPreviewKind === "accepted"
+                    ? `[${name}想看看你现在在做什么，你把屏幕给它看了]`
+                    : checkInPreviewKind === "declined"
+                        ? `[${name}想看看你现在在做什么，你没有给它看]`
+                        : checkInPreviewKind === "timeout"
+                            ? `[${name}想看看你现在在做什么，你没有回应]`
+                            : `[${name}想看看你现在在做什么，但没能截到屏幕（预览模拟失败）]`;
+                const eventMessage: ChatMessage = {
+                    id: `checkin-event-preview-${Date.now()}`, sessionId: session.id, role: "system",
+                    content: eventText, status: "sent", createdAt: new Date().toISOString(),
+                };
+                const guidance = resolveCheckInGuidance(checkInPreviewKind, name);
+                const lifeNote = buildCheckInLifeContextNote(character.id);
+                result = await previewPromptPayload(session, [...history, eventMessage], {
+                    appId: "checkin",
+                    appTags: ["checkin", "screenshot", checkInPreviewKind],
+                    ephemeralSystemNote: [guidance, lifeNote].filter(Boolean).join("\\n\\n"),
+                });
+            } else if (extraAppId === "watch_together") {
+                const character = characters.find(item => item.id === previewCharacterId);
+                if (!character) throw new Error("请先选择一起看的陪看角色");
+                let memory: {
+                    title?: string; platform?: string; startedAt?: string; durationSeconds?: number;
+                    comments?: string[]; discussion?: Array<{ createdAt?: string; timepoint?: string; kind?: string; characterName?: string; text?: string }>;
+                } | null = null;
+                try {
+                    const raw = JSON.parse(window.localStorage.getItem("ai_phone_watch_memory_records_v1") || "[]") as unknown;
+                    memory = Array.isArray(raw) && raw[0] && typeof raw[0] === "object" ? raw[0] as typeof memory : null;
+                } catch { memory = null; }
+                const session = createPromptPreviewSession(character.id, "watch-together");
+                const history = loadChatMessages(session.id).slice(-8).filter(item => item.status !== "failed" && !item.isRetracted);
+                const profile = character as unknown as Record<string, unknown>;
+                const roleDetails = [
+                    typeof profile.description === "string" ? "角色介绍：" + profile.description : "",
+                    typeof profile.personality === "string" ? "性格：" + profile.personality : "",
+                    typeof profile.scenario === "string" ? "背景设定：" + profile.scenario : "",
+                    typeof profile.systemPrompt === "string" ? "角色设定：" + profile.systemPrompt : "",
+                ].filter(Boolean).join("\\n").slice(0, 3500);
+                const savedMoments = (memory?.discussion?.length
+                    ? memory.discussion.map(item => "[" + (item.createdAt ? new Date(item.createdAt).toLocaleString("zh-CN") : "已保存") + (item.timepoint ? " · " + item.timepoint : "") + "] " + (item.kind === "user" ? "我" : item.characterName || "角色") + "：" + (item.text || ""))
+                    : memory?.comments || []).join("\\n").slice(-12000);
+                let prompt: string;
+                let appTags: string[];
+                if (watchPreviewMode === "review") {
+                    prompt = [
+                        "角色是" + character.name + "。",
+                        roleDetails,
+                        "视频标题：" + (memory?.title || "暂未命名"),
+                        "视频平台：" + (memory?.platform || "未知平台"),
+                        "共同观看时间：" + (memory?.startedAt ? new Date(memory.startedAt).toLocaleString("zh-CN") : "本次预览时间"),
+                        "本次陪看时长约：" + Math.floor(Math.max(0, Number(memory?.durationSeconds) || 0) / 60) + " 分钟",
+                        savedMoments ? "本次真实保存的互动片段：\\n" + savedMoments : "本次没有保存具体对话片段。",
+                        "请据此写观后感与纪念卡。",
+                    ].filter(Boolean).join("\\n");
+                    appTags = ["watch_together", "review"];
+                } else {
+                    let watchSettings: { currentMoment?: string } = {};
+                    try { watchSettings = JSON.parse(window.localStorage.getItem("ai_phone_watch_together_v1") || "{}") as typeof watchSettings; } catch { /* use defaults */ }
+                    prompt = [
+                        "视频平台：" + (memory?.platform || "当前陪看平台"),
+                        "视频标题（用户可编辑）：" + (memory?.title || "暂未命名") + "。",
+                        "用户描述的当前片段/时间点与两人的互动：" + ((watchSettings.currentMoment || "").trim() || "用户暂未提供具体画面描述") + "。",
+                        savedMoments ? "本次已保存的互动片段：\\n" + savedMoments.slice(-4000) : "",
+                        "当前提示词预览没有读取播放器实时截图或未保存字幕；不得声称看见实际画面。只根据用户描述和已有文字互动回应。",
+                        "本轮由陪看触发器明确要求你发言，请输出一句自然的角色反应。",
+                    ].filter(Boolean).join("\\n");
+                    appTags = ["watch_together", "watch"];
+                }
+                const message = createPromptPreviewMessage(session.id, prompt, "watch-preview");
+                result = await previewPromptPayload(session, [...history, message], {
+                    appId: "watch_together", appTags, toolsAllowed: false,
+                });
+            } else if (extraAppId === "phone_widget") {
+                const characterId = previewCharacterId;
+                const character = characters.find(item => item.id === characterId);
+                if (!character) throw new Error("请先选择桌面小组件使用的角色（也可使用小组件当前绑定角色）");
+                const previous = loadWidgetData(character.id);
+                const trigger = previous?.text
+                    ? `请留下一句今天的桌面状态。不要重复上次留在桌面上的话：「${previous.text}」，换一个自然的角度。`
+                    : "请留下一句今天的桌面状态。";
+                const session: ChatSession = {
+                    id: `phone-widget-${character.id}`, contactId: character.id, unreadCount: 0,
+                    updatedAt: new Date().toISOString(), isPinned: false, isGroup: false,
+                };
+                const message = createPromptPreviewMessage(session.id, trigger, "widget-preview");
+                result = await previewPromptPayload(session, [message], {
+                    appId: "phone_widget", appTags: ["phone_widget", "status"],
+                });
+            } else if (extraAppId === "reality_bridge") {
+                const character = characters.find(item => item.id === previewCharacterId);
+                if (!character) throw new Error("请先选择现实桥规则绑定的角色");
+                const rule = loadBridgeRules().find(item => item.actions.chat?.characterId === character.id);
+                if (!rule) throw new Error("现实桥还没有绑定这个角色的规则；先在现实桥规则中选择该角色，再回来预览");
+                const session = createPromptPreviewSession(character.id, "reality-bridge");
+                const history = loadChatMessages(session.id, 30);
+                const instruction = [
+                    `规则名称：${rule.name || "现实桥联动"}`,
+                    `触发信号：${rule.matchType || "任意信号"}`,
+                    "事件正文：{payload}（这是运行时会替换的占位符）",
+                    "请据此生成离线回复库。",
+                ].join("\\n");
+                const message = createPromptPreviewMessage(session.id, instruction, "reality-bridge-preview");
+                result = await previewPromptPayload(session, [...history, message], {
+                    appId: "reality_bridge", appTags: ["reality_bridge", "offline_library"],
+                });
+            } else if (extraAppId === "checkphone") {
                 result = await previewCheckPhonePromptPayload(extraCharacterId, checkPhoneAppId);
             } else if (extraAppId === "reading") {
                 const book = loadBooks().find(item => item.id === readingBookId);
@@ -1000,6 +1235,30 @@ export function DebugPromptPanel() {
         if (extraAppId === "adventure") {
             return "实际上下文以冒险当前事件、队伍状态和本轮行为注入，此处仅基于最近存档模拟";
         }
+        if (extraAppId === "life") {
+            return "使用当前本机生活状态、活动现场与角色预设组装；不会触发角色行动或写入生活记录。";
+        }
+        if (extraAppId === "photo_wall") {
+            return photoWallPreviewMode === "annotation"
+                ? "批注预览使用照片墙第一张照片及其图片（若本机媒体可读取）；不会保存批注。"
+                : "涂鸦预览使用当前照片墙布局数据；不会生成或写入涂鸦。";
+        }
+        if (extraAppId === "checkin") {
+            return checkInPreviewKind === "accepted"
+                ? "按「同意展示」事件组装；为保护隐私，预览不附带真实屏幕截图。"
+                : "按所选查岗结果和一次性指导语组装；不会真正触发查岗或通知角色。";
+        }
+        if (extraAppId === "watch_together") {
+            return watchPreviewMode === "review"
+                ? "观后感预览使用最近一条已保存的陪看记录；不会重新读取视频。"
+                : "即时陪看预览使用最近保存的视频信息与文字互动；不读取播放器实时截图或未保存字幕。";
+        }
+        if (extraAppId === "phone_widget") {
+            return "使用小组件当前绑定角色与上次桌面状态构造同款触发消息；只预览，不更新桌面。";
+        }
+        if (extraAppId === "reality_bridge") {
+            return "使用当前绑定该角色的第一条规则与 {payload} 占位符；不会执行规则或生成离线回复。";
+        }
         return null;
     };
 
@@ -1023,6 +1282,32 @@ export function DebugPromptPanel() {
 
         <>
             {extraAppId !== "shopping" && renderCharSelect(extraCharacterId, setExtraCharacterId)}
+            {extraAppId === "life" && (
+                <select value={lifePreviewMode} onChange={e => setLifePreviewMode(e.target.value as "autonomy" | "scene")} className="pv-select">
+                    <option value="autonomy">自主现场回合</option>
+                    <option value="scene">生活现场回合</option>
+                </select>
+            )}
+            {extraAppId === "photo_wall" && (
+                <select value={photoWallPreviewMode} onChange={e => setPhotoWallPreviewMode(e.target.value as "annotation" | "doodle")} className="pv-select">
+                    <option value="annotation">照片背面批注</option>
+                    <option value="doodle">装饰涂鸦</option>
+                </select>
+            )}
+            {extraAppId === "checkin" && (
+                <select value={checkInPreviewKind} onChange={e => setCheckInPreviewKind(e.target.value as typeof checkInPreviewKind)} className="pv-select">
+                    <option value="accepted">同意展示屏幕</option>
+                    <option value="declined">拒绝展示</option>
+                    <option value="timeout">超时未回应</option>
+                    <option value="failed">截屏失败</option>
+                </select>
+            )}
+            {extraAppId === "watch_together" && (
+                <select value={watchPreviewMode} onChange={e => setWatchPreviewMode(e.target.value as "watch" | "review")} className="pv-select">
+                    <option value="watch">陪看即时回应</option>
+                    <option value="review">观后感 / 纪念卡</option>
+                </select>
+            )}
             {extraAppId === "checkphone" && (
                 <select value={checkPhoneAppId} onChange={e => setCheckPhoneAppId(e.target.value as CheckPhoneAppId | "manifest")} className="pv-select">
                     <option value="manifest">桌面清单</option>
@@ -1112,7 +1397,7 @@ export function DebugPromptPanel() {
                     </select>
                 </>
             )}
-            {renderPreviewBtn(handleExtraPreview, loading || (extraAppId !== "shopping" && !extraCharacterId))}
+            {renderPreviewBtn(handleExtraPreview, loading || (extraAppId !== "shopping" && !extraCharacterId && !(extraAppId === "phone_widget" && loadWidgetConfig().characterId)))}
             {renderExtraPreviewWarning()}
         </>
         );
