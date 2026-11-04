@@ -233,3 +233,19 @@ export function installLifeScheduleProactiveScheduler(): () => void {
     window.removeEventListener(LIFE_PRESENCE_LEASE_UPDATED_EVENT, onScheduleChanged);
   };
 }
+
+
+/** Clear browser-side metadata for life-scene scheduling without touching online-chat leases. */
+export function clearLifeProactiveSchedulerLocalState(): void {
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.removeItem(STATUS_KEY);
+      for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+        const key = localStorage.key(index);
+        if (key?.startsWith(ARM_META_PREFIX)) localStorage.removeItem(key);
+      }
+    } catch { /* best effort */ }
+  }
+  armedCache.clear();
+  cancelledOffline.clear();
+}

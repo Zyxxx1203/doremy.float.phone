@@ -165,3 +165,13 @@ export function resetFailedLifeSceneReply(replyId: string): void {
   writeQueue(queue);
   if (typeof window !== "undefined") window.dispatchEvent(new Event("life-scene-notification-reply"));
 }
+
+
+/** Remove only the life-scene notification reply queue (current and legacy formats). */
+export function clearLifeSceneNotificationQueue(): void {
+  if (typeof window === "undefined") return;
+  try { localStorage.removeItem(KEY); } catch { /* best effort */ }
+  try { localStorage.removeItem(LEGACY_KEY); } catch { /* best effort */ }
+  window.dispatchEvent(new Event("life-scene-notification-queue-updated"));
+  window.dispatchEvent(new Event("life-diagnostics-updated"));
+}

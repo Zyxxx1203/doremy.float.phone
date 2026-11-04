@@ -147,3 +147,16 @@ export function settleLifeEventOnce(
   };
   return { state: { ...state, events: state.events.map(event => event.id === eventId ? nextEvent : event) }, changed: true };
 }
+
+
+/** Clear only life-engine data. Other apps, characters, chats and global settings are untouched. */
+export function resetVirtualLifeState(): VirtualLifeState {
+  const empty = createEmptyVirtualLifeState();
+  empty.settings = {
+    ...empty.settings,
+    enabled: false,
+    enableCharacterAutonomy: false,
+    enableProactiveSceneMessages: false,
+  };
+  return saveVirtualLifeState(empty);
+}
