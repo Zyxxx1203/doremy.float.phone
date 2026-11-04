@@ -106,7 +106,10 @@ export function LifeDiagnosticsPanel() {
     ? allEntries
     : allEntries.filter(entry => entry.status === filter);
 
-  const activeIssues = allEntries.filter(entry => entry.status === "error" || entry.status === "warning").slice(0, 3);
+  const activeIssues = allEntries
+    .filter(entry => entry.status === "error" || entry.status === "warning")
+    .filter(issue => !allEntries.some(entry => entry.status === "ok" && entry.source === issue.source && entry.event === issue.event && entry.at > issue.at))
+    .slice(0, 3);
 
   const counts = allEntries.reduce<Record<LifeDiagnosticStatus, number>>(
     (result, entry) => {
@@ -189,7 +192,7 @@ export function LifeDiagnosticsPanel() {
       {activeIssues.length > 0 && (
         <div role="alert" aria-live="polite" className={`mt-4 rounded-2xl border p-3 ${activeIssues.some(entry => entry.status === "error") ? "border-rose-300 bg-rose-50/90" : "border-amber-300 bg-amber-50/90"}`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <b className={`text-sm ${activeIssues.some(entry => entry.status === "error") ? "text-rose-900" : "text-amber-900"}`}>生活系统有 {allEntries.filter(entry => entry.status === "error" || entry.status === "warning").length} 项需要关注</b>
+            <b className={`text-sm ${activeIssues.some(entry => entry.status === "error") ? "text-rose-900" : "text-amber-900"}`}>生活系统有 {allEntries.filter(issue => (issue.status === "error" || issue.status === "warning") && !allEntries.some(entry => entry.status === "ok" && entry.source === issue.source && entry.event === issue.event && entry.at > issue.at)).length} 项需要关注</b>
             <button type="button" onClick={() => setFilter(activeIssues.some(entry => entry.status === "error") ? "error" : "warning")} className="rounded-lg border border-current/20 bg-white/80 px-3 py-1.5 text-xs font-medium">查看故障记录</button>
           </div>
           <div className="mt-2 space-y-1.5">
