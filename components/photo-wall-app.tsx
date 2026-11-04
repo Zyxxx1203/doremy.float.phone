@@ -283,9 +283,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     } catch { return DEFAULT_WALL_BRUSH_PALETTE; }
   });
   const [wallBrushWidth, setWallBrushWidth] = useState(3);
+  const [wallStickerSize, setWallStickerSize] = useState(36);
   const [wallSizeDraft, setWallSizeDraft] = useState("36");
   const [wallSticker, setWallSticker] = useState<string | null>(null);
-  useEffect(() => { setWallSizeDraft(String(wallSticker ? stickerSizeFromBrushWidth(wallBrushWidth) : wallBrushWidth)); }, [wallSticker, wallBrushWidth]);
+  // Brush thickness and sticker size are independent world-space values.
+  useEffect(() => { setWallSizeDraft(String(wallSticker ? wallStickerSize : wallBrushWidth)); }, [wallSticker, wallBrushWidth, wallStickerSize]);
   const [wallStickerRotation, setWallStickerRotation] = useState(0);
   const [wallEraser, setWallEraser] = useState(false);
   const [wallWidthDraft, setWallWidthDraft] = useState(String(world.width));
@@ -1653,7 +1655,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               setWallBrushColor(value); setWallColorDraft(value); setWallSticker(null); setWallEraser(false);
             }} className="border border-[#d8c6b5] px-2 py-1 text-[10px] text-[#7d6d5a]">替换当前色块</button>
             <span className="text-[10px] text-[#8b7665]">{wallSticker ? "贴纸大小" : "画笔粗细"}</span>
-            {[2,3,5,8].map(width => <button key={width} type="button" onClick={() => { setWallBrushWidth(width); setWallSizeDraft(String(wallSticker ? stickerSizeFromBrushWidth(width) : width)); }} aria-label={wallSticker ? `贴纸大小 ${stickerSizeFromBrushWidth(width)} 像素` : `画笔粗细 ${width}`} title={wallSticker ? `贴纸大小：${stickerSizeFromBrushWidth(width)}px` : `画笔粗细：${width}`} aria-pressed={wallBrushWidth===width} className={wallBrushWidth===width?"border border-[#6b5c4a] bg-[#6b5c4a] px-2 py-1 text-[10px] text-white":"border border-[#d8c6b5] px-2 py-1 text-[10px] text-[#7d6d5a]"}>{wallSticker ? stickerSizeFromBrushWidth(width) : width}</button>)}
+            {[2,3,5,8].map(width => { const presetStickerSize = stickerSizeFromBrushWidth(width); const active = wallSticker ? wallStickerSize === presetStickerSize : wallBrushWidth === width; return <button key={width} type="button" onClick={() => { if (wallSticker) { setWallStickerSize(presetStickerSize); setWallSizeDraft(String(presetStickerSize)); } else { setWallBrushWidth(width); setWallSizeDraft(String(width)); } }} aria-label={wallSticker ? `贴纸大小 ${presetStickerSize} 像素` : `画笔粗细 ${width}`} title={wallSticker ? `贴纸大小：${presetStickerSize}px` : `画笔粗细：${width}`} aria-pressed={active} className={active?"border border-[#6b5c4a] bg-[#6b5c4a] px-2 py-1 text-[10px] text-white":"border border-[#d8c6b5] px-2 py-1 text-[10px] text-[#7d6d5a]"}>{wallSticker ? presetStickerSize : width}</button>; })}
             <label className="inline-flex items-center gap-1 text-[10px] text-[#8b7665]">
               自定义
               <input type="number" inputMode="numeric" min={wallSticker ? 12 : 1} max={wallSticker ? 144 : 64} step={wallSticker ? 1 : 0.5}
@@ -1664,11 +1666,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
                   const min = wallSticker ? 12 : 1;
                   const max = wallSticker ? 144 : 64;
                   if (!Number.isFinite(parsed) || wallSizeDraft.trim() === "") {
-                    setWallSizeDraft(String(wallSticker ? stickerSizeFromBrushWidth(wallBrushWidth) : wallBrushWidth));
+                    setWallSizeDraft(String(wallSticker ? wallStickerSize : wallBrushWidth));
                     return;
                   }
                   const next = Math.max(min, Math.min(max, parsed));
-                  setWallBrushWidth(wallSticker ? next / 12 : next);
+                  if (wallSticker) setWallStickerSize(next);
+                  else setWallBrushWidth(next);
                   setWallSizeDraft(String(next));
                 }}
                 aria-label={wallSticker ? "自定义贴纸大小（像素）" : "自定义画笔粗细"}
@@ -1739,7 +1742,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
               backgroundImage={wallBackgroundUrl} backgroundBox={state.wallBackgroundBox}
               wallWorld={world} canvasZoom={panoramaZoom / 100} readOnly={wallView === "panorama"}
               mode={wallCanvasMode} onModeChange={handleWallCanvasModeChange}
-              brushColor={wallBrushColor} brushWidth={wallBrushWidth}
+              brushColor={wallBrushColor} brushWidth={wallBrushWidth} stickerSize={wallStickerSize}
               sticker={wallSticker} onStickerChange={setWallSticker} stickerRotation={wallStickerRotation}
               eraser={wallEraser} onEraserChange={setWallEraser}
               onOpenDetail={photo => openPhoto(photo, false)} />

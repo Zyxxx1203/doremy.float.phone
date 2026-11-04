@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, splashAnimation, builtinPrompts, debugPromptRegistry, debugPromptPanel, watchApp, moduleDiagnostics, runtimeDiagnostics, debugStore, checkinEngine, followUpService] = await Promise.all([
+const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, splashAnimation, builtinPrompts, debugPromptRegistry, debugPromptPanel, watchApp, moduleDiagnostics, runtimeDiagnostics, debugStore, checkinEngine, followUpService, shortTermAssembler] = await Promise.all([
   read("../components/life/life-engine-app.tsx"),
   read("../lib/life/life-runtime.ts"),
   read("../components/life/life-observation.tsx"),
@@ -28,6 +28,7 @@ const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply,
   read("../lib/debug-store.ts"),
   read("../lib/screenshot/checkin-engine.ts"),
   read("../lib/follow-up-service.ts"),
+  read("../lib/short-term-assembler.ts"),
 ]);
 
 assert.match(app, /if \(settings\.autoGenerateWeeklyPlans\)\s*\{\s*next = generateWeeklyLifePlan/);
@@ -192,5 +193,14 @@ assert.match(push, /foreground scene lease active; deferred until/);
 assert.match(push, /status: "pending"/);
 assert.match(push, /characterLocation === snapshot\.playerLocationId/);
 assert.doesNotMatch(push, /characterLocation === snapshot\.playerLocationId \|\| scene\?\.characterIds/);
+
+
+assert.match(shortTermAssembler, /CUSTOM_APP_TIMELINE_SOURCES = new Set<string>/);
+for (const source of ["photo_wall", "watch", "global_watch", "phone_widget", "life"]) {
+  assert.ok(shortTermAssembler.includes(`"${source}"`), `short-term timeline source ${source} must be included`);
+}
+assert.equal((shortTermAssembler.match(/timeline\.filter\(e => CUSTOM_APP_TIMELINE_SOURCES\.has\(e\.sourceApp\)\)/g) ?? []).length, 2,
+  "both direct-chat and group-chat assemblers must inject special app timeline entries");
+assert.match(shortTermAssembler, /CUSTOM_APP_TIMELINE_SOURCES\.has\(entry\.sourceApp\) \? "recent_custom_app"/);
 
 console.log("Life-system wiring checks passed.");

@@ -858,6 +858,10 @@ export function loadNativeTimeline(
 
 // Fixed order — lower = further from LLM output (appears higher in prompt)
 const FEATURE_ORDER: Record<string, number> = { map: 0, game: 0.5, moments: 1, xiaohongshu: 1.5, checkphone: 1.7, story: 2, vn: 2, theater: 2.2, interview: 2.35, cocreate: 2.4, diary_entry: 2.45, notewall: 2.5, custom_app: 2.6, group_chat: 3, chat: 4 };
+// First-class app timelines share the custom-app prompt block and ordering.
+const CUSTOM_APP_TIMELINE_SOURCES = new Set<string>([
+    "custom_app", "photo_wall", "watch", "global_watch", "phone_widget", "life",
+]);
 // Map appId → XML tag name for the "current feature" wrapper
 const FEATURE_TAG: Record<string, string> = {
     chat: "recent_chat",
@@ -875,7 +879,7 @@ const FEATURE_TAG: Record<string, string> = {
 };
 
 function getFeatureTag(appId: string): string {
-    return appId === "custom_app" || appId.startsWith("custom_app:") ? "recent_custom_app" : FEATURE_TAG[appId] ?? FEATURE_TAG.chat;
+    return CUSTOM_APP_TIMELINE_SOURCES.has(appId) || appId.startsWith("custom_app:") ? "recent_custom_app" : FEATURE_TAG[appId] ?? FEATURE_TAG.chat;
 }
 
 function isChatOfflineEntry(entry: NativeTimelineEntry): boolean {
@@ -1138,7 +1142,7 @@ export function prepareShortTermContext(
         raw.push({ tag: "recent_cocreate", order: FEATURE_ORDER.cocreate, entries: cocreateEntries });
     }
 
-    const customAppEntries = timeline.filter(e => e.sourceApp === "custom_app");
+    const customAppEntries = timeline.filter(e => CUSTOM_APP_TIMELINE_SOURCES.has(e.sourceApp));
     if (customAppEntries.length > 0) {
         raw.push({ tag: "recent_custom_app", order: FEATURE_ORDER.custom_app, entries: customAppEntries });
     }
@@ -1402,7 +1406,7 @@ export function prepareGroupShortTermContext(
         raw.push({ tag: "recent_cocreate", order: FEATURE_ORDER.cocreate, entries: cocreateEntries });
     }
 
-    const customAppEntries = timeline.filter(e => e.sourceApp === "custom_app");
+    const customAppEntries = timeline.filter(e => CUSTOM_APP_TIMELINE_SOURCES.has(e.sourceApp));
     if (customAppEntries.length > 0) {
         raw.push({ tag: "recent_custom_app", order: FEATURE_ORDER.custom_app, entries: customAppEntries });
     }
@@ -1500,7 +1504,7 @@ export function prepareGroupShortTermContext(
                                     entry.sourceApp === "checkphone" ? "recent_checkphone" :
                                         entry.sourceApp === "interview_magazine" ? "recent_interview" :
                                                 entry.sourceApp === "cocreate" ? "recent_cocreate" :
-                                                    entry.sourceApp === "custom_app" ? "recent_custom_app" :
+                                                    CUSTOM_APP_TIMELINE_SOURCES.has(entry.sourceApp) ? "recent_custom_app" :
                                                         entry.sourceApp === "story" && entry.sourceDetail === "black_market_theater" ? "recent_theater" :
                                                             entry.sourceApp === "diary" && entry.sourceDetail === "diary_entry" ? "recent_diary" :
                                                                 entry.sourceApp === "diary" && entry.sourceDetail === "notewall" ? "recent_notewall" :
