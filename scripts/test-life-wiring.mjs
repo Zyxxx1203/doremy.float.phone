@@ -102,6 +102,7 @@ assert.match(scheduler, /const onScheduleChanged = \(\) => \{ start\(\); \}/);
 assert.match(scheduler, /const scene = state\.scenes\.find\(item => item\.status === "active"\s*&& item\.participants\.some/);
 assert.match(scheduler, /source: "schedule"/);
 assert.match(scheduler, /主动消息已关闭，撤销待执行任务/);
+assert.match(scheduler, /云端仍按七日日程计算角色活动与地点/);
 assert.match(scheduler, /scene\.status === "active" && participant\.activity !== "离开"/);
 assert.doesNotMatch(scheduler, /cancelBailoutPrefix\(prefix\)/);
 assert.match(bailout, /input\.source \?\? "foreground"/);
