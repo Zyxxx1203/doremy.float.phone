@@ -10,7 +10,7 @@ type ModuleSnapshot = {
   photoWall: { photos: number; annotations: number; doodles: number; world: string; background: boolean; lastError: string };
   watch: string;
   widget: { bridge: boolean; enabled: boolean; placed: boolean; native: ReturnType<typeof readWidgetDiagnostics> };
-  reality: { shell: boolean; bridge: boolean; running: boolean; accessibility: boolean; lastSampleAt: string; unmatched: number; location: string };
+  reality: { shell: boolean; bridge: boolean; running: boolean; accessibility: boolean; lastSampleAt: number; unmatched: number; location: string };
 };
 
 function readModuleSnapshot(): ModuleSnapshot {
@@ -104,7 +104,7 @@ export function ModuleDiagnostics() {
       <Row label="感知桥" value={reality.bridge ? "可用" : "不可用"} />
       <Row label="采样引擎" value={reality.running ? "运行中" : "未运行"} />
       <Row label="无障碍服务" value={reality.accessibility ? "已连接" : "未连接 / 不可读取"} />
-      <Row label="最近采样" value={reality.lastSampleAt ? new Date(reality.lastSampleAt).toLocaleString() : "暂无记录"} />
+      <Row label="最近采样" value={reality.lastSampleAt > 0 ? new Date(reality.lastSampleAt).toLocaleString() : "暂无记录"} />
       <Row label="最近位置读数" value={reality.location} />
       <Row label="未匹配信号" value={String(reality.unmatched)} />
       <p style={{ marginTop: 7, fontSize: 10, opacity: .55 }}>此处显示现实桥的感知链路快照；快捷指令执行与回传历史仍以现实桥应用内记录为准。</p>
