@@ -240,6 +240,15 @@ export function DebugPromptPanel() {
         return promptSnapshot;
     })();
 
+    const activeExtraSnapshot: DebugPromptSnapshot | null = (() => {
+        if (!isExtraPromptMode(mode) || !promptSnapshot) return null;
+        const definition = EXTRA_PROMPT_APPS.find(app => app.id === mode);
+        if (!definition?.snapshotOnly) return null;
+        const appIdMatches = definition.snapshotAppIds?.includes(promptSnapshot.appId) ?? false;
+        const tagMatches = definition.snapshotTags?.some(tag => promptSnapshot.appTags?.includes(tag)) ?? false;
+        return appIdMatches || tagMatches ? promptSnapshot : null;
+    })();
+
     // Clear on mode/session change
     useEffect(() => {
         setMomentsResult(null);
@@ -360,6 +369,9 @@ export function DebugPromptPanel() {
             const log = actualLogs.find(item => item.id === actualSelectedId);
             return log ? log.messages.map(message => ({ role: message.role, content: message.content, marker: message.marker })) : [];
         }
+        if (isExtraPromptMode(mode) && activeExtraSnapshot) {
+            return activeExtraSnapshot.messages.map(m => ({ role: m.role, content: m.content, marker: m.marker }));
+        }
         if (isExtraPromptMode(mode) && extraResult) {
             return extraResult.messages.map(m => ({
                 role: m.role,
@@ -385,7 +397,7 @@ export function DebugPromptPanel() {
                     ? storyResult
                     : mode === "vn"
                         ? vnResult
-                        : extraResult;
+                        : isExtraPromptMode(mode) ? (activeExtraSnapshot ?? extraResult) : extraResult;
 
     // ── Chat Preview ──
     async function handleChatPreview() {
@@ -983,7 +995,16 @@ export function DebugPromptPanel() {
         return warning ? <span className="pv-context-warning">{warning}</span> : null;
     };
 
-    const renderExtraControls = () => (
+    const renderExtraControls = () => {
+        const definition = EXTRA_PROMPT_APPS.find(app => app.id === extraAppId);
+        if (definition?.snapshotOnly) {
+            return <span className="pv-context-warning">{activeExtraSnapshot
+                ? "以下为最近一次实际请求组装结果 · " + new Date(activeExtraSnapshot.timestamp).toLocaleString("zh-CN")
+                : "此入口只展示真实请求快照，不生成静态假预览。请按下方提示先在对应 APP 触发一次请求。"}
+            </span>;
+        }
+        return (
+
         <>
             {extraAppId !== "shopping" && renderCharSelect(extraCharacterId, setExtraCharacterId)}
             {extraAppId === "checkphone" && (
@@ -1078,7 +1099,8 @@ export function DebugPromptPanel() {
             {renderPreviewBtn(handleExtraPreview, loading || (extraAppId !== "shopping" && !extraCharacterId))}
             {renderExtraPreviewWarning()}
         </>
-    );
+        );
+    };
 
     return (
         <>
@@ -1268,7 +1290,7 @@ export function DebugPromptPanel() {
                             : mode === "actual"
                                 ? (actualLogs.length ? "上方选择一条实际调用查看完整 messages" : "还没有底层模型调用记录。发一次消息、生成一次内容后再来。")
                             : isExtraPromptMode(mode)
-                                ? EXTRA_PROMPT_APPS.find(app => app.id === mode)?.emptyText ?? "选择 APP 后点击「预览」"
+                                ? (activeExtraSnapshot ? "已读取最近一次真实请求；消息内容与动态上下文来自该次实际模型调用。" : EXTRA_PROMPT_APPS.find(app => app.id === mode)?.emptyText ?? "选择 APP 后点击「预览」")
                                 : "选择 APP 后点击「预览」"
                         }
                     </div>
