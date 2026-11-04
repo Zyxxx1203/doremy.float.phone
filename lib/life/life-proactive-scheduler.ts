@@ -17,6 +17,7 @@ import { recordLifeDiagnostic } from "./life-diagnostics";
 import { LIFE_PRESENCE_LEASE_UPDATED_EVENT } from "./life-scheduler-coordinator";
 
 const PLAYER_ID = "player";
+const LIFE_PROACTIVE_MESSAGES_ENABLED = false; // Keep server-side life scheduling, disable message jobs.
 const ARM_META_PREFIX = "life-schedule-arm:";
 const STATUS_KEY = "life-proactive-last-status-v1";
 export type LifeProactiveStatus = { at: string; ok: boolean; character?: string; reason?: string };
@@ -78,7 +79,7 @@ async function runOnce(): Promise<void> {
   running = true;
   try {
     const state = loadVirtualLifeState();
-    if (!state.settings.enabled || !state.settings.enableCharacterAutonomy || state.settings.enableProactiveSceneMessages === false) {
+    if (!LIFE_PROACTIVE_MESSAGES_ENABLED || !state.settings.enabled || !state.settings.enableCharacterAutonomy || state.settings.enableProactiveSceneMessages === false) {
       const disabledKey = [state.settings.enabled, state.settings.enableCharacterAutonomy, state.settings.enableProactiveSceneMessages].join(":");
       if (disabledKey !== lastDisabledCleanupKey) {
         lastDisabledCleanupKey = disabledKey;
