@@ -736,7 +736,7 @@ Deno.serve(async (request: Request) => {
         method: "PATCH", headers: updateHeaders,
         body: JSON.stringify({ status: "cancelled", result_note: "life system reset by user", updated_at: new Date().toISOString() }),
       }));
-      await readJson(await rest(`push_jobs?${userFilter}${lifeKeyFilter}&status=eq.pending`, {
+      await readJson(await rest(`push_jobs?${userFilter}${lifeKeyFilter}&status=not.eq.cancelled`, {
         method: "DELETE", headers: updateHeaders,
       }));
       await readJson(await rest(`push_outbox?${userFilter}${lifeKeyFilter}`, {
