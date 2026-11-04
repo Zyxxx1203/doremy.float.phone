@@ -20,12 +20,13 @@ export async function POST(request: Request) {
       if (!result.ok) throw new Error(result.error || `Supabase ${method} failed`);
       return Array.isArray(result.data) ? result.data.length : 0;
     };
+    // Remove the authoritative snapshot first so future scheduler ticks cannot re-arm life jobs.
+    const deletedSnapshots = await mutate(`push_bridge_snapshots?${userFilter}&rule_id=eq.life-schedule`, "DELETE");
     const cancelledRunning = await mutate(`push_jobs?${userFilter}${lifeKeyFilter}&status=eq.running`, "PATCH", {
       status: "cancelled", result_note: "life system reset by user", updated_at: new Date().toISOString(),
     });
     const deletedPending = await mutate(`push_jobs?${userFilter}${lifeKeyFilter}&status=eq.pending`, "DELETE");
     const deletedOutbox = await mutate(`push_outbox?${userFilter}${lifeKeyFilter}`, "DELETE");
-    const deletedSnapshots = await mutate(`push_bridge_snapshots?${userFilter}&rule_id=eq.life-schedule`, "DELETE");
     const deletedRuntime = await mutate(`life_schedule_runtime?${userFilter}`, "DELETE");
     const deletedDiagnostics = await mutate(`life_schedule_diagnostics?${userFilter}`, "DELETE");
     return NextResponse.json({ ok: true, cancelledRunning, deletedPending, deletedOutbox, deletedSnapshots, deletedRuntime, deletedDiagnostics });
