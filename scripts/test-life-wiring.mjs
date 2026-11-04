@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, builtinPrompts] = await Promise.all([
+const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, builtinPrompts, debugPromptRegistry, debugPromptPanel] = await Promise.all([
   read("../components/life/life-engine-app.tsx"),
   read("../lib/life/life-runtime.ts"),
   read("../components/life/life-observation.tsx"),
@@ -19,6 +19,8 @@ const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply,
   read("../components/chat/chat-room.tsx"),
   read("../components/main-app.tsx"),
   read("../lib/builtin-app-prompts.ts"),
+  read("../components/debug-prompt-registry.ts"),
+  read("../components/debug-prompt-panel.tsx"),
 ]);
 
 assert.match(app, /if \(settings\.autoGenerateWeeklyPlans\)\s*\{\s*next = generateWeeklyLifePlan/);
@@ -33,6 +35,12 @@ assert.match(app, /preserveLifeDialogueSegments\(parsed\.dialogues\)/);
 assert.match(builtinPrompts, /没有对白也没有动作时，仍输出严格 JSON 对象/);
 assert.match(builtinPrompts, /不得连续两轮纯行动/);
 assert.match(builtinPrompts, /实际附带截图时，可以描述截图中确实可见的内容/);
+for (const appId of ["life", "photo_wall", "checkin", "watch_together", "phone_widget", "reality_bridge"]) {
+  assert.match(debugPromptRegistry, new RegExp('id: "' + appId + '"'));
+}
+assert.match(debugPromptPanel, /activeExtraSnapshot/);
+assert.match(debugPromptPanel, /本次真实请求允许的工具/);
+assert.match(debugPromptPanel, /loadCheckInGuidance/);
 assert.match(app, /life-scene-notification-reply/);
 assert.match(app, /peekPendingLifeSceneReply/);
 assert.match(app, /claimPendingLifeSceneReply/);
