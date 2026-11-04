@@ -49,13 +49,14 @@ function nextArmAt(triggerKey: string, now: number): number {
       const parsed = JSON.parse(raw) as { executeAt?: number; cloudManaged?: boolean };
       // Once the cloud owns this scene/character, the durable server row is re-armed
       // in place. The browser must not create a second timer chain.
-      if ((parsed as { cloudManaged?: boolean }).cloudManaged === true) return 0;
+      if (parsed.cloudManaged === true && (parsed as { armed?: boolean }).armed === true) return 0;
       if (typeof parsed.executeAt === "number" && parsed.executeAt > now + 60_000) return parsed.executeAt;
     }
   } catch { /* fall through */ }
-  const executeAt = now + MIN_DELAY_MS + Math.floor(Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS));
-  try { localStorage.setItem(ARM_META_PREFIX + triggerKey, JSON.stringify({ executeAt, cloudManaged: true })); } catch { /* best effort */ }
-  return executeAt;
+  // Do not mark the row cloud-owned until the server has acknowledged the arm.
+  // A WebView killed between local marker write and POST would otherwise suppress
+  // every future retry forever.
+  return now + MIN_DELAY_MS + Math.floor(Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS));
 }
 
 const armedCache = new Map<string, number>();
@@ -184,10 +185,14 @@ async function runOnce(): Promise<void> {
         source: "schedule",
       });
       writeLifeProactiveStatus({ at: new Date().toISOString(), ok: result.ok, character: character.name, reason: result.ok ? undefined : result.reason });
+      if (result.ok) {
+        try { localStorage.setItem(ARM_META_PREFIX + trigger, JSON.stringify({ executeAt: executeAtMs, cloudManaged: true, armed: true })); } catch { /* best effort */ }
+      }
       recordLifeDiagnostic({ source: "主动调度", event: result.ok ? "离线主动任务已挂载" : "离线主动任务挂载失败", status: result.ok ? "ok" : "error", detail: result.ok ? character.name + " 的主动消息已提交服务端预约。" : character.name + "：" + (result.reason || "未知原因"), meta: { sceneId: scene.id, characterId: character.id, sessionId: session.id, executeAt: new Date(executeAtMs).toISOString() } });
       if (!result.ok) {
         // 没挂上就清掉“已挂”标记，下一轮继续重试，不能一次失败永远不排。
         try { localStorage.removeItem(ARM_META_PREFIX + trigger); } catch { /* best effort */ }
+        armedCache.delete(trigger);
         console.warn("[LifeSchedule] 主动消息未挂上：", character.name, result.reason);
       }
     }
