@@ -1047,7 +1047,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         return { actor, now, dayStart, dayEnd, existing };
       });
       const scheduleText = contexts.map(context =>
-        "【" + context.actor.name + "｜" + (context.actor.ownerType === "player" ? "玩家" : "角色") + "｜" + context.now.toISOString() + "】\n"
+        "【对象ID：" + context.actor.ownerId + "｜名称：" + context.actor.name + "｜类型：" + (context.actor.ownerType === "player" ? "player" : "character") + "｜虚拟时间：" + context.now.toISOString() + "】\n"
         + (context.existing.map(slot=>"- "+slot.startAt+" 至 "+slot.endAt+"｜"+slot.title+"｜"+(slot.plannedLocationName||"地点未定")+"｜"+slot.source).join("\n") || "暂无已安排日程")
       ).join("\n\n");
       const locations = current.locations.map(location=>"- "+location.name).join("\n");
@@ -1058,7 +1058,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         "用户指导：\n"+instruction,
         "可用地点：\n"+locations,
         "每个对象都以各自标题中的虚拟时间为准；dayOffset 0 为该对象今天，6 为该对象第七天。",
-        "只输出 JSON：{\"schedules\":[{\"actorName\":\"精确对象名称\",\"actorType\":\"player 或 character\",\"dayOffset\":0,\"start\":\"15:00\",\"end\":\"16:00\",\"title\":\"活动\",\"location\":\"地点或空字符串\"}]}。",
+        "只输出 JSON：{\"schedules\":[{\"actorId\":\"必须原样填写上方对象ID\",\"actorType\":\"player 或 character\",\"dayOffset\":0,\"start\":\"15:00\",\"end\":\"16:00\",\"title\":\"活动\",\"location\":\"地点或空字符串\"}]}。",
         "仅返回本次指导需要新增的安排；actorName 必须与选中对象名称完全一致，actorType 必须正确；时间必须明确，不得猜测或返回旧日程；不得生成过去时间；同一对象的安排不得与现有日程或彼此重叠；无明确时间则返回空数组。"
       ].join("\n\n")};
       const result=await generateOfflineChatCompletion(session,[prompt],{appId:"life",appTags:lifeAppTags("schedule")});
@@ -1069,10 +1069,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const drafts:QuickPlanDraft[]=[],conflicts:string[]=[];
       const overlaps=(a:number,b:number,x:number,y:number)=>a<y&&b>x;
       for(const item of decoded.schedules){
-        const actorName=String(item.actorName??"").trim();
+        const actorId=String(item.actorId??"").trim();
         const actorType=String(item.actorType??"").trim();
-        const context=contexts.find(candidate=>candidate.actor.name===actorName&&candidate.actor.ownerType===actorType)
-          ?? (contexts.length===1&&!actorName?contexts[0]:undefined);
+        const context=contexts.find(candidate=>candidate.actor.ownerId===actorId&&candidate.actor.ownerType===actorType);
         if(!context)continue;
         const d=Number(item.dayOffset),title=String(item.title??"").trim().slice(0,100);
         const sm=/^(\d{1,2}):(\d{2})$/.exec(String(item.start??"")),em=/^(\d{1,2}):(\d{2})$/.exec(String(item.end??""));
