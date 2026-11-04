@@ -68,11 +68,14 @@ const INITIAL_LOCATIONS: LifeLocation[] = [
 ];
 const id = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 function createLifeVirtualSession(characterId: string, characterName: string): ChatSession {
-  // Life tasks must reference the same persisted direct-chat session used by the chat UI.
-  // ChatContact.id is not Character.id; legacy sessions may still use Character.id directly.
-  const contact = loadChatContacts().find(item => item.characterId === characterId);
-  const contactId = contact?.id || characterId;
-  const session = createOrGetSession(contactId);
+  // Always bind life operations to a persisted direct-chat session. Resolve the
+  // ChatContact.id separately from Character.id so downstream push jobs can map it.
+  let contact = loadChatContacts().find(item => item.characterId === characterId);
+  if (!contact) {
+    addChatContact(characterId);
+    contact = loadChatContacts().find(item => item.characterId === characterId);
+  }
+  const session = createOrGetSession(contact?.id || characterId);
   return session.alias === characterName ? session : { ...session, alias: characterName };
 }
 
