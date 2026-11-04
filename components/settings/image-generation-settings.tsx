@@ -952,6 +952,7 @@ export function ImageGenerationSettings() {
                                     <span className="text-[10px] opacity-60">{new Date(record.startedAt).toLocaleString()} · {(record.durationMs / 1000).toFixed(1)}s</span>
                                 </div>
                                 <p className="mt-1 break-all text-[11px] opacity-75">{record.provider} / {record.model} · {record.participantNames.join("、") || "未指定角色"} · {record.usedReferenceImage ? "使用参考图" : "未使用参考图"}</p>
+                    <p className="mt-1 text-[11px] opacity-70">实际加载参考图：{typeof record.referenceImageCount === "number" ? record.referenceImageCount + " 张" : "未知（请求在加载阶段失败或旧记录）"}{record.referenceImageLabels?.length ? " · " + record.referenceImageLabels.join("、") : ""}</p>
                             </summary>
                             <div className="mt-3 space-y-2 text-[11px]">
                                 <p>角色 ID：{record.participantIds.join(", ") || "无"}</p>

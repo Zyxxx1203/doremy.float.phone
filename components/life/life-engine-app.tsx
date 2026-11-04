@@ -1058,8 +1058,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         "用户指导：\n"+instruction,
         "可用地点：\n"+locations,
         "每个对象都以各自标题中的虚拟时间为准；dayOffset 0 为该对象今天，6 为该对象第七天。",
-        "只输出 JSON：{\"schedules\":[{\"actorName\":\"精确对象名称\",\"actorType\":\"player 或 character\",\"dayOffset\":0,\"start\":\"15:00\",\"end\":\"16:00\",\"title\":\"活动\",\"location\":\"地点或空字符串\"}]}。",
-        "仅返回本次指导需要新增的安排；actorName 必须与选中对象名称完全一致，actorType 必须正确；时间必须明确，不得猜测或返回旧日程；不得生成过去时间；同一对象的安排不得与现有日程或彼此重叠；无明确时间则返回空数组。"
+        "只输出 JSON：{\"schedules\":[{\"actorName\":\"精确对象名称\",\"actorType\":\"player\",\"dayOffset\":0,\"start\":\"15:00\",\"end\":\"16:00\",\"title\":\"活动\",\"location\":\"地点或空字符串\"}]}。",
+        "仅返回本次指导需要新增的安排；actorName 必须与选中对象名称完全一致，actorType 只能是英文字符串 player 或 character，且必须与对象类型严格一致；时间必须明确，不得猜测或返回旧日程；不得生成过去时间；同一对象的安排不得与现有日程或彼此重叠；无明确时间则返回空数组。"
       ].join("\n\n")};
       const result=await generateOfflineChatCompletion(session,[prompt],{appId:"life",appTags:lifeAppTags("schedule")});
       const raw=result.content.trim(),first=raw.indexOf("{"),last=raw.lastIndexOf("}");
@@ -1467,7 +1467,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           characterId: referenceCharacterId || characterIds[0],
           characterIds,
           participantIds: explicitParticipants,
-          appId: "story",
+          appId: "life",
         });
         if(!result) throw new Error("生图服务未返回图片，请检查 API 配置和启用状态。");
         generated.push({id:id("scene-image"),sceneId:activeScene.id,mediaRef:result.mediaRef,prompt:result.prompt,participantIds:[...participantIds],createdAt:new Date().toISOString(),status:"active",alt:activeScene.locationName+"场景图"});
@@ -2988,7 +2988,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         ].filter(Boolean).join("\n"),
         characterId,
         participantIds: entry.actorId === PLAYER_ID ? ["__user__"] : (characterId ? [characterId] : []),
-        appId: "story",
+        appId: "life",
       });
       if (!result) throw new Error("生图服务未返回图片，请检查 API 配置。");
       const latest = stateRef.current;
