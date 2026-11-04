@@ -627,7 +627,9 @@ export function DebugPromptPanel() {
                     ].filter(Boolean).join("\n");
                 const prompt = [
                     state.settings.keepDialogueConcise ? "保持自然简短：一句对白，必要时附一个动作。" : "可以适度展开，但不要写成长篇故事。",
-                    "这是生活系统的自主现场回合预览。请以角色身份结合当前生活状态自然行动或回应，不要把生活现场写成普通线上聊天。",
+                    lifePreviewMode === "autonomy"
+                        ? "这是生活系统的自主现场回合预览。请以角色身份结合当前生活状态自然发起行动或交流，不要把生活现场写成普通线上聊天。"
+                        : "这是生活现场互动回合预览。玩家刚刚在现场发起互动，请结合最近发生的动作、对白和当前场景状态作出回应；不要要求玩家重复已经提供的信息。",
                     sceneContext,
                 ].filter(Boolean).join("\n\n");
                 const session = createPromptPreviewSession(character.id, "life-preview");
