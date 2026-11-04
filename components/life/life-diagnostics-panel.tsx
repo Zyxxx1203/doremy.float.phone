@@ -11,6 +11,7 @@ import {
 import { readFailedLifeSceneReplies, resetFailedLifeSceneReply, type PendingLifeSceneNotificationReply } from "@/lib/life/life-notification-queue";
 import { isPersonalPushCloudActive, loadPersonalPushCloudState, personalPushFetch } from "@/lib/personal-push-cloud";
 import { isShellEnvironment } from "@/lib/shell-detect";
+import { resetLifeSystemData } from "@/lib/life/life-reset";
 
 const STATUS_LABEL: Record<LifeDiagnosticStatus, string> = {
   ok: "成功",
@@ -33,6 +34,8 @@ export function LifeDiagnosticsPanel() {
   const [cloudEntries, setCloudEntries] = useState<LifeDiagnosticEntry[]>([]);
   const [filter, setFilter] = useState<DiagnosticFilter>("all");
   const [failedReplies, setFailedReplies] = useState<PendingLifeSceneNotificationReply[]>([]);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetResult, setResetResult] = useState("");
 
   const refresh = async () => {
     setEntries(readLifeDiagnostics());
@@ -64,6 +67,23 @@ export function LifeDiagnosticsPanel() {
   };
   const retryFailedReply = (replyId: string) => { resetFailedLifeSceneReply(replyId); refresh(); };
 
+  const resetLife = async () => {
+    if (resetBusy) return;
+    if (!window.confirm("确定要完整重置生活系统吗？将清除生活现场、日程、邀约、生活记录、生活通知队列和云端生活任务；角色卡、线上聊天、照片墙、图片参考和 API 配置会保留。")) return;
+    if (!window.confirm("最后确认：生活数据和未送达的生活主动消息将无法恢复。是否继续？")) return;
+    setResetBusy(true);
+    setResetResult("");
+    try {
+      await resetLifeSystemData();
+      setResetResult("生活系统已重置。后台自主运行已关闭；需要重新启用后才会开始新的生活日程。");
+      await refresh();
+    } catch (error) {
+      setResetResult("重置未完成：" + (error instanceof Error ? error.message : String(error)) + "。本机生活数据尚未清除。");
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
   useEffect(() => {
     let active = true;
     const poll = () => { if (active && document.visibilityState === "visible") void refresh(); };
@@ -85,6 +105,11 @@ export function LifeDiagnosticsPanel() {
   const visible = filter === "all"
     ? allEntries
     : allEntries.filter(entry => entry.status === filter);
+
+  const activeIssues = allEntries
+    .filter(entry => entry.status === "error" || entry.status === "warning")
+    .filter(issue => !allEntries.some(entry => entry.status === "ok" && entry.source === issue.source && entry.event === issue.event && entry.at > issue.at))
+    .slice(0, 3);
 
   const counts = allEntries.reduce<Record<LifeDiagnosticStatus, number>>(
     (result, entry) => {
@@ -152,6 +177,32 @@ export function LifeDiagnosticsPanel() {
           </button>
         </div>
       </div>
+
+      <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/60 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <b className="text-sm text-rose-900">完整重置生活系统</b>
+            <p className="mt-1 text-[11px] leading-relaxed text-rose-800">清理本机生活数据、生活图片缓存、待处理通知回复，以及云端 life-scene 任务、回传消息和七日日程快照。不会清理角色卡、普通聊天、其他 APP 或 API 配置。</p>
+          </div>
+          <button type="button" onClick={() => void resetLife()} disabled={resetBusy} className="min-h-10 rounded-xl border border-rose-300 bg-white px-3 text-xs font-semibold text-rose-800 disabled:opacity-50">{resetBusy ? "正在重置…" : "完整重置"}</button>
+        </div>
+        {resetResult && <p role="status" className="mt-2 whitespace-pre-wrap text-xs text-rose-900">{resetResult}</p>}
+      </div>
+
+      {activeIssues.length > 0 && (
+        <div role="alert" aria-live="polite" className={`mt-4 rounded-2xl border p-3 ${activeIssues.some(entry => entry.status === "error") ? "border-rose-300 bg-rose-50/90" : "border-amber-300 bg-amber-50/90"}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <b className={`text-sm ${activeIssues.some(entry => entry.status === "error") ? "text-rose-900" : "text-amber-900"}`}>生活系统有 {allEntries.filter(issue => (issue.status === "error" || issue.status === "warning") && !allEntries.some(entry => entry.status === "ok" && entry.source === issue.source && entry.event === issue.event && entry.at > issue.at)).length} 项需要关注</b>
+            <button type="button" onClick={() => setFilter(activeIssues.some(entry => entry.status === "error") ? "error" : "warning")} className="rounded-lg border border-current/20 bg-white/80 px-3 py-1.5 text-xs font-medium">查看故障记录</button>
+          </div>
+          <div className="mt-2 space-y-1.5">
+            {activeIssues.map(entry => <div key={entry.id} className="rounded-xl bg-white/75 px-3 py-2">
+              <p className="text-xs font-semibold text-stone-800">{entry.source} · {entry.event}</p>
+              <p className="mt-0.5 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-stone-600">{entry.detail}</p>
+            </div>)}
+          </div>
+        </div>
+      )}
 
       {failedReplies.length > 0 && (
         <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/80 p-3">

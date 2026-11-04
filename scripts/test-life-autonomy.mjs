@@ -86,7 +86,7 @@ assert.ok(notificationReplySource.includes("mirrorNotificationReplyToLifeScene")
 assert.ok(notificationReplySource.includes("notification-reply-"), "life-scene notification writeback must use a dedupe key");
 assert.ok(pushBailoutSource.includes("lifeScene: { sceneId: input.sceneId, characterId: input.characterId"), "background life-scene job must carry scene and character identity");
 assert.ok(outboxSource.includes("const lifeScene = meta.lifeScene;") && outboxSource.includes("life-outbox-"), "server outbox must restore life-scene output to the durable scene message log");
-assert.ok(pushGenerateSource.includes('kind: "life_scene"') && pushGenerateSource.includes('(isLifeSceneJob ? "/life"'), "background life-scene push must deep-link to life scene rather than ordinary chat");
+assert.ok(pushGenerateSource.includes('kind: "life_scene"') && pushGenerateSource.includes('(isLifeSceneNotification ? "/life"'), "background life-scene push must deep-link to life scene rather than ordinary chat");
 assert.ok(diagnosticsSource.includes('id: "life-scene-outbox"') && diagnosticsSource.includes('id: "life-notification-reply-writeback"'), "runtime diagnostics must expose background outbox and notification reply checks");
 assert.ok(!lifeUiSource.includes("__group__") && lifeUiSource.includes("participantIds: explicitParticipants"), "life-scene generation must use explicit participants and must not depend on a global group collage");
 assert.ok(chatRoomSource.includes("resolveLifeCharacterIdForContact(session.contactId, loadChatContacts())"), "online follow-up arbitration must map contact ID to character ID");

@@ -14,8 +14,6 @@ import { loadVideoAnalysisSettings, saveVideoAnalysisSettings, type VideoAnalysi
 import { formatTranscriptTime, parseVideoTranscript, type VideoTranscriptSegment } from "@/lib/video-transcript";
 import { captureScreenshot, hasScreenshotBridge } from "@/lib/screenshot";
 import { analyzeWholeVideoWithGemini } from "@/lib/gemini-video-understanding";
-import { clearGlobalWatchRecords, loadGlobalWatchRecords, type GlobalWatchRecord } from "@/lib/global-watch-storage";
-import { GlobalWatchCompanionApp } from "@/components/global-watch-companion-app";
 
 /** 自动搭话的每日上限：护栏，避免暂停/挂机时白烧 API。 */
 const WATCH_AUTO_DAILY_LIMIT = 24;
@@ -302,8 +300,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const openVideoSeqRef = useRef(0);
   // 续播提示每个视频只弹一次
   const resumeNoticeUrlRef = useRef("");
-  // 全局陪看全屏接管期间，主播放器的秒表/自动搭话要通过 ref 感知并暂停（避免 effect 重排）
-  const showGlobalCompanionRef = useRef(false);
   // 站内解析成功后暂存缓存信息：观看记录的创建 effect 晚于 setTarget，这里按 URL 暂存，
   // 记录落库时一并写入 cacheId/cacheSize，供「观看记录 → 接着看 / 删缓存」使用。
   const pendingWatchCacheRef = useRef<Record<string, { cacheId: string; cacheSize: number }>>({});
@@ -500,10 +496,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const activeMemoryIdRef = useRef<string | null>(null);
   const memoryStartedAtRef = useRef<number>(0);
   const memoryElapsedRef = useRef<number>(0);
-  const [showGlobalCompanion, setShowGlobalCompanion] = useState(false);
-  useEffect(() => { showGlobalCompanionRef.current = showGlobalCompanion; }, [showGlobalCompanion]);
-  const [historyMode, setHistoryMode] = useState<"current" | "global">("current");
-  const [globalWatchRecords, setGlobalWatchRecords] = useState<GlobalWatchRecord[]>(() => loadGlobalWatchRecords());
   const [showControlCapsule, setShowControlCapsule] = useState(false);
   const playerRef = useRef<HTMLDivElement>(null);
   const watchRootRef = useRef<HTMLDivElement>(null);
@@ -515,8 +507,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const commentBusyRef = useRef(false);
   const objectUrlRef = useRef<string | null>(null);
   const character = characters.find(item => item.id === settings.characterId) ?? characters[0] ?? null;
-  const historyComments = historyMode === "global" ? globalWatchRecords : comments;
-  useEffect(() => { if (showHistory) setGlobalWatchRecords(loadGlobalWatchRecords()); }, [showHistory]);
+  const historyComments = comments;
   const playerIdentity = resolveUserIdentity();
 
   useEffect(() => {
@@ -534,15 +525,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     const handleAppBack = (event: Event) => {
       const detail = (event as CustomEvent<{ handled?: boolean }>).detail;
       // 自上而下关闭最顶层的覆盖层；漏掉任何一个，安卓返回键都会把整个一起看杀掉。
-      if (showGlobalCompanion) { setShowGlobalCompanion(false); if (detail) detail.handled = true; }
-      else if (showMemoryRecords) { setShowMemoryRecords(false); if (detail) detail.handled = true; }
+      if (showMemoryRecords) { setShowMemoryRecords(false); if (detail) detail.handled = true; }
       else if (showVideoSourcePanel) { setShowVideoSourcePanel(false); if (detail) detail.handled = true; }
       else if (showHistory) { setShowHistory(false); if (detail) detail.handled = true; }
       else if (showSettings) { setShowSettings(false); if (detail) detail.handled = true; }
     };
     window.addEventListener("floatphone-app-back", handleAppBack);
     return () => window.removeEventListener("floatphone-app-back", handleAppBack);
-  }, [showSettings, showHistory, showGlobalCompanion, showMemoryRecords, showVideoSourcePanel]);
+  }, [showSettings, showHistory, showMemoryRecords, showVideoSourcePanel]);
 
   // 每次切换到一个新视频时创建独立观看记录；记录只保存元数据和互动摘要，不上传视频内容。
   useEffect(() => {
@@ -567,12 +557,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   useEffect(() => {
     if (!target || !activeMemoryIdRef.current) return;
-    // 全局陪看全屏接管期间暂停主播放器的计时与落盘；落盘从每秒一次节流到每 30 秒一次，
-    // 避免长视频挂机时对 localStorage 的高频全量写入。
-    if (showGlobalCompanionRef.current) return;
+    // 落盘从每秒一次节流到每 30 秒一次，避免长视频挂机时对 localStorage 的高频全量写入。
     let tickSinceFlush = 0;
     const timer = window.setInterval(() => {
-      if (document.visibilityState !== "visible" || showGlobalCompanionRef.current) return;
+      if (document.visibilityState !== "visible") return;
       const video = playerRef.current?.querySelector("video");
       // Native video: count only while it is actually playing. Cross-origin embeds have no
       // readable playback state, so count visible time while a target is loaded.
@@ -1432,7 +1420,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
   /**
    * 角色主动搭话的护栏（一起看专属，不和生活系统共用）：
-   * 页面不可见、视频暂停/播完、超过当日上限、正在回应、全局陪看接管，都只跳过这一轮
+   * 页面不可见、视频暂停/播完、超过当日上限、正在回应，都只跳过这一轮
    * 并继续排下一次，不会白烧 API，也不会消耗每日配额。generateComment 通过 ref 读取，
    * 避免它随讨论内容变化而把随机间隔不断重排（聊天越频繁角色越沉默的旧问题）。
    */
@@ -1448,7 +1436,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         const video = playerRef.current?.querySelector("video");
         const paused = Boolean(video && (video.paused || video.ended));
         const overLimit = readWatchAutoCount() >= WATCH_AUTO_DAILY_LIMIT;
-        if (document.visibilityState === "visible" && !paused && !overLimit && !showGlobalCompanionRef.current && !commentBusyRef.current) {
+        if (document.visibilityState === "visible" && !paused && !overLimit && !commentBusyRef.current) {
           await generateCommentRef.current(false);
           bumpWatchAutoCount();
         }
@@ -1467,8 +1455,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     if (target.supported) return `已接入${target.platformName}。能否播放取决于平台嵌入政策、登录状态与会员权限。`;
     return `${target.platformName}还没有取得可播放的视频流；查看解析提示或选择本地视频，不会假称已实现站内播放。`;
   }, [target]);
-
-  if (showGlobalCompanion) return <GlobalWatchCompanionApp onClose={() => setShowGlobalCompanion(false)} onNotice={onNotice} />;
 
   return <div ref={watchRootRef} data-landscape-mode="false" data-source-panel={showVideoSourcePanel ? "true" : "false"} className="watch-together-app pointer-events-auto isolate absolute inset-0 z-[1000] flex min-w-0 flex-col overflow-hidden text-[#f0e6d8]" style={{ background: "linear-gradient(180deg,#e8d8c3 0%,#d8c1a5 48%,#bca084 100%)" }}>
     <style>{`
@@ -1954,7 +1940,6 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
 
     <nav className="watch-control-capsule mx-auto flex w-[calc(100%-24px)] max-w-3xl items-center justify-around gap-1.5 px-2 py-1.5" data-collapsed={showControlCapsule ? "false" : "true"} aria-label="一起看功能入口">
       <span className="watch-capsule-collapsed-label" aria-hidden={showControlCapsule}>陪看工具</span>
-      <button type="button" onClick={() => setShowGlobalCompanion(true)} className="watch-capsule-button"><span>◉</span><small>全局陪看</small></button>
       <button type="button" onClick={() => setShowVideoSourcePanel(value => !value)} className="watch-capsule-button"><ExternalLink size={17}/><small>选择视频</small></button>
       <button type="button" onClick={() => setShowMemoryRecords(true)} className="watch-capsule-button"><FileText size={17}/><small>观看记录</small></button>
       <button type="button" onClick={() => setShowSettings(true)} className="watch-capsule-button"><Settings2 size={17}/><small>设置</small></button>
@@ -2417,9 +2402,8 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       <section className="flex max-h-[72%] flex-col overflow-hidden rounded-t-[26px] border-t border-white/12 bg-[#221c17]" onClick={event => event.stopPropagation()}>
         <header className="flex items-center justify-between border-b border-white/8 px-4 py-3.5">
           <div>
-            <div className="font-serif text-base tracking-wide text-[#efe2d0]">{historyMode === "global" ? "全局陪看记录" : "今晚说过的话"}</div>
+            <div className="font-serif text-base tracking-wide text-[#efe2d0]">今晚说过的话</div>
             <div className="mt-0.5 text-[10px] tracking-[.18em] text-[#7d7268]">{historyComments.length} 条 · 保存在一起看</div>
-            <div className="mt-2 flex gap-2"><button type="button" onClick={() => setHistoryMode("current")} className={"rounded-full px-2.5 py-1 text-[10px] " + (historyMode === "current" ? "bg-[#c99a6a] text-[#241b15]" : "border border-white/10 text-[#a2948a]")}>应用内陪看</button><button type="button" onClick={() => { setGlobalWatchRecords(loadGlobalWatchRecords()); setHistoryMode("global"); }} className={"rounded-full px-2.5 py-1 text-[10px] " + (historyMode === "global" ? "bg-[#c99a6a] text-[#241b15]" : "border border-white/10 text-[#a2948a]")}>全局陪看</button></div>
           </div>
           <button onClick={() => setShowHistory(false)} aria-label="关闭" className="grid h-9 w-9 place-items-center rounded-full border border-white/10 text-[#a2948a]"><X size={15}/></button>
         </header>
@@ -2430,11 +2414,11 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
               <span className="text-[10px] text-[#6f665e]">{new Date(comment.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</span>
             </div>
             <p className="mt-1 font-serif text-sm leading-6 text-[#ded0bd]">{comment.text}</p>
-          </div>)}</div> : <p className="py-10 text-center text-xs text-[#7d7268]">{historyMode === "global" ? "还没有全局陪看记录。" : "还没有说过话。"}</p>}
+          </div>)}</div> : <p className="py-10 text-center text-xs text-[#7d7268]">还没有说过话。</p>}
         </div>
         <footer className="flex items-center justify-between gap-3 border-t border-white/8 px-4 py-3" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
           <span className="text-[10px] text-[#6f665e]">{watching ? "正在陪看" : "已暂停"}</span>
-          <button onClick={() => { if (historyMode === "global") { clearGlobalWatchRecords(); setGlobalWatchRecords([]); } else { setComments([]); if (target) saveTargetComments(target.url, []); } }} className="flex items-center gap-1.5 border-b border-white/12 px-2 py-2 text-[11px] text-[#a2948a] transition active:opacity-60"><Sparkles size={12}/>清空记录</button>
+          <button onClick={() => { setComments([]); if (target) saveTargetComments(target.url, []); }} className="flex items-center gap-1.5 border-b border-white/12 px-2 py-2 text-[11px] text-[#a2948a] transition active:opacity-60"><Sparkles size={12}/>清空记录</button>
         </footer>
       </section>
     </div>}

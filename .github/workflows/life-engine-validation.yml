@@ -84,5 +84,7 @@ jobs:
         run: TZ=UTC npm run test:life
       - name: Life schedule regression tests (daylight-saving timezone)
         run: TZ=America/New_York npm run test:life
+      - name: Photo wall sizing regression tests
+        run: npm run test:photo-wall
       - name: Production build
         run: npm run build

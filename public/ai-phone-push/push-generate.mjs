@@ -1598,20 +1598,20 @@ Deno.serve(async (req: Request) => {
       : null;
     if (!vapid && webSubs.length > 0) pushErrors.push("no vapid config");
     const title = payload.notify?.title || "小手机";
-    const isLifeSceneJob = Boolean(payload.merge?.lifeScene);
-    const callSessionId = !isLifeSceneJob && typeof payload.merge?.sessionId === "string" ? payload.merge.sessionId : "";
+    const isLifeSceneNotification = Boolean(payload.merge?.lifeScene);
+    const callSessionId = !isLifeSceneNotification && typeof payload.merge?.sessionId === "string" ? payload.merge.sessionId : "";
     // Life-scene notifications return to the life page, not the underlying online chat session.
     const targetUrl = deliverAsCall && callSessionId
       ? `/?ring=${encodeURIComponent(callSessionId)}&rt=${Date.now()}`
-      : (isLifeSceneJob ? "/life" : (payload.notify?.url || "/"));
-    const lifeSceneOutput = isLifeSceneJob ? parseLifeSceneOutput(rawText) : null;
+      : (isLifeSceneNotification ? "/life" : (payload.notify?.url || "/"));
+    const lifeSceneOutput = isLifeSceneNotification ? parseLifeSceneOutput(rawText) : null;
     const lifeScenePreview = lifeSceneOutput
       ? [lifeSceneOutput.action, ...lifeSceneOutput.dialogues].filter(Boolean).join("\n\n")
       : rawText;
     // 生活现场一轮就是一条通知；不能把 JSON 或长文本按句子拆成多条推送。
     let parts = deliverAsCall
       ? ["来电话了…"]
-      : isLifeSceneJob && lifeScenePreview.trim()
+      : isLifeSceneNotification && lifeScenePreview.trim()
         ? [lifeScenePreview.trim()]
         : splitResponseForPushPreview(lifeScenePreview).slice(0, 6);
     if (parts.length === 0) parts = ["发来一条消息"];

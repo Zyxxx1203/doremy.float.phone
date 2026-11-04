@@ -802,7 +802,7 @@ function descriptionExplicitlyIncludesPlayer(description: string): boolean {
 
 const DEFAULT_IDENTITY_FACE_CROP = { x: 0.27, y: 0.12, size: 0.46 };
 
-export async function generateImageFromConfiguredApi(params: {
+async function generateImageFromConfiguredApiInternal(params: {
   description: string;
   characterId?: string;
   /** 画面中实际出镜的角色 ID；多角色图片会逐个附加身份参考，而不是拼成固定合照。 */
@@ -933,7 +933,9 @@ export async function generateImageFromConfiguredApi(params: {
   {
     // Identity references are automatic by default; only an explicit per-image opt-out disables them.
     // Primary character is first. This ensures the current chat speaker's identity remains the anchor.
-    const referenceCharacterIds = settings.referenceImageMode === "current"
+    // "current" is a single-speaker shortcut only for one-person images.
+    // Explicit multi-character scenes must retain every participant's identity reference.
+    const referenceCharacterIds = settings.referenceImageMode === "current" && involvedCharacterIds.length <= 1
       ? involvedCharacterIds.slice(0, 1)
       : involvedCharacterIds;
     for (const characterId of referenceCharacterIds) {
@@ -1006,6 +1008,98 @@ export async function generateImageFromConfiguredApi(params: {
     usedReferenceImage: referenceImageDataUrls.length > 0,
     revisedPrompt: data.revisedPrompt,
   };
+}
+
+
+type ImageGenerationCallRecord = {
+  id: string;
+  startedAt: string;
+  durationMs: number;
+  appId?: string;
+  provider: string;
+  model: string;
+  participantIds: string[];
+  participantNames: string[];
+  referenceImageMode: string;
+  usedReferenceImage: boolean;
+  prompt: string;
+  status: "success" | "failed" | "skipped";
+  error?: string;
+};
+
+const IMAGE_GENERATION_CALLS_KEY = "ai_phone_image_generation_calls_v1";
+
+/** Local, bounded diagnostics for image requests. API credentials and request headers are never stored. */
+export function loadImageGenerationCallRecords(): ImageGenerationCallRecord[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const value = JSON.parse(window.localStorage.getItem(IMAGE_GENERATION_CALLS_KEY) || "[]");
+    return Array.isArray(value) ? value.slice(0, 80) as ImageGenerationCallRecord[] : [];
+  } catch {
+    return [];
+  }
+}
+
+export function clearImageGenerationCallRecords(): void {
+  if (typeof window !== "undefined") window.localStorage.removeItem(IMAGE_GENERATION_CALLS_KEY);
+}
+
+function saveImageGenerationCallRecord(record: ImageGenerationCallRecord): void {
+  if (typeof window === "undefined") return;
+  try {
+    const next = [record, ...loadImageGenerationCallRecords()].slice(0, 80);
+    window.localStorage.setItem(IMAGE_GENERATION_CALLS_KEY, JSON.stringify(next));
+    window.dispatchEvent(new Event("image-generation-diagnostics-updated"));
+  } catch (error) {
+    console.warn("[ImageGeneration] diagnostics write failed", error);
+  }
+}
+
+export async function generateImageFromConfiguredApi(params: Parameters<typeof generateImageFromConfiguredApiInternal>[0]): Promise<ImageGenerationResult | null> {
+  const started = Date.now();
+  const startedAt = new Date(started).toISOString();
+  const settings = params.settings ?? loadImageGenerationSettings();
+  const characters = loadCharacters();
+  const ids = Array.from(new Set([
+    ...(params.participantIds ?? []),
+    ...(params.characterIds ?? []),
+    ...(params.characterId ? [params.characterId] : []),
+  ]));
+  const participantIds = ids.slice(0, 16);
+  const participantNames = participantIds.map(id => id === "__user__" ? "用户本人" : characters.find(item => item.id === id)?.name || id);
+  const baseRecord: Omit<ImageGenerationCallRecord, "durationMs" | "status" | "prompt" | "usedReferenceImage"> = {
+    id: "image-call-" + started.toString(36) + "-" + Math.random().toString(36).slice(2, 8),
+    startedAt,
+    appId: params.appId,
+    provider: settings.provider || "unknown",
+    model: settings.provider === "novelai"
+      ? settings.novelai?.presets?.find(item => item.id === settings.novelai?.activePresetId)?.model || settings.novelai?.presets?.[0]?.model || "unknown"
+      : settings.openaiPresets?.find(item => item.id === settings.activeOpenAiPresetId)?.model || settings.openaiPresets?.[0]?.model || settings.model || "unknown",
+    participantIds,
+    participantNames,
+    referenceImageMode: settings.referenceImageMode || "automatic",
+  };
+  try {
+    const result = await generateImageFromConfiguredApiInternal(params);
+    saveImageGenerationCallRecord({
+      ...baseRecord,
+      durationMs: Date.now() - started,
+      status: result ? "success" : "skipped",
+      prompt: result?.prompt?.slice(0, 6000) || params.description.slice(0, 6000),
+      usedReferenceImage: result?.usedReferenceImage === true,
+    });
+    return result;
+  } catch (error) {
+    saveImageGenerationCallRecord({
+      ...baseRecord,
+      durationMs: Date.now() - started,
+      status: "failed",
+      prompt: params.description.slice(0, 6000),
+      usedReferenceImage: Boolean(params.referenceImageDataUrl || params.useReferenceImage),
+      error: (error instanceof Error ? error.message : String(error)).slice(0, 500),
+    });
+    throw error;
+  }
 }
 
 export function generatedImageFilename(description: string, mimeType = "image/png"): string {

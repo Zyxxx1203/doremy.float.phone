@@ -67,8 +67,16 @@ const INITIAL_LOCATIONS: LifeLocation[] = [
   { id: "studio", name: "音乐 / 创作空间", description: "适合练习乐器、写作、绘画或其他个人创作。", atmosphere: "专注、私密，可能有轻微音乐声或创作时的杂物声。", layout: "主要工作台靠近光源，乐器或材料收纳在一侧，留出活动空间。", props: ["耳机", "笔记本", "乐器 / 创作工具", "水杯"], visibility: "public" },
 ];
 const id = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-function createLifeVirtualSession(characterId: string, characterName: string): ChatSession {
-  return { id: "life-engine-" + characterId, contactId: characterId, unreadCount: 0, updatedAt: new Date().toISOString(), isPinned: false, isGroup: false, alias: characterName };
+function createLifeChatSession(characterId: string, characterName: string): ChatSession {
+  // Always bind life operations to a persisted direct-chat session. Resolve the
+  // ChatContact.id separately from Character.id so downstream push jobs can map it.
+  let contact = loadChatContacts().find(item => item.characterId === characterId);
+  if (!contact) {
+    addChatContact(characterId);
+    contact = loadChatContacts().find(item => item.characterId === characterId);
+  }
+  const session = createOrGetSession(contact?.id || characterId);
+  return session.alias === characterName ? session : { ...session, alias: characterName };
 }
 
 /**
@@ -221,6 +229,9 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   const [quickPlanText, setQuickPlanText] = useState("");
   const [quickPlanDrafts, setQuickPlanDrafts] = useState<QuickPlanDraft[]>([]);
+  const [scheduleGuidanceText, setScheduleGuidanceText] = useState("");
+  const [guidedScheduleBusy, setGuidedScheduleBusy] = useState(false);
+  const [scheduleGuidanceActorKeys, setScheduleGuidanceActorKeys] = useState<string[]>(["player:player"]);
   const [playerActivity, setPlayerActivity] = useState("");
   const [sceneInput, setSceneInput] = useState("");
   const sceneChatScrollRef = useRef<HTMLDivElement | null>(null);
@@ -821,8 +832,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const candidateId = scene.participants.find(participant => participant.ownerType === "character")?.ownerId;
     const character = characters.find(item => item.id === candidateId) ?? characters[0];
     if (!character) { setNotice("没有可用的角色，无法挂起主动消息。"); return; }
-    const contact = loadChatContacts().find(item => item.characterId === character.id);
-    const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeVirtualSession(character.id, character.name);
+    const session = createLifeChatSession(character.id, character.name);
     const result = await armLifeSceneProactiveBailout({
       sessionId: session.id,
       sceneId: scene.id,
@@ -933,7 +943,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         return new Date(slot.startAt).getTime() <= virtualNowMs && new Date(slot.endAt).getTime() > virtualNowMs;
       });
       const fixed = protectedSlots.map(slot => "- " + slot.startAt + "—" + slot.endAt + "：" + slot.title + "（必须保留且不可冲突）").join("\n") || "无固定安排";
-      const session = createLifeVirtualSession(character.id, character.name);
+      const session = createLifeChatSession(character.id, character.name);
       const prompt: ChatMessage = {
         id: id("life-schedule-ai"), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
         content: [
@@ -1016,6 +1026,72 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     } finally {
       setBatchScheduleGenerating(false);
     }
+  };
+
+  const generateGuidedScheduleDrafts = async () => {
+    const targets = actors.filter(actor => scheduleGuidanceActorKeys.includes(actor.ownerType + ":" + actor.ownerId));
+    const instruction = scheduleGuidanceText.trim();
+    if (!instruction) { setNotice("先写下你希望调整的日程要求。"); return; }
+    if (!targets.length) { setNotice("至少选择一个安排对象。"); return; }
+    if (guidedScheduleBusy || scheduleRegenerationOwnerId || batchScheduleGenerating) return;
+    const modelCharacter = characters.find(item => targets.some(actor => actor.ownerType === "character" && actor.ownerId === item.id)) ?? characters[0];
+    if (!modelCharacter) { setNotice("AI 日程指导需要至少一个已配置角色的聊天模型通道。"); return; }
+    setGuidedScheduleBusy(true);
+    try {
+      const current = stateRef.current;
+      const contexts = targets.map(actor => {
+        const now = actorNow(actor), dayStart = new Date(now);
+        dayStart.setHours(0,0,0,0);
+        const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate()+7);
+        const existing = current.schedules.filter(slot => slot.ownerType===actor.ownerType && slot.ownerId===actor.ownerId && new Date(slot.endAt)>now && new Date(slot.startAt)<dayEnd).sort((a,b)=>a.startAt.localeCompare(b.startAt));
+        return { actor, now, dayStart, dayEnd, existing };
+      });
+      const scheduleText = contexts.map(context =>
+        "【" + context.actor.name + "｜" + (context.actor.ownerType === "player" ? "玩家" : "角色") + "｜" + context.now.toISOString() + "】\n"
+        + (context.existing.map(slot=>"- "+slot.startAt+" 至 "+slot.endAt+"｜"+slot.title+"｜"+(slot.plannedLocationName||"地点未定")+"｜"+slot.source).join("\n") || "暂无已安排日程")
+      ).join("\n\n");
+      const locations = current.locations.map(location=>"- "+location.name).join("\n");
+      const session = createLifeChatSession(modelCharacter.id,modelCharacter.name);
+      const prompt: ChatMessage = { id:id("life-guided-schedule"),sessionId:session.id,role:"user",status:"sent",createdAt:new Date().toISOString(),content:[
+        "你是生活日程规划助手。用户选择的安排对象只有以下这些；可同时为多名对象安排，但绝不能安排未选中的对象。",
+        "选中对象及其现有七日日程（只读，不得覆盖或删除）：\n"+scheduleText,
+        "用户指导：\n"+instruction,
+        "可用地点：\n"+locations,
+        "每个对象都以各自标题中的虚拟时间为准；dayOffset 0 为该对象今天，6 为该对象第七天。",
+        "只输出 JSON：{\"schedules\":[{\"actorName\":\"精确对象名称\",\"actorType\":\"player 或 character\",\"dayOffset\":0,\"start\":\"15:00\",\"end\":\"16:00\",\"title\":\"活动\",\"location\":\"地点或空字符串\"}]}。",
+        "仅返回本次指导需要新增的安排；actorName 必须与选中对象名称完全一致，actorType 必须正确；时间必须明确，不得猜测或返回旧日程；不得生成过去时间；同一对象的安排不得与现有日程或彼此重叠；无明确时间则返回空数组。"
+      ].join("\n\n")};
+      const result=await generateOfflineChatCompletion(session,[prompt],{appId:"life",appTags:lifeAppTags("schedule")});
+      const raw=result.content.trim(),first=raw.indexOf("{"),last=raw.lastIndexOf("}");
+      if(first<0||last<=first)throw new Error("AI 未返回有效 JSON，原日程未改变。");
+      const decoded=JSON.parse(raw.slice(first,last+1)) as {schedules?:Array<Record<string,unknown>>};
+      if(!Array.isArray(decoded.schedules))throw new Error("AI 返回缺少 schedules 数组。");
+      const drafts:QuickPlanDraft[]=[],conflicts:string[]=[];
+      const overlaps=(a:number,b:number,x:number,y:number)=>a<y&&b>x;
+      for(const item of decoded.schedules){
+        const actorName=String(item.actorName??"").trim();
+        const actorType=String(item.actorType??"").trim();
+        const context=contexts.find(candidate=>candidate.actor.name===actorName&&candidate.actor.ownerType===actorType)
+          ?? (contexts.length===1&&!actorName?contexts[0]:undefined);
+        if(!context)continue;
+        const d=Number(item.dayOffset),title=String(item.title??"").trim().slice(0,100);
+        const sm=/^(\d{1,2}):(\d{2})$/.exec(String(item.start??"")),em=/^(\d{1,2}):(\d{2})$/.exec(String(item.end??""));
+        if(!Number.isInteger(d)||d<0||d>6||!title||!sm||!em)continue;
+        const sh=Number(sm[1]),smin=Number(sm[2]),eh=Number(em[1]),emin=Number(em[2]);
+        if(sh>23||eh>23||smin>59||emin>59)continue;
+        const startAt=new Date(context.dayStart);startAt.setDate(startAt.getDate()+d);startAt.setHours(sh,smin,0,0);
+        const endAt=new Date(context.dayStart);endAt.setDate(endAt.getDate()+d);endAt.setHours(eh,emin,0,0);
+        if(endAt<=startAt||startAt<context.now||endAt>context.dayEnd)continue;
+        const conflict=context.existing.find(slot=>overlaps(startAt.getTime(),endAt.getTime(),new Date(slot.startAt).getTime(),new Date(slot.endAt).getTime()));
+        if(conflict){conflicts.push(context.actor.name+"："+title+"（与「"+conflict.title+"」冲突）");continue;}
+        if(drafts.some(slot=>slot.ownerType===context.actor.ownerType&&slot.ownerId===context.actor.ownerId&&overlaps(startAt.getTime(),endAt.getTime(),new Date(slot.startAt).getTime(),new Date(slot.endAt).getTime()))){conflicts.push(context.actor.name+"："+title+"（与本次生成安排冲突）");continue;}
+        drafts.push({id:id("guided-plan"),ownerType:context.actor.ownerType,ownerId:context.actor.ownerId,startAt:startAt.toISOString(),endAt:endAt.toISOString(),title,locationName:String(item.location??"").trim().slice(0,80)});
+      }
+      if(!drafts.length)throw new Error(conflicts.length?"安排均存在时间冲突或对象不匹配："+conflicts.slice(0,3).join("；"):"没有识别到明确有效的时间安排。");
+      setQuickPlanDrafts(drafts);
+      setNotice("AI 为 "+new Set(drafts.map(draft=>draft.ownerId)).size+" 位对象生成了 "+drafts.length+" 条待确认安排。"+(conflicts.length?"另有 "+conflicts.length+" 条冲突安排未加入预览。":"")+"现有日程未修改，请检查预览后再保存。");
+    }catch(error){setNotice("AI 日程指导失败："+(error instanceof Error?error.message:String(error))+"。现有日程未修改。");}
+    finally{setGuidedScheduleBusy(false);}
   };
 
   const ensurePlans = () => {
@@ -1285,7 +1361,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const character = characters.find(item => scene.participants.some(p => p.ownerType === "character" && p.ownerId === item.id));
     if (!character) { setNotice("请先让至少一位角色进入现场，再生成现场描述。"); return; }
     const contact = loadChatContacts().find(item => item.characterId === character.id || item.id === character.id);
-    const session = contact ? createOrGetSession(contact.id) : createLifeVirtualSession(character.id, character.name);
+    const session = contact ? createOrGetSession(contact.id) : createLifeChatSession(character.id, character.name);
     setSceneDescriptionBusy(true);
     setNotice("AI 正在根据现场原始记录整理当前现场描述……");
     try {
@@ -1530,7 +1606,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     }
     const character = characters.find(item => item.id === targetMessage.speakerId);
     const contact = loadChatContacts().find(item => item.characterId === targetMessage.speakerId);
-    const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeVirtualSession(targetMessage.speakerId, character?.name ?? "角色");
+    const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeChatSession(targetMessage.speakerId, character?.name ?? "角色");
     const scene = stateRef.current.scenes.find(item => item.id === targetMessage.sceneId);
     if (!character || !scene) {
       setNotice("找不到角色档案或原场景，暂时无法重新生成。");
@@ -1712,7 +1788,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       if (!character) return null;
       const contact = loadChatContacts().find(item => item.characterId === character.id);
       const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup);
-      return { character, session: session ?? createLifeVirtualSession(character.id, character.name) };
+      return { character, session: session ?? createLifeChatSession(character.id, character.name) };
     };
     const tick = async () => {
       if (disposed || document.visibilityState !== "visible" || busyRef.current || proactiveBusyRef.current) return;
@@ -1928,7 +2004,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const contacts = loadChatContacts();
     const sessions = loadChatSessions();
     const contact = contacts.find(item => item.characterId === target.id);
-    const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeVirtualSession(target.id, target.name);
+    const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeChatSession(target.id, target.name);
     const lifeTurn = beginTurn({ kind: "life_scene", characterId: target.id, sessionId: session.id });
     if (!lifeTurn) {
       if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应被其他回合占用", status: "warning", detail: target.name + " 的回应未启动，因为当前已有其他角色回合正在执行。", meta: { sceneId: activeScene.id, characterId: target.id, sessionId: session.id } });
@@ -2244,7 +2320,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const contacts = loadChatContacts();
     const sessions = loadChatSessions();
     const contact = contacts.find(item => item.characterId === character.id);
-    const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeVirtualSession(character.id, character.name);
+    const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeChatSession(character.id, character.name);
     let next = makeLifeInvitation(base, {
       proposedBy: "player",
       characterId: character.id, playerId: PLAYER_ID, proposedAt: proposedAt.toISOString(),
@@ -3323,7 +3399,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           <SectionTitle eyebrow="Independent timelines" title="每个人都有自己的时间" note="调整某个人的流速，不会改变其他人的时钟。模拟时间不会在退出时偷偷跳回现实。" />
           <div className="space-y-3">{actors.map(actor => { const clock=getActorClock(state,actor.ownerType,actor.ownerId), now=actorNow(actor), current=actorSchedule(actor), actual=actorState(actor); return <div key={`${actor.ownerType}:${actor.ownerId}`} className={`rounded-2xl border p-3 transition ${selectedActorKey===`${actor.ownerType}:${actor.ownerId}`?"border-[var(--life-accent)]/45 bg-white":"border-stone-200/70 bg-white/55"}`}>
             <div className="flex flex-wrap items-start justify-between gap-2"><button onClick={()=>setSelectedActorKey(`${actor.ownerType}:${actor.ownerId}`)} className="flex min-w-0 items-center gap-3 text-left">{actor.avatar ? <img src={actor.avatar} alt="" className="h-10 w-10 rounded-full object-cover"/> : <span className="grid h-10 w-10 place-items-center rounded-full bg-[#efe1d2] text-sm">{actor.ownerType==="player"?"我":actor.name.slice(0,1)}</span>}<span><span className="block font-medium">{actor.name}</span><span className="block text-xs opacity-60">{actorClockLabel(clock)} · {fmt(now)}</span></span></button><span className="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] text-stone-600">{current?.title ?? "当前没有日程"}</span></div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center"><div className="flex flex-wrap gap-1.5"><select aria-label={`${actor.name}的时间模式`} value={clock.mode} onChange={e=>patchActorClock(actor,{mode:e.target.value as LifeActorClock["mode"]})} className="rounded-xl border border-stone-200 bg-white px-2 py-2 text-xs"><option value="real-time">跟随现实</option><option value="simulation">独立模拟</option><option value="review">暂停回顾</option></select><button onClick={()=>commit(advanceActorTimeline(state,actor.ownerType,actor.ownerId,60,actor.name,actor.persona??""))} className="rounded-xl bg-[#f0e3d5] px-3 py-2 text-xs text-stone-700">+1 虚拟小时</button>{actor.ownerType==="character" && <button disabled={!settings.enableCharacterAutonomy} onClick={()=>advanceCharacterAutonomy(actor)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 disabled:opacity-40">自主生活 +1h</button>}</div></div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center"><div className="flex flex-wrap gap-1.5"><select aria-label={`${actor.name}的时间模式`} value={clock.mode} onChange={e=>patchActorClock(actor,{mode:e.target.value as LifeActorClock["mode"]})} className="rounded-xl border border-stone-200 bg-white px-2 py-2 text-xs"><option value="real-time">跟随现实</option><option value="simulation">独立模拟</option><option value="review">暂停回顾</option></select><button onClick={()=>commit(advanceActorTimeline(state,actor.ownerType,actor.ownerId,60,actor.name,actor.persona??""))} className="rounded-xl bg-[#f0e3d5] px-3 py-2 text-xs text-stone-700">+1 虚拟小时</button>{actor.ownerType==="character" && <button disabled={!settings.enableCharacterAutonomy} onClick={()=>advanceCharacterAutonomy(actor)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 disabled:opacity-40">自主生活 +1h</button>}<button type="button" onClick={()=>{setSelectedActorKey(`${actor.ownerType}:${actor.ownerId}`);setTab("daily");}} className="rounded-xl border border-[var(--life-accent)]/35 bg-white px-3 py-2 text-xs font-medium text-[var(--life-accent)]">管理此人日程</button></div></div>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-500"><MapPin size={13}/><span>实际地点：{actor.ownerType==="player" || settings.revealExactLocations==="open" ? (actual?.actualLocationName ?? "未记录") : settings.revealExactLocations==="ask-only" ? "精确位置未公开" : actual?.actualLocationName ? "有位置线索" : "未记录"}</span><span className="opacity-40">·</span><span>计划地点：{settings.showLocationHints ? (current?.plannedLocationName ? `${current.plannedLocationName}（不保证在场）` : "暂无提示") : "地点线索已隐藏"}</span></div>
           </div>; })}</div>
           <p className="mt-4 text-xs leading-relaxed text-stone-500">提示：倍速只影响该角色的虚拟时钟；计划地点不等于实时定位。真实位置仍需要场景状态或合理的信息来源。</p>
@@ -3498,6 +3574,16 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             </div>
           </div>
           <p className="mt-2 text-[11px] leading-relaxed text-stone-500">{proactiveStatus ? "最近云端预约提交回执（不代表后台已执行或通知已送达）：" + (proactiveStatus.ok ? "已挂上" : "未挂上：" + (proactiveStatus.reason || "未知原因")) + " · " + proactiveStatus.character + " · " + new Date(proactiveStatus.at).toLocaleString("zh-CN") : "还没有主动消息挂载回执；点“现在挂起”或等待自动调度。"}</p>
+          <div className="mt-4 border-t border-[#e6d5c4] pt-3">
+            <p className="text-sm font-semibold text-stone-800">AI 日程指导 · 先预览再保存</p>
+            <p className="mt-1 text-xs leading-relaxed text-stone-500">选择安排对象，用自然语言描述要求。AI 会读取该对象现有七日日程，只生成待确认的新安排，不会直接覆盖旧日程；若要替换已有安排，请先在下方日程卡片中手动微调或删除，AI 不会擅自删除旧事件。</p>
+            <div className="mt-3 rounded-xl border border-stone-200 bg-white/80 p-3">
+              <p className="mb-2 text-xs text-stone-500">安排对象（可多选）</p>
+              <div className="flex flex-wrap gap-2">{actors.map(actor=>{const key=actor.ownerType+":"+actor.ownerId;return <label key={key} className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-2 text-xs"><input type="checkbox" checked={scheduleGuidanceActorKeys.includes(key)} onChange={event=>setScheduleGuidanceActorKeys(current=>event.target.checked?[...new Set([...current,key])]:current.filter(value=>value!==key))}/>{actor.name}{actor.ownerType==="player"?"（我）":"（角色）"}</label>;})}</div>
+            </div>
+            <textarea value={scheduleGuidanceText} onChange={event=>setScheduleGuidanceText(event.target.value)} rows={3} placeholder="例如：工作日晚上留一小时学习；周三下午不要安排活动；周六和我一起去公园散步。" className="mt-2 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/>
+            <button type="button" onClick={()=>void generateGuidedScheduleDrafts()} disabled={guidedScheduleBusy||!scheduleGuidanceText.trim()||scheduleGuidanceActorKeys.length===0} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><Sparkles size={14}/>{guidedScheduleBusy?"AI 正在分析现有日程…":"AI 生成待确认预览"}</button>
+          </div>
           <div className="mt-4 border-t border-[#e6d5c4] pt-3"><p className="text-sm font-semibold text-stone-800">手动补充 · 一句话安排日程</p>
           <p className="mt-1 text-xs leading-relaxed text-stone-500">这是可选的手动入口。支持“明天下午3点到5点在家睡觉”或“角色名：周五晚上7点去公园散步”；识别后仍可编辑，不再要求你手动写完整行程。</p></div>
           <textarea value={quickPlanText} onChange={e=>setQuickPlanText(e.target.value)} rows={3} placeholder={"明天下午3点到5点在咖啡馆画画\n周五晚上7点去公园散步"} className="mt-3 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/>

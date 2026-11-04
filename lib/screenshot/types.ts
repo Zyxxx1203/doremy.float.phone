@@ -55,6 +55,8 @@ export type ScreenshotDiagnostics = {
 
 /** 查岗浮层的内部状态快照（诊断用）。 */
 export type CheckInDiagnostics = {
+  /** 系统设置中的无障碍开关；与服务实例连接状态分开报告。 */
+  systemAccessibilityEnabled?: boolean;
   /** 浮窗权限是否已授予 */
   canDraw?: boolean;
   /** 服务是否在运行 */
