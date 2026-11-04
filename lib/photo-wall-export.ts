@@ -2,6 +2,7 @@ import { loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import { fallbackPlacement } from "@/components/photo-wall/photo-wall-canvas";
 import { downloadFile } from "@/lib/download-utils";
 import type { PhotoWallDoodle, PhotoWallFrameStyle, PhotoWallPhoto, PhotoWallPlacement, PhotoWallWorld } from "@/lib/photo-wall-storage";
+import { DEFAULT_PHOTO_STICKER_SIZE, DEFAULT_WALL_STICKER_SIZE, resolveStickerSize } from "@/lib/photo-wall-doodle-sizing";
 
 /**
  * 把整面照片墙绘制成一张 PNG。
@@ -223,10 +224,10 @@ async function renderPhotoWallCanvas(photos: PhotoWallPhoto[], options: ExportOp
       } else if (doodle.kind === "sticker" && doodle.content) {
         const point = doodle.points[0] ?? { x: 0.5, y: 0.5 };
         if (doodle.content === "heart" || doodle.content === "❤") {
-          drawHeartSticker(context, -frameWidth / 2 + point.x * frameWidth, -frameHeight / 2 + point.y * frameHeight, frameWidth * 0.16, doodle.color, doodle.rotation ?? 0);
+          drawHeartSticker(context, -frameWidth / 2 + point.x * frameWidth, -frameHeight / 2 + point.y * frameHeight, resolveStickerSize(doodle, DEFAULT_PHOTO_STICKER_SIZE) * placement.scale * (width / worldWidth), doodle.color, doodle.rotation ?? 0);
         } else {
           context.fillStyle = doodle.color;
-          context.font = `${Math.round(frameWidth * 0.18)}px sans-serif`;
+          context.font = `${Math.round(resolveStickerSize(doodle, DEFAULT_PHOTO_STICKER_SIZE) * placement.scale * (width / worldWidth))}px sans-serif`;
           context.textAlign = "center";
           context.textBaseline = "middle";
           context.fillText(doodle.content, -frameWidth / 2 + point.x * frameWidth, -frameHeight / 2 + point.y * frameHeight);
@@ -249,9 +250,9 @@ async function renderPhotoWallCanvas(photos: PhotoWallPhoto[], options: ExportOp
       const px = (doodle.points[0]?.x ?? 0.5) * width;
       const py = (doodle.points[0]?.y ?? 0.5) * height;
       if (doodle.content === "heart" || doodle.content === "❤") {
-        drawHeartSticker(context, px, py, width * 0.05, doodle.color, doodle.rotation ?? 0);
+        drawHeartSticker(context, px, py, resolveStickerSize(doodle, DEFAULT_WALL_STICKER_SIZE) * (width / worldWidth), doodle.color, doodle.rotation ?? 0);
       } else {
-        context.save(); context.fillStyle = doodle.color; context.font = `${Math.max(12, Math.round(width * 0.05))}px sans-serif`;
+        context.save(); context.fillStyle = doodle.color; context.font = `${Math.max(8, Math.round(resolveStickerSize(doodle, DEFAULT_WALL_STICKER_SIZE) * (width / worldWidth)))}px sans-serif`;
         context.textAlign = "center"; context.textBaseline = "middle";
         context.fillText(doodle.content, px, py); context.restore();
       }
