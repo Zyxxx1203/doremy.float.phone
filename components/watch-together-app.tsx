@@ -1406,10 +1406,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     if (!target) { onNotice?.("先选择一段视频，再标记重点。"); return; }
     const video = playerRef.current?.querySelector("video");
     const point = video ? formatVideoTime(video.currentTime) : timepointDraft.trim();
+    if (!character) { onNotice?.("还没有可回应的陪看角色。请先在「观影设置」里绑定角色，或先去聊天 App 创建角色。"); return; }
     // Start capture in the click handler, before any queued AI turn can wait behind
     // another response. Carry this exact capture promise with the discussion.
     const framePromise = video ? captureFrameForPrompt() : undefined;
-    if (!character) { onNotice?.("还没有可回应的陪看角色。请先在「观影设置」里绑定角色，或先去聊天 App 创建角色。"); return; }
+    if (framePromise) void framePromise.then(frame => {
+      if (!frame) onNotice?.("已记录 " + point + "，但当前无法捕获画面；角色只会依据可用字幕和你的描述回应，不会假装看见视频。");
+    });
     if (!video) {
       patchSettings({ currentMoment: ("重点片段 " + (point || "") + "：").slice(0, 800) });
       setDiscussionDraft("请把 " + (point || "重点片段") + " 这一幕标记为重点：");
