@@ -860,7 +860,7 @@ export function loadNativeTimeline(
 const FEATURE_ORDER: Record<string, number> = { map: 0, game: 0.5, moments: 1, xiaohongshu: 1.5, checkphone: 1.7, story: 2, vn: 2, theater: 2.2, interview: 2.35, cocreate: 2.4, diary_entry: 2.45, notewall: 2.5, custom_app: 2.6, group_chat: 3, chat: 4 };
 // First-class app timelines share the custom-app prompt block and ordering.
 const CUSTOM_APP_TIMELINE_SOURCES = new Set<string>([
-    "custom_app", "photo_wall", "watch", "global_watch", "phone_widget", "life",
+    "custom_app", "photo_wall", "watch", "phone_widget", "life",
 ]);
 // Map appId → XML tag name for the "current feature" wrapper
 const FEATURE_TAG: Record<string, string> = {

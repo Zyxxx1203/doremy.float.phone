@@ -196,7 +196,7 @@ assert.doesNotMatch(push, /characterLocation === snapshot\.playerLocationId \|\|
 
 
 assert.match(shortTermAssembler, /CUSTOM_APP_TIMELINE_SOURCES = new Set<string>/);
-for (const source of ["photo_wall", "watch", "global_watch", "phone_widget", "life"]) {
+for (const source of ["photo_wall", "watch", "phone_widget", "life"]) {
   assert.ok(shortTermAssembler.includes(`"${source}"`), `short-term timeline source ${source} must be included`);
 }
 assert.equal((shortTermAssembler.match(/timeline\.filter\(e => CUSTOM_APP_TIMELINE_SOURCES\.has\(e\.sourceApp\)\)/g) ?? []).length, 2,
