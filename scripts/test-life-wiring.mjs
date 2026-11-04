@@ -80,7 +80,7 @@ assert.match(chatRoom, /setOnlineChatForegroundLease/);
 assert.match(chatRoom, /syncLifeScheduleSnapshot\(\)/, "opening or leaving a direct chat must publish its foreground lease to the cloud");
 assert.match(chatRoom, /setInterval\(syncCloudLease, 60_000\)/, "cloud chat lease must be renewed before its server-side expiry");
 assert.match(chatRoom, /onVisibilityChange/);
-assert.match(chatRoom, /syncCloudLease\(\);\s*\}\s*, \[session\.id, session\.contactId, session\.isGroup\]\)/, "chat unmount must release and publish the cleared lease");
+assert.match(chatRoom, /setOnlineChatForegroundLease\(characterId, session\.id, false\);[\s\S]*?syncCloudLease\(\);/, "chat unmount must release and publish the cleared lease");
 assert.match(push, /isLifeSleepActivity/);
 assert.match(push, /appendLifeScheduleContext/);
 assert.match(push, /onlineChatCharacterId === lifeSceneMeta\.characterId/);
