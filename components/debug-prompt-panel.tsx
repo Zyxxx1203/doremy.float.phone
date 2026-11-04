@@ -769,7 +769,7 @@ export function DebugPromptPanel() {
                 });
             } else if (extraAppId === "phone_widget") {
                 const characterId = previewCharacterId;
-                const character = characters.find(item => item.id === characterId);
+                const character = loadCharacters().find(item => item.id === characterId);
                 if (!character) throw new Error("请先选择桌面小组件使用的角色（也可使用小组件当前绑定角色）");
                 const previous = loadWidgetData(character.id);
                 const trigger = previous?.text
