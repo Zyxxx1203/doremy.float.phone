@@ -60,7 +60,7 @@ import { buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { loadPhotoWallState } from "@/lib/photo-wall-storage";
 import { wallWorldOf } from "@/lib/photo-wall-world";
 import { loadMediaBlob } from "@/lib/media-cache-storage";
-import { loadCheckInGuidance, resolveCheckInGuidance } from "@/lib/screenshot/checkin-guidance";
+import { resolveCheckInGuidance } from "@/lib/screenshot/checkin-guidance";
 import { buildCheckInLifeContextNote } from "@/lib/screenshot/checkin-engine";
 import { loadWidgetConfig, loadWidgetData } from "@/lib/widget/storage";
 import { loadBridgeRules } from "@/lib/reality-bridge/storage";
@@ -644,7 +644,6 @@ export function DebugPromptPanel() {
                 const wall = loadPhotoWallState();
                 if (!wall.photos.length) throw new Error("照片墙目前没有照片，先添加一张照片再预览");
                 const photo = wall.photos[0];
-                const contact = loadChatContacts().find(item => item.characterId === character.id);
                 const session = createPromptPreviewSession(character.id, "photo-wall");
                 const history = loadChatMessages(session.id).slice(-(photoWallPreviewMode === "annotation" ? 16 : 12));
                 let instruction = "";

@@ -20,6 +20,10 @@ export type ExtraPromptAppDefinition = {
     id: ExtraPromptAppId;
     label: string;
     emptyText: string;
+    /** Retained for future tabs that intentionally show only a real request snapshot. */
+    snapshotOnly?: boolean;
+    snapshotAppIds?: string[];
+    snapshotTags?: string[];
 };
 
 export const EXTRA_PROMPT_APPS: ExtraPromptAppDefinition[] = [
