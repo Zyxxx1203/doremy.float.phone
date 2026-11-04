@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { loadPhotoWallState } from "@/lib/photo-wall-storage";
 import { hasWidgetBridge, isWidgetPlaced, readWidgetDiagnostics } from "@/lib/widget/bridge";
 import { loadWidgetConfig } from "@/lib/widget/storage";
@@ -44,7 +44,7 @@ function readModuleSnapshot(): ModuleSnapshot {
       accessibility: reality.accessibility,
       lastSampleAt: reality.lastSampleAt,
       unmatched: reality.unmatchedSignals,
-      location: reality.location?.label || reality.location?.address || (reality.location ? "已取得位置" : "暂无位置读数"),
+      location: reality.location ? "已取得位置读数" : "暂无位置读数",
     },
   };
 }
@@ -55,7 +55,7 @@ function Row({ label, value }: { label: string; value: string }) {
   </div>;
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, children }: { title: string; children: ReactNode }) {
   return <section style={{ border: "1px solid var(--border, rgba(128,128,128,.18))", borderRadius: 16, padding: 14 }}>
     <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>{title}</div>{children}
   </section>;
