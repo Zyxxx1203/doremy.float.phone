@@ -223,7 +223,7 @@ export function normalizeDoodles(value: unknown): PhotoWallDoodle[] | undefined 
       authorId: typeof raw.authorId === "string" ? raw.authorId.slice(0, 160) : undefined,
       authorName: typeof raw.authorName === "string" ? raw.authorName.slice(0, 80) : undefined,
       color: typeof raw.color === "string" && /^#[0-9a-f]{3,8}$/i.test(raw.color) ? raw.color : "#c2705a",
-      width: typeof raw.width === "number" && Number.isFinite(raw.width) ? Math.min(24, Math.max(1, raw.width)) : 3,
+      width: typeof raw.width === "number" && Number.isFinite(raw.width) ? Math.min(64, Math.max(1, raw.width)) : 3,
       size: typeof raw.size === "number" && Number.isFinite(raw.size) ? Math.min(360, Math.max(8, raw.size)) : undefined,
       points,
       createdAt: typeof raw.createdAt === "string" ? raw.createdAt : new Date().toISOString(),

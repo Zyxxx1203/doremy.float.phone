@@ -89,6 +89,7 @@ type Props = {
   onModeChange?: (mode: "view" | "move" | "doodle") => void;
   brushColor?: string;
   brushWidth?: number;
+  stickerSize?: number;
   sticker?: string | null;
   onStickerChange?: (sticker: string | null) => void;
   stickerRotation?: number;
@@ -185,7 +186,7 @@ async function loadWallThumbUrl(mediaRef: string): Promise<string> {
 
 
 
-export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, backgroundBox, wallWorld, onOpenDetail, readOnly = false, fitHeight = false, canvasZoom = 1, mode: controlledMode, onModeChange, brushColor: controlledBrushColor, brushWidth: controlledBrushWidth, sticker: controlledSticker, onStickerChange, stickerRotation: controlledStickerRotation = 0, eraser: controlledEraser, onEraserChange }: Props) {
+export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, backgroundBox, wallWorld, onOpenDetail, readOnly = false, fitHeight = false, canvasZoom = 1, mode: controlledMode, onModeChange, brushColor: controlledBrushColor, brushWidth: controlledBrushWidth, stickerSize: controlledStickerSize, sticker: controlledSticker, onStickerChange, stickerRotation: controlledStickerRotation = 0, eraser: controlledEraser, onEraserChange }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const strokeRef = useRef<{ id: string; pointerId: number; photoId: string; side: "front" | "back"; anchorElement?: HTMLElement } | null>(null);
@@ -204,6 +205,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
   const mode = controlledMode ?? internalMode;
   const brushColor = controlledBrushColor ?? internalBrushColor;
   const brushWidth = controlledBrushWidth ?? internalBrushWidth;
+  const stickerSize = controlledStickerSize ?? stickerSizeFromBrushWidth(brushWidth);
   const sticker = controlledSticker === undefined ? internalSticker : controlledSticker;
   const eraser = controlledEraser ?? internalEraser;
   const [draftPoints, setDraftPoints] = useState<{ x: number; y: number }[]>([]);
@@ -396,7 +398,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     if (sticker) {
       onChangeDoodles(photo.id, [
         ...existing,
-        { id: createPhotoWallId(), kind: "sticker", content: sticker, rotation: controlledStickerRotation, color: brushColor, width: brushWidth, size: stickerSizeFromBrushWidth(brushWidth), points: [{ x: point.x, y: point.y }], createdAt: new Date().toISOString(), authorType: "user", authorName: "我" },
+        { id: createPhotoWallId(), kind: "sticker", content: sticker, rotation: controlledStickerRotation, color: brushColor, width: brushWidth, size: stickerSize, points: [{ x: point.x, y: point.y }], createdAt: new Date().toISOString(), authorType: "user", authorName: "我" },
       ], side);
       return;
     }
@@ -460,7 +462,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     const point = wallPoint(event);
     if (eraser) { eraseWallDoodleAt(point); return; }
     if (sticker) {
-      onChangeWallDoodles?.([...wallDoodles, { id: createPhotoWallId(), kind: "sticker", content: sticker, rotation: controlledStickerRotation, color: brushColor, width: brushWidth, size: stickerSizeFromBrushWidth(brushWidth), points: [point], createdAt: new Date().toISOString(), authorType: "user", authorName: "我" }]);
+      onChangeWallDoodles?.([...wallDoodles, { id: createPhotoWallId(), kind: "sticker", content: sticker, rotation: controlledStickerRotation, color: brushColor, width: brushWidth, size: stickerSize, points: [point], createdAt: new Date().toISOString(), authorType: "user", authorName: "我" }]);
       return;
     }
     (event.currentTarget as SVGSVGElement).setPointerCapture(event.pointerId);
