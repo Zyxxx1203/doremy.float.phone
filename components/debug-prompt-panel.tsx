@@ -370,7 +370,15 @@ export function DebugPromptPanel() {
             return log ? log.messages.map(message => ({ role: message.role, content: message.content, marker: message.marker })) : [];
         }
         if (isExtraPromptMode(mode) && activeExtraSnapshot) {
-            return activeExtraSnapshot.messages.map(m => ({ role: m.role, content: m.content, marker: m.marker }));
+            const messages = activeExtraSnapshot.messages.map(m => ({ role: m.role, content: m.content, marker: m.marker }));
+            if (activeExtraSnapshot.tools?.length) {
+                messages.push({
+                    role: "tools",
+                    content: activeExtraSnapshot.tools.map(tool => tool.name + (tool.description ? "： " + tool.description : "")).join("\n"),
+                    marker: "本次真实请求允许的工具",
+                });
+            }
+            return messages;
         }
         if (isExtraPromptMode(mode) && extraResult) {
             return extraResult.messages.map(m => ({
@@ -999,7 +1007,10 @@ export function DebugPromptPanel() {
         const definition = EXTRA_PROMPT_APPS.find(app => app.id === extraAppId);
         if (definition?.snapshotOnly) {
             return <span className="pv-context-warning">{activeExtraSnapshot
-                ? "以下为最近一次实际请求组装结果 · " + new Date(activeExtraSnapshot.timestamp).toLocaleString("zh-CN")
+                ? "真实请求 · " + activeExtraSnapshot.appId
+                    + (activeExtraSnapshot.appTags?.length ? " · tags: " + activeExtraSnapshot.appTags.join(", ") : "")
+                    + " · " + new Date(activeExtraSnapshot.timestamp).toLocaleString("zh-CN")
+                    + " · 工具 " + (activeExtraSnapshot.tools?.length ?? 0) + " 项"
                 : "此入口只展示真实请求快照，不生成静态假预览。请按下方提示先在对应 APP 触发一次请求。"}
             </span>;
         }
