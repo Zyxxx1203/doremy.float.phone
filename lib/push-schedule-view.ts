@@ -5,7 +5,7 @@
 // 自己续排的 `+` 后缀链（idleRepeat 在 push-generate 里排队），那些任务本地
 // 根本不知道存在，只有列出来才看得见。
 
-import { loadChatSessions } from "./chat-storage";
+import { loadChatSessions, resolveSessionCharacterId } from "./chat-storage";
 import { loadCharacters } from "./character-storage";
 import { loadIdleReconnectRules } from "./idle-reconnect-storage";
 import { loadTimedWakeSchedules } from "./timed-wake-storage";
@@ -48,10 +48,11 @@ function resolveSession(sessionId: string): { name: string; characterId: string 
   const session = loadChatSessions().find(item => item.id === sessionId);
   if (!session) return { name: "", characterId: "" };
   if (session.isGroup) return { name: session.groupName?.trim() || "群聊", characterId: "" };
+  const characterId = resolveSessionCharacterId(session) || "";
   const alias = session.alias?.trim();
   return {
-    name: alias || characterNameFor(session.contactId) || "（会话已删除）",
-    characterId: session.contactId || "",
+    name: alias || characterNameFor(characterId) || "（会话已删除）",
+    characterId,
   };
 }
 
