@@ -956,6 +956,8 @@ export function ImageGenerationSettings() {
                             <div className="mt-3 space-y-2 text-[11px]">
                                 <p>角色 ID：{record.participantIds.join(", ") || "无"}</p>
                                 <p>参考图模式：{record.referenceImageMode}</p>
+                                <p>实际加载参考图：{record.referenceImageCount === null || record.referenceImageCount === undefined ? "失败发生在参考图解析前或数量未知" : record.referenceImageCount + " 张"}</p>
+                                {record.referenceImageLabels?.length > 0 && <p className="break-words">参考图对应：{record.referenceImageLabels.join("、")}</p>}
                                 {record.error && <p className="break-words text-rose-600">错误：{record.error}</p>}
                                 <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/5 p-2">{record.prompt}</pre>
                             </div>
