@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, builtinPrompts, debugPromptRegistry, debugPromptPanel] = await Promise.all([
+const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, builtinPrompts, debugPromptRegistry, debugPromptPanel, watchApp, moduleDiagnostics, runtimeDiagnostics] = await Promise.all([
   read("../components/life/life-engine-app.tsx"),
   read("../lib/life/life-runtime.ts"),
   read("../components/life/life-observation.tsx"),
@@ -21,6 +21,9 @@ const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply,
   read("../lib/builtin-app-prompts.ts"),
   read("../components/debug-prompt-registry.ts"),
   read("../components/debug-prompt-panel.tsx"),
+  read("../components/watch-together-app.tsx"),
+  read("../components/settings/module-diagnostics.tsx"),
+  read("../components/settings/runtime-diagnostics.tsx"),
 ]);
 
 assert.match(app, /if \(settings\.autoGenerateWeeklyPlans\)\s*\{\s*next = generateWeeklyLifePlan/);
@@ -41,6 +44,14 @@ for (const appId of ["life", "photo_wall", "checkin", "watch_together", "phone_w
 assert.match(debugPromptPanel, /activeExtraSnapshot/);
 assert.match(debugPromptPanel, /本次真实请求允许的工具/);
 assert.match(debugPromptPanel, /loadCheckInGuidance/);
+assert.match(watchApp, /frameOverride !== undefined/);
+assert.match(watchApp, /framePromise/);
+assert.match(watchApp, /watch_last_diagnostics_report_v1/);
+assert.match(moduleDiagnostics, /照片墙 · 本机数据检查/);
+assert.match(moduleDiagnostics, /一起看 · 最近播放诊断/);
+assert.match(moduleDiagnostics, /桌面小组件 · 网页与原生链路/);
+assert.match(moduleDiagnostics, /现实桥梁 · 感知桥诊断/);
+assert.match(runtimeDiagnostics, /<ModuleDiagnostics\s*\/>/);
 assert.match(app, /life-scene-notification-reply/);
 assert.match(app, /peekPendingLifeSceneReply/);
 assert.match(app, /claimPendingLifeSceneReply/);
