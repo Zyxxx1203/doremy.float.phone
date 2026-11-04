@@ -44,16 +44,19 @@ same(validateLifeOutput(parsed, { previousActionOnly: true, maxConsecutiveAction
 // 3. Strict mode blocks action-only.
 same(validateLifeOutput(parsed, { previousActionOnly: false, maxConsecutiveActionOnly: 0, allowEmpty: true }), ["action_only"]);
 
-// 4. Action containing speech is split into action + dialogue.
+// 4. Structured JSON preserves field boundaries exactly; malformed placement is
+// reported for the format-repair pass rather than silently rewritten.
 parsed = parseLifeOutput(json({ action: "她笑了笑，说“别熬夜了”。", dialogue: [], ...base }));
-assert.equal(parsed.action, "她笑了笑");
-assert.equal(parsed.action.includes("别熬夜了"), false);
-same(parsed.dialogues, ["别熬夜了"]);
+assert.equal(parsed.action, "她笑了笑，说“别熬夜了”。");
+same(parsed.dialogues, []);
+assert.equal(validateLifeOutput(parsed, { allowEmpty: true }).includes("speech_in_action"), true);
 
-// 5. Dialogue containing a stage direction is moved to action.
+// 5. Dialogue arrays are already bubble boundaries. Legacy action-like prose is
+// reported, not silently moved into a different field.
 parsed = parseLifeOutput(json({ action: "", dialogue: ["她笑了笑，说：“你回来啦。”"], ...base }));
-assert.equal(parsed.action, "她笑了笑");
-same(parsed.dialogues, ["你回来啦。"]);
+assert.equal(parsed.action, undefined);
+same(parsed.dialogues, ["她笑了笑，说：“你回来啦。”"]);
+assert.equal(validateLifeOutput(parsed, { allowEmpty: true }).includes("action_in_dialogue"), true);
 
 // 6. First-person action is not treated as dialogue.
 parsed = parseLifeOutput("我走到窗边，轻轻叹了口气。\n“今天有点累。”");

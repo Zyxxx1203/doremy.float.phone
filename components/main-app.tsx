@@ -156,14 +156,14 @@ async function warmBuiltinFonts(shouldStop: () => boolean): Promise<void> {
 
 function SplashScreen({ ready = false, onEnter }: { ready?: boolean; onEnter?: () => void }) {
   return (
-    <main className="app-root splash-root">
+    <main className="app-root splash-root" onClick={ready ? onEnter : undefined}>
       <section
         className="phone-shell-wrap splash-shell-wrap"
         aria-label={TEXT.loading}
       >
         <div className="phone-case">
           <div className="phone-frame">
-            <div className="phone-shell splash-phone-screen" onClick={ready ? onEnter : undefined}>
+            <div className="phone-shell splash-phone-screen">
               <SplashAnimation />
               <button
                 type="button"

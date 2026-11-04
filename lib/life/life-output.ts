@@ -241,20 +241,16 @@ function parseJsonObject(raw: string): ParsedLifeOutput | null {
     const issues: LifeOutputIssue[] = [];
     if (text.slice(0, start).trim() || text.slice(end + 1).trim()) issues.push("outside_text");
     const rawAction = record.action;
-    const actionSource = typeof rawAction === "string" ? rawAction : Array.isArray(rawAction) ? rawAction.map(asString).filter(Boolean).join("；") : "";
-    let rawDialogues: unknown = record.dialogue ?? record.dialogues;
-    const dialogues: string[] = [];
-    const actions: string[] = [];
+    // A valid structured JSON response already defines the action/dialogue boundary.
+    // Do not run legacy prose extraction here: it can silently move or rewrite content
+    // the model deliberately placed in a specific field. XML/plain-text fallbacks below
+    // retain the old compatibility parser.
+    const action = typeof rawAction === "string" ? rawAction.trim() : "";
+    let rawDialogues: unknown = record.dialogues ?? record.dialogue;
     if (typeof rawDialogues === "string") rawDialogues = [rawDialogues];
-    if (Array.isArray(rawDialogues)) {
-        for (const item of rawDialogues) {
-            const textValue = asString(item);
-            if (!textValue) continue;
-            const clean = cleanDialogue(textValue, actions);
-            if (clean) dialogues.push(clean);
-        }
-    }
-    const action = cleanAction([actionSource, actions.join("；")].filter(Boolean).join("；"), dialogues);
+    const dialogues = Array.isArray(rawDialogues)
+        ? rawDialogues.map(asString).filter(Boolean)
+        : [];
     const rawPlanChange = record.plan_change ?? record.planChange;
     const rawInvitation = record.invitation;
     const rawFollowRequest = record.follow_request ?? record.followRequest;
@@ -268,8 +264,9 @@ function parseJsonObject(raw: string): ParsedLifeOutput | null {
     if (rawFollowRequest != null && !followRequest) issues.push("schema");
     if (planChange && (!planChange.startAt || !planChange.endAt)) issues.push("schema");
     if (invitation && (!invitation.time || !invitation.activity)) issues.push("schema");
-    if (rawAction != null && typeof rawAction !== "string" && !Array.isArray(rawAction)) issues.push("schema");
-    if (rawDialogues != null && typeof rawDialogues !== "string" && !Array.isArray(rawDialogues)) issues.push("schema");
+    if (rawAction != null && typeof rawAction !== "string") issues.push("schema");
+    if (rawDialogues != null && !Array.isArray(rawDialogues)) issues.push("schema");
+    if (Array.isArray(rawDialogues) && rawDialogues.some(item => typeof item !== "string")) issues.push("schema");
     return buildParsed(action, dialogues, "json", issues, { planChange, invitation, followRequest, toolCount });
 }
 
@@ -398,8 +395,8 @@ export function validateLifeOutput(
         if (max <= 0) issues.add("action_only");
         else if (options.previousActionOnly) issues.add("consecutive_action_only");
     }
-    if (output.action && /[“”「」"]/.test(output.action)) issues.add("speech_in_action");
-    if (output.dialogues.some(item => /[（(]|\*/.test(item))) issues.add("action_in_dialogue");
+    if (output.action && (/[“”「」"]/.test(output.action) || /(?:轻声说|低声说|开口道|说道|说着|问道|答道|回答道)\s*[:：]?\s*\S+/.test(output.action))) issues.add("speech_in_action");
+    if (output.dialogues.some(item => /[（(]|\*/.test(item) || (ACTION_VERB.test(item) && SPEECH_VERB.test(item)))) issues.add("action_in_dialogue");
     if (output.toolCount > 1) issues.add("multiple_tools");
     return [...issues];
 }
