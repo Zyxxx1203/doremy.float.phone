@@ -486,7 +486,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
   const [transcriptName, setTranscriptName] = useState("");
   const [screenshotDataUrl, setScreenshotDataUrl] = useState("");
   const screenshotFileInputRef = useRef<HTMLInputElement>(null);
-  const pendingDiscussionRef = useRef<Array<{ moment: string; timepoint?: string }>>([]);
+  const pendingDiscussionRef = useRef<Array<{ moment: string; timepoint?: string; framePromise?: Promise<string> }>>([]);
   const [discussionDraft, setDiscussionDraft] = useState("");
   const [timepointDraft, setTimepointDraft] = useState("");
   const timepointDraftRef = useRef("");
@@ -1186,10 +1186,10 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     }
   }, []);
 
-  const generateComment = useCallback(async (manual = false, momentOverride?: string, timepointOverride?: string) => {
+  const generateComment = useCallback(async (manual = false, momentOverride?: string, timepointOverride?: string, frameOverride?: string | Promise<string>) => {
     if (!target || !character || commentBusyRef.current) return;
     commentBusyRef.current = true; setBusy(true);
-    let queuedAfterReply: { moment: string; timepoint?: string } | undefined;
+    let queuedAfterReply: { moment: string; timepoint?: string; framePromise?: Promise<string> } | undefined;
     try {
       const sessions = loadChatSessions();
       const contact = loadChatContacts().find(item => item.characterId === character.id);
@@ -1197,7 +1197,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         ?? ({ id: `watch-together-${character.id}`, contactId: contact?.id ?? character.id, unreadCount: 0, updatedAt: new Date().toISOString(), isPinned: false, isGroup: false } as ChatSession);
       const history = loadChatMessages(session.id).slice(-12).filter(item => item.status !== "failed" && !item.isRetracted);
       // 用户自己附过截图就优先用它；否则静默取一帧，别让角色「瞎看」
-      const frameDataUrl = screenshotDataUrl || (await captureFrameForPrompt());
+      const frameDataUrl = frameOverride !== undefined ? await frameOverride : (screenshotDataUrl || (await captureFrameForPrompt()));
       const videoElement = playerRef.current?.querySelector("video");
       const draftSeconds = parseVideoTime(timepointOverride || timepointDraftRef.current);
       const playbackSeconds = videoElement && Number.isFinite(videoElement.currentTime) ? videoElement.currentTime : iframeSecondsRef.current;
@@ -1247,7 +1247,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       commentBusyRef.current = false;
       setBusy(false);
       queuedAfterReply = pendingDiscussionRef.current.shift();
-      if (queuedAfterReply) window.setTimeout(() => { void generateComment(true, queuedAfterReply!.moment, queuedAfterReply!.timepoint); }, 50);
+      if (queuedAfterReply) window.setTimeout(() => { void generateComment(true, queuedAfterReply!.moment, queuedAfterReply!.timepoint, queuedAfterReply!.framePromise); }, 50);
     }
   }, [target, character, videoTitle, settings.currentMoment, settings.voiceEnabled, onNotice, transcriptSegments, transcriptName, screenshotDataUrl, captureFrameForPrompt, videoBackground]);
   // 自动搭话定时器通过 ref 读取最新版本，避免它随讨论内容变化而不断重排随机间隔。
@@ -1402,10 +1402,13 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
    * 就该时间点作出反馈。不再只是往输入框塞一句草稿让用户自己再点发送。
    * 外站 iframe 读不到时间轴时保留旧的草稿行为。
    */
-  const markHighlightAndDiscuss = () => {
+  const markHighlightAndDiscuss = async () => {
     if (!target) { onNotice?.("先选择一段视频，再标记重点。"); return; }
     const video = playerRef.current?.querySelector("video");
     const point = video ? formatVideoTime(video.currentTime) : timepointDraft.trim();
+    // Start capture in the click handler, before any queued AI turn can wait behind
+    // another response. Carry this exact capture promise with the discussion.
+    const framePromise = video ? captureFrameForPrompt() : undefined;
     if (!character) { onNotice?.("还没有可回应的陪看角色。请先在「观影设置」里绑定角色，或先去聊天 App 创建角色。"); return; }
     if (!video) {
       patchSettings({ currentMoment: ("重点片段 " + (point || "") + "：").slice(0, 800) });
@@ -1419,9 +1422,9 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     persistWatchShortTermMemory(character.id, character.name, videoTitle || target.platformName + "视频", "[" + point + "] " + text, "user");
     const moment = ("时间点 " + point + "：重点片段。请结合视频剧情，自然地和我聊聊此刻的画面与感受。").slice(0, 800);
     patchSettings({ currentMoment: moment });
-    if (commentBusyRef.current) pendingDiscussionRef.current.push({ moment, timepoint: point });
-    else void generateComment(true, moment, point);
-    onNotice?.("已标记 " + point + "，正在请" + character.name + "聊聊这一幕。");
+    if (commentBusyRef.current) pendingDiscussionRef.current.push({ moment, timepoint: point, framePromise });
+    else void generateComment(true, moment, point, framePromise);
+    onNotice?.("已标记 " + point + "；已固定本次点击时的画面捕获请求，正在请" + character.name + "聊聊这一幕。");
   };
 
   /**

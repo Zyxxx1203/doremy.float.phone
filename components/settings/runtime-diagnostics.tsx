@@ -8,6 +8,8 @@ import { hasNotificationReplyBridge } from "@/lib/notification-reply";
 import { isPersonalPushCloudActive } from "@/lib/personal-push-cloud";
 import { consumeServerOutbox } from "@/lib/push-outbox-client";
 import { copyTextToClipboard } from "@/lib/clipboard-utils";
+import { LifeDiagnosticsPanel } from "@/components/life/life-diagnostics-panel";
+import { ScreenshotDiagnosticsPanel } from "@/components/screenshot/diagnostics-panel";
 
 type CheckStatus = "ok" | "warn" | "fail" | "info";
 type CheckItem = { id: string; title: string; status: CheckStatus; detail: string; fix?: string };
@@ -349,6 +351,14 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
         <button type="button" onClick={downloadReport} style={{ display: "inline-flex", alignItems: "center", gap: 7, borderRadius: 10, padding: "9px 12px", border: "1px solid var(--border, #ddd)", background: "transparent", fontSize: 12 }}><Download size={15} />下载 TXT</button>
       </div>
       <textarea aria-label="诊断报告内容" readOnly value={report} style={{ width: "100%", minHeight: 160, marginTop: 10, padding: 10, borderRadius: 10, resize: "vertical", fontSize: 11, lineHeight: 1.5, background: "var(--surface-secondary, rgba(128,128,128,.05))", border: "1px solid var(--border, rgba(128,128,128,.18))", color: "inherit" }} />
+    </section>
+    <section style={{ border: "1px solid var(--border, rgba(128,128,128,.18))", borderRadius: 16, padding: 14 }}>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>生活系统 · 专项诊断</div>
+      <LifeDiagnosticsPanel />
+    </section>
+    <section style={{ border: "1px solid var(--border, rgba(128,128,128,.18))", borderRadius: 16, padding: 14 }}>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>截屏与查岗 · 专项诊断</div>
+      <ScreenshotDiagnosticsPanel onNotice={onNotice} />
     </section>
   </div>;
 }

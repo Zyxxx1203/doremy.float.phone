@@ -136,13 +136,11 @@ function isLastCharacterTurnActionOnly(state: VirtualLifeState, sceneId: string,
   return lastTurn.some(message => Boolean(message.action?.trim())) && !lastTurn.some(message => Boolean(message.dialogue?.trim()));
 }
 
-function splitLifeReplySegments(value: string): string[] {
-  return value.replace(/\r/g, "").replace(/([。！？!?])(?=\S)/g, "$1\n").split(/\n+/)
-    .map(segment => segment.replace(/^[-•*]+\s*/, "").trim())
-    .map(segment => segment.replace(/^["“”「」『』]+|["“”「」『』]+$/g, "").trim())
-    .filter(Boolean);
+function preserveLifeDialogueSegments(values: string[]): string[] {
+  // JSON dialogues[] already defines the intended bubble boundaries. Never split a
+  // complete message again by punctuation, sentence length, or commas.
+  return values.map(value => value.replace(/\r/g, "").trim()).filter(Boolean);
 }
-
 
 function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange: (value: boolean) => void; label: string; hint?: string }) {
   return <div className="flex items-center justify-between gap-4 rounded-2xl border border-black/5 bg-white/70 px-4 py-3">
@@ -1582,7 +1580,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       turnIds.add(targetMessage.id);
       const replyAt = new Date().toISOString();
       const actionText = (parsed.action ?? "").trim();
-      const dialogueSegments = splitLifeReplySegments(parsed.dialogue);
+      const dialogueSegments = preserveLifeDialogueSegments(parsed.dialogues);
       const replacementMessages: LifeSceneMessage[] = [
         ...(actionText ? [{ ...targetMessage, action: actionText, dialogue: "", createdAt: replyAt }] : []),
         ...dialogueSegments.map((dialogue, index) => ({
@@ -1793,7 +1791,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         if (!parsed.action?.trim() && !parsed.dialogue.trim()) return;
         const responseAt = new Date().toISOString();
         const actionText = (parsed.action ?? "").trim();
-        const dialogueSegments = splitLifeReplySegments(parsed.dialogue);
+        const dialogueSegments = preserveLifeDialogueSegments(parsed.dialogues);
         const mergedDialogue = dialogueSegments.join("\n");
         const responseMessages: LifeSceneMessage[] = [
           ...(actionText ? [{ id: id("life-proactive-action"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: character.id, speakerName: character.name, role: "character" as const, action: actionText, dialogue: "", createdAt: responseAt, channel: "life_autonomy" as const }] : []),
@@ -2038,7 +2036,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       const replyAt = new Date().toISOString();
       // 动作一轮只出**一张**卡片（整段动作合并在内）；对白保持独立气泡按段显示。
       const actionText = (parsed.action ?? "").trim();
-      const dialogueSegments = splitLifeReplySegments(parsed.dialogue);
+      const dialogueSegments = preserveLifeDialogueSegments(parsed.dialogues);
       const replyMessages: LifeSceneMessage[] = [
         ...(actionText ? [{ id: notificationResponsePrefix ? notificationResponsePrefix + "-action" : id("turn-action"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, action: actionText, dialogue: "", createdAt: replyAt }] : []),
         ...dialogueSegments.map((dialogue, index) => ({ id: notificationResponsePrefix ? notificationResponsePrefix + "-dialogue-" + index : id("turn-dialogue"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, dialogue, createdAt: replyAt })),

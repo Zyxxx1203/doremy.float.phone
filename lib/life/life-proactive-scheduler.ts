@@ -210,6 +210,9 @@ async function runOnce(): Promise<void> {
 
 export function installLifeScheduleProactiveScheduler(): () => void {
   if (typeof window === "undefined") return () => undefined;
+  // The scheduler is mounted by the app shell. Guard against accidental duplicate
+  // mounts while preserving React StrictMode setup -> cleanup -> setup.
+  if (timer) return () => undefined;
   stopped = false;
   const start = () => { void runOnce(); };
   start();

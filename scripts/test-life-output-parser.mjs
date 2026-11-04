@@ -31,6 +31,11 @@ assert.equal(parsed.action, "她把杯子推过来，抬眼看你。");
 same(parsed.dialogues, ["先喝点热的吧。"]);
 same(validateLifeOutput(parsed, { maxConsecutiveActionOnly: 1, allowEmpty: true }), []);
 
+// Explicit JSON array items are the bubble boundaries. Punctuation inside one
+// dialogue must never be used to invent extra bubbles downstream.
+parsed = parseLifeOutput(json({ action: "", dialogue: ["第一句。第二句，逗号后仍属于同一条。", "第二条气泡！"], ...base }));
+same(parsed.dialogues, ["第一句。第二句，逗号后仍属于同一条。", "第二条气泡！"]);
+
 // 2. Natural action-only is allowed once, but not twice.
 parsed = parseLifeOutput(json({ action: "她把毯子轻轻盖在你腿上，没有出声。", dialogue: [], ...base }));
 same(validateLifeOutput(parsed, { previousActionOnly: false, maxConsecutiveActionOnly: 1, allowEmpty: true }), []);
