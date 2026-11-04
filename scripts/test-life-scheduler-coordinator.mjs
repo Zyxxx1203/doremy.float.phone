@@ -14,10 +14,12 @@ const localStorage = {
   removeItem: key => values.delete(key),
 };
 const moduleBox = { exports: {} };
-const sandbox = { module: moduleBox, exports: moduleBox.exports, window: {}, localStorage, Date, Math, console };
+const dispatchedEvents = [];
+const sandbox = { module: moduleBox, exports: moduleBox.exports, window: { dispatchEvent: event => dispatchedEvents.push(event.type) }, localStorage, Date, Math, Event, console };
 vm.runInNewContext(compiled, sandbox, { filename: "life-scheduler-coordinator.cjs" });
 const {
   LIFE_SCENE_FOREGROUND_LEASE_KEY,
+  LIFE_PRESENCE_LEASE_UPDATED_EVENT,
   setLifeSceneForegroundLease,
   readLifeSceneForegroundLease,
   setOnlineChatForegroundLease,
@@ -42,5 +44,7 @@ setOnlineChatForegroundLease("char-a", "chat-a", false);
 assert.equal(readOnlineChatForegroundLease(), null, "closing the owning direct chat should release its lease");
 setOnlineChatForegroundLease("char-a", "chat-a", true);
 assert.equal(readOnlineChatForegroundLease(Date.now() + 91_000), null, "a stale direct-chat lease must expire");
+assert.equal(dispatchedEvents.length, 8, "every scene/chat lease mutation must notify the cloud snapshot scheduler");
+assert.ok(dispatchedEvents.every(type => type === LIFE_PRESENCE_LEASE_UPDATED_EVENT), "lease notifications must use the shared event");
 
 console.log("Life scheduler coordinator tests passed.");
