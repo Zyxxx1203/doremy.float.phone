@@ -345,7 +345,7 @@ Deno.serve(async (req: Request) => {
       const hasSubscription = subscriptionResponse.ok && (await subscriptionResponse.json() as unknown[]).length > 0;
       if (!hasSubscription && enabled && needsSubscription) {
         await writeDiagnostic(row.user_id, "life-scheduler:subscription", "warning", "life_push_subscription_missing",
-          "云端生活日程已保存，但当前个人云没有可用的 Web Push / Android 壳订阅，角色主动消息无法投递。",
+          "云端生活日程仍会持续计算；当前没有可用推送订阅，因此角色主动消息会写入云端回传箱，但无法实时通知。",
           "重新打开小手机并在设置中启用离线推送；Android 壳需要先成功建立常驻通知长连接。");
       } else if (hasSubscription || !enabled || !needsSubscription) {
         await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent("life-scheduler:subscription")}`, {
@@ -438,6 +438,8 @@ Deno.serve(async (req: Request) => {
                 }),
               });
               if (!resumed.ok) throw new Error("life job resume after chat failed: " + resumed.status);
+              runtimeUpdates[runtimeUpdates.length - 1].next_run_at = iso(resumedAt);
+              runtimeUpdates[runtimeUpdates.length - 1].last_status = hasSubscription ? "ready" : "notification_unavailable";
             }
             const overdueBy = now - parseTime(job.execute_at);
             const runningFor = now - parseTime(job.updated_at);
