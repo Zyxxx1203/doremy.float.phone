@@ -67,7 +67,7 @@ const INITIAL_LOCATIONS: LifeLocation[] = [
   { id: "studio", name: "音乐 / 创作空间", description: "适合练习乐器、写作、绘画或其他个人创作。", atmosphere: "专注、私密，可能有轻微音乐声或创作时的杂物声。", layout: "主要工作台靠近光源，乐器或材料收纳在一侧，留出活动空间。", props: ["耳机", "笔记本", "乐器 / 创作工具", "水杯"], visibility: "public" },
 ];
 const id = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-function createLifeVirtualSession(characterId: string, characterName: string): ChatSession {
+function createLifeChatSession(characterId: string, characterName: string): ChatSession {
   // Always bind life operations to a persisted direct-chat session. Resolve the
   // ChatContact.id separately from Character.id so downstream push jobs can map it.
   let contact = loadChatContacts().find(item => item.characterId === characterId);
@@ -829,7 +829,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const candidateId = scene.participants.find(participant => participant.ownerType === "character")?.ownerId;
     const character = characters.find(item => item.id === candidateId) ?? characters[0];
     if (!character) { setNotice("没有可用的角色，无法挂起主动消息。"); return; }
-    const session = createLifeVirtualSession(character.id, character.name);
+    const session = createLifeChatSession(character.id, character.name);
     const result = await armLifeSceneProactiveBailout({
       sessionId: session.id,
       sceneId: scene.id,
@@ -940,7 +940,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         return new Date(slot.startAt).getTime() <= virtualNowMs && new Date(slot.endAt).getTime() > virtualNowMs;
       });
       const fixed = protectedSlots.map(slot => "- " + slot.startAt + "—" + slot.endAt + "：" + slot.title + "（必须保留且不可冲突）").join("\n") || "无固定安排";
-      const session = createLifeVirtualSession(character.id, character.name);
+      const session = createLifeChatSession(character.id, character.name);
       const prompt: ChatMessage = {
         id: id("life-schedule-ai"), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
         content: [
@@ -1292,7 +1292,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const character = characters.find(item => scene.participants.some(p => p.ownerType === "character" && p.ownerId === item.id));
     if (!character) { setNotice("请先让至少一位角色进入现场，再生成现场描述。"); return; }
     const contact = loadChatContacts().find(item => item.characterId === character.id || item.id === character.id);
-    const session = contact ? createOrGetSession(contact.id) : createLifeVirtualSession(character.id, character.name);
+    const session = contact ? createOrGetSession(contact.id) : createLifeChatSession(character.id, character.name);
     setSceneDescriptionBusy(true);
     setNotice("AI 正在根据现场原始记录整理当前现场描述……");
     try {
@@ -1537,7 +1537,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     }
     const character = characters.find(item => item.id === targetMessage.speakerId);
     const contact = loadChatContacts().find(item => item.characterId === targetMessage.speakerId);
-    const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeVirtualSession(targetMessage.speakerId, character?.name ?? "角色");
+    const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeChatSession(targetMessage.speakerId, character?.name ?? "角色");
     const scene = stateRef.current.scenes.find(item => item.id === targetMessage.sceneId);
     if (!character || !scene) {
       setNotice("找不到角色档案或原场景，暂时无法重新生成。");
@@ -1719,7 +1719,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       if (!character) return null;
       const contact = loadChatContacts().find(item => item.characterId === character.id);
       const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup);
-      return { character, session: session ?? createLifeVirtualSession(character.id, character.name) };
+      return { character, session: session ?? createLifeChatSession(character.id, character.name) };
     };
     const tick = async () => {
       if (disposed || document.visibilityState !== "visible" || busyRef.current || proactiveBusyRef.current) return;
@@ -1935,7 +1935,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const contacts = loadChatContacts();
     const sessions = loadChatSessions();
     const contact = contacts.find(item => item.characterId === target.id);
-    const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeVirtualSession(target.id, target.name);
+    const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeChatSession(target.id, target.name);
     const lifeTurn = beginTurn({ kind: "life_scene", characterId: target.id, sessionId: session.id });
     if (!lifeTurn) {
       if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应被其他回合占用", status: "warning", detail: target.name + " 的回应未启动，因为当前已有其他角色回合正在执行。", meta: { sceneId: activeScene.id, characterId: target.id, sessionId: session.id } });
@@ -2251,7 +2251,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const contacts = loadChatContacts();
     const sessions = loadChatSessions();
     const contact = contacts.find(item => item.characterId === character.id);
-    const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeVirtualSession(character.id, character.name);
+    const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeChatSession(character.id, character.name);
     let next = makeLifeInvitation(base, {
       proposedBy: "player",
       characterId: character.id, playerId: PLAYER_ID, proposedAt: proposedAt.toISOString(),
