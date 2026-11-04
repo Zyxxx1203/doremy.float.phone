@@ -229,6 +229,8 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
 
   const [quickPlanText, setQuickPlanText] = useState("");
   const [quickPlanDrafts, setQuickPlanDrafts] = useState<QuickPlanDraft[]>([]);
+  const [scheduleGuidanceText, setScheduleGuidanceText] = useState("");
+  const [guidedScheduleBusy, setGuidedScheduleBusy] = useState(false);
   const [playerActivity, setPlayerActivity] = useState("");
   const [sceneInput, setSceneInput] = useState("");
   const sceneChatScrollRef = useRef<HTMLDivElement | null>(null);
@@ -1025,6 +1027,59 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     }
   };
 
+  const generateGuidedScheduleDrafts = async () => {
+    const actor = selectedActor;
+    const instruction = scheduleGuidanceText.trim();
+    if (!instruction) { setNotice("先写下你希望调整的日程要求。"); return; }
+    if (guidedScheduleBusy || scheduleRegenerationOwnerId || batchScheduleGenerating) return;
+    const modelCharacter = characters.find(item => item.id === (actor.ownerType === "character" ? actor.ownerId : characters[0]?.id));
+    if (!modelCharacter) { setNotice("AI 日程指导需要至少一个已配置角色的聊天模型通道。"); return; }
+    setGuidedScheduleBusy(true);
+    try {
+      const current = stateRef.current, now = actorNow(actor);
+      const dayStart = new Date(now); dayStart.setHours(0,0,0,0);
+      const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate()+7);
+      const existing = current.schedules.filter(slot => slot.ownerType===actor.ownerType && slot.ownerId===actor.ownerId && new Date(slot.endAt)>now && new Date(slot.startAt)<dayEnd).sort((a,b)=>a.startAt.localeCompare(b.startAt));
+      const scheduleText = existing.map(slot=>"- "+slot.startAt+" 至 "+slot.endAt+"｜"+slot.title+"｜"+(slot.plannedLocationName||"地点未定")+"｜"+slot.source).join("\n") || "暂无已安排日程";
+      const locations = current.locations.map(location=>"- "+location.name).join("\n");
+      const session = createLifeChatSession(modelCharacter.id,modelCharacter.name);
+      const prompt: ChatMessage = { id:id("life-guided-schedule"),sessionId:session.id,role:"user",status:"sent",createdAt:new Date().toISOString(),content:[
+        "你是生活日程规划助手，只为「"+actor.name+"」规划，不要替其他对象安排。",
+        "用户指导：\n"+instruction,
+        "现有七日日程（只读，不得覆盖/删除）：\n"+scheduleText,
+        "可用地点：\n"+locations,
+        "当前虚拟时间："+now.toISOString()+"；dayOffset 0 为今天，6 为第七天。",
+        "只输出 JSON：{\"schedules\":[{\"dayOffset\":0,\"start\":\"15:00\",\"end\":\"16:00\",\"title\":\"活动\",\"location\":\"地点或空字符串\"}]}。",
+        "仅返回本次指导需要新增的安排；时间必须明确，不得猜测或返回旧日程；不得生成过去时间；不得安排与现有日程或彼此重叠的事件；无明确时间则返回空数组。"
+      ].join("\n\n")};
+      const result=await generateOfflineChatCompletion(session,[prompt],{appId:"life",appTags:lifeAppTags("schedule")});
+      const raw=result.content.trim(),first=raw.indexOf("{"),last=raw.lastIndexOf("}");
+      if(first<0||last<=first)throw new Error("AI 未返回有效 JSON，原日程未改变。");
+      const decoded=JSON.parse(raw.slice(first,last+1)) as {schedules?:Array<Record<string,unknown>>};
+      if(!Array.isArray(decoded.schedules))throw new Error("AI 返回缺少 schedules 数组。");
+      const drafts:QuickPlanDraft[]=[],conflicts:string[]=[];
+      const overlaps=(a:number,b:number,x:number,y:number)=>a<y&&b>x;
+      for(const item of decoded.schedules){
+        const d=Number(item.dayOffset),title=String(item.title??"").trim().slice(0,100);
+        const sm=/^(\d{1,2}):(\d{2})$/.exec(String(item.start??"")),em=/^(\d{1,2}):(\d{2})$/.exec(String(item.end??""));
+        if(!Number.isInteger(d)||d<0||d>6||!title||!sm||!em)continue;
+        const sh=Number(sm[1]),smin=Number(sm[2]),eh=Number(em[1]),emin=Number(em[2]);
+        if(sh>23||eh>23||smin>59||emin>59)continue;
+        const start=new Date(dayStart);start.setDate(start.getDate()+d);start.setHours(sh,smin,0,0);
+        const end=new Date(dayStart);end.setDate(end.getDate()+d);end.setHours(eh,emin,0,0);
+        if(end<=start||start<now||end>dayEnd)continue;
+        const conflict=existing.find(slot=>overlaps(start.getTime(),end.getTime(),new Date(slot.startAt).getTime(),new Date(slot.endAt).getTime()));
+        if(conflict){conflicts.push(title+"（与「"+conflict.title+"」冲突）");continue;}
+        if(drafts.some(slot=>overlaps(start.getTime(),end.getTime(),new Date(slot.startAt).getTime(),new Date(slot.endAt).getTime()))){conflicts.push(title+"（与本次生成安排冲突）");continue;}
+        drafts.push({id:id("guided-plan"),ownerType:actor.ownerType,ownerId:actor.ownerId,startAt:start.toISOString(),endAt:end.toISOString(),title,locationName:String(item.location??"").trim().slice(0,80)});
+      }
+      if(!drafts.length)throw new Error(conflicts.length?"安排均存在时间冲突："+conflicts.slice(0,3).join("；"):"没有识别到明确有效的时间安排。");
+      setQuickPlanDrafts(drafts);
+      setNotice("AI 生成了 "+drafts.length+" 条待确认安排。"+(conflicts.length?"另有 "+conflicts.length+" 条冲突安排未加入预览。":"")+"现有日程未修改，请检查预览后再保存。");
+    }catch(error){setNotice("AI 日程指导失败："+(error instanceof Error?error.message:String(error))+"。现有日程未修改。");}
+    finally{setGuidedScheduleBusy(false);}
+  };
+
   const ensurePlans = () => {
     let next = state;
     const playerVirtualNow = resolveActorLifeNow(getActorClock(next, "player", PLAYER_ID));
@@ -1297,8 +1352,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setNotice("AI 正在根据现场原始记录整理当前现场描述……");
     try {
       const location = current.locations.find(item => item.id === scene.locationId);
-      const prompt: ChatMessage = {
-        id: id("life-scene-description"),
+      const prompt: ChatMessage = {        id: id("life-scene-description"),
         sessionId: session.id,
         role: "user",
         status: "sent",
@@ -2597,8 +2651,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       ? current.events.find(event =>
           event.kind === "invitation"
           && slot.id.startsWith("invite-slot-" + event.id + "-")
-        )
-      : undefined;
+        )      : undefined;
     if (slot.kind === "appointment" && slot.source === "event" && !linkedEvent) {
       setNotice("找不到这条日程关联的邀约，未修改任何内容。");
       return;
@@ -3505,6 +3558,13 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             </div>
           </div>
           <p className="mt-2 text-[11px] leading-relaxed text-stone-500">{proactiveStatus ? "最近云端预约提交回执（不代表后台已执行或通知已送达）：" + (proactiveStatus.ok ? "已挂上" : "未挂上：" + (proactiveStatus.reason || "未知原因")) + " · " + proactiveStatus.character + " · " + new Date(proactiveStatus.at).toLocaleString("zh-CN") : "还没有主动消息挂载回执；点“现在挂起”或等待自动调度。"}</p>
+          <div className="mt-4 border-t border-[#e6d5c4] pt-3">
+            <p className="text-sm font-semibold text-stone-800">AI 日程指导 · 先预览再保存</p>
+            <p className="mt-1 text-xs leading-relaxed text-stone-500">选择安排对象，用自然语言描述要求。AI 会读取该对象现有七日日程，只生成待确认的新安排，不会直接覆盖旧日程。</p>
+            <label className="mt-3 block text-xs text-stone-500">安排对象<select value={selectedActorKey} onChange={event=>setSelectedActorKey(event.target.value)} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">{actors.map(actor=><option key={actor.ownerType+":"+actor.ownerId} value={actor.ownerType+":"+actor.ownerId}>{actor.name}{actor.ownerType==="player"?"（我）":"（角色）"}</option>)}</select></label>
+            <textarea value={scheduleGuidanceText} onChange={event=>setScheduleGuidanceText(event.target.value)} rows={3} placeholder="例如：工作日晚上留一小时学习；周三下午不要安排活动；周六和我一起去公园散步。" className="mt-2 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/>
+            <button type="button" onClick={()=>void generateGuidedScheduleDrafts()} disabled={guidedScheduleBusy||!scheduleGuidanceText.trim()||actors.length===0} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><Sparkles size={14}/>{guidedScheduleBusy?"AI 正在分析现有日程…":"AI 生成待确认预览"}</button>
+          </div>
           <div className="mt-4 border-t border-[#e6d5c4] pt-3"><p className="text-sm font-semibold text-stone-800">手动补充 · 一句话安排日程</p>
           <p className="mt-1 text-xs leading-relaxed text-stone-500">这是可选的手动入口。支持“明天下午3点到5点在家睡觉”或“角色名：周五晚上7点去公园散步”；识别后仍可编辑，不再要求你手动写完整行程。</p></div>
           <textarea value={quickPlanText} onChange={e=>setQuickPlanText(e.target.value)} rows={3} placeholder={"明天下午3点到5点在咖啡馆画画\n周五晚上7点去公园散步"} className="mt-3 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/>
