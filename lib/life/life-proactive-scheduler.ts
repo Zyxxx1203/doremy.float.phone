@@ -14,6 +14,7 @@ import { loadVirtualLifeState } from "./life-storage";
 import { resolveActorLocation } from "./life-runtime";
 import type { VirtualLifeState } from "./life-types";
 import { recordLifeDiagnostic } from "./life-diagnostics";
+import { LIFE_PRESENCE_LEASE_UPDATED_EVENT } from "./life-scheduler-coordinator";
 
 const PLAYER_ID = "player";
 const ARM_META_PREFIX = "life-schedule-arm:";
@@ -213,6 +214,7 @@ export function installLifeScheduleProactiveScheduler(): () => void {
   document.addEventListener("visibilitychange", onVisible);
   window.addEventListener("life-force-sync", onScheduleChanged);
   window.addEventListener("virtual-life-state-updated", onScheduleChanged);
+  window.addEventListener(LIFE_PRESENCE_LEASE_UPDATED_EVENT, onScheduleChanged);
   return () => {
     stopped = true;
     if (timer) clearInterval(timer);
@@ -220,5 +222,6 @@ export function installLifeScheduleProactiveScheduler(): () => void {
     document.removeEventListener("visibilitychange", onVisible);
     window.removeEventListener("life-force-sync", onScheduleChanged);
     window.removeEventListener("virtual-life-state-updated", onScheduleChanged);
+    window.removeEventListener(LIFE_PRESENCE_LEASE_UPDATED_EVENT, onScheduleChanged);
   };
 }
