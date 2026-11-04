@@ -726,6 +726,10 @@ Deno.serve(async (request: Request) => {
       const userFilter = `user_id=eq.${OWNER_ID}`;
       const lifeKeyFilter = `&trigger_key=like.${encodeURIComponent("life-scene:%")}`;
       const updateHeaders = { Prefer: "return=representation" };
+      // Remove the authoritative snapshot first so future scheduler ticks cannot re-arm life jobs.
+      await readJson(await rest(`push_bridge_snapshots?${userFilter}&rule_id=eq.life-schedule`, {
+        method: "DELETE", headers: updateHeaders,
+      }));
       // Cancel running jobs before deleting pending jobs: an executing worker checks
       // this status before generating, writing to outbox, and scheduling its next turn.
       await readJson(await rest(`push_jobs?${userFilter}${lifeKeyFilter}&status=eq.running`, {
@@ -736,9 +740,6 @@ Deno.serve(async (request: Request) => {
         method: "DELETE", headers: updateHeaders,
       }));
       await readJson(await rest(`push_outbox?${userFilter}${lifeKeyFilter}`, {
-        method: "DELETE", headers: updateHeaders,
-      }));
-      await readJson(await rest(`push_bridge_snapshots?${userFilter}&rule_id=eq.life-schedule`, {
         method: "DELETE", headers: updateHeaders,
       }));
       await readJson(await rest(`life_schedule_runtime?${userFilter}`, {
