@@ -9,10 +9,10 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
   const playerRefName = resolveUserIdentity(viewerId, "chat")?.name;
   const viewer = viewerId ? scene.participants.find(p => p.ownerType === "character" && p.ownerId === viewerId) : undefined;
   const visibleActorStates = state.actorStates.filter(actor => {
-    if (!viewerId) return actor.ownerType === "player" || scene.participants.some(p => p.ownerType === actor.ownerType && p.ownerId === actor.ownerId);
-    if (actor.ownerType === "character" && actor.ownerId === viewerId) return true;
-    if (actor.ownerType === "player") return Boolean(viewer?.awarenessByActorId.player === "aware");
-    return scene.participants.some(p => p.ownerType === actor.ownerType && p.ownerId === actor.ownerId && viewer?.awarenessByActorId[p.ownerId] === "aware");
+    // Scene membership is the visibility boundary: participants in this exact
+    // scene can perceive one another's current activity. Actors in other scenes
+    // remain hidden; sharing only a location label never grants global awareness.
+    return scene.participants.some(p => p.ownerType === actor.ownerType && p.ownerId === actor.ownerId);
   });
   const participantIds = scene.participants.map(p => p.ownerId);
   const location = state.locations.find(item => item.id === scene.locationId);
