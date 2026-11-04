@@ -284,6 +284,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   });
   const [wallBrushWidth, setWallBrushWidth] = useState(3);
   const [wallSizeDraft, setWallSizeDraft] = useState("36");
+  useEffect(() => { setWallSizeDraft(String(wallSticker ? stickerSizeFromBrushWidth(wallBrushWidth) : wallBrushWidth)); }, [wallSticker, wallBrushWidth]);
   const [wallSticker, setWallSticker] = useState<string | null>(null);
   const [wallStickerRotation, setWallStickerRotation] = useState(0);
   const [wallEraser, setWallEraser] = useState(false);
