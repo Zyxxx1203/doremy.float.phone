@@ -54,6 +54,7 @@ type Tab = "home" | "scene" | "daily" | "people" | "plans" | "invitations" | "ex
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
 type QuickPlanDraft = { id: string; ownerType: LifeOwnerType; ownerId: string; startAt: string; endAt: string; title: string; locationName: string; saveLocationToLibrary?: boolean };
 const PLAYER_ID = "player";
+const LIFE_PROACTIVE_MESSAGES_ENABLED = false; // Temporarily pause life-initiated messages; keep schedules/scenes.
 const DAY_MS = 24 * 60 * 60 * 1000;
 const INITIAL_LOCATIONS: LifeLocation[] = [
   { id: "home", name: "家", description: "熟悉而放松的私人空间。日常起居、休息、吃饭，也可以在这里安静地陪伴彼此。", atmosphere: "温暖、私密、放松；随着时间和在场角色的状态自然变化。", layout: "入户门通向客厅；客厅有沙发和茶几，窗边有一处可以坐下的位置；厨房与卧室分别位于内侧。", props: ["沙发", "茶几", "抱枕", "窗帘", "水杯"], visibility: "private" },
@@ -1763,7 +1764,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   };
   // Life-scene autonomy runs only while the app is open and the scene is visible.
   useEffect(() => {
-    if (!ready || !settings.enabled || !settings.enableCharacterAutonomy || settings.enableProactiveSceneMessages === false || !activeScene || activeScene.status !== "active" || !immersiveScene) return;
+    if (!LIFE_PROACTIVE_MESSAGES_ENABLED || !ready || !settings.enabled || !settings.enableCharacterAutonomy || settings.enableProactiveSceneMessages === false || !activeScene || activeScene.status !== "active" || !immersiveScene) return;
     let disposed = false;
     const refreshForegroundLease = () => setLifeSceneForegroundLease(activeScene.id, document.visibilityState === "visible");
     refreshForegroundLease();
@@ -3574,13 +3575,11 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             <div className="min-w-0"><p className="text-sm font-semibold text-stone-800">AI 自动规划角色七日日程</p><p className="mt-1 max-w-xl text-xs leading-relaxed text-stone-500">不用手动填。AI 会读取每个角色的人设、近期共同记忆、生活记录、世界书、地点习惯和当前预设；生成后仍可微调。</p></div>
             <div className="flex w-full min-w-0 flex-wrap gap-2 sm:w-auto sm:shrink-0">
               <button type="button" onClick={syncAllCharactersToSchedules} className="min-w-0 w-full whitespace-nowrap rounded-xl border border-[#d9c2ae] bg-white px-3 py-3 text-center text-sm font-semibold text-stone-700 sm:w-auto sm:px-4">同步全部角色当前位置</button>
-              <button type="button" onClick={() => void armProactiveNow()} className="min-w-0 w-full whitespace-nowrap rounded-xl border border-[#d9c2ae] bg-white px-3 py-3 text-center text-sm font-semibold text-stone-700 sm:w-auto sm:px-4">现在挂起一条主动消息</button>
-              <button type="button" onClick={() => setProactiveStatus(readLifeProactiveStatus())} className="min-w-0 w-full whitespace-nowrap rounded-xl border border-[#d9c2ae] bg-white px-3 py-3 text-center text-sm font-semibold text-stone-700 sm:w-auto sm:px-4">查看最近挂载回执</button>
-              <button type="button" onClick={() => setSceneToast({ kind: "dialogue", characterId: characters[0]?.id || "", characterName: characters[0]?.name || "角色", avatar: characters[0]?.avatar || "", location: state.locations[0]?.name || "家", body: "这是一条测试主动横幅，用来检查弹出、折叠和回复入口。", sceneId: "", isTest: true })} className="min-w-0 w-full whitespace-nowrap rounded-xl border border-[#d9c2ae] bg-white px-3 py-3 text-center text-sm font-semibold text-stone-700 sm:w-auto sm:px-4">测试主动横幅</button>
+
               <button type="button" onClick={() => void regenerateAllCharacterSchedulesWithAI()} disabled={batchScheduleGenerating || scheduleRegenerationOwnerId !== null || characters.length === 0} className="inline-flex min-w-0 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-[var(--life-accent)] px-3 py-3 text-sm font-semibold text-white shadow-sm disabled:opacity-50 sm:w-auto sm:shrink-0 sm:px-4"><Sparkles size={15}/>{batchScheduleGenerating ? "AI 正在逐个规划…" : "AI 生成全部角色日程"}</button>
             </div>
           </div>
-          <p className="mt-2 text-[11px] leading-relaxed text-stone-500">{proactiveStatus ? "最近云端预约提交回执（不代表后台已执行或通知已送达）：" + (proactiveStatus.ok ? "已挂上" : "未挂上：" + (proactiveStatus.reason || "未知原因")) + " · " + proactiveStatus.character + " · " + new Date(proactiveStatus.at).toLocaleString("zh-CN") : "还没有主动消息挂载回执；点“现在挂起”或等待自动调度。"}</p>
+
           <div className="mt-4 border-t border-[#e6d5c4] pt-3">
             <p className="text-sm font-semibold text-stone-800">AI 日程指导 · 先预览再保存</p>
             <p className="mt-1 text-xs leading-relaxed text-stone-500">选择安排对象，用自然语言描述要求。AI 会读取该对象现有七日日程，只生成待确认的新安排，不会直接覆盖旧日程；若要替换已有安排，请先在下方日程卡片中手动微调或删除，AI 不会擅自删除旧事件。</p>
@@ -3828,42 +3827,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
               <Toggle checked={settings.recordToolCalls} onChange={v=>patchSettings({recordToolCalls:v})} label="角色调用工具"/>
               <Toggle checked={settings.recordScheduleChanges} onChange={v=>patchSettings({recordScheduleChanges:v})} label="日程与时间变化"/>
             </div><p className="mt-2 text-[10px] leading-relaxed text-stone-500">关闭某一项只会将该类记录从时间线隐藏，不会删除已保存的记录。</p></div>
-            <div className="mt-4 rounded-2xl border border-[var(--life-accent)]/25 bg-white/70 p-4">
-              <p className="text-sm font-semibold">生活现场主动性</p>
-              <p className="mt-1 text-xs leading-relaxed text-stone-500">角色与玩家同处一个正在进行的场景时，可以在没有新输入的情况下自主发起简短互动。系统有冷却和每日上限，不会每隔几秒强制刷消息。</p>
-              <div className="mt-3"><Toggle checked={settings.enableProactiveSceneMessages !== false} onChange={v=>patchSettings({enableProactiveSceneMessages:v})} label="允许角色在生活现场主动说话"/></div>
-              <div className="mt-3">
-                <label className="block min-w-0 text-xs text-stone-600">玩家多久没联系后，角色才可以主动行动（分钟）
-                  <input type="number" inputMode="numeric" min={0} max={1440} step={1} value={settings.proactiveSceneSilenceMinutes ?? 10} onChange={e=>patchSettings({proactiveSceneSilenceMinutes:Math.max(0,Math.min(1440,Number(e.target.value)||0))})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/>
-                </label>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                <label className="block min-w-0 text-xs text-stone-600">主动尝试最短间隔（分钟）
-                  <input type="number" inputMode="numeric" min={2} max={60} step={1} value={settings.proactiveSceneIntervalMinutes ?? 5} onChange={e=>{const min=Math.max(2,Math.min(60,Number(e.target.value)||2));patchSettings({proactiveSceneIntervalMinutes:min,proactiveSceneIntervalMaxMinutes:Math.max(min,settings.proactiveSceneIntervalMaxMinutes??15)});}} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/>
-                </label>
-                <label className="block min-w-0 text-xs text-stone-600">最长间隔（分钟）
-                  <input type="number" inputMode="numeric" min={2} max={60} step={1} value={settings.proactiveSceneIntervalMaxMinutes ?? 15} onChange={e=>{const max=Math.max(settings.proactiveSceneIntervalMinutes??5,Math.min(60,Number(e.target.value)||2));patchSettings({proactiveSceneIntervalMaxMinutes:max});}} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/>
-                </label>
-              </div>
-              <p className="mt-2 text-[10px] leading-relaxed text-stone-500">先等待玩家达到上面的静默时长，再按下方随机间隔尝试一次；角色主动发出的消息不会重置玩家静默计时。</p>
-              <div className="mt-3"><Toggle checked={settings.enableLifeMessageNotifications !== false} onChange={async v=>{if(v && typeof Notification!=="undefined" && Notification.permission==="default"){try{await Notification.requestPermission();}catch{/* permission prompt may be unavailable in WebView */}}patchSettings({enableLifeMessageNotifications:v});}} label="主动消息弹窗提示"/></div>
-               {/* 这里必须走安卓壳 Realtime 原生通知，不用站内 toast 做假测试。 */}
-              <p className="mt-2 text-[10px] leading-relaxed text-stone-500">此测试会通过 Supabase Realtime 向安卓壳推送 Android 系统通知栏横幅，不使用网页内横幅。通知应带有「回复行动」和「回复对话」两个系统级快捷回复入口。</p>
-              <button type="button" onClick={async () => {
-                const activeSceneForTest = stateRef.current.scenes.find(item => item.status === "active" && item.participants.some(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID));
-                if (!activeSceneForTest) { setNotice("请先进入一个包含玩家的进行中生活现场，再测试原生通知。"); return; }
-                const participant = activeSceneForTest.participants.find(item => item.ownerType === "character" && item.activity !== "离开");
-                const character = participant ? characters.find(item => item.id === participant.ownerId) : undefined;
-                if (!character) { setNotice("当前生活现场没有可用于测试的在场角色。"); return; }
-                setNotice("正在向安卓原生通知通道发送测试……");
-                try {
-                  const response = await fetch("/api/push/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "life_scene", sessionId: "life-engine-" + character.id, sceneId: activeSceneForTest.id, characterName: character.name, avatar: character.avatar || "", body: "这是一条生活现场原生通知测试。请检查是否同时出现「回复行动」和「回复对话」。" }) });
-                  const result = await response.json().catch(() => ({}));
-                  setNotice(response.ok && result.ok ? "测试通知已发往安卓壳通道。请在系统通知横幅上确认两个回复入口；若未出现，检查壳常驻通知是否显示“已连接，等待角色消息”。" : "原生通知发送失败：" + (result.error || result.message || response.status));
-                } catch (error) { setNotice("原生通知请求失败：" + (error instanceof Error ? error.message : String(error))); }
-              }} className="mt-2 w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm text-stone-700 active:opacity-70">测试安卓原生生活通知</button>
-              <p className="mt-1.5 text-[10px] leading-4 text-stone-400">需要安卓壳已连上推送通道且当前存在进行中的生活现场；这会发真实系统通知，不会写入生活记录。</p>
-            </div>
             <Toggle checked={settings.enableAmbientDetails} onChange={v=>patchSettings({enableAmbientDetails:v})} label="启用环境细节"/>
           </div>
           <div className="mt-4 rounded-2xl border border-[var(--life-accent)]/25 bg-white/70 p-4">
