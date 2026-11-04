@@ -70,6 +70,18 @@ function asString(value: unknown): string {
     return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeJsonDialogue(value: unknown): string {
+    const text = asString(value);
+    if (!text) return "";
+    const pairs: Array<[string, string]> = [["“", "”"], ["「", "」"], ["『", "』"], ['"', '"']];
+    for (const [open, close] of pairs) {
+        if (text.startsWith(open) && text.endsWith(close) && text.length >= open.length + close.length) {
+            return text.slice(open.length, -close.length).trim();
+        }
+    }
+    return text;
+}
+
 function asStringArray(value: unknown): string[] {
     if (typeof value === "string") return value.trim() ? [value.trim()] : [];
     if (!Array.isArray(value)) return [];
@@ -249,7 +261,7 @@ function parseJsonObject(raw: string): ParsedLifeOutput | null {
     let rawDialogues: unknown = record.dialogues ?? record.dialogue;
     if (typeof rawDialogues === "string") rawDialogues = [rawDialogues];
     const dialogues = Array.isArray(rawDialogues)
-        ? rawDialogues.map(asString).filter(Boolean)
+        ? rawDialogues.map(normalizeJsonDialogue).filter(Boolean)
         : [];
     const rawPlanChange = record.plan_change ?? record.planChange;
     const rawInvitation = record.invitation;
