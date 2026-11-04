@@ -186,7 +186,7 @@ function SectionTitle({ eyebrow, title, note }: { eyebrow: string; title: string
   return <div className="mb-4"><p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#a4775d]">{eyebrow}</p><h2 className="mt-1 text-xl font-semibold tracking-tight text-stone-800">{title}</h2>{note && <p className="mt-1 text-sm leading-relaxed text-stone-500">{note}</p>}</div>;
 }
 
-export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
+export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () => void; initialCharacterId?: string } = {}) {
   const closeApp = () => {
     if (onClose) { onClose(); return; }
     if (typeof window !== "undefined" && window.history.length > 1) window.history.back();
@@ -213,6 +213,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
   const [timelineImageUrls, setTimelineImageUrls] = useState<Record<string, string>>({});
   const timelineImageObjectUrlsRef = useRef<Record<string, string>>({});
   const [selectedActorKey, setSelectedActorKey] = useState("player:player");
+  const initialFocusAppliedRef = useRef<string | null>(null);
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
   const [selectedSpeakerId, setSelectedSpeakerId] = useState("");
   const [selectedLocationId, setSelectedLocationId] = useState("cafe");
@@ -541,6 +542,13 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     ...characters.map(char => ({ ownerType: "character" as const, ownerId: char.id, name: char.name, avatar: char.avatar, persona: [char.persona, char.personality, ...(char.tags ?? []), getCharacterWorldBookContext(char.id), ...state.locations.map(location => location.characterHabits?.[char.id] ? `${location.name}地点习惯：${location.characterHabits[char.id]}` : "")].filter(Boolean).join("\n") })),
   ], [characters, playerName, playerIdentity?.avatarUrl, worldBooks, bindingConfig, state.locations]);
   const selectedActor = actors.find(actor => `${actor.ownerType}:${actor.ownerId}` === selectedActorKey) ?? actors[0];
+  useEffect(() => {
+    if (!initialCharacterId || initialFocusAppliedRef.current === initialCharacterId) return;
+    if (!characters.some(character => character.id === initialCharacterId)) return;
+    initialFocusAppliedRef.current = initialCharacterId;
+    setSelectedActorKey("character:" + initialCharacterId);
+    setTab("plans");
+  }, [initialCharacterId, characters]);
   const activeScene = useMemo(() => state.scenes.find(scene => scene.status === "active") ?? state.scenes.filter(scene => scene.status === "paused").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0], [state.scenes]);
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
   // 每轮动作在生成阶段就保存为一条消息；这里不再合并多条动作记录。
