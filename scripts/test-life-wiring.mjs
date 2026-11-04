@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom] = await Promise.all([
+const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp] = await Promise.all([
   read("../components/life/life-engine-app.tsx"),
   read("../lib/life/life-runtime.ts"),
   read("../components/life/life-observation.tsx"),
@@ -17,11 +17,18 @@ const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply,
   read("../android-shell/app/src/main/java/app/floatphone/shell/MainActivity.kt"),
   read("../android-shell/app/src/main/java/app/floatphone/shell/NotificationReplyReceiver.kt"),
   read("../components/chat/chat-room.tsx"),
+  read("../components/main-app.tsx"),
 ]);
 
 assert.match(app, /if \(settings\.autoGenerateWeeklyPlans\)\s*\{\s*next = generateWeeklyLifePlan/);
 assert.match(app, /if \(liveSettings\.autoGenerateWeeklyPlans\)/);
 assert.match(app, /<LifeDiagnosticsPanel\s*\/>/);
+assert.match(mainApp, /installLifeScheduleProactiveScheduler/);
+assert.match(mainApp, /<LifeScheduleScheduler\s*\/>/);
+assert.match(mainApp, /splash-phone-screen" onClick=/);
+assert.match(scheduler, /if \(timer\) return \(\) => undefined/);
+assert.doesNotMatch(app, /splitLifeReplySegments/);
+assert.match(app, /preserveLifeDialogueSegments\(parsed\.dialogues\)/);
 assert.match(app, /life-scene-notification-reply/);
 assert.match(app, /peekPendingLifeSceneReply/);
 assert.match(app, /claimPendingLifeSceneReply/);
