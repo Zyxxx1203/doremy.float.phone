@@ -1075,7 +1075,7 @@ export async function generateImageFromConfiguredApi(params: Parameters<typeof g
   ]));
   const participantIds = ids.slice(0, 16);
   const participantNames = participantIds.map(id => id === "__user__" ? "用户本人" : characters.find(item => item.id === id)?.name || id);
-  const baseRecord: Omit<ImageGenerationCallRecord, "durationMs" | "status" | "prompt" | "usedReferenceImage"> = {
+  const baseRecord: Omit<ImageGenerationCallRecord, "durationMs" | "status" | "prompt" | "usedReferenceImage" | "referenceImageCount" | "referenceImageLabels"> = {
     id: "image-call-" + started.toString(36) + "-" + Math.random().toString(36).slice(2, 8),
     startedAt,
     appId: params.appId,
