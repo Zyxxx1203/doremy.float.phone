@@ -38,7 +38,7 @@ export const EXTRA_PROMPT_APPS: ExtraPromptAppDefinition[] = [
     { id: "adventure", label: "冒险", emptyText: "选择角色与冒险存档后点击「预览」" },
     { id: "life", label: "生活系统", snapshotOnly: true, snapshotAppIds: ["life"], emptyText: "这里展示生活系统最近一次真实 AI 请求。先进入生活现场、日程或邀约并触发一次 AI 生成，再返回此处查看完整请求消息。" },
     { id: "photo_wall", label: "照片墙", snapshotOnly: true, snapshotAppIds: ["photo_wall"], emptyText: "这里展示照片墙最近一次真实批注/涂鸦请求。先在照片墙触发一次 AI 批注或涂鸦，再返回此处查看实际请求。" },
-    { id: "checkin", label: "签到", emptyText: "点击「预览」查看当前查岗事件指导语配置。这里展示实际保存的四类指导语，不会冒充完整模型请求。" },
+    { id: "checkin", label: "签到", snapshotOnly: true, snapshotAppIds: ["checkin"], emptyText: "这里展示查岗事件触发后最近一次真实角色回应请求。请先完成一次查岗（同意、拒绝、超时或失败均可），再返回查看实际 messages、指导语和动态上下文。" },
     { id: "watch_together", label: "一起看", snapshotOnly: true, snapshotAppIds: ["watch_together"], emptyText: "这里展示一起看最近一次真实陪看/观后感请求。先在一起看触发一次角色发言或观后感生成，再返回查看。" },
     { id: "phone_widget", label: "桌面小组件", snapshotOnly: true, snapshotAppIds: ["phone_widget"], emptyText: "这里展示桌面小组件最近一次真实状态生成请求。先在小组件中触发一次 AI 状态更新，再返回查看。" },
     { id: "reality_bridge", label: "现实桥梁", snapshotOnly: true, snapshotAppIds: ["reality_bridge"], emptyText: "这里展示现实桥梁最近一次真实请求。先在现实桥梁触发一次离线回复库生成，再返回查看。" },

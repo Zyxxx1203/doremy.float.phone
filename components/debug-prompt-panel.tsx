@@ -33,7 +33,6 @@ import { previewVnPromptPayload } from "@/lib/vn-engine";
 import { loadChatOfflineTurns } from "@/lib/chat-offline-storage";
 import { buildOfflinePromptHistory } from "@/lib/offline-prompt-builder";
 import { EXTRA_PROMPT_APPS, type ExtraPromptAppId } from "@/components/debug-prompt-registry";
-import { loadCheckInGuidance } from "@/lib/screenshot/checkin-guidance";
 import { previewCheckPhonePromptPayload } from "@/lib/checkphone-engine";
 import { CHECKPHONE_APP_SPECS, type CheckPhoneAppId } from "@/lib/checkphone-config";
 import { hydrateReadingStorage, loadBooks, loadChapters, loadAnnotations } from "@/lib/reading-storage";
@@ -558,33 +557,13 @@ export function DebugPromptPanel() {
     }
 
     async function handleExtraPreview() {
-        const requiresCharacter = extraAppId !== "shopping" && extraAppId !== "checkin";
+        const requiresCharacter = extraAppId !== "shopping";
         if (requiresCharacter && !extraCharacterId) return;
         setError(null);
         setLoading(true);
         try {
             let result: PromptPreviewResult;
-            if (extraAppId === "checkin") {
-                const guidance = loadCheckInGuidance();
-                const labels: Array<[keyof typeof guidance, string]> = [
-                    ["accepted", "用户同意展示屏幕"],
-                    ["declined", "用户拒绝展示屏幕"],
-                    ["timeout", "用户未及时回应"],
-                    ["failed", "截屏或权限失败"],
-                ];
-                const content = [
-                    "【查岗事件指导语配置】",
-                    "以下内容来自用户当前保存的设置，会在对应查岗事件发生时作为一次性指导语注入角色回应；留空表示不额外干预。",
-                    ...labels.map(([key, label]) => label + "：\n" + (guidance[key].trim() || "（未设置，交由角色人设与当前上下文判断）")),
-                    "说明：这不是独立模型请求，也不包含当次完整聊天上下文；完整模型 messages 请在角色收到查岗事件并实际回应后查看「实际调用」。",
-                ].join("\n\n");
-                result = {
-                    messages: [{ role: "system", content }],
-                    characterName: "查岗事件指导语",
-                    model: "本地设置预览（不发起 AI 请求）",
-                    presetName: "签到 / 查岗",
-                };
-            } else if (extraAppId === "checkphone") {
+            if (extraAppId === "checkphone") {
                 result = await previewCheckPhonePromptPayload(extraCharacterId, checkPhoneAppId);
             } else if (extraAppId === "reading") {
                 const book = loadBooks().find(item => item.id === readingBookId);
@@ -1043,7 +1022,7 @@ export function DebugPromptPanel() {
         return (
 
         <>
-            {extraAppId !== "shopping" && extraAppId !== "checkin" && renderCharSelect(extraCharacterId, setExtraCharacterId)}
+            {extraAppId !== "shopping" && renderCharSelect(extraCharacterId, setExtraCharacterId)}
             {extraAppId === "checkphone" && (
                 <select value={checkPhoneAppId} onChange={e => setCheckPhoneAppId(e.target.value as CheckPhoneAppId | "manifest")} className="pv-select">
                     <option value="manifest">桌面清单</option>
@@ -1133,7 +1112,7 @@ export function DebugPromptPanel() {
                     </select>
                 </>
             )}
-            {renderPreviewBtn(handleExtraPreview, loading || (extraAppId !== "shopping" && extraAppId !== "checkin" && !extraCharacterId))}
+            {renderPreviewBtn(handleExtraPreview, loading || (extraAppId !== "shopping" && !extraCharacterId))}
             {renderExtraPreviewWarning()}
         </>
         );

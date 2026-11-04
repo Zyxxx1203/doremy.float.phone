@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, splashAnimation, builtinPrompts, debugPromptRegistry, debugPromptPanel, watchApp, moduleDiagnostics, runtimeDiagnostics, debugStore] = await Promise.all([
+const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, splashAnimation, builtinPrompts, debugPromptRegistry, debugPromptPanel, watchApp, moduleDiagnostics, runtimeDiagnostics, debugStore, checkinEngine, followUpService] = await Promise.all([
   read("../components/life/life-engine-app.tsx"),
   read("../lib/life/life-runtime.ts"),
   read("../components/life/life-observation.tsx"),
@@ -26,6 +26,8 @@ const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply,
   read("../components/settings/module-diagnostics.tsx"),
   read("../components/settings/runtime-diagnostics.tsx"),
   read("../lib/debug-store.ts"),
+  read("../lib/screenshot/checkin-engine.ts"),
+  read("../lib/follow-up-service.ts"),
 ]);
 
 assert.match(app, /if \(settings\.autoGenerateWeeklyPlans\)\s*\{\s*next = generateWeeklyLifePlan/);
@@ -49,7 +51,10 @@ assert.match(debugPromptPanel, /activeExtraSnapshot/);
 assert.match(debugPromptPanel, /本次真实请求允许的工具/);
 assert.match(debugPromptPanel, /getDebugPromptSnapshotByApp/);
 assert.match(debugStore, /_promptSnapshotsByApp\.set/);
-assert.match(debugPromptPanel, /loadCheckInGuidance/);
+assert.match(debugPromptRegistry, /id: "checkin", label: "签到", snapshotOnly: true, snapshotAppIds: \["checkin"\]/);
+assert.match(checkinEngine, /appId: "checkin"/);
+assert.match(followUpService, /appId: options\?\.appId/);
+assert.match(followUpService, /appTags: options\?\.appTags/);
 assert.match(watchApp, /frameOverride !== undefined/);
 assert.match(watchApp, /framePromise/);
 assert.match(watchApp, /watch_last_diagnostics_report_v1/);

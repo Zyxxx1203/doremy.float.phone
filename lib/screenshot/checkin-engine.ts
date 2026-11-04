@@ -166,10 +166,11 @@ export async function runCheckIn(
       // 用户可给这次结果写一句反应指导语（设置 → 截屏 → 主动查岗）。
       // 只随本轮请求送出、不落库——否则后面每一轮都会重新看到它。
       const acceptedGuidance = [resolveCheckInGuidance("accepted", name), buildCheckInLifeContextNote(characterId)].filter(Boolean).join("\n\n");
-      void requestBackgroundChatReply(
-        sessionId,
-        acceptedGuidance ? { ephemeralSystemNote: acceptedGuidance } : undefined,
-      ).catch(() => undefined);
+      void requestBackgroundChatReply(sessionId, {
+        ephemeralSystemNote: acceptedGuidance || undefined,
+        appId: "checkin",
+        appTags: ["checkin", "screenshot", "accepted"],
+      }).catch(() => undefined);
       return { ok: true, accepted: true };
     } catch {
       return { ok: false, reason: "图片没能保存，这次没发出去" };
@@ -196,10 +197,11 @@ export async function runCheckIn(
   // 三种失败结果各自可配指导语，同样只随本轮请求送出。
   const guidanceKind = declined ? "declined" : timedOut ? "timeout" : "failed";
   const guidance = [resolveCheckInGuidance(guidanceKind, name), buildCheckInLifeContextNote(characterId)].filter(Boolean).join("\n\n");
-  void requestBackgroundChatReply(
-    sessionId,
-    guidance ? { ephemeralSystemNote: guidance } : undefined,
-  ).catch(() => undefined);
+  void requestBackgroundChatReply(sessionId, {
+    ephemeralSystemNote: guidance || undefined,
+    appId: "checkin",
+    appTags: ["checkin", "screenshot", guidanceKind],
+  }).catch(() => undefined);
   return { ok: true, accepted: false, reason: outcome.reason };
 }
 

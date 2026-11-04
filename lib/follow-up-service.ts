@@ -244,7 +244,7 @@ export function scheduleFollowUp(sessionId: string, count: number, stateValues?:
 
 export async function requestBackgroundChatReply(
     sessionId: string,
-    options?: { ephemeralSystemNote?: string; channel?: ChatChannel },
+    options?: { ephemeralSystemNote?: string; channel?: ChatChannel; appId?: string; appTags?: string[] },
 ): Promise<{ ok: boolean; skipped?: string }> {
     if (backgroundReplyFiringSet.has(sessionId)) return { ok: false, skipped: "already_running" };
     const session = loadChatSessions().find(s => s.id === sessionId);
@@ -262,7 +262,8 @@ export async function requestBackgroundChatReply(
             session,
             latestMessages,
             {
-                appTags: session.isGroup ? undefined : ["chat", "text"],
+                appId: options?.appId,
+                appTags: options?.appTags ?? (session.isGroup ? undefined : ["chat", "text"]),
                 signal: backgroundController.signal,
                 // 定时查岗等事件可带一句「该怎么回应」，只作用于这一轮
                 ephemeralSystemNote: options?.ephemeralSystemNote,
