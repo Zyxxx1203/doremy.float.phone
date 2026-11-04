@@ -1297,8 +1297,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
       if (isFirstSceneEntry && actualCharacters.length) next = appendLifeTimelineEntry(next, { category: "scene", title: "在" + destination.name + "遇见了" + actualCharacters.map(char=>char.name).join("、"), actorName: playerName, locationName: destination.name, sceneId: scene.id });
     }
     commit(next);
-    if (!actualCharacters.length) {
-      setNotice(settings.enableCoincidences ? "你来到了" + destination.name + "。再次打开当前场景不会重复添加记录；点击「暂时离开」后返回才会添加返回旁白。" : "你来到了" + destination.name + "。偶遇功能当前关闭，你可以独自探索这个地点。");
+    if (!actualCharacters.length) {      setNotice(settings.enableCoincidences ? "你来到了" + destination.name + "。再次打开当前场景不会重复添加记录；点击「暂时离开」后返回才会添加返回旁白。" : "你来到了" + destination.name + "。偶遇功能当前关闭，你可以独自探索这个地点。");
     } else {
       const noticed = participants.filter(p => p.ownerType === "character" && p.awarenessByActorId.player === "aware").length;
       setNotice(noticed ? "你来到了" + destination.name + "，有角色注意到了你。" : "你来到了" + destination.name + "；有人在场，但暂时没人明确注意到你。");
@@ -2597,8 +2596,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     setInviteCharacterId(invite.characterId);
     setInviteActivity(invite.activity);
     setInviteReason(invite.reason ?? "");
-    setInviteLocationId(invite.locationId ?? stateRef.current.locations.find(location => location.name === invite.locationName)?.id ?? "cafe");
-    const d = new Date(invite.proposedAt);
+    setInviteLocationId(invite.locationId ?? stateRef.current.locations.find(location => location.name === invite.locationName)?.id ?? "cafe");    const d = new Date(invite.proposedAt);
     if (Number.isFinite(d.getTime())) {
       setInviteAt(new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16));
       setInviteAtEdited(true);
@@ -3560,7 +3558,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           <p className="mt-2 text-[11px] leading-relaxed text-stone-500">{proactiveStatus ? "最近云端预约提交回执（不代表后台已执行或通知已送达）：" + (proactiveStatus.ok ? "已挂上" : "未挂上：" + (proactiveStatus.reason || "未知原因")) + " · " + proactiveStatus.character + " · " + new Date(proactiveStatus.at).toLocaleString("zh-CN") : "还没有主动消息挂载回执；点“现在挂起”或等待自动调度。"}</p>
           <div className="mt-4 border-t border-[#e6d5c4] pt-3">
             <p className="text-sm font-semibold text-stone-800">AI 日程指导 · 先预览再保存</p>
-            <p className="mt-1 text-xs leading-relaxed text-stone-500">选择安排对象，用自然语言描述要求。AI 会读取该对象现有七日日程，只生成待确认的新安排，不会直接覆盖旧日程。</p>
+            <p className="mt-1 text-xs leading-relaxed text-stone-500">选择安排对象，用自然语言描述要求。AI 会读取该对象现有七日日程，只生成待确认的新安排，不会直接覆盖旧日程；若要替换已有安排，请先在下方日程卡片中手动微调或删除，AI 不会擅自删除旧事件。</p>
             <label className="mt-3 block text-xs text-stone-500">安排对象<select value={selectedActorKey} onChange={event=>setSelectedActorKey(event.target.value)} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">{actors.map(actor=><option key={actor.ownerType+":"+actor.ownerId} value={actor.ownerType+":"+actor.ownerId}>{actor.name}{actor.ownerType==="player"?"（我）":"（角色）"}</option>)}</select></label>
             <textarea value={scheduleGuidanceText} onChange={event=>setScheduleGuidanceText(event.target.value)} rows={3} placeholder="例如：工作日晚上留一小时学习；周三下午不要安排活动；周六和我一起去公园散步。" className="mt-2 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/>
             <button type="button" onClick={()=>void generateGuidedScheduleDrafts()} disabled={guidedScheduleBusy||!scheduleGuidanceText.trim()||actors.length===0} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><Sparkles size={14}/>{guidedScheduleBusy?"AI 正在分析现有日程…":"AI 生成待确认预览"}</button>
@@ -3898,32 +3896,3 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
             </div>
           </div>
           <button onClick={()=>patchSettings({ ...DEFAULT_LIFE_ENGINE_SETTINGS })} className="mt-4 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm text-stone-600">恢复默认设置</button>
-        </section>
-      </div>}
-      {messageActionTarget && <div className="fixed inset-0 z-[100] flex items-end justify-center bg-stone-950/35 p-3 sm:items-center" onMouseDown={event => { if (event.target === event.currentTarget) setMessageActionTarget(null); }}>
-        <section role="dialog" aria-modal="true" aria-label="消息操作" className="w-full max-w-md rounded-3xl border border-white/70 bg-[#fffaf5] p-4 shadow-2xl sm:p-5">
-          <div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-xs font-medium text-[var(--life-accent)]">消息操作</p><h3 className="mt-1 text-base font-semibold text-stone-800">{messageActionTarget.speakerName || "场景消息"}</h3></div><button type="button" onClick={() => setMessageActionTarget(null)} aria-label="关闭" className="grid h-9 w-9 place-items-center rounded-full bg-white text-stone-500"><X size={18}/></button></div>
-          {messageActionMode === "menu" && <>
-            <p className="mb-4 line-clamp-3 whitespace-pre-wrap rounded-2xl bg-white/80 p-3 text-sm leading-relaxed text-stone-600">{messageActionTarget.dialogue || messageActionTarget.action || "这条记录没有对白文本。"}</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => handleMessageAction("edit")} className="flex items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-3 text-sm"><Pencil size={16}/>编辑消息</button>
-              <button type="button" onClick={() => handleMessageAction("delete")} className="flex items-center justify-center gap-2 rounded-xl border border-red-100 bg-white px-3 py-3 text-sm text-red-600"><Trash2 size={16}/>删除消息</button>
-              <button type="button" disabled={messageActionTarget.role === "system" || busy} onClick={() => handleMessageAction("regenerate")} className="col-span-2 flex items-center justify-center gap-2 rounded-xl bg-[var(--life-accent)] px-3 py-3 text-sm text-white disabled:opacity-40"><RefreshCw size={16}/>{messageActionTarget.role === "player" ? "重新生成对应角色回复" : "重新生成这条角色回复"}</button>
-            </div>
-            <p className="mt-3 text-center text-[11px] text-stone-400">删除会同步清理这条消息的时间线记录。</p>
-          </>}
-          {messageActionMode === "edit" && <>
-            <label className="mb-3 block text-sm font-medium text-stone-700">动作 / 旁白（可选）<textarea value={messageEditActionDraft} onChange={event => setMessageEditActionDraft(event.target.value)} rows={2} className="mt-2 w-full resize-y rounded-2xl border border-stone-200 bg-white p-3 text-sm leading-relaxed outline-none focus:border-[var(--life-accent)]" placeholder="编辑动作；留空会移除动作。"/></label>
-            <label className="block text-sm font-medium text-stone-700">对白内容<textarea autoFocus value={messageEditDraft} onChange={event => setMessageEditDraft(event.target.value)} rows={4} className="mt-2 w-full resize-y rounded-2xl border border-stone-200 bg-white p-3 text-sm leading-relaxed outline-none focus:border-[var(--life-accent)]" placeholder="编辑对白；留空也可以保存。"/></label>
-            <div className="mt-3 flex gap-2"><button type="button" onClick={() => setMessageActionMode("menu")} className="flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">返回</button><button type="button" onClick={saveMessageEdit} className="flex-1 rounded-xl bg-[var(--life-accent)] px-3 py-2.5 text-sm text-white">保存修改</button></div>
-          </>}
-          {messageActionMode === "delete-confirm" && <>
-            <p className="rounded-2xl bg-white/80 p-3 text-sm leading-relaxed text-stone-600">确定删除这条消息吗？关联的行动／对白时间线记录也会一起删除，此操作无法撤销。</p>
-            <div className="mt-3 flex gap-2"><button type="button" onClick={() => setMessageActionMode("menu")} className="flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">取消</button><button type="button" onClick={deleteSceneMessage} className="flex-1 rounded-xl bg-red-600 px-3 py-2.5 text-sm text-white">确认删除</button></div>
-          </>}
-        </section>
-      </div>}
-      <footer className={`mt-6 flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] opacity-55 ${immersiveScene ? "hidden" : ""}`}><span>数据保存在当前设备的 KV 数据库中</span><span>生活时钟按角色独立 · 计划不等于现实 · 场景持续保存</span></footer>
-    </div>
-  </main>;
-}
