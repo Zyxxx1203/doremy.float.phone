@@ -10,6 +10,7 @@ import { consumeServerOutbox } from "@/lib/push-outbox-client";
 import { copyTextToClipboard } from "@/lib/clipboard-utils";
 import { LifeDiagnosticsPanel } from "@/components/life/life-diagnostics-panel";
 import { ScreenshotDiagnosticsPanel } from "@/components/screenshot/diagnostics-panel";
+import { ModuleDiagnostics } from "@/components/settings/module-diagnostics";
 
 type CheckStatus = "ok" | "warn" | "fail" | "info";
 type CheckItem = { id: string; title: string; status: CheckStatus; detail: string; fix?: string };
@@ -360,5 +361,6 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
       <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>截屏与查岗 · 专项诊断</div>
       <ScreenshotDiagnosticsPanel onNotice={onNotice} />
     </section>
+    <ModuleDiagnostics />
   </div>;
 }
