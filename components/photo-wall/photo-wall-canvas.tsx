@@ -385,7 +385,9 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     const existing = side === "back" ? (photo.backDoodles ?? []) : (photo.doodles ?? []);
     if (eraser) {
       const hit = [...existing].reverse().find(doodle => {
-        const threshold = doodle.kind === "sticker" ? 0.05 : 0.035;
+        const threshold = doodle.kind === "sticker"
+          ? Math.max(0.035, resolveStickerSize(doodle, DEFAULT_PHOTO_STICKER_SIZE) * 0.65 / 240)
+          : 0.035;
         return doodle.points.some(item => Math.hypot(item.x - point.x, item.y - point.y) < threshold);
       });
       if (hit) onChangeDoodles(photo.id, existing.filter(item => item.id !== hit.id), side);
@@ -439,7 +441,10 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     const hit = [...wallDoodles].reverse().find(doodle => {
       if (doodle.kind === "sticker") {
         const center = doodle.points[0];
-        return center ? Math.hypot(center.x - point.x, center.y - point.y) < 0.035 : false;
+        if (!center) return false;
+        const dx = (center.x - point.x) * (wallWorld?.width ?? 2400);
+        const dy = (center.y - point.y) * (wallWorld?.height ?? 3000);
+        return Math.hypot(dx, dy) <= resolveStickerSize(doodle, DEFAULT_WALL_STICKER_SIZE) * 0.65;
       }
       return doodle.points.some(item => Math.hypot(item.x - point.x, item.y - point.y) < 0.02);
     });
@@ -547,8 +552,6 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
       {/* 贴纸用独立 HTML 图层：固定宽高比，不随画布宽高比拉伸。 */}
       <div className="pointer-events-none absolute inset-0" style={{ zIndex: 10000 }} aria-hidden="true">
         {wallDoodles.filter(doodle => doodle.kind === "sticker").map(doodle => {
-          const x = doodle.points[0]?.x ?? 0.5;
-          const y = doodle.points[0]?.y ?? 0.5;
           const size = resolveStickerSize(doodle, DEFAULT_WALL_STICKER_SIZE);
           return <PhotoWallSticker key={doodle.id} doodle={doodle} size={size} />;
         })}
@@ -818,8 +821,6 @@ function WallPhotoFrame({ photo, placement, canvasZoom, selected, flipped, place
 
       <div className="pointer-events-none absolute inset-0 z-20" aria-hidden="true">
         {visibleDoodles.filter(doodle => doodle.kind === "sticker").map(doodle => {
-          const x = doodle.points[0]?.x ?? 0.5;
-          const y = doodle.points[0]?.y ?? 0.5;
           const size = resolveStickerSize(doodle, DEFAULT_PHOTO_STICKER_SIZE) * placement.scale;
           return <PhotoWallSticker key={doodle.id} doodle={doodle} size={size} />;
         })}
