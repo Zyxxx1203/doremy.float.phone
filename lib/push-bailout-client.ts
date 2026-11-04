@@ -66,7 +66,8 @@ function resolveNotifyAvatar(sessionId: string | undefined): string | undefined 
     try {
         const session = loadChatSessions().find(s => s.id === sessionId);
         if (!session || session.isGroup) return undefined;
-        const avatar = loadCharacters().find(c => c.id === session.contactId)?.avatar;
+        const characterId = resolveSessionCharacterId(session);
+        const avatar = characterId ? loadCharacters().find(c => c.id === characterId)?.avatar : undefined;
         if (typeof avatar !== "string") return undefined;
         const trimmed = avatar.trim();
         if (!trimmed || trimmed.length > NOTIFY_AVATAR_MAX_CHARS) return undefined;
@@ -745,7 +746,7 @@ export async function armTimedWakeBailout(schedule: TimedWakeSchedule): Promise<
         if (!(await hasAccountPushSubscription())) return { ok: false, reason: "当前账号没有可用的离线推送订阅" };
         if (isWithinPushQuietHours(schedule.fireAt)) return { ok: false, reason: "触发时间落在推送安静时段内" };
         const session = loadChatSessions().find(s => s.id === schedule.sessionId);
-        if (!session || session.isGroup || session.contactId !== schedule.characterId) return { ok: false, reason: "找不到对应的单聊会话" };
+        if (!session || session.isGroup || resolveSessionCharacterId(session) !== schedule.characterId) return { ok: false, reason: "找不到对应的单聊会话" };
         const history = loadChatMessages(session.id);
         const elapsedMinutes = resolveTimedWakeElapsedMinutes(schedule, history);
 
@@ -811,14 +812,15 @@ export async function armPeriodCareBailouts(): Promise<void> {
             if (isWithinPushQuietHours(executeAtMs)) return;
 
             const sessions = loadChatSessions()
-                .filter(session => !session.isGroup && config.periodCareCharacterIds.includes(session.contactId))
+                .filter(session => !session.isGroup && config.periodCareCharacterIds.includes(resolveSessionCharacterId(session) || ""))
                 .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
             const seen = new Set<string>();
             for (const session of sessions) {
-                if (seen.has(session.contactId)) continue;
-                seen.add(session.contactId);
-                if (hasMenstrualPeriodCareTriggered(session.contactId, event.cycleKey)) continue;
-                const characterName = loadCharacters().find(c => c.id === session.contactId)?.name ?? "小手机";
+                const characterId = resolveSessionCharacterId(session);
+                if (!characterId || seen.has(characterId)) continue;
+                seen.add(characterId);
+                if (hasMenstrualPeriodCareTriggered(characterId, event.cycleKey)) continue;
+                const characterName = loadCharacters().find(c => c.id === characterId)?.name ?? "小手机";
                 const history = loadChatMessages(session.id);
                 const { llmMessages, config: apiConfig, preset, regexes, userIdentity } = await buildChatPromptMessages(
                     session,
@@ -832,7 +834,7 @@ export async function armPeriodCareBailouts(): Promise<void> {
                     return { url: req.url, headers: req.headers, body: req.body, providerKind: req.providerKind };
                 }, apiConfig.enableImageRecognition === true);
                 await postBailoutJob({
-                    triggerKey: `periodcare:${session.contactId}:${event.cycleKey}`,
+                    triggerKey: `periodcare:${characterId}:${event.cycleKey}`,
                     kind: "timed_task",
                     executeAtMs,
                     request,
@@ -847,7 +849,7 @@ export async function armPeriodCareBailouts(): Promise<void> {
                         appId: "chat",
                         appTags: ["chat", "text", "period_care"],
                         armAt: new Date(executeAtMs).toISOString(),
-                        periodCare: { characterId: session.contactId, cycleKey: event.cycleKey },
+                        periodCare: { characterId, cycleKey: event.cycleKey },
                     },
                 });
             }
@@ -1019,7 +1021,7 @@ export async function stopCharacterScheduledActivity(
     let localCleared = 0;
     try {
         // ① 追问 / 回复兜底：按会话撤（它们的键里带的是 sessionId，不是角色 id）
-        const sessions = loadChatSessions().filter(session => !session.isGroup && session.contactId === characterId);
+        const sessions = loadChatSessions().filter(session => !session.isGroup && resolveSessionCharacterId(session) === characterId);
         for (const session of sessions) {
             await cancelBailoutPrefix(`followup:${session.id}:`);
             await deleteScheduledJob(`reply:${session.id}`);
