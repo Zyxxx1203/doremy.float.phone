@@ -933,7 +933,9 @@ export async function generateImageFromConfiguredApi(params: {
   {
     // Identity references are automatic by default; only an explicit per-image opt-out disables them.
     // Primary character is first. This ensures the current chat speaker's identity remains the anchor.
-    const referenceCharacterIds = settings.referenceImageMode === "current"
+    // "current" is a single-speaker shortcut only for one-person images.
+    // Explicit multi-character scenes must retain every participant's identity reference.
+    const referenceCharacterIds = settings.referenceImageMode === "current" && involvedCharacterIds.length <= 1
       ? involvedCharacterIds.slice(0, 1)
       : involvedCharacterIds;
     for (const characterId of referenceCharacterIds) {
