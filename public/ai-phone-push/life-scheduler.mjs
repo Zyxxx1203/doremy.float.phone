@@ -315,7 +315,11 @@ Deno.serve(async (req: Request) => {
         summary.skipped += 1;
         continue; // Client published a newer snapshot while this invocation was starting.
       }
-      const enabled = snapshot.enabled !== false && snapshot.autonomyEnabled !== false && snapshot.proactiveEnabled !== false;
+      // The cloud life engine and user-visible proactive messaging are separate switches.
+      // Schedule/location evaluation must continue even when proactive messages are disabled.
+      const lifeEnabled = snapshot.enabled !== false && snapshot.autonomyEnabled !== false;
+      const proactiveEnabled = snapshot.proactiveEnabled !== false;
+      const enabled = lifeEnabled && proactiveEnabled;
       // Remove old finite-repeat children created by earlier life-scene releases.
       // The unsuffixed schedule row is retained and reused; '+' rows are obsolete history.
       const legacyJobsResponse = await rest(
@@ -341,7 +345,7 @@ Deno.serve(async (req: Request) => {
       const hasSubscription = subscriptionResponse.ok && (await subscriptionResponse.json() as unknown[]).length > 0;
       if (!hasSubscription && enabled && needsSubscription) {
         await writeDiagnostic(row.user_id, "life-scheduler:subscription", "warning", "life_push_subscription_missing",
-          "云端生活日程已保存，但当前个人云没有可用的 Web Push / Android 壳订阅，角色主动消息无法投递。",
+          "云端生活日程仍会持续计算；当前没有可用推送订阅，因此角色主动消息会写入云端回传箱，但无法实时通知。",
           "重新打开小手机并在设置中启用离线推送；Android 壳需要先成功建立常驻通知长连接。");
       } else if (hasSubscription || !enabled || !needsSubscription) {
         await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent("life-scheduler:subscription")}`, {
@@ -376,11 +380,13 @@ Deno.serve(async (req: Request) => {
             playerSleeping ? nextAwake(snapshot, "player", "player", now) : now,
             characterSleeping ? nextAwake(snapshot, "character", characterId, now) : now,
           );
-          const nextRun = !enabled || !hasSubscription ? null
+          const chatLeaseJustEnded = previous?.last_status === "chat_active" && !chatActive;
+          const nextRun = !enabled
+            ? null
             : playerSleeping || characterSleeping ? iso(awakeAt)
             : chatActive ? iso(chatUntil + 15_000)
             : !samePlace ? iso(nextOverlap(snapshot, characterId, now))
-            : changed ? null
+            : changed || chatLeaseJustEnded ? null
             : previous?.next_run_at || null;
           const transition = Math.min(
             nextTransition(snapshot, "player", "player", now) ?? Number.POSITIVE_INFINITY,
@@ -392,7 +398,7 @@ Deno.serve(async (req: Request) => {
             activity, location_id: currentLocationId, location_name: currentLocationName,
             player_activity: player.activity, player_location_id: player.id, player_location_name: player.name,
             next_transition_at: Number.isFinite(transition) ? iso(transition) : null,
-            next_run_at: nextRun, last_status: !enabled ? "disabled" : !hasSubscription ? "no_subscription" : !samePlace ? "not_co_located" : characterSleeping || playerSleeping ? "sleeping" : chatActive ? "chat_active" : "ready",
+            next_run_at: nextRun, last_status: !lifeEnabled ? "autonomy_disabled" : !proactiveEnabled ? "proactive_disabled" : !hasSubscription ? "notification_unavailable" : !samePlace ? "not_co_located" : characterSleeping || playerSleeping ? "sleeping" : chatActive ? "chat_active" : "ready",
             last_error: null, updated_at: new Date().toISOString(),
           });
           summary.evaluated += 1;
@@ -419,6 +425,22 @@ Deno.serve(async (req: Request) => {
             continue;
           }
           if (job.status === "pending" || job.status === "running") {
+            // If the user leaves a direct chat before its lease expires, pull a deferred
+            // life prompt forward instead of waiting for the stale lease timestamp.
+            if (job.status === "pending" && !chatActive && samePlace && !characterSleeping && !playerSleeping
+              && /direct chat is active; deferred until/i.test(job.result_note || "")) {
+              const resumedAt = now + jitterInterval(snapshot);
+              const resumed = await rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}&status=eq.pending`, {
+                method: "PATCH", body: JSON.stringify({
+                  execute_at: iso(resumedAt),
+                  result_note: "life schedule: direct chat ended; resumed deferred task",
+                  updated_at: new Date().toISOString(),
+                }),
+              });
+              if (!resumed.ok) throw new Error("life job resume after chat failed: " + resumed.status);
+              runtimeUpdates[runtimeUpdates.length - 1].next_run_at = iso(resumedAt);
+              runtimeUpdates[runtimeUpdates.length - 1].last_status = hasSubscription ? "ready" : "notification_unavailable";
+            }
             const overdueBy = now - parseTime(job.execute_at);
             const runningFor = now - parseTime(job.updated_at);
             if (job.status === "pending" && Number.isFinite(overdueBy) && overdueBy > 5 * 60_000) {
@@ -468,7 +490,7 @@ Deno.serve(async (req: Request) => {
               method: "PATCH", body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
             }).catch(() => undefined);
           }
-          if (!hasSubscription || !samePlace || characterSleeping || playerSleeping || chatActive) continue;
+          if (!samePlace || characterSleeping || playerSleeping || chatActive) continue;
           const nextRunAt = parseTime(previous?.next_run_at);
           if (Number.isFinite(nextRunAt) && nextRunAt > now) continue;
           const executeAt = now + jitterInterval(snapshot);
