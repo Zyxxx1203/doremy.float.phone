@@ -4,6 +4,7 @@ import vm from "node:vm";
 import ts from "typescript";
 
 const source = readFileSync(new URL("../lib/life/life-scheduler-coordinator.ts", import.meta.url), "utf8");
+const proactive = readFileSync(new URL("../lib/life/life-proactive-scheduler.ts", import.meta.url), "utf8");
 const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
@@ -46,5 +47,10 @@ setOnlineChatForegroundLease("char-a", "chat-a", true);
 assert.equal(readOnlineChatForegroundLease(Date.now() + 91_000), null, "a stale direct-chat lease must expire");
 assert.equal(dispatchedEvents.length, 8, "every scene/chat lease mutation must notify the cloud snapshot scheduler");
 assert.ok(dispatchedEvents.every(type => type === LIFE_PRESENCE_LEASE_UPDATED_EVENT), "lease notifications must use the shared event");
+assert.match(proactive, /LIFE_PRESENCE_LEASE_UPDATED_EVENT, onScheduleChanged/);
+assert.match(proactive, /parsed\.cloudManaged === true && .*armed.*true/);
+assert.match(proactive, /if \(result\.ok\) \{\s*try \{ localStorage\.setItem\(ARM_META_PREFIX \+ trigger, JSON\.stringify\(\{ executeAt: executeAtMs, cloudManaged: true, armed: true \}\)\)/);
+const armHelper = proactive.slice(proactive.indexOf("function nextArmAt"), proactive.indexOf("const armedCache"));
+assert.doesNotMatch(armHelper, /localStorage\.setItem/, "the local arm marker must not be committed before the server acknowledges the job");
 
 console.log("Life scheduler coordinator tests passed.");
