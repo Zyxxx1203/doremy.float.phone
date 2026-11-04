@@ -4,6 +4,11 @@
  * against this lease and remain queued for abrupt WebView termination.
  */
 export const LIFE_SCENE_FOREGROUND_LEASE_KEY = "life-scene-foreground-lease-v1";
+export const LIFE_PRESENCE_LEASE_UPDATED_EVENT = "life-presence-lease-updated";
+
+function notifyPresenceLeaseUpdated(): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(LIFE_PRESENCE_LEASE_UPDATED_EVENT));
+}
 
 export type LifeSceneForegroundLease = {
   sceneId: string;
@@ -21,6 +26,8 @@ export function setLifeSceneForegroundLease(sceneId: string, active: boolean): v
     }
   } catch {
     // Storage can be unavailable in restricted WebViews; in that case foreground arbitration degrades.
+  } finally {
+    notifyPresenceLeaseUpdated();
   }
 }
 
@@ -60,6 +67,8 @@ export function setOnlineChatForegroundLease(characterId: string, sessionId: str
     }
   } catch {
     // The lease is advisory; character-wide local turn arbitration still protects live replies.
+  } finally {
+    notifyPresenceLeaseUpdated();
   }
 }
 
