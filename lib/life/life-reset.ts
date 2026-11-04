@@ -32,5 +32,6 @@ export async function resetLifeSystemData(): Promise<void> {
   clearLifeProactiveSchedulerLocalState();
   resetVirtualLifeState();
   try { localStorage.removeItem(LIFE_SCENE_FOREGROUND_LEASE_KEY); } catch { /* best effort */ }
+  try { localStorage.removeItem("life-scene-pending-banner-v1"); } catch { /* best effort */ }
   window.dispatchEvent(new Event("life-presence-lease-updated"));
 }
