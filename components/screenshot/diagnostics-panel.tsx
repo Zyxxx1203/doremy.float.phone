@@ -204,7 +204,7 @@ export function ScreenshotDiagnosticsPanel({ onNotice }: { onNotice?: (msg: stri
           {inShell && checkIn?.systemAccessibilityEnabled === true && checkIn.screenshot?.accessibilityOn === false ? (
             <div role="alert" className="per-note is-warn" style={{ margin: "8px 0 10px" }}>
               <b>系统开关已开启，但无障碍服务实例未连接。</b>
-              <p style={{ marginTop: 4 }}>这通常表示无障碍服务进程被系统/厂商后台策略回收，或服务异常断开；此时查岗截屏无法工作。请重新打开无障碍设置，关闭后重新开启“小手机通话控制服务”，再返回这里点“重新检测”；同时把小手机设为允许后台运行，并按机型关闭电池优化/允许自启动。</p>
+              <p style={{ marginTop: 4 }}>这通常表示无障碍服务进程被系统/厂商后台策略回收，或服务异常断开；此时查岗截屏无法工作。请重新打开无障碍设置，关闭后重新开启“通话浮窗与界面陪伴”，再返回这里点“重新检测”；同时把小手机设为允许后台运行，并按机型关闭电池优化/允许自启动。</p>
               <button type="button" className="ui-btn ui-btn-outline" style={{ marginTop: 8 }} onClick={openNativeAccessibilitySettings}>打开无障碍设置</button>
             </div>
           ) : null}
