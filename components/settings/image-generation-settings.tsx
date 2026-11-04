@@ -18,6 +18,8 @@ import {
     fetchNovelAiModels,
     filterLikelyImageModels,
     generateImageFromConfiguredApi,
+    loadImageGenerationCallRecords,
+    clearImageGenerationCallRecords,
 } from "@/lib/image-generation-service";
 import { Alert } from "@/components/ui/feedback";
 import { Input, Select, Textarea, Toggle } from "@/components/ui/form";
@@ -94,6 +96,7 @@ export function ImageGenerationSettings() {
     const [testPreviewUrl, setTestPreviewUrl] = useState<string | null>(null);
     const [pendingDeletePresetId, setPendingDeletePresetId] = useState<string | null>(null);
     const [pendingDeleteOpenAiPresetId, setPendingDeleteOpenAiPresetId] = useState<string | null>(null);
+    const [imageCallRecords, setImageCallRecords] = useState(loadImageGenerationCallRecords);
     const openaiPresets = useMemo<OpenAiImagePreset[]>(() => (
         settings.openaiPresets?.length ? settings.openaiPresets : [{
             id: "preset_openai_default",
@@ -111,6 +114,13 @@ export function ImageGenerationSettings() {
         ? settings.activeOpenAiPresetId
         : openaiPresets[0].id;
     const activeOpenAiPreset = openaiPresets.find(p => p.id === activeOpenAiPresetId) || openaiPresets[0];
+
+    useEffect(() => {
+        const refresh = () => setImageCallRecords(loadImageGenerationCallRecords());
+        window.addEventListener("image-generation-diagnostics-updated", refresh);
+        refresh();
+        return () => window.removeEventListener("image-generation-diagnostics-updated", refresh);
+    }, []);
 
     useEffect(() => {
         // Sync the ratio hint to the saved size on load, so the hint is present
@@ -925,6 +935,33 @@ export function ImageGenerationSettings() {
                         className="max-h-[220px] max-w-full self-start rounded-xl border border-[var(--c-card-border)] object-contain"
                     />
                 )}
+            </div>
+
+            <div className="flex flex-col gap-2">
+                <p className="settings-menu-section-title">生图 API 调用记录</p>
+                <div className="menu-group p-3 flex flex-col gap-3">
+                    <div className="flex items-center justify-between gap-2">
+                        <span className="menu-desc">本机保存最近 80 次请求；不记录 API Key 或请求头。</span>
+                        <button type="button" onClick={() => { clearImageGenerationCallRecords(); setImageCallRecords([]); }} className="shrink-0 rounded-lg border border-[var(--c-card-border)] px-2 py-1 text-xs">清空</button>
+                    </div>
+                    {imageCallRecords.length === 0 ? <p className="py-3 text-center text-xs opacity-60">暂无生图调用记录。</p> : imageCallRecords.slice(0, 20).map(record => (
+                        <details key={record.id} className="rounded-xl border border-[var(--c-card-border)] bg-[var(--c-card)] p-3">
+                            <summary className="cursor-pointer list-none">
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="text-xs font-semibold">{record.status === "success" ? "成功" : record.status === "failed" ? "失败" : "未执行"} · {record.appId || "未标记 APP"}</span>
+                                    <span className="text-[10px] opacity-60">{new Date(record.startedAt).toLocaleString()} · {(record.durationMs / 1000).toFixed(1)}s</span>
+                                </div>
+                                <p className="mt-1 break-all text-[11px] opacity-75">{record.provider} / {record.model} · {record.participantNames.join("、") || "未指定角色"} · {record.usedReferenceImage ? "使用参考图" : "未使用参考图"}</p>
+                            </summary>
+                            <div className="mt-3 space-y-2 text-[11px]">
+                                <p>角色 ID：{record.participantIds.join(", ") || "无"}</p>
+                                <p>参考图模式：{record.referenceImageMode}</p>
+                                {record.error && <p className="break-words text-rose-600">错误：{record.error}</p>}
+                                <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/5 p-2">{record.prompt}</pre>
+                            </div>
+                        </details>
+                    ))}
+                </div>
             </div>
 
             <div className="flex flex-col gap-2">
