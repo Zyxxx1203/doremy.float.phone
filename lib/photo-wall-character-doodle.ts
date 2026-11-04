@@ -1,4 +1,5 @@
 import { createPhotoWallId, type PhotoWallDoodle } from "@/lib/photo-wall-storage";
+import { stickerSizeFromBrushWidth } from "@/lib/photo-wall-doodle-sizing";
 
 const ALLOWED_STICKERS = new Set(["♡", "❤", "✦", "✿", "☾", "☘", "♪", "★", "❀", "✧"]);
 
@@ -37,6 +38,7 @@ export function parseCharacterWallDoodles(response: string, artist: CharacterArt
       points?: unknown;
       color?: unknown;
       width?: unknown;
+      size?: unknown;
     };
     const color = typeof item.color === "string" && /^#[0-9a-f]{6}$/i.test(item.color)
       ? item.color
@@ -55,6 +57,9 @@ export function parseCharacterWallDoodles(response: string, artist: CharacterArt
         content: item.content,
         color,
         width,
+        size: typeof item.size === "number" && Number.isFinite(item.size)
+          ? Math.min(360, Math.max(8, item.size))
+          : stickerSizeFromBrushWidth(3),
         points: [{ x, y }],
         createdAt,
         authorType: "character",
