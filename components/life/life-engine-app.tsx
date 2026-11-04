@@ -68,7 +68,12 @@ const INITIAL_LOCATIONS: LifeLocation[] = [
 ];
 const id = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 function createLifeVirtualSession(characterId: string, characterName: string): ChatSession {
-  return { id: "life-engine-" + characterId, contactId: characterId, unreadCount: 0, updatedAt: new Date().toISOString(), isPinned: false, isGroup: false, alias: characterName };
+  // Life tasks must reference the same persisted direct-chat session used by the chat UI.
+  // ChatContact.id is not Character.id; legacy sessions may still use Character.id directly.
+  const contact = loadChatContacts().find(item => item.characterId === characterId);
+  const contactId = contact?.id || characterId;
+  const session = createOrGetSession(contactId);
+  return session.alias === characterName ? session : { ...session, alias: characterName };
 }
 
 /**
@@ -821,8 +826,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
     const candidateId = scene.participants.find(participant => participant.ownerType === "character")?.ownerId;
     const character = characters.find(item => item.id === candidateId) ?? characters[0];
     if (!character) { setNotice("没有可用的角色，无法挂起主动消息。"); return; }
-    const contact = loadChatContacts().find(item => item.characterId === character.id);
-    const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeVirtualSession(character.id, character.name);
+    const session = createLifeVirtualSession(character.id, character.name);
     const result = await armLifeSceneProactiveBailout({
       sessionId: session.id,
       sceneId: scene.id,
