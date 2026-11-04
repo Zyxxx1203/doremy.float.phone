@@ -14,7 +14,11 @@ export async function resetLifeSystemData(): Promise<void> {
     : await fetch("/api/life/reset", { method: "POST", credentials: "include", cache: "no-store" });
   const result = await response.json().catch(() => ({})) as { ok?: boolean; error?: string };
   if (!response.ok || !result.ok) {
-    throw new Error(result.error || `云端生活重置接口返回 HTTP ${response.status}`);
+    const detail = result.error || `云端生活重置接口返回 HTTP ${response.status}`;
+    if (response.status === 404 || /unknown action|not found/i.test(detail)) {
+      throw new Error(detail + "；个人云网关版本可能过旧，请重新部署个人离线推送服务后再重试。");
+    }
+    throw new Error(detail);
   }
 
   const state = loadVirtualLifeState();
