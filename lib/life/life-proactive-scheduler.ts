@@ -91,7 +91,7 @@ async function runOnce(): Promise<void> {
           try { localStorage.removeItem(ARM_META_PREFIX + key); } catch { /* best effort */ }
           await cancelBailoutPrefix("life-scene:" + item.sceneId + ":" + item.characterId);
         }));
-        recordLifeDiagnostic({ source: "主动调度", event: "主动消息已关闭，撤销待执行任务", status: "info", detail: "生活引擎、自主行动或主动消息开关处于关闭状态；已清理相关服务端预约。", meta: { enabled: state.settings.enabled, autonomy: state.settings.enableCharacterAutonomy, proactive: state.settings.enableProactiveSceneMessages, cancelled: obsoleteJobs.length } });
+        recordLifeDiagnostic({ source: "主动调度", event: "主动消息已关闭，撤销待执行任务", status: "info", detail: "自主行动或主动消息开关已关闭；云端仍按七日日程计算角色活动与地点，本地仅清理不再需要的主动消息预约。", meta: { enabled: state.settings.enabled, autonomy: state.settings.enableCharacterAutonomy, proactive: state.settings.enableProactiveSceneMessages, cancelled: obsoleteJobs.length } });
       }
       return;
     }
