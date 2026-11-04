@@ -2359,13 +2359,14 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
                 "提示：复制前请检查是否包含隐私信息。"
               ].join("\n");
               setWatchDiagnosticReport(report);
+              try { localStorage.setItem("watch_last_diagnostics_report_v1", report); } catch { /* local-only diagnostic snapshot */ }
               onNotice?.("播放诊断已生成，可在下方查看并复制。");
             }} className="mt-3 w-full rounded-lg bg-[#c99a6a] px-3 py-2.5 text-[11px] font-medium text-[#2a1f16]">生成播放诊断报告</button>
             {watchDiagnosticReport && <div className="mt-2">
               <textarea readOnly value={watchDiagnosticReport} aria-label="播放诊断报告" rows={8} onFocus={event => event.currentTarget.select()} className="w-full select-text rounded-lg border border-white/10 bg-black/30 p-2 text-[10px] leading-5 text-[#d8c9b6] outline-none"/>
               <div className="mt-2 flex gap-2">
                 <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(watchDiagnosticReport); onNotice?.("诊断报告已复制"); } catch { onNotice?.("自动复制不可用，请长按上方报告文本选择复制"); } }} className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#d8c9b6]">复制报告</button>
-                <button type="button" onClick={() => { try { (window as WatchNativeWindow).AndroidShell?.clearWebConsoleLogs?.(); } catch {} setWatchDiagnosticReport(""); onNotice?.("已清除可清除的控制台日志"); }} className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#d8c9b6]">清除日志并收起</button>
+                <button type="button" onClick={() => { try { (window as WatchNativeWindow).AndroidShell?.clearWebConsoleLogs?.(); } catch {} setWatchDiagnosticReport(""); try { localStorage.removeItem("watch_last_diagnostics_report_v1"); } catch {} onNotice?.("已清除可清除的控制台日志"); }} className="flex-1 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#d8c9b6]">清除日志并收起</button>
               </div>
             </div>}
           </section>
