@@ -84,6 +84,14 @@ assert.match(chatRoom, /setOnlineChatForegroundLease\(characterId, session\.id, 
 assert.match(push, /isLifeSleepActivity/);
 assert.match(push, /appendLifeScheduleContext/);
 assert.match(push, /onlineChatCharacterId === lifeSceneMeta\.characterId/);
+assert.match(scheduler, /const lifeEnabled = snapshot\.enabled !== false && snapshot\.autonomyEnabled !== false/);
+assert.match(scheduler, /const proactiveEnabled = snapshot\.proactiveEnabled !== false/);
+assert.match(scheduler, /const nextRun = !enabled/);
+assert.doesNotMatch(scheduler, /const nextRun = !enabled \|\| !hasSubscription/);
+assert.doesNotMatch(scheduler, /if \(!hasSubscription \|\| !samePlace/);
+assert.match(scheduler, /last_status: !lifeEnabled \? "autonomy_disabled" : !proactiveEnabled \? "proactive_disabled"/);
+assert.match(scheduler, /chatLeaseJustEnded = previous\?\.last_status === "chat_active" && !chatActive/);
+assert.match(scheduler, /direct chat ended; resumed deferred task/);
 assert.match(push, /daily generation cap reached/);
 assert.match(scheduler, /cloudManaged: true/);
 assert.doesNotMatch(scheduler, /remaining: 72|repeatUntil/);
