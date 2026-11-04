@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImagePlus, Plus } from "lucide-react";
 import { loadMediaObjectUrl } from "@/lib/media-cache-storage";
+import { PhotoWallSticker } from "@/components/photo-wall/photo-wall-sticker";
+import { DEFAULT_PHOTO_STICKER_SIZE, DEFAULT_WALL_STICKER_SIZE, resolveStickerSize, stickerSizeFromBrushWidth } from "@/lib/photo-wall-doodle-sizing";
 import {
   createPhotoWallId,
   type PhotoWallDoodle,
@@ -181,26 +183,7 @@ async function loadWallThumbUrl(mediaRef: string): Promise<string> {
   return task;
 }
 
-/** 可调色的心形贴纸：不再使用 ❤ emoji。 */
-const HEART_STICKER_PATH = "M0,6 C-1.4,3.8 -6,1 -6,-2 C-6,-5 -3,-6 0,-4 C3,-6 6,-5 6,-2 C6,1 1.4,3.8 0,6 Z";
 
-function StickerMark({ doodle, textSize }: { doodle: PhotoWallDoodle; textSize: number }) {
-  const x = (doodle.points[0]?.x ?? 0.5) * 100;
-  const y = (doodle.points[0]?.y ?? 0.5) * 100;
-  const isHeart = doodle.content === "heart" || doodle.content === "❤";
-  if (isHeart) {
-    return <g transform={`translate(${x} ${y}) rotate(${doodle.rotation ?? 0}) scale(${textSize / 10})`}><path d={HEART_STICKER_PATH} fill={doodle.color} /></g>;
-  }
-  return <g transform={`translate(${x} ${y}) rotate(${doodle.rotation ?? 0})`}><text x={0} y={0} fill={doodle.color} fontSize={textSize} textAnchor="middle" dominantBaseline="middle">{doodle.content}</text></g>;
-}
-
-/** 贴纸用 HTML 图层渲染，避免 SVG preserveAspectRatio=none 随画布比例拉伸变形。 */
-function StickerGlyph({ doodle, size }: { doodle: PhotoWallDoodle; size: number }) {
-  if (doodle.content === "heart" || doodle.content === "❤") {
-    return <svg width={size} height={size} viewBox="-8 -8 16 16" aria-hidden="true"><path d={HEART_STICKER_PATH} fill={doodle.color}/></svg>;
-  }
-  return <span style={{ display: "inline-block", fontSize: size, lineHeight: 1, color: doodle.color }}>{doodle.content || "✦"}</span>;
-}
 
 export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacement, onPlacementSettled, onDragBegin, onUndo, onRedo, canUndo, canRedo, onChangeDoodles, wallDoodles = [], onChangeWallDoodles, backgroundImage, backgroundBox, wallWorld, onOpenDetail, readOnly = false, fitHeight = false, canvasZoom = 1, mode: controlledMode, onModeChange, brushColor: controlledBrushColor, brushWidth: controlledBrushWidth, sticker: controlledSticker, onStickerChange, stickerRotation: controlledStickerRotation = 0, eraser: controlledEraser, onEraserChange }: Props) {
   const wallRef = useRef<HTMLDivElement>(null);
@@ -411,7 +394,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     if (sticker) {
       onChangeDoodles(photo.id, [
         ...existing,
-        { id: createPhotoWallId(), kind: "sticker", content: sticker, rotation: controlledStickerRotation, color: brushColor, width: brushWidth, points: [{ x: point.x, y: point.y }], createdAt: new Date().toISOString(), authorType: "user", authorName: "我" },
+        { id: createPhotoWallId(), kind: "sticker", content: sticker, rotation: controlledStickerRotation, color: brushColor, width: brushWidth, size: stickerSizeFromBrushWidth(brushWidth), points: [{ x: point.x, y: point.y }], createdAt: new Date().toISOString(), authorType: "user", authorName: "我" },
       ], side);
       return;
     }
@@ -472,7 +455,7 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
     const point = wallPoint(event);
     if (eraser) { eraseWallDoodleAt(point); return; }
     if (sticker) {
-      onChangeWallDoodles?.([...wallDoodles, { id: createPhotoWallId(), kind: "sticker", content: sticker, rotation: controlledStickerRotation, color: brushColor, width: brushWidth, points: [point], createdAt: new Date().toISOString(), authorType: "user", authorName: "我" }]);
+      onChangeWallDoodles?.([...wallDoodles, { id: createPhotoWallId(), kind: "sticker", content: sticker, rotation: controlledStickerRotation, color: brushColor, width: brushWidth, size: stickerSizeFromBrushWidth(brushWidth), points: [point], createdAt: new Date().toISOString(), authorType: "user", authorName: "我" }]);
       return;
     }
     (event.currentTarget as SVGSVGElement).setPointerCapture(event.pointerId);
@@ -566,8 +549,8 @@ export function PhotoWallCanvas({ photos, selectedId, onSelect, onChangePlacemen
         {wallDoodles.filter(doodle => doodle.kind === "sticker").map(doodle => {
           const x = doodle.points[0]?.x ?? 0.5;
           const y = doodle.points[0]?.y ?? 0.5;
-          const size = Math.max(14, (wallWorld?.width ?? 2400) * 0.05);
-          return <div key={doodle.id} style={{ position: "absolute", left: `${x * 100}%`, top: `${y * 100}%`, transform: `translate(-50%, -50%) rotate(${doodle.rotation ?? 0}deg)`, lineHeight: 1 }}><StickerGlyph doodle={doodle} size={size} /></div>;
+          const size = resolveStickerSize(doodle, DEFAULT_WALL_STICKER_SIZE);
+          return <PhotoWallSticker key={doodle.id} doodle={doodle} size={size} />;
         })}
       </div>
 
@@ -837,7 +820,8 @@ function WallPhotoFrame({ photo, placement, canvasZoom, selected, flipped, place
         {visibleDoodles.filter(doodle => doodle.kind === "sticker").map(doodle => {
           const x = doodle.points[0]?.x ?? 0.5;
           const y = doodle.points[0]?.y ?? 0.5;
-          return <div key={doodle.id} style={{ position: "absolute", left: `${x * 100}%`, top: `${y * 100}%`, transform: `translate(-50%, -50%) rotate(${doodle.rotation ?? 0}deg)`, lineHeight: 1 }}><StickerGlyph doodle={doodle} size={240 * placement.scale * 0.14} /></div>;
+          const size = resolveStickerSize(doodle, DEFAULT_PHOTO_STICKER_SIZE) * placement.scale;
+          return <PhotoWallSticker key={doodle.id} doodle={doodle} size={size} />;
         })}
       </div>
 
