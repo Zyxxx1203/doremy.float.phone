@@ -13,10 +13,10 @@ Weekly-generated routine slots (`source = weekly-generation`) are projected forw
 ## Execution
 
 1. The client synchronizes the encrypted schedule snapshot and creates one initial life-scene prompt row when an active scene has co-located participants and autonomy is enabled.
-2. The `ai-phone-life-schedule-evaluate` Cron runs once per minute. `life-scheduler` derives the current player/character activity and locations, checks sleep/chat/scene/autonomy gates, updates runtime state, and re-arms the existing unsuffixed `push_jobs` row in place.
+2. The `ai-phone-life-schedule-evaluate` Cron runs once per minute. `life-scheduler` derives the current player/character activity and locations and updates runtime state independently of message delivery. The master/autonomy switches control life simulation; the proactive-message switch controls only user-visible autonomous prompts. Missing push subscriptions are diagnosed as a notification limitation, not as a reason to stop schedule evaluation or durable prompt generation.
 3. The normal personal-cloud job scanner dispatches that row to `push-generate`. Life-scene payloads bypass `idleRepeat`; no `+`-suffixed child chain is created. The schema migration and scheduler retire legacy finite-repeat children.
 4. Immediately before generation, `push-generate` reads the latest encrypted snapshot and a version-matched `life_schedule_runtime` row. It defers if the snapshot is older than three minutes, rejects disabled autonomy or a stale scene/location, and injects the current activity/location into the prompt.
-5. Active direct chat and the visible foreground life scene take priority. Background life actions defer rather than block chat.
+5. Active direct chat and the visible foreground life scene take priority for message generation only. The character's schedule/activity/location evaluation continues in the cloud. A deferred chat prompt is resumed when the lease expires; if the user closes the chat early, the scheduler pulls the pending prompt forward rather than waiting for the original lease timeout.
 
 A scene/participant removal or autonomy-off update cancels the row. The same row is reused if that scene/character becomes active again; each scene/character has at most one durable task row, rather than an unbounded chain of child jobs.
 
