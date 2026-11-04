@@ -604,7 +604,7 @@ export function DebugPromptPanel() {
         try {
             let result: PromptPreviewResult;
             if (extraAppId === "life") {
-                const character = characters.find(item => item.id === previewCharacterId);
+                const character = loadCharacters().find(item => item.id === previewCharacterId);
                 if (!character) throw new Error("请先选择生活系统中的角色");
                 const state = loadVirtualLifeState();
                 const activeScene = state.scenes.find(scene =>
@@ -641,7 +641,7 @@ export function DebugPromptPanel() {
                     includeDirectChatEntries: false,
                 });
             } else if (extraAppId === "photo_wall") {
-                const character = characters.find(item => item.id === previewCharacterId);
+                const character = loadCharacters().find(item => item.id === previewCharacterId);
                 if (!character) throw new Error("请先选择照片墙中出镜的角色");
                 const wall = loadPhotoWallState();
                 if (!wall.photos.length) throw new Error("照片墙目前没有照片，先添加一张照片再预览");
@@ -689,7 +689,7 @@ export function DebugPromptPanel() {
                     attachedImages,
                 });
             } else if (extraAppId === "checkin") {
-                const character = characters.find(item => item.id === previewCharacterId);
+                const character = loadCharacters().find(item => item.id === previewCharacterId);
                 if (!character) throw new Error("请先选择查岗角色");
                 const session = createPromptPreviewSession(character.id, "checkin-preview");
                 const history = loadChatMessages(session.id);
@@ -713,15 +713,16 @@ export function DebugPromptPanel() {
                     ephemeralSystemNote: [guidance, lifeNote].filter(Boolean).join("\n\n"),
                 });
             } else if (extraAppId === "watch_together") {
-                const character = characters.find(item => item.id === previewCharacterId);
+                const character = loadCharacters().find(item => item.id === previewCharacterId);
                 if (!character) throw new Error("请先选择一起看的陪看角色");
-                let memory: {
+                type WatchPromptMemory = {
                     title?: string; platform?: string; startedAt?: string; durationSeconds?: number;
                     comments?: string[]; discussion?: Array<{ createdAt?: string; timepoint?: string; kind?: string; characterName?: string; text?: string }>;
-                } | null = null;
+                };
+                let memory: WatchPromptMemory | null = null;
                 try {
                     const raw = JSON.parse(window.localStorage.getItem("ai_phone_watch_memory_records_v1") || "[]") as unknown;
-                    memory = Array.isArray(raw) && raw[0] && typeof raw[0] === "object" ? raw[0] as typeof memory : null;
+                    memory = Array.isArray(raw) && raw[0] && typeof raw[0] === "object" ? raw[0] as WatchPromptMemory : null;
                 } catch { memory = null; }
                 const session = createPromptPreviewSession(character.id, "watch-together");
                 const history = loadChatMessages(session.id).slice(-8).filter(item => item.status !== "failed" && !item.isRetracted);
@@ -783,7 +784,7 @@ export function DebugPromptPanel() {
                     appId: "phone_widget", appTags: ["phone_widget", "status"],
                 });
             } else if (extraAppId === "reality_bridge") {
-                const character = characters.find(item => item.id === previewCharacterId);
+                const character = loadCharacters().find(item => item.id === previewCharacterId);
                 if (!character) throw new Error("请先选择现实桥规则绑定的角色");
                 const rule = loadBridgeRules().find(item => item.actions.chat?.characterId === character.id);
                 if (!rule) throw new Error("现实桥还没有绑定这个角色的规则；先在现实桥规则中选择该角色，再回来预览");
