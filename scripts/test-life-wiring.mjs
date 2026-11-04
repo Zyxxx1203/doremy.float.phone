@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, builtinPrompts, debugPromptRegistry, debugPromptPanel, watchApp, moduleDiagnostics, runtimeDiagnostics] = await Promise.all([
+const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, builtinPrompts, debugPromptRegistry, debugPromptPanel, watchApp, moduleDiagnostics, runtimeDiagnostics, debugStore] = await Promise.all([
   read("../components/life/life-engine-app.tsx"),
   read("../lib/life/life-runtime.ts"),
   read("../components/life/life-observation.tsx"),
@@ -24,6 +24,7 @@ const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply,
   read("../components/watch-together-app.tsx"),
   read("../components/settings/module-diagnostics.tsx"),
   read("../components/settings/runtime-diagnostics.tsx"),
+  read("../lib/debug-store.ts"),
 ]);
 
 assert.match(app, /if \(settings\.autoGenerateWeeklyPlans\)\s*\{\s*next = generateWeeklyLifePlan/);
@@ -43,6 +44,8 @@ for (const appId of ["life", "photo_wall", "checkin", "watch_together", "phone_w
 }
 assert.match(debugPromptPanel, /activeExtraSnapshot/);
 assert.match(debugPromptPanel, /本次真实请求允许的工具/);
+assert.match(debugPromptPanel, /getDebugPromptSnapshotByApp/);
+assert.match(debugStore, /_promptSnapshotsByApp\.set/);
 assert.match(debugPromptPanel, /loadCheckInGuidance/);
 assert.match(watchApp, /frameOverride !== undefined/);
 assert.match(watchApp, /framePromise/);
