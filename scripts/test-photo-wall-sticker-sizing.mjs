@@ -23,6 +23,7 @@ assert.match(storage, /size\?: number/);
 assert.match(storage, /raw\.size/);
 assert.match(exportSource, /resolveStickerSize\(doodle, DEFAULT_WALL_STICKER_SIZE\)/);
 assert.match(exportSource, /resolveStickerSize\(doodle, DEFAULT_PHOTO_STICKER_SIZE\)/);
+assert.doesNotMatch(exportSource, /frameWidth \* 0\.16|frameWidth \* 0\.18|width \* 0\.05/);
 assert.match(app, /贴纸大小/);
 assert.match(app, /stickerSizeFromBrushWidth\(width\)/);
 
