@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp] = await Promise.all([
+const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, builtinPrompts] = await Promise.all([
   read("../components/life/life-engine-app.tsx"),
   read("../lib/life/life-runtime.ts"),
   read("../components/life/life-observation.tsx"),
@@ -18,6 +18,7 @@ const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply,
   read("../android-shell/app/src/main/java/app/floatphone/shell/NotificationReplyReceiver.kt"),
   read("../components/chat/chat-room.tsx"),
   read("../components/main-app.tsx"),
+  read("../lib/builtin-app-prompts.ts"),
 ]);
 
 assert.match(app, /if \(settings\.autoGenerateWeeklyPlans\)\s*\{\s*next = generateWeeklyLifePlan/);
@@ -29,6 +30,9 @@ assert.match(mainApp, /splash-phone-screen" onClick=/);
 assert.match(scheduler, /if \(timer\) return \(\) => undefined/);
 assert.doesNotMatch(app, /splitLifeReplySegments/);
 assert.match(app, /preserveLifeDialogueSegments\(parsed\.dialogues\)/);
+assert.match(builtinPrompts, /没有对白也没有动作时，仍输出严格 JSON 对象/);
+assert.match(builtinPrompts, /不得连续两轮纯行动/);
+assert.match(builtinPrompts, /实际附带截图时，可以描述截图中确实可见的内容/);
 assert.match(app, /life-scene-notification-reply/);
 assert.match(app, /peekPendingLifeSceneReply/);
 assert.match(app, /claimPendingLifeSceneReply/);
