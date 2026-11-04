@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     const cancelledRunning = await mutate(`push_jobs?${userFilter}${lifeKeyFilter}&status=eq.running`, "PATCH", {
       status: "cancelled", result_note: "life system reset by user", updated_at: new Date().toISOString(),
     });
-    const deletedPending = await mutate(`push_jobs?${userFilter}${lifeKeyFilter}&status=eq.pending`, "DELETE");
+    const deletedPending = await mutate(`push_jobs?${userFilter}${lifeKeyFilter}&status=not.eq.cancelled`, "DELETE");
     const deletedOutbox = await mutate(`push_outbox?${userFilter}${lifeKeyFilter}`, "DELETE");
     const deletedRuntime = await mutate(`life_schedule_runtime?${userFilter}`, "DELETE");
     const deletedDiagnostics = await mutate(`life_schedule_diagnostics?${userFilter}`, "DELETE");
