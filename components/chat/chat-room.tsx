@@ -4,6 +4,7 @@ import { loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-stor
 import { resolveLifeCharacterIdForContact } from "@/lib/life/life-autonomy";
 import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow, settleActorTimelineToNow } from "@/lib/life/life-runtime";
 import { setOnlineChatForegroundLease } from "@/lib/life/life-scheduler-coordinator";
+import { syncLifeScheduleSnapshot } from "@/lib/life/life-schedule-cloud";
 
 import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { storeMediaBase64 } from "@/lib/media-cache-storage";
@@ -1274,13 +1275,26 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             session.id,
             document.visibilityState === "visible",
         );
+        const syncCloudLease = () => { void syncLifeScheduleSnapshot(); };
+        const onVisibilityChange = () => {
+            refresh();
+            // Publish foreground ownership immediately; otherwise a cloud life job can
+            // start from the previous snapshot before the next scheduler heartbeat.
+            syncCloudLease();
+        };
         refresh();
-        const timer = window.setInterval(refresh, 20_000);
-        document.addEventListener("visibilitychange", refresh);
+        syncCloudLease();
+        const localLeaseTimer = window.setInterval(refresh, 20_000);
+        // The local lease is renewed more frequently than the cloud snapshot. Keep the
+        // server-side arbitration fresh without issuing a network request every 20s.
+        const cloudLeaseTimer = window.setInterval(syncCloudLease, 60_000);
+        document.addEventListener("visibilitychange", onVisibilityChange);
         return () => {
-            window.clearInterval(timer);
-            document.removeEventListener("visibilitychange", refresh);
+            window.clearInterval(localLeaseTimer);
+            window.clearInterval(cloudLeaseTimer);
+            document.removeEventListener("visibilitychange", onVisibilityChange);
             setOnlineChatForegroundLease(characterId, session.id, false);
+            syncCloudLease();
         };
     }, [session.id, session.contactId, session.isGroup]);
 
