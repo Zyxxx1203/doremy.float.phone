@@ -1466,7 +1466,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
           characterId: referenceCharacterId || characterIds[0],
           characterIds,
           participantIds: explicitParticipants,
-          appId: "story",
+          appId: "life",
         });
         if(!result) throw new Error("生图服务未返回图片，请检查 API 配置和启用状态。");
         generated.push({id:id("scene-image"),sceneId:activeScene.id,mediaRef:result.mediaRef,prompt:result.prompt,participantIds:[...participantIds],createdAt:new Date().toISOString(),status:"active",alt:activeScene.locationName+"场景图"});
@@ -2987,7 +2987,7 @@ export function LifeEngineApp({ onClose }: { onClose?: () => void } = {}) {
         ].filter(Boolean).join("\n"),
         characterId,
         participantIds: entry.actorId === PLAYER_ID ? ["__user__"] : (characterId ? [characterId] : []),
-        appId: "story",
+        appId: "life",
       });
       if (!result) throw new Error("生图服务未返回图片，请检查 API 配置。");
       const latest = stateRef.current;
