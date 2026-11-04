@@ -23,6 +23,9 @@ export type ImageGenerationResult = {
   mimeType: string;
   prompt: string;
   usedReferenceImage: boolean;
+  /** Actual identity-reference images passed to the provider after loading/collage/limits. */
+  referenceImageCount?: number;
+  referenceImageLabels?: string[];
   revisedPrompt?: string;
 };
 
@@ -900,6 +903,8 @@ async function generateImageFromConfiguredApiInternal(params: {
       mimeType,
       prompt: fullPrompt,
       usedReferenceImage: false,
+      referenceImageCount: 0,
+      referenceImageLabels: [],
       revisedPrompt: data.revisedPrompt,
     };
   }
@@ -1006,6 +1011,8 @@ async function generateImageFromConfiguredApiInternal(params: {
     mimeType,
     prompt,
     usedReferenceImage: referenceImageDataUrls.length > 0,
+    referenceImageCount: referenceImageDataUrls.length,
+    referenceImageLabels: referenceLabels,
     revisedPrompt: data.revisedPrompt,
   };
 }
@@ -1022,6 +1029,8 @@ type ImageGenerationCallRecord = {
   participantNames: string[];
   referenceImageMode: string;
   usedReferenceImage: boolean;
+  referenceImageCount?: number;
+  referenceImageLabels?: string[];
   prompt: string;
   status: "success" | "failed" | "skipped";
   error?: string;
@@ -1087,6 +1096,8 @@ export async function generateImageFromConfiguredApi(params: Parameters<typeof g
       status: result ? "success" : "skipped",
       prompt: result?.prompt?.slice(0, 6000) || params.description.slice(0, 6000),
       usedReferenceImage: result?.usedReferenceImage === true,
+      referenceImageCount: result?.referenceImageCount,
+      referenceImageLabels: result?.referenceImageLabels,
     });
     return result;
   } catch (error) {
