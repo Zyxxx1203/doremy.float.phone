@@ -200,6 +200,16 @@ function PhotoThumbnail({ photo, onOpen }: { photo: PhotoWallPhoto; onOpen: () =
   </button>;
 }
 export function PhotoWallApp({ onClose, onNotice }: Props) {
+  const recordPhotoWallMemory = useCallback((summary: string, characterId?: string) => {
+    try {
+      const ids = characterId ? [characterId] : loadCharacters().map(character => character.id);
+      for (const id of ids) {
+        appendCustomAppTimelineEntry({ id: "photo_wall", name: "照片墙" }, {
+          characterId: id, summary: summary.slice(0, 500), appLabel: "照片墙",
+        });
+      }
+    } catch { /* 记忆失败不影响照片墙 */ }
+  }, []);
   const [state, setState] = useState<PhotoWallState>(() => loadPhotoWallState());
   const [characters, setCharacters] = useState<Character[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
@@ -996,7 +1006,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     // 涂鸦过程中不要扩容：扩容会重映射照片/涂鸦，但背景图盒子没有偏移量，
     // 会出现“画布和照片分离”。保持世界固定，笔迹始终落在同一画布上。
     persist(appendUserRecord({ ...current, wallDoodles }));
-    if (addedByUser.length) recordPhotoWallMemory("用户在整个照片墙上添加了" + addedByUser.length + "笔涂鸦或贴纸");
+    // The session's creation record is projected once into shared events; no per-stroke event.
   }, [persist, pushHistory, wallActivePhotoId, wallCanvasMode, recordPhotoWallMemory]);
   const visiblePhotos = useMemo(() => photos.filter(photo => {
     if (filter === "mine") return photo.ownerType === "user";
