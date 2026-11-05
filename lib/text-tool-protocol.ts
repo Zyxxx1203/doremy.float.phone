@@ -96,8 +96,8 @@ export function stripTextToolDirectives(text: string): string {
  */
 export function stripMalformedTextToolDirectives(text: string): string {
     return text
-        .replace(/(^|\\r?\\n)([^\\r\\n]*?)\\[(?:执行动作|工具调用|获取指令|获取工具)\\s*[:：][^\\r\\n]*(?=\\r?\\n|$)/g, "$1$2")
-        .replace(/[ \\t]+\\n/g, "\\n")
-        .replace(/\\n{3,}/g, "\\n\\n")
+        .replace(/(^|\r?\n)([^\r\n]*?)\[(?:执行动作|工具调用|获取指令|获取工具)\s*[:：][^\r\n]*(?=\r?\n|$)/g, "$1$2")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
         .trim();
 }
