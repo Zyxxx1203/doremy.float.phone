@@ -88,6 +88,7 @@ assert.match(generator, /life_notification_delivery_failed/);
 assert.match(generator, /life_schedule_diagnostic_events/);
 assert.match(generator, /life_outbox_committed/);
 assert.match(generator, /life_delivery_completed/);
+assert.match(generator, /life_job_final_done/);
 assert.match(generator, /life-scheduler:\$\{job\.user_id\}:\$\{code\}/);
 assert.match(diagnosticsPanel, /setInterval\(poll, 60_000\)/);
 assert.match(generator, /latestRuntimeAt/);
@@ -128,6 +129,8 @@ assert.match(gateway, /action === "life-schedule-diagnostics"/);
 assert.match(gateway, /life-execution-trace/);
 assert.match(gateway, /user_id=eq.\$\{OWNER_ID\}/);
 assert.match(diagnosticsRoute, /life_schedule_diagnostics/);
+assert.match(diagnosticsRoute, /life_schedule_diagnostic_events/);
+assert.match(diagnosticsPanel, /Trace:/);
 assert.match(diagnosticsPanel, /api\/life\/schedule-diagnostics/);
 assert.match(diagnosticsPanel, /云端生活引擎/);
 
