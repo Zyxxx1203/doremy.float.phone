@@ -192,6 +192,10 @@ export function loadMemoryConfig(): MemoryConfig {
                 ...DEFAULT_MEMORY_CONFIG.shortTermSourceLimits,
                 ...(parsed.shortTermSourceLimits ?? {}),
             },
+            shortTermAppLimits: {
+                ...DEFAULT_MEMORY_CONFIG.shortTermAppLimits,
+                ...(parsed.shortTermAppLimits ?? {}),
+            },
         };
     } catch {
         return { ...DEFAULT_MEMORY_CONFIG };
