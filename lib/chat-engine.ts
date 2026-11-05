@@ -29,7 +29,7 @@ import {
     resolveMeetingInviteCardConfig,
     resolveSessionCharacterId,
 } from "./chat-storage";
-import { extractTextToolDirectiveText, stripTextToolDirectives } from "./text-tool-protocol";
+import { extractTextToolDirectiveText, stripMalformedTextToolDirectives, stripTextToolDirectives } from "./text-tool-protocol";
 import { applyWithProtectedAvatarDecisionMarkers, findUserAvatarChangeIntent } from "./chat-avatar-intent";
 import type { ApiConfig, PresetConfig, Prompt, PromptOrderEntry, RegexConfig } from "./settings-types";
 import type { CustomAppPromptProfile } from "./custom-app-types";
@@ -2857,13 +2857,16 @@ async function generateChatCompletionCore(
         // Check for [获取指令:xxx] and [执行动作:xxx({...})]
         const toolFetches = toolsEnabled ? parseToolFetches(afterActionStrip) : [];
         const { toolCalls } = toolsEnabled ? parseToolCalls(afterActionStrip) : { toolCalls: [] };
+        // Tool directives are protocol, never user-facing prose. Strip valid directives
+        // (they are persisted separately below) and discard malformed directive lines.
+        const visibleText = stripMalformedTextToolDirectives(stripTextToolDirectives(afterActionStrip));
         const assistantForToolContext = stripStateAndInnerForPrompt(filteredOutput);
 
         // No tool activity — final round
         if (toolFetches.length === 0 && toolCalls.length === 0) {
             throwIfAborted(options?.signal);
-            await callbacks?.onTextPart?.(afterActionStrip);
-            parts.push({ text: afterActionStrip });
+            await callbacks?.onTextPart?.(visibleText);
+            parts.push({ text: visibleText });
             if (bailoutRef.shortcutHandles.length > 0) bailoutRef.shortcutCompleted = true;
             break;
         }
@@ -2873,14 +2876,14 @@ async function generateChatCompletionCore(
         throwIfAborted(options?.signal);
         const responseBatchId = createResponseBatchId();
         const toolDirectiveText = extractTextToolDirectiveText(afterActionStrip);
-        await callbacks?.onTextPart?.(afterActionStrip, undefined, {
+        await callbacks?.onTextPart?.(visibleText, undefined, {
             responseBatchId,
             rawResponseText: afterActionStrip,
         });
         if (toolDirectiveText) {
             callbacks?.onToolAssistantTurn?.(toolDirectiveText, { responseBatchId });
         }
-        parts.push({ text: filteredOutput });
+        parts.push({ text: visibleText });
 
         // Helper: find insert index for injecting after history
         const findInsertIdx = () => {
