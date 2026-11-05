@@ -223,7 +223,6 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
         title: String(event.title || "生活片段").slice(0, 80), eventTime: String(event.time || "").slice(0, 100), locationName: String(event.location || "").slice(0, 100),
         people: Array.isArray(event.people) ? event.people.filter(item => typeof item === "string").slice(0, 8).map(item => item === "用户" || item === userDisplayName ? "{{user}}" : item) : [],
         content: String(event.description || "").trim()
-          .replaceAll(userDisplayName || "\u0000", "{{user}}")
           .replace(/用户/g, "{{user}}"),
       })).filter(entry => entry.content);
       if (!entries.length) throw new Error("模型没有返回可保存的事件卡片");
