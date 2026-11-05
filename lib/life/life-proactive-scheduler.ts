@@ -7,7 +7,7 @@
  * push-generate 会按快照租约延后执行；前台停止刷新租约后，后台链自动恢复。
  */
 import { loadCharacters } from "@/lib/character-storage";
-import { loadChatContacts, loadChatSessions } from "@/lib/chat-storage";
+import { loadChatSessions, resolveSessionCharacterId } from "@/lib/chat-storage";
 import { armLifeSceneProactiveBailout, cancelBailoutPrefix } from "@/lib/push-bailout-client";
 import { syncLifeScheduleSnapshot } from "./life-schedule-cloud";
 import { loadVirtualLifeState } from "./life-storage";
