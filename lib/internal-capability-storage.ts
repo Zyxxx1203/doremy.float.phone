@@ -8,6 +8,7 @@ registerKvMigration(INTERNAL_CAPABILITIES_KEY);
 
 export const MEMORY_WRITE_CAPABILITY_ID = "memory_write";
 export const NOTE_WALL_CAPABILITY_ID = "note_wall_service";
+export const PHOTO_WALL_CAPABILITY_ID = "photo_wall_service";
 export const MUSIC_CONTROL_CAPABILITY_ID = "music_control";
 export const CALENDAR_MANAGEMENT_CAPABILITY_ID = "calendar_management";
 export const SEND_FILE_CAPABILITY_ID = "send_file";
@@ -47,6 +48,9 @@ export const RESERVED_INTERNAL_TOOL_NAMES: string[] = [
     "稍后主动联系",
     "设置定时醒来",
     "查看全部手机数据",
+    "查看照片墙",
+    "添加照片到照片墙",
+    "在照片墙涂鸦",
 ];
 
 export type InternalToolDefinition = {
@@ -524,6 +528,44 @@ const CALENDAR_DELETE_PARAMETER_SCHEMA = JSON.stringify({
         keyword: { type: "string", description: "事项关键词；没有 itemId 时必填" },
     },
 });
+
+const PHOTO_WALL_USAGE_GUIDE = [
+    "以下是你获取指令的返回结果：",
+    "服务：照片墙",
+    "用途：查看用户明确共享给角色的照片、主动生成照片并加入照片墙、在指定照片上添加涂鸦。",
+    "边界：只能读取 shareWithCharacters=true 的照片；只允许新增照片/笔迹，不得删除、覆盖或改写用户原有照片和笔迹。",
+    "完成添加或涂鸦后，系统会自动创建一条共同创作记录，按创作批次汇总，不要逐笔重复调用。",
+    "动作：查看照片墙",
+    "参数：limit（1-5，默认 3）。会附上最多 3 张共享照片的图像附件；先查看再决定是否创作。",
+    '[执行动作:查看照片墙({"limit":3})]',
+    "动作：添加照片到照片墙",
+    "参数：description（必填，画面描述）；title（可选）；kind（favorite/selfie/candid/scenery/object/moment，默认 moment）；caption（可选）。仅在生图服务可用时执行。",
+    '[执行动作:添加照片到照片墙({"description":"雨后窗边的一束花，柔和自然光","title":"雨后的花","kind":"scenery"})]',
+    "动作：在照片墙涂鸦",
+    "参数：photoId（必须来自查看照片墙结果）；side（front/back，默认 front）；kind（sticker/stroke）；content（贴纸符号，sticker 必填）；points（归一化坐标数组，stroke 至少 2 点，sticker 至少 1 点）；color（十六进制颜色）；width（1-12）；rotation（-45 到 45）。",
+    '[执行动作:在照片墙涂鸦({"photoId":"照片ID","side":"front","kind":"sticker","content":"♡","points":[{"x":0.5,"y":0.4}],"color":"#c2705a","width":4})]',
+    "坐标范围 0 到 1；只在指定照片正面/背面追加笔迹。不要猜测 photoId，不要尝试删除或替换既有内容。",
+].join("\\n");
+
+const PHOTO_WALL_EMPTY_SCHEMA = JSON.stringify({ type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 5, description: "最多返回的共享照片数量，默认 3" } } });
+const PHOTO_WALL_ADD_SCHEMA = JSON.stringify({ type: "object", properties: {
+    description: { type: "string", minLength: 5, maxLength: 1200 },
+    title: { type: "string", maxLength: 80 },
+    kind: { type: "string", enum: ["favorite", "selfie", "candid", "scenery", "object", "moment"] },
+    caption: { type: "string", maxLength: 300 },
+}, required: ["description"] });
+const PHOTO_WALL_DOODLE_SCHEMA = JSON.stringify({ type: "object", properties: {
+    photoId: { type: "string" }, side: { type: "string", enum: ["front", "back"] },
+    kind: { type: "string", enum: ["sticker", "stroke"] }, content: { type: "string", maxLength: 12 },
+    points: { type: "array", minItems: 1, maxItems: 80, items: { type: "object", properties: { x: { type: "number", minimum: 0, maximum: 1 }, y: { type: "number", minimum: 0, maximum: 1 } }, required: ["x", "y"] } },
+    color: { type: "string" }, width: { type: "number", minimum: 1, maximum: 12 }, rotation: { type: "number", minimum: -45, maximum: 45 },
+}, required: ["photoId", "kind", "points"] });
+
+const PHOTO_WALL_SUBTOOLS: InternalToolDefinition[] = [
+    { name: "查看照片墙", description: "查看用户共享给角色的照片墙照片和图像。", parameterSchema: PHOTO_WALL_EMPTY_SCHEMA },
+    { name: "添加照片到照片墙", description: "生成一张新照片并添加到用户照片墙，保留原有内容。", parameterSchema: PHOTO_WALL_ADD_SCHEMA },
+    { name: "在照片墙涂鸦", description: "在指定共享照片正面或背面追加贴纸/笔迹，保留原有内容。", parameterSchema: PHOTO_WALL_DOODLE_SCHEMA },
+];
 
 const NOTE_WALL_SUBTOOLS: InternalToolDefinition[] = [
     {
@@ -1326,6 +1368,15 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
         updatedAt: 0,
     },
     {
+        id: PHOTO_WALL_CAPABILITY_ID,
+        name: "照片墙",
+        description: "查看共享照片、添加照片和在照片上创作涂鸦；只追加，不覆盖用户内容。",
+        enabled: false,
+        mode: "auto",
+        createdAt: 0,
+        updatedAt: 0,
+    },
+    {
         id: MUSIC_CONTROL_CAPABILITY_ID,
         name: "网易云音乐",
         description: "控制{{user}}小手机里的音乐播放，查看{{user}}小手机里的音乐库、网易云歌单和播放列表。",
@@ -1475,12 +1526,10 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
         };
     }
     if (capability.id === NOTE_WALL_CAPABILITY_ID) {
-        return {
-            name: capability.name,
-            description: capability.description,
-            parameterSchema: "{}",
-            usageGuide: NOTE_WALL_USAGE_GUIDE,
-        };
+        return { name: capability.name, description: capability.description, parameterSchema: "{}", usageGuide: NOTE_WALL_USAGE_GUIDE };
+    }
+    if (capability.id === PHOTO_WALL_CAPABILITY_ID) {
+        return { name: capability.name, description: capability.description, parameterSchema: "{}", usageGuide: PHOTO_WALL_USAGE_GUIDE };
     }
     if (capability.id === MUSIC_CONTROL_CAPABILITY_ID) {
         return {
@@ -1909,6 +1958,9 @@ export function getInternalCapabilitySubToolDefinition(
     if (capability.id === NOTE_WALL_CAPABILITY_ID) {
         return NOTE_WALL_SUBTOOLS.find(tool => tool.name === name) ?? null;
     }
+    if (capability.id === PHOTO_WALL_CAPABILITY_ID) {
+        return PHOTO_WALL_SUBTOOLS.find(tool => tool.name === name) ?? null;
+    }
     if (capability.id === MUSIC_CONTROL_CAPABILITY_ID) {
         return MUSIC_CONTROL_SUBTOOLS.find(tool => tool.name === name) ?? null;
     }
@@ -1935,6 +1987,9 @@ export function getInternalCapabilitySubToolDefinitions(
 ): InternalToolDefinition[] {
     if (capability.id === NOTE_WALL_CAPABILITY_ID) {
         return NOTE_WALL_SUBTOOLS;
+    }
+    if (capability.id === PHOTO_WALL_CAPABILITY_ID) {
+        return PHOTO_WALL_SUBTOOLS;
     }
     if (capability.id === MUSIC_CONTROL_CAPABILITY_ID) {
         return MUSIC_CONTROL_SUBTOOLS;
