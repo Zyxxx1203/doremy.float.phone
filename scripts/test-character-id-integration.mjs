@@ -221,6 +221,7 @@ function kvMocksFor(values) {
   return {
     kvGet: key => values.get(key) ?? null,
     kvSet: (key, value) => values.set(key, String(value)),
+    kvRemove: key => values.delete(key),
     registerKvMigration: () => undefined,
   };
 }
@@ -260,14 +261,14 @@ assert.equal(migratedLife.schedules.length, 1, "identical old/new schedule slots
 assert.equal(migratedLife.scenes[0].participants.length, 1);
 assert.equal(migratedLife.scenes[0].participants[0].ownerId, "char_alpha");
 assert.equal(migratedLife.scenes[0].participants[0].awarenessByActorId.char_alpha, "aware");
-assert.deepEqual(migratedLife.scenes[0].images[0].participantIds, ["char_alpha"]);
+assert.deepEqual(Array.from(migratedLife.scenes[0].images[0].participantIds), ["char_alpha"]);
 assert.equal(migratedLife.sceneMessages[0].speakerId, "char_alpha");
-assert.deepEqual(migratedLife.events[0].participantIds, ["char_alpha"]);
+assert.deepEqual(Array.from(migratedLife.events[0].participantIds), ["char_alpha"]);
 assert.equal(migratedLife.invitations[0].characterId, "char_alpha");
-assert.deepEqual(migratedLife.memories[0].participants, ["char_alpha"]);
+assert.deepEqual(Array.from(migratedLife.memories[0].participants), ["char_alpha"]);
 assert.equal(migratedLife.memories[0].interpretations.char_alpha, "旧解释");
 assert.equal(migratedLife.timeline[0].actorId, "char_alpha");
-assert.deepEqual(migratedLife.locations[0].residents, ["char_alpha"]);
+assert.deepEqual(Array.from(migratedLife.locations[0].residents), ["char_alpha"]);
 assert.equal(migratedLife.locations[0].characterHabits.char_alpha, "旧习惯");
 
 // Fake IndexedDB boundary: memory rows and per-character summary metadata move atomically.
