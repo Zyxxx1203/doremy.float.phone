@@ -8,6 +8,7 @@ on:
       - "lib/widget/**"
       - "lib/chat-engine.ts"
       - "lib/text-tool-protocol.ts"
+      - "lib/tool-executor.ts"
       - "scripts/test-phone-widget-output.mjs"
       - "package.json"
       - "package-lock.json"
