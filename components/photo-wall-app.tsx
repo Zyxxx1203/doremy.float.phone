@@ -1828,11 +1828,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
                         const label = layer.kind === "wall" ? "墙面涂鸦" : (layerPhoto?.title || "关联照片") + (layer.side === "back" ? " · 背面" : " · 正面");
                         return <CreationLayerPreview key={record.id + "-layer-" + layerIndex} photo={layerPhoto} side={layer.kind === "photo" ? layer.side : undefined} doodles={layer.doodles} label={label} onOpen={layerPhoto ? () => openPhoto(layerPhoto) : undefined}/>;
                       })}
-                    </div> : <><svg viewBox="0 0 100 100" className="h-full min-h-[126px] w-full" role="img" aria-label={record.authorName + "留下的旧版涂鸦笔迹"}>
-                      {record.doodles.map(doodle => doodle.kind === "stroke"
-                        ? <polyline key={doodle.id} points={doodle.points.map(point => (point.x*100)+","+(point.y*100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(1,doodle.width/2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
-                        : <g key={doodle.id}><DoodleMark doodle={doodle} size={9}/></g>)}
-                    </svg><p className="mt-1 text-[9px] leading-relaxed text-[#a08c74]">旧版记录未保存每张照片对应的笔迹坐标，已保留原始笔迹，不推测照片归属。</p></>}
+                    </div> : <div className="grid grid-cols-2 gap-2">
+                      {linkedPhotos.slice(0, 4).map(photo => <div key={photo.id} className="min-w-0"><PhotoThumbnail photo={photo} onOpen={() => openPhoto(photo)}/></div>)}
+                      {!linkedPhotos.length && <div className="col-span-2 grid min-h-[126px] place-items-center text-[11px] text-[#9b8774]">旧版涂鸦记录</div>}
+                      <p className="col-span-2 text-[9px] leading-relaxed text-[#a08c74]">旧版记录未保存每张照片对应的笔迹坐标。这里单独展示关联照片，避免把不同照片上的笔迹叠在一起；原始笔迹仍完整保留在记录中。</p>
+                    </div>}
                   </div>
                 </div>
                 <footer className="border-t border-[#eadbc9] px-4 py-3">
