@@ -326,21 +326,19 @@ export function MemoryBankPage({
         }
         // Native timeline is sync (localStorage) — no await needed.
         // 只取最近一段（全量可能几万条），防止解析+渲染把 iOS Safari 内存顶爆
-        const timeline = loadNativeTimeline(charId).slice(-MEMORY_TIMELINE_ENTRY_CAP);
-        setShortTermEvents(timeline.filter(e =>
-            !(e.sourceApp === "moments" && e.postAuthorType === "user")
-            && !(e.sourceApp === "interview_magazine" && e.sourceDetail === "interview_shared_issue")
-            && !(e.sourceApp === "life" && e.sourceDetail === "life_shared_event")
-            && !(e.sourceApp === "photo_wall" && e.sourceDetail === "photo_wall_creation")
-        ));
-        setSharedEvents(timeline.filter(e =>
-            (e.sourceApp === "moments" && e.postAuthorType === "user") ||
-            (e.sourceApp === "chat" && e.sourceDetail === "group") ||
-            (e.sourceApp === "interview_magazine" && e.sourceDetail === "interview_shared_issue") ||
-            (e.sourceApp === "watch" && e.sourceDetail === "custom_app_event") ||
-            (e.sourceApp === "life" && e.sourceDetail === "life_shared_event") ||
-            (e.sourceApp === "photo_wall" && e.sourceDetail === "photo_wall_creation")
-        ));
+        const timeline = loadNativeTimeline(charId);
+        const isSharedEvent = (entry: NativeTimelineEntry) =>
+            (entry.sourceApp === "moments" && entry.postAuthorType === "user") ||
+            (entry.sourceApp === "chat" && entry.sourceDetail === "group") ||
+            (entry.sourceApp === "interview_magazine" && entry.sourceDetail === "interview_shared_issue") ||
+            (entry.sourceApp === "watch" && entry.sourceDetail === "custom_app_event") ||
+            (entry.sourceApp === "life" && entry.sourceDetail === "life_shared_event") ||
+            (entry.sourceApp === "photo_wall" && entry.sourceDetail === "photo_wall_creation");
+        const sharedEvents = timeline.filter(isSharedEvent);
+        setShortTermEvents(timeline.filter(e => !isSharedEvent(e)).slice(-MEMORY_TIMELINE_ENTRY_CAP));
+        // Give the Shared Events tab its own window so a busy chat/photo timeline
+        // cannot crowd out recent Life experiences or Photo Wall co-creations.
+        setSharedEvents(sharedEvents.slice(-MEMORY_TIMELINE_ENTRY_CAP));
         setLoading(false);
     }, []);
 
