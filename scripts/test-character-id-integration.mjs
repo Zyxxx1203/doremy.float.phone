@@ -180,4 +180,144 @@ const overlap = guided.parseGuidedScheduleResponse(JSON.stringify({ schedules: [
 assert.equal(overlap.drafts.length, 1);
 assert.equal(overlap.conflicts.length, 1, "overlapping drafts must be reported instead of silently dropped");
 
+// Migrate existing calendar plans stored under contact IDs without losing either side.
+const kvValues = new Map();
+const kvMocks = {
+  kvGet: key => kvValues.get(key) ?? null,
+  kvSet: (key, value) => kvValues.set(key, String(value)),
+  kvRemove: key => kvValues.delete(key),
+  registerKvMigration: () => undefined,
+  registerDynamicPrefix: () => undefined,
+};
+const calendarUtils = await loadTs("../lib/calendar-utils.ts");
+const calendarStoreKey = "ai_phone_calendar_plans_v1";
+kvValues.set(calendarStoreKey, JSON.stringify({ plans: [
+  { id: "legacy-plan", ownerType: "character", ownerId: "contact_alpha", weekStart: "2026-11-02", updatedAt: "2026-11-03T00:00:00.000Z", items: [
+    { id: "legacy-item", date: "2026-11-05", weekday: "周四", startTime: "09:00", endTime: "10:00", location: "家", title: "旧日程", colorKey: "blue", source: "manual", createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z" },
+  ] },
+  { id: "canonical-plan", ownerType: "character", ownerId: "char_alpha", weekStart: "2026-11-02", updatedAt: "2026-11-04T00:00:00.000Z", items: [
+    { id: "canonical-item", date: "2026-11-05", weekday: "周四", startTime: "11:00", endTime: "12:00", location: "公司", title: "新日程", colorKey: "green", source: "manual", createdAt: "2026-11-02T00:00:00.000Z", updatedAt: "2026-11-02T00:00:00.000Z" },
+  ] },
+] }));
+const calendarStorage = await loadTsWithMocks("../lib/calendar-storage.ts", {
+  "./kv-db": kvMocks,
+  "./calendar-utils": calendarUtils,
+}, { window: { dispatchEvent: noOp } });
+assert.equal(calendarStorage.migrateCalendarOwnerIdentity("contact_alpha", "char_alpha"), 1);
+const migratedPlans = calendarStorage.loadOwnerCalendarPlans("character", "char_alpha");
+assert.equal(migratedPlans.length, 1);
+assert.equal(migratedPlans[0].items.length, 2, "legacy and canonical calendar items must merge without loss");
+
+// Exercise the actual life-storage migration for all actor-bearing records.
+const lifeTypes = await loadTs("../lib/life/life-types.ts");
+const lifeValues = new Map();
+const lifeWindow = { dispatchEvent: noOp };
+const lifeStorage = await loadTsWithMocks("../lib/life/life-storage.ts", {
+  "../kv-db": kvMocksFor(lifeValues),
+  "./life-types": lifeTypes,
+  "./life-runtime": { getActorClock: noOp, resolveActorLifeNow: () => new Date() },
+}, { window: lifeWindow, CustomEvent: class CustomEvent { constructor(type) { this.type = type; } } });
+function kvMocksFor(values) {
+  return {
+    kvGet: key => values.get(key) ?? null,
+    kvSet: (key, value) => values.set(key, String(value)),
+    registerKvMigration: () => undefined,
+  };
+}
+const lifeState = lifeTypes.createEmptyVirtualLifeState("2026-11-05T00:00:00.000Z");
+lifeState.actorClocks = [
+  { ownerType: "character", ownerId: "contact_alpha", mode: "real-time", realAnchorAt: "2026-11-05T00:00:00.000Z", virtualAnchorAt: "2026-11-05T00:00:00.000Z", speed: 1, updatedAt: "2026-11-05T01:00:00.000Z" },
+];
+lifeState.actorStates = [
+  { ownerType: "character", ownerId: "contact_alpha", activity: "旧状态", updatedAt: "2026-11-05T01:00:00.000Z" },
+  { ownerType: "character", ownerId: "char_alpha", activity: "新状态", updatedAt: "2026-11-05T02:00:00.000Z" },
+];
+lifeState.schedules = [
+  { id: "old-slot", ownerType: "character", ownerId: "contact_alpha", startAt: "2026-11-05T09:00:00.000Z", endAt: "2026-11-05T10:00:00.000Z", title: "上班", kind: "work", source: "manual", updatedAt: "2026-11-05T01:00:00.000Z" },
+  { id: "new-slot", ownerType: "character", ownerId: "char_alpha", startAt: "2026-11-05T09:00:00.000Z", endAt: "2026-11-05T10:00:00.000Z", title: "上班", kind: "work", source: "manual", updatedAt: "2026-11-05T02:00:00.000Z" },
+];
+lifeState.locations = [{ id: "home", name: "家", visibility: "private", residents: ["contact_alpha"], characterHabits: { contact_alpha: "旧习惯" } }];
+lifeState.scenes = [{
+  id: "scene-a", locationId: "home", locationName: "家", startedAt: "2026-11-05T00:00:00.000Z",
+  updatedAt: "2026-11-05T01:00:00.000Z", status: "active", lastSettledEventIds: [],
+  participants: [
+    { ownerType: "character", ownerId: "contact_alpha", activity: "旧活动", awarenessByActorId: { contact_alpha: "aware" } },
+    { ownerType: "character", ownerId: "char_alpha", activity: "新活动", awarenessByActorId: {} },
+  ],
+  images: [{ id: "scene-image", sceneId: "scene-a", mediaRef: "media", prompt: "", participantIds: ["contact_alpha"], createdAt: "2026-11-05T00:00:00.000Z", status: "active" }],
+}];
+lifeState.sceneMessages = [{ id: "scene-msg", sceneId: "scene-a", speakerType: "character", speakerId: "contact_alpha", speakerName: "小满", role: "character", dialogue: "你好", createdAt: "2026-11-05T00:00:00.000Z" }];
+lifeState.events = [{ id: "event", kind: "activity", status: "planned", participantIds: ["contact_alpha"], title: "活动", createdAt: "2026-11-05T00:00:00.000Z", updatedAt: "2026-11-05T00:00:00.000Z" }];
+lifeState.invitations = [{ id: "invite", characterId: "contact_alpha", playerId: "player", proposedAt: "2026-11-05T00:00:00.000Z", activity: "见面", status: "proposed", updatedAt: "2026-11-05T00:00:00.000Z" }];
+lifeState.memories = [{ id: "fact", eventId: "event", occurredAt: "2026-11-05T00:00:00.000Z", participants: ["contact_alpha"], fact: "一起活动", interpretations: { contact_alpha: "旧解释" } }];
+lifeState.timeline = [{ id: "timeline", category: "chat", occurredAt: "2026-11-05T00:00:00.000Z", title: "聊天", actorId: "contact_alpha" }];
+lifeValues.set("ai_phone_virtual_life_state_v1", JSON.stringify(lifeState));
+assert.ok(lifeStorage.migrateLifeCharacterIdentity("contact_alpha", "char_alpha") > 0);
+const migratedLife = lifeStorage.loadVirtualLifeState();
+assert.equal(migratedLife.actorStates.length, 1, "duplicate actor states must collapse to one canonical actor");
+assert.equal(migratedLife.actorStates[0].ownerId, "char_alpha");
+assert.equal(migratedLife.schedules.length, 1, "identical old/new schedule slots must not duplicate");
+assert.equal(migratedLife.scenes[0].participants.length, 1);
+assert.equal(migratedLife.scenes[0].participants[0].ownerId, "char_alpha");
+assert.equal(migratedLife.scenes[0].participants[0].awarenessByActorId.char_alpha, "aware");
+assert.deepEqual(migratedLife.scenes[0].images[0].participantIds, ["char_alpha"]);
+assert.equal(migratedLife.sceneMessages[0].speakerId, "char_alpha");
+assert.deepEqual(migratedLife.events[0].participantIds, ["char_alpha"]);
+assert.equal(migratedLife.invitations[0].characterId, "char_alpha");
+assert.deepEqual(migratedLife.memories[0].participants, ["char_alpha"]);
+assert.equal(migratedLife.memories[0].interpretations.char_alpha, "旧解释");
+assert.equal(migratedLife.timeline[0].actorId, "char_alpha");
+assert.deepEqual(migratedLife.locations[0].residents, ["char_alpha"]);
+assert.equal(migratedLife.locations[0].characterHabits.char_alpha, "旧习惯");
+
+// Fake IndexedDB boundary: memory rows and per-character summary metadata move atomically.
+const memoryRows = [{
+  id: "memory-old", characterId: "contact_alpha", sourceApp: "chat", type: "long_term",
+  content: "历史记忆", importance: 0.8, createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z",
+}];
+const fakeDb = {
+  transaction: () => {
+    const tx = { oncomplete: null, onerror: null, onabort: null };
+    const store = {
+      getAll: () => {
+        const request = { result: undefined, onsuccess: null, onerror: null };
+        setTimeout(() => {
+          request.result = [...memoryRows];
+          request.onsuccess?.();
+          queueMicrotask(() => tx.oncomplete?.());
+        }, 0);
+        return request;
+      },
+      put: entry => {
+        const index = memoryRows.findIndex(item => item.id === entry.id);
+        if (index >= 0) memoryRows[index] = entry;
+        else memoryRows.push(entry);
+      },
+    };
+    tx.objectStore = () => store;
+    return tx;
+  },
+  close: noOp,
+};
+const memoryTypes = await loadTs("../lib/memory-types.ts");
+const memoryValues = new Map([
+  ["ai_phone_mem_evt_count_contact_alpha", "2"],
+  ["ai_phone_mem_evt_count_char_alpha", "3"],
+  ["ai_phone_mem_last_sum_contact_alpha", "2026-11-04T00:00:00.000Z"],
+]);
+const memoryStorage = await loadTsWithMocks("../lib/memory-storage.ts", {
+  "./memory-types": memoryTypes,
+  "./kv-db": kvMocksFor(memoryValues),
+  "./idb-open": { openIndexedDbAtLeast: async () => fakeDb },
+}, { window: {}, indexedDB: {} });
+const memoryMigration = await memoryStorage.migrateCharacterMemoryIdentities([
+  { fromId: "contact_alpha", toId: "char_alpha" },
+]);
+assert.equal(memoryMigration.available, true);
+assert.equal(memoryMigration.migratedEntries, 1);
+assert.equal(memoryRows[0].characterId, "char_alpha");
+assert.equal(memoryValues.get("ai_phone_mem_evt_count_char_alpha"), "5");
+assert.equal(memoryValues.has("ai_phone_mem_evt_count_contact_alpha"), false);
+assert.equal(memoryValues.get("ai_phone_mem_last_sum_char_alpha"), "2026-11-04T00:00:00.000Z");
+
 console.log("Character ID + guided schedule integration checks passed.");
