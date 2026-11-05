@@ -2083,6 +2083,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const userTurn = [userAction ? `行动：${userAction}` : "", userText ? `说话：${userText}` : ""].filter(Boolean).join("\n") || "玩家手动请求角色对最近行为作出反馈";
     const selectedSpeakerIsPresent = Boolean(selectedSpeakerId) && activeScene.participants.some(participant => participant.ownerType === "character" && resolveLifeCharacterId(participant.ownerId) === resolveLifeCharacterId(selectedSpeakerId));
     const now = new Date().toISOString();
+    const turnMessageStartIndex = stateRef.current.sceneMessages.length;
     if (userText || userAction) {
       setSceneInput("");
       setSceneActionInput("");
@@ -2296,9 +2297,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       // one co-experience with every actual participant instead of saving only the first.
       if (!responseQueue?.length && settings.saveConfirmedEventsToMemory && (userText.trim() || userAction.trim())) {
         const latest = stateRef.current;
-        const turnStart = new Date(now).getTime();
         const responses = latest.sceneMessages
-          .filter(message => message.sceneId === activeScene.id && message.speakerType === "character" && new Date(message.createdAt).getTime() >= turnStart)
+          .slice(turnMessageStartIndex)
+          .filter(message => message.sceneId === activeScene.id && message.speakerType === "character")
           .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
         const responders = [...new Set(responses.map(message => resolveLifeCharacterId(message.speakerId)).filter(Boolean))];
         if (responders.length) {
