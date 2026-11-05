@@ -2081,8 +2081,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       message.id === notificationResponsePrefix + "-action" || message.id.startsWith(notificationResponsePrefix + "-dialogue-")
     )) return "completed";
     const userTurn = [userAction ? `行动：${userAction}` : "", userText ? `说话：${userText}` : ""].filter(Boolean).join("\n") || "玩家手动请求角色对最近行为作出反馈";
-    if (!forceReaction && settings.randomSceneResponses === false && !selectedSpeakerId) {
-      setNotice("已关闭随机角色回应，请先点选一位在场角色再发送。");
+    const selectedSpeakerIsPresent = activeScene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === selectedSpeakerId);
+    if (settings.randomSceneResponses === false && !responseQueue?.length && !notificationReplyId && !selectedSpeakerIsPresent) {
+      setNotice("已关闭随机角色回应，请先点选一位在场角色再发送或请求回应。");
       return "failed";
     }
     const now = new Date().toISOString();
