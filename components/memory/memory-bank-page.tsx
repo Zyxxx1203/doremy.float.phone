@@ -1060,19 +1060,21 @@ export function MemoryBankPage({
                                     })}
                                 </div>
                                 <div style={{ marginTop: 14, display: "grid", gap: 7 }}>
-                                    <div className="menu-desc">每个来源最多注入多少条短期事件（0 = 不限制）</div>
+                                    <div className="menu-desc">每个使用场景最多注入多少条短期记忆（0 = 不限制）。只影响该 APP 本次提示词，不会删除照片墙、生活或其他来源的原始记录。</div>
                                     {([
-                                        ["chat", "私聊"], ["group_chat", "群聊"], ["moments", "朋友圈"],
-                                        ["checkphone", "查手机"], ["photo_wall", "照片墙"],
-                                        ["life", "生活系统"], ["phone_widget", "桌面小组件"], ["watch", "一起看"],
-                                        ["global_watch", "全局陪看"], ["story", "剧情"], ["custom_app", "自定义应用"],
+                                        ["chat", "私聊"], ["group_chat", "群聊"], ["life", "生活系统"],
+                                        ["photo_wall", "照片墙"], ["watch", "一起看"], ["global_watch", "全局陪看"],
+                                        ["phone_widget", "桌面小组件"], ["story", "剧情"], ["vn", "视觉小说"],
+                                        ["adventure", "冒险"], ["interview_magazine", "访谈"], ["cocreate", "共同创作"],
+                                        ["diary", "日记"], ["moments", "朋友圈"], ["checkphone", "查手机"],
+                                        ["xiaohongshu", "小红书"], ["game", "游戏"], ["map", "地图"], ["custom_app", "自定义应用"],
                                     ] as const).map(([key, label]) => {
-                                        const limits = config.shortTermSourceLimits ?? {};
+                                        const limits = config.shortTermAppLimits ?? {};
                                         return <label key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
                                             <span>{label}</span>
                                             <input type="number" min={0} max={200} value={Number(limits[key] ?? 0)} onChange={event => {
                                                 const value = Math.max(0, Math.min(200, Number(event.target.value) || 0));
-                                                const next = { ...config, shortTermSourceLimits: { ...limits, [key]: value } };
+                                                const next = { ...config, shortTermAppLimits: { ...limits, [key]: value } };
                                                 setConfig(next); saveMemoryConfig(next);
                                             }} style={{ width: 70, padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border, #ddd)", background: "var(--surface, #fff)", color: "inherit" }} />
                                         </label>;
