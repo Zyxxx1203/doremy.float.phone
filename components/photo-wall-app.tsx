@@ -781,17 +781,24 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const recordId = wallCanvasMode === "doodle" ? doodleSessionRecordIdRef.current : null;
       const previous = recordId ? (latest.creationRecords ?? []).find(item => item.id === recordId) : undefined;
       if (previous) {
-        applyImmediate({ ...latest, creationRecords: (latest.creationRecords ?? []).map(item => item.id === recordId
-          ? { ...item, photoIds: [...new Set([...item.photoIds, photoId])], doodles: [...item.doodles, ...addedByUser],
-              narrative: `我在照片墙涂鸦模式里留下了${item.doodles.length + addedByUser.length}笔心意。` }
-          : item) });
+        applyImmediate({ ...latest, creationRecords: (latest.creationRecords ?? []).map(item => {
+          if (item.id !== recordId) return item;
+          const layers = item.layers ?? [];
+          const layerIndex = layers.findIndex(layer => layer.kind === "photo" && layer.photoId === photoId && layer.side === side);
+          const nextLayers = layerIndex >= 0
+            ? layers.map((layer, index) => index === layerIndex && layer.kind === "photo" ? { ...layer, doodles: [...layer.doodles, ...addedByUser] } : layer)
+            : [...layers, { kind: "photo" as const, photoId, side, doodles: addedByUser }];
+          return { ...item, photoIds: [...new Set([...item.photoIds, photoId])], layers: nextLayers,
+            doodles: [...item.doodles, ...addedByUser],
+            narrative: `我在照片墙涂鸦模式里留下了${item.doodles.length + addedByUser.length}笔心意。` };
+        }) });
       } else {
         const record: PhotoWallCreationRecord = {
           id: createPhotoWallId(), createdAt: new Date().toISOString(), authorType: "user",
           authorName: "我", narrative: wallCanvasMode === "doodle"
             ? `我在照片墙涂鸦模式里留下了${addedByUser.length}笔心意。`
             : `我在「${photo?.title || "这张照片"}」的${side === "back" ? "背面留言纸" : "正面相框"}上留下了${addedByUser.length}笔涂鸦。`,
-          photoIds: [photoId], doodles: addedByUser,
+          photoIds: [photoId], layers: [{ kind: "photo", photoId, side, doodles: addedByUser }], doodles: addedByUser,
         };
         if (wallCanvasMode === "doodle") doodleSessionRecordIdRef.current = record.id;
         applyImmediate({ ...latest, creationRecords: [...(latest.creationRecords ?? []), record] });
@@ -991,14 +998,20 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (!photoIds.size && wallActivePhotoId && source.photos.some(photo => photo.id === wallActivePhotoId)) photoIds.add(wallActivePhotoId);
       const recordId = wallCanvasMode === "doodle" ? doodleSessionRecordIdRef.current : null;
       const previous = recordId ? (source.creationRecords ?? []).find(item => item.id === recordId) : undefined;
-      if (previous) return { ...source, creationRecords: (source.creationRecords ?? []).map(item => item.id === recordId
-        ? { ...item, photoIds: [...new Set([...item.photoIds, ...photoIds])], doodles: [...item.doodles, ...addedByUser],
-            narrative: `我在这次涂鸦里亲手添了${item.doodles.length + addedByUser.length}笔心意。` }
-        : item) };
+      if (previous) return { ...source, creationRecords: (source.creationRecords ?? []).map(item => {
+        if (item.id !== recordId) return item;
+        const layers = item.layers ?? [];
+        const wallIndex = layers.findIndex(layer => layer.kind === "wall");
+        const nextLayers = wallIndex >= 0
+          ? layers.map((layer, index) => index === wallIndex && layer.kind === "wall" ? { ...layer, doodles: [...layer.doodles, ...addedByUser] } : layer)
+          : [...layers, { kind: "wall" as const, doodles: addedByUser }];
+        return { ...item, photoIds: [...new Set([...item.photoIds, ...photoIds])], layers: nextLayers, doodles: [...item.doodles, ...addedByUser],
+          narrative: `我在这次涂鸦里亲手添了${item.doodles.length + addedByUser.length}笔心意。` };
+      }) };
       const record: PhotoWallCreationRecord = {
         id: createPhotoWallId(), createdAt: new Date().toISOString(), authorType: "user", authorName: "我",
         narrative: wallCanvasMode === "doodle" ? `我在这次涂鸦里亲手添了${addedByUser.length}笔心意。` : `我在照片墙上亲手添了${addedByUser.length}笔涂鸦，把这一点小心意也留了下来。`,
-        photoIds: [...photoIds], doodles: addedByUser,
+        photoIds: [...photoIds], layers: [{ kind: "wall", doodles: addedByUser }], doodles: addedByUser,
       };
       if (wallCanvasMode === "doodle") doodleSessionRecordIdRef.current = record.id;
       return { ...source, creationRecords: [...(source.creationRecords ?? []), record] };
