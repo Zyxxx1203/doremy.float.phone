@@ -148,7 +148,7 @@ export function migrateLifeCharacterIdentity(fromId: string, toId: string): numb
       ...scene,
       participants: [...participantMap.values()],
       images: scene.images?.map(image => {
-        const participantIds = replaceIds(image.participantIds);
+        const participantIds = replaceIds(image.participantIds) ?? [];
         return participantIds !== image.participantIds ? { ...image, participantIds } : image;
       }),
     };
@@ -168,7 +168,7 @@ export function migrateLifeCharacterIdentity(fromId: string, toId: string): numb
       : message,
   );
   const events = state.events.map(event => {
-    const participantIds = replaceIds(event.participantIds);
+    const participantIds = replaceIds(event.participantIds) ?? [];
     return participantIds !== event.participantIds ? { ...event, participantIds } : event;
   });
   const invitations = state.invitations.map(invitation =>
