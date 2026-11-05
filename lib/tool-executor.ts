@@ -2391,7 +2391,7 @@ async function executePhotoWallTool(call: ToolCall, context?: ToolExecutionConte
             const rawKind = String(call.args?.kind ?? "moment");
             const kinds = ["favorite", "selfie", "candid", "scenery", "object", "moment"] as const;
             const kind = (kinds as readonly string[]).includes(rawKind) ? rawKind as PhotoWallPhoto["kind"] : "moment";
-            const result = await generateImageFromConfiguredApi({ description, characterId: character.id, appId: "photo_wall", participantIds: [character.id], useReferenceImage: true });
+            const result = await generateImageFromConfiguredApi({ description, characterId: character.id, appId: "photo_wall", participantIds: [character.id] });
             if (!result?.mediaRef) throw new Error("生图服务没有返回图片，请检查图像生成 API 配置。");
             const createdAt = new Date().toISOString();
             const photo: PhotoWallPhoto = {
