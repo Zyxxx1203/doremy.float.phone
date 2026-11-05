@@ -2279,18 +2279,37 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         recordLifeDiagnostic({ source: "通知回复", event: "生活现场已生成角色回应", status: "ok", detail: target.name + " 已完成通知回复后的现场回应。", meta: { sceneId: activeScene.id, characterId: target.id, action: Boolean(actionText), dialogueCount: dialogueSegments.length } });
         setNotice(target.name + "已回应最近的互动。");
       }
-      if (settings.saveConfirmedEventsToMemory && (userText.trim() || userAction.trim()) && (parsed.dialogue.trim() || parsed.action?.trim())) {
-        const eventId = id("event"), eventNow = new Date().toISOString();
-        const event = { id: eventId, kind: "activity" as const, status: "completed" as const, locationId: activeScene.locationId, locationName: activeScene.locationName, participantIds: ["player", target.id], title: userAction.trim() && !userText.trim() ? "生活场景行动" : "生活场景互动", details: `${playerName}行动：${userAction || "无"}\n{{user}}对白：${userText || "无"}\n${target.name}行动：${parsed.action || "无"}\n${target.name}对白：${parsed.dialogue || "无"}`, createdAt: eventNow, updatedAt: eventNow, completedAt: eventNow };
-        const latest = stateRef.current;
-        const fact = `在${activeScene.locationName}，{{user}}${userAction.trim() ? "行动：“" + userAction.trim().slice(0, 120) + "”" : ""}${userText.trim() ? "说：“" + userText.trim().slice(0, 120) + "”" : ""}；${target.name}${parsed.action?.trim() ? "行动：“" + parsed.action.trim().slice(0, 120) + "”" : ""}${parsed.dialogue.trim() ? "说：“" + parsed.dialogue.trim().slice(0, 120) + "”" : ""}。`;
-        commit({ ...latest, events: [event, ...latest.events], memories: [{ id: id("memory"), eventId, occurredAt: eventNow, participants: ["player", target.id], fact }, ...latest.memories].slice(0, 500) });
-      }
       const remainingResponders = responseQueue?.length ? responseQueue.slice(1) : plannedResponders.slice(1);
       if (remainingResponders.length) {
         recordLifeDiagnostic({ source: "生活现场", event: "追加角色回应队列", status: "info", detail: "按角色 ID 去重后依次处理其他回应角色。", meta: { sceneId: activeScene.id, completedCharacterId: target.id, queuedCharacterIds: remainingResponders } });
         const nextResult = await sendSceneTurn(undefined, true, undefined, remainingResponders);
         if (nextResult === "failed") recordLifeDiagnostic({ source: "生活现场", event: "追加角色回应未全部完成", status: "warning", detail: "至少一名后续角色未能完成回应，已完成的回应会保留。", meta: { sceneId: activeScene.id, completedCharacterId: target.id, remainingResponders } });
+      }
+      // Persist one shared event for the whole player turn, after all queued responders
+      // have finished. This keeps the random, specified and awareness responders in
+      // one co-experience with every actual participant instead of saving only the first.
+      if (!responseQueue?.length && settings.saveConfirmedEventsToMemory && (userText.trim() || userAction.trim())) {
+        const latest = stateRef.current;
+        const turnStart = new Date(now).getTime();
+        const responses = latest.sceneMessages
+          .filter(message => message.sceneId === activeScene.id && message.speakerType === "character" && new Date(message.createdAt).getTime() >= turnStart)
+          .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        const responders = [...new Set(responses.map(message => resolveLifeCharacterId(message.speakerId)).filter(Boolean))];
+        if (responders.length) {
+          const responseDetails = responders.map(characterId => {
+            const actor = characters.find(character => character.id === characterId);
+            const messages = responses.filter(message => resolveLifeCharacterId(message.speakerId) === characterId);
+            const actions = messages.map(message => message.action?.trim()).filter(Boolean);
+            const dialogue = messages.map(message => message.dialogue?.trim()).filter(Boolean);
+            return { characterId, name: actor?.name || messages[0]?.speakerName || "角色", actions, dialogue };
+          });
+          const eventId = id("event"), eventNow = new Date().toISOString();
+          const participantIds = ["player", ...responders];
+          const responseText = responseDetails.map(item => `${item.name}${item.actions.length ? "行动：“" + item.actions.join("；").slice(0, 240) + "”" : ""}${item.dialogue.length ? "说：“" + item.dialogue.join("” / “").slice(0, 300) + "”" : ""}`).join("；");
+          const event = { id: eventId, kind: "activity" as const, status: "completed" as const, locationId: activeScene.locationId, locationName: activeScene.locationName, participantIds, title: userAction.trim() && !userText.trim() ? "生活场景行动" : "生活场景互动", details: `${playerName}行动：${userAction || "无"}\n{{user}}对白：${userText || "无"}\n${responseText}`, createdAt: eventNow, updatedAt: eventNow, completedAt: eventNow };
+          const fact = `在${activeScene.locationName}，{{user}}${userAction.trim() ? "行动：“" + userAction.trim().slice(0, 120) + "”" : ""}${userText.trim() ? "说：“" + userText.trim().slice(0, 120) + "”" : ""}；${responseText}。`;
+          commit({ ...latest, events: [event, ...latest.events], memories: [{ id: id("memory"), eventId, occurredAt: eventNow, participants: participantIds, fact }, ...latest.memories].slice(0, 500) });
+        }
       }
       return "completed";
     } catch (error) {
