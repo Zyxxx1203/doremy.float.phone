@@ -2322,7 +2322,12 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应生成失败", status: "error", detail: error instanceof Error ? error.message : String(error), meta: { sceneId: activeScene.id, characterId: target.id } });
       setNotice(error instanceof Error ? `角色生成失败：${error.message}` : "角色生成失败，请检查聊天模型配置。");
       return "failed";
-    } finally { lifeTurn.end(); setBusy(false); }
+    } finally {
+      lifeTurn.end();
+      // Keep the composer locked until the root turn has finished every queued responder
+      // and persisted the single grouped shared-event record.
+      if (!responseQueue?.length) setBusy(false);
+    }
   };
 
   useEffect(() => {
