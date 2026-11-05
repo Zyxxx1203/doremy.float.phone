@@ -6,7 +6,7 @@ import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import { generateChatCompletion, flattenCompletionResult, readCompressedImageDataUrl } from "@/lib/chat-engine";
 import { createOrGetSession, loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
-import { appendCustomAppTimelineEntry } from "@/lib/custom-app-storage";
+import { appendCustomAppTimelineEntry, deleteCustomAppTimelineEntries } from "@/lib/custom-app-storage";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { resolveVoiceConfig, synthesizeSpeech } from "@/lib/tts-service";
 import { resolveUserIdentity } from "@/lib/settings-storage";
@@ -43,7 +43,7 @@ type VideoTarget = { url: string; embedUrl: string | null; platform: Platform; p
 type WatchNativeBridge = { resolveShortVideoShareUrl?: (url: string, requestId: string) => boolean; deleteCachedShortVideo?: (cacheId: string) => boolean; setScreenOrientation?: (mode: string) => boolean; openUrl?: (url: string) => boolean; getWebConsoleLogs?: () => string; getDiagnosticsSnapshot?: () => string; clearWebConsoleLogs?: () => boolean };
 type WatchNativeWindow = Window & { AndroidShell?: WatchNativeBridge };
 type WatchNativeResolved = { requestId?: string; ok?: boolean; cacheId?: string; contentUri?: string; mediaUrl?: string; embedUrl?: string; message?: string };
-type WatchMemoryRecord = { id:string; url:string; title:string; platform:string; startedAt:string; durationSeconds:number; characterName:string; comments:string[]; discussion?: WatchComment[]; review:string; characterReview:string; favorite:boolean; memoryTitle?:string; quote?:string; mood?:string; note?:string; cacheId?:string; cacheSize?:number };
+type WatchMemoryRecord = { id:string; url:string; title:string; platform:string; startedAt:string; durationSeconds:number; characterId?: string; characterName:string; comments:string[]; discussion?: WatchComment[]; review:string; characterReview:string; favorite:boolean; memoryTitle?:string; quote?:string; mood?:string; note?:string; cacheId?:string; cacheSize?:number };
 const WATCH_MEMORY_KEY = "ai_phone_watch_memory_records_v1";
 function readWatchMemories(): WatchMemoryRecord[] { try { const raw=window.localStorage.getItem(WATCH_MEMORY_KEY); const v=raw?JSON.parse(raw):[]; return Array.isArray(v)?v.filter((x)=>x&&typeof x.id==="string"):[]; } catch { return []; } }
 function writeWatchMemories(records: WatchMemoryRecord[]) { try { window.localStorage.setItem(WATCH_MEMORY_KEY,JSON.stringify(records.slice(0,300))); } catch { /* Keep playback working if local storage is full. */ } }
@@ -543,6 +543,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       id: "watch-memory-" + now.getTime().toString(36) + "-" + Math.random().toString(36).slice(2,7),
       url: target.url, title: videoTitle.trim() || (target.platformName + "视频"), platform: target.platformName,
       startedAt: now.toISOString(), durationSeconds: 0,
+      characterId: settings.characterId || undefined,
       characterName: characters.find(c => c.id === settings.characterId)?.name || "",
       comments: [], discussion: [], review: "", characterReview: "", favorite: false, memoryTitle: "", quote: "", mood: "", note: "",
       cacheId: cacheInfo?.cacheId, cacheSize: cacheInfo?.cacheSize,
@@ -575,7 +576,18 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
         });
       }
     }, 1000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      const activeId = activeMemoryIdRef.current;
+      if (!activeId) return;
+      const latest = readWatchMemories();
+      const updated = latest.map(record => record.id === activeId
+        ? { ...record, durationSeconds: Math.max(record.durationSeconds, memoryElapsedRef.current) }
+        : record);
+      writeWatchMemories(updated);
+      const completed = updated.find(record => record.id === activeId);
+      if (completed) syncWatchRecordToTimeline(completed);
+    };
   }, [target?.url]);
 
   useEffect(() => {
@@ -589,7 +601,37 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     });
   }, [comments, videoTitle, characters, settings.characterId, target?.url]);
 
+  const syncWatchRecordToTimeline = (record: WatchMemoryRecord) => {
+    const owner = characters.find(item => item.id === record.characterId) ?? characters.find(item => item.name === record.characterName);
+    const characterId = record.characterId || owner?.id;
+    if (!characterId) return;
+    const discussion = (record.discussion?.length ? record.discussion.map(item => (item.kind === "user" ? "我" : item.characterName) + "：" + item.text) : record.comments).slice(-12);
+    const hasMeaningfulMemory = record.durationSeconds >= 60 || discussion.length > 0 || Boolean(record.review || record.characterReview || record.quote || record.note || record.favorite);
+    if (!hasMeaningfulMemory) return;
+    const summary = "和" + (record.characterName || owner?.name || "角色") + "一起观看了《" + (record.title || "未命名视频") + "》" +
+      (record.durationSeconds > 0 ? "，共同观看约 " + Math.max(1, Math.floor(record.durationSeconds / 60)) + " 分钟" : "") +
+      (record.favorite ? "，并将这段观看标记为喜欢" : "") +
+      (record.memoryTitle ? "；纪念卡：" + record.memoryTitle : "") +
+      (record.mood ? "；当时心情：" + record.mood : "") +
+      (record.quote ? "；留下的话：" + record.quote : "");
+    const detail = [
+      "平台：" + record.platform,
+      discussion.length ? "互动片段：" + discussion.join("；") : "",
+      record.review ? "我的观后感：" + record.review : "",
+      record.characterReview ? "角色观后感：" + record.characterReview : "",
+      record.note ? "补充备注：" + record.note : "",
+    ].filter(Boolean).join("\n").slice(0, 1800);
+    deleteCustomAppTimelineEntries("watch", { characterId, appEventId: record.id });
+    appendCustomAppTimelineEntry({ id: "watch", name: "一起看" }, {
+      characterId, appEventId: record.id, summary: summary.slice(0, 500), detail,
+      appLabel: "共同观看", createdAt: record.startedAt,
+      data: { appEventId: record.id, title: record.title, platform: record.platform, durationSeconds: record.durationSeconds, favorite: record.favorite, memoryTitle: record.memoryTitle, quote: record.quote, mood: record.mood },
+    });
+  };
+
   const patchMemoryRecord = (id: string, patch: Partial<WatchMemoryRecord>) => {
+    const current = readWatchMemories().find(record => record.id === id);
+    if (current) syncWatchRecordToTimeline({ ...current, ...patch });
     setMemoryRecords(previous => { const next=previous.map(r => r.id===id?{...r,...patch}:r); writeWatchMemories(next); return next; });
   };
 
