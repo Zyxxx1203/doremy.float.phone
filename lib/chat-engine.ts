@@ -28,6 +28,7 @@ import {
     createToolExecutionId,
     isSessionStreamingEnabled,
     resolveMeetingInviteCardConfig,
+    resolveSessionCharacterId,
 } from "./chat-storage";
 import { extractTextToolDirectiveText, stripTextToolDirectives } from "./text-tool-protocol";
 import { applyWithProtectedAvatarDecisionMarkers, findUserAvatarChangeIntent } from "./chat-avatar-intent";
@@ -1871,9 +1872,10 @@ export async function buildChatPromptMessages(
     session = loadChatSessions().find(item => item.id === session.id) ?? session;
     const chars = loadCharacters();
     // Normal chats store ChatContact.id; virtual life sessions may store Character.id.
-    const contact = loadChatContacts().find(item => item.id === session.contactId);
-    const character = chars.find(c => c.id === session.contactId)
-        ?? chars.find(c => c.id === contact?.characterId);
+    const resolvedCharacterId = resolveSessionCharacterId(session);
+    const character = resolvedCharacterId
+        ? chars.find(c => c.id === resolvedCharacterId)
+        : undefined;
     if (!character) throw new ChatEngineError(`Character not found for session contact ${session.contactId}${contact?.characterId ? ` (character ${contact.characterId})` : ""}`);
 
     const resolvedAppId = options?.appId ?? "chat";
@@ -2326,7 +2328,7 @@ async function generateNativeChatCompletion(
     const requestMessages: LlmRequestMessage[] = toLlmRequestMessages(llmMessages);
     const parts: ChatCompletionPart[] = [];
     const meta = { characterName: character.name, userName: userIdentity?.name };
-    const actionContext = { characterId: session.contactId, sessionId: session.id, sourceEngine: "chat" as const, signal: options?.signal };
+    const actionContext = { characterId: character.id, sessionId: session.id, sourceEngine: "chat" as const, signal: options?.signal };
     const expandableSourceKeys = new Set(enabledTools.filter(tool => !isNativeSingleTool(tool)).map(nativeToolSourceKey));
 
     const maxToolRounds = getMaxToolRounds();
