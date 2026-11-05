@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, Clipboard, Download, RefreshCw, Trash2 } from "lucide-react";
+import { Activity, Clipboard, RefreshCw, Trash2 } from "lucide-react";
 import {
   getPerformanceDiagnosticsSnapshot,
   resetPerformanceDiagnostics,
@@ -79,8 +79,10 @@ export function PerformanceDiagnostics() {
 
   const report = useMemo(() => ({
     generatedAt: new Date().toISOString(),
-    userAgent: navigator.userAgent,
-    viewport: { width: window.innerWidth, height: window.innerHeight, devicePixelRatio: window.devicePixelRatio },
+    userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
+    viewport: typeof window !== "undefined"
+      ? { width: window.innerWidth, height: window.innerHeight, devicePixelRatio: window.devicePixelRatio }
+      : null,
     runtime: sample,
     diagnostics: snapshot,
     notes: [
