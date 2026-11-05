@@ -200,19 +200,6 @@ function PhotoThumbnail({ photo, onOpen }: { photo: PhotoWallPhoto; onOpen: () =
   </button>;
 }
 export function PhotoWallApp({ onClose, onNotice }: Props) {
-  const recordPhotoWallMemory = useCallback((summary: string, characterId?: string) => {
-    try {
-      const ids = characterId ? [characterId] : loadCharacters().map(character => character.id);
-      for (const id of ids) {
-        appendCustomAppTimelineEntry({ id: "photo_wall", name: "照片墙" }, {
-          characterId: id,
-          summary: summary.slice(0, 500),
-          appLabel: "照片墙",
-        });
-      }
-    } catch { /* 记忆失败不影响照片墙 */ }
-  }, []);
-
   const [state, setState] = useState<PhotoWallState>(() => loadPhotoWallState());
   const [characters, setCharacters] = useState<Character[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
@@ -762,15 +749,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     if (wallCanvasMode === "doodle" && nextMode !== "doodle") {
       const recordId = doodleSessionRecordIdRef.current;
       const record = recordId ? (stateRef.current.creationRecords ?? []).find(item => item.id === recordId) : undefined;
-      if (record) recordPhotoWallMemory(
-        "完成了一次照片墙共同创作：在 " + record.photoIds.length + " 张照片上留下 " + record.doodles.length + " 笔涂鸦。",
-        record.authorType === "character" ? record.authorId : undefined,
-      );
+      // The creation record itself is projected into the shared-events timeline.
       doodleSessionRecordIdRef.current = null;
     }
     if (nextMode === "doodle") doodleSessionRecordIdRef.current = null;
     setWallCanvasMode(nextMode);
-  }, [wallCanvasMode, recordPhotoWallMemory]);
+  }, [wallCanvasMode]);
   const changeDoodles = useCallback((photoId: string, doodles: PhotoWallDoodle[], side: "front" | "back" = "front") => {
     const current = stateRef.current;
     const photo = current.photos.find(item => item.id === photoId);
