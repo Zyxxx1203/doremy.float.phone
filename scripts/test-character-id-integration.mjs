@@ -13,6 +13,21 @@ async function loadTs(path) {
   return moduleBox.exports;
 }
 
+async function loadTsWithMocks(path, mocks, extras = {}) {
+  const source = await readFile(new URL(path, import.meta.url), "utf8");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+  }).outputText;
+  const moduleBox = { exports: {} };
+  const noOp = () => undefined;
+  const customRequire = name => mocks[name] || new Proxy({}, { get: () => noOp });
+  vm.runInNewContext(compiled, {
+    module: moduleBox, exports: moduleBox.exports, require: customRequire,
+    Date, Math, Promise, JSON, console, setTimeout, clearTimeout, ...extras,
+  }, { filename: path });
+  return moduleBox.exports;
+}
+
 const identity = await loadTs("../lib/character-id-contract.ts");
 const guided = await loadTs("../lib/life/life-guided-schedule.ts");
 const lifeEngineSource = await readFile(new URL("../components/life/life-engine-app.tsx", import.meta.url), "utf8");
