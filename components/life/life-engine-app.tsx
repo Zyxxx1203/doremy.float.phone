@@ -53,7 +53,7 @@ import { acknowledgePendingLifeSceneReply, claimPendingLifeSceneReply, failPendi
 
 type Tab = "home" | "scene" | "daily" | "people" | "plans" | "invitations" | "experiences" | "locations" | "observe" | "settings";
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
-type QuickPlanDraft = { id: string; ownerType: LifeOwnerType; ownerId: string; startAt: string; endAt: string; title: string; locationName: string; saveLocationToLibrary?: boolean };
+type QuickPlanDraft = { id: string; ownerType: LifeOwnerType; ownerId: string; startAt: string; endAt: string; title: string; locationName: string; saveLocationToLibrary?: boolean; operation?: "add" | "move" | "update" | "cancel"; existingScheduleId?: string; reason?: string };
 const PLAYER_ID = "player";
 const LIFE_PROACTIVE_MESSAGES_ENABLED = false; // Temporarily pause life-initiated messages; keep schedules/scenes.
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -1061,19 +1061,19 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       });
       const scheduleText = contexts.map(context =>
         "【对象ID：" + context.actor.ownerId + "｜名称：" + context.actor.name + "｜类型：" + (context.actor.ownerType === "player" ? "player" : "character") + "｜虚拟时间：" + context.now.toISOString() + "】\n"
-        + (context.existing.map(slot=>"- "+slot.startAt+" 至 "+slot.endAt+"｜"+slot.title+"｜"+(slot.plannedLocationName||"地点未定")+"｜"+slot.source).join("\n") || "暂无已安排日程")
+        + (context.existing.map(slot=>"- ID="+slot.id+"｜"+slot.startAt+" 至 "+slot.endAt+"｜"+slot.title+"｜"+(slot.plannedLocationName||"地点未定")+"｜source="+slot.source+"｜kind="+slot.kind).join("\n") || "暂无已安排日程")
       ).join("\n\n");
       const locations = current.locations.map(location=>"- "+location.name).join("\n");
       const session = createLifeChatSession(modelCharacter.id,modelCharacter.name);
       const prompt: ChatMessage = { id:id("life-guided-schedule"),sessionId:session.id,role:"user",status:"sent",createdAt:new Date().toISOString(),content:[
         "你是生活日程规划助手。用户选择的安排对象只有以下这些；可同时为多名对象安排，但绝不能安排未选中的对象。",
-        "选中对象及其现有七日日程（只读，不得覆盖或删除）：\n"+scheduleText,
+         "选中对象及其现有七日日程（必须依据 ID 决定保留或调整）：\n"+scheduleText,
         "用户指导：\n"+instruction,
         "可用地点：\n"+locations,
         "每个对象都以各自标题中的虚拟时间为准；dayOffset 0 为该对象今天，6 为该对象第七天。",
-        "只输出 JSON，结构必须严格为：{\"schedules\":[{\"actorId\":\"必须原样填写上方对象ID\",\"actorType\":\"player 或 character\",\"actorName\":\"必须原样填写上方对象名称\",\"dayOffset\":0,\"start\":\"15:00\",\"end\":\"16:00\",\"title\":\"活动\",\"location\":\"地点或空字符串\"}]}。",
+         "只输出 JSON，结构必须严格为：{\"schedules\":[{\"actorId\":\"必须原样填写上方对象ID\",\"actorType\":\"player 或 character\",\"actorName\":\"必须原样填写上方对象名称\",\"operation\":\"keep|move|update|add|cancel\",\"existingScheduleId\":\"旧日程ID或空字符串\",\"dayOffset\":0,\"start\":\"15:00\",\"end\":\"16:00\",\"title\":\"活动\",\"location\":\"地点或空字符串\",\"reason\":\"调整原因\"}]}。",
         "actorId 是唯一身份主键，必须逐字复制；actorType 必须与该 ID 对应的对象类型一致；actorName 是用于交叉校验的显示名称，不得替代 actorId。禁止输出未选中对象、禁止猜测 ID 或名称。",
-        "仅返回本次指导需要新增的安排；不得覆盖或删除旧日程；时间必须明确，不得返回过去时间；同一对象的安排不得与现有日程或彼此重叠；无明确时间则返回空数组。不要输出 Markdown 或 JSON 以外的文字。"
+         "请重新规划而不是只新增：每个旧日程可返回 keep（保留）、move/update（移动或修改，必须填写对应 existingScheduleId）或 cancel（取消，必须填写 ID）；新安排用 add。必须覆盖用户指导所涉及的时间范围。已开始/过去的日程、source=event 的已确认邀约或固定事件必须 keep，不得移动或取消；普通未来 weekly-generation/manual/character-tool 日程可按需要移动或更新。调整后同一对象所有时段不得重叠。每项给出简短 reason；取消操作不需要时间字段。不得遗漏仍需保留的固定日程。不要输出 Markdown 或 JSON 以外的文字。"
       ].join("\n\n")};
       const result=await generateOfflineChatCompletion(session,[prompt],{appId:"life",appTags:lifeAppTags("schedule")});
       recordLifeDiagnostic({
@@ -1104,10 +1104,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       }
       setQuickPlanDrafts(drafts);
       const count = new Set(drafts.map(draft => draft.ownerId)).size;
-      setNotice("AI 为 " + count + " 位对象生成了 " + drafts.length + " 条待确认安排。" +
+      setNotice("AI 为 " + count + " 位对象生成了 " + drafts.length + " 项待确认日程调整。" +
         (parsed.conflicts.length ? "另有 " + parsed.conflicts.length + " 条时间冲突。" : "") +
         (parsed.rejected.length ? "另有 " + parsed.rejected.length + " 条因身份或格式不匹配被拒绝。" : "") +
-        "现有日程未修改，请检查预览后再保存。");
+        "现有日程尚未修改，请检查新增、移动、修改和取消预览后再一次性确认。");
       recordLifeDiagnostic({
         source: "AI 日程指导", event: "候选日程已交付预览", status: "ok", traceId,
         detail: "候选安排已显示在待确认预览中；只有用户确认后才会写入正式日程。",
@@ -1121,6 +1121,60 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         detail, meta: { traceId, selectedActorIds: targets.map(actor => actor.ownerId) },
       });
     } finally { setGuidedScheduleBusy(false); }
+  };
+
+  const confirmQuickPlanDrafts = () => {
+    if (!quickPlanDrafts.length) return;
+    const base = stateRef.current;
+    const now = new Date().toISOString();
+    const removeIds = new Set<string>();
+    const candidates: LifeScheduleSlot[] = [];
+    const timelineItems: Array<{ draft: QuickPlanDraft; action: "新增" | "调整" | "取消"; slot?: LifeScheduleSlot }> = [];
+    const invalid: string[] = [];
+    const seenExistingIds = new Set<string>();
+    let next = base;
+    for (const draft of quickPlanDrafts) {
+      const operation = draft.operation ?? "add";
+      const owner = actors.find(actor => actor.ownerType === draft.ownerType && actor.ownerId === draft.ownerId);
+      if (!owner) { invalid.push(draft.title || "未知安排对象"); continue; }
+      const existing = operation === "add" ? undefined : base.schedules.find(slot => slot.id === draft.existingScheduleId && slot.ownerType === draft.ownerType && slot.ownerId === draft.ownerId);
+      if (operation !== "add") {
+        if (!existing || !draft.existingScheduleId || seenExistingIds.has(draft.existingScheduleId)) { invalid.push((draft.title || "日程") + "（旧日程 ID 不存在或重复）"); continue; }
+        seenExistingIds.add(draft.existingScheduleId);
+        const virtualNow = actorNow(owner);
+        if (existing.source === "event" || new Date(existing.startAt) <= virtualNow || new Date(existing.endAt) <= virtualNow) { invalid.push(existing.title + "（已开始、已结束或属于固定/已确认事件，不允许 AI 调整）"); continue; }
+        removeIds.add(existing.id);
+        if (operation === "cancel") { timelineItems.push({ draft, action: "取消" }); continue; }
+      }
+      const start = new Date(draft.startAt), end = new Date(draft.endAt);
+      if (!draft.title.trim() || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start || start <= actorNow(owner)) { invalid.push(draft.title || "未命名安排"); continue; }
+      let location = draft.locationName.trim() ? next.locations.find(item => item.name.trim().toLocaleLowerCase() === draft.locationName.trim().toLocaleLowerCase()) : undefined;
+      if (draft.locationName.trim() && !location && draft.saveLocationToLibrary) {
+        location = { id: id("location"), name: draft.locationName.trim(), description: "从 AI 日程指导预览添加的地点", visibility: "public" };
+        next = { ...next, locations: [...next.locations, location] };
+      }
+      const actual = next.actorStates.find(item => item.ownerType === draft.ownerType && item.ownerId === draft.ownerId);
+      const slot: LifeScheduleSlot = existing
+        ? { ...existing, startAt: start.toISOString(), endAt: end.toISOString(), title: draft.title.trim(), plannedLocationId: location?.id ?? (draft.locationName.trim() ? undefined : existing.plannedLocationId ?? actual?.actualLocationId ?? undefined), plannedLocationName: location?.name ?? (draft.locationName.trim() || existing.plannedLocationName || actual?.actualLocationName || undefined), updatedAt: now }
+        : { id: id("guided-plan"), ownerType: draft.ownerType, ownerId: draft.ownerId, startAt: start.toISOString(), endAt: end.toISOString(), title: draft.title.trim(), plannedLocationId: location?.id ?? actual?.actualLocationId ?? undefined, plannedLocationName: location?.name ?? (draft.locationName.trim() || actual?.actualLocationName || undefined), kind: "free-time", source: "manual", updatedAt: now };
+      candidates.push(slot);
+      timelineItems.push({ draft, action: existing ? "调整" : "新增", slot });
+    }
+    if (invalid.length) { setNotice("本次日程调整未保存（原日程保持不变）：" + invalid.slice(0,4).join("；")); recordLifeDiagnostic({ source: "AI 日程指导", event: "确认前校验失败", status: "error", detail: invalid.join("；"), meta: { draftCount: quickPlanDrafts.length } }); return; }
+    const combined = [...base.schedules.filter(slot => !removeIds.has(slot.id)), ...candidates];
+    for (let i = 0; i < combined.length; i += 1) for (let j = i + 1; j < combined.length; j += 1) {
+      const a = combined[i], b = combined[j];
+      if (a.ownerType === b.ownerType && a.ownerId === b.ownerId && new Date(a.startAt) < new Date(b.endAt) && new Date(a.endAt) > new Date(b.startAt)) invalid.push(a.title + " 与 " + b.title + " 时间重叠");
+    }
+    if (invalid.length) { setNotice("本次日程调整未保存（原日程保持不变）：" + invalid.slice(0,4).join("；")); recordLifeDiagnostic({ source: "AI 日程指导", event: "原子提交冲突", status: "error", detail: invalid.join("；"), meta: { draftCount: quickPlanDrafts.length } }); return; }
+    next = { ...next, schedules: combined.sort((a,b) => a.startAt.localeCompare(b.startAt)) };
+    for (const item of timelineItems) {
+      const owner = actors.find(actor => actor.ownerType === item.draft.ownerType && actor.ownerId === item.draft.ownerId);
+      next = appendLifeTimelineEntry(next, { category: "schedule", title: (owner?.name ?? "角色") + (item.action === "新增" ? "新增日程：" : item.action === "调整" ? "调整日程：" : "取消日程：") + (item.slot?.title ?? item.draft.title), details: item.slot ? fmt(item.slot.startAt) + "–" + fmt(item.slot.endAt) + (item.slot.plannedLocationName ? " · " + item.slot.plannedLocationName : "") + (item.draft.reason ? " · " + item.draft.reason : "") : (item.draft.reason || "AI 重新规划"), actorId: item.draft.ownerId, actorName: owner?.name, locationName: item.slot?.plannedLocationName ?? undefined });
+    }
+    commit(next); setQuickPlanDrafts([]); setQuickPlanText("");
+    setNotice("已原子保存 " + timelineItems.length + " 项日程调整；固定、已确认和已开始事件未被修改。");
+    recordLifeDiagnostic({ source: "AI 日程指导", event: "日程调整原子提交成功", status: "ok", detail: "新增、移动、修改、取消操作已一次性提交。", meta: { operations: timelineItems.map(item => ({ operation: item.action, scheduleId: item.slot?.id ?? item.draft.existingScheduleId })) } });
   };
 
   const ensurePlans = () => {
@@ -3747,7 +3801,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
               <label className="mt-2 block text-[11px] text-stone-500">计划地点（可选已有地点或自定义）<input list={"life-location-options-" + draft.id} value={draft.locationName} onChange={e=>update({locationName:e.target.value})} placeholder="输入地点名，或从已有地点中选择" className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"/><datalist id={"life-location-options-" + draft.id}>{visibleLocations.map(location=><option key={location.id} value={location.name}/>)}</datalist></label>{draft.locationName.trim() && !state.locations.some(location=>location.name.trim().toLocaleLowerCase()===draft.locationName.trim().toLocaleLowerCase()) && <label className="mt-2 flex items-center gap-2 text-[11px] text-stone-500"><input type="checkbox" checked={Boolean(draft.saveLocationToLibrary)} onChange={e=>update({saveLocationToLibrary:e.target.checked})} className="accent-[var(--life-accent)]"/>同时保存为地点库中的新地点</label>}
               <button type="button" onClick={()=>setQuickPlanDrafts(items=>items.filter(item=>item.id!==draft.id))} className="mt-2 text-xs text-rose-600">删除这条</button>
             </div>})}</div>
-            <div className="mt-3 flex gap-2"><button type="button" onClick={()=>setQuickPlanDrafts([])} className="flex-1 rounded-xl border border-stone-200 px-3 py-2.5 text-sm">取消</button><button type="button" onClick={()=>{let next=stateRef.current;let saved=0;const invalid:string[]=[];for(const draft of quickPlanDrafts){const start=new Date(draft.startAt);const end=new Date(draft.endAt);if(!draft.title.trim()||!Number.isFinite(start.getTime())||!Number.isFinite(end.getTime())||end<=start){invalid.push(draft.title||"未命名安排");continue;}const owner=actors.find(actor=>actor.ownerType===draft.ownerType&&actor.ownerId===draft.ownerId);let location=draft.locationName.trim()?next.locations.find(item=>item.name.trim().toLocaleLowerCase()===draft.locationName.trim().toLocaleLowerCase()):undefined;if(draft.locationName.trim()&&!location&&draft.saveLocationToLibrary){location={id:id("location"),name:draft.locationName.trim(),description:"从快速日程表单添加的地点",visibility:"public"};next={...next,locations:[...next.locations,location]};}const actual=next.actorStates.find(item=>item.ownerType===draft.ownerType&&item.ownerId===draft.ownerId);const slot: LifeScheduleSlot = {id:id("quick-plan"),ownerType:draft.ownerType,ownerId:draft.ownerId,startAt:start.toISOString(),endAt:end.toISOString(),title:draft.title.trim(),plannedLocationId:location?.id??actual?.actualLocationId??undefined,plannedLocationName:location?.name??(draft.locationName.trim()||actual?.actualLocationName||undefined),kind:"free-time",source:"manual",updatedAt:new Date().toISOString()};const inserted=insertManualLifeScheduleSlot(next,slot);if(inserted.conflict){invalid.push(draft.title.trim()+"（与「"+inserted.conflict.title+"」时间冲突）");continue;}if(inserted.error){invalid.push(draft.title.trim()+"（"+inserted.error+"）");continue;}next=inserted.state;next=appendLifeTimelineEntry(next,{category:"schedule",title:(owner?.name??"角色")+"新增日程："+draft.title.trim(),details:fmt(start)+"–"+fmt(end)+(location?" · "+location.name:""),actorId:draft.ownerId,actorName:owner?.name,locationName:location?.name});saved++;}if(saved){commit(next);setQuickPlanDrafts([]);setQuickPlanText("");setNotice("已保存 "+saved+" 条日程。");}if(invalid.length)setNotice("有 "+invalid.length+" 条未保存："+invalid.slice(0,3).join("；")+(invalid.length>3?"；其余原因已省略。":""));}} className="flex-1 rounded-xl bg-[var(--life-accent)] px-3 py-2.5 text-sm font-medium text-white">确认保存日程</button></div>
+            <div className="mt-3 flex gap-2"><button type="button" onClick={()=>setQuickPlanDrafts([])} className="flex-1 rounded-xl border border-stone-200 px-3 py-2.5 text-sm">取消</button><button type="button" onClick={confirmQuickPlanDrafts} className="flex-1 rounded-xl bg-[var(--life-accent)] px-3 py-2.5 text-sm font-medium text-white">确认保存调整</button></div>
           </div>}
         </div>
       </section>}
