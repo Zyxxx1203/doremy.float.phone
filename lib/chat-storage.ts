@@ -1289,7 +1289,7 @@ function refreshSessionPreviewMetadata(sessions: ChatSession[]): NormalizedList<
 export function hydrateChatStorage(): Promise<void> {
     if (_hydrated || typeof window === "undefined") return Promise.resolve();
     if (_hydratePromise) return _hydratePromise;
-    _hydratePromise = initChatDb().then(data => {
+    _hydratePromise = initChatDb().then(async data => {
         const normalizedToolHistory = normalizeLegacyTextToolHistory(data.messages);
         _messagesCache = normalizedToolHistory.items;
         if (normalizedToolHistory.changedMessages.length > 0) {
