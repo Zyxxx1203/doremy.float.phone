@@ -593,7 +593,7 @@ Deno.serve(async (req: Request) => {
     const payload = JSON.parse(await decryptPayload(job.payload, payloadKey)) as JobPayload;
     isLifeSceneJob = Boolean(payload.merge?.lifeScene);
     // 生活主动消息必须通过最新可用快照验证；缺失、损坏或位置不一致一律 fail closed。
-    const lifeSceneMeta = payload.merge?.lifeScene as { sceneId?: string; characterId?: string } | undefined;
+    const lifeSceneMeta = payload.merge?.lifeScene as { sceneId?: string; characterId?: string; traceId?: string } | undefined;
     let lifeScheduleVersionAtStart: string | null = null;
     let lifeRuntimeStateVersionAtStart: number | null = null;
     let lifePlayerLocationAtStart: string | null = null;
@@ -610,7 +610,7 @@ Deno.serve(async (req: Request) => {
       await rest("life_schedule_diagnostics?on_conflict=id", {
         method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
         body: JSON.stringify([{
-          id: diagnosticId, user_id: job.user_id, severity: "error", code,
+          id: diagnosticId, user_id: job.user_id, severity: "error", code, trace_id: lifeSceneMeta?.traceId || job.id,
           detail: detail.slice(0, 500), repair_hint: repairHint.slice(0, 500),
           updated_at: new Date().toISOString(), resolved_at: null,
         }]),
@@ -658,6 +658,24 @@ Deno.serve(async (req: Request) => {
         }
       }
     };
+    const writeLifeTraceEvent = async (
+      stage: string, code: string, detail: string, severity: "info" | "warning" | "error" = "info",
+    ) => {
+      if (!isLifeSceneJob) return;
+      await rest("life_schedule_diagnostic_events", {
+        method: "POST", headers: { Prefer: "return=minimal" },
+        body: JSON.stringify([{
+          id: `life-trace-${crypto.randomUUID()}`,
+          trace_id: lifeSceneMeta?.traceId || job.id,
+          user_id: job.user_id, stage, severity, code, detail: detail.slice(0, 500),
+          actor_id: lifeSceneMeta?.characterId || null,
+          session_id: typeof payload.merge?.sessionId === "string" ? payload.merge.sessionId : null,
+          job_id: job.id,
+        }]),
+      }).catch(() => undefined);
+    };
+    await writeLifeTraceEvent("生成任务启动", "life_generation_started", "云端生成器已领取生活任务，开始验证最新快照和角色运行态。");
+
     if (payload.merge?.lifeScene) {
       if (!lifeSceneMeta?.sceneId || !lifeSceneMeta.characterId) {
         await finish("done", "life schedule: incomplete scene metadata; rejected safely");
@@ -741,6 +759,7 @@ Deno.serve(async (req: Request) => {
           return;
         }
         lifeRuntimeStateVersionAtStart = Number(runtime.state_version);
+        await writeLifeTraceEvent("运行态校验通过", "life_runtime_validated", "角色运行态版本、日程版本、更新时间和当前位置均通过校验。");
         snapshot.playerLocationId = runtime.player_location_id || snapshot.playerLocationId;
         snapshot.characterLocations = {
           ...(snapshot.characterLocations || {}),
@@ -1555,6 +1574,7 @@ Deno.serve(async (req: Request) => {
       await finish("failed", `outbox write failed: ${detail.slice(0, 180) || outboxResponse.status}`);
       return;
     }
+    await writeLifeTraceEvent("消息已写入回传箱", "life_outbox_committed", "AI 结果已成功持久化到 push_outbox，开始通知投递。");
     await progress("outbox written, pushing");
 
     // Close the remaining cancellation window between outbox persistence and delivery.
@@ -1787,6 +1807,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    await writeLifeTraceEvent("通知投递结束", pushErrors.length ? "life_delivery_partial_or_failed" : "life_delivery_completed", `通知通道成功计数 ${pushed}；失败数 ${pushErrors.length}；${pushErrors.slice(0, 3).join(" | ") || "无投递错误"}`, pushErrors.length ? "warning" : "info");
     await finish("done", `generated, pushed ${pushed}${shortcutActionNote ? `, ${shortcutActionNote}` : ""}${pushErrors.length ? `, errors: ${pushErrors.slice(0, 3).join(" | ")}` : ""}`);
   } catch (err) {
     await finish("failed", err instanceof Error ? err.message : String(err));
