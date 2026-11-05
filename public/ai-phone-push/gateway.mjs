@@ -567,6 +567,7 @@ Deno.serve(async (request: Request) => {
         capabilities: [
           ...(schemaVersion >= 3 ? ["screen-chat-continuous"] : []),
           ...(schemaVersion >= 4 ? ["life-schedule-cloud"] : []),
+          ...(schemaVersion >= 5 ? ["life-execution-trace"] : []),
         ],
       });
     }
