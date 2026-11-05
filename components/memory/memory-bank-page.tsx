@@ -338,6 +338,7 @@ export function MemoryBankPage({
             (e.sourceApp === "chat" && e.sourceDetail === "group") ||
             (e.sourceApp === "interview_magazine" && e.sourceDetail === "interview_shared_issue") ||
             (e.sourceApp === "cocreate" && e.sourceDetail === "cocreate_project") ||
+            (e.sourceApp === "watch" && e.sourceDetail === "custom_app_event") ||
             (e.sourceApp === "life" && e.sourceDetail === "life_shared_event") ||
             (e.sourceApp === "photo_wall" && e.sourceDetail === "photo_wall_creation")
         ));
@@ -738,7 +739,7 @@ export function MemoryBankPage({
                         /* ── Shared events: card view ── */
                         sharedEvents.length === 0 ? (
                             <p className="text-center ts-14 mt-10 text-secondary">
-                                暂无共享事件。朋友圈、群聊、共创章节、生活共同经历、照片墙创作和共享访谈会在形成有效记录后显示。
+                                暂无共享事件。朋友圈、群聊、共创章节、一起看、生活共同经历、照片墙创作和共享访谈会在形成有效记录后显示。
                             </p>
                         ) : (
                             <MemoryTimeline
