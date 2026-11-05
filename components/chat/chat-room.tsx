@@ -534,6 +534,8 @@ type ChatRoomProps = {
     onBack: () => void;
     /** 会话在设置页被删除后回调：由外层卸载本聊天室并回到列表 */
     onDeleted?: () => void;
+    /** Only the visible room may renew foreground leases or poll sleep replies. */
+    isActive?: boolean;
 };
 
 type OfflineActionTarget = {
@@ -1261,7 +1263,7 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
     );
 }));
 
-export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
+export function ChatRoom({ session, onBack, onDeleted, isActive = true }: ChatRoomProps) {
     // Protect an actively visible direct conversation from a simultaneous cloud
     // life-scene notification. The life task is deferred, not cancelled; hiding or
     // leaving this chat releases the lease and lets the schedule continue.
@@ -1269,12 +1271,19 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         if (session.isGroup) return;
         const characterId = resolveSessionCharacterId(session);
         if (!characterId) return;
-        const refresh = () => setOnlineChatForegroundLease(
-            characterId,
-            session.id,
-            document.visibilityState === "visible",
+        if (!isActive) {
+            setOnlineChatForegroundLease(characterId, session.id, false);
+            return;
+        }
+        const isForegroundRoom = () => (
+            isActive
+            && document.visibilityState === "visible"
+            && isChatRoomElementVisible(wrapperRef.current)
         );
-        const syncCloudLease = () => { void syncLifeScheduleSnapshot(); };
+        const refresh = () => setOnlineChatForegroundLease(characterId, session.id, isForegroundRoom());
+        const syncCloudLease = () => {
+            if (isForegroundRoom()) void syncLifeScheduleSnapshot();
+        };
         const onVisibilityChange = () => {
             refresh();
             // Publish foreground ownership immediately; otherwise a cloud life job can
@@ -1284,8 +1293,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         refresh();
         syncCloudLease();
         const localLeaseTimer = window.setInterval(refresh, 20_000);
-        // The local lease is renewed more frequently than the cloud snapshot. Keep the
-        // server-side arbitration fresh without issuing a network request every 20s.
+        // Only the visible room renews the cloud lease; cached hidden rooms stay idle.
         const cloudLeaseTimer = window.setInterval(syncCloudLease, 60_000);
         document.addEventListener("visibilitychange", onVisibilityChange);
         return () => {
@@ -1293,9 +1301,9 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             window.clearInterval(cloudLeaseTimer);
             document.removeEventListener("visibilitychange", onVisibilityChange);
             setOnlineChatForegroundLease(characterId, session.id, false);
-            syncCloudLease();
+            if (document.visibilityState === "visible") void syncLifeScheduleSnapshot();
         };
-    }, [session.id, session.contactId, session.isGroup]);
+    }, [session.id, session.contactId, session.isGroup, isActive]);
 
     const [liveCSS, setLiveCSS] = useState(session.customCSS || "");
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -4327,7 +4335,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 
     // 围观群/被禁言时用户不能发言
     useEffect(() => {
-        if (session.isGroup || !character) return;
+        if (!isActive || session.isGroup || !character) return;
         const key = "life-sleep-pending-reply:" + session.id;
         const checkPendingSleepReply = () => {
             if (kvGet(key) !== "true" || isGeneratingRef.current) return;
@@ -4346,7 +4354,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             window.clearInterval(timer);
             window.removeEventListener("focus", checkPendingSleepReply);
         };
-    }, [session.id, session.isGroup, offlineMode, character?.id]);
+    }, [session.id, session.isGroup, offlineMode, character?.id, isActive]);
 
     const ensureGroupSpeakPermission = (): boolean => {
         if (!session.isGroup) return true;
