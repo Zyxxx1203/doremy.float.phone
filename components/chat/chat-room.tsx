@@ -8,7 +8,7 @@ import { syncLifeScheduleSnapshot } from "@/lib/life/life-schedule-cloud";
 
 import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { storeMediaBase64 } from "@/lib/media-cache-storage";
-import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, getSystemInstructionDisplayContent, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages, isSessionStreamingEnabled, resolveChatBackgroundImage, resolveChatUserAvatar } from "@/lib/chat-storage";
+import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, getSystemInstructionDisplayContent, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages, isSessionStreamingEnabled, resolveChatBackgroundImage, resolveChatUserAvatar, resolveSessionCharacterId } from "@/lib/chat-storage";
 import { cleanStreamText, splitStreamPreviewSegments, stripLiteralTexts, stripXmlTagBlocks } from "@/lib/stream-preview";
 import type { StateValue } from "@/lib/chat-storage";
 import { parseStateValues, mergeStateValues } from "@/lib/state-value-parser";
@@ -1304,7 +1304,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     const [stickerReady, setStickerReady] = useState(false);
     const [character, setCharacter] = useState<Character | null>(() => {
         const chars = loadCharacters();
-        return chars.find(c => c.id === session.contactId) || null;
+        const resolvedId = resolveSessionCharacterId(session);
+        return resolvedId ? chars.find(c => c.id === resolvedId) || null : null;
     });
     const [isGenerating, setIsGenerating] = useState(false);
     const [sleepNotice, setSleepNotice] = useState<{ pending: number; threshold: number } | null>(null);
@@ -1819,7 +1820,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 
     const activeRegexes = useMemo<RegexConfig[]>(() => {
         const bindings = loadBindingConfig();
-        const activeSlot = resolveBinding(bindings, session.isGroup ? undefined : session.contactId, session.isGroup ? "group_chat" : "chat");
+        const activeSlot = resolveBinding(bindings, session.isGroup ? undefined : (resolveSessionCharacterId(session) || undefined), session.isGroup ? "group_chat" : "chat");
         const allRegexes = loadRegexes();
         return (activeSlot.regexIds || [])
             .map(id => allRegexes.find(regex => regex.id === id))
@@ -1897,7 +1898,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         if (session.discardInvalidStickers !== true) return parts;
         const characterIds = senderCharacterId
             ? [senderCharacterId]
-            : (session.isGroup ? (session.participantIds ?? []) : [session.contactId]);
+            : (session.isGroup ? (session.participantIds ?? []) : (resolveSessionCharacterId(session) ? [resolveSessionCharacterId(session)!] : []));
         return parts.filter(part => part.mediaType !== "sticker"
             || isKnownStickerLabel(part.mediaData?.label || "", characterIds));
     }, [session.discardInvalidStickers, session.isGroup, session.participantIds, session.contactId]);
@@ -1958,9 +1959,10 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 
     useEffect(() => {
         const refreshAvatars = () => {
-            const latestCharacter = loadCharacters().find(item => item.id === session.contactId) || null;
+            const characterId = resolveSessionCharacterId(session);
+            const latestCharacter = characterId ? loadCharacters().find(item => item.id === characterId) || null : null;
             setCharacter(latestCharacter);
-            setUserIdentity(resolveUserIdentity(session.contactId, "chat"));
+            setUserIdentity(resolveUserIdentity(characterId || undefined, "chat"));
         };
         window.addEventListener(CHARACTERS_UPDATED_EVENT, refreshAvatars);
         window.addEventListener(USER_IDENTITIES_UPDATED_EVENT, refreshAvatars);
@@ -1976,7 +1978,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     );
 
     useEffect(() => {
-        setUserIdentity(resolveUserIdentity(session.contactId, "chat"));
+        setUserIdentity(resolveUserIdentity(resolveSessionCharacterId(session) || undefined, "chat"));
         setTransientMessages([]);
         setOfflineMode(kvGet(CHAT_OFFLINE_MODE_PREFIX + session.id) === "1");
         setOfflineVisibleCount(OFFLINE_INITIAL_LOAD);
@@ -2000,7 +2002,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         setHasMore(nextHasMore);
         const charIds = session.isGroup && session.participantIds
             ? session.participantIds
-            : [session.contactId];
+            : (resolveSessionCharacterId(session) ? [resolveSessionCharacterId(session)!] : []);
         Promise.all(charIds.map(id => prewarmStickerCache(id))).then(() => {
             setStickerReady(true);
             needsInitialScrollRef.current = true;
@@ -2347,7 +2349,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 startCall({
                     sessionId: session.id,
                     // 群聊通话没有单一角色，交由 CallLayer 按会话成员渲染
-                    characterId: session.isGroup ? "" : session.contactId,
+                    characterId: session.isGroup ? "" : (resolveSessionCharacterId(session) || ""),
                     kind: detail.type === "video" ? "video" : "voice",
                     initiator: "character",
                     ...(typeof detail.characterName === "string" ? { initiatorName: detail.characterName } : {}),
@@ -2401,7 +2403,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 orderId: targetMsg.mediaData?.shoppingOrderId,
                 requestId: targetMsg.mediaData?.paymentRequestId,
                 accepted: true,
-                payerCharacterId: session.contactId,
+                payerCharacterId: resolveSessionCharacterId(session) || "",
                 payerCharacterName: charN,
             });
         } else if (actionType === "decline_payment_request") {
@@ -2427,7 +2429,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             status: newStatus,
             ...(targetMediaType === "payment_request" ? {
                 paymentResolvedAt: new Date().toISOString(),
-                paymentPayerId: session.contactId,
+                paymentPayerId: resolveSessionCharacterId(session) || "",
                 paymentPayerName: charN,
             } : {}),
         };
@@ -3009,7 +3011,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const groupCharacterIds = session.isGroup && groupPhotoPattern.test(imageDescription)
             ? session.participantIds
             : undefined;
-        return generateAndApplyChatGeneratedImage(message, characterId || session.contactId, {
+        return generateAndApplyChatGeneratedImage(message, characterId || resolveSessionCharacterId(session) || "", {
             signal: guard?.signal,
             characterIds: groupCharacterIds,
         })
