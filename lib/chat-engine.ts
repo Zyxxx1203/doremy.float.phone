@@ -1876,7 +1876,7 @@ export async function buildChatPromptMessages(
     const character = resolvedCharacterId
         ? chars.find(c => c.id === resolvedCharacterId)
         : undefined;
-    if (!character) throw new ChatEngineError(`Character not found for session contact ${session.contactId}${contact?.characterId ? ` (character ${contact.characterId})` : ""}`);
+    if (!character) throw new ChatEngineError(`Character not found for session contact ${session.contactId}; resolved character ID: ${resolvedCharacterId || "unresolved"}`);
 
     const resolvedAppId = options?.appId ?? "chat";
     const bindings = loadBindingConfig();
@@ -2451,7 +2451,7 @@ async function generateNativeChatCompletion(
                 realResults = await executeToolCalls(textCalls, {
                     appId: options?.appId ?? "chat",
                     sessionId: session.id,
-                    characterId: session.contactId,
+                    characterId: character.id,
                     sourceEngine: "chat",
                     signal: options?.signal,
                     onShortcutCommandCreated: onlyNativeCall ? async command => {
@@ -2785,7 +2785,7 @@ async function generateChatCompletionCore(
     // ── Tool calling loop with real-time callbacks ──
     const parts: ChatCompletionPart[] = [];
     const meta = { characterName: character.name, userName: userIdentity?.name };
-    const actionContext = { characterId: session.contactId, sessionId: session.id, sourceEngine: "chat" as const, signal: options?.signal };
+    const actionContext = { characterId: character.id, sessionId: session.id, sourceEngine: "chat" as const, signal: options?.signal };
 
     const maxToolRounds = getMaxToolRounds();
     const onlineThinking = {
@@ -2934,7 +2934,7 @@ async function generateChatCompletionCore(
                 results = await executeToolCalls(toolCalls, {
                     appId: options?.appId ?? "chat",
                     sessionId: session.id,
-                    characterId: session.contactId,
+                    characterId: character.id,
                     sourceEngine: "chat",
                     signal: options?.signal,
                     onShortcutCommandCreated: onlyToolCall ? async command => {
