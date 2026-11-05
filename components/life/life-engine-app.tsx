@@ -1099,6 +1099,11 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         meta: { traceId, accepted: drafts.length, conflicts: parsed.conflicts, rejected: parsed.rejected },
       });
       if (!drafts.length) {
+        if (!parsed.conflicts.length && !parsed.rejected.length) {
+          setNotice("AI 检查后认为现有日程已经符合这次要求，无需移动或新增；原日程保持不变。");
+          recordLifeDiagnostic({ source: "AI 日程指导", event: "无需调整", status: "ok", traceId, detail: "模型判断当前目标时间窗内无需修改安排。", meta: { traceId } });
+          return;
+        }
         const reasons = [...parsed.conflicts, ...parsed.rejected].slice(0, 4).join("；");
         throw new Error(reasons || "没有识别到明确有效的时间安排。");
       }
@@ -3729,7 +3734,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
 
           <div className="mt-4 border-t border-[#e6d5c4] pt-3">
             <p className="text-sm font-semibold text-stone-800">AI 日程指导 · 先预览再保存</p>
-            <p className="mt-1 text-xs leading-relaxed text-stone-500">选择安排对象，用自然语言描述要求。AI 会读取该对象现有七日日程，只生成待确认的新安排，不会直接覆盖旧日程；若要替换已有安排，请先在下方日程卡片中手动微调或删除，AI 不会擅自删除旧事件。</p>
+            <p className="mt-1 text-xs leading-relaxed text-stone-500">选择安排对象，用自然语言描述要求。AI 会结合现有七日日程重新规划：优先保留已开始、已确认和明确固定的安排，对可调整的未来安排提出移动、修改或取消建议，并可补充新安排；预览确认后才会一次性写入。</p>
             <div className="mt-3 rounded-xl border border-stone-200 bg-white/80 p-3">
               <p className="mb-2 text-xs text-stone-500">安排对象（可多选）</p>
               <div className="flex flex-nowrap gap-2 overflow-x-auto overscroll-x-contain pb-1">{actors.map(actor=>{const key=actor.ownerType+":"+actor.ownerId;return <label key={key} className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-2 text-xs"><input type="checkbox" checked={scheduleGuidanceActorKeys.includes(key)} onChange={event=>setScheduleGuidanceActorKeys(current=>event.target.checked?[...new Set([...current,key])]:current.filter(value=>value!==key))}/>{actor.name}{actor.ownerType==="player"?"（我）":"（角色）"}</label>;})}</div>
