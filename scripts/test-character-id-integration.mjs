@@ -223,6 +223,7 @@ function kvMocksFor(values) {
     kvSet: (key, value) => values.set(key, String(value)),
     kvRemove: key => values.delete(key),
     registerKvMigration: () => undefined,
+    registerDynamicPrefix: () => undefined,
   };
 }
 const lifeState = lifeTypes.createEmptyVirtualLifeState("2026-11-05T00:00:00.000Z");
