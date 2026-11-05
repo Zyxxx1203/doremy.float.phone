@@ -123,7 +123,7 @@ export function migrateLifeCharacterIdentity(fromId: string, toId: string): numb
       : location;
   });
   const scenes = state.scenes.map(scene => {
-    const participants = scene.participants.map(replaceOwner);
+    const participants = [...scene.participants].sort((a, b) => Number(b.ownerId === toId) - Number(a.ownerId === toId)).map(replaceOwner);
     const participantMap = new Map<string, typeof participants[number]>();
     for (const participant of participants) {
       const key = participant.ownerType + ":" + participant.ownerId;
