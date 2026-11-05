@@ -47,7 +47,8 @@ import "./life-rose-garden.css";
 import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
 import { LifeObservation } from "@/components/life/life-observation";
 import { LifeDiagnosticsPanel } from "@/components/life/life-diagnostics-panel";
-import { recordLifeDiagnostic } from "@/lib/life/life-diagnostics";
+import { createLifeTraceId, recordLifeDiagnostic } from "@/lib/life/life-diagnostics";
+import { parseGuidedScheduleResponse } from "@/lib/life/life-guided-schedule";
 import { acknowledgePendingLifeSceneReply, claimPendingLifeSceneReply, failPendingLifeSceneReply, peekPendingLifeSceneReply, renewPendingLifeSceneReply, retryPendingLifeSceneReply } from "@/lib/life/life-notification-queue";
 
 type Tab = "home" | "scene" | "daily" | "people" | "plans" | "invitations" | "experiences" | "locations" | "observe" | "settings";
@@ -1038,6 +1039,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   };
 
   const generateGuidedScheduleDrafts = async () => {
+    const traceId = createLifeTraceId("guided-schedule");
     const targets = actors.filter(actor => scheduleGuidanceActorKeys.includes(actor.ownerType + ":" + actor.ownerId));
     const instruction = scheduleGuidanceText.trim();
     if (!instruction) { setNotice("先写下你希望调整的日程要求。"); return; }
@@ -1046,6 +1048,11 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const modelCharacter = characters.find(item => targets.some(actor => actor.ownerType === "character" && actor.ownerId === item.id)) ?? characters[0];
     if (!modelCharacter) { setNotice("AI 日程指导需要至少一个已配置角色的聊天模型通道。"); return; }
     setGuidedScheduleBusy(true);
+    recordLifeDiagnostic({
+      source: "AI 日程指导", event: "开始生成", status: "info", traceId,
+      detail: "已开始为选中对象生成七日日程候选；本次只生成预览，不直接修改现有日程。",
+      meta: { traceId, actors: targets.map(actor => ({ ownerType: actor.ownerType, ownerId: actor.ownerId, name: actor.name })) },
+    });
     try {
       const current = stateRef.current;
       const contexts = targets.map(actor => {
@@ -1056,50 +1063,67 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         return { actor, now, dayStart, dayEnd, existing };
       });
       const scheduleText = contexts.map(context =>
-        "【对象ID：" + context.actor.ownerId + "｜名称：" + context.actor.name + "｜类型：" + (context.actor.ownerType === "player" ? "player" : "character") + "｜虚拟时间：" + context.now.toISOString() + "】\n"
-        + (context.existing.map(slot=>"- "+slot.startAt+" 至 "+slot.endAt+"｜"+slot.title+"｜"+(slot.plannedLocationName||"地点未定")+"｜"+slot.source).join("\n") || "暂无已安排日程")
-      ).join("\n\n");
-      const locations = current.locations.map(location=>"- "+location.name).join("\n");
+        "【对象ID：" + context.actor.ownerId + "｜名称：" + context.actor.name + "｜类型：" + (context.actor.ownerType === "player" ? "player" : "character") + "｜虚拟时间：" + context.now.toISOString() + "】\\n"
+        + (context.existing.map(slot=>"- "+slot.startAt+" 至 "+slot.endAt+"｜"+slot.title+"｜"+(slot.plannedLocationName||"地点未定")+"｜"+slot.source).join("\\n") || "暂无已安排日程")
+      ).join("\\n\\n");
+      const locations = current.locations.map(location=>"- "+location.name).join("\\n");
       const session = createLifeChatSession(modelCharacter.id,modelCharacter.name);
       const prompt: ChatMessage = { id:id("life-guided-schedule"),sessionId:session.id,role:"user",status:"sent",createdAt:new Date().toISOString(),content:[
         "你是生活日程规划助手。用户选择的安排对象只有以下这些；可同时为多名对象安排，但绝不能安排未选中的对象。",
-        "选中对象及其现有七日日程（只读，不得覆盖或删除）：\n"+scheduleText,
-        "用户指导：\n"+instruction,
-        "可用地点：\n"+locations,
+        "选中对象及其现有七日日程（只读，不得覆盖或删除）：\\n"+scheduleText,
+        "用户指导：\\n"+instruction,
+        "可用地点：\\n"+locations,
         "每个对象都以各自标题中的虚拟时间为准；dayOffset 0 为该对象今天，6 为该对象第七天。",
-        "只输出 JSON：{\"schedules\":[{\"actorId\":\"必须原样填写上方对象ID\",\"actorType\":\"player 或 character\",\"dayOffset\":0,\"start\":\"15:00\",\"end\":\"16:00\",\"title\":\"活动\",\"location\":\"地点或空字符串\"}]}。",
-        "仅返回本次指导需要新增的安排；actorName 必须与选中对象名称完全一致，actorType 只能是英文字符串 player 或 character，且必须与对象类型严格一致；时间必须明确，不得猜测或返回旧日程；不得生成过去时间；同一对象的安排不得与现有日程或彼此重叠；无明确时间则返回空数组。"
-      ].join("\n\n")};
+        "只输出 JSON，结构必须严格为：{\"schedules\":[{\"actorId\":\"必须原样填写上方对象ID\",\"actorType\":\"player 或 character\",\"actorName\":\"必须原样填写上方对象名称\",\"dayOffset\":0,\"start\":\"15:00\",\"end\":\"16:00\",\"title\":\"活动\",\"location\":\"地点或空字符串\"}]}。",
+        "actorId 是唯一身份主键，必须逐字复制；actorType 必须与该 ID 对应的对象类型一致；actorName 是用于交叉校验的显示名称，不得替代 actorId。禁止输出未选中对象、禁止猜测 ID 或名称。",
+        "仅返回本次指导需要新增的安排；不得覆盖或删除旧日程；时间必须明确，不得返回过去时间；同一对象的安排不得与现有日程或彼此重叠；无明确时间则返回空数组。不要输出 Markdown 或 JSON 以外的文字。"
+      ].join("\\n\\n")};
       const result=await generateOfflineChatCompletion(session,[prompt],{appId:"life",appTags:lifeAppTags("schedule")});
-      const raw=result.content.trim(),first=raw.indexOf("{"),last=raw.lastIndexOf("}");
-      if(first<0||last<=first)throw new Error("AI 未返回有效 JSON，原日程未改变。");
-      const decoded=JSON.parse(raw.slice(first,last+1)) as {schedules?:Array<Record<string,unknown>>};
-      if(!Array.isArray(decoded.schedules))throw new Error("AI 返回缺少 schedules 数组。");
-      const drafts:QuickPlanDraft[]=[],conflicts:string[]=[];
-      const overlaps=(a:number,b:number,x:number,y:number)=>a<y&&b>x;
-      for(const item of decoded.schedules){
-        const actorId=String(item.actorId??"").trim();
-        const actorType=String(item.actorType??"").trim();
-        const context=contexts.find(candidate=>candidate.actor.ownerId===actorId&&candidate.actor.ownerType===actorType);
-        if(!context)continue;
-        const d=Number(item.dayOffset),title=String(item.title??"").trim().slice(0,100);
-        const sm=/^(\d{1,2}):(\d{2})$/.exec(String(item.start??"")),em=/^(\d{1,2}):(\d{2})$/.exec(String(item.end??""));
-        if(!Number.isInteger(d)||d<0||d>6||!title||!sm||!em)continue;
-        const sh=Number(sm[1]),smin=Number(sm[2]),eh=Number(em[1]),emin=Number(em[2]);
-        if(sh>23||eh>23||smin>59||emin>59)continue;
-        const startAt=new Date(context.dayStart);startAt.setDate(startAt.getDate()+d);startAt.setHours(sh,smin,0,0);
-        const endAt=new Date(context.dayStart);endAt.setDate(endAt.getDate()+d);endAt.setHours(eh,emin,0,0);
-        if(endAt<=startAt||startAt<context.now||endAt>context.dayEnd)continue;
-        const conflict=context.existing.find(slot=>overlaps(startAt.getTime(),endAt.getTime(),new Date(slot.startAt).getTime(),new Date(slot.endAt).getTime()));
-        if(conflict){conflicts.push(context.actor.name+"："+title+"（与「"+conflict.title+"」冲突）");continue;}
-        if(drafts.some(slot=>slot.ownerType===context.actor.ownerType&&slot.ownerId===context.actor.ownerId&&overlaps(startAt.getTime(),endAt.getTime(),new Date(slot.startAt).getTime(),new Date(slot.endAt).getTime()))){conflicts.push(context.actor.name+"："+title+"（与本次生成安排冲突）");continue;}
-        drafts.push({id:id("guided-plan"),ownerType:context.actor.ownerType,ownerId:context.actor.ownerId,startAt:startAt.toISOString(),endAt:endAt.toISOString(),title,locationName:String(item.location??"").trim().slice(0,80)});
+      recordLifeDiagnostic({
+        source: "AI 日程指导", event: "模型响应完成", status: "info", traceId,
+        detail: "模型已返回结果，开始校验 actorId、actorType、actorName 和时间区间。",
+        meta: { traceId, sessionId: session.id, modelCharacterId: modelCharacter.id, responseLength: result.content.length },
+      });
+      const parsed = parseGuidedScheduleResponse(result.content.trim(), contexts.map(context => ({
+        ownerType: context.actor.ownerType,
+        ownerId: context.actor.ownerId,
+        name: context.actor.name,
+        now: context.now,
+        dayStart: context.dayStart,
+        dayEnd: context.dayEnd,
+        existing: context.existing,
+      })));
+      const drafts: QuickPlanDraft[] = parsed.drafts.map(draft => ({ ...draft, id: id("guided-plan") }));
+      recordLifeDiagnostic({
+        source: "AI 日程指导", event: drafts.length ? "结果校验完成" : "结果校验未通过",
+        status: drafts.length ? (parsed.rejected.length || parsed.conflicts.length ? "warning" : "ok") : "error",
+        traceId,
+        detail: "有效安排 " + drafts.length + " 条；时间冲突 " + parsed.conflicts.length + " 条；身份或格式拒绝 " + parsed.rejected.length + " 条。",
+        meta: { traceId, accepted: drafts.length, conflicts: parsed.conflicts, rejected: parsed.rejected },
+      });
+      if (!drafts.length) {
+        const reasons = [...parsed.conflicts, ...parsed.rejected].slice(0, 4).join("；");
+        throw new Error(reasons || "没有识别到明确有效的时间安排。");
       }
-      if(!drafts.length)throw new Error(conflicts.length?"安排均存在时间冲突或对象不匹配："+conflicts.slice(0,3).join("；"):"没有识别到明确有效的时间安排。");
       setQuickPlanDrafts(drafts);
-      setNotice("AI 为 "+new Set(drafts.map(draft=>draft.ownerId)).size+" 位对象生成了 "+drafts.length+" 条待确认安排。"+(conflicts.length?"另有 "+conflicts.length+" 条冲突安排未加入预览。":"")+"现有日程未修改，请检查预览后再保存。");
-    }catch(error){setNotice("AI 日程指导失败："+(error instanceof Error?error.message:String(error))+"。现有日程未修改。");}
-    finally{setGuidedScheduleBusy(false);}
+      const count = new Set(drafts.map(draft => draft.ownerId)).size;
+      setNotice("AI 为 " + count + " 位对象生成了 " + drafts.length + " 条待确认安排。" +
+        (parsed.conflicts.length ? "另有 " + parsed.conflicts.length + " 条时间冲突。" : "") +
+        (parsed.rejected.length ? "另有 " + parsed.rejected.length + " 条因身份或格式不匹配被拒绝。" : "") +
+        "现有日程未修改，请检查预览后再保存。");
+      recordLifeDiagnostic({
+        source: "AI 日程指导", event: "候选日程已交付预览", status: "ok", traceId,
+        detail: "候选安排已显示在待确认预览中；只有用户确认后才会写入正式日程。",
+        meta: { traceId, actorIds: [...new Set(drafts.map(draft => draft.ownerId))], draftCount: drafts.length },
+      });
+    }catch(error){
+      const detail = error instanceof Error ? error.message : String(error);
+      setNotice("AI 日程指导失败："+detail+"。现有日程未修改。");
+      recordLifeDiagnostic({
+        source: "AI 日程指导", event: "生成或校验失败", status: "error", traceId,
+        detail, meta: { traceId, selectedActorIds: targets.map(actor => actor.ownerId) },
+      });
+    } finally { setGuidedScheduleBusy(false); }
   };
 
   const ensurePlans = () => {
