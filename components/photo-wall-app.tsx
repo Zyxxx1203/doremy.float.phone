@@ -759,9 +759,18 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const doodleSessionRecordIdRef = useRef<string | null>(null);
   const handleWallCanvasModeChange = useCallback((nextMode: "view" | "move" | "doodle") => {
     if (nextMode === wallCanvasMode) return;
-    if (nextMode === "doodle" || wallCanvasMode === "doodle") doodleSessionRecordIdRef.current = null;
+    if (wallCanvasMode === "doodle" && nextMode !== "doodle") {
+      const recordId = doodleSessionRecordIdRef.current;
+      const record = recordId ? (stateRef.current.creationRecords ?? []).find(item => item.id === recordId) : undefined;
+      if (record) recordPhotoWallMemory(
+        "完成了一次照片墙共同创作：在 " + record.photoIds.length + " 张照片上留下 " + record.doodles.length + " 笔涂鸦。",
+        record.authorType === "character" ? record.authorId : undefined,
+      );
+      doodleSessionRecordIdRef.current = null;
+    }
+    if (nextMode === "doodle") doodleSessionRecordIdRef.current = null;
     setWallCanvasMode(nextMode);
-  }, [wallCanvasMode]);
+  }, [wallCanvasMode, recordPhotoWallMemory]);
   const changeDoodles = useCallback((photoId: string, doodles: PhotoWallDoodle[], side: "front" | "back" = "front") => {
     const current = stateRef.current;
     const photo = current.photos.find(item => item.id === photoId);
@@ -794,15 +803,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         applyImmediate({ ...latest, creationRecords: [...(latest.creationRecords ?? []), record] });
       }
     }
-    if (added.length) {
-      const characterDoodle = added.find(item => item.authorType === "character");
-      recordPhotoWallMemory(
-        characterDoodle
-          ? characterDoodle.authorName + "在" + (photo?.title || "照片墙上") + "留下了贴纸或涂鸦"
-          : "用户在" + (photo?.title || "照片墙上") + "留下了贴纸或涂鸦",
-        characterDoodle?.authorId,
-      );
-    }
+    // The completed creation record is the canonical shared event. Avoid one timeline
+    // entry per stroke; a doodle session is summarized when the user exits doodle mode.
   }, [applyImmediate, commitPhotos, pushHistory, wallCanvasMode, recordPhotoWallMemory]);
 
   /** 套用模板骨架：照片按顺序吸附进槽位，套完仍然可以自由拖动。 */
