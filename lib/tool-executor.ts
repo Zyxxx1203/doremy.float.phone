@@ -2411,9 +2411,12 @@ async function executePhotoWallTool(call: ToolCall, context?: ToolExecutionConte
             return { name: call.name, success: true, data: character.name + "已把新照片「" + photo.title + "」添加到照片墙。", mediaAttachments: [{ type: "image", url: photo.mediaRef, title: photo.title }], userNotice: character.name + "添加了一张照片到照片墙" };
         }
         if (call.name === "在照片墙涂鸦") {
+            const target = call.args?.target === "wall" ? "wall" : "photo";
             const photoId = String(call.args?.photoId ?? "").trim();
-            const photo = state.photos.find(item => item.id === photoId && item.shareWithCharacters === true);
-            if (!photo) return { name: call.name, success: false, error: "找不到该照片，或该照片没有共享给角色。请先调用「查看照片墙」获取可用 photoId。" };
+            const photo = target === "photo"
+                ? state.photos.find(item => item.id === photoId && item.shareWithCharacters === true)
+                : undefined;
+            if (target === "photo" && !photo) return { name: call.name, success: false, error: "找不到该照片，或该照片没有共享给角色。请先调用「查看照片墙」获取可用 photoId；若要在公共画布创作，请设置 target=wall。" };
             const kind = call.args?.kind === "stroke" ? "stroke" : call.args?.kind === "sticker" ? "sticker" : "";
             const pointsRaw = call.args?.points;
             if (!kind || !Array.isArray(pointsRaw)) return { name: call.name, success: false, error: "需要 kind 和 points 参数。" };
@@ -2434,21 +2437,31 @@ async function executePhotoWallTool(call: ToolCall, context?: ToolExecutionConte
                 points: points as Array<{ x: number; y: number }>, createdAt: new Date().toISOString(),
             };
             const createdAt = new Date().toISOString();
+            if (target === "wall") {
+                const record: PhotoWallCreationRecord = {
+                    id: createPhotoWallId(), createdAt, authorType: "character", authorId: character.id,
+                    authorName: character.name,
+                    narrative: character.name + "在照片墙公共画布上留下了新的涂鸦。",
+                    photoIds: [], layers: [{ kind: "wall", doodles: [doodle] }], doodles: [doodle],
+                };
+                savePhotoWallState({ ...state, wallDoodles: [...(state.wallDoodles ?? []), doodle], creationRecords: [...(state.creationRecords ?? []), record] });
+                return { name: call.name, success: true, data: character.name + "已在照片墙公共画布上追加了一笔涂鸦，原有内容没有被覆盖。", userNotice: character.name + "在照片墙留下了涂鸦" };
+            }
             const nextPhoto = side === "back"
-                ? { ...photo, backDoodles: [...(photo.backDoodles ?? []), doodle] }
-                : { ...photo, doodles: [...(photo.doodles ?? []), doodle] };
+                ? { ...photo!, backDoodles: [...(photo!.backDoodles ?? []), doodle] }
+                : { ...photo!, doodles: [...(photo!.doodles ?? []), doodle] };
             const record: PhotoWallCreationRecord = {
                 id: createPhotoWallId(), createdAt, authorType: "character", authorId: character.id,
                 authorName: character.name,
-                narrative: character.name + "在「" + (photo.title || "这张照片") + "」的" + (side === "back" ? "背面留言纸" : "正面相框") + "留下了新的涂鸦。",
-                photoIds: [photo.id], layers: [{ kind: "photo", photoId: photo.id, side, doodles: [doodle] }], doodles: [doodle],
+                narrative: character.name + "在「" + (photo!.title || "这张照片") + "」的" + (side === "back" ? "背面留言纸" : "正面相框") + "留下了新的涂鸦。",
+                photoIds: [photo!.id], layers: [{ kind: "photo", photoId: photo!.id, side, doodles: [doodle] }], doodles: [doodle],
             };
             savePhotoWallState({
                 ...state,
-                photos: state.photos.map(item => item.id === photo.id ? nextPhoto : item),
+                photos: state.photos.map(item => item.id === photo!.id ? nextPhoto : item),
                 creationRecords: [...(state.creationRecords ?? []), record],
             });
-            return { name: call.name, success: true, data: character.name + "已在「" + (photo.title || "这张照片") + "」" + (side === "back" ? "背面" : "正面") + "追加了一笔涂鸦，原有内容没有被覆盖。", userNotice: character.name + "在照片墙留下了涂鸦" };
+            return { name: call.name, success: true, data: character.name + "已在「" + (photo!.title || "这张照片") + "」" + (side === "back" ? "背面" : "正面") + "追加了一笔涂鸦，原有内容没有被覆盖。", userNotice: character.name + "在照片墙留下了涂鸦" };
         }
         return { name: call.name, success: false, error: "未知照片墙动作。" };
     } catch (error) {
