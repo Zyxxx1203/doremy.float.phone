@@ -35,8 +35,8 @@ assert.deepEqual(
     presentCharacterIds: ["a", "b", "c"], randomEnabled: false, randomSeed: 1,
     selectedCharacterId: "a", awarenessCharacterId: "c",
   })),
-  ["a"],
-  "manual mode uses only the specified present character",
+  ["a", "c"],
+  "manual mode keeps the specified and independently aware characters without random selection",
 );
 assert.deepEqual(
   Array.from(buildLifeSceneResponderQueue({
