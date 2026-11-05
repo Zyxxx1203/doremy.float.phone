@@ -10,7 +10,7 @@ type CloudLifeDiagnostic = {
   detail: string;
   repair_hint: string;
   updated_at: string;
-  trace_id: string;
+  trace_id?: string;
   resolved_at: string | null;
 };
 
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
   }
   const result = await supabaseRestFetch<CloudLifeDiagnostic[]>(
     "life_schedule_diagnostics?user_id=eq." + encodeSupabaseFilter(account.id)
-      + "&resolved_at=is.null&select=id,severity,code,detail,repair_hint,trace_id,updated_at,resolved_at"
+      + "&resolved_at=is.null&select=id,severity,code,detail,repair_hint,updated_at,resolved_at"
       + "&order=updated_at.desc&limit=20",
   );
   if (!result.ok) {
