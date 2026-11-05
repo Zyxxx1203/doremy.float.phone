@@ -32,7 +32,7 @@ import { advanceActorTimeline, applyCharacterLifeScheduleChange, confirmLifeInvi
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { describeLifeOutputIssues, parseLifeOutput, validateLifeOutput, type LifeOutputIssue } from "@/lib/life/life-output";
-import { evaluateEncounterAwareness } from "@/lib/life/life-engine";
+import { buildLifeSceneResponderQueue, evaluateEncounterAwareness } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
 import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts, reconcileIdleReconnectWithLifeScenes, suspendIdleReconnectForLifeScene } from "@/lib/push-bailout-client";
 import { readLifeProactiveStatus } from "@/lib/life/life-proactive-scheduler";
@@ -2111,17 +2111,17 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const roll = (stableSeed + index * 37 + characterId.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)) % 100;
       return roll < chance;
     });
-    let plannedResponders: string[] = [];
-    if (responseQueue?.length) plannedResponders = responseQueue;
-    else if (notificationReplyId) plannedResponders = [selectedSpeakerId || presentCharacters[0] || ""];
-    else {
-      const specific = selectedSpeakerId && presentCharacters.includes(resolveLifeCharacterId(selectedSpeakerId)) ? resolveLifeCharacterId(selectedSpeakerId) : "";
-      const random = settings.randomSceneResponses !== false && presentCharacters.length ? presentCharacters[stableSeed % presentCharacters.length] : "";
-      const manualFallback = settings.randomSceneResponses === false ? specific : "";
-      plannedResponders = settings.randomSceneResponses === false
-        ? [specific].filter(Boolean)
-        : [random, specific, awarenessResponder || ""].filter((value, index, all) => Boolean(value) && all.indexOf(value) === index).slice(0, 3);
-    }
+    const plannedResponders: string[] = responseQueue?.length
+      ? [...new Set(responseQueue.map(resolveLifeCharacterId).filter(Boolean))]
+      : notificationReplyId
+        ? [resolveLifeCharacterId(selectedSpeakerId || presentCharacters[0] || "")].filter(Boolean)
+        : buildLifeSceneResponderQueue({
+            presentCharacterIds: presentCharacters,
+            randomEnabled: settings.randomSceneResponses !== false,
+            randomSeed: stableSeed,
+            selectedCharacterId: selectedSpeakerId ? resolveLifeCharacterId(selectedSpeakerId) : undefined,
+            awarenessCharacterId: awarenessResponder || undefined,
+          });
     const rawTargetId = plannedResponders[0] || selectedSpeakerId || presentCharacters[0] || "";
     const targetId = resolveLifeCharacterId(rawTargetId);
     const target = characters.find(char => char.id === targetId);
