@@ -1054,7 +1054,6 @@ function unmarkContactRemoved(characterId: string): void {
 }
 
 function restoreContactsForPrivateSessions(contacts: ChatContact[], sessions: ChatSession[]): NormalizedList<ChatContact> {
-    const characterIds = new Set(loadCharacters().map(character => character.id));
     const removedByUser = loadRemovedContactIds();
     const privateSessionsWithMessages = sessions.filter(session => {
         const characterId = resolveSessionCharacterId(session);
