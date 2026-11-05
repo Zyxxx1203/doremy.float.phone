@@ -18,6 +18,9 @@ const guided = await loadTs("../lib/life/life-guided-schedule.ts");
 const lifeEngineSource = await readFile(new URL("../components/life/life-engine-app.tsx", import.meta.url), "utf8");
 assert.match(lifeEngineSource, /actorId.*actorType.*actorName/);
 assert.match(lifeEngineSource, /parseGuidedScheduleResponse\(result\.content\.trim\(\)/);
+const lifeSchedulerSource = await readFile(new URL("../lib/life/life-proactive-scheduler.ts", import.meta.url), "utf8");
+assert.match(lifeSchedulerSource, /resolveSessionCharacterId\(item\) === character\.id/);
+
 
 
 // Exercise the actual chat-storage hydration/migration path with an in-memory
