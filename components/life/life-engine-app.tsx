@@ -12,6 +12,7 @@ import { loadCharacters } from "@/lib/character-storage";
 import { hydrateKvDb } from "@/lib/kv-db";
 import { addChatContact, createOrGetSession, hydrateChatStorage, loadChatContacts, loadChatMessages, loadChatSessions, resolveSessionCharacterId, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { generateOfflineChatCompletion } from "@/lib/chat-engine";
+import { prepareShortTermContext } from "@/lib/short-term-assembler";
 import {
   createEmptyVirtualLifeState,
   DEFAULT_LIFE_ENGINE_SETTINGS,
@@ -2178,6 +2179,15 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     if (forceReaction) setNotice(target.name + "正在回应最近的互动……");
     try {
       const sceneContext = buildLifeScenePromptContext(stateRef.current, activeScene, target.id);
+      // 生活现场与普通私聊共用同一套短期记忆组装器，避免跨 APP 记忆断层。
+      const sharedShortTerm = prepareShortTermContext(target.id, "life", {
+        userName: playerName,
+        includeDirectChatEntries: true,
+      });
+      const sharedShortTermContext = sharedShortTerm.unifiedRecentItems
+        .flatMap(item => item.kind === "event" && item.sourceApp !== "life" && item.sourceApp !== "photo_wall" ? [item.text] : [])
+        .filter(Boolean)
+        .join("\n");
       const settingsInstructions = [
         settings.keepDialogueConcise ? "保持简短：一句对白，必要时附一个动作。" : "允许适度展开，但仍保持实时互动感。",
         forceReaction
@@ -2190,7 +2200,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       ].filter(Boolean).join("\n");
       const promptMessage: ChatMessage = {
         id: id("life-user"), sessionId: session.id, role: "user", status: "sent", createdAt: now,
-        content: `[仅本轮使用生活场景模式规则，不要写入线上聊天历史]\n${settingsInstructions}\n\n${buildOnlineChatBackground(target.id)}\n\n${sceneContext}\n\n玩家本轮行动：${userAction || (forceReaction ? "（请结合最近的用户行为作出反馈）" : "（没有额外动作）")}\n玩家本轮对白：${userText || (forceReaction ? "（请回应最近的对话或动作，不要要求用户重复输入）" : "（没有说话）")}`,
+        content: `[仅本轮使用生活场景模式规则，不要写入线上聊天历史]\n${settingsInstructions}\n\n${buildOnlineChatBackground(target.id)}\n\n【跨 APP 统一短期记忆】\n${sharedShortTermContext || "暂无其他 APP 的近期事件。"}\n\n${sceneContext}\n\n玩家本轮行动：${userAction || (forceReaction ? "（请结合最近的用户行为作出反馈）" : "（没有额外动作）")}\n玩家本轮对白：${userText || (forceReaction ? "（请回应最近的对话或动作，不要要求用户重复输入）" : "（没有说话）")}`,
       };
       const previousActionOnly = isLastCharacterTurnActionOnly(stateRef.current, activeScene.id, target.id);
       const { parsed, issues } = await generateValidatedLifeTurn({

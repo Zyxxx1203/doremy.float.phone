@@ -8,7 +8,7 @@ import { loadImageGenerationSettings } from "@/lib/settings-storage";
 import type { Character } from "@/lib/character-types";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { loadMediaBlob, loadMediaObjectUrl, storeMediaBlob, deleteMediaRef, retainMediaRef, releaseMediaRef } from "@/lib/media-cache-storage";
-import { loadVirtualLifeState } from "@/lib/life/life-storage";
+import { loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { generateChatCompletion, flattenCompletionResult, readCompressedImageDataUrl } from "@/lib/chat-engine";
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import {
@@ -239,6 +239,53 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   }, []);
   const [state, setState] = useState<PhotoWallState>(() => loadPhotoWallState());
   const [characters, setCharacters] = useState<Character[]>([]);
+
+  // 照片墙是所有角色共同可见的公共墙。将每条创作记录幂等投影到生活系统共享事件，
+  // 并把当时所有角色列为参与者；挂载时也会补齐旧版本已经存在的创作记录。
+  useEffect(() => {
+    const records = state.creationRecords ?? [];
+    if (!records.length) return;
+    const lifeState = loadVirtualLifeState();
+    const allCharacterIds = characters.map(character => character.id).filter(Boolean);
+    let events = lifeState.events;
+    let memories = lifeState.memories;
+    let changed = false;
+    for (const record of records) {
+      const eventId = "photo-wall-" + record.id;
+      const linkedPhotos = record.photoIds
+        .map(photoId => state.photos.find(photo => photo.id === photoId))
+        .filter((photo): photo is PhotoWallPhoto => Boolean(photo));
+      const photoTitles = linkedPhotos.map(photo => photo.title).filter(Boolean).slice(0, 8);
+      const fact = [
+        record.authorName + "在公共照片墙完成了一次共同创作",
+        record.narrative,
+        photoTitles.length ? "涉及照片：" + photoTitles.join("、") : "",
+      ].filter(Boolean).join("；");
+      const participants = [...new Set(["player", ...allCharacterIds, ...(record.authorId ? [record.authorId] : [])])];
+      const oldEvent = events.find(item => item.id === eventId);
+      const oldMemory = memories.find(item => item.id === eventId);
+      const sameParticipants = (left: string[] | undefined) =>
+        Boolean(left && left.length === participants.length && participants.every(id => left.includes(id)));
+      if (oldEvent?.details === fact && sameParticipants(oldEvent.participantIds)
+        && oldMemory?.fact === fact && sameParticipants(oldMemory.participants)) continue;
+      const event = {
+        id: eventId,
+        kind: "memory" as const,
+        status: "completed" as const,
+        participantIds: participants,
+        title: "照片墙共同创作",
+        details: fact,
+        createdAt: record.createdAt,
+        updatedAt: record.createdAt,
+        completedAt: record.createdAt,
+      };
+      const memory = { id: eventId, eventId, occurredAt: record.createdAt, participants, fact };
+      events = [event, ...events.filter(item => item.id !== eventId)];
+      memories = [memory, ...memories.filter(item => item.id !== eventId)];
+      changed = true;
+    }
+    if (changed) saveVirtualLifeState({ ...lifeState, events: events.slice(0, 1000), memories: memories.slice(0, 1000) });
+  }, [state.creationRecords, state.photos, characters]);
   const [filter, setFilter] = useState<Filter>("all");
   const [wallView, setWallView] = useState<"timeline" | "memories" | "album" | "panorama" | "edit" | "settings" | "creations">("panorama");
   const [settingsReturnView, setSettingsReturnView] = useState<"panorama" | "edit">("panorama");
@@ -919,7 +966,42 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     finally { setExportBusy(false); }
   };
 
-  const persist = useCallback((next: PhotoWallState) => {
+  const persist = useCallback((input: PhotoWallState) => {
+    // 所有新照片和背面留言都必须形成可回溯的公共墙事件；模板布局分支也不能漏记。
+    const previous = stateRef.current;
+    let next = input;
+    const linkedPhotoIds = new Set((next.creationRecords ?? []).flatMap(record => record.photoIds));
+    const newlyAddedPhotos = next.photos.filter(photo =>
+      !previous.photos.some(item => item.id === photo.id) && !linkedPhotoIds.has(photo.id)
+    );
+    const changedNotes = next.photos.filter(photo => {
+      const old = previous.photos.find(item => item.id === photo.id);
+      return Boolean(old && old.backNote !== photo.backNote);
+    });
+    const generatedRecords: PhotoWallCreationRecord[] = [];
+    if (newlyAddedPhotos.length) {
+      const createdAt = new Date().toISOString();
+      const names = newlyAddedPhotos.slice(0, 8).map(photo => photo.title || "未命名照片");
+      generatedRecords.push({
+        id: createPhotoWallId(), createdAt,
+        authorType: newlyAddedPhotos.every(photo => photo.ownerType === "character") ? "character" : "user",
+        authorId: newlyAddedPhotos.length === 1 ? newlyAddedPhotos[0].ownerId : undefined,
+        authorName: newlyAddedPhotos.length === 1 ? newlyAddedPhotos[0].ownerName : "共同创作参与者",
+        narrative: "有 " + newlyAddedPhotos.length + " 张新照片加入公共照片墙：" + names.join("、"),
+        photoIds: newlyAddedPhotos.map(photo => photo.id), layers: [], doodles: [],
+      });
+    }
+    for (const photo of changedNotes) {
+      generatedRecords.push({
+        id: createPhotoWallId(), createdAt: new Date().toISOString(),
+        authorType: photo.ownerType, authorId: photo.ownerId, authorName: photo.ownerName,
+        narrative: photo.ownerName + "更新了公共照片墙中「" + (photo.title || "一张照片") + "」背面的留言：" + photo.backNote.slice(0, 240),
+        photoIds: [photo.id], layers: [], doodles: [],
+      });
+    }
+    if (generatedRecords.length) {
+      next = { ...next, creationRecords: [...(next.creationRecords ?? []), ...generatedRecords] };
+    }
     // 必须同步快照：commitPhotos 依赖 stateRef 读最新状态，
     // 否则上传/保存背面后紧接着拖动会用旧快照把新照片覆盖掉。
     stateRef.current = next;
