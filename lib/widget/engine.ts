@@ -29,9 +29,6 @@ import { canGenerateAvatar, generateWidgetAvatar } from "./avatar";
 import { parseWidgetLineOutput } from "./output";
 import type { WidgetData } from "./types";
 
-/** 自动生成的一句话最大长度：桌面上放不下长文。 */
-const AUTO_TEXT_LIMIT = 60;
-
 /**
  * 让角色生成一句适合放在桌面上的话。
  *
