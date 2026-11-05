@@ -1192,7 +1192,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         id: createPhotoWallId(), mediaRef, createdAt: new Date().toISOString(),
         capturedAt: candidate.createdAt, ownerType: "user", ownerName: "我", kind: "favorite",
         title: candidate.title || "聊天里的照片", caption: `来自聊天：${candidate.sessionName}`,
-        backNote: "", tags: ["聊天收藏", candidate.sessionName], annotations: [], shareWithCharacters: true, source: "chat-favorite",
+        backNote: "", tags: ["聊天收藏", candidate.sessionName], annotations: [], shareWithCharacters: false, source: "chat-favorite",
       };
       addPhoto(photo);
       setShowChatPicker(false);
@@ -1220,7 +1220,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
           created.push({
             id: createPhotoWallId(), mediaRef: ref, createdAt: new Date().toISOString(), capturedAt,
             ownerType: "user", ownerName: "我", kind: "favorite", title: file.name.replace(/\\.[^.]+$/, "").slice(0, 60) || "一张喜欢的照片",
-            caption: "", backNote: "", tags: [], annotations: [], shareWithCharacters: true, source: "upload",
+            caption: "", backNote: "", tags: [], annotations: [], shareWithCharacters: false, source: "upload",
           });
         } catch (error) {
           failed.push(file.name + "：" + (error instanceof Error ? error.message : String(error)));
