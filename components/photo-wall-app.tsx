@@ -284,7 +284,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       memories = [memory, ...memories.filter(item => item.id !== eventId)];
       changed = true;
     }
-    if (changed) saveVirtualLifeState({ ...lifeState, events: events.slice(0, 1000), memories: memories.slice(0, 1000) });
+    if (changed) saveVirtualLifeState({ ...lifeState, events, memories });
   }, [state.creationRecords, state.photos, characters]);
   const [filter, setFilter] = useState<Filter>("all");
   const [wallView, setWallView] = useState<"timeline" | "memories" | "album" | "panorama" | "edit" | "settings" | "creations">("panorama");
