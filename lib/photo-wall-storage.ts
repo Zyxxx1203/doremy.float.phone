@@ -248,7 +248,21 @@ export function normalizePhotoWallCreationRecords(value: unknown): PhotoWallCrea
     const raw = item as Partial<PhotoWallCreationRecord>;
     if (typeof raw.id !== "string" || typeof raw.createdAt !== "string" || !Array.isArray(raw.doodles)) continue;
     const doodles = normalizeDoodles(raw.doodles) ?? [];
-    if (!doodles.length) continue;
+    const photoIds = Array.isArray(raw.photoIds) ? raw.photoIds.filter((id): id is string => typeof id === "string").slice(0, 20) : [];
+    const layers = Array.isArray(raw.layers) ? raw.layers.slice(0, 24).flatMap(layer => {
+      if (!layer || typeof layer !== "object") return [];
+      const item = layer as { kind?: unknown; photoId?: unknown; side?: unknown; doodles?: unknown };
+      const layerDoodles = normalizeDoodles(item.doodles) ?? [];
+      if (!layerDoodles.length) return [];
+      if (item.kind === "wall") return [{ kind: "wall" as const, doodles: layerDoodles }];
+      if (item.kind === "photo" && typeof item.photoId === "string") return [{
+        kind: "photo" as const, photoId: item.photoId.slice(0, 160),
+        side: item.side === "back" ? "back" as const : "front" as const,
+        doodles: layerDoodles,
+      }];
+      return [];
+    }) : undefined;
+    if (!doodles.length && !photoIds.length && !layers?.length) continue;
     records.push({
       id: raw.id,
       createdAt: raw.createdAt,
@@ -256,20 +270,8 @@ export function normalizePhotoWallCreationRecords(value: unknown): PhotoWallCrea
       authorId: typeof raw.authorId === "string" ? raw.authorId.slice(0, 160) : undefined,
       authorName: typeof raw.authorName === "string" ? raw.authorName.slice(0, 80) : "角色",
       narrative: typeof raw.narrative === "string" ? raw.narrative.slice(0, 1000) : "",
-      photoIds: Array.isArray(raw.photoIds) ? raw.photoIds.filter((id): id is string => typeof id === "string").slice(0, 20) : [],
-      layers: Array.isArray(raw.layers) ? raw.layers.slice(0, 24).flatMap(layer => {
-        if (!layer || typeof layer !== "object") return [];
-        const item = layer as { kind?: unknown; photoId?: unknown; side?: unknown; doodles?: unknown };
-        const layerDoodles = normalizeDoodles(item.doodles) ?? [];
-        if (!layerDoodles.length) return [];
-        if (item.kind === "wall") return [{ kind: "wall" as const, doodles: layerDoodles }];
-        if (item.kind === "photo" && typeof item.photoId === "string") return [{
-          kind: "photo" as const, photoId: item.photoId.slice(0, 160),
-          side: item.side === "back" ? "back" as const : "front" as const,
-          doodles: layerDoodles,
-        }];
-        return [];
-      }) : undefined,
+      photoIds,
+      layers,
       doodles,
     });
   }
