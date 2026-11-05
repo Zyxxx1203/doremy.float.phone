@@ -615,6 +615,16 @@ Deno.serve(async (req: Request) => {
           updated_at: new Date().toISOString(), resolved_at: null,
         }]),
       });
+      await rest("life_schedule_diagnostic_events", {
+        method: "POST", headers: { Prefer: "return=minimal" },
+        body: JSON.stringify([{
+          id: `life-trace-${crypto.randomUUID()}`, trace_id: lifeSceneMeta?.traceId || job.id,
+          user_id: job.user_id, stage: "业务链路异常", severity: "error", code,
+          detail: detail.slice(0, 500), actor_id: lifeSceneMeta?.characterId || null,
+          session_id: typeof payload.merge?.sessionId === "string" ? payload.merge.sessionId : null,
+          job_id: job.id,
+        }]),
+      }).catch(() => undefined);
       if (!shouldNotify) return;
       const subscriptionsResponse = await rest(`push_subscriptions?user_id=eq.${encodeURIComponent(job.user_id)}&select=endpoint,p256dh,auth&limit=50`);
       const subscriptions = subscriptionsResponse.ok
