@@ -1,5 +1,3 @@
-"use client";
-
 export type PerformanceMetricSnapshot = {
   name: string;
   count: number;
