@@ -1372,7 +1372,7 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
     {
         id: PHOTO_WALL_CAPABILITY_ID,
         name: "照片墙",
-        description: "查看共享照片、添加照片和在照片上创作涂鸦；只追加，不覆盖用户内容。",
+        description: "查看共享照片、添加照片，并在公共画布或共享照片上创作涂鸦；只追加，不覆盖用户内容。",
         enabled: false,
         mode: "auto",
         createdAt: 0,
