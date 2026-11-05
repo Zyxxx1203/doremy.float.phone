@@ -6,6 +6,7 @@ export type LifeDiagnosticStatus = "ok" | "warning" | "error" | "info";
 export type LifeDiagnosticEntry = {
   id: string;
   at: string;
+  traceId?: string;
   source: string;
   event: string;
   status: LifeDiagnosticStatus;
@@ -34,6 +35,10 @@ export function readLifeDiagnostics(): LifeDiagnosticEntry[] {
   }
 }
 
+export function createLifeTraceId(prefix = "life"): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
 export function recordLifeDiagnostic(
   input: Omit<LifeDiagnosticEntry, "id" | "at"> & { at?: string },
 ): void {
@@ -42,6 +47,7 @@ export function recordLifeDiagnostic(
     ...input,
     id: `life-diag-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     at: input.at || new Date().toISOString(),
+    traceId: input.traceId || (typeof input.meta?.traceId === "string" ? input.meta.traceId : undefined),
     detail: String(input.detail || "").slice(0, 1200),
   };
   try {
