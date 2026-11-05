@@ -799,45 +799,71 @@ export function compareChatMessages(a: ChatMessage, b: ChatMessage): number {
     return a.id.localeCompare(b.id);
 }
 
+function ensureSortedSessionMessageCache(): void {
+    if (_sortedSessionMessagesSource === _messagesCache && _sortedSessionMessagesLength === _messagesCache.length) return;
+    const rebuildStartedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const grouped = new Map<string, ChatMessage[]>();
+    const nextOrders = new Map<string, number>();
+    for (const message of _messagesCache) {
+        const bucket = grouped.get(message.sessionId);
+        if (bucket) bucket.push(message);
+        else grouped.set(message.sessionId, [message]);
+        const order = getStableMessageOrder(message);
+        if (order !== null) nextOrders.set(message.sessionId, Math.max(nextOrders.get(message.sessionId) ?? -1, order + 1));
+    }
+    for (const bucket of grouped.values()) bucket.sort(compareChatMessages);
+    _sortedSessionMessagesCache = grouped;
+    _nextMessageOrderBySession = nextOrders;
+    _sortedSessionMessagesSource = _messagesCache;
+    _sortedSessionMessagesLength = _messagesCache.length;
+    recordPerformanceMetric("chat.storage.session_index_rebuild",
+        (typeof performance !== "undefined" ? performance.now() : Date.now()) - rebuildStartedAt,
+        { scannedMessages: _messagesCache.length, sessionCount: grouped.size });
+}
+
 function getSortedSessionMessages(sessionId: string): ChatMessage[] {
     const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
-    // Rebuild the per-session index only when the backing array changes. This turns
-    // repeated "last message per session" lookups from N full-cache scans into one
-    // pass plus O(1) session lookup. The sorted arrays are cached until the next write.
-    if (_sortedSessionMessagesSource !== _messagesCache || _sortedSessionMessagesLength !== _messagesCache.length) {
-        const rebuildStartedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
-        const grouped = new Map<string, ChatMessage[]>();
-        for (const message of _messagesCache) {
-            const bucket = grouped.get(message.sessionId);
-            if (bucket) bucket.push(message);
-            else grouped.set(message.sessionId, [message]);
-        }
-        for (const bucket of grouped.values()) bucket.sort(compareChatMessages);
-        _sortedSessionMessagesCache = grouped;
-        _sortedSessionMessagesSource = _messagesCache;
-        _sortedSessionMessagesLength = _messagesCache.length;
-        recordPerformanceMetric("chat.storage.session_index_rebuild",
-            (typeof performance !== "undefined" ? performance.now() : Date.now()) - rebuildStartedAt,
-            { scannedMessages: _messagesCache.length, sessionCount: grouped.size });
-    }
+    ensureSortedSessionMessageCache();
     const cached = _sortedSessionMessagesCache.get(sessionId) ?? [];
-    const duration = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
-    recordPerformanceMetric("chat.storage.session_messages_read", duration, {
-        matchedMessages: cached.length,
-        cacheHit: _sortedSessionMessagesCache.has(sessionId),
-    });
+    recordPerformanceMetric("chat.storage.session_messages_read",
+        (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt,
+        { matchedMessages: cached.length, cacheHit: _sortedSessionMessagesCache.has(sessionId) });
     return cached.slice();
 }
 
-function getNextMessageOrder(sessionId: string): number {
-    let maxOrder = -1;
-    for (const msg of getSortedSessionMessages(sessionId)) {
-        const order = getStableMessageOrder(msg);
-        if (order !== null && order > maxOrder) maxOrder = order;
+function appendSortedSessionMessageCache(message: ChatMessage): void {
+    if (_sortedSessionMessagesSource !== _messagesCache || _sortedSessionMessagesLength !== _messagesCache.length - 1) {
+        invalidateSortedSessionMessageCache();
+        return;
     }
-    return maxOrder + 1;
+    const bucket = _sortedSessionMessagesCache.get(message.sessionId) ?? [];
+    let low = 0;
+    let high = bucket.length;
+    while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (compareChatMessages(bucket[middle], message) <= 0) low = middle + 1;
+        else high = middle;
+    }
+    bucket.splice(low, 0, message);
+    _sortedSessionMessagesCache.set(message.sessionId, bucket);
+    const order = getStableMessageOrder(message);
+    if (order !== null) {
+        _nextMessageOrderBySession.set(
+            message.sessionId,
+            Math.max(_nextMessageOrderBySession.get(message.sessionId) ?? 0, order + 1),
+        );
+    }
+    _sortedSessionMessagesLength = _messagesCache.length;
 }
 
+function getNextMessageOrder(sessionId: string): number {
+    const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+    ensureSortedSessionMessageCache();
+    const next = _nextMessageOrderBySession.get(sessionId) ?? 0;
+    recordPerformanceMetric("chat.storage.next_message_order",
+        (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt);
+    return next;
+}
 function reindexSessionMessageOrders(sessionId: string): void {
     const ordered = getSortedSessionMessages(sessionId);
     const changed = new Map<string, ChatMessage>();
@@ -910,11 +936,13 @@ let _messagesCache: ChatMessage[] = [];
 let _sortedSessionMessagesSource: ChatMessage[] | null = null;
 let _sortedSessionMessagesLength = -1;
 let _sortedSessionMessagesCache = new Map<string, ChatMessage[]>();
+let _nextMessageOrderBySession = new Map<string, number>();
 
 function invalidateSortedSessionMessageCache(): void {
     _sortedSessionMessagesSource = null;
     _sortedSessionMessagesLength = -1;
     _sortedSessionMessagesCache.clear();
+    _nextMessageOrderBySession.clear();
 }
 let _hydrated = false;
 let _hydratePromise: Promise<void> | null = null;
@@ -1619,6 +1647,7 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
     }
 
     _messagesCache.push(newMsg);
+    appendSortedSessionMessageCache(newMsg);
     dbPutMessage(newMsg);
     resolvePendingAvatarRecommendation(newMsg);
 
