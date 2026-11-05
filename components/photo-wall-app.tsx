@@ -833,7 +833,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     }
     // The completed creation record is the canonical shared event. Avoid one timeline
     // entry per stroke; a doodle session is summarized when the user exits doodle mode.
-  }, [applyImmediate, commitPhotos, pushHistory, wallCanvasMode, recordPhotoWallMemory]);
+  }, [applyImmediate, commitPhotos, pushHistory, wallCanvasMode]);
 
   /** 套用模板骨架：照片按顺序吸附进槽位，套完仍然可以自由拖动。 */
   const applyTemplate = useCallback((templateId: string) => {
@@ -1047,7 +1047,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     // 会出现“画布和照片分离”。保持世界固定，笔迹始终落在同一画布上。
     persist(appendUserRecord({ ...current, wallDoodles }));
     // The session's creation record is projected once into shared events; no per-stroke event.
-  }, [persist, pushHistory, wallActivePhotoId, wallCanvasMode, recordPhotoWallMemory]);
+  }, [persist, pushHistory, wallActivePhotoId, wallCanvasMode]);
   const visiblePhotos = useMemo(() => photos.filter(photo => {
     if (filter === "mine") return photo.ownerType === "user";
     if (filter === "characters") return photo.ownerType === "character";
