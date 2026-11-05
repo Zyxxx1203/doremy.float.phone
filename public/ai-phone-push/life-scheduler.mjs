@@ -235,9 +235,24 @@ Deno.serve(async (req: Request) => {
     ...init, headers: { ...headers, ...(init?.headers || {}) },
   });
 
+  const writeTraceEvent = async (input: {
+    userId: string; traceId: string; stage: string; severity?: "info" | "warning" | "error";
+    code: string; detail: string; actorId?: string; sessionId?: string; jobId?: string;
+  }) => {
+    await rest("life_schedule_diagnostic_events", {
+      method: "POST", headers: { Prefer: "return=minimal" },
+      body: JSON.stringify([{
+        id: `life-trace-${crypto.randomUUID()}`, trace_id: input.traceId, user_id: input.userId,
+        stage: input.stage, severity: input.severity || "info", code: input.code,
+        detail: input.detail.slice(0, 500), actor_id: input.actorId || null,
+        session_id: input.sessionId || null, job_id: input.jobId || null,
+      }]),
+    }).catch(() => undefined);
+  };
+
   const writeDiagnostic = async (
     userId: string, id: string, severity: "error" | "warning" | "info",
-    code: string, detail: string, repairHint: string,
+    code: string, detail: string, repairHint: string, traceId = id,
   ) => {
     const existingResponse = await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent(id)}&select=id,resolved_at&limit=1`);
     const existingRows = existingResponse.ok ? await existingResponse.json() as Array<{ resolved_at?: string | null }> : [];
@@ -250,6 +265,10 @@ Deno.serve(async (req: Request) => {
       }]),
     });
     if (!shouldNotify) return;
+    await writeTraceEvent({
+      userId, traceId, stage: "日程调度异常", severity, code, detail,
+      jobId: traceId !== id ? traceId : undefined,
+    });
     // Android shell has a persistent Realtime channel. Send one alert when a new
     // unresolved cloud fault appears; repeated cron ticks only update the same row.
     const subscriptionsResponse = await rest(`push_subscriptions?user_id=eq.${encodeURIComponent(userId)}&select=endpoint,p256dh,auth&limit=50`);
@@ -448,7 +467,7 @@ Deno.serve(async (req: Request) => {
               runtimeUpdates[runtimeUpdates.length - 1].last_error = "到期生活任务超过 5 分钟仍未被云端执行器领取。";
               await writeDiagnostic(row.user_id, jobDiagnosticId, "error", "life_job_dispatch_stalled",
                 "到期生活任务超过 5 分钟仍未被 push-generate 执行器领取。",
-                "检查个人云 ai-phone-personal-push-jobs-scan Cron、push-generate Edge Function 部署和 push_jobs 表权限。");
+                "检查个人云 ai-phone-personal-push-jobs-scan Cron、push-generate Edge Function 部署和 push_jobs 表权限。", job.id);
               continue;
             }
             if (job.status === "running" && Number.isFinite(runningFor) && runningFor > 20 * 60_000) {
@@ -456,7 +475,7 @@ Deno.serve(async (req: Request) => {
               runtimeUpdates[runtimeUpdates.length - 1].last_error = "生活任务运行超过 20 分钟未完成。";
               await writeDiagnostic(row.user_id, jobDiagnosticId, "error", "life_job_execution_stalled",
                 "生活任务运行超过 20 分钟未完成，可能卡在模型请求或消息写入。",
-                "检查 push-generate Edge Function 日志、模型 API 超时和 push_outbox 写入；任务扫描器会尝试回收超时锁。");
+                "检查 push-generate Edge Function 日志、模型 API 超时和 push_outbox 写入；任务扫描器会尝试回收超时锁。", job.id);
               continue;
             }
             if (/daily generation cap reached/i.test(job.result_note || "")) {
@@ -478,13 +497,13 @@ Deno.serve(async (req: Request) => {
             runtimeUpdates[runtimeUpdates.length - 1].last_error = job.result_note || "生活主动生成任务失败。";
             await writeDiagnostic(row.user_id, jobDiagnosticId, "error", "life_generation_failed",
               job.result_note || "生活主动生成任务失败。",
-              "检查角色模型配置、API额度、个人云 push-generate 部署和 push_jobs.result_note；修复后云端会自动重试。");
+              "检查角色模型配置、API额度、个人云 push-generate 部署和 push_jobs.result_note；修复后云端会自动重试。", job.id);
           } else if (/errors:|pushed 0/i.test(job.result_note || "")) {
             runtimeUpdates[runtimeUpdates.length - 1].last_status = "notification_delivery_warning";
             runtimeUpdates[runtimeUpdates.length - 1].last_error = job.result_note || "生活消息通知投递异常。";
             await writeDiagnostic(row.user_id, jobDiagnosticId, "warning", "life_notification_delivery_failed",
               job.result_note || "生活消息已生成，但通知投递可能失败。",
-              "检查个人云 VAPID 配置、Android 壳 Realtime 连接和系统通知权限；聊天回传箱仍可在打开小手机后取回消息。");
+              "检查个人云 VAPID 配置、Android 壳 Realtime 连接和系统通知权限；聊天回传箱仍可在打开小手机后取回消息。", job.id);
           } else {
             await rest(`life_schedule_diagnostics?id=eq.${encodeURIComponent(jobDiagnosticId)}`, {
               method: "PATCH", body: JSON.stringify({ resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
@@ -507,6 +526,11 @@ Deno.serve(async (req: Request) => {
           if (patched.length) {
             summary.armed += 1;
             runtimeUpdates[runtimeUpdates.length - 1].next_run_at = iso(executeAt);
+            await writeTraceEvent({
+              userId: row.user_id, traceId: job.id, stage: "任务已预约", code: "life_job_armed",
+              detail: "云端日程已将持久化任务重新预约到 " + iso(executeAt) + "。",
+              actorId: characterId, jobId: job.id,
+            });
           }
         }
       }

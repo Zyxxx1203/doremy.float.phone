@@ -567,6 +567,7 @@ Deno.serve(async (request: Request) => {
         capabilities: [
           ...(schemaVersion >= 3 ? ["screen-chat-continuous"] : []),
           ...(schemaVersion >= 4 ? ["life-schedule-cloud"] : []),
+          ...(schemaVersion >= 5 ? ["life-execution-trace"] : []),
         ],
       });
     }
@@ -1018,7 +1019,17 @@ $CRON$)`);
         `life_schedule_diagnostics?user_id=eq.${OWNER_ID}&resolved_at=is.null`
         + "&select=id,severity,code,detail,repair_hint,updated_at,resolved_at&order=updated_at.desc&limit=20",
       ));
-      return json({ ok: true, diagnostics });
+      const eventsResponse = await rest(
+        `life_schedule_diagnostic_events?user_id=eq.${OWNER_ID}`
+        + "&select=id,trace_id,stage,severity,code,detail,actor_id,session_id,job_id,created_at&order=created_at.desc&limit=100",
+      ).catch(() => null);
+      const events = eventsResponse?.ok
+        ? await readJson<Array<{
+          id: string; trace_id: string; stage: string; severity: string; code: string; detail: string;
+          actor_id: string | null; session_id: string | null; job_id: string | null; created_at: string;
+        }>>(eventsResponse)
+        : [];
+      return json({ ok: true, diagnostics, events });
     }
 
     if (action === "shortcut-create" && request.method === "POST") {

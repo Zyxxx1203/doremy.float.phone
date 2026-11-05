@@ -10,7 +10,13 @@ type CloudLifeDiagnostic = {
   detail: string;
   repair_hint: string;
   updated_at: string;
+  trace_id?: string;
   resolved_at: string | null;
+};
+
+type CloudLifeDiagnosticEvent = {
+  id: string; trace_id: string; stage: string; severity: string; code: string; detail: string;
+  actor_id: string | null; session_id: string | null; job_id: string | null; created_at: string;
 };
 
 export async function GET(request: Request) {
@@ -29,5 +35,14 @@ export async function GET(request: Request) {
   if (!result.ok) {
     return NextResponse.json({ ok: false, error: result.error, diagnostics: [] }, { status: 502 });
   }
-  return NextResponse.json({ ok: true, diagnostics: result.data });
+  const events = await supabaseRestFetch<CloudLifeDiagnosticEvent[]>(
+    "life_schedule_diagnostic_events?user_id=eq." + encodeSupabaseFilter(account.id)
+      + "&select=id,trace_id,stage,severity,code,detail,actor_id,session_id,job_id,created_at"
+      + "&order=created_at.desc&limit=100",
+  );
+  return NextResponse.json({
+    ok: true,
+    diagnostics: result.data,
+    events: events.ok ? events.data : [],
+  });
 }

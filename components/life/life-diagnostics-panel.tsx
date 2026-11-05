@@ -49,18 +49,31 @@ export function LifeDiagnosticsPanel() {
         : await fetch("/api/life/schedule-diagnostics", { cache: "no-store" });
       const data = await response.json().catch(() => ({})) as {
         ok?: boolean;
-        diagnostics?: Array<{ id: string; severity: string; code: string; detail: string; repair_hint: string; updated_at: string }>;
+        diagnostics?: Array<{ id: string; severity: string; code: string; detail: string; repair_hint: string; trace_id?: string; updated_at: string }>;
+        events?: Array<{ id: string; trace_id: string; stage: string; severity: string; code: string; detail: string; actor_id?: string | null; session_id?: string | null; job_id?: string | null; created_at: string }>;
       };
       if (!response.ok || !data.ok || !Array.isArray(data.diagnostics)) return;
-      setCloudEntries(data.diagnostics.map(item => ({
+      const diagnosticEntries = data.diagnostics.map(item => ({
         id: "cloud:" + item.id,
         at: item.updated_at,
+        traceId: item.trace_id || undefined,
         source: "云端生活引擎",
         event: item.code || "日程诊断",
-        status: item.severity === "warning" ? "warning" : item.severity === "info" ? "info" : "error",
+        status: item.severity === "warning" ? "warning" as const : item.severity === "info" ? "info" as const : "error" as const,
         detail: [item.detail, item.repair_hint ? "修复建议：" + item.repair_hint : ""].filter(Boolean).join("\n"),
-        meta: { cloudDiagnosticId: item.id },
-      })));
+        meta: { cloudDiagnosticId: item.id, traceId: item.trace_id || undefined },
+      }));
+      const traceEntries = (data.events || []).map(item => ({
+        id: "trace:" + item.id,
+        at: item.created_at,
+        traceId: item.trace_id,
+        source: "云端执行链路",
+        event: item.stage + " · " + item.code,
+        status: item.severity === "error" ? "error" as const : item.severity === "warning" ? "warning" as const : "info" as const,
+        detail: item.detail,
+        meta: { traceId: item.trace_id, actorId: item.actor_id, sessionId: item.session_id, jobId: item.job_id },
+      }));
+      setCloudEntries([...traceEntries, ...diagnosticEntries].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)));
     } catch {
       // Cloud diagnostics are additive; local diagnostics remain available offline.
     }
@@ -267,6 +280,7 @@ export function LifeDiagnosticsPanel() {
                 {STATUS_LABEL[entry.status]}
               </span>
               <b className="text-xs">{entry.source} · {entry.event}</b>
+              {entry.traceId && <span className="max-w-full break-all rounded bg-stone-100 px-1.5 py-0.5 text-[9px] text-stone-500">Trace: {entry.traceId}</span>}
               <time className="ml-auto text-[10px] text-stone-400">
                 {new Date(entry.at).toLocaleString("zh-CN")}
               </time>

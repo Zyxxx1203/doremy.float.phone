@@ -4,7 +4,7 @@
 // 原生只负责把文本、sceneId 和回复类型可靠落入持久队列；上下文组装、模型回应
 // 与生活现场时间线仍由 WebView 中的 JS 引擎完成。
 
-import { loadChatContacts, loadChatMessages, loadChatSessions, pushChatMessage } from "./chat-storage";
+import { loadChatMessages, loadChatSessions, pushChatMessage, resolveSessionCharacterId } from "./chat-storage";
 import { loadVirtualLifeState, saveVirtualLifeState, appendLifeTimelineEntry } from "./life/life-storage";
 import { requestBackgroundChatReply } from "./follow-up-service";
 import { ensureShellOverlayListener, subscribeShellOverlayEvents } from "./shell-call-overlay";
@@ -76,8 +76,7 @@ function mirrorNotificationReplyToLifeScene(item: PendingNotificationReply, text
         if (!item.sceneId || !["action", "dialogue"].includes(item.replyMode || "")) return "not-life";
         const session = loadChatSessions().find(candidate => candidate.id === item.sessionId);
         if (!session || session.isGroup) return "not-life";
-        const contact = loadChatContacts().find(candidate => candidate.id === session.contactId);
-        const characterId = contact?.characterId;
+        const characterId = resolveSessionCharacterId(session);
         if (!characterId) return "not-life";
         const state = loadVirtualLifeState();
         if (!state.settings.enabled || state.settings.recordSceneMessages === false) return "missing-scene";
