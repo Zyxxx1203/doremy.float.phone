@@ -176,11 +176,19 @@ export function migrateLifeCharacterIdentity(fromId: string, toId: string): numb
   const timeline = state.timeline.map(entry =>
     entry.actorId === fromId ? (changed += 1, { ...entry, actorId: toId }) : entry,
   );
+  const scheduleMap = new Map<string, typeof state.schedules[number]>();
+  const schedules = [...state.schedules]
+    .sort((a, b) => Number(b.ownerId === toId) - Number(a.ownerId === toId))
+    .map(replaceOwner);
+  for (const slot of schedules) {
+    const key = [slot.ownerType, slot.ownerId, slot.startAt, slot.endAt, slot.title].join(":");
+    if (!scheduleMap.has(key)) scheduleMap.set(key, slot);
+  }
   const next: VirtualLifeState = {
     ...state,
     actorClocks: mergeOwnerRecords(state.actorClocks),
     actorStates: mergeOwnerRecords(state.actorStates),
-    schedules: state.schedules.map(replaceOwner),
+    schedules: [...scheduleMap.values()],
     locations,
     scenes,
     sceneMessages,
