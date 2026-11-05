@@ -627,11 +627,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   }, [selectedLocation?.id]);
 
   useEffect(() => {
-    if (!activeScene) return;
-    const firstParticipant = activeScene.participants.find(participant => participant.ownerType === "character");
-    if (!activeScene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === selectedSpeakerId)) {
-      setSelectedSpeakerId(firstParticipant?.ownerId ?? "");
-    }
+    if (!activeScene || !selectedSpeakerId) return;
+    if (!activeScene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === selectedSpeakerId)) setSelectedSpeakerId("");
   }, [activeScene?.id, activeScene?.participants, selectedSpeakerId]);
 
 
@@ -1986,13 +1983,13 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       void reconcileIdleReconnectWithLifeScenes(candidateIds);
     };
   }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.keepDialogueConcise, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, lifeAppTags, activeMaxConsecutiveActionOnly, settings.enableLifeFormatRepair, playerName]);
-  const sendSceneTurn = async (event?: FormEvent, forceReaction = false, notificationReplyId?: string): Promise<"completed" | "deferred" | "failed"> => {
+  const sendSceneTurn = async (event?: FormEvent, forceReaction = false, notificationReplyId?: string, responseQueue?: string[]): Promise<"completed" | "deferred" | "failed"> => {
     event?.preventDefault();
     // Notification / forced reactions must use the already-persisted scene history, never an unsent composer draft.
     const userText = forceReaction ? "" : sceneInput.trim();
     const userAction = forceReaction ? "" : sceneActionInput.trim();
     if (!activeScene || (!userText && !userAction && !forceReaction)) return "failed";
-    if (busy) return forceReaction ? "deferred" : "failed";
+    if (busy && !responseQueue?.length) return forceReaction ? "deferred" : "failed";
     const notificationResponsePrefix = notificationReplyId ? "notification-reply-response-" + notificationReplyId : "";
     if (notificationResponsePrefix && stateRef.current.sceneMessages.some(message =>
       message.id === notificationResponsePrefix + "-action" || message.id.startsWith(notificationResponsePrefix + "-dialogue-")
@@ -2004,7 +2001,36 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       setSceneActionInput("");
       pushSceneMessage({ id: id("turn"), sceneId: activeScene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: playerName, role: "player", action: userAction || undefined, dialogue: userText, createdAt: now });
     }
-    const rawTargetId = selectedSpeakerId || activeScene.participants.find(p => p.ownerType === "character")?.ownerId || "";
+    const presentCharacters = activeScene.participants
+      .filter(participant => participant.ownerType === "character" && participant.activity !== "离开")
+      .map(participant => resolveLifeCharacterId(participant.ownerId))
+      .filter((value, index, all) => Boolean(value) && all.indexOf(value) === index && characters.some(character => character.id === value));
+    const stableSeed = [...(activeScene.id + userTurn + now)].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) >>> 0, 7);
+    const mentionedCharacters = presentCharacters.filter(characterId => {
+      const name = characters.find(character => character.id === characterId)?.name?.trim();
+      return Boolean(name && name.length > 0 && userTurn.toLocaleLowerCase().includes(name.toLocaleLowerCase()));
+    });
+    const awarenessResponder = mentionedCharacters.find((characterId, index) => {
+      const character = characters.find(item => item.id === characterId);
+      if (!character) return false;
+      const presence = stateRef.current.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === characterId);
+      const schedule = getCurrentActorSchedule(stateRef.current, "character", characterId, resolveActorLifeNow(getActorClock(stateRef.current, "character", characterId)));
+      if (/睡眠|睡觉|入睡|午休/.test((presence?.activity || "") + " " + (schedule?.title || ""))) return false;
+      const chance = /警觉|敏感|好奇|关注|保护欲/.test(character.personality || "") ? 85 : 65;
+      const roll = (stableSeed + index * 37 + characterId.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)) % 100;
+      return roll < chance;
+    });
+    let plannedResponders: string[] = [];
+    if (responseQueue?.length) plannedResponders = responseQueue;
+    else if (notificationReplyId) plannedResponders = [selectedSpeakerId || presentCharacters[0] || ""];
+    else {
+      const specific = selectedSpeakerId && presentCharacters.includes(resolveLifeCharacterId(selectedSpeakerId)) ? resolveLifeCharacterId(selectedSpeakerId) : "";
+      const random = settings.randomSceneResponses !== false && presentCharacters.length ? presentCharacters[stableSeed % presentCharacters.length] : "";
+      const manualFallback = settings.randomSceneResponses === false ? (specific || presentCharacters[0] || "") : "";
+      plannedResponders = [random, specific, awarenessResponder || "", manualFallback]
+        .filter((value, index, all) => Boolean(value) && all.indexOf(value) === index).slice(0, 3);
+    }
+    const rawTargetId = plannedResponders[0] || selectedSpeakerId || presentCharacters[0] || "";
     const targetId = resolveLifeCharacterId(rawTargetId);
     const target = characters.find(char => char.id === targetId);
     if (!target) {
@@ -2162,6 +2188,12 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         const latest = stateRef.current;
         const fact = `在${activeScene.locationName}，{{user}}${userAction.trim() ? "行动：“" + userAction.trim().slice(0, 120) + "”" : ""}${userText.trim() ? "说：“" + userText.trim().slice(0, 120) + "”" : ""}；${target.name}${parsed.action?.trim() ? "行动：“" + parsed.action.trim().slice(0, 120) + "”" : ""}${parsed.dialogue.trim() ? "说：“" + parsed.dialogue.trim().slice(0, 120) + "”" : ""}。`;
         commit({ ...latest, events: [event, ...latest.events], memories: [{ id: id("memory"), eventId, occurredAt: eventNow, participants: ["player", target.id], fact }, ...latest.memories].slice(0, 500) });
+      }
+      const remainingResponders = responseQueue?.length ? responseQueue.slice(1) : plannedResponders.slice(1);
+      if (remainingResponders.length) {
+        recordLifeDiagnostic({ source: "生活现场", event: "追加角色回应队列", status: "info", detail: "按角色 ID 去重后依次处理其他回应角色。", meta: { sceneId: activeScene.id, completedCharacterId: target.id, queuedCharacterIds: remainingResponders } });
+        const nextResult = await sendSceneTurn(undefined, true, undefined, remainingResponders);
+        if (nextResult === "failed") recordLifeDiagnostic({ source: "生活现场", event: "追加角色回应未全部完成", status: "warning", detail: "至少一名后续角色未能完成回应，已完成的回应会保留。", meta: { sceneId: activeScene.id, completedCharacterId: target.id, remainingResponders } });
       }
       return "completed";
     } catch (error) {
@@ -3416,7 +3448,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
               <label className="block text-xs font-medium text-stone-600">行动 / 旁白<textarea value={sceneActionInput} onChange={e=>setSceneActionInput(e.target.value)} placeholder="行动（可选）" rows={1} className="mt-1 w-full resize-y rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-sm leading-snug" disabled={busy}/></label>
               <label className="block text-xs font-medium text-stone-600">说话 / 对话气泡<textarea value={sceneInput} onChange={e=>setSceneInput(e.target.value)} placeholder="想对角色说的话……" rows={1} className="mt-1 w-full resize-y rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-sm leading-snug" disabled={busy}/></label>
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-2"><span className="mr-auto truncate text-[10px] text-stone-400">{busy ? "角色正在回应…" : "行动与对白可分开发送"}</span><button type="button" onClick={() => void sendSceneTurn(undefined, true)} disabled={busy || !activeScene || !activeScene.participants.some(p => p.ownerType === "character" && Boolean(resolveLifeCharacterId(p.ownerId)) && characters.some(c => c.id === resolveLifeCharacterId(p.ownerId)))} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--life-accent)]/40 bg-white px-3 py-1.5 text-xs text-[var(--life-accent)] disabled:opacity-40"><MessagesSquare size={13}/>让角色回应</button><button type="submit" disabled={busy||(!sceneInput.trim()&&!sceneActionInput.trim())} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--life-accent)] px-3 py-1.5 text-xs text-white disabled:opacity-40"><Send size={13}/>{busy?"等待中":"发送"}</button></div>
+            <div className="flex flex-wrap items-center justify-between gap-2"><label className="inline-flex items-center gap-2 text-[11px] text-stone-500"><input type="checkbox" checked={settings.randomSceneResponses !== false} onChange={event => patchSettings({ randomSceneResponses: event.target.checked })} disabled={busy}/>随机角色回应</label><span className="mr-auto truncate text-[10px] text-stone-400">{busy ? "角色正在回应…" : selectedSpeakerId ? "已指定角色；随机开启时会追加回应" : "默认随机；点上方角色头像可指定追加回应"}</span><button type="button" onClick={() => void sendSceneTurn(undefined, true) disabled={busy || !activeScene || !activeScene.participants.some(p => p.ownerType === "character" && Boolean(resolveLifeCharacterId(p.ownerId)) && characters.some(c => c.id === resolveLifeCharacterId(p.ownerId)))} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--life-accent)]/40 bg-white px-3 py-1.5 text-xs text-[var(--life-accent)] disabled:opacity-40"><MessagesSquare size={13}/>让角色回应</button><button type="submit" disabled={busy||(!sceneInput.trim()&&!sceneActionInput.trim())} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--life-accent)] px-3 py-1.5 text-xs text-white disabled:opacity-40"><Send size={13}/>{busy?"等待中":"发送"}</button></div>
           </form>
           
         </>}
@@ -3609,7 +3641,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             <p className="mt-1 text-xs leading-relaxed text-stone-500">选择安排对象，用自然语言描述要求。AI 会读取该对象现有七日日程，只生成待确认的新安排，不会直接覆盖旧日程；若要替换已有安排，请先在下方日程卡片中手动微调或删除，AI 不会擅自删除旧事件。</p>
             <div className="mt-3 rounded-xl border border-stone-200 bg-white/80 p-3">
               <p className="mb-2 text-xs text-stone-500">安排对象（可多选）</p>
-              <div className="flex flex-wrap gap-2">{actors.map(actor=>{const key=actor.ownerType+":"+actor.ownerId;return <label key={key} className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-2 text-xs"><input type="checkbox" checked={scheduleGuidanceActorKeys.includes(key)} onChange={event=>setScheduleGuidanceActorKeys(current=>event.target.checked?[...new Set([...current,key])]:current.filter(value=>value!==key))}/>{actor.name}{actor.ownerType==="player"?"（我）":"（角色）"}</label>;})}</div>
+              <div className="flex flex-nowrap gap-2 overflow-x-auto overscroll-x-contain pb-1">{actors.map(actor=>{const key=actor.ownerType+":"+actor.ownerId;return <label key={key} className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-2 text-xs"><input type="checkbox" checked={scheduleGuidanceActorKeys.includes(key)} onChange={event=>setScheduleGuidanceActorKeys(current=>event.target.checked?[...new Set([...current,key])]:current.filter(value=>value!==key))}/>{actor.name}{actor.ownerType==="player"?"（我）":"（角色）"}</label>;})}</div>
             </div>
             <textarea value={scheduleGuidanceText} onChange={event=>setScheduleGuidanceText(event.target.value)} rows={3} placeholder="例如：工作日晚上留一小时学习；周三下午不要安排活动；周六和我一起去公园散步。" className="mt-2 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/>
             <button type="button" onClick={()=>void generateGuidedScheduleDrafts()} disabled={guidedScheduleBusy||!scheduleGuidanceText.trim()||scheduleGuidanceActorKeys.length===0} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><Sparkles size={14}/>{guidedScheduleBusy?"AI 正在分析现有日程…":"AI 生成待确认预览"}</button>
