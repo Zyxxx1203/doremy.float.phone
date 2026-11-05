@@ -95,6 +95,86 @@ export function saveVirtualLifeState(state: VirtualLifeState): VirtualLifeState 
   return saved;
 }
 
+/** Migrate character-scoped life records written under an old ChatContact.id. */
+export function migrateLifeCharacterIdentity(fromId: string, toId: string): number {
+  if (!fromId || !toId || fromId === toId || typeof window === "undefined") return 0;
+  const state = loadVirtualLifeState();
+  let changed = 0;
+  const replaceId = (value: string) => value === fromId ? (changed += 1, toId) : value;
+  const replaceIds = (values: string[] | undefined) => values
+    ? [...new Set(values.map(replaceId))]
+    : values;
+  const replaceOwner = <T extends { ownerType: LifeOwnerType; ownerId: string }>(value: T): T => {
+    if (value.ownerType !== "character" || value.ownerId !== fromId) return value;
+    changed += 1;
+    return { ...value, ownerId: toId };
+  };
+
+  const locations = state.locations.map(location => {
+    const residents = replaceIds(location.residents);
+    const habits = location.characterHabits ? { ...location.characterHabits } : undefined;
+    if (habits && Object.prototype.hasOwnProperty.call(habits, fromId)) {
+      if (!(toId in habits)) habits[toId] = habits[fromId];
+      delete habits[fromId];
+      changed += 1;
+    }
+    return residents !== location.residents || habits !== location.characterHabits
+      ? { ...location, residents, characterHabits: habits }
+      : location;
+  });
+  const scenes = state.scenes.map(scene => ({
+    ...scene,
+    participants: scene.participants.map(replaceOwner),
+    images: scene.images?.map(image => {
+      const participantIds = replaceIds(image.participantIds);
+      return participantIds !== image.participantIds ? { ...image, participantIds } : image;
+    }),
+  }));
+  const sceneMessages = state.sceneMessages.map(message =>
+    message.speakerType === "character" && message.speakerId === fromId
+      ? (changed += 1, { ...message, speakerId: toId })
+      : message,
+  );
+  const events = state.events.map(event => {
+    const participantIds = replaceIds(event.participantIds);
+    return participantIds !== event.participantIds ? { ...event, participantIds } : event;
+  });
+  const invitations = state.invitations.map(invitation =>
+    invitation.characterId === fromId ? (changed += 1, { ...invitation, characterId: toId }) : invitation,
+  );
+  const memories = state.memories.map(memory => {
+    const participants = replaceIds(memory.participants) || [];
+    let interpretations = memory.interpretations;
+    if (interpretations && Object.prototype.hasOwnProperty.call(interpretations, fromId)) {
+      interpretations = { ...interpretations };
+      if (!(toId in interpretations)) interpretations[toId] = interpretations[fromId];
+      delete interpretations[fromId];
+      changed += 1;
+    }
+    return participants !== memory.participants || interpretations !== memory.interpretations
+      ? { ...memory, participants, interpretations }
+      : memory;
+  });
+  const timeline = state.timeline.map(entry =>
+    entry.actorId === fromId ? (changed += 1, { ...entry, actorId: toId }) : entry,
+  );
+  const next: VirtualLifeState = {
+    ...state,
+    actorClocks: state.actorClocks.map(replaceOwner),
+    actorStates: state.actorStates.map(replaceOwner),
+    schedules: state.schedules.map(replaceOwner),
+    locations,
+    scenes,
+    sceneMessages,
+    events,
+    invitations,
+    memories,
+    timeline,
+  };
+  if (changed > 0) saveVirtualLifeState(next);
+  return changed;
+}
+
 export function appendLifeTimelineEntry(
   state: VirtualLifeState,
   entry: Omit<LifeTimelineEntry, "id" | "occurredAt"> & {
