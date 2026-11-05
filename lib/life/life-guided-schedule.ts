@@ -55,6 +55,10 @@ export function parseGuidedScheduleResponse(
       : actorTypeRaw === "character" || actorTypeRaw === "角色" || actorTypeRaw === "人物"
         ? "character"
         : "";
+    if (actorTypeRaw && !actorType) {
+      rejected.push(`第 ${index + 1} 条对象类型无效`);
+      continue;
+    }
     const actorName = normalizeName(item.actorName);
     let context = actorId
       ? contexts.find(candidate => candidate.ownerId === actorId && (!actorType || candidate.ownerType === actorType))
