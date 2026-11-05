@@ -809,7 +809,7 @@ function ensureSortedSessionMessageCache(): void {
         if (bucket) bucket.push(message);
         else grouped.set(message.sessionId, [message]);
         const order = getStableMessageOrder(message);
-        if (order !== null) nextOrders.set(message.sessionId, Math.max(nextOrders.get(message.sessionId) ?? -1, order + 1));
+        if (order !== null) nextOrders.set(message.sessionId, Math.max(nextOrders.get(message.sessionId) ?? 0, order + 1));
     }
     for (const bucket of grouped.values()) bucket.sort(compareChatMessages);
     _sortedSessionMessagesCache = grouped;
