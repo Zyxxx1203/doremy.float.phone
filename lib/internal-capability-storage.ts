@@ -542,9 +542,10 @@ const PHOTO_WALL_USAGE_GUIDE = [
     "参数：description（必填，画面描述）；title（可选）；kind（favorite/selfie/candid/scenery/object/moment，默认 moment）；caption（可选）。仅在生图服务可用时执行。",
     '[执行动作:添加照片到照片墙({"description":"雨后窗边的一束花，柔和自然光","title":"雨后的花","kind":"scenery"})]',
     "动作：在照片墙涂鸦",
-    "参数：photoId（必须来自查看照片墙结果）；side（front/back，默认 front）；kind（sticker/stroke）；content（贴纸符号，sticker 必填）；points（归一化坐标数组，stroke 至少 2 点，sticker 至少 1 点）；color（十六进制颜色）；width（1-12）；rotation（-45 到 45）。",
-    '[执行动作:在照片墙涂鸦({"photoId":"照片ID","side":"front","kind":"sticker","content":"♡","points":[{"x":0.5,"y":0.4}],"color":"#c2705a","width":4})]',
-    "坐标范围 0 到 1；只在指定照片正面/背面追加笔迹。不要猜测 photoId，不要尝试删除或替换既有内容。",
+    "参数：target（photo/wall，默认 photo）；target=photo 时 photoId 必须来自查看照片墙结果，可选 side（front/back，默认 front）；target=wall 时在照片墙公共画布涂鸦，不需要 photoId；kind（sticker/stroke）；content（贴纸符号，sticker 可选）；points（归一化坐标数组，stroke 至少 2 点，sticker 至少 1 点）；color（十六进制颜色）；width（1-12）；rotation（-45 到 45）。",
+    '[执行动作:在照片墙涂鸦({"target":"photo","photoId":"照片ID","side":"front","kind":"sticker","content":"♡","points":[{"x":0.5,"y":0.4}],"color":"#c2705a","width":4})]',
+    '[执行动作:在照片墙涂鸦({"target":"wall","kind":"stroke","points":[{"x":0.2,"y":0.3},{"x":0.5,"y":0.45},{"x":0.8,"y":0.35}],"color":"#c2705a","width":4})]',
+    "坐标范围 0 到 1；只允许向公共画布或指定共享照片正面/背面追加笔迹。不要猜测 photoId，不要尝试删除或替换既有内容。",
 ].join("\n");
 
 const PHOTO_WALL_EMPTY_SCHEMA = JSON.stringify({ type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 5, description: "最多返回的共享照片数量，默认 3" } } });
@@ -555,11 +556,12 @@ const PHOTO_WALL_ADD_SCHEMA = JSON.stringify({ type: "object", properties: {
     caption: { type: "string", maxLength: 300 },
 }, required: ["description"] });
 const PHOTO_WALL_DOODLE_SCHEMA = JSON.stringify({ type: "object", properties: {
+    target: { type: "string", enum: ["photo", "wall"], description: "photo=共享照片，wall=公共画布" },
     photoId: { type: "string" }, side: { type: "string", enum: ["front", "back"] },
     kind: { type: "string", enum: ["sticker", "stroke"] }, content: { type: "string", maxLength: 12 },
     points: { type: "array", minItems: 1, maxItems: 80, items: { type: "object", properties: { x: { type: "number", minimum: 0, maximum: 1 }, y: { type: "number", minimum: 0, maximum: 1 } }, required: ["x", "y"] } },
     color: { type: "string" }, width: { type: "number", minimum: 1, maximum: 12 }, rotation: { type: "number", minimum: -45, maximum: 45 },
-}, required: ["photoId", "kind", "points"] });
+}, required: ["kind", "points"] });
 
 const PHOTO_WALL_SUBTOOLS: InternalToolDefinition[] = [
     { name: "查看照片墙", description: "查看用户共享给角色的照片墙照片和图像。", parameterSchema: PHOTO_WALL_EMPTY_SCHEMA },
