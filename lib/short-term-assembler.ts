@@ -18,6 +18,7 @@ import { loadMapProjectionEntries, loadMapSharedProjectionEntries } from "./map-
 import { loadGameProjectionEntries } from "./game-storage";
 import { loadDiaryEntries } from "./diary-entry-storage";
 import { loadVirtualLifeState } from "./life/life-storage";
+import { loadPhotoWallState } from "./photo-wall-storage";
 import { asPlayerRecordSubject } from "./life/life-timeline-subject";
 import type { DiaryEntry, DiaryEntryBlock } from "./diary-entry-types";
 import { loadNoteWallProjectionEntries } from "./notewall-memory";
@@ -54,7 +55,7 @@ function formatPhotoDirectiveForPrompt(msg: ChatMessage): string {
 export type NativeTimelineEntry = {
     id: string;
     sourceApp: "chat" | "moments" | "story" | "vn" | "map" | "game" | "diary" | "xiaohongshu" | "interview_magazine" | "cocreate" | "checkphone" | "custom_app" | "photo_wall" | "life" | "phone_widget" | "watch" | "global_watch";
-    sourceDetail?: "direct" | "group" | "system" | "story" | "chat_offline" | "game" | "diary_entry" | "notewall" | "xiaohongshu" | "black_market_theater" | "interview_issue" | "interview_shared_issue" | "cocreate_project" | "checkphone" | "custom_app_event"; // chat sub-type: 1:1 vs group chat vs system note
+    sourceDetail?: "direct" | "group" | "system" | "story" | "chat_offline" | "game" | "diary_entry" | "notewall" | "xiaohongshu" | "black_market_theater" | "interview_issue" | "interview_shared_issue" | "cocreate_project" | "checkphone" | "custom_app_event" | "life_shared_event" | "photo_wall_creation"; // chat sub-type: 1:1 vs group chat vs system note
     authorType?: "user" | "character" | "npc"; // who authored this entry
     postAuthorType?: "user" | "character"; // for moments: who owns the parent post
     sessionId?: string;
@@ -800,10 +801,56 @@ export function loadNativeTimeline(
         });
     }
 
+    // ── Completed Photo Wall co-creation records: one event per saved creation session. ──
+    const photoWall = loadPhotoWallState();
+    const photoById = new Map(photoWall.photos.map(photo => [photo.id, photo]));
+    for (const record of photoWall.creationRecords ?? []) {
+        if (options?.afterTimestamp && record.createdAt <= options.afterTimestamp) continue;
+        const linkedPhotos = record.photoIds.map(photoId => photoById.get(photoId)).filter(Boolean);
+        const visibleToCharacter = (record.authorType === "character" && record.authorId === characterId)
+            || linkedPhotos.some(photo => photo?.shareWithCharacters === true)
+            || (!record.photoIds.length && (record.layers?.some(layer => layer.kind === "wall") === true || (!record.layers?.length && record.doodles.length > 0)));
+        if (!visibleToCharacter) continue;
+        const photoNames = linkedPhotos.map(photo => photo?.title).filter(Boolean).slice(0, 4);
+        const summary = [record.authorName + "完成了一次照片墙共同创作", record.narrative, photoNames.length ? "关联照片：" + photoNames.join("、") : ""].filter(Boolean).join("；");
+        entries.push({
+            id: "photo_wall_creation:" + record.id,
+            sourceApp: "photo_wall",
+            sourceDetail: "photo_wall_creation",
+            authorType: record.authorType,
+            timestamp: record.createdAt,
+            customAppId: "photo_wall",
+            customAppName: "照片墙",
+            customAppLabel: "共同创作",
+            content: formatStoredPromptEventContent(renderUserNameMacro(summary, userName), {
+                label: "照片墙共同创作", timestamp: record.createdAt, timeAware, timestampOptions,
+            }),
+        });
+    }
+
     // ── Shared Life timeline (scene actions, whereabouts, schedules and tools) ──
     // Native chat, moments and diary content already has dedicated projections above.
     // Only add Life-specific events here to avoid duplicate memory injection.
     const lifeState = loadVirtualLifeState();
+    // Historical shared experiences remain visible even if the user temporarily disables
+    // the Life engine; disabling the engine pauses new simulation, not stored memories.
+    for (const fact of lifeState.memories ?? []) {
+        if (!fact.participants.includes(characterId)) continue;
+        if (options?.afterTimestamp && fact.occurredAt <= options.afterTimestamp) continue;
+        entries.push({
+            id: "life_shared_event:" + fact.id,
+            sourceApp: "life",
+            sourceDetail: "life_shared_event",
+            authorType: "user",
+            timestamp: fact.occurredAt,
+            customAppId: "life",
+            customAppName: "生活",
+            customAppLabel: "共同经历",
+            content: formatStoredPromptEventContent(renderUserNameMacro(fact.fact, userName), {
+                label: "共同经历", timestamp: fact.occurredAt, timeAware, timestampOptions,
+            }),
+        });
+    }
     if (lifeState.settings.enabled) {
         const characterSceneIds = new Set(
             lifeState.scenes
@@ -987,23 +1034,11 @@ export function filterTimelineByAllowedSources(
  * For history-style appIds, the current feature's block has empty content because
  * the actual content is the history turns (wrapped by the assembler).
  */
-/** 按来源保留最近 N 条；未配置的来源不裁剪。 */
-function limitTimelineBySource<T extends { sourceApp: string }>(entries: T[], limits?: Record<string, unknown>): T[] {
-    if (!limits) return entries;
-    const groups = new Map<string, T[]>();
-    for (const entry of entries) {
-        const list = groups.get(entry.sourceApp) ?? [];
-        list.push(entry);
-        groups.set(entry.sourceApp, list);
-    }
-    const kept = new Set<T>();
-    for (const [source, list] of groups) {
-        const raw = limits[source];
-        const limit = typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
-        if (!limit) { list.forEach(item => kept.add(item)); continue; }
-        list.slice(-limit).forEach(item => kept.add(item));
-    }
-    return entries.filter(entry => kept.has(entry));
+/** 按当前消费 APP 限制总注入条数；原始来源数据始终保留在各自存储中。 */
+function limitTimelineForApp<T>(entries: T[], appId: string, limits?: Record<string, unknown>): T[] {
+    const raw = limits?.[appId];
+    const limit = typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+    return limit ? entries.slice(-limit) : entries;
 }
 
 export function prepareShortTermContext(
@@ -1051,7 +1086,7 @@ export function prepareShortTermContext(
     }
     const memConfig = loadMemoryConfig();
     timeline = filterTimelineByAllowedSources(timeline, memConfig.shortTermAllowedSources);
-    timeline = limitTimelineBySource(timeline, memConfig.shortTermSourceLimits as Record<string, unknown> | undefined);
+    timeline = limitTimelineForApp(timeline, appId, memConfig.shortTermAppLimits as Record<string, unknown> | undefined);
 
     // Activation context: full timeline for keyword matching (not truncated)
     const wbActivationContext = timeline.slice(-10).map(e => e.content).join("\n");
@@ -1322,7 +1357,7 @@ export function prepareGroupShortTermContext(
             promptTimestampOptions: options?.promptTimestampOptions,
         });
         timeline = filterTimelineByAllowedSources(timeline, allowed);
-        timeline = limitTimelineBySource(timeline, memConfig.shortTermSourceLimits as Record<string, unknown> | undefined);
+        timeline = limitTimelineForApp(timeline, "group_chat", memConfig.shortTermAppLimits as Record<string, unknown> | undefined);
         for (const entry of timeline) {
             if (entry.sourceApp === "chat" && entry.sourceDetail === "group" && entry.groupSessionId === options?.excludeGroupSessionId) {
                 continue;

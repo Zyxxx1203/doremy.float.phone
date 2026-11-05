@@ -13,6 +13,8 @@ import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import type { LifeScheduleSlot, LifeTimelineEntry } from "@/lib/life/life-types";
 import { recordLifeDiagnostic } from "@/lib/life/life-diagnostics";
+import { resolveUserIdentity } from "@/lib/settings-storage";
+import { renderUserNameMacro } from "@/lib/user-macro";
 
 type ObservationEntry = {
   id: string;
@@ -82,6 +84,7 @@ function formatTimeline(entry: LifeTimelineEntry) {
 }
 
 export function LifeObservation({ characters, active = false, onNotice }: { characters: Character[]; active?: boolean; onNotice?: (message: string) => void }) {
+  const userDisplayName = resolveUserIdentity()?.name?.trim() || "用户";
   const [data, setData] = useState<ObservationData>(DEFAULT_DATA);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -180,6 +183,7 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
         id: makeId(), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
         content: [
           "【生活系统·观察TA的生活】请把这段时间拆成多个独立的重要事件卡片，而不是一大段长文。只输出 JSON 对象，包含 events 数组；每项包含 time（时间段）、location（地点）、people（人物数组）、title（事件标题）、description（具体描写）。每个事件必须是一个独立、可单独配图的连续场景；按时间顺序排列，通常生成2—8张，事件不足时不要凑数。不要把计划冒充已发生的事实，不要假装玩家在场，不要编造重大事件。所有事件的 time 必须是这段时间内已经过去的具体时刻，禁止出现任何未来时间。",
+           "当前用户显示名称：" + (userDisplayName) + "。如果记录确实提到当前用户，请在 JSON 中使用字面占位符 {{user}}，不要写死显示名称；不要把 {{user}} 用来指代其他人物。",
           "时间范围：" + new Date(fromMs).toISOString() + " 至 " + new Date(nowMs).toISOString(),
           "每张卡片首先总结一个行程/活动的结果：这段时间角色在哪里、做了什么、事情进展到哪一步；不要按聊天消息逐条复述，也不要把 timeline 的每条记录改写成一句话。",
           "每个行程总结下，只挑选有画面感的关键时刻展开成生活片段：动作、光线、声音、手边物品、未被注意的小习惯、短暂迟疑或情绪变化。让场景有连续空间感与氛围，像生活切片，而不是聊天摘要或流水账。",
@@ -188,7 +192,7 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
           worldContext,
           "【角色行程】\n" + scheduleText,
           "【已记录的现实/互动事件】\n" + timelineText,
-          "【最近私聊仅供人设语气参考，不要把私聊内容当作本时间段发生的事件】\n" + recent.slice(-4).map(item => (item.role === "assistant" ? character.name : "用户") + "：" + item.content).join("\n"),
+          "【最近私聊仅供人设语气参考，不要把私聊内容当作本时间段发生的事件】\n" + recent.slice(-4).map(item => (item.role === "assistant" ? character.name : "{{user}}") + "：" + item.content).join("\n"),
         ].filter(Boolean).join("\n\n"),
       };
       const config = resolveAuxiliaryApiConfig("memorySummaryApiConfigId") ?? loadApiConfigs()[0];
@@ -217,8 +221,9 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
         id: makeId(), characterId: character.id, characterName: character.name,
         fromAt: new Date(fromMs).toISOString(), toAt: new Date(nowMs).toISOString(), createdAt,
         title: String(event.title || "生活片段").slice(0, 80), eventTime: String(event.time || "").slice(0, 100), locationName: String(event.location || "").slice(0, 100),
-        people: Array.isArray(event.people) ? event.people.filter(item => typeof item === "string").slice(0, 8) : [],
-        content: String(event.description || "").trim(),
+        people: Array.isArray(event.people) ? event.people.filter(item => typeof item === "string").slice(0, 8).map(item => item === "用户" || item === userDisplayName ? "{{user}}" : item) : [],
+        content: String(event.description || "").trim()
+          .replace(/用户/g, "{{user}}"),
       })).filter(entry => entry.content);
       if (!entries.length) throw new Error("模型没有返回可保存的事件卡片");
       updateData(current => {
@@ -274,7 +279,7 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
           "根据以下生活观察记录生成一张写实感/插画感的单帧生活场景图。画面只呈现一个连续场景，不要拼贴、漫画分格、字幕或水印。角色外观应尽量遵循角色卡与已配置的角色参考图。",
           "角色：" + entry.characterName,
           "生活时间：" + fmt(entry.fromAt) + " 至 " + fmt(entry.toAt),
-          "生活记录：\n" + entry.content.slice(0, 5000),
+          "生活记录：\n" + renderUserNameMacro(entry.content, userDisplayName).slice(0, 5000),
           "请优先选择记录中最有画面感的一个片段，保持人物动作、地点、光线和氛围与文字一致。",
         ].join("\n\n"),
         characterId: entry.characterId,
@@ -343,7 +348,7 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
         <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-stone-100 bg-white/80 p-3"><div className="min-w-0"><p className="text-sm font-medium text-stone-700">自动生活描写</p><p className="mt-0.5 text-xs text-stone-500">每隔设定时间生成一次；仅在应用处于前台时自动触发，进入角色页面时也会补齐新行程。</p></div><input type="checkbox" aria-label="开启该角色自动生活描写" checked={selectedConfig?.enabled ?? false} onChange={event => updateData(current => ({ ...current, characters: { ...current.characters, [selectedCharacter.id]: { ...(current.characters[selectedCharacter.id] ?? { intervalMinutes: 180 }), enabled: event.target.checked } } }))}/></div>
       </article>
       {busyId === selectedCharacter.id && <div className="rounded-xl bg-white/80 p-3 text-sm text-stone-600">正在整理行程、时间线并生成生活描写……</div>}
-      {selectedEntries.map(entry => <article key={entry.id} className="rounded-2xl border border-stone-200/70 bg-white/85 p-4 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-2"><div className="flex items-center gap-2 text-xs font-semibold text-[var(--life-accent)]"><BookOpen size={15}/>{entry.eventTime || (fmt(entry.fromAt) + " — " + fmt(entry.toAt))}</div><div className="flex items-center gap-3"><button type="button" disabled={imageBusyId === entry.id} onClick={() => void generateEntryImage(entry)} className="inline-flex items-center gap-1 text-xs text-[var(--life-accent)] disabled:opacity-50"><ImagePlus size={14}/>{imageBusyId === entry.id ? "正在生成…" : entry.imageMediaRef ? "重新生成场景图" : "生成场景图"}</button><button type="button" onClick={() => regenerateEntry(entry)} className="text-xs text-stone-500 hover:text-[var(--life-accent)]">重新生成这段</button><button type="button" onClick={() => deleteEntry(entry.id)} className="text-xs text-stone-400 hover:text-red-600">删除</button></div></div><div className="mt-3 border-l-2 border-[var(--life-accent)]/35 pl-3"><h3 className="font-serif text-base font-semibold text-stone-800">{entry.title || "生活片段"}</h3>{(entry.locationName || entry.people?.length) && <p className="mt-1 text-[11px] text-stone-500">{entry.locationName ? "地点：" + entry.locationName : ""}{entry.locationName && entry.people?.length ? " · " : ""}{entry.people?.length ? "人物：" + entry.people.join("、") : ""}</p>}<p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-stone-700">{entry.content}</p></div>{entry.imageMediaRef && (imageUrls[entry.id] ? <img src={imageUrls[entry.id]} alt={entry.characterName + "的生活场景图"} className="mt-3 max-h-[420px] w-full rounded-xl object-contain bg-stone-100"/> : <p className="mt-3 text-xs text-stone-400">场景图已保存，正在读取图片…</p>)}</article>)}
+      {selectedEntries.map(entry => <article key={entry.id} className="rounded-2xl border border-stone-200/70 bg-white/85 p-4 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-2"><div className="flex items-center gap-2 text-xs font-semibold text-[var(--life-accent)]"><BookOpen size={15}/>{entry.eventTime || (fmt(entry.fromAt) + " — " + fmt(entry.toAt))}</div><div className="flex items-center gap-3"><button type="button" disabled={imageBusyId === entry.id} onClick={() => void generateEntryImage(entry)} className="inline-flex items-center gap-1 text-xs text-[var(--life-accent)] disabled:opacity-50"><ImagePlus size={14}/>{imageBusyId === entry.id ? "正在生成…" : entry.imageMediaRef ? "重新生成场景图" : "生成场景图"}</button><button type="button" onClick={() => regenerateEntry(entry)} className="text-xs text-stone-500 hover:text-[var(--life-accent)]">重新生成这段</button><button type="button" onClick={() => deleteEntry(entry.id)} className="text-xs text-stone-400 hover:text-red-600">删除</button></div></div><div className="mt-3 border-l-2 border-[var(--life-accent)]/35 pl-3"><h3 className="font-serif text-base font-semibold text-stone-800">{entry.title || "生活片段"}</h3>{(entry.locationName || entry.people?.length) && <p className="mt-1 text-[11px] text-stone-500">{entry.locationName ? "地点：" + entry.locationName : ""}{entry.locationName && entry.people?.length ? " · " : ""}{entry.people?.length ? "人物：" + entry.people.map(person => renderUserNameMacro(person, userDisplayName)).join("、") : ""}</p>}<p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-stone-700">{renderUserNameMacro(entry.content, userDisplayName)}</p></div>{entry.imageMediaRef && (imageUrls[entry.id] ? <img src={imageUrls[entry.id]} alt={entry.characterName + "的生活场景图"} className="mt-3 max-h-[420px] w-full rounded-xl object-contain bg-stone-100"/> : <p className="mt-3 text-xs text-stone-400">场景图已保存，正在读取图片…</p>)}</article>)}
       {!selectedEntries.length && busyId !== selectedCharacter.id && <p className="rounded-2xl bg-white/70 p-5 text-sm text-stone-500">还没有生活描写。点击「继续补写」开始观察。</p>}
       <div className="flex flex-wrap gap-2"><button type="button" onClick={() => clearCharacter(selectedCharacter.id)} className="rounded-xl border border-red-100 bg-white px-3 py-2 text-xs text-red-600">清空该角色全部记录</button><button type="button" onClick={() => setSelectedId(null)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-600">返回角色列表</button></div>
     </div>}

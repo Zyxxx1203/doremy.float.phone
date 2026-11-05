@@ -89,7 +89,7 @@ assert.ok(outboxSource.includes("const lifeScene = meta.lifeScene;") && outboxSo
 assert.ok(pushGenerateSource.includes('kind: "life_scene"') && pushGenerateSource.includes('(isLifeSceneNotification ? "/life"'), "background life-scene push must deep-link to life scene rather than ordinary chat");
 assert.ok(diagnosticsSource.includes('id: "life-scene-outbox"') && diagnosticsSource.includes('id: "life-notification-reply-writeback"'), "runtime diagnostics must expose background outbox and notification reply checks");
 assert.ok(!lifeUiSource.includes("__group__") && lifeUiSource.includes("participantIds: explicitParticipants"), "life-scene generation must use explicit participants and must not depend on a global group collage");
-assert.ok(chatRoomSource.includes("resolveLifeCharacterIdForContact(session.contactId, loadChatContacts())"), "online follow-up arbitration must map contact ID to character ID");
+assert.ok(chatRoomSource.includes("resolveSessionCharacterId(session)"), "online follow-up arbitration must resolve the session contact ID through the shared character-identity resolver");
 assert.ok(pushBailoutSource.includes("if (characterId && isCharacterCoPresentInLifeScene(characterId)) return null;"), "normal online-reply offline fallback must not race a co-present life-scene character");
 assert.ok(pushBailoutSource.includes("resolveSessionCharacterId(session)"), "offline follow-up and idle-reconnect guards must resolve contact IDs to character IDs");
 assert.ok(pushBailoutSource.includes("resolveSessionCharacterId(replySession)"), "reply bailout must resolve the session contact to the life-scene character");

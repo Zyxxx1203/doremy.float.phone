@@ -95,6 +95,32 @@ export function evaluateEncounterAwareness(input: EncounterPerception, seed = 0)
   return "unaware";
 }
 
+/**
+ * Build the ordered responder queue for one player-triggered scene turn.
+ * Canonical character IDs are de-duplicated before and after selection so the
+ * random, explicitly selected and awareness responders can never answer twice.
+ */
+export function buildLifeSceneResponderQueue(input: {
+  presentCharacterIds: string[];
+  randomEnabled: boolean;
+  randomSeed: number;
+  selectedCharacterId?: string;
+  awarenessCharacterId?: string;
+}): string[] {
+  const present = [...new Set(input.presentCharacterIds.filter(Boolean))];
+  const selected = input.selectedCharacterId && present.includes(input.selectedCharacterId)
+    ? input.selectedCharacterId : "";
+  const random = input.randomEnabled && present.length
+    ? present[Math.abs(Math.floor(input.randomSeed)) % present.length]
+    : "";
+  const awareness = input.awarenessCharacterId && present.includes(input.awarenessCharacterId)
+    ? input.awarenessCharacterId : "";
+  // Random selection, explicit selection and mention-awareness are independent
+  // response paths. Turning random selection off must not suppress a character
+  // who noticed being addressed; the same character is still deduplicated.
+  return [random, selected, awareness].filter((value, index, all) => Boolean(value) && all.indexOf(value) === index).slice(0, 3);
+}
+
 export function findActorState(
   state: VirtualLifeState,
   ownerType: LifeActorState["ownerType"],

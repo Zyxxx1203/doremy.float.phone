@@ -178,6 +178,33 @@ function DoodleMark({ doodle, size }: { doodle: import("@/lib/photo-wall-storage
   return <g transform={`translate(${x} ${y}) rotate(${doodle.rotation ?? 0})`}><text x={0} y={0} fill={doodle.color} fontSize={size} textAnchor="middle" dominantBaseline="middle">{doodle.content || "✦"}</text></g>;
 }
 
+function CreationLayerPreview({ photo, doodles, label, side, onOpen }: { photo?: PhotoWallPhoto; doodles: PhotoWallDoodle[]; label: string; side?: "front" | "back"; onOpen?: () => void }) {
+  const [src, setSrc] = useState("");
+  useEffect(() => {
+    let active = true;
+    let url = "";
+    if (!photo?.mediaRef) { setSrc(""); return; }
+    void loadMediaObjectUrl(photo.mediaRef).then(value => {
+      if (!active) { if (value) URL.revokeObjectURL(value); return; }
+      if (value) { url = value; setSrc(value); }
+    }).catch(() => undefined);
+    return () => { active = false; if (url) URL.revokeObjectURL(url); };
+  }, [photo?.mediaRef]);
+  const body = <div className="relative aspect-square min-h-[132px] overflow-hidden border border-[#e4d2c1] bg-[#f4ecdf]">
+    {side === "back" && photo
+      ? <div className="h-full overflow-hidden bg-[#fffaf0] p-3 text-[10px] leading-relaxed text-[#8b715e]"><div className="mb-2 border-b border-dashed border-[#d9c7b2] pb-1 font-serif text-xs">{photo.title || "照片背面"}</div><p className="whitespace-pre-wrap break-words">{photo.backNote || "留给这张照片背面的几句话……"}</p></div>
+      : src ? <img src={src} alt={photo?.title || label} loading="lazy" className="h-full w-full object-contain"/> : <div className="grid h-full place-items-center px-2 text-center text-[11px] text-[#9b8774]">{photo ? "照片暂不可读取" : "照片墙自由画布"}</div>}
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full">
+      {doodles.map(doodle => doodle.kind === "stroke"
+        ? <polyline key={doodle.id} points={doodle.points.map(point => (point.x * 100) + "," + (point.y * 100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(0.65, doodle.width / 3)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
+        : <g key={doodle.id}><DoodleMark doodle={doodle} size={9}/></g>)}
+    </svg>
+  </div>;
+  return photo && onOpen
+    ? <button type="button" onClick={onOpen} className="block w-full text-left"><span className="mb-1 block truncate text-[10px] text-[#8e7766]">{label}</span>{body}</button>
+    : <div><span className="mb-1 block truncate text-[10px] text-[#8e7766]">{label}</span>{body}</div>;
+}
+
 function PhotoThumbnail({ photo, onOpen }: { photo: PhotoWallPhoto; onOpen: () => void }) {
   const [src, setSrc] = useState("");
   useEffect(() => {
@@ -205,14 +232,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const ids = characterId ? [characterId] : loadCharacters().map(character => character.id);
       for (const id of ids) {
         appendCustomAppTimelineEntry({ id: "photo_wall", name: "照片墙" }, {
-          characterId: id,
-          summary: summary.slice(0, 500),
-          appLabel: "照片墙",
+          characterId: id, summary: summary.slice(0, 500), appLabel: "照片墙",
         });
       }
     } catch { /* 记忆失败不影响照片墙 */ }
   }, []);
-
   const [state, setState] = useState<PhotoWallState>(() => loadPhotoWallState());
   const [characters, setCharacters] = useState<Character[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
@@ -759,7 +783,11 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const doodleSessionRecordIdRef = useRef<string | null>(null);
   const handleWallCanvasModeChange = useCallback((nextMode: "view" | "move" | "doodle") => {
     if (nextMode === wallCanvasMode) return;
-    if (nextMode === "doodle" || wallCanvasMode === "doodle") doodleSessionRecordIdRef.current = null;
+    if (wallCanvasMode === "doodle" && nextMode !== "doodle") {
+      // The creation record itself is projected into the shared-events timeline.
+      doodleSessionRecordIdRef.current = null;
+    }
+    if (nextMode === "doodle") doodleSessionRecordIdRef.current = null;
     setWallCanvasMode(nextMode);
   }, [wallCanvasMode]);
   const changeDoodles = useCallback((photoId: string, doodles: PhotoWallDoodle[], side: "front" | "back" = "front") => {
@@ -778,32 +806,32 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const recordId = wallCanvasMode === "doodle" ? doodleSessionRecordIdRef.current : null;
       const previous = recordId ? (latest.creationRecords ?? []).find(item => item.id === recordId) : undefined;
       if (previous) {
-        applyImmediate({ ...latest, creationRecords: (latest.creationRecords ?? []).map(item => item.id === recordId
-          ? { ...item, photoIds: [...new Set([...item.photoIds, photoId])], doodles: [...item.doodles, ...addedByUser],
-              narrative: `我在照片墙涂鸦模式里留下了${item.doodles.length + addedByUser.length}笔心意。` }
-          : item) });
+        applyImmediate({ ...latest, creationRecords: (latest.creationRecords ?? []).map(item => {
+          if (item.id !== recordId) return item;
+          const layers = item.layers ?? [];
+          const layerIndex = layers.findIndex(layer => layer.kind === "photo" && layer.photoId === photoId && layer.side === side);
+          const nextLayers = layerIndex >= 0
+            ? layers.map((layer, index) => index === layerIndex && layer.kind === "photo" ? { ...layer, doodles: [...layer.doodles, ...addedByUser] } : layer)
+            : [...layers, { kind: "photo" as const, photoId, side, doodles: addedByUser }];
+          return { ...item, photoIds: [...new Set([...item.photoIds, photoId])], layers: nextLayers,
+            doodles: [...item.doodles, ...addedByUser],
+            narrative: `我在照片墙涂鸦模式里留下了${item.doodles.length + addedByUser.length}笔心意。` };
+        }) });
       } else {
         const record: PhotoWallCreationRecord = {
           id: createPhotoWallId(), createdAt: new Date().toISOString(), authorType: "user",
           authorName: "我", narrative: wallCanvasMode === "doodle"
             ? `我在照片墙涂鸦模式里留下了${addedByUser.length}笔心意。`
             : `我在「${photo?.title || "这张照片"}」的${side === "back" ? "背面留言纸" : "正面相框"}上留下了${addedByUser.length}笔涂鸦。`,
-          photoIds: [photoId], doodles: addedByUser,
+          photoIds: [photoId], layers: [{ kind: "photo", photoId, side, doodles: addedByUser }], doodles: addedByUser,
         };
         if (wallCanvasMode === "doodle") doodleSessionRecordIdRef.current = record.id;
         applyImmediate({ ...latest, creationRecords: [...(latest.creationRecords ?? []), record] });
       }
     }
-    if (added.length) {
-      const characterDoodle = added.find(item => item.authorType === "character");
-      recordPhotoWallMemory(
-        characterDoodle
-          ? characterDoodle.authorName + "在" + (photo?.title || "照片墙上") + "留下了贴纸或涂鸦"
-          : "用户在" + (photo?.title || "照片墙上") + "留下了贴纸或涂鸦",
-        characterDoodle?.authorId,
-      );
-    }
-  }, [applyImmediate, commitPhotos, pushHistory, wallCanvasMode, recordPhotoWallMemory]);
+    // The completed creation record is the canonical shared event. Avoid one timeline
+    // entry per stroke; a doodle session is summarized when the user exits doodle mode.
+  }, [applyImmediate, commitPhotos, pushHistory, wallCanvasMode]);
 
   /** 套用模板骨架：照片按顺序吸附进槽位，套完仍然可以自由拖动。 */
   const applyTemplate = useCallback((templateId: string) => {
@@ -995,14 +1023,20 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       if (!photoIds.size && wallActivePhotoId && source.photos.some(photo => photo.id === wallActivePhotoId)) photoIds.add(wallActivePhotoId);
       const recordId = wallCanvasMode === "doodle" ? doodleSessionRecordIdRef.current : null;
       const previous = recordId ? (source.creationRecords ?? []).find(item => item.id === recordId) : undefined;
-      if (previous) return { ...source, creationRecords: (source.creationRecords ?? []).map(item => item.id === recordId
-        ? { ...item, photoIds: [...new Set([...item.photoIds, ...photoIds])], doodles: [...item.doodles, ...addedByUser],
-            narrative: `我在这次涂鸦里亲手添了${item.doodles.length + addedByUser.length}笔心意。` }
-        : item) };
+      if (previous) return { ...source, creationRecords: (source.creationRecords ?? []).map(item => {
+        if (item.id !== recordId) return item;
+        const layers = item.layers ?? [];
+        const wallIndex = layers.findIndex(layer => layer.kind === "wall");
+        const nextLayers = wallIndex >= 0
+          ? layers.map((layer, index) => index === wallIndex && layer.kind === "wall" ? { ...layer, doodles: [...layer.doodles, ...addedByUser] } : layer)
+          : [...layers, { kind: "wall" as const, doodles: addedByUser }];
+        return { ...item, photoIds: [...new Set([...item.photoIds, ...photoIds])], layers: nextLayers, doodles: [...item.doodles, ...addedByUser],
+          narrative: `我在这次涂鸦里亲手添了${item.doodles.length + addedByUser.length}笔心意。` };
+      }) };
       const record: PhotoWallCreationRecord = {
         id: createPhotoWallId(), createdAt: new Date().toISOString(), authorType: "user", authorName: "我",
         narrative: wallCanvasMode === "doodle" ? `我在这次涂鸦里亲手添了${addedByUser.length}笔心意。` : `我在照片墙上亲手添了${addedByUser.length}笔涂鸦，把这一点小心意也留了下来。`,
-        photoIds: [...photoIds], doodles: addedByUser,
+        photoIds: [...photoIds], layers: [{ kind: "wall", doodles: addedByUser }], doodles: addedByUser,
       };
       if (wallCanvasMode === "doodle") doodleSessionRecordIdRef.current = record.id;
       return { ...source, creationRecords: [...(source.creationRecords ?? []), record] };
@@ -1010,8 +1044,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     // 涂鸦过程中不要扩容：扩容会重映射照片/涂鸦，但背景图盒子没有偏移量，
     // 会出现“画布和照片分离”。保持世界固定，笔迹始终落在同一画布上。
     persist(appendUserRecord({ ...current, wallDoodles }));
-    if (addedByUser.length) recordPhotoWallMemory("用户在整个照片墙上添加了" + addedByUser.length + "笔涂鸦或贴纸");
-  }, [persist, pushHistory, wallActivePhotoId, wallCanvasMode, recordPhotoWallMemory]);
+    // The session's creation record is projected once into shared events; no per-stroke event.
+  }, [persist, pushHistory, wallActivePhotoId, wallCanvasMode]);
   const visiblePhotos = useMemo(() => photos.filter(photo => {
     if (filter === "mine") return photo.ownerType === "user";
     if (filter === "characters") return photo.ownerType === "character";
@@ -1104,12 +1138,14 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const jitter = ((order % 5) - 2) * 0.018;
       const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
       const placed = { ...photo, placement: photo.placement ?? { x: Math.min(0.92, Math.max(0.08, anchor.x + jitter)), y: Math.min(0.92, Math.max(0.08, anchor.y + jitter)), scale: 1, rotation: Math.round(jitter * 300), z: maxZ + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } };
-      persist({ ...current, photos: [placed, ...current.photos.filter(item => item.id !== photo.id)] });
+      const record: PhotoWallCreationRecord = {
+        id: createPhotoWallId(), createdAt: new Date().toISOString(), authorType: photo.ownerType,
+        authorId: photo.ownerId, authorName: photo.ownerName,
+        narrative: (photo.ownerType === "character" ? photo.ownerName + "把一张照片放进了共同照片墙：" : "用户把一张照片放进了共同照片墙：") + (photo.title || "未命名的瞬间"),
+        photoIds: [photo.id], layers: [], doodles: [],
+      };
+      persist({ ...current, photos: [placed, ...current.photos.filter(item => item.id !== photo.id)], creationRecords: [...(current.creationRecords ?? []), record] });
     }
-    recordPhotoWallMemory(
-      (photo.ownerType === "character" ? photo.ownerName + "把一张照片放进了照片墙：" : "用户上传了一张照片到照片墙：") + (photo.title || "未命名的瞬间"),
-      photo.ownerType === "character" ? photo.ownerId : undefined,
-    );
     setSelectedPhotoId(photo.id);
   }, [persist, activeTemplateId, placementAnchor, templateFill, pushHistory]);
 
@@ -1217,10 +1253,14 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             const jy = (row - 1) * 0.055 + ((Math.floor(index / 2) % 2) - 0.5) * 0.014;
             return { ...photo, placement: { x: Math.min(0.92, Math.max(0.08, anchor.x + jx)), y: Math.min(0.92, Math.max(0.08, anchor.y + jy)), scale: 1, rotation: Math.round(((index % 5) - 2) * 3), z: maxZ + index + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } as PhotoWallPlacement };
           });
-          persist({ ...current, photos: [...placedCreated, ...current.photos] });
+          const record: PhotoWallCreationRecord = {
+            id: createPhotoWallId(), createdAt: new Date().toISOString(), authorType: "user", authorName: "我",
+            narrative: "用户一次上传了 " + created.length + " 张照片到共同照片墙。",
+            photoIds: created.map(photo => photo.id), layers: [], doodles: [],
+          };
+          persist({ ...current, photos: [...placedCreated, ...current.photos], creationRecords: [...(current.creationRecords ?? []), record] });
         }
         setSelectedPhotoId(created[0]?.id ?? null);
-        recordPhotoWallMemory("用户一次上传了" + created.length + "张照片到照片墙");
       }
       if (failed.length) onNotice?.("已收藏 " + created.length + " 张；" + failed.length + " 张失败。失败项：" + failed.slice(0, 3).join("；") + (failed.length > 3 ? "；…" : ""));
       else onNotice?.("已收藏 " + created.length + " 张照片。");
@@ -1485,12 +1525,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const narrative = characterSummary || `${artist.name}今天在照片墙上留下了${created.length}个小装饰。每一笔都被认真收进了我们的共同回忆里。`;
       const record: PhotoWallCreationRecord = {
         id: createPhotoWallId(), createdAt, authorType: "character", authorId: artist.id,
-        authorName: artist.name, narrative, photoIds: [...photoIds], doodles: created,
+        authorName: artist.name, narrative, photoIds: [...photoIds], layers: [{ kind: "wall", doodles: created }], doodles: created,
       };
       changeWallDoodles([...(latest.wallDoodles ?? []), ...created]);
       const afterDoodles = stateRef.current;
       persist({ ...afterDoodles, creationRecords: [...(afterDoodles.creationRecords ?? []), record] });
-      recordPhotoWallMemory(artist.name + "在照片墙上留下了" + created.length + "个贴纸或涂鸦", artist.id);
+      // The creation record is the single source for this completed co-creation event.
       onNotice?.(`${artist.name}留下了 ${created.length} 个小装饰；创作过程已保存到「共创记录」。`);
     } catch (error) {
       onNotice?.("请角色装饰照片墙失败：" + (error instanceof Error ? error.message : String(error)));
@@ -1780,11 +1820,17 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
                     </div>
                   </div>
                   <div className="min-h-[130px] border border-[#e8d7c5] bg-[#f8f0e5] p-2">
-                    <svg viewBox="0 0 100 100" className="h-full min-h-[126px] w-full" role="img" aria-label={record.authorName + "留下的涂鸦笔迹"}>
-                      {record.doodles.map(doodle => doodle.kind === "stroke"
-                        ? <polyline key={doodle.id} points={doodle.points.map(point => (point.x*100)+","+(point.y*100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(1,doodle.width/2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
-                        : <g key={doodle.id}><DoodleMark doodle={doodle} size={9}/></g>)}
-                    </svg>
+                    {record.layers?.length ? <div className="grid grid-cols-2 gap-2">
+                      {record.layers.map((layer, layerIndex) => {
+                        const layerPhoto = layer.kind === "photo" ? linkedPhotos.find(photo => photo.id === layer.photoId) : undefined;
+                        const label = layer.kind === "wall" ? "墙面涂鸦" : (layerPhoto?.title || "关联照片") + (layer.side === "back" ? " · 背面" : " · 正面");
+                        return <CreationLayerPreview key={record.id + "-layer-" + layerIndex} photo={layerPhoto} side={layer.kind === "photo" ? layer.side : undefined} doodles={layer.doodles} label={label} onOpen={layerPhoto ? () => openPhoto(layerPhoto) : undefined}/>;
+                      })}
+                    </div> : <div className="grid grid-cols-2 gap-2">
+                      {linkedPhotos.slice(0, 4).map(photo => <div key={photo.id} className="min-w-0"><PhotoThumbnail photo={photo} onOpen={() => openPhoto(photo)}/></div>)}
+                      {!linkedPhotos.length && <div className="col-span-2 grid min-h-[126px] place-items-center text-[11px] text-[#9b8774]">旧版涂鸦记录</div>}
+                      <p className="col-span-2 text-[9px] leading-relaxed text-[#a08c74]">{record.doodles.length ? "旧版记录未保存每张照片对应的笔迹坐标。这里单独展示关联照片，避免把不同照片上的笔迹叠在一起；原始笔迹仍完整保留在记录中。" : "本次创作没有附加涂鸦，关联照片单独展示。"}</p>
+                    </div>}
                   </div>
                 </div>
                 <footer className="border-t border-[#eadbc9] px-4 py-3">

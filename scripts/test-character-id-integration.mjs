@@ -130,8 +130,12 @@ assert.equal(identity.resolveSessionCharacterIdentity(
 ), null, "an orphaned contact ID must fail closed rather than guess by display name");
 
 const now = new Date("2026-11-05T08:00:00.000Z");
-const dayStart = new Date("2026-11-05T00:00:00.000Z");
-const dayEnd = new Date("2026-11-12T00:00:00.000Z");
+// Match the production caller: day boundaries are local calendar midnights,
+// not UTC midnights. This keeps the same virtual day in DST and non-DST zones.
+const dayStart = new Date(now);
+dayStart.setHours(0, 0, 0, 0);
+const dayEnd = new Date(dayStart);
+dayEnd.setDate(dayEnd.getDate() + 7);
 const contexts = [
   { ownerType: "character", ownerId: "char_alpha", name: "小满", now, dayStart, dayEnd, existing: [] },
   { ownerType: "character", ownerId: "char_beta", name: "小满", now, dayStart, dayEnd, existing: [] },
