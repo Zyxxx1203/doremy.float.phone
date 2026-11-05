@@ -19,6 +19,7 @@ import { getActorClock, resolveActorLifeNow } from "./life/life-runtime";
 import { resolveCharacterIdReference, resolveSessionCharacterIdentity } from "./character-id-contract";
 import { migrateLegacyCharacterIdentityData } from "./character-id-migration";
 import { recordLifeDiagnostic } from "./life/life-diagnostics";
+import { recordPerformanceMetric } from "./performance-diagnostics";
 
 export const DEFAULT_VISION_IMAGE_PROMPT_LIMIT = 1;
 export const MAX_VISION_IMAGE_PROMPT_LIMIT = 20;
@@ -799,15 +800,38 @@ export function compareChatMessages(a: ChatMessage, b: ChatMessage): number {
 }
 
 function getSortedSessionMessages(sessionId: string): ChatMessage[] {
-    return _loadAllMessages()
-        .filter(m => m.sessionId === sessionId)
-        .sort(compareChatMessages);
+    const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+    // Rebuild the per-session index only when the backing array changes. This turns
+    // repeated "last message per session" lookups from N full-cache scans into one
+    // pass plus O(1) session lookup. The sorted arrays are cached until the next write.
+    if (_sortedSessionMessagesSource !== _messagesCache || _sortedSessionMessagesLength !== _messagesCache.length) {
+        const rebuildStartedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+        const grouped = new Map<string, ChatMessage[]>();
+        for (const message of _messagesCache) {
+            const bucket = grouped.get(message.sessionId);
+            if (bucket) bucket.push(message);
+            else grouped.set(message.sessionId, [message]);
+        }
+        for (const bucket of grouped.values()) bucket.sort(compareChatMessages);
+        _sortedSessionMessagesCache = grouped;
+        _sortedSessionMessagesSource = _messagesCache;
+        _sortedSessionMessagesLength = _messagesCache.length;
+        recordPerformanceMetric("chat.storage.session_index_rebuild",
+            (typeof performance !== "undefined" ? performance.now() : Date.now()) - rebuildStartedAt,
+            { scannedMessages: _messagesCache.length, sessionCount: grouped.size });
+    }
+    const cached = _sortedSessionMessagesCache.get(sessionId) ?? [];
+    const duration = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
+    recordPerformanceMetric("chat.storage.session_messages_read", duration, {
+        matchedMessages: cached.length,
+        cacheHit: _sortedSessionMessagesCache.has(sessionId),
+    });
+    return cached.slice();
 }
 
 function getNextMessageOrder(sessionId: string): number {
     let maxOrder = -1;
-    for (const msg of _messagesCache) {
-        if (msg.sessionId !== sessionId) continue;
+    for (const msg of getSortedSessionMessages(sessionId)) {
         const order = getStableMessageOrder(msg);
         if (order !== null && order > maxOrder) maxOrder = order;
     }
@@ -883,6 +907,15 @@ const DEFAULT_CHAT_APP_SETTINGS: ChatAppSettings = {
 let _contactsCache: ChatContact[] = [];
 let _sessionsCache: ChatSession[] = [];
 let _messagesCache: ChatMessage[] = [];
+let _sortedSessionMessagesSource: ChatMessage[] | null = null;
+let _sortedSessionMessagesLength = -1;
+let _sortedSessionMessagesCache = new Map<string, ChatMessage[]>();
+
+function invalidateSortedSessionMessageCache(): void {
+    _sortedSessionMessagesSource = null;
+    _sortedSessionMessagesLength = -1;
+    _sortedSessionMessagesCache.clear();
+}
 let _hydrated = false;
 let _hydratePromise: Promise<void> | null = null;
 
@@ -1534,11 +1567,17 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
     status?: ChatMessageStatus;
     createdAt?: string;
 }): ChatMessage {
+    const pushStartedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
     // Explicit IDs are used by retryable imports/notification delivery. Treat them as
     // idempotency keys so a native queue replay cannot duplicate the same chat bubble.
     if (msg.id) {
         const existing = getSortedSessionMessages(msg.sessionId).find(item => item.id === msg.id);
-        if (existing) return existing;
+        if (existing) {
+            recordPerformanceMetric("chat.message.push_sync",
+                (typeof performance !== "undefined" ? performance.now() : Date.now()) - pushStartedAt,
+                { duplicate: true });
+            return existing;
+        }
     }
     let newMsg: ChatMessage = {
         ...msg,
@@ -1627,6 +1666,7 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
 
     // Keep a lightweight cross-app breadcrumb in the Life timeline. Do not copy full
     // chat history into Life; the canonical message remains in Chat storage.
+    const lifeTimelineStartedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
     if ((newMsg.role === "user" || newMsg.role === "assistant") && typeof window !== "undefined") {
         try {
             const life = loadVirtualLifeState();
@@ -1676,6 +1716,11 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
             // Life timeline logging must never block ordinary message persistence.
         }
     }
+    recordPerformanceMetric("chat.message.life_timeline_sync",
+        (typeof performance !== "undefined" ? performance.now() : Date.now()) - lifeTimelineStartedAt);
+    recordPerformanceMetric("chat.message.push_sync",
+        (typeof performance !== "undefined" ? performance.now() : Date.now()) - pushStartedAt,
+        { role: newMsg.role, media: Boolean(newMsg.mediaType) });
 
     return newMsg;
 }
@@ -2089,6 +2134,7 @@ export function editChatMessage(messageId: string, newContent: string) {
     const msgIdx = _messagesCache.findIndex(m => m.id === messageId);
     if (msgIdx !== -1) {
         _messagesCache[msgIdx] = { ..._messagesCache[msgIdx], content: newContent };
+    invalidateSortedSessionMessageCache();
         dbPutMessage(_messagesCache[msgIdx]);
 
         const sessionId = _messagesCache[msgIdx].sessionId;
@@ -2107,6 +2153,7 @@ export function retractChatMessage(messageId: string) {
     const msgIdx = _messagesCache.findIndex(m => m.id === messageId);
     if (msgIdx !== -1) {
         _messagesCache[msgIdx] = { ..._messagesCache[msgIdx], isRetracted: true };
+    invalidateSortedSessionMessageCache();
         dbPutMessage(_messagesCache[msgIdx]);
 
         const sessionId = _messagesCache[msgIdx].sessionId;
@@ -2299,6 +2346,7 @@ export function updateMessageMediaStatus(messageId: string, newStatus: "pending"
     const idx = _messagesCache.findIndex(m => m.id === messageId);
     if (idx !== -1) {
         _messagesCache[idx] = { ..._messagesCache[idx], mediaData: { ..._messagesCache[idx].mediaData, status: newStatus } };
+    invalidateSortedSessionMessageCache();
         dbPutMessage(_messagesCache[idx]);
     }
 }
@@ -2308,6 +2356,7 @@ export function updateMessageMediaData(messageId: string, data: ChatMessage["med
     const idx = _messagesCache.findIndex(m => m.id === messageId);
     if (idx !== -1) {
         _messagesCache[idx] = { ..._messagesCache[idx], mediaData: data };
+    invalidateSortedSessionMessageCache();
         dbPutMessage(_messagesCache[idx]);
     }
 }
@@ -2316,6 +2365,7 @@ export function updateMessageMediaUrl(messageId: string, mediaUrl: string) {
     const idx = _messagesCache.findIndex(m => m.id === messageId);
     if (idx !== -1) {
         _messagesCache[idx] = { ..._messagesCache[idx], mediaUrl };
+    invalidateSortedSessionMessageCache();
         dbPutMessage(_messagesCache[idx]);
     }
 }
@@ -2338,6 +2388,7 @@ export async function persistMessageVoiceAudio(
             mediaData: { ..._messagesCache[idx].mediaData, synthesizedFromText },
         };
         _messagesCache[idx] = next;
+    invalidateSortedSessionMessageCache();
         dbPutMessage(next);
         return;
     }
@@ -2363,6 +2414,7 @@ export function updateChatMessage(
     if (idx === -1) return null;
 
     _messagesCache[idx] = { ..._messagesCache[idx], ...patch };
+    invalidateSortedSessionMessageCache();
     const updated = _messagesCache[idx];
     dbPutMessage(updated);
 
@@ -2475,6 +2527,7 @@ export function replaceMessageWithParts(
 
     // Remove original
     _messagesCache.splice(idx, 1);
+    invalidateSortedSessionMessageCache();
     dbDeleteMessage(originalId);
 
     // Insert parsed parts at the same position, preserving timestamp
@@ -2505,6 +2558,7 @@ export function replaceMessageWithParts(
             senderName: original.senderName,
         };
         _messagesCache.splice(idx + i, 0, newMsg);
+    invalidateSortedSessionMessageCache();
         dbPutMessage(newMsg);
         newMsgs.push(newMsg);
     }
@@ -2599,6 +2653,7 @@ export function replaceResponseBatchWithParts(
     const newMessages = toolCallMessage ? [...visibleMessages, toolCallMessage] : visibleMessages;
 
     _messagesCache.splice(insertIdx, 0, ...newMessages);
+    invalidateSortedSessionMessageCache();
     dbPutMessages(newMessages);
     reindexSessionMessageOrders(sessionId);
 
@@ -2698,6 +2753,7 @@ export function replaceGroupResponseRound(
     }));
 
     _messagesCache.splice(insertIdx, 0, ...newMessages);
+    invalidateSortedSessionMessageCache();
     dbPutMessages(newMessages);
     reindexSessionMessageOrders(sessionId);
 
