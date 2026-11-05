@@ -217,8 +217,29 @@ create table if not exists public.life_schedule_diagnostics (
   updated_at timestamptz not null default now(),
   resolved_at timestamptz
 );
+alter table public.life_schedule_diagnostics add column if not exists trace_id text not null default '';
 create index if not exists life_schedule_diagnostics_user_idx
   on public.life_schedule_diagnostics (user_id, updated_at desc);
+
+-- Append-only lifecycle events make a single job traceable from schedule evaluation
+-- through generation, outbox persistence, notification delivery and final result.
+create table if not exists public.life_schedule_diagnostic_events (
+  id text primary key,
+  trace_id text not null,
+  user_id text not null,
+  stage text not null,
+  severity text not null default 'info',
+  code text not null,
+  detail text not null default '',
+  actor_id text,
+  session_id text,
+  job_id text,
+  created_at timestamptz not null default now()
+);
+create index if not exists life_schedule_diagnostic_events_user_trace_idx
+  on public.life_schedule_diagnostic_events (user_id, trace_id, created_at desc);
+create index if not exists life_schedule_diagnostic_events_user_time_idx
+  on public.life_schedule_diagnostic_events (user_id, created_at desc);
 
 -- v2 的 push_screen_sessions 是按时间切分的第二套聊天记录，还会持久化原始截图。
 -- 屏幕速聊现在只是小手机唯一聊天窗口的远程入口，因此升级时移除这份临时缓存。
@@ -360,11 +381,12 @@ alter table public.push_bridge_config enable row level security;
 alter table public.push_bridge_snapshots enable row level security;
 alter table public.life_schedule_runtime enable row level security;
 alter table public.life_schedule_diagnostics enable row level security;
+alter table public.life_schedule_diagnostic_events enable row level security;
 alter table public.push_screen_threads enable row level security;
 
 -- 屏幕速聊表和 RPC 只由 Edge Function 的 service_role 使用；客户端角色没有表级权限。
 revoke all on table public.push_screen_threads from public, anon, authenticated;
-revoke all on table public.life_schedule_runtime, public.life_schedule_diagnostics from public, anon, authenticated;
+revoke all on table public.life_schedule_runtime, public.life_schedule_diagnostics, public.life_schedule_diagnostic_events from public, anon, authenticated;
 
 -- 2026 年起新项目不会自动把 public 新表暴露给 Data API。
 -- 网关和生成器只以 service_role 访问，绝不授予 anon 或 authenticated。
@@ -380,6 +402,7 @@ grant select, insert, update, delete on table
   public.push_bridge_snapshots,
   public.life_schedule_runtime,
   public.life_schedule_diagnostics,
+  public.life_schedule_diagnostic_events,
   public.push_screen_threads
 to service_role;
 
