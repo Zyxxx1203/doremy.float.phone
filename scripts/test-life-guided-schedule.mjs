@@ -30,7 +30,7 @@ const result = parseGuidedScheduleResponse(JSON.stringify({ schedules: [
   { actorId: "char-a", actorType: "character", actorName: "小满", operation: "add", existingScheduleId: "", dayOffset: 0, start: "15:00", end: "16:00", title: "和用户一起散步", location: "公园", reason: "符合用户目标" },
 ] }), contexts);
 assert.equal(result.drafts.length, 3);
-assert.deepEqual(result.drafts.map(item => item.operation), ["move", "cancel", "add"]);
+assert.deepEqual(Array.from(result.drafts, item => item.operation), ["move", "cancel", "add"]);
 assert.equal(result.conflicts.length, 0);
 assert.equal(result.rejected.length, 0);
 
