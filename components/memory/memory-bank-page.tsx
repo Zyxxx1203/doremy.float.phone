@@ -337,7 +337,6 @@ export function MemoryBankPage({
             (e.sourceApp === "moments" && e.postAuthorType === "user") ||
             (e.sourceApp === "chat" && e.sourceDetail === "group") ||
             (e.sourceApp === "interview_magazine" && e.sourceDetail === "interview_shared_issue") ||
-            (e.sourceApp === "cocreate" && e.sourceDetail === "cocreate_project") ||
             (e.sourceApp === "watch" && e.sourceDetail === "custom_app_event") ||
             (e.sourceApp === "life" && e.sourceDetail === "life_shared_event") ||
             (e.sourceApp === "photo_wall" && e.sourceDetail === "photo_wall_creation")
