@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
 
-let storedRaw = null;\nconst source = readFileSync(new URL("../lib/photo-wall-storage.ts", import.meta.url), "utf8");
+let storedRaw = null;
+const source = readFileSync(new URL("../lib/photo-wall-storage.ts", import.meta.url), "utf8");
 const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
@@ -30,4 +31,13 @@ assert.equal(records[1].layers[0].photoId, "photo-1");
 assert.equal(records[1].layers[0].side, "front");
 assert.equal(records[2].doodles.length, 0, "photo-only creation records are valid");
 assert.deepEqual([...records[2].photoIds], ["photo-2"]);
-storedRaw = JSON.stringify({ photos: [\n  { id: "legacy-private", mediaRef: "media-store://legacy", ownerType: "user" },\n  { id: "explicit-private", mediaRef: "media-store://private", ownerType: "user", shareWithCharacters: false },\n  { id: "explicit-shared", mediaRef: "media-store://shared", ownerType: "user", shareWithCharacters: true },\n], settings: {} });\nconst privacyState = loadPhotoWallState();\nassert.equal(privacyState.photos.find(photo => photo.id === "legacy-private").shareWithCharacters, false, "legacy photos without explicit sharing must remain private");\nassert.equal(privacyState.photos.find(photo => photo.id === "explicit-private").shareWithCharacters, false);\nassert.equal(privacyState.photos.find(photo => photo.id === "explicit-shared").shareWithCharacters, true);\nconsole.log("Photo Wall creation-layer and privacy tests passed.");
+storedRaw = JSON.stringify({ photos: [
+  { id: "legacy-private", mediaRef: "media-store://legacy", ownerType: "user" },
+  { id: "explicit-private", mediaRef: "media-store://private", ownerType: "user", shareWithCharacters: false },
+  { id: "explicit-shared", mediaRef: "media-store://shared", ownerType: "user", shareWithCharacters: true },
+], settings: {} });
+const privacyState = loadPhotoWallState();
+assert.equal(privacyState.photos.find(photo => photo.id === "legacy-private").shareWithCharacters, false, "legacy photos without explicit sharing must remain private");
+assert.equal(privacyState.photos.find(photo => photo.id === "explicit-private").shareWithCharacters, false);
+assert.equal(privacyState.photos.find(photo => photo.id === "explicit-shared").shareWithCharacters, true);
+console.log("Photo Wall creation-layer and privacy tests passed.");
