@@ -18,6 +18,7 @@ import { loadMapProjectionEntries, loadMapSharedProjectionEntries } from "./map-
 import { loadGameProjectionEntries } from "./game-storage";
 import { loadDiaryEntries } from "./diary-entry-storage";
 import { loadVirtualLifeState } from "./life/life-storage";
+import { loadPhotoWallState } from "./photo-wall-storage";
 import { asPlayerRecordSubject } from "./life/life-timeline-subject";
 import type { DiaryEntry, DiaryEntryBlock } from "./diary-entry-types";
 import { loadNoteWallProjectionEntries } from "./notewall-memory";
@@ -54,7 +55,7 @@ function formatPhotoDirectiveForPrompt(msg: ChatMessage): string {
 export type NativeTimelineEntry = {
     id: string;
     sourceApp: "chat" | "moments" | "story" | "vn" | "map" | "game" | "diary" | "xiaohongshu" | "interview_magazine" | "cocreate" | "checkphone" | "custom_app" | "photo_wall" | "life" | "phone_widget" | "watch" | "global_watch";
-    sourceDetail?: "direct" | "group" | "system" | "story" | "chat_offline" | "game" | "diary_entry" | "notewall" | "xiaohongshu" | "black_market_theater" | "interview_issue" | "interview_shared_issue" | "cocreate_project" | "checkphone" | "custom_app_event"; // chat sub-type: 1:1 vs group chat vs system note
+    sourceDetail?: "direct" | "group" | "system" | "story" | "chat_offline" | "game" | "diary_entry" | "notewall" | "xiaohongshu" | "black_market_theater" | "interview_issue" | "interview_shared_issue" | "cocreate_project" | "checkphone" | "custom_app_event" | "life_shared_event" | "photo_wall_creation"; // chat sub-type: 1:1 vs group chat vs system note
     authorType?: "user" | "character" | "npc"; // who authored this entry
     postAuthorType?: "user" | "character"; // for moments: who owns the parent post
     sessionId?: string;
@@ -800,6 +801,33 @@ export function loadNativeTimeline(
         });
     }
 
+    // ── Completed Photo Wall co-creation records: one event per saved creation session. ──
+    const photoWall = loadPhotoWallState();
+    const photoById = new Map(photoWall.photos.map(photo => [photo.id, photo]));
+    for (const record of photoWall.creationRecords ?? []) {
+        if (options?.afterTimestamp && record.createdAt <= options.afterTimestamp) continue;
+        const linkedPhotos = record.photoIds.map(photoId => photoById.get(photoId)).filter(Boolean);
+        const visibleToCharacter = record.authorType === "character"
+            ? record.authorId === characterId
+            : linkedPhotos.some(photo => photo?.shareWithCharacters !== false);
+        if (!visibleToCharacter) continue;
+        const photoNames = linkedPhotos.map(photo => photo?.title).filter(Boolean).slice(0, 4);
+        const summary = [record.authorName + "完成了一次照片墙共同创作", record.narrative, photoNames.length ? "关联照片：" + photoNames.join("、") : ""].filter(Boolean).join("；");
+        entries.push({
+            id: "photo_wall_creation:" + record.id,
+            sourceApp: "photo_wall",
+            sourceDetail: "photo_wall_creation",
+            authorType: record.authorType,
+            timestamp: record.createdAt,
+            customAppId: "photo_wall",
+            customAppName: "照片墙",
+            customAppLabel: "共同创作",
+            content: formatStoredPromptEventContent(renderUserNameMacro(summary, userName), {
+                label: "照片墙共同创作", timestamp: record.createdAt, timeAware, timestampOptions,
+            }),
+        });
+    }
+
     // ── Shared Life timeline (scene actions, whereabouts, schedules and tools) ──
     // Native chat, moments and diary content already has dedicated projections above.
     // Only add Life-specific events here to avoid duplicate memory injection.
@@ -817,6 +845,25 @@ export function loadNativeTimeline(
                 .filter(invitation => invitation.characterId === characterId)
                 .map(invitation => invitation.id)
         );
+        // Confirmed shared experiences are surfaced as one memory event, separately
+        // from the granular action/dialogue timeline so the Shared Events tab stays meaningful.
+        for (const fact of lifeState.memories ?? []) {
+            if (!fact.participants.includes(characterId)) continue;
+            if (options?.afterTimestamp && fact.occurredAt <= options.afterTimestamp) continue;
+            entries.push({
+                id: "life_shared_event:" + fact.id,
+                sourceApp: "life",
+                sourceDetail: "life_shared_event",
+                authorType: "user",
+                timestamp: fact.occurredAt,
+                customAppId: "life",
+                customAppName: "生活",
+                customAppLabel: "共同经历",
+                content: formatStoredPromptEventContent(renderUserNameMacro(fact.fact, userName), {
+                    label: "共同经历", timestamp: fact.occurredAt, timeAware, timestampOptions,
+                }),
+            });
+        }
         for (const lifeEntry of lifeState.timeline ?? []) {
             if (options?.afterTimestamp && (lifeEntry.recordedAt ?? lifeEntry.occurredAt) <= options.afterTimestamp) continue;
             if (!["location", "scene", "action", "dialogue", "schedule", "tool", "system"].includes(lifeEntry.category)) continue;
