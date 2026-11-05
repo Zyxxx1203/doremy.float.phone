@@ -2184,10 +2184,11 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         userName: playerName,
         includeDirectChatEntries: true,
       });
-      const sharedShortTermContext = sharedShortTerm.recentBlocks
-        .filter(block => block.content.trim())
-        .map(block => `<${block.tag}>\n${block.content}\n</${block.tag}>`)
-        .join("\n\n");
+      const sharedShortTermContext = sharedShortTerm.unifiedRecentItems
+        .filter(item => item.kind === "event" && item.sourceApp !== "life" && item.sourceApp !== "photo_wall")
+        .map(item => item.text)
+        .filter(Boolean)
+        .join("\n");
       const settingsInstructions = [
         settings.keepDialogueConcise ? "保持简短：一句对白，必要时附一个动作。" : "允许适度展开，但仍保持实时互动感。",
         forceReaction
