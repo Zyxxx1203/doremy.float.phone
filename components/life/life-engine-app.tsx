@@ -2130,11 +2130,17 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       setNotice("没有找到可回应的角色。请检查该场景参与者是否关联到现有角色卡。");
       return "failed";
     }
-    if (userText || userAction) {
+    // Any character that actually reaches the response queue has now noticed the player,
+    // including the second/third responder invoked recursively.
+    {
       const latest = stateRef.current;
       const scene = latest.scenes.find(item => item.id === activeScene.id);
       if (scene) {
-        const updatedScene = { ...scene, participants: scene.participants.map(participant => participant.ownerType === "character" && participant.ownerId === target.id ? { ...participant, awarenessByActorId: { ...participant.awarenessByActorId, [PLAYER_ID]: "aware" as const } } : participant), updatedAt: new Date().toISOString() };
+        const updatedScene = { ...scene, participants: scene.participants.map(participant =>
+          participant.ownerType === "character" && resolveLifeCharacterId(participant.ownerId) === target.id
+            ? { ...participant, awarenessByActorId: { ...participant.awarenessByActorId, [PLAYER_ID]: "aware" as const } }
+            : participant
+        ), updatedAt: new Date().toISOString() };
         commit({ ...latest, scenes: latest.scenes.map(item => item.id === scene.id ? updatedScene : item) });
       }
     }
