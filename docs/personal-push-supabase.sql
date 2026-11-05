@@ -19,7 +19,7 @@ begin
         'push_server_config', 'push_subscriptions', 'push_jobs', 'push_outbox',
         'push_shortcut_commands', 'push_bridge_config', 'push_bridge_snapshots',
         'push_screen_sessions', 'push_screen_threads',
-        'life_schedule_runtime', 'life_schedule_diagnostics'
+        'life_schedule_runtime', 'life_schedule_diagnostics', 'life_schedule_diagnostic_events'
       ])
   ) into has_unknown_public_table;
 
@@ -35,7 +35,7 @@ create table if not exists public.ai_phone_cloud_meta (
   updated_at timestamptz not null default now()
 );
 insert into public.ai_phone_cloud_meta (id, schema_version, updated_at)
-values ('personal-cloud', 4, now())
+values ('personal-cloud', 5, now())
 on conflict (id) do update set schema_version = excluded.schema_version, updated_at = excluded.updated_at;
 
 create table if not exists public.push_server_config (
