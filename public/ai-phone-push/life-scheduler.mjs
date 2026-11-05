@@ -264,11 +264,11 @@ Deno.serve(async (req: Request) => {
         repair_hint: repairHint.slice(0, 500), updated_at: new Date().toISOString(), resolved_at: null,
       }]),
     });
+    if (!shouldNotify) return;
     await writeTraceEvent({
       userId, traceId, stage: "日程调度异常", severity, code, detail,
       jobId: traceId !== id ? traceId : undefined,
     });
-    if (!shouldNotify) return;
     // Android shell has a persistent Realtime channel. Send one alert when a new
     // unresolved cloud fault appears; repeated cron ticks only update the same row.
     const subscriptionsResponse = await rest(`push_subscriptions?user_id=eq.${encodeURIComponent(userId)}&select=endpoint,p256dh,auth&limit=50`);
@@ -430,11 +430,6 @@ Deno.serve(async (req: Request) => {
           const jobs = await jobResponse.json() as JobRow[];
           const job = jobs[0];
           if (!job) continue; // Client creates the first prompt/request template while the scene is open.
-          await writeTraceEvent({
-            userId: row.user_id, traceId: job.id, stage: "任务状态检查", code: "life_job_observed",
-            detail: `云端日程已检查任务状态：${job.status}；执行时间 ${job.execute_at}。`,
-            actorId: characterId, jobId: job.id,
-          });
           const jobDiagnosticId = `life-scheduler:job:${scene.id}:${characterId}`;
           if (!enabled) {
             if (job.status === "pending" || job.status === "running") {
