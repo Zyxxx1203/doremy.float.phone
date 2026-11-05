@@ -1268,40 +1268,42 @@ export function ChatRoom({ session, onBack, onDeleted, isActive = true }: ChatRo
     // life-scene notification. The life task is deferred, not cancelled; hiding or
     // leaving this chat releases the lease and lets the schedule continue.
     const wrapperRef = useRef<HTMLDivElement>(null);
+    const foregroundLeaseRef = useRef(false);
 
     useEffect(() => {
         if (session.isGroup) return;
         const characterId = resolveSessionCharacterId(session);
         if (!characterId) return;
         if (!isActive) {
+            foregroundLeaseRef.current = false;
             setOnlineChatForegroundLease(characterId, session.id, false);
             return;
         }
-        const isForegroundRoom = () => (
-            isActive
-            && document.visibilityState === "visible"
-            && isChatRoomElementVisible(wrapperRef.current)
-        );
-        const refresh = () => setOnlineChatForegroundLease(characterId, session.id, isForegroundRoom());
+        const isCurrentRoom = () => isActive && isChatRoomElementVisible(wrapperRef.current);
+        const refresh = () => {
+            const foreground = isCurrentRoom() && document.visibilityState === "visible";
+            setOnlineChatForegroundLease(characterId, session.id, foreground);
+            // Publish both foreground acquisition and release. A hidden app/document
+            // must not leave a stale cloud lease that blocks scheduled Life work.
+            if (foregroundLeaseRef.current !== foreground) {
+                foregroundLeaseRef.current = foreground;
+                void syncLifeScheduleSnapshot();
+            }
+        };
         const syncCloudLease = () => {
-            if (isForegroundRoom()) void syncLifeScheduleSnapshot();
+            if (isCurrentRoom() && document.visibilityState === "visible") void syncLifeScheduleSnapshot();
         };
-        const onVisibilityChange = () => {
-            refresh();
-            // Publish foreground ownership immediately; otherwise a cloud life job can
-            // start from the previous snapshot before the next scheduler heartbeat.
-            syncCloudLease();
-        };
+        const onVisibilityChange = () => refresh();
         refresh();
-        syncCloudLease();
         const localLeaseTimer = window.setInterval(refresh, 20_000);
-        // Only the visible room renews the cloud lease; cached hidden rooms stay idle.
+        // Only the active, actually visible room refreshes the cloud snapshot.
         const cloudLeaseTimer = window.setInterval(syncCloudLease, 60_000);
         document.addEventListener("visibilitychange", onVisibilityChange);
         return () => {
             window.clearInterval(localLeaseTimer);
             window.clearInterval(cloudLeaseTimer);
             document.removeEventListener("visibilitychange", onVisibilityChange);
+            foregroundLeaseRef.current = false;
             setOnlineChatForegroundLease(characterId, session.id, false);
             if (document.visibilityState === "visible") void syncLifeScheduleSnapshot();
         };
