@@ -54,6 +54,16 @@ export function parseGuidedScheduleResponse(
   const conflicts: string[] = [];
   const rejected: string[] = [];
   const overlaps = (a: number, b: number, x: number, y: number) => a < y && b > x;
+  // A complete re-plan may move one slot into another slot's old time. Exclude
+  // every explicitly moved/updated/cancelled ID from the old-slot conflict pool;
+  // the final atomic commit validates the resulting complete schedule set.
+  const scheduledToChange = new Set<string>(decoded.schedules.flatMap(value => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const item = value as Record<string, unknown>;
+    const operation = typeof item.operation === "string" ? item.operation.trim().toLowerCase() : "";
+    const existingId = typeof item.existingScheduleId === "string" ? item.existingScheduleId.trim() : "";
+    return existingId && ["move", "update", "cancel"].includes(operation) ? [existingId] : [];
+  }));
 
   for (const [index, value] of decoded.schedules.entries()) {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -158,6 +168,7 @@ export function parseGuidedScheduleResponse(
     const startMs = startAt.getTime(), endMs = endAt.getTime();
     const conflict = context.existing.find(slot =>
       slot.id !== existingScheduleId
+      && !scheduledToChange.has(slot.id)
       && overlaps(startMs, endMs, new Date(slot.startAt).getTime(), new Date(slot.endAt).getTime()));
     if (conflict) {
       conflicts.push(`${context.name}：${title}（与「${conflict.title}」冲突；请重新规划）`);
