@@ -22,8 +22,8 @@ export function parseWidgetLineOutput(raw: string): WidgetLineOutput | null {
   // Accept a single JSON object, optionally wrapped in a plain JSON code fence.
   const cleaned = source
     .replace(/^\uFEFF/, "")
-    .replace(/^\`\`\`(?:json)?\s*/i, "")
-    .replace(/\s*\`\`\`$/, "")
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
     .trim();
 
   let parsed: unknown;
