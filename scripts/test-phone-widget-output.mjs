@@ -39,4 +39,32 @@ const parsed = parseWidgetLineOutput(JSON.stringify({ text: longText, status: "�
 assert.equal(Array.from(parsed.text).length, 60);
 assert.equal(Array.from(parsed.status).length, 12);
 
+const protocolSource = readFileSync(new URL("../lib/text-tool-protocol.ts", import.meta.url), "utf8");
+const protocolCompiled = ts.transpileModule(protocolSource, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+}).outputText;
+const protocolModule = { exports: {} };
+vm.runInNewContext(protocolCompiled, {
+  module: protocolModule, exports: protocolModule.exports,
+  JSON, Array, String, RegExp,
+}, { filename: "text-tool-protocol.cjs" });
+const { stripMalformedTextToolDirectives, stripTextToolDirectives } = protocolModule.exports;
+
+assert.equal(
+  stripMalformedTextToolDirectives('正常留言\\n[执行动作:在桌面留句话(["text":"泄漏"]\\n下一句'),
+  "正常留言\\n下一句",
+);
+assert.equal(
+  stripMalformedTextToolDirectives('前半句 [执行动作:参数不完整\\n后续正文'),
+  "前半句\\n后续正文",
+);
+assert.equal(
+  stripTextToolDirectives('正常留言 [执行动作:在桌面留句话({"text":"正常"})]'),
+  "正常留言",
+);
+assert.equal(
+  stripMalformedTextToolDirectives('普通文字\\n没有动作指令'),
+  '普通文字\\n没有动作指令',
+);
+
 console.log("Phone widget output safety tests passed.");
