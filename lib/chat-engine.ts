@@ -18,7 +18,6 @@ import {
     loadFollowUpSchedule,
     loadChatAppSettings,
     getMaxToolRounds,
-    loadChatContacts,
     loadChatSessions,
     saveChatSessions,
     getLatestCharacterStateValues,
