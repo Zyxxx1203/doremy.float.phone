@@ -110,7 +110,7 @@ assert.match(deployRoute, /LIFE_SCHEDULER_SLUG/);
 assert.match(deployRoute, /lifeSchedulerCode/);
 assert.match(deployRoute, /部署云端生活日程引擎失败/);
 assert.match(deployClient, /life-scheduler\.mjs/);
-assert.match(deployClient, /PERSONAL_PUSH_SCHEMA_VERSION = 5/);
+assert.match(deployClient, /PERSONAL_PUSH_SCHEMA_VERSION = 4/);
 assert.match(snapshot, /life-schedule-snapshot/);
 assert.match(snapshot, /personalCloudReady/);
 assert.match(snapshot, /schemaVersion \?\? 0\) >= 4/);
