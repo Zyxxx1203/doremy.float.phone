@@ -16,7 +16,7 @@ import { extractTextToolDirectiveText } from "./text-tool-protocol";
 import { findUserAvatarChangeIntent, inferAvatarDecisionFromReply } from "./chat-avatar-intent";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "./life/life-storage";
 import { getActorClock, resolveActorLifeNow } from "./life/life-runtime";
-import { resolveSessionCharacterIdentity } from "./character-id-contract";
+import { resolveCharacterIdReference, resolveSessionCharacterIdentity } from "./character-id-contract";
 
 export const DEFAULT_VISION_IMAGE_PROMPT_LIMIT = 1;
 export const MAX_VISION_IMAGE_PROMPT_LIMIT = 20;
@@ -961,7 +961,7 @@ function normalizeChatSessions(sessions: ChatSession[]): NormalizedSessionList {
         }
         const characterId = resolveSessionCharacterIdentity(
             { contactId, characterId: session.characterId, isGroup: session.isGroup },
-            loadChatContacts(),
+            _contactsCache,
             new Set(loadCharacters().map(character => character.id)),
         );
         const item = id === session.id && contactId === session.contactId && characterId === session.characterId
@@ -1056,9 +1056,10 @@ function unmarkContactRemoved(characterId: string): void {
 }
 
 function restoreContactsForPrivateSessions(contacts: ChatContact[], sessions: ChatSession[]): NormalizedList<ChatContact> {
+    const characterIds = new Set(loadCharacters().map(character => character.id));
     const removedByUser = loadRemovedContactIds();
     const privateSessionsWithMessages = sessions.filter(session => {
-        const characterId = resolveSessionCharacterId(session);
+        const characterId = resolveCharacterIdReference(session.contactId, session.characterId, contacts, characterIds);
         return !session.isGroup && Boolean(characterId)
             && !removedByUser.has(characterId!)
             && Boolean(getLastVisibleSessionMessage(session.id));
@@ -1075,7 +1076,7 @@ function restoreContactsForPrivateSessions(contacts: ChatContact[], sessions: Ch
     let changed = false;
 
     for (const session of privateSessionsWithMessages) {
-        const characterId = resolveSessionCharacterId(session);
+        const characterId = resolveCharacterIdReference(session.contactId, session.characterId, contacts, characterIds);
         if (!characterId || contactIds.has(characterId)) continue;
         const safeId = characterId.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 80) || Date.now().toString(36);
         restored.push({
