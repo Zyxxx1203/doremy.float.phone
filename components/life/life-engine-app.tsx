@@ -53,7 +53,7 @@ import { acknowledgePendingLifeSceneReply, claimPendingLifeSceneReply, failPendi
 
 type Tab = "home" | "scene" | "daily" | "people" | "plans" | "invitations" | "experiences" | "locations" | "observe" | "settings";
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
-type QuickPlanDraft = { id: string; ownerType: LifeOwnerType; ownerId: string; startAt: string; endAt: string; title: string; locationName: string; saveLocationToLibrary?: boolean; operation?: "add" | "move" | "update" | "cancel"; existingScheduleId?: string; reason?: string };
+type QuickPlanDraft = { id: string; ownerType: LifeOwnerType; ownerId: string; startAt: string; endAt: string; title: string; locationName: string; saveLocationToLibrary?: boolean; operation?: "add" | "move" | "update" | "cancel"; existingScheduleId?: string; reason?: string; guided?: boolean };
 const PLAYER_ID = "player";
 const LIFE_PROACTIVE_MESSAGES_ENABLED = false; // Temporarily pause life-initiated messages; keep schedules/scenes.
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -1090,7 +1090,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         dayEnd: context.dayEnd,
         existing: context.existing,
       })));
-      const drafts: QuickPlanDraft[] = parsed.drafts.map(draft => ({ ...draft, id: id("guided-plan") }));
+      const drafts: QuickPlanDraft[] = parsed.drafts.map(draft => ({ ...draft, id: id("guided-plan"), guided: true }));
       recordLifeDiagnostic({
         source: "AI 日程指导", event: drafts.length ? "结果校验完成" : "结果校验未通过",
         status: drafts.length ? (parsed.rejected.length || parsed.conflicts.length ? "warning" : "ok") : "error",
@@ -1125,6 +1125,33 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
 
   const confirmQuickPlanDrafts = () => {
     if (!quickPlanDrafts.length) return;
+    const isGuidedReplan = quickPlanDrafts.some(draft => draft.guided || draft.operation === "move" || draft.operation === "update" || draft.operation === "cancel");
+    if (!isGuidedReplan) {
+      let next = stateRef.current;
+      let saved = 0;
+      const invalid: string[] = [];
+      for (const draft of quickPlanDrafts) {
+        const start = new Date(draft.startAt), end = new Date(draft.endAt);
+        const owner = actors.find(actor => actor.ownerType === draft.ownerType && actor.ownerId === draft.ownerId);
+        if (!owner || !draft.title.trim() || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) { invalid.push(draft.title || "未命名安排"); continue; }
+        let location = draft.locationName.trim() ? next.locations.find(item => item.name.trim().toLocaleLowerCase() === draft.locationName.trim().toLocaleLowerCase()) : undefined;
+        if (draft.locationName.trim() && !location && draft.saveLocationToLibrary) {
+          location = { id: id("location"), name: draft.locationName.trim(), description: "从快速日程表单添加的地点", visibility: "public" };
+          next = { ...next, locations: [...next.locations, location] };
+        }
+        const actual = next.actorStates.find(item => item.ownerType === draft.ownerType && item.ownerId === draft.ownerId);
+        const slot: LifeScheduleSlot = { id: id("quick-plan"), ownerType: draft.ownerType, ownerId: draft.ownerId, startAt: start.toISOString(), endAt: end.toISOString(), title: draft.title.trim(), plannedLocationId: location?.id ?? actual?.actualLocationId ?? undefined, plannedLocationName: location?.name ?? (draft.locationName.trim() || actual?.actualLocationName || undefined), kind: "free-time", source: "manual", updatedAt: new Date().toISOString() };
+        const inserted = insertManualLifeScheduleSlot(next, slot);
+        if (inserted.conflict) { invalid.push(draft.title.trim() + "（与「" + inserted.conflict.title + "」时间冲突）"); continue; }
+        if (inserted.error) { invalid.push(draft.title.trim() + "（" + inserted.error + "）"); continue; }
+        next = inserted.state;
+        next = appendLifeTimelineEntry(next, { category: "schedule", title: owner.name + "新增日程：" + draft.title.trim(), details: fmt(start) + "–" + fmt(end) + (location ? " · " + location.name : ""), actorId: draft.ownerId, actorName: owner.name, locationName: location?.name });
+        saved += 1;
+      }
+      if (saved) { commit(next); setQuickPlanDrafts([]); setQuickPlanText(""); setNotice("已保存 " + saved + " 条手动日程。"); }
+      if (invalid.length) setNotice("有 " + invalid.length + " 条未保存：" + invalid.slice(0,3).join("；") + (invalid.length > 3 ? "；其余原因已省略。" : ""));
+      return;
+    }
     const base = stateRef.current;
     const now = new Date().toISOString();
     const removeIds = new Set<string>();
