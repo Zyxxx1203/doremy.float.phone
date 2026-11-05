@@ -103,7 +103,7 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> 
     // jobs stay on the site Supabase so shellpush:<account-id> matches their owner.
     const personalCloudReady = isPersonalPushCloudActive()
       && !isShellEnvironment()
-      && (loadPersonalPushCloudState()?.schemaVersion ?? 0) >= 4;
+      && (loadPersonalPushCloudState()?.schemaVersion ?? 0) >= 5;
     const response = personalCloudReady
       ? await personalPushFetch("life-schedule-snapshot", requestInit)
       : await fetch("/api/push/bridge-snapshots", requestInit);
