@@ -1268,7 +1268,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     // leaving this chat releases the lease and lets the schedule continue.
     useEffect(() => {
         if (session.isGroup) return;
-        const characterId = resolveLifeCharacterIdForContact(session.contactId, loadChatContacts());
+        const characterId = resolveSessionCharacterId(session);
         if (!characterId) return;
         const refresh = () => setOnlineChatForegroundLease(
             characterId,
@@ -3226,7 +3226,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             messageDrafts.push({
                 draft,
                 afterPublish: isPendingChatGeneratedImageMessage(draft)
-                    ? (message) => scheduleGeneratedImageReplacement(message, session.contactId, options)
+                    ? (message) => scheduleGeneratedImageReplacement(message, resolveSessionCharacterId(session) || "", options)
                     : afterPublishEffects[idx],
             });
         }
@@ -7065,8 +7065,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 	                onCloseTheaterMode={closeTheaterMode}
 	                onOpenRichModal={(modal) => { setShowPlusMenu(false); setRichModal(modal); }}
                 onOpenCustomPlusAction={handleOpenCustomPlusAction}
-                onStartVideoCall={() => { cancelFollowUp(session.id); setShowPlusMenu(false); startCall({ sessionId: session.id, characterId: session.isGroup ? "" : session.contactId, kind: "video", initiator: "user" }); }}
-                onStartVoiceCall={() => { cancelFollowUp(session.id); setShowPlusMenu(false); startCall({ sessionId: session.id, characterId: session.isGroup ? "" : session.contactId, kind: "voice", initiator: "user" }); }}
+                onStartVideoCall={() => { cancelFollowUp(session.id); setShowPlusMenu(false); startCall({ sessionId: session.id, characterId: session.isGroup ? "" : (resolveSessionCharacterId(session) || ""), kind: "video", initiator: "user" }); }}
+                onStartVoiceCall={() => { cancelFollowUp(session.id); setShowPlusMenu(false); startCall({ sessionId: session.id, characterId: session.isGroup ? "" : (resolveSessionCharacterId(session) || ""), kind: "voice", initiator: "user" }); }}
                 onSendText={handleSendText}
                 onStopGeneration={clearStuckGeneration}
                 onTriggerAIResponse={() => { kvRemove("life-sleep-pending-reply:" + session.id); void triggerAIResponse(); }}
@@ -7198,7 +7198,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             {/* Rich Media Input Modals */}
             {richModal === "voice_msg" && (
                 <VoiceRecordModal
-                    characterId={session.contactId}
+                    characterId={resolveSessionCharacterId(session) || ""}
                     onSend={(text, audioDataUrl) => {
                         setRichModal(null);
                         sendRichMessage("audio", { label: text }, "", audioDataUrl);
