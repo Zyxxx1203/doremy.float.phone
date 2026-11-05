@@ -12,6 +12,8 @@ import {
 type RuntimeSample = {
   sampledAt: string;
   domNodes: number;
+  mountedChatRooms: number;
+  hiddenChatRooms: number;
   visible: boolean;
   eventLoopLagMs: number;
   jsHeapUsedBytes: number | null;
@@ -60,9 +62,16 @@ export function PerformanceDiagnostics() {
         recordPerformanceMetric("runtime.event_loop_lag", eventLoopLagMs, { thresholdMs: 80 });
       }
       const memory = (window as WindowWithMemory).performance?.memory;
+      const chatRoomLayers = Array.from(document.querySelectorAll<HTMLElement>(".chat-room-layer"));
+      const hiddenChatRooms = chatRoomLayers.filter(element => (
+        window.getComputedStyle(element).display === "none"
+        || window.getComputedStyle(element).visibility === "hidden"
+      )).length;
       setSample({
         sampledAt: new Date().toISOString(),
         domNodes: document.getElementsByTagName("*").length,
+        mountedChatRooms: chatRoomLayers.length,
+        hiddenChatRooms,
         visible: document.visibilityState === "visible",
         eventLoopLagMs: Math.round(eventLoopLagMs),
         jsHeapUsedBytes: typeof memory?.usedJSHeapSize === "number" ? memory.usedJSHeapSize : null,
@@ -139,6 +148,7 @@ export function PerformanceDiagnostics() {
         <MetricCard label="JS 堆内存" value={formatBytes(heapUsed)} hint={sample?.jsHeapLimitBytes ? "上限 " + formatBytes(sample.jsHeapLimitBytes) : "浏览器可能不支持内存 API"} />
         <MetricCard label="页面 DOM 节点" value={sample ? sample.domNodes.toLocaleString() : "采集中"} hint="包含当前页面内所有元素" />
         <MetricCard label="主线程长任务" value={String(longTaskCount)} hint="单个任务超过 50ms；仅支持的浏览器可用" />
+        <MetricCard label="已挂载聊天室" value={sample ? String(sample.mountedChatRooms) : "采集中"} hint={sample ? "其中隐藏 " + sample.hiddenChatRooms + " 个" : "统计缓存的聊天室组件"} />
         <MetricCard label="事件循环延迟" value={sample ? sample.eventLoopLagMs + " ms" : "采集中"} hint="约每 1.5 秒采样一次" />
         <MetricCard label="已记录性能指标" value={String(snapshot.metrics.length)} hint="按最大耗时排序" />
         <MetricCard label="采样次数" value={String(sampleCount)} hint={sample?.visible ? "页面前台" : "等待采样"} />
