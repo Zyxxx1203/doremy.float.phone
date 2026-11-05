@@ -832,6 +832,25 @@ export function loadNativeTimeline(
     // Native chat, moments and diary content already has dedicated projections above.
     // Only add Life-specific events here to avoid duplicate memory injection.
     const lifeState = loadVirtualLifeState();
+    // Historical shared experiences remain visible even if the user temporarily disables
+    // the Life engine; disabling the engine pauses new simulation, not stored memories.
+    for (const fact of lifeState.memories ?? []) {
+        if (!fact.participants.includes(characterId)) continue;
+        if (options?.afterTimestamp && fact.occurredAt <= options.afterTimestamp) continue;
+        entries.push({
+            id: "life_shared_event:" + fact.id,
+            sourceApp: "life",
+            sourceDetail: "life_shared_event",
+            authorType: "user",
+            timestamp: fact.occurredAt,
+            customAppId: "life",
+            customAppName: "生活",
+            customAppLabel: "共同经历",
+            content: formatStoredPromptEventContent(renderUserNameMacro(fact.fact, userName), {
+                label: "共同经历", timestamp: fact.occurredAt, timeAware, timestampOptions,
+            }),
+        });
+    }
     if (lifeState.settings.enabled) {
         const characterSceneIds = new Set(
             lifeState.scenes
@@ -845,25 +864,6 @@ export function loadNativeTimeline(
                 .filter(invitation => invitation.characterId === characterId)
                 .map(invitation => invitation.id)
         );
-        // Confirmed shared experiences are surfaced as one memory event, separately
-        // from the granular action/dialogue timeline so the Shared Events tab stays meaningful.
-        for (const fact of lifeState.memories ?? []) {
-            if (!fact.participants.includes(characterId)) continue;
-            if (options?.afterTimestamp && fact.occurredAt <= options.afterTimestamp) continue;
-            entries.push({
-                id: "life_shared_event:" + fact.id,
-                sourceApp: "life",
-                sourceDetail: "life_shared_event",
-                authorType: "user",
-                timestamp: fact.occurredAt,
-                customAppId: "life",
-                customAppName: "生活",
-                customAppLabel: "共同经历",
-                content: formatStoredPromptEventContent(renderUserNameMacro(fact.fact, userName), {
-                    label: "共同经历", timestamp: fact.occurredAt, timeAware, timestampOptions,
-                }),
-            });
-        }
         for (const lifeEntry of lifeState.timeline ?? []) {
             if (options?.afterTimestamp && (lifeEntry.recordedAt ?? lifeEntry.occurredAt) <= options.afterTimestamp) continue;
             if (!["location", "scene", "action", "dialogue", "schedule", "tool", "system"].includes(lifeEntry.category)) continue;
