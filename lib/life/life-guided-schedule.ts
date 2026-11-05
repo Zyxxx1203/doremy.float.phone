@@ -37,7 +37,7 @@ export type GuidedScheduleParseResult = {
 };
 
 function normalizeName(value: unknown): string {
-  return typeof value === "string" ? value.normalize("NFKC").replace(/\\s+/g, "").trim() : "";
+  return typeof value === "string" ? value.normalize("NFKC").replace(/\s+/g, "").trim() : "";
 }
 
 export function parseGuidedScheduleResponse(
@@ -143,8 +143,8 @@ export function parseGuidedScheduleResponse(
 
     const dayOffset = Number(item.dayOffset);
     const title = typeof item.title === "string" ? item.title.trim().slice(0, 100) : "";
-    const startMatch = /^(\\d{1,2}):(\\d{2})$/.exec(String(item.start ?? ""));
-    const endMatch = /^(\\d{1,2}):(\\d{2})$/.exec(String(item.end ?? ""));
+    const startMatch = /^(\d{1,2}):(\d{2})$/.exec(String(item.start ?? ""));
+    const endMatch = /^(\d{1,2}):(\d{2})$/.exec(String(item.end ?? ""));
     if (!Number.isInteger(dayOffset) || dayOffset < 0 || dayOffset > 6 || !title || !startMatch || !endMatch) {
       rejected.push(`第 ${index + 1} 条时间或标题格式无效`);
       continue;
