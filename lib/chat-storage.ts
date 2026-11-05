@@ -545,6 +545,8 @@ function resolvePendingAvatarRecommendation(message: ChatMessage): void {
 
     const session = _sessionsCache.find(item => item.id === message.sessionId);
     if (!session || session.isGroup) return;
+    const characterId = resolveSessionCharacterId(session);
+    if (!characterId) return;
     const legacyRecommendation = [..._messagesCache].reverse().find(item =>
         item.sessionId === message.sessionId
         && item.role === "user"
@@ -554,7 +556,7 @@ function resolvePendingAvatarRecommendation(message: ChatMessage): void {
         && Boolean(item.mediaUrl),
     );
     const recommendation = legacyRecommendation
-        || findUserAvatarChangeIntent(_messagesCache, message.sessionId, resolveSessionCharacterId(session) || session.contactId)?.image;
+        || findUserAvatarChangeIntent(_messagesCache, message.sessionId, characterId)?.image;
     if (!recommendation) return;
 
     const explicitAccepted = AVATAR_ACCEPT_RE.test(message.rawResponseText);
@@ -568,7 +570,7 @@ function resolvePendingAvatarRecommendation(message: ChatMessage): void {
 
     recommendation.mediaData = {
         ...recommendation.mediaData,
-        avatarRecommendationForCharacterId: resolveSessionCharacterId(session) || session.contactId,
+        avatarRecommendationForCharacterId: characterId,
         avatarRecommendationStatus: accepted ? "accepted" : "declined",
     };
     dbPutMessage(recommendation);
@@ -1594,8 +1596,8 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
             const life = loadVirtualLifeState();
             if (life.settings.enabled) {
                 const session = _sessionsCache.find(item => item.id === newMsg.sessionId);
-                const contact = session ? loadChatContacts().find(item => item.id === session.contactId) : undefined;
-                const character = contact ? loadCharacters().find(item => item.id === contact.characterId) : undefined;
+                const characterId = session && !session.isGroup ? resolveSessionCharacterId(session) : null;
+                const character = characterId ? loadCharacters().find(item => item.id === characterId) : undefined;
                 if (session && !session.isGroup && character) {
                     const playerSent = newMsg.role === "user";
                     const content = typeof newMsg.content === "string" ? newMsg.content.trim() : "";
