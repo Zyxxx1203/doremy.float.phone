@@ -610,7 +610,7 @@ Deno.serve(async (req: Request) => {
       await rest("life_schedule_diagnostics?on_conflict=id", {
         method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
         body: JSON.stringify([{
-          id: diagnosticId, user_id: job.user_id, severity: "error", code, trace_id: lifeSceneMeta?.traceId || job.id,
+          id: diagnosticId, user_id: job.user_id, severity: "error", code,
           detail: detail.slice(0, 500), repair_hint: repairHint.slice(0, 500),
           updated_at: new Date().toISOString(), resolved_at: null,
         }]),
