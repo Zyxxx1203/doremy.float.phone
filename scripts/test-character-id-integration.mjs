@@ -149,6 +149,12 @@ const wrongType = guided.parseGuidedScheduleResponse(JSON.stringify({ schedules:
 }] }), contexts);
 assert.equal(wrongType.drafts.length, 0, "actorType mismatch must be rejected");
 
+const invalidType = guided.parseGuidedScheduleResponse(JSON.stringify({ schedules: [{
+  actorId: "char_alpha", actorType: "contact", actorName: "小满",
+  dayOffset: 0, start: "15:00", end: "16:00", title: "学习",
+}] }), contexts);
+assert.equal(invalidType.drafts.length, 0, "unknown actorType values must be rejected");
+
 const overlap = guided.parseGuidedScheduleResponse(JSON.stringify({ schedules: [
   { actorId: "char_alpha", actorType: "character", actorName: "小满", dayOffset: 0, start: "15:00", end: "16:00", title: "阅读" },
   { actorId: "char_alpha", actorType: "character", actorName: "小满", dayOffset: 0, start: "15:30", end: "16:30", title: "写作" },
