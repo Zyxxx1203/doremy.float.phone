@@ -2084,11 +2084,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const selectedSpeakerIsPresent = Boolean(selectedSpeakerId) && activeScene.participants.some(participant => participant.ownerType === "character" && resolveLifeCharacterId(participant.ownerId) === resolveLifeCharacterId(selectedSpeakerId));
     const now = new Date().toISOString();
     const turnMessageStartIndex = stateRef.current.sceneMessages.length;
-    if (userText || userAction) {
-      setSceneInput("");
-      setSceneActionInput("");
-      pushSceneMessage({ id: id("turn"), sceneId: activeScene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: playerName, role: "player", action: userAction || undefined, dialogue: userText, createdAt: now });
-    }
     const presentCharacters = activeScene.participants
       .filter(participant => participant.ownerType === "character" && participant.activity !== "离开")
       .map(participant => resolveLifeCharacterId(participant.ownerId))
@@ -2130,6 +2125,13 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应无法启动", status: "error", detail: "找不到通知回复对应的角色卡。", meta: { sceneId: activeScene.id, targetId } });
       setNotice("没有找到可回应的角色。请检查该场景参与者是否关联到现有角色卡。");
       return "failed";
+    }
+    // Commit the player's turn only after a valid responder has been selected;
+    // a failed response setup must not leave a stranded message in the scene log.
+    if (userText || userAction) {
+      setSceneInput("");
+      setSceneActionInput("");
+      pushSceneMessage({ id: id("turn"), sceneId: activeScene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: playerName, role: "player", action: userAction || undefined, dialogue: userText, createdAt: now });
     }
     // Any character that actually reaches the response queue has now noticed the player,
     // including the second/third responder invoked recursively.
