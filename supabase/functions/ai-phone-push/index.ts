@@ -1014,12 +1014,19 @@ $CRON$)`);
     if (action === "life-schedule-diagnostics" && request.method === "GET") {
       const diagnostics = await readJson<Array<{
         id: string; severity: string; code: string; detail: string;
-        repair_hint: string; updated_at: string; resolved_at: string | null;
+        repair_hint: string; trace_id?: string; updated_at: string; resolved_at: string | null;
       }>>(await rest(
         `life_schedule_diagnostics?user_id=eq.${OWNER_ID}&resolved_at=is.null`
-        + "&select=id,severity,code,detail,repair_hint,updated_at,resolved_at&order=updated_at.desc&limit=20",
+        + "&select=id,severity,code,detail,repair_hint,trace_id,updated_at,resolved_at&order=updated_at.desc&limit=20",
       ));
-      return json({ ok: true, diagnostics });
+      const events = await readJson<Array<{
+        id: string; trace_id: string; stage: string; severity: string; code: string; detail: string;
+        actor_id: string | null; session_id: string | null; job_id: string | null; created_at: string;
+      }>>(await rest(
+        `life_schedule_diagnostic_events?user_id=eq.${OWNER_ID}`
+        + "&select=id,trace_id,stage,severity,code,detail,actor_id,session_id,job_id,created_at&order=created_at.desc&limit=100",
+      ));
+      return json({ ok: true, diagnostics, events });
     }
 
     if (action === "shortcut-create" && request.method === "POST") {
