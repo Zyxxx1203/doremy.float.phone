@@ -17,6 +17,8 @@ import { findUserAvatarChangeIntent, inferAvatarDecisionFromReply } from "./chat
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "./life/life-storage";
 import { getActorClock, resolveActorLifeNow } from "./life/life-runtime";
 import { resolveCharacterIdReference, resolveSessionCharacterIdentity } from "./character-id-contract";
+import { migrateLegacyCharacterIdentityData } from "./character-id-migration";
+import { recordLifeDiagnostic } from "./life/life-diagnostics";
 
 export const DEFAULT_VISION_IMAGE_PROMPT_LIMIT = 1;
 export const MAX_VISION_IMAGE_PROMPT_LIMIT = 20;
@@ -1306,6 +1308,36 @@ export function hydrateChatStorage(): Promise<void> {
         if (normalizedContacts.changed) dbReplaceContacts(normalizedContacts.items);
         if (normalizedSessions.changed || redirectedMessages > 0 || refreshedSessions.changed) dbReplaceSessions(refreshedSessions.items);
         _hydrated = true;
+
+        const identityMappings = normalizedContacts.items
+            .filter(contact => contact.id && contact.characterId && contact.id !== contact.characterId)
+            .map(contact => ({ fromId: contact.id, toId: contact.characterId }));
+        if (identityMappings.length > 0) {
+            try {
+                const migration = await migrateLegacyCharacterIdentityData(identityMappings);
+                const migratedCount = migration.memoryEntries + migration.memoryMetadata + migration.calendarPlans + migration.lifeRecords;
+                if (migratedCount > 0) {
+                    recordLifeDiagnostic({
+                        source: "角色身份迁移", event: "旧角色数据已归并到规范 ID", status: "ok",
+                        detail: "已将旧联系人 ID 下的记忆、日历和生活状态迁移到对应 Character.id。",
+                        meta: { mappings: identityMappings.length, ...migration },
+                    });
+                }
+                if (!migration.memoryAvailable || migration.errors.length > 0) {
+                    recordLifeDiagnostic({
+                        source: "角色身份迁移", event: "部分历史数据迁移需要重试", status: "warning",
+                        detail: migration.errors.join("；") || "记忆数据库暂不可用；聊天身份映射已完成，历史记忆迁移将在后续启动时重试。",
+                        meta: { mappings: identityMappings.length, ...migration },
+                    });
+                }
+            } catch (error) {
+                recordLifeDiagnostic({
+                    source: "角色身份迁移", event: "历史数据迁移失败", status: "error",
+                    detail: error instanceof Error ? error.message : String(error),
+                    meta: { mappings: identityMappings.length },
+                });
+            }
+        }
     }).catch(err => {
         console.warn("[ChatStorage] hydration failed, will retry on next call:", err);
         _hydratePromise = null;
