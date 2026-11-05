@@ -1267,6 +1267,8 @@ export function ChatRoom({ session, onBack, onDeleted, isActive = true }: ChatRo
     // Protect an actively visible direct conversation from a simultaneous cloud
     // life-scene notification. The life task is deferred, not cancelled; hiding or
     // leaving this chat releases the lease and lets the schedule continue.
+    const wrapperRef = useRef<HTMLDivElement>(null);
+
     useEffect(() => {
         if (session.isGroup) return;
         const characterId = resolveSessionCharacterId(session);
@@ -1446,7 +1448,6 @@ export function ChatRoom({ session, onBack, onDeleted, isActive = true }: ChatRo
     const [bgImageResolved, setBgImageResolved] = useState<string | null>(null);
     const [bgLoading, setBgLoading] = useState(!!effectiveBackgroundImage);
 
-    const wrapperRef = useRef<HTMLDivElement>(null);
 
     // 全屏特效：命中触发词的新消息播放表情雨/礼花（微信同款）
     const [activeScreenEffect, setActiveScreenEffect] = useState<ActiveScreenEffect | null>(null);
