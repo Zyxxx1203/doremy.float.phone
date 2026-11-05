@@ -26,6 +26,7 @@ import { loadWidgetAutoLastRun, loadWidgetConfig, loadWidgetData, markWidgetAuto
  */
 const WIDGET_SOURCE = { id: "phone_widget", name: "桌面小组件" };
 import { canGenerateAvatar, generateWidgetAvatar } from "./avatar";
+import { parseWidgetLineOutput } from "./output";
 import type { WidgetData } from "./types";
 
 /** 自动生成的一句话最大长度：桌面上放不下长文。 */
@@ -69,6 +70,10 @@ async function generateLine(
     built = await buildChatPromptMessages(session, [userMessage], {
       appId: "phone_widget",
       appTags: ["phone_widget", "status"],
+      // This is a one-shot JSON content generator, not a chat turn. Tool calls
+      // cannot be executed here and must never be emitted into the widget.
+      toolsAllowed: false,
+      forceEnableTools: false,
     });
   } catch {
     return null;
@@ -83,16 +88,9 @@ async function generateLine(
     { appId: "phone_widget", appTags: ["phone_widget", "status"] },
   )).trim();
   if (!raw) return null;
-  const cleaned = raw.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-  try {
-    const parsed = JSON.parse(cleaned) as { text?: unknown; status?: unknown };
-    const text = String(parsed.text ?? "").trim().replace(/^["「]|["」]$/g, "").slice(0, AUTO_TEXT_LIMIT);
-    if (!text) return null;
-    return { text, status: String(parsed.status ?? "").trim().slice(0, 12) };
-  } catch {
-    const text = cleaned.replace(/\s+/g, " ").slice(0, AUTO_TEXT_LIMIT);
-    return text ? { text, status: "" } : null;
-  }
+  // Strict JSON only. Malformed output is discarded rather than displayed as
+  // a message; this prevents leaked prompts and unexecuted tool directives.
+  return parseWidgetLineOutput(raw);
 }
 
 /**
