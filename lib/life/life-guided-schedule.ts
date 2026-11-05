@@ -1,0 +1,129 @@
+export type GuidedScheduleActor = {
+  ownerType: "player" | "character";
+  ownerId: string;
+  name: string;
+  now: Date;
+  dayStart: Date;
+  dayEnd: Date;
+  existing: Array<{ startAt: string; endAt: string; title: string }>;
+};
+
+export type GuidedScheduleDraftInput = {
+  ownerType: "player" | "character";
+  ownerId: string;
+  startAt: string;
+  endAt: string;
+  title: string;
+  locationName: string;
+};
+
+export type GuidedScheduleParseResult = {
+  drafts: GuidedScheduleDraftInput[];
+  conflicts: string[];
+  rejected: string[];
+};
+
+function normalizeName(value: unknown): string {
+  return typeof value === "string" ? value.normalize("NFKC").replace(/\s+/g, "").trim() : "";
+}
+
+export function parseGuidedScheduleResponse(
+  raw: string,
+  contexts: GuidedScheduleActor[],
+): GuidedScheduleParseResult {
+  const first = raw.indexOf("{");
+  const last = raw.lastIndexOf("}");
+  if (first < 0 || last <= first) throw new Error("AI 未返回有效 JSON，原日程未改变。");
+  const decoded = JSON.parse(raw.slice(first, last + 1)) as { schedules?: unknown };
+  if (!Array.isArray(decoded.schedules)) throw new Error("AI 返回缺少 schedules 数组。");
+
+  const drafts: GuidedScheduleDraftInput[] = [];
+  const conflicts: string[] = [];
+  const rejected: string[] = [];
+  const overlaps = (a: number, b: number, x: number, y: number) => a < y && b > x;
+
+  for (const [index, value] of decoded.schedules.entries()) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      rejected.push(`第 ${index + 1} 条不是对象`);
+      continue;
+    }
+    const item = value as Record<string, unknown>;
+    const actorId = typeof item.actorId === "string" ? item.actorId.trim() : "";
+    const actorTypeRaw = typeof item.actorType === "string" ? item.actorType.trim().toLowerCase() : "";
+    const actorType = actorTypeRaw === "player" || actorTypeRaw === "用户" || actorTypeRaw === "玩家"
+      ? "player"
+      : actorTypeRaw === "character" || actorTypeRaw === "角色" || actorTypeRaw === "人物"
+        ? "character"
+        : "";
+    const actorName = normalizeName(item.actorName);
+    let context = actorId
+      ? contexts.find(candidate => candidate.ownerId === actorId && (!actorType || candidate.ownerType === actorType))
+      : undefined;
+
+    // Compatibility for older model outputs that omitted actorId but echoed a
+    // unique selected actorName. Never use a name to override a supplied ID.
+    if (!actorId && actorName) {
+      const matches = contexts.filter(candidate =>
+        normalizeName(candidate.name) === actorName && (!actorType || candidate.ownerType === actorType));
+      if (matches.length === 1) context = matches[0];
+    }
+    if (!context) {
+      rejected.push(`第 ${index + 1} 条对象无法唯一映射（actorId/actorType/actorName 不匹配）`);
+      continue;
+    }
+    if (actorType && context.ownerType !== actorType) {
+      rejected.push(`第 ${index + 1} 条对象类型与 ID 不一致`);
+      continue;
+    }
+    if (actorName && normalizeName(context.name) !== actorName) {
+      rejected.push(`第 ${index + 1} 条角色名称与 actorId 不一致`);
+      continue;
+    }
+
+    const dayOffset = Number(item.dayOffset);
+    const title = typeof item.title === "string" ? item.title.trim().slice(0, 100) : "";
+    const startMatch = /^(\d{1,2}):(\d{2})$/.exec(String(item.start ?? ""));
+    const endMatch = /^(\d{1,2}):(\d{2})$/.exec(String(item.end ?? ""));
+    if (!Number.isInteger(dayOffset) || dayOffset < 0 || dayOffset > 6 || !title || !startMatch || !endMatch) {
+      rejected.push(`第 ${index + 1} 条时间或标题格式无效`);
+      continue;
+    }
+    const sh = Number(startMatch[1]), sm = Number(startMatch[2]);
+    const eh = Number(endMatch[1]), em = Number(endMatch[2]);
+    if (sh > 23 || eh > 23 || sm > 59 || em > 59) {
+      rejected.push(`第 ${index + 1} 条时间超出有效范围`);
+      continue;
+    }
+    const startAt = new Date(context.dayStart);
+    startAt.setDate(startAt.getDate() + dayOffset);
+    startAt.setHours(sh, sm, 0, 0);
+    const endAt = new Date(context.dayStart);
+    endAt.setDate(endAt.getDate() + dayOffset);
+    endAt.setHours(eh, em, 0, 0);
+    if (endAt <= startAt || startAt < context.now || endAt > context.dayEnd) {
+      rejected.push(`第 ${index + 1} 条不在未来七日有效时间范围内`);
+      continue;
+    }
+    const startMs = startAt.getTime(), endMs = endAt.getTime();
+    const conflict = context.existing.find(slot =>
+      overlaps(startMs, endMs, new Date(slot.startAt).getTime(), new Date(slot.endAt).getTime()));
+    if (conflict) {
+      conflicts.push(`${context.name}：${title}（与「${conflict.title}」冲突）`);
+      continue;
+    }
+    if (drafts.some(slot => slot.ownerType === context!.ownerType && slot.ownerId === context!.ownerId
+      && overlaps(startMs, endMs, new Date(slot.startAt).getTime(), new Date(slot.endAt).getTime()))) {
+      conflicts.push(`${context.name}：${title}（与本次生成安排冲突）`);
+      continue;
+    }
+    drafts.push({
+      ownerType: context.ownerType,
+      ownerId: context.ownerId,
+      startAt: startAt.toISOString(),
+      endAt: endAt.toISOString(),
+      title,
+      locationName: typeof item.location === "string" ? item.location.trim().slice(0, 80) : "",
+    });
+  }
+  return { drafts, conflicts, rejected };
+}
