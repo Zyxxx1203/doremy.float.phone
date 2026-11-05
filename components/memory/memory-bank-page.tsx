@@ -330,11 +330,15 @@ export function MemoryBankPage({
         setShortTermEvents(timeline.filter(e =>
             !(e.sourceApp === "moments" && e.postAuthorType === "user")
             && !(e.sourceApp === "interview_magazine" && e.sourceDetail === "interview_shared_issue")
+            && !(e.sourceApp === "life" && e.sourceDetail === "life_shared_event")
+            && !(e.sourceApp === "photo_wall" && e.sourceDetail === "photo_wall_creation")
         ));
         setSharedEvents(timeline.filter(e =>
             (e.sourceApp === "moments" && e.postAuthorType === "user") ||
             (e.sourceApp === "chat" && e.sourceDetail === "group") ||
-            (e.sourceApp === "interview_magazine" && e.sourceDetail === "interview_shared_issue")
+            (e.sourceApp === "interview_magazine" && e.sourceDetail === "interview_shared_issue") ||
+            (e.sourceApp === "life" && e.sourceDetail === "life_shared_event") ||
+            (e.sourceApp === "photo_wall" && e.sourceDetail === "photo_wall_creation")
         ));
         setLoading(false);
     }, []);
