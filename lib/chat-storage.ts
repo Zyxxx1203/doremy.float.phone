@@ -910,12 +910,22 @@ export function reindexSessionMessageOrdersByTime(sessionId: string): void {
 }
 
 export function getLastVisibleSessionMessage(sessionId: string): ChatMessage | null {
-    const messages = getSortedSessionMessages(sessionId);
+    const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+    ensureSortedSessionMessageCache();
+    const messages = _sortedSessionMessagesCache.get(sessionId) ?? [];
+    let scannedBackwards = 0;
     for (let i = messages.length - 1; i >= 0; i -= 1) {
+        scannedBackwards += 1;
         const msg = messages[i];
         if (!isSessionPreviewCandidate(msg)) continue;
+        recordPerformanceMetric("chat.storage.last_visible_message",
+            (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt,
+            { scannedBackwards });
         return msg;
     }
+    recordPerformanceMetric("chat.storage.last_visible_message",
+        (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt,
+        { scannedBackwards });
     return null;
 }
 
