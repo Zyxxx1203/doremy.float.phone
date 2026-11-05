@@ -807,8 +807,9 @@ export function loadNativeTimeline(
     for (const record of photoWall.creationRecords ?? []) {
         if (options?.afterTimestamp && record.createdAt <= options.afterTimestamp) continue;
         const linkedPhotos = record.photoIds.map(photoId => photoById.get(photoId)).filter(Boolean);
-        const visibleToCharacter = record.authorType === "character" && record.authorId === characterId
-            || linkedPhotos.some(photo => photo?.shareWithCharacters === true);
+        const visibleToCharacter = (record.authorType === "character" && record.authorId === characterId)
+            || linkedPhotos.some(photo => photo?.shareWithCharacters === true)
+            || (!record.photoIds.length && record.layers?.some(layer => layer.kind === "wall") === true);
         if (!visibleToCharacter) continue;
         const photoNames = linkedPhotos.map(photo => photo?.title).filter(Boolean).slice(0, 4);
         const summary = [record.authorName + "完成了一次照片墙共同创作", record.narrative, photoNames.length ? "关联照片：" + photoNames.join("、") : ""].filter(Boolean).join("；");
