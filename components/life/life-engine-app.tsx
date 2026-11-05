@@ -2082,10 +2082,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     )) return "completed";
     const userTurn = [userAction ? `行动：${userAction}` : "", userText ? `说话：${userText}` : ""].filter(Boolean).join("\n") || "玩家手动请求角色对最近行为作出反馈";
     const selectedSpeakerIsPresent = Boolean(selectedSpeakerId) && activeScene.participants.some(participant => participant.ownerType === "character" && resolveLifeCharacterId(participant.ownerId) === resolveLifeCharacterId(selectedSpeakerId));
-    if (settings.randomSceneResponses === false && !responseQueue?.length && !notificationReplyId && !selectedSpeakerIsPresent && !awarenessResponder) {
-      setNotice("已关闭随机角色回应，请先点选一位在场角色再发送或请求回应。");
-      return "failed";
-    }
     const now = new Date().toISOString();
     if (userText || userAction) {
       setSceneInput("");
@@ -2111,6 +2107,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const roll = (stableSeed + index * 37 + characterId.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)) % 100;
       return roll < chance;
     });
+    if (settings.randomSceneResponses === false && !responseQueue?.length && !notificationReplyId && !selectedSpeakerIsPresent && !awarenessResponder) {
+      setNotice("已关闭随机角色回应，请先点选一位在场角色再发送或请求回应。");
+      return "failed";
+    }
     const plannedResponders: string[] = responseQueue?.length
       ? [...new Set(responseQueue.map(resolveLifeCharacterId).filter(Boolean))]
       : notificationReplyId
