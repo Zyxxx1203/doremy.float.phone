@@ -1138,12 +1138,14 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const jitter = ((order % 5) - 2) * 0.018;
       const maxZ = current.photos.reduce((max, item) => Math.max(max, item.placement?.z ?? 0), 0);
       const placed = { ...photo, placement: photo.placement ?? { x: Math.min(0.92, Math.max(0.08, anchor.x + jitter)), y: Math.min(0.92, Math.max(0.08, anchor.y + jitter)), scale: 1, rotation: Math.round(jitter * 300), z: maxZ + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } };
-      persist({ ...current, photos: [placed, ...current.photos.filter(item => item.id !== photo.id)] });
+      const record: PhotoWallCreationRecord = {
+        id: createPhotoWallId(), createdAt: new Date().toISOString(), authorType: photo.ownerType,
+        authorId: photo.ownerId, authorName: photo.ownerName,
+        narrative: (photo.ownerType === "character" ? photo.ownerName + "把一张照片放进了共同照片墙：" : "用户把一张照片放进了共同照片墙：") + (photo.title || "未命名的瞬间"),
+        photoIds: [photo.id], layers: [], doodles: [],
+      };
+      persist({ ...current, photos: [placed, ...current.photos.filter(item => item.id !== photo.id)], creationRecords: [...(current.creationRecords ?? []), record] });
     }
-    recordPhotoWallMemory(
-      (photo.ownerType === "character" ? photo.ownerName + "把一张照片放进了照片墙：" : "用户上传了一张照片到照片墙：") + (photo.title || "未命名的瞬间"),
-      photo.ownerType === "character" ? photo.ownerId : undefined,
-    );
     setSelectedPhotoId(photo.id);
   }, [persist, activeTemplateId, placementAnchor, templateFill, pushHistory]);
 
@@ -1251,10 +1253,14 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             const jy = (row - 1) * 0.055 + ((Math.floor(index / 2) % 2) - 0.5) * 0.014;
             return { ...photo, placement: { x: Math.min(0.92, Math.max(0.08, anchor.x + jx)), y: Math.min(0.92, Math.max(0.08, anchor.y + jy)), scale: 1, rotation: Math.round(((index % 5) - 2) * 3), z: maxZ + index + 1, frame: "polaroid" as const, frameColor: "#fffdf8" } as PhotoWallPlacement };
           });
-          persist({ ...current, photos: [...placedCreated, ...current.photos] });
+          const record: PhotoWallCreationRecord = {
+            id: createPhotoWallId(), createdAt: new Date().toISOString(), authorType: "user", authorName: "我",
+            narrative: "用户一次上传了 " + created.length + " 张照片到共同照片墙。",
+            photoIds: created.map(photo => photo.id), layers: [], doodles: [],
+          };
+          persist({ ...current, photos: [...placedCreated, ...current.photos], creationRecords: [...(current.creationRecords ?? []), record] });
         }
         setSelectedPhotoId(created[0]?.id ?? null);
-        recordPhotoWallMemory("用户一次上传了" + created.length + "张照片到照片墙");
       }
       if (failed.length) onNotice?.("已收藏 " + created.length + " 张；" + failed.length + " 张失败。失败项：" + failed.slice(0, 3).join("；") + (failed.length > 3 ? "；…" : ""));
       else onNotice?.("已收藏 " + created.length + " 张照片。");
