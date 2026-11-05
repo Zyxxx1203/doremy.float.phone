@@ -38,6 +38,8 @@ export type LifeEngineSettings = {
   enableFollowRequestTool: boolean;
   enableInvitations: boolean;
   saveConfirmedEventsToMemory: boolean;
+  /** 默认随机选择一名在场角色回应；关闭后使用指定角色。 */
+  randomSceneResponses?: boolean;
   showActionNarration: boolean;
   keepDialogueConcise: boolean;
   allowCharactersToStaySilent: boolean;
@@ -112,6 +114,7 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   enableFollowRequestTool: true,
   enableInvitations: true,
   saveConfirmedEventsToMemory: true,
+  randomSceneResponses: true,
   showActionNarration: true,
   keepDialogueConcise: true,
   allowCharactersToStaySilent: true,
