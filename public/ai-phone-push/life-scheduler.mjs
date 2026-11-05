@@ -264,6 +264,10 @@ Deno.serve(async (req: Request) => {
         repair_hint: repairHint.slice(0, 500), updated_at: new Date().toISOString(), resolved_at: null,
       }]),
     });
+    await writeTraceEvent({
+      userId, traceId, stage: "日程调度异常", severity, code, detail,
+      jobId: traceId !== id ? traceId : undefined,
+    });
     if (!shouldNotify) return;
     // Android shell has a persistent Realtime channel. Send one alert when a new
     // unresolved cloud fault appears; repeated cron ticks only update the same row.
