@@ -178,6 +178,31 @@ function DoodleMark({ doodle, size }: { doodle: import("@/lib/photo-wall-storage
   return <g transform={`translate(${x} ${y}) rotate(${doodle.rotation ?? 0})`}><text x={0} y={0} fill={doodle.color} fontSize={size} textAnchor="middle" dominantBaseline="middle">{doodle.content || "✦"}</text></g>;
 }
 
+function CreationLayerPreview({ photo, doodles, label, onOpen }: { photo?: PhotoWallPhoto; doodles: PhotoWallDoodle[]; label: string; onOpen?: () => void }) {
+  const [src, setSrc] = useState("");
+  useEffect(() => {
+    let active = true;
+    let url = "";
+    if (!photo?.mediaRef) { setSrc(""); return; }
+    void loadMediaObjectUrl(photo.mediaRef).then(value => {
+      if (!active) { if (value) URL.revokeObjectURL(value); return; }
+      if (value) { url = value; setSrc(value); }
+    }).catch(() => undefined);
+    return () => { active = false; if (url) URL.revokeObjectURL(url); };
+  }, [photo?.mediaRef]);
+  const body = <div className="relative aspect-square min-h-[132px] overflow-hidden border border-[#e4d2c1] bg-[#f4ecdf]">
+    {src ? <img src={src} alt={photo?.title || label} loading="lazy" className="h-full w-full object-contain"/> : <div className="grid h-full place-items-center px-2 text-center text-[11px] text-[#9b8774]">{photo ? "照片暂不可读取" : "照片墙自由画布"}</div>}
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full">
+      {doodles.map(doodle => doodle.kind === "stroke"
+        ? <polyline key={doodle.id} points={doodle.points.map(point => (point.x * 100) + "," + (point.y * 100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(0.65, doodle.width / 3)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
+        : <g key={doodle.id}><DoodleMark doodle={doodle} size={9}/></g>)}
+    </svg>
+  </div>;
+  return photo && onOpen
+    ? <button type="button" onClick={onOpen} className="block w-full text-left"><span className="mb-1 block truncate text-[10px] text-[#8e7766]">{label}</span>{body}</button>
+    : <div><span className="mb-1 block truncate text-[10px] text-[#8e7766]">{label}</span>{body}</div>;
+}
+
 function PhotoThumbnail({ photo, onOpen }: { photo: PhotoWallPhoto; onOpen: () => void }) {
   const [src, setSrc] = useState("");
   useEffect(() => {
@@ -1789,11 +1814,17 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
                     </div>
                   </div>
                   <div className="min-h-[130px] border border-[#e8d7c5] bg-[#f8f0e5] p-2">
-                    <svg viewBox="0 0 100 100" className="h-full min-h-[126px] w-full" role="img" aria-label={record.authorName + "留下的涂鸦笔迹"}>
+                    {record.layers?.length ? <div className="grid grid-cols-2 gap-2">
+                      {record.layers.map((layer, layerIndex) => {
+                        const layerPhoto = layer.kind === "photo" ? linkedPhotos.find(photo => photo.id === layer.photoId) : undefined;
+                        const label = layer.kind === "wall" ? "墙面涂鸦" : (layerPhoto?.title || "关联照片") + (layer.side === "back" ? " · 背面" : " · 正面");
+                        return <CreationLayerPreview key={record.id + "-layer-" + layerIndex} photo={layerPhoto} doodles={layer.doodles} label={label} onOpen={layerPhoto ? () => openPhoto(layerPhoto) : undefined}/>;
+                      })}
+                    </div> : <><svg viewBox="0 0 100 100" className="h-full min-h-[126px] w-full" role="img" aria-label={record.authorName + "留下的旧版涂鸦笔迹"}>
                       {record.doodles.map(doodle => doodle.kind === "stroke"
                         ? <polyline key={doodle.id} points={doodle.points.map(point => (point.x*100)+","+(point.y*100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(1,doodle.width/2)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
                         : <g key={doodle.id}><DoodleMark doodle={doodle} size={9}/></g>)}
-                    </svg>
+                    </svg><p className="mt-1 text-[9px] leading-relaxed text-[#a08c74]">旧版记录未保存每张照片对应的笔迹坐标，已保留原始笔迹，不推测照片归属。</p></>}
                   </div>
                 </div>
                 <footer className="border-t border-[#eadbc9] px-4 py-3">
