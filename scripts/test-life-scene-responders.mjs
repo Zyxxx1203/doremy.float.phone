@@ -15,42 +15,42 @@ vm.runInNewContext(compiled, {
 const { buildLifeSceneResponderQueue } = moduleBox.exports;
 
 assert.deepEqual(
-  buildLifeSceneResponderQueue({
+  Array.from(buildLifeSceneResponderQueue({
     presentCharacterIds: ["a", "b", "c"], randomEnabled: true, randomSeed: 1,
     selectedCharacterId: "a", awarenessCharacterId: "c",
-  }),
+  })),
   ["b", "a", "c"],
   "random + specified + awareness can produce three distinct responders in order",
 );
 assert.deepEqual(
-  buildLifeSceneResponderQueue({
+  Array.from(buildLifeSceneResponderQueue({
     presentCharacterIds: ["a", "b", "c"], randomEnabled: true, randomSeed: 1,
     selectedCharacterId: "b", awarenessCharacterId: "b",
-  }),
+  })),
   ["b"],
   "the same character selected by all three routes must respond only once",
 );
 assert.deepEqual(
-  buildLifeSceneResponderQueue({
+  Array.from(buildLifeSceneResponderQueue({
     presentCharacterIds: ["a", "b", "c"], randomEnabled: false, randomSeed: 1,
     selectedCharacterId: "a", awarenessCharacterId: "c",
-  }),
+  })),
   ["a"],
   "manual mode uses only the specified present character",
 );
 assert.deepEqual(
-  buildLifeSceneResponderQueue({
+  Array.from(buildLifeSceneResponderQueue({
     presentCharacterIds: ["a", "b"], randomEnabled: true, randomSeed: 0,
     awarenessCharacterId: "b",
-  }),
+  })),
   ["a", "b"],
   "random mode can add a separate awareness responder",
 );
 assert.deepEqual(
-  buildLifeSceneResponderQueue({
+  Array.from(buildLifeSceneResponderQueue({
     presentCharacterIds: [], randomEnabled: true, randomSeed: 0,
     selectedCharacterId: "missing", awarenessCharacterId: "missing",
-  }),
+  })),
   [],
   "non-present characters are never queued",
 );
