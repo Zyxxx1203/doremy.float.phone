@@ -1034,23 +1034,11 @@ export function filterTimelineByAllowedSources(
  * For history-style appIds, the current feature's block has empty content because
  * the actual content is the history turns (wrapped by the assembler).
  */
-/** 按来源保留最近 N 条；未配置的来源不裁剪。 */
-function limitTimelineBySource<T extends { sourceApp: string }>(entries: T[], limits?: Record<string, unknown>): T[] {
-    if (!limits) return entries;
-    const groups = new Map<string, T[]>();
-    for (const entry of entries) {
-        const list = groups.get(entry.sourceApp) ?? [];
-        list.push(entry);
-        groups.set(entry.sourceApp, list);
-    }
-    const kept = new Set<T>();
-    for (const [source, list] of groups) {
-        const raw = limits[source];
-        const limit = typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
-        if (!limit) { list.forEach(item => kept.add(item)); continue; }
-        list.slice(-limit).forEach(item => kept.add(item));
-    }
-    return entries.filter(entry => kept.has(entry));
+/** 按当前消费 APP 限制总注入条数；原始来源数据始终保留在各自存储中。 */
+function limitTimelineForApp<T>(entries: T[], appId: string, limits?: Record<string, unknown>): T[] {
+    const raw = limits?.[appId];
+    const limit = typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+    return limit ? entries.slice(-limit) : entries;
 }
 
 export function prepareShortTermContext(
@@ -1098,7 +1086,7 @@ export function prepareShortTermContext(
     }
     const memConfig = loadMemoryConfig();
     timeline = filterTimelineByAllowedSources(timeline, memConfig.shortTermAllowedSources);
-    timeline = limitTimelineBySource(timeline, memConfig.shortTermSourceLimits as Record<string, unknown> | undefined);
+    timeline = limitTimelineForApp(timeline, appId, memConfig.shortTermAppLimits as Record<string, unknown> | undefined);
 
     // Activation context: full timeline for keyword matching (not truncated)
     const wbActivationContext = timeline.slice(-10).map(e => e.content).join("\n");
@@ -1369,7 +1357,7 @@ export function prepareGroupShortTermContext(
             promptTimestampOptions: options?.promptTimestampOptions,
         });
         timeline = filterTimelineByAllowedSources(timeline, allowed);
-        timeline = limitTimelineBySource(timeline, memConfig.shortTermSourceLimits as Record<string, unknown> | undefined);
+        timeline = limitTimelineForApp(timeline, "group_chat", memConfig.shortTermAppLimits as Record<string, unknown> | undefined);
         for (const entry of timeline) {
             if (entry.sourceApp === "chat" && entry.sourceDetail === "group" && entry.groupSessionId === options?.excludeGroupSessionId) {
                 continue;
