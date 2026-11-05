@@ -37,7 +37,7 @@ storedRaw = JSON.stringify({ photos: [
   { id: "explicit-shared", mediaRef: "media-store://shared", ownerType: "user", shareWithCharacters: true },
 ], settings: {} });
 const privacyState = loadPhotoWallState();
-assert.equal(privacyState.photos.find(photo => photo.id === "legacy-private").shareWithCharacters, false, "legacy photos without explicit sharing must remain private");
+assert.equal(privacyState.photos.find(photo => photo.id === "legacy-private").shareWithCharacters, true, "legacy photos without an opt-out must remain shared with characters by default");
 assert.equal(privacyState.photos.find(photo => photo.id === "explicit-private").shareWithCharacters, false);
 assert.equal(privacyState.photos.find(photo => photo.id === "explicit-shared").shareWithCharacters, true);
-console.log("Photo Wall creation-layer and privacy tests passed.");
+console.log("Photo Wall creation-layer and default-sharing tests passed.");
