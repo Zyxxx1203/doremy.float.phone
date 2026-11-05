@@ -195,7 +195,7 @@ export function migrateLifeCharacterIdentity(fromId: string, toId: string): numb
     .sort((a, b) => Number(b.ownerId === toId) - Number(a.ownerId === toId))
     .map(replaceOwner);
   for (const slot of schedules) {
-    const key = [slot.ownerType, slot.ownerId, slot.startAt, slot.endAt, slot.title].join(":");
+    const key = JSON.stringify([slot.ownerType, slot.ownerId, slot.startAt, slot.endAt, slot.title]);
     if (!scheduleMap.has(key)) scheduleMap.set(key, slot);
   }
   const next: VirtualLifeState = {
