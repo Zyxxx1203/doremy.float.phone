@@ -1293,6 +1293,9 @@ export function hydrateChatStorage(): Promise<void> {
             dbPutMessages(normalizedToolHistory.changedMessages);
         }
         let normalizedContacts = normalizeChatContacts(data.contacts);
+        // Session normalization must see the freshly hydrated contact→character map;
+        // otherwise legacy contact_ sessions cannot be canonicalized on first load.
+        _contactsCache = normalizedContacts.items;
         const normalizedSessions = normalizeChatSessions(data.sessions);
         const redirectedMessages = redirectMessagesToPreferredSessions(normalizedSessions.redirects);
         const refreshedSessions = refreshSessionPreviewMetadata(normalizedSessions.items);
