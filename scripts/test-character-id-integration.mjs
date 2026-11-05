@@ -72,6 +72,11 @@ assert.equal(hydratedSessions.find(item => item.id === "sess_beta_legacy")?.char
   "real chat-storage hydration must preserve legacy Character.id sessions");
 assert.equal(hydratedSessions.find(item => item.id === "sess_group")?.characterId, undefined,
   "group synthetic contact IDs must remain outside private character identity");
+assert.equal(chatStorageModule.exports.resolveSessionCharacterId(
+  hydratedSessions.find(item => item.id === "sess_alpha"),
+), "char_alpha", "public chat-storage resolver must return canonical Character.id");
+assert.equal(chatStorageModule.exports.createOrGetSession("contact_alpha").characterId, "char_alpha",
+  "new private sessions must persist the canonical character ID alongside the contact reference");
 assert.ok(persisted.sessions.some(item => item.id === "sess_alpha" && item.characterId === "char_alpha"),
   "canonical identity migration must be persisted back to IndexedDB");
 
