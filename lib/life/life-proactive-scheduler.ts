@@ -155,7 +155,7 @@ async function runOnce(): Promise<void> {
       const actor = state.actorStates.find(item => item.ownerType === "character" && item.ownerId === character.id);
       if (/睡眠|睡觉|入睡|午休/.test(actor?.activity || "")) continue;
       const contact = loadChatContacts().find(item => item.characterId === character.id);
-      const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup);
+      const session = loadChatSessions().find(item => !item.isGroup && (item.contactId === contact?.id || resolveSessionCharacterId(item) === character.id));
       if (!session) continue;
       // 只在玩家当前所在的现场里触发：角色必须是 active scene 的参与者。
       // 不再按角色新建场景，避免同一地点出现多个互不相干的“生活现场”。
