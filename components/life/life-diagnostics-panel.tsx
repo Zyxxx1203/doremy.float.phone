@@ -43,7 +43,7 @@ export function LifeDiagnosticsPanel() {
     try {
       const personalCloudReady = isPersonalPushCloudActive()
         && !isShellEnvironment()
-        && (loadPersonalPushCloudState()?.schemaVersion ?? 0) >= 4;
+        && (loadPersonalPushCloudState()?.schemaVersion ?? 0) >= 5;
       const response = personalCloudReady
         ? await personalPushFetch("life-schedule-diagnostics", { method: "GET" })
         : await fetch("/api/life/schedule-diagnostics", { cache: "no-store" });
