@@ -123,7 +123,17 @@ export function migrateLifeCharacterIdentity(fromId: string, toId: string): numb
       : location;
   });
   const scenes = state.scenes.map(scene => {
-    const participants = [...scene.participants].sort((a, b) => Number(b.ownerId === toId) - Number(a.ownerId === toId)).map(replaceOwner);
+    const participants = [...scene.participants]
+      .sort((a, b) => Number(b.ownerId === toId) - Number(a.ownerId === toId))
+      .map(participant => {
+        const normalized = replaceOwner(participant);
+        if (!Object.prototype.hasOwnProperty.call(normalized.awarenessByActorId, fromId)) return normalized;
+        const awarenessByActorId = { ...normalized.awarenessByActorId };
+        if (!(toId in awarenessByActorId)) awarenessByActorId[toId] = awarenessByActorId[fromId];
+        delete awarenessByActorId[fromId];
+        changed += 1;
+        return { ...normalized, awarenessByActorId };
+      });
     const participantMap = new Map<string, typeof participants[number]>();
     for (const participant of participants) {
       const key = participant.ownerType + ":" + participant.ownerId;
