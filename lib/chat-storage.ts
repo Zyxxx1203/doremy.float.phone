@@ -1710,7 +1710,7 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
                     if (session && !session.isGroup && character) {
                         const playerSent = newMsg.role === "user";
                         const content = typeof newMsg.content === "string" ? newMsg.content.trim() : "";
-                        const shortPreview = content.replace(/\\s+/g, " ").slice(0, 120);
+                        const shortPreview = content.replace(/\s+/g, " ").slice(0, 120);
                         const nowIso = resolveActorLifeNow(getActorClock(life, "player", "player")).toISOString();
                         const chatTitle = "你和" + character.name + "在消息 APP 聊天";
                         const line = (playerSent ? "你" : character.name) + "：" + (shortPreview || "发送了消息");
@@ -1722,11 +1722,11 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
                             Date.now() - new Date(entry.recordedAt ?? entry.occurredAt).getTime() <= 5 * 60 * 1000
                         );
                         if (previous) {
-                            const priorLines = (previous.details ?? "").split("\\n").filter(Boolean);
+                            const priorLines = (previous.details ?? "").split("\n").filter(Boolean);
                             const updated = {
                                 ...life,
                                 timeline: life.timeline.map(entry => entry.id === previous.id
-                                    ? { ...entry, occurredAt: nowIso, recordedAt: new Date().toISOString(), title: chatTitle, details: [...priorLines, line].slice(-3).join("\\n"), sourceId: newMsg.id }
+                                    ? { ...entry, occurredAt: nowIso, recordedAt: new Date().toISOString(), title: chatTitle, details: [...priorLines, line].slice(-3).join("\n"), sourceId: newMsg.id }
                                     : entry),
                                 updatedAt: nowIso,
                             };
