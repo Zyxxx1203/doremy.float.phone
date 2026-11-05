@@ -966,7 +966,42 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     finally { setExportBusy(false); }
   };
 
-  const persist = useCallback((next: PhotoWallState) => {
+  const persist = useCallback((input: PhotoWallState) => {
+    // 所有新照片和背面留言都必须形成可回溯的公共墙事件；模板布局分支也不能漏记。
+    const previous = stateRef.current;
+    let next = input;
+    const linkedPhotoIds = new Set((next.creationRecords ?? []).flatMap(record => record.photoIds));
+    const newlyAddedPhotos = next.photos.filter(photo =>
+      !previous.photos.some(item => item.id === photo.id) && !linkedPhotoIds.has(photo.id)
+    );
+    const changedNotes = next.photos.filter(photo => {
+      const old = previous.photos.find(item => item.id === photo.id);
+      return Boolean(old && old.backNote !== photo.backNote);
+    });
+    const generatedRecords: PhotoWallCreationRecord[] = [];
+    if (newlyAddedPhotos.length) {
+      const createdAt = new Date().toISOString();
+      const names = newlyAddedPhotos.slice(0, 8).map(photo => photo.title || "未命名照片");
+      generatedRecords.push({
+        id: createPhotoWallId(), createdAt,
+        authorType: newlyAddedPhotos.every(photo => photo.ownerType === "character") ? "character" : "user",
+        authorId: newlyAddedPhotos.length === 1 ? newlyAddedPhotos[0].ownerId : undefined,
+        authorName: newlyAddedPhotos.length === 1 ? newlyAddedPhotos[0].ownerName : "共同创作参与者",
+        narrative: "有 " + newlyAddedPhotos.length + " 张新照片加入公共照片墙：" + names.join("、"),
+        photoIds: newlyAddedPhotos.map(photo => photo.id), layers: [], doodles: [],
+      });
+    }
+    for (const photo of changedNotes) {
+      generatedRecords.push({
+        id: createPhotoWallId(), createdAt: new Date().toISOString(),
+        authorType: photo.ownerType, authorId: photo.ownerId, authorName: photo.ownerName,
+        narrative: photo.ownerName + "更新了公共照片墙中「" + (photo.title || "一张照片") + "」背面的留言：" + photo.backNote.slice(0, 240),
+        photoIds: [photo.id], layers: [], doodles: [],
+      });
+    }
+    if (generatedRecords.length) {
+      next = { ...next, creationRecords: [...(next.creationRecords ?? []), ...generatedRecords] };
+    }
     // 必须同步快照：commitPhotos 依赖 stateRef 读最新状态，
     // 否则上传/保存背面后紧接着拖动会用旧快照把新照片覆盖掉。
     stateRef.current = next;
