@@ -2026,13 +2026,17 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     else {
       const specific = selectedSpeakerId && presentCharacters.includes(resolveLifeCharacterId(selectedSpeakerId)) ? resolveLifeCharacterId(selectedSpeakerId) : "";
       const random = settings.randomSceneResponses !== false && presentCharacters.length ? presentCharacters[stableSeed % presentCharacters.length] : "";
-      const manualFallback = settings.randomSceneResponses === false ? (specific || presentCharacters[0] || "") : "";
+      const manualFallback = settings.randomSceneResponses === false ? specific : "";
       plannedResponders = [random, specific, awarenessResponder || "", manualFallback]
         .filter((value, index, all) => Boolean(value) && all.indexOf(value) === index).slice(0, 3);
     }
     const rawTargetId = plannedResponders[0] || selectedSpeakerId || presentCharacters[0] || "";
     const targetId = resolveLifeCharacterId(rawTargetId);
     const target = characters.find(char => char.id === targetId);
+    if (settings.randomSceneResponses === false && !selectedSpeakerId && !responseQueue?.length && !notificationReplyId) {
+      setNotice("已关闭随机角色回应，请先点选一位在场角色再发送。");
+      return "failed";
+    }
     if (!target) {
       if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应无法启动", status: "error", detail: "找不到通知回复对应的角色卡。", meta: { sceneId: activeScene.id, targetId } });
       setNotice("没有找到可回应的角色。请检查该场景参与者是否关联到现有角色卡。");
@@ -3448,7 +3452,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
               <label className="block text-xs font-medium text-stone-600">行动 / 旁白<textarea value={sceneActionInput} onChange={e=>setSceneActionInput(e.target.value)} placeholder="行动（可选）" rows={1} className="mt-1 w-full resize-y rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-sm leading-snug" disabled={busy}/></label>
               <label className="block text-xs font-medium text-stone-600">说话 / 对话气泡<textarea value={sceneInput} onChange={e=>setSceneInput(e.target.value)} placeholder="想对角色说的话……" rows={1} className="mt-1 w-full resize-y rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-sm leading-snug" disabled={busy}/></label>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2"><label className="inline-flex items-center gap-2 text-[11px] text-stone-500"><input type="checkbox" checked={settings.randomSceneResponses !== false} onChange={event => patchSettings({ randomSceneResponses: event.target.checked })} disabled={busy}/>随机角色回应</label><span className="mr-auto truncate text-[10px] text-stone-400">{busy ? "角色正在回应…" : selectedSpeakerId ? "已指定角色；随机开启时会追加回应" : "默认随机；点上方角色头像可指定追加回应"}</span><button type="button" onClick={() => void sendSceneTurn(undefined, true) disabled={busy || !activeScene || !activeScene.participants.some(p => p.ownerType === "character" && Boolean(resolveLifeCharacterId(p.ownerId)) && characters.some(c => c.id === resolveLifeCharacterId(p.ownerId)))} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--life-accent)]/40 bg-white px-3 py-1.5 text-xs text-[var(--life-accent)] disabled:opacity-40"><MessagesSquare size={13}/>让角色回应</button><button type="submit" disabled={busy||(!sceneInput.trim()&&!sceneActionInput.trim())} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--life-accent)] px-3 py-1.5 text-xs text-white disabled:opacity-40"><Send size={13}/>{busy?"等待中":"发送"}</button></div>
+            <div className="flex flex-wrap items-center justify-between gap-2"><label className="inline-flex items-center gap-2 text-[11px] text-stone-500"><input type="checkbox" checked={settings.randomSceneResponses !== false} onChange={event => patchSettings({ randomSceneResponses: event.target.checked })} disabled={busy}/>随机角色回应</label><span className="mr-auto truncate text-[10px] text-stone-400">{busy ? "角色正在回应…" : selectedSpeakerId ? "已指定角色；随机开启时会追加回应" : "默认随机；点上方角色头像可指定追加回应"}</span><button type="button" onClick={() => void sendSceneTurn(undefined, true)} disabled={busy || !activeScene || !activeScene.participants.some(p => p.ownerType === "character" && Boolean(resolveLifeCharacterId(p.ownerId)) && characters.some(c => c.id === resolveLifeCharacterId(p.ownerId)))} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--life-accent)]/40 bg-white px-3 py-1.5 text-xs text-[var(--life-accent)] disabled:opacity-40"><MessagesSquare size={13}/>让角色回应</button><button type="submit" disabled={busy||(!sceneInput.trim()&&!sceneActionInput.trim())} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--life-accent)] px-3 py-1.5 text-xs text-white disabled:opacity-40"><Send size={13}/>{busy?"等待中":"发送"}</button></div>
           </form>
           
         </>}
