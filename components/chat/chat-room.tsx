@@ -1832,7 +1832,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     // 会先在预览气泡里闪现（cleanStreamText 自身不猜配置型标签名，由这里统一传入）。
     const streamPreviewTagConfig = useMemo(() => {
         const bindings = loadBindingConfig();
-        const slot = resolveBinding(bindings, session.isGroup ? undefined : session.contactId, session.isGroup ? "group_chat" : "chat");
+        const slot = resolveBinding(bindings, session.isGroup ? undefined : (resolveSessionCharacterId(session) || undefined), session.isGroup ? "group_chat" : "chat");
         const preset = loadPresets().find(item => item.id === slot.presetId) || null;
         const withThoughtCompat = (tag: string): string[] => (tag === "thinking" ? ["thinking", "thought", "think"] : [tag]);
         return {
@@ -2414,7 +2414,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 orderId: targetMsg.mediaData?.shoppingOrderId,
                 requestId: targetMsg.mediaData?.paymentRequestId,
                 accepted: false,
-                payerCharacterId: session.contactId,
+                payerCharacterId: resolveSessionCharacterId(session) || "",
                 payerCharacterName: charN,
             });
         } else {
@@ -3078,7 +3078,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const rawResponseText = options?.rawResponseText ?? aiResponseText;
         const previousState = session.isGroup
             ? getLatestStateValues(session.id)
-            : getLatestCharacterStateValues(session.contactId);
+            : getLatestCharacterStateValues(resolveSessionCharacterId(session) || "");
 
         const { parts: rawParts, stateValues, freshStateValues, statusPanel, innerMonologue, characterRemarkForUser } = parseAIResponse(aiResponseText, previousState);
         if (!session.isGroup && characterRemarkForUser) {
@@ -3131,7 +3131,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     mediaData: {
                         ...p.mediaData,
                         meetingInviteStatus: "pending",
-                        meetingInviteCharacterId: session.contactId,
+                        meetingInviteCharacterId: resolveSessionCharacterId(session) || "",
                         meetingInviteCharacterName: charN,
                     },
                 });
@@ -3311,7 +3311,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         if (!triggerCall) return;
         startCall({
             sessionId: session.id,
-            characterId: session.isGroup ? "" : session.contactId,
+            characterId: session.isGroup ? "" : (resolveSessionCharacterId(session) || ""),
             kind: triggerCall,
             initiator: "character",
         });
@@ -3424,7 +3424,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const request: MemoryWriteRequest = {
             capabilityId: "memory_write",
             sessionId: session.id,
-            characterId: session.contactId,
+            characterId: msg.senderCharacterId || resolveSessionCharacterId(session) || "",
             content: msg.mediaData?.memoryContent || msg.content,
             importance: msg.mediaData?.memoryImportance ?? 0.8,
             ...(msg.mediaData?.memoryReason ? { reason: msg.mediaData.memoryReason } : {}),
@@ -3798,7 +3798,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const launchContext = {
             source: "chat_plus_action",
             sessionId: session.id,
-            characterId: session.contactId,
+            characterId: resolveSessionCharacterId(session) || "",
             characterName: character?.name,
             isGroup: Boolean(session.isGroup),
             groupName: session.groupName,
@@ -3927,7 +3927,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         }
         const turn = beginTurn({
             kind: "user_reply",
-            characterId: character?.id ?? resolveLifeCharacterIdForContact(session.contactId, loadChatContacts()) ?? session.contactId,
+            characterId: character?.id ?? resolveSessionCharacterId(session) ?? "",
             sessionId: session.id,
         });
         if (!turn) return;
@@ -4212,7 +4212,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 if (!isCurrentGeneration()) return;
 
                 if (lastSendResult) {
-                    const lifeCharacterId = resolveLifeCharacterIdForContact(session.contactId, loadChatContacts());
+                    const lifeCharacterId = resolveSessionCharacterId(session);
                     if (lifeCharacterId && isCharacterCoPresentInLifeScene(lifeCharacterId)) {
                         cancelFollowUp(session.id);
                     } else {
@@ -4304,7 +4304,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             const requestCharacterId = typeof detail?.characterId === "string" ? detail.characterId : "";
             const matches = requestSessionId
                 ? requestSessionId === session.id
-                : Boolean(requestCharacterId && !session.isGroup && requestCharacterId === session.contactId);
+                : Boolean(requestCharacterId && !session.isGroup && requestCharacterId === resolveSessionCharacterId(session));
             if (!matches) return;
 
             if (detail) detail.handled = true;
@@ -4471,7 +4471,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 
         try {
             await hydrateStoryStorage();
-            const characterId = invite.mediaData?.meetingInviteCharacterId || session.contactId;
+            const characterId = invite.mediaData?.meetingInviteCharacterId || resolveSessionCharacterId(session) || "";
             const characterName = invite.mediaData?.meetingInviteCharacterName || character?.name || "角色";
             const mainSession = loadStorySessionsForOwner("single", characterId)
                 .find((item) => (item.branchId || "main") === "main")
@@ -5192,7 +5192,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         const stateCutoff = storedMessages[firstBatchIndex];
         const previousState = session.isGroup
             ? getLatestStateValues(session.id)
-            : getLatestCharacterStateValues(session.contactId, stateCutoff ? { before: stateCutoff } : undefined);
+            : getLatestCharacterStateValues(resolveSessionCharacterId(session) || "", stateCutoff ? { before: stateCutoff } : undefined);
 
         const { parts: rawParts, stateValues, freshStateValues, statusPanel, innerMonologue } = parseAIResponse(editedResponseContent, previousState);
         const parts = stripInvalidStickerParts(rawParts);
@@ -6817,7 +6817,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                                 userName={userIdentity?.name || "你"}
                                                 groupSize={session.isGroup ? (session.participantIds?.length || 0) + (session.isSpectator ? 0 : 1) : undefined}
                                                 onShowDetail={setMediaDetailMsg}
-                                                characterId={msg.senderCharacterId || session.contactId}
+                                                characterId={msg.senderCharacterId || resolveSessionCharacterId(session) || ""}
                                                 onUpdate={(updated) => setMessages(prev => prev.map(m => m.id === updated.id ? updated : m))}
                                                 onSystemMessage={(text) => {
                                                     const sysMsg = pushChatMessage({
@@ -7042,7 +7042,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             <ChatTextInputBar
                 ref={chatTextInputRef}
                 characterName={character?.name || "对方"}
-                characterId={session.contactId}
+                characterId={resolveSessionCharacterId(session) || ""}
 	                stickerCharacterIds={session.isGroup ? session.participantIds : undefined}
 	                isGroup={!!session.isGroup}
 	                isSpectator={!!session.isGroup && !!session.isSpectator}
