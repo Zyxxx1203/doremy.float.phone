@@ -784,8 +784,6 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
   const handleWallCanvasModeChange = useCallback((nextMode: "view" | "move" | "doodle") => {
     if (nextMode === wallCanvasMode) return;
     if (wallCanvasMode === "doodle" && nextMode !== "doodle") {
-      const recordId = doodleSessionRecordIdRef.current;
-      const record = recordId ? (stateRef.current.creationRecords ?? []).find(item => item.id === recordId) : undefined;
       // The creation record itself is projected into the shared-events timeline.
       doodleSessionRecordIdRef.current = null;
     }
