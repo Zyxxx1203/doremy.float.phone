@@ -122,14 +122,32 @@ export function migrateLifeCharacterIdentity(fromId: string, toId: string): numb
       ? { ...location, residents, characterHabits: habits }
       : location;
   });
-  const scenes = state.scenes.map(scene => ({
-    ...scene,
-    participants: scene.participants.map(replaceOwner),
-    images: scene.images?.map(image => {
-      const participantIds = replaceIds(image.participantIds);
-      return participantIds !== image.participantIds ? { ...image, participantIds } : image;
-    }),
-  }));
+  const scenes = state.scenes.map(scene => {
+    const participants = scene.participants.map(replaceOwner);
+    const participantMap = new Map<string, typeof participants[number]>();
+    for (const participant of participants) {
+      const key = participant.ownerType + ":" + participant.ownerId;
+      const existing = participantMap.get(key);
+      if (!existing || (participant.ownerId === toId && existing.ownerId !== toId)) participantMap.set(key, participant);
+    }
+    return {
+      ...scene,
+      participants: [...participantMap.values()],
+      images: scene.images?.map(image => {
+        const participantIds = replaceIds(image.participantIds);
+        return participantIds !== image.participantIds ? { ...image, participantIds } : image;
+      }),
+    };
+  });
+  const mergeOwnerRecords = <T extends { ownerType: LifeOwnerType; ownerId: string; updatedAt: string }>(items: T[]): T[] => {
+    const merged = new Map<string, T>();
+    for (const item of items.map(replaceOwner)) {
+      const key = item.ownerType + ":" + item.ownerId;
+      const existing = merged.get(key);
+      if (!existing || item.updatedAt >= existing.updatedAt) merged.set(key, item);
+    }
+    return [...merged.values()];
+  };
   const sceneMessages = state.sceneMessages.map(message =>
     message.speakerType === "character" && message.speakerId === fromId
       ? (changed += 1, { ...message, speakerId: toId })
@@ -160,8 +178,8 @@ export function migrateLifeCharacterIdentity(fromId: string, toId: string): numb
   );
   const next: VirtualLifeState = {
     ...state,
-    actorClocks: state.actorClocks.map(replaceOwner),
-    actorStates: state.actorStates.map(replaceOwner),
+    actorClocks: mergeOwnerRecords(state.actorClocks),
+    actorStates: mergeOwnerRecords(state.actorStates),
     schedules: state.schedules.map(replaceOwner),
     locations,
     scenes,
