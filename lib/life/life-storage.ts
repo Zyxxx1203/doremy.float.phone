@@ -138,7 +138,11 @@ export function migrateLifeCharacterIdentity(fromId: string, toId: string): numb
     for (const participant of participants) {
       const key = participant.ownerType + ":" + participant.ownerId;
       const existing = participantMap.get(key);
-      if (!existing || (participant.ownerId === toId && existing.ownerId !== toId)) participantMap.set(key, participant);
+      if (!existing) participantMap.set(key, participant);
+      else participantMap.set(key, {
+        ...existing,
+        awarenessByActorId: { ...participant.awarenessByActorId, ...existing.awarenessByActorId },
+      });
     }
     return {
       ...scene,
