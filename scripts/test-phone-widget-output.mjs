@@ -51,20 +51,20 @@ vm.runInNewContext(protocolCompiled, {
 const { stripMalformedTextToolDirectives, stripTextToolDirectives } = protocolModule.exports;
 
 assert.equal(
-  stripMalformedTextToolDirectives('正常留言\\n[执行动作:在桌面留句话(["text":"泄漏"]\\n下一句'),
-  "正常留言\\n下一句",
+  stripMalformedTextToolDirectives('正常留言\n[执行动作:在桌面留句话(["text":"泄漏"]\n下一句'),
+  "正常留言\n下一句",
 );
 assert.equal(
-  stripMalformedTextToolDirectives('前半句 [执行动作:参数不完整\\n后续正文'),
-  "前半句\\n后续正文",
+  stripMalformedTextToolDirectives('前半句 [执行动作:参数不完整\n后续正文'),
+  "前半句\n后续正文",
 );
 assert.equal(
   stripTextToolDirectives('正常留言 [执行动作:在桌面留句话({"text":"正常"})]'),
   "正常留言",
 );
 assert.equal(
-  stripMalformedTextToolDirectives('普通文字\\n没有动作指令'),
-  '普通文字\\n没有动作指令',
+  stripMalformedTextToolDirectives('普通文字\n没有动作指令'),
+  '普通文字\n没有动作指令',
 );
 
 console.log("Phone widget output safety tests passed.");
