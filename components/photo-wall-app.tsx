@@ -1494,12 +1494,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       const narrative = characterSummary || `${artist.name}今天在照片墙上留下了${created.length}个小装饰。每一笔都被认真收进了我们的共同回忆里。`;
       const record: PhotoWallCreationRecord = {
         id: createPhotoWallId(), createdAt, authorType: "character", authorId: artist.id,
-        authorName: artist.name, narrative, photoIds: [...photoIds], doodles: created,
+        authorName: artist.name, narrative, photoIds: [...photoIds], layers: [{ kind: "wall", doodles: created }], doodles: created,
       };
       changeWallDoodles([...(latest.wallDoodles ?? []), ...created]);
       const afterDoodles = stateRef.current;
       persist({ ...afterDoodles, creationRecords: [...(afterDoodles.creationRecords ?? []), record] });
-      recordPhotoWallMemory(artist.name + "在照片墙上留下了" + created.length + "个贴纸或涂鸦", artist.id);
+      // The creation record is the single source for this completed co-creation event.
       onNotice?.(`${artist.name}留下了 ${created.length} 个小装饰；创作过程已保存到「共创记录」。`);
     } catch (error) {
       onNotice?.("请角色装饰照片墙失败：" + (error instanceof Error ? error.message : String(error)));
