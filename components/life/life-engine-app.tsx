@@ -1063,21 +1063,21 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         return { actor, now, dayStart, dayEnd, existing };
       });
       const scheduleText = contexts.map(context =>
-        "【对象ID：" + context.actor.ownerId + "｜名称：" + context.actor.name + "｜类型：" + (context.actor.ownerType === "player" ? "player" : "character") + "｜虚拟时间：" + context.now.toISOString() + "】\\n"
-        + (context.existing.map(slot=>"- "+slot.startAt+" 至 "+slot.endAt+"｜"+slot.title+"｜"+(slot.plannedLocationName||"地点未定")+"｜"+slot.source).join("\\n") || "暂无已安排日程")
-      ).join("\\n\\n");
-      const locations = current.locations.map(location=>"- "+location.name).join("\\n");
+        "【对象ID：" + context.actor.ownerId + "｜名称：" + context.actor.name + "｜类型：" + (context.actor.ownerType === "player" ? "player" : "character") + "｜虚拟时间：" + context.now.toISOString() + "】\n"
+        + (context.existing.map(slot=>"- "+slot.startAt+" 至 "+slot.endAt+"｜"+slot.title+"｜"+(slot.plannedLocationName||"地点未定")+"｜"+slot.source).join("\n") || "暂无已安排日程")
+      ).join("\n\n");
+      const locations = current.locations.map(location=>"- "+location.name).join("\n");
       const session = createLifeChatSession(modelCharacter.id,modelCharacter.name);
       const prompt: ChatMessage = { id:id("life-guided-schedule"),sessionId:session.id,role:"user",status:"sent",createdAt:new Date().toISOString(),content:[
         "你是生活日程规划助手。用户选择的安排对象只有以下这些；可同时为多名对象安排，但绝不能安排未选中的对象。",
-        "选中对象及其现有七日日程（只读，不得覆盖或删除）：\\n"+scheduleText,
-        "用户指导：\\n"+instruction,
-        "可用地点：\\n"+locations,
+        "选中对象及其现有七日日程（只读，不得覆盖或删除）：\n"+scheduleText,
+        "用户指导：\n"+instruction,
+        "可用地点：\n"+locations,
         "每个对象都以各自标题中的虚拟时间为准；dayOffset 0 为该对象今天，6 为该对象第七天。",
         "只输出 JSON，结构必须严格为：{\"schedules\":[{\"actorId\":\"必须原样填写上方对象ID\",\"actorType\":\"player 或 character\",\"actorName\":\"必须原样填写上方对象名称\",\"dayOffset\":0,\"start\":\"15:00\",\"end\":\"16:00\",\"title\":\"活动\",\"location\":\"地点或空字符串\"}]}。",
         "actorId 是唯一身份主键，必须逐字复制；actorType 必须与该 ID 对应的对象类型一致；actorName 是用于交叉校验的显示名称，不得替代 actorId。禁止输出未选中对象、禁止猜测 ID 或名称。",
         "仅返回本次指导需要新增的安排；不得覆盖或删除旧日程；时间必须明确，不得返回过去时间；同一对象的安排不得与现有日程或彼此重叠；无明确时间则返回空数组。不要输出 Markdown 或 JSON 以外的文字。"
-      ].join("\\n\\n")};
+      ].join("\n\n")};
       const result=await generateOfflineChatCompletion(session,[prompt],{appId:"life",appTags:lifeAppTags("schedule")});
       recordLifeDiagnostic({
         source: "AI 日程指导", event: "模型响应完成", status: "info", traceId,
