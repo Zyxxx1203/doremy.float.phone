@@ -1028,8 +1028,10 @@ async function executePhoneWidgetTool(call: ToolCall, context?: ToolExecutionCon
             return {
                 name: call.name,
                 success: true,
-                data: `已在桌面实例「${profile.name}」留下：「${text}」${status ? `（状态：${status}）` : ""}`,
-                userNotice: "在桌面实例上留了句话",
+                data: pushed
+                    ? "已在桌面实例「" + profile.name + "」留下：「" + text + "」" + (status ? "（状态：" + status + "）" : "")
+                    : "内容已保存到桌面实例「" + profile.name + "」，但原生桌面未确认刷新；请检查小组件壳版本或重新打开设置页同步。",
+                userNotice: pushed ? "已在桌面实例上留了句话" : "留言已保存，但桌面尚未确认刷新",
             };
         }
 
@@ -1037,9 +1039,10 @@ async function executePhoneWidgetTool(call: ToolCall, context?: ToolExecutionCon
 
         // 立刻推给桌面。没装壳/老壳时这一步失败也无所谓——
         // 内容已经存下了，用户下次打开设置页会看到，装壳后自然同步过去。
+        let pushed = false;
         try {
             const html = renderWidgetHtml(config.customTemplate, loadWidgetData()!, character?.name ?? "角色", userName);
-            syncWidgetToNative(html);
+            pushed = syncWidgetToNative(html);
         } catch (err) {
             console.warn("[Widget] 推送原生失败", err);
         }
@@ -1047,8 +1050,10 @@ async function executePhoneWidgetTool(call: ToolCall, context?: ToolExecutionCon
         return {
             name: call.name,
             success: true,
-            data: `已在 TA 的桌面上留下：「${text}」${status ? `（状态：${status}）` : ""}`,
-            userNotice: "在桌面上留了句话",
+            data: pushed
+                ? "已在 TA 的桌面上留下：「" + text + "」" + (status ? "（状态：" + status + "）" : "")
+                : "内容已保存，但原生桌面未确认刷新；请检查小组件是否已添加、安卓壳版本是否支持，并重新打开设置页同步。",
+            userNotice: pushed ? "已在桌面上留了句话" : "留言已保存，但桌面尚未确认刷新",
         };
     } catch (err) {
         return { name: call.name, success: false, error: err instanceof Error ? err.message : "桌面留话失败" };
