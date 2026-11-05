@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
 
-const source = readFileSync(new URL("../lib/photo-wall-storage.ts", import.meta.url), "utf8");
+let storedRaw = null;\nconst source = readFileSync(new URL("../lib/photo-wall-storage.ts", import.meta.url), "utf8");
 const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
@@ -12,12 +12,12 @@ vm.runInNewContext(compiled, {
   module: moduleBox,
   exports: moduleBox.exports,
   require: id => {
-    if (id === "@/lib/kv-db") return { kvGet: () => null, kvSet: () => undefined, registerKvMigration: () => undefined };
+    if (id === "@/lib/kv-db") return { kvGet: () => storedRaw, kvSet: () => undefined, registerKvMigration: () => undefined };
     throw new Error("unexpected require: " + id);
   },
   console, JSON, Set, Map, Array, String, Number, Boolean, RegExp, Date, Math,
 }, { filename: "photo-wall-storage.cjs" });
-const { normalizePhotoWallCreationRecords } = moduleBox.exports;
+const { normalizePhotoWallCreationRecords, loadPhotoWallState } = moduleBox.exports;
 const doodle = { id: "d1", kind: "sticker", content: "♡", color: "#c2705a", width: 4, points: [{ x: 0.25, y: 0.4 }], createdAt: "2026-11-05T08:00:00.000Z" };
 const records = normalizePhotoWallCreationRecords([
   { id: "legacy", createdAt: "2026-11-04T08:00:00.000Z", authorType: "user", authorName: "我", narrative: "旧记录", photoIds: ["photo-1"], doodles: [doodle] },
@@ -30,4 +30,4 @@ assert.equal(records[1].layers[0].photoId, "photo-1");
 assert.equal(records[1].layers[0].side, "front");
 assert.equal(records[2].doodles.length, 0, "photo-only creation records are valid");
 assert.deepEqual([...records[2].photoIds], ["photo-2"]);
-console.log("Photo Wall creation-layer normalization tests passed.");
+storedRaw = JSON.stringify({ photos: [\n  { id: "legacy-private", mediaRef: "media-store://legacy", ownerType: "user" },\n  { id: "explicit-private", mediaRef: "media-store://private", ownerType: "user", shareWithCharacters: false },\n  { id: "explicit-shared", mediaRef: "media-store://shared", ownerType: "user", shareWithCharacters: true },\n], settings: {} });\nconst privacyState = loadPhotoWallState();\nassert.equal(privacyState.photos.find(photo => photo.id === "legacy-private").shareWithCharacters, false, "legacy photos without explicit sharing must remain private");\nassert.equal(privacyState.photos.find(photo => photo.id === "explicit-private").shareWithCharacters, false);\nassert.equal(privacyState.photos.find(photo => photo.id === "explicit-shared").shareWithCharacters, true);\nconsole.log("Photo Wall creation-layer and privacy tests passed.");
