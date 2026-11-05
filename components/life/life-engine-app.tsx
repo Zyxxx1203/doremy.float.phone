@@ -2186,8 +2186,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       });
       const sharedShortTermContext = sharedShortTerm.recentBlocks
         .filter(block => block.content.trim())
-        .map(block => `<${block.tag}>\\n${block.content}\\n</${block.tag}>`)
-        .join("\\n\\n");
+        .map(block => `<${block.tag}>\n${block.content}\n</${block.tag}>`)
+        .join("\n\n");
       const settingsInstructions = [
         settings.keepDialogueConcise ? "保持简短：一句对白，必要时附一个动作。" : "允许适度展开，但仍保持实时互动感。",
         forceReaction
