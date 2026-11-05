@@ -1995,6 +1995,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       message.id === notificationResponsePrefix + "-action" || message.id.startsWith(notificationResponsePrefix + "-dialogue-")
     )) return "completed";
     const userTurn = [userAction ? `行动：${userAction}` : "", userText ? `说话：${userText}` : ""].filter(Boolean).join("\n") || "玩家手动请求角色对最近行为作出反馈";
+    if (!forceReaction && settings.randomSceneResponses === false && !selectedSpeakerId) {
+      setNotice("已关闭随机角色回应，请先点选一位在场角色再发送。");
+      return "failed";
+    }
     const now = new Date().toISOString();
     if (userText || userAction) {
       setSceneInput("");
@@ -2027,16 +2031,13 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const specific = selectedSpeakerId && presentCharacters.includes(resolveLifeCharacterId(selectedSpeakerId)) ? resolveLifeCharacterId(selectedSpeakerId) : "";
       const random = settings.randomSceneResponses !== false && presentCharacters.length ? presentCharacters[stableSeed % presentCharacters.length] : "";
       const manualFallback = settings.randomSceneResponses === false ? specific : "";
-      plannedResponders = [random, specific, awarenessResponder || "", manualFallback]
-        .filter((value, index, all) => Boolean(value) && all.indexOf(value) === index).slice(0, 3);
+      plannedResponders = settings.randomSceneResponses === false
+        ? [specific].filter(Boolean)
+        : [random, specific, awarenessResponder || ""].filter((value, index, all) => Boolean(value) && all.indexOf(value) === index).slice(0, 3);
     }
     const rawTargetId = plannedResponders[0] || selectedSpeakerId || presentCharacters[0] || "";
     const targetId = resolveLifeCharacterId(rawTargetId);
     const target = characters.find(char => char.id === targetId);
-    if (settings.randomSceneResponses === false && !selectedSpeakerId && !responseQueue?.length && !notificationReplyId) {
-      setNotice("已关闭随机角色回应，请先点选一位在场角色再发送。");
-      return "failed";
-    }
     if (!target) {
       if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应无法启动", status: "error", detail: "找不到通知回复对应的角色卡。", meta: { sceneId: activeScene.id, targetId } });
       setNotice("没有找到可回应的角色。请检查该场景参与者是否关联到现有角色卡。");
@@ -2058,9 +2059,14 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const urgentMessage = /救命|紧急|出事了|危险|受伤|快来|急救/.test(userTurn);
     const easySleeper = /浅眠|警觉|敏感|担心|保护欲|容易醒/.test(target.personality || "");
     const wakeSeed = [...(target.id + userText)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
-    const wokeFromSleep = isSleeping && (forceReaction || urgentMessage || wakeSeed % 100 < (easySleeper ? 60 : 15));
-    if (isSleeping && settings.allowCharactersToStaySilent && !wokeFromSleep && !forceReaction) {
+    const wokeFromSleep = isSleeping && (Boolean(notificationReplyId) || (forceReaction && !responseQueue?.length) || urgentMessage || wakeSeed % 100 < (easySleeper ? 60 : 15));
+    if (isSleeping && settings.allowCharactersToStaySilent && !wokeFromSleep && !notificationReplyId) {
       setNotice(target.name + "正在睡觉，没有被这条消息叫醒。消息留在当前场景里；TA醒来后才可能回应。");
+      const remaining = responseQueue?.length ? responseQueue.slice(1) : plannedResponders.slice(1);
+      if (remaining.length) {
+        const nextResult = await sendSceneTurn(undefined, true, undefined, remaining);
+        return nextResult === "failed" ? "failed" : "completed";
+      }
       return "failed";
     }
     const contacts = loadChatContacts();
