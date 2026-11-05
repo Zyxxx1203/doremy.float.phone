@@ -12,8 +12,13 @@ vm.runInNewContext(compiled, { module: moduleBox, exports: moduleBox.exports, co
 const { parseGuidedScheduleResponse } = moduleBox.exports;
 
 const now = new Date("2026-11-05T08:00:00.000Z");
-const dayStart = new Date("2026-11-05T00:00:00.000Z");
-const dayEnd = new Date("2026-11-12T00:00:00.000Z");
+// Match production's local-calendar boundaries. UTC midnight becomes the
+// previous local evening in America/New_York and incorrectly makes same-day
+// guided schedule entries appear to be in the past during the DST run.
+const dayStart = new Date(now);
+dayStart.setHours(0, 0, 0, 0);
+const dayEnd = new Date(dayStart);
+dayEnd.setDate(dayEnd.getDate() + 7);
 const contexts = [{
   ownerType: "character", ownerId: "char-a", name: "小满", now, dayStart, dayEnd,
   existing: [
