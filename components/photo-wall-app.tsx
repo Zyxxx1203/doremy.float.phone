@@ -178,7 +178,7 @@ function DoodleMark({ doodle, size }: { doodle: import("@/lib/photo-wall-storage
   return <g transform={`translate(${x} ${y}) rotate(${doodle.rotation ?? 0})`}><text x={0} y={0} fill={doodle.color} fontSize={size} textAnchor="middle" dominantBaseline="middle">{doodle.content || "✦"}</text></g>;
 }
 
-function CreationLayerPreview({ photo, doodles, label, onOpen }: { photo?: PhotoWallPhoto; doodles: PhotoWallDoodle[]; label: string; onOpen?: () => void }) {
+function CreationLayerPreview({ photo, doodles, label, side, onOpen }: { photo?: PhotoWallPhoto; doodles: PhotoWallDoodle[]; label: string; side?: "front" | "back"; onOpen?: () => void }) {
   const [src, setSrc] = useState("");
   useEffect(() => {
     let active = true;
@@ -191,7 +191,9 @@ function CreationLayerPreview({ photo, doodles, label, onOpen }: { photo?: Photo
     return () => { active = false; if (url) URL.revokeObjectURL(url); };
   }, [photo?.mediaRef]);
   const body = <div className="relative aspect-square min-h-[132px] overflow-hidden border border-[#e4d2c1] bg-[#f4ecdf]">
-    {src ? <img src={src} alt={photo?.title || label} loading="lazy" className="h-full w-full object-contain"/> : <div className="grid h-full place-items-center px-2 text-center text-[11px] text-[#9b8774]">{photo ? "照片暂不可读取" : "照片墙自由画布"}</div>}
+    {side === "back" && photo
+      ? <div className="h-full overflow-hidden bg-[#fffaf0] p-3 text-[10px] leading-relaxed text-[#8b715e]"><div className="mb-2 border-b border-dashed border-[#d9c7b2] pb-1 font-serif text-xs">{photo.title || "照片背面"}</div><p className="whitespace-pre-wrap break-words">{photo.backNote || "留给这张照片背面的几句话……"}</p></div>
+      : src ? <img src={src} alt={photo?.title || label} loading="lazy" className="h-full w-full object-contain"/> : <div className="grid h-full place-items-center px-2 text-center text-[11px] text-[#9b8774]">{photo ? "照片暂不可读取" : "照片墙自由画布"}</div>}
     <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full">
       {doodles.map(doodle => doodle.kind === "stroke"
         ? <polyline key={doodle.id} points={doodle.points.map(point => (point.x * 100) + "," + (point.y * 100)).join(" ")} fill="none" stroke={doodle.color} strokeWidth={Math.max(0.65, doodle.width / 3)} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
@@ -1824,7 +1826,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
                       {record.layers.map((layer, layerIndex) => {
                         const layerPhoto = layer.kind === "photo" ? linkedPhotos.find(photo => photo.id === layer.photoId) : undefined;
                         const label = layer.kind === "wall" ? "墙面涂鸦" : (layerPhoto?.title || "关联照片") + (layer.side === "back" ? " · 背面" : " · 正面");
-                        return <CreationLayerPreview key={record.id + "-layer-" + layerIndex} photo={layerPhoto} doodles={layer.doodles} label={label} onOpen={layerPhoto ? () => openPhoto(layerPhoto) : undefined}/>;
+                        return <CreationLayerPreview key={record.id + "-layer-" + layerIndex} photo={layerPhoto} side={layer.kind === "photo" ? layer.side : undefined} doodles={layer.doodles} label={label} onOpen={layerPhoto ? () => openPhoto(layerPhoto) : undefined}/>;
                       })}
                     </div> : <><svg viewBox="0 0 100 100" className="h-full min-h-[126px] w-full" role="img" aria-label={record.authorName + "留下的旧版涂鸦笔迹"}>
                       {record.doodles.map(doodle => doodle.kind === "stroke"
