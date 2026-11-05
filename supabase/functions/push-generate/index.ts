@@ -539,10 +539,24 @@ Deno.serve(async (req: Request) => {
   const job = claimed[0];
   if (!job) return new Response("already claimed", { status: 200 });
 
-  const finish = (status: "done" | "failed", note: string) => rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}`, {
-    method: "PATCH",
-    body: JSON.stringify({ status, result_note: note.slice(0, 300), updated_at: new Date().toISOString() }),
-  }).catch(() => undefined);
+  let isLifeSceneJob = false;
+  const finish = async (status: "done" | "failed", note: string) => {
+    await rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, result_note: note.slice(0, 300), updated_at: new Date().toISOString() }),
+    }).catch(() => undefined);
+    if (isLifeSceneJob) {
+      await rest("life_schedule_diagnostic_events", {
+        method: "POST", headers: { Prefer: "return=minimal" },
+        body: JSON.stringify([{
+          id: `life-trace-${crypto.randomUUID()}`, trace_id: job.id, user_id: job.user_id,
+          stage: "任务最终结果", severity: status === "failed" ? "error" : "info",
+          code: status === "failed" ? "life_job_final_failed" : "life_job_final_done",
+          detail: note.slice(0, 500), job_id: job.id,
+        }]),
+      }).catch(() => undefined);
+    }
+  };
 
   const deferUntil = (executeAtMs: number, note: string) => rest(`push_jobs?id=eq.${encodeURIComponent(job.id)}`, {
     method: "PATCH",
