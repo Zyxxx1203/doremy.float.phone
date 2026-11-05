@@ -15,6 +15,10 @@ async function loadTs(path) {
 
 const identity = await loadTs("../lib/character-id-contract.ts");
 const guided = await loadTs("../lib/life/life-guided-schedule.ts");
+const lifeEngineSource = await readFile(new URL("../components/life/life-engine-app.tsx", import.meta.url), "utf8");
+assert.match(lifeEngineSource, /actorId.*actorType.*actorName/);
+assert.match(lifeEngineSource, /parseGuidedScheduleResponse\(result\.content\.trim\(\)/);
+
 
 // Exercise the actual chat-storage hydration/migration path with an in-memory
 // IndexedDB boundary. This catches ordering regressions that a helper-only test
