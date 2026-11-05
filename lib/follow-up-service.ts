@@ -98,7 +98,7 @@ function resolveFollowUpSenderName(sessionId: string): string {
     if (sess.isGroup) return sess.groupName?.trim() || "群聊";
     const alias = sess.alias?.trim();
     if (alias) return alias;
-    return loadCharacters().find(character => character.id === (resolveSessionCharacterId(sess) ?? sess.contactId))?.name?.trim() || "角色";
+    return loadCharacters().find(character => character.id === resolveSessionCharacterId(sess))?.name?.trim() || "角色";
 }
 
 function resolveTimedWakeElapsedMinutes(sched: TimedWakeSchedule, history: ChatMessage[], atMs: number): number {
@@ -488,12 +488,13 @@ function pollMenstrualPeriodCare(now: number) {
 
     const selectedIds = new Set(config.periodCareCharacterIds);
     const sessions = loadChatSessions()
-        .filter(session => !session.isGroup && selectedIds.has(session.contactId))
+        .filter(session => !session.isGroup && Boolean(resolveSessionCharacterId(session)) && selectedIds.has(resolveSessionCharacterId(session)!))
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     const latestSessionByCharacter = new Map<string, (typeof sessions)[number]>();
     for (const session of sessions) {
-        if (!latestSessionByCharacter.has(session.contactId)) {
-            latestSessionByCharacter.set(session.contactId, session);
+        const characterId = resolveSessionCharacterId(session);
+        if (characterId && !latestSessionByCharacter.has(characterId)) {
+            latestSessionByCharacter.set(characterId, session);
         }
     }
 
@@ -526,8 +527,8 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
         const sessions = loadChatSessions();
         const session = sessions.find(s => s.id === sched.sessionId);
         if (!session) return;
-        const characterId = resolveSessionCharacterId(session) ?? session.contactId;
-        if (isCharacterCoPresentInLifeScene(characterId)) return;
+        const characterId = resolveSessionCharacterId(session);
+        if (!characterId || isCharacterCoPresentInLifeScene(characterId)) return;
         turn = beginTurn({ kind: "followup", characterId, sessionId: session.id });
         if (!turn) return;
 
@@ -1128,7 +1129,7 @@ export async function parseAndSaveResponse(
     void contextMessages;
     const sessions = loadChatSessions();
     const sess = sessions.find(s => s.id === sessionId);
-    const previousState = sess && !sess.isGroup ? getLatestCharacterStateValues(sess.contactId) : [];
+    const previousState = sess && !sess.isGroup ? getLatestCharacterStateValues(resolveSessionCharacterId(sess) || "") : [];
 
     const { parts, stateValues, freshStateValues, statusPanel, innerMonologue } = parseAIResponse(rawText, previousState);
 
@@ -1167,7 +1168,7 @@ export async function parseAndSaveResponse(
         if (p.mediaType === "video_call") { triggerCall = "video"; continue; }
         // 「丢弃角色输出的无效表情包」开关（主动消息路径）
         if (p.mediaType === "sticker" && sess?.discardInvalidStickers === true) {
-            const senderIds = sess.isGroup ? (sess.participantIds ?? []) : [sess.contactId];
+            const senderIds = sess.isGroup ? (sess.participantIds ?? []) : (resolveSessionCharacterId(sess) ? [resolveSessionCharacterId(sess)!] : []);
             if (!isKnownStickerLabel(p.mediaData?.label || "", senderIds)) continue;
         }
         if (p.mediaType === "accept_red_packet" || p.mediaType === "decline_red_packet"
@@ -1315,7 +1316,7 @@ export async function parseAndSaveResponse(
         });
         if (isPendingChatGeneratedImageMessage(saved)) {
             imageReplacementTasks.push(
-                generateAndApplyChatGeneratedImage(saved, sess?.contactId)
+                generateAndApplyChatGeneratedImage(saved, sess ? (resolveSessionCharacterId(sess) || undefined) : undefined)
                     .catch(error => {
                         console.warn("[FollowUp] Image generation failed:", error);
                         return null;
@@ -1340,7 +1341,7 @@ export async function parseAndSaveResponse(
             ? (options?.senderCharacterId
                 ? loadCharacters().find(c => c.id === options.senderCharacterId)?.avatar || null
                 : null)
-            : (sess ? loadCharacters().find(c => c.id === sess.contactId)?.avatar || null : null);
+            : (sess ? loadCharacters().find(c => c.id === resolveSessionCharacterId(sess))?.avatar || null : null);
         const bodyPrefix = isGroup && options?.senderName ? `${options.senderName}: ` : "";
         const partBody = (part: ParsedMessagePart) => bodyPrefix + ((part.content || "").trim()
             || (part.mediaType === "image" && part.mediaData?.label ? `发了一张照片: ${part.mediaData.label}` : "发来一条消息"));
