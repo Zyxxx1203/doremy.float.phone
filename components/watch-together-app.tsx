@@ -534,6 +534,34 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     return () => window.removeEventListener("floatphone-app-back", handleAppBack);
   }, [showSettings, showHistory, showMemoryRecords, showVideoSourcePanel]);
 
+  const syncWatchRecordToTimeline = useCallback((record: WatchMemoryRecord) => {
+    const owner = characters.find(item => item.id === record.characterId) ?? characters.find(item => item.name === record.characterName);
+    const characterId = record.characterId || owner?.id;
+    if (!characterId) return;
+    const discussion = (record.discussion?.length ? record.discussion.map(item => (item.kind === "user" ? "我" : item.characterName) + "：" + item.text) : record.comments).slice(-12);
+    const hasMeaningfulMemory = record.durationSeconds >= 60 || discussion.length > 0 || Boolean(record.review || record.characterReview || record.quote || record.note || record.favorite);
+    if (!hasMeaningfulMemory) return;
+    const summary = "和" + (record.characterName || owner?.name || "角色") + "一起观看了《" + (record.title || "未命名视频") + "》" +
+      (record.durationSeconds > 0 ? "，共同观看约 " + Math.max(1, Math.floor(record.durationSeconds / 60)) + " 分钟" : "") +
+      (record.favorite ? "，并将这段观看标记为喜欢" : "") +
+      (record.memoryTitle ? "；纪念卡：" + record.memoryTitle : "") +
+      (record.mood ? "；当时心情：" + record.mood : "") +
+      (record.quote ? "；留下的话：" + record.quote : "");
+    const detail = [
+      "平台：" + record.platform,
+      discussion.length ? "互动片段：" + discussion.join("；") : "",
+      record.review ? "我的观后感：" + record.review : "",
+      record.characterReview ? "角色观后感：" + record.characterReview : "",
+      record.note ? "补充备注：" + record.note : "",
+    ].filter(Boolean).join("\n").slice(0, 1800);
+    deleteCustomAppTimelineEntries("watch", { characterId, appEventId: record.id });
+    appendCustomAppTimelineEntry({ id: "watch", name: "一起看" }, {
+      characterId, appEventId: record.id, summary: summary.slice(0, 500), detail,
+      appLabel: "共同观看", createdAt: record.startedAt,
+      data: { appEventId: record.id, title: record.title, platform: record.platform, durationSeconds: record.durationSeconds, favorite: record.favorite, memoryTitle: record.memoryTitle, quote: record.quote, mood: record.mood },
+    });
+  }, [characters]);
+
   // 每次切换到一个新视频时创建独立观看记录；记录只保存元数据和互动摘要，不上传视频内容。
   useEffect(() => {
     if (!target) return;
@@ -588,7 +616,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
       const completed = updated.find(record => record.id === activeId);
       if (completed) syncWatchRecordToTimeline(completed);
     };
-  }, [target?.url]);
+  }, [target?.url, syncWatchRecordToTimeline]);
 
   useEffect(() => {
     const id = activeMemoryIdRef.current;
@@ -601,33 +629,7 @@ export function WatchTogetherApp({ onClose, onNotice }: Props) {
     });
   }, [comments, videoTitle, characters, settings.characterId, target?.url]);
 
-  const syncWatchRecordToTimeline = (record: WatchMemoryRecord) => {
-    const owner = characters.find(item => item.id === record.characterId) ?? characters.find(item => item.name === record.characterName);
-    const characterId = record.characterId || owner?.id;
-    if (!characterId) return;
-    const discussion = (record.discussion?.length ? record.discussion.map(item => (item.kind === "user" ? "我" : item.characterName) + "：" + item.text) : record.comments).slice(-12);
-    const hasMeaningfulMemory = record.durationSeconds >= 60 || discussion.length > 0 || Boolean(record.review || record.characterReview || record.quote || record.note || record.favorite);
-    if (!hasMeaningfulMemory) return;
-    const summary = "和" + (record.characterName || owner?.name || "角色") + "一起观看了《" + (record.title || "未命名视频") + "》" +
-      (record.durationSeconds > 0 ? "，共同观看约 " + Math.max(1, Math.floor(record.durationSeconds / 60)) + " 分钟" : "") +
-      (record.favorite ? "，并将这段观看标记为喜欢" : "") +
-      (record.memoryTitle ? "；纪念卡：" + record.memoryTitle : "") +
-      (record.mood ? "；当时心情：" + record.mood : "") +
-      (record.quote ? "；留下的话：" + record.quote : "");
-    const detail = [
-      "平台：" + record.platform,
-      discussion.length ? "互动片段：" + discussion.join("；") : "",
-      record.review ? "我的观后感：" + record.review : "",
-      record.characterReview ? "角色观后感：" + record.characterReview : "",
-      record.note ? "补充备注：" + record.note : "",
-    ].filter(Boolean).join("\n").slice(0, 1800);
-    deleteCustomAppTimelineEntries("watch", { characterId, appEventId: record.id });
-    appendCustomAppTimelineEntry({ id: "watch", name: "一起看" }, {
-      characterId, appEventId: record.id, summary: summary.slice(0, 500), detail,
-      appLabel: "共同观看", createdAt: record.startedAt,
-      data: { appEventId: record.id, title: record.title, platform: record.platform, durationSeconds: record.durationSeconds, favorite: record.favorite, memoryTitle: record.memoryTitle, quote: record.quote, mood: record.mood },
-    });
-  };
+
 
   const patchMemoryRecord = (id: string, patch: Partial<WatchMemoryRecord>) => {
     const current = readWatchMemories().find(record => record.id === id);
