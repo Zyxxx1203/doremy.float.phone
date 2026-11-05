@@ -1305,7 +1305,8 @@ export function ChatRoom({ session, onBack, onDeleted, isActive = true }: ChatRo
             document.removeEventListener("visibilitychange", onVisibilityChange);
             foregroundLeaseRef.current = false;
             setOnlineChatForegroundLease(characterId, session.id, false);
-            if (document.visibilityState === "visible") void syncLifeScheduleSnapshot();
+            syncCloudLease();
+            if (document.visibilityState === "visible" && !isCurrentRoom()) void syncLifeScheduleSnapshot();
         };
     }, [session.id, session.contactId, session.isGroup, isActive]);
 
