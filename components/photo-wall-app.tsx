@@ -246,7 +246,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     const records = state.creationRecords ?? [];
     if (!records.length) return;
     const lifeState = loadVirtualLifeState();
-    const allCharacterIds = loadCharacters().map(character => character.id).filter(Boolean);
+    const allCharacterIds = characters.map(character => character.id).filter(Boolean);
     let events = lifeState.events;
     let memories = lifeState.memories;
     let changed = false;
@@ -285,7 +285,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       changed = true;
     }
     if (changed) saveVirtualLifeState({ ...lifeState, events: events.slice(0, 1000), memories: memories.slice(0, 1000) });
-  }, [state.creationRecords, state.photos]);
+  }, [state.creationRecords, state.photos, characters]);
   const [filter, setFilter] = useState<Filter>("all");
   const [wallView, setWallView] = useState<"timeline" | "memories" | "album" | "panorama" | "edit" | "settings" | "creations">("panorama");
   const [settingsReturnView, setSettingsReturnView] = useState<"panorama" | "edit">("panorama");
