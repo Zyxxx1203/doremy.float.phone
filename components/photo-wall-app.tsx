@@ -1831,7 +1831,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
                     </div> : <div className="grid grid-cols-2 gap-2">
                       {linkedPhotos.slice(0, 4).map(photo => <div key={photo.id} className="min-w-0"><PhotoThumbnail photo={photo} onOpen={() => openPhoto(photo)}/></div>)}
                       {!linkedPhotos.length && <div className="col-span-2 grid min-h-[126px] place-items-center text-[11px] text-[#9b8774]">旧版涂鸦记录</div>}
-                      <p className="col-span-2 text-[9px] leading-relaxed text-[#a08c74]">旧版记录未保存每张照片对应的笔迹坐标。这里单独展示关联照片，避免把不同照片上的笔迹叠在一起；原始笔迹仍完整保留在记录中。</p>
+                      <p className="col-span-2 text-[9px] leading-relaxed text-[#a08c74]">{record.doodles.length ? "旧版记录未保存每张照片对应的笔迹坐标。这里单独展示关联照片，避免把不同照片上的笔迹叠在一起；原始笔迹仍完整保留在记录中。" : "本次创作没有附加涂鸦，关联照片单独展示。"}</p>
                     </div>}
                   </div>
                 </div>
