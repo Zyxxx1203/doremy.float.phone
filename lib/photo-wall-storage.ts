@@ -249,7 +249,7 @@ export function normalizePhotoWallCreationRecords(value: unknown): PhotoWallCrea
     if (typeof raw.id !== "string" || typeof raw.createdAt !== "string" || !Array.isArray(raw.doodles)) continue;
     const doodles = normalizeDoodles(raw.doodles) ?? [];
     const photoIds = Array.isArray(raw.photoIds) ? raw.photoIds.filter((id): id is string => typeof id === "string").slice(0, 20) : [];
-    const layers = Array.isArray(raw.layers) ? raw.layers.slice(0, 24).flatMap(layer => {
+    const layers: PhotoWallCreationLayer[] | undefined = Array.isArray(raw.layers) ? raw.layers.slice(0, 24).flatMap<PhotoWallCreationLayer>(layer => {
       if (!layer || typeof layer !== "object") return [];
       const item = layer as { kind?: unknown; photoId?: unknown; side?: unknown; doodles?: unknown };
       const layerDoodles = normalizeDoodles(item.doodles) ?? [];
