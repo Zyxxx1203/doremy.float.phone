@@ -27,6 +27,7 @@ import { DeviceActionSettings } from "./device-action/device-action-settings";
 import { SystemCalendarSettings } from "./system-calendar/system-calendar-settings";
 import { ScreenshotSettings } from "./screenshot/screenshot-settings";
 import { RuntimeDiagnostics } from "./settings/runtime-diagnostics";
+import { PerformanceDiagnostics } from "./settings/performance-diagnostics";
 import { DeviceCompatibilitySettings } from "./settings/device-compatibility-settings";
 import { WidgetSettings } from "./widget/widget-settings";
 import { fetchIsAdmin } from "@/lib/moderation-client";
@@ -356,7 +357,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
             case "widget":
                 return <WidgetSettings onNotice={onNotice} />;
             case "diagnostics":
-                return <div style={{ display: "grid", gap: 18 }}><RuntimeDiagnostics onNotice={onNotice} /><div style={{ borderTop: "1px solid var(--border, rgba(128,128,128,.18))", paddingTop: 18 }}><DeviceCompatibilitySettings onNotice={onNotice} /></div></div>;
+                return <div style={{ display: "grid", gap: 18 }}><PerformanceDiagnostics /><RuntimeDiagnostics onNotice={onNotice} /><div style={{ borderTop: "1px solid var(--border, rgba(128,128,128,.18))", paddingTop: 18 }}><DeviceCompatibilitySettings onNotice={onNotice} /></div></div>;
             case "agentComputer":
                 return <AgentComputerSettings onNotice={onNotice} />;
             case "moderation":

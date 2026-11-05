@@ -21,6 +21,7 @@ import { getThemeAssetMap, readThemeProfile } from "@/lib/theme-storage";
 import { resolveActiveIconSkins, type ThemeProfile } from "@/lib/theme-types";
 import { hasPendingMcpOAuthCallback } from "@/lib/tool-executor";
 import { shouldRequestPwaFullscreen } from "@/lib/pwa-display-mode";
+import { installPerformanceDiagnostics } from "@/lib/performance-diagnostics";
 
 const TEXT = {
   loading: "\u52A0\u8F7D\u4E2D...",
@@ -242,6 +243,8 @@ export function MainApp() {
   const [kvHydrateFailed, setKvHydrateFailed] = useState(false);
   const [initAttempt, setInitAttempt] = useState(0);
   const [downloadNotice, setDownloadNotice] = useState<{ kind: "success" | "error" | "info"; message: string } | null>(null);
+
+  useEffect(() => installPerformanceDiagnostics(), []);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;

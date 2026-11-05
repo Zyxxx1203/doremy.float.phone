@@ -534,6 +534,8 @@ type ChatRoomProps = {
     onBack: () => void;
     /** 会话在设置页被删除后回调：由外层卸载本聊天室并回到列表 */
     onDeleted?: () => void;
+    /** Only the visible room may renew foreground leases or poll sleep replies. */
+    isActive?: boolean;
 };
 
 type OfflineActionTarget = {
@@ -1261,41 +1263,52 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
     );
 }));
 
-export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
+export function ChatRoom({ session, onBack, onDeleted, isActive = true }: ChatRoomProps) {
     // Protect an actively visible direct conversation from a simultaneous cloud
     // life-scene notification. The life task is deferred, not cancelled; hiding or
     // leaving this chat releases the lease and lets the schedule continue.
+    const wrapperRef = useRef<HTMLDivElement>(null);
+    const foregroundLeaseRef = useRef(false);
+
     useEffect(() => {
         if (session.isGroup) return;
         const characterId = resolveSessionCharacterId(session);
         if (!characterId) return;
-        const refresh = () => setOnlineChatForegroundLease(
-            characterId,
-            session.id,
-            document.visibilityState === "visible",
-        );
-        const syncCloudLease = () => { void syncLifeScheduleSnapshot(); };
-        const onVisibilityChange = () => {
-            refresh();
-            // Publish foreground ownership immediately; otherwise a cloud life job can
-            // start from the previous snapshot before the next scheduler heartbeat.
-            syncCloudLease();
+        if (!isActive) {
+            foregroundLeaseRef.current = false;
+            setOnlineChatForegroundLease(characterId, session.id, false);
+            return;
+        }
+        const isCurrentRoom = () => isActive && isChatRoomElementVisible(wrapperRef.current);
+        const refresh = () => {
+            const foreground = isCurrentRoom() && document.visibilityState === "visible";
+            setOnlineChatForegroundLease(characterId, session.id, foreground);
+            // Publish both foreground acquisition and release. A hidden app/document
+            // must not leave a stale cloud lease that blocks scheduled Life work.
+            if (foregroundLeaseRef.current !== foreground) {
+                foregroundLeaseRef.current = foreground;
+                void syncLifeScheduleSnapshot();
+            }
         };
+        const syncCloudLease = () => {
+            if (isCurrentRoom() && document.visibilityState === "visible") void syncLifeScheduleSnapshot();
+        };
+        const onVisibilityChange = () => refresh();
         refresh();
-        syncCloudLease();
         const localLeaseTimer = window.setInterval(refresh, 20_000);
-        // The local lease is renewed more frequently than the cloud snapshot. Keep the
-        // server-side arbitration fresh without issuing a network request every 20s.
+        // Only the active, actually visible room refreshes the cloud snapshot.
         const cloudLeaseTimer = window.setInterval(syncCloudLease, 60_000);
         document.addEventListener("visibilitychange", onVisibilityChange);
         return () => {
             window.clearInterval(localLeaseTimer);
             window.clearInterval(cloudLeaseTimer);
             document.removeEventListener("visibilitychange", onVisibilityChange);
+            foregroundLeaseRef.current = false;
             setOnlineChatForegroundLease(characterId, session.id, false);
             syncCloudLease();
+            if (document.visibilityState === "visible" && !isCurrentRoom()) void syncLifeScheduleSnapshot();
         };
-    }, [session.id, session.contactId, session.isGroup]);
+    }, [session.id, session.contactId, session.isGroup, isActive]);
 
     const [liveCSS, setLiveCSS] = useState(session.customCSS || "");
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -1438,7 +1451,6 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     const [bgImageResolved, setBgImageResolved] = useState<string | null>(null);
     const [bgLoading, setBgLoading] = useState(!!effectiveBackgroundImage);
 
-    const wrapperRef = useRef<HTMLDivElement>(null);
 
     // 全屏特效：命中触发词的新消息播放表情雨/礼花（微信同款）
     const [activeScreenEffect, setActiveScreenEffect] = useState<ActiveScreenEffect | null>(null);
@@ -4327,7 +4339,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 
     // 围观群/被禁言时用户不能发言
     useEffect(() => {
-        if (session.isGroup || !character) return;
+        if (!isActive || session.isGroup || !character) return;
         const key = "life-sleep-pending-reply:" + session.id;
         const checkPendingSleepReply = () => {
             if (kvGet(key) !== "true" || isGeneratingRef.current) return;
@@ -4346,7 +4358,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             window.clearInterval(timer);
             window.removeEventListener("focus", checkPendingSleepReply);
         };
-    }, [session.id, session.isGroup, offlineMode, character?.id]);
+    }, [session.id, session.isGroup, offlineMode, character?.id, isActive]);
 
     const ensureGroupSpeakPermission = (): boolean => {
         if (!session.isGroup) return true;
