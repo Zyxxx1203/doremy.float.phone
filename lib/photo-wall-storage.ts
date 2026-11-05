@@ -192,7 +192,7 @@ function normalizePhoto(value: unknown): PhotoWallPhoto | null {
     annotations: Array.isArray(raw.annotations) ? raw.annotations.filter((item): item is PhotoWallAnnotation =>
       Boolean(item && typeof item === "object" && typeof (item as PhotoWallAnnotation).id === "string" && typeof (item as PhotoWallAnnotation).content === "string"),
     ).slice(-100) : [],
-    shareWithCharacters: raw.shareWithCharacters === true,
+    shareWithCharacters: raw.shareWithCharacters !== false,
     referencePhotoId: typeof raw.referencePhotoId === "string" ? raw.referencePhotoId : undefined,
     generationPrompt: typeof raw.generationPrompt === "string" ? raw.generationPrompt.slice(0, 4000) : undefined,
     source: raw.source === "generated" || raw.source === "chat-favorite" || raw.source === "life-event" ? raw.source : "upload",
