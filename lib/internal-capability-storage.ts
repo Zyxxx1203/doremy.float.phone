@@ -545,7 +545,7 @@ const PHOTO_WALL_USAGE_GUIDE = [
     "参数：photoId（必须来自查看照片墙结果）；side（front/back，默认 front）；kind（sticker/stroke）；content（贴纸符号，sticker 必填）；points（归一化坐标数组，stroke 至少 2 点，sticker 至少 1 点）；color（十六进制颜色）；width（1-12）；rotation（-45 到 45）。",
     '[执行动作:在照片墙涂鸦({"photoId":"照片ID","side":"front","kind":"sticker","content":"♡","points":[{"x":0.5,"y":0.4}],"color":"#c2705a","width":4})]',
     "坐标范围 0 到 1；只在指定照片正面/背面追加笔迹。不要猜测 photoId，不要尝试删除或替换既有内容。",
-].join("\\n");
+].join("\n");
 
 const PHOTO_WALL_EMPTY_SCHEMA = JSON.stringify({ type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 5, description: "最多返回的共享照片数量，默认 3" } } });
 const PHOTO_WALL_ADD_SCHEMA = JSON.stringify({ type: "object", properties: {
