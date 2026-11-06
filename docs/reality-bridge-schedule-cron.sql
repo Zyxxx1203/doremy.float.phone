@@ -1,3 +1,7 @@
+-- ⚠️ 旧版站点共享推送的现实桥 Cron 迁移脚本。
+-- 依赖旧 push-jobs-scan / push_jobs 结构，不是新版个人云日程部署步骤。
+-- 新建个人云请走应用内「云服务部署」，并以 docs/personal-push-supabase.sql 为准。
+
 -- Reality Bridge scheduled rules: enqueue a server scan every minute for accounts
 -- that have at least one scheduled rule synced to push_bridge_config.
 -- Requires the existing push-jobs-scan cron job, which dispatches kind=bridge_scan
