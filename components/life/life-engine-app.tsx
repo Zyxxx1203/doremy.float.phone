@@ -748,7 +748,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           }
         }
       }
-      // Keep one continuous scene anchored to the player's current virtual life state.
+      // Keep one continuous scene anchored to the player's current real-world life state.
       const continuingScene = next.scenes.find(scene => scene.status === "active") ?? next.scenes.filter(scene => scene.status === "paused").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
       const currentPlayer = next.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
       const playerNow = resolveActorLifeNow(getActorClock(next, "player", PLAYER_ID));
