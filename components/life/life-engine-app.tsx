@@ -1456,7 +1456,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           "禁止：不要替玩家添加没有发生的动作或台词；不要把已经离开的人写成仍在场；不要把地点固定描述覆盖掉；不要输出标题、分析、列表或总结标签。"
         ].join("\n\n")
       };
-      const result = await generateOfflineChatCompletion(session, [prompt]);
+      const result = await generateOfflineChatCompletion(session, [prompt], { appId: "life", appTags: lifeAppTags("scene"), includeDirectChatEntries: false });
       const description = result.content.trim().replace(/^["“”]+|["“”]+$/g, "").slice(0, 5000);
       if (!description) throw new Error("模型没有返回现场描述。");
       const latest = stateRef.current;
