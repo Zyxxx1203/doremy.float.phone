@@ -10,7 +10,7 @@ const compiled = ts.transpileModule(source, {
 const moduleBox = { exports: {} };
 const sandbox = { module: moduleBox, exports: moduleBox.exports, Date, Math, console };
 vm.runInNewContext(compiled, sandbox, { filename: "life-runtime.cjs" });
-const { advanceActorTimeline, confirmLifeInvitation, generateWeeklyLifePlan, getCurrentActorSchedule, insertManualLifeScheduleSlot, placeAppointmentInActorSchedule, settleActorTimelineToNow, syncScheduleLocationsToLibrary, synchronizeCharacterHomeSchedule, reserveCharacterLocationStay, resolveActorLocation } = moduleBox.exports;
+const { advanceActorTimeline, applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getCurrentActorSchedule, insertManualLifeScheduleSlot, overlayScheduleSlotsOverFreeTime, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, syncScheduleLocationsToLibrary, synchronizeCharacterHomeSchedule, reserveCharacterLocationStay, resolveActorLocation } = moduleBox.exports;
 assert.equal(typeof advanceActorTimeline, "function", "timeline fast-forward should be exported");
 assert.equal(typeof generateWeeklyLifePlan, "function", "weekly planner should be exported");
 assert.equal(typeof getCurrentActorSchedule, "function", "current schedule selector should be exported");
@@ -641,5 +641,51 @@ const temporaryLocationState = {
   actorStates: [{ ...locationState.actorStates[0], actualLocationUntil: "2026-10-15T12:00:00.000Z" }],
 };
 assert.equal(resolveActorLocation(temporaryLocationState, "character", "c-location", locationNow).id, "cafe", "an active temporary location should override the schedule");
+
+ 
+// All legacy per-actor clock records are ignored: schedule time is always wall-clock time.
+const wallClockNow = new Date("2026-10-15T10:30:00.000Z");
+assert.equal(
+  resolveActorLifeNow({ mode: "simulation", realAnchorAt: "2026-10-15T08:00:00.000Z", virtualAnchorAt: "2026-10-20T08:00:00.000Z", speed: 20 }, wallClockNow).getTime(),
+  wallClockNow.getTime(),
+  "legacy simulation clocks must never shift life-system time",
+);
+
+// AI schedule candidates replace any free-time slot, while preserving its unaffected edges.
+const freeTimeOverlay = overlayScheduleSlotsOverFreeTime(makeState([{
+  id: "free-placeholder", ownerType: "character", ownerId: "c-overlay",
+  startAt: "2026-10-15T09:00:00.000Z", endAt: "2026-10-15T18:00:00.000Z",
+  title: "自由活动", kind: "free-time", source: "manual",
+}]), [{
+  id: "ai-study", ownerType: "character", ownerId: "c-overlay",
+  startAt: "2026-10-15T12:00:00.000Z", endAt: "2026-10-15T14:00:00.000Z",
+  title: "学习", kind: "study", source: "weekly-generation",
+}]);
+assert.ok(freeTimeOverlay.schedules.some(slot => slot.id === "ai-study"), "AI candidate should replace an overlapping free-time slot");
+assert.ok(freeTimeOverlay.schedules.some(slot => slot.startAt === "2026-10-15T09:00:00.000Z" && slot.endAt === "2026-10-15T12:00:00.000Z" && slot.kind === "free-time"), "free-time before the AI plan should be preserved");
+assert.ok(freeTimeOverlay.schedules.some(slot => slot.startAt === "2026-10-15T14:00:00.000Z" && slot.endAt === "2026-10-15T18:00:00.000Z" && slot.kind === "free-time"), "free-time after the AI plan should be preserved");
+assert.equal(freeTimeOverlay.schedules.filter(slot => slot.ownerId === "c-overlay").length, 3, "overlay should split one free-time slot into two edges plus one AI plan");
+
+// A week containing only free-time placeholders is not considered already planned.
+const fullWeekFreeTime = makeState([{
+  id: "full-week-free", ownerType: "character", ownerId: "c-week",
+  startAt: weekStart.toISOString(), endAt: new Date(weekStart.getTime() + 7 * 24 * 60 * 60_000).toISOString(),
+  title: "自由活动", kind: "free-time", source: "manual",
+}]);
+const plannedOverFreeTime = generateWeeklyLifePlan(fullWeekFreeTime, "character", "c-week", "小满", weekStart, { id: "home", name: "家" }, "大学生 学生", false);
+assert.ok(plannedOverFreeTime.schedules.some(slot => slot.id !== "full-week-free" && slot.kind !== "free-time" && new Date(slot.startAt).getHours() === 9), "weekly planning should generate real activities over a week previously filled only with free-time");
+assert.ok(!plannedOverFreeTime.schedules.some(slot => slot.id === "full-week-free"), "old full-week free-time placeholder should be replaced");
+
+// Character-initiated AI changes can occupy free-time without being blocked as a conflict.
+const autonomyOverFree = applyCharacterLifeScheduleChange(makeState([{
+  id: "character-free", ownerType: "character", ownerId: "c-autonomy",
+  startAt: "2026-10-15T10:00:00.000Z", endAt: "2026-10-15T12:00:00.000Z",
+  title: "自由活动", kind: "free-time", source: "manual",
+}]), "c-autonomy", {
+  startAt: "2026-10-15T10:30:00.000Z", endAt: "2026-10-15T11:30:00.000Z",
+  title: "去咖啡店学习",
+}, new Date("2026-10-15T09:00:00.000Z"));
+assert.equal(autonomyOverFree.error, undefined, "character AI changes must not treat free-time as a blocking conflict");
+assert.ok(autonomyOverFree.state.schedules.some(slot => slot.title === "去咖啡店学习"), "character AI activity should be inserted over free-time");
 
 console.log("Life schedule regression tests passed.");
