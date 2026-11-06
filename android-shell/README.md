@@ -1,172 +1,132 @@
-# Float 小手机 · 安卓壳（FloatShell）
+# Android Shell（FloatShell）
 
-一个极薄的安卓 App 壳：全屏 WebView 直接加载你自己的线上站点，外加一个**不依赖 Google 服务**的
-离线推送长连接。目标用户：安卓机上收不到 Web Push 的用户
-（国行机无 GMS、或所在网络到不了 Google 推送服务器）。
+Android Shell 是一个原生 Android 应用外壳：使用 WebView 加载用户配置的线上 Float Phone 站点，并通过原生代码提供网页浏览器环境本身不具备或受限的设备能力。
 
-## 它解决什么
+> 本文根据当前 `android-shell` 源码、Gradle 配置和仓库构建工作流整理。源码中存在某个 Service、Receiver 或 Bridge，只能证明实现入口存在；实际可用性仍取决于 APK 版本、网页来源、权限、Android API、设备硬件、网络和厂商后台策略。
 
-| 能力 | 网页版（安卓 Chrome） | 安卓壳 |
-| --- | --- | --- |
-| 页面功能 | 网页端功能 | 加载同一站点；原生桥接能力另受 APK 版本、权限与 WebView 条件影响 |
-| 离线推送 | 浏览器 Web Push，受浏览器与系统策略影响 | 可通过自建 Supabase Realtime 长连接接收；需部署个人云/推送链路并保持设备后台服务可运行 |
-| 网页更新 | 自动 | ✅ 同样自动（壳只是浏览器，部署即生效） |
+## 1. 网页与 APK 的更新边界
 
-推送链路：`push-generate` 边缘函数生成完离线消息后，除了发 Web Push，
-还会向 Supabase Realtime 的个人频道 `shellpush:<userId>` 广播一份；
-壳内前台服务尝试保持 WebSocket 长连接订阅该频道，收到后交由系统通知通道展示。实际送达还取决于个人云部署、订阅注册、网络、通知权限及厂商后台策略。
-设置页的「测试」按钮走同一条链路，可直接验证。
+- 网页业务逻辑通常随线上站点部署更新，APK 无需因此自动重打。
+- Kotlin、Manifest、原生桥、原生资源、通知/服务实现等变化需要重新构建 APK。
+- Android WebView 的本地数据与手机 Chrome/其他浏览器隔离；卸载或清除 App 数据可能删除本地数据。
+- Android Shell 1.0.28 起关闭系统自动备份（以 Manifest/Gradle 当前源码为准）；迁移请使用应用内显式导出/导入。
 
-## 当前版本
+## 2. 当前源码版本
 
-当前原生壳版本：**1.0.29（versionCode 28）**。通知栏回复的原生持久队列（peek/ack）从 1.0.26（versionCode 25）起提供；顶层 nonce 门控原生桥从 1.0.29 起提供。建议新用户直接构建当前版本。网页端更新通常不要求重打 APK，只有 Kotlin、Manifest、原生桥、权限或资源变化才需要重新构建。
+当前 `android-shell/app/build.gradle`：
 
-## 一键构建（GitHub Actions）
+| 配置 | 值 |
+|---|---:|
+| versionName | 1.0.29 |
+| versionCode | 28 |
+| minSdk | 26 |
+| targetSdk | 34 |
+| compileSdk | 36 |
 
-仓库已带工作流 `.github/workflows/android-shell.yml`：
+请以目标分支的 Gradle 配置为准；本文版本号不是已发布 APK 的实时查询结果。
 
-1. 在仓库 **Settings → Secrets and variables → Actions → Variables** 新建
-   `SHELL_SITE_URL`，值为你的 HTTPS 站点地址。手动运行工作流时也可以临时填写
-   `site_url`，它会覆盖仓库变量。
-2. GitHub 仓库页 → **Actions** → **Build Android Shell APK** → **Run workflow**。
-   （改动 `android-shell/**` 并推到 main 也会自动触发。）
-3. 跑完后在该次运行的 **Artifacts** 里下载：
-   - `float-shell-debug` —— debug 签名，**下载即可直接安装**，日常自用选这个；
-   - `float-shell-release-signed` —— 仅在配置完整正式签名密钥时生成并上传，可用于长期分发和覆盖更新。未配置密钥时不会产出未签名 release Artifact。
+## 3. GitHub Actions 构建
 
-### 正式签名（可选，想长期分发再做）
+工作流：`.github/workflows/android-shell.yml`（Build Android Shell APK）。
 
-本地生成一个密钥库（一次性）：
+### 配置站点地址
 
-```bash
-keytool -genkeypair -v -keystore shell.keystore -alias floatshell \
-  -keyalg RSA -keysize 2048 -validity 10000
-base64 -w0 shell.keystore   # 得到一长串 base64
-```
+在 GitHub 仓库 Settings → Secrets and variables → Actions → Variables 中设置：
 
-在仓库 **Settings → Secrets and variables → Actions** 添加四个 Secret：
+- `SHELL_SITE_URL`：APK 启动时加载的 HTTPS 站点地址。
 
-| Secret | 内容 |
-| --- | --- |
-| `SHELL_KEYSTORE_BASE64` | 上面 base64 输出 |
-| `SHELL_KEYSTORE_PASSWORD` | 密钥库密码 |
-| `SHELL_KEY_ALIAS` | `floatshell`（或你起的别名） |
+手动运行工作流时，可在 `site_url` 输入项临时覆盖该变量。站点应先完成网页部署并可正常访问。
+
+### 构建产物
+
+1. 打开 Actions → Build Android Shell APK。
+2. 点击 Run workflow，按需填写站点地址。
+3. 等待构建完成，在对应运行记录的 Artifacts 下载。
+
+工作流使用 Java 17、Gradle 8.11.1，并先运行 Android Manifest/版本一致性检查。
+
+- `float-shell-debug`：每次工作流构建并验证签名后上传，可用于开发测试。
+- `float-shell-release-signed`：只有配置完整的正式签名 Secrets 才会构建和上传。没有密钥时不会上传未签名 Release 包。
+
+### 正式签名 Secrets
+
+| Secret | 含义 |
+|---|---|
+| `SHELL_KEYSTORE_BASE64` | keystore 文件的 Base64 内容 |
+| `SHELL_KEYSTORE_PASSWORD` | keystore 密码 |
+| `SHELL_KEY_ALIAS` | 密钥别名 |
 | `SHELL_KEY_PASSWORD` | 密钥密码 |
 
-之后每次构建的 release 包即为已签名版。
+设置了 `SHELL_KEYSTORE_BASE64` 后，其他三项必须同时存在，否则工作流会明确失败。签名密钥应离线备份，不能提交到仓库。
 
-**两个包用的是同一把钥匙**（有 keystore 时 debug 也走它，见 `app/build.gradle`），
-所以 debug / release 可以互相覆盖安装，不会因为签名不同而丢数据。
+Android 覆盖安装要求签名证书匹配。不要通过卸载旧版来解决签名冲突，除非已经确认数据备份可恢复。debug 与 release 是否能互相覆盖，取决于实际构建使用的证书；请用 `apksigner verify --print-certs` 比较证书，不要依赖文件名推断。
 
-怎么确认自己那次构建真的签上了：
+## 4. 推送链路说明
 
-1. 看 Actions 运行日志里有没有 `Decode keystore (optional)` 这一步，有 = Secrets 配上了；
-2. 下载 APK 后在本地验一次签名：
-   ```bash
-   apksigner verify --print-certs app-release.apk
-   ```
-   输出里的证书指纹应与你 keytool 生成的那把完全一致。
-3. 只要配置了 `SHELL_KEYSTORE_BASE64`，其余三个 Secret 就必须同时存在；缺少任意一项，工作流会明确失败，而不是悄悄产出不可安装的 release 包。没有配置 keystore 时只发布可安装的 debug APK。
+当前 Android Shell 包含原生前台推送服务。源码链路大致为：
 
-## 通知栏回复可靠性版本要求
+1. Shell 在 WebView/站点会话上下文中取得用户相关配置；
+2. 原生服务连接 Supabase Realtime，并订阅用户个人频道 `shellpush:<userId>`；
+3. 服务端 `push-generate` 生成消息后，按当前部署实现向对应频道广播；
+4. 原生服务收到事件后交由 Android 通知通道展示。
 
-从 **1.0.26（versionCode 25）** 起，原生通知回复队列采用 `peek → 网页持久化 → ack`：WebView 中断时，尚未成功写入本机数据的回复不会被原生提前清除。旧 APK 仍由网页端兼容 `consumePendingReplies`，但不具备这项原生确认保障；如需可靠通知回复，请升级到 1.0.26 或更新版本。
+该链路不是“安装 APK 即可离线推送”。至少需要：
+- 个人 Supabase 项目部署了匹配版本的推送 SQL/Schema；
+- `push-generate` Edge Function 已部署且 Secrets 正确；
+- 设备已建立有效订阅/注册；
+- 网络、通知权限和系统后台策略允许服务运行。
 
-从 **1.0.28（versionCode 27）** 起，Release 构建关闭 WebView 远程调试，Android 系统自动备份关闭，数据迁移请使用应用内显式导出。当前最新壳版本为 **1.0.29（versionCode 28）**，原生桥改为顶层 origin + nonce 门控，隔离第三方 iframe。
+设置页的推送测试可用于检查当时的链路，但一次成功不保证长期后台存活。强制停止应用与普通退后台、清理最近任务是不同测试条件。厂商系统可能终止后台服务或限制网络。
 
-## 安装与首次设置
+### 后台连接通知
 
-1. 把 APK 传到手机（微信文件传输助手 / 网盘 / 数据线均可），点开安装，
-   系统提示「未知来源」时允许本次安装。
-2. 打开 App → 正常登录账号。
-3. 允许**通知权限**（首次启动会弹）。
-4. 保活（收推送的关键，尤其国产 ROM）：
-   - 系统设置里把「小手机」加入**电池优化白名单 / 无限制后台**；
-   - 允许**自启动**（小米/华为/OPPO/vivo 在各自的手机管家里）;
-   - 最近任务里把它**锁定**（下拉卡片 → 锁），避免一键清理杀掉。
-5. 通知栏会有一条「小手机 · 后台连接」的常驻小通知——这是长连接保活的
-   代价。不想看到可以长按它 → 把「后台连接」这个通知渠道关掉显示，
-   **不要关「角色消息」渠道**。
+前台服务可能显示常驻的后台连接通知，这是 Android 前台服务的系统行为。用户可以在系统通知设置中调整对应通知渠道；不要在不理解影响的情况下关闭角色消息等业务通知渠道。
 
-设置 → 离线推送里点「测试」可检查当前设备与部署链路。通知是否送达仍取决于个人云部署、订阅状态、网络、系统权限及厂商后台策略；单次测试成功不能保证长期后台存活，强制停止应用也不等同于普通退后台。
+## 5. 原生能力范围
 
-## 数据存放与迁移
+当前源码包含的模块入口包括：
 
-壳内网页数据（聊天记录、角色等）存在 App 自己的 WebView 沙箱里，
-和手机浏览器**不互通**。从浏览器搬家：
+- WebView：站内导航、外链、文件选择、下载和返回键等处理；
+- 推送：前台连接服务、开机接收器及通知展示；
+- 通知回复：原生回复接收队列和网页侧消费/持久化桥；
+- 通话：来电 Activity、通话控制/浮窗服务及通知操作接收器；
+- 桌面小组件：Provider、Renderer 和实例配置 Activity；
+- 屏幕捕获：截图浮层服务与网页桥接；
+- 设备感知/动作：位置、健康、日历、使用情况、设备动作等桥接入口；
+- 现实桥：电源事件接收器，以及用户启用时使用的环境光监测服务；
+- 运行诊断：启动恢复、WebView 渲染进程退出处理、网页加载错误和诊断摘要。
 
-- 浏览器里 设置 → 数据管理 → **导出备份**，壳里同一入口**导入**；
-- 或两边都登录同一账号，用**云端备份**过渡。
+以上是代码模块范围，不是兼容性认证清单。部分功能依赖系统版本、设备硬件、特殊访问权限或网页端对应开关；请按目标设备逐项实测。
 
-卸载 App 会清掉壳内数据，卸载前记得先导出或云备份。
+## 6. 安装与首次检查
 
-## 更新模型
+1. 下载工作流 Artifact 中的 APK 并安装。
+2. 首次启动确认 WebView 能访问 `SHELL_SITE_URL` 对应站点。
+3. 登录并验证基础聊天页面。
+4. 按需授予通知、悬浮窗及相关特殊访问权限。
+5. 若要测试推送，先确认个人云端部署，再从应用设置执行推送测试。
+6. 分别测试前台、后台、锁屏、普通退后台和重启后的行为；不要把强制停止当成普通后台状态。
 
-- **网页功能更新**：零成本。壳加载的是线上站点，Netlify 一部署，壳里即刻生效。
-- **APK 更新**：只有改壳本身（推送逻辑、原生能力）才需要重新构建安装，预期很少。
+设备适配、备份和验收建议见 [Fork 与 Android 设备验收指南](../DEVICE_SETUP_GUIDE.md)。
 
-## 实现速览
+## 7. 诊断与反馈
 
-```
+遇到闪退、白屏或功能异常，先看 [DIAGNOSTICS.md](./DIAGNOSTICS.md)。
+
+诊断摘要不会自动上传。公开反馈前应脱敏设备标识、站点信息和日志，绝不要提供 Cookie、Authorization 头、API Key、完整聊天记录或角色记忆。
+
+## 8. 目录入口
+
+```text
 android-shell/
 ├── app/src/main/java/app/floatphone/shell/
-│   ├── MainActivity.kt   # 全屏 WebView：站内导航/外链/文件选择/下载/返回键
-│   ├── PushService.kt    # 前台服务：借 WebView Cookie 取配置 → WS 长连接订阅 shellpush:<userId>
-│   └── BootReceiver.kt   # 开机自启
-└── ...gradle 工程
+│   ├── MainActivity.kt
+│   ├── PushService.kt
+│   ├── BootReceiver.kt
+│   └── ...原生功能模块
+├── app/src/main/AndroidManifest.xml
+├── app/build.gradle
+└── ...
 ```
 
-- 壳的 UA 追加了 ` FloatShell/<版本>`，网页可借 `window.AndroidShell`
-  或 UA 识别壳环境；桥上有 `getVersion()` / `openAppSettings()` /
-  `requestIgnoreBatteryOptimization()` 三个方法。
-- 推送服务首次连上后会向站点注册一条合成订阅（endpoint `shell:<userId>`），
-  用途是让离线消息排期的「账号已订阅」门控放行；服务端对它只做
-  Realtime 广播，不做 Web Push 投递。
-- 壳内设置页的「离线推送」开关由壳自动接管（显示为已开启且不可关），
-  Web Push 在 WebView 里本来就不可用。
-
-## 服务端前提
-
-- Supabase 项目已按 `docs/push-supabase.sql` 配好离线推送（pg_cron + 边缘函数）。
-- `supabase/functions/push-generate/index.ts` 需要是包含 shellpush 广播的最新版
-  （改动后需重新部署边缘函数）。
-- Realtime 广播用 service key 直接调 HTTP API，无需额外建表或改配置。
-
-
-## 闪退与运行诊断
-
-新版壳提供原生启动恢复界面：如果上次启动没有完成主页面加载，或记录到新的原生崩溃，会优先进入安全模式，让用户在不启动 WebView 的情况下复制诊断摘要，再选择是否重试。网页主文档加载失败和 WebView 渲染进程退出也会显示原生恢复页。
-
-详细操作、限制、ADB/Logcat 取证方式和反馈信息清单见 [DIAGNOSTICS.md](./DIAGNOSTICS.md)。诊断不会自动上传，也不要为排错直接清除应用数据。
-
-
-## 2026-10-24 更新提示
-
-本次网页端更新还包含一起看内置解析、生活系统和照片墙交互修复、通话统计内置化。它们不都属于 Android 原生壳代码：网页端变更通常随站点部署生效，只有壳本身的 Kotlin、Manifest、原生桥或资源变化才需要重新构建 APK。
-
-桌面小组件现在支持按 `profileId` 定位目标实例，但最终效果取决于 Android 启动器是否按独立实例传递参数。请按 [设备诊断文档](./DIAGNOSTICS.md) 留存问题证据，并在两次独立添加后分别更新内容进行实机验证。
-
-
-## 原生壳与跨层诊断
-
-网页端更新通常随站点部署生效；Kotlin、Manifest、原生桥、服务、资源和权限声明的变更需要重新构建 APK。遇到闪退、白屏、通知栏回复、后台主动消息或小组件问题，请先按 [Android 壳运行诊断与闪退恢复](./DIAGNOSTICS.md) 收集证据，再按 [从诊断开始的开发差异台账](../docs/从诊断开始的开发差异台账.md) 区分代码已实现和仍待验证的能力。
-
-
-## 能力验证边界
-
-本壳加载线上网页，网页部署更新与 APK 原生更新相互独立。原生桥方法存在不代表目标站点来源、WebView 版本和权限条件都满足；推送连接建立也不代表服务端生成、投递和系统展示的整条链路永久可靠。请在目标设备上按 [DIAGNOSTICS.md](./DIAGNOSTICS.md) 记录系统版本、WebView 版本、权限状态、站点地址和实际测试结果。
-
-
-## 当前原生模块范围（按源码入口）
-
-除 WebView 与推送服务外，当前 Android 源码还包含以下原生模块：
-
-- 通话相关：来电 Activity、通话控制/浮窗服务及通知操作接收器。
-- 通知回复：原生回复队列与网页侧持久化确认桥。
-- 桌面小组件：Provider、Renderer 和按实例配置 Activity。
-- 屏幕捕获：截图浮层服务及网页桥接。
-- 设备感知/动作：位置、健康、日历、使用情况、设备动作和感知桥接。
-- 现实桥：电源连接/断开与低电量事件接收器；用户启用时可运行环境光监测前台服务。
-
-这些是源码中的组件与调用入口，不代表它们在所有设备上均可用。每项能力仍受 APK 版本、系统 API、硬件传感器、权限授权、后台限制和网页侧开关影响。设备兼容设置页检测到桥方法，只能证明接口存在，不能代替真实动作测试。
-
+实际文件和类名以当前分支为准。网页与原生之间的桥接方法应同时核对网页调用端和 Kotlin 接收端，不能只看其中一侧。

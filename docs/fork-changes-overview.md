@@ -68,7 +68,7 @@ Manifest 中注册了环境光监测前台服务和电源事件接收器；设�
 - `npm run test:life`
 - `npm run test:photo-wall`
 - `npm run test:character-id`
-- `npm run test:widget-output)
+- `npm run test:widget-output`
 
 其他检查命令见根目录 `package.json`。测试脚本存在不等于已执行；执行成功也只覆盖脚本明确检查的范围。
 
