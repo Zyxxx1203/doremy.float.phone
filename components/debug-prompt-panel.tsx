@@ -625,16 +625,27 @@ export function DebugPromptPanel() {
                         actor?.actualLocationName ? "角色实际地点：" + actor.actualLocationName : "",
                         schedule ? "最近日程：" + schedule.title + "；" + schedule.startAt + "–" + schedule.endAt + "；地点：" + (schedule.plannedLocationName || "未确定") : "当前没有可用的近期日程。",
                     ].filter(Boolean).join("\n");
+                const sessionContact = loadChatContacts().find(item => item.characterId === character.id);
+                const liveSession = loadChatSessions().find(item => item.contactId === sessionContact?.id && !item.isGroup);
+                const session = liveSession ?? createPromptPreviewSession(character.id, "life-preview");
                 const prompt = [
-                    state.settings.keepDialogueConcise ? "保持自然简短：一句对白，必要时附一个动作。" : "可以适度展开，但不要写成长篇故事。",
+                    state.settings.keepDialogueConcise ? "保持简短：一句对白，必要时附一个动作。" : "允许适度展开，但保持实时互动感。",
                     lifePreviewMode === "autonomy"
                         ? "这是生活系统的自主现场回合预览。请以角色身份结合当前生活状态自然发起行动或交流，不要把生活现场写成普通线上聊天。"
                         : "这是生活现场互动回合预览。玩家刚刚在现场发起互动，请结合最近发生的动作、对白和当前场景状态作出回应；不要要求玩家重复已经提供的信息。",
+                    state.settings.allowCharactersToStaySilent
+                        ? "如果角色不想说话，可以整轮不输出；但没有对白时不要只发 action。"
+                        : "本轮需要对玩家的输入作出回应。",
+                    state.settings.enableAmbientDetails ? "可以用一两笔简短环境细节营造现场感，不要扩写成长篇旁白。" : "不需要环境氛围描写，直接进行实时互动。",
                     sceneContext,
+                    "玩家本轮行动：（预览占位）",
+                    "玩家本轮对白：（预览占位）",
                 ].filter(Boolean).join("\n\n");
-                const session = createPromptPreviewSession(character.id, "life-preview");
+                const history = liveSession
+                    ? loadChatMessages(session.id).filter(item => item.status !== "failed" && !item.isRetracted)
+                    : [];
                 const message = createPromptPreviewMessage(session.id, prompt, "life-preview");
-                result = await previewPromptPayload(session, [message], {
+                result = await previewPromptPayload(session, [...history, message], {
                     appId: "life",
                     appTags: ["life", "turn", lifePreviewMode, ...(state.settings.enableCharacterAutonomy ? ["tools"] : [])],
                     excludeOfflineSessionId: session.id,
