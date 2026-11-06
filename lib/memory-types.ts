@@ -57,7 +57,7 @@ export type MemoryConfig = {
         global_watch?: boolean;
     };
     /** 每个消费 APP 从所有已允许来源合并读取的短期记忆总条数上限；0=不限制。最终仍受 shortTermTokenBudget 约束。 */
-    shortTermAppLimits?: { chat?: number; group_chat?: number; life?: number; photo_wall?: number; watch?: number; global_watch?: number; phone_widget?: number; story?: number; vn?: number; adventure?: number; interview_magazine?: number; cocreate?: number; diary?: number; moments?: number; checkphone?: number; xiaohongshu?: number; game?: number; map?: number; custom_app?: number; };
+    shortTermLimitVersion?: number; // one-time migration marker for consumer-wide count semantics\n    shortTermAppLimits?: { chat?: number; group_chat?: number; life?: number; photo_wall?: number; watch?: number; global_watch?: number; phone_widget?: number; story?: number; vn?: number; adventure?: number; interview_magazine?: number; cocreate?: number; diary?: number; moments?: number; checkphone?: number; xiaohongshu?: number; game?: number; map?: number; custom_app?: number; };
     /** @deprecated 旧版按来源裁剪；保留读取兼容，不再作为注入上限。 */
     shortTermSourceLimits?: {
         chat?: number;
