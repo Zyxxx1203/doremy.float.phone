@@ -965,7 +965,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         if(cursor<dayEnd.getTime())free(cursor,dayEnd.getTime());
       }
       const latest=stateRef.current;
-      const retained=latest.schedules.filter(slot=>!(slot.ownerType==="character"&&slot.ownerId===character.id&&slot.startAt<end.toISOString()&&slot.endAt>start.toISOString()&&(slot.kind==="free-time"||slot.source==="weekly-generation")));
+      const retained=latest.schedules.filter(slot=>!(slot.ownerType==="character"&&slot.ownerId===character.id&&slot.source==="weekly-generation"&&slot.startAt<end.toISOString()&&slot.endAt>start.toISOString()));
       const lateConflict = generated.find(candidate => retained.some(existing =>
         existing.ownerType === candidate.ownerType
         && existing.ownerId === candidate.ownerId
@@ -978,7 +978,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         recordLifeDiagnostic({ source: "AI 七日日程", event: "并发日程冲突", status: "warning", detail: "生成期间出现新安排：" + lateConflict.title, meta: { characterId: character.id } });
         return false;
       }
-      commit({...latest,schedules:[...retained,...generated].sort((a,b)=>a.startAt.localeCompare(b.startAt))});
+      commit(overlayScheduleSlotsOverFreeTime({ ...latest, schedules: retained }, generated));
       setNotice("已根据"+character.name+"的角色卡、短期共同记忆和生活记录重生成 AI 日程；手动及已确认安排已保留。");
       return true;
     } catch(error) {
