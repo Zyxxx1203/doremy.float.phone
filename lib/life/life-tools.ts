@@ -8,7 +8,6 @@ import {
   resolveActorLifeNow,
   makeLifeInvitation,
 } from "./life-runtime";
-import type { VirtualLifeState } from "./life-types";
 
 export type LifeToolDefinition = {
   name: string;
