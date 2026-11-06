@@ -9,7 +9,7 @@ export const lifeActorKey = (ownerType: LifeOwnerType, ownerId: string) => `${ow
  */
 export function getActorClock(_state: VirtualLifeState, ownerType: LifeOwnerType, ownerId: string): LifeActorClock {
   const now = new Date().toISOString();
-  return { ownerType, ownerId, mode: "real-time", realAnchorAt: now, virtualAnchorAt: now, speed: 1, updatedAt: now };
+  return { ownerType, ownerId, realAnchorAt: now, updatedAt: now };
 }
 
 export function resolveActorLifeNow(_legacyClock: LifeActorClock, realNow = new Date()): Date {
