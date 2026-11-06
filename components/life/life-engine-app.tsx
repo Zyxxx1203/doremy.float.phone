@@ -1106,7 +1106,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           next = { ...next, locations: [...next.locations, location] };
         }
         const actual = next.actorStates.find(item => item.ownerType === draft.ownerType && item.ownerId === draft.ownerId);
-        const slot: LifeScheduleSlot = { id: id("quick-plan"), ownerType: draft.ownerType, ownerId: draft.ownerId, startAt: start.toISOString(), endAt: end.toISOString(), title: draft.title.trim(), plannedLocationId: location?.id ?? actual?.actualLocationId ?? undefined, plannedLocationName: location?.name ?? (draft.locationName.trim() || actual?.actualLocationName || undefined), kind: "free-time", source: "manual", updatedAt: new Date().toISOString() };
+        const slot: LifeScheduleSlot = { id: id("quick-plan"), ownerType: draft.ownerType, ownerId: draft.ownerId, startAt: start.toISOString(), endAt: end.toISOString(), title: draft.title.trim(), plannedLocationId: location?.id ?? actual?.actualLocationId ?? undefined, plannedLocationName: location?.name ?? (draft.locationName.trim() || actual?.actualLocationName || undefined), kind: /自由活动|自由时间|空闲|待安排/.test(draft.title.trim()) ? "free-time" : "special", source: "manual", updatedAt: new Date().toISOString() };
         const inserted = insertManualLifeScheduleSlot(next, slot);
         if (inserted.conflict) { invalid.push(draft.title.trim() + "（与「" + inserted.conflict.title + "」时间冲突）"); continue; }
         if (inserted.error) { invalid.push(draft.title.trim() + "（" + inserted.error + "）"); continue; }
@@ -1149,7 +1149,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const actual = next.actorStates.find(item => item.ownerType === draft.ownerType && item.ownerId === draft.ownerId);
       const slot: LifeScheduleSlot = existing
         ? { ...existing, startAt: start.toISOString(), endAt: end.toISOString(), title: draft.title.trim(), plannedLocationId: location?.id ?? (draft.locationName.trim() ? undefined : existing.plannedLocationId ?? actual?.actualLocationId ?? undefined), plannedLocationName: location?.name ?? (draft.locationName.trim() || existing.plannedLocationName || actual?.actualLocationName || undefined), updatedAt: now }
-        : { id: id("guided-plan"), ownerType: draft.ownerType, ownerId: draft.ownerId, startAt: start.toISOString(), endAt: end.toISOString(), title: draft.title.trim(), plannedLocationId: location?.id ?? actual?.actualLocationId ?? undefined, plannedLocationName: location?.name ?? (draft.locationName.trim() || actual?.actualLocationName || undefined), kind: "free-time", source: "manual", updatedAt: now };
+        : { id: id("guided-plan"), ownerType: draft.ownerType, ownerId: draft.ownerId, startAt: start.toISOString(), endAt: end.toISOString(), title: draft.title.trim(), plannedLocationId: location?.id ?? actual?.actualLocationId ?? undefined, plannedLocationName: location?.name ?? (draft.locationName.trim() || actual?.actualLocationName || undefined), kind: /自由活动|自由时间|空闲|待安排/.test(draft.title.trim()) ? "free-time" : "special", source: "manual", updatedAt: now };
       candidates.push(slot);
       timelineItems.push({ draft, action: existing ? "调整" : "新增", slot });
     }
@@ -2976,7 +2976,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const end = new Date(start.getTime() + 60 * 60_000);
     const current = actorState(actor);
     const locationName = current?.actualLocationName || state.locations.find(item => item.id === current?.actualLocationId)?.name || "家";
-    const slot: LifeScheduleSlot = { id: id("manual-plan"), ownerType: actor.ownerType, ownerId: actor.ownerId, startAt: start.toISOString(), endAt: end.toISOString(), title: "新的日程", plannedLocationName: locationName, kind: "free-time", source: "manual", updatedAt: new Date().toISOString() };
+    const slot: LifeScheduleSlot = { id: id("manual-plan"), ownerType: actor.ownerType, ownerId: actor.ownerId, startAt: start.toISOString(), endAt: end.toISOString(), title: "新的日程", plannedLocationName: locationName, kind: "special", source: "manual", updatedAt: new Date().toISOString() };
     const inserted = insertManualLifeScheduleSlot(stateRef.current, slot);
     if (inserted.conflict) {
       setNotice("无法添加日程：与「" + inserted.conflict.title + "」时间冲突。请调整时间后再试。");
