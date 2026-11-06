@@ -244,12 +244,9 @@ export function generateWeeklyLifePlan(
       && slotStart < end.getTime() && slotEnd > start.getTime();
   });
 
-  // Free-time is a visual placeholder, never occupied time. Ignore it when
-  // deciding whether a week is already planned or when carving generated slots.
-  const planningWeekSlots = weekSlots.filter(slot => slot.kind !== "free-time");
   // Fast-path a fully covered week. Partial legacy weeks continue through the
-  // normal generator, which preserves non-free-time slots and fills only the gaps.
-  const coverage = planningWeekSlots
+  // normal generator, which preserves existing slots and fills only the gaps.
+  const coverage = weekSlots
     .map(slot => ({
       start: Math.max(start.getTime(), new Date(slot.startAt).getTime()),
       end: Math.min(end.getTime(), new Date(slot.endAt).getTime()),
@@ -385,7 +382,7 @@ export function generateWeeklyLifePlan(
     add(day, 22, 0, 24, 0, "睡眠", "habit", personalHome);
   }
 
-  const occupied = planningWeekSlots
+  const occupied = weekSlots
     .map(slot => ({ start: new Date(slot.startAt).getTime(), end: new Date(slot.endAt).getTime() }))
     .filter(range => Number.isFinite(range.start) && Number.isFinite(range.end) && range.end > range.start)
     .sort((a, b) => a.start - b.start);
