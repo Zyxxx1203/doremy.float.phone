@@ -1720,6 +1720,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           "【仅本轮使用生活场景模式规则，不要写入线上聊天历史】",
           settings.keepDialogueConcise ? "保持简短：一句对白，必要时附一个动作。" : "允许适度展开，但保持实时互动感。",
           buildOnlineChatBackground(character.id),
+          buildLifeShortTermMemoryPrompt(character.id),
           sceneContext,
           "玩家行动：" + (previousPlayer.action || "无"),
           "玩家对白：" + (previousPlayer.dialogue || "无"),
