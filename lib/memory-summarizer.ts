@@ -91,12 +91,10 @@ export async function runSummarizationPipeline(
                 ? getLastCoreSummarizedTimestamp(characterId)
                 : getLastSummarizedTimestamp(characterId)
         ) ?? undefined;
-    // 记忆来源开关同样作用于长期总结：被关掉的来源不进总结素材。
-    // 进度水位线取「过滤后」最后一条的时间，因此关掉的来源不会把水位线推过头，
-    // 但已被水位线越过的内容重新打开后也不会回补——这一点在设置里已注明。
+    // 长期总结来源独立于短期提示词来源开关；关闭短期注入不应阻止重要经历进入长期记忆。
     const allEntries = filterTimelineByAllowedSources(
         loadNativeTimeline(characterId, { ...(afterTimestamp ? { afterTimestamp } : {}), memoryTarget: options?.writeLongTermMemory === false ? "core" : "long_term" }),
-        config.shortTermAllowedSources,
+        config.longTermAllowedSources ?? config.shortTermAllowedSources,
     );
 
     if (allEntries.length < 4) {
