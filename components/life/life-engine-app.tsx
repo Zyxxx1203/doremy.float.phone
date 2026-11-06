@@ -2518,7 +2518,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           "请据此决定是否接受这次邀约。",
         ].join("\n"),
       };
-      const result = await generateOfflineChatCompletion(session, [prompt], { appId: "life", appTags: lifeAppTags("invite"), includeDirectChatEntries: false });
+      const inviteHistory = loadChatMessages(session.id).filter(message => message.status !== "failed" && !message.isRetracted);
+      const result = await generateOfflineChatCompletion(session, [...inviteHistory, prompt], { appId: "life", appTags: lifeAppTags("invite"), includeDirectChatEntries: false });
       const tag = result.content.match(/<life_invitation_response\b([^>]*)\/?\s*>/i);
       const attribute = (source: string, name: string) => source.match(new RegExp(name + "\\s*=\\s*[\"']([^\"']*)[\"']", "i"))?.[1]?.trim() ?? "";
       const decision = attribute(tag?.[1] ?? "", "decision").toLowerCase();
