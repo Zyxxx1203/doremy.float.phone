@@ -1078,7 +1078,7 @@ export function MemoryBankPage({
                                     </div>
                                 </div>
                                 <div style={{ marginTop: 14, display: "grid", gap: 7 }}>
-                                    <div className="menu-desc">每个使用场景最多注入多少条短期记忆（0 = 不限制）。只影响该 APP 本次提示词，不会删除照片墙、生活或其他来源的原始记录。</div>
+                                    <div className="menu-desc">每个使用场景从所有已开启来源合并读取的短期记忆总条数（0 = 不限制）；先按上方来源开关过滤，再按时间取最近记录，最后仍受全局最大 Token 预算约束。聊天与生活系统默认不设条数上限，桌面小组件默认 50 条。只影响本次提示词，不删除原始记录。</div>
                                     {([
                                         ["chat", "私聊"], ["group_chat", "群聊"], ["life", "生活系统"],
                                         ["photo_wall", "照片墙"], ["watch", "一起看"], ["global_watch", "全局陪看"],
