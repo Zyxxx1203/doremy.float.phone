@@ -207,6 +207,7 @@ export function loadMemoryConfig(): MemoryConfig {
         if ((parsed.shortTermLimitVersion ?? 0) < 2) {
             const limits = { ...(config.shortTermAppLimits ?? {}) };
             if (limits.chat === 30) limits.chat = 0;
+            if (limits.group_chat === 24) limits.group_chat = 0;
             if (limits.life === 20) limits.life = 0;
             if (limits.phone_widget === 4) limits.phone_widget = 50;
             config.shortTermAppLimits = limits;
