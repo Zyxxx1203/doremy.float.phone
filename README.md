@@ -47,7 +47,7 @@ Float Phone 是一个以 Next.js、React、TypeScript 构建的手机式 AI 互�
 仓库使用 Next.js 15、React 19、TypeScript 和 npm。开发与 CI 统一使用 Node.js 22；建议本地也使用 Node.js 22 LTS，并通过 `npm ci` 安装锁文件依赖。
 
 ```bash
-git clone https://github.com/Zyxxx1203/doremy.float.phone.git
+git clone https://github.com/doremy1203/doremy.float.phone.git
 cd doremy.float.phone
 npm install
 cp .env.example .env.local
