@@ -203,7 +203,7 @@ export function loadMemoryConfig(): MemoryConfig {
             },
             shortTermLimitVersion: parsed.shortTermLimitVersion ?? 0,
         };
-        // Migrate only untouched legacy defaults. Explicitly customized values survive.
+        // Migrate values that exactly match the previous built-in defaults. Other custom values are preserved; a custom value identical to an old default cannot be distinguished from that default.
         if ((parsed.shortTermLimitVersion ?? 0) < 2) {
             const limits = { ...(config.shortTermAppLimits ?? {}) };
             if (limits.chat === 30) limits.chat = 0;
