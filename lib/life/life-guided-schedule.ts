@@ -167,7 +167,8 @@ export function parseGuidedScheduleResponse(
     }
     const startMs = startAt.getTime(), endMs = endAt.getTime();
     const conflict = context.existing.find(slot =>
-      slot.id !== existingScheduleId
+      slot.kind !== "free-time"
+      && slot.id !== existingScheduleId
       && !scheduledToChange.has(slot.id)
       && overlaps(startMs, endMs, new Date(slot.startAt).getTime(), new Date(slot.endAt).getTime()));
     if (conflict) {
