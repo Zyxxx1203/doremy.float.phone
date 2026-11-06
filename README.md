@@ -1,57 +1,63 @@
 # Float Phone · AI 虚拟互动手机
 
-Float Phone 是一个基于 Next.js、React 和 TypeScript 的可自部署 AI 虚拟手机项目。它把聊天、角色资料与多个扩展应用放在一个手机式界面中，可在浏览器运行，也可通过可选 Android WebView 壳访问同一站点。
+这是一个以 Next.js、React 和 TypeScript 构建的手机式 AI 互动应用。项目保留上游的角色聊天与虚拟手机框架，并在此基础上增加生活系统、照片墙、一起看、媒体档案、现实桥和 Android Shell 等模块。
 
-本仓库是基于上游项目继续开发的个人 fork。**README 描述的是代码中存在的入口和设计，不代表所有功能已在所有设备、平台或云环境完成端到端验收。** 当前发布状态、自动化结果与待验证项目见[开发进度与验证清单](./docs/开发进度与验证清单.md)和[公开分享发布门禁](./docs/公开分享发布门禁.md)。
+**本文只描述当前仓库中能定位到的代码入口与配置，不把“代码存在”写成“所有环境均已可用”。** 具体功能是否能运行，还取决于模型服务、个人云部署、Android APK 版本、系统授权和设备环境。
 
-## 项目现状
+## 仓库关系与对照范围
 
-- 默认自部署模式以浏览器本地存储为基础；具体功能可能使用 IndexedDB / 本地 KV、浏览器存储或 Android WebView 沙箱。
-- LLM、生图、语音、视频理解等能力需要用户自行配置相应服务商与密钥。启用后，请求会发送到所配置的服务。
-- Supabase 不是所有功能的统一必需项。账号/社区等站点功能、个人云备份、离线推送及云端生活日程等能力有各自的部署条件；只部署网页并不等于这些云端能力已启用。
-- Android 壳提供 WebView 与部分原生能力。原生通知、后台连接、悬浮窗、桌面小组件、权限感知等功能受 APK 版本、系统授权、厂商后台策略和个人云部署影响。
-- 本仓库目前应视为**可自部署的开发/公开测试项目**，不是已经完成全平台验收的稳定产品。
+本仓库：`Zyxxx1203/doremy.float.phone`
 
-## 功能概览
+本次用于核对代码差异的仓库：`doremy1203/doremy.float.phone`。两边的 `main` 分支不是同一个提交。本次对照时，源仓库快照为 `8f4f7f1337f17513f401af9b0711c617cfee54f7`，本仓库快照为 `d9d445975a7098ca7d2847dc896e92ca95466f50`。按 Git tree 中的文件路径和 blob SHA 比较，目标仓库有 130 个源仓库快照中不存在的文件路径、2 个源仓库中存在而目标仓库中不存在的路径，以及 194 个同路径但内容不同的文件。这个统计是文件快照比较，不等于 130 项独立功能，也不代表所有差异都已逐行审计。
 
-以下按当前代码入口归纳，能力范围和限制以各功能设置页、对应文档及实际部署为准。
+GitHub 仓库元数据当前显示，本仓库的 fork parent 是 `jianchu-in/momo.float.phone`；`doremy1203/doremy.float.phone` 是本次指定的对照仓库，不在 README 中将其误写为 GitHub 记录的直接 parent。上游项目来源与致谢见文末。
 
-| 模块 | 当前代码覆盖的方向 | 使用边界 |
+## 当前代码包含的主要模块
+
+| 模块 | 当前代码中可定位的实现 | 使用边界 |
 |---|---|---|
-| 聊天与角色 | 私聊、群聊、角色卡、世界书、预设、记忆与提示词组装 | 模型能力、上下文长度和记忆效果取决于用户配置；不同应用是否注入短期上下文由对应配置与组装逻辑决定 |
-| 生活 | 七日日程、地点与场景、邀约、共同经历、生活观察、角色自主行为、诊断记录 | 本地界面/状态与个人云调度并非同一链路；云端后台调度需部署个人 Supabase Schema、Edge Function 和 Cron，后台推送还受订阅与设备限制 |
-| 照片墙 | 照片素材、画布摆放、模板、涂鸦、照片背面文字与导出 | 大图、复杂手势、不同 WebView 缩放比例和大画布导出仍需目标设备验收 |
-| 一起看 | 视频播放入口、观看记录、时间点讨论、截图/字幕等上下文输入、AI 视频理解适配 | 不保证任意平台链接均可解析或播放；登录、签名、地区、风控、DRM、网络及服务商限制均可能影响结果 |
-| 档案室及扩展应用 | 角色/世界资料管理及内置、可扩展应用入口 | 各应用的数据范围、云依赖和成熟度不同，不能据入口存在推断所有功能均已验收 |
-| Android Shell | WebView 容器、原生通知/回复、推送连接、通话浮窗、设备桥接与诊断等 | 需要匹配版本 APK、权限和服务端配置；Android 厂商可能限制后台运行 |
+| 聊天与角色 | 手机桌面、角色资料、私聊/群聊、消息、提示词组装、记忆与工具调用 | 模型效果取决于用户配置的服务商、模型、提示词和上下文 |
+| 生活系统 | `components/life/life-engine-app.tsx`；七日日程、角色/玩家活动地点、场景、邀约、共同经历、生活观察和诊断面板 | 本地界面和云端调度是不同链路；当前代码将生活主动消息生成开关硬编码为关闭，不能宣传为后台会主动发消息 |
+| 照片墙 | `components/photo-wall-app.tsx`、画布/贴纸/模板/世界坐标/导出模块 | 依赖浏览器本地媒体存储；大图、复杂手势和不同 WebView 尺寸仍需设备验证 |
+| 一起看 | `components/watch-together-app.tsx`；视频链接识别、播放入口、字幕/转写文本、时间点讨论、观看记录和视频理解调用 | 平台链接不保证都能解析或播放；登录态、风控、DRM、地区和服务商限制可能导致失败 |
+| 视频解析与转写工具 | `lib/watch-resolver.ts`、`app/api/watch-resolver/*`，以及 `tools/video-resolver`、`tools/video-transcriber`、Cloudflare Worker | 站内解析、可选本地服务、转写和 AI 视频理解是不同环节，不是通用下载器 |
+| 媒体档案室 | `components/archive-room-app.tsx`；媒体缓存浏览、引用来源检查、重复媒体扫描和删除 | 清理前应检查引用关系；本地缓存不等于云端备份 |
+| 现实桥与设备联动 | `components/reality-bridge-app.tsx`、`lib/reality-bridge/*`、设备动作/感知桥接 | 规则、快捷指令和设备 API 需要对应平台、权限及外部服务；不能仅凭界面存在推断所有动作均已验证 |
+| Android Shell | WebView、原生通知/回复、通话浮窗、桌面小组件、截屏、设备感知/动作桥、诊断与恢复 | 需要构建并安装匹配版本 APK；特殊权限、后台策略和厂商 ROM 会影响可用性 |
 
-### 一起看：解析与理解是不同能力
+### 生活系统当前特别说明
 
-项目包含网页侧解析接口，也提供可选的本地视频解析/转写工具。它们不是通用的视频下载器，也不代表所有平台都可用。抖音、快手、B 站、小红书及普通直链的处理路径不同；具体支持范围请查看：
+生活系统包含七日日程和云端日程运行态计算代码：客户端可同步加密日程快照，`supabase/functions/life-scheduler/index.ts` 提供服务端日程评估逻辑，部署后由 Cron 驱动。
 
-- [本地视频解析服务](./tools/video-resolver/README.md)
-- [本地视频转写服务](./tools/video-transcriber/README.md)
-- [Cloudflare 转写 Worker](./tools/cloudflare-video-transcriber/README.md)
+但当前代码中：
+- `components/life/life-engine-app.tsx` 的 `LIFE_PROACTIVE_MESSAGES_ENABLED` 为 `false`；
+- `lib/life/life-proactive-scheduler.ts` 的主动消息开关也为 `false`；
+- `lib/life/life-schedule-cloud.ts` 同步的 `proactiveEnabled` 为 `false`。
 
-请遵守视频平台条款、版权和所在地法律。对于无法访问、需要登录或受保护的内容，使用者应通过平台允许的方式提供本地文件、字幕或截图。
+因此，当前不能把角色后台主动发起生活消息描述为已启用功能。日程界面、场景交互和云端日程评估代码仍然存在；用户是否实际获得云端日程运行态更新，取决于其个人 Supabase Schema、Edge Function、Cron 和密钥是否部署正确。
 
-## 文档导航
+### Android 原生能力当前版本
 
-| 文档 | 内容 |
-|---|---|
-| [DEVICE_SETUP_GUIDE.md](./DEVICE_SETUP_GUIDE.md) | Fork、自行构建 APK、安装与设备验收 |
-| [android-shell/README.md](./android-shell/README.md) | Android 壳构建、签名、版本与原生能力说明 |
-| [android-shell/DIAGNOSTICS.md](./android-shell/DIAGNOSTICS.md) | Android / WebView 诊断 |
-| [docs/隐私与权限说明.md](./docs/隐私与权限说明.md) | 本地数据、外部服务数据流与 Android 权限 |
-| [docs/cloud-life-scheduler.md](./docs/cloud-life-scheduler.md) | 个人云生活日程调度架构与部署边界 |
-| [docs/开发进度与验证清单.md](./docs/开发进度与验证清单.md) | 当前代码、自动化检查和待验收事项 |
-| [docs/公开分享发布门禁.md](./docs/公开分享发布门禁.md) | 构建、安全、云端部署与设备验收门禁 |
-| [docs/fork-changes-overview.md](./docs/fork-changes-overview.md) | 相对上游的改动记录 |
-| [docs/从诊断开始的开发差异台账.md](./docs/从诊断开始的开发差异台账.md) | 历史开发时间线与文件差异审计；其中带日期的统计是对应审计时点快照 |
+当前源码配置：`versionName 1.0.29`、`versionCode 28`、`minSdk 26`、`targetSdk 34`、`compileSdk 36`。以 `android-shell/app/build.gradle` 为准。
+
+代码包含原生推送服务、通话相关服务、桌面小组件、截屏桥、设备感知/动作桥及现实桥接收器等实现。它们仍需要对应权限、站点配置和设备环境；安装成功不等于全部能力已经在每种机型上验收。
+
+## 与对照仓库相比的主要增量方向
+
+根据上述两个 Git tree 快照及本仓库新增/变更文件，当前差异集中在：
+
+1. **生活系统模块化扩展**：新增生活系统 UI、运行时、存储、场景/日程/自主行为逻辑、诊断面板、云端日程 Edge Function 与 API 路由。
+2. **照片墙与媒体管理**：新增照片墙应用、无限画布相关模块、贴纸/涂鸦/模板/导出，以及媒体档案室。
+3. **一起看与视频处理**：新增站内解析 API、缓存播放逻辑、短链解析、视频字幕/关键帧/理解模块，以及可选本地解析和转写工具。
+4. **现实桥与设备适配**：新增设备兼容设置和诊断、原生现实桥接收器、环境光监测服务及部分快捷指令/设备联动能力。
+5. **聊天与数据链路调整**：修改聊天、提示词、记忆、角色 ID 解析、推送、备份、桌面小组件和设置等共享模块。
+6. **工程检查和文档**：增加生活系统、照片墙、角色 ID、组件输出等测试脚本，以及多条 GitHub Actions 验证工作流和开发/诊断文档。
+
+以上是按文件差异归纳的方向，不等于每一项功能都已通过真实设备或第三方服务验收。详细路径和状态见[相对对照仓库的改动台账](./docs/fork-changes-overview.md)。
 
 ## 本地运行
 
-要求 Node.js 22 或更高版本，建议使用 npm。
+建议使用与当前 Next.js 15 项目兼容的 Node.js 版本和 npm。
 
 ```bash
 git clone https://github.com/Zyxxx1203/doremy.float.phone.git
@@ -61,65 +67,48 @@ cp .env.example .env.local
 npm run dev
 ```
 
-默认开发端口为 `3001`，可通过 `PORT` 修改。浏览器访问 `http://localhost:3001`。
-
-首次运行后，在应用设置中配置你自己的模型服务与 API Key。不要把真实密钥写入仓库或任何 `NEXT_PUBLIC_*` 变量。
-
-## 部署说明
-
-### 网页部署
-
-仓库包含 Netlify 配置（`netlify.toml`），也使用 Next.js 项目结构。实际部署时应以当前平台识别出的构建命令、发布目录和环境变量为准。部署到个人站点时，至少检查：
-
-1. 使用本仓库的 `main` 分支；不要假定存在可供普通用户部署的 `test` 分支。
-2. 按部署模式设置 `NEXT_PUBLIC_SELF_HOSTED_MODE`。
-3. 仅为确实启用的功能配置 Supabase、模型服务或其他第三方服务。
-4. 云函数、SQL Schema、Cron 与网页代码分别部署和验证；网页发布不会自动更新用户自己的 Supabase 项目。
-
-### 单机与云端能力
-
-单机模式可运行基础网页和本地数据功能。以下能力需要额外部署或配置，不能仅凭网页部署成功判断可用：
-
-- 账号、社区、多人协作等站点级 Supabase 功能；
-- 个人云备份、推送及生活系统云端调度；
-- 用户选择的 LLM、生图、语音、视频理解或邮件服务；
-- Android 原生通知、后台服务与设备权限。
-
-个人云与站点运营 Supabase 是不同的部署边界。请按应用内部署引导和对应文档分别配置。
-
-## Android 壳
-
-Android 壳位于 [android-shell](./android-shell/README.md)，通过 WebView 加载你自己的线上站点。当前源码版本为 **1.0.29（versionCode 28）**，最低 Android API 为 26，compileSdk 为 36，targetSdk 为 34。版本号以当前 `android-shell/app/build.gradle` 为准。
-
-网页代码更新通常只需重新部署站点；修改 Kotlin、Manifest、原生桥、权限或资源后，才需要重新构建 APK。APK 签名不一致可能导致无法覆盖安装；长期使用应保管自己的签名密钥。debug 包用于测试，不应将其等同于正式分发包。
-
-Android 原生能力是否可用，取决于设备、系统版本、权限、后台策略、站点来源和云端部署。请勿把“APK 安装成功”当作“通知、后台调度、浮窗和小组件均正常”。
+启动后以终端输出的本地地址为准。首次使用时，在应用设置中配置所需模型服务。不要将真实 API Key、service role key、邮件密钥或签名密钥写入客户端变量或提交到仓库。
 
 ## 常用命令
 
 ```bash
-npm run dev             # 本地开发
-npm run build           # 生产构建（含部署产物生成）
-npm run start           # 运行生产构建
-npm run lint            # ESLint
-npm run test:life       # 生活系统回归测试
-npm run test:photo-wall # 照片墙相关回归测试
+npm run dev
+npm run build
+npm run start
+npm run lint
+npm run test:life
+npm run test:photo-wall
 npm run test:character-id
 npm run test:widget-output
-npm run check:sdk       # 自定义 App SDK 一致性检查
-npm run check:weixin    # 微信助手提示词/产物一致性检查
-npm run check:push      # 个人云推送部署产物一致性检查
+npm run check:sdk
+npm run check:weixin
+npm run check:push
 ```
 
-自动化测试通过只说明对应测试覆盖范围内的检查通过，不代表第三方服务部署、真实推送或所有 Android 机型端到端通过。最新工作流结果见[开发进度与验证清单](./docs/开发进度与验证清单.md)。
+`npm run build` 会先生成微信助手与个人推送相关部署产物，再执行 Next.js 构建。测试脚本只覆盖各自编写的测试范围；执行成功不代表第三方服务、云端部署或所有 Android 设备端到端通过。
+
+## 部署边界
+
+- **网页**：仓库包含 Netlify 配置；部署参数应以当前 Netlify 项目设置和 `netlify.toml` 为准。
+- **模型服务**：聊天、生图、语音和视频理解按功能使用用户配置的服务商；未配置时相关能力不可用。
+- **Supabase**：账号/在线服务、个人备份/推送、生活日程等有各自部署边界。网页发布不会自动升级用户独立的个人 Supabase 项目。
+- **Android**：网页代码更新通常随线上站点部署生效；Kotlin、Manifest、原生桥、权限或资源变更需要重新构建 APK。
+- **本地数据**：浏览器与 Android WebView 使用不同存储环境。卸载、清除站点数据或 App 数据可能造成仅本地保存的数据丢失，迁移前请使用应用内备份并验证恢复。
+
+## 文档导航
+
+- [设备 Fork 与 APK 使用指南](./DEVICE_SETUP_GUIDE.md)
+- [Android Shell 构建说明](./android-shell/README.md)
+- [Android 运行诊断](./android-shell/DIAGNOSTICS.md)
+- [隐私、数据流与权限说明](./docs/隐私与权限说明.md)
+- [云端生活日程架构](./docs/cloud-life-scheduler.md)
+- [开发进度与验证清单](./docs/开发进度与验证清单.md)
+- [公开分享发布门禁](./docs/公开分享发布门禁.md)
+- [相对对照仓库的改动台账](./docs/fork-changes-overview.md)
+- [角色 ID 契约](./docs/character-id-contract.md)
 
 ## 来源与许可
 
-本仓库基于以下上游项目继续开发：
+本仓库延续了虚拟手机项目的上游成果。GitHub 当前记录的 fork parent 为 [jianchu-in/momo.float.phone](https://github.com/jianchu-in/momo.float.phone)；原始项目为 [xiaolongbao0709/ai-virtual-phone](https://github.com/xiaolongbao0709/ai-virtual-phone)。本次另以 [doremy1203/doremy.float.phone](https://github.com/doremy1203/doremy.float.phone) 作为代码对照仓库。感谢原作者和后续贡献者；具体代码归属以提交历史和文件内容为准。
 
-- 原始项目：[xiaolongbao0709/ai-virtual-phone](https://github.com/xiaolongbao0709/ai-virtual-phone)
-- 直接上游：[jianchu-in/momo.float.phone](https://github.com/jianchu-in/momo.float.phone)
-
-感谢上游作者及贡献者。此 fork 的具体改动以当前代码、提交记录和[改动总台账](./docs/fork-changes-overview.md)为准；历史文档中的功能归属与统计应结合其审计日期理解。
-
-项目许可证见 [LICENSE](./LICENSE)。第三方素材与依赖的额外说明见 [NOTICE](./NOTICE)。
+项目许可证见 [LICENSE](./LICENSE)，第三方素材与依赖说明见 [NOTICE](./NOTICE)。
