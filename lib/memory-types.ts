@@ -29,6 +29,13 @@ export type MemoryConfig = {
     summarizationPrompt: string;            // user-editable prompt template for memory summarization
     coreMemoryPrompt: string;               // user-editable prompt template for core-memory extraction
     vnSummaryPrompt: string;                // user-editable prompt for VN chapter summarization
+    /** 独立控制哪些来源参与长期记忆总结；不影响短期提示词注入。 */
+    longTermAllowedSources?: {
+        chat?: boolean; group_chat?: boolean; moments?: boolean; checkphone?: boolean; diary?: boolean;
+        xiaohongshu?: boolean; interview_magazine?: boolean; cocreate?: boolean; game?: boolean;
+        story?: boolean; vn?: boolean; adventure?: boolean; custom_app?: boolean; photo_wall?: boolean;
+        life?: boolean; phone_widget?: boolean; watch?: boolean; global_watch?: boolean;
+    };
     shortTermAllowedSources?: {
         chat?: boolean;
         group_chat?: boolean;
@@ -144,6 +151,12 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
     summarizationPrompt: DEFAULT_SUMMARIZATION_PROMPT,
     coreMemoryPrompt: DEFAULT_CORE_MEMORY_PROMPT,
     vnSummaryPrompt: "",
+    longTermAllowedSources: {
+        chat: true, group_chat: true, moments: true, checkphone: true, diary: true,
+        xiaohongshu: true, interview_magazine: true, cocreate: true, game: true,
+        story: true, vn: true, adventure: true, custom_app: true, photo_wall: true,
+        life: true, phone_widget: true, watch: true, global_watch: true,
+    },
     shortTermAllowedSources: {
         chat: true,
         group_chat: true,
