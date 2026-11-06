@@ -10,8 +10,7 @@ const compiled = ts.transpileModule(source, {
 const moduleBox = { exports: {} };
 const sandbox = { module: moduleBox, exports: moduleBox.exports, Date, Math, console };
 vm.runInNewContext(compiled, sandbox, { filename: "life-runtime.cjs" });
-const { advanceActorTimeline, applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getCurrentActorSchedule, insertManualLifeScheduleSlot, overlayScheduleSlotsOverFreeTime, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, syncScheduleLocationsToLibrary, synchronizeCharacterHomeSchedule, reserveCharacterLocationStay, resolveActorLocation } = moduleBox.exports;
-assert.equal(typeof advanceActorTimeline, "function", "timeline fast-forward should be exported");
+const { applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getCurrentActorSchedule, insertManualLifeScheduleSlot, overlayScheduleSlotsOverFreeTime, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, syncScheduleLocationsToLibrary, synchronizeCharacterHomeSchedule, reserveCharacterLocationStay, resolveActorLocation } = moduleBox.exports;
 assert.equal(typeof generateWeeklyLifePlan, "function", "weekly planner should be exported");
 assert.equal(typeof getCurrentActorSchedule, "function", "current schedule selector should be exported");
 assert.equal(typeof insertManualLifeScheduleSlot, "function", "manual schedule insertion should be exported");
@@ -24,10 +23,9 @@ assert.equal(typeof placeAppointmentInActorSchedule, "function", "appointment pl
 function makeState(schedules = []) {
   return {
     schedules,
-    actorClocks: [],
     actorStates: [],
     locations: [],
-    settings: { defaultClockMode: "real-time", defaultSpeed: 1 },
+    settings: {},
   };
 }
 
@@ -131,42 +129,24 @@ assertWeekHasNoGapsOrOverlaps(repairedWeek.schedules, "player", "player", weekSt
 const rerun = generateWeeklyLifePlan(partial, "player", "player", "我", weekStart, { id: "home", name: "家" }, "", false);
 assert.equal(rerun, partial, "an already generated week must remain stable");
  
-// A future manual slot must not make fast-forward skip the current virtual week.
-const advanceNow = new Date("2026-10-15T15:00:00.000Z");
-const futureOnlyState = {
-  ...makeState([{
-    id: "future-manual-slot",
-    ownerType: "player",
-    ownerId: "player",
-    startAt: "2026-10-20T10:00:00.000Z",
-    endAt: "2026-10-20T11:00:00.000Z",
-    title: "下周的手动安排",
-    kind: "free-time",
-    source: "manual",
-    updatedAt: advanceNow.toISOString(),
-  }]),
-  actorClocks: [{
-    ownerType: "player",
-    ownerId: "player",
-    mode: "simulation",
-    realAnchorAt: advanceNow.toISOString(),
-    virtualAnchorAt: advanceNow.toISOString(),
-    speed: 1,
-    updatedAt: advanceNow.toISOString(),
-  }],
-  actorStates: [],
-  events: [],
-  memories: [],
-  invitations: [],
-  scenes: [],
-  timeline: [],
-  locations: [{ id: "home", name: "家", visibility: "private" }],
-  settings: { defaultClockMode: "simulation", defaultSpeed: 1, playerDisplayName: "我", saveConfirmedEventsToMemory: true },
+// A future manual slot must not prevent generation of the current calendar week.
+const futureSlot = {
+  id: "future-manual-slot",
+  ownerType: "player",
+  ownerId: "player",
+  startAt: "2026-10-20T10:00:00.000Z",
+  endAt: "2026-10-20T11:00:00.000Z",
+  title: "下周的手动安排",
+  kind: "special",
+  source: "manual",
+  updatedAt: "2026-10-15T15:00:00.000Z",
 };
-const advancedFutureOnly = advanceActorTimeline(futureOnlyState, "player", "player", 15, "我", "", advanceNow);
+const currentWeekWithFutureSlot = generateWeeklyLifePlan(
+  makeState([futureSlot]), "player", "player", "我", weekStart, { id: "home", name: "家" }, "", false,
+);
 assert.ok(
-  advancedFutureOnly.schedules.some(slot => slot.source === "weekly-generation" && new Date(slot.startAt) < new Date("2026-10-19T00:00:00.000Z")),
-  "fast-forward should fill the current week even when a manual slot exists in a future week",
+  currentWeekWithFutureSlot.schedules.some(slot => slot.source === "weekly-generation" && new Date(slot.startAt) < new Date("2026-10-19T00:00:00.000Z")),
+  "a future manual slot must not block generation of the current calendar week",
 );
 
  
