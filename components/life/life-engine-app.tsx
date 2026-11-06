@@ -81,30 +81,6 @@ function createLifeChatSession(characterId: string, characterName: string): Chat
   return session.alias === characterName ? session : { ...session, alias: characterName };
 }
 
-/**
- * 生活/线下不再把线上 chat 全量塞进 history；但保留最近 6 条作为“背景”，
- * 让角色仍然知道自己和玩家线上聊过什么，同时不会被旧话题抢走当前场景。
- */
-function buildOnlineChatBackground(characterId: string): string {
-  const contact = loadChatContacts().find(item => item.characterId === characterId);
-  const session = loadChatSessions().find(item =>
-    !item.isGroup && (item.contactId === contact?.id || resolveSessionCharacterId(item) === characterId),
-  );
-  if (!session) return "";
-  const messages = loadChatMessages(session.id)
-    .filter(message => !message.isRetracted && (message.role === "user" || message.role === "assistant") && message.content.trim())
-    .slice(-6);
-  if (messages.length === 0) return "";
-  const lines = messages.map(message => {
-    const who = message.role === "user" ? "用户" : "角色";
-    const text = message.content.replace(/\s+/g, " ").trim().slice(0, 220);
-    return `- [来源：线上聊天] ${who}：${text}`;
-  });
-  return [
-    "【线上聊天最近背景（不是当前生活现场，仅供回忆；不要把它当成本轮对话）】",
-    ...lines,
-  ].join("\n");
-}
 const fmt = (value: Date | string) => new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(typeof value === "string" ? new Date(value) : value);
 const toLocalDateTimeInput = (value: string) => { const d = new Date(value); if (!Number.isFinite(d.getTime())) return ""; const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000); return local.toISOString().slice(0, 16); };
 const fromLocalDateTimeInput = (value: string) => { const d = new Date(value); return Number.isFinite(d.getTime()) ? d.toISOString() : ""; };
@@ -845,7 +821,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       prompt: [
         "当前地点：" + scene.locationName,
         "角色：" + character.name,
-        buildOnlineChatBackground(character.id),
+        
       ].filter(Boolean).join("\n\n"),
       appId: "life",
       appTags: lifeAppTags("autonomy"),
@@ -1718,7 +1694,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         content: [
           "【仅本轮使用生活场景模式规则，不要写入线上聊天历史】",
           settings.keepDialogueConcise ? "保持简短：一句对白，必要时附一个动作。" : "允许适度展开，但保持实时互动感。",
-          buildOnlineChatBackground(character.id),
+          
           buildLifeShortTermMemoryPrompt(character.id),
           sceneContext,
           "玩家行动：" + (previousPlayer.action || "无"),
@@ -1862,7 +1838,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const sceneContext = buildLifeScenePromptContext(stateRef.current, activeScene, character.id);
       return [
         settings.keepDialogueConcise ? "保持自然简短：一句对白，必要时附一个动作。" : "可以适度展开，但不要写成长篇故事。",
-        buildOnlineChatBackground(character.id),
+        
         buildLifeShortTermMemoryPrompt(character.id),
         sceneContext,
       ].filter(Boolean).join("\n\n");
