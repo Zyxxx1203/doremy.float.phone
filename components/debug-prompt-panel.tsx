@@ -648,7 +648,6 @@ export function DebugPromptPanel() {
                 result = await previewPromptPayload(session, [...history, message], {
                     appId: "life",
                     appTags: ["life", "turn", lifePreviewMode, ...(state.settings.enableCharacterAutonomy ? ["tools"] : [])],
-                    excludeOfflineSessionId: session.id,
                     includeDirectChatEntries: false,
                 });
             } else if (extraAppId === "photo_wall") {
