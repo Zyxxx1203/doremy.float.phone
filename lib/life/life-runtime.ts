@@ -825,22 +825,6 @@ export function settleActorTimelineToNow(
   return { ...state, events, memories, invitations, scenes, actorStates: finalActorStates, timeline, updatedAt: nowIso };
 }
 
-/** Refresh the current real-time week and settle elapsed schedule segments. */
-export function advanceActorTimeline(
-  state: VirtualLifeState,
-  ownerType: LifeOwnerType,
-  ownerId: string,
-  minutes: number,
-  ownerName = ownerId,
-  profile = "",
-  realNow = new Date(),
-): VirtualLifeState {
-  void minutes;
-  const week = mondayStartLife(realNow);
-  const next = generateWeeklyLifePlan(state, ownerType, ownerId, ownerName, week, { id: "home", name: "家" }, profile, true);
-  return settleActorTimelineToNow(next, ownerType, ownerId, realNow);
-}
-
 export function getCurrentActorSchedule(state: VirtualLifeState, ownerType: LifeOwnerType, ownerId: string, at: Date) {
   const time = at.getTime();
   return state.schedules
