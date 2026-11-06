@@ -16,5 +16,5 @@ export function buildLifeShortTermMemoryPrompt(characterId: string): string {
     })
     .filter(Boolean);
   if (events.length === 0) return "【全局短期记忆】暂无其他应用的近期事件。";
-  return "【全局短期记忆｜跨应用近期事件】\\n" + events.join("\\n");
+  return "【全局短期记忆｜跨应用近期事件】\n" + events.join("\n");
 }
