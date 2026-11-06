@@ -188,6 +188,11 @@ export function loadMemoryConfig(): MemoryConfig {
                 ...DEFAULT_MEMORY_CONFIG.shortTermAllowedSources,
                 ...(parsed.shortTermAllowedSources ?? {}),
             },
+            // 旧配置迁移：首次升级时沿用原来源选择，之后与短期来源开关独立。
+            longTermAllowedSources: {
+                ...DEFAULT_MEMORY_CONFIG.longTermAllowedSources,
+                ...(parsed.longTermAllowedSources ?? parsed.shortTermAllowedSources ?? {}),
+            },
             shortTermSourceLimits: {
                 ...DEFAULT_MEMORY_CONFIG.shortTermSourceLimits,
                 ...(parsed.shortTermSourceLimits ?? {}),

@@ -12,7 +12,7 @@ import { loadCharacters } from "@/lib/character-storage";
 import { hydrateKvDb } from "@/lib/kv-db";
 import { addChatContact, createOrGetSession, hydrateChatStorage, loadChatContacts, loadChatMessages, loadChatSessions, resolveSessionCharacterId, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { generateOfflineChatCompletion } from "@/lib/chat-engine";
-import { prepareShortTermContext } from "@/lib/short-term-assembler";
+import { buildLifeShortTermMemoryPrompt } from "@/lib/life/life-short-term-memory";
 import {
   createEmptyVirtualLifeState,
   DEFAULT_LIFE_ENGINE_SETTINGS,
@@ -1719,6 +1719,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           "【仅本轮使用生活场景模式规则，不要写入线上聊天历史】",
           settings.keepDialogueConcise ? "保持简短：一句对白，必要时附一个动作。" : "允许适度展开，但保持实时互动感。",
           buildOnlineChatBackground(character.id),
+          buildLifeShortTermMemoryPrompt(character.id),
           sceneContext,
           "玩家行动：" + (previousPlayer.action || "无"),
           "玩家对白：" + (previousPlayer.dialogue || "无"),
@@ -1862,6 +1863,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       return [
         settings.keepDialogueConcise ? "保持自然简短：一句对白，必要时附一个动作。" : "可以适度展开，但不要写成长篇故事。",
         buildOnlineChatBackground(character.id),
+        buildLifeShortTermMemoryPrompt(character.id),
         sceneContext,
       ].filter(Boolean).join("\n\n");
     };
@@ -2153,14 +2155,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     try {
       const sceneContext = buildLifeScenePromptContext(stateRef.current, activeScene, target.id);
       // 生活现场与普通私聊共用同一套短期记忆组装器，避免跨 APP 记忆断层。
-      const sharedShortTerm = prepareShortTermContext(target.id, "life", {
-        userName: playerName,
-        includeDirectChatEntries: true,
-      });
-      const sharedShortTermContext = sharedShortTerm.unifiedRecentItems
-        .flatMap(item => item.kind === "event" && item.sourceApp !== "life" && item.sourceApp !== "photo_wall" ? [item.text] : [])
-        .filter(Boolean)
-        .join("\n");
+      const sharedShortTermContext = buildLifeShortTermMemoryPrompt(target.id);
       const settingsInstructions = [
         settings.keepDialogueConcise ? "保持简短：一句对白，必要时附一个动作。" : "允许适度展开，但仍保持实时互动感。",
         forceReaction

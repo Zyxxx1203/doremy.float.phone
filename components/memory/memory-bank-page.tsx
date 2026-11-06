@@ -1059,6 +1059,25 @@ export function MemoryBankPage({
                                     })}
                                 </div>
                                 <div style={{ marginTop: 14, display: "grid", gap: 7 }}>
+                                    <div className="menu-desc">长期记忆总结来源（独立于上方短期记忆注入开关）。关闭后不再把该来源的新事件纳入长期总结，但不会删除已有记忆。</div>
+                                    <div className="memory-source-chips" style={{ "--chip-accent": BINDING_ACCENTS.memory } as CSSProperties}>
+                                        {MEMORY_SOURCE_OPTIONS.map(source => {
+                                            const allowed = config.longTermAllowedSources ?? config.shortTermAllowedSources ?? {};
+                                            const isChecked = allowed[source.key] !== false;
+                                            return (
+                                                <button key={`long-${source.key}`} type="button" className="memory-source-chip"
+                                                    data-off={isChecked ? undefined : ""} aria-pressed={isChecked}
+                                                    onClick={() => {
+                                                        const next = { ...config, longTermAllowedSources: { ...allowed, [source.key]: !isChecked } };
+                                                        setConfig(next); saveMemoryConfig(next);
+                                                    }}>
+                                                    {source.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div style={{ marginTop: 14, display: "grid", gap: 7 }}>
                                     <div className="menu-desc">每个使用场景最多注入多少条短期记忆（0 = 不限制）。只影响该 APP 本次提示词，不会删除照片墙、生活或其他来源的原始记录。</div>
                                     {([
                                         ["chat", "私聊"], ["group_chat", "群聊"], ["life", "生活系统"],
