@@ -1,35 +1,19 @@
 import type { LifeActorClock, LifeActorState, LifeEvent, LifeInvitation, LifeLocation, LifeOwnerType, LifeScheduleSlot, LifeSceneState, VirtualLifeState } from "./life-types";
 
-const clampSpeed = (speed: number) => Math.max(0.01, Math.min(Number.isFinite(speed) ? speed : 1, 1000));
 const mondayStartLife = (date: Date) => { const d = new Date(date); d.setHours(0,0,0,0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
 export const lifeActorKey = (ownerType: LifeOwnerType, ownerId: string) => `${ownerType}:${ownerId}`;
 
-export function getActorClock(state: VirtualLifeState, ownerType: LifeOwnerType, ownerId: string): LifeActorClock {
-  const existing = state.actorClocks.find(clock => clock.ownerType === ownerType && clock.ownerId === ownerId);
-  if (existing) return existing;
+/**
+ * Compatibility adapter for older callers and persisted records.
+ * Life actors no longer own independent clocks: every operation uses wall-clock time.
+ */
+export function getActorClock(_state: VirtualLifeState, ownerType: LifeOwnerType, ownerId: string): LifeActorClock {
   const now = new Date().toISOString();
-  return { ownerType, ownerId, mode: state.settings.defaultClockMode, realAnchorAt: now, virtualAnchorAt: now, speed: clampSpeed(state.settings.defaultSpeed), updatedAt: now };
+  return { ownerType, ownerId, mode: "real-time", realAnchorAt: now, virtualAnchorAt: now, speed: 1, updatedAt: now };
 }
 
-/** Each actor resolves their own clock; changing one clock never changes another. */
-export function resolveActorLifeNow(clock: LifeActorClock, realNow = new Date()): Date {
-  const virtualAnchor = new Date(clock.virtualAnchorAt), realAnchor = new Date(clock.realAnchorAt);
-  if (!Number.isFinite(virtualAnchor.getTime()) || !Number.isFinite(realAnchor.getTime())) return realNow;
-  if (clock.mode === "real-time") return realNow;
-  if (clock.mode === "review") return virtualAnchor;
-  return new Date(virtualAnchor.getTime() + Math.max(0, realNow.getTime() - realAnchor.getTime()) * clampSpeed(clock.speed));
-}
-
-export function upsertActorClock(state: VirtualLifeState, ownerType: LifeOwnerType, ownerId: string, patch: Partial<Pick<LifeActorClock, "mode" | "speed">>, realNow = new Date()): VirtualLifeState {
-  const previous = getActorClock(state, ownerType, ownerId), virtualNow = resolveActorLifeNow(previous, realNow);
-  const next: LifeActorClock = { ...previous, ...patch, realAnchorAt: realNow.toISOString(), virtualAnchorAt: virtualNow.toISOString(), speed: clampSpeed(patch.speed ?? previous.speed), updatedAt: realNow.toISOString() };
-  return { ...state, actorClocks: [...state.actorClocks.filter(c => !(c.ownerType === ownerType && c.ownerId === ownerId)), next] };
-}
-
-export function fastForwardActor(state: VirtualLifeState, ownerType: LifeOwnerType, ownerId: string, minutes: number, realNow = new Date()): VirtualLifeState {
-  const clock = getActorClock(state, ownerType, ownerId), current = resolveActorLifeNow(clock, realNow);
-  const next: LifeActorClock = { ...clock, mode: "simulation", realAnchorAt: realNow.toISOString(), virtualAnchorAt: new Date(current.getTime() + Math.max(0, minutes) * 60_000).toISOString(), updatedAt: realNow.toISOString() };
-  return { ...state, actorClocks: [...state.actorClocks.filter(c => !(c.ownerType === ownerType && c.ownerId === ownerId)), next] };
+export function resolveActorLifeNow(_legacyClock: LifeActorClock, realNow = new Date()): Date {
+  return realNow;
 }
 
 export function findActorState(state: VirtualLifeState, ownerType: LifeActorState["ownerType"], ownerId: string) {
@@ -206,7 +190,7 @@ export function upsertLifeScene(state: VirtualLifeState, scene: LifeSceneState):
 }
 const makeId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;
 
-/** Create an editable weekly skeleton only when the owner has no plan for that week. */
+/** Create an editable weekly skeleton, treating every free-time slot as replaceable whitespace. */
 export function generateWeeklyLifePlan(
   state: VirtualLifeState,
   ownerType: LifeOwnerType,
@@ -260,9 +244,12 @@ export function generateWeeklyLifePlan(
       && slotStart < end.getTime() && slotEnd > start.getTime();
   });
 
+  // Free-time is a visual placeholder, never occupied time. Ignore it when
+  // deciding whether a week is already planned or when carving generated slots.
+  const planningWeekSlots = weekSlots.filter(slot => slot.kind !== "free-time");
   // Fast-path a fully covered week. Partial legacy weeks continue through the
-  // normal generator, which preserves these slots and fills only the gaps.
-  const coverage = weekSlots
+  // normal generator, which preserves non-free-time slots and fills only the gaps.
+  const coverage = planningWeekSlots
     .map(slot => ({
       start: Math.max(start.getTime(), new Date(slot.startAt).getTime()),
       end: Math.min(end.getTime(), new Date(slot.endAt).getTime()),
@@ -398,7 +385,7 @@ export function generateWeeklyLifePlan(
     add(day, 22, 0, 24, 0, "睡眠", "habit", personalHome);
   }
 
-  const occupied = weekSlots
+  const occupied = planningWeekSlots
     .map(slot => ({ start: new Date(slot.startAt).getTime(), end: new Date(slot.endAt).getTime() }))
     .filter(range => Number.isFinite(range.start) && Number.isFinite(range.end) && range.end > range.start)
     .sort((a, b) => a.start - b.start);
@@ -491,14 +478,10 @@ export function generateWeeklyLifePlan(
     return { ...slot, plannedLocationId: canonical.id, plannedLocationName: canonical.name };
   };
   const canonicalGenerated = generated.map(resolveCanonical);
-  return {
-    ...state,
-    locations,
-    schedules: [...state.schedules, ...canonicalGenerated].sort((a, b) => a.startAt.localeCompare(b.startAt)),
-  };
+  return overlayScheduleSlotsOverFreeTime({ ...state, locations }, canonicalGenerated);
 }
 /**
- * Catch up one actor to their own virtual now. Every completed schedule slot is
+ * Catch up one actor to the current real time. Every completed schedule slot is
  * settled idempotently, and the current slot updates their real activity/location.
  * This runs on app resume and after explicit fast-forward; it never advances another actor.
  */
@@ -553,10 +536,10 @@ export function settleActorTimelineToNow(
   realNow = new Date(),
 ): VirtualLifeState {
   // Synchronize places referenced by schedules before resolving today's active slot.
-  // Only the slot active at virtualNow can affect position; future plans never teleport actors.
+  // Only the slot active at realNow can affect position; future plans never teleport actors.
   state = syncScheduleLocationsToLibrary(state);
   const clock = getActorClock(state, ownerType, ownerId);
-  const virtualNow = resolveActorLifeNow(clock, realNow);
+  const virtualNow = realNow;
   const nowIso = realNow.toISOString();
   const formatScheduleTime = (value: string) => {
     const date = new Date(value);
@@ -847,7 +830,7 @@ export function settleActorTimelineToNow(
   return { ...state, events, memories, invitations, scenes, actorStates: finalActorStates, timeline, updatedAt: nowIso };
 }
 
-/** Explicit fast-forward advances one actor, then settles every crossed schedule segment. */
+/** Refresh the current real-time week and settle elapsed schedule segments. */
 export function advanceActorTimeline(
   state: VirtualLifeState,
   ownerType: LifeOwnerType,
@@ -857,20 +840,10 @@ export function advanceActorTimeline(
   profile = "",
   realNow = new Date(),
 ): VirtualLifeState {
-  const current = resolveActorLifeNow(getActorClock(state, ownerType, ownerId), realNow);
-  const target = new Date(current.getTime() + Math.max(0, minutes) * 60_000);
-  const week = mondayStartLife(current);
-  const targetWeek = mondayStartLife(target);
-  let next = state;
-  // Always begin at the current virtual week. A single manually authored slot
-  // far in the future must not make us skip missing baseline days before it.
-  // Existing generated weeks are stable no-ops, so revisiting them is safe.
-  for (let guard = 0; week.getTime() <= targetWeek.getTime() && guard < 520; guard++) {
-    next = generateWeeklyLifePlan(next, ownerType, ownerId, ownerName, week, { id: "home", name: "家" }, profile, true);
-    week.setDate(week.getDate() + 7);
-  }
-  const advanced = fastForwardActor(next, ownerType, ownerId, minutes, realNow);
-  return settleActorTimelineToNow(advanced, ownerType, ownerId, realNow);
+  void minutes;
+  const week = mondayStartLife(realNow);
+  const next = generateWeeklyLifePlan(state, ownerType, ownerId, ownerName, week, { id: "home", name: "家" }, profile, true);
+  return settleActorTimelineToNow(next, ownerType, ownerId, realNow);
 }
 
 export function getCurrentActorSchedule(state: VirtualLifeState, ownerType: LifeOwnerType, ownerId: string, at: Date) {
@@ -972,6 +945,38 @@ export function insertManualLifeScheduleSlot(
 }
 
 /**
+ * AI-authored schedules may replace any free-time placeholder, regardless of
+ * whether it came from weekly generation or a manual edit. Preserve only the
+ * unaffected edges of an overlapped free-time slot.
+ */
+export function overlayScheduleSlotsOverFreeTime(
+  state: VirtualLifeState,
+  candidates: LifeScheduleSlot[],
+): VirtualLifeState {
+  let schedules = [...state.schedules];
+  for (const candidate of candidates) {
+    const start = new Date(candidate.startAt).getTime();
+    const end = new Date(candidate.endAt).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+    const next: LifeScheduleSlot[] = [];
+    for (const existing of schedules) {
+      const sameOwner = existing.ownerType === candidate.ownerType && existing.ownerId === candidate.ownerId;
+      const a = new Date(existing.startAt).getTime();
+      const b = new Date(existing.endAt).getTime();
+      if (!sameOwner || existing.kind !== "free-time" || !Number.isFinite(a) || !Number.isFinite(b) || b <= start || a >= end) {
+        next.push(existing);
+        continue;
+      }
+      if (a < start) next.push({ ...existing, id: existing.id + "-before-ai-" + candidate.id, endAt: candidate.startAt, updatedAt: new Date().toISOString() });
+      if (b > end) next.push({ ...existing, id: existing.id + "-after-ai-" + candidate.id, startAt: candidate.endAt, updatedAt: new Date().toISOString() });
+    }
+    schedules = next;
+  }
+  schedules.push(...candidates);
+  return { ...state, schedules: schedules.sort((a, b) => a.startAt.localeCompare(b.startAt)) };
+}
+
+/**
  * Apply a character-authored schedule change through one shared business rule.
  * It may reshape generated or previous character-tool slots, but never silently
  * overwrites user-authored plans or confirmed events.
@@ -988,7 +993,7 @@ export function applyCharacterLifeScheduleChange(
   if (!title || !Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime()) || endAt <= startAt) {
     return { state, error: "需要有效的活动内容和开始/结束时间，且结束时间必须晚于开始时间。" };
   }
-  const characterNow = resolveActorLifeNow(getActorClock(state, "character", characterId), realNow);
+  const characterNow = realNow;
   const sameDay = startAt.getFullYear() === characterNow.getFullYear()
     && startAt.getMonth() === characterNow.getMonth()
     && startAt.getDate() === characterNow.getDate()
@@ -996,7 +1001,7 @@ export function applyCharacterLifeScheduleChange(
     && endAt.getMonth() === characterNow.getMonth()
     && endAt.getDate() === characterNow.getDate();
   if (!sameDay || startAt <= characterNow) {
-    return { state, error: "只能调整角色当前虚拟日中尚未开始的时段。" };
+    return { state, error: "只能调整角色当前现实日期中尚未开始的时段。" };
   }
 
   const startMs = startAt.getTime();
@@ -1006,7 +1011,8 @@ export function applyCharacterLifeScheduleChange(
     const slotStart = new Date(slot.startAt).getTime();
     const slotEnd = new Date(slot.endAt).getTime();
     if (!Number.isFinite(slotStart) || !Number.isFinite(slotEnd)) return false;
-    return (slot.kind === "appointment" || slot.source === "manual" || slot.source === "event")
+    return slot.kind !== "free-time"
+      && (slot.kind === "appointment" || slot.source === "manual" || slot.source === "event")
       && slotStart < endMs
       && slotEnd > startMs;
   });
@@ -1068,7 +1074,4 @@ export function confirmLifeInvitation(state: VirtualLifeState, invitationId: str
   const event: LifeEvent = { id:eventId, kind:"invitation", status:"confirmed", startsAt:invitation.proposedAt, endsAt, locationId:invitation.locationId, locationName:invitation.locationName, participantIds:["player",invitation.characterId], title:invitation.activity, details:invitation.kind === "follow-request" ? "follow-player" : "confirmed-appointment", createdAt:now, updatedAt:now };
   const next = { ...invitation, status:"confirmed" as const, confirmedAt:now, updatedAt:now, eventId };
   return { ...state, invitations:state.invitations.map(item=>item.id===invitationId?next:item), events:[event,...state.events] };
-}
-export function currentVirtualDateForActor(state: VirtualLifeState, ownerType: LifeOwnerType, ownerId: string): Date {
-  return resolveActorLifeNow(getActorClock(state,ownerType,ownerId));
 }
