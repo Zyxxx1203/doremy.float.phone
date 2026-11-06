@@ -2820,6 +2820,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       ...patch,
       plannedLocationName: changedLocation ? normalizedLocationName || null : slot.plannedLocationName,
       plannedLocationId: changedLocation ? matchedLocation?.id ?? null : slot.plannedLocationId,
+      kind: patch.title === undefined ? slot.kind : /自由活动|自由时间|空闲|待安排/.test(patch.title.trim()) ? "free-time" : slot.kind === "free-time" ? "special" : slot.kind,
       source: slot.source === "event" ? "event" : "manual",
       updatedAt: now,
     };
