@@ -1,6 +1,6 @@
 # 成年审核 · 激活码自助申请 — 历史部署说明
 
-> **当前状态（已核对 main 源码）**：新申请入口暂时关闭。\`lib/verification-availability.ts\` 中 \`VERIFY_APPLICATIONS_OPEN = false\`，`/api/verify/submit` 会返回 503 和关闭提示。不要按本文部署后就认为申请功能已开放。已有申请仍可通过查询码走 `/verify` 或关闭申请页面中的查询流程。重新开放前，需由维护者明确启用开关并验证完整申请、审核、删图和发码链路。
+> **当前状态（已核对 main 源码）**：新申请入口暂时关闭。`lib/verification-availability.ts` 中 `VERIFY_APPLICATIONS_OPEN = false`，`/api/verify/submit` 会返回 503 和关闭提示。不要按本文部署后就认为申请功能已开放。已有申请仍可通过查询码走 `/verify` 或关闭申请页面中的查询流程。重新开放前，需由维护者明确启用开关并验证完整申请、审核、删图和发码链路。
 
 ## 历史流程（仅供重新开放时核对）
 1. 用户在登录页打开 `/verify`；
