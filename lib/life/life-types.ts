@@ -9,13 +9,6 @@ export type LifeClockMode = "real-time" | "simulation" | "review";
 export type LifeOwnerType = "player" | "character";
 export type LifeEventStatus = "planned" | "confirmed" | "active" | "completed" | "cancelled";
 
-export type LifeClockState = {
-  mode: LifeClockMode;
-  realAnchorAt: string;
-  simulationAnchorAt?: string | null;
-  speed: number;
-};
-
 /** Independent clock: changing one actor never mutates any other actor's time. */
 export type LifeActorClock = {
   ownerType: LifeOwnerType;
@@ -48,8 +41,6 @@ export type LifeEngineSettings = {
   /** 生活输出格式异常时是否自动修复重试一次。 */
   enableLifeFormatRepair?: boolean;
   revealExactLocations: "ask-only" | "clues" | "open";
-  defaultClockMode: LifeClockMode;
-  defaultSpeed: number;
   sceneTheme: "warm-paper" | "night-sky" | "sage" | "rose" | "lavender" | "ocean" | "matcha" | "peach" | "midnight" | "custom";
   accentColor: string;
   accentColorMode?: "theme" | "custom";
@@ -121,8 +112,6 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   maxConsecutiveActionOnly: 1,
   enableLifeFormatRepair: true,
   revealExactLocations: "clues",
-  defaultClockMode: "real-time",
-  defaultSpeed: 1,
   sceneTheme: "warm-paper",
   accentColor: "#b88768",
   accentColorMode: "theme",
@@ -205,7 +194,7 @@ export type LifeActorState = {
   scheduleSlotId?: string | null;
   actualLocationId?: string | null;
   actualLocationName?: string | null;
-  /** Optional virtual-life time when a manually chosen location stay ends and the planned itinerary resumes. */
+  /** Optional real-world time when a manually chosen location stay ends and the planned itinerary resumes. */
   actualLocationUntil?: string | null;
   updatedAt: string;
 };
@@ -304,7 +293,7 @@ export type LifeTimelineEntry = {
   id: string;
   category: LifeTimelineCategory;
   occurredAt: string;
-  /** Real persistence time, used for incremental memory sync; occurredAt follows virtual life time. */
+  /** Real persistence time, used for incremental memory sync; occurredAt follows real-world time. */
   recordedAt?: string;
   title: string;
   details?: string;
@@ -331,8 +320,6 @@ export type VirtualLifeState = {
   schemaVersion: 1;
   /** Version of role-card-aware weekly schedule templates already applied. */
   scheduleProfileVersion?: number;
-  clock: LifeClockState;
-  actorClocks: LifeActorClock[];
   settings: LifeEngineSettings;
   locations: LifeLocation[];
   actorStates: LifeActorState[];
@@ -350,8 +337,6 @@ export function createEmptyVirtualLifeState(now = new Date().toISOString()): Vir
   return {
     schemaVersion: 1,
     scheduleProfileVersion: 3,
-    clock: { mode: "real-time", realAnchorAt: now, simulationAnchorAt: null, speed: 1 },
-    actorClocks: [],
     settings: { ...DEFAULT_LIFE_ENGINE_SETTINGS },
     locations: [],
     actorStates: [],
