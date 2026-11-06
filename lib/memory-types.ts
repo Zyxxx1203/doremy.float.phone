@@ -56,7 +56,7 @@ export type MemoryConfig = {
         watch?: boolean;
         global_watch?: boolean;
     };
-    /** 每个消费 APP 的短期记忆注入上限；仅裁剪提示词，不删除原始记录。0=不限制。 */
+    /** 每个消费 APP 从所有已允许来源合并读取的短期记忆总条数上限；0=不限制。最终仍受 shortTermTokenBudget 约束。 */
     shortTermAppLimits?: { chat?: number; group_chat?: number; life?: number; photo_wall?: number; watch?: number; global_watch?: number; phone_widget?: number; story?: number; vn?: number; adventure?: number; interview_magazine?: number; cocreate?: number; diary?: number; moments?: number; checkphone?: number; xiaohongshu?: number; game?: number; map?: number; custom_app?: number; };
     /** @deprecated 旧版按来源裁剪；保留读取兼容，不再作为注入上限。 */
     shortTermSourceLimits?: {
@@ -178,8 +178,8 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
         global_watch: true,
     },
     shortTermAppLimits: {
-        chat: 30, group_chat: 24, life: 20, photo_wall: 8, watch: 8, global_watch: 5,
-        phone_widget: 4, story: 12, vn: 12, adventure: 8, interview_magazine: 8,
+        chat: 0, group_chat: 24, life: 0, photo_wall: 8, watch: 8, global_watch: 5,
+        phone_widget: 50, story: 12, vn: 12, adventure: 8, interview_magazine: 8,
         cocreate: 8, diary: 8, moments: 10, checkphone: 6, xiaohongshu: 8,
         game: 8, map: 8, custom_app: 10,
     },
