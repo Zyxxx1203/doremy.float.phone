@@ -1,6 +1,8 @@
+> **状态边界（2026-11-06）**：本文描述当前代码所设计的个人云生活调度链路，不是对任意用户 Supabase 项目部署状态的确认。必须完成对应 Schema、Edge Function、Cron 与密钥配置，并检查云端诊断/运行记录，才能认为该用户环境已启用。浏览器端生活界面可用，不代表云端后台调度已运行；云端日程状态计算、AI 主动消息生成和设备通知送达也是不同阶段。
+
 # Cloud-resident life scheduler
 
-The life system's background schedule is owned by the user's personal Supabase project, not by a WebView timer.
+When the personal-cloud scheduler is deployed and enabled, background schedule evaluation is owned by the user's personal Supabase project rather than relying only on a WebView timer. Without that deployment, this cloud execution path is unavailable.
 
 ## Data model
 
@@ -33,3 +35,8 @@ The personal-cloud schema is version 4. The Netlify build script generates:
 - `public/ai-phone-push/schema.sql`
 
 The personal-cloud one-click deployment installs the `life-scheduler` Edge Function and its Cron job together with the existing push functions and schema. After the site update is deployed, an existing personal Supabase project must be upgraded once through the app's personal-cloud deployment flow; a Netlify site deploy cannot silently change a user's separate Supabase project.
+
+
+## Verification boundary
+
+The presence of the scheduler source, generated deployment bundle, SQL schema, or Cron definition is not evidence that a particular user's cloud project is running it. Verify the deployed schema version, Edge Function version, Cron registration, secrets, Realtime/Web Push subscriptions, and recent scheduler diagnostics separately. A successful code workflow validates only the checks executed by that workflow; it does not exercise every user's Supabase project or Android vendor background policy.
