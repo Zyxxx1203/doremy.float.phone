@@ -181,7 +181,7 @@ export function loadMemoryConfig(): MemoryConfig {
         const raw = kvGet(CONFIG_KEY);
         if (!raw) return { ...DEFAULT_MEMORY_CONFIG };
         const parsed = JSON.parse(raw) as Partial<MemoryConfig>;
-        return {
+        const config: MemoryConfig = {
             ...DEFAULT_MEMORY_CONFIG,
             ...parsed,
             shortTermAllowedSources: {
@@ -201,7 +201,20 @@ export function loadMemoryConfig(): MemoryConfig {
                 ...DEFAULT_MEMORY_CONFIG.shortTermAppLimits,
                 ...(parsed.shortTermAppLimits ?? {}),
             },
+            shortTermLimitVersion: parsed.shortTermLimitVersion ?? 0,
         };
+        // Migrate values that exactly match the previous built-in defaults. Other custom values are preserved; a custom value identical to an old default cannot be distinguished from that default.
+        if ((parsed.shortTermLimitVersion ?? 0) < 2) {
+            const limits = { ...(config.shortTermAppLimits ?? {}) };
+            if (limits.chat === 30) limits.chat = 0;
+            if (limits.group_chat === 24) limits.group_chat = 0;
+            if (limits.life === 20) limits.life = 0;
+            if (limits.phone_widget === 4) limits.phone_widget = 50;
+            config.shortTermAppLimits = limits;
+            config.shortTermLimitVersion = 2;
+            kvSet(CONFIG_KEY, JSON.stringify(config));
+        }
+        return config;
     } catch {
         return { ...DEFAULT_MEMORY_CONFIG };
     }
