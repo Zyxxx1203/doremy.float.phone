@@ -16,7 +16,6 @@ import { prepareShortTermContext } from "@/lib/short-term-assembler";
 import {
   createEmptyVirtualLifeState,
   DEFAULT_LIFE_ENGINE_SETTINGS,
-  type LifeActorClock,
   type LifeActorState,
   type LifeEngineSettings,
   type LifeLocation,
@@ -29,7 +28,7 @@ import {
   type LifeScheduleSlot,
   type VirtualLifeState,
 } from "@/lib/life/life-types";
-import { advanceActorTimeline, applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, insertManualLifeScheduleSlot, syncScheduleLocationsToLibrary, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, synchronizeCharacterHomeSchedule, reserveCharacterLocationStay, upsertActorClock, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
+import { applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, insertManualLifeScheduleSlot, overlayScheduleSlotsOverFreeTime, syncScheduleLocationsToLibrary, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, synchronizeCharacterHomeSchedule, reserveCharacterLocationStay, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { describeLifeOutputIssues, parseLifeOutput, validateLifeOutput, type LifeOutputIssue } from "@/lib/life/life-output";
@@ -407,7 +406,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     rounded.setMinutes(0, 0, 0);
     setInviteAt(new Date(rounded.getTime() - rounded.getTimezoneOffset() * 60_000).toISOString().slice(0, 16));
     inviteDefaultInitializedRef.current = true;
-  }, [ready, state.actorClocks, inviteAtEdited]);
+  }, [ready, inviteAtEdited]);
 
   const settings = state.settings ?? DEFAULT_LIFE_ENGINE_SETTINGS;
 
@@ -580,7 +579,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       if (isStillHere) activeMinutes = duration;
     });
     return { visits: count, minutes, activeMinutes };
-  }, [state.timeline, state.actorStates, state.actorClocks, selectedLocation, locationStatsTick]);
+  }, [state.timeline, state.actorStates, selectedLocation, locationStatsTick]);
   // Keep the chat pinned to the latest message only when the reader was already at the bottom.
   const sceneChatAtBottomRef = useRef(true);
   const immersiveScene = !!activeScene && ((tab === "home" && sceneView) || tab === "scene");
@@ -642,19 +641,16 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       ...characters.map(character => ({ ownerType: "character" as const, ownerId: character.id, name: character.name, profile: [character.persona, character.personality, ...(character.tags ?? []), getCharacterWorldBookContext(character.id), ...state.locations.map(location => location.characterHabits?.[character.id] ? `${location.name}地点习惯：${location.characterHabits[character.id]}` : "")].filter(Boolean).join(" ") })),
     ];
     for (const owner of owners) {
-      if (!next.actorClocks.some(clock => clock.ownerType === owner.ownerType && clock.ownerId === owner.ownerId)) {
-        next = upsertActorClock(next, owner.ownerType, owner.ownerId, { mode: settings.defaultClockMode, speed: settings.defaultSpeed });
-      }
       const actorNow = resolveActorLifeNow(getActorClock(next, owner.ownerType, owner.ownerId));
       const thisMonday = mondayStart(actorNow);
-      // Keep the visible planning horizon to one week. The next week is generated
-      // when the virtual clock enters it, not pre-filled as a 14-day schedule.
+      // Keep the visible planning horizon to one real-time week. The next week is generated
+      // when the calendar week changes, not pre-filled as a 14-day schedule.
       if (settings.autoGenerateWeeklyPlans) {
         next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, thisMonday, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), settings.generateSpecialEvents);
       }
     }
     if (next !== state) commit(next);
-  }, [ready, settings.autoGenerateWeeklyPlans, settings.generateSpecialEvents, settings.defaultClockMode, settings.defaultSpeed, characters, playerName, state, worldBooks, bindingConfig, commit]);
+  }, [ready, settings.autoGenerateWeeklyPlans, settings.generateSpecialEvents, characters, playerName, state, worldBooks, bindingConfig, commit]);
 
   useEffect(() => {
     if (!ready) return;
@@ -864,47 +860,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   }, [characters, lifeAppTags, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages]);
 
   const patchSettings = (patch: Partial<LifeEngineSettings>) => commit({ ...stateRef.current, settings: { ...stateRef.current.settings, ...patch } });
-  const patchActorClock = (actor: ActorChoice, patch: Partial<Pick<LifeActorClock, "mode" | "speed">>) => {
-    const clock = getActorClock(state, actor.ownerType, actor.ownerId);
-    if (clock.mode === "simulation" && patch.mode === "real-time") {
-      const align = window.confirm("要把这个角色的虚拟时间对齐到现实时间吗？\n确定：对齐现实时间；取消：继续保持独立模拟。");
-      commit(upsertActorClock(state, actor.ownerType, actor.ownerId, { mode: align ? "real-time" : "simulation" }));
-      return;
-    }
-    commit(upsertActorClock(state, actor.ownerType, actor.ownerId, patch));
-  };
   const actorNow = (actor: ActorChoice) => resolveActorLifeNow(getActorClock(state, actor.ownerType, actor.ownerId));
   const actorState = (actor: ActorChoice) => state.actorStates.find(item => item.ownerType === actor.ownerType && item.ownerId === actor.ownerId);
   const actorSchedule = (actor: ActorChoice) => getCurrentActorSchedule(state, actor.ownerType, actor.ownerId, actorNow(actor));
-  const advanceCharacterAutonomy = (actor: ActorChoice) => {
-    if (actor.ownerType !== "character" || !settings.enableCharacterAutonomy) return;
-    let next = advanceActorTimeline(state, actor.ownerType, actor.ownerId, 60, actor.name, actor.persona ?? "");
-    const virtualNow = resolveActorLifeNow(getActorClock(next, actor.ownerType, actor.ownerId));
-    const slot = getCurrentActorSchedule(next, actor.ownerType, actor.ownerId, virtualNow);
-    const previous = state.actorStates.find(item => item.ownerType === actor.ownerType && item.ownerId === actor.ownerId);
-    const nextActivity = slot?.title ?? previous?.activity ?? "正在自主安排时间";
-    const nextLocationId = slot?.plannedLocationId ?? previous?.actualLocationId ?? null;
-    const nextLocationName = slot?.plannedLocationName ?? previous?.actualLocationName ?? null;
-    next = upsertActorState(next, {
-      ownerType: actor.ownerType, ownerId: actor.ownerId,
-      activity: nextActivity,
-      actualLocationId: nextLocationId,
-      actualLocationName: nextLocationName,
-      updatedAt: new Date().toISOString(),
-    });
-    if (previous?.activity !== nextActivity) {
-      next = appendLifeTimelineEntry(next, { category: "schedule", title: actor.name + "现在" + nextActivity, details: nextLocationName ? "当前地点：" + nextLocationName : undefined, actorId: actor.ownerId, actorName: actor.name, locationName: nextLocationName ?? undefined });
-    }
-    if (previous?.actualLocationId !== nextLocationId && nextLocationName) {
-      next = appendLifeTimelineEntry(next, { category: "location", title: actor.name + "来到了" + nextLocationName, details: previous?.actualLocationName ? "从" + previous.actualLocationName + "前往" + nextLocationName : "自主生活时更新了地点", actorId: actor.ownerId, actorName: actor.name, locationName: nextLocationName });
-    }
-    commit(next);
-    setNotice(`${actor.name}独立度过了一个虚拟小时；其他人的时间没有变化。`);
-  };
-
-  const actorClockLabel = (clock: LifeActorClock) => clock.mode === "real-time" ? "跟随现实" : clock.mode === "review" ? "回顾暂停" : `模拟 ×${clock.speed}`;
-
-
   const regenerateActorScheduleWithAI = async (actor: ActorChoice): Promise<boolean> => {
     if (actor.ownerType !== "character" || scheduleRegenerationOwnerId) return false;
     const character = characters.find(item => item.id === actor.ownerId);
@@ -959,7 +917,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           "同居关系：" + (livesWithPlayer ? "该角色与用户同居。" : "该角色未设置与用户同居。"),
           "世界书中与该角色相关的背景：\n" + (characterWorldBook || "暂无相关世界书条目"),
           "近期共同记忆：\n" + memories, "近期个人记录：\n" + events, "允许地点（只选这些）：\n" + locations, "必须保留的固定安排：\n" + fixed,
-          "时间范围：从角色虚拟日历的今天 " + start.toLocaleDateString("sv-SE") + " 开始连续七天；dayOffset 0 为今天，6 为第七天。不要为已经过去的时段安排活动。",
+          "时间范围：从角色现实日历的今天 " + start.toLocaleDateString("sv-SE") + " 开始连续七天；dayOffset 0 为今天，6 为第七天。不要为已经过去的时段安排活动。",
           "请生成未来七天日程。",
         ].join("\n\n")
       };
@@ -1061,7 +1019,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         return { actor, now, dayStart, dayEnd, existing };
       });
       const scheduleText = contexts.map(context =>
-        "【对象ID：" + context.actor.ownerId + "｜名称：" + context.actor.name + "｜类型：" + (context.actor.ownerType === "player" ? "player" : "character") + "｜虚拟时间：" + context.now.toISOString() + "】\n"
+        "【对象ID：" + context.actor.ownerId + "｜名称：" + context.actor.name + "｜类型：" + (context.actor.ownerType === "player" ? "player" : "character") + "｜当前现实时间：" + context.now.toISOString() + "】\n"
         + (context.existing.map(slot=>"- ID="+slot.id+"｜"+slot.startAt+" 至 "+slot.endAt+"｜"+slot.title+"｜"+(slot.plannedLocationName||"地点未定")+"｜source="+slot.source+"｜kind="+slot.kind).join("\n") || "暂无已安排日程")
       ).join("\n\n");
       const locations = current.locations.map(location=>"- "+location.name).join("\n");
@@ -1071,7 +1029,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
          "选中对象及其现有七日日程（必须依据 ID 决定保留或调整）：\n"+scheduleText,
         "用户指导：\n"+instruction,
         "可用地点：\n"+locations,
-        "每个对象都以各自标题中的虚拟时间为准；dayOffset 0 为该对象今天，6 为该对象第七天。",
+        "所有对象统一使用现实时间；dayOffset 0 为今天，6 为第七天。",
          "只输出 JSON，结构必须严格为：{\"schedules\":[{\"actorId\":\"必须原样填写上方对象ID\",\"actorType\":\"player 或 character\",\"actorName\":\"必须原样填写上方对象名称\",\"operation\":\"keep|move|update|add|cancel\",\"existingScheduleId\":\"旧日程ID或空字符串\",\"dayOffset\":0,\"start\":\"15:00\",\"end\":\"16:00\",\"title\":\"活动\",\"location\":\"地点或空字符串\",\"reason\":\"调整原因\"}]}。",
         "actorId 是唯一身份主键，必须逐字复制；actorType 必须与该 ID 对应的对象类型一致；actorName 是用于交叉校验的显示名称，不得替代 actorId。禁止输出未选中对象、禁止猜测 ID 或名称。",
          "请重新规划而不是只新增：每个旧日程可返回 keep（保留）、move/update（移动或修改，必须填写对应 existingScheduleId）或 cancel（取消，必须填写 ID）；新安排用 add。必须覆盖用户指导所涉及的时间范围。已开始/过去的日程、source=event 的已确认邀约或固定事件必须 keep，不得移动或取消；普通未来 weekly-generation/manual/character-tool 日程可按需要移动或更新。调整后同一对象所有时段不得重叠。每项给出简短 reason；取消操作不需要时间字段。不得遗漏仍需保留的固定日程。不要输出 Markdown 或 JSON 以外的文字。"
@@ -1219,7 +1177,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       next = generateWeeklyLifePlan(next, "character", character.id, character.name, mondayStart(characterVirtualNow), { id: "home-" + character.id, name: character.name + "的家" }, [character.persona, character.personality, ...(character.tags ?? [])].filter(Boolean).join(" "), settings.generateSpecialEvents);
     }
     if (next === state) setNotice("本周计划已经存在，没有重新生成或覆盖你的修改。");
-    else { commit(next); setNotice("已按每个人自己的虚拟时间生成可编辑的生活日程。"); }
+    else { commit(next); setNotice("已按现实时间生成可编辑的七日日程。"); }
   };
 
   const updateActorLocation = (actor: ActorChoice, locationId: string) => {
@@ -2564,7 +2522,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           `时间：${proposedAt.toLocaleString("zh-CN")}`,
           `地点：${location?.name ?? "地点待定"}`,
           `邀约理由：${inviteReason.trim() || "未填写"}`,
-          `你当前的虚拟时间：${characterNow.toLocaleString("zh-CN")}`,
+          `你当前的现实时间：${characterNow.toLocaleString("zh-CN")}`,
           "【你自己的当前与近期日程】",
           ...(roleAgenda.length ? roleAgenda.map(slot => `- ${new Date(slot.startAt).toLocaleString("zh-CN")}–${new Date(slot.endAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}：${slot.title}；地点：${slot.plannedLocationName || "未确定"}；来源：${slot.source}${slot.source === "manual" ? "（优先尊重玩家手动安排）" : ""}`) : ["- 暂无已有日程记录，不要凭空补充固定承诺。"]),
           "【你和玩家已经形成的共同记忆】",
@@ -2643,7 +2601,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     }
     return { ok: true, state: next, notice: confirmed.kind === "follow-request"
       ? "陪伴申请已接受。约定时间开始后，TA会跟随你的实际地点；你仍可随时取消。"
-      : "邀约已确认，双方的冲突时段已保留前后部分并插入约定；只有两个人的虚拟时间都到达后，活动才会开始。" };
+      : "邀约已确认，双方的冲突时段已保留前后部分并插入约定；到达约定时间后，活动会自动开始。" };
   };
 
   const confirmInvitation = (inviteId: string) => {
@@ -2695,7 +2653,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const playerNow = resolveActorLifeNow(getActorClock(current, "player", PLAYER_ID));
     const characterNow = resolveActorLifeNow(getActorClock(current, "character", invite.characterId));
     if (start <= playerNow || start <= characterNow) {
-      setNotice("新时间必须晚于你和角色各自的当前虚拟时间。原邀约没有改变。");
+      setNotice("新时间必须晚于当前现实时间。原邀约没有改变。");
       return;
     }
     const linkedEvent = invite.status === "confirmed"
@@ -3598,17 +3556,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             {recentLifeTimeline.length ? <div className="space-y-2">{recentLifeTimeline.map(entry=><div key={entry.id} className="flex gap-3 rounded-xl bg-white/80 p-3"><span className="w-12 shrink-0 pt-0.5 text-[11px] tabular-nums text-stone-400">{new Date(entry.occurredAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><div className="min-w-0 flex-1"><p className="text-sm font-medium text-stone-800">{entry.title}</p>{entry.details&&<p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-stone-600">{entry.details}</p>}<p className="mt-1 text-[10px] text-stone-400">{entry.actorName ? entry.actorName+" · " : ""}{entry.locationName ? entry.locationName+" · " : ""}{entry.category === "location" ? "地点" : entry.category === "scene" ? "场景" : entry.category === "action" ? "行动" : entry.category === "dialogue" ? "对话" : entry.category === "schedule" ? "日程" : entry.category === "tool" ? "工具" : entry.category === "social" ? "朋友圈" : entry.category === "diary" ? "日记" : entry.category === "chat" ? "消息" : "生活记录"}</p>{timelineImageUrls[entry.id]&&<img src={timelineImageUrls[entry.id]} alt={entry.title} className="mt-2 max-h-56 w-auto max-w-full rounded-xl object-contain"/>}<button type="button" disabled={Boolean(timelineImageBusyId)} onClick={()=>void generateTimelineImage(entry)} className="mt-2 inline-flex min-h-8 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-medium text-stone-600 disabled:opacity-50"><Sparkles size={12}/>{timelineImageBusyId===entry.id?"正在生成…":entry.imageMediaRef?"重新生成图片":"生成场景图片"}</button></div></div>)}</div> : <div className="rounded-xl bg-white/70 p-4 text-center text-xs text-stone-500">还没有符合当前筛选条件的记录。开始行动或互动后，这里会逐渐形成你的一天。</div>}
             {olderLifeTimeline.length>0&&<details className="mt-3 rounded-xl border border-stone-200/70 bg-white/50 p-3"><summary className="cursor-pointer text-xs font-medium text-stone-600">展开更早的记录（{olderLifeTimeline.length}）</summary><div className="mt-3 space-y-2">{olderLifeTimeline.map(entry=><div key={entry.id} className="flex gap-3 border-l-2 border-stone-200 pl-3 py-1"><span className="w-12 shrink-0 text-[10px] tabular-nums text-stone-400">{new Date(entry.occurredAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><div className="min-w-0 flex-1"><p className="text-xs font-medium">{entry.title}</p>{entry.details&&<p className="mt-0.5 whitespace-pre-wrap break-words text-[11px] text-stone-500">{entry.details}</p>}{timelineImageUrls[entry.id]&&<img src={timelineImageUrls[entry.id]} alt={entry.title} className="mt-2 max-h-48 w-auto max-w-full rounded-lg object-contain"/>}<button type="button" disabled={Boolean(timelineImageBusyId)} onClick={()=>void generateTimelineImage(entry)} className="mt-1.5 inline-flex min-h-7 items-center gap-1 rounded-md border border-stone-200 bg-white px-2 py-1 text-[10px] text-stone-600 disabled:opacity-50"><Sparkles size={11}/>{timelineImageBusyId===entry.id?"正在生成…":entry.imageMediaRef?"重新生成图片":"生成场景图片"}</button></div></div>)}</div></details>}
           </section>
-        <div className={`grid gap-4 lg:grid-cols-[1.15fr_.85fr] ${immersiveScene ? "hidden" : ""}`}>
-        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
-          <SectionTitle eyebrow="Independent timelines" title="每个人都有自己的时间" note="调整某个人的流速，不会改变其他人的时钟。模拟时间不会在退出时偷偷跳回现实。" />
-          <div className="space-y-3">{actors.map(actor => { const clock=getActorClock(state,actor.ownerType,actor.ownerId), now=actorNow(actor), current=actorSchedule(actor), actual=actorState(actor); return <div key={`${actor.ownerType}:${actor.ownerId}`} className={`rounded-2xl border p-3 transition ${selectedActorKey===`${actor.ownerType}:${actor.ownerId}`?"border-[var(--life-accent)]/45 bg-white":"border-stone-200/70 bg-white/55"}`}>
-            <div className="flex flex-wrap items-start justify-between gap-2"><button onClick={()=>setSelectedActorKey(`${actor.ownerType}:${actor.ownerId}`)} className="flex min-w-0 items-center gap-3 text-left">{actor.avatar ? <img src={actor.avatar} alt="" className="h-10 w-10 rounded-full object-cover"/> : <span className="grid h-10 w-10 place-items-center rounded-full bg-[#efe1d2] text-sm">{actor.ownerType==="player"?"我":actor.name.slice(0,1)}</span>}<span><span className="block font-medium">{actor.name}</span><span className="block text-xs opacity-60">{actorClockLabel(clock)} · {fmt(now)}</span></span></button><span className="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] text-stone-600">{current?.title ?? "当前没有日程"}</span></div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center"><div className="flex flex-wrap gap-1.5"><select aria-label={`${actor.name}的时间模式`} value={clock.mode} onChange={e=>patchActorClock(actor,{mode:e.target.value as LifeActorClock["mode"]})} className="rounded-xl border border-stone-200 bg-white px-2 py-2 text-xs"><option value="real-time">跟随现实</option><option value="simulation">独立模拟</option><option value="review">暂停回顾</option></select><button onClick={()=>commit(advanceActorTimeline(state,actor.ownerType,actor.ownerId,60,actor.name,actor.persona??""))} className="rounded-xl bg-[#f0e3d5] px-3 py-2 text-xs text-stone-700">+1 虚拟小时</button>{actor.ownerType==="character" && <button disabled={!settings.enableCharacterAutonomy} onClick={()=>advanceCharacterAutonomy(actor)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 disabled:opacity-40">自主生活 +1h</button>}<button type="button" onClick={()=>{setSelectedActorKey(`${actor.ownerType}:${actor.ownerId}`);setTab("daily");}} className="rounded-xl border border-[var(--life-accent)]/35 bg-white px-3 py-2 text-xs font-medium text-[var(--life-accent)]">管理此人日程</button></div></div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-stone-500"><MapPin size={13}/><span>实际地点：{actor.ownerType==="player" || settings.revealExactLocations==="open" ? (actual?.actualLocationName ?? "未记录") : settings.revealExactLocations==="ask-only" ? "精确位置未公开" : actual?.actualLocationName ? "有位置线索" : "未记录"}</span><span className="opacity-40">·</span><span>计划地点：{settings.showLocationHints ? (current?.plannedLocationName ? `${current.plannedLocationName}（不保证在场）` : "暂无提示") : "地点线索已隐藏"}</span></div>
-          </div>; })}</div>
-          <p className="mt-4 text-xs leading-relaxed text-stone-500">提示：倍速只影响该角色的虚拟时钟；计划地点不等于实时定位。真实位置仍需要场景状态或合理的信息来源。</p>
-        </section>
-      </div></div>}
+
 
       {tab === "locations" && <div className="space-y-4">
         <section className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm sm:p-6">
@@ -3646,7 +3594,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             <div className="rounded-2xl bg-[#f5ede4] p-3"><p className="text-[10px] text-stone-500">累计停留</p><p className="mt-1 text-lg font-semibold text-stone-800">{Math.floor(selectedLocationVisitStats.minutes / 60)}h {selectedLocationVisitStats.minutes % 60}m</p></div>
             <div className="rounded-2xl bg-[#f5ede4] p-3"><p className="text-[10px] text-stone-500">本次停留</p><p className="mt-1 text-lg font-semibold text-stone-800">{Math.floor(selectedLocationVisitStats.activeMinutes / 60)}h {selectedLocationVisitStats.activeMinutes % 60}m</p></div>
           </div>
-          <p className="mb-4 text-xs leading-relaxed text-stone-500">统计按生活系统的虚拟时间计算：每次前往会记入生活时间线，离开或临时停留到期后自动结算。它是实际到访记录，不会把尚未发生的计划误记为已到访。</p>
+          <p className="mb-4 text-xs leading-relaxed text-stone-500">统计按生活系统的现实时间计算：每次前往会记入生活时间线，离开或临时停留到期后自动结算。它是实际到访记录，不会把尚未发生的计划误记为已到访。</p>
           <SectionTitle eyebrow="Location dossier" title={selectedLocation.name + " · 地点档案"} note="这些设定会持久保存，并注入后续场景提示词。布局定义空间关系，道具可在行动中被引用，角色习惯会影响其在此处的行为，但不应限制角色临时做出新行动。"/>
           <label className="mb-3 block text-sm font-medium text-stone-700">地点名称<input value={locationNameDraft} onChange={event => { setLocationNameDraft(event.target.value); setLocationSaveFeedback(false); }} placeholder="例如：我们的小家" className="mt-1.5 w-full min-w-0 rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label>
           <label className="mb-3 block text-sm font-medium text-stone-700">别名 / 日程匹配关键词<textarea value={(selectedLocation.aliases ?? []).join("、")} onChange={event => commit({ ...stateRef.current, locations: stateRef.current.locations.map(location => location.id === selectedLocation.id ? { ...location, aliases: event.target.value.split(/[、,，;；\n]/).map(value => value.trim()).filter(Boolean) } : location) })} rows={2} placeholder="例如：旧城区花店、花店、花房" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
@@ -3745,7 +3693,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       </div>}
       {tab === "daily" && dailySubtab === "observe" && <div className="rounded-3xl border border-white/80 bg-white/55 p-3 shadow-sm sm:p-4"><LifeObservation characters={characters} active={true} onNotice={setNotice} /></div>}
       {(tab === "people" || (tab === "daily" && dailySubtab === "people")) && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
-        <SectionTitle eyebrow="Character presence" title="角色动态" note="汇总所有已载入角色的虚拟时间、当前活动和位置。实际记录与日程推测会分开标记；未知位置不会伪装成实时定位。" />
+        <SectionTitle eyebrow="Character presence" title="角色动态" note="汇总所有已载入角色的现实时间、当前活动和位置。实际记录与日程推测会分开标记；未知位置不会伪装成实时定位。" />
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {characters.map(character => {
             const presence = state.actorStates.find(item => item.ownerType === "character" && item.ownerId === character.id);
@@ -3916,7 +3864,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
 
       {tab === "invitations" && <div className="grid gap-4 lg:grid-cols-[.85fr_1.15fr]">
         <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Make a plan together" title="创建邀约" note="你发出的邀约由角色根据人设和日程决定是否接受；角色主动发出的邀约由你决定是否接受。双方同意后才同步日程，不会瞬间跳到约定时间。" />
-          <form onSubmit={addInvitation} className="space-y-3"><label className="block text-sm">邀请谁<select value={inviteCharacterId} onChange={e=>setInviteCharacterId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="">选择角色</option>{characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label className="block text-sm">事件 / 活动<input value={inviteActivity} onChange={e=>setInviteActivity(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">邀约理由<textarea value={inviteReason} onChange={e=>setInviteReason(e.target.value)} placeholder="例如：最近想和你聊聊，或者想把这件有趣的事分享给你" rows={2} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">时间<input type="datetime-local" value={inviteAt} onChange={e=>{setInviteAtEdited(true);setInviteAt(e.target.value)}} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/><span className="mt-1 block text-[11px] text-stone-500">默认按你的虚拟时间预填；双方时钟不同步时，系统仍会分别检查是否来得及赴约。</span></label><label className="block text-sm">地点<select value={inviteLocationId} onChange={e=>setInviteLocationId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5">{visibleLocations.map(loc=><option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></label><button disabled={busy} className="w-full rounded-2xl bg-[var(--life-accent)] px-4 py-3 text-sm font-medium text-white disabled:opacity-50">{busy?"等待角色回应…":"发出邀约"}</button></form>
+          <form onSubmit={addInvitation} className="space-y-3"><label className="block text-sm">邀请谁<select value={inviteCharacterId} onChange={e=>setInviteCharacterId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="">选择角色</option>{characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label className="block text-sm">事件 / 活动<input value={inviteActivity} onChange={e=>setInviteActivity(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">邀约理由<textarea value={inviteReason} onChange={e=>setInviteReason(e.target.value)} placeholder="例如：最近想和你聊聊，或者想把这件有趣的事分享给你" rows={2} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">时间<input type="datetime-local" value={inviteAt} onChange={e=>{setInviteAtEdited(true);setInviteAt(e.target.value)}} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/><span className="mt-1 block text-[11px] text-stone-500">默认按你的现实时间预填；双方时钟不同步时，系统仍会分别检查是否来得及赴约。</span></label><label className="block text-sm">地点<select value={inviteLocationId} onChange={e=>setInviteLocationId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5">{visibleLocations.map(loc=><option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></label><button disabled={busy} className="w-full rounded-2xl bg-[var(--life-accent)] px-4 py-3 text-sm font-medium text-white disabled:opacity-50">{busy?"等待角色回应…":"发出邀约"}</button></form>
         </section>
         <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Invitation inbox" title="邀约记录" />
           {state.invitations.length===0?<p className="rounded-2xl bg-white/60 p-4 text-sm text-stone-400">这里会保存待确认、已确认和已取消的邀约。</p>:<div className="space-y-3">{state.invitations.map(invite=>{const char=characters.find(c=>c.id===invite.characterId);const editable=invite.status==="proposed"||invite.status==="confirmed";const editing=editingInvitationId===invite.id;return <div key={invite.id} className="rounded-2xl border border-stone-200/70 bg-white/70 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-medium">{char?.name??"未知角色"} · {invite.kind==="follow-request"?"陪伴申请":"邀约"} · {invite.activity}</p><p className="mt-1 text-xs text-stone-500">{fmt(invite.proposedAt)} · {invite.kind==="follow-request"?(invite.durationMinutes??120)+" 分钟 · 跟随你的实际行程":invite.locationName??"地点待定"} · {invite.durationMinutes??60} 分钟</p>{invite.reason&&<p className="mt-1 text-xs leading-relaxed text-stone-600">理由：{invite.reason}</p>}{invite.responseReason&&<p className="mt-1 text-xs leading-relaxed text-stone-600">回应：{invite.responseReason}</p>}</div><span className="shrink-0 rounded-full bg-[#f0e3d5] px-2.5 py-1 text-[11px]">{(invite.status==="proposed"&&invite.proposedBy==="player"?"等待角色回应":({proposed:"待确认",confirmed:"已确认",declined:"已拒绝",cancelled:"已取消",completed:"已完成"} as Record<string,string>)[invite.status])}</span></div>{editing&&<div className="mt-4 grid gap-3 rounded-2xl bg-[#faf5ef] p-3"><label className="block text-xs">活动内容<input value={editInvitationDraft.activity} onChange={e=>setEditInvitationDraft(d=>({...d,activity:e.target.value}))} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/></label><label className="block text-xs">邀约理由<textarea value={editInvitationDraft.reason} onChange={e=>setEditInvitationDraft(d=>({...d,reason:e.target.value}))} rows={2} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/></label><label className="block text-xs">时间<input type="datetime-local" value={editInvitationDraft.proposedAt} onChange={e=>setEditInvitationDraft(d=>({...d,proposedAt:e.target.value}))} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/></label><label className="block text-xs">持续时长（分钟）<input type="number" min={15} max={1440} step={15} value={editInvitationDraft.durationMinutes} onChange={e=>setEditInvitationDraft(d=>({...d,durationMinutes:e.target.value}))} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/></label>{invite.kind!=="follow-request"&&<label className="block text-xs">地点<select value={editInvitationDraft.locationId} onChange={e=>setEditInvitationDraft(d=>({...d,locationId:e.target.value}))} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm">{visibleLocations.map(loc=><option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></label>}<div className="flex gap-2"><button type="button" onClick={()=>saveInvitationEdit(invite.id)} className="flex-1 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white">保存并同步日程</button><button type="button" onClick={()=>setEditingInvitationId(null)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">取消编辑</button></div></div>}{!editing&&<div className="mt-3 flex flex-wrap gap-2">{invite.status==="proposed"&&invite.proposedBy!=="player"&&<><button onClick={()=>confirmInvitation(invite.id)} className="rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white">{invite.kind==="follow-request"?"接受陪伴申请":"确认并同步日程"}</button><button onClick={()=>declineInvitation(invite.id)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">拒绝</button></>}{editable&&<button onClick={()=>beginEditInvitation(invite.id)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">编辑 / 重新安排</button>}{editable&&<button onClick={()=>cancelInvitation(invite.id)} className="rounded-xl border border-red-200 px-3 py-2 text-xs text-red-600">取消邀约</button>}{(invite.status==="declined"||invite.status==="cancelled")&&<button onClick={()=>reuseInvitation(invite.id)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">复制并重新发起</button>}</div>}</div>;})}</div>}
@@ -4070,8 +4018,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
            <label className="mt-4 block min-w-0 text-sm">自定义 CSS（仅生活聊天室）<textarea value={settings.customSceneCss ?? ""} onChange={e=>patchSettings({customSceneCss:e.target.value})} rows={5} spellCheck={false} placeholder=".life-scene-bubble { padding: 6px 9px !important; max-width: 76% !important; }" className="mt-1.5 w-full min-w-0 rounded-xl border border-stone-200 bg-white p-3 font-mono text-xs"/></label>
            <p className="mt-1 text-xs leading-relaxed text-stone-500">可用类名：.life-scene-chat、.life-scene-bubble、.life-scene-composer。CSS 即时保存并应用；预览用于快速检查常见样式。</p>
 
-          <label className="mt-4 block text-sm">默认时间模式<select value={settings.defaultClockMode} onChange={e=>patchSettings({defaultClockMode:e.target.value as LifeEngineSettings["defaultClockMode"]})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="real-time">跟随现实</option><option value="simulation">独立模拟</option><option value="review">暂停回顾</option></select></label>
-          <label className="mt-4 block text-sm">新角色默认流速：×{settings.defaultSpeed}<input type="range" min="0.1" max="100" step="0.1" value={settings.defaultSpeed} onChange={e=>patchSettings({defaultSpeed:Number(e.target.value)})} className="mt-2 w-full accent-[var(--life-accent)]"/></label>
           <div className="mt-4 rounded-2xl border border-stone-200/80 bg-white/60 p-4"><p className="text-sm font-semibold">玩家形象设置</p><p className="mt-1 text-xs leading-relaxed text-stone-500">玩家形象描述和参考图统一在「小手机设置 → 生图设置 → 全局玩家形象」管理，整个小手机共用。场景生成时会自动读取该配置；如果所选角色也有参考图，会一起组成参考板。</p></div>
           <div className="mt-4 rounded-2xl border border-stone-200/80 bg-white/60 p-4">
             <p className="text-sm font-semibold">场景生图</p>
