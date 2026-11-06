@@ -1,6 +1,5 @@
 import type {
   LifeActorState,
-  LifeClockState,
   LifeEvent,
   LifeEventStatus,
   LifeInvitation,
@@ -8,41 +7,6 @@ import type {
   LifeSceneState,
   VirtualLifeState,
 } from "./life-types";
-
-/** Resolve virtual time without mutating state. Simulation never advances by itself. */
-export function resolveLifeNow(clock: LifeClockState, realNow = new Date()): Date {
-  if (clock.mode !== "simulation" || !clock.simulationAnchorAt) return realNow;
-  const realAnchor = new Date(clock.realAnchorAt);
-  const simulatedAnchor = new Date(clock.simulationAnchorAt);
-  if (!Number.isFinite(realAnchor.getTime()) || !Number.isFinite(simulatedAnchor.getTime())) return realNow;
-  const elapsed = Math.max(0, realNow.getTime() - realAnchor.getTime());
-  return new Date(simulatedAnchor.getTime() + elapsed * Math.max(0.01, Math.min(clock.speed, 1000)));
-}
-
-/** Explicit user-driven simulation jump; calling this is the only fast-forward operation. */
-export function fastForwardLifeClock(
-  clock: LifeClockState,
-  minutes: number,
-  realNow = new Date(),
-): LifeClockState {
-  const current = resolveLifeNow(clock, realNow);
-  const next = new Date(current.getTime() + Math.max(0, minutes) * 60_000);
-  return {
-    mode: "simulation",
-    realAnchorAt: realNow.toISOString(),
-    simulationAnchorAt: next.toISOString(),
-    speed: clock.speed,
-  };
-}
-
-/** Leaving simulation deliberately requires an explicit user choice. */
-export function realignLifeClock(clock: LifeClockState, choice: "continue-simulation" | "align-to-real", realNow = new Date()): LifeClockState {
-  if (choice === "continue-simulation") {
-    const current = resolveLifeNow(clock, realNow);
-    return { mode: "simulation", realAnchorAt: realNow.toISOString(), simulationAnchorAt: current.toISOString(), speed: clock.speed };
-  }
-  return { mode: "real-time", realAnchorAt: realNow.toISOString(), simulationAnchorAt: null, speed: 1 };
-}
 
 export function findCurrentScheduleSlot(
   slots: LifeScheduleSlot[],
