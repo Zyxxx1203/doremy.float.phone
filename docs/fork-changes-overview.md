@@ -1,6 +1,6 @@
 # 相对对照仓库的代码差异台账
 
-> 更新基线：2026-11-06。对照源仓库 `doremy1203/doremy.float.phone` 的 `main`（`8f4f7f1337f17513f401af9b0711c617cfee54f7`）与本仓库 `Zyxxx1203/doremy.float.phone` 的 `main`（`d9d445975a7098ca7d2847dc896e92ca95466f50`）。
+> 更新基线：2026-11-06。对照仓库 `doremy1203/doremy.float.phone` 的 `main`（`8f4f7f1337f17513f401af9b0711c617cfee54f7`）。
 >
 > 这是 Git tree 文件路径与 blob SHA 的快照比较：本仓库 130 个路径在源仓库快照中不存在；源仓库有 2 个路径在本仓库快照中不存在；194 个同路径文件的 blob SHA 不同。它不等于独立功能数量，也不等于完整逐行语义审查。以下只列出能从当前代码入口确认的主要方向。
 
@@ -71,7 +71,3 @@ Manifest 中注册了环境光监测前台服务和电源事件接收器；设�
 - `npm run test:widget-output`
 
 其他检查命令见根目录 `package.json`。测试脚本存在不等于已执行；执行成功也只覆盖脚本明确检查的范围。
-
-## 7. 与源仓库的关系说明
-
-本仓库 GitHub 元数据记录的 fork parent 是 `jianchu-in/momo.float.phone`。本台账把 `doremy1203/doremy.float.phone` 作为用户指定的代码对照基线，不将它描述为 GitHub 元数据中的直接 parent。上游贡献归属请以提交历史为准。
