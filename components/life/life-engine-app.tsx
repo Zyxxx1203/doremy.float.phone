@@ -12,7 +12,6 @@ import { loadCharacters } from "@/lib/character-storage";
 import { hydrateKvDb } from "@/lib/kv-db";
 import { addChatContact, createOrGetSession, hydrateChatStorage, loadChatContacts, loadChatMessages, loadChatSessions, resolveSessionCharacterId, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { generateOfflineChatCompletion } from "@/lib/chat-engine";
-import { buildLifeShortTermMemoryPrompt } from "@/lib/life/life-short-term-memory";
 import {
   createEmptyVirtualLifeState,
   DEFAULT_LIFE_ENGINE_SETTINGS,
@@ -458,7 +457,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     let issues: LifeOutputIssue[] = [];
     let repaired = false;
     try {
-      let result = await generateOfflineChatCompletion(input.session, [input.promptMessage], requestOptions);
+      const onlineHistory = loadChatMessages(input.session.id).filter(message => message.status !== "failed" && !message.isRetracted);
+      const requestHistory = [...onlineHistory, input.promptMessage];
+      let result = await generateOfflineChatCompletion(input.session, requestHistory, requestOptions);
       raw = result.content;
       parsed = parseLifeOutput(raw);
       issues = validateLifeOutput(parsed, {
@@ -481,7 +482,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             "不要解释，不要输出 JSON 以外的文字；工具字段格式不合格时填 null，系统不会执行。",
           ].join("\n\n"),
         };
-        result = await generateOfflineChatCompletion(input.session, [repairPrompt], requestOptions);
+        result = await generateOfflineChatCompletion(input.session, [...onlineHistory, repairPrompt], requestOptions);
         raw = result.content;
         parsed = parseLifeOutput(raw);
         issues = validateLifeOutput(parsed, {
@@ -1695,7 +1696,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           "【仅本轮使用生活场景模式规则，不要写入线上聊天历史】",
           settings.keepDialogueConcise ? "保持简短：一句对白，必要时附一个动作。" : "允许适度展开，但保持实时互动感。",
           
-          buildLifeShortTermMemoryPrompt(character.id),
           sceneContext,
           "玩家行动：" + (previousPlayer.action || "无"),
           "玩家对白：" + (previousPlayer.dialogue || "无"),
@@ -1839,7 +1839,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       return [
         settings.keepDialogueConcise ? "保持自然简短：一句对白，必要时附一个动作。" : "可以适度展开，但不要写成长篇故事。",
         
-        buildLifeShortTermMemoryPrompt(character.id),
         sceneContext,
       ].filter(Boolean).join("\n\n");
     };
@@ -2131,7 +2130,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     try {
       const sceneContext = buildLifeScenePromptContext(stateRef.current, activeScene, target.id);
       // 生活现场与普通私聊共用同一套短期记忆组装器，避免跨 APP 记忆断层。
-      const sharedShortTermContext = buildLifeShortTermMemoryPrompt(target.id);
       const settingsInstructions = [
         settings.keepDialogueConcise ? "保持简短：一句对白，必要时附一个动作。" : "允许适度展开，但仍保持实时互动感。",
         forceReaction
@@ -2144,7 +2142,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       ].filter(Boolean).join("\n");
       const promptMessage: ChatMessage = {
         id: id("life-user"), sessionId: session.id, role: "user", status: "sent", createdAt: now,
-        content: `[仅本轮使用生活场景模式规则，不要写入线上聊天历史]\n${settingsInstructions}\n\n${buildOnlineChatBackground(target.id)}\n\n【跨 APP 统一短期记忆】\n${sharedShortTermContext || "暂无其他 APP 的近期事件。"}\n\n${sceneContext}\n\n玩家本轮行动：${userAction || (forceReaction ? "（请结合最近的用户行为作出反馈）" : "（没有额外动作）")}\n玩家本轮对白：${userText || (forceReaction ? "（请回应最近的对话或动作，不要要求用户重复输入）" : "（没有说话）")}`,
+        content: `[仅本轮使用生活场景模式规则，不要写入线上聊天历史]\n${settingsInstructions}\n\n${sceneContext}\n\n玩家本轮行动：${userAction || (forceReaction ? "（请结合最近的用户行为作出反馈）" : "（没有额外动作）")}\n玩家本轮对白：${userText || (forceReaction ? "（请回应最近的对话或动作，不要要求用户重复输入）" : "（没有说话）")}`,
       };
       const previousActionOnly = isLastCharacterTurnActionOnly(stateRef.current, activeScene.id, target.id);
       const { parsed, issues } = await generateValidatedLifeTurn({
