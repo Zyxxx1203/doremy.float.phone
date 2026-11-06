@@ -16,7 +16,15 @@
 - [云端生活日程说明](./cloud-life-scheduler.md)：生活日程快照、Edge Function、Cron 和当前主动消息开关状态。
 - [个人云推送 SQL](./personal-push-supabase.sql)：当前一键部署流程使用的个人 Supabase Schema，包含推送任务、生活日程运行态及 Cron；只应部署到专用个人云项目，执行前阅读 SQL 顶部保护说明。
 - [旧版站点共享推送 SQL](./push-supabase.sql)：仅供仍在使用旧版站点账号共享推送的部署迁移维护，不是新用户的个人云部署入口。
-- [特调独立云 SQL](./mixology-supabase.sql)：仅供独立特调 Supabase 项目使用，与主库/个人推送云分开。
+- [站点云一键初始化 SQL](./supabase-all-in-one.sql)：账号、审核、便签墙、游戏/应用市场、举报、联机和现实桥相关站点表；不会部署个人推送云，也不会自动开放成年审核申请。
+- [账号与激活码 SQL](./account-supabase.sql)：账号、会话和激活码基础表。
+- [个人云推送 SQL](./personal-push-supabase.sql)：个人推送、生活日程运行态与 Cron；新部署优先走应用内「云服务部署」。
+- [旧版站点共享推送 SQL](./push-supabase.sql)：仅旧站点共享推送部署；不要用于新用户个人云。
+- [特调独立云 SQL](./mixology-supabase.sql)：仅供独立特调 Supabase 项目使用。
+- [市场/内容 SQL](./custom-app-market-supabase.sql)、[游戏大厅 SQL](./game-hall-supabase.sql)、[黑市 SQL](./black-market-supabase.sql)、[内容审核 SQL](./moderation-supabase.sql)、[便签墙 SQL](./notewall-supabase.sql)、[联机对战 SQL](./online-play-supabase.sql)：按对应功能和数据库项目分别部署。
+- [现实桥定时扫描迁移](./reality-bridge-schedule-cron.sql)、[旧推送 10 秒扫描迁移](./push-cron-10s-migration.sql)、[快捷指令续跑迁移](./push-shortcut-resume-migration.sql)：历史/旧版迁移脚本，执行前必须核对目标项目和现有 Cron，不用于新建个人云。
+- [Supabase 空间清理脚本](./supabase-cleanup.sql)：高风险维护脚本；仅在确认目标站点库、表结构和备份后按需选段执行。
+- [Supabase 出站优化](./supabase-egress-optimization.sql)、[预防性出站优化](./supabase-egress-preventive.sql)、[存储审计](./supabase-storage-audit.sql)：维护/诊断脚本，不是初始化步骤。
 
 ### 开发者与维护者
 
