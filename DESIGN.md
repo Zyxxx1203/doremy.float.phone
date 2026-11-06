@@ -1,6 +1,6 @@
 # Float UI / Interaction Design Rules
 
-This document is the implementation contract for visual changes in `momo.float.phone`.
+This document is the implementation contract for visual changes in `doremy.float.phone`.
 It is inspired by public design-system references such as Awesome DESIGN.md and Better Design; it does not copy any company's proprietary branding or page.
 
 ## Product premise

@@ -1,4 +1,4 @@
-# Optional local video transcription service for momo.float.phone
+# Optional local video transcription service for doremy.float.phone
 
 This optional bridge is the self-hosted transcription fallback, not the built-in playback resolver. “Watch Together” can send a video URL to a computer/server you control, then import timestamped JSON script segments. The main app's built-in video resolver handles supported playback URLs separately; successful playback does not mean transcription or full video understanding is available. It now tries platform-provided/manual/automatic captions first; when usable captions exist, it converts them into timestamped JSON and skips audio download and Whisper inference. Only when captions are unavailable does it download audio, run FFmpeg conversion and faster-whisper locally. The app does not send links to a third-party parsing API.
 
