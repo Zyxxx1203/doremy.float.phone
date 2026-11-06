@@ -13,6 +13,7 @@ import { hydrateKvDb } from "@/lib/kv-db";
 import { addChatContact, createOrGetSession, hydrateChatStorage, loadChatContacts, loadChatMessages, loadChatSessions, resolveSessionCharacterId, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { generateOfflineChatCompletion } from "@/lib/chat-engine";
 import { prepareShortTermContext } from "@/lib/short-term-assembler";
+import { buildLifeShortTermMemoryPrompt } from "@/lib/life/life-short-term-memory";
 import {
   createEmptyVirtualLifeState,
   DEFAULT_LIFE_ENGINE_SETTINGS,
