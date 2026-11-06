@@ -2,7 +2,6 @@ import { kvGet, kvSet, registerKvMigration } from "../kv-db";
 import {
   createEmptyVirtualLifeState,
   DEFAULT_LIFE_ENGINE_SETTINGS,
-  type LifeActorClock,
   type LifeEvent,
   type LifeEventStatus,
   type LifeEngineSettings,
@@ -10,29 +9,18 @@ import {
   type LifeOwnerType,
   type VirtualLifeState,
 } from "./life-types";
-import { getActorClock, resolveActorLifeNow } from "./life-runtime";
 
 const STORAGE_KEY = "ai_phone_virtual_life_state_v1";
 registerKvMigration(STORAGE_KEY);
-
-function normalizeActorClock(value: unknown): LifeActorClock | null {
-  if (!value || typeof value !== "object") return null;
-  const raw = value as Partial<LifeActorClock>;
-  if ((raw.ownerType !== "player" && raw.ownerType !== "character") || typeof raw.ownerId !== "string") return null;
-  const validMode = raw.mode === "simulation" || raw.mode === "review" ? raw.mode : "real-time";
-  const now = new Date().toISOString();
-  const realAnchorAt = typeof raw.realAnchorAt === "string" ? raw.realAnchorAt : now;
-  const virtualAnchorAt = typeof raw.virtualAnchorAt === "string" ? raw.virtualAnchorAt : realAnchorAt;
-  const speed = typeof raw.speed === "number" && Number.isFinite(raw.speed) && raw.speed > 0 ? Math.min(raw.speed, 1000) : 1;
-  return { ownerType: raw.ownerType, ownerId: raw.ownerId, mode: validMode, realAnchorAt, virtualAnchorAt, speed, updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : now };
-}
 
 function normalizeSettings(value: unknown): LifeEngineSettings {
   const raw = value && typeof value === "object" ? value as Partial<LifeEngineSettings> : {};
   const settings = { ...DEFAULT_LIFE_ENGINE_SETTINGS, ...raw };
   // Drop the retired life-system offline-push flag from legacy saved settings.
   delete (settings as LifeEngineSettings & { enableLifeOfflinePush?: boolean }).enableLifeOfflinePush;
-  settings.defaultSpeed = Number.isFinite(settings.defaultSpeed) ? Math.max(0.01, Math.min(settings.defaultSpeed, 1000)) : 1;
+  // Remove retired independent-clock settings from legacy persisted records.
+  delete (settings as LifeEngineSettings & { defaultClockMode?: unknown }).defaultClockMode;
+  delete (settings as LifeEngineSettings & { defaultSpeed?: unknown }).defaultSpeed;
   settings.panelOpacity = Number.isFinite(settings.panelOpacity) ? Math.max(50, Math.min(settings.panelOpacity, 100)) : 96;
   settings.dialogueFontSize = Number.isFinite(settings.dialogueFontSize) ? Math.max(8, Math.min(settings.dialogueFontSize, 48)) : 15;
   settings.narrationFontSize = Number.isFinite(settings.narrationFontSize) ? Math.max(8, Math.min(settings.narrationFontSize, 36)) : 12;
@@ -50,17 +38,9 @@ function normalizeState(value: unknown): VirtualLifeState {
   if (!value || typeof value !== "object") return createEmptyVirtualLifeState();
   const raw = value as Partial<VirtualLifeState>;
   const empty = createEmptyVirtualLifeState();
-  const clock = raw.clock && typeof raw.clock === "object" ? raw.clock : empty.clock;
   return {
     schemaVersion: 1,
     scheduleProfileVersion: typeof raw.scheduleProfileVersion === "number" ? raw.scheduleProfileVersion : 0,
-    clock: {
-      mode: clock.mode === "simulation" || clock.mode === "review" ? clock.mode : "real-time",
-      realAnchorAt: typeof clock.realAnchorAt === "string" ? clock.realAnchorAt : empty.clock.realAnchorAt,
-      simulationAnchorAt: typeof clock.simulationAnchorAt === "string" ? clock.simulationAnchorAt : null,
-      speed: typeof clock.speed === "number" && Number.isFinite(clock.speed) && clock.speed > 0 ? Math.min(clock.speed, 1000) : 1,
-    },
-    actorClocks: Array.isArray(raw.actorClocks) ? raw.actorClocks.map(normalizeActorClock).filter((x): x is LifeActorClock => x !== null) : [],
     settings: normalizeSettings(raw.settings),
     locations: Array.isArray(raw.locations) ? raw.locations : [],
     actorStates: Array.isArray(raw.actorStates) ? raw.actorStates : [],
@@ -200,7 +180,6 @@ export function migrateLifeCharacterIdentity(fromId: string, toId: string): numb
   }
   const next: VirtualLifeState = {
     ...state,
-    actorClocks: mergeOwnerRecords(state.actorClocks),
     actorStates: mergeOwnerRecords(state.actorStates),
     schedules: [...scheduleMap.values()],
     locations,
@@ -237,7 +216,7 @@ export function appendLifeTimelineEntry(
   const item: LifeTimelineEntry = {
     ...timelineEntry,
     id: entry.id ?? "life-log-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
-    occurredAt: entry.occurredAt ?? resolveActorLifeNow(getActorClock(state, ownerType, actorId)).toISOString(),
+    occurredAt: entry.occurredAt ?? new Date().toISOString(),
     recordedAt: entry.recordedAt ?? new Date().toISOString(),
   };
   return { ...state, timeline: [...(state.timeline ?? []), item].slice(-5000) };
