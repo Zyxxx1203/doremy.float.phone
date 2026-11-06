@@ -27,6 +27,34 @@
 - [历史开发差异台账](./从诊断开始的开发差异台账.md)：2026-10-24 的阶段性对照记录，基线已过期，仅供追溯历史，不应用作当前版本结论。
 - [Android Shell 诊断](../android-shell/DIAGNOSTICS.md)：跨网页、原生和服务端链路的证据收集方式。
 
+### 专题技术资料与历史记录
+
+以下资料不属于通用入门教程。使用前请先核对当前源码、配置和部署状态：
+
+- **通话专题**：
+  - [常驻通话体验说明](./always-on-call-guide.md)：体验目标与链路设计参考。
+  - [全局通话与原生浮窗移植指南](./call-feature-porting-guide.md)：较早阶段的实现/移植记录；类名、接口和步骤必须以当前网页与 Android 源码为准。
+  - [通话功能增量更新记录](./call-feature-updates.md)：2026-10-08 的历史增量快照，不代表当前版本逐项验收。
+  - [自定义 APP 通话音频接入说明](./custom-app-call-audio.md)：自定义应用接入通话留档的专项参考。
+- **云服务与可选集成**：
+  - [Supabase 更新部署移植指南](./supabase-deploy-update-porting-guide.md)：既有项目更新流程的历史移植说明；执行前必须核对当前部署 API、SQL 和权限。
+  - [微信云端助手部署指南](./weixin-cloud-assistant.md)：可选微信助手的独立部署流程，不属于网页部署的自动组成部分。
+  - [资源集市说明](./resource-hub.md)：资源市场的外部仓库/CDN 依赖说明；外部仓库结构和可用性可能变化。
+  - [成年审核与激活码部署说明](./verify-setup.md)：仅在部署对应审核/激活码功能时使用。
+- **功能专项与设计记录**：
+  - [内置答疑 App 调研报告](./qa-app-design-research.md)：设计调研与方案记录，不应当作当前功能清单。
+  - [工坊 App 验收报告](./工坊-验收报告.md)：历史验收记录；其中 mock、浏览器和模型测试不能替代当前线上 GitHub 权限或真实部署验证。
+  - [小红书发布版更新说明](./release-notes-xhs.md)：历史宣传文案，不是当前版本发布说明。
+  - [本次功能同步说明](./本次功能同步说明.md)：阶段性历史快照；当前状态以源码和最新发布门禁为准。
+- **可选视频工具**：
+  - [本地视频解析服务](../tools/video-resolver/README.md)：需单独安装运行。
+  - [本地视频转写服务](../tools/video-transcriber/README.md)：需单独安装运行。
+  - [Cloudflare 视频转写 Worker](../tools/cloudflare-video-transcriber/README.md)：需单独配置并部署。
+  - [上游转写工具原始说明](../tools/video-transcriber/UPSTREAM_README.md)：保留的上游文档快照，不代表本项目服务封装的全部行为。
+- **自定义应用**：
+  - [在线广场自定义应用说明](../custom-apps/online-plaza/README.md)。
+  - [微信本地助手说明](../tools/weixin-local-assistant/README.md)。
+
 ## 文档可信度规则
 
 文档描述功能时，必须区分以下状态：
