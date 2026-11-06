@@ -2156,14 +2156,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     try {
       const sceneContext = buildLifeScenePromptContext(stateRef.current, activeScene, target.id);
       // 生活现场与普通私聊共用同一套短期记忆组装器，避免跨 APP 记忆断层。
-      const sharedShortTerm = prepareShortTermContext(target.id, "life", {
-        userName: playerName,
-        includeDirectChatEntries: true,
-      });
-      const sharedShortTermContext = sharedShortTerm.unifiedRecentItems
-        .flatMap(item => item.kind === "event" && item.sourceApp !== "life" ? [item.text] : [])
-        .filter(Boolean)
-        .join("\n");
+      const sharedShortTermContext = buildLifeShortTermMemoryPrompt(target.id);
       const settingsInstructions = [
         settings.keepDialogueConcise ? "保持简短：一句对白，必要时附一个动作。" : "允许适度展开，但仍保持实时互动感。",
         forceReaction
