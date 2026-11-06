@@ -23,7 +23,7 @@ export const LIFE_TOOL_DEFINITIONS: LifeToolDefinition[] = [
     parameterSchema: JSON.stringify({
       type: "object",
       properties: {
-        time: { type: "string", description: "邀约开始时间，ISO-8601 格式，必须晚于双方当前虚拟时间" },
+        time: { type: "string", description: "邀约开始时间，ISO-8601 格式，必须晚于双方当前现实时间" },
         locationId: { type: "string", description: "地点 ID，例如 cafe、home、park" },
         activity: { type: "string", description: "邀约活动内容" },
         durationMinutes: { type: "number", description: "持续分钟数，15 到 1440，默认 60" },
@@ -116,7 +116,7 @@ export async function executeLifeToolCall(
     if (!activity || !Number.isFinite(time.getTime())) return result(name, false, undefined, "需要有效的活动内容和 ISO-8601 时间。");
     const playerNow = resolveActorLifeNow(getActorClock(state, "player", "player"));
     const characterNow = resolveActorLifeNow(getActorClock(state, "character", characterId));
-    if (time <= playerNow || time <= characterNow) return result(name, false, undefined, "邀约时间必须晚于玩家和角色各自的当前虚拟时间。");
+    if (time <= playerNow || time <= characterNow) return result(name, false, undefined, "邀约时间必须晚于玩家和角色各自的当前现实时间。");
     const locationId = cleanText(args.locationId, 100);
     const location = state.locations.find(item => item.id === locationId) ?? state.locations.find(item => item.id === "cafe");
     const duration = Math.max(15, Math.min(Number(args.durationMinutes) || 60, 24 * 60));
