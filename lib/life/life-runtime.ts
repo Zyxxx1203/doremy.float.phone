@@ -190,7 +190,7 @@ export function upsertLifeScene(state: VirtualLifeState, scene: LifeSceneState):
 }
 const makeId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;
 
-/** Create an editable weekly skeleton, treating every free-time slot as replaceable whitespace. */
+/** Create an editable weekly baseline while preserving the owner's existing schedule blocks. */
 export function generateWeeklyLifePlan(
   state: VirtualLifeState,
   ownerType: LifeOwnerType,
@@ -480,7 +480,7 @@ export function generateWeeklyLifePlan(
 /**
  * Catch up one actor to the current real time. Every completed schedule slot is
  * settled idempotently, and the current slot updates their real activity/location.
- * This runs on app resume and after explicit fast-forward; it never advances another actor.
+ * This runs on app resume and scheduled real-time refreshes; it never advances another actor.
  */
 /**
  * Keep schedule place references canonical and make every itinerary place discoverable
