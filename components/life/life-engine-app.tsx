@@ -671,7 +671,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         const targetEnd = new Date(target);
         // Auto-generation is still limited to the current 7-day week; don't expose
         // a second pre-generated week in the schedule UI. The next week is added
-        // automatically once the actor's virtual clock reaches it.
+        // automatically when the real calendar week changes.
         if (liveSettings.autoGenerateWeeklyPlans) {
           for (let guard = 0; week.getTime() <= targetEnd.getTime() && guard < 520; guard++) {
             next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, week, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), liveSettings.generateSpecialEvents);
