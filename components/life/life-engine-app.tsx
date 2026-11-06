@@ -904,6 +904,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const characterWorldBook = getCharacterWorldBookContext(character.id);
       const protectedSlots = current.schedules.filter(slot => {
         if (slot.ownerType !== "character" || slot.ownerId !== character.id || slot.startAt >= end.toISOString() || slot.endAt <= start.toISOString()) return false;
+        // Free-time is always replaceable whitespace, even when a manual edit created it.
+        if (slot.kind === "free-time") return false;
         // Preserve hand-edited, character-tool, confirmed and currently-running blocks.
         if (slot.source !== "weekly-generation") return true;
         return new Date(slot.startAt).getTime() <= virtualNowMs && new Date(slot.endAt).getTime() > virtualNowMs;
@@ -963,7 +965,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         if(cursor<dayEnd.getTime())free(cursor,dayEnd.getTime());
       }
       const latest=stateRef.current;
-      const retained=latest.schedules.filter(slot=>!(slot.ownerType==="character"&&slot.ownerId===character.id&&slot.source==="weekly-generation"&&slot.startAt<end.toISOString()&&slot.endAt>start.toISOString()));
+      const retained=latest.schedules.filter(slot=>!(slot.ownerType==="character"&&slot.ownerId===character.id&&slot.startAt<end.toISOString()&&slot.endAt>start.toISOString()&&(slot.kind==="free-time"||slot.source==="weekly-generation")));
       commit({...latest,schedules:[...retained,...generated].sort((a,b)=>a.startAt.localeCompare(b.startAt))});
       setNotice("已根据"+character.name+"的角色卡、短期共同记忆和生活记录重生成 AI 日程；手动及已确认安排已保留。");
       return true;
@@ -1152,7 +1154,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       timelineItems.push({ draft, action: existing ? "调整" : "新增", slot });
     }
     if (invalid.length) { setNotice("本次日程调整未保存（原日程保持不变）：" + invalid.slice(0,4).join("；")); recordLifeDiagnostic({ source: "AI 日程指导", event: "确认前校验失败", status: "error", detail: invalid.join("；"), meta: { draftCount: quickPlanDrafts.length } }); return; }
-    const combined = [...base.schedules.filter(slot => !removeIds.has(slot.id)), ...candidates];
+    const baseWithoutRemoved = { ...base, schedules: base.schedules.filter(slot => !removeIds.has(slot.id)) };
+    const combined = overlayScheduleSlotsOverFreeTime(baseWithoutRemoved, candidates).schedules;
     for (let i = 0; i < combined.length; i += 1) for (let j = i + 1; j < combined.length; j += 1) {
       const a = combined[i], b = combined[j];
       if (a.ownerType === b.ownerType && a.ownerId === b.ownerId && new Date(a.startAt) < new Date(b.endAt) && new Date(a.endAt) > new Date(b.startAt)) invalid.push(a.title + " 与 " + b.title + " 时间重叠");
