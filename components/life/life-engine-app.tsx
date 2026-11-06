@@ -966,7 +966,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       }
       const latest=stateRef.current;
       const retained=latest.schedules.filter(slot=>!(slot.ownerType==="character"&&slot.ownerId===character.id&&slot.source==="weekly-generation"&&slot.startAt<end.toISOString()&&slot.endAt>start.toISOString()));
-      const lateConflict = generated.find(candidate => retained.some(existing =>
+      const lateConflict = generated.find(candidate => candidate.kind !== "free-time" && retained.some(existing =>
         existing.ownerType === candidate.ownerType
         && existing.ownerId === candidate.ownerId
         && existing.kind !== "free-time"
