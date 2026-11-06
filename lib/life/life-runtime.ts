@@ -538,8 +538,7 @@ export function settleActorTimelineToNow(
   // Synchronize places referenced by schedules before resolving today's active slot.
   // Only the slot active at realNow can affect position; future plans never teleport actors.
   state = syncScheduleLocationsToLibrary(state);
-  const clock = getActorClock(state, ownerType, ownerId);
-  const virtualNow = realNow;
+  const realNow = realNow;
   const nowIso = realNow.toISOString();
   const formatScheduleTime = (value: string) => {
     const date = new Date(value);
@@ -555,7 +554,7 @@ export function settleActorTimelineToNow(
   for (const slot of state.schedules) {
     if (slot.ownerType !== ownerType || slot.ownerId !== ownerId) continue;
     const endMs = new Date(slot.endAt).getTime();
-    if (!Number.isFinite(endMs) || endMs > virtualNow.getTime()) continue;
+    if (!Number.isFinite(endMs) || endMs > realNow.getTime()) continue;
     const settlementKey = "schedule:" + slot.id;
     if (settledKeys.has(settlementKey)) continue;
     const event: LifeEvent = {
@@ -602,7 +601,7 @@ export function settleActorTimelineToNow(
         ))
       );
 
-    // Catch-up must settle the whole virtual interval, even if the app was not
+    // Catch-up must settle the whole real-time interval, even if the app was not
     // opened until after the appointment ended. Otherwise a confirmed event
     // would be incorrectly marked "missed" simply because no page timer ran.
     if (started && (event.status === "confirmed" || event.status === "active") && event.details !== "follow-player") {
@@ -735,12 +734,12 @@ export function settleActorTimelineToNow(
     }
     void characterId;
   }
-  const current = getCurrentActorSchedule(state, ownerType, ownerId, virtualNow);
+  const current = getCurrentActorSchedule(state, ownerType, ownerId, realNow);
   const previous = findActorState(state, ownerType, ownerId);
   const slotChanged = !!current && previous?.scheduleSlotId !== current.id;
-  // The current virtual-time slot drives routine movement. Respect a manual stay
+  // The current real-time slot drives routine movement. Respect a manual stay
   // only until its explicit expiry; never apply a future slot before its start time.
-  const stayExpired = !!previous?.actualLocationUntil && new Date(previous.actualLocationUntil).getTime() <= virtualNow.getTime();
+  const stayExpired = !!previous?.actualLocationUntil && new Date(previous.actualLocationUntil).getTime() <= realNow.getTime();
   const activeAppointment = current?.kind === "appointment" && current.source === "event"
     ? events.find(event =>
         event.kind === "invitation"
@@ -748,8 +747,8 @@ export function settleActorTimelineToNow(
         && event.details !== "follow-player"
         && event.participantIds.includes(ownerId)
         && !!event.startsAt && !!event.endsAt
-        && new Date(event.startsAt).getTime() <= virtualNow.getTime()
-        && new Date(event.endsAt).getTime() > virtualNow.getTime()
+        && new Date(event.startsAt).getTime() <= realNow.getTime()
+        && new Date(event.endsAt).getTime() > realNow.getTime()
       )
     : undefined;
   const nextActivity = activeAppointment
@@ -763,7 +762,7 @@ export function settleActorTimelineToNow(
           : previous?.activity ?? current?.title ?? "自由活动";
   // A missing current slot must clear the old slot reference. Otherwise deleting
   // or editing a schedule can leave an actor permanently attached to stale activity.
-  const manualStayActive = !!previous?.actualLocationUntil && new Date(previous.actualLocationUntil).getTime() > virtualNow.getTime();
+  const manualStayActive = !!previous?.actualLocationUntil && new Date(previous.actualLocationUntil).getTime() > realNow.getTime();
   const scheduleMovementDue = !!current && !manualStayActive && (slotChanged || stayExpired || !previous?.actualLocationId);
   const nextLocationId = activeAppointment || scheduleMovementDue
     ? current?.plannedLocationId ?? previous?.actualLocationId ?? null
@@ -794,7 +793,7 @@ export function settleActorTimelineToNow(
     timeline = [...timeline, {
       id: makeId("timeline"),
       category: "location",
-      occurredAt: virtualNow.toISOString(),
+      occurredAt: realNow.toISOString(),
       recordedAt: nowIso,
       title: "按原计划前往" + nextLocationName,
       details: "临时停留时间已结束，生活行程恢复执行。",
@@ -1053,7 +1052,7 @@ export function applyCharacterLifeScheduleChange(
     title,
     plannedLocationId: location?.id ?? null,
     plannedLocationName: location?.name ?? null,
-    kind: "free-time",
+    kind: "special",
     source: "character-tool",
     updatedAt,
   });
