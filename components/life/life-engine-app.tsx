@@ -357,8 +357,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const hasContinuingScene = normalized.scenes.some(scene => scene.status === "active" || scene.status === "paused");
       if (!hasContinuingScene && normalized.settings.enabled) {
         const player = normalized.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
-        const virtualNow = resolveActorLifeNow(getActorClock(normalized, "player", PLAYER_ID));
-        const currentSlot = getCurrentActorSchedule(normalized, "player", PLAYER_ID, virtualNow);
+        const realNow = resolveActorLifeNow(getActorClock(normalized, "player", PLAYER_ID));
+        const currentSlot = getCurrentActorSchedule(normalized, "player", PLAYER_ID, realNow);
         const location = normalized.locations.find(item => item.id === (player?.actualLocationId || currentSlot?.plannedLocationId)) || normalized.locations.find(item => item.id === "home") || normalized.locations[0];
         if (location) {
           const now = new Date().toISOString();
@@ -401,8 +401,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
 
   useEffect(() => {
     if (!ready || inviteDefaultInitializedRef.current || inviteAtEdited) return;
-    const virtualNow = resolveActorLifeNow(getActorClock(state, "player", PLAYER_ID));
-    const rounded = new Date(virtualNow.getTime() + 60 * 60_000);
+    const realNow = resolveActorLifeNow(getActorClock(state, "player", PLAYER_ID));
+    const rounded = new Date(realNow.getTime() + 60 * 60_000);
     rounded.setMinutes(0, 0, 0);
     setInviteAt(new Date(rounded.getTime() - rounded.getTimezoneOffset() * 60_000).toISOString().slice(0, 16));
     inviteDefaultInitializedRef.current = true;
@@ -560,7 +560,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const sceneBackgroundLocation = state.locations.find(location => location.id === activeScene?.locationId) ?? selectedLocation;
   const selectedLocationVisitStats = useMemo(() => {
     if (!selectedLocation) return { visits: 0, minutes: 0, activeMinutes: 0 };
-    const virtualNow = resolveActorLifeNow(getActorClock(state, "player", PLAYER_ID));
+    const realNow = resolveActorLifeNow(getActorClock(state, "player", PLAYER_ID));
     const locationEntries = state.timeline
       .filter(entry => entry.category === "location" && entry.actorId === PLAYER_ID && !!entry.locationName)
       .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
@@ -573,7 +573,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       count += 1;
       const nextLocationEntry = locationEntries.find(next => next.occurredAt > entry.occurredAt);
       const isStillHere = state.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID)?.actualLocationId === selectedLocation.id && !nextLocationEntry;
-      const endAt = nextLocationEntry ? new Date(nextLocationEntry.occurredAt) : isStillHere ? virtualNow : new Date(entry.occurredAt);
+      const endAt = nextLocationEntry ? new Date(nextLocationEntry.occurredAt) : isStillHere ? realNow : new Date(entry.occurredAt);
       const duration = Math.max(0, Math.floor((endAt.getTime() - new Date(entry.occurredAt).getTime()) / 60_000));
       minutes += duration;
       if (isStillHere) activeMinutes = duration;
@@ -663,11 +663,11 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         ...roster.map(character => ({ ownerType: "character" as const, ownerId: character.id, name: character.name, profile: [character.persona, character.personality, ...(character.tags ?? []), getCharacterWorldBookContext(character.id), ...stateRef.current.locations.map(location => location.characterHabits?.[character.id] ? `${location.name}地点习惯：${location.characterHabits[character.id]}` : "")].filter(Boolean).join(" ") })),
       ];
       for (const owner of owners) {
-        const virtualNow = resolveActorLifeNow(getActorClock(next, owner.ownerType, owner.ownerId));
-        // Always inspect the current virtual week first. A future manual slot
+        const realNow = resolveActorLifeNow(getActorClock(next, owner.ownerType, owner.ownerId));
+        // Always inspect the current calendar week first. A future manual slot
         // must not prevent missing baseline days from being generated.
-        const week = mondayStart(virtualNow);
-        const target = mondayStart(virtualNow);
+        const week = mondayStart(realNow);
+        const target = mondayStart(realNow);
         const targetEnd = new Date(target);
         // Auto-generation is still limited to the current 7-day week; don't expose
         // a second pre-generated week in the schedule UI. The next week is added
@@ -871,10 +871,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     setNotice("正在让 " + character.name + " 根据角色卡、短期共同记忆与生活记录规划未来七天……");
     try {
       const current = stateRef.current;
-      const virtualNow = resolveActorLifeNow(getActorClock(current, "character", character.id));
+      const realNow = resolveActorLifeNow(getActorClock(current, "character", character.id));
       // 从角色自己的“今天”开始向后规划七天，而不是再生成本周已过去的时间。
-      const start = new Date(virtualNow.getTime()); start.setHours(0, 0, 0, 0);
-      const virtualNowMs = virtualNow.getTime();
+      const start = new Date(realNow.getTime()); start.setHours(0, 0, 0, 0);
+      const realNowMs = realNow.getTime();
       const end = new Date(start.getTime()); end.setDate(end.getDate() + 7);
       const locations = current.locations.filter(location => {
         // The home-<characterId> ID is canonical even if older data has an empty residents list.
@@ -908,7 +908,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         if (slot.kind === "free-time") return false;
         // Preserve hand-edited, character-tool, confirmed and currently-running blocks.
         if (slot.source !== "weekly-generation") return true;
-        return new Date(slot.startAt).getTime() <= virtualNowMs && new Date(slot.endAt).getTime() > virtualNowMs;
+        return new Date(slot.startAt).getTime() <= realNowMs && new Date(slot.endAt).getTime() > realNowMs;
       });
       const fixed = protectedSlots.map(slot => "- " + slot.startAt + "—" + slot.endAt + "：" + slot.title + "（必须保留且不可冲突）").join("\n") || "无固定安排";
       const session = createLifeChatSession(character.id, character.name);
@@ -942,7 +942,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         if (sh>23 || eh>23 || si>59 || ei>59) continue;
         const a=new Date(start.getTime()); a.setDate(a.getDate()+d); a.setHours(sh,si,0,0);
         const b=new Date(start.getTime()); b.setDate(b.getDate()+d); b.setHours(eh,ei,0,0);
-        if (b<=a || a<start || b>end || (d === 0 && a.getTime() < virtualNowMs)) continue;
+        if (b<=a || a<start || b>end || (d === 0 && a.getTime() < realNowMs)) continue;
         const placeKey=clean(String(item.location ?? "家"));
         const place=current.locations.find(p=>[p.name,...(p.aliases ?? [])].map(clean).some(n=>n===placeKey || (n.length>1 && placeKey.length>1 && (n.includes(placeKey)||placeKey.includes(n))))) ?? home;
         days.add(d);
@@ -957,9 +957,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         const dayStart=new Date(start.getTime()); dayStart.setDate(dayStart.getDate()+d); dayStart.setHours(0,0,0,0);
         const dayEnd=new Date(dayStart.getTime()); dayEnd.setDate(dayEnd.getDate()+1);
         const daySlots=[...protectedSlots,...accepted].filter(p=>new Date(p.startAt)<dayEnd&&new Date(p.endAt)>dayStart).sort((a,b)=>a.startAt.localeCompare(b.startAt));
-        // Today begins at the character's current virtual time, not midnight. Never fill
+        // Today begins at the character's current real time, not midnight. Never fill
         // elapsed hours with retroactive "free time" after an AI regeneration.
-        let cursor=Math.max(dayStart.getTime(), d===0 ? virtualNowMs : dayStart.getTime());
+        let cursor=Math.max(dayStart.getTime(), d===0 ? realNowMs : dayStart.getTime());
         const free=(a:number,b:number)=>{if(b-a<300000)return;generated.push({id:id("ai-free"),ownerType:"character",ownerId:character.id,startAt:new Date(a).toISOString(),endAt:new Date(b).toISOString(),title:"自由活动 / 休息（可按当天情况调整）",kind:"free-time",source:"weekly-generation",plannedLocationId:home?.id??null,plannedLocationName:home?.name??"家",updatedAt:new Date().toISOString()});};
         for(const slot of daySlots){const a=Math.max(cursor,dayStart.getTime(),new Date(slot.startAt).getTime()),b=Math.min(dayEnd.getTime(),new Date(slot.endAt).getTime());if(a>cursor)free(cursor,a);cursor=Math.max(cursor,b);if(cursor>=dayEnd.getTime())break;}
         if(cursor<dayEnd.getTime())free(cursor,dayEnd.getTime());
@@ -1134,8 +1134,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       if (operation !== "add") {
         if (!existing || !draft.existingScheduleId || seenExistingIds.has(draft.existingScheduleId)) { invalid.push((draft.title || "日程") + "（旧日程 ID 不存在或重复）"); continue; }
         seenExistingIds.add(draft.existingScheduleId);
-        const virtualNow = actorNow(owner);
-        if (existing.source === "event" || new Date(existing.startAt) <= virtualNow || new Date(existing.endAt) <= virtualNow) { invalid.push(existing.title + "（已开始、已结束或属于固定/已确认事件，不允许 AI 调整）"); continue; }
+        const realNow = actorNow(owner);
+        if (existing.source === "event" || new Date(existing.startAt) <= realNow || new Date(existing.endAt) <= realNow) { invalid.push(existing.title + "（已开始、已结束或属于固定/已确认事件，不允许 AI 调整）"); continue; }
         removeIds.add(existing.id);
         if (operation === "cancel") { timelineItems.push({ draft, action: "取消" }); continue; }
       }
@@ -1173,11 +1173,11 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
 
   const ensurePlans = () => {
     let next = state;
-    const playerVirtualNow = resolveActorLifeNow(getActorClock(next, "player", PLAYER_ID));
-    next = generateWeeklyLifePlan(next, "player", PLAYER_ID, playerName, mondayStart(playerVirtualNow), { id: "home", name: "家" });
+    const playerRealNow = resolveActorLifeNow(getActorClock(next, "player", PLAYER_ID));
+    next = generateWeeklyLifePlan(next, "player", PLAYER_ID, playerName, mondayStart(playerRealNow), { id: "home", name: "家" });
     for (const character of characters) {
-      const characterVirtualNow = resolveActorLifeNow(getActorClock(next, "character", character.id));
-      next = generateWeeklyLifePlan(next, "character", character.id, character.name, mondayStart(characterVirtualNow), { id: "home-" + character.id, name: character.name + "的家" }, [character.persona, character.personality, ...(character.tags ?? [])].filter(Boolean).join(" "), settings.generateSpecialEvents);
+      const characterRealNow = resolveActorLifeNow(getActorClock(next, "character", character.id));
+      next = generateWeeklyLifePlan(next, "character", character.id, character.name, mondayStart(characterRealNow), { id: "home-" + character.id, name: character.name + "的家" }, [character.persona, character.personality, ...(character.tags ?? [])].filter(Boolean).join(" "), settings.generateSpecialEvents);
     }
     if (next === state) setNotice("本周计划已经存在，没有重新生成或覆盖你的修改。");
     else { commit(next); setNotice("已按现实时间生成可编辑的七日日程。"); }
@@ -3700,8 +3700,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {characters.map(character => {
             const presence = state.actorStates.find(item => item.ownerType === "character" && item.ownerId === character.id);
-            const virtualNow = resolveActorLifeNow(getActorClock(state, "character", character.id));
-            const schedule = getCurrentActorSchedule(state, "character", character.id, virtualNow);
+            const realNow = resolveActorLifeNow(getActorClock(state, "character", character.id));
+            const schedule = getCurrentActorSchedule(state, "character", character.id, realNow);
             const actualLocation = presence?.actualLocationName || state.locations.find(item => item.id === presence?.actualLocationId)?.name;
             const scene = state.scenes.find(item => item.status === "active" && item.participants.some(p => p.ownerType === "character" && p.ownerId === character.id)) ?? state.scenes.filter(item => item.status === "paused" && item.participants.some(p => p.ownerType === "character" && p.ownerId === character.id)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
             const place = actualLocation || schedule?.plannedLocationName || scene?.locationName;
@@ -3837,11 +3837,11 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       {(tab === "plans" || (tab === "daily" && dailySubtab === "plans")) && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3"><SectionTitle eyebrow="Weekly plans" title="你和角色的七日日程" note="这里按人分组：你自己的日程显示具体时间；角色只显示日期、活动和地点线索，不显示具体时段。计划不是保证，是否真的遇见 TA 取决于当前实际位置、角色自己的决定和现场情况。" /><button onClick={ensurePlans} title="只补全本地规则缺失的时间段，不替代 AI 生成" className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-600"><RefreshCw size={14}/>补全缺失时段</button></div>
         {actors.map(actor => {
-          const virtualNow = actorNow(actor);
-          const slots = state.schedules.filter(slot => slot.ownerType === actor.ownerType && slot.ownerId === actor.ownerId && new Date(slot.endAt).getTime() > virtualNow.getTime() - DAY_MS).sort((x,y) => x.startAt.localeCompare(y.startAt));
+          const realNow = actorNow(actor);
+          const slots = state.schedules.filter(slot => slot.ownerType === actor.ownerType && slot.ownerId === actor.ownerId && new Date(slot.endAt).getTime() > realNow.getTime() - DAY_MS).sort((x,y) => x.startAt.localeCompare(y.startAt));
           const byDay = new Map<string, typeof slots>();
           for (const slot of slots) { const day = localDateKey(slot.startAt) || "日期未知"; const group = byDay.get(day) ?? []; group.push(slot); byDay.set(day,group); }
-          const today = localDateKey(virtualNow.toISOString());
+          const today = localDateKey(realNow.toISOString());
           return <details key={actor.ownerType + ":" + actor.ownerId} className="mb-3 overflow-hidden rounded-2xl border border-stone-200/80 bg-white/75">
             <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-3 marker:hidden">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--life-accent)]/10 text-sm font-semibold text-[var(--life-accent)]">{actor.name.slice(0,1)}</span>
@@ -4059,7 +4059,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           </>}
         </section>
       </div>}
-      <footer className={`mt-6 flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] opacity-55 ${immersiveScene ? "hidden" : ""}`}><span>数据保存在当前设备的 KV 数据库中</span><span>生活时钟按角色独立 · 计划不等于现实 · 场景持续保存</span></footer>
+      <footer className={`mt-6 flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] opacity-55 ${immersiveScene ? "hidden" : ""}`}><span>数据保存在当前设备的 KV 数据库中</span><span>生活系统跟随现实时间 · 计划不等于实际在场 · 场景持续保存</span></footer>
     </div>
   </main>;
 }
