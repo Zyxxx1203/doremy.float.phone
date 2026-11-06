@@ -185,7 +185,7 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
         global_watch: true,
     },
     shortTermAppLimits: {
-        chat: 0, group_chat: 24, life: 0, photo_wall: 8, watch: 8, global_watch: 5,
+        chat: 0, group_chat: 0, life: 0, photo_wall: 8, watch: 8, global_watch: 5,
         phone_widget: 50, story: 12, vn: 12, adventure: 8, interview_magazine: 8,
         cocreate: 8, diary: 8, moments: 10, checkphone: 6, xiaohongshu: 8,
         game: 8, map: 8, custom_app: 10,
