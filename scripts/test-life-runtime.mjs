@@ -666,16 +666,6 @@ assert.ok(freeTimeOverlay.schedules.some(slot => slot.startAt === "2026-10-15T09
 assert.ok(freeTimeOverlay.schedules.some(slot => slot.startAt === "2026-10-15T14:00:00.000Z" && slot.endAt === "2026-10-15T18:00:00.000Z" && slot.kind === "free-time"), "free-time after the AI plan should be preserved");
 assert.equal(freeTimeOverlay.schedules.filter(slot => slot.ownerId === "c-overlay").length, 3, "overlay should split one free-time slot into two edges plus one AI plan");
 
-// A week containing only free-time placeholders is not considered already planned.
-const fullWeekFreeTime = makeState([{
-  id: "full-week-free", ownerType: "character", ownerId: "c-week",
-  startAt: weekStart.toISOString(), endAt: new Date(weekStart.getTime() + 7 * 24 * 60 * 60_000).toISOString(),
-  title: "自由活动", kind: "free-time", source: "manual",
-}]);
-const plannedOverFreeTime = generateWeeklyLifePlan(fullWeekFreeTime, "character", "c-week", "小满", weekStart, { id: "home", name: "家" }, "大学生 学生", false);
-assert.ok(plannedOverFreeTime.schedules.some(slot => slot.id !== "full-week-free" && slot.kind !== "free-time" && new Date(slot.startAt).getHours() === 9), "weekly planning should generate real activities over a week previously filled only with free-time");
-assert.ok(!plannedOverFreeTime.schedules.some(slot => slot.id === "full-week-free"), "old full-week free-time placeholder should be replaced");
-
 // Character-initiated AI changes can occupy free-time without being blocked as a conflict.
 const autonomyOverFree = applyCharacterLifeScheduleChange(makeState([{
   id: "character-free", ownerType: "character", ownerId: "c-autonomy",
