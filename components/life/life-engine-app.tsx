@@ -966,6 +966,18 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       }
       const latest=stateRef.current;
       const retained=latest.schedules.filter(slot=>!(slot.ownerType==="character"&&slot.ownerId===character.id&&slot.startAt<end.toISOString()&&slot.endAt>start.toISOString()&&(slot.kind==="free-time"||slot.source==="weekly-generation")));
+      const lateConflict = generated.find(candidate => retained.some(existing =>
+        existing.ownerType === candidate.ownerType
+        && existing.ownerId === candidate.ownerId
+        && existing.kind !== "free-time"
+        && new Date(existing.startAt) < new Date(candidate.endAt)
+        && new Date(existing.endAt) > new Date(candidate.startAt)
+      ));
+      if (lateConflict) {
+        setNotice("生成期间该角色的手动日程或已确认安排发生了变化，已保留最新日程；请重新生成，避免覆盖新安排。");
+        recordLifeDiagnostic({ source: "AI 七日日程", event: "并发日程冲突", status: "warning", detail: "生成期间出现新安排：" + lateConflict.title, meta: { characterId: character.id } });
+        return false;
+      }
       commit({...latest,schedules:[...retained,...generated].sort((a,b)=>a.startAt.localeCompare(b.startAt))});
       setNotice("已根据"+character.name+"的角色卡、短期共同记忆和生活记录重生成 AI 日程；手动及已确认安排已保留。");
       return true;
