@@ -5,18 +5,14 @@
  * Persistent entities are kept serializable so they can use the existing KV layer.
  */
 export type LifeInteractionMode = "online-chat" | "life-scene" | "story-mode";
-export type LifeClockMode = "real-time" | "simulation" | "review";
 export type LifeOwnerType = "player" | "character";
 export type LifeEventStatus = "planned" | "confirmed" | "active" | "completed" | "cancelled";
 
-/** Independent clock: changing one actor never mutates any other actor's time. */
+/** Legacy adapter shape; actors now always use the shared real-world clock. */
 export type LifeActorClock = {
   ownerType: LifeOwnerType;
   ownerId: string;
-  mode: LifeClockMode;
   realAnchorAt: string;
-  virtualAnchorAt: string;
-  speed: number;
   updatedAt: string;
 };
 
