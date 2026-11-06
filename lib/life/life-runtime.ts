@@ -538,7 +538,6 @@ export function settleActorTimelineToNow(
   // Synchronize places referenced by schedules before resolving today's active slot.
   // Only the slot active at realNow can affect position; future plans never teleport actors.
   state = syncScheduleLocationsToLibrary(state);
-  const realNow = realNow;
   const nowIso = realNow.toISOString();
   const formatScheduleTime = (value: string) => {
     const date = new Date(value);
