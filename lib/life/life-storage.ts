@@ -44,7 +44,14 @@ function normalizeState(value: unknown): VirtualLifeState {
     settings: normalizeSettings(raw.settings),
     locations: Array.isArray(raw.locations) ? raw.locations : [],
     actorStates: Array.isArray(raw.actorStates) ? raw.actorStates : [],
-    schedules: Array.isArray(raw.schedules) ? raw.schedules : [],
+    schedules: Array.isArray(raw.schedules) ? raw.schedules.map(slot => {
+      // Older UI forms incorrectly labelled ordinary manual activities as free-time.
+      // Keep explicit free-time labels replaceable, but protect real user-authored plans.
+      const legacyManualActivity = (slot.source === "manual" || slot.source === "character-tool")
+        && slot.kind === "free-time"
+        && !/(自由活动|自由时间|空闲|待安排)/.test(typeof slot.title === "string" ? slot.title : "");
+      return legacyManualActivity ? { ...slot, kind: "special" as const } : slot;
+    }) : [],
     scenes: Array.isArray(raw.scenes) ? raw.scenes : [],
     sceneMessages: Array.isArray(raw.sceneMessages) ? raw.sceneMessages : [],
     events: Array.isArray(raw.events) ? raw.events : [],
@@ -199,7 +206,7 @@ export function appendLifeTimelineEntry(
   entry: Omit<LifeTimelineEntry, "id" | "occurredAt"> & {
     id?: string;
     occurredAt?: string;
-    /** Optional clock owner for events whose actor ID cannot be inferred from current state. */
+    /** Optional actor owner for events whose actor ID cannot be inferred from current state. */
     ownerType?: LifeOwnerType;
     ownerId?: string;
   },
