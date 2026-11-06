@@ -900,7 +900,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           "请生成未来七天日程。",
         ].join("\n\n")
       };
-      const result = await generateOfflineChatCompletion(session, [prompt], { appId: "life", appTags: lifeAppTags("schedule") });
+      const scheduleHistory = loadChatMessages(session.id).filter(message => message.status !== "failed" && !message.isRetracted);\n      const result = await generateOfflineChatCompletion(session, [...scheduleHistory, prompt], { appId: "life", appTags: lifeAppTags("schedule"), includeDirectChatEntries: false });
       const raw = result.content.trim();
       const first = raw.indexOf("["); const last = raw.lastIndexOf("]");
       if (first < 0 || last <= first) throw new Error("模型没有返回有效 JSON 数组。");
@@ -1025,7 +1025,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         "actorId 是唯一身份主键，必须逐字复制；actorType 必须与该 ID 对应的对象类型一致；actorName 是用于交叉校验的显示名称，不得替代 actorId。禁止输出未选中对象、禁止猜测 ID 或名称。",
          "请重新规划而不是只新增：每个旧日程可返回 keep（保留）、move/update（移动或修改，必须填写对应 existingScheduleId）或 cancel（取消，必须填写 ID）；新安排用 add。必须覆盖用户指导所涉及的时间范围。已开始/过去的日程、source=event 的已确认邀约或固定事件必须 keep，不得移动或取消；普通未来 weekly-generation/manual/character-tool 日程可按需要移动或更新。调整后同一对象所有时段不得重叠。每项给出简短 reason；取消操作不需要时间字段。不得遗漏仍需保留的固定日程。不要输出 Markdown 或 JSON 以外的文字。"
       ].join("\n\n")};
-      const result=await generateOfflineChatCompletion(session,[prompt],{appId:"life",appTags:lifeAppTags("schedule")});
+      const scheduleHistory=loadChatMessages(session.id).filter(message=>message.status!=="failed"&&!message.isRetracted);\n      const result=await generateOfflineChatCompletion(session,[...scheduleHistory,prompt],{appId:"life",appTags:lifeAppTags("schedule"),includeDirectChatEntries:false});
       recordLifeDiagnostic({
         source: "AI 日程指导", event: "模型响应完成", status: "info", traceId,
         detail: "模型已返回结果，开始校验 actorId、actorType、actorName 和时间区间。",
