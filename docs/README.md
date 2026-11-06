@@ -37,10 +37,10 @@
   - [通话功能增量更新记录](./call-feature-updates.md)：2026-10-08 的历史增量快照，不代表当前版本逐项验收。
   - [自定义 APP 通话音频接入说明](./custom-app-call-audio.md)：自定义应用接入通话留档的专项参考。
 - **云服务与可选集成**：
-  - [Supabase 更新部署移植指南](./supabase-deploy-update-porting-guide.md)：既有项目更新流程的历史移植说明；执行前必须核对当前部署 API、SQL 和权限。
+  - [Supabase 更新部署移植指南](./supabase-deploy-update-porting-guide.md)：旧项目迁移分析快照；来源仓库名和文件清单已过时，当前操作必须以本仓库部署 UI/API 为准。
   - [微信云端助手部署指南](./weixin-cloud-assistant.md)：可选微信助手的独立部署流程，不属于网页部署的自动组成部分。
   - [资源集市说明](./resource-hub.md)：资源市场的外部仓库/CDN 依赖说明；外部仓库结构和可用性可能变化。
-  - [成年审核与激活码部署说明](./verify-setup.md)：仅在部署对应审核/激活码功能时使用。
+  - [成年审核与激活码部署说明](./verify-setup.md)：历史部署说明；当前新申请开关关闭，仅供重新开放时核对，已有申请仍可查询。
 - **功能专项与设计记录**：
   - [内置答疑 App 调研报告](./qa-app-design-research.md)：设计调研与方案记录，不应当作当前功能清单。
   - [工坊 App 验收报告](./工坊-验收报告.md)：历史验收记录；其中 mock、浏览器和模型测试不能替代当前线上 GitHub 权限或真实部署验证。
