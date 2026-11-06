@@ -18,7 +18,8 @@ Float Phone 是一个以 Next.js、React、TypeScript 构建的手机式 AI 互�
 | Fork 后构建自己的 APK | [Fork 与 APK 指南](./DEVICE_SETUP_GUIDE.md) |
 | 排查 Android 白屏、闪退或桥接问题 | [Android 诊断](./android-shell/DIAGNOSTICS.md) |
 | 了解隐私、数据发送和权限 | [隐私与权限说明](./docs/隐私与权限说明.md) |
-| 了解生活系统云端日程 | [云端生活日程说明](./docs/cloud-life-scheduler.md) |\n| 部署个人推送/生活日程云 | [个人云 SQL 与部署说明](./docs/personal-push-supabase.sql)（仅部署到专用个人 Supabase 项目） |
+| 了解生活系统云端日程 | [云端生活日程说明](./docs/cloud-life-scheduler.md) |
+| 部署个人推送/生活日程云 | [个人云 SQL 与部署说明](./docs/personal-push-supabase.sql)（仅部署到专用个人 Supabase 项目） |
 | 了解本仓库相对指定代码基线的差异 | [代码差异台账](./docs/fork-changes-overview.md) |
 | 角色 ID 规范 | [角色 ID 契约](./docs/character-id-contract.md) |
 
