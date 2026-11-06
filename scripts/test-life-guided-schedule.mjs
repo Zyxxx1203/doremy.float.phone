@@ -58,4 +58,13 @@ const legacy = parseGuidedScheduleResponse(JSON.stringify({ schedules: [
 assert.equal(legacy.drafts.length, 1);
 assert.equal(legacy.drafts[0].operation, "add");
 
+ 
+// Any free-time placeholder is an open slot, even when it was saved as a manual edit.
+const overwriteFreeTime = parseGuidedScheduleResponse(JSON.stringify({ schedules: [
+  { actorId: "char-a", actorType: "character", actorName: "小满", operation: "add", dayOffset: 0, start: "15:00", end: "16:00", title: "去花店", location: "花店", reason: "用自由时间安排活动" },
+] }), contexts);
+assert.equal(overwriteFreeTime.drafts.length, 1, "AI should be allowed to add an activity over free-time");
+assert.equal(overwriteFreeTime.conflicts.length, 0, "free-time must not be reported as a conflict");
+assert.equal(overwriteFreeTime.rejected.length, 0);
+
 console.log("Life guided schedule re-plan tests passed.");
