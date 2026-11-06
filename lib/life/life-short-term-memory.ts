@@ -1,11 +1,16 @@
 import { prepareShortTermContext } from "@/lib/short-term-assembler";
 
+/**
+ * Life uses the same cross-app timeline assembler and source filters as online chat.
+ * The only difference is the consumer app id ("life"), whose default count limit is
+ * unlimited; the shared token budget remains the final safety boundary.
+ */
 export function buildLifeShortTermMemoryPrompt(characterId: string): string {
   const context = prepareShortTermContext(characterId, "life", {
     includeDirectChatEntries: true,
   });
-  const events = context.unifiedRecentItems
-    .filter(item => item.kind === "event" && item.sourceApp !== "life" && item.sourceApp !== "chat")
+  const items = context.unifiedRecentItems
+    .filter(item => item.kind === "event")
     .map(item => {
       if (item.kind !== "event") return "";
       const date = new Date(item.timestamp);
@@ -15,6 +20,7 @@ export function buildLifeShortTermMemoryPrompt(characterId: string): string {
       return "- [" + stamp + "｜来源：" + item.sourceApp + "] " + item.text;
     })
     .filter(Boolean);
-  if (events.length === 0) return "【全局短期记忆】暂无其他应用的近期事件。";
-  return "【全局短期记忆｜跨应用近期事件】\n" + events.join("\n");
+  return items.length
+    ? "【统一短期记忆｜跨应用近期记录】\\n" + items.join("\\n")
+    : "【统一短期记忆】暂无符合来源设置的近期记录。";
 }
