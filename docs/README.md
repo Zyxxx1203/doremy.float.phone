@@ -14,8 +14,6 @@
 
 - [根目录环境变量模板](../.env.example)：变量名称和用途的当前入口；实际部署还需检查 Netlify/Supabase 控制台配置。
 - [云端生活日程说明](./cloud-life-scheduler.md)：生活日程快照、Edge Function、Cron 和当前主动消息开关状态。
-- [个人云推送 SQL](./personal-push-supabase.sql)：当前一键部署流程使用的个人 Supabase Schema，包含推送任务、生活日程运行态及 Cron；只应部署到专用个人云项目，执行前阅读 SQL 顶部保护说明。
-- [旧版站点共享推送 SQL](./push-supabase.sql)：仅供仍在使用旧版站点账号共享推送的部署迁移维护，不是新用户的个人云部署入口。
 - [站点云一键初始化 SQL](./supabase-all-in-one.sql)：账号、审核、便签墙、游戏/应用市场、举报、联机和现实桥相关站点表；不会部署个人推送云，也不会自动开放成年审核申请。
 - [账号与激活码 SQL](./account-supabase.sql)：账号、会话和激活码基础表。
 - [个人云推送 SQL](./personal-push-supabase.sql)：个人推送、生活日程运行态与 Cron；新部署优先走应用内「云服务部署」。
