@@ -2158,7 +2158,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         includeDirectChatEntries: true,
       });
       const sharedShortTermContext = sharedShortTerm.unifiedRecentItems
-        .flatMap(item => item.kind === "event" && item.sourceApp !== "life" && item.sourceApp !== "photo_wall" ? [item.text] : [])
+        .flatMap(item => item.kind === "event" && item.sourceApp !== "life" ? [item.text] : [])
         .filter(Boolean)
         .join("\n");
       const settingsInstructions = [
