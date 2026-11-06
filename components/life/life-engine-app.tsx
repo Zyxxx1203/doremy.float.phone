@@ -1862,6 +1862,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       return [
         settings.keepDialogueConcise ? "保持自然简短：一句对白，必要时附一个动作。" : "可以适度展开，但不要写成长篇故事。",
         buildOnlineChatBackground(character.id),
+        prepareShortTermContext(character.id, "life", { includeDirectChatEntries: true }).recentBlocks
+          .filter(block => block.content.trim() && block.tag !== "recent_life" && block.tag !== "recent_chat" && block.tag !== "recent_group_chat")
+          .map(block => "【" + block.tag + "】\\n" + block.content).join("\\n\\n"),
         sceneContext,
       ].filter(Boolean).join("\n\n");
     };
