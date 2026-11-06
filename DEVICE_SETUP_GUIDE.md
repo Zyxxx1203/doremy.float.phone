@@ -35,9 +35,9 @@
 相关文档：
 
 - Android Shell 构建说明：  
-  https://github.com/doremy1203/doremy.float.phone/blob/main/android-shell/README.md
+  https://github.com/Zyxxx1203/doremy.float.phone/blob/main/android-shell/README.md
 - 项目来源与二次开发说明：  
-  https://github.com/doremy1203/doremy.float.phone/blob/main/README.md
+  https://github.com/Zyxxx1203/doremy.float.phone/blob/main/README.md
 
 ## 二、第一步：Fork 并准备自己的仓库
 
