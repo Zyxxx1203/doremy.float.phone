@@ -195,6 +195,8 @@ export type LifeActorState = {
   actualLocationName?: string | null;
   /** Optional real-world time when a manually chosen location stay ends and the planned itinerary resumes. */
   actualLocationUntil?: string | null;
+  /** Online chat temporarily wakes a sleeping character for 20 minutes; schedule remains unchanged. */
+  onlineChatAwakeUntil?: string | null;
   updatedAt: string;
 };
 
