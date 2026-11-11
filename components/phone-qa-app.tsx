@@ -938,20 +938,38 @@ export function PhoneQaApp({ onClose, onNotice }: PhoneQaAppProps) {
     clearToolsOpen, previewItem, previewOpen, editAttachMenuOpen, attachMenuOpen, drawerOpen,
   ]);
 
-  // 自动滚动：用户上滚阅读时不拉回底部
+  // 搜索结果可能位于另一个会话。先切换会话，再等目标消息真正挂载后定位，
+  // 不再依赖固定 160ms 延时（低端 WebView / 大会话加载时经常来不及）。
   const jumpToSearchMatch = useCallback((index: number) => {
     const match = searchMatches[index];
     if (!match) return;
     setSearchCursor(index);
+    setPendingSearchJump({ sessionId: match.sessionId, messageId: match.message.id });
     if (match.sessionId !== snapshot.activeSessionId) {
       switchQaSession(match.sessionId);
       setDrawerOpen(false);
     }
-    window.setTimeout(() => {
-      const node = bodyRef.current?.querySelector<HTMLElement>(`[data-qa-message-id="${match.message.id.replace(/"/g, '\"')}"]`);
-      node?.scrollIntoView({ block: "center", behavior: "smooth" });
-    }, 160);
   }, [searchMatches, snapshot.activeSessionId]);
+
+  useEffect(() => {
+    if (!pendingSearchJump || snapshot.activeSessionId !== pendingSearchJump.sessionId) return;
+    let attempts = 0;
+    let frame = 0;
+    const locate = () => {
+      const nodes = bodyRef.current?.querySelectorAll<HTMLElement>("[data-qa-message-id]");
+      const target = nodes ? Array.from(nodes).find(node => node.dataset.qaMessageId === pendingSearchJump.messageId) : null;
+      if (target) {
+        target.scrollIntoView({ block: "center", behavior: "smooth" });
+        setPendingSearchJump(null);
+        return;
+      }
+      attempts += 1;
+      if (attempts < 12) frame = window.requestAnimationFrame(locate);
+      else setPendingSearchJump(null);
+    };
+    frame = window.requestAnimationFrame(locate);
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingSearchJump, snapshot.activeSessionId, messages]);
 
   const handleScroll = useCallback(() => {
     const el = bodyRef.current;
