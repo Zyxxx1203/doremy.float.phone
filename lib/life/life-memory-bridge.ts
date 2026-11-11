@@ -79,7 +79,7 @@ export function buildLifeMemoryContext(characterId: string, limit = 10): string 
  * a fabricated memory; the prompt must respect sleep, work and actual location.
  */
 export function buildLifePresenceContext(characterId: string): string {
-  const state = loadSettledCharacterLifeState(characterId);
+  let state = loadSettledCharacterLifeState(characterId);
   if (!state.settings.enabled) return "";
   const clock = getActorClock(state, "character", characterId);
   const now = resolveActorLifeNow(clock);
