@@ -82,7 +82,7 @@ function isLifeCharacterSleeping(sessionId: string): boolean {
     const character = characterId ? loadCharacters().find(item => item.id === characterId) : undefined;
     if (!character) return false;
     const loaded = loadVirtualLifeState();
-    if (!loaded.settings.enabled || !loaded.settings.allowCharactersToStaySilent) return false;
+    if (!loaded.settings.enabled || loaded.settings.allowOnlineChatDuringSleep || !loaded.settings.allowCharactersToStaySilent) return false;
     const settled = settleActorTimelineToNow(loaded, "character", character.id);
     const life = settled === loaded ? loaded : saveVirtualLifeState(settled);
     const clock = getActorClock(life, "character", character.id);
