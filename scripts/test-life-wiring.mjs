@@ -66,6 +66,14 @@ assert.match(debugPromptPanel, /watchPreviewMode/);
 assert.match(debugPromptPanel, /loadWidgetConfig\(\)/);
 assert.match(debugPromptPanel, /loadBridgeRules\(\)/);
 assert.match(lifePresence, /allowOnlineChatDuringSleep/);
+assert.match(lifePresence, /onlineChatAwakeUntil/);
+assert.match(lifePresence, /20 \* 60_000/);
+const workshopSearch = await read("../components/phone-qa-app.tsx");
+const workshopStyles = await read("../styles/qa.css");
+assert.match(workshopSearch, /pendingSearchJump/);
+assert.match(workshopSearch, /qa-search-controls/);
+assert.match(workshopStyles, /\.qa-search-controls/);
+
 assert.match(followUpService, /loaded\.settings\.allowOnlineChatDuringSleep/);
 assert.match(app, /角色睡觉时仍正常回复线上聊天/);
 assert.match(followUpService, /appId: options\?\.appId/);
