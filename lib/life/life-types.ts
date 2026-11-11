@@ -32,6 +32,8 @@ export type LifeEngineSettings = {
   showActionNarration: boolean;
   keepDialogueConcise: boolean;
   allowCharactersToStaySilent: boolean;
+  /** Allow ordinary online chat replies while the character's life schedule says they are asleep. */
+  allowOnlineChatDuringSleep: boolean;
   /** 连续纯行动回合上限：0=不允许，1=最多 1 连，2=最多 2 连。 */
   maxConsecutiveActionOnly?: 0 | 1 | 2;
   /** 生活输出格式异常时是否自动修复重试一次。 */
@@ -105,6 +107,7 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   showActionNarration: true,
   keepDialogueConcise: true,
   allowCharactersToStaySilent: true,
+  allowOnlineChatDuringSleep: true,
   maxConsecutiveActionOnly: 1,
   enableLifeFormatRepair: true,
   revealExactLocations: "clues",
