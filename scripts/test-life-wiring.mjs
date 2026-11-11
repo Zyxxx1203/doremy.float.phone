@@ -30,6 +30,7 @@ const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply,
   read("../lib/follow-up-service.ts"),
   read("../lib/short-term-assembler.ts"),
   read("../lib/life/life-memory-bridge.ts"),
+  read("../components/ui/global-notice-host.tsx"),
 ]);
 
 assert.match(app, /if \(settings\.autoGenerateWeeklyPlans\)\s*\{\s*next = generateWeeklyLifePlan/);
@@ -73,6 +74,9 @@ const workshopStyles = await read("../styles/qa.css");
 assert.match(workshopSearch, /pendingSearchJump/);
 assert.match(workshopSearch, /qa-search-controls/);
 assert.match(workshopStyles, /\.qa-search-controls/);
+assert.match(globalNoticeHost, /document\.querySelector<HTMLElement>\("\.phone-shell"\)/);
+assert.match(globalNoticeHost, /position: inPhoneShell \? "absolute" : "fixed"/);
+assert.match(globalNoticeHost, /maxHeight: "min\(70%, 420px\)"/);
 
 assert.match(followUpService, /loaded\.settings\.allowOnlineChatDuringSleep/);
 assert.match(app, /角色睡觉时仍正常回复线上聊天/);
