@@ -1012,18 +1012,23 @@
 .phone-shell-notice {
   position: absolute;
   left: 50%;
-  top: 46px;
+  top: calc(var(--safe-area-top, 0px) + var(--page-header-safe-top, 48px) + var(--page-header-content-height, 42px) + 8px);
   transform: translateX(-50%);
-  z-index: 8;
-  width: min(92%, 320px);
+  z-index: 10000;
+  width: min(calc(100% - 24px), 360px);
+  max-width: calc(100% - 24px);
+  max-height: min(28dvh, 180px);
+  box-sizing: border-box;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
   border-radius: 14px;
-  border: 0;
-  background: rgba(255, 255, 255, 0.9);
-  color: rgba(30, 30, 30, 0.92);
+  border: 1px solid rgba(217, 164, 65, 0.32);
+  background: rgba(255, 250, 232, 0.97);
+  color: rgba(72, 54, 24, 0.96);
   padding: 10px 12px;
   font-size: calc(11.7px*var(--app-text-scale,1));
-  line-height: 1.35;
-  text-align: center;
+  line-height: 1.4;
+  text-align: left;
   box-shadow: 0 12px 24px rgba(60, 60, 60, 0.18);
   pointer-events: none;
 }
