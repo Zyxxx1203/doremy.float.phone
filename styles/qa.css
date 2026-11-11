@@ -189,6 +189,88 @@
   transition-duration: 0.12s;
 }
 
+/* ── 聊天记录搜索：在窄屏 WebView 中严格收进工坊视口 ── */
+.qa-search-panel {
+  flex: 0 0 auto;
+  width: calc(100% - 24px);
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0 12px 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(128, 128, 128, 0.08);
+  display: grid;
+  gap: 8px;
+}
+.qa-search-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(3, 34px);
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+}
+.qa-search-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--border, #ddd);
+  background: var(--surface, #fff);
+  color: var(--qa-text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+.qa-search-controls .qa-icon-btn {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  flex: 0 0 34px;
+}
+.qa-search-results {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  max-height: min(22dvh, 170px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.qa-search-result {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: transparent;
+  border: 0;
+  color: var(--qa-text-primary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qa-search-result.is-active {
+  background: rgba(184, 135, 104, 0.18);
+}
+@media (max-width: 360px) {
+  .qa-search-controls {
+    grid-template-columns: minmax(0, 1fr) repeat(3, 30px);
+    gap: 4px;
+  }
+  .qa-search-controls .qa-icon-btn {
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    flex-basis: 30px;
+  }
+}
+
 /* ── 消息区 ── */
 .qa-body {
   flex: 1 1 auto;
