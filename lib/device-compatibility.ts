@@ -46,7 +46,7 @@ function clamp(value: number, min: number, max: number): number {
 export function getAutomaticDeviceFitScale(viewportWidth: number, viewportHeight: number, screenWidth: number, screenHeight: number, isTouchDevice: boolean): number {
   if (!isTouchDevice || Math.min(screenWidth, screenHeight) < 520) return 1;
   const scale = Math.min(viewportWidth / 390, viewportHeight / 844);
-  return Number.isFinite(scale) && scale > 1.001 ? Math.min(scale, 3) : 1;
+  return Number.isFinite(scale) ? Math.min(3, Math.max(0.75, scale)) : 1;
 }
 
 export function loadDeviceCompatibilitySettings(): DeviceCompatibilitySettings {
@@ -105,7 +105,7 @@ export function applyDeviceCompatibilitySettings(
   const screenWidth = Math.max(1, window.screen?.width || window.innerWidth || 1);
   const screenHeight = Math.max(1, window.screen?.height || window.innerHeight || 1);
   const userScale = clamp(settings.uiScale || 1, 0.75, 1.25);
-  const isTouchDevice = (window.navigator.maxTouchPoints || 0) > 0
+  const isTouchDevice = root.getAttribute("data-device-class") === "tablet"
     || Boolean(window.matchMedia?.("(hover: none) and (pointer: coarse)").matches);
   const autoFitScale = getAutomaticDeviceFitScale(viewportWidth, viewportHeight, screenWidth, screenHeight, isTouchDevice);
 
