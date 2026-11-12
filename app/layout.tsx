@@ -60,7 +60,7 @@ export default function RootLayout({
           if(!saved||saved.layoutMode!=="manual"){
             var vw=Math.max(1,(window.visualViewport&&window.visualViewport.width)||window.innerWidth||sw);
             var vh=Math.max(1,(window.visualViewport&&window.visualViewport.height)||window.innerHeight||sh);
-            var autoScale=isTablet?Math.min(vw/390,vh/844):1;if(!isFinite(autoScale)||autoScale<1.001)autoScale=1;
+            var autoScale=isTablet?Math.min(vw/390,vh/844):1;if(!isFinite(autoScale))autoScale=1;else if(isTablet)autoScale=Math.min(3,Math.max(.75,autoScale));
             var userScale=Number(saved&&saved.uiScale)||1;userScale=Math.min(1.25,Math.max(.75,userScale));
             var scale=Math.min(3,Math.max(.5,autoScale*userScale));
             if(Math.abs(scale-1)>.001){
