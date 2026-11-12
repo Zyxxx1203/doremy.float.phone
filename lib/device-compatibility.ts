@@ -43,9 +43,11 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /** Fit the phone-sized workspace to large touch displays without changing phone behavior. */
-export function getAutomaticDeviceFitScale(viewportWidth: number, viewportHeight: number, screenWidth: number, screenHeight: number, isTouchDevice: boolean): number {
+export function getAutomaticDeviceFitScale(screenWidth: number, screenHeight: number, isTouchDevice: boolean): number {
   if (!isTouchDevice || Math.min(screenWidth, screenHeight) < 520) return 1;
-  const scale = Math.min(viewportWidth / 390, viewportHeight / 844);
+  // Base the scale on stable physical-screen metrics, not visualViewport height:
+  // the latter shrinks when the keyboard opens and would otherwise resize the whole UI.
+  const scale = Math.min(screenWidth / 390, screenHeight / 844);
   return Number.isFinite(scale) ? Math.min(3, Math.max(0.75, scale)) : 1;
 }
 
@@ -107,7 +109,7 @@ export function applyDeviceCompatibilitySettings(
   const userScale = clamp(settings.uiScale || 1, 0.75, 1.25);
   const isTouchDevice = root.getAttribute("data-device-class") === "tablet"
     || Boolean(window.matchMedia?.("(hover: none) and (pointer: coarse)").matches);
-  const autoFitScale = getAutomaticDeviceFitScale(viewportWidth, viewportHeight, screenWidth, screenHeight, isTouchDevice);
+  const autoFitScale = getAutomaticDeviceFitScale(screenWidth, screenHeight, isTouchDevice);
 
   if (settings.layoutMode === "manual" && settings.screenWidth >= 100 && settings.screenHeight >= 200) {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
