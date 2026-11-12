@@ -34,8 +34,8 @@ export default function RootLayout({
   children: ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
-      <head>
+    <html lang="zh-CN" suppressHydrationWarning>
+      <head suppressHydrationWarning>
         {/* 首屏设备识别：水合前识别触屏手机/平板，修正部分浏览器「桌面版网站」报告过宽视口的问题。
             手动兼容参数优先；自动缩放与水合后的 device-compatibility 规则保持一致。 */}
         <script dangerouslySetInnerHTML={{__html:`(function(){try{
