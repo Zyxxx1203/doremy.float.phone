@@ -41,8 +41,10 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{__html:`(function(){try{
           var root=document.documentElement,nav=navigator,scr=window.screen||{};
           var sw=Math.max(1,Number(scr.width)||window.innerWidth||1),sh=Math.max(1,Number(scr.height)||window.innerHeight||1);
-          var shortSide=Math.min(sw,sh),touch=(Number(nav.maxTouchPoints)||0)>0;
-          try{touch=touch||window.matchMedia("(hover: none) and (pointer: coarse)").matches;}catch(e){}
+          var shortSide=Math.min(sw,sh),coarse=false,ua=String(nav.userAgent||"");
+          try{coarse=window.matchMedia("(hover: none) and (pointer: coarse)").matches;}catch(e){}
+          var mobileUA=/Android|iPhone|iPad|iPod/i.test(ua)||(/Macintosh/i.test(ua)&&(Number(nav.maxTouchPoints)||0)>1);
+          var touch=coarse||((Number(nav.maxTouchPoints)||0)>0&&mobileUA);
           var isPhone=touch&&shortSide>0&&shortSide<=620,isTablet=touch&&shortSide>620;
           root.setAttribute("data-device-class",isPhone?"phone":isTablet?"tablet":"desktop");
           if(isPhone){
