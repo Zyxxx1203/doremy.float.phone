@@ -45,7 +45,7 @@ export default function RootLayout({
           try{coarse=window.matchMedia("(hover: none) and (pointer: coarse)").matches;}catch(e){}
           var mobileUA=/Android|iPhone|iPad|iPod/i.test(ua)||(/Macintosh/i.test(ua)&&(Number(nav.maxTouchPoints)||0)>1);
           var touch=coarse||((Number(nav.maxTouchPoints)||0)>0&&mobileUA);
-          var isPhone=touch&&shortSide>0&&shortSide<=620,isTablet=touch&&shortSide>620;
+          var isPhone=touch&&shortSide>0&&shortSide<520,isTablet=touch&&shortSide>=520;
           root.setAttribute("data-device-class",isPhone?"phone":isTablet?"tablet":"desktop");
           if(isPhone){
             var viewport=document.querySelector('meta[name="viewport"]'),currentWidth=window.innerWidth||0,mobileQuery=false;
