@@ -3936,6 +3936,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             <div className="rounded-lg border border-stone-200/70 bg-white/60 px-3 py-2 text-xs leading-relaxed text-stone-500">角色动作卡片已启用：连续动作合并显示，对白仍按消息分条显示。</div>
             <Toggle checked={settings.keepDialogueConcise} onChange={v=>patchSettings({keepDialogueConcise:v})} label="默认保持短回合对话"/>
             <Toggle checked={settings.allowCharactersToStaySilent} onChange={v=>patchSettings({allowCharactersToStaySilent:v})} label="允许角色沉默或专注做自己的事"/>
+            <Toggle checked={settings.allowOnlineChatDuringSleep} onChange={v=>patchSettings({allowOnlineChatDuringSleep:v})} label="角色睡觉时仍正常回复线上聊天" hint="开启后，睡眠日程仍保留，但不会因此拦截普通私聊和后台回复；角色可以表现出困倦或刚睡醒。"/>
             <div className="flex items-center justify-between gap-3 rounded-lg border border-stone-200/70 bg-white/60 px-3 py-2 text-xs text-stone-700">
               <span>连续纯行动上限</span>
               <select value={activeMaxConsecutiveActionOnly} onChange={event => patchSettings({ maxConsecutiveActionOnly: Number(event.target.value) as 0 | 1 | 2 })} className="rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs">

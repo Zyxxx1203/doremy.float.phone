@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, splashAnimation, builtinPrompts, debugPromptRegistry, debugPromptPanel, watchApp, moduleDiagnostics, runtimeDiagnostics, debugStore, checkinEngine, followUpService, shortTermAssembler] = await Promise.all([
+const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, splashAnimation, builtinPrompts, debugPromptRegistry, debugPromptPanel, watchApp, moduleDiagnostics, runtimeDiagnostics, debugStore, checkinEngine, followUpService, shortTermAssembler, lifePresence, globalNoticeHost] = await Promise.all([
   read("../components/life/life-engine-app.tsx"),
   read("../lib/life/life-runtime.ts"),
   read("../components/life/life-observation.tsx"),
@@ -29,6 +29,8 @@ const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply,
   read("../lib/screenshot/checkin-engine.ts"),
   read("../lib/follow-up-service.ts"),
   read("../lib/short-term-assembler.ts"),
+  read("../lib/life/life-memory-bridge.ts"),
+  read("../components/ui/global-notice-host.tsx"),
 ]);
 
 assert.match(app, /if \(settings\.autoGenerateWeeklyPlans\)\s*\{\s*next = generateWeeklyLifePlan/);
@@ -64,6 +66,20 @@ assert.match(debugPromptPanel, /checkInPreviewKind/);
 assert.match(debugPromptPanel, /watchPreviewMode/);
 assert.match(debugPromptPanel, /loadWidgetConfig\(\)/);
 assert.match(debugPromptPanel, /loadBridgeRules\(\)/);
+assert.match(lifePresence, /allowOnlineChatDuringSleep/);
+assert.match(lifePresence, /onlineChatAwakeUntil/);
+assert.match(lifePresence, /20 \* 60_000/);
+const workshopSearch = await read("../components/phone-qa-app.tsx");
+const workshopStyles = await read("../styles/qa.css");
+assert.match(workshopSearch, /pendingSearchJump/);
+assert.match(workshopSearch, /qa-search-controls/);
+assert.match(workshopStyles, /\.qa-search-controls/);
+assert.match(globalNoticeHost, /document\.querySelector<HTMLElement>\("\.phone-shell"\)/);
+assert.match(globalNoticeHost, /position: inPhoneShell \? "absolute" : "fixed"/);
+assert.match(globalNoticeHost, /maxHeight: "min\(70%, 420px\)"/);
+
+assert.match(followUpService, /loaded\.settings\.allowOnlineChatDuringSleep/);
+assert.match(app, /角色睡觉时仍正常回复线上聊天/);
 assert.match(followUpService, /appId: options\?\.appId/);
 assert.match(followUpService, /appTags: options\?\.appTags/);
 assert.match(watchApp, /frameOverride !== undefined/);
