@@ -3874,7 +3874,17 @@ export function ChatRoom({ session, onBack, onDeleted, isActive = true }: ChatRo
         const loadedLife = loadVirtualLifeState();
         const settledLife = settleActorTimelineToNow(loadedLife, "character", character.id);
         const life = settledLife === loadedLife ? loadedLife : saveVirtualLifeState(settledLife);
-        if (!life.settings.enabled || !life.settings.allowCharactersToStaySilent) { kvRemove("life-sleep-pending-reply:" + session.id); return false; }
+        if (
+            !life.settings.enabled ||
+            life.settings.allowOnlineChatDuringSleep ||
+            !life.settings.allowCharactersToStaySilent
+        ) {
+            kvRemove("life-sleep-pending-reply:" + session.id);
+            kvRemove("life-sleep-wake-threshold:" + session.id + ":offline");
+            kvRemove("life-sleep-wake-threshold:" + session.id + ":online");
+            setSleepNotice(null);
+            return false;
+        }
         const latestUserText = (userText || loadChatMessages(session.id).filter(message => message.role === "user").slice(-1)[0]?.content || "").trim();
         if (!latestUserText) return false;
         const clock = getActorClock(life, "character", character.id);
