@@ -65,11 +65,11 @@ export const LIFE_TOOL_DEFINITIONS: LifeToolDefinition[] = [
   },
   {
     name: "life_change_schedule",
-    description: "修改角色本人已由角色自主创建的未来日程；提供 scheduleId。兼容旧调用时不提供 scheduleId 会按创建新日程处理。不得覆盖用户手动安排、约会或特殊活动。",
+    description: "修改角色本人尚未开始的自动生成日程或角色自主创建的未来日程；提供 scheduleId。兼容旧调用时不提供 scheduleId 会按创建新日程处理。不得覆盖用户手动安排、约会或特殊活动。",
     parameterSchema: JSON.stringify({
       type: "object",
       properties: {
-        scheduleId: { type: "string", description: "要修改的角色自主创建日程 ID" },
+        scheduleId: { type: "string", description: "要修改的自动生成或角色自主创建日程 ID" },
         startAt: { type: "string", description: "新开始时间，ISO-8601 格式" },
         endAt: { type: "string", description: "新结束时间，ISO-8601 格式" },
         title: { type: "string", description: "新的活动名称" },
@@ -80,10 +80,10 @@ export const LIFE_TOOL_DEFINITIONS: LifeToolDefinition[] = [
   },
   {
     name: "life_cancel_schedule",
-    description: "取消角色本人尚未开始、且由角色自主创建的未来日程。不能取消用户手动安排、约会、特殊活动或已经开始的日程。",
+    description: "取消角色本人尚未开始的自动生成或角色自主创建的未来日程。不能取消用户手动安排、约会、特殊活动或已经开始的日程。",
     parameterSchema: JSON.stringify({
       type: "object",
-      properties: { scheduleId: { type: "string", description: "要取消的角色自主创建日程 ID" } },
+      properties: { scheduleId: { type: "string", description: "要取消的自动生成或角色自主创建日程 ID" } },
       required: ["scheduleId"],
     }),
   },
