@@ -658,6 +658,18 @@ const manualFreeOverlay = overlayScheduleSlotsOverFreeTime(makeState([{
 assert.deepEqual(manualFreeOverlay.schedules.map(slot => slot.id), ["manual-free"],
   "weekly generation must not overwrite a manually-authored free-time slot");
 
+const cancelledFreeOverlay = overlayScheduleSlotsOverFreeTime(makeState([{
+  id: "cancelled-free", ownerType: "character", ownerId: "c-cancelled",
+  startAt: "2026-10-15T09:00:00.000Z", endAt: "2026-10-15T18:00:00.000Z",
+  title: "自由活动", kind: "free-time", source: "character-tool",
+}]), [{
+  id: "regenerated-slot", ownerType: "character", ownerId: "c-cancelled",
+  startAt: "2026-10-15T12:00:00.000Z", endAt: "2026-10-15T14:00:00.000Z",
+  title: "自动安排的学习", kind: "study", source: "weekly-generation",
+}]);
+assert.deepEqual(cancelledFreeOverlay.schedules.map(slot => slot.id), ["cancelled-free"],
+  "a cancelled slot represented as character free-time must not be regenerated");
+
 // Character-initiated changes must also preserve user-authored free-time.
 const autonomyOverFree = applyCharacterLifeScheduleChange(makeState([{
   id: "character-free", ownerType: "character", ownerId: "c-autonomy",
