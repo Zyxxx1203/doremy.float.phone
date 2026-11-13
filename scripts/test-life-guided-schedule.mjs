@@ -83,13 +83,16 @@ const manualActivityContext = [{ ...contexts[0], existing: [...contexts[0].exist
   id: "manual-activity", startAt: "2026-11-05T18:00:00.000Z", endAt: "2026-11-05T19:00:00.000Z",
   title: "用户手动安排的活动", source: "manual", kind: "special",
 }] }];
-const manualActivityAttempt = parseGuidedScheduleResponse(JSON.stringify({ schedules: [
+const manualActivityCancelAttempt = parseGuidedScheduleResponse(JSON.stringify({ schedules: [
   { actorId: "char-a", actorType: "character", actorName: "小满", operation: "cancel", existingScheduleId: "manual-activity", reason: "尝试取消用户安排" },
+] }), manualActivityContext);
+assert.equal(manualActivityCancelAttempt.drafts.length, 0, "AI must not cancel manually-authored activities");
+assert.equal(manualActivityCancelAttempt.rejected.length, 1);
+const manualActivityOverlapAttempt = parseGuidedScheduleResponse(JSON.stringify({ schedules: [
   { actorId: "char-a", actorType: "character", actorName: "小满", operation: "add", dayOffset: 0, start: "18:00", end: "19:00", title: "临时学习", location: "图书馆", reason: "尝试覆盖用户安排" },
 ] }), manualActivityContext);
-assert.equal(manualActivityAttempt.drafts.length, 0, "AI must not cancel or overlap manually-authored activities");
-assert.equal(manualActivityAttempt.conflicts.length, 1);
-assert.equal(manualActivityAttempt.rejected.length, 1);
+assert.equal(manualActivityOverlapAttempt.drafts.length, 0, "AI must not overlap manually-authored activities");
+assert.equal(manualActivityOverlapAttempt.conflicts.length, 1);
 
 const inProgressContext = [{ ...contexts[0], existing: [{
   id: "ongoing-free", startAt: "2026-11-05T07:00:00.000Z", endAt: "2026-11-05T10:00:00.000Z",
