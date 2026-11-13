@@ -122,9 +122,8 @@ export function buildLifePresenceContext(characterId: string): string {
   const remainingToday = state.schedules
     .filter(item => item.ownerType === "character" && item.ownerId === characterId
       && item.id !== schedule?.id
-      && new Date(item.startAt).getTime() > now.getTime()
-      && new Date(item.startAt).getTime() < nextDay.getTime()
-      && new Date(item.endAt).getTime() > now.getTime())
+      && new Date(item.endAt).getTime() > now.getTime()
+      && new Date(item.startAt).getTime() < nextDay.getTime())
     .sort((a, b) => a.startAt.localeCompare(b.startAt))
     .slice(0, 8);
   const lines = [
@@ -135,7 +134,7 @@ export function buildLifePresenceContext(characterId: string): string {
     "日程计划：" + (schedule?.title || "当前时段暂无计划"),
     schedule ? "当前日程的完整时间段：" + formatLifeRange(schedule.startAt, schedule.endAt) : "",
     schedule ? "日程语义：这是角色当前计划时段；请明确区分开始时间、结束时间和当前实际活动。" : "",
-    remainingToday.length ? "【今天接下来的安排｜只包含尚未开始的日程】" : "",
+    remainingToday.length ? "【今天接下来的安排｜包含尚未结束的日程】" : "",
     ...remainingToday.map(item => "- " + formatLifeRange(item.startAt, item.endAt) + "｜" + item.title + (item.plannedLocationName ? "｜计划地点：" + item.plannedLocationName : "")),
     scene ? "关联场景：" + scene.locationName + "（场景已保存；只记得自己参与或实际感知到的内容）" : "",
     awakeGraceActive
