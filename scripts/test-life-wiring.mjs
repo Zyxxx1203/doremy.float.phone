@@ -254,7 +254,7 @@ assert.match(app, /kind: "free-time", source: "character-tool"/,
   "guided cancellations must leave a protected free-time placeholder");
 assert.match(lifeTools, /kind: "free-time" as const, source: "character-tool" as const/,
   "tool cancellations must leave a protected free-time placeholder");
-assert.match(app, /daysUntilWeekEnd <= 1/);
+assert.match(app, /daysUntilWeekEnd <= 2/);
 assert.match(app, /nextWeek\.setDate\(nextWeek\.getDate\(\) \+ 7\)/);
 
 console.log("Life-system wiring checks passed.");
