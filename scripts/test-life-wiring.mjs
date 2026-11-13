@@ -246,6 +246,10 @@ assert.match(guidedSchedule, /slot\.source !== "weekly-generation"/,
   "only generated free-time may be treated as an open slot");
 assert.match(app, /existing\.source === "manual"/,
   "the atomic guided-plan commit must revalidate manual schedule protection");
+assert.match(app, /kind: "free-time", source: "character-tool"/,
+  "guided cancellations must leave a protected free-time placeholder");
+assert.match(lifeTools, /kind: "free-time" as const, source: "character-tool" as const/,
+  "tool cancellations must leave a protected free-time placeholder");
 assert.match(app, /daysUntilWeekEnd <= 1/);
 assert.match(app, /nextWeek\.setDate\(nextWeek\.getDate\(\) \+ 7\)/);
 
