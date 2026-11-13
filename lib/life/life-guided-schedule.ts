@@ -62,7 +62,20 @@ export function parseGuidedScheduleResponse(
     const item = value as Record<string, unknown>;
     const operation = typeof item.operation === "string" ? item.operation.trim().toLowerCase() : "";
     const existingId = typeof item.existingScheduleId === "string" ? item.existingScheduleId.trim() : "";
-    return existingId && ["move", "update", "cancel"].includes(operation) ? [existingId] : [];
+    const actorId = typeof item.actorId === "string" ? item.actorId.trim() : "";
+    const actorTypeRaw = typeof item.actorType === "string" ? item.actorType.trim().toLowerCase() : "";
+    const actorType = actorTypeRaw === "player" || actorTypeRaw === "用户" || actorTypeRaw === "玩家"
+      ? "player"
+      : actorTypeRaw === "character" || actorTypeRaw === "角色" ? "character" : null;
+    if (!existingId || !actorId || !actorType || !["move", "update", "cancel"].includes(operation)) return [];
+    const context = contexts.find(entry => entry.ownerType === actorType && entry.ownerId === actorId);
+    const existing = context?.existing.find(slot => slot.id === existingId);
+    if (!context || !existing) return [];
+    const started = new Date(existing.startAt) <= context.now || new Date(existing.endAt) <= context.now;
+    const protectedManual = existing.source === "manual" && existing.kind !== "free-time";
+    return !started && !protectedManual && existing.source !== "event" && existing.kind !== "appointment"
+      ? [existingId]
+      : [];
   }));
 
   for (const [index, value] of decoded.schedules.entries()) {
