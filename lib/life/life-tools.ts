@@ -208,8 +208,9 @@ export async function executeLifeToolCall(
     if (name === "life_change_schedule" && scheduleId) {
       const existing = state.schedules.find(slot => slot.id === scheduleId
         && slot.ownerType === "character" && slot.ownerId === characterId
-        && slot.source === "character-tool" && new Date(slot.startAt).getTime() > now.getTime());
-      if (!existing) return result(name, false, undefined, "只能修改角色本人尚未开始、由角色自主创建的日程。");
+        && (slot.source === "weekly-generation" || slot.source === "character-tool")
+        && new Date(slot.startAt).getTime() > now.getTime());
+      if (!existing) return result(name, false, undefined, "只能修改角色本人尚未开始的自动生成或角色自主创建日程；用户手动安排和已确认活动不可修改。");
       baseState = { ...state, schedules: state.schedules.filter(slot => slot.id !== scheduleId) };
     }
     const changed = applyCharacterLifeScheduleChange(baseState, characterId, {
@@ -238,8 +239,9 @@ export async function executeLifeToolCall(
     const now = resolveActorLifeNow(getActorClock(state, "character", characterId));
     const target = state.schedules.find(slot => slot.id === scheduleId
       && slot.ownerType === "character" && slot.ownerId === characterId
-      && slot.source === "character-tool" && new Date(slot.startAt).getTime() > now.getTime());
-    if (!target) return result(name, false, undefined, "只能取消角色本人尚未开始、由角色自主创建的日程。");
+      && (slot.source === "weekly-generation" || slot.source === "character-tool")
+      && new Date(slot.startAt).getTime() > now.getTime());
+    if (!target) return result(name, false, undefined, "只能取消角色本人尚未开始的自动生成或角色自主创建日程；用户手动安排和已确认活动不可取消。");
     const next = { ...state, schedules: state.schedules.filter(slot => slot.id !== scheduleId) };
     const logged = appendLifeTimelineEntry(next, {
       category: "schedule", title: "角色取消了日程：" + target.title,
