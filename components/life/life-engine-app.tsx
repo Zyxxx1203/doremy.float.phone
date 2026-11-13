@@ -1134,7 +1134,11 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         if (!existing || !draft.existingScheduleId || seenExistingIds.has(draft.existingScheduleId)) { invalid.push((draft.title || "日程") + "（旧日程 ID 不存在或重复）"); continue; }
         seenExistingIds.add(draft.existingScheduleId);
         const realNow = actorNow(owner);
-        if (existing.source === "event" || new Date(existing.startAt) <= realNow || new Date(existing.endAt) <= realNow) { invalid.push(existing.title + "（已开始、已结束或属于固定/已确认事件，不允许 AI 调整）"); continue; }
+        if (existing.source === "event" || existing.source === "manual" || existing.kind === "appointment"
+          || new Date(existing.startAt) <= realNow || new Date(existing.endAt) <= realNow) {
+          invalid.push(existing.title + "（已开始、已结束、用户手动安排或属于固定/已确认事件，不允许 AI 调整）");
+          continue;
+        }
         removeIds.add(existing.id);
         if (operation === "cancel") { timelineItems.push({ draft, action: "取消" }); continue; }
       }
