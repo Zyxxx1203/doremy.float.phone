@@ -492,7 +492,7 @@ export function getEnabledTools(appId?: string): EnabledTool[] {
     {
         // Life actions are global toolbox capabilities, available outside the Life APP too.
         const lifeSettings = loadVirtualLifeState().settings;
-        if (lifeSettings.enabled && lifeSettings.enableCharacterAutonomy) {
+        if (lifeSettings.enabled) {
             for (const tool of LIFE_TOOL_DEFINITIONS) {
                 const capabilityId = tool.name === "life_propose_invitation"
                     ? LIFE_INVITATION_CAPABILITY_ID
@@ -504,7 +504,9 @@ export function getEnabledTools(appId?: string): EnabledTool[] {
                 const isScheduleWrite = tool.name === "life_create_schedule"
                     || tool.name === "life_change_schedule"
                     || tool.name === "life_cancel_schedule";
-                const allowed = capability?.enabled && capability.mode !== "off" && (tool.name === "life_propose_invitation"
+                const allowed = capability?.enabled && capability.mode !== "off"
+                    && (isScheduleRead || lifeSettings.enableCharacterAutonomy)
+                    && (tool.name === "life_propose_invitation"
                     ? lifeSettings.enableInvitations
                     : tool.name === "life_request_follow"
                         ? lifeSettings.enableFollowRequestTool
