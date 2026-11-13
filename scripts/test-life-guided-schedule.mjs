@@ -79,4 +79,14 @@ assert.equal(manualFreeTimeAttempt.drafts.length, 0, "AI must not cancel or over
 assert.equal(manualFreeTimeAttempt.conflicts.length, 1);
 assert.equal(manualFreeTimeAttempt.rejected.length, 1);
 
+const inProgressContext = [{ ...contexts[0], existing: [{
+  id: "ongoing-free", startAt: "2026-11-05T07:00:00.000Z", endAt: "2026-11-05T10:00:00.000Z",
+  title: "当前自由活动", source: "weekly-generation", kind: "free-time",
+}] }];
+const inProgressAttempt = parseGuidedScheduleResponse(JSON.stringify({ schedules: [
+  { actorId: "char-a", actorType: "character", actorName: "小满", operation: "add", dayOffset: 0, start: "08:30", end: "09:30", title: "临时外出", location: "公园", reason: "尝试修改当前时段" },
+] }), inProgressContext);
+assert.equal(inProgressAttempt.drafts.length, 0, "AI must not split an already-started free-time slot");
+assert.equal(inProgressAttempt.conflicts.length, 1);
+
 console.log("Life guided schedule re-plan tests passed.");
