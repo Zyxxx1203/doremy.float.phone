@@ -683,4 +683,15 @@ assert.match(autonomyOverFree.error || "", /冲突/);
 assert.ok(!autonomyOverFree.state.schedules.some(slot => slot.title === "去咖啡店学习"),
   "character AI activity must not overwrite a manual free-time slot");
 
+const inProgressChange = applyCharacterLifeScheduleChange(makeState([{
+  id: "in-progress", ownerType: "character", ownerId: "c-progress",
+  startAt: "2026-10-15T08:00:00.000Z", endAt: "2026-10-15T12:00:00.000Z",
+  title: "正在学习", kind: "study", source: "weekly-generation",
+}]), "c-progress", {
+  startAt: "2026-10-15T10:00:00.000Z", endAt: "2026-10-15T11:00:00.000Z",
+  title: "临时外出",
+}, new Date("2026-10-15T09:00:00.000Z"));
+assert.match(inProgressChange.error || "", /冲突/,
+  "character tools must not reshape an activity that has already started");
+
 console.log("Life schedule regression tests passed.");
