@@ -219,12 +219,13 @@ assert.equal((shortTermAssembler.match(/timeline\.filter\(e => CUSTOM_APP_TIMELI
   "both direct-chat and group-chat assemblers must inject special app timeline entries");
 assert.match(shortTermAssembler, /CUSTOM_APP_TIMELINE_SOURCES\.has\(entry\.sourceApp\) \? "recent_custom_app"/);
 
-const [chatEngine, toolStorage, lifeTools, lifeRuntime, lifeMemoryBridge] = await Promise.all([
+const [chatEngine, toolStorage, lifeTools, lifeRuntime, lifeMemoryBridge, guidedSchedule] = await Promise.all([
   read("../lib/chat-engine.ts"),
   read("../lib/tool-storage.ts"),
   read("../lib/life/life-tools.ts"),
   read("../lib/life/life-runtime.ts"),
   read("../lib/life/life-memory-bridge.ts"),
+  read("../lib/life/life-guided-schedule.ts"),
 ]);
 assert.match(chatEngine, /if \(tool\.source === "life"\) return true;/);
 for (const name of ["life_view_schedule", "life_create_schedule", "life_change_schedule", "life_cancel_schedule"]) {
@@ -239,6 +240,12 @@ assert.match(lifeRuntime, /slot\.source === "manual"\s*\|\| slot\.source === "ev
 assert.match(lifeRuntime, /existing\.source !== "weekly-generation"/);
 assert.match(lifeMemoryBridge, /remainingToday/);
 assert.match(lifeMemoryBridge, /item\.id !== schedule\?\.id/);
+assert.match(guidedSchedule, /existing\.source === "manual"/,
+  "guided re-planning must reject user-authored schedule mutations");
+assert.match(guidedSchedule, /slot\.source !== "weekly-generation"/,
+  "only generated free-time may be treated as an open slot");
+assert.match(app, /existing\.source === "manual"/,
+  "the atomic guided-plan commit must revalidate manual schedule protection");
 assert.match(app, /daysUntilWeekEnd <= 1/);
 assert.match(app, /nextWeek\.setDate\(nextWeek\.getDate\(\) \+ 7\)/);
 
