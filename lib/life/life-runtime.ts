@@ -887,7 +887,10 @@ export function insertManualLifeScheduleSlot(
     return Number.isFinite(a) && Number.isFinite(b) && a < end && b > start;
   });
   const conflict = overlapping.find(existing =>
-    existing.kind === "appointment" || existing.source === "manual" || existing.source === "event" || existing.source === "character-tool"
+    existing.kind === "appointment"
+    || (existing.source === "manual" && existing.kind !== "free-time")
+    || existing.source === "event"
+    || (existing.source === "character-tool" && existing.kind !== "free-time")
   );
   if (conflict) return { state, conflict };
 
