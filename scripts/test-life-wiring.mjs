@@ -238,6 +238,9 @@ assert.match(lifeTools, /slot\.ownerId === characterId/);
 assert.match(lifeRuntime, /horizonEnd = new Date\(characterNow\.getTime\(\) \+ 7 \* 24 \* 60 \* 60_000\)/);
 assert.match(lifeRuntime, /slot\.source === "manual"\s*\|\| slot\.source === "event"/);
 assert.match(lifeRuntime, /existing\.source !== "weekly-generation"/);
+assert.match(lifeRuntime, /isAlreadyInProgress/);
+assert.match(guidedSchedule, /isAlreadyInProgress/);
+assert.match(app, /existingStart <= Date\.now\(\) && existingEnd > Date\.now\(\)/);
 assert.match(lifeMemoryBridge, /remainingToday/);
 assert.match(lifeMemoryBridge, /item\.id !== schedule\?\.id/);
 assert.match(guidedSchedule, /existing\.source === "manual"/,
