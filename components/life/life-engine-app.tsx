@@ -620,10 +620,16 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     for (const owner of owners) {
       const actorNow = resolveActorLifeNow(getActorClock(next, owner.ownerType, owner.ownerId));
       const thisMonday = mondayStart(actorNow);
-      // Keep the visible planning horizon to one real-time week. The next week is generated
-      // when the calendar week changes, not pre-filled as a 14-day schedule.
       if (settings.autoGenerateWeeklyPlans) {
         next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, thisMonday, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), settings.generateSpecialEvents);
+        // Pre-build the following calendar week once the current week has only
+        // Saturday/Sunday left. It stays outside the current-week UI until rollover.
+        const daysUntilWeekEnd = 6 - ((actorNow.getDay() + 6) % 7);
+        if (daysUntilWeekEnd <= 1) {
+          const nextMonday = new Date(thisMonday);
+          nextMonday.setDate(nextMonday.getDate() + 7);
+          next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, nextMonday, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), settings.generateSpecialEvents);
+        }
       }
     }
     if (next !== state) commit(next);
@@ -644,15 +650,17 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         // Always inspect the current calendar week first. A future manual slot
         // must not prevent missing baseline days from being generated.
         const week = mondayStart(realNow);
-        const target = mondayStart(realNow);
-        const targetEnd = new Date(target);
-        // Auto-generation is still limited to the current 7-day week; don't expose
-        // a second pre-generated week in the schedule UI. The next week is added
-        // automatically when the real calendar week changes.
+        const targetEnd = new Date(week);
+        // Keep the current week complete, then pre-generate the following week
+        // only during the final two calendar days. The UI continues to show its
+        // selected seven-day window; this is background coverage, not a 14-day view.
         if (liveSettings.autoGenerateWeeklyPlans) {
-          for (let guard = 0; week.getTime() <= targetEnd.getTime() && guard < 520; guard++) {
-            next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, week, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), liveSettings.generateSpecialEvents);
-            week.setDate(week.getDate() + 7);
+          next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, week, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), liveSettings.generateSpecialEvents);
+          const daysUntilWeekEnd = 6 - ((realNow.getDay() + 6) % 7);
+          if (daysUntilWeekEnd <= 1) {
+            const nextWeek = new Date(targetEnd);
+            nextWeek.setDate(nextWeek.getDate() + 7);
+            next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, nextWeek, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), liveSettings.generateSpecialEvents);
           }
         }
         const beforeSettle = next;
