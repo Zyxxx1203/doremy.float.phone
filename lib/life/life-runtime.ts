@@ -941,7 +941,7 @@ export function overlayScheduleSlotsOverFreeTime(
       const sameOwner = existing.ownerType === candidate.ownerType && existing.ownerId === candidate.ownerId;
       const a = new Date(existing.startAt).getTime();
       const b = new Date(existing.endAt).getTime();
-      if (!sameOwner || existing.kind !== "free-time" || !Number.isFinite(a) || !Number.isFinite(b) || b <= start || a >= end) {
+      if (!sameOwner || existing.kind !== "free-time" || existing.source !== "weekly-generation" || !Number.isFinite(a) || !Number.isFinite(b) || b <= start || a >= end) {
         next.push(existing);
         continue;
       }
@@ -956,8 +956,8 @@ export function overlayScheduleSlotsOverFreeTime(
 
 /**
  * Apply a character-authored schedule change through one shared business rule.
- * It may reshape generated or previous character-tool slots, but never silently
- * overwrites user-authored plans or confirmed events.
+ * It may reshape generated or previous character-tool slots in the next seven days,
+ * but never overwrites any manual slot (including manual free-time), events or appointments.
  */
 export function applyCharacterLifeScheduleChange(
   state: VirtualLifeState,
@@ -972,14 +972,9 @@ export function applyCharacterLifeScheduleChange(
     return { state, error: "需要有效的活动内容和开始/结束时间，且结束时间必须晚于开始时间。" };
   }
   const characterNow = realNow;
-  const sameDay = startAt.getFullYear() === characterNow.getFullYear()
-    && startAt.getMonth() === characterNow.getMonth()
-    && startAt.getDate() === characterNow.getDate()
-    && endAt.getFullYear() === characterNow.getFullYear()
-    && endAt.getMonth() === characterNow.getMonth()
-    && endAt.getDate() === characterNow.getDate();
-  if (!sameDay || startAt <= characterNow) {
-    return { state, error: "只能调整角色当前现实日期中尚未开始的时段。" };
+  const horizonEnd = new Date(characterNow.getTime() + 7 * 24 * 60 * 60_000);
+  if (startAt <= characterNow || endAt > horizonEnd) {
+    return { state, error: "只能安排角色未来 7 天内、尚未开始的日程。" };
   }
 
   const startMs = startAt.getTime();
@@ -989,8 +984,7 @@ export function applyCharacterLifeScheduleChange(
     const slotStart = new Date(slot.startAt).getTime();
     const slotEnd = new Date(slot.endAt).getTime();
     if (!Number.isFinite(slotStart) || !Number.isFinite(slotEnd)) return false;
-    return slot.kind !== "free-time"
-      && (slot.kind === "appointment" || slot.source === "manual" || slot.source === "event")
+    return (slot.kind === "appointment" || slot.source === "manual" || slot.source === "event")
       && slotStart < endMs
       && slotEnd > startMs;
   });
@@ -1007,6 +1001,8 @@ export function applyCharacterLifeScheduleChange(
       slot.ownerType !== "character"
       || slot.ownerId !== characterId
       || slot.kind === "appointment"
+      || slot.source === "manual"
+      || slot.source === "event"
       || !Number.isFinite(slotStart)
       || !Number.isFinite(slotEnd)
       || slotEnd <= startMs
