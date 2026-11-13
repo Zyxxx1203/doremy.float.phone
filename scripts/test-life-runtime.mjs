@@ -215,7 +215,7 @@ const blocked = insertManualLifeScheduleSlot(withAppointment, manualActivity);
 assert.equal(blocked.conflict?.id, protectedAppointment.id, "manual insertion must report confirmed appointment conflicts");
 assert.equal(blocked.state, withAppointment, "a conflicting insert must leave the schedule unchanged");
 
-const characterToolPlan = { ...manualActivity, id: "character-tool-plan", title: "角色主动调整的计划", source: "character-tool" };
+const characterToolPlan = { ...manualActivity, id: "character-tool-plan", title: "角色主动调整的计划", kind: "study", source: "character-tool" };
 const withCharacterToolPlan = { ...emptyPlan, schedules: [...emptyPlan.schedules, characterToolPlan] };
 const blockedByCharacterTool = insertManualLifeScheduleSlot(withCharacterToolPlan, { ...manualActivity, id: "overlapping-user-plan" });
 assert.equal(blockedByCharacterTool.conflict?.id, characterToolPlan.id, "manual plans must not silently overwrite a character-authored schedule change");
