@@ -209,6 +209,7 @@ export async function executeLifeToolCall(
       const existing = state.schedules.find(slot => slot.id === scheduleId
         && slot.ownerType === "character" && slot.ownerId === characterId
         && (slot.source === "weekly-generation" || slot.source === "character-tool")
+        && slot.kind !== "appointment"
         && new Date(slot.startAt).getTime() > now.getTime());
       if (!existing) return result(name, false, undefined, "只能修改角色本人尚未开始的自动生成或角色自主创建日程；用户手动安排和已确认活动不可修改。");
       baseState = { ...state, schedules: state.schedules.filter(slot => slot.id !== scheduleId) };
@@ -240,6 +241,7 @@ export async function executeLifeToolCall(
     const target = state.schedules.find(slot => slot.id === scheduleId
       && slot.ownerType === "character" && slot.ownerId === characterId
       && (slot.source === "weekly-generation" || slot.source === "character-tool")
+      && slot.kind !== "appointment"
       && new Date(slot.startAt).getTime() > now.getTime());
     if (!target) return result(name, false, undefined, "只能取消角色本人尚未开始的自动生成或角色自主创建日程；用户手动安排和已确认活动不可取消。");
     if (target.kind === "free-time") return result(name, false, undefined, "该时段已经是自由时间，无需再次取消。");
