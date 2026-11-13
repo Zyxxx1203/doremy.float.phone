@@ -1168,6 +1168,20 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     }
     if (invalid.length) { setNotice("本次日程调整未保存（原日程保持不变）：" + invalid.slice(0,4).join("；")); recordLifeDiagnostic({ source: "AI 日程指导", event: "确认前校验失败", status: "error", detail: invalid.join("；"), meta: { draftCount: quickPlanDrafts.length } }); return; }
     const baseWithoutRemoved = { ...base, schedules: base.schedules.filter(slot => !removeIds.has(slot.id)) };
+    const inProgressConflict = candidates.find(candidate => baseWithoutRemoved.schedules.some(existing => {
+      if (existing.ownerType !== candidate.ownerType || existing.ownerId !== candidate.ownerId) return false;
+      const existingStart = new Date(existing.startAt).getTime();
+      const existingEnd = new Date(existing.endAt).getTime();
+      const candidateStart = new Date(candidate.startAt).getTime();
+      const candidateEnd = new Date(candidate.endAt).getTime();
+      return existingStart <= Date.now() && existingEnd > Date.now()
+        && existingStart < candidateEnd && existingEnd > candidateStart;
+    }));
+    if (inProgressConflict) {
+      setNotice("本次日程调整未保存：不能修改已经开始的当前活动。");
+      recordLifeDiagnostic({ source: "AI 日程指导", event: "当前活动保护", status: "error", detail: inProgressConflict.title, meta: { draftCount: quickPlanDrafts.length } });
+      return;
+    }
     const combined = overlayScheduleSlotsOverFreeTime(baseWithoutRemoved, candidates).schedules;
     for (let i = 0; i < combined.length; i += 1) for (let j = i + 1; j < combined.length; j += 1) {
       const a = combined[i], b = combined[j];
