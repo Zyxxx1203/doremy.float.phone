@@ -1618,6 +1618,9 @@ export function nativeToolSourceKey(tool: EnabledTool): string {
 }
 
 export function isNativeSingleTool(tool: EnabledTool): boolean {
+    // Life tools already carry their own parameter schema; registering them as
+    // expandable packages creates an empty loader and hides the real actions.
+    if (tool.source === "life") return true;
     if (tool.source === "rest") return true;
     if (tool.source === "composite") return true;
     if (tool.source === "custom_app") return true;
