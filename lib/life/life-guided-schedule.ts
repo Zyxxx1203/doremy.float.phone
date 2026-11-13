@@ -119,8 +119,9 @@ export function parseGuidedScheduleResponse(
       rejected.push(`第 ${index + 1} 条缺少有效的 existingScheduleId`);
       continue;
     }
-    if (existing && (new Date(existing.endAt) <= context.now || new Date(existing.startAt) <= context.now || existing.source === "event")) {
-      rejected.push(`第 ${index + 1} 条试图调整已开始、已过去或已确认的固定日程`);
+    if (existing && (new Date(existing.endAt) <= context.now || new Date(existing.startAt) <= context.now
+      || existing.source === "event" || existing.source === "manual" || existing.kind === "appointment")) {
+      rejected.push(`第 ${index + 1} 条试图调整已开始、已过去、用户手动安排或已确认的固定日程`);
       continue;
     }
 
@@ -167,7 +168,7 @@ export function parseGuidedScheduleResponse(
     }
     const startMs = startAt.getTime(), endMs = endAt.getTime();
     const conflict = context.existing.find(slot =>
-      slot.kind !== "free-time"
+      (slot.kind !== "free-time" || slot.source !== "weekly-generation")
       && slot.id !== existingScheduleId
       && !scheduledToChange.has(slot.id)
       && overlaps(startMs, endMs, new Date(slot.startAt).getTime(), new Date(slot.endAt).getTime()));
