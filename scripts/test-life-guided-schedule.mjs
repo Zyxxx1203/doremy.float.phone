@@ -67,8 +67,13 @@ assert.equal(overwriteFreeTime.drafts.length, 1, "AI may replace generated free-
 assert.equal(overwriteFreeTime.conflicts.length, 0, "generated free-time is not a conflict");
 assert.equal(overwriteFreeTime.rejected.length, 0);
 
+const localSlotAt = (hour) => {
+  const value = new Date(contexts[0].dayStart);
+  value.setHours(hour, 0, 0, 0);
+  return value.toISOString();
+};
 const manualFreeTimeContext = [{ ...contexts[0], existing: [...contexts[0].existing, {
-  id: "manual-free", startAt: "2026-11-05T18:00:00.000Z", endAt: "2026-11-05T19:00:00.000Z",
+  id: "manual-free", startAt: localSlotAt(18), endAt: localSlotAt(19),
   title: "用户手动安排的自由时间", source: "manual", kind: "free-time",
 }] }];
 const manualFreeTimeReplan = parseGuidedScheduleResponse(JSON.stringify({ schedules: [
@@ -80,7 +85,7 @@ assert.equal(manualFreeTimeReplan.conflicts.length, 0);
 assert.equal(manualFreeTimeReplan.rejected.length, 0);
 
 const manualActivityContext = [{ ...contexts[0], existing: [...contexts[0].existing, {
-  id: "manual-activity", startAt: "2026-11-05T18:00:00.000Z", endAt: "2026-11-05T19:00:00.000Z",
+  id: "manual-activity", startAt: localSlotAt(18), endAt: localSlotAt(19),
   title: "用户手动安排的活动", source: "manual", kind: "special",
 }] }];
 const manualActivityCancelAttempt = parseGuidedScheduleResponse(JSON.stringify({ schedules: [
