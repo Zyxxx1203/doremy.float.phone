@@ -237,7 +237,7 @@ assert.match(lifeTools, /slot\.source === "character-tool"/);
 assert.match(lifeTools, /slot\.ownerId === characterId/);
 assert.match(lifeRuntime, /horizonEnd = new Date\(characterNow\.getTime\(\) \+ 7 \* 24 \* 60 \* 60_000\)/);
 assert.match(lifeRuntime, /slot\.source === "manual"\s*\|\| slot\.source === "event"/);
-assert.match(lifeRuntime, /existing\.source !== "weekly-generation"/);
+assert.match(lifeRuntime, /candidate\.source !== "weekly-generation" \|\| existing\.source !== "character-tool"/);
 assert.match(lifeRuntime, /isAlreadyInProgress/);
 assert.match(guidedSchedule, /isAlreadyInProgress/);
 assert.match(app, /existingStart <= Date\.now\(\) && existingEnd > Date\.now\(\)/);
@@ -245,7 +245,7 @@ assert.match(lifeMemoryBridge, /remainingToday/);
 assert.match(lifeMemoryBridge, /item\.id !== schedule\?\.id/);
 assert.match(guidedSchedule, /existing\.source === "manual"/,
   "guided re-planning must reject user-authored schedule mutations");
-assert.match(guidedSchedule, /slot\.source !== "weekly-generation"/,
+assert.match(guidedSchedule, /slot\.kind === "free-time" && !isAlreadyInProgress/,
   "only generated free-time may be treated as an open slot");
 assert.match(app, /existing\.source === "manual"/,
   "the atomic guided-plan commit must revalidate manual schedule protection");
