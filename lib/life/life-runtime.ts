@@ -935,6 +935,7 @@ export function overlayScheduleSlotsOverFreeTime(
   candidates: LifeScheduleSlot[],
 ): VirtualLifeState {
   let schedules = [...state.schedules];
+  const acceptedCandidates: LifeScheduleSlot[] = [];
   for (const candidate of candidates) {
     const start = new Date(candidate.startAt).getTime();
     const end = new Date(candidate.endAt).getTime();
@@ -950,6 +951,9 @@ export function overlayScheduleSlotsOverFreeTime(
         && (candidate.source !== "weekly-generation" || existing.source !== "character-tool");
       return sameOwner && !replaceableFreeTime && Number.isFinite(a) && Number.isFinite(b) && a < end && b > start;
     });
+    // A protected overlap rejects the candidate entirely. Merely skipping the
+    // overlay loop is insufficient: pushing all candidates at the end would
+    // still resurrect the cancelled interval.
     if (protectedOverlap) continue;
     const next: LifeScheduleSlot[] = [];
     for (const existing of schedules) {
@@ -966,8 +970,9 @@ export function overlayScheduleSlotsOverFreeTime(
       if (b > end) next.push({ ...existing, id: existing.id + "-after-ai-" + candidate.id, startAt: candidate.endAt, updatedAt: new Date().toISOString() });
     }
     schedules = next;
+    acceptedCandidates.push(candidate);
   }
-  schedules.push(...candidates);
+  schedules.push(...acceptedCandidates);
   return { ...state, schedules: schedules.sort((a, b) => a.startAt.localeCompare(b.startAt)) };
 }
 
