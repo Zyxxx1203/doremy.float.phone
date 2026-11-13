@@ -236,7 +236,8 @@ assert.match(toolStorage, /isScheduleWrite = tool\.name === "life_create_schedul
 assert.match(lifeTools, /slot\.source === "character-tool"/);
 assert.match(lifeTools, /slot\.ownerId === characterId/);
 assert.match(lifeRuntime, /horizonEnd = new Date\(characterNow\.getTime\(\) \+ 7 \* 24 \* 60 \* 60_000\)/);
-assert.match(lifeRuntime, /slot\.source === "manual"\s*\|\| slot\.source === "event"/);
+assert.match(lifeRuntime, /protectedManualActivity/);
+assert.match(lifeRuntime, /slot\.source === "event"/);
 assert.match(lifeRuntime, /candidate\.source !== "weekly-generation" \|\| existing\.source !== "character-tool"/);
 assert.match(lifeRuntime, /isAlreadyInProgress/);
 assert.match(guidedSchedule, /isAlreadyInProgress/);
