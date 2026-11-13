@@ -23,7 +23,7 @@ const contexts = [{
   ownerType: "character", ownerId: "char-a", name: "小满", now, dayStart, dayEnd,
   existing: [
     { id: "flex-1", startAt: "2026-11-05T13:00:00.000Z", endAt: "2026-11-05T14:00:00.000Z", title: "原学习", source: "weekly-generation", kind: "study" },
-    { id: "flex-2", startAt: "2026-11-05T15:00:00.000Z", endAt: "2026-11-05T16:00:00.000Z", title: "原散步", source: "manual", kind: "free-time" },
+    { id: "flex-2", startAt: "2026-11-05T15:00:00.000Z", endAt: "2026-11-05T16:00:00.000Z", title: "自动生成的自由时间", source: "weekly-generation", kind: "free-time" },
     { id: "fixed-1", startAt: "2026-11-05T17:00:00.000Z", endAt: "2026-11-05T18:00:00.000Z", title: "已确认约会", source: "event", kind: "appointment" },
   ],
 }];
@@ -59,12 +59,24 @@ assert.equal(legacy.drafts.length, 1);
 assert.equal(legacy.drafts[0].operation, "add");
 
  
-// Any free-time placeholder is an open slot, even when it was saved as a manual edit.
+// Generated free-time is an open slot; user-authored free-time is protected.
 const overwriteFreeTime = parseGuidedScheduleResponse(JSON.stringify({ schedules: [
   { actorId: "char-a", actorType: "character", actorName: "小满", operation: "add", dayOffset: 0, start: "15:00", end: "16:00", title: "去花店", location: "花店", reason: "用自由时间安排活动" },
 ] }), contexts);
-assert.equal(overwriteFreeTime.drafts.length, 1, "AI should be allowed to add an activity over free-time");
-assert.equal(overwriteFreeTime.conflicts.length, 0, "free-time must not be reported as a conflict");
+assert.equal(overwriteFreeTime.drafts.length, 1, "AI may replace generated free-time");
+assert.equal(overwriteFreeTime.conflicts.length, 0, "generated free-time is not a conflict");
 assert.equal(overwriteFreeTime.rejected.length, 0);
+
+const manualFreeTimeContext = [{ ...contexts[0], existing: [...contexts[0].existing, {
+  id: "manual-free", startAt: "2026-11-05T18:00:00.000Z", endAt: "2026-11-05T19:00:00.000Z",
+  title: "用户手动安排的自由时间", source: "manual", kind: "free-time",
+}] }];
+const manualFreeTimeAttempt = parseGuidedScheduleResponse(JSON.stringify({ schedules: [
+  { actorId: "char-a", actorType: "character", actorName: "小满", operation: "cancel", existingScheduleId: "manual-free", reason: "尝试取消用户安排" },
+  { actorId: "char-a", actorType: "character", actorName: "小满", operation: "add", dayOffset: 0, start: "18:00", end: "19:00", title: "临时学习", location: "图书馆", reason: "尝试覆盖用户安排" },
+] }), manualFreeTimeContext);
+assert.equal(manualFreeTimeAttempt.drafts.length, 0, "AI must not cancel or overlap manually-authored free-time");
+assert.equal(manualFreeTimeAttempt.conflicts.length, 1);
+assert.equal(manualFreeTimeAttempt.rejected.length, 1);
 
 console.log("Life guided schedule re-plan tests passed.");
