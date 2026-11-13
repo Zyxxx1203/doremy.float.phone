@@ -44,7 +44,7 @@ const protectedResult = parseGuidedScheduleResponse(JSON.stringify({ schedules: 
 ] }), contexts);
 assert.equal(protectedResult.drafts.length, 0);
 assert.equal(protectedResult.rejected.length, 1);
-assert.match(protectedResult.rejected[0], /已开始、已过去或已确认的固定日程/);
+assert.match(protectedResult.rejected[0], /已开始、已过去、用户手动安排或已确认的固定日程/);
 
 const wrongIdentity = parseGuidedScheduleResponse(JSON.stringify({ schedules: [
   { actorId: "char-a", actorType: "player", actorName: "小满", operation: "keep", existingScheduleId: "flex-1" },
