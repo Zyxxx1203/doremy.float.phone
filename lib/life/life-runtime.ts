@@ -992,7 +992,8 @@ export function applyCharacterLifeScheduleChange(
     const slotStart = new Date(slot.startAt).getTime();
     const slotEnd = new Date(slot.endAt).getTime();
     if (!Number.isFinite(slotStart) || !Number.isFinite(slotEnd)) return false;
-    return (slot.kind === "appointment" || slot.source === "manual" || slot.source === "event")
+    const isAlreadyInProgress = slotStart <= characterNow.getTime() && slotEnd > characterNow.getTime();
+    return (isAlreadyInProgress || slot.kind === "appointment" || slot.source === "manual" || slot.source === "event")
       && slotStart < endMs
       && slotEnd > startMs;
   });
