@@ -631,22 +631,34 @@ assert.equal(
   "legacy simulation clocks must never shift life-system time",
 );
 
-// AI schedule candidates replace any free-time slot, while preserving its unaffected edges.
+// Automatic generation may replace only generated free-time placeholders.
 const freeTimeOverlay = overlayScheduleSlotsOverFreeTime(makeState([{
   id: "free-placeholder", ownerType: "character", ownerId: "c-overlay",
   startAt: "2026-10-15T09:00:00.000Z", endAt: "2026-10-15T18:00:00.000Z",
-  title: "自由活动", kind: "free-time", source: "manual",
+  title: "自由活动", kind: "free-time", source: "weekly-generation",
 }]), [{
   id: "ai-study", ownerType: "character", ownerId: "c-overlay",
   startAt: "2026-10-15T12:00:00.000Z", endAt: "2026-10-15T14:00:00.000Z",
   title: "学习", kind: "study", source: "weekly-generation",
 }]);
-assert.ok(freeTimeOverlay.schedules.some(slot => slot.id === "ai-study"), "AI candidate should replace an overlapping free-time slot");
+assert.ok(freeTimeOverlay.schedules.some(slot => slot.id === "ai-study"), "AI candidate should replace generated free-time");
 assert.ok(freeTimeOverlay.schedules.some(slot => slot.startAt === "2026-10-15T09:00:00.000Z" && slot.endAt === "2026-10-15T12:00:00.000Z" && slot.kind === "free-time"), "free-time before the AI plan should be preserved");
 assert.ok(freeTimeOverlay.schedules.some(slot => slot.startAt === "2026-10-15T14:00:00.000Z" && slot.endAt === "2026-10-15T18:00:00.000Z" && slot.kind === "free-time"), "free-time after the AI plan should be preserved");
-assert.equal(freeTimeOverlay.schedules.filter(slot => slot.ownerId === "c-overlay").length, 3, "overlay should split one free-time slot into two edges plus one AI plan");
+assert.equal(freeTimeOverlay.schedules.filter(slot => slot.ownerId === "c-overlay").length, 3, "overlay should split one generated free-time slot into two edges plus one AI plan");
 
-// Character-initiated AI changes can occupy free-time without being blocked as a conflict.
+const manualFreeOverlay = overlayScheduleSlotsOverFreeTime(makeState([{
+  id: "manual-free", ownerType: "character", ownerId: "c-manual-free",
+  startAt: "2026-10-15T09:00:00.000Z", endAt: "2026-10-15T18:00:00.000Z",
+  title: "用户安排的自由时间", kind: "free-time", source: "manual",
+}]), [{
+  id: "ai-study-manual", ownerType: "character", ownerId: "c-manual-free",
+  startAt: "2026-10-15T12:00:00.000Z", endAt: "2026-10-15T14:00:00.000Z",
+  title: "学习", kind: "study", source: "weekly-generation",
+}]);
+assert.deepEqual(manualFreeOverlay.schedules.map(slot => slot.id), ["manual-free"],
+  "weekly generation must not overwrite a manually-authored free-time slot");
+
+// Character-initiated changes must also preserve user-authored free-time.
 const autonomyOverFree = applyCharacterLifeScheduleChange(makeState([{
   id: "character-free", ownerType: "character", ownerId: "c-autonomy",
   startAt: "2026-10-15T10:00:00.000Z", endAt: "2026-10-15T12:00:00.000Z",
@@ -655,7 +667,8 @@ const autonomyOverFree = applyCharacterLifeScheduleChange(makeState([{
   startAt: "2026-10-15T10:30:00.000Z", endAt: "2026-10-15T11:30:00.000Z",
   title: "去咖啡店学习",
 }, new Date("2026-10-15T09:00:00.000Z"));
-assert.equal(autonomyOverFree.error, undefined, "character AI changes must not treat free-time as a blocking conflict");
-assert.ok(autonomyOverFree.state.schedules.some(slot => slot.title === "去咖啡店学习"), "character AI activity should be inserted over free-time");
+assert.match(autonomyOverFree.error || "", /冲突/);
+assert.ok(!autonomyOverFree.state.schedules.some(slot => slot.title === "去咖啡店学习"),
+  "character AI activity must not overwrite a manual free-time slot");
 
 console.log("Life schedule regression tests passed.");
