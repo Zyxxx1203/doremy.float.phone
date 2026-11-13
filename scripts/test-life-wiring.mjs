@@ -233,6 +233,11 @@ for (const name of ["life_view_schedule", "life_create_schedule", "life_change_s
 }
 assert.match(toolStorage, /isScheduleRead = tool\.name === "life_view_schedule"/);
 assert.match(toolStorage, /isScheduleWrite = tool\.name === "life_create_schedule"/);
+assert.match(toolStorage, /if \(lifeSettings\.enabled\) \{/, "schedule read tools remain registered when character autonomy is disabled");
+assert.match(toolStorage, /isScheduleRead \|\| lifeSettings\.enableCharacterAutonomy/);
+assert.match(lifeTools, /name !== "life_view_schedule" && !state\.settings\.enableCharacterAutonomy/);
+assert.match(lifeTools, /Math\.random\(\)\.toString\(36\)\.slice\(2, 9\)/, "cancelled-slot tombstone IDs need a collision-resistant suffix");
+assert.match(lifeMemoryBridge, /new Date\(item\.endAt\)\.getTime\(\) > now\.getTime\(\)/, "today context must retain already-started but not-yet-ended slots");
 assert.match(lifeTools, /slot\.source === "character-tool"/);
 assert.match(lifeTools, /slot\.ownerId === characterId/);
 assert.match(lifeRuntime, /horizonEnd = new Date\(characterNow\.getTime\(\) \+ 7 \* 24 \* 60 \* 60_000\)/);
