@@ -136,8 +136,10 @@ export async function executeLifeToolCall(
   const characterId = resolveInvokingCharacterId(context?.characterId);
   if (!characterId) return result(name, false, undefined, "无法确定正在调用工具的角色身份。");
   const state = loadVirtualLifeState();
-  if (!state.settings.enabled || !state.settings.enableCharacterAutonomy) {
-    return result(name, false, undefined, "生活引擎或角色自主行动当前已关闭。");
+  if (!state.settings.enabled || (name !== "life_view_schedule" && !state.settings.enableCharacterAutonomy)) {
+    return result(name, false, undefined, name === "life_view_schedule"
+      ? "生活引擎当前已关闭。"
+      : "生活引擎或角色自主行动当前已关闭。");
   }
   const args = asArgs(call.args);
   if (name === "life_view_schedule") {
@@ -248,7 +250,7 @@ export async function executeLifeToolCall(
     // Keep an explicit character-authored free-time placeholder so the weekly
     // generator does not silently recreate the cancelled baseline activity.
     const freeSlot = {
-      id: "life-tool-free-" + characterId + "-" + new Date(target.startAt).getTime(),
+      id: "life-tool-free-" + characterId + "-" + new Date(target.startAt).getTime() + "-" + Math.random().toString(36).slice(2, 9),
       ownerType: "character" as const, ownerId: characterId,
       startAt: target.startAt, endAt: target.endAt,
       title: "自由活动", kind: "free-time" as const, source: "character-tool" as const,
