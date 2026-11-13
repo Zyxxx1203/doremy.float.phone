@@ -1140,7 +1140,17 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           continue;
         }
         removeIds.add(existing.id);
-        if (operation === "cancel") { timelineItems.push({ draft, action: "取消" }); continue; }
+        if (operation === "cancel") {
+          // Persist the released interval as character-authored free time. If we
+          // simply remove a generated slot, weekly generation would fill it again.
+          candidates.push({
+            id: id("guided-free-time"), ownerType: existing.ownerType, ownerId: existing.ownerId,
+            startAt: existing.startAt, endAt: existing.endAt, title: "自由活动",
+            kind: "free-time", source: "character-tool", updatedAt: now,
+          });
+          timelineItems.push({ draft, action: "取消" });
+          continue;
+        }
       }
       const start = new Date(draft.startAt), end = new Date(draft.endAt);
       if (!draft.title.trim() || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start || start <= actorNow(owner)) { invalid.push(draft.title || "未命名安排"); continue; }
