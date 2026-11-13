@@ -120,7 +120,7 @@ export function parseGuidedScheduleResponse(
       continue;
     }
     if (existing && (new Date(existing.endAt) <= context.now || new Date(existing.startAt) <= context.now
-      || existing.source === "event" || existing.source === "manual" || existing.kind === "appointment")) {
+      || existing.source === "event" || (existing.source === "manual" && existing.kind !== "free-time") || existing.kind === "appointment")) {
       rejected.push(`第 ${index + 1} 条试图调整已开始、已过去、用户手动安排或已确认的固定日程`);
       continue;
     }
@@ -171,8 +171,8 @@ export function parseGuidedScheduleResponse(
       const slotStart = new Date(slot.startAt).getTime();
       const slotEnd = new Date(slot.endAt).getTime();
       const isAlreadyInProgress = slotStart <= context.now.getTime() && slotEnd > context.now.getTime();
-      const replaceableGeneratedFreeTime = slot.kind === "free-time" && slot.source === "weekly-generation" && !isAlreadyInProgress;
-      return !replaceableGeneratedFreeTime
+      const replaceableFreeTime = slot.kind === "free-time" && !isAlreadyInProgress;
+      return !replaceableFreeTime
         && slot.id !== existingScheduleId
         && !scheduledToChange.has(slot.id)
         && overlaps(startMs, endMs, slotStart, slotEnd);
