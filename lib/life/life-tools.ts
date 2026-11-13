@@ -80,7 +80,7 @@ export const LIFE_TOOL_DEFINITIONS: LifeToolDefinition[] = [
   },
   {
     name: "life_cancel_schedule",
-    description: "取消角色本人尚未开始的自动生成或角色自主创建的未来日程。不能取消用户手动安排、约会、特殊活动或已经开始的日程。",
+    description: "取消角色本人尚未开始的自动生成或角色自主创建的未来日程，并将该时段保留为自由时间，避免自动生成器重新填回。不能取消用户手动安排、约会、特殊活动或已经开始的日程。",
     parameterSchema: JSON.stringify({
       type: "object",
       properties: { scheduleId: { type: "string", description: "要取消的自动生成或角色自主创建日程 ID" } },
@@ -242,12 +242,22 @@ export async function executeLifeToolCall(
       && (slot.source === "weekly-generation" || slot.source === "character-tool")
       && new Date(slot.startAt).getTime() > now.getTime());
     if (!target) return result(name, false, undefined, "只能取消角色本人尚未开始的自动生成或角色自主创建日程；用户手动安排和已确认活动不可取消。");
-    const next = { ...state, schedules: state.schedules.filter(slot => slot.id !== scheduleId) };
+    if (target.kind === "free-time") return result(name, false, undefined, "该时段已经是自由时间，无需再次取消。");
+    // Keep an explicit character-authored free-time placeholder so the weekly
+    // generator does not silently recreate the cancelled baseline activity.
+    const freeSlot = {
+      id: "life-tool-free-" + characterId + "-" + new Date(target.startAt).getTime(),
+      ownerType: "character" as const, ownerId: characterId,
+      startAt: target.startAt, endAt: target.endAt,
+      title: "自由活动", kind: "free-time" as const, source: "character-tool" as const,
+      plannedLocationId: null, plannedLocationName: null, updatedAt: now.toISOString(),
+    };
+    const next = { ...state, schedules: [...state.schedules.filter(slot => slot.id !== scheduleId), freeSlot] };
     const logged = appendLifeTimelineEntry(next, {
       category: "schedule", title: "角色取消了日程：" + target.title,
-      details: target.startAt + " – " + target.endAt,
+      details: target.startAt + " – " + target.endAt + "（已释放为自由时间）",
       actorId: characterId, actorName: loadCharacters().find(item => item.id === characterId)?.name ?? "角色",
-      locationName: target.plannedLocationName ?? undefined, occurredAt: now.toISOString(),
+      occurredAt: now.toISOString(),
     });
     saveVirtualLifeState(logged);
     return result(name, true, JSON.stringify({ cancelled: true, scheduleId, title: target.title }));
