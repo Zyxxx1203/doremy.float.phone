@@ -622,10 +622,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const thisMonday = mondayStart(actorNow);
       if (settings.autoGenerateWeeklyPlans) {
         next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, thisMonday, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), settings.generateSpecialEvents);
-        // Pre-build the following calendar week once the current week has only
-        // Saturday/Sunday left. It stays outside the current-week UI until rollover.
+        // Pre-build the following calendar week when the current week is within
+        // two days of Sunday. It stays outside the current-week UI until rollover.
         const daysUntilWeekEnd = 6 - ((actorNow.getDay() + 6) % 7);
-        if (daysUntilWeekEnd <= 1) {
+        if (daysUntilWeekEnd <= 2) {
           const nextMonday = new Date(thisMonday);
           nextMonday.setDate(nextMonday.getDate() + 7);
           next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, nextMonday, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), settings.generateSpecialEvents);
@@ -652,12 +652,12 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         const week = mondayStart(realNow);
         const targetEnd = new Date(week);
         // Keep the current week complete, then pre-generate the following week
-        // only during the final two calendar days. The UI continues to show its
+        // when no more than two days remain before Sunday. The UI continues to show its
         // selected seven-day window; this is background coverage, not a 14-day view.
         if (liveSettings.autoGenerateWeeklyPlans) {
           next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, week, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), liveSettings.generateSpecialEvents);
           const daysUntilWeekEnd = 6 - ((realNow.getDay() + 6) % 7);
-          if (daysUntilWeekEnd <= 1) {
+          if (daysUntilWeekEnd <= 2) {
             const nextWeek = new Date(targetEnd);
             nextWeek.setDate(nextWeek.getDate() + 7);
             next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, nextWeek, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), liveSettings.generateSpecialEvents);
