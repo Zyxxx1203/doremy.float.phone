@@ -167,11 +167,16 @@ export function parseGuidedScheduleResponse(
       continue;
     }
     const startMs = startAt.getTime(), endMs = endAt.getTime();
-    const conflict = context.existing.find(slot =>
-      (slot.kind !== "free-time" || slot.source !== "weekly-generation")
-      && slot.id !== existingScheduleId
-      && !scheduledToChange.has(slot.id)
-      && overlaps(startMs, endMs, new Date(slot.startAt).getTime(), new Date(slot.endAt).getTime()));
+    const conflict = context.existing.find(slot => {
+      const slotStart = new Date(slot.startAt).getTime();
+      const slotEnd = new Date(slot.endAt).getTime();
+      const isAlreadyInProgress = slotStart <= context.now.getTime() && slotEnd > context.now.getTime();
+      const replaceableGeneratedFreeTime = slot.kind === "free-time" && slot.source === "weekly-generation" && !isAlreadyInProgress;
+      return !replaceableGeneratedFreeTime
+        && slot.id !== existingScheduleId
+        && !scheduledToChange.has(slot.id)
+        && overlaps(startMs, endMs, slotStart, slotEnd);
+    });
     if (conflict) {
       conflicts.push(`${context.name}：${title}（与「${conflict.title}」冲突；请重新规划）`);
       continue;
