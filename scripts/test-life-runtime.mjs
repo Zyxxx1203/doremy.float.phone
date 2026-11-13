@@ -655,8 +655,12 @@ const manualFreeOverlay = overlayScheduleSlotsOverFreeTime(makeState([{
   startAt: "2026-10-15T12:00:00.000Z", endAt: "2026-10-15T14:00:00.000Z",
   title: "学习", kind: "study", source: "weekly-generation",
 }]);
-assert.deepEqual(manualFreeOverlay.schedules.map(slot => slot.id), ["manual-free"],
-  "weekly generation must not overwrite a manually-authored free-time slot");
+assert.ok(manualFreeOverlay.schedules.some(slot => slot.id === "ai-study-manual"),
+  "weekly generation may replace a free-time placeholder even if its legacy source is manual");
+assert.ok(manualFreeOverlay.schedules.some(slot => slot.startAt === "2026-10-15T09:00:00.000Z" && slot.endAt === "2026-10-15T12:00:00.000Z"),
+  "free-time before the generated activity must be preserved");
+assert.ok(manualFreeOverlay.schedules.some(slot => slot.startAt === "2026-10-15T14:00:00.000Z" && slot.endAt === "2026-10-15T18:00:00.000Z"),
+  "free-time after the generated activity must be preserved");
 
 const cancelledFreeOverlay = overlayScheduleSlotsOverFreeTime(makeState([{
   id: "cancelled-free", ownerType: "character", ownerId: "c-cancelled",
