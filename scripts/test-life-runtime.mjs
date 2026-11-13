@@ -671,8 +671,10 @@ const cancelledFreeOverlay = overlayScheduleSlotsOverFreeTime(makeState([{
   startAt: "2026-10-15T12:00:00.000Z", endAt: "2026-10-15T14:00:00.000Z",
   title: "自动安排的学习", kind: "study", source: "weekly-generation",
 }]);
-assert.deepEqual(cancelledFreeOverlay.schedules.map(slot => slot.id), ["cancelled-free"],
+assert.equal(cancelledFreeOverlay.schedules.length, 1,
   "a cancelled slot represented as character free-time must not be regenerated");
+assert.equal(cancelledFreeOverlay.schedules[0]?.id, "cancelled-free",
+  "the cancellation tombstone must remain the only overlapping schedule");
 
 const userCanFillCancelledTime = insertManualLifeScheduleSlot(makeState([{
   id: "cancelled-free-manual-fill", ownerType: "character", ownerId: "c-fill",
