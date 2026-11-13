@@ -936,6 +936,14 @@ export function overlayScheduleSlotsOverFreeTime(
     const start = new Date(candidate.startAt).getTime();
     const end = new Date(candidate.endAt).getTime();
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+    const protectedOverlap = schedules.some(existing => {
+      const sameOwner = existing.ownerType === candidate.ownerType && existing.ownerId === candidate.ownerId;
+      const a = new Date(existing.startAt).getTime();
+      const b = new Date(existing.endAt).getTime();
+      const replaceableFreeTime = existing.kind === "free-time" && existing.source === "weekly-generation";
+      return sameOwner && !replaceableFreeTime && Number.isFinite(a) && Number.isFinite(b) && a < end && b > start;
+    });
+    if (protectedOverlap) continue;
     const next: LifeScheduleSlot[] = [];
     for (const existing of schedules) {
       const sameOwner = existing.ownerType === candidate.ownerType && existing.ownerId === candidate.ownerId;
