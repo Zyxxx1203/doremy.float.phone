@@ -71,13 +71,25 @@ const manualFreeTimeContext = [{ ...contexts[0], existing: [...contexts[0].exist
   id: "manual-free", startAt: "2026-11-05T18:00:00.000Z", endAt: "2026-11-05T19:00:00.000Z",
   title: "用户手动安排的自由时间", source: "manual", kind: "free-time",
 }] }];
-const manualFreeTimeAttempt = parseGuidedScheduleResponse(JSON.stringify({ schedules: [
-  { actorId: "char-a", actorType: "character", actorName: "小满", operation: "cancel", existingScheduleId: "manual-free", reason: "尝试取消用户安排" },
-  { actorId: "char-a", actorType: "character", actorName: "小满", operation: "add", dayOffset: 0, start: "18:00", end: "19:00", title: "临时学习", location: "图书馆", reason: "尝试覆盖用户安排" },
+const manualFreeTimeReplan = parseGuidedScheduleResponse(JSON.stringify({ schedules: [
+  { actorId: "char-a", actorType: "character", actorName: "小满", operation: "cancel", existingScheduleId: "manual-free", reason: "释放自由时间" },
+  { actorId: "char-a", actorType: "character", actorName: "小满", operation: "add", dayOffset: 0, start: "18:00", end: "19:00", title: "临时学习", location: "图书馆", reason: "用自由时间安排活动" },
 ] }), manualFreeTimeContext);
-assert.equal(manualFreeTimeAttempt.drafts.length, 0, "AI must not cancel or overlap manually-authored free-time");
-assert.equal(manualFreeTimeAttempt.conflicts.length, 1);
-assert.equal(manualFreeTimeAttempt.rejected.length, 1);
+assert.equal(manualFreeTimeReplan.drafts.length, 2, "free-time placeholders remain replaceable even when legacy source is manual");
+assert.equal(manualFreeTimeReplan.conflicts.length, 0);
+assert.equal(manualFreeTimeReplan.rejected.length, 0);
+
+const manualActivityContext = [{ ...contexts[0], existing: [...contexts[0].existing, {
+  id: "manual-activity", startAt: "2026-11-05T18:00:00.000Z", endAt: "2026-11-05T19:00:00.000Z",
+  title: "用户手动安排的活动", source: "manual", kind: "special",
+}] }];
+const manualActivityAttempt = parseGuidedScheduleResponse(JSON.stringify({ schedules: [
+  { actorId: "char-a", actorType: "character", actorName: "小满", operation: "cancel", existingScheduleId: "manual-activity", reason: "尝试取消用户安排" },
+  { actorId: "char-a", actorType: "character", actorName: "小满", operation: "add", dayOffset: 0, start: "18:00", end: "19:00", title: "临时学习", location: "图书馆", reason: "尝试覆盖用户安排" },
+] }), manualActivityContext);
+assert.equal(manualActivityAttempt.drafts.length, 0, "AI must not cancel or overlap manually-authored activities");
+assert.equal(manualActivityAttempt.conflicts.length, 1);
+assert.equal(manualActivityAttempt.rejected.length, 1);
 
 const inProgressContext = [{ ...contexts[0], existing: [{
   id: "ongoing-free", startAt: "2026-11-05T07:00:00.000Z", endAt: "2026-11-05T10:00:00.000Z",
