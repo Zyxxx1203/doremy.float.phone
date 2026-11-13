@@ -687,7 +687,8 @@ assert.equal(userCanFillCancelledTime.conflict, undefined,
   "a user must be able to replace a character's cancelled free-time placeholder");
 assert.ok(userCanFillCancelledTime.state.schedules.some(slot => slot.id === "user-replacement"));
 
-// Character-initiated changes must also preserve user-authored free-time.
+// Character-initiated changes may occupy a free-time placeholder, including
+// legacy records whose source is manual; real manual activities remain protected.
 const autonomyOverFree = applyCharacterLifeScheduleChange(makeState([{
   id: "character-free", ownerType: "character", ownerId: "c-autonomy",
   startAt: "2026-10-15T10:00:00.000Z", endAt: "2026-10-15T12:00:00.000Z",
@@ -696,9 +697,9 @@ const autonomyOverFree = applyCharacterLifeScheduleChange(makeState([{
   startAt: "2026-10-15T10:30:00.000Z", endAt: "2026-10-15T11:30:00.000Z",
   title: "去咖啡店学习",
 }, new Date("2026-10-15T09:00:00.000Z"));
-assert.match(autonomyOverFree.error || "", /冲突/);
-assert.ok(!autonomyOverFree.state.schedules.some(slot => slot.title === "去咖啡店学习"),
-  "character AI activity must not overwrite a manual free-time slot");
+assert.equal(autonomyOverFree.error, undefined);
+assert.ok(autonomyOverFree.state.schedules.some(slot => slot.title === "去咖啡店学习"),
+  "character AI activity may replace a free-time placeholder regardless of legacy source");
 
 const inProgressChange = applyCharacterLifeScheduleChange(makeState([{
   id: "in-progress", ownerType: "character", ownerId: "c-progress",
