@@ -17,6 +17,14 @@ export type LifeToolDefinition = {
 
 export const LIFE_TOOL_DEFINITIONS: LifeToolDefinition[] = [
   {
+    name: "life_view_schedule",
+    description: "查询角色本人未来 1 至 7 天的日程。只读，不会修改安排；需要知道未来行程、空闲时段或已有约会时调用。",
+    parameterSchema: JSON.stringify({
+      type: "object",
+      properties: { days: { type: "integer", minimum: 1, maximum: 7, description: "查询未来几天，1 到 7，默认 7" } },
+    }),
+  },
+  {
     name: "life_propose_invitation",
     description: "角色主动向玩家发起邀约。只有角色本人有真实动机时调用；邀约会进入玩家的待处理列表，由玩家决定是否接受。",
     parameterSchema: JSON.stringify({
@@ -42,17 +50,41 @@ export const LIFE_TOOL_DEFINITIONS: LifeToolDefinition[] = [
     }),
   },
   {
-    name: "life_change_schedule",
-    description: "角色主动调整自己今天尚未开始的普通日程。不得覆盖已确认约会，不得修改玩家日程或过去的时段。",
+    name: "life_create_schedule",
+    description: "为角色本人创建未来 7 天内的新日程。先查询已有安排；不得覆盖手动安排、约会或特殊活动。",
     parameterSchema: JSON.stringify({
       type: "object",
       properties: {
-        startAt: { type: "string", description: "新安排开始时间，ISO-8601 格式" },
-        endAt: { type: "string", description: "新安排结束时间，ISO-8601 格式" },
+        startAt: { type: "string", description: "开始时间，ISO-8601 格式" },
+        endAt: { type: "string", description: "结束时间，ISO-8601 格式" },
+        title: { type: "string", description: "活动名称" },
+        locationId: { type: "string", description: "地点 ID，例如 home、cafe、park" },
+      },
+      required: ["startAt", "endAt", "title"],
+    }),
+  },
+  {
+    name: "life_change_schedule",
+    description: "修改角色本人已由角色自主创建的未来日程；提供 scheduleId。兼容旧调用时不提供 scheduleId 会按创建新日程处理。不得覆盖用户手动安排、约会或特殊活动。",
+    parameterSchema: JSON.stringify({
+      type: "object",
+      properties: {
+        scheduleId: { type: "string", description: "要修改的角色自主创建日程 ID" },
+        startAt: { type: "string", description: "新开始时间，ISO-8601 格式" },
+        endAt: { type: "string", description: "新结束时间，ISO-8601 格式" },
         title: { type: "string", description: "新的活动名称" },
         locationId: { type: "string", description: "地点 ID，例如 home、cafe、park" },
       },
       required: ["startAt", "endAt", "title"],
+    }),
+  },
+  {
+    name: "life_cancel_schedule",
+    description: "取消角色本人尚未开始、且由角色自主创建的未来日程。不能取消用户手动安排、约会、特殊活动或已经开始的日程。",
+    parameterSchema: JSON.stringify({
+      type: "object",
+      properties: { scheduleId: { type: "string", description: "要取消的角色自主创建日程 ID" } },
+      required: ["scheduleId"],
     }),
   },
 ];
@@ -108,6 +140,23 @@ export async function executeLifeToolCall(
     return result(name, false, undefined, "生活引擎或角色自主行动当前已关闭。");
   }
   const args = asArgs(call.args);
+  if (name === "life_view_schedule") {
+    const rawDays = Number(args.days);
+    const days = Number.isFinite(rawDays) ? Math.max(1, Math.min(7, Math.floor(rawDays))) : 7;
+    const now = resolveActorLifeNow(getActorClock(state, "character", characterId));
+    const until = new Date(now.getTime() + days * 24 * 60 * 60_000);
+    const schedules = state.schedules
+      .filter(slot => slot.ownerType === "character" && slot.ownerId === characterId
+        && new Date(slot.endAt).getTime() > now.getTime()
+        && new Date(slot.startAt).getTime() < until.getTime())
+      .sort((a, b) => a.startAt.localeCompare(b.startAt))
+      .slice(0, 100)
+      .map(slot => ({
+        id: slot.id, startAt: slot.startAt, endAt: slot.endAt, title: slot.title,
+        location: slot.plannedLocationName ?? null, kind: slot.kind, source: slot.source,
+      }));
+    return result(name, true, JSON.stringify({ characterId, from: now.toISOString(), to: until.toISOString(), days, schedules }));
+  }
   if (name === "life_propose_invitation") {
     if (!state.settings.enableInvitations) return result(name, false, undefined, "角色主动邀约已在自定义设置中关闭。");
     const time = new Date(cleanText(args.time, 80));
@@ -151,18 +200,55 @@ export async function executeLifeToolCall(
     return result(name, true, JSON.stringify({ created: true, durationMinutes: duration, reason, status: "proposed", message: "陪伴申请已提交给玩家，等待玩家接受或拒绝。" }));
   }
 
-  if (name === "life_change_schedule") {
+  if (name === "life_create_schedule" || name === "life_change_schedule") {
     if (!state.settings.enableScheduleChangeTool) return result(name, false, undefined, "角色自主调整日程已在自定义设置中关闭。");
-    const changed = applyCharacterLifeScheduleChange(state, characterId, {
+    const now = resolveActorLifeNow(getActorClock(state, "character", characterId));
+    const scheduleId = cleanText(args.scheduleId, 160);
+    let baseState = state;
+    if (name === "life_change_schedule" && scheduleId) {
+      const existing = state.schedules.find(slot => slot.id === scheduleId
+        && slot.ownerType === "character" && slot.ownerId === characterId
+        && slot.source === "character-tool" && new Date(slot.startAt).getTime() > now.getTime());
+      if (!existing) return result(name, false, undefined, "只能修改角色本人尚未开始、由角色自主创建的日程。");
+      baseState = { ...state, schedules: state.schedules.filter(slot => slot.id !== scheduleId) };
+    }
+    const changed = applyCharacterLifeScheduleChange(baseState, characterId, {
       startAt: cleanText(args.startAt, 80),
       endAt: cleanText(args.endAt, 80),
       title: cleanText(args.title, 120),
       locationId: cleanText(args.locationId, 100),
-    });
+    }, now);
     if (changed.error) return result(name, false, undefined, changed.error);
-    const logged = appendLifeTimelineEntry(changed.state, { category: "schedule", title: "角色调整了日程：" + cleanText(args.title, 120), details: cleanText(args.startAt, 80) + " – " + cleanText(args.endAt, 80), actorId: characterId, actorName: loadCharacters().find(item => item.id === characterId)?.name ?? "角色", locationName: changed.state.locations.find(item => item.id === cleanText(args.locationId, 100))?.name, occurredAt: resolveActorLifeNow(getActorClock(changed.state, "character", characterId)).toISOString() });
+    const actorName = loadCharacters().find(item => item.id === characterId)?.name ?? "角色";
+    const logged = appendLifeTimelineEntry(changed.state, {
+      category: "schedule",
+      title: (name === "life_create_schedule" ? "角色创建了日程：" : "角色调整了日程：") + cleanText(args.title, 120),
+      details: cleanText(args.startAt, 80) + " – " + cleanText(args.endAt, 80),
+      actorId: characterId, actorName,
+      locationName: changed.state.locations.find(item => item.id === cleanText(args.locationId, 100))?.name,
+      occurredAt: now.toISOString(),
+    });
     saveVirtualLifeState(logged);
-    return result(name, true, JSON.stringify({ updated: true, title: cleanText(args.title, 120), startAt: cleanText(args.startAt, 80), endAt: cleanText(args.endAt, 80), message: "角色日程已调整，已确认约会和其他人的日程保持不变。" }));
+    return result(name, true, JSON.stringify({ createdOrUpdated: true, title: cleanText(args.title, 120), startAt: cleanText(args.startAt, 80), endAt: cleanText(args.endAt, 80), message: "角色日程已保存；用户手动安排和已确认活动未被覆盖。" }));
+  }
+
+  if (name === "life_cancel_schedule") {
+    if (!state.settings.enableScheduleChangeTool) return result(name, false, undefined, "角色自主调整日程已在自定义设置中关闭。");
+    const scheduleId = cleanText(args.scheduleId, 160);
+    const now = resolveActorLifeNow(getActorClock(state, "character", characterId));
+    const target = state.schedules.find(slot => slot.id === scheduleId
+      && slot.ownerType === "character" && slot.ownerId === characterId
+      && slot.source === "character-tool" && new Date(slot.startAt).getTime() > now.getTime());
+    if (!target) return result(name, false, undefined, "只能取消角色本人尚未开始、由角色自主创建的日程。");
+    const next = { ...state, schedules: state.schedules.filter(slot => slot.id !== scheduleId) };
+    const logged = appendLifeTimelineEntry(next, {
+      category: "schedule", title: "角色取消了日程：" + target.title,
+      details: target.startAt + " – " + target.endAt,
+      actorId: characterId, actorName: loadCharacters().find(item => item.id === characterId)?.name ?? "角色",
+      locationName: target.plannedLocationName ?? undefined, occurredAt: now.toISOString(),
+    });
+    saveVirtualLifeState(logged);
+    return result(name, true, JSON.stringify({ cancelled: true, scheduleId, title: target.title }));
   }
 
   return result(name, false, undefined, "未知生活工具。");
