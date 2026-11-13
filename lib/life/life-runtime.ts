@@ -940,7 +940,11 @@ export function overlayScheduleSlotsOverFreeTime(
       const sameOwner = existing.ownerType === candidate.ownerType && existing.ownerId === candidate.ownerId;
       const a = new Date(existing.startAt).getTime();
       const b = new Date(existing.endAt).getTime();
-      const replaceableFreeTime = existing.kind === "free-time" && existing.source === "weekly-generation";
+      // Free-time is an open placeholder even when legacy/user-edited records
+      // carry source=manual. A character-tool free-time slot is a cancellation
+      // tombstone and must survive automatic weekly generation.
+      const replaceableFreeTime = existing.kind === "free-time"
+        && (candidate.source !== "weekly-generation" || existing.source !== "character-tool");
       return sameOwner && !replaceableFreeTime && Number.isFinite(a) && Number.isFinite(b) && a < end && b > start;
     });
     if (protectedOverlap) continue;
@@ -949,7 +953,9 @@ export function overlayScheduleSlotsOverFreeTime(
       const sameOwner = existing.ownerType === candidate.ownerType && existing.ownerId === candidate.ownerId;
       const a = new Date(existing.startAt).getTime();
       const b = new Date(existing.endAt).getTime();
-      if (!sameOwner || existing.kind !== "free-time" || existing.source !== "weekly-generation" || !Number.isFinite(a) || !Number.isFinite(b) || b <= start || a >= end) {
+      const replaceableFreeTime = existing.kind === "free-time"
+        && (candidate.source !== "weekly-generation" || existing.source !== "character-tool");
+      if (!sameOwner || !replaceableFreeTime || !Number.isFinite(a) || !Number.isFinite(b) || b <= start || a >= end) {
         next.push(existing);
         continue;
       }
@@ -993,7 +999,8 @@ export function applyCharacterLifeScheduleChange(
     const slotEnd = new Date(slot.endAt).getTime();
     if (!Number.isFinite(slotStart) || !Number.isFinite(slotEnd)) return false;
     const isAlreadyInProgress = slotStart <= characterNow.getTime() && slotEnd > characterNow.getTime();
-    return (isAlreadyInProgress || slot.kind === "appointment" || slot.source === "manual" || slot.source === "event")
+    const protectedManualActivity = slot.kind !== "free-time" && slot.source === "manual";
+    return (isAlreadyInProgress || slot.kind === "appointment" || protectedManualActivity || slot.source === "event")
       && slotStart < endMs
       && slotEnd > startMs;
   });
@@ -1010,7 +1017,7 @@ export function applyCharacterLifeScheduleChange(
       slot.ownerType !== "character"
       || slot.ownerId !== characterId
       || slot.kind === "appointment"
-      || slot.source === "manual"
+      || (slot.source === "manual" && slot.kind !== "free-time")
       || slot.source === "event"
       || !Number.isFinite(slotStart)
       || !Number.isFinite(slotEnd)
