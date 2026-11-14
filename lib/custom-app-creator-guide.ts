@@ -338,7 +338,7 @@ const CUSTOM_APP_CREATOR_GUIDE_LINES = [
   "|音频播放(宿主代播)|`voice.play` / `stopPlayback` / `pausePlayback` / `resumePlayback`|`voice.tts`|",
   "|日程|`calendar.read` / `create` / `update` / `write`|`calendar.read` / `calendar.write`|",
   "|世界书|`world.list` / `get` / `read`|`world.read`|",
-  "|媒体|`media.pick` / `save`|`media.pick` / `media.save`|",
+  "|媒体|`media.pick` / `save` / `download`|`media.pick` / `media.save` / `media.download`|",
   "|定位（宿主代理）|`geo.get` / `geo.watch` / `geo.clearWatch` + `AiPhone.on(\"geo.position\", …)`|`geo.read` / `geo.watch`（持续定位事件需 manifest 声明 `geo.position`）|",
   "|媒体库(大文件存储)|`media.put` / `get` / `delete`|`app.data.write` / `app.data.read`|",
   "|APP 工具|`tools.handle` / `invoke`|`chat.tools`|",

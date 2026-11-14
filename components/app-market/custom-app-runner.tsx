@@ -5,6 +5,7 @@ import { CheckCircle2, Circle, FileJson, Layers, LoaderCircle, MoreHorizontal, R
 
 import type { InstalledCustomApp } from "@/lib/custom-app-types";
 import {
+  isCustomAppMediaRefReferenced,
   readCustomAppCollection,
   uninstallCustomAppAsync,
   writeCustomAppCollection,
@@ -12,6 +13,7 @@ import {
 import { formatCustomAppRegistrationRemovalSummary, removeCustomAppRegistrationsAsync } from "@/lib/custom-app-registration";
 import { CustomAppFailurePanel, type CustomAppFailureDetail } from "@/components/app-market/custom-app-failure";
 import { permissionLabelWithContext } from "@/lib/custom-app-permission-labels";
+import { downloadFile } from "@/lib/download-utils";
 import { registerCustomAppToolExecutor, type CustomAppToolExecutorPayload } from "@/lib/custom-app-tool-runtime";
 import { updateInstalledCustomAppFromMarket } from "@/lib/custom-app-market-update";
 import { loadCharacters } from "@/lib/character-storage";
@@ -245,6 +247,44 @@ html, body { min-height: 100%; }
       pending[requestId] = { resolve: resolve, reject: reject };
     });
   }
+
+  // APK download compatibility for legacy custom APPs:
+  // blob:/data: downloads are ignored by Android WebView's DownloadListener.
+  // Keep the native bridge on the trusted top frame and proxy these links through
+  // the existing host SDK instead of exposing AndroidShell to this sandbox.
+  var isFloatShell = /FloatShell\\//.test((navigator && navigator.userAgent) || '');
+  function proxySandboxDownload(anchor){
+    if (!isFloatShell || !anchor) return false;
+    var href = String(anchor.href || anchor.getAttribute('href') || '');
+    var filename = String(anchor.download || 'download').replace(/[\\\\/:*?"<>|]/g, '_').slice(0, 120) || 'download';
+    if (href.indexOf('data:') === 0) {
+      request('media.download', { dataUrl: href, filename: filename }).catch(function(error){
+        console.warn('[AiPhone] APK download failed:', error);
+      });
+      return true;
+    }
+    if (href.indexOf('blob:') === 0) {
+      fetch(href).then(function(response){
+        if (!response.ok) throw new Error('读取 blob 下载内容失败');
+        return response.blob();
+      }).then(function(blob){
+        // Blob is structured-cloned across postMessage; keep it binary and let the
+        // host's chunked native writer handle large files without base64 expansion.
+        return request('media.download', { blob: blob, filename: filename });
+      }).catch(function(error){
+        console.warn('[AiPhone] APK blob download failed:', error);
+      });
+      return true;
+    }
+    return false;
+  }
+  document.addEventListener('click', function(event){
+    var target = event.target;
+    var anchor = target && target.closest ? target.closest('a[download]') : null;
+    if (!anchor || !proxySandboxDownload(anchor)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
   window.addEventListener('message', function(event){
     var data = event.data || {};
     if (data.source !== 'ai-phone-custom-app-host' || data.frameId !== frameId) return;
@@ -407,6 +447,7 @@ html, body { min-height: 100%; }
     media: {
       pick: function(payload){ return request('media.pick', payload || {}); },
       save: function(payload){ return request('media.save', payload || {}); },
+      download: function(payload){ return request('media.download', payload || {}); },
       put: function(payload){ return request('media.put', payload || {}); },
       get: function(payload){ return request('media.get', payload || {}); },
       revoke: function(payload){ return request('media.revoke', payload || {}); },
@@ -1085,7 +1126,7 @@ export function CustomAppRunner({
           voice: ["readProfiles", "tts", "stt", "record", "stopRecord", "clone", "play", "stopPlayback", "pausePlayback", "resumePlayback"],
           calendar: ["read", "list", "write", "create", "update", "delete", "replaceWeek"],
           world: ["read", "list", "get", "write", "create", "update", "delete", "activate"],
-          media: ["pick", "save", "put", "get", "revoke", "delete"],
+          media: ["pick", "save", "put", "get", "revoke", "delete", "download"],
           characters: ["list", "get", "readState", "writeState", "readRelations"],
           chat: ["getCurrentSession", "readHistory", "sendMessage", "sendCard", "updateCard", "writeHistory", "requestReply", "openConversation", "setContactState"],
           memory: ["readCore", "readLongTerm", "readShortTerm", "search", "add", "addTimeline", "deleteTimeline", "removeTimeline", "suggest"],
@@ -1439,10 +1480,13 @@ export function CustomAppRunner({
       }
       const stored = await storeMediaBase64(base64, declaredMime);
       const refRows = readCustomAppCollection(app.id, CUSTOM_APP_MEDIA_REFS_COLLECTION);
-      writeCustomAppCollection(app.id, CUSTOM_APP_MEDIA_REFS_COLLECTION, [
-        { id: stored.ref, mime: stored.mime, category: stored.category, createdAt: new Date().toISOString() },
-        ...refRows,
-      ]);
+      // Content-addressed storage may return an existing ref; register it only once per APP.
+      if (!refRows.some(row => String(row.id) === stored.ref)) {
+        writeCustomAppCollection(app.id, CUSTOM_APP_MEDIA_REFS_COLLECTION, [
+          { id: stored.ref, mime: stored.mime, category: stored.category, createdAt: new Date().toISOString() },
+          ...refRows,
+        ]);
+      }
       return { ref: stored.ref, mime: stored.mime, category: stored.category };
     }
     if (action === "media.get") {
@@ -1476,7 +1520,9 @@ export function CustomAppRunner({
       const refRows = readCustomAppCollection(app.id, CUSTOM_APP_MEDIA_REFS_COLLECTION);
       if (refRows.some(row => String(row.id) === ref)) {
         writeCustomAppCollection(app.id, CUSTOM_APP_MEDIA_REFS_COLLECTION, refRows.filter(row => String(row.id) !== ref));
-        await deleteMediaRef(ref);
+        // Media refs can now be shared by multiple custom APPs after deduplication.
+        // Do not delete the physical blob while any installed APP still references it.
+        if (!isCustomAppMediaRefReferenced(ref)) await deleteMediaRef(ref);
       }
       return { ok: true };
     }
@@ -1560,6 +1606,51 @@ export function CustomAppRunner({
     if (action === "media.save") {
       requirePermission("media.save");
       return saveCustomAppMedia(record);
+    }
+
+    // 统一下载通道：iframe 不直接接触 AndroidShell，所有文件由宿主页面调用
+    // download-utils，再复用 APK 已有的原生分块写入能力。
+    if (action === "media.download") {
+      requireAnyPermission(["media.download", "media.save"]);
+      const rawName = String(record.filename ?? record.fileName ?? "download").trim();
+      const filename = rawName.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120) || "download";
+      let blob: Blob | null = record.blob instanceof Blob ? record.blob : null;
+      const ref = String(record.ref ?? "");
+      if (!blob && ref) {
+        if (!isMediaStoreRef(ref)) throw new Error("media.download 的 ref 必须是 media-store:// 引用。");
+        const refRows = readCustomAppCollection(app.id, CUSTOM_APP_MEDIA_REFS_COLLECTION);
+        if (!refRows.some(row => String(row.id) === ref)) {
+          throw new Error("media.download 只能保存本 APP 存入的媒体。");
+        }
+        const media = await loadMediaBlob(ref);
+        if (!media) throw new Error("要下载的媒体不存在或已被删除。");
+        blob = media.blob;
+      } else if (!blob) {
+        const dataUrl = String(record.dataUrl ?? "");
+        let base64 = String(record.base64 ?? "");
+        let mime = String(record.mime ?? "").trim();
+        if (dataUrl.startsWith("data:")) {
+          const comma = dataUrl.indexOf(",");
+          if (comma < 0) throw new Error("media.download 的 dataUrl 格式不合法。");
+          const header = dataUrl.slice(5, comma);
+          mime = mime || header.split(";")[0] || "application/octet-stream";
+          base64 = dataUrl.slice(comma + 1);
+        } else if (dataUrl) {
+          throw new Error("media.download 只接受 data URL；请先通过 media.put 存储 blob，再传 ref。");
+        }
+        if (!base64) throw new Error("media.download 需要 ref、dataUrl 或 base64。");
+        if (base64.length > CUSTOM_APP_MEDIA_MAX_BASE64_LENGTH) {
+          throw new Error("media.download 单个文件不能超过 25MB。");
+        }
+        let binary: string;
+        try { binary = atob(base64); } catch { throw new Error("media.download 的 base64 内容无效。"); }
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+        blob = new Blob([bytes], { type: mime || "application/octet-stream" });
+      }
+      if (!blob || blob.size <= 0) throw new Error("下载内容为空。");
+      await downloadFile(blob, filename);
+      return { ok: true, filename, size: blob.size };
     }
 
     // 定位：沙盒 iframe 是不透明源拿不到 navigator.geolocation 权限，由宿主页面代理
@@ -2009,7 +2100,7 @@ export function CustomAppRunner({
           title={app.name}
           className="custom-app-runner-frame"
           sandbox="allow-scripts allow-downloads"
-          allow="autoplay"
+          allow="autoplay; web-share"
           onLoad={syncHostedSafeArea}
           srcDoc={srcDoc}
         />

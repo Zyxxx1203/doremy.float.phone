@@ -261,6 +261,7 @@ function normalizePermission(value: unknown): CustomAppPermission | null {
     "memory.suggest",
     "media.pick",
     "media.save",
+    "media.download",
     "geo.read",
     "geo.watch",
     "notifications.read",
@@ -847,7 +848,8 @@ export function uninstallCustomApp(appId: string, options: { deleteData?: boolea
     // 先清媒体库 Blob(引用登记在 __media_refs 集合里),再删集合 key
     try {
       for (const row of readCustomAppCollection(id, "__media_refs")) {
-        void deleteMediaRef(String(row.id));
+        const ref = String(row.id);
+        if (ref && !isCustomAppMediaRefReferenced(ref, id)) void deleteMediaRef(ref);
       }
     } catch { /* 媒体清理失败不阻断卸载 */ }
     kvRemove(`${CUSTOM_APP_DATA_PREFIX}${id}`);
@@ -921,6 +923,27 @@ export function readCustomAppCollection(appId: string, collection: string): Arra
 export function writeCustomAppCollection(appId: string, collection: string, rows: Array<Record<string, unknown>>): void {
   migrateLegacyCustomAppData(appId);
   kvSet(customAppCollectionKey(appId, collection), JSON.stringify(rows));
+}
+
+/** Check installed and uninstalled-but-preserved APP data before deleting a shared media blob. */
+export function isCustomAppMediaRefReferenced(ref: string, excludingAppId?: string): boolean {
+  if (!ref) return false;
+  const appIds = new Set(loadInstalledCustomApps().map(app => app.id));
+  for (const key of kvKeysWithPrefix(CUSTOM_APP_DATA_PREFIX)) {
+    const suffix = key.slice(CUSTOM_APP_DATA_PREFIX.length);
+    const slash = suffix.indexOf("/");
+    if (slash > 0 && suffix.slice(slash + 1) === "__media_refs") {
+      appIds.add(suffix.slice(0, slash));
+    } else if (slash < 0 && suffix) {
+      // Legacy packed collection key; readCustomAppCollection migrates it on demand.
+      appIds.add(suffix);
+    }
+  }
+  if (excludingAppId) appIds.delete(cleanId(excludingAppId));
+  for (const appId of appIds) {
+    if (readCustomAppCollection(appId, "__media_refs").some(row => String(row.id) === ref)) return true;
+  }
+  return false;
 }
 
 function loadCustomAppTimelineForApp(appId: string): CustomAppTimelineEntry[] {
