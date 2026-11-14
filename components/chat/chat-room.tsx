@@ -35,6 +35,7 @@ import { createPortal } from "react-dom";
 
 import { CHARACTERS_UPDATED_EVENT, loadCharacters } from "@/lib/character-storage";
 import { Character } from "@/lib/character-types";
+import { getBuiltinCustomApp } from "@/lib/builtin-apps/registry";
 import { loadCustomAppChatPlusActions, type RegisteredCustomAppChatPlusAction } from "@/lib/custom-app-chat-directives";
 import { CUSTOM_APPS_UPDATED_EVENT, getInstalledCustomApp } from "@/lib/custom-app-storage";
 import { toCustomAppIconId, type InstalledCustomApp } from "@/lib/custom-app-types";
@@ -3799,7 +3800,7 @@ export function ChatRoom({ session, onBack, onDeleted, isActive = true }: ChatRo
         setShowEmojiPanel(false);
         setShowStickerPanel(false);
         setRichModal(null);
-        const app = getInstalledCustomApp(action.appId);
+        const app = getInstalledCustomApp(action.appId) ?? getBuiltinCustomApp(action.appId);
         if (!app) {
             showChatToast("这个自定义 APP 已不存在");
             setCustomPlusActions(loadCustomAppChatPlusActions());

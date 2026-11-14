@@ -33,6 +33,9 @@ import { ArchiveRoomApp } from "@/components/archive-room-app";
 import { PhotoWallApp } from "@/components/photo-wall-app";
 import { WatchTogetherApp } from "@/components/watch-together-app";
 import { CALL_STATS_ENTRY_HTML } from "@/lib/builtin-apps/call-stats-source";
+import { HEARTCRAFT_ENTRY_HTML } from "@/lib/builtin-apps/heartcraft-source";
+import { buildHeartcraftApp } from "@/lib/builtin-apps/heartcraft-meta";
+import { isHeartcraftInstalled } from "@/lib/builtin-apps/registry";
 import { VnApp } from "@/components/vn/vn-app";
 import ReadingApp from "@/components/reading/reading-app";
 import MapApp from "@/components/map/map-app";
@@ -236,6 +239,9 @@ type CustomAppLaunchState = {
   context: Record<string, unknown>;
   returnTo?: CustomAppReturnTarget | null;
 };
+
+/** 内置「心意手作工坊」：1:1 复用 heartcraft.doris 1.3.1 的 HTML，由 CustomAppRunner 挂载。 */
+const HEARTCRAFT_BUILTIN_APP = buildHeartcraftApp(HEARTCRAFT_ENTRY_HTML);
 
 type CustomAppBackgroundEventRun = {
   id: string;
@@ -453,6 +459,34 @@ function migrateNewLifestyleAppsToPageFour(
 }
 
 
+
+const HEARTCRAFT_ICON_MIGRATION_KEY = "ai_phone_heartcraft_icon_v1";
+
+/** 老用户桌面上已经有自定义布局：把新内置的「心意手作」补到第三页空位。
+    只补一次；用户之后自己删掉/收进文件夹，不会被再塞回来。 */
+function migrateHeartcraftIcon(
+  layout: DesktopLayout,
+  widgets: WidgetInstance[],
+  dock: DesktopIconId[],
+  folders: DesktopFolderMap,
+): DesktopLayout {
+  if (kvGet(HEARTCRAFT_ICON_MIGRATION_KEY) === "1") return layout;
+  const folderMembers = new Set(Object.values(folders).flatMap(folder => folder.icons));
+  const already = getDesktopPageKeysForState(layout, widgets)
+    .some(pageKey => (layout[pageKey] ?? []).some(icon => icon.id === "heartcraft"));
+  if (already || dock.includes("heartcraft") || folderMembers.has("heartcraft")) {
+    kvSet(HEARTCRAFT_ICON_MIGRATION_KEY, "1");
+    return layout;
+  }
+  const next = cloneDesktopLayout(layout, widgets);
+  ensureDesktopPage(next, "page3");
+  const widgetOcc = buildWidgetOccupancy(widgets.filter(widget => widget.page === 3));
+  const usedCells = new Set((next.page3 ?? []).map(icon => `${icon.row},${icon.col}`));
+  const free = findNearestFreeCell(3, 1, widgetOcc, usedCells);
+  if (free) next.page3.push({ id: "heartcraft", ...free });
+  kvSet(HEARTCRAFT_ICON_MIGRATION_KEY, "1");
+  return next;
+}
 
 function migrateLegacyDesktopIconId(id: string, customIconIds = getInstalledCustomIconIds()): DesktopIconId | null {
   if (id === "weibo") return "game";
@@ -1646,11 +1680,12 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
           const normalized = normalizeLayout(JSON.parse(rawV2), hydratedWidgets, dockIds, hydratedFolders);
           const sane = sanitizeDesktopFolders(hydratedFolders, normalized, hydratedDock, hydratedWidgets);
           const migratedLayout = migrateNewLifestyleAppsToPageFour(sane.layout, hydratedWidgets, hydratedDock, sane.folders);
+          const withHeartcraft = migrateHeartcraftIcon(migratedLayout, hydratedWidgets, hydratedDock, sane.folders);
           setFolders(sane.folders);
-          setLayout(migratedLayout);
+          setLayout(withHeartcraft);
           if (sane.changed) writeDesktopFolders(sane.folders);
-          if (sane.changed || migratedLayout !== sane.layout || migratedLayout !== migratedLayout || kvGet(NEW_LIFESTYLE_APPS_PAGE_MIGRATION_KEY) === "1") {
-            kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(migratedLayout));
+          if (sane.changed || withHeartcraft !== sane.layout || kvGet(NEW_LIFESTYLE_APPS_PAGE_MIGRATION_KEY) === "1") {
+            kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(withHeartcraft));
           }
           setDesktopReady(true);
           return;
@@ -1749,7 +1784,10 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   useEffect(() => {
     const unregister = registerCustomAppBackgroundToolExecutor(payload => (
       new Promise<unknown>((resolve, reject) => {
-        const id = `bg_tool_${Date.now()}_${++backgroundRunSeqRef.current}_${payload.app.id}`;
+        /* 内置应用的工具是通过注册表拿到的「元信息 stub」（entryHtml 为空），
+           真正起后台环境时得换成带 HTML 的完整定义，否则挂出来是空白页。 */
+        const bgApp = payload.app.id === HEARTCRAFT_BUILTIN_APP.id ? HEARTCRAFT_BUILTIN_APP : payload.app;
+        const id = `bg_tool_${Date.now()}_${++backgroundRunSeqRef.current}_${bgApp.id}`;
         const timeoutMs = customAppBackgroundTimeoutMs(payload.tool.timeoutMs);
         const timeoutId = window.setTimeout(() => {
           pendingCustomAppBackgroundToolsRef.current.delete(id);
@@ -1761,7 +1799,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
           ...prev,
           {
             id,
-            app: payload.app,
+            app: bgApp,
             payload,
             timeoutMs,
             launchContext: {
@@ -1803,7 +1841,13 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
           isGroup: session?.isGroup === true,
           message: serializeCustomAppBackgroundMessage(message),
         };
-        const nextRuns = customApps
+        /* 内置应用不在 installed 列表里，但同样要接聊天事件（否则关掉 APP 就不会自动开工）。
+           用户自己装了同一个 app 时，让市场版接管，避免两套一起跑。 */
+        const bgApps = isHeartcraftInstalled()
+          ? customApps
+          : (customApps.some(app => app.id === HEARTCRAFT_BUILTIN_APP.id) ? customApps : [...customApps, HEARTCRAFT_BUILTIN_APP]);
+        const nextRuns = bgApps
+          .filter(app => !(app.id === HEARTCRAFT_BUILTIN_APP.id && activeApp === "heartcraft"))
           .map(app => ({ app, subscription: getBackgroundChatMessageSubscription(app) }))
           .filter((item): item is { app: InstalledCustomApp; subscription: CustomAppEventRecord } => Boolean(item.subscription))
           .filter(({ app }) => (
@@ -2471,6 +2515,15 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     })();
   }
 
+  function openBuiltinHeartcraft(launchContext: Record<string, unknown> = {}): void {
+    setCustomAppLaunchContext({
+      appId: HEARTCRAFT_BUILTIN_APP.id,
+      context: launchContext,
+      returnTo: customAppReturnTargetFromLaunchContext(launchContext),
+    });
+    setActiveApp("heartcraft");
+  }
+
   function openCustomAppWithBackgroundUpdateCheck(
     iconId: DesktopIconId,
     launchContext: Record<string, unknown> = {},
@@ -2479,6 +2532,11 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     if (!appId) return;
     const app = getFreshInstalledCustomApp(appId);
     if (!app) {
+      /* 聊天卡片点进来：如果是内置应用（不在 installed 列表里），直接打开内置版 */
+      if (appId === HEARTCRAFT_BUILTIN_APP.id) {
+        openBuiltinHeartcraft(launchContext);
+        return;
+      }
       setNotice("这个 APP 已被卸载或不存在。");
       return;
     }
@@ -4499,6 +4557,26 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
           <CustomAppRunner
             app={CALL_STATS_BUILTIN_APP}
             onClose={() => setActiveApp(null)}
+            onNotice={setNotice}
+          />
+        </CustomAppForegroundBoundary>
+      );
+    }
+
+    if (activeApp === "heartcraft") {
+      return (
+        <CustomAppForegroundBoundary
+          key={HEARTCRAFT_BUILTIN_APP.id}
+          appName={HEARTCRAFT_BUILTIN_APP.name}
+          appId={HEARTCRAFT_BUILTIN_APP.id}
+          appVersion={HEARTCRAFT_BUILTIN_APP.version}
+          manifestId={HEARTCRAFT_BUILTIN_APP.manifest?.id}
+          onClose={() => setActiveApp(null)}
+        >
+          <CustomAppRunner
+            app={HEARTCRAFT_BUILTIN_APP}
+            launchContext={customAppLaunchContext?.appId === HEARTCRAFT_BUILTIN_APP.id ? customAppLaunchContext.context : null}
+            onClose={() => closeCustomAppRunner(HEARTCRAFT_BUILTIN_APP)}
             onNotice={setNotice}
           />
         </CustomAppForegroundBoundary>

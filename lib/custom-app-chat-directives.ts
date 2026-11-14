@@ -1,4 +1,4 @@
-import { loadInstalledCustomApps } from "./custom-app-storage";
+import { loadAllCustomApps } from "./builtin-apps/registry";
 import type { CustomAppChatDirective, CustomAppChatPlusAction, InstalledCustomApp } from "./custom-app-types";
 
 export type RegisteredCustomAppChatDirective = CustomAppChatDirective & {
@@ -135,7 +135,7 @@ function normalizePlusAction(app: InstalledCustomApp, action: CustomAppChatPlusA
 }
 
 export function loadCustomAppChatDirectives(): RegisteredCustomAppChatDirective[] {
-  const installed = loadInstalledCustomApps();
+  const installed = loadAllCustomApps();
   const result: RegisteredCustomAppChatDirective[] = [];
   const seen = new Set<string>();
   for (const app of installed) {
@@ -158,7 +158,7 @@ export function loadCustomAppChatDirectives(): RegisteredCustomAppChatDirective[
 }
 
 export function loadCustomAppChatPlusActions(): RegisteredCustomAppChatPlusAction[] {
-  const installed = loadInstalledCustomApps();
+  const installed = loadAllCustomApps();
   const result: RegisteredCustomAppChatPlusAction[] = [];
   const seen = new Set<string>();
   for (const app of installed) {
