@@ -887,7 +887,10 @@ export function insertManualLifeScheduleSlot(
     return Number.isFinite(a) && Number.isFinite(b) && a < end && b > start;
   });
   const conflict = overlapping.find(existing =>
-    existing.kind === "appointment" || existing.source === "manual" || existing.source === "event" || existing.source === "character-tool"
+    existing.kind === "appointment"
+    || (existing.source === "manual" && existing.kind !== "free-time")
+    || existing.source === "event"
+    || (existing.source === "character-tool" && existing.kind !== "free-time")
   );
   if (conflict) return { state, conflict };
 
@@ -932,16 +935,34 @@ export function overlayScheduleSlotsOverFreeTime(
   candidates: LifeScheduleSlot[],
 ): VirtualLifeState {
   let schedules = [...state.schedules];
+  const acceptedCandidates: LifeScheduleSlot[] = [];
   for (const candidate of candidates) {
     const start = new Date(candidate.startAt).getTime();
     const end = new Date(candidate.endAt).getTime();
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+    const protectedOverlap = schedules.some(existing => {
+      const sameOwner = existing.ownerType === candidate.ownerType && existing.ownerId === candidate.ownerId;
+      const a = new Date(existing.startAt).getTime();
+      const b = new Date(existing.endAt).getTime();
+      // Free-time is an open placeholder even when legacy/user-edited records
+      // carry source=manual. A character-tool free-time slot is a cancellation
+      // tombstone and must survive automatic weekly generation.
+      const replaceableFreeTime = existing.kind === "free-time"
+        && (candidate.source !== "weekly-generation" || existing.source !== "character-tool");
+      return sameOwner && !replaceableFreeTime && Number.isFinite(a) && Number.isFinite(b) && a < end && b > start;
+    });
+    // A protected overlap rejects the candidate entirely. Merely skipping the
+    // overlay loop is insufficient: pushing all candidates at the end would
+    // still resurrect the cancelled interval.
+    if (protectedOverlap) continue;
     const next: LifeScheduleSlot[] = [];
     for (const existing of schedules) {
       const sameOwner = existing.ownerType === candidate.ownerType && existing.ownerId === candidate.ownerId;
       const a = new Date(existing.startAt).getTime();
       const b = new Date(existing.endAt).getTime();
-      if (!sameOwner || existing.kind !== "free-time" || !Number.isFinite(a) || !Number.isFinite(b) || b <= start || a >= end) {
+      const replaceableFreeTime = existing.kind === "free-time"
+        && (candidate.source !== "weekly-generation" || existing.source !== "character-tool");
+      if (!sameOwner || !replaceableFreeTime || !Number.isFinite(a) || !Number.isFinite(b) || b <= start || a >= end) {
         next.push(existing);
         continue;
       }
@@ -949,15 +970,16 @@ export function overlayScheduleSlotsOverFreeTime(
       if (b > end) next.push({ ...existing, id: existing.id + "-after-ai-" + candidate.id, startAt: candidate.endAt, updatedAt: new Date().toISOString() });
     }
     schedules = next;
+    acceptedCandidates.push(candidate);
   }
-  schedules.push(...candidates);
+  schedules.push(...acceptedCandidates);
   return { ...state, schedules: schedules.sort((a, b) => a.startAt.localeCompare(b.startAt)) };
 }
 
 /**
  * Apply a character-authored schedule change through one shared business rule.
- * It may reshape generated or previous character-tool slots, but never silently
- * overwrites user-authored plans or confirmed events.
+ * It may reshape generated or previous character-tool slots in the next seven days,
+ * but never overwrites any manual slot (including manual free-time), events or appointments.
  */
 export function applyCharacterLifeScheduleChange(
   state: VirtualLifeState,
@@ -972,14 +994,9 @@ export function applyCharacterLifeScheduleChange(
     return { state, error: "需要有效的活动内容和开始/结束时间，且结束时间必须晚于开始时间。" };
   }
   const characterNow = realNow;
-  const sameDay = startAt.getFullYear() === characterNow.getFullYear()
-    && startAt.getMonth() === characterNow.getMonth()
-    && startAt.getDate() === characterNow.getDate()
-    && endAt.getFullYear() === characterNow.getFullYear()
-    && endAt.getMonth() === characterNow.getMonth()
-    && endAt.getDate() === characterNow.getDate();
-  if (!sameDay || startAt <= characterNow) {
-    return { state, error: "只能调整角色当前现实日期中尚未开始的时段。" };
+  const horizonEnd = new Date(characterNow.getTime() + 7 * 24 * 60 * 60_000);
+  if (startAt <= characterNow || endAt > horizonEnd) {
+    return { state, error: "只能安排角色未来 7 天内、尚未开始的日程。" };
   }
 
   const startMs = startAt.getTime();
@@ -989,8 +1006,9 @@ export function applyCharacterLifeScheduleChange(
     const slotStart = new Date(slot.startAt).getTime();
     const slotEnd = new Date(slot.endAt).getTime();
     if (!Number.isFinite(slotStart) || !Number.isFinite(slotEnd)) return false;
-    return slot.kind !== "free-time"
-      && (slot.kind === "appointment" || slot.source === "manual" || slot.source === "event")
+    const isAlreadyInProgress = slotStart <= characterNow.getTime() && slotEnd > characterNow.getTime();
+    const protectedManualActivity = slot.kind !== "free-time" && slot.source === "manual";
+    return (isAlreadyInProgress || slot.kind === "appointment" || protectedManualActivity || slot.source === "event")
       && slotStart < endMs
       && slotEnd > startMs;
   });
@@ -1007,6 +1025,8 @@ export function applyCharacterLifeScheduleChange(
       slot.ownerType !== "character"
       || slot.ownerId !== characterId
       || slot.kind === "appointment"
+      || (slot.source === "manual" && slot.kind !== "free-time")
+      || slot.source === "event"
       || !Number.isFinite(slotStart)
       || !Number.isFinite(slotEnd)
       || slotEnd <= startMs

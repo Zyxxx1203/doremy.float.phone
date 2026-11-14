@@ -620,10 +620,16 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     for (const owner of owners) {
       const actorNow = resolveActorLifeNow(getActorClock(next, owner.ownerType, owner.ownerId));
       const thisMonday = mondayStart(actorNow);
-      // Keep the visible planning horizon to one real-time week. The next week is generated
-      // when the calendar week changes, not pre-filled as a 14-day schedule.
       if (settings.autoGenerateWeeklyPlans) {
         next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, thisMonday, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), settings.generateSpecialEvents);
+        // Pre-build the following calendar week when the current week is within
+        // two days of Sunday. It stays outside the current-week UI until rollover.
+        const daysUntilWeekEnd = 6 - ((actorNow.getDay() + 6) % 7);
+        if (daysUntilWeekEnd <= 2) {
+          const nextMonday = new Date(thisMonday);
+          nextMonday.setDate(nextMonday.getDate() + 7);
+          next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, nextMonday, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), settings.generateSpecialEvents);
+        }
       }
     }
     if (next !== state) commit(next);
@@ -644,15 +650,17 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         // Always inspect the current calendar week first. A future manual slot
         // must not prevent missing baseline days from being generated.
         const week = mondayStart(realNow);
-        const target = mondayStart(realNow);
-        const targetEnd = new Date(target);
-        // Auto-generation is still limited to the current 7-day week; don't expose
-        // a second pre-generated week in the schedule UI. The next week is added
-        // automatically when the real calendar week changes.
+        const targetEnd = new Date(week);
+        // Keep the current week complete, then pre-generate the following week
+        // when no more than two days remain before Sunday. The UI continues to show its
+        // selected seven-day window; this is background coverage, not a 14-day view.
         if (liveSettings.autoGenerateWeeklyPlans) {
-          for (let guard = 0; week.getTime() <= targetEnd.getTime() && guard < 520; guard++) {
-            next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, week, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), liveSettings.generateSpecialEvents);
-            week.setDate(week.getDate() + 7);
+          next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, week, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), liveSettings.generateSpecialEvents);
+          const daysUntilWeekEnd = 6 - ((realNow.getDay() + 6) % 7);
+          if (daysUntilWeekEnd <= 2) {
+            const nextWeek = new Date(targetEnd);
+            nextWeek.setDate(nextWeek.getDate() + 7);
+            next = generateWeeklyLifePlan(next, owner.ownerType, owner.ownerId, owner.name, nextWeek, { id: "home", name: "家" }, [owner.profile].filter(Boolean).join(" "), liveSettings.generateSpecialEvents);
           }
         }
         const beforeSettle = next;
@@ -1126,9 +1134,23 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         if (!existing || !draft.existingScheduleId || seenExistingIds.has(draft.existingScheduleId)) { invalid.push((draft.title || "日程") + "（旧日程 ID 不存在或重复）"); continue; }
         seenExistingIds.add(draft.existingScheduleId);
         const realNow = actorNow(owner);
-        if (existing.source === "event" || new Date(existing.startAt) <= realNow || new Date(existing.endAt) <= realNow) { invalid.push(existing.title + "（已开始、已结束或属于固定/已确认事件，不允许 AI 调整）"); continue; }
+        if (existing.source === "event" || (existing.source === "manual" && existing.kind !== "free-time") || existing.kind === "appointment"
+          || new Date(existing.startAt) <= realNow || new Date(existing.endAt) <= realNow) {
+          invalid.push(existing.title + "（已开始、已结束、用户手动安排或属于固定/已确认事件，不允许 AI 调整）");
+          continue;
+        }
         removeIds.add(existing.id);
-        if (operation === "cancel") { timelineItems.push({ draft, action: "取消" }); continue; }
+        if (operation === "cancel") {
+          // Persist the released interval as character-authored free time. If we
+          // simply remove a generated slot, weekly generation would fill it again.
+          candidates.push({
+            id: id("guided-free-time"), ownerType: existing.ownerType, ownerId: existing.ownerId,
+            startAt: existing.startAt, endAt: existing.endAt, title: "自由活动",
+            kind: "free-time", source: "character-tool", updatedAt: now,
+          });
+          timelineItems.push({ draft, action: "取消" });
+          continue;
+        }
       }
       const start = new Date(draft.startAt), end = new Date(draft.endAt);
       if (!draft.title.trim() || !Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start || start <= actorNow(owner)) { invalid.push(draft.title || "未命名安排"); continue; }
@@ -1146,6 +1168,20 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     }
     if (invalid.length) { setNotice("本次日程调整未保存（原日程保持不变）：" + invalid.slice(0,4).join("；")); recordLifeDiagnostic({ source: "AI 日程指导", event: "确认前校验失败", status: "error", detail: invalid.join("；"), meta: { draftCount: quickPlanDrafts.length } }); return; }
     const baseWithoutRemoved = { ...base, schedules: base.schedules.filter(slot => !removeIds.has(slot.id)) };
+    const inProgressConflict = candidates.find(candidate => baseWithoutRemoved.schedules.some(existing => {
+      if (existing.ownerType !== candidate.ownerType || existing.ownerId !== candidate.ownerId) return false;
+      const existingStart = new Date(existing.startAt).getTime();
+      const existingEnd = new Date(existing.endAt).getTime();
+      const candidateStart = new Date(candidate.startAt).getTime();
+      const candidateEnd = new Date(candidate.endAt).getTime();
+      return existingStart <= Date.now() && existingEnd > Date.now()
+        && existingStart < candidateEnd && existingEnd > candidateStart;
+    }));
+    if (inProgressConflict) {
+      setNotice("本次日程调整未保存：不能修改已经开始的当前活动。");
+      recordLifeDiagnostic({ source: "AI 日程指导", event: "当前活动保护", status: "error", detail: inProgressConflict.title, meta: { draftCount: quickPlanDrafts.length } });
+      return;
+    }
     const combined = overlayScheduleSlotsOverFreeTime(baseWithoutRemoved, candidates).schedules;
     for (let i = 0; i < combined.length; i += 1) for (let j = i + 1; j < combined.length; j += 1) {
       const a = combined[i], b = combined[j];

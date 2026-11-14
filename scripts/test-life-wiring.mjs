@@ -219,4 +219,47 @@ assert.equal((shortTermAssembler.match(/timeline\.filter\(e => CUSTOM_APP_TIMELI
   "both direct-chat and group-chat assemblers must inject special app timeline entries");
 assert.match(shortTermAssembler, /CUSTOM_APP_TIMELINE_SOURCES\.has\(entry\.sourceApp\) \? "recent_custom_app"/);
 
+const [chatEngine, toolStorage, lifeTools, lifeRuntime, lifeMemoryBridge, guidedSchedule] = await Promise.all([
+  read("../lib/chat-engine.ts"),
+  read("../lib/tool-storage.ts"),
+  read("../lib/life/life-tools.ts"),
+  read("../lib/life/life-runtime.ts"),
+  read("../lib/life/life-memory-bridge.ts"),
+  read("../lib/life/life-guided-schedule.ts"),
+]);
+assert.match(chatEngine, /if \(tool\.source === "life"\) return true;/);
+for (const name of ["life_view_schedule", "life_create_schedule", "life_change_schedule", "life_cancel_schedule"]) {
+  assert.ok(lifeTools.includes('name: "' + name + '"'), name + " must be registered");
+}
+assert.match(toolStorage, /isScheduleRead = tool\.name === "life_view_schedule"/);
+assert.match(toolStorage, /isScheduleWrite = tool\.name === "life_create_schedule"/);
+assert.match(toolStorage, /if \(lifeSettings\.enabled\) \{/, "schedule read tools remain registered when character autonomy is disabled");
+assert.match(toolStorage, /isScheduleRead \|\| lifeSettings\.enableCharacterAutonomy/);
+assert.match(lifeTools, /name !== "life_view_schedule" && !state\.settings\.enableCharacterAutonomy/);
+assert.match(lifeTools, /Math\.random\(\)\.toString\(36\)\.slice\(2, 9\)/, "cancelled-slot tombstone IDs need a collision-resistant suffix");
+assert.match(lifeMemoryBridge, /new Date\(item\.endAt\)\.getTime\(\) > now\.getTime\(\)/, "today context must retain already-started but not-yet-ended slots");
+assert.match(lifeTools, /slot\.source === "character-tool"/);
+assert.match(lifeTools, /slot\.ownerId === characterId/);
+assert.match(lifeRuntime, /horizonEnd = new Date\(characterNow\.getTime\(\) \+ 7 \* 24 \* 60 \* 60_000\)/);
+assert.match(lifeRuntime, /protectedManualActivity/);
+assert.match(lifeRuntime, /slot\.source === "event"/);
+assert.match(lifeRuntime, /candidate\.source !== "weekly-generation" \|\| existing\.source !== "character-tool"/);
+assert.match(lifeRuntime, /isAlreadyInProgress/);
+assert.match(guidedSchedule, /isAlreadyInProgress/);
+assert.match(app, /existingStart <= Date\.now\(\) && existingEnd > Date\.now\(\)/);
+assert.match(lifeMemoryBridge, /remainingToday/);
+assert.match(lifeMemoryBridge, /item\.id !== schedule\?\.id/);
+assert.match(guidedSchedule, /existing\.source === "manual"/,
+  "guided re-planning must reject user-authored schedule mutations");
+assert.match(guidedSchedule, /slot\.kind === "free-time" && !isAlreadyInProgress/,
+  "only generated free-time may be treated as an open slot");
+assert.match(app, /existing\.source === "manual"/,
+  "the atomic guided-plan commit must revalidate manual schedule protection");
+assert.match(app, /kind: "free-time", source: "character-tool"/,
+  "guided cancellations must leave a protected free-time placeholder");
+assert.match(lifeTools, /kind: "free-time" as const, source: "character-tool" as const/,
+  "tool cancellations must leave a protected free-time placeholder");
+assert.match(app, /daysUntilWeekEnd <= 2/);
+assert.match(app, /nextWeek\.setDate\(nextWeek\.getDate\(\) \+ 7\)/);
+
 console.log("Life-system wiring checks passed.");
