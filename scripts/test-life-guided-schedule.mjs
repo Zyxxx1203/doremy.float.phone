@@ -99,8 +99,12 @@ const manualActivityOverlapAttempt = parseGuidedScheduleResponse(JSON.stringify(
 assert.equal(manualActivityOverlapAttempt.drafts.length, 0, "AI must not overlap manually-authored activities");
 assert.equal(manualActivityOverlapAttempt.conflicts.length, 1);
 
+const inProgressStartAt = new Date(contexts[0].now);
+inProgressStartAt.setHours(inProgressStartAt.getHours() - 1, 0, 0, 0);
+const inProgressEndAt = new Date(contexts[0].now);
+inProgressEndAt.setHours(inProgressEndAt.getHours() + 7, 0, 0, 0);
 const inProgressContext = [{ ...contexts[0], existing: [{
-  id: "ongoing-free", startAt: "2026-11-05T07:00:00.000Z", endAt: "2026-11-05T10:00:00.000Z",
+  id: "ongoing-free", startAt: inProgressStartAt.toISOString(), endAt: inProgressEndAt.toISOString(),
   title: "当前自由活动", source: "weekly-generation", kind: "free-time",
 }] }];
 const inProgressAttempt = parseGuidedScheduleResponse(JSON.stringify({ schedules: [
