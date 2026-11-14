@@ -5,7 +5,7 @@ import { CheckCircle2, Circle, FileJson, Layers, LoaderCircle, MoreHorizontal, R
 
 import type { InstalledCustomApp } from "@/lib/custom-app-types";
 import {
-  loadInstalledCustomApps,
+  isCustomAppMediaRefReferenced,
   readCustomAppCollection,
   uninstallCustomAppAsync,
   writeCustomAppCollection,
@@ -1484,11 +1484,7 @@ export function CustomAppRunner({
         writeCustomAppCollection(app.id, CUSTOM_APP_MEDIA_REFS_COLLECTION, refRows.filter(row => String(row.id) !== ref));
         // Media refs can now be shared by multiple custom APPs after deduplication.
         // Do not delete the physical blob while any installed APP still references it.
-        const referencedByAnotherApp = loadInstalledCustomApps().some(installed =>
-          readCustomAppCollection(installed.id, CUSTOM_APP_MEDIA_REFS_COLLECTION)
-            .some(row => String(row.id) === ref)
-        );
-        if (!referencedByAnotherApp) await deleteMediaRef(ref);
+        if (!isCustomAppMediaRefReferenced(ref)) await deleteMediaRef(ref);
       }
       return { ok: true };
     }
