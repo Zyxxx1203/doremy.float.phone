@@ -22,6 +22,12 @@ await AiPhone.media.download({
   filename: "我的图片.png"
 });
 
+// 推荐大文件：直接传 Blob，postMessage 使用结构化克隆，不膨胀成 base64
+await AiPhone.media.download({
+  blob,
+  filename: "导出文件.zip"
+});
+
 // 也可直接传 data URL / base64
 await AiPhone.media.download({
   dataUrl,
@@ -42,7 +48,7 @@ await AiPhone.media.download({
 - 普通浏览器：通过浏览器下载机制触发下载；浏览器无法确认最终落盘，因此只提示已触发。
 - iOS：遵循统一下载工具的系统分享/浏览器能力策略。
 - 通过 `ref` 下载时，只能下载当前 APP 自己通过 `media.put` 写入并登记的媒体。
-- 单次 data URL/base64 输入沿用自定义 APP 媒体上限（约 25MB）；较大的媒体建议先用 `media.put`，通过 `ref` 下载。
+- 单次 data URL/base64 输入沿用自定义 APP 媒体上限（约 25MB）；较大的媒体建议直接传 `blob`，由宿主原生分块写入；也可以先用 `media.put`，再通过 `ref` 下载。
 - 文件名会过滤路径分隔符及系统不允许的字符。
 
 ## 兼容性
