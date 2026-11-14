@@ -55,6 +55,7 @@ const MDI_PATHS: Record<IconId, string> = {
   photowall: mdiCamera,
   watchtogether: mdiMovie,
   callstats: mdiPhone,
+  heartcraft: mdiHeart,
   chat: mdiMessageProcessing,
   diary: mdiBookOpenPageVariant,
   music: mdiMusic,
