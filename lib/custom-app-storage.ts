@@ -849,7 +849,7 @@ export function uninstallCustomApp(appId: string, options: { deleteData?: boolea
     try {
       for (const row of readCustomAppCollection(id, "__media_refs")) {
         const ref = String(row.id);
-        if (ref && !isCustomAppMediaRefReferenced(ref)) void deleteMediaRef(ref);
+        if (ref && !isCustomAppMediaRefReferenced(ref, id)) void deleteMediaRef(ref);
       }
     } catch { /* 媒体清理失败不阻断卸载 */ }
     kvRemove(`${CUSTOM_APP_DATA_PREFIX}${id}`);
@@ -926,7 +926,7 @@ export function writeCustomAppCollection(appId: string, collection: string, rows
 }
 
 /** Check installed and uninstalled-but-preserved APP data before deleting a shared media blob. */
-export function isCustomAppMediaRefReferenced(ref: string): boolean {
+export function isCustomAppMediaRefReferenced(ref: string, excludingAppId?: string): boolean {
   if (!ref) return false;
   const appIds = new Set(loadInstalledCustomApps().map(app => app.id));
   for (const key of kvKeysWithPrefix(CUSTOM_APP_DATA_PREFIX)) {
@@ -939,6 +939,7 @@ export function isCustomAppMediaRefReferenced(ref: string): boolean {
       appIds.add(suffix);
     }
   }
+  if (excludingAppId) appIds.delete(cleanId(excludingAppId));
   for (const appId of appIds) {
     if (readCustomAppCollection(appId, "__media_refs").some(row => String(row.id) === ref)) return true;
   }
