@@ -8,6 +8,7 @@ import {
   readCustomAppCollection,
   writeCustomAppCollection,
 } from "./custom-app-storage";
+import { loadAllCustomApps } from "./builtin-apps/registry";
 import { buildCustomAppChatTags } from "./custom-app-tags";
 import { hydrateKvDb } from "./kv-db";
 import { loadCharacters } from "./character-storage";
@@ -2421,7 +2422,7 @@ function customAppHostActionNeedsSettingsStorage(actionType: string): boolean {
 export async function runDueCustomAppTasks(onNotice?: HostNotice): Promise<number> {
   await hydrateKvDb();
   const now = Date.now();
-  const apps = new Map(loadInstalledCustomApps().map(app => [app.id, app]));
+  const apps = new Map(loadAllCustomApps().map(app => [app.id, app]));
   let tasks = loadCustomAppTasks();
   const due = tasks.filter(task => task.status === "pending" && new Date(task.runAt).getTime() <= now);
   if (due.length === 0) return 0;
