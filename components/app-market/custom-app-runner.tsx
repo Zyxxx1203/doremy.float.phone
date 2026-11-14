@@ -5,6 +5,7 @@ import { CheckCircle2, Circle, FileJson, Layers, LoaderCircle, MoreHorizontal, R
 
 import type { InstalledCustomApp } from "@/lib/custom-app-types";
 import {
+  loadInstalledCustomApps,
   readCustomAppCollection,
   uninstallCustomAppAsync,
   writeCustomAppCollection,
@@ -1441,10 +1442,13 @@ export function CustomAppRunner({
       }
       const stored = await storeMediaBase64(base64, declaredMime);
       const refRows = readCustomAppCollection(app.id, CUSTOM_APP_MEDIA_REFS_COLLECTION);
-      writeCustomAppCollection(app.id, CUSTOM_APP_MEDIA_REFS_COLLECTION, [
-        { id: stored.ref, mime: stored.mime, category: stored.category, createdAt: new Date().toISOString() },
-        ...refRows,
-      ]);
+      // Content-addressed storage may return an existing ref; register it only once per APP.
+      if (!refRows.some(row => String(row.id) === stored.ref)) {
+        writeCustomAppCollection(app.id, CUSTOM_APP_MEDIA_REFS_COLLECTION, [
+          { id: stored.ref, mime: stored.mime, category: stored.category, createdAt: new Date().toISOString() },
+          ...refRows,
+        ]);
+      }
       return { ref: stored.ref, mime: stored.mime, category: stored.category };
     }
     if (action === "media.get") {
@@ -1478,7 +1482,13 @@ export function CustomAppRunner({
       const refRows = readCustomAppCollection(app.id, CUSTOM_APP_MEDIA_REFS_COLLECTION);
       if (refRows.some(row => String(row.id) === ref)) {
         writeCustomAppCollection(app.id, CUSTOM_APP_MEDIA_REFS_COLLECTION, refRows.filter(row => String(row.id) !== ref));
-        await deleteMediaRef(ref);
+        // Media refs can now be shared by multiple custom APPs after deduplication.
+        // Do not delete the physical blob while any installed APP still references it.
+        const referencedByAnotherApp = loadInstalledCustomApps().some(installed =>
+          readCustomAppCollection(installed.id, CUSTOM_APP_MEDIA_REFS_COLLECTION)
+            .some(row => String(row.id) === ref)
+        );
+        if (!referencedByAnotherApp) await deleteMediaRef(ref);
       }
       return { ok: true };
     }
