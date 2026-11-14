@@ -123,11 +123,12 @@ async function blobsHaveSameBytes(left: Blob, right: Blob): Promise<boolean> {
 
 export async function storeMediaBlob(blob: Blob, mimeType: string, category: MediaCacheEntry["mediaCategory"]): Promise<string> {
     const table = getDb().entries;
+    let imageHash: string | null = null;
     // Image generation frequently returns byte-identical images. Deduplicate only
     // images, where this saves meaningful space without changing audio/video semantics.
     if (category === "image" && blob.size > 0) {
-        const hash = await sha256Blob(blob);
-        if (hash) {
+        imageHash = await sha256Blob(blob);
+        if (imageHash) {
             const candidates = await table.where("[mediaCategory+byteLength]").equals([category, blob.size]).toArray();
             for (const candidate of candidates) {
                 if (candidate.mimeType !== mimeType) continue;
@@ -139,7 +140,7 @@ export async function storeMediaBlob(blob: Blob, mimeType: string, category: Med
                         await table.update(candidate.id, { sha256: candidateHash, byteLength: candidate.blob.size });
                     }
                 }
-                if (candidateHash !== hash) continue;
+                if (candidateHash !== imageHash) continue;
                 if (await blobsHaveSameBytes(candidate.blob, blob)) {
                     return `${MEDIA_STORE_PROTOCOL}${candidate.id}`;
                 }
@@ -154,7 +155,7 @@ export async function storeMediaBlob(blob: Blob, mimeType: string, category: Med
         mediaCategory: category,
         createdAt: Date.now(),
         byteLength: blob.size,
-        ...(category === "image" ? { sha256: await sha256Blob(blob) ?? undefined } : {}),
+        ...(category === "image" && imageHash ? { sha256: imageHash } : {}),
     });
     return `${MEDIA_STORE_PROTOCOL}${id}`;
 }
