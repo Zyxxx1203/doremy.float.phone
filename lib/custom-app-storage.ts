@@ -261,6 +261,7 @@ function normalizePermission(value: unknown): CustomAppPermission | null {
     "memory.suggest",
     "media.pick",
     "media.save",
+    "media.download",
     "geo.read",
     "geo.watch",
     "notifications.read",
