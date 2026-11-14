@@ -253,14 +253,6 @@ html, body { min-height: 100%; }
   // Keep the native bridge on the trusted top frame and proxy these links through
   // the existing host SDK instead of exposing AndroidShell to this sandbox.
   var isFloatShell = /FloatShell\\//.test((navigator && navigator.userAgent) || '');
-  function blobToDataUrlForDownload(blob){
-    return new Promise(function(resolve, reject){
-      var reader = new FileReader();
-      reader.onload = function(){ resolve(String(reader.result || '')); };
-      reader.onerror = function(){ reject(reader.error || new Error('读取下载文件失败')); };
-      reader.readAsDataURL(blob);
-    });
-  }
   function proxySandboxDownload(anchor){
     if (!isFloatShell || !anchor) return false;
     var href = String(anchor.href || anchor.getAttribute('href') || '');
@@ -275,8 +267,10 @@ html, body { min-height: 100%; }
       fetch(href).then(function(response){
         if (!response.ok) throw new Error('读取 blob 下载内容失败');
         return response.blob();
-      }).then(blobToDataUrlForDownload).then(function(dataUrl){
-        return request('media.download', { dataUrl: dataUrl, filename: filename });
+      }).then(function(blob){
+        // Blob is structured-cloned across postMessage; keep it binary and let the
+        // host's chunked native writer handle large files without base64 expansion.
+        return request('media.download', { blob: blob, filename: filename });
       }).catch(function(error){
         console.warn('[AiPhone] APK blob download failed:', error);
       });
@@ -1620,9 +1614,9 @@ export function CustomAppRunner({
       requireAnyPermission(["media.download", "media.save"]);
       const rawName = String(record.filename ?? record.fileName ?? "download").trim();
       const filename = rawName.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120) || "download";
-      let blob: Blob | null = null;
+      let blob: Blob | null = record.blob instanceof Blob ? record.blob : null;
       const ref = String(record.ref ?? "");
-      if (ref) {
+      if (!blob && ref) {
         if (!isMediaStoreRef(ref)) throw new Error("media.download 的 ref 必须是 media-store:// 引用。");
         const refRows = readCustomAppCollection(app.id, CUSTOM_APP_MEDIA_REFS_COLLECTION);
         if (!refRows.some(row => String(row.id) === ref)) {
@@ -1631,7 +1625,7 @@ export function CustomAppRunner({
         const media = await loadMediaBlob(ref);
         if (!media) throw new Error("要下载的媒体不存在或已被删除。");
         blob = media.blob;
-      } else {
+      } else if (!blob) {
         const dataUrl = String(record.dataUrl ?? "");
         let base64 = String(record.base64 ?? "");
         let mime = String(record.mime ?? "").trim();
