@@ -247,6 +247,50 @@ html, body { min-height: 100%; }
       pending[requestId] = { resolve: resolve, reject: reject };
     });
   }
+
+  // APK download compatibility for legacy custom APPs:
+  // blob:/data: downloads are ignored by Android WebView's DownloadListener.
+  // Keep the native bridge on the trusted top frame and proxy these links through
+  // the existing host SDK instead of exposing AndroidShell to this sandbox.
+  var isFloatShell = /FloatShell\\//.test((navigator && navigator.userAgent) || '');
+  function blobToDataUrlForDownload(blob){
+    return new Promise(function(resolve, reject){
+      var reader = new FileReader();
+      reader.onload = function(){ resolve(String(reader.result || '')); };
+      reader.onerror = function(){ reject(reader.error || new Error('读取下载文件失败')); };
+      reader.readAsDataURL(blob);
+    });
+  }
+  function proxySandboxDownload(anchor){
+    if (!isFloatShell || !anchor) return false;
+    var href = String(anchor.href || anchor.getAttribute('href') || '');
+    var filename = String(anchor.download || 'download').replace(/[\\\\/:*?"<>|]/g, '_').slice(0, 120) || 'download';
+    if (href.indexOf('data:') === 0) {
+      request('media.download', { dataUrl: href, filename: filename }).catch(function(error){
+        console.warn('[AiPhone] APK download failed:', error);
+      });
+      return true;
+    }
+    if (href.indexOf('blob:') === 0) {
+      fetch(href).then(function(response){
+        if (!response.ok) throw new Error('读取 blob 下载内容失败');
+        return response.blob();
+      }).then(blobToDataUrlForDownload).then(function(dataUrl){
+        return request('media.download', { dataUrl: dataUrl, filename: filename });
+      }).catch(function(error){
+        console.warn('[AiPhone] APK blob download failed:', error);
+      });
+      return true;
+    }
+    return false;
+  }
+  document.addEventListener('click', function(event){
+    var target = event.target;
+    var anchor = target && target.closest ? target.closest('a[download]') : null;
+    if (!anchor || !proxySandboxDownload(anchor)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
   window.addEventListener('message', function(event){
     var data = event.data || {};
     if (data.source !== 'ai-phone-custom-app-host' || data.frameId !== frameId) return;
