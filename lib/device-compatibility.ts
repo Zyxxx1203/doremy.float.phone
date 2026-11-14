@@ -42,6 +42,15 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/** Fit the phone-sized workspace to large touch displays without changing phone behavior. */
+export function getAutomaticDeviceFitScale(screenWidth: number, screenHeight: number, isTouchDevice: boolean): number {
+  if (!isTouchDevice || Math.min(screenWidth, screenHeight) < 520) return 1;
+  // Base the scale on stable physical-screen metrics, not visualViewport height:
+  // the latter shrinks when the keyboard opens and would otherwise resize the whole UI.
+  const scale = Math.min(screenWidth / 390, screenHeight / 844);
+  return Number.isFinite(scale) ? Math.min(3, Math.max(0.75, scale)) : 1;
+}
+
 export function loadDeviceCompatibilitySettings(): DeviceCompatibilitySettings {
   if (typeof window === "undefined") return { ...DEFAULT_DEVICE_COMPATIBILITY_SETTINGS, disabledFeatures: [] };
   try {
@@ -98,6 +107,9 @@ export function applyDeviceCompatibilitySettings(
   const screenWidth = Math.max(1, window.screen?.width || window.innerWidth || 1);
   const screenHeight = Math.max(1, window.screen?.height || window.innerHeight || 1);
   const userScale = clamp(settings.uiScale || 1, 0.75, 1.25);
+  const isTouchDevice = root.getAttribute("data-device-class") === "tablet"
+    || Boolean(window.matchMedia?.("(hover: none) and (pointer: coarse)").matches);
+  const autoFitScale = getAutomaticDeviceFitScale(screenWidth, screenHeight, isTouchDevice);
 
   if (settings.layoutMode === "manual" && settings.screenWidth >= 100 && settings.screenHeight >= 200) {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -112,10 +124,13 @@ export function applyDeviceCompatibilitySettings(
     root.style.setProperty("--phone-screen-width", Math.round(layoutWidth) + "px");
     root.style.setProperty("--phone-screen-height", Math.round(layoutHeight) + "px");
     root.style.setProperty("--compat-layout-scale", String(scale));
-  } else if (Math.abs(userScale - 1) > 0.001) {
-    root.style.setProperty("--phone-screen-width", Math.round(viewportWidth / userScale) + "px");
-    root.style.setProperty("--phone-screen-height", Math.round(viewportHeight / userScale) + "px");
-    root.style.setProperty("--compat-layout-scale", String(userScale));
+  } else if (Math.abs(autoFitScale * userScale - 1) > 0.001) {
+    // Automatic fit is the baseline; existing user scale remains a multiplier.
+    // Manual reference-screen sizing above always takes precedence and is never combined.
+    const effectiveScale = clamp(autoFitScale * userScale, 0.5, 3);
+    root.style.setProperty("--phone-screen-width", Math.round(viewportWidth / effectiveScale) + "px");
+    root.style.setProperty("--phone-screen-height", Math.round(viewportHeight / effectiveScale) + "px");
+    root.style.setProperty("--compat-layout-scale", String(effectiveScale));
   } else {
     root.style.removeProperty("--phone-screen-width");
     root.style.removeProperty("--phone-screen-height");
