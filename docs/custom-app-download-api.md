@@ -45,6 +45,7 @@ await AiPhone.media.download({
 ## 行为
 
 - Android APK：宿主调用原生保存接口，优先分块写入，保存到系统 Download 目录；原生失败会返回错误，不会假报成功。
+- 兼容旧自定义 APP：运行器会自动拦截 APK iframe 内带 `download` 属性的 `blob:` / `data:` 链接，并转交宿主保存。常见的 `a.href = URL.createObjectURL(blob); a.download = ...; a.click()` 不必逐个改造即可获得 APK 下载能力；新代码仍推荐显式调用 `AiPhone.media.download()`。
 - 普通浏览器：通过浏览器下载机制触发下载；浏览器无法确认最终落盘，因此只提示已触发。
 - iOS：遵循统一下载工具的系统分享/浏览器能力策略。
 - 通过 `ref` 下载时，只能下载当前 APP 自己通过 `media.put` 写入并登记的媒体。
