@@ -1784,7 +1784,10 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   useEffect(() => {
     const unregister = registerCustomAppBackgroundToolExecutor(payload => (
       new Promise<unknown>((resolve, reject) => {
-        const id = `bg_tool_${Date.now()}_${++backgroundRunSeqRef.current}_${payload.app.id}`;
+        /* 内置应用的工具是通过注册表拿到的「元信息 stub」（entryHtml 为空），
+           真正起后台环境时得换成带 HTML 的完整定义，否则挂出来是空白页。 */
+        const bgApp = payload.app.id === HEARTCRAFT_BUILTIN_APP.id ? HEARTCRAFT_BUILTIN_APP : payload.app;
+        const id = `bg_tool_${Date.now()}_${++backgroundRunSeqRef.current}_${bgApp.id}`;
         const timeoutMs = customAppBackgroundTimeoutMs(payload.tool.timeoutMs);
         const timeoutId = window.setTimeout(() => {
           pendingCustomAppBackgroundToolsRef.current.delete(id);
@@ -1796,7 +1799,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
           ...prev,
           {
             id,
-            app: payload.app,
+            app: bgApp,
             payload,
             timeoutMs,
             launchContext: {
@@ -2512,6 +2515,15 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     })();
   }
 
+  function openBuiltinHeartcraft(launchContext: Record<string, unknown> = {}): void {
+    setCustomAppLaunchContext({
+      appId: HEARTCRAFT_BUILTIN_APP.id,
+      context: launchContext,
+      returnTo: customAppReturnTargetFromLaunchContext(launchContext),
+    });
+    setActiveApp("heartcraft");
+  }
+
   function openCustomAppWithBackgroundUpdateCheck(
     iconId: DesktopIconId,
     launchContext: Record<string, unknown> = {},
@@ -2520,6 +2532,11 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     if (!appId) return;
     const app = getFreshInstalledCustomApp(appId);
     if (!app) {
+      /* 聊天卡片点进来：如果是内置应用（不在 installed 列表里），直接打开内置版 */
+      if (appId === HEARTCRAFT_BUILTIN_APP.id) {
+        openBuiltinHeartcraft(launchContext);
+        return;
+      }
       setNotice("这个 APP 已被卸载或不存在。");
       return;
     }
@@ -4558,7 +4575,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
         >
           <CustomAppRunner
             app={HEARTCRAFT_BUILTIN_APP}
-            onClose={() => setActiveApp(null)}
+            launchContext={customAppLaunchContext?.appId === HEARTCRAFT_BUILTIN_APP.id ? customAppLaunchContext.context : null}
+            onClose={() => closeCustomAppRunner(HEARTCRAFT_BUILTIN_APP)}
             onNotice={setNotice}
           />
         </CustomAppForegroundBoundary>

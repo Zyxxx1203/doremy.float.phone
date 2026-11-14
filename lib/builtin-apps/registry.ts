@@ -15,6 +15,11 @@ export function isHeartcraftInstalled(): boolean {
   );
 }
 
+/** 按 app id 取内置应用（不含 HTML，够做存在性判断/权限判断）。 */
+export function getBuiltinCustomApp(appId: string): InstalledCustomApp | null {
+  return appId === HEARTCRAFT_APP_ID ? buildHeartcraftApp("") : null;
+}
+
 /** 已安装应用 + 内置应用（内置的排在前面；市场版存在时不加内置）。 */
 export function loadAllCustomApps(): InstalledCustomApp[] {
   const installed = loadInstalledCustomApps();
