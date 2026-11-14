@@ -2100,7 +2100,7 @@ export function CustomAppRunner({
           title={app.name}
           className="custom-app-runner-frame"
           sandbox="allow-scripts allow-downloads"
-          allow="autoplay"
+          allow="autoplay; web-share"
           onLoad={syncHostedSafeArea}
           srcDoc={srcDoc}
         />
