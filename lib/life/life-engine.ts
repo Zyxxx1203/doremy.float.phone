@@ -61,6 +61,19 @@ export function evaluateEncounterAwareness(input: EncounterPerception, seed = 0)
 }
 
 /**
+ * Pick the foreground room deterministically. Legacy event-linked rooms are
+ * lower priority than ordinary location rooms when old data contains duplicates.
+ */
+export function findCurrentLifeScene(scenes: LifeSceneState[]): LifeSceneState | undefined {
+  const active = scenes.filter(scene => scene.status === "active");
+  const candidates = active.length ? active : scenes.filter(scene => scene.status === "paused");
+  return candidates.slice().sort((left, right) =>
+    Number(Boolean(left.eventId)) - Number(Boolean(right.eventId))
+    || right.updatedAt.localeCompare(left.updatedAt)
+  )[0];
+}
+
+/**
  * Resolve the canonical chat room for a location. Legacy event-linked rooms are
  * compatibility data, not separate destinations; prefer a normal location room,
  * then a reusable room over a completed legacy record.
