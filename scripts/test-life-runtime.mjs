@@ -393,7 +393,7 @@ assert.equal(attachedExistingScene.scenes[0].id, "scene-opened-manually", "the e
 assert.equal(attachedExistingScene.scenes[0].eventId, undefined, "legacy event identity must not partition the location room");
 assert.equal(attachedExistingScene.scenes[0].status, "active", "settling an appointment must not change the current room state");
 assert.deepEqual(
-  attachedExistingScene.scenes[0].participants.map(participant => participant.ownerType + ":" + participant.ownerId),
+  Array.from(attachedExistingScene.scenes[0].participants, participant => participant.ownerType + ":" + participant.ownerId),
   ["player:player", "character:c1", "character:c2"],
   "settling an appointment must preserve other people already in the location room",
 );
