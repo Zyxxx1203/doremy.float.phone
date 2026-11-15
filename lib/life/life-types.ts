@@ -157,6 +157,8 @@ export type LifeScheduleSlot = {
   title: string;
   plannedLocationId?: string | null;
   plannedLocationName?: string | null;
+  /** User explicitly deleted this destination; schedule sync must not recreate it. */
+  plannedLocationDeleted?: boolean;
   kind: "habit" | "work" | "study" | "meal" | "commute" | "free-time" | "appointment" | "special";
   source: "weekly-generation" | "manual" | "event" | "character-tool";
   updatedAt: string;
