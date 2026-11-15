@@ -198,6 +198,7 @@
 | `updateActorLocation` 曾把玩家当前场景的 `locationId` 改成玩家新位置 | 旧地点聊天室的历史可能被错误挂到新地点；角色实际位置编辑会改变聊天室身份 |
 | `settleActorTimelineToNow` 的临时停留到期分支曾把 active scene 的 `locationId` 改成计划地点 | 日程结算会在用户没有主动切换时搬动聊天室历史 |
 | 邀请事件结算曾创建带 `eventId` 的独立场景、将其设为 active/completed，并暂停其他 active 场景 | 同一地点出现事件聊天室与地点聊天室两套记录；日程结算还能抢走用户当前聊天室 |
+| 前台场景选择曾只取第一个 active 场景 | 旧事件场景可能因顺序/更新时间抢占当前地点聊天室 |
 | 地点入口曾优先按 active/paused 状态找场景，未优先排除 legacy event-linked 场景 | 同地点可能复用到旧事件场景，造成历史分叉 |
 | `performEnterLocationSolo` 曾用本次按实际位置发现的角色列表整体覆盖目的地场景参与者 | 目的地原本就在场、但 actor 快照不完整/不同步的角色会从聊天室消失 |
 | `performCreateScene` 曾用本次勾选角色整体覆盖已有地点场景参与者 | 重新打开/创建时会丢失该地点已有角色 |
@@ -218,7 +219,8 @@
 7. **已修复：**邀请事件只更新事件状态/共同记忆，并把参与者合并到该地点的唯一聊天室；不会再新建 eventId 专属聊天室，不会把该地点房间标记 completed，也不会暂停用户当前正在看的其他地点房间。
 8. **已修复：**新增 `findLifeSceneForLocation`，地点进入、创建和事件结算统一选择同地点 canonical room；优先复用普通地点场景，兼容旧 eventId 场景。重新进入旧事件场景时清除 eventId 标记，将其回归地点聊天室。
 9. **已修复：**新增 `findCurrentLifeScene`，前台聊天室选择优先普通地点房间，旧 eventId 场景不会仅因更新时间较新就抢占当前现场。
-10. `sendSceneTurn` 从固定的 `turnScene.participants` 取在场角色，并将去重后的角色集合交给 `buildLifeSceneResponderQueue`；因此参与者合并结果会直接决定谁能回应。
+10. **已修复：**新增 `findCurrentLifeScene`，优先普通地点聊天室，其次按 active/paused/completed 和更新时间稳定选择；旧 eventId 场景不会仅因状态/顺序抢占地点聊天室。`LifeSceneState.eventId` 已明确标记为兼容旧数据的元信息，不再承担聊天室身份。
+11. `sendSceneTurn` 从固定的 `turnScene.participants` 取在场角色，并将去重后的角色集合交给 `buildLifeSceneResponderQueue`；因此参与者合并结果会直接决定谁能回应。
 
 实现文件：
 - `components/life/life-engine-app.tsx`
