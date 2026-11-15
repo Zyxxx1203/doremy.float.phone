@@ -647,16 +647,18 @@ export function settleActorTimelineToNow(
       .filter(participantId => participantId !== "player")
       .map(participantId => findActorState(state, "character", participantId))
       .find(Boolean);
-    const locationId = event.locationId ?? playerPresence?.actualLocationId ?? characterPresence?.actualLocationId ?? "home";
-    const locationName = event.locationName
-      ?? state.locations.find(location => location.id === locationId)?.name
+    const eventLocation = state.locations.find(location => location.id === event.locationId)
+      ?? state.locations.find(location => location.name === event.locationName || (location.aliases ?? []).includes(event.locationName || ""));
+    const locationId = eventLocation?.id ?? event.locationId ?? playerPresence?.actualLocationId ?? characterPresence?.actualLocationId ?? "home";
+    const locationName = eventLocation?.name
+      ?? event.locationName
       ?? playerPresence?.actualLocationName
       ?? characterPresence?.actualLocationName
       ?? "家";
     const matchingScene = findLifeSceneForLocation(
       scenes,
       locationId,
-      event.locationId ? undefined : locationName,
+      eventLocation || event.locationId ? undefined : event.locationName || locationName,
     );
 
     if (started && event.details !== "follow-player") {
