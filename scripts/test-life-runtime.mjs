@@ -714,4 +714,56 @@ const inProgressChange = applyCharacterLifeScheduleChange(makeState([{
 assert.match(inProgressChange.error || "", /冲突/,
   "character tools must not reshape an activity that has already started");
 
+
+const householdA = { id: "home-a", name: "A的家", residents: ["a"], visibility: "private" };
+const householdB = { id: "home-b", name: "B的家", residents: ["b"], visibility: "private" };
+const visitToB = {
+  id: "a-visits-b", ownerType: "character", ownerId: "a",
+  startAt: "2026-12-02T18:00:00.000Z", endAt: "2026-12-02T20:00:00.000Z",
+  title: "去B家吃晚饭", kind: "meal", source: "weekly-generation",
+  plannedLocationId: "home-b", plannedLocationName: "B的家", updatedAt: "2026-12-01T00:00:00.000Z",
+};
+const householdState = { ...makeState([visitToB]), locations: [householdA, householdB] };
+const syncedA = synchronizeCharacterHomeSchedule(householdState, {
+  characterId: "a", destinationHomeId: "home-a", destinationHomeName: "A的家",
+  now: new Date("2026-12-01T12:00:00.000Z"),
+});
+assert.equal(syncedA.state.schedules.find(slot => slot.id === "a-visits-b")?.plannedLocationId, "home-b",
+  "changing A's residence must not rewrite A's planned visit to B's home");
+
+const legacyHomeSlot = { ...visitToB, id: "legacy-own-home", title: "在家休息", plannedLocationId: null, plannedLocationName: "家" };
+const syncedLegacy = synchronizeCharacterHomeSchedule(
+  { ...householdState, schedules: [legacyHomeSlot] },
+  { characterId: "a", destinationHomeId: "home-a", destinationHomeName: "A的家", now: new Date("2026-12-01T12:00:00.000Z") },
+);
+assert.equal(syncedLegacy.state.schedules[0].plannedLocationId, "home-a",
+  "unresolved legacy home slots should migrate to the actor's own home");
+
+const generatedWithVisit = generateWeeklyLifePlan(
+  householdState, "character", "a", "A", new Date("2026-12-01T00:00:00.000Z"), undefined, "", false,
+);
+assert.equal(generatedWithVisit.schedules.find(slot => slot.id === "a-visits-b")?.plannedLocationId, "home-b",
+  "weekly plan migration must preserve an explicit visit to another character's home");
+
+const scheduleStart = "2026-12-02T18:00:00.000Z";
+const scheduleEnd = "2026-12-02T19:00:00.000Z";
+const createVisit = applyCharacterLifeScheduleChange(householdState, "a", {
+  startAt: scheduleStart, endAt: scheduleEnd, title: "去B家吃饭", locationId: "home-b",
+}, new Date("2026-12-01T12:00:00.000Z"));
+assert.equal(createVisit.error, undefined, "a character should be able to schedule a visit to another known household");
+assert.equal(createVisit.state.schedules.find(slot => slot.id.startsWith("life-tool-plan-a-"))?.plannedLocationId, "home-b");
+
+const invalidDestination = applyCharacterLifeScheduleChange(householdState, "a", {
+  startAt: scheduleStart, endAt: scheduleEnd, title: "去不存在的地方", locationId: "missing-home",
+}, new Date("2026-12-01T12:00:00.000Z"));
+assert.match(invalidDestination.error ?? "", /不存在/);
+assert.equal(invalidDestination.state, householdState,
+  "an unknown location must not silently fall back to the player's home");
+
+const defaultOwnHome = applyCharacterLifeScheduleChange(householdState, "a", {
+  startAt: scheduleStart, endAt: scheduleEnd, title: "回家休息",
+}, new Date("2026-12-01T12:00:00.000Z"));
+assert.equal(defaultOwnHome.state.schedules.find(slot => slot.id.startsWith("life-tool-plan-a-"))?.plannedLocationId, "home-a",
+  "an omitted destination should resolve to the actor's own residence, not the player's home");
+
 console.log("Life schedule regression tests passed.");
