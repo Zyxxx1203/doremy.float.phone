@@ -558,7 +558,7 @@ export function syncScheduleLocationsToLibrary(state: VirtualLifeState): Virtual
     }
     return slot;
   });
-  const actorStates = state.actorStates.map(actor => {
+  const actorStates = (state.actorStates ?? []).map(actor => {
     const locationId = actor.actualLocationId ?? "";
     const target = idRemap.has(locationId)
       ? byId.get(idRemap.get(locationId)!)
@@ -567,7 +567,7 @@ export function syncScheduleLocationsToLibrary(state: VirtualLifeState): Virtual
     changed = true;
     return { ...actor, actualLocationId: target.id, actualLocationName: target.name };
   });
-  const scenes = state.scenes.map(scene => {
+  const scenes = (state.scenes ?? []).map(scene => {
     if (scene.status === "completed") return scene;
     const target = idRemap.has(scene.locationId)
       ? byId.get(idRemap.get(scene.locationId)!)
