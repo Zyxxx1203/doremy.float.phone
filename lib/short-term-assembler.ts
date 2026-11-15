@@ -1207,7 +1207,9 @@ export function prepareShortTermContext(
         raw.push({ tag: "recent_group_chat", order: FEATURE_ORDER.group_chat, entries: offlineGroupChatEntries });
     }
 
-    const offlineDirectChatEntries = timeline.filter(e => isChatOfflineEntry(e) && !e.groupSessionId);
+    const offlineDirectChatEntries = skipDirectChatEntries
+        ? []
+        : timeline.filter(e => isChatOfflineEntry(e) && !e.groupSessionId);
     if (offlineDirectChatEntries.length > 0) {
         raw.push({ tag: "recent_chat", order: FEATURE_ORDER.chat, entries: offlineDirectChatEntries });
     }
