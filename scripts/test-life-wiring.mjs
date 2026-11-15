@@ -125,6 +125,7 @@ assert.match(app, /buildLifeScenePromptContext\(stateRef\.current, turnScene, ta
 assert.match(scenePrompt, /repliesByTurn/, "scene prompt history must restore each reply directly after its player turn");
 assert.match(scenePrompt, /for \(const reply of prefix\)/, "queued scene context must exclude replies generated after the queued player turn");
 assert.match(shortTermAssembler, /options\?\.includeDirectChatEntries === false/, "life prompts must honor explicit exclusion of direct chat history");
+assert.match(shortTermAssembler, /const offlineDirectChatEntries = skipDirectChatEntries\s*\?\s*\[\]/, "direct-chat exclusion must cover offline direct-message timeline entries too");
 assert.match(app, /savePendingLifeSceneTurns\(pendingSceneTurnsRef\.current\)/, "new queued scene turns must be persisted");
 assert.match(sceneTurnQueue, /life-scene-turn-queue-v1/, "scene turn queue must use a durable versioned storage key");
 assert.match(app, /focusScene\(pending\.sceneId\)/, "pending notification replies must reopen their exact scene");
