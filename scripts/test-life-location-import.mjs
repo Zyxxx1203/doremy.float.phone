@@ -62,4 +62,19 @@ assert.equal(similar.added, 2, "similar names must not be fuzzy-merged");
 assert.notEqual(similar.locations[0].id, similar.locations[1].id);
 assert.ok(similar.locations[0].id.startsWith("imported-place-"), "imported location IDs should be deterministic slugs");
 
+const ownHomeSource = { ...sourceA, sourceKey: "character-card:character-a", kind: "character-card", characterId: "character-a" };
+const importedHome = mergeImportedLifeLocations([], [{
+  name: "海边公寓", relation: "own-home", sourceRefs: [ownHomeSource],
+}]);
+assert.equal(importedHome.locations[0].id, "home-character-a", "a character's own residence must use the canonical home-<characterId> ID");
+assert.equal(importedHome.locations[0].visibility, "private", "personal residences should remain private");
+const existingHome = { id: "home-character-a", name: "A的家", visibility: "private", description: "existing", residents: ["character-a"] };
+const mergedHome = mergeImportedLifeLocations([existingHome], [{
+  name: "海边公寓", relation: "own-home", sourceRefs: [ownHomeSource],
+}]);
+assert.equal(mergedHome.locations.length, 1, "an imported own-home should merge into the existing canonical residence");
+assert.equal(mergedHome.locations[0].id, "home-character-a");
+assert.ok(mergedHome.locations[0].aliases.includes("海边公寓"), "the imported residence name should become a matchable alias");
+
+
 console.log("Life location import regression tests passed.");
