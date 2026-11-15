@@ -75,7 +75,7 @@ export function mergeImportedLifeLocations(
     const match = canonicalResidence ?? ((candidate.relation === "own-home" || candidate.relation === "shared-home") ? undefined : exactMatch);
     const aliases = mergeUnique([], [
       ...(candidate.aliases ?? []).filter(value => value.length <= 100),
-      ...(match && (candidate.relation === "own-home" || candidate.relation === "shared-home") && match.name !== name ? [name] : []),
+      ...(match && (match.id.startsWith("schedule-place-") || candidate.relation === "own-home" || candidate.relation === "shared-home") && match.name !== name ? [match.name] : []),
     ]);
     if (!match) {
       const base = homeOwnerId ? "home-" + homeOwnerId : candidate.relation === "shared-home" ? "home" : "imported-place-" + slug(name);
@@ -104,22 +104,26 @@ export function mergeImportedLifeLocations(
       continue;
     }
     const origins = match.fieldOrigins ?? {};
-    const description = mergeText(match.description, candidate.description, origins.description);
-    const atmosphere = mergeText(match.atmosphere, candidate.atmosphere, origins.atmosphere);
-    const layout = mergeText(match.layout, candidate.layout, origins.layout);
+    const mergeOrigins = match.id.startsWith("schedule-place-")
+      ? { description: "ai" as const, atmosphere: "ai" as const, layout: "ai" as const, props: "ai" as const, aliases: "ai" as const }
+      : origins;
+    const description = mergeText(match.description, candidate.description, mergeOrigins.description);
+    const atmosphere = mergeText(match.atmosphere, candidate.atmosphere, mergeOrigins.atmosphere);
+    const layout = mergeText(match.layout, candidate.layout, mergeOrigins.layout);
     const incomingProps = candidate.props ?? [];
     const props = incomingProps.length
       ? (!match.props?.length ? mergeUnique([], incomingProps)
-        : origins.props === "ai" ? mergeUnique([], incomingProps) : match.props)
+        : mergeOrigins.props === "ai" ? mergeUnique([], incomingProps) : match.props)
       : (match.props ?? []);
     const nextSources = mergeUniqueSources(match.sourceRefs ?? [], sources);
     sourcesAdded += nextSources.length - (match.sourceRefs?.length ?? 0);
     const nextAliases = aliases.length
       ? (!match.aliases?.length ? mergeUnique([], aliases)
-        : origins.aliases === "ai" ? mergeUnique(match.aliases ?? [], aliases) : match.aliases)
+        : mergeOrigins.aliases === "ai" ? mergeUnique(match.aliases ?? [], aliases) : match.aliases)
       : (match.aliases ?? []);
     const next: LifeLocation = {
       ...match,
+      ...(match.id.startsWith("schedule-place-") ? { name } : {}),
       aliases: nextAliases,
       ...(candidate.relation === "shared-home" && sourceCharacterId
         ? { residents: mergeUnique(match.residents ?? [], [sourceCharacterId]) }
@@ -130,7 +134,7 @@ export function mergeImportedLifeLocations(
       props,
       sourceRefs: nextSources,
       fieldOrigins: {
-        ...origins,
+        ...mergeOrigins,
         ...(description.changed ? { description: "ai" as const } : {}),
         ...(atmosphere.changed ? { atmosphere: "ai" as const } : {}),
         ...(layout.changed ? { layout: "ai" as const } : {}),
