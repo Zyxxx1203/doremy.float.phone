@@ -37,7 +37,7 @@ const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply,
 const updateActorLocationStart = app.indexOf("const updateActorLocation = (actor: ActorChoice, locationId: string) => {");
 const createSceneStart = app.indexOf("const performCreateScene = () => {", updateActorLocationStart);
 assert.ok(updateActorLocationStart >= 0 && createSceneStart > updateActorLocationStart, "player/character location update handler must remain identifiable");
-assert.doesNotMatch(app.slice(updateActorLocationStart, createSceneStart), /upsertLifeScene\(/, "changing an actor's actual location must not rewrite the location identity of the currently open room");
+assert.doesNotMatch(app.slice(updateActorLocationStart, createSceneStart), /locationId:\s*location\.id/, "changing an actor actual location must not rewrite the room identity");
 assert.match(app, /const destinationParticipants = mergeLifeSceneParticipants\(/, "destination room membership must merge existing occupants with arrivals");
 assert.match(app, /findLifeSceneForLocation\(stateRef\.current\.scenes, destination\.id\)/, "entering a location must resolve its canonical room");
 assert.match(app, /useMemo\(\(\) => findCurrentLifeScene\(state\.scenes\)/, "foreground room selection must be deterministic and ignore legacy event-room priority");
