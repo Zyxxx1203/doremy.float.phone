@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
 
+// Exercise the shared location-room helpers through the runtime module, not a stub.
+
 const source = readFileSync(new URL("../lib/life/life-runtime.ts", import.meta.url), "utf8");
 const engineSource = readFileSync(new URL("../lib/life/life-engine.ts", import.meta.url), "utf8");
 const compile = input => ts.transpileModule(input, {
