@@ -232,6 +232,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const [editingRoleScheduleId, setEditingRoleScheduleId] = useState<string | null>(null);
   const [saveCustomScheduleLocations, setSaveCustomScheduleLocations] = useState<Record<string, boolean>>({});
   const busyRef = useRef(false);
+  const pendingSceneTurnsRef = useRef<Array<{ sceneId: string; userText: string; userAction: string; createdAt: string }>>([]);
   busyRef.current = busy;
   const [notice, setNotice] = useState("");
   const [, refreshNotificationReplyQueue] = useState(0);
@@ -2081,26 +2082,45 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       void reconcileIdleReconnectWithLifeScenes(candidateIds);
     };
   }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.keepDialogueConcise, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, lifeAppTags, activeMaxConsecutiveActionOnly, settings.enableLifeFormatRepair, playerName]);
-  const sendSceneTurn = async (event?: FormEvent, forceReaction = false, notificationReplyId?: string, responseQueue?: string[]): Promise<"completed" | "deferred" | "failed"> => {
+  const sendSceneTurn = async (event?: FormEvent, forceReaction = false, notificationReplyId?: string, responseQueue?: string[], queuedTurn?: { sceneId: string; userText: string; userAction: string; createdAt: string }): Promise<"completed" | "deferred" | "failed"> => {
     event?.preventDefault();
     // Notification / forced reactions must use the already-persisted scene history, never an unsent composer draft.
-    const userText = forceReaction ? "" : sceneInput.trim();
-    const userAction = forceReaction ? "" : sceneActionInput.trim();
-    if (!activeScene || (!userText && !userAction && !forceReaction)) return "failed";
-    if (busy && !responseQueue?.length) return forceReaction ? "deferred" : "failed";
+    const userText = forceReaction ? "" : queuedTurn?.userText ?? sceneInput.trim();
+    const userAction = forceReaction ? "" : queuedTurn?.userAction ?? sceneActionInput.trim();
+    const turnScene = queuedTurn
+      ? stateRef.current.scenes.find(scene => scene.id === queuedTurn.sceneId)
+      : activeScene;
+    if (!turnScene || (!userText && !userAction && !forceReaction)) return "failed";
     const notificationResponsePrefix = notificationReplyId ? "notification-reply-response-" + notificationReplyId : "";
     if (notificationResponsePrefix && stateRef.current.sceneMessages.some(message =>
       message.id === notificationResponsePrefix + "-action" || message.id.startsWith(notificationResponsePrefix + "-dialogue-")
     )) return "completed";
     const userTurn = [userAction ? `行动：${userAction}` : "", userText ? `说话：${userText}` : ""].filter(Boolean).join("\n") || "玩家手动请求角色对最近行为作出反馈";
-    const selectedSpeakerIsPresent = Boolean(selectedSpeakerId) && activeScene.participants.some(participant => participant.ownerType === "character" && resolveLifeCharacterId(participant.ownerId) === resolveLifeCharacterId(selectedSpeakerId));
-    const now = new Date().toISOString();
+    const selectedSpeakerIsPresent = Boolean(selectedSpeakerId) && turnScene.participants.some(participant => participant.ownerType === "character" && resolveLifeCharacterId(participant.ownerId) === resolveLifeCharacterId(selectedSpeakerId));
+    const now = queuedTurn?.createdAt ?? new Date().toISOString();
     const turnMessageStartIndex = stateRef.current.sceneMessages.length;
-    const presentCharacters = activeScene.participants
+    // Persist player input before attempting to resolve a responder. A missing role,
+    // disabled random response, or occupied generation slot must never eat the user's turn.
+    if ((userText || userAction) && !queuedTurn) {
+      setSceneInput("");
+      setSceneActionInput("");
+      pushSceneMessage({ id: id("turn"), sceneId: turnScene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: playerName, role: "player", action: userAction || undefined, dialogue: userText, createdAt: now });
+    }
+    // While a reply is being generated, accept and durably append further player turns.
+    // They are answered sequentially after the current root turn completes.
+    if (busyRef.current && !responseQueue?.length) {
+      if (userText || userAction) {
+        pendingSceneTurnsRef.current.push({ sceneId: turnScene.id, userText, userAction, createdAt: now });
+        setNotice("消息已保存，角色回复正在排队。");
+        return "deferred";
+      }
+      return forceReaction ? "deferred" : "failed";
+    }
+    const presentCharacters = turnScene.participants
       .filter(participant => participant.ownerType === "character" && participant.activity !== "离开")
       .map(participant => resolveLifeCharacterId(participant.ownerId))
       .filter((value, index, all) => Boolean(value) && all.indexOf(value) === index && characters.some(character => character.id === value));
-    const stableSeed = [...(activeScene.id + userTurn + now)].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) >>> 0, 7);
+    const stableSeed = [...(turnScene.id + userTurn + now)].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) >>> 0, 7);
     const mentionedCharacters = presentCharacters.filter(characterId => {
       const name = characters.find(character => character.id === characterId)?.name?.trim();
       return Boolean(name && name.length > 0 && userTurn.toLocaleLowerCase().includes(name.toLocaleLowerCase()));
@@ -2116,8 +2136,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       return roll < chance;
     });
     if (settings.randomSceneResponses === false && !responseQueue?.length && !notificationReplyId && !selectedSpeakerIsPresent && !awarenessResponder) {
-      setNotice("已关闭随机角色回应，请先点选一位在场角色再发送或请求回应。");
-      return "failed";
+      setNotice("消息已保存；当前未指定回应角色，你可以稍后点选角色并请求回应。");
+      return "completed";
     }
     const plannedResponders: string[] = responseQueue?.length
       ? [...new Set(responseQueue.map(resolveLifeCharacterId).filter(Boolean))]
@@ -2134,22 +2154,15 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const targetId = resolveLifeCharacterId(rawTargetId);
     const target = characters.find(char => char.id === targetId);
     if (!target) {
-      if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应无法启动", status: "error", detail: "找不到通知回复对应的角色卡。", meta: { sceneId: activeScene.id, targetId } });
-      setNotice("没有找到可回应的角色。请检查该场景参与者是否关联到现有角色卡。");
-      return "failed";
-    }
-    // Commit the player's turn only after a valid responder has been selected;
-    // a failed response setup must not leave a stranded message in the scene log.
-    if (userText || userAction) {
-      setSceneInput("");
-      setSceneActionInput("");
-      pushSceneMessage({ id: id("turn"), sceneId: activeScene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: playerName, role: "player", action: userAction || undefined, dialogue: userText, createdAt: now });
+      if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应无法启动", status: "error", detail: "找不到通知回复对应的角色卡。", meta: { sceneId: turnScene.id, targetId } });
+      setNotice("消息已保存，但当前没有可回应的角色。");
+      return userText || userAction ? "completed" : "failed";
     }
     // Any character that actually reaches the response queue has now noticed the player,
     // including the second/third responder invoked recursively.
     {
       const latest = stateRef.current;
-      const scene = latest.scenes.find(item => item.id === activeScene.id);
+      const scene = latest.scenes.find(item => item.id === turnScene.id);
       if (scene) {
         const updatedScene = { ...scene, participants: scene.participants.map(participant =>
           participant.ownerType === "character" && resolveLifeCharacterId(participant.ownerId) === target.id
@@ -2183,9 +2196,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeChatSession(target.id, target.name);
     const lifeTurn = beginTurn({ kind: "life_scene", characterId: target.id, sessionId: session.id });
     if (!lifeTurn) {
-      if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应被其他回合占用", status: "warning", detail: target.name + " 的回应未启动，因为当前已有其他角色回合正在执行。", meta: { sceneId: activeScene.id, characterId: target.id, sessionId: session.id } });
+      if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应被其他回合占用", status: "warning", detail: target.name + " 的回应未启动，因为当前已有其他角色回合正在执行。", meta: { sceneId: turnScene.id, characterId: target.id, sessionId: session.id } });
       return forceReaction ? "deferred" : "failed";
     }
+    busyRef.current = true;
     setBusy(true);
     if (forceReaction) setNotice(target.name + "正在回应最近的互动……");
     try {
@@ -2205,7 +2219,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         id: id("life-user"), sessionId: session.id, role: "user", status: "sent", createdAt: now,
         content: `[仅本轮使用生活场景模式规则，不要写入线上聊天历史]\n${settingsInstructions}\n\n${sceneContext}\n\n玩家本轮行动：${userAction || (forceReaction ? "（请结合最近的用户行为作出反馈）" : "（没有额外动作）")}\n玩家本轮对白：${userText || (forceReaction ? "（请回应最近的对话或动作，不要要求用户重复输入）" : "（没有说话）")}`,
       };
-      const previousActionOnly = isLastCharacterTurnActionOnly(stateRef.current, activeScene.id, target.id);
+      const previousActionOnly = isLastCharacterTurnActionOnly(stateRef.current, turnScene.id, target.id);
       const { parsed, issues } = await generateValidatedLifeTurn({
         session,
         promptMessage,
@@ -2291,21 +2305,21 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const actionText = (parsed.action ?? "").trim();
       const dialogueSegments = preserveLifeDialogueSegments(parsed.dialogues);
       const replyMessages: LifeSceneMessage[] = [
-        ...(actionText ? [{ id: notificationResponsePrefix ? notificationResponsePrefix + "-action" : id("turn-action"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, action: actionText, dialogue: "", createdAt: replyAt }] : []),
-        ...dialogueSegments.map((dialogue, index) => ({ id: notificationResponsePrefix ? notificationResponsePrefix + "-dialogue-" + index : id("turn-dialogue"), sceneId: activeScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, dialogue, createdAt: replyAt })),
+        ...(actionText ? [{ id: notificationResponsePrefix ? notificationResponsePrefix + "-action" : id("turn-action"), sceneId: turnScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, action: actionText, dialogue: "", createdAt: replyAt }] : []),
+        ...dialogueSegments.map((dialogue, index) => ({ id: notificationResponsePrefix ? notificationResponsePrefix + "-dialogue-" + index : id("turn-dialogue"), sceneId: turnScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, dialogue, createdAt: replyAt })),
       ];
-      if (!replyMessages.length) replyMessages.push({ id: id("turn"), sceneId: activeScene.id, speakerType: "character", speakerId: target.id, speakerName: target.name, role: "character", dialogue: "", createdAt: replyAt });
+      if (!replyMessages.length) replyMessages.push({ id: id("turn"), sceneId: turnScene.id, speakerType: "character", speakerId: target.id, speakerName: target.name, role: "character", dialogue: "", createdAt: replyAt });
       pushSceneMessages(replyMessages, structuredNext);
       if (hasStructuredChanges && typeof window !== "undefined") window.dispatchEvent(new Event("life-force-sync"));
       if (forceReaction) {
-        recordLifeDiagnostic({ source: "通知回复", event: "生活现场已生成角色回应", status: "ok", detail: target.name + " 已完成通知回复后的现场回应。", meta: { sceneId: activeScene.id, characterId: target.id, action: Boolean(actionText), dialogueCount: dialogueSegments.length } });
+        recordLifeDiagnostic({ source: "通知回复", event: "生活现场已生成角色回应", status: "ok", detail: target.name + " 已完成通知回复后的现场回应。", meta: { sceneId: turnScene.id, characterId: target.id, action: Boolean(actionText), dialogueCount: dialogueSegments.length } });
         setNotice(target.name + "已回应最近的互动。");
       }
       const remainingResponders = responseQueue?.length ? responseQueue.slice(1) : plannedResponders.slice(1);
       if (remainingResponders.length) {
-        recordLifeDiagnostic({ source: "生活现场", event: "追加角色回应队列", status: "info", detail: "按角色 ID 去重后依次处理其他回应角色。", meta: { sceneId: activeScene.id, completedCharacterId: target.id, queuedCharacterIds: remainingResponders } });
+        recordLifeDiagnostic({ source: "生活现场", event: "追加角色回应队列", status: "info", detail: "按角色 ID 去重后依次处理其他回应角色。", meta: { sceneId: turnScene.id, completedCharacterId: target.id, queuedCharacterIds: remainingResponders } });
         const nextResult = await sendSceneTurn(undefined, true, undefined, remainingResponders);
-        if (nextResult === "failed") recordLifeDiagnostic({ source: "生活现场", event: "追加角色回应未全部完成", status: "warning", detail: "至少一名后续角色未能完成回应，已完成的回应会保留。", meta: { sceneId: activeScene.id, completedCharacterId: target.id, remainingResponders } });
+        if (nextResult === "failed") recordLifeDiagnostic({ source: "生活现场", event: "追加角色回应未全部完成", status: "warning", detail: "至少一名后续角色未能完成回应，已完成的回应会保留。", meta: { sceneId: turnScene.id, completedCharacterId: target.id, remainingResponders } });
       }
       // Persist one shared event for the whole player turn, after all queued responders
       // have finished. This keeps the random, specified and awareness responders in
@@ -2314,7 +2328,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         const latest = stateRef.current;
         const responses = latest.sceneMessages
           .slice(turnMessageStartIndex)
-          .filter(message => message.sceneId === activeScene.id && message.speakerType === "character")
+          .filter(message => message.sceneId === turnScene.id && message.speakerType === "character")
           .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
         const responders = [...new Set(responses.map(message => resolveLifeCharacterId(message.speakerId)).filter(Boolean))];
         if (responders.length) {
@@ -2328,21 +2342,29 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           const eventId = id("event"), eventNow = new Date().toISOString();
           const participantIds = ["player", ...responders];
           const responseText = responseDetails.map(item => `${item.name}${item.actions.length ? "行动：“" + item.actions.join("；").slice(0, 240) + "”" : ""}${item.dialogue.length ? "说：“" + item.dialogue.join("” / “").slice(0, 300) + "”" : ""}`).join("；");
-          const event = { id: eventId, kind: "activity" as const, status: "completed" as const, locationId: activeScene.locationId, locationName: activeScene.locationName, participantIds, title: userAction.trim() && !userText.trim() ? "生活场景行动" : "生活场景互动", details: `${playerName}行动：${userAction || "无"}\n{{user}}对白：${userText || "无"}\n${responseText}`, createdAt: eventNow, updatedAt: eventNow, completedAt: eventNow };
-          const fact = `在${activeScene.locationName}，{{user}}${userAction.trim() ? "行动：“" + userAction.trim().slice(0, 120) + "”" : ""}${userText.trim() ? "说：“" + userText.trim().slice(0, 120) + "”" : ""}；${responseText}。`;
+          const event = { id: eventId, kind: "activity" as const, status: "completed" as const, locationId: turnScene.locationId, locationName: turnScene.locationName, participantIds, title: userAction.trim() && !userText.trim() ? "生活场景行动" : "生活场景互动", details: `${playerName}行动：${userAction || "无"}\n{{user}}对白：${userText || "无"}\n${responseText}`, createdAt: eventNow, updatedAt: eventNow, completedAt: eventNow };
+          const fact = `在${turnScene.locationName}，{{user}}${userAction.trim() ? "行动：“" + userAction.trim().slice(0, 120) + "”" : ""}${userText.trim() ? "说：“" + userText.trim().slice(0, 120) + "”" : ""}；${responseText}。`;
           commit({ ...latest, events: [event, ...latest.events], memories: [{ id: id("memory"), eventId, occurredAt: eventNow, participants: participantIds, fact }, ...latest.memories].slice(0, 500) });
         }
       }
       return "completed";
     } catch (error) {
-      if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应生成失败", status: "error", detail: error instanceof Error ? error.message : String(error), meta: { sceneId: activeScene.id, characterId: target.id } });
+      if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应生成失败", status: "error", detail: error instanceof Error ? error.message : String(error), meta: { sceneId: turnScene.id, characterId: target.id } });
       setNotice(error instanceof Error ? `角色生成失败：${error.message}` : "角色生成失败，请检查聊天模型配置。");
       return "failed";
     } finally {
       lifeTurn.end();
       // Keep the composer locked until the root turn has finished every queued responder
       // and persisted the single grouped shared-event record.
-      if (!responseQueue?.length) setBusy(false);
+      if (!responseQueue?.length) {
+        busyRef.current = false;
+        setBusy(false);
+        const queued = pendingSceneTurnsRef.current.shift();
+        if (queued) {
+          // Run on the next task so React has applied the unlocked composer state.
+          window.setTimeout(() => { void sendSceneTurn(undefined, false, undefined, undefined, queued); }, 0);
+        }
+      }
     }
   };
 
@@ -3744,10 +3766,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           
           <form onSubmit={sendSceneTurn} className={`life-scene-composer shrink-0 rounded-xl border border-stone-200/70 bg-white/95 ${settings.compactLayout ? "space-y-1 p-1.5" : "space-y-1.5 p-2"}`}>
             <div className={`grid gap-1.5 sm:grid-cols-[0.75fr_1.25fr] ${settings.compactLayout ? "sm:gap-1" : ""}`}>
-              <label className="block text-xs font-medium text-stone-600">行动 / 旁白<textarea value={sceneActionInput} onChange={e=>setSceneActionInput(e.target.value)} placeholder="行动（可选）" rows={1} className="mt-1 w-full resize-y rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-sm leading-snug" disabled={busy}/></label>
-              <label className="block text-xs font-medium text-stone-600">说话 / 对话气泡<textarea value={sceneInput} onChange={e=>setSceneInput(e.target.value)} placeholder="想对角色说的话……" rows={1} className="mt-1 w-full resize-y rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-sm leading-snug" disabled={busy}/></label>
+              <label className="block text-xs font-medium text-stone-600">行动 / 旁白<textarea value={sceneActionInput} onChange={e=>setSceneActionInput(e.target.value)} placeholder="行动（可选）" rows={1} className="mt-1 w-full resize-y rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-sm leading-snug"/></label>
+              <label className="block text-xs font-medium text-stone-600">说话 / 对话气泡<textarea value={sceneInput} onChange={e=>setSceneInput(e.target.value)} placeholder="想对角色说的话……" rows={1} className="mt-1 w-full resize-y rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-sm leading-snug"/></label>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2"><label className="inline-flex items-center gap-2 text-[11px] text-stone-500"><input type="checkbox" checked={settings.randomSceneResponses !== false} onChange={event => patchSettings({ randomSceneResponses: event.target.checked })} disabled={busy}/>随机角色回应</label><span className="mr-auto truncate text-[10px] text-stone-400">{busy ? "角色正在回应…" : selectedSpeakerId ? "已指定追加角色；再次点选可取消" : "默认随机；点选角色可追加回应"}</span><button type="button" onClick={() => void sendSceneTurn(undefined, true)} disabled={busy || !activeScene || !activeScene.participants.some(p => p.ownerType === "character" && Boolean(resolveLifeCharacterId(p.ownerId)) && characters.some(c => c.id === resolveLifeCharacterId(p.ownerId)))} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--life-accent)]/40 bg-white px-3 py-1.5 text-xs text-[var(--life-accent)] disabled:opacity-40"><MessagesSquare size={13}/>让角色回应</button><button type="submit" disabled={busy||(!sceneInput.trim()&&!sceneActionInput.trim())} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--life-accent)] px-3 py-1.5 text-xs text-white disabled:opacity-40"><Send size={13}/>{busy?"等待中":"发送"}</button></div>
+            <div className="flex flex-wrap items-center justify-between gap-2"><label className="inline-flex items-center gap-2 text-[11px] text-stone-500"><input type="checkbox" checked={settings.randomSceneResponses !== false} onChange={event => patchSettings({ randomSceneResponses: event.target.checked })} disabled={busy}/>随机角色回应</label><span className="mr-auto truncate text-[10px] text-stone-400">{busy ? "角色正在回应…" : selectedSpeakerId ? "已指定追加角色；再次点选可取消" : "默认随机；点选角色可追加回应"}</span><button type="button" onClick={() => void sendSceneTurn(undefined, true)} disabled={busy || !activeScene || !activeScene.participants.some(p => p.ownerType === "character" && Boolean(resolveLifeCharacterId(p.ownerId)) && characters.some(c => c.id === resolveLifeCharacterId(p.ownerId)))} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--life-accent)]/40 bg-white px-3 py-1.5 text-xs text-[var(--life-accent)] disabled:opacity-40"><MessagesSquare size={13}/>让角色回应</button><button type="submit" disabled={!sceneInput.trim()&&!sceneActionInput.trim()} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--life-accent)] px-3 py-1.5 text-xs text-white disabled:opacity-40"><Send size={13}/>{busy?"排队发送":"发送"}</button></div>
           </form>
           
         </>}
