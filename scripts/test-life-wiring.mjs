@@ -112,6 +112,8 @@ assert.match(app, /searchParams\.get\("sceneId"\)/, "notification deep links mus
 assert.match(app, /recoverPendingLifeSceneTurns\(\)/, "queued scene turns must recover after the app reloads");
 assert.match(app, /setActiveLifeSceneTurn\(pendingTurn\)/, "in-flight scene turns must be persisted before generation");
 assert.match(app, /replyToMessageId: pendingTurn\.messageId/, "scene replies must be linked to their player turn for idempotent recovery");
+assert.match(app, /item\.replyToMessageId === message\.id/, "regenerating a player message must find its exact response even when later player turns were queued");
+assert.match(app, /item\.id === targetMessage\.replyToMessageId/, "regenerating a character message must restore its matching player input");
 assert.match(app, /savePendingLifeSceneTurns\(pendingSceneTurnsRef\.current\)/, "new queued scene turns must be persisted");
 assert.match(sceneTurnQueue, /life-scene-turn-queue-v1/, "scene turn queue must use a durable versioned storage key");
 assert.match(app, /focusScene\(pending\.sceneId\)/, "pending notification replies must reopen their exact scene");
