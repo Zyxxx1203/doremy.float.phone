@@ -122,14 +122,14 @@ export function BackgroundEnhancementSettings({ onNotice }: { onNotice?: (messag
               <div className="menu-icon"><BatteryCharging size={17} /></div>
               <div className="menu-label-group">
                 <span className="menu-label">后台增强模式</span>
-                <span className="menu-desc">原生一次性唤醒提醒、开机恢复、系统权限引导和任务状态持久化。推荐开启。</span>
+                <span className="menu-desc">启用原生一次性唤醒提醒与开机恢复；不会自动申请电池豁免。推荐开启。</span>
               </div>
               <Toggle checked={diag.mode === "enhanced"} onChange={setMode} />
             </div>
             <div className="menu-item">
               <div className="menu-label-group">
                 <span className="menu-label">智能省电模式</span>
-                <span className="menu-desc">使用相同的安全闹钟机制，但不主动引导额外的后台权限。</span>
+                <span className="menu-desc">仅使用网页前后台调度；不注册原生到期闹钟，耗电与权限要求最低。</span>
               </div>
               <Status ok={diag.mode === "smart"} />
             </div>
@@ -162,7 +162,7 @@ export function BackgroundEnhancementSettings({ onNotice }: { onNotice?: (messag
               <Status ok={diag.accessibilityEnabled} />
             </div>
             <div className="menu-item">
-              <div className="menu-label-group"><span className="menu-label">精确闹钟权限</span><span className="menu-desc">本功能使用非精确闹钟，不依赖该权限</span></div>
+              <div className="menu-label-group"><span className="menu-label">精确闹钟权限</span><span className="menu-desc">增强模式使用非精确闹钟，不申请该权限</span></div>
               <Status ok={true} />
             </div>
             <div className="menu-item">
@@ -179,7 +179,6 @@ export function BackgroundEnhancementSettings({ onNotice }: { onNotice?: (messag
           <div className="menu-group">
             {[
               ["battery", "电池优化设置", "查看系统电池限制"],
-              ["battery-request", "申请电池优化豁免", "仅在你明确同意后向系统申请；系统仍可拒绝"],
               ["notifications", "通知权限", "允许后台任务提醒"],
               ["overlay", "悬浮窗权限", "允许查岗确认浮层"],
               ["accessibility", "无障碍设置", "保持查岗截图能力可用"],
