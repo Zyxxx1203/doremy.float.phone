@@ -100,8 +100,8 @@ assert.match(app, /if \(!ready \|\| busy\) return/);
 assert.match(app, /acknowledgePendingLifeSceneReply\(pending\.replyId\)/);
 assert.match(app, /outcome === "completed"/);
 assert.match(app, /sendSceneTurn\(undefined, true, pending\.replyId\)/);
-assert.match(app, /const userText = forceReaction \? "" : sceneInput\.trim\(\)/);
-assert.match(app, /const userAction = forceReaction \? "" : sceneActionInput\.trim\(\)/);
+assert.match(app, /const userText = forceReaction \? "" : queuedTurn\?\.userText \?\? sceneInput\.trim\(\)/);
+assert.match(app, /const userAction = forceReaction \? "" : queuedTurn\?\.userAction \?\? sceneActionInput\.trim\(\)/);
 assert.match(app, /notification-reply-response-/);
 assert.match(app, /const pushSceneMessages = \(messages: LifeSceneMessage\[\], baseState: VirtualLifeState = stateRef\.current\)/);
 assert.match(app, /pushSceneMessages\(replyMessages, structuredNext\)/);
@@ -326,5 +326,38 @@ assert.match(phoneSettings, /BackgroundEnhancementSettings/);
 assert.match(backupScheduler, /pageshow/);
 assert.match(widgetScheduler, /pageshow/);
 assert.match(mediaScheduler, /pageshow/);
+
+const [kvDbSource, lifeStorageSource, lifeTypesSource] = await Promise.all([
+  read("../lib/kv-db.ts"),
+  read("../lib/life/life-storage.ts"),
+  read("../lib/life/life-types.ts"),
+]);
+assert.match(kvDbSource, /const _writeQueues = new Map<string, Promise<void>>\(\)/,
+  "IndexedDB writes must be serialized per key so an older snapshot cannot finish after a newer one");
+assert.match(kvDbSource, /previous\.catch\(\(\) => undefined\)\.then\(async \(\) => \{[\s\S]*?await kvDb\.entries\.put\(\{ key, value \}\)/,
+  "each durable key write must wait for the previous write to settle");
+assert.match(kvDbSource, /if \(_cache\.get\(key\) === value\) writeFallbackLocalStorage\(key, value\)/,
+  "a failed stale write must not overwrite the latest localStorage fallback");
+assert.match(kvDbSource, /enqueueKvWrite\(key, value\)/,
+  "both sync and async KV setters must use the ordered write queue");
+assert.match(lifeStorageSource, /sceneMessageFormatVersion: typeof raw\.sceneMessageFormatVersion === "number" \? raw\.sceneMessageFormatVersion : 0/,
+  "legacy scene message migration version must survive state normalization");
+assert.match(lifeTypesSource, /sceneMessageFormatVersion\?: number/);
+assert.match(app, /if \(\(normalized\.sceneMessageFormatVersion \?\? 0\) < 1\)/,
+  "legacy scene action/dialogue parsing must run once, not on every app entry");
+assert.match(app, /sceneMessageFormatVersion: 1/);
+assert.match(app, /message\.action\?\.trim\(\)/,
+  "already structured action/dialogue messages must not be parsed again");
+assert.match(app, /pendingSceneTurnsRef\.current\.push/,
+  "player turns sent during generation must be queued for sequential replies");
+assert.match(app, /pendingSceneTurnsRef\.current\.shift\(\)/,
+  "queued player turns must be drained after the current root response");
+assert.match(app, /消息已保存，但当前没有可回应的角色/,
+  "player input must remain persisted even when no responder exists");
+assert.match(app, /const sceneContext = buildLifeScenePromptContext\(stateRef\.current, turnScene, target\.id\)/,
+  "queued replies must use their original scene context");
+const composerSource = app.slice(app.indexOf('<form onSubmit={sendSceneTurn}'), app.indexOf('</form>', app.indexOf('<form onSubmit={sendSceneTurn}')));
+assert.doesNotMatch(composerSource, /<textarea[^>]*disabled=\{busy\}/,
+  "scene composer must remain available while a reply is generating");
 
 console.log("Life-system and background-enhancement wiring checks passed.");
