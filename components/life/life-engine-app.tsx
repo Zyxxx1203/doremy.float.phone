@@ -2283,6 +2283,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     });
     if (settings.randomSceneResponses === false && !responseQueue?.length && !notificationReplyId && !selectedSpeakerIsPresent && !awarenessResponder) {
       setNotice("已保存。选择角色后可请求回应。");
+      discardQueuedTurn();
       return "completed";
     }
     const plannedResponders: string[] = responseQueue?.length
@@ -2332,7 +2333,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       setNotice(target.name + "正在睡觉，没有被这条消息叫醒。消息留在当前场景里；TA醒来后才可能回应。");
       const remaining = responseQueue?.length ? responseQueue.slice(1) : plannedResponders.slice(1);
       if (remaining.length) {
-        const nextResult = await sendSceneTurn(undefined, true, undefined, remaining);
+        const nextResult = await sendSceneTurn(undefined, true, undefined, remaining, pendingTurn ?? undefined);
         discardQueuedTurn();
         return nextResult === "failed" ? "failed" : "completed";
       }
