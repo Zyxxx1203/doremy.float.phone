@@ -157,11 +157,15 @@ export function mergeImportedLifeLocations(
 
 function mergeUniqueSources(current: LifeLocationSourceRef[], incoming: LifeLocationSourceRef[]) {
   const result = [...current];
-  const seen = new Set(current.map(source => source.sourceKey));
+  const indexes = new Map(current.map((source, index) => [source.sourceKey, index]));
   for (const source of incoming) {
-    if (!seen.has(source.sourceKey)) {
+    const index = indexes.get(source.sourceKey);
+    if (index === undefined) {
+      indexes.set(source.sourceKey, result.length);
       result.push(source);
-      seen.add(source.sourceKey);
+    } else {
+      // Re-import refreshes mutable source labels/metadata without duplicating provenance.
+      result[index] = { ...result[index], ...source };
     }
   }
   return result;
