@@ -373,6 +373,8 @@ assert.match(app, /setImageViewerOpen\(true\)/,
 assert.match(app, /ArrowLeft/);
 assert.match(app, /ArrowRight/);
 assert.match(app, /const downloadSceneImage = async/);
+assert.match(app, /await downloadFile\(blob,/,
+  "scene image download must use the shared native-aware file saver in Android WebView");
 assert.match(app, /const blob = await response\.blob\(\)/,
   "original download must use the stored media blob without recompressing it");
 assert.match(app, /sceneMessages: stateRef\.current\.sceneMessages\.filter\(message => message\.imageId !== imageId\)/,
