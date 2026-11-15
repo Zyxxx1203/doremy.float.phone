@@ -2226,7 +2226,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       setPendingSceneQueueVersion(value => value + 1);
     };
     if (!turnScene || (!userText && !userAction && !forceReaction)) {
-      discardQueuedTurn();
+      discardPendingTurn();
       return "failed";
     }
     const notificationResponsePrefix = notificationReplyId ? "notification-reply-response-" + notificationReplyId : "";
@@ -2240,6 +2240,13 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const pendingTurn: PendingLifeSceneTurn | null = queuedTurn ?? ((userText || userAction) ? {
       sceneId: turnScene.id, userText, userAction, createdAt: now, messageId: turnMessageId,
     } : null);
+    const discardPendingTurn = () => {
+      if (!pendingTurn) return;
+      pendingSceneTurnsRef.current = pendingSceneTurnsRef.current.filter(turn => turn.messageId !== pendingTurn.messageId);
+      savePendingLifeSceneTurns(pendingSceneTurnsRef.current);
+      clearActiveLifeSceneTurn(pendingTurn.messageId);
+      setPendingSceneQueueVersion(value => value + 1);
+    };
     const turnMessageStartIndex = stateRef.current.sceneMessages.length;
     // Persist player input before attempting to resolve a responder. A missing role,
     // disabled random response, or occupied generation slot must never eat the user's turn.
@@ -2262,6 +2269,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       }
       return forceReaction ? "deferred" : "failed";
     }
+    if (!responseQueue?.length && pendingTurn) setActiveLifeSceneTurn(pendingTurn);
     const presentCharacters = turnScene.participants
       .filter(participant => participant.ownerType === "character" && participant.activity !== "离开")
       .map(participant => resolveLifeCharacterId(participant.ownerId))
@@ -2283,7 +2291,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     });
     if (settings.randomSceneResponses === false && !responseQueue?.length && !notificationReplyId && !selectedSpeakerIsPresent && !awarenessResponder) {
       setNotice("已保存。选择角色后可请求回应。");
-      discardQueuedTurn();
+      discardPendingTurn();
       return "completed";
     }
     const plannedResponders: string[] = responseQueue?.length
@@ -2303,7 +2311,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     if (!target) {
       if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应无法启动", status: "error", detail: "找不到通知回复对应的角色卡。", meta: { sceneId: turnScene.id, targetId } });
       setNotice("已保存，暂无可回应角色。");
-      discardQueuedTurn();
+      discardPendingTurn();
       return userText || userAction ? "completed" : "failed";
     }
     // Any character that actually reaches the response queue has now noticed the player,
@@ -2336,7 +2344,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         const nextResult = await sendSceneTurn(undefined, true, undefined, remaining, pendingTurn ?? undefined);
         busyRef.current = false;
         setBusy(false);
-        discardQueuedTurn();
+        discardPendingTurn();
         return nextResult === "failed" ? "failed" : "completed";
       }
       discardQueuedTurn();
@@ -2358,6 +2366,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           pendingSceneTurnsRef.current.unshift(retry);
         }
         savePendingLifeSceneTurns(pendingSceneTurnsRef.current);
+        if (pendingTurn) clearActiveLifeSceneTurn(pendingTurn.messageId);
         setNotice("已保存，稍后回应。");
         window.setTimeout(() => {
           if (!busyRef.current && retry) void sendSceneTurn(undefined, false, undefined, undefined, retry);
@@ -2366,7 +2375,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       }
       return "failed";
     }
-    if (!responseQueue?.length && pendingTurn) setActiveLifeSceneTurn(pendingTurn);
     busyRef.current = true;
     setBusy(true);
     if (forceReaction) setNotice(target.name + "正在回应最近的互动……");
