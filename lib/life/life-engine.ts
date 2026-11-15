@@ -61,11 +61,6 @@ export function evaluateEncounterAwareness(input: EncounterPerception, seed = 0)
 }
 
 /**
- * Build the ordered responder queue for one player-triggered scene turn.
- * Canonical character IDs are de-duplicated before and after selection so the
- * random, explicitly selected and awareness responders can never answer twice.
- */
-/**
  * Resolve the canonical chat room for a location. Legacy event-linked rooms are
  * compatibility data, not separate destinations; prefer a normal location room,
  * then a reusable room over a completed legacy record.
@@ -108,6 +103,11 @@ export function mergeLifeSceneParticipants(
   return [...merged.values()];
 }
 
+/**
+ * Build the ordered responder queue for one player-triggered scene turn.
+ * Canonical character IDs are de-duplicated before and after selection so the
+ * random, explicitly selected and awareness responders can never answer twice.
+ */
 export function buildLifeSceneResponderQueue(input: {
   presentCharacterIds: string[];
   randomEnabled: boolean;
