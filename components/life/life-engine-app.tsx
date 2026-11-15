@@ -32,7 +32,7 @@ import { applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeekly
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { describeLifeOutputIssues, parseLifeOutput, validateLifeOutput, type LifeOutputIssue } from "@/lib/life/life-output";
-import { buildLifeSceneResponderQueue, evaluateEncounterAwareness, mergeLifeSceneParticipants } from "@/lib/life/life-engine";
+import { buildLifeSceneResponderQueue, evaluateEncounterAwareness, findLifeSceneForLocation, mergeLifeSceneParticipants } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
 import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts, reconcileIdleReconnectWithLifeScenes, suspendIdleReconnectForLifeScene } from "@/lib/push-bailout-client";
 import { readLifeProactiveStatus } from "@/lib/life/life-proactive-scheduler";
@@ -1303,8 +1303,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "刚来到这里", awarenessByActorId: Object.fromEntries(ids.filter(other => other !== PLAYER_ID).map(other => [other, "aware" as const])) },
       ...chosen.map(char => ({ ownerType: "character" as const, ownerId: char.id, activity: "正在做自己的事", awarenessByActorId: Object.fromEntries(ids.filter(other => other !== char.id).map(other => [other, "aware" as const])) })),
     ];
-    const existingScene = stateRef.current.scenes.find(scene => scene.status === "active" && scene.locationId === selectedLocation.id) ?? stateRef.current.scenes.filter(scene => scene.status === "paused" && scene.locationId === selectedLocation.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
-    const shouldRecordSceneEntry = !existingScene || existingScene.status === "paused";
+    const existingScene = findLifeSceneForLocation(stateRef.current.scenes, selectedLocation.id);
+    const shouldRecordSceneEntry = !existingScene || existingScene.status !== "active";
     const isFirstSceneEntry = !existingScene;
     let next: VirtualLifeState = { ...stateRef.current, scenes: stateRef.current.scenes.map(scene => (scene.status === "active" || scene.status === "paused") ? { ...scene, status: "paused" as const, updatedAt: now } : scene) };
     const retainedDestinationParticipants = (existingScene?.participants ?? []).filter(participant => {
@@ -1314,7 +1314,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     });
     const destinationParticipants = mergeLifeSceneParticipants(retainedDestinationParticipants, participants);
     const scene: LifeSceneState = existingScene
-      ? { ...existingScene, locationId: selectedLocation.id, locationName: selectedLocation.name, updatedAt: now, status: "active", participants: destinationParticipants }
+      ? { ...existingScene, locationId: selectedLocation.id, locationName: selectedLocation.name, eventId: undefined, updatedAt: now, status: "active", participants: destinationParticipants }
       : { id: id("scene"), locationId: selectedLocation.id, locationName: selectedLocation.name, startedAt: now, updatedAt: now, status: "active", participants: destinationParticipants, lastSettledEventIds: [] };
     next = upsertLifeScene(next, scene);
     for (const actor of [{ ownerType: "player" as const, ownerId: PLAYER_ID }, ...chosen.map(char => ({ ownerType: "character" as const, ownerId: char.id }))]) {
@@ -1440,7 +1440,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       participants.push({ ownerType: "character", ownerId: char.id, activity: actor.activity, awarenessByActorId: { player: awareness } });
       participants[0].awarenessByActorId[char.id] = destination.visibility === "public" ? "aware" : "suspects";
     }
-    const existingScene = stateRef.current.scenes.find(scene => scene.status === "active" && scene.locationId === destination.id) ?? stateRef.current.scenes.filter(scene => scene.status === "paused" && scene.locationId === destination.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    const existingScene = findLifeSceneForLocation(stateRef.current.scenes, destination.id);
     // Startup may create a placeholder active scene before the user actually enters it. Record the first real entry if this scene has no entry card/timeline record yet.
     const hasRecordedEntry = !!existingScene && (
       stateRef.current.sceneMessages.some(message => message.sceneId === existingScene.id && message.role === "system" && /你来到了|你回到了/.test(message.action || message.dialogue || "")) ||
@@ -1464,7 +1464,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       [{ ...participants[0], activity: playerActivity || "正在这里活动" }, ...participants.slice(1)],
     );
     const scene: LifeSceneState = existingScene
-      ? { ...existingScene, locationId: destination.id, locationName: destination.name, updatedAt: now, status: "active", participants: destinationParticipants }
+      ? { ...existingScene, locationId: destination.id, locationName: destination.name, eventId: undefined, updatedAt: now, status: "active", participants: destinationParticipants }
       : { id: id("scene"), locationId: destination.id, locationName: destination.name, startedAt: now, updatedAt: now, status: "active", participants: destinationParticipants, lastSettledEventIds: [] };
     next = upsertLifeScene(next, scene);
     next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "正在这里活动", actualLocationId: destination.id, actualLocationName: destination.name, actualLocationUntil: new Date(resolveActorLifeNow(getActorClock(stateRef.current, "player", PLAYER_ID)).getTime() + stayDurationMinutes * 60_000).toISOString(), updatedAt: now });
