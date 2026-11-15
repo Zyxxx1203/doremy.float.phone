@@ -3856,7 +3856,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       {(tab === "home" || tab === "scene") && <div className={immersiveScene ? "flex min-h-0 flex-1 flex-col" : "space-y-4"}>
         {tab === "scene" && !immersiveScene && <details open className="rounded-2xl border border-white/80 bg-white/55 shadow-sm"><summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-stone-600">生活状态与时间线 · {playerNow.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})} · 展开查看</summary><section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <SectionTitle title={playerNow.toLocaleDateString("zh-CN",{month:"long",day:"numeric",weekday:"long"})+" · 我的时间线"} note="" />
+            <SectionTitle title={playerNow.toLocaleDateString("zh-CN",{month:"long",day:"numeric",weekday:"long"})+" · 我的时间线"} />
             <button onClick={()=>openDaily("plans")} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">查看完整七日日程</button>
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2">
@@ -4000,7 +4000,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
 
       {tab === "locations" && <div className="space-y-4">
         <section className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm sm:p-6">
-          {!locationDossierOpen && <><SectionTitle title="地点库" note=""/>
+          {!locationDossierOpen && <><SectionTitle title="地点库"/>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-stone-500">按名称、别名、环境和道具搜索；旧地点默认归入「未整理」。</p><button type="button" onClick={createLocationFolder} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700"><Plus size={12} className="mr-1 inline"/>新建文件夹</button></div>
           {locationFilterControls}
           <div className="mb-4 rounded-2xl border border-[#ead8c8] bg-[#fffaf5] p-3">
@@ -4122,7 +4122,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           </section>}
           <button type="button" onClick={saveLocationDetails} className="w-full rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white active:scale-[.99]">{locationSaveFeedback ? "✓ 已保存" : "保存地点设定"}</button><p aria-live="polite" className={`mt-1.5 min-h-4 text-center text-[11px] ${locationSaveFeedback ? "text-emerald-700" : "text-stone-400"}`}>{locationSaveFeedback ? "地点名称、环境与空间设定已保存" : "修改名称、环境、布局或道具后，点击保存生效"}</p>
           <div className="mt-5 border-t border-stone-200/70 pt-4">
-            <SectionTitle title="角色在这里的习惯" note=""/>
+            <SectionTitle title="角色在这里的习惯"/>
             <div className="space-y-3">{characters.map(character => {
               const history = state.timeline.filter(entry => entry.locationName === selectedLocation.name && (entry.actorId === character.id || entry.actorName === character.name));
               const frequentActions = [...new Set(history.map(entry => entry.title).filter(Boolean))].slice(0, 4);
@@ -4134,7 +4134,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
               </div>;
             })}</div>
           </div>
-          <div className="mt-5 border-t border-stone-200/70 pt-4"><SectionTitle title="这里发生过什么" note=""/>
+          <div className="mt-5 border-t border-stone-200/70 pt-4"><SectionTitle title="这里发生过什么"/>
             {state.timeline.filter(entry => entry.locationName === selectedLocation.name).slice().sort((a,b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0,20).length ? <div className="space-y-2">{state.timeline.filter(entry => entry.locationName === selectedLocation.name).slice().sort((a,b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0,20).map(entry => <div key={entry.id} className="rounded-xl bg-white/80 p-3"><p className="text-sm font-medium">{entry.title}</p>{entry.details && <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-stone-500">{entry.details}</p>}<p className="mt-1 text-[10px] text-stone-400">{entry.actorName || "生活记录"} · {new Date(entry.occurredAt).toLocaleString("zh-CN")}</p></div>)}</div> : <p className="rounded-xl bg-white/70 p-4 text-sm text-stone-500">这个地点还没有已发生的生活记录。角色习惯和地点设定保存后，会影响未来互动。</p>}
           </div>
         </section>}
@@ -4365,7 +4365,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       {tab === "settings" && <div className="grid gap-4 lg:grid-cols-2">
         <LifeDiagnosticsPanel />
         <section className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm sm:p-6 lg:col-span-2">
-          <SectionTitle title="生活系统全局背景" note=""/>
+          <SectionTitle title="生活系统全局背景"/>
           <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
             <div>
               <div className="relative grid min-h-36 place-items-center overflow-hidden rounded-2xl border border-rose-200/70 bg-[#fbf5ee]">
@@ -4389,7 +4389,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             </div>
           </div>
         </section>
-        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle title="生活模拟规则" note="" />
+        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle title="生活模拟规则" />
           <div className="space-y-2">
             <Toggle checked={settings.enabled} onChange={v=>patchSettings({enabled:v})} label="启用虚拟生活引擎" hint="关闭后保留数据，但暂停新生活场景功能。"/>
             <Toggle checked={settings.autoGenerateWeeklyPlans} onChange={v=>patchSettings({autoGenerateWeeklyPlans:v})} label="自动生成每周日程"/>
@@ -4441,7 +4441,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           </div>
           <label className="mt-4 block text-sm">位置情报权限<select value={settings.revealExactLocations} onChange={e=>patchSettings({revealExactLocations:e.target.value as LifeEngineSettings["revealExactLocations"]})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="ask-only">只有询问或可靠渠道才能得知精确位置</option><option value="clues">默认只显示习惯与模糊线索</option><option value="open">允许公开查看实际位置</option></select></label>
         </section>
-        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle title="界面自定义" note="" />
+        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle title="界面自定义" />
           <label className="mb-4 block text-sm">玩家显示名称<input value={playerName} onChange={e=>patchSettings({playerDisplayName:e.target.value})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="mb-4 block text-sm">场景主题<select value={settings.sceneTheme} onChange={e=>patchSettings({sceneTheme:e.target.value as LifeEngineSettings["sceneTheme"]})} className="mt-1.5 w-full rounded-xl border border-[rgb(var(--life-border-rgb)/.8)] bg-[rgb(var(--life-surface-rgb)/.96)] px-3 py-2.5 text-[var(--life-text)]">
             {Object.entries(themePresets).map(([value, theme])=><option key={value} value={value}>{theme.label}</option>)}
           </select></label>
