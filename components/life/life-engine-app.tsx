@@ -200,6 +200,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const timelineImageObjectUrlsRef = useRef<Record<string, string>>({});
   const [selectedActorKey, setSelectedActorKey] = useState("player:player");
   const initialFocusAppliedRef = useRef<string | null>(null);
+  const initialSceneLinkHandledRef = useRef(false);
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
   const [selectedSpeakerId, setSelectedSpeakerId] = useState("");
   const [selectedLocationId, setSelectedLocationId] = useState("cafe");
@@ -566,6 +567,38 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   }, [initialCharacterId, characters]);
   const activeScene = useMemo(() => findCurrentLifeScene(state.scenes), [state.scenes]);
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
+  const focusScene = useCallback((sceneId: string) => {
+    const latest = stateRef.current;
+    const target = latest.scenes.find(scene => scene.id === sceneId);
+    if (!target) return false;
+    const now = new Date().toISOString();
+    const next = {
+      ...latest,
+      scenes: latest.scenes.map(scene => scene.id === sceneId
+        ? { ...scene, status: "active" as const, updatedAt: now }
+        : scene.status === "active" ? { ...scene, status: "paused" as const, updatedAt: now } : scene),
+    };
+    commit(next);
+    setSelectedLocationId(target.locationId);
+    setTab("home");
+    setSceneView(true);
+    return true;
+  }, [commit]);
+
+  useEffect(() => {
+    if (!ready || initialSceneLinkHandledRef.current || typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const sceneId = url.searchParams.get("sceneId");
+    if (!sceneId) {
+      initialSceneLinkHandledRef.current = true;
+      return;
+    }
+    initialSceneLinkHandledRef.current = true;
+    focusScene(sceneId);
+    url.searchParams.delete("sceneId");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+  }, [ready, focusScene]);
+
   // 每轮动作在生成阶段就保存为一条消息；这里不再合并多条动作记录。
   // 对白消息仍逐条显示，编辑/删除/重新生成均对应真实消息。
   const displaySceneMessages = sceneMessages;
@@ -2480,11 +2513,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const pending = peekPendingLifeSceneReply();
       if (!pending) return;
       pendingNotificationSceneReplyRef.current = pending;
-      const scene = stateRef.current.scenes.find(item => item.id === pending.sceneId);
-      if (scene) setSelectedLocationId(scene.locationId);
+      focusScene(pending.sceneId);
       setSelectedSpeakerId(pending.characterId);
-      setTab("home");
-      setSceneView(true);
     };
     const onNotificationReply = () => resumePendingReply();
     window.addEventListener("life-scene-notification-reply", onNotificationReply);
@@ -2492,7 +2522,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     // Resume from the persistent local queue when the life app mounts.
     resumePendingReply();
     return () => window.removeEventListener("life-scene-notification-reply", onNotificationReply);
-  }, []);
+  }, [focusScene]);
 
   useEffect(() => {
     const onQueueUpdated = () => refreshNotificationReplyQueue(value => value + 1);
