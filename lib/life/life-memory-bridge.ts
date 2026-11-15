@@ -1,4 +1,5 @@
 import { loadVirtualLifeState } from "./life-storage";
+import { findCurrentLifeScene } from "./life-engine";
 import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "./life-runtime";
 
 function formatLifeDateTime(value?: string | null): string {
@@ -79,10 +80,7 @@ export function buildLifePresenceContext(characterId: string): string {
   const actor = state.actorStates.find(item => item.ownerType === "character" && item.ownerId === characterId);
   const belongsToCharacter = (item: typeof state.scenes[number]) =>
     item.participants.some(participant => participant.ownerType === "character" && participant.ownerId === characterId);
-  const scene = state.scenes.find(item => item.status === "active" && belongsToCharacter(item))
-    ?? state.scenes
-      .filter(item => item.status === "paused" && belongsToCharacter(item))
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+  const scene = findCurrentLifeScene(state.scenes.filter(belongsToCharacter));
   if (!schedule && !actor && !scene) return "";
   const activity = actor?.activity || schedule?.title || "暂时没有记录当前活动";
   const scheduledSleeping = /睡眠|睡觉|入睡|午休|休息/.test(activity) || /睡眠|睡觉|入睡|午休/.test(schedule?.title || "");
