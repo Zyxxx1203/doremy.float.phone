@@ -21,8 +21,9 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
   const prefix = throughIndex >= 0 ? allSceneMessages.slice(0, throughIndex + 1) : allSceneMessages;
   const cutoffAt = throughIndex >= 0 ? allSceneMessages[throughIndex].createdAt : undefined;
   const cutoffMs = cutoffAt ? Date.parse(cutoffAt) : Number.POSITIVE_INFINITY;
+  const prefixMessageIds = new Set(prefix.map(message => message.id));
   const repliesByTurn = new Map<string, typeof allSceneMessages>();
-  for (const reply of allSceneMessages) {
+  for (const reply of prefix) {
     if (!reply.replyToMessageId) continue;
     const replies = repliesByTurn.get(reply.replyToMessageId) ?? [];
     replies.push(reply);
@@ -31,7 +32,7 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
   const sceneMessages: typeof allSceneMessages = [];
   const includedMessageIds = new Set<string>();
   for (const message of prefix) {
-    if ((message.replyToMessageId && allSceneMessages.some(item => item.id === message.replyToMessageId)) || includedMessageIds.has(message.id)) continue;
+    if ((message.replyToMessageId && prefixMessageIds.has(message.replyToMessageId)) || includedMessageIds.has(message.id)) continue;
     sceneMessages.push(message);
     includedMessageIds.add(message.id);
     if (message.role === "player") {
