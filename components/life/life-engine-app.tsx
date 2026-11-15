@@ -2218,6 +2218,13 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const turnScene = queuedTurn
       ? stateRef.current.scenes.find(scene => scene.id === queuedTurn.sceneId)
       : activeScene;
+    const discardQueuedTurn = () => {
+      if (!queuedTurn) return;
+      pendingSceneTurnsRef.current = pendingSceneTurnsRef.current.filter(turn => turn.messageId !== queuedTurn.messageId);
+      savePendingLifeSceneTurns(pendingSceneTurnsRef.current);
+      clearActiveLifeSceneTurn(queuedTurn.messageId);
+      setPendingSceneQueueVersion(value => value + 1);
+    };
     if (!turnScene || (!userText && !userAction && !forceReaction)) {
       discardQueuedTurn();
       return "failed";
@@ -2233,13 +2240,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const pendingTurn: PendingLifeSceneTurn | null = queuedTurn ?? ((userText || userAction) ? {
       sceneId: turnScene.id, userText, userAction, createdAt: now, messageId: turnMessageId,
     } : null);
-    const discardQueuedTurn = () => {
-      if (!queuedTurn) return;
-      pendingSceneTurnsRef.current = pendingSceneTurnsRef.current.filter(turn => turn.messageId !== queuedTurn.messageId);
-      savePendingLifeSceneTurns(pendingSceneTurnsRef.current);
-      clearActiveLifeSceneTurn(queuedTurn.messageId);
-      setPendingSceneQueueVersion(value => value + 1);
-    };
     const turnMessageStartIndex = stateRef.current.sceneMessages.length;
     // Persist player input before attempting to resolve a responder. A missing role,
     // disabled random response, or occupied generation slot must never eat the user's turn.
