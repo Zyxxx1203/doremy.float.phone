@@ -88,6 +88,7 @@ export function mergeImportedLifeLocations(
         atmosphere: candidate.atmosphere?.trim() || "",
         layout: candidate.layout?.trim() || "",
         props: mergeUnique([], candidate.props ?? []),
+        ...(candidate.relation === "shared-home" && sourceCharacterId ? { residents: [sourceCharacterId] } : {}),
         visibility: candidate.relation === "own-home" || candidate.relation === "shared-home" ? "private" : "public",
         sourceRefs: mergeUniqueSources([], sources),
         fieldOrigins: {
