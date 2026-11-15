@@ -233,6 +233,7 @@ export function resetCheckInRuntime(characterId: string): void {
  */
 export type CheckInScheduleSnapshot = {
   enabled: boolean;
+  triggerMode: CheckInTriggerMode;
   minMinutes: number;
   maxMinutes: number;
   dailyLimit: number;
@@ -258,6 +259,7 @@ export function readCheckInScheduleSnapshot(
     : -1;
   return {
     enabled: config.enabled,
+    triggerMode: config.triggerMode,
     minMinutes: config.minMinutes,
     maxMinutes: config.maxMinutes,
     dailyLimit: config.dailyLimit,
