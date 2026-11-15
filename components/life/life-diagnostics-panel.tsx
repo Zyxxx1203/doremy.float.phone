@@ -82,16 +82,15 @@ export function LifeDiagnosticsPanel() {
 
   const resetLife = async () => {
     if (resetBusy) return;
-    if (!window.confirm("确定要完整重置生活系统吗？将清除生活现场、日程、邀约、生活记录、生活通知队列和云端生活任务；角色卡、线上聊天、照片墙、图片参考和 API 配置会保留。")) return;
-    if (!window.confirm("最后确认：生活数据和未送达的生活主动消息将无法恢复。是否继续？")) return;
+    if (!window.confirm("重置生活系统？将清除生活现场、日程、邀约、生活记录和生活通知；角色卡、普通聊天、照片墙及 API 配置会保留。此操作不可撤销。")) return;
     setResetBusy(true);
     setResetResult("");
     try {
       await resetLifeSystemData();
-      setResetResult("生活系统已重置。后台自主运行已关闭；需要重新启用后才会开始新的生活日程。");
+      setResetResult("已重置");
       await refresh();
     } catch (error) {
-      setResetResult("重置未完成：" + (error instanceof Error ? error.message : String(error)) + "。本机生活数据尚未清除。");
+      setResetResult("重置失败：" + (error instanceof Error ? error.message : String(error)));
     } finally {
       setResetBusy(false);
     }
@@ -152,11 +151,7 @@ export function LifeDiagnosticsPanel() {
     <section className="rounded-3xl border border-[var(--life-accent)]/25 bg-white/75 p-4 shadow-sm sm:p-6 lg:col-span-2">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--life-accent)]">
-            System diagnostics
-          </p>
-          <h2 className="mt-1 text-lg font-semibold text-stone-800">生活系统诊断记录</h2>
-
+          <h2 className="text-lg font-semibold text-stone-800">诊断记录</h2>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -193,7 +188,6 @@ export function LifeDiagnosticsPanel() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
             <b className="text-sm text-rose-900">完整重置生活系统</b>
-            <p className="mt-1 text-[11px] leading-relaxed text-rose-800">清理本机生活数据、生活图片缓存、待处理通知回复，以及云端 life-scene 任务、回传消息和七日日程快照。不会清理角色卡、普通聊天、其他 APP 或 API 配置。</p>
           </div>
           <button type="button" onClick={() => void resetLife()} disabled={resetBusy} className="min-h-10 rounded-xl border border-rose-300 bg-white px-3 text-xs font-semibold text-rose-800 disabled:opacity-50">{resetBusy ? "正在重置…" : "完整重置"}</button>
         </div>
