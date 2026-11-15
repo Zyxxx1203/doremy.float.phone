@@ -2357,10 +2357,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         savePendingLifeSceneTurns(pendingSceneTurnsRef.current);
         setNotice("已保存，稍后回应。");
         window.setTimeout(() => {
-          if (!busyRef.current) {
-            const next = pendingSceneTurnsRef.current.shift();
-            if (next) void sendSceneTurn(undefined, false, undefined, undefined, next);
-          }
+          if (!busyRef.current && retry) void sendSceneTurn(undefined, false, undefined, undefined, retry);
         }, 2500);
         return "deferred";
       }
@@ -2473,10 +2470,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const actionText = (parsed.action ?? "").trim();
       const dialogueSegments = preserveLifeDialogueSegments(parsed.dialogues);
       const replyMessages: LifeSceneMessage[] = [
-        ...(actionText ? [{ id: notificationResponsePrefix ? notificationResponsePrefix + "-action" : id("turn-action"), sceneId: turnScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, action: actionText, dialogue: "", createdAt: replyAt }] : []),
-        ...dialogueSegments.map((dialogue, index) => ({ id: notificationResponsePrefix ? notificationResponsePrefix + "-dialogue-" + index : id("turn-dialogue"), sceneId: turnScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, dialogue, createdAt: replyAt })),
+        ...(actionText ? [{ id: notificationResponsePrefix ? notificationResponsePrefix + "-action" : id("turn-action"), sceneId: turnScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, action: actionText, dialogue: "", createdAt: replyAt, ...(pendingTurn ? { replyToMessageId: pendingTurn.messageId } : {}) }] : []),
+        ...dialogueSegments.map((dialogue, index) => ({ id: notificationResponsePrefix ? notificationResponsePrefix + "-dialogue-" + index : id("turn-dialogue"), sceneId: turnScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, dialogue, createdAt: replyAt, ...(pendingTurn ? { replyToMessageId: pendingTurn.messageId } : {}) })),
       ];
-      if (!replyMessages.length) replyMessages.push({ id: id("turn"), sceneId: turnScene.id, speakerType: "character", speakerId: target.id, speakerName: target.name, role: "character", dialogue: "", createdAt: replyAt });
+      if (!replyMessages.length) replyMessages.push({ id: id("turn"), sceneId: turnScene.id, speakerType: "character", speakerId: target.id, speakerName: target.name, role: "character", dialogue: "", createdAt: replyAt, ...(pendingTurn ? { replyToMessageId: pendingTurn.messageId } : {}) });
       pushSceneMessages(replyMessages, structuredNext);
       if (hasStructuredChanges && typeof window !== "undefined") window.dispatchEvent(new Event("life-force-sync"));
       if (forceReaction) {
@@ -2525,16 +2522,47 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       // Keep the composer locked until the root turn has finished every queued responder
       // and persisted the single grouped shared-event record.
       if (!responseQueue?.length) {
+        if (pendingTurn) {
+          pendingSceneTurnsRef.current = pendingSceneTurnsRef.current.filter(turn => turn.messageId !== pendingTurn.messageId);
+          savePendingLifeSceneTurns(pendingSceneTurnsRef.current);
+          clearActiveLifeSceneTurn(pendingTurn.messageId);
+          setPendingSceneQueueVersion(value => value + 1);
+        }
         busyRef.current = false;
         setBusy(false);
-        const queued = pendingSceneTurnsRef.current.shift();
-        if (queued) {
-          // Run on the next task so React has applied the unlocked composer state.
-          window.setTimeout(() => { void sendSceneTurn(undefined, false, undefined, undefined, queued); }, 0);
-        }
       }
     }
   };
+
+  useEffect(() => {
+    if (!ready || sceneTurnQueueRestoredRef.current) return;
+    sceneTurnQueueRestoredRef.current = true;
+    pendingSceneTurnsRef.current = recoverPendingLifeSceneTurns();
+    setPendingSceneQueueVersion(value => value + 1);
+  }, [ready]);
+
+  useEffect(() => {
+    if (!ready || busy || !sceneTurnQueueRestoredRef.current || sceneTurnDrainScheduledRef.current) return;
+    while (pendingSceneTurnsRef.current.length) {
+      const next = pendingSceneTurnsRef.current[0];
+      const scene = stateRef.current.scenes.find(item => item.id === next.sceneId);
+      const hasPlayerMessage = stateRef.current.sceneMessages.some(message => message.id === next.messageId);
+      const hasResponse = stateRef.current.sceneMessages.some(message => message.replyToMessageId === next.messageId);
+      if (!scene || !hasPlayerMessage || hasResponse) {
+        pendingSceneTurnsRef.current.shift();
+        savePendingLifeSceneTurns(pendingSceneTurnsRef.current);
+        setPendingSceneQueueVersion(value => value + 1);
+        continue;
+      }
+      sceneTurnDrainScheduledRef.current = true;
+      setActiveLifeSceneTurn(next);
+      window.setTimeout(() => {
+        sceneTurnDrainScheduledRef.current = false;
+        void sendSceneTurn(undefined, false, undefined, undefined, next);
+      }, 0);
+      return;
+    }
+  }, [ready, busy, pendingSceneQueueVersion]);
 
   useEffect(() => {
     if (!ready) return;
