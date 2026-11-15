@@ -207,9 +207,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const [locationNameDraft, setLocationNameDraft] = useState("");
   const [locationSaveFeedback, setLocationSaveFeedback] = useState(false);
   const [locationDescriptionDraft, setLocationDescriptionDraft] = useState("");
-  const [locationAtmosphereDraft, setLocationAtmosphereDraft] = useState("");
-  const [locationLayoutDraft, setLocationLayoutDraft] = useState("");
-  const [locationPropsDraft, setLocationPropsDraft] = useState("");
   const [backgroundUploadBusy, setBackgroundUploadBusy] = useState<"global" | "location" | null>(null);
   const [locationHabitDrafts, setLocationHabitDrafts] = useState<Record<string, string>>({});
 
@@ -1184,7 +1181,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       }
       const actual = next.actorStates.find(item => item.ownerType === draft.ownerType && item.ownerId === draft.ownerId);
       const slot: LifeScheduleSlot = existing
-        ? { ...existing, startAt: start.toISOString(), endAt: end.toISOString(), title: draft.title.trim(), plannedLocationId: location?.id ?? (draft.locationName.trim() ? undefined : existing.plannedLocationId ?? actual?.actualLocationId ?? undefined), plannedLocationName: location?.name ?? (draft.locationName.trim() || existing.plannedLocationName || actual?.actualLocationName || undefined), updatedAt: now }
+        ? { ...existing, startAt: start.toISOString(), endAt: end.toISOString(), title: draft.title.trim(), plannedLocationId: location?.id ?? (draft.locationName.trim() ? undefined : existing.plannedLocationId ?? actual?.actualLocationId ?? undefined), plannedLocationName: location?.name ?? (draft.locationName.trim() || existing.plannedLocationName || actual?.actualLocationName || undefined), plannedLocationDeleted: draft.locationName.trim() ? false : existing.plannedLocationDeleted, updatedAt: now }
         : { id: id("guided-plan"), ownerType: draft.ownerType, ownerId: draft.ownerId, startAt: start.toISOString(), endAt: end.toISOString(), title: draft.title.trim(), plannedLocationId: location?.id ?? actual?.actualLocationId ?? undefined, plannedLocationName: location?.name ?? (draft.locationName.trim() || actual?.actualLocationName || undefined), kind: /自由活动|自由时间|空闲|待安排/.test(draft.title.trim()) ? "free-time" : "special", source: "manual", updatedAt: now };
       candidates.push(slot);
       timelineItems.push({ draft, action: existing ? "调整" : "新增", slot });
@@ -2974,6 +2971,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       ...patch,
       plannedLocationName: changedLocation ? normalizedLocationName || null : slot.plannedLocationName,
       plannedLocationId: changedLocation ? matchedLocation?.id ?? null : slot.plannedLocationId,
+      plannedLocationDeleted: changedLocation ? false : slot.plannedLocationDeleted,
       kind: patch.title === undefined ? slot.kind : /自由活动|自由时间|空闲|待安排/.test(patch.title.trim()) ? "free-time" : slot.kind === "free-time" ? "special" : slot.kind,
       source: slot.source === "event" ? "event" : "manual",
       updatedAt: now,
