@@ -290,14 +290,17 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         },
         locations: [...INITIAL_LOCATIONS.filter(location => !loaded.locations.some(saved => saved.id === location.id)), ...loaded.locations.map(saved => { const defaults = INITIAL_LOCATIONS.find(location => location.id === saved.id); return defaults ? { ...defaults, ...saved, description: saved.description || defaults.description, atmosphere: saved.atmosphere || defaults.atmosphere, layout: saved.layout || defaults.layout, props: saved.props?.length ? saved.props : defaults.props } : saved; })],
       };
-      const migratedMessages = normalized.sceneMessages.map(message => {
-        if (message.role === "system" || !message.dialogue.trim()) return message;
-        const separated = parseLifeOutput(message.dialogue);
-        if (!separated.action) return message;
-        return { ...message, action: [message.action, separated.action].filter(Boolean).join("\n"), dialogue: separated.dialogue };
-      });
-      if (migratedMessages.some((message, index) => message !== normalized.sceneMessages[index])) {
-        normalized = { ...normalized, sceneMessages: migratedMessages };
+      // Run legacy action/dialogue parsing exactly once. Re-parsing already-normalized
+      // dialogue on every app entry can reinterpret ordinary prose differently as the
+      // parser evolves, making the same history appear to change between visits.
+      if ((normalized.sceneMessageFormatVersion ?? 0) < 1) {
+        const migratedMessages = normalized.sceneMessages.map(message => {
+          if (message.role === "system" || !message.dialogue.trim() || message.action?.trim()) return message;
+          const separated = parseLifeOutput(message.dialogue);
+          if (!separated.action) return message;
+          return { ...message, action: separated.action, dialogue: separated.dialogue };
+        });
+        normalized = { ...normalized, sceneMessages: migratedMessages, sceneMessageFormatVersion: 1 };
         saveVirtualLifeState(normalized);
       }
       // One-time migration: rebuild only auto-generated character schedule slots in the current/next two weeks.
