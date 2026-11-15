@@ -177,6 +177,7 @@ export function CheckInSettings({ onNotice }: { onNotice?: (msg: string) => void
             // 链路快照：即便没开启也给一份（「没开」本身就是要展示的状态）
             const snapshot = readCheckInScheduleSnapshot(character.id, config ?? {
               enabled: false,
+              triggerMode: "background",
               minMinutes: 30,
               maxMinutes: 90,
               dailyLimit: 3,
