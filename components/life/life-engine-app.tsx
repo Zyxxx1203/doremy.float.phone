@@ -2508,6 +2508,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   };
 
   useEffect(() => {
+    if (!ready) return;
     const resumePendingReply = () => {
       const pending = peekPendingLifeSceneReply();
       if (!pending) return;
@@ -2517,11 +2518,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     };
     const onNotificationReply = () => resumePendingReply();
     window.addEventListener("life-scene-notification-reply", onNotificationReply);
-    // The native queue may have been consumed while the WebView was on another page.
-    // Resume from the persistent local queue when the life app mounts.
     resumePendingReply();
     return () => window.removeEventListener("life-scene-notification-reply", onNotificationReply);
-  }, [focusScene]);
+  }, [ready, focusScene]);
 
   useEffect(() => {
     const onQueueUpdated = () => refreshNotificationReplyQueue(value => value + 1);
