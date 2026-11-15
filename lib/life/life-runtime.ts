@@ -62,6 +62,8 @@ export function synchronizeCharacterHomeSchedule(
   if (!characterId || !destinationHomeId || !destinationHomeName || !Number.isFinite(nowMs)) {
     return { state, synchronizedScheduleCount: 0 };
   }
+  const isActorResidenceId = (locationId: string) => locationId === "home-" + characterId
+    || Boolean(state.locations.find(location => location.id === locationId)?.residents?.includes(characterId));
   const isHomeSlot = (slot: LifeScheduleSlot): boolean => {
     if (slot.source === "manual") return false;
     const plannedId = slot.plannedLocationId ?? "";
@@ -72,9 +74,10 @@ export function synchronizeCharacterHomeSchedule(
       && slot.source === "weekly-generation"
       && ["habit", "meal", "free-time"].includes(slot.kind)
       && /回家|在家|居家|家中|家里|家庭|家务|整理房间|打扫房间|睡前/.test(slot.title);
-    // A concrete home-* ID is a destination, not a synonym for the actor's
-    // residence. Preserve visits to every other household.
-    return plannedId === destinationHomeId || legacyUnresolvedHome || legacyHomeActivity;
+    // Only the actor's own previous/current residence may be synchronized.
+    // A different home-* ID is a visit destination and must remain untouched.
+    return plannedId === destinationHomeId || isActorResidenceId(plannedId)
+      || legacyUnresolvedHome || legacyHomeActivity;
   };
   let synchronizedScheduleCount = 0;
   let schedulesChanged = false;
@@ -92,6 +95,7 @@ export function synchronizeCharacterHomeSchedule(
   const currentActualId = currentActor?.actualLocationId ?? "";
   const currentActualName = (currentActor?.actualLocationName ?? "").trim();
   const actualIsHome = currentActualId === destinationHomeId
+    || isActorResidenceId(currentActualId)
     || (!currentActualId && ["家", "家里", "家中", "自己的家"].includes(currentActualName));
   let actorStates = state.actorStates;
   if (activeSlot && isHomeSlot(activeSlot) && actualIsHome && currentActor
@@ -215,14 +219,20 @@ export function generateWeeklyLifePlan(
   };
   if (ownerType === "character") {
     const now = Date.now();
+    const actorResidenceIds = new Set([
+      "home-" + ownerId,
+      ...currentLocations.filter(location => (location.residents ?? []).includes(ownerId)).map(location => location.id),
+    ]);
     const migratedSchedules = state.schedules.map(slot => {
-      const unresolvedLegacyHome = !slot.plannedLocationId
+      const plannedId = slot.plannedLocationId ?? "";
+      const unresolvedLegacyHome = !plannedId
         && ["家", "家里", "家中", "自己的家"].includes((slot.plannedLocationName ?? "").trim());
-      // Only repair ambiguous legacy records that have no canonical location ID.
-      // Explicit home/home-* IDs may intentionally represent another household.
+      // Migrate only the actor's canonical previous residence or an unresolved
+      // legacy "home" label. Other known home IDs are explicit visit destinations.
+      const actorOwnPreviousHome = Boolean(plannedId && actorResidenceIds.has(plannedId) && plannedId !== personalHomeId);
       return slot.ownerType === "character" && slot.ownerId === ownerId
         && new Date(slot.endAt).getTime() > now
-        && unresolvedLegacyHome
+        && (actorOwnPreviousHome || unresolvedLegacyHome)
         ? { ...slot, plannedLocationId: personalHomeId, plannedLocationName: personalHome.name }
         : slot;
     });
