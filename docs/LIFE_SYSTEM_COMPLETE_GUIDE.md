@@ -3,7 +3,7 @@
 > 仓库：`Zyxxx1203/doremy.float.phone`  
 > 基线：`main` @ `d10eac85bce960496695a13aae1c1b171db09b28`  
 > 类型：产品功能说明 + 使用手册 + 技术链路 + 现状审计  
-> 边界：本次只新增文档，不修改业务代码；不涉及 `doremy1203/doremy.float.phone` 旧公开仓库；日历功能不在本轮范围。
+> 边界：本轮以生活系统需求与链路梳理为基础，已开始修复确认的地点聊天室链路缺陷；不涉及 `doremy1203/doremy.float.phone` 旧公开仓库；日历功能不在本轮范围。
 
 ## 0. 如何阅读
 
@@ -195,9 +195,31 @@
 | 玩家位置更新路径可能改写 scene.locationId | A 地点历史被挂到 B 地点 |
 | 不同入口查找/创建场景的规则不统一 | 重复场景或错误复用 |
 | 同行角色与目的地原有角色合并路径不统一 | 漏角色、覆盖角色或回应队列不完整 |
+| `updateActorLocation` 曾把玩家当前场景的 `locationId` 改成玩家新位置 | 旧地点聊天室的历史可能被错误挂到新地点；角色实际位置编辑会改变聊天室身份 |
+| `performEnterLocationSolo` 曾用本次按实际位置发现的角色列表整体覆盖目的地场景参与者 | 目的地原本就在场、但 actor 快照不完整/不同步的角色会从聊天室消失 |
+| `performCreateScene` 曾用本次勾选角色整体覆盖已有地点场景参与者 | 重新打开/创建时会丢失该地点已有角色 |
 | 生成队列部分在内存 ref | 离开/卸载时丢待处理回合 |
 | 通知带 sceneId 但页面未必消费 | 通知无法精确定位现场 |
 | 历史消息自动格式迁移 | 普通对白可能被误判为行动 |
+
+### 4.3.1 本轮已沿真实调用链确认并修复
+
+这次不是只按函数名推测。已逐段检查 `updateActorLocation`、`performCreateScene`、`performTransferSceneWithCompanions`、`performEnterLocationSolo` 和 `sendSceneTurn`：
+
+1. 地点设置的同行入口先对所选角色调用 `reserveCharacterLocationStay`，提交角色实际位置，再进入 `performEnterLocationSolo`。
+2. 到达流程按目的地查找已有 active/paused 场景；有则复用原 `scene.id`，没有才创建。现场消息仍按该 `scene.id` 过滤。
+3. **已修复：**进入目的地时，不再用本次实际位置发现列表整体替换旧参与者；改为保留目的地场景中仍指向该地点的原参与者，再合并本次到达角色，按 `ownerType + ownerId` 去重。缺少旧 actor 快照的兼容参与者也不会被直接删除。
+4. **已修复：**`performCreateScene` 复用地点场景时也走同一参与者合并函数，避免另一个入口重新覆盖成员。
+5. **已修复：**`updateActorLocation` 只更新玩家实际位置和时间线，不再把当前场景的 `locationId` 改成新位置。角色实际位置变化不再隐式搬动聊天室历史。
+6. `sendSceneTurn` 从固定的 `turnScene.participants` 取在场角色，并将去重后的角色集合交给 `buildLifeSceneResponderQueue`；因此参与者合并结果会直接决定谁能回应。
+
+实现文件：
+- `components/life/life-engine-app.tsx`
+- `lib/life/life-engine.ts`
+- `scripts/test-life-scene-responders.mjs`
+- `scripts/test-life-wiring.mjs`
+
+自动化测试补充了参与者合并的去重/保留/更新断言，以及“玩家位置编辑不得调用 `upsertLifeScene`”的防回归检查。当前 GitHub Actions 运行结果尚未取得，因此**代码已提交到 PR 分支，但测试尚不能标记通过**；后续必须等 CI 并检查完整调用链后再合并。
 
 ### 4.4 用户使用步骤
 
