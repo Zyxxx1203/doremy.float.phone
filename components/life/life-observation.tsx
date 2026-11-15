@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, Clock3, RefreshCw, Settings2, Eye, ChevronLeft, ImagePlus } from "lucide-react";
+import { BookOpen, RefreshCw, Settings2, Eye, ChevronLeft, ImagePlus } from "lucide-react";
 import type { Character } from "@/lib/character-types";
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage } from "@/lib/chat-storage";
 import { simpleLLMCall } from "@/lib/api-helpers";
