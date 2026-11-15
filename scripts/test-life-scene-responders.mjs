@@ -12,7 +12,7 @@ vm.runInNewContext(compiled, {
   module: moduleBox, exports: moduleBox.exports,
   console, JSON, Set, Map, Array, String, Number, Boolean, RegExp, Date, Math,
 }, { filename: "life-engine.cjs" });
-const { buildLifeSceneResponderQueue } = moduleBox.exports;
+const { buildLifeSceneResponderQueue, mergeLifeSceneParticipants } = moduleBox.exports;
 
 assert.deepEqual(
   Array.from(buildLifeSceneResponderQueue({
@@ -55,4 +55,25 @@ assert.deepEqual(
   "non-present characters are never queued",
 );
 
-console.log("Life scene responder queue tests passed.");
+
+const mergedParticipants = mergeLifeSceneParticipants(
+  [
+    { ownerType: "player", ownerId: "player", activity: "在咖啡店", awarenessByActorId: { a: "aware" } },
+    { ownerType: "character", ownerId: "a", activity: "正在看书", awarenessByActorId: { player: "aware" } },
+    { ownerType: "character", ownerId: "b", activity: "正在喝咖啡", awarenessByActorId: { player: "suspects" } },
+  ],
+  [
+    { ownerType: "player", ownerId: "player", activity: "刚来到这里", awarenessByActorId: {} },
+    { ownerType: "character", ownerId: "a", activity: "正在看书", awarenessByActorId: { player: "aware", b: "aware" } },
+    { ownerType: "character", ownerId: "c", activity: "刚刚同行到达", awarenessByActorId: { player: "aware" } },
+  ],
+);
+assert.deepEqual(
+  Array.from(mergedParticipants, item => item.ownerType + ":" + item.ownerId),
+  ["player:player", "character:a", "character:b", "character:c"],
+  "destination room members are retained and newly arrived companions are appended exactly once",
+);
+assert.equal(mergedParticipants.find(item => item.ownerId === "player").activity, "刚来到这里");
+assert.equal(mergedParticipants.find(item => item.ownerId === "a").awarenessByActorId.b, "aware");
+
+console.log("Life scene responder queue and destination participant merge tests passed.");
