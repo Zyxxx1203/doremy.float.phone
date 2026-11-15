@@ -62,6 +62,12 @@ export function synchronizeCharacterHomeSchedule(
   if (!characterId || !destinationHomeId || !destinationHomeName || !Number.isFinite(nowMs)) {
     return { state, synchronizedScheduleCount: 0 };
   }
+  const currentActor = state.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === characterId);
+  const currentActualId = currentActor?.actualLocationId ?? "";
+  const isHomeActivity = (slot: LifeScheduleSlot) =>
+    slot.source === "weekly-generation"
+    && ["habit", "meal", "free-time"].includes(slot.kind)
+    && /回家|在家|居家|家中|家里|家庭|家务|整理房间|打扫房间|睡前/.test(slot.title);
   const isActorResidenceId = (locationId: string) => locationId === "home-" + characterId
     || Boolean(state.locations.find(location => location.id === locationId)?.residents?.includes(characterId));
   const isHomeSlot = (slot: LifeScheduleSlot): boolean => {
@@ -70,14 +76,14 @@ export function synchronizeCharacterHomeSchedule(
     const plannedName = (slot.plannedLocationName ?? "").trim();
     const legacyUnresolvedHome = !plannedId
       && ["家", "家里", "家中", "自己的家"].includes(plannedName);
-    const legacyHomeActivity = !plannedId
-      && slot.source === "weekly-generation"
-      && ["habit", "meal", "free-time"].includes(slot.kind)
-      && /回家|在家|居家|家中|家里|家庭|家务|整理房间|打扫房间|睡前/.test(slot.title);
-    // Only the actor's own previous/current residence may be synchronized.
-    // A different home-* ID is a visit destination and must remain untouched.
+    // During a residence change, the actor's actual home may no longer list
+    // them as a resident (the UI has already changed the residents array).
+    // Accept that prior ID only when the current generated activity explicitly
+    // describes being at home; "去 B 家吃饭" remains a visit, not a home slot.
+    const currentGeneratedHome = Boolean(plannedId && plannedId === currentActualId
+      && (plannedId === "home" || plannedId.startsWith("home-")) && isHomeActivity(slot));
     return plannedId === destinationHomeId || isActorResidenceId(plannedId)
-      || legacyUnresolvedHome || legacyHomeActivity;
+      || currentGeneratedHome || legacyUnresolvedHome || (!plannedId && isHomeActivity(slot));
   };
   let synchronizedScheduleCount = 0;
   let schedulesChanged = false;
@@ -91,11 +97,11 @@ export function synchronizeCharacterHomeSchedule(
     return { ...slot, plannedLocationId: destinationHomeId, plannedLocationName: destinationHomeName, updatedAt: now.toISOString() };
   });
   const activeSlot = getCurrentActorSchedule(state, "character", characterId, now);
-  const currentActor = state.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === characterId);
-  const currentActualId = currentActor?.actualLocationId ?? "";
   const currentActualName = (currentActor?.actualLocationName ?? "").trim();
   const actualIsHome = currentActualId === destinationHomeId
     || isActorResidenceId(currentActualId)
+    || Boolean(activeSlot && activeSlot.plannedLocationId === currentActualId
+      && (currentActualId === "home" || currentActualId.startsWith("home-")) && isHomeActivity(activeSlot))
     || (!currentActualId && ["家", "家里", "家中", "自己的家"].includes(currentActualName));
   let actorStates = state.actorStates;
   if (activeSlot && isHomeSlot(activeSlot) && actualIsHome && currentActor
