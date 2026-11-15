@@ -128,7 +128,7 @@ export function saveCharacterCheckIn(characterId: string, patch: Partial<CheckIn
   const previous = all[characterId] ?? CHECK_IN_DEFAULTS;
   const next = normalizeCharacter({ ...previous, ...patch });
   all[characterId] = next;
-  if (patch.triggerMode !== undefined || patch.minMinutes !== undefined || patch.maxMinutes !== undefined) {
+  if (patch.enabled !== undefined || patch.triggerMode !== undefined || patch.minMinutes !== undefined || patch.maxMinutes !== undefined) {
     const runtime = loadCheckInRuntime();
     const current = readCharacterRuntime(characterId);
     runtime[characterId] = { ...current, nextDueAt: 0, nextDueBackgroundMs: 0 };
