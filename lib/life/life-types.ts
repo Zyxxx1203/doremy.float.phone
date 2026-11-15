@@ -245,6 +245,7 @@ export type LifeSceneMessage = {
   channel?: "life_scene" | "life_autonomy" | "life_offline";
   /** Reference to a scene gallery image; keeps image bytes in the media store, not the chat log. */
   imageId?: string;
+  replyToMessageId?: string;
 };
 
 export type LifeSceneImage = {
