@@ -34,7 +34,7 @@ import { PhotoWallApp } from "@/components/photo-wall-app";
 import { WatchTogetherApp } from "@/components/watch-together-app";
 import { CALL_STATS_ENTRY_HTML } from "@/lib/builtin-apps/call-stats-source";
 import { HEARTCRAFT_ENTRY_HTML } from "@/lib/builtin-apps/heartcraft-source";
-import { buildHeartcraftApp } from "@/lib/builtin-apps/heartcraft-meta";
+import { buildHeartcraftApp, HEARTCRAFT_APP_ID } from "@/lib/builtin-apps/heartcraft-meta";
 import { isHeartcraftInstalled } from "@/lib/builtin-apps/registry";
 import { VnApp } from "@/components/vn/vn-app";
 import ReadingApp from "@/components/reading/reading-app";
@@ -422,8 +422,14 @@ function trimEmptyTrailingPages(layout: DesktopLayout, widgets: WidgetInstance[]
   return next;
 }
 
+function isLegacyHeartcraftMarketApp(app: InstalledCustomApp): boolean {
+  return app.id !== HEARTCRAFT_APP_ID && (app.manifest?.id || app.id) === HEARTCRAFT_APP_ID;
+}
+
 function getInstalledCustomIconIds(): Set<string> {
-  return new Set(loadInstalledCustomApps().map(app => toCustomAppIconId(app.id)));
+  return new Set(loadInstalledCustomApps()
+    .filter(app => !isLegacyHeartcraftMarketApp(app))
+    .map(app => toCustomAppIconId(app.id)));
 }
 
 
@@ -1666,7 +1672,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
       const stored = readThemeProfile();
       setSavedTheme(stored);
       setDraftTheme(stored);
-      setCustomApps(loadInstalledCustomApps());
+      setCustomApps(loadInstalledCustomApps().filter(app => !isLegacyHeartcraftMarketApp(app)));
 
       // Reload widgets + layout after hydration
       const hydratedWidgets = loadWidgets();
@@ -1715,7 +1721,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
 
   useEffect(() => {
     const refreshCustomApps = () => {
-      const installed = loadInstalledCustomApps();
+      const installed = loadInstalledCustomApps().filter(app => !isLegacyHeartcraftMarketApp(app));
       setCustomApps(installed);
       // Drop any dock icons whose custom app was uninstalled, then keep the
       // paged layout disjoint from whatever remains in the dock.
