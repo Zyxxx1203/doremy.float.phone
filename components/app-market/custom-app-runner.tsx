@@ -4,7 +4,9 @@ import { useCallback, useMemo, useRef, useState, useEffect, useLayoutEffect } fr
 import { CheckCircle2, Circle, FileJson, Layers, LoaderCircle, MoreHorizontal, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 
 import type { InstalledCustomApp } from "@/lib/custom-app-types";
+import { HEARTCRAFT_APP_ID } from "@/lib/builtin-apps/heartcraft-meta";
 import {
+  ensureHeartcraftBuiltinDataMigrated,
   isCustomAppMediaRefReferenced,
   readCustomAppCollection,
   uninstallCustomAppAsync,
@@ -870,6 +872,24 @@ export function CustomAppRunner({
   }, []);
   const [frameId] = useState(() => `custom_app_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
   const [bridgeReady, setBridgeReady] = useState(false);
+  const [heartcraftStorageReady, setHeartcraftStorageReady] = useState(app.id !== HEARTCRAFT_APP_ID);
+  const [heartcraftStorageError, setHeartcraftStorageError] = useState("");
+  useEffect(() => {
+    if (app.id !== HEARTCRAFT_APP_ID) {
+      setHeartcraftStorageReady(true);
+      return;
+    }
+    let active = true;
+    setHeartcraftStorageReady(false);
+    setHeartcraftStorageError("");
+    void ensureHeartcraftBuiltinDataMigrated().then(() => {
+      if (active) setHeartcraftStorageReady(true);
+    }).catch(error => {
+      if (!active) return;
+      setHeartcraftStorageError(error instanceof Error ? error.message : String(error));
+    });
+    return () => { active = false; };
+  }, [app.id]);
   // 应用首屏什么都没画出来时由 iframe 上报（见注入脚本里的 app.blank）
   const [frameFailure, setFrameFailure] = useState<CustomAppFailureDetail | null>(null);
   const isBackgroundRunner = Boolean(backgroundEvent || backgroundTool);
@@ -2090,7 +2110,17 @@ export function CustomAppRunner({
           </button>
         </div>
       ) : null}
-      {bridgeReady ? (
+      {heartcraftStorageError ? (
+        <div role="alert" className="m-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <p className="font-semibold">心意手作工坊数据准备失败</p>
+          <p className="mt-1 break-words">{heartcraftStorageError}</p>
+          <button type="button" className="mt-3 rounded-xl bg-red-600 px-3 py-2 text-white" onClick={() => {
+            setHeartcraftStorageError("");
+            void ensureHeartcraftBuiltinDataMigrated().then(() => setHeartcraftStorageReady(true)).catch(error => setHeartcraftStorageError(error instanceof Error ? error.message : String(error)));
+          }}>重试</button>
+        </div>
+      ) : null}
+      {bridgeReady && heartcraftStorageReady && !heartcraftStorageError ? (
         // Chromium can leave a sandboxed about:srcdoc document with a 0x0 layout tree
         // when the same iframe first loads an empty srcDoc and is immediately navigated
         // to the real app. Mount it only after the host listener is ready so the final
