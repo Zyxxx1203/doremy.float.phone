@@ -161,8 +161,8 @@ async function compressLifeBackground(file: File): Promise<string> {
   }
 }
 
-function SectionTitle({ eyebrow, title, note }: { eyebrow: string; title: string; note?: string }) {
-  return <div className="mb-4"><p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#a4775d]">{eyebrow}</p><h2 className="mt-1 text-xl font-semibold tracking-tight text-stone-800">{title}</h2>{note && <p className="mt-1 text-sm leading-relaxed text-stone-500">{note}</p>}</div>;
+function SectionTitle({ title, note }: { title: string; note?: string }) {
+  return <div className="mb-4"><h2 className="text-xl font-semibold tracking-tight text-stone-800">{title}</h2>{note && <p className="mt-1 text-sm text-stone-500">{note}</p>}</div>;
 }
 
 export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () => void; initialCharacterId?: string } = {}) {
@@ -3790,7 +3790,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       {(tab === "home" || tab === "scene") && <div className={immersiveScene ? "flex min-h-0 flex-1 flex-col" : "space-y-4"}>
         {tab === "scene" && !immersiveScene && <details open className="rounded-2xl border border-white/80 bg-white/55 shadow-sm"><summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-stone-600">生活状态与时间线 · {playerNow.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})} · 展开查看</summary><section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <SectionTitle eyebrow="Your day · 24 hours" title={playerNow.toLocaleDateString("zh-CN",{month:"long",day:"numeric",weekday:"long"})+" · 我的时间线"} note="已过去的时段可以折叠查看；日程会按现实时间逐段结算，不会跳过中间发生的生活。" />
+            <SectionTitle title={playerNow.toLocaleDateString("zh-CN",{month:"long",day:"numeric",weekday:"long"})+" · 我的时间线"} note="" />
             <button onClick={()=>openDaily("plans")} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">查看完整七日日程</button>
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2">
@@ -3934,7 +3934,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
 
       {tab === "locations" && <div className="space-y-4">
         <section className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm sm:p-6">
-          {!locationDossierOpen && <><SectionTitle eyebrow="Canonical location library" title="地点库" note="点开地点卡片进入独立档案页，编辑设定、添加角色习惯并查看历史。同居后角色自己的家会暂时从地点列表隐藏；取消同居后会自动重新显示，不会删除住处或历史数据。"/>
+          {!locationDossierOpen && <><SectionTitle title="地点库" note=""/>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-stone-500">按名称、别名、环境和道具搜索；旧地点默认归入「未整理」。</p><button type="button" onClick={createLocationFolder} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700"><Plus size={12} className="mr-1 inline"/>新建文件夹</button></div>
           {locationFilterControls}
           <div className="mb-4 rounded-2xl border border-[#ead8c8] bg-[#fffaf5] p-3">
@@ -3985,7 +3985,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             <div className="rounded-2xl bg-[#f5ede4] p-3"><p className="text-[10px] text-stone-500">本次停留</p><p className="mt-1 text-lg font-semibold text-stone-800">{Math.floor(selectedLocationVisitStats.activeMinutes / 60)}h {selectedLocationVisitStats.activeMinutes % 60}m</p></div>
           </div>
           <p className="mb-4 text-xs leading-relaxed text-stone-500">统计按生活系统的现实时间计算：每次前往会记入生活时间线，离开或临时停留到期后自动结算。它是实际到访记录，不会把尚未发生的计划误记为已到访。</p>
-          <SectionTitle eyebrow="Location dossier" title={selectedLocation.name + " · 地点档案"} note="这些设定会持久保存，并注入后续场景提示词。布局定义空间关系，道具可在行动中被引用，角色习惯会影响其在此处的行为，但不应限制角色临时做出新行动。"/>
+          <SectionTitle title={selectedLocation.name + " · 地点档案"} note="设定将用于后续现场互动。"/>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[#fffaf5] p-3"><div className="text-xs text-stone-500">{(selectedLocation.sourceRefs ?? []).length ? "来源：" + (selectedLocation.sourceRefs ?? []).map(source => source.kind === "worldbook" ? source.worldBookName + (source.entryComment ? " · " + source.entryComment : "") : source.kind === "character-card" ? source.characterName + " 的角色卡" : "手动").join("；") : "暂无导入来源；可由 AI 根据地点名称与角色设定补全。"}</div><button type="button" disabled={locationImportBusy} onClick={() => void completeSelectedLocationProfile()} className="shrink-0 rounded-lg border border-[#d7b99f] bg-white px-3 py-2 text-xs font-medium text-stone-700 disabled:opacity-50">{locationImportBusy ? "处理中…" : "AI 补全 / 刷新档案"}</button></div>
           <label className="mb-3 block text-sm font-medium text-stone-700">地点名称<input value={locationNameDraft} onChange={event => { setLocationNameDraft(event.target.value); setLocationSaveFeedback(false); }} placeholder="例如：我们的小家" className="mt-1.5 w-full min-w-0 rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label>
           <label className="mb-3 block text-sm font-medium text-stone-700">别名 / 日程匹配关键词<textarea value={(selectedLocation.aliases ?? []).join("、")} onChange={event => commit({ ...stateRef.current, locations: stateRef.current.locations.map(location => location.id === selectedLocation.id ? { ...location, aliases: event.target.value.split(/[、,，;；\n]/).map(value => value.trim()).filter(Boolean), fieldOrigins: { ...(location.fieldOrigins ?? {}), aliases: "user" } } : location) })} rows={2} placeholder="例如：旧城区花店、花店、花房" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
@@ -4056,7 +4056,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           </section>}
           <button type="button" onClick={saveLocationDetails} className="w-full rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white active:scale-[.99]">{locationSaveFeedback ? "✓ 已保存" : "保存地点设定"}</button><p aria-live="polite" className={`mt-1.5 min-h-4 text-center text-[11px] ${locationSaveFeedback ? "text-emerald-700" : "text-stone-400"}`}>{locationSaveFeedback ? "地点名称、环境与空间设定已保存" : "修改名称、环境、布局或道具后，点击保存生效"}</p>
           <div className="mt-5 border-t border-stone-200/70 pt-4">
-            <SectionTitle eyebrow="Character habits" title="角色在这里的习惯" note="写长期倾向，不是强制动作。比如某角色每次来书店会先看新书区、习惯坐最里面的位置，或会顺手给别人带一杯热饮。"/>
+            <SectionTitle title="角色在这里的习惯" note=""/>
             <div className="space-y-3">{characters.map(character => {
               const history = state.timeline.filter(entry => entry.locationName === selectedLocation.name && (entry.actorId === character.id || entry.actorName === character.name));
               const frequentActions = [...new Set(history.map(entry => entry.title).filter(Boolean))].slice(0, 4);
@@ -4068,7 +4068,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
               </div>;
             })}</div>
           </div>
-          <div className="mt-5 border-t border-stone-200/70 pt-4"><SectionTitle eyebrow="Recent history" title="这里发生过什么" note="记录来自生活系统已经保存的行动、对白、日程与事件，不会把计划误当成已经发生的事情。"/>
+          <div className="mt-5 border-t border-stone-200/70 pt-4"><SectionTitle title="这里发生过什么" note=""/>
             {state.timeline.filter(entry => entry.locationName === selectedLocation.name).slice().sort((a,b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0,20).length ? <div className="space-y-2">{state.timeline.filter(entry => entry.locationName === selectedLocation.name).slice().sort((a,b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0,20).map(entry => <div key={entry.id} className="rounded-xl bg-white/80 p-3"><p className="text-sm font-medium">{entry.title}</p>{entry.details && <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-stone-500">{entry.details}</p>}<p className="mt-1 text-[10px] text-stone-400">{entry.actorName || "生活记录"} · {new Date(entry.occurredAt).toLocaleString("zh-CN")}</p></div>)}</div> : <p className="rounded-xl bg-white/70 p-4 text-sm text-stone-500">这个地点还没有已发生的生活记录。角色习惯和地点设定保存后，会影响未来互动。</p>}
           </div>
         </section>}
@@ -4081,7 +4081,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       </div>}
       {tab === "daily" && dailySubtab === "observe" && <div className="rounded-3xl border border-white/80 bg-white/55 p-3 shadow-sm sm:p-4"><LifeObservation characters={characters} active={true} onNotice={setNotice} /></div>}
       {(tab === "people" || (tab === "daily" && dailySubtab === "people")) && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
-        <SectionTitle eyebrow="Character presence" title="角色动态" note="汇总所有已载入角色的现实时间、当前活动和位置。实际记录与日程推测会分开标记；未知位置不会伪装成实时定位。" />
+        <SectionTitle title="角色动态" note="实际位置与计划地点分开显示。" />
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {characters.map(character => {
             const presence = state.actorStates.find(item => item.ownerType === "character" && item.ownerId === character.id);
@@ -4220,7 +4220,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         </div>
       </section>}
       {(tab === "plans" || (tab === "daily" && dailySubtab === "plans")) && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3"><SectionTitle eyebrow="Weekly plans" title="你和角色的七日日程" note="这里按人分组：你自己的日程显示具体时间；角色只显示日期、活动和地点线索，不显示具体时段。计划不是保证，是否真的遇见 TA 取决于当前实际位置、角色自己的决定和现场情况。" /><button onClick={ensurePlans} title="只补全本地规则缺失的时间段，不替代 AI 生成" className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-600"><RefreshCw size={14}/>补全缺失时段</button></div>
+        <div className="flex flex-wrap items-start justify-between gap-3"><SectionTitle title="你和角色的七日日程" note="查看和编辑未来七日安排。" /><button onClick={ensurePlans} title="只补全本地规则缺失的时间段，不替代 AI 生成" className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-600"><RefreshCw size={14}/>补全缺失时段</button></div>
         {actors.map(actor => {
           const realNow = actorNow(actor);
           const slots = state.schedules.filter(slot => slot.ownerType === actor.ownerType && slot.ownerId === actor.ownerId && new Date(slot.endAt).getTime() > realNow.getTime() - DAY_MS).sort((x,y) => x.startAt.localeCompare(y.startAt));
@@ -4251,16 +4251,16 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
 
 
       {tab === "invitations" && <div className="grid gap-4 lg:grid-cols-[.85fr_1.15fr]">
-        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Make a plan together" title="创建邀约" note="你发出的邀约由角色根据人设和日程决定是否接受；角色主动发出的邀约由你决定是否接受。双方同意后才同步日程，不会瞬间跳到约定时间。" />
+        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle title="创建邀约" note="双方确认后才会写入日程。" />
           <form onSubmit={addInvitation} className="space-y-3"><label className="block text-sm">邀请谁<select value={inviteCharacterId} onChange={e=>setInviteCharacterId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="">选择角色</option>{characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label className="block text-sm">事件 / 活动<input value={inviteActivity} onChange={e=>setInviteActivity(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">邀约理由<textarea value={inviteReason} onChange={e=>setInviteReason(e.target.value)} placeholder="例如：最近想和你聊聊，或者想把这件有趣的事分享给你" rows={2} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">时间<input type="datetime-local" value={inviteAt} onChange={e=>{setInviteAtEdited(true);setInviteAt(e.target.value)}} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/><span className="mt-1 block text-[11px] text-stone-500">默认按你的现实时间预填；系统会根据现实时间和双方现有日程检查是否来得及赴约。</span></label><label className="block text-sm">地点<select value={inviteLocationId} onChange={e=>setInviteLocationId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5">{visibleLocations.map(loc=><option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></label><button disabled={busy} className="w-full rounded-2xl bg-[var(--life-accent)] px-4 py-3 text-sm font-medium text-white disabled:opacity-50">{busy?"等待角色回应…":"发出邀约"}</button></form>
         </section>
-        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Invitation inbox" title="邀约记录" />
+        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle title="邀约记录" />
           {state.invitations.length===0?<p className="rounded-2xl bg-white/60 p-4 text-sm text-stone-400">这里会保存待确认、已确认和已取消的邀约。</p>:<div className="space-y-3">{state.invitations.map(invite=>{const char=characters.find(c=>c.id===invite.characterId);const editable=invite.status==="proposed"||invite.status==="confirmed";const editing=editingInvitationId===invite.id;return <div key={invite.id} className="rounded-2xl border border-stone-200/70 bg-white/70 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-medium">{char?.name??"未知角色"} · {invite.kind==="follow-request"?"陪伴申请":"邀约"} · {invite.activity}</p><p className="mt-1 text-xs text-stone-500">{fmt(invite.proposedAt)} · {invite.kind==="follow-request"?(invite.durationMinutes??120)+" 分钟 · 跟随你的实际行程":invite.locationName??"地点待定"} · {invite.durationMinutes??60} 分钟</p>{invite.reason&&<p className="mt-1 text-xs leading-relaxed text-stone-600">理由：{invite.reason}</p>}{invite.responseReason&&<p className="mt-1 text-xs leading-relaxed text-stone-600">回应：{invite.responseReason}</p>}</div><span className="shrink-0 rounded-full bg-[#f0e3d5] px-2.5 py-1 text-[11px]">{(invite.status==="proposed"&&invite.proposedBy==="player"?"等待角色回应":({proposed:"待确认",confirmed:"已确认",declined:"已拒绝",cancelled:"已取消",completed:"已完成"} as Record<string,string>)[invite.status])}</span></div>{editing&&<div className="mt-4 grid gap-3 rounded-2xl bg-[#faf5ef] p-3"><label className="block text-xs">活动内容<input value={editInvitationDraft.activity} onChange={e=>setEditInvitationDraft(d=>({...d,activity:e.target.value}))} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/></label><label className="block text-xs">邀约理由<textarea value={editInvitationDraft.reason} onChange={e=>setEditInvitationDraft(d=>({...d,reason:e.target.value}))} rows={2} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/></label><label className="block text-xs">时间<input type="datetime-local" value={editInvitationDraft.proposedAt} onChange={e=>setEditInvitationDraft(d=>({...d,proposedAt:e.target.value}))} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/></label><label className="block text-xs">持续时长（分钟）<input type="number" min={15} max={1440} step={15} value={editInvitationDraft.durationMinutes} onChange={e=>setEditInvitationDraft(d=>({...d,durationMinutes:e.target.value}))} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/></label>{invite.kind!=="follow-request"&&<label className="block text-xs">地点<select value={editInvitationDraft.locationId} onChange={e=>setEditInvitationDraft(d=>({...d,locationId:e.target.value}))} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm">{visibleLocations.map(loc=><option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></label>}<div className="flex gap-2"><button type="button" onClick={()=>saveInvitationEdit(invite.id)} className="flex-1 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white">保存并同步日程</button><button type="button" onClick={()=>setEditingInvitationId(null)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">取消编辑</button></div></div>}{!editing&&<div className="mt-3 flex flex-wrap gap-2">{invite.status==="proposed"&&invite.proposedBy!=="player"&&<><button onClick={()=>confirmInvitation(invite.id)} className="rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white">{invite.kind==="follow-request"?"接受陪伴申请":"确认并同步日程"}</button><button onClick={()=>declineInvitation(invite.id)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">拒绝</button></>}{editable&&<button onClick={()=>beginEditInvitation(invite.id)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">编辑 / 重新安排</button>}{editable&&<button onClick={()=>cancelInvitation(invite.id)} className="rounded-xl border border-red-200 px-3 py-2 text-xs text-red-600">取消邀约</button>}{(invite.status==="declined"||invite.status==="cancelled")&&<button onClick={()=>reuseInvitation(invite.id)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">复制并重新发起</button>}</div>}</div>;})}</div>}
         </section>
       </div>}
 
       {tab === "experiences" && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
-        <SectionTitle eyebrow="Shared memories" title="共同经历" note="这里按实际发生时间整理生活记录。你可以按角色、日期或事件类型筛选；隐藏记录只影响显示，不会删除原始数据。" />
+        <SectionTitle title="共同经历" note="按角色、日期或类型筛选。" />
         <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block text-xs font-medium text-stone-600">参与角色
             <select value={experienceActorFilter} onChange={event => setExperienceActorFilter(event.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">
@@ -4299,7 +4299,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       {tab === "settings" && <div className="grid gap-4 lg:grid-cols-2">
         <LifeDiagnosticsPanel />
         <section className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm sm:p-6 lg:col-span-2">
-          <SectionTitle eyebrow="Life appearance" title="生活系统全局背景" note="设置后会用于生活首页、日程、地点库与设置等页面。某个地点拥有专属聊天室背景时，进入该地点会优先显示专属背景。"/>
+          <SectionTitle title="生活系统全局背景" note=""/>
           <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
             <div>
               <div className="relative grid min-h-36 place-items-center overflow-hidden rounded-2xl border border-rose-200/70 bg-[#fbf5ee]">
@@ -4323,7 +4323,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             </div>
           </div>
         </section>
-        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Behavior switches" title="生活模拟规则" note="你可以把它调成轻量陪伴，也可以打开更多自主生活细节。" />
+        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle title="生活模拟规则" note="" />
           <div className="space-y-2">
             <Toggle checked={settings.enabled} onChange={v=>patchSettings({enabled:v})} label="启用虚拟生活引擎" hint="关闭后保留数据，但暂停新生活场景功能。"/>
             <Toggle checked={settings.autoGenerateWeeklyPlans} onChange={v=>patchSettings({autoGenerateWeeklyPlans:v})} label="自动生成每周日程"/>
@@ -4375,7 +4375,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           </div>
           <label className="mt-4 block text-sm">位置情报权限<select value={settings.revealExactLocations} onChange={e=>patchSettings({revealExactLocations:e.target.value as LifeEngineSettings["revealExactLocations"]})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="ask-only">只有询问或可靠渠道才能得知精确位置</option><option value="clues">默认只显示习惯与模糊线索</option><option value="open">允许公开查看实际位置</option></select></label>
         </section>
-        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Appearance & comfort" title="界面自定义" note="外观设置独立保存，不会影响角色数据或原有聊天主题。" />
+        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle title="界面自定义" note="" />
           <label className="mb-4 block text-sm">玩家显示名称<input value={playerName} onChange={e=>patchSettings({playerDisplayName:e.target.value})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="mb-4 block text-sm">场景主题<select value={settings.sceneTheme} onChange={e=>patchSettings({sceneTheme:e.target.value as LifeEngineSettings["sceneTheme"]})} className="mt-1.5 w-full rounded-xl border border-[rgb(var(--life-border-rgb)/.8)] bg-[rgb(var(--life-surface-rgb)/.96)] px-3 py-2.5 text-[var(--life-text)]">
             {Object.entries(themePresets).map(([value, theme])=><option key={value} value={value}>{theme.label}</option>)}
           </select></label>
