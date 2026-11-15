@@ -76,7 +76,7 @@ export function mergeImportedLifeLocations(
     const aliases = mergeUnique([], [
       ...(candidate.aliases ?? []).filter(value => value.length <= 100),
       ...(match && (candidate.relation === "own-home" || candidate.relation === "shared-home") && match.name !== name ? [name] : []),
-      ...(exactMatch?.id.startsWith("schedule-place-") && exactMatch.name !== name ? [exactMatch.name] : []),
+      ...(exactMatch?.id.startsWith("schedule-place-") && exactMatch.name !== name ? [name] : []),
     ]);
     if (!match) {
       const base = homeOwnerId ? "home-" + homeOwnerId : candidate.relation === "shared-home" ? "home" : "imported-place-" + slug(name);
