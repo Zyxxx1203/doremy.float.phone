@@ -1,4 +1,5 @@
-import type { LifeActorClock, LifeActorState, LifeEvent, LifeInvitation, LifeLocation, LifeOwnerType, LifeScheduleSlot, LifeSceneState, VirtualLifeState } from "./life-types";
+import type { LifeActorClock, LifeActorState, LifeEvent, LifeInvitation, LifeLocation, LifeOwnerType, LifeScheduleSlot, LifeSceneParticipant, LifeSceneState, VirtualLifeState } from "./life-types";
+import { mergeLifeSceneParticipants } from "./life-engine";
 
 export const lifeActorKey = (ownerType: LifeOwnerType, ownerId: string) => `${ownerType}:${ownerId}`;
 
@@ -636,90 +637,79 @@ export function settleActorTimelineToNow(
     });
     const started = allAtOrAfter(event.startsAt);
     const ended = allAtOrAfter(event.endsAt);
-    const characterId = event.participantIds.find(participantId => participantId !== "player");
-    // An event-linked scene remains the canonical scene even if a previous
-    // partial save left its status out of sync with the event. Reuse it first
-    // to avoid duplicate scene records during recovery.
-    let matchingScene = scenes.find(scene => scene.eventId === event.id)
-      ?? scenes.find(scene =>
-        (scene.status === "active" || scene.status === "paused")
-        && !scene.eventId
-        && (event.locationId
-          ? scene.locationId === event.locationId
-          : event.locationName ? scene.locationName === event.locationName : true)
-        && event.participantIds.every(participantId => scene.participants.some(participant =>
-          participant.ownerId === participantId
-          && participant.ownerType === (participantId === "player" ? "player" : "character")
-        ))
-      );
 
-    // Catch-up must settle the whole real-time interval, even if the app was not
-    // opened until after the appointment ended. Otherwise a confirmed event
-    // would be incorrectly marked "missed" simply because no page timer ran.
-    if (started && (event.status === "confirmed" || event.status === "active") && event.details !== "follow-player") {
+    // Invitations describe an activity at a location; they do not own a separate
+    // chat room. Reuse the location's canonical room (including legacy event rooms)
+    // and keep its active/paused state untouched so schedule settlement cannot
+    // steal the room the user is currently viewing.
+    const playerPresence = findActorState(state, "player", "player");
+    const characterPresence = event.participantIds
+      .filter(participantId => participantId !== "player")
+      .map(participantId => findActorState(state, "character", participantId))
+      .find(Boolean);
+    const locationId = event.locationId ?? playerPresence?.actualLocationId ?? characterPresence?.actualLocationId ?? "home";
+    const locationName = event.locationName
+      ?? state.locations.find(location => location.id === locationId)?.name
+      ?? playerPresence?.actualLocationName
+      ?? characterPresence?.actualLocationName
+      ?? "家";
+    const sameLocation = (scene: LifeSceneState) =>
+      scene.locationId === locationId || (!event.locationId && scene.locationName === locationName);
+    const matchingScene = scenes
+      .filter(sameLocation)
+      .sort((left, right) =>
+        Number(Boolean(left.eventId)) - Number(Boolean(right.eventId))
+        || Number(left.status === "completed") - Number(right.status === "completed")
+        || right.updatedAt.localeCompare(left.updatedAt)
+      )[0];
+
+    if (started && event.details !== "follow-player") {
+      const eventParticipants: LifeSceneParticipant[] = event.participantIds.map(participantId => {
+        const participantType: LifeOwnerType = participantId === "player" ? "player" : "character";
+        return {
+          ownerType: participantType,
+          ownerId: participantId,
+          activity: event.title,
+          awarenessByActorId: Object.fromEntries(
+            event.participantIds.filter(otherId => otherId !== participantId).map(otherId => [otherId, "aware" as const]),
+          ),
+        };
+      });
       if (matchingScene) {
-        // Reuse an already-recorded shared scene at the agreed location rather
-        // than losing the event merely because the scene was opened manually.
-        const attachedScene: LifeSceneState = {
+        const updatedScene: LifeSceneState = {
           ...matchingScene,
-          eventId: event.id,
-          status: ended ? "completed" : "active",
+          locationId,
+          locationName,
+          // eventId is legacy metadata only; clear it when folding an old event room
+          // back into the single canonical room for this location.
+          eventId: undefined,
+          status: matchingScene.status === "completed" ? "paused" : matchingScene.status,
+          participants: mergeLifeSceneParticipants(matchingScene.participants, eventParticipants),
           updatedAt: nowIso,
         };
-        if (matchingScene.eventId !== event.id || matchingScene.status !== attachedScene.status) {
-          matchingScene = attachedScene;
-          scenes = scenes.map(scene => scene.id === attachedScene.id ? attachedScene : scene);
+        if (updatedScene !== matchingScene) {
+          scenes = scenes.map(scene => scene.id === matchingScene.id ? updatedScene : scene);
         }
       } else {
-        const playerPresence = findActorState(state, "player", "player");
-        const characterPresence = event.participantIds
-          .filter(participantId => participantId !== "player")
-          .map(participantId => findActorState(state, "character", participantId))
-          .find(Boolean);
-        const locationId = event.locationId ?? playerPresence?.actualLocationId ?? characterPresence?.actualLocationId ?? "home";
-        const locationName = event.locationName
-          ?? state.locations.find(location => location.id === locationId)?.name
-          ?? playerPresence?.actualLocationName
-          ?? characterPresence?.actualLocationName
-          ?? "家";
-        const participants = event.participantIds.map(participantId => {
-          const participantType: LifeOwnerType = participantId === "player" ? "player" : "character";
-          return {
-            ownerType: participantType,
-            ownerId: participantId,
-            activity: event.title,
-            awarenessByActorId: Object.fromEntries(
-              event.participantIds.filter(otherId => otherId !== participantId).map(otherId => [otherId, "aware" as const]),
-            ),
-          };
-        });
-        matchingScene = {
+        const locationScene: LifeSceneState = {
           id: makeId("scene"),
           locationId,
           locationName,
           startedAt: event.startsAt,
           updatedAt: nowIso,
-          status: ended ? "completed" : "active",
-          eventId: event.id,
-          participants,
+          // A scheduled activity must not become the user's foreground room.
+          status: "paused",
+          participants: eventParticipants,
           lastSettledEventIds: [],
         };
-        scenes = [...scenes, matchingScene];
-      }
-      // If an already-active appointment is being recovered while it is still
-      // underway, its scene takes precedence over any stale active scene. For
-      // historical appointments (ended=true), do not disturb today's scene.
-      if (!ended && event.status === "active" && matchingScene) {
-        scenes = scenes.map(scene => scene.id !== matchingScene!.id && scene.status === "active"
-          ? { ...scene, status: "paused" as const, updatedAt: nowIso }
-          : scene);
+        scenes = [...scenes, locationScene];
       }
     }
 
     if (ended) {
       const actuallyOccurred = event.details === "follow-player"
         ? event.status === "active" && !!findActorState(state, "player", "player")?.actualLocationId
-        : scenes.some(scene => scene.eventId === event.id);
+        : event.status === "active" || !!matchingScene || started;
       const nextStatus = actuallyOccurred ? "completed" as const : "cancelled" as const;
       const updated = { ...event, status: nextStatus, updatedAt: nowIso, ...(actuallyOccurred ? { completedAt: nowIso } : { cancelledAt: nowIso }), settlementKey: "invitation:" + event.id, details: actuallyOccurred ? event.details : "missed:no-shared-scene-before-end" };
       events = events.map(item => item.id === event.id ? updated : item);
@@ -732,59 +722,8 @@ export function settleActorTimelineToNow(
         }, ...memories].slice(0, 500);
       }
     } else if (started && event.status === "confirmed") {
-      if (event.details === "follow-player") {
-        events = events.map(item => item.id === event.id ? { ...item, status: "active" as const, updatedAt: nowIso } : item);
-      } else if (matchingScene) {
-        scenes = scenes.map(scene => scene.id === matchingScene.id
-          ? { ...scene, eventId: event.id, status: "active" as const, updatedAt: nowIso }
-          : scene.status === "active" ? { ...scene, status: "paused" as const, updatedAt: nowIso } : scene);
-        events = events.map(item => item.id === event.id ? { ...item, status: "active" as const, updatedAt: nowIso } : item);
-      } else {
-        // A confirmed appointment is a real transition, not just a label in the
-        // calendar. If the actors have both reached its start time, create the
-        // shared scene automatically rather than cancelling it later because
-        // the user had not manually opened the destination.
-        const playerPresence = findActorState(state, "player", "player");
-        const characterPresence = event.participantIds
-          .filter(participantId => participantId !== "player")
-          .map(participantId => findActorState(state, "character", participantId))
-          .find(Boolean);
-        const locationId = event.locationId ?? playerPresence?.actualLocationId ?? characterPresence?.actualLocationId ?? "home";
-        const locationName = event.locationName
-          ?? state.locations.find(location => location.id === locationId)?.name
-          ?? playerPresence?.actualLocationName
-          ?? characterPresence?.actualLocationName
-          ?? "家";
-        const participants = event.participantIds.map(participantId => {
-          const participantType: LifeOwnerType = participantId === "player" ? "player" : "character";
-          return {
-            ownerType: participantType,
-            ownerId: participantId,
-            activity: event.title,
-            awarenessByActorId: Object.fromEntries(
-              event.participantIds.filter(otherId => otherId !== participantId).map(otherId => [otherId, "aware" as const]),
-            ),
-          };
-        });
-        const newScene: LifeSceneState = {
-          id: makeId("scene"),
-          locationId,
-          locationName,
-          startedAt: event.startsAt,
-          updatedAt: nowIso,
-          status: "active",
-          eventId: event.id,
-          participants,
-          lastSettledEventIds: [],
-        };
-        scenes = [
-          ...scenes.map(scene => scene.status === "active" ? { ...scene, status: "paused" as const, updatedAt: nowIso } : scene),
-          newScene,
-        ];
-        events = events.map(item => item.id === event.id ? { ...item, status: "active" as const, updatedAt: nowIso } : item);
-      }
+      events = events.map(item => item.id === event.id ? { ...item, status: "active" as const, updatedAt: nowIso } : item);
     }
-    void characterId;
   }
   const current = getCurrentActorSchedule(state, ownerType, ownerId, realNow);
   const previous = findActorState(state, ownerType, ownerId);
@@ -836,12 +775,8 @@ export function settleActorTimelineToNow(
     : state.actorStates;
   let timeline = state.timeline;
   if (stayExpired && ownerType === "player" && nextLocationId && nextLocationName && previous?.actualLocationId !== nextLocationId) {
-    const activeScene = scenes.find(scene => scene.status === "active");
-    if (activeScene) {
-      scenes = scenes.map(scene => scene.id === activeScene.id
-        ? { ...scene, locationId: nextLocationId, locationName: nextLocationName, updatedAt: nowIso }
-        : scene);
-    }
+    // Timeline/presence follows the schedule, but the location room is a separate
+    // durable history and must never be renamed or moved by schedule settlement.
     timeline = [...timeline, {
       id: makeId("timeline"),
       category: "location",
@@ -852,7 +787,6 @@ export function settleActorTimelineToNow(
       actorId: ownerId,
       actorName: state.settings.playerDisplayName || "我",
       locationName: nextLocationName,
-      sceneId: activeScene?.id,
     }];
   }
   let finalActorStates = actorStates;
