@@ -45,6 +45,7 @@ import type { BindingConfig, WorldBookConfig } from "@/lib/settings-types";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import "./life-rose-garden.css";
 import { loadMediaObjectUrl, deleteMediaRef } from "@/lib/media-cache-storage";
+import { downloadFile } from "@/lib/download-utils";
 import { LifeObservation } from "@/components/life/life-observation";
 import { LifeDiagnosticsPanel } from "@/components/life/life-diagnostics-panel";
 import { createLifeTraceId, recordLifeDiagnostic } from "@/lib/life/life-diagnostics";
@@ -1711,14 +1712,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       if (!response.ok) throw new Error("读取原图失败。");
       const blob = await response.blob();
       const mimeExtension = blob.type.split("/")[1]?.toLowerCase().replace("jpeg", "jpg").replace(/[^a-z0-9]/g, "") || "jpg";
-      const downloadUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = downloadUrl;
-      anchor.download = "life-scene-" + image.id + "." + mimeExtension;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 30_000);
+      await downloadFile(blob, "life-scene-" + image.id + "." + mimeExtension);
     } catch (error) {
       setNotice("下载场景原图失败：" + (error instanceof Error ? error.message : "未知错误"));
     }
