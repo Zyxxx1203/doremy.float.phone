@@ -133,6 +133,8 @@ export async function runCheckIn(
   const name = character?.name?.trim() || "TA";
   const avatar = character?.avatar || "";
 
+  // 清掉原生到期提醒；实际截图仍由现有确认浮层负责。
+  cancelNativeCheckIn(characterId);
   // 先记一次触发：无论用户最终给不给看，这次查岗都已经发生过，
   // 都该计入当日上限——否则用户一直点「不给」就等于没有上限。
   const appState = readCheckInAppState();
@@ -360,6 +362,8 @@ export async function requestCheckInForTool(characterId: string): Promise<CheckI
   const name = character?.name?.trim() || "TA";
   const avatar = character?.avatar || "";
 
+  // 手动工具请求也清掉同一角色的到期提醒，避免重复通知。
+  cancelNativeCheckIn(characterId);
   // 先记一次：请求已经发出去了，无论用户最终给不给看。
   const appState = readCheckInAppState();
   markCheckInFired(characterId, cfg, appState.backgroundElapsedMs);
