@@ -1883,6 +1883,16 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       setNotice("找不到这条回复对应的玩家输入，无法重新生成。");
       return;
     }
+    if (busyRef.current) {
+      setNotice("当前有其他回合正在处理，请稍后再试。");
+      return;
+    }
+    const lifeTurn = beginTurn({ kind: "life_scene", characterId: character.id, sessionId: session.id });
+    if (!lifeTurn) {
+      setNotice("角色当前正在处理其他回合，请稍后再试。");
+      return;
+    }
+    busyRef.current = true;
     setBusy(true);
     setMessageActionTarget(null);
     try {
@@ -1902,6 +1912,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const { parsed, issues } = await generateValidatedLifeTurn({
         session,
         promptMessage: prompt,
+        signal: lifeTurn.signal,
         previousActionOnly: false,
         allowEmpty: false,
         appTags: lifeAppTags("scene"),
@@ -1951,6 +1962,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     } catch (error) {
       setNotice(error instanceof Error ? "重新生成失败：" + error.message : "重新生成失败，请检查模型配置。");
     } finally {
+      lifeTurn.end();
+      busyRef.current = false;
       setBusy(false);
     }
   };
