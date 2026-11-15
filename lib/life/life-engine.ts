@@ -67,7 +67,7 @@ export function evaluateEncounterAwareness(input: EncounterPerception, seed = 0)
 export function findCurrentLifeScene(scenes: LifeSceneState[]): LifeSceneState | undefined {
   return scenes.filter(scene => scene.status === "active" || scene.status === "paused").slice().sort((left, right) =>
     Number(Boolean(left.eventId)) - Number(Boolean(right.eventId))
-    || ({ active: 0, paused: 1 }[left.status] - { active: 0, paused: 1 }[right.status])
+    || Number(left.status === "paused") - Number(right.status === "paused")
     || right.updatedAt.localeCompare(left.updatedAt)
   )[0];
 }
