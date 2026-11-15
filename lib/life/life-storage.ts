@@ -41,6 +41,7 @@ function normalizeState(value: unknown): VirtualLifeState {
   return {
     schemaVersion: 1,
     scheduleProfileVersion: typeof raw.scheduleProfileVersion === "number" ? raw.scheduleProfileVersion : 0,
+    sceneMessageFormatVersion: typeof raw.sceneMessageFormatVersion === "number" ? raw.sceneMessageFormatVersion : 0,
     settings: normalizeSettings(raw.settings),
     locations: Array.isArray(raw.locations) ? raw.locations : [],
     locationFolders: Array.isArray(raw.locationFolders) ? raw.locationFolders.filter(folder => folder && typeof folder.id === "string" && typeof folder.name === "string") : [],
