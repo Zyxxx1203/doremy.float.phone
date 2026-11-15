@@ -391,7 +391,7 @@ assert.match(app, /pendingSceneTurnsRef\.current\.shift\(\)/,
   "queued player turns must be drained after the current root response");
 assert.match(app, /已保存，暂无可回应角色/,
   "player input must remain persisted even when no responder exists");
-assert.match(app, /const sceneContext = buildLifeScenePromptContext\(stateRef\.current, turnScene, target\.id\)/,
+assert.match(app, /const sceneContext = buildLifeScenePromptContext\(stateRef\.current, turnScene, target\.id, pendingTurn\?\.messageId\)/,
   "queued replies must use their original scene context");
 const composerSource = app.slice(app.indexOf('<form onSubmit={sendSceneTurn}'), app.indexOf('</form>', app.indexOf('<form onSubmit={sendSceneTurn}')));
 assert.doesNotMatch(composerSource, /<textarea[^>]*disabled=\{busy\}/,
