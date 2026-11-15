@@ -62,22 +62,19 @@ export function synchronizeCharacterHomeSchedule(
   if (!characterId || !destinationHomeId || !destinationHomeName || !Number.isFinite(nowMs)) {
     return { state, synchronizedScheduleCount: 0 };
   }
-  const knownHomeNames = state.locations
-    .filter(location => location.id === "home" || location.id.startsWith("home-"))
-    .map(location => location.name.trim())
-    .filter(Boolean);
   const isHomeSlot = (slot: LifeScheduleSlot): boolean => {
     if (slot.source === "manual") return false;
     const plannedId = slot.plannedLocationId ?? "";
     const plannedName = (slot.plannedLocationName ?? "").trim();
-    const explicitHomeActivity = slot.source === "weekly-generation"
+    const legacyUnresolvedHome = !plannedId
+      && ["家", "家里", "家中", "自己的家"].includes(plannedName);
+    const legacyHomeActivity = !plannedId
+      && slot.source === "weekly-generation"
       && ["habit", "meal", "free-time"].includes(slot.kind)
       && /回家|在家|居家|家中|家里|家庭|家务|整理房间|打扫房间|睡前/.test(slot.title);
-    return plannedId === "home" || plannedId.startsWith("home-")
-      || knownHomeNames.includes(plannedName)
-      || plannedName === "家" || plannedName === "家里" || plannedName === "家中"
-      || plannedName === "自己的家"
-      || explicitHomeActivity;
+    // A concrete home-* ID is a destination, not a synonym for the actor's
+    // residence. Preserve visits to every other household.
+    return plannedId === destinationHomeId || legacyUnresolvedHome || legacyHomeActivity;
   };
   let synchronizedScheduleCount = 0;
   let schedulesChanged = false;
@@ -94,9 +91,8 @@ export function synchronizeCharacterHomeSchedule(
   const currentActor = state.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === characterId);
   const currentActualId = currentActor?.actualLocationId ?? "";
   const currentActualName = (currentActor?.actualLocationName ?? "").trim();
-  const actualIsHome = currentActualId === "home" || currentActualId.startsWith("home-")
-    || knownHomeNames.includes(currentActualName)
-    || currentActualName === "家" || currentActualName === "家里" || currentActualName === "家中";
+  const actualIsHome = currentActualId === destinationHomeId
+    || (!currentActualId && ["家", "家里", "家中", "自己的家"].includes(currentActualName));
   let actorStates = state.actorStates;
   if (activeSlot && isHomeSlot(activeSlot) && actualIsHome && currentActor
     && (currentActor.actualLocationId !== destinationHomeId || currentActor.actualLocationName !== destinationHomeName)) {
@@ -219,13 +215,17 @@ export function generateWeeklyLifePlan(
   };
   if (ownerType === "character") {
     const now = Date.now();
-    const migratedSchedules = state.schedules.map(slot =>
-      slot.ownerType === "character" && slot.ownerId === ownerId &&
-      new Date(slot.endAt).getTime() > now &&
-      ((slot.plannedLocationId && slot.plannedLocationId !== personalHomeId && (slot.plannedLocationId === "home" || slot.plannedLocationId.startsWith("home-"))) || (!slot.plannedLocationId && slot.plannedLocationName === "家"))
+    const migratedSchedules = state.schedules.map(slot => {
+      const unresolvedLegacyHome = !slot.plannedLocationId
+        && ["家", "家里", "家中", "自己的家"].includes((slot.plannedLocationName ?? "").trim());
+      // Only repair ambiguous legacy records that have no canonical location ID.
+      // Explicit home/home-* IDs may intentionally represent another household.
+      return slot.ownerType === "character" && slot.ownerId === ownerId
+        && new Date(slot.endAt).getTime() > now
+        && unresolvedLegacyHome
         ? { ...slot, plannedLocationId: personalHomeId, plannedLocationName: personalHome.name }
-        : slot
-    );
+        : slot;
+    });
     const migratedLocations = currentLocations.some(location => location.id === personalHomeId) ? currentLocations : [...currentLocations, personalHome];
     if (migratedSchedules.some((slot,index) => slot !== state.schedules[index]) || migratedLocations !== currentLocations) {
       state = { ...state, schedules: migratedSchedules, locations: migratedLocations };
@@ -1015,7 +1015,24 @@ export function applyCharacterLifeScheduleChange(
   if (conflict) return { state, error: "该时段与「" + conflict.title + "」冲突；没有覆盖用户安排或已确认约会。" };
 
   const locationId = input.locationId?.trim();
-  const location = state.locations.find(item => item.id === locationId) ?? state.locations.find(item => item.id === "home");
+  const characterHome = state.locations.find(item =>
+    (item.id === "home" || item.id.startsWith("home-")) && (item.residents ?? []).includes(characterId)
+  ) ?? state.locations.find(item => item.id === "home-" + characterId) ?? {
+    id: "home-" + characterId,
+    name: "角色的家",
+    description: "角色自己的住处；可通过地点库的 residents 设置同居关系。",
+    atmosphere: "熟悉、私密、可以放松的空间。",
+    layout: "有自己的起居区域与休息空间。",
+    props: ["沙发", "茶几", "水杯", "床头灯"],
+    visibility: "private" as const,
+  };
+  const location = locationId ? state.locations.find(item => item.id === locationId) : characterHome;
+  if (locationId && !location) {
+    return { state, error: "指定地点 ID「" + locationId + "」不存在。请使用地点库中的规范地点 ID；不会自动改去玩家家。" };
+  }
+  const locations = state.locations.some(item => item.id === location.id)
+    ? state.locations
+    : [...state.locations, location];
   const schedules: LifeScheduleSlot[] = [];
   const updatedAt = realNow.toISOString();
   for (const slot of state.schedules) {
@@ -1055,7 +1072,7 @@ export function applyCharacterLifeScheduleChange(
     source: "character-tool",
     updatedAt,
   });
-  return { state: { ...state, schedules: schedules.sort((a, b) => a.startAt.localeCompare(b.startAt)) } };
+  return { state: { ...state, locations, schedules: schedules.sort((a, b) => a.startAt.localeCompare(b.startAt)) } };
 }
 
 export function confirmLifeInvitation(state: VirtualLifeState, invitationId: string): VirtualLifeState {
