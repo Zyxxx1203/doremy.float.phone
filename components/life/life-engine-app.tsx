@@ -37,6 +37,7 @@ import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeScen
 import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts, reconcileIdleReconnectWithLifeScenes, suspendIdleReconnectForLifeScene } from "@/lib/push-bailout-client";
 import { readLifeProactiveStatus } from "@/lib/life/life-proactive-scheduler";
 import { setLifeSceneForegroundLease } from "@/lib/life/life-scheduler-coordinator";
+import { clearActiveLifeSceneTurn, recoverPendingLifeSceneTurns, savePendingLifeSceneTurns, setActiveLifeSceneTurn, type PendingLifeSceneTurn } from "@/lib/life/life-scene-turn-queue";
 
 import { cancelFollowUp } from "@/lib/follow-up-service";
 import { beginTurn } from "@/lib/turn-coordinator";
@@ -234,7 +235,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const [editingRoleScheduleId, setEditingRoleScheduleId] = useState<string | null>(null);
   const [saveCustomScheduleLocations, setSaveCustomScheduleLocations] = useState<Record<string, boolean>>({});
   const busyRef = useRef(false);
-  const pendingSceneTurnsRef = useRef<Array<{ sceneId: string; userText: string; userAction: string; createdAt: string }>>([]);
+  const pendingSceneTurnsRef = useRef<PendingLifeSceneTurn[]>([]);
+  const sceneTurnQueueRestoredRef = useRef(false);
+  const sceneTurnDrainScheduledRef = useRef(false);
+  const [pendingSceneQueueVersion, setPendingSceneQueueVersion] = useState(0);
   busyRef.current = busy;
   const [notice, setNotice] = useState("");
   const [, refreshNotificationReplyQueue] = useState(0);
@@ -2206,7 +2210,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       void reconcileIdleReconnectWithLifeScenes(candidateIds);
     };
   }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.keepDialogueConcise, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, lifeAppTags, activeMaxConsecutiveActionOnly, settings.enableLifeFormatRepair, playerName]);
-  const sendSceneTurn = async (event?: FormEvent, forceReaction = false, notificationReplyId?: string, responseQueue?: string[], queuedTurn?: { sceneId: string; userText: string; userAction: string; createdAt: string }): Promise<"completed" | "deferred" | "failed"> => {
+  const sendSceneTurn = async (event?: FormEvent, forceReaction = false, notificationReplyId?: string, responseQueue?: string[], queuedTurn?: PendingLifeSceneTurn): Promise<"completed" | "deferred" | "failed"> => {
     event?.preventDefault();
     // Notification / forced reactions must use the already-persisted scene history, never an unsent composer draft.
     const userText = forceReaction ? "" : queuedTurn?.userText ?? sceneInput.trim();
@@ -2214,7 +2218,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const turnScene = queuedTurn
       ? stateRef.current.scenes.find(scene => scene.id === queuedTurn.sceneId)
       : activeScene;
-    if (!turnScene || (!userText && !userAction && !forceReaction)) return "failed";
+    if (!turnScene || (!userText && !userAction && !forceReaction)) {
+      discardQueuedTurn();
+      return "failed";
+    }
     const notificationResponsePrefix = notificationReplyId ? "notification-reply-response-" + notificationReplyId : "";
     if (notificationResponsePrefix && stateRef.current.sceneMessages.some(message =>
       message.id === notificationResponsePrefix + "-action" || message.id.startsWith(notificationResponsePrefix + "-dialogue-")
@@ -2222,19 +2229,34 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const userTurn = [userAction ? `行动：${userAction}` : "", userText ? `说话：${userText}` : ""].filter(Boolean).join("\n") || "玩家手动请求角色对最近行为作出反馈";
     const selectedSpeakerIsPresent = Boolean(selectedSpeakerId) && turnScene.participants.some(participant => participant.ownerType === "character" && resolveLifeCharacterId(participant.ownerId) === resolveLifeCharacterId(selectedSpeakerId));
     const now = queuedTurn?.createdAt ?? new Date().toISOString();
+    const turnMessageId = queuedTurn?.messageId ?? id("turn");
+    const pendingTurn: PendingLifeSceneTurn | null = queuedTurn ?? ((userText || userAction) ? {
+      sceneId: turnScene.id, userText, userAction, createdAt: now, messageId: turnMessageId,
+    } : null);
+    const discardQueuedTurn = () => {
+      if (!queuedTurn) return;
+      pendingSceneTurnsRef.current = pendingSceneTurnsRef.current.filter(turn => turn.messageId !== queuedTurn.messageId);
+      savePendingLifeSceneTurns(pendingSceneTurnsRef.current);
+      clearActiveLifeSceneTurn(queuedTurn.messageId);
+      setPendingSceneQueueVersion(value => value + 1);
+    };
     const turnMessageStartIndex = stateRef.current.sceneMessages.length;
     // Persist player input before attempting to resolve a responder. A missing role,
     // disabled random response, or occupied generation slot must never eat the user's turn.
     if ((userText || userAction) && !queuedTurn) {
       setSceneInput("");
       setSceneActionInput("");
-      pushSceneMessage({ id: id("turn"), sceneId: turnScene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: playerName, role: "player", action: userAction || undefined, dialogue: userText, createdAt: now });
+      pushSceneMessage({ id: turnMessageId, sceneId: turnScene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: playerName, role: "player", action: userAction || undefined, dialogue: userText, createdAt: now });
     }
     // While a reply is being generated, accept and durably append further player turns.
     // They are answered sequentially after the current root turn completes.
     if (busyRef.current && !responseQueue?.length) {
       if (userText || userAction) {
-        pendingSceneTurnsRef.current.push({ sceneId: turnScene.id, userText, userAction, createdAt: now });
+        if (pendingTurn && !pendingSceneTurnsRef.current.some(turn => turn.messageId === pendingTurn.messageId)) {
+          pendingSceneTurnsRef.current.push(pendingTurn);
+        }
+        savePendingLifeSceneTurns(pendingSceneTurnsRef.current);
+        setPendingSceneQueueVersion(value => value + 1);
         setNotice("已发送，等待回复。");
         return "deferred";
       }
@@ -2325,8 +2347,11 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         return "deferred";
       }
       if (userText || userAction) {
-        const retry = queuedTurn ?? { sceneId: turnScene.id, userText, userAction, createdAt: now };
-        pendingSceneTurnsRef.current.unshift(retry);
+        const retry = pendingTurn;
+        if (retry && !pendingSceneTurnsRef.current.some(turn => turn.messageId === retry.messageId)) {
+          pendingSceneTurnsRef.current.unshift(retry);
+        }
+        savePendingLifeSceneTurns(pendingSceneTurnsRef.current);
         setNotice("已保存，稍后回应。");
         window.setTimeout(() => {
           if (!busyRef.current) {
