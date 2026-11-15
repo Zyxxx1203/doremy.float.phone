@@ -257,6 +257,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const [sceneImageBusy, setSceneImageBusy] = useState(false);
   const [imageObjectUrls, setImageObjectUrls] = useState<Record<string,string>>({});
   const [imageViewerIndex, setImageViewerIndex] = useState(0);
+  const [imageViewerOpen, setImageViewerOpen] = useState(false);
   const [imageParticipantIds, setImageParticipantIds] = useState<string[]>([]);
   const autoImageSceneRef = useRef<string | null>(null);
   const resolveLifeCharacterId = (rawId: string) => {
@@ -302,6 +303,31 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           return { ...message, action: separated.action, dialogue: separated.dialogue };
         });
         normalized = { ...normalized, sceneMessages: migratedMessages, sceneMessageFormatVersion: 1 };
+        saveVirtualLifeState(normalized);
+      }
+      // Backfill chat timeline cards for images already stored in the scene gallery.
+      // Image bytes remain in the media store; the chat only keeps a stable image ID.
+      const knownSceneImageIds = new Set(normalized.sceneMessages.map(message => message.imageId).filter((value): value is string => Boolean(value)));
+      const legacySceneImageMessages = normalized.scenes.flatMap(scene => (scene.images ?? [])
+        .filter(image => !knownSceneImageIds.has(image.id))
+        .map(image => ({
+          id: "scene-image-message-" + image.id,
+          sceneId: scene.id,
+          speakerType: "player" as const,
+          speakerId: PLAYER_ID,
+          speakerName: playerName,
+          role: "system" as const,
+          action: "场景图片",
+          dialogue: "",
+          imageId: image.id,
+          createdAt: image.createdAt,
+        })));
+      if (legacySceneImageMessages.length) {
+        normalized = {
+          ...normalized,
+          sceneMessages: [...normalized.sceneMessages, ...legacySceneImageMessages]
+            .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+        };
         saveVirtualLifeState(normalized);
       }
       // One-time migration: rebuild only auto-generated character schedule slots in the current/next two weeks.
@@ -1532,6 +1558,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   };
 
   const sceneImageRecords = activeScene?.images ?? [];
+  const sceneViewerImages = [...sceneImageRecords].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   useEffect(() => {
     let alive = true;
     const urls: Record<string,string> = {};
@@ -1547,6 +1574,22 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     });
     return () => { alive = false; };
   }, [activeScene?.id, sceneImageRecords.map(image=>image.id+":"+image.status).join("|")]);
+
+  useEffect(() => {
+    if (!imageViewerOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setImageViewerOpen(false);
+      else if (event.key === "ArrowLeft") setImageViewerIndex(index => Math.max(0, index - 1));
+      else if (event.key === "ArrowRight") setImageViewerIndex(index => Math.min(sceneViewerImages.length - 1, index + 1));
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [imageViewerOpen, sceneViewerImages.length]);
+
+  useEffect(() => {
+    setImageViewerOpen(false);
+    setImageViewerIndex(0);
+  }, [activeScene?.id]);
 
   const buildSceneImagePrompt = (participantIds: string[], customPrompt: string) => {
     const imageSettings = loadImageGenerationSettings();
@@ -1604,8 +1647,24 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const scene=latest.scenes.find(item=>item.id===activeScene.id);
       if(scene){
         const updated={...scene,images:[...(scene.images??[]).map(image=>({...image,status:"archived" as const})),...generated],lastAutoImageFingerprint:options?.autoFingerprint ?? scene.lastAutoImageFingerprint,updatedAt:new Date().toISOString()};
-        commit({...latest,scenes:latest.scenes.map(item=>item.id===scene.id?updated:item)});
-        setImageViewerIndex(0);
+        const imageMessages: LifeSceneMessage[] = generated.map(image => ({
+          id: "scene-image-message-" + image.id,
+          sceneId: image.sceneId,
+          speakerType: "player",
+          speakerId: PLAYER_ID,
+          speakerName: playerName,
+          role: "system",
+          action: "场景图片",
+          dialogue: "",
+          imageId: image.id,
+          createdAt: image.createdAt,
+        }));
+        commit({
+          ...latest,
+          scenes: latest.scenes.map(item=>item.id===scene.id?updated:item),
+          sceneMessages: [...latest.sceneMessages, ...imageMessages],
+        });
+        setImageViewerIndex(Math.max(0, [...(scene.images ?? []), ...generated].filter(image => image.status === "active").length - generated.length));
         setNotice("生成完成。旧图已归档，可在图库中恢复或删除以释放缓存空间。");
       }
     } catch(error) {
@@ -1649,8 +1708,13 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     if(!activeScene)return;
     const image=(activeScene.images??[]).find(item=>item.id===imageId);
     if(!image)return;
-    const latest={...stateRef.current,scenes:stateRef.current.scenes.map(scene=>scene.id!==activeScene.id?scene:{...scene,images:(scene.images??[]).filter(item=>item.id!==imageId),updatedAt:new Date().toISOString()})};
+    const latest={
+      ...stateRef.current,
+      scenes:stateRef.current.scenes.map(scene=>scene.id!==activeScene.id?scene:{...scene,images:(scene.images??[]).filter(item=>item.id!==imageId),updatedAt:new Date().toISOString()}),
+      sceneMessages: stateRef.current.sceneMessages.filter(message => message.imageId !== imageId),
+    };
     commit(latest);
+    setImageViewerOpen(false);
     const url=imageObjectUrls[imageId]; if(url) URL.revokeObjectURL(url);
     setImageObjectUrls(previous=>{const copy={...previous};delete copy[imageId];return copy;});
     await deleteMediaRef(image.mediaRef);
@@ -1658,6 +1722,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   };
 
   const openMessageActions = (message: LifeSceneMessage) => {
+    if (message.imageId) return;
     setMessageActionTarget(message);
     setMessageEditDraft(message.dialogue);
     setMessageEditActionDraft(message.action || "");
@@ -3763,7 +3828,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           <div ref={sceneChatScrollRef} onScroll={event => { const el = event.currentTarget; sceneChatAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 56; }} className={`life-scene-chat mb-1 min-h-0 min-w-0 flex-1 flex flex-col overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y rounded-xl bg-white/80 ${settings.compactLayout ? "p-1 sm:p-1.5" : "p-1.5 sm:p-2"} ${immersiveScene ? "" : "h-[58dvh] min-h-[280px] max-h-[760px]"}`} style={{fontSize:"var(--life-font)", rowGap: `${settings.messageGapPx ?? 4}px`, WebkitOverflowScrolling:"touch"}}>
             {sceneMessages.length===0 && <div className="grid min-h-36 place-items-center text-center text-sm text-stone-400"><div><Sparkles className="mx-auto mb-2" size={22}/><p>场景已经准备好了。</p><p className="mt-1 text-xs">角色可以忙自己的事，也可以回应你；不会自动写成长篇剧情。</p></div></div>}
             {displaySceneMessages.map(message=><div key={message.id} className="group flex min-w-0 max-w-full flex-col rounded-xl transition-colors" onTouchStart={() => { longPressTriggeredRef.current = false; clearMessageLongPress(); longPressTimerRef.current = window.setTimeout(() => { longPressTriggeredRef.current = true; openMessageActions(message); }, 550); }} onTouchEnd={clearMessageLongPress} onTouchMove={clearMessageLongPress} onTouchCancel={clearMessageLongPress} onContextMenu={event => { event.preventDefault(); clearMessageLongPress(); openMessageActions(message); }}>
-              {message.role==="system" ? <div className="mx-auto max-w-[92%] px-2 py-1 text-center italic leading-relaxed text-stone-500"><p className="whitespace-pre-wrap text-center leading-snug" style={{fontSize:"var(--life-narration-font)",fontFamily:settings.narrationFontFamily || undefined}}>{message.action || message.dialogue}</p></div> : <>
+              {message.role==="system" ? (message.imageId ? <div className="mx-auto flex w-full max-w-[92%] flex-col items-center gap-1.5 rounded-xl px-2 py-2"><button type="button" onClick={() => { const index = sceneViewerImages.findIndex(image => image.id === message.imageId); if (index >= 0) { setImageViewerIndex(index); setImageViewerOpen(true); } }} className="block max-w-full overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">{imageObjectUrls[message.imageId] ? <img src={imageObjectUrls[message.imageId]} alt={sceneViewerImages.find(image => image.id === message.imageId)?.alt || "生活现场图片"} className="max-h-72 max-w-full object-contain" /> : <span className="grid h-36 w-56 place-items-center text-xs text-stone-400">场景图片加载中…</span>}</button><p className="text-[10px] text-stone-400">{message.action || "场景图片"} · {new Date(message.createdAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</p></div> : <div className="mx-auto max-w-[92%] px-2 py-1 text-center italic leading-relaxed text-stone-500"><p className="whitespace-pre-wrap text-center leading-snug" style={{fontSize:"var(--life-narration-font)",fontFamily:settings.narrationFontFamily || undefined}}>{message.action || message.dialogue}</p></div>) : <>
                 {message.action&&(message.role==="player"?<div className="flex items-center gap-2 px-1" style={{marginBlock: `${settings.narrationGapPx ?? 4}px`}} aria-label="我的行动"><span className="h-px flex-1 bg-stone-300/80"/><p className="min-w-0 max-w-[82%] break-words text-center italic leading-relaxed text-stone-500 [overflow-wrap:anywhere]" style={{fontSize:"var(--life-narration-font)",fontFamily:settings.narrationFontFamily || undefined}}>{message.action}</p><span className="h-px flex-1 bg-stone-300/80"/></div>:<div className="relative mx-auto w-full max-w-[94%] py-1" style={{marginBlock: `${settings.narrationGapPx ?? 4}px`}} aria-label="角色行动卡片"><svg viewBox="0 0 320 96" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true"><rect x="1" y="1" width="318" height="94" rx="3" fill="#fffaf4" fillOpacity=".92" stroke="#d8b89c" strokeWidth="1.2"/><rect x="5" y="5" width="310" height="86" rx="2" fill="none" stroke="#ead8c4" strokeWidth=".7"/></svg><div className="relative px-4 py-2.5 text-center"><div className="mb-1 text-[9px] tracking-[.22em] text-[#b08b6c]">✦  MOMENT  ✦</div><p className="whitespace-pre-wrap break-words text-center italic leading-relaxed text-[#806957] [overflow-wrap:anywhere]" style={{fontSize:"var(--life-narration-font)",fontFamily:settings.narrationFontFamily || undefined}}>{message.action}</p></div></div>)}
                 {message.dialogue&&<div className={`flex min-w-0 max-w-full items-end gap-1.5 ${message.role==="player"?"justify-end":"justify-start"}`}>{message.role!=="player"&&<span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full bg-[#efe1d2] text-[11px] text-stone-700">{actors.find(actor=>actor.ownerType==="character"&&actor.ownerId===message.speakerId)?.avatar?<img src={actors.find(actor=>actor.ownerType==="character"&&actor.ownerId===message.speakerId)?.avatar??undefined} alt="" className="h-full w-full object-cover"/>:(message.speakerName||"角").slice(0,1)}</span>}<div style={{fontSize:"var(--life-font)", fontFamily:settings.dialogueFontFamily || undefined, padding: `${settings.bubblePadding}px ${settings.bubblePadding}px`}} className={`life-scene-bubble min-w-0 max-w-[88%] border border-stone-200/70 break-words [overflow-wrap:anywhere] ${settings.dialogueBubbleStyle==="square"?"rounded-md":settings.dialogueBubbleStyle==="soft"?"rounded-xl":"rounded-lg"} ${message.role==="player"?"bg-[#f0dfcf] text-stone-800":"bg-white/95 text-stone-800"}`}><p className="min-w-0 whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">{message.dialogue}</p></div>{message.role==="player"&&<span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full bg-[#e9d4c0] text-[11px] text-stone-700">{playerIdentity?.avatarUrl?<img src={playerIdentity.avatarUrl} alt="" className="h-full w-full object-cover"/>:playerName.slice(0,1)}</span>}</div>}
               </>}
@@ -3775,7 +3840,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
              <div className="mt-2 flex items-center justify-end gap-3">
                <button type="button" disabled={sceneImageBusy} onClick={()=>void generateSceneImages({count:1,participantIds:imageParticipantIds.length?imageParticipantIds:activeScene.participants.filter(p=>p.ownerType==="character").map(p=>p.ownerId),prompt:sceneImagePrompt})} className="inline-flex items-center gap-2 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs font-medium text-white disabled:opacity-50"><Sparkles size={14}/>{sceneImageBusy?"正在生成…":"生成场景"}</button>
              </div>
-             {sceneImageRecords.filter(image=>image.status==="active").length>0&&<div className="mt-2 flex gap-2 overflow-x-auto pb-1">{sceneImageRecords.filter(image=>image.status==="active").map((image,index)=><button type="button" key={image.id} onClick={()=>setImageViewerIndex(index)} aria-label={`查看第 ${index+1} 张场景图`} className={`shrink-0 overflow-hidden rounded-xl border ${index===imageViewerIndex?"border-[var(--life-accent)]":"border-stone-200"}`}>{imageObjectUrls[image.id]?<img src={imageObjectUrls[image.id]} alt={image.alt||"场景图"} className="h-16 w-16 object-cover"/>:<span className="grid h-16 w-16 place-items-center text-[10px] text-stone-400">加载中</span>}</button>)}</div>}{sceneImageRecords.filter(image=>image.status==="active").length>0&&<div className="mt-2 flex gap-2 overflow-x-auto pb-1">{sceneImageRecords.filter(image=>image.status==="active").map((image,index)=><button key={"bg-"+image.id} type="button" disabled={backgroundUploadBusy!==null} onClick={()=>void setSceneImageAsBackground(image.id)} className="shrink-0 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[10px] text-stone-600 disabled:opacity-50">{backgroundUploadBusy==="location"?"处理中…":`第 ${index+1} 张设为地点背景`}</button>)}</div>}
+             {sceneImageRecords.filter(image=>image.status==="active").length>0&&<div className="mt-2 flex gap-2 overflow-x-auto pb-1">{sceneImageRecords.filter(image=>image.status==="active").map((image,index)=><button type="button" key={image.id} onClick={()=>{setImageViewerIndex(sceneViewerImages.findIndex(item=>item.id===image.id));setImageViewerOpen(true);}} aria-label={`查看第 ${index+1} 张场景图`} className={`shrink-0 overflow-hidden rounded-xl border ${sceneViewerImages[imageViewerIndex]?.id===image.id?"border-[var(--life-accent)]":"border-stone-200"}`}>{imageObjectUrls[image.id]?<img src={imageObjectUrls[image.id]} alt={image.alt||"场景图"} className="h-16 w-16 object-cover"/>:<span className="grid h-16 w-16 place-items-center text-[10px] text-stone-400">加载中</span>}</button>)}</div>}{sceneImageRecords.filter(image=>image.status==="active").length>0&&<div className="mt-2 flex gap-2 overflow-x-auto pb-1">{sceneImageRecords.filter(image=>image.status==="active").map((image,index)=><button key={"bg-"+image.id} type="button" disabled={backgroundUploadBusy!==null} onClick={()=>void setSceneImageAsBackground(image.id)} className="shrink-0 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[10px] text-stone-600 disabled:opacity-50">{backgroundUploadBusy==="location"?"处理中…":`第 ${index+1} 张设为地点背景`}</button>)}</div>}
            </details>
           
           
@@ -3786,9 +3851,23 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2"><label className="inline-flex items-center gap-2 text-[11px] text-stone-500"><input type="checkbox" checked={settings.randomSceneResponses !== false} onChange={event => patchSettings({ randomSceneResponses: event.target.checked })} disabled={busy}/>随机角色回应</label><span className="mr-auto truncate text-[10px] text-stone-400">{busy ? (pendingSceneTurnsRef.current.length ? `角色回应中 · 排队 ${pendingSceneTurnsRef.current.length}` : "角色正在回应…") : selectedSpeakerId ? "已指定追加角色；再次点选可取消" : "默认随机；点选角色可追加回应"}</span><button type="button" onClick={() => void sendSceneTurn(undefined, true)} disabled={busy || !activeScene || !activeScene.participants.some(p => p.ownerType === "character" && Boolean(resolveLifeCharacterId(p.ownerId)) && characters.some(c => c.id === resolveLifeCharacterId(p.ownerId)))} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--life-accent)]/40 bg-white px-3 py-1.5 text-xs text-[var(--life-accent)] disabled:opacity-40"><MessagesSquare size={13}/>让角色回应</button><button type="submit" disabled={!sceneInput.trim()&&!sceneActionInput.trim()} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--life-accent)] px-3 py-1.5 text-xs text-white disabled:opacity-40"><Send size={13}/>{busy?"排队发送":"发送"}</button></div>
           </form>
-          
+          {imageViewerOpen && sceneViewerImages[imageViewerIndex] && <div role="dialog" aria-modal="true" aria-label="场景图片查看器" className="fixed inset-0 z-[120] flex flex-col items-center justify-center bg-black/90 p-3 sm:p-6" onClick={() => setImageViewerOpen(false)}>
+            <div className="absolute right-3 top-3 flex items-center gap-2">
+              <button type="button" onClick={event=>{event.stopPropagation();setImageViewerOpen(false);}} aria-label="关闭图片" className="grid h-10 w-10 place-items-center rounded-full bg-white/15 text-white"><X size={20}/></button>
+            </div>
+            <div className="flex min-h-0 w-full max-w-5xl flex-1 items-center justify-center gap-2 sm:gap-5" onClick={event=>event.stopPropagation()}>
+              <button type="button" disabled={imageViewerIndex<=0} onClick={()=>setImageViewerIndex(index=>Math.max(0,index-1))} aria-label="上一张" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/15 text-white disabled:opacity-25">‹</button>
+              {imageObjectUrls[sceneViewerImages[imageViewerIndex].id] ? <img src={imageObjectUrls[sceneViewerImages[imageViewerIndex].id]} alt={sceneViewerImages[imageViewerIndex].alt || "生活现场图片"} className="max-h-full min-w-0 max-w-[calc(100%-6rem)] object-contain"/> : <div className="grid h-48 w-full place-items-center text-sm text-white/70">图片加载中…</div>}
+              <button type="button" disabled={imageViewerIndex>=sceneViewerImages.length-1} onClick={()=>setImageViewerIndex(index=>Math.min(sceneViewerImages.length-1,index+1))} aria-label="下一张" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/15 text-white disabled:opacity-25">›</button>
+            </div>
+            <div className="mt-3 flex items-center gap-3 text-xs text-white/80" onClick={event=>event.stopPropagation()}>
+              <span>{imageViewerIndex+1} / {sceneViewerImages.length}</span>
+              <span>{sceneViewerImages[imageViewerIndex].alt || "场景图片"}</span>
+              <button type="button" onClick={()=>void downloadSceneImage(sceneViewerImages[imageViewerIndex])} className="rounded-full bg-white/15 px-3 py-2 text-white">下载原图</button>
+            </div>
+          </div>}
         </>}
-      </section>}
+      </section>
           <section className={`mt-4 rounded-2xl border border-stone-200/70 bg-white/60 p-3 sm:p-4 ${immersiveScene ? "hidden" : ""}`}>
             <div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-sm font-semibold text-stone-800">今天发生的事</p><p className="mt-0.5 text-[11px] text-stone-500">生活、行动和互动会按发生时间连续记录</p></div><span className="rounded-full bg-white px-2.5 py-1 text-[10px] text-stone-500">{lifeTimeline.length} 条</span></div>
             {recentLifeTimeline.length ? <div className="space-y-2">{recentLifeTimeline.map(entry=><div key={entry.id} className="flex gap-3 rounded-xl bg-white/80 p-3"><span className="w-12 shrink-0 pt-0.5 text-[11px] tabular-nums text-stone-400">{new Date(entry.occurredAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><div className="min-w-0 flex-1"><p className="text-sm font-medium text-stone-800">{entry.title}</p>{entry.details&&<p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-stone-600">{entry.details}</p>}<p className="mt-1 text-[10px] text-stone-400">{entry.actorName ? entry.actorName+" · " : ""}{entry.locationName ? entry.locationName+" · " : ""}{entry.category === "location" ? "地点" : entry.category === "scene" ? "场景" : entry.category === "action" ? "行动" : entry.category === "dialogue" ? "对话" : entry.category === "schedule" ? "日程" : entry.category === "tool" ? "工具" : entry.category === "social" ? "朋友圈" : entry.category === "diary" ? "日记" : entry.category === "chat" ? "消息" : "生活记录"}</p>{timelineImageUrls[entry.id]&&<img src={timelineImageUrls[entry.id]} alt={entry.title} className="mt-2 max-h-56 w-auto max-w-full rounded-xl object-contain"/>}<button type="button" disabled={Boolean(timelineImageBusyId)} onClick={()=>void generateTimelineImage(entry)} className="mt-2 inline-flex min-h-8 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-medium text-stone-600 disabled:opacity-50"><Sparkles size={12}/>{timelineImageBusyId===entry.id?"正在生成…":entry.imageMediaRef?"重新生成图片":"生成场景图片"}</button></div></div>)}</div> : <div className="rounded-xl bg-white/70 p-4 text-center text-xs text-stone-500">还没有符合当前筛选条件的记录。开始行动或互动后，这里会逐渐形成你的一天。</div>}
