@@ -519,6 +519,13 @@ export function syncScheduleLocationsToLibrary(state: VirtualLifeState): Virtual
       ?? locations.find(matches);
   };
   let changed = false;
+  const idRemap = new Map<string, string>();
+  const resolveSchedulePlaceholder = (locationId: string | null | undefined, locationName: string | null | undefined) => {
+    if (!locationId?.startsWith("schedule-place-")) return undefined;
+    const oldLocation = byId.get(locationId);
+    const target = findByName((locationName ?? oldLocation?.name ?? "").trim());
+    return target && target.id !== locationId ? target : undefined;
+  };
   const schedules = state.schedules.map(slot => {
     const name = (slot.plannedLocationName ?? "").trim();
     if (!name) return slot;
@@ -542,13 +549,34 @@ export function syncScheduleLocationsToLibrary(state: VirtualLifeState): Virtual
       changed = true;
     }
     const canonicalName = location.name;
+    if (slot.plannedLocationId && slot.plannedLocationId !== location.id && slot.plannedLocationId.startsWith("schedule-place-")) {
+      idRemap.set(slot.plannedLocationId, location.id);
+    }
     if (slot.plannedLocationId !== location.id || slot.plannedLocationName !== canonicalName) {
       changed = true;
       return { ...slot, plannedLocationId: location.id, plannedLocationName: canonicalName };
     }
     return slot;
   });
-  return changed ? { ...state, locations, schedules } : state;
+  const actorStates = state.actorStates.map(actor => {
+    const locationId = actor.actualLocationId ?? "";
+    const target = idRemap.has(locationId)
+      ? byId.get(idRemap.get(locationId)!)
+      : resolveSchedulePlaceholder(locationId, actor.actualLocationName);
+    if (!target || target.id === locationId) return actor;
+    changed = true;
+    return { ...actor, actualLocationId: target.id, actualLocationName: target.name };
+  });
+  const scenes = state.scenes.map(scene => {
+    if (scene.status === "completed") return scene;
+    const target = idRemap.has(scene.locationId)
+      ? byId.get(idRemap.get(scene.locationId)!)
+      : resolveSchedulePlaceholder(scene.locationId, scene.locationName);
+    if (!target || target.id === scene.locationId) return scene;
+    changed = true;
+    return { ...scene, locationId: target.id, locationName: target.name };
+  });
+  return changed ? { ...state, locations, schedules, actorStates, scenes } : state;
 }
 
 export function settleActorTimelineToNow(
