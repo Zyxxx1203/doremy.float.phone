@@ -75,7 +75,7 @@ export function mergeImportedLifeLocations(
     const match = canonicalResidence ?? ((candidate.relation === "own-home" || candidate.relation === "shared-home") ? undefined : exactMatch);
     const aliases = mergeUnique([], [
       ...(candidate.aliases ?? []).filter(value => value.length <= 100),
-      ...(match && (match.id.startsWith("schedule-place-") || candidate.relation === "own-home" || candidate.relation === "shared-home") && match.name !== name ? [match.name] : []),
+      ...(match && (match.id.startsWith("schedule-place-") || candidate.relation === "own-home" || candidate.relation === "shared-home") && match.name !== name ? [name] : []),
     ]);
     if (!match) {
       const base = homeOwnerId ? "home-" + homeOwnerId : candidate.relation === "shared-home" ? "home" : "imported-place-" + slug(name);
@@ -105,7 +105,13 @@ export function mergeImportedLifeLocations(
     }
     const origins = match.fieldOrigins ?? {};
     const mergeOrigins = match.id.startsWith("schedule-place-")
-      ? { description: "ai" as const, atmosphere: "ai" as const, layout: "ai" as const, props: "ai" as const, aliases: "ai" as const }
+      ? {
+        description: origins.description === "user" ? "user" as const : "ai" as const,
+        atmosphere: origins.atmosphere === "user" ? "user" as const : "ai" as const,
+        layout: origins.layout === "user" ? "user" as const : "ai" as const,
+        props: origins.props === "user" ? "user" as const : "ai" as const,
+        aliases: origins.aliases === "user" ? "user" as const : "ai" as const,
+      }
       : origins;
     const description = mergeText(match.description, candidate.description, mergeOrigins.description);
     const atmosphere = mergeText(match.atmosphere, candidate.atmosphere, mergeOrigins.atmosphere);
@@ -123,7 +129,6 @@ export function mergeImportedLifeLocations(
       : (match.aliases ?? []);
     const next: LifeLocation = {
       ...match,
-      ...(match.id.startsWith("schedule-place-") ? { name } : {}),
       aliases: nextAliases,
       ...(candidate.relation === "shared-home" && sourceCharacterId
         ? { residents: mergeUnique(match.residents ?? [], [sourceCharacterId]) }
