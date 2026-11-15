@@ -360,4 +360,22 @@ const composerSource = app.slice(app.indexOf('<form onSubmit={sendSceneTurn}'), 
 assert.doesNotMatch(composerSource, /<textarea[^>]*disabled=\{busy\}/,
   "scene composer must remain available while a reply is generating");
 
+assert.match(lifeTypesSource, /imageId\?: string/,
+  "scene image chat cards must reference gallery media by ID rather than duplicate image bytes");
+assert.match(app, /legacySceneImageMessages/,
+  "pre-existing gallery images must be backfilled into the scene chat timeline");
+assert.match(app, /sceneMessages: \[\.\.\.latest\.sceneMessages, \.\.\.imageMessages\]/,
+  "newly generated scene images must append chat cards in the same state commit");
+assert.match(app, /message\.imageId \? <div/,
+  "scene chat must render image references as image cards");
+assert.match(app, /setImageViewerOpen\(true\)/,
+  "tapping a chat or gallery image must open the viewer");
+assert.match(app, /ArrowLeft/);
+assert.match(app, /ArrowRight/);
+assert.match(app, /const downloadSceneImage = async/);
+assert.match(app, /const blob = await response\.blob\(\)/,
+  "original download must use the stored media blob without recompressing it");
+assert.match(app, /sceneMessages: stateRef\.current\.sceneMessages\.filter\(message => message\.imageId !== imageId\)/,
+  "deleting a gallery image must remove its chat reference without leaving a broken card");
+
 console.log("Life-system and background-enhancement wiring checks passed.");
