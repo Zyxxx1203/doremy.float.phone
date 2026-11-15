@@ -345,6 +345,8 @@ export type VirtualLifeState = {
   schemaVersion: 1;
   /** Version of role-card-aware weekly schedule templates already applied. */
   scheduleProfileVersion?: number;
+  /** One-time migration marker for legacy scene message action/dialogue parsing. */
+  sceneMessageFormatVersion?: number;
   settings: LifeEngineSettings;
   locations: LifeLocation[];
   /** User-created folders for organizing the location library. */
