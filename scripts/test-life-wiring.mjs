@@ -344,7 +344,18 @@ assert.match(lifeTypesSource, /sceneMessageFormatVersion\?: number/);
 assert.match(app, /if \(\(normalized\.sceneMessageFormatVersion \?\? 0\) < 1\)/,
   "legacy scene action/dialogue parsing must run once, not on every app entry");
 assert.match(app, /sceneMessageFormatVersion: 1/);
-assert.match(app, /!message\.action\?\.trim\(\)/,
+assert.match(app, /message\.action\?\.trim\(\)/,
   "already structured action/dialogue messages must not be parsed again");
+assert.match(app, /pendingSceneTurnsRef\.current\.push/,
+  "player turns sent during generation must be queued for sequential replies");
+assert.match(app, /pendingSceneTurnsRef\.current\.shift\(\)/,
+  "queued player turns must be drained after the current root response");
+assert.match(app, /消息已保存，但当前没有可回应的角色/,
+  "player input must remain persisted even when no responder exists");
+assert.match(app, /const sceneContext = buildLifeScenePromptContext\(stateRef\.current, turnScene, target\.id\)/,
+  "queued replies must use their original scene context");
+const composerSource = app.slice(app.indexOf('<form onSubmit={sendSceneTurn}'), app.indexOf('</form>', app.indexOf('<form onSubmit={sendSceneTurn}')));
+assert.doesNotMatch(composerSource, /disabled=\{busy\}/,
+  "scene composer must remain available while a reply is generating");
 
 console.log("Life-system and background-enhancement wiring checks passed.");
