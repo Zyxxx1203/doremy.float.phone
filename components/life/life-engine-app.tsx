@@ -2196,14 +2196,29 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const session = sessions.find(item => item.contactId === contact?.id && !item.isGroup) ?? createLifeChatSession(target.id, target.name);
     const lifeTurn = beginTurn({ kind: "life_scene", characterId: target.id, sessionId: session.id });
     if (!lifeTurn) {
-      if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应被其他回合占用", status: "warning", detail: target.name + " 的回应未启动，因为当前已有其他角色回合正在执行。", meta: { sceneId: turnScene.id, characterId: target.id, sessionId: session.id } });
-      return forceReaction ? "deferred" : "failed";
+      if (forceReaction) {
+        recordLifeDiagnostic({ source: "通知回复", event: "现场回应被其他回合占用", status: "warning", detail: target.name + " 的回应未启动，因为当前已有其他角色回合正在执行。", meta: { sceneId: turnScene.id, characterId: target.id, sessionId: session.id } });
+        return "deferred";
+      }
+      if (userText || userAction) {
+        const retry = queuedTurn ?? { sceneId: turnScene.id, userText, userAction, createdAt: now };
+        pendingSceneTurnsRef.current.unshift(retry);
+        setNotice("消息已保存；角色当前正在处理其他对话，稍后会继续回应。");
+        window.setTimeout(() => {
+          if (!busyRef.current) {
+            const next = pendingSceneTurnsRef.current.shift();
+            if (next) void sendSceneTurn(undefined, false, undefined, undefined, next);
+          }
+        }, 2500);
+        return "deferred";
+      }
+      return "failed";
     }
     busyRef.current = true;
     setBusy(true);
     if (forceReaction) setNotice(target.name + "正在回应最近的互动……");
     try {
-      const sceneContext = buildLifeScenePromptContext(stateRef.current, activeScene, target.id);
+      const sceneContext = buildLifeScenePromptContext(stateRef.current, turnScene, target.id);
       // 生活现场与普通私聊共用同一套短期记忆组装器，避免跨 APP 记忆断层。
       const settingsInstructions = [
         settings.keepDialogueConcise ? "保持简短：一句对白，必要时附一个动作。" : "允许适度展开，但仍保持实时互动感。",
@@ -3769,7 +3784,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
               <label className="block text-xs font-medium text-stone-600">行动 / 旁白<textarea value={sceneActionInput} onChange={e=>setSceneActionInput(e.target.value)} placeholder="行动（可选）" rows={1} className="mt-1 w-full resize-y rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-sm leading-snug"/></label>
               <label className="block text-xs font-medium text-stone-600">说话 / 对话气泡<textarea value={sceneInput} onChange={e=>setSceneInput(e.target.value)} placeholder="想对角色说的话……" rows={1} className="mt-1 w-full resize-y rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-sm leading-snug"/></label>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2"><label className="inline-flex items-center gap-2 text-[11px] text-stone-500"><input type="checkbox" checked={settings.randomSceneResponses !== false} onChange={event => patchSettings({ randomSceneResponses: event.target.checked })} disabled={busy}/>随机角色回应</label><span className="mr-auto truncate text-[10px] text-stone-400">{busy ? "角色正在回应…" : selectedSpeakerId ? "已指定追加角色；再次点选可取消" : "默认随机；点选角色可追加回应"}</span><button type="button" onClick={() => void sendSceneTurn(undefined, true)} disabled={busy || !activeScene || !activeScene.participants.some(p => p.ownerType === "character" && Boolean(resolveLifeCharacterId(p.ownerId)) && characters.some(c => c.id === resolveLifeCharacterId(p.ownerId)))} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--life-accent)]/40 bg-white px-3 py-1.5 text-xs text-[var(--life-accent)] disabled:opacity-40"><MessagesSquare size={13}/>让角色回应</button><button type="submit" disabled={!sceneInput.trim()&&!sceneActionInput.trim()} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--life-accent)] px-3 py-1.5 text-xs text-white disabled:opacity-40"><Send size={13}/>{busy?"排队发送":"发送"}</button></div>
+            <div className="flex flex-wrap items-center justify-between gap-2"><label className="inline-flex items-center gap-2 text-[11px] text-stone-500"><input type="checkbox" checked={settings.randomSceneResponses !== false} onChange={event => patchSettings({ randomSceneResponses: event.target.checked })} disabled={busy}/>随机角色回应</label><span className="mr-auto truncate text-[10px] text-stone-400">{busy ? (pendingSceneTurnsRef.current.length ? `角色回应中 · 排队 ${pendingSceneTurnsRef.current.length}` : "角色正在回应…") : selectedSpeakerId ? "已指定追加角色；再次点选可取消" : "默认随机；点选角色可追加回应"}</span><button type="button" onClick={() => void sendSceneTurn(undefined, true)} disabled={busy || !activeScene || !activeScene.participants.some(p => p.ownerType === "character" && Boolean(resolveLifeCharacterId(p.ownerId)) && characters.some(c => c.id === resolveLifeCharacterId(p.ownerId)))} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--life-accent)]/40 bg-white px-3 py-1.5 text-xs text-[var(--life-accent)] disabled:opacity-40"><MessagesSquare size={13}/>让角色回应</button><button type="submit" disabled={!sceneInput.trim()&&!sceneActionInput.trim()} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--life-accent)] px-3 py-1.5 text-xs text-white disabled:opacity-40"><Send size={13}/>{busy?"排队发送":"发送"}</button></div>
           </form>
           
         </>}
