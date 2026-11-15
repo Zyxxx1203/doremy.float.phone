@@ -3719,7 +3719,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         <section className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm sm:p-6">
           {!locationDossierOpen && <><SectionTitle eyebrow="Canonical location library" title="地点库" note="点开地点卡片进入独立档案页，编辑设定、添加角色习惯并查看历史。同居后角色自己的家会暂时从地点列表隐藏；取消同居后会自动重新显示，不会删除住处或历史数据。"/>
           <div className="mb-4 rounded-2xl border border-[#ead8c8] bg-[#fffaf5] p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-stone-800">从角色卡 / 世界书导入地点</h3><p className="mt-1 text-xs leading-relaxed text-stone-500">自动提取地点、别名、环境、氛围、布局和道具，并保留来源。默认勾选该角色绑定的聊天与栖所世界书，也可手动选择其他书。</p></div>
+            <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-stone-800">从角色卡 / 世界书导入地点</h3><p className="mt-1 text-xs leading-relaxed text-stone-500">自动提取地点、别名、环境、氛围、布局和道具，并保留来源。这里直接扫描所选世界书的启用条目，不依赖普通聊天的关键词触发；默认勾选该角色绑定的聊天与栖所世界书，也可手动选择其他书。</p></div>
               <button type="button" disabled={locationImportBusy || !locationImportCharacterId} onClick={() => void importWorldbookLocations()} className="shrink-0 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{locationImportBusy ? "处理中…" : "分析并导入地点"}</button>
             </div>
             <label className="mt-3 block text-xs font-medium text-stone-600">角色卡
