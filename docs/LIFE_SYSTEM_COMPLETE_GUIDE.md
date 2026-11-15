@@ -1,9 +1,9 @@
 # 生活系统完整功能说明、运行链路与使用指南
 
-> 仓库：\`Zyxxx1203/doremy.float.phone\`  
-> 基线：\`main\` @ \`d10eac85bce960496695a13aae1c1b171db09b28\`  
+> 仓库：`Zyxxx1203/doremy.float.phone`  
+> 基线：`main` @ `d10eac85bce960496695a13aae1c1b171db09b28`  
 > 类型：产品功能说明 + 使用手册 + 技术链路 + 现状审计  
-> 边界：本次只新增文档，不修改业务代码；不涉及 \`doremy1203/doremy.float.phone\` 旧公开仓库；日历功能不在本轮范围。
+> 边界：本次只新增文档，不修改业务代码；不涉及 `doremy1203/doremy.float.phone` 旧公开仓库；日历功能不在本轮范围。
 
 ## 0. 如何阅读
 
@@ -31,7 +31,7 @@
 
 ### 1.1 页面地图
 
-主页面入口：\`app/life/page.tsx\`，主体：\`components/life/life-engine-app.tsx\`。主组件定义以下 Tab：
+主页面入口：`app/life/page.tsx`，主体：`components/life/life-engine-app.tsx`。主组件定义以下 Tab：
 
 | Tab | 页面 | 主要职责 |
 |---|---|---|
@@ -46,35 +46,35 @@
 | observe | 观察 | 角色生活片段观察记录 |
 | settings | 设置 | 运行规则、行为开关、记录和外观 |
 
-辅助组件：\`components/life/life-observation.tsx\`、\`components/life/life-diagnostics-panel.tsx\`。本文已确认 Tab 标识和主组件入口；并非每个按钮/弹窗都已逐一做 JSX 级盘点，后续应继续补齐控件清单。
+辅助组件：`components/life/life-observation.tsx`、`components/life/life-diagnostics-panel.tsx`。本文已确认 Tab 标识和主组件入口；并非每个按钮/弹窗都已逐一做 JSX 级盘点，后续应继续补齐控件清单。
 
 ### 1.2 模块地图
 
 | 模块 | 文件 | 责任 |
 |---|---|---|
-| 主页面编排 | \`components/life/life-engine-app.tsx\` | Tab、状态、现场、日程、设置及主要用户操作 |
-| 领域类型 | \`lib/life/life-types.ts\` | 角色、地点、日程、场景、消息、事件、邀请、记忆 |
-| 运行规则 | \`lib/life/life-runtime.ts\` | 位置解析、日程生成/结算、事件和邀请 |
-| 状态存储 | \`lib/life/life-storage.ts\` | 生活状态加载与保存 |
-| 场景提示词 | \`lib/life/life-scene-prompt.ts\` | 地点和现场上下文 |
-| 回应角色队列 | \`lib/life/life-engine.ts\` | 遭遇感知、回应角色选择 |
-| 输出协议 | \`lib/life/life-output.ts\` | AI 行动/对白解析与校验 |
-| 自主行为 | \`lib/life/life-autonomy.ts\` | 自主行动窗口和角色选择 |
-| 前台调度 | \`lib/life/life-scheduler-coordinator.ts\` | 前台场景租约协调 |
-| 云端快照 | \`lib/life/life-schedule-cloud.ts\` | 本地状态转为云端调度快照 |
-| 主动消息 | \`lib/life/life-proactive-scheduler.ts\` | 主动消息任务管理 |
-| 通知队列 | \`lib/life/life-notification-queue.ts\` | 通知栏现场回复持久队列 |
-| 记忆桥 | \`lib/life/life-memory-bridge.ts\` | 生活记忆/实时状态进入普通聊天 |
-| 普通聊天 | \`lib/chat-engine.ts\` | 普通聊天上下文和模型调用 |
-| 观察 | \`components/life/life-observation.tsx\` | 观察记录生成、图片和保留策略 |
-| 诊断 | \`lib/life/life-diagnostics.ts\`、\`components/life/life-diagnostics-panel.tsx\` | 本机/云端诊断和失败队列查看 |
-| 地点导入 | \`lib/life/life-location-import.ts\` | 角色卡/世界书等地点解析合并 |
-| 云端调度 | \`supabase/functions/life-scheduler/index.ts\`、\`public/ai-phone-push/life-scheduler.mjs\` | 云端日程任务执行 |
-| 通知桥接 | \`lib/notification-reply.ts\` | 原生通知回复接入 |
+| 主页面编排 | `components/life/life-engine-app.tsx` | Tab、状态、现场、日程、设置及主要用户操作 |
+| 领域类型 | `lib/life/life-types.ts` | 角色、地点、日程、场景、消息、事件、邀请、记忆 |
+| 运行规则 | `lib/life/life-runtime.ts` | 位置解析、日程生成/结算、事件和邀请 |
+| 状态存储 | `lib/life/life-storage.ts` | 生活状态加载与保存 |
+| 场景提示词 | `lib/life/life-scene-prompt.ts` | 地点和现场上下文 |
+| 回应角色队列 | `lib/life/life-engine.ts` | 遭遇感知、回应角色选择 |
+| 输出协议 | `lib/life/life-output.ts` | AI 行动/对白解析与校验 |
+| 自主行为 | `lib/life/life-autonomy.ts` | 自主行动窗口和角色选择 |
+| 前台调度 | `lib/life/life-scheduler-coordinator.ts` | 前台场景租约协调 |
+| 云端快照 | `lib/life/life-schedule-cloud.ts` | 本地状态转为云端调度快照 |
+| 主动消息 | `lib/life/life-proactive-scheduler.ts` | 主动消息任务管理 |
+| 通知队列 | `lib/life/life-notification-queue.ts` | 通知栏现场回复持久队列 |
+| 记忆桥 | `lib/life/life-memory-bridge.ts` | 生活记忆/实时状态进入普通聊天 |
+| 普通聊天 | `lib/chat-engine.ts` | 普通聊天上下文和模型调用 |
+| 观察 | `components/life/life-observation.tsx` | 观察记录生成、图片和保留策略 |
+| 诊断 | `lib/life/life-diagnostics.ts`、`components/life/life-diagnostics-panel.tsx` | 本机/云端诊断和失败队列查看 |
+| 地点导入 | `lib/life/life-location-import.ts` | 角色卡/世界书等地点解析合并 |
+| 云端调度 | `supabase/functions/life-scheduler/index.ts`、`public/ai-phone-push/life-scheduler.mjs` | 云端日程任务执行 |
+| 通知桥接 | `lib/notification-reply.ts` | 原生通知回复接入 |
 
 ## 2. 核心数据模型
 
-主要类型在 \`lib/life/life-types.ts\`，主状态由 \`VirtualLifeState\` 聚合。
+主要类型在 `lib/life/life-types.ts`，主状态由 `VirtualLifeState` 聚合。
 
 | 数据 | 含义 | 关键字段/用途 |
 |---|---|---|
@@ -91,20 +91,20 @@
 
 ### 2.1 角色位置不是场景身份
 
-\`LifeActorState\` 保存活动、日程槽、实际位置和临时位置有效期。  
-\`LifeScheduleSlot\` 表示某时间段计划做什么、去哪里。  
-\`LifeSceneState\` 保存某地点聊天室的历史身份、参与者和消息关联。
+`LifeActorState` 保存活动、日程槽、实际位置和临时位置有效期。  
+`LifeScheduleSlot` 表示某时间段计划做什么、去哪里。  
+`LifeSceneState` 保存某地点聊天室的历史身份、参与者和消息关联。
 
 三者必须分开。角色位置变化不等于用户切换聊天室。
 
 ### 2.2 地点模型
 
-\`LifeLocation\` 可保存名称、别名、分类、描述、氛围、布局、道具、角色习惯、居民、背景图、可见性和来源信息。字段来源标记用于区分用户、来源或 AI 内容，避免导入时无条件覆盖用户编辑。
+`LifeLocation` 可保存名称、别名、分类、描述、氛围、布局、道具、角色习惯、居民、背景图、可见性和来源信息。字段来源标记用于区分用户、来源或 AI 内容，避免导入时无条件覆盖用户编辑。
 
 ### 2.3 场景模型
 
-\`LifeSceneState\` 包含 id、locationId、locationName、startedAt、updatedAt、status、可选 eventId、participants、images、currentDescription 等。  
-\`LifeSceneMessage\` 保存 speaker、role、action、dialogue、createdAt、来源渠道和可选 imageId。
+`LifeSceneState` 包含 id、locationId、locationName、startedAt、updatedAt、status、可选 eventId、participants、images、currentDescription 等。  
+`LifeSceneMessage` 保存 speaker、role、action、dialogue、createdAt、来源渠道和可选 imageId。
 
 当前类型允许 eventId，但用户已经明确：**不需要把日常场景和事件场景拆成两套聊天室。产品目标是一个地点一个线下聊天室。** eventId 只能作为兼容旧数据/活动关联字段审查，不应据此扩展出第二套场景。
 
@@ -178,16 +178,16 @@
 
 ### 4.3 当前代码线索与风险
 
-主组件：\`components/life/life-engine-app.tsx\`。当前场景选择器优先取第一个 active 场景，否则取最近更新的 paused 场景；消息按该场景 ID 过滤。
+主组件：`components/life/life-engine-app.tsx`。当前场景选择器优先取第一个 active 场景，否则取最近更新的 paused 场景；消息按该场景 ID 过滤。
 
 已识别的关键路径：
-- \`updateActorLocation\`：更新实际位置并联动现场参与者；
-- \`performEnterLocationSolo\`：单人进入地点；
-- \`performCreateScene\`：创建场景；
-- \`performTransferSceneWithCompanions\`：携带角色转移；
-- \`sendSceneTurn\`：现场消息与 AI 回合；
-- \`buildLifeScenePromptContext\`：现场上下文；
-- \`buildLifeSceneResponderQueue\`：回应角色队列。
+- `updateActorLocation`：更新实际位置并联动现场参与者；
+- `performEnterLocationSolo`：单人进入地点；
+- `performCreateScene`：创建场景；
+- `performTransferSceneWithCompanions`：携带角色转移；
+- `sendSceneTurn`：现场消息与 AI 回合；
+- `buildLifeScenePromptContext`：现场上下文；
+- `buildLifeSceneResponderQueue`：回应角色队列。
 
 | 风险 | 可能影响 |
 |---|---|
@@ -214,7 +214,7 @@
 ## 5. 日常（daily）
 
 **职责：**展示玩家/角色当前活动与位置。  
-**相关实现：**\`LifeActorState\`、\`LifeScheduleSlot\`、\`resolveActorLocation()\`、\`getCurrentActorSchedule()\`、\`settleActorTimelineToNow()\`。
+**相关实现：**`LifeActorState`、`LifeScheduleSlot`、`resolveActorLocation()`、`getCurrentActorSchedule()`、`settleActorTimelineToNow()`。
 
 **正常效果：**
 - 当前活动与命中的日程一致；
@@ -243,12 +243,12 @@
 **职责：**玩家与角色七日日程生成、查看、编辑、移动和取消。
 
 **已确认函数：**
-- \`generateWeeklyLifePlan()\`：生成周计划基线；
-- \`insertManualLifeScheduleSlot()\`：插入手动日程；
-- \`overlayScheduleSlotsOverFreeTime()\`：安排覆盖空闲时间；
-- \`applyCharacterLifeScheduleChange()\`：应用角色日程变更；
-- \`settleActorTimelineToNow()\`：结算时间线；
-- \`syncScheduleLocationsToLibrary()\`：同步计划地点到地点库。
+- `generateWeeklyLifePlan()`：生成周计划基线；
+- `insertManualLifeScheduleSlot()`：插入手动日程；
+- `overlayScheduleSlotsOverFreeTime()`：安排覆盖空闲时间；
+- `applyCharacterLifeScheduleChange()`：应用角色日程变更；
+- `settleActorTimelineToNow()`：结算时间线；
+- `syncScheduleLocationsToLibrary()`：同步计划地点到地点库。
 
 **正常使用：**选择玩家/角色 → 查看周计划 → 无计划时生成 → 检查时间/活动/地点 → 手动调整 → 确认下一次生成不会覆盖人工安排。
 
@@ -265,7 +265,7 @@
 
 **职责：**共同活动邀请的发起、确认、参与者、时间地点及状态流转。
 
-**相关函数：**\`makeLifeInvitation()\`、\`confirmLifeInvitation()\`、\`placeAppointmentInActorSchedule()\`。
+**相关函数：**`makeLifeInvitation()`、`confirmLifeInvitation()`、`placeAppointmentInActorSchedule()`。
 
 **正常效果：**
 - 待处理/确认/进行中/完成/取消状态清晰；
@@ -295,7 +295,7 @@
 
 **职责：**管理生活系统地点资料。来源可能是用户手动创建、角色卡、世界书或 AI 行程地点。
 
-**已确认导入机制：**\`lib/life/life-location-import.ts\` 负责解析/合并；按来源键避免重复导入；记录来源；尽量保护用户编辑字段；识别自有住所、共享住所、工作地点等关系。
+**已确认导入机制：**`lib/life/life-location-import.ts` 负责解析/合并；按来源键避免重复导入；记录来源；尽量保护用户编辑字段；识别自有住所、共享住所、工作地点等关系。
 
 **使用步骤：**
 1. 先检查地点是否已存在；
@@ -312,7 +312,7 @@
 
 **职责：**以角色为单位生成和管理某时间范围的生活观察片段。
 
-**已确认实现：**\`components/life/life-observation.tsx\` 使用独立键 \`ai_phone_life_observation_v1\`。设置包含保留天数和最大回补天数；角色配置包含 enabled、intervalMinutes、lastGeneratedAt、coveredUntil；记录可保存时间范围、内容、地点、人物、图片引用/提示词。默认保留 90 天，最大回补默认 3 天（数值受 clamp 限制）。
+**已确认实现：**`components/life/life-observation.tsx` 使用独立键 `ai_phone_life_observation_v1`。设置包含保留天数和最大回补天数；角色配置包含 enabled、intervalMinutes、lastGeneratedAt、coveredUntil；记录可保存时间范围、内容、地点、人物、图片引用/提示词。默认保留 90 天，最大回补默认 3 天（数值受 clamp 限制）。
 
 **正常效果：**
 - 每条观察属于明确角色和时间段；
@@ -325,31 +325,31 @@
 
 ## 12. 设置（settings）
 
-设置字段定义于 \`LifeEngineSettings\`。以下是数据模型分类，控件的最终文案与布局应继续逐项对照 JSX。
+设置字段定义于 `LifeEngineSettings`。以下是数据模型分类，控件的最终文案与布局应继续逐项对照 JSX。
 
 **系统与行为**
-- \`enabled\`：生活总开关；
-- \`autoGenerateWeeklyPlans\`：自动生成周计划；
-- \`generateSpecialEvents\`：特殊活动；
-- \`enableCoincidences\`：偶遇；
-- \`enableCharacterAutonomy\`：角色自主行为；
-- \`enableScheduleChangeTool\`：日程调整工具；
-- \`enableFollowRequestTool\`：跟随请求工具；
-- \`enableInvitations\`：邀请；
-- \`saveConfirmedEventsToMemory\`：共同经历记忆。
+- `enabled`：生活总开关；
+- `autoGenerateWeeklyPlans`：自动生成周计划；
+- `generateSpecialEvents`：特殊活动；
+- `enableCoincidences`：偶遇；
+- `enableCharacterAutonomy`：角色自主行为；
+- `enableScheduleChangeTool`：日程调整工具；
+- `enableFollowRequestTool`：跟随请求工具；
+- `enableInvitations`：邀请；
+- `saveConfirmedEventsToMemory`：共同经历记忆。
 
 **现场互动**
-- \`randomSceneResponses\`：随机选择在场角色回应；
-- \`showActionNarration\`：行动叙述；
-- \`keepDialogueConcise\`：对白简洁；
-- \`allowCharactersToStaySilent\`：允许沉默；
-- \`maxConsecutiveActionOnly\`：连续纯行动回合上限；
-- \`enableLifeFormatRepair\`：格式修复；
-- \`revealExactLocations\`：地点精确程度；
-- \`allowOnlineChatDuringSleep\`：睡眠时允许普通线上聊天回复。
+- `randomSceneResponses`：随机选择在场角色回应；
+- `showActionNarration`：行动叙述；
+- `keepDialogueConcise`：对白简洁；
+- `allowCharactersToStaySilent`：允许沉默；
+- `maxConsecutiveActionOnly`：连续纯行动回合上限；
+- `enableLifeFormatRepair`：格式修复；
+- `revealExactLocations`：地点精确程度；
+- `allowOnlineChatDuringSleep`：睡眠时允许普通线上聊天回复。
 
 **记录**
-- \`recordLocationChanges\`、\`recordSceneMessages\`、\`recordCharacterActions\`、\`recordScheduleChanges\`、\`recordToolCalls\`、\`recordSocialActivity\`、\`recordDiaryActivity\`、\`recordChatActivity\`。
+- `recordLocationChanges`、`recordSceneMessages`、`recordCharacterActions`、`recordScheduleChanges`、`recordToolCalls`、`recordSocialActivity`、`recordDiaryActivity`、`recordChatActivity`。
 
 **显示**
 - 主题、强调色、透明度、对白/叙述字体字号、气泡样式、内边距、消息间距、紧凑布局、时间线、地点提示、背景图/模糊/亮度/遮罩、自定义 CSS。
@@ -361,9 +361,9 @@
 ### 12.1 主动消息当前状态（重要）
 
 **代码已确认：**
-- \`components/life/life-engine-app.tsx\` 中 \`LIFE_PROACTIVE_MESSAGES_ENABLED = false\`；
-- \`lib/life/life-proactive-scheduler.ts\` 中同名常量也是 false；
-- \`lib/life/life-schedule-cloud.ts\` 云端快照设置 \`proactiveEnabled: false\`。
+- `components/life/life-engine-app.tsx` 中 `LIFE_PROACTIVE_MESSAGES_ENABLED = false`；
+- `lib/life/life-proactive-scheduler.ts` 中同名常量也是 false；
+- `lib/life/life-schedule-cloud.ts` 云端快照设置 `proactiveEnabled: false`。
 
 所以主动消息机制虽然保留代码和配置字段，但当前被硬编码暂停。不能因为 UI 开关存在就宣称主动消息正在运行。日程快照/位置评估可能仍继续，不等于主动消息生成也在工作。
 
@@ -384,7 +384,7 @@
   → 事件通知或重新读取
 ~~~
 
-主要文件：\`lib/life/life-storage.ts\`、\`lib/kv-db.ts\`、\`components/life/life-engine-app.tsx\`。
+主要文件：`lib/life/life-storage.ts`、`lib/kv-db.ts`、`components/life/life-engine-app.tsx`。
 
 **风险：**整份对象快照保存。多个异步调用分别读取旧状态、修改不同字段、先后保存时，后保存者可能覆盖先保存者。写入队列只能保证写入顺序，不能自动保证写入者使用最新快照。
 
@@ -403,13 +403,13 @@
  → 保存
 ~~~
 
-结算函数 \`settleActorTimelineToNow()\` 会根据现实时间处理已到期日程、活动和临时位置，可能更新角色状态、事件、记忆和时间线。
+结算函数 `settleActorTimelineToNow()` 会根据现实时间处理已到期日程、活动和临时位置，可能更新角色状态、事件、记忆和时间线。
 
 **职责边界：日程结算只负责生活状态，不负责决定用户当前聊天室。**
 
 ## 15. 位置解析
 
-\`resolveActorLocation()\` 综合临时位置、手动位置、当前日程计划地点和状态回退值。
+`resolveActorLocation()` 综合临时位置、手动位置、当前日程计划地点和状态回退值。
 
 目标规则：
 - 临时地点有明确结束时间；
@@ -470,11 +470,11 @@
 
 ## 18. 共同经历与普通聊天记忆桥
 
-\`lib/life/life-memory-bridge.ts\` 提供：
-- \`buildLifeMemoryContext(characterId)\`：已确认共同生活事实、近期已结算日程；
-- \`buildLifePresenceContext(characterId)\`：实时活动、睡眠/清醒、位置和日程。
+`lib/life/life-memory-bridge.ts` 提供：
+- `buildLifeMemoryContext(characterId)`：已确认共同生活事实、近期已结算日程；
+- `buildLifePresenceContext(characterId)`：实时活动、睡眠/清醒、位置和日程。
 
-\`lib/chat-engine.ts\` 导入并调用两个桥接函数。
+`lib/chat-engine.ts` 导入并调用两个桥接函数。
 
 目标：
 - 角色只接收自己参与的记忆；
@@ -484,7 +484,7 @@
 - 不重复注入；
 - prompt builder 尽量只读。
 
-**当前风险已确认：**\`loadSettledCharacterLifeState()\` 在构建记忆/位置上下文时会调用 \`settleActorTimelineToNow()\`，状态变化时调用 \`saveVirtualLifeState()\`。这使普通聊天提示词组装可能间接结算并写入生活状态。
+**当前风险已确认：**`loadSettledCharacterLifeState()` 在构建记忆/位置上下文时会调用 `settleActorTimelineToNow()`，状态变化时调用 `saveVirtualLifeState()`。这使普通聊天提示词组装可能间接结算并写入生活状态。
 
 建议把结算放到明确调度/页面动作；记忆桥读取已结算快照，不在 prompt builder 中隐藏写入。
 
@@ -515,17 +515,17 @@ AndroidShell 原生回复队列
  → 诊断面板展示失败项
 ~~~
 
-\`lib/notification-reply.ts\` 负责桥接；\`lib/life/life-notification-queue.ts\` 支持 replyId 去重、processing 租约、过期恢复、有界重试、失败状态。
+`lib/notification-reply.ts` 负责桥接；`lib/life/life-notification-queue.ts` 支持 replyId 去重、processing 租约、过期恢复、有界重试、失败状态。
 
 待验证：sceneId 是否被页面真正消费并定位；目标角色是否仍在场；原生 ack 是否发生在网页持久化成功之后；旧 APK read-and-clear 兼容是否可能丢回复。
 
 ## 21. 后台调度与云端
 
-\`life-schedule-cloud.ts\` 将玩家/角色位置、active scene、参与者、七日日程、角色状态、设置和前台租约整理为云端快照。根据环境选择个人云端或站点 API。
+`life-schedule-cloud.ts` 将玩家/角色位置、active scene、参与者、七日日程、角色状态、设置和前台租约整理为云端快照。根据环境选择个人云端或站点 API。
 
 云端实现位置：
-- \`supabase/functions/life-scheduler/index.ts\`
-- \`public/ai-phone-push/life-scheduler.mjs\`
+- `supabase/functions/life-scheduler/index.ts`
+- `public/ai-phone-push/life-scheduler.mjs`
 
 必须区分：
 - 云端能评估/结算日程；
@@ -542,9 +542,9 @@ AndroidShell 原生回复队列
 
 | 数据 | 存储 |
 |---|---|
-| 生活主状态 | KV：\`ai_phone_virtual_life_state_v1\` |
-| 观察记录 | KV：\`ai_phone_life_observation_v1\` |
-| 通知现场回复队列 | localStorage：\`life-scene-notification-reply-queue-v2\`（兼容 v1） |
+| 生活主状态 | KV：`ai_phone_virtual_life_state_v1` |
+| 观察记录 | KV：`ai_phone_life_observation_v1` |
+| 通知现场回复队列 | localStorage：`life-scene-notification-reply-queue-v2`（兼容 v1） |
 | 本机诊断 | life diagnostics 本地存储 |
 | 云端诊断 | 生活调度诊断 API/表 |
 | 场景图片 | media cache/storage，场景存 mediaRef |
@@ -641,7 +641,7 @@ AndroidShell 原生回复队列
 
 ## 32. 测试覆盖
 
-\`package.json\` 的 \`test:life\` 包含角色 ID、地点导入、runtime、autonomy、scene responders、output parser、guided schedule、wiring、通知队列/桥接、scheduler coordinator、turn coordinator、cloud scheduler 测试。
+`package.json` 的 `test:life` 包含角色 ID、地点导入、runtime、autonomy、scene responders、output parser、guided schedule、wiring、通知队列/桥接、scheduler coordinator、turn coordinator、cloud scheduler 测试。
 
 这些测试有价值，但 wiring 测试中的源码字符串断言不能替代完整 UI、持久化和异步场景切换测试。
 
@@ -726,7 +726,7 @@ AndroidShell 原生回复队列
 
 ## 37. 日程变化导致聊天室跳转
 
-检查 \`settleActorTimelineToNow\`、\`updateActorLocation\`、后台快照同步和 currentSceneId 是否被推断覆盖。
+检查 `settleActorTimelineToNow`、`updateActorLocation`、后台快照同步和 currentSceneId 是否被推断覆盖。
 
 ## 38. 退出后只剩玩家消息
 
@@ -734,7 +734,7 @@ AndroidShell 原生回复队列
 
 ## 39. 普通聊天改变生活状态
 
-检查 \`buildLifeMemoryContext\`、\`buildLifePresenceContext\`、\`loadSettledCharacterLifeState\` 是否触发结算与 \`saveVirtualLifeState\`。
+检查 `buildLifeMemoryContext`、`buildLifePresenceContext`、`loadSettledCharacterLifeState` 是否触发结算与 `saveVirtualLifeState`。
 
 ## 40. 主动消息没有发送
 
@@ -746,32 +746,32 @@ AndroidShell 原生回复队列
 
 | 路径 | 用途 |
 |---|---|
-| \`app/life/page.tsx\` | 路由入口 |
-| \`components/life/life-engine-app.tsx\` | 主页面、Tab、场景、日程和设置 |
-| \`components/life/life-observation.tsx\` | 观察 |
-| \`components/life/life-diagnostics-panel.tsx\` | 诊断和重置 |
-| \`lib/life/life-types.ts\` | 数据模型与默认设置 |
-| \`lib/life/life-runtime.ts\` | 位置、日程、邀请、事件、结算 |
-| \`lib/life/life-storage.ts\` | 状态持久化 |
-| \`lib/life/life-scene-prompt.ts\` | 现场提示词 |
-| \`lib/life/life-engine.ts\` | 回应角色队列 |
-| \`lib/life/life-output.ts\` | 输出解析/校验 |
-| \`lib/life/life-autonomy.ts\` | 自主行为 |
-| \`lib/life/life-scheduler-coordinator.ts\` | 前台租约 |
-| \`lib/life/life-schedule-cloud.ts\` | 云端快照 |
-| \`lib/life/life-proactive-scheduler.ts\` | 主动消息调度 |
-| \`lib/life/life-notification-queue.ts\` | 通知现场回复队列 |
-| \`lib/life/life-memory-bridge.ts\` | 普通聊天记忆/位置桥 |
-| \`lib/notification-reply.ts\` | 原生通知回复 |
-| \`lib/chat-engine.ts\` | 普通聊天引擎 |
-| \`lib/life/life-location-import.ts\` | 地点导入 |
-| \`supabase/functions/life-scheduler/index.ts\` | 云端调度 |
-| \`public/ai-phone-push/life-scheduler.mjs\` | 推送侧调度 |
-| \`scripts/test-life-runtime.mjs\` | runtime 测试 |
-| \`scripts/test-life-wiring.mjs\` | 接线测试 |
-| \`scripts/test-life-cloud-scheduler.mjs\` | 云端调度测试 |
-| \`scripts/test-life-notification-queue.mjs\` | 通知队列测试 |
-| \`package.json\` | test:life 集合 |
+| `app/life/page.tsx` | 路由入口 |
+| `components/life/life-engine-app.tsx` | 主页面、Tab、场景、日程和设置 |
+| `components/life/life-observation.tsx` | 观察 |
+| `components/life/life-diagnostics-panel.tsx` | 诊断和重置 |
+| `lib/life/life-types.ts` | 数据模型与默认设置 |
+| `lib/life/life-runtime.ts` | 位置、日程、邀请、事件、结算 |
+| `lib/life/life-storage.ts` | 状态持久化 |
+| `lib/life/life-scene-prompt.ts` | 现场提示词 |
+| `lib/life/life-engine.ts` | 回应角色队列 |
+| `lib/life/life-output.ts` | 输出解析/校验 |
+| `lib/life/life-autonomy.ts` | 自主行为 |
+| `lib/life/life-scheduler-coordinator.ts` | 前台租约 |
+| `lib/life/life-schedule-cloud.ts` | 云端快照 |
+| `lib/life/life-proactive-scheduler.ts` | 主动消息调度 |
+| `lib/life/life-notification-queue.ts` | 通知现场回复队列 |
+| `lib/life/life-memory-bridge.ts` | 普通聊天记忆/位置桥 |
+| `lib/notification-reply.ts` | 原生通知回复 |
+| `lib/chat-engine.ts` | 普通聊天引擎 |
+| `lib/life/life-location-import.ts` | 地点导入 |
+| `supabase/functions/life-scheduler/index.ts` | 云端调度 |
+| `public/ai-phone-push/life-scheduler.mjs` | 推送侧调度 |
+| `scripts/test-life-runtime.mjs` | runtime 测试 |
+| `scripts/test-life-wiring.mjs` | 接线测试 |
+| `scripts/test-life-cloud-scheduler.mjs` | 云端调度测试 |
+| `scripts/test-life-notification-queue.mjs` | 通知队列测试 |
+| `package.json` | test:life 集合 |
 
 ## 附录 B：本次尚未完成的核验
 
