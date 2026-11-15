@@ -508,15 +508,21 @@ export function syncScheduleLocationsToLibrary(state: VirtualLifeState): Virtual
   const byId = new Map(locations.map(location => [location.id, location]));
   const findByName = (name: string) => {
     const key = normalize(name);
-    return locations.find(location => normalize(location.name) === key
-      || (location.aliases ?? []).some(alias => normalize(alias) === key));
+    const matches = (location: LifeLocation) => normalize(location.name) === key
+      || (location.aliases ?? []).some(alias => normalize(alias) === key);
+    // Prefer a rich imported/manual dossier over an older schedule-only stub.
+    return locations.find(location => !location.id.startsWith("schedule-place-") && matches(location))
+      ?? locations.find(matches);
   };
   let changed = false;
   const schedules = state.schedules.map(slot => {
     const name = (slot.plannedLocationName ?? "").trim();
     if (!name) return slot;
     let location = slot.plannedLocationId ? byId.get(slot.plannedLocationId) : undefined;
-    if (!location) location = findByName(name);
+    const namedLocation = findByName(name);
+    if (!location || (location.id.startsWith("schedule-place-") && namedLocation && namedLocation.id !== location.id)) {
+      location = namedLocation;
+    }
     if (!location) {
       const base = "schedule-place-" + normalize(name).normalize("NFKD")
         .replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 48) || "place";
