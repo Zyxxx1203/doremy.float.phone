@@ -40,6 +40,7 @@ assert.ok(updateActorLocationStart >= 0 && createSceneStart > updateActorLocatio
 assert.doesNotMatch(app.slice(updateActorLocationStart, createSceneStart), /upsertLifeScene\(/, "changing an actor's actual location must not rewrite the location identity of the currently open room");
 assert.match(app, /const destinationParticipants = mergeLifeSceneParticipants\(/, "destination room membership must merge existing occupants with arrivals");
 assert.match(app, /findLifeSceneForLocation\(stateRef\.current\.scenes, destination\.id\)/, "entering a location must resolve its canonical room");
+assert.match(app, /useMemo\(\(\) => findCurrentLifeScene\(state\.scenes\)/, "foreground room selection must be deterministic and ignore legacy event-room priority");
 assert.match(app, /findLifeSceneForLocation\(stateRef\.current\.scenes, selectedLocation\.id\)/, "creating/reopening a location must reuse its canonical room");
 assert.doesNotMatch(runtime, /eventId: event\.id/, "scheduled invitations must not create event-owned chat rooms");
 assert.doesNotMatch(runtime, /locationId: nextLocationId, locationName: nextLocationName/, "schedule settlement must not rewrite the active room location");
