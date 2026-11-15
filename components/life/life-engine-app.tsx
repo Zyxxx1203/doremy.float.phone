@@ -868,7 +868,16 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     setScheduleRegenerationOwnerId(actor.ownerId);
     setNotice("正在让 " + character.name + " 根据角色卡、短期共同记忆与生活记录规划未来七天……");
     try {
-      const current = stateRef.current;
+      let current = stateRef.current;
+      const sharesPlayerHome = current.locations.some(location => location.id === "home" && (location.residents ?? []).includes(character.id));
+      if (!current.locations.some(location => location.id === "home-" + character.id) && !sharesPlayerHome) {
+        const personalHome: LifeLocation = {
+          id: "home-" + character.id,
+          name: character.name + "的家",
+          description: "", atmosphere: "", layout: "", props: [], visibility: "private",
+        };
+        current = { ...current, locations: [...current.locations, personalHome] };
+      }
       const realNow = resolveActorLifeNow(getActorClock(current, "character", character.id));
       // 从角色自己的“今天”开始向后规划七天，而不是再生成本周已过去的时间。
       const start = new Date(realNow.getTime()); start.setHours(0, 0, 0, 0);
