@@ -19,6 +19,9 @@ type CheckInBridgeLike = {
   requestCheckIn?: (characterId: string, name: string, avatar: string) => void;
   getCheckInDiagnostics?: () => string;
   getCheckInAppState?: () => string;
+  getBackgroundEnhancementDiagnostics?: () => string;
+  scheduleBackgroundCheckIn?: (characterId: string, characterName: string, dueAtMillis: number, remainingBackgroundMs: number, backgroundOnly: boolean) => boolean;
+  cancelBackgroundCheckIn?: (characterId: string) => boolean;
   getDiagnosticsSnapshot?: () => string;
   openAccessibilitySettings?: () => void;
   consumePendingUserShot?: () => string;
@@ -36,6 +39,27 @@ function bridge(): CheckInBridgeLike | null {
 }
 
 /** 读取原生 Activity 生命周期与累计后台时长。旧 APK 返回 unavailable。 */
+/** Schedule/cancel native one-shot wake-up reminders. Old APKs safely no-op. */
+export function scheduleNativeCheckIn(
+  characterId: string,
+  characterName: string,
+  dueAtMillis: number,
+  remainingBackgroundMs: number,
+  backgroundOnly: boolean,
+): boolean {
+  try {
+    return bridge()?.scheduleBackgroundCheckIn?.(
+      characterId, characterName, dueAtMillis, remainingBackgroundMs, backgroundOnly,
+    ) === true;
+  } catch {
+    return false;
+  }
+}
+
+export function cancelNativeCheckIn(characterId: string): void {
+  try { bridge()?.cancelBackgroundCheckIn?.(characterId); } catch { /* old APK / bridge unavailable */ }
+}
+
 export function readCheckInAppState(): import("./checkin-config").CheckInAppState {
   try {
     const raw = bridge()?.getCheckInAppState?.();
