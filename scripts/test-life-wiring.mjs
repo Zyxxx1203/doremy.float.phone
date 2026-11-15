@@ -115,6 +115,12 @@ assert.match(app, /setActiveLifeSceneTurn\(pendingTurn\)/, "in-flight scene turn
 assert.match(app, /replyToMessageId: pendingTurn\.messageId/, "scene replies must be linked to their player turn for idempotent recovery");
 assert.match(app, /item\.replyToMessageId === message\.id/, "regenerating a player message must find its exact response even when later player turns were queued");
 assert.match(app, /item\.id === targetMessage\.replyToMessageId/, "regenerating a character message must restore its matching player input");
+const regenerateStart = app.indexOf("const regenerateSceneMessage = async");
+const pushMessageStart = app.indexOf("const pushSceneMessage =", regenerateStart);
+const regenerateSource = app.slice(regenerateStart, pushMessageStart);
+assert.match(regenerateSource, /beginTurn\(\{ kind: "life_scene"/, "regeneration must use the shared turn coordinator");
+assert.match(regenerateSource, /busyRef\.current = true/, "regeneration must lock the scene composer");
+assert.match(regenerateSource, /lifeTurn\.end\(\)/, "regeneration must release its turn lease");
 assert.match(app, /buildLifeScenePromptContext\(stateRef\.current, turnScene, target\.id, pendingTurn\?\.messageId\)/, "queued turns must not see later player messages");
 assert.match(scenePrompt, /repliesByTurn/, "scene prompt history must restore each reply directly after its player turn");
 assert.match(app, /savePendingLifeSceneTurns\(pendingSceneTurnsRef\.current\)/, "new queued scene turns must be persisted");
