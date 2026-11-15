@@ -83,7 +83,7 @@ export function findLifeSceneForLocation(
   locationName?: string,
 ): LifeSceneState | undefined {
   return scenes
-    .filter(scene => scene.locationId === locationId || (!!locationName && scene.locationName === locationName))
+    .filter(scene => scene.locationId === locationId || (!scene.locationId && !!locationName && scene.locationName === locationName))
     .slice()
     .sort((left, right) =>
       Number(Boolean(left.eventId)) - Number(Boolean(right.eventId))
