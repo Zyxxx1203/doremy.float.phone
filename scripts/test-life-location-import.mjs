@@ -76,5 +76,11 @@ assert.equal(mergedHome.locations.length, 1, "an imported own-home should merge 
 assert.equal(mergedHome.locations[0].id, "home-character-a");
 assert.ok(mergedHome.locations[0].aliases.includes("海边公寓"), "the imported residence name should become a matchable alias");
 
+const playerHome = { id: "home", name: "玩家的家", visibility: "private", residents: [] };
+const sharedHome = mergeImportedLifeLocations([playerHome], [{ name: "我们共同的家", relation: "shared-home", sourceRefs: [{ ...ownHomeSource, sourceKey: "character-card:character-b", characterId: "character-b" }] }]);
+assert.equal(sharedHome.locations.length, 1, "a home explicitly shared with the player should merge into the player home");
+assert.equal(sharedHome.locations[0].id, "home");
+assert.ok(sharedHome.locations[0].residents.includes("character-b"), "shared-home import should register the character as a resident");
+
 
 console.log("Life location import regression tests passed.");
