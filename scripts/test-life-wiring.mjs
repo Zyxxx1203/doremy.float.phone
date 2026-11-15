@@ -262,4 +262,24 @@ assert.match(lifeTools, /kind: "free-time" as const, source: "character-tool" as
 assert.match(app, /daysUntilWeekEnd <= 2/);
 assert.match(app, /nextWeek\.setDate\(nextWeek\.getDate\(\) \+ 7\)/);
 
+
+const [checkinConfig, checkinScheduler] = await Promise.all([
+  read("../lib/screenshot/checkin-config.ts"),
+  read("../components/screenshot/checkin-scheduler.tsx"),
+]);
+assert.match(checkinConfig, /triggerMode: "background"/, "new and legacy check-in settings default to background-only");
+assert.match(checkinConfig, /nextDueBackgroundMs/, "background interval must use persisted cumulative background time");
+assert.match(checkinConfig, /ensureCheckInDueTime/, "random due time must be sampled once and persisted");
+assert.match(checkinEngine, /readCheckInAppState\(\)/, "scheduled check-in must use native lifecycle state");
+assert.match(checkinEngine, /getActiveChatSessionId\(\)/, "scheduled check-in must avoid interrupting the active private chat");
+assert.match(checkinEngine, /config\.triggerMode === "background"/);
+assert.doesNotMatch(checkinEngine, /if \(!life\.settings\.enableCharacterAutonomy\) return false/,
+  "independent check-in must not be disabled by the general life autonomy switch");
+assert.doesNotMatch(followUpService, /pollCheckIn\(now\)/,
+  "follow-up polling must not compete with the dedicated check-in scheduler");
+assert.match(checkinScheduler, /check-in-config-changed/, "enabling or changing a mode must initialize the schedule immediately");
+assert.match(nativeBridge, /fun getCheckInAppState\(\): String/);
+assert.match(nativeBridge, /CheckInService\.onHostBackground\(this\)/);
+assert.match(nativeBridge, /CheckInService\.onHostForeground\(this\)/);
+
 console.log("Life-system wiring checks passed.");

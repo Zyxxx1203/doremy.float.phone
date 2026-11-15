@@ -18,6 +18,7 @@ type CheckInBridgeLike = {
   stopCheckIn?: () => void;
   requestCheckIn?: (characterId: string, name: string, avatar: string) => void;
   getCheckInDiagnostics?: () => string;
+  getCheckInAppState?: () => string;
   getDiagnosticsSnapshot?: () => string;
   openAccessibilitySettings?: () => void;
   consumePendingUserShot?: () => string;
@@ -32,6 +33,22 @@ function bridge(): CheckInBridgeLike | null {
   if (typeof window === "undefined") return null;
   const candidate = (window as unknown as { AndroidShell?: CheckInBridgeLike }).AndroidShell;
   return candidate && typeof candidate === "object" ? candidate : null;
+}
+
+/** 读取原生 Activity 生命周期与累计后台时长。旧 APK 返回 unavailable。 */
+export function readCheckInAppState(): import("./checkin-config").CheckInAppState {
+  try {
+    const raw = bridge()?.getCheckInAppState?.();
+    if (!raw) return { available: false, foreground: true, backgroundElapsedMs: 0 };
+    const parsed = JSON.parse(raw) as Partial<import("./checkin-config").CheckInAppState>;
+    return {
+      available: parsed.available === true,
+      foreground: parsed.foreground !== false,
+      backgroundElapsedMs: Number.isFinite(parsed.backgroundElapsedMs) ? Math.max(0, Number(parsed.backgroundElapsedMs)) : 0,
+    };
+  } catch {
+    return { available: false, foreground: true, backgroundElapsedMs: 0 };
+  }
 }
 
 /** 壳是否提供查岗浮层（老 APK 没有）。 */
