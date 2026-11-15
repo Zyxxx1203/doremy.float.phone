@@ -1482,7 +1482,7 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         super.onStop()
         if (!recoveryBoot) {
             runCatching { CallOverlayService.onHostBackground() }
-            runCatching { CheckInService.onHostBackground() }
+            runCatching { CheckInService.onHostBackground(this) }
         }
     }
 
@@ -1490,7 +1490,7 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         super.onStart()
         if (!recoveryBoot) {
             runCatching { CallOverlayService.onHostForeground() }
-            runCatching { CheckInService.onHostForeground() }
+            runCatching { CheckInService.onHostForeground(this) }
         }
     }
 
@@ -2231,6 +2231,10 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         /** 查岗浮层的内部状态快照（诊断面板用）。 */
         @JavascriptInterface
         fun getCheckInDiagnostics(): String = CheckInService.diagnosticsJson(this@MainActivity)
+
+        /** 前后台状态与累计后台时长，供查岗调度使用；不读取任何用户内容。 */
+        @JavascriptInterface
+        fun getCheckInAppState(): String = CheckInService.appLifecycleJson(this@MainActivity)
 
         /**
          * 读走「用户主动截屏（悬浮球）」的结果（JSON 字符串，空串 = 没有）。
