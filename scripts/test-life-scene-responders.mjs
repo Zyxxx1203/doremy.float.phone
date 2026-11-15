@@ -67,6 +67,11 @@ const canonicalRoom = findLifeSceneForLocation([
   { id: "canonical-location-room", locationId: "cafe", locationName: "咖啡店", startedAt: "2026-01-02T00:00:00.000Z", updatedAt: "2026-11-10T00:00:00.000Z", status: "paused", participants: [], lastSettledEventIds: [] },
 ], "cafe");
 assert.equal(canonicalRoom.id, "canonical-location-room", "a normal location room must win over a newer legacy event-linked room");
+const distinctSameNameRoom = findLifeSceneForLocation([
+  { id: "same-name-other-location", locationId: "cafe-branch", locationName: "咖啡店", startedAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-11-16T00:00:00.000Z", status: "active", participants: [], lastSettledEventIds: [] },
+  { id: "correct-location-room", locationId: "cafe", locationName: "咖啡店", startedAt: "2026-01-02T00:00:00.000Z", updatedAt: "2026-11-10T00:00:00.000Z", status: "paused", participants: [], lastSettledEventIds: [] },
+], "cafe", "咖啡店");
+assert.equal(distinctSameNameRoom.id, "correct-location-room", "same-named but distinct locations must never share a chat room");
 
 const mergedParticipants = mergeLifeSceneParticipants(
   [
