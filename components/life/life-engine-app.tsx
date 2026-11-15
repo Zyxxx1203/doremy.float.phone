@@ -2450,7 +2450,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         content: [
           "你是生活系统的世界观地点整理器。请从给定角色卡和世界书原文中提取明确存在的具体地点，输出严格 JSON 数组，不要 Markdown 或解释。",
           "每个地点对象字段：name（规范名称）、aliases（原文别称）、description（空间环境事实）、atmosphere（氛围）、layout（空间布局）、props（原文提及或可合理补全的道具数组）、relation（own-home/shared-home/workplace/frequent/mentioned/unknown）、sourceKeys（支撑该地点的 SOURCE_KEY 数组）。",
-          "只提取有明确专名或可稳定识别的具体地点，不要把普通名词直接扩成大量新地点。多个条目指向同一地点时合并；名字相似但不是同一地点时分开。不要因为角色去过某人的家，就认定那是角色自己的家。own-home 只在原文明确说是该角色自己的住所时使用；shared-home 只在明确同住时使用；工作单位标 workplace；常去地点标 frequent；仅被提及标 mentioned。",
+          "只提取有明确专名或可稳定识别的具体地点，不要把普通名词直接扩成大量新地点。多个条目指向同一地点时合并；名字相似但不是同一地点时分开。不要因为角色去过某人的家，就认定那是角色自己的家。own-home 只在原文明确说是该角色自己的住所时使用；shared-home 只在原文明确说明该角色与玩家/用户同住时使用；若是与其他角色同住，不得误标为玩家家；工作单位标 workplace；常去地点标 frequent；仅被提及标 mentioned。",
           "地点描述、布局和道具优先引用原文。原文未说明的细节可以谨慎补全，但不得把推测写成设定事实；不要编造楼层、房间数量、经营者等关键设定。信息不足时字段留空。",
           "sourceKeys 必须逐字使用输入中真实存在的 SOURCE_KEY；每个地点至少关联一个来源。没有地点就返回 []。",
           "输入资料：\n\n" + sourceBlocks.join("\n\n").slice(0, 42000),
