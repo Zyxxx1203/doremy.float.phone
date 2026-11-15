@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Activity, BatteryCharging, Bell, ExternalLink, RefreshCw, ShieldCheck, Smartphone } from "lucide-react";
+import { Activity, BatteryCharging, Bell, ExternalLink, RefreshCw } from "lucide-react";
 import { Toggle } from "@/components/ui/form";
 
 type BackgroundDiagnostics = {
@@ -50,7 +50,6 @@ function Status({ ok, unknown = false }: { ok: boolean; unknown?: boolean }) {
 
 export function BackgroundEnhancementSettings({ onNotice }: { onNotice?: (message: string) => void }) {
   const [diag, setDiag] = useState<BackgroundDiagnostics | null>(() => readDiagnostics());
-  const [busy, setBusy] = useState(false);
   const refresh = useCallback(() => setDiag(readDiagnostics()), []);
 
   useEffect(() => {
