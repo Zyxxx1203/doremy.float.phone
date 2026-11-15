@@ -1,4 +1,4 @@
-import type { LifeLocation, LifeLocationSourceRef } from "./life-types";
+import type { LifeLocation, LifeLocationFieldOrigin, LifeLocationSourceRef } from "./life-types";
 
 export type ImportedLifeLocation = {
   name: string;
@@ -36,7 +36,7 @@ function mergeUnique(current: string[] = [], incoming: string[] = []) {
 function mergeText(
   current: string | undefined,
   incoming: string | undefined,
-  currentOrigin: LifeLocation["fieldOrigins"] extends infer T ? T extends object ? T[keyof T] : never : never,
+  currentOrigin: LifeLocationFieldOrigin | undefined,
 ) {
   const value = incoming?.trim();
   if (!value) return { value: current, changed: false };
@@ -95,12 +95,17 @@ export function mergeImportedLifeLocations(
     const description = mergeText(match.description, candidate.description, origins.description);
     const atmosphere = mergeText(match.atmosphere, candidate.atmosphere, origins.atmosphere);
     const layout = mergeText(match.layout, candidate.layout, origins.layout);
-    const props = !match.props?.length || origins.props === "ai"
-      ? mergeUnique([], candidate.props ?? []) : match.props;
+    const incomingProps = candidate.props ?? [];
+    const props = incomingProps.length
+      ? (!match.props?.length ? mergeUnique([], incomingProps)
+        : origins.props === "ai" ? mergeUnique([], incomingProps) : match.props)
+      : (match.props ?? []);
     const nextSources = mergeUniqueSources(match.sourceRefs ?? [], sources);
     sourcesAdded += nextSources.length - (match.sourceRefs?.length ?? 0);
-    const nextAliases = origins.aliases === "ai" || !match.aliases?.length
-      ? mergeUnique(match.aliases ?? [], aliases) : mergeUnique(match.aliases ?? [], aliases);
+    const nextAliases = aliases.length
+      ? (!match.aliases?.length ? mergeUnique([], aliases)
+        : origins.aliases === "ai" ? mergeUnique(match.aliases ?? [], aliases) : match.aliases)
+      : (match.aliases ?? []);
     const next: LifeLocation = {
       ...match,
       aliases: nextAliases,
