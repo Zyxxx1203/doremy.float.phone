@@ -24,7 +24,7 @@ assert.equal(parsed.length, 2, "unknown source keys must be rejected, not import
 const merged = mergeImportedLifeLocations([], parsed);
 assert.equal(merged.added, 1, "same exact canonical place should deduplicate");
 assert.equal(merged.locations[0].name, "旧城区花店");
-assert.deepEqual(merged.locations[0].aliases, ["花店", "旧城花房", "花房"]);
+assert.deepEqual(Array.from(merged.locations[0].aliases), ["花店", "旧城花房", "花房"]);
 assert.equal(merged.locations[0].sourceRefs.length, 2, "repeated imports should merge provenance");
 assert.equal(merged.locations[0].description, "临街的小花店。");
 assert.equal(merged.locations[0].fieldOrigins.description, "ai");
@@ -42,8 +42,8 @@ const refreshed = mergeImportedLifeLocations([userAuthored], [{
 assert.equal(refreshed.locations[0].description, userAuthored.description, "refresh must not overwrite manual description");
 assert.equal(refreshed.locations[0].atmosphere, userAuthored.atmosphere, "refresh must not overwrite manual atmosphere");
 assert.equal(refreshed.locations[0].layout, userAuthored.layout, "refresh must not overwrite manual layout");
-assert.deepEqual(refreshed.locations[0].props, userAuthored.props, "refresh must not overwrite manual props");
-assert.deepEqual(refreshed.locations[0].aliases, userAuthored.aliases, "refresh must not overwrite manual aliases");
+assert.deepEqual(Array.from(refreshed.locations[0].props), userAuthored.props, "refresh must not overwrite manual props");
+assert.deepEqual(Array.from(refreshed.locations[0].aliases), userAuthored.aliases, "refresh must not overwrite manual aliases");
 assert.equal(refreshed.locations[0].sourceRefs.length, 1, "source references still merge when manual fields are protected");
 
 const aiAuthored = { ...userAuthored, id: "place-ai-shop", fieldOrigins: { description: "ai", atmosphere: "ai", layout: "ai", props: "ai", aliases: "ai" } };
@@ -52,7 +52,7 @@ const refreshedAi = mergeImportedLifeLocations([aiAuthored], [{
   props: ["更新道具"], aliases: ["更新别名"], sourceRefs: [sourceB],
 }]);
 assert.equal(refreshedAi.locations[0].description, "更新后的描述", "AI-generated fields should be refreshable");
-assert.deepEqual(refreshedAi.locations[0].props, ["更新道具"]);
+assert.deepEqual(Array.from(refreshedAi.locations[0].props), ["更新道具"]);
 
 const similar = mergeImportedLifeLocations([], [
   { name: "旧城区花店", sourceRefs: [sourceA] },
