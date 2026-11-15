@@ -305,6 +305,8 @@ const [
 ]);
 
 assert.match(backgroundManager, /setAndAllowWhileIdle/, "native scheduler must use inexact allow-while-idle alarms");
+assert.match(backgroundManager, /mode\(context\) != MODE_ENHANCED/, "native alarms must be gated by the user's enhanced-mode opt-in");
+assert.doesNotMatch(backgroundManager, /ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS/, "do not trigger policy-sensitive battery exemption requests");
 assert.doesNotMatch(backgroundManager, /setExactAndAllowWhileIdle|setExact\(/, "background reminders must not require exact-alarm access");
 assert.match(backgroundManager, /remainingMs/, "background-only timers must pause while the app is foreground");
 assert.match(backgroundManager, /batteryOptimizationIgnored/, "background diagnostics must report battery optimization state");
