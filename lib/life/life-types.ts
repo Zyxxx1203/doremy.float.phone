@@ -162,9 +162,28 @@ export type LifeScheduleSlot = {
   updatedAt: string;
 };
 
+export type LifeLocationSourceRef = {
+  sourceKey: string;
+  kind: "character-card" | "worldbook" | "manual";
+  characterId?: string;
+  characterName?: string;
+  worldBookId?: string;
+  worldBookName?: string;
+  entryUid?: string;
+  entryComment?: string;
+  relation?: "own-home" | "shared-home" | "workplace" | "frequent" | "mentioned" | "unknown";
+  importedAt: string;
+};
+
+export type LifeLocationFieldOrigin = "user" | "source" | "ai";
+
 export type LifeLocation = {
   id: string;
   name: string;
+  /** Provenance for imported/generated location profiles; additive for legacy state. */
+  sourceRefs?: LifeLocationSourceRef[];
+  /** Tracks which profile fields may be refreshed without overwriting user edits. */
+  fieldOrigins?: Partial<Record<"description" | "atmosphere" | "layout" | "props" | "aliases", LifeLocationFieldOrigin>>;
   description?: string;
   /** Alternate names used to match generated itinerary places back to this canonical location. */
   aliases?: string[];
