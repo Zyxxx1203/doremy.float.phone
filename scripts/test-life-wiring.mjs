@@ -327,4 +327,24 @@ assert.match(backupScheduler, /pageshow/);
 assert.match(widgetScheduler, /pageshow/);
 assert.match(mediaScheduler, /pageshow/);
 
+const [kvDbSource, lifeStorageSource, lifeTypesSource] = await Promise.all([
+  read("../lib/kv-db.ts"),
+  read("../lib/life/life-storage.ts"),
+  read("../lib/life/life-types.ts"),
+]);
+assert.match(kvDbSource, /const _writeQueues = new Map<string, Promise<void>>\(\)/,
+  "IndexedDB writes must be serialized per key so an older snapshot cannot finish after a newer one");
+assert.match(kvDbSource, /previous\.catch\(\(\) => undefined\)\.then\(async \(\) => \{[\s\S]*?await kvDb\.entries\.put\(\{ key, value \}\)/,
+  "each durable key write must wait for the previous write to settle");
+assert.match(kvDbSource, /enqueueKvWrite\(key, value\)/,
+  "both sync and async KV setters must use the ordered write queue");
+assert.match(lifeStorageSource, /sceneMessageFormatVersion: typeof raw\.sceneMessageFormatVersion === "number" \? raw\.sceneMessageFormatVersion : 0/,
+  "legacy scene message migration version must survive state normalization");
+assert.match(lifeTypesSource, /sceneMessageFormatVersion\?: number/);
+assert.match(app, /if \(\(normalized\.sceneMessageFormatVersion \?\? 0\) < 1\)/,
+  "legacy scene action/dialogue parsing must run once, not on every app entry");
+assert.match(app, /sceneMessageFormatVersion: 1/);
+assert.match(app, /!message\.action\?\.trim\(\)/,
+  "already structured action/dialogue messages must not be parsed again");
+
 console.log("Life-system and background-enhancement wiring checks passed.");
