@@ -133,6 +133,8 @@ object BackgroundEnhancementManager {
                     findTask(tasks, id)?.put("dueAt", due)
                     writeTasks(context, tasks)
                     scheduleAlarm(context, id, due)
+                } else {
+                    Unit
                 }
             } else {
                 scheduleAlarm(context, id, nextDueAt)
