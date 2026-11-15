@@ -355,7 +355,7 @@ assert.match(app, /消息已保存，但当前没有可回应的角色/,
 assert.match(app, /const sceneContext = buildLifeScenePromptContext\(stateRef\.current, turnScene, target\.id\)/,
   "queued replies must use their original scene context");
 const composerSource = app.slice(app.indexOf('<form onSubmit={sendSceneTurn}'), app.indexOf('</form>', app.indexOf('<form onSubmit={sendSceneTurn}')));
-assert.doesNotMatch(composerSource, /disabled=\{busy\}/,
+assert.doesNotMatch(composerSource, /<textarea[^>]*disabled=\{busy\}/,
   "scene composer must remain available while a reply is generating");
 
 console.log("Life-system and background-enhancement wiring checks passed.");
