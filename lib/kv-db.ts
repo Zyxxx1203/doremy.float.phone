@@ -188,17 +188,37 @@ export function kvGet(key: string): string | null {
     return null;
 }
 
+// ── Write: update cache + serialize IndexedDB writes per key ──
+// IndexedDB put() calls started concurrently can complete out of order. A stale
+// full-state snapshot could therefore win the disk race and reappear after reload.
+// Keep each key's durable writes in invocation order while allowing unrelated keys
+// to persist independently.
+const _writeQueues = new Map<string, Promise<void>>();
+
+function enqueueKvWrite(key: string, value: string): Promise<void> {
+    const previous = _writeQueues.get(key) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(async () => {
+        try {
+            await kvDb.entries.put({ key, value });
+            if (isManagedLegacyKey(key)) removeLegacyLocalStorageKeyIfValue(key, value);
+        } catch (err) {
+            writeFallbackLocalStorage(key, value);
+            throw err;
+        }
+    });
+    _writeQueues.set(key, next);
+    void next.finally(() => {
+        if (_writeQueues.get(key) === next) _writeQueues.delete(key);
+    }).catch(() => {});
+    return next;
+}
+
 // ── Write: update cache + fire-and-forget to IDB ──
 export function kvSet(key: string, value: string): void {
     _cache.set(key, value);
     if (isManagedLegacyKey(key)) writeFallbackLocalStorage(key, value);
-    kvDb.entries.put({ key, value }).then(() => {
-        if (isManagedLegacyKey(key)) removeLegacyLocalStorageKeyIfValue(key, value);
-    }).catch(err => {
-        writeFallbackLocalStorage(key, value);
-        if (!isAbortLikeError(err)) {
-            console.warn("[KvDB] put failed:", key, err);
-        }
+    void enqueueKvWrite(key, value).catch(err => {
+        if (!isAbortLikeError(err)) console.warn("[KvDB] put failed:", key, err);
     });
 }
 
@@ -206,13 +226,9 @@ export async function kvSetAsync(key: string, value: string): Promise<void> {
     _cache.set(key, value);
     if (isManagedLegacyKey(key)) writeFallbackLocalStorage(key, value);
     try {
-        await kvDb.entries.put({ key, value });
-        if (isManagedLegacyKey(key)) removeLegacyLocalStorageKeyIfValue(key, value);
+        await enqueueKvWrite(key, value);
     } catch (err) {
-        writeFallbackLocalStorage(key, value);
-        if (!isAbortLikeError(err)) {
-            console.warn("[KvDB] put failed:", key, err);
-        }
+        if (!isAbortLikeError(err)) console.warn("[KvDB] put failed:", key, err);
         throw err;
     }
 }
