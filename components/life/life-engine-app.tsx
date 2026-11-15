@@ -379,10 +379,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           saveVirtualLifeState(normalized);
         }
       }
-      const restoredScene = normalized.scenes.find(scene => scene.status === "active")
-        ?? normalized.scenes.filter(scene => scene.status === "paused").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+      const restoredScene = findCurrentLifeScene(normalized.scenes);
       const restoredPlayer = normalized.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
-      setSelectedLocationId(restoredPlayer?.actualLocationId || restoredScene?.locationId || normalized.locations[0]?.id || "cafe");
+      setSelectedLocationId(restoredScene?.locationId || restoredPlayer?.actualLocationId || normalized.locations[0]?.id || "cafe");
       stateRef.current = normalized;
       setState(normalized);
       setCharacters(loadCharacters());
