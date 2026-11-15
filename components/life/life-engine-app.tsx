@@ -2302,6 +2302,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     if (!target) {
       if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应无法启动", status: "error", detail: "找不到通知回复对应的角色卡。", meta: { sceneId: turnScene.id, targetId } });
       setNotice("已保存，暂无可回应角色。");
+      discardQueuedTurn();
       return userText || userAction ? "completed" : "failed";
     }
     // Any character that actually reaches the response queue has now noticed the player,
@@ -2332,8 +2333,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const remaining = responseQueue?.length ? responseQueue.slice(1) : plannedResponders.slice(1);
       if (remaining.length) {
         const nextResult = await sendSceneTurn(undefined, true, undefined, remaining);
+        discardQueuedTurn();
         return nextResult === "failed" ? "failed" : "completed";
       }
+      discardQueuedTurn();
       return "failed";
     }
     const contacts = loadChatContacts();
@@ -2363,6 +2366,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       }
       return "failed";
     }
+    if (!responseQueue?.length && pendingTurn) setActiveLifeSceneTurn(pendingTurn);
     busyRef.current = true;
     setBusy(true);
     if (forceReaction) setNotice(target.name + "正在回应最近的互动……");
@@ -2482,7 +2486,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const remainingResponders = responseQueue?.length ? responseQueue.slice(1) : plannedResponders.slice(1);
       if (remainingResponders.length) {
         recordLifeDiagnostic({ source: "生活现场", event: "追加角色回应队列", status: "info", detail: "按角色 ID 去重后依次处理其他回应角色。", meta: { sceneId: turnScene.id, completedCharacterId: target.id, queuedCharacterIds: remainingResponders } });
-        const nextResult = await sendSceneTurn(undefined, true, undefined, remainingResponders);
+        const nextResult = await sendSceneTurn(undefined, true, undefined, remainingResponders, pendingTurn ?? undefined);
         if (nextResult === "failed") recordLifeDiagnostic({ source: "生活现场", event: "追加角色回应未全部完成", status: "warning", detail: "至少一名后续角色未能完成回应，已完成的回应会保留。", meta: { sceneId: turnScene.id, completedCharacterId: target.id, remainingResponders } });
       }
       // Persist one shared event for the whole player turn, after all queued responders
