@@ -177,7 +177,20 @@ export function LifeObservation({ characters, active = false, onNotice }: { char
         character.persona ? "角色设定：" + character.persona : "",
         character.personality ? "性格：" + character.personality : "",
         (character.tags ?? []).length ? "标签：" + (character.tags ?? []).join("、") : "",
-        state.locations.map(location => location.characterHabits?.[character.id] ? `${location.name}的习惯：${location.characterHabits[character.id]}` : "").filter(Boolean).join("\n"),
+        state.locations.map(location => location.characterHabits?.[character.id] ? location.name + "的习惯：" + location.characterHabits[character.id] : "").filter(Boolean).join("\n"),
+        (() => {
+          const visitedIds = new Set(coveredSchedules.map(schedule => schedule.plannedLocationId).filter((value): value is string => Boolean(value)));
+          const visitedNames = new Set(coveredSchedules.map(schedule => schedule.plannedLocationName).filter((value): value is string => Boolean(value)));
+          return state.locations.filter(location => visitedIds.has(location.id) || visitedNames.has(location.name) || (location.aliases ?? []).some(alias => visitedNames.has(alias)))
+            .slice(0, 12)
+            .map(location => [
+              "地点档案：" + location.name,
+              location.description ? "环境：" + location.description.slice(0, 180) : "",
+              location.atmosphere ? "氛围：" + location.atmosphere.slice(0, 100) : "",
+              location.layout ? "布局：" + location.layout.slice(0, 120) : "",
+              location.props?.length ? "道具：" + location.props.slice(0, 6).join("、") : "",
+            ].filter(Boolean).join("；")).join("\n");
+        })(),
       ].filter(Boolean).join("\n");
       const prompt: ChatMessage = {
         id: makeId(), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),

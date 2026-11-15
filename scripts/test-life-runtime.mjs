@@ -766,4 +766,33 @@ const defaultOwnHome = applyCharacterLifeScheduleChange(householdState, "a", {
 assert.equal(defaultOwnHome.state.schedules.find(slot => slot.id.startsWith("life-tool-plan-a-"))?.plannedLocationId, "home-a",
   "an omitted destination should resolve to the actor's own residence, not the player's home");
 
+const importedDossier = {
+  id: "imported-place-old-town-flower-shop", name: "旧城区花店",
+  description: "临街的老式花店，窗边有自然光。", atmosphere: "安静、清新。",
+  layout: "入口朝街，柜台在右侧。", props: ["花桶", "剪刀"],
+  sourceRefs: [{ sourceKey: "worldbook:city:flower-shop", kind: "worldbook", worldBookId: "city", entryUid: "flower-shop", importedAt: "2026-11-15T00:00:00.000Z" }],
+  visibility: "public",
+};
+const oldScheduleStub = { id: "schedule-place-old-town-flower-shop", name: "旧城区花店", description: "由角色日程自动同步建立；可在地点库中继续编辑。", atmosphere: "", layout: "", props: [], visibility: "public" };
+const placeholderState = makeState([{
+  id: "slot-old-flower-shop", ownerType: "character", ownerId: "a",
+  startAt: "2026-12-02T08:00:00.000Z", endAt: "2026-12-02T09:00:00.000Z",
+  title: "去花店", kind: "free-time", source: "weekly-generation",
+  plannedLocationId: oldScheduleStub.id, plannedLocationName: oldScheduleStub.name, updatedAt: "2026-12-01T00:00:00.000Z",
+}]);
+placeholderState.locations = [oldScheduleStub, importedDossier];
+placeholderState.actorStates = [{ ownerType: "character", ownerId: "a", activity: "在花店", actualLocationId: oldScheduleStub.id, actualLocationName: oldScheduleStub.name, updatedAt: "2026-12-01T00:00:00.000Z" }];
+placeholderState.scenes = [{ id: "scene-old-flower-shop", locationId: oldScheduleStub.id, locationName: oldScheduleStub.name, startedAt: "2026-12-02T08:00:00.000Z", updatedAt: "2026-12-02T08:00:00.000Z", status: "active", participants: [], lastSettledEventIds: [] }];
+const remappedLocations = syncScheduleLocationsToLibrary(placeholderState);
+assert.equal(remappedLocations.schedules[0].plannedLocationId, importedDossier.id, "a schedule-only placeholder must remap to a richer imported location dossier");
+assert.equal(remappedLocations.schedules[0].plannedLocationName, importedDossier.name);
+assert.equal(remappedLocations.locations.find(location => location.id === importedDossier.id).sourceRefs[0].sourceKey, importedDossier.sourceRefs[0].sourceKey, "schedule synchronization must preserve imported provenance");
+assert.equal(remappedLocations.locations.length, 2, "remapping should not duplicate the imported dossier");
+assert.equal(remappedLocations.actorStates[0].actualLocationId, importedDossier.id, "active actor state must follow the remapped canonical location");
+assert.equal(remappedLocations.scenes[0].locationId, importedDossier.id, "active scenes must follow the remapped canonical location");
+
+const generatedResidenceState = generateWeeklyLifePlan(makeState(), "character", "char-without-home", "测试角色", new Date("2026-12-01T00:00:00.000Z"), undefined, "", false);
+assert.ok(generatedResidenceState.locations.some(location => location.id === "home-char-without-home"), "weekly generation must persist the actor personal home in the location catalog");
+assert.ok(generatedResidenceState.schedules.some(slot => slot.ownerId === "char-without-home" && slot.plannedLocationId === "home-char-without-home"), "generated home schedule slots must reference the canonical personal home ID");
+
 console.log("Life schedule regression tests passed.");

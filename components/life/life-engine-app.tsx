@@ -12,6 +12,7 @@ import { loadCharacters } from "@/lib/character-storage";
 import { hydrateKvDb } from "@/lib/kv-db";
 import { addChatContact, createOrGetSession, hydrateChatStorage, loadChatContacts, loadChatMessages, loadChatSessions, resolveSessionCharacterId, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { generateOfflineChatCompletion } from "@/lib/chat-engine";
+import { mergeImportedLifeLocations, parseImportedLifeLocations } from "@/lib/life/life-location-import";
 import {
   createEmptyVirtualLifeState,
   DEFAULT_LIFE_ENGINE_SETTINGS,
@@ -180,6 +181,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const [locationStatsTick, setLocationStatsTick] = useState(0);
   useEffect(() => { const timer = window.setInterval(() => setLocationStatsTick(value => value + 1), 30_000); return () => window.clearInterval(timer); }, []);
   const [worldBooks, setWorldBooks] = useState<WorldBookConfig[]>([]);
+  const [locationImportCharacterId, setLocationImportCharacterId] = useState("");
+  const [locationImportWorldBookIds, setLocationImportWorldBookIds] = useState<string[]>([]);
+  const [locationImportBusy, setLocationImportBusy] = useState(false);
   const [bindingConfig, setBindingConfig] = useState<BindingConfig>(() => loadBindingConfig());
   const [dailySubtab, setDailySubtab] = useState<"people" | "plans" | "observe">("people");
   const [experienceActorFilter, setExperienceActorFilter] = useState("all");
@@ -534,6 +538,15 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   // 对白消息仍逐条显示，编辑/删除/重新生成均对应真实消息。
   const displaySceneMessages = sceneMessages;
   const selectedLocation = state.locations.find(location => location.id === selectedLocationId) ?? state.locations[0];
+  useEffect(() => {
+    if (!locationImportCharacterId && characters[0]) setLocationImportCharacterId(characters[0].id);
+  }, [characters, locationImportCharacterId]);
+  useEffect(() => {
+    if (!locationImportCharacterId) return;
+    const chat = resolveBinding(bindingConfig, locationImportCharacterId, "chat");
+    const dwelling = resolveBinding(bindingConfig, locationImportCharacterId, "dwelling");
+    setLocationImportWorldBookIds([...new Set([...(chat.worldBookIds ?? []), ...(dwelling.worldBookIds ?? [])])]);
+  }, [locationImportCharacterId, bindingConfig]);
   const sceneBackgroundLocation = state.locations.find(location => location.id === activeScene?.locationId) ?? selectedLocation;
   const selectedLocationVisitStats = useMemo(() => {
     if (!selectedLocation) return { visits: 0, minutes: 0, activeMinutes: 0 };
@@ -855,7 +868,16 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     setScheduleRegenerationOwnerId(actor.ownerId);
     setNotice("正在让 " + character.name + " 根据角色卡、短期共同记忆与生活记录规划未来七天……");
     try {
-      const current = stateRef.current;
+      let current = stateRef.current;
+      const sharesPlayerHome = current.locations.some(location => location.id === "home" && (location.residents ?? []).includes(character.id));
+      if (!current.locations.some(location => location.id === "home-" + character.id) && !sharesPlayerHome) {
+        const personalHome: LifeLocation = {
+          id: "home-" + character.id,
+          name: character.name + "的家",
+          description: "", atmosphere: "", layout: "", props: [], visibility: "private",
+        };
+        current = { ...current, locations: [...current.locations, personalHome] };
+      }
       const realNow = resolveActorLifeNow(getActorClock(current, "character", character.id));
       // 从角色自己的“今天”开始向后规划七天，而不是再生成本周已过去的时间。
       const start = new Date(realNow.getTime()); start.setHours(0, 0, 0, 0);
@@ -869,7 +891,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           && (shared.id === "home" || shared.id.startsWith("home-"))
           && (shared.id === "home" || (shared.residents ?? []).length > 1)
           && (shared.residents ?? []).includes(ownerId));
-      }).map(p => "- " + p.name + ((p.aliases?.length ?? 0) ? "（别名：" + p.aliases!.join("、") + "）" : "") + (p.characterHabits?.[character.id] ? "；角色习惯：" + p.characterHabits[character.id] : "")).join("\n");
+      }).slice(0, 36).map(p => "- " + p.name + "（locationId=" + p.id + "）" + ((p.aliases?.length ?? 0) ? "；别名：" + p.aliases!.join("、") : "") + (p.description ? "；环境：" + p.description.slice(0, 140) : "") + (p.atmosphere ? "；氛围：" + p.atmosphere.slice(0, 70) : "") + (p.layout ? "；布局：" + p.layout.slice(0, 90) : "") + (p.props?.length ? "；道具：" + p.props.slice(0, 5).join("、") : "") + (p.characterHabits?.[character.id] ? "；角色习惯：" + p.characterHabits[character.id] : "")).join("\n");
       const livesWithPlayer = current.locations.some(location =>
         (location.id === "home" || location.id.startsWith("home-"))
         && (location.residents ?? []).includes(character.id)
@@ -917,7 +939,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       if (!Array.isArray(decoded)) throw new Error("日程结果不是数组。");
       const clean = (value: string) => value.toLocaleLowerCase().replace(/[\s\u3000·•\/\\|｜、，,。.!！?？:：;；()（）\[\]【】_-]+/g, "");
       const kinds = new Set(["habit", "work", "study", "meal", "commute", "free-time", "appointment", "special"]);
-      const home = current.locations.find(p => p.id === "home") ?? current.locations[0];
+      const home = current.locations.find(p => p.id === "home" && (p.residents ?? []).includes(character.id)) ?? current.locations.find(p => p.id === "home-" + character.id) ?? current.locations.find(p => p.id === "home") ?? current.locations[0];
       const aiSlots: LifeScheduleSlot[] = [];
       const days = new Set<number>();
       for (const item of decoded as Array<Record<string, unknown>>) {
@@ -2405,10 +2427,120 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     })();
   }, [activeScene?.id, immersiveScene, selectedLocationId, selectedSpeakerId, busy, ready, sendSceneTurn, refreshNotificationReplyQueue]);
 
+  const importWorldbookLocations = async () => {
+    if (locationImportBusy) return;
+    const character = characters.find(item => item.id === locationImportCharacterId);
+    if (!character) { setNotice("请先选择要提取地点的角色卡。"); return; }
+    const importedAt = new Date().toISOString();
+    const sourceMap = new Map<string, import("@/lib/life/life-types").LifeLocationSourceRef>();
+    const sourceBlocks: string[] = [];
+    const cardKey = "character-card:" + character.id;
+    sourceMap.set(cardKey, { sourceKey: cardKey, kind: "character-card", characterId: character.id, characterName: character.name, importedAt });
+    sourceBlocks.push(["SOURCE_KEY: " + cardKey, "SOURCE_TYPE: character-card", "CHARACTER: " + character.name, "CONTENT:", [character.persona, character.personality, ...(character.tags ?? [])].filter(Boolean).join("\n")].join("\n"));
+    let enabledEntries = 0, disabledEntries = 0, truncatedEntries = 0, usedChars = sourceBlocks[0].length;
+    for (const book of worldBooks.filter(item => locationImportWorldBookIds.includes(item.id))) {
+      for (const entry of book.entries ?? []) {
+        if (entry.disable) { disabledEntries++; continue; }
+        if (!entry.content?.trim() && !entry.comment?.trim() && !entry.key?.trim()) continue;
+        if (enabledEntries >= 80 || usedChars >= 36000) { truncatedEntries++; continue; }
+        const sourceKey = "worldbook:" + book.id + ":" + entry.uid;
+        sourceMap.set(sourceKey, { sourceKey, kind: "worldbook", characterId: character.id, characterName: character.name, worldBookId: book.id, worldBookName: book.name, entryUid: entry.uid, entryComment: [entry.comment, entry.key].filter(Boolean).join(" / ").slice(0, 240), importedAt });
+        const block = ["SOURCE_KEY: " + sourceKey, "SOURCE_TYPE: worldbook", "WORLD_BOOK: " + book.name, "ENTRY_COMMENT: " + (entry.comment || ""), "ENTRY_KEYWORDS: " + (entry.key || ""), "CONTENT:", (entry.content || "").slice(0, 5000)].join("\n");
+        sourceBlocks.push(block); usedChars += block.length; enabledEntries++;
+      }
+    }
+    if (!enabledEntries && !character.persona?.trim() && !character.personality?.trim() && !(character.tags ?? []).length) { setNotice("所选角色卡和世界书没有可读取的设定内容。"); return; }
+    setLocationImportBusy(true);
+    setNotice("正在分析「" + character.name + "」的角色卡与 " + enabledEntries + " 条世界书条目，识别地点、别名和空间设定……");
+    try {
+      const session = createLifeChatSession(character.id, character.name);
+      const prompt: ChatMessage = {
+        id: id("life-location-import"), sessionId: session.id, role: "user", status: "sent", createdAt: importedAt,
+        content: [
+          "你是生活系统的世界观地点整理器。请从给定角色卡和世界书原文中提取明确存在的具体地点，输出严格 JSON 数组，不要 Markdown 或解释。",
+          "每个地点对象字段：name（规范名称）、aliases（原文别称）、description（空间环境事实）、atmosphere（氛围）、layout（空间布局）、props（原文提及或可合理补全的道具数组）、relation（own-home/shared-home/workplace/frequent/mentioned/unknown）、sourceKeys（支撑该地点的 SOURCE_KEY 数组）。",
+          "只提取有明确专名或可稳定识别的具体地点，不要把普通名词直接扩成大量新地点。多个条目指向同一地点时合并；名字相似但不是同一地点时分开。不要因为角色去过某人的家，就认定那是角色自己的家。own-home 只在原文明确说是该角色自己的住所时使用；shared-home 只在原文明确说明该角色与玩家/用户同住时使用；若是与其他角色同住，不得误标为玩家家；工作单位标 workplace；常去地点标 frequent；仅被提及标 mentioned。",
+          "地点描述、布局和道具优先引用原文。原文未说明的细节可以谨慎补全，但不得把推测写成设定事实；不要编造楼层、房间数量、经营者等关键设定。信息不足时字段留空。",
+          "sourceKeys 必须逐字使用输入中真实存在的 SOURCE_KEY；每个地点至少关联一个来源。没有地点就返回 []。",
+          "输入资料：\n\n" + sourceBlocks.join("\n\n").slice(0, 42000),
+        ].join("\n\n"),
+      };
+      const history = loadChatMessages(session.id).filter(message => message.status !== "failed" && !message.isRetracted).slice(-8);
+      const result = await generateOfflineChatCompletion(session, [...history, prompt], { appId: "life", appTags: lifeAppTags("schedule"), includeDirectChatEntries: false });
+      const raw = result.content.trim(), first = raw.indexOf("["), last = raw.lastIndexOf("]");
+      if (first < 0 || last <= first) throw new Error("模型没有返回有效地点 JSON。");
+      const candidates = parseImportedLifeLocations(JSON.parse(raw.slice(first, last + 1)), sourceMap);
+      if (!candidates.length) { setNotice("没有识别到带有可靠来源的具体地点。请检查所选资料；跳过禁用条目 " + disabledEntries + " 条" + (truncatedEntries ? "，另有 " + truncatedEntries + " 条超出读取上限" : "") + "。"); return; }
+      const current = stateRef.current, merged = mergeImportedLifeLocations(current.locations, candidates);
+      commit(syncScheduleLocationsToLibrary({ ...current, locations: merged.locations }));
+      setNotice("地点导入完成：新增 " + merged.added + " 个，合并更新 " + merged.updated + " 个，补充来源 " + merged.sourcesAdded + " 条。启用条目 " + enabledEntries + " 条，跳过禁用条目 " + disabledEntries + " 条" + (truncatedEntries ? "；超出上限 " + truncatedEntries + " 条" : "") + "。");
+    } catch (error) {
+      setNotice("地点导入失败：" + (error instanceof Error ? error.message : "请检查模型配置后重试。"));
+    } finally { setLocationImportBusy(false); }
+  };
+
+  const completeSelectedLocationProfile = async () => {
+    if (!selectedLocation || locationImportBusy) return;
+    const character = characters.find(item => item.id === locationImportCharacterId) ?? characters[0];
+    if (!character) { setNotice("请先创建或导入一个角色卡，才能调用生活系统模型补全地点档案。"); return; }
+    setLocationImportBusy(true); setNotice("正在补全「" + selectedLocation.name + "」的地点档案……");
+    const locationSourceContext = (selectedLocation.sourceRefs ?? []).flatMap(source => {
+      if (source.kind !== "worldbook" || !source.worldBookId || !source.entryUid) return [];
+      const book = worldBooks.find(item => item.id === source.worldBookId);
+      const entry = book?.entries.find(item => item.uid === source.entryUid);
+      return entry ? [("世界书：" + (book?.name ?? source.worldBookName ?? "") + "；条目：" + (entry.comment || entry.key || "") + "\\n" + entry.content).slice(0, 6000)] : [];
+    }).join("\\n\\n").slice(0, 16000);
+    try {
+      const session = createLifeChatSession(character.id, character.name);
+      const prompt: ChatMessage = {
+        id: id("life-location-profile"), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
+        content: [
+          "请为生活系统地点档案补全以下地点，严格只输出 JSON 对象，字段为 description、atmosphere、layout、props、aliases。",
+          "地点名称：" + selectedLocation.name,
+          "已有设定：" + [selectedLocation.description, selectedLocation.atmosphere, selectedLocation.layout, ...(selectedLocation.props ?? [])].filter(Boolean).join("\n"),
+          "角色卡背景：" + [character.persona, character.personality, ...(character.tags ?? [])].filter(Boolean).join("\n").slice(0, 5000),
+          "关联来源摘要：" + (selectedLocation.sourceRefs ?? []).map(source => [source.worldBookName, source.entryComment].filter(Boolean).join(" / ")).join("\n"),
+          "原始世界书内容：" + (locationSourceContext || "无可读取的原始条目内容"),
+          "要求：已有设定必须保留；不得凭空改变地点所属角色、世界观、用途或地理关系。若资料不足，只补充低承诺、通用且可被用户修改的环境氛围和空间结构，不要编造专属剧情事实。props 和 aliases 返回字符串数组。",
+        ].join("\n\n"),
+      };
+      const history = loadChatMessages(session.id).filter(message => message.status !== "failed" && !message.isRetracted).slice(-6);
+      const result = await generateOfflineChatCompletion(session, [...history, prompt], { appId: "life", appTags: lifeAppTags("schedule"), includeDirectChatEntries: false });
+      const raw = result.content.trim(), first = raw.indexOf("{"), last = raw.lastIndexOf("}");
+      if (first < 0 || last <= first) throw new Error("模型没有返回有效地点档案。");
+      const parsed = JSON.parse(raw.slice(first, last + 1)) as Record<string, unknown>, current = stateRef.current;
+      const locations = current.locations.map(location => {
+        if (location.id !== selectedLocation.id) return location;
+        const origins = location.fieldOrigins ?? {};
+        const textValue = (value: unknown) => typeof value === "string" ? value.trim() : "";
+        const arrayValue = (value: unknown) => Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").map(item => item.trim()).filter(Boolean).slice(0, 24) : [];
+        const patch: Partial<LifeLocation> = {};
+        for (const field of ["description", "atmosphere", "layout"] as const) {
+          const generated = textValue(parsed[field]).slice(0, 1600);
+          if (generated && (!location[field]?.trim() || origins[field] === "ai")) patch[field] = generated;
+        }
+        const props = arrayValue(parsed.props), aliases = arrayValue(parsed.aliases);
+        if (props.length && (!location.props?.length || origins.props === "ai")) patch.props = props;
+        if (aliases.length && (!location.aliases?.length || origins.aliases === "ai")) patch.aliases = aliases;
+        return { ...location, ...patch, fieldOrigins: { ...origins,
+          ...(patch.description ? { description: "ai" as const } : {}),
+          ...(patch.atmosphere ? { atmosphere: "ai" as const } : {}),
+          ...(patch.layout ? { layout: "ai" as const } : {}),
+          ...(patch.props ? { props: "ai" as const } : {}),
+          ...(patch.aliases ? { aliases: "ai" as const } : {}),
+        } };
+      });
+      commit({ ...current, locations });
+      setNotice("已补全地点档案。AI 生成字段会标记为可刷新；你手动修改并保存后将优先保留。");
+    } catch (error) {
+      setNotice("地点档案补全失败：" + (error instanceof Error ? error.message : "请稍后重试。"));
+    } finally { setLocationImportBusy(false); }
+  };
+
   const addLocation = () => {
     const name = newLocationName.trim();
     if (!name) return;
-    const location: LifeLocation = { id: id("place"), name, description: "一个由你定义、可持续探索的地点。", atmosphere: "", layout: "", props: [], visibility: "public" };
+    const location: LifeLocation = { id: id("place"), name, description: "", atmosphere: "", layout: "", props: [], visibility: "public" };
     let next = { ...stateRef.current, locations: [...stateRef.current.locations, location] };
     next = appendLifeTimelineEntry(next, { category: "location", title: "创建了新地点：" + location.name, actorName: playerName, locationName: location.name });
     commit(next);
@@ -2472,6 +2604,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         atmosphere: locationAtmosphereDraft.trim(),
         layout: locationLayoutDraft.trim(),
         props: [...new Set(locationPropsDraft.split(/[、,，;；\n]/).map(prop => prop.trim()).filter(Boolean))],
+        fieldOrigins: { ...(location.fieldOrigins ?? {}), ...(locationDescriptionDraft.trim() !== (location.description ?? "") ? { description: "user" as const } : {}), ...(locationAtmosphereDraft.trim() !== (location.atmosphere ?? "") ? { atmosphere: "user" as const } : {}), ...(locationLayoutDraft.trim() !== (location.layout ?? "") ? { layout: "user" as const } : {}), ...(JSON.stringify([...new Set(locationPropsDraft.split(/[、,，;；\\n]/).map(prop => prop.trim()).filter(Boolean))]) !== JSON.stringify(location.props ?? []) ? { props: "user" as const } : {}) },
       }),
     };
     if (renamed) next = {
@@ -3585,6 +3718,19 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       {tab === "locations" && <div className="space-y-4">
         <section className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm sm:p-6">
           {!locationDossierOpen && <><SectionTitle eyebrow="Canonical location library" title="地点库" note="点开地点卡片进入独立档案页，编辑设定、添加角色习惯并查看历史。同居后角色自己的家会暂时从地点列表隐藏；取消同居后会自动重新显示，不会删除住处或历史数据。"/>
+          <div className="mb-4 rounded-2xl border border-[#ead8c8] bg-[#fffaf5] p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-stone-800">从角色卡 / 世界书导入地点</h3><p className="mt-1 text-xs leading-relaxed text-stone-500">自动提取地点、别名、环境、氛围、布局和道具，并保留来源。这里直接扫描所选世界书的启用条目，不依赖普通聊天的关键词触发；默认勾选该角色绑定的聊天与栖所世界书，也可手动选择其他书。</p></div>
+              <button type="button" disabled={locationImportBusy || !locationImportCharacterId} onClick={() => void importWorldbookLocations()} className="shrink-0 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{locationImportBusy ? "处理中…" : "分析并导入地点"}</button>
+            </div>
+            <label className="mt-3 block text-xs font-medium text-stone-600">角色卡
+              <select value={locationImportCharacterId} onChange={event => { const nextId = event.target.value; setLocationImportCharacterId(nextId); const chat = resolveBinding(bindingConfig, nextId, "chat"); const dwelling = resolveBinding(bindingConfig, nextId, "dwelling"); setLocationImportWorldBookIds([...new Set([...(chat.worldBookIds ?? []), ...(dwelling.worldBookIds ?? [])])]); }} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm">
+                <option value="">选择角色</option>{characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}
+              </select>
+            </label>
+            <div className="mt-3"><p className="mb-2 text-xs font-medium text-stone-600">参与分析的世界书（仅读取启用条目）</p>
+              {worldBooks.length ? <div className="grid max-h-40 gap-1.5 overflow-y-auto sm:grid-cols-2">{worldBooks.map(book => <label key={book.id} className="flex min-w-0 items-center gap-2 rounded-lg bg-white/80 px-2.5 py-2 text-xs text-stone-600"><input type="checkbox" checked={locationImportWorldBookIds.includes(book.id)} onChange={event => setLocationImportWorldBookIds(current => event.target.checked ? [...new Set([...current, book.id])] : current.filter(id => id !== book.id))}/><span className="min-w-0 truncate">{book.name}</span></label>)}</div> : <p className="text-xs text-stone-400">当前没有世界书；仍可从所选角色卡中提取地点。</p>}
+            </div>
+          </div>
           <form onSubmit={event => { event.preventDefault(); addLocation(); }} className="flex gap-2">
             <input value={newLocationName} onChange={event => setNewLocationName(event.target.value)} placeholder="创建一个新地点，例如：旧城区的花店" className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/>
             <button type="submit" className="shrink-0 rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white"><Plus size={15} className="mr-1 inline"/>添加地点</button>
@@ -3620,8 +3766,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           </div>
           <p className="mb-4 text-xs leading-relaxed text-stone-500">统计按生活系统的现实时间计算：每次前往会记入生活时间线，离开或临时停留到期后自动结算。它是实际到访记录，不会把尚未发生的计划误记为已到访。</p>
           <SectionTitle eyebrow="Location dossier" title={selectedLocation.name + " · 地点档案"} note="这些设定会持久保存，并注入后续场景提示词。布局定义空间关系，道具可在行动中被引用，角色习惯会影响其在此处的行为，但不应限制角色临时做出新行动。"/>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[#fffaf5] p-3"><div className="text-xs text-stone-500">{(selectedLocation.sourceRefs ?? []).length ? "来源：" + (selectedLocation.sourceRefs ?? []).map(source => source.kind === "worldbook" ? source.worldBookName + (source.entryComment ? " · " + source.entryComment : "") : source.kind === "character-card" ? source.characterName + " 的角色卡" : "手动").join("；") : "暂无导入来源；可由 AI 根据地点名称与角色设定补全。"}</div><button type="button" disabled={locationImportBusy} onClick={() => void completeSelectedLocationProfile()} className="shrink-0 rounded-lg border border-[#d7b99f] bg-white px-3 py-2 text-xs font-medium text-stone-700 disabled:opacity-50">{locationImportBusy ? "处理中…" : "AI 补全 / 刷新档案"}</button></div>
           <label className="mb-3 block text-sm font-medium text-stone-700">地点名称<input value={locationNameDraft} onChange={event => { setLocationNameDraft(event.target.value); setLocationSaveFeedback(false); }} placeholder="例如：我们的小家" className="mt-1.5 w-full min-w-0 rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label>
-          <label className="mb-3 block text-sm font-medium text-stone-700">别名 / 日程匹配关键词<textarea value={(selectedLocation.aliases ?? []).join("、")} onChange={event => commit({ ...stateRef.current, locations: stateRef.current.locations.map(location => location.id === selectedLocation.id ? { ...location, aliases: event.target.value.split(/[、,，;；\n]/).map(value => value.trim()).filter(Boolean) } : location) })} rows={2} placeholder="例如：旧城区花店、花店、花房" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+          <label className="mb-3 block text-sm font-medium text-stone-700">别名 / 日程匹配关键词<textarea value={(selectedLocation.aliases ?? []).join("、")} onChange={event => commit({ ...stateRef.current, locations: stateRef.current.locations.map(location => location.id === selectedLocation.id ? { ...location, aliases: event.target.value.split(/[、,，;；\n]/).map(value => value.trim()).filter(Boolean), fieldOrigins: { ...(location.fieldOrigins ?? {}), aliases: "user" } } : location) })} rows={2} placeholder="例如：旧城区花店、花店、花房" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
           <label className="mb-3 block text-sm font-medium text-stone-700">环境描写<textarea value={locationDescriptionDraft} onChange={event => setLocationDescriptionDraft(event.target.value)} rows={3} placeholder="空间是什么样的？光线、声音、气味、固定陈设……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
           <label className="mb-3 block text-sm font-medium text-stone-700">氛围<textarea value={locationAtmosphereDraft} onChange={event => setLocationAtmosphereDraft(event.target.value)} rows={2} placeholder="时段、天气、人声、气味、情绪氛围……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
           <label className="mb-3 block text-sm font-medium text-stone-700">固定空间布局<textarea value={locationLayoutDraft} onChange={event => setLocationLayoutDraft(event.target.value)} rows={3} placeholder="门窗、家具、通道、柜台、座位之间的空间关系……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
