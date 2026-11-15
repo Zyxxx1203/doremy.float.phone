@@ -787,4 +787,8 @@ assert.equal(remappedLocations.schedules[0].plannedLocationName, importedDossier
 assert.equal(remappedLocations.locations.find(location => location.id === importedDossier.id).sourceRefs[0].sourceKey, importedDossier.sourceRefs[0].sourceKey, "schedule synchronization must preserve imported provenance");
 assert.equal(remappedLocations.locations.length, 2, "remapping should not duplicate the imported dossier");
 
+const generatedResidenceState = generateWeeklyLifePlan(makeState(), "character", "char-without-home", "测试角色", new Date("2026-12-01T00:00:00.000Z"), undefined, "", false);
+assert.ok(generatedResidenceState.locations.some(location => location.id === "home-char-without-home"), "weekly generation must persist the actor personal home in the location catalog");
+assert.ok(generatedResidenceState.schedules.some(slot => slot.ownerId === "char-without-home" && slot.plannedLocationId === "home-char-without-home"), "generated home schedule slots must reference the canonical personal home ID");
+
 console.log("Life schedule regression tests passed.");
