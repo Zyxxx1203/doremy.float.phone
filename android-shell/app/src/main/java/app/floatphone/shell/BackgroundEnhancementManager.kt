@@ -32,7 +32,7 @@ object BackgroundEnhancementManager {
     private const val MODE_SMART = "smart"
     private const val MODE_ENHANCED = "enhanced"
 
-    @Volatile private var hostForeground = true
+    @Volatile private var hostForeground = false
     private val lock = Any()
 
     private fun prefs(context: Context) =
@@ -102,10 +102,14 @@ object BackgroundEnhancementManager {
             val existing = findTask(tasks, id)
             val nextDueAt = if (backgroundOnly) 0L else dueAtMillis.coerceAtLeast(0L)
             val nextRemaining = if (backgroundOnly) remainingBackgroundMs.coerceAtLeast(0L) else 0L
+            val foreground = hostForeground || prefs(context).getBoolean(KEY_FOREGROUND, true)
+            val desiredBackgroundDueAt = if (backgroundOnly && !foreground) System.currentTimeMillis() + nextRemaining else 0L
             if (existing != null) {
-                val sameTarget = existing.optBoolean("backgroundOnly") == backgroundOnly &&
-                    if (backgroundOnly) existing.optLong("remainingMs") == nextRemaining
-                    else existing.optLong("dueAt") == nextDueAt
+                val sameMode = existing.optBoolean("backgroundOnly") == backgroundOnly
+                val sameTarget = sameMode && if (backgroundOnly) {
+                    if (foreground) existing.optLong("remainingMs") == nextRemaining
+                    else existing.optLong("dueAt") > 0L && kotlin.math.abs(existing.optLong("dueAt") - desiredBackgroundDueAt) < 60_000L
+                } else existing.optLong("dueAt") == nextDueAt
                 if (sameTarget && !existing.optBoolean("fired")) return@synchronized true
                 cancelAlarm(context, id)
                 existing.put("name", characterName.take(80))
@@ -123,7 +127,6 @@ object BackgroundEnhancementManager {
                     .put("fired", false))
             }
             writeTasks(context, tasks)
-            val foreground = hostForeground || prefs(context).getBoolean(KEY_FOREGROUND, true)
             if (backgroundOnly) {
                 if (!foreground) {
                     val due = System.currentTimeMillis() + nextRemaining
