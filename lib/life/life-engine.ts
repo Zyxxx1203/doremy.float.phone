@@ -4,6 +4,7 @@ import type {
   LifeEventStatus,
   LifeInvitation,
   LifeScheduleSlot,
+  LifeSceneParticipant,
   LifeSceneState,
   VirtualLifeState,
 } from "./life-types";
