@@ -1098,7 +1098,7 @@ export function prepareShortTermContext(
     const historyMessageIds = new Set(history.map(message => message.id));
     const characterName = loadCharacters().find(c => c.id === characterId)?.name ?? "角色";
     const wrapsCurrentHistory = appId === "chat" || appId === "group_chat" || appId === "story" || appId === "vn" || appId === "adventure";
-    const skipDirectChatEntries = appId === "chat" && !options?.includeDirectChatEntries;
+    const skipDirectChatEntries = options?.includeDirectChatEntries === false || (appId === "chat" && !options?.includeDirectChatEntries);
 
     // ── Collect non-history entries per block ──
     const raw: { tag: string; order: number; entries: NativeTimelineEntry[] }[] = [];
