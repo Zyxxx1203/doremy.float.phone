@@ -1307,9 +1307,15 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const shouldRecordSceneEntry = !existingScene || existingScene.status === "paused";
     const isFirstSceneEntry = !existingScene;
     let next: VirtualLifeState = { ...stateRef.current, scenes: stateRef.current.scenes.map(scene => (scene.status === "active" || scene.status === "paused") ? { ...scene, status: "paused" as const, updatedAt: now } : scene) };
+    const retainedDestinationParticipants = (existingScene?.participants ?? []).filter(participant => {
+      if (participant.ownerType !== "character") return false;
+      const actor = stateRef.current.actorStates.find(item => item.ownerType === "character" && item.ownerId === participant.ownerId);
+      return !actor || actor.actualLocationId === selectedLocation.id;
+    });
+    const destinationParticipants = mergeLifeSceneParticipants(retainedDestinationParticipants, participants);
     const scene: LifeSceneState = existingScene
-      ? { ...existingScene, locationId: selectedLocation.id, locationName: selectedLocation.name, updatedAt: now, status: "active", participants }
-      : { id: id("scene"), locationId: selectedLocation.id, locationName: selectedLocation.name, startedAt: now, updatedAt: now, status: "active", participants, lastSettledEventIds: [] };
+      ? { ...existingScene, locationId: selectedLocation.id, locationName: selectedLocation.name, updatedAt: now, status: "active", participants: destinationParticipants }
+      : { id: id("scene"), locationId: selectedLocation.id, locationName: selectedLocation.name, startedAt: now, updatedAt: now, status: "active", participants: destinationParticipants, lastSettledEventIds: [] };
     next = upsertLifeScene(next, scene);
     for (const actor of [{ ownerType: "player" as const, ownerId: PLAYER_ID }, ...chosen.map(char => ({ ownerType: "character" as const, ownerId: char.id }))]) {
       next = upsertActorState(next, { ...actor, activity: actor.ownerType === "player" ? (playerActivity || "刚来到这里") : "正在做自己的事", actualLocationId: selectedLocation.id, actualLocationName: selectedLocation.name, actualLocationUntil: actor.ownerType === "player" ? new Date(resolveActorLifeNow(getActorClock(stateRef.current, "player", PLAYER_ID)).getTime() + stayDurationMinutes * 60_000).toISOString() : null, updatedAt: now });
