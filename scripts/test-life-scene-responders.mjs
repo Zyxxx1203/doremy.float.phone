@@ -61,6 +61,7 @@ const foregroundRoom = findCurrentLifeScene([
   { id: "location-active", locationId: "home", locationName: "家", startedAt: "2026-01-02T00:00:00.000Z", updatedAt: "2026-11-15T00:00:00.000Z", status: "paused", participants: [], lastSettledEventIds: [] },
 ]);
 assert.equal(foregroundRoom.id, "location-active", "legacy event-linked scenes must not win foreground selection over a location room");
+assert.equal(findCurrentLifeScene([{ id: "completed-room", locationId: "cafe", locationName: "咖啡店", startedAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-11-16T00:00:00.000Z", status: "completed", participants: [], lastSettledEventIds: [] }]), undefined, "completed rooms must not reopen as the foreground scene");
 
 const canonicalRoom = findLifeSceneForLocation([
   { id: "legacy-event-room", locationId: "cafe", locationName: "咖啡店", startedAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-11-15T00:00:00.000Z", status: "active", eventId: "old-event", participants: [], lastSettledEventIds: [] },
