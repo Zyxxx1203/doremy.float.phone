@@ -39,6 +39,11 @@ const createSceneStart = app.indexOf("const performCreateScene = () => {", updat
 assert.ok(updateActorLocationStart >= 0 && createSceneStart > updateActorLocationStart, "player/character location update handler must remain identifiable");
 assert.doesNotMatch(app.slice(updateActorLocationStart, createSceneStart), /upsertLifeScene\(/, "changing an actor's actual location must not rewrite the location identity of the currently open room");
 assert.match(app, /const destinationParticipants = mergeLifeSceneParticipants\(/, "destination room membership must merge existing occupants with arrivals");
+assert.match(app, /findLifeSceneForLocation\(stateRef\.current\.scenes, destination\.id\)/, "entering a location must resolve its canonical room");
+assert.match(app, /findLifeSceneForLocation\(stateRef\.current\.scenes, selectedLocation\.id\)/, "creating/reopening a location must reuse its canonical room");
+assert.doesNotMatch(runtime, /eventId: event\.id/, "scheduled invitations must not create event-owned chat rooms");
+assert.doesNotMatch(runtime, /locationId: nextLocationId, locationName: nextLocationName/, "schedule settlement must not rewrite the active room location");
+
 assert.match(app, /setSelectedCharacterIds\(destinationParticipants\.filter\(participant => participant\.ownerType === "character"\)/, "the UI responder selection must include the merged destination occupants");
 
 assert.match(app, /if \(settings\.autoGenerateWeeklyPlans\)\s*\{\s*next = generateWeeklyLifePlan/);
