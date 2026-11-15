@@ -1027,8 +1027,8 @@ export function applyCharacterLifeScheduleChange(
     visibility: "private" as const,
   };
   const location = locationId ? state.locations.find(item => item.id === locationId) : characterHome;
-  if (locationId && !location) {
-    return { state, error: "指定地点 ID「" + locationId + "」不存在。请使用地点库中的规范地点 ID；不会自动改去玩家家。" };
+  if (!location) {
+    return { state, error: "指定地点 ID「" + (locationId || "角色自己的家") + "」不存在。请使用地点库中的规范地点 ID；不会自动改去玩家家。" };
   }
   const locations = state.locations.some(item => item.id === location.id)
     ? state.locations
