@@ -187,6 +187,9 @@ export type LifeLocation = {
   description?: string;
   /** Alternate names used to match generated itinerary places back to this canonical location. */
   aliases?: string[];
+  /** User-managed grouping metadata; does not affect AI location matching. */
+  category?: "住宅" | "商业" | "公共" | "自然" | "其他";
+  folderId?: string;
   /** Per-character habits at this location, keyed by character ID. */
   characterHabits?: Record<string, string>;
   /** Character IDs explicitly sharing the player's home. */
@@ -342,6 +345,8 @@ export type VirtualLifeState = {
   scheduleProfileVersion?: number;
   settings: LifeEngineSettings;
   locations: LifeLocation[];
+  /** User-created folders for organizing the location library. */
+  locationFolders?: Array<{ id: string; name: string }>;
   actorStates: LifeActorState[];
   schedules: LifeScheduleSlot[];
   scenes: LifeSceneState[];
@@ -359,6 +364,7 @@ export function createEmptyVirtualLifeState(now = new Date().toISOString()): Vir
     scheduleProfileVersion: 3,
     settings: { ...DEFAULT_LIFE_ENGINE_SETTINGS },
     locations: [],
+    locationFolders: [],
     actorStates: [],
     schedules: [],
     scenes: [],
