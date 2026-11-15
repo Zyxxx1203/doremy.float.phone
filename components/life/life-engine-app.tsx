@@ -1446,7 +1446,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       stateRef.current.sceneMessages.some(message => message.sceneId === existingScene.id && message.role === "system" && /你来到了|你回到了/.test(message.action || message.dialogue || "")) ||
       stateRef.current.timeline.some(entry => entry.sceneId === existingScene.id && entry.category === "location" && entry.title.startsWith("你来到了"))
     );
-    const shouldRecordSceneEntry = !existingScene || existingScene.status === "paused" || !hasRecordedEntry;
+    const shouldRecordSceneEntry = !existingScene || existingScene.status !== "active" || !hasRecordedEntry;
     const isFirstSceneEntry = !existingScene || !hasRecordedEntry;
     let next: VirtualLifeState = { ...stateRef.current, scenes: stateRef.current.scenes.map(scene => (scene.status === "active" || scene.status === "paused") ? { ...scene, status: "paused" as const, updatedAt: now } : scene) };
     // A location has one durable room. Re-entering it must retain the people
