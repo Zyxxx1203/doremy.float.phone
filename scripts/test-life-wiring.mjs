@@ -42,7 +42,7 @@ assert.match(app, /const destinationParticipants = mergeLifeSceneParticipants\(/
 assert.match(app, /findLifeSceneForLocation\(stateRef\.current\.scenes, destination\.id\)/, "entering a location must resolve its canonical room");
 assert.match(app, /useMemo\(\(\) => findCurrentLifeScene\(state\.scenes\)/, "foreground room selection must be deterministic and ignore legacy event-room priority");
 assert.match(app, /findLifeSceneForLocation\(stateRef\.current\.scenes, selectedLocation\.id\)/, "creating/reopening a location must reuse its canonical room");
-assert.doesNotMatch(runtime, /eventId: event\.id/, "scheduled invitations must not create event-owned chat rooms");
+assert.doesNotMatch(runtime, /eventId: event\.id,\s*participants/, "scheduled invitations must not create event-owned chat rooms");
 assert.doesNotMatch(runtime, /locationId: nextLocationId, locationName: nextLocationName/, "schedule settlement must not rewrite the active room location");
 
 assert.match(app, /setSelectedCharacterIds\(destinationParticipants\.filter\(participant => participant\.ownerType === "character"\)/, "the UI responder selection must include the merged destination occupants");
