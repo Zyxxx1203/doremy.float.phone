@@ -21,17 +21,13 @@ function normalizeLifeMemoryUserReference(text: string): string {
   return text.replace(/你/g, "{{user}}");
 }
 
-function loadCharacterLifeState() {
-  return loadVirtualLifeState();
-}
-
 /**
  * Shared fact bridge: only confirmed life-scene facts involving this character
  * are surfaced in their normal chat context. Guesses and interpretations are
  * deliberately excluded so the character cannot acquire fabricated memories.
  */
 export function buildLifeMemoryContext(characterId: string, limit = 10): string {
-  const state = loadCharacterLifeState();
+  const state = loadVirtualLifeState();
   if (!state.settings.enabled) return "";
   // Schedule settlement context is a separate source from confirmed shared memories.
   // Disabling shared-memory writes must not silently remove the character's dated
@@ -75,7 +71,7 @@ export function buildLifeMemoryContext(characterId: string, limit = 10): string 
  * a fabricated memory; the prompt must respect sleep, work and actual location.
  */
 export function buildLifePresenceContext(characterId: string): string {
-  const state = loadCharacterLifeState();
+  const state = loadVirtualLifeState();
   if (!state.settings.enabled) return "";
   const clock = getActorClock(state, "character", characterId);
   const now = resolveActorLifeNow(clock);
@@ -96,7 +92,6 @@ export function buildLifePresenceContext(characterId: string): string {
   const awakeGraceActive = state.settings.allowOnlineChatDuringSleep && (storedAwakeGraceActive || wakeForThisReply);
   const displayActivity = awakeGraceActive ? "被线上消息唤醒，暂时保持清醒" : activity;
   const sleeping = scheduledSleeping && !awakeGraceActive;
-  const displayActivity = awakeGraceActive ? "被线上消息唤醒，暂时保持清醒" : activity;
   // Inject only the remaining entries for this local calendar day. The current
   // slot is already described above, so exclude it to avoid duplicate context.
   const dayStart = new Date(now);
