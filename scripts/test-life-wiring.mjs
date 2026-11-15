@@ -319,7 +319,7 @@ assert.match(nativeBridge, /BackgroundEnhancementManager\.onHostBackground\(this
 assert.match(nativeBridge, /BackgroundEnhancementManager\.onHostForeground\(this\)/);
 assert.match(checkinEngine, /scheduleNativeCheckIn\(/);
 assert.match(checkinEngine, /cancelNativeCheckIn\(/);
-assert.match(backgroundSettings, /不会在后台偷偷截屏/);
+assert.match(backgroundSettings, /不会静默截屏/);
 assert.match(phoneSettings, /BackgroundEnhancementSettings/);
 assert.match(backupScheduler, /pageshow/);
 assert.match(widgetScheduler, /pageshow/);
