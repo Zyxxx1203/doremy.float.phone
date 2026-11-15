@@ -18,9 +18,31 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
   const homeLocations = state.locations.filter(item => item.id === "home" || item.id.startsWith("home-"));
   const allSceneMessages = state.sceneMessages.filter(message => message.sceneId === scene.id);
   const throughIndex = throughMessageId ? allSceneMessages.findIndex(message => message.id === throughMessageId) : -1;
-  const sceneMessages = throughIndex >= 0 ? allSceneMessages.slice(0, throughIndex + 1) : allSceneMessages;
+  const prefix = throughIndex >= 0 ? allSceneMessages.slice(0, throughIndex + 1) : allSceneMessages;
   const cutoffAt = throughIndex >= 0 ? allSceneMessages[throughIndex].createdAt : undefined;
   const cutoffMs = cutoffAt ? Date.parse(cutoffAt) : Number.POSITIVE_INFINITY;
+  const repliesByTurn = new Map<string, typeof allSceneMessages>();
+  for (const reply of allSceneMessages) {
+    if (!reply.replyToMessageId) continue;
+    const replies = repliesByTurn.get(reply.replyToMessageId) ?? [];
+    replies.push(reply);
+    repliesByTurn.set(reply.replyToMessageId, replies);
+  }
+  const sceneMessages: typeof allSceneMessages = [];
+  const includedMessageIds = new Set<string>();
+  for (const message of prefix) {
+    if (message.replyToMessageId || includedMessageIds.has(message.id)) continue;
+    sceneMessages.push(message);
+    includedMessageIds.add(message.id);
+    if (message.role === "player") {
+      for (const reply of (repliesByTurn.get(message.id) ?? []).slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+        if (includedMessageIds.has(reply.id)) continue;
+        sceneMessages.push(reply);
+        includedMessageIds.add(reply.id);
+      }
+    }
+  }
+  const visibleMessageIds = new Set(sceneMessages.map(message => message.id));
   const memories = state.memories
     .filter(memory => memory.participants.includes(viewerId || "player")
       && memory.participants.some(id => participantIds.includes(id))
@@ -66,7 +88,8 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
     .slice(0, 8)
     .reverse() : [];
   const recentCharacterEvents = viewerId ? state.timeline
-    .filter(entry => (entry.actorId === viewerId || entry.actorId === "player") && Date.parse(entry.occurredAt) <= cutoffMs)
+    .filter(entry => (entry.actorId === viewerId || entry.actorId === "player")
+      && (Date.parse(entry.occurredAt) <= cutoffMs || Boolean(entry.sourceId && visibleMessageIds.has(entry.sourceId))))
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
     .slice(0, 8)
     .reverse() : [];
