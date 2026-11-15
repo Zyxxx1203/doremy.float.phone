@@ -527,6 +527,9 @@ export function syncScheduleLocationsToLibrary(state: VirtualLifeState): Virtual
     return target && target.id !== locationId ? target : undefined;
   };
   const schedules = state.schedules.map(slot => {
+    // A deleted destination is intentionally detached from the library. Keep the
+    // historical name on the itinerary, but never recreate it from this snapshot.
+    if (slot.plannedLocationDeleted) return slot;
     const name = (slot.plannedLocationName ?? "").trim();
     if (!name) return slot;
     let location = slot.plannedLocationId ? byId.get(slot.plannedLocationId) : undefined;
