@@ -29,7 +29,7 @@ import {
   shouldFireCheckIn,
   type CheckInCharacterConfig,
 } from "./checkin-config";
-import { consumePendingUserShot, hasCheckInBridge, readCheckInAppState, readCheckInCapabilities, requestCheckIn } from "./checkin";
+import { cancelNativeCheckIn, consumePendingUserShot, hasCheckInBridge, readCheckInAppState, readCheckInCapabilities, requestCheckIn, scheduleNativeCheckIn } from "./checkin";
 import { resolveCheckInGuidance } from "./checkin-guidance";
 import { ensureShellOverlayListener, subscribeShellOverlayEvents } from "../shell-call-overlay";
 import type { CheckInOutcome } from "./types";
@@ -444,15 +444,34 @@ export async function pollDueCheckIns(): Promise<number> {
     : undefined;
   let fired = 0;
   for (const [characterId, config] of Object.entries(all)) {
-    if (!config.enabled) continue;
+    if (!config.enabled) {
+      cancelNativeCheckIn(characterId);
+      continue;
+    }
     // 在前台也先初始化本轮目标时间，这样后台累计从 Activity 真正进入后台时开始。
-    ensureCheckInDueTime(characterId, config, Date.now(), appState);
-    // 后台模式必须以 Android Activity 生命周期为准；旧 APK / 无法确认状态时宁可不触发。
-    if (config.triggerMode === "background" && (!appState.available || appState.foreground)) continue;
-    // 即使用户选了「不限制前后台」，也不在正在进行的同角色私聊中插入查岗。
-    if (activeSession && !activeSession.isGroup && activeSession.contactId === characterId) continue;
+    const runtime = ensureCheckInDueTime(characterId, config, Date.now(), appState);
+    // 不在正在进行的同角色私聊或生活情境禁止状态下安排提醒。
+    const chattingWithTarget = Boolean(activeSession && !activeSession.isGroup && activeSession.contactId === characterId);
+    if (chattingWithTarget || !isCheckInAllowedByLifeContext(characterId)) {
+      cancelNativeCheckIn(characterId);
+      continue;
+    }
+    // 原生闹钟只负责到期提醒/唤起机会，不会在后台直接截图或调用 AI。
+    const characterName = loadCharacters().find(item => item.id === characterId)?.name ?? "角色";
+    if (config.triggerMode === "background") {
+      if (appState.available && runtime.nextDueBackgroundMs > 0) {
+        scheduleNativeCheckIn(
+          characterId, characterName, 0,
+          Math.max(0, runtime.nextDueBackgroundMs - appState.backgroundElapsedMs),
+          true,
+        );
+      }
+      // 旧 APK / 无法确认原生生命周期时宁可不触发。
+      if (!appState.available || appState.foreground) continue;
+    } else if (runtime.nextDueAt > 0) {
+      scheduleNativeCheckIn(characterId, characterName, runtime.nextDueAt, 0, false);
+    }
     if (!shouldFireCheckIn(characterId, config, Date.now(), appState)) continue;
-    if (!isCheckInAllowedByLifeContext(characterId)) continue;
     const result = await runCheckIn(characterId, config);
     if (result.ok) fired += 1;
   }
