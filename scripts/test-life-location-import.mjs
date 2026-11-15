@@ -28,6 +28,10 @@ assert.deepEqual(Array.from(merged.locations[0].aliases), ["花店", "旧城花�
 assert.equal(merged.locations[0].sourceRefs.length, 2, "repeated imports should merge provenance");
 assert.equal(merged.locations[0].description, "临街的小花店。");
 assert.equal(merged.locations[0].fieldOrigins.description, "ai");
+const refreshedSource = { ...sourceA, worldBookName: "城市设定（更新名）", importedAt: "2026-11-16T00:00:00.000Z" };
+const sourceRefresh = mergeImportedLifeLocations(merged.locations, [{ name: "旧城区花店", sourceRefs: [refreshedSource] }]);
+assert.equal(sourceRefresh.locations[0].sourceRefs.length, 2, "reimport must not duplicate a source reference");
+assert.equal(sourceRefresh.locations[0].sourceRefs[0].worldBookName, "城市设定（更新名）", "reimport should refresh source labels");
 
 const userAuthored = {
   id: "place-user-shop", name: "旧城区花店", description: "用户手动确认的店铺描述。",
