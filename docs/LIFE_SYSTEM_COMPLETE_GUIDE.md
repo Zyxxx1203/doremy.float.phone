@@ -217,7 +217,8 @@
 6. **已修复：**`settleActorTimelineToNow` 的临时停留到期只更新实际位置和时间线，不再重命名/移动 active scene，也不再把位置变更时间线挂到旧聊天室。
 7. **已修复：**邀请事件只更新事件状态/共同记忆，并把参与者合并到该地点的唯一聊天室；不会再新建 eventId 专属聊天室，不会把该地点房间标记 completed，也不会暂停用户当前正在看的其他地点房间。
 8. **已修复：**新增 `findLifeSceneForLocation`，地点进入、创建和事件结算统一选择同地点 canonical room；优先复用普通地点场景，兼容旧 eventId 场景。重新进入旧事件场景时清除 eventId 标记，将其回归地点聊天室。
-9. `sendSceneTurn` 从固定的 `turnScene.participants` 取在场角色，并将去重后的角色集合交给 `buildLifeSceneResponderQueue`；因此参与者合并结果会直接决定谁能回应。
+9. **已修复：**新增 `findCurrentLifeScene`，前台聊天室选择优先普通地点房间，旧 eventId 场景不会仅因更新时间较新就抢占当前现场。
+10. `sendSceneTurn` 从固定的 `turnScene.participants` 取在场角色，并将去重后的角色集合交给 `buildLifeSceneResponderQueue`；因此参与者合并结果会直接决定谁能回应。
 
 实现文件：
 - `components/life/life-engine-app.tsx`
