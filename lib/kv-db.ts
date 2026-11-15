@@ -202,7 +202,9 @@ function enqueueKvWrite(key: string, value: string): Promise<void> {
             await kvDb.entries.put({ key, value });
             if (isManagedLegacyKey(key)) removeLegacyLocalStorageKeyIfValue(key, value);
         } catch (err) {
-            writeFallbackLocalStorage(key, value);
+            // A newer value may have been queued while this write was in flight.
+            // Never let an older failed write overwrite its localStorage fallback.
+            if (_cache.get(key) === value) writeFallbackLocalStorage(key, value);
             throw err;
         }
     });
