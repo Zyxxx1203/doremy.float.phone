@@ -265,6 +265,7 @@ export type LifeSceneState = {
   startedAt: string;
   updatedAt: string;
   status: "active" | "paused" | "completed";
+  /** Legacy event association only; never identifies a separate chat room. */
   eventId?: string;
   participants: LifeSceneParticipant[];
   lastSettledEventIds: string[];
