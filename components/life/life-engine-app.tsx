@@ -1886,7 +1886,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     setBusy(true);
     setMessageActionTarget(null);
     try {
-      const sceneContext = buildLifeScenePromptContext(stateRef.current, scene, character.id);
+      const sceneContext = buildLifeScenePromptContext(stateRef.current, scene, character.id, previousPlayer.id);
       const prompt: ChatMessage = {
         id: id("life-regenerate"), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
         content: [
@@ -2388,7 +2388,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     setBusy(true);
     if (forceReaction) setNotice(target.name + "正在回应最近的互动……");
     try {
-      const sceneContext = buildLifeScenePromptContext(stateRef.current, turnScene, target.id);
+      const sceneContext = buildLifeScenePromptContext(stateRef.current, turnScene, target.id, pendingTurn?.messageId);
       // 生活现场与普通私聊共用同一套短期记忆组装器，避免跨 APP 记忆断层。
       const settingsInstructions = [
         settings.keepDialogueConcise ? "保持简短：一句对白，必要时附一个动作。" : "允许适度展开，但仍保持实时互动感。",
