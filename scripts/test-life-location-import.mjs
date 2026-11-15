@@ -54,6 +54,15 @@ const refreshedAi = mergeImportedLifeLocations([aiAuthored], [{
 assert.equal(refreshedAi.locations[0].description, "更新后的描述", "AI-generated fields should be refreshable");
 assert.deepEqual(Array.from(refreshedAi.locations[0].props), ["更新道具"]);
 
+const scheduleStub = { id: "schedule-place-flower-shop", name: "花店", description: "由角色日程自动同步建立；可在地点库中继续编辑。", atmosphere: "", layout: "", props: [], visibility: "public" };
+const enrichedStub = mergeImportedLifeLocations([scheduleStub], [{
+  name: "旧城区花店", aliases: ["花店"], description: "有自然光的临街花店。",
+  atmosphere: "安静。", layout: "柜台靠右。", props: ["花桶"], sourceRefs: [sourceA],
+}]);
+assert.equal(enrichedStub.locations[0].id, scheduleStub.id, "enriching a schedule placeholder should preserve its existing ID");
+assert.equal(enrichedStub.locations[0].description, "有自然光的临街花店。", "import should replace schedule placeholder boilerplate");
+assert.ok(enrichedStub.locations[0].aliases.includes("旧城区花店"), "the imported canonical name should become an alias without renaming a user-visible place");
+
 const similar = mergeImportedLifeLocations([], [
   { name: "旧城区花店", sourceRefs: [sourceA] },
   { name: "旧城区花店旁边的咖啡馆", sourceRefs: [sourceB] },
