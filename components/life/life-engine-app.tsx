@@ -315,7 +315,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           sceneId: scene.id,
           speakerType: "player" as const,
           speakerId: PLAYER_ID,
-          speakerName: playerName,
+          speakerName: normalized.settings.playerDisplayName || "我",
           role: "system" as const,
           action: "场景图片",
           dialogue: "",
@@ -1650,10 +1650,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         const imageMessages: LifeSceneMessage[] = generated.map(image => ({
           id: "scene-image-message-" + image.id,
           sceneId: image.sceneId,
-          speakerType: "player",
+          speakerType: "player" as const,
           speakerId: PLAYER_ID,
-          speakerName: normalized.settings.playerDisplayName || "我",
-          role: "system",
+          speakerName: playerName,
+          role: "system" as const,
           action: "场景图片",
           dialogue: "",
           imageId: image.id,
@@ -3892,7 +3892,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             </div>
           </div>}
         </>}
-      </section>
+      </section>}
           <section className={`mt-4 rounded-2xl border border-stone-200/70 bg-white/60 p-3 sm:p-4 ${immersiveScene ? "hidden" : ""}`}>
             <div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-sm font-semibold text-stone-800">今天发生的事</p><p className="mt-0.5 text-[11px] text-stone-500">生活、行动和互动会按发生时间连续记录</p></div><span className="rounded-full bg-white px-2.5 py-1 text-[10px] text-stone-500">{lifeTimeline.length} 条</span></div>
             {recentLifeTimeline.length ? <div className="space-y-2">{recentLifeTimeline.map(entry=><div key={entry.id} className="flex gap-3 rounded-xl bg-white/80 p-3"><span className="w-12 shrink-0 pt-0.5 text-[11px] tabular-nums text-stone-400">{new Date(entry.occurredAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><div className="min-w-0 flex-1"><p className="text-sm font-medium text-stone-800">{entry.title}</p>{entry.details&&<p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-stone-600">{entry.details}</p>}<p className="mt-1 text-[10px] text-stone-400">{entry.actorName ? entry.actorName+" · " : ""}{entry.locationName ? entry.locationName+" · " : ""}{entry.category === "location" ? "地点" : entry.category === "scene" ? "场景" : entry.category === "action" ? "行动" : entry.category === "dialogue" ? "对话" : entry.category === "schedule" ? "日程" : entry.category === "tool" ? "工具" : entry.category === "social" ? "朋友圈" : entry.category === "diary" ? "日记" : entry.category === "chat" ? "消息" : "生活记录"}</p>{timelineImageUrls[entry.id]&&<img src={timelineImageUrls[entry.id]} alt={entry.title} className="mt-2 max-h-56 w-auto max-w-full rounded-xl object-contain"/>}<button type="button" disabled={Boolean(timelineImageBusyId)} onClick={()=>void generateTimelineImage(entry)} className="mt-2 inline-flex min-h-8 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-medium text-stone-600 disabled:opacity-50"><Sparkles size={12}/>{timelineImageBusyId===entry.id?"正在生成…":entry.imageMediaRef?"重新生成图片":"生成场景图片"}</button></div></div>)}</div> : <div className="rounded-xl bg-white/70 p-4 text-center text-xs text-stone-500">还没有符合当前筛选条件的记录。开始行动或互动后，这里会逐渐形成你的一天。</div>}
