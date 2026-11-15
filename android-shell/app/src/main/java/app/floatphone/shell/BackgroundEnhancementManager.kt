@@ -43,12 +43,38 @@ object BackgroundEnhancementManager {
 
     fun setMode(context: Context, value: String): Boolean {
         val normalized = if (value == MODE_ENHANCED) MODE_ENHANCED else MODE_SMART
-        return prefs(context).edit().putString(KEY_MODE, normalized).commit()
+        val saved = prefs(context).edit().putString(KEY_MODE, normalized).commit()
+        if (!saved) return false
+        synchronized(lock) {
+            val tasks = readTasks(context)
+            if (normalized == MODE_ENHANCED) {
+                val now = System.currentTimeMillis()
+                for (i in 0 until tasks.length()) {
+                    val task = tasks.optJSONObject(i) ?: continue
+                    if (task.optBoolean("fired")) continue
+                    val due = if (task.optBoolean("backgroundOnly")) {
+                        if (hostForeground || prefs(context).getBoolean(KEY_FOREGROUND, true)) continue
+                        now + task.optLong("remainingMs", 0L).coerceAtLeast(0L)
+                    } else task.optLong("dueAt", now).coerceAtLeast(now)
+                    task.put("dueAt", due)
+                    scheduleAlarm(context, task.optString("id"), due)
+                }
+            } else {
+                for (i in 0 until tasks.length()) {
+                    val task = tasks.optJSONObject(i) ?: continue
+                    cancelAlarm(context, task.optString("id"))
+                    if (task.optBoolean("backgroundOnly")) task.put("dueAt", 0L)
+                }
+                writeTasks(context, tasks)
+            }
+        }
+        return true
     }
 
     fun onHostBackground(context: Context) {
         hostForeground = false
         prefs(context).edit().putBoolean(KEY_FOREGROUND, false).commit()
+        if (mode(context) != MODE_ENHANCED) return
         synchronized(lock) {
             val tasks = readTasks(context)
             for (i in 0 until tasks.length()) {
@@ -127,6 +153,7 @@ object BackgroundEnhancementManager {
                     .put("fired", false))
             }
             writeTasks(context, tasks)
+            if (mode(context) != MODE_ENHANCED) return@synchronized Unit
             if (backgroundOnly) {
                 if (!foreground) {
                     val due = System.currentTimeMillis() + nextRemaining
@@ -165,6 +192,7 @@ object BackgroundEnhancementManager {
     fun restore(context: Context) {
         hostForeground = false
         prefs(context).edit().putBoolean(KEY_FOREGROUND, false).commit()
+        if (mode(context) != MODE_ENHANCED) return
         synchronized(lock) {
             val tasks = readTasks(context)
             val now = System.currentTimeMillis()
@@ -238,7 +266,6 @@ object BackgroundEnhancementManager {
         val app = context.applicationContext
         val intent = when (kind) {
             "battery" -> Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-            "battery-request" -> Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + app.packageName))
             "notifications" -> Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, app.packageName)
             "overlay" -> Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + app.packageName))
