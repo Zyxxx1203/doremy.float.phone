@@ -178,6 +178,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const [tab, setTab] = useState<Tab>("home");
   const [sceneView, setSceneView] = useState(false);
   const [locationDossierOpen, setLocationDossierOpen] = useState(false);
+  const [locationSearch, setLocationSearch] = useState("");
+  const [locationCategoryFilter, setLocationCategoryFilter] = useState("all");
+  const [locationFolderFilter, setLocationFolderFilter] = useState("all");
+  const [collapsedLocationFolders, setCollapsedLocationFolders] = useState<Record<string, boolean>>({});
   const [locationStatsTick, setLocationStatsTick] = useState(0);
   useEffect(() => { const timer = window.setInterval(() => setLocationStatsTick(value => value + 1), 30_000); return () => window.clearInterval(timer); }, []);
   const [worldBooks, setWorldBooks] = useState<WorldBookConfig[]>([]);
@@ -3256,6 +3260,44 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const atmosphere = [location.atmosphere?.trim(), inferredAtmosphere].filter(Boolean).join(" ");
     return { location, people, atmosphere, isCurrent: location.id === playerLocationId };
   }).sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || b.people.filter(person => person.isActuallyHere).length - a.people.filter(person => person.isActuallyHere).length || a.location.name.localeCompare(b.location.name, "zh-CN"));
+  const locationFolders = state.locationFolders ?? [];
+  const locationMatchesFilters = (location: LifeLocation) => {
+    const query = locationSearch.trim().toLocaleLowerCase();
+    const text = [location.name, ...(location.aliases ?? []), location.description, location.atmosphere, location.layout, ...(location.props ?? [])].filter(Boolean).join(" ").toLocaleLowerCase();
+    return (!query || text.includes(query))
+      && (locationCategoryFilter === "all" || (location.category || "其他") === locationCategoryFilter)
+      && (locationFolderFilter === "all" || (location.folderId || "unfiled") === locationFolderFilter);
+  };
+  const filteredLocationCards = locationCards.filter(item => locationMatchesFilters(item.location));
+  const filteredLibraryLocations = visibleLocations.filter(locationMatchesFilters);
+  const locationCardGroups = new Map<string, typeof filteredLocationCards>();
+  for (const item of filteredLocationCards) {
+    const key = item.location.folderId || "unfiled";
+    locationCardGroups.set(key, [...(locationCardGroups.get(key) ?? []), item]);
+  }
+  const locationFolderName = (folderId?: string) => folderId ? locationFolders.find(folder => folder.id === folderId)?.name || "未整理" : "未整理";
+  const createLocationFolder = () => {
+    const name = window.prompt("新文件夹名称");
+    const cleanName = name?.trim();
+    if (!cleanName) return;
+    const current = stateRef.current;
+    if ((current.locationFolders ?? []).some(folder => folder.name.toLocaleLowerCase() === cleanName.toLocaleLowerCase())) {
+      setNotice("已经有同名文件夹了。");
+      return;
+    }
+    commit({ ...current, locationFolders: [...(current.locationFolders ?? []), { id: id("location-folder"), name: cleanName }] });
+    setNotice("已创建地点文件夹「" + cleanName + "」。");
+  };
+  const updateLocationOrganization = (locationId: string, patch: Pick<LifeLocation, "category" | "folderId">) => {
+    const current = stateRef.current;
+    commit({ ...current, locations: current.locations.map(location => location.id === locationId ? { ...location, ...patch } : location) });
+  };
+  const locationFilterControls = <div className="grid gap-2 rounded-2xl border border-stone-200/70 bg-white/65 p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+    <input value={locationSearch} onChange={event => setLocationSearch(event.target.value)} placeholder="搜索地点、别名、环境、道具…" className="min-w-0 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/>
+    <select value={locationCategoryFilter} onChange={event => setLocationCategoryFilter(event.target.value)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"><option value="all">全部分类</option>{["住宅","商业","公共","自然","其他"].map(value => <option key={value} value={value}>{value}</option>)}</select>
+    <select value={locationFolderFilter} onChange={event => setLocationFolderFilter(event.target.value)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"><option value="all">全部文件夹</option><option value="unfiled">未整理</option>{locationFolders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select>
+    <p className="text-[11px] text-stone-400 sm:col-span-3">找到 {filteredLocationCards.length} 个地点 · 分类与文件夹只用于整理显示，不影响 AI 地点匹配和日程。</p>
+  </div>;
 
   const lifeTimeline = (state.timeline ?? []).filter(entry => {
     if (entry.category === "location" || entry.category === "scene") return settings.recordLocationChanges;
@@ -3616,7 +3658,13 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           <div><p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--life-accent)]">Places & people</p><h2 className="mt-1 text-2xl font-semibold tracking-tight text-stone-800">此刻</h2></div>
           <button onClick={() => openDaily("plans")} className="shrink-0 rounded-xl border border-white/80 bg-white/75 px-3 py-2 text-xs text-stone-600">我的日程</button>
         </div>
-        {locationCards.map(({location, people, atmosphere, isCurrent}, index) => <article key={location.id} style={{ animationDelay: `${Math.min(index, 8) * 45}ms` }} className={`life-place-card overflow-hidden rounded-3xl border shadow-sm transition ${isCurrent ? "border-[var(--life-accent)]/45 bg-white/90 ring-1 ring-[var(--life-accent)]/10" : "border-white/80 bg-white/65"}`}>
+        {locationFilterControls}
+        {filteredLocationCards.length === 0 && <p className="rounded-2xl border border-dashed border-stone-300 bg-white/50 p-6 text-center text-sm text-stone-500">没有找到符合条件的地点，试试清除筛选。</p>}
+        {Array.from(locationCardGroups.entries()).map(([folderId, items]) => <section key={folderId} className="space-y-3">
+          <button type="button" onClick={() => setCollapsedLocationFolders(current => ({ ...current, [folderId]: !current[folderId] }))} className="flex w-full items-center justify-between rounded-xl bg-white/55 px-3 py-2 text-left text-xs font-semibold text-stone-600">
+            <span>{locationFolderName(folderId === "unfiled" ? undefined : folderId)} · {items.length} 个地点</span><span>{collapsedLocationFolders[folderId] ? "展开 +" : "收起 −"}</span>
+          </button>
+          {!collapsedLocationFolders[folderId] && <div className="space-y-3">{items.map(({location, people, atmosphere, isCurrent}, index) => <article key={location.id} style={{ animationDelay: `${Math.min(index, 8) * 45}ms` }} className={`life-place-card overflow-hidden rounded-3xl border shadow-sm transition ${isCurrent ? "border-[var(--life-accent)]/45 bg-white/90 ring-1 ring-[var(--life-accent)]/10" : "border-white/80 bg-white/65"}`}>
           <div role="button" tabIndex={0} onClick={() => { setSelectedLocationId(location.id); setSelectedCharacterIds(people.filter(person => person.isActuallyHere).map(person => person.character.id)); enterLocationSolo(location.id); }} onKeyDown={event => { if(event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedLocationId(location.id); setSelectedCharacterIds(people.filter(person => person.isActuallyHere).map(person => person.character.id)); enterLocationSolo(location.id); } }} className="cursor-pointer p-4 outline-none focus-visible:ring-2 focus-visible:ring-[var(--life-accent)] sm:p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-semibold text-stone-800">{location.name}</h3>{isCurrent && <span className="rounded-full bg-[var(--life-accent)]/10 px-2 py-1 text-[10px] font-medium text-[var(--life-accent)]">你在这里</span>}{location.visibility === "private" && <span className="rounded-full bg-stone-100 px-2 py-1 text-[10px] text-stone-500">私人空间</span>}</div><p className="mt-1 text-sm leading-relaxed text-stone-600">{location.description || "这个地点还没有添加描写。"}</p></div>
@@ -3632,7 +3680,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             {(location.layout || location.props?.length) && <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-stone-500">{location.layout ? `空间：${location.layout} ` : ""}{location.props?.length ? `· 可用道具：${location.props.slice(0,5).join("、")}` : ""}</p>}
           </div>
           <div className="flex items-center justify-between gap-3 border-t border-stone-200/50 bg-white/45 px-4 py-3 sm:px-5"><span className="text-[11px] text-stone-400">{isCurrent ? "你的当前位置" : people.some(person => person.isActuallyHere) ? "角色正在这里生活" : "可以前往探索"}</span><button type="button" onClick={() => { setSelectedLocationId(location.id); setSelectedCharacterIds(people.filter(person => person.isActuallyHere).map(person => person.character.id)); enterLocationSolo(location.id); }} className="inline-flex min-h-12 min-w-[92px] touch-manipulation shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-3 text-sm font-semibold text-white shadow-sm"><MapPin size={14}/>{isCurrent ? "进入现场" : "前往"}</button></div>
-        </article>)}
+        </article>)}</div>}
+        </section>)}
         <button type="button" onClick={() => { setSelectedLocationId(playerLocationId); setSceneView(false); setTab("locations"); }} className="w-full rounded-2xl border border-dashed border-stone-300 bg-white/40 px-4 py-3 text-sm text-stone-600">管理地点库 · 添加地点、布局、道具与角色习惯</button>
       </section>}
       {((tab === "home" && sceneView) || tab === "scene") && <section className={`life-scene-panel flex min-w-0 flex-col rounded-2xl border border-white/70 bg-white/35 p-1.5 shadow-sm sm:p-2 ${immersiveScene ? "h-full max-h-full min-h-0 flex-1 overflow-hidden rounded-none border-0 bg-transparent" : ""}`}>
@@ -3718,6 +3767,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       {tab === "locations" && <div className="space-y-4">
         <section className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm sm:p-6">
           {!locationDossierOpen && <><SectionTitle eyebrow="Canonical location library" title="地点库" note="点开地点卡片进入独立档案页，编辑设定、添加角色习惯并查看历史。同居后角色自己的家会暂时从地点列表隐藏；取消同居后会自动重新显示，不会删除住处或历史数据。"/>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-stone-500">按名称、别名、环境和道具搜索；旧地点默认归入「未整理」。</p><button type="button" onClick={createLocationFolder} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700"><Plus size={12} className="mr-1 inline"/>新建文件夹</button></div>
+          {locationFilterControls}
           <div className="mb-4 rounded-2xl border border-[#ead8c8] bg-[#fffaf5] p-3">
             <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-stone-800">从角色卡 / 世界书导入地点</h3><p className="mt-1 text-xs leading-relaxed text-stone-500">自动提取地点、别名、环境、氛围、布局和道具，并保留来源。这里直接扫描所选世界书的启用条目，不依赖普通聊天的关键词触发；默认勾选该角色绑定的聊天与栖所世界书，也可手动选择其他书。</p></div>
               <button type="button" disabled={locationImportBusy || !locationImportCharacterId} onClick={() => void importWorldbookLocations()} className="shrink-0 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{locationImportBusy ? "处理中…" : "分析并导入地点"}</button>
@@ -3735,23 +3786,24 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             <input value={newLocationName} onChange={event => setNewLocationName(event.target.value)} placeholder="创建一个新地点，例如：旧城区的花店" className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/>
             <button type="submit" className="shrink-0 rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white"><Plus size={15} className="mr-1 inline"/>添加地点</button>
           </form>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {state.locations.filter(location => {
-              if (!location.id.startsWith("home-")) return true;
-              const ownerId = location.id.slice("home-".length);
-              return !state.locations.some(shared => shared.id !== location.id
-                && (shared.id === "home" || shared.id.startsWith("home-"))
-                && (shared.id === "home" || (shared.residents ?? []).length > 1)
-                && (shared.residents ?? []).includes(ownerId));
-            }).map(location => {
+          <div className="mt-4 space-y-3">
+            {filteredLibraryLocations.length === 0 && <p className="rounded-2xl border border-dashed border-stone-300 p-6 text-center text-sm text-stone-500">没有找到符合条件的地点。</p>}
+            {filteredLibraryLocations.map(location => {
               const entries = state.timeline.filter(entry => entry.locationName === location.name);
               const eventCount = state.events.filter(event => event.locationId === location.id || event.locationName === location.name).length;
               const actualPeople = characters.filter(character => state.actorStates.some(actor => actor.ownerType === "character" && actor.ownerId === character.id && actor.actualLocationId === location.id));
-              return <button type="button" key={location.id} onClick={() => { setSelectedLocationId(location.id); setLocationDossierOpen(true); }} className={`min-h-12 touch-manipulation rounded-2xl border p-3 text-left transition ${selectedLocationId === location.id ? "border-[var(--life-accent)] bg-[#fffaf5] shadow-sm" : "border-stone-200/70 bg-white/70 hover:bg-white"}`}>
-                <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="font-semibold text-stone-800">{location.name}</h3><p className="mt-1 line-clamp-2 text-xs leading-relaxed text-stone-500">{location.description || "尚未添加地点描写"}</p></div><span className="shrink-0 rounded-full bg-stone-100 px-2 py-1 text-[10px] text-stone-500">{location.visibility === "private" ? "私人" : "公共"}</span></div>
-                <div className="mt-3 flex flex-wrap gap-1.5">{actualPeople.length ? <span className="inline-flex items-center gap-1.5 rounded-full border border-[#d7c2af] bg-[#efe1d2] px-2.5 py-1 text-[10px] text-stone-700"><Users size={11}/>{actualPeople.length} 位角色在场</span> : <span className="rounded-full bg-stone-100 px-2 py-1 text-[10px] text-stone-500">目前没有实际在场角色</span>}</div>
-                <div className="mt-3 flex items-center justify-between gap-2 text-[10px] text-stone-400"><span>生活记录 {entries.length} 条 · 事件 {eventCount} 件</span><span>{location.props?.length ?? 0} 件道具 · 查看档案 →</span></div>
-              </button>;
+              return <article key={location.id} className="rounded-2xl border border-stone-200/70 bg-white/70 p-3">
+                <button type="button" onClick={() => { setSelectedLocationId(location.id); setLocationDossierOpen(true); }} className={`w-full min-h-12 touch-manipulation rounded-xl p-2 text-left transition ${selectedLocationId === location.id ? "bg-[#fffaf5]" : "hover:bg-white"}`}>
+                  <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="font-semibold text-stone-800">{location.name}</h3><p className="mt-1 line-clamp-2 text-xs leading-relaxed text-stone-500">{location.description || "尚未添加地点描写"}</p></div><span className="shrink-0 rounded-full bg-stone-100 px-2 py-1 text-[10px] text-stone-500">{location.visibility === "private" ? "私人" : "公共"}</span></div>
+                  <div className="mt-2 flex flex-wrap gap-1.5"><span className="rounded-full bg-[#f5ede4] px-2 py-1 text-[10px] text-stone-600">{location.category || "其他"}</span><span className="rounded-full bg-stone-100 px-2 py-1 text-[10px] text-stone-500">{locationFolderName(location.folderId)}</span></div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">{actualPeople.length ? <span className="inline-flex items-center gap-1.5 rounded-full border border-[#d7c2af] bg-[#efe1d2] px-2.5 py-1 text-[10px] text-stone-700"><Users size={11}/>{actualPeople.length} 位角色在场</span> : <span className="rounded-full bg-stone-100 px-2 py-1 text-[10px] text-stone-500">目前没有实际在场角色</span>}</div>
+                  <div className="mt-3 flex items-center justify-between gap-2 text-[10px] text-stone-400"><span>生活记录 {entries.length} 条 · 事件 {eventCount} 件</span><span>{location.props?.length ?? 0} 件道具 · 查看档案 →</span></div>
+                </button>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <select aria-label={location.name+"分类"} value={location.category || "其他"} onChange={event => updateLocationOrganization(location.id,{category:event.target.value as LifeLocation["category"]})} className="min-w-0 rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs">{["住宅","商业","公共","自然","其他"].map(value=><option key={value} value={value}>{value}</option>)}</select>
+                  <select aria-label={location.name+"文件夹"} value={location.folderId || "unfiled"} onChange={event => updateLocationOrganization(location.id,{folderId:event.target.value==="unfiled"?undefined:event.target.value})} className="min-w-0 rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs"><option value="unfiled">未整理</option>{locationFolders.map(folder=><option key={folder.id} value={folder.id}>{folder.name}</option>)}</select>
+                </div>
+              </article>;
             })}
           </div>
           </>}
