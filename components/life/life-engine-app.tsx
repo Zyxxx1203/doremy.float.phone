@@ -882,7 +882,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           && (shared.id === "home" || shared.id.startsWith("home-"))
           && (shared.id === "home" || (shared.residents ?? []).length > 1)
           && (shared.residents ?? []).includes(ownerId));
-      }).map(p => "- " + p.name + "（locationId=" + p.id + "）" + ((p.aliases?.length ?? 0) ? "；别名：" + p.aliases!.join("、") : "") + (p.description ? "；环境：" + p.description.slice(0, 220) : "") + (p.atmosphere ? "；氛围：" + p.atmosphere.slice(0, 120) : "") + (p.layout ? "；布局：" + p.layout.slice(0, 160) : "") + (p.props?.length ? "；道具：" + p.props.slice(0, 10).join("、") : "") + (p.characterHabits?.[character.id] ? "；角色习惯：" + p.characterHabits[character.id] : "")).join("\n");
+      }).slice(0, 36).map(p => "- " + p.name + "（locationId= + p.id + "）" + ((p.aliases?.length ?? 0) ? "；别名：" + p.aliases!.join("、") : "") + (p.description ? "；环境：" + p.description.slice(0, 140) : "") + (p.atmosphere ? "；氛围：" + p.atmosphere.slice(0, 70) : "") + (p.layout ? "；布局：" + p.layout.slice(0, 90) : "") + (p.props?.length ? "；道具：" + p.props.slice(0, 5).join("、") : "") + (p.characterHabits?.[character.id] ? "；角色习惯：" + p.characterHabits[character.id] : "")).join("\n");
       const livesWithPlayer = current.locations.some(location =>
         (location.id === "home" || location.id.startsWith("home-"))
         && (location.residents ?? []).includes(character.id)
@@ -2440,7 +2440,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         sourceBlocks.push(block); usedChars += block.length; enabledEntries++;
       }
     }
-    if (!enabledEntries && !character.persona?.trim() && !character.personality?.trim()) { setNotice("所选角色卡和世界书没有可读取的设定内容。"); return; }
+    if (!enabledEntries && !character.persona?.trim() && !character.personality?.trim() && !(character.tags ?? []).length) { setNotice("所选角色卡和世界书没有可读取的设定内容。"); return; }
     setLocationImportBusy(true);
     setNotice("正在分析「" + character.name + "」的角色卡与 " + enabledEntries + " 条世界书条目，识别地点、别名和空间设定……");
     try {
