@@ -188,7 +188,12 @@ export function readCharacterRuntime(characterId: string): CheckInRuntime {
   if (!entry || entry.dayKey !== day) {
     return { lastFiredAt: entry?.lastFiredAt ?? 0, nextDueAt: entry?.nextDueAt ?? 0, nextDueBackgroundMs: entry?.nextDueBackgroundMs ?? 0, dayKey: day, countToday: 0 };
   }
-  return entry;
+  // 兼容旧版运行态：新增字段缺失时统一补 0，避免 undefined 破坏首次调度。
+  return {
+    ...entry,
+    nextDueAt: Number.isFinite(entry.nextDueAt) ? entry.nextDueAt : 0,
+    nextDueBackgroundMs: Number.isFinite(entry.nextDueBackgroundMs) ? entry.nextDueBackgroundMs : 0,
+  };
 }
 
 /** 记一次已发起的查岗，并为下一轮固定抽取一次间隔。 */
