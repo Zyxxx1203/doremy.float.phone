@@ -196,6 +196,9 @@
 | 不同入口查找/创建场景的规则不统一 | 重复场景或错误复用 |
 | 同行角色与目的地原有角色合并路径不统一 | 漏角色、覆盖角色或回应队列不完整 |
 | `updateActorLocation` 曾把玩家当前场景的 `locationId` 改成玩家新位置 | 旧地点聊天室的历史可能被错误挂到新地点；角色实际位置编辑会改变聊天室身份 |
+| `settleActorTimelineToNow` 的临时停留到期分支曾把 active scene 的 `locationId` 改成计划地点 | 日程结算会在用户没有主动切换时搬动聊天室历史 |
+| 邀请事件结算曾创建带 `eventId` 的独立场景、将其设为 active/completed，并暂停其他 active 场景 | 同一地点出现事件聊天室与地点聊天室两套记录；日程结算还能抢走用户当前聊天室 |
+| 地点入口曾优先按 active/paused 状态找场景，未优先排除 legacy event-linked 场景 | 同地点可能复用到旧事件场景，造成历史分叉 |
 | `performEnterLocationSolo` 曾用本次按实际位置发现的角色列表整体覆盖目的地场景参与者 | 目的地原本就在场、但 actor 快照不完整/不同步的角色会从聊天室消失 |
 | `performCreateScene` 曾用本次勾选角色整体覆盖已有地点场景参与者 | 重新打开/创建时会丢失该地点已有角色 |
 | 生成队列部分在内存 ref | 离开/卸载时丢待处理回合 |
@@ -210,8 +213,11 @@
 2. 到达流程按目的地查找已有 active/paused 场景；有则复用原 `scene.id`，没有才创建。现场消息仍按该 `scene.id` 过滤。
 3. **已修复：**进入目的地时，不再用本次实际位置发现列表整体替换旧参与者；改为保留目的地场景中仍指向该地点的原参与者，再合并本次到达角色，按 `ownerType + ownerId` 去重。缺少旧 actor 快照的兼容参与者也不会被直接删除。
 4. **已修复：**`performCreateScene` 复用地点场景时也走同一参与者合并函数，避免另一个入口重新覆盖成员。
-5. **已修复：**`updateActorLocation` 只更新玩家实际位置和时间线，不再把当前场景的 `locationId` 改成新位置。角色实际位置变化不再隐式搬动聊天室历史。
-6. `sendSceneTurn` 从固定的 `turnScene.participants` 取在场角色，并将去重后的角色集合交给 `buildLifeSceneResponderQueue`；因此参与者合并结果会直接决定谁能回应。
+5. **已修复：**`updateActorLocation` 只更新玩家实际位置和时间线，不再把当前场景的 `locationId` 改成新位置。
+6. **已修复：**`settleActorTimelineToNow` 的临时停留到期只更新实际位置和时间线，不再重命名/移动 active scene，也不再把位置变更时间线挂到旧聊天室。
+7. **已修复：**邀请事件只更新事件状态/共同记忆，并把参与者合并到该地点的唯一聊天室；不会再新建 eventId 专属聊天室，不会把该地点房间标记 completed，也不会暂停用户当前正在看的其他地点房间。
+8. **已修复：**新增 `findLifeSceneForLocation`，地点进入、创建和事件结算统一选择同地点 canonical room；优先复用普通地点场景，兼容旧 eventId 场景。重新进入旧事件场景时清除 eventId 标记，将其回归地点聊天室。
+9. `sendSceneTurn` 从固定的 `turnScene.participants` 取在场角色，并将去重后的角色集合交给 `buildLifeSceneResponderQueue`；因此参与者合并结果会直接决定谁能回应。
 
 实现文件：
 - `components/life/life-engine-app.tsx`
