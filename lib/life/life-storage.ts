@@ -43,6 +43,7 @@ function normalizeState(value: unknown): VirtualLifeState {
     scheduleProfileVersion: typeof raw.scheduleProfileVersion === "number" ? raw.scheduleProfileVersion : 0,
     settings: normalizeSettings(raw.settings),
     locations: Array.isArray(raw.locations) ? raw.locations : [],
+    locationFolders: Array.isArray(raw.locationFolders) ? raw.locationFolders.filter(folder => folder && typeof folder.id === "string" && typeof folder.name === "string") : [],
     actorStates: Array.isArray(raw.actorStates) ? raw.actorStates : [],
     schedules: Array.isArray(raw.schedules) ? raw.schedules.map(slot => {
       // Older UI forms incorrectly labelled ordinary manual activities as free-time.
