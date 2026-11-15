@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, splashAnimation, builtinPrompts, debugPromptRegistry, debugPromptPanel, watchApp, moduleDiagnostics, runtimeDiagnostics, debugStore, checkinEngine, followUpService, shortTermAssembler, lifePresence, globalNoticeHost, sceneTurnQueue, scenePrompt] = await Promise.all([
+const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, splashAnimation, builtinPrompts, debugPromptRegistry, debugPromptPanel, watchApp, moduleDiagnostics, runtimeDiagnostics, debugStore, checkinEngine, followUpService, shortTermAssembler, lifePresence, globalNoticeHost, sceneTurnQueue, scenePrompt, shortTermAssembler] = await Promise.all([
   read("../components/life/life-engine-app.tsx"),
   read("../lib/life/life-runtime.ts"),
   read("../components/life/life-observation.tsx"),
@@ -33,6 +33,7 @@ const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply,
   read("../components/ui/global-notice-host.tsx"),
   read("../lib/life/life-scene-turn-queue.ts"),
   read("../lib/life/life-scene-prompt.ts"),
+  read("../lib/short-term-assembler.ts"),
 ]);
 
 
@@ -123,6 +124,7 @@ assert.match(regenerateSource, /busyRef\.current = true/, "regeneration must loc
 assert.match(regenerateSource, /lifeTurn\.end\(\)/, "regeneration must release its turn lease");
 assert.match(app, /buildLifeScenePromptContext\(stateRef\.current, turnScene, target\.id, pendingTurn\?\.messageId\)/, "queued turns must not see later player messages");
 assert.match(scenePrompt, /repliesByTurn/, "scene prompt history must restore each reply directly after its player turn");
+assert.match(shortTermAssembler, /options\?\.includeDirectChatEntries === false/, "life prompts must honor explicit exclusion of direct chat history");
 assert.match(app, /savePendingLifeSceneTurns\(pendingSceneTurnsRef\.current\)/, "new queued scene turns must be persisted");
 assert.match(sceneTurnQueue, /life-scene-turn-queue-v1/, "scene turn queue must use a durable versioned storage key");
 assert.match(app, /focusScene\(pending\.sceneId\)/, "pending notification replies must reopen their exact scene");
