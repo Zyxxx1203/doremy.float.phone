@@ -4,7 +4,7 @@ import { asPlayerRecordSubject } from "./life-timeline-subject";
 import { renderUserNameMacro, USER_NAME_MACRO } from "../user-macro";
 import { resolveUserIdentity } from "../settings-storage";
 
-export function buildLifeScenePromptContext(state: VirtualLifeState, scene: LifeSceneState, viewerId?: string): string {
+export function buildLifeScenePromptContext(state: VirtualLifeState, scene: LifeSceneState, viewerId?: string, throughMessageId?: string): string {
   // 玩家记录在角色记忆里统一用 {{user}}，发送前再解析成该角色当前人设的称呼。
   const playerRefName = resolveUserIdentity(viewerId, "chat")?.name;
   const visibleActorStates = state.actorStates.filter(actor => {
@@ -16,12 +16,18 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
   const participantIds = scene.participants.map(p => p.ownerId);
   const location = state.locations.find(item => item.id === scene.locationId);
   const homeLocations = state.locations.filter(item => item.id === "home" || item.id.startsWith("home-"));
+  const allSceneMessages = state.sceneMessages.filter(message => message.sceneId === scene.id);
+  const throughIndex = throughMessageId ? allSceneMessages.findIndex(message => message.id === throughMessageId) : -1;
+  const sceneMessages = throughIndex >= 0 ? allSceneMessages.slice(0, throughIndex + 1) : allSceneMessages;
+  const cutoffAt = throughIndex >= 0 ? allSceneMessages[throughIndex].createdAt : undefined;
+  const cutoffMs = cutoffAt ? Date.parse(cutoffAt) : Number.POSITIVE_INFINITY;
   const memories = state.memories
-    .filter(memory => memory.participants.includes(viewerId || "player") && memory.participants.some(id => participantIds.includes(id)))
+    .filter(memory => memory.participants.includes(viewerId || "player")
+      && memory.participants.some(id => participantIds.includes(id))
+      && Date.parse(memory.occurredAt) <= cutoffMs)
     .sort((a,b) => b.occurredAt.localeCompare(a.occurredAt))
     .slice(0, 8)
     .reverse();
-  const sceneMessages = state.sceneMessages.filter(message => message.sceneId === scene.id);
   const recentMessages = sceneMessages.slice(-12);
   const turnGroups = new Map<string, { speakerName: string; speakerId: string; isPlayer: boolean; action: string[]; dialogue: string[]; createdAt: string }>();
   for (const message of recentMessages) {
@@ -60,7 +66,7 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
     .slice(0, 8)
     .reverse() : [];
   const recentCharacterEvents = viewerId ? state.timeline
-    .filter(entry => entry.actorId === viewerId || entry.actorId === "player")
+    .filter(entry => (entry.actorId === viewerId || entry.actorId === "player") && Date.parse(entry.occurredAt) <= cutoffMs)
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
     .slice(0, 8)
     .reverse() : [];
