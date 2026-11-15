@@ -137,6 +137,7 @@ object BackgroundEnhancementManager {
             } else {
                 scheduleAlarm(context, id, nextDueAt)
             }
+            Unit
         }
         true
     }.getOrDefault(false)
