@@ -144,6 +144,9 @@ object BackgroundEnhancementManager {
     fun cancelCheckIn(context: Context, characterId: String): Boolean = runCatching {
         synchronized(lock) {
             cancelAlarm(context, characterId)
+            runCatching {
+                NotificationManagerCompat.from(context).cancel(NOTIFICATION_BASE + (characterId.hashCode() and 0x7fff))
+            }
             val tasks = readTasks(context)
             val remaining = JSONArray()
             for (i in 0 until tasks.length()) {
@@ -195,7 +198,6 @@ object BackgroundEnhancementManager {
     fun diagnosticsJson(context: Context): String = runCatching {
         val app = context.applicationContext
         val power = app.getSystemService(Context.POWER_SERVICE) as PowerManager
-        val notificationManager = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val accessibility = Settings.Secure.getString(
             app.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ).orEmpty()
