@@ -1847,11 +1847,15 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const latestAtStart = stateRef.current;
     let targetMessage = message;
     if (message.role === "player") {
-      const playerIndex = latestAtStart.sceneMessages.findIndex(item => item.id === message.id);
-      targetMessage = latestAtStart.sceneMessages.slice(playerIndex + 1).find(item =>
-        item.sceneId === message.sceneId && item.role === "character"
-        && !latestAtStart.sceneMessages.slice(playerIndex + 1, latestAtStart.sceneMessages.indexOf(item)).some(previous => previous.sceneId === message.sceneId && previous.role === "player")
-      ) as LifeSceneMessage;
+      targetMessage = latestAtStart.sceneMessages.find(item =>
+        item.sceneId === message.sceneId && item.role === "character" && item.replyToMessageId === message.id
+      ) ?? (() => {
+        const playerIndex = latestAtStart.sceneMessages.findIndex(item => item.id === message.id);
+        return latestAtStart.sceneMessages.slice(playerIndex + 1).find(item =>
+          item.sceneId === message.sceneId && item.role === "character"
+          && !latestAtStart.sceneMessages.slice(playerIndex + 1, latestAtStart.sceneMessages.indexOf(item)).some(previous => previous.sceneId === message.sceneId && previous.role === "player")
+        );
+      })() as LifeSceneMessage;
       if (!targetMessage) {
         setNotice("这条玩家输入后面还没有角色回复，先发送一次互动再重新生成。");
         return;
@@ -1871,7 +1875,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const sceneIndex = stateRef.current.sceneMessages.findIndex(item => item.id === targetMessage.id);
     const previousPlayer = message.role === "player"
       ? message
-      : stateRef.current.sceneMessages.slice(0, sceneIndex).reverse().find(item => item.sceneId === targetMessage.sceneId && item.role === "player");
+      : (targetMessage.replyToMessageId
+        ? stateRef.current.sceneMessages.find(item => item.id === targetMessage.replyToMessageId && item.role === "player")
+        : undefined)
+        ?? stateRef.current.sceneMessages.slice(0, sceneIndex).reverse().find(item => item.sceneId === targetMessage.sceneId && item.role === "player");
     if (!previousPlayer) {
       setNotice("找不到这条回复对应的玩家输入，无法重新生成。");
       return;
