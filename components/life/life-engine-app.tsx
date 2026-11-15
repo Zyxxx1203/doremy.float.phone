@@ -882,7 +882,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           && (shared.id === "home" || shared.id.startsWith("home-"))
           && (shared.id === "home" || (shared.residents ?? []).length > 1)
           && (shared.residents ?? []).includes(ownerId));
-      }).slice(0, 36).map(p => "- " + p.name + "（locationId= + p.id + "）" + ((p.aliases?.length ?? 0) ? "；别名：" + p.aliases!.join("、") : "") + (p.description ? "；环境：" + p.description.slice(0, 140) : "") + (p.atmosphere ? "；氛围：" + p.atmosphere.slice(0, 70) : "") + (p.layout ? "；布局：" + p.layout.slice(0, 90) : "") + (p.props?.length ? "；道具：" + p.props.slice(0, 5).join("、") : "") + (p.characterHabits?.[character.id] ? "；角色习惯：" + p.characterHabits[character.id] : "")).join("\n");
+      }).slice(0, 36).map(p => "- " + p.name + "（locationId=" + p.id + "）" + ((p.aliases?.length ?? 0) ? "；别名：" + p.aliases!.join("、") : "") + (p.description ? "；环境：" + p.description.slice(0, 140) : "") + (p.atmosphere ? "；氛围：" + p.atmosphere.slice(0, 70) : "") + (p.layout ? "；布局：" + p.layout.slice(0, 90) : "") + (p.props?.length ? "；道具：" + p.props.slice(0, 5).join("、") : "") + (p.characterHabits?.[character.id] ? "；角色习惯：" + p.characterHabits[character.id] : "")).join("\n");
       const livesWithPlayer = current.locations.some(location =>
         (location.id === "home" || location.id.startsWith("home-"))
         && (location.residents ?? []).includes(character.id)
