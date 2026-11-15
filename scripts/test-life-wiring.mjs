@@ -282,4 +282,49 @@ assert.match(nativeBridge, /fun getCheckInAppState\(\): String/);
 assert.match(nativeBridge, /CheckInService\.onHostBackground\(this\)/);
 assert.match(nativeBridge, /CheckInService\.onHostForeground\(this\)/);
 
-console.log("Life-system wiring checks passed.");
+const [
+  backgroundManager,
+  backgroundAlarmReceiver,
+  backgroundManifest,
+  backgroundBootReceiver,
+  backgroundSettings,
+  phoneSettings,
+  backupScheduler,
+  widgetScheduler,
+  mediaScheduler,
+] = await Promise.all([
+  read("../android-shell/app/src/main/java/app/floatphone/shell/BackgroundEnhancementManager.kt"),
+  read("../android-shell/app/src/main/java/app/floatphone/shell/BackgroundTaskAlarmReceiver.kt"),
+  read("../android-shell/app/src/main/AndroidManifest.xml"),
+  read("../android-shell/app/src/main/java/app/floatphone/shell/BootReceiver.kt"),
+  read("../components/settings/background-enhancement-settings.tsx"),
+  read("../components/phone-settings-app.tsx"),
+  read("../components/cloud-backup-scheduler.tsx"),
+  read("../components/widget/widget-scheduler.tsx"),
+  read("../components/media-maintenance-scheduler.tsx"),
+]);
+
+assert.match(backgroundManager, /setAndAllowWhileIdle/, "native scheduler must use inexact allow-while-idle alarms");
+assert.match(backgroundManager, /mode\(context\) != MODE_ENHANCED/, "native alarms must be gated by the user's enhanced-mode opt-in");
+assert.doesNotMatch(backgroundManager, /ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS/, "do not trigger policy-sensitive battery exemption requests");
+assert.doesNotMatch(backgroundManager, /setExactAndAllowWhileIdle|setExact\(/, "background reminders must not require exact-alarm access");
+assert.match(backgroundManager, /remainingMs/, "background-only timers must pause while the app is foreground");
+assert.match(backgroundManager, /batteryOptimizationIgnored/, "background diagnostics must report battery optimization state");
+assert.match(backgroundManager, /put\("exactAlarmUsed", false\)/, "diagnostics must disclose that exact alarms are not used");
+assert.match(backgroundAlarmReceiver, /BackgroundEnhancementManager\.onAlarm/);
+assert.doesNotMatch(backgroundAlarmReceiver, /ScreenshotBridge|captureScreenshot|startForegroundService/, "alarm receiver must not secretly capture or launch an FGS");
+assert.match(backgroundManifest, /BackgroundTaskAlarmReceiver/);
+assert.match(backgroundBootReceiver, /BackgroundEnhancementManager\.restore/);
+assert.match(nativeBridge, /fun getBackgroundEnhancementDiagnostics\(\): String/);
+assert.match(nativeBridge, /fun scheduleBackgroundCheckIn\(/);
+assert.match(nativeBridge, /BackgroundEnhancementManager\.onHostBackground\(this\)/);
+assert.match(nativeBridge, /BackgroundEnhancementManager\.onHostForeground\(this\)/);
+assert.match(checkinEngine, /scheduleNativeCheckIn\(/);
+assert.match(checkinEngine, /cancelNativeCheckIn\(/);
+assert.match(backgroundSettings, /不会静默截屏/);
+assert.match(phoneSettings, /BackgroundEnhancementSettings/);
+assert.match(backupScheduler, /pageshow/);
+assert.match(widgetScheduler, /pageshow/);
+assert.match(mediaScheduler, /pageshow/);
+
+console.log("Life-system and background-enhancement wiring checks passed.");

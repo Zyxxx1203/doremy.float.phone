@@ -1483,6 +1483,7 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         if (!recoveryBoot) {
             runCatching { CallOverlayService.onHostBackground() }
             runCatching { CheckInService.onHostBackground(this) }
+            runCatching { BackgroundEnhancementManager.onHostBackground(this) }
         }
     }
 
@@ -1491,6 +1492,7 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         if (!recoveryBoot) {
             runCatching { CallOverlayService.onHostForeground() }
             runCatching { CheckInService.onHostForeground(this) }
+            runCatching { BackgroundEnhancementManager.onHostForeground(this) }
         }
     }
 
@@ -2235,6 +2237,45 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         /** 前后台状态与累计后台时长，供查岗调度使用；不读取任何用户内容。 */
         @JavascriptInterface
         fun getCheckInAppState(): String = CheckInService.appLifecycleJson(this@MainActivity)
+
+        /** 后台增强中心：只暴露状态与用户主动选择的系统设置入口。 */
+        @JavascriptInterface
+        fun getBackgroundEnhancementDiagnostics(): String =
+            BackgroundEnhancementManager.diagnosticsJson(this@MainActivity)
+
+        @JavascriptInterface
+        fun setBackgroundEnhancementMode(mode: String): Boolean {
+            if (!isTrustedShellPage()) return false
+            return BackgroundEnhancementManager.setMode(this@MainActivity, mode)
+        }
+
+        @JavascriptInterface
+        fun openBackgroundEnhancementSettings(kind: String): Boolean {
+            if (!isTrustedShellPage()) return false
+            return BackgroundEnhancementManager.openSettings(this@MainActivity, kind)
+        }
+
+        /** 为查岗设置原生一次性唤醒提醒；真正截图仍由现有受权限保护的流程执行。 */
+        @JavascriptInterface
+        fun scheduleBackgroundCheckIn(
+            characterId: String,
+            characterName: String,
+            dueAtMillis: Long,
+            remainingBackgroundMs: Long,
+            backgroundOnly: Boolean,
+        ): Boolean {
+            if (!isTrustedShellPage()) return false
+            return BackgroundEnhancementManager.scheduleCheckIn(
+                this@MainActivity, characterId, characterName,
+                dueAtMillis, remainingBackgroundMs, backgroundOnly,
+            )
+        }
+
+        @JavascriptInterface
+        fun cancelBackgroundCheckIn(characterId: String): Boolean {
+            if (!isTrustedShellPage()) return false
+            return BackgroundEnhancementManager.cancelCheckIn(this@MainActivity, characterId)
+        }
 
         /**
          * 读走「用户主动截屏（悬浮球）」的结果（JSON 字符串，空串 = 没有）。
