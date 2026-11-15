@@ -50,13 +50,15 @@ const DAILY_ALLOWED = 20;
 function describeSchedule(s: CheckInScheduleSnapshot): string {
   if (!s.enabled) return "这个角色没开查岗";
   if (s.dailyReached) return `今天已经查过 ${s.countToday} 次，到上限了，明天恢复`;
-  if (s.lastFiredAt <= 0) return "还一次都没查过——下一次扫描就会轮到（最长等一分钟）";
-  if (s.due) return `已到点，下一次扫描就会弹（上次是 ${s.minutesSinceLast} 分钟前）`;
-  const minLeft = Math.max(1, s.minMinutes - s.minutesSinceLast);
-  const maxLeft = Math.max(minLeft, s.maxMinutes - s.minutesSinceLast);
-  return minLeft === maxLeft
-    ? `再过约 ${minLeft} 分钟`
-    : `再过 ${minLeft}~${maxLeft} 分钟（随机取一个）`;
+  if (s.lastFiredAt <= 0) {
+    return s.triggerMode === "background"
+      ? "首次进入后台后开始累计随机间隔"
+      : "首次启用后开始累计随机间隔";
+  }
+  if (s.due) return `已到点，等待下一次有效扫描（上次是 ${s.minutesSinceLast} 分钟前）`;
+  return s.triggerMode === "background"
+    ? "只累计 App 真正处于后台的时间"
+    : "按实际经过时间等待下一次查岗";
 }
 
 export function CheckInSettings({ onNotice }: { onNotice?: (msg: string) => void }) {
