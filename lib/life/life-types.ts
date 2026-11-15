@@ -243,6 +243,8 @@ export type LifeSceneMessage = {
   createdAt: string;
   /** 场景消息来源：现场回复 / 角色自主 / 离线推送。只做追溯，不改变渲染。 */
   channel?: "life_scene" | "life_autonomy" | "life_offline";
+  /** Reference to a scene gallery image; keeps image bytes in the media store, not the chat log. */
+  imageId?: string;
 };
 
 export type LifeSceneImage = {
