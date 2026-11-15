@@ -179,6 +179,7 @@ export function BackgroundEnhancementSettings({ onNotice }: { onNotice?: (messag
           <div className="menu-group">
             {[
               ["battery", "电池优化设置", "查看系统电池限制"],
+              ["battery-request", "申请电池优化豁免", "仅在你明确同意后向系统申请；系统仍可拒绝"],
               ["notifications", "通知权限", "允许后台任务提醒"],
               ["overlay", "悬浮窗权限", "允许查岗确认浮层"],
               ["accessibility", "无障碍设置", "保持查岗截图能力可用"],
