@@ -31,7 +31,7 @@ export function buildLifeScenePromptContext(state: VirtualLifeState, scene: Life
   const sceneMessages: typeof allSceneMessages = [];
   const includedMessageIds = new Set<string>();
   for (const message of prefix) {
-    if (message.replyToMessageId || includedMessageIds.has(message.id)) continue;
+    if ((message.replyToMessageId && allSceneMessages.some(item => item.id === message.replyToMessageId)) || includedMessageIds.has(message.id)) continue;
     sceneMessages.push(message);
     includedMessageIds.add(message.id);
     if (message.role === "player") {
