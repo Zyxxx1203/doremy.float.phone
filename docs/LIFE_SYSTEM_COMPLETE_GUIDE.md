@@ -497,7 +497,7 @@
 
 格式修复应保持同一角色、同一场景、同一回合，不能制造新回合。
 
-**风险：**玩家消息先持久化，AI 回应后生成；若中途卸载或失败，会留下未回应的输入。连续发送期间的 `pendingSceneTurnsRef` 仍是内存队列，退出后不会自动恢复；需要持久化待处理回合并做幂等恢复。
+**已修复：**连续发送队列写入 `life-scene-turn-queue-v1`；生成中的回合单独持久化，重启后按 FIFO 恢复。每条角色回复带 `replyToMessageId`，若重启前已写入回复则跳过，避免重复生成。
 
 ### 17.1 通知场景深链
 
@@ -704,7 +704,7 @@ AndroidShell 原生回复队列
 | 2 | 参与者集合与回应队列统一 | 同行者和原有角色都能参与 |
 | 3 | 历史迁移止损 | 防止错误固化 |
 | 4 | 图片删除/回填一致性 | 防止已删除内容复活 |
-| 5 | pending turn 持久化 | 解决半截回合 |
+| 5 | pending turn 持久化 | 已实现本机恢复；多角色回合中途崩溃后的剩余回应续跑仍待增强 |
 | 6 | 普通聊天记忆桥只读化 | 降低隐式写入 |
 | 7 | 全局状态写入协调 | 防止旧快照覆盖 |
 | 8 | 端到端诊断和回归测试 | 防止反复回归 |
@@ -796,6 +796,7 @@ AndroidShell 原生回复队列
 | `lib/life/life-schedule-cloud.ts` | 云端快照 |
 | `lib/life/life-proactive-scheduler.ts` | 主动消息调度 |
 | `lib/life/life-notification-queue.ts` | 通知现场回复队列 |
+| `lib/life/life-scene-turn-queue.ts` | 现场玩家回合持久队列 |
 | `lib/life/life-memory-bridge.ts` | 普通聊天记忆/位置桥 |
 | `lib/notification-reply.ts` | 原生通知回复 |
 | `lib/chat-engine.ts` | 普通聊天引擎 |
