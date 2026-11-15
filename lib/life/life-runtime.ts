@@ -454,7 +454,11 @@ export function generateWeeklyLifePlan(
     canteen: ["食堂", "附近餐馆", "餐馆", "餐厅", "饭店", "canteen"],
     studio: ["音乐创作空间", "音乐空间", "创作空间", "录音室", "studio"],
   };
-  const locations: LifeLocation[] = [...existingLocations, ...discoveredLocations];
+  const locations: LifeLocation[] = [
+    ...existingLocations,
+    ...(existingLocations.some(location => location.id === personalHome.id) ? [] : [personalHome]),
+    ...discoveredLocations,
+  ];
   const resolveCanonical = (slot: LifeScheduleSlot): LifeScheduleSlot => {
     const rawName = (slot.plannedLocationName ?? "").trim();
     if (!rawName || /跟随玩家的实际地点|地点待定|未知地点/i.test(rawName)) return slot;
