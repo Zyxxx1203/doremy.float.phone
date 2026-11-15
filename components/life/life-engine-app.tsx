@@ -891,10 +891,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     }
     const scene = stateRef.current.scenes.find(item => item.status === "active"
       && item.participants.some(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID));
-    if (!scene) { setNotice("当前没有活动生活现场；先进入一个地点。"); return; }
+    if (!scene) { setNotice("请先进入地点。"); return; }
     const candidateId = scene.participants.find(participant => participant.ownerType === "character")?.ownerId;
     const character = characters.find(item => item.id === candidateId) ?? characters[0];
-    if (!character) { setNotice("没有可用的角色，无法挂起主动消息。"); return; }
+    if (!character) { setNotice("暂无可用角色。"); return; }
     const session = createLifeChatSession(character.id, character.name);
     const result = await armLifeSceneProactiveBailout({
       sessionId: session.id,
@@ -1325,10 +1325,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   };
 
   const performCreateScene = () => {
-    if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
+    if (!settings.enabled) { setNotice("请先启用生活系统。"); return; }
     if (!selectedLocation) { setNotice("请先创建或选择一个地点。"); return; }
     const chosen = characters.filter(char => selectedCharacterIds.includes(char.id));
-    if (!chosen.length) { setNotice("至少选择一位角色，才能开始共同生活场景。"); return; }
+    if (!chosen.length) { setNotice("请至少选择一位角色。"); return; }
     const now = new Date().toISOString();
     const ids = ["player", ...chosen.map(char => char.id)];
     const participants: LifeSceneParticipant[] = [
@@ -1363,7 +1363,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     commit(next);
     setTab("home");
     setSceneView(true);
-    setNotice("共同场景已建立并保存；重新打开会接着当前状态，不会重演。");
+    setNotice("已进入现场。");
 
   };
 
@@ -1402,7 +1402,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
    */
   const performTransferSceneWithCompanions = (targetLocationId = selectedLocationId) => {
     const destination = stateRef.current.locations.find(location => location.id === targetLocationId);
-    if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
+    if (!settings.enabled) { setNotice("请先启用生活系统。"); return; }
     if (!destination) return;
     const companions = characters.filter(char => selectedCharacterIds.includes(char.id));
     const oldLocationName = playerPresence?.actualLocationName;
@@ -1436,7 +1436,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   /** Arrival uses actual-location state only; planned locations never create encounters. */
   const performEnterLocationSolo = (targetLocationId = selectedLocationId) => {
     const destination = stateRef.current.locations.find(location => location.id === targetLocationId);
-    if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
+    if (!settings.enabled) { setNotice("请先启用生活系统。"); return; }
     if (!destination) return;
     const now = new Date().toISOString();
     // Use the latest committed state: a companion-transfer commit may not have rendered yet.
@@ -1520,7 +1520,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
 
   const enterLocationSolo = (targetLocationId = selectedLocationId) => {
     const destination = stateRef.current.locations.find(location => location.id === targetLocationId);
-    if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
+    if (!settings.enabled) { setNotice("请先启用生活系统。"); return; }
     if (!destination) return;
     transitionSceneAction(() => performEnterLocationSolo(targetLocationId));
   };
@@ -1532,7 +1532,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const maybeGenerate = () => {
       if (!ready || !activeScene || !settings.autoGenerateSceneImages || !autoImageFingerprint || activeScene.lastAutoImageFingerprint === autoImageFingerprint || autoImageSceneRef.current === autoImageFingerprint) return;
       if (!loadImageGenerationSettings().enabled) {
-        setNotice("已开启场景自动生图；请先在「小手机设置 → 生图设置」启用生图服务，启用后会自动尝试。");
+        setNotice("已开启自动生图，请配置生图服务。");
         return;
       }
       autoImageSceneRef.current = autoImageFingerprint;
@@ -1590,7 +1590,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const latestScene = latest.scenes.find(item => item.id === scene.id);
       if (!latestScene) throw new Error("生成期间当前场景已不存在，未覆盖其他场景。");
       commit({ ...latest, scenes: latest.scenes.map(item => item.id === scene.id ? { ...item, currentDescription: description, updatedAt: new Date().toISOString() } : item) });
-      setNotice("现场描述已更新；原始对话记录没有被合并或删除。");
+      setNotice("已更新现场描述。");
     } catch (error) {
       setNotice("整理现场描述失败：" + (error instanceof Error ? error.message : "未知错误"));
     } finally {
@@ -1667,7 +1667,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const prompt = buildSceneImagePrompt(participantIds, options?.prompt ?? sceneImagePrompt);
     const count = Math.max(1,Math.min(4,options?.count ?? settings.sceneImageCount));
     setSceneImageBusy(true);
-    setNotice("正在生成场景图。每张图会独立保存，失败的图片不会影响已有图库。");
+    setNotice("正在生成场景图…");
     const generated: LifeSceneImage[] = [];
     try {
       const referenceCharacterId = participantIds.find(pid => pid !== PLAYER_ID && characters.some(character => character.id === pid));
@@ -1707,7 +1707,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         });
         const orderedImages = [...(scene.images ?? []), ...generated].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
         setImageViewerIndex(Math.max(0, orderedImages.findIndex(image => image.id === generated[0]?.id)));
-        setNotice("生成完成。旧图已归档，可在图库中恢复或删除以释放缓存空间。");
+        setNotice("场景图已生成。");
       }
     } catch(error) {
       await Promise.all(generated.map(image=>deleteMediaRef(image.mediaRef)));
@@ -1777,7 +1777,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const url=imageObjectUrls[imageId]; if(url) URL.revokeObjectURL(url);
     setImageObjectUrls(previous=>{const copy={...previous};delete copy[imageId];return copy;});
     await deleteMediaRef(image.mediaRef);
-    setNotice("图片记录已删除，关联媒体缓存也已清理。");
+    setNotice("图片已删除。");
   };
 
   const openMessageActions = (message: LifeSceneMessage) => {
@@ -1822,7 +1822,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     next = rebuildSceneDialogueTimeline(next, message.sceneId, latest.settings.sceneRecordBatchSize ?? 10);
     commit(next);
     setMessageActionTarget(null);
-    setNotice("消息已保存，生活时间线也已同步。");
+    setNotice("已保存。");
   };
 
   const deleteSceneMessage = () => {
@@ -1836,7 +1836,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     };
     commit(rebuildSceneDialogueTimeline(next, message.sceneId, latest.settings.sceneRecordBatchSize ?? 10));
     setMessageActionTarget(null);
-    setNotice("消息及其对应的生活时间线记录已删除。");
+    setNotice("已删除。");
   };
 
   const regenerateSceneMessage = async (message: LifeSceneMessage) => {
@@ -1895,7 +1895,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         allowEmpty: false,
         appTags: lifeAppTags("scene"),
       });
-      if (issues.length > 0) throw new Error("本轮输出格式异常，已阻止写入：" + describeLifeOutputIssues(issues));
+      if (issues.length > 0) throw new Error("输出格式异常：" + describeLifeOutputIssues(issues));
       if (!parsed.action?.trim() && !parsed.dialogue.trim()) throw new Error("模型返回了空回应，请检查当前角色绑定的模型或输出格式设置后重试。");
       const latest = stateRef.current;
       // A single turn may be stored as one action card plus several dialogue bubbles.
@@ -1936,7 +1936,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       }
       next = rebuildSceneDialogueTimeline(next, scene.id, latest.settings.sceneRecordBatchSize ?? 10);
       commit(next);
-      setNotice("角色回复已重新生成，整轮动作卡片、对白分条和生活时间线已同步。");
+      setNotice("已重新生成。");
     } catch (error) {
       setNotice(error instanceof Error ? "重新生成失败：" + error.message : "重新生成失败，请检查模型配置。");
     } finally {
@@ -2235,7 +2235,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     if (busyRef.current && !responseQueue?.length) {
       if (userText || userAction) {
         pendingSceneTurnsRef.current.push({ sceneId: turnScene.id, userText, userAction, createdAt: now });
-        setNotice("消息已保存，角色回复正在排队。");
+        setNotice("已发送，等待回复。");
         return "deferred";
       }
       return forceReaction ? "deferred" : "failed";
@@ -2260,7 +2260,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       return roll < chance;
     });
     if (settings.randomSceneResponses === false && !responseQueue?.length && !notificationReplyId && !selectedSpeakerIsPresent && !awarenessResponder) {
-      setNotice("消息已保存；当前未指定回应角色，你可以稍后点选角色并请求回应。");
+      setNotice("已保存。选择角色后可请求回应。");
       return "completed";
     }
     const plannedResponders: string[] = responseQueue?.length
@@ -2279,7 +2279,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const target = characters.find(char => char.id === targetId);
     if (!target) {
       if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应无法启动", status: "error", detail: "找不到通知回复对应的角色卡。", meta: { sceneId: turnScene.id, targetId } });
-      setNotice("消息已保存，但当前没有可回应的角色。");
+      setNotice("已保存，暂无可回应角色。");
       return userText || userAction ? "completed" : "failed";
     }
     // Any character that actually reaches the response queue has now noticed the player,
@@ -2327,7 +2327,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       if (userText || userAction) {
         const retry = queuedTurn ?? { sceneId: turnScene.id, userText, userAction, createdAt: now };
         pendingSceneTurnsRef.current.unshift(retry);
-        setNotice("消息已保存；角色当前正在处理其他对话，稍后会继续回应。");
+        setNotice("已保存，稍后回应。");
         window.setTimeout(() => {
           if (!busyRef.current) {
             const next = pendingSceneTurnsRef.current.shift();
@@ -2368,7 +2368,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         appTags: lifeAppTags("scene"),
       });
       if (issues.length > 0) {
-        setNotice("本轮输出格式异常，已阻止写入：" + describeLifeOutputIssues(issues) + "。可重新生成。");
+        setNotice("输出格式异常：" + describeLifeOutputIssues(issues) + "。可重新生成。");
         return "failed";
       }
       if (!parsed.action?.trim() && !parsed.dialogue.trim()) {
