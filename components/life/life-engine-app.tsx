@@ -1363,14 +1363,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const createScene = () => transitionSceneAction(performCreateScene);
 
   /**
-   * 场景转移：带勾选的角色前往新地点，**沿用同一条场景记录**（sceneId 不变），
-   * 聊天记录完整带到新地点——此前每次切换都新建场景，旧场景的对话就像被清空了。
-   * 没有任何场景时退回原有的 solo 进入流程。
-   */
-  /**
-   * 携带勾选角色前往新地点。每个地点保持**独立场景**（不共用 sceneId），
-   * 原场景的聊天记录留在原地不丢失。玩家动向不写共同记忆：
-   * 通过 actualLocation（presence）自然呈现——原地的角色会看到玩家离开，
+   * 携带勾选角色前往新地点。每个地点保持唯一且稳定的聊天室身份，
+   * 原地点的聊天记录留在原地；目的地原有在场角色与本次同行角色合并。
+   * 玩家动向不写共同记忆：通过 actualLocation（presence）自然呈现——原地的角色会看到玩家离开，
    * 新地点的角色会看到玩家到场；勾选的角色则直接跟随迁移。
    */
   const performTransferSceneWithCompanions = (targetLocationId = selectedLocationId) => {
