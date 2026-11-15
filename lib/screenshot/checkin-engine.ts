@@ -15,7 +15,7 @@
 //  - **失败如实说**：没能截图时写的是「截屏失败」而不是「对方没给看」，
 //    免得角色误以为用户拒绝、做出委屈的反应。
 
-import { pushChatMessage, loadChatSessions } from "../chat-storage";
+import { pushChatMessage, loadChatSessions, getActiveChatSessionId } from "../chat-storage";
 import { loadCharacters } from "../character-storage";
 import { recordUserShot } from "./engine";
 import { requestBackgroundChatReply } from "../follow-up-service";
@@ -28,7 +28,7 @@ import {
   shouldFireCheckIn,
   type CheckInCharacterConfig,
 } from "./checkin-config";
-import { consumePendingUserShot, hasCheckInBridge, readCheckInCapabilities, requestCheckIn } from "./checkin";
+import { consumePendingUserShot, hasCheckInBridge, readCheckInAppState, readCheckInCapabilities, requestCheckIn } from "./checkin";
 import { resolveCheckInGuidance } from "./checkin-guidance";
 import { ensureShellOverlayListener, subscribeShellOverlayEvents } from "../shell-call-overlay";
 import type { CheckInOutcome } from "./types";
@@ -40,7 +40,6 @@ import { getActorClock, getCurrentActorSchedule, resolveActorLifeNow } from "../
 function isCheckInAllowedByLifeContext(characterId: string): boolean {
   const life = loadVirtualLifeState();
   if (!life.settings.enabled) return true; // Preserve legacy check-in behavior when the life engine is off.
-  if (!life.settings.enableCharacterAutonomy) return false;
   const now = resolveActorLifeNow(getActorClock(life, "character", characterId));
   const schedule = getCurrentActorSchedule(life, "character", characterId, now);
   const actor = life.actorStates.find(item => item.ownerType === "character" && item.ownerId === characterId);
@@ -135,7 +134,8 @@ export async function runCheckIn(
 
   // 先记一次触发：无论用户最终给不给看，这次查岗都已经发生过，
   // 都该计入当日上限——否则用户一直点「不给」就等于没有上限。
-  markCheckInFired(characterId);
+  const appState = readCheckInAppState();
+  markCheckInFired(characterId, cfg, appState.backgroundElapsedMs);
 
   const outcome = await requestCheckIn(characterId, name, avatar);
 
@@ -360,7 +360,8 @@ export async function requestCheckInForTool(characterId: string): Promise<CheckI
   const avatar = character?.avatar || "";
 
   // 先记一次：请求已经发出去了，无论用户最终给不给看。
-  markCheckInFired(characterId);
+  const appState = readCheckInAppState();
+  markCheckInFired(characterId, cfg, appState.backgroundElapsedMs);
 
   const outcome = await requestCheckIn(characterId, name, avatar);
 
@@ -433,9 +434,20 @@ export async function requestCheckInForTool(characterId: string): Promise<CheckI
  */
 export async function pollDueCheckIns(): Promise<number> {
   const all = loadCheckInConfig();
+  const appState = readCheckInAppState();
+  const activeSessionId = typeof document !== "undefined" && document.visibilityState === "visible"
+    ? getActiveChatSessionId()
+    : null;
+  const activeSession = activeSessionId
+    ? loadChatSessions().find(session => session.id === activeSessionId)
+    : undefined;
   let fired = 0;
   for (const [characterId, config] of Object.entries(all)) {
-    if (!shouldFireCheckIn(characterId, config)) continue;
+    // 后台模式必须以 Android Activity 生命周期为准；旧 APK / 无法确认状态时宁可不触发。
+    if (config.triggerMode === "background" && (!appState.available || appState.foreground)) continue;
+    // 即使用户选了「不限制前后台」，也不在正在进行的同角色私聊中插入查岗。
+    if (activeSession && !activeSession.isGroup && activeSession.contactId === characterId) continue;
+    if (!shouldFireCheckIn(characterId, config, Date.now(), appState)) continue;
     if (!isCheckInAllowedByLifeContext(characterId)) continue;
     const result = await runCheckIn(characterId, config);
     if (result.ok) fired += 1;
