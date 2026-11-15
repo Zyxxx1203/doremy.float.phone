@@ -1211,6 +1211,7 @@ export function loadCustomAppTimelineEntries(
     "life",
     "watch",
     "photo_wall",
+    "heartcraft.doris",
     "phone_widget",
     "global_watch",
   ]);
