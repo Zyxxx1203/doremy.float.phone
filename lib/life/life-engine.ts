@@ -64,6 +64,29 @@ export function evaluateEncounterAwareness(input: EncounterPerception, seed = 0)
  * Canonical character IDs are de-duplicated before and after selection so the
  * random, explicitly selected and awareness responders can never answer twice.
  */
+/**
+ * Merge the people already belonging to a destination room with newly arrived
+ * participants. Existing membership is kept; incoming activity/awareness refreshes
+ * matching members without creating duplicate participant records.
+ */
+export function mergeLifeSceneParticipants(
+  existing: LifeSceneParticipant[],
+  incoming: LifeSceneParticipant[],
+): LifeSceneParticipant[] {
+  const merged = new Map<string, LifeSceneParticipant>();
+  for (const participant of [...existing, ...incoming]) {
+    const key = participant.ownerType + ":" + participant.ownerId;
+    const previous = merged.get(key);
+    merged.set(key, previous ? {
+      ...previous,
+      ...participant,
+      activity: participant.activity || previous.activity,
+      awarenessByActorId: { ...previous.awarenessByActorId, ...participant.awarenessByActorId },
+    } : { ...participant, awarenessByActorId: { ...participant.awarenessByActorId } });
+  }
+  return [...merged.values()];
+}
+
 export function buildLifeSceneResponderQueue(input: {
   presentCharacterIds: string[];
   randomEnabled: boolean;
