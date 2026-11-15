@@ -336,6 +336,8 @@ assert.match(kvDbSource, /const _writeQueues = new Map<string, Promise<void>>\(\
   "IndexedDB writes must be serialized per key so an older snapshot cannot finish after a newer one");
 assert.match(kvDbSource, /previous\.catch\(\(\) => undefined\)\.then\(async \(\) => \{[\s\S]*?await kvDb\.entries\.put\(\{ key, value \}\)/,
   "each durable key write must wait for the previous write to settle");
+assert.match(kvDbSource, /if \(_cache\.get\(key\) === value\) writeFallbackLocalStorage\(key, value\)/,
+  "a failed stale write must not overwrite the latest localStorage fallback");
 assert.match(kvDbSource, /enqueueKvWrite\(key, value\)/,
   "both sync and async KV setters must use the ordered write queue");
 assert.match(lifeStorageSource, /sceneMessageFormatVersion: typeof raw\.sceneMessageFormatVersion === "number" \? raw\.sceneMessageFormatVersion : 0/,
