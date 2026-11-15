@@ -4,12 +4,22 @@ import vm from "node:vm";
 import ts from "typescript";
 
 const source = readFileSync(new URL("../lib/life/life-runtime.ts", import.meta.url), "utf8");
-const compiled = ts.transpileModule(source, {
+const engineSource = readFileSync(new URL("../lib/life/life-engine.ts", import.meta.url), "utf8");
+const compile = input => ts.transpileModule(input, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
+const engineBox = { exports: {} };
+vm.runInNewContext(compile(engineSource), {
+  module: engineBox, exports: engineBox.exports, Date, Math, console,
+}, { filename: "life-engine.cjs" });
 const moduleBox = { exports: {} };
-const sandbox = { module: moduleBox, exports: moduleBox.exports, Date, Math, console };
-vm.runInNewContext(compiled, sandbox, { filename: "life-runtime.cjs" });
+const sandbox = {
+  module: moduleBox,
+  exports: moduleBox.exports,
+  Date, Math, console,
+  require: specifier => specifier === "./life-engine" ? engineBox.exports : {},
+};
+vm.runInNewContext(compile(source), sandbox, { filename: "life-runtime.cjs" });
 const { applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getCurrentActorSchedule, insertManualLifeScheduleSlot, overlayScheduleSlotsOverFreeTime, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, syncScheduleLocationsToLibrary, synchronizeCharacterHomeSchedule, reserveCharacterLocationStay, resolveActorLocation } = moduleBox.exports;
 assert.equal(typeof generateWeeklyLifePlan, "function", "weekly planner should be exported");
 assert.equal(typeof getCurrentActorSchedule, "function", "current schedule selector should be exported");
