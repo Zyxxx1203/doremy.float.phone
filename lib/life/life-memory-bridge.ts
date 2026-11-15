@@ -80,7 +80,7 @@ export function buildLifePresenceContext(characterId: string): string {
   const clock = getActorClock(state, "character", characterId);
   const now = resolveActorLifeNow(clock);
   const schedule = getCurrentActorSchedule(state, "character", characterId, now);
-  let actor = state.actorStates.find(item => item.ownerType === "character" && item.ownerId === characterId);
+  const actor = state.actorStates.find(item => item.ownerType === "character" && item.ownerId === characterId);
   const belongsToCharacter = (item: typeof state.scenes[number]) =>
     item.participants.some(participant => participant.ownerType === "character" && participant.ownerId === characterId);
   const scene = state.scenes.find(item => item.status === "active" && belongsToCharacter(item))
@@ -94,7 +94,6 @@ export function buildLifePresenceContext(characterId: string): string {
   const storedAwakeGraceActive = Number.isFinite(storedAwakeUntil) && storedAwakeUntil > now.getTime();
   const wakeForThisReply = scheduledSleeping && state.settings.allowOnlineChatDuringSleep && !storedAwakeGraceActive;
   const awakeGraceActive = state.settings.allowOnlineChatDuringSleep && (storedAwakeGraceActive || wakeForThisReply);
-  const awakeUntil = storedAwakeGraceActive ? storedAwakeUntil : wakeForThisReply ? now.getTime() + 20 * 60_000 : Number.NaN;
   const displayActivity = awakeGraceActive ? "被线上消息唤醒，暂时保持清醒" : activity;
   const sleeping = scheduledSleeping && !awakeGraceActive;
   const displayActivity = awakeGraceActive ? "被线上消息唤醒，暂时保持清醒" : activity;
