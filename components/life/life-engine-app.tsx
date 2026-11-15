@@ -2567,6 +2567,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     }
   };
 
+  const sendSceneTurnRef = useRef(sendSceneTurn);
+  sendSceneTurnRef.current = sendSceneTurn;
+
   useEffect(() => {
     if (!ready || sceneTurnQueueRestoredRef.current) return;
     sceneTurnQueueRestoredRef.current = true;
@@ -2591,7 +2594,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       setActiveLifeSceneTurn(next);
       window.setTimeout(() => {
         sceneTurnDrainScheduledRef.current = false;
-        void sendSceneTurn(undefined, false, undefined, undefined, next);
+        void sendSceneTurnRef.current?.(undefined, false, undefined, undefined, next);
       }, 0);
       return;
     }
