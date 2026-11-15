@@ -12,7 +12,7 @@ vm.runInNewContext(compiled, {
   module: moduleBox, exports: moduleBox.exports,
   console, JSON, Set, Map, Array, String, Number, Boolean, RegExp, Date, Math,
 }, { filename: "life-engine.cjs" });
-const { buildLifeSceneResponderQueue, mergeLifeSceneParticipants } = moduleBox.exports;
+const { buildLifeSceneResponderQueue, findLifeSceneForLocation, mergeLifeSceneParticipants } = moduleBox.exports;
 
 assert.deepEqual(
   Array.from(buildLifeSceneResponderQueue({
@@ -55,6 +55,12 @@ assert.deepEqual(
   "non-present characters are never queued",
 );
 
+
+const canonicalRoom = findLifeSceneForLocation([
+  { id: "legacy-event-room", locationId: "cafe", locationName: "咖啡店", startedAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-11-15T00:00:00.000Z", status: "active", eventId: "old-event", participants: [], lastSettledEventIds: [] },
+  { id: "canonical-location-room", locationId: "cafe", locationName: "咖啡店", startedAt: "2026-01-02T00:00:00.000Z", updatedAt: "2026-11-10T00:00:00.000Z", status: "paused", participants: [], lastSettledEventIds: [] },
+], "cafe");
+assert.equal(canonicalRoom.id, "canonical-location-room", "a normal location room must win over a newer legacy event-linked room");
 
 const mergedParticipants = mergeLifeSceneParticipants(
   [
