@@ -94,8 +94,10 @@ export function CheckInScheduler() {
     // 每一次仍然会弹浮层让用户当场决定。
     const onResume = () => { void scan(); };
     const onVisible = () => { if (document.visibilityState === "visible") void scan(); };
+    const onConfigChange = () => { void scan(); };
     window.addEventListener("focus", onResume);
     window.addEventListener("pageshow", onResume);
+    window.addEventListener("check-in-config-changed", onConfigChange);
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
@@ -105,6 +107,7 @@ export function CheckInScheduler() {
       stopUserShotBridge();
       window.removeEventListener("focus", onResume);
       window.removeEventListener("pageshow", onResume);
+      window.removeEventListener("check-in-config-changed", onConfigChange);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
