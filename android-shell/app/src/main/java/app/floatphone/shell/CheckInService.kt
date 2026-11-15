@@ -221,6 +221,9 @@ class CheckInService : Service() {
     companion object {
         private const val CH = "shell_check_in"
         private const val NOTIF_ID = 4
+        private const val PREFS_LIFECYCLE = "check_in_lifecycle"
+        private const val KEY_BACKGROUND_STARTED_AT = "background_started_at"
+        private const val KEY_BACKGROUND_TOTAL_MS = "background_total_ms"
 
         private const val ACTION_PREPARE = "app.floatphone.shell.CHECKIN_PREPARE"
         private const val ACTION_SHOW = "app.floatphone.shell.CHECKIN_SHOW"
@@ -370,15 +373,44 @@ class CheckInService : Service() {
             }
         }
 
-        /** 宿主 Activity 进后台。 */
-        fun onHostBackground() {
+        /** 宿主 Activity 进后台。持久化累计计时起点，供后台查岗使用。 */
+        fun onHostBackground(context: Context) {
+            val prefs = context.getSharedPreferences(PREFS_LIFECYCLE, Context.MODE_PRIVATE)
+            if (prefs.getLong(KEY_BACKGROUND_STARTED_AT, 0L) <= 0L) {
+                prefs.edit()
+                    .putLong(KEY_BACKGROUND_STARTED_AT, System.currentTimeMillis())
+                    .commit()
+            }
             hostInForeground = false
         }
 
-        /** 宿主 Activity 回前台。 */
-        fun onHostForeground() {
+        /** 宿主 Activity 回前台：结算刚结束的后台时段。 */
+        fun onHostForeground(context: Context) {
+            val prefs = context.getSharedPreferences(PREFS_LIFECYCLE, Context.MODE_PRIVATE)
+            val now = System.currentTimeMillis()
+            val startedAt = prefs.getLong(KEY_BACKGROUND_STARTED_AT, 0L)
+            val elapsed = if (startedAt > 0L) (now - startedAt).coerceAtLeast(0L) else 0L
+            val total = prefs.getLong(KEY_BACKGROUND_TOTAL_MS, 0L)
+            prefs.edit()
+                .putLong(KEY_BACKGROUND_TOTAL_MS, total + elapsed)
+                .putLong(KEY_BACKGROUND_STARTED_AT, 0L)
+                .commit()
             hostInForeground = true
         }
+
+        /** 原生生命周期快照；backgroundElapsedMs 是跨多次前后台切换累计的后台时长。 */
+        fun appLifecycleJson(context: Context): String = runCatching {
+            val prefs = context.getSharedPreferences(PREFS_LIFECYCLE, Context.MODE_PRIVATE)
+            val total = prefs.getLong(KEY_BACKGROUND_TOTAL_MS, 0L)
+            val startedAt = prefs.getLong(KEY_BACKGROUND_STARTED_AT, 0L)
+            val activeBackground = if (!hostInForeground && startedAt > 0L)
+                (System.currentTimeMillis() - startedAt).coerceAtLeast(0L) else 0L
+            JSONObject()
+                .put("available", true)
+                .put("foreground", hostInForeground)
+                .put("backgroundElapsedMs", total + activeBackground)
+                .toString()
+        }.getOrDefault("{\"available\":false,\"foreground\":true,\"backgroundElapsedMs\":0}")
 
         /** 服务是否在运行（设置面板显示「查岗待命中」用）。 */
         fun isRunning(): Boolean = running
