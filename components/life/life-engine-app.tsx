@@ -2226,7 +2226,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       setPendingSceneQueueVersion(value => value + 1);
     };
     if (!turnScene || (!userText && !userAction && !forceReaction)) {
-      discardPendingTurn();
+      discardQueuedTurn();
       return "failed";
     }
     const notificationResponsePrefix = notificationReplyId ? "notification-reply-response-" + notificationReplyId : "";
