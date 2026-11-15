@@ -331,6 +331,16 @@ assert.equal(apStarted.scenes[0].locationId, "cafe");
 assert.equal(apStarted.scenes[0].status, "paused", "scheduled events must not steal the foreground room");
 assert.equal(apStarted.scenes[0].eventId, undefined, "new location rooms must not be keyed as event scenes");
 assert.equal(apStarted.actorStates.find(actor => actor.ownerType === "player").actualLocationId, "cafe");
+
+const appointmentWithNamedLocation = {
+  ...apState,
+  events: apState.events.map(event => ({ ...event, locationId: undefined, locationName: "Cafe Alias" })),
+  locations: apState.locations.map(location => location.id === "cafe" ? { ...location, aliases: ["Cafe Alias"] } : location),
+};
+const settledNamedLocation = settleActorTimelineToNow(appointmentWithNamedLocation, "player", "player", apNow);
+assert.equal(settledNamedLocation.scenes[0].locationId, "cafe", "event location aliases must resolve to the canonical location id rather than the player's prior location");
+
+
 const apCharacterSettled = settleActorTimelineToNow(apStarted, "character", "c1", apNow);
 assert.equal(apCharacterSettled.actorStates.find(actor => actor.ownerType === "character").actualLocationId, "cafe");
 
