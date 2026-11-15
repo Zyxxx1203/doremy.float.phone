@@ -1699,6 +1699,30 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     }
   };
 
+  const downloadSceneImage = async (image: LifeSceneImage) => {
+    const sourceUrl = imageObjectUrls[image.id];
+    if (!sourceUrl) {
+      setNotice("图片仍在加载，请稍后再试。");
+      return;
+    }
+    try {
+      const response = await fetch(sourceUrl);
+      if (!response.ok) throw new Error("读取原图失败。");
+      const blob = await response.blob();
+      const mimeExtension = blob.type.split("/")[1]?.toLowerCase().replace("jpeg", "jpg").replace(/[^a-z0-9]/g, "") || "jpg";
+      const downloadUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = downloadUrl;
+      anchor.download = "life-scene-" + image.id + "." + mimeExtension;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 30_000);
+    } catch (error) {
+      setNotice("下载场景原图失败：" + (error instanceof Error ? error.message : "未知错误"));
+    }
+  };
+
   const setSceneImageStatus = (imageId:string,status:"active"|"archived") => {
     if(!activeScene)return;
     const next={...stateRef.current,scenes:stateRef.current.scenes.map(scene=>scene.id!==activeScene.id?scene:{...scene,images:(scene.images??[]).map(image=>image.id===imageId?{...image,status}:image),updatedAt:new Date().toISOString()})};
