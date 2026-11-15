@@ -1652,7 +1652,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           sceneId: image.sceneId,
           speakerType: "player",
           speakerId: PLAYER_ID,
-          speakerName: playerName,
+          speakerName: normalized.settings.playerDisplayName || "我",
           role: "system",
           action: "场景图片",
           dialogue: "",
@@ -1664,7 +1664,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           scenes: latest.scenes.map(item=>item.id===scene.id?updated:item),
           sceneMessages: [...latest.sceneMessages, ...imageMessages],
         });
-        setImageViewerIndex(Math.max(0, [...(scene.images ?? []), ...generated].filter(image => image.status === "active").length - generated.length));
+        const orderedImages = [...(scene.images ?? []), ...generated].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        setImageViewerIndex(Math.max(0, orderedImages.findIndex(image => image.id === generated[0]?.id)));
         setNotice("生成完成。旧图已归档，可在图库中恢复或删除以释放缓存空间。");
       }
     } catch(error) {
