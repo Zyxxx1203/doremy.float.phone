@@ -33,6 +33,14 @@ const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply,
   read("../components/ui/global-notice-host.tsx"),
 ]);
 
+
+const updateActorLocationStart = app.indexOf("const updateActorLocation = (actor: ActorChoice, locationId: string) => {");
+const createSceneStart = app.indexOf("const performCreateScene = () => {", updateActorLocationStart);
+assert.ok(updateActorLocationStart >= 0 && createSceneStart > updateActorLocationStart, "player/character location update handler must remain identifiable");
+assert.doesNotMatch(app.slice(updateActorLocationStart, createSceneStart), /upsertLifeScene\(/, "changing an actor's actual location must not rewrite the location identity of the currently open room");
+assert.match(app, /const destinationParticipants = mergeLifeSceneParticipants\(/, "destination room membership must merge existing occupants with arrivals");
+assert.match(app, /setSelectedCharacterIds\(destinationParticipants\.filter\(participant => participant\.ownerType === "character"\)/, "the UI responder selection must include the merged destination occupants");
+
 assert.match(app, /if \(settings\.autoGenerateWeeklyPlans\)\s*\{\s*next = generateWeeklyLifePlan/);
 assert.match(app, /if \(liveSettings\.autoGenerateWeeklyPlans\)/);
 assert.match(app, /<LifeDiagnosticsPanel\s*\/>/);
