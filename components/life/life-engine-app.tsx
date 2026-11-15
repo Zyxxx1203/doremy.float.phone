@@ -2334,6 +2334,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const remaining = responseQueue?.length ? responseQueue.slice(1) : plannedResponders.slice(1);
       if (remaining.length) {
         const nextResult = await sendSceneTurn(undefined, true, undefined, remaining, pendingTurn ?? undefined);
+        busyRef.current = false;
+        setBusy(false);
         discardQueuedTurn();
         return nextResult === "failed" ? "failed" : "completed";
       }
