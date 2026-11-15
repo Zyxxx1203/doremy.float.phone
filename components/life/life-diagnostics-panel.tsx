@@ -156,9 +156,7 @@ export function LifeDiagnosticsPanel() {
             System diagnostics
           </p>
           <h2 className="mt-1 text-lg font-semibold text-stone-800">生活系统诊断记录</h2>
-          <p className="mt-1 text-xs leading-relaxed text-stone-500">
-            汇总本机链路记录与云端常驻日程引擎故障；本机最多保留 300 条，云端只保留未解决故障。
-          </p>
+
         </div>
 
         <div className="flex flex-wrap gap-2">
