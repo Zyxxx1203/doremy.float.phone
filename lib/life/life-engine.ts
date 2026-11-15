@@ -66,6 +66,26 @@ export function evaluateEncounterAwareness(input: EncounterPerception, seed = 0)
  * random, explicitly selected and awareness responders can never answer twice.
  */
 /**
+ * Resolve the canonical chat room for a location. Legacy event-linked rooms are
+ * compatibility data, not separate destinations; prefer a normal location room,
+ * then a reusable room over a completed legacy record.
+ */
+export function findLifeSceneForLocation(
+  scenes: LifeSceneState[],
+  locationId: string,
+  locationName?: string,
+): LifeSceneState | undefined {
+  return scenes
+    .filter(scene => scene.locationId === locationId || (!!locationName && scene.locationName === locationName))
+    .slice()
+    .sort((left, right) =>
+      Number(Boolean(left.eventId)) - Number(Boolean(right.eventId))
+      || Number(left.status === "completed") - Number(right.status === "completed")
+      || right.updatedAt.localeCompare(left.updatedAt)
+    )[0];
+}
+
+/**
  * Merge the people already belonging to a destination room with newly arrived
  * participants. Existing membership is kept; incoming activity/awareness refreshes
  * matching members without creating duplicate participant records.
