@@ -32,7 +32,7 @@ import { applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeekly
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { describeLifeOutputIssues, parseLifeOutput, validateLifeOutput, type LifeOutputIssue } from "@/lib/life/life-output";
-import { buildLifeSceneResponderQueue, evaluateEncounterAwareness } from "@/lib/life/life-engine";
+import { buildLifeSceneResponderQueue, evaluateEncounterAwareness, mergeLifeSceneParticipants } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
 import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts, reconcileIdleReconnectWithLifeScenes, suspendIdleReconnectForLifeScene } from "@/lib/push-bailout-client";
 import { readLifeProactiveStatus } from "@/lib/life/life-proactive-scheduler";
@@ -1450,9 +1450,23 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const shouldRecordSceneEntry = !existingScene || existingScene.status === "paused" || !hasRecordedEntry;
     const isFirstSceneEntry = !existingScene || !hasRecordedEntry;
     let next: VirtualLifeState = { ...stateRef.current, scenes: stateRef.current.scenes.map(scene => (scene.status === "active" || scene.status === "paused") ? { ...scene, status: "paused" as const, updatedAt: now } : scene) };
+    // A location has one durable room. Re-entering it must retain the people
+    // already in that room, then add characters who are physically arriving now.
+    // Do not carry participants from the room we are leaving.
+    const retainedDestinationParticipants = (existingScene?.participants ?? []).filter(participant => {
+      if (participant.ownerType !== "character") return false;
+      const actor = stateRef.current.actorStates.find(item => item.ownerType === "character" && item.ownerId === participant.ownerId);
+      // Preserve legacy participants with no actor snapshot; otherwise only retain
+      // people whose actual location still points at this destination.
+      return !actor || actor.actualLocationId === destination.id;
+    });
+    const destinationParticipants = mergeLifeSceneParticipants(
+      retainedDestinationParticipants,
+      [{ ...participants[0], activity: playerActivity || "正在这里活动" }, ...participants.slice(1)],
+    );
     const scene: LifeSceneState = existingScene
-      ? { ...existingScene, locationId: destination.id, locationName: destination.name, updatedAt: now, status: "active", participants: [{ ...participants[0], activity: playerActivity || "正在这里活动" }, ...participants.slice(1)] }
-      : { id: id("scene"), locationId: destination.id, locationName: destination.name, startedAt: now, updatedAt: now, status: "active", participants, lastSettledEventIds: [] };
+      ? { ...existingScene, locationId: destination.id, locationName: destination.name, updatedAt: now, status: "active", participants: destinationParticipants }
+      : { id: id("scene"), locationId: destination.id, locationName: destination.name, startedAt: now, updatedAt: now, status: "active", participants: destinationParticipants, lastSettledEventIds: [] };
     next = upsertLifeScene(next, scene);
     next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "正在这里活动", actualLocationId: destination.id, actualLocationName: destination.name, actualLocationUntil: new Date(resolveActorLifeNow(getActorClock(stateRef.current, "player", PLAYER_ID)).getTime() + stayDurationMinutes * 60_000).toISOString(), updatedAt: now });
     if (shouldRecordSceneEntry) {
@@ -1473,7 +1487,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       setNotice(noticed ? "你来到了" + destination.name + "，有角色注意到了你。" : "你来到了" + destination.name + "；有人在场，但暂时没人明确注意到你。");
     }
     setSelectedLocationId(destination.id);
-    setSelectedCharacterIds(actualCharacters.map(character => character.id));
+    setSelectedCharacterIds(destinationParticipants.filter(participant => participant.ownerType === "character").map(participant => participant.ownerId));
     setTab("home");
     setSceneView(true);
   };
