@@ -1,5 +1,5 @@
 import type { LifeActorClock, LifeActorState, LifeEvent, LifeInvitation, LifeLocation, LifeOwnerType, LifeScheduleSlot, LifeSceneParticipant, LifeSceneState, VirtualLifeState } from "./life-types";
-import { mergeLifeSceneParticipants } from "./life-engine";
+import { findLifeSceneForLocation, mergeLifeSceneParticipants } from "./life-engine";
 
 export const lifeActorKey = (ownerType: LifeOwnerType, ownerId: string) => `${ownerType}:${ownerId}`;
 
@@ -653,15 +653,11 @@ export function settleActorTimelineToNow(
       ?? playerPresence?.actualLocationName
       ?? characterPresence?.actualLocationName
       ?? "家";
-    const sameLocation = (scene: LifeSceneState) =>
-      scene.locationId === locationId || (!event.locationId && scene.locationName === locationName);
-    const matchingScene = scenes
-      .filter(sameLocation)
-      .sort((left, right) =>
-        Number(Boolean(left.eventId)) - Number(Boolean(right.eventId))
-        || Number(left.status === "completed") - Number(right.status === "completed")
-        || right.updatedAt.localeCompare(left.updatedAt)
-      )[0];
+    const matchingScene = findLifeSceneForLocation(
+      scenes,
+      locationId,
+      event.locationId ? undefined : locationName,
+    );
 
     if (started && event.details !== "follow-player") {
       const eventParticipants: LifeSceneParticipant[] = event.participantIds.map(participantId => {
