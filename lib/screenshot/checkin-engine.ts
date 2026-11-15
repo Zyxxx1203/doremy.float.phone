@@ -443,6 +443,7 @@ export async function pollDueCheckIns(): Promise<number> {
     ? loadChatSessions().find(session => session.id === activeSessionId)
     : undefined;
   let fired = 0;
+  const characters = loadCharacters();
   for (const [characterId, config] of Object.entries(all)) {
     if (!config.enabled) {
       cancelNativeCheckIn(characterId);
@@ -457,9 +458,9 @@ export async function pollDueCheckIns(): Promise<number> {
       continue;
     }
     // 原生闹钟只负责到期提醒/唤起机会，不会在后台直接截图或调用 AI。
-    const characterName = loadCharacters().find(item => item.id === characterId)?.name ?? "角色";
+    const characterName = characters.find(item => item.id === characterId)?.name ?? "角色";
     if (config.triggerMode === "background") {
-      if (appState.available && runtime.nextDueBackgroundMs > 0) {
+      if (appState.available && runtime.nextDueBackgroundMs > appState.backgroundElapsedMs + 1000) {
         scheduleNativeCheckIn(
           characterId, characterName, 0,
           Math.max(0, runtime.nextDueBackgroundMs - appState.backgroundElapsedMs),
@@ -468,7 +469,7 @@ export async function pollDueCheckIns(): Promise<number> {
       }
       // 旧 APK / 无法确认原生生命周期时宁可不触发。
       if (!appState.available || appState.foreground) continue;
-    } else if (runtime.nextDueAt > 0) {
+    } else if (runtime.nextDueAt > Date.now() + 1000) {
       scheduleNativeCheckIn(characterId, characterName, runtime.nextDueAt, 0, false);
     }
     if (!shouldFireCheckIn(characterId, config, Date.now(), appState)) continue;
