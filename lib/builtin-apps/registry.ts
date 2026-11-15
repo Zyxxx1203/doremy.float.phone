@@ -9,10 +9,9 @@ import { buildHeartcraftApp, HEARTCRAFT_APP_ID, HEARTCRAFT_MANIFEST } from "./he
  * 规则：如果用户自己从应用市场装了同一个 manifest id 的版本，就让市场版接管，
  * 避免同一个 APP 出现两套工具/两条指令。两版共用同一个 app id，数据也是同一份。
  */
+/** 旧市场版只作为迁移来源保留，不再接管内置应用的工具和后台事件。 */
 export function isHeartcraftInstalled(): boolean {
-  return loadInstalledCustomApps().some(
-    (app) => (app.manifest?.id || app.id) === HEARTCRAFT_MANIFEST.id || app.id === HEARTCRAFT_APP_ID,
-  );
+  return loadInstalledCustomApps().some((app) => app.id === HEARTCRAFT_APP_ID);
 }
 
 /** 按 app id 取内置应用（不含 HTML，够做存在性判断/权限判断）。 */
@@ -20,9 +19,11 @@ export function getBuiltinCustomApp(appId: string): InstalledCustomApp | null {
   return appId === HEARTCRAFT_APP_ID ? buildHeartcraftApp("") : null;
 }
 
-/** 已安装应用 + 内置应用（内置的排在前面；市场版存在时不加内置）。 */
+/** 内置版始终优先；旧市场版记录保留在存储中供数据迁移/回滚，但不再注册运行。 */
 export function loadAllCustomApps(): InstalledCustomApp[] {
-  const installed = loadInstalledCustomApps();
-  if (isHeartcraftInstalled()) return installed;
+  const installed = loadInstalledCustomApps().filter((app) => (
+    app.id !== HEARTCRAFT_APP_ID
+    && (app.manifest?.id || app.id) !== HEARTCRAFT_MANIFEST.id
+  ));
   return [buildHeartcraftApp(""), ...installed];
 }
