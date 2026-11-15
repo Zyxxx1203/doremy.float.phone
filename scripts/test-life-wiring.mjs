@@ -84,6 +84,7 @@ assert.match(lifePresence, /allowOnlineChatDuringSleep/);
 assert.match(lifePresence, /onlineChatAwakeUntil/);
 assert.doesNotMatch(lifePresence, /saveVirtualLifeState|settleActorTimelineToNow/, "chat context assembly must not mutate life state");
 assert.match(lifePresence, /wakeForThisReply/, "sleep wake behavior must be derived without a storage write");
+assert.match(lifePresence, /findCurrentLifeScene\(state\.scenes\.filter\(belongsToCharacter\)\)/, "online chat presence must resolve the canonical room for that character");
 const workshopSearch = await read("../components/phone-qa-app.tsx");
 const workshopStyles = await read("../styles/qa.css");
 assert.match(workshopSearch, /pendingSearchJump/);
