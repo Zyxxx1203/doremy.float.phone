@@ -781,11 +781,15 @@ const placeholderState = makeState([{
   plannedLocationId: oldScheduleStub.id, plannedLocationName: oldScheduleStub.name, updatedAt: "2026-12-01T00:00:00.000Z",
 }]);
 placeholderState.locations = [oldScheduleStub, importedDossier];
+placeholderState.actorStates = [{ ownerType: "character", ownerId: "a", activity: "在花店", actualLocationId: oldScheduleStub.id, actualLocationName: oldScheduleStub.name, updatedAt: "2026-12-01T00:00:00.000Z" }];
+placeholderState.scenes = [{ id: "scene-old-flower-shop", locationId: oldScheduleStub.id, locationName: oldScheduleStub.name, startedAt: "2026-12-02T08:00:00.000Z", updatedAt: "2026-12-02T08:00:00.000Z", status: "active", participants: [], lastSettledEventIds: [] }];
 const remappedLocations = syncScheduleLocationsToLibrary(placeholderState);
 assert.equal(remappedLocations.schedules[0].plannedLocationId, importedDossier.id, "a schedule-only placeholder must remap to a richer imported location dossier");
 assert.equal(remappedLocations.schedules[0].plannedLocationName, importedDossier.name);
 assert.equal(remappedLocations.locations.find(location => location.id === importedDossier.id).sourceRefs[0].sourceKey, importedDossier.sourceRefs[0].sourceKey, "schedule synchronization must preserve imported provenance");
 assert.equal(remappedLocations.locations.length, 2, "remapping should not duplicate the imported dossier");
+assert.equal(remappedLocations.actorStates[0].actualLocationId, importedDossier.id, "active actor state must follow the remapped canonical location");
+assert.equal(remappedLocations.scenes[0].locationId, importedDossier.id, "active scenes must follow the remapped canonical location");
 
 const generatedResidenceState = generateWeeklyLifePlan(makeState(), "character", "char-without-home", "测试角色", new Date("2026-12-01T00:00:00.000Z"), undefined, "", false);
 assert.ok(generatedResidenceState.locations.some(location => location.id === "home-char-without-home"), "weekly generation must persist the actor personal home in the location catalog");
