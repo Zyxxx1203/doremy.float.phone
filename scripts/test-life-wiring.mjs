@@ -388,7 +388,7 @@ assert.match(app, /pendingSceneTurnsRef\.current\.push/,
   "player turns sent during generation must be queued for sequential replies");
 assert.match(app, /pendingSceneTurnsRef\.current\.shift\(\)/,
   "queued player turns must be drained after the current root response");
-assert.match(app, /消息已保存，但当前没有可回应的角色/,
+assert.match(app, /已保存，暂无可回应角色/,
   "player input must remain persisted even when no responder exists");
 assert.match(app, /const sceneContext = buildLifeScenePromptContext\(stateRef\.current, turnScene, target\.id\)/,
   "queued replies must use their original scene context");
