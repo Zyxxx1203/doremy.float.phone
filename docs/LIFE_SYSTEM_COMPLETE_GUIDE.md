@@ -178,7 +178,7 @@
 
 ### 4.3 当前代码线索与风险
 
-主组件：`components/life/life-engine-app.tsx`。当前场景选择器优先取第一个 active 场景，否则取最近更新的 paused 场景；消息按该场景 ID 过滤。
+主组件：`components/life/life-engine-app.tsx`。当前场景选择器通过 `findCurrentLifeScene` 确定：优先普通地点房间，再按 active、paused、completed 和更新时间排序；消息按选中的场景 ID 过滤。
 
 已识别的关键路径：
 - `updateActorLocation`：更新实际位置并联动现场参与者；
