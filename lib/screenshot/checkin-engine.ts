@@ -444,6 +444,7 @@ export async function pollDueCheckIns(): Promise<number> {
     : undefined;
   let fired = 0;
   for (const [characterId, config] of Object.entries(all)) {
+    if (!config.enabled) continue;
     // 在前台也先初始化本轮目标时间，这样后台累计从 Activity 真正进入后台时开始。
     ensureCheckInDueTime(characterId, config, Date.now(), appState);
     // 后台模式必须以 Android Activity 生命周期为准；旧 APK / 无法确认状态时宁可不触发。
