@@ -60,14 +60,18 @@ export function mergeImportedLifeLocations(
     const name = candidate.name.trim();
     const key = normalize(name);
     if (!key || name.length > 100) continue;
-    const aliases = mergeUnique([], (candidate.aliases ?? []).filter(value => value.length <= 100));
+    const sources = candidate.sourceRefs.filter(source => source.sourceKey.trim());
+    const homeOwnerId = candidate.relation === "own-home" ? sources.find(source => source.characterId)?.characterId : undefined;
     const match = locations.find(location => {
       const keys = [location.name, ...(location.aliases ?? [])].map(normalize);
-      return keys.includes(key) || aliases.some(alias => keys.includes(normalize(alias)));
-    });
-    const sources = candidate.sourceRefs.filter(source => source.sourceKey.trim());
+      return keys.includes(key) || (candidate.aliases ?? []).some(alias => keys.includes(normalize(alias)));
+    }) ?? (homeOwnerId ? locations.find(location => location.id === "home-" + homeOwnerId) : undefined);
+    const aliases = mergeUnique([], [
+      ...(candidate.aliases ?? []).filter(value => value.length <= 100),
+      ...(match && candidate.relation === "own-home" && match.name !== name ? [name] : []),
+    ]);
     if (!match) {
-      const base = "imported-place-" + slug(name);
+      const base = homeOwnerId ? "home-" + homeOwnerId : "imported-place-" + slug(name);
       let id = base, suffix = 2;
       const ids = new Set(locations.map(location => location.id));
       while (ids.has(id)) id = base + "-" + suffix++;
