@@ -157,7 +157,8 @@ export function mergeImportedLifeLocations(
 
 function mergeUniqueSources(current: LifeLocationSourceRef[], incoming: LifeLocationSourceRef[]) {
   const result = [...current];
-  const indexes = new Map(current.map((source, index) => [source.sourceKey, index]));
+  const indexes = new Map<string, number>();
+  current.forEach((source, index) => indexes.set(source.sourceKey, index));
   for (const source of incoming) {
     const index = indexes.get(source.sourceKey);
     if (index === undefined) {
