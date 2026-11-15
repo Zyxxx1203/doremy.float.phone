@@ -111,7 +111,7 @@ export function CheckInSettings({ onNotice }: { onNotice?: (msg: string) => void
     onNotice?.("查岗已开启。到点它会截屏，但会先弹窗问你要不要给它看");
   }, [refresh, inShell, readiness.supported, readiness.accessibilityOn, onNotice]);
 
-  const patch = useCallback((characterId: string, next: { minMinutes?: number; maxMinutes?: number; dailyLimit?: number }) => {
+  const patch = useCallback((characterId: string, next: { triggerMode?: "background" | "any"; minMinutes?: number; maxMinutes?: number; dailyLimit?: number }) => {
     saveCharacterCheckIn(characterId, next);
     refresh();
   }, [refresh]);
@@ -185,7 +185,7 @@ export function CheckInSettings({ onNotice }: { onNotice?: (msg: string) => void
                   <div className="menu-label-group">
                     <span className="menu-label">{character.name}</span>
                     <span className="menu-desc">
-                      {enabled ? `每 ${min}~${max} 分钟一次，每天最多 ${limit} 次` : "未开启"}
+                      {enabled ? `每 ${min}~${max} 分钟一次，每天最多 ${limit} 次 · ${config?.triggerMode === "any" ? "前后台均可" : "仅后台"}` : "未开启"}
                     </span>
                     {enabled ? (
                       <span className="menu-desc" style={{ color: "var(--per-accent, #6f5bd6)" }}>
@@ -198,6 +198,22 @@ export function CheckInSettings({ onNotice }: { onNotice?: (msg: string) => void
 
                 {enabled && (
                   <>
+                    <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
+                      <div className="menu-label-group">
+                        <span className="menu-label">触发场景</span>
+                        <span className="menu-desc">默认仅后台；前台正在和该角色私聊时始终暂缓</span>
+                      </div>
+                      <select
+                        className="per-field-input"
+                        aria-label="查岗触发场景"
+                        value={config?.triggerMode ?? "background"}
+                        onChange={e => patch(character.id, { triggerMode: e.target.value === "any" ? "any" : "background" })}
+                      >
+                        <option value="background">仅后台触发</option>
+                        <option value="any">不限制前后台</option>
+                      </select>
+                    </div>
+
                     {/* 间隔：两个直接输入的分钟数，不再给固定档位——
                         「我要 47 分钟」这种需求给按钮满足不了。 */}
                     <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
@@ -353,7 +369,7 @@ export function CheckInSettings({ onNotice }: { onNotice?: (msg: string) => void
           },
           {
             label: "⑦ 扫描器",
-            value: "随桌面壳常驻，每 1 分钟扫一遍；回到小手机也会立刻补扫",
+            value: "统一调度器每 1 分钟扫描；后台模式只按原生累计后台时长计时",
             ok: true,
           },
         ].map(row => (
