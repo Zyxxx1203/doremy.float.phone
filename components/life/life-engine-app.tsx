@@ -930,7 +930,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       if (!Array.isArray(decoded)) throw new Error("日程结果不是数组。");
       const clean = (value: string) => value.toLocaleLowerCase().replace(/[\s\u3000·•\/\\|｜、，,。.!！?？:：;；()（）\[\]【】_-]+/g, "");
       const kinds = new Set(["habit", "work", "study", "meal", "commute", "free-time", "appointment", "special"]);
-      const home = current.locations.find(p => p.id === "home") ?? current.locations[0];
+      const home = current.locations.find(p => p.id === "home" && (p.residents ?? []).includes(character.id)) ?? current.locations.find(p => p.id === "home-" + character.id) ?? current.locations.find(p => p.id === "home") ?? current.locations[0];
       const aiSlots: LifeScheduleSlot[] = [];
       const days = new Set<number>();
       for (const item of decoded as Array<Record<string, unknown>>) {
@@ -2475,6 +2475,12 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const character = characters.find(item => item.id === locationImportCharacterId) ?? characters[0];
     if (!character) { setNotice("请先创建或导入一个角色卡，才能调用生活系统模型补全地点档案。"); return; }
     setLocationImportBusy(true); setNotice("正在补全「" + selectedLocation.name + "」的地点档案……");
+    const locationSourceContext = (selectedLocation.sourceRefs ?? []).flatMap(source => {
+      if (source.kind !== "worldbook" || !source.worldBookId || !source.entryUid) return [];
+      const book = worldBooks.find(item => item.id === source.worldBookId);
+      const entry = book?.entries.find(item => item.uid === source.entryUid);
+      return entry ? [("世界书：" + (book?.name ?? source.worldBookName ?? "") + "；条目：" + (entry.comment || entry.key || "") + "\\n" + entry.content).slice(0, 6000)] : [];
+    }).join("\\n\\n").slice(0, 16000);
     try {
       const session = createLifeChatSession(character.id, character.name);
       const prompt: ChatMessage = {
@@ -2485,6 +2491,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           "已有设定：" + [selectedLocation.description, selectedLocation.atmosphere, selectedLocation.layout, ...(selectedLocation.props ?? [])].filter(Boolean).join("\n"),
           "角色卡背景：" + [character.persona, character.personality, ...(character.tags ?? [])].filter(Boolean).join("\n").slice(0, 5000),
           "关联来源摘要：" + (selectedLocation.sourceRefs ?? []).map(source => [source.worldBookName, source.entryComment].filter(Boolean).join(" / ")).join("\n"),
+          "原始世界书内容：" + (locationSourceContext || "无可读取的原始条目内容"),
           "要求：已有设定必须保留；不得凭空改变地点所属角色、世界观、用途或地理关系。若资料不足，只补充低承诺、通用且可被用户修改的环境氛围和空间结构，不要编造专属剧情事实。props 和 aliases 返回字符串数组。",
         ].join("\n\n"),
       };
