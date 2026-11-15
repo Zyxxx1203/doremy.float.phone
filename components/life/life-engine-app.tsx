@@ -2226,7 +2226,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       setPendingSceneQueueVersion(value => value + 1);
     };
     if (!turnScene || (!userText && !userAction && !forceReaction)) {
-      discardQueuedTurn();
+      if (!responseQueue?.length) discardQueuedTurn();
       return "failed";
     }
     const notificationResponsePrefix = notificationReplyId ? "notification-reply-response-" + notificationReplyId : "";
@@ -2311,7 +2311,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     if (!target) {
       if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应无法启动", status: "error", detail: "找不到通知回复对应的角色卡。", meta: { sceneId: turnScene.id, targetId } });
       setNotice("已保存，暂无可回应角色。");
-      discardPendingTurn();
+      if (!responseQueue?.length) discardPendingTurn();
       return userText || userAction ? "completed" : "failed";
     }
     // Any character that actually reaches the response queue has now noticed the player,
@@ -2342,12 +2342,14 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const remaining = responseQueue?.length ? responseQueue.slice(1) : plannedResponders.slice(1);
       if (remaining.length) {
         const nextResult = await sendSceneTurn(undefined, true, undefined, remaining, pendingTurn ?? undefined);
-        busyRef.current = false;
-        setBusy(false);
-        discardPendingTurn();
+        if (!responseQueue?.length) {
+          busyRef.current = false;
+          setBusy(false);
+          discardPendingTurn();
+        }
         return nextResult === "failed" ? "failed" : "completed";
       }
-      discardPendingTurn();
+      if (!responseQueue?.length) discardPendingTurn();
       return "failed";
     }
     const contacts = loadChatContacts();
