@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, splashAnimation, builtinPrompts, debugPromptRegistry, debugPromptPanel, watchApp, moduleDiagnostics, runtimeDiagnostics, debugStore, checkinEngine, followUpService, shortTermAssembler, lifePresence, globalNoticeHost] = await Promise.all([
+const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, splashAnimation, builtinPrompts, debugPromptRegistry, debugPromptPanel, watchApp, moduleDiagnostics, runtimeDiagnostics, debugStore, checkinEngine, followUpService, shortTermAssembler, lifePresence, globalNoticeHost, sceneTurnQueue] = await Promise.all([
   read("../components/life/life-engine-app.tsx"),
   read("../lib/life/life-runtime.ts"),
   read("../components/life/life-observation.tsx"),
@@ -31,6 +31,7 @@ const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply,
   read("../lib/short-term-assembler.ts"),
   read("../lib/life/life-memory-bridge.ts"),
   read("../components/ui/global-notice-host.tsx"),
+  read("../lib/life/life-scene-turn-queue.ts"),
 ]);
 
 
@@ -108,6 +109,11 @@ assert.match(moduleDiagnostics, /现实桥梁 · 感知桥诊断/);
 assert.match(runtimeDiagnostics, /<ModuleDiagnostics\s*\/>/);
 assert.match(app, /life-scene-notification-reply/);
 assert.match(app, /searchParams\.get\("sceneId"\)/, "notification deep links must select the requested scene");
+assert.match(app, /recoverPendingLifeSceneTurns\(\)/, "queued scene turns must recover after the app reloads");
+assert.match(app, /setActiveLifeSceneTurn\(pendingTurn\)/, "in-flight scene turns must be persisted before generation");
+assert.match(app, /replyToMessageId: pendingTurn\.messageId/, "scene replies must be linked to their player turn for idempotent recovery");
+assert.match(app, /savePendingLifeSceneTurns\(pendingSceneTurnsRef\.current\)/, "new queued scene turns must be persisted");
+assert.match(sceneTurnQueue, /life-scene-turn-queue-v1/, "scene turn queue must use a durable versioned storage key");
 assert.match(app, /focusScene\(pending\.sceneId\)/, "pending notification replies must reopen their exact scene");
 assert.match(app, /const restoredScene = findCurrentLifeScene\(normalized\.scenes\)/, "startup must restore the canonical foreground room");
 assert.match(app, /peekPendingLifeSceneReply/);
