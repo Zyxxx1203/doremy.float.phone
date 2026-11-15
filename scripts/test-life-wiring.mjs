@@ -387,7 +387,7 @@ assert.match(app, /message\.action\?\.trim\(\)/,
   "already structured action/dialogue messages must not be parsed again");
 assert.match(app, /pendingSceneTurnsRef\.current\.push/,
   "player turns sent during generation must be queued for sequential replies");
-assert.match(app, /pendingSceneTurnsRef\.current\.shift\(\)/,
+assert.match(app, /pendingSceneTurnsRef\.current = pendingSceneTurnsRef\.current\.filter\(turn => turn\.messageId !== pendingTurn\.messageId\)/,
   "queued player turns must be drained after the current root response");
 assert.match(app, /已保存，暂无可回应角色/,
   "player input must remain persisted even when no responder exists");
