@@ -2347,7 +2347,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         discardPendingTurn();
         return nextResult === "failed" ? "failed" : "completed";
       }
-      discardQueuedTurn();
+      discardPendingTurn();
       return "failed";
     }
     const contacts = loadChatContacts();
