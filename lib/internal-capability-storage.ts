@@ -1535,6 +1535,7 @@ export function getEnabledInternalCapabilities(appId?: string): InternalCapabili
     return loadInternalCapabilities().filter(item => {
         if (!item.enabled || item.mode === "off") return false;
         // 角色电脑是可插拔模块：没连接就不注入，模型完全看不见
+        if (item.id === MEMO_CAPABILITY_ID && appId === "group_chat") return false;
         if (item.id === AGENT_COMPUTER_CAPABILITY_ID && !isAgentComputerConfigured()) return false;
         return true;
     });
