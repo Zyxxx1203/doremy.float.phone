@@ -24,6 +24,7 @@ type AndroidShellDiagnostics = {
   getGlobalWatchDiagnostics?: () => string;
   getDeviceActionCapabilities?: () => string;
   getPerceptionCapabilities?: () => string;
+  getNativePerceptionDiagnostics?: () => string;
   getLocationCapabilities?: () => string;
   getHealthCapabilities?: () => string;
   getCalendarCapabilities?: () => string;
@@ -89,6 +90,7 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
         ["getGlobalWatchDiagnostics", shell!.getGlobalWatchDiagnostics ? () => shell!.getGlobalWatchDiagnostics!() : undefined],
         ["getDeviceActionCapabilities", shell!.getDeviceActionCapabilities ? () => shell!.getDeviceActionCapabilities!() : undefined],
         ["getPerceptionCapabilities", shell!.getPerceptionCapabilities ? () => shell!.getPerceptionCapabilities!() : undefined],
+        ["getNativePerceptionDiagnostics", shell!.getNativePerceptionDiagnostics ? () => shell!.getNativePerceptionDiagnostics!() : undefined],
         ["getLocationCapabilities", shell!.getLocationCapabilities ? () => shell!.getLocationCapabilities!() : undefined],
         ["getHealthCapabilities", shell!.getHealthCapabilities ? () => shell!.getHealthCapabilities!() : undefined],
         ["getCalendarCapabilities", shell!.getCalendarCapabilities ? () => shell!.getCalendarCapabilities!() : undefined],
@@ -112,6 +114,61 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
           : "已实际调用诊断/能力方法，未抛 Java exception。",
         fix: failures.length > 0 ? "更新到包含“UI 线程缓存页面 URL”修复的 APK；若仍失败，复制完整报告检查具体方法。" : undefined,
       });
+
+      if (shell!.getNativePerceptionDiagnostics) {
+        try {
+          const queue = JSON.parse(shell!.getNativePerceptionDiagnostics!()) as {
+            error?: string;
+            serviceConnected?: boolean;
+            pendingCount?: number;
+            cloudAcceptedCount?: number;
+            fallbackSentCount?: number;
+            oldestQueuedAt?: number;
+          };
+          const pending = Math.max(0, Number(queue.pendingCount) || 0);
+          const oldestAt = Number(queue.oldestQueuedAt) || 0;
+          const oldestMinutes = oldestAt > 0 ? Math.max(0, Math.floor((Date.now() - oldestAt) / 60_000)) : 0;
+          const stale = pending > 0 && oldestMinutes >= 6;
+          const queueStatus: CheckStatus = queue.error
+            ? "fail"
+            : pending > 0 && (!queue.serviceConnected || stale)
+              ? "warn"
+              : pending > 0
+                ? "info"
+                : queue.serviceConnected
+                  ? "ok"
+                  : "info";
+          result.push({
+            id: "native-perception-queue",
+            title: "Android 现实桥上传与回执队列",
+            status: queueStatus,
+            detail: queue.error
+              ? queue.error
+              : `无障碍服务${queue.serviceConnected ? "已连接" : "未连接"}；待处理 ${pending} 条，云端已接收 ${Number(queue.cloudAcceptedCount) || 0} 条，本机兜底已提交 ${Number(queue.fallbackSentCount) || 0} 条${oldestAt > 0 ? `；最早事件已等待约 ${oldestMinutes} 分钟` : ""}。`,
+            fix: queue.error
+              ? "更新 APK 并重新读取原生诊断。"
+              : pending > 0 && !queue.serviceConnected
+                ? "检查 Android 无障碍设置，确认小手机的后台感知服务已启用。"
+                : stale
+                  ? "事件已等待超过 6 分钟；检查服务端现实桥扫描任务、Realtime 回执与系统通知权限。"
+                  : undefined,
+          });
+        } catch (error) {
+          result.push({
+            id: "native-perception-queue",
+            title: "Android 现实桥上传与回执队列",
+            status: "warn",
+            detail: "读取原生队列状态失败：" + (error instanceof Error ? error.message : String(error)),
+          });
+        }
+      } else {
+        result.push({
+          id: "native-perception-queue",
+          title: "Android 现实桥上传与回执队列",
+          status: "warn",
+          detail: "当前 APK 尚未提供队列诊断接口，需要安装本次更新后的 APK。",
+        });
+      }
     }
 
     result.push({ id: "online", title: "网络状态", status: navigator.onLine ? "ok" : "fail", detail: navigator.onLine ? "浏览器报告网络在线；不代表云端 API 一定可访问。" : "浏览器报告当前离线。", fix: !navigator.onLine ? "检查 Wi-Fi / 移动数据后重试。" : undefined });
