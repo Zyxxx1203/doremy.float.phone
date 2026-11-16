@@ -286,7 +286,7 @@ async function decryptPayload(payload: EncryptedPayload, serviceKey: string): Pr
 
 type JobRow = { id: string; user_id: string; trigger_key: string; kind: string };
 type SubscriptionRow = { endpoint: string; p256dh: string; auth: string };
-type BridgeItem = { id: string; type: string; payload: string; createdAt: string; scheduledRuleId?: string };
+type BridgeItem = { id: string; type: string; payload: string; createdAt: string; scheduledRuleId?: string; notifyAlreadyShown?: boolean };
 
 type ServerBridgeRule = {
   id: string;
@@ -298,6 +298,7 @@ type ServerBridgeRule = {
   timeZone?: string;
   createdAt?: string;
   process: { mode: "raw" | "template" | "ai"; template?: string };
+  offlineReplies?: string[];
   chat?: {
     characterId: string;
     sessionId: string;
@@ -423,7 +424,8 @@ function parseBridgeItem(name: string, text: string): BridgeItem | null {
     const payload = typeof rawPayload === "string"
       ? rawPayload.slice(0, 8000)
       : JSON.stringify(rawPayload ?? "").slice(0, 8000);
-    return { id: name, type, payload, createdAt: String(parsed.createdAt ?? new Date().toISOString()) };
+    const id = name.replace(/^native_/, "").replace(/\.json$/i, "");
+    return { id, type, payload, createdAt: String(parsed.createdAt ?? new Date().toISOString()), notifyAlreadyShown: parsed.notifyAlreadyShown === true };
   } catch {
     return null;
   }
@@ -576,19 +578,57 @@ Deno.serve(async (req: Request) => {
       : null;
     const pushErrors: string[] = [];
 
-    const sendPush = async (title: string, bodyText: string, tag: string) => {
-      if (!vapid || subs.length === 0) return;
-      const message = JSON.stringify({ title, body: bodyText.slice(0, 80), tag, url: "/" });
-      for (const sub of subs) {
+    const sendPush = async (title: string, bodyText: string, tag: string, bridgeEventId?: string) => {
+      if (subs.length === 0) return;
+      const shellSubs = subs.filter(sub => sub.endpoint.startsWith("shell:"));
+      const webSubs = subs.filter(sub => !sub.endpoint.startsWith("shell:"));
+      const notificationBody = bodyText.slice(0, 80);
+
+      // Android Shell uses the same Realtime channel as ordinary push-generate.
+      // A synthetic shell: subscription is never a Web Push endpoint.
+      if (shellSubs.length > 0) {
         try {
-          const status = await sendWebPushRaw(sub, message, vapid, 3600);
-          if (status === 404 || status === 410) {
-            await rest(`push_subscriptions?endpoint=eq.${encodeURIComponent(sub.endpoint)}`, { method: "DELETE" }).catch(() => undefined);
-          } else if (status >= 400) {
-            pushErrors.push(`http ${status}`);
-          }
+          const response = await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
+            method: "POST",
+            headers: restHeaders,
+            body: JSON.stringify({
+              messages: [{
+                topic: `shellpush:${job.user_id}`,
+                event: "notify",
+                payload: {
+                  title,
+                  body: notificationBody,
+                  url: "/",
+                  ...(bridgeEventId ? { bridgeEventId } : {}),
+                },
+              }],
+            }),
+          });
+          if (!response.ok) pushErrors.push(`shell realtime http ${response.status}`);
+          await response.text().catch(() => "");
         } catch (err) {
           pushErrors.push((err instanceof Error ? err.message : String(err)).slice(0, 80));
+        }
+      }
+
+      // Browser subscriptions keep the existing VAPID/Web Push path.
+      if (webSubs.length > 0) {
+        if (!vapid) {
+          pushErrors.push("web push VAPID config unavailable");
+          return;
+        }
+        const message = JSON.stringify({ title, body: notificationBody, tag, url: "/", ...(bridgeEventId ? { bridgeEventId } : {}) });
+        for (const sub of webSubs) {
+          try {
+            const status = await sendWebPushRaw(sub, message, vapid, 3600);
+            if (status === 404 || status === 410) {
+              await rest(`push_subscriptions?endpoint=eq.${encodeURIComponent(sub.endpoint)}`, { method: "DELETE" }).catch(() => undefined);
+            } else if (status >= 400) {
+              pushErrors.push(`http ${status}`);
+            }
+          } catch (err) {
+            pushErrors.push((err instanceof Error ? err.message : String(err)).slice(0, 80));
+          }
         }
       }
     };
@@ -838,8 +878,9 @@ Deno.serve(async (req: Request) => {
           }
         }
 
-        if (rule.notify) {
-          await sendPush(`现实桥 · ${item.type}`, processed, `bridge-notify-${item.id}`);
+        // 角色需要回应时，只发送角色回复，不先推送原始事件。
+        if (rule.notify && !rule.chat?.requestReply && !item.notifyAlreadyShown) {
+          await sendPush(`现实桥 · ${item.type}`, processed, `bridge-notify-${item.id}`, item.id);
         }
 
         // 出站快捷动作（规则勾选）：命中即由服务端直接发出运行通知。
@@ -878,6 +919,16 @@ Deno.serve(async (req: Request) => {
           }
         }
 
+        // 在线角色生成失败时，用预先编辑的离线话术兜底；绝不退回原始 payload。
+        if (rule.chat?.requestReply && !replyRaw && subs.length > 0) {
+          const offlineReplies = Array.isArray(rule.offlineReplies)
+            ? rule.offlineReplies.map((line: unknown) => String(line ?? '').trim()).filter(Boolean)
+            : [];
+          if (offlineReplies.length > 0) {
+            const picked = offlineReplies[Math.floor(Math.random() * offlineReplies.length)];
+            replyRaw = picked.replaceAll('{payload}', processed).replaceAll('{type}', item.type).slice(0, 360);
+          }
+        }
         // 角色离线自主调用：回复里输出【快捷动作：名称】即按目录匹配执行，
         // 标记从正文剥离（不进聊天记录）。每次生成最多执行一个。
         // 与 push-generate 同一套标记：带参数的【快捷动作：名称({...})】也要认
@@ -1092,12 +1143,12 @@ Deno.serve(async (req: Request) => {
           pushErrors.push(`outbox http ${stored.status}`);
         }
 
-        if (stored.ok && replyRaw && rule.chat && !deliveredViaWeixin) {
+        if (stored.ok && replyRaw && rule.chat && !deliveredViaWeixin && !item.notifyAlreadyShown) {
           let parts = splitResponseForPushPreview(replyRaw).slice(0, 6);
           if (parts.length === 0) parts = ["发来一条消息"];
           for (let index = 0; index < parts.length; index += 1) {
             if (index > 0) await sleep(800);
-            await sendPush(rule.chat.characterName || "小手机", parts[index], `bridge-${item.id}-${rule.id}-${index}`);
+            await sendPush(rule.chat.characterName || "小手机", parts[index], `bridge-${item.id}-${rule.id}-${index}`, item.id);
           }
         }
 
