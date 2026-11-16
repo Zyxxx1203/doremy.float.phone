@@ -572,11 +572,11 @@ const PHOTO_WALL_SUBTOOLS: InternalToolDefinition[] = [
 ];
 
 const MEMO_SUBTOOLS: InternalToolDefinition[] = [
-    { name: "翻看备忘录", description: "搜索和浏览你自己的备忘录，以及用户明确分享给你的备忘录。", parameterSchema: JSON.stringify({type:"object",properties:{query:{type:"string"},limit:{type:"number"}}}) },
+    { name: "翻看备忘录", description: "搜索和浏览你自己的备忘录，以及用户明确分享给你的备忘录。遇到值得未来回顾的信息时，即使用户没有要求，也应主动先搜索。", parameterSchema: JSON.stringify({type:"object",properties:{query:{type:"string"},limit:{type:"number"}}}) },
     { name: "阅读备忘录", description: "阅读指定备忘录的完整内容；用户的备忘录只有明确分享给你时才能阅读。", parameterSchema: JSON.stringify({type:"object",properties:{noteId:{type:"string"}},required:["noteId"]}) },
-    { name: "新建备忘录", description: "在你自己的档案空间新建备忘录。创建前先搜索避免重复。", parameterSchema: JSON.stringify({type:"object",properties:{title:{type:"string"},body:{type:"string"},tags:{type:"array",items:{type:"string"}}},required:["title","body"]}) },
-    { name: "修改备忘录", description: "修改你自己的备忘录；用户分享给你的备忘录只读。", parameterSchema: JSON.stringify({type:"object",properties:{noteId:{type:"string"},title:{type:"string"},body:{type:"string"},append:{type:"boolean"}},required:["noteId"]}) },
-    { name: "整理待办", description: "在你自己的备忘录中新增或完成待办事项。", parameterSchema: JSON.stringify({type:"object",properties:{noteId:{type:"string"},text:{type:"string"},todoId:{type:"string"},done:{type:"boolean"}}}) },
+    { name: "新建备忘录", description: "在你自己的档案空间新建备忘录。重要约定、承诺、计划、稳定偏好或需要后续跟进的想法出现时主动记录，不要等用户要求；创建前先搜索避免重复。", parameterSchema: JSON.stringify({type:"object",properties:{title:{type:"string"},body:{type:"string"},tags:{type:"array",items:{type:"string"}}},required:["title","body"]}) },
+    { name: "修改备忘录", description: "修改你自己的备忘录；发现已有主题出现新进展时主动追加更新，用户分享给你的备忘录只读。", parameterSchema: JSON.stringify({type:"object",properties:{noteId:{type:"string"},title:{type:"string"},body:{type:"string"},append:{type:"boolean"}},required:["noteId"]}) },
+    { name: "整理待办", description: "在你自己的备忘录中主动维护待办；发现承诺、计划或未完成事项时可自行整理，不必等用户提醒。", parameterSchema: JSON.stringify({type:"object",properties:{noteId:{type:"string"},text:{type:"string"},todoId:{type:"string"},done:{type:"boolean"}}}) },
     { name: "整理档案盒", description: "创建或整理你自己的档案盒。", parameterSchema: JSON.stringify({type:"object",properties:{name:{type:"string"},folderId:{type:"string"},action:{type:"string",enum:["create","rename"]}}}) },
     { name: "翻阅归档", description: "浏览你已经归档的备忘录。", parameterSchema: JSON.stringify({type:"object",properties:{limit:{type:"number"}}}) },
     { name: "删除备忘录", description: "将你自己的备忘录移入回收站，不会立即永久删除。", parameterSchema: JSON.stringify({type:"object",properties:{noteId:{type:"string"}},required:["noteId"]}) },
