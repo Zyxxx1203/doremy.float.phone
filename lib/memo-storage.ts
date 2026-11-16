@@ -81,13 +81,32 @@ export function exportMemoData(owner?: MemoOwner, folderId?: string): string {
 export function importMemoData(raw: string, mode: "merge"|"replace", owner?: MemoOwner): { imported:number; skipped:number } {
   const data=JSON.parse(raw); if(data?.format!=="floatphone.memo"||data.version!==1||!Array.isArray(data.notes)||!Array.isArray(data.folders)) throw new Error("备忘录文件格式不正确");
   if(data.notes.length>10000||data.folders.length>1000) throw new Error("文件数量超出安全限制");
-  const valid=(value:unknown): value is MemoNote => { if(!value||typeof value!=="object")return false; const n=value as Record<string,unknown>; const o=n.owner; if(!o||typeof o!=="object")return false; const ownerRecord=o as Record<string,unknown>; return typeof n.id==="string"&&(ownerRecord.type==="user"||(ownerRecord.type==="character"&&typeof ownerRecord.id==="string"))&&typeof n.title==="string"&&typeof n.content==="string"; };
-  if(!data.notes.every(valid)) throw new Error("文件中存在无效笔记，未导入任何数据");
+  const validOwner=(value:unknown): value is MemoOwner => {
+    if(!value||typeof value!=="object")return false;
+    const owner=value as Record<string,unknown>;
+    return owner.type==="user"||(owner.type==="character"&&typeof owner.id==="string"&&owner.id.length>0);
+  };
+  const valid=(value:unknown): value is MemoNote => {
+    if(!value||typeof value!=="object")return false;
+    const n=value as Record<string,unknown>;
+    if(typeof n.id!=="string"||!n.id||!validOwner(n.owner)||typeof n.title!=="string"||n.title.length>100||typeof n.content!=="string"||n.content.length>30000)return false;
+    if(n.tags!==undefined&&(!Array.isArray(n.tags)||n.tags.length>12||!n.tags.every(x=>typeof x==="string"&&x.length<=60)))return false;
+    if(n.todos!==undefined&&(!Array.isArray(n.todos)||n.todos.length>200||!n.todos.every(t=>t&&typeof t==="object"&&typeof t.id==="string"&&typeof t.text==="string"&&typeof t.done==="boolean")))return false;
+    if(n.shareWithCharacterIds!==undefined&&(!Array.isArray(n.shareWithCharacterIds)||!n.shareWithCharacterIds.every(x=>typeof x==="string"&&x.length>0)))return false;
+    if(n.folderId!==undefined&&n.folderId!==null&&typeof n.folderId!=="string")return false;
+    return true;
+  };
+  const validFolder=(value:unknown): value is MemoState["folders"][number] => {
+    if(!value||typeof value!=="object")return false;
+    const f=value as Record<string,unknown>;
+    return typeof f.id==="string"&&!!f.id&&validOwner(f.owner)&&typeof f.name==="string"&&f.name.length<=40&&typeof f.color==="string"&&typeof f.createdAt==="number";
+  };
+  if(!data.folders.every(validFolder))throw new Error("文件夹数据无效，未导入任何数据");
   const state=loadMemoState(); let imported=0,skipped=0;
   if(mode==="replace"){ state.notes=owner?state.notes.filter(n=>!sameOwner(n.owner,owner)):[]; state.folders=owner?state.folders.filter(f=>!sameOwner(f.owner,owner)):[]; if(!owner)state.themes={}; }
   const incoming=(data.notes as MemoNote[]).filter(n=>!owner||sameOwner(n.owner,owner));
 
-  for(const n of incoming){ if(state.notes.some(x=>x.id===n.id)){ if(mode==="merge"){skipped++;continue;} state.notes=state.notes.filter(x=>x.id!==n.id); } state.notes.push({...n,shareWithCharacterIds:Array.isArray(n.shareWithCharacterIds)?n.shareWithCharacterIds:[],todos:Array.isArray(n.todos)?n.todos:[]}); imported++; }
+  for(const n of incoming){ if(state.notes.some(x=>x.id===n.id)){ if(mode==="merge"){skipped++;continue;} state.notes=state.notes.filter(x=>x.id!==n.id); } state.notes.push({...n,tags:Array.isArray(n.tags)?n.tags:[],shareWithCharacterIds:Array.isArray(n.shareWithCharacterIds)?n.shareWithCharacterIds:[],todos:Array.isArray(n.todos)?n.todos:[],archived:!!n.archived,folderId:n.folderId??null,createdAt:Number(n.createdAt)||Date.now(),updatedAt:Number(n.updatedAt)||Date.now()}); imported++; }
   const incomingFolders=(data.folders as MemoState["folders"]).filter(f=>!owner||sameOwner(f.owner,owner));
 
   for(const f of incomingFolders)if(!state.folders.some(x=>x.id===f.id))state.folders.push(f);
