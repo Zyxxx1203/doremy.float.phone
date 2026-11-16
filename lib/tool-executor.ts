@@ -909,7 +909,7 @@ async function executeMemoTool(call: ToolCall, context?: ToolExecutionContext): 
     const owner = { type: "character" as const, id: context.characterId };
     try {
         const memo = await import("./memo-archive-storage");
-        const own = await memo.loadMemoArchive(owner, true);
+        const own = await memo.loadMemoArchive(owner, "all");
         const shared = await memo.readSharedMemoNotes(context.characterId);
         const all = [...own.notes.filter(n => !n.deletedAt), ...shared];
         const noteId = String(call.args?.noteId ?? "");
