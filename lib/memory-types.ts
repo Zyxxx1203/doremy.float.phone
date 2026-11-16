@@ -163,7 +163,7 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
         chat: true, group_chat: true, moments: true, checkphone: true, diary: true,
         xiaohongshu: true, interview_magazine: true, cocreate: true, game: true,
         story: true, vn: true, adventure: true, custom_app: true, photo_wall: true,
-        life: true, phone_widget: true, watch: true, global_watch: true,
+        life: true, phone_widget: true, watch: true, global_watch: true, memo: true,
     },
     shortTermAllowedSources: {
         chat: true,
