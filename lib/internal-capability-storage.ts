@@ -1385,7 +1385,7 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
     {
         id: MEMO_CAPABILITY_ID,
         name: "备忘录",
-        description: "管理你自己的私人备忘录、待办和档案盒；只能读取用户明确分享给你的笔记。",
+        description: "主动维护你自己的私人档案：遇到重要约定、承诺、稳定偏好、共同经历或待跟进事项时，自己判断并调用备忘录工具记录，不必等用户提醒；只能读取用户明确分享给你的笔记。",
         enabled: true,
         mode: "auto",
         createdAt: 0,
