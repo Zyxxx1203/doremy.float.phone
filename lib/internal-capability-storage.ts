@@ -1383,6 +1383,15 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
         updatedAt: 0,
     },
     {
+        id: MEMO_CAPABILITY_ID,
+        name: "备忘录",
+        description: "管理你自己的私人备忘录、待办和档案盒；只能读取用户明确分享给你的笔记。",
+        enabled: true,
+        mode: "auto",
+        createdAt: 0,
+        updatedAt: 0,
+    },
+    {
         id: PHOTO_WALL_CAPABILITY_ID,
         name: "照片墙",
         description: "查看共享照片、添加照片，并在公共画布或共享照片上创作涂鸦；只追加，不覆盖用户内容。",
@@ -1539,6 +1548,9 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
             parameterSchema: MEMORY_WRITE_PARAMETER_SCHEMA,
             usageGuide: MEMORY_WRITE_USAGE_GUIDE,
         };
+    }
+    if (capability.id === MEMO_CAPABILITY_ID) {
+        return { name: capability.name, description: capability.description, parameterSchema: "{}", usageGuide: "使用具体备忘录子工具。仅限一对一私聊；角色只能写自己的档案，用户档案仅可读取明确分享的内容。创建前先搜索，修改时优先追加。" };
     }
     if (capability.id === NOTE_WALL_CAPABILITY_ID) {
         return { name: capability.name, description: capability.description, parameterSchema: "{}", usageGuide: NOTE_WALL_USAGE_GUIDE };
@@ -1970,6 +1982,9 @@ export function getInternalCapabilitySubToolDefinition(
     capability: InternalCapabilityConfig,
     name: string,
 ): InternalToolDefinition | null {
+    if (capability.id === MEMO_CAPABILITY_ID) {
+        return MEMO_SUBTOOLS.find(tool => tool.name === name) ?? null;
+    }
     if (capability.id === NOTE_WALL_CAPABILITY_ID) {
         return NOTE_WALL_SUBTOOLS.find(tool => tool.name === name) ?? null;
     }
@@ -2000,6 +2015,9 @@ export function getInternalCapabilitySubToolDefinition(
 export function getInternalCapabilitySubToolDefinitions(
     capability: InternalCapabilityConfig,
 ): InternalToolDefinition[] {
+    if (capability.id === MEMO_CAPABILITY_ID) {
+        return MEMO_SUBTOOLS;
+    }
     if (capability.id === NOTE_WALL_CAPABILITY_ID) {
         return NOTE_WALL_SUBTOOLS;
     }
