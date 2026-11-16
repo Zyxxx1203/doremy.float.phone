@@ -75,8 +75,7 @@ export function getMemoTheme(owner: MemoOwner): MemoTheme { const state=loadMemo
 export function setMemoTheme(owner: MemoOwner, theme: Partial<MemoTheme>): void { const state=loadMemoState(); state.themes[ownerKey(owner)]={...DEFAULT_THEME,...(state.themes[ownerKey(owner)]||{}),...theme}; saveMemoState(state); }
 export function exportMemoData(owner?: MemoOwner, folderId?: string): string {
   const state=loadMemoState(); const notes=state.notes.filter(n=>(!owner||sameOwner(n.owner,owner))&&(!folderId||n.folderId===folderId));
-  const owners=new Set(notes.map(n=>ownerKey(n.owner)));
-  const folders=state.folders.filter(f=>(!owner||sameOwner(f.owner,owner))&&owners.has(ownerKey(f.owner)));
+  const folders=state.folders.filter(f=>(!owner||sameOwner(f.owner,owner))&&(!folderId||f.id===folderId));
   const themes=Object.fromEntries(Object.entries(state.themes).filter(([key])=>!owner||key===ownerKey(owner)));
   return JSON.stringify({format:"floatphone.memo",version:1,exportedAt:new Date().toISOString(),notes,folders,themes},null,2);
 }
