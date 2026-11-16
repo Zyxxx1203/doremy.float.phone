@@ -124,9 +124,9 @@ export async function GET(request: Request) {
     try {
       const payloadKey = await getOrCreatePushPayloadKey();
       const cloud = JSON.parse(decryptPushJobPayload(bridgeConfig.data[0].cloud_config!, payloadKey)) as { url?: string; key?: string };
-      const cloudUrl = String(cloud.url ?? "").replace(/\\/+$/, "");
+      const cloudUrl = String(cloud.url ?? "").replace(/\/+$/, "");
       const cloudKey = String(cloud.key ?? "").trim();
-      if (!/^https:\\/\\//i.test(cloudUrl) || !cloudKey) throw new Error("个人云 URL 或访问密钥无效。");
+      if (!/^https:\/\//i.test(cloudUrl) || !cloudKey) throw new Error("个人云 URL 或访问密钥无效。");
       const sameProject = new URL(cloudUrl).origin.toLowerCase() === new URL(supabase.url).origin.toLowerCase();
       steps.push({
         key: "bridge-config",
