@@ -430,6 +430,10 @@ assert.match(realityNative, /fun postOfflineNotificationFallback\([\s\S]*?postNo
 assert.match(realityCallControl, /云端优先：上传前不在本机执行规则、设备动作或通知/, "Android background events must enter the cloud before any local fallback");
 assert.match(realityCallControl, /receipt\?id=/, "native service must poll for actual notification display receipt");
 assert.match(realityCallControl, /postOfflineNotificationFallback/, "timeout fallback must not replay full native rule execution");
+assert.match(realityCallControl, /queuedAt.*System\.currentTimeMillis\(\)/, "fallback timer must start when the native event is queued");
+assert.match(realityCallControl, /fallbackSent/, "successful offline fallback must be persisted across retries");
+assert.match(realityCallControl, /fallbackSent.*notifyAlreadyShown/, "later cloud upload must suppress a duplicate push after offline fallback");
+assert.match(realityCallControl, /if \(cookie\.isBlank\(\)\) return/, "cloud upload may wait for login while the independent local fallback timer continues");
 assert.match(realityPushWorker, /bridgeEventId\?: string/, "bridge push payloads must carry a stable event ID for display receipts");
 assert.match(realityPushWorker, /bridge-notify-\$\{item\.id\}.*item\.id/, "generic bridge pushes must carry the event ID");
 assert.match(realityPushWorker, /bridge-\$\{item\.id\}-\$\{rule\.id\}-\$\{index\}.*item\.id/, "role reply pushes must carry the event ID");
