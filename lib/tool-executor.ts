@@ -911,7 +911,7 @@ async function executeMemoTool(call: ToolCall, context?: ToolExecutionContext): 
         const memo = await import("./memo-archive-storage");
         const own = await memo.loadMemoArchive(owner, "all");
         const shared = await memo.readSharedMemoNotes(context.characterId);
-        const all = [...own.notes.filter(n => !n.deletedAt), ...shared];
+        const all = [...own.notes.filter(n => !n.deletedAt && !n.archived), ...shared.filter(n => !n.archived)];
         const noteId = String(call.args?.noteId ?? "");
         if (call.name === "翻看备忘录") {
             const q = String(call.args?.query ?? "").trim().toLowerCase();
