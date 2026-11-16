@@ -429,7 +429,7 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
     <section style={{ borderRadius: 18, padding: 16, background: "var(--surface-secondary, rgba(128,128,128,.08))", border: "1px solid var(--border, rgba(128,128,128,.18))" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <Smartphone size={22} />
-        <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, fontSize: 16 }}>运行诊断与故障排查</div><div style={{ fontSize: 12, opacity: .72, marginTop: 3 }}>只在本机检查，不会自动上传诊断信息。</div></div>
+        <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, fontSize: 16 }}>运行诊断与故障排查</div><div style={{ fontSize: 12, opacity: .72, marginTop: 3 }}>检查本机状态与云端通知链路；诊断报告不会自动上传，测试通知需手动触发。</div></div>
         <button type="button" onClick={() => void runChecks()} disabled={busy} aria-label="重新检查" title="重新检查" style={{ border: "1px solid var(--border, #ddd)", borderRadius: 10, padding: 9, background: "transparent" }}><RefreshCw size={17} className={busy ? "animate-spin" : ""} /></button>
         {typeof window !== "undefined" && window.AndroidShell && <button type="button" onClick={() => void runPushProbe()} disabled={pushProbeBusy} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--border, #ddd)", borderRadius: 10, padding: "8px 10px", background: "transparent", color: "inherit", fontSize: 11 }}><Bell size={14} />{pushProbeBusy ? "发送中" : "测试通知"}</button>}
       </div>
