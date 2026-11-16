@@ -577,9 +577,9 @@ Deno.serve(async (req: Request) => {
       : null;
     const pushErrors: string[] = [];
 
-    const sendPush = async (title: string, bodyText: string, tag: string) => {
+    const sendPush = async (title: string, bodyText: string, tag: string, bridgeEventId?: string) => {
       if (!vapid || subs.length === 0) return;
-      const message = JSON.stringify({ title, body: bodyText.slice(0, 80), tag, url: "/" });
+      const message = JSON.stringify({ title, body: bodyText.slice(0, 80), tag, url: "/", ...(bridgeEventId ? { bridgeEventId } : {}) });
       for (const sub of subs) {
         try {
           const status = await sendWebPushRaw(sub, message, vapid, 3600);
@@ -841,7 +841,7 @@ Deno.serve(async (req: Request) => {
 
         // 角色需要回应时，只发送角色回复，不先推送原始事件。
         if (rule.notify && !rule.chat?.requestReply && !item.notifyAlreadyShown) {
-          await sendPush(`现实桥 · ${item.type}`, processed, `bridge-notify-${item.id}`);
+          await sendPush(`现实桥 · ${item.type}`, processed, `bridge-notify-${item.id}`, item.id);
         }
 
         // 出站快捷动作（规则勾选）：命中即由服务端直接发出运行通知。
@@ -1109,7 +1109,7 @@ Deno.serve(async (req: Request) => {
           if (parts.length === 0) parts = ["发来一条消息"];
           for (let index = 0; index < parts.length; index += 1) {
             if (index > 0) await sleep(800);
-            await sendPush(rule.chat.characterName || "小手机", parts[index], `bridge-${item.id}-${rule.id}-${index}`);
+            await sendPush(rule.chat.characterName || "小手机", parts[index], `bridge-${item.id}-${rule.id}-${index}`, item.id);
           }
         }
 
