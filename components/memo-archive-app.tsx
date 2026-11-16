@@ -9,12 +9,12 @@ type Screen="home"|"folder"|"note"|"editor"|"recycle";
 const USER:MemoOwner={type:"user",id:"local-user"};
 const date=(n:number)=>new Date(n).toLocaleDateString("zh-CN",{month:"2-digit",day:"2-digit"});
 export function MemoArchiveApp({onClose,onNotice}:Props){
- const [owner,setOwner]=useState<MemoOwner>(USER),[characters,setCharacters]=useState<any[]>([]),[folders,setFolders]=useState<MemoFolder[]>([]),[notes,setNotes]=useState<MemoNote[]>([]);
+ const [owner,setOwner]=useState<MemoOwner>(USER),[characters,setCharacters]=useState<ReturnType<typeof loadCharacters>>([]),[folders,setFolders]=useState<MemoFolder[]>([]),[notes,setNotes]=useState<MemoNote[]>([]);
  const [screen,setScreen]=useState<Screen>("home"),[folderId,setFolderId]=useState<string|null>(null),[noteId,setNoteId]=useState<string|null>(null),[query,setQuery]=useState("");
  const [editing,setEditing]=useState<MemoNote|null>(null),[title,setTitle]=useState(""),[body,setBody]=useState(""),[tags,setTags]=useState(""),[pinned,setPinned]=useState(false),[todos,setTodos]=useState<MemoNote["todos"]>([]),[todoText,setTodoText]=useState(""),[busy,setBusy]=useState(false),[folderName,setFolderName]=useState("");
  const refresh=useCallback(async()=>{const s=await loadMemoArchive(owner,screen==="recycle");setFolders(s.folders);setNotes(s.notes);},[owner,screen]);
  useEffect(()=>{void refresh();},[refresh]);
- useEffect(()=>{try{setCharacters(loadCharacters() as any[]);}catch{}},[]);
+ useEffect(()=>{try{setCharacters(loadCharacters());}catch{}},[]);
  const visible=useMemo(()=>notes.filter(n=>!query||(n.title+n.body+n.tags.join(" ")).toLowerCase().includes(query.toLowerCase())),[notes,query]);
  const selected=notes.find(n=>n.id===noteId),folder=folders.find(f=>f.id===folderId);
  const edit=(n?:MemoNote)=>{setEditing(n??null);setTitle(n?.title??"");setBody(n?.body??"");setTags(n?.tags.join(" ")??"");setPinned(n?.pinned??false);setTodos(n?.todos??[]);setScreen("editor");};
