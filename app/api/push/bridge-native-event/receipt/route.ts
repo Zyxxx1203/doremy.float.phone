@@ -21,7 +21,7 @@ async function cloud(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({})) as { eventId?: unknown; status?: unknown };
-    const id = validId(body.eventId); if (!id || !["displayed", "fallback"].includes(String(body.status))) return NextResponse.json({ ok: false }, { status: 400 });
+    const id = validId(body.eventId); if (!id || !["displayed", "posted", "fallback"].includes(String(body.status))) return NextResponse.json({ ok: false }, { status: 400 });
     const { url, secret } = await cloud(request);
     const response = await fetch(`${url}/storage/v1/object/${BUCKET}/bridge-receipts/${encodeURIComponent(id)}.json`, { method: "POST", headers: { apikey: secret, Authorization: `Bearer ${secret}`, "Content-Type": "application/json", "x-upsert": "true" }, body: JSON.stringify({ status: body.status, at: new Date().toISOString() }), cache: "no-store", signal: AbortSignal.timeout(8000) });
     if (!response.ok) return NextResponse.json({ ok: false }, { status: 502 });
@@ -35,6 +35,6 @@ export async function GET(request: Request) {
     const response = await fetch(`${url}/storage/v1/object/${BUCKET}/bridge-receipts/${encodeURIComponent(id)}.json`, { headers: { apikey: secret, Authorization: `Bearer ${secret}` }, cache: "no-store", signal: AbortSignal.timeout(6000) });
     if (response.status === 404) return NextResponse.json({ displayed: false });
     if (!response.ok) return NextResponse.json({ displayed: false }, { status: 502 });
-    const receipt = await response.json() as { status?: string }; return NextResponse.json({ displayed: receipt.status === "displayed", fallback: receipt.status === "fallback" });
+    const receipt = await response.json() as { status?: string }; return NextResponse.json({ displayed: receipt.status === "displayed" || receipt.status === "posted", posted: receipt.status === "posted", fallback: receipt.status === "fallback" });
   } catch (error) { const message = error instanceof Error ? error.message : String(error); return NextResponse.json({ displayed: false, error: formatSupabaseRestError(message) }, { status: /未登录/.test(message) ? 401 : 500 }); }
 }
