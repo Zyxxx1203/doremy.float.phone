@@ -261,30 +261,29 @@ class CallControlService : AccessibilityService() {
     }
 
     private fun enqueueEvent(event: JSONObject) {
+        val id = event.optString("id")
         synchronized(pendingLock) {
             val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val queue = try { JSONArray(prefs.getString(QUEUE_KEY, "[]") ?: "[]") } catch (_: Throwable) { JSONArray() }
-            val id = event.optString("id")
+            for (i in 0 until queue.length()) {
+                if (queue.optJSONObject(i)?.optString("id") == id) return
+            }
+        }
+        // 后台触发先由本机角色离线回复库兜底，不以 Cookie 存在与否推断云端推送一定成功。
+        val localNotified = runCatching {
+            NativeRealityBridge.capture(applicationContext, event.optString("type"), event.optString("payload"))
+        }.getOrDefault(false)
+        event.put("notifyAlreadyShown", localNotified)
+        synchronized(pendingLock) {
+            val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val queue = try { JSONArray(prefs.getString(QUEUE_KEY, "[]") ?: "[]") } catch (_: Throwable) { JSONArray() }
             for (i in 0 until queue.length()) {
                 if (queue.optJSONObject(i)?.optString("id") == id) return
             }
             queue.put(event)
-            // 网络长期不可用时限制队列长度，避免无限占用本机存储。
             val bounded = JSONArray()
             for (i in (queue.length() - 20).coerceAtLeast(0) until queue.length()) bounded.put(queue.getJSONObject(i))
             prefs.edit().putString(QUEUE_KEY, bounded.toString()).apply()
-        }
-        // 同一事件立即交给本机现实桥执行器；云端补传仍独立保留，Cookie/网络失败不影响本地规则。
-        runCatching {
-            val hasCloudSession = runCatching {
-                CookieManager.getInstance().getCookie(MainActivity.SITE_URL).orEmpty().isNotBlank()
-            }.getOrDefault(false)
-            NativeRealityBridge.capture(
-                applicationContext,
-                event.optString("type"),
-                event.optString("payload"),
-                allowNotification = !hasCloudSession,
-            )
         }
     }
 
@@ -310,6 +309,7 @@ class CallControlService : AccessibilityService() {
                         .put("type", event.optString("type"))
                         .put("payload", event.optString("payload"))
                         .put("createdAt", event.optString("createdAt"))
+                        .put("notifyAlreadyShown", event.optBoolean("notifyAlreadyShown", false))
                         .toString()
                         .toRequestBody("application/json; charset=utf-8".toMediaType())
                     val request = Request.Builder()
