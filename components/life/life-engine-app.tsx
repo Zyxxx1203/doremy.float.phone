@@ -219,6 +219,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const [locationNameDraft, setLocationNameDraft] = useState("");
   const [locationSaveFeedback, setLocationSaveFeedback] = useState(false);
   const [locationDescriptionDraft, setLocationDescriptionDraft] = useState("");
+  const [locationAtmosphereDraft, setLocationAtmosphereDraft] = useState("");
+  const [locationLayoutDraft, setLocationLayoutDraft] = useState("");
+  const [locationPropsDraft, setLocationPropsDraft] = useState("");
   const [backgroundUploadBusy, setBackgroundUploadBusy] = useState<"global" | "location" | null>(null);
   const [locationHabitDrafts, setLocationHabitDrafts] = useState<Record<string, string>>({});
 
@@ -689,10 +692,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const legacyDescription = selectedLocation?.description ?? "";
     const legacyField = (name: string) => legacyDescription.match(new RegExp("(?:^|\\n)【" + name + "】\\s*\\n([\\s\\S]*?)(?=\\n\\n【|$)"))?.[1]?.trim() ?? "";
     const cleanDescription = legacyDescription.replace(/\\n\\n?【(?:氛围|空间布局|可用道具)】[\\s\\S]*$/,"").trim();
-    const atmosphere = selectedLocation?.atmosphere || legacyField("氛围");
-    const layout = selectedLocation?.layout || legacyField("空间布局");
-    const props = selectedLocation?.props?.length ? selectedLocation.props.join("、") : legacyField("可用道具");
-    setLocationDescriptionDraft([cleanDescription, atmosphere ? "氛围：" + atmosphere : "", layout ? "空间布局：" + layout : "", props ? "可用道具：" + props : ""].filter(Boolean).join("\\n\\n"));
+    setLocationDescriptionDraft(cleanDescription || legacyField("环境描写"));
+    setLocationAtmosphereDraft(selectedLocation?.atmosphere || legacyField("氛围"));
+    setLocationLayoutDraft(selectedLocation?.layout || legacyField("空间布局"));
+    setLocationPropsDraft(selectedLocation?.props?.length ? selectedLocation.props.join("、") : legacyField("可用道具"));
     setLocationHabitDrafts(selectedLocation?.characterHabits ?? {});
   }, [selectedLocation?.id]);
 
@@ -2867,9 +2870,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         name: nextName,
         aliases: renamed ? [...new Set([...(location.aliases ?? []), previousName].filter(Boolean))] : location.aliases,
         description: locationDescriptionDraft.trim(),
-        atmosphere: "",
-        layout: "",
-        props: [],
+        atmosphere: locationAtmosphereDraft.trim(),
+        layout: locationLayoutDraft.trim(),
+        props: locationPropsDraft.split(/[、,，;；\\n]/).map(value => value.trim()).filter(Boolean),
         fieldOrigins: { ...(location.fieldOrigins ?? {}), description: "user" as const, atmosphere: "user" as const, layout: "user" as const, props: "user" as const },
       }),
     };
@@ -4004,8 +4007,12 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           <div className="mt-3"><p className="mb-2 text-xs font-medium text-stone-600">选择一起互动的角色</p><div className="flex flex-wrap gap-2">{characters.map(char=><label key={char.id} className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs"><input type="checkbox" checked={selectedCharacterIds.includes(char.id)} onChange={e=>setSelectedCharacterIds(old=>e.target.checked?[...new Set([...old,char.id])]:old.filter(id=>id!==char.id))}/>{char.name}</label>)}</div></div>
           {!characters.length&&<p className="mt-2 text-xs text-stone-500">还没有角色档案；先在小手机里创建角色，之后就能在这里互动。</p>}
           {selectedLocation && <div className="mt-4 border-t border-stone-200/70 pt-4">
-            <div className="mb-3"><p className="text-sm font-semibold text-stone-700">地点布置与描写</p></div>
-             <label className="mb-4 block text-xs font-medium text-stone-600">地点布置与描写<textarea value={locationDescriptionDraft} onChange={event => setLocationDescriptionDraft(event.target.value)} rows={8} placeholder={"一个框写完即可，不用刻意分栏。可参考：\n• 环境：空间类型、大小、光线、声音、气味\n• 氛围：时段、天气、人声、整体情绪\n• 布局：门窗、家具、通道、座位的位置关系\n• 道具：常见物品及可互动的东西\n• 细节：角色在此处的习惯、特色与活动"} className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+            <div className="mb-3"><p className="text-sm font-semibold text-stone-700">地点环境与细节</p></div>
+              <div className="mb-4 grid gap-3"><label className="block text-sm font-medium text-stone-700">环境描写<textarea value={locationDescriptionDraft} onChange={event => setLocationDescriptionDraft(event.target.value)} rows={4} placeholder="空间类型、大小、光线、声音、气味及环境中的固定事实" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+              <label className="block text-sm font-medium text-stone-700">氛围<textarea value={locationAtmosphereDraft} onChange={event => setLocationAtmosphereDraft(event.target.value)} rows={3} placeholder="时段、天气、人声、气息与整体情绪" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+              <label className="block text-sm font-medium text-stone-700">空间布局<textarea value={locationLayoutDraft} onChange={event => setLocationLayoutDraft(event.target.value)} rows={3} placeholder="门窗、家具、通道、座位及区域之间的位置关系" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+              <label className="block text-sm font-medium text-stone-700">可用道具<textarea value={locationPropsDraft} onChange={event => setLocationPropsDraft(event.target.value)} rows={2} placeholder="填写可见、可使用或可互动的物品，用顿号分隔" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+              </div>
             <button type="button" onClick={saveLocationDetails} className="w-full rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white">保存地点布置</button>
           </div>}
         </div></details>
@@ -4124,7 +4131,11 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[#fffaf5] p-3"><div className="text-xs text-stone-500">{(selectedLocation.sourceRefs ?? []).length ? "来源：" + (selectedLocation.sourceRefs ?? []).map(source => source.kind === "worldbook" ? source.worldBookName + (source.entryComment ? " · " + source.entryComment : "") : source.kind === "character-card" ? source.characterName + " 的角色卡" : "手动").join("；") : "暂无导入来源；可由 AI 根据地点名称与角色设定补全。"}</div><button type="button" disabled={locationImportBusy} onClick={() => void completeSelectedLocationProfile()} className="shrink-0 rounded-lg border border-[#d7b99f] bg-white px-3 py-2 text-xs font-medium text-stone-700 disabled:opacity-50">{locationImportBusy ? "处理中…" : "AI 补全 / 刷新档案"}</button></div>
           <label className="mb-3 block text-sm font-medium text-stone-700">地点名称<input value={locationNameDraft} onChange={event => { setLocationNameDraft(event.target.value); setLocationSaveFeedback(false); }} placeholder="例如：我们的小家" className="mt-1.5 w-full min-w-0 rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label>
           <label className="mb-3 block text-sm font-medium text-stone-700">别名 / 日程匹配关键词<textarea value={(selectedLocation.aliases ?? []).join("、")} onChange={event => commit({ ...stateRef.current, locations: stateRef.current.locations.map(location => location.id === selectedLocation.id ? { ...location, aliases: event.target.value.split(/[、,，;；\n]/).map(value => value.trim()).filter(Boolean), fieldOrigins: { ...(location.fieldOrigins ?? {}), aliases: "user" } } : location) })} rows={2} placeholder="例如：旧城区花店、花店、花房" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
-           <label className="mb-4 block text-sm font-medium text-stone-700">地点布置与描写<textarea value={locationDescriptionDraft} onChange={event => setLocationDescriptionDraft(event.target.value)} rows={8} placeholder={"一个框写完即可，不用刻意分栏。可参考：\n• 环境：空间类型、大小、光线、声音、气味\n• 氛围：时段、天气、人声、整体情绪\n• 布局：门窗、家具、通道、座位的位置关系\n• 道具：常见物品及可互动的东西\n• 细节：角色在此处的习惯、特色与活动"} className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+           <div className="mb-4 grid gap-3"><label className="block text-sm font-medium text-stone-700">环境描写<textarea value={locationDescriptionDraft} onChange={event => setLocationDescriptionDraft(event.target.value)} rows={4} placeholder="空间类型、大小、光线、声音、气味及环境中的固定事实" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+              <label className="block text-sm font-medium text-stone-700">氛围<textarea value={locationAtmosphereDraft} onChange={event => setLocationAtmosphereDraft(event.target.value)} rows={3} placeholder="时段、天气、人声、气息与整体情绪" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+              <label className="block text-sm font-medium text-stone-700">空间布局<textarea value={locationLayoutDraft} onChange={event => setLocationLayoutDraft(event.target.value)} rows={3} placeholder="门窗、家具、通道、座位及区域之间的位置关系" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+              <label className="block text-sm font-medium text-stone-700">可用道具<textarea value={locationPropsDraft} onChange={event => setLocationPropsDraft(event.target.value)} rows={2} placeholder="填写可见、可使用或可互动的物品，用顿号分隔" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+            </div>
             <div className="mb-2 flex items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-stone-700">专属聊天室背景</h3></div>
               {selectedLocation.backgroundImage && <button type="button" onClick={()=>updateSelectedLocationBackground({backgroundImage:undefined})} className="shrink-0 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs text-stone-600">移除</button>}
             </div>
