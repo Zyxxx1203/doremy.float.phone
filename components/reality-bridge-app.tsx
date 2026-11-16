@@ -1287,7 +1287,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     // 动作需要角色时，用第一个角色兜底；没有角色卡的话模板仍然可开，
     // 只是「告诉一个角色」那项会指向空 id，由保存时的既有校验拦下并提示。
     const rule = template.build({ characterId: characters[0]?.id ?? "" });
-    setEditing(rule);
+    setEditing({ ...rule, offlineReplies: rule.offlineReplies?.length ? [...rule.offlineReplies] : defaultOfflineReplies(rule.matchType) });
     setWizStep(1);
     setWizMax(6);
     // 保留示例数据、只清结果：同一份示例常在几条规则之间反复试，
