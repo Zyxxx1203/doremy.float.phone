@@ -47,7 +47,7 @@ object NativeRealityBridge {
         true
     } catch (_: Throwable) { false }
 
-    fun capture(context: Context, type: String, payload: String, allowNotification: Boolean = true) {
+    fun capture(context: Context, type: String, payload: String): Boolean {
         val now = System.currentTimeMillis()
         val event = JSONObject().put("id", "local_$now").put("type", type)
             .put("payload", payload.take(1200)).put("createdAt", now)
@@ -60,10 +60,11 @@ object NativeRealityBridge {
         }
         if (!prefs.getBoolean(KEY_ENABLED, false)) {
             record(context, event, null, "未执行：现实桥总开关关闭")
-            return
+            return false
         }
         val rules = readArray(prefs.getString(KEY_RULES, "[]"))
         var matched = false
+        var notifiedAny = false
         for (i in 0 until rules.length()) {
             val rule = rules.optJSONObject(i) ?: continue
             if (!rule.optBoolean("enabled", false)) continue
@@ -95,8 +96,9 @@ object NativeRealityBridge {
             val visibleParts = listOf(actionResult, replyMessage).filter { it.isNotBlank() }
             val message = visibleParts.joinToString("\n").take(500)
             val title = rule.optString("characterName").ifBlank { rule.optString("name", "现实桥") }
-            val shouldNotify = allowNotification && rule.optBoolean("notificationEnabled", true) && message.isNotBlank()
+            val shouldNotify = rule.optBoolean("notificationEnabled", true) && message.isNotBlank()
             val notified = shouldNotify && postNotification(context, title, message, now)
+            if (notified) notifiedAny = true
             prefs.edit().putLong("last_run_$ruleId", now).apply()
             val result = when {
                 !shouldNotify -> "已匹配；未配置可显示的离线回复，跳过原始事件通知"
@@ -106,6 +108,7 @@ object NativeRealityBridge {
             record(context, event, rule.optString("name", ruleId), result)
         }
         if (!matched) record(context, event, null, "未执行：没有启用且匹配的本机规则")
+        return notifiedAny
     }
 
     /** Background rules use an explicit user-controlled allow-list and only native-supported actions. */
