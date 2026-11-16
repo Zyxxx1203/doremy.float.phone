@@ -419,12 +419,15 @@ assert.match(app, /const blob = await response\.blob\(\)/,
 assert.match(app, /sceneMessages: stateRef\.current\.sceneMessages\.filter\(message => message\.imageId !== imageId\)/,
   "deleting a gallery image must remove its chat reference without leaving a broken card");
 
-const [realityNative, realityCallControl, realityRoute, realityPushWorker, realityUi] = await Promise.all([
+const [realityNative, realityCallControl, realityRoute, realityPushWorker, realityUi, realityPushService, realityActivity, diagnostics] = await Promise.all([
   read("../android-shell/app/src/main/java/app/floatphone/shell/NativeRealityBridge.kt"),
   read("../android-shell/app/src/main/java/app/floatphone/shell/CallControlService.kt"),
   read("../app/api/push/bridge-native-event/route.ts"),
   read("../supabase/functions/push-bridge/index.ts"),
   read("../components/reality-bridge-app.tsx"),
+  read("../android-shell/app/src/main/java/app/floatphone/shell/PushService.kt"),
+  read("../android-shell/app/src/main/java/app/floatphone/shell/MainActivity.kt"),
+  read("../components/settings/runtime-diagnostics.tsx"),
 ]);
 assert.match(realityNative, /fun postOfflineNotificationFallback\([\s\S]*?postNotification\(/, "native fallback must post notification only");
 assert.match(realityCallControl, /云端优先：上传前不在本机执行规则、设备动作或通知/, "Android background events must enter the cloud before any local fallback");
@@ -447,6 +450,19 @@ assert.match(realityUi, /offlineReplies: \(rule\.offlineReplies === undefined \?
 const receiptRoute = await read("../app/api/push/bridge-native-event/receipt/route.ts");
 assert.match(receiptRoute, /status: body\.status/, "receipt endpoint must persist displayed and fallback states");
 assert.match(receiptRoute, /receipt\.status === "displayed"/, "native polling must receive actual display acknowledgement");
+assert.match(realityPushWorker, /shellSubs = subs\.filter\(sub => sub\.endpoint\.startsWith\("shell:"\)\)/, "reality bridge worker must split Android Shell subscriptions from Web Push");
+assert.match(realityPushWorker, /realtime\/v1\/api\/broadcast/, "reality bridge worker must use Supabase Realtime for Android Shell");
+assert.match(realityPushWorker, /webSubs = subs\.filter\(sub => !sub\.endpoint\.startsWith\("shell:"\)\)/, "browser subscriptions must remain on the Web Push path");
+assert.match(realityPushWorker, /sendWebPushRaw\(sub, message, vapid, 3600\)/, "browser Web Push delivery must remain intact");
+assert.match(realityPushWorker, /name\.startsWith\("native_"\)[\s\S]*?replace\(/, "native event filenames must normalize back to the original event ID");
+assert.match(realityPushService, /bridgeEventId/);
+assert.match(realityPushService, /sendBridgeReceipt\(bridgeEventId\)/, "Android Shell must acknowledge native notifications after posting");
+assert.match(realityPushService, /put\("status", "posted"\)/, "native acknowledgement must describe system posting rather than human visibility");
+assert.match(realityPushService, /NotificationManagerCompat\.from\(this\)\.areNotificationsEnabled\(\)/, "Android must not acknowledge a globally disabled notification channel");
+assert.match(realityActivity, /fun getNativePerceptionDiagnostics\(\): String/, "native queue state must be available to the diagnostics page");
+assert.match(diagnostics, /getNativePerceptionDiagnostics/, "runtime diagnostics must display native upload queue state");
+assert.match(diagnostics, /api\/push\/selfcheck\?probe=0/, "automatic diagnostics must not send a test notification");
+assert.match(diagnostics, /api\/push\/selfcheck\?probe=1/, "test notification must require an explicit user action");
 assert.match(realityPushWorker, /bridgeEventId/, "push worker must attach event identity to notification payload");
 assert.match(realityUi, /请以这个角色本人的口吻，生成 15 条可直接作为 Android 系统通知正文的离线回复/, "offline reply generation must prepare character-voiced native notification text");
 assert.match(realityUi, /offlineReplies: \(rule\.offlineReplies === undefined \? defaultOfflineReplies\(rule\.matchType\) : rule\.offlineReplies\)/, "legacy rules receive defaults but intentionally emptied reply libraries stay empty");
