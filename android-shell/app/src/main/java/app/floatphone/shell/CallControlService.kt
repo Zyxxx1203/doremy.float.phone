@@ -271,6 +271,7 @@ class CallControlService : AccessibilityService() {
         }
         // 云端优先：上传前不在本机执行规则、设备动作或通知。
         event.put("notifyAlreadyShown", false)
+        event.put("queuedAt", System.currentTimeMillis())
         synchronized(pendingLock) {
             val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val queue = try { JSONArray(prefs.getString(QUEUE_KEY, "[]") ?: "[]") } catch (_: Throwable) { JSONArray() }
@@ -291,6 +292,23 @@ class CallControlService : AccessibilityService() {
             try { JSONArray(raw) } catch (_: Throwable) { JSONArray() }
         }
         if (events.length() == 0) return
+
+        // Offline fallback is independent of login/network. Keep the event queued for later cloud sync.
+        var fallbackChanged = false
+        val fallbackNow = System.currentTimeMillis()
+        for (i in 0 until events.length()) {
+            val event = events.optJSONObject(i) ?: continue
+            if (event.optBoolean("fallbackSent", false)) continue
+            val queuedAt = event.optLong("queuedAt", 0L)
+            if (queuedAt <= 0L || fallbackNow - queuedAt < 45_000L) continue
+            runCatching { NativeRealityBridge.postOfflineNotificationFallback(applicationContext, event.optString("id"), event.optString("type"), event.optString("payload")) }
+            event.put("fallbackSent", true)
+            fallbackChanged = true
+        }
+        if (fallbackChanged) {
+            synchronized(pendingLock) { getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(QUEUE_KEY, events.toString()).apply() }
+        }
+
         val cookie = runCatching { CookieManager.getInstance().getCookie(MainActivity.SITE_URL).orEmpty() }.getOrDefault("")
         if (cookie.isBlank()) return
 
@@ -306,7 +324,7 @@ class CallControlService : AccessibilityService() {
                         .put("type", event.optString("type"))
                         .put("payload", event.optString("payload"))
                         .put("createdAt", event.optString("createdAt"))
-                        .put("notifyAlreadyShown", event.optBoolean("notifyAlreadyShown", false))
+                        .put("notifyAlreadyShown", event.optBoolean("fallbackSent", false) || event.optBoolean("notifyAlreadyShown", false))
                         .toString()
                         .toRequestBody("application/json; charset=utf-8".toMediaType())
                     val request = Request.Builder()
@@ -323,25 +341,25 @@ class CallControlService : AccessibilityService() {
                     }.getOrDefault(false)
                     if (accepted) {
                         // Wait for the Service Worker receipt written only after showNotification resolves.
-                        var displayed = false
-                        repeat(15) {
-                            if (!displayed) {
-                                Thread.sleep(3_000L)
-                                val receiptRequest = Request.Builder()
-                                    .url("${MainActivity.SITE_URL.trimEnd('/')}/api/push/bridge-native-event/receipt?id=${java.net.URLEncoder.encode(id, "UTF-8")}")
-                                    .header("Cookie", cookie).header("Accept", "application/json").get().build()
-                                displayed = runCatching {
-                                    client.newCall(receiptRequest).execute().use { response ->
-                                        response.isSuccessful && JSONObject(response.body?.string().orEmpty()).optBoolean("displayed", false)
-                                    }
-                                }.getOrDefault(false)
+                        if (!event.optBoolean("fallbackSent", false)) {
+                            var displayed = false
+                            repeat(15) {
+                                if (!displayed) {
+                                    Thread.sleep(3_000L)
+                                    val receiptRequest = Request.Builder()
+                                        .url("${MainActivity.SITE_URL.trimEnd('/')}/api/push/bridge-native-event/receipt?id=${java.net.URLEncoder.encode(id, "UTF-8")}")
+                                        .header("Cookie", cookie).header("Accept", "application/json").get().build()
+                                    displayed = runCatching {
+                                        client.newCall(receiptRequest).execute().use { response -> response.isSuccessful && JSONObject(response.body?.string().orEmpty()).optBoolean("displayed", false) }
+                                    }.getOrDefault(false)
+                                }
                             }
-                        }
-                        if (!displayed) {
-                            runCatching { NativeRealityBridge.postOfflineNotificationFallback(applicationContext, id, event.optString("type"), event.optString("payload")) }
-                            val fallbackBody = JSONObject().put("eventId", id).put("status", "fallback").toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-                            val fallbackRequest = Request.Builder().url(MainActivity.SITE_URL.trimEnd('/') + "/api/push/bridge-native-event/receipt").header("Cookie", cookie).post(fallbackBody).build()
-                            runCatching { client.newCall(fallbackRequest).execute().close() }
+                            if (!displayed) {
+                                runCatching { NativeRealityBridge.postOfflineNotificationFallback(applicationContext, id, event.optString("type"), event.optString("payload")) }
+                                val fallbackBody = JSONObject().put("eventId", id).put("status", "fallback").toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+                                val fallbackRequest = Request.Builder().url(MainActivity.SITE_URL.trimEnd('/') + "/api/push/bridge-native-event/receipt").header("Cookie", cookie).post(fallbackBody).build()
+                                runCatching { client.newCall(fallbackRequest).execute().close() }
+                            }
                         }
                         removePendingEvent(id)
                     }
