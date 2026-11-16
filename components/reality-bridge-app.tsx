@@ -1027,7 +1027,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     } finally {
       setOfflineReplyGenerating(false);
     }
-  }, [editing, characters, onNotice]);
+  }, [editing, characters, ruleTest.payload, onNotice]);
 
   const saveEditing = useCallback(() => {
     if (!editing) return;
