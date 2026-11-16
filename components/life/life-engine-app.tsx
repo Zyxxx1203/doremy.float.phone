@@ -685,11 +685,11 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     setLocationSaveFeedback(false);
     const legacyDescription = selectedLocation?.description ?? "";
     const legacyField = (name: string) => legacyDescription.match(new RegExp("(?:^|\\n)【" + name + "】\\s*\\n([\\s\\S]*?)(?=\\n\\n【|$)"))?.[1]?.trim() ?? "";
-    const cleanDescription = legacyDescription.replace(/\\n\\n?【(?:氛围|空间布局|可用道具)】[\\s\\S]*$/,"").trim();
+    const cleanDescription = legacyDescription.replace(/\n\n?【(?:氛围|空间布局|可用道具)】[\s\S]*$/,"").trim();
     setLocationDescriptionDraft(cleanDescription);
     setLocationAtmosphereDraft(selectedLocation?.atmosphere || legacyField("氛围"));
     setLocationLayoutDraft(selectedLocation?.layout || legacyField("空间布局"));
-    setLocationPropsDraft((selectedLocation?.props?.length ? selectedLocation.props : legacyField("可用道具").split(/[、,，;；\\n]/).map(value => value.trim()).filter(Boolean)).join("、"));
+    setLocationPropsDraft((selectedLocation?.props?.length ? selectedLocation.props : legacyField("可用道具").split(/[、,，;；\n]/).map(value => value.trim()).filter(Boolean)).join("、"));
     setLocationHabitDrafts(selectedLocation?.characterHabits ?? {});
   }, [selectedLocation?.id]);
 
@@ -3910,7 +3910,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         </section></details>}
       {tab === "home" && !sceneView && <section className="life-place-list space-y-4">
         <div className="flex items-end justify-between gap-3 px-1">
-          <h2 className="text-2xl font-semibold tracking-tight text-stone-800">此刻</h2>
+          <div><p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--life-accent)]">Places & people</p><h2 className="mt-1 text-2xl font-semibold tracking-tight text-stone-800">此刻</h2></div>
           <div className="flex items-center gap-2"><button type="button" onClick={() => setSceneLocationSearchOpen(true)} aria-label="搜索和筛选地点" title="搜索和筛选地点" className="grid h-10 w-10 place-items-center rounded-xl border border-white/80 bg-white/75 text-stone-600"><Search size={17}/></button><button onClick={() => openDaily("plans")} className="shrink-0 rounded-xl border border-white/80 bg-white/75 px-3 py-2 text-xs text-stone-600">我的日程</button></div>
         </div>
         {filteredLocationCards.length === 0 && <p className="rounded-2xl border border-dashed border-stone-300 bg-white/50 p-6 text-center text-sm text-stone-500">没有找到符合条件的地点，试试清除筛选。</p>}
