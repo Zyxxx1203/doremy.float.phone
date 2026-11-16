@@ -162,8 +162,8 @@ async function compressLifeBackground(file: File): Promise<string> {
   }
 }
 
-function SectionTitle({ title }: { title: string }) {
-  return <div className="mb-4"><h2 className="text-xl font-semibold tracking-tight text-stone-800">{title}</h2></div>;
+function SectionTitle({ title, eyebrow, note }: { title: string; eyebrow?: string; note?: string }) {
+  return <div className="mb-4">{eyebrow && <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#b88768]">{eyebrow}</p>}<h2 className="text-xl font-semibold tracking-tight text-stone-800">{title}</h2>{note && <p className="mt-1 text-xs leading-relaxed text-stone-500">{note}</p>}</div>;
 }
 
 export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () => void; initialCharacterId?: string } = {}) {
