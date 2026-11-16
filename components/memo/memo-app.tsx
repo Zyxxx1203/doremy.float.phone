@@ -15,7 +15,8 @@ export function MemoApp({onClose,onNotice}:Props){
  const fileRef=useRef<HTMLInputElement>(null);
  const refresh=useCallback(()=>{setNotes(listMemoNotes(owner,true).filter(n=>showArchived?n.archived:!n.archived));setFolders(listMemoFolders(owner));setTheme(getMemoTheme(owner));},[owner,showArchived]);
  useEffect(()=>{refresh();setSelected(null);setEditing(false);setFolder("all");},[refresh]);
- const active=notes.find(n=>n.id===selected)||null;\n const availableTags=[...new Set(notes.flatMap(n=>n.tags))].sort();
+ const active=notes.find(n=>n.id===selected)||null;
+ const availableTags=[...new Set(notes.flatMap(n=>n.tags))].sort();
  const visible=notes.filter(n=>(folder==="all"||n.folderId===folder)&&(!query||`${n.title} ${n.content} ${n.tags.join(" ")}`.toLowerCase().includes(query.toLowerCase()))&&(!tagFilter||n.tags.includes(tagFilter)));
  const startNew=()=>{setShowGrant(false);setSelected(null);setTitle("");setContent("");setTags("");setEditing(true);};
  const openNote=(n:MemoNote)=>{setShowGrant(false);setSelected(n.id);setTitle(n.title);setContent(n.content);setTags(n.tags.join(", "));setEditing(false);};
