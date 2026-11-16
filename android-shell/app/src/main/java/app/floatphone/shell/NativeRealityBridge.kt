@@ -111,6 +111,30 @@ object NativeRealityBridge {
         return notifiedAny
     }
 
+    /** Cloud timeout fallback: notification only; never replays rule/device side effects. */
+    fun postOfflineNotificationFallback(context: Context, eventId: String, type: String, payload: String): Boolean {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(KEY_ENABLED, false)) return false
+        val rules = readArray(prefs.getString(KEY_RULES, "[]"))
+        for (i in 0 until rules.length()) {
+            val rule = rules.optJSONObject(i) ?: continue
+            if (!rule.optBoolean("enabled", false)) continue
+            val matchType = rule.optString("matchType", "").trim()
+            if (matchType != "*" && !matchType.equals(type, ignoreCase = true)) continue
+            val filter = rule.optString("payloadFilter", "").trim()
+            if (filter.isNotEmpty() && filter.split("|", ",").none { it.trim().isNotEmpty() && payload.contains(it.trim(), ignoreCase = true) }) continue
+            val replies = rule.optJSONArray("offlineReplies") ?: JSONArray()
+            val candidates = (0 until replies.length()).mapNotNull { replies.optString(it).trim().takeIf(String::isNotBlank) }
+            val template = rule.optJSONObject("process")?.optString("template", "").orEmpty()
+            val body = (candidates.firstOrNull() ?: template).replace("{payload}", payload).replace("{type}", type).take(360)
+            if (body.isBlank() || !rule.optBoolean("notificationEnabled", true)) continue
+            val title = rule.optString("characterName").ifBlank { rule.optString("name", "现实桥") }
+            val shown = postNotification(context, title, body, eventId.hashCode().toLong())
+            if (shown) record(context, JSONObject().put("id", eventId).put("type", type).put("payload", payload), rule.optString("name"), "云端等待超时；纯通知离线兜底")
+            return shown
+        }
+        return false
+    }
     /** Background rules use an explicit user-controlled allow-list and only native-supported actions. */
     private fun executeBackgroundDeviceAction(context: Context, prefs: android.content.SharedPreferences, action: JSONObject): String {
         if (!prefs.getBoolean(KEY_DEVICE_ACTIONS_ENABLED, false)) return "未执行设备动作：设置中的「操作设备」总开关未开启"
