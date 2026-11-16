@@ -1318,7 +1318,7 @@ const TOOLBOX_MANAGEMENT_USAGE_GUIDE = [
 const PRIVATE_MEMO_SCHEMA = JSON.stringify({
     type: "object",
     properties: {
-        action: { type: "string", enum: ["list", "search", "read", "create", "update", "archive", "delete", "add_todo", "complete_todo"], description: "要执行的备忘录动作" },
+        action: { type: "string", enum: ["list", "search", "read", "create", "update", "archive", "delete", "list_folders", "create_folder", "add_todo", "complete_todo"], description: "要执行的备忘录动作" },
         noteId: { type: "string", description: "目标笔记 ID，读取/更新/归档/删除/待办操作时使用" },
         title: { type: "string", description: "笔记标题" },
         content: { type: "string", description: "笔记正文" },
@@ -1326,14 +1326,14 @@ const PRIVATE_MEMO_SCHEMA = JSON.stringify({
         tags: { type: "array", items: { type: "string" }, description: "主题标签" },
         todoText: { type: "string", description: "待办事项内容" },
         todoId: { type: "string", description: "待办 ID" },
-        limit: { type: "integer", minimum: 1, maximum: 20 }
+        limit: { type: "integer", minimum: 1, maximum: 20 },\n        folderId: { type: "string", description: "你自己的文件夹 ID；创建或移动笔记时使用" },\n        folderName: { type: "string", description: "新建私人文件夹名称" }
     },
     required: ["action"]
 });
 const PRIVATE_MEMO_GUIDE = [
     "你的私人备忘录是独立于长期记忆的主题档案。它只保存你自己的笔记；其他角色的私人档案对你完全不可见。",
     "用户的笔记只有在用户明确授权给你后才会出现在列表中。未授权的笔记不能猜测、搜索或读取。",
-    "你可以 list/search/read/create/update/archive/delete/add_todo/complete_todo。",
+    "你可以 list/search/read/create/update/archive/delete/list_folders/create_folder/add_todo/complete_todo。需要分类时先 list_folders；没有合适分类就 create_folder，再把 folderId 用于创建或移动笔记。",
     "创建笔记时写入具体、短小、可检索的主题内容；重要的小习惯、约定、用户明确说过不想忘记的事、待办可以分主题记录。",
     "不要把普通聊天全部抄进备忘录；不要把推测写成事实。更新或删除只允许操作你自己的笔记。用户授权的笔记仅可读取。",
     "示例：[执行动作:备忘录({\"action\":\"create\",\"title\":\"她的饮品偏好\",\"content\":\"不加冰，喜欢微糖。\",\"tags\":[\"偏好\",\"饮品\"]})]"
