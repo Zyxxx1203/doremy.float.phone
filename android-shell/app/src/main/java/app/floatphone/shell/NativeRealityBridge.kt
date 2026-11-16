@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -159,7 +160,9 @@ object NativeRealityBridge {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(NotificationChannel(
                 CHANNEL, "现实桥 · 本机触发", NotificationManager.IMPORTANCE_DEFAULT))
+            if (manager.getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE) return false
         }
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
         val openApp = PendingIntent.getActivity(context, 7101,
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
