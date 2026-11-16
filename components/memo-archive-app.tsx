@@ -14,7 +14,9 @@ export function MemoArchiveApp({onClose,onNotice}:Props){
  const [editing,setEditing]=useState<MemoNote|null>(null),[title,setTitle]=useState(""),[body,setBody]=useState(""),[tags,setTags]=useState(""),[pinned,setPinned]=useState(false),[todos,setTodos]=useState<MemoNote["todos"]>([]),[todoText,setTodoText]=useState(""),[busy,setBusy]=useState(false),[folderName,setFolderName]=useState(""),[folderEditName,setFolderEditName]=useState(""),[folderColor,setFolderColor]=useState("#D8C39B"),[theme,setTheme]=useState("kraft");
  const refresh=useCallback(async()=>{const s=await loadMemoArchive(owner,screen==="recycle");setFolders(s.folders);setNotes(s.notes);},[owner,screen]);
  useEffect(()=>{void refresh();},[refresh]);
- useEffect(()=>{try{setCharacters(loadCharacters());}catch{}},[]);\n useEffect(()=>{try{setTheme(localStorage.getItem("memo-archive-theme:"+owner.type+":"+owner.id)||"kraft");}catch{}},[owner]);\n const changeTheme=(value:string)=>{setTheme(value);try{localStorage.setItem("memo-archive-theme:"+owner.type+":"+owner.id,value);}catch{}};
+ useEffect(()=>{try{setCharacters(loadCharacters());}catch{}},[]);
+ useEffect(()=>{try{setTheme(localStorage.getItem("memo-archive-theme:"+owner.type+":"+owner.id)||"kraft");}catch{}},[owner]);
+ const changeTheme=(value:string)=>{setTheme(value);try{localStorage.setItem("memo-archive-theme:"+owner.type+":"+owner.id,value);}catch{}};
  const visible=useMemo(()=>notes.filter(n=>!query||(n.title+n.body+n.tags.join(" ")).toLowerCase().includes(query.toLowerCase())),[notes,query]);
  const selected=notes.find(n=>n.id===noteId),folder=folders.find(f=>f.id===folderId);
  const edit=(n?:MemoNote)=>{setEditing(n??null);setTitle(n?.title??"");setBody(n?.body??"");setTags(n?.tags.join(" ")??"");setPinned(n?.pinned??false);setTodos(n?.todos??[]);setNoteFolderId(n?.folderId??folderId);setScreen("editor");};
