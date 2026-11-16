@@ -84,11 +84,12 @@ export function importMemoData(raw: string, mode: "merge"|"replace", owner?: Mem
   const valid=(n:any)=>n&&typeof n.id==="string"&&n.owner&&((n.owner.type==="user")||(n.owner.type==="character"&&typeof n.owner.id==="string"))&&typeof n.title==="string"&&typeof n.content==="string";
   if(!data.notes.every(valid)) throw new Error("文件中存在无效笔记，未导入任何数据");
   const state=loadMemoState(); let imported=0,skipped=0;
+  if(mode==="replace"){ state.notes=owner?state.notes.filter(n=>!sameOwner(n.owner,owner)):[]; state.folders=owner?state.folders.filter(f=>!sameOwner(f.owner,owner)):[]; if(!owner)state.themes={}; }
   const incoming=(data.notes as MemoNote[]).filter(n=>!owner||sameOwner(n.owner,owner));
-  if(mode==="replace"&&owner) state.notes=state.notes.filter(n=>!sameOwner(n.owner,owner));
+
   for(const n of incoming){ if(state.notes.some(x=>x.id===n.id)){ if(mode==="merge"){skipped++;continue;} state.notes=state.notes.filter(x=>x.id!==n.id); } state.notes.push({...n,shareWithCharacterIds:Array.isArray(n.shareWithCharacterIds)?n.shareWithCharacterIds:[],todos:Array.isArray(n.todos)?n.todos:[]}); imported++; }
   const incomingFolders=(data.folders as MemoState["folders"]).filter(f=>!owner||sameOwner(f.owner,owner));
-  if(mode==="replace"&&owner)state.folders=state.folders.filter(f=>!sameOwner(f.owner,owner));
+
   for(const f of incomingFolders)if(!state.folders.some(x=>x.id===f.id))state.folders.push(f);
   if(data.themes&&typeof data.themes==="object") for(const [k,v] of Object.entries(data.themes))if(!owner||k===ownerKey(owner))state.themes[k]={...DEFAULT_THEME,...(v as object)};
   saveMemoState(state);return {imported,skipped};
