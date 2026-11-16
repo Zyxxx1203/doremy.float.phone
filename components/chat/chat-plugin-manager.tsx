@@ -210,7 +210,6 @@ export function ChatPluginManager({ onBack }: { onBack: () => void }) {
                     ) : (
                         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                             {plugins.map(p => {
-                                const errorCount = pluginErrors(p.manifest.id);
                                 const hasSettings = (p.manifest.settings?.length ?? 0) > 0;
                                 const settingsOpen = settingsOpenId === p.manifest.id;
                                 const running = p.enabled && !safeMode && runtimeState.activeIds.includes(p.manifest.id);
