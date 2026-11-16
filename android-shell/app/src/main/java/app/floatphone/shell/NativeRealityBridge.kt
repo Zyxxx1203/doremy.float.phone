@@ -160,19 +160,23 @@ object NativeRealityBridge {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(NotificationChannel(
                 CHANNEL, "现实桥 · 本机触发", NotificationManager.IMPORTANCE_DEFAULT))
-            if (manager.getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE) return false
         }
-        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
-        val openApp = PendingIntent.getActivity(context, 7101,
-            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val notification = NotificationCompat.Builder(context, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle(title.take(80)).setContentText(body.take(180))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body.take(500)))
-            .setContentIntent(openApp).setAutoCancel(true).build()
-        manager.notify((id % Int.MAX_VALUE).toInt(), notification)
-        true
+        val channelDisabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+            && manager.getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE
+        if (channelDisabled || !NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            false
+        } else {
+            val openApp = PendingIntent.getActivity(context, 7101,
+                Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val notification = NotificationCompat.Builder(context, CHANNEL)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(title.take(80)).setContentText(body.take(180))
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body.take(500)))
+                .setContentIntent(openApp).setAutoCancel(true).build()
+            manager.notify((id % Int.MAX_VALUE).toInt(), notification)
+            true
+        }
     } catch (_: Throwable) { false }
 
     private fun record(context: Context, event: JSONObject, rule: String?, result: String) {
