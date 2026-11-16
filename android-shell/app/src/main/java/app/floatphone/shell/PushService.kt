@@ -225,6 +225,7 @@ class PushService : Service() {
                     val body = payload.optJSONObject("payload") ?: return
                     val title = body.optString("title").ifEmpty { "小手机" }
                     val text2 = body.optString("body").ifEmpty { "有新消息" }
+                    val bridgeEventId = body.optString("bridgeEventId").trim()
                     // 来电：全屏来电通知（任何一步失败回落普通通知，主路不受影响）
                     if (body.optString("kind") == "call") {
                         val shown = runCatching {
@@ -234,9 +235,13 @@ class PushService : Service() {
                                 body.optLong("callTs", System.currentTimeMillis()),
                             )
                         }.isSuccess
-                        if (shown) return
+                        if (shown) {
+                            if (bridgeEventId.isNotEmpty()) sendBridgeReceipt(bridgeEventId)
+                            return
+                        }
                     }
                     showMessageNotification(title, text2, body.optString("sessionId"), body.optString("avatar"), body.optString("kind"), body.optString("sceneId"))
+                    if (bridgeEventId.isNotEmpty()) sendBridgeReceipt(bridgeEventId)
                 }
             }
 
@@ -260,6 +265,28 @@ class PushService : Service() {
         socket?.cancel()
         socket = null
         return normal
+    }
+
+    /** 告知现实桥：这条事件通知已由 Android NotificationManager 接受提交。 */
+    private fun sendBridgeReceipt(eventId: String) {
+        thread(name = "bridge-notification-receipt") {
+            runCatching {
+                val cookie = CookieManager.getInstance().getCookie(MainActivity.SITE_URL).orEmpty()
+                val body = JSONObject()
+                    .put("eventId", eventId)
+                    .put("status", "displayed")
+                    .toString()
+                    .toRequestBody("application/json; charset=utf-8".toMediaType())
+                val builder = Request.Builder()
+                    .url("${MainActivity.SITE_URL.trimEnd('/')}/api/push/bridge-native-event/receipt")
+                    .post(body)
+                    .header("Accept", "application/json")
+                if (cookie.isNotEmpty()) builder.header("Cookie", cookie)
+                avatarClient.newCall(builder.build()).execute().use { response ->
+                    if (!response.isSuccessful) android.util.Log.w("FloatPush", "bridge receipt rejected: ${response.code}")
+                }
+            }.onFailure { android.util.Log.w("FloatPush", "bridge receipt failed", it) }
+        }
     }
 
     // ── 通知 ──
