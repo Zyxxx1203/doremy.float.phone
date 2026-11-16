@@ -25,6 +25,7 @@ export const CHECK_IN_REQUEST_CAPABILITY_ID = "check_in_request";
 export const LIFE_INVITATION_CAPABILITY_ID = "life_invitation";
 export const LIFE_FOLLOW_CAPABILITY_ID = "life_follow";
 export const LIFE_SCHEDULE_CAPABILITY_ID = "life_schedule";
+export const MEMO_CAPABILITY_ID = "memo_archive";
 
 /**
  * 内置工具的保留名：用户给现实桥的快捷动作/数据项起名时必须避开。
@@ -51,6 +52,7 @@ export const RESERVED_INTERNAL_TOOL_NAMES: string[] = [
     "查看照片墙",
     "添加照片到照片墙",
     "在照片墙涂鸦",
+    "翻看备忘录", "阅读备忘录", "新建备忘录", "修改备忘录", "整理待办", "整理档案盒", "翻阅归档", "删除备忘录",
 ];
 
 export type InternalToolDefinition = {
@@ -567,6 +569,17 @@ const PHOTO_WALL_SUBTOOLS: InternalToolDefinition[] = [
     { name: "查看照片墙", description: "查看用户共享给角色的照片墙照片和图像。", parameterSchema: PHOTO_WALL_EMPTY_SCHEMA },
     { name: "添加照片到照片墙", description: "生成一张新照片并添加到用户照片墙，保留原有内容。", parameterSchema: PHOTO_WALL_ADD_SCHEMA },
     { name: "在照片墙涂鸦", description: "在指定共享照片正面或背面追加贴纸/笔迹，保留原有内容。", parameterSchema: PHOTO_WALL_DOODLE_SCHEMA },
+];
+
+const MEMO_SUBTOOLS: InternalToolDefinition[] = [
+    { name: "翻看备忘录", description: "搜索和浏览你自己的备忘录，以及用户明确分享给你的备忘录。", parameterSchema: JSON.stringify({type:"object",properties:{query:{type:"string"},limit:{type:"number"}}}) },
+    { name: "阅读备忘录", description: "阅读指定备忘录的完整内容；用户的备忘录只有明确分享给你时才能阅读。", parameterSchema: JSON.stringify({type:"object",properties:{noteId:{type:"string"}},required:["noteId"]}) },
+    { name: "新建备忘录", description: "在你自己的档案空间新建备忘录。创建前先搜索避免重复。", parameterSchema: JSON.stringify({type:"object",properties:{title:{type:"string"},body:{type:"string"},tags:{type:"array",items:{type:"string"}}},required:["title","body"]}) },
+    { name: "修改备忘录", description: "修改你自己的备忘录；用户分享给你的备忘录只读。", parameterSchema: JSON.stringify({type:"object",properties:{noteId:{type:"string"},title:{type:"string"},body:{type:"string"},append:{type:"boolean"}},required:["noteId"]}) },
+    { name: "整理待办", description: "在你自己的备忘录中新增或完成待办事项。", parameterSchema: JSON.stringify({type:"object",properties:{noteId:{type:"string"},text:{type:"string"},todoId:{type:"string"},done:{type:"boolean"}}}) },
+    { name: "整理档案盒", description: "创建或整理你自己的档案盒。", parameterSchema: JSON.stringify({type:"object",properties:{name:{type:"string"},folderId:{type:"string"},action:{type:"string",enum:["create","rename"]}}}) },
+    { name: "翻阅归档", description: "浏览你已经归档的备忘录。", parameterSchema: JSON.stringify({type:"object",properties:{limit:{type:"number"}}}) },
+    { name: "删除备忘录", description: "将你自己的备忘录移入回收站，不会立即永久删除。", parameterSchema: JSON.stringify({type:"object",properties:{noteId:{type:"string"}},required:["noteId"]}) },
 ];
 
 const NOTE_WALL_SUBTOOLS: InternalToolDefinition[] = [
