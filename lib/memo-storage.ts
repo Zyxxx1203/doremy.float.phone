@@ -46,7 +46,9 @@ export function upsertMemoNote(owner: MemoOwner, input: Partial<MemoNote> & { ti
     content:(input.content||"").slice(0,30000),tags:Array.isArray(input.tags)?input.tags.slice(0,12):[],
     archived:false,todos:Array.isArray(input.todos)?input.todos:[],shareWithCharacterIds:[],createdAt:now,updatedAt:now
   };
-  note.title=(note.title||"未命名笔记").trim().slice(0,100); note.content=(note.content||"").slice(0,30000);\n  note.tags=Array.isArray(note.tags)?note.tags.map(tag=>String(tag).trim().slice(0,60)).filter(Boolean).slice(0,12):[];\n  note.todos=Array.isArray(note.todos)?note.todos.slice(0,200).map(todo=>({...todo,text:String(todo.text||"").trim().slice(0,500)})):[];\n  note.shareWithCharacterIds=Array.isArray(note.shareWithCharacterIds)?[...new Set(note.shareWithCharacterIds.filter(id=>typeof id==="string"&&id.length>0))]:[];
+  note.title=(note.title||"未命名笔记").trim().slice(0,100); note.content=(note.content||"").slice(0,30000);
+  note.tags=Array.isArray(note.tags)?note.tags.map(tag=>String(tag).trim().slice(0,60)).filter(Boolean).slice(0,12):[];
+  note.todos=Array.isArray(note.todos)?note.todos.slice(0,200).map(todo=>({...todo,text:String(todo.text||"").trim().slice(0,500)})):[];\n  note.shareWithCharacterIds=Array.isArray(note.shareWithCharacterIds)?[...new Set(note.shareWithCharacterIds.filter(id=>typeof id==="string"&&id.length>0))]:[];
   state.notes=existing?state.notes.map(n=>n.id===note.id?note:n):[note,...state.notes]; saveMemoState(state); return note;
 }
 export function deleteMemoNote(owner: MemoOwner, id: string): boolean {
