@@ -988,8 +988,12 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
       const instruction = [
         `规则名称：${editing.name || "现实桥联动"}`,
         `触发信号：${editing.matchType || "任意信号"}`,
-        `事件正文：{payload}（这是运行时会替换的占位符）`,
-        "请据此生成离线回复库。",
+        `事件正文：{payload}（运行时会替换为真实事件，例如：${ruleTest.payload.trim() || "抖音今天已累计使用 90 分钟"}）`,
+        "请以这个角色本人的口吻，生成 15 条可直接作为 Android 系统通知正文的离线回复。",
+        "必须贴合角色卡、预设、世界书和近期聊天语气；不要写成系统播报、客服话术或统一的关心模板。",
+        "每条都要自然、简短、有变化，可以亲昵、吐槽、认真或轻轻提醒，但不要每句都用同一种语气。",
+        "只依据事件正文表达，不虚构用户正在做的事；需要引用具体事件时保留 {payload} 占位符。",
+        "严格每行一条，不要序号、项目符号、标题、解释、引号或 Markdown。",
       ].join("\n");
       const syntheticMessage = {
         id: `offline-library-${Date.now()}`,
