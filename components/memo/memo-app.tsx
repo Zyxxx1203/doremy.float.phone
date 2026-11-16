@@ -11,6 +11,7 @@ export function MemoApp({onClose,onNotice}:Props){
  const [owner,setOwner]=useState<MemoOwner>({type:"user"}),[notes,setNotes]=useState<MemoNote[]>([]),[folders,setFolders]=useState<MemoFolder[]>([]);
  const [selected,setSelected]=useState<string|null>(null),[query,setQuery]=useState(""),[folder,setFolder]=useState("all"),[tagFilter,setTagFilter]=useState("");
  const [editing,setEditing]=useState(false),[title,setTitle]=useState(""),[content,setContent]=useState(""),[tags,setTags]=useState(""),[showSettings,setShowSettings]=useState(false);
+ const [showGrant,setShowGrant]=useState(false),[showPrompt,setShowPrompt]=useState(false);
  const [theme,setTheme]=useState<MemoTheme>(()=>getMemoTheme({type:"user"})),[showArchived,setShowArchived]=useState(false);
  const fileRef=useRef<HTMLInputElement>(null);
  const refresh=useCallback(()=>{setNotes(listMemoNotes(owner,true).filter(n=>showArchived?n.archived:!n.archived));setFolders(listMemoFolders(owner));setTheme(getMemoTheme(owner));},[owner,showArchived]);
