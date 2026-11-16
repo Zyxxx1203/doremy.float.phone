@@ -1326,7 +1326,9 @@ const PRIVATE_MEMO_SCHEMA = JSON.stringify({
         tags: { type: "array", items: { type: "string" }, description: "主题标签" },
         todoText: { type: "string", description: "待办事项内容" },
         todoId: { type: "string", description: "待办 ID" },
-        limit: { type: "integer", minimum: 1, maximum: 20 },\n        folderId: { type: "string", description: "你自己的文件夹 ID；创建或移动笔记时使用" },\n        folderName: { type: "string", description: "新建私人文件夹名称" }
+        limit: { type: "integer", minimum: 1, maximum: 20 },
+        folderId: { type: "string", description: "你自己的文件夹 ID；创建或移动笔记时使用" },
+        folderName: { type: "string", description: "新建私人文件夹名称" }
     },
     required: ["action"]
 });
