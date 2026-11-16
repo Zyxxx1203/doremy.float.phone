@@ -5264,7 +5264,7 @@ async function executePrivateMemoTool(call: ToolCall, context?: ToolExecutionCon
         }
         if (action === "read") {
             const note = getMemoNoteForCharacter(String(args.noteId || ""), characterId);
-            return note ? ok(note, "笔记内容") : fail("找不到这条笔记，或用户尚未授权你读取。");
+            return note ? ok({id:note.id,title:note.title,content:note.content,tags:note.tags,todos:note.todos,folderId:note.folderId,archived:note.archived,createdAt:note.createdAt,updatedAt:note.updatedAt}, "笔记内容") : fail("找不到这条笔记，或用户尚未授权你读取。");
         }
         if (action === "create") {
             const title = String(args.title || "").trim();
