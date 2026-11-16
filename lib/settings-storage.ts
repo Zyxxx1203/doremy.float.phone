@@ -183,9 +183,15 @@ function preserveCustomAppPresetPrompts(fresh: PresetConfig, previous: PresetCon
  */
 function mergeMissingBuiltinAppPrompts(existing: PresetConfig): PresetConfig {
     const freshPrompts = createBuiltinAppPrompts();
-    const existingIds = new Set((existing.prompts ?? []).map(prompt => prompt.identifier));
+    const existingPrompts = existing.prompts ?? [];
+    const existingIds = new Set(existingPrompts.map(prompt => prompt.identifier));
     const missing = freshPrompts.filter(prompt => !existingIds.has(prompt.identifier));
-    if (missing.length === 0) return existing;
+    const prompts = existingPrompts.map(prompt => prompt.identifier === "private_memo_behavior"
+        ? { ...prompt, tags: ["chat"] }
+        : prompt);
+    const memoTagsChanged = existingPrompts.some(prompt => prompt.identifier === "private_memo_behavior"
+        && JSON.stringify(prompt.tags ?? []) !== JSON.stringify(["chat"]));
+    if (missing.length === 0 && !memoTagsChanged) return existing;
 
     const order = [...(existing.prompt_order ?? [])];
     let cursor = order.findIndex(entry => entry.identifier === "shortTermMemory" || entry.identifier === "chatHistory");
@@ -195,7 +201,7 @@ function mergeMissingBuiltinAppPrompts(existing: PresetConfig): PresetConfig {
         order.splice(cursor, 0, { identifier: prompt.identifier, enabled: true });
         cursor += 1;
     }
-    return { ...existing, prompts: [...(existing.prompts ?? []), ...missing], prompt_order: order };
+    return { ...existing, prompts: [...prompts, ...missing], prompt_order: order };
 }
 
 

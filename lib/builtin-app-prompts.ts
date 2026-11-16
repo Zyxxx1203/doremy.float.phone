@@ -165,7 +165,8 @@ const PRIVATE_MEMO_BEHAVIOR_PROMPT = [
 ].join("\n");
 
 const APP_PROMPT_DEFINITIONS: Array<{ identifier: string; name: string; content: string; tags: string[] }> = [
-    { identifier: "private_memo_behavior", name: "◇ 私人备忘录使用规则", content: PRIVATE_MEMO_BEHAVIOR_PROMPT, tags: ["memo", "tools"] },
+    { identifier: "private_memo_behavior", name: "◇ 私人备忘录使用规则", content: PRIVATE_MEMO_BEHAVIOR_PROMPT, tags: ["chat"] },
+    { identifier: "private_memo_behavior_group", name: "◇ 群聊私人备忘录使用规则", content: PRIVATE_MEMO_BEHAVIOR_PROMPT, tags: ["group_chat"] },
     { identifier: "life_scene_output_contract", name: "◇ 生活现场输出协议", content: LIFE_SCENE_OUTPUT_CONTRACT_PROMPT, tags: ["life", "turn"] },
     { identifier: "life_scene_behavior", name: "◇ 生活现场行为规则", content: LIFE_BEHAVIOR_PROMPT, tags: ["life", "turn"] },
     { identifier: "life_scene_tools", name: "◇ 生活现场工具规则", content: LIFE_TOOL_PROMPT, tags: ["life", "turn", "tools"] },
