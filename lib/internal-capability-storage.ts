@@ -8,6 +8,7 @@ registerKvMigration(INTERNAL_CAPABILITIES_KEY);
 
 export const MEMORY_WRITE_CAPABILITY_ID = "memory_write";
 export const NOTE_WALL_CAPABILITY_ID = "note_wall_service";
+export const PRIVATE_MEMO_CAPABILITY_ID = "private_memo_service";
 export const PHOTO_WALL_CAPABILITY_ID = "photo_wall_service";
 export const MUSIC_CONTROL_CAPABILITY_ID = "music_control";
 export const CALENDAR_MANAGEMENT_CAPABILITY_ID = "calendar_management";
@@ -1314,6 +1315,30 @@ const TOOLBOX_MANAGEMENT_USAGE_GUIDE = [
     "说明：与 REST 工具对应动作类似，只能操作 AI 自己创建的组合工具或组合工具套件。",
 ].join("\n");
 
+const PRIVATE_MEMO_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {
+        action: { type: "string", enum: ["list", "search", "read", "create", "update", "archive", "delete", "add_todo", "complete_todo"], description: "要执行的备忘录动作" },
+        noteId: { type: "string", description: "目标笔记 ID，读取/更新/归档/删除/待办操作时使用" },
+        title: { type: "string", description: "笔记标题" },
+        content: { type: "string", description: "笔记正文" },
+        query: { type: "string", description: "搜索关键词" },
+        tags: { type: "array", items: { type: "string" }, description: "主题标签" },
+        todoText: { type: "string", description: "待办事项内容" },
+        todoId: { type: "string", description: "待办 ID" },
+        limit: { type: "integer", minimum: 1, maximum: 20 }
+    },
+    required: ["action"]
+});
+const PRIVATE_MEMO_GUIDE = [
+    "你的私人备忘录是独立于长期记忆的主题档案。它只保存你自己的笔记；其他角色的私人档案对你完全不可见。",
+    "用户的笔记只有在用户明确授权给你后才会出现在列表中。未授权的笔记不能猜测、搜索或读取。",
+    "你可以 list/search/read/create/update/archive/delete/add_todo/complete_todo。",
+    "创建笔记时写入具体、短小、可检索的主题内容；重要的小习惯、约定、用户明确说过不想忘记的事、待办可以分主题记录。",
+    "不要把普通聊天全部抄进备忘录；不要把推测写成事实。更新或删除只允许操作你自己的笔记。用户授权的笔记仅可读取。",
+    "示例：[执行动作:备忘录({\"action\":\"create\",\"title\":\"她的饮品偏好\",\"content\":\"不加冰，喜欢微糖。\",\"tags\":[\"偏好\",\"饮品\"]})]"
+].join("\\n");
+
 const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
     {
         id: REALITY_BRIDGE_CAPABILITY_ID,
@@ -1357,6 +1382,15 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
         description: "将明确、稳定、长期有价值的信息写入长期记忆。仅限关系里程碑、长期偏好、身份信息、重要约定；禁止写入短期情绪、普通寒暄、猜测或未确认内容。",
         enabled: false,
         mode: "confirm",
+        createdAt: 0,
+        updatedAt: 0,
+    },
+    {
+        id: PRIVATE_MEMO_CAPABILITY_ID,
+        name: "备忘录",
+        description: "管理你自己的私人备忘录：记录用户习惯、重要约定、想记住的细节和待办。角色之间严格隔离；用户笔记必须由用户逐条授权后才能读取。",
+        enabled: false,
+        mode: "auto",
         createdAt: 0,
         updatedAt: 0,
     },
@@ -1519,6 +1553,9 @@ export function getEnabledInternalCapabilities(appId?: string): InternalCapabili
 }
 
 export function getInternalCapabilityToolDefinition(capability: InternalCapabilityConfig): InternalToolDefinition | null {
+    if (capability.id === PRIVATE_MEMO_CAPABILITY_ID) {
+        return { name: capability.name, description: capability.description, parameterSchema: PRIVATE_MEMO_SCHEMA, usageGuide: PRIVATE_MEMO_GUIDE };
+    }
     if (capability.id === MEMORY_WRITE_CAPABILITY_ID) {
         return {
             name: capability.name,

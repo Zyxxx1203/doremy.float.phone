@@ -58,6 +58,7 @@ const MDI_PATHS: Record<IconId, string> = {
   heartcraft: mdiHeart,
   chat: mdiMessageProcessing,
   diary: mdiBookOpenPageVariant,
+  memo: mdiBookOpenPageVariant,
   music: mdiMusic,
   reading: mdiBookOpenVariant,
   cocreate: mdiFeather,

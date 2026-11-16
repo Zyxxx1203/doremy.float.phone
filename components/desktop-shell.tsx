@@ -26,6 +26,7 @@ import "@/lib/qa-error-log";
 import { RealityBridgeApp } from "@/components/reality-bridge-app";
 import { REALITY_BRIDGE_APP_EVENT_NAME, REALITY_BRIDGE_DATA_EVENT } from "@/lib/reality-bridge/types";
 import { DiaryApp } from "@/components/diary/diary-app";
+import { MemoApp } from "@/components/memo/memo-app";
 import { XiaohongshuApp } from "@/components/xiaohongshu/xiaohongshu-app";
 import { StoryApp } from "@/components/story/story-app";
 import { LifeEngineApp } from "@/components/life/life-engine-app";
@@ -4536,6 +4537,10 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
     if (activeApp === "diary") {
       return <DiaryApp onClose={() => setActiveApp(null)} onNotice={setNotice} />;
+    }
+
+    if (activeApp === "memo") {
+      return <MemoApp onClose={() => setActiveApp(null)} onNotice={setNotice} />;
     }
 
     if (activeApp === "xiaohongshu") {

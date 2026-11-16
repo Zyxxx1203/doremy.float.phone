@@ -58,6 +58,8 @@ import { createShortcutCommand, deliverShortcutCommand, waitForShortcutCommand }
 import { loadMemoryEntriesByType, saveMemoryEntry } from "./memory-storage";
 import type { MemoryEntry } from "./memory-types";
 import { loadCharacters } from "./character-storage";
+import { PRIVATE_MEMO_CAPABILITY_ID } from "./internal-capability-storage";
+import { listMemoNotes, upsertMemoNote, getMemoNoteForCharacter, searchMemoForCharacter, deleteMemoNote, type MemoNote } from "./memo-storage";
 import {
     deleteCalendarScheduleItem,
     loadCalendarWeekPlan,
@@ -863,6 +865,7 @@ function normalizeInternalToolResult(result: ToolResult): ToolResult {
 }
 
 async function executeInternalTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult | null> {
+    if (call.name === "备忘录") return executePrivateMemoTool(call, context);
     if (isNoteWallToolName(call.name)) return executeNoteWallTool(call, context);
     if (isPhotoWallToolName(call.name)) return executePhotoWallTool(call, context);
     if (isMusicControlToolName(call.name)) return executeMusicControlTool(call, context);
@@ -5238,4 +5241,64 @@ export function formatToolResults(results: ToolResult[]): string {
         return `<action_result name="${r.name}" error="${r.error || "未知错误"}"></action_result>`;
     }).join("\n");
     return `以下是系统处理结果：\n${items}\n请基于以上结果，继续以角色身份回复用户。不要重复你之前已经说过的内容，不要再次执行相同的动作。`;
+}
+
+async function executePrivateMemoTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
+    const capability = getInternalCapability(PRIVATE_MEMO_CAPABILITY_ID);
+    if (!capability?.enabled || capability.mode === "off") {
+        return { name: call.name, success: false, error: "备忘录能力未启用", userNotice: "备忘录能力未启用" };
+    }
+    if (!context?.characterId || (context.appId !== "chat" && context.appId !== "group_chat")) {
+        return { name: call.name, success: false, error: "备忘录仅能在角色聊天中调用" };
+    }
+    const characterId = context.characterId;
+    const args = call.args || {};
+    const action = String(args.action || "");
+    const own = { type: "character" as const, id: characterId };
+    const fail = (error: string): ToolResult => ({ name: call.name, success: false, error });
+    const ok = (data: unknown, message = "备忘录操作完成"): ToolResult => ({ name: call.name, success: true, data: JSON.stringify({ message, data }, null, 2) });
+    try {
+        if (action === "list" || action === "search") {
+            const notes = searchMemoForCharacter(characterId, action === "search" ? String(args.query || "") : "", Number(args.limit) || 12);
+            return ok(notes.map(n => ({ id:n.id,title:n.title,summary:n.content.slice(0,260),tags:n.tags,todos:n.todos.filter(t=>!t.done).map(t=>t.text),updatedAt:new Date(n.updatedAt).toISOString(),source:n.owner.type==="user"?"用户授权":"自己的档案" })), "可访问的备忘录列表");
+        }
+        if (action === "read") {
+            const note = getMemoNoteForCharacter(String(args.noteId || ""), characterId);
+            return note ? ok(note, "笔记内容") : fail("找不到这条笔记，或用户尚未授权你读取。");
+        }
+        if (action === "create") {
+            const title = String(args.title || "").trim();
+            const content = String(args.content || "").trim();
+            if (!title || !content) return fail("创建笔记需要标题和正文。");
+            const note = upsertMemoNote(own, { title, content, tags:Array.isArray(args.tags)?args.tags.map(String):[] });
+            return ok({ id:note.id,title:note.title,content:note.content }, "已创建私人备忘录");
+        }
+        const noteId = String(args.noteId || "");
+        const note = listMemoNotes(own, true).find(n => n.id === noteId);
+        if (!note) return fail("只能修改你自己的备忘录；用户授权给你的笔记仅可读取，其他角色的笔记不可访问。");
+        if (action === "update") {
+            const updated = upsertMemoNote(own, { ...note, title:args.title===undefined?note.title:String(args.title), content:args.content===undefined?note.content:String(args.content), tags:Array.isArray(args.tags)?args.tags.map(String):note.tags });
+            return ok({id:updated.id,title:updated.title}, "已更新笔记");
+        }
+        if (action === "archive") {
+            const updated = upsertMemoNote(own, { ...note, archived:true });
+            return ok({id:updated.id,title:updated.title}, "已归档");
+        }
+        if (action === "delete") {
+            deleteMemoNote(own, noteId); return ok({id:noteId}, "已删除笔记");
+        }
+        if (action === "add_todo") {
+            const text = String(args.todoText || "").trim(); if (!text) return fail("待办内容不能为空。");
+            const updated = upsertMemoNote(own, { ...note, todos:[...note.todos,{id:`todo_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,text,done:false,createdAt:Date.now()}] });
+            return ok({id:updated.id,todos:updated.todos}, "已添加待办");
+        }
+        if (action === "complete_todo") {
+            const todoId = String(args.todoId || "");
+            const updated = upsertMemoNote(own, { ...note, todos:note.todos.map(t=>t.id===todoId?{...t,done:true}:t) });
+            return ok({id:updated.id,todos:updated.todos}, "已更新待办状态");
+        }
+        return fail("不支持的备忘录动作。");
+    } catch (error) {
+        return fail(error instanceof Error ? error.message : String(error));
+    }
 }

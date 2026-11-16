@@ -3,6 +3,7 @@ import type { CustomAppIconId } from "@/lib/custom-app-types";
 export type IconId =
   | "chat"
   | "diary"
+  | "memo"
   | "music"
   | "reading"
   | "cocreate"
@@ -77,13 +78,14 @@ export const PAGE_2_DEFAULT: IconId[] = [
 
 // 第三页放系统/工具类应用；生活、档案、照片墙、一起看单独放到第四页，避免与已有图标/组件抢位置。
 export const PAGE_3_DEFAULT: IconId[] = ["worldbuilder", "qa", "resource_hub", "realitybridge", "mixology", "heartcraft"];
-export const PAGE_4_DEFAULT: IconId[] = ["life", "archive", "photowall", "watchtogether", "callstats"];
+export const PAGE_4_DEFAULT: IconId[] = ["life", "archive", "memo", "photowall", "watchtogether", "callstats"];
 
 export const DOCK_DEFAULT: IconId[] = ["settings", "theme", "resources", "characters"];
 
 export const ICONS: Record<IconId, IconMeta> = {
   chat: { id: "chat", label: "\u804a\u5929", tone: "var(--c-icon-green)", placeholder: false },
   diary: { id: "diary", label: "手记", tone: "var(--c-icon-violet)", placeholder: false },
+  memo: { id: "memo", label: "备忘录", tone: "var(--c-icon-amber)", placeholder: false },
   music: { id: "music", label: "\u97F3\u4E50", tone: "var(--c-icon-coral)", placeholder: false },
   reading: { id: "reading", label: "\u9605\u8BFB", tone: "var(--c-icon-amber)", placeholder: false },
   cocreate: { id: "cocreate", label: "共创", tone: "var(--c-icon-cocreate, #c8b58a)", placeholder: false },
