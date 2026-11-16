@@ -34,7 +34,7 @@ import { buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { describeLifeOutputIssues, parseLifeOutput, validateLifeOutput, type LifeOutputIssue } from "@/lib/life/life-output";
 import { buildLifeSceneResponderQueue, evaluateEncounterAwareness } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
-import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts, reconcileIdleReconnectWithLifeScenes, suspendIdleReconnectForLifeScene } from "@/lib/push-bailout-client";
+import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts } from "@/lib/push-bailout-client";
 import { readLifeProactiveStatus } from "@/lib/life/life-proactive-scheduler";
 import { setLifeSceneForegroundLease } from "@/lib/life/life-scheduler-coordinator";
 
@@ -2145,7 +2145,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup);
       if (session) cancelFollowUp(session.id);
     }
-    void suspendIdleReconnectForLifeScene(candidateIds);
     const timer = window.setInterval(() => void tick(), LIFE_AUTONOMY_TICK_MS);
     // 首次进入生活现场就挂一条服务端预约，不能等第一个 5 分钟 tick：
     // 用户通常不会在生活页停留那么久，旧逻辑会导致 push_jobs 永远没有 life-scene 任务。
@@ -2158,12 +2157,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       setLifeSceneForegroundLease(activeScene.id, false);
       document.removeEventListener("visibilitychange", refreshForegroundLease);
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      // Restore online idle reconnect when the character is no longer co-present.
-      // Cleanup also runs for settings changes, so check persisted scene state first.
-      // Reconcile only the characters from the scene this effect owned. If they
-      // left, their online reconnect is re-armed; if still co-present, it stays
-      // suppressed. The bailout layer independently rechecks presence before POST.
-      void reconcileIdleReconnectWithLifeScenes(candidateIds);
     };
   }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.keepDialogueConcise, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, lifeAppTags, activeMaxConsecutiveActionOnly, settings.enableLifeFormatRepair, playerName]);
   const sendSceneTurn = async (event?: FormEvent, forceReaction = false, notificationReplyId?: string, responseQueue?: string[], queuedTurn?: { sceneId: string; userText: string; userAction: string; createdAt: string }): Promise<"completed" | "deferred" | "failed"> => {
