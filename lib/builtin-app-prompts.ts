@@ -162,7 +162,7 @@ const PRIVATE_MEMO_BEHAVIOR_PROMPT = [
     "需要回顾时先搜索现有笔记，优先更新已有主题，避免重复创建；过期内容应先核实再修改或归档。待办完成后及时标记完成。",
     "只能访问工具返回的当前角色私人笔记，以及用户明确授权给你的笔记。绝不能尝试访问其他角色的私人档案；用户授权笔记只读。",
     "所有写入、修改、归档和删除都必须通过备忘录工具执行，并根据工具返回结果确认成功；不得声称保存成功而未实际调用工具。"
-].join("\\n");
+].join("\n");
 
 const APP_PROMPT_DEFINITIONS: Array<{ identifier: string; name: string; content: string; tags: string[] }> = [
     { identifier: "private_memo_behavior", name: "◇ 私人备忘录使用规则", content: PRIVATE_MEMO_BEHAVIOR_PROMPT, tags: ["memo", "tools"] },\n    { identifier: "life_scene_output_contract", name: "◇ 生活现场输出协议", content: LIFE_SCENE_OUTPUT_CONTRACT_PROMPT, tags: ["life", "turn"] },
