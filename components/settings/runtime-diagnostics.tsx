@@ -308,7 +308,10 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
         fix: step.hint || undefined,
       }));
       setChecks(current => [...current.filter(item => !item.id.startsWith("push-chain-")), ...items]);
-      onNotice?.(response.ok ? "测试广播已发出，请检查 Android 通知栏是否收到。" : "测试广播检查失败，请查看通知链路诊断结果。");
+      const broadcast = data.steps.find(step => step.key === "broadcast");
+      onNotice?.(broadcast?.status === "ok"
+        ? "Realtime 测试广播已提交，请检查 Android 通知栏。"
+        : "Realtime 测试广播未成功，请查看通知链路诊断结果。");
     } catch (error) {
       setChecks(current => [
         ...current.filter(item => item.id !== "push-chain-probe-error"),
