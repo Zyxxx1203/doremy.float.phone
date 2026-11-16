@@ -337,7 +337,12 @@ class CallControlService : AccessibilityService() {
                                 }.getOrDefault(false)
                             }
                         }
-                        if (!displayed) runCatching { NativeRealityBridge.postOfflineNotificationFallback(applicationContext, id, event.optString("type"), event.optString("payload")) }
+                        if (!displayed) {
+                            runCatching { NativeRealityBridge.postOfflineNotificationFallback(applicationContext, id, event.optString("type"), event.optString("payload")) }
+                            val fallbackBody = JSONObject().put("eventId", id).put("status", "fallback").toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+                            val fallbackRequest = Request.Builder().url(MainActivity.SITE_URL.trimEnd('/') + "/api/push/bridge-native-event/receipt").header("Cookie", cookie).post(fallbackBody).build()
+                            runCatching { client.newCall(fallbackRequest).execute().close() }
+                        }
                         removePendingEvent(id)
                     }
                 }
