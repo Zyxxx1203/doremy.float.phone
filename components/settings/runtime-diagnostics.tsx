@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clipboard, Download, RefreshCw, ShieldCheck, Smartphone, Wifi, XCircle } from "lucide-react";
+import { AlertTriangle, Bell, CheckCircle2, Clipboard, Download, RefreshCw, ShieldCheck, Smartphone, Wifi, XCircle } from "lucide-react";
 import { getQaErrorEntries, type QaErrorEntry } from "@/lib/qa-error-log";
 import { loadVirtualLifeState } from "@/lib/life/life-storage";
 import { hasNotificationReplyBridge } from "@/lib/notification-reply";
@@ -63,6 +63,7 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
     }
   };
   const [busy, setBusy] = useState(false);
+  const [pushProbeBusy, setPushProbeBusy] = useState(false);
   const [lastRun, setLastRun] = useState<number | null>(null);
   const [errors, setErrors] = useState<QaErrorEntry[]>([]);
   const [nativeInfo, setNativeInfo] = useState<Record<string, unknown> | null>(null);
@@ -290,6 +291,35 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
     setBusy(false);
   }, []);
 
+  const runPushProbe = useCallback(async () => {
+    setPushProbeBusy(true);
+    try {
+      const response = await fetch("/api/push/selfcheck?probe=1&diag=" + Date.now(), { cache: "no-store" });
+      const data = await response.json().catch(() => ({})) as {
+        summary?: string;
+        steps?: Array<{ key?: string; label?: string; status?: string; detail?: string; hint?: string }>;
+      };
+      if (!Array.isArray(data.steps)) throw new Error(data.summary || "服务端未返回检查结果。");
+      const items: CheckItem[] = data.steps.map((step, index) => ({
+        id: "push-chain-" + String(step.key || index),
+        title: "通知链路 · " + String(step.label || "服务端检查"),
+        status: step.status === "ok" ? "ok" : step.status === "fail" ? "fail" : "warn",
+        detail: String(step.detail || data.summary || "服务端未返回详细信息。"),
+        fix: step.hint || undefined,
+      }));
+      setChecks(current => [...current.filter(item => !item.id.startsWith("push-chain-")), ...items]);
+      onNotice?.(response.ok ? "测试广播已发出，请检查 Android 通知栏是否收到。" : "测试广播检查失败，请查看通知链路诊断结果。");
+    } catch (error) {
+      setChecks(current => [
+        ...current.filter(item => item.id !== "push-chain-probe-error"),
+        { id: "push-chain-probe-error", title: "通知链路测试广播", status: "fail", detail: error instanceof Error ? error.message : String(error) },
+      ]);
+      onNotice?.("测试广播失败，请查看诊断结果。");
+    } finally {
+      setPushProbeBusy(false);
+    }
+  }, [onNotice]);
+
   useEffect(() => { void runChecks(); }, [runChecks]);
 
   const report = useMemo(() => {
@@ -341,6 +371,7 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
         <Smartphone size={22} />
         <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, fontSize: 16 }}>运行诊断与故障排查</div><div style={{ fontSize: 12, opacity: .72, marginTop: 3 }}>只在本机检查，不会自动上传诊断信息。</div></div>
         <button type="button" onClick={() => void runChecks()} disabled={busy} aria-label="重新检查" title="重新检查" style={{ border: "1px solid var(--border, #ddd)", borderRadius: 10, padding: 9, background: "transparent" }}><RefreshCw size={17} className={busy ? "animate-spin" : ""} /></button>
+        {typeof window !== "undefined" && window.AndroidShell && <button type="button" onClick={() => void runPushProbe()} disabled={pushProbeBusy} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--border, #ddd)", borderRadius: 10, padding: "8px 10px", background: "transparent", color: "inherit", fontSize: 11 }}><Bell size={14} />{pushProbeBusy ? "发送中" : "测试通知"}</button>}
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
         <span style={{ fontSize: 12, borderRadius: 99, padding: "5px 9px", background: "rgba(22,163,74,.12)" }}>正常 {checks.filter(x => x.status === "ok").length}</span>
