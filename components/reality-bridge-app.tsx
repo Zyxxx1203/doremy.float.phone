@@ -673,7 +673,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
             mode: rule.process?.mode || "raw",
             template: rule.process?.mode === "template" ? rule.process?.template || "" : "",
           },
-          offlineReplies: (rule.offlineReplies || []).filter(line => line.trim()).slice(0, 80),
+          offlineReplies: (rule.offlineReplies === undefined ? defaultOfflineReplies(rule.matchType) : rule.offlineReplies).filter(line => line.trim()).slice(0, 80),
           notificationEnabled: !!rule.actions.chat?.requestReply || !!rule.actions.notify,
           characterName: loadCharacters().find(character => character.id === rule.actions.chat?.characterId)?.name || "",
           ...(canSyncAction ? { deviceAction: { action: chosenAction!.action, args: chosenAction!.args ?? {} } } : {}),
@@ -1277,7 +1277,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
 
   /* 联动向导：打开时重置步骤；编辑已有联动可自由跳步 */
   const openRuleEditor = useCallback((rule: BridgeRule, existing: boolean) => {
-    setEditing({ ...rule, offlineReplies: rule.offlineReplies?.length ? [...rule.offlineReplies] : defaultOfflineReplies(rule.matchType) });
+    setEditing({ ...rule, offlineReplies: rule.offlineReplies === undefined ? defaultOfflineReplies(rule.matchType) : [...rule.offlineReplies] });
     setWizStep(1);
     setWizMax(existing ? 6 : 1);
     // 换一条规则就清掉上次的试跑结果，免得把上一条的效果错认成这一条的
@@ -1291,7 +1291,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     // 动作需要角色时，用第一个角色兜底；没有角色卡的话模板仍然可开，
     // 只是「告诉一个角色」那项会指向空 id，由保存时的既有校验拦下并提示。
     const rule = template.build({ characterId: characters[0]?.id ?? "" });
-    setEditing({ ...rule, offlineReplies: rule.offlineReplies?.length ? [...rule.offlineReplies] : defaultOfflineReplies(rule.matchType) });
+    setEditing({ ...rule, offlineReplies: rule.offlineReplies === undefined ? defaultOfflineReplies(rule.matchType) : [...rule.offlineReplies] });
     setWizStep(1);
     setWizMax(6);
     // 保留示例数据、只清结果：同一份示例常在几条规则之间反复试，
