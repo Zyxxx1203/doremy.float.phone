@@ -87,6 +87,7 @@ import { pushApiLog } from "./api-log-store";
 export { getApiLogs, clearApiLogs, type DebugInfo } from "./api-log-store";
 import { stripStateAndInnerForPrompt } from "./prompt-sanitizer";
 import { getInternalCapability, getInternalCapabilitySubToolDefinitions } from "./internal-capability-storage";
+import { buildMemoPromptDigest } from "./memo-archive-storage";
 import { isMediaStoreRef, loadMediaBlob } from "./media-cache-storage";
 import {
     DEFAULT_CHAT_BILINGUAL_PROMPT,
@@ -1971,8 +1972,14 @@ export async function buildChatPromptMessages(
         buildMusicCloudMacro(),
     ]);
 
+    const memoCapability = getInternalCapability("memo_archive");
+    const memoDigest = !session.isGroup && resolvedAppId === "chat" && memConfig.shortTermAllowedSources?.memo !== false && memoCapability?.enabled && memoCapability.mode !== "off"
+        ? await buildMemoPromptDigest(character.id).catch(() => "")
+        : "";
+
     const longTermMemories = [
         memResults ? formatLongTermMemories(memResults) : "",
+        memoDigest,
         buildLifeMemoryContext(character.id),
         buildLifePresenceContext(character.id),
     ].filter(Boolean).join("\n\n");
