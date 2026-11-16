@@ -14,6 +14,7 @@ import android.os.IBinder
 import android.util.Base64
 import android.webkit.CookieManager
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 // RemoteInput 必须用 androidx 版：NotificationCompat.Action.addRemoteInput()
 // 收的是 androidx.core.app.RemoteInput，与框架的 android.app.RemoteInput
 // 是两个类型（同名不同源），混用会直接编译失败。
@@ -240,8 +241,8 @@ class PushService : Service() {
                             return
                         }
                     }
-                    showMessageNotification(title, text2, body.optString("sessionId"), body.optString("avatar"), body.optString("kind"), body.optString("sceneId"))
-                    if (bridgeEventId.isNotEmpty()) sendBridgeReceipt(bridgeEventId)
+                    val notificationPosted = showMessageNotification(title, text2, body.optString("sessionId"), body.optString("avatar"), body.optString("kind"), body.optString("sceneId"))
+                    if (notificationPosted && bridgeEventId.isNotEmpty()) sendBridgeReceipt(bridgeEventId)
                 }
             }
 
@@ -410,7 +411,11 @@ class PushService : Service() {
         getSystemService(NotificationManager::class.java).notify(CallAlert.NOTIF_MISSED_ID, notification)
     }
 
-    private fun showMessageNotification(title: String, body: String, sessionId: String? = null, avatarUrl: String? = null, kind: String = "", sceneId: String = "") {
+    private fun showMessageNotification(title: String, body: String, sessionId: String? = null, avatarUrl: String? = null, kind: String = "", sceneId: String = ""): Boolean {
+        if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+            && getSystemService(NotificationManager::class.java).getNotificationChannel(CH_MESSAGES)?.importance == NotificationManager.IMPORTANCE_NONE
+        ) return false
         val builder = NotificationCompat.Builder(this, CH_MESSAGES)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle(title)
@@ -432,6 +437,7 @@ class PushService : Service() {
         } else if (sid.isNotEmpty()) builder.addAction(buildReplyAction(sid))
         getSystemService(NotificationManager::class.java).notify(notifId++, builder.build())
         if (notifId > 400) notifId = 100
+        return true
     }
 
     /**
