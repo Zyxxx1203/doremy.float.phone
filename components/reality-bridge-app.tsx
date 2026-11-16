@@ -56,6 +56,31 @@ type ShortcutEmailStatus = {
   verificationExpiresAt?: string;
 };
 
+const OFFLINE_REPLY_PRESETS: Record<string, string[]> = {
+  "电量偏低": [
+    "电量已经不多啦，先找机会充会儿电，别等手机突然关机。",
+    "我看到电量快见底了，充电线在旁边的话先接上吧。",
+    "先提醒你一声：手机电量有点危险，记得补点电。"
+  ],
+  "长时间使用": [
+    "你已经盯着屏幕好一会儿啦，起来活动一下眼睛吧。",
+    "休息几分钟嘛，别把眼睛和自己都累着了。",
+    "我不是催你，只是想提醒你稍微歇一歇。"
+  ],
+  "应用用太久": [
+    "这个应用今天陪你太久啦，换换脑子、活动一下吧。",
+    "先歇一会儿怎么样？眼睛和肩膀都需要喘口气。",
+    "我看到你今天已经用很久了，别忘了给自己留点休息时间。"
+  ],
+};
+function defaultOfflineReplies(matchType: string): string[] {
+  return OFFLINE_REPLY_PRESETS[matchType] ?? [
+    "我注意到一件事，想跟你说一声：{payload}",
+    "欸，刚刚发生了这个情况：{payload}",
+    "先提醒你一下哦：{payload}"
+  ];
+};
+
 function newRule(): BridgeRule {
   return {
     id: `rule_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
@@ -649,6 +674,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
             template: rule.process?.mode === "template" ? rule.process?.template || "" : "",
           },
           offlineReplies: (rule.offlineReplies || []).filter(line => line.trim()).slice(0, 80),
+          notificationEnabled: !!rule.actions.chat?.requestReply || !!rule.actions.notify,
           characterName: loadCharacters().find(character => character.id === rule.actions.chat?.characterId)?.name || "",
           ...(canSyncAction ? { deviceAction: { action: chosenAction!.action, args: chosenAction!.args ?? {} } } : {}),
         };
@@ -1247,7 +1273,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
 
   /* 联动向导：打开时重置步骤；编辑已有联动可自由跳步 */
   const openRuleEditor = useCallback((rule: BridgeRule, existing: boolean) => {
-    setEditing(rule);
+    setEditing({ ...rule, offlineReplies: rule.offlineReplies?.length ? [...rule.offlineReplies] : defaultOfflineReplies(rule.matchType) });
     setWizStep(1);
     setWizMax(existing ? 6 : 1);
     // 换一条规则就清掉上次的试跑结果，免得把上一条的效果错认成这一条的
