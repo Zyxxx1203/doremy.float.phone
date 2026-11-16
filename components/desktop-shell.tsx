@@ -1709,7 +1709,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
           setFolders(sane.folders);
           setLayout(withMemo);
           if (sane.changed) writeDesktopFolders(sane.folders);
-          if (sane.changed || withHeartcraft !== sane.layout || kvGet(NEW_LIFESTYLE_APPS_PAGE_MIGRATION_KEY) === "1") {
+          if (sane.changed || withHeartcraft !== sane.layout || withMemo !== withHeartcraft || kvGet(NEW_LIFESTYLE_APPS_PAGE_MIGRATION_KEY) === "1") {
             kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(withMemo));
           }
           setDesktopReady(true);
