@@ -321,7 +321,25 @@ class CallControlService : AccessibilityService() {
                             response.isSuccessful || response.code == 410
                         }
                     }.getOrDefault(false)
-                    if (accepted) removePendingEvent(id)
+                    if (accepted) {
+                        // Wait for the Service Worker receipt written only after showNotification resolves.
+                        var displayed = false
+                        repeat(15) {
+                            if (!displayed) {
+                                Thread.sleep(3_000L)
+                                val receiptRequest = Request.Builder()
+                                    .url("${MainActivity.SITE_URL.trimEnd('/')}/api/push/bridge-native-event/receipt?id=${java.net.URLEncoder.encode(id, "UTF-8")}")
+                                    .header("Cookie", cookie).header("Accept", "application/json").get().build()
+                                displayed = runCatching {
+                                    client.newCall(receiptRequest).execute().use { response ->
+                                        response.isSuccessful && JSONObject(response.body?.string().orEmpty()).optBoolean("displayed", false)
+                                    }
+                                }.getOrDefault(false)
+                            }
+                        }
+                        if (!displayed) runCatching { NativeRealityBridge.postOfflineNotificationFallback(applicationContext, id, event.optString("type"), event.optString("payload")) }
+                        removePendingEvent(id)
+                    }
                 }
             } finally {
                 delivering = false
