@@ -105,8 +105,19 @@ export function importMemoData(raw: string, mode: "merge"|"replace", owner?: Mem
   };
   if(!data.notes.every(valid))throw new Error("文件中存在无效笔记，未导入任何数据");
   if(!data.folders.every(validFolder))throw new Error("文件夹数据无效，未导入任何数据");
+  const noteIds=(data.notes as MemoNote[]).map(n=>n.id),folderIds=(data.folders as MemoState["folders"]).map(f=>f.id);
+  if(new Set(noteIds).size!==noteIds.length||new Set(folderIds).size!==folderIds.length)throw new Error("备份中存在重复 ID，未导入任何数据");
+  for(const note of data.notes as MemoNote[])if(note.folderId&&!data.folders.some((folder:MemoState["folders"][number])=>folder.id===note.folderId&&sameOwner(folder.owner,note.owner)))throw new Error("笔记引用了不存在或不属于自己的文件夹，未导入任何数据");
+  if(data.themes!==undefined){
+    if(!data.themes||typeof data.themes!=="object"||Array.isArray(data.themes))throw new Error("主题配置无效，未导入任何数据");
+    for(const value of Object.values(data.themes)){
+      if(!value||typeof value!=="object")throw new Error("主题配置无效，未导入任何数据");
+      const theme=value as Record<string,unknown>;
+      if(!["accent","paper","ink","muted"].every(key=>typeof theme[key]==="string"&&/^#[0-9a-fA-F]{6}$/.test(theme[key] as string))||typeof theme.font!=="string"||theme.font.length>100||!["plain","linen","dots","grid"].includes(String(theme.texture))||typeof theme.radius!=="number"||theme.radius<8||theme.radius>28)throw new Error("主题配置无效，未导入任何数据");
+    }
+  }
   const state=loadMemoState(); let imported=0,skipped=0;
-  if(mode==="replace"){ state.notes=owner?state.notes.filter(n=>!sameOwner(n.owner,owner)):[]; state.folders=owner?state.folders.filter(f=>!sameOwner(f.owner,owner)):[]; if(!owner)state.themes={}; }
+  if(mode==="replace"){ state.notes=owner?state.notes.filter(n=>!sameOwner(n.owner,owner)):[]; state.folders=owner?state.folders.filter(f=>!sameOwner(f.owner,owner)):[]; if(owner)state.themes[ownerKey(owner)]={...DEFAULT_THEME}; else state.themes={user:{...DEFAULT_THEME}}; }
   const incoming=(data.notes as MemoNote[]).filter(n=>!owner||sameOwner(n.owner,owner));
 
   for(const n of incoming){ if(state.notes.some(x=>x.id===n.id)){ if(mode==="merge"){skipped++;continue;} state.notes=state.notes.filter(x=>x.id!==n.id); } state.notes.push({...n,tags:Array.isArray(n.tags)?n.tags:[],shareWithCharacterIds:Array.isArray(n.shareWithCharacterIds)?n.shareWithCharacterIds:[],todos:Array.isArray(n.todos)?n.todos:[],archived:!!n.archived,folderId:n.folderId??null,createdAt:Number(n.createdAt)||Date.now(),updatedAt:Number(n.updatedAt)||Date.now()}); imported++; }
