@@ -285,6 +285,24 @@ class CallControlService : AccessibilityService() {
         }
     }
 
+    private fun updatePendingEvent(id: String, updates: JSONObject) {
+        synchronized(pendingLock) {
+            val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val queue = try { JSONArray(prefs.getString(QUEUE_KEY, "[]") ?: "[]") } catch (_: Throwable) { JSONArray() }
+            for (i in 0 until queue.length()) {
+                val item = queue.optJSONObject(i) ?: continue
+                if (item.optString("id") != id) continue
+                val keys = updates.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    item.put(key, updates.opt(key))
+                }
+                break
+            }
+            prefs.edit().putString(QUEUE_KEY, queue.toString()).apply()
+        }
+    }
+
     private fun deliverPendingEvents() {
         if (delivering) return
         val events = synchronized(pendingLock) {
@@ -293,77 +311,107 @@ class CallControlService : AccessibilityService() {
         }
         if (events.length() == 0) return
 
-        // Offline fallback is independent of login/network. Keep the event queued for later cloud sync.
-        var fallbackChanged = false
-        val fallbackNow = System.currentTimeMillis()
-        for (i in 0 until events.length()) {
-            val event = events.optJSONObject(i) ?: continue
-            if (event.optBoolean("fallbackSent", false)) continue
-            val queuedAt = event.optLong("queuedAt", 0L)
-            if (queuedAt <= 0L || fallbackNow - queuedAt < 45_000L) continue
-            val fallbackShown = runCatching { NativeRealityBridge.postOfflineNotificationFallback(applicationContext, event.optString("id"), event.optString("type"), event.optString("payload")) }.getOrDefault(false)
-            if (fallbackShown) {
-                event.put("fallbackSent", true)
-                fallbackChanged = true
-            }
-        }
-        if (fallbackChanged) {
-            synchronized(pendingLock) { getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(QUEUE_KEY, events.toString()).apply() }
-        }
-
+        // Self-hosted local_user 不需要登录 Cookie；普通账号仍由服务端 Cookie 校验。
         val cookie = runCatching { CookieManager.getInstance().getCookie(MainActivity.SITE_URL).orEmpty() }.getOrDefault("")
-        if (cookie.isBlank()) return
-
         delivering = true
         Thread({
             try {
                 for (i in 0 until events.length()) {
                     val event = events.optJSONObject(i) ?: continue
-                    val id = event.optString("id")
+                    val id = event.optString("id").trim()
                     if (id.isBlank()) continue
+                    val cloudAccepted = event.optBoolean("cloudAccepted", false)
+                    val fallbackSent = event.optBoolean("fallbackSent", false)
+
+                    if (cloudAccepted) {
+                        // Shell Realtime 通知在原生 NotificationManager 接受提交后回执；
+                        // 不再把 Service Worker 回执误当作 Android 壳的唯一确认来源。
+                        if (fallbackSent) {
+                            val fallbackBody = JSONObject().put("eventId", id).put("status", "fallback")
+                                .toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+                            val fallbackBuilder = Request.Builder()
+                                .url(MainActivity.SITE_URL.trimEnd('/') + "/api/push/bridge-native-event/receipt")
+                                .post(fallbackBody)
+                            if (cookie.isNotEmpty()) fallbackBuilder.header("Cookie", cookie)
+                            val saved = runCatching {
+                                client.newCall(fallbackBuilder.build()).execute().use { it.isSuccessful }
+                            }.getOrDefault(false)
+                            if (saved) removePendingEvent(id)
+                            continue
+                        }
+
+                        val receiptBuilder = Request.Builder()
+                            .url("${MainActivity.SITE_URL.trimEnd('/')}/api/push/bridge-native-event/receipt?id=${java.net.URLEncoder.encode(id, "UTF-8")}")
+                            .header("Accept", "application/json")
+                            .get()
+                        if (cookie.isNotEmpty()) receiptBuilder.header("Cookie", cookie)
+                        val receipt = runCatching {
+                            client.newCall(receiptBuilder.build()).execute().use { response ->
+                                if (!response.isSuccessful) null
+                                else JSONObject(response.body?.string().orEmpty())
+                            }
+                        }.getOrNull()
+                        if (receipt?.optBoolean("displayed", false) == true || receipt?.optBoolean("fallback", false) == true) {
+                            removePendingEvent(id)
+                            continue
+                        }
+
+                        // 等待窗口覆盖 bridge_scan 的分钟级调度与 AI 回复最长 5 分钟执行时间。
+                        // 超时才使用本机离线回复；只有原生通知确实提交成功才写 fallback 回执。
+                        val acceptedAt = event.optLong("cloudAcceptedAt", 0L)
+                        if (acceptedAt > 0L && System.currentTimeMillis() - acceptedAt >= 6 * 60_000L) {
+                            val shown = runCatching {
+                                NativeRealityBridge.postOfflineNotificationFallback(
+                                    applicationContext, id, event.optString("type"), event.optString("payload")
+                                )
+                            }.getOrDefault(false)
+                            if (shown) updatePendingEvent(id, JSONObject().put("fallbackSent", true))
+                        }
+                        continue
+                    }
+
                     val body = JSONObject()
                         .put("id", id)
                         .put("type", event.optString("type"))
                         .put("payload", event.optString("payload"))
                         .put("createdAt", event.optString("createdAt"))
-                        .put("notifyAlreadyShown", event.optBoolean("fallbackSent", false) || event.optBoolean("notifyAlreadyShown", false))
+                        .put("notifyAlreadyShown", fallbackSent || event.optBoolean("notifyAlreadyShown", false))
                         .toString()
                         .toRequestBody("application/json; charset=utf-8".toMediaType())
-                    val request = Request.Builder()
+                    val uploadBuilder = Request.Builder()
                         .url("${MainActivity.SITE_URL.trimEnd('/')}/api/push/bridge-native-event")
-                        .header("Cookie", cookie)
                         .header("Accept", "application/json")
                         .post(body)
-                        .build()
-                    val accepted = runCatching {
-                        client.newCall(request).execute().use { response ->
-                            // 410 表示事件过期，确认丢弃；其余失败留在本地待重试。
-                            response.isSuccessful || response.code == 410
-                        }
-                    }.getOrDefault(false)
-                    if (accepted) {
-                        // Wait for the Service Worker receipt written only after showNotification resolves.
-                        if (!event.optBoolean("fallbackSent", false)) {
-                            var displayed = false
-                            repeat(15) {
-                                if (!displayed) {
-                                    Thread.sleep(3_000L)
-                                    val receiptRequest = Request.Builder()
-                                        .url("${MainActivity.SITE_URL.trimEnd('/')}/api/push/bridge-native-event/receipt?id=${java.net.URLEncoder.encode(id, "UTF-8")}")
-                                        .header("Cookie", cookie).header("Accept", "application/json").get().build()
-                                    displayed = runCatching {
-                                        client.newCall(receiptRequest).execute().use { response -> response.isSuccessful && JSONObject(response.body?.string().orEmpty()).optBoolean("displayed", false) }
-                                    }.getOrDefault(false)
-                                }
-                            }
-                            if (!displayed) {
-                                runCatching { NativeRealityBridge.postOfflineNotificationFallback(applicationContext, id, event.optString("type"), event.optString("payload")) }
-                                val fallbackBody = JSONObject().put("eventId", id).put("status", "fallback").toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-                                val fallbackRequest = Request.Builder().url(MainActivity.SITE_URL.trimEnd('/') + "/api/push/bridge-native-event/receipt").header("Cookie", cookie).post(fallbackBody).build()
-                                runCatching { client.newCall(fallbackRequest).execute().close() }
+                    if (cookie.isNotEmpty()) uploadBuilder.header("Cookie", cookie)
+
+                    val uploadCode = runCatching {
+                        client.newCall(uploadBuilder.build()).execute().use { it.code }
+                    }.getOrNull()
+                    when {
+                        uploadCode == 410 -> removePendingEvent(id)
+                        uploadCode != null && uploadCode in 200..299 -> {
+                            if (fallbackSent || event.optBoolean("notifyAlreadyShown", false)) {
+                                // 本机已经提交过通知；云端继续执行角色回复，但不再重复通知。
+                                removePendingEvent(id)
+                            } else {
+                                updatePendingEvent(
+                                    id,
+                                    JSONObject().put("cloudAccepted", true).put("cloudAcceptedAt", System.currentTimeMillis())
+                                )
                             }
                         }
-                        removePendingEvent(id)
+                        else -> {
+                            // 云端不可达时才走本机离线兜底。若失败，不伪造回执、不删除队列。
+                            val queuedAt = event.optLong("queuedAt", 0L)
+                            if (!fallbackSent && queuedAt > 0L && System.currentTimeMillis() - queuedAt >= 45_000L) {
+                                val shown = runCatching {
+                                    NativeRealityBridge.postOfflineNotificationFallback(
+                                        applicationContext, id, event.optString("type"), event.optString("payload")
+                                    )
+                                }.getOrDefault(false)
+                                if (shown) updatePendingEvent(id, JSONObject().put("fallbackSent", true))
+                            }
+                        }
                     }
                 }
             } finally {
