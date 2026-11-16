@@ -5259,7 +5259,8 @@ async function executePrivateMemoTool(call: ToolCall, context?: ToolExecutionCon
     const ok = (data: unknown, message = "备忘录操作完成"): ToolResult => ({ name: call.name, success: true, data: JSON.stringify({ message, data }, null, 2) });
     try {
         if (action === "list_folders") return ok(listMemoFolders(own).map(f=>({id:f.id,name:f.name,color:f.color})), "你的私人文件夹");
-        if (action === "create_folder") { const name=String(args.folderName||"").trim(); if(!name)return fail("文件夹名称不能为空。"); const folder=createMemoFolder(own,name); return ok({id:folder.id,name:folder.name},"已创建私人文件夹"); }\n        if (action === "list" || action === "search") {
+        if (action === "create_folder") { const name=String(args.folderName||"").trim(); if(!name)return fail("文件夹名称不能为空。"); const folder=createMemoFolder(own,name); return ok({id:folder.id,name:folder.name},"已创建私人文件夹"); }
+        if (action === "list" || action === "search") {
             const notes = searchMemoForCharacter(characterId, action === "search" ? String(args.query || "") : "", Number(args.limit) || 12);
             return ok(notes.map(n => ({ id:n.id,title:n.title,summary:n.content.slice(0,260),tags:n.tags,todos:n.todos.filter(t=>!t.done).map(t=>t.text),updatedAt:new Date(n.updatedAt).toISOString(),folderId:n.folderId,source:n.owner.type==="user"?"用户授权":"自己的档案" })), "可访问的备忘录列表");
         }
