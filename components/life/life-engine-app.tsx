@@ -4147,7 +4147,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
               <label className="block text-[11px] text-stone-600">遮罩 · {selectedLocation.backgroundOverlay??18}%<input type="range" min="0" max="85" value={selectedLocation.backgroundOverlay??18} onChange={e=>updateSelectedLocationBackground({backgroundOverlay:Number(e.target.value)})} className="mt-1.5 w-full"/></label>
             </div>
             
-          </section>
           {(selectedLocation.id === "home" || selectedLocation.id.startsWith("home-")) && <section className="mb-4 rounded-xl border border-stone-200/80 bg-white/80 p-3">
             <h3 className="text-sm font-semibold text-stone-700">同住设置</h3>
             
