@@ -424,7 +424,8 @@ function parseBridgeItem(name: string, text: string): BridgeItem | null {
     const payload = typeof rawPayload === "string"
       ? rawPayload.slice(0, 8000)
       : JSON.stringify(rawPayload ?? "").slice(0, 8000);
-    return { id: name, type, payload, createdAt: String(parsed.createdAt ?? new Date().toISOString()), notifyAlreadyShown: parsed.notifyAlreadyShown === true };
+    const id = name.replace(/^native_/, "").replace(/\.json$/i, "");
+    return { id, type, payload, createdAt: String(parsed.createdAt ?? new Date().toISOString()), notifyAlreadyShown: parsed.notifyAlreadyShown === true };
   } catch {
     return null;
   }
@@ -578,18 +579,56 @@ Deno.serve(async (req: Request) => {
     const pushErrors: string[] = [];
 
     const sendPush = async (title: string, bodyText: string, tag: string, bridgeEventId?: string) => {
-      if (!vapid || subs.length === 0) return;
-      const message = JSON.stringify({ title, body: bodyText.slice(0, 80), tag, url: "/", ...(bridgeEventId ? { bridgeEventId } : {}) });
-      for (const sub of subs) {
+      if (subs.length === 0) return;
+      const shellSubs = subs.filter(sub => sub.endpoint.startsWith("shell:"));
+      const webSubs = subs.filter(sub => !sub.endpoint.startsWith("shell:"));
+      const notificationBody = bodyText.slice(0, 80);
+
+      // Android Shell uses the same Realtime channel as ordinary push-generate.
+      // A synthetic shell: subscription is never a Web Push endpoint.
+      if (shellSubs.length > 0) {
         try {
-          const status = await sendWebPushRaw(sub, message, vapid, 3600);
-          if (status === 404 || status === 410) {
-            await rest(`push_subscriptions?endpoint=eq.${encodeURIComponent(sub.endpoint)}`, { method: "DELETE" }).catch(() => undefined);
-          } else if (status >= 400) {
-            pushErrors.push(`http ${status}`);
-          }
+          const response = await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
+            method: "POST",
+            headers: restHeaders,
+            body: JSON.stringify({
+              messages: [{
+                topic: `shellpush:${job.user_id}`,
+                event: "notify",
+                payload: {
+                  title,
+                  body: notificationBody,
+                  url: "/",
+                  ...(bridgeEventId ? { bridgeEventId } : {}),
+                },
+              }],
+            }),
+          });
+          if (!response.ok) pushErrors.push(`shell realtime http ${response.status}`);
+          await response.text().catch(() => "");
         } catch (err) {
           pushErrors.push((err instanceof Error ? err.message : String(err)).slice(0, 80));
+        }
+      }
+
+      // Browser subscriptions keep the existing VAPID/Web Push path.
+      if (webSubs.length > 0) {
+        if (!vapid) {
+          pushErrors.push("web push VAPID config unavailable");
+          return;
+        }
+        const message = JSON.stringify({ title, body: notificationBody, tag, url: "/", ...(bridgeEventId ? { bridgeEventId } : {}) });
+        for (const sub of webSubs) {
+          try {
+            const status = await sendWebPushRaw(sub, message, vapid, 3600);
+            if (status === 404 || status === 410) {
+              await rest(`push_subscriptions?endpoint=eq.${encodeURIComponent(sub.endpoint)}`, { method: "DELETE" }).catch(() => undefined);
+            } else if (status >= 400) {
+              pushErrors.push(`http ${status}`);
+            }
+          } catch (err) {
+            pushErrors.push((err instanceof Error ? err.message : String(err)).slice(0, 80));
+          }
         }
       }
     };
