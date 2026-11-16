@@ -47,7 +47,7 @@ object NativeRealityBridge {
         true
     } catch (_: Throwable) { false }
 
-    fun capture(context: Context, type: String, payload: String) {
+    fun capture(context: Context, type: String, payload: String, allowNotification: Boolean = true) {
         val now = System.currentTimeMillis()
         val event = JSONObject().put("id", "local_$now").put("type", type)
             .put("payload", payload.take(1200)).put("createdAt", now)
@@ -95,7 +95,7 @@ object NativeRealityBridge {
             val visibleParts = listOf(actionResult, replyMessage).filter { it.isNotBlank() }
             val message = visibleParts.joinToString("\n").take(500)
             val title = rule.optString("characterName").ifBlank { rule.optString("name", "现实桥") }
-            val shouldNotify = rule.optBoolean("notificationEnabled", true) && message.isNotBlank()
+            val shouldNotify = allowNotification && rule.optBoolean("notificationEnabled", true) && message.isNotBlank()
             val notified = shouldNotify && postNotification(context, title, message, now)
             prefs.edit().putLong("last_run_$ruleId", now).apply()
             val result = when {
