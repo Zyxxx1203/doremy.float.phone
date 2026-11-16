@@ -269,11 +269,8 @@ class CallControlService : AccessibilityService() {
                 if (queue.optJSONObject(i)?.optString("id") == id) return
             }
         }
-        // 后台触发先由本机角色离线回复库兜底，不以 Cookie 存在与否推断云端推送一定成功。
-        val localNotified = runCatching {
-            NativeRealityBridge.capture(applicationContext, event.optString("type"), event.optString("payload"))
-        }.getOrDefault(false)
-        event.put("notifyAlreadyShown", localNotified)
+        // 云端优先：上传前不在本机执行规则、设备动作或通知。
+        event.put("notifyAlreadyShown", false)
         synchronized(pendingLock) {
             val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val queue = try { JSONArray(prefs.getString(QUEUE_KEY, "[]") ?: "[]") } catch (_: Throwable) { JSONArray() }
