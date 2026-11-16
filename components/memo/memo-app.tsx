@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 import { Archive, ArrowLeft, Check, Download, FilePlus2, FolderPlus, NotebookPen, Plus, Search, Settings2, Share2, Trash2, Upload } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import { createMemoFolder, deleteMemoNote, exportMemoData, getMemoTheme, importMemoData, listMemoFolders, listMemoNotes, setMemoNoteShare, setMemoTheme, upsertMemoNote, type MemoFolder, type MemoNote, type MemoOwner, type MemoTheme } from "@/lib/memo-storage";
@@ -12,8 +12,8 @@ export function MemoApp({onClose,onNotice}:Props){
  const [editing,setEditing]=useState(false),[title,setTitle]=useState(""),[content,setContent]=useState(""),[tags,setTags]=useState(""),[showSettings,setShowSettings]=useState(false);
  const [theme,setTheme]=useState<MemoTheme>(()=>getMemoTheme({type:"user"})),[showArchived,setShowArchived]=useState(false);
  const fileRef=useRef<HTMLInputElement>(null),ownerKey=owner.type==="user"?"user":owner.id;
- const refresh=()=>{setNotes(listMemoNotes(owner,showArchived));setFolders(listMemoFolders(owner));setTheme(getMemoTheme(owner));};
- useEffect(()=>{refresh();setSelected(null);setEditing(false);setFolder("all");},[ownerKey,showArchived]);
+ const refresh=useCallback(()=>{setNotes(listMemoNotes(owner,showArchived));setFolders(listMemoFolders(owner));setTheme(getMemoTheme(owner));},[owner,showArchived]);
+ useEffect(()=>{refresh();setSelected(null);setEditing(false);setFolder("all");},[refresh]);
  const active=notes.find(n=>n.id===selected)||null;
  const visible=notes.filter(n=>(folder==="all"||n.folderId===folder)&&(!query||`${n.title} ${n.content} ${n.tags.join(" ")}`.toLowerCase().includes(query.toLowerCase())));
  const startNew=()=>{setSelected(null);setTitle("");setContent("");setTags("");setEditing(true);};

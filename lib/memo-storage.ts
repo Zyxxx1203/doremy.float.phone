@@ -55,7 +55,7 @@ export function deleteMemoNote(owner: MemoOwner, id: string): boolean {
 }
 export function setMemoNoteShare(id: string, characterId: string, allowed: boolean): boolean {
   const state=loadMemoState(), note=state.notes.find(n=>n.id===id&&n.owner.type==="user"); if(!note)return false;
-  const set=new Set(note.shareWithCharacterIds||[]); allowed?set.add(characterId):set.delete(characterId);
+  const set=new Set(note.shareWithCharacterIds||[]); if(allowed){set.add(characterId);}else{set.delete(characterId);}
   note.shareWithCharacterIds=[...set];note.updatedAt=Date.now();saveMemoState(state);return true;
 }
 export function getMemoNoteForCharacter(noteId: string, characterId: string): MemoNote | null {
