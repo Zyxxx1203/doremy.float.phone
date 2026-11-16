@@ -103,6 +103,7 @@ export function importMemoData(raw: string, mode: "merge"|"replace", owner?: Mem
     const f=value as Record<string,unknown>;
     return typeof f.id==="string"&&!!f.id&&validOwner(f.owner)&&typeof f.name==="string"&&f.name.length<=40&&typeof f.color==="string"&&typeof f.createdAt==="number";
   };
+  if(!data.notes.every(valid))throw new Error("文件中存在无效笔记，未导入任何数据");
   if(!data.folders.every(validFolder))throw new Error("文件夹数据无效，未导入任何数据");
   const state=loadMemoState(); let imported=0,skipped=0;
   if(mode==="replace"){ state.notes=owner?state.notes.filter(n=>!sameOwner(n.owner,owner)):[]; state.folders=owner?state.folders.filter(f=>!sameOwner(f.owner,owner)):[]; if(!owner)state.themes={}; }
