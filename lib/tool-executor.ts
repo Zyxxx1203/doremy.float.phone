@@ -59,7 +59,7 @@ import { loadMemoryEntriesByType, saveMemoryEntry } from "./memory-storage";
 import type { MemoryEntry } from "./memory-types";
 import { loadCharacters } from "./character-storage";
 import { PRIVATE_MEMO_CAPABILITY_ID } from "./internal-capability-storage";
-import { listMemoNotes, upsertMemoNote, getMemoNoteForCharacter, searchMemoForCharacter, deleteMemoNote, type MemoNote } from "./memo-storage";
+import { listMemoNotes, upsertMemoNote, getMemoNoteForCharacter, searchMemoForCharacter, deleteMemoNote } from "./memo-storage";
 import {
     deleteCalendarScheduleItem,
     loadCalendarWeekPlan,

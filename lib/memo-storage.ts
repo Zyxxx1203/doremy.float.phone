@@ -81,7 +81,7 @@ export function exportMemoData(owner?: MemoOwner, folderId?: string): string {
 export function importMemoData(raw: string, mode: "merge"|"replace", owner?: MemoOwner): { imported:number; skipped:number } {
   const data=JSON.parse(raw); if(data?.format!=="floatphone.memo"||data.version!==1||!Array.isArray(data.notes)||!Array.isArray(data.folders)) throw new Error("备忘录文件格式不正确");
   if(data.notes.length>10000||data.folders.length>1000) throw new Error("文件数量超出安全限制");
-  const valid=(n:any)=>n&&typeof n.id==="string"&&n.owner&&((n.owner.type==="user")||(n.owner.type==="character"&&typeof n.owner.id==="string"))&&typeof n.title==="string"&&typeof n.content==="string";
+  const valid=(value:unknown): value is MemoNote => { if(!value||typeof value!=="object")return false; const n=value as Record<string,unknown>; const o=n.owner; if(!o||typeof o!=="object")return false; const ownerRecord=o as Record<string,unknown>; return typeof n.id==="string"&&(ownerRecord.type==="user"||(ownerRecord.type==="character"&&typeof ownerRecord.id==="string"))&&typeof n.title==="string"&&typeof n.content==="string"; };
   if(!data.notes.every(valid)) throw new Error("文件中存在无效笔记，未导入任何数据");
   const state=loadMemoState(); let imported=0,skipped=0;
   if(mode==="replace"){ state.notes=owner?state.notes.filter(n=>!sameOwner(n.owner,owner)):[]; state.folders=owner?state.folders.filter(f=>!sameOwner(f.owner,owner)):[]; if(!owner)state.themes={}; }

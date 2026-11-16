@@ -2,12 +2,12 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 import { Archive, ArrowLeft, Check, Download, FilePlus2, FolderPlus, NotebookPen, Plus, Search, Settings2, Share2, Trash2, Upload } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
-import { createMemoFolder, deleteMemoNote, exportMemoData, getMemoTheme, importMemoData, listMemoFolders, listMemoNotes, setMemoNoteShare, setMemoTheme, upsertMemoNote, type MemoNote, type MemoOwner, type MemoTheme } from "@/lib/memo-storage";
+import { createMemoFolder, deleteMemoNote, exportMemoData, getMemoTheme, importMemoData, listMemoFolders, listMemoNotes, setMemoNoteShare, setMemoTheme, upsertMemoNote, type MemoFolder, type MemoNote, type MemoOwner, type MemoTheme } from "@/lib/memo-storage";
 import "@/styles/memo.css";
 type Props={onClose:()=>void;onNotice?:(message:string)=>void};
 export function MemoApp({onClose,onNotice}:Props){
  const chars=useMemo(()=>loadCharacters().map(c=>({id:c.id,name:c.name||"角色"})),[]);
- const [owner,setOwner]=useState<MemoOwner>({type:"user"}),[notes,setNotes]=useState<MemoNote[]>([]),[folders,setFolders]=useState<any[]>([]);
+ const [owner,setOwner]=useState<MemoOwner>({type:"user"}),[notes,setNotes]=useState<MemoNote[]>([]),[folders,setFolders]=useState<MemoFolder[]>([]);
  const [selected,setSelected]=useState<string|null>(null),[query,setQuery]=useState(""),[folder,setFolder]=useState("all");
  const [editing,setEditing]=useState(false),[title,setTitle]=useState(""),[content,setContent]=useState(""),[tags,setTags]=useState(""),[showSettings,setShowSettings]=useState(false);
  const [theme,setTheme]=useState<MemoTheme>(()=>getMemoTheme({type:"user"})),[showArchived,setShowArchived]=useState(false);

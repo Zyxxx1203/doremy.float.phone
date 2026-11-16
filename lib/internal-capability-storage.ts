@@ -1337,7 +1337,7 @@ const PRIVATE_MEMO_GUIDE = [
     "创建笔记时写入具体、短小、可检索的主题内容；重要的小习惯、约定、用户明确说过不想忘记的事、待办可以分主题记录。",
     "不要把普通聊天全部抄进备忘录；不要把推测写成事实。更新或删除只允许操作你自己的笔记。用户授权的笔记仅可读取。",
     "示例：[执行动作:备忘录({\"action\":\"create\",\"title\":\"她的饮品偏好\",\"content\":\"不加冰，喜欢微糖。\",\"tags\":[\"偏好\",\"饮品\"]})]"
-].join("\\n");
+].join("\n");
 
 const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
     {
