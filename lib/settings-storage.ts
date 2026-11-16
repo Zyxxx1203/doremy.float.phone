@@ -206,6 +206,31 @@ function mergeMissingBuiltinAppPrompts(existing: PresetConfig): PresetConfig {
 }
 
 
+/** Ensure memo behavior rules exist in every selectable preset, not only the factory preset. */
+function mergeMissingPrivateMemoPrompts(existing: PresetConfig): PresetConfig {
+    const memoPrompts = createBuiltinAppPrompts().filter(prompt => prompt.identifier.startsWith("private_memo_behavior"));
+    const existingPrompts = existing.prompts ?? [];
+    const existingIds = new Set(existingPrompts.map(prompt => prompt.identifier));
+    const missing = memoPrompts.filter(prompt => !existingIds.has(prompt.identifier));
+    const prompts = existingPrompts.map(prompt => prompt.identifier === "private_memo_behavior"
+        && JSON.stringify(prompt.tags ?? []) === JSON.stringify(["memo", "tools"])
+        ? { ...prompt, tags: ["chat"] }
+        : prompt);
+    const legacyScope = existingPrompts.some(prompt => prompt.identifier === "private_memo_behavior"
+        && JSON.stringify(prompt.tags ?? []) === JSON.stringify(["memo", "tools"]));
+    if (missing.length === 0 && !legacyScope) return existing;
+
+    const order = [...(existing.prompt_order ?? [])];
+    let cursor = order.findIndex(entry => entry.identifier === "shortTermMemory" || entry.identifier === "chatHistory");
+    if (cursor < 0) cursor = order.length;
+    for (const prompt of missing) {
+        if (order.some(entry => entry.identifier === prompt.identifier)) continue;
+        order.splice(cursor, 0, { identifier: prompt.identifier, enabled: true });
+        cursor += 1;
+    }
+    return { ...existing, prompts: [...prompts, ...missing], prompt_order: order };
+}
+
 // --- Presets ──────────────────────────────────────────
 
 export function loadPresets(): PresetConfig[] {
@@ -237,11 +262,18 @@ export function loadPresets(): PresetConfig[] {
         const builtinPreset = presets.find(p => p.builtIn);
         if (builtinPreset) {
             const merged = mergeMissingBuiltinAppPrompts(builtinPreset);
-            if (merged !== builtinPreset) {
-                presets[presets.indexOf(builtinPreset)] = merged;
-                savePresets(presets);
+            if (merged !== builtinPreset) presets[presets.indexOf(builtinPreset)] = merged;
+        }
+        // 备忘录规则属于聊天能力，角色即使选择自定义预设也必须能获得正确边界。
+        let memoPromptsChanged = false;
+        for (let i = 0; i < presets.length; i += 1) {
+            const merged = mergeMissingPrivateMemoPrompts(presets[i]);
+            if (merged !== presets[i]) {
+                presets[i] = merged;
+                memoPromptsChanged = true;
             }
         }
+        if (memoPromptsChanged) savePresets(presets);
 
         return presets;
     } catch {
