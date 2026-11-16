@@ -1582,7 +1582,7 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
                 "3. 「新建备忘录」记录新主题；「修改备忘录」追加或修订旧记录。",
                 "4. 「整理待办」维护需要完成的事项；「整理档案盒」整理分类。",
                 "5. 只有确实不再需要的内容才使用「删除备忘录」。",
-            ].join("\\n"),
+            ].join("\n"),
         };
     }
     if (capability.id === NOTE_WALL_CAPABILITY_ID) {
