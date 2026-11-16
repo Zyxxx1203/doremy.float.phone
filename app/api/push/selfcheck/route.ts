@@ -180,6 +180,30 @@ export async function GET(request: Request) {
         ? "依次查：主动消息规则建了吗？订阅门控过了吗？触发时刻是否落在安静时段？"
         : undefined,
     });
+    const bridgeScans = jobs.data.filter(row => row.kind === "bridge_scan");
+    const latestBridgeScan = bridgeScans[0];
+    const bridgeScanStatus: StepStatus = !latestBridgeScan
+      ? "warn"
+      : latestBridgeScan.status === "failed"
+        ? "fail"
+        : latestBridgeScan.status === "running"
+          ? "warn"
+          : "ok";
+    steps.push({
+      key: "bridge-scan",
+      label: "现实桥云端扫描任务",
+      status: bridgeScanStatus,
+      detail: latestBridgeScan
+        ? `最近任务状态：${latestBridgeScan.status}；触发键：${latestBridgeScan.trigger_key}。`
+        : "最近 20 条任务中没有 bridge_scan 记录，尚不能确认云端扫描已被唤醒。",
+      hint: !latestBridgeScan
+        ? "触发一条现实桥事件后重新诊断；如果仍没有任务，检查原生事件上传接口与 push_jobs 写入。"
+        : latestBridgeScan.status === "failed"
+          ? "检查 push-bridge Edge Function 执行日志与任务 result_note。"
+          : latestBridgeScan.status === "running"
+            ? "任务仍在执行；若持续不结束，检查 push-bridge Worker 日志和模型请求超时。"
+            : undefined,
+    });
   }
 
   // ── ⑦ 回传箱积压 ──
