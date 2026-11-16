@@ -301,9 +301,11 @@ class CallControlService : AccessibilityService() {
             if (event.optBoolean("fallbackSent", false)) continue
             val queuedAt = event.optLong("queuedAt", 0L)
             if (queuedAt <= 0L || fallbackNow - queuedAt < 45_000L) continue
-            runCatching { NativeRealityBridge.postOfflineNotificationFallback(applicationContext, event.optString("id"), event.optString("type"), event.optString("payload")) }
-            event.put("fallbackSent", true)
-            fallbackChanged = true
+            val fallbackShown = runCatching { NativeRealityBridge.postOfflineNotificationFallback(applicationContext, event.optString("id"), event.optString("type"), event.optString("payload")) }.getOrDefault(false)
+            if (fallbackShown) {
+                event.put("fallbackSent", true)
+                fallbackChanged = true
+            }
         }
         if (fallbackChanged) {
             synchronized(pendingLock) { getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(QUEUE_KEY, events.toString()).apply() }
