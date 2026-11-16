@@ -426,15 +426,22 @@ const [realityNative, realityCallControl, realityRoute, realityPushWorker, reali
   read("../supabase/functions/push-bridge/index.ts"),
   read("../components/reality-bridge-app.tsx"),
 ]);
-assert.match(realityNative, /fun capture\(context: Context, type: String, payload: String\): Boolean/, "native event capture must report whether a local notification was actually posted");
-assert.match(realityNative, /val notified = shouldNotify && postNotification[\s\S]*?if \(notified\) notifiedAny = true/, "local acknowledgement must only be true after Android accepted the notification");
-assert.match(realityCallControl, /NativeRealityBridge\.capture\(applicationContext, event\.optString\("type"\), event\.optString\("payload"\)\)[\s\S]*?event\.put\("notifyAlreadyShown", localNotified\)/, "background app-usage events must notify locally before relying on cloud delivery");
-assert.match(realityCallControl, /\.put\("notifyAlreadyShown", event\.optBoolean\("notifyAlreadyShown", false\)\)/, "local notification acknowledgement must travel with the queued cloud event");
-assert.match(realityRoute, /notifyAlreadyShown: body\.notifyAlreadyShown === true/, "the authenticated native-event API must persist the local-notification acknowledgement");
-assert.match(realityPushWorker, /notifyAlreadyShown\?: boolean/, "cloud bridge items must retain the acknowledgement flag");
-assert.match(realityPushWorker, /notifyAlreadyShown: parsed\.notifyAlreadyShown === true/, "cloud inbox parsing must preserve the acknowledgement flag");
-assert.match(realityPushWorker, /rule\.notify && !rule\.chat\?\.requestReply && !item\.notifyAlreadyShown/, "cloud generic notifications must not duplicate a local notification");
-assert.match(realityPushWorker, /!deliveredViaWeixin && !item\.notifyAlreadyShown/, "cloud role push must not duplicate a local role-style notification");
+assert.match(realityNative, /fun postOfflineNotificationFallback\([\s\S]*?postNotification\(/, "native fallback must post notification only");
+assert.match(realityCallControl, /云端优先：上传前不在本机执行规则、设备动作或通知/, "Android background events must enter the cloud before any local fallback");
+assert.match(realityCallControl, /receipt\?id=/, "native service must poll for actual notification display receipt");
+assert.match(realityCallControl, /postOfflineNotificationFallback/, "timeout fallback must not replay full native rule execution");
+assert.match(realityPushWorker, /bridgeEventId\?: string/, "bridge push payloads must carry a stable event ID for display receipts");
+assert.match(realityPushWorker, /bridge-notify-\$\{item\.id\}.*item\.id/, "generic bridge pushes must carry the event ID");
+assert.match(realityPushWorker, /bridge-\$\{item\.id\}-\$\{rule\.id\}-\$\{index\}.*item\.id/, "role reply pushes must carry the event ID");
+assert.match(realityPushWorker, /await sendPush\(rule\.chat\.characterName[\s\S]*?item\.id\)/, "role replies remain on the cloud processing and push path");
+assert.match(realityPushWorker, /await sendPush\(`现实桥 · \$\{item\.type\}`[\s\S]*?item\.id\)/, "generic notifications remain on the cloud processing path");
+assert.match(realityUi, /请以这个角色本人的口吻，生成 15 条可直接作为 Android 系统通知正文的离线回复/, "offline reply generation must prepare character-voiced native notification text");
+assert.match(realityUi, /offlineReplies: \(rule\.offlineReplies === undefined \? defaultOfflineReplies\(rule\.matchType\) : rule\.offlineReplies\)/, "legacy rules receive defaults but intentionally emptied reply libraries stay empty");
+
+const receiptRoute = await read("../app/api/push/bridge-native-event/receipt/route.ts");
+assert.match(receiptRoute, /status: body\.status/, "receipt endpoint must persist displayed and fallback states");
+assert.match(receiptRoute, /receipt\.status === "displayed"/, "native polling must receive actual display acknowledgement");
+assert.match(realityPushWorker, /bridgeEventId/, "push worker must attach event identity to notification payload");
 assert.match(realityUi, /请以这个角色本人的口吻，生成 15 条可直接作为 Android 系统通知正文的离线回复/, "offline reply generation must prepare character-voiced native notification text");
 assert.match(realityUi, /offlineReplies: \(rule\.offlineReplies === undefined \? defaultOfflineReplies\(rule\.matchType\) : rule\.offlineReplies\)/, "legacy rules receive defaults but intentionally emptied reply libraries stay empty");
 
