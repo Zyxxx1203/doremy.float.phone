@@ -89,18 +89,21 @@ object NativeRealityBridge {
             val template = rule.optJSONObject("process")?.optString("template", "").orEmpty()
             val configuredAction = rule.optJSONObject("deviceAction")
             val selected = if (candidates.isNotEmpty()) candidates[(System.currentTimeMillis() % candidates.size).toInt()]
-                else template.ifBlank { if (configuredAction != null) "" else "我注意到：{payload}" }
+                else template
             val replyMessage = selected.replace("{payload}", payload).replace("{type}", type).take(360)
             val actionResult = configuredAction?.let { executeBackgroundDeviceAction(context, prefs, it) }.orEmpty()
             val visibleParts = listOf(actionResult, replyMessage).filter { it.isNotBlank() }
-            val message = (visibleParts.ifEmpty { listOf("规则已触发，但没有配置离线回复或可执行设备动作。") })
-                .joinToString("\n").take(500)
+            val message = visibleParts.joinToString("\n").take(500)
             val title = rule.optString("characterName").ifBlank { rule.optString("name", "现实桥") }
-            val notified = postNotification(context, title, message, now)
+            val shouldNotify = rule.optBoolean("notificationEnabled", true) && message.isNotBlank()
+            val notified = shouldNotify && postNotification(context, title, message, now)
             prefs.edit().putLong("last_run_$ruleId", now).apply()
-            record(context, event, rule.optString("name", ruleId),
-                if (notified) "已匹配；本机回复：$message；系统已接受通知提交"
-                else "已匹配；本机回复：$message；通知未显示（请检查通知权限/系统渠道）")
+            val result = when {
+                !shouldNotify -> "已匹配；未配置可显示的离线回复，跳过原始事件通知"
+                notified -> "已匹配；本机离线回复：$message；系统已接受通知提交"
+                else -> "已匹配；本机回复：$message；通知未显示（请检查通知权限/系统渠道）"
+            }
+            record(context, event, rule.optString("name", ruleId), result)
         }
         if (!matched) record(context, event, null, "未执行：没有启用且匹配的本机规则")
     }
