@@ -11,8 +11,8 @@ export function MemoApp({onClose,onNotice}:Props){
  const [selected,setSelected]=useState<string|null>(null),[query,setQuery]=useState(""),[folder,setFolder]=useState("all");
  const [editing,setEditing]=useState(false),[title,setTitle]=useState(""),[content,setContent]=useState(""),[tags,setTags]=useState(""),[showSettings,setShowSettings]=useState(false);
  const [theme,setTheme]=useState<MemoTheme>(()=>getMemoTheme({type:"user"})),[showArchived,setShowArchived]=useState(false);
- const fileRef=useRef<HTMLInputElement>(null),ownerKey=owner.type==="user"?"user":owner.id;
- const refresh=useCallback(()=>{setNotes(listMemoNotes(owner,showArchived));setFolders(listMemoFolders(owner));setTheme(getMemoTheme(owner));},[owner,showArchived]);
+ const fileRef=useRef<HTMLInputElement>(null);
+ const refresh=useCallback(()=>{setNotes(listMemoNotes(owner,true).filter(n=>showArchived?n.archived:!n.archived));setFolders(listMemoFolders(owner));setTheme(getMemoTheme(owner));},[owner,showArchived]);
  useEffect(()=>{refresh();setSelected(null);setEditing(false);setFolder("all");},[refresh]);
  const active=notes.find(n=>n.id===selected)||null;
  const visible=notes.filter(n=>(folder==="all"||n.folderId===folder)&&(!query||`${n.title} ${n.content} ${n.tags.join(" ")}`.toLowerCase().includes(query.toLowerCase())));

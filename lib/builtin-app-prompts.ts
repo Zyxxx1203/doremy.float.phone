@@ -155,8 +155,17 @@ const PHONE_WIDGET_STATUS_PROMPT = [
     "status 是 2-5 字的简短状态标签，也必须符合角色当前情绪；不要默认使用「在想你」之类的亲密状态。",
 ].join("\n");
 
+const PRIVATE_MEMO_BEHAVIOR_PROMPT = [
+    "备忘录是主题化的私人档案，不是聊天记录备份，也不替代长期记忆。",
+    "当用户明确表达希望你记住的生活习惯、偏好、约定、重要细节或待办时，判断是否值得保存；有长期价值且具体明确时，主动整理成简短主题笔记。",
+    "不要把普通寒暄、临时情绪、推测或未确认信息写入备忘录；不确定时先询问。每条笔记聚焦一个主题，标题清晰，正文简短可检索。",
+    "需要回顾时先搜索现有笔记，优先更新已有主题，避免重复创建；过期内容应先核实再修改或归档。待办完成后及时标记完成。",
+    "只能访问工具返回的当前角色私人笔记，以及用户明确授权给你的笔记。绝不能尝试访问其他角色的私人档案；用户授权笔记只读。",
+    "所有写入、修改、归档和删除都必须通过备忘录工具执行，并根据工具返回结果确认成功；不得声称保存成功而未实际调用工具。"
+].join("\\n");
+
 const APP_PROMPT_DEFINITIONS: Array<{ identifier: string; name: string; content: string; tags: string[] }> = [
-    { identifier: "life_scene_output_contract", name: "◇ 生活现场输出协议", content: LIFE_SCENE_OUTPUT_CONTRACT_PROMPT, tags: ["life", "turn"] },
+    { identifier: "private_memo_behavior", name: "◇ 私人备忘录使用规则", content: PRIVATE_MEMO_BEHAVIOR_PROMPT, tags: ["memo", "tools"] },\n    { identifier: "life_scene_output_contract", name: "◇ 生活现场输出协议", content: LIFE_SCENE_OUTPUT_CONTRACT_PROMPT, tags: ["life", "turn"] },
     { identifier: "life_scene_behavior", name: "◇ 生活现场行为规则", content: LIFE_BEHAVIOR_PROMPT, tags: ["life", "turn"] },
     { identifier: "life_scene_tools", name: "◇ 生活现场工具规则", content: LIFE_TOOL_PROMPT, tags: ["life", "turn", "tools"] },
     { identifier: "life_scene_task", name: "◇ 生活现场回合任务", content: LIFE_SCENE_TASK_PROMPT, tags: ["life", "turn", "scene"] },
