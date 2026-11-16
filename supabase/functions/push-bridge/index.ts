@@ -838,7 +838,8 @@ Deno.serve(async (req: Request) => {
           }
         }
 
-        if (rule.notify) {
+        // 角色需要回应时，只发送角色回复，不先推送原始事件。
+        if (rule.notify && !rule.chat?.requestReply) {
           await sendPush(`现实桥 · ${item.type}`, processed, `bridge-notify-${item.id}`);
         }
 
@@ -878,6 +879,16 @@ Deno.serve(async (req: Request) => {
           }
         }
 
+        // 在线角色生成失败时，用预先编辑的离线话术兜底；绝不退回原始 payload。
+        if (rule.chat?.requestReply && !replyRaw && subs.length > 0) {
+          const offlineReplies = Array.isArray(rule.offlineReplies)
+            ? rule.offlineReplies.map((line: unknown) => String(line ?? '').trim()).filter(Boolean)
+            : [];
+          if (offlineReplies.length > 0) {
+            const picked = offlineReplies[Math.floor(Math.random() * offlineReplies.length)];
+            replyRaw = picked.replaceAll('{payload}', processed).replaceAll('{type}', item.type).slice(0, 360);
+          }
+        }
         // 角色离线自主调用：回复里输出【快捷动作：名称】即按目录匹配执行，
         // 标记从正文剥离（不进聊天记录）。每次生成最多执行一个。
         // 与 push-generate 同一套标记：带参数的【快捷动作：名称({...})】也要认
