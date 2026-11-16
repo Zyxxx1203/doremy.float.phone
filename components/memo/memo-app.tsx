@@ -14,7 +14,7 @@ export function MemoApp({onClose,onNotice}:Props){
  const [theme,setTheme]=useState<MemoTheme>(()=>getMemoTheme({type:"user"})),[showArchived,setShowArchived]=useState(false);
  const fileRef=useRef<HTMLInputElement>(null);
  const refresh=useCallback(()=>{setNotes(listMemoNotes(owner,true).filter(n=>showArchived?n.archived:!n.archived));setFolders(listMemoFolders(owner));setTheme(getMemoTheme(owner));},[owner,showArchived]);
- useEffect(()=>{refresh();setSelected(null);setEditing(false);setFolder("all");},[refresh]);
+ useEffect(()=>{refresh();setSelected(null);setEditing(false);setFolder("all");setTagFilter("");},[refresh]);
  const active=notes.find(n=>n.id===selected)||null;
  const availableTags=[...new Set(notes.flatMap(n=>n.tags))].sort();
  const visible=notes.filter(n=>(folder==="all"||n.folderId===folder)&&(!query||`${n.title} ${n.content} ${n.tags.join(" ")}`.toLowerCase().includes(query.toLowerCase()))&&(!tagFilter||n.tags.includes(tagFilter)));
