@@ -122,6 +122,43 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
       result.push({ id: "site", title: "站点连通性", status: "fail", detail: "同源请求失败：" + (error instanceof Error ? error.message : String(error)), fix: "检查网络、域名和站点部署状态。" });
     }
 
+    // Notification chain: server-side checks are read-only here (probe=0 avoids sending a test notification).
+    try {
+      const response = await fetch("/api/push/selfcheck?probe=0&diag=" + Date.now(), { cache: "no-store" });
+      const data = await response.json().catch(() => ({})) as {
+        summary?: string;
+        steps?: Array<{ key?: string; label?: string; status?: string; detail?: string; hint?: string }>;
+      };
+      if (!response.ok || !Array.isArray(data.steps)) {
+        result.push({
+          id: "push-chain-selfcheck",
+          title: "通知服务端链路",
+          status: "fail",
+          detail: "服务端自检接口不可用" + (data.summary ? "：" + data.summary : "（HTTP " + response.status + "）。"),
+          fix: "检查站点部署与 /api/push/selfcheck 路由；复制完整诊断报告继续排查。",
+        });
+      } else {
+        for (const step of data.steps) {
+          const status: CheckStatus = step.status === "ok" ? "ok" : step.status === "fail" ? "fail" : "warn";
+          result.push({
+            id: "push-chain-" + String(step.key || result.length),
+            title: "通知链路 · " + String(step.label || "服务端检查"),
+            status,
+            detail: String(step.detail || data.summary || "服务端未返回详细信息。"),
+            fix: step.hint || undefined,
+          });
+        }
+      }
+    } catch (error) {
+      result.push({
+        id: "push-chain-selfcheck",
+        title: "通知服务端链路",
+        status: "fail",
+        detail: "无法调用服务端自检：" + (error instanceof Error ? error.message : String(error)),
+        fix: "检查网络、站点 API 与当前账号会话。",
+      });
+    }
+
     // Life-scene notification/reply chain: reuse the production outbox consumer so
     // diagnostics exercise the same return path instead of maintaining a parallel parser.
     try {
