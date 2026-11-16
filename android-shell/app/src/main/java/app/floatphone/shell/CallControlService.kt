@@ -276,10 +276,14 @@ class CallControlService : AccessibilityService() {
         }
         // 同一事件立即交给本机现实桥执行器；云端补传仍独立保留，Cookie/网络失败不影响本地规则。
         runCatching {
+            val hasCloudSession = runCatching {
+                CookieManager.getInstance().getCookie(MainActivity.SITE_URL).orEmpty().isNotBlank()
+            }.getOrDefault(false)
             NativeRealityBridge.capture(
                 applicationContext,
                 event.optString("type"),
                 event.optString("payload"),
+                allowNotification = !hasCloudSession,
             )
         }
     }
