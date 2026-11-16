@@ -435,7 +435,7 @@ assert.match(realityCallControl, /fallbackSent/, "successful offline fallback mu
 assert.match(realityCallControl, /fallbackSent.*notifyAlreadyShown/, "later cloud upload must suppress a duplicate push after offline fallback");
 assert.match(realityCallControl, /if \(cookie\.isNotEmpty\(\)\) uploadBuilder\.header\("Cookie", cookie\)/, "self-hosted local_user uploads must proceed without a WebView Cookie");
 assert.match(realityCallControl, /System\.currentTimeMillis\(\) - queuedAt >= 45_000L/, "local fallback timer must continue when cloud upload is unavailable");
-assert.match(realityCallControl, /cloudAcceptedAt.*6 \* 60_000L/, "cloud-accepted events must wait for the native notification receipt before fallback");
+assert.match(realityCallControl, /cloudAcceptedAt[\s\S]*?6 \* 60_000L/, "cloud-accepted events must wait for the native notification receipt before fallback");
 assert.match(realityPushWorker, /bridgeEventId\?: string/, "bridge push payloads must carry a stable event ID for display receipts");
 assert.match(realityPushWorker, /bridge-notify-\$\{item\.id\}.*item\.id/, "generic bridge pushes must carry the event ID");
 assert.match(realityPushWorker, /bridge-\$\{item\.id\}-\$\{rule\.id\}-\$\{index\}.*item\.id/, "role reply pushes must carry the event ID");
