@@ -691,7 +691,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     setLocationSaveFeedback(false);
     const legacyDescription = selectedLocation?.description ?? "";
     const legacyField = (name: string) => legacyDescription.match(new RegExp("(?:^|\\n)【" + name + "】\\s*\\n([\\s\\S]*?)(?=\\n\\n【|$)"))?.[1]?.trim() ?? "";
-    const cleanDescription = legacyDescription.replace(/\\n\\n?【(?:氛围|空间布局|可用道具)】[\\s\\S]*$/,"").trim();
+    const cleanDescription = legacyDescription.replace(/\n\n?【(?:氛围|空间布局|可用道具)】[\\s\\S]*$/,"").trim();
     setLocationDescriptionDraft(cleanDescription || legacyField("环境描写"));
     setLocationAtmosphereDraft(selectedLocation?.atmosphere || legacyField("氛围"));
     setLocationLayoutDraft(selectedLocation?.layout || legacyField("空间布局"));
@@ -2872,7 +2872,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         description: locationDescriptionDraft.trim(),
         atmosphere: locationAtmosphereDraft.trim(),
         layout: locationLayoutDraft.trim(),
-        props: locationPropsDraft.split(/[、,，;；\\n]/).map(value => value.trim()).filter(Boolean),
+        props: locationPropsDraft.split(/[、,，;；\n]/).map(value => value.trim()).filter(Boolean),
         fieldOrigins: { ...(location.fieldOrigins ?? {}), description: "user" as const, atmosphere: "user" as const, layout: "user" as const, props: "user" as const },
       }),
     };
