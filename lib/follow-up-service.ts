@@ -208,24 +208,32 @@ export function scheduleFollowUp(sessionId: string, count: number, stateValues?:
         return;
     }
     const config = loadFollowUpConfig();
+    const session = loadChatSessions().find(item => item.id === sessionId);
+    const characterId = session && !session.isGroup ? resolveSessionCharacterId(session) : undefined;
 
-    if (!stateValues || stateValues.length === 0) {
-        console.log(`[FollowUp] No state values, not scheduling.`);
-        clearFollowUpSchedule(sessionId);
-        cancelFollowUpBailout(sessionId);
-        return;
-    }
+    // 优先使用刚刚解析出的本轮状态；角色本轮没输出焦虑值时，
+    // 回退到该角色跨私聊会话的最近一次状态，避免因本轮漏字段直接丢失追发。
+    const currentAnxiety = stateValues?.find(
+        value => value.name === config.anxietyFieldName && Number.isFinite(value.value),
+    );
+    const latestCharacterValues = !currentAnxiety && characterId
+        ? getLatestCharacterStateValues(characterId)
+        : [];
+    const latestAnxiety = latestCharacterValues.find(
+        value => value.name === config.anxietyFieldName && Number.isFinite(value.value),
+    );
+    const anxietyEntry = currentAnxiety ?? latestAnxiety;
+    const anxietySource = currentAnxiety ? "current_reply" : latestAnxiety ? "latest_character_state" : "missing";
 
-    const anxietyEntry = stateValues.find(sv => sv.name === config.anxietyFieldName);
     if (!anxietyEntry) {
-        console.log(`[FollowUp] No "${config.anxietyFieldName}" field found, not scheduling.`);
+        console.log(`[FollowUp] No valid "${config.anxietyFieldName}" value for session=${sessionId}, character=${characterId ?? "unknown"}, source=missing; not scheduling.`);
         clearFollowUpSchedule(sessionId);
         cancelFollowUpBailout(sessionId);
         return;
     }
 
     if (anxietyEntry.value < config.anxietyThreshold) {
-        console.log(`[FollowUp] Anxiety ${anxietyEntry.value} < threshold ${config.anxietyThreshold}, not scheduling.`);
+        console.log(`[FollowUp] Anxiety ${anxietyEntry.value} < threshold ${config.anxietyThreshold}, source=${anxietySource}, session=${sessionId}; not scheduling.`);
         clearFollowUpSchedule(sessionId);
         cancelFollowUpBailout(sessionId);
         return;
@@ -236,7 +244,7 @@ export function scheduleFollowUp(sessionId: string, count: number, stateValues?:
     const t = range > 0 ? (anxietyEntry.value - config.anxietyThreshold) / range : 1;
     const delaySec = Math.round(config.anxietyMaxDelay + t * (config.anxietyMinDelay - config.anxietyMaxDelay));
     const fireAt = Date.now() + delaySec * 1000;
-    console.log(`[FollowUp] Anxiety-driven: value=${anxietyEntry.value}, delay=${delaySec}s, session=${sessionId}, count=${count}`);
+    console.log(`[FollowUp] Anxiety-driven: value=${anxietyEntry.value}, source=${anxietySource}, character=${characterId ?? "unknown"}, delay=${delaySec}s, session=${sessionId}, count=${count}`);
     saveFollowUpSchedule({ sessionId, fireAt, count, delaySec });
     // 离线推送兜底：把本轮追问的完整请求快照预约到服务端，App 被杀时由服务端接管
     void armFollowUpBailout(sessionId, count, delaySec, fireAt);
