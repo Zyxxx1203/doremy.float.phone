@@ -3535,6 +3535,11 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   };
   const filteredLocationCards = locationCards.filter(item => locationMatchesFilters(item.location, sceneLocationSearch));
   const filteredLibraryLocations = visibleLocations.filter(location => locationMatchesFilters(location, libraryLocationSearch));
+  const libraryLocationGroups = new Map<string, typeof filteredLibraryLocations>();
+  for (const location of filteredLibraryLocations) {
+    const key = location.folderId || "unfiled";
+    libraryLocationGroups.set(key, [...(libraryLocationGroups.get(key) ?? []), location]);
+  }
   const locationCardGroups = new Map<string, typeof filteredLocationCards>();
   for (const item of filteredLocationCards) {
     const key = item.location.folderId || "unfiled";
@@ -4091,7 +4096,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           </form>
           <div className="mt-4 space-y-3">
             {filteredLibraryLocations.length === 0 && <p className="rounded-2xl border border-dashed border-stone-300 p-6 text-center text-sm text-stone-500">没有找到符合条件的地点。</p>}
-            {filteredLibraryLocations.map(location => {
+            {Array.from(libraryLocationGroups.entries()).map(([folderId, folderLocations]) => <section key={folderId} className="space-y-2 rounded-2xl border border-stone-200/70 bg-white/35 p-2">
+              <button type="button" onClick={() => setCollapsedLocationFolders(current => ({ ...current, ["library:"+folderId]: !current["library:"+folderId] }))} className="flex w-full items-center justify-between rounded-xl bg-white/75 px-3 py-2.5 text-left text-xs font-semibold text-stone-600"><span>{locationFolderName(folderId === "unfiled" ? undefined : folderId)} · {folderLocations.length} 个地点</span><span>{collapsedLocationFolders["library:"+folderId] ? "展开 +" : "收起 −"}</span></button>
+              {!collapsedLocationFolders["library:"+folderId] && <div className="space-y-3">{folderLocations.map(location => {
               const entries = state.timeline.filter(entry => entry.locationName === location.name);
               const eventCount = state.events.filter(event => event.locationId === location.id || event.locationName === location.name).length;
               const actualPeople = characters.filter(character => state.actorStates.some(actor => actor.ownerType === "character" && actor.ownerId === character.id && actor.actualLocationId === location.id));
@@ -4103,12 +4110,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
                   <div className="mt-3 flex flex-wrap gap-1.5">{actualPeople.length ? <span className="inline-flex items-center gap-1.5 rounded-full border border-[#d7c2af] bg-[#efe1d2] px-2.5 py-1 text-[10px] text-stone-700"><Users size={11}/>{actualPeople.length} 位角色在场</span> : <span className="rounded-full bg-stone-100 px-2 py-1 text-[10px] text-stone-500">目前没有实际在场角色</span>}</div>
                   <div className="mt-3 flex items-center justify-between gap-2 text-[10px] text-stone-400"><span>生活记录 {entries.length} 条 · 事件 {eventCount} 件</span><span>{location.props?.length ?? 0} 件道具 · 查看档案 →</span></div>
                 </button>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <select aria-label={location.name+"分类"} value={location.category || "其他"} onChange={event => updateLocationOrganization(location.id,{category:event.target.value as LifeLocation["category"]})} className="min-w-0 rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs">{["住宅","商业","公共","自然","其他"].map(value=><option key={value} value={value}>{value}</option>)}</select>
-                  <select aria-label={location.name+"文件夹"} value={location.folderId || "unfiled"} onChange={event => updateLocationOrganization(location.id,{folderId:event.target.value==="unfiled"?undefined:event.target.value})} className="min-w-0 rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs"><option value="unfiled">未整理</option>{locationFolders.map(folder=><option key={folder.id} value={folder.id}>{folder.name}</option>)}</select>
-                </div>
+
               </article>;
-            })}
+            })}</div>}
+            </section>)}
           </div>
           </>}
         </section>
