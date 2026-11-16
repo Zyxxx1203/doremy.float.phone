@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getCurrentAccount } from "@/lib/server/account-auth";
 import { decryptPushJobPayload, type EncryptedPayload } from "@/lib/server/push-job-crypto";
-import { broadcastShellNotify, getOrCreatePushPayloadKey, getOrCreateVapidConfig } from "@/lib/server/push-service";
+import { broadcastShellNotify } from "@/lib/server/push-service";
 import { encodeSupabaseFilter, getSupabaseServerConfig, supabaseRestFetch } from "@/lib/server/supabase-rest";
 
 /**
@@ -106,6 +106,12 @@ export async function GET(request: Request) {
     }
   }
 
+  const pushConfig = await supabaseRestFetch<{
+    payload_key?: string | null;
+    vapid_public_key?: string | null;
+    vapid_private_key?: string | null;
+  }[]>("push_server_config?id=eq.main&select=payload_key,vapid_public_key,vapid_private_key&limit=1");
+
   // ── ④ 现实桥云端收件箱 ──
   const bridgeConfig = await supabaseRestFetch<{ cloud_config?: EncryptedPayload | null }[]>(
     `push_bridge_config?user_id=eq.${encodeSupabaseFilter(account.id)}&select=cloud_config&limit=1`,
@@ -122,7 +128,8 @@ export async function GET(request: Request) {
     });
   } else {
     try {
-      const payloadKey = await getOrCreatePushPayloadKey();
+      const payloadKey = pushConfig.ok ? String(pushConfig.data[0]?.payload_key ?? "") : "";
+      if (!payloadKey) throw new Error("push_server_config.payload_key 尚未配置。");
       const cloud = JSON.parse(decryptPushJobPayload(bridgeConfig.data[0].cloud_config!, payloadKey)) as { url?: string; key?: string };
       const cloudUrl = String(cloud.url ?? "").replace(/\/+$/, "");
       const cloudKey = String(cloud.key ?? "").trim();
@@ -192,26 +199,26 @@ export async function GET(request: Request) {
 
   // ── ⑧ Web Push 密钥自举（仅浏览器订阅依赖；Shell Realtime 不依赖 VAPID）──
   const hasWebSubscriptions = subs.ok && subs.data.some(row => !row.endpoint.startsWith(SHELL_PREFIX));
+  const hasShellSubscriptions = subs.ok && subs.data.some(row => row.endpoint.startsWith(SHELL_PREFIX));
   if (!hasWebSubscriptions) {
-    steps.push({ key: "vapid", label: "Web Push 密钥", status: "warn", detail: "当前没有浏览器 Web Push 订阅；Android Shell 通道不依赖 VAPID，本项跳过。" });
+    steps.push({
+      key: "vapid",
+      label: "Web Push 密钥",
+      status: hasShellSubscriptions ? "ok" : "warn",
+      detail: hasShellSubscriptions
+        ? "当前使用 Android Shell Realtime 通道，无浏览器 Web Push 订阅；该通道不依赖 VAPID。"
+        : "没有浏览器 Web Push 订阅；Shell 订阅也未确认，VAPID 检查跳过。",
+    });
   } else {
-    try {
-      const vapid = await getOrCreateVapidConfig();
-      steps.push({
-        key: "vapid",
-        label: "Web Push 密钥",
-        status: vapid.publicKey ? "ok" : "fail",
-        detail: vapid.publicKey ? "push_server_config 就绪。" : "未取得 VAPID 公钥。",
-      });
-    } catch (err) {
-      steps.push({
-        key: "vapid",
-        label: "Web Push 密钥",
-        status: "fail",
-        detail: `自举失败：${err instanceof Error ? err.message : String(err)}`,
-        hint: "检查 push_server_config 表是否存在（docs/Push-Supabase 建表脚本）。",
-      });
-    }
+    const vapidReady = pushConfig.ok
+      && Boolean(pushConfig.data[0]?.vapid_public_key && pushConfig.data[0]?.vapid_private_key);
+    steps.push({
+      key: "vapid",
+      label: "Web Push 密钥",
+      status: vapidReady ? "ok" : "fail",
+      detail: vapidReady ? "push_server_config 中的 VAPID 公私钥已配置。" : "未读取到完整 VAPID 公私钥。",
+      hint: vapidReady ? undefined : "检查 push_server_config 表及 VAPID 密钥配置。",
+    });
   }
 
   // ── ⑨ 真发一条广播：服务端 → 壳长连接 ──
