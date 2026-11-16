@@ -20,7 +20,7 @@ import {
 } from "./chat-storage";
 import type { ChatChannel, ChatMessage, StateValue } from "./chat-storage";
 import { generateChatCompletion, flattenCompletionResult } from "./chat-engine";
-import { armFollowUpBailout, armIdleReconnectBailout, cancelBailoutKey, cancelBailoutPrefix, cancelFollowUpBailout, isCharacterCoPresentInLifeScene, startBailoutHeartbeat } from "./push-bailout-client";
+import { armFollowUpBailout, armIdleReconnectBailout, cancelBailoutKey, cancelBailoutPrefix, cancelFollowUpBailout, startBailoutHeartbeat } from "./push-bailout-client";
 import { hasAccountPushSubscription, isWithinPushQuietHours } from "./push-client";
 import {
     IDLE_RECONNECT_MAX_CONSECUTIVE,
@@ -495,7 +495,7 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
         const session = sessions.find(s => s.id === sched.sessionId);
         if (!session) return;
         const characterId = resolveSessionCharacterId(session);
-        if (!characterId || isCharacterCoPresentInLifeScene(characterId)) return;
+        if (!characterId) return;
         turn = beginTurn({ kind: "followup", characterId, sessionId: session.id });
         if (!turn) return;
 
@@ -701,10 +701,6 @@ async function fireIdleReconnect(rule: IdleReconnectRule, lastUserAt: number) {
             void cancelBailoutPrefix(`idle:${rule.id}:`);
             return;
         }
-        if (isCharacterCoPresentInLifeScene(rule.characterId)) {
-            void cancelBailoutPrefix(`idle:${rule.id}:`);
-            return;
-        }
         turn = beginTurn({ kind: "idle_reconnect", characterId: rule.characterId, sessionId: session.id });
         if (!turn) return;
 
@@ -799,10 +795,6 @@ async function fireTimedWake(sched: TimedWakeSchedule) {
             void cancelBailoutKey(`timedwake:${sched.id}`);
             return;
         }
-        if (isCharacterCoPresentInLifeScene(sched.characterId)) {
-            void cancelBailoutKey(`timedwake:${sched.id}`);
-            return;
-        }
         turn = beginTurn({ kind: "timed_wake", characterId: sched.characterId, sessionId: session.id });
         if (!turn) return;
 
@@ -891,7 +883,6 @@ async function fireMenstrualPeriodCare(input: {
         const session = sessions.find(s => s.id === input.sessionId);
         if (!session || session.isGroup || resolveSessionCharacterId(session) !== input.characterId) return;
         if (hasMenstrualPeriodCareTriggered(input.characterId, input.event.cycleKey)) return;
-        if (isCharacterCoPresentInLifeScene(input.characterId)) return;
         turn = beginTurn({ kind: "period_care", characterId: input.characterId, sessionId: session.id });
         if (!turn) return;
 
