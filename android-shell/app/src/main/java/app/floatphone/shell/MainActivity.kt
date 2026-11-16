@@ -1725,6 +1725,32 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         fun getNativeRealityBridgeLog(): String =
             NativeRealityBridge.recentLog(this@MainActivity)
 
+        /** 原生后台事件队列状态；只返回计数和时间，不暴露事件正文。 */
+        @JavascriptInterface
+        fun getNativePerceptionDiagnostics(): String = try {
+            val prefs = getSharedPreferences("native_background_perception", Context.MODE_PRIVATE)
+            val queue = org.json.JSONArray(prefs.getString("pending_events", "[]") ?: "[]")
+            var cloudAcceptedCount = 0
+            var fallbackSentCount = 0
+            var oldestQueuedAt = 0L
+            for (i in 0 until queue.length()) {
+                val event = queue.optJSONObject(i) ?: continue
+                if (event.optBoolean("cloudAccepted", false)) cloudAcceptedCount += 1
+                if (event.optBoolean("fallbackSent", false)) fallbackSentCount += 1
+                val queuedAt = event.optLong("queuedAt", 0L)
+                if (queuedAt > 0L && (oldestQueuedAt == 0L || queuedAt < oldestQueuedAt)) oldestQueuedAt = queuedAt
+            }
+            org.json.JSONObject()
+                .put("serviceConnected", CallControlService.connected)
+                .put("pendingCount", queue.length())
+                .put("cloudAcceptedCount", cloudAcceptedCount)
+                .put("fallbackSentCount", fallbackSentCount)
+                .put("oldestQueuedAt", oldestQueuedAt)
+                .toString()
+        } catch (error: Throwable) {
+            org.json.JSONObject().put("error", error.javaClass.simpleName + ": " + (error.message ?: "unknown")).toString()
+        }
+
         /** 原生无障碍服务是否支持独立后台停留计时（供网页避免重复触发）。 */
         @JavascriptInterface
         fun supportsBackgroundDwellTracking(): Boolean = true
