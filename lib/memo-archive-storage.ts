@@ -35,7 +35,9 @@ export async function importMemoArchive(owner:MemoOwner,payload:unknown,mode:"me
     if(raw.folderId!==null&&raw.folderId!==undefined&&typeof raw.folderId!=="string")throw Error("备忘录所属档案盒无效");
     if(typeof raw.folderId==="string"&&!folderIds.has(raw.folderId))throw Error("备份中存在不存在的档案盒引用");
     if(!Array.isArray(raw.tags)||raw.tags.length>8||!Array.isArray(raw.todos)||raw.todos.length>100)throw Error("备忘录标签或待办数据无效");
-    notes.push({...raw,owner,sharedWith:[]} as unknown as MemoNote);
+    if(typeof raw.pinned!=="boolean"||typeof raw.archived!=="boolean"||!Array.isArray(raw.sharedWith)||raw.sharedWith.some(x=>typeof x!=="string"))throw Error("备忘录状态或分享权限无效");
+    if(raw.tags.some(x=>typeof x!=="string")||raw.todos.some(x=>!isRecord(x)||typeof x.id!=="string"||typeof x.text!=="string"||typeof x.done!=="boolean"||typeof x.createdAt!=="number"))throw Error("备忘录标签或待办内容无效");
+    notes.push({...raw,owner,sharedWith:owner.type==="user"?raw.sharedWith as string[]:[]} as unknown as MemoNote);
   }
   const d=database();
   await d.transaction("rw",d.folders,d.notes,async()=>{
