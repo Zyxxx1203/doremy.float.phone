@@ -25,7 +25,7 @@ import { executeCustomAppToolCall } from "./custom-app-tool-runtime";
 import { executeLifeToolCall } from "./life/life-tools";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "./life/life-storage";
 import { characterWorkspace, agentComputerRequest, isAgentComputerConfigured } from "./agent-computer";
-import { AGENT_COMPUTER_CAPABILITY_ID, CHECK_IN_REQUEST_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, DEVICE_ACTION_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, PHOTO_WALL_CAPABILITY_ID, PERCEPTION_READ_CAPABILITY_ID, PHONE_WIDGET_CAPABILITY_ID, REALITY_BRIDGE_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, SYSTEM_CALENDAR_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
+import { MEMO_CAPABILITY_ID, AGENT_COMPUTER_CAPABILITY_ID, CHECK_IN_REQUEST_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, DEVICE_ACTION_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, PHOTO_WALL_CAPABILITY_ID, PERCEPTION_READ_CAPABILITY_ID, PHONE_WIDGET_CAPABILITY_ID, REALITY_BRIDGE_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, SYSTEM_CALENDAR_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
 import { createPhotoWallId, loadPhotoWallState, savePhotoWallState, type PhotoWallDoodle, type PhotoWallCreationRecord, type PhotoWallPhoto } from "./photo-wall-storage";
 import { generateImageFromConfiguredApi } from "./image-generation-service";
 import {
@@ -863,6 +863,7 @@ function normalizeInternalToolResult(result: ToolResult): ToolResult {
 }
 
 async function executeInternalTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult | null> {
+    if (["翻看备忘录","阅读备忘录","新建备忘录","修改备忘录","整理待办","整理档案盒","翻阅归档","删除备忘录"].includes(call.name)) return executeMemoTool(call, context);
     if (isNoteWallToolName(call.name)) return executeNoteWallTool(call, context);
     if (isPhotoWallToolName(call.name)) return executePhotoWallTool(call, context);
     if (isMusicControlToolName(call.name)) return executeMusicControlTool(call, context);
@@ -899,6 +900,71 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     }
 
     return executeMemoryWriteTool(call.args, capability, context);
+}
+
+async function executeMemoTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
+    const capability = getInternalCapability(MEMO_CAPABILITY_ID);
+    if (!capability || !capability.enabled || capability.mode === "off") return { name: call.name, success: false, error: "备忘录能力未启用" };
+    if (context?.appId !== "chat" || !context.characterId) return { name: call.name, success: false, error: "备忘录工具仅允许在一对一私聊中使用" };
+    const owner = { type: "character" as const, id: context.characterId };
+    try {
+        const memo = await import("./memo-archive-storage");
+        const own = await memo.loadMemoArchive(owner, true);
+        const shared = await memo.readSharedMemoNotes(context.characterId);
+        const all = [...own.notes.filter(n => !n.deletedAt), ...shared];
+        const noteId = String(call.args?.noteId ?? "");
+        if (call.name === "翻看备忘录") {
+            const q = String(call.args?.query ?? "").trim().toLowerCase();
+            const limit = Math.max(1, Math.min(30, Number(call.args?.limit) || 12));
+            const rows = all.filter(n => !q || (n.title + n.body + n.tags.join(" ")).toLowerCase().includes(q)).slice(0, limit);
+            return { name: call.name, success: true, data: rows.length ? rows.map(n => `noteId=${n.id}；标题=${n.title}；摘要=${n.body.slice(0,100)}；标签=${n.tags.join("、")}；来源=${n.owner.type==="user"?"用户分享（只读）":"我的档案"}`).join("\n") : "没有找到相关备忘录。" };
+        }
+        if (call.name === "阅读备忘录") {
+            const n = all.find(x => x.id === noteId); if (!n) return { name: call.name, success: false, error: "备忘录不存在或未向你分享" };
+            return { name: call.name, success: true, data: `标题：${n.title}\n正文：\n${n.body}\n待办：\n${n.todos.map(t=>(t.done?"[x] ":"[ ] ")+t.text).join("\n")}` };
+        }
+        if (call.name === "新建备忘录") {
+            const title = String(call.args?.title ?? "").trim(), body = String(call.args?.body ?? "");
+            if (!title || !body) return { name: call.name, success: false, error: "新建备忘录需要 title 和 body" };
+            const duplicate = own.notes.find(n => !n.deletedAt && n.title.trim().toLowerCase() === title.toLowerCase());
+            if (duplicate) return { name: call.name, success: false, error: `已存在同名备忘录 noteId=${duplicate.id}，请先阅读或修改，不要重复创建。` };
+            const n = await memo.saveMemoNote(owner, { title, body, tags: Array.isArray(call.args?.tags) ? call.args.tags.map(String) : [] });
+            return { name: call.name, success: true, data: `已创建备忘录：${n.title}（noteId=${n.id}）` };
+        }
+        if (call.name === "修改备忘录") {
+            const n = own.notes.find(x => x.id === noteId && !x.deletedAt); if (!n) return { name: call.name, success: false, error: "只能修改自己的备忘录；用户分享内容只读。" };
+            const nextBody = call.args?.body === undefined ? n.body : call.args?.append === true ? n.body + "\n" + String(call.args.body) : String(call.args.body);
+            const updated = await memo.saveMemoNote(owner, { ...n, title: call.args?.title === undefined ? n.title : String(call.args.title), body: nextBody });
+            return { name: call.name, success: true, data: `已更新：${updated.title}` };
+        }
+        if (call.name === "整理待办") {
+            const n = own.notes.find(x => x.id === noteId && !x.deletedAt); if (!n) return { name: call.name, success: false, error: "只能整理自己的备忘录待办。" };
+            let todos = [...n.todos];
+            if (call.args?.text) todos.push({ id: crypto.randomUUID(), text: String(call.args.text).slice(0,200), done: false, createdAt: Date.now() });
+            if (call.args?.todoId) todos = todos.map(t => t.id === call.args.todoId ? { ...t, done: call.args?.done !== false, completedAt: call.args?.done === false ? undefined : Date.now() } : t);
+            await memo.saveMemoNote(owner, { ...n, todos });
+            return { name: call.name, success: true, data: `待办已整理。未完成 ${todos.filter(t=>!t.done).length} 项。` };
+        }
+        if (call.name === "整理档案盒") {
+            if (call.args?.action === "rename" && call.args?.folderId) {
+                await memo.updateMemoFolder(String(call.args.folderId), owner, { name: String(call.args.name ?? "") });
+                return { name: call.name, success: true, data: "档案盒已重命名。" };
+            }
+            const folder = await memo.createMemoFolder(owner, String(call.args?.name ?? ""));
+            return { name: call.name, success: true, data: `已创建档案盒 ${folder.name}（folderId=${folder.id}）` };
+        }
+        if (call.name === "翻阅归档") {
+            const rows = own.notes.filter(n => n.archived && !n.deletedAt).slice(0, Math.max(1, Math.min(30, Number(call.args?.limit)||12)));
+            return { name: call.name, success: true, data: rows.map(n=>`noteId=${n.id}；${n.title}；${n.body.slice(0,100)}`).join("\n") || "暂无归档内容。" };
+        }
+        if (call.name === "删除备忘录") {
+            await memo.moveMemoToRecycleBin(noteId, owner);
+            return { name: call.name, success: true, data: "已移入回收站，可在私人档案室恢复或永久删除。" };
+        }
+        return { name: call.name, success: false, error: "未知备忘录动作" };
+    } catch (error) {
+        return { name: call.name, success: false, error: error instanceof Error ? error.message : String(error) };
+    }
 }
 
 /**
