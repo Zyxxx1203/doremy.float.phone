@@ -275,7 +275,7 @@ class PushService : Service() {
                 val cookie = CookieManager.getInstance().getCookie(MainActivity.SITE_URL).orEmpty()
                 val body = JSONObject()
                     .put("eventId", eventId)
-                    .put("status", "displayed")
+                    .put("status", "posted")
                     .toString()
                     .toRequestBody("application/json; charset=utf-8".toMediaType())
                 val builder = Request.Builder()
