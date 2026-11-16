@@ -55,3 +55,19 @@ export async function importMemoArchive(owner:MemoOwner,payload:unknown,mode:"me
     }
   });
 }
+
+/** Compact, ACL-filtered memo context for the owning character's 1:1 chat only. */
+export async function buildMemoPromptDigest(characterId: string, maxChars = 850): Promise<string> {
+  const own = await loadMemoArchive({ type: "character", id: characterId });
+  const shared = await readSharedMemoNotes(characterId);
+  const candidates = [...own.notes.filter(note => !note.archived && !note.deletedAt), ...shared.filter(note => !note.archived && !note.deletedAt)];
+  const ranked = candidates.sort((a, b) => Number(b.pinned) - Number(a.pinned) || Number(b.todos.some(todo => !todo.done)) - Number(a.todos.some(todo => !todo.done)) || b.updatedAt - a.updatedAt).slice(0, 5);
+  if (!ranked.length) return "";
+  let digest = ranked.map(note => {
+    const source = note.owner.type === "user" ? "用户明确分享（只读）" : "我的私人档案";
+    const todos = note.todos.filter(todo => !todo.done).slice(0, 3).map(todo => "待办：" + todo.text).join("；");
+    return "- [" + source + "] " + note.title + "：" + note.body.replace(/\\s+/g, " ").slice(0, 180) + (todos ? "；" + todos : "");
+  }).join("\n");
+  if (digest.length > maxChars) digest = digest.slice(0, Math.max(0, maxChars - 1)) + "…";
+  return "### 私人档案回顾（仅供当前角色参考）\n" + digest;
+}
