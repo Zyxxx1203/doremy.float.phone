@@ -97,6 +97,14 @@ assert.match(globalNoticeHost, /position: inPhoneShell \? "absolute" : "fixed"/)
 assert.match(globalNoticeHost, /maxHeight: "min\(70%, 420px\)"/);
 
 assert.match(followUpService, /loaded\.settings\.allowOnlineChatDuringSleep/);
+assert.match(followUpService, /getLatestCharacterStateValues\(characterId\)/,
+  "missing current-turn anxiety must fall back to the latest state for that same character");
+assert.match(followUpService, /value\.name === config\.anxietyFieldName && Number\.isFinite\(value\.value\)/,
+  "follow-up must ignore malformed anxiety values");
+assert.match(followUpService, /source=\$\{anxietySource\}/,
+  "follow-up diagnostics must report whether anxiety came from the current reply or character history");
+assert.match(followUpService, /const characterId = session && !session\.isGroup \? resolveSessionCharacterId\(session\) : undefined/,
+  "historical state fallback must be scoped to the private session's character");
 assert.match(app, /角色睡觉时仍正常回复线上聊天/);
 assert.match(followUpService, /appId: options\?\.appId/);
 assert.match(followUpService, /appTags: options\?\.appTags/);
