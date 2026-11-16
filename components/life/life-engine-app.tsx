@@ -218,9 +218,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const [locationNameDraft, setLocationNameDraft] = useState("");
   const [locationSaveFeedback, setLocationSaveFeedback] = useState(false);
   const [locationDescriptionDraft, setLocationDescriptionDraft] = useState("");
-  const [locationAtmosphereDraft, setLocationAtmosphereDraft] = useState("");
-  const [locationLayoutDraft, setLocationLayoutDraft] = useState("");
-  const [locationPropsDraft, setLocationPropsDraft] = useState("");
   const [backgroundUploadBusy, setBackgroundUploadBusy] = useState<"global" | "location" | null>(null);
   const [locationHabitDrafts, setLocationHabitDrafts] = useState<Record<string, string>>({});
 
@@ -690,11 +687,11 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     setLocationSaveFeedback(false);
     const legacyDescription = selectedLocation?.description ?? "";
     const legacyField = (name: string) => legacyDescription.match(new RegExp("(?:^|\\n)【" + name + "】\\s*\\n([\\s\\S]*?)(?=\\n\\n【|$)"))?.[1]?.trim() ?? "";
-    const cleanDescription = legacyDescription.replace(/\n\n?【(?:氛围|空间布局|可用道具)】[\s\S]*$/,"").trim();
-    setLocationDescriptionDraft(cleanDescription);
-    setLocationAtmosphereDraft(selectedLocation?.atmosphere || legacyField("氛围"));
-    setLocationLayoutDraft(selectedLocation?.layout || legacyField("空间布局"));
-    setLocationPropsDraft((selectedLocation?.props?.length ? selectedLocation.props : legacyField("可用道具").split(/[、,，;；\n]/).map(value => value.trim()).filter(Boolean)).join("、"));
+    const cleanDescription = legacyDescription.replace(/\\n\\n?【(?:氛围|空间布局|可用道具)】[\\s\\S]*$/,"").trim();
+    const atmosphere = selectedLocation?.atmosphere || legacyField("氛围");
+    const layout = selectedLocation?.layout || legacyField("空间布局");
+    const props = selectedLocation?.props?.length ? selectedLocation.props.join("、") : legacyField("可用道具");
+    setLocationDescriptionDraft([cleanDescription, atmosphere ? "氛围：" + atmosphere : "", layout ? "空间布局：" + layout : "", props ? "可用道具：" + props : ""].filter(Boolean).join("\\n\\n"));
     setLocationHabitDrafts(selectedLocation?.characterHabits ?? {});
   }, [selectedLocation?.id]);
 
@@ -3586,10 +3583,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     commit({ ...current, locations: current.locations.map(location => selectedLocationIds.includes(location.id) ? { ...location, folderId } : location) });
     setSelectedLocationIds([]);
     setNotice("已整理 " + selectedLocationIds.length + " 个地点。");
-  };
-  const updateLocationOrganization = (locationId: string, patch: Pick<LifeLocation, "category" | "folderId">) => {
-    const current = stateRef.current;
-    commit({ ...current, locations: current.locations.map(location => location.id === locationId ? { ...location, ...patch } : location) });
   };
   const lifeTimeline = (state.timeline ?? []).filter(entry => {
     if (entry.category === "location" || entry.category === "scene") return settings.recordLocationChanges;
