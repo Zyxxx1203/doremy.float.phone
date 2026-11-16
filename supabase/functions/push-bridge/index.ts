@@ -286,7 +286,7 @@ async function decryptPayload(payload: EncryptedPayload, serviceKey: string): Pr
 
 type JobRow = { id: string; user_id: string; trigger_key: string; kind: string };
 type SubscriptionRow = { endpoint: string; p256dh: string; auth: string };
-type BridgeItem = { id: string; type: string; payload: string; createdAt: string; scheduledRuleId?: string };
+type BridgeItem = { id: string; type: string; payload: string; createdAt: string; scheduledRuleId?: string; notifyAlreadyShown?: boolean };
 
 type ServerBridgeRule = {
   id: string;
@@ -298,6 +298,7 @@ type ServerBridgeRule = {
   timeZone?: string;
   createdAt?: string;
   process: { mode: "raw" | "template" | "ai"; template?: string };
+  offlineReplies?: string[];
   chat?: {
     characterId: string;
     sessionId: string;
@@ -423,7 +424,7 @@ function parseBridgeItem(name: string, text: string): BridgeItem | null {
     const payload = typeof rawPayload === "string"
       ? rawPayload.slice(0, 8000)
       : JSON.stringify(rawPayload ?? "").slice(0, 8000);
-    return { id: name, type, payload, createdAt: String(parsed.createdAt ?? new Date().toISOString()) };
+    return { id: name, type, payload, createdAt: String(parsed.createdAt ?? new Date().toISOString()), notifyAlreadyShown: parsed.notifyAlreadyShown === true };
   } catch {
     return null;
   }
@@ -839,7 +840,7 @@ Deno.serve(async (req: Request) => {
         }
 
         // 角色需要回应时，只发送角色回复，不先推送原始事件。
-        if (rule.notify && !rule.chat?.requestReply) {
+        if (rule.notify && !rule.chat?.requestReply && !item.notifyAlreadyShown) {
           await sendPush(`现实桥 · ${item.type}`, processed, `bridge-notify-${item.id}`);
         }
 
@@ -1103,7 +1104,7 @@ Deno.serve(async (req: Request) => {
           pushErrors.push(`outbox http ${stored.status}`);
         }
 
-        if (stored.ok && replyRaw && rule.chat && !deliveredViaWeixin) {
+        if (stored.ok && replyRaw && rule.chat && !deliveredViaWeixin && !item.notifyAlreadyShown) {
           let parts = splitResponseForPushPreview(replyRaw).slice(0, 6);
           if (parts.length === 0) parts = ["发来一条消息"];
           for (let index = 0; index < parts.length; index += 1) {
