@@ -151,7 +151,9 @@ export function LifeDiagnosticsPanel() {
     <section className="rounded-3xl border border-[var(--life-accent)]/25 bg-white/75 p-4 shadow-sm sm:p-6 lg:col-span-2">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-stone-800">诊断记录</h2>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--life-accent)]">System diagnostics</p>
+          <h2 className="mt-1 text-lg font-semibold text-stone-800">生活系统诊断记录</h2>
+          <p className="mt-1 text-xs leading-relaxed text-stone-500">汇总本机链路记录与云端常驻日程引擎故障。</p>
         </div>
 
         <div className="flex flex-wrap gap-2">
