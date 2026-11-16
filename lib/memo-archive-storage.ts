@@ -19,4 +19,39 @@ export async function permanentlyDeleteMemo(id:string,owner:MemoOwner){const n=a
 export async function setMemoShare(id:string,owner:MemoOwner,characterId:string,enabled:boolean){const n=await database().notes.get(id);if(!n||!same(n.owner,owner)||owner.type!=="user")throw Error("只有用户自己的备忘录可以分享");await database().notes.update(id,{sharedWith:enabled?[...new Set([...n.sharedWith,characterId])]:n.sharedWith.filter(x=>x!==characterId),updatedAt:stamp()});}
 export async function readSharedMemoNotes(characterId:string){return(await database().notes.toArray()).filter(n=>n.owner.type==="user"&&n.sharedWith.includes(characterId)&&!n.deletedAt);}
 export async function exportMemoArchive(owner:MemoOwner){return{schema:"floatphone.memo-archive",version:1,exportedAt:stamp(),owner,...await loadMemoArchive(owner,"all")};}
-export async function importMemoArchive(owner:MemoOwner,payload:unknown,mode:"merge"|"replace"="merge"){if(!payload||typeof payload!=="object"||(payload as any).schema!=="floatphone.memo-archive"||(payload as any).version!==1)throw Error("不支持的备份格式");const p=payload as any;if(!Array.isArray(p.folders)||!Array.isArray(p.notes))throw Error("备份结构不完整");const d=database();await d.transaction("rw",d.folders,d.notes,async()=>{if(mode==="replace"){const old=await loadMemoArchive(owner,"all");for(const n of old.notes)await d.notes.delete(n.id);for(const f of old.folders)await d.folders.delete(f.id);}for(const f of p.folders)if(f?.id&&typeof f.name==="string")await d.folders.put({...f,owner});for(const n of p.notes)if(n?.id&&typeof n.title==="string"&&typeof n.body==="string")await d.notes.put({...n,owner,sharedWith:[]});});}
+export async function importMemoArchive(owner:MemoOwner,payload:unknown,mode:"merge"|"replace"="merge"){
+  const isRecord=(value:unknown):value is Record<string,unknown>=>typeof value==="object"&&value!==null&&!Array.isArray(value);
+  if(!isRecord(payload)||payload.schema!=="floatphone.memo-archive"||payload.version!==1)throw Error("不支持的备份格式");
+  if(!Array.isArray(payload.folders)||!Array.isArray(payload.notes))throw Error("备份结构不完整");
+  const folders:MemoFolder[]=[];
+  const notes:MemoNote[]=[];
+  for(const raw of payload.folders){
+    if(!isRecord(raw)||typeof raw.id!=="string"||typeof raw.name!=="string")throw Error("档案盒数据无效");
+    folders.push({...raw,owner} as unknown as MemoFolder);
+  }
+  const folderIds=new Set(folders.map(folder=>folder.id));
+  for(const raw of payload.notes){
+    if(!isRecord(raw)||typeof raw.id!=="string"||typeof raw.title!=="string"||typeof raw.body!=="string"||raw.title.length>60||raw.body.length>20000)throw Error("备忘录数据无效");
+    if(raw.folderId!==null&&raw.folderId!==undefined&&typeof raw.folderId!=="string")throw Error("备忘录所属档案盒无效");
+    if(typeof raw.folderId==="string"&&!folderIds.has(raw.folderId))throw Error("备份中存在不存在的档案盒引用");
+    if(!Array.isArray(raw.tags)||raw.tags.length>8||!Array.isArray(raw.todos)||raw.todos.length>100)throw Error("备忘录标签或待办数据无效");
+    notes.push({...raw,owner,sharedWith:[]} as unknown as MemoNote);
+  }
+  const d=database();
+  await d.transaction("rw",d.folders,d.notes,async()=>{
+    if(mode==="replace"){
+      const oldFolders=(await d.folders.toArray()).filter(item=>same(item.owner,owner));
+      const oldNotes=(await d.notes.toArray()).filter(item=>same(item.owner,owner));
+      for(const item of oldNotes)await d.notes.delete(item.id);
+      for(const item of oldFolders)await d.folders.delete(item.id);
+    }
+    for(const folder of folders){
+      const existing=await d.folders.get(folder.id);
+      if(!existing||same(existing.owner,owner))await d.folders.put(folder);
+    }
+    for(const note of notes){
+      const existing=await d.notes.get(note.id);
+      if(!existing||same(existing.owner,owner))await d.notes.put(note);
+    }
+  });
+}
