@@ -424,7 +424,7 @@ function parseBridgeItem(name: string, text: string): BridgeItem | null {
     const payload = typeof rawPayload === "string"
       ? rawPayload.slice(0, 8000)
       : JSON.stringify(rawPayload ?? "").slice(0, 8000);
-    const id = name.replace(/^native_/, "").replace(/\.json$/i, "");
+    const id = name.startsWith("native_") ? name.slice("native_".length).replace(/\.json$/i, "") : name;
     return { id, type, payload, createdAt: String(parsed.createdAt ?? new Date().toISOString()), notifyAlreadyShown: parsed.notifyAlreadyShown === true };
   } catch {
     return null;
