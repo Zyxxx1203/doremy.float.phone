@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentAccount } from "@/lib/server/account-auth";
-import { broadcastShellNotify, getOrCreateVapidConfig } from "@/lib/server/push-service";
+import { decryptPushJobPayload, type EncryptedPayload } from "@/lib/server/push-job-crypto";
+import { broadcastShellNotify, getOrCreatePushPayloadKey, getOrCreateVapidConfig } from "@/lib/server/push-service";
 import { encodeSupabaseFilter, getSupabaseServerConfig, supabaseRestFetch } from "@/lib/server/supabase-rest";
 
 /**
@@ -105,7 +106,55 @@ export async function GET(request: Request) {
     }
   }
 
-  // ── ④ 离线任务表 ──
+  // ── ④ 现实桥云端收件箱 ──
+  const bridgeConfig = await supabaseRestFetch<{ cloud_config?: EncryptedPayload | null }[]>(
+    `push_bridge_config?user_id=eq.${encodeSupabaseFilter(account.id)}&select=cloud_config&limit=1`,
+  );
+  if (!bridgeConfig.ok) {
+    steps.push({ key: "bridge-config", label: "现实桥云端配置", status: "fail", detail: `读取失败：${bridgeConfig.error}` });
+  } else if (!bridgeConfig.data[0]?.cloud_config) {
+    steps.push({
+      key: "bridge-config",
+      label: "现实桥云端配置",
+      status: "fail",
+      detail: "当前账号没有已同步的个人云配置，原生事件无法进入现实桥。",
+      hint: "打开现实桥设置，确认个人云配置已保存并同步。",
+    });
+  } else {
+    try {
+      const payloadKey = await getOrCreatePushPayloadKey();
+      const cloud = JSON.parse(decryptPushJobPayload(bridgeConfig.data[0].cloud_config!, payloadKey)) as { url?: string; key?: string };
+      const cloudUrl = String(cloud.url ?? "").replace(/\\/+$/, "");
+      const cloudKey = String(cloud.key ?? "").trim();
+      if (!/^https:\\/\\//i.test(cloudUrl) || !cloudKey) throw new Error("个人云 URL 或访问密钥无效。");
+      const sameProject = new URL(cloudUrl).origin.toLowerCase() === new URL(supabase.url).origin.toLowerCase();
+      steps.push({
+        key: "bridge-config",
+        label: "现实桥云端配置",
+        status: sameProject ? "ok" : "warn",
+        detail: sameProject ? "个人云配置有效，且与站点环境变量指向同一个 Supabase 项目。" : "个人云配置可解密，但 Supabase 项目地址与站点环境变量不一致。",
+        hint: sameProject ? undefined : "当前部署约定使用同一个 Supabase 项目，请核对现实桥个人云 URL 与站点 SUPABASE_URL。",
+      });
+      const inboxResponse = await fetch(`${cloudUrl}/storage/v1/object/list/ai-phone-backup`, {
+        method: "POST",
+        headers: { apikey: cloudKey, Authorization: `Bearer ${cloudKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ prefix: "bridge-inbox/", limit: 5, offset: 0, sortBy: { column: "name", order: "asc" } }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!inboxResponse.ok) {
+        const detail = (await inboxResponse.text().catch(() => "")).slice(0, 180);
+        steps.push({ key: "bridge-inbox", label: "现实桥收件箱", status: "fail", detail: `个人云 Storage 返回 HTTP ${inboxResponse.status}：${detail}`, hint: "检查 ai-phone-backup 存储桶、对象读写策略和个人云密钥。" });
+      } else {
+        const objects = await inboxResponse.json().catch(() => []) as Array<{ name?: string }>;
+        steps.push({ key: "bridge-inbox", label: "现实桥收件箱", status: "ok", detail: `Storage 可访问；当前待处理对象约 ${Array.isArray(objects) ? objects.length : 0} 条（最多抽查 5 条）。` });
+      }
+    } catch (error) {
+      steps.push({ key: "bridge-config", label: "现实桥云端配置", status: "fail", detail: error instanceof Error ? error.message : String(error), hint: "重新保存现实桥个人云配置，并检查 push_server_config.payload_key 是否可用。" });
+    }
+  }
+
+  // ── ⑥ 离线任务表 ──
   const jobs = await supabaseRestFetch<{ trigger_key: string; kind: string; status: string; execute_at: string }[]>(
     `push_jobs?user_id=eq.${encodeSupabaseFilter(account.id)}&select=trigger_key,kind,status,execute_at&order=execute_at.desc&limit=20`,
   );
@@ -126,7 +175,7 @@ export async function GET(request: Request) {
     });
   }
 
-  // ── ⑤ 回传箱积压 ──
+  // ── ⑦ 回传箱积压 ──
   const outbox = await supabaseRestFetch<{ id: string }[]>(
     `push_outbox?user_id=eq.${encodeSupabaseFilter(account.id)}&consumed_at=is.null&select=id&limit=50`,
   );
@@ -141,26 +190,31 @@ export async function GET(request: Request) {
     });
   }
 
-  // ── ⑥ Web Push 密钥自举 ──
-  try {
-    const vapid = await getOrCreateVapidConfig();
-    steps.push({
-      key: "vapid",
-      label: "Web Push 密钥",
-      status: vapid.publicKey ? "ok" : "fail",
-      detail: vapid.publicKey ? "push_server_config 就绪。" : "未取得 VAPID 公钥。",
-    });
-  } catch (err) {
-    steps.push({
-      key: "vapid",
-      label: "Web Push 密钥",
-      status: "fail",
-      detail: `自举失败：${err instanceof Error ? err.message : String(err)}`,
-      hint: "检查 push_server_config 表是否存在（docs/Push-Supabase 建表脚本）。",
-    });
+  // ── ⑧ Web Push 密钥自举（仅浏览器订阅依赖；Shell Realtime 不依赖 VAPID）──
+  const hasWebSubscriptions = subs.ok && subs.data.some(row => !row.endpoint.startsWith(SHELL_PREFIX));
+  if (!hasWebSubscriptions) {
+    steps.push({ key: "vapid", label: "Web Push 密钥", status: "warn", detail: "当前没有浏览器 Web Push 订阅；Android Shell 通道不依赖 VAPID，本项跳过。" });
+  } else {
+    try {
+      const vapid = await getOrCreateVapidConfig();
+      steps.push({
+        key: "vapid",
+        label: "Web Push 密钥",
+        status: vapid.publicKey ? "ok" : "fail",
+        detail: vapid.publicKey ? "push_server_config 就绪。" : "未取得 VAPID 公钥。",
+      });
+    } catch (err) {
+      steps.push({
+        key: "vapid",
+        label: "Web Push 密钥",
+        status: "fail",
+        detail: `自举失败：${err instanceof Error ? err.message : String(err)}`,
+        hint: "检查 push_server_config 表是否存在（docs/Push-Supabase 建表脚本）。",
+      });
+    }
   }
 
-  // ── ⑦ 真发一条广播：服务端 → 壳长连接 ──
+  // ── ⑨ 真发一条广播：服务端 → 壳长连接 ──
   if (probe) {
     const sent = await broadcastShellNotify(account.id, {
       title: "链路自检",
