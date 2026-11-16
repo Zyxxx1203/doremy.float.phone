@@ -195,6 +195,9 @@ export async function armReplyBailout(params: {
     signal?: AbortSignal;
 }): Promise<ReplyBailoutHandle | null> {
     if (!bailoutEnabled()) return null;
+    // The online chat's server fallback must not race the life-scene channel for a
+    // character physically present with the player. Otherwise killing the app can
+    // produce a chat notification for a turn that belongs to the life scene.
     if (!(await hasAccountPushSubscription())) return null;
     if (params.signal?.aborted) return null;
 
@@ -335,6 +338,7 @@ export async function armFollowUpBailout(
         if (isWithinPushQuietHours(fireAt + FOLLOWUP_BAILOUT_GRACE_MS)) return; // 安静时段不打扰
         const session = loadChatSessions().find(s => s.id === sessionId);
         if (!session || session.isGroup) return; // 第一期只覆盖单聊追问
+        const characterId = resolveSessionCharacterId(session);
         // 正在通话中：不挂追问兜底。通话期间角色其实一直在说话，但系统看不到
         // 你的文字回复，会按沉默判成「对方没回」，到点生成一条主动消息弹通知——
         // 人明明在电话里聊着（用户实报）。通话本身就是最强的「在场」信号。

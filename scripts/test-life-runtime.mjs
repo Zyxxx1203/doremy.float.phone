@@ -3,13 +3,25 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
 
+// Exercise the shared location-room helpers through the runtime module, not a stub.
+
 const source = readFileSync(new URL("../lib/life/life-runtime.ts", import.meta.url), "utf8");
-const compiled = ts.transpileModule(source, {
+const engineSource = readFileSync(new URL("../lib/life/life-engine.ts", import.meta.url), "utf8");
+const compile = input => ts.transpileModule(input, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
+const engineBox = { exports: {} };
+vm.runInNewContext(compile(engineSource), {
+  module: engineBox, exports: engineBox.exports, Date, Math, console,
+}, { filename: "life-engine.cjs" });
 const moduleBox = { exports: {} };
-const sandbox = { module: moduleBox, exports: moduleBox.exports, Date, Math, console };
-vm.runInNewContext(compiled, sandbox, { filename: "life-runtime.cjs" });
+const sandbox = {
+  module: moduleBox,
+  exports: moduleBox.exports,
+  Date, Math, console,
+  require: specifier => specifier === "./life-engine" ? engineBox.exports : {},
+};
+vm.runInNewContext(compile(source), sandbox, { filename: "life-runtime.cjs" });
 const { applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getCurrentActorSchedule, insertManualLifeScheduleSlot, overlayScheduleSlotsOverFreeTime, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, syncScheduleLocationsToLibrary, synchronizeCharacterHomeSchedule, reserveCharacterLocationStay, resolveActorLocation } = moduleBox.exports;
 assert.equal(typeof generateWeeklyLifePlan, "function", "weekly planner should be exported");
 assert.equal(typeof getCurrentActorSchedule, "function", "current schedule selector should be exported");
@@ -314,8 +326,21 @@ const apState = {
 };
 const apStarted = settleActorTimelineToNow(apState, "player", "player", apNow);
 assert.equal(apStarted.events[0].status, "active");
-assert.ok(apStarted.scenes.some(scene => scene.eventId === "ap-event" && scene.status === "active"));
+assert.equal(apStarted.scenes.length, 1, "an appointment must reuse/create one location room, not a separate event room");
+assert.equal(apStarted.scenes[0].locationId, "cafe");
+assert.equal(apStarted.scenes[0].status, "paused", "scheduled events must not steal the foreground room");
+assert.equal(apStarted.scenes[0].eventId, undefined, "new location rooms must not be keyed as event scenes");
 assert.equal(apStarted.actorStates.find(actor => actor.ownerType === "player").actualLocationId, "cafe");
+
+const appointmentWithNamedLocation = {
+  ...apState,
+  events: apState.events.map(event => ({ ...event, locationId: undefined, locationName: "Cafe Alias" })),
+  locations: apState.locations.map(location => location.id === "cafe" ? { ...location, aliases: ["Cafe Alias"] } : location),
+};
+const settledNamedLocation = settleActorTimelineToNow(appointmentWithNamedLocation, "player", "player", apNow);
+assert.equal(settledNamedLocation.scenes[0].locationId, "cafe", "event location aliases must resolve to the canonical location id rather than the player's prior location");
+
+
 const apCharacterSettled = settleActorTimelineToNow(apStarted, "character", "c1", apNow);
 assert.equal(apCharacterSettled.actorStates.find(actor => actor.ownerType === "character").actualLocationId, "cafe");
 
@@ -330,10 +355,10 @@ assert.equal(
   "completed",
   "a confirmed appointment crossed entirely during catch-up should be completed, not marked missed",
 );
-assert.ok(
-  caughtUpAfterAppointment.scenes.some(scene => scene.eventId === "ap-event" && scene.status === "completed"),
-  "catch-up should retain a completed shared scene for the elapsed appointment",
-);
+assert.equal(caughtUpAfterAppointment.scenes.length, 1, "catch-up should retain one canonical location room");
+assert.equal(caughtUpAfterAppointment.scenes[0].locationId, "cafe");
+assert.equal(caughtUpAfterAppointment.scenes[0].status, "paused", "a completed event must not complete its location chat room");
+assert.equal(caughtUpAfterAppointment.scenes[0].eventId, undefined);
 assert.equal(
   caughtUpAfterAppointment.memories.length,
   1,
@@ -352,6 +377,7 @@ const existingSharedSceneState = {
     participants: [
       { ownerType: "player", ownerId: "player", activity: "喝咖啡", awarenessByActorId: {} },
       { ownerType: "character", ownerId: "c1", activity: "喝咖啡", awarenessByActorId: {} },
+      { ownerType: "character", ownerId: "c2", activity: "在店里看书", awarenessByActorId: { player: "aware" } },
     ],
     lastSettledEventIds: [],
   }],
@@ -363,7 +389,14 @@ const attachedExistingScene = settleActorTimelineToNow(
   new Date("2026-10-15T15:00:00.000Z"),
 );
 assert.equal(attachedExistingScene.scenes.length, 1, "catch-up should reuse an existing matching shared scene");
-assert.equal(attachedExistingScene.scenes[0].eventId, "ap-event", "the elapsed appointment should attach to the existing shared scene");
+assert.equal(attachedExistingScene.scenes[0].id, "scene-opened-manually", "the elapsed appointment should reuse the existing location room");
+assert.equal(attachedExistingScene.scenes[0].eventId, undefined, "legacy event identity must not partition the location room");
+assert.equal(attachedExistingScene.scenes[0].status, "active", "settling an appointment must not change the current room state");
+assert.deepEqual(
+  Array.from(attachedExistingScene.scenes[0].participants, participant => participant.ownerType + ":" + participant.ownerId),
+  ["player:player", "character:c1", "character:c2"],
+  "settling an appointment must preserve other people already in the location room",
+);
 assert.equal(attachedExistingScene.events.find(event => event.id === "ap-event")?.status, "completed");
 
 const activeAppointmentWithoutScene = {
@@ -381,10 +414,10 @@ assert.equal(
   "completed",
   "an already-active appointment that lost its scene should be recovered during catch-up",
 );
-assert.ok(
-  recoveredActiveAppointment.scenes.some(scene => scene.eventId === "ap-event" && scene.status === "completed"),
-  "catch-up should reconstruct the missing scene for an elapsed active appointment",
-);
+assert.equal(recoveredActiveAppointment.scenes.length, 1);
+assert.equal(recoveredActiveAppointment.scenes[0].locationId, "cafe");
+assert.equal(recoveredActiveAppointment.scenes[0].status, "paused");
+assert.equal(recoveredActiveAppointment.scenes[0].eventId, undefined, "recovery must create a location room, not an event room");
 
 const staleCompletedSceneState = {
   ...activeAppointmentWithoutScene,
@@ -411,7 +444,8 @@ const recoveredStaleScene = settleActorTimelineToNow(
 );
 assert.equal(recoveredStaleScene.scenes.length, 1, "recovery must reuse the event-linked scene even when its previous status was stale");
 assert.equal(recoveredStaleScene.scenes[0].id, "ap-existing-scene");
-assert.equal(recoveredStaleScene.scenes[0].status, "completed");
+assert.equal(recoveredStaleScene.scenes[0].status, "paused", "legacy completed event rooms are folded back into reusable location rooms");
+assert.equal(recoveredStaleScene.scenes[0].eventId, undefined);
 
 const staleActiveSceneState = {
   ...activeAppointmentWithoutScene,
@@ -436,10 +470,12 @@ const recoveredOngoingAppointment = settleActorTimelineToNow(
 );
 assert.equal(
   recoveredOngoingAppointment.scenes.find(scene => scene.id === "unrelated-active-scene")?.status,
-  "paused",
-  "recovering an ongoing appointment should pause a stale unrelated active scene",
+  "active",
+  "recovering an ongoing appointment must not switch the user's currently open room",
 );
-assert.ok(recoveredOngoingAppointment.scenes.some(scene => scene.eventId === "ap-event" && scene.status === "active"));
+assert.equal(recoveredOngoingAppointment.scenes.length, 2);
+assert.equal(recoveredOngoingAppointment.scenes.find(scene => scene.locationId === "cafe")?.status, "paused");
+assert.equal(recoveredOngoingAppointment.scenes.find(scene => scene.locationId === "cafe")?.eventId, undefined);
 
 const historicalAppointmentWithCurrentScene = settleActorTimelineToNow(
   staleActiveSceneState,
@@ -621,6 +657,47 @@ const temporaryLocationState = {
   actorStates: [{ ...locationState.actorStates[0], actualLocationUntil: "2026-10-15T12:00:00.000Z" }],
 };
 assert.equal(resolveActorLocation(temporaryLocationState, "character", "c-location", locationNow).id, "cafe", "an active temporary location should override the schedule");
+
+const playerRoomState = {
+  ...makeState([{
+    id: "player-next-slot",
+    ownerType: "player",
+    ownerId: "player",
+    startAt: "2026-10-15T10:00:00.000Z",
+    endAt: "2026-10-15T12:00:00.000Z",
+    title: "去公园散步",
+    kind: "habit",
+    source: "weekly-generation",
+    plannedLocationId: "park",
+    plannedLocationName: "公园",
+    updatedAt: "2026-10-15T09:00:00.000Z",
+  }]),
+  actorStates: [{
+    ownerType: "player", ownerId: "player", activity: "临时停留",
+    actualLocationId: "cafe", actualLocationName: "咖啡店",
+    actualLocationUntil: "2026-10-15T10:00:00.000Z",
+    updatedAt: "2026-10-15T09:00:00.000Z",
+  }],
+  events: [], memories: [], invitations: [],
+  scenes: [{
+    id: "stable-cafe-room", locationId: "cafe", locationName: "咖啡店",
+    startedAt: "2026-10-15T08:00:00.000Z", updatedAt: "2026-10-15T09:00:00.000Z",
+    status: "active",
+    participants: [{ ownerType: "player", ownerId: "player", activity: "聊天", awarenessByActorId: {} }],
+    lastSettledEventIds: [],
+  }],
+  timeline: [],
+  locations: [{ id: "cafe", name: "咖啡店" }, { id: "park", name: "公园" }],
+  settings: { playerDisplayName: "我", saveConfirmedEventsToMemory: true },
+};
+const settledPlayerRoom = settleActorTimelineToNow(playerRoomState, "player", "player", locationNow);
+assert.equal(settledPlayerRoom.actorStates[0].actualLocationId, "park", "expired stays must still advance the player's actual location");
+assert.equal(settledPlayerRoom.scenes[0].id, "stable-cafe-room");
+assert.equal(settledPlayerRoom.scenes[0].locationId, "cafe", "schedule settlement must never move the location room or its history");
+assert.equal(settledPlayerRoom.scenes[0].status, "active", "schedule settlement must not steal the currently open room");
+assert.equal(settledPlayerRoom.timeline.at(-1).sceneId, undefined, "a location movement record must not be attached to the old room");
+
+
 
  
 // All legacy per-actor clock records are ignored: schedule time is always wall-clock time.

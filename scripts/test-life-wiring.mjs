@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
-const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, splashAnimation, builtinPrompts, debugPromptRegistry, debugPromptPanel, watchApp, moduleDiagnostics, runtimeDiagnostics, debugStore, checkinEngine, followUpService, shortTermAssembler, lifePresence, globalNoticeHost] = await Promise.all([
+const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply, queue, push, chatStorage, nativeBridge, nativeReceiver, chatRoom, mainApp, splashAnimation, builtinPrompts, debugPromptRegistry, debugPromptPanel, watchApp, moduleDiagnostics, runtimeDiagnostics, debugStore, checkinEngine, followUpService, shortTermAssembler, lifePresence, globalNoticeHost, sceneTurnQueue, scenePrompt] = await Promise.all([
   read("../components/life/life-engine-app.tsx"),
   read("../lib/life/life-runtime.ts"),
   read("../components/life/life-observation.tsx"),
@@ -31,7 +31,23 @@ const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply,
   read("../lib/short-term-assembler.ts"),
   read("../lib/life/life-memory-bridge.ts"),
   read("../components/ui/global-notice-host.tsx"),
+  read("../lib/life/life-scene-turn-queue.ts"),
+  read("../lib/life/life-scene-prompt.ts"),
 ]);
+
+
+const updateActorLocationStart = app.indexOf("const updateActorLocation = (actor: ActorChoice, locationId: string) => {");
+const createSceneStart = app.indexOf("const performCreateScene = () => {", updateActorLocationStart);
+assert.ok(updateActorLocationStart >= 0 && createSceneStart > updateActorLocationStart, "player/character location update handler must remain identifiable");
+assert.doesNotMatch(app.slice(updateActorLocationStart, createSceneStart), /locationId:\s*location\.id/, "changing an actor actual location must not rewrite the room identity");
+assert.match(app, /const destinationParticipants = mergeLifeSceneParticipants\(/, "destination room membership must merge existing occupants with arrivals");
+assert.match(app, /findLifeSceneForLocation\(stateRef\.current\.scenes, destination\.id\)/, "entering a location must resolve its canonical room");
+assert.match(app, /useMemo\(\(\) => findCurrentLifeScene\(state\.scenes\)/, "foreground room selection must be deterministic and ignore legacy event-room priority");
+assert.match(app, /findLifeSceneForLocation\(stateRef\.current\.scenes, selectedLocation\.id\)/, "creating/reopening a location must reuse its canonical room");
+assert.doesNotMatch(runtime, /eventId: event\.id,\s*participants/, "scheduled invitations must not create event-owned chat rooms");
+assert.doesNotMatch(runtime, /locationId: nextLocationId, locationName: nextLocationName/, "schedule settlement must not rewrite the active room location");
+
+assert.match(app, /setSelectedCharacterIds\(destinationParticipants\.filter\(participant => participant\.ownerType === "character"\)/, "the UI responder selection must include the merged destination occupants");
 
 assert.match(app, /if \(settings\.autoGenerateWeeklyPlans\)\s*\{\s*next = generateWeeklyLifePlan/);
 assert.match(app, /if \(liveSettings\.autoGenerateWeeklyPlans\)/);
@@ -68,7 +84,9 @@ assert.match(debugPromptPanel, /loadWidgetConfig\(\)/);
 assert.match(debugPromptPanel, /loadBridgeRules\(\)/);
 assert.match(lifePresence, /allowOnlineChatDuringSleep/);
 assert.match(lifePresence, /onlineChatAwakeUntil/);
-assert.match(lifePresence, /20 \* 60_000/);
+assert.doesNotMatch(lifePresence, /saveVirtualLifeState|settleActorTimelineToNow/, "chat context assembly must not mutate life state");
+assert.match(lifePresence, /wakeForThisReply/, "sleep wake behavior must be derived without a storage write");
+assert.match(lifePresence, /findCurrentLifeScene\(state\.scenes\.filter\(belongsToCharacter\)\)/, "online chat presence must resolve the canonical room for that character");
 const workshopSearch = await read("../components/phone-qa-app.tsx");
 const workshopStyles = await read("../styles/qa.css");
 assert.match(workshopSearch, /pendingSearchJump/);
@@ -79,6 +97,14 @@ assert.match(globalNoticeHost, /position: inPhoneShell \? "absolute" : "fixed"/)
 assert.match(globalNoticeHost, /maxHeight: "min\(70%, 420px\)"/);
 
 assert.match(followUpService, /loaded\.settings\.allowOnlineChatDuringSleep/);
+assert.match(followUpService, /getLatestCharacterStateValues\(characterId\)/,
+  "missing current-turn anxiety must fall back to the latest state for that same character");
+assert.match(followUpService, /value\.name === config\.anxietyFieldName && Number\.isFinite\(value\.value\)/,
+  "follow-up must ignore malformed anxiety values");
+assert.match(followUpService, /source=\$\{anxietySource\}/,
+  "follow-up diagnostics must report whether anxiety came from the current reply or character history");
+assert.match(followUpService, /const characterId = session && !session\.isGroup \? resolveSessionCharacterId\(session\) : undefined/,
+  "historical state fallback must be scoped to the private session's character");
 assert.match(app, /角色睡觉时仍正常回复线上聊天/);
 assert.match(followUpService, /appId: options\?\.appId/);
 assert.match(followUpService, /appTags: options\?\.appTags/);
@@ -91,6 +117,27 @@ assert.match(moduleDiagnostics, /桌面小组件 · 网页与原生链路/);
 assert.match(moduleDiagnostics, /现实桥梁 · 感知桥诊断/);
 assert.match(runtimeDiagnostics, /<ModuleDiagnostics\s*\/>/);
 assert.match(app, /life-scene-notification-reply/);
+assert.match(app, /searchParams\.get\("sceneId"\)/, "notification deep links must select the requested scene");
+assert.match(app, /recoverPendingLifeSceneTurns\(\)/, "queued scene turns must recover after the app reloads");
+assert.match(app, /setActiveLifeSceneTurn\(pendingTurn\)/, "in-flight scene turns must be persisted before generation");
+assert.match(app, /replyToMessageId: pendingTurn\.messageId/, "scene replies must be linked to their player turn for idempotent recovery");
+assert.match(app, /item\.replyToMessageId === message\.id/, "regenerating a player message must find its exact response even when later player turns were queued");
+assert.match(app, /item\.id === targetMessage\.replyToMessageId/, "regenerating a character message must restore its matching player input");
+const regenerateStart = app.indexOf("const regenerateSceneMessage = async");
+const pushMessageStart = app.indexOf("const pushSceneMessage =", regenerateStart);
+const regenerateSource = app.slice(regenerateStart, pushMessageStart);
+assert.match(regenerateSource, /beginTurn\(\{ kind: "life_scene"/, "regeneration must use the shared turn coordinator");
+assert.match(regenerateSource, /busyRef\.current = true/, "regeneration must lock the scene composer");
+assert.match(regenerateSource, /lifeTurn\.end\(\)/, "regeneration must release its turn lease");
+assert.match(app, /buildLifeScenePromptContext\(stateRef\.current, turnScene, target\.id, pendingTurn\?\.messageId\)/, "queued turns must not see later player messages");
+assert.match(scenePrompt, /repliesByTurn/, "scene prompt history must restore each reply directly after its player turn");
+assert.match(scenePrompt, /for \(const reply of prefix\)/, "queued scene context must exclude replies generated after the queued player turn");
+assert.match(shortTermAssembler, /options\?\.includeDirectChatEntries === false/, "life prompts must honor explicit exclusion of direct chat history");
+assert.match(shortTermAssembler, /const offlineDirectChatEntries = skipDirectChatEntries\s*\?\s*\[\]/, "direct-chat exclusion must cover offline direct-message timeline entries too");
+assert.match(app, /savePendingLifeSceneTurns\(pendingSceneTurnsRef\.current\)/, "new queued scene turns must be persisted");
+assert.match(sceneTurnQueue, /life-scene-turn-queue-v1/, "scene turn queue must use a durable versioned storage key");
+assert.match(app, /focusScene\(pending\.sceneId\)/, "pending notification replies must reopen their exact scene");
+assert.match(app, /const restoredScene = findCurrentLifeScene\(normalized\.scenes\)/, "startup must restore the canonical foreground room");
 assert.match(app, /peekPendingLifeSceneReply/);
 assert.match(app, /claimPendingLifeSceneReply/);
 assert.match(app, /retryPendingLifeSceneReply/);
@@ -350,11 +397,11 @@ assert.match(app, /message\.action\?\.trim\(\)/,
   "already structured action/dialogue messages must not be parsed again");
 assert.match(app, /pendingSceneTurnsRef\.current\.push/,
   "player turns sent during generation must be queued for sequential replies");
-assert.match(app, /pendingSceneTurnsRef\.current\.shift\(\)/,
+assert.match(app, /pendingSceneTurnsRef\.current = pendingSceneTurnsRef\.current\.filter\(turn => turn\.messageId !== pendingTurn\.messageId\)/,
   "queued player turns must be drained after the current root response");
-assert.match(app, /消息已保存，但当前没有可回应的角色/,
+assert.match(app, /已保存，暂无可回应角色/,
   "player input must remain persisted even when no responder exists");
-assert.match(app, /const sceneContext = buildLifeScenePromptContext\(stateRef\.current, turnScene, target\.id\)/,
+assert.match(app, /const sceneContext = buildLifeScenePromptContext\(stateRef\.current, turnScene, target\.id, pendingTurn\?\.messageId\)/,
   "queued replies must use their original scene context");
 const composerSource = app.slice(app.indexOf('<form onSubmit={sendSceneTurn}'), app.indexOf('</form>', app.indexOf('<form onSubmit={sendSceneTurn}')));
 assert.doesNotMatch(composerSource, /<textarea[^>]*disabled=\{busy\}/,
@@ -379,5 +426,53 @@ assert.match(app, /const blob = await response\.blob\(\)/,
   "original download must use the stored media blob without recompressing it");
 assert.match(app, /sceneMessages: stateRef\.current\.sceneMessages\.filter\(message => message\.imageId !== imageId\)/,
   "deleting a gallery image must remove its chat reference without leaving a broken card");
+
+const [realityNative, realityCallControl, realityRoute, realityPushWorker, realityUi, realityPushService, realityActivity, diagnostics] = await Promise.all([
+  read("../android-shell/app/src/main/java/app/floatphone/shell/NativeRealityBridge.kt"),
+  read("../android-shell/app/src/main/java/app/floatphone/shell/CallControlService.kt"),
+  read("../app/api/push/bridge-native-event/route.ts"),
+  read("../supabase/functions/push-bridge/index.ts"),
+  read("../components/reality-bridge-app.tsx"),
+  read("../android-shell/app/src/main/java/app/floatphone/shell/PushService.kt"),
+  read("../android-shell/app/src/main/java/app/floatphone/shell/MainActivity.kt"),
+  read("../components/settings/runtime-diagnostics.tsx"),
+]);
+assert.match(realityNative, /fun postOfflineNotificationFallback\([\s\S]*?postNotification\(/, "native fallback must post notification only");
+assert.match(realityCallControl, /云端优先：上传前不在本机执行规则、设备动作或通知/, "Android background events must enter the cloud before any local fallback");
+assert.match(realityCallControl, /receipt\?id=/, "native service must poll for actual notification display receipt");
+assert.match(realityCallControl, /postOfflineNotificationFallback/, "timeout fallback must not replay full native rule execution");
+assert.match(realityCallControl, /queuedAt.*System\.currentTimeMillis\(\)/, "fallback timer must start when the native event is queued");
+assert.match(realityCallControl, /fallbackSent/, "successful offline fallback must be persisted across retries");
+assert.match(realityCallControl, /fallbackSent.*notifyAlreadyShown/, "later cloud upload must suppress a duplicate push after offline fallback");
+assert.match(realityCallControl, /if \(cookie\.isNotEmpty\(\)\) uploadBuilder\.header\("Cookie", cookie\)/, "self-hosted local_user uploads must proceed without a WebView Cookie");
+assert.match(realityCallControl, /System\.currentTimeMillis\(\) - queuedAt >= 45_000L/, "local fallback timer must continue when cloud upload is unavailable");
+assert.match(realityCallControl, /cloudAcceptedAt[\s\S]*?6 \* 60_000L/, "cloud-accepted events must wait for the native notification receipt before fallback");
+assert.match(realityPushWorker, /bridgeEventId\?: string/, "bridge push payloads must carry a stable event ID for display receipts");
+assert.match(realityPushWorker, /bridge-notify-\$\{item\.id\}.*item\.id/, "generic bridge pushes must carry the event ID");
+assert.match(realityPushWorker, /bridge-\$\{item\.id\}-\$\{rule\.id\}-\$\{index\}.*item\.id/, "role reply pushes must carry the event ID");
+assert.match(realityPushWorker, /await sendPush\(rule\.chat\.characterName[\s\S]*?item\.id\)/, "role replies remain on the cloud processing and push path");
+assert.match(realityPushWorker, /await sendPush\(`现实桥 · \$\{item\.type\}`[\s\S]*?item\.id\)/, "generic notifications remain on the cloud processing path");
+assert.match(realityUi, /请以这个角色本人的口吻，生成 15 条可直接作为 Android 系统通知正文的离线回复/, "offline reply generation must prepare character-voiced native notification text");
+assert.match(realityUi, /offlineReplies: \(rule\.offlineReplies === undefined \? defaultOfflineReplies\(rule\.matchType\) : rule\.offlineReplies\)/, "legacy rules receive defaults but intentionally emptied reply libraries stay empty");
+
+const receiptRoute = await read("../app/api/push/bridge-native-event/receipt/route.ts");
+assert.match(receiptRoute, /status: body\.status/, "receipt endpoint must persist displayed and fallback states");
+assert.match(receiptRoute, /receipt\.status === "displayed"/, "native polling must receive actual display acknowledgement");
+assert.match(realityPushWorker, /shellSubs = subs\.filter\(sub => sub\.endpoint\.startsWith\("shell:"\)\)/, "reality bridge worker must split Android Shell subscriptions from Web Push");
+assert.match(realityPushWorker, /realtime\/v1\/api\/broadcast/, "reality bridge worker must use Supabase Realtime for Android Shell");
+assert.match(realityPushWorker, /webSubs = subs\.filter\(sub => !sub\.endpoint\.startsWith\("shell:"\)\)/, "browser subscriptions must remain on the Web Push path");
+assert.match(realityPushWorker, /sendWebPushRaw\(sub, message, vapid, 3600\)/, "browser Web Push delivery must remain intact");
+assert.match(realityPushWorker, /name\.startsWith\("native_"\)[\s\S]*?replace\(/, "native event filenames must normalize back to the original event ID");
+assert.match(realityPushService, /bridgeEventId/);
+assert.match(realityPushService, /sendBridgeReceipt\(bridgeEventId\)/, "Android Shell must acknowledge native notifications after posting");
+assert.match(realityPushService, /put\("status", "posted"\)/, "native acknowledgement must describe system posting rather than human visibility");
+assert.match(realityPushService, /NotificationManagerCompat\.from\(this\)\.areNotificationsEnabled\(\)/, "Android must not acknowledge a globally disabled notification channel");
+assert.match(realityActivity, /fun getNativePerceptionDiagnostics\(\): String/, "native queue state must be available to the diagnostics page");
+assert.match(diagnostics, /getNativePerceptionDiagnostics/, "runtime diagnostics must display native upload queue state");
+assert.match(diagnostics, /api\/push\/selfcheck\?probe=0/, "automatic diagnostics must not send a test notification");
+assert.match(diagnostics, /api\/push\/selfcheck\?probe=1/, "test notification must require an explicit user action");
+assert.match(realityPushWorker, /bridgeEventId/, "push worker must attach event identity to notification payload");
+assert.match(realityUi, /请以这个角色本人的口吻，生成 15 条可直接作为 Android 系统通知正文的离线回复/, "offline reply generation must prepare character-voiced native notification text");
+assert.match(realityUi, /offlineReplies: \(rule\.offlineReplies === undefined \? defaultOfflineReplies\(rule\.matchType\) : rule\.offlineReplies\)/, "legacy rules receive defaults but intentionally emptied reply libraries stay empty");
 
 console.log("Life-system and background-enhancement wiring checks passed.");

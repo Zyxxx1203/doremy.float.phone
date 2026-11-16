@@ -7,12 +7,13 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * 本机优先的现实桥执行器：先把系统事件写入应用私有存储，再匹配本机规则。
- * 不依赖 WebView、Cookie 或云端登录态。云端同步是可选的另一条链路。
+ * 原生现实桥捕获器：保留系统广播的本机处理能力；Android 前台应用感知事件由 CallControlService 云端优先派发。
+ * 云端等待超时只调用 postOfflineNotificationFallback，不会在本机重放设备动作。
  * Android 强制停止应用后会阻止广播/任务重启应用，不能绕过系统限制。
  */
 object NativeRealityBridge {
@@ -47,7 +48,7 @@ object NativeRealityBridge {
         true
     } catch (_: Throwable) { false }
 
-    fun capture(context: Context, type: String, payload: String) {
+    fun capture(context: Context, type: String, payload: String): Boolean {
         val now = System.currentTimeMillis()
         val event = JSONObject().put("id", "local_$now").put("type", type)
             .put("payload", payload.take(1200)).put("createdAt", now)
@@ -60,10 +61,11 @@ object NativeRealityBridge {
         }
         if (!prefs.getBoolean(KEY_ENABLED, false)) {
             record(context, event, null, "未执行：现实桥总开关关闭")
-            return
+            return false
         }
         val rules = readArray(prefs.getString(KEY_RULES, "[]"))
         var matched = false
+        var notifiedAny = false
         for (i in 0 until rules.length()) {
             val rule = rules.optJSONObject(i) ?: continue
             if (!rule.optBoolean("enabled", false)) continue
@@ -89,22 +91,51 @@ object NativeRealityBridge {
             val template = rule.optJSONObject("process")?.optString("template", "").orEmpty()
             val configuredAction = rule.optJSONObject("deviceAction")
             val selected = if (candidates.isNotEmpty()) candidates[(System.currentTimeMillis() % candidates.size).toInt()]
-                else template.ifBlank { if (configuredAction != null) "" else "我注意到：{payload}" }
+                else template
             val replyMessage = selected.replace("{payload}", payload).replace("{type}", type).take(360)
             val actionResult = configuredAction?.let { executeBackgroundDeviceAction(context, prefs, it) }.orEmpty()
             val visibleParts = listOf(actionResult, replyMessage).filter { it.isNotBlank() }
-            val message = (visibleParts.ifEmpty { listOf("规则已触发，但没有配置离线回复或可执行设备动作。") })
-                .joinToString("\n").take(500)
+            val message = visibleParts.joinToString("\n").take(500)
             val title = rule.optString("characterName").ifBlank { rule.optString("name", "现实桥") }
-            val notified = postNotification(context, title, message, now)
+            val shouldNotify = rule.optBoolean("notificationEnabled", true) && message.isNotBlank()
+            val notified = shouldNotify && postNotification(context, title, message, now)
+            if (notified) notifiedAny = true
             prefs.edit().putLong("last_run_$ruleId", now).apply()
-            record(context, event, rule.optString("name", ruleId),
-                if (notified) "已匹配；本机回复：$message；系统已接受通知提交"
-                else "已匹配；本机回复：$message；通知未显示（请检查通知权限/系统渠道）")
+            val result = when {
+                !shouldNotify -> "已匹配；未配置可显示的离线回复，跳过原始事件通知"
+                notified -> "已匹配；本机离线回复：$message；系统已接受通知提交"
+                else -> "已匹配；本机回复：$message；通知未显示（请检查通知权限/系统渠道）"
+            }
+            record(context, event, rule.optString("name", ruleId), result)
         }
         if (!matched) record(context, event, null, "未执行：没有启用且匹配的本机规则")
+        return notifiedAny
     }
 
+    /** Cloud timeout fallback: notification only; never replays rule/device side effects. */
+    fun postOfflineNotificationFallback(context: Context, eventId: String, type: String, payload: String): Boolean {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(KEY_ENABLED, false)) return false
+        val rules = readArray(prefs.getString(KEY_RULES, "[]"))
+        for (i in 0 until rules.length()) {
+            val rule = rules.optJSONObject(i) ?: continue
+            if (!rule.optBoolean("enabled", false)) continue
+            val matchType = rule.optString("matchType", "").trim()
+            if (matchType != "*" && !matchType.equals(type, ignoreCase = true)) continue
+            val filter = rule.optString("payloadFilter", "").trim()
+            if (filter.isNotEmpty() && filter.split("|", ",").none { it.trim().isNotEmpty() && payload.contains(it.trim(), ignoreCase = true) }) continue
+            val replies = rule.optJSONArray("offlineReplies") ?: JSONArray()
+            val candidates = (0 until replies.length()).mapNotNull { replies.optString(it).trim().takeIf(String::isNotBlank) }
+            val template = rule.optJSONObject("process")?.optString("template", "").orEmpty()
+            val body = (candidates.firstOrNull() ?: template).replace("{payload}", payload).replace("{type}", type).take(360)
+            if (body.isBlank() || !rule.optBoolean("notificationEnabled", true)) continue
+            val title = rule.optString("characterName").ifBlank { rule.optString("name", "现实桥") }
+            val shown = postNotification(context, title, body, eventId.hashCode().toLong())
+            if (shown) record(context, JSONObject().put("id", eventId).put("type", type).put("payload", payload), rule.optString("name"), "云端等待超时；纯通知离线兜底")
+            return shown
+        }
+        return false
+    }
     /** Background rules use an explicit user-controlled allow-list and only native-supported actions. */
     private fun executeBackgroundDeviceAction(context: Context, prefs: android.content.SharedPreferences, action: JSONObject): String {
         if (!prefs.getBoolean(KEY_DEVICE_ACTIONS_ENABLED, false)) return "未执行设备动作：设置中的「操作设备」总开关未开启"
@@ -130,16 +161,22 @@ object NativeRealityBridge {
             manager.createNotificationChannel(NotificationChannel(
                 CHANNEL, "现实桥 · 本机触发", NotificationManager.IMPORTANCE_DEFAULT))
         }
-        val openApp = PendingIntent.getActivity(context, 7101,
-            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val notification = NotificationCompat.Builder(context, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle(title.take(80)).setContentText(body.take(180))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body.take(500)))
-            .setContentIntent(openApp).setAutoCancel(true).build()
-        manager.notify((id % Int.MAX_VALUE).toInt(), notification)
-        true
+        val channelDisabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+            && manager.getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE
+        if (channelDisabled || !NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            false
+        } else {
+            val openApp = PendingIntent.getActivity(context, 7101,
+                Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val notification = NotificationCompat.Builder(context, CHANNEL)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(title.take(80)).setContentText(body.take(180))
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body.take(500)))
+                .setContentIntent(openApp).setAutoCancel(true).build()
+            manager.notify((id % Int.MAX_VALUE).toInt(), notification)
+            true
+        }
     } catch (_: Throwable) { false }
 
     private fun record(context: Context, event: JSONObject, rule: String?, result: String) {

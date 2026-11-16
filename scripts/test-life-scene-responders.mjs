@@ -12,7 +12,7 @@ vm.runInNewContext(compiled, {
   module: moduleBox, exports: moduleBox.exports,
   console, JSON, Set, Map, Array, String, Number, Boolean, RegExp, Date, Math,
 }, { filename: "life-engine.cjs" });
-const { buildLifeSceneResponderQueue } = moduleBox.exports;
+const { buildLifeSceneResponderQueue, findCurrentLifeScene, findLifeSceneForLocation, mergeLifeSceneParticipants } = moduleBox.exports;
 
 assert.deepEqual(
   Array.from(buildLifeSceneResponderQueue({
@@ -55,4 +55,43 @@ assert.deepEqual(
   "non-present characters are never queued",
 );
 
-console.log("Life scene responder queue tests passed.");
+
+const foregroundRoom = findCurrentLifeScene([
+  { id: "legacy-active", locationId: "cafe", locationName: "咖啡店", startedAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-11-16T00:00:00.000Z", status: "active", eventId: "old-event", participants: [], lastSettledEventIds: [] },
+  { id: "location-active", locationId: "home", locationName: "家", startedAt: "2026-01-02T00:00:00.000Z", updatedAt: "2026-11-15T00:00:00.000Z", status: "paused", participants: [], lastSettledEventIds: [] },
+]);
+assert.equal(foregroundRoom.id, "location-active", "legacy event-linked scenes must not win foreground selection over a location room");
+assert.equal(findCurrentLifeScene([{ id: "completed-room", locationId: "cafe", locationName: "咖啡店", startedAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-11-16T00:00:00.000Z", status: "completed", participants: [], lastSettledEventIds: [] }]), undefined, "completed rooms must not reopen as the foreground scene");
+
+const canonicalRoom = findLifeSceneForLocation([
+  { id: "legacy-event-room", locationId: "cafe", locationName: "咖啡店", startedAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-11-15T00:00:00.000Z", status: "active", eventId: "old-event", participants: [], lastSettledEventIds: [] },
+  { id: "canonical-location-room", locationId: "cafe", locationName: "咖啡店", startedAt: "2026-01-02T00:00:00.000Z", updatedAt: "2026-11-10T00:00:00.000Z", status: "paused", participants: [], lastSettledEventIds: [] },
+], "cafe");
+assert.equal(canonicalRoom.id, "canonical-location-room", "a normal location room must win over a newer legacy event-linked room");
+const distinctSameNameRoom = findLifeSceneForLocation([
+  { id: "same-name-other-location", locationId: "cafe-branch", locationName: "咖啡店", startedAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-11-16T00:00:00.000Z", status: "active", participants: [], lastSettledEventIds: [] },
+  { id: "correct-location-room", locationId: "cafe", locationName: "咖啡店", startedAt: "2026-01-02T00:00:00.000Z", updatedAt: "2026-11-10T00:00:00.000Z", status: "paused", participants: [], lastSettledEventIds: [] },
+], "cafe", "咖啡店");
+assert.equal(distinctSameNameRoom.id, "correct-location-room", "same-named but distinct locations must never share a chat room");
+
+const mergedParticipants = mergeLifeSceneParticipants(
+  [
+    { ownerType: "player", ownerId: "player", activity: "在咖啡店", awarenessByActorId: { a: "aware" } },
+    { ownerType: "character", ownerId: "a", activity: "正在看书", awarenessByActorId: { player: "aware" } },
+    { ownerType: "character", ownerId: "b", activity: "正在喝咖啡", awarenessByActorId: { player: "suspects" } },
+  ],
+  [
+    { ownerType: "player", ownerId: "player", activity: "刚来到这里", awarenessByActorId: {} },
+    { ownerType: "character", ownerId: "a", activity: "正在看书", awarenessByActorId: { player: "aware", b: "aware" } },
+    { ownerType: "character", ownerId: "c", activity: "刚刚同行到达", awarenessByActorId: { player: "aware" } },
+  ],
+);
+assert.deepEqual(
+  Array.from(mergedParticipants, item => item.ownerType + ":" + item.ownerId),
+  ["player:player", "character:a", "character:b", "character:c"],
+  "destination room members are retained and newly arrived companions are appended exactly once",
+);
+assert.equal(mergedParticipants.find(item => item.ownerId === "player").activity, "刚来到这里");
+assert.equal(mergedParticipants.find(item => item.ownerId === "a").awarenessByActorId.b, "aware");
+
+console.log("Life scene responder queue and destination participant merge tests passed.");

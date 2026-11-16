@@ -5,7 +5,7 @@ import { sendShellNotification } from "@/lib/shell-notify";
 import { flushSync } from "react-dom";
 import {
   ArrowLeft, CalendarDays, Coffee, Heart, MapPin, MessagesSquare, Eye,
-  ChevronDown, Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Users, X, Pencil, Trash2, Upload, Wallpaper,
+  ChevronDown, Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Users, X, Pencil, Trash2, Upload, Wallpaper, Search,
 } from "lucide-react";
 import type { Character } from "@/lib/character-types";
 import { loadCharacters } from "@/lib/character-storage";
@@ -32,11 +32,12 @@ import { applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeekly
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { describeLifeOutputIssues, parseLifeOutput, validateLifeOutput, type LifeOutputIssue } from "@/lib/life/life-output";
-import { buildLifeSceneResponderQueue, evaluateEncounterAwareness } from "@/lib/life/life-engine";
+import { buildLifeSceneResponderQueue, evaluateEncounterAwareness, findCurrentLifeScene, findLifeSceneForLocation, mergeLifeSceneParticipants } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
 import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts } from "@/lib/push-bailout-client";
 import { readLifeProactiveStatus } from "@/lib/life/life-proactive-scheduler";
 import { setLifeSceneForegroundLease } from "@/lib/life/life-scheduler-coordinator";
+import { clearActiveLifeSceneTurn, recoverPendingLifeSceneTurns, savePendingLifeSceneTurns, setActiveLifeSceneTurn, type PendingLifeSceneTurn } from "@/lib/life/life-scene-turn-queue";
 
 import { cancelFollowUp } from "@/lib/follow-up-service";
 import { beginTurn } from "@/lib/turn-coordinator";
@@ -161,8 +162,8 @@ async function compressLifeBackground(file: File): Promise<string> {
   }
 }
 
-function SectionTitle({ eyebrow, title, note }: { eyebrow: string; title: string; note?: string }) {
-  return <div className="mb-4"><p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#a4775d]">{eyebrow}</p><h2 className="mt-1 text-xl font-semibold tracking-tight text-stone-800">{title}</h2>{note && <p className="mt-1 text-sm leading-relaxed text-stone-500">{note}</p>}</div>;
+function SectionTitle({ title, eyebrow, note }: { title: string; eyebrow?: string; note?: string }) {
+  return <div className="mb-4">{eyebrow && <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#b88768]">{eyebrow}</p>}<h2 className="text-xl font-semibold tracking-tight text-stone-800">{title}</h2>{note && <p className="mt-1 text-xs leading-relaxed text-stone-500">{note}</p>}</div>;
 }
 
 export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () => void; initialCharacterId?: string } = {}) {
@@ -179,10 +180,20 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const [tab, setTab] = useState<Tab>("home");
   const [sceneView, setSceneView] = useState(false);
   const [locationDossierOpen, setLocationDossierOpen] = useState(false);
-  const [locationSearch, setLocationSearch] = useState("");
-  const [locationCategoryFilter, setLocationCategoryFilter] = useState("all");
-  const [locationFolderFilter, setLocationFolderFilter] = useState("all");
+  const [sceneLocationSearch, setSceneLocationSearch] = useState("");
+  const [libraryLocationSearch, setLibraryLocationSearch] = useState("");
+  const [sceneLocationSearchOpen, setSceneLocationSearchOpen] = useState(false);
+  const [libraryLocationSearchOpen, setLibraryLocationSearchOpen] = useState(false);
+  const [sceneLocationFolderFilter, setSceneLocationFolderFilter] = useState("all");
+  const [libraryLocationFolderFilter, setLibraryLocationFolderFilter] = useState("all");
   const [collapsedLocationFolders, setCollapsedLocationFolders] = useState<Record<string, boolean>>({});
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [folderNameDraft, setFolderNameDraft] = useState("");
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [folderDeleteConfirmId, setFolderDeleteConfirmId] = useState<string | null>(null);
+  const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
+  const [locationSelectionMode, setLocationSelectionMode] = useState(false);
+  const [batchFolderId, setBatchFolderId] = useState("unfiled");
   const [locationStatsTick, setLocationStatsTick] = useState(0);
   useEffect(() => { const timer = window.setInterval(() => setLocationStatsTick(value => value + 1), 30_000); return () => window.clearInterval(timer); }, []);
   const [worldBooks, setWorldBooks] = useState<WorldBookConfig[]>([]);
@@ -200,6 +211,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const timelineImageObjectUrlsRef = useRef<Record<string, string>>({});
   const [selectedActorKey, setSelectedActorKey] = useState("player:player");
   const initialFocusAppliedRef = useRef<string | null>(null);
+  const initialSceneLinkHandledRef = useRef(false);
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
   const [selectedSpeakerId, setSelectedSpeakerId] = useState("");
   const [selectedLocationId, setSelectedLocationId] = useState("cafe");
@@ -208,6 +220,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const [locationNameDraft, setLocationNameDraft] = useState("");
   const [locationSaveFeedback, setLocationSaveFeedback] = useState(false);
   const [locationDescriptionDraft, setLocationDescriptionDraft] = useState("");
+  const [locationAtmosphereDraft, setLocationAtmosphereDraft] = useState("");
+  const [locationLayoutDraft, setLocationLayoutDraft] = useState("");
+  const [locationPropsDraft, setLocationPropsDraft] = useState("");
   const [backgroundUploadBusy, setBackgroundUploadBusy] = useState<"global" | "location" | null>(null);
   const [locationHabitDrafts, setLocationHabitDrafts] = useState<Record<string, string>>({});
 
@@ -233,7 +248,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const [editingRoleScheduleId, setEditingRoleScheduleId] = useState<string | null>(null);
   const [saveCustomScheduleLocations, setSaveCustomScheduleLocations] = useState<Record<string, boolean>>({});
   const busyRef = useRef(false);
-  const pendingSceneTurnsRef = useRef<Array<{ sceneId: string; userText: string; userAction: string; createdAt: string }>>([]);
+  const pendingSceneTurnsRef = useRef<PendingLifeSceneTurn[]>([]);
+  const sceneTurnQueueRestoredRef = useRef(false);
+  const sceneTurnDrainScheduledRef = useRef(false);
+  const [pendingSceneQueueVersion, setPendingSceneQueueVersion] = useState(0);
   busyRef.current = busy;
   const [notice, setNotice] = useState("");
   const [, refreshNotificationReplyQueue] = useState(0);
@@ -378,10 +396,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           saveVirtualLifeState(normalized);
         }
       }
-      const restoredScene = normalized.scenes.find(scene => scene.status === "active")
-        ?? normalized.scenes.filter(scene => scene.status === "paused").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+      const restoredScene = findCurrentLifeScene(normalized.scenes);
       const restoredPlayer = normalized.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
-      setSelectedLocationId(restoredPlayer?.actualLocationId || restoredScene?.locationId || normalized.locations[0]?.id || "cafe");
+      setSelectedLocationId(restoredScene?.locationId || restoredPlayer?.actualLocationId || normalized.locations[0]?.id || "cafe");
       stateRef.current = normalized;
       setState(normalized);
       setCharacters(loadCharacters());
@@ -564,8 +581,40 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     setSelectedActorKey("character:" + initialCharacterId);
     setTab("plans");
   }, [initialCharacterId, characters]);
-  const activeScene = useMemo(() => state.scenes.find(scene => scene.status === "active") ?? state.scenes.filter(scene => scene.status === "paused").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0], [state.scenes]);
+  const activeScene = useMemo(() => findCurrentLifeScene(state.scenes), [state.scenes]);
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
+  const focusScene = useCallback((sceneId: string) => {
+    const latest = stateRef.current;
+    const target = latest.scenes.find(scene => scene.id === sceneId);
+    if (!target) return false;
+    const now = new Date().toISOString();
+    const next = {
+      ...latest,
+      scenes: latest.scenes.map(scene => scene.id === sceneId
+        ? { ...scene, status: "active" as const, updatedAt: now }
+        : scene.status === "active" ? { ...scene, status: "paused" as const, updatedAt: now } : scene),
+    };
+    commit(next);
+    setSelectedLocationId(target.locationId);
+    setTab("home");
+    setSceneView(true);
+    return true;
+  }, [commit]);
+
+  useEffect(() => {
+    if (!ready || initialSceneLinkHandledRef.current || typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const sceneId = url.searchParams.get("sceneId");
+    if (!sceneId) {
+      initialSceneLinkHandledRef.current = true;
+      return;
+    }
+    initialSceneLinkHandledRef.current = true;
+    focusScene(sceneId);
+    url.searchParams.delete("sceneId");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+  }, [ready, focusScene]);
+
   // 每轮动作在生成阶段就保存为一条消息；这里不再合并多条动作记录。
   // 对白消息仍逐条显示，编辑/删除/重新生成均对应真实消息。
   const displaySceneMessages = sceneMessages;
@@ -641,7 +690,13 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   useEffect(() => {
     setLocationNameDraft(selectedLocation?.name ?? "");
     setLocationSaveFeedback(false);
-    setLocationDescriptionDraft([selectedLocation?.description, selectedLocation?.atmosphere ? "【氛围】\n" + selectedLocation.atmosphere : "", selectedLocation?.layout ? "【空间布局】\n" + selectedLocation.layout : "", selectedLocation?.props?.length ? "【可用道具】\n" + selectedLocation.props.join("、") : ""].filter(Boolean).join("\n\n"));
+    const legacyDescription = selectedLocation?.description ?? "";
+    const legacyField = (name: string) => legacyDescription.match(new RegExp("(?:^|\\n)【" + name + "】\\s*\\n([\\s\\S]*?)(?=\\n\\n【|$)"))?.[1]?.trim() ?? "";
+    const cleanDescription = legacyDescription.replace(/\n\n?【(?:氛围|空间布局|可用道具)】[\\s\\S]*$/,"").trim();
+    setLocationDescriptionDraft(cleanDescription || legacyField("环境描写"));
+    setLocationAtmosphereDraft(selectedLocation?.atmosphere || legacyField("氛围"));
+    setLocationLayoutDraft(selectedLocation?.layout || legacyField("空间布局"));
+    setLocationPropsDraft(selectedLocation?.props?.length ? selectedLocation.props.join("、") : legacyField("可用道具"));
     setLocationHabitDrafts(selectedLocation?.characterHabits ?? {});
   }, [selectedLocation?.id]);
 
@@ -859,10 +914,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     }
     const scene = stateRef.current.scenes.find(item => item.status === "active"
       && item.participants.some(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID));
-    if (!scene) { setNotice("当前没有活动生活现场；先进入一个地点。"); return; }
+    if (!scene) { setNotice("请先进入地点。"); return; }
     const candidateId = scene.participants.find(participant => participant.ownerType === "character")?.ownerId;
     const character = characters.find(item => item.id === candidateId) ?? characters[0];
-    if (!character) { setNotice("没有可用的角色，无法挂起主动消息。"); return; }
+    if (!character) { setNotice("暂无可用角色。"); return; }
     const session = createLifeChatSession(character.id, character.name);
     const result = await armLifeSceneProactiveBailout({
       sessionId: session.id,
@@ -1270,14 +1325,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const current = currentState.actorStates.find(item => item.ownerType === actor.ownerType && item.ownerId === actor.ownerId);
     let next = upsertActorState(currentState, { ownerType: actor.ownerType, ownerId: actor.ownerId, activity: current?.activity || "正在这里活动", actualLocationId: location.id, actualLocationName: location.name, actualLocationUntil: null, updatedAt: new Date().toISOString() });
     next = appendLifeTimelineEntry(next, { category: "location", title: actor.name + "来到了" + location.name, details: current?.actualLocationName ? "从" + current.actualLocationName + "前往" + location.name : "首次记录实际地点", actorId: actor.ownerId, actorName: actor.name, locationName: location.name });
-    if (actor.ownerType === "player" && current?.actualLocationId !== location.id) {
-      const scene = next.scenes.find(item => item.status === "active") ?? next.scenes.filter(item => item.status === "paused").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
-      if (scene) {
-        const now = new Date().toISOString();
-        next = appendLifeTimelineEntry(next, { category: "scene", title: "当前场景转移至" + location.name, details: "你从" + (current?.actualLocationName || scene.locationName) + "前往" + location.name + "；沿用同一条持续场景记录", actorId: PLAYER_ID, actorName: playerName, locationName: location.name, sceneId: scene.id });
-        next = upsertLifeScene(next, { ...scene, locationId: location.id, locationName: location.name, status: "active", updatedAt: now, participants: scene.participants.map(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID ? { ...participant, activity: playerActivity || participant.activity } : participant) });
-      }
-    } else if (actor.ownerType === "character") {
+    if (actor.ownerType === "character") {
       const player = next.actorStates.find(item => item.ownerType === "player" && item.ownerId === PLAYER_ID);
       const scene = player?.actualLocationId
         ? next.scenes.find(item => item.status === "active" && item.locationId === player.actualLocationId)
@@ -1300,23 +1348,29 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   };
 
   const performCreateScene = () => {
-    if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
+    if (!settings.enabled) { setNotice("请先启用生活系统。"); return; }
     if (!selectedLocation) { setNotice("请先创建或选择一个地点。"); return; }
     const chosen = characters.filter(char => selectedCharacterIds.includes(char.id));
-    if (!chosen.length) { setNotice("至少选择一位角色，才能开始共同生活场景。"); return; }
+    if (!chosen.length) { setNotice("请至少选择一位角色。"); return; }
     const now = new Date().toISOString();
     const ids = ["player", ...chosen.map(char => char.id)];
     const participants: LifeSceneParticipant[] = [
       { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "刚来到这里", awarenessByActorId: Object.fromEntries(ids.filter(other => other !== PLAYER_ID).map(other => [other, "aware" as const])) },
       ...chosen.map(char => ({ ownerType: "character" as const, ownerId: char.id, activity: "正在做自己的事", awarenessByActorId: Object.fromEntries(ids.filter(other => other !== char.id).map(other => [other, "aware" as const])) })),
     ];
-    const existingScene = stateRef.current.scenes.find(scene => scene.status === "active" && scene.locationId === selectedLocation.id) ?? stateRef.current.scenes.filter(scene => scene.status === "paused" && scene.locationId === selectedLocation.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
-    const shouldRecordSceneEntry = !existingScene || existingScene.status === "paused";
+    const existingScene = findLifeSceneForLocation(stateRef.current.scenes, selectedLocation.id);
+    const shouldRecordSceneEntry = !existingScene || existingScene.status !== "active";
     const isFirstSceneEntry = !existingScene;
     let next: VirtualLifeState = { ...stateRef.current, scenes: stateRef.current.scenes.map(scene => (scene.status === "active" || scene.status === "paused") ? { ...scene, status: "paused" as const, updatedAt: now } : scene) };
+    const retainedDestinationParticipants = (existingScene?.participants ?? []).filter(participant => {
+      if (participant.ownerType !== "character") return false;
+      const actor = stateRef.current.actorStates.find(item => item.ownerType === "character" && item.ownerId === participant.ownerId);
+      return !actor || actor.actualLocationId === selectedLocation.id;
+    });
+    const destinationParticipants = mergeLifeSceneParticipants(retainedDestinationParticipants, participants);
     const scene: LifeSceneState = existingScene
-      ? { ...existingScene, locationId: selectedLocation.id, locationName: selectedLocation.name, updatedAt: now, status: "active", participants }
-      : { id: id("scene"), locationId: selectedLocation.id, locationName: selectedLocation.name, startedAt: now, updatedAt: now, status: "active", participants, lastSettledEventIds: [] };
+      ? { ...existingScene, locationId: selectedLocation.id, locationName: selectedLocation.name, eventId: undefined, updatedAt: now, status: "active", participants: destinationParticipants }
+      : { id: id("scene"), locationId: selectedLocation.id, locationName: selectedLocation.name, startedAt: now, updatedAt: now, status: "active", participants: destinationParticipants, lastSettledEventIds: [] };
     next = upsertLifeScene(next, scene);
     for (const actor of [{ ownerType: "player" as const, ownerId: PLAYER_ID }, ...chosen.map(char => ({ ownerType: "character" as const, ownerId: char.id }))]) {
       next = upsertActorState(next, { ...actor, activity: actor.ownerType === "player" ? (playerActivity || "刚来到这里") : "正在做自己的事", actualLocationId: selectedLocation.id, actualLocationName: selectedLocation.name, actualLocationUntil: actor.ownerType === "player" ? new Date(resolveActorLifeNow(getActorClock(stateRef.current, "player", PLAYER_ID)).getTime() + stayDurationMinutes * 60_000).toISOString() : null, updatedAt: now });
@@ -1332,7 +1386,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     commit(next);
     setTab("home");
     setSceneView(true);
-    setNotice("共同场景已建立并保存；重新打开会接着当前状态，不会重演。");
+    setNotice("已进入现场。");
 
   };
 
@@ -1364,19 +1418,14 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const createScene = () => transitionSceneAction(performCreateScene);
 
   /**
-   * 场景转移：带勾选的角色前往新地点，**沿用同一条场景记录**（sceneId 不变），
-   * 聊天记录完整带到新地点——此前每次切换都新建场景，旧场景的对话就像被清空了。
-   * 没有任何场景时退回原有的 solo 进入流程。
-   */
-  /**
-   * 携带勾选角色前往新地点。每个地点保持**独立场景**（不共用 sceneId），
-   * 原场景的聊天记录留在原地不丢失。玩家动向不写共同记忆：
-   * 通过 actualLocation（presence）自然呈现——原地的角色会看到玩家离开，
+   * 携带勾选角色前往新地点。每个地点保持唯一且稳定的聊天室身份，
+   * 原地点的聊天记录留在原地；目的地原有在场角色与本次同行角色合并。
+   * 玩家动向不写共同记忆：通过 actualLocation（presence）自然呈现——原地的角色会看到玩家离开，
    * 新地点的角色会看到玩家到场；勾选的角色则直接跟随迁移。
    */
   const performTransferSceneWithCompanions = (targetLocationId = selectedLocationId) => {
     const destination = stateRef.current.locations.find(location => location.id === targetLocationId);
-    if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
+    if (!settings.enabled) { setNotice("请先启用生活系统。"); return; }
     if (!destination) return;
     const companions = characters.filter(char => selectedCharacterIds.includes(char.id));
     const oldLocationName = playerPresence?.actualLocationName;
@@ -1410,7 +1459,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   /** Arrival uses actual-location state only; planned locations never create encounters. */
   const performEnterLocationSolo = (targetLocationId = selectedLocationId) => {
     const destination = stateRef.current.locations.find(location => location.id === targetLocationId);
-    if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
+    if (!settings.enabled) { setNotice("请先启用生活系统。"); return; }
     if (!destination) return;
     const now = new Date().toISOString();
     // Use the latest committed state: a companion-transfer commit may not have rendered yet.
@@ -1441,18 +1490,32 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       participants.push({ ownerType: "character", ownerId: char.id, activity: actor.activity, awarenessByActorId: { player: awareness } });
       participants[0].awarenessByActorId[char.id] = destination.visibility === "public" ? "aware" : "suspects";
     }
-    const existingScene = stateRef.current.scenes.find(scene => scene.status === "active" && scene.locationId === destination.id) ?? stateRef.current.scenes.filter(scene => scene.status === "paused" && scene.locationId === destination.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    const existingScene = findLifeSceneForLocation(stateRef.current.scenes, destination.id);
     // Startup may create a placeholder active scene before the user actually enters it. Record the first real entry if this scene has no entry card/timeline record yet.
     const hasRecordedEntry = !!existingScene && (
       stateRef.current.sceneMessages.some(message => message.sceneId === existingScene.id && message.role === "system" && /你来到了|你回到了/.test(message.action || message.dialogue || "")) ||
       stateRef.current.timeline.some(entry => entry.sceneId === existingScene.id && entry.category === "location" && entry.title.startsWith("你来到了"))
     );
-    const shouldRecordSceneEntry = !existingScene || existingScene.status === "paused" || !hasRecordedEntry;
+    const shouldRecordSceneEntry = !existingScene || existingScene.status !== "active" || !hasRecordedEntry;
     const isFirstSceneEntry = !existingScene || !hasRecordedEntry;
     let next: VirtualLifeState = { ...stateRef.current, scenes: stateRef.current.scenes.map(scene => (scene.status === "active" || scene.status === "paused") ? { ...scene, status: "paused" as const, updatedAt: now } : scene) };
+    // A location has one durable room. Re-entering it must retain the people
+    // already in that room, then add characters who are physically arriving now.
+    // Do not carry participants from the room we are leaving.
+    const retainedDestinationParticipants = (existingScene?.participants ?? []).filter(participant => {
+      if (participant.ownerType !== "character") return false;
+      const actor = stateRef.current.actorStates.find(item => item.ownerType === "character" && item.ownerId === participant.ownerId);
+      // Preserve legacy participants with no actor snapshot; otherwise only retain
+      // people whose actual location still points at this destination.
+      return !actor || actor.actualLocationId === destination.id;
+    });
+    const destinationParticipants = mergeLifeSceneParticipants(
+      retainedDestinationParticipants,
+      [{ ...participants[0], activity: playerActivity || "正在这里活动" }, ...participants.slice(1)],
+    );
     const scene: LifeSceneState = existingScene
-      ? { ...existingScene, locationId: destination.id, locationName: destination.name, updatedAt: now, status: "active", participants: [{ ...participants[0], activity: playerActivity || "正在这里活动" }, ...participants.slice(1)] }
-      : { id: id("scene"), locationId: destination.id, locationName: destination.name, startedAt: now, updatedAt: now, status: "active", participants, lastSettledEventIds: [] };
+      ? { ...existingScene, locationId: destination.id, locationName: destination.name, eventId: undefined, updatedAt: now, status: "active", participants: destinationParticipants }
+      : { id: id("scene"), locationId: destination.id, locationName: destination.name, startedAt: now, updatedAt: now, status: "active", participants: destinationParticipants, lastSettledEventIds: [] };
     next = upsertLifeScene(next, scene);
     next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "正在这里活动", actualLocationId: destination.id, actualLocationName: destination.name, actualLocationUntil: new Date(resolveActorLifeNow(getActorClock(stateRef.current, "player", PLAYER_ID)).getTime() + stayDurationMinutes * 60_000).toISOString(), updatedAt: now });
     if (shouldRecordSceneEntry) {
@@ -1473,14 +1536,14 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       setNotice(noticed ? "你来到了" + destination.name + "，有角色注意到了你。" : "你来到了" + destination.name + "；有人在场，但暂时没人明确注意到你。");
     }
     setSelectedLocationId(destination.id);
-    setSelectedCharacterIds(actualCharacters.map(character => character.id));
+    setSelectedCharacterIds(destinationParticipants.filter(participant => participant.ownerType === "character").map(participant => participant.ownerId));
     setTab("home");
     setSceneView(true);
   };
 
   const enterLocationSolo = (targetLocationId = selectedLocationId) => {
     const destination = stateRef.current.locations.find(location => location.id === targetLocationId);
-    if (!settings.enabled) { setNotice("生活引擎当前已关闭，请先在自定义设置中启用。"); return; }
+    if (!settings.enabled) { setNotice("请先启用生活系统。"); return; }
     if (!destination) return;
     transitionSceneAction(() => performEnterLocationSolo(targetLocationId));
   };
@@ -1492,7 +1555,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const maybeGenerate = () => {
       if (!ready || !activeScene || !settings.autoGenerateSceneImages || !autoImageFingerprint || activeScene.lastAutoImageFingerprint === autoImageFingerprint || autoImageSceneRef.current === autoImageFingerprint) return;
       if (!loadImageGenerationSettings().enabled) {
-        setNotice("已开启场景自动生图；请先在「小手机设置 → 生图设置」启用生图服务，启用后会自动尝试。");
+        setNotice("已开启自动生图，请配置生图服务。");
         return;
       }
       autoImageSceneRef.current = autoImageFingerprint;
@@ -1550,7 +1613,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const latestScene = latest.scenes.find(item => item.id === scene.id);
       if (!latestScene) throw new Error("生成期间当前场景已不存在，未覆盖其他场景。");
       commit({ ...latest, scenes: latest.scenes.map(item => item.id === scene.id ? { ...item, currentDescription: description, updatedAt: new Date().toISOString() } : item) });
-      setNotice("现场描述已更新；原始对话记录没有被合并或删除。");
+      setNotice("已更新现场描述。");
     } catch (error) {
       setNotice("整理现场描述失败：" + (error instanceof Error ? error.message : "未知错误"));
     } finally {
@@ -1627,7 +1690,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const prompt = buildSceneImagePrompt(participantIds, options?.prompt ?? sceneImagePrompt);
     const count = Math.max(1,Math.min(4,options?.count ?? settings.sceneImageCount));
     setSceneImageBusy(true);
-    setNotice("正在生成场景图。每张图会独立保存，失败的图片不会影响已有图库。");
+    setNotice("正在生成场景图…");
     const generated: LifeSceneImage[] = [];
     try {
       const referenceCharacterId = participantIds.find(pid => pid !== PLAYER_ID && characters.some(character => character.id === pid));
@@ -1667,7 +1730,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         });
         const orderedImages = [...(scene.images ?? []), ...generated].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
         setImageViewerIndex(Math.max(0, orderedImages.findIndex(image => image.id === generated[0]?.id)));
-        setNotice("生成完成。旧图已归档，可在图库中恢复或删除以释放缓存空间。");
+        setNotice("场景图已生成。");
       }
     } catch(error) {
       await Promise.all(generated.map(image=>deleteMediaRef(image.mediaRef)));
@@ -1737,7 +1800,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const url=imageObjectUrls[imageId]; if(url) URL.revokeObjectURL(url);
     setImageObjectUrls(previous=>{const copy={...previous};delete copy[imageId];return copy;});
     await deleteMediaRef(image.mediaRef);
-    setNotice("图片记录已删除，关联媒体缓存也已清理。");
+    setNotice("图片已删除。");
   };
 
   const openMessageActions = (message: LifeSceneMessage) => {
@@ -1782,7 +1845,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     next = rebuildSceneDialogueTimeline(next, message.sceneId, latest.settings.sceneRecordBatchSize ?? 10);
     commit(next);
     setMessageActionTarget(null);
-    setNotice("消息已保存，生活时间线也已同步。");
+    setNotice("已保存。");
   };
 
   const deleteSceneMessage = () => {
@@ -1796,18 +1859,22 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     };
     commit(rebuildSceneDialogueTimeline(next, message.sceneId, latest.settings.sceneRecordBatchSize ?? 10));
     setMessageActionTarget(null);
-    setNotice("消息及其对应的生活时间线记录已删除。");
+    setNotice("已删除。");
   };
 
   const regenerateSceneMessage = async (message: LifeSceneMessage) => {
     const latestAtStart = stateRef.current;
     let targetMessage = message;
     if (message.role === "player") {
-      const playerIndex = latestAtStart.sceneMessages.findIndex(item => item.id === message.id);
-      targetMessage = latestAtStart.sceneMessages.slice(playerIndex + 1).find(item =>
-        item.sceneId === message.sceneId && item.role === "character"
-        && !latestAtStart.sceneMessages.slice(playerIndex + 1, latestAtStart.sceneMessages.indexOf(item)).some(previous => previous.sceneId === message.sceneId && previous.role === "player")
-      ) as LifeSceneMessage;
+      targetMessage = latestAtStart.sceneMessages.find(item =>
+        item.sceneId === message.sceneId && item.role === "character" && item.replyToMessageId === message.id
+      ) ?? (() => {
+        const playerIndex = latestAtStart.sceneMessages.findIndex(item => item.id === message.id);
+        return latestAtStart.sceneMessages.slice(playerIndex + 1).find(item =>
+          item.sceneId === message.sceneId && item.role === "character"
+          && !latestAtStart.sceneMessages.slice(playerIndex + 1, latestAtStart.sceneMessages.indexOf(item)).some(previous => previous.sceneId === message.sceneId && previous.role === "player")
+        );
+      })() as LifeSceneMessage;
       if (!targetMessage) {
         setNotice("这条玩家输入后面还没有角色回复，先发送一次互动再重新生成。");
         return;
@@ -1827,15 +1894,28 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const sceneIndex = stateRef.current.sceneMessages.findIndex(item => item.id === targetMessage.id);
     const previousPlayer = message.role === "player"
       ? message
-      : stateRef.current.sceneMessages.slice(0, sceneIndex).reverse().find(item => item.sceneId === targetMessage.sceneId && item.role === "player");
+      : (targetMessage.replyToMessageId
+        ? stateRef.current.sceneMessages.find(item => item.id === targetMessage.replyToMessageId && item.role === "player")
+        : undefined)
+        ?? stateRef.current.sceneMessages.slice(0, sceneIndex).reverse().find(item => item.sceneId === targetMessage.sceneId && item.role === "player");
     if (!previousPlayer) {
       setNotice("找不到这条回复对应的玩家输入，无法重新生成。");
       return;
     }
+    if (busyRef.current) {
+      setNotice("当前有其他回合正在处理，请稍后再试。");
+      return;
+    }
+    const lifeTurn = beginTurn({ kind: "life_scene", characterId: character.id, sessionId: session.id });
+    if (!lifeTurn) {
+      setNotice("角色当前正在处理其他回合，请稍后再试。");
+      return;
+    }
+    busyRef.current = true;
     setBusy(true);
     setMessageActionTarget(null);
     try {
-      const sceneContext = buildLifeScenePromptContext(stateRef.current, scene, character.id);
+      const sceneContext = buildLifeScenePromptContext(stateRef.current, scene, character.id, previousPlayer.id);
       const prompt: ChatMessage = {
         id: id("life-regenerate"), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
         content: [
@@ -1851,11 +1931,12 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const { parsed, issues } = await generateValidatedLifeTurn({
         session,
         promptMessage: prompt,
+        signal: lifeTurn.signal,
         previousActionOnly: false,
         allowEmpty: false,
         appTags: lifeAppTags("scene"),
       });
-      if (issues.length > 0) throw new Error("本轮输出格式异常，已阻止写入：" + describeLifeOutputIssues(issues));
+      if (issues.length > 0) throw new Error("输出格式异常：" + describeLifeOutputIssues(issues));
       if (!parsed.action?.trim() && !parsed.dialogue.trim()) throw new Error("模型返回了空回应，请检查当前角色绑定的模型或输出格式设置后重试。");
       const latest = stateRef.current;
       // A single turn may be stored as one action card plus several dialogue bubbles.
@@ -1896,10 +1977,12 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       }
       next = rebuildSceneDialogueTimeline(next, scene.id, latest.settings.sceneRecordBatchSize ?? 10);
       commit(next);
-      setNotice("角色回复已重新生成，整轮动作卡片、对白分条和生活时间线已同步。");
+      setNotice("已重新生成。");
     } catch (error) {
       setNotice(error instanceof Error ? "重新生成失败：" + error.message : "重新生成失败，请检查模型配置。");
     } finally {
+      lifeTurn.end();
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -2157,9 +2240,14 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       setLifeSceneForegroundLease(activeScene.id, false);
       document.removeEventListener("visibilitychange", refreshForegroundLease);
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      // Restore online idle reconnect when the character is no longer co-present.
+      // Cleanup also runs for settings changes, so check persisted scene state first.
+      // Reconcile only the characters from the scene this effect owned. If they
+      // left, their online reconnect is re-armed; if still co-present, it stays
+      // suppressed. The bailout layer independently rechecks presence before POST.
     };
   }, [ready, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages, settings.proactiveSceneIntervalMinutes, settings.proactiveSceneIntervalMaxMinutes, settings.keepDialogueConcise, activeScene?.id, activeScene?.status, activeScene?.locationId, activeScene?.participants.map(participant => participant.ownerType + ":" + participant.ownerId + ":" + participant.activity).join("|"), immersiveScene, characters, lifeAppTags, activeMaxConsecutiveActionOnly, settings.enableLifeFormatRepair, playerName]);
-  const sendSceneTurn = async (event?: FormEvent, forceReaction = false, notificationReplyId?: string, responseQueue?: string[], queuedTurn?: { sceneId: string; userText: string; userAction: string; createdAt: string }): Promise<"completed" | "deferred" | "failed"> => {
+  const sendSceneTurn = async (event?: FormEvent, forceReaction = false, notificationReplyId?: string, responseQueue?: string[], queuedTurn?: PendingLifeSceneTurn): Promise<"completed" | "deferred" | "failed"> => {
     event?.preventDefault();
     // Notification / forced reactions must use the already-persisted scene history, never an unsent composer draft.
     const userText = forceReaction ? "" : queuedTurn?.userText ?? sceneInput.trim();
@@ -2167,7 +2255,17 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const turnScene = queuedTurn
       ? stateRef.current.scenes.find(scene => scene.id === queuedTurn.sceneId)
       : activeScene;
-    if (!turnScene || (!userText && !userAction && !forceReaction)) return "failed";
+    const discardQueuedTurn = () => {
+      if (!queuedTurn) return;
+      pendingSceneTurnsRef.current = pendingSceneTurnsRef.current.filter(turn => turn.messageId !== queuedTurn.messageId);
+      savePendingLifeSceneTurns(pendingSceneTurnsRef.current);
+      clearActiveLifeSceneTurn(queuedTurn.messageId);
+      setPendingSceneQueueVersion(value => value + 1);
+    };
+    if (!turnScene || (!userText && !userAction && !forceReaction)) {
+      if (!responseQueue?.length) discardQueuedTurn();
+      return "failed";
+    }
     const notificationResponsePrefix = notificationReplyId ? "notification-reply-response-" + notificationReplyId : "";
     if (notificationResponsePrefix && stateRef.current.sceneMessages.some(message =>
       message.id === notificationResponsePrefix + "-action" || message.id.startsWith(notificationResponsePrefix + "-dialogue-")
@@ -2175,24 +2273,40 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const userTurn = [userAction ? `行动：${userAction}` : "", userText ? `说话：${userText}` : ""].filter(Boolean).join("\n") || "玩家手动请求角色对最近行为作出反馈";
     const selectedSpeakerIsPresent = Boolean(selectedSpeakerId) && turnScene.participants.some(participant => participant.ownerType === "character" && resolveLifeCharacterId(participant.ownerId) === resolveLifeCharacterId(selectedSpeakerId));
     const now = queuedTurn?.createdAt ?? new Date().toISOString();
+    const turnMessageId = queuedTurn?.messageId ?? id("turn");
+    const pendingTurn: PendingLifeSceneTurn | null = queuedTurn ?? ((userText || userAction) ? {
+      sceneId: turnScene.id, userText, userAction, createdAt: now, messageId: turnMessageId,
+    } : null);
+    const discardPendingTurn = () => {
+      if (!pendingTurn) return;
+      pendingSceneTurnsRef.current = pendingSceneTurnsRef.current.filter(turn => turn.messageId !== pendingTurn.messageId);
+      savePendingLifeSceneTurns(pendingSceneTurnsRef.current);
+      clearActiveLifeSceneTurn(pendingTurn.messageId);
+      setPendingSceneQueueVersion(value => value + 1);
+    };
     const turnMessageStartIndex = stateRef.current.sceneMessages.length;
     // Persist player input before attempting to resolve a responder. A missing role,
     // disabled random response, or occupied generation slot must never eat the user's turn.
     if ((userText || userAction) && !queuedTurn) {
       setSceneInput("");
       setSceneActionInput("");
-      pushSceneMessage({ id: id("turn"), sceneId: turnScene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: playerName, role: "player", action: userAction || undefined, dialogue: userText, createdAt: now });
+      pushSceneMessage({ id: turnMessageId, sceneId: turnScene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: playerName, role: "player", action: userAction || undefined, dialogue: userText, createdAt: now });
     }
     // While a reply is being generated, accept and durably append further player turns.
     // They are answered sequentially after the current root turn completes.
     if (busyRef.current && !responseQueue?.length) {
       if (userText || userAction) {
-        pendingSceneTurnsRef.current.push({ sceneId: turnScene.id, userText, userAction, createdAt: now });
-        setNotice("消息已保存，角色回复正在排队。");
+        if (pendingTurn && !pendingSceneTurnsRef.current.some(turn => turn.messageId === pendingTurn.messageId)) {
+          pendingSceneTurnsRef.current.push(pendingTurn);
+        }
+        savePendingLifeSceneTurns(pendingSceneTurnsRef.current);
+        setPendingSceneQueueVersion(value => value + 1);
+        setNotice("已发送，等待回复。");
         return "deferred";
       }
       return forceReaction ? "deferred" : "failed";
     }
+    if (!responseQueue?.length && pendingTurn) setActiveLifeSceneTurn(pendingTurn);
     const presentCharacters = turnScene.participants
       .filter(participant => participant.ownerType === "character" && participant.activity !== "离开")
       .map(participant => resolveLifeCharacterId(participant.ownerId))
@@ -2213,7 +2327,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       return roll < chance;
     });
     if (settings.randomSceneResponses === false && !responseQueue?.length && !notificationReplyId && !selectedSpeakerIsPresent && !awarenessResponder) {
-      setNotice("消息已保存；当前未指定回应角色，你可以稍后点选角色并请求回应。");
+      setNotice("已保存。选择角色后可请求回应。");
+      discardPendingTurn();
       return "completed";
     }
     const plannedResponders: string[] = responseQueue?.length
@@ -2232,7 +2347,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const target = characters.find(char => char.id === targetId);
     if (!target) {
       if (forceReaction) recordLifeDiagnostic({ source: "通知回复", event: "现场回应无法启动", status: "error", detail: "找不到通知回复对应的角色卡。", meta: { sceneId: turnScene.id, targetId } });
-      setNotice("消息已保存，但当前没有可回应的角色。");
+      setNotice("已保存，暂无可回应角色。");
+      if (!responseQueue?.length) discardPendingTurn();
       return userText || userAction ? "completed" : "failed";
     }
     // Any character that actually reaches the response queue has now noticed the player,
@@ -2262,9 +2378,15 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       setNotice(target.name + "正在睡觉，没有被这条消息叫醒。消息留在当前场景里；TA醒来后才可能回应。");
       const remaining = responseQueue?.length ? responseQueue.slice(1) : plannedResponders.slice(1);
       if (remaining.length) {
-        const nextResult = await sendSceneTurn(undefined, true, undefined, remaining);
+        const nextResult = await sendSceneTurn(undefined, true, undefined, remaining, pendingTurn ?? undefined);
+        if (!responseQueue?.length) {
+          busyRef.current = false;
+          setBusy(false);
+          discardPendingTurn();
+        }
         return nextResult === "failed" ? "failed" : "completed";
       }
+      if (!responseQueue?.length) discardPendingTurn();
       return "failed";
     }
     const contacts = loadChatContacts();
@@ -2278,14 +2400,15 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         return "deferred";
       }
       if (userText || userAction) {
-        const retry = queuedTurn ?? { sceneId: turnScene.id, userText, userAction, createdAt: now };
-        pendingSceneTurnsRef.current.unshift(retry);
-        setNotice("消息已保存；角色当前正在处理其他对话，稍后会继续回应。");
+        const retry = pendingTurn;
+        if (retry && !pendingSceneTurnsRef.current.some(turn => turn.messageId === retry.messageId)) {
+          pendingSceneTurnsRef.current.unshift(retry);
+        }
+        savePendingLifeSceneTurns(pendingSceneTurnsRef.current);
+        if (pendingTurn) clearActiveLifeSceneTurn(pendingTurn.messageId);
+        setNotice("已保存，稍后回应。");
         window.setTimeout(() => {
-          if (!busyRef.current) {
-            const next = pendingSceneTurnsRef.current.shift();
-            if (next) void sendSceneTurn(undefined, false, undefined, undefined, next);
-          }
+          if (!busyRef.current && retry) void sendSceneTurn(undefined, false, undefined, undefined, retry);
         }, 2500);
         return "deferred";
       }
@@ -2295,7 +2418,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     setBusy(true);
     if (forceReaction) setNotice(target.name + "正在回应最近的互动……");
     try {
-      const sceneContext = buildLifeScenePromptContext(stateRef.current, turnScene, target.id);
+      const sceneContext = buildLifeScenePromptContext(stateRef.current, turnScene, target.id, pendingTurn?.messageId);
       // 生活现场与普通私聊共用同一套短期记忆组装器，避免跨 APP 记忆断层。
       const settingsInstructions = [
         settings.keepDialogueConcise ? "保持简短：一句对白，必要时附一个动作。" : "允许适度展开，但仍保持实时互动感。",
@@ -2321,7 +2444,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         appTags: lifeAppTags("scene"),
       });
       if (issues.length > 0) {
-        setNotice("本轮输出格式异常，已阻止写入：" + describeLifeOutputIssues(issues) + "。可重新生成。");
+        setNotice("输出格式异常：" + describeLifeOutputIssues(issues) + "。可重新生成。");
         return "failed";
       }
       if (!parsed.action?.trim() && !parsed.dialogue.trim()) {
@@ -2397,10 +2520,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const actionText = (parsed.action ?? "").trim();
       const dialogueSegments = preserveLifeDialogueSegments(parsed.dialogues);
       const replyMessages: LifeSceneMessage[] = [
-        ...(actionText ? [{ id: notificationResponsePrefix ? notificationResponsePrefix + "-action" : id("turn-action"), sceneId: turnScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, action: actionText, dialogue: "", createdAt: replyAt }] : []),
-        ...dialogueSegments.map((dialogue, index) => ({ id: notificationResponsePrefix ? notificationResponsePrefix + "-dialogue-" + index : id("turn-dialogue"), sceneId: turnScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, dialogue, createdAt: replyAt })),
+        ...(actionText ? [{ id: notificationResponsePrefix ? notificationResponsePrefix + "-action" : id("turn-action"), sceneId: turnScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, action: actionText, dialogue: "", createdAt: replyAt, ...(pendingTurn ? { replyToMessageId: pendingTurn.messageId } : {}) }] : []),
+        ...dialogueSegments.map((dialogue, index) => ({ id: notificationResponsePrefix ? notificationResponsePrefix + "-dialogue-" + index : id("turn-dialogue"), sceneId: turnScene.id, speakerType: "character" as const, speakerId: target.id, speakerName: target.name, role: "character" as const, dialogue, createdAt: replyAt, ...(pendingTurn ? { replyToMessageId: pendingTurn.messageId } : {}) })),
       ];
-      if (!replyMessages.length) replyMessages.push({ id: id("turn"), sceneId: turnScene.id, speakerType: "character", speakerId: target.id, speakerName: target.name, role: "character", dialogue: "", createdAt: replyAt });
+      if (!replyMessages.length) replyMessages.push({ id: id("turn"), sceneId: turnScene.id, speakerType: "character", speakerId: target.id, speakerName: target.name, role: "character", dialogue: "", createdAt: replyAt, ...(pendingTurn ? { replyToMessageId: pendingTurn.messageId } : {}) });
       pushSceneMessages(replyMessages, structuredNext);
       if (hasStructuredChanges && typeof window !== "undefined") window.dispatchEvent(new Event("life-force-sync"));
       if (forceReaction) {
@@ -2410,7 +2533,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const remainingResponders = responseQueue?.length ? responseQueue.slice(1) : plannedResponders.slice(1);
       if (remainingResponders.length) {
         recordLifeDiagnostic({ source: "生活现场", event: "追加角色回应队列", status: "info", detail: "按角色 ID 去重后依次处理其他回应角色。", meta: { sceneId: turnScene.id, completedCharacterId: target.id, queuedCharacterIds: remainingResponders } });
-        const nextResult = await sendSceneTurn(undefined, true, undefined, remainingResponders);
+        const nextResult = await sendSceneTurn(undefined, true, undefined, remainingResponders, pendingTurn ?? undefined);
         if (nextResult === "failed") recordLifeDiagnostic({ source: "生活现场", event: "追加角色回应未全部完成", status: "warning", detail: "至少一名后续角色未能完成回应，已完成的回应会保留。", meta: { sceneId: turnScene.id, completedCharacterId: target.id, remainingResponders } });
       }
       // Persist one shared event for the whole player turn, after all queued responders
@@ -2449,35 +2572,65 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       // Keep the composer locked until the root turn has finished every queued responder
       // and persisted the single grouped shared-event record.
       if (!responseQueue?.length) {
+        if (pendingTurn) {
+          pendingSceneTurnsRef.current = pendingSceneTurnsRef.current.filter(turn => turn.messageId !== pendingTurn.messageId);
+          savePendingLifeSceneTurns(pendingSceneTurnsRef.current);
+          clearActiveLifeSceneTurn(pendingTurn.messageId);
+          setPendingSceneQueueVersion(value => value + 1);
+        }
         busyRef.current = false;
         setBusy(false);
-        const queued = pendingSceneTurnsRef.current.shift();
-        if (queued) {
-          // Run on the next task so React has applied the unlocked composer state.
-          window.setTimeout(() => { void sendSceneTurn(undefined, false, undefined, undefined, queued); }, 0);
-        }
       }
     }
   };
 
+  const sendSceneTurnRef = useRef(sendSceneTurn);
+  sendSceneTurnRef.current = sendSceneTurn;
+
   useEffect(() => {
+    if (!ready || sceneTurnQueueRestoredRef.current) return;
+    sceneTurnQueueRestoredRef.current = true;
+    pendingSceneTurnsRef.current = recoverPendingLifeSceneTurns();
+    setPendingSceneQueueVersion(value => value + 1);
+  }, [ready]);
+
+  useEffect(() => {
+    if (!ready || busy || !sceneTurnQueueRestoredRef.current || sceneTurnDrainScheduledRef.current) return;
+    while (pendingSceneTurnsRef.current.length) {
+      const next = pendingSceneTurnsRef.current[0];
+      const scene = stateRef.current.scenes.find(item => item.id === next.sceneId);
+      const hasPlayerMessage = stateRef.current.sceneMessages.some(message => message.id === next.messageId);
+      const hasResponse = stateRef.current.sceneMessages.some(message => message.replyToMessageId === next.messageId);
+      if (!scene || !hasPlayerMessage || hasResponse) {
+        pendingSceneTurnsRef.current.shift();
+        savePendingLifeSceneTurns(pendingSceneTurnsRef.current);
+        setPendingSceneQueueVersion(value => value + 1);
+        continue;
+      }
+      sceneTurnDrainScheduledRef.current = true;
+      setActiveLifeSceneTurn(next);
+      window.setTimeout(() => {
+        sceneTurnDrainScheduledRef.current = false;
+        void sendSceneTurnRef.current?.(undefined, false, undefined, undefined, next);
+      }, 0);
+      return;
+    }
+  }, [ready, busy, pendingSceneQueueVersion]);
+
+  useEffect(() => {
+    if (!ready) return;
     const resumePendingReply = () => {
       const pending = peekPendingLifeSceneReply();
       if (!pending) return;
       pendingNotificationSceneReplyRef.current = pending;
-      const scene = stateRef.current.scenes.find(item => item.id === pending.sceneId);
-      if (scene) setSelectedLocationId(scene.locationId);
+      focusScene(pending.sceneId);
       setSelectedSpeakerId(pending.characterId);
-      setTab("home");
-      setSceneView(true);
     };
     const onNotificationReply = () => resumePendingReply();
     window.addEventListener("life-scene-notification-reply", onNotificationReply);
-    // The native queue may have been consumed while the WebView was on another page.
-    // Resume from the persistent local queue when the life app mounts.
     resumePendingReply();
     return () => window.removeEventListener("life-scene-notification-reply", onNotificationReply);
-  }, []);
+  }, [ready, focusScene]);
 
   useEffect(() => {
     const onQueueUpdated = () => refreshNotificationReplyQueue(value => value + 1);
@@ -2716,9 +2869,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         name: nextName,
         aliases: renamed ? [...new Set([...(location.aliases ?? []), previousName].filter(Boolean))] : location.aliases,
         description: locationDescriptionDraft.trim(),
-        atmosphere: "",
-        layout: "",
-        props: [],
+        atmosphere: locationAtmosphereDraft.trim(),
+        layout: locationLayoutDraft.trim(),
+        props: locationPropsDraft.split(/[、,，;；\n]/).map(value => value.trim()).filter(Boolean),
         fieldOrigins: { ...(location.fieldOrigins ?? {}), description: "user" as const, atmosphere: "user" as const, layout: "user" as const, props: "user" as const },
       }),
     };
@@ -3373,15 +3526,19 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     return { location, people, atmosphere, isCurrent: location.id === playerLocationId };
   }).sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || b.people.filter(person => person.isActuallyHere).length - a.people.filter(person => person.isActuallyHere).length || a.location.name.localeCompare(b.location.name, "zh-CN"));
   const locationFolders = state.locationFolders ?? [];
-  const locationMatchesFilters = (location: LifeLocation) => {
-    const query = locationSearch.trim().toLocaleLowerCase();
+  const locationMatchesFilters = (location: LifeLocation, search: string, folderFilter: string) => {
+    const query = search.trim().toLocaleLowerCase();
     const text = [location.name, ...(location.aliases ?? []), location.description, location.atmosphere, location.layout, ...(location.props ?? [])].filter(Boolean).join(" ").toLocaleLowerCase();
     return (!query || text.includes(query))
-      && (locationCategoryFilter === "all" || (location.category || "其他") === locationCategoryFilter)
-      && (locationFolderFilter === "all" || (location.folderId || "unfiled") === locationFolderFilter);
+      && (folderFilter === "all" || (location.folderId || "unfiled") === folderFilter);
   };
-  const filteredLocationCards = locationCards.filter(item => locationMatchesFilters(item.location));
-  const filteredLibraryLocations = visibleLocations.filter(locationMatchesFilters);
+  const filteredLocationCards = locationCards.filter(item => locationMatchesFilters(item.location, sceneLocationSearch, sceneLocationFolderFilter));
+  const filteredLibraryLocations = visibleLocations.filter(location => locationMatchesFilters(location, libraryLocationSearch, libraryLocationFolderFilter));
+  const libraryLocationGroups = new Map<string, typeof filteredLibraryLocations>();
+  for (const location of filteredLibraryLocations) {
+    const key = location.folderId || "unfiled";
+    libraryLocationGroups.set(key, [...(libraryLocationGroups.get(key) ?? []), location]);
+  }
   const locationCardGroups = new Map<string, typeof filteredLocationCards>();
   for (const item of filteredLocationCards) {
     const key = item.location.folderId || "unfiled";
@@ -3389,28 +3546,46 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   }
   const locationFolderName = (folderId?: string) => folderId ? locationFolders.find(folder => folder.id === folderId)?.name || "未整理" : "未整理";
   const createLocationFolder = () => {
-    const name = window.prompt("新文件夹名称");
-    const cleanName = name?.trim();
-    if (!cleanName) return;
+    setEditingFolderId(null);
+    setFolderNameDraft("");
+    setFolderDialogOpen(true);
+  };
+  const saveLocationFolder = () => {
+    const cleanName = folderNameDraft.trim();
+    if (!cleanName) { setNotice("请输入文件夹名称。"); return; }
     const current = stateRef.current;
-    if ((current.locationFolders ?? []).some(folder => folder.name.toLocaleLowerCase() === cleanName.toLocaleLowerCase())) {
+    const folders = current.locationFolders ?? [];
+    if (folders.some(folder => folder.id !== editingFolderId && folder.name.toLocaleLowerCase() === cleanName.toLocaleLowerCase())) {
       setNotice("已经有同名文件夹了。");
       return;
     }
-    commit({ ...current, locationFolders: [...(current.locationFolders ?? []), { id: id("location-folder"), name: cleanName }] });
-    setNotice("已创建地点文件夹「" + cleanName + "」。");
+    const nextFolders = editingFolderId
+      ? folders.map(folder => folder.id === editingFolderId ? { ...folder, name: cleanName } : folder)
+      : [...folders, { id: id("location-folder"), name: cleanName }];
+    commit({ ...current, locationFolders: nextFolders });
+    setFolderDialogOpen(false);
+    setEditingFolderId(null);
+    setFolderNameDraft("");
+    setNotice(editingFolderId ? "文件夹已重命名。" : "文件夹已创建。");
   };
-  const updateLocationOrganization = (locationId: string, patch: Pick<LifeLocation, "category" | "folderId">) => {
+  const deleteLocationFolder = (folderId: string) => {
     const current = stateRef.current;
-    commit({ ...current, locations: current.locations.map(location => location.id === locationId ? { ...location, ...patch } : location) });
+    if (!(current.locationFolders ?? []).some(item => item.id === folderId)) return;
+    commit({
+      ...current,
+      locationFolders: (current.locationFolders ?? []).filter(item => item.id !== folderId),
+      locations: current.locations.map(location => location.folderId === folderId ? { ...location, folderId: undefined } : location),
+    });
+    setFolderDeleteConfirmId(null);
   };
-  const locationFilterControls = <div className="grid gap-2 rounded-2xl border border-stone-200/70 bg-white/65 p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-    <input value={locationSearch} onChange={event => setLocationSearch(event.target.value)} placeholder="搜索地点、别名、环境、道具…" className="min-w-0 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/>
-    <select value={locationCategoryFilter} onChange={event => setLocationCategoryFilter(event.target.value)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"><option value="all">全部分类</option>{["住宅","商业","公共","自然","其他"].map(value => <option key={value} value={value}>{value}</option>)}</select>
-    <select value={locationFolderFilter} onChange={event => setLocationFolderFilter(event.target.value)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"><option value="all">全部文件夹</option><option value="unfiled">未整理</option>{locationFolders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select>
-    <p className="text-[11px] text-stone-400 sm:col-span-3">找到 {filteredLocationCards.length} 个地点 · 分类与文件夹只用于整理显示，不影响 AI 地点匹配和日程。</p>
-  </div>;
-
+  const moveSelectedLocations = () => {
+    if (!selectedLocationIds.length) return;
+    const folderId = batchFolderId === "unfiled" ? undefined : batchFolderId;
+    const current = stateRef.current;
+    commit({ ...current, locations: current.locations.map(location => selectedLocationIds.includes(location.id) ? { ...location, folderId } : location) });
+    setSelectedLocationIds([]);
+    setNotice("已整理 " + selectedLocationIds.length + " 个地点。");
+  };
   const lifeTimeline = (state.timeline ?? []).filter(entry => {
     if (entry.category === "location" || entry.category === "scene") return settings.recordLocationChanges;
     if (entry.category === "action") return settings.recordCharacterActions;
@@ -3721,7 +3896,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     {settings.customSceneCss?.trim() && <style>{settings.customSceneCss.replace(/<\/style/gi, "<\\/style")}</style>}
     <div className={`mx-auto w-full max-w-none ${immersiveScene ? "flex min-h-0 flex-1 flex-col" : ""}`}>
       <header className={`${immersiveScene ? "hidden" : "mb-2 flex flex-wrap items-center justify-between gap-2"}`}>
-        <div className="flex items-center gap-3"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/75 text-[var(--life-accent)] shadow-sm"><Heart size={22}/></div><div><p className="text-[10px] font-semibold uppercase tracking-[0.26em] opacity-60">A LIVING WORLD · SHARED MOMENTS</p><h1 className="text-2xl font-semibold tracking-tight">生活世界</h1><p className="mt-0.5 text-xs opacity-65">角色有自己的生活，你也可以随时加入</p></div></div>
+        <div className="flex items-center gap-3"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/75 text-[var(--life-accent)] shadow-sm"><Heart size={22}/></div><div><h1 className="text-2xl font-semibold tracking-tight">生活世界</h1><p className="mt-0.5 text-xs opacity-65">角色有自己的生活，你也可以随时加入</p></div></div>
         <div className="flex flex-wrap items-center gap-2"><button onClick={()=>tab==="home"?closeApp():setTab("home")} aria-label="返回生活现场" className="inline-flex items-center gap-1 rounded-full border border-white/80 bg-white/70 px-3 py-2 text-sm"><ArrowLeft size={15}/><span>返回</span></button><button onClick={closeApp} aria-label="退出生活 APP" className="inline-flex items-center gap-1 rounded-full border border-white/80 bg-white/70 px-3 py-2 text-sm"><X size={15}/><span>退出</span></button><span className="rounded-full border border-white/70 bg-white/60 px-3 py-1.5 text-xs">{actors.length} 位生活参与者</span></div>
       </header>
       {sceneToast && <div role="status" aria-live="polite" className="fixed left-1/2 top-[max(1rem,env(safe-area-inset-top))] z-[300] w-[min(92vw,26rem)] -translate-x-1/2 rounded-2xl border border-[var(--life-accent)]/30 bg-[#fffaf3]/97 px-4 py-3 shadow-xl backdrop-blur-md">
@@ -3743,9 +3918,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       </nav>
 
       {(tab === "home" || tab === "scene") && <div className={immersiveScene ? "flex min-h-0 flex-1 flex-col" : "space-y-4"}>
-        {tab === "scene" && !immersiveScene && <details open className="rounded-2xl border border-white/80 bg-white/55 shadow-sm"><summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-stone-600">生活状态与时间线 · {playerNow.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})} · 展开查看</summary><section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
+        {sceneLocationSearchOpen && <div role="dialog" aria-modal="true" aria-label="搜索生活现场地点" className="fixed inset-0 z-[150] flex items-end justify-center bg-black/35 p-2 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setSceneLocationSearchOpen(false)}><section className="max-h-[88dvh] w-full max-w-xl overflow-hidden rounded-3xl border border-white/80 bg-[var(--life-overlay)] shadow-2xl" onClick={event => event.stopPropagation()}><header className="flex items-center justify-between border-b border-stone-200/70 px-4 py-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--life-accent)]">Find a place</p><h2 className="text-lg font-semibold">前往地点</h2></div><button type="button" onClick={() => setSceneLocationSearchOpen(false)} aria-label="关闭" className="grid h-9 w-9 place-items-center rounded-full bg-white/75"><X size={18}/></button></header><div className="space-y-2 p-3"><input autoFocus value={sceneLocationSearch} onChange={event => setSceneLocationSearch(event.target.value)} placeholder="搜索地点名称、别名或描写" className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/><div className="grid grid-cols-1 gap-2"><select value={sceneLocationFolderFilter} onChange={event => setSceneLocationFolderFilter(event.target.value)} className="min-w-0 rounded-xl border border-stone-200 bg-white px-2 py-2 text-xs"><option value="all">全部文件夹</option><option value="unfiled">未整理</option>{locationFolders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></div></div><div className="max-h-[58dvh] space-y-1 overflow-y-auto px-3 pb-3">{filteredLocationCards.map(({location,people,isCurrent}) => <button type="button" key={location.id} onClick={() => { setSelectedLocationId(location.id); setSelectedCharacterIds(people.filter(person => person.isActuallyHere).map(person => person.character.id)); setSceneLocationSearchOpen(false); enterLocationSolo(location.id); }} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-stone-200/70 bg-white/75 p-3 text-left"><span className="min-w-0"><span className="block font-medium text-stone-800">{location.name}</span><span className="mt-1 block truncate text-xs text-stone-500">{location.description || "暂无地点描写"}</span></span><span className="shrink-0 text-xs text-[var(--life-accent)]">{isCurrent ? "进入现场" : "前往"} ›</span></button>)}{!filteredLocationCards.length && <p className="p-6 text-center text-sm text-stone-500">没有找到地点</p>}</div></section></div>}
+      {tab === "scene" && !immersiveScene && <details open className="rounded-2xl border border-white/80 bg-white/55 shadow-sm"><summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-stone-600">生活状态与时间线 · {playerNow.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})} · 展开查看</summary><section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <SectionTitle eyebrow="Your day · 24 hours" title={playerNow.toLocaleDateString("zh-CN",{month:"long",day:"numeric",weekday:"long"})+" · 我的时间线"} note="已过去的时段可以折叠查看；日程会按现实时间逐段结算，不会跳过中间发生的生活。" />
+            <SectionTitle title={playerNow.toLocaleDateString("zh-CN",{month:"long",day:"numeric",weekday:"long"})+" · 我的时间线"} />
             <button onClick={()=>openDaily("plans")} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">查看完整七日日程</button>
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2">
@@ -3768,9 +3944,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       {tab === "home" && !sceneView && <section className="life-place-list space-y-4">
         <div className="flex items-end justify-between gap-3 px-1">
           <div><p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--life-accent)]">Places & people</p><h2 className="mt-1 text-2xl font-semibold tracking-tight text-stone-800">此刻</h2></div>
-          <button onClick={() => openDaily("plans")} className="shrink-0 rounded-xl border border-white/80 bg-white/75 px-3 py-2 text-xs text-stone-600">我的日程</button>
+          <div className="flex items-center gap-2"><button type="button" onClick={() => setSceneLocationSearchOpen(true)} aria-label="搜索和筛选地点" title="搜索和筛选地点" className="grid h-10 w-10 place-items-center rounded-xl border border-white/80 bg-white/75 text-stone-600"><Search size={17}/></button><button onClick={() => openDaily("plans")} className="shrink-0 rounded-xl border border-white/80 bg-white/75 px-3 py-2 text-xs text-stone-600">我的日程</button></div>
         </div>
-        {locationFilterControls}
         {filteredLocationCards.length === 0 && <p className="rounded-2xl border border-dashed border-stone-300 bg-white/50 p-6 text-center text-sm text-stone-500">没有找到符合条件的地点，试试清除筛选。</p>}
         {Array.from(locationCardGroups.entries()).map(([folderId, items]) => <section key={folderId} className="space-y-3">
           <button type="button" onClick={() => setCollapsedLocationFolders(current => ({ ...current, [folderId]: !current[folderId] }))} className="flex w-full items-center justify-between rounded-xl bg-white/55 px-3 py-2 text-left text-xs font-semibold text-stone-600">
@@ -3787,8 +3962,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
               {people.filter(person => person.isExpectedHere && !person.isActuallyHere).length > 0 && <span className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white/80 px-2.5 py-1.5 text-xs text-stone-600"><CalendarDays size={12}/>{people.filter(person => person.isExpectedHere && !person.isActuallyHere).length} 位可能来访</span>}
               {people.length === 0 && <span className="rounded-full bg-white/70 px-2.5 py-1.5 text-xs text-stone-500">暂无角色行程线索</span>}
             </div>
-            <p className="mt-2 text-[10px] leading-4 text-stone-400">这里仅显示人数和地点线索，不提前揭晓角色身份；进入现场后再发现相遇。</p>
-            <div className="mt-3 rounded-2xl bg-[#f8f2eb]/85 p-3"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-400">Atmosphere · 此刻氛围</p><p className="mt-1 text-sm leading-relaxed text-stone-700">{atmosphere}</p></div>
+            
+            <div className="mt-3 rounded-2xl bg-[#f8f2eb]/85 p-3"><p className="text-sm leading-relaxed text-stone-700">{atmosphere}</p></div>
             {(location.layout || location.props?.length) && <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-stone-500">{location.layout ? `空间：${location.layout} ` : ""}{location.props?.length ? `· 可用道具：${location.props.slice(0,5).join("、")}` : ""}</p>}
           </div>
           <div className="flex items-center justify-between gap-3 border-t border-stone-200/50 bg-white/45 px-4 py-3 sm:px-5"><span className="text-[11px] text-stone-400">{isCurrent ? "你的当前位置" : people.some(person => person.isActuallyHere) ? "角色正在这里生活" : "可以前往探索"}</span><button type="button" onClick={() => { setSelectedLocationId(location.id); setSelectedCharacterIds(people.filter(person => person.isActuallyHere).map(person => person.character.id)); enterLocationSolo(location.id); }} className="inline-flex min-h-12 min-w-[92px] touch-manipulation shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-3 text-sm font-semibold text-white shadow-sm"><MapPin size={14}/>{isCurrent ? "进入现场" : "前往"}</button></div>
@@ -3830,15 +4005,19 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           <div className="mt-3"><p className="mb-2 text-xs font-medium text-stone-600">选择一起互动的角色</p><div className="flex flex-wrap gap-2">{characters.map(char=><label key={char.id} className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs"><input type="checkbox" checked={selectedCharacterIds.includes(char.id)} onChange={e=>setSelectedCharacterIds(old=>e.target.checked?[...new Set([...old,char.id])]:old.filter(id=>id!==char.id))}/>{char.name}</label>)}</div></div>
           {!characters.length&&<p className="mt-2 text-xs text-stone-500">还没有角色档案；先在小手机里创建角色，之后就能在这里互动。</p>}
           {selectedLocation && <div className="mt-4 border-t border-stone-200/70 pt-4">
-            <div className="mb-3"><p className="text-sm font-semibold text-stone-700">地点布置与描写</p><p className="mt-1 text-xs leading-relaxed text-stone-500">这里的设定会保存在这个地点，并注入后续场景对话。固定布局帮助角色理解彼此位置，道具可以被拿起、放下或在行动中引用。</p></div>
-            <label className="mb-4 block text-xs font-medium text-stone-600">地点布置与描写<textarea value={locationDescriptionDraft} onChange={event => setLocationDescriptionDraft(event.target.value)} rows={8} placeholder={"一个框写完即可，不用刻意分栏。可参考：\n• 环境：空间类型、大小、光线、声音、气味\n• 氛围：时段、天气、人声、整体情绪\n• 布局：门窗、家具、通道、座位的位置关系\n• 道具：常见物品及可互动的东西\n• 细节：角色在此处的习惯、特色与活动"} className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+            <div className="mb-3"><p className="text-sm font-semibold text-stone-700">地点环境与细节</p></div>
+              <div className="mb-4 grid gap-3"><label className="block text-sm font-medium text-stone-700">环境描写<textarea value={locationDescriptionDraft} onChange={event => setLocationDescriptionDraft(event.target.value)} rows={4} placeholder="空间类型、大小、光线、声音、气味及环境中的固定事实" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+              <label className="block text-sm font-medium text-stone-700">氛围<textarea value={locationAtmosphereDraft} onChange={event => setLocationAtmosphereDraft(event.target.value)} rows={3} placeholder="时段、天气、人声、气息与整体情绪" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+              <label className="block text-sm font-medium text-stone-700">空间布局<textarea value={locationLayoutDraft} onChange={event => setLocationLayoutDraft(event.target.value)} rows={3} placeholder="门窗、家具、通道、座位及区域之间的位置关系" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+              <label className="block text-sm font-medium text-stone-700">可用道具<textarea value={locationPropsDraft} onChange={event => setLocationPropsDraft(event.target.value)} rows={2} placeholder="填写可见、可使用或可互动的物品，用顿号分隔" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+              </div>
             <button type="button" onClick={saveLocationDetails} className="w-full rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white">保存地点布置</button>
           </div>}
         </div></details>
         {activeScene && <>
           <div className={`mb-1 flex shrink-0 items-center gap-1.5 overflow-x-auto pb-0.5 ${settings.compactLayout ? "max-h-8" : "max-h-10"}`}>{activeScene.participants.map(p=>{const actor=actors.find(a=>a.ownerId===p.ownerId&&a.ownerType===p.ownerType);const awareness=p.awarenessByActorId.player;const status=awareness==="unaware"?"还没注意到你":awareness==="suspects"?"似乎察觉到你":awareness==="aware"?"注意到你":p.activity;return <button key={p.ownerType+":"+p.ownerId} onClick={()=>{if(p.ownerType==="character")setSelectedSpeakerId(current=>current===p.ownerId?"":p.ownerId)}} className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] ${selectedSpeakerId===p.ownerId?"border-[var(--life-accent)] bg-white shadow-sm":"border-white/70 bg-white/55"}`}><span className="grid h-6 w-6 shrink-0 place-items-center overflow-hidden rounded-full bg-[#efe1d2] text-[10px] text-stone-700">{actor?.avatar?<img src={actor.avatar} alt="" className="h-full w-full object-cover"/>:(actor?.name??p.ownerId).slice(0,1)}</span><span className="text-left"><span className="block font-medium">{actor?.name??p.ownerId}</span><span className="block max-w-28 truncate text-[9px] opacity-60">{status}</span></span></button>})}</div>
           <div ref={sceneChatScrollRef} onScroll={event => { const el = event.currentTarget; sceneChatAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 56; }} className={`life-scene-chat mb-1 min-h-0 min-w-0 flex-1 flex flex-col overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y rounded-xl bg-white/80 ${settings.compactLayout ? "p-1 sm:p-1.5" : "p-1.5 sm:p-2"} ${immersiveScene ? "" : "h-[58dvh] min-h-[280px] max-h-[760px]"}`} style={{fontSize:"var(--life-font)", rowGap: `${settings.messageGapPx ?? 4}px`, WebkitOverflowScrolling:"touch"}}>
-            {sceneMessages.length===0 && <div className="grid min-h-36 place-items-center text-center text-sm text-stone-400"><div><Sparkles className="mx-auto mb-2" size={22}/><p>场景已经准备好了。</p><p className="mt-1 text-xs">角色可以忙自己的事，也可以回应你；不会自动写成长篇剧情。</p></div></div>}
+            {sceneMessages.length===0 && <div className="grid min-h-36 place-items-center text-center text-sm text-stone-400"><p>暂无消息</p></div>}
             {displaySceneMessages.map(message=><div key={message.id} className="group flex min-w-0 max-w-full flex-col rounded-xl transition-colors" onTouchStart={() => { longPressTriggeredRef.current = false; clearMessageLongPress(); longPressTimerRef.current = window.setTimeout(() => { longPressTriggeredRef.current = true; openMessageActions(message); }, 550); }} onTouchEnd={clearMessageLongPress} onTouchMove={clearMessageLongPress} onTouchCancel={clearMessageLongPress} onContextMenu={event => { event.preventDefault(); clearMessageLongPress(); openMessageActions(message); }}>
               {message.role==="system" ? (message.imageId ? <div className="mx-auto flex w-full max-w-[92%] flex-col items-center gap-1.5 rounded-xl px-2 py-2"><button type="button" onClick={() => { const index = sceneViewerImages.findIndex(image => image.id === message.imageId); if (index >= 0) { setImageViewerIndex(index); setImageViewerOpen(true); } }} className="block max-w-full overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">{imageObjectUrls[message.imageId] ? <img src={imageObjectUrls[message.imageId]} alt={sceneViewerImages.find(image => image.id === message.imageId)?.alt || "生活现场图片"} className="max-h-72 max-w-full object-contain" /> : <span className="grid h-36 w-56 place-items-center text-xs text-stone-400">场景图片加载中…</span>}</button><p className="text-[10px] text-stone-400">{message.action || "场景图片"} · {new Date(message.createdAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</p></div> : <div className="mx-auto max-w-[92%] px-2 py-1 text-center italic leading-relaxed text-stone-500"><p className="whitespace-pre-wrap text-center leading-snug" style={{fontSize:"var(--life-narration-font)",fontFamily:settings.narrationFontFamily || undefined}}>{message.action || message.dialogue}</p></div>) : <>
                 {message.action&&(message.role==="player"?<div className="flex items-center gap-2 px-1" style={{marginBlock: `${settings.narrationGapPx ?? 4}px`}} aria-label="我的行动"><span className="h-px flex-1 bg-stone-300/80"/><p className="min-w-0 max-w-[82%] break-words text-center italic leading-relaxed text-stone-500 [overflow-wrap:anywhere]" style={{fontSize:"var(--life-narration-font)",fontFamily:settings.narrationFontFamily || undefined}}>{message.action}</p><span className="h-px flex-1 bg-stone-300/80"/></div>:<div className="relative mx-auto w-full max-w-[94%] py-1" style={{marginBlock: `${settings.narrationGapPx ?? 4}px`}} aria-label="角色行动卡片"><svg viewBox="0 0 320 96" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true"><rect x="1" y="1" width="318" height="94" rx="3" fill="#fffaf4" fillOpacity=".92" stroke="#d8b89c" strokeWidth="1.2"/><rect x="5" y="5" width="310" height="86" rx="2" fill="none" stroke="#ead8c4" strokeWidth=".7"/></svg><div className="relative px-4 py-2.5 text-center"><div className="mb-1 text-[9px] tracking-[.22em] text-[#b08b6c]">✦  MOMENT  ✦</div><p className="whitespace-pre-wrap break-words text-center italic leading-relaxed text-[#806957] [overflow-wrap:anywhere]" style={{fontSize:"var(--life-narration-font)",fontFamily:settings.narrationFontFamily || undefined}}>{message.action}</p></div></div>)}
@@ -3881,7 +4060,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         </>}
       </section>}
           <section className={`mt-4 rounded-2xl border border-stone-200/70 bg-white/60 p-3 sm:p-4 ${immersiveScene ? "hidden" : ""}`}>
-            <div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-sm font-semibold text-stone-800">今天发生的事</p><p className="mt-0.5 text-[11px] text-stone-500">生活、行动和互动会按发生时间连续记录</p></div><span className="rounded-full bg-white px-2.5 py-1 text-[10px] text-stone-500">{lifeTimeline.length} 条</span></div>
+            <div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-sm font-semibold text-stone-800">今天发生的事</p></div><span className="rounded-full bg-white px-2.5 py-1 text-[10px] text-stone-500">{lifeTimeline.length} 条</span></div>
             {recentLifeTimeline.length ? <div className="space-y-2">{recentLifeTimeline.map(entry=><div key={entry.id} className="flex gap-3 rounded-xl bg-white/80 p-3"><span className="w-12 shrink-0 pt-0.5 text-[11px] tabular-nums text-stone-400">{new Date(entry.occurredAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><div className="min-w-0 flex-1"><p className="text-sm font-medium text-stone-800">{entry.title}</p>{entry.details&&<p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-stone-600">{entry.details}</p>}<p className="mt-1 text-[10px] text-stone-400">{entry.actorName ? entry.actorName+" · " : ""}{entry.locationName ? entry.locationName+" · " : ""}{entry.category === "location" ? "地点" : entry.category === "scene" ? "场景" : entry.category === "action" ? "行动" : entry.category === "dialogue" ? "对话" : entry.category === "schedule" ? "日程" : entry.category === "tool" ? "工具" : entry.category === "social" ? "朋友圈" : entry.category === "diary" ? "日记" : entry.category === "chat" ? "消息" : "生活记录"}</p>{timelineImageUrls[entry.id]&&<img src={timelineImageUrls[entry.id]} alt={entry.title} className="mt-2 max-h-56 w-auto max-w-full rounded-xl object-contain"/>}<button type="button" disabled={Boolean(timelineImageBusyId)} onClick={()=>void generateTimelineImage(entry)} className="mt-2 inline-flex min-h-8 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1 text-[11px] font-medium text-stone-600 disabled:opacity-50"><Sparkles size={12}/>{timelineImageBusyId===entry.id?"正在生成…":entry.imageMediaRef?"重新生成图片":"生成场景图片"}</button></div></div>)}</div> : <div className="rounded-xl bg-white/70 p-4 text-center text-xs text-stone-500">还没有符合当前筛选条件的记录。开始行动或互动后，这里会逐渐形成你的一天。</div>}
             {olderLifeTimeline.length>0&&<details className="mt-3 rounded-xl border border-stone-200/70 bg-white/50 p-3"><summary className="cursor-pointer text-xs font-medium text-stone-600">展开更早的记录（{olderLifeTimeline.length}）</summary><div className="mt-3 space-y-2">{olderLifeTimeline.map(entry=><div key={entry.id} className="flex gap-3 border-l-2 border-stone-200 pl-3 py-1"><span className="w-12 shrink-0 text-[10px] tabular-nums text-stone-400">{new Date(entry.occurredAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}</span><div className="min-w-0 flex-1"><p className="text-xs font-medium">{entry.title}</p>{entry.details&&<p className="mt-0.5 whitespace-pre-wrap break-words text-[11px] text-stone-500">{entry.details}</p>}{timelineImageUrls[entry.id]&&<img src={timelineImageUrls[entry.id]} alt={entry.title} className="mt-2 max-h-48 w-auto max-w-full rounded-lg object-contain"/>}<button type="button" disabled={Boolean(timelineImageBusyId)} onClick={()=>void generateTimelineImage(entry)} className="mt-1.5 inline-flex min-h-7 items-center gap-1 rounded-md border border-stone-200 bg-white px-2 py-1 text-[10px] text-stone-600 disabled:opacity-50"><Sparkles size={11}/>{timelineImageBusyId===entry.id?"正在生成…":entry.imageMediaRef?"重新生成图片":"生成场景图片"}</button></div></div>)}</div></details>}
           </section>
@@ -3889,9 +4068,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
 
       {tab === "locations" && <div className="space-y-4">
         <section className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm sm:p-6">
-          {!locationDossierOpen && <><SectionTitle eyebrow="Canonical location library" title="地点库" note="点开地点卡片进入独立档案页，编辑设定、添加角色习惯并查看历史。同居后角色自己的家会暂时从地点列表隐藏；取消同居后会自动重新显示，不会删除住处或历史数据。"/>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-stone-500">按名称、别名、环境和道具搜索；旧地点默认归入「未整理」。</p><button type="button" onClick={createLocationFolder} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700"><Plus size={12} className="mr-1 inline"/>新建文件夹</button></div>
-          {locationFilterControls}
+          {!locationDossierOpen && <><div className="mb-4 flex items-center justify-between gap-3"><SectionTitle eyebrow="LOCATION ARCHIVE" title="地点库" note="点开地点卡片进入独立档案页，编辑地点设定并查看生活记录。搜索与整理收纳在独立入口，不占用地点列表空间。"/><div className="flex shrink-0 items-center gap-2"><button type="button" onClick={() => setLibraryLocationSearchOpen(true)} aria-label="搜索地点库" title="搜索地点库" className="grid h-10 w-10 place-items-center rounded-xl border border-stone-200 bg-white text-stone-600"><Search size={17}/></button><button type="button" onClick={() => setFolderDialogOpen(true)} aria-label="管理地点文件夹" title="管理文件夹" className="grid h-10 w-10 place-items-center rounded-xl border border-stone-200 bg-white text-stone-600"><Plus size={16}/></button><button type="button" onClick={() => { setLocationSelectionMode(value => !value); setSelectedLocationIds([]); }} aria-label={locationSelectionMode ? "退出批量整理" : "批量整理地点"} title={locationSelectionMode ? "完成选择" : "批量整理"} className={`grid h-10 w-10 place-items-center rounded-xl border text-sm ${locationSelectionMode ? "border-[var(--life-accent)] bg-[#fffaf5] text-[var(--life-accent)]" : "border-stone-200 bg-white text-stone-600"}`}>☑</button></div></div>
+          {locationSelectionMode && <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-stone-200/70 bg-white/65 p-3"><label className="flex min-h-9 items-center gap-2 text-xs text-stone-600"><input type="checkbox" checked={filteredLibraryLocations.length > 0 && filteredLibraryLocations.every(location => selectedLocationIds.includes(location.id))} onChange={event => setSelectedLocationIds(event.target.checked ? filteredLibraryLocations.map(location => location.id) : [])}/>全选当前结果</label><span className="text-xs text-stone-400">已选 {selectedLocationIds.length} 个</span><select aria-label="批量移动到文件夹" value={batchFolderId} onChange={event => setBatchFolderId(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs"><option value="unfiled">未整理</option>{locationFolders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><button type="button" disabled={!selectedLocationIds.length} onClick={moveSelectedLocations} className="rounded-lg bg-[var(--life-accent)] px-3 py-2 text-xs font-medium text-white disabled:opacity-40">移动所选</button></div>}
           <div className="mb-4 rounded-2xl border border-[#ead8c8] bg-[#fffaf5] p-3">
             <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-stone-800">从角色卡 / 世界书导入地点</h3><p className="mt-1 text-xs leading-relaxed text-stone-500">自动提取地点、别名、环境、氛围、布局和道具，并保留来源。这里直接扫描所选世界书的启用条目，不依赖普通聊天的关键词触发；默认勾选该角色绑定的聊天与栖所世界书，也可手动选择其他书。</p></div>
               <button type="button" disabled={locationImportBusy || !locationImportCharacterId} onClick={() => void importWorldbookLocations()} className="shrink-0 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{locationImportBusy ? "处理中…" : "分析并导入地点"}</button>
@@ -3911,23 +4089,24 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           </form>
           <div className="mt-4 space-y-3">
             {filteredLibraryLocations.length === 0 && <p className="rounded-2xl border border-dashed border-stone-300 p-6 text-center text-sm text-stone-500">没有找到符合条件的地点。</p>}
-            {filteredLibraryLocations.map(location => {
+            {Array.from(libraryLocationGroups.entries()).map(([folderId, folderLocations]) => <section key={folderId} className="space-y-2 rounded-2xl border border-stone-200/70 bg-white/35 p-2">
+              <button type="button" onClick={() => setCollapsedLocationFolders(current => ({ ...current, ["library:"+folderId]: !current["library:"+folderId] }))} className="flex w-full items-center justify-between rounded-xl bg-white/75 px-3 py-2.5 text-left text-xs font-semibold text-stone-600"><span>{locationFolderName(folderId === "unfiled" ? undefined : folderId)} · {folderLocations.length} 个地点</span><span>{collapsedLocationFolders["library:"+folderId] ? "展开 +" : "收起 −"}</span></button>
+              {!collapsedLocationFolders["library:"+folderId] && <div className="space-y-3">{folderLocations.map(location => {
               const entries = state.timeline.filter(entry => entry.locationName === location.name);
               const eventCount = state.events.filter(event => event.locationId === location.id || event.locationName === location.name).length;
               const actualPeople = characters.filter(character => state.actorStates.some(actor => actor.ownerType === "character" && actor.ownerId === character.id && actor.actualLocationId === location.id));
               return <article key={location.id} className="rounded-2xl border border-stone-200/70 bg-white/70 p-3">
+                {locationSelectionMode && <label className="mb-1 flex min-h-8 items-center gap-2 px-2 text-xs text-stone-500"><input type="checkbox" checked={selectedLocationIds.includes(location.id)} onChange={event => setSelectedLocationIds(current => event.target.checked ? [...new Set([...current, location.id])] : current.filter(id => id !== location.id))}/>选择此地点</label>}
                 <button type="button" onClick={() => { setSelectedLocationId(location.id); setLocationDossierOpen(true); }} className={`w-full min-h-12 touch-manipulation rounded-xl p-2 text-left transition ${selectedLocationId === location.id ? "bg-[#fffaf5]" : "hover:bg-white"}`}>
                   <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="font-semibold text-stone-800">{location.name}</h3><p className="mt-1 line-clamp-2 text-xs leading-relaxed text-stone-500">{location.description || "尚未添加地点描写"}</p></div><span className="shrink-0 rounded-full bg-stone-100 px-2 py-1 text-[10px] text-stone-500">{location.visibility === "private" ? "私人" : "公共"}</span></div>
-                  <div className="mt-2 flex flex-wrap gap-1.5"><span className="rounded-full bg-[#f5ede4] px-2 py-1 text-[10px] text-stone-600">{location.category || "其他"}</span><span className="rounded-full bg-stone-100 px-2 py-1 text-[10px] text-stone-500">{locationFolderName(location.folderId)}</span></div>
+                  <div className="mt-2 flex flex-wrap gap-1.5"><span className="rounded-full bg-stone-100 px-2 py-1 text-[10px] text-stone-500">{locationFolderName(location.folderId)}</span></div>
                   <div className="mt-3 flex flex-wrap gap-1.5">{actualPeople.length ? <span className="inline-flex items-center gap-1.5 rounded-full border border-[#d7c2af] bg-[#efe1d2] px-2.5 py-1 text-[10px] text-stone-700"><Users size={11}/>{actualPeople.length} 位角色在场</span> : <span className="rounded-full bg-stone-100 px-2 py-1 text-[10px] text-stone-500">目前没有实际在场角色</span>}</div>
                   <div className="mt-3 flex items-center justify-between gap-2 text-[10px] text-stone-400"><span>生活记录 {entries.length} 条 · 事件 {eventCount} 件</span><span>{location.props?.length ?? 0} 件道具 · 查看档案 →</span></div>
                 </button>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <select aria-label={location.name+"分类"} value={location.category || "其他"} onChange={event => updateLocationOrganization(location.id,{category:event.target.value as LifeLocation["category"]})} className="min-w-0 rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs">{["住宅","商业","公共","自然","其他"].map(value=><option key={value} value={value}>{value}</option>)}</select>
-                  <select aria-label={location.name+"文件夹"} value={location.folderId || "unfiled"} onChange={event => updateLocationOrganization(location.id,{folderId:event.target.value==="unfiled"?undefined:event.target.value})} className="min-w-0 rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs"><option value="unfiled">未整理</option>{locationFolders.map(folder=><option key={folder.id} value={folder.id}>{folder.name}</option>)}</select>
-                </div>
+
               </article>;
-            })}
+            })}</div>}
+            </section>)}
           </div>
           </>}
         </section>
@@ -3939,14 +4118,17 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             <div className="rounded-2xl bg-[#f5ede4] p-3"><p className="text-[10px] text-stone-500">累计停留</p><p className="mt-1 text-lg font-semibold text-stone-800">{Math.floor(selectedLocationVisitStats.minutes / 60)}h {selectedLocationVisitStats.minutes % 60}m</p></div>
             <div className="rounded-2xl bg-[#f5ede4] p-3"><p className="text-[10px] text-stone-500">本次停留</p><p className="mt-1 text-lg font-semibold text-stone-800">{Math.floor(selectedLocationVisitStats.activeMinutes / 60)}h {selectedLocationVisitStats.activeMinutes % 60}m</p></div>
           </div>
-          <p className="mb-4 text-xs leading-relaxed text-stone-500">统计按生活系统的现实时间计算：每次前往会记入生活时间线，离开或临时停留到期后自动结算。它是实际到访记录，不会把尚未发生的计划误记为已到访。</p>
-          <SectionTitle eyebrow="Location dossier" title={selectedLocation.name + " · 地点档案"} note="这些设定会持久保存，并注入后续场景提示词。布局定义空间关系，道具可在行动中被引用，角色习惯会影响其在此处的行为，但不应限制角色临时做出新行动。"/>
+          
+          <SectionTitle title={selectedLocation.name + " · 地点档案"}/>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[#fffaf5] p-3"><div className="text-xs text-stone-500">{(selectedLocation.sourceRefs ?? []).length ? "来源：" + (selectedLocation.sourceRefs ?? []).map(source => source.kind === "worldbook" ? source.worldBookName + (source.entryComment ? " · " + source.entryComment : "") : source.kind === "character-card" ? source.characterName + " 的角色卡" : "手动").join("；") : "暂无导入来源；可由 AI 根据地点名称与角色设定补全。"}</div><button type="button" disabled={locationImportBusy} onClick={() => void completeSelectedLocationProfile()} className="shrink-0 rounded-lg border border-[#d7b99f] bg-white px-3 py-2 text-xs font-medium text-stone-700 disabled:opacity-50">{locationImportBusy ? "处理中…" : "AI 补全 / 刷新档案"}</button></div>
           <label className="mb-3 block text-sm font-medium text-stone-700">地点名称<input value={locationNameDraft} onChange={event => { setLocationNameDraft(event.target.value); setLocationSaveFeedback(false); }} placeholder="例如：我们的小家" className="mt-1.5 w-full min-w-0 rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label>
           <label className="mb-3 block text-sm font-medium text-stone-700">别名 / 日程匹配关键词<textarea value={(selectedLocation.aliases ?? []).join("、")} onChange={event => commit({ ...stateRef.current, locations: stateRef.current.locations.map(location => location.id === selectedLocation.id ? { ...location, aliases: event.target.value.split(/[、,，;；\n]/).map(value => value.trim()).filter(Boolean), fieldOrigins: { ...(location.fieldOrigins ?? {}), aliases: "user" } } : location) })} rows={2} placeholder="例如：旧城区花店、花店、花房" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
-          <label className="mb-4 block text-sm font-medium text-stone-700">地点布置与描写<textarea value={locationDescriptionDraft} onChange={event => setLocationDescriptionDraft(event.target.value)} rows={8} placeholder={"一个框写完即可，不用刻意分栏。可参考：\n• 环境：空间类型、大小、光线、声音、气味\n• 氛围：时段、天气、人声、整体情绪\n• 布局：门窗、家具、通道、座位的位置关系\n• 道具：常见物品及可互动的东西\n• 细节：角色在此处的习惯、特色与活动"} className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
-          <section className="mb-4 rounded-2xl border border-rose-200/70 bg-rose-50/50 p-3">
-            <div className="mb-2 flex items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-stone-700">专属聊天室背景</h3><p className="mt-1 text-[11px] leading-relaxed text-stone-500">只影响「{selectedLocation.name}」的生活现场，不会改变全局背景或其他地点。</p></div>
+           <div className="mb-4 grid gap-3"><label className="block text-sm font-medium text-stone-700">环境描写<textarea value={locationDescriptionDraft} onChange={event => setLocationDescriptionDraft(event.target.value)} rows={4} placeholder="空间类型、大小、光线、声音、气味及环境中的固定事实" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+              <label className="block text-sm font-medium text-stone-700">氛围<textarea value={locationAtmosphereDraft} onChange={event => setLocationAtmosphereDraft(event.target.value)} rows={3} placeholder="时段、天气、人声、气息与整体情绪" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+              <label className="block text-sm font-medium text-stone-700">空间布局<textarea value={locationLayoutDraft} onChange={event => setLocationLayoutDraft(event.target.value)} rows={3} placeholder="门窗、家具、通道、座位及区域之间的位置关系" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+              <label className="block text-sm font-medium text-stone-700">可用道具<textarea value={locationPropsDraft} onChange={event => setLocationPropsDraft(event.target.value)} rows={2} placeholder="填写可见、可使用或可互动的物品，用顿号分隔" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+            </div>
+            <div className="mb-2 flex items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-stone-700">专属聊天室背景</h3></div>
               {selectedLocation.backgroundImage && <button type="button" onClick={()=>updateSelectedLocationBackground({backgroundImage:undefined})} className="shrink-0 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs text-stone-600">移除</button>}
             </div>
             {selectedLocation.backgroundImage ? <div className="relative mb-3 h-32 overflow-hidden rounded-xl border border-white/80"><img src={selectedLocation.backgroundImage} alt={selectedLocation.name+"聊天室背景预览"} className="h-full w-full object-cover" style={{filter:`blur(${Math.max(0,Math.min(18,selectedLocation.backgroundBlur??0))}px) brightness(${Math.max(.45,Math.min(1.4,(selectedLocation.backgroundBrightness??100)/100))})`}}/><div className="absolute inset-0" style={{backgroundColor:`rgba(255,250,245,${Math.max(0,Math.min(85,selectedLocation.backgroundOverlay??18))/100})`}}/></div> : <div className="mb-3 grid h-24 place-items-center rounded-xl border border-dashed border-rose-200 bg-white/60 text-center text-xs text-stone-500">当前继承全局背景<br/>上传后仅覆盖这个地点</div>}
@@ -3956,11 +4138,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
               <label className="block text-[11px] text-stone-600">亮度 · {selectedLocation.backgroundBrightness??100}%<input type="range" min="45" max="140" value={selectedLocation.backgroundBrightness??100} onChange={e=>updateSelectedLocationBackground({backgroundBrightness:Number(e.target.value)})} className="mt-1.5 w-full"/></label>
               <label className="block text-[11px] text-stone-600">遮罩 · {selectedLocation.backgroundOverlay??18}%<input type="range" min="0" max="85" value={selectedLocation.backgroundOverlay??18} onChange={e=>updateSelectedLocationBackground({backgroundOverlay:Number(e.target.value)})} className="mt-1.5 w-full"/></label>
             </div>
-            <p className="mt-2 text-[10px] leading-relaxed text-stone-500">移除专属背景后会自动恢复全局背景。背景层不拦截触控，不影响聊天室滚动、输入与发送。</p>
-          </section>
+            
           {(selectedLocation.id === "home" || selectedLocation.id.startsWith("home-")) && <section className="mb-4 rounded-xl border border-stone-200/80 bg-white/80 p-3">
             <h3 className="text-sm font-semibold text-stone-700">同住设置</h3>
-            <p className="mt-1 text-xs leading-relaxed text-stone-500">{selectedLocation.id === "home" ? "默认每个角色拥有独立住处。勾选后，TA 的后续居家日程会转到你的「家」。" : "勾选后，这些角色会住进这个住处；TA 的后续居家日程会转到这里。每个角色同一时间只有一个住处。"}</p>
+            
             <div className="mt-3 space-y-2">{characters.map(character => <label key={character.id} className="flex min-h-11 items-center gap-3 border-b border-stone-100 py-2 text-sm text-stone-700 last:border-0">
               {character.avatar ? <img src={character.avatar} alt="" className="h-8 w-8 rounded-full object-cover"/> : <span className="grid h-8 w-8 place-items-center rounded-full bg-[#efe1d2]">{character.name.slice(0,1)}</span>}
               <span className="min-w-0 flex-1">{character.name}</span>
@@ -4009,26 +4190,28 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
               }} className="h-4 w-4 accent-[var(--life-accent)]"/>
             </label>)}</div>
           </section>}
-          <button type="button" onClick={saveLocationDetails} className="w-full rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white active:scale-[.99]">{locationSaveFeedback ? "✓ 已保存" : "保存地点设定"}</button><p aria-live="polite" className={`mt-1.5 min-h-4 text-center text-[11px] ${locationSaveFeedback ? "text-emerald-700" : "text-stone-400"}`}>{locationSaveFeedback ? "地点名称、环境与空间设定已保存" : "修改名称、环境、布局或道具后，点击保存生效"}</p>
+          <button type="button" onClick={saveLocationDetails} className="w-full rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white active:scale-[.99]">{locationSaveFeedback ? "已保存" : "保存地点设定"}</button>
           <div className="mt-5 border-t border-stone-200/70 pt-4">
-            <SectionTitle eyebrow="Character habits" title="角色在这里的习惯" note="写长期倾向，不是强制动作。比如某角色每次来书店会先看新书区、习惯坐最里面的位置，或会顺手给别人带一杯热饮。"/>
+            <SectionTitle title="角色在这里的习惯"/>
             <div className="space-y-3">{characters.map(character => {
               const history = state.timeline.filter(entry => entry.locationName === selectedLocation.name && (entry.actorId === character.id || entry.actorName === character.name));
               const frequentActions = [...new Set(history.map(entry => entry.title).filter(Boolean))].slice(0, 4);
               return <div key={character.id} className="rounded-2xl border border-stone-200/70 bg-white/80 p-3">
-                <div className="flex items-center gap-2">{character.avatar ? <img src={character.avatar} alt="" className="h-9 w-9 rounded-full object-cover"/> : <span className="grid h-9 w-9 place-items-center rounded-full bg-[#efe1d2]">{character.name.slice(0,1)}</span>}<div className="min-w-0 flex-1"><p className="text-sm font-semibold">{character.name}</p><p className="text-[10px] text-stone-500">在此地点有 {history.length} 条行动 / 生活记录</p></div></div>
-                <label className="mt-3 block text-xs font-medium text-stone-600">地点习惯<textarea value={locationHabitDrafts[character.id] ?? ""} onChange={event => setLocationHabitDrafts(current => ({ ...current, [character.id]: event.target.value }))} rows={2} placeholder={`描述 ${character.name} 在「${selectedLocation.name}」经常做的事；留空表示没有特别设定。`} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+                <div className="flex items-center gap-2">{character.avatar ? <img src={character.avatar} alt="" className="h-9 w-9 rounded-full object-cover"/> : <span className="grid h-9 w-9 place-items-center rounded-full bg-[#efe1d2]">{character.name.slice(0,1)}</span>}<div className="min-w-0 flex-1"><p className="text-sm font-semibold">{character.name}</p></div></div>
+                <label className="mt-3 block text-xs font-medium text-stone-600">地点习惯<textarea value={locationHabitDrafts[character.id] ?? ""} onChange={event => setLocationHabitDrafts(current => ({ ...current, [character.id]: event.target.value }))} rows={2} placeholder="记录角色在此地点的日常习惯" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
                 {frequentActions.length > 0 && <div className="mt-2"><p className="text-[10px] font-medium text-stone-500">已记录过的事情</p><div className="mt-1 flex flex-wrap gap-1.5">{frequentActions.map(action => <span key={action} className="rounded-full bg-stone-100 px-2 py-1 text-[10px] text-stone-600">{action}</span>)}</div></div>}
                 <button type="button" onClick={() => saveCharacterLocationHabit(character.id)} className="mt-3 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">保存 {character.name} 的习惯</button>
               </div>;
             })}</div>
           </div>
-          <div className="mt-5 border-t border-stone-200/70 pt-4"><SectionTitle eyebrow="Recent history" title="这里发生过什么" note="记录来自生活系统已经保存的行动、对白、日程与事件，不会把计划误当成已经发生的事情。"/>
+          <div className="mt-5 border-t border-stone-200/70 pt-4"><SectionTitle title="这里发生过什么"/>
             {state.timeline.filter(entry => entry.locationName === selectedLocation.name).slice().sort((a,b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0,20).length ? <div className="space-y-2">{state.timeline.filter(entry => entry.locationName === selectedLocation.name).slice().sort((a,b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0,20).map(entry => <div key={entry.id} className="rounded-xl bg-white/80 p-3"><p className="text-sm font-medium">{entry.title}</p>{entry.details && <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-stone-500">{entry.details}</p>}<p className="mt-1 text-[10px] text-stone-400">{entry.actorName || "生活记录"} · {new Date(entry.occurredAt).toLocaleString("zh-CN")}</p></div>)}</div> : <p className="rounded-xl bg-white/70 p-4 text-sm text-stone-500">这个地点还没有已发生的生活记录。角色习惯和地点设定保存后，会影响未来互动。</p>}
           </div>
         </section>}
       </div>}
 
+      {libraryLocationSearchOpen && tab === "locations" && <div role="dialog" aria-modal="true" aria-label="搜索地点档案" className="fixed inset-0 z-[150] flex items-end justify-center bg-black/35 p-2 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setLibraryLocationSearchOpen(false)}><section className="max-h-[88dvh] w-full max-w-xl overflow-hidden rounded-3xl border border-white/80 bg-[var(--life-overlay)] shadow-2xl" onClick={event => event.stopPropagation()}><header className="flex items-center justify-between border-b border-stone-200/70 px-4 py-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--life-accent)]">Location library</p><h2 className="text-lg font-semibold">查找地点档案</h2></div><button type="button" onClick={() => setLibraryLocationSearchOpen(false)} aria-label="关闭" className="grid h-9 w-9 place-items-center rounded-full bg-white/75"><X size={18}/></button></header><div className="space-y-2 p-3"><input autoFocus value={libraryLocationSearch} onChange={event => setLibraryLocationSearch(event.target.value)} placeholder="搜索地点名称、别名或描写" className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/><div className="grid grid-cols-1 gap-2"><select value={libraryLocationFolderFilter} onChange={event => setLibraryLocationFolderFilter(event.target.value)} className="min-w-0 rounded-xl border border-stone-200 bg-white px-2 py-2 text-xs"><option value="all">全部文件夹</option><option value="unfiled">未整理</option>{locationFolders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></div></div><div className="max-h-[58dvh] space-y-1 overflow-y-auto px-3 pb-3">{filteredLibraryLocations.map(location => <button type="button" key={location.id} onClick={() => { setSelectedLocationId(location.id); setLocationDossierOpen(true); setLibraryLocationSearchOpen(false); }} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-stone-200/70 bg-white/75 p-3 text-left"><span className="min-w-0"><span className="block font-medium text-stone-800">{location.name}</span><span className="mt-1 block truncate text-xs text-stone-500">{location.description || "暂无地点描写"}</span></span><span className="shrink-0 text-xs text-[var(--life-accent)]">编辑档案 ›</span></button>)}{!filteredLibraryLocations.length && <p className="p-6 text-center text-sm text-stone-500">没有找到地点</p>}</div></section></div>}
+      {folderDialogOpen && tab === "locations" && <div role="dialog" aria-modal="true" aria-label="地点文件夹管理" className="fixed inset-0 z-[160] flex items-end justify-center bg-black/35 p-2 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setFolderDialogOpen(false)}><section className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-3xl bg-[var(--life-overlay)] p-4 shadow-2xl" onClick={event => event.stopPropagation()}><header className="mb-3 flex items-center justify-between"><h2 className="text-lg font-semibold text-stone-800">文件夹</h2><button type="button" onClick={() => setFolderDialogOpen(false)} aria-label="关闭" className="grid h-9 w-9 place-items-center rounded-full bg-white"><X size={18}/></button></header><form onSubmit={event => { event.preventDefault(); saveLocationFolder(); }} className="flex gap-2"><input autoFocus value={folderNameDraft} onChange={event => setFolderNameDraft(event.target.value)} placeholder={editingFolderId ? "重命名文件夹" : "新建文件夹名称"} className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/><button type="submit" className="rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white">{editingFolderId ? "保存" : "创建"}</button>{editingFolderId && <button type="button" onClick={() => { setEditingFolderId(null); setFolderNameDraft(""); }} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">取消</button>}</form><div className="mt-4 space-y-2">{locationFolders.map(folder => <div key={folder.id} className="flex items-center gap-2 rounded-xl border border-stone-200/70 bg-white/75 p-3"><span className="min-w-0 flex-1 text-sm text-stone-700">{folder.name} · {state.locations.filter(location => location.folderId === folder.id).length}</span><button type="button" onClick={() => { setEditingFolderId(folder.id); setFolderNameDraft(folder.name); }} className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs">重命名</button><button type="button" onClick={() => setFolderDeleteConfirmId(folder.id)} className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs text-rose-700">删除</button></div>)}{!locationFolders.length && <p className="rounded-xl bg-white/65 p-4 text-center text-xs text-stone-500">还没有文件夹</p>}</div>{folderDeleteConfirmId && <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3"><p className="text-sm text-rose-800">删除后，文件夹内地点会移入「未整理」，不会删除地点本身。</p><div className="mt-2 flex justify-end gap-2"><button type="button" onClick={() => setFolderDeleteConfirmId(null)} className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs">取消</button><button type="button" onClick={() => deleteLocationFolder(folderDeleteConfirmId)} className="rounded-lg bg-rose-600 px-3 py-2 text-xs text-white">确认删除</button></div></div>}</section></div>}
       {tab === "daily" && <div role="tablist" aria-label="角色日程视图" className="mb-4 grid grid-cols-3 gap-1 rounded-2xl border border-white/80 bg-white/55 p-1">
         <button type="button" role="tab" aria-selected={dailySubtab === "people"} onClick={() => setDailySubtab("people")} className={`min-w-0 rounded-xl px-2 py-2.5 text-sm transition ${dailySubtab === "people" ? "bg-white font-semibold text-[var(--life-accent)] shadow-sm" : "text-stone-500"}`}>角色动态</button>
         <button type="button" role="tab" aria-selected={dailySubtab === "plans"} onClick={() => setDailySubtab("plans")} className={`min-w-0 rounded-xl px-2 py-2.5 text-sm transition ${dailySubtab === "plans" ? "bg-white font-semibold text-[var(--life-accent)] shadow-sm" : "text-stone-500"}`}>七日日程</button>
@@ -4036,7 +4219,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       </div>}
       {tab === "daily" && dailySubtab === "observe" && <div className="rounded-3xl border border-white/80 bg-white/55 p-3 shadow-sm sm:p-4"><LifeObservation characters={characters} active={true} onNotice={setNotice} /></div>}
       {(tab === "people" || (tab === "daily" && dailySubtab === "people")) && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
-        <SectionTitle eyebrow="Character presence" title="角色动态" note="汇总所有已载入角色的现实时间、当前活动和位置。实际记录与日程推测会分开标记；未知位置不会伪装成实时定位。" />
+        <SectionTitle title="角色动态" />
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {characters.map(character => {
             const presence = state.actorStates.find(item => item.ownerType === "character" && item.ownerId === character.id);
@@ -4069,7 +4252,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
 
           <div className="mt-4 border-t border-[#e6d5c4] pt-3">
             <p className="text-sm font-semibold text-stone-800">AI 日程指导 · 先预览再保存</p>
-            <p className="mt-1 text-xs leading-relaxed text-stone-500">选择安排对象，用自然语言描述要求。AI 会结合现有七日日程重新规划：优先保留已开始、已确认和明确固定的安排，对可调整的未来安排提出移动、修改或取消建议，并可补充新安排；预览确认后才会一次性写入。</p>
+            
             <div className="mt-3 rounded-xl border border-stone-200 bg-white/80 p-3">
               <p className="mb-2 text-xs text-stone-500">安排对象（可多选）</p>
               <div className="flex flex-nowrap gap-2 overflow-x-auto overscroll-x-contain pb-1">{actors.map(actor=>{const key=actor.ownerType+":"+actor.ownerId;return <label key={key} className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-2 text-xs"><input type="checkbox" checked={scheduleGuidanceActorKeys.includes(key)} onChange={event=>setScheduleGuidanceActorKeys(current=>event.target.checked?[...new Set([...current,key])]:current.filter(value=>value!==key))}/>{actor.name}{actor.ownerType==="player"?"（我）":"（角色）"}</label>;})}</div>
@@ -4078,7 +4261,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             <button type="button" onClick={()=>void generateGuidedScheduleDrafts()} disabled={guidedScheduleBusy||!scheduleGuidanceText.trim()||scheduleGuidanceActorKeys.length===0} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><Sparkles size={14}/>{guidedScheduleBusy?"AI 正在分析现有日程…":"AI 生成待确认预览"}</button>
           </div>
           <div className="mt-4 border-t border-[#e6d5c4] pt-3"><p className="text-sm font-semibold text-stone-800">手动补充 · 一句话安排日程</p>
-          <p className="mt-1 text-xs leading-relaxed text-stone-500">这是可选的手动入口。支持“明天下午3点到5点在家睡觉”或“角色名：周五晚上7点去公园散步”；识别后仍可编辑，不再要求你手动写完整行程。</p></div>
+          </div>
           <textarea value={quickPlanText} onChange={e=>setQuickPlanText(e.target.value)} rows={3} placeholder={"明天下午3点到5点在咖啡馆画画\n周五晚上7点去公园散步"} className="mt-3 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/>
           <button type="button" onClick={()=>{
             const lines=quickPlanText.split(/\n|；|;/).map(line=>line.trim()).filter(Boolean);
@@ -4175,7 +4358,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         </div>
       </section>}
       {(tab === "plans" || (tab === "daily" && dailySubtab === "plans")) && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3"><SectionTitle eyebrow="Weekly plans" title="你和角色的七日日程" note="这里按人分组：你自己的日程显示具体时间；角色只显示日期、活动和地点线索，不显示具体时段。计划不是保证，是否真的遇见 TA 取决于当前实际位置、角色自己的决定和现场情况。" /><button onClick={ensurePlans} title="只补全本地规则缺失的时间段，不替代 AI 生成" className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-600"><RefreshCw size={14}/>补全缺失时段</button></div>
+        <div className="flex flex-wrap items-start justify-between gap-3"><SectionTitle title="你和角色的七日日程" /><button onClick={ensurePlans} title="只补全本地规则缺失的时间段，不替代 AI 生成" className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-600"><RefreshCw size={14}/>补全缺失时段</button></div>
         {actors.map(actor => {
           const realNow = actorNow(actor);
           const slots = state.schedules.filter(slot => slot.ownerType === actor.ownerType && slot.ownerId === actor.ownerId && new Date(slot.endAt).getTime() > realNow.getTime() - DAY_MS).sort((x,y) => x.startAt.localeCompare(y.startAt));
@@ -4206,16 +4389,16 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
 
 
       {tab === "invitations" && <div className="grid gap-4 lg:grid-cols-[.85fr_1.15fr]">
-        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Make a plan together" title="创建邀约" note="你发出的邀约由角色根据人设和日程决定是否接受；角色主动发出的邀约由你决定是否接受。双方同意后才同步日程，不会瞬间跳到约定时间。" />
+        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle title="创建邀约" />
           <form onSubmit={addInvitation} className="space-y-3"><label className="block text-sm">邀请谁<select value={inviteCharacterId} onChange={e=>setInviteCharacterId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="">选择角色</option>{characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label className="block text-sm">事件 / 活动<input value={inviteActivity} onChange={e=>setInviteActivity(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">邀约理由<textarea value={inviteReason} onChange={e=>setInviteReason(e.target.value)} placeholder="例如：最近想和你聊聊，或者想把这件有趣的事分享给你" rows={2} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="block text-sm">时间<input type="datetime-local" value={inviteAt} onChange={e=>{setInviteAtEdited(true);setInviteAt(e.target.value)}} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/><span className="mt-1 block text-[11px] text-stone-500">默认按你的现实时间预填；系统会根据现实时间和双方现有日程检查是否来得及赴约。</span></label><label className="block text-sm">地点<select value={inviteLocationId} onChange={e=>setInviteLocationId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5">{visibleLocations.map(loc=><option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></label><button disabled={busy} className="w-full rounded-2xl bg-[var(--life-accent)] px-4 py-3 text-sm font-medium text-white disabled:opacity-50">{busy?"等待角色回应…":"发出邀约"}</button></form>
         </section>
-        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Invitation inbox" title="邀约记录" />
+        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle title="邀约记录" />
           {state.invitations.length===0?<p className="rounded-2xl bg-white/60 p-4 text-sm text-stone-400">这里会保存待确认、已确认和已取消的邀约。</p>:<div className="space-y-3">{state.invitations.map(invite=>{const char=characters.find(c=>c.id===invite.characterId);const editable=invite.status==="proposed"||invite.status==="confirmed";const editing=editingInvitationId===invite.id;return <div key={invite.id} className="rounded-2xl border border-stone-200/70 bg-white/70 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-medium">{char?.name??"未知角色"} · {invite.kind==="follow-request"?"陪伴申请":"邀约"} · {invite.activity}</p><p className="mt-1 text-xs text-stone-500">{fmt(invite.proposedAt)} · {invite.kind==="follow-request"?(invite.durationMinutes??120)+" 分钟 · 跟随你的实际行程":invite.locationName??"地点待定"} · {invite.durationMinutes??60} 分钟</p>{invite.reason&&<p className="mt-1 text-xs leading-relaxed text-stone-600">理由：{invite.reason}</p>}{invite.responseReason&&<p className="mt-1 text-xs leading-relaxed text-stone-600">回应：{invite.responseReason}</p>}</div><span className="shrink-0 rounded-full bg-[#f0e3d5] px-2.5 py-1 text-[11px]">{(invite.status==="proposed"&&invite.proposedBy==="player"?"等待角色回应":({proposed:"待确认",confirmed:"已确认",declined:"已拒绝",cancelled:"已取消",completed:"已完成"} as Record<string,string>)[invite.status])}</span></div>{editing&&<div className="mt-4 grid gap-3 rounded-2xl bg-[#faf5ef] p-3"><label className="block text-xs">活动内容<input value={editInvitationDraft.activity} onChange={e=>setEditInvitationDraft(d=>({...d,activity:e.target.value}))} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/></label><label className="block text-xs">邀约理由<textarea value={editInvitationDraft.reason} onChange={e=>setEditInvitationDraft(d=>({...d,reason:e.target.value}))} rows={2} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/></label><label className="block text-xs">时间<input type="datetime-local" value={editInvitationDraft.proposedAt} onChange={e=>setEditInvitationDraft(d=>({...d,proposedAt:e.target.value}))} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/></label><label className="block text-xs">持续时长（分钟）<input type="number" min={15} max={1440} step={15} value={editInvitationDraft.durationMinutes} onChange={e=>setEditInvitationDraft(d=>({...d,durationMinutes:e.target.value}))} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/></label>{invite.kind!=="follow-request"&&<label className="block text-xs">地点<select value={editInvitationDraft.locationId} onChange={e=>setEditInvitationDraft(d=>({...d,locationId:e.target.value}))} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm">{visibleLocations.map(loc=><option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></label>}<div className="flex gap-2"><button type="button" onClick={()=>saveInvitationEdit(invite.id)} className="flex-1 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white">保存并同步日程</button><button type="button" onClick={()=>setEditingInvitationId(null)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">取消编辑</button></div></div>}{!editing&&<div className="mt-3 flex flex-wrap gap-2">{invite.status==="proposed"&&invite.proposedBy!=="player"&&<><button onClick={()=>confirmInvitation(invite.id)} className="rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs text-white">{invite.kind==="follow-request"?"接受陪伴申请":"确认并同步日程"}</button><button onClick={()=>declineInvitation(invite.id)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">拒绝</button></>}{editable&&<button onClick={()=>beginEditInvitation(invite.id)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">编辑 / 重新安排</button>}{editable&&<button onClick={()=>cancelInvitation(invite.id)} className="rounded-xl border border-red-200 px-3 py-2 text-xs text-red-600">取消邀约</button>}{(invite.status==="declined"||invite.status==="cancelled")&&<button onClick={()=>reuseInvitation(invite.id)} className="rounded-xl border border-stone-200 px-3 py-2 text-xs">复制并重新发起</button>}</div>}</div>;})}</div>}
         </section>
       </div>}
 
       {tab === "experiences" && <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
-        <SectionTitle eyebrow="Shared memories" title="共同经历" note="这里按实际发生时间整理生活记录。你可以按角色、日期或事件类型筛选；隐藏记录只影响显示，不会删除原始数据。" />
+        <SectionTitle title="共同经历" />
         <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block text-xs font-medium text-stone-600">参与角色
             <select value={experienceActorFilter} onChange={event => setExperienceActorFilter(event.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">
@@ -4254,7 +4437,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       {tab === "settings" && <div className="grid gap-4 lg:grid-cols-2">
         <LifeDiagnosticsPanel />
         <section className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm sm:p-6 lg:col-span-2">
-          <SectionTitle eyebrow="Life appearance" title="生活系统全局背景" note="设置后会用于生活首页、日程、地点库与设置等页面。某个地点拥有专属聊天室背景时，进入该地点会优先显示专属背景。"/>
+          <SectionTitle title="生活系统全局背景"/>
           <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
             <div>
               <div className="relative grid min-h-36 place-items-center overflow-hidden rounded-2xl border border-rose-200/70 bg-[#fbf5ee]">
@@ -4278,7 +4461,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             </div>
           </div>
         </section>
-        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Behavior switches" title="生活模拟规则" note="你可以把它调成轻量陪伴，也可以打开更多自主生活细节。" />
+        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle title="生活模拟规则" />
           <div className="space-y-2">
             <Toggle checked={settings.enabled} onChange={v=>patchSettings({enabled:v})} label="启用虚拟生活引擎" hint="关闭后保留数据，但暂停新生活场景功能。"/>
             <Toggle checked={settings.autoGenerateWeeklyPlans} onChange={v=>patchSettings({autoGenerateWeeklyPlans:v})} label="自动生成每周日程"/>
@@ -4321,7 +4504,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           </div>
           <div className="mt-4 rounded-2xl border border-[var(--life-accent)]/25 bg-white/70 p-4">
             <p className="text-sm font-semibold">角色可调用的生活工具</p>
-            <p className="mt-1 text-xs leading-relaxed text-stone-500">这些工具不需要你手动替角色创建。角色在生活现场或消息 APP 私聊中有真实动机时，可以自己发起；只有需要你参与的邀约和陪伴申请才会进入待确认列表。</p>
+            
             <div className="mt-3 space-y-2 text-xs">
               <div className="flex items-start justify-between gap-3 rounded-xl bg-white/80 p-3"><div><code>life_propose_invitation</code><p className="mt-1 text-stone-500">角色主动邀约你一起做某件事</p></div><span className={settings.enableCharacterAutonomy&&settings.enableInvitations?"text-emerald-700":"text-stone-400"}>{settings.enableCharacterAutonomy&&settings.enableInvitations?"已启用":"已关闭"}</span></div>
               <div className="flex items-start justify-between gap-3 rounded-xl bg-white/80 p-3"><div><code>life_request_follow</code><p className="mt-1 text-stone-500">角色主动申请陪伴，并跟随你的实际行程</p></div><span className={settings.enableCharacterAutonomy&&settings.enableFollowRequestTool?"text-emerald-700":"text-stone-400"}>{settings.enableCharacterAutonomy&&settings.enableFollowRequestTool?"已启用":"已关闭"}</span></div>
@@ -4330,7 +4513,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           </div>
           <label className="mt-4 block text-sm">位置情报权限<select value={settings.revealExactLocations} onChange={e=>patchSettings({revealExactLocations:e.target.value as LifeEngineSettings["revealExactLocations"]})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="ask-only">只有询问或可靠渠道才能得知精确位置</option><option value="clues">默认只显示习惯与模糊线索</option><option value="open">允许公开查看实际位置</option></select></label>
         </section>
-        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle eyebrow="Appearance & comfort" title="界面自定义" note="外观设置独立保存，不会影响角色数据或原有聊天主题。" />
+        <section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6"><SectionTitle title="界面自定义" />
           <label className="mb-4 block text-sm">玩家显示名称<input value={playerName} onChange={e=>patchSettings({playerDisplayName:e.target.value})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label><label className="mb-4 block text-sm">场景主题<select value={settings.sceneTheme} onChange={e=>patchSettings({sceneTheme:e.target.value as LifeEngineSettings["sceneTheme"]})} className="mt-1.5 w-full rounded-xl border border-[rgb(var(--life-border-rgb)/.8)] bg-[rgb(var(--life-surface-rgb)/.96)] px-3 py-2.5 text-[var(--life-text)]">
             {Object.entries(themePresets).map(([value, theme])=><option key={value} value={value}>{theme.label}</option>)}
           </select></label>
@@ -4339,14 +4522,14 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             <label className="flex items-center gap-2 text-sm"><input type="radio" name="life-accent-mode" checked={settings.accentColorMode !== "custom"} onChange={()=>patchSettings({accentColorMode:"theme"})}/>跟随主题色 <span className="ml-auto inline-block h-5 w-5 rounded-full border" style={{backgroundColor:themeAccentColor}}/></label>
             <label className="mt-2 flex items-center gap-2 text-sm"><input type="radio" name="life-accent-mode" checked={settings.accentColorMode === "custom"} onChange={()=>patchSettings({accentColorMode:"custom"})}/>自定义颜色</label>
             {settings.accentColorMode === "custom" && <div className="mt-2 flex items-center gap-2"><input aria-label="选择强调色" type="color" value={settings.accentColor} onChange={e=>patchSettings({accentColor:e.target.value,accentColorMode:"custom"})} className="h-10 w-12 shrink-0 rounded-lg border-0 bg-transparent"/><input aria-label="强调色色号" type="text" inputMode="text" spellCheck={false} maxLength={7} value={settings.accentColor} onChange={e=>{const value=e.target.value.trim();if(/^#[0-9a-f]{0,6}$/i.test(value))patchSettings({accentColor:value,accentColorMode:"custom"});}} onBlur={e=>{const value=e.currentTarget.value.trim();if(/^#[0-9a-f]{6}$/i.test(value))patchSettings({accentColor:value.toLowerCase(),accentColorMode:"custom"});}} placeholder="#C66B82" className="min-w-0 flex-1 rounded-lg border border-[rgb(var(--life-border-rgb)/.8)] bg-[rgb(var(--life-strong-rgb)/.9)] px-3 py-2 font-mono text-sm text-[var(--life-text)]"/></div>}
-            <p className="mt-2 text-xs opacity-70">可切换主题预设，也可输入 HEX 色号自定义强调色。</p>
+            
           </div>
           <label className="mb-4 block text-sm">面板不透明度：{settings.panelOpacity}%<input type="range" min="50" max="100" value={settings.panelOpacity} onChange={e=>patchSettings({panelOpacity:Number(e.target.value)})} className="mt-2 w-full accent-[var(--life-accent)]"/></label>
           <label className="mb-4 block text-sm">对白字号（px）<input key={settings.dialogueFontSize} type="number" inputMode="numeric" min="8" max="48" defaultValue={settings.dialogueFontSize} onBlur={e=>patchSettings({dialogueFontSize:Math.max(8,Math.min(48,Number(e.currentTarget.value)||13))})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2"/></label><label className="mb-4 block text-sm">动作旁白字号（px）<input key={settings.narrationFontSize} type="number" inputMode="numeric" min="8" max="36" defaultValue={settings.narrationFontSize} onBlur={e=>patchSettings({narrationFontSize:Math.max(8,Math.min(36,Number(e.currentTarget.value)||14))})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2"/></label><label className="mb-4 block text-sm">气泡内边距（px）<input key={settings.bubblePadding} type="number" inputMode="numeric" min="0" max="24" defaultValue={settings.bubblePadding} onBlur={e=>patchSettings({bubblePadding:Math.max(0,Math.min(24,Number(e.currentTarget.value)||0))})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2"/></label><label className="mb-4 block text-sm">对白字体（CSS font-family）<input value={settings.dialogueFontFamily} onChange={e=>patchSettings({dialogueFontFamily:e.target.value})} placeholder="系统默认 / Arial / sans-serif" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2"/></label><label className="mb-4 block text-sm">旁白字体（CSS font-family）<input value={settings.narrationFontFamily} onChange={e=>patchSettings({narrationFontFamily:e.target.value})} placeholder='"Microsoft YaHei", sans-serif' className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2"/></label>
           <Toggle checked={settings.compactLayout} onChange={v=>patchSettings({compactLayout:v})} label="紧凑布局"/>
            <div className="mt-4 rounded-2xl border border-stone-200 bg-[#f8f4ee] p-3">
              <p className="mb-2 text-sm font-semibold text-stone-700">聊天显示实时预览</p>
-             <p className="mb-3 text-xs text-stone-500">调整参数会即时更新预览并应用到生活聊天室；聊天室本身不再放置这组设置，把空间留给互动。</p>
+             
              <div className="life-scene-chat flex min-w-0 flex-col rounded-xl bg-white/80 p-2" style={{fontSize:"var(--life-font)",rowGap:`${settings.messageGapPx ?? 4}px`}}>
                <div className="flex items-center gap-2" style={{marginBlock:`${settings.narrationGapPx ?? 4}px`}}><span className="h-px flex-1 bg-stone-300/80"/><p className="max-w-[82%] text-center italic leading-relaxed text-stone-500" style={{fontSize:`${settings.narrationFontSize}px`,fontFamily:settings.narrationFontFamily || undefined}}>轻轻推开门，走到窗边坐下。</p><span className="h-px flex-1 bg-stone-300/80"/></div>
                <div className="flex justify-start"><div className={`life-scene-bubble min-w-0 max-w-[88%] break-words bg-white text-stone-800 shadow-sm ${settings.dialogueBubbleStyle==="square"?"rounded-md":settings.dialogueBubbleStyle==="soft"?"rounded-[1.4rem]":"rounded-2xl"}`} style={{fontSize:`${settings.dialogueFontSize}px`,fontFamily:settings.dialogueFontFamily || undefined,padding:`${settings.bubblePadding}px`}}><p>这样就能预览字号、气泡、间距和字体效果。</p></div></div>
@@ -4360,12 +4543,12 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
              <label className="block min-w-0 text-sm">旁白 / 场景卡片字体<input value={settings.narrationFontFamily} onChange={e=>patchSettings({narrationFontFamily:e.target.value})} placeholder='"Microsoft YaHei", sans-serif' className="mt-1.5 w-full min-w-0 rounded-xl border border-stone-200 bg-white px-3 py-2"/></label>
            </div>
            <label className="mt-4 block min-w-0 text-sm">自定义 CSS（仅生活聊天室）<textarea value={settings.customSceneCss ?? ""} onChange={e=>patchSettings({customSceneCss:e.target.value})} rows={5} spellCheck={false} placeholder=".life-scene-bubble { padding: 6px 9px !important; max-width: 76% !important; }" className="mt-1.5 w-full min-w-0 rounded-xl border border-stone-200 bg-white p-3 font-mono text-xs"/></label>
-           <p className="mt-1 text-xs leading-relaxed text-stone-500">可用类名：.life-scene-chat、.life-scene-bubble、.life-scene-composer。CSS 即时保存并应用；预览用于快速检查常见样式。</p>
+           
 
-          <div className="mt-4 rounded-2xl border border-stone-200/80 bg-white/60 p-4"><p className="text-sm font-semibold">玩家形象设置</p><p className="mt-1 text-xs leading-relaxed text-stone-500">玩家形象描述和参考图统一在「小手机设置 → 生图设置 → 全局玩家形象」管理，整个小手机共用。场景生成时会自动读取该配置；如果所选角色也有参考图，会一起组成参考板。</p></div>
+          <div className="mt-4 rounded-2xl border border-stone-200/80 bg-white/60 p-4"><p className="text-sm font-semibold">玩家形象设置</p></div>
           <div className="mt-4 rounded-2xl border border-stone-200/80 bg-white/60 p-4">
             <p className="text-sm font-semibold">场景生图</p>
-            <p className="mt-1 text-xs leading-relaxed text-stone-500">复用小手机现有生图配置。所选角色和玩家的参考图会合成带标签的参考板，交给支持图生图的引擎；其他角色外观描述也会进入提示词。部分引擎（例如当前 NovelAI 文本生成路径）不支持参考板，会使用文字外观描述。</p>
+            
             <div className="mt-3 space-y-2">
               <Toggle checked={settings.autoGenerateSceneImages} onChange={v=>patchSettings({autoGenerateSceneImages:v})} label="场景变化时自动生成图片" hint="关闭时只在你点生图按钮后生成；新场景、地点或参与者活动发生变化时才自动生成，同一状态不会因重开页面重复扣费。"/>
               <label className="block text-sm">每次生成张数<select value={settings.sceneImageCount} onChange={e=>patchSettings({sceneImageCount:Number(e.target.value) as 1|2|3|4})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value={1}>1 张</option><option value={2}>2 张</option><option value={3}>3 张</option><option value={4}>4 张</option></select></label>

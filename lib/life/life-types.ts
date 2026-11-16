@@ -245,6 +245,7 @@ export type LifeSceneMessage = {
   channel?: "life_scene" | "life_autonomy" | "life_offline";
   /** Reference to a scene gallery image; keeps image bytes in the media store, not the chat log. */
   imageId?: string;
+  replyToMessageId?: string;
 };
 
 export type LifeSceneImage = {
@@ -265,6 +266,7 @@ export type LifeSceneState = {
   startedAt: string;
   updatedAt: string;
   status: "active" | "paused" | "completed";
+  /** Legacy event association only; never identifies a separate chat room. */
   eventId?: string;
   participants: LifeSceneParticipant[];
   lastSettledEventIds: string[];
