@@ -5,7 +5,7 @@ import { sendShellNotification } from "@/lib/shell-notify";
 import { flushSync } from "react-dom";
 import {
   ArrowLeft, CalendarDays, Coffee, Heart, MapPin, MessagesSquare, Eye,
-  ChevronDown, Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Users, X, Pencil, Trash2, Upload, Wallpaper,
+  ChevronDown, Pause, Play, Plus, RefreshCw, Send, Settings2, Sparkles, Users, X, Pencil, Trash2, Upload, Wallpaper, Search,
 } from "lucide-react";
 import type { Character } from "@/lib/character-types";
 import { loadCharacters } from "@/lib/character-storage";
@@ -180,7 +180,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const [tab, setTab] = useState<Tab>("home");
   const [sceneView, setSceneView] = useState(false);
   const [locationDossierOpen, setLocationDossierOpen] = useState(false);
-  const [locationSearch, setLocationSearch] = useState("");
+  const [sceneLocationSearch, setSceneLocationSearch] = useState("");
+  const [libraryLocationSearch, setLibraryLocationSearch] = useState("");
+  const [sceneLocationSearchOpen, setSceneLocationSearchOpen] = useState(false);
+  const [libraryLocationSearchOpen, setLibraryLocationSearchOpen] = useState(false);
   const [locationCategoryFilter, setLocationCategoryFilter] = useState("all");
   const [locationFolderFilter, setLocationFolderFilter] = useState("all");
   const [collapsedLocationFolders, setCollapsedLocationFolders] = useState<Record<string, boolean>>({});
@@ -210,6 +213,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const [locationNameDraft, setLocationNameDraft] = useState("");
   const [locationSaveFeedback, setLocationSaveFeedback] = useState(false);
   const [locationDescriptionDraft, setLocationDescriptionDraft] = useState("");
+  const [locationAtmosphereDraft, setLocationAtmosphereDraft] = useState("");
+  const [locationLayoutDraft, setLocationLayoutDraft] = useState("");
+  const [locationPropsDraft, setLocationPropsDraft] = useState("");
   const [backgroundUploadBusy, setBackgroundUploadBusy] = useState<"global" | "location" | null>(null);
   const [locationHabitDrafts, setLocationHabitDrafts] = useState<Record<string, string>>({});
 
@@ -677,7 +683,13 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   useEffect(() => {
     setLocationNameDraft(selectedLocation?.name ?? "");
     setLocationSaveFeedback(false);
-    setLocationDescriptionDraft([selectedLocation?.description, selectedLocation?.atmosphere ? "【氛围】\n" + selectedLocation.atmosphere : "", selectedLocation?.layout ? "【空间布局】\n" + selectedLocation.layout : "", selectedLocation?.props?.length ? "【可用道具】\n" + selectedLocation.props.join("、") : ""].filter(Boolean).join("\n\n"));
+    const legacyDescription = selectedLocation?.description ?? "";
+    const legacyField = (name: string) => legacyDescription.match(new RegExp("(?:^|\\n)【" + name + "】\\s*\\n([\\s\\S]*?)(?=\\n\\n【|$)"))?.[1]?.trim() ?? "";
+    const cleanDescription = legacyDescription.replace(/\n\n?【(?:氛围|空间布局|可用道具)】[\s\S]*$/,"").trim();
+    setLocationDescriptionDraft(cleanDescription);
+    setLocationAtmosphereDraft(selectedLocation?.atmosphere || legacyField("氛围"));
+    setLocationLayoutDraft(selectedLocation?.layout || legacyField("空间布局"));
+    setLocationPropsDraft((selectedLocation?.props?.length ? selectedLocation.props : legacyField("可用道具").split(/[、,，;；\n]/).map(value => value.trim()).filter(Boolean)).join("、"));
     setLocationHabitDrafts(selectedLocation?.characterHabits ?? {});
   }, [selectedLocation?.id]);
 
@@ -2852,9 +2864,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         name: nextName,
         aliases: renamed ? [...new Set([...(location.aliases ?? []), previousName].filter(Boolean))] : location.aliases,
         description: locationDescriptionDraft.trim(),
-        atmosphere: "",
-        layout: "",
-        props: [],
+        atmosphere: locationAtmosphereDraft.trim(),
+        layout: locationLayoutDraft.trim(),
+        props: [...new Set(locationPropsDraft.split(/[、,，;；\\n]/).map(value => value.trim()).filter(Boolean))],
         fieldOrigins: { ...(location.fieldOrigins ?? {}), description: "user" as const, atmosphere: "user" as const, layout: "user" as const, props: "user" as const },
       }),
     };
@@ -3509,15 +3521,15 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     return { location, people, atmosphere, isCurrent: location.id === playerLocationId };
   }).sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || b.people.filter(person => person.isActuallyHere).length - a.people.filter(person => person.isActuallyHere).length || a.location.name.localeCompare(b.location.name, "zh-CN"));
   const locationFolders = state.locationFolders ?? [];
-  const locationMatchesFilters = (location: LifeLocation) => {
-    const query = locationSearch.trim().toLocaleLowerCase();
+  const locationMatchesFilters = (location: LifeLocation, search: string) => {
+    const query = search.trim().toLocaleLowerCase();
     const text = [location.name, ...(location.aliases ?? []), location.description, location.atmosphere, location.layout, ...(location.props ?? [])].filter(Boolean).join(" ").toLocaleLowerCase();
     return (!query || text.includes(query))
       && (locationCategoryFilter === "all" || (location.category || "其他") === locationCategoryFilter)
       && (locationFolderFilter === "all" || (location.folderId || "unfiled") === locationFolderFilter);
   };
-  const filteredLocationCards = locationCards.filter(item => locationMatchesFilters(item.location));
-  const filteredLibraryLocations = visibleLocations.filter(locationMatchesFilters);
+  const filteredLocationCards = locationCards.filter(item => locationMatchesFilters(item.location, sceneLocationSearch));
+  const filteredLibraryLocations = visibleLocations.filter(location => locationMatchesFilters(location, libraryLocationSearch));
   const locationCardGroups = new Map<string, typeof filteredLocationCards>();
   for (const item of filteredLocationCards) {
     const key = item.location.folderId || "unfiled";
@@ -3540,13 +3552,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const current = stateRef.current;
     commit({ ...current, locations: current.locations.map(location => location.id === locationId ? { ...location, ...patch } : location) });
   };
-  const locationFilterControls = <div className="grid gap-2 rounded-2xl border border-stone-200/70 bg-white/65 p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-    <input value={locationSearch} onChange={event => setLocationSearch(event.target.value)} placeholder="搜索地点、别名、环境、道具…" className="min-w-0 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/>
-    <select value={locationCategoryFilter} onChange={event => setLocationCategoryFilter(event.target.value)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"><option value="all">全部分类</option>{["住宅","商业","公共","自然","其他"].map(value => <option key={value} value={value}>{value}</option>)}</select>
-    <select value={locationFolderFilter} onChange={event => setLocationFolderFilter(event.target.value)} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"><option value="all">全部文件夹</option><option value="unfiled">未整理</option>{locationFolders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select>
-    <p className="text-[11px] text-stone-400 sm:col-span-3">找到 {filteredLocationCards.length} 个地点 · 分类与文件夹只用于整理显示，不影响 AI 地点匹配和日程。</p>
-  </div>;
-
   const lifeTimeline = (state.timeline ?? []).filter(entry => {
     if (entry.category === "location" || entry.category === "scene") return settings.recordLocationChanges;
     if (entry.category === "action") return settings.recordCharacterActions;
@@ -3879,7 +3884,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       </nav>
 
       {(tab === "home" || tab === "scene") && <div className={immersiveScene ? "flex min-h-0 flex-1 flex-col" : "space-y-4"}>
-        {tab === "scene" && !immersiveScene && <details open className="rounded-2xl border border-white/80 bg-white/55 shadow-sm"><summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-stone-600">生活状态与时间线 · {playerNow.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})} · 展开查看</summary><section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
+        {sceneLocationSearchOpen && <div role="dialog" aria-modal="true" aria-label="搜索生活现场地点" className="fixed inset-0 z-[150] flex items-end justify-center bg-black/35 p-2 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setSceneLocationSearchOpen(false)}><section className="max-h-[88dvh] w-full max-w-xl overflow-hidden rounded-3xl border border-white/80 bg-[var(--life-overlay)] shadow-2xl" onClick={event => event.stopPropagation()}><header className="flex items-center justify-between border-b border-stone-200/70 px-4 py-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--life-accent)]">Find a place</p><h2 className="text-lg font-semibold">前往地点</h2></div><button type="button" onClick={() => setSceneLocationSearchOpen(false)} aria-label="关闭" className="grid h-9 w-9 place-items-center rounded-full bg-white/75"><X size={18}/></button></header><div className="space-y-2 p-3"><input autoFocus value={sceneLocationSearch} onChange={event => setSceneLocationSearch(event.target.value)} placeholder="搜索地点名称、别名或描写" className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/><div className="grid grid-cols-2 gap-2"><select value={locationCategoryFilter} onChange={event => setLocationCategoryFilter(event.target.value)} className="min-w-0 rounded-xl border border-stone-200 bg-white px-2 py-2 text-xs"><option value="all">全部分类</option>{["住宅","商业","公共","自然","其他"].map(value => <option key={value} value={value}>{value}</option>)}</select><select value={locationFolderFilter} onChange={event => setLocationFolderFilter(event.target.value)} className="min-w-0 rounded-xl border border-stone-200 bg-white px-2 py-2 text-xs"><option value="all">全部文件夹</option><option value="unfiled">未整理</option>{locationFolders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></div></div><div className="max-h-[58dvh] space-y-1 overflow-y-auto px-3 pb-3">{filteredLocationCards.map(({location,people,isCurrent}) => <button type="button" key={location.id} onClick={() => { setSelectedLocationId(location.id); setSelectedCharacterIds(people.filter(person => person.isActuallyHere).map(person => person.character.id)); setSceneLocationSearchOpen(false); enterLocationSolo(location.id); }} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-stone-200/70 bg-white/75 p-3 text-left"><span className="min-w-0"><span className="block font-medium text-stone-800">{location.name}</span><span className="mt-1 block truncate text-xs text-stone-500">{location.description || "暂无地点描写"}</span></span><span className="shrink-0 text-xs text-[var(--life-accent)]">{isCurrent ? "进入现场" : "前往"} ›</span></button>)}{!filteredLocationCards.length && <p className="p-6 text-center text-sm text-stone-500">没有找到地点</p>}</div></section></div>}
+      {libraryLocationSearchOpen && <div role="dialog" aria-modal="true" aria-label="搜索地点档案" className="fixed inset-0 z-[150] flex items-end justify-center bg-black/35 p-2 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setLibraryLocationSearchOpen(false)}><section className="max-h-[88dvh] w-full max-w-xl overflow-hidden rounded-3xl border border-white/80 bg-[var(--life-overlay)] shadow-2xl" onClick={event => event.stopPropagation()}><header className="flex items-center justify-between border-b border-stone-200/70 px-4 py-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--life-accent)]">Location library</p><h2 className="text-lg font-semibold">查找地点档案</h2></div><button type="button" onClick={() => setLibraryLocationSearchOpen(false)} aria-label="关闭" className="grid h-9 w-9 place-items-center rounded-full bg-white/75"><X size={18}/></button></header><div className="space-y-2 p-3"><input autoFocus value={libraryLocationSearch} onChange={event => setLibraryLocationSearch(event.target.value)} placeholder="搜索地点名称、别名或描写" className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/><div className="grid grid-cols-2 gap-2"><select value={locationCategoryFilter} onChange={event => setLocationCategoryFilter(event.target.value)} className="min-w-0 rounded-xl border border-stone-200 bg-white px-2 py-2 text-xs"><option value="all">全部分类</option>{["住宅","商业","公共","自然","其他"].map(value => <option key={value} value={value}>{value}</option>)}</select><select value={locationFolderFilter} onChange={event => setLocationFolderFilter(event.target.value)} className="min-w-0 rounded-xl border border-stone-200 bg-white px-2 py-2 text-xs"><option value="all">全部文件夹</option><option value="unfiled">未整理</option>{locationFolders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></div></div><div className="max-h-[58dvh] space-y-1 overflow-y-auto px-3 pb-3">{filteredLibraryLocations.map(location => <button type="button" key={location.id} onClick={() => { setSelectedLocationId(location.id); setLocationDossierOpen(true); setLibraryLocationSearchOpen(false); }} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-stone-200/70 bg-white/75 p-3 text-left"><span className="min-w-0"><span className="block font-medium text-stone-800">{location.name}</span><span className="mt-1 block truncate text-xs text-stone-500">{location.description || "暂无地点描写"}</span></span><span className="shrink-0 text-xs text-[var(--life-accent)]">编辑档案 ›</span></button>)}{!filteredLibraryLocations.length && <p className="p-6 text-center text-sm text-stone-500">没有找到地点</p>}</div></section></div>}
+      {tab === "scene" && !immersiveScene && <details open className="rounded-2xl border border-white/80 bg-white/55 shadow-sm"><summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-stone-600">生活状态与时间线 · {playerNow.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})} · 展开查看</summary><section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <SectionTitle title={playerNow.toLocaleDateString("zh-CN",{month:"long",day:"numeric",weekday:"long"})+" · 我的时间线"} />
             <button onClick={()=>openDaily("plans")} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs">查看完整七日日程</button>
@@ -3903,10 +3910,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         </section></details>}
       {tab === "home" && !sceneView && <section className="life-place-list space-y-4">
         <div className="flex items-end justify-between gap-3 px-1">
-          <h2 className="text-2xl font-semibold tracking-tight text-stone-800">此刻</h2>
-          <button onClick={() => openDaily("plans")} className="shrink-0 rounded-xl border border-white/80 bg-white/75 px-3 py-2 text-xs text-stone-600">我的日程</button>
+          <div><p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--life-accent)]">Places & people</p><h2 className="mt-1 text-2xl font-semibold tracking-tight text-stone-800">此刻</h2></div>
+          <div className="flex items-center gap-2"><button type="button" onClick={() => setSceneLocationSearchOpen(true)} aria-label="搜索和筛选地点" title="搜索和筛选地点" className="grid h-10 w-10 place-items-center rounded-xl border border-white/80 bg-white/75 text-stone-600"><Search size={17}/></button><button onClick={() => openDaily("plans")} className="shrink-0 rounded-xl border border-white/80 bg-white/75 px-3 py-2 text-xs text-stone-600">我的日程</button></div>
         </div>
-        {locationFilterControls}
         {filteredLocationCards.length === 0 && <p className="rounded-2xl border border-dashed border-stone-300 bg-white/50 p-6 text-center text-sm text-stone-500">没有找到符合条件的地点，试试清除筛选。</p>}
         {Array.from(locationCardGroups.entries()).map(([folderId, items]) => <section key={folderId} className="space-y-3">
           <button type="button" onClick={() => setCollapsedLocationFolders(current => ({ ...current, [folderId]: !current[folderId] }))} className="flex w-full items-center justify-between rounded-xl bg-white/55 px-3 py-2 text-left text-xs font-semibold text-stone-600">
@@ -3967,7 +3973,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           {!characters.length&&<p className="mt-2 text-xs text-stone-500">还没有角色档案；先在小手机里创建角色，之后就能在这里互动。</p>}
           {selectedLocation && <div className="mt-4 border-t border-stone-200/70 pt-4">
             <div className="mb-3"><p className="text-sm font-semibold text-stone-700">地点布置与描写</p></div>
-            <label className="mb-4 block text-xs font-medium text-stone-600">地点布置与描写<textarea value={locationDescriptionDraft} onChange={event => setLocationDescriptionDraft(event.target.value)} rows={8} placeholder={"一个框写完即可，不用刻意分栏。可参考：\n• 环境：空间类型、大小、光线、声音、气味\n• 氛围：时段、天气、人声、整体情绪\n• 布局：门窗、家具、通道、座位的位置关系\n• 道具：常见物品及可互动的东西\n• 细节：角色在此处的习惯、特色与活动"} className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+            <label className="mb-3 block text-xs font-medium text-stone-600">环境描写<textarea value={locationDescriptionDraft} onChange={event => setLocationDescriptionDraft(event.target.value)} rows={3} placeholder="空间类型、大小、光线、声音、气味与固定陈设" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+            <label className="mb-3 block text-xs font-medium text-stone-600">氛围<textarea value={locationAtmosphereDraft} onChange={event => setLocationAtmosphereDraft(event.target.value)} rows={2} placeholder="时段、天气、人声与整体情绪" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+            <label className="mb-3 block text-xs font-medium text-stone-600">空间布局<textarea value={locationLayoutDraft} onChange={event => setLocationLayoutDraft(event.target.value)} rows={3} placeholder="门窗、家具、通道与座位的位置关系" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+            <label className="mb-4 block text-xs font-medium text-stone-600">可用道具<textarea value={locationPropsDraft} onChange={event => setLocationPropsDraft(event.target.value)} rows={2} placeholder="用顿号或逗号分隔，例如：花剪、包装纸、玻璃花瓶" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
             <button type="button" onClick={saveLocationDetails} className="w-full rounded-xl bg-[var(--life-accent)] px-4 py-2.5 text-sm font-medium text-white">保存地点布置</button>
           </div>}
         </div></details>
@@ -4025,9 +4034,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
 
       {tab === "locations" && <div className="space-y-4">
         <section className="rounded-3xl border border-white/80 bg-white/75 p-4 shadow-sm sm:p-6">
-          {!locationDossierOpen && <><SectionTitle title="地点库"/>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><button type="button" onClick={createLocationFolder} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700"><Plus size={12} className="mr-1 inline"/>新建文件夹</button></div>
-          {locationFilterControls}
+          {!locationDossierOpen && <><div className="mb-4 flex items-center justify-between gap-3"><SectionTitle title="地点库"/><div className="flex items-center gap-2"><button type="button" onClick={() => setLibraryLocationSearchOpen(true)} aria-label="搜索和筛选地点库" title="搜索和筛选地点库" className="grid h-10 w-10 place-items-center rounded-xl border border-stone-200 bg-white text-stone-600"><Search size={17}/></button><button type="button" onClick={createLocationFolder} aria-label="新建地点文件夹" title="新建分类" className="grid h-10 w-10 place-items-center rounded-xl border border-stone-200 bg-white text-stone-600"><Plus size={16}/></button></div></div>
           <div className="mb-4 rounded-2xl border border-[#ead8c8] bg-[#fffaf5] p-3">
             <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-stone-800">从角色卡 / 世界书导入地点</h3><p className="mt-1 text-xs leading-relaxed text-stone-500">自动提取地点、别名、环境、氛围、布局和道具，并保留来源。这里直接扫描所选世界书的启用条目，不依赖普通聊天的关键词触发；默认勾选该角色绑定的聊天与栖所世界书，也可手动选择其他书。</p></div>
               <button type="button" disabled={locationImportBusy || !locationImportCharacterId} onClick={() => void importWorldbookLocations()} className="shrink-0 rounded-xl bg-[var(--life-accent)] px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{locationImportBusy ? "处理中…" : "分析并导入地点"}</button>
@@ -4080,7 +4087,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[#fffaf5] p-3"><div className="text-xs text-stone-500">{(selectedLocation.sourceRefs ?? []).length ? "来源：" + (selectedLocation.sourceRefs ?? []).map(source => source.kind === "worldbook" ? source.worldBookName + (source.entryComment ? " · " + source.entryComment : "") : source.kind === "character-card" ? source.characterName + " 的角色卡" : "手动").join("；") : "暂无导入来源；可由 AI 根据地点名称与角色设定补全。"}</div><button type="button" disabled={locationImportBusy} onClick={() => void completeSelectedLocationProfile()} className="shrink-0 rounded-lg border border-[#d7b99f] bg-white px-3 py-2 text-xs font-medium text-stone-700 disabled:opacity-50">{locationImportBusy ? "处理中…" : "AI 补全 / 刷新档案"}</button></div>
           <label className="mb-3 block text-sm font-medium text-stone-700">地点名称<input value={locationNameDraft} onChange={event => { setLocationNameDraft(event.target.value); setLocationSaveFeedback(false); }} placeholder="例如：我们的小家" className="mt-1.5 w-full min-w-0 rounded-xl border border-stone-200 bg-white px-3 py-2.5"/></label>
           <label className="mb-3 block text-sm font-medium text-stone-700">别名 / 日程匹配关键词<textarea value={(selectedLocation.aliases ?? []).join("、")} onChange={event => commit({ ...stateRef.current, locations: stateRef.current.locations.map(location => location.id === selectedLocation.id ? { ...location, aliases: event.target.value.split(/[、,，;；\n]/).map(value => value.trim()).filter(Boolean), fieldOrigins: { ...(location.fieldOrigins ?? {}), aliases: "user" } } : location) })} rows={2} placeholder="例如：旧城区花店、花店、花房" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
-          <label className="mb-4 block text-sm font-medium text-stone-700">地点布置与描写<textarea value={locationDescriptionDraft} onChange={event => setLocationDescriptionDraft(event.target.value)} rows={8} placeholder={"一个框写完即可，不用刻意分栏。可参考：\n• 环境：空间类型、大小、光线、声音、气味\n• 氛围：时段、天气、人声、整体情绪\n• 布局：门窗、家具、通道、座位的位置关系\n• 道具：常见物品及可互动的东西\n• 细节：角色在此处的习惯、特色与活动"} className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm leading-relaxed"/></label>
+          <label className="mb-3 block text-sm font-medium text-stone-700">环境描写<textarea value={locationDescriptionDraft} onChange={event => setLocationDescriptionDraft(event.target.value)} rows={3} placeholder="空间类型、大小、光线、声音、气味与固定陈设" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+          <label className="mb-3 block text-sm font-medium text-stone-700">氛围<textarea value={locationAtmosphereDraft} onChange={event => setLocationAtmosphereDraft(event.target.value)} rows={2} placeholder="时段、天气、人声与整体情绪" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+          <label className="mb-3 block text-sm font-medium text-stone-700">空间布局<textarea value={locationLayoutDraft} onChange={event => setLocationLayoutDraft(event.target.value)} rows={3} placeholder="门窗、家具、通道与座位的位置关系" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
+          <label className="mb-4 block text-sm font-medium text-stone-700">可用道具<textarea value={locationPropsDraft} onChange={event => setLocationPropsDraft(event.target.value)} rows={2} placeholder="用顿号或逗号分隔，例如：花剪、包装纸、玻璃花瓶" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
           <section className="mb-4 rounded-2xl border border-rose-200/70 bg-rose-50/50 p-3">
             <div className="mb-2 flex items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-stone-700">专属聊天室背景</h3></div>
               {selectedLocation.backgroundImage && <button type="button" onClick={()=>updateSelectedLocationBackground({backgroundImage:undefined})} className="shrink-0 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs text-stone-600">移除</button>}
