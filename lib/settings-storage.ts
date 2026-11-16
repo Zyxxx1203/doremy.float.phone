@@ -187,10 +187,11 @@ function mergeMissingBuiltinAppPrompts(existing: PresetConfig): PresetConfig {
     const existingIds = new Set(existingPrompts.map(prompt => prompt.identifier));
     const missing = freshPrompts.filter(prompt => !existingIds.has(prompt.identifier));
     const prompts = existingPrompts.map(prompt => prompt.identifier === "private_memo_behavior"
+        && JSON.stringify(prompt.tags ?? []) === JSON.stringify(["memo", "tools"])
         ? { ...prompt, tags: ["chat"] }
         : prompt);
     const memoTagsChanged = existingPrompts.some(prompt => prompt.identifier === "private_memo_behavior"
-        && JSON.stringify(prompt.tags ?? []) !== JSON.stringify(["chat"]));
+        && JSON.stringify(prompt.tags ?? []) === JSON.stringify(["memo", "tools"]));
     if (missing.length === 0 && !memoTagsChanged) return existing;
 
     const order = [...(existing.prompt_order ?? [])];
