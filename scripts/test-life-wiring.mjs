@@ -165,8 +165,12 @@ assert.match(app, /refreshForegroundLease/);
 assert.match(app, /setLifeSceneForegroundLease/);
 assert.match(app, /document\.visibilityState === "visible"/);
 assert.match(app, /const sharedResidence = current\.locations\.find/);
-assert.match(app, /该角色没有与用户同居的设定，严禁把用户的家当作该角色住所/);
-assert.match(app, /【住所身份锁定】/);
+assert.match(app, /"住所事实：角色住所「"/, "life runtime must inject residence facts, not hardcode natural-language policy");
+assert.doesNotMatch(app, /严禁把用户的家当作该角色住所|【住所身份锁定】|必须填写上述住所的准确名称/, "residence policy must live in editable preset entries");
+assert.match(builtinPrompts, /LIFE_SCHEDULE_RESIDENCE_PROMPT/);
+assert.match(builtinPrompts, /life_schedule_residence_rules/);
+assert.match(builtinPrompts, /只有动态上下文明确标记该角色与用户同居/);
+assert.match(builtinPrompts, /必须使用允许地点列表中对应的准确地点名称/);
 assert.match(app, /const characterHome = sharedResidence[\\s\\S]*?location\.id === "home-" \+ character\.id/);
 assert.match(app, /const homeIntent = !placeKey/);
 assert.match(app, /some\(name => normalizeLocation\(name\) === placeKey\)/,
