@@ -138,7 +138,20 @@ export async function markMemoReviewCompleted(characterId: string): Promise<void
   const state = readMemoReviewState(characterId);
   const reviewedAt = Date.now();
   for (const id of ids) state[id] = reviewedAt;
-  try { localStorage.setItem(memoReviewKey(characterId), JSON.stringify(state)); } catch { /* storage unavailable */ }
+  try {
+    localStorage.setItem(memoReviewKey(characterId), JSON.stringify(state));
+    const timelineKey = memoTimelineKey(characterId);
+    const timeline: MemoTimelineProjection[] = JSON.parse(localStorage.getItem(timelineKey) || "[]");
+    const eventId = "memo-review:" + reviewedAt;
+    timeline.unshift({
+      id: eventId,
+      sourceApp: "memo",
+      memoNoteId: eventId,
+      timestamp: new Date(reviewedAt).toISOString(),
+      content: "完成了 " + ids.size + " 条私人备忘录的定期回顾；未将正文写入时间线。",
+    });
+    localStorage.setItem(timelineKey, JSON.stringify(timeline.slice(0, 200)));
+  } catch { /* storage unavailable */ }
   pendingMemoReviewIds.delete(characterId);
 }
 
