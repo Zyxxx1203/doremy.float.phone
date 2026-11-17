@@ -142,6 +142,19 @@ export function setMemoReviewIntervalHours(characterId: string, hours: number): 
   try { localStorage.setItem(memoReviewIntervalKey(characterId), String(value)); } catch { /* storage unavailable */ }
 }
 
+export function getMemoReviewStatus(characterId: string, notes: MemoNote[]) {
+  const intervalHours = getMemoReviewIntervalHours(characterId);
+  const state = readMemoReviewState(characterId);
+  const now = Date.now();
+  const active = notes.filter(note => !note.archived && !note.deletedAt);
+  const rows = active.map(note => {
+    const lastReviewedAt = state[note.id] || null;
+    const nextReviewAt = lastReviewedAt ? lastReviewedAt + intervalHours * 60 * 60 * 1000 : null;
+    return { id: note.id, title: note.title, lastReviewedAt, nextReviewAt, due: intervalHours > 0 && (!lastReviewedAt || nextReviewAt! <= now) };
+  }).sort((a,b) => Number(b.due)-Number(a.due) || (a.nextReviewAt ?? 0)-(b.nextReviewAt ?? 0));
+  return { intervalHours, dueCount: rows.filter(row => row.due).length, reviewedCount: rows.filter(row => row.lastReviewedAt).length, rows };
+}
+
 function readMemoReviewState(characterId: string): Record<string, number> {
   try {
     const raw = localStorage.getItem(memoReviewKey(characterId));
