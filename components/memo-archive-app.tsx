@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft, Archive, BookOpen, CheckCircle2, ChevronDown, Folder, FolderPlus,
-  House, Pin, Plus, Search, Settings2, Share2, Trash2, X
+  House, MoreHorizontal, Pin, Plus, Search, Settings2, Share2, Trash2, X
 } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import {
