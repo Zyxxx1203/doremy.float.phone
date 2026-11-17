@@ -33,7 +33,8 @@ assert.match(storage, /slice\(0, 5\)/);
 assert.match(storage, /maxChars = 850/);
 assert.match(storage, /pendingMemoReviewIds/);
 assert.match(storage, /markMemoReviewCompleted/);
-assert.match(storage, /getMemoReviewStatus/);\nassert.match(storage, /forceMemoReviewOnNextChat/);
+assert.match(storage, /getMemoReviewStatus/);
+assert.match(storage, /forceMemoReviewOnNextChat/);
 assert.match(storage, /note\.body\.replace\(/);
 assert.ok(storage.includes("replace(/" + String.fromCharCode(92) + "s+/g"), "digest must collapse whitespace");
 
@@ -48,7 +49,11 @@ for (const token of ["我的备忘录", "角色备忘录", "全部手记", "待�
 }
 assert.match(ui, /setSelectedId\(null\); setTab\("settings"\)/);
 assert.match(ui, /setMobileMoreOpen/);
-assert.match(ui, /formatToolbar/);\nassert.match(ui, /批量移动/);\nassert.match(ui, /noteQuickActions/);\nassert.match(ui, /renameNote/);\nassert.match(storage, /Math\\.round\\(hours \\* 60\\) \\/ 60/);
+assert.match(ui, /formatToolbar/);
+assert.match(ui, /批量移动/);
+assert.match(ui, /noteQuickActions/);
+assert.match(ui, /renameNote/);
+assert.ok(storage.includes("Math.round(hours * 60) / 60"));
 assert.match(ui, /detailBody/);
 assert.match(ui, /data-theme=\{theme\}/);
 assert.match(ui, /reviewHistory/);
