@@ -19,7 +19,8 @@
     "weixin:assistant:once": "node tools/weixin-local-assistant/assistant.mjs --once",
     "weixin:build-dist": "node scripts/build-weixin-assistant-dist.mjs",
     "push:build-dist": "node scripts/build-personal-push-dist.mjs",
-    "build:glass-icons": "node scripts/build-glass-icons.mjs"
+    "build:glass-icons": "node scripts/build-glass-icons.mjs",
+    "test:memo": "node scripts/test-memo-archive-contract.mjs"
   },
   "dependencies": {
     "@gltf-transform/functions": "^4.4.1",
