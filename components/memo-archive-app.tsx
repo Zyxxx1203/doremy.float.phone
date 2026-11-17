@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 import {
   ArrowLeft, Archive, BookOpen, CheckCircle2, ChevronDown, Copy, Folder, FolderPlus,
   House, MoreHorizontal, Pin, Plus, Search, Settings2, Share2, Trash2, X
@@ -18,6 +20,14 @@ import styles from "./memo-archive-app.module.css";
 type Props = { onClose: () => void; onNotice?: (message: string) => void };
 type Tab = "home" | "notes" | "todos" | "categories" | "settings" | "archived" | "recycle";
 const USER: MemoOwner = { type: "user", id: "local-user" };
+const MEMO_RICH_PREFIX = "<!--memo-rich-v1-->";
+const sanitizeMemoHtml = (html: string) => DOMPurify.sanitize(html, {
+  ALLOWED_TAGS: ["p", "br", "strong", "b", "em", "i", "u", "s", "del", "h1", "h2", "h3", "blockquote", "ul", "ol", "li", "a", "span", "div"],
+  ALLOWED_ATTR: ["href", "title", "target", "rel"],
+});
+const memoBodyHtml = (value: string) => sanitizeMemoHtml(value.startsWith(MEMO_RICH_PREFIX)
+  ? value.slice(MEMO_RICH_PREFIX.length)
+  : String(marked.parse(value || "", { async: false })));
 const date = (time: number) => new Date(time).toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
 const time = (stamp: number) => new Date(stamp).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 
@@ -34,6 +44,8 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const editorInitialBodyRef = useRef("");
   const [tags, setTags] = useState("");
   const [pinned, setPinned] = useState(false);
   const [todos, setTodos] = useState<MemoNote["todos"]>([]);
@@ -81,6 +93,10 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
     setCategoryFilter("all");
   }, [owner]);
 
+  useEffect(() => {
+    if (editorOpen && editorRef.current) editorRef.current.innerHTML = memoBodyHtml(editorInitialBodyRef.current);
+  }, [editorOpen, editing?.id]);
+
   const selected = notes.find(note => note.id === selectedId) ?? null;
   const visible = useMemo(() => notes.filter(note => {
     if (tab !== "recycle" && note.deletedAt) return false;
@@ -127,6 +143,7 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
     setEditing(note ?? null);
     setTitle(note?.title ?? "");
     setBody(note?.body ?? "");
+    editorInitialBodyRef.current = note?.body ?? "";
     setTags(note?.tags.join(" ") ?? "");
     setPinned(note?.pinned ?? false);
     setTodos(note?.todos ?? []);
@@ -134,12 +151,20 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
     setSelectedId(note?.id ?? null);
     setEditorOpen(true);
   };
+  const applyEditorCommand = (command: string, value?: string) => {
+    editorRef.current?.focus();
+    document.execCommand(command, false, value);
+    if (editorRef.current) setBody(editorRef.current.innerHTML);
+  };
   const save = async () => {
-    if (!title.trim() && !body.trim()) { onNotice?.("先写下一点内容吧"); return; }
+    const html = sanitizeMemoHtml(editorRef.current?.innerHTML || "");
+    const plainText = (() => { const node = document.createElement("div"); node.innerHTML = html; return node.textContent || ""; })();
+    if (!title.trim() && !plainText.trim()) { onNotice?.("先写下一点内容吧"); return; }
     setBusy(true);
     try {
+      const storedBody = plainText.trim() ? MEMO_RICH_PREFIX + html : "";
       const note = await saveMemoNote(owner, {
-        id: editing?.id, title: title.trim() || body.trim().slice(0, 24), body,
+        id: editing?.id, title: title.trim() || plainText.trim().slice(0, 24), body: storedBody,
         tags: tags.split(/[，,\\s]+/).filter(Boolean), pinned, todos, folderId: noteFolderId
       });
       setSelectedId(note.id);
@@ -227,7 +252,21 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
     {editorOpen ? <section className={styles.editorPage}>
       <div className={styles.editorTop}><button onClick={() => setEditorOpen(false)}><X size={18}/> 取消</button><span>{editing ? "修改这页手记" : "写下一页手记"}</span><button className={styles.saveButton} disabled={busy} onClick={() => void save()}>{busy ? "保存中" : "保存"}</button></div>
       <input className={styles.titleInput} value={title} onChange={event => setTitle(event.target.value)} placeholder="给这页手记起个名字"/>
-      <div className={styles.formatToolbar} aria-label="正文排版工具">{[{label:"H2",prefix:"## ",suffix:"",title:"二级标题"},{label:"H3",prefix:"### ",suffix:"",title:"三级标题"},{label:"B",prefix:"**",suffix:"**",title:"粗体"},{label:"I",prefix:"*",suffix:"*",title:"斜体"},{label:"引用",prefix:"> ",suffix:"",title:"引用"},{label:"列表",prefix:"- ",suffix:"",title:"无序列表"},{label:"编号",prefix:"1. ",suffix:"",title:"编号列表"},{label:"缩进",prefix:"　　",suffix:"",title:"段落缩进"}].map(tool => <button type="button" key={tool.label} title={tool.title} onClick={() => { const input=document.querySelector<HTMLTextAreaElement>("[data-memo-body]"); if(!input)return; const start=input.selectionStart,end=input.selectionEnd; const next=body.slice(0,start)+tool.prefix+body.slice(start,end)+tool.suffix+body.slice(end); setBody(next); requestAnimationFrame(()=>{input.focus();input.setSelectionRange(start+tool.prefix.length+(end-start)+tool.suffix.length,start+tool.prefix.length+(end-start)+tool.suffix.length);}); }}>{tool.label}</button>)}</div><textarea data-memo-body className={styles.bodyInput} value={body} onChange={event => setBody(event.target.value)} placeholder="此刻想到什么，就从这里写起……\n\n可以使用标题、粗体、斜体、列表和引用，让重要内容一眼可读。"/>
+      <div className={styles.formatToolbar} aria-label="文字格式工具">
+        <select aria-label="段落样式" defaultValue="p" onChange={event => applyEditorCommand("formatBlock", event.target.value)}>
+          <option value="p">正文</option><option value="h1">标题</option><option value="h2">副标题</option><option value="h3">小标题</option><option value="blockquote">引用</option>
+        </select>
+        <button type="button" title="粗体" aria-label="粗体" onMouseDown={event => event.preventDefault()} onClick={() => applyEditorCommand("bold")}><strong>B</strong></button>
+        <button type="button" title="斜体" aria-label="斜体" onMouseDown={event => event.preventDefault()} onClick={() => applyEditorCommand("italic")}><em>I</em></button>
+        <button type="button" title="下划线" aria-label="下划线" onMouseDown={event => event.preventDefault()} onClick={() => applyEditorCommand("underline")}><u>U</u></button>
+        <button type="button" title="删除线" aria-label="删除线" onMouseDown={event => event.preventDefault()} onClick={() => applyEditorCommand("strikeThrough")}><s>S</s></button>
+        <span className={styles.toolbarDivider}/>
+        <button type="button" title="项目符号列表" aria-label="项目符号列表" onMouseDown={event => event.preventDefault()} onClick={() => applyEditorCommand("insertUnorderedList")}>• 列表</button>
+        <button type="button" title="编号列表" aria-label="编号列表" onMouseDown={event => event.preventDefault()} onClick={() => applyEditorCommand("insertOrderedList")}>1. 列表</button>
+        <button type="button" title="减少缩进" aria-label="减少缩进" onMouseDown={event => event.preventDefault()} onClick={() => applyEditorCommand("outdent")}>⇤</button>
+        <button type="button" title="增加缩进" aria-label="增加缩进" onMouseDown={event => event.preventDefault()} onClick={() => applyEditorCommand("indent")}>⇥</button>
+      </div>
+      <div ref={editorRef} data-memo-editor contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" className={styles.richEditor} data-placeholder="写下此刻想到的事……" onInput={event => setBody(event.currentTarget.innerHTML)} />
       <div className={styles.editorTools}><input value={tags} onChange={event => setTags(event.target.value)} placeholder="关键词 · 用空格分开"/><select value={noteFolderId ?? ""} onChange={event => setNoteFolderId(event.target.value || null)}><option value="">未分类</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><label><input type="checkbox" checked={pinned} onChange={event => setPinned(event.target.checked)}/> 置顶</label></div>
       <section className={styles.todoComposer}><div className={styles.sectionTitle}><strong>顺手记下要做的事</strong><small>{todos.filter(todo => !todo.done).length} 项未完成</small></div>
         {todos.map(todo => <label className={styles.todoLine} key={todo.id}><input type="checkbox" checked={todo.done} onChange={event => setTodos(current => current.map(item => item.id === todo.id ? { ...item, done: event.target.checked } : item))}/><span className={todo.done ? styles.doneText : ""}>{todo.text}</span><button onClick={() => setTodos(current => current.filter(item => item.id !== todo.id))} aria-label="移除待办"><X size={14}/></button></label>)}
@@ -237,7 +276,7 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
       <div className={styles.detailMeta}>{date(selected.createdAt)} · {selected.pinned ? "已置顶" : "一页手记"}</div>
       <h1>{selected.title}</h1>
       <div className={styles.tagList}>{selected.tags.map(tag => <span key={tag}># {tag}</span>)}</div>
-      <div className={styles.detailBody}>{selected.body.split("\n").map((line,index)=>{const trimmed=line.trim();const renderInline=(value:string)=>value.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g).map((part,partIndex)=>part.startsWith("**")&&part.endsWith("**")?<strong key={partIndex}>{part.slice(2,-2)}</strong>:part.startsWith("*")&&part.endsWith("*")?<em key={partIndex}>{part.slice(1,-1)}</em>:part);if(!trimmed)return <div key={index} className={styles.bodySpacer}/>;if(trimmed.startsWith("### "))return <h3 key={index}>{renderInline(trimmed.slice(4))}</h3>;if(trimmed.startsWith("## "))return <h2 key={index}>{renderInline(trimmed.slice(3))}</h2>;if(trimmed.startsWith("# "))return <h1 key={index}>{renderInline(trimmed.slice(2))}</h1>;if(trimmed.startsWith("> "))return <blockquote key={index}>{renderInline(trimmed.slice(2))}</blockquote>;if(/^[-*] /.test(trimmed))return <div key={index} className={styles.bodyBullet}>• {renderInline(trimmed.slice(2))}</div>;if(/^\d+\. /.test(trimmed))return <div key={index} className={styles.bodyBullet}>{renderInline(trimmed)}</div>;return <p key={index}>{renderInline(line)}</p>;})}</div>
+      <div className={styles.detailBody} dangerouslySetInnerHTML={{ __html: memoBodyHtml(selected.body) }}/>
       {selected.todos.length > 0 && <section className={styles.detailTodos}><h3>这页里的待办</h3>{selected.todos.map(todo => <label key={todo.id}><input type="checkbox" checked={todo.done} onChange={event => void updateTodo(selected.id, todo.id, event.target.checked)}/><span className={todo.done ? styles.doneText : ""}>{todo.text}</span></label>)}</section>}
       <div className={styles.detailActions}><button onClick={() => openEditor(selected)}>编辑手记</button><button onClick={async () => { await saveMemoNote(owner, { ...selected, pinned: !selected.pinned }); await refresh(); }}><Pin size={15}/>{selected.pinned ? "取消置顶" : "置顶"}</button><button onClick={async () => { await saveMemoNote(owner, { ...selected, archived: true }); setSelectedId(null); await refresh(); }}>收进旧日</button><button className={styles.subtleDanger} onClick={async () => { await moveMemoToRecycleBin(selected.id, owner); setSelectedId(null); await refresh(); }}>移入回收站</button></div>
       {owner.type === "user" && <section className={styles.sharePanel}><h3><Share2 size={15}/> 分享给角色（只读）</h3>{characters.map(character => <label key={character.id}><input type="checkbox" checked={selected.sharedWith.includes(character.id)} onChange={async event => { await setMemoShare(selected.id, owner, character.id, event.target.checked); await refresh(); }}/>{character.name}</label>)}</section>}
