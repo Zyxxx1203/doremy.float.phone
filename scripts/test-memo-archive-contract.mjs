@@ -50,6 +50,10 @@ for (const token of ["我的备忘录", "角色备忘录", "全部手记", "待�
 assert.match(ui, /setSelectedId\(null\); setTab\("settings"\)/);
 assert.match(ui, /setMobileMoreOpen/);
 assert.match(ui, /formatToolbar/);
+assert.match(ui, /contentEditable/);
+assert.match(ui, /memo-rich-v1/);
+assert.match(ui, /DOMPurify\\.sanitize/);
+assert.match(ui, /dangerouslySetInnerHTML=\\{\\{ __html: memoBodyHtml/);
 assert.match(ui, /批量移动/);
 assert.match(ui, /noteQuickActions/);
 assert.match(ui, /renameNote/);
