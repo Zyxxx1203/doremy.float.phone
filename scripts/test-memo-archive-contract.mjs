@@ -32,7 +32,8 @@ assert.match(tools, /items 至少需要包含一条有效 text/);
 assert.match(storage, /slice\(0, 5\)/);
 assert.match(storage, /maxChars = 850/);
 assert.match(storage, /pendingMemoReviewIds/);
-assert.match(storage, /markMemoReviewCompleted/);\nassert.match(storage, /getMemoReviewStatus/);
+assert.match(storage, /markMemoReviewCompleted/);
+assert.match(storage, /getMemoReviewStatus/);
 assert.match(storage, /note\.body\.replace\(/);
 assert.ok(storage.includes("replace(/" + String.fromCharCode(92) + "s+/g"), "digest must collapse whitespace");
 
@@ -50,6 +51,9 @@ assert.match(ui, /setMobileMoreOpen/);
 assert.match(ui, /formatToolbar/);
 assert.match(ui, /detailBody/);
 assert.match(ui, /data-theme=\{theme\}/);
+assert.match(ui, /reviewHistory/);
+assert.match(ui, /每小时（测试）/);
+assert.match(ui, /下一次一对一聊天请求中执行/);
 assert.match(assembler, /loadMemoTimelineProjectionEntries/);
 assert.match(assembler, /sourceApp: "memo"/);
 
