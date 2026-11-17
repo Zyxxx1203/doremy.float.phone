@@ -1016,9 +1016,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           "住所事实：角色住所「" + (characterHome?.name ?? character.name + "的家") + "」（locationId=" + (characterHome?.id ?? "home-" + character.id) + "）；与用户同居：" + (livesWithPlayer ? "是，共同住所为「" + sharedResidence!.name + "」（locationId=" + sharedResidence!.id + "）" : "否") + "。",
 
           "世界书中与该角色相关的背景：\n" + (characterWorldBook || "暂无相关世界书条目"),
-          "近期共同记忆：\n" + memories, "近期个人记录：\n" + events, "允许地点（只选这些；地点名必须准确匹配，不得自行简称为“家”）：\n" + locations, "必须保留的固定安排：\n" + fixed,
-          "时间范围：从角色现实日历的今天 " + start.toLocaleDateString("sv-SE") + " 开始连续七天；dayOffset 0 为今天，6 为第七天。不要为已经过去的时段安排活动。",
-          "请生成未来七天日程。",
+          "近期共同记忆：\n" + memories, "近期个人记录：\n" + events, "允许地点：\n" + locations, "固定安排：\n" + fixed,
+          "规划日期范围：从 " + start.toLocaleDateString("sv-SE") + " 起连续七天；dayOffset 0 为第一天，6 为第七天。",
         ].join("\n\n")
       };
       const scheduleHistory = loadChatMessages(session.id).filter(message => message.status !== "failed" && !message.isRetracted);
