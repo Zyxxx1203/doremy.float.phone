@@ -59,17 +59,64 @@ export async function importMemoArchive(owner:MemoOwner,payload:unknown,mode:"me
 }
 
 /** Compact, ACL-filtered memo context for the owning character's 1:1 chat only. */
+const pendingMemoReviewIds = new Map<string, Set<string>>();
+const memoReviewKey = (characterId: string) => "memo-archive-review:" + characterId;
+const memoReviewIntervalKey = (characterId: string) => "memo-archive-review-hours:" + characterId;
+
+export function getMemoReviewIntervalHours(characterId: string): number {
+  try {
+    const value = Number(localStorage.getItem(memoReviewIntervalKey(characterId)));
+    return Number.isFinite(value) && value >= 0 ? Math.min(720, value) : 24;
+  } catch { return 24; }
+}
+
+export function setMemoReviewIntervalHours(characterId: string, hours: number): void {
+  const value = Number.isFinite(hours) && hours >= 0 ? Math.min(720, Math.round(hours)) : 24;
+  try { localStorage.setItem(memoReviewIntervalKey(characterId), String(value)); } catch { /* storage unavailable */ }
+}
+
+function readMemoReviewState(characterId: string): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(memoReviewKey(characterId));
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter(([id, time]) => Boolean(id) && typeof time === "number" && Number.isFinite(time)));
+  } catch { return {}; }
+}
+
+export async function markMemoReviewCompleted(characterId: string): Promise<void> {
+  const ids = pendingMemoReviewIds.get(characterId);
+  if (!ids?.size) return;
+  const state = readMemoReviewState(characterId);
+  const reviewedAt = Date.now();
+  for (const id of ids) state[id] = reviewedAt;
+  try { localStorage.setItem(memoReviewKey(characterId), JSON.stringify(state)); } catch { /* storage unavailable */ }
+  pendingMemoReviewIds.delete(characterId);
+}
+
 export async function buildMemoPromptDigest(characterId: string, maxChars = 850): Promise<string> {
+  const intervalHours = getMemoReviewIntervalHours(characterId);
+  if (intervalHours === 0) {
+    pendingMemoReviewIds.delete(characterId);
+    return "";
+  }
   const own = await loadMemoArchive({ type: "character", id: characterId });
   const shared = await readSharedMemoNotes(characterId);
   const candidates = [...own.notes.filter(note => !note.archived && !note.deletedAt), ...shared.filter(note => !note.archived && !note.deletedAt)];
-  const ranked = candidates.sort((a, b) => Number(b.pinned) - Number(a.pinned) || Number(b.todos.some(todo => !todo.done)) - Number(a.todos.some(todo => !todo.done)) || b.updatedAt - a.updatedAt).slice(0, 5);
-  if (!ranked.length) return "";
+  const reviewState = readMemoReviewState(characterId);
+  const dueBefore = Date.now() - intervalHours * 60 * 60 * 1000;
+  const due = candidates.filter(note => !reviewState[note.id] || reviewState[note.id] <= dueBefore);
+  const ranked = due.sort((a, b) => Number(b.pinned) - Number(a.pinned) || Number(b.todos.some(todo => !todo.done)) - Number(a.todos.some(todo => !todo.done)) || b.updatedAt - a.updatedAt).slice(0, 5);
+  if (!ranked.length) {
+    pendingMemoReviewIds.delete(characterId);
+    return "";
+  }
+  pendingMemoReviewIds.set(characterId, new Set(ranked.map(note => note.id)));
   let digest = ranked.map(note => {
     const source = note.owner.type === "user" ? "用户明确分享（只读）" : "我的私人档案";
     const todos = note.todos.filter(todo => !todo.done).slice(0, 3).map(todo => "待办：" + todo.text).join("；");
-    return "- [" + source + "] " + note.title + "：" + note.body.replace(/\s+/g, " ").slice(0, 180) + (todos ? "；" + todos : "");
-  }).join("\n");
+    return "- [" + source + "] " + note.title + "：" + note.body.replace(/\\s+/g, " ").slice(0, 180) + (todos ? "；" + todos : "");
+  }).join("\\n");
   if (digest.length > maxChars) digest = digest.slice(0, Math.max(0, maxChars - 1)) + "…";
-  return "### 私人档案回顾（仅供当前角色参考）\n" + digest;
+  return "### 私人档案定期回顾（仅供当前角色参考）\\n" + digest;
 }
