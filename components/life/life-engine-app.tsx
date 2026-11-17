@@ -985,8 +985,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const livesWithPlayer = Boolean(sharedResidence);
       const characterHome = sharedResidence
         ?? current.locations.find(location => location.id === "home-" + character.id)
-        ?? current.locations.find(location => location.id === "home-" + character.id)
-        ?? current.locations[0];
+        ?? null;
       const memories = current.memories
         .filter(m => m.participants.includes(character.id) && m.participants.includes(PLAYER_ID))
         .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
@@ -1056,7 +1055,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         // “用户家/某角色的家” and silently assigned unrelated residences.
         const exactPlace = current.locations.find(p =>
           [p.name, ...(p.aliases ?? [])].some(name => normalizeLocation(name) === placeKey));
-        const place = homeIntent ? home : exactPlace ?? home;
+        const place = homeIntent ? home : exactPlace ?? null;
         days.add(d);
         aiSlots.push({id:id("ai-slot"),ownerType:"character",ownerId:character.id,startAt:a.toISOString(),endAt:b.toISOString(),title,kind:kinds.has(String(item.kind))?String(item.kind) as LifeScheduleSlot["kind"]:"special",source:"weekly-generation",plannedLocationId:place?.id ?? null,plannedLocationName:place?.name ?? (homeIntent ? character.name + "的家" : rawPlace || "地点待定"),updatedAt:new Date().toISOString()});
       }
