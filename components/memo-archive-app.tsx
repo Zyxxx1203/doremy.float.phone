@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ArrowLeft, Archive, BookOpen, Check, CheckCircle2, ChevronDown, Circle,
-  Clock3, FilePlus2, Folder, FolderPlus, House, MoreHorizontal, Pin,
-  Plus, Search, Settings2, Share2, Sparkles, Trash2, Undo2, X
+  ArrowLeft, Archive, BookOpen, CheckCircle2, ChevronDown, Folder, FolderPlus,
+  House, Pin, Plus, Search, Settings2, Share2, Trash2, X
 } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
 import {
