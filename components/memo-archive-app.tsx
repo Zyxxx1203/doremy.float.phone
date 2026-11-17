@@ -23,7 +23,7 @@ const USER: MemoOwner = { type: "user", id: "local-user" };
 const MEMO_RICH_PREFIX = "<!--memo-rich-v1-->";
 const sanitizeMemoHtml = (html: string) => DOMPurify.sanitize(html, {
   ALLOWED_TAGS: ["p", "br", "strong", "b", "em", "i", "u", "s", "del", "h1", "h2", "h3", "blockquote", "ul", "ol", "li", "a", "span", "div"],
-  ALLOWED_ATTR: ["href", "title", "target", "rel"],
+  ALLOWED_ATTR: ["href", "title", "target", "rel", "data-type", "data-checked"],
 });
 const memoBodyHtml = (value: string) => sanitizeMemoHtml(value.startsWith(MEMO_RICH_PREFIX)
   ? value.slice(MEMO_RICH_PREFIX.length)
@@ -265,10 +265,11 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
         <span className={styles.toolbarDivider}/>
         <button type="button" title="项目符号列表" aria-label="项目符号列表" onMouseDown={event => event.preventDefault()} onClick={() => applyEditorCommand("insertUnorderedList")}>• 列表</button>
         <button type="button" title="编号列表" aria-label="编号列表" onMouseDown={event => event.preventDefault()} onClick={() => applyEditorCommand("insertOrderedList")}>1. 列表</button>
+        <button type="button" title="待办清单" aria-label="待办清单" onMouseDown={event => event.preventDefault()} onClick={() => applyEditorCommand("insertHTML", '<ul data-type="checklist"><li data-checked="false">新清单项目</li></ul><p><br></p>')}>☑ 清单</button>
         <button type="button" title="减少缩进" aria-label="减少缩进" onMouseDown={event => event.preventDefault()} onClick={() => applyEditorCommand("outdent")}>⇤</button>
         <button type="button" title="增加缩进" aria-label="增加缩进" onMouseDown={event => event.preventDefault()} onClick={() => applyEditorCommand("indent")}>⇥</button>
       </div>
-      <div ref={editorRef} data-memo-editor contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" className={styles.richEditor} data-placeholder="写下此刻想到的事……" />
+      <div ref={editorRef} data-memo-editor contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" className={styles.richEditor} data-placeholder="写下此刻想到的事……" onClick={event => { const item=(event.target as HTMLElement).closest("ul[data-type='checklist'] li") as HTMLElement | null; if(item){ item.dataset.checked=item.dataset.checked==="true"?"false":"true"; } }} />
       <div className={styles.editorTools}><input value={tags} onChange={event => setTags(event.target.value)} placeholder="关键词 · 用空格分开"/><select value={noteFolderId ?? ""} onChange={event => setNoteFolderId(event.target.value || null)}><option value="">未分类</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><label><input type="checkbox" checked={pinned} onChange={event => setPinned(event.target.checked)}/> 置顶</label></div>
       <section className={styles.todoComposer}><div className={styles.sectionTitle}><strong>顺手记下要做的事</strong><small>{todos.filter(todo => !todo.done).length} 项未完成</small></div>
         {todos.map(todo => <label className={styles.todoLine} key={todo.id}><input type="checkbox" checked={todo.done} onChange={event => setTodos(current => current.map(item => item.id === todo.id ? { ...item, done: event.target.checked } : item))}/><span className={todo.done ? styles.doneText : ""}>{todo.text}</span><button onClick={() => setTodos(current => current.filter(item => item.id !== todo.id))} aria-label="移除待办"><X size={14}/></button></label>)}
