@@ -2706,7 +2706,10 @@ export async function generateChatCompletion(
         const result = await generateChatCompletionCore(session, history, options, callbacks, bailoutRef);
         if (!session.isGroup && (options?.appId ?? "chat") === "chat") {
             const characterId = resolveSessionCharacterId(session);
-            if (characterId) await markMemoReviewCompleted(characterId).catch(() => undefined);
+            const memoCapability = getInternalCapability("memo_archive");
+            const memoReviewEnabled = memoCapability?.enabled === true && memoCapability.mode !== "off"
+                && loadMemoryConfig().shortTermAllowedSources?.memo !== false;
+            if (characterId && memoReviewEnabled) await markMemoReviewCompleted(characterId).catch(() => undefined);
         }
         return result;
     } catch (err) {
