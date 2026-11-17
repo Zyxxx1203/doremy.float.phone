@@ -56,7 +56,7 @@ export async function setMemoShare(id:string,owner:MemoOwner,characterId:string,
   if (enabled) writeMemoTimelineEvent(characterId, { ...n, updatedAt: stamp() }, "updated");
   else removeMemoTimelineEvent(characterId, id);}
 export async function readSharedMemoNotes(characterId:string){return(await database().notes.toArray()).filter(n=>n.owner.type==="user"&&n.sharedWith.includes(characterId)&&!n.deletedAt);}
-export async function exportMemoArchive(owner:MemoOwner){return{schema:"floatphone.memo-archive",version:1,exportedAt:stamp(),owner,...await loadMemoArchive(owner,"all")};}
+export async function exportMemoArchive(owner:MemoOwner){return{schema:"floatphone.memo-archive",version:1,exportedAt:stamp(),owner,...await loadMemoArchive(owner,"all"),reviewIntervalHours:owner.type==="character"?getMemoReviewIntervalHours(owner.id):null,reviewState:owner.type==="character"?readMemoReviewState(owner.id):{}};}
 export async function importMemoArchive(owner:MemoOwner,payload:unknown,mode:"merge"|"replace"="merge"){
   const isRecord=(value:unknown):value is Record<string,unknown>=>typeof value==="object"&&value!==null&&!Array.isArray(value);
   if(!isRecord(payload)||payload.schema!=="floatphone.memo-archive"||payload.version!==1)throw Error("不支持的备份格式");
@@ -94,6 +94,16 @@ export async function importMemoArchive(owner:MemoOwner,payload:unknown,mode:"me
       if(!existing||same(existing.owner,owner))await d.notes.put(note);
     }
   });
+  if (owner.type === "character") {
+    if (typeof payload.reviewIntervalHours === "number" && Number.isFinite(payload.reviewIntervalHours) && payload.reviewIntervalHours >= 0) {
+      setMemoReviewIntervalHours(owner.id, payload.reviewIntervalHours);
+    }
+    if (isRecord(payload.reviewState)) {
+      const imported = Object.fromEntries(Object.entries(payload.reviewState).filter(([id, time]) => Boolean(id) && typeof time === "number" && Number.isFinite(time)));
+      const next = mode === "replace" ? imported : { ...readMemoReviewState(owner.id), ...imported };
+      try { localStorage.setItem(memoReviewKey(owner.id), JSON.stringify(next)); } catch { /* optional review metadata */ }
+    }
+  }
 }
 
 /** Compact, ACL-filtered memo context for the owning character's 1:1 chat only. */
