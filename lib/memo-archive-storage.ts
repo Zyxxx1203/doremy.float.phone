@@ -176,8 +176,8 @@ export async function buildMemoPromptDigest(characterId: string, maxChars = 850)
   let digest = ranked.map(note => {
     const source = note.owner.type === "user" ? "用户明确分享（只读）" : "我的私人档案";
     const todos = note.todos.filter(todo => !todo.done).slice(0, 3).map(todo => "待办：" + todo.text).join("；");
-    return "- [" + source + "] " + note.title + "：" + note.body.replace(/\\s+/g, " ").slice(0, 180) + (todos ? "；" + todos : "");
-  }).join("\\n");
+    return "- [" + source + "] " + note.title + "：" + note.body.replace(/\s+/g, " ").slice(0, 180) + (todos ? "；" + todos : "");
+  }).join("\n");
   if (digest.length > maxChars) digest = digest.slice(0, Math.max(0, maxChars - 1)) + "…";
-  return "### 私人档案定期回顾（仅供当前角色参考）\\n" + digest;
+  return "### 私人档案定期回顾（仅供当前角色参考）\n" + digest;
 }
