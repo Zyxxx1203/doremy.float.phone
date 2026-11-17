@@ -2010,16 +2010,6 @@ export async function buildChatPromptMessages(
         buildLifeMemoryContext(character.id),
         buildLifePresenceContext(character.id),
     ].filter(Boolean).join("\n\n");
-    if (memoDigest) {
-        llmMessages.push({
-            role: "system",
-            content: [
-                "【私人备忘录维护】本轮包含到期手记。你不是只把它们读一遍：要结合近期对话和已有内容逐条核对，必要时使用「阅读备忘录」「修改备忘录」「新建备忘录」「整理待办」「删除备忘录」等工具实际维护。",
-                "优先修正旧内容、补充新进展、合并重复信息、清理明确过期的待办；不确定的信息保留并标注待确认，不要凭猜测覆盖事实。删除只移入回收站，用户分享的笔记只读。",
-                "最后必须调用「完成备忘录维护」登记本轮实际检查的 noteId、结论和真实变更。只有该工具成功返回，系统才会把对应笔记标记为已维护；普通聊天生成成功不代表维护完成。",
-            ].join("\n"),
-        });
-    }
     const coreMemories = coreResults ? formatCoreMemories(coreResults) : "";
     const scheduleSummary = buildCalendarScheduleMarker("character", character.id, getWeekStartIso(now));
     const currentSchedule = getCurrentCalendarScheduleForPrompt("character", character.id, now);
@@ -2089,6 +2079,17 @@ export async function buildChatPromptMessages(
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
     });
+    if (memoDigest) {
+        llmMessages.push({
+            role: "system",
+            content: [
+                "【私人备忘录维护】本轮包含到期手记。你不是只把它们读一遍：要结合近期对话和已有内容逐条核对，必要时使用「阅读备忘录」「修改备忘录」「新建备忘录」「整理待办」「删除备忘录」等工具实际维护。",
+                "优先修正旧内容、补充新进展、合并重复信息、清理明确过期的待办；不确定的信息保留并标注待确认，不要凭猜测覆盖事实。删除只移入回收站，用户分享的笔记只读。",
+                "最后必须调用「完成备忘录维护」登记本轮实际检查的 noteId、结论和真实变更。只有该工具成功返回，系统才会把对应笔记标记为已维护；普通聊天生成成功不代表维护完成。",
+            ].join("\n"),
+        });
+    }
+
     // Tool-use policy: keep the model proactive for real app actions without forcing tools on ordinary conversation.
     if (toolsEnabled) {
         llmMessages.push({
