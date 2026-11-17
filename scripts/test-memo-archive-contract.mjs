@@ -32,7 +32,7 @@ assert.match(tools, /items 至少需要包含一条有效 text/);
 assert.match(storage, /slice\(0, 5\)/);
 assert.match(storage, /maxChars = 850/);
 assert.match(storage, /pendingMemoReviewIds/);
-assert.match(storage, /markMemoReviewCompleted/);
+assert.match(storage, /markMemoReviewCompleted/);\nassert.match(storage, /getMemoReviewStatus/);
 assert.match(storage, /note\.body\.replace\(/);
 assert.ok(storage.includes("replace(/" + String.fromCharCode(92) + "s+/g"), "digest must collapse whitespace");
 
