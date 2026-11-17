@@ -19,6 +19,7 @@ import { loadGameProjectionEntries } from "./game-storage";
 import { loadDiaryEntries } from "./diary-entry-storage";
 import { loadVirtualLifeState } from "./life/life-storage";
 import { loadPhotoWallState } from "./photo-wall-storage";
+import { loadMemoTimelineProjectionEntries } from "./memo-archive-storage";
 import { asPlayerRecordSubject } from "./life/life-timeline-subject";
 import type { DiaryEntry, DiaryEntryBlock } from "./diary-entry-types";
 import { loadNoteWallProjectionEntries } from "./notewall-memory";
@@ -67,6 +68,7 @@ export type NativeTimelineEntry = {
     customAppId?: string;
     customAppName?: string;
     customAppLabel?: string;
+    memoNoteId?: string;
 };
 
 export type NativeMomentComment = {
@@ -894,6 +896,18 @@ export function loadNativeTimeline(
                 ),
             });
         }
+    }
+
+    // Memo timeline contains metadata only; full note bodies stay inside the local archive.
+    for (const memoEntry of loadMemoTimelineProjectionEntries(characterId)) {
+        if (options?.afterTimestamp && memoEntry.timestamp <= options.afterTimestamp) continue;
+        entries.push({
+            id: memoEntry.id,
+            sourceApp: "memo",
+            memoNoteId: memoEntry.memoNoteId,
+            timestamp: memoEntry.timestamp,
+            content: memoEntry.content,
+        });
     }
 
     // Sort by timestamp ascending
