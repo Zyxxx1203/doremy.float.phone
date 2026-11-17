@@ -38,7 +38,9 @@ assert.match(tools, /readSharedMemoNotes/);
 for (const token of ["我的备忘录", "角色备忘录", "全部手记", "待办清单", "分类", "已收起的手记", "回收站", "偏好与备份", "导出当前空间", "永久删除", "memo-archive-appearance:"]) {
   assert.ok(ui.includes(token), `missing memo UI contract: ${token}`);
 }
-assert.match(ui, /setSelectedId\(null\); setTab\("settings"\)/);\nassert.match(ui, /setMobileMoreOpen/);\nassert.match(assembler, /loadMemoTimelineProjectionEntries/);
+assert.match(ui, /setSelectedId\(null\); setTab\("settings"\)/);
+assert.match(ui, /setMobileMoreOpen/);
+assert.match(assembler, /loadMemoTimelineProjectionEntries/);
 assert.match(assembler, /sourceApp: "memo"/);
 
 console.log("Memo archive contract checks passed.");
