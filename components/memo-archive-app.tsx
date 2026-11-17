@@ -53,6 +53,7 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
   const [reviewHours, setReviewHours] = useState(24);
   const [importMode, setImportMode] = useState<"merge" | "replace">("merge");
   const [spaceMenu, setSpaceMenu] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     const data = await loadMemoArchive(owner, tab === "recycle");
@@ -249,7 +250,7 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
         {tab === "recycle" && <><div className={styles.pageHeading}><span className={styles.eyebrow}>A SECOND CHANCE</span><h1>回收站</h1><p>误删的手记，可以在这里找回来。</p></div>{notes.filter(note => note.deletedAt).map(note => <article className={styles.recycleRow} key={note.id}><strong>{note.title}</strong><small>{time(note.deletedAt || note.updatedAt)}</small><button onClick={async () => { await restoreMemo(note.id, owner); await refresh(); }}>恢复</button><button className={styles.subtleDanger} onClick={async () => { await permanentlyDeleteMemo(note.id, owner); await refresh(); }}>永久删除</button></article>)}{!notes.some(note => note.deletedAt) && <div className={styles.emptyState}>回收站是空的。</div>}</>}
       </section>
       <button className={styles.fab} onClick={() => openEditor()} aria-label="新建手记"><Plus size={22}/></button>
-      <nav className={styles.mobileNav}><button className={tab === "home" ? styles.mobileActive : ""} onClick={() => setTab("home")}><House size={18}/>首页</button><button className={tab === "notes" ? styles.mobileActive : ""} onClick={() => setTab("notes")}><BookOpen size={18}/>手记</button><button className={tab === "todos" ? styles.mobileActive : ""} onClick={() => setTab("todos")}><CheckCircle2 size={18}/>待办</button><button className={tab === "categories" ? styles.mobileActive : ""} onClick={() => setTab("categories")}><Folder size={18}/>分类</button></nav>
+      <nav className={styles.mobileNav}><button className={tab === "home" ? styles.mobileActive : ""} onClick={() => setTab("home")}><House size={18}/>首页</button><button className={tab === "notes" ? styles.mobileActive : ""} onClick={() => setTab("notes")}><BookOpen size={18}/>手记</button><button className={tab === "todos" ? styles.mobileActive : ""} onClick={() => setTab("todos")}><CheckCircle2 size={18}/>待办</button><button className={tab === "categories" ? styles.mobileActive : ""} onClick={() => setTab("categories")}><Folder size={18}/>分类</button><button className={mobileMoreOpen || tab === "archived" || tab === "recycle" ? styles.mobileActive : ""} onClick={() => setMobileMoreOpen(value => !value)}><MoreHorizontal size={18}/>更多</button></nav>{mobileMoreOpen && <div className={styles.mobileMore}><button onClick={() => { setTab("archived"); setMobileMoreOpen(false); }}>已收起的手记</button><button onClick={() => { setTab("recycle"); setMobileMoreOpen(false); }}>回收站</button><button onClick={() => { setTab("settings"); setMobileMoreOpen(false); }}>偏好与备份</button></div>}
     </div>}
   </main>;
 }
