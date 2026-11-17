@@ -138,7 +138,7 @@ export function getMemoReviewIntervalHours(characterId: string): number {
 }
 
 export function setMemoReviewIntervalHours(characterId: string, hours: number): void {
-  const value = Number.isFinite(hours) && hours >= 0 ? Math.min(720, Math.round(hours)) : 24;
+  const value = Number.isFinite(hours) && hours >= 0 ? Math.min(720, Math.round(hours * 60) / 60) : 24;
   try { localStorage.setItem(memoReviewIntervalKey(characterId), String(value)); } catch { /* storage unavailable */ }
 }
 
