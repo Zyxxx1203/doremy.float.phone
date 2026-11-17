@@ -24,7 +24,7 @@ assert.match(storage, /d\.transaction\("rw",d\.folders,d\.notes/);
 // Batch todo writes are atomic and append to the latest persisted version.
 assert.match(storage, /export async function appendMemoTodos/);
 assert.match(storage, /d\.transaction\("rw",d\.notes/);
-assert.match(storage, /todos:\[\\.\\.\\.current\\.todos,\\.\\.\\.additions\\]/);
+assert.match(storage, /todos:\[\.\.\.current\.todos,\.\.\.additions\]/);
 assert.match(tools, /appendMemoTodos\(owner/);
 assert.match(tools, /items 至少需要包含一条有效 text/);
 
