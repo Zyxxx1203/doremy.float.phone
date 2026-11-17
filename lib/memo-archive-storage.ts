@@ -63,11 +63,11 @@ export async function appendMemoTodos(owner:MemoOwner,noteId:string|undefined,it
     saved={...current,todos:[...current.todos,...additions].slice(0,100),updatedAt:now};
     await d.notes.put(saved);
   });
-  if(saved&&owner.type==="character")writeMemoTimelineEvent(owner.id,saved,"updated");
+  if(saved&&owner.type==="character"){trackMemoMaintenanceChange(owner.id,saved.id);writeMemoTimelineEvent(owner.id,saved,"updated");}
   return {note:saved!,count:saved!.todos.length};
 }
 export async function moveMemoToRecycleBin(id:string,owner:MemoOwner){const n=await database().notes.get(id);if(!n||!same(n.owner,owner))throw Error("无权删除此备忘录");await database().notes.update(id,{deletedAt:stamp(),updatedAt:stamp()});
-  if (owner.type === "character") removeMemoTimelineEvent(owner.id, id);
+  if (owner.type === "character") { trackMemoMaintenanceChange(owner.id, id); removeMemoTimelineEvent(owner.id, id); }
   else for (const characterId of n.sharedWith) removeMemoTimelineEvent(characterId, id);}
 export async function restoreMemo(id:string,owner:MemoOwner){const n=await database().notes.get(id);if(!n||!same(n.owner,owner))throw Error("无权恢复此备忘录");const updatedAt=stamp();await database().notes.update(id,{deletedAt:undefined,updatedAt});const restored={...n,deletedAt:undefined,updatedAt};if(owner.type==="character")writeMemoTimelineEvent(owner.id,restored,"updated");else for(const characterId of n.sharedWith)writeMemoTimelineEvent(characterId,restored,"updated");}
 export async function permanentlyDeleteMemo(id:string,owner:MemoOwner){const n=await database().notes.get(id);if(!n||!same(n.owner,owner))throw Error("无权删除此备忘录");await database().notes.delete(id);if(owner.type==="character")removeMemoTimelineEvent(owner.id,id);else for(const characterId of n.sharedWith)removeMemoTimelineEvent(characterId,id);}
@@ -127,6 +127,13 @@ export async function importMemoArchive(owner:MemoOwner,payload:unknown,mode:"me
 
 /** Compact, ACL-filtered memo context for the owning character's 1:1 chat only. */
 const pendingMemoReviewIds = new Map<string, Set<string>>();
+const pendingMemoChangedIds = new Map<string, Set<string>>();
+function trackMemoMaintenanceChange(characterId: string, noteId: string): void {
+  if (!pendingMemoReviewIds.get(characterId)?.size) return;
+  const changed = pendingMemoChangedIds.get(characterId) ?? new Set<string>();
+  changed.add(noteId);
+  pendingMemoChangedIds.set(characterId, changed);
+}
 const memoReviewKey = (characterId: string) => "memo-archive-review:" + characterId;
 const memoReviewIntervalKey = (characterId: string) => "memo-archive-review-hours:" + characterId;
 
@@ -205,11 +212,15 @@ export async function recordMemoMaintenanceResult(
   const cleanSummary = summary.trim().slice(0, 500);
   if (!cleanSummary) throw new Error("请说明本次检查结果");
   const cleanChanges = changes.map(item => String(item).trim().slice(0, 240)).filter(Boolean).slice(0, 20);
+  const changedNoteIds = [...(pendingMemoChangedIds.get(characterId) ?? new Set<string>())];
+  if (cleanChanges.length > 0 && changedNoteIds.length === 0) throw new Error("维护报告包含变更，但本轮没有检测到实际写入；请先执行修改工具，或报告检查后无需修改");
+  if (changedNoteIds.length > 0 && cleanChanges.length === 0) throw new Error("本轮已经发生实际修改，请在维护报告中说明变更");
   const now = Date.now();
   const record: MemoMaintenanceRecord = {
     id: "memo-maintenance:" + now + ":" + Math.random().toString(36).slice(2, 8),
     timestamp: new Date(now).toISOString(),
     reviewedNoteIds: ids,
+    changedNoteIds,
     summary: cleanSummary,
     changes: cleanChanges,
   };
@@ -231,7 +242,7 @@ export async function recordMemoMaintenanceResult(
     localStorage.setItem(timelineKey, JSON.stringify(timeline.slice(0, 200)));
   } catch { throw new Error("维护结果保存失败，请稍后重试"); }
   for (const id of ids) pending.delete(id);
-  if (!pending.size) pendingMemoReviewIds.delete(characterId);
+  if (!pending.size) { pendingMemoReviewIds.delete(characterId); pendingMemoChangedIds.delete(characterId); }
   return record;
 }
 
@@ -267,6 +278,7 @@ export async function buildMemoPromptDigest(characterId: string, maxChars = 850)
     return "";
   }
   pendingMemoReviewIds.set(characterId, new Set(ranked.map(note => note.id)));
+  pendingMemoChangedIds.set(characterId, new Set());
   let digest = ranked.map(note => {
     const source = note.owner.type === "user" ? "用户明确分享（只读）" : "我的私人档案";
     const todos = note.todos.filter(todo => !todo.done).slice(0, 3).map(todo => "待办：" + todo.text).join("；");
