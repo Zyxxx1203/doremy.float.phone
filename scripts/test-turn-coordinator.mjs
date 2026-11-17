@@ -26,4 +26,28 @@ assert.equal(listActiveTurns().length, 1);
 resumedLife.end();
 assert.equal(listActiveTurns().length, 0);
 
-console.log("Turn coordinator cross-channel arbitration tests passed.");
+// A group turn locks every participant atomically and is visible through each character.
+const group = beginTurn({
+  kind: "user_reply",
+  characterId: "char-a",
+  participantIds: ["char-a", "char-b", "char-c", "char-b"],
+  sessionId: "group-session",
+});
+assert.ok(group, "group reply should acquire all participant locks");
+assert.equal(listActiveTurns().length, 1, "one group turn must be listed once");
+assert.equal(getActiveTurn("char-b", "another-session")?.turnId, group.turnId, "group turn must own every participant");
+assert.equal(beginTurn({ kind: "life_scene", characterId: "char-c", sessionId: "life-session" }), null, "life autonomy must not race a group participant");
+const otherCharacter = beginTurn({ kind: "user_reply", characterId: "char-d", sessionId: "direct-session" });
+assert.ok(otherCharacter, "unrelated characters remain independently available");
+assert.equal(abortTurnsForCharacter("char-b"), 1, "aborting one participant must abort the whole group turn once");
+assert.equal(group.signal.aborted, true, "participant cancellation must abort group generation");
+assert.equal(getActiveTurn("char-a", "group-session"), null, "all group participant locks must be released together");
+otherCharacter.end();
+
+const group2 = beginTurn({ kind: "user_reply", characterId: "char-a", participantIds: ["char-a", "char-b"], sessionId: "group-session-2" });
+assert.ok(group2);
+assert.equal(abortTurnsForSession("group-session-2"), 1, "session cancellation counts a multi-lock turn once");
+assert.equal(group2.signal.aborted, true);
+assert.equal(listActiveTurns().length, 0);
+
+console.log("Turn coordinator cross-channel and group arbitration tests passed.");
