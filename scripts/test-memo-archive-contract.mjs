@@ -52,7 +52,7 @@ assert.match(ui, /formatToolbar/);\nassert.match(ui, /批量移动/);\nassert.ma
 assert.match(ui, /detailBody/);
 assert.match(ui, /data-theme=\{theme\}/);
 assert.match(ui, /reviewHistory/);
-assert.match(ui, /每小时（测试）/);
+assert.match(ui, /每分钟（测试）/);
 assert.match(ui, /下一次一对一聊天请求中执行/);
 assert.match(assembler, /loadMemoTimelineProjectionEntries/);
 assert.match(assembler, /sourceApp: "memo"/);
