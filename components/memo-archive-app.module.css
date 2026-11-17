@@ -47,11 +47,11 @@
 
 /* Apple Notes-like rich text surface */
 .formatToolbar{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:9px 0 11px;margin:0 0 8px;background:var(--memo-paper);border-bottom:1px solid var(--memo-line)}
-.formatToolbar select{height:34px;min-width:104px;padding:0 9px;border:1px solid var(--memo-line);border-radius:7px;background:var(--memo-paper);color:var(--memo-ink);font:12px inherit}
+.formatToolbar select{height:34px;min-width:104px;padding:0 9px;border:1px solid var(--memo-line);border-radius:7px;background:var(--memo-paper);color:var(--memo-ink);font-family:inherit;font-size:12px}
 .formatToolbar button{min-width:34px;height:34px;padding:0 9px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--memo-ink);font:13px system-ui,sans-serif}
 .formatToolbar button:active,.formatToolbar button:focus-visible{background:var(--memo-soft);border-color:var(--memo-line);outline:0}
 .toolbarDivider{width:1px;height:22px;background:var(--memo-line);margin:0 3px}
-.richEditor{min-height:330px;width:100%;padding:12px 1px 36px;outline:0;border:0;background:transparent;color:var(--memo-ink);font:15px/1.85 inherit;white-space:normal;overflow-wrap:anywhere;caret-color:var(--memo-accent)}
+.richEditor{min-height:330px;width:100%;padding:12px 1px 36px;outline:0;border:0;background:transparent;color:var(--memo-ink);font-family:inherit;font-size:15px;line-height:1.85;white-space:normal;overflow-wrap:anywhere;caret-color:var(--memo-accent)}
 .richEditor:empty:before{content:attr(data-placeholder);color:var(--memo-accent-muted);pointer-events:none}
 .richEditor p{margin:0 0 .8em}
 .richEditor h1,.richEditor h2,.richEditor h3{color:var(--memo-ink);font-weight:700;line-height:1.45;margin:1.15em 0 .45em}
