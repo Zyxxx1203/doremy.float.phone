@@ -27,7 +27,7 @@ assert.match(storage, /maxChars = 850/);
 assert.match(storage, /pendingMemoReviewIds/);
 assert.match(storage, /markMemoReviewCompleted/);
 assert.match(storage, /note\.body\.replace\(/);
-assert.ok(storage.includes(String.raw`replace(/\\s+/g`), "digest must collapse whitespace");
+assert.ok(storage.includes("replace(/" + String.fromCharCode(92) + "s+/g"), "digest must collapse whitespace");
 
 // Capability stays private-chat-only and shared user notes are read-only.
 assert.match(tools, /备忘录工具仅允许在一对一私聊中使用/);
