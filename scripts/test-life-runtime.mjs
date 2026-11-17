@@ -631,7 +631,8 @@ const companionToolChange = applyCharacterLifeScheduleChange(transferred, "c-tri
 }, new Date("2026-10-15T10:00:00.000Z"));
 assert.ok(companionToolChange.error, "character-authored schedule changes must not overwrite a future companion stay");
 assert.ok(companionToolChange.state.schedules.some(slot => slot.id.startsWith("companion-follow-") && slot.plannedLocationId === "cafe"), "rejected autonomous change must preserve companion stay");
-const duringCompanionStay = settleActorTimelineToNow(transferred, "character", "c-trip", new Date("2026-10-15T11:00:00.000Z"));
+const companionTimelineState = { ...transferred, events: [], memories: [], invitations: [], scenes: [], timeline: [], settings: { playerDisplayName: "我", saveConfirmedEventsToMemory: true } };
+const duringCompanionStay = settleActorTimelineToNow(companionTimelineState, "character", "c-trip", new Date("2026-10-15T11:00:00.000Z"));
 const duringCompanionActor = duringCompanionStay.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === "c-trip");
 assert.equal(duringCompanionActor.actualLocationId, "cafe", "timeline settlement must keep the companion at the chosen location until the explicit expiry");
 assert.equal(duringCompanionActor.actualLocationUntil, tripEnd.toISOString(), "timeline settlement must retain the original companion expiry");
