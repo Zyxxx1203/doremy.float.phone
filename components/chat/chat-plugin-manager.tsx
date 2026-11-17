@@ -154,8 +154,6 @@ export function ChatPluginManager({ onBack }: { onBack: () => void }) {
         uninstallChatPlugin(id);
         setConfirmDeleteId(null);
     };
-
-    const pluginErrors = (pluginId: string) => errors.filter(e => e.pluginId === pluginId && e.level === "error").length;
     const statusText = safeMode
         ? "安全模式 · 插件全部未加载"
         : runtimeState.started
