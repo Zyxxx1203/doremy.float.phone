@@ -158,7 +158,7 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
     try {
       const payload = JSON.parse(await file.text());
       if (importMode === "replace") {
-        const backup = await exportMemoArchive(owner);
+        const backup = { ...await exportMemoArchive(owner), appearance: { theme, font, fontSize, lineHeight, paperWidth } };
         const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement("a");
