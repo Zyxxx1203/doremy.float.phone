@@ -197,7 +197,7 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
           {!characters.length && <small>还没有可切换的角色</small>}
         </div>}
       </div>
-      <button className={styles.iconButton} onClick={() => setTab("settings")} aria-label="设置"><Settings2 size={19}/></button>
+      <button className={styles.iconButton} onClick={() => { setSelectedId(null); setTab("settings"); }} aria-label="设置"><Settings2 size={19}/></button>
     </header>
 
     {editorOpen ? <section className={styles.editorPage}>
