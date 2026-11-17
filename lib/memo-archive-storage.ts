@@ -59,7 +59,7 @@ export async function appendMemoTodos(owner:MemoOwner,noteId:string|undefined,it
     const now=stamp();
     if(!current)current={id:uid(),owner,folderId:null,title:"待办清单",body:"集中记录需要完成和后续跟进的事项。",tags:["待办"],todos:[],pinned:false,archived:false,sharedWith:[],createdAt:now,updatedAt:now};
     const existing=new Set(current.todos.map(todo=>todo.text.trim().toLocaleLowerCase()));
-    const additions=normalized.filter(text=>!existing.has(text.toLocaleLowerCase())).map(text=>({id:uid(),text,done:false,createdAt:now}));
+    const additions:Array<MemoTodo>=[];for(const text of normalized){const key=text.toLocaleLowerCase();if(existing.has(key))continue;existing.add(key);additions.push({id:uid(),text,done:false,createdAt:now});}
     saved={...current,todos:[...current.todos,...additions].slice(0,100),updatedAt:now};
     await d.notes.put(saved);
   });
