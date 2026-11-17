@@ -180,6 +180,7 @@ export type MemoMaintenanceRecord = {
   id: string;
   timestamp: string;
   reviewedNoteIds: string[];
+  changedNoteIds: string[];
   summary: string;
   changes: string[];
 };
@@ -193,6 +194,7 @@ export function loadMemoMaintenanceHistory(characterId: string): MemoMaintenance
       && typeof (item as MemoMaintenanceRecord).id === "string"
       && typeof (item as MemoMaintenanceRecord).timestamp === "string"
       && Array.isArray((item as MemoMaintenanceRecord).reviewedNoteIds)
+      && Array.isArray((item as MemoMaintenanceRecord).changedNoteIds)
       && typeof (item as MemoMaintenanceRecord).summary === "string"
       && Array.isArray((item as MemoMaintenanceRecord).changes)));
   } catch { return []; }
