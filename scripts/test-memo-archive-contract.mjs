@@ -35,6 +35,7 @@ assert.match(storage, /slice\(0, 5\)/);
 assert.match(storage, /maxChars = 850/);
 assert.match(storage, /pendingMemoReviewIds/);
 assert.match(storage, /recordMemoMaintenanceResult/);
+assert.match(storage, /changedNoteIds/);
 assert.match(storage, /loadMemoMaintenanceHistory/);
 assert.match(storage, /getMemoReviewStatus/);
 assert.match(storage, /forceMemoReviewOnNextChat/);
