@@ -938,12 +938,17 @@ async function executeMemoTool(call: ToolCall, context?: ToolExecutionContext): 
             return { name: call.name, success: true, data: `已更新：${updated.title}` };
         }
         if (call.name === "整理待办") {
-            const n = own.notes.find(x => x.id === noteId && !x.deletedAt); if (!n) return { name: call.name, success: false, error: "只能整理自己的备忘录待办。" };
-            let todos = [...n.todos];
-            if (call.args?.text) todos.push({ id: crypto.randomUUID(), text: String(call.args.text).slice(0,200), done: false, createdAt: Date.now() });
-            if (call.args?.todoId) todos = todos.map(t => t.id === call.args.todoId ? { ...t, done: call.args?.done !== false, completedAt: call.args?.done === false ? undefined : Date.now() } : t);
+            if (call.args?.items !== undefined || call.args?.text) {
+                const rawItems = Array.isArray(call.args?.items) ? call.args.items : [call.args?.text];
+                const items = rawItems.map((item: unknown) => typeof item === "string" ? item : item && typeof item === "object" ? String((item as {text?:unknown}).text ?? "") : "").filter((item: string) => item.trim());
+                if (!items.length) return { name: call.name, success: false, error: "items 至少需要包含一条有效 text" };
+                const result = await memo.appendMemoTodos(owner, noteId || undefined, items);
+                return { name: call.name, success: true, data: `已批量整理待办，当前共 ${result.count} 项。新增事项已追加，原有事项不会被覆盖。` };
+            }
+            const n = own.notes.find(x => x.id === noteId && !x.deletedAt); if (!n) return { name: call.name, success: false, error: "更新已有待办时需要有效 noteId。" };
+            const todos = call.args?.todoId ? n.todos.map(t => t.id === call.args.todoId ? { ...t, done: call.args?.done !== false, completedAt: call.args?.done === false ? undefined : Date.now() } : t) : n.todos;
             await memo.saveMemoNote(owner, { ...n, todos });
-            return { name: call.name, success: true, data: `待办已整理。未完成 ${todos.filter(t=>!t.done).length} 项。` };
+            return { name: call.name, success: true, data: `待办已更新。未完成 ${todos.filter(t=>!t.done).length} 项。` };
         }
         if (call.name === "整理档案盒") {
             if (call.args?.action === "rename" && call.args?.folderId) {
