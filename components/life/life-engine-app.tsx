@@ -1013,8 +1013,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         id: id("life-schedule-ai"), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
         content: [
           "角色：" + character.name, "角色卡：" + (character.persona || "未填写"), "性格：" + (character.personality || "未填写"), "标签：" + (character.tags ?? []).join("、"),
-          "同居关系：" + (livesWithPlayer ? "该角色与用户明确同居；共同住所为「" + sharedResidence!.name + "」（locationId=" + sharedResidence!.id + "）。" : "该角色没有与用户同居的设定，严禁把用户的家当作该角色住所。"),
-          "【住所身份锁定】该角色自己的住所是「" + (characterHome?.name ?? character.name + "的家") + "」（locationId=" + (characterHome?.id ?? "home-" + character.id) + "）。" + (livesWithPlayer ? "该住所是明确登记的共同住所。" : "该住所仅属于该角色；用户家及其他角色的家均不是该角色的家。") + "日程中出现回家、在家、居家、睡觉、起床、休息等活动时，地点必须填写上述住所的准确名称。只有明确登记同居时才能使用用户家。拜访用户或其他角色时，必须写明拜访对象对应的地点，不能把拜访地点当成自己的住所。"),
+          "住所事实：角色住所「" + (characterHome?.name ?? character.name + "的家") + "」（locationId=" + (characterHome?.id ?? "home-" + character.id) + "）；与用户同居：" + (livesWithPlayer ? "是，共同住所为「" + sharedResidence!.name + "」（locationId=" + sharedResidence!.id + "）" : "否") + "。",
+
           "世界书中与该角色相关的背景：\n" + (characterWorldBook || "暂无相关世界书条目"),
           "近期共同记忆：\n" + memories, "近期个人记录：\n" + events, "允许地点（只选这些；地点名必须准确匹配，不得自行简称为“家”）：\n" + locations, "必须保留的固定安排：\n" + fixed,
           "时间范围：从角色现实日历的今天 " + start.toLocaleDateString("sv-SE") + " 开始连续七天；dayOffset 0 为今天，6 为第七天。不要为已经过去的时段安排活动。",
