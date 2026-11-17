@@ -12,7 +12,7 @@ import {
   createMemoFolder, deleteMemoFolder, updateMemoFolder, exportMemoArchive,
   importMemoArchive, loadMemoArchive, moveMemoToRecycleBin,
   permanentlyDeleteMemo, restoreMemo, saveMemoNote, setMemoShare,
-  getMemoReviewIntervalHours, getMemoReviewStatus, loadMemoTimelineProjectionEntries, loadMemoMaintenanceHistory, setMemoReviewIntervalHours, forceMemoReviewOnNextChat,
+  getMemoReviewIntervalHours, getMemoReviewStatus, loadMemoMaintenanceHistory, setMemoReviewIntervalHours, forceMemoReviewOnNextChat,
   type MemoFolder, type MemoNote, type MemoOwner
 } from "@/lib/memo-archive-storage";
 import styles from "./memo-archive-app.module.css";
