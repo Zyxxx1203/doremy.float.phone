@@ -9,7 +9,7 @@ const compiled = ts.transpileModule(source, {
 }).outputText;
 const moduleBox = { exports: {} };
 vm.runInNewContext(compiled, { module: moduleBox, exports: moduleBox.exports, AbortController, Date, Map, console });
-const { beginTurn, getActiveTurn, listActiveTurns } = moduleBox.exports;
+const { beginTurn, getActiveTurn, listActiveTurns, abortTurnsForCharacter, abortTurnsForSession } = moduleBox.exports;
 
 const life = beginTurn({ kind: "life_scene", characterId: "char-a", sessionId: "life-session" });
 assert.ok(life, "life scene should start when the character is idle");
