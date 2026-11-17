@@ -164,6 +164,17 @@ assert.match(app, /return forceReaction \? "deferred" : "failed"/);
 assert.match(app, /refreshForegroundLease/);
 assert.match(app, /setLifeSceneForegroundLease/);
 assert.match(app, /document\.visibilityState === "visible"/);
+assert.match(app, /const sharedResidence = current\.locations\.find/);
+assert.match(app, /该角色没有与用户同居的设定，严禁把用户的家当作该角色住所/);
+assert.match(app, /【住所身份锁定】/);
+assert.match(app, /const characterHome = sharedResidence[\\s\\S]*?location\.id === "home-" \+ character\.id/);
+assert.match(app, /const homeIntent = !placeKey/);
+assert.match(app, /some\(name => normalizeLocation\(name\) === placeKey\)/,
+  "generated schedule locations must resolve by exact location name/alias, never substring-match a generic 家");
+assert.doesNotMatch(app.slice(app.indexOf("const rawPlace = String(item.location"), app.indexOf("days.add(d);", app.indexOf("const rawPlace = String(item.location"))), /placeKey\.includes\(n\)|n\.includes\(placeKey\)/,
+  "generic home labels must not collide with the player's or another character's home");
+assert.match(app, /plannedLocationName:place\?\.name \?\? \(homeIntent \? character\.name \+ "的家"/,
+  "unresolved non-home places must not be silently reassigned to a home");
 assert.match(app, /synchronizeCharacterHomeSchedule/);
 assert.match(app, /reserveCharacterLocationStay/);
 assert.match(app, /前台后续兜底任务已挂载/);
