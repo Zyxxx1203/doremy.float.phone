@@ -169,27 +169,70 @@ function readMemoReviewState(characterId: string): Record<string, number> {
   } catch { return {}; }
 }
 
-export async function markMemoReviewCompleted(characterId: string): Promise<void> {
-  const ids = pendingMemoReviewIds.get(characterId);
-  if (!ids?.size) return;
+export type MemoMaintenanceRecord = {
+  id: string;
+  timestamp: string;
+  reviewedNoteIds: string[];
+  summary: string;
+  changes: string[];
+};
+const memoMaintenanceHistoryKey = (characterId: string) => "memo-archive-maintenance:" + characterId;
+
+export function loadMemoMaintenanceHistory(characterId: string): MemoMaintenanceRecord[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(memoMaintenanceHistoryKey(characterId)) || "[]");
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is MemoMaintenanceRecord => Boolean(item && typeof item === "object"
+      && typeof (item as MemoMaintenanceRecord).id === "string"
+      && typeof (item as MemoMaintenanceRecord).timestamp === "string"
+      && Array.isArray((item as MemoMaintenanceRecord).reviewedNoteIds)
+      && typeof (item as MemoMaintenanceRecord).summary === "string"
+      && Array.isArray((item as MemoMaintenanceRecord).changes)));
+  } catch { return []; }
+}
+
+/** A maintenance cycle is completed only when the model explicitly reports its inspection result. */
+export async function recordMemoMaintenanceResult(
+  characterId: string,
+  reviewedNoteIds: string[],
+  summary: string,
+  changes: string[] = [],
+): Promise<MemoMaintenanceRecord> {
+  const pending = pendingMemoReviewIds.get(characterId);
+  if (!pending?.size) throw new Error("当前没有待完成的备忘录维护任务");
+  const ids = [...new Set(reviewedNoteIds.map(String))].filter(id => pending.has(id));
+  if (!ids.length) throw new Error("维护结果没有包含本轮待检查的备忘录");
+  const cleanSummary = summary.trim().slice(0, 500);
+  if (!cleanSummary) throw new Error("请说明本次检查结果");
+  const cleanChanges = changes.map(item => String(item).trim().slice(0, 240)).filter(Boolean).slice(0, 20);
+  const now = Date.now();
+  const record: MemoMaintenanceRecord = {
+    id: "memo-maintenance:" + now + ":" + Math.random().toString(36).slice(2, 8),
+    timestamp: new Date(now).toISOString(),
+    reviewedNoteIds: ids,
+    summary: cleanSummary,
+    changes: cleanChanges,
+  };
   const state = readMemoReviewState(characterId);
-  const reviewedAt = Date.now();
-  for (const id of ids) state[id] = reviewedAt;
+  for (const id of ids) state[id] = now;
   try {
     localStorage.setItem(memoReviewKey(characterId), JSON.stringify(state));
+    const history = loadMemoMaintenanceHistory(characterId);
+    localStorage.setItem(memoMaintenanceHistoryKey(characterId), JSON.stringify([record, ...history].slice(0, 100)));
     const timelineKey = memoTimelineKey(characterId);
     const timeline: MemoTimelineProjection[] = JSON.parse(localStorage.getItem(timelineKey) || "[]");
-    const eventId = "memo-review:" + reviewedAt;
     timeline.unshift({
-      id: eventId,
+      id: record.id,
       sourceApp: "memo",
-      memoNoteId: eventId,
-      timestamp: new Date(reviewedAt).toISOString(),
-      content: "完成了 " + ids.size + " 条私人备忘录的定期回顾；未将正文写入时间线。",
+      memoNoteId: record.id,
+      timestamp: record.timestamp,
+      content: "备忘录维护：" + cleanSummary + (cleanChanges.length ? "；变更：" + cleanChanges.join("；") : "；检查后无需修改。"),
     });
     localStorage.setItem(timelineKey, JSON.stringify(timeline.slice(0, 200)));
-  } catch { /* storage unavailable */ }
-  pendingMemoReviewIds.delete(characterId);
+  } catch { throw new Error("维护结果保存失败，请稍后重试"); }
+  for (const id of ids) pending.delete(id);
+  if (!pending.size) pendingMemoReviewIds.delete(characterId);
+  return record;
 }
 
 function memoBodyTextForPrompt(body: string): string {
