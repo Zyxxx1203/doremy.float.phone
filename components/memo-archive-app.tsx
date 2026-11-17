@@ -49,10 +49,13 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
   const [fontSize, setFontSize] = useState("16");
   const [lineHeight, setLineHeight] = useState("1.8");
   const [paperWidth, setPaperWidth] = useState("normal");
-  const [reviewHours, setReviewHours] = useState(24);\n  const [reviewRefreshKey, setReviewRefreshKey] = useState(0);
+  const [reviewHours, setReviewHours] = useState(24);
+  const [reviewRefreshKey, setReviewRefreshKey] = useState(0);
   const [importMode, setImportMode] = useState<"merge" | "replace">("merge");
   const [spaceMenu, setSpaceMenu] = useState(false);
-  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);\n  const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);\n  const [bulkFolderId, setBulkFolderId] = useState("");
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [selectedNoteIds, setSelectedNoteIds] = useState<string[]>([]);
+  const [bulkFolderId, setBulkFolderId] = useState("");
 
   const refresh = useCallback(async () => {
     const data = await loadMemoArchive(owner, tab === "recycle");
@@ -91,11 +94,30 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
   const activeTodos = notes.flatMap(note => note.todos.filter(todo => !todo.done).map(todo => ({ ...todo, noteId: note.id, noteTitle: note.title })));
   const completedTodos = notes.flatMap(note => note.todos.filter(todo => todo.done).map(todo => ({ ...todo, noteId: note.id, noteTitle: note.title })));
   const openCount = activeTodos.length;
-  const reviewStatus = owner.type === "character" ? getMemoReviewStatus(owner.id, notes) : null;\n  void reviewRefreshKey;
+  const reviewStatus = owner.type === "character" ? getMemoReviewStatus(owner.id, notes) : null;
+  void reviewRefreshKey;
   const reviewHistory = owner.type === "character" ? loadMemoTimelineProjectionEntries(owner.id).filter(item => item.content.includes("定期回顾")).slice(0, 5) : [];
 
 
-  const renameNote = async (note: MemoNote) => {\n    const next = window.prompt("重命名手记", note.title);\n    if (!next?.trim() || next.trim() === note.title) return;\n    await saveMemoNote(owner, { ...note, title: next.trim() });\n    await refresh();\n  };\n  const duplicateNote = async (note: MemoNote) => {\n    const copy = await saveMemoNote(owner, { ...note, id: undefined, title: note.title + "（副本）", pinned: false, archived: false, folderId: note.folderId, todos: note.todos.map(todo => ({ ...todo, id: crypto.randomUUID(), done: false, completedAt: undefined })) });\n    await refresh(); onNotice?.("已复制一份手记"); setSelectedId(copy.id);\n  };\n  const moveNote = async (note: MemoNote, folderId: string | null) => { await saveMemoNote(owner, { ...note, folderId }); await refresh(); };\n  const toggleSelectedNote = (id: string) => setSelectedNoteIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]);\n  const moveSelectedNotes = async () => {\n    const targets = notes.filter(note => selectedNoteIds.includes(note.id));\n    for (const note of targets) await saveMemoNote(owner, { ...note, folderId: bulkFolderId || null });\n    setSelectedNoteIds([]); await refresh(); onNotice?.("已移动 " + targets.length + " 页手记");\n  };\n  const changeOwner = (next: MemoOwner) => {
+  const renameNote = async (note: MemoNote) => {
+    const next = window.prompt("重命名手记", note.title);
+    if (!next?.trim() || next.trim() === note.title) return;
+    await saveMemoNote(owner, { ...note, title: next.trim() });
+    await refresh();
+  };
+  const duplicateNote = async (note: MemoNote) => {
+    const copy = await saveMemoNote(owner, { ...note, id: undefined, title: note.title + "（副本）", pinned: false, archived: false, folderId: note.folderId, todos: note.todos.map(todo => ({ ...todo, id: crypto.randomUUID(), done: false, completedAt: undefined })) });
+    await refresh(); onNotice?.("已复制一份手记"); setSelectedId(copy.id);
+  };
+  const moveNote = async (note: MemoNote, folderId: string | null) => { await saveMemoNote(owner, { ...note, folderId }); await refresh(); };
+  const toggleSelectedNote = (id: string) => setSelectedNoteIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]);
+  const moveSelectedNotes = async () => {
+    const targets = notes.filter(note => selectedNoteIds.includes(note.id));
+    for (const note of targets) await saveMemoNote(owner, { ...note, folderId: bulkFolderId || null });
+    setSelectedNoteIds([]); await refresh(); onNotice?.("已移动 " + targets.length + " 页手记");
+  };
+  const changeOwner = (next: MemoOwner) => {
+    setSelectedNoteIds([]);
     setOwner(next);
     setTab("home");
     setQuery("");
