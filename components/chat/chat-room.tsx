@@ -3947,9 +3947,19 @@ export function ChatRoom({ session, onBack, onDeleted, isActive = true }: ChatRo
             setIsGenerating(false);
             clearGenerationLock(session.id);
         }
+        const groupParticipantIds = session.isGroup
+            ? [...new Set((session.participantIds || []).filter(Boolean))]
+            : [];
+        if (session.isGroup && groupParticipantIds.length === 0) {
+            showChatToast("群聊没有有效的角色成员，无法生成回复");
+            return;
+        }
         const turn = beginTurn({
             kind: "user_reply",
-            characterId: character?.id ?? resolveSessionCharacterId(session) ?? "",
+            characterId: session.isGroup
+                ? groupParticipantIds[0]
+                : character?.id ?? resolveSessionCharacterId(session) ?? "",
+            ...(session.isGroup ? { participantIds: groupParticipantIds } : {}),
             sessionId: session.id,
         });
         if (!turn) return;
