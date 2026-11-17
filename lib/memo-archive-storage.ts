@@ -47,6 +47,25 @@ export async function saveMemoNote(owner:MemoOwner,input:Partial<MemoNote>&Pick<
   if (owner.type === "character") writeMemoTimelineEvent(owner.id, note, old ? "updated" : "created");
   else for (const characterId of note.sharedWith) writeMemoTimelineEvent(characterId, note, old ? "updated" : "created");
   return note;}
+export async function appendMemoTodos(owner:MemoOwner,noteId:string|undefined,items:Array<string|{text:string}>){
+  const d=database();
+  const normalized=items.map(item=>typeof item==="string"?item:item?.text).map(text=>String(text??"").trim().slice(0,200)).filter(Boolean).slice(0,100);
+  if(!normalized.length)throw Error("至少需要一条有效待办");
+  let saved:MemoNote|undefined;
+  await d.transaction("rw",d.notes,async()=>{
+    let current=noteId?await d.notes.get(noteId):undefined;
+    if(current&&!same(current.owner,owner))throw Error("只能整理自己的备忘录待办");
+    if(!current){const rows=(await d.notes.where("owner.id").equals(owner.id).toArray()).filter(n=>same(n.owner,owner)&&!n.deletedAt&&!n.archived);current=rows.find(n=>n.title==="待办清单");}
+    const now=stamp();
+    if(!current)current={id:uid(),owner,folderId:null,title:"待办清单",body:"集中记录需要完成和后续跟进的事项。",tags:["待办"],todos:[],pinned:false,archived:false,sharedWith:[],createdAt:now,updatedAt:now};
+    const existing=new Set(current.todos.map(todo=>todo.text.trim().toLocaleLowerCase()));
+    const additions=normalized.filter(text=>!existing.has(text.toLocaleLowerCase())).map(text=>({id:uid(),text,done:false,createdAt:now}));
+    saved={...current,todos:[...current.todos,...additions].slice(0,100),updatedAt:now};
+    await d.notes.put(saved);
+  });
+  if(saved&&owner.type==="character")writeMemoTimelineEvent(owner.id,saved,"updated");
+  return {note:saved!,count:saved!.todos.length};
+}
 export async function moveMemoToRecycleBin(id:string,owner:MemoOwner){const n=await database().notes.get(id);if(!n||!same(n.owner,owner))throw Error("无权删除此备忘录");await database().notes.update(id,{deletedAt:stamp(),updatedAt:stamp()});
   if (owner.type === "character") removeMemoTimelineEvent(owner.id, id);
   else for (const characterId of n.sharedWith) removeMemoTimelineEvent(characterId, id);}
