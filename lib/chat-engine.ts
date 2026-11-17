@@ -1936,7 +1936,36 @@ export async function buildChatPromptMessages(
     const promptTimestampOptions = getPromptTimestampOptionsForTimeContext(promptTimeContext);
     const memConfig = loadMemoryConfig();
     const isOfflineMode = options?.appTags?.includes("offline") === true;
-    const effectiveAppTags = mergeAppTags(options?.appTags, promptProfile?.appTags, resolvedAppId);
+    const memoCapability = getInternalCapability("memo_archive");
+    const memoPromptEnabled = resolvedAppId === "chat" && !session.isGroup && !isOfflineMode
+        && memConfig.shortTermAllowedSources?.memo !== false
+        && memoCapability?.enabled === true && memoCapability.mode !== "off";
+    const baseAppTags = mergeAppTags(options?.appTags, promptProfile?.appTags, resolvedAppId);
+    const effectiveAppTags = memoPromptEnabled
+        ? [...new Set([...baseAppTags, "memo"])]
+        : baseAppTags.filter(tag => tag !== "memo");
+    if (memoPromptEnabled && preset) {
+        const memoPrompt = {
+            identifier: "memo_behavior",
+            name: "▸ 私人备忘录记录规则",
+            role: "system" as const,
+            content: [
+                "你拥有只属于当前角色的私人备忘录。它用于保存你认为未来值得回看的具体信息，而不是逐轮记录聊天。",
+                "当对话出现明确承诺、共同计划与待办、重要日期、关系进展、稳定习惯偏好、用户明确要求记住的事项，或你自己希望以后继续的话题时，你可以主动判断是否值得记录，不必等待用户提醒。",
+                "写入前先搜索现有备忘录；已有主题优先补充或更新，避免重复建档。用户分享给你的备忘录只读；你只能修改自己的记录。不要记录琐碎闲聊、短暂情绪、猜测或敏感推断。",
+                "记录操作不必逐次向用户播报；只有在确实相关时自然提及。工具不可用或写入失败时，不要声称已经记录。",
+            ].join("\\n"),
+            injection_position: 0,
+            injection_depth: 0,
+            enabled: true,
+            tags: ["chat", "memo"],
+        };
+        preset = {
+            ...preset,
+            prompts: [...(preset.prompts ?? []).filter(item => item.identifier !== "memo_behavior"), memoPrompt],
+            prompt_order: [...(preset.prompt_order ?? []).filter(item => item.identifier !== "memo_behavior"), { identifier: "memo_behavior", enabled: true }],
+        };
+    }
     const toolsAllowed = options?.toolsAllowed !== false && !isOfflineMode;
     const enabledTools = toolsAllowed ? getEnabledTools(resolvedAppId) : [];
     const hasLifeTools = enabledTools.some(tool => tool.source === "life");
