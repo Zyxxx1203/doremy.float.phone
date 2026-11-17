@@ -33,7 +33,7 @@ assert.match(storage, /slice\(0, 5\)/);
 assert.match(storage, /maxChars = 850/);
 assert.match(storage, /pendingMemoReviewIds/);
 assert.match(storage, /markMemoReviewCompleted/);
-assert.match(storage, /getMemoReviewStatus/);
+assert.match(storage, /getMemoReviewStatus/);\nassert.match(storage, /forceMemoReviewOnNextChat/);
 assert.match(storage, /note\.body\.replace\(/);
 assert.ok(storage.includes("replace(/" + String.fromCharCode(92) + "s+/g"), "digest must collapse whitespace");
 
