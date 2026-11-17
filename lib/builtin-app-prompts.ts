@@ -92,6 +92,17 @@ const LIFE_SCHEDULE_PROMPT = [
     "要求：每一天安排要覆盖全天、无空档、活动符合角色职业和性格；工作日与休息日有差异；结合近期记忆安排后续；只用已有地点；固定安排不能更改或冲突；每天 5—9 段有意义的活动，避免每天重复相同内容。",
 ].join("\n");
 
+const LIFE_SCHEDULE_RESIDENCE_PROMPT = [
+    "【住所与地点识别规则】",
+    "每个角色都有自己的住所身份。生成日程前，必须先读取本轮提供的角色住所名称、locationId 和同居关系；这些动态事实优先于角色卡中含糊的泛称。",
+    "“家、回家、在家、居家、睡觉、起床、休息”等泛称，均指当前角色自己的住所，必须映射到本轮提供的该角色住所准确名称与 locationId。不得仅凭“家”字选择地点，不得把用户家或其他角色的家当成当前角色的住所。",
+    "只有动态上下文明确标记该角色与用户同居，并明确给出共同住所时，才可以把用户家作为该角色住所。仅仅与用户关系亲密、经常拜访、曾在用户家出现，均不代表同居。",
+    "如果角色有独立住所，居家活动必须安排在该独立住所。拜访用户或其他角色时，必须使用允许地点列表中对应的准确地点名称；拜访不等于搬家，也不改变角色自己的住所身份。",
+    "不得把地点名称简称成“家”后再自行猜测。location 必须填写允许地点列表中的准确名称；不要编造地点，不要把不同角色的住所互相替换。",
+    "如果上下文没有提供可确认的住所，或允许地点列表中没有对应地点，不要猜测或退回用户家；选择其他确实可用的地点，无法合理安排时应避免生成该项居家活动。",
+    "住所规则只决定居家活动的地点，不意味着角色整天待在家。仍须根据职业、学习、兴趣、固定安排、近期记忆和角色性格，合理安排工作、学习、通勤、社交、购物及其他外出活动。",
+].join("\\n");
+
 const LIFE_INVITE_PROMPT = [
     "【生活 APP 邀约确认】",
     "{{user}}向你发出邀约。请根据你的人设、当前日程、关系和真实意愿，自主决定接受或拒绝。",
@@ -162,6 +173,7 @@ const APP_PROMPT_DEFINITIONS: Array<{ identifier: string; name: string; content:
     { identifier: "life_scene_task", name: "◇ 生活现场回合任务", content: LIFE_SCENE_TASK_PROMPT, tags: ["life", "turn", "scene"] },
     { identifier: "life_autonomy_task", name: "◇ 生活现场自主回合任务", content: LIFE_AUTONOMY_TASK_PROMPT, tags: ["life", "turn", "autonomy"] },
     { identifier: "life_schedule_task", name: "◇ 生活日程生成规则", content: LIFE_SCHEDULE_PROMPT, tags: ["life", "schedule"] },
+    { identifier: "life_schedule_residence_rules", name: "◇ 生活日程住所与地点规则", content: LIFE_SCHEDULE_RESIDENCE_PROMPT, tags: ["life", "schedule"] },
     { identifier: "life_invitation_task", name: "◇ 生活邀约接受/拒绝规则", content: LIFE_INVITE_PROMPT, tags: ["life", "invite"] },
     { identifier: "photo_wall_annotation", name: "◇ 照片墙批注", content: PHOTO_WALL_ANNOTATION_PROMPT, tags: ["photo_wall", "annotation"] },
     { identifier: "photo_wall_doodle", name: "◇ 照片墙涂鸦", content: PHOTO_WALL_DOODLE_PROMPT, tags: ["photo_wall", "doodle"] },
