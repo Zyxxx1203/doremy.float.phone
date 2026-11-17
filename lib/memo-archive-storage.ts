@@ -195,8 +195,8 @@ export async function markMemoReviewCompleted(characterId: string): Promise<void
 function memoBodyTextForPrompt(body: string): string {
   if (!body.startsWith("<!--memo-rich-v1-->")) return body;
   return body.slice("<!--memo-rich-v1-->".length)
-    .replace(/<br\\s*\\/?\\s*>/gi, " ")
-    .replace(/<\\/(?:p|div|li|h[1-6]|blockquote)>/gi, " ")
+    .replace(/<br\s*\/?\s*>/gi, " ")
+    .replace(/<\/(?:p|div|li|h[1-6]|blockquote)>/gi, " ")
     .replace(/<[^>]*>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
