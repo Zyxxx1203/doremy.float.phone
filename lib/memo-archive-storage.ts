@@ -8,15 +8,53 @@ class MemoArchiveDB extends Dexie {
   constructor(){ super("floatphone-memo-archive-v1"); this.version(1).stores({folders:"id, owner.id, order, updatedAt",notes:"id, owner.id, folderId, updatedAt, pinned, archived, deletedAt, *tags"}); }
 }
 let db:MemoArchiveDB|null=null; const database=()=>db??(db=new MemoArchiveDB()); const uid=()=>crypto.randomUUID(); const same=(a:MemoOwner,b:MemoOwner)=>a.type===b.type&&a.id===b.id; const stamp=()=>Date.now();
+type MemoTimelineProjection = { id: string; sourceApp: "memo"; memoNoteId: string; timestamp: string; content: string };
+const memoTimelineKey = (characterId: string) => "memo-archive-timeline:" + characterId;
+function writeMemoTimelineEvent(characterId: string, note: MemoNote, action: "created" | "updated" = "updated"): void {
+  try {
+    const key = memoTimelineKey(characterId);
+    const current: MemoTimelineProjection[] = JSON.parse(localStorage.getItem(key) || "[]");
+    const event: MemoTimelineProjection = {
+      id: "memo:" + note.id,
+      sourceApp: "memo",
+      memoNoteId: note.id,
+      timestamp: new Date(note.updatedAt).toISOString(),
+      content: "备忘录《" + note.title + "》" + (action === "created" ? "已创建" : "已更新") + "。仅记录标题与变更，不包含正文。",
+    };
+    localStorage.setItem(key, JSON.stringify([event, ...current.filter(item => item.memoNoteId !== note.id)].slice(0, 200)));
+  } catch { /* timeline projection is best-effort; source note remains safely stored */ }
+}
+function removeMemoTimelineEvent(characterId: string, noteId: string): void {
+  try {
+    const key = memoTimelineKey(characterId);
+    const current: MemoTimelineProjection[] = JSON.parse(localStorage.getItem(key) || "[]");
+    localStorage.setItem(key, JSON.stringify(current.filter(item => item.memoNoteId !== noteId)));
+  } catch { /* ignore malformed projection cache */ }
+}
+export function loadMemoTimelineProjectionEntries(characterId: string): MemoTimelineProjection[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(memoTimelineKey(characterId)) || "[]");
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is MemoTimelineProjection => Boolean(item && typeof item === "object" && (item as MemoTimelineProjection).sourceApp === "memo" && typeof (item as MemoTimelineProjection).memoNoteId === "string" && typeof (item as MemoTimelineProjection).timestamp === "string" && typeof (item as MemoTimelineProjection).content === "string"));
+  } catch { return []; }
+}
+
 export async function loadMemoArchive(owner:MemoOwner,deleted:boolean|"all"=false){const [folders,notes]=await Promise.all([database().folders.toArray(),database().notes.toArray()]);return{folders:folders.filter(x=>same(x.owner,owner)).sort((a,b)=>a.order-b.order),notes:notes.filter(x=>same(x.owner,owner)&&(deleted==="all"||(deleted?!!x.deletedAt:!x.deletedAt))).sort((a,b)=>b.updatedAt-a.updatedAt)};}
 export async function createMemoFolder(owner:MemoOwner,name:string,color="#D8C39B"){const clean=name.trim().slice(0,32);if(!clean)throw Error("档案盒名称不能为空");const all=await database().folders.toArray();const item={id:uid(),owner,name:clean,color,order:all.filter(x=>same(x.owner,owner)).length,createdAt:stamp(),updatedAt:stamp()};await database().folders.add(item);return item;}
 export async function updateMemoFolder(id:string,owner:MemoOwner,patch:Partial<Pick<MemoFolder,"name"|"color"|"order">>){const d=database();const f=await d.folders.get(id);if(!f||!same(f.owner,owner))throw Error("无权修改此档案盒");if(patch.order!==undefined){await d.transaction("rw",d.folders,async()=>{const rows=(await d.folders.toArray()).filter(x=>same(x.owner,owner)).sort((x,y)=>x.order-y.order);const from=rows.findIndex(x=>x.id===id);const [moving]=rows.splice(from,1);rows.splice(Math.max(0,Math.min(rows.length,patch.order!)),0,moving);for(let index=0;index<rows.length;index++)await d.folders.update(rows[index].id,{order:index,updatedAt:stamp()});});}else await d.folders.update(id,{...patch,updatedAt:stamp()});}
 export async function deleteMemoFolder(id:string,owner:MemoOwner,mode:"loose"|"recycle"="loose"){const f=await database().folders.get(id);if(!f||!same(f.owner,owner))throw Error("无权删除此档案盒");await database().transaction("rw",database().folders,database().notes,async()=>{for(const n of await database().notes.where("folderId").equals(id).toArray())if(same(n.owner,owner))await database().notes.update(n.id,{folderId:null,...(mode==="recycle"?{deletedAt:stamp()}:{}),updatedAt:stamp()});await database().folders.delete(id);});}
-export async function saveMemoNote(owner:MemoOwner,input:Partial<MemoNote>&Pick<MemoNote,"title"|"body">){const title=input.title.trim().slice(0,60);if(!title)throw Error("请填写标题");if(input.body.length>20000)throw Error("正文不能超过 20000 字");const old=input.id?await database().notes.get(input.id):undefined;if(old&&!same(old.owner,owner))throw Error("无权修改此备忘录");if(input.folderId){const f=await database().folders.get(input.folderId);if(!f||!same(f.owner,owner))throw Error("档案盒不属于当前空间");}const t=stamp();const note:MemoNote={id:old?.id??uid(),owner,folderId:("folderId" in input ? input.folderId : old?.folderId) ?? null,title,body:input.body,tags:[...new Set((input.tags??old?.tags??[]).map(x=>x.trim()).filter(Boolean))].slice(0,8),todos:(input.todos??old?.todos??[]).slice(0,100),pinned:input.pinned??old?.pinned??false,archived:input.archived??old?.archived??false,sharedWith:old?.sharedWith??[],createdAt:old?.createdAt??t,updatedAt:t,lastReviewedAt:old?.lastReviewedAt,nextReviewAt:old?.nextReviewAt};await database().notes.put(note);return note;}
-export async function moveMemoToRecycleBin(id:string,owner:MemoOwner){const n=await database().notes.get(id);if(!n||!same(n.owner,owner))throw Error("无权删除此备忘录");await database().notes.update(id,{deletedAt:stamp(),updatedAt:stamp()});}
+export async function saveMemoNote(owner:MemoOwner,input:Partial<MemoNote>&Pick<MemoNote,"title"|"body">){const title=input.title.trim().slice(0,60);if(!title)throw Error("请填写标题");if(input.body.length>20000)throw Error("正文不能超过 20000 字");const old=input.id?await database().notes.get(input.id):undefined;if(old&&!same(old.owner,owner))throw Error("无权修改此备忘录");if(input.folderId){const f=await database().folders.get(input.folderId);if(!f||!same(f.owner,owner))throw Error("档案盒不属于当前空间");}const t=stamp();const note:MemoNote={id:old?.id??uid(),owner,folderId:("folderId" in input ? input.folderId : old?.folderId) ?? null,title,body:input.body,tags:[...new Set((input.tags??old?.tags??[]).map(x=>x.trim()).filter(Boolean))].slice(0,8),todos:(input.todos??old?.todos??[]).slice(0,100),pinned:input.pinned??old?.pinned??false,archived:input.archived??old?.archived??false,sharedWith:old?.sharedWith??[],createdAt:old?.createdAt??t,updatedAt:t,lastReviewedAt:old?.lastReviewedAt,nextReviewAt:old?.nextReviewAt};await database().notes.put(note);
+  if (owner.type === "character") writeMemoTimelineEvent(owner.id, note, old ? "updated" : "created");
+  else for (const characterId of note.sharedWith) writeMemoTimelineEvent(characterId, note, old ? "updated" : "created");
+  return note;}
+export async function moveMemoToRecycleBin(id:string,owner:MemoOwner){const n=await database().notes.get(id);if(!n||!same(n.owner,owner))throw Error("无权删除此备忘录");await database().notes.update(id,{deletedAt:stamp(),updatedAt:stamp()});
+  if (owner.type === "character") removeMemoTimelineEvent(owner.id, id);
+  else for (const characterId of n.sharedWith) removeMemoTimelineEvent(characterId, id);}
 export async function restoreMemo(id:string,owner:MemoOwner){const n=await database().notes.get(id);if(!n||!same(n.owner,owner))throw Error("无权恢复此备忘录");await database().notes.update(id,{deletedAt:undefined,updatedAt:stamp()});}
 export async function permanentlyDeleteMemo(id:string,owner:MemoOwner){const n=await database().notes.get(id);if(!n||!same(n.owner,owner))throw Error("无权删除此备忘录");await database().notes.delete(id);}
-export async function setMemoShare(id:string,owner:MemoOwner,characterId:string,enabled:boolean){const n=await database().notes.get(id);if(!n||!same(n.owner,owner)||owner.type!=="user")throw Error("只有用户自己的备忘录可以分享");await database().notes.update(id,{sharedWith:enabled?[...new Set([...n.sharedWith,characterId])]:n.sharedWith.filter(x=>x!==characterId),updatedAt:stamp()});}
+export async function setMemoShare(id:string,owner:MemoOwner,characterId:string,enabled:boolean){const n=await database().notes.get(id);if(!n||!same(n.owner,owner)||owner.type!=="user")throw Error("只有用户自己的备忘录可以分享");await database().notes.update(id,{sharedWith:enabled?[...new Set([...n.sharedWith,characterId])]:n.sharedWith.filter(x=>x!==characterId),updatedAt:stamp()});
+  if (enabled) writeMemoTimelineEvent(characterId, { ...n, updatedAt: stamp() }, "updated");
+  else removeMemoTimelineEvent(characterId, id);}
 export async function readSharedMemoNotes(characterId:string){return(await database().notes.toArray()).filter(n=>n.owner.type==="user"&&n.sharedWith.includes(characterId)&&!n.deletedAt);}
 export async function exportMemoArchive(owner:MemoOwner){return{schema:"floatphone.memo-archive",version:1,exportedAt:stamp(),owner,...await loadMemoArchive(owner,"all")};}
 export async function importMemoArchive(owner:MemoOwner,payload:unknown,mode:"merge"|"replace"="merge"){
