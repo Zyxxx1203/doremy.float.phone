@@ -35,7 +35,7 @@ assert.match(storage, /pendingMemoReviewIds/);
 assert.match(storage, /markMemoReviewCompleted/);
 assert.match(storage, /getMemoReviewStatus/);
 assert.match(storage, /forceMemoReviewOnNextChat/);
-assert.match(storage, /note\.body\.replace\(/);
+assert.match(storage, /memoBodyTextForPrompt\\(note\\.body\\)/);
 assert.ok(storage.includes("replace(/" + String.fromCharCode(92) + "s+/g"), "digest must collapse whitespace");
 
 // Capability stays private-chat-only and shared user notes are read-only.
