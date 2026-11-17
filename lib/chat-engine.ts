@@ -4,7 +4,6 @@ import { createSseJsonParser } from "./sse-json";
 import { maybeAppendShortcutCapability, maybeAppendPerceptionStatus } from "./offline-shortcut-capability";
 import { maybeBuildStatusInjection } from "./perception/describe";
 import { loadCharacters } from "./character-storage";
-import { createBuiltinPreset } from "./builtin-preset";
 import { IMAGE_CHARACTER_NAMING_RULE } from "./image-prompt-rules";
 import { buildLifeMemoryContext, buildLifePresenceContext } from "./life/life-memory-bridge";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
@@ -87,7 +86,7 @@ import { pushApiLog } from "./api-log-store";
 export { getApiLogs, clearApiLogs, type DebugInfo } from "./api-log-store";
 import { stripStateAndInnerForPrompt } from "./prompt-sanitizer";
 import { getInternalCapability, getInternalCapabilitySubToolDefinitions } from "./internal-capability-storage";
-import { buildMemoPromptDigest } from "./memo-archive-storage";
+import { buildMemoPromptDigest, markMemoReviewCompleted } from "./memo-archive-storage";
 import { isMediaStoreRef, loadMediaBlob } from "./media-cache-storage";
 import {
     DEFAULT_CHAT_BILINGUAL_PROMPT,
@@ -2704,7 +2703,12 @@ export async function generateChatCompletion(
         shortcutCancelled: false,
     };
     try {
-        return await generateChatCompletionCore(session, history, options, callbacks, bailoutRef);
+        const result = await generateChatCompletionCore(session, history, options, callbacks, bailoutRef);
+        if (!session.isGroup && (options?.appId ?? "chat") === "chat") {
+            const characterId = resolveSessionCharacterId(session);
+            if (characterId) await markMemoReviewCompleted(characterId).catch(() => undefined);
+        }
+        return result;
     } catch (err) {
         if (options?.signal?.aborted) bailoutRef.shortcutCancelled = true;
         throw err;
