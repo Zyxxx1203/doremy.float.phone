@@ -28,6 +28,11 @@ const sanitizeMemoHtml = (html: string) => DOMPurify.sanitize(html, {
 const memoBodyHtml = (value: string) => sanitizeMemoHtml(value.startsWith(MEMO_RICH_PREFIX)
   ? value.slice(MEMO_RICH_PREFIX.length)
   : String(marked.parse(value || "", { async: false })));
+const memoBodyPlainText = (value: string) => {
+  const node = document.createElement("div");
+  node.innerHTML = memoBodyHtml(value);
+  return node.textContent || "";
+};
 const date = (time: number) => new Date(time).toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
 const time = (stamp: number) => new Date(stamp).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 
@@ -43,7 +48,6 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
   const [editing, setEditing] = useState<MemoNote | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
   const editorRef = useRef<HTMLDivElement | null>(null);
   const editorInitialBodyRef = useRef("");
   const [tags, setTags] = useState("");
@@ -105,7 +109,7 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
     if (tab !== "recycle" && tab !== "archived" && note.archived) return false;
     if (categoryFilter !== "all" && note.folderId !== categoryFilter) return false;
     const q = query.trim().toLocaleLowerCase();
-    return !q || (note.title + " " + note.body + " " + note.tags.join(" ")).toLocaleLowerCase().includes(q);
+    return !q || (note.title + " " + memoBodyPlainText(note.body) + " " + note.tags.join(" ")).toLocaleLowerCase().includes(q);
   }), [notes, query, categoryFilter, tab]);
   const activeTodos = notes.flatMap(note => note.todos.filter(todo => !todo.done).map(todo => ({ ...todo, noteId: note.id, noteTitle: note.title })));
   const completedTodos = notes.flatMap(note => note.todos.filter(todo => todo.done).map(todo => ({ ...todo, noteId: note.id, noteTitle: note.title })));
@@ -142,7 +146,6 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
   const openEditor = (note?: MemoNote) => {
     setEditing(note ?? null);
     setTitle(note?.title ?? "");
-    setBody(note?.body ?? "");
     editorInitialBodyRef.current = note?.body ?? "";
     setTags(note?.tags.join(" ") ?? "");
     setPinned(note?.pinned ?? false);
@@ -154,7 +157,6 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
   const applyEditorCommand = (command: string, value?: string) => {
     editorRef.current?.focus();
     document.execCommand(command, false, value);
-    if (editorRef.current) setBody(editorRef.current.innerHTML);
   };
   const save = async () => {
     const html = sanitizeMemoHtml(editorRef.current?.innerHTML || "");
@@ -266,7 +268,7 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
         <button type="button" title="减少缩进" aria-label="减少缩进" onMouseDown={event => event.preventDefault()} onClick={() => applyEditorCommand("outdent")}>⇤</button>
         <button type="button" title="增加缩进" aria-label="增加缩进" onMouseDown={event => event.preventDefault()} onClick={() => applyEditorCommand("indent")}>⇥</button>
       </div>
-      <div ref={editorRef} data-memo-editor contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" className={styles.richEditor} data-placeholder="写下此刻想到的事……" onInput={event => setBody(event.currentTarget.innerHTML)} />
+      <div ref={editorRef} data-memo-editor contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" className={styles.richEditor} data-placeholder="写下此刻想到的事……" />
       <div className={styles.editorTools}><input value={tags} onChange={event => setTags(event.target.value)} placeholder="关键词 · 用空格分开"/><select value={noteFolderId ?? ""} onChange={event => setNoteFolderId(event.target.value || null)}><option value="">未分类</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><label><input type="checkbox" checked={pinned} onChange={event => setPinned(event.target.checked)}/> 置顶</label></div>
       <section className={styles.todoComposer}><div className={styles.sectionTitle}><strong>顺手记下要做的事</strong><small>{todos.filter(todo => !todo.done).length} 项未完成</small></div>
         {todos.map(todo => <label className={styles.todoLine} key={todo.id}><input type="checkbox" checked={todo.done} onChange={event => setTodos(current => current.map(item => item.id === todo.id ? { ...item, done: event.target.checked } : item))}/><span className={todo.done ? styles.doneText : ""}>{todo.text}</span><button onClick={() => setTodos(current => current.filter(item => item.id !== todo.id))} aria-label="移除待办"><X size={14}/></button></label>)}
@@ -298,7 +300,7 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
           <div className={styles.welcome}><div><span className={styles.eyebrow}>A LITTLE NOTEBOOK</span><h1>把灵感与日常，<br/><em>轻轻收进这里。</em></h1><p>{date(Date.now())} · 今天也值得被认真记下</p></div><div className={styles.welcomeIllustration}><span>✳</span><i>✿</i><b>notes<br/>& days</b></div></div>
           <button className={styles.quickWrite} onClick={() => openEditor()}><Plus size={20}/><span>写一页新手记</span><small>把刚刚想到的事情记下来</small></button>
           <div className={styles.homeColumns}><section><div className={styles.sectionTitle}><strong>最近写下</strong><button onClick={() => setTab("notes")}>查看全部 →</button></div>
-            {notes.filter(note => !note.archived && !note.deletedAt).slice(0, 5).map(note => <button className={styles.noteCard} key={note.id} onClick={() => setSelectedId(note.id)}><span>{date(note.updatedAt)}{note.pinned ? " · 置顶" : ""}</span><strong>{note.title}</strong><small>{note.body.slice(0, 84) || "还没有写下正文"}{note.body.length > 84 ? "…" : ""}</small></button>)}
+            {notes.filter(note => !note.archived && !note.deletedAt).slice(0, 5).map(note => <button className={styles.noteCard} key={note.id} onClick={() => setSelectedId(note.id)}><span>{date(note.updatedAt)}{note.pinned ? " · 置顶" : ""}</span><strong>{note.title}</strong><small>{memoBodyPlainText(note.body).slice(0, 84) || "还没有写下正文"}{memoBodyPlainText(note.body).length > 84 ? "…" : ""}</small></button>)}
             {!notes.some(note => !note.archived && !note.deletedAt) && <div className={styles.emptyState}>这里还很安静。<br/>写下第一件想留下的事吧。</div>}
           </section><section><div className={styles.sectionTitle}><strong>别忘了这些</strong><button onClick={() => setTab("todos")}>全部待办 →</button></div>
             {activeTodos.slice(0, 5).map(todo => <label className={styles.todoPreview} key={todo.id}><input type="checkbox" onChange={() => void updateTodo(todo.noteId, todo.id, true)}/><span>{todo.text}<small>{todo.noteTitle}</small></span></label>)}
