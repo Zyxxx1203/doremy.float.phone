@@ -2001,7 +2001,7 @@ export async function buildChatPromptMessages(
     ]);
 
     const memoDigest = !session.isGroup && resolvedAppId === "chat" && memConfig.shortTermAllowedSources?.memo !== false && memoCapability?.enabled && memoCapability.mode !== "off"
-        ? await buildMemoPromptDigest(character.id).catch(() => "")
+        && toolsEnabled ? await buildMemoPromptDigest(character.id).catch(() => "")
         : "";
 
     const longTermMemories = [
