@@ -1940,7 +1940,7 @@ export async function buildChatPromptMessages(
     const memoPromptEnabled = resolvedAppId === "chat" && !session.isGroup && !isOfflineMode
         && memConfig.shortTermAllowedSources?.memo !== false
         && memoCapability?.enabled === true && memoCapability.mode !== "off";
-    const baseAppTags = mergeAppTags(options?.appTags, promptProfile?.appTags, resolvedAppId);
+    const baseAppTags = mergeAppTags(options?.appTags, promptProfile?.appTags, resolvedAppId) ?? [];
     const effectiveAppTags = memoPromptEnabled
         ? [...new Set([...baseAppTags, "memo"])]
         : baseAppTags.filter(tag => tag !== "memo");
@@ -2000,7 +2000,6 @@ export async function buildChatPromptMessages(
         buildMusicCloudMacro(),
     ]);
 
-    const memoCapability = getInternalCapability("memo_archive");
     const memoDigest = !session.isGroup && resolvedAppId === "chat" && memConfig.shortTermAllowedSources?.memo !== false && memoCapability?.enabled && memoCapability.mode !== "off"
         ? await buildMemoPromptDigest(character.id).catch(() => "")
         : "";
