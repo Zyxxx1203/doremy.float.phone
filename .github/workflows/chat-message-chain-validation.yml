@@ -8,6 +8,12 @@ on:
       - "lib/chat-engine.ts"
       - "lib/turn-coordinator.ts"
       - "lib/short-term-assembler.ts"
+      - "lib/memo-archive-storage.ts"
+      - "lib/tool-executor.ts"
+      - "components/memo-archive-app.tsx"
+      - "components/memo-archive-app.module.css"
+      - "scripts/test-memo-archive-contract.mjs"
+      - "package.json"
       - "lib/push-bailout-client.ts"
       - "lib/push-outbox-client.ts"
       - "lib/follow-up-service.ts"
@@ -53,6 +59,8 @@ jobs:
         run: npm ci
       - name: TypeScript type check
         run: npx tsc --noEmit
+      - name: Memo archive contract tests
+        run: npm run test:memo
       - name: Life regression tests
         run: npm run test:life
       - name: Production build
