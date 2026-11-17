@@ -86,7 +86,7 @@ import { pushApiLog } from "./api-log-store";
 export { getApiLogs, clearApiLogs, type DebugInfo } from "./api-log-store";
 import { stripStateAndInnerForPrompt } from "./prompt-sanitizer";
 import { getInternalCapability, getInternalCapabilitySubToolDefinitions } from "./internal-capability-storage";
-import { buildMemoPromptDigest, markMemoReviewCompleted } from "./memo-archive-storage";
+import { buildMemoPromptDigest } from "./memo-archive-storage";
 import { isMediaStoreRef, loadMediaBlob } from "./media-cache-storage";
 import {
     DEFAULT_CHAT_BILINGUAL_PROMPT,
@@ -1970,7 +1970,7 @@ export async function buildChatPromptMessages(
     const enabledTools = toolsAllowed ? getEnabledTools(resolvedAppId) : [];
     const hasLifeTools = enabledTools.some(tool => tool.source === "life");
     const toolsEnabled = enabledTools.length > 0
-        && (options?.forceEnableTools === true || hasLifeTools || presetIncludesToolsMacro(preset, resolvedAppId, effectiveAppTags));
+        && (options?.forceEnableTools === true || hasLifeTools || memoPromptEnabled || presetIncludesToolsMacro(preset, resolvedAppId, effectiveAppTags));
     const usesNativeActions = Boolean(toolsEnabled && nativeToolProtocolForConfig(config));
     // 多图必须在 prepareShortTermContext 之前展开：后者的 unifiedRecentItems 下标
     // 指向传入的 history 数组；先展开才能保证下标和最终 promptHistory 一致。
@@ -2001,7 +2001,7 @@ export async function buildChatPromptMessages(
     ]);
 
     const memoDigest = !session.isGroup && resolvedAppId === "chat" && memConfig.shortTermAllowedSources?.memo !== false && memoCapability?.enabled && memoCapability.mode !== "off"
-        ? await buildMemoPromptDigest(character.id).catch(() => "")
+        && toolsEnabled ? await buildMemoPromptDigest(character.id).catch(() => "")
         : "";
 
     const longTermMemories = [
@@ -2079,6 +2079,17 @@ export async function buildChatPromptMessages(
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
     });
+    if (memoDigest) {
+        llmMessages.push({
+            role: "system",
+            content: [
+                "【私人备忘录维护】本轮包含到期手记。你不是只把它们读一遍：要结合近期对话和已有内容逐条核对，必要时使用「阅读备忘录」「修改备忘录」「新建备忘录」「整理待办」「删除备忘录」等工具实际维护。",
+                "优先修正旧内容、补充新进展、合并重复信息、清理明确过期的待办；不确定的信息保留并标注待确认，不要凭猜测覆盖事实。删除只移入回收站，用户分享的笔记只读。",
+                "最后必须调用「完成备忘录维护」登记本轮实际检查的 noteId、结论和真实变更。只有该工具成功返回，系统才会把对应笔记标记为已维护；普通聊天生成成功不代表维护完成。",
+            ].join("\n"),
+        });
+    }
+
     // Tool-use policy: keep the model proactive for real app actions without forcing tools on ordinary conversation.
     if (toolsEnabled) {
         llmMessages.push({
@@ -2732,13 +2743,6 @@ export async function generateChatCompletion(
     };
     try {
         const result = await generateChatCompletionCore(session, history, options, callbacks, bailoutRef);
-        if (!session.isGroup && (options?.appId ?? "chat") === "chat") {
-            const characterId = resolveSessionCharacterId(session);
-            const memoCapability = getInternalCapability("memo_archive");
-            const memoReviewEnabled = memoCapability?.enabled === true && memoCapability.mode !== "off"
-                && loadMemoryConfig().shortTermAllowedSources?.memo !== false;
-            if (characterId && memoReviewEnabled) await markMemoReviewCompleted(characterId).catch(() => undefined);
-        }
         return result;
     } catch (err) {
         if (options?.signal?.aborted) bailoutRef.shortcutCancelled = true;

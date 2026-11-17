@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [storage, tools, ui, assembler] = await Promise.all([
+const [storage, tools, ui, assembler, chat] = await Promise.all([
   readFile("lib/memo-archive-storage.ts", "utf8"),
   readFile("lib/tool-executor.ts", "utf8"),
   readFile("components/memo-archive-app.tsx", "utf8"),
   readFile("lib/short-term-assembler.ts", "utf8"),
+  readFile("lib/chat-engine.ts", "utf8"),
 ]);
 
 // Local-only persistence and owner isolation.
@@ -26,13 +27,16 @@ assert.match(storage, /export async function appendMemoTodos/);
 assert.match(storage, /d\.transaction\("rw",d\.notes/);
 assert.match(storage, /todos:\[\.\.\.current\.todos,\.\.\.additions\]/);
 assert.match(tools, /appendMemoTodos\(owner/);
+assert.match(tools, /完成备忘录维护/);
 assert.match(tools, /items 至少需要包含一条有效 text/);
 
 // Review scheduling is bounded and only consumed after successful generation.
 assert.match(storage, /slice\(0, 5\)/);
 assert.match(storage, /maxChars = 850/);
 assert.match(storage, /pendingMemoReviewIds/);
-assert.match(storage, /markMemoReviewCompleted/);
+assert.match(storage, /recordMemoMaintenanceResult/);
+assert.match(storage, /changedNoteIds/);
+assert.match(storage, /loadMemoMaintenanceHistory/);
 assert.match(storage, /getMemoReviewStatus/);
 assert.match(storage, /forceMemoReviewOnNextChat/);
 assert.ok(storage.includes("memoBodyTextForPrompt(note.body)"));
@@ -64,9 +68,12 @@ assert.ok(storage.includes("Math.round(hours * 60) / 60"));
 assert.match(ui, /detailBody/);
 assert.match(ui, /data-theme=\{theme\}/);
 assert.match(ui, /reviewHistory/);
+assert.match(ui, /角色定期维护/);
 assert.match(ui, /每分钟（测试）/);
-assert.match(ui, /下一次一对一聊天请求中执行/);
+assert.match(ui, /下一次一对一私聊请求中触发/);
 assert.match(assembler, /loadMemoTimelineProjectionEntries/);
 assert.match(assembler, /sourceApp: "memo"/);
+assert.match(chat, /只有该工具成功返回/);
+assert.doesNotMatch(chat, /markMemoReviewCompleted/);
 
 console.log("Memo archive contract checks passed.");

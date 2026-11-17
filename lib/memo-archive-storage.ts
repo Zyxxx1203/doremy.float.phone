@@ -44,7 +44,7 @@ export async function createMemoFolder(owner:MemoOwner,name:string,color="#D8C39
 export async function updateMemoFolder(id:string,owner:MemoOwner,patch:Partial<Pick<MemoFolder,"name"|"color"|"order">>){const d=database();const f=await d.folders.get(id);if(!f||!same(f.owner,owner))throw Error("无权修改此档案盒");if(patch.order!==undefined){await d.transaction("rw",d.folders,async()=>{const rows=(await d.folders.toArray()).filter(x=>same(x.owner,owner)).sort((x,y)=>x.order-y.order);const from=rows.findIndex(x=>x.id===id);const [moving]=rows.splice(from,1);rows.splice(Math.max(0,Math.min(rows.length,patch.order!)),0,moving);for(let index=0;index<rows.length;index++)await d.folders.update(rows[index].id,{order:index,updatedAt:stamp()});});}else await d.folders.update(id,{...patch,updatedAt:stamp()});}
 export async function deleteMemoFolder(id:string,owner:MemoOwner,mode:"loose"|"recycle"="loose"){const f=await database().folders.get(id);if(!f||!same(f.owner,owner))throw Error("无权删除此档案盒");await database().transaction("rw",database().folders,database().notes,async()=>{for(const n of await database().notes.where("folderId").equals(id).toArray())if(same(n.owner,owner))await database().notes.update(n.id,{folderId:null,...(mode==="recycle"?{deletedAt:stamp()}:{}),updatedAt:stamp()});await database().folders.delete(id);});}
 export async function saveMemoNote(owner:MemoOwner,input:Partial<MemoNote>&Pick<MemoNote,"title"|"body">){const title=input.title.trim().slice(0,60);if(!title)throw Error("请填写标题");if(input.body.length>20000)throw Error("正文不能超过 20000 字");const old=input.id?await database().notes.get(input.id):undefined;if(old&&!same(old.owner,owner))throw Error("无权修改此备忘录");if(input.folderId){const f=await database().folders.get(input.folderId);if(!f||!same(f.owner,owner))throw Error("档案盒不属于当前空间");}const t=stamp();const note:MemoNote={id:old?.id??uid(),owner,folderId:("folderId" in input ? input.folderId : old?.folderId) ?? null,title,body:input.body,tags:[...new Set((input.tags??old?.tags??[]).map(x=>x.trim()).filter(Boolean))].slice(0,8),todos:(input.todos??old?.todos??[]).slice(0,100),pinned:input.pinned??old?.pinned??false,archived:input.archived??old?.archived??false,sharedWith:old?.sharedWith??[],createdAt:old?.createdAt??t,updatedAt:t,lastReviewedAt:old?.lastReviewedAt,nextReviewAt:old?.nextReviewAt};await database().notes.put(note);
-  if (owner.type === "character") writeMemoTimelineEvent(owner.id, note, old ? "updated" : "created");
+  if (owner.type === "character") { trackMemoMaintenanceChange(owner.id, note.id); writeMemoTimelineEvent(owner.id, note, old ? "updated" : "created"); }
   else for (const characterId of note.sharedWith) writeMemoTimelineEvent(characterId, note, old ? "updated" : "created");
   return note;}
 export async function appendMemoTodos(owner:MemoOwner,noteId:string|undefined,items:Array<string|{text:string}>){
@@ -63,11 +63,11 @@ export async function appendMemoTodos(owner:MemoOwner,noteId:string|undefined,it
     saved={...current,todos:[...current.todos,...additions].slice(0,100),updatedAt:now};
     await d.notes.put(saved);
   });
-  if(saved&&owner.type==="character")writeMemoTimelineEvent(owner.id,saved,"updated");
+  if(saved&&owner.type==="character"){trackMemoMaintenanceChange(owner.id,saved.id);writeMemoTimelineEvent(owner.id,saved,"updated");}
   return {note:saved!,count:saved!.todos.length};
 }
 export async function moveMemoToRecycleBin(id:string,owner:MemoOwner){const n=await database().notes.get(id);if(!n||!same(n.owner,owner))throw Error("无权删除此备忘录");await database().notes.update(id,{deletedAt:stamp(),updatedAt:stamp()});
-  if (owner.type === "character") removeMemoTimelineEvent(owner.id, id);
+  if (owner.type === "character") { trackMemoMaintenanceChange(owner.id, id); removeMemoTimelineEvent(owner.id, id); }
   else for (const characterId of n.sharedWith) removeMemoTimelineEvent(characterId, id);}
 export async function restoreMemo(id:string,owner:MemoOwner){const n=await database().notes.get(id);if(!n||!same(n.owner,owner))throw Error("无权恢复此备忘录");const updatedAt=stamp();await database().notes.update(id,{deletedAt:undefined,updatedAt});const restored={...n,deletedAt:undefined,updatedAt};if(owner.type==="character")writeMemoTimelineEvent(owner.id,restored,"updated");else for(const characterId of n.sharedWith)writeMemoTimelineEvent(characterId,restored,"updated");}
 export async function permanentlyDeleteMemo(id:string,owner:MemoOwner){const n=await database().notes.get(id);if(!n||!same(n.owner,owner))throw Error("无权删除此备忘录");await database().notes.delete(id);if(owner.type==="character")removeMemoTimelineEvent(owner.id,id);else for(const characterId of n.sharedWith)removeMemoTimelineEvent(characterId,id);}
@@ -127,6 +127,13 @@ export async function importMemoArchive(owner:MemoOwner,payload:unknown,mode:"me
 
 /** Compact, ACL-filtered memo context for the owning character's 1:1 chat only. */
 const pendingMemoReviewIds = new Map<string, Set<string>>();
+const pendingMemoChangedIds = new Map<string, Set<string>>();
+function trackMemoMaintenanceChange(characterId: string, noteId: string): void {
+  if (!pendingMemoReviewIds.get(characterId)?.size) return;
+  const changed = pendingMemoChangedIds.get(characterId) ?? new Set<string>();
+  changed.add(noteId);
+  pendingMemoChangedIds.set(characterId, changed);
+}
 const memoReviewKey = (characterId: string) => "memo-archive-review:" + characterId;
 const memoReviewIntervalKey = (characterId: string) => "memo-archive-review-hours:" + characterId;
 
@@ -169,27 +176,76 @@ function readMemoReviewState(characterId: string): Record<string, number> {
   } catch { return {}; }
 }
 
-export async function markMemoReviewCompleted(characterId: string): Promise<void> {
-  const ids = pendingMemoReviewIds.get(characterId);
-  if (!ids?.size) return;
+export type MemoMaintenanceRecord = {
+  id: string;
+  timestamp: string;
+  reviewedNoteIds: string[];
+  changedNoteIds: string[];
+  summary: string;
+  changes: string[];
+};
+const memoMaintenanceHistoryKey = (characterId: string) => "memo-archive-maintenance:" + characterId;
+
+export function loadMemoMaintenanceHistory(characterId: string): MemoMaintenanceRecord[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(memoMaintenanceHistoryKey(characterId)) || "[]");
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is MemoMaintenanceRecord => Boolean(item && typeof item === "object"
+      && typeof (item as MemoMaintenanceRecord).id === "string"
+      && typeof (item as MemoMaintenanceRecord).timestamp === "string"
+      && Array.isArray((item as MemoMaintenanceRecord).reviewedNoteIds)
+      && Array.isArray((item as MemoMaintenanceRecord).changedNoteIds)
+      && typeof (item as MemoMaintenanceRecord).summary === "string"
+      && Array.isArray((item as MemoMaintenanceRecord).changes)));
+  } catch { return []; }
+}
+
+/** A maintenance cycle is completed only when the model explicitly reports its inspection result. */
+export async function recordMemoMaintenanceResult(
+  characterId: string,
+  reviewedNoteIds: string[],
+  summary: string,
+  changes: string[] = [],
+): Promise<MemoMaintenanceRecord> {
+  const pending = pendingMemoReviewIds.get(characterId);
+  if (!pending?.size) throw new Error("当前没有待完成的备忘录维护任务");
+  const ids = [...new Set(reviewedNoteIds.map(String))].filter(id => pending.has(id));
+  if (!ids.length) throw new Error("维护结果没有包含本轮待检查的备忘录");
+  const cleanSummary = summary.trim().slice(0, 500);
+  if (!cleanSummary) throw new Error("请说明本次检查结果");
+  const cleanChanges = changes.map(item => String(item).trim().slice(0, 240)).filter(Boolean).slice(0, 20);
+  const changedNoteIds = [...(pendingMemoChangedIds.get(characterId) ?? new Set<string>())];
+  if (cleanChanges.length > 0 && changedNoteIds.length === 0) throw new Error("维护报告包含变更，但本轮没有检测到实际写入；请先执行修改工具，或报告检查后无需修改");
+  if (changedNoteIds.length > 0 && cleanChanges.length === 0) throw new Error("本轮已经发生实际修改，请在维护报告中说明变更");
+  const now = Date.now();
+  const record: MemoMaintenanceRecord = {
+    id: "memo-maintenance:" + now + ":" + Math.random().toString(36).slice(2, 8),
+    timestamp: new Date(now).toISOString(),
+    reviewedNoteIds: ids,
+    changedNoteIds,
+    summary: cleanSummary,
+    changes: cleanChanges,
+  };
   const state = readMemoReviewState(characterId);
-  const reviewedAt = Date.now();
-  for (const id of ids) state[id] = reviewedAt;
+  for (const id of ids) state[id] = now;
   try {
     localStorage.setItem(memoReviewKey(characterId), JSON.stringify(state));
+    const history = loadMemoMaintenanceHistory(characterId);
+    localStorage.setItem(memoMaintenanceHistoryKey(characterId), JSON.stringify([record, ...history].slice(0, 100)));
     const timelineKey = memoTimelineKey(characterId);
     const timeline: MemoTimelineProjection[] = JSON.parse(localStorage.getItem(timelineKey) || "[]");
-    const eventId = "memo-review:" + reviewedAt;
     timeline.unshift({
-      id: eventId,
+      id: record.id,
       sourceApp: "memo",
-      memoNoteId: eventId,
-      timestamp: new Date(reviewedAt).toISOString(),
-      content: "完成了 " + ids.size + " 条私人备忘录的定期回顾；未将正文写入时间线。",
+      memoNoteId: record.id,
+      timestamp: record.timestamp,
+      content: "备忘录维护：" + cleanSummary + (cleanChanges.length ? "；变更：" + cleanChanges.join("；") : "；检查后无需修改。"),
     });
     localStorage.setItem(timelineKey, JSON.stringify(timeline.slice(0, 200)));
-  } catch { /* storage unavailable */ }
-  pendingMemoReviewIds.delete(characterId);
+  } catch { throw new Error("维护结果保存失败，请稍后重试"); }
+  for (const id of ids) pending.delete(id);
+  if (!pending.size) { pendingMemoReviewIds.delete(characterId); pendingMemoChangedIds.delete(characterId); }
+  return record;
 }
 
 function memoBodyTextForPrompt(body: string): string {
@@ -224,11 +280,12 @@ export async function buildMemoPromptDigest(characterId: string, maxChars = 850)
     return "";
   }
   pendingMemoReviewIds.set(characterId, new Set(ranked.map(note => note.id)));
+  pendingMemoChangedIds.set(characterId, new Set());
   let digest = ranked.map(note => {
     const source = note.owner.type === "user" ? "用户明确分享（只读）" : "我的私人档案";
     const todos = note.todos.filter(todo => !todo.done).slice(0, 3).map(todo => "待办：" + todo.text).join("；");
-    return "- [" + source + "] " + note.title + "：" + memoBodyTextForPrompt(note.body).replace(/\s+/g, " ").slice(0, 180) + (todos ? "；" + todos : "");
+    return "- noteId=" + note.id + " [" + source + "] " + note.title + "：" + memoBodyTextForPrompt(note.body).replace(/\s+/g, " ").slice(0, 180) + (todos ? "；" + todos : "");
   }).join("\n");
   if (digest.length > maxChars) digest = digest.slice(0, Math.max(0, maxChars - 1)) + "…";
-  return "### 私人档案定期回顾（仅供当前角色参考）\n" + digest;
+  return "### 私人备忘录定期维护任务\n以下是本轮到期的笔记。请逐条检查事实是否仍准确、是否有新进展、重复或过期内容、待办是否已完成。需要变化时必须调用对应工具实际修改自己的笔记；用户分享的笔记只读，不能修改。不要为了显示活动而制造修改；没有变化也可以如实报告。检查完成后必须调用「完成备忘录维护」，只提交你实际完整检查过的 noteId，并填写检查结论及真实执行的变更。没有调用该工具就不算维护完成。\n" + digest;
 }

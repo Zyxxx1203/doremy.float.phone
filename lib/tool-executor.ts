@@ -863,7 +863,7 @@ function normalizeInternalToolResult(result: ToolResult): ToolResult {
 }
 
 async function executeInternalTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult | null> {
-    if (["翻看备忘录","阅读备忘录","新建备忘录","修改备忘录","整理待办","整理档案盒","翻阅归档","删除备忘录"].includes(call.name)) return executeMemoTool(call, context);
+    if (["翻看备忘录","阅读备忘录","新建备忘录","修改备忘录","整理待办","整理档案盒","翻阅归档","删除备忘录","完成备忘录维护"].includes(call.name)) return executeMemoTool(call, context);
     if (isNoteWallToolName(call.name)) return executeNoteWallTool(call, context);
     if (isPhotoWallToolName(call.name)) return executePhotoWallTool(call, context);
     if (isMusicControlToolName(call.name)) return executeMusicControlTool(call, context);
@@ -961,6 +961,13 @@ async function executeMemoTool(call: ToolCall, context?: ToolExecutionContext): 
         if (call.name === "翻阅归档") {
             const rows = own.notes.filter(n => n.archived && !n.deletedAt).slice(0, Math.max(1, Math.min(30, Number(call.args?.limit)||12)));
             return { name: call.name, success: true, data: rows.map(n=>`noteId=${n.id}；${n.title}；${n.body.slice(0,100)}`).join("\n") || "暂无归档内容。" };
+        }
+        if (call.name === "完成备忘录维护") {
+            const ids = Array.isArray(call.args?.reviewedNoteIds) ? call.args.reviewedNoteIds.map(String) : [];
+            const summary = String(call.args?.summary ?? "");
+            const changes = Array.isArray(call.args?.changes) ? call.args.changes.map(String) : [];
+            const record = await memo.recordMemoMaintenanceResult(context.characterId, ids, summary, changes);
+            return { name: call.name, success: true, data: `维护结果已保存：检查 ${record.reviewedNoteIds.length} 条手记，${record.changes.length ? "实际变更 " + record.changes.length + " 项" : "无需修改"}。未检查的手记仍保留待维护状态。` };
         }
         if (call.name === "删除备忘录") {
             await memo.moveMemoToRecycleBin(noteId, owner);

@@ -52,7 +52,7 @@ export const RESERVED_INTERNAL_TOOL_NAMES: string[] = [
     "查看照片墙",
     "添加照片到照片墙",
     "在照片墙涂鸦",
-    "翻看备忘录", "阅读备忘录", "新建备忘录", "修改备忘录", "整理待办", "整理档案盒", "翻阅归档", "删除备忘录",
+    "翻看备忘录", "阅读备忘录", "新建备忘录", "修改备忘录", "整理待办", "整理档案盒", "翻阅归档", "删除备忘录", "完成备忘录维护",
 ];
 
 export type InternalToolDefinition = {
@@ -580,6 +580,7 @@ const MEMO_SUBTOOLS: InternalToolDefinition[] = [
     { name: "整理档案盒", description: "创建或整理你自己的档案盒。", parameterSchema: JSON.stringify({type:"object",properties:{name:{type:"string"},folderId:{type:"string"},action:{type:"string",enum:["create","rename"]}}}) },
     { name: "翻阅归档", description: "浏览你已经归档的备忘录。", parameterSchema: JSON.stringify({type:"object",properties:{limit:{type:"number"}}}) },
     { name: "删除备忘录", description: "将你自己的备忘录移入回收站，不会立即永久删除。", parameterSchema: JSON.stringify({type:"object",properties:{noteId:{type:"string"}},required:["noteId"]}) },
+    { name: "完成备忘录维护", description: "本轮到期备忘录逐条检查并完成必要的新增、修改、合并或归档后，必须调用此动作登记真实结果。只提交你已经完整检查过的本轮 noteId；summary 说明检查结论，changes 只列出实际执行的变更。", parameterSchema: JSON.stringify({type:"object",properties:{reviewedNoteIds:{type:"array",items:{type:"string"},minItems:1},summary:{type:"string",maxLength:500},changes:{type:"array",items:{type:"string",maxLength:240},maxItems:20}},required:["reviewedNoteIds","summary"]}) },
 ];
 
 const NOTE_WALL_SUBTOOLS: InternalToolDefinition[] = [
