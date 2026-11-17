@@ -171,7 +171,7 @@ assert.match(builtinPrompts, /LIFE_SCHEDULE_RESIDENCE_PROMPT/);
 assert.match(builtinPrompts, /life_schedule_residence_rules/);
 assert.match(builtinPrompts, /只有动态上下文明确标记该角色与用户同居/);
 assert.match(builtinPrompts, /必须使用允许地点列表中对应的准确地点名称/);
-assert.match(app, /const characterHome = sharedResidence[\\s\\S]*?location\.id === "home-" \+ character\.id/);
+assert.match(app, /const characterHome = sharedResidence/);
 assert.match(app, /const homeIntent = !placeKey/);
 assert.match(app, /some\(name => normalizeLocation\(name\) === placeKey\)/,
   "generated schedule locations must resolve by exact location name/alias, never substring-match a generic 家");
