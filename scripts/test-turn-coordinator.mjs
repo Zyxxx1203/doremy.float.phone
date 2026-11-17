@@ -50,4 +50,14 @@ assert.equal(abortTurnsForSession("group-session-2"), 1, "session cancellation c
 assert.equal(group2.signal.aborted, true);
 assert.equal(listActiveTurns().length, 0);
 
+// Preempting a group turn through one member must release the other members too.
+const group3 = beginTurn({ kind: "user_reply", characterId: "char-a", participantIds: ["char-a", "char-b", "char-c"], sessionId: "group-session-3" });
+assert.ok(group3);
+const replacement = beginTurn({ kind: "user_reply", characterId: "char-a", sessionId: "direct-session-3" });
+assert.ok(replacement, "a new direct user reply may replace the previous user reply");
+assert.equal(group3.signal.aborted, true);
+assert.equal(getActiveTurn("char-b", "group-session-3"), null, "preempting one participant must release every old group lock");
+replacement.end();
+assert.equal(listActiveTurns().length, 0);
+
 console.log("Turn coordinator cross-channel and group arbitration tests passed.");
