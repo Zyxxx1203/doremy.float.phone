@@ -270,8 +270,8 @@ export async function buildMemoPromptDigest(characterId: string, maxChars = 850)
   let digest = ranked.map(note => {
     const source = note.owner.type === "user" ? "用户明确分享（只读）" : "我的私人档案";
     const todos = note.todos.filter(todo => !todo.done).slice(0, 3).map(todo => "待办：" + todo.text).join("；");
-    return "- [" + source + "] " + note.title + "：" + memoBodyTextForPrompt(note.body).replace(/\s+/g, " ").slice(0, 180) + (todos ? "；" + todos : "");
+    return "- noteId=" + note.id + " [" + source + "] " + note.title + "：" + memoBodyTextForPrompt(note.body).replace(/\s+/g, " ").slice(0, 180) + (todos ? "；" + todos : "");
   }).join("\n");
   if (digest.length > maxChars) digest = digest.slice(0, Math.max(0, maxChars - 1)) + "…";
-  return "### 私人档案定期回顾（仅供当前角色参考）\n" + digest;
+  return "### 私人备忘录定期维护任务\n以下是本轮到期的笔记。请逐条检查事实是否仍准确、是否有新进展、重复或过期内容、待办是否已完成。需要变化时必须调用对应工具实际修改自己的笔记；用户分享的笔记只读，不能修改。不要为了显示活动而制造修改；没有变化也可以如实报告。检查完成后必须调用「完成备忘录维护」，只提交你实际完整检查过的 noteId，并填写检查结论及真实执行的变更。没有调用该工具就不算维护完成。\n" + digest;
 }
