@@ -23,9 +23,9 @@ assert.match(storage, /d\.transaction\("rw",d\.folders,d\.notes/);
 
 // Batch todo writes are atomic and append to the latest persisted version.
 assert.match(storage, /export async function appendMemoTodos/);
-assert.match(storage, /d\\.transaction\\("rw",d\\.notes/);
+assert.match(storage, /d\.transaction\("rw",d\.notes/);
 assert.match(storage, /todos:\[\\.\\.\\.current\\.todos,\\.\\.\\.additions\\]/);
-assert.match(tools, /appendMemoTodos\\(owner/);
+assert.match(tools, /appendMemoTodos\(owner/);
 assert.match(tools, /items 至少需要包含一条有效 text/);
 
 // Review scheduling is bounded and only consumed after successful generation.
@@ -49,7 +49,7 @@ assert.match(ui, /setSelectedId\(null\); setTab\("settings"\)/);
 assert.match(ui, /setMobileMoreOpen/);
 assert.match(ui, /formatToolbar/);
 assert.match(ui, /detailBody/);
-assert.match(ui, /data-theme=\\{theme\\}/);
+assert.match(ui, /data-theme=\{theme\}/);
 assert.match(assembler, /loadMemoTimelineProjectionEntries/);
 assert.match(assembler, /sourceApp: "memo"/);
 
