@@ -30,6 +30,7 @@ import { XiaohongshuApp } from "@/components/xiaohongshu/xiaohongshu-app";
 import { StoryApp } from "@/components/story/story-app";
 import { LifeEngineApp } from "@/components/life/life-engine-app";
 import { ArchiveRoomApp } from "@/components/archive-room-app";
+import { MemoArchiveApp } from "@/components/memo-archive-app";
 import { PhotoWallApp } from "@/components/photo-wall-app";
 import { WatchTogetherApp } from "@/components/watch-together-app";
 import { CALL_STATS_ENTRY_HTML } from "@/lib/builtin-apps/call-stats-source";
@@ -493,6 +494,21 @@ function migrateHeartcraftIcon(
     next.page3.push({ id: "heartcraft", ...free });
     kvSet(HEARTCRAFT_ICON_MIGRATION_KEY, "1");
   }
+  return next;
+}
+
+const MEMO_ICON_MIGRATION_KEY = "ai_phone_memo_archive_icon_v1";
+function migrateMemoArchiveIcon(layout: DesktopLayout, widgets: WidgetInstance[], dock: DesktopIconId[], folders: DesktopFolderMap): DesktopLayout {
+  if (kvGet(MEMO_ICON_MIGRATION_KEY) === "1") return layout;
+  const folderMembers = new Set(Object.values(folders).flatMap(folder => folder.icons));
+  const already = getDesktopPageKeysForState(layout, widgets).some(pageKey => (layout[pageKey] ?? []).some(icon => icon.id === "memo"));
+  if (already || dock.includes("memo") || folderMembers.has("memo")) { kvSet(MEMO_ICON_MIGRATION_KEY, "1"); return layout; }
+  const next = cloneDesktopLayout(layout, widgets);
+  ensureDesktopPage(next, "page4" as DesktopPageKey);
+  const occupied = buildWidgetOccupancy(widgets.filter(widget => widget.page === 4));
+  const used = new Set((next.page4 ?? []).map(icon => `${icon.row},${icon.col}`));
+  const free = findNearestFreeCell(4, 1, occupied, used);
+  if (free) { next.page4.push({ id: "memo", ...free }); kvSet(MEMO_ICON_MIGRATION_KEY, "1"); }
   return next;
 }
 
@@ -1689,11 +1705,12 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
           const sane = sanitizeDesktopFolders(hydratedFolders, normalized, hydratedDock, hydratedWidgets);
           const migratedLayout = migrateNewLifestyleAppsToPageFour(sane.layout, hydratedWidgets, hydratedDock, sane.folders);
           const withHeartcraft = migrateHeartcraftIcon(migratedLayout, hydratedWidgets, hydratedDock, sane.folders);
+          const withMemo = migrateMemoArchiveIcon(withHeartcraft, hydratedWidgets, hydratedDock, sane.folders);
           setFolders(sane.folders);
-          setLayout(withHeartcraft);
+          setLayout(withMemo);
           if (sane.changed) writeDesktopFolders(sane.folders);
-          if (sane.changed || withHeartcraft !== sane.layout || kvGet(NEW_LIFESTYLE_APPS_PAGE_MIGRATION_KEY) === "1") {
-            kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(withHeartcraft));
+          if (sane.changed || withHeartcraft !== sane.layout || withMemo !== withHeartcraft || kvGet(NEW_LIFESTYLE_APPS_PAGE_MIGRATION_KEY) === "1") {
+            kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(withMemo));
           }
           setDesktopReady(true);
           return;
@@ -4552,6 +4569,10 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
     if (activeApp === "archive") {
       return <ArchiveRoomApp onClose={() => setActiveApp(null)} onNotice={setNotice} />;
+    }
+
+    if (activeApp === "memo") {
+      return <MemoArchiveApp onClose={() => setActiveApp(null)} onNotice={setNotice} />;
     }
 
     if (activeApp === "photowall") {

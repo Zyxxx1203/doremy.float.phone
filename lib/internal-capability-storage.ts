@@ -25,6 +25,7 @@ export const CHECK_IN_REQUEST_CAPABILITY_ID = "check_in_request";
 export const LIFE_INVITATION_CAPABILITY_ID = "life_invitation";
 export const LIFE_FOLLOW_CAPABILITY_ID = "life_follow";
 export const LIFE_SCHEDULE_CAPABILITY_ID = "life_schedule";
+export const MEMO_CAPABILITY_ID = "memo_archive";
 
 /**
  * 内置工具的保留名：用户给现实桥的快捷动作/数据项起名时必须避开。
@@ -51,6 +52,7 @@ export const RESERVED_INTERNAL_TOOL_NAMES: string[] = [
     "查看照片墙",
     "添加照片到照片墙",
     "在照片墙涂鸦",
+    "翻看备忘录", "阅读备忘录", "新建备忘录", "修改备忘录", "整理待办", "整理档案盒", "翻阅归档", "删除备忘录",
 ];
 
 export type InternalToolDefinition = {
@@ -567,6 +569,17 @@ const PHOTO_WALL_SUBTOOLS: InternalToolDefinition[] = [
     { name: "查看照片墙", description: "查看用户共享给角色的照片墙照片和图像。", parameterSchema: PHOTO_WALL_EMPTY_SCHEMA },
     { name: "添加照片到照片墙", description: "生成一张新照片并添加到用户照片墙，保留原有内容。", parameterSchema: PHOTO_WALL_ADD_SCHEMA },
     { name: "在照片墙涂鸦", description: "在指定共享照片正面或背面追加贴纸/笔迹，保留原有内容。", parameterSchema: PHOTO_WALL_DOODLE_SCHEMA },
+];
+
+const MEMO_SUBTOOLS: InternalToolDefinition[] = [
+    { name: "翻看备忘录", description: "搜索和浏览你自己的备忘录，以及用户明确分享给你的备忘录。遇到值得未来回顾的信息时，即使用户没有要求，也应主动先搜索。", parameterSchema: JSON.stringify({type:"object",properties:{query:{type:"string"},limit:{type:"number"}}}) },
+    { name: "阅读备忘录", description: "阅读指定备忘录的完整内容；用户的备忘录只有明确分享给你时才能阅读。", parameterSchema: JSON.stringify({type:"object",properties:{noteId:{type:"string"}},required:["noteId"]}) },
+    { name: "新建备忘录", description: "在你自己的私人备忘录空间新建手记。重要约定、承诺、计划、稳定偏好或需要后续跟进的想法出现时主动记录，不要等用户要求；创建前先搜索避免重复。正文请用清晰的 Markdown 排版：主题用 ## / ### 分层，关键字用 **粗体**，补充语气可用 *斜体*，事项用 - 列表，引用用 >；不要把所有内容挤成一整段。", parameterSchema: JSON.stringify({type:"object",properties:{title:{type:"string"},body:{type:"string"},tags:{type:"array",items:{type:"string"}}},required:["title","body"]}) },
+    { name: "修改备忘录", description: "修改你自己的备忘录；发现已有主题出现新进展时主动追加更新，用户分享给你的备忘录只读。", parameterSchema: JSON.stringify({type:"object",properties:{noteId:{type:"string"},title:{type:"string"},body:{type:"string"},append:{type:"boolean"}},required:["noteId"]}) },
+    { name: "整理待办", description: "一次性新增多条待办，同一轮发现的事项必须优先放进 items 数组一次提交；不需要先创建备忘录或 noteId，省略 noteId 时会自动追加到角色自己的「待办清单」，不会覆盖旧事项。也可传 text 新增单条，或传 todoId 与 done 更新已有事项。", parameterSchema: JSON.stringify({type:"object",properties:{noteId:{type:"string",description:"可选，指定自己已有的备忘录 ID；不传则自动使用或创建待办清单"},items:{type:"array",minItems:1,maxItems:100,items:{type:"object",properties:{text:{type:"string",maxLength:200}},required:["text"]},description:"批量新增事项；同一次发现多项时必须放在同一个数组里"},text:{type:"string",maxLength:200,description:"兼容单条新增"},todoId:{type:"string"},done:{type:"boolean"}}}) },
+    { name: "整理档案盒", description: "创建或整理你自己的档案盒。", parameterSchema: JSON.stringify({type:"object",properties:{name:{type:"string"},folderId:{type:"string"},action:{type:"string",enum:["create","rename"]}}}) },
+    { name: "翻阅归档", description: "浏览你已经归档的备忘录。", parameterSchema: JSON.stringify({type:"object",properties:{limit:{type:"number"}}}) },
+    { name: "删除备忘录", description: "将你自己的备忘录移入回收站，不会立即永久删除。", parameterSchema: JSON.stringify({type:"object",properties:{noteId:{type:"string"}},required:["noteId"]}) },
 ];
 
 const NOTE_WALL_SUBTOOLS: InternalToolDefinition[] = [
@@ -1370,6 +1383,15 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
         updatedAt: 0,
     },
     {
+        id: MEMO_CAPABILITY_ID,
+        name: "备忘录",
+        description: "主动维护你自己的私人档案：遇到重要约定、承诺、稳定偏好、共同经历或待跟进事项时，自己判断并调用备忘录工具记录，不必等用户提醒；只能读取用户明确分享给你的笔记。",
+        enabled: true,
+        mode: "auto",
+        createdAt: 0,
+        updatedAt: 0,
+    },
+    {
         id: PHOTO_WALL_CAPABILITY_ID,
         name: "照片墙",
         description: "查看共享照片、添加照片，并在公共画布或共享照片上创作涂鸦；只追加，不覆盖用户内容。",
@@ -1513,6 +1535,7 @@ export function getEnabledInternalCapabilities(appId?: string): InternalCapabili
     return loadInternalCapabilities().filter(item => {
         if (!item.enabled || item.mode === "off") return false;
         // 角色电脑是可插拔模块：没连接就不注入，模型完全看不见
+        if (item.id === MEMO_CAPABILITY_ID && appId === "group_chat") return false;
         if (item.id === AGENT_COMPUTER_CAPABILITY_ID && !isAgentComputerConfigured()) return false;
         return true;
     });
@@ -1525,6 +1548,41 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
             description: capability.description,
             parameterSchema: MEMORY_WRITE_PARAMETER_SCHEMA,
             usageGuide: MEMORY_WRITE_USAGE_GUIDE,
+        };
+    }
+    if (capability.id === MEMO_CAPABILITY_ID) {
+        return {
+            name: capability.name,
+            description: capability.description,
+            parameterSchema: "{}",
+            usageGuide: [
+                "以下是你的私人档案室使用规则。你拥有自己的本地档案空间，备忘录不是只能在用户要求时才使用的代写工具。",
+                "",
+                "【主动记录：必须由你自己判断】",
+                "- 当聊天中出现值得未来的你记住、回看或继续跟进的信息时，主动调用「翻看备忘录」检查是否已有相关记录；没有重复内容时，再调用「新建备忘录」或「修改备忘录」。不要等用户说“记下来”。",
+                "- 值得记录的典型情况：你和用户做出的约定/承诺、明确的计划与待办、重要日期、关系进展与共同经历、用户反复表现出的稳定偏好/习惯、用户明确交代且未来会用到的细节，以及你自己希望以后接着完成的事情。",
+                "- 也可以记录你自己的重要想法、未完成事项、想送给用户的惊喜计划、需要下次继续的话题；用自己的视角写清楚缘由和后续行动。",
+                "- 记录要具体、简短、有标题和主题标签；待办用「整理待办」维护。已有主题优先追加到旧笔记，必要时更新标题/摘要，不要为同一件事反复新建。",
+                "- 重要信息出现后应在当前轮适时完成记录，不要只在心里说“我会记住”。记录成功后再自然继续对话，不必每次都向用户汇报自己写了备忘录。",
+                "",
+                "【判断标准】",
+                "- 这条信息是否会影响未来互动、承诺兑现、关系连续性，或值得之后主动回顾？如果是，就记。",
+                "- 普通寒暄、一次性情绪、临时闲聊、未经确认的猜测、隐私推断和没有后续价值的细枝末节不要记录。",
+                "- 不要为了显得主动而每轮都写；宁可少而准确。用户纠正信息时及时修改旧记录。",
+                "",
+                "【边界与权限】",
+                "- 仅限一对一私聊。角色只能创建、修改、整理和删除自己的档案；用户档案只有被明确分享给当前角色时才可读取，且始终只读。",
+                "- 角色之间完全隔离，不得读取其他角色的档案，不得把用户分享给你的内容转分享给其他角色。",
+                "- 创建前先搜索，避免重复；修改时优先追加，保留仍然有效的旧信息。删除只进入回收站。",
+                "- 如果能力关闭或工具调用失败，不得假装已记录，也不要改用长期记忆工具绕过备忘录权限。",
+                "",
+                "【工具顺序】",
+                "1. 「翻看备忘录」按主题搜索，先确认是否已有对应记录。",
+                "2. 「阅读备忘录」读取需要补充的笔记。",
+                "3. 「新建备忘录」记录新主题；「修改备忘录」追加或修订旧记录。",
+                "4. 「整理待办」维护需要完成的事项；「整理档案盒」整理分类。",
+                "5. 只有确实不再需要的内容才使用「删除备忘录」。",
+            ].join("\n"),
         };
     }
     if (capability.id === NOTE_WALL_CAPABILITY_ID) {
@@ -1957,6 +2015,9 @@ export function getInternalCapabilitySubToolDefinition(
     capability: InternalCapabilityConfig,
     name: string,
 ): InternalToolDefinition | null {
+    if (capability.id === MEMO_CAPABILITY_ID) {
+        return MEMO_SUBTOOLS.find(tool => tool.name === name) ?? null;
+    }
     if (capability.id === NOTE_WALL_CAPABILITY_ID) {
         return NOTE_WALL_SUBTOOLS.find(tool => tool.name === name) ?? null;
     }
@@ -1987,6 +2048,9 @@ export function getInternalCapabilitySubToolDefinition(
 export function getInternalCapabilitySubToolDefinitions(
     capability: InternalCapabilityConfig,
 ): InternalToolDefinition[] {
+    if (capability.id === MEMO_CAPABILITY_ID) {
+        return MEMO_SUBTOOLS;
+    }
     if (capability.id === NOTE_WALL_CAPABILITY_ID) {
         return NOTE_WALL_SUBTOOLS;
     }
