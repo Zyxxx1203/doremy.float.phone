@@ -55,8 +55,10 @@ export function beginTurn(input: {
     const priority = TURN_PRIORITY[kind];
     const conflicts = uniqueTurns(characterIds.map(id => activeByCharacter.get(characterKey(id))).filter((turn): turn is ActiveTurn => !!turn));
     if (conflicts.some(current => !canReplace(current, kind, priority))) return null;
-    if (!observeOnly) {
-        for (const current of conflicts) if (!current.observeOnly) current.controller.abort();
+    for (const current of conflicts) {
+        if (!observeOnly && !current.observeOnly) current.controller.abort();
+        // A displaced group turn must release every participant lock, not just the overlapping key.
+        removeTurn(current);
     }
 
     const turnId = makeTurnId(kind);
