@@ -35,10 +35,10 @@ assert.match(tools, /用户分享（只读）/);
 assert.match(tools, /readSharedMemoNotes/);
 
 // UI exposes archive lifecycle, backup, review and per-space typography preferences.
-for (const token of ["导出档案", "导入档案", "回收站", "永久删除", "定期回顾间隔", "排版设置", "memo-archive-appearance:"]) {
+for (const token of ["我的备忘录", "角色备忘录", "全部手记", "待办清单", "分类", "已收起的手记", "回收站", "偏好与备份", "导出当前空间", "永久删除", "memo-archive-appearance:"]) {
   assert.ok(ui.includes(token), `missing memo UI contract: ${token}`);
 }
-assert.match(assembler, /loadMemoTimelineProjectionEntries/);
+assert.match(ui, /setSelectedId\(null\); setTab\("settings"\)/);\nassert.match(ui, /setMobileMoreOpen/);\nassert.match(assembler, /loadMemoTimelineProjectionEntries/);
 assert.match(assembler, /sourceApp: "memo"/);
 
 console.log("Memo archive contract checks passed.");
