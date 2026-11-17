@@ -9,7 +9,7 @@ const [storage, tools, ui, assembler] = await Promise.all([
 ]);
 
 // Local-only persistence and owner isolation.
-assert.match(storage, /new Dexie\("floatphone-memo-archive-v1"\)/);
+assert.match(storage, /super\("floatphone-memo-archive-v1"\)/);
 assert.match(storage, /if\(old&&!same\(old\.owner,owner\)\)throw Error/);
 assert.match(storage, /if\(!f\|\|!same\(f\.owner,owner\)\)throw Error/);
 assert.match(storage, /只有用户自己的备忘录可以分享/);
