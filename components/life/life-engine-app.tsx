@@ -976,10 +976,17 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           && (shared.id === "home" || (shared.residents ?? []).length > 1)
           && (shared.residents ?? []).includes(ownerId));
       }).slice(0, 36).map(p => "- " + p.name + "（locationId=" + p.id + "）" + ((p.aliases?.length ?? 0) ? "；别名：" + p.aliases!.join("、") : "") + (p.description ? "；环境：" + p.description.slice(0, 140) : "") + (p.atmosphere ? "；氛围：" + p.atmosphere.slice(0, 70) : "") + (p.layout ? "；布局：" + p.layout.slice(0, 90) : "") + (p.props?.length ? "；道具：" + p.props.slice(0, 5).join("、") : "") + (p.characterHabits?.[character.id] ? "；角色习惯：" + p.characterHabits[character.id] : "")).join("\n");
-      const livesWithPlayer = current.locations.some(location =>
+      // A character's residence is identity-bound. The player's home is shared only
+      // when the location explicitly lists this character as a resident.
+      const sharedResidence = current.locations.find(location =>
         (location.id === "home" || location.id.startsWith("home-"))
         && (location.residents ?? []).includes(character.id)
         && (location.id === "home" || (location.residents ?? []).length > 1));
+      const livesWithPlayer = Boolean(sharedResidence);
+      const characterHome = sharedResidence
+        ?? current.locations.find(location => location.id === "home-" + character.id)
+        ?? current.locations.find(location => location.id === "home-" + character.id)
+        ?? current.locations[0];
       const memories = current.memories
         .filter(m => m.participants.includes(character.id) && m.participants.includes(PLAYER_ID))
         .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
@@ -1007,9 +1014,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         id: id("life-schedule-ai"), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
         content: [
           "角色：" + character.name, "角色卡：" + (character.persona || "未填写"), "性格：" + (character.personality || "未填写"), "标签：" + (character.tags ?? []).join("、"),
-          "同居关系：" + (livesWithPlayer ? "该角色与用户同居。" : "该角色未设置与用户同居。"),
+          "同居关系：" + (livesWithPlayer ? "该角色与用户明确同居；共同住所为「" + sharedResidence!.name + "」（locationId=" + sharedResidence!.id + "）。" : "该角色没有与用户同居的设定，严禁把用户的家当作该角色住所。"),
+          "【住所身份锁定】该角色自己的住所是「" + (characterHome?.name ?? character.name + "的家") + "」（locationId=" + (characterHome?.id ?? "home-" + character.id) + "）。" + (livesWithPlayer ? "该住所是明确登记的共同住所。" : "该住所仅属于该角色；用户家及其他角色的家均不是该角色的家。") + "日程中出现回家、在家、居家、睡觉、起床、休息等活动时，地点必须填写上述住所的准确名称。只有明确登记同居时才能使用用户家。拜访用户或其他角色时，必须写明拜访对象对应的地点，不能把拜访地点当成自己的住所。"),
           "世界书中与该角色相关的背景：\n" + (characterWorldBook || "暂无相关世界书条目"),
-          "近期共同记忆：\n" + memories, "近期个人记录：\n" + events, "允许地点（只选这些）：\n" + locations, "必须保留的固定安排：\n" + fixed,
+          "近期共同记忆：\n" + memories, "近期个人记录：\n" + events, "允许地点（只选这些；地点名必须准确匹配，不得自行简称为“家”）：\n" + locations, "必须保留的固定安排：\n" + fixed,
           "时间范围：从角色现实日历的今天 " + start.toLocaleDateString("sv-SE") + " 开始连续七天；dayOffset 0 为今天，6 为第七天。不要为已经过去的时段安排活动。",
           "请生成未来七天日程。",
         ].join("\n\n")
@@ -1023,7 +1031,13 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       if (!Array.isArray(decoded)) throw new Error("日程结果不是数组。");
       const clean = (value: string) => value.toLocaleLowerCase().replace(/[\s\u3000·•\/\\|｜、，,。.!！?？:：;；()（）\[\]【】_-]+/g, "");
       const kinds = new Set(["habit", "work", "study", "meal", "commute", "free-time", "appointment", "special"]);
-      const home = current.locations.find(p => p.id === "home" && (p.residents ?? []).includes(character.id)) ?? current.locations.find(p => p.id === "home-" + character.id) ?? current.locations.find(p => p.id === "home") ?? current.locations[0];
+      // Never fall back to the player's home for a character who does not live there.
+      const home = sharedResidence
+        ?? current.locations.find(p => p.id === "home-" + character.id)
+        ?? current.locations.find(p => p.id === "home" && (p.residents ?? []).includes(character.id))
+        ?? current.locations.find(p => p.id.startsWith("home-") && (p.residents ?? []).includes(character.id))
+        ?? null;
+      const normalizeLocation = (value: string) => clean(value.replace(/^(回到|回|在|去|前往)/, ""));
       const aiSlots: LifeScheduleSlot[] = [];
       const days = new Set<number>();
       for (const item of decoded as Array<Record<string, unknown>>) {
@@ -1035,10 +1049,16 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         const a=new Date(start.getTime()); a.setDate(a.getDate()+d); a.setHours(sh,si,0,0);
         const b=new Date(start.getTime()); b.setDate(b.getDate()+d); b.setHours(eh,ei,0,0);
         if (b<=a || a<start || b>end || (d === 0 && a.getTime() < realNowMs)) continue;
-        const placeKey=clean(String(item.location ?? "家"));
-        const place=current.locations.find(p=>[p.name,...(p.aliases ?? [])].map(clean).some(n=>n===placeKey || (n.length>1 && placeKey.length>1 && (n.includes(placeKey)||placeKey.includes(n))))) ?? home;
+        const rawPlace = String(item.location ?? "").trim();
+        const placeKey = normalizeLocation(rawPlace);
+        const homeIntent = !placeKey || /^(家|家里|住所|自己的家|回家|在家|居家|宿舍|寝室)$/.test(placeKey);
+        // Match exact names/aliases only. Substring matching made “家” collide with
+        // “用户家/某角色的家” and silently assigned unrelated residences.
+        const exactPlace = current.locations.find(p =>
+          [p.name, ...(p.aliases ?? [])].some(name => normalizeLocation(name) === placeKey));
+        const place = homeIntent ? home : exactPlace ?? home;
         days.add(d);
-        aiSlots.push({id:id("ai-slot"),ownerType:"character",ownerId:character.id,startAt:a.toISOString(),endAt:b.toISOString(),title,kind:kinds.has(String(item.kind))?String(item.kind) as LifeScheduleSlot["kind"]:"special",source:"weekly-generation",plannedLocationId:place?.id ?? null,plannedLocationName:place?.name ?? "家",updatedAt:new Date().toISOString()});
+        aiSlots.push({id:id("ai-slot"),ownerType:"character",ownerId:character.id,startAt:a.toISOString(),endAt:b.toISOString(),title,kind:kinds.has(String(item.kind))?String(item.kind) as LifeScheduleSlot["kind"]:"special",source:"weekly-generation",plannedLocationId:place?.id ?? null,plannedLocationName:place?.name ?? (homeIntent ? character.name + "的家" : rawPlace || "地点待定"),updatedAt:new Date().toISOString()});
       }
       if (aiSlots.length < 20 || days.size < 5) throw new Error("有效日程数量不足，无法覆盖整周；原日程未更改。");
       const overlaps=(a:LifeScheduleSlot,b:LifeScheduleSlot)=>new Date(a.startAt).getTime()<new Date(b.endAt).getTime()&&new Date(a.endAt).getTime()>new Date(b.startAt).getTime();
