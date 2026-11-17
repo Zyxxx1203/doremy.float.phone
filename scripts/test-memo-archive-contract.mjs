@@ -21,6 +21,13 @@ assert.match(storage, /备份中存在不存在的档案盒引用/);
 assert.match(storage, /备忘录标签或待办数据无效/);
 assert.match(storage, /d\.transaction\("rw",d\.folders,d\.notes/);
 
+// Batch todo writes are atomic and append to the latest persisted version.
+assert.match(storage, /export async function appendMemoTodos/);
+assert.match(storage, /d\\.transaction\\("rw",d\\.notes/);
+assert.match(storage, /todos:\[\\.\\.\\.current\\.todos,\\.\\.\\.additions\\]/);
+assert.match(tools, /appendMemoTodos\\(owner/);
+assert.match(tools, /items 至少需要包含一条有效 text/);
+
 // Review scheduling is bounded and only consumed after successful generation.
 assert.match(storage, /slice\(0, 5\)/);
 assert.match(storage, /maxChars = 850/);
@@ -40,6 +47,9 @@ for (const token of ["我的备忘录", "角色备忘录", "全部手记", "待�
 }
 assert.match(ui, /setSelectedId\(null\); setTab\("settings"\)/);
 assert.match(ui, /setMobileMoreOpen/);
+assert.match(ui, /formatToolbar/);
+assert.match(ui, /detailBody/);
+assert.match(ui, /data-theme=\\{theme\\}/);
 assert.match(assembler, /loadMemoTimelineProjectionEntries/);
 assert.match(assembler, /sourceApp: "memo"/);
 
