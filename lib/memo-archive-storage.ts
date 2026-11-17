@@ -142,7 +142,7 @@ export function setMemoReviewIntervalHours(characterId: string, hours: number): 
   try { localStorage.setItem(memoReviewIntervalKey(characterId), String(value)); } catch { /* storage unavailable */ }
 }
 
-export function getMemoReviewStatus(characterId: string, notes: MemoNote[]) {
+export function forceMemoReviewOnNextChat(characterId: string): void {\n  try { localStorage.setItem(memoReviewKey(characterId), "{}"); } catch { /* storage unavailable */ }\n  pendingMemoReviewIds.delete(characterId);\n}\n\nexport function getMemoReviewStatus(characterId: string, notes: MemoNote[]) {
   const intervalHours = getMemoReviewIntervalHours(characterId);
   const state = readMemoReviewState(characterId);
   const now = Date.now();
