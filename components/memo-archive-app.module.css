@@ -61,3 +61,9 @@
 .richEditor a{color:var(--memo-accent);text-decoration:underline}
 .detailBody ul,.detailBody ol{padding-left:1.6em;margin:.65em 0}.detailBody li{padding:.12em 0}.detailBody u{text-decoration:underline}.detailBody s,.detailBody del{text-decoration:line-through}
 @media(max-width:700px){.editorPage{padding:16px 18px 55px}.formatToolbar{gap:3px;margin:0 -2px 8px;padding:8px 0;background:var(--memo-paper)}.formatToolbar select{min-width:86px;max-width:108px;height:33px}.formatToolbar button{height:33px;min-width:31px;padding:0 7px}.richEditor{min-height:260px;font-size:16px;line-height:1.8}}
+
+.richEditor ul[data-type="checklist"],.detailBody ul[data-type="checklist"]{list-style:none;padding-left:0}
+.richEditor ul[data-type="checklist"] li,.detailBody ul[data-type="checklist"] li{position:relative;list-style:none;padding:3px 0 3px 27px;cursor:pointer}
+.richEditor ul[data-type="checklist"] li:before,.detailBody ul[data-type="checklist"] li:before{content:"";position:absolute;left:1px;top:.55em;width:15px;height:15px;border:1.5px solid var(--memo-accent-muted);border-radius:4px;background:transparent}
+.richEditor ul[data-type="checklist"] li[data-checked="true"],.detailBody ul[data-type="checklist"] li[data-checked="true"]{text-decoration:line-through;color:var(--memo-accent-muted)}
+.richEditor ul[data-type="checklist"] li[data-checked="true"]:before,.detailBody ul[data-type="checklist"] li[data-checked="true"]:before{content:"✓";display:grid;place-items:center;background:var(--memo-accent);border-color:var(--memo-accent);color:white;font-size:11px;line-height:1}
