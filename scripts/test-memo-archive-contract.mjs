@@ -35,7 +35,7 @@ assert.match(storage, /pendingMemoReviewIds/);
 assert.match(storage, /markMemoReviewCompleted/);
 assert.match(storage, /getMemoReviewStatus/);
 assert.match(storage, /forceMemoReviewOnNextChat/);
-assert.match(storage, /memoBodyTextForPrompt\\(note\\.body\\)/);
+assert.ok(storage.includes("memoBodyTextForPrompt(note.body)"));
 assert.ok(storage.includes("replace(/" + String.fromCharCode(92) + "s+/g"), "digest must collapse whitespace");
 
 // Capability stays private-chat-only and shared user notes are read-only.
@@ -50,10 +50,10 @@ for (const token of ["我的备忘录", "角色备忘录", "全部手记", "待�
 assert.match(ui, /setSelectedId\(null\); setTab\("settings"\)/);
 assert.match(ui, /setMobileMoreOpen/);
 assert.match(ui, /formatToolbar/);
-assert.match(ui, /contentEditable/);
-assert.match(ui, /memo-rich-v1/);
-assert.match(ui, /DOMPurify\\.sanitize/);
-assert.match(ui, /dangerouslySetInnerHTML=\\{\\{ __html: memoBodyHtml/);
+assert.ok(ui.includes("contentEditable"));
+assert.ok(ui.includes("memo-rich-v1"));
+assert.ok(ui.includes("DOMPurify.sanitize"));
+assert.ok(ui.includes("dangerouslySetInnerHTML={{ __html: memoBodyHtml"));
 assert.match(ui, /批量移动/);
 assert.match(ui, /noteQuickActions/);
 assert.match(ui, /renameNote/);
