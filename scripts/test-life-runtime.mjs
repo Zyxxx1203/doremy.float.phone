@@ -638,7 +638,10 @@ assert.equal(duringCompanionActor.actualLocationId, "cafe", "timeline settlement
 assert.equal(duringCompanionActor.actualLocationUntil, tripEnd.toISOString(), "timeline settlement must retain the original companion expiry");
 const afterCompanionStay = settleActorTimelineToNow(duringCompanionStay, "character", "c-trip", tripEnd);
 const afterCompanionActor = afterCompanionStay.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === "c-trip");
-assert.equal(afterCompanionActor.actualLocationId, "library", "after the companion stay expires, the split original itinerary resumes");
+const resumedLibrary = afterCompanionStay.locations.find(location => location.name === "图书馆");
+assert.ok(resumedLibrary, "the split original itinerary location should remain available in the location library");
+assert.equal(afterCompanionActor.actualLocationId, resumedLibrary.id, "after the companion stay expires, the split original itinerary resumes");
+assert.equal(afterCompanionActor.actualLocationName, "图书馆", "the original itinerary location name resumes after the companion stay");
 
 
 
