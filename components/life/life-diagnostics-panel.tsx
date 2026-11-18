@@ -60,7 +60,7 @@ export function LifeDiagnosticsPanel() {
         group.push(message);
         messagesByScene.set(message.sceneId, group);
       }
-      let localStorageStats = { keyCount: 0, estimatedCharacters: 0 };
+      const localStorageStats = { keyCount: 0, estimatedCharacters: 0 };
       try {
         for (let index = 0; index < localStorage.length; index += 1) {
           const key = localStorage.key(index);
