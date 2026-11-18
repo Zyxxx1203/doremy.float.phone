@@ -28,7 +28,7 @@ import {
 } from "@/lib/diary-entry-storage";
 import type { DiaryEntry, DiaryEntryBlock, DiaryEntryTimerSettings, DiaryEntryTrigger } from "@/lib/diary-entry-types";
 import { getThemeAssetDataUrl, saveThemeAssetFromBlob } from "@/lib/theme-storage";
-import { downloadDiaryEntriesZip, downloadDiaryEntry, printDiaryEntryAsPdf, shareDiaryEntry, type DiaryExportFormat } from "@/lib/diary-entry-export";
+import { downloadDiaryEntriesZip, downloadDiaryEntry, downloadDiaryEntryImage, printDiaryEntryAsPdf, shareDiaryEntry, type DiaryExportFormat } from "@/lib/diary-entry-export";
 
 const DIARY_USER_FONT_FAMILY = "AIPhoneDiaryEntryUserFont";
 const DIARY_USER_FONT_STYLE_ID = "ai-phone-diary-entry-user-font-face";
@@ -299,6 +299,15 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
       notify(format === "md" ? "Markdown 文件已导出。" : "TXT 文件已导出。");
     } catch (error) {
       notify("导出失败：" + String(error));
+    }
+  }, [notify]);
+
+  const handleExportImage = useCallback(async (entry: DiaryEntry) => {
+    try {
+      await downloadDiaryEntryImage(entry);
+      notify("日记图片已导出。");
+    } catch (error) {
+      notify("图片导出失败：" + (error instanceof Error ? error.message : String(error)));
     }
   }, [notify]);
 
@@ -842,6 +851,7 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
           onToggleFavorite={() => handleToggleFavorite(activeEntry)}
           onShare={() => void handleShareEntry(activeEntry)}
           onExport={format => handleExportEntry(activeEntry, format)}
+          onExportImage={() => void handleExportImage(activeEntry)}
           onPrint={() => handlePrintEntry(activeEntry)}
           onRestore={() => handleRestorePrevious(activeEntry)}
         />
@@ -1246,7 +1256,7 @@ function buildDiaryParagraphBlocks(body: string): DiaryEntryBlock[] {
 }
 
 function DiaryEntryDetail({
-  entry, onClose, onEdit, onToggleFavorite, onShare, onExport, onPrint, onRestore,
+  entry, onClose, onEdit, onToggleFavorite, onShare, onExport, onExportImage, onPrint, onRestore,
 }: {
   entry: DiaryEntry;
   onClose: () => void;
@@ -1254,6 +1264,7 @@ function DiaryEntryDetail({
   onToggleFavorite: () => void;
   onShare: () => void;
   onExport: (format: DiaryExportFormat) => void;
+  onExportImage: () => void;
   onPrint: () => void;
   onRestore: () => void;
 }) {
@@ -1286,6 +1297,7 @@ function DiaryEntryDetail({
             <button type="button" onClick={onShare}><Share2 size={15} />分享</button>
             <button type="button" onClick={() => onExport("txt")}>TXT</button>
             <button type="button" onClick={() => onExport("md")}>MD</button>
+            <button type="button" onClick={onExportImage}>图片</button>
             <button type="button" onClick={onPrint}>PDF</button>
             {entry.revisionHistory?.length ? (
               <button type="button" onClick={onRestore}><RotateCcw size={15} />恢复上版</button>
