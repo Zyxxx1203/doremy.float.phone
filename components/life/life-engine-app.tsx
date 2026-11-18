@@ -830,7 +830,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             if (owner.ownerType === "character") {
               const player = next.actorStates.find(item => item.ownerType === "player" && item.ownerId === PLAYER_ID);
               if (player?.actualLocationId) {
-                const sharedRoom = findLifeSceneForLocation(next.scenes, player.actualLocationId, player.actualLocationName);
+                const sharedRoom = findLifeSceneForLocation(next.scenes, player.actualLocationId, player.actualLocationName ?? undefined);
                 const sharedScene = sharedRoom && (sharedRoom.status === "active" || sharedRoom.status === "paused") ? sharedRoom : undefined;
                 if (beforeActor.actualLocationId === player.actualLocationId && afterActor.actualLocationId !== player.actualLocationId) {
                   next = appendLifeTimelineEntry(next, {
@@ -972,11 +972,12 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       moved.push(character.name);
     }
     const player = next.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
-    const active = player?.actualLocationId
-      ? findLifeSceneForLocation(next.scenes, player.actualLocationId, player.actualLocationName)
+    const playerLocationId = player?.actualLocationId;
+    const active = playerLocationId
+      ? findLifeSceneForLocation(next.scenes, playerLocationId, player?.actualLocationName ?? undefined)
       : undefined;
-    if (active && (active.status === "active" || active.status === "paused")) {
-      const here = next.actorStates.filter(actor => actor.ownerType === "character" && actor.actualLocationId === player.actualLocationId);
+    if (active && playerLocationId && (active.status === "active" || active.status === "paused")) {
+      const here = next.actorStates.filter(actor => actor.ownerType === "character" && actor.actualLocationId === playerLocationId);
       const participants = [
         ...active.participants.filter(participant => participant.ownerType === "player"),
         ...here.map(actor => ({
@@ -999,7 +1000,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     }
     const player = stateRef.current.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
     const scene = player?.actualLocationId
-      ? findLifeSceneForLocation(stateRef.current.scenes, player.actualLocationId, player.actualLocationName)
+      ? findLifeSceneForLocation(stateRef.current.scenes, player.actualLocationId, player.actualLocationName ?? undefined)
       : undefined;
     if (!scene || (scene.status !== "active" && scene.status !== "paused")) { setNotice("请先进入地点。"); return; }
     const candidateId = scene.participants.find(participant => participant.ownerType === "character")?.ownerId;
@@ -1433,7 +1434,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     if (actor.ownerType === "character") {
       const player = next.actorStates.find(item => item.ownerType === "player" && item.ownerId === PLAYER_ID);
       const sharedRoom = player?.actualLocationId
-        ? findLifeSceneForLocation(next.scenes, player.actualLocationId, player.actualLocationName)
+        ? findLifeSceneForLocation(next.scenes, player.actualLocationId, player.actualLocationName ?? undefined)
         : undefined;
       const scene = sharedRoom && (sharedRoom.status === "active" || sharedRoom.status === "paused") ? sharedRoom : undefined;
       if (scene && current?.actualLocationId === player?.actualLocationId && location.id !== player?.actualLocationId
