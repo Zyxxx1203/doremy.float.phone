@@ -90,7 +90,7 @@ export function printDiaryEntryAsPdf(entry: DiaryEntry, fontFamily = "serif", fo
   const safeFontFamily = fontFamily.replaceAll('"', "").replaceAll("'", "");
   printWindow.document.open();
   printWindow.document.write(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>${fontDataUrl ? "@font-face{font-family:DiaryExportFont;src:url('" + fontDataUrl + "')}" : ""}
-    @page{size:auto;margin:22mm 18mm}*{box-sizing:border-box}body{max-width:720px;margin:0 auto;color:#302d28;font-family:${fontDataUrl ? "'DiaryExportFont'," : ""}"${escapeHtml(fontFamily)}","Noto Serif SC","Songti SC",serif;line-height:1.9;font-size:${15*fontScale}px}
+    @page{size:auto;margin:22mm 18mm}*{box-sizing:border-box}body{max-width:720px;margin:0 auto;color:#302d28;font-family:${fontDataUrl ? "'DiaryExportFont'," : ""}${safeFontFamily},"Noto Serif SC","Songti SC",serif;line-height:1.9;font-size:${15*fontScale}px}
     h1{font-size:25px;font-weight:500;line-height:1.4;margin:0 0 12px}.meta{color:#81786d;font-size:12px;margin-bottom:34px}
     p{white-space:pre-wrap;margin:0 0 1.2em;text-indent:2em;overflow-wrap:anywhere}.author{text-align:right;color:#81786d;margin-top:36px;font-size:13px}
   </style></head><body><h1>${title}</h1><div class="meta">${meta}</div>${body}<div class="author">${author}</div><script>window.onload=()=>setTimeout(()=>window.print(),350);</script></body></html>`);
