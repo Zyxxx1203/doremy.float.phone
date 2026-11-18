@@ -704,9 +704,10 @@ function mergeBuiltinRestTool(existing: RestToolConfig | undefined, builtin: Res
     const fixedParams = { ...(builtin.fixedParams || {}), ...(existing.fixedParams || {}) };
     // Existing installations with a saved key were using Tavily; preserve that setup.
     // New installations default to DeepSeek Search.
-    const provider = fixedParams.provider === "tavily" || fixedParams.provider === "deepseek"
-        ? fixedParams.provider
-        : (String(fixedParams.api_key || "").trim() ? "tavily" : "deepseek");
+    const storedProvider = existing.fixedParams?.provider;
+    const provider = storedProvider === "tavily" || storedProvider === "deepseek"
+        ? storedProvider
+        : (String(existing.fixedParams?.api_key || "").trim() ? "tavily" : "deepseek");
     return {
         ...merged,
         endpoint: provider === "tavily" ? "https://api.tavily.com/search" : "https://api.deepseek.com/v1/tools/search",
