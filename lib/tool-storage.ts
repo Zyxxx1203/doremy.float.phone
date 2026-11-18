@@ -665,16 +665,17 @@ const BUILTIN_SEARCH: RestToolConfig = {
     id: "builtin_search",
     name: "搜索",
     description: "搜索互联网获取最新信息",
-    endpoint: "https://api.tavily.com/search",
+    endpoint: "https://api.deepseek.com/v1/tools/search",
     method: "POST",
     parameterSchema: JSON.stringify({
         type: "object",
         properties: {
             query: { type: "string", description: "搜索关键词" },
         },
+        required: ["query"],
     }),
-    fixedParams: { api_key: "" },  // 用户需在设置中填入 Tavily API Key
-    directFetch: true,
+    fixedParams: { provider: "deepseek", api_key: "" },
+    directFetch: false,
     enabled: false,
     builtIn: true,
     createdAt: 0,
@@ -689,7 +690,7 @@ const BUILTIN_REST_TOOLS: RestToolConfig[] = [
 
 function mergeBuiltinRestTool(existing: RestToolConfig | undefined, builtin: RestToolConfig): RestToolConfig {
     if (!existing) return builtin;
-    return {
+    const merged: RestToolConfig = {
         ...builtin,
         ...existing,
         id: builtin.id,
@@ -697,6 +698,21 @@ function mergeBuiltinRestTool(existing: RestToolConfig | undefined, builtin: Res
         createdBy: existing.createdBy || builtin.createdBy,
         createdAt: existing.createdAt ?? builtin.createdAt,
         updatedAt: existing.updatedAt ?? builtin.updatedAt,
+    };
+    if (builtin.id !== "builtin_search") return merged;
+
+    const fixedParams = { ...(builtin.fixedParams || {}), ...(existing.fixedParams || {}) };
+    // Existing installations with a saved key were using Tavily; preserve that setup.
+    // New installations default to DeepSeek Search.
+    const provider = fixedParams.provider === "tavily" || fixedParams.provider === "deepseek"
+        ? fixedParams.provider
+        : (String(fixedParams.api_key || "").trim() ? "tavily" : "deepseek");
+    return {
+        ...merged,
+        endpoint: provider === "tavily" ? "https://api.tavily.com/search" : "https://api.deepseek.com/v1/tools/search",
+        method: "POST",
+        directFetch: false,
+        fixedParams: { ...fixedParams, provider },
     };
 }
 
