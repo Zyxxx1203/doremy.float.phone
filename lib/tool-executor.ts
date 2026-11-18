@@ -19,13 +19,14 @@ import {
     saveRestTools,
     saveRestToolPackages,
     expandToolNameMacros,
+    getEnabledTools,
     toolNameMatches,
 } from "./tool-storage";
 import { executeCustomAppToolCall } from "./custom-app-tool-runtime";
 import { executeLifeToolCall } from "./life/life-tools";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "./life/life-storage";
 import { characterWorkspace, agentComputerRequest, isAgentComputerConfigured } from "./agent-computer";
-import { MEMO_CAPABILITY_ID, AGENT_COMPUTER_CAPABILITY_ID, CHECK_IN_REQUEST_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, DEVICE_ACTION_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, PHOTO_WALL_CAPABILITY_ID, PERCEPTION_READ_CAPABILITY_ID, PHONE_WIDGET_CAPABILITY_ID, REALITY_BRIDGE_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, SYSTEM_CALENDAR_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
+import { MEMO_CAPABILITY_ID, AGENT_COMPUTER_CAPABILITY_ID, CHECK_IN_REQUEST_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, DEVICE_ACTION_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, PHOTO_WALL_CAPABILITY_ID, PERCEPTION_READ_CAPABILITY_ID, PHONE_WIDGET_CAPABILITY_ID, REALITY_BRIDGE_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, SYSTEM_CALENDAR_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability, getInternalCapabilitySubToolDefinitions } from "./internal-capability-storage";
 import { createPhotoWallId, loadPhotoWallState, savePhotoWallState, type PhotoWallDoodle, type PhotoWallCreationRecord, type PhotoWallPhoto } from "./photo-wall-storage";
 import { generateImageFromConfiguredApi } from "./image-generation-service";
 import {
@@ -58,6 +59,8 @@ import { createShortcutCommand, deliverShortcutCommand, waitForShortcutCommand }
 import { loadMemoryEntriesByType, saveMemoryEntry } from "./memory-storage";
 import type { MemoryEntry } from "./memory-types";
 import { loadCharacters } from "./character-storage";
+import { loadChatSessions } from "./chat-storage";
+import { makeNativeToolName } from "./native-tool-name";
 import {
     deleteCalendarScheduleItem,
     loadCalendarWeekPlan,
@@ -537,12 +540,95 @@ function buildToolNameMacroContext(context?: ToolExecutionContext) {
     return { characterName, userName };
 }
 
+/**
+ * Recover native provider names when they leak across a text-protocol or persisted
+ * reality-bridge boundary. The registry is rebuilt from the same enabled-tool
+ * snapshot and registration order used by buildNativeChatTools; no suffix stripping
+ * or guessed tool-name matching is allowed.
+ */
+function resolveNativeToolCall(call: ToolCall, context?: ToolExecutionContext): ToolCall {
+    const requested = call.name.trim();
+    if (!requested || !/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(requested)) return call;
+
+    const enabledTools = getEnabledTools(context?.appId ?? "chat");
+    if (enabledTools.length === 0) return call;
+    const macroContext = buildToolNameMacroContext(context);
+    const expandedSourceIds = new Set(
+        context?.sessionId
+            ? loadChatSessions().find(session => session.id === context.sessionId)?.nativeExpandedToolSourceIds || []
+            : [],
+    );
+    const usedNames = new Set<string>();
+    const aliases = new Map<string, string>();
+
+    const expandedName = (name: string) => expandToolNameMacros(name, macroContext);
+    const register = (displayName: string, canonicalName: string) => {
+        const nativeName = makeNativeToolName(expandedName(displayName), usedNames);
+        aliases.set(nativeName, canonicalName);
+    };
+    const reserveLoader = (sourceKey: string, displayName: string) => {
+        makeNativeToolName(`load_${sourceKey}_${expandedName(displayName)}_tools`, usedNames);
+    };
+    const sourceKey = (tool: { source: string; sourceId: string }) => `${tool.source}:${tool.sourceId}`;
+
+    // First pass mirrors the initial native-tool registration order, including loader
+    // names because they participate in collision suffix allocation.
+    for (const tool of enabledTools) {
+        const subTools = tool.source === "internal"
+            ? getInternalCapabilitySubToolDefinitions(getInternalCapability(tool.sourceId)!)
+            : [];
+        const isSingle = tool.source === "life"
+            || tool.source === "rest"
+            || tool.source === "composite"
+            || tool.source === "custom_app"
+            || (tool.source === "internal" && subTools.length === 0);
+        if (isSingle) {
+            register(tool.name, tool.name);
+        } else {
+            reserveLoader(sourceKey(tool), tool.name);
+        }
+    }
+
+    // Second pass mirrors expanded package/sub-tool registration. Only packages
+    // actually expanded in this chat session contribute names and collision suffixes.
+    for (const tool of enabledTools) {
+        const key = sourceKey(tool);
+        if (tool.source === "rest_package" && expandedSourceIds.has(key)) {
+            for (const child of tool.restTools || []) register(child.name, child.name);
+        } else if (tool.source === "composite_package" && expandedSourceIds.has(key)) {
+            for (const child of tool.compositeTools || []) register(child.name, child.name);
+        } else if (tool.source === "mcp_server" && expandedSourceIds.has(key)) {
+            for (const child of tool.mcpTools || []) register(child.name, child.name);
+        } else if (tool.source === "custom_app_package" && expandedSourceIds.has(key)) {
+            for (const child of tool.customAppTools || []) register(child.name, child.name);
+        } else if (tool.source === "internal") {
+            const capability = getInternalCapability(tool.sourceId);
+            const subTools = capability ? getInternalCapabilitySubToolDefinitions(capability) : [];
+            for (const child of subTools) register(child.name, child.name);
+        }
+    }
+
+    const exact = aliases.get(requested) || aliases.get(requested.toLowerCase());
+    if (exact) return { ...call, name: exact };
+
+    // Some providers strip underscores from function names. Accept that variant only
+    // when it identifies exactly one registered native name; never remove collision
+    // suffixes or guess between multiple tools.
+    const compact = requested.toLowerCase().replace(/_/g, "");
+    const matches = [...aliases.entries()]
+        .filter(([nativeName]) => nativeName.toLowerCase().replace(/_/g, "") === compact)
+        .map(([, canonicalName]) => canonicalName);
+    const uniqueMatches = [...new Set(matches)];
+    return uniqueMatches.length === 1 ? { ...call, name: uniqueMatches[0] } : call;
+}
+
 async function executeSingleToolCall(
     call: ToolCall,
     context: ToolExecutionContext | undefined,
     hint: ToolExecutionHint,
 ): Promise<ToolResult> {
     throwIfAborted(context?.signal);
+    call = resolveNativeToolCall(call, context);
     const preferredType = hint.toolType && hint.toolType !== "auto" && hint.toolType !== "script" ? hint.toolType : undefined;
     const restTools = loadRestTools();
     const restPackages = loadRestToolPackages();
