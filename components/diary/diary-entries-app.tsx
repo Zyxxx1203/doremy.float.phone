@@ -24,6 +24,7 @@ import {
   loadDiaryEntryTimerSettings,
   saveDiaryEntryFontAssetId,
   saveDiaryEntryFontScale,
+  toggleDiaryEntryExcerpt,
   saveDiaryEntryTimerSettings,
 } from "@/lib/diary-entry-storage";
 import type { DiaryEntry, DiaryEntryBlock, DiaryEntryTimerSettings, DiaryEntryTrigger } from "@/lib/diary-entry-types";
@@ -127,6 +128,8 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
   const [activeEntry, setActiveEntry] = useState<DiaryEntry | null>(null);
   const [editingEntry, setEditingEntry] = useState<DiaryEntry | null>(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [activeMonth, setActiveMonth] = useState("all");
+  const [excerptsOpen, setExcerptsOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [deleteCandidateEntry, setDeleteCandidateEntry] = useState<DiaryEntry | null>(null);
   const [activeCharacterId, setActiveCharacterId] = useState<string | null>(null);
@@ -283,21 +286,21 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
 
   const handleExportImage = useCallback(async (entry: DiaryEntry) => {
     try {
-      await downloadDiaryEntryImage(entry);
+      await downloadDiaryEntryImage(entry, diaryFontDataUrl ? '"DiaryExportFont"' : '"Noto Serif SC", "Songti SC", serif', diaryFontScale, diaryFontDataUrl);
       notify("日记图片已导出。");
     } catch (error) {
       notify("图片导出失败：" + (error instanceof Error ? error.message : String(error)));
     }
-  }, [notify]);
+  }, [diaryFontDataUrl, diaryFontScale, notify]);
 
   const handlePrintEntry = useCallback((entry: DiaryEntry) => {
     try {
-      printDiaryEntryAsPdf(entry);
+      printDiaryEntryAsPdf(entry, diaryFontDataUrl ? DIARY_USER_FONT_FAMILY : '"Noto Serif SC", "Songti SC", serif', diaryFontScale, diaryFontDataUrl);
       notify("已打开打印页面，可在系统打印选项中保存为 PDF。");
     } catch (error) {
       notify("PDF 导出失败：" + (error instanceof Error ? error.message : String(error)));
     }
-  }, [notify]);
+  }, [diaryFontDataUrl, diaryFontScale, notify]);
 
   const handleExportZip = useCallback(async () => {
     const scopedEntries = loadDiaryEntries().filter(entry => {
@@ -672,6 +675,22 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
     [activeCharacterId, visibleBooks],
   );
   const activeBookBusy = Boolean(activeBook && generatingCharacterIds.includes(activeBook.characterId));
+  const monthGroups = useMemo(() => {
+    const groups = new Map<string, DiaryEntry[]>();
+    for (const entry of activeBook?.entries ?? []) {
+      const date = new Date(entry.createdAt);
+      const month = Number.isNaN(date.getTime()) ? "未知日期" : date.getFullYear() + "年" + String(date.getMonth() + 1).padStart(2, "0") + "月";
+      groups.set(month, [...(groups.get(month) ?? []), entry]);
+    }
+    return Array.from(groups.entries());
+  }, [activeBook]);
+  const readingEntries = activeBook?.entries ?? [];
+  const readingIndex = activeEntry ? readingEntries.findIndex(item => item.id === activeEntry.id) : -1;
+  const moveReadingPage = (offset: number) => { const next = readingEntries[readingIndex + offset]; if (next) setActiveEntry(next); };
+  const toggleExcerpt = (entry: DiaryEntry, excerpt: string) => {
+    const updated = toggleDiaryEntryExcerpt(entry.id, excerpt);
+    if (updated) { setActiveEntry(updated); refreshEntries(); notify((updated.curatedExcerpts ?? []).includes(excerpt) ? "已加入精选摘录。" : "已移出精选摘录。"); }
+  };
 
   return (
     <section className={`diary-app diary-entry-app ${entryDrag ? "is-entry-dragging" : ""}`} style={diaryEntryStyle}>
@@ -763,7 +782,7 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
                     key={book.characterId}
                     book={book}
                     busy={generatingCharacterIds.includes(book.characterId)}
-                    onOpen={() => setActiveCharacterId(book.characterId)}
+                    onOpen={() => { setActiveMonth("all"); setActiveCharacterId(book.characterId); }}
                   />
                 ))}
               </div>
@@ -835,7 +854,7 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
         />
       ) : null}
 
-      {editingEntry ? (
+      {excerptsOpen ? <DiaryExcerptCollection entries={entries} onClose={() => setExcerptsOpen(false)} onOpen={entry => { setActiveEntry(entry); setExcerptsOpen(false); }} /> : null}\n\n      {editingEntry ? (
         <DiaryEntryEditPanel
           entry={editingEntry}
           onClose={() => setEditingEntry(null)}
@@ -1234,7 +1253,7 @@ function buildDiaryParagraphBlocks(body: string): DiaryEntryBlock[] {
 }
 
 function DiaryEntryDetail({
-  entry, onClose, onEdit, onToggleFavorite, onExport, onExportImage, onPrint, onRestore,
+  entry, onClose, onEdit, onToggleFavorite, onExport, onExportImage, onPrint, onRestore, onPrevious, onNext, readingIndex, readingCount, onToggleExcerpt, onOpenExcerpts,
 }: {
   entry: DiaryEntry;
   onClose: () => void;
@@ -1271,9 +1290,9 @@ function DiaryEntryDetail({
               <DiaryBlockView key={`${block.type}-${index}`} block={block} />
             ))}
           </div>
-          <div className="diary-entry-detail-actions">
+          <nav className="diary-entry-reading-nav"><button type="button" onClick={onPrevious} disabled={readingIndex <= 0}>上一篇</button><span>{readingIndex >= 0 ? readingIndex + 1 : 0} / {readingCount}</span><button type="button" onClick={onNext} disabled={readingIndex < 0 || readingIndex >= readingCount - 1}>下一篇</button></nav>\n          <div className="diary-entry-detail-actions">
             <button type="button" onClick={onToggleFavorite} aria-pressed={Boolean(entry.isFavorite)}><Heart size={15} fill={entry.isFavorite ? "currentColor" : "none"} />{entry.isFavorite ? "已珍藏" : "珍藏"}</button>
-            <button type="button" onClick={onEdit}><Pencil size={15} />编辑</button>
+            <button type="button" onClick={onEdit}><Pencil size={15} />编辑</button>\n            <button type="button" onClick={onOpenExcerpts}>精选摘录（{entry.curatedExcerpts?.length ?? 0}）</button>\n            <button type="button" onClick={() => onExport("txt")}>导出 TXT</button>
             <button type="button" onClick={() => onExport("md")}>导出 Markdown</button>
             <button type="button" onClick={onExportImage}>图片</button>
             <button type="button" onClick={onPrint}>PDF</button>
@@ -1287,6 +1306,11 @@ function DiaryEntryDetail({
       </article>
     </div>
   );
+}
+
+function DiaryExcerptCollection({ entries, onClose, onOpen }: { entries: DiaryEntry[]; onClose: () => void; onOpen: (entry: DiaryEntry) => void }) {
+  const rows = entries.flatMap(entry => (entry.curatedExcerpts ?? []).map(excerpt => ({ entry, excerpt })));
+  return <div className="nw-modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}><section className="diary-excerpt-panel" onClick={event => event.stopPropagation()}><header><h2>精选摘录</h2><button type="button" onClick={onClose}>关闭</button></header>{rows.length ? rows.map((row, index) => <button type="button" className="diary-excerpt-item" key={row.entry.id + index} onClick={() => onOpen(row.entry)}><span>{row.excerpt}</span><small>{row.entry.characterName} · {row.entry.dateLabel} · {row.entry.title}</small></button>) : <p>还没有摘录。阅读日记时，点击段落下方的「摘录此段」即可收藏。</p>}</section></div>;
 }
 
 function DiaryEntryEditPanel({ entry, onClose, onSave }: {
