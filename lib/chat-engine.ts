@@ -1588,8 +1588,6 @@ type NativeChatToolBuildOptions = {
     userName?: string;
 };
 
-
-
 export function nativeToolSourceKey(tool: EnabledTool): string {
     return `${tool.source}:${tool.sourceId}`;
 }
