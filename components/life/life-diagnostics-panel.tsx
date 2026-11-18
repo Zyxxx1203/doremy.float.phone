@@ -256,6 +256,8 @@ export function LifeDiagnosticsPanel() {
         new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" }),
         "life-diagnostics.json",
       );
+    } catch (error) {
+      setCloudStatus("JSON 导出失败：" + (error instanceof Error ? error.message : String(error)));
     } finally {
       setExporting(false);
     }
