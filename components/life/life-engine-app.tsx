@@ -892,7 +892,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           });
         }
       }
-      if (!sceneView && currentPlayer?.actualLocationId
+      if (tab === "home" && !sceneView && currentPlayer?.actualLocationId
         && next.locations.some(location => location.id === currentPlayer.actualLocationId)) {
         setSelectedLocationId(currentPlayer.actualLocationId);
       }
@@ -910,7 +910,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       window.removeEventListener("life-force-sync", settleAll);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [ready, commit, worldBooks, bindingConfig, sceneView]);
+  }, [ready, commit, worldBooks, bindingConfig, sceneView, tab]);
 
   const syncAllCharactersToSchedules = useCallback(() => {
     let next = stateRef.current;
