@@ -63,6 +63,23 @@ const foregroundRoom = findCurrentLifeScene([
 assert.equal(foregroundRoom.id, "location-active", "legacy event-linked scenes must not win foreground selection over a location room");
 assert.equal(findCurrentLifeScene([{ id: "completed-room", locationId: "cafe", locationName: "咖啡店", startedAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-11-16T00:00:00.000Z", status: "completed", participants: [], lastSettledEventIds: [] }]), undefined, "completed rooms must not reopen as the foreground scene");
 
+const fiveRooms = ["home", "cafe", "park", "library", "studio"].map((locationId, index) => ({
+  id: "room-" + locationId,
+  locationId,
+  locationName: locationId,
+  startedAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: new Date(Date.UTC(2026, 10, 10 + index)).toISOString(),
+  status: index === 4 ? "active" : "paused",
+  participants: [{ ownerType: "player", ownerId: "player", activity: "在这里" }],
+  lastSettledEventIds: [],
+}));
+for (const locationId of ["home", "cafe", "park", "library", "studio"]) {
+  assert.equal(findLifeSceneForLocation(fiveRooms, locationId)?.id, "room-" + locationId,
+    "five coexisting rooms must always resolve by location ID, not whichever room was updated last");
+}
+assert.equal(findLifeSceneForLocation(fiveRooms, "home")?.id, "room-home",
+  "a newer update to another location must not rotate the player's home room");
+
 const canonicalRoom = findLifeSceneForLocation([
   { id: "legacy-event-room", locationId: "cafe", locationName: "咖啡店", startedAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-11-15T00:00:00.000Z", status: "active", eventId: "old-event", participants: [], lastSettledEventIds: [] },
   { id: "canonical-location-room", locationId: "cafe", locationName: "咖啡店", startedAt: "2026-01-02T00:00:00.000Z", updatedAt: "2026-11-10T00:00:00.000Z", status: "paused", participants: [], lastSettledEventIds: [] },
