@@ -295,7 +295,7 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
 
   const handlePrintEntry = useCallback((entry: DiaryEntry) => {
     try {
-      printDiaryEntryAsPdf(entry, diaryFontDataUrl ? DIARY_USER_FONT_FAMILY : '"Noto Serif SC", "Songti SC", serif', diaryFontScale, diaryFontDataUrl);
+      printDiaryEntryAsPdf(entry, diaryFontDataUrl ? DIARY_USER_FONT_FAMILY : "serif", diaryFontScale, diaryFontDataUrl);
       notify("已打开打印页面，可在系统打印选项中保存为 PDF。");
     } catch (error) {
       notify("PDF 导出失败：" + (error instanceof Error ? error.message : String(error)));
