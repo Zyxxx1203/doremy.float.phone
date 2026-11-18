@@ -17,7 +17,7 @@ function entryBody(entry: DiaryEntry): string {
     if (block.type === "paragraph") return block.text;
     if (block.type === "quote") return "> " + block.text.replace(/\n/g, "\n> ");
     if (block.type === "correction") return block.replacement ? "~~" + block.text + "~~ → **" + block.replacement + "**" : "~~" + block.text + "~~";
-    if (block.type === "image") return "![" + (block.caption || "图片") + "](" + block.description + ")";
+    if (block.type === "image") return "**图片记录：" + (block.caption || "未命名图片") + "**\n\n> " + block.description;
     if (block.type === "todo") return [block.title ? "### " + block.title : "", ...block.items.map(item => (item.done ? "- [x] " : "- [ ] ") + item.text)].filter(Boolean).join("\n");
     return "";
   }).filter(Boolean).join("\n\n");
