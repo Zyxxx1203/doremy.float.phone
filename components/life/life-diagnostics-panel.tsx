@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Download, RefreshCw, Trash2 } from "lucide-react";
 import {
   clearLifeDiagnostics,
@@ -12,6 +12,8 @@ import { readFailedLifeSceneReplies, resetFailedLifeSceneReply, type PendingLife
 import { isPersonalPushCloudActive, loadPersonalPushCloudState, personalPushFetch } from "@/lib/personal-push-cloud";
 import { isShellEnvironment } from "@/lib/shell-detect";
 import { resetLifeSystemData } from "@/lib/life/life-reset";
+import { loadVirtualLifeState } from "@/lib/life/life-storage";
+import { downloadFile } from "@/lib/download-utils";
 
 const STATUS_LABEL: Record<LifeDiagnosticStatus, string> = {
   ok: "成功",
@@ -36,46 +38,153 @@ export function LifeDiagnosticsPanel() {
   const [failedReplies, setFailedReplies] = useState<PendingLifeSceneNotificationReply[]>([]);
   const [resetBusy, setResetBusy] = useState(false);
   const [resetResult, setResetResult] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState("尚未刷新");
+  const [localSnapshot, setLocalSnapshot] = useState<Record<string, unknown> | null>(null);
+  const refreshInFlightRef = useRef(false);
 
   const refresh = async () => {
-    setEntries(readLifeDiagnostics());
-    setFailedReplies(readFailedLifeSceneReplies());
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
+    setRefreshing(true);
+    setCloudEntries([]);
     try {
-      const personalCloudReady = isPersonalPushCloudActive()
-        && !isShellEnvironment()
-        && (loadPersonalPushCloudState()?.schemaVersion ?? 0) >= 4;
-      const response = personalCloudReady
-        ? await personalPushFetch("life-schedule-diagnostics", { method: "GET" })
-        : await fetch("/api/life/schedule-diagnostics", { cache: "no-store" });
-      const data = await response.json().catch(() => ({})) as {
-        ok?: boolean;
-        diagnostics?: Array<{ id: string; severity: string; code: string; detail: string; repair_hint: string; trace_id?: string; updated_at: string }>;
-        events?: Array<{ id: string; trace_id: string; stage: string; severity: string; code: string; detail: string; actor_id?: string | null; session_id?: string | null; job_id?: string | null; created_at: string }>;
+      const localEntries = readLifeDiagnostics();
+      const life = loadVirtualLifeState();
+      const now = Date.now();
+      const player = life.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === "player");
+      const messagesByScene = new Map<string, typeof life.sceneMessages>();
+      for (const message of life.sceneMessages) {
+        const group = messagesByScene.get(message.sceneId) ?? [];
+        group.push(message);
+        messagesByScene.set(message.sceneId, group);
+      }
+      let localStorageStats = { keyCount: 0, estimatedCharacters: 0 };
+      try {
+        for (let index = 0; index < localStorage.length; index += 1) {
+          const key = localStorage.key(index);
+          if (!key) continue;
+          localStorageStats.keyCount += 1;
+          localStorageStats.estimatedCharacters += key.length + (localStorage.getItem(key)?.length ?? 0);
+        }
+      } catch { /* host storage may be restricted */ }
+      const snapshot = {
+        collectedAt: new Date().toISOString(),
+        environment: {
+          userAgent: navigator.userAgent,
+          platform: navigator.platform,
+          language: navigator.language,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          online: navigator.onLine,
+          visibility: document.visibilityState,
+          secureContext: window.isSecureContext,
+          viewport: { width: window.innerWidth, height: window.innerHeight, pixelRatio: window.devicePixelRatio },
+          screen: { width: window.screen.width, height: window.screen.height },
+          indexedDbAvailable: typeof indexedDB !== "undefined",
+          serviceWorkerControlled: Boolean(navigator.serviceWorker?.controller),
+          localStorage: localStorageStats,
+        },
+        lifeSystem: {
+          updatedAt: life.updatedAt,
+          enabled: life.settings.enabled,
+          characterAutonomy: life.settings.enableCharacterAutonomy,
+          proactiveMessages: life.settings.enableProactiveSceneMessages,
+          player: player ? {
+            activity: player.activity,
+            actualLocationId: player.actualLocationId,
+            actualLocationName: player.actualLocationName,
+            updatedAt: player.updatedAt,
+          } : null,
+          counts: {
+            locations: life.locations.length, actors: life.actorStates.length,
+            schedules: life.schedules.length, scenes: life.scenes.length,
+            sceneMessages: life.sceneMessages.length, timeline: life.timeline.length,
+            events: life.events.length, invitations: life.invitations.length, memories: life.memories.length,
+          },
+          locations: life.locations.map(location => ({ id: location.id, name: location.name, visibility: location.visibility })),
+          scenes: life.scenes.map(scene => {
+            const messages = messagesByScene.get(scene.id) ?? [];
+            const latest = messages.reduce<typeof messages[number] | undefined>(
+              (current, message) => !current || message.createdAt > current.createdAt ? message : current,
+              undefined,
+            );
+            return {
+              id: scene.id, locationId: scene.locationId, locationName: scene.locationName,
+              status: scene.status, eventLinked: Boolean(scene.eventId),
+              startedAt: scene.startedAt, updatedAt: scene.updatedAt,
+              participants: scene.participants.map(item => ({ ownerType: item.ownerType, ownerId: item.ownerId, activity: item.activity })),
+              messageCount: messages.length, latestMessageAt: latest?.createdAt ?? null,
+            };
+          }),
+          currentSchedules: life.schedules.filter(slot =>
+            new Date(slot.startAt).getTime() <= now && new Date(slot.endAt).getTime() > now,
+          ).map(slot => ({
+            ownerType: slot.ownerType, ownerId: slot.ownerId, title: slot.title,
+            startAt: slot.startAt, endAt: slot.endAt,
+            plannedLocationId: slot.plannedLocationId, plannedLocationName: slot.plannedLocationName,
+            source: slot.source, kind: slot.kind,
+          })),
+          recentTimeline: life.timeline.slice(-30).reverse().map(entry => ({
+            occurredAt: entry.occurredAt, category: entry.category, title: entry.title,
+            details: entry.details?.slice(0, 240), actorId: entry.actorId,
+            locationName: entry.locationName, sceneId: entry.sceneId,
+          })),
+        },
+        localDiagnosticCount: localEntries.length,
       };
-      if (!response.ok || !data.ok || !Array.isArray(data.diagnostics)) return;
-      const diagnosticEntries = data.diagnostics.map(item => ({
-        id: "cloud:" + item.id,
-        at: item.updated_at,
-        traceId: item.trace_id || undefined,
-        source: "云端生活引擎",
-        event: item.code || "日程诊断",
-        status: item.severity === "warning" ? "warning" as const : item.severity === "info" ? "info" as const : "error" as const,
-        detail: [item.detail, item.repair_hint ? "修复建议：" + item.repair_hint : ""].filter(Boolean).join("\n"),
-        meta: { cloudDiagnosticId: item.id, traceId: item.trace_id || undefined },
-      }));
-      const traceEntries = (data.events || []).map(item => ({
-        id: "trace:" + item.id,
-        at: item.created_at,
-        traceId: item.trace_id,
-        source: "云端执行链路",
-        event: item.stage + " · " + item.code,
-        status: item.severity === "error" ? "error" as const : item.severity === "warning" ? "warning" as const : "info" as const,
-        detail: item.detail,
-        meta: { traceId: item.trace_id, actorId: item.actor_id, sessionId: item.session_id, jobId: item.job_id },
-      }));
-      setCloudEntries([...traceEntries, ...diagnosticEntries].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)));
-    } catch {
-      // Cloud diagnostics are additive; local diagnostics remain available offline.
+      setEntries(localEntries);
+      setFailedReplies(readFailedLifeSceneReplies());
+      setLocalSnapshot(snapshot);
+      setCloudStatus("正在读取云端补充记录…");
+      try {
+        const personalCloudReady = isPersonalPushCloudActive()
+          && !isShellEnvironment()
+          && (loadPersonalPushCloudState()?.schemaVersion ?? 0) >= 4;
+        const request = personalCloudReady
+          ? personalPushFetch("life-schedule-diagnostics", { method: "GET" })
+          : fetch("/api/life/schedule-diagnostics", { cache: "no-store" });
+        let timeoutId = 0;
+        const response = await Promise.race([
+          request,
+          new Promise<never>((_, reject) => {
+            timeoutId = window.setTimeout(() => reject(new Error("云端诊断请求超时")), 10_000);
+          }),
+        ]).finally(() => window.clearTimeout(timeoutId));
+        const data = await response.json().catch(() => ({})) as {
+          ok?: boolean;
+          diagnostics?: Array<{ id: string; severity: string; code: string; detail: string; repair_hint: string; trace_id?: string; updated_at: string }>;
+          events?: Array<{ id: string; trace_id: string; stage: string; severity: string; code: string; detail: string; actor_id?: string | null; session_id?: string | null; job_id?: string | null; created_at: string }>;
+        };
+        if (!response.ok || !data.ok || !Array.isArray(data.diagnostics)) {
+          setCloudStatus("云端补充记录暂不可用；本机快照和本机记录已刷新。");
+        } else {
+          const diagnosticEntries = data.diagnostics.map(item => ({
+            id: "cloud:" + item.id, at: item.updated_at, traceId: item.trace_id || undefined,
+            source: "云端生活引擎", event: item.code || "日程诊断",
+            status: item.severity === "warning" ? "warning" as const : item.severity === "info" ? "info" as const : "error" as const,
+            detail: [item.detail, item.repair_hint ? "修复建议：" + item.repair_hint : ""].filter(Boolean).join("\n"),
+            meta: { cloudDiagnosticId: item.id, traceId: item.trace_id || undefined },
+          }));
+          const traceEntries = (data.events || []).map(item => ({
+            id: "trace:" + item.id, at: item.created_at, traceId: item.trace_id,
+            source: "云端执行链路", event: item.stage + " · " + item.code,
+            status: item.severity === "error" ? "error" as const : item.severity === "warning" ? "warning" as const : "info" as const,
+            detail: item.detail,
+            meta: { traceId: item.trace_id, actorId: item.actor_id, sessionId: item.session_id, jobId: item.job_id },
+          }));
+          setCloudEntries([...traceEntries, ...diagnosticEntries].sort((x, y) => Date.parse(y.at) - Date.parse(x.at)));
+          setCloudStatus("云端补充记录已更新：" + (traceEntries.length + diagnosticEntries.length) + " 条。");
+        }
+      } catch (error) {
+        setCloudEntries([]);
+        setCloudStatus("云端补充记录未连接：" + (error instanceof Error ? error.message : String(error)));
+      }
+    } catch (error) {
+      setCloudStatus("本机快照读取失败：" + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      refreshInFlightRef.current = false;
+      setRefreshing(false);
     }
   };
   const retryFailedReply = (replyId: string) => { resetFailedLifeSceneReply(replyId); refresh(); };
@@ -131,14 +240,25 @@ export function LifeDiagnosticsPanel() {
     { ok: 0, warning: 0, error: 0, info: 0 },
   );
 
-  const exportLog = () => {
-    const blob = new Blob([JSON.stringify(allEntries, null, 2)], { type: "application/json" });
-    const objectUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = objectUrl;
-    anchor.download = "life-diagnostics.json";
-    anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  const exportLog = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const payload = {
+        schemaVersion: 2,
+        exportedAt: new Date().toISOString(),
+        localSnapshot,
+        localDiagnostics: entries,
+        failedReplies,
+        cloudDiagnostics: cloudEntries,
+      };
+      await downloadFile(
+        new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" }),
+        "life-diagnostics.json",
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
   const clearLog = () => {
@@ -153,26 +273,27 @@ export function LifeDiagnosticsPanel() {
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--life-accent)]">System diagnostics</p>
           <h2 className="mt-1 text-lg font-semibold text-stone-800">生活系统诊断记录</h2>
-          <p className="mt-1 text-xs leading-relaxed text-stone-500">汇总本机链路记录与云端常驻日程引擎故障。</p>
+          <p className="mt-1 text-xs leading-relaxed text-stone-500">本机运行快照、地点聊天室、日程与本机错误优先；云端记录仅作补充。</p>
         </div>
 
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={refresh}
-            className="inline-flex min-h-10 items-center gap-1 rounded-xl border bg-white px-3 text-xs"
+            onClick={() => void refresh()}
+            disabled={refreshing}
+            className="inline-flex min-h-10 items-center gap-1 rounded-xl border bg-white px-3 text-xs disabled:opacity-50"
           >
-            <RefreshCw size={14} />
-            刷新
+            <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+            {refreshing ? "刷新中…" : "刷新"}
           </button>
           <button
             type="button"
-            disabled={!entries.length}
-            onClick={exportLog}
+            disabled={exporting || (!localSnapshot && !allEntries.length)}
+            onClick={() => void exportLog()}
             className="inline-flex min-h-10 items-center gap-1 rounded-xl border bg-white px-3 text-xs disabled:opacity-40"
           >
             <Download size={14} />
-            导出 JSON
+            {exporting ? "导出中…" : "导出 JSON"}
           </button>
           <button
             type="button"
@@ -186,6 +307,19 @@ export function LifeDiagnosticsPanel() {
         </div>
       </div>
 
+      <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50/80 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <b className="text-sm text-stone-800">本机运行快照</b>
+          <span className="text-[10px] text-stone-400">{localSnapshot ? "已采集" : "等待刷新"}</span>
+        </div>
+        {localSnapshot ? (
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs text-stone-600">查看设备、玩家位置、聊天室、日程和近期生活记录</summary>
+            <pre className="mt-2 max-h-80 overflow-auto rounded-xl bg-white p-3 text-[10px] leading-relaxed text-stone-600">{JSON.stringify(localSnapshot, null, 2)}</pre>
+          </details>
+        ) : <p className="mt-1 text-xs text-stone-500">点击刷新采集本机数据；不依赖云端连接。</p>}
+        <p className="mt-2 text-[10px] text-stone-500">{cloudStatus}</p>
+      </div>
       <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/60 p-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -303,7 +437,7 @@ export function LifeDiagnosticsPanel() {
       </div>
 
       <p className="mt-2 text-[10px] text-stone-400">
-        导出前请检查是否包含不想分享的角色名称或错误详情；导出内容包含本机记录和云端未解决故障。
+        JSON 包含设备信息、生活状态、地点聊天室结构、近期生活记录、本机诊断和云端补充记录；分享前请检查隐私内容。
       </p>
     </section>
   );
