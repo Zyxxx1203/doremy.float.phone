@@ -293,12 +293,12 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
     }
   }, [notify]);
 
-  const handleExportEntry = useCallback((entry: DiaryEntry, format: DiaryExportFormat) => {
+  const handleExportEntry = useCallback(async (entry: DiaryEntry, format: DiaryExportFormat) => {
     try {
-      downloadDiaryEntry(entry, format);
-      notify(format === "md" ? "Markdown 文件已导出。" : "TXT 文件已导出。");
+      await downloadDiaryEntry(entry, format);
+      notify(format === "md" ? "已发起 Markdown 导出。" : "已发起 TXT 导出。");
     } catch (error) {
-      notify("导出失败：" + String(error));
+      notify("导出失败：" + (error instanceof Error ? error.message : String(error)));
     }
   }, [notify]);
 
@@ -850,7 +850,7 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
           onEdit={() => setEditingEntry(activeEntry)}
           onToggleFavorite={() => handleToggleFavorite(activeEntry)}
           onShare={() => void handleShareEntry(activeEntry)}
-          onExport={format => handleExportEntry(activeEntry, format)}
+          onExport={format => { void handleExportEntry(activeEntry, format); }}
           onExportImage={() => void handleExportImage(activeEntry)}
           onPrint={() => handlePrintEntry(activeEntry)}
           onRestore={() => handleRestorePrevious(activeEntry)}
