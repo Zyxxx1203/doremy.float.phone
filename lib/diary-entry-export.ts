@@ -76,8 +76,13 @@ export async function shareDiaryEntry(entry: DiaryEntry): Promise<"shared" | "co
   const title = entry.title || entry.characterName + "的日记";
   const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
   if (typeof nav.share === "function") {
-    await nav.share({ title, text });
-    return "shared";
+    try {
+      await nav.share({ title, text });
+      return "shared";
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") throw error;
+      // Fall through to clipboard/native copy if the Web Share implementation is unavailable.
+    }
   }
   if (navigator.clipboard?.writeText) {
     try {
