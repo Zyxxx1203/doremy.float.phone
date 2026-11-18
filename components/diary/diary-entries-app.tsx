@@ -858,7 +858,9 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
         />
       ) : null}
 
-      {excerptsOpen ? <DiaryExcerptCollection entries={entries} onClose={() => setExcerptsOpen(false)} onOpen={entry => { setActiveEntry(entry); setExcerptsOpen(false); }} /> : null}\n\n      {editingEntry ? (
+      {excerptsOpen ? <DiaryExcerptCollection entries={entries} onClose={() => setExcerptsOpen(false)} onOpen={entry => { setActiveEntry(entry); setExcerptsOpen(false); }} /> : null}
+
+      {editingEntry ? (
         <DiaryEntryEditPanel
           entry={editingEntry}
           onClose={() => setEditingEntry(null)}
