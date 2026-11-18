@@ -42,8 +42,11 @@ assert.ok(updateActorLocationStart >= 0 && createSceneStart > updateActorLocatio
 assert.doesNotMatch(app.slice(updateActorLocationStart, createSceneStart), /locationId:\s*location\.id/, "changing an actor actual location must not rewrite the room identity");
 assert.match(app, /const destinationParticipants = mergeLifeSceneParticipants\(/, "destination room membership must merge existing occupants with arrivals");
 assert.match(app, /findLifeSceneForLocation\(stateRef\.current\.scenes, destination\.id\)/, "entering a location must resolve its canonical room");
-assert.match(app, /useMemo\(\(\) => findCurrentLifeScene\(state\.scenes\)/, "foreground room selection must be deterministic and ignore legacy event-room priority");
+assert.match(app, /useMemo\(\(\) => findLifeSceneForLocation\(state\.scenes, selectedLocationId\)/, "foreground room must be selected by the currently displayed location");
+assert.doesNotMatch(app, /const continuingScene = next\.scenes\.find\(scene => scene\.status === "active"\)/, "timeline settlement must never migrate an arbitrary active room to the player location");
+assert.match(app, /const existingRoom = findLifeSceneForLocation\(next\.scenes, location\.id, location\.name\)/, "go-find-character must reuse or create the destination location room");
 assert.match(app, /findLifeSceneForLocation\(stateRef\.current\.scenes, selectedLocation\.id\)/, "creating/reopening a location must reuse its canonical room");
+assert.match(app, /const playerLocation = normalized\.locations\.find\(location => location\.id === restoredPlayer\?\.actualLocationId\)/, "startup must restore from the player actual location before considering a prior room");
 assert.doesNotMatch(runtime, /eventId: event\.id,\s*participants/, "scheduled invitations must not create event-owned chat rooms");
 assert.doesNotMatch(runtime, /locationId: nextLocationId, locationName: nextLocationName/, "schedule settlement must not rewrite the active room location");
 
