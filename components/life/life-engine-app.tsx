@@ -874,28 +874,54 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       // Update only the room belonging to the player's actual location. Never
       // repurpose the newest active/paused room: its ID owns an independent history.
       const currentPlayer = next.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
-      const playerRoom = currentPlayer?.actualLocationId
-        ? findLifeSceneForLocation(next.scenes, currentPlayer.actualLocationId, currentPlayer.actualLocationName)
-        : undefined;
-      if (playerRoom && (playerRoom.status === "active" || playerRoom.status === "paused")) {
-        const currentParticipant = playerRoom.participants.find(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID);
-        const activity = currentPlayer?.activity || currentParticipant?.activity || "正在度过今天";
-        if (!currentParticipant || currentParticipant.activity !== activity) {
-          next = upsertLifeScene(next, {
-            ...playerRoom,
-            participants: mergeLifeSceneParticipants(playerRoom.participants, [{
-              ownerType: "player",
-              ownerId: PLAYER_ID,
-              activity,
-              awarenessByActorId: currentParticipant?.awarenessByActorId ?? {},
-            }]),
-            updatedAt: new Date().toISOString(),
-          });
+      const currentPlayerLocation = next.locations.find(location => location.id === currentPlayer?.actualLocationId);
+      if (currentPlayerLocation && currentPlayer?.actualLocationId) {
+        const playerRoom = findLifeSceneForLocation(next.scenes, currentPlayerLocation.id, currentPlayerLocation.name);
+        const currentParticipant = playerRoom?.participants.find(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID);
+        const activity = currentPlayer.activity || currentParticipant?.activity || "正在度过今天";
+        const roomNeedsUpdate = !playerRoom
+          || playerRoom.status !== "active"
+          || playerRoom.locationName !== currentPlayerLocation.name
+          || Boolean(playerRoom.eventId)
+          || !currentParticipant
+          || currentParticipant.activity !== activity;
+        if (roomNeedsUpdate) {
+          const now = new Date().toISOString();
+          const nextPlayerRoom: LifeSceneState = playerRoom
+            ? {
+                ...playerRoom,
+                locationId: currentPlayerLocation.id,
+                locationName: currentPlayerLocation.name,
+                eventId: undefined,
+                status: "active",
+                updatedAt: now,
+                participants: mergeLifeSceneParticipants(playerRoom.participants, [{
+                  ownerType: "player",
+                  ownerId: PLAYER_ID,
+                  activity,
+                  awarenessByActorId: currentParticipant?.awarenessByActorId ?? {},
+                }]),
+              }
+            : {
+                id: id("scene"),
+                locationId: currentPlayerLocation.id,
+                locationName: currentPlayerLocation.name,
+                startedAt: now,
+                updatedAt: now,
+                status: "active",
+                participants: [{
+                  ownerType: "player",
+                  ownerId: PLAYER_ID,
+                  activity,
+                  awarenessByActorId: {},
+                }],
+                lastSettledEventIds: [],
+              };
+          next = upsertLifeScene(next, nextPlayerRoom);
         }
       }
-      if (tab === "home" && !sceneView && currentPlayer?.actualLocationId
-        && next.locations.some(location => location.id === currentPlayer.actualLocationId)) {
-        setSelectedLocationId(currentPlayer.actualLocationId);
+      if (tab === "home" && !sceneView && currentPlayerLocation) {
+        setSelectedLocationId(currentPlayerLocation.id);
       }
       if (next !== stateRef.current) commit(next);
     };
