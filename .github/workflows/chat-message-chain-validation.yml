@@ -6,6 +6,9 @@ on:
     branches: [main]
     paths:
       - "lib/chat-engine.ts"
+      - "lib/tool-executor.ts"
+      - "lib/native-tool-name.ts"
+      - "scripts/test-native-tool-name-resolution.mjs"
       - "lib/turn-coordinator.ts"
       - "lib/short-term-assembler.ts"
       - "lib/memo-archive-storage.ts"
