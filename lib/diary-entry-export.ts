@@ -1,5 +1,6 @@
 import JSZip from "jszip";
 import type { DiaryEntry } from "./diary-entry-types";
+import { downloadFile } from "./download-utils";
 
 export type DiaryExportFormat = "txt" | "md";
 
@@ -46,26 +47,15 @@ export function diaryEntryToText(entry: DiaryEntry): string {
   ].join("\n");
 }
 
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.style.display = "none";
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-}
 
-export function downloadDiaryEntry(entry: DiaryEntry, format: DiaryExportFormat): void {
+export async function downloadDiaryEntry(entry: DiaryEntry, format: DiaryExportFormat): Promise<void> {
   const filename = safeFileName(entry.dateLabel || entry.createdAt.slice(0, 10)) + "_" + safeFileName(entry.title);
   const markdown = diaryEntryToMarkdown(entry);
   const blob = new Blob(
     [format === "md" ? markdown : diaryEntryToText(entry)],
     { type: format === "md" ? "text/markdown;charset=utf-8" : "text/plain;charset=utf-8" },
   );
-  downloadBlob(blob, filename + "." + format);
+  await downloadFile(blob, filename + "." + format);
 }
 
 export async function downloadDiaryEntriesZip(entries: DiaryEntry[]): Promise<void> {
@@ -78,7 +68,7 @@ export async function downloadDiaryEntriesZip(entries: DiaryEntry[]): Promise<vo
     zip.file(folder + "/" + date + "_" + title + "_" + safeFileName(entry.id.slice(-8)) + ".md", diaryEntryToMarkdown(entry));
   }
   const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
-  downloadBlob(blob, "日记导出_" + new Date().toISOString().slice(0, 10) + ".zip");
+  await downloadFile(blob, "日记导出_" + new Date().toISOString().slice(0, 10) + ".zip");
 }
 
 export async function shareDiaryEntry(entry: DiaryEntry): Promise<"shared" | "copied"> {
@@ -90,9 +80,15 @@ export async function shareDiaryEntry(entry: DiaryEntry): Promise<"shared" | "co
     return "shared";
   }
   if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return "copied";
+    try {
+      await navigator.clipboard.writeText(text);
+      return "copied";
+    } catch {
+      // Android WebView may expose clipboard but silently reject the operation.
+    }
   }
+  const nativeBridge = (window as Window & { AndroidShell?: { copyText?: (value: string) => boolean } }).AndroidShell;
+  if (nativeBridge?.copyText?.(text)) return "copied";
   throw new Error("当前环境不支持系统分享或剪贴板。");
 }
 
@@ -209,5 +205,5 @@ export async function downloadDiaryEntryImage(entry: DiaryEntry): Promise<void> 
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(value => value ? resolve(value) : reject(new Error("图片生成失败。")), "image/png");
   });
-  downloadBlob(blob, safeFileName(entry.dateLabel || entry.createdAt.slice(0, 10)) + "_" + safeFileName(entry.title) + ".png");
+  await downloadFile(blob, safeFileName(entry.dateLabel || entry.createdAt.slice(0, 10)) + "_" + safeFileName(entry.title) + ".png");
 }
