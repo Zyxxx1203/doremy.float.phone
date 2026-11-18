@@ -1298,28 +1298,42 @@ export function ToolboxSettings() {
                 const title = editRest.builtIn ? editRest.name : (isNewRest ? "添加工具" : "编辑工具");
 
                 if (editRest.builtIn) {
-                    // Only tools that carry a key in fixedParams (weather/search) need an
-                    // API Key field; keyless tools like 查看网页 (Jina Reader) don't.
-                    const apiKeyField = Object.keys(editRest.fixedParams || {})[0];
+                    const isSearchTool = editRest.id === "builtin_search";
+                    const searchProvider = editRest.fixedParams?.provider === "tavily" ? "tavily" : "deepseek";
+                    const apiKeyField = isSearchTool ? "api_key" : Object.keys(editRest.fixedParams || {})[0];
                     return (
                         <ContentDialog title={title} confirmLabel="完成" onConfirm={onConfirm} onCancel={onCancel}>
                             <div className="flex flex-col gap-3">
                                 <span className="menu-desc">{editRest.description}</span>
-                                {apiKeyField && (
-                                <div className="flex flex-col gap-1">
-                                    <label className="menu-desc ml-1">API Key</label>
-                                    <Input type="password" value={editRest.fixedParams?.[apiKeyField] ?? ""} placeholder="填入你的 API Key"
-                                        onChange={e => setR({ fixedParams: { ...editRest.fixedParams, [apiKeyField]: e.target.value } })} />
-                                    <span className="menu-desc ml-1">
-                                        {editRest.id === "builtin_weather" && "去 weatherapi.com 免费注册获取"}
-                                        {editRest.id === "builtin_search" && "去 tavily.com 免费注册获取"}
-                                    </span>
-                                </div>
+                                {isSearchTool && (
+                                    <div className="flex flex-col gap-1">
+                                        <label className="menu-desc ml-1">搜索服务</label>
+                                        <Select value={searchProvider} onChange={e => setR({ fixedParams: { ...editRest.fixedParams, provider: e.target.value } })}>
+                                            <option value="deepseek">DeepSeek Search</option>
+                                            <option value="tavily">Tavily</option>
+                                        </Select>
+                                    </div>
                                 )}
-                                <div className="flex items-center justify-between gap-3">
-                                    <span className="menu-desc">直连模式（跳过服务端代理，无超时限制）</span>
-                                    <Toggle checked={editRest.directFetch ?? true} onChange={c => setR({ directFetch: c })} />
-                                </div>
+                                {apiKeyField && (
+                                    <div className="flex flex-col gap-1">
+                                        <label className="menu-desc ml-1">{isSearchTool ? (searchProvider === "deepseek" ? "DeepSeek API Key" : "Tavily API Key") : "API Key"}</label>
+                                        <Input type="password" value={editRest.fixedParams?.[apiKeyField] ?? ""} placeholder="填入你的 API Key"
+                                            onChange={e => setR({ fixedParams: { ...editRest.fixedParams, [apiKeyField]: e.target.value } })} />
+                                        <span className="menu-desc ml-1">
+                                            {editRest.id === "builtin_weather" && "去 WeatherAPI 注册获取"}
+                                            {isSearchTool && searchProvider === "deepseek" && "使用 DeepSeek 开放平台 API Key；搜索请求通过站点代理发送，避免浏览器跨域限制。"}
+                                            {isSearchTool && searchProvider === "tavily" && "使用 Tavily API Key。"}
+                                        </span>
+                                    </div>
+                                )}
+                                {isSearchTool ? (
+                                    <span className="menu-desc">搜索通过站点代理请求，API Key 不会发送给模型。</span>
+                                ) : (
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="menu-desc">直连模式（跳过服务端代理，无超时限制）</span>
+                                        <Toggle checked={editRest.directFetch ?? true} onChange={c => setR({ directFetch: c })} />
+                                    </div>
+                                )}
                             </div>
                         </ContentDialog>
                     );
