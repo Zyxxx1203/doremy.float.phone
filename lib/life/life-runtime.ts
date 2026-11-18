@@ -936,7 +936,11 @@ export function overlayScheduleSlotsOverFreeTime(
       // Free-time is an open placeholder even when legacy/user-edited records
       // carry source=manual. A character-tool free-time slot is a cancellation
       // tombstone and must survive automatic weekly generation.
+      // A companion stay is a time-bounded user instruction, not an open
+      // free-time placeholder. Keep it intact against weekly and character plans.
+      const companionStay = existing.id.startsWith("companion-follow-");
       const replaceableFreeTime = existing.kind === "free-time"
+        && !companionStay
         && (candidate.source !== "weekly-generation" || existing.source !== "character-tool");
       return sameOwner && !replaceableFreeTime && Number.isFinite(a) && Number.isFinite(b) && a < end && b > start;
     });
@@ -949,7 +953,11 @@ export function overlayScheduleSlotsOverFreeTime(
       const sameOwner = existing.ownerType === candidate.ownerType && existing.ownerId === candidate.ownerId;
       const a = new Date(existing.startAt).getTime();
       const b = new Date(existing.endAt).getTime();
+      // A companion stay is a time-bounded user instruction, not an open
+      // free-time placeholder. Keep it intact against weekly and character plans.
+      const companionStay = existing.id.startsWith("companion-follow-");
       const replaceableFreeTime = existing.kind === "free-time"
+        && !companionStay
         && (candidate.source !== "weekly-generation" || existing.source !== "character-tool");
       if (!sameOwner || !replaceableFreeTime || !Number.isFinite(a) || !Number.isFinite(b) || b <= start || a >= end) {
         next.push(existing);
@@ -997,7 +1005,8 @@ export function applyCharacterLifeScheduleChange(
     if (!Number.isFinite(slotStart) || !Number.isFinite(slotEnd)) return false;
     const isAlreadyInProgress = slotStart <= characterNow.getTime() && slotEnd > characterNow.getTime();
     const protectedManualActivity = slot.kind !== "free-time" && slot.source === "manual";
-    return (isAlreadyInProgress || slot.kind === "appointment" || protectedManualActivity || slot.source === "event")
+    const protectedCompanionStay = slot.id.startsWith("companion-follow-");
+    return (isAlreadyInProgress || slot.kind === "appointment" || protectedManualActivity || protectedCompanionStay || slot.source === "event")
       && slotStart < endMs
       && slotEnd > startMs;
   });
