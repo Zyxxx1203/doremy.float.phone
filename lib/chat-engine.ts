@@ -1,6 +1,7 @@
 // lib/chat-engine.ts
 
 import { createSseJsonParser } from "./sse-json";
+import { makeNativeToolName } from "./native-tool-name";
 import { maybeAppendShortcutCapability, maybeAppendPerceptionStatus } from "./offline-shortcut-capability";
 import { maybeBuildStatusInjection } from "./perception/describe";
 import { loadCharacters } from "./character-storage";
@@ -1586,32 +1587,6 @@ type NativeChatToolBuildOptions = {
     characterName?: string;
     userName?: string;
 };
-
-function stableToolHash(value: string): string {
-    let hash = 0;
-    for (const char of value) {
-        hash = ((hash * 31) + char.charCodeAt(0)) >>> 0;
-    }
-    return hash.toString(36).slice(0, 6);
-}
-
-function makeNativeToolName(displayName: string, used: Set<string>): string {
-    const base = displayName
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9_-]+/g, "_")
-        .replace(/^_+|_+$/g, "")
-        .slice(0, 40);
-    const prefix = base && /^[a-zA-Z_]/.test(base) ? base : "action";
-    let name = `${prefix}_${stableToolHash(displayName)}`.slice(0, 64);
-    let index = 2;
-    while (used.has(name)) {
-        name = `${prefix}_${stableToolHash(displayName)}_${index}`.slice(0, 64);
-        index += 1;
-    }
-    used.add(name);
-    return name;
-}
 
 export function nativeToolSourceKey(tool: EnabledTool): string {
     return `${tool.source}:${tool.sourceId}`;
