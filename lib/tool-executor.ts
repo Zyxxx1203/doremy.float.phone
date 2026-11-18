@@ -4093,14 +4093,44 @@ async function executeRestTool(tool: RestToolConfig, args: Record<string, unknow
             else if (v !== "" && !isNaN(Number(v))) { typedFixed[k] = Number(v); }
             else { typedFixed[k] = v; }
         }
+        const isBuiltinSearch = tool.id === "builtin_search";
+        const searchProvider = isBuiltinSearch
+            ? (tool.fixedParams?.provider === "tavily" ? "tavily" : "deepseek")
+            : "";
+        const searchApiKey = isBuiltinSearch ? String(tool.fixedParams?.api_key || "").trim() : "";
+        if (isBuiltinSearch && !searchApiKey) {
+            return { name: tool.name, success: false, error: searchProvider === "deepseek"
+                ? "请先在工具箱 → 搜索中填写 DeepSeek API Key。"
+                : "请先在工具箱 → 搜索中填写 Tavily API Key。" };
+        }
+        const searchQuery = typeof args.query === "string" ? args.query.trim() : "";
+        if (isBuiltinSearch && !searchQuery) {
+            return { name: tool.name, success: false, error: "搜索关键词不能为空。" };
+        }
+        const requestMethod: "GET" | "POST" = isBuiltinSearch ? "POST" : tool.method;
         const mergedArgs = { ...args, ...typedFixed };
         const consumedKeys = new Set<string>();
         const headers: Record<string, string> = renderRestHeaders({ ...tool.headers }, mergedArgs, consumedKeys);
 
-        let url = renderTemplateString(tool.endpoint, mergedArgs, consumedKeys, { encodeForUrl: true });
+        let url = isBuiltinSearch
+            ? (searchProvider === "tavily" ? "https://api.tavily.com/search" : "https://api.deepseek.com/v1/tools/search")
+            : renderTemplateString(tool.endpoint, mergedArgs, consumedKeys, { encodeForUrl: true });
         let body: unknown = undefined;
 
-        if (tool.method === "GET") {
+        if (isBuiltinSearch) {
+            if (searchProvider === "deepseek") {
+                headers.Authorization = `Bearer ${searchApiKey}`;
+                body = { query: searchQuery.slice(0, 128), count: 5, need_content: true };
+            } else {
+                body = {
+                    api_key: searchApiKey,
+                    query: searchQuery,
+                    search_depth: "basic",
+                    max_results: 5,
+                    include_answer: false,
+                };
+            }
+        } else if (requestMethod === "GET") {
             const params = new URLSearchParams();
             for (const [k, v] of Object.entries(mergedArgs)) {
                 if (!consumedKeys.has(k) && v !== undefined && v !== "") params.set(k, String(v));
@@ -4116,17 +4146,18 @@ async function executeRestTool(tool: RestToolConfig, args: Record<string, unknow
                 ? renderRestBodyTemplate(tool.bodyTemplate.trim(), mergedArgs, consumedKeys)
                 : mergedArgs;
         }
+        if (isBuiltinSearch) headers["Content-Type"] = "application/json";
 
         let resStatus: number;
         let resText: string;
         let binaryAttachments: MediaAttachment[] | undefined;
 
-        if (tool.directFetch ?? true) {
+        if (!isBuiltinSearch && (tool.directFetch ?? true)) {
             const controller = new AbortController();
             const detachExternalAbort = attachAbortSignal(controller, signal);
             const timeout = setTimeout(() => controller.abort(), 120_000);
-            const fetchOptions: RequestInit = { method: tool.method, headers, signal: controller.signal };
-            if (body !== undefined && tool.method !== "GET") {
+            const fetchOptions: RequestInit = { method: requestMethod, headers, signal: controller.signal };
+            if (body !== undefined && requestMethod !== "GET") {
                 fetchOptions.body = JSON.stringify(body);
             }
             let res: Response;
@@ -4179,7 +4210,7 @@ async function executeRestTool(tool: RestToolConfig, args: Record<string, unknow
                 throwIfAborted(signal);
             }
         } else {
-            const res = await proxyFetch(url, { method: tool.method, headers, body, signal });
+            const res = await proxyFetch(url, { method: requestMethod, headers, body, signal });
             resStatus = res.status;
             if (resStatus >= 200 && resStatus < 300) {
                 try {
@@ -4235,6 +4266,29 @@ async function executeRestTool(tool: RestToolConfig, args: Record<string, unknow
                 data: `${unique.join("/")}已自动发送给用户（共 ${binaryAttachments.length} 个）。不要再用文字标签描述或重复发送。`,
                 mediaAttachments: binaryAttachments,
             };
+        }
+
+        if (isBuiltinSearch && searchProvider === "deepseek") {
+            try {
+                const payload = JSON.parse(resText) as { results?: Array<{
+                    title?: string; url?: string; snippet?: string; summary?: string; content?: string; date?: string; site_name?: string;
+                }> };
+                const results = Array.isArray(payload.results) ? payload.results.slice(0, 5) : [];
+                resText = results.length
+                    ? results.map((item, index) => {
+                        const summary = String(item.summary || item.snippet || item.content || "").trim().slice(0, 420);
+                        return [
+                            `[${index + 1}] ${item.title || "搜索结果"}`,
+                            item.site_name ? `来源：${item.site_name}` : "",
+                            item.date ? `发布时间：${item.date}` : "",
+                            item.url ? `链接：${item.url}` : "",
+                            summary ? `摘要：${summary}` : "",
+                        ].filter(Boolean).join("\\n");
+                    }).join("\\n\\n")
+                    : "DeepSeek 搜索没有返回匹配结果。";
+            } catch {
+                // Keep the upstream response intact so the normal error/result path can explain it.
+            }
         }
 
         const { text: processed, attachments } = await replaceBase64WithRefs(resText, signal);
