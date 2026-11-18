@@ -548,7 +548,7 @@ function buildToolNameMacroContext(context?: ToolExecutionContext) {
  */
 function resolveNativeToolCall(call: ToolCall, context?: ToolExecutionContext): ToolCall {
     const requested = call.name.trim();
-    if (!/^action_?[a-z0-9]{1,6}(?:_(?:[2-9]|[1-9][0-9]+))?$/i.test(requested)) return call;
+    if (!/^action_?[a-z0-9]{1,16}$/i.test(requested)) return call;
 
     const enabledTools = getEnabledTools(context?.appId ?? "chat");
     if (enabledTools.length === 0) return call;
