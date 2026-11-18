@@ -32,7 +32,7 @@ import { applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeekly
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { describeLifeOutputIssues, parseLifeOutput, validateLifeOutput, type LifeOutputIssue } from "@/lib/life/life-output";
-import { buildLifeSceneResponderQueue, evaluateEncounterAwareness, findCurrentLifeScene, findLifeSceneForLocation, mergeLifeSceneParticipants } from "@/lib/life/life-engine";
+import { buildLifeSceneResponderQueue, evaluateEncounterAwareness, findLifeSceneForLocation, mergeLifeSceneParticipants } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
 import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts } from "@/lib/push-bailout-client";
 import { readLifeProactiveStatus } from "@/lib/life/life-proactive-scheduler";
@@ -383,22 +383,62 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         normalized = { ...normalized, scheduleProfileVersion: 4, schedules };
         saveVirtualLifeState(normalized);
       }
-      const hasContinuingScene = normalized.scenes.some(scene => scene.status === "active" || scene.status === "paused");
-      if (!hasContinuingScene && normalized.settings.enabled) {
-        const player = normalized.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
-        const realNow = resolveActorLifeNow(getActorClock(normalized, "player", PLAYER_ID));
-        const currentSlot = getCurrentActorSchedule(normalized, "player", PLAYER_ID, realNow);
-        const location = normalized.locations.find(item => item.id === (player?.actualLocationId || currentSlot?.plannedLocationId)) || normalized.locations.find(item => item.id === "home") || normalized.locations[0];
-        if (location) {
-          const now = new Date().toISOString();
-          const scene: LifeSceneState = { id: id("scene"), locationId: location.id, locationName: player?.actualLocationName || currentSlot?.plannedLocationName || location.name, startedAt: now, updatedAt: now, status: "active", participants: [{ ownerType: "player", ownerId: PLAYER_ID, activity: player?.activity || currentSlot?.title || "正在度过今天", awarenessByActorId: {} }], lastSettledEventIds: [] };
-          normalized = { ...normalized, scenes: [...normalized.scenes, scene] };
-          saveVirtualLifeState(normalized);
-        }
-      }
-      const restoredScene = findCurrentLifeScene(normalized.scenes);
       const restoredPlayer = normalized.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
-      setSelectedLocationId(restoredScene?.locationId || restoredPlayer?.actualLocationId || normalized.locations[0]?.id || "cafe");
+      const previousPlayerRoom = normalized.scenes
+        .filter(scene => (scene.status === "active" || scene.status === "paused")
+          && scene.participants.some(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID))
+        .slice()
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+      // The player's persisted actual location is authoritative. A schedule is only
+      // a plan and must never select or rename a chat room during app restoration.
+      const playerLocation = normalized.locations.find(location => location.id === restoredPlayer?.actualLocationId)
+        ?? normalized.locations.find(location => location.id === previousPlayerRoom?.locationId)
+        ?? normalized.locations.find(location => location.id === "home")
+        ?? normalized.locations[0];
+      if (playerLocation && normalized.settings.enabled) {
+        const now = new Date().toISOString();
+        const existingPlayerRoom = findLifeSceneForLocation(normalized.scenes, playerLocation.id, playerLocation.name);
+        const playerParticipant: LifeSceneParticipant = {
+          ownerType: "player",
+          ownerId: PLAYER_ID,
+          activity: restoredPlayer?.activity || "正在度过今天",
+          awarenessByActorId: {},
+        };
+        const playerRoom: LifeSceneState = existingPlayerRoom
+          ? {
+              ...existingPlayerRoom,
+              locationId: playerLocation.id,
+              locationName: playerLocation.name,
+              eventId: undefined,
+              status: "active",
+              updatedAt: now,
+              participants: mergeLifeSceneParticipants(existingPlayerRoom.participants, [playerParticipant]),
+            }
+          : {
+              id: id("scene"),
+              locationId: playerLocation.id,
+              locationName: playerLocation.name,
+              startedAt: now,
+              updatedAt: now,
+              status: "active",
+              participants: [playerParticipant],
+              lastSettledEventIds: [],
+            };
+        normalized = upsertLifeScene(normalized, playerRoom);
+        if (restoredPlayer?.actualLocationId !== playerLocation.id || restoredPlayer.actualLocationName !== playerLocation.name) {
+          normalized = upsertActorState(normalized, {
+            ownerType: "player",
+            ownerId: PLAYER_ID,
+            activity: restoredPlayer?.activity || "正在度过今天",
+            actualLocationId: playerLocation.id,
+            actualLocationName: playerLocation.name,
+            actualLocationUntil: restoredPlayer?.actualLocationUntil ?? null,
+            updatedAt: now,
+          });
+        }
+        saveVirtualLifeState(normalized);
+      }
+      setSelectedLocationId(playerLocation?.id || normalized.locations[0]?.id || "home");
       stateRef.current = normalized;
       setState(normalized);
       setCharacters(loadCharacters());
@@ -581,7 +621,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     setSelectedActorKey("character:" + initialCharacterId);
     setTab("plans");
   }, [initialCharacterId, characters]);
-  const activeScene = useMemo(() => findCurrentLifeScene(state.scenes), [state.scenes]);
+  const activeScene = useMemo(() => findLifeSceneForLocation(state.scenes, selectedLocationId), [state.scenes, selectedLocationId]);
   const sceneMessages = useMemo(() => activeScene ? state.sceneMessages.filter(message => message.sceneId === activeScene.id) : [], [state.sceneMessages, activeScene]);
   const focusScene = useCallback((sceneId: string) => {
     const latest = stateRef.current;
@@ -830,15 +870,31 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           }
         }
       }
-      // Keep one continuous scene anchored to the player's current real-world life state.
-      const continuingScene = next.scenes.find(scene => scene.status === "active") ?? next.scenes.filter(scene => scene.status === "paused").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+      // Update only the room belonging to the player's actual location. Never
+      // repurpose the newest active/paused room: its ID owns an independent history.
       const currentPlayer = next.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
-      const playerNow = resolveActorLifeNow(getActorClock(next, "player", PLAYER_ID));
-      const playerSlot = getCurrentActorSchedule(next, "player", PLAYER_ID, playerNow);
-      const sceneLocationId = currentPlayer?.actualLocationId || playerSlot?.plannedLocationId || continuingScene?.locationId;
-      const sceneLocationName = currentPlayer?.actualLocationName || playerSlot?.plannedLocationName || continuingScene?.locationName;
-      if (continuingScene && sceneLocationId && sceneLocationName && (continuingScene.locationId !== sceneLocationId || continuingScene.locationName !== sceneLocationName)) {
-        next = upsertLifeScene(next, { ...continuingScene, locationId: sceneLocationId, locationName: sceneLocationName, updatedAt: new Date().toISOString(), participants: continuingScene.participants.map(participant => participant.ownerType === "player" ? { ...participant, activity: currentPlayer?.activity || playerSlot?.title || participant.activity } : participant) });
+      const playerRoom = currentPlayer?.actualLocationId
+        ? findLifeSceneForLocation(next.scenes, currentPlayer.actualLocationId, currentPlayer.actualLocationName)
+        : undefined;
+      if (playerRoom && (playerRoom.status === "active" || playerRoom.status === "paused")) {
+        const currentParticipant = playerRoom.participants.find(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID);
+        const activity = currentPlayer?.activity || currentParticipant?.activity || "正在度过今天";
+        if (!currentParticipant || currentParticipant.activity !== activity) {
+          next = upsertLifeScene(next, {
+            ...playerRoom,
+            participants: mergeLifeSceneParticipants(playerRoom.participants, [{
+              ownerType: "player",
+              ownerId: PLAYER_ID,
+              activity,
+              awarenessByActorId: currentParticipant?.awarenessByActorId ?? {},
+            }]),
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }
+      if (!sceneView && currentPlayer?.actualLocationId
+        && next.locations.some(location => location.id === currentPlayer.actualLocationId)) {
+        setSelectedLocationId(currentPlayer.actualLocationId);
       }
       if (next !== stateRef.current) commit(next);
     };
@@ -854,7 +910,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       window.removeEventListener("life-force-sync", settleAll);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [ready, commit, worldBooks, bindingConfig]);
+  }, [ready, commit, worldBooks, bindingConfig, sceneView]);
 
   const syncAllCharactersToSchedules = useCallback(() => {
     let next = stateRef.current;
@@ -889,8 +945,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       moved.push(character.name);
     }
     const player = next.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
-    const active = next.scenes.find(scene => scene.status === "active");
-    if (active && player?.actualLocationId) {
+    const active = player?.actualLocationId
+      ? findLifeSceneForLocation(next.scenes, player.actualLocationId, player.actualLocationName)
+      : undefined;
+    if (active && (active.status === "active" || active.status === "paused")) {
       const here = next.actorStates.filter(actor => actor.ownerType === "character" && actor.actualLocationId === player.actualLocationId);
       const participants = [
         ...active.participants.filter(participant => participant.ownerType === "player"),
@@ -912,8 +970,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       setNotice("请先启用生活系统、角色自主行动和主动消息，再挂起后台主动任务。");
       return;
     }
-    const scene = stateRef.current.scenes.find(item => item.status === "active"
-      && item.participants.some(participant => participant.ownerType === "player" && participant.ownerId === PLAYER_ID));
+    const player = stateRef.current.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === PLAYER_ID);
+    const scene = player?.actualLocationId
+      ? findLifeSceneForLocation(stateRef.current.scenes, player.actualLocationId, player.actualLocationName)
+      : undefined;
     if (!scene) { setNotice("请先进入地点。"); return; }
     const candidateId = scene.participants.find(participant => participant.ownerType === "character")?.ownerId;
     const character = characters.find(item => item.id === candidateId) ?? characters[0];
@@ -3478,11 +3538,18 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     }
     const now = new Date().toISOString();
     next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: "正在去找" + character.name, actualLocationId: location.id, actualLocationName: location.name, updatedAt: now });
-    const scene = next.scenes.find(item => item.status === "active") ?? next.scenes.filter(item => item.status === "paused").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
-    if (scene) {
-      const participants = scene.participants.filter(item => !(item.ownerType === "player" && item.ownerId === PLAYER_ID));
-      next = upsertLifeScene(next, { ...scene, locationId: location.id, locationName: location.name, status: "active", updatedAt: now, participants: [{ ownerType: "player", ownerId: PLAYER_ID, activity: "正在去找" + character.name, awarenessByActorId: { [character.id]: "aware" } }, ...participants.filter(item => item.ownerType !== "character" || item.ownerId !== character.id), { ownerType: "character", ownerId: character.id, activity: presence?.activity || schedule?.title || "在这里活动", awarenessByActorId: { [PLAYER_ID]: "aware" } }] });
-    }
+    const existingRoom = findLifeSceneForLocation(next.scenes, location.id, location.name);
+    const participants = [
+      ...(existingRoom?.participants ?? []).filter(item =>
+        !(item.ownerType === "player" && item.ownerId === PLAYER_ID)
+        && !(item.ownerType === "character" && item.ownerId === character.id)),
+      { ownerType: "player" as const, ownerId: PLAYER_ID, activity: "正在去找" + character.name, awarenessByActorId: { [character.id]: "aware" as const } },
+      { ownerType: "character" as const, ownerId: character.id, activity: presence?.activity || schedule?.title || "在这里活动", awarenessByActorId: { [PLAYER_ID]: "aware" as const } },
+    ];
+    const destinationRoom: LifeSceneState = existingRoom
+      ? { ...existingRoom, locationId: location.id, locationName: location.name, eventId: undefined, status: "active", updatedAt: now, participants }
+      : { id: id("scene"), locationId: location.id, locationName: location.name, startedAt: now, updatedAt: now, status: "active", participants, lastSettledEventIds: [] };
+    next = upsertLifeScene(next, destinationRoom);
     next = appendLifeTimelineEntry(next, { category: "location", title: "你去找" + character.name, details: "前往" + location.name + (presence?.actualLocationName ? "（角色记录的当前位置）" : "（根据角色日程推测）"), actorId: PLAYER_ID, actorName: playerName, locationName: location.name });
     commit(next);
     setSelectedLocationId(location.id);
