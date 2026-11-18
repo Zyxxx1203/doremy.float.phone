@@ -17,6 +17,8 @@ import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
@@ -126,6 +128,59 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     android.os.Process.killProcess(android.os.Process.myPid())
                 }
+            }
+        }
+    }
+
+    // 角色 TTS 只在实际播放期间短暂申请焦点，让正在播放的视频尽可能 duck 而不是打断语音。
+    private val callAudioFocusLock = Any()
+    private var callAudioFocusRequest: android.media.AudioFocusRequest? = null
+    private var legacyCallAudioFocusHeld = false
+    private val callAudioFocusListener = AudioManager.OnAudioFocusChangeListener { /* TTS 播放由 WebView 生命周期管理；焦点变化不销毁会话。 */ }
+
+    private fun requestCallAudioFocusInternal(): Boolean {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
+        synchronized(callAudioFocusLock) {
+            if (callAudioFocusRequest != null || legacyCallAudioFocusHeld) return true
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val request = android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                    .setAudioAttributes(
+                        android.media.AudioAttributes.Builder()
+                            .setUsage(android.media.AudioAttributes.USAGE_ASSISTANT)
+                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build(),
+                    )
+                    .setOnAudioFocusChangeListener(callAudioFocusListener, Handler(Looper.getMainLooper()))
+                    .setWillPauseWhenDucked(false)
+                    .build()
+                if (audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                    callAudioFocusRequest = request
+                    true
+                } else false
+            } else {
+                val result = audioManager.requestAudioFocus(
+                    callAudioFocusListener,
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK,
+                )
+                legacyCallAudioFocusHeld = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+                legacyCallAudioFocusHeld
+            }
+        }
+    }
+
+    private fun abandonCallAudioFocusInternal(): Boolean {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
+        synchronized(callAudioFocusLock) {
+            val request = callAudioFocusRequest
+            val legacyHeld = legacyCallAudioFocusHeld
+            callAudioFocusRequest = null
+            legacyCallAudioFocusHeld = false
+            return when {
+                request != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ->
+                    audioManager.abandonAudioFocusRequest(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+                legacyHeld -> audioManager.abandonAudioFocus(callAudioFocusListener) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+                else -> true
             }
         }
     }
@@ -1497,6 +1552,7 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
     }
 
     override fun onDestroy() {
+        runCatching { abandonCallAudioFocusInternal() }
         // Recovery mode intentionally returns before creating a WebView. Keep its
         // lifecycle safe: touching a lateinit WebView here would crash the recovery UI.
         if (::webView.isInitialized) {
@@ -1513,6 +1569,14 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
     inner class ShellBridge {
         @JavascriptInterface
         fun getVersion(): String = VERSION
+
+        /** TTS 发声时临时申请可 duck 的焦点；不在整个通话期间独占音频。 */
+        @JavascriptInterface
+        fun requestCallAudioFocus(): Boolean = isTrustedShellPage() && requestCallAudioFocusInternal()
+
+        /** 当前 TTS 片段结束或被取消时归还焦点。 */
+        @JavascriptInterface
+        fun abandonCallAudioFocus(): Boolean = isTrustedShellPage() && abandonCallAudioFocusInternal()
 
         /** Allow the trusted in-app player to request landscape, then restore normal sensor rotation. */
         @JavascriptInterface
