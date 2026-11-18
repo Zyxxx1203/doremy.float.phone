@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
-import { Bot, ChevronLeft, Clock3, Download, Heart, NotebookPen, Pencil, RotateCcw, Share2, Trash2, WandSparkles, X } from "lucide-react";
+import { Bot, ChevronLeft, Clock3, Download, Heart, NotebookPen, Pencil, RotateCcw, Trash2, WandSparkles, X } from "lucide-react";
 import { DotsThree } from "@phosphor-icons/react";
 
 import { loadCharacters } from "@/lib/character-storage";
@@ -28,7 +28,7 @@ import {
 } from "@/lib/diary-entry-storage";
 import type { DiaryEntry, DiaryEntryBlock, DiaryEntryTimerSettings, DiaryEntryTrigger } from "@/lib/diary-entry-types";
 import { getThemeAssetDataUrl, saveThemeAssetFromBlob } from "@/lib/theme-storage";
-import { downloadDiaryEntriesZip, downloadDiaryEntry, downloadDiaryEntryImage, printDiaryEntryAsPdf, shareDiaryEntry, type DiaryExportFormat } from "@/lib/diary-entry-export";
+import { downloadDiaryEntriesZip, downloadDiaryEntry, downloadDiaryEntryImage, printDiaryEntryAsPdf, type DiaryExportFormat } from "@/lib/diary-entry-export";
 
 const DIARY_USER_FONT_FAMILY = "AIPhoneDiaryEntryUserFont";
 const DIARY_USER_FONT_STYLE_ID = "ai-phone-diary-entry-user-font-face";
@@ -255,21 +255,10 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
     notify(updated.isFavorite ? "已加入珍藏。" : "已从珍藏中移除。");
   }, [notify, refreshEntries]);
 
-  const handleSaveEdit = useCallback((entryId: string, patch: {
-    title: string; dateLabel: string; mood: string; weather: string; tags: string[]; body: string;
-  }) => {
-    const updated = updateDiaryEntry(entryId, {
-      ...patch,
-      blocks: buildDiaryParagraphBlocks(patch.body),
-    });
-    if (!updated) {
-      notify("日记保存失败，请重试。");
-      return;
-    }
-    setActiveEntry(updated);
-    setEditingEntry(null);
-    refreshEntries();
-    notify("日记已保存，原文版本也已保留。");
+  const handleSaveEdit = useCallback((entryId: string, patch: { title: string; dateLabel: string; mood: string; weather: string; tags: string[]; blocks: DiaryEntryBlock[] }) => {
+    const updated = updateDiaryEntry(entryId, { ...patch, body: patch.blocks.map(blockPlainText).filter(Boolean).join("\\n\\n") });
+    if (!updated) { notify("日记保存失败，请重试。"); return; }
+    setActiveEntry(updated); setEditingEntry(null); refreshEntries(); notify("日记已保存，原有内容结构已保留。");
   }, [notify, refreshEntries]);
 
   const handleRestorePrevious = useCallback((entry: DiaryEntry) => {
@@ -282,16 +271,6 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
     refreshEntries();
     notify("已恢复上一个版本，当前内容也已留档。");
   }, [notify, refreshEntries]);
-
-  const handleShareEntry = useCallback(async (entry: DiaryEntry) => {
-    try {
-      const result = await shareDiaryEntry(entry);
-      notify(result === "shared" ? "已打开系统分享。" : "文章已复制到剪贴板。");
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") return;
-      notify("分享失败：" + (error instanceof Error ? error.message : String(error)));
-    }
-  }, [notify]);
 
   const handleExportEntry = useCallback(async (entry: DiaryEntry, format: DiaryExportFormat) => {
     try {
@@ -849,7 +828,6 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
           onClose={() => setActiveEntry(null)}
           onEdit={() => setEditingEntry(activeEntry)}
           onToggleFavorite={() => handleToggleFavorite(activeEntry)}
-          onShare={() => void handleShareEntry(activeEntry)}
           onExport={format => { void handleExportEntry(activeEntry, format); }}
           onExportImage={() => void handleExportImage(activeEntry)}
           onPrint={() => handlePrintEntry(activeEntry)}
@@ -1256,13 +1234,12 @@ function buildDiaryParagraphBlocks(body: string): DiaryEntryBlock[] {
 }
 
 function DiaryEntryDetail({
-  entry, onClose, onEdit, onToggleFavorite, onShare, onExport, onExportImage, onPrint, onRestore,
+  entry, onClose, onEdit, onToggleFavorite, onExport, onExportImage, onPrint, onRestore,
 }: {
   entry: DiaryEntry;
   onClose: () => void;
   onEdit: () => void;
   onToggleFavorite: () => void;
-  onShare: () => void;
   onExport: (format: DiaryExportFormat) => void;
   onExportImage: () => void;
   onPrint: () => void;
@@ -1289,24 +1266,18 @@ function DiaryEntryDetail({
               ) : null}
             </div>
           </header>
-          <div className="diary-entry-detail-actions">
-            <button type="button" onClick={onToggleFavorite} aria-pressed={Boolean(entry.isFavorite)}>
-              <Heart size={15} fill={entry.isFavorite ? "currentColor" : "none"} />{entry.isFavorite ? "已珍藏" : "珍藏"}
-            </button>
-            <button type="button" onClick={onEdit}><Pencil size={15} />编辑</button>
-            <button type="button" onClick={onShare}><Share2 size={15} />分享</button>
-            <button type="button" onClick={() => onExport("txt")}>TXT</button>
-            <button type="button" onClick={() => onExport("md")}>MD</button>
-            <button type="button" onClick={onExportImage}>图片</button>
-            <button type="button" onClick={onPrint}>PDF</button>
-            {entry.revisionHistory?.length ? (
-              <button type="button" onClick={onRestore}><RotateCcw size={15} />恢复上版</button>
-            ) : null}
-          </div>
           <div className="diary-entry-blocks">
             {entry.blocks.map((block, index) => (
               <DiaryBlockView key={`${block.type}-${index}`} block={block} />
             ))}
+          </div>
+          <div className="diary-entry-detail-actions">
+            <button type="button" onClick={onToggleFavorite} aria-pressed={Boolean(entry.isFavorite)}><Heart size={15} fill={entry.isFavorite ? "currentColor" : "none"} />{entry.isFavorite ? "已珍藏" : "珍藏"}</button>
+            <button type="button" onClick={onEdit}><Pencil size={15} />编辑</button>
+            <button type="button" onClick={() => onExport("md")}>导出 Markdown</button>
+            <button type="button" onClick={onExportImage}>图片</button>
+            <button type="button" onClick={onPrint}>PDF</button>
+            {entry.revisionHistory?.length ? <button type="button" onClick={onRestore}><RotateCcw size={15} />恢复上版</button> : null}
           </div>
           <footer className="diary-entry-detail-signature">
             <span>{entry.characterName}{entry.updatedAt !== entry.createdAt ? " · 已编辑" : ""}</span>
@@ -1321,46 +1292,39 @@ function DiaryEntryDetail({
 function DiaryEntryEditPanel({ entry, onClose, onSave }: {
   entry: DiaryEntry;
   onClose: () => void;
-  onSave: (patch: { title: string; dateLabel: string; mood: string; weather: string; tags: string[]; body: string }) => void;
+  onSave: (patch: { title: string; dateLabel: string; mood: string; weather: string; tags: string[]; blocks: DiaryEntryBlock[] }) => void;
 }) {
   const [title, setTitle] = useState(entry.title);
   const [dateLabel, setDateLabel] = useState(entry.dateLabel);
   const [mood, setMood] = useState(entry.mood);
   const [weather, setWeather] = useState(entry.weather);
   const [tags, setTags] = useState(entry.tags.join("、"));
-  const [body, setBody] = useState(entry.body || entry.blocks.map(blockPlainText).filter(Boolean).join("\n\n"));
-
+  const [blocks, setBlocks] = useState<DiaryEntryBlock[]>(() => JSON.parse(JSON.stringify(entry.blocks)));
+  const patchBlock = (index: number, patch: Record<string, unknown>) => setBlocks(current => current.map((block, i) => i === index ? ({ ...block, ...patch } as DiaryEntryBlock) : block));
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    onSave({
-      title: title.trim() || "未命名日记",
-      dateLabel: dateLabel.trim(),
-      mood: mood.trim(),
-      weather: weather.trim(),
-      tags: tags.split(/[,，、\s]+/).map(item => item.trim()).filter(Boolean).slice(0, 5),
-      body: body.trim(),
-    });
+    onSave({ title: title.trim() || "未命名日记", dateLabel: dateLabel.trim(), mood: mood.trim(), weather: weather.trim(), tags: tags.split(/[,，、\s]+/).map(item => item.trim()).filter(Boolean).slice(0, 5), blocks });
   };
-
   return (
     <div className="nw-modal-backdrop diary-entry-edit-backdrop" role="dialog" aria-modal="true" aria-labelledby="diary-entry-edit-title" onClick={onClose}>
       <form className="diary-entry-edit-panel" onClick={event => event.stopPropagation()} onSubmit={submit}>
-        <header>
-          <div><h2 id="diary-entry-edit-title">编辑日记</h2><p>修改只影响这篇日记，不会改变原始写作日期。</p></div>
-          <button type="button" className="diary-icon-btn" onClick={onClose} aria-label="关闭"><X size={18} /></button>
-        </header>
+        <header><div><h2 id="diary-entry-edit-title">编辑日记</h2><p>保留段落、引用、涂改和待办清单的原有结构。</p></div><button type="button" className="diary-icon-btn" onClick={onClose} aria-label="关闭"><X size={18} /></button></header>
         <label><span>标题</span><input value={title} maxLength={80} onChange={event => setTitle(event.target.value)} /></label>
         <div className="diary-entry-edit-grid">
           <label><span>日期</span><input value={dateLabel} maxLength={40} onChange={event => setDateLabel(event.target.value)} /></label>
           <label><span>天气</span><input value={weather} maxLength={60} onChange={event => setWeather(event.target.value)} /></label>
           <label><span>心情</span><input value={mood} maxLength={60} onChange={event => setMood(event.target.value)} /></label>
-          <label><span>标签</span><input value={tags} maxLength={100} onChange={event => setTags(event.target.value)} placeholder="用顿号分隔" /></label>
+          <label><span>标签</span><input value={tags} maxLength={100} onChange={event => setTags(event.target.value)} /></label>
         </div>
-        <label className="diary-entry-edit-body"><span>正文</span><textarea value={body} maxLength={6000} rows={12} onChange={event => setBody(event.target.value)} /></label>
-        <footer>
-          <button type="button" onClick={onClose}>取消</button>
-          <button type="submit" disabled={!body.trim()}>保存修改</button>
-        </footer>
+        <div className="diary-entry-edit-body diary-entry-edit-blocks"><span>日记内容</span>
+          {blocks.map((block, index) => <section className="diary-edit-block" key={index}><small>{block.type === "todo" ? "待办清单" : block.type === "correction" ? "涂改记录" : block.type === "quote" ? "引用" : block.type === "image" ? "图片记录" : "正文"}</small>
+            {block.type === "todo" ? <><input value={block.title || ""} placeholder="清单标题" onChange={event => patchBlock(index, { title: event.target.value })} />{block.items.map((item, itemIndex) => <label className="diary-edit-todo-row" key={itemIndex}><input type="checkbox" checked={item.done} onChange={event => patchBlock(index, { items: block.items.map((v, i) => i === itemIndex ? { ...v, done: event.target.checked } : v) })} /><input value={item.text} onChange={event => patchBlock(index, { items: block.items.map((v, i) => i === itemIndex ? { ...v, text: event.target.value } : v) })} /></label>)}</>
+            : block.type === "correction" ? <><textarea value={block.text} onChange={event => patchBlock(index, { text: event.target.value })} /><textarea value={block.replacement || ""} placeholder="修改后的文字" onChange={event => patchBlock(index, { replacement: event.target.value })} /></>
+            : block.type === "image" ? <><input value={block.caption || ""} placeholder="图片说明" onChange={event => patchBlock(index, { caption: event.target.value })} /><textarea value={block.description} onChange={event => patchBlock(index, { description: event.target.value })} /></>
+            : <textarea value={block.text} onChange={event => patchBlock(index, { text: event.target.value })} />}
+          </section>)}
+        </div>
+        <footer><button type="button" onClick={onClose}>取消</button><button type="submit">保存修改</button></footer>
       </form>
     </div>
   );
