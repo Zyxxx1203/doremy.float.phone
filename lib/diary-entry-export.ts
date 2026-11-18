@@ -75,7 +75,7 @@ export async function downloadDiaryEntriesZip(entries: DiaryEntry[]): Promise<vo
     const folder = safeFileName(entry.characterName);
     const date = safeFileName(entry.dateLabel || entry.createdAt.slice(0, 10));
     const title = safeFileName(entry.title);
-    zip.file(folder + "/" + date + "_" + title + ".md", diaryEntryToMarkdown(entry));
+    zip.file(folder + "/" + date + "_" + title + "_" + safeFileName(entry.id.slice(-8)) + ".md", diaryEntryToMarkdown(entry));
   }
   const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
   downloadBlob(blob, "日记导出_" + new Date().toISOString().slice(0, 10) + ".zip");
@@ -118,4 +118,96 @@ export function printDiaryEntryAsPdf(entry: DiaryEntry): void {
   </style></head><body><h1>${title}</h1><div class="meta">${meta}</div>${body}<div class="author">${author}</div><script>window.onload=()=>setTimeout(()=>window.print(),350);</script></body></html>`);
   printWindow.document.close();
   printWindow.focus();
+}
+
+
+/** Render a complete, vertically paginated-feeling paper card as one long PNG. */
+export async function downloadDiaryEntryImage(entry: DiaryEntry): Promise<void> {
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("当前浏览器无法生成图片。");
+  const width = 1080;
+  const padding = 88;
+  const contentWidth = width - padding * 2;
+  const title = entry.title || "未命名日记";
+  const meta = [entry.characterName, entry.dateLabel, entry.weather].filter(Boolean).join("  ·  ");
+  const body = entryBody(entry);
+
+  const wrap = (value: string, font: string, maxWidth: number): string[] => {
+    context.font = font;
+    const lines: string[] = [];
+    for (const paragraph of value.split("\n")) {
+      if (!paragraph) { lines.push(""); continue; }
+      let line = "";
+      for (const character of Array.from(paragraph)) {
+        const candidate = line + character;
+        if (line && context.measureText(candidate).width > maxWidth) {
+          lines.push(line);
+          line = character;
+        } else {
+          line = candidate;
+        }
+      }
+      if (line) lines.push(line);
+    }
+    return lines;
+  };
+
+  const titleFont = '600 54px "Noto Serif SC", "Songti SC", serif';
+  const bodyFont = '32px "Noto Serif SC", "Songti SC", serif';
+  const titleLines = wrap(title, titleFont, contentWidth);
+  const bodyLines = wrap(body, bodyFont, contentWidth);
+  const titleLineHeight = 76;
+  const bodyLineHeight = 60;
+  const metaHeight = 56;
+  const footerHeight = 110;
+  const height = Math.max(900, padding * 2 + titleLines.length * titleLineHeight + metaHeight + bodyLines.length * bodyLineHeight + footerHeight);
+  if (height > 30000) throw new Error("文章太长，暂时无法生成单张图片，请改用 PDF 或 Markdown 导出。");
+  canvas.width = width;
+  canvas.height = height;
+
+  context.fillStyle = "#f7f2e8";
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = "#fffdf7";
+  context.fillRect(34, 34, width - 68, height - 68);
+  context.strokeStyle = "rgba(117, 98, 70, .2)";
+  context.lineWidth = 2;
+  context.strokeRect(54, 54, width - 108, height - 108);
+  context.strokeStyle = "rgba(117, 98, 70, .1)";
+  context.beginPath();
+  context.moveTo(padding, 150);
+  context.lineTo(width - padding, 150);
+  context.stroke();
+
+  let y = padding + 38;
+  context.fillStyle = "#40392f";
+  context.font = titleFont;
+  context.textBaseline = "top";
+  for (const line of titleLines) {
+    context.fillText(line, padding, y);
+    y += titleLineHeight;
+  }
+  y += 16;
+  context.fillStyle = "#8b806f";
+  context.font = '24px "Noto Sans SC", sans-serif';
+  context.fillText(meta, padding, y);
+  y += metaHeight + 18;
+
+  context.fillStyle = "#39352f";
+  context.font = bodyFont;
+  for (const line of bodyLines) {
+    if (line) context.fillText(line, padding, y);
+    y += bodyLineHeight;
+  }
+
+  context.fillStyle = "#9a8d79";
+  context.font = '22px "Noto Sans SC", sans-serif';
+  context.textAlign = "right";
+  context.fillText("PRIVATE DIARY", width - padding, height - padding - 26);
+  context.textAlign = "left";
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(value => value ? resolve(value) : reject(new Error("图片生成失败。")), "image/png");
+  });
+  downloadBlob(blob, safeFileName(entry.dateLabel || entry.createdAt.slice(0, 10)) + "_" + safeFileName(entry.title) + ".png");
 }
