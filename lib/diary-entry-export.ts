@@ -13,13 +13,14 @@ function safeFileName(value: string): string {
 }
 
 function entryBody(entry: DiaryEntry): string {
-  return String(entry.body || entry.blocks.map(block => {
-    if (block.type === "paragraph" || block.type === "quote") return block.text;
-    if (block.type === "correction") return block.replacement || block.text;
-    if (block.type === "image") return block.caption ? block.caption + "：" + block.description : block.description;
-    if (block.type === "todo") return block.items.map(item => (item.done ? "✓ " : "□ ") + item.text).join("\n");
+  return entry.blocks.map(block => {
+    if (block.type === "paragraph") return block.text;
+    if (block.type === "quote") return "> " + block.text.replace(/\n/g, "\n> ");
+    if (block.type === "correction") return block.replacement ? "~~" + block.text + "~~ → **" + block.replacement + "**" : "~~" + block.text + "~~";
+    if (block.type === "image") return "![" + (block.caption || "图片") + "](" + block.description + ")";
+    if (block.type === "todo") return [block.title ? "### " + block.title : "", ...block.items.map(item => (item.done ? "- [x] " : "- [ ] ") + item.text)].filter(Boolean).join("\n");
     return "";
-  }).filter(Boolean).join("\n\n")).trim();
+  }).filter(Boolean).join("\n\n");
 }
 
 export function diaryEntryToMarkdown(entry: DiaryEntry): string {
@@ -71,31 +72,6 @@ export async function downloadDiaryEntriesZip(entries: DiaryEntry[]): Promise<vo
   await downloadFile(blob, "日记导出_" + new Date().toISOString().slice(0, 10) + ".zip");
 }
 
-export async function shareDiaryEntry(entry: DiaryEntry): Promise<"shared" | "copied"> {
-  const text = diaryEntryToText(entry);
-  const title = entry.title || entry.characterName + "的日记";
-  const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
-  if (typeof nav.share === "function") {
-    try {
-      await nav.share({ title, text });
-      return "shared";
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") throw error;
-      // Fall through to clipboard/native copy if the Web Share implementation is unavailable.
-    }
-  }
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return "copied";
-    } catch {
-      // Android WebView may expose clipboard but silently reject the operation.
-    }
-  }
-  const nativeBridge = (window as Window & { AndroidShell?: { copyText?: (value: string) => boolean } }).AndroidShell;
-  if (nativeBridge?.copyText?.(text)) return "copied";
-  throw new Error("当前环境不支持系统分享或剪贴板。");
-}
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, char => ({
@@ -104,16 +80,16 @@ function escapeHtml(value: string): string {
 }
 
 /** Opens a print-ready, article-only page; the browser print dialog can save it as PDF. */
-export function printDiaryEntryAsPdf(entry: DiaryEntry): void {
+export function printDiaryEntryAsPdf(entry: DiaryEntry, fontFamily = "serif", fontScale = 1): void {
   const printWindow = window.open("", "_blank");
   if (!printWindow) throw new Error("浏览器拦截了打印页面，请允许此站点打开新窗口后重试。");
-  const body = entryBody(entry).split(/\n{2,}/).map(paragraph => "<p>" + escapeHtml(paragraph).replace(/\n/g, "<br>") + "</p>").join("");
+  const body = entry.blocks.map(block => { if (block.type === "todo") return "<section><h3>" + escapeHtml(block.title || "待办") + "</h3><ul>" + block.items.map(item => "<li>" + (item.done ? "☑" : "□") + " " + escapeHtml(item.text) + "</li>").join("") + "</ul></section>"; if (block.type === "quote") return "<blockquote>" + escapeHtml(block.text) + "</blockquote>"; if (block.type === "correction") return "<p><del>" + escapeHtml(block.text) + "</del> <ins>" + escapeHtml(block.replacement || "") + "</ins></p>"; if (block.type === "image") return "<figure><figcaption>" + escapeHtml(block.caption || "") + "</figcaption><p>" + escapeHtml(block.description) + "</p></figure>"; return "<p>" + escapeHtml(block.text) + "</p>"; }).join("");
   const title = escapeHtml(entry.title || "未命名日记");
   const meta = escapeHtml([entry.dateLabel, entry.weather].filter(Boolean).join(" · "));
   const author = escapeHtml(entry.characterName);
   printWindow.document.open();
   printWindow.document.write(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>
-    @page{size:auto;margin:22mm 18mm}*{box-sizing:border-box}body{max-width:720px;margin:0 auto;color:#302d28;font-family:"Noto Serif SC","Songti SC",serif;line-height:1.9;font-size:15px}
+    @page{size:auto;margin:22mm 18mm}*{box-sizing:border-box}body{max-width:720px;margin:0 auto;color:#302d28;font-family:"${escapeHtml(fontFamily)}","Noto Serif SC","Songti SC",serif;line-height:1.9;font-size:${15*fontScale}px}
     h1{font-size:25px;font-weight:500;line-height:1.4;margin:0 0 12px}.meta{color:#81786d;font-size:12px;margin-bottom:34px}
     p{white-space:pre-wrap;margin:0 0 1.2em;text-indent:2em;overflow-wrap:anywhere}.author{text-align:right;color:#81786d;margin-top:36px;font-size:13px}
   </style></head><body><h1>${title}</h1><div class="meta">${meta}</div>${body}<div class="author">${author}</div><script>window.onload=()=>setTimeout(()=>window.print(),350);</script></body></html>`);
