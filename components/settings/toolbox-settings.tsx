@@ -1297,19 +1297,18 @@ export function ToolboxSettings() {
                 const onConfirm = () => { if (isNewRest) confirmDraftRest(); else setEditRestId(null); };
                 const onCancel = () => { if (isNewRest) cancelDraftRest(); else setEditRestId(null); };
                 const title = editRest.builtIn ? editRest.name : (isNewRest ? "添加工具" : "编辑工具");
-                const testSearchConnection = async () => {
-                    setSearchTestState({ loading: true });
-                    try {
-                        const result = await testBuiltinSearchConnection(searchProvider, String(editRest.fixedParams?.api_key || ""));
-                        setSearchTestState({ loading: false, message: result.message });
-                    } catch (error) {
-                        setSearchTestState({ loading: false, error: true, message: error instanceof Error ? error.message : String(error) });
-                    }
-                };
-
                 if (editRest.builtIn) {
                     const isSearchTool = editRest.id === "builtin_search";
                     const searchProvider = editRest.fixedParams?.provider === "tavily" ? "tavily" : "deepseek";
+                    const testSearchConnection = async () => {
+                        setSearchTestState({ loading: true });
+                        try {
+                            const result = await testBuiltinSearchConnection(searchProvider, String(editRest.fixedParams?.api_key || ""));
+                            setSearchTestState({ loading: false, message: result.message });
+                        } catch (error) {
+                            setSearchTestState({ loading: false, error: true, message: error instanceof Error ? error.message : String(error) });
+                        }
+                    };
                     const apiKeyField = isSearchTool ? "api_key" : Object.keys(editRest.fixedParams || {})[0];
                     return (
                         <ContentDialog title={title} confirmLabel="完成" onConfirm={onConfirm} onCancel={onCancel}>
