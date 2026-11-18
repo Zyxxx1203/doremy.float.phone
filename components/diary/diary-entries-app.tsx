@@ -259,7 +259,7 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
   }, [notify, refreshEntries]);
 
   const handleSaveEdit = useCallback((entryId: string, patch: { title: string; dateLabel: string; mood: string; weather: string; tags: string[]; blocks: DiaryEntryBlock[] }) => {
-    const updated = updateDiaryEntry(entryId, { ...patch, body: patch.blocks.map(blockPlainText).filter(Boolean).join("\\n\\n") });
+    const updated = updateDiaryEntry(entryId, { ...patch, body: patch.blocks.map(blockPlainText).filter(Boolean).join("\n\n") });
     if (!updated) { notify("日记保存失败，请重试。"); return; }
     setActiveEntry(updated); setEditingEntry(null); refreshEntries(); notify("日记已保存，原有内容结构已保留。");
   }, [notify, refreshEntries]);
@@ -752,7 +752,8 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
           </div>
         ) : activeBook ? (
           <div className="diary-entry-list">
-            {activeBook.entries.map(entry => (
+            <nav className="diary-entry-month-nav" aria-label="按月份浏览"><button type="button" aria-current={activeMonth === "all" ? "page" : undefined} onClick={() => setActiveMonth("all")}>全部</button>{monthGroups.map(([month, items]) => <button type="button" key={month} aria-current={activeMonth === month ? "page" : undefined} onClick={() => setActiveMonth(month)}>{month} · {items.length}</button>)}</nav>
+            {activeBook.entries.filter(entry => activeMonth === "all" || (() => { const d = new Date(entry.createdAt); return d.getFullYear() + "年" + String(d.getMonth() + 1).padStart(2, "0") + "月" === activeMonth; })()).map(entry => (
               <DiaryEntryCard
                 key={entry.id}
                 entry={entry}
@@ -851,6 +852,9 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
           onExportImage={() => void handleExportImage(activeEntry)}
           onPrint={() => handlePrintEntry(activeEntry)}
           onRestore={() => handleRestorePrevious(activeEntry)}
+          onPrevious={() => moveReadingPage(-1)} onNext={() => moveReadingPage(1)}
+          readingIndex={readingIndex} readingCount={readingEntries.length}
+          onToggleExcerpt={excerpt => toggleExcerpt(activeEntry, excerpt)} onOpenExcerpts={() => setExcerptsOpen(true)}
         />
       ) : null}
 
@@ -1263,6 +1267,12 @@ function DiaryEntryDetail({
   onExportImage: () => void;
   onPrint: () => void;
   onRestore: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
+  readingIndex: number;
+  readingCount: number;
+  onToggleExcerpt: (excerpt: string) => void;
+  onOpenExcerpts: () => void;
 }) {
   const markers = getEntryMarkers(entry);
   return (
@@ -1286,13 +1296,18 @@ function DiaryEntryDetail({
             </div>
           </header>
           <div className="diary-entry-blocks">
-            {entry.blocks.map((block, index) => (
-              <DiaryBlockView key={`${block.type}-${index}`} block={block} />
-            ))}
+            {entry.blocks.map((block, index) => {
+              const excerpt = blockPlainText(block);
+              const saved = Boolean(excerpt && entry.curatedExcerpts?.includes(excerpt));
+              return <section className="diary-entry-reading-block" key={block.type + "-" + index}><DiaryBlockView block={block} />{excerpt ? <button type="button" className="diary-excerpt-toggle" aria-pressed={saved} onClick={() => onToggleExcerpt(excerpt)}>{saved ? "已摘录" : "摘录此段"}</button> : null}</section>;
+            })}
           </div>
-          <nav className="diary-entry-reading-nav"><button type="button" onClick={onPrevious} disabled={readingIndex <= 0}>上一篇</button><span>{readingIndex >= 0 ? readingIndex + 1 : 0} / {readingCount}</span><button type="button" onClick={onNext} disabled={readingIndex < 0 || readingIndex >= readingCount - 1}>下一篇</button></nav>\n          <div className="diary-entry-detail-actions">
+          <nav className="diary-entry-reading-nav"><button type="button" onClick={onPrevious} disabled={readingIndex <= 0}>上一篇</button><span>{readingIndex >= 0 ? readingIndex + 1 : 0} / {readingCount}</span><button type="button" onClick={onNext} disabled={readingIndex < 0 || readingIndex >= readingCount - 1}>下一篇</button></nav>
+          <div className="diary-entry-detail-actions">
             <button type="button" onClick={onToggleFavorite} aria-pressed={Boolean(entry.isFavorite)}><Heart size={15} fill={entry.isFavorite ? "currentColor" : "none"} />{entry.isFavorite ? "已珍藏" : "珍藏"}</button>
-            <button type="button" onClick={onEdit}><Pencil size={15} />编辑</button>\n            <button type="button" onClick={onOpenExcerpts}>精选摘录（{entry.curatedExcerpts?.length ?? 0}）</button>\n            <button type="button" onClick={() => onExport("txt")}>导出 TXT</button>
+            <button type="button" onClick={onEdit}><Pencil size={15} />编辑</button>
+            <button type="button" onClick={onOpenExcerpts}>精选摘录（{entry.curatedExcerpts?.length ?? 0}）</button>
+            <button type="button" onClick={() => onExport("txt")}>导出 TXT</button>
             <button type="button" onClick={() => onExport("md")}>导出 Markdown</button>
             <button type="button" onClick={onExportImage}>图片</button>
             <button type="button" onClick={onPrint}>PDF</button>
