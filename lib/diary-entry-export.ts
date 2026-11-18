@@ -80,7 +80,7 @@ function escapeHtml(value: string): string {
 }
 
 /** Opens a print-ready, article-only page; the browser print dialog can save it as PDF. */
-export function printDiaryEntryAsPdf(entry: DiaryEntry, fontFamily = "serif", fontScale = 1): void {
+export function printDiaryEntryAsPdf(entry: DiaryEntry, fontFamily = "serif", fontScale = 1, fontDataUrl?: string | null): void {
   const printWindow = window.open("", "_blank");
   if (!printWindow) throw new Error("浏览器拦截了打印页面，请允许此站点打开新窗口后重试。");
   const body = entry.blocks.map(block => { if (block.type === "todo") return "<section><h3>" + escapeHtml(block.title || "待办") + "</h3><ul>" + block.items.map(item => "<li>" + (item.done ? "☑" : "□") + " " + escapeHtml(item.text) + "</li>").join("") + "</ul></section>"; if (block.type === "quote") return "<blockquote>" + escapeHtml(block.text) + "</blockquote>"; if (block.type === "correction") return "<p><del>" + escapeHtml(block.text) + "</del> <ins>" + escapeHtml(block.replacement || "") + "</ins></p>"; if (block.type === "image") return "<figure><figcaption>" + escapeHtml(block.caption || "") + "</figcaption><p>" + escapeHtml(block.description) + "</p></figure>"; return "<p>" + escapeHtml(block.text) + "</p>"; }).join("");
@@ -88,8 +88,8 @@ export function printDiaryEntryAsPdf(entry: DiaryEntry, fontFamily = "serif", fo
   const meta = escapeHtml([entry.dateLabel, entry.weather].filter(Boolean).join(" · "));
   const author = escapeHtml(entry.characterName);
   printWindow.document.open();
-  printWindow.document.write(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>
-    @page{size:auto;margin:22mm 18mm}*{box-sizing:border-box}body{max-width:720px;margin:0 auto;color:#302d28;font-family:"${escapeHtml(fontFamily)}","Noto Serif SC","Songti SC",serif;line-height:1.9;font-size:${15*fontScale}px}
+  printWindow.document.write(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>${fontDataUrl ? "@font-face{font-family:DiaryExportFont;src:url('" + fontDataUrl + "')}" : ""}
+    @page{size:auto;margin:22mm 18mm}*{box-sizing:border-box}body{max-width:720px;margin:0 auto;color:#302d28;font-family:${fontDataUrl ? "'DiaryExportFont'," : ""}"${escapeHtml(fontFamily)}","Noto Serif SC","Songti SC",serif;line-height:1.9;font-size:${15*fontScale}px}
     h1{font-size:25px;font-weight:500;line-height:1.4;margin:0 0 12px}.meta{color:#81786d;font-size:12px;margin-bottom:34px}
     p{white-space:pre-wrap;margin:0 0 1.2em;text-indent:2em;overflow-wrap:anywhere}.author{text-align:right;color:#81786d;margin-top:36px;font-size:13px}
   </style></head><body><h1>${title}</h1><div class="meta">${meta}</div>${body}<div class="author">${author}</div><script>window.onload=()=>setTimeout(()=>window.print(),350);</script></body></html>`);
@@ -99,7 +99,7 @@ export function printDiaryEntryAsPdf(entry: DiaryEntry, fontFamily = "serif", fo
 
 
 /** Render a complete, vertically paginated-feeling paper card as one long PNG. */
-export async function downloadDiaryEntryImage(entry: DiaryEntry): Promise<void> {
+export async function downloadDiaryEntryImage(entry: DiaryEntry, fontFamily = '"Noto Serif SC", "Songti SC", serif', fontScale = 1, fontDataUrl?: string | null): Promise<void> {
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
   if (!context) throw new Error("当前浏览器无法生成图片。");
@@ -130,8 +130,10 @@ export async function downloadDiaryEntryImage(entry: DiaryEntry): Promise<void> 
     return lines;
   };
 
-  const titleFont = '600 54px "Noto Serif SC", "Songti SC", serif';
-  const bodyFont = '32px "Noto Serif SC", "Songti SC", serif';
+  if (fontDataUrl) { const font = new FontFace("DiaryExportFont", "url(" + fontDataUrl + ")"); await font.load(); document.fonts.add(font); }
+  const family = fontDataUrl ? '"DiaryExportFont"' : fontFamily;
+  const titleFont = "600 " + (54 * fontScale) + "px " + family;
+  const bodyFont = (32 * fontScale) + "px " + family;
   const titleLines = wrap(title, titleFont, contentWidth);
   const bodyLines = wrap(body, bodyFont, contentWidth);
   const titleLineHeight = 76;
