@@ -548,7 +548,7 @@ function buildToolNameMacroContext(context?: ToolExecutionContext) {
  */
 function resolveNativeToolCall(call: ToolCall, context?: ToolExecutionContext): ToolCall {
     const requested = call.name.trim();
-    if (!requested || !/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(requested)) return call;
+    if (!/^action_?[a-z0-9]{1,6}(?:_[2-9]\\d*)?$/i.test(requested)) return call;
 
     const enabledTools = getEnabledTools(context?.appId ?? "chat");
     if (enabledTools.length === 0) return call;
@@ -574,9 +574,8 @@ function resolveNativeToolCall(call: ToolCall, context?: ToolExecutionContext): 
     // First pass mirrors the initial native-tool registration order, including loader
     // names because they participate in collision suffix allocation.
     for (const tool of enabledTools) {
-        const subTools = tool.source === "internal"
-            ? getInternalCapabilitySubToolDefinitions(getInternalCapability(tool.sourceId)!)
-            : [];
+        const capability = tool.source === "internal" ? getInternalCapability(tool.sourceId) : undefined;
+        const subTools = capability ? getInternalCapabilitySubToolDefinitions(capability) : [];
         const isSingle = tool.source === "life"
             || tool.source === "rest"
             || tool.source === "composite"
