@@ -3898,3 +3898,167 @@
 @keyframes diary-generating-spin {
   to { transform: rotate(360deg); }
 }
+
+
+/* ---- 日记编辑、珍藏与导出 ---- */
+.diary-entry-header-actions .note-wall-menu-btn.is-active {
+  color: #a34f63;
+  background: rgba(163, 79, 99, 0.09);
+}
+.diary-entry-header-actions .note-wall-menu-btn:disabled {
+  opacity: 0.42;
+  cursor: wait;
+}
+.diary-entry-card-favorite {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  color: #b85c70;
+  font-size: 17px;
+  line-height: 1;
+}
+.diary-entry-detail-weather {
+  display: block;
+  margin-top: 7px;
+  color: rgba(52, 46, 35, 0.56);
+  font-size: calc(12px*var(--app-text-scale,1));
+}
+.diary-entry-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 18px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(67, 54, 35, 0.1);
+  border-bottom: 1px solid rgba(67, 54, 35, 0.1);
+}
+.diary-entry-detail-actions button {
+  min-height: 32px;
+  padding: 0 9px;
+  border: 1px solid rgba(67, 54, 35, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.52);
+  color: rgba(52, 39, 29, 0.78);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-family: var(--app-font-family);
+  font-size: calc(11px*var(--app-text-scale,1));
+  white-space: nowrap;
+  cursor: pointer;
+}
+.diary-entry-detail-actions button[aria-pressed="true"] {
+  color: #a34f63;
+  border-color: rgba(163, 79, 99, 0.24);
+  background: rgba(163, 79, 99, 0.08);
+}
+.diary-entry-edit-backdrop {
+  z-index: 90;
+}
+.diary-entry-edit-panel {
+  width: min(520px, calc(100vw - 28px));
+  max-height: min(86vh, 760px);
+  overflow: auto;
+  display: grid;
+  gap: 13px;
+  padding: 18px;
+  background: #fffdf7;
+  color: #302d28;
+  box-shadow: 0 16px 42px rgba(45, 36, 24, 0.2);
+}
+.diary-entry-edit-panel > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(67, 54, 35, 0.12);
+}
+.diary-entry-edit-panel h2 {
+  margin: 0;
+  font-size: calc(19px*var(--app-text-scale,1));
+  font-weight: 600;
+}
+.diary-entry-edit-panel header p {
+  margin: 5px 0 0;
+  color: rgba(52, 39, 29, 0.56);
+  font-size: calc(12px*var(--app-text-scale,1));
+  line-height: 1.45;
+}
+.diary-entry-edit-panel label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  color: rgba(52, 39, 29, 0.72);
+  font-size: calc(12px*var(--app-text-scale,1));
+}
+.diary-entry-edit-panel input,
+.diary-entry-edit-panel textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(67, 54, 35, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #302d28;
+  padding: 10px 11px;
+  font: inherit;
+  font-size: calc(14px*var(--app-text-scale,1));
+  outline: none;
+}
+.diary-entry-edit-panel input:focus,
+.diary-entry-edit-panel textarea:focus {
+  border-color: rgba(92, 116, 91, 0.55);
+  box-shadow: 0 0 0 3px rgba(92, 116, 91, 0.08);
+}
+.diary-entry-edit-panel textarea {
+  min-height: 240px;
+  resize: vertical;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+.diary-entry-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.diary-entry-edit-panel > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+.diary-entry-edit-panel > footer button {
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid rgba(67, 54, 35, 0.14);
+  border-radius: 8px;
+  background: rgba(67, 54, 35, 0.05);
+  color: #302d28;
+  font: inherit;
+  font-size: calc(13px*var(--app-text-scale,1));
+  cursor: pointer;
+}
+.diary-entry-edit-panel > footer button[type="submit"] {
+  border-color: transparent;
+  background: #4e6650;
+  color: #fff;
+}
+.diary-entry-edit-panel > footer button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+@media (max-width: 420px) {
+  .diary-entry-edit-panel {
+    padding: 14px;
+  }
+  .diary-entry-edit-grid {
+    gap: 8px;
+  }
+  .diary-entry-detail-actions {
+    gap: 5px;
+  }
+  .diary-entry-detail-actions button {
+    padding: 0 8px;
+  }
+}
