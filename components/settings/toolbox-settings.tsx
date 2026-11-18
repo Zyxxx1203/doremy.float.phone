@@ -33,7 +33,7 @@ import {
     NOTE_WALL_CAPABILITY_ID,
     TOOLBOX_MANAGEMENT_CAPABILITY_ID,
 } from "@/lib/internal-capability-storage";
-import { discoverMcpTools, startMcpOAuth } from "@/lib/tool-executor";
+import { discoverMcpTools, startMcpOAuth, testBuiltinSearchConnection } from "@/lib/tool-executor";
 import { getMaxToolRounds, loadChatAppSettings, saveChatAppSettings } from "@/lib/chat-storage";
 import { SettingsContext } from "@/components/phone-settings-app";
 import { Toggle, Input, Textarea, Select } from "@/components/ui/form";
@@ -128,6 +128,7 @@ export function ToolboxSettings() {
     const [confirmDeleteType, setConfirmDeleteType] = useState<"rest" | "restPackage" | "composite" | "compositePackage" | "mcp">("rest");
     const [isDiscovering, setIsDiscovering] = useState(false);
     const [isAuthorizing, setIsAuthorizing] = useState(false);
+    const [searchTestState, setSearchTestState] = useState<{ loading: boolean; message?: string; error?: boolean } | null>(null);
     // MCP 操作结果统一走一次性弹窗，不在编辑页里留常驻文案
     const [mcpNotice, setMcpNotice] = useState<{ title: string; message: string; error?: boolean } | null>(null);
     const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
@@ -1296,6 +1297,15 @@ export function ToolboxSettings() {
                 const onConfirm = () => { if (isNewRest) confirmDraftRest(); else setEditRestId(null); };
                 const onCancel = () => { if (isNewRest) cancelDraftRest(); else setEditRestId(null); };
                 const title = editRest.builtIn ? editRest.name : (isNewRest ? "添加工具" : "编辑工具");
+                const testSearchConnection = async () => {
+                    setSearchTestState({ loading: true });
+                    try {
+                        const result = await testBuiltinSearchConnection(searchProvider, String(editRest.fixedParams?.api_key || ""));
+                        setSearchTestState({ loading: false, message: result.message });
+                    } catch (error) {
+                        setSearchTestState({ loading: false, error: true, message: error instanceof Error ? error.message : String(error) });
+                    }
+                };
 
                 if (editRest.builtIn) {
                     const isSearchTool = editRest.id === "builtin_search";
@@ -1327,7 +1337,17 @@ export function ToolboxSettings() {
                                     </div>
                                 )}
                                 {isSearchTool ? (
-                                    <span className="menu-desc">搜索通过站点代理请求，API Key 不会发送给模型。</span>
+                                    <div className="flex flex-col gap-2">
+                                        <span className="menu-desc">搜索通过站点代理请求，API Key 不会发送给模型。</span>
+                                        <button type="button" className="ui-secondary-btn self-start" disabled={searchTestState?.loading || !String(editRest.fixedParams?.api_key || "").trim()} onClick={testSearchConnection}>
+                                            {searchTestState?.loading ? "测试中…" : "测试连接"}
+                                        </button>
+                                        {searchTestState?.message && (
+                                            <span role="status" className={searchTestState.error ? "text-xs text-red-500" : "text-xs text-green-600"}>
+                                                {searchTestState.message}
+                                            </span>
+                                        )}
+                                    </div>
                                 ) : (
                                     <div className="flex items-center justify-between gap-3">
                                         <span className="menu-desc">直连模式（跳过服务端代理，无超时限制）</span>
