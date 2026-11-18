@@ -4077,3 +4077,15 @@
 .diary-entry-month-nav button[aria-current=page] { background:rgba(140,100,70,.14); }
 .diary-entry-reading-nav { display:flex; justify-content:space-between; gap:12px; padding:14px 0; }
 .diary-entry-reading-nav button { border:1px solid rgba(90,75,50,.2); border-radius:20px; padding:8px 14px; background:transparent; }
+
+.diary-entry-month-nav{position:sticky;top:0;z-index:4;background:rgba(250,247,239,.96)}
+.diary-entry-reading-block{position:relative;padding-bottom:22px}
+.diary-excerpt-toggle{display:block;margin:5px 0 0 auto;border:0;background:transparent;color:#94704e;font-size:12px;padding:4px 0}
+.diary-entry-reading-nav{align-items:center}
+.diary-entry-reading-nav button:disabled{opacity:.35;cursor:default}
+.diary-excerpt-panel{width:min(520px,calc(100vw - 28px));max-height:82vh;overflow:auto;padding:18px;background:#fffdf7;display:grid;gap:10px}
+.diary-excerpt-panel header{display:flex;align-items:center;justify-content:space-between}
+.diary-excerpt-panel h2{margin:0}
+.diary-excerpt-item{display:grid;gap:7px;text-align:left;padding:12px;border:1px solid rgba(90,75,50,.16);background:rgba(255,255,255,.7);color:inherit}
+.diary-excerpt-item span{white-space:pre-wrap;line-height:1.65}
+.diary-excerpt-item small{opacity:.6}
