@@ -47,6 +47,7 @@ assert.doesNotMatch(app, /const continuingScene = next\.scenes\.find\(scene => s
 assert.match(app, /const existingRoom = findLifeSceneForLocation\(next\.scenes, location\.id, location\.name\)/, "go-find-character must reuse or create the destination location room");
 assert.match(app, /findLifeSceneForLocation\(stateRef\.current\.scenes, selectedLocation\.id\)/, "creating/reopening a location must reuse its canonical room");
 assert.match(app, /const playerLocation = normalized\.locations\.find\(location => location\.id === restoredPlayer\?\.actualLocationId\)/, "startup must restore from the player actual location before considering a prior room");
+assert.match(app, /const roomNeedsUpdate = !playerRoom/, "a new actual location must get its own room instead of borrowing another location room");
 assert.doesNotMatch(runtime, /eventId: event\.id,\s*participants/, "scheduled invitations must not create event-owned chat rooms");
 assert.doesNotMatch(runtime, /locationId: nextLocationId, locationName: nextLocationName/, "schedule settlement must not rewrite the active room location");
 
