@@ -87,6 +87,7 @@ export function printDiaryEntryAsPdf(entry: DiaryEntry, fontFamily = "serif", fo
   const title = escapeHtml(entry.title || "未命名日记");
   const meta = escapeHtml([entry.dateLabel, entry.weather].filter(Boolean).join(" · "));
   const author = escapeHtml(entry.characterName);
+  const safeFontFamily = fontFamily.replaceAll('"', "").replaceAll("'", "");
   printWindow.document.open();
   printWindow.document.write(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>${fontDataUrl ? "@font-face{font-family:DiaryExportFont;src:url('" + fontDataUrl + "')}" : ""}
     @page{size:auto;margin:22mm 18mm}*{box-sizing:border-box}body{max-width:720px;margin:0 auto;color:#302d28;font-family:${fontDataUrl ? "'DiaryExportFont'," : ""}"${escapeHtml(fontFamily)}","Noto Serif SC","Songti SC",serif;line-height:1.9;font-size:${15*fontScale}px}
