@@ -268,6 +268,36 @@ async function proxyFetch(
     }
 }
 
+export async function testBuiltinSearchConnection(
+    provider: "deepseek" | "tavily",
+    apiKey: string,
+): Promise<{ resultCount: number; message: string }> {
+    const key = apiKey.trim();
+    if (!key) throw new Error("请先填写 API Key。");
+    const url = provider === "deepseek" ? "https://api.deepseek.com/v1/tools/search" : "https://api.tavily.com/search";
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const body = provider === "deepseek"
+        ? { query: "OpenAI", count: 1, need_content: false }
+        : { api_key: key, query: "OpenAI", search_depth: "basic", max_results: 1, include_answer: false };
+    if (provider === "deepseek") headers.Authorization = "Bearer " + key;
+    const response = await proxyFetch(url, { method: "POST", headers, body, timeoutMs: 20000 });
+    let payload: Record<string, unknown> = {};
+    try { payload = JSON.parse(response.text) as Record<string, unknown>; }
+    catch {
+        if (response.status < 200 || response.status >= 300) throw new Error("接口返回 HTTP " + response.status + "：" + response.text.slice(0, 240));
+        throw new Error("接口返回了无法识别的数据，请检查代理或服务商接口。");
+    }
+    if (response.status < 200 || response.status >= 300) {
+        const error = payload.error;
+        const detail = typeof error === "string" ? error : error && typeof error === "object" && "message" in error
+            ? String((error as { message?: unknown }).message || JSON.stringify(error))
+            : String(payload.message || payload.detail || response.text);
+        throw new Error("HTTP " + response.status + "：" + detail.slice(0, 240));
+    }
+    const results = Array.isArray(payload.results) ? payload.results : [];
+    return { resultCount: results.length, message: results.length ? "连接成功，已返回 " + results.length + " 条搜索结果。" : "接口连接成功，但测试关键词没有返回结果。" };
+}
+
 // 直连模式：浏览器直接请求 MCP（本机/局域网地址服务端代理天然不可达且被 SSRF 防线拦截）。
 // 需要 MCP 服务器允许 CORS；仅支持 Streamable HTTP（POST）。
 async function directMcpFetch(
