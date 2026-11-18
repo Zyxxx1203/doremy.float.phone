@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
-import { Bot, ChevronLeft, Clock3, NotebookPen, Trash2, WandSparkles, X } from "lucide-react";
+import { Bot, ChevronLeft, Clock3, Download, Heart, NotebookPen, Pencil, RotateCcw, Share2, Trash2, WandSparkles, X } from "lucide-react";
 import { DotsThree } from "@phosphor-icons/react";
 
 import { loadCharacters } from "@/lib/character-storage";
@@ -15,6 +15,9 @@ import {
 import {
   createDiaryEntry,
   deleteDiaryEntry,
+  restoreDiaryEntryRevision,
+  setDiaryEntryFavorite,
+  updateDiaryEntry,
   loadDiaryEntries,
   loadDiaryEntryFontAssetId,
   loadDiaryEntryFontScale,
@@ -25,6 +28,7 @@ import {
 } from "@/lib/diary-entry-storage";
 import type { DiaryEntry, DiaryEntryBlock, DiaryEntryTimerSettings, DiaryEntryTrigger } from "@/lib/diary-entry-types";
 import { getThemeAssetDataUrl, saveThemeAssetFromBlob } from "@/lib/theme-storage";
+import { downloadDiaryEntriesZip, downloadDiaryEntry, printDiaryEntryAsPdf, shareDiaryEntry, type DiaryExportFormat } from "@/lib/diary-entry-export";
 
 const DIARY_USER_FONT_FAMILY = "AIPhoneDiaryEntryUserFont";
 const DIARY_USER_FONT_STYLE_ID = "ai-phone-diary-entry-user-font-face";
@@ -121,6 +125,9 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
   const [writePanelOpen, setWritePanelOpen] = useState(false);
   const [fontPanelOpen, setFontPanelOpen] = useState(false);
   const [activeEntry, setActiveEntry] = useState<DiaryEntry | null>(null);
+  const [editingEntry, setEditingEntry] = useState<DiaryEntry | null>(null);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [deleteCandidateEntry, setDeleteCandidateEntry] = useState<DiaryEntry | null>(null);
   const [activeCharacterId, setActiveCharacterId] = useState<string | null>(null);
   const [localGeneratingIds, setGeneratingCharacterIds] = useState<string[]>([]);
@@ -239,6 +246,90 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
     refreshEntries();
     notify(`已删除 ${entry.characterName} 的日记。`);
   }, [notify, refreshEntries]);
+
+  const handleToggleFavorite = useCallback((entry: DiaryEntry) => {
+    const updated = setDiaryEntryFavorite(entry.id, !entry.isFavorite);
+    if (!updated) return;
+    setActiveEntry(updated);
+    refreshEntries();
+    notify(updated.isFavorite ? "已加入珍藏。" : "已从珍藏中移除。");
+  }, [notify, refreshEntries]);
+
+  const handleSaveEdit = useCallback((entryId: string, patch: {
+    title: string; dateLabel: string; mood: string; weather: string; tags: string[]; body: string;
+  }) => {
+    const updated = updateDiaryEntry(entryId, {
+      ...patch,
+      blocks: buildDiaryParagraphBlocks(patch.body),
+    });
+    if (!updated) {
+      notify("日记保存失败，请重试。");
+      return;
+    }
+    setActiveEntry(updated);
+    setEditingEntry(null);
+    refreshEntries();
+    notify("日记已保存，原文版本也已保留。");
+  }, [notify, refreshEntries]);
+
+  const handleRestorePrevious = useCallback((entry: DiaryEntry) => {
+    const updated = restoreDiaryEntryRevision(entry.id);
+    if (!updated) {
+      notify("没有可恢复的旧版本。");
+      return;
+    }
+    setActiveEntry(updated);
+    refreshEntries();
+    notify("已恢复上一个版本，当前内容也已留档。");
+  }, [notify, refreshEntries]);
+
+  const handleShareEntry = useCallback(async (entry: DiaryEntry) => {
+    try {
+      const result = await shareDiaryEntry(entry);
+      notify(result === "shared" ? "已打开系统分享。" : "文章已复制到剪贴板。");
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return;
+      notify("分享失败：" + (error instanceof Error ? error.message : String(error)));
+    }
+  }, [notify]);
+
+  const handleExportEntry = useCallback((entry: DiaryEntry, format: DiaryExportFormat) => {
+    try {
+      downloadDiaryEntry(entry, format);
+      notify(format === "md" ? "Markdown 文件已导出。" : "TXT 文件已导出。");
+    } catch (error) {
+      notify("导出失败：" + String(error));
+    }
+  }, [notify]);
+
+  const handlePrintEntry = useCallback((entry: DiaryEntry) => {
+    try {
+      printDiaryEntryAsPdf(entry);
+      notify("已打开打印页面，可在系统打印选项中保存为 PDF。");
+    } catch (error) {
+      notify("PDF 导出失败：" + (error instanceof Error ? error.message : String(error)));
+    }
+  }, [notify]);
+
+  const handleExportZip = useCallback(async () => {
+    const scopedEntries = loadDiaryEntries().filter(entry => {
+      if (activeCharacterId && entry.characterId !== activeCharacterId) return false;
+      return !favoritesOnly || Boolean(entry.isFavorite);
+    });
+    if (!scopedEntries.length) {
+      notify("当前没有可导出的日记。");
+      return;
+    }
+    setIsExporting(true);
+    try {
+      await downloadDiaryEntriesZip(scopedEntries);
+      notify(`已导出 ${scopedEntries.length} 篇日记。`);
+    } catch (error) {
+      notify("批量导出失败：" + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setIsExporting(false);
+    }
+  }, [activeCharacterId, favoritesOnly, notify]);
 
   useEffect(() => {
     setCharacters(loadCharacters());
@@ -584,9 +675,13 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
     }));
   }, [entries, characters]);
 
+  const visibleBooks = useMemo(() => favoritesOnly
+    ? books.map(book => ({ ...book, entries: book.entries.filter(entry => entry.isFavorite) })).filter(book => book.entries.length > 0)
+    : books, [books, favoritesOnly]);
+  const visibleEntryCount = favoritesOnly ? entries.filter(entry => entry.isFavorite).length : entries.length;
   const activeBook = useMemo(
-    () => (activeCharacterId ? books.find(book => book.characterId === activeCharacterId) ?? null : null),
-    [activeCharacterId, books],
+    () => (activeCharacterId ? visibleBooks.find(book => book.characterId === activeCharacterId) ?? null : null),
+    [activeCharacterId, visibleBooks],
   );
   const activeBookBusy = Boolean(activeBook && generatingCharacterIds.includes(activeBook.characterId));
 
@@ -602,14 +697,14 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
         <button
           type="button"
           className="diary-icon-btn"
-          onClick={() => (activeBook ? setActiveCharacterId(null) : onBack())}
+          onClick={() => (activeBook ? setActiveCharacterId(null) : favoritesOnly ? setFavoritesOnly(false) : onBack())}
           aria-label="返回"
         >
           <ChevronLeft size={20} />
         </button>
         <div>
-          <h1>{activeBook ? `${activeBook.characterName} 的日记` : "日记"}</h1>
-          <p>{activeBook ? `共 ${activeBook.entries.length} 篇手写日常` : "每个角色一本，点开翻阅"}</p>
+          <h1>{activeBook ? `${activeBook.characterName} 的日记` : favoritesOnly ? "珍藏日记" : "日记"}</h1>
+          <p>{activeBook ? `共 ${activeBook.entries.length} 篇${favoritesOnly ? "珍藏" : "手写日常"}` : favoritesOnly ? `共 ${visibleEntryCount} 篇珍藏` : "每个角色一本，点开翻阅"}</p>
         </div>
         <input
           ref={fontFileRef}
@@ -619,6 +714,12 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
           onChange={handleDiaryFontUpload}
         />
         <span className="diary-entry-header-actions">
+          <button type="button" className={`note-wall-menu-btn ${favoritesOnly ? "is-active" : ""}`} onClick={() => { setActiveCharacterId(null); setFavoritesOnly(value => !value); }} aria-label={favoritesOnly ? "查看全部日记" : "查看珍藏日记"} title={favoritesOnly ? "查看全部日记" : "珍藏日记"}>
+            <Heart size={19} fill={favoritesOnly ? "currentColor" : "none"} />
+          </button>
+          <button type="button" className="note-wall-menu-btn" onClick={() => void handleExportZip()} disabled={isExporting || visibleEntryCount === 0} aria-label="批量导出日记" title={activeBook ? "导出本册日记 ZIP" : favoritesOnly ? "导出全部珍藏 ZIP" : "导出全部日记 ZIP"}>
+            <Download size={19} />
+          </button>
           <button
             type="button"
             className="note-wall-menu-btn diary-font-upload-btn"
@@ -635,12 +736,12 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
       </header>
 
       <main ref={entryMainRef} className="diary-entry-main">
-        {entries.length === 0 ? (
+        {visibleEntryCount === 0 ? (
           <div className="diary-entry-empty">
-            <NotebookPen size={34} strokeWidth={1.5} />
-            <h2>还没有日记</h2>
-            <p>让角色先写一篇，纸面会从这里开始铺开。</p>
-            <button type="button" onClick={() => setWritePanelOpen(true)}>让TA写一篇</button>
+            {favoritesOnly ? <Heart size={34} strokeWidth={1.5} /> : <NotebookPen size={34} strokeWidth={1.5} />}
+            <h2>{favoritesOnly ? "还没有珍藏" : "还没有日记"}</h2>
+            <p>{favoritesOnly ? "遇到喜欢的文章，点亮爱心就能收进这里。" : "让角色先写一篇，纸面会从这里开始铺开。"}</p>
+            {favoritesOnly ? <button type="button" onClick={() => setFavoritesOnly(false)}>返回全部日记</button> : <button type="button" onClick={() => setWritePanelOpen(true)}>让TA写一篇</button>}
           </div>
         ) : activeBook ? (
           <div className="diary-entry-list">
@@ -669,7 +770,7 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
           <div className="diary-shelf">
             {[0, 1].map(column => (
               <div className="diary-shelf-column" key={column}>
-                {books.filter((_, index) => index % 2 === column).map(book => (
+                {visibleBooks.filter((_, index) => index % 2 === column).map(book => (
                   <DiaryBookCover
                     key={book.characterId}
                     book={book}
@@ -683,7 +784,7 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
         )}
       </main>
 
-      {entries.length > 0 ? (
+      {entries.length > 0 && !favoritesOnly ? (
         activeBook ? (
           <button
             type="button"
@@ -734,7 +835,24 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
       ) : null}
 
       {activeEntry ? (
-        <DiaryEntryDetail entry={activeEntry} onClose={() => setActiveEntry(null)} />
+        <DiaryEntryDetail
+          entry={activeEntry}
+          onClose={() => setActiveEntry(null)}
+          onEdit={() => setEditingEntry(activeEntry)}
+          onToggleFavorite={() => handleToggleFavorite(activeEntry)}
+          onShare={() => void handleShareEntry(activeEntry)}
+          onExport={format => handleExportEntry(activeEntry, format)}
+          onPrint={() => handlePrintEntry(activeEntry)}
+          onRestore={() => handleRestorePrevious(activeEntry)}
+        />
+      ) : null}
+
+      {editingEntry ? (
+        <DiaryEntryEditPanel
+          entry={editingEntry}
+          onClose={() => setEditingEntry(null)}
+          onSave={patch => handleSaveEdit(editingEntry.id, patch)}
+        />
       ) : null}
 
       {deleteCandidateEntry ? (
@@ -831,6 +949,7 @@ function DiaryEntryCardContent({ entry }: { entry: DiaryEntry }) {
   return (
     <>
       <span className="diary-entry-card-kicker">DIARY</span>
+      {entry.isFavorite ? <span className="diary-entry-card-favorite" aria-label="已珍藏">♥</span> : null}
       {markers.length > 0 ? (
         <span className="diary-entry-card-markers">
           {markers.map(marker => <span key={marker} className="diary-entry-marker">{marker}</span>)}
@@ -1113,19 +1232,42 @@ function CharacterAvatarGrid({ characters, selectedIds, busyIds, disabled, onTog
   );
 }
 
-function DiaryEntryDetail({ entry, onClose }: { entry: DiaryEntry; onClose: () => void }) {
+function buildDiaryParagraphBlocks(body: string): DiaryEntryBlock[] {
+  const paragraphs = body.replace(/\r\n?/g, "\n").split(/\n{2,}/);
+  const blocks: DiaryEntryBlock[] = [];
+  for (const paragraph of paragraphs) {
+    const text = paragraph.trim();
+    if (!text) continue;
+    for (let offset = 0; offset < text.length; offset += 900) {
+      blocks.push({ type: "paragraph", text: text.slice(offset, offset + 900) });
+    }
+  }
+  return blocks.slice(0, 18);
+}
+
+function DiaryEntryDetail({
+  entry, onClose, onEdit, onToggleFavorite, onShare, onExport, onPrint, onRestore,
+}: {
+  entry: DiaryEntry;
+  onClose: () => void;
+  onEdit: () => void;
+  onToggleFavorite: () => void;
+  onShare: () => void;
+  onExport: (format: DiaryExportFormat) => void;
+  onPrint: () => void;
+  onRestore: () => void;
+}) {
   const markers = getEntryMarkers(entry);
   return (
     <div className="nw-modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
       <article className="diary-entry-detail-paper" onClick={(event) => event.stopPropagation()}>
-        <span className="diary-entry-paper-clip" aria-hidden="true">
-          <span />
-        </span>
+        <span className="diary-entry-paper-clip" aria-hidden="true"><span /></span>
         <div className="diary-entry-detail-scroll">
           <header>
             <div>
-              <span>日记详情</span>
+              <span>日记详情 · {entry.dateLabel || formatEntryTime(entry.createdAt)}</span>
               <h2>{entry.title}</h2>
+              {entry.weather ? <small className="diary-entry-detail-weather">{entry.weather}</small> : null}
             </div>
             <div className="diary-entry-detail-top">
               <button type="button" onClick={onClose}>关闭</button>
@@ -1136,17 +1278,78 @@ function DiaryEntryDetail({ entry, onClose }: { entry: DiaryEntry; onClose: () =
               ) : null}
             </div>
           </header>
+          <div className="diary-entry-detail-actions">
+            <button type="button" onClick={onToggleFavorite} aria-pressed={Boolean(entry.isFavorite)}>
+              <Heart size={15} fill={entry.isFavorite ? "currentColor" : "none"} />{entry.isFavorite ? "已珍藏" : "珍藏"}
+            </button>
+            <button type="button" onClick={onEdit}><Pencil size={15} />编辑</button>
+            <button type="button" onClick={onShare}><Share2 size={15} />分享</button>
+            <button type="button" onClick={() => onExport("txt")}>TXT</button>
+            <button type="button" onClick={() => onExport("md")}>MD</button>
+            <button type="button" onClick={onPrint}>PDF</button>
+            {entry.revisionHistory?.length ? (
+              <button type="button" onClick={onRestore}><RotateCcw size={15} />恢复上版</button>
+            ) : null}
+          </div>
           <div className="diary-entry-blocks">
             {entry.blocks.map((block, index) => (
               <DiaryBlockView key={`${block.type}-${index}`} block={block} />
             ))}
           </div>
           <footer className="diary-entry-detail-signature">
-            <span>{entry.characterName}</span>
+            <span>{entry.characterName}{entry.updatedAt !== entry.createdAt ? " · 已编辑" : ""}</span>
             <time>{formatEntryTime(entry.createdAt)}</time>
           </footer>
         </div>
       </article>
+    </div>
+  );
+}
+
+function DiaryEntryEditPanel({ entry, onClose, onSave }: {
+  entry: DiaryEntry;
+  onClose: () => void;
+  onSave: (patch: { title: string; dateLabel: string; mood: string; weather: string; tags: string[]; body: string }) => void;
+}) {
+  const [title, setTitle] = useState(entry.title);
+  const [dateLabel, setDateLabel] = useState(entry.dateLabel);
+  const [mood, setMood] = useState(entry.mood);
+  const [weather, setWeather] = useState(entry.weather);
+  const [tags, setTags] = useState(entry.tags.join("、"));
+  const [body, setBody] = useState(entry.body || entry.blocks.map(blockPlainText).filter(Boolean).join("\n\n"));
+
+  const submit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onSave({
+      title: title.trim() || "未命名日记",
+      dateLabel: dateLabel.trim(),
+      mood: mood.trim(),
+      weather: weather.trim(),
+      tags: tags.split(/[,，、\s]+/).map(item => item.trim()).filter(Boolean).slice(0, 5),
+      body: body.trim(),
+    });
+  };
+
+  return (
+    <div className="nw-modal-backdrop diary-entry-edit-backdrop" role="dialog" aria-modal="true" aria-labelledby="diary-entry-edit-title" onClick={onClose}>
+      <form className="diary-entry-edit-panel" onClick={event => event.stopPropagation()} onSubmit={submit}>
+        <header>
+          <div><h2 id="diary-entry-edit-title">编辑日记</h2><p>修改只影响这篇日记，不会改变原始写作日期。</p></div>
+          <button type="button" className="diary-icon-btn" onClick={onClose} aria-label="关闭"><X size={18} /></button>
+        </header>
+        <label><span>标题</span><input value={title} maxLength={80} onChange={event => setTitle(event.target.value)} /></label>
+        <div className="diary-entry-edit-grid">
+          <label><span>日期</span><input value={dateLabel} maxLength={40} onChange={event => setDateLabel(event.target.value)} /></label>
+          <label><span>天气</span><input value={weather} maxLength={60} onChange={event => setWeather(event.target.value)} /></label>
+          <label><span>心情</span><input value={mood} maxLength={60} onChange={event => setMood(event.target.value)} /></label>
+          <label><span>标签</span><input value={tags} maxLength={100} onChange={event => setTags(event.target.value)} placeholder="用顿号分隔" /></label>
+        </div>
+        <label className="diary-entry-edit-body"><span>正文</span><textarea value={body} maxLength={6000} rows={12} onChange={event => setBody(event.target.value)} /></label>
+        <footer>
+          <button type="button" onClick={onClose}>取消</button>
+          <button type="submit" disabled={!body.trim()}>保存修改</button>
+        </footer>
+      </form>
     </div>
   );
 }
