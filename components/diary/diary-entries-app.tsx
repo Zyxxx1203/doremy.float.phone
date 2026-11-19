@@ -1330,6 +1330,14 @@ function DiaryEntryEditPanel({ entry, onClose, onSave }: {
   const [tags, setTags] = useState(entry.tags.join("、"));
   const [blocks, setBlocks] = useState<DiaryEntryBlock[]>(() => JSON.parse(JSON.stringify(entry.blocks)));
   const patchBlock = (index: number, patch: Record<string, unknown>) => setBlocks(current => current.map((block, i) => i === index ? ({ ...block, ...patch } as DiaryEntryBlock) : block));
+  const patchParagraphGroup = (start: number, end: number, value: string) => {
+    const paragraphs = value.replace(/\\r\\n?/g, "\\n").split(/\\n{2,}/).map(text => text.trim()).filter(Boolean);
+    setBlocks(current => [
+      ...current.slice(0, start),
+      ...paragraphs.map(text => ({ type: "paragraph" as const, text })),
+      ...current.slice(end),
+    ]);
+  };
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onSave({ title: title.trim() || "未命名日记", dateLabel: dateLabel.trim(), mood: mood.trim(), weather: weather.trim(), tags: tags.split(/[,，、\s]+/).map(item => item.trim()).filter(Boolean).slice(0, 5), blocks });
@@ -1346,12 +1354,27 @@ function DiaryEntryEditPanel({ entry, onClose, onSave }: {
           <label><span>标签</span><input value={tags} maxLength={100} onChange={event => setTags(event.target.value)} /></label>
         </div>
         <div className="diary-entry-edit-body diary-entry-edit-blocks"><span>日记内容</span>
-          {blocks.map((block, index) => <section className="diary-edit-block" key={index}><small>{block.type === "todo" ? "待办清单" : block.type === "correction" ? "涂改记录" : block.type === "quote" ? "引用" : block.type === "image" ? "图片记录" : "正文"}</small>
-            {block.type === "todo" ? <><input value={block.title || ""} placeholder="清单标题" onChange={event => patchBlock(index, { title: event.target.value })} />{block.items.map((item, itemIndex) => <label className="diary-edit-todo-row" key={itemIndex}><input type="checkbox" checked={item.done} onChange={event => patchBlock(index, { items: block.items.map((v, i) => i === itemIndex ? { ...v, done: event.target.checked } : v) })} /><input value={item.text} onChange={event => patchBlock(index, { items: block.items.map((v, i) => i === itemIndex ? { ...v, text: event.target.value } : v) })} /></label>)}</>
-            : block.type === "correction" ? <><textarea value={block.text} onChange={event => patchBlock(index, { text: event.target.value })} /><textarea value={block.replacement || ""} placeholder="修改后的文字" onChange={event => patchBlock(index, { replacement: event.target.value })} /></>
-            : block.type === "image" ? <><input value={block.caption || ""} placeholder="图片说明" onChange={event => patchBlock(index, { caption: event.target.value })} /><textarea value={block.description} onChange={event => patchBlock(index, { description: event.target.value })} /></>
-            : <textarea value={block.text} onChange={event => patchBlock(index, { text: event.target.value })} />}
-          </section>)}
+          {blocks.map((block, index) => {
+            if (block.type === "paragraph") {
+              if (index > 0 && blocks[index - 1].type === "paragraph") return null;
+              let end = index + 1;
+              while (end < blocks.length && blocks[end].type === "paragraph") end += 1;
+              return <section className="diary-edit-block diary-edit-paragraph-group" key={`paragraph-${index}`}>
+                <small>正文</small>
+                <textarea
+                  rows={Math.min(18, Math.max(8, blocks.slice(index, end).reduce((count, item) => count + (item.type === "paragraph" ? item.text.split("\\n").length : 0), 0) + (end - index - 1) * 2))}
+                  value={blocks.slice(index, end).map(item => item.type === "paragraph" ? item.text : "").join("\\n\\n")}
+                  onChange={event => patchParagraphGroup(index, end, event.target.value)}
+                />
+              </section>;
+            }
+            return <section className="diary-edit-block" key={`block-${index}`}><small>{block.type === "todo" ? "待办清单" : block.type === "correction" ? "涂改记录" : block.type === "quote" ? "引用" : "图片记录"}</small>
+              {block.type === "todo" ? <><input value={block.title || ""} placeholder="清单标题" onChange={event => patchBlock(index, { title: event.target.value })} />{block.items.map((item, itemIndex) => <label className="diary-edit-todo-row" key={itemIndex}><input type="checkbox" checked={item.done} onChange={event => patchBlock(index, { items: block.items.map((v, i) => i === itemIndex ? { ...v, done: event.target.checked } : v) })} /><input value={item.text} onChange={event => patchBlock(index, { items: block.items.map((v, i) => i === itemIndex ? { ...v, text: event.target.value } : v) })} /></label>)}</>
+              : block.type === "correction" ? <><textarea value={block.text} onChange={event => patchBlock(index, { text: event.target.value })} /><textarea value={block.replacement || ""} placeholder="修改后的文字" onChange={event => patchBlock(index, { replacement: event.target.value })} /></>
+              : block.type === "quote" ? <textarea value={block.text} onChange={event => patchBlock(index, { text: event.target.value })} />
+              : <><input value={block.caption || ""} placeholder="图片说明" onChange={event => patchBlock(index, { caption: event.target.value })} /><textarea value={block.description} onChange={event => patchBlock(index, { description: event.target.value })} /></>}
+            </section>;
+          })}
         </div>
         <footer><button type="button" onClick={onClose}>取消</button><button type="submit">保存修改</button></footer>
       </form>
