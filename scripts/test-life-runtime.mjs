@@ -641,7 +641,8 @@ assert.equal(duringCompanionActor.actualLocationId, "cafe", "timeline settlement
 assert.equal(duringCompanionActor.actualLocationUntil, tripEnd.toISOString(), "timeline settlement retains the replacement slot boundary");
 const afterCompanionStay = settleActorTimelineToNow(duringCompanionStay, "character", "c-trip", tripEnd);
 const afterCompanionActor = afterCompanionStay.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === "c-trip");
-assert.equal(afterCompanionActor.actualLocationId, "park", "the next preserved itinerary entry takes over when the replaced activity ends");
+assert.equal(afterCompanionActor.actualLocationName, "公园", "the next preserved itinerary entry takes over when the replaced activity ends");
+assert.ok(afterCompanionActor.actualLocationId, "the resumed schedule resolves to a concrete location id");
 assert.equal(afterCompanionActor.activity, "原地点中间安排", "the next preserved itinerary activity resumes without restoring the interrupted activity remainder");
 
 
