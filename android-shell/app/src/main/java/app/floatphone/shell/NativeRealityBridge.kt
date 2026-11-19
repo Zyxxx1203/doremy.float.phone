@@ -13,7 +13,7 @@ import org.json.JSONObject
 
 /**
  * 原生现实桥捕获器：保留系统广播的本机处理能力；Android 前台应用感知事件由 CallControlService 云端优先派发。
- * 云端等待超时只调用 postOfflineNotificationFallback，不会在本机重放设备动作。
+ * 云端等待超时只生成通知和聊天回传，不会在本机重放设备动作。
  * Android 强制停止应用后会阻止广播/任务重启应用，不能绕过系统限制。
  */
 object NativeRealityBridge {
