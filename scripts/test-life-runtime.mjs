@@ -694,6 +694,38 @@ const temporaryLocationState = {
 };
 assert.equal(resolveActorLocation(temporaryLocationState, "character", "c-location", locationNow).id, "cafe", "an active temporary location should override the schedule");
 
+const manualTravelNow = new Date("2026-10-15T10:30:00.000Z");
+const manualTravelState = {
+  ...makeState([{
+    id: "home-routine",
+    ownerType: "character",
+    ownerId: "c-travel",
+    startAt: "2026-10-15T10:00:00.000Z",
+    endAt: "2026-10-15T12:00:00.000Z",
+    title: "在家洗澡、听故事",
+    kind: "habit",
+    source: "weekly-generation",
+    plannedLocationId: "home-c-travel",
+    plannedLocationName: "角色的家",
+    updatedAt: "2026-10-15T10:00:00.000Z",
+  }]),
+  actorStates: [{
+    ownerType: "character", ownerId: "c-travel", activity: "与玩家同行",
+    scheduleSlotId: "previous-slot", actualLocationId: "bedroom",
+    actualLocationName: "玩家所在卧室", actualLocationUntil: null,
+    updatedAt: "2026-10-15T10:20:00.000Z",
+  }],
+  events: [], memories: [], invitations: [], scenes: [], timeline: [],
+  locations: [{ id: "home-c-travel", name: "角色的家" }, { id: "bedroom", name: "玩家所在卧室" }],
+  settings: { playerDisplayName: "我", saveConfirmedEventsToMemory: true },
+};
+const settledManualTravel = settleActorTimelineToNow(manualTravelState, "character", "c-travel", manualTravelNow);
+const manualTravelActor = settledManualTravel.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === "c-travel");
+assert.equal(manualTravelActor.actualLocationId, "bedroom",
+  "an explicit manual location must survive a newly active home schedule");
+assert.equal(manualTravelActor.activity, "与玩家同行",
+  "schedule settlement must not overwrite the activity during a manual location override");
+
 const playerRoomState = {
   ...makeState([{
     id: "player-next-slot",
