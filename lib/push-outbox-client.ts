@@ -81,7 +81,7 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
     if (consuming) return;
     if (options?.force !== true && Date.now() - lastConsumeAt < OUTBOX_FOREGROUND_CHECK_INTERVAL_MS) return;
     // 没有任何设备订阅推送时，服务端不可能产生普通离线回传；避免所有在线用户空轮询。
-    if (!loadScreenChatSettings().enabled && !(await hasAccountPushSubscription())) return;
+    if (!loadScreenChatSettings().enabled && !(await hasAccountPushSubscription()) && !shellMode) return;
     consuming = true;
     lastConsumeAt = Date.now();
     const passStartMs = Date.now();
