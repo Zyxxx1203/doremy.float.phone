@@ -125,10 +125,23 @@ export function reserveCharacterLocationStay(
 ): VirtualLifeState {
   const { characterId, locationId, locationName, startAt, endAt, title } = input;
   const startMs = startAt.getTime();
-  const endMs = endAt.getTime();
-  if (!characterId || !locationId || !locationName || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return state;
+  const requestedEndMs = endAt.getTime();
+  if (!characterId || !locationId || !locationName || !Number.isFinite(startMs) || !Number.isFinite(requestedEndMs) || requestedEndMs <= startMs) return state;
+
+  const ownerSlots = state.schedules.filter(slot => slot.ownerType === "character" && slot.ownerId === characterId);
+  const activeSlot = getCurrentActorSchedule(state, "character", characterId, startAt);
+  const nextBoundaryMs = activeSlot
+    ? new Date(activeSlot.endAt).getTime()
+    : ownerSlots.map(slot => new Date(slot.startAt).getTime())
+      .filter(value => Number.isFinite(value) && value > startMs)
+      .sort((a, b) => a - b)[0];
+  // A manual trip replaces only the activity currently in progress. Its end is
+  // bounded by the next planned activity, so future itinerary entries stay intact.
+  const endMs = Math.min(requestedEndMs, Number.isFinite(nextBoundaryMs) ? nextBoundaryMs! : requestedEndMs);
+  if (endMs <= startMs) return state;
+
   const startIso = startAt.toISOString();
-  const endIso = endAt.toISOString();
+  const endIso = new Date(endMs).toISOString();
   const updatedAt = new Date().toISOString();
   const retainedSlots: LifeScheduleSlot[] = [];
   for (const slot of state.schedules) {
@@ -142,8 +155,9 @@ export function reserveCharacterLocationStay(
       retainedSlots.push(slot);
       continue;
     }
+    // Keep only the elapsed prefix of an interrupted activity. Never resurrect
+    // its unfinished tail after the user has explicitly replaced that activity.
     if (slotStart < startMs) retainedSlots.push({ ...slot, endAt: startIso, updatedAt });
-    if (slotEnd > endMs) retainedSlots.push({ ...slot, id: makeId("resume-after-location-stay"), startAt: endIso, updatedAt });
   }
   retainedSlots.push({
     id: makeId("companion-follow"),
