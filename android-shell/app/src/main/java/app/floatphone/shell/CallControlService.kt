@@ -303,6 +303,33 @@ class CallControlService : AccessibilityService() {
         }
     }
 
+    /** Persist a native fallback reply before acknowledging/removing its event. */
+    private fun syncOfflineFallback(event: JSONObject, cookie: String): Boolean {
+        val fallback = event.optJSONObject("fallbackChat") ?: return true
+        if (!fallback.has("chat")) {
+            updatePendingEvent(event.optString("id"), JSONObject().put("fallbackSynced", true))
+            return true
+        }
+        if (event.optBoolean("fallbackSynced", false)) return true
+        return runCatching {
+            val body = JSONObject()
+                .put("eventId", event.optString("id"))
+                .put("fallback", fallback)
+                .toString()
+                .toRequestBody("application/json; charset=utf-8".toMediaType())
+            val builder = Request.Builder()
+                .url("${MainActivity.SITE_URL.trimEnd('/')}/api/push/bridge-native-event/fallback")
+                .header("Accept", "application/json")
+                .post(body)
+            if (cookie.isNotEmpty()) builder.header("Cookie", cookie)
+            client.newCall(builder.build()).execute().use { response ->
+                if (!response.isSuccessful) return@runCatching false
+                updatePendingEvent(event.optString("id"), JSONObject().put("fallbackSynced", true))
+                true
+            }
+        }.getOrDefault(false)
+    }
+
     private fun deliverPendingEvents() {
         if (delivering) return
         val events = synchronized(pendingLock) {
@@ -322,11 +349,16 @@ class CallControlService : AccessibilityService() {
                     if (id.isBlank()) continue
                     val cloudAccepted = event.optBoolean("cloudAccepted", false)
                     val fallbackSent = event.optBoolean("fallbackSent", false)
+                    var fallbackSynced = event.optBoolean("fallbackSynced", false) || !event.has("fallbackChat")
+                    if (fallbackSent && !fallbackSynced) {
+                        fallbackSynced = syncOfflineFallback(event, cookie)
+                    }
 
                     if (cloudAccepted) {
                         // Shell Realtime 通知在原生 NotificationManager 接受提交后回执；
                         // 不再把 Service Worker 回执误当作 Android 壳的唯一确认来源。
                         if (fallbackSent) {
+                            if (!fallbackSynced) continue
                             val fallbackBody = JSONObject().put("eventId", id).put("status", "fallback")
                                 .toString().toRequestBody("application/json; charset=utf-8".toMediaType())
                             val fallbackBuilder = Request.Builder()
@@ -360,12 +392,16 @@ class CallControlService : AccessibilityService() {
                         // 超时才使用本机离线回复；只有原生通知确实提交成功才写 fallback 回执。
                         val acceptedAt = event.optLong("cloudAcceptedAt", 0L)
                         if (acceptedAt > 0L && System.currentTimeMillis() - acceptedAt >= 6 * 60_000L) {
-                            val shown = runCatching {
+                            val fallback = runCatching {
                                 NativeRealityBridge.postOfflineNotificationFallback(
-                                    applicationContext, id, event.optString("type"), event.optString("payload")
+                                    applicationContext, id, event.optString("type"), event.optString("payload"),
+                                    event.opt("createdAt")?.toString().orEmpty(),
                                 )
-                            }.getOrDefault(false)
-                            if (shown) updatePendingEvent(id, JSONObject().put("fallbackSent", true))
+                            }.getOrNull()
+                            if (fallback != null) updatePendingEvent(
+                                id,
+                                JSONObject().put("fallbackSent", true).put("fallbackChat", fallback),
+                            )
                         }
                         continue
                     }
@@ -391,8 +427,12 @@ class CallControlService : AccessibilityService() {
                         uploadCode == 410 -> removePendingEvent(id)
                         uploadCode != null && uploadCode in 200..299 -> {
                             if (fallbackSent || event.optBoolean("notifyAlreadyShown", false)) {
-                                // 本机已经提交过通知；云端继续执行角色回复，但不再重复通知。
-                                removePendingEvent(id)
+                                // 本机已经提交过通知；先确保离线回复已进入聊天回传箱，再结束事件。
+                                if (fallbackSynced) removePendingEvent(id)
+                                else updatePendingEvent(
+                                    id,
+                                    JSONObject().put("cloudAccepted", true).put("cloudAcceptedAt", System.currentTimeMillis())
+                                )
                             } else {
                                 updatePendingEvent(
                                     id,
@@ -404,12 +444,16 @@ class CallControlService : AccessibilityService() {
                             // 云端不可达时才走本机离线兜底。若失败，不伪造回执、不删除队列。
                             val queuedAt = event.optLong("queuedAt", 0L)
                             if (!fallbackSent && queuedAt > 0L && System.currentTimeMillis() - queuedAt >= 45_000L) {
-                                val shown = runCatching {
+                                val fallback = runCatching {
                                     NativeRealityBridge.postOfflineNotificationFallback(
-                                        applicationContext, id, event.optString("type"), event.optString("payload")
+                                        applicationContext, id, event.optString("type"), event.optString("payload"),
+                                        event.opt("createdAt")?.toString().orEmpty(),
                                     )
-                                }.getOrDefault(false)
-                                if (shown) updatePendingEvent(id, JSONObject().put("fallbackSent", true))
+                                }.getOrNull()
+                                if (fallback != null) updatePendingEvent(
+                                    id,
+                                    JSONObject().put("fallbackSent", true).put("fallbackChat", fallback),
+                                )
                             }
                         }
                     }
