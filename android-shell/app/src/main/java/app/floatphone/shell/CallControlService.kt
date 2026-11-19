@@ -63,6 +63,7 @@ class CallControlService : AccessibilityService() {
                 .put("cloudAccepted", true)
                 .put("cloudAcceptedAt", System.currentTimeMillis())
                 .put("fallbackSent", true)
+                .put("localOnly", true)
                 .put("fallbackChat", fallback)
             synchronized(pendingLock) {
                 val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -413,6 +414,10 @@ class CallControlService : AccessibilityService() {
                         // 不再把 Service Worker 回执误当作 Android 壳的唯一确认来源。
                         if (fallbackSent) {
                             if (!fallbackSynced) continue
+                            if (event.optBoolean("localOnly", false)) {
+                                removePendingEvent(id)
+                                continue
+                            }
                             val fallbackBody = JSONObject().put("eventId", id).put("status", "fallback")
                                 .toString().toRequestBody("application/json; charset=utf-8".toMediaType())
                             val fallbackBuilder = Request.Builder()
