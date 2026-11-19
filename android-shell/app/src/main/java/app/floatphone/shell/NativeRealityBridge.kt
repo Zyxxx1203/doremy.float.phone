@@ -113,9 +113,15 @@ object NativeRealityBridge {
     }
 
     /** Cloud timeout fallback: notification only; never replays rule/device side effects. */
-    fun postOfflineNotificationFallback(context: Context, eventId: String, type: String, payload: String): Boolean {
+    fun postOfflineNotificationFallback(
+        context: Context,
+        eventId: String,
+        type: String,
+        payload: String,
+        createdAt: String = "",
+    ): JSONObject? {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (!prefs.getBoolean(KEY_ENABLED, false)) return false
+        if (!prefs.getBoolean(KEY_ENABLED, false)) return null
         val rules = readArray(prefs.getString(KEY_RULES, "[]"))
         for (i in 0 until rules.length()) {
             val rule = rules.optJSONObject(i) ?: continue
@@ -130,11 +136,37 @@ object NativeRealityBridge {
             val body = (candidates.firstOrNull() ?: template).replace("{payload}", payload).replace("{type}", type).take(360)
             if (body.isBlank() || !rule.optBoolean("notificationEnabled", true)) continue
             val title = rule.optString("characterName").ifBlank { rule.optString("name", "现实桥") }
-            val shown = postNotification(context, title, body, eventId.hashCode().toLong())
-            if (shown) record(context, JSONObject().put("id", eventId).put("type", type).put("payload", payload), rule.optString("name"), "云端等待超时；纯通知离线兜底")
-            return shown
+            val chat = rule.optJSONObject("chat")
+            val chatSessionId = chat?.optString("sessionId").orEmpty()
+            val requestReply = chat?.optBoolean("requestReply", false) == true
+            val historyRole = chat?.optString("historyRole").orEmpty()
+            val displayRole = chat?.optString("role", "user").ifBlank { "user" }
+            val effectiveRole = historyRole.ifBlank { displayRole }
+            val replySessionId = if (requestReply && effectiveRole != "assistant" && chatSessionId.isNotBlank()) chatSessionId else null
+            val shown = postNotification(context, title, body, eventId.hashCode().toLong(), replySessionId)
+            if (!shown) return null
+            record(context, JSONObject().put("id", eventId).put("type", type).put("payload", payload), rule.optString("name"), "云端等待超时；本机离线回复已通知")
+            val result = JSONObject()
+                .put("eventId", eventId)
+                .put("ruleId", rule.optString("id"))
+                .put("ruleName", rule.optString("name"))
+                .put("type", type)
+                .put("payload", payload)
+                .put("processedText", payload)
+                .put("replyText", body)
+                .put("createdAt", createdAt)
+                .put("characterName", title)
+            if (replySessionId != null) {
+                result.put("chat", JSONObject()
+                    .put("characterId", chat?.optString("characterId").orEmpty())
+                    .put("sessionId", replySessionId)
+                    .put("role", displayRole)
+                    .put("historyRole", historyRole)
+                    .put("requestReply", true))
+            }
+            return result
         }
-        return false
+        return null
     }
     /** Background rules use an explicit user-controlled allow-list and only native-supported actions. */
     private fun executeBackgroundDeviceAction(context: Context, prefs: android.content.SharedPreferences, action: JSONObject): String {
@@ -155,7 +187,7 @@ object NativeRealityBridge {
     fun recentLog(context: Context): String =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_LOG, "[]") ?: "[]"
 
-    private fun postNotification(context: Context, title: String, body: String, id: Long): Boolean = try {
+    private fun postNotification(context: Context, title: String, body: String, id: Long, sessionId: String? = null): Boolean = try {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(NotificationChannel(
@@ -166,9 +198,17 @@ object NativeRealityBridge {
         if (channelDisabled || !NotificationManagerCompat.from(context).areNotificationsEnabled()) {
             false
         } else {
-            val openApp = PendingIntent.getActivity(context, 7101,
-                Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val intent = Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            val targetSessionId = sessionId?.trim().orEmpty()
+            if (targetSessionId.isNotEmpty()) {
+                intent.putExtra(
+                    MainActivity.EXTRA_OPEN_URL,
+                    "${MainActivity.SITE_URL.trimEnd('/')}/#open-chat=${android.net.Uri.encode(targetSessionId)}",
+                )
+            }
+            val openApp = PendingIntent.getActivity(context, id.toInt(),
+                intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             val notification = NotificationCompat.Builder(context, CHANNEL)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle(title.take(80)).setContentText(body.take(180))
