@@ -469,7 +469,7 @@ assert.match(realityActivity, /getPendingNativeRealityBridgeMessages/, "WebView 
 assert.match(realityActivity, /acknowledgeNativeRealityBridgeMessages/, "WebView must acknowledge messages after chat persistence");
 assert.match(realityUi, /characterId: rule\.actions\.chat\?\.characterId/, "native rules must retain the target character identity");
 assert.match(realityEngine, /export function normalizeBridgeSignal/, "reality bridge must normalize raw signal payloads before they reach chat");
-assert.match(realityEngine, /return normalizeBridgeSignal\\(item\\)/, "raw bridge rules must use normalized human-readable text");
+assert.match(realityEngine, /return normalizeBridgeSignal\(item\)/, "raw bridge rules must use normalized human-readable text");
 assert.match(realityNative, /private fun normalizeSignal/, "Android offline fallback must normalize signals before queuing chat");
 assert.match(realityEngine, /export async function syncNativeOfflineBridgeMessages/, "native offline replies must be imported into chat");
 assert.match(realityEngine, /upsertImportedChatMessage\([\s\S]*?channel: "reality_bridge"/, "native bridge messages must use the canonical chat storage");
