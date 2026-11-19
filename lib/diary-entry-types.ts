@@ -39,7 +39,6 @@ export type DiaryEntry = {
   updatedAt: string;
   /** User-curated state; optional for backwards compatibility with existing entries. */
   isFavorite?: boolean;
-  curatedExcerpts?: string[];
   /** Previous content snapshots, newest last. */
   revisionHistory?: DiaryEntryRevision[];
 };
