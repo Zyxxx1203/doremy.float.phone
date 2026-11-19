@@ -1789,6 +1789,16 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         fun getNativeRealityBridgeLog(): String =
             NativeRealityBridge.recentLog(this@MainActivity)
 
+        /** 读取本机离线现实桥待写入聊天室的消息。 */
+        @JavascriptInterface
+        fun getPendingNativeRealityBridgeMessages(): String =
+            NativeRealityBridge.pendingChatMessages(this@MainActivity)
+
+        /** 聊天室确认写入后才从原生持久队列中确认，避免 WebView 重启丢消息。 */
+        @JavascriptInterface
+        fun acknowledgeNativeRealityBridgeMessages(idsJson: String): Boolean =
+            NativeRealityBridge.acknowledgeChatMessages(this@MainActivity, idsJson)
+
         /** 原生后台事件队列状态；只返回计数和时间，不暴露事件正文。 */
         @JavascriptInterface
         fun getNativePerceptionDiagnostics(): String = try {
