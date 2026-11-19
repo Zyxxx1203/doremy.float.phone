@@ -24,7 +24,6 @@ import {
   loadDiaryEntryTimerSettings,
   saveDiaryEntryFontAssetId,
   saveDiaryEntryFontScale,
-  toggleDiaryEntryExcerpt,
   saveDiaryEntryTimerSettings,
 } from "@/lib/diary-entry-storage";
 import type { DiaryEntry, DiaryEntryBlock, DiaryEntryTimerSettings, DiaryEntryTrigger } from "@/lib/diary-entry-types";
@@ -129,7 +128,6 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
   const [editingEntry, setEditingEntry] = useState<DiaryEntry | null>(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [activeMonth, setActiveMonth] = useState("all");
-  const [excerptsOpen, setExcerptsOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [deleteCandidateEntry, setDeleteCandidateEntry] = useState<DiaryEntry | null>(null);
   const [activeCharacterId, setActiveCharacterId] = useState<string | null>(null);
@@ -284,14 +282,14 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
     }
   }, [notify]);
 
-  const handleExportImage = useCallback(async (entry: DiaryEntry) => {
+  const handleExportImage = useCallback(async (entry: DiaryEntry, renderedPaper: HTMLElement) => {
     try {
-      await downloadDiaryEntryImage(entry, diaryFontDataUrl ? '"DiaryExportFont"' : '"Noto Serif SC", "Songti SC", serif', diaryFontScale, diaryFontDataUrl);
-      notify("日记图片已导出。");
+      await downloadDiaryEntryImage(entry, renderedPaper, diaryFontDataUrl);
+      notify("已按日记页面的实际显示样式导出图片。");
     } catch (error) {
       notify("图片导出失败：" + (error instanceof Error ? error.message : String(error)));
     }
-  }, [diaryFontDataUrl, diaryFontScale, notify]);
+  }, [diaryFontDataUrl, notify]);
 
   const handlePrintEntry = useCallback((entry: DiaryEntry) => {
     try {
@@ -687,11 +685,6 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
   const readingEntries = activeBook?.entries ?? [];
   const readingIndex = activeEntry ? readingEntries.findIndex(item => item.id === activeEntry.id) : -1;
   const moveReadingPage = (offset: number) => { const next = readingEntries[readingIndex + offset]; if (next) setActiveEntry(next); };
-  const toggleExcerpt = (entry: DiaryEntry, excerpt: string) => {
-    const updated = toggleDiaryEntryExcerpt(entry.id, excerpt);
-    if (updated) { setActiveEntry(updated); refreshEntries(); notify((updated.curatedExcerpts ?? []).includes(excerpt) ? "已加入精选摘录。" : "已移出精选摘录。"); }
-  };
-
   return (
     <section className={`diary-app diary-entry-app ${entryDrag ? "is-entry-dragging" : ""}`} style={diaryEntryStyle}>
       {generatingCharacterIds.length > 0 && (
@@ -849,18 +842,13 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
           onEdit={() => setEditingEntry(activeEntry)}
           onToggleFavorite={() => handleToggleFavorite(activeEntry)}
           onExport={format => { void handleExportEntry(activeEntry, format); }}
-          onExportImage={() => void handleExportImage(activeEntry)}
+          onExportImage={element => void handleExportImage(activeEntry, element)}
           onPrint={() => handlePrintEntry(activeEntry)}
           onRestore={() => handleRestorePrevious(activeEntry)}
           onPrevious={() => moveReadingPage(-1)} onNext={() => moveReadingPage(1)}
           readingIndex={readingIndex} readingCount={readingEntries.length}
-          onToggleExcerpt={excerpt => toggleExcerpt(activeEntry, excerpt)} onOpenExcerpts={() => setExcerptsOpen(true)}
         />
       ) : null}
-
-      {excerptsOpen ? <DiaryExcerptCollection entries={entries} onClose={() => setExcerptsOpen(false)} onOpen={entry => { setActiveEntry(entry); setExcerptsOpen(false); }} /> : null}
-
-      
 
       {editingEntry ? (
         <DiaryEntryEditPanel
@@ -963,8 +951,8 @@ function DiaryEntryCardContent({ entry }: { entry: DiaryEntry }) {
   const markers = getEntryMarkers(entry);
   return (
     <>
-      <span className="diary-entry-card-kicker">DIARY</span>
-      {entry.isFavorite ? <span className="diary-entry-card-favorite" aria-label="已珍藏">♥</span> : null}
+      <span className="diary-entry-card-kicker">DIARY{entry.isFavorite ? <span className="diary-entry-card-favorite" aria-label="已珍藏"> ♥</span> : null}</span>
+
       {markers.length > 0 ? (
         <span className="diary-entry-card-markers">
           {markers.map(marker => <span key={marker} className="diary-entry-marker">{marker}</span>)}
@@ -1261,27 +1249,26 @@ function buildDiaryParagraphBlocks(body: string): DiaryEntryBlock[] {
 }
 
 function DiaryEntryDetail({
-  entry, onClose, onEdit, onToggleFavorite, onExport, onExportImage, onPrint, onRestore, onPrevious, onNext, readingIndex, readingCount, onToggleExcerpt, onOpenExcerpts,
+  entry, onClose, onEdit, onToggleFavorite, onExport, onExportImage, onPrint, onRestore, onPrevious, onNext, readingIndex, readingCount,
 }: {
   entry: DiaryEntry;
   onClose: () => void;
   onEdit: () => void;
   onToggleFavorite: () => void;
   onExport: (format: DiaryExportFormat) => void;
-  onExportImage: () => void;
+  onExportImage: (renderedPaper: HTMLElement) => void;
   onPrint: () => void;
   onRestore: () => void;
   onPrevious: () => void;
   onNext: () => void;
   readingIndex: number;
   readingCount: number;
-  onToggleExcerpt: (excerpt: string) => void;
-  onOpenExcerpts: () => void;
 }) {
   const markers = getEntryMarkers(entry);
+  const paperRef = useRef<HTMLElement | null>(null);
   return (
-    <div className="nw-modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
-      <article className="diary-entry-detail-paper" onClick={(event) => event.stopPropagation()}>
+    <div className="nw-modal-backdrop diary-entry-detail-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
+      <article ref={paperRef} className="diary-entry-detail-paper" onClick={(event) => event.stopPropagation()}>
         <span className="diary-entry-paper-clip" aria-hidden="true"><span /></span>
         <div className="diary-entry-detail-scroll">
           <header>
@@ -1300,20 +1287,19 @@ function DiaryEntryDetail({
             </div>
           </header>
           <div className="diary-entry-blocks">
-            {entry.blocks.map((block, index) => {
-              const excerpt = blockPlainText(block);
-              const saved = Boolean(excerpt && entry.curatedExcerpts?.includes(excerpt));
-              return <section className="diary-entry-reading-block" key={block.type + "-" + index}><DiaryBlockView block={block} />{excerpt ? <button type="button" className="diary-excerpt-toggle" aria-pressed={saved} onClick={() => onToggleExcerpt(excerpt)}>{saved ? "已摘录" : "摘录此段"}</button> : null}</section>;
-            })}
+            {entry.blocks.map((block, index) => (
+              <section className="diary-entry-reading-block" key={block.type + "-" + index}>
+                <DiaryBlockView block={block} />
+              </section>
+            ))}
           </div>
           <nav className="diary-entry-reading-nav"><button type="button" onClick={onPrevious} disabled={readingIndex <= 0}>上一篇</button><span>{readingIndex >= 0 ? readingIndex + 1 : 0} / {readingCount}</span><button type="button" onClick={onNext} disabled={readingIndex < 0 || readingIndex >= readingCount - 1}>下一篇</button></nav>
           <div className="diary-entry-detail-actions">
             <button type="button" onClick={onToggleFavorite} aria-pressed={Boolean(entry.isFavorite)}><Heart size={15} fill={entry.isFavorite ? "currentColor" : "none"} />{entry.isFavorite ? "已珍藏" : "珍藏"}</button>
             <button type="button" onClick={onEdit}><Pencil size={15} />编辑</button>
-            <button type="button" onClick={onOpenExcerpts}>精选摘录（{entry.curatedExcerpts?.length ?? 0}）</button>
             <button type="button" onClick={() => onExport("txt")}>导出 TXT</button>
             <button type="button" onClick={() => onExport("md")}>导出 Markdown</button>
-            <button type="button" onClick={onExportImage}>图片</button>
+            <button type="button" onClick={() => { if (paperRef.current) onExportImage(paperRef.current); }}>图片</button>
             <button type="button" onClick={onPrint}>PDF</button>
             {entry.revisionHistory?.length ? <button type="button" onClick={onRestore}><RotateCcw size={15} />恢复上版</button> : null}
           </div>
@@ -1325,11 +1311,6 @@ function DiaryEntryDetail({
       </article>
     </div>
   );
-}
-
-function DiaryExcerptCollection({ entries, onClose, onOpen }: { entries: DiaryEntry[]; onClose: () => void; onOpen: (entry: DiaryEntry) => void }) {
-  const rows = entries.flatMap(entry => (entry.curatedExcerpts ?? []).map(excerpt => ({ entry, excerpt })));
-  return <div className="nw-modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}><section className="diary-excerpt-panel" onClick={event => event.stopPropagation()}><header><h2>精选摘录</h2><button type="button" onClick={onClose}>关闭</button></header>{rows.length ? rows.map((row, index) => <button type="button" className="diary-excerpt-item" key={row.entry.id + index} onClick={() => onOpen(row.entry)}><span>{row.excerpt}</span><small>{row.entry.characterName} · {row.entry.dateLabel} · {row.entry.title}</small></button>) : <p>还没有摘录。阅读日记时，点击段落下方的「摘录此段」即可收藏。</p>}</section></div>;
 }
 
 function DiaryEntryEditPanel({ entry, onClose, onSave }: {
