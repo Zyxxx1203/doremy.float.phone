@@ -108,10 +108,7 @@ export async function downloadDiaryEntryImage(entry: DiaryEntry, renderedPaper: 
     const computed = window.getComputedStyle(source);
     for (let index = 0; index < computed.length; index += 1) {
       const property = computed.item(index);
-      target instanceof HTMLElement || target instanceof SVGElement
-        ? target.setAttribute("style", target.getAttribute("style") || "")
-        : null;
-      (target as HTMLElement).style?.setProperty(property, computed.getPropertyValue(property), computed.getPropertyPriority(property));
+      (target as HTMLElement).style.setProperty(property, computed.getPropertyValue(property), computed.getPropertyPriority(property));
     }
 
     const sourceChildren = Array.from(source.children);
@@ -128,7 +125,7 @@ export async function downloadDiaryEntryImage(entry: DiaryEntry, renderedPaper: 
       pseudoNode.setAttribute("aria-hidden", "true");
       const content = pseudo.content;
       pseudoNode.textContent = content.length >= 2 && ((content.startsWith('"') && content.endsWith('"')) || (content.startsWith("'") && content.endsWith("'")))
-        ? content.slice(1, -1).replace(/\\A/g, "")
+        ? content.slice(1, -1)
         : "";
       for (let index = 0; index < pseudo.length; index += 1) {
         const property = pseudo.item(index);
