@@ -123,6 +123,7 @@ object NativeRealityBridge {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(KEY_ENABLED, false)) return false
         val rules = readArray(prefs.getString(KEY_RULES, "[]"))
+        var matchedRule = false
         for (i in 0 until rules.length()) {
             val rule = rules.optJSONObject(i) ?: continue
             if (!rule.optBoolean("enabled", false)) continue
@@ -130,6 +131,16 @@ object NativeRealityBridge {
             if (matchType != "*" && !matchType.equals(type, ignoreCase = true)) continue
             val filter = rule.optString("payloadFilter", "").trim()
             if (filter.isNotEmpty() && filter.split("|", ",").none { it.trim().isNotEmpty() && payload.contains(it.trim(), ignoreCase = true) }) continue
+            matchedRule = true
+            val ruleId = rule.optString("id", rule.optString("name", "rule_$i"))
+            val now = System.currentTimeMillis()
+            val cooldown = rule.optLong("cooldownMinutes", 0L).coerceIn(0L, 10080L)
+            val lastRun = prefs.getLong("last_run_$ruleId", 0L)
+            if (cooldown > 0 && now - lastRun < cooldown * 60_000L) {
+                record(context, JSONObject().put("id", eventId).put("type", type).put("payload", payload),
+                    rule.optString("name", ruleId), "本机规则仍在冷却期；本次仅去重归档")
+                return true
+            }
             val replies = rule.optJSONArray("offlineReplies") ?: JSONArray()
             val candidates = (0 until replies.length()).mapNotNull { replies.optString(it).trim().takeIf(String::isNotBlank) }
             val template = rule.optJSONObject("process")?.optString("template", "").orEmpty()
@@ -143,11 +154,14 @@ object NativeRealityBridge {
                     .put("characterId", characterId).put("characterName", title)
                     .put("body", body).put("createdAt", System.currentTimeMillis()))
             val shown = postNotification(context, title, body, eventId.hashCode().toLong())
-            if (shown || queued) record(context, JSONObject().put("id", eventId).put("type", type).put("payload", payload),
-                rule.optString("name"), "本机离线回复；已写入聊天室待处理队列")
+            if (shown || queued) {
+                prefs.edit().putLong("last_run_$ruleId", now).apply()
+                record(context, JSONObject().put("id", eventId).put("type", type).put("payload", payload),
+                    rule.optString("name"), "本机离线回复；已写入聊天室待处理队列")
+            }
             return shown || queued
         }
-        return false
+        return matchedRule
     }
     private fun enqueueChatMessage(context: Context, message: JSONObject): Boolean {
         val id = message.optString("id")
