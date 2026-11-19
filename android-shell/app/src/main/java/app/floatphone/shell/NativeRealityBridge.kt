@@ -97,9 +97,39 @@ object NativeRealityBridge {
             val visibleParts = listOf(actionResult, replyMessage).filter { it.isNotBlank() }
             val message = visibleParts.joinToString("\n").take(500)
             val title = rule.optString("characterName").ifBlank { rule.optString("name", "现实桥") }
+            val chat = rule.optJSONObject("chat")
+            val chatSessionId = chat?.optString("sessionId").orEmpty()
+            val requestReply = chat?.optBoolean("requestReply", false) == true
+            val historyRole = chat?.optString("historyRole").orEmpty()
+            val displayRole = chat?.optString("role", "user").ifBlank { "user" }
+            val effectiveRole = historyRole.ifBlank { displayRole }
+            val notificationSessionId = chatSessionId.takeIf { it.isNotBlank() }
             val shouldNotify = rule.optBoolean("notificationEnabled", true) && message.isNotBlank()
-            val notified = shouldNotify && postNotification(context, title, message, now)
-            if (notified) notifiedAny = true
+            val notificationId = ("$now:$ruleId").hashCode().toLong()
+            val notified = shouldNotify && postNotification(context, title, message, notificationId, notificationSessionId)
+            if (notified) {
+                notifiedAny = true
+                if (requestReply && effectiveRole != "assistant" && chatSessionId.isNotBlank()) {
+                    val fallbackEventId = "local_${now}_${ruleId}".replace(Regex("[^a-zA-Z0-9_-]"), "_").take(100)
+                    val fallback = JSONObject()
+                        .put("eventId", fallbackEventId)
+                        .put("ruleId", ruleId)
+                        .put("ruleName", rule.optString("name", ruleId))
+                        .put("type", type)
+                        .put("payload", payload.take(4000))
+                        .put("processedText", payload.take(4000))
+                        .put("replyText", replyMessage)
+                        .put("createdAt", now)
+                        .put("characterName", title)
+                        .put("chat", JSONObject()
+                            .put("characterId", chat?.optString("characterId").orEmpty())
+                            .put("sessionId", chatSessionId)
+                            .put("role", displayRole)
+                            .put("historyRole", historyRole)
+                            .put("requestReply", true))
+                    CallControlService.enqueueNativeFallbackChatSync(context, fallback)
+                }
+            }
             prefs.edit().putLong("last_run_$ruleId", now).apply()
             val result = when {
                 !shouldNotify -> "已匹配；未配置可显示的离线回复，跳过原始事件通知"
