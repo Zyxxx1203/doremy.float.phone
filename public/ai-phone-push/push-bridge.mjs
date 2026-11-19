@@ -1116,6 +1116,7 @@ Deno.serve(async (req: Request) => {
           kind: "bridge",
           item,
           ...(bridgeChatMessageId ? { chatMessageId: bridgeChatMessageId } : {}),
+          ...(replyRaw && rule.chat ? { bridgeResponseBatchId: `bridge_reply_${rule.id}_${item.id}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 240) } : {}),
           ruleId: rule.id,
           ruleName: rule.name,
           executed: true,
