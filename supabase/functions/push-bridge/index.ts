@@ -578,7 +578,7 @@ Deno.serve(async (req: Request) => {
       : null;
     const pushErrors: string[] = [];
 
-    const sendPush = async (title: string, bodyText: string, tag: string, bridgeEventId?: string) => {
+    const sendPush = async (title: string, bodyText: string, tag: string, bridgeEventId?: string, sessionId?: string) => {
       if (subs.length === 0) return;
       const shellSubs = subs.filter(sub => sub.endpoint.startsWith("shell:"));
       const webSubs = subs.filter(sub => !sub.endpoint.startsWith("shell:"));
@@ -598,7 +598,8 @@ Deno.serve(async (req: Request) => {
                 payload: {
                   title,
                   body: notificationBody,
-                  url: "/",
+                  url: sessionId ? "/#open-chat=" + encodeURIComponent(sessionId) : "/",
+                  ...(sessionId ? { sessionId } : {}),
                   ...(bridgeEventId ? { bridgeEventId } : {}),
                 },
               }],
@@ -617,7 +618,7 @@ Deno.serve(async (req: Request) => {
           pushErrors.push("web push VAPID config unavailable");
           return;
         }
-        const message = JSON.stringify({ title, body: notificationBody, tag, url: "/", ...(bridgeEventId ? { bridgeEventId } : {}) });
+        const message = JSON.stringify({ title, body: notificationBody, tag, url: sessionId ? "/#open-chat=" + encodeURIComponent(sessionId) : "/", ...(sessionId ? { sessionId } : {}), ...(bridgeEventId ? { bridgeEventId } : {}) });
         for (const sub of webSubs) {
           try {
             const status = await sendWebPushRaw(sub, message, vapid, 3600);
@@ -1149,7 +1150,7 @@ Deno.serve(async (req: Request) => {
           if (parts.length === 0) parts = ["发来一条消息"];
           for (let index = 0; index < parts.length; index += 1) {
             if (index > 0) await sleep(800);
-            await sendPush(rule.chat.characterName || "小手机", parts[index], `bridge-${item.id}-${rule.id}-${index}`, item.id);
+            await sendPush(rule.chat.characterName || "小手机", parts[index], `bridge-${item.id}-${rule.id}-${index}`, item.id, rule.chat.sessionId);
           }
         }
 
