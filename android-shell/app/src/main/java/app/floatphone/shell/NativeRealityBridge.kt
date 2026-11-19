@@ -21,6 +21,7 @@ object NativeRealityBridge {
     private const val KEY_EVENTS = "local_events"
     private const val KEY_LOG = "execution_log"
     private const val KEY_RULES = "rules_json"
+    private const val KEY_CHAT_QUEUE = "pending_chat_messages"
     private const val KEY_ENABLED = "enabled"
     private const val KEY_DEVICE_ACTIONS_ENABLED = "device_actions_enabled"
     private const val KEY_ALLOWED_DEVICE_ACTIONS = "allowed_device_actions"
@@ -98,6 +99,12 @@ object NativeRealityBridge {
             val message = visibleParts.joinToString("\n").take(500)
             val title = rule.optString("characterName").ifBlank { rule.optString("name", "现实桥") }
             val shouldNotify = rule.optBoolean("notificationEnabled", true) && message.isNotBlank()
+            val characterId = rule.optString("characterId").trim()
+            val queuedChat = characterId.isNotBlank() && replyMessage.isNotBlank() && enqueueChatMessage(context,
+                JSONObject().put("id", "native_bridge_" + event.optString("id") + "_" + ruleId)
+                    .put("eventId", event.optString("id")).put("ruleId", ruleId)
+                    .put("characterId", characterId).put("characterName", title)
+                    .put("body", replyMessage).put("createdAt", now))
             val notified = shouldNotify && postNotification(context, title, message, now)
             if (notified) notifiedAny = true
             prefs.edit().putLong("last_run_$ruleId", now).apply()
@@ -130,12 +137,54 @@ object NativeRealityBridge {
             val body = (candidates.firstOrNull() ?: template).replace("{payload}", payload).replace("{type}", type).take(360)
             if (body.isBlank() || !rule.optBoolean("notificationEnabled", true)) continue
             val title = rule.optString("characterName").ifBlank { rule.optString("name", "现实桥") }
+            val characterId = rule.optString("characterId").trim()
+            val queued = characterId.isNotBlank() && enqueueChatMessage(context,
+                JSONObject().put("id", "native_bridge_" + eventId + "_" + rule.optString("id"))
+                    .put("eventId", eventId).put("ruleId", rule.optString("id"))
+                    .put("characterId", characterId).put("characterName", title)
+                    .put("body", body).put("createdAt", System.currentTimeMillis()))
             val shown = postNotification(context, title, body, eventId.hashCode().toLong())
-            if (shown) record(context, JSONObject().put("id", eventId).put("type", type).put("payload", payload), rule.optString("name"), "云端等待超时；纯通知离线兜底")
-            return shown
+            if (shown || queued) record(context, JSONObject().put("id", eventId).put("type", type).put("payload", payload),
+                rule.optString("name"), "本机离线回复；已写入聊天室待处理队列")
+            return shown || queued
         }
         return false
     }
+    private fun enqueueChatMessage(context: Context, message: JSONObject): Boolean {
+        val id = message.optString("id")
+        if (id.isBlank()) return false
+        synchronized(this) {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val queue = readArray(prefs.getString(KEY_CHAT_QUEUE, "[]"))
+            for (i in 0 until queue.length()) {
+                if (queue.optJSONObject(i)?.optString("id") == id) return true
+            }
+            queue.put(message)
+            trim(queue, MAX_ITEMS)
+            return prefs.edit().putString(KEY_CHAT_QUEUE, queue.toString()).commit()
+        }
+    }
+
+    fun pendingChatMessages(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_CHAT_QUEUE, "[]") ?: "[]"
+
+    fun acknowledgeChatMessages(context: Context, idsJson: String): Boolean = try {
+        val ids = readArray(idsJson).let { array ->
+            (0 until array.length()).map { array.optString(it) }.toSet()
+        }
+        synchronized(this) {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val old = readArray(prefs.getString(KEY_CHAT_QUEUE, "[]"))
+            val next = JSONArray()
+            for (i in 0 until old.length()) {
+                val item = old.optJSONObject(i) ?: continue
+                if (item.optString("id") !in ids) next.put(item)
+            }
+            prefs.edit().putString(KEY_CHAT_QUEUE, next.toString()).commit()
+        }
+    } catch (_: Throwable) { false }
+
     /** Background rules use an explicit user-controlled allow-list and only native-supported actions. */
     private fun executeBackgroundDeviceAction(context: Context, prefs: android.content.SharedPreferences, action: JSONObject): String {
         if (!prefs.getBoolean(KEY_DEVICE_ACTIONS_ENABLED, false)) return "未执行设备动作：设置中的「操作设备」总开关未开启"
