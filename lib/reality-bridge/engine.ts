@@ -492,20 +492,22 @@ export async function syncNativeOfflineBridgeMessages(): Promise<number> {
       const session = ensureSession(characterId);
       const parsedTime = typeof entry.createdAt === "number" ? entry.createdAt : Date.parse(String(entry.createdAt || ""));
       const createdAt = new Date(Number.isFinite(parsedTime) && parsedTime > 0 ? parsedTime : Date.now()).toISOString();
-      upsertImportedChatMessage({
+      const result = upsertImportedChatMessage({
         id, sessionId: session.id, role: "assistant", content: body,
-        status: "sent", createdAt, origin: "reality_bridge",
+        status: "sent", createdAt, channel: "reality_bridge",
       });
-      reindexSessionMessageOrdersByTime(session.id);
-      notifyChatUpdated(session.id);
-      const character = loadCharacters().find(item => item.id === characterId);
-      dispatchChatMessageNotice({
-        sessionId: session.id, body,
-        senderName: character?.name || String(entry.characterName || "角色"),
-        avatar: character?.avatar || null,
-      });
+      if (result.inserted) {
+        reindexSessionMessageOrdersByTime(session.id);
+        notifyChatUpdated(session.id);
+        const character = loadCharacters().find(item => item.id === characterId);
+        dispatchChatMessageNotice({
+          sessionId: session.id, body,
+          senderName: character?.name || String(entry.characterName || "角色"),
+          avatar: character?.avatar || null,
+        });
+        imported += 1;
+      }
       acknowledged.push(id);
-      imported += 1;
     } catch (error) {
       console.warn("[现实桥] 本机离线消息写入聊天室失败，将保留队列重试", id, error);
     }
