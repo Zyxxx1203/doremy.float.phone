@@ -145,7 +145,12 @@ object NativeRealityBridge {
             val replies = rule.optJSONArray("offlineReplies") ?: JSONArray()
             val candidates = (0 until replies.length()).mapNotNull { replies.optString(it).trim().takeIf(String::isNotBlank) }
             val template = rule.optJSONObject("process")?.optString("template", "").orEmpty()
-            val body = (candidates.firstOrNull() ?: template).replace("{payload}", payload).replace("{type}", type).take(360)
+            val normalizedPayload = normalizeSignal(type, payload)
+            val body = (candidates.firstOrNull() ?: template)
+                .replace("{payload}", normalizedPayload)
+                .replace("{type}", type)
+                .let { if (it == payload || it.isBlank()) normalizedPayload else it }
+                .take(360)
             if (body.isBlank() || !rule.optBoolean("notificationEnabled", true)) continue
             val title = rule.optString("characterName").ifBlank { rule.optString("name", "现实桥") }
             val characterId = rule.optString("characterId").trim()
@@ -244,6 +249,30 @@ object NativeRealityBridge {
             true
         }
     } catch (_: Throwable) { false }
+
+    /** Keep offline delivery semantically aligned with the web signal normalizer. */
+    private fun normalizeSignal(type: String, payload: String): String {
+        val percent = Regex("(?:电量\\\\s*)?(\\\\d{1,3})\\\\s*%").find(payload)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        if (type.contains("电量") && percent != null) {
+            val value = percent.coerceIn(0, 100)
+            return when {
+                type.contains("偏低") -> "手机电量偏低，目前约 ${value}%。"
+                type.contains("变化") -> "手机电量现在是 ${value}%。"
+                else -> "手机电量目前为 ${value}%。"
+            }
+        }
+        return when {
+            type == "电量偏低" -> "手机电量偏低，记得留意充电。"
+            type == "充电开始" -> "手机已经接上电源，开始充电了。"
+            type == "充电结束" -> "手机已经停止充电。"
+            type.contains("WiFi") || type.contains("Wi-Fi") -> "手机已连接 Wi-Fi。"
+            type.contains("移动网络") -> "手机切换到了移动网络。"
+            type.contains("长时间使用") || type.contains("应用用太久") ->
+                if (payload.isBlank()) "注意到你使用手机有一段时间了，记得适当休息。" else "注意到你使用手机有一段时间了（${payload.take(100)}），记得适当休息。"
+            payload.isBlank() -> "检测到：${type}。"
+            else -> "检测到${type}：${payload.take(240)}。"
+        }
+    }
 
     private fun record(context: Context, event: JSONObject, rule: String?, result: String) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
