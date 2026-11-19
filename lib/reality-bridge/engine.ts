@@ -55,6 +55,36 @@ function fillTemplate(template: string, item: BridgeItem): string {
     .replace(/\{type\}/g, item.type);
 }
 
+/** 将设备/快捷指令原始信号转换成可读事件描述，避免裸数字或 JSON 直接进入聊天。 */
+export function normalizeBridgeSignal(item: Pick<BridgeItem, "type" | "payload">): string {
+  const type = item.type.trim() || "设备状态";
+  const payload = item.payload.trim();
+  const percent = payload.match(/(?:电量\s*)?(\d{1,3})\s*%/);
+  if (type.includes("电量") && percent) {
+    const value = Math.min(100, Number(percent[1]));
+    if (type.includes("偏低")) return `手机电量偏低，目前约 ${value}%。`;
+    if (type.includes("变化")) return `手机电量现在是 ${value}%。`;
+    return `手机电量目前为 ${value}%。`;
+  }
+  if (type === "电量偏低") return "手机电量偏低，记得留意充电。";
+  if (type === "充电开始") return "手机已经接上电源，开始充电了。";
+  if (type === "充电结束") return "手机已经停止充电。";
+  if (type.includes("WiFi") || type.includes("Wi-Fi")) return "手机已连接 Wi-Fi。";
+  if (type.includes("移动网络")) return "手机切换到了移动网络。";
+  if (type.includes("长时间使用") || type.includes("应用用太久")) {
+    return payload ? `注意到你使用手机有一段时间了（${payload}），记得适当休息。` : "注意到你使用手机有一段时间了，记得适当休息。";
+  }
+  if (!payload) return `检测到：${type}。`;
+  try {
+    const parsed: unknown = JSON.parse(payload);
+    if (parsed && typeof parsed === "object") {
+      const compact = JSON.stringify(parsed);
+      return `检测到${type}，相关信息：${compact.slice(0, 240)}。`;
+    }
+  } catch { /* 普通文本 */ }
+  return `检测到${type}：${payload.slice(0, 300)}。`;
+}
+
 /** 展开 {{user}}/{{char}} 等宏：现实桥消息属于模板性质，写入前先替换 */
 function expandBridgeMacros(text: string, characterId?: string): string {
   if (!text.includes("{{")) return text;
@@ -106,7 +136,8 @@ function usageCharacterContext(characterId?: string): { charName: string; userNa
 async function processText(rule: BridgeRule, item: BridgeItem): Promise<string> {
   const mode = rule.process?.mode ?? "raw";
   if (mode === "template" && rule.process.template) {
-    return fillTemplate(rule.process.template, item).slice(0, 4000);
+    const normalizedItem = { ...item, payload: normalizeBridgeSignal(item) };
+    return fillTemplate(rule.process.template, normalizedItem).slice(0, 4000);
   }
   if (mode === "ai" && rule.process.prompt) {
     const config = resolveAuxiliaryApiConfig("memorySummaryApiConfigId") ?? loadApiConfigs()[0];
@@ -140,7 +171,7 @@ async function processText(rule: BridgeRule, item: BridgeItem): Promise<string> 
       return `${charName}看了你一眼，没急着报数字，只轻声说：“这个是不是有点久了？先歇一会儿吧，陪我说两句话。”`;
     }
   }
-  return item.payload;
+  return normalizeBridgeSignal(item);
 }
 
 /** 只预览加工后的文本，不执行任何动作；供规则编辑器“模拟测试”使用。 */
@@ -382,7 +413,7 @@ export async function applyServerBridgeEntry(meta: {
     payload: String(meta.item?.payload ?? ""),
     createdAt: String(meta.item?.createdAt ?? new Date().toISOString()),
   };
-  const text = meta.processedText ?? item.payload;
+  const text = meta.processedText?.trim() || normalizeBridgeSignal(item);
   const actionNotes: string[] = [];
   let sessionId: string | undefined;
 
