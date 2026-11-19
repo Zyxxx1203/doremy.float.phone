@@ -1275,7 +1275,7 @@ function DiaryEntryDetail({
   }, [entry.id]);
   return (
     <div className="nw-modal-backdrop diary-entry-detail-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
-      <article ref={paperRef} className="diary-entry-detail-paper" onClick={(event) => event.stopPropagation()}>
+      <article className="diary-entry-detail-paper" onClick={(event) => event.stopPropagation()}>
         <span className="diary-entry-paper-clip" aria-hidden="true"><span /></span>
         <div ref={readingScrollRef} className="diary-entry-detail-scroll">
           <header>
