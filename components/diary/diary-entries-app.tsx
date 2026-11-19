@@ -779,6 +779,25 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
               />
             ))}
           </div>
+        ) : searchTerm.trim() ? (
+          <div className="diary-entry-list">
+            {filteredBooks.flatMap(book => book.entries).map(entry => (
+              <DiaryEntryCard
+                key={entry.id}
+                entry={entry}
+                isDragSource={false}
+                onPointerDown={event => handleEntryPointerDown(event, entry)}
+                onPointerMove={handleEntryPointerMove}
+                onPointerUp={handleEntryPointerUp}
+                onPointerCancel={handleEntryPointerCancel}
+                onPointerLeave={handleEntryPointerLeave}
+                onClick={event => {
+                  event.stopPropagation();
+                  setActiveEntry(entry);
+                }}
+              />
+            ))}
+          </div>
         ) : (
           <div className="diary-shelf">
             {[0, 1].map(column => (
