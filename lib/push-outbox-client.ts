@@ -73,9 +73,8 @@ function parseLifeSceneProactiveOutput(raw: string): { action: string; dialogues
 
 export async function consumeServerOutbox(options?: { silent?: boolean; force?: boolean }): Promise<void> {
     if (typeof window === "undefined") return;
-    // 壳环境的任务与回传箱都走站点（账号 id 与壳订阅一致，见 pushJobsFetch）：
-    // 服务端生成的消息落在站点库里，user_id = 站点账号 id。个人云那条路在壳里
-    // 是断的（网关按 OWNER_ID 存取），所以壳必须读站点回传箱，不能读个人云。
+    // 壳的普通推送任务走站点账号，但现实桥由个人云 worker 处理并写入 OWNER_ID 回传箱。
+    // 因此壳需要同时消费个人云桥回传和站点回传，不能只读其中一边。
     const shellMode = isShellEnvironment();
     // 共享回传箱已紧急停用：没有个人 Supabase 时直接结束，不请求 status/outbox。
     if (!shellMode && !isPersonalPushCloudActive()) return;
