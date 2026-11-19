@@ -258,7 +258,6 @@ class CallControlService : AccessibilityService() {
             }
         }
         // 本机优先：事件进入持久队列后，由原生离线规则直接处理。
-        event.put("notifyAlreadyShown", false)
         event.put("queuedAt", System.currentTimeMillis())
         synchronized(pendingLock) {
             val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -270,24 +269,6 @@ class CallControlService : AccessibilityService() {
             val bounded = JSONArray()
             for (i in (queue.length() - 20).coerceAtLeast(0) until queue.length()) bounded.put(queue.getJSONObject(i))
             prefs.edit().putString(QUEUE_KEY, bounded.toString()).apply()
-        }
-    }
-
-    private fun updatePendingEvent(id: String, updates: JSONObject) {
-        synchronized(pendingLock) {
-            val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            val queue = try { JSONArray(prefs.getString(QUEUE_KEY, "[]") ?: "[]") } catch (_: Throwable) { JSONArray() }
-            for (i in 0 until queue.length()) {
-                val item = queue.optJSONObject(i) ?: continue
-                if (item.optString("id") != id) continue
-                val keys = updates.keys()
-                while (keys.hasNext()) {
-                    val key = keys.next()
-                    item.put(key, updates.opt(key))
-                }
-                break
-            }
-            prefs.edit().putString(QUEUE_KEY, queue.toString()).apply()
         }
     }
 
