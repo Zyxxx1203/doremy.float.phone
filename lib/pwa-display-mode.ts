@@ -1,3 +1,5 @@
+import { isShellEnvironment } from "./shell-detect";
+
 export type PwaDisplayPreference = "fullscreen" | "standalone";
 export type RuntimePwaDisplayMode = "fullscreen" | "standalone" | "minimal-ui" | "browser";
 export type PwaHostedSurface = "custom-app" | "game";
@@ -52,6 +54,9 @@ export function writePwaDisplayPreference(preference: PwaDisplayPreference) {
 /** Preserve the upstream default: mobile browsers request fullscreen unless Edge or explicitly disabled. */
 export function shouldRequestPwaFullscreen(): boolean {
   if (typeof document === "undefined" || typeof navigator === "undefined") return false;
+  // Android WebView immersive mode belongs to the native Activity; installed PWAs
+  // already have their own display mode and should not request document fullscreen.
+  if (isShellEnvironment() || getRuntimePwaDisplayMode() !== "browser") return false;
   const preference = readPwaDisplayPreference(document.cookie);
   if (preference === "standalone") return false;
   if (preference === "fullscreen") return true;

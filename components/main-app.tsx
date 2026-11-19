@@ -296,16 +296,11 @@ export function MainApp() {
       }
     })();
 
-    // 网页端与移动端统一尝试浏览器全屏；只能在用户手势中请求，失败时给出明确提示。
-    // 是否请求仍由「全屏/显示系统状态栏」偏好决定，切换设置后无需重载。
-    let fullscreenNoticeShown = false;
-    const showFullscreenNoticeOnce = (message: string) => {
-      if (fullscreenNoticeShown) return;
-      fullscreenNoticeShown = true;
-      window.dispatchEvent(new CustomEvent("app-global-notice", { detail: { kind: "info", message } }));
-    };
+    // 普通浏览器只在用户手势中尝试 Fullscreen API；失败时静默回退。
+    // 地址栏是否隐藏由浏览器/PWA 安装形态决定，不能靠反复弹窗改变。
+    let fullscreenRequestFailed = false;
     function tryFullscreen() {
-      if (!shouldRequestPwaFullscreen()) return;
+      if (!shouldRequestPwaFullscreen() || fullscreenRequestFailed) return;
       // A document-wide fullscreen request can stall Android WebView media surfaces
       // (both local <video> and third-party iframe players). The watch app must keep
       // its own viewport stable; use the player's native fullscreen control instead.
@@ -314,12 +309,14 @@ export function MainApp() {
       const doc = document.documentElement;
       if (document.fullscreenElement) return;
       if (typeof doc.requestFullscreen !== "function") {
-        showFullscreenNoticeOnce("当前浏览器不支持网页强制全屏。普通网页仍会显示浏览器地址栏；如需更沉浸的显示，可将网站添加到主屏幕后打开。");
+        fullscreenRequestFailed = true;
         return;
       }
-      void doc.requestFullscreen().catch(() => {
-        showFullscreenNoticeOnce("浏览器没有允许网页进入全屏。普通网页无法强行隐藏浏览器地址栏；可尝试添加到主屏幕运行。");
-      });
+      try {
+        void doc.requestFullscreen().catch(() => { fullscreenRequestFailed = true; });
+      } catch {
+        fullscreenRequestFailed = true;
+      }
     }
     document.addEventListener("click", tryFullscreen);
     return () => {
