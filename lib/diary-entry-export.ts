@@ -184,7 +184,7 @@ export async function downloadDiaryEntryImage(entry: DiaryEntry, renderedPaper: 
       try {
         for (const rule of Array.from(sheet.cssRules)) {
           if (rule.type !== CSSRule.FONT_FACE_RULE) continue;
-          const cssText = rule.cssText.replace(/url\\((['"]?)(.*?)\\1\\)/g, (_match, _quote, sourceUrl) => {
+          const cssText = rule.cssText.replace(/url\((['"]?)(.*?)\1\)/g, (_match, _quote, sourceUrl) => {
             const absoluteUrl = sourceUrl.startsWith("data:") || sourceUrl.startsWith("blob:")
               ? sourceUrl
               : new URL(sourceUrl, sheet.href || document.baseURI).href;
@@ -197,7 +197,7 @@ export async function downloadDiaryEntryImage(entry: DiaryEntry, renderedPaper: 
       }
     }
     if (fontDataUrl) fontFaceRules.push('@font-face{font-family:"AIPhoneDiaryEntryUserFont";src:url("' + fontDataUrl + '");font-display:block}');
-    const fontFace = fontFaceRules.length ? "<style>" + fontFaceRules.join("\\n") + "</style>" : "";
+    const fontFace = fontFaceRules.length ? "<style>" + fontFaceRules.join("\n") + "</style>" : "";
     const serialized = fontFace + wrapper.innerHTML;
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xhtml="http://www.w3.org/1999/xhtml" width="' + pixelWidth + '" height="' + pixelHeight + '" viewBox="0 0 ' + width + ' ' + height + '"><foreignObject x="0" y="0" width="' + width + '" height="' + height + '"><div xmlns="http://www.w3.org/1999/xhtml" style="width:' + width + 'px;height:' + height + 'px;overflow:visible">' + serialized + '</div></foreignObject></svg>';
     const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
