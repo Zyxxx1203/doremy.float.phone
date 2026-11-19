@@ -464,6 +464,58 @@ export async function applyServerBridgeEntry(meta: {
  * 分隔后全是空串（用户只敲了几个逗号）时视为不限——否则规则会静默失效，
  * 而用户看到的是「我明明填了过滤却一条都不触发」，极难排查。
  */
+/** 将 Android 原生离线回复可靠合并到对应角色聊天室；原生队列仅在消息落库后确认。 */
+export async function syncNativeOfflineBridgeMessages(): Promise<number> {
+  if (typeof window === "undefined") return 0;
+  const shell = (window as Window & {
+    AndroidShell?: {
+      getPendingNativeRealityBridgeMessages?: () => string;
+      acknowledgeNativeRealityBridgeMessages?: (idsJson: string) => boolean;
+    };
+  }).AndroidShell;
+  if (!shell?.getPendingNativeRealityBridgeMessages || !shell.acknowledgeNativeRealityBridgeMessages) return 0;
+
+  let entries: Array<{ id?: string; characterId?: string; characterName?: string; body?: string; createdAt?: number | string }> = [];
+  try {
+    const parsed: unknown = JSON.parse(shell.getPendingNativeRealityBridgeMessages());
+    if (Array.isArray(parsed)) entries = parsed.filter(item => item && typeof item === "object") as typeof entries;
+  } catch { return 0; }
+
+  const acknowledged: string[] = [];
+  let imported = 0;
+  for (const entry of entries) {
+    const id = String(entry.id ?? "").trim();
+    const characterId = String(entry.characterId ?? "").trim();
+    const body = String(entry.body ?? "").trim();
+    if (!id || !characterId || !body) continue;
+    try {
+      const session = ensureSession(characterId);
+      const parsedTime = typeof entry.createdAt === "number" ? entry.createdAt : Date.parse(String(entry.createdAt || ""));
+      const createdAt = new Date(Number.isFinite(parsedTime) && parsedTime > 0 ? parsedTime : Date.now()).toISOString();
+      upsertImportedChatMessage({
+        id, sessionId: session.id, role: "assistant", content: body,
+        status: "sent", createdAt, origin: "reality_bridge",
+      });
+      reindexSessionMessageOrdersByTime(session.id);
+      notifyChatUpdated(session.id);
+      const character = loadCharacters().find(item => item.id === characterId);
+      dispatchChatMessageNotice({
+        sessionId: session.id, body,
+        senderName: character?.name || String(entry.characterName || "角色"),
+        avatar: character?.avatar || null,
+      });
+      acknowledged.push(id);
+      imported += 1;
+    } catch (error) {
+      console.warn("[现实桥] 本机离线消息写入聊天室失败，将保留队列重试", id, error);
+    }
+  }
+  if (acknowledged.length && !shell.acknowledgeNativeRealityBridgeMessages(JSON.stringify(acknowledged))) {
+    console.warn("[现实桥] 原生队列确认失败；下次按消息 ID 幂等重试");
+  }
+  return imported;
+}
+
 function matchesPayloadFilter(filter: string | undefined, payload: string): boolean {
   const raw = (filter ?? "").trim();
   if (!raw) return true;
