@@ -86,7 +86,7 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
     lastConsumeAt = Date.now();
     const passStartMs = Date.now();
     try {
-        // 壳读站点回传箱（与它的任务同源）；其余情况读个人云回传箱。
+        // 个人云先处理现实桥回传，站点回传箱继续承接普通离线消息。
         const sources: Array<"personal" | "shared"> = shellMode
             ? [...(isPersonalPushCloudActive() ? ["personal" as const] : []), "shared"]
             : ["personal"];
