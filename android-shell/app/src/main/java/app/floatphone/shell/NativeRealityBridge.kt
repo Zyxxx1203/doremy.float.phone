@@ -12,8 +12,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * 原生现实桥捕获器：保留系统广播的本机处理能力；Android 前台应用感知事件由 CallControlService 云端优先派发。
- * 云端等待超时只调用 postOfflineNotificationFallback，不会在本机重放设备动作。
+ * 原生现实桥捕获器：系统事件、离线回复和聊天室消息均在本机处理，不依赖云端等待。
  * Android 强制停止应用后会阻止广播/任务重启应用，不能绕过系统限制。
  */
 object NativeRealityBridge {
@@ -119,7 +118,7 @@ object NativeRealityBridge {
         return notifiedAny
     }
 
-    /** Cloud timeout fallback: notification only; never replays rule/device side effects. */
+    /** 本机事件离线回复：持久化聊天室消息并显示系统提醒，不重复执行设备动作。 */
     fun postOfflineNotificationFallback(context: Context, eventId: String, type: String, payload: String): Boolean {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(KEY_ENABLED, false)) return false
