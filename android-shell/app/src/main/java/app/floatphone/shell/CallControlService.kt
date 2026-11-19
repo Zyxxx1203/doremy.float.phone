@@ -29,8 +29,8 @@ import java.util.concurrent.TimeUnit
  * 除原有浮窗/前台应用事件外，负责 Android 原生连续应用停留计时：
  * - 阈值与开关由网页感知面板同步到 SharedPreferences；
  * - 计时不依赖 WebView 的 setInterval；
- * - 达到阈值后把事件放入持久队列，经站点登录态 API 写入个人云现实桥收件箱；
- * - 云端继续复用既有 push-bridge 规则匹配、冷却、角色回复和推送链路。
+ * - 达到阈值后把事件放入本机持久队列，由离线规则直接生成通知并同步聊天室；
+ * - 不再等待云端事件上传、服务端扫描或 AI 回复超时。
  *
  * 本服务只读取前台包名，不读取其他应用界面内容。用户关闭「前台应用」感知或总开关后，
  * 原生计时立即停止。Android/厂商仍可能在强制停止、关闭无障碍权限或杀进程时中断服务。
@@ -269,7 +269,7 @@ class CallControlService : AccessibilityService() {
                 if (queue.optJSONObject(i)?.optString("id") == id) return
             }
         }
-        // 云端优先：上传前不在本机执行规则、设备动作或通知。
+        // 本机优先：事件进入持久队列后，由原生离线规则直接处理。
         event.put("notifyAlreadyShown", false)
         event.put("queuedAt", System.currentTimeMillis())
         synchronized(pendingLock) {
@@ -303,6 +303,7 @@ class CallControlService : AccessibilityService() {
         }
     }
 
+    /** 现实桥统一走本机离线规则：不再上传云端等待回执或等待 AI 超时。 */
     private fun deliverPendingEvents() {
         if (delivering) return
         val events = synchronized(pendingLock) {
@@ -311,8 +312,6 @@ class CallControlService : AccessibilityService() {
         }
         if (events.length() == 0) return
 
-        // Self-hosted local_user 不需要登录 Cookie；普通账号仍由服务端 Cookie 校验。
-        val cookie = runCatching { CookieManager.getInstance().getCookie(MainActivity.SITE_URL).orEmpty() }.getOrDefault("")
         delivering = true
         Thread({
             try {
@@ -320,104 +319,23 @@ class CallControlService : AccessibilityService() {
                     val event = events.optJSONObject(i) ?: continue
                     val id = event.optString("id").trim()
                     if (id.isBlank()) continue
-                    val cloudAccepted = event.optBoolean("cloudAccepted", false)
-                    val fallbackSent = event.optBoolean("fallbackSent", false)
-
-                    if (cloudAccepted) {
-                        // Shell Realtime 通知在原生 NotificationManager 接受提交后回执；
-                        // 不再把 Service Worker 回执误当作 Android 壳的唯一确认来源。
-                        if (fallbackSent) {
-                            val fallbackBody = JSONObject().put("eventId", id).put("status", "fallback")
-                                .toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-                            val fallbackBuilder = Request.Builder()
-                                .url(MainActivity.SITE_URL.trimEnd('/') + "/api/push/bridge-native-event/receipt")
-                                .post(fallbackBody)
-                            if (cookie.isNotEmpty()) fallbackBuilder.header("Cookie", cookie)
-                            val saved = runCatching {
-                                client.newCall(fallbackBuilder.build()).execute().use { it.isSuccessful }
-                            }.getOrDefault(false)
-                            if (saved) removePendingEvent(id)
-                            continue
-                        }
-
-                        val receiptBuilder = Request.Builder()
-                            .url("${MainActivity.SITE_URL.trimEnd('/')}/api/push/bridge-native-event/receipt?id=${java.net.URLEncoder.encode(id, "UTF-8")}")
-                            .header("Accept", "application/json")
-                            .get()
-                        if (cookie.isNotEmpty()) receiptBuilder.header("Cookie", cookie)
-                        val receipt = runCatching {
-                            client.newCall(receiptBuilder.build()).execute().use { response ->
-                                if (!response.isSuccessful) null
-                                else JSONObject(response.body?.string().orEmpty())
-                            }
-                        }.getOrNull()
-                        if (receipt?.optBoolean("displayed", false) == true || receipt?.optBoolean("fallback", false) == true) {
-                            removePendingEvent(id)
-                            continue
-                        }
-
-                        // 等待窗口覆盖 bridge_scan 的分钟级调度与 AI 回复最长 5 分钟执行时间。
-                        // 超时才使用本机离线回复；只有原生通知确实提交成功才写 fallback 回执。
-                        val acceptedAt = event.optLong("cloudAcceptedAt", 0L)
-                        if (acceptedAt > 0L && System.currentTimeMillis() - acceptedAt >= 6 * 60_000L) {
-                            val shown = runCatching {
-                                NativeRealityBridge.postOfflineNotificationFallback(
-                                    applicationContext, id, event.optString("type"), event.optString("payload")
-                                )
-                            }.getOrDefault(false)
-                            if (shown) updatePendingEvent(id, JSONObject().put("fallbackSent", true))
-                        }
+                    if (event.optBoolean("fallbackSent", false)) {
+                        removePendingEvent(id)
                         continue
                     }
-
-                    val body = JSONObject()
-                        .put("id", id)
-                        .put("type", event.optString("type"))
-                        .put("payload", event.optString("payload"))
-                        .put("createdAt", event.optString("createdAt"))
-                        .put("notifyAlreadyShown", fallbackSent || event.optBoolean("notifyAlreadyShown", false))
-                        .toString()
-                        .toRequestBody("application/json; charset=utf-8".toMediaType())
-                    val uploadBuilder = Request.Builder()
-                        .url("${MainActivity.SITE_URL.trimEnd('/')}/api/push/bridge-native-event")
-                        .header("Accept", "application/json")
-                        .post(body)
-                    if (cookie.isNotEmpty()) uploadBuilder.header("Cookie", cookie)
-
-                    val uploadCode = runCatching {
-                        client.newCall(uploadBuilder.build()).execute().use { it.code }
-                    }.getOrNull()
-                    when {
-                        uploadCode == 410 -> removePendingEvent(id)
-                        uploadCode != null && uploadCode in 200..299 -> {
-                            if (fallbackSent || event.optBoolean("notifyAlreadyShown", false)) {
-                                // 本机已经提交过通知；云端继续执行角色回复，但不再重复通知。
-                                removePendingEvent(id)
-                            } else {
-                                updatePendingEvent(
-                                    id,
-                                    JSONObject().put("cloudAccepted", true).put("cloudAcceptedAt", System.currentTimeMillis())
-                                )
-                            }
-                        }
-                        else -> {
-                            // 云端不可达时才走本机离线兜底。若失败，不伪造回执、不删除队列。
-                            val queuedAt = event.optLong("queuedAt", 0L)
-                            if (!fallbackSent && queuedAt > 0L && System.currentTimeMillis() - queuedAt >= 45_000L) {
-                                val shown = runCatching {
-                                    NativeRealityBridge.postOfflineNotificationFallback(
-                                        applicationContext, id, event.optString("type"), event.optString("payload")
-                                    )
-                                }.getOrDefault(false)
-                                if (shown) updatePendingEvent(id, JSONObject().put("fallbackSent", true))
-                            }
-                        }
-                    }
+                    val delivered = runCatching {
+                        NativeRealityBridge.postOfflineNotificationFallback(
+                            applicationContext, id, event.optString("type"), event.optString("payload")
+                        )
+                    }.getOrDefault(false)
+                    // Only remove after the local notification/chat queue accepted the event.
+                    // Failed attempts remain durable and are retried on the next service tick.
+                    if (delivered) removePendingEvent(id)
                 }
             } finally {
                 delivering = false
             }
-        }, "native-perception-upload").start()
+        }, "native-reality-bridge-local").start()
     }
 
     private fun removePendingEvent(id: String) {
