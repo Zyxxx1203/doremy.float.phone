@@ -1273,12 +1273,11 @@ function DiaryEntryDetail({
   readingCount: number;
 }) {
   const markers = getEntryMarkers(entry);
-  const paperRef = useRef<HTMLElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; }, [entry.id]);
   return (
     <div className="nw-modal-backdrop diary-entry-detail-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
-      <article ref={paperRef} className="diary-entry-detail-paper" onClick={(event) => event.stopPropagation()}>
+      <article className="diary-entry-detail-paper" onClick={(event) => event.stopPropagation()}>
         <span className="diary-entry-paper-clip" aria-hidden="true"><span /></span>
         <div ref={scrollRef} className="diary-entry-detail-scroll">
           <header>
