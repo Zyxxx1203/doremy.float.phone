@@ -50,7 +50,7 @@ let consumerInstalled = false;
 let consumeRequestTimer: number | null = null;
 const OUTBOX_BATCH_SIZE = 20;
 const MAX_OUTBOX_BATCHES_PER_PASS = 10;
-const OUTBOX_FOREGROUND_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+const OUTBOX_FOREGROUND_CHECK_INTERVAL_MS = 30 * 1000;
 
 function getTimedWakeIdFromTriggerKey(triggerKey: string | null): string | null {
     if (!triggerKey?.startsWith("timedwake:")) return null;
@@ -431,6 +431,10 @@ export function installServerOutboxConsumer(): void {
     document.addEventListener("visibilitychange", () => {
         if (!document.hidden) requestConsume(true);
     });
+    // 服务端桥接事件可能在 App 已经停留前台时到达；不能只在启动/切回前台时拉一次。
+    window.setInterval(() => {
+        if (!document.hidden) requestConsume();
+    }, OUTBOX_FOREGROUND_CHECK_INTERVAL_MS);
     navigator.serviceWorker?.addEventListener("message", (event) => {
         if (event.data?.type === "push_outbox_ready") {
             requestConsume(true);
