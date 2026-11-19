@@ -7,6 +7,9 @@ on:
     branches: [main]
     paths:
       - "components/life/**"
+      - "components/diary/**"
+      - "lib/diary-entry-*.ts"
+      - "styles/diary.css"
       - "lib/life/**"
       - "supabase/functions/push-generate/**"
       - "lib/notification-reply.ts"
@@ -32,6 +35,9 @@ on:
     branches: [main]
     paths:
       - "components/life/**"
+      - "components/diary/**"
+      - "lib/diary-entry-*.ts"
+      - "styles/diary.css"
       - "lib/life/**"
       - "supabase/functions/push-generate/**"
       - "lib/notification-reply.ts"
