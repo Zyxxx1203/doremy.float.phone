@@ -109,7 +109,7 @@ object NativeRealityBridge {
             val notified = shouldNotify && postNotification(context, title, message, notificationId, notificationSessionId)
             if (notified) {
                 notifiedAny = true
-                if (requestReply && effectiveRole != "assistant" && chatSessionId.isNotBlank()) {
+                if (requestReply && effectiveRole != "assistant" && chatSessionId.isNotBlank() && replyMessage.isNotBlank()) {
                     val fallbackEventId = "local_${now}_${ruleId}".replace(Regex("[^a-zA-Z0-9_-]"), "_").take(100)
                     val fallback = JSONObject()
                         .put("eventId", fallbackEventId)
