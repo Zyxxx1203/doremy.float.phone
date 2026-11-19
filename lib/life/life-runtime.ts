@@ -745,9 +745,9 @@ export function settleActorTimelineToNow(
   const manualStayActive = !!previous?.actualLocationUntil && new Date(previous.actualLocationUntil).getTime() > realNow.getTime();
   // A manually selected actual location (no expiry) is an explicit presence override.
   // A newly active schedule must not pull the actor back to its planned location.
-  const manualLocationOverride = Boolean(previous?.actualLocationId
+  const manualLocationOverride = Boolean(current && previous?.actualLocationId
     && previous.actualLocationUntil == null
-    && previous.actualLocationId !== current?.plannedLocationId);
+    && previous.actualLocationId !== current.plannedLocationId);
   const nextActivity = activeAppointment
     ? current.title
     : manualStayActive || manualLocationOverride
