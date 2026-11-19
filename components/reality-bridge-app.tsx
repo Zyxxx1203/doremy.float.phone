@@ -31,7 +31,7 @@ import {
 } from "@/lib/reality-bridge/storage";
 import type { BridgeRule } from "@/lib/reality-bridge/types";
 import { buildChatPromptMessages, sendLLMRequest } from "@/lib/chat-engine";
-import { loadChatMessages, loadChatSessions } from "@/lib/chat-storage";
+import { addChatContact, createOrGetSession, loadChatContacts, loadChatMessages, loadChatSessions } from "@/lib/chat-storage";
 import { createShortcutCommand, loadRecentShortcutCommands, type ShortcutCommand } from "@/lib/shortcut-command-client";
 import { enableOfflinePush, isShellEnvironment, sendShellTestPush } from "@/lib/push-client";
 import { describeBridgePlatform } from "@/lib/shell-detect";
@@ -676,6 +676,20 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
           offlineReplies: (rule.offlineReplies === undefined ? defaultOfflineReplies(rule.matchType) : rule.offlineReplies).filter(line => line.trim()).slice(0, 80),
           notificationEnabled: !!rule.actions.chat?.requestReply || !!rule.actions.notify,
           characterName: loadCharacters().find(character => character.id === rule.actions.chat?.characterId)?.name || "",
+          ...(rule.actions.chat?.characterId ? (() => {
+            const characterId = rule.actions.chat.characterId;
+            if (!loadChatContacts().some(contact => contact.characterId === characterId)) addChatContact(characterId);
+            const session = createOrGetSession(characterId);
+            return {
+              chat: {
+                characterId,
+                sessionId: session.id,
+                role: rule.actions.chat.role,
+                historyRole: rule.actions.chat.historyRole || "",
+                requestReply: rule.actions.chat.requestReply === true,
+              },
+            };
+          })() : {}),
           ...(canSyncAction ? { deviceAction: { action: chosenAction!.action, args: chosenAction!.args ?? {} } } : {}),
         };
       });
