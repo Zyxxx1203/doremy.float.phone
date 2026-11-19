@@ -424,7 +424,13 @@ class CallControlService : AccessibilityService() {
                         client.newCall(uploadBuilder.build()).execute().use { it.code }
                     }.getOrNull()
                     when {
-                        uploadCode == 410 -> removePendingEvent(id)
+                        uploadCode == 410 -> {
+                            if (fallbackSent && !fallbackSynced) {
+                                updatePendingEvent(id, JSONObject().put("cloudAccepted", true).put("cloudAcceptedAt", System.currentTimeMillis()))
+                            } else {
+                                removePendingEvent(id)
+                            }
+                        }
                         uploadCode != null && uploadCode in 200..299 -> {
                             if (fallbackSent || event.optBoolean("notifyAlreadyShown", false)) {
                                 // 本机已经提交过通知；先确保离线回复已进入聊天回传箱，再结束事件。
