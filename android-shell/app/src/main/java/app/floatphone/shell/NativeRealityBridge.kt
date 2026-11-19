@@ -25,7 +25,7 @@ object NativeRealityBridge {
     private const val KEY_ENABLED = "enabled"
     private const val KEY_DEVICE_ACTIONS_ENABLED = "device_actions_enabled"
     private const val KEY_ALLOWED_DEVICE_ACTIONS = "allowed_device_actions"
-    private const val CHANNEL = "reality_bridge_local"
+    private const val CHANNEL = "reality_bridge_local_chat"
     private const val MAX_ITEMS = 100
 
     fun configure(context: Context, json: String): Boolean = try {
@@ -208,7 +208,7 @@ object NativeRealityBridge {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(NotificationChannel(
-                CHANNEL, "现实桥 · 本机触发", NotificationManager.IMPORTANCE_DEFAULT))
+                CHANNEL, "现实桥 · 角色消息", NotificationManager.IMPORTANCE_HIGH))
         }
         val channelDisabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
             && manager.getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE
