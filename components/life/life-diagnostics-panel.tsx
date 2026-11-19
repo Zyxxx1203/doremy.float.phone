@@ -365,7 +365,7 @@ export function LifeDiagnosticsPanel() {
           </button>
           <button
             type="button"
-            onClick={() => void refresh()
+            onClick={() => void refresh()}
             disabled={refreshing}
             className="inline-flex min-h-10 items-center gap-1 rounded-xl border bg-white px-3 text-xs disabled:opacity-50"
           >
