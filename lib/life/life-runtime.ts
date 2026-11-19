@@ -125,10 +125,23 @@ export function reserveCharacterLocationStay(
 ): VirtualLifeState {
   const { characterId, locationId, locationName, startAt, endAt, title } = input;
   const startMs = startAt.getTime();
-  const endMs = endAt.getTime();
-  if (!characterId || !locationId || !locationName || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return state;
+  const requestedEndMs = endAt.getTime();
+  if (!characterId || !locationId || !locationName || !Number.isFinite(startMs) || !Number.isFinite(requestedEndMs) || requestedEndMs <= startMs) return state;
+
+  const ownerSlots = state.schedules.filter(slot => slot.ownerType === "character" && slot.ownerId === characterId);
+  const activeSlot = getCurrentActorSchedule(state, "character", characterId, startAt);
+  const nextBoundaryMs = activeSlot
+    ? new Date(activeSlot.endAt).getTime()
+    : ownerSlots.map(slot => new Date(slot.startAt).getTime())
+      .filter(value => Number.isFinite(value) && value > startMs)
+      .sort((a, b) => a - b)[0];
+  // A manual trip replaces only the activity currently in progress. Its end is
+  // bounded by the next planned activity, so future itinerary entries stay intact.
+  const endMs = Math.min(requestedEndMs, Number.isFinite(nextBoundaryMs) ? nextBoundaryMs! : requestedEndMs);
+  if (endMs <= startMs) return state;
+
   const startIso = startAt.toISOString();
-  const endIso = endAt.toISOString();
+  const endIso = new Date(endMs).toISOString();
   const updatedAt = new Date().toISOString();
   const retainedSlots: LifeScheduleSlot[] = [];
   for (const slot of state.schedules) {
@@ -142,8 +155,9 @@ export function reserveCharacterLocationStay(
       retainedSlots.push(slot);
       continue;
     }
+    // Keep only the elapsed prefix of an interrupted activity. Never resurrect
+    // its unfinished tail after the user has explicitly replaced that activity.
     if (slotStart < startMs) retainedSlots.push({ ...slot, endAt: startIso, updatedAt });
-    if (slotEnd > endMs) retainedSlots.push({ ...slot, id: makeId("resume-after-location-stay"), startAt: endIso, updatedAt });
   }
   retainedSlots.push({
     id: makeId("companion-follow"),
@@ -740,19 +754,27 @@ export function settleActorTimelineToNow(
         && new Date(event.endsAt).getTime() > realNow.getTime()
       )
     : undefined;
-  const nextActivity = activeAppointment
-    ? current.title
-    : stayExpired
-      ? current?.title ?? previous?.activity ?? "自由活动"
-      : current && slotChanged
-        ? current.title
-        : !current && previous?.scheduleSlotId
-          ? "自由活动"
-          : previous?.activity ?? current?.title ?? "自由活动";
   // A missing current slot must clear the old slot reference. Otherwise deleting
   // or editing a schedule can leave an actor permanently attached to stale activity.
   const manualStayActive = !!previous?.actualLocationUntil && new Date(previous.actualLocationUntil).getTime() > realNow.getTime();
-  const scheduleMovementDue = !!current && !manualStayActive && (slotChanged || stayExpired || !previous?.actualLocationId);
+  // A manually selected actual location (no expiry) is an explicit presence override.
+  // A newly active schedule must not pull the actor back to its planned location.
+  const manualLocationOverride = Boolean(current && previous?.actualLocationId
+    && previous.actualLocationUntil == null
+    && previous.actualLocationId !== current.plannedLocationId);
+  const nextActivity = activeAppointment
+    ? current.title
+    : manualStayActive || manualLocationOverride
+      ? previous?.activity ?? current?.title ?? "自由活动"
+      : stayExpired
+        ? current?.title ?? previous?.activity ?? "自由活动"
+        : current && slotChanged
+          ? current.title
+          : !current && previous?.scheduleSlotId
+            ? "自由活动"
+            : previous?.activity ?? current?.title ?? "自由活动";
+  const scheduleMovementDue = !!current && !manualStayActive && !manualLocationOverride
+    && (slotChanged || stayExpired || !previous?.actualLocationId);
   const nextLocationId = activeAppointment || scheduleMovementDue
     ? current?.plannedLocationId ?? previous?.actualLocationId ?? null
     : previous?.actualLocationId ?? current?.plannedLocationId ?? null;

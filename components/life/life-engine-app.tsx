@@ -950,6 +950,12 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const targetLocationName = slot?.plannedLocationName ?? before?.actualLocationName ?? null;
       const targetActivity = slot?.title ?? before?.activity ?? "自由活动";
       if (!targetLocationId) continue;
+      const nowMs = now.getTime();
+      const temporaryStayActive = Boolean(before?.actualLocationUntil && Date.parse(before.actualLocationUntil) > nowMs);
+      const manualLocationOverride = Boolean(before?.actualLocationId
+        && before.actualLocationUntil == null
+        && before.actualLocationId !== slot?.plannedLocationId);
+      if (temporaryStayActive || manualLocationOverride) continue;
       if (before?.actualLocationId === targetLocationId && before?.activity === targetActivity) continue;
       next = upsertActorState(next, {
         ownerType: "character",

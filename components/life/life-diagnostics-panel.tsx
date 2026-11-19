@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, RefreshCw, Trash2 } from "lucide-react";
+import { ClipboardCopy, Download, RefreshCw, Trash2 } from "lucide-react";
 import {
   clearLifeDiagnostics,
   readLifeDiagnostics,
@@ -14,6 +14,8 @@ import { isShellEnvironment } from "@/lib/shell-detect";
 import { resetLifeSystemData } from "@/lib/life/life-reset";
 import { loadVirtualLifeState } from "@/lib/life/life-storage";
 import { downloadFile } from "@/lib/download-utils";
+import { copyTextToClipboard } from "@/lib/clipboard-utils";
+import { loadCharacters } from "@/lib/character-storage";
 
 const STATUS_LABEL: Record<LifeDiagnosticStatus, string> = {
   ok: "成功",
@@ -42,6 +44,8 @@ export function LifeDiagnosticsPanel() {
   const [exporting, setExporting] = useState(false);
   const [cloudStatus, setCloudStatus] = useState("尚未刷新");
   const [localSnapshot, setLocalSnapshot] = useState<Record<string, unknown> | null>(null);
+  const [summaryText, setSummaryText] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
   const refreshInFlightRef = useRef(false);
 
   const refresh = async () => {
@@ -54,6 +58,7 @@ export function LifeDiagnosticsPanel() {
       const life = loadVirtualLifeState();
       const now = Date.now();
       const player = life.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === "player");
+      const characterNames = new Map(loadCharacters().map(character => [character.id, character.name]));
       const messagesByScene = new Map<string, typeof life.sceneMessages>();
       for (const message of life.sceneMessages) {
         const group = messagesByScene.get(message.sceneId) ?? [];
@@ -94,8 +99,35 @@ export function LifeDiagnosticsPanel() {
             activity: player.activity,
             actualLocationId: player.actualLocationId,
             actualLocationName: player.actualLocationName,
+            actualLocationUntil: player.actualLocationUntil ?? null,
             updatedAt: player.updatedAt,
           } : null,
+          actors: life.actorStates.map(actor => {
+            const activeSlots = life.schedules.filter(slot => slot.ownerType === actor.ownerType && slot.ownerId === actor.ownerId
+              && Date.parse(slot.startAt) <= now && Date.parse(slot.endAt) > now)
+              .sort((a, b) => Date.parse(b.startAt) - Date.parse(a.startAt) || Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+            const slot = activeSlots[0];
+            const until = actor.actualLocationUntil ? Date.parse(actor.actualLocationUntil) : Number.NaN;
+            const temporaryStay = Number.isFinite(until) && until > now;
+            const manualOverride = Boolean(actor.actualLocationId && actor.actualLocationUntil == null && actor.actualLocationId !== slot?.plannedLocationId);
+            return {
+              ownerType: actor.ownerType,
+              ownerId: actor.ownerId,
+              name: actor.ownerType === "player" ? (life.settings.playerDisplayName || "我") : (characterNames.get(actor.ownerId) || actor.ownerId),
+              activity: actor.activity,
+              actualLocationId: actor.actualLocationId ?? null,
+              actualLocationName: actor.actualLocationName ?? null,
+              plannedLocationId: slot?.plannedLocationId ?? null,
+              plannedLocationName: slot?.plannedLocationName ?? null,
+              scheduleTitle: slot?.title ?? null,
+              scheduleStartAt: slot?.startAt ?? null,
+              scheduleEndAt: slot?.endAt ?? null,
+              activeScheduleCount: activeSlots.length,
+              locationControl: temporaryStay ? "限时停留" : manualOverride ? "手动地点覆盖" : "日程",
+              actualLocationUntil: actor.actualLocationUntil ?? null,
+              updatedAt: actor.updatedAt,
+            };
+          }),
           counts: {
             locations: life.locations.length, actors: life.actorStates.length,
             schedules: life.schedules.length, scenes: life.scenes.length,
@@ -120,7 +152,7 @@ export function LifeDiagnosticsPanel() {
           currentSchedules: life.schedules.filter(slot =>
             new Date(slot.startAt).getTime() <= now && new Date(slot.endAt).getTime() > now,
           ).map(slot => ({
-            ownerType: slot.ownerType, ownerId: slot.ownerId, title: slot.title,
+            id: slot.id, ownerType: slot.ownerType, ownerId: slot.ownerId, title: slot.title,
             startAt: slot.startAt, endAt: slot.endAt,
             plannedLocationId: slot.plannedLocationId, plannedLocationName: slot.plannedLocationName,
             source: slot.source, kind: slot.kind,
@@ -133,6 +165,43 @@ export function LifeDiagnosticsPanel() {
         },
         localDiagnosticCount: localEntries.length,
       };
+      const actorRows = snapshot.lifeSystem.actors as Array<{
+        name: string; ownerType: string; activity: string; actualLocationName: string | null;
+        plannedLocationName: string | null; scheduleTitle: string | null; scheduleStartAt: string | null;
+        scheduleEndAt: string | null; activeScheduleCount: number; locationControl: string; actualLocationUntil: string | null;
+      }>;
+      const activeScenes = snapshot.lifeSystem.scenes.filter(scene => scene.status === "active" || scene.status === "paused");
+      const duplicateSchedules = actorRows.filter(actor => actor.activeScheduleCount > 1);
+      const issueLines = [
+        ...duplicateSchedules.map(actor => `日程重叠：${actor.name} 当前有 ${actor.activeScheduleCount} 条同时生效的日程。`),
+        ...actorRows.filter(actor => actor.locationControl === "手动地点覆盖").map(actor => `地点覆盖：${actor.name} 当前在「${actor.actualLocationName || "未知"}」，日程计划为「${actor.plannedLocationName || "未指定"}」；手动地点应优先于日程。`),
+        ...activeScenes.filter(scene => scene.status === "active" && player?.actualLocationId && scene.locationId !== player.actualLocationId).map(scene => `场景位置不一致：场景「${scene.locationName}」与玩家实际地点「${player?.actualLocationName || player?.actualLocationId}」不同。`),
+      ];
+      const timeLabel = (value: string | null) => value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "未设置";
+      const summary = [
+        "生活系统排查摘要",
+        "采集时间：" + new Date().toLocaleString("zh-CN", { hour12: false }),
+        "运行状态：" + (life.settings.enabled ? "已启用" : "未启用") + "；角色自主：" + (life.settings.enableCharacterAutonomy ? "开启" : "关闭"),
+        "玩家位置：" + (player?.actualLocationName || "未知") + (player?.activity ? "；行动：" + player.activity : ""),
+        "",
+        "角色位置与当前日程：",
+        ...actorRows.filter(actor => actor.ownerType === "character").map(actor =>
+          `- ${actor.name}：实际「${actor.actualLocationName || "未知"}」；计划「${actor.plannedLocationName || "无"}」；活动「${actor.activity || "无"}」；日程「${actor.scheduleTitle || "无"}」(${timeLabel(actor.scheduleStartAt)}—${timeLabel(actor.scheduleEndAt)})；位置规则：${actor.locationControl}${actor.actualLocationUntil ? "，停留至 " + timeLabel(actor.actualLocationUntil) : ""}${actor.activeScheduleCount > 1 ? "；同时生效日程 " + actor.activeScheduleCount + " 条" : ""}`
+        ),
+        "",
+        "当前场景：",
+        ...activeScenes.map(scene => `- ${scene.locationName}（${scene.status}）；参与者：${scene.participants.map(item => item.ownerType === "player" ? "我" : characterNames.get(item.ownerId) || item.ownerId).join("、") || "无"}；场景 ID：${scene.id}`),
+        "",
+        "自动检查：",
+        ...(issueLines.length ? issueLines.map(line => "- " + line) : ["- 未发现明显的日程重叠或场景位置冲突。"]),
+        "",
+        "最近的位置/日程/场景变化：",
+        ...life.timeline.filter(entry => ["location", "schedule", "scene"].includes(entry.category)).slice(-12).reverse().map(entry =>
+          `- ${timeLabel(entry.occurredAt)}｜${entry.actorName || entry.actorId || "系统"}｜${entry.title}${entry.details ? "｜" + entry.details.slice(0, 180) : ""}`
+        ),
+      ].join("\n");
+      setSummaryText(summary);
+      setCopyStatus("");
       setEntries(localEntries);
       setFailedReplies(readFailedLifeSceneReplies());
       setLocalSnapshot(snapshot);
@@ -263,6 +332,12 @@ export function LifeDiagnosticsPanel() {
     }
   };
 
+  const copySummary = async () => {
+    if (!summaryText) return;
+    const copied = await copyTextToClipboard(summaryText);
+    setCopyStatus(copied ? "排查摘要已复制" : "复制失败，请刷新后重试");
+  };
+
   const clearLog = () => {
     if (!window.confirm("清空本机诊断记录？不会影响生活数据。")) return;
     clearLifeDiagnostics();
@@ -279,6 +354,15 @@ export function LifeDiagnosticsPanel() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void copySummary()}
+            disabled={!summaryText}
+            className="inline-flex min-h-10 items-center gap-1 rounded-xl border bg-white px-3 text-xs disabled:opacity-40"
+          >
+            <ClipboardCopy size={14} />
+            复制排查摘要
+          </button>
           <button
             type="button"
             onClick={() => void refresh()}
@@ -311,14 +395,18 @@ export function LifeDiagnosticsPanel() {
 
       <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50/80 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <b className="text-sm text-stone-800">本机运行快照</b>
+          <b className="text-sm text-stone-800">运行状态摘要</b>
           <span className="text-[10px] text-stone-400">{localSnapshot ? "已采集" : "等待刷新"}</span>
         </div>
         {localSnapshot ? (
-          <details className="mt-2">
-            <summary className="cursor-pointer text-xs text-stone-600">查看设备、玩家位置、聊天室、日程和近期生活记录</summary>
-            <pre className="mt-2 max-h-80 overflow-auto rounded-xl bg-white p-3 text-[10px] leading-relaxed text-stone-600">{JSON.stringify(localSnapshot, null, 2)}</pre>
-          </details>
+          <>
+            <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-white p-3 text-[11px] leading-relaxed text-stone-700">{summaryText}</pre>
+            {copyStatus && <p role="status" className="mt-2 text-[11px] text-emerald-700">{copyStatus}</p>}
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs text-stone-500">查看原始快照（JSON）</summary>
+              <pre className="mt-2 max-h-80 overflow-auto rounded-xl bg-white p-3 text-[10px] leading-relaxed text-stone-600">{JSON.stringify(localSnapshot, null, 2)}</pre>
+            </details>
+          </>
         ) : <p className="mt-1 text-xs text-stone-500">点击刷新采集本机数据；不依赖云端连接。</p>}
         <p className="mt-2 text-[10px] text-stone-500">{cloudStatus}</p>
       </div>
