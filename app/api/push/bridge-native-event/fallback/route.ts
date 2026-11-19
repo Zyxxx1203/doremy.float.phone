@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentAccount } from "@/lib/server/account-auth";
-import { encodeSupabaseFilter, formatSupabaseRestError, getSupabaseServerConfig, supabaseRestFetch } from "@/lib/server/supabase-rest";
+import { formatSupabaseRestError, getSupabaseServerConfig, supabaseRestFetch } from "@/lib/server/supabase-rest";
 
 type FallbackBody = {
   eventId?: unknown;
