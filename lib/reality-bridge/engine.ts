@@ -136,7 +136,8 @@ function usageCharacterContext(characterId?: string): { charName: string; userNa
 async function processText(rule: BridgeRule, item: BridgeItem): Promise<string> {
   const mode = rule.process?.mode ?? "raw";
   if (mode === "template" && rule.process.template) {
-    return fillTemplate(rule.process.template, item).slice(0, 4000);
+    const normalizedItem = { ...item, payload: normalizeBridgeSignal(item) };
+    return fillTemplate(rule.process.template, normalizedItem).slice(0, 4000);
   }
   if (mode === "ai" && rule.process.prompt) {
     const config = resolveAuxiliaryApiConfig("memorySummaryApiConfigId") ?? loadApiConfigs()[0];
@@ -170,7 +171,7 @@ async function processText(rule: BridgeRule, item: BridgeItem): Promise<string> 
       return `${charName}看了你一眼，没急着报数字，只轻声说：“这个是不是有点久了？先歇一会儿吧，陪我说两句话。”`;
     }
   }
-  return item.payload;
+  return normalizeBridgeSignal(item);
 }
 
 /** 只预览加工后的文本，不执行任何动作；供规则编辑器“模拟测试”使用。 */
