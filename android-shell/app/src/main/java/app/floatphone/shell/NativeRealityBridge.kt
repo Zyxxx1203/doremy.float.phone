@@ -12,8 +12,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * 原生现实桥捕获器：保留系统广播的本机处理能力；Android 前台应用感知事件由 CallControlService 云端优先派发。
- * 云端等待超时只调用 postOfflineNotificationFallback，不会在本机重放设备动作。
+ * 原生现实桥捕获器：系统事件、离线回复和聊天室消息均在本机处理，不依赖云端等待。
  * Android 强制停止应用后会阻止广播/任务重启应用，不能绕过系统限制。
  */
 object NativeRealityBridge {
@@ -21,10 +20,11 @@ object NativeRealityBridge {
     private const val KEY_EVENTS = "local_events"
     private const val KEY_LOG = "execution_log"
     private const val KEY_RULES = "rules_json"
+    private const val KEY_CHAT_QUEUE = "pending_chat_messages"
     private const val KEY_ENABLED = "enabled"
     private const val KEY_DEVICE_ACTIONS_ENABLED = "device_actions_enabled"
     private const val KEY_ALLOWED_DEVICE_ACTIONS = "allowed_device_actions"
-    private const val CHANNEL = "reality_bridge_local"
+    private const val CHANNEL = "reality_bridge_local_chat"
     private const val MAX_ITEMS = 100
 
     fun configure(context: Context, json: String): Boolean = try {
@@ -98,7 +98,14 @@ object NativeRealityBridge {
             val message = visibleParts.joinToString("\n").take(500)
             val title = rule.optString("characterName").ifBlank { rule.optString("name", "现实桥") }
             val shouldNotify = rule.optBoolean("notificationEnabled", true) && message.isNotBlank()
-            val notified = shouldNotify && postNotification(context, title, message, now)
+            val characterId = rule.optString("characterId").trim()
+            val queuedChat = characterId.isNotBlank() && replyMessage.isNotBlank() && enqueueChatMessage(context,
+                JSONObject().put("id", "native_bridge_" + event.optString("id") + "_" + ruleId)
+                    .put("eventId", event.optString("id")).put("ruleId", ruleId)
+                    .put("characterId", characterId).put("characterName", title)
+                    .put("body", replyMessage).put("createdAt", now))
+            // 前台由现有聊天室横幅提醒；后台才发 Android heads-up，避免同一消息双重通知。
+            val notified = shouldNotify && ((MainActivity.isForeground && queuedChat) || postNotification(context, title, message, now))
             if (notified) notifiedAny = true
             prefs.edit().putLong("last_run_$ruleId", now).apply()
             val result = when {
@@ -112,11 +119,12 @@ object NativeRealityBridge {
         return notifiedAny
     }
 
-    /** Cloud timeout fallback: notification only; never replays rule/device side effects. */
+    /** 本机事件离线回复：持久化聊天室消息并显示系统提醒，不重复执行设备动作。 */
     fun postOfflineNotificationFallback(context: Context, eventId: String, type: String, payload: String): Boolean {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(KEY_ENABLED, false)) return false
         val rules = readArray(prefs.getString(KEY_RULES, "[]"))
+        var matchedRule = false
         for (i in 0 until rules.length()) {
             val rule = rules.optJSONObject(i) ?: continue
             if (!rule.optBoolean("enabled", false)) continue
@@ -124,18 +132,74 @@ object NativeRealityBridge {
             if (matchType != "*" && !matchType.equals(type, ignoreCase = true)) continue
             val filter = rule.optString("payloadFilter", "").trim()
             if (filter.isNotEmpty() && filter.split("|", ",").none { it.trim().isNotEmpty() && payload.contains(it.trim(), ignoreCase = true) }) continue
+            matchedRule = true
+            val ruleId = rule.optString("id", rule.optString("name", "rule_$i"))
+            val now = System.currentTimeMillis()
+            val cooldown = rule.optLong("cooldownMinutes", 0L).coerceIn(0L, 10080L)
+            val lastRun = prefs.getLong("last_run_$ruleId", 0L)
+            if (cooldown > 0 && now - lastRun < cooldown * 60_000L) {
+                record(context, JSONObject().put("id", eventId).put("type", type).put("payload", payload),
+                    rule.optString("name", ruleId), "本机规则仍在冷却期；本次仅去重归档")
+                return true
+            }
             val replies = rule.optJSONArray("offlineReplies") ?: JSONArray()
             val candidates = (0 until replies.length()).mapNotNull { replies.optString(it).trim().takeIf(String::isNotBlank) }
             val template = rule.optJSONObject("process")?.optString("template", "").orEmpty()
             val body = (candidates.firstOrNull() ?: template).replace("{payload}", payload).replace("{type}", type).take(360)
             if (body.isBlank() || !rule.optBoolean("notificationEnabled", true)) continue
             val title = rule.optString("characterName").ifBlank { rule.optString("name", "现实桥") }
-            val shown = postNotification(context, title, body, eventId.hashCode().toLong())
-            if (shown) record(context, JSONObject().put("id", eventId).put("type", type).put("payload", payload), rule.optString("name"), "云端等待超时；纯通知离线兜底")
-            return shown
+            val characterId = rule.optString("characterId").trim()
+            val queued = characterId.isNotBlank() && enqueueChatMessage(context,
+                JSONObject().put("id", "native_bridge_" + eventId + "_" + rule.optString("id"))
+                    .put("eventId", eventId).put("ruleId", rule.optString("id"))
+                    .put("characterId", characterId).put("characterName", title)
+                    .put("body", body).put("createdAt", System.currentTimeMillis()))
+            // WebView 前台时交给聊天室横幅；退到后台才显示原生 heads-up 通知。
+            val shown = (MainActivity.isForeground && queued) || postNotification(context, title, body, eventId.hashCode().toLong())
+            if (shown || queued) {
+                prefs.edit().putLong("last_run_$ruleId", now).apply()
+                record(context, JSONObject().put("id", eventId).put("type", type).put("payload", payload),
+                    rule.optString("name"), "本机离线回复；已写入聊天室待处理队列")
+            }
+            return shown || queued
         }
-        return false
+        return matchedRule
     }
+    private fun enqueueChatMessage(context: Context, message: JSONObject): Boolean {
+        val id = message.optString("id")
+        if (id.isBlank()) return false
+        synchronized(this) {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val queue = readArray(prefs.getString(KEY_CHAT_QUEUE, "[]"))
+            for (i in 0 until queue.length()) {
+                if (queue.optJSONObject(i)?.optString("id") == id) return true
+            }
+            queue.put(message)
+            trim(queue, MAX_ITEMS)
+            return prefs.edit().putString(KEY_CHAT_QUEUE, queue.toString()).commit()
+        }
+    }
+
+    fun pendingChatMessages(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_CHAT_QUEUE, "[]") ?: "[]"
+
+    fun acknowledgeChatMessages(context: Context, idsJson: String): Boolean = try {
+        val ids = readArray(idsJson).let { array ->
+            (0 until array.length()).map { array.optString(it) }.toSet()
+        }
+        synchronized(this) {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val old = readArray(prefs.getString(KEY_CHAT_QUEUE, "[]"))
+            val next = JSONArray()
+            for (i in 0 until old.length()) {
+                val item = old.optJSONObject(i) ?: continue
+                if (item.optString("id") !in ids) next.put(item)
+            }
+            prefs.edit().putString(KEY_CHAT_QUEUE, next.toString()).commit()
+        }
+    } catch (_: Throwable) { false }
+
     /** Background rules use an explicit user-controlled allow-list and only native-supported actions. */
     private fun executeBackgroundDeviceAction(context: Context, prefs: android.content.SharedPreferences, action: JSONObject): String {
         if (!prefs.getBoolean(KEY_DEVICE_ACTIONS_ENABLED, false)) return "未执行设备动作：设置中的「操作设备」总开关未开启"
@@ -159,7 +223,7 @@ object NativeRealityBridge {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(NotificationChannel(
-                CHANNEL, "现实桥 · 本机触发", NotificationManager.IMPORTANCE_DEFAULT))
+                CHANNEL, "现实桥 · 角色消息", NotificationManager.IMPORTANCE_HIGH))
         }
         val channelDisabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
             && manager.getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE
@@ -173,6 +237,8 @@ object NativeRealityBridge {
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle(title.take(80)).setContentText(body.take(180))
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body.take(500)))
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setContentIntent(openApp).setAutoCancel(true).build()
             manager.notify((id % Int.MAX_VALUE).toInt(), notification)
             true

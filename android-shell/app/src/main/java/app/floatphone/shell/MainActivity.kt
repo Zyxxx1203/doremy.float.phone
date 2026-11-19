@@ -87,6 +87,8 @@ class MainActivity : AppCompatActivity() {
          * 只需要管一个开关。渠道一旦创建过，后建的只更新名称/描述，不会重置用户选择。
          */
         const val CH_MESSAGES = "shell_messages"
+        @Volatile var isForeground: Boolean = false
+            private set
         @Volatile private var nativeCrashRecorderInstalled = false
         private const val MAX_WEB_CONSOLE_LOGS = 200
         private val webConsoleLogs = java.util.Collections.synchronizedList(mutableListOf<String>())
@@ -1088,6 +1090,16 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
 }
 
     @SuppressLint("SetJavaScriptEnabled")
+    override fun onResume() {
+        super.onResume()
+        isForeground = true
+    }
+
+    override fun onPause() {
+        isForeground = false
+        super.onPause()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pruneCachedSharedVideos()
@@ -1788,6 +1800,16 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         @JavascriptInterface
         fun getNativeRealityBridgeLog(): String =
             NativeRealityBridge.recentLog(this@MainActivity)
+
+        /** 读取本机离线现实桥待写入聊天室的消息。 */
+        @JavascriptInterface
+        fun getPendingNativeRealityBridgeMessages(): String =
+            NativeRealityBridge.pendingChatMessages(this@MainActivity)
+
+        /** 聊天室确认写入后才从原生持久队列中确认，避免 WebView 重启丢消息。 */
+        @JavascriptInterface
+        fun acknowledgeNativeRealityBridgeMessages(idsJson: String): Boolean =
+            NativeRealityBridge.acknowledgeChatMessages(this@MainActivity, idsJson)
 
         /** 原生后台事件队列状态；只返回计数和时间，不暴露事件正文。 */
         @JavascriptInterface

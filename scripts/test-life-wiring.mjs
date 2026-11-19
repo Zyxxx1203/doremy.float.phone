@@ -447,7 +447,7 @@ assert.match(app, /const blob = await response\.blob\(\)/,
 assert.match(app, /sceneMessages: stateRef\.current\.sceneMessages\.filter\(message => message\.imageId !== imageId\)/,
   "deleting a gallery image must remove its chat reference without leaving a broken card");
 
-const [realityNative, realityCallControl, realityRoute, realityPushWorker, realityUi, realityPushService, realityActivity, diagnostics] = await Promise.all([
+const [realityNative, realityCallControl, realityRoute, realityPushWorker, realityUi, realityPushService, realityActivity, diagnostics, realityEngine, realityScheduler] = await Promise.all([
   read("../android-shell/app/src/main/java/app/floatphone/shell/NativeRealityBridge.kt"),
   read("../android-shell/app/src/main/java/app/floatphone/shell/CallControlService.kt"),
   read("../app/api/push/bridge-native-event/route.ts"),
@@ -456,17 +456,22 @@ const [realityNative, realityCallControl, realityRoute, realityPushWorker, reali
   read("../android-shell/app/src/main/java/app/floatphone/shell/PushService.kt"),
   read("../android-shell/app/src/main/java/app/floatphone/shell/MainActivity.kt"),
   read("../components/settings/runtime-diagnostics.tsx"),
+  read("../lib/reality-bridge/engine.ts"),
+  read("../components/reality-bridge-scheduler.tsx"),
 ]);
-assert.match(realityNative, /fun postOfflineNotificationFallback\([\s\S]*?postNotification\(/, "native fallback must post notification only");
-assert.match(realityCallControl, /云端优先：上传前不在本机执行规则、设备动作或通知/, "Android background events must enter the cloud before any local fallback");
-assert.match(realityCallControl, /receipt\?id=/, "native service must poll for actual notification display receipt");
-assert.match(realityCallControl, /postOfflineNotificationFallback/, "timeout fallback must not replay full native rule execution");
-assert.match(realityCallControl, /queuedAt.*System\.currentTimeMillis\(\)/, "fallback timer must start when the native event is queued");
-assert.match(realityCallControl, /fallbackSent/, "successful offline fallback must be persisted across retries");
-assert.match(realityCallControl, /fallbackSent.*notifyAlreadyShown/, "later cloud upload must suppress a duplicate push after offline fallback");
-assert.match(realityCallControl, /if \(cookie\.isNotEmpty\(\)\) uploadBuilder\.header\("Cookie", cookie\)/, "self-hosted local_user uploads must proceed without a WebView Cookie");
-assert.match(realityCallControl, /System\.currentTimeMillis\(\) - queuedAt >= 45_000L/, "local fallback timer must continue when cloud upload is unavailable");
-assert.match(realityCallControl, /cloudAcceptedAt[\s\S]*?6 \* 60_000L/, "cloud-accepted events must wait for the native notification receipt before fallback");
+assert.match(realityNative, /fun postOfflineNotificationFallback\([\s\S]*?enqueueChatMessage\([\s\S]*?postNotification\(/, "offline fallback must persist a chat message and show its native alert");
+assert.match(realityNative, /fun pendingChatMessages/, "native bridge must expose its durable chat queue");
+assert.match(realityNative, /fun acknowledgeChatMessages/, "native bridge must acknowledge only imported chat messages");
+assert.match(realityCallControl, /NativeRealityBridge\.postOfflineNotificationFallback/, "background events must use the local offline rule path");
+assert.match(realityCallControl, /native-reality-bridge-local/, "native event processing must not wait for cloud delivery or AI timeouts");
+assert.doesNotMatch(realityCallControl, /bridge-native-event/, "reality bridge events must not upload to the cloud");
+assert.match(realityActivity, /getPendingNativeRealityBridgeMessages/, "WebView must be able to retrieve pending local bridge messages");
+assert.match(realityActivity, /acknowledgeNativeRealityBridgeMessages/, "WebView must acknowledge messages after chat persistence");
+assert.match(realityUi, /characterId: rule\.actions\.chat\?\.characterId/, "native rules must retain the target character identity");
+assert.match(realityEngine, /export async function syncNativeOfflineBridgeMessages/, "native offline replies must be imported into chat");
+assert.match(realityEngine, /upsertImportedChatMessage\([\s\S]*?channel: "reality_bridge"/, "native bridge messages must use the canonical chat storage");
+assert.match(realityEngine, /dispatchChatMessageNotice\(/, "native bridge messages must reuse the existing chat banner");
+assert.match(realityScheduler, /syncNativeOfflineBridgeMessages\(\)/, "native chat queue must be drained when the WebView scheduler resumes");
 assert.match(realityPushWorker, /bridgeEventId\?: string/, "bridge push payloads must carry a stable event ID for display receipts");
 assert.match(realityPushWorker, /bridge-notify-\$\{item\.id\}.*item\.id/, "generic bridge pushes must carry the event ID");
 assert.match(realityPushWorker, /bridge-\$\{item\.id\}-\$\{rule\.id\}-\$\{index\}.*item\.id/, "role reply pushes must carry the event ID");
