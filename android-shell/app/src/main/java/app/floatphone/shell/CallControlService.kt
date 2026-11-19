@@ -75,21 +75,39 @@ class CallControlService : AccessibilityService() {
                 prefs.edit().putString(QUEUE_KEY, bounded.toString()).apply()
             }
             Thread({
-                val cookie = runCatching { CookieManager.getInstance().getCookie(MainActivity.SITE_URL).orEmpty() }.getOrDefault("")
-                val body = JSONObject().put("eventId", id).put("fallback", fallback)
-                    .toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-                val builder = Request.Builder()
-                    .url("${MainActivity.SITE_URL.trimEnd('/')}/api/push/bridge-native-event/fallback")
-                    .header("Accept", "application/json")
-                    .post(body)
-                if (cookie.isNotEmpty()) builder.header("Cookie", cookie)
-                val saved = runCatching {
-                    OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(12, TimeUnit.SECONDS).build()
-                        .newCall(builder.build()).execute().use { it.isSuccessful }
-                }.getOrDefault(false)
-                if (saved) removeQueuedNativeFallback(context, id)
+                if (postNativeFallbackToSite(context, id, fallback)) removeQueuedNativeFallback(context, id)
             }, "native-bridge-chat-sync").start()
         }
+
+        /** Retry durable native fallback records when the app returns to the foreground. */
+        fun retryPendingNativeFallbackChatSync(context: Context) {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val queue = try { JSONArray(prefs.getString(QUEUE_KEY, "[]") ?: "[]") } catch (_: Throwable) { JSONArray() }
+            val pending = (0 until queue.length()).mapNotNull { queue.optJSONObject(it) }
+                .filter { it.has("fallbackChat") && !it.optBoolean("fallbackSynced", false) }
+                .map { JSONObject(it.toString()) }
+            if (pending.isEmpty()) return
+            Thread({
+                for (event in pending) {
+                    val fallback = event.optJSONObject("fallbackChat") ?: continue
+                    val id = event.optString("id")
+                    if (postNativeFallbackToSite(context, id, fallback)) removeQueuedNativeFallback(context, id)
+                }
+            }, "native-bridge-chat-retry").start()
+        }
+
+        private fun postNativeFallbackToSite(context: Context, id: String, fallback: JSONObject): Boolean = runCatching {
+            val cookie = CookieManager.getInstance().getCookie(MainActivity.SITE_URL).orEmpty()
+            val body = JSONObject().put("eventId", id).put("fallback", fallback)
+                .toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+            val builder = Request.Builder()
+                .url("${MainActivity.SITE_URL.trimEnd('/')}/api/push/bridge-native-event/fallback")
+                .header("Accept", "application/json")
+                .post(body)
+            if (cookie.isNotEmpty()) builder.header("Cookie", cookie)
+            OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(12, TimeUnit.SECONDS).build()
+                .newCall(builder.build()).execute().use { it.isSuccessful }
+        }.getOrDefault(false)
 
         private fun removeQueuedNativeFallback(context: Context, id: String) {
             synchronized(pendingLock) {
