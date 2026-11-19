@@ -75,7 +75,7 @@ class CallControlService : AccessibilityService() {
                 prefs.edit().putString(QUEUE_KEY, bounded.toString()).apply()
             }
             Thread({
-                if (postNativeFallbackToSite(context, id, fallback)) removeQueuedNativeFallback(context, id)
+                if (postNativeFallbackToSite(id, fallback)) removeQueuedNativeFallback(context, id)
             }, "native-bridge-chat-sync").start()
         }
 
@@ -96,7 +96,7 @@ class CallControlService : AccessibilityService() {
             }, "native-bridge-chat-retry").start()
         }
 
-        private fun postNativeFallbackToSite(context: Context, id: String, fallback: JSONObject): Boolean = runCatching {
+        private fun postNativeFallbackToSite(id: String, fallback: JSONObject): Boolean = runCatching {
             val cookie = CookieManager.getInstance().getCookie(MainActivity.SITE_URL).orEmpty()
             val body = JSONObject().put("eventId", id).put("fallback", fallback)
                 .toString().toRequestBody("application/json; charset=utf-8".toMediaType())
