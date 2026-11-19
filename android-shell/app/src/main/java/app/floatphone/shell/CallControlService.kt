@@ -47,10 +47,64 @@ class CallControlService : AccessibilityService() {
         private const val DWELL_START_KEY = "dwell_start_at"
         private const val REPORTED_PACKAGE_KEY = "reported_package"
         private const val CHECK_INTERVAL_MS = 15_000L
+        private val pendingLock = Any()
+
+        /** Queue and immediately attempt to persist a native-only system-event reply. */
+        fun enqueueNativeFallbackChatSync(context: Context, fallback: JSONObject) {
+            if (!fallback.has("chat")) return
+            val id = fallback.optString("eventId").trim()
+            if (id.isBlank()) return
+            val event = JSONObject()
+                .put("id", id)
+                .put("type", fallback.optString("type"))
+                .put("payload", fallback.optString("payload"))
+                .put("createdAt", fallback.opt("createdAt") ?: System.currentTimeMillis())
+                .put("queuedAt", System.currentTimeMillis())
+                .put("cloudAccepted", true)
+                .put("cloudAcceptedAt", System.currentTimeMillis())
+                .put("fallbackSent", true)
+                .put("fallbackChat", fallback)
+            synchronized(pendingLock) {
+                val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                val queue = try { JSONArray(prefs.getString(QUEUE_KEY, "[]") ?: "[]") } catch (_: Throwable) { JSONArray() }
+                if ((0 until queue.length()).any { queue.optJSONObject(it)?.optString("id") == id }) return
+                queue.put(event)
+                val bounded = JSONArray()
+                for (index in (queue.length() - 20).coerceAtLeast(0) until queue.length()) bounded.put(queue.getJSONObject(index))
+                prefs.edit().putString(QUEUE_KEY, bounded.toString()).apply()
+            }
+            Thread({
+                val cookie = runCatching { CookieManager.getInstance().getCookie(MainActivity.SITE_URL).orEmpty() }.getOrDefault("")
+                val body = JSONObject().put("eventId", id).put("fallback", fallback)
+                    .toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+                val builder = Request.Builder()
+                    .url("${MainActivity.SITE_URL.trimEnd('/')}/api/push/bridge-native-event/fallback")
+                    .header("Accept", "application/json")
+                    .post(body)
+                if (cookie.isNotEmpty()) builder.header("Cookie", cookie)
+                val saved = runCatching {
+                    OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(12, TimeUnit.SECONDS).build()
+                        .newCall(builder.build()).execute().use { it.isSuccessful }
+                }.getOrDefault(false)
+                if (saved) removeQueuedNativeFallback(context, id)
+            }, "native-bridge-chat-sync").start()
+        }
+
+        private fun removeQueuedNativeFallback(context: Context, id: String) {
+            synchronized(pendingLock) {
+                val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                val queue = try { JSONArray(prefs.getString(QUEUE_KEY, "[]") ?: "[]") } catch (_: Throwable) { JSONArray() }
+                val next = JSONArray()
+                for (index in 0 until queue.length()) {
+                    val item = queue.optJSONObject(index) ?: continue
+                    if (item.optString("id") != id) next.put(item)
+                }
+                prefs.edit().putString(QUEUE_KEY, next.toString()).apply()
+            }
+        }
     }
 
     private val handler = Handler(Looper.getMainLooper())
-    private val pendingLock = Any()
     @Volatile private var delivering = false
 
     private val client = OkHttpClient.Builder()
