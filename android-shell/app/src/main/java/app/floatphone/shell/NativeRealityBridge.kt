@@ -239,12 +239,33 @@ object NativeRealityBridge {
             }
             val openApp = PendingIntent.getActivity(context, id.toInt(),
                 intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            val notification = NotificationCompat.Builder(context, CHANNEL)
+            val builder = NotificationCompat.Builder(context, CHANNEL)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle(title.take(80)).setContentText(body.take(180))
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body.take(500)))
-                .setContentIntent(openApp).setAutoCancel(true).build()
-            manager.notify((id % Int.MAX_VALUE).toInt(), notification)
+                .setContentIntent(openApp).setAutoCancel(true)
+            if (targetSessionId.isNotEmpty()) {
+                val remoteInput = androidx.core.app.RemoteInput.Builder(NotificationReplyReceiver.KEY_REPLY_TEXT)
+                    .setLabel("回复角色")
+                    .build()
+                val replyIntent = Intent(context, NotificationReplyReceiver::class.java).apply {
+                    action = NotificationReplyReceiver.ACTION_REPLY
+                    putExtra(NotificationReplyReceiver.EXTRA_SESSION_ID, targetSessionId)
+                }
+                val replyPendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    (targetSessionId + id).hashCode(),
+                    replyIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
+                )
+                val replyAction = NotificationCompat.Action.Builder(
+                    android.R.drawable.ic_menu_send,
+                    "回复",
+                    replyPendingIntent,
+                ).addRemoteInput(remoteInput).build()
+                builder.addAction(replyAction)
+            }
+            manager.notify((id % Int.MAX_VALUE).toInt(), builder.build())
             true
         }
     } catch (_: Throwable) { false }
