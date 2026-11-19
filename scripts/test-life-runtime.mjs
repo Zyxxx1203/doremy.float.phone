@@ -577,7 +577,8 @@ assert.equal(restoredHome.state.actorStates.find(actor => actor.ownerType === "c
 
 assert.equal(typeof reserveCharacterLocationStay, "function", "manual companion transfer should be a testable runtime operation");
 const tripStart = new Date("2026-10-15T10:30:00.000Z");
-const tripEnd = new Date("2026-10-15T12:30:00.000Z");
+const requestedTripEnd = new Date("2026-10-15T12:30:00.000Z");
+const tripEnd = new Date("2026-10-15T11:00:00.000Z");
 const transferState = {
   ...makeState([
     { id: "before-trip", ownerType: "character", ownerId: "c-trip", startAt: "2026-10-15T09:00:00.000Z", endAt: "2026-10-15T11:00:00.000Z", title: "原地点上午安排", kind: "work", source: "weekly-generation", plannedLocationId: "office", plannedLocationName: "公司", updatedAt: "2026-10-15T09:00:00.000Z" },
@@ -594,19 +595,21 @@ const transferred = reserveCharacterLocationStay(transferState, {
   locationId: "cafe",
   locationName: "街角咖啡店",
   startAt: tripStart,
-  endAt: tripEnd,
+  endAt: requestedTripEnd,
   title: "与我同行：前往街角咖啡店",
 });
 const tripSlots = transferred.schedules.filter(slot => slot.ownerType === "character" && slot.ownerId === "c-trip");
 const truncated = tripSlots.find(slot => slot.id === "before-trip");
-assert.equal(truncated.endAt, tripStart.toISOString(), "the active itinerary slot is truncated at departure");
-assert.ok(tripSlots.some(slot => slot.source === "manual" && slot.plannedLocationId === "cafe" && slot.startAt === tripStart.toISOString() && slot.endAt === tripEnd.toISOString()), "a manual visit reservation covers the full stay");
-assert.ok(tripSlots.some(slot => slot.title === "原地点下午安排" && slot.startAt === tripEnd.toISOString() && slot.endAt === "2026-10-15T13:00:00.000Z"), "a slot crossing the return time resumes after the visit");
-assert.ok(tripSlots.some(slot => slot.id === "after-trip" && slot.plannedLocationId === "office"), "future slots after the visit remain intact");
+assert.equal(truncated.endAt, tripStart.toISOString(), "the elapsed prefix of the interrupted itinerary remains intact");
+assert.ok(tripSlots.some(slot => slot.source === "manual" && slot.plannedLocationId === "cafe" && slot.startAt === tripStart.toISOString() && slot.endAt === tripEnd.toISOString()), "manual travel replaces the current activity only until its next schedule boundary");
+assert.ok(!tripSlots.some(slot => slot.title === "原地点上午安排" && slot.startAt === tripEnd.toISOString()), "the unfinished tail of the replaced activity must not be restored");
+assert.ok(tripSlots.some(slot => slot.id === "during-trip" && slot.startAt === tripEnd.toISOString()), "the next future itinerary entry remains unchanged");
+assert.ok(tripSlots.some(slot => slot.id === "crossing-trip-end" && slot.plannedLocationId === "library"), "later future itinerary entries remain intact");
+assert.ok(tripSlots.some(slot => slot.id === "after-trip" && slot.plannedLocationId === "office"), "all later slots remain intact");
 assert.ok(transferred.schedules.some(slot => slot.id === "other-character"), "other characters' itineraries remain untouched");
 const tripActor = transferred.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === "c-trip");
 assert.equal(tripActor.actualLocationId, "cafe", "the companion's actual location follows the player");
-assert.equal(tripActor.actualLocationUntil, tripEnd.toISOString(), "the temporary location override expires at the planned return time");
+assert.equal(tripActor.actualLocationUntil, tripEnd.toISOString(), "the manual trip ends at the next planned activity boundary");
 
 const companionOverlay = overlayScheduleSlotsOverFreeTime(transferred, [{
   id: "night-home-generated",
@@ -621,28 +624,25 @@ const companionOverlay = overlayScheduleSlotsOverFreeTime(transferred, [{
   plannedLocationName: "角色的家",
   updatedAt: tripStart.toISOString(),
 }]);
-assert.ok(companionOverlay.schedules.some(slot => slot.id.startsWith("companion-follow-") && slot.plannedLocationId === "cafe"), "weekly home/free-time generation must not replace an active companion stay");
-assert.ok(!companionOverlay.schedules.some(slot => slot.id === "night-home-generated"), "conflicting weekly home schedule must be rejected during companion stay");
+assert.ok(companionOverlay.schedules.some(slot => slot.source === "manual" && slot.plannedLocationId === "cafe"), "weekly generation must not replace the active manual travel slot");
+assert.ok(!companionOverlay.schedules.some(slot => slot.id === "night-home-generated"), "conflicting weekly home schedule must be rejected during companion travel");
 const companionToolChange = applyCharacterLifeScheduleChange(transferred, "c-trip", {
-  startAt: "2026-10-15T11:00:00.000Z",
-  endAt: "2026-10-15T12:00:00.000Z",
+  startAt: "2026-10-15T10:40:00.000Z",
+  endAt: "2026-10-15T10:50:00.000Z",
   title: "角色自主安排",
   locationId: "office",
 }, new Date("2026-10-15T10:00:00.000Z"));
-assert.ok(companionToolChange.error, "character-authored schedule changes must not overwrite a future companion stay");
-assert.ok(companionToolChange.state.schedules.some(slot => slot.id.startsWith("companion-follow-") && slot.plannedLocationId === "cafe"), "rejected autonomous change must preserve companion stay");
+assert.ok(companionToolChange.error, "character-authored schedule changes must not overwrite an active manual travel slot");
+assert.ok(companionToolChange.state.schedules.some(slot => slot.source === "manual" && slot.plannedLocationId === "cafe"), "rejected autonomous change must preserve the active manual travel slot");
 const companionTimelineState = { ...transferred, events: [], memories: [], invitations: [], scenes: [], timeline: [], settings: { playerDisplayName: "我", saveConfirmedEventsToMemory: true } };
-const duringCompanionStay = settleActorTimelineToNow(companionTimelineState, "character", "c-trip", new Date("2026-10-15T11:00:00.000Z"));
+const duringCompanionStay = settleActorTimelineToNow(companionTimelineState, "character", "c-trip", new Date("2026-10-15T10:45:00.000Z"));
 const duringCompanionActor = duringCompanionStay.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === "c-trip");
-assert.equal(duringCompanionActor.actualLocationId, "cafe", "timeline settlement must keep the companion at the chosen location until the explicit expiry");
-assert.equal(duringCompanionActor.actualLocationUntil, tripEnd.toISOString(), "timeline settlement must retain the original companion expiry");
+assert.equal(duringCompanionActor.actualLocationId, "cafe", "timeline settlement keeps the companion at the chosen location during the replacement slot");
+assert.equal(duringCompanionActor.actualLocationUntil, tripEnd.toISOString(), "timeline settlement retains the replacement slot boundary");
 const afterCompanionStay = settleActorTimelineToNow(duringCompanionStay, "character", "c-trip", tripEnd);
 const afterCompanionActor = afterCompanionStay.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === "c-trip");
-const resumedLibrary = afterCompanionStay.locations.find(location => location.name === "图书馆");
-assert.ok(resumedLibrary, "the split original itinerary location should remain available in the location library");
-assert.equal(afterCompanionActor.actualLocationId, resumedLibrary.id, "after the companion stay expires, the split original itinerary resumes");
-assert.equal(afterCompanionActor.actualLocationName, "图书馆", "the original itinerary location name resumes after the companion stay");
-
+assert.equal(afterCompanionActor.actualLocationId, "park", "the next preserved itinerary entry takes over when the replaced activity ends");
+assert.equal(afterCompanionActor.activity, "原地点中间安排", "the next preserved itinerary activity resumes without restoring the interrupted activity remainder");
 
 
 
