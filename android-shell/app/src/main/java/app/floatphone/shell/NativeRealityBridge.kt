@@ -103,7 +103,7 @@ object NativeRealityBridge {
             val historyRole = chat?.optString("historyRole").orEmpty()
             val displayRole = chat?.optString("role", "user").orEmpty().ifBlank { "user" }
             val effectiveRole = historyRole.ifBlank { displayRole }
-            val notificationSessionId = chatSessionId.takeIf { it.isNotBlank() }
+            val notificationSessionId = chatSessionId.takeIf { requestReply && it.isNotBlank() }
             val shouldNotify = rule.optBoolean("notificationEnabled", true) && message.isNotBlank()
             val notificationId = ("$now:$ruleId").hashCode().toLong()
             val notified = shouldNotify && postNotification(context, title, message, notificationId, notificationSessionId)
@@ -142,7 +142,7 @@ object NativeRealityBridge {
         return notifiedAny
     }
 
-    /** Cloud timeout fallback: notification only; never replays rule/device side effects. */
+    /** Cloud timeout fallback: notify and sync the prepared reply; never replays rule/device side effects. */
     fun postOfflineNotificationFallback(
         context: Context,
         eventId: String,
