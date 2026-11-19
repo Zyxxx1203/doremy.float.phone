@@ -740,15 +740,6 @@ export function settleActorTimelineToNow(
         && new Date(event.endsAt).getTime() > realNow.getTime()
       )
     : undefined;
-  const nextActivity = activeAppointment
-    ? current.title
-    : stayExpired
-      ? current?.title ?? previous?.activity ?? "自由活动"
-      : current && slotChanged
-        ? current.title
-        : !current && previous?.scheduleSlotId
-          ? "自由活动"
-          : previous?.activity ?? current?.title ?? "自由活动";
   // A missing current slot must clear the old slot reference. Otherwise deleting
   // or editing a schedule can leave an actor permanently attached to stale activity.
   const manualStayActive = !!previous?.actualLocationUntil && new Date(previous.actualLocationUntil).getTime() > realNow.getTime();
@@ -757,6 +748,17 @@ export function settleActorTimelineToNow(
   const manualLocationOverride = Boolean(previous?.actualLocationId
     && previous.actualLocationUntil == null
     && previous.actualLocationId !== current?.plannedLocationId);
+  const nextActivity = activeAppointment
+    ? current.title
+    : manualStayActive || manualLocationOverride
+      ? previous?.activity ?? current?.title ?? "自由活动"
+      : stayExpired
+        ? current?.title ?? previous?.activity ?? "自由活动"
+        : current && slotChanged
+          ? current.title
+          : !current && previous?.scheduleSlotId
+            ? "自由活动"
+            : previous?.activity ?? current?.title ?? "自由活动";
   const scheduleMovementDue = !!current && !manualStayActive && !manualLocationOverride
     && (slotChanged || stayExpired || !previous?.actualLocationId);
   const nextLocationId = activeAppointment || scheduleMovementDue
