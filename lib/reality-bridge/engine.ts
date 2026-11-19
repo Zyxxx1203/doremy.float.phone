@@ -59,7 +59,7 @@ function fillTemplate(template: string, item: BridgeItem): string {
 export function normalizeBridgeSignal(item: Pick<BridgeItem, "type" | "payload">): string {
   const type = item.type.trim() || "设备状态";
   const payload = item.payload.trim();
-  const percent = payload.match(/(?:电量\\s*)?(\\d{1,3})\\s*%/);
+  const percent = payload.match(/(?:电量\s*)?(\d{1,3})\s*%/);
   if (type.includes("电量") && percent) {
     const value = Math.min(100, Number(percent[1]));
     if (type.includes("偏低")) return `手机电量偏低，目前约 ${value}%。`;
