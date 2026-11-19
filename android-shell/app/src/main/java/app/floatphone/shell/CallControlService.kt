@@ -91,7 +91,7 @@ class CallControlService : AccessibilityService() {
                 for (event in pending) {
                     val fallback = event.optJSONObject("fallbackChat") ?: continue
                     val id = event.optString("id")
-                    if (postNativeFallbackToSite(context, id, fallback)) removeQueuedNativeFallback(context, id)
+                    if (postNativeFallbackToSite(id, fallback)) removeQueuedNativeFallback(context, id)
                 }
             }, "native-bridge-chat-retry").start()
         }
