@@ -252,7 +252,7 @@ object NativeRealityBridge {
 
     /** Keep offline delivery semantically aligned with the web signal normalizer. */
     private fun normalizeSignal(type: String, payload: String): String {
-        val percent = Regex("(?:电量\\\\s*)?(\\\\d{1,3})\\\\s*%").find(payload)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        val percent = Regex("(?:电量\\s*)?(\\d{1,3})\\s*%").find(payload)?.groupValues?.getOrNull(1)?.toIntOrNull()
         if (type.contains("电量") && percent != null) {
             val value = percent.coerceIn(0, 100)
             return when {
