@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
-import { Bot, CalendarDays, ChevronLeft, Clock3, Download, Heart, NotebookPen, Pencil, RotateCcw, Search, SlidersHorizontal, Trash2, WandSparkles, X } from "lucide-react";
+import { Bot, ChevronLeft, Clock3, Download, Heart, NotebookPen, Pencil, RotateCcw, Search, SlidersHorizontal, Trash2, WandSparkles, X } from "lucide-react";
 import { DotsThree } from "@phosphor-icons/react";
 
 import { loadCharacters } from "@/lib/character-storage";
