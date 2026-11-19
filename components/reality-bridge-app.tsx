@@ -659,6 +659,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
       .filter(rule => !rule.schedule)
       .map(rule => {
         const chosenAction = rule.actions.deviceAction;
+        const chatAction = rule.actions.chat;
         // Native rules that run with the WebView closed intentionally sync only torch:
         // other actions often need foreground UI, permissions, or user confirmation.
         const canSyncAction = !!chosenAction && chosenAction.action === "torch" && deviceActionConfig.enabled === true && deviceActionConfig.actions[chosenAction.action as keyof typeof deviceActionConfig.actions] === true;
@@ -676,17 +677,17 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
           offlineReplies: (rule.offlineReplies === undefined ? defaultOfflineReplies(rule.matchType) : rule.offlineReplies).filter(line => line.trim()).slice(0, 80),
           notificationEnabled: !!rule.actions.chat?.requestReply || !!rule.actions.notify,
           characterName: loadCharacters().find(character => character.id === rule.actions.chat?.characterId)?.name || "",
-          ...(rule.actions.chat?.characterId ? (() => {
-            const characterId = rule.actions.chat.characterId;
+          ...(chatAction?.characterId ? (() => {
+            const characterId = chatAction.characterId;
             if (!loadChatContacts().some(contact => contact.characterId === characterId)) addChatContact(characterId);
             const session = createOrGetSession(characterId);
             return {
               chat: {
                 characterId,
                 sessionId: session.id,
-                role: rule.actions.chat.role,
-                historyRole: rule.actions.chat.historyRole || "",
-                requestReply: rule.actions.chat.requestReply === true,
+                role: chatAction.role,
+                historyRole: chatAction.historyRole || "",
+                requestReply: chatAction.requestReply === true,
               },
             };
           })() : {}),
