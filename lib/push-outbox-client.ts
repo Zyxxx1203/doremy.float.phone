@@ -88,7 +88,9 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
     const passStartMs = Date.now();
     try {
         // 壳读站点回传箱（与它的任务同源）；其余情况读个人云回传箱。
-        const sources: Array<"personal" | "shared"> = shellMode ? ["shared"] : ["personal"];
+        const sources: Array<"personal" | "shared"> = shellMode
+            ? [...(isPersonalPushCloudActive() ? ["personal" as const] : []), "shared"]
+            : ["personal"];
         const handledTriggerKeys = new Set<string>();
         for (const source of sources) {
           for (let batch = 0; batch < MAX_OUTBOX_BATCHES_PER_PASS; batch += 1) {
@@ -117,6 +119,7 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                             screenChatCharacterId?: string;
                             screenChatSequence?: number;
                             screenChatResponseBatchId?: string;
+                            bridgeResponseBatchId?: string;
                             screenChatAssistantAt?: string;
                         };
                         const engine = await import("./reality-bridge/engine");
@@ -124,9 +127,11 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                         const replyMeta = bridgeMeta.reply || null;
                         const replySessionId = applied.sessionId || replyMeta?.sessionId || "";
                         if (entry.raw_text.trim() && replySessionId) {
-                            const responseBatchId = typeof bridgeMeta.screenChatResponseBatchId === "string"
-                                ? bridgeMeta.screenChatResponseBatchId
-                                : undefined;
+                            const responseBatchId = typeof bridgeMeta.bridgeResponseBatchId === "string"
+                                ? bridgeMeta.bridgeResponseBatchId
+                                : typeof bridgeMeta.screenChatResponseBatchId === "string"
+                                    ? bridgeMeta.screenChatResponseBatchId
+                                    : undefined;
                             const existing = loadChatMessages(replySessionId);
                             const alreadyImported = Boolean(
                                 responseBatchId && existing.some(message => message.responseBatchId === responseBatchId),
