@@ -86,9 +86,9 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
     lastConsumeAt = Date.now();
     const passStartMs = Date.now();
     try {
-        // 个人云先处理现实桥回传，站点回传箱继续承接普通离线消息。
+        // 站点回传箱先处理本机离线兜底，个人云再处理服务端现实桥回复；相同事件用 responseBatchId 去重。
         const sources: Array<"personal" | "shared"> = shellMode
-            ? [...(isPersonalPushCloudActive() ? ["personal" as const] : []), "shared"]
+            ? ["shared", ...(isPersonalPushCloudActive() ? ["personal" as const] : [])]
             : ["personal"];
         const handledTriggerKeys = new Set<string>();
         for (const source of sources) {
