@@ -219,7 +219,6 @@ export function normalizeDiaryEntry(raw: unknown): DiaryEntry | null {
         ? record.updated_at
         : createdAt,
     isFavorite: Boolean(record.isFavorite ?? record.favorite),
-    curatedExcerpts: Array.isArray(record.curatedExcerpts) ? Array.from(new Set(record.curatedExcerpts.map(item => cleanMultilineText(item, 600)).filter(Boolean))).slice(0, 100) : [],
     revisionHistory,
   };
 }
@@ -338,22 +337,6 @@ export function setDiaryEntryFavorite(id: string, isFavorite: boolean): DiaryEnt
   const index = entries.findIndex(entry => entry.id === id);
   if (index < 0) return null;
   const updated = { ...entries[index], isFavorite: Boolean(isFavorite) };
-  entries[index] = updated;
-  saveDiaryEntries(entries);
-  return updated;
-}
-
-/** Persist a curated excerpt independently of content revisions. */
-export function toggleDiaryEntryExcerpt(id: string, excerpt: string): DiaryEntry | null {
-  const value = cleanMultilineText(excerpt, 600);
-  if (!id || !value) return null;
-  const entries = loadDiaryEntries();
-  const index = entries.findIndex(entry => entry.id === id);
-  if (index < 0) return null;
-  const current = entries[index];
-  const excerpts = current.curatedExcerpts ?? [];
-  const next = excerpts.includes(value) ? excerpts.filter(item => item !== value) : [...excerpts, value].slice(-100);
-  const updated = { ...current, curatedExcerpts: next };
   entries[index] = updated;
   saveDiaryEntries(entries);
   return updated;
