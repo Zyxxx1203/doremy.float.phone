@@ -10,18 +10,12 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
-import android.webkit.CookieManager
 import androidx.core.app.NotificationCompat
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.concurrent.TimeUnit
 
 /**
  * 通话控制无障碍服务。
@@ -52,12 +46,6 @@ class CallControlService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private val pendingLock = Any()
     @Volatile private var delivering = false
-
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(12, TimeUnit.SECONDS)
-        .writeTimeout(12, TimeUnit.SECONDS)
-        .build()
 
     private val dwellTicker = object : Runnable {
         override fun run() {
