@@ -160,9 +160,17 @@ export async function downloadDiaryEntryImage(entry: DiaryEntry, renderedPaper: 
     scroll.style.setProperty("overflow", "visible", "important");
   }
   wrapper.appendChild(clone);
+  for (const image of Array.from(clone.querySelectorAll("img"))) {
+    const source = image.currentSrc || image.getAttribute("src");
+    if (source) image.setAttribute("src", new URL(source, document.baseURI).href);
+    image.removeAttribute("srcset");
+  }
   document.body.appendChild(wrapper);
 
   try {
+    await Promise.all(Array.from(clone.querySelectorAll("img")).map(image => image.complete
+      ? Promise.resolve()
+      : new Promise<void>(resolve => { image.onload = () => resolve(); image.onerror = () => resolve(); })));
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const contentHeight = Math.ceil(Math.max(clone.getBoundingClientRect().height, clone.scrollHeight));
     const height = contentHeight + 100;
@@ -171,9 +179,25 @@ export async function downloadDiaryEntryImage(entry: DiaryEntry, renderedPaper: 
     const ratio = Math.min(3, 16000 / Math.max(width, height), Math.sqrt(48000000 / (width * height)));
     const pixelWidth = Math.max(1, Math.round(width * ratio));
     const pixelHeight = Math.max(1, Math.round(height * ratio));
-    const fontFace = fontDataUrl
-      ? '<style>@font-face{font-family:"AIPhoneDiaryEntryUserFont";src:url("' + fontDataUrl + '");font-display:block}</style>'
-      : "";
+    const fontFaceRules: string[] = [];
+    for (const sheet of Array.from(document.styleSheets)) {
+      try {
+        for (const rule of Array.from(sheet.cssRules)) {
+          if (rule.type !== CSSRule.FONT_FACE_RULE) continue;
+          const cssText = rule.cssText.replace(/url\\((['"]?)(.*?)\\1\\)/g, (_match, _quote, sourceUrl) => {
+            const absoluteUrl = sourceUrl.startsWith("data:") || sourceUrl.startsWith("blob:")
+              ? sourceUrl
+              : new URL(sourceUrl, sheet.href || document.baseURI).href;
+            return 'url("' + absoluteUrl + '")';
+          });
+          fontFaceRules.push(cssText);
+        }
+      } catch {
+        // Ignore cross-origin stylesheets; same-origin app fonts are copied below.
+      }
+    }
+    if (fontDataUrl) fontFaceRules.push('@font-face{font-family:"AIPhoneDiaryEntryUserFont";src:url("' + fontDataUrl + '");font-display:block}');
+    const fontFace = fontFaceRules.length ? "<style>" + fontFaceRules.join("\\n") + "</style>" : "";
     const serialized = fontFace + wrapper.innerHTML;
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xhtml="http://www.w3.org/1999/xhtml" width="' + pixelWidth + '" height="' + pixelHeight + '" viewBox="0 0 ' + width + ' ' + height + '"><foreignObject x="0" y="0" width="' + width + '" height="' + height + '"><div xmlns="http://www.w3.org/1999/xhtml" style="width:' + width + 'px;height:' + height + 'px;overflow:visible">' + serialized + '</div></foreignObject></svg>';
     const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
