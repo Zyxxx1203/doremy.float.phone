@@ -714,9 +714,6 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
           onChange={handleDiaryFontUpload}
         />
         <span className="diary-entry-header-actions">
-          <button type="button" className={`note-wall-menu-btn ${favoritesOnly ? "is-active" : ""}`} onClick={() => { setActiveCharacterId(null); setFavoritesOnly(value => !value); }} aria-label={favoritesOnly ? "查看全部日记" : "查看珍藏日记"} title={favoritesOnly ? "查看全部日记" : "珍藏日记"}>
-            <Heart size={19} fill={favoritesOnly ? "currentColor" : "none"} />
-          </button>
           <button type="button" className="note-wall-menu-btn" onClick={() => void handleExportZip()} disabled={isExporting || visibleEntryCount === 0} aria-label="批量导出日记" title={activeBook ? "导出本册日记 ZIP" : favoritesOnly ? "导出全部珍藏 ZIP" : "导出全部日记 ZIP"}>
             <Download size={19} />
           </button>
@@ -736,6 +733,12 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
       </header>
 
       <main ref={entryMainRef} className="diary-entry-main">
+        <div className="diary-entry-favorite-entry-row">
+          <button type="button" className={`diary-entry-favorite-entry ${favoritesOnly ? "is-active" : ""}`} onClick={() => { setActiveCharacterId(null); setFavoritesOnly(value => !value); }} aria-label={favoritesOnly ? "查看全部日记" : "查看珍藏日记"}>
+            <Heart size={17} fill={favoritesOnly ? "currentColor" : "none"} />
+            <span>{favoritesOnly ? "全部日记" : "珍藏日记"}</span>
+          </button>
+        </div>
         {visibleEntryCount === 0 ? (
           <div className="diary-entry-empty">
             {favoritesOnly ? <Heart size={34} strokeWidth={1.5} /> : <NotebookPen size={34} strokeWidth={1.5} />}
