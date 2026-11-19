@@ -4178,3 +4178,21 @@
   opacity: .35;
   cursor: default;
 }
+
+
+/* Diary archive search and compact filters */
+.diary-entry-toolbar{display:flex;align-items:center;gap:9px;padding:4px 16px 14px;font-family:var(--app-font-family);}
+.diary-entry-search{display:flex;align-items:center;gap:9px;flex:1;min-width:0;height:44px;padding:0 13px;border:1px solid rgba(90,75,50,.16);border-radius:13px;background:rgba(255,255,255,.68);color:rgba(70,61,49,.58);}
+.diary-entry-search:focus-within{border-color:rgba(110,132,105,.55);box-shadow:0 0 0 3px rgba(110,132,105,.09);}
+.diary-entry-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:inherit;font:inherit;font-size:14px;}
+.diary-entry-search input::placeholder{color:rgba(70,61,49,.42);}
+.diary-entry-search button,.diary-entry-filter-trigger,.diary-entry-favorite-entry{width:42px;height:42px;min-width:42px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(90,75,50,.16);border-radius:13px;background:rgba(255,255,255,.68);color:#746b5e;cursor:pointer;}
+.diary-entry-search button{width:26px;min-width:26px;height:26px;border:0;background:transparent;}
+.diary-entry-filter-trigger.is-active,.diary-entry-favorite-entry.is-active{color:#9a5968;border-color:rgba(163,79,99,.28);background:rgba(163,79,99,.09);}
+.diary-entry-favorite-entry{padding:0;border-radius:13px;}
+.diary-entry-filter-panel{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 16px;margin:0 16px 14px;border:1px solid rgba(90,75,50,.14);border-radius:14px;background:rgba(255,253,247,.96);box-shadow:0 8px 24px rgba(54,45,32,.07);font-family:var(--app-font-family);}
+.diary-entry-filter-panel label{display:grid;gap:6px;min-width:0;color:rgba(70,61,49,.65);font-size:12px;}
+.diary-entry-filter-panel label:first-child{grid-column:1/-1;}
+.diary-entry-filter-panel input,.diary-entry-filter-panel select{width:100%;min-width:0;height:38px;padding:0 10px;border:1px solid rgba(90,75,50,.16);border-radius:9px;background:#fffefa;color:#494238;font:inherit;font-size:13px;}
+.diary-entry-filter-panel>button{min-height:36px;border:1px solid rgba(90,75,50,.16);border-radius:9px;background:rgba(90,75,50,.05);color:#6b6257;font:inherit;font-size:13px;}
+.diary-entry-filter-panel>button.diary-entry-filter-done{border-color:transparent;background:#657b62;color:white;}
