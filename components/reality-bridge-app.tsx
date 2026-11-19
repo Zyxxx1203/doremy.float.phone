@@ -675,6 +675,7 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
           },
           offlineReplies: (rule.offlineReplies === undefined ? defaultOfflineReplies(rule.matchType) : rule.offlineReplies).filter(line => line.trim()).slice(0, 80),
           notificationEnabled: !!rule.actions.chat?.requestReply || !!rule.actions.notify,
+          characterId: rule.actions.chat?.characterId || "",
           characterName: loadCharacters().find(character => character.id === rule.actions.chat?.characterId)?.name || "",
           ...(canSyncAction ? { deviceAction: { action: chosenAction!.action, args: chosenAction!.args ?? {} } } : {}),
         };
