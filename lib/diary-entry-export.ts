@@ -182,12 +182,13 @@ export async function downloadDiaryEntryImage(entry: DiaryEntry, renderedPaper: 
     const fontFaceRules: string[] = [];
     for (const sheet of Array.from(document.styleSheets)) {
       try {
-        for (const rule of Array.from(sheet.cssRules)) {
+        const cssSheet = sheet as CSSStyleSheet;
+        for (const rule of Array.from(cssSheet.cssRules)) {
           if (rule.type !== CSSRule.FONT_FACE_RULE) continue;
           const cssText = rule.cssText.replace(/url\((['"]?)(.*?)\1\)/g, (_match, _quote, sourceUrl) => {
             const absoluteUrl = sourceUrl.startsWith("data:") || sourceUrl.startsWith("blob:")
               ? sourceUrl
-              : new URL(sourceUrl, sheet.href || document.baseURI).href;
+              : new URL(sourceUrl, cssSheet.href || document.baseURI).href;
             return 'url("' + absoluteUrl + '")';
           });
           fontFaceRules.push(cssText);
