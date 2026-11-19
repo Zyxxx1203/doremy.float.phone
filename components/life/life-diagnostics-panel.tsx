@@ -175,7 +175,7 @@ export function LifeDiagnosticsPanel() {
       const issueLines = [
         ...duplicateSchedules.map(actor => `日程重叠：${actor.name} 当前有 ${actor.activeScheduleCount} 条同时生效的日程。`),
         ...actorRows.filter(actor => actor.locationControl === "手动地点覆盖").map(actor => `地点覆盖：${actor.name} 当前在「${actor.actualLocationName || "未知"}」，日程计划为「${actor.plannedLocationName || "未指定"}」；手动地点应优先于日程。`),
-        ...activeScenes.filter(scene => player?.actualLocationId && scene.locationId !== player.actualLocationId).map(scene => `场景位置不一致：场景「${scene.locationName}」与玩家实际地点「${player?.actualLocationName || player?.actualLocationId}」不同。`),
+        ...activeScenes.filter(scene => scene.status === "active" && player?.actualLocationId && scene.locationId !== player.actualLocationId).map(scene => `场景位置不一致：场景「${scene.locationName}」与玩家实际地点「${player?.actualLocationName || player?.actualLocationId}」不同。`),
       ];
       const timeLabel = (value: string | null) => value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "未设置";
       const summary = [
