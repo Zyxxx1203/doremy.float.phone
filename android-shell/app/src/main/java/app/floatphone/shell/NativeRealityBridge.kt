@@ -101,7 +101,7 @@ object NativeRealityBridge {
             val chatSessionId = chat?.optString("sessionId").orEmpty()
             val requestReply = chat?.optBoolean("requestReply", false) == true
             val historyRole = chat?.optString("historyRole").orEmpty()
-            val displayRole = chat?.optString("role", "user").ifBlank { "user" }
+            val displayRole = chat?.optString("role", "user").orEmpty().ifBlank { "user" }
             val effectiveRole = historyRole.ifBlank { displayRole }
             val notificationSessionId = chatSessionId.takeIf { it.isNotBlank() }
             val shouldNotify = rule.optBoolean("notificationEnabled", true) && message.isNotBlank()
