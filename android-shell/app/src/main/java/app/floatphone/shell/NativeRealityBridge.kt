@@ -104,7 +104,8 @@ object NativeRealityBridge {
                     .put("eventId", event.optString("id")).put("ruleId", ruleId)
                     .put("characterId", characterId).put("characterName", title)
                     .put("body", replyMessage).put("createdAt", now))
-            val notified = shouldNotify && postNotification(context, title, message, now)
+            // 前台由现有聊天室横幅提醒；后台才发 Android heads-up，避免同一消息双重通知。
+            val notified = shouldNotify && ((MainActivity.isForeground && queuedChat) || postNotification(context, title, message, now))
             if (notified) notifiedAny = true
             prefs.edit().putLong("last_run_$ruleId", now).apply()
             val result = when {
@@ -153,7 +154,8 @@ object NativeRealityBridge {
                     .put("eventId", eventId).put("ruleId", rule.optString("id"))
                     .put("characterId", characterId).put("characterName", title)
                     .put("body", body).put("createdAt", System.currentTimeMillis()))
-            val shown = postNotification(context, title, body, eventId.hashCode().toLong())
+            // WebView 前台时交给聊天室横幅；退到后台才显示原生 heads-up 通知。
+            val shown = (MainActivity.isForeground && queued) || postNotification(context, title, body, eventId.hashCode().toLong())
             if (shown || queued) {
                 prefs.edit().putLong("last_run_$ruleId", now).apply()
                 record(context, JSONObject().put("id", eventId).put("type", type).put("payload", payload),
