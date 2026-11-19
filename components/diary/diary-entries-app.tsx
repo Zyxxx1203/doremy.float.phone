@@ -726,11 +726,11 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
 
       <main ref={entryMainRef} className="diary-entry-main">
         <div className="diary-entry-toolbar">
-          <label className="diary-entry-search">
+          <div className="diary-entry-search">
             <Search size={18} aria-hidden="true" />
             <input value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="搜索日记标题、内容或角色" aria-label="搜索日记" />
             {searchQuery ? <button type="button" onClick={() => setSearchQuery("")} aria-label="清空搜索"><X size={15} /></button> : null}
-          </label>
+          </div>
           <button type="button" className={`diary-entry-filter-trigger ${filterOpen || activeMonth !== "all" || activeDate ? "is-active" : ""}`} onClick={() => setFilterOpen(value => !value)} aria-label="筛选日记" aria-expanded={filterOpen}>
             <SlidersHorizontal size={19} />
           </button>
@@ -740,16 +740,16 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
         </div>
         {filterOpen ? (
           <section className="diary-entry-filter-panel" aria-label="日期筛选">
-            <label><span>月份</span><input type="month" value={activeMonth === "all" ? "" : activeMonth} onChange={event => setActiveMonth(event.target.value || "all")} /></label>
-            <label><span>具体日期</span><input type="date" value={activeDate} onChange={event => setActiveDate(event.target.value)} /></label>
+            <label><span>月份</span><input type="month" value={activeMonth === "all" ? "" : activeMonth} onChange={event => { setActiveMonth(event.target.value || "all"); setActiveDate(""); }} /></label>
+            <label><span>具体日期</span><input type="date" value={activeDate} onChange={event => { setActiveDate(event.target.value); setActiveMonth("all"); }} /></label>
             <button type="button" onClick={() => { setActiveMonth("all"); setActiveDate(""); }}>重置筛选</button>
           </section>
         ) : null}
         {visibleEntryCount === 0 ? (
           <div className="diary-entry-empty">
             {favoritesOnly ? <Heart size={34} strokeWidth={1.5} /> : <NotebookPen size={34} strokeWidth={1.5} />}
-            <h2>{favoritesOnly ? "还没有珍藏" : "还没有日记"}</h2>
-            <p>{favoritesOnly ? "遇到喜欢的文章，点亮爱心就能收进这里。" : "让角色先写一篇，纸面会从这里开始铺开。"}</p>
+            <h2>{searchQuery.trim() || activeMonth !== "all" || activeDate ? "没有找到符合条件的日记" : favoritesOnly ? "还没有珍藏" : "还没有日记"}</h2>
+            <p>{searchQuery.trim() || activeMonth !== "all" || activeDate ? "试试更换关键词，或清除日期筛选。" : favoritesOnly ? "遇到喜欢的文章，点亮爱心就能收进这里。" : "让角色先写一篇，纸面会从这里开始铺开。"}</p>
             {favoritesOnly ? <button type="button" onClick={() => setFavoritesOnly(false)}>返回全部日记</button> : <button type="button" onClick={() => setWritePanelOpen(true)}>让TA写一篇</button>}
           </div>
         ) : activeBook ? (
