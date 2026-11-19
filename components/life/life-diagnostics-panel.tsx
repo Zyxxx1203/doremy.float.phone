@@ -199,7 +199,7 @@ export function LifeDiagnosticsPanel() {
         ...life.timeline.filter(entry => ["location", "schedule", "scene"].includes(entry.category)).slice(-12).reverse().map(entry =>
           `- ${timeLabel(entry.occurredAt)}｜${entry.actorName || entry.actorId || "系统"}｜${entry.title}${entry.details ? "｜" + entry.details.slice(0, 180) : ""}`
         ),
-      ].join("\\n");
+      ].join("\n");
       setSummaryText(summary);
       setCopyStatus("");
       setEntries(localEntries);
