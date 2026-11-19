@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
-import { Bot, ChevronLeft, Clock3, Download, Heart, NotebookPen, Pencil, RotateCcw, Trash2, WandSparkles, X } from "lucide-react";
+import { Bot, CalendarDays, ChevronLeft, Clock3, Download, Heart, NotebookPen, Pencil, RotateCcw, Search, SlidersHorizontal, Trash2, WandSparkles, X } from "lucide-react";
 import { DotsThree } from "@phosphor-icons/react";
 
 import { loadCharacters } from "@/lib/character-storage";
@@ -28,7 +28,7 @@ import {
 } from "@/lib/diary-entry-storage";
 import type { DiaryEntry, DiaryEntryBlock, DiaryEntryTimerSettings, DiaryEntryTrigger } from "@/lib/diary-entry-types";
 import { getThemeAssetDataUrl, saveThemeAssetFromBlob } from "@/lib/theme-storage";
-import { downloadDiaryEntriesZip, downloadDiaryEntry, downloadDiaryEntryImage, printDiaryEntryAsPdf, type DiaryExportFormat } from "@/lib/diary-entry-export";
+import { downloadDiaryEntriesZip, downloadDiaryEntry, type DiaryExportFormat } from "@/lib/diary-entry-export";
 
 const DIARY_USER_FONT_FAMILY = "AIPhoneDiaryEntryUserFont";
 const DIARY_USER_FONT_STYLE_ID = "ai-phone-diary-entry-user-font-face";
@@ -127,7 +127,10 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
   const [activeEntry, setActiveEntry] = useState<DiaryEntry | null>(null);
   const [editingEntry, setEditingEntry] = useState<DiaryEntry | null>(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterOpen, setFilterOpen] = useState(false);
   const [activeMonth, setActiveMonth] = useState("all");
+  const [activeDate, setActiveDate] = useState("");
   const [isExporting, setIsExporting] = useState(false);
   const [deleteCandidateEntry, setDeleteCandidateEntry] = useState<DiaryEntry | null>(null);
   const [activeCharacterId, setActiveCharacterId] = useState<string | null>(null);
@@ -281,24 +284,6 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
       notify("导出失败：" + (error instanceof Error ? error.message : String(error)));
     }
   }, [notify]);
-
-  const handleExportImage = useCallback(async (entry: DiaryEntry, renderedPaper: HTMLElement) => {
-    try {
-      await downloadDiaryEntryImage(entry, renderedPaper, diaryFontDataUrl);
-      notify("已按日记页面的实际显示样式导出图片。");
-    } catch (error) {
-      notify("图片导出失败：" + (error instanceof Error ? error.message : String(error)));
-    }
-  }, [diaryFontDataUrl, notify]);
-
-  const handlePrintEntry = useCallback((entry: DiaryEntry) => {
-    try {
-      printDiaryEntryAsPdf(entry, diaryFontDataUrl ? DIARY_USER_FONT_FAMILY : "serif", diaryFontScale, diaryFontDataUrl);
-      notify("已打开打印页面，可在系统打印选项中保存为 PDF。");
-    } catch (error) {
-      notify("PDF 导出失败：" + (error instanceof Error ? error.message : String(error)));
-    }
-  }, [diaryFontDataUrl, diaryFontScale, notify]);
 
   const handleExportZip = useCallback(async () => {
     const scopedEntries = loadDiaryEntries().filter(entry => {
@@ -664,24 +649,31 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
     }));
   }, [entries, characters]);
 
-  const visibleBooks = useMemo(() => favoritesOnly
-    ? books.map(book => ({ ...book, entries: book.entries.filter(entry => entry.isFavorite) })).filter(book => book.entries.length > 0)
-    : books, [books, favoritesOnly]);
-  const visibleEntryCount = favoritesOnly ? entries.filter(entry => entry.isFavorite).length : entries.length;
+  const filteredEntries = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase();
+    return entries.filter(entry => {
+      if (favoritesOnly && !entry.isFavorite) return false;
+      const date = new Date(entry.createdAt);
+      const monthKey = Number.isNaN(date.getTime()) ? "" : date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
+      const dateKey = Number.isNaN(date.getTime()) ? "" : date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
+      if (activeMonth !== "all" && monthKey !== activeMonth) return false;
+      if (activeDate && dateKey !== activeDate) return false;
+      if (!query) return true;
+      const searchable = [entry.title, entry.body, entry.dateLabel, entry.characterName, entry.mood, entry.weather, ...entry.tags]
+        .join(" ").toLocaleLowerCase();
+      return searchable.includes(query);
+    });
+  }, [entries, favoritesOnly, searchQuery, activeMonth, activeDate]);
+  const filteredEntryIds = useMemo(() => new Set(filteredEntries.map(entry => entry.id)), [filteredEntries]);
+  const visibleBooks = useMemo(() => books
+    .map(book => ({ ...book, entries: book.entries.filter(entry => filteredEntryIds.has(entry.id)) }))
+    .filter(book => book.entries.length > 0), [books, filteredEntryIds]);
+  const visibleEntryCount = filteredEntries.length;
   const activeBook = useMemo(
     () => (activeCharacterId ? visibleBooks.find(book => book.characterId === activeCharacterId) ?? null : null),
     [activeCharacterId, visibleBooks],
   );
   const activeBookBusy = Boolean(activeBook && generatingCharacterIds.includes(activeBook.characterId));
-  const monthGroups = useMemo(() => {
-    const groups = new Map<string, DiaryEntry[]>();
-    for (const entry of activeBook?.entries ?? []) {
-      const date = new Date(entry.createdAt);
-      const month = Number.isNaN(date.getTime()) ? "未知日期" : date.getFullYear() + "年" + String(date.getMonth() + 1).padStart(2, "0") + "月";
-      groups.set(month, [...(groups.get(month) ?? []), entry]);
-    }
-    return Array.from(groups.entries());
-  }, [activeBook]);
   const readingEntries = activeBook?.entries ?? [];
   const readingIndex = activeEntry ? readingEntries.findIndex(item => item.id === activeEntry.id) : -1;
   const moveReadingPage = (offset: number) => { const next = readingEntries[readingIndex + offset]; if (next) setActiveEntry(next); };
@@ -733,12 +725,26 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
       </header>
 
       <main ref={entryMainRef} className="diary-entry-main">
-        <div className="diary-entry-favorite-entry-row">
-          <button type="button" className={`diary-entry-favorite-entry ${favoritesOnly ? "is-active" : ""}`} onClick={() => { setActiveCharacterId(null); setFavoritesOnly(value => !value); }} aria-label={favoritesOnly ? "查看全部日记" : "查看珍藏日记"}>
-            <Heart size={17} fill={favoritesOnly ? "currentColor" : "none"} />
-            <span>{favoritesOnly ? "全部日记" : "珍藏日记"}</span>
+        <div className="diary-entry-toolbar">
+          <label className="diary-entry-search">
+            <Search size={18} aria-hidden="true" />
+            <input value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="搜索日记标题、内容或角色" aria-label="搜索日记" />
+            {searchQuery ? <button type="button" onClick={() => setSearchQuery("")} aria-label="清空搜索"><X size={15} /></button> : null}
+          </label>
+          <button type="button" className={`diary-entry-filter-trigger ${filterOpen || activeMonth !== "all" || activeDate ? "is-active" : ""}`} onClick={() => setFilterOpen(value => !value)} aria-label="筛选日记" aria-expanded={filterOpen}>
+            <SlidersHorizontal size={19} />
+          </button>
+          <button type="button" className={`diary-entry-favorite-entry ${favoritesOnly ? "is-active" : ""}`} onClick={() => { setActiveCharacterId(null); setFavoritesOnly(value => !value); }} aria-label={favoritesOnly ? "查看全部日记" : "只看珍藏日记"} aria-pressed={favoritesOnly}>
+            <Heart size={19} fill={favoritesOnly ? "currentColor" : "none"} />
           </button>
         </div>
+        {filterOpen ? (
+          <section className="diary-entry-filter-panel" aria-label="日期筛选">
+            <label><span>月份</span><input type="month" value={activeMonth === "all" ? "" : activeMonth} onChange={event => setActiveMonth(event.target.value || "all")} /></label>
+            <label><span>具体日期</span><input type="date" value={activeDate} onChange={event => setActiveDate(event.target.value)} /></label>
+            <button type="button" onClick={() => { setActiveMonth("all"); setActiveDate(""); }}>重置筛选</button>
+          </section>
+        ) : null}
         {visibleEntryCount === 0 ? (
           <div className="diary-entry-empty">
             {favoritesOnly ? <Heart size={34} strokeWidth={1.5} /> : <NotebookPen size={34} strokeWidth={1.5} />}
@@ -748,8 +754,7 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
           </div>
         ) : activeBook ? (
           <div className="diary-entry-list">
-            <nav className="diary-entry-month-nav" aria-label="按月份浏览"><button type="button" aria-current={activeMonth === "all" ? "page" : undefined} onClick={() => setActiveMonth("all")}>全部</button>{monthGroups.map(([month, items]) => <button type="button" key={month} aria-current={activeMonth === month ? "page" : undefined} onClick={() => setActiveMonth(month)}>{month} · {items.length}</button>)}</nav>
-            {activeBook.entries.filter(entry => activeMonth === "all" || (() => { const d = new Date(entry.createdAt); return d.getFullYear() + "年" + String(d.getMonth() + 1).padStart(2, "0") + "月" === activeMonth; })()).map(entry => (
+            {activeBook.entries.map(entry => (
               <DiaryEntryCard
                 key={entry.id}
                 entry={entry}
@@ -845,8 +850,6 @@ export function DiaryEntriesApp({ onBack, onNotice }: DiaryEntriesAppProps) {
           onEdit={() => setEditingEntry(activeEntry)}
           onToggleFavorite={() => handleToggleFavorite(activeEntry)}
           onExport={format => { void handleExportEntry(activeEntry, format); }}
-          onExportImage={element => void handleExportImage(activeEntry, element)}
-          onPrint={() => handlePrintEntry(activeEntry)}
           onRestore={() => handleRestorePrevious(activeEntry)}
           onPrevious={() => moveReadingPage(-1)} onNext={() => moveReadingPage(1)}
           readingIndex={readingIndex} readingCount={readingEntries.length}
@@ -1252,15 +1255,13 @@ function buildDiaryParagraphBlocks(body: string): DiaryEntryBlock[] {
 }
 
 function DiaryEntryDetail({
-  entry, onClose, onEdit, onToggleFavorite, onExport, onExportImage, onPrint, onRestore, onPrevious, onNext, readingIndex, readingCount,
+  entry, onClose, onEdit, onToggleFavorite, onExport, onRestore, onPrevious, onNext, readingIndex, readingCount,
 }: {
   entry: DiaryEntry;
   onClose: () => void;
   onEdit: () => void;
   onToggleFavorite: () => void;
   onExport: (format: DiaryExportFormat) => void;
-  onExportImage: (renderedPaper: HTMLElement) => void;
-  onPrint: () => void;
   onRestore: () => void;
   onPrevious: () => void;
   onNext: () => void;
@@ -1268,12 +1269,15 @@ function DiaryEntryDetail({
   readingCount: number;
 }) {
   const markers = getEntryMarkers(entry);
-  const paperRef = useRef<HTMLElement | null>(null);
+  const readingScrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (readingScrollRef.current) readingScrollRef.current.scrollTop = 0;
+  }, [entry.id]);
   return (
     <div className="nw-modal-backdrop diary-entry-detail-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
       <article ref={paperRef} className="diary-entry-detail-paper" onClick={(event) => event.stopPropagation()}>
         <span className="diary-entry-paper-clip" aria-hidden="true"><span /></span>
-        <div className="diary-entry-detail-scroll">
+        <div ref={readingScrollRef} className="diary-entry-detail-scroll">
           <header>
             <div>
               <span>日记详情 · {entry.dateLabel || formatEntryTime(entry.createdAt)}</span>
@@ -1302,8 +1306,6 @@ function DiaryEntryDetail({
             <button type="button" onClick={onEdit}><Pencil size={15} />编辑</button>
             <button type="button" onClick={() => onExport("txt")}>导出 TXT</button>
             <button type="button" onClick={() => onExport("md")}>导出 Markdown</button>
-            <button type="button" onClick={() => { if (paperRef.current) onExportImage(paperRef.current); }}>图片</button>
-            <button type="button" onClick={onPrint}>PDF</button>
             {entry.revisionHistory?.length ? <button type="button" onClick={onRestore}><RotateCcw size={15} />恢复上版</button> : null}
           </div>
           <footer className="diary-entry-detail-signature">
