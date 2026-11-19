@@ -100,94 +100,107 @@ export function printDiaryEntryAsPdf(entry: DiaryEntry, fontFamily = "serif", fo
 
 
 /** Render a complete, vertically paginated-feeling paper card as one long PNG. */
-export async function downloadDiaryEntryImage(entry: DiaryEntry, fontFamily = '"Noto Serif SC", "Songti SC", serif', fontScale = 1, fontDataUrl?: string | null): Promise<void> {
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("当前浏览器无法生成图片。");
-  const width = 1080;
-  const padding = 88;
-  const contentWidth = width - padding * 2;
-  const title = entry.title || "未命名日记";
-  const meta = [entry.characterName, entry.dateLabel, entry.weather].filter(Boolean).join("  ·  ");
-  const body = entryBody(entry);
+export async function downloadDiaryEntryImage(entry: DiaryEntry, renderedPaper: HTMLElement, fontDataUrl?: string | null): Promise<void> {
+  if (!renderedPaper?.isConnected) throw new Error("日记页面已关闭，请重新打开后导出。");
+  await document.fonts.ready;
 
-  const wrap = (value: string, font: string, maxWidth: number): string[] => {
-    context.font = font;
-    const lines: string[] = [];
-    for (const paragraph of value.split("\n")) {
-      if (!paragraph) { lines.push(""); continue; }
-      let line = "";
-      for (const character of Array.from(paragraph)) {
-        const candidate = line + character;
-        if (line && context.measureText(candidate).width > maxWidth) {
-          lines.push(line);
-          line = character;
-        } else {
-          line = candidate;
-        }
-      }
-      if (line) lines.push(line);
+  const copyComputedTree = (source: Element, target: Element): void => {
+    const computed = window.getComputedStyle(source);
+    for (let index = 0; index < computed.length; index += 1) {
+      const property = computed.item(index);
+      target instanceof HTMLElement || target instanceof SVGElement
+        ? target.setAttribute("style", target.getAttribute("style") || "")
+        : null;
+      (target as HTMLElement).style?.setProperty(property, computed.getPropertyValue(property), computed.getPropertyPriority(property));
     }
-    return lines;
+
+    const sourceChildren = Array.from(source.children);
+    const targetChildren = Array.from(target.children);
+    sourceChildren.forEach((child, index) => {
+      const targetChild = targetChildren[index];
+      if (targetChild) copyComputedTree(child, targetChild);
+    });
+
+    for (const pseudoName of ["::before", "::after"] as const) {
+      const pseudo = window.getComputedStyle(source, pseudoName);
+      if (!pseudo.content || pseudo.content === "none" || pseudo.content === "normal") continue;
+      const pseudoNode = document.createElement("span");
+      pseudoNode.setAttribute("aria-hidden", "true");
+      const content = pseudo.content;
+      pseudoNode.textContent = content.length >= 2 && ((content.startsWith('"') && content.endsWith('"')) || (content.startsWith("'") && content.endsWith("'")))
+        ? content.slice(1, -1).replace(/\\A/g, "")
+        : "";
+      for (let index = 0; index < pseudo.length; index += 1) {
+        const property = pseudo.item(index);
+        if (property !== "content") pseudoNode.style.setProperty(property, pseudo.getPropertyValue(property), pseudo.getPropertyPriority(property));
+      }
+      if (pseudoName === "::before") target.insertBefore(pseudoNode, target.firstChild);
+      else target.appendChild(pseudoNode);
+    }
   };
 
-  if (fontDataUrl) { const font = new FontFace("DiaryExportFont", "url(" + fontDataUrl + ")"); await font.load(); document.fonts.add(font); }
-  const family = fontDataUrl ? '"DiaryExportFont"' : fontFamily;
-  const titleFont = "600 " + (54 * fontScale) + "px " + family;
-  const bodyFont = (32 * fontScale) + "px " + family;
-  const titleLines = wrap(title, titleFont, contentWidth);
-  const bodyLines = wrap(body, bodyFont, contentWidth);
-  const titleLineHeight = 76;
-  const bodyLineHeight = 60;
-  const metaHeight = 56;
-  const footerHeight = 110;
-  const height = Math.max(900, padding * 2 + titleLines.length * titleLineHeight + metaHeight + bodyLines.length * bodyLineHeight + footerHeight);
-  if (height > 30000) throw new Error("文章太长，暂时无法生成单张图片，请改用 PDF 或 Markdown 导出。");
-  canvas.width = width;
-  canvas.height = height;
+  const bounds = renderedPaper.getBoundingClientRect();
+  const width = Math.max(280, Math.ceil(bounds.width));
+  const wrapper = document.createElement("div");
+  wrapper.style.cssText = "position:fixed;left:-100000px;top:0;z-index:-1;display:block;width:" + width + "px;padding:72px 0 28px;box-sizing:border-box;overflow:visible;background:transparent;";
+  const clone = renderedPaper.cloneNode(true) as HTMLElement;
+  copyComputedTree(renderedPaper, clone);
 
-  context.fillStyle = "#f7f2e8";
-  context.fillRect(0, 0, width, height);
-  context.fillStyle = "#fffdf7";
-  context.fillRect(34, 34, width - 68, height - 68);
-  context.strokeStyle = "rgba(117, 98, 70, .2)";
-  context.lineWidth = 2;
-  context.strokeRect(54, 54, width - 108, height - 108);
-  context.strokeStyle = "rgba(117, 98, 70, .1)";
-  context.beginPath();
-  context.moveTo(padding, 150);
-  context.lineTo(width - padding, 150);
-  context.stroke();
-
-  let y = padding + 38;
-  context.fillStyle = "#40392f";
-  context.font = titleFont;
-  context.textBaseline = "top";
-  for (const line of titleLines) {
-    context.fillText(line, padding, y);
-    y += titleLineHeight;
+  clone.querySelector(".diary-entry-reading-nav")?.remove();
+  clone.querySelector(".diary-entry-detail-actions")?.remove();
+  clone.querySelector(".diary-entry-detail-top > button")?.remove();
+  clone.style.setProperty("width", width + "px", "important");
+  clone.style.setProperty("max-width", "none", "important");
+  clone.style.setProperty("max-height", "none", "important");
+  clone.style.setProperty("height", "auto", "important");
+  clone.style.setProperty("overflow", "visible", "important");
+  clone.style.setProperty("position", "relative", "important");
+  clone.style.setProperty("transform", "none", "important");
+  const scroll = clone.querySelector<HTMLElement>(".diary-entry-detail-scroll");
+  if (scroll) {
+    scroll.style.setProperty("max-height", "none", "important");
+    scroll.style.setProperty("height", "auto", "important");
+    scroll.style.setProperty("overflow", "visible", "important");
   }
-  y += 16;
-  context.fillStyle = "#8b806f";
-  context.font = '24px "Noto Sans SC", sans-serif';
-  context.fillText(meta, padding, y);
-  y += metaHeight + 18;
+  wrapper.appendChild(clone);
+  document.body.appendChild(wrapper);
 
-  context.fillStyle = "#39352f";
-  context.font = bodyFont;
-  for (const line of bodyLines) {
-    if (line) context.fillText(line, padding, y);
-    y += bodyLineHeight;
+  try {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const contentHeight = Math.ceil(Math.max(clone.getBoundingClientRect().height, clone.scrollHeight));
+    const height = contentHeight + 100;
+    if (height > 30000) throw new Error("日记过长，超出单张图片的安全尺寸。");
+    wrapper.style.height = height + "px";
+    const ratio = Math.min(3, 16000 / Math.max(width, height), Math.sqrt(48000000 / (width * height)));
+    const pixelWidth = Math.max(1, Math.round(width * ratio));
+    const pixelHeight = Math.max(1, Math.round(height * ratio));
+    const fontFace = fontDataUrl
+      ? '<style>@font-face{font-family:"AIPhoneDiaryEntryUserFont";src:url("' + fontDataUrl + '");font-display:block}</style>'
+      : "";
+    const serialized = fontFace + wrapper.innerHTML;
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xhtml="http://www.w3.org/1999/xhtml" width="' + pixelWidth + '" height="' + pixelHeight + '" viewBox="0 0 ' + width + ' ' + height + '"><foreignObject x="0" y="0" width="' + width + '" height="' + height + '"><div xmlns="http://www.w3.org/1999/xhtml" style="width:' + width + 'px;height:' + height + 'px;overflow:visible">' + serialized + '</div></foreignObject></svg>';
+    const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+    const objectUrl = URL.createObjectURL(svgBlob);
+    try {
+      const image = new Image();
+      image.decoding = "async";
+      image.src = objectUrl;
+      await image.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("当前浏览器无法生成图片。");
+      context.scale(ratio, ratio);
+      context.drawImage(image, 0, 0, width, height);
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(value => value ? resolve(value) : reject(new Error("图片生成失败。")), "image/png");
+      });
+      await downloadFile(blob, safeFileName(entry.dateLabel || entry.createdAt.slice(0, 10)) + "_" + safeFileName(entry.title) + ".png");
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  } finally {
+    wrapper.remove();
   }
-
-  context.fillStyle = "#9a8d79";
-  context.font = '22px "Noto Sans SC", sans-serif';
-  context.textAlign = "right";
-  context.fillText("PRIVATE DIARY", width - padding, height - padding - 26);
-  context.textAlign = "left";
-
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(value => value ? resolve(value) : reject(new Error("图片生成失败。")), "image/png");
-  });
-  await downloadFile(blob, safeFileName(entry.dateLabel || entry.createdAt.slice(0, 10)) + "_" + safeFileName(entry.title) + ".png");
 }
