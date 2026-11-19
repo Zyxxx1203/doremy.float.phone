@@ -235,6 +235,8 @@ object NativeRealityBridge {
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle(title.take(80)).setContentText(body.take(180))
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body.take(500)))
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setContentIntent(openApp).setAutoCancel(true).build()
             manager.notify((id % Int.MAX_VALUE).toInt(), notification)
             true
