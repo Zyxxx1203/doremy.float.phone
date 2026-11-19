@@ -105,13 +105,16 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
             const consumedIds: string[] = [];
             for (const entry of entries) {
                 try {
-                    if (entry.trigger_key && handledTriggerKeys.has(entry.trigger_key)) {
+                    const meta = entry.meta || {};
+                    const entryKind = (meta as { kind?: string }).kind;
+                    // 一次现实桥事件可命中多条规则，worker 会为每条规则各写一条 outbox；
+                    // trigger_key 相同不代表重复，桥消息依靠稳定消息 ID/responseBatchId 幂等。
+                    if (entry.trigger_key && handledTriggerKeys.has(entry.trigger_key) && entryKind !== "bridge") {
                         consumedIds.push(entry.id);
                         continue;
                     }
-                    const meta = entry.meta || {};
 
-                    if ((meta as { kind?: string }).kind === "bridge") {
+                    if (entryKind === "bridge") {
                         const bridgeMeta = meta as Record<string, unknown> & {
                             reply?: { sessionId?: string; regexes?: RegexConfig[]; characterName?: string; userName?: string; appId?: string; appTags?: string[] } | null;
                             screenChat?: boolean;
@@ -167,7 +170,6 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                             saveScreenChatAck(bridgeMeta.screenChatCharacterId, Number(bridgeMeta.screenChatSequence));
                         }
                         consumedIds.push(entry.id);
-                        if (entry.trigger_key) handledTriggerKeys.add(entry.trigger_key);
                         continue;
                     }
                     // 云端触发快捷动作失败的诊断行：角色已经说了"我去看一眼"却什么
