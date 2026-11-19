@@ -3955,7 +3955,7 @@
   background: rgba(163, 79, 99, 0.08);
 }
 .diary-entry-edit-backdrop {
-  z-index: 90;
+  z-index: 10001;
 }
 .diary-entry-edit-panel {
   width: min(520px, calc(100vw - 28px));
