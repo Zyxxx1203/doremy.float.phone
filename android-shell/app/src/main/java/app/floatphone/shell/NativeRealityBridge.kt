@@ -170,7 +170,7 @@ object NativeRealityBridge {
             val chatSessionId = chat?.optString("sessionId").orEmpty()
             val requestReply = chat?.optBoolean("requestReply", false) == true
             val historyRole = chat?.optString("historyRole").orEmpty()
-            val displayRole = chat?.optString("role", "user").ifBlank { "user" }
+            val displayRole = chat?.optString("role", "user").orEmpty().ifBlank { "user" }
             val effectiveRole = historyRole.ifBlank { displayRole }
             val replySessionId = if (requestReply && effectiveRole != "assistant" && chatSessionId.isNotBlank()) chatSessionId else null
             val shown = postNotification(context, title, body, eventId.hashCode().toLong(), replySessionId)
