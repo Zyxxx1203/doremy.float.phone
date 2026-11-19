@@ -1373,6 +1373,11 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
     }
 
     /** singleTask：App 已在运行时（如全屏来电页接听）通过 onNewIntent 送达深链 */
+    override fun onResume() {
+        super.onResume()
+        CallControlService.retryPendingNativeFallbackChatSync(this)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
