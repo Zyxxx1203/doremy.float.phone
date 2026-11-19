@@ -470,7 +470,7 @@ assert.match(realityCallControl, /cloudAcceptedAt[\s\S]*?6 \* 60_000L/, "cloud-a
 assert.match(realityPushWorker, /bridgeEventId\?: string/, "bridge push payloads must carry a stable event ID for display receipts");
 assert.match(realityPushWorker, /bridge-notify-\$\{item\.id\}.*item\.id/, "generic bridge pushes must carry the event ID");
 assert.match(realityPushWorker, /bridge-\$\{item\.id\}-\$\{rule\.id\}-\$\{index\}.*item\.id/, "role reply pushes must carry the event ID");
-assert.match(realityPushWorker, /await sendPush\(rule\.chat\.characterName[\s\S]*?item\.id\)/, "role replies remain on the cloud processing and push path");
+assert.match(realityPushWorker, /await sendPush\(rule\.chat\.characterName[\s\S]*?item\.id, rule\.chat\.sessionId\)/, "role replies remain on the cloud processing and push path and deep-link to their chat session");
 assert.match(realityPushWorker, /await sendPush\(`现实桥 · \$\{item\.type\}`[\s\S]*?item\.id\)/, "generic notifications remain on the cloud processing path");
 assert.match(realityUi, /请以这个角色本人的口吻，生成 15 条可直接作为 Android 系统通知正文的离线回复/, "offline reply generation must prepare character-voiced native notification text");
 assert.match(realityUi, /offlineReplies: \(rule\.offlineReplies === undefined \? defaultOfflineReplies\(rule\.matchType\) : rule\.offlineReplies\)/, "legacy rules receive defaults but intentionally emptied reply libraries stay empty");
