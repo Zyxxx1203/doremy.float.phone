@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.app.RemoteInput
 import androidx.core.app.NotificationManagerCompat
 import org.json.JSONArray
 import org.json.JSONObject
@@ -24,7 +25,7 @@ object NativeRealityBridge {
     private const val KEY_ENABLED = "enabled"
     private const val KEY_DEVICE_ACTIONS_ENABLED = "device_actions_enabled"
     private const val KEY_ALLOWED_DEVICE_ACTIONS = "allowed_device_actions"
-    private const val CHANNEL = "reality_bridge_local_chat"
+    private const val CHANNEL = "shell_messages"
     private const val MAX_ITEMS = 100
 
     fun configure(context: Context, json: String): Boolean = try {
@@ -105,7 +106,7 @@ object NativeRealityBridge {
                     .put("characterId", characterId).put("characterName", title)
                     .put("body", replyMessage).put("createdAt", now))
             // 前台由现有聊天室横幅提醒；后台才发 Android heads-up，避免同一消息双重通知。
-            val notified = shouldNotify && ((MainActivity.isForeground && queuedChat) || postNotification(context, title, message, now))
+            val notified = shouldNotify && ((MainActivity.isForeground && queuedChat) || postNotification(context, title, message, now, rule.optString("sessionId")))
             if (notified) notifiedAny = true
             prefs.edit().putLong("last_run_$ruleId", now).apply()
             val result = when {
@@ -160,7 +161,7 @@ object NativeRealityBridge {
                     .put("characterId", characterId).put("characterName", title)
                     .put("body", body).put("createdAt", System.currentTimeMillis()))
             // WebView 前台时交给聊天室横幅；退到后台才显示原生 heads-up 通知。
-            val shown = (MainActivity.isForeground && queued) || postNotification(context, title, body, eventId.hashCode().toLong())
+            val shown = (MainActivity.isForeground && queued) || postNotification(context, title, body, eventId.hashCode().toLong(), rule.optString("sessionId"))
             if (shown || queued) {
                 prefs.edit().putLong("last_run_$ruleId", now).apply()
                 record(context, JSONObject().put("id", eventId).put("type", type).put("payload", payload),
@@ -224,28 +225,57 @@ object NativeRealityBridge {
     fun recentLog(context: Context): String =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_LOG, "[]") ?: "[]"
 
-    private fun postNotification(context: Context, title: String, body: String, id: Long): Boolean = try {
+    private fun postNotification(context: Context, title: String, body: String, id: Long, sessionId: String): Boolean = try {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(NotificationChannel(
-                CHANNEL, "现实桥 · 角色消息", NotificationManager.IMPORTANCE_HIGH))
+                CHANNEL, "角色消息", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "角色发来的聊天消息"
+            })
         }
         val channelDisabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
             && manager.getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE
         if (channelDisabled || !NotificationManagerCompat.from(context).areNotificationsEnabled()) {
             false
         } else {
-            val openApp = PendingIntent.getActivity(context, 7101,
-                Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            val notification = NotificationCompat.Builder(context, CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+            val sid = sessionId.trim()
+            val openIntent = Intent(context, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                if (sid.isNotEmpty()) putExtra(
+                    MainActivity.EXTRA_OPEN_URL,
+                    MainActivity.SITE_URL.trimEnd('/') + "/#open-chat=" + android.net.Uri.encode(sid),
+                )
+            }
+            val openApp = PendingIntent.getActivity(
+                context, if (sid.isNotEmpty()) sid.hashCode() else 7101, openIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            val builder = NotificationCompat.Builder(context, CHANNEL)
+                .setSmallIcon(R.drawable.ic_stat)
                 .setContentTitle(title.take(80)).setContentText(body.take(180))
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body.take(500)))
                 .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setContentIntent(openApp).setAutoCancel(true).build()
-            manager.notify((id % Int.MAX_VALUE).toInt(), notification)
+                .setContentIntent(openApp).setAutoCancel(true)
+            if (sid.isNotEmpty()) {
+                val remoteInput = RemoteInput.Builder(NotificationReplyReceiver.KEY_REPLY_TEXT)
+                    .setLabel("回复").build()
+                val replyIntent = Intent(context, NotificationReplyReceiver::class.java).apply {
+                    action = NotificationReplyReceiver.ACTION_REPLY
+                    putExtra(NotificationReplyReceiver.EXTRA_SESSION_ID, sid)
+                }
+                val replyPending = PendingIntent.getBroadcast(
+                    context, 7200 xor sid.hashCode() xor id.toInt(), replyIntent,
+                    PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                )
+                builder.addAction(
+                    NotificationCompat.Action.Builder(R.drawable.ic_stat, "回复", replyPending)
+                        .addRemoteInput(remoteInput)
+                        .setAllowGeneratedReplies(true)
+                        .build(),
+                )
+            }
+            manager.notify((id % Int.MAX_VALUE).toInt(), builder.build())
             true
         }
     } catch (_: Throwable) { false }

@@ -13,7 +13,7 @@ const PUSH_SUBSCRIPTION_GATE_KEY = "push_account_subscribed_v1";
 export const PERSONAL_PUSH_GATEWAY_SLUG = "ai-phone-push";
 export const PERSONAL_PUSH_GENERATE_SLUG = "push-generate";
 export const PERSONAL_PUSH_SW_SCOPE = "/personal-push/";
-export const PERSONAL_PUSH_SCHEMA_VERSION = 4;
+export const PERSONAL_PUSH_SCHEMA_VERSION = 6;
 
 registerKvMigration(PERSONAL_PUSH_STATE_KEY);
 
@@ -241,7 +241,8 @@ export async function connectPersonalPushCloud(): Promise<PersonalPushConnectOut
   const reported = Number(data.schemaVersion);
   const upToDate = reported >= PERSONAL_PUSH_SCHEMA_VERSION
     && Boolean(data.capabilities?.includes("screen-chat-continuous"))
-    && Boolean(data.capabilities?.includes("life-schedule-cloud"));
+    && Boolean(data.capabilities?.includes("life-schedule-cloud"))
+    && Boolean(data.capabilities?.includes("bridge-rule-workers"));
   savePersonalPushState({
     enabled: true,
     projectRef,
@@ -256,7 +257,7 @@ export async function connectPersonalPushCloud(): Promise<PersonalPushConnectOut
   });
   return {
     status: "connected",
-    note: upToDate ? undefined : "云函数版本较旧：基础离线推送可用，屏幕速聊与云端常驻生活日程需重新部署升级（云端数据不受影响）。",
+    note: upToDate ? undefined : "云函数版本较旧：基础离线推送可用；屏幕速聊、云端常驻生活日程和现实桥规则任务拆分需要重新部署升级（云端数据不受影响）。",
   };
 }
 
