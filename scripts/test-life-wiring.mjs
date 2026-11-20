@@ -474,6 +474,17 @@ assert.match(realityUi, /characterId: rule\.actions\.chat\?\.characterId/, "nati
 assert.match(realityEngine, /export function normalizeBridgeSignal/, "reality bridge must normalize raw signal payloads before they reach chat");
 assert.match(realityEngine, /return normalizeBridgeSignal\(item\)/, "raw bridge rules must use normalized human-readable text");
 assert.match(realityNative, /private fun normalizeSignal/, "Android offline fallback must normalize signals before queuing chat");
+assert.match(realityNative, /CHANNEL = "shell_messages"/, "native offline alerts must share the normal Android message notification channel");
+assert.match(realityNative, /RemoteInput\.Builder\(NotificationReplyReceiver\.KEY_REPLY_TEXT\)/, "native offline alerts must expose the same inline RemoteInput reply action");
+assert.match(realityNative, /putExtra\(NotificationReplyReceiver\.EXTRA_SESSION_ID, sid\)/, "native offline reply actions must target the canonical chat session");
+assert.match(realityUi, /sessionId: \(\(\) => \{[\s\S]*?chatSessions\.find\(session => session\.characterId === characterId/, "native rule sync must include an existing canonical chat session when available");
+assert.match(realityPushWorker, /const isRuleTask = job\.trigger_key\.startsWith\("bridge:rule:"\)/, "push-bridge must distinguish one-rule worker jobs from inbox scans");
+assert.match(realityPushWorker, /encryptJobPayload\(JSON\.stringify\(\{ item, ruleId: rule\.id \}\), payloadKey\)/, "each matched event-rule pair must be persisted as an encrypted independent task");
+assert.match(realityPushWorker, /const taskMatched = matched\.filter\(rule => rule\.id === taskRuleId\)/, "each child worker must execute only its claimed rule");
+assert.match(realityPushWorker, /sharded \$\{taskRows\.length\} item-rule tasks/, "root scans must enqueue child jobs instead of running multiple AI rules inline");
+const bridgeSchema = await read("../docs/personal-push-supabase.sql");
+assert.match(bridgeSchema, /ai_phone_bridge_increment_daily_count/, "parallel bridge workers must update daily statistics atomically");
+
 assert.match(realityEngine, /export async function syncNativeOfflineBridgeMessages/, "native offline replies must be imported into chat");
 assert.match(realityEngine, /upsertImportedChatMessage\([\s\S]*?channel: "reality_bridge"/, "native bridge messages must use the canonical chat storage");
 assert.match(realityEngine, /dispatchChatMessageNotice\(/, "native bridge messages must reuse the existing chat banner");
