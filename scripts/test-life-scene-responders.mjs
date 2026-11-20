@@ -81,6 +81,26 @@ assert.equal(findLifeSceneForLocation(fiveRooms, "home")?.id, "room-home",
   "a newer update to another location must not rotate the player's home room");
 assert.equal(findLifeSceneForLocation(fiveRooms, "museum"), undefined,
   "a missing location must not fall back to an unrelated room");
+const characterOnlyRoom = {
+  id: "room-work",
+  locationId: "work",
+  locationName: "公司",
+  startedAt: "2026-11-20T00:00:00.000Z",
+  updatedAt: "2026-11-20T08:00:00.000Z",
+  status: "paused",
+  participants: [{ ownerType: "character", ownerId: "a", activity: "正在工作" }],
+  lastSettledEventIds: [],
+};
+const roomsWithoutPlayerParticipation = [...fiveRooms, characterOnlyRoom];
+assert.equal(findLifeSceneForLocation(roomsWithoutPlayerParticipation, "work")?.id, "room-work",
+  "a player entering a character's existing schedule location must reuse its room even when the player did not participate in the earlier schedule");
+const repeatedLocationHops = ["work", "home", "cafe", "park", "work", "home", "work", "cafe", "home"];
+assert.deepEqual(
+  repeatedLocationHops.map(locationId => findLifeSceneForLocation(roomsWithoutPlayerParticipation, locationId)?.id),
+  ["room-work", "room-home", "room-cafe", "room-park", "room-work", "room-home", "room-work", "room-cafe", "room-home"],
+  "repeated navigation must always resolve the same location-owned room and never rotate room identity",
+);
+
 
 const canonicalRoom = findLifeSceneForLocation([
   { id: "legacy-event-room", locationId: "cafe", locationName: "咖啡店", startedAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-11-15T00:00:00.000Z", status: "active", eventId: "old-event", participants: [], lastSettledEventIds: [] },
