@@ -321,7 +321,7 @@ class CallControlService : AccessibilityService() {
             )
         }.getOrDefault(false)
         if (delivered) {
-            if (cloudAccepted) postBridgeReceipt(id, "fallback")
+            postBridgeReceipt(id, "fallback")
             return true
         }
         // The cloud has durably accepted the event even if no local offline rule is configured.
