@@ -590,6 +590,7 @@ Deno.serve(async (req: Request) => {
     const rules = Array.isArray(config.rules) ? config.rules : [];
     if (!isRuleTask) {
       const ruleRuns: Record<string, string> = { ...(config.rule_runs || {}) };
+      const reservedRuns: Record<string, string> = {};
       const taskRows: Record<string, unknown>[] = [];
       const archiveRows: Record<string, unknown>[] = [];
       const reservedAt = new Date().toISOString();
@@ -609,6 +610,7 @@ Deno.serve(async (req: Request) => {
             continue;
           }
           ruleRuns[rule.id] = reservedAt;
+          reservedRuns[rule.id] = reservedAt;
           taskRows.push({
             id: `job_${crypto.randomUUID()}`, user_id: job.user_id,
             trigger_key: `bridge:rule:${encodeURIComponent(item.id)}:${encodeURIComponent(rule.id)}`,
@@ -621,14 +623,19 @@ Deno.serve(async (req: Request) => {
         const queued = await rest("push_jobs?on_conflict=user_id,trigger_key", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=minimal" }, body: JSON.stringify(taskRows) });
         if (!queued.ok) { await finish("failed", `could not enqueue rule tasks: HTTP ${queued.status}`); return; }
       }
-      const saved = await rest(`push_bridge_config?user_id=eq.${encodeURIComponent(job.user_id)}`, { method: "PATCH", body: JSON.stringify({ rule_runs: ruleRuns, updated_at: reservedAt }) });
-      if (!saved.ok) {
-        if (taskRows.length) {
-          const ids = taskRows.map(row => String(row.id)).join(",");
-          await rest(`push_jobs?id=in.(${ids})`, { method: "PATCH", body: JSON.stringify({ status: "cancelled", result_note: "rule cooldown reservation failed" }) }).catch(() => undefined);
+      if (Object.keys(reservedRuns).length > 0) {
+        const saved = await rest("rpc/ai_phone_bridge_reserve_rule_runs", {
+          method: "POST",
+          body: JSON.stringify({ p_user_id: job.user_id, p_rule_runs: reservedRuns }),
+        });
+        if (!saved.ok) {
+          if (taskRows.length) {
+            const ids = taskRows.map(row => String(row.id)).join(",");
+            await rest(`push_jobs?id=in.(${ids})`, { method: "PATCH", body: JSON.stringify({ status: "cancelled", result_note: "rule cooldown reservation failed" }) }).catch(() => undefined);
+          }
+          await finish("failed", `could not reserve rule cooldowns: HTTP ${saved.status}`);
+          return;
         }
-        await finish("failed", `could not reserve rule cooldowns: HTTP ${saved.status}`);
-        return;
       }
       if (archiveRows.length) {
         const archived = await rest("push_outbox", { method: "POST", body: JSON.stringify(archiveRows) });
