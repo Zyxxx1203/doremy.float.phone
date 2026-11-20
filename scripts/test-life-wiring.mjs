@@ -466,6 +466,7 @@ assert.match(realityCallControl, /NativeRealityBridge\.postOfflineNotificationFa
 assert.match(realityCallControl, /native-reality-bridge-local/, "native event processing must run off the accessibility callback");
 assert.match(realityCallControl, /api\/push\/bridge-native-event/, "Android native events must asynchronously enter the cloud bridge endpoint");
 assert.match(realityCallControl, /hasPostedBridgeReceipt/, "native delivery must stop waiting when the cloud notification is posted");
+assert.match(realityCallControl, /repeat\(6\)/, "native cloud wait must be bounded before local fallback");
 assert.match(realityCallControl, /postBridgeReceipt\(id, "fallback"\)/, "local fallback must publish a receipt to suppress a late cloud duplicate");
 assert.match(realityActivity, /getPendingNativeRealityBridgeMessages/, "WebView must be able to retrieve pending local bridge messages");
 assert.match(realityActivity, /acknowledgeNativeRealityBridgeMessages/, "WebView must acknowledge messages after chat persistence");
