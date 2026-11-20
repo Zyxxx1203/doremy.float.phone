@@ -306,7 +306,9 @@ type ServerBridgeRule = {
     historyRole?: string;
     requestReply: boolean;
     characterName: string;
+    avatar?: string;
   };
+  offlineReplies?: string[];
   notify?: boolean;
   /** 出站快捷动作快照：规则命中时调用本项目网关创建快捷命令并推送运行通知 */
   shortcut?: {
@@ -567,8 +569,20 @@ Deno.serve(async (req: Request) => {
       return;
     }
 
-    const subsResponse = await rest(`push_subscriptions?user_id=eq.${encodeURIComponent(job.user_id)}&select=endpoint,p256dh,auth`);
-    const subs = subsResponse.ok ? await subsResponse.json() as SubscriptionRow[] : [];
+    const [subsResponse, shellSubsResponse] = await Promise.all([
+      rest(`push_subscriptions?user_id=eq.${encodeURIComponent(job.user_id)}&select=endpoint,p256dh,auth&limit=50`),
+      // Personal-cloud jobs use OWNER_ID(owner), while the Android Shell subscription
+      // is registered by the site account ID. Discover shell topics by endpoint, not job.user_id.
+      rest("push_subscriptions?endpoint=like.shell:*&select=endpoint,p256dh,auth&limit=50"),
+    ]);
+    const accountSubs = subsResponse.ok ? await subsResponse.json() as SubscriptionRow[] : [];
+    const shellSubs = shellSubsResponse.ok ? await shellSubsResponse.json() as SubscriptionRow[] : [];
+    const webSubs = accountSubs.filter(sub => !sub.endpoint.startsWith("shell:"));
+    const shellTopics = shellSubs
+      .map(sub => String(sub.endpoint || "").slice("shell:".length).trim())
+      .filter(Boolean)
+      .map(ownerId => `shellpush:${ownerId}`);
+    const subs = [...webSubs, ...shellSubs];
 
     const vapidResponse = await rest("push_server_config?id=eq.main&select=vapid_public_key,vapid_private_key&limit=1");
     const vapidRows = vapidResponse.ok ? await vapidResponse.json() as { vapid_public_key: string; vapid_private_key: string }[] : [];
@@ -578,30 +592,35 @@ Deno.serve(async (req: Request) => {
       : null;
     const pushErrors: string[] = [];
 
-    const sendPush = async (title: string, bodyText: string, tag: string, bridgeEventId?: string) => {
+    const sendPush = async (
+      title: string,
+      bodyText: string,
+      tag: string,
+      bridgeEventId?: string,
+      metadata: { sessionId?: string; avatar?: string; kind?: string; characterName?: string } = {},
+    ) => {
       if (subs.length === 0) return;
-      const shellSubs = subs.filter(sub => sub.endpoint.startsWith("shell:"));
-      const webSubs = subs.filter(sub => !sub.endpoint.startsWith("shell:"));
-      const notificationBody = bodyText.slice(0, 80);
+      const notificationBody = bodyText.slice(0, 200);
+      const notificationMeta = {
+        ...(bridgeEventId ? { bridgeEventId } : {}),
+        ...(metadata.sessionId ? { sessionId: metadata.sessionId } : {}),
+        ...(metadata.avatar ? { avatar: metadata.avatar } : {}),
+        ...(metadata.kind ? { kind: metadata.kind } : {}),
+        ...(metadata.characterName ? { characterName: metadata.characterName } : {}),
+      };
 
-      // Android Shell uses the same Realtime channel as ordinary push-generate.
-      // A synthetic shell: subscription is never a Web Push endpoint.
-      if (shellSubs.length > 0) {
+      // Android Shell Realtime topics are derived from shell:<site-account-id> endpoints.
+      if (shellTopics.length > 0) {
         try {
           const response = await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
             method: "POST",
             headers: restHeaders,
             body: JSON.stringify({
-              messages: [{
-                topic: `shellpush:${job.user_id}`,
+              messages: shellTopics.map(topic => ({
+                topic,
                 event: "notify",
-                payload: {
-                  title,
-                  body: notificationBody,
-                  url: "/",
-                  ...(bridgeEventId ? { bridgeEventId } : {}),
-                },
-              }],
+                payload: { title, body: notificationBody, url: "/", ...notificationMeta },
+              })),
             }),
           });
           if (!response.ok) pushErrors.push(`shell realtime http ${response.status}`);
@@ -617,7 +636,7 @@ Deno.serve(async (req: Request) => {
           pushErrors.push("web push VAPID config unavailable");
           return;
         }
-        const message = JSON.stringify({ title, body: notificationBody, tag, url: "/", ...(bridgeEventId ? { bridgeEventId } : {}) });
+        const message = JSON.stringify({ title, body: notificationBody, tag, url: "/", ...notificationMeta });
         for (const sub of webSubs) {
           try {
             const status = await sendWebPushRaw(sub, message, vapid, 3600);
@@ -1148,7 +1167,18 @@ Deno.serve(async (req: Request) => {
           if (parts.length === 0) parts = ["发来一条消息"];
           for (let index = 0; index < parts.length; index += 1) {
             if (index > 0) await sleep(800);
-            await sendPush(rule.chat.characterName || "小手机", parts[index], `bridge-${item.id}-${rule.id}-${index}`, item.id);
+            await sendPush(
+              rule.chat.characterName || "小手机",
+              parts[index],
+              `bridge-${item.id}-${rule.id}-${index}`,
+              item.id,
+              {
+                sessionId: rule.chat.sessionId,
+                avatar: rule.chat.avatar,
+                kind: "chat",
+                characterName: rule.chat.characterName,
+              },
+            );
           }
         }
 
