@@ -310,7 +310,7 @@ class CallControlService : AccessibilityService() {
         val cloudAccepted = postBridgeEvent(event)
         if (cloudAccepted) {
             // Realtime push normally arrives quickly. Do not hold the native queue for minutes.
-            repeat(8) {
+            repeat(6) {
                 if (hasPostedBridgeReceipt(id)) return true
                 try { Thread.sleep(1_500L) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); return false }
             }
@@ -362,8 +362,8 @@ class CallControlService : AccessibilityService() {
     private fun bridgeRequest(url: String, method: String, body: String?): JSONObject? {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = method
-            connectTimeout = 5_000
-            readTimeout = if (method == "POST") 22_000 else 7_000
+            connectTimeout = 3_000
+            readTimeout = if (method == "POST") 10_000 else 2_500
             setRequestProperty("Accept", "application/json")
             val cookie = CookieManager.getInstance().getCookie(MainActivity.SITE_URL).orEmpty()
             if (cookie.isNotBlank()) setRequestProperty("Cookie", cookie)
