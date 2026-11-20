@@ -284,7 +284,7 @@ async function decryptPayload(payload: EncryptedPayload, serviceKey: string): Pr
   return new TextDecoder().decode(plain);
 }
 
-type JobRow = { id: string; user_id: string; trigger_key: string; kind: string };
+type JobRow = { id: string; user_id: string; trigger_key: string; kind: string; payload?: EncryptedPayload };
 type SubscriptionRow = { endpoint: string; p256dh: string; auth: string };
 type BridgeItem = { id: string; type: string; payload: string; createdAt: string; scheduledRuleId?: string; notifyAlreadyShown?: boolean };
 
@@ -531,35 +531,42 @@ Deno.serve(async (req: Request) => {
       }
     };
 
-    const listResponse = await fetch(`${cloudUrl}/storage/v1/object/list/${BACKUP_BUCKET}`, {
-      method: "POST",
-      headers: { ...storageHeaders, "Content-Type": "application/json" },
-      body: JSON.stringify({ prefix: INBOX_PREFIX, limit: 20, offset: 0, sortBy: { column: "name", order: "asc" } }),
-    });
-    const objects = listResponse.ok ? await listResponse.json() as { name?: string }[] : [];
-    const fileNames = (Array.isArray(objects) ? objects : [])
-      .map(obj => String(obj.name ?? ""))
-      .filter(name => name && !name.endsWith("/") && name !== ".emptyFolderPlaceholder");
+    const isRuleTask = job.trigger_key.startsWith("bridge:rule:");
+    let taskRuleId = "";
     const items: BridgeItem[] = [];
-    for (const name of fileNames) {
-      const path = `${INBOX_PREFIX}${name}`;
-      try {
-        const objectResponse = await fetch(`${cloudUrl}/storage/v1/object/${BACKUP_BUCKET}/${path}`, { headers: storageHeaders });
-        if (!objectResponse.ok) continue;
-        const text = await objectResponse.text();
-        // 删除即认领：只有真正删掉（2xx）才有权处理；404=客户端已取走，其他失败留待下次，防重复触发
-        const deleteResponse = await fetch(`${cloudUrl}/storage/v1/object/${BACKUP_BUCKET}/${path}`, { method: "DELETE", headers: storageHeaders });
-        if (!deleteResponse.ok) continue;
-        const item = parseBridgeItem(name, text);
-        if (item) items.push(item);
-      } catch {
-        // 单条失败不阻塞
+    if (isRuleTask) {
+      if (!job.payload) throw new Error("bridge rule task payload missing");
+      const task = JSON.parse(await decryptPayload(job.payload, payloadKey)) as { item?: BridgeItem; ruleId?: string };
+      if (!task.item?.id || !task.ruleId) throw new Error("bridge rule task payload invalid");
+      items.push(task.item);
+      taskRuleId = task.ruleId;
+    } else {
+      const listResponse = await fetch(`${cloudUrl}/storage/v1/object/list/${BACKUP_BUCKET}`, {
+        method: "POST",
+        headers: { ...storageHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ prefix: INBOX_PREFIX, limit: 20, offset: 0, sortBy: { column: "name", order: "asc" } }),
+      });
+      const objects = listResponse.ok ? await listResponse.json() as { name?: string }[] : [];
+      const fileNames = (Array.isArray(objects) ? objects : [])
+        .map(obj => String(obj.name ?? ""))
+        .filter(name => name && !name.endsWith("/") && name !== ".emptyFolderPlaceholder");
+      for (const name of fileNames) {
+        const objectPath = `${INBOX_PREFIX}${name}`;
+        try {
+          const objectResponse = await fetch(`${cloudUrl}/storage/v1/object/${BACKUP_BUCKET}/${objectPath}`, { headers: storageHeaders });
+          if (!objectResponse.ok) continue;
+          const text = await objectResponse.text();
+          const deleteResponse = await fetch(`${cloudUrl}/storage/v1/object/${BACKUP_BUCKET}/${objectPath}`, { method: "DELETE", headers: storageHeaders });
+          if (!deleteResponse.ok) continue;
+          const item = parseBridgeItem(name, text);
+          if (item) items.push(item);
+        } catch { /* one inbox item must not block the rest */ }
       }
+      items.sort((a, b) => a.id.localeCompare(b.id));
     }
-    items.sort((a, b) => a.id.localeCompare(b.id));
 
     // Only the dedicated periodic scan triggers scheduled rules; signal scans never do.
-    if (job.trigger_key.startsWith("bridge:schedule:")) {
+    if (!isRuleTask && job.trigger_key.startsWith("bridge:schedule:")) {
       const scheduleNow = new Date();
       const lastRuns = config.rule_runs || {};
       const scheduledRules = (Array.isArray(config.rules) ? config.rules : [])
@@ -578,6 +585,49 @@ Deno.serve(async (req: Request) => {
 
     if (items.length === 0) {
       await finish("done", "inbox empty (client handled; no scheduled rules due)");
+      return;
+    }
+    const rules = Array.isArray(config.rules) ? config.rules : [];
+    if (!isRuleTask) {
+      const ruleRuns: Record<string, string> = { ...(config.rule_runs || {}) };
+      const taskRows: Record<string, unknown>[] = [];
+      const archiveRows: Record<string, unknown>[] = [];
+      const reservedAt = new Date().toISOString();
+      for (const item of items) {
+        const matched = item.scheduledRuleId
+          ? rules.filter(rule => rule.id === item.scheduledRuleId && Boolean(rule.schedule))
+          : rules.filter(rule => !rule.schedule && (rule.matchType === "*" || rule.matchType === item.type) && payloadFilterMatches(rule.payloadFilter, item.payload));
+        if (!matched.length) {
+          archiveRows.push({ id: `out_${crypto.randomUUID()}`, user_id: job.user_id, job_id: job.id, session_id: null, trigger_key: job.trigger_key, raw_text: "", meta: { kind: "bridge", item, feedNote: "仅存档（无匹配规则，服务端处理）" } });
+          continue;
+        }
+        for (const rule of matched) {
+          const cooldownMs = Math.max(0, Number(rule.cooldownMinutes) || 0) * 60_000;
+          const lastRun = ruleRuns[rule.id] ? Date.parse(ruleRuns[rule.id]) : 0;
+          if (cooldownMs > 0 && Date.now() - lastRun < cooldownMs) {
+            archiveRows.push({ id: `out_${crypto.randomUUID()}`, user_id: job.user_id, job_id: job.id, session_id: null, trigger_key: job.trigger_key, raw_text: "", meta: { kind: "bridge", item, ruleId: rule.id, ruleName: rule.name, feedNote: `「${rule.name}」还在触发间隔内，这次只存档（服务端）` } });
+            continue;
+          }
+          ruleRuns[rule.id] = reservedAt;
+          taskRows.push({
+            id: `job_${crypto.randomUUID()}`, user_id: job.user_id,
+            trigger_key: `bridge:rule:${encodeURIComponent(item.id)}:${encodeURIComponent(rule.id)}`,
+            kind: "bridge_scan", execute_at: reservedAt, status: "pending",
+            payload: await encryptJobPayload(JSON.stringify({ item, ruleId: rule.id }), payloadKey),
+          });
+        }
+      }
+      const saved = await rest(`push_bridge_config?user_id=eq.${encodeURIComponent(job.user_id)}`, { method: "PATCH", body: JSON.stringify({ rule_runs: ruleRuns, updated_at: reservedAt }) });
+      if (!saved.ok) { await finish("failed", `could not reserve rule cooldowns: HTTP ${saved.status}`); return; }
+      if (taskRows.length) {
+        const queued = await rest("push_jobs?on_conflict=user_id,trigger_key", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=minimal" }, body: JSON.stringify(taskRows) });
+        if (!queued.ok) { await finish("failed", `could not enqueue rule tasks: HTTP ${queued.status}`); return; }
+      }
+      if (archiveRows.length) {
+        const archived = await rest("push_outbox", { method: "POST", body: JSON.stringify(archiveRows) });
+        if (!archived.ok) { await finish("failed", `could not archive bridge events: HTTP ${archived.status}`); return; }
+      }
+      await finish("done", `sharded ${taskRows.length} item-rule tasks from ${items.length} events`);
       return;
     }
 
@@ -860,6 +910,7 @@ Deno.serve(async (req: Request) => {
         : rules.filter(rule => !rule.schedule
           && (rule.matchType === "*" || rule.matchType === item.type)
           && payloadFilterMatches(rule.payloadFilter, item.payload));
+      const taskMatched = matched.filter(rule => rule.id === taskRuleId);
       if (matched.length === 0) {
         outboxRows.push({
           id: `out_${crypto.randomUUID()}`,
@@ -873,10 +924,10 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      for (const rule of matched) {
+      for (const rule of taskMatched) {
         const cooldownMs = Math.max(0, Number(rule.cooldownMinutes) || 0) * 60_000;
         const lastRun = ruleRuns[rule.id] ? Date.parse(ruleRuns[rule.id]) : 0;
-        if (cooldownMs > 0 && Date.now() - lastRun < cooldownMs) {
+        if (!isRuleTask && cooldownMs > 0 && Date.now() - lastRun < cooldownMs) {
           outboxRows.push({
             id: `out_${crypto.randomUUID()}`,
             user_id: job.user_id,
@@ -889,7 +940,7 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
-        ruleRuns[rule.id] = new Date().toISOString();
+        if (!isRuleTask) ruleRuns[rule.id] = new Date().toISOString();
 
         let processed = item.payload;
         const bridgeChatMessageId = rule.chat
@@ -1220,16 +1271,11 @@ Deno.serve(async (req: Request) => {
     if (outboxRows.length > 0) {
       await rest("push_outbox", { method: "POST", body: JSON.stringify(outboxRows) });
     }
-    await rest(`push_bridge_config?user_id=eq.${encodeURIComponent(job.user_id)}`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        rule_runs: ruleRuns,
-        daily_count: { day: today, count: dailyCount },
-        updated_at: new Date().toISOString(),
-      }),
-    });
-
-    await finish("done", `items ${items.length}, generated ${generated}${pushErrors.length ? `, push errors: ${pushErrors.slice(0, 3).join(" | ")}` : ""}`);
+    if (generated > 0) {
+      const stats = await rest("rpc/ai_phone_bridge_increment_daily_count", { method: "POST", body: JSON.stringify({ p_user_id: job.user_id, p_amount: generated }) });
+      if (!stats.ok) pushErrors.push(`daily stats rpc http ${stats.status}`);
+    }
+    await finish("done", `rule task ${taskRuleId}; generated ${generated}${pushErrors.length ? `, push errors: ${pushErrors.slice(0, 3).join(" | ")}` : ""}`);
   } catch (err) {
     await finish("failed", err instanceof Error ? err.message : String(err));
   }
