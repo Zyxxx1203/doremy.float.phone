@@ -489,6 +489,7 @@ assert.match(realityUi, /offlineReplies: \(rule\.offlineReplies === undefined \?
 const bridgeSync = await read("../lib/push-bridge-sync.ts");
 assert.match(bridgeSync, /offlineReplies:/, "offline reply libraries must be synchronized to the personal cloud");
 assert.match(bridgeSync, /avatar: character\.avatar/, "bridge notification snapshots must carry the character avatar");
+assert.match(bridgeSync, /createOrGetSession\(contact\?\.id \|\| characterId\)/, "bridge notification session IDs must use the canonical chat contact ID");
 assert.match(realityPushWorker, /sessionId: rule\.chat\.sessionId/, "cloud bridge notifications must carry the correct chat session");
 assert.match(realityPushWorker, /bodyText\.slice\(0, 200\)/, "cloud bridge previews must use the same 200-character limit as normal push");
 assert.match(realityPushWorker, /hasLocalFallbackReceipt/, "cloud worker must suppress late duplicates after native local fallback");
