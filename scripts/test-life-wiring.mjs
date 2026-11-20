@@ -484,6 +484,7 @@ assert.match(realityPushWorker, /const taskMatched = matched\.filter\(rule => ru
 assert.match(realityPushWorker, /sharded \$\{taskRows\.length\} item-rule tasks/, "root scans must enqueue child jobs instead of running multiple AI rules inline");
 const bridgeSchema = await read("../docs/personal-push-supabase.sql");
 assert.match(bridgeSchema, /ai_phone_bridge_increment_daily_count/, "parallel bridge workers must update daily statistics atomically");
+assert.match(bridgeSchema, /ai_phone_bridge_reserve_rule_runs/, "concurrent bridge scans must merge per-rule cooldown reservations without replacing other rules");
 
 assert.match(realityEngine, /export async function syncNativeOfflineBridgeMessages/, "native offline replies must be imported into chat");
 assert.match(realityEngine, /upsertImportedChatMessage\([\s\S]*?channel: "reality_bridge"/, "native bridge messages must use the canonical chat storage");
