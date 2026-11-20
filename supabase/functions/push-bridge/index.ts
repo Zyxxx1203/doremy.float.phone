@@ -308,7 +308,6 @@ type ServerBridgeRule = {
     characterName: string;
     avatar?: string;
   };
-  offlineReplies?: string[];
   notify?: boolean;
   /** 出站快捷动作快照：规则命中时调用本项目网关创建快捷命令并推送运行通知 */
   shortcut?: {
