@@ -911,7 +911,7 @@ Deno.serve(async (req: Request) => {
           && (rule.matchType === "*" || rule.matchType === item.type)
           && payloadFilterMatches(rule.payloadFilter, item.payload));
       const taskMatched = matched.filter(rule => rule.id === taskRuleId);
-      if (matched.length === 0) {
+      if (taskMatched.length === 0) {
         outboxRows.push({
           id: `out_${crypto.randomUUID()}`,
           user_id: job.user_id,
@@ -919,7 +919,7 @@ Deno.serve(async (req: Request) => {
           session_id: null,
           trigger_key: job.trigger_key,
           raw_text: "",
-          meta: { kind: "bridge", item, feedNote: "仅存档（无匹配规则，服务端处理）" },
+          meta: { kind: "bridge", item, ruleId: taskRuleId, feedNote: "规则已删除或不再匹配，仅存档" },
         });
         continue;
       }
