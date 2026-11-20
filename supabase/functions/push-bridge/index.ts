@@ -612,16 +612,23 @@ Deno.serve(async (req: Request) => {
           taskRows.push({
             id: `job_${crypto.randomUUID()}`, user_id: job.user_id,
             trigger_key: `bridge:rule:${encodeURIComponent(item.id)}:${encodeURIComponent(rule.id)}`,
-            kind: "bridge_scan", execute_at: reservedAt, status: "pending",
+            kind: "bridge_scan", execute_at: new Date(Date.now() + 60_000).toISOString(), status: "pending",
             payload: await encryptJobPayload(JSON.stringify({ item, ruleId: rule.id }), payloadKey),
           });
         }
       }
-      const saved = await rest(`push_bridge_config?user_id=eq.${encodeURIComponent(job.user_id)}`, { method: "PATCH", body: JSON.stringify({ rule_runs: ruleRuns, updated_at: reservedAt }) });
-      if (!saved.ok) { await finish("failed", `could not reserve rule cooldowns: HTTP ${saved.status}`); return; }
       if (taskRows.length) {
         const queued = await rest("push_jobs?on_conflict=user_id,trigger_key", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=minimal" }, body: JSON.stringify(taskRows) });
         if (!queued.ok) { await finish("failed", `could not enqueue rule tasks: HTTP ${queued.status}`); return; }
+      }
+      const saved = await rest(`push_bridge_config?user_id=eq.${encodeURIComponent(job.user_id)}`, { method: "PATCH", body: JSON.stringify({ rule_runs: ruleRuns, updated_at: reservedAt }) });
+      if (!saved.ok) {
+        if (taskRows.length) {
+          const ids = taskRows.map(row => String(row.id)).join(",");
+          await rest(`push_jobs?id=in.(${ids})`, { method: "PATCH", body: JSON.stringify({ status: "cancelled", result_note: "rule cooldown reservation failed" }) }).catch(() => undefined);
+        }
+        await finish("failed", `could not reserve rule cooldowns: HTTP ${saved.status}`);
+        return;
       }
       if (archiveRows.length) {
         const archived = await rest("push_outbox", { method: "POST", body: JSON.stringify(archiveRows) });
