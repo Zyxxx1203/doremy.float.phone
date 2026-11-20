@@ -894,7 +894,7 @@ Deno.serve(async (req: Request) => {
       return parsed;
     };
 
-    const rules = Array.isArray(config.rules) ? config.rules : [];
+
     const ruleRuns: Record<string, string> = { ...(config.rule_runs || {}) };
     const today = new Date().toISOString().slice(0, 10);
     // 每日回话不设上限（曾默认 20 次/天、无 UI 可调、超限静默不回话，已按需求取消）。
