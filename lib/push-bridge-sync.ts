@@ -58,10 +58,12 @@ let syncing = false;
 let debounceTimer: number | null = null;
 
 function ensureSessionFor(characterId: string) {
-    if (!loadChatContacts().some(contact => contact.characterId === characterId)) {
+    let contact = loadChatContacts().find(item => item.characterId === characterId);
+    if (!contact) {
         addChatContact(characterId);
+        contact = loadChatContacts().find(item => item.characterId === characterId);
     }
-    return createOrGetSession(characterId);
+    return createOrGetSession(contact?.id || characterId);
 }
 
 function toServerRule(rule: BridgeRule): (ServerBridgeRule & { actions: BridgeRule["actions"] }) | null {
