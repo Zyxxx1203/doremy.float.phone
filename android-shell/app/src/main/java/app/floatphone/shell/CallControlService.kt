@@ -260,7 +260,7 @@ class CallControlService : AccessibilityService() {
                 if (queue.optJSONObject(i)?.optString("id") == id) return
             }
         }
-        // 本机优先：事件进入持久队列后，由原生离线规则直接处理。
+        // 事件先进入原生持久队列，再由后台线程尝试云端接管。
         event.put("queuedAt", System.currentTimeMillis())
         synchronized(pendingLock) {
             val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -334,7 +334,9 @@ class CallControlService : AccessibilityService() {
             .put("id", event.optString("id"))
             .put("type", event.optString("type"))
             .put("payload", event.optString("payload"))
-            .put("createdAt", event.optLong("createdAt", event.optLong("queuedAt", System.currentTimeMillis())))
+            .put("createdAt", runCatching {
+                java.time.Instant.parse(event.optString("createdAt")).toEpochMilli()
+            }.getOrDefault(event.optLong("queuedAt", System.currentTimeMillis())))
             .put("notifyAlreadyShown", false)
         val response = bridgeRequest("$site/api/push/bridge-native-event", "POST", body.toString())
         response?.optBoolean("queued", false) == true
