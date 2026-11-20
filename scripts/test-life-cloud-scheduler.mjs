@@ -101,7 +101,7 @@ assert.match(generator, /Revalidate after the provider call/);
 assert.match(generator, /direct chat opened during generation/);
 assert.match(generator, /actor activity.*location changed during generation/);
 
-assert.match(schema, /values\s*\('personal-cloud', 5, now\(\)\)/);
+assert.match(schema, /values\s*\('personal-cloud', 6, now\(\)\)/);
 assert.match(schema, /create table if not exists public\.life_schedule_runtime/);
 assert.match(schema, /create table if not exists public\.life_schedule_diagnostics/);
 assert.match(schema, /create table if not exists public\.life_schedule_diagnostic_events/);
