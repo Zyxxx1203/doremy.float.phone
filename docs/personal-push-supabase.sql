@@ -371,6 +371,21 @@ as $function$
   returning true;
 $function$;
 
+-- 现实桥根扫描只合并本批实际预留的规则时间，避免并发扫描覆盖其他规则的冷却状态。
+create or replace function public.ai_phone_bridge_reserve_rule_runs(
+  p_user_id text,
+  p_rule_runs jsonb
+) returns void
+language sql
+security definer
+set search_path = public
+as $function$
+  update public.push_bridge_config
+     set rule_runs = coalesce(rule_runs, '{}'::jsonb) || coalesce(p_rule_runs, '{}'::jsonb),
+         updated_at = now()
+   where user_id = p_user_id;
+$function$;
+
 -- 现实桥每个 item-rule 独立执行；多个 Edge worker 并发完成时，统计计数必须原子累加。
 create or replace function public.ai_phone_bridge_increment_daily_count(
   p_user_id text,
@@ -431,6 +446,8 @@ grant select, insert, update, delete on table
   public.push_screen_threads
 to service_role;
 
+revoke all on function public.ai_phone_bridge_reserve_rule_runs(text, jsonb) from public, anon, authenticated;
+grant execute on function public.ai_phone_bridge_reserve_rule_runs(text, jsonb) to service_role;
 revoke all on function public.ai_phone_bridge_increment_daily_count(text, integer) from public, anon, authenticated;
 grant execute on function public.ai_phone_bridge_increment_daily_count(text, integer) to service_role;
 revoke all on function public.ai_phone_screen_chat_begin(text, text, text, text, integer) from public, anon, authenticated;
