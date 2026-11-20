@@ -140,5 +140,14 @@ assert.match(lifeApp, /life:last-viewed-location/,
   "the last explicitly viewed location must be restored when reopening the life app");
 assert.match(lifeApp, /setSelectedLocationId\(restoredLocationId\)/,
   "initial room selection must prefer the saved room and fall back to the player's actual location");
+assert.match(lifeApp, /const actualCharacters = characters\.filter\(char =>[\s\S]*?actor\.actualLocationId === destination\.id/,
+  "entering a location must discover characters by their current actual location, even when the player was absent from their earlier schedule");
+assert.match(lifeApp, /const existingScene = findLifeSceneForLocation\(stateRef\.current\.scenes, destination\.id\)/,
+  "entering a scheduled location must resolve its existing location-owned room");
+assert.match(lifeApp, /const retainedDestinationParticipants = \(existingScene\?\.participants \?\? \[\]\)/,
+  "re-entering a location must preserve participants already belonging to that room");
+assert.match(lifeApp, /mergeLifeSceneParticipants\([\s\S]*?retainedDestinationParticipants/,
+  "the existing destination room and currently present characters must be merged without rotating room identity");
+
 
 console.log("Life scene responder queue and destination participant merge tests passed.");
