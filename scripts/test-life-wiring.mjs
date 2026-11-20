@@ -479,7 +479,7 @@ assert.match(realityEngine, /dispatchChatMessageNotice\(/, "native bridge messag
 assert.match(realityScheduler, /syncNativeOfflineBridgeMessages\(\)/, "native chat queue must be drained when the WebView scheduler resumes");
 assert.match(realityPushWorker, /bridgeEventId\?: string/, "bridge push payloads must carry a stable event ID for display receipts");
 assert.match(realityPushWorker, /bridge-notify-\$\{item\.id\}.*item\.id/, "generic bridge pushes must carry the event ID");
-assert.match(realityPushWorker, /bridge-\$\{item\.id\}-\$\{rule\.id\}-\$\{index\}.*item\.id/, "role reply pushes must carry the event ID");
+assert.match(realityPushWorker, /bridge-\$\{item\.id\}-\$\{rule\.id\}-\$\{index\}[\s\S]*?item\.id/, "role reply pushes must carry the event ID");
 assert.match(realityPushWorker, /await sendPush\(rule\.chat\.characterName[\s\S]*?item\.id\)/, "role replies remain on the cloud processing and push path");
 assert.match(realityPushWorker, /await sendPush\(`现实桥 · \$\{item\.type\}`[\s\S]*?item\.id\)/, "generic notifications remain on the cloud processing path");
 assert.match(realityUi, /请以这个角色本人的口吻，生成 15 条可直接作为 Android 系统通知正文的离线回复/, "offline reply generation must prepare character-voiced native notification text");
@@ -490,6 +490,7 @@ assert.match(bridgeSync, /offlineReplies:/, "offline reply libraries must be syn
 assert.match(bridgeSync, /avatar: character\.avatar/, "bridge notification snapshots must carry the character avatar");
 assert.match(realityPushWorker, /sessionId: rule\.chat\.sessionId/, "cloud bridge notifications must carry the correct chat session");
 assert.match(realityPushWorker, /bodyText\.slice\(0, 200\)/, "cloud bridge previews must use the same 200-character limit as normal push");
+assert.match(realityPushWorker, /hasLocalFallbackReceipt/, "cloud worker must suppress late duplicates after native local fallback");
 
 const receiptRoute = await read("../app/api/push/bridge-native-event/receipt/route.ts");
 assert.match(receiptRoute, /status: body\.status/, "receipt endpoint must persist displayed and fallback states");
