@@ -31,7 +31,7 @@ import {
 } from "@/lib/reality-bridge/storage";
 import type { BridgeRule } from "@/lib/reality-bridge/types";
 import { buildChatPromptMessages, sendLLMRequest } from "@/lib/chat-engine";
-import { loadChatMessages, loadChatSessions } from "@/lib/chat-storage";
+import { loadChatContacts, loadChatMessages, loadChatSessions } from "@/lib/chat-storage";
 import { createShortcutCommand, loadRecentShortcutCommands, type ShortcutCommand } from "@/lib/shortcut-command-client";
 import { enableOfflinePush, isShellEnvironment, sendShellTestPush } from "@/lib/push-client";
 import { describeBridgePlatform } from "@/lib/shell-detect";
@@ -655,6 +655,8 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
     }).AndroidShell;
     if (!shell?.configureNativeRealityBridge) return;
     const deviceActionConfig = loadDeviceActionConfig();
+    const chatSessions = loadChatSessions();
+    const chatContacts = loadChatContacts();
     const nativeRules = rules
       .filter(rule => !rule.schedule)
       .map(rule => {
@@ -676,6 +678,11 @@ export function RealityBridgeApp({ onClose, onNotice, onOpenSettings }: {
           offlineReplies: (rule.offlineReplies === undefined ? defaultOfflineReplies(rule.matchType) : rule.offlineReplies).filter(line => line.trim()).slice(0, 80),
           notificationEnabled: !!rule.actions.chat || !!rule.actions.notify,
           characterId: rule.actions.chat?.characterId || "",
+          sessionId: (() => {
+            const characterId = rule.actions.chat?.characterId || "";
+            const contactIds = new Set(chatContacts.filter(contact => contact.characterId === characterId).map(contact => contact.id));
+            return chatSessions.find(session => session.characterId === characterId || session.contactId === characterId || contactIds.has(session.contactId))?.id || "";
+          })(),
           characterName: loadCharacters().find(character => character.id === rule.actions.chat?.characterId)?.name || "",
           ...(canSyncAction ? { deviceAction: { action: chosenAction!.action, args: chosenAction!.args ?? {} } } : {}),
         };
