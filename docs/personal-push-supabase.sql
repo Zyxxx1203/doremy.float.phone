@@ -371,6 +371,31 @@ as $function$
   returning true;
 $function$;
 
+-- 现实桥每个 item-rule 独立执行；多个 Edge worker 并发完成时，统计计数必须原子累加。
+create or replace function public.ai_phone_bridge_increment_daily_count(
+  p_user_id text,
+  p_amount integer
+) returns void
+language sql
+security definer
+set search_path = public
+as $function$
+  update public.push_bridge_config
+     set daily_count = case
+       when daily_count->>'day' = to_char(now() at time zone 'utc', 'YYYY-MM-DD')
+         then jsonb_build_object(
+           'day', to_char(now() at time zone 'utc', 'YYYY-MM-DD'),
+           'count', greatest(0, coalesce((daily_count->>'count')::integer, 0) + greatest(0, p_amount))
+         )
+       else jsonb_build_object(
+         'day', to_char(now() at time zone 'utc', 'YYYY-MM-DD'),
+         'count', greatest(0, p_amount)
+       )
+     end,
+     updated_at = now()
+   where user_id = p_user_id;
+$function$;
+
 alter table public.push_server_config enable row level security;
 alter table public.ai_phone_cloud_meta enable row level security;
 alter table public.push_subscriptions enable row level security;
@@ -406,6 +431,8 @@ grant select, insert, update, delete on table
   public.push_screen_threads
 to service_role;
 
+revoke all on function public.ai_phone_bridge_increment_daily_count(text, integer) from public, anon, authenticated;
+grant execute on function public.ai_phone_bridge_increment_daily_count(text, integer) to service_role;
 revoke all on function public.ai_phone_screen_chat_begin(text, text, text, text, integer) from public, anon, authenticated;
 revoke all on function public.ai_phone_screen_chat_finish(text, text, text, jsonb, integer, text, text, text, text, jsonb) from public, anon, authenticated;
 revoke all on function public.ai_phone_screen_chat_abort(text, text, text) from public, anon, authenticated;
