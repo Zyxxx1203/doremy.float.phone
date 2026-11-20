@@ -113,4 +113,12 @@ assert.deepEqual(
 assert.equal(mergedParticipants.find(item => item.ownerId === "player").activity, "刚来到这里");
 assert.equal(mergedParticipants.find(item => item.ownerId === "a").awarenessByActorId.b, "aware");
 
+const lifeApp = readFileSync(new URL("../components/life/life-engine-app.tsx", import.meta.url), "utf8");
+assert.doesNotMatch(lifeApp, /setSelectedLocationId\(currentPlayerLocation\.id\)/,
+  "background schedule settlement must never switch the room currently viewed by the player");
+assert.match(lifeApp, /life:last-viewed-location/,
+  "the last explicitly viewed location must be restored when reopening the life app");
+assert.match(lifeApp, /setSelectedLocationId\(restoredLocationId\)/,
+  "initial room selection must prefer the saved room and fall back to the player's actual location");
+
 console.log("Life scene responder queue and destination participant merge tests passed.");
