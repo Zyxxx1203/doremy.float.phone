@@ -518,6 +518,19 @@ Deno.serve(async (req: Request) => {
       return;
     }
     const storageHeaders = { apikey: cloudKey, Authorization: `Bearer ${cloudKey}` };
+    const hasLocalFallbackReceipt = async (eventId: string): Promise<boolean> => {
+      try {
+        const response = await fetch(
+          `${cloudUrl}/storage/v1/object/${BACKUP_BUCKET}/bridge-receipts/${encodeURIComponent(eventId)}.json`,
+          { headers: storageHeaders },
+        );
+        if (!response.ok) return false;
+        const receipt = await response.json() as { status?: string };
+        return receipt.status === "fallback";
+      } catch {
+        return false;
+      }
+    };
 
     const listResponse = await fetch(`${cloudUrl}/storage/v1/object/list/${BACKUP_BUCKET}`, {
       method: "POST",
@@ -600,6 +613,7 @@ Deno.serve(async (req: Request) => {
       metadata: { sessionId?: string; avatar?: string; kind?: string; characterName?: string } = {},
     ) => {
       if (subs.length === 0) return;
+      if (bridgeEventId && await hasLocalFallbackReceipt(bridgeEventId)) return;
       const notificationBody = bodyText.slice(0, 200);
       const notificationMeta = {
         ...(bridgeEventId ? { bridgeEventId } : {}),
@@ -1128,6 +1142,13 @@ Deno.serve(async (req: Request) => {
             const weixinNote = deliveredViaWeixin ? "回复已改送微信" : "改送微信失败，回落通知";
             shortcutNote = shortcutNote ? `${shortcutNote}；${weixinNote}` : weixinNote;
           }
+        }
+
+        if (await hasLocalFallbackReceipt(item.id)) {
+          // Native local fallback already wrote the assistant message. Do not persist
+          // a second cloud-generated reply for the same event.
+          replyRaw = "";
+          item.notifyAlreadyShown = true;
         }
 
         const outboxId = `out_${crypto.randomUUID()}`;
