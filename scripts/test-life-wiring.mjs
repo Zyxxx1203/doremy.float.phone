@@ -141,7 +141,7 @@ assert.match(shortTermAssembler, /const offlineDirectChatEntries = skipDirectCha
 assert.match(app, /savePendingLifeSceneTurns\(pendingSceneTurnsRef\.current\)/, "new queued scene turns must be persisted");
 assert.match(sceneTurnQueue, /life-scene-turn-queue-v1/, "scene turn queue must use a durable versioned storage key");
 assert.match(app, /focusScene\(pending\.sceneId\)/, "pending notification replies must reopen their exact scene");
-assert.match(app, /setSelectedLocationId\(playerLocation\?\.id/, "startup must open the room for the player actual location");
+assert.match(app, /const restoredLocationId = savedLocationId[\s\S]*playerLocation\?\.id/, "startup must restore the last viewed room and fall back to the player actual location");
 assert.doesNotMatch(app, /findCurrentLifeScene\(state\.scenes\)|findCurrentLifeScene\(normalized\.scenes\)/, "the main life UI must not pick a global foreground room");
 assert.match(app, /peekPendingLifeSceneReply/);
 assert.match(app, /claimPendingLifeSceneReply/);
