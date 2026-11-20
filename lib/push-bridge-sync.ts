@@ -69,7 +69,8 @@ function toServerRule(rule: BridgeRule): (ServerBridgeRule & { actions: BridgeRu
     let chatMeta: ServerBridgeRule["chat"];
     if (chat?.characterId) {
         const session = ensureSessionFor(chat.characterId);
-        const characterName = loadCharacters().find(c => c.id === chat.characterId)?.name ?? "小手机";
+        const character = loadCharacters().find(c => c.id === chat.characterId);
+        const characterName = character?.name ?? "小手机";
         chatMeta = {
             characterId: chat.characterId,
             sessionId: session.id,
@@ -77,6 +78,7 @@ function toServerRule(rule: BridgeRule): (ServerBridgeRule & { actions: BridgeRu
             historyRole: chat.historyRole,
             requestReply: chat.requestReply === true,
             characterName,
+            ...(character?.avatar ? { avatar: character.avatar } : {}),
         };
     }
     // 出站快捷动作：把本机配置解析成服务端可直接执行的快照（仅推送模式）
@@ -105,6 +107,7 @@ function toServerRule(rule: BridgeRule): (ServerBridgeRule & { actions: BridgeRu
         ...(rule.schedule ? { schedule: rule.schedule, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" } : {}),
         createdAt: rule.createdAt,
         process: { mode: rule.process?.mode ?? "raw", template: rule.process?.template },
+        offlineReplies: (rule.offlineReplies ?? []).map(line => String(line ?? "").trim()).filter(Boolean),
         chat: chatMeta,
         notify: rule.actions?.notify === true,
         shortcut: shortcutMeta,
