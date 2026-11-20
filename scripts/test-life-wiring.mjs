@@ -141,7 +141,7 @@ assert.match(shortTermAssembler, /const offlineDirectChatEntries = skipDirectCha
 assert.match(app, /savePendingLifeSceneTurns\(pendingSceneTurnsRef\.current\)/, "new queued scene turns must be persisted");
 assert.match(sceneTurnQueue, /life-scene-turn-queue-v1/, "scene turn queue must use a durable versioned storage key");
 assert.match(app, /focusScene\(pending\.sceneId\)/, "pending notification replies must reopen their exact scene");
-assert.match(app, /setSelectedLocationId\(playerLocation\?\.id/, "startup must open the room for the player actual location");
+assert.match(app, /const restoredLocationId = savedLocationId[\s\S]*playerLocation\?\.id/, "startup must restore the last viewed room and fall back to the player actual location");
 assert.doesNotMatch(app, /findCurrentLifeScene\(state\.scenes\)|findCurrentLifeScene\(normalized\.scenes\)/, "the main life UI must not pick a global foreground room");
 assert.match(app, /peekPendingLifeSceneReply/);
 assert.match(app, /claimPendingLifeSceneReply/);
@@ -463,8 +463,11 @@ assert.match(realityNative, /fun postOfflineNotificationFallback\([\s\S]*?enqueu
 assert.match(realityNative, /fun pendingChatMessages/, "native bridge must expose its durable chat queue");
 assert.match(realityNative, /fun acknowledgeChatMessages/, "native bridge must acknowledge only imported chat messages");
 assert.match(realityCallControl, /NativeRealityBridge\.postOfflineNotificationFallback/, "background events must use the local offline rule path");
-assert.match(realityCallControl, /native-reality-bridge-local/, "native event processing must not wait for cloud delivery or AI timeouts");
-assert.doesNotMatch(realityCallControl, /bridge-native-event/, "reality bridge events must not upload to the cloud");
+assert.match(realityCallControl, /native-reality-bridge-local/, "native event processing must run off the accessibility callback");
+assert.match(realityCallControl, /api\/push\/bridge-native-event/, "Android native events must asynchronously enter the cloud bridge endpoint");
+assert.match(realityCallControl, /hasPostedBridgeReceipt/, "native delivery must stop waiting when the cloud notification is posted");
+assert.match(realityCallControl, /repeat\(6\)/, "native cloud wait must be bounded before local fallback");
+assert.match(realityCallControl, /postBridgeReceipt\(id, "fallback"\)/, "local fallback must publish a receipt to suppress a late cloud duplicate");
 assert.match(realityActivity, /getPendingNativeRealityBridgeMessages/, "WebView must be able to retrieve pending local bridge messages");
 assert.match(realityActivity, /acknowledgeNativeRealityBridgeMessages/, "WebView must acknowledge messages after chat persistence");
 assert.match(realityUi, /characterId: rule\.actions\.chat\?\.characterId/, "native rules must retain the target character identity");
@@ -477,18 +480,27 @@ assert.match(realityEngine, /dispatchChatMessageNotice\(/, "native bridge messag
 assert.match(realityScheduler, /syncNativeOfflineBridgeMessages\(\)/, "native chat queue must be drained when the WebView scheduler resumes");
 assert.match(realityPushWorker, /bridgeEventId\?: string/, "bridge push payloads must carry a stable event ID for display receipts");
 assert.match(realityPushWorker, /bridge-notify-\$\{item\.id\}.*item\.id/, "generic bridge pushes must carry the event ID");
-assert.match(realityPushWorker, /bridge-\$\{item\.id\}-\$\{rule\.id\}-\$\{index\}.*item\.id/, "role reply pushes must carry the event ID");
-assert.match(realityPushWorker, /await sendPush\(rule\.chat\.characterName[\s\S]*?item\.id\)/, "role replies remain on the cloud processing and push path");
+assert.match(realityPushWorker, /bridge-\$\{item\.id\}-\$\{rule\.id\}-\$\{index\}[\s\S]*?item\.id/, "role reply pushes must carry the event ID");
+assert.match(realityPushWorker, /await sendPush\(\s*rule\.chat\.characterName[\s\S]*?item\.id,\s*\{[\s\S]*?sessionId: rule\.chat\.sessionId[\s\S]*?kind: "chat"/, "role replies remain on the cloud processing and push path with canonical chat metadata and event receipts");
 assert.match(realityPushWorker, /await sendPush\(`现实桥 · \$\{item\.type\}`[\s\S]*?item\.id\)/, "generic notifications remain on the cloud processing path");
 assert.match(realityUi, /请以这个角色本人的口吻，生成 15 条可直接作为 Android 系统通知正文的离线回复/, "offline reply generation must prepare character-voiced native notification text");
 assert.match(realityUi, /offlineReplies: \(rule\.offlineReplies === undefined \? defaultOfflineReplies\(rule\.matchType\) : rule\.offlineReplies\)/, "legacy rules receive defaults but intentionally emptied reply libraries stay empty");
 
+const bridgeSync = await read("../lib/push-bridge-sync.ts");
+assert.match(bridgeSync, /offlineReplies:/, "offline reply libraries must be synchronized to the personal cloud");
+assert.match(bridgeSync, /avatar: character\.avatar/, "bridge notification snapshots must carry the character avatar");
+assert.match(bridgeSync, /createOrGetSession\(contact\?\.id \|\| characterId\)/, "bridge notification session IDs must use the canonical chat contact ID");
+assert.match(realityPushWorker, /sessionId: rule\.chat\.sessionId/, "cloud bridge notifications must carry the correct chat session");
+assert.match(realityPushWorker, /bodyText\.slice\(0, 200\)/, "cloud bridge previews must use the same 200-character limit as normal push");
+assert.match(realityPushWorker, /hasLocalFallbackReceipt/, "cloud worker must suppress late duplicates after native local fallback");
+
 const receiptRoute = await read("../app/api/push/bridge-native-event/receipt/route.ts");
 assert.match(receiptRoute, /status: body\.status/, "receipt endpoint must persist displayed and fallback states");
 assert.match(receiptRoute, /receipt\.status === "displayed"/, "native polling must receive actual display acknowledgement");
-assert.match(realityPushWorker, /shellSubs = subs\.filter\(sub => sub\.endpoint\.startsWith\("shell:"\)\)/, "reality bridge worker must split Android Shell subscriptions from Web Push");
+assert.match(realityPushWorker, /endpoint=like\.shell:\*/, "reality bridge worker must discover shell subscriptions independently of personal-cloud owner IDs");
+assert.match(realityPushWorker, /shellpush:\$\{ownerId\}/, "reality bridge worker must broadcast to the site account ID embedded in shell subscriptions");
 assert.match(realityPushWorker, /realtime\/v1\/api\/broadcast/, "reality bridge worker must use Supabase Realtime for Android Shell");
-assert.match(realityPushWorker, /webSubs = subs\.filter\(sub => !sub\.endpoint\.startsWith\("shell:"\)\)/, "browser subscriptions must remain on the Web Push path");
+assert.match(realityPushWorker, /webSubs = accountSubs\.filter\(sub => !sub\.endpoint\.startsWith\("shell:"\)\)/, "browser subscriptions must remain on the Web Push path");
 assert.match(realityPushWorker, /sendWebPushRaw\(sub, message, vapid, 3600\)/, "browser Web Push delivery must remain intact");
 assert.match(realityPushWorker, /name\.startsWith\("native_"\)[\s\S]*?replace\(/, "native event filenames must normalize back to the original event ID");
 assert.match(realityPushService, /bridgeEventId/);

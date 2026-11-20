@@ -10,9 +10,12 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
+import android.webkit.CookieManager
 import androidx.core.app.NotificationCompat
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -23,8 +26,8 @@ import java.util.Locale
  * 除原有浮窗/前台应用事件外，负责 Android 原生连续应用停留计时：
  * - 阈值与开关由网页感知面板同步到 SharedPreferences；
  * - 计时不依赖 WebView 的 setInterval；
- * - 达到阈值后把事件放入本机持久队列，由离线规则直接生成通知并同步聊天室；
- * - 不再等待云端事件上传、服务端扫描或 AI 回复超时。
+ * - 达到阈值后先持久化事件，后台尝试唤醒个人云现实桥；
+ * - 云端未及时投递时立即回落本机离线规则，不阻塞无障碍交互。
  *
  * 本服务只读取前台包名，不读取其他应用界面内容。用户关闭「前台应用」感知或总开关后，
  * 原生计时立即停止。Android/厂商仍可能在强制停止、关闭无障碍权限或杀进程时中断服务。
@@ -257,7 +260,7 @@ class CallControlService : AccessibilityService() {
                 if (queue.optJSONObject(i)?.optString("id") == id) return
             }
         }
-        // 本机优先：事件进入持久队列后，由原生离线规则直接处理。
+        // 事件先进入原生持久队列，再由后台线程尝试云端接管。
         event.put("queuedAt", System.currentTimeMillis())
         synchronized(pendingLock) {
             val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -272,7 +275,7 @@ class CallControlService : AccessibilityService() {
         }
     }
 
-    /** 现实桥统一走本机离线规则：不再上传云端等待回执或等待 AI 超时。 */
+    /** 云端先异步接管；短时间未收到通知投递回执，就执行本机离线兜底。 */
     private fun deliverPendingEvents() {
         if (delivering) return
         val events = synchronized(pendingLock) {
@@ -292,19 +295,92 @@ class CallControlService : AccessibilityService() {
                         removePendingEvent(id)
                         continue
                     }
-                    val delivered = runCatching {
-                        NativeRealityBridge.postOfflineNotificationFallback(
-                            applicationContext, id, event.optString("type"), event.optString("payload")
-                        )
-                    }.getOrDefault(false)
-                    // Only remove after the local notification/chat queue accepted the event.
-                    // Failed attempts remain durable and are retried on the next service tick.
-                    if (delivered) removePendingEvent(id)
+                    val completed = runCatching { deliverCloudThenFallback(event) }.getOrDefault(false)
+                    if (completed) removePendingEvent(id)
                 }
             } finally {
                 delivering = false
             }
         }, "native-reality-bridge-local").start()
+    }
+
+    private fun deliverCloudThenFallback(event: JSONObject): Boolean {
+        val id = event.optString("id").trim()
+        if (id.isBlank()) return false
+        val cloudAccepted = postBridgeEvent(event)
+        if (cloudAccepted) {
+            // Realtime push normally arrives quickly. Do not hold the native queue for minutes.
+            repeat(6) {
+                if (hasPostedBridgeReceipt(id)) return true
+                try { Thread.sleep(1_500L) } catch (_: InterruptedException) { Thread.currentThread().interrupt(); return false }
+            }
+        }
+        val delivered = runCatching {
+            NativeRealityBridge.postOfflineNotificationFallback(
+                applicationContext, id, event.optString("type"), event.optString("payload")
+            )
+        }.getOrDefault(false)
+        if (delivered) {
+            postBridgeReceipt(id, "fallback")
+            return true
+        }
+        // The cloud has durably accepted the event even if no local offline rule is configured.
+        return cloudAccepted
+    }
+
+    private fun postBridgeEvent(event: JSONObject): Boolean = runCatching {
+        val site = MainActivity.SITE_URL.trimEnd('/')
+        val body = JSONObject()
+            .put("id", event.optString("id"))
+            .put("type", event.optString("type"))
+            .put("payload", event.optString("payload"))
+            .put("createdAt", runCatching {
+                java.time.Instant.parse(event.optString("createdAt")).toEpochMilli()
+            }.getOrDefault(event.optLong("queuedAt", System.currentTimeMillis())))
+            .put("notifyAlreadyShown", false)
+        val response = bridgeRequest("$site/api/push/bridge-native-event", "POST", body.toString())
+        response?.optBoolean("queued", false) == true
+    }.getOrDefault(false)
+
+    private fun hasPostedBridgeReceipt(eventId: String): Boolean = runCatching {
+        val site = MainActivity.SITE_URL.trimEnd('/')
+        val response = bridgeRequest("$site/api/push/bridge-native-event/receipt?id=$eventId", "GET", null)
+        response?.optBoolean("displayed", false) == true
+    }.getOrDefault(false)
+
+    private fun postBridgeReceipt(eventId: String, status: String) {
+        runCatching {
+            val site = MainActivity.SITE_URL.trimEnd('/')
+            bridgeRequest(
+                "$site/api/push/bridge-native-event/receipt",
+                "POST",
+                JSONObject().put("eventId", eventId).put("status", status).toString(),
+            )
+        }
+    }
+
+    private fun bridgeRequest(url: String, method: String, body: String?): JSONObject? {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = method
+            connectTimeout = 3_000
+            readTimeout = if (method == "POST") 10_000 else 2_500
+            setRequestProperty("Accept", "application/json")
+            val cookie = CookieManager.getInstance().getCookie(MainActivity.SITE_URL).orEmpty()
+            if (cookie.isNotBlank()) setRequestProperty("Cookie", cookie)
+            if (body != null) {
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            }
+        }
+        return try {
+            if (body != null) connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code in 200..299 && text.isNotBlank()) JSONObject(text) else null
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun removePendingEvent(id: String) {

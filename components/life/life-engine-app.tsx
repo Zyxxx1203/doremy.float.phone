@@ -438,7 +438,11 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         }
         saveVirtualLifeState(normalized);
       }
-      setSelectedLocationId(playerLocation?.id || normalized.locations[0]?.id || "home");
+      const savedLocationId = (() => { try { return window.localStorage.getItem("life:last-viewed-location") || ""; } catch { return ""; } })();
+      const restoredLocationId = savedLocationId && normalized.locations.some(location => location.id === savedLocationId)
+        ? savedLocationId
+        : playerLocation?.id || normalized.locations[0]?.id || "home";
+      setSelectedLocationId(restoredLocationId);
       stateRef.current = normalized;
       setState(normalized);
       setCharacters(loadCharacters());
@@ -447,6 +451,11 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     });
     return () => { alive = false; };
   }, []);
+
+  useEffect(() => {
+    if (!ready || !selectedLocationId || !state.locations.some(location => location.id === selectedLocationId)) return;
+    try { window.localStorage.setItem("life:last-viewed-location", selectedLocationId); } catch { /* storage may be unavailable */ }
+  }, [ready, selectedLocationId, state.locations]);
 
   const commit = useCallback((next: VirtualLifeState) => {
     stateRef.current = next;
@@ -920,9 +929,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           next = upsertLifeScene(next, nextPlayerRoom);
         }
       }
-      if (tab === "home" && !sceneView && currentPlayerLocation) {
-        setSelectedLocationId(currentPlayerLocation.id);
-      }
       if (next !== stateRef.current) commit(next);
     };
     settleAll();
@@ -937,7 +943,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       window.removeEventListener("life-force-sync", settleAll);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [ready, commit, worldBooks, bindingConfig, sceneView, tab]);
+  }, [ready, commit, worldBooks, bindingConfig]);
 
   const syncAllCharactersToSchedules = useCallback(() => {
     let next = stateRef.current;
