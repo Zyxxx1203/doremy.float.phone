@@ -319,6 +319,33 @@ if (!cfg('wallGenOff')) toast('已启用自定义壁纸。AI 壁纸生成仍开�
 
 **M3 唤醒统一件**：FocusWakeReceiver（setAlarmClock + USE_FULL_SCREEN_INTENT + BAL 豁免自动拉前台）一次覆盖晨间/闹钟/预约三个场景，替换系统时钟兜底。
 
+## 10. 机型适配：main/test 两方案对比与合成策略（诊断结论，待实施）
+
+### 10.1 根因
+- main：`--phone-screen-width` 默认**固定 390×844**（tokens.css），仅 `@media (max-width:500px)+触屏` 才全屏 → **CSS 视口 >500px 的设备（大屏手机/折叠屏展开/平板）全部落进固定壳** → "别人手机不兼容"。
+- test：`--shell-zoom` 缩放体系（触屏一律全屏 + ≥520 短边等比放大 + stable 灰度 + 首屏防闪内联脚本 + `--status-bar-drop` 状态栏校准旋钮）。**用户实测缺陷：min(宽比,高比) 等比 → 必然一轴留白 = "撑不满/盖不到刘海"**；且 drop 默认 0 需手动校准。
+
+### 10.2 照片墙安全性论证（慎改的答案）
+- 画布世界尺寸 `wallWorld` 是**用户存库数据**（默认 2400×3000，与屏幕宽度完全解耦，photo-wall-storage.ts:114）；
+- 涂鸦/贴纸存世界坐标，渲染经 `renderedScale = rect.width/offsetWidth` 换算 —— canvas.tsx:355 **注释里明确建模了"画布缩放 × 壳缩放"**；
+- 有专属回归测试 `test:photo-wall`（sticker sizing）。
+- **结论：任何缩放方案都不碰已存照片墙数据**；唯一要保证的是缩放后壳内逻辑宽仍按 390 设计稿等效（canvasZoom 与壳缩放换算已支持）。
+
+### 10.3 合成方案（宽度驱动铺满）
+- **≤520 短边手机：维持 main 现状（100vw/100dvh），零变化** —— 你的手机、照片墙现有行为都不动。
+- **≥520 触屏（平板/折叠屏/大屏手机）+ beta 灰度**：`z = innerWidth / 390`（**宽度驱动**，弃 test 的 min() —— 消除"撑不满"），壳宽 `100vw/z`、高 `100dvh/z`（高度靠 UI 弹性拉伸），`viewportFit: "cover"`（两分支都有）+ 保留 main 的 `env(safe-area-inset-top)` 状态栏定位（**不跟 test 删**）+ 移植 `--status-bar-drop` 校准旋钮。
+- **老 WebKit 探针**（zoom:var 不生效 → data-zoom-fallback → 回退固定壳）照 test 移植。
+- **stable 渠道默认不缩放**（test 灰度机制照搬），转正时改缺省。
+
+### 10.4 移植面与风险
+| 文件 | 工作量 | 风险 |
+|---|---|---|
+| `lib/mobile-shell.ts` | 整文件移植（109 行，改 zoom 公式为宽度驱动） | 低 |
+| `app/layout.tsx` | 内联脚本移植（首屏防闪 + 探针） | 低 |
+| `styles/phone-shell.css` | zoom 块移植 + main 的 500px 断点扩为触屏全量 | 中（332 行 diff，含 test 其他改动需甄别） |
+| `components/desktop-shell.tsx` | **getShellZoom/getGridGeometry/pointerToGridCell 按本分支结构重建** —— test 与本分支该文件分叉 969 行，不能整搬 | 高（需映射重写 + 拖拽矩阵回归） |
+| 验证 | 视口矩阵模拟（390/412/600×1000 折叠/768 平板/桌面）× 照片墙涂鸦回归 × `test:photo-wall` | — |
+
 ## 10. 风险与回滚
 
 - bundle 体积：动态 import 后主包仅 +meta；若未来再超 2MB，考虑把 source 移到 `public/` 用 fetch+Cache-Control 加载（牺牲离线首开，暂不推荐）。
