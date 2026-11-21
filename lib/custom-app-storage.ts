@@ -276,6 +276,7 @@ function normalizePermission(value: unknown): CustomAppPermission | null {
     "bridge.send",
     "bridge.read",
     "device.alarm.set",
+    "device.assist",
     "online.play",
   ]);
   return allowed.has(text as CustomAppPermission) ? text as CustomAppPermission : null;

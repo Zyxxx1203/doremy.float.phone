@@ -12,7 +12,7 @@ import { loadAllCustomApps } from "./builtin-apps/registry";
 import { buildCustomAppChatTags } from "./custom-app-tags";
 import { hydrateKvDb } from "./kv-db";
 import { sendShellNotification } from "./shell-notify";
-import { setAlarm as shellSetAlarm } from "./device-action/bridge";
+import { setAlarm as shellSetAlarm, setBrightness as shellSetBrightness, setDnd as shellSetDnd } from "./device-action/bridge";
 import { loadCharacters } from "./character-storage";
 import {
   addChatContact,
@@ -182,6 +182,8 @@ const HOST_ACTION_PERMISSIONS: Record<string, CustomAppPermission[]> = {
   "bridge.send": ["bridge.send"],
   "shell.notify": ["notifications.write"],
   "device.alarm.set": ["device.alarm.set"],
+  "device.dnd.set": ["device.assist"],
+  "device.brightness.set": ["device.assist"],
 };
 
 function emitHostStateUpdated(): void {
@@ -2374,6 +2376,19 @@ export function runCustomAppShellNotify(record: Record<string, unknown>): Record
   return { ok: sent, channel: "shell" };
 }
 
+/** L1 提醒锁：切勿扰（壳 ACTION setDnd）。网页/无壳返回 ok:false 由调用方降级。 */
+export function runCustomAppDeviceDnd(_app: InstalledCustomApp, record: Record<string, unknown>): Record<string, unknown> {
+  const result = shellSetDnd(record.on !== false);
+  return result.ok ? { ok: true } : { ok: false, reason: result.reason || "当前环境不支持勿扰切换", needPermission: result.needPermission };
+}
+
+/** L1 提醒锁：调屏幕亮度（0-255）。预留接口，锁机里程碑按需使用。 */
+export function runCustomAppDeviceBrightness(_app: InstalledCustomApp, record: Record<string, unknown>): Record<string, unknown> {
+  const level = Math.max(0, Math.min(255, Math.round(Number(record.level) || 0)));
+  const result = shellSetBrightness(level);
+  return result.ok ? { ok: true, level } : { ok: false, reason: result.reason || "当前环境不支持亮度调节", needPermission: result.needPermission };
+}
+
 export async function executeCustomAppHostAction(
   app: InstalledCustomApp,
   rawAction: CustomAppHostAction,
@@ -2398,6 +2413,10 @@ export async function executeCustomAppHostAction(
       return runCustomAppShellNotify(payload);
     case "device.alarm.set":
       return runCustomAppDeviceAlarmSet(app, payload);
+    case "device.dnd.set":
+      return runCustomAppDeviceDnd(app, payload);
+    case "device.brightness.set":
+      return runCustomAppDeviceBrightness(app, payload);
     case "db.update":
     case "app.data.update":
       return updateCustomAppDataRecord(app, payload);

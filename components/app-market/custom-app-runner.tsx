@@ -90,6 +90,9 @@ import {
   writeCustomAppCharacterState,
   writeCustomAppWorld,
   runCustomAppDeviceAlarmSet,
+  runCustomAppDeviceBrightness,
+  runCustomAppDeviceDnd,
+  runCustomAppShellNotify,
 } from "@/lib/custom-app-host-api";
 import { REALITY_BRIDGE_APP_EVENT_NAME, REALITY_BRIDGE_DATA_EVENT } from "@/lib/reality-bridge/types";
 import { OnlineRoomConnection, onlineCloudApi } from "@/lib/online-room-client";
@@ -539,7 +542,12 @@ html, body { min-height: 100%; }
     },
     device: {
       /* 借系统时钟设闹钟（APK：打开时钟 App 让用户确认一次；网页：返回 ok:false 降级）。 */
-      alarmSet: function(payload){ return request('device.alarm.set', payload || {}); }
+      alarmSet: function(payload){ return request('device.alarm.set', payload || {}); },
+      /* L1 提醒锁：勿扰开关 / 亮度（APK；网页降级）。 */
+      dndSet: function(payload){ return request('device.dnd.set', payload || {}); },
+      brightnessSet: function(payload){ return request('device.brightness.set', payload || {}); },
+      /* 直接落一条系统通知（区别于 notifications.create 的应用内通知）。 */
+      notify: function(payload){ return request('shell.notify', payload || {}); }
     },
     room: {
       create: function(payload){ return request('room.create', payload || {}); },
@@ -1915,6 +1923,18 @@ export function CustomAppRunner({
     if (action === "device.alarm.set") {
       requirePermission("device.alarm.set");
       return runCustomAppDeviceAlarmSet(app, record);
+    }
+    if (action === "device.dnd.set") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceDnd(app, record);
+    }
+    if (action === "device.brightness.set") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceBrightness(app, record);
+    }
+    if (action === "shell.notify") {
+      requireAnyPermission(["notifications.write"]);
+      return runCustomAppShellNotify(record);
     }
     if (action === "notifications.list") {
       requirePermission("notifications.read");
