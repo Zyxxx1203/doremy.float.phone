@@ -5,7 +5,9 @@ import { CheckCircle2, Circle, FileJson, Layers, LoaderCircle, MoreHorizontal, R
 
 import type { InstalledCustomApp } from "@/lib/custom-app-types";
 import { HEARTCRAFT_APP_ID } from "@/lib/builtin-apps/heartcraft-meta";
+import { FOCUS_COMPANION_APP_ID } from "@/lib/builtin-apps/focus-companion-meta";
 import {
+  ensureFocusCompanionBuiltinDataMigrated,
   ensureHeartcraftBuiltinDataMigrated,
   isCustomAppMediaRefReferenced,
   readCustomAppCollection,
@@ -87,6 +89,7 @@ import {
   writeCustomAppHistoryMessage,
   writeCustomAppCharacterState,
   writeCustomAppWorld,
+  runCustomAppDeviceAlarmSet,
 } from "@/lib/custom-app-host-api";
 import { REALITY_BRIDGE_APP_EVENT_NAME, REALITY_BRIDGE_DATA_EVENT } from "@/lib/reality-bridge/types";
 import { OnlineRoomConnection, onlineCloudApi } from "@/lib/online-room-client";
@@ -534,6 +537,10 @@ html, body { min-height: 100%; }
       send: function(payload){ return request('bridge.send', payload || {}); },
       readState: function(payload){ return request('bridge.readState', payload || {}); }
     },
+    device: {
+      /* 借系统时钟设闹钟（APK：打开时钟 App 让用户确认一次；网页：返回 ok:false 降级）。 */
+      alarmSet: function(payload){ return request('device.alarm.set', payload || {}); }
+    },
     room: {
       create: function(payload){ return request('room.create', payload || {}); },
       join: function(payload){ return request('room.join', payload || {}); },
@@ -872,21 +879,25 @@ export function CustomAppRunner({
   }, []);
   const [frameId] = useState(() => `custom_app_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
   const [bridgeReady, setBridgeReady] = useState(false);
-  const [heartcraftStorageReady, setHeartcraftStorageReady] = useState(app.id !== HEARTCRAFT_APP_ID);
-  const [heartcraftStorageError, setHeartcraftStorageError] = useState("");
+  const isBuiltinHtmlApp = app.id === HEARTCRAFT_APP_ID || app.id === FOCUS_COMPANION_APP_ID;
+  const [builtinStorageReady, setBuiltinStorageReady] = useState(!isBuiltinHtmlApp);
+  const [builtinStorageError, setBuiltinStorageError] = useState("");
   useEffect(() => {
-    if (app.id !== HEARTCRAFT_APP_ID) {
-      setHeartcraftStorageReady(true);
+    if (app.id !== HEARTCRAFT_APP_ID && app.id !== FOCUS_COMPANION_APP_ID) {
+      setBuiltinStorageReady(true);
       return;
     }
     let active = true;
-    setHeartcraftStorageReady(false);
-    setHeartcraftStorageError("");
-    void ensureHeartcraftBuiltinDataMigrated().then(() => {
-      if (active) setHeartcraftStorageReady(true);
+    setBuiltinStorageReady(false);
+    setBuiltinStorageError("");
+    const migration = app.id === FOCUS_COMPANION_APP_ID
+      ? ensureFocusCompanionBuiltinDataMigrated()
+      : ensureHeartcraftBuiltinDataMigrated();
+    void migration.then(() => {
+      if (active) setBuiltinStorageReady(true);
     }).catch(error => {
       if (!active) return;
-      setHeartcraftStorageError(error instanceof Error ? error.message : String(error));
+      setBuiltinStorageError(error instanceof Error ? error.message : String(error));
     });
     return () => { active = false; };
   }, [app.id]);
@@ -1901,6 +1912,10 @@ export function CustomAppRunner({
       requirePermission("notifications.write");
       return createCustomAppNotification(app, record, onNotice);
     }
+    if (action === "device.alarm.set") {
+      requirePermission("device.alarm.set");
+      return runCustomAppDeviceAlarmSet(app, record);
+    }
     if (action === "notifications.list") {
       requirePermission("notifications.read");
       const unreadOnly = record.unreadOnly === true;
@@ -2110,17 +2125,19 @@ export function CustomAppRunner({
           </button>
         </div>
       ) : null}
-      {heartcraftStorageError ? (
+      {builtinStorageError ? (
         <div role="alert" className="m-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          <p className="font-semibold">心意手作工坊数据准备失败</p>
-          <p className="mt-1 break-words">{heartcraftStorageError}</p>
+          <p className="font-semibold">{app.name}数据准备失败</p>
+          <p className="mt-1 break-words">{builtinStorageError}</p>
           <button type="button" className="mt-3 rounded-xl bg-red-600 px-3 py-2 text-white" onClick={() => {
-            setHeartcraftStorageError("");
-            void ensureHeartcraftBuiltinDataMigrated().then(() => setHeartcraftStorageReady(true)).catch(error => setHeartcraftStorageError(error instanceof Error ? error.message : String(error)));
+            setBuiltinStorageError("");
+            void (app.id === FOCUS_COMPANION_APP_ID ? ensureFocusCompanionBuiltinDataMigrated() : ensureHeartcraftBuiltinDataMigrated())
+              .then(() => setBuiltinStorageReady(true))
+              .catch(error => setBuiltinStorageError(error instanceof Error ? error.message : String(error)));
           }}>重试</button>
         </div>
       ) : null}
-      {bridgeReady && heartcraftStorageReady && !heartcraftStorageError ? (
+      {bridgeReady && builtinStorageReady && !builtinStorageError ? (
         // Chromium can leave a sandboxed about:srcdoc document with a 0x0 layout tree
         // when the same iframe first loads an empty srcDoc and is immediately navigated
         // to the real app. Mount it only after the host listener is ready so the final
