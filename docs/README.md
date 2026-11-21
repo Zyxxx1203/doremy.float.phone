@@ -35,6 +35,7 @@
 - [自定义 App → 内置 App 转换指南](./custom-app-to-builtin-porting-guide.md)：把市场 zip 应用内置化的通用七步流程、沙盒边界与验收清单（以 heartcraft 为范本）。
 - [角色陪伴专注内置化迁移方案](./focus-companion-builtin-migration-plan.md)：doris.focus.companion 的专项迁移决策、APK 专属功能替换清单、分级锁机设计（含角色审批制白名单与随机查岗惩罚）与壁纸自动生成 bug 的诊断修复。
 - [角色陪伴专注移植日志](./focus-companion-porting-log.md)：M1 内置化的改动清单、运行时链路、本地验证矩阵与 CI 记录。
+- [角色陪伴专注 UI 精简与美化方案](./focus-companion-ui-polish-plan.md)：文案三级规范、帮助中心页设计、入口收敛清单与分批实施（布局不动）。
 
 ### 专题技术资料与历史记录
 
