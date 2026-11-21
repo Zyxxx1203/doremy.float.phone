@@ -6206,7 +6206,7 @@ VIEWS.alarm = function () {
     <label class="fl">谁来叫醒</label><div class="chips">${S.chars.length ? S.chars.map(c => `<button class="chip ${(a.charId || anyCharId()) === c.id ? 'on' : ''}" data-act="setAlarmChar" data-id="${esc(c.id)}">${esc(c.name)}</button>`).join('') : `<div class="tiny">还没有角色</div>`}</div>
     <div class="row mt14" style="gap:8px"><button class="btn sleep grow" data-act="saveAlarm">保存闹钟</button>
     <button class="btn ghost grow" data-act="testAlarm">试听唤醒</button></div>
-    <div class="tiny mt10">到点会弹通知并由角色语音唤醒。小手机完全关闭时不会响，重新打开后会补跑到期的提醒。</div></div>
+    <div class="tiny mt10">到点弹通知 + 角色语音唤醒；保存时还会在系统时钟立一个闹钟兜底（APK，被杀也响）。语音唤醒仍需打开小手机。</div></div>
   ${(S.alarms || []).length ? `<div class="card"><h3>已排程</h3>${S.alarms.slice(0, 5).map(x => `<div class="item">
     <div class="ic">⏰</div><div class="grow"><div style="font-size:13px">${esc(x.time || '')} ${x.repeat ? '每天' : '仅一次'}</div>
     <div class="tiny">${esc(charName(x.charId))} 唤醒</div></div>
@@ -6554,7 +6554,7 @@ VIEWS.me = function () {
     <div class="chips mt8"><button class="chip ${morningCfg().voice ? 'on' : ''}" data-act="morningVoice">用语音读出来</button></div>
     <div class="row mt10" style="gap:8px"><button class="btn sm grow" data-act="morningSave">保存晨间问候</button>
       <button class="btn sm ghost grow" data-act="morningTry">立刻试一次</button></div>
-    <div class="tiny mt6">完全关闭小手机时不会实时响，重新打开后会补跑到期的晨间问候。</div></div>
+    <div class="tiny mt6">保存时会同时在系统时钟立一个到点闹钟（APK，首次去时钟 App 确认一次）—— 小手机被杀也准时响；改时间不会撤旧闹钟。TA 的语音早安仍要打开小手机才有。</div></div>
   <div class="card"><div class="row between"><h3>🗓 预约专注</h3>
     <button class="btn sm" data-act="gotoView" data-view="appt">去设置</button></div>
     <div class="sub">跟 TA 约好时间一起专注：选好日期、时长、专注事项，TA 提前来催你准备开始；连着催 ${apptMaxNudge()} 次你还没点开始，就直接按惩罚库开罚。</div>
@@ -7058,7 +7058,7 @@ VIEWS.help = function () {
     <b>趋势</b>：按每次专注的开始时间统计，看一天八个时段、星期几、最近 8 周分别投入多少，还能让 TA 点评一句。</div></details>
   <details class="card"><summary><span>🌅 晨间闭环</span></summary>
     <div class="tiny" style="line-height:1.8">在「我的 → 晨间闭环」设一个时间和叫醒你的角色。到点：① 通知 + 面板 + 语音向你道早安；② 顺口说一句昨晚睡得怎么样；③ 提醒今天的预约专注和目标还剩几天；④ 让你写下「今天第一件事」，点一下就带着它进专注流程。<br>
-    <b>小手机完全关闭时不会实时响</b>，重新打开后会补跑到期任务。</div></details>
+    <b>系统闹钟兜底</b>：保存晨间问候/闹钟时会在系统时钟立一个到点闹钟（APK），小手机被杀也准时响；TA 的语音早安仍需打开小手机补播。</div></details>
   <details class="card"><summary><span>🗓 预约专注是怎么催你的</span></summary>
     <div class="tiny" style="line-height:1.8">在「首页 → 预约专注」或「我的 → 预约专注」里新约一个：选日期、开始时间、时长、专注事项、监督角色。<b>默认节奏</b>：开始前 10 分钟第一次催，之后每 5 分钟一次，共 3 次（T-10 / T-5 / T-0），数字都能改，宽限可设 0 分钟 —— 催满三次你还不动，立刻开罚。<br><br>
     每次催促：① 一条系统通知；② 聊天室里一张「预约专注 · 第 N 次提醒」的卡 + 请 TA 亲口回你一句（可关）；③ APP 内实时倒计时。<br><br>
@@ -9889,16 +9889,23 @@ async function fireAlarm(a) {
   await syncChatLine(cid, text, 'assistant');
   render();
 }
-async function scheduleAlarm(a) {
+async function scheduleAlarm(a, silent) {
   if (!API || !API.tasks || !a || !a.time) return;
   const now = new Date(), parts = String(a.time).split(':');
   const target = new Date(now);
   target.setHours(Number(parts[0]), Number(parts[1]), 0, 0);
   if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
+  const who = charName(a.charId || anyCharId());
   await sdk(() => API.tasks.schedule({
     id: 'focus_alarm_' + a.time, delayMs: Math.max(60000, target.getTime() - now.getTime()),
-    actions: [{ type: 'notification', title: '⏰ ' + a.time, body: charName(a.charId || anyCharId()) + ' 在叫你起床' }]
+    actions: [
+      { type: 'notification', title: '⏰ ' + a.time, body: who + ' 在叫你起床' },
+      { type: 'shell.notify', title: '⏰ ' + a.time, body: who + ' 在叫你起床' }
+    ]
   }));
+  /* 系统闹钟兜底：早上页面必然是死的，宿主任务只能补跑 —— 只有系统时钟的闹钟能准时响。
+     只在用户主动保存时立（boot 重排不重复立）；改时间不会自动撤旧闹钟。 */
+  if (!silent) bookSystemAlarm(Number(parts[0]), Number(parts[1]), 'TA叫你起床');
 }
 /* ==========================================================
    备份 · 打包与下载
@@ -10606,16 +10613,23 @@ function startMorningLoop() {
   S.morningTimer = setInterval(() => { checkMorning(); }, 20000);
   checkMorning();
 }
-async function scheduleMorning(m) {
+async function scheduleMorning(m, silent) {
   if (!API || !API.tasks || !m || !m.enabled || !m.time) return;
   const now = new Date(), parts = String(m.time).split(':');
   const target = new Date(now);
   target.setHours(Number(parts[0]), Number(parts[1]), 0, 0);
   if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
+  const who = charName(m.charId || anyCharId());
   await sdk(() => API.tasks.schedule({
     id: 'focus_morning', delayMs: Math.max(60000, target.getTime() - now.getTime()),
-    actions: [{ type: 'notification', title: '🌅 ' + m.time + ' 早安', body: charName(m.charId || anyCharId()) + ' 在等你起床' }]
+    actions: [
+      { type: 'notification', title: '🌅 ' + m.time + ' 早安', body: who + ' 在等你起床' },
+      { type: 'shell.notify', title: '🌅 ' + m.time + ' 早安', body: who + ' 在等你起床' }
+    ]
   }));
+  /* 晨间闭环的关键兜底：早上不会有人打开小手机，宿主任务只能补跑 ——
+     保存时直接在系统时钟立闹钟，被杀也准时响。 */
+  if (!silent) bookSystemAlarm(Number(parts[0]), Number(parts[1]), '晨间·TA叫你');
 }
 /* ==========================================================
    预约专注：先跟角色约好时间，到点让 TA 来催你
@@ -10686,19 +10700,25 @@ function apptCountdownText(a) {
   const over = (Date.now() - a.startAt) / 60000;
   return '已到开始时间 · 已催 ' + (a.nudgeCount || 0) + '/' + apptMaxNudge() + ' 次 · 过了 ' + fmtDur(over * 60);
 }
-/* 预约的系统闹钟兜底：借壳的 ACTION_SET_ALARM 在系统时钟里立一个开始时间的闹钟，
+/* 系统闹钟兜底（通用）：借壳的 ACTION_SET_ALARM 在系统时钟里立一个闹钟，
    时钟 App 里确认一次后，就算小手机被杀掉也会准时响 —— 这是「到点提醒」唯一不依赖
    页面存活的通道（自建 AlarmManager 全屏唤醒排在 M3，需要重打 APK）。
    注意：取消/改期不会自动撤销旧闹钟，要到时钟 App 里删，文案里有说明。 */
+async function bookSystemAlarm(hour, minute, msg) {
+  try {
+    if (!API || !API.device || !API.device.alarmSet) return false;
+    const r = await sdk(() => API.device.alarmSet({ hour: hour, minute: minute, message: msg }), null);
+    if (r && r.ok) { toast('⏰ 已在系统时钟立好 ' + pad2(hour) + ':' + pad2(minute) + ' 的闹钟（去时钟 App 确认一次就准时响）'); return true; }
+    if (r && r.reason) toast('系统闹钟没设上：' + (r.reason || '当前环境不支持'));
+    return false;
+  } catch (e) { return false; }
+}
 async function bookSystemAlarmForAppt(rec) {
   try {
     if (cfg('apptSysAlarm') === false) return;
     if (!API || !API.device || !API.device.alarmSet || !rec || !rec.startAt) return;
     const d = new Date(rec.startAt);
-    const msg = ('TA约你·' + (rec.task || '专注')).slice(0, 18);
-    const r = await sdk(() => API.device.alarmSet({ hour: d.getHours(), minute: d.getMinutes(), message: msg }), null);
-    if (r && r.ok) toast('⏰ 已在系统时钟立好 ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ' 的闹钟（去时钟 App 确认一次就准时响）');
-    else if (r && r.reason) toast('系统闹钟没设上：' + (r.reason || '当前环境不支持'));
+    await bookSystemAlarm(d.getHours(), d.getMinutes(), ('TA约你·' + (rec.task || '专注')).slice(0, 18));
   } catch (e) { }
 }
 async function createAppt(rec) {
@@ -16286,8 +16306,8 @@ async function boot() {
     startAlarmLoop();
     startApptLoop();
     startMorningLoop();
-    if ((cfg('alarm') || {}).enabled) scheduleAlarm(cfg('alarm'));
-    if (morningCfg().enabled) scheduleMorning(morningCfg());
+    if ((cfg('alarm') || {}).enabled) scheduleAlarm(cfg('alarm'), true);
+    if (morningCfg().enabled) scheduleMorning(morningCfg(), true);
     /* 从聊天室 + 号面板进来：直接落到对应的邀请页，并带上当前对话的角色
        （running / 锁定 / 待校验这些状态优先，不会被邀请页抢走） */
     /* 从聊天室进来：按 launchContext 精确落到对应页面。

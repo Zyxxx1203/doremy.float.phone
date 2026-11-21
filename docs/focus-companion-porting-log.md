@@ -97,6 +97,12 @@ custom-apps/focus-companion/index.html          ← 源码真身（改这里）
 - 用户数据无需迁移：id 未变，`ai_phone_custom_app_data_v1:doris.focus.companion/*` 原地保留。
 - `focus_companion_proactive` 提示词补齐是幂等追加，revert 后用户预设中残留一条可手动关掉，无副作用。
 
+## 8d. M2b-2：晨间闭环与语音闹钟的系统闹钟兜底
+
+**问题**：晨间闭环/语音闹钟依赖宿主任务与页内轮询，早上页面必死 → 永远补跑（用户实测「根本触发不了」）。
+**修复**：`bookSystemAlarm()` 提为通用函数；`scheduleAlarm`/`scheduleMorning` 增加 `silent` 参数（用户保存时立系统时钟闹钟 + shell.notify，boot 重排静默防重复立）；两处设置卡与帮助中心小节文案更新。
+**审计**：全部「页面存活依赖」机制盘点见迁移方案 §9.4 —— 已修 4 项，M3 候选 2 项（全屏唤醒统一件、后台音频前台服务），设计使然不改 4 项。
+
 ## 8c. UI 精简与美化（方案见 focus-companion-ui-polish-plan.md，三批已落地）
 
 - 诊断修正：help 视图实际为 9592 字符源码 / 26 个机制小节（此前日志里的「12.8 万字符」是正则溢出捕获到后续代码的误报）。
