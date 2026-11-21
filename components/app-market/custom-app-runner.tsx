@@ -139,7 +139,7 @@ function rewriteAssetRefs(html: string, app: InstalledCustomApp): string {
 }
 
 function createCustomAppSrcDoc(app: InstalledCustomApp, frameId: string, launchContext?: Record<string, unknown> | null, embedded = false): string {
-  const body = rewriteAssetRefs(app.entryHtml.trim(), app);
+  const body = rewriteAssetRefs(String(app.entryHtml ?? "").trim(), app);
   const base = /<html[\s>]/i.test(body)
     ? body
     : `<!doctype html>
