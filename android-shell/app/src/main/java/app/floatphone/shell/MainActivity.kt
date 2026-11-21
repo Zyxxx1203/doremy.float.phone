@@ -1905,6 +1905,21 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         @JavascriptInterface
         fun findPackageByLabel(label: String): String = deviceAction.findPackageByLabel(label)
 
+        /** 已安装可启动应用清单（白名单选择器数据源）。 */
+        @JavascriptInterface
+        fun listInstalledApps(): String = deviceAction.listInstalledApps()
+
+        /** L2 看守锁：锁机名单 + 截止时间。网页层经权限门调用。 */
+        @JavascriptInterface
+        fun focusLockStart(packagesJson: String, untilEpochMs: Long): String =
+            FocusLockService.start(this@MainActivity, packagesJson, untilEpochMs).toString()
+
+        @JavascriptInterface
+        fun focusLockStop(): String = FocusLockService.stop(this@MainActivity).toString()
+
+        @JavascriptInterface
+        fun focusLockStatus(): String = FocusLockService.status(this@MainActivity).toString()
+
         /** 设闹钟（会打开系统时钟 App 让用户确认）。 */
         @JavascriptInterface
         fun setAlarm(hour: Int, minute: Int, message: String): String =

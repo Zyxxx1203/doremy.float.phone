@@ -12,7 +12,8 @@ import { loadAllCustomApps } from "./builtin-apps/registry";
 import { buildCustomAppChatTags } from "./custom-app-tags";
 import { hydrateKvDb } from "./kv-db";
 import { sendShellNotification } from "./shell-notify";
-import { setAlarm as shellSetAlarm, setBrightness as shellSetBrightness, setDnd as shellSetDnd } from "./device-action/bridge";
+import { setAlarm as shellSetAlarm, setBrightness as shellSetBrightness, setDnd as shellSetDnd,
+  listInstalledApps, focusLockStart as shellFocusLockStart, focusLockStop as shellFocusLockStop, focusLockStatus as shellFocusLockStatus } from "./device-action/bridge";
 import { loadCharacters } from "./character-storage";
 import {
   addChatContact,
@@ -184,6 +185,10 @@ const HOST_ACTION_PERMISSIONS: Record<string, CustomAppPermission[]> = {
   "device.alarm.set": ["device.alarm.set"],
   "device.dnd.set": ["device.assist"],
   "device.brightness.set": ["device.assist"],
+  "device.apps.list": ["device.assist"],
+  "device.lock.start": ["device.assist"],
+  "device.lock.stop": ["device.assist"],
+  "device.lock.status": ["device.assist"],
 };
 
 function emitHostStateUpdated(): void {
@@ -2389,6 +2394,40 @@ export function runCustomAppDeviceBrightness(_app: InstalledCustomApp, record: R
   return result.ok ? { ok: true, level } : { ok: false, reason: result.reason || "当前环境不支持亮度调节", needPermission: result.needPermission };
 }
 
+/** L2 看守锁：已安装应用清单（白名单选择器）。 */
+export function runCustomAppDeviceAppsList(_app: InstalledCustomApp, record: Record<string, unknown> = {}): Record<string, unknown> {
+  void record;
+  const result = listInstalledApps();
+  return result.ok ? { ok: true, apps: result.apps } : { ok: false, apps: [], reason: result.reason || "当前环境不支持应用列表" };
+}
+
+/** L2 看守锁：启动壳侧轮询封锁。 */
+export function runCustomAppDeviceLockStart(_app: InstalledCustomApp, record: Record<string, unknown>): Record<string, unknown> {
+  let packages: string[] = [];
+  try {
+    const raw = record.packages;
+    const arr = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (Array.isArray(arr)) packages = arr.map(item => cleanText(item, 160)).filter(Boolean);
+  } catch { }
+  const until = Number(record.until) || (Date.now() + 2 * 3600_000);
+  const result = shellFocusLockStart(packages, until);
+  return result.ok ? { ok: true, until } : { ok: false, reason: result.reason || "当前环境不支持看守锁" };
+}
+
+/** L2 看守锁：停止。 */
+export function runCustomAppDeviceLockStop(_app: InstalledCustomApp, record: Record<string, unknown> = {}): Record<string, unknown> {
+  void record;
+  const result = shellFocusLockStop();
+  return result.ok ? { ok: true } : { ok: false, reason: result.reason || "当前环境不支持看守锁" };
+}
+
+/** L2 看守锁：状态。 */
+export function runCustomAppDeviceLockStatus(_app: InstalledCustomApp, record: Record<string, unknown> = {}): Record<string, unknown> {
+  void record;
+  const result = shellFocusLockStatus();
+  return { ok: true, running: result.running, until: result.until, packages: result.packages };
+}
+
 export async function executeCustomAppHostAction(
   app: InstalledCustomApp,
   rawAction: CustomAppHostAction,
@@ -2417,6 +2456,14 @@ export async function executeCustomAppHostAction(
       return runCustomAppDeviceDnd(app, payload);
     case "device.brightness.set":
       return runCustomAppDeviceBrightness(app, payload);
+    case "device.apps.list":
+      return runCustomAppDeviceAppsList(app, payload);
+    case "device.lock.start":
+      return runCustomAppDeviceLockStart(app, payload);
+    case "device.lock.stop":
+      return runCustomAppDeviceLockStop(app, payload);
+    case "device.lock.status":
+      return runCustomAppDeviceLockStatus(app, payload);
     case "db.update":
     case "app.data.update":
       return updateCustomAppDataRecord(app, payload);

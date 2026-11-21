@@ -25,6 +25,10 @@ type DeviceActionBridgeLike = {
   mediaControl?: (action: string) => string;
   openWebUrl?: (url: string) => string;
   hasUsageStatsAccess?: () => boolean;
+  listInstalledApps?: () => string;
+  focusLockStart?: (packagesJson: string, untilEpochMs: number) => string;
+  focusLockStop?: () => string;
+  focusLockStatus?: () => string;
   getDeviceActionCapabilities?: () => string;
   openSystemSettings?: (which: string) => boolean;
 };
@@ -114,6 +118,53 @@ export function setDnd(on: boolean): DeviceActionResult {
     return parseResult(raw, "勿扰模式未能切换");
   } catch {
     return { ok: false, reason: "勿扰模式调用失败" };
+  }
+}
+
+/** 已安装可启动应用清单（白名单选择器数据源；非壳环境返回 ok:false）。 */
+export function listInstalledApps(): { ok: boolean; apps: Array<{ package: string; label: string }>; reason?: string } {
+  try {
+    const raw = bridge()?.listInstalledApps?.();
+    if (raw === undefined) return { ok: false, apps: [], reason: "当前 App 版本不支持应用列表" };
+    const parsed = JSON.parse(raw) as { ok?: boolean; apps?: Array<{ package: string; label: string }>; reason?: string };
+    if (parsed && parsed.ok === true) return { ok: true, apps: parsed.apps || [] };
+    return { ok: false, apps: [], reason: (parsed && parsed.reason) || "无法列出应用" };
+  } catch {
+    return { ok: false, apps: [], reason: "应用列表调用失败" };
+  }
+}
+
+/** L2 看守锁：启动壳侧轮询封锁（packages=锁机名单包名数组，until=截止毫秒）。 */
+export function focusLockStart(packages: string[], untilEpochMs: number): DeviceActionResult {
+  try {
+    const raw = bridge()?.focusLockStart?.(JSON.stringify(packages), untilEpochMs);
+    if (raw === undefined) return { ok: false, reason: "当前 App 版本不支持看守锁" };
+    return parseResult(raw, "看守锁未能启动");
+  } catch {
+    return { ok: false, reason: "看守锁调用失败" };
+  }
+}
+
+/** L2 看守锁：停止。 */
+export function focusLockStop(): DeviceActionResult {
+  try {
+    const raw = bridge()?.focusLockStop?.();
+    if (raw === undefined) return { ok: false, reason: "当前 App 版本不支持看守锁" };
+    return parseResult(raw, "看守锁未能停止");
+  } catch {
+    return { ok: false, reason: "看守锁调用失败" };
+  }
+}
+
+/** L2 看守锁：状态查询。 */
+export function focusLockStatus(): { ok: boolean; running: boolean; until: number; packages: string; reason?: string } {
+  try {
+    const raw = bridge()?.focusLockStatus?.();
+    if (raw === undefined) return { ok: false, running: false, until: 0, packages: "[]", reason: "当前 App 版本不支持看守锁" };
+    const parsed = JSON.parse(raw) as { ok?: boolean; running?: boolean; until?: number; packages?: string };
+    return { ok: parsed?.ok === true, running: parsed?.running === true, until: parsed?.until || 0, packages: parsed?.packages || "[]" };
+  } catch {
+    return { ok: false, running: false, until: 0, packages: "[]", reason: "看守锁状态调用失败" };
   }
 }
 

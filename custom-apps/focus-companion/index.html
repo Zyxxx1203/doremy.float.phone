@@ -889,7 +889,8 @@ function defaults() {
     sleepCharIds: [], sleepLullaby: true, sleepChat: true, genLogKeep: 200, sleepIdleMin: 5,
     apptAdvanceMin: 10, apptGapMin: 5, apptMaxNudge: 3, apptGraceMin: 0, apptChatNudge: true, apptPunish: true,
     apptSysAlarm: true,      /* 预约时借系统时钟立闹钟（APK）：页面被杀也准时响；网页环境自动跳过 */
-    focusLevel: 'off',       /* 锁机分级：off=不开启 / L1=提醒锁 / L3=承诺死锁（L2 需 APK） */
+    focusLevel: 'off',       /* 锁机分级：off=不开启 / L1=提醒锁 / L2=看守锁 / L3=承诺死锁 */
+    lockedApps: [],          /* 常驻白名单 [{name, pkg}] —— L2 看守锁按包名放行 + 中途离开豁免依据 */
     focusAssist: false,      /* 兼容旧字段：L1 的勿扰开关（新逻辑读 focusLevel） */
     lockCooldownSec: 60,     /* L3 暂停冷静期秒数 */
     assistDndOn: false,      /* 本场专注由锁机助手开过勿扰 —— 结束后自动恢复 */
@@ -1472,6 +1473,10 @@ function tick() {
     S.settings.assistDndOn = false; saveSettings(true);
     sdk(() => API.device.dndSet({ on: false }), null).catch(() => { });
   }
+  if (S.settings.assistLockOn && (!s || s.status !== 'running')) {
+    S.settings.assistLockOn = false; saveSettings(true);
+    sdk(() => API.device.lockStop(), null).catch(() => { });
+  }
   /* 通行证查岗：到点弹层（页面活着时）；超时未交 → 视为被抓 */
   (function () {
     const c = S.settings.wlCheckin;
@@ -1609,14 +1614,80 @@ function openLockCooldownSheet() {
     if (left <= 0) { btn.disabled = false; clearInterval(tick); }
   }, 1000);
 }
+/* ── 常驻白名单 + 应用选择器（L2 看守锁放行清单）──────────────
+   壳可用 → 从已安装应用列表里选（名称+包名一步到位）；
+   壳不可用 → 降级手输名称（包名留空，L2 到来后按名称兜底匹配）。 */
+function lockedAppsFor() {
+  const out = [];
+  for (const a of (cfg('lockedApps') || [])) { if (a.pkg) out.push(a.pkg); }
+  for (const p of activeWlPasses()) { if (p.pkg) out.push(p.pkg); }
+  return Array.from(new Set(out));
+}
+function pickFromAppList(target) {
+  S.draft.appPickerTarget = target;
+  const r = API && API.device && API.device.appsList ? null : { ok: false, apps: [], reason: '当前环境不支持应用列表' };
+  if (r) { toast(r.reason || '当前环境不支持应用列表，请手输名称'); return; }
+  sdk(() => API.device.appsList(), null).then((res) => {
+    if (!res || !res.ok || !(res.apps || []).length) { toast((res && res.reason) || '拿不到应用列表，请手输名称'); return; }
+    S.draft.appList = res.apps;
+    renderAppPickerSheet('');
+  }).catch(() => toast('拿不到应用列表，请手输名称'));
+}
+function renderAppPickerSheet(kw) {
+  const list = (S.draft.appList || []).filter(x => !kw || x.label.toLowerCase().indexOf(String(kw).toLowerCase()) >= 0 || x.package.toLowerCase().indexOf(String(kw).toLowerCase()) >= 0).slice(0, 80);
+  openSheet(`<h3>📱 选择手机应用</h3>
+    <input class="input mt6" id="appSearch" placeholder="搜应用名 / 包名" value="${esc(kw || '')}">
+    <div style="max-height:46dvh;overflow:auto" class="mt8">
+      ${list.length ? list.map((x, i) => `<div class="item" data-pick="${i}"><div class="ic">📱</div><div class="grow"><div style="font-size:13px">${esc(x.label)}</div><div class="tiny">${esc(x.package)}</div></div></div>`).join('') : '<div class="empty">没有匹配的应用</div>'}
+    </div>
+    <button class="btn ghost block mt8" data-act="closeSheet">取消</button>`);
+  const w = document.querySelector('.sheet');
+  if (w) w.addEventListener('click', (e) => {
+    const input = e.target.closest('#appSearch');
+    const row = e.target.closest('[data-pick]');
+    if (row && S.draft.appList) {
+      const app = list[Number(row.dataset.pick)];
+      if (app) applyAppPick(app);
+      return;
+    }
+    if (input) input.addEventListener('input', () => renderAppPickerSheet(input.value));
+  });
+}
+function applyAppPick(app) {
+  closeAllSheets();
+  const t = S.draft.appPickerTarget;
+  if (t === 'whitelist') {
+    S.settings.lockedApps = (cfg('lockedApps') || []).filter(x => x.pkg !== app.package).concat([{ name: app.label, pkg: app.package }]);
+    saveSettings(true);
+    toast('🧱 已加入常驻白名单：' + app.label);
+  } else {
+    S.draft.wlAppName = app.label; S.draft.wlPackage = app.package;
+    toast('已选择：' + app.label);
+  }
+  render();
+}
+function openLockedAppsSheet() {
+  const list = cfg('lockedApps') || [];
+  const oldWl = cfg('whitelist') || [];
+  openSheet(`<h3>🧱 常驻白名单</h3>
+    <div class="tiny mt6">L2 看守锁放行的手机应用清单（按包名匹配）；也是中途离开豁免的依据。改动立即生效。</div>
+    ${list.length ? list.map((x, i) => `<div class="item"><div class="ic">📱</div><div class="grow"><div style="font-size:13px">${esc(x.name)}</div><div class="tiny">${esc(x.pkg || '未记录包名')}</div></div>
+      <button class="btn sm ghost" data-act="lockedAppsDel" data-i="${i}">删</button></div>`).join('') : '<div class="empty">还没有应用 —— 从手机应用列表里选</div>'}
+    <button class="btn primary block mt10" data-act="lockedAppsPick">📱 从手机应用选择</button>
+    <div class="row mt8" style="gap:8px">
+      <input class="input grow" id="laName" placeholder="或手输名称（无 APK 兜底）">
+      <button class="btn sm" data-act="lockedAppsAdd">添加</button></div>
+    ${oldWl.length ? `<div class="hr"></div><div class="tiny">旧手填白名单档案（未签发）：${oldWl.map(x => esc(x.name)).join('、')}</div>` : ''}
+    <button class="btn ghost block mt8" data-act="closeSheet">关闭</button>`);
+}
 function askAwayExcuse(v, sec) {
   const passes = activeWlPasses();
   const used = S.session.excuseUsed || 0;
   const canExcuse = passes.length > 0 && used < 3;
   const w = openSheet(`<h3 style="color:#ff9aa6">⚠️ 检测到中途离开</h3>
     <div class="sub">你在专注中离开页面 <b>${sec} 秒</b>。主动点「暂停」不算违规；切后台、划掉 APP、离开专注页都算。</div>
-    ${canExcuse ? `<div class="tiny mt10">生效中的通行证：${passes.map(x => esc(x.app)).join('、')}</div>
-      <button class="btn block mt6" data-ex="wl">我去的是通行证里的应用</button>` : `<div class="tiny mt10">没有生效中的通行证 —— 要去某个应用的话，先向 TA 申请。</div>
+    ${canExcuse ? `<div class="tiny mt10">可以放行的：${passes.map(x => esc(x.app)).join('、')}${(cfg('lockedApps') || []).length ? '、常驻白名单 ' + (cfg('lockedApps') || []).length + ' 个' : ''}</div>
+      <button class="btn block mt6" data-ex="wl">我去的是白名单应用</button>` : `<div class="tiny mt10">没有生效中的通行证，常驻白名单也是空的 —— 要去某个应用的话，先向 TA 申请。</div>
       <button class="btn block mt6" data-act="wlApplyOpen">🎟 向 TA 申请通行证</button>`}
     <div class="row mt10" style="gap:10px"><button class="btn ghost grow" data-ex="a">我认罚</button>
     <button class="btn warn grow" data-ex="a2">认罚并加重</button></div>
@@ -1642,8 +1713,7 @@ function askAwayExcuse(v, sec) {
 function assistLevelNow() { return cfg('focusLevel') || 'off'; }
 function assistLevelFor(session) {
   if (session && session.assistLevel) return session.assistLevel;
-  if (S.draft.assistForSession === true) return assistLevelNow() === 'off' ? 'L1' : assistLevelNow();
-  if (S.draft.assistForSession === false) return 'off';
+  if (S.draft.assistForSession != null) return S.draft.assistForSession;
   return assistLevelNow();
 }
 async function startSession(o) {
@@ -1651,9 +1721,7 @@ async function startSession(o) {
      否则会出现两段同时计时，看起来就是「完成任务后又重复专注」 */
   if (S.session && S.session.status === 'running') { toast('已经有一段专注在进行中'); go('running'); return S.session; }
   /* L3 承诺死锁：先签承诺书（预授权：中途离开/失约自动按惩罚库执行）再开始 */
-  const pendingLevel = S.draft.assistForSession != null
-    ? (S.draft.assistForSession === true ? (assistLevelNow() === 'off' ? 'L1' : assistLevelNow()) : 'off')
-    : assistLevelNow();
+  const pendingLevel = assistLevelFor(null);
   if (pendingLevel === 'L3' && !o.pledged) {
     const lib = (cfg('punishLib') || []).filter(p => p.enabled);
     const first = lib.length ? `${lib[0].title}（${lib.length} 项启用中）` : '惩罚库当前为空 —— 记过不罚，但失约照记';
@@ -1697,6 +1765,20 @@ async function startSession(o) {
   /* 锁机分级：L1/L3 专注期勿扰（结束后由 tick 自动恢复） */
   s.assistLevel = assistLevelFor(s);
   if (s.assistLevel === 'L3') pushMsg(s, 'sys', '⚑ 承诺死锁生效：中途离开超宽限将自动开罚');
+  /* L2/L3：启动壳侧看守锁（白名单外的手机应用被带回小手机） */
+  if ((s.assistLevel === 'L2' || s.assistLevel === 'L3') && API && API.device && API.device.lockStart) {
+    const pkgs = lockedPackagesFor();
+    const until = Date.now() + ((Number(s.focusMin) || 25) * 60 + (Number(s.cycles || 1) - 1) * (Number(s.breakMin) || 5) * 60 + 600) * 1000;
+    if (pkgs.length) {
+      sdk(() => API.device.lockStart({ packages: JSON.stringify(pkgs), until }), null).then((r) => {
+        if (r && r.ok) {
+          S.settings.assistLockOn = true; saveSettings(true);
+          pushMsg(s, 'sys', '🛰 看守锁已启动：白名单（' + pkgs.length + ' 个应用）外的手机应用会被带回');
+          render();
+        } else if (r && r.reason) pushMsg(s, 'sys', '🛰 看守锁没启动：' + r.reason);
+      }).catch(() => { });
+    } else pushMsg(s, 'sys', '🛰 看守锁未启动：白名单为空（我的 → 锁机 → 🧱 白名单里从手机应用选）');
+  }
   if (s.assistLevel !== 'off' && API && API.device && API.device.dndSet) {
     sdk(() => API.device.dndSet({ on: true }), null).then((r) => {
       if (r && r.ok) { S.settings.assistDndOn = true; saveSettings(true); pushMsg(s, 'sys', '🔒 勿扰已开启（锁机助手，专注结束自动恢复）'); render(); }
@@ -2289,6 +2371,7 @@ function openWlApply(prefill) {
   const reasons = ['查单词', '查资料', '回个消息', '导航'];
   openSheet(`<h3>🎟 向 TA 申请通行证</h3>
     <div class="tiny mt6">锁机期间要用某个应用，得先向 TA 申请；批了才生效，到期自动回收。</div>
+    <button class="btn block mt8" data-act="appPickerOpen" data-target="apply">📱 从手机应用选择（APK）</button>
     <label class="fl">应用名称</label><input class="input" data-in="wlAppName" value="${esc(S.draft.wlAppName || '')}" placeholder="比如：欧路词典">
     <label class="fl">用途</label>
     <div class="chips">${reasons.map(r => `<button class="chip ${S.draft.wlReason === r ? 'on' : ''}" data-act="wlReasonPick" data-v="${r}">${r}</button>`).join('')}</div>
@@ -4349,13 +4432,16 @@ VIEWS.setup = function () {
       : `<div class="empty" style="padding:8px">还没有角色可用</div>`}</div>
     ${sel.length ? `<div class="row wrap mt10" style="gap:8px">${sel.map(id => { const c = charById(id); return c ? charAvatar(c) : ''; }).join('')}</div>` : ''}
   </div>
-  <div class="card"><div class="row between"><h3>🔒 锁机助手</h3><span class="tiny">全局：${({off:'不开启',L1:'L1 提醒锁',L3:'L3 承诺死锁'})[cfg('focusLevel') || 'off']}</span></div>
-    <div class="sub">本次专注要不要开启 L1 提醒锁（勿扰 + 离开系统通知）。不选就跟「我的 → 锁机」的全局开关走。</div>
+  <div class="card"><div class="row between"><h3>🔒 锁机挡位（本次专注）</h3><span class="tiny">默认：${({off:'关闭',L1:'L1 提醒',L2:'L2 看守',L3:'L3 死锁'})[cfg('focusLevel') || 'off']}</span></div>
+    <div class="sub">给这一场专注单独选一个挡位；不选就用「我的 → 锁机」的全局挡。</div>
     <div class="chips mt8">
-      <button class="chip ${S.draft.assistForSession === true ? 'on' : ''}" data-act="assistSessionPick" data-v="1">🔓 本次开启</button>
-      <button class="chip ${S.draft.assistForSession === false ? 'on' : ''}" data-act="assistSessionPick" data-v="0">⛔ 本次不开</button>
-      <button class="chip ${S.draft.assistForSession == null ? 'on' : ''}" data-act="assistSessionPick" data-v="">跟随全局</button>
-    </div></div>
+      <button class="chip ${S.draft.assistForSession == null ? 'on' : ''}" data-act="assistSessionPick" data-v="">默认（${({off:'关',L1:'L1',L2:'L2',L3:'L3'})[cfg('focusLevel') || 'off']}）</button>
+      <button class="chip ${S.draft.assistForSession === 'off' ? 'on' : ''}" data-act="assistSessionPick" data-v="off">⛔ 关</button>
+      <button class="chip ${S.draft.assistForSession === 'L1' ? 'on' : ''}" data-act="assistSessionPick" data-v="L1">🛡 L1</button>
+      <button class="chip ${S.draft.assistForSession === 'L2' ? 'on' : ''}" data-act="assistSessionPick" data-v="L2">🛰 L2</button>
+      <button class="chip ${S.draft.assistForSession === 'L3' ? 'on' : ''}" data-act="assistSessionPick" data-v="L3">⚑ L3</button>
+    </div>
+    <div class="tiny mt8">L1 勿扰+离开通知 · L2 看守锁（白名单外应用带回）· L3 在 L2 上加承诺（离开/失约自动开罚）。L2/L3 需新版 APK。</div></div>
   <div class="card">
     <h3>番茄设置（数字都可以自己填）</h3>
     <div class="row between mt8"><span class="tiny">🍅 我的模板 · 点一下就套用</span>
@@ -6680,13 +6766,16 @@ VIEWS.me = function () {
     </div>
   </div>
   <div class="card"><div class="row between"><h3>🔒 锁机（分级）</h3>
-    <button class="chip ${assistLevelNow() === 'L3' ? 'on' : ''}" data-act="focusLevelPick" data-v="L3">⚑ L3 承诺死锁</button>
-    <button class="chip ${assistLevelNow() === 'L1' ? 'on' : ''}" data-act="focusLevelPick" data-v="L1">🛡 L1 提醒锁</button>
-    <button class="chip ${assistLevelNow() === 'off' ? 'on' : ''}" data-act="focusLevelPick" data-v="off">⛔ 不开启</button></div>
+    <button class="chip ${assistLevelNow() === 'L3' ? 'on' : ''}" data-act="focusLevelPick" data-v="L3">⚑ L3 死锁</button>
+    <button class="chip ${assistLevelNow() === 'L2' ? 'on' : ''}" data-act="focusLevelPick" data-v="L2">🛰 L2 看守</button>
+    <button class="chip ${assistLevelNow() === 'L1' ? 'on' : ''}" data-act="focusLevelPick" data-v="L1">🛡 L1 提醒</button>
+    <button class="chip ${assistLevelNow() === 'off' ? 'on' : ''}" data-act="focusLevelPick" data-v="off">⛔ 关闭</button></div>
     <div class="tiny mt6">L1：专注开始自动开勿扰、结束恢复；中途离开落系统通知。L3：签承诺书后开始 —— <b>中途离开超宽限自动开罚（无需确认）</b>，暂停要过冷静期。专注设置页可按次覆盖。L2 看守锁（按包名封锁手机应用）需要安卓壳，随 APK 升级开放。</div>
-    <div class="row mt10" style="gap:8px"><button class="btn sm grow" data-act="wlSheetOpen">🎟 通行证（生效 ${activeWlPasses().length}）</button>
-      <button class="btn sm ghost grow" data-act="wlApplyOpen">向 TA 申请</button></div>
-    <div class="tiny mt6">白名单是申请制：向 TA 提交应用/用途/时长，TA 批了才生效；生效中的通行证也是中途离开豁免的依据（旧手填白名单已转为未签发档案）。</div>
+    <div class="row mt10" style="gap:8px">
+      <button class="btn sm grow" data-act="lockedAppsSheet">🧱 白名单（${(cfg('lockedApps') || []).length}）</button>
+      <button class="btn sm grow" data-act="wlSheetOpen">🎟 通行证（${activeWlPasses().length}）</button>
+      <button class="btn sm ghost grow" data-act="wlApplyOpen">申请</button></div>
+    <div class="tiny mt6">白名单两轨：<b>🧱 常驻白名单</b>（自己从手机应用列表里选，L2 看守锁放行 + 中途离开豁免的依据）与<b>🎟 限时通行证</b>（向 TA 申请，批了才生效，到期回收）。L2/L3 看守锁需要新版 APK。</div>
     <div class="tiny mt6">L2 看守锁（前台应用封锁 + 全屏覆盖页）与 L3 死锁（承诺书 + 防绕过）需要安卓壳新增服务，随下一次 APK 升级开放。</div></div>
   <div class="card"><div class="row between"><h3>监督与惩罚</h3>
     <span class="pill ${cfg('punishEnabled') ? 'bad' : 'ok'}">${cfg('punishEnabled') ? '惩罚模式开启' : '仅记录不惩罚'}</span></div>
@@ -11504,11 +11593,28 @@ Object.assign(ACTIONS, {
     closeAllSheets();
     toast('先记着你这一会儿 —— TA 马上还会来催');
   },
-  assistSessionPick: el => { S.draft.assistForSession = el.dataset.v === '' ? null : el.dataset.v === '1'; render(); },
+  assistSessionPick: el => { S.draft.assistForSession = el.dataset.v === '' ? null : el.dataset.v; render(); },
+  lockedAppsSheet: () => openLockedAppsSheet(),
+  lockedAppsPick: () => pickFromAppList('whitelist'),
+  lockedAppsAdd: async () => {
+    const name = (document.getElementById('laName') || {}).value || '';
+    if (!name.trim()) { toast('写个应用名称'); return; }
+    S.settings.lockedApps = (cfg('lockedApps') || []).concat([{ name: name.trim(), pkg: '' }]);
+    await saveSettings(true);
+    toast('🧱 已加入常驻白名单：' + name.trim());
+    openLockedAppsSheet(); render();
+  },
+  lockedAppsDel: async el => {
+    const i = Number(el.dataset.i);
+    S.settings.lockedApps = (cfg('lockedApps') || []).filter((x, k) => k !== i);
+    await saveSettings(true);
+    openLockedAppsSheet(); render();
+  },
+  appPickerOpen: el => { pickFromAppList(el.dataset.target || 'apply'); },
   focusLevelPick: async el => {
     S.settings.focusLevel = el.dataset.v;
     await saveSettings(true);
-    toast({ off: '锁机已关闭', L1: 'L1 提醒锁：勿扰 + 离开系统通知', L3: 'L3 承诺死锁：开始专注前要签承诺书' }[el.dataset.v] || '已更新');
+    toast({ off: '锁机已关闭', L1: 'L1 提醒锁：勿扰 + 离开系统通知', L2: 'L2 看守锁：白名单外应用会被带回小手机（需新版 APK）', L3: 'L3 承诺死锁：开始专注前要签承诺书' }[el.dataset.v] || '已更新');
     render();
   },
   pledgeStart: async () => {

@@ -142,6 +142,15 @@
             android:exported="false" />
 
         <service
+            android:name=".FocusLockService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-enabled focus lock: keeps the user in the focus session by returning to the host app" />
+        </service>
+
+        <service
             android:name=".PushService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
