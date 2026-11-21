@@ -1124,7 +1124,7 @@ const TITLES = {
   reward: ['壁纸奖励', 'REWARD'], weak: ['私密学习记忆', 'PRIVATE MEMORY'], story: ['睡前故事', 'STORY'],
   alarm: ['语音闹钟', 'ALARM'], roles: ['陪伴角色', 'COMPANIONS'], qbank: ['题库', 'QUESTION BANK'],
   mistakes: ['错题本', 'MISTAKE BOOK'], gifts: ['礼物图鉴', 'GIFT BOOK'], ledger: ['账本', 'LEDGER'],
-  calendar: ['打卡日历', 'CALENDAR'], help: ['能力边界', 'ABOUT'], album: ['壁纸库', 'GALLERY'],
+  calendar: ['打卡日历', 'CALENDAR'], help: ['帮助中心', 'HELP'], album: ['壁纸库', 'GALLERY'],
   unlockquiz: ['答题解锁', 'UNLOCK'], rewards: ['奖励中心', 'REWARDS'], sleepreport: ['睡眠报告', 'SLEEP REPORT'],
   prompts: ['提示词设置', 'PROMPTS'], genlog: ['生成记录', 'AI LOG'], fav: ['收藏夹', 'STARRED'],
   promptedit: ['改提示词', 'PROMPT'], qa: ['答疑助手', 'TUTOR'],
@@ -3860,8 +3860,6 @@ function heroHTML(running, s) {
         <button class="btn sleep grow" data-act="openInvite" data-k="sleep">🌙 睡眠陪伴</button>
       </div>
       <div class="row mt8" style="gap:8px">
-        <button class="btn ghost sm grow" data-act="gotoView" data-view="appt">🗓 预订一个时间段</button>
-        <button class="btn ghost sm grow" data-act="gotoView" data-view="help">❔ 都能做什么</button>
       </div>`}
   </div>`;
 }
@@ -4033,7 +4031,6 @@ VIEWS.home = function () {
         <span class="hd">壁纸 ${(S.album || []).length} · 生成记录 ${(S.gen || []).length} · 星星瓶 ${noteAll().length} · 收藏 ${(S.fav || []).filter(x => x.kind !== 'folder').length}</span></button>
     </div>
     <div class="row mt10" style="gap:8px">
-      <button class="btn sm ghost grow" data-act="gotoView" data-view="help">❔ 每个功能都能做什么</button>
       <button class="btn sm ghost grow" data-act="gotoView" data-view="me">⚙️ 设置与数据</button>
     </div>
   </div>`;
@@ -6062,7 +6059,7 @@ VIEWS.sleep = function () {
     <div class="chips mt6">${SLEEP_WALL_STYLES.map(([k, n]) => `<button class="chip ${sleepWallStyle() === k ? 'on' : ''}" data-act="setSetting" data-k="sleepWallStyle" data-v="${k}">${n}</button>`).join('')}</div>
     <div class="row mt8" style="gap:8px">
       <button class="btn sm ghost grow" data-act="openSleepWallPrompt">✏️ 改这套提示词</button>
-      <button class="btn sm ghost grow" data-act="gotoView" data-view="prompts">看全部提示词</button></div>
+      </div>
     <div class="tiny mt6">选「每次换一种」则每次开始睡眠自动换一套。提示词可以直接改，改完对之后生成的壁纸生效。</div>
     <div class="row mt14" style="gap:8px"><button class="btn sleep grow" data-act="startSleep">开始睡眠</button>
     <button class="btn ghost" data-act="noTargetSleep">不定时</button></div>
@@ -6080,8 +6077,6 @@ VIEWS.sleep = function () {
     <div class="bar mt10"><i style="width:${clamp(sleepStreak() / nextMile(sleepStreak()) * 100, 0, 100)}%"></i></div></div>
   <div class="card"><div class="row between"><h3>睡眠报告</h3><button class="btn sm" data-act="gotoView" data-view="sleepreport">最近一份</button></div>
     <div class="sub">结束睡眠后自动生成：质量分析、睡眠观察、作息建议、角色碎碎念。报告会同步进角色的短期记忆。</div></div>
-  <div class="card"><div class="row between"><h3>壁纸库</h3><button class="btn sm" data-act="gotoView" data-view="album">进入</button></div>
-    <div class="sub">历史壁纸都在这里，默认上锁 —— 答题或完成任务解锁后即可查看保存。</div></div>
   <div class="card"><div class="row between"><h3>睡前故事</h3><button class="btn sm" data-act="gotoView" data-view="story">去听</button></div>
     <div class="sub">角色用语音朗读睡前故事，可切换风格、时长与陪伴角色。</div></div>
   <div class="card"><div class="row between"><h3>语音闹钟</h3><button class="btn sm" data-act="gotoView" data-view="alarm">设置</button></div>
@@ -6159,7 +6154,6 @@ VIEWS.sleepreport = function () {
       ${R.reward.ask ? `<div class="card mt10" style="background:var(--card2)"><div class="tiny">TA 要给你</div>
         <div style="font-size:14px;margin-top:4px"><b>${esc(R.reward.ask.want || '')}</b></div></div>
         <button class="btn primary block mt10" data-act="gotoView" data-view="rewards">去领取奖励</button>` : ''}` : ''}</div>
-  <div class="row" style="gap:9px"><button class="btn ghost grow" data-act="gotoView" data-view="album">🖼 壁纸库</button>
     ${rec.albumId ? `<button class="btn ghost grow" data-act="albumOpen" data-id="${esc(rec.albumId)}">🌙 看那晚的壁纸</button>` : ''}
     <button class="btn primary grow" data-act="gotoView" data-view="sleep">回睡眠页</button></div>
   <div class="row mt10" style="gap:8px"><button class="btn ghost grow" data-act="regenSleepReport">重新生成报告</button>
@@ -6269,8 +6263,7 @@ VIEWS.stats = function () {
       <button class="btn sm grow" data-act="openChecks" data-f="failed">⚠️ 考核失败（${failed}）</button></div>
     <div class="row mt10" style="gap:8px"><button class="btn sm grow" data-act="gotoView" data-view="goals">🎯 目标倒计时</button>
       <button class="btn sm grow" data-act="gotoView" data-view="coin">🪙 专注币</button></div>
-    <div class="row mt10" style="gap:8px"><button class="btn sm grow" data-act="gotoView" data-view="album">🖼 壁纸库 ${(S.album || []).length}</button>
-      <button class="btn sm grow" data-act="gotoView" data-view="sleepreport">🌙 睡眠报告</button></div>
+    <div class="row mt10" style="gap:8px">      <button class="btn sm grow" data-act="gotoView" data-view="sleepreport">🌙 睡眠报告</button></div>
     <div class="tiny mt10">连续规律作息：已连续 <b>${sleepStreak()}</b> 天 · 下一次奖励在 ${nextMile(sleepStreak())} 天</div></div>
   <div class="card"><h3>薄弱点 Top</h3>${top.length ? top.map((k, i) => `<div class="item">
     <div class="ic">${['①', '②', '③', '④', '⑤', '⑥'][i]}</div><div class="grow"><div style="font-size:13px">${esc(k)}</div>
@@ -6509,8 +6502,7 @@ VIEWS.me = function () {
   </div>
   <div class="sec">数据与备份</div>
   <div class="card"><h3>数据</h3>
-    <div class="row" style="gap:8px"><button class="btn sm grow" data-act="gotoView" data-view="album">🖼 壁纸库（${(S.album || []).length}）</button>
-      <button class="btn sm ghost" data-act="clearAlbum">清空壁纸库</button></div>
+    <div class="row" style="gap:8px">      <button class="btn sm ghost" data-act="clearAlbum">清空壁纸库</button></div>
     <div class="row mt10" style="gap:8px"><button class="btn sm grow" data-act="exportData">导出备份</button>
       <button class="btn sm grow" data-act="importData">导入备份</button></div>
     <div class="row mt10" style="gap:8px">
@@ -6573,14 +6565,12 @@ VIEWS.me = function () {
     · <b>专注邀约</b>：可以现在就开始一起专注，也可以预订一个时间段 —— 到点前 TA 会来催你，连着催 ${apptMaxNudge()} 次没开始就开罚。<br>
     · <b>睡眠陪伴</b>：邀请 TA 陪你一起睡，TA 应你一声后直接开始记录。</div></div>
   <div class="card"><div class="row between"><h3>🧰 角色主动帮你的方式</h3>
-    <button class="btn sm" data-act="gotoView" data-view="help">细则</button></div>
-    <div class="tiny mt6">本版给角色加了 5 个工具：<b>查我的专注情况</b>、<b>看昨晚睡得怎么样</b>、<b>帮我记一条待办</b>、<b>跟我约一段专注</b>、<b>邀我一起睡</b>；还有两种卡片指令 <b>[陪睡:…]</b> 与 <b>[约专注:…]</b>。<br>
-    TA 在普通聊天里就能主动用 —— 你不用打开本 APP，他也记能把待办记进来、把约好的时间排好，并给你发一条通知。</div>
+    </div>
+    <div class="tiny mt6">TA 能在普通聊天里直接查专注、记待办、约专注、邀你睡（细则见帮助中心）。</div>
     <div class="chips mt8">
       <button class="chip" data-act="gotoView" data-view="todos">📝 待办 ${(S.todos || []).length}</button>
       <button class="chip" data-act="gotoView" data-view="invites">💌 TA 的邀请 ${(S.invites || []).length}</button>
-      <button class="chip" data-act="gotoView" data-view="help">怎么看/关掉</button>
-    </div></div>
+          </div></div>
   <div class="card"><div class="row between"><h3>🔎 权限自检</h3>
     <button class="btn sm" data-act="permCheck">检查</button></div>
     <div class="tiny mt6">看看这个包到底拿到了哪些权限、注册了哪些工具与入口 —— 不确定某个功能为什么不通时，先点它。</div></div>
@@ -6596,7 +6586,7 @@ VIEWS.me = function () {
     <b>v2.0.0 掌握度与出题配比</b>：① 题库每题都记「做对几次」，做对满 N 次（可设）标为已掌握，抽题优先未掌握 —— 掌握度直接影响该题以后还出不出现；② 惩罚/校验统一按「新题 / 错题 / 题库题」× 「单选 / 多选 / 判断 / 填空」双重配比组卷，可按分类出题；③ 题库支持自定义知识点分类、批量移动与筛选；④ AI 出题改成分批请求，不再长 JSON 超时导致「没新题」；⑤ 修复睡眠页换陪睡角色不生效（壁纸/报告一直用错角色）。<br>
     <b>v1.9.3 界面整理</b>：同类功能合成一个入口（计划与邀请 / 学习档案 / 激励中心 / 报告与趋势 / 奖励与账本 / 内容库），页顶标签切换；首页改成「先能做的那件事」在最上面；重复入口收掉；整体重新配了色与间距。<br>
     <b>v1.9.2</b>：① 权限 <b>chat.tools</b>；② 角色可主动调用 <b>5 个工具</b>并支持 <b>[陪睡:…] / [约专注:…]</b> 两种卡片指令；③ + 号面板入口为 <b>「专注邀约」「睡眠陪伴」</b>（直接打开本 APP，并带上当前对话的角色）；④ 专注邀约支持 <b>预订时间段</b>，到点前 TA 来催、连着催 3 次没开始就开罚。</div>
-    <button class="btn block sm mt10" data-act="gotoView" data-view="help">查看能力边界说明</button></div>`;
+    <button class="btn block sm mt10" data-act="gotoView" data-view="help">📖 帮助与说明</button></div>`;
 };
 /* ==========================================================
    视图 · 学习助手（独立窗口：答疑 + 全部记录留档）
@@ -7012,7 +7002,13 @@ function missQuizRender() {
 }
 VIEWS.help = function () {
   return `
-  <div class="card"><h3>🆕 TA 会主动来找你（本版新增）</h3>
+  <div class="card hero"><h3>📖 快速上手</h3>
+    <div class="tiny" style="line-height:1.9">下面按主题折叠了全部机制说明，点标题展开。最常用的四件事：<br>
+    · <b>开始专注</b>：首页「现在能做的那件事」→ 开始；<br>
+    · <b>让 TA 催你</b>：聊天室 + 号 → 专注邀约 → 预订时间段（APK 会同时立系统闹钟）；<br>
+    · <b>拿壁纸</b>：完成任务即解锁，内容库 → 壁纸库下载；嫌图费额度就设「只用我的壁纸」；<br>
+    · <b>被罚了</b>：锁定页做完惩罚即解锁；有争议去「失约说明」补写。</div></div>
+  <details class="card"><summary><span>🆕 TA 会主动来找你（本版新增）</span></summary>
     <div class="tiny" style="line-height:1.8">给角色装了 5 个工具，他在<b>普通聊天</b>里就能真的动手做这些事（不需要你打开本 APP）：<br>
     · <b>查我的专注情况</b> —— 问「我这两天学得怎么样」，他会去读你的真实记录（今日/本周分钟数、次数、通过率、最有效率的时段、违规、连续打卡、专注币）。<br>
     · <b>看昨晚睡得怎么样</b> —— 他知道你昨晚睡了多久、酝酿了多久、中途醒了几次。<br>
@@ -7020,74 +7016,74 @@ VIEWS.help = function () {
     · <b>跟我约一段专注</b> —— 他约你的时间会变成一条真的预约：到点前提醒你准备，每 5 分钟催一次、共 3 次，连着催 3 次没开始就按惩罚库开罚。<br>
     · <b>邀我一起睡</b> —— 他邀请你一起睡，会写进「💌 TA 的邀请」并给你发一条通知，你打开就能一键躺下（他会说一句哄你入睡的话）。<br><br>
     他也可以直接在回复里写这两种卡：<b>[陪睡:小憩:20:早点睡]</b>、<b>[约专注:21:00:背单词:25]</b>。一次回复最多写一个，你那边会看到一张卡。<br><br>
-    <b>觉得他太主动了？</b>「设置 → 聊天工具箱」里可以关掉本 APP 的工具；「设置 → 提示词预设」里可以关掉「角色陪伴专注 · TA 主动约你」这一条；APP 内「我的 → 待办 / TA 的邀请」里也能随时删掉他记的东西。</div></div>
-  <div class="card"><h3>📨 从聊天室 + 号面板进来（本版改名）</h3>
+    <b>觉得他太主动了？</b>「设置 → 聊天工具箱」里可以关掉本 APP 的工具；「设置 → 提示词预设」里可以关掉「角色陪伴专注 · TA 主动约你」这一条；APP 内「我的 → 待办 / TA 的邀请」里也能随时删掉他记的东西。</div></details>
+  <details class="card"><summary><span>📨 从聊天室 + 号面板进来（本版改名）</span></summary>
     <div class="tiny" style="line-height:1.8">聊天室输入框旁点 <b>+ 号</b>，里面有两个本 APP 的入口：<br>
     · <b>专注邀约</b>：可以「现在就一起专注」，也可以「📅 预订一个时间段」。<br>
     · <b>睡眠陪伴</b>：选睡多久、可以留一句话，TA 应你一声后直接开始睡眠记录。<br><br>
     <b>从聊天室进来时会直接打开本 APP 的对应页面，并自动带上当前对话的角色</b>，不用再选。你也可以在 APP 里从「首页」或「睡眠」页打开同一个页面。<br><br>
-    <b>要花钱的地方</b>：每次发邀请都会走一次你自己的 API（请 TA 回你一句）；不想消耗就用首页的「开始一段专注」或睡眠页的「开始睡眠」。</div></div>
-  <div class="card"><h3>📅 预订一个专注时间段（本版新增）</h3>
+    <b>要花钱的地方</b>：每次发邀请都会走一次你自己的 API（请 TA 回你一句）；不想消耗就用首页的「开始一段专注」或睡眠页的「开始睡眠」。</div></details>
+  <details class="card"><summary><span>📅 预订一个专注时间段（本版新增）</span></summary>
     <div class="tiny" style="line-height:1.8">在「专注邀约 → 📅 预订一个时间段」里填：哪一天、几点开始、做什么、多久（会自动带上开始前 ${apptAdvance()} 分钟、每 ${apptGap()} 分钟一次、共 ${apptMaxNudge()} 次的催促节奏，这些数字在「预约专注」页都能改）。<br><br>
     约好之后：① 会在聊天室里写一条约定，并让 TA 记进他的记忆；② 到点前 TA 会来催你 —— 一次系统通知 + 聊天室一张提醒卡 + 让他开口说一句（后两项可关）；③ 连续催 ${apptMaxNudge()} 次你还没点「现在开始」，就按惩罚库开罚（进全屏锁定页）。<br><br>
-    <b>两条硬边界</b>：催促靠宿主后台定时任务，<b>小手机/浏览器完全关闭时不实时运行</b>，重开后补跑（可能一次收到好几条）；<b>开罚只能在 APP 被打开时执行</b>。已排任务宿主没有撤回接口，取消后到点仍可能响一次通知，忽略即可。</div></div>
-  <div class="card"><h3>关于「应用锁定」的边界</h3>
+    <b>两条硬边界</b>：催促靠宿主后台定时任务，<b>小手机/浏览器完全关闭时不实时运行</b>，重开后补跑（可能一次收到好几条）；<b>开罚只能在 APP 被打开时执行</b>。已排任务宿主没有撤回接口，取消后到点仍可能响一次通知，忽略即可。</div></details>
+  <details class="card"><summary><span>关于「应用锁定」的边界</span></summary>
     <div class="tiny" style="line-height:1.8">本 APP 是跑在小手机里的网页应用，没有系统级权限，<b>无法真正锁住手机上的其他 APP</b>。实际做法是：<br>
     1. 专注期间切出去、切后台、划掉进程，回来时会被记录为「中途离开」；<br>
     2. 触发惩罚后 APP 进入全屏锁定页，必须做完惩罚才解锁；<br>
-    3. 想更接近「锁机」，请把专注页留在前台，并用手机自带的专注模式／屏幕使用时间限制。</div></div>
-  <div class="card"><h3>离开是怎么被检测到的</h3>
-    <div class="tiny" style="line-height:1.8">页面隐藏事件 + 计时心跳双重检测。≤ 宽限时间不记违规；主动点「暂停」不算违规但要写明原因并冻结计时。休息阶段不检测、不惩罚。</div></div>
-  <div class="card"><h3>两套记忆库</h3>
+    3. 想更接近「锁机」，请把专注页留在前台，并用手机自带的专注模式／屏幕使用时间限制。</div></details>
+  <details class="card"><summary><span>离开是怎么被检测到的</span></summary>
+    <div class="tiny" style="line-height:1.8">页面隐藏事件 + 计时心跳双重检测。≤ 宽限时间不记违规；主动点「暂停」不算违规但要写明原因并冻结计时。休息阶段不检测、不惩罚。</div></details>
+  <details class="card"><summary><span>两套记忆库</span></summary>
     <div class="tiny" style="line-height:1.8"><b>对外记忆库（角色可见）</b>：任务完成状态、专注时长、你写的总结、睡眠报告、惩罚与奖励记录、角色自己的任务进度。<br>
-    <b>私密学习记忆库（角色看不到）</b>：错题、薄弱点、答疑记录。只有出题、点拨和惩罚练习会调用它，角色在对话里不会主动提起。</div></div>
-  <div class="card"><h3>奖励与凭证</h3>
+    <b>私密学习记忆库（角色看不到）</b>：错题、薄弱点、答疑记录。只有出题、点拨和惩罚练习会调用它，角色在对话里不会主动提起。</div></details>
+  <details class="card"><summary><span>奖励与凭证</span></summary>
     <div class="tiny" style="line-height:1.8">奖励不由 APP 伪造：APP 会把奖励申请当作「系统通知」写进你和 TA 的聊天室（默认用卡片，不会伪装成你在索要），请 TA 亲自给你（TA 可以用聊天室自带的红包／转账），再把 TA 的回复原样抓回来作为凭证。本版本已声明 <b>chat.read</b>，所以正常情况下会直接抓到；抓不到时才回落到「补生成」并标记出来。<br><br>
-    <b>仍然存在的宿主限制</b>：「当前会话」只有从聊天室卡片／+ 号面板进入 APP 时才拿得到；从桌面直接打开时，APP 只能按角色读最近消息。两条都拿不到时，可以在「奖励中心 → TA 已经给我了」里手动贴原话同步。</div></div>
-  <div class="card"><h3>💞 TA 的心愿 —— 你陪他一起实现</h3>
+    <b>仍然存在的宿主限制</b>：「当前会话」只有从聊天室卡片／+ 号面板进入 APP 时才拿得到；从桌面直接打开时，APP 只能按角色读最近消息。两条都拿不到时，可以在「奖励中心 → TA 已经给我了」里手动贴原话同步。</div></details>
+  <details class="card"><summary><span>💞 TA 的心愿 —— 你陪他一起实现</span></summary>
     <div class="tiny" style="line-height:1.8"><b>方向是反的</b>：不是你许愿让 TA 满足你，而是 TA 心里有一件一直想要的事，只有你陪他一起投入足够多的专注时间，它才会真的实现。<br><br>
     <b>这件事由 TA 自己说</b>：点「让他说出来」，AI 会按他的人设、你们的记忆和关系生成一件「只有他才会说出口」的事，并写进他的记忆和聊天历史。你也可以「替他写一件」。<br><br>
     <b>只有专注能推进它</b>：每通过一次考核，这段专注多少分钟就加进心愿进度。攒够需要的分钟数（默认 600 分钟，可改），就能「真正实现」—— 点下去，APP 会写出实现那一刻的画面（scene）和 TA 对你说的话（line），连同「你们一起投入了多少时间」做一张卡写进聊天室，并朗读那句话。<br><br>
-    <b>只有专注能推进它</b>：睡眠、惩罚、花专注币这些都不算推进 —— 心愿只认「通过考核的专注」。而且进度只增不减：连坐已移除，失误和爽约都不会让它倒退。</div></div>
-  <div class="card"><h3>🔗 角色自己的任务（不再连坐）</h3>
+    <b>只有专注能推进它</b>：睡眠、惩罚、花专注币这些都不算推进 —— 心愿只认「通过考核的专注」。而且进度只增不减：连坐已移除，失误和爽约都不会让它倒退。</div></details>
+  <details class="card"><summary><span>🔗 角色自己的任务（不再连坐）</span></summary>
     <div class="tiny" style="line-height:1.8">每次专注开始，TA 也会给自己安排一件这段时间要陪你一起做的事，显示在专注页里。<br>
-    <b>它的进度不受你的表现影响</b> —— 之前那套「连坐」（你的违规拖着 TA 的任务后退、心愿进度也跟着退、一轮结束还要念你一句）已经按你的要求整块去掉：不会再有进度倒退，也不会再出现「因为你，TA 差一点没做完」这类判定。</div></div>
-  <div class="card"><h3>🪙 专注币（专注时长当货币）</h3>
+    <b>它的进度不受你的表现影响</b> —— 之前那套「连坐」（你的违规拖着 TA 的任务后退、心愿进度也跟着退、一轮结束还要念你一句）已经按你的要求整块去掉：不会再有进度倒退，也不会再出现「因为你，TA 差一点没做完」这类判定。</div></details>
+  <details class="card"><summary><span>🪙 专注币（专注时长当货币）</span></summary>
     <div class="tiny" style="line-height:1.8">只有<b>通过考核的那段专注</b>才折算成币：专注分钟 × 每分钟点数（默认 1）＋ 考核通过加成（默认 +20%）。没通过的轮次不给币，惩罚和睡眠也不给、不扣。<br><br>
     能换：🎫 免罚卡 · 💬 让 TA 夸你一句 · 🖼 一张专属壁纸（进壁纸库、不上锁）· 🌠 跟 TA 提一个愿望 · 🕊 今天放你一马。<br>
-    <span style="color:var(--dim2)">注：小手机钱包只支持支出，所以专注币是 APP 内部的点数，不会变成钱包里的钱。</span></div></div>
-  <div class="card"><h3>🎯 目标倒计时 · 📈 学习报告 · 📊 专注趋势</h3>
+    <span style="color:var(--dim2)">注：小手机钱包只支持支出，所以专注币是 APP 内部的点数，不会变成钱包里的钱。</span></div></details>
+  <details class="card"><summary><span>🎯 目标倒计时 · 📈 学习报告 · 📊 专注趋势</span></summary>
     <div class="tiny" style="line-height:1.8"><b>目标</b>：写下考试 / 提交日期，首页挂倒计时，并且让 TA 的督促语气跟着剩余时间变（积累期强调积累，冲刺期更紧，最后几天让你稳住作息）。<br>
     <b>周报 / 月报</b>：由角色按你的真实数据写 —— 专注合计与次数、考核通过率、违规次数、最有效率的时段、睡眠平均与酝酿过久次数、错题集中板块、距离长期目标还剩几天。要求「只依据数据、不许编造数字」，模型没给出可用结果时自动用本地兜底版本。<br>
-    <b>趋势</b>：按每次专注的开始时间统计，看一天八个时段、星期几、最近 8 周分别投入多少，还能让 TA 点评一句。</div></div>
-  <div class="card"><h3>🌅 晨间闭环</h3>
+    <b>趋势</b>：按每次专注的开始时间统计，看一天八个时段、星期几、最近 8 周分别投入多少，还能让 TA 点评一句。</div></details>
+  <details class="card"><summary><span>🌅 晨间闭环</span></summary>
     <div class="tiny" style="line-height:1.8">在「我的 → 晨间闭环」设一个时间和叫醒你的角色。到点：① 通知 + 面板 + 语音向你道早安；② 顺口说一句昨晚睡得怎么样；③ 提醒今天的预约专注和目标还剩几天；④ 让你写下「今天第一件事」，点一下就带着它进专注流程。<br>
-    <b>小手机完全关闭时不会实时响</b>，重新打开后会补跑到期任务。</div></div>
-  <div class="card"><h3>🗓 预约专注是怎么催你的</h3>
+    <b>小手机完全关闭时不会实时响</b>，重新打开后会补跑到期任务。</div></details>
+  <details class="card"><summary><span>🗓 预约专注是怎么催你的</span></summary>
     <div class="tiny" style="line-height:1.8">在「首页 → 预约专注」或「我的 → 预约专注」里新约一个：选日期、开始时间、时长、专注事项、监督角色。<b>默认节奏</b>：开始前 10 分钟第一次催，之后每 5 分钟一次，共 3 次（T-10 / T-5 / T-0），数字都能改，宽限可设 0 分钟 —— 催满三次你还不动，立刻开罚。<br><br>
     每次催促：① 一条系统通知；② 聊天室里一张「预约专注 · 第 N 次提醒」的卡 + 请 TA 亲口回你一句（可关）；③ APP 内实时倒计时。<br><br>
-    <b>两条硬边界</b>：催促走宿主后台定时任务，<b>小手机/浏览器完全关闭时不实时运行</b>，重开后补跑（可能一次收到好几条）；<b>开罚只能在 APP 被打开时执行</b>（APP 开着 → 到点即锁；没开 → 下次打开立刻锁）。已排任务宿主没有撤回接口，取消后到点仍可能响一次通知，忽略即可。</div></div>
-  <div class="card"><h3>想改提示词怎么办</h3>
+    <b>两条硬边界</b>：催促走宿主后台定时任务，<b>小手机/浏览器完全关闭时不实时运行</b>，重开后补跑（可能一次收到好几条）；<b>开罚只能在 APP 被打开时执行</b>（APP 开着 → 到点即锁；没开 → 下次打开立刻锁）。已排任务宿主没有撤回接口，取消后到点仍可能响一次通知，忽略即可。</div></details>
+  <details class="card"><summary><span>想改提示词怎么办</span></summary>
     <div class="tiny" style="line-height:1.8">本 APP 所有让角色生成内容的指令都在「我的 → 提示词与台词」里，逐条可改、可单条还原、可全部恢复默认；文案里的双花括号变量会在生成前替换成真实数据，请保留。<br>
-    另外「设置 → 提示词预设」里还有本 APP 注册的场景条目（专注陪伴、出题校验、惩罚、睡眠、心愿、目标、报告、晨间、专注币、邀约与陪睡，以及本版新增的「角色陪伴专注 · TA 主动约你」），那部分也能在那里直接编辑或关掉。</div></div>
-  <div class="card"><h3>专注壁纸的节奏 · 怎么下载</h3>
+    另外「设置 → 提示词预设」里还有本 APP 注册的场景条目（专注陪伴、出题校验、惩罚、睡眠、心愿、目标、报告、晨间、专注币、邀约与陪睡，以及本版新增的「角色陪伴专注 · TA 主动约你」），那部分也能在那里直接编辑或关掉。</div></details>
+  <details class="card"><summary><span>专注壁纸的节奏 · 怎么下载</span></summary>
     <div class="tiny" style="line-height:1.8"><b>一张一张来的节奏：</b><br>
     ① <b>开始专注</b> → 先攒下第 1 张（上锁，作为专注页背景）；<br>
     ② <b>每完成一个任务</b> → <b>解锁一张</b>（休息时段就能下载它）；<br>
     ③ 同时开始攒<b>下一张新的</b>，留给下一项任务解锁。<br>
     所以「做完几项任务 = 能下载几张」，永远只领先任务一步：5 项任务最多 5 张可下载，最后那张没完成的任务对应的壁纸保持上锁。<br><br>
     <b>下载方式只有一个：下载文件。</b>专注页点「下载已解锁的 N 张」、或去「内容库 → 壁纸库」点开任意一张（已解锁的）点下载即可。媒体库、剪贴板、发到聊天室、保存面板这些入口都已经按你的要求去掉。上锁的那张要下载，得先在壁纸库里答题或完成任务解锁。<br><br>
-    另外两个生成点（不属于专注壁纸）：<b>睡眠壁纸</b>在每次开始睡眠记录时生成 1 张（不上锁、可直接下载）；<b>奖励留念</b>在领取奖励时生成 1 张（可在奖励设置里关掉）；专注币兑换「一张专属壁纸」也会生成 1 张。</div></div>
-  <div class="card"><h3>睡眠怎么算时长（重要）</h3>
+    另外两个生成点（不属于专注壁纸）：<b>睡眠壁纸</b>在每次开始睡眠记录时生成 1 张（不上锁、可直接下载）；<b>奖励留念</b>在领取奖励时生成 1 张（可在奖励设置里关掉）；专注币兑换「一张专属壁纸」也会生成 1 张。</div></details>
+  <details class="card"><summary><span>睡眠怎么算时长（重要）</span></summary>
     <div class="tiny" style="line-height:1.8">开始睡眠前要先选陪伴角色（可多选，也可随机抽一位）。开始后自动做三件事：<b>生成睡眠壁纸当整页背景</b>、<b>让角色说一句哄睡的话并读出来</b>、正计时。<br><br>
     <b>① 酝酿睡意 = 没睡的时间。</b>和角色闲聊、切到别的 APP、手指碰屏幕，这些都算「还醒着」，全部计入酝酿睡意。<br>
     <b>② 睡眠 = 安静满 N 分钟之后才算。</b>你在睡眠页 <b>连续 N 分钟不动屏幕、也不和角色互动</b>（N 默认 5，可在睡眠页改），从这一档安静开始才计入睡眠。<br>
     <b>③ 睡着后又碰了屏幕</b>：安静计时归零，那之后的 N 分钟又算酝酿，等再次安静满 N 分钟才继续计入。<br>
     <b>④ 切到别的 APP 的时间不计入睡眠</b>（按你还醒着算）。切走之后直接睡了，结束时点「我切走之后就睡到现在」就能补上，也可以手填分钟数。<br><br>
-    报告会分别给出总时长 / 酝酿睡意 / 实际入睡，连续规律作息达标按<b>实际入睡</b>算。</div></div>
-  <div class="card"><h3>所有 AI 生成都留档</h3>
-    <div class="tiny" style="line-height:1.8">本 APP 每一次调用大模型都会记录在「我的 → 生成记录」：陪伴台词、催问进度、角色自己的任务、TA 应你的邀请、出题与解析、私密答疑、惩罚台词与批改、奖励申请与兜底台词、睡眠报告、哄睡语、睡前闲聊、睡前故事、叫醒台词、以及几种壁纸的生图提示词。每条都能看完整的提示词和模型返回、复制全文、单独删除或整体清空；保留上限可自己改（默认最近 200 条）。<br>留档只存在本机（IndexedDB），不会上传。</div></div>
-  <div class="card"><h3>惩罚有哪些类型</h3>
+    报告会分别给出总时长 / 酝酿睡意 / 实际入睡，连续规律作息达标按<b>实际入睡</b>算。</div></details>
+  <details class="card"><summary><span>所有 AI 生成都留档</span></summary>
+    <div class="tiny" style="line-height:1.8">本 APP 每一次调用大模型都会记录在「我的 → 生成记录」：陪伴台词、催问进度、角色自己的任务、TA 应你的邀请、出题与解析、私密答疑、惩罚台词与批改、奖励申请与兜底台词、睡眠报告、哄睡语、睡前闲聊、睡前故事、叫醒台词、以及几种壁纸的生图提示词。每条都能看完整的提示词和模型返回、复制全文、单独删除或整体清空；保留上限可自己改（默认最近 200 条）。<br>留档只存在本机（IndexedDB），不会上传。</div></details>
+  <details class="card"><summary><span>惩罚有哪些类型</span></summary>
     <div class="tiny" style="line-height:1.8">7 种，都能自定义参数：<br>
     💸 <b>转账给角色</b>（金额，会尝试真实扣款，钱包不可用可仅记账）<br>
     ✍️ <b>完成练习题</b>（题量、达标正确率）<br>
@@ -7095,36 +7091,36 @@ VIEWS.help = function () {
     📝 <b>抄写指定内容</b>（抄写文本、遍数；按去标点字数校验）<br>
     📄 <b>写反思／检讨</b>（最少字数）<br>
     🏃 <b>做一件具体的事</b>（做完点确认）<br>
-    ⏰ <b>限时打卡</b>（总时长、间隔、次数；必须按时回来点「我在」）</div></div>
-  <div class="card"><h3>睡眠计时页怎么看（详情）</h3>
+    ⏰ <b>限时打卡</b>（总时长、间隔、次数；必须按时回来点「我在」）</div></details>
+  <details class="card"><summary><span>睡眠计时页怎么看（详情）</span></summary>
     <div class="tiny" style="line-height:1.8">开始睡眠后，计时页从上到下：<br>
     ① <b>计时与时长</b> —— 总 / 酝酿 / 睡眠三个数字实时走；<br>
     ② <b>睡前的房间</b> —— 一段环境描写（<b>第三人称、角色用名字、用户称「你」</b>），可换一段或收藏；<br>
     ③ <b>💬 睡前闲聊</b> —— 哄睡语是第一条消息，之后可以一直聊（每句都算互动，酝酿往后推）；<br>
     ④ 中断点、睡眠壁纸、故事入口。<br>
-    结束时会问你两个问题：<b>真的睡着了吗</b>和<b>预计深度睡眠多少分钟</b>，两者都会写进报告。</div></div>
-  <div class="card"><h3>睡眠壁纸可以用自己的图</h3>
+    结束时会问你两个问题：<b>真的睡着了吗</b>和<b>预计深度睡眠多少分钟</b>，两者都会写进报告。</div></details>
+  <details class="card"><summary><span>睡眠壁纸可以用自己的图</span></summary>
     <div class="tiny" style="line-height:1.8">睡眠壁纸卡片上有「⬆️ 用我自己的图片当睡眠壁纸」：选一张本地图片就能替换角色生成的画面，会立刻铺成计时页背景，同时存进壁纸库（不上锁、可直接保存）。<br>
-    本版本已声明 <b>media.pick</b>，所以会优先调用小手机的媒体选择器；宿主没开放时自动退化成应用内文件选择，效果一样。</div></div>
-  <div class="card"><h3>备份与导出</h3>
+    本版本已声明 <b>media.pick</b>，所以会优先调用小手机的媒体选择器；宿主没开放时自动退化成应用内文件选择，效果一样。</div></details>
+  <details class="card"><summary><span>备份与导出</span></summary>
     <div class="tiny" style="line-height:1.8">「我的 → 数据 → 导出备份」有三种：<b>含语音和图片</b>（原始文件打包成 .json，可能几十 MB，换设备导入即恢复）、<b>不含媒体</b>、<b>文字版</b>。<br>
-    备份内容包括：设置、专注与睡眠记录（含中断点、时长拆分、报告）、预约专注、题库、错题与私密记忆、惩罚、奖励、账本、礼物、生成记录、收藏夹（含文件夹层级）、睡前故事、待办清单、TA 的邀请。</div></div>
-  <div class="card"><h3>收藏夹与文件夹</h3>
+    备份内容包括：设置、专注与睡眠记录（含中断点、时长拆分、报告）、预约专注、题库、错题与私密记忆、惩罚、奖励、账本、礼物、生成记录、收藏夹（含文件夹层级）、睡前故事、待办清单、TA 的邀请。</div></details>
+  <details class="card"><summary><span>收藏夹与文件夹</span></summary>
     <div class="tiny" style="line-height:1.8">入口在「我的 → ⭐ 收藏夹」，也能从生成记录、壁纸库、睡前故事、睡眠报告、睡前闲聊、睡眠环境描写处点 ⭐ 收藏。<br>
-    <b>文件夹可以一层层往下建</b>，顶部面包屑可以逐层返回；任何条目都能「移动」到别的文件夹。删文件夹会连里面的内容一起删掉，会先二次确认。</div></div>
-  <div class="card"><h3>睡眠中断点与睡眠报告</h3>
+    <b>文件夹可以一层层往下建</b>，顶部面包屑可以逐层返回；任何条目都能「移动」到别的文件夹。删文件夹会连里面的内容一起删掉，会先二次确认。</div></details>
+  <details class="card"><summary><span>睡眠中断点与睡眠报告</span></summary>
     <div class="tiny" style="line-height:1.8"><b>中断点</b>：睡着途中突然醒了但还想接着睡 —— 不要结束睡眠，点「🌗 我醒了一下」记一个标记（可写原因）。计时照走、睡眠不中断，可随时删掉误记的标记。<br>
     <b>报告</b>：结束睡眠会自动生成并跳到报告页，四块 —— 睡眠质量分析、睡眠观察、健康作息建议、角色碎碎念；<b>有中断点时会单独分析中断的时间点、次数和对睡眠完整性的影响</b>。<br>
-    <b>报告存在哪</b>：写进这条睡眠记录里，「睡眠 → 睡眠记录」点任意一条就能打开；没有报告的历史记录会显示「生成这份报告」按钮。报告同时会同步进这个角色的短期记忆。</div></div>
-  <div class="card"><h3>睡眠与故事的留存</h3>
+    <b>报告存在哪</b>：写进这条睡眠记录里，「睡眠 → 睡眠记录」点任意一条就能打开；没有报告的历史记录会显示「生成这份报告」按钮。报告同时会同步进这个角色的短期记忆。</div></details>
+  <details class="card"><summary><span>睡眠与故事的留存</span></summary>
     <div class="tiny" style="line-height:1.8">睡眠是<b>正计时且会存下来</b>的：开始时会写入本地数据库，中途离开小程序、关掉 APP 都不影响计时，重开后自动接着上次继续，到设定时长会提醒但不强制结束。<br>
     睡眠壁纸生成即进壁纸库（<b>不锁</b>，可直接保存），并单独存了一份引用，重开 APP 也能重新保存、发到聊天室。<br>
-    睡前故事的故事文本、听到第几段、每一段已生成的语音都会留存：下次从「睡眠 → 睡前故事 → 往期故事」点「接着听」，听过的段落不会重新生成语音。</div></div>
-  <div class="card"><h3>睡前故事能后台播放吗（实测结论：不能）</h3>
+    睡前故事的故事文本、听到第几段、每一段已生成的语音都会留存：下次从「睡眠 → 睡前故事 → 往期故事」点「接着听」，听过的段落不会重新生成语音。</div></details>
+  <details class="card"><summary><span>睡前故事能后台播放吗（实测结论：不能）</span></summary>
     <div class="tiny" style="line-height:1.8">实测：<b>只要退出 APP，播放就会停止</b>——不论逐段朗读还是整篇连播。原因是播放由小手机的播放器代播，而 APP 关闭时宿主会把这个播放器一并停掉。宿主目前也没有给 APP「关闭后继续播放音频」的能力，所以这一条在 APP 侧无解，不是设置问题。<br>
-    <b>想真正锁屏／退出后听</b>：用「💾 导出整篇音频」把音频文件存出来（先存小手机媒体库，失败则走浏览器下载），再用手机自己的播放器播放。能否找到存下来的文件，取决于小手机里有没有可见的媒体／文件入口。</div></div>
-  <div class="card"><h3>通知 / 语音 / 生图</h3>
-    <div class="tiny" style="line-height:1.8">角色语音依赖你在小手机「设置 → 语音」里配置的服务；生图依赖「设置 → 生图」；所有 AI 生成都用你自己配置的 API key。</div></div>`;
+    <b>想真正锁屏／退出后听</b>：用「💾 导出整篇音频」把音频文件存出来（先存小手机媒体库，失败则走浏览器下载），再用手机自己的播放器播放。能否找到存下来的文件，取决于小手机里有没有可见的媒体／文件入口。</div></details>
+  <details class="card"><summary><span>通知 / 语音 / 生图</span></summary>
+    <div class="tiny" style="line-height:1.8">角色语音依赖你在小手机「设置 → 语音」里配置的服务；生图依赖「设置 → 生图」；所有 AI 生成都用你自己配置的 API key。</div></details>`;
 };
 /* ==========================================================
    动作 · 通用 / 设置
