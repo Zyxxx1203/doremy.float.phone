@@ -90,6 +90,19 @@ import {
   writeCustomAppCharacterState,
   writeCustomAppWorld,
   runCustomAppDeviceAlarmSet,
+  runCustomAppDeviceBrightness,
+  runCustomAppDeviceDnd,
+  runCustomAppDeviceAppsList,
+  runCustomAppDeviceLockStart,
+  runCustomAppDeviceLockStop,
+  runCustomAppDeviceLockStatus,
+  runCustomAppFocusWidgetUpdate,
+  runCustomAppFocusWidgetPin,
+  runCustomAppDeviceLockTaLine,
+  runCustomAppDeviceAdminStatus,
+  runCustomAppDeviceAdminRequest,
+  runCustomAppDeviceCheckinRequest,
+  runCustomAppShellNotify,
 } from "@/lib/custom-app-host-api";
 import { REALITY_BRIDGE_APP_EVENT_NAME, REALITY_BRIDGE_DATA_EVENT } from "@/lib/reality-bridge/types";
 import { OnlineRoomConnection, onlineCloudApi } from "@/lib/online-room-client";
@@ -136,7 +149,7 @@ function rewriteAssetRefs(html: string, app: InstalledCustomApp): string {
 }
 
 function createCustomAppSrcDoc(app: InstalledCustomApp, frameId: string, launchContext?: Record<string, unknown> | null, embedded = false): string {
-  const body = rewriteAssetRefs(app.entryHtml.trim(), app);
+  const body = rewriteAssetRefs(String(app.entryHtml ?? "").trim(), app);
   const base = /<html[\s>]/i.test(body)
     ? body
     : `<!doctype html>
@@ -539,7 +552,23 @@ html, body { min-height: 100%; }
     },
     device: {
       /* 借系统时钟设闹钟（APK：打开时钟 App 让用户确认一次；网页：返回 ok:false 降级）。 */
-      alarmSet: function(payload){ return request('device.alarm.set', payload || {}); }
+      alarmSet: function(payload){ return request('device.alarm.set', payload || {}); },
+      /* L1 提醒锁：勿扰开关 / 亮度（APK；网页降级）。 */
+      dndSet: function(payload){ return request('device.dnd.set', payload || {}); },
+      brightnessSet: function(payload){ return request('device.brightness.set', payload || {}); },
+      /* 直接落一条系统通知（区别于 notifications.create 的应用内通知）。 */
+      notify: function(payload){ return request('shell.notify', payload || {}); },
+      /* L2 看守锁：应用清单 + 壳侧封锁启停/状态。 */
+      appsList: function(){ return request('device.apps.list', {}); },
+      lockStart: function(payload){ return request('device.lock.start', payload || {}); },
+      lockStop: function(){ return request('device.lock.stop', {}); },
+      lockStatus: function(){ return request('device.lock.status', {}); },
+      focusWidgetUpdate: function(json){ return request('device.focusWidget.update', { json: json || '{}' }); },
+      focusWidgetPin: function(){ return request('device.focusWidget.pin', {}); },
+      focusLockTaLine: function(taLine, charName){ return request('device.lock.taLine', { taLine: taLine || '', charName: charName || '' }); },
+      adminStatus: function(){ return request('device.admin.status', {}); },
+      adminRequest: function(){ return request('device.admin.request', {}); },
+      checkinRequest: function(characterId, name, avatar){ return request('device.checkin.request', { characterId: characterId || '', name: name || '', avatar: avatar || '' }); }
     },
     room: {
       create: function(payload){ return request('room.create', payload || {}); },
@@ -1915,6 +1944,58 @@ export function CustomAppRunner({
     if (action === "device.alarm.set") {
       requirePermission("device.alarm.set");
       return runCustomAppDeviceAlarmSet(app, record);
+    }
+    if (action === "device.dnd.set") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceDnd(app, record);
+    }
+    if (action === "device.brightness.set") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceBrightness(app, record);
+    }
+    if (action === "shell.notify") {
+      requireAnyPermission(["notifications.write"]);
+      return runCustomAppShellNotify(record);
+    }
+    if (action === "device.apps.list") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceAppsList(app, record);
+    }
+    if (action === "device.lock.start") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceLockStart(app, record);
+    }
+    if (action === "device.lock.stop") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceLockStop(app, record);
+    }
+    if (action === "device.lock.status") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceLockStatus(app, record);
+    }
+    if (action === "device.focusWidget.update") {
+      requirePermission("device.assist");
+      return runCustomAppFocusWidgetUpdate(app, record);
+    }
+    if (action === "device.focusWidget.pin") {
+      requirePermission("device.assist");
+      return runCustomAppFocusWidgetPin(app, record);
+    }
+    if (action === "device.lock.taLine") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceLockTaLine(app, record);
+    }
+    if (action === "device.admin.status") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceAdminStatus(app, record);
+    }
+    if (action === "device.admin.request") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceAdminRequest(app, record);
+    }
+    if (action === "device.checkin.request") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceCheckinRequest(app, record);
     }
     if (action === "notifications.list") {
       requirePermission("notifications.read");

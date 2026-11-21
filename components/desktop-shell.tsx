@@ -36,7 +36,7 @@ import { WatchTogetherApp } from "@/components/watch-together-app";
 import { CALL_STATS_ENTRY_HTML } from "@/lib/builtin-apps/call-stats-source";
 import { HEARTCRAFT_ENTRY_HTML } from "@/lib/builtin-apps/heartcraft-source";
 import { buildHeartcraftApp, HEARTCRAFT_APP_ID } from "@/lib/builtin-apps/heartcraft-meta";
-import { buildFocusCompanionApp } from "@/lib/builtin-apps/focus-companion-meta";
+import { buildFocusCompanionApp, FOCUS_COMPANION_APP_ID } from "@/lib/builtin-apps/focus-companion-meta";
 import { isHeartcraftInstalled, isFocusCompanionInstalled } from "@/lib/builtin-apps/registry";
 import { VnApp } from "@/components/vn/vn-app";
 import ReadingApp from "@/components/reading/reading-app";
@@ -2781,6 +2781,17 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
         const launchContextRecord = rawLaunchContext && typeof rawLaunchContext === "object" && !Array.isArray(rawLaunchContext)
           ? rawLaunchContext as Record<string, unknown>
           : {};
+        /* 内置 HTML 应用（heartcraft / 角色陪伴专注）：走各自的内置打开链路 */
+        if (nextAppId === FOCUS_COMPANION_APP_ID) {
+          openBuiltinFocusCompanion(launchContextRecord);
+          if (detail.sessionId) setChatInitSessionId(detail.sessionId);
+          return;
+        }
+        if (nextAppId === HEARTCRAFT_APP_ID) {
+          openBuiltinHeartcraft(launchContextRecord);
+          if (detail.sessionId) setChatInitSessionId(detail.sessionId);
+          return;
+        }
         if (customAppId) {
           openCustomAppWithBackgroundUpdateCheck(toCustomAppIconId(customAppId), launchContextRecord);
           if (detail.sessionId) setChatInitSessionId(detail.sessionId);
@@ -4733,7 +4744,14 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       );
     }
 
-    if (activeApp === "focuscompanion" && focusCompanionApp) {
+    if (activeApp === "focuscompanion") {
+      if (!focusCompanionApp) {
+        return (
+          <div className="fixed inset-0 z-50 grid place-items-center bg-black text-sm text-white/80">
+            正在打开「角色陪伴专注」…
+          </div>
+        );
+      }
       return (
         <CustomAppForegroundBoundary
           key={focusCompanionApp.id}

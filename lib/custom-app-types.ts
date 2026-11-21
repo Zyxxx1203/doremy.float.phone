@@ -60,6 +60,7 @@ export type CustomAppPermission =
   | "bridge.send"
   | "bridge.read"
   | "device.alarm.set"
+  | "device.assist"
   | "online.play";
 
 export type CustomAppSdkVersion = "1.0" | string;

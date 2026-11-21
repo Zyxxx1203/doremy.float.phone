@@ -97,6 +97,14 @@ custom-apps/focus-companion/index.html          ← 源码真身（改这里）
 - 用户数据无需迁移：id 未变，`ai_phone_custom_app_data_v1:doris.focus.companion/*` 原地保留。
 - `focus_companion_proactive` 提示词补齐是幂等追加，revert 后用户预设中残留一条可手动关掉，无副作用。
 
+## 8f. M2-锁机（feat/focus-lock-m2，PR #87）
+
+- **main CI**：PR #86 squash 合并（ec47d1e）后两条 validate **ALL GREEN** ✅（日志 §6 承诺兑现）。
+- **L1 提醒锁**：权限 `device.assist` + 动作 `device.dnd.set`/`device.brightness.set`/`shell.notify`（SDK `AiPhone.device.dndSet/brightnessSet/notify`）；专注开始开勿扰、tick 检测会话结束自动恢复；离开落系统通知。设置页「🔒 锁机（分级）」卡。
+- **申请制白名单（§7.5 M2 版）**：`wl_passes` + `wl.review` 审批提示词（JSON 强约束）；申请卡→批复卡→通行证入库；到期回收/信任分（按时+5）；askAwayExcuse 改读通行证；旧手填白名单转未签发档案。
+- **查岗 M2 版（§7.6）**：签发时在窗口内随机排查岗（宿主任务系统通知）；页面活着弹「拍照自证」层；照片经 media.pick → sendImageCard 发进聊天室由 TA 亲判；超时未交=被抓（通行证作废+信任分-10+TA 台词）。
+- L2/L3/截图判卷/自动踢回前台：随 APK 升级（M3/M4），锁机卡内已标注。
+
 ## 8e. 全量文字治理 + 版本统一 v1.10.0
 
 **方法**：全 app 588 个文字块导出逐条定性（303 个 ≥40 字长块）——约 6 成为数据/状态行保留；真正的目标是 31 处说明性内容。
