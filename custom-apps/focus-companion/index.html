@@ -889,7 +889,9 @@ function defaults() {
     sleepCharIds: [], sleepLullaby: true, sleepChat: true, genLogKeep: 200, sleepIdleMin: 5,
     apptAdvanceMin: 10, apptGapMin: 5, apptMaxNudge: 3, apptGraceMin: 0, apptChatNudge: true, apptPunish: true,
     apptSysAlarm: true,      /* 预约时借系统时钟立闹钟（APK）：页面被杀也准时响；网页环境自动跳过 */
-    focusAssist: false,      /* L1 提醒锁：专注期勿扰 + 离开时系统通知（APK；网页降级） */
+    focusLevel: 'off',       /* 锁机分级：off=不开启 / L1=提醒锁 / L3=承诺死锁（L2 需 APK） */
+    focusAssist: false,      /* 兼容旧字段：L1 的勿扰开关（新逻辑读 focusLevel） */
+    lockCooldownSec: 60,     /* L3 暂停冷静期秒数 */
     assistDndOn: false,      /* 本场专注由锁机助手开过勿扰 —— 结束后自动恢复 */
     goals: [], goalShow: true, focusPresets: [],
     wishes: [], wishNeedMin: 600, wishConnect: true, wishPenalty: 50, wishNotice: true, selfTaskConnect: true,
@@ -1578,8 +1580,34 @@ async function onAway(sec) {
     sdk(() => API.device.notify({ title: '👀 ' + charName(leaveCid) + ' 看到你离开了', body: '专注里离开了 ' + Math.round(sec) + ' 秒，回来继续吧。' }), null).catch(() => { });
   }
   await saveSession(true); render();
+  const lockLvl = assistLevelFor(s);
+  if (lockLvl === 'L3') {
+    /* 承诺书已预授权：不问原因，直接按惩罚库执行 */
+    pushMsg(s, 'sys', `⚠️ 承诺死锁：中途离开 ${Math.round(sec)} 秒（超宽限）—— 按承诺自动开罚`);
+    await syncTimeline(pickOneChar(s.charIds), '承诺死锁期间用户中途离开 ' + Math.round(sec) + ' 秒，按承诺自动开罚（无需确认）。', 'lock_pledge_leave', {});
+    await triggerPunish('锁机承诺：中途离开', {});
+    return;
+  }
   if (cfg('punishEnabled') && cfg('punishTrigger').leave) askAwayExcuse(v, Math.round(sec));
   else pushMsg(s, 'sys', `⚠️ 记录一次中途离开（${Math.round(sec)} 秒）`);
+}
+/* L3 暂停冷静期：倒计时结束前不许确认暂停（One Sec 式冷却） */
+function openLockCooldownSheet() {
+  const secs = Math.max(5, Number(cfg('lockCooldownSec')) || 60);
+  const deadline = Date.now() + secs * 1000;
+  openSheet(`<h3>⏳ 冷静期</h3>
+    <div class="sub">承诺死锁中。暂停会让 TA 干等 —— 先冷静 <b>${secs} 秒</b>再决定。</div>
+    <div class="center" style="font-size:30px;font-weight:700" id="cdNum">${secs}</div>
+    <button class="btn primary block mt10" data-act="closeSheet">回去继续专注</button>
+    <button class="btn warn block mt8" data-act="doPause" id="cdPauseBtn" disabled>我坚持暂停（${secs}）</button>
+    <div class="tiny mt8">冷静期内写下要暂停的原因（去洗手间/接电话都算正当），倒计时结束就能确认。</div>`);
+  const tick = setInterval(() => {
+    const num = document.getElementById('cdNum'), btn = document.getElementById('cdPauseBtn');
+    if (!num || !btn) { clearInterval(tick); return; }
+    const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    num.textContent = String(left); btn.textContent = '我坚持暂停（' + left + '）';
+    if (left <= 0) { btn.disabled = false; clearInterval(tick); }
+  }, 1000);
 }
 function askAwayExcuse(v, sec) {
   const passes = activeWlPasses();
@@ -1608,10 +1636,40 @@ function askAwayExcuse(v, sec) {
   });
 }
 /* ---------- 开始 / 阶段流转 ---------- */
+/* ── 锁机分级 ──────────────────────────────────────────
+   assistLevelFor：本場专注的生效等级。优先级：专注设置页的本次选择 >
+   全局 focusLevel。返回 'off' | 'L1' | 'L3'。 */
+function assistLevelNow() { return cfg('focusLevel') || 'off'; }
+function assistLevelFor(session) {
+  if (session && session.assistLevel) return session.assistLevel;
+  if (S.draft.assistForSession === true) return assistLevelNow() === 'off' ? 'L1' : assistLevelNow();
+  if (S.draft.assistForSession === false) return 'off';
+  return assistLevelNow();
+}
 async function startSession(o) {
   /* 防重复：已经有一段专注在跑时不再另起一段 ——
      否则会出现两段同时计时，看起来就是「完成任务后又重复专注」 */
   if (S.session && S.session.status === 'running') { toast('已经有一段专注在进行中'); go('running'); return S.session; }
+  /* L3 承诺死锁：先签承诺书（预授权：中途离开/失约自动按惩罚库执行）再开始 */
+  const pendingLevel = S.draft.assistForSession != null
+    ? (S.draft.assistForSession === true ? (assistLevelNow() === 'off' ? 'L1' : assistLevelNow()) : 'off')
+    : assistLevelNow();
+  if (pendingLevel === 'L3' && !o.pledged) {
+    const lib = (cfg('punishLib') || []).filter(p => p.enabled);
+    const first = lib.length ? `${lib[0].title}（${lib.length} 项启用中）` : '惩罚库当前为空 —— 记过不罚，但失约照记';
+    S.draft.pledgeOpts = o;
+    openSheet(`<h3>⚑ 承诺死锁 · 签承诺书</h3>
+      <div class="sub">这是一次有约束力的专注。签字即预授权：</div>
+      <div class="tiny mt10" style="line-height:1.9">· 中途离开超过宽限（${Number(cfg('graceSec') || 8)} 秒）→ <b>不问原因，自动按惩罚库开罚</b>；<br>
+      · 暂停要过冷静期；<br>
+      · 当前惩罚库：<b>${esc(first)}</b>；<br>
+      · 失约照旧：写说明 + 连坐 + 扣币，TA 全都记着。</div>
+      <div class="row mt14" style="gap:10px">
+        <button class="btn ghost grow" data-act="closeSheet">先不开始</button>
+        <button class="btn primary grow" data-act="pledgeStart">✍️ 签承诺，开始</button></div>`);
+    return S.session || null;
+  }
+  if (pendingLevel === 'L3') S.draft.assistForSession = true;   // 已签：本场锁定等级
   const plan = (o.plan || []).filter(t => t.content && t.content.trim());
   const cycles = Math.max(1, Number(o.cycles) || 1);
   const s = {
@@ -1636,9 +1694,10 @@ async function startSession(o) {
   await genSelfTasks(s);
   await scheduleNotices(s);
   go('running');
-  /* L1 提醒锁：专注期勿扰（结束后由 tick 自动恢复）；会话级选择优先于全局开关 */
-  const assistOn = S.draft.assistForSession != null ? S.draft.assistForSession === true : cfg('focusAssist') !== false;
-  if (assistOn && API && API.device && API.device.dndSet) {
+  /* 锁机分级：L1/L3 专注期勿扰（结束后由 tick 自动恢复） */
+  s.assistLevel = assistLevelFor(s);
+  if (s.assistLevel === 'L3') pushMsg(s, 'sys', '⚑ 承诺死锁生效：中途离开超宽限将自动开罚');
+  if (s.assistLevel !== 'off' && API && API.device && API.device.dndSet) {
     sdk(() => API.device.dndSet({ on: true }), null).then((r) => {
       if (r && r.ok) { S.settings.assistDndOn = true; saveSettings(true); pushMsg(s, 'sys', '🔒 勿扰已开启（锁机助手，专注结束自动恢复）'); render(); }
     }).catch(() => { });
@@ -6621,8 +6680,10 @@ VIEWS.me = function () {
     </div>
   </div>
   <div class="card"><div class="row between"><h3>🔒 锁机（分级）</h3>
-    <button class="chip ${cfg('focusAssist') ? 'on' : ''}" data-act="toggleSetting" data-k="focusAssist">L1 提醒锁</button></div>
-    <div class="tiny mt6">L1：专注开始自动开勿扰、结束时恢复；中途离开会落一条系统通知。会用到「勿扰模式」和「系统通知」权限。</div>
+    <button class="chip ${assistLevelNow() === 'L3' ? 'on' : ''}" data-act="focusLevelPick" data-v="L3">⚑ L3 承诺死锁</button>
+    <button class="chip ${assistLevelNow() === 'L1' ? 'on' : ''}" data-act="focusLevelPick" data-v="L1">🛡 L1 提醒锁</button>
+    <button class="chip ${assistLevelNow() === 'off' ? 'on' : ''}" data-act="focusLevelPick" data-v="off">⛔ 不开启</button></div>
+    <div class="tiny mt6">L1：专注开始自动开勿扰、结束恢复；中途离开落系统通知。L3：签承诺书后开始 —— <b>中途离开超宽限自动开罚（无需确认）</b>，暂停要过冷静期。专注设置页可按次覆盖。L2 看守锁（按包名封锁手机应用）需要安卓壳，随 APK 升级开放。</div>
     <div class="row mt10" style="gap:8px"><button class="btn sm grow" data-act="wlSheetOpen">🎟 通行证（生效 ${activeWlPasses().length}）</button>
       <button class="btn sm ghost grow" data-act="wlApplyOpen">向 TA 申请</button></div>
     <div class="tiny mt6">白名单是申请制：向 TA 提交应用/用途/时长，TA 批了才生效；生效中的通行证也是中途离开豁免的依据（旧手填白名单已转为未签发档案）。</div>
@@ -7869,7 +7930,9 @@ Object.assign(ACTIONS, {
     toast(min && too ? ('已追加任务，专注延长 ' + min + ' 分钟') : '已追加任务');
     closeAllSheets(); render();
   },
-  pauseAsk: () => { openSheet(`<h3>暂停专注</h3><div class="sub">主动暂停不算违规，但需要写明原因；暂停期间计时冻结。</div>
+  pauseAsk: () => {
+    if (assistLevelFor(S.session) === 'L3') { openLockCooldownSheet(); return; }
+    openSheet(`<h3>暂停专注</h3><div class="sub">主动暂停不算违规，但需要写明原因；暂停期间计时冻结。</div>
     <textarea id="pauseReason" placeholder="例如：去洗手间 / 接水 / 接电话"></textarea>
     <div class="row mt14" style="gap:10px"><button class="btn ghost grow" data-act="closeSheet">取消</button>
     <button class="btn primary grow" data-act="doPause">确认暂停</button></div>`); },
@@ -11442,6 +11505,17 @@ Object.assign(ACTIONS, {
     toast('先记着你这一会儿 —— TA 马上还会来催');
   },
   assistSessionPick: el => { S.draft.assistForSession = el.dataset.v === '' ? null : el.dataset.v === '1'; render(); },
+  focusLevelPick: async el => {
+    S.settings.focusLevel = el.dataset.v;
+    await saveSettings(true);
+    toast({ off: '锁机已关闭', L1: 'L1 提醒锁：勿扰 + 离开系统通知', L3: 'L3 承诺死锁：开始专注前要签承诺书' }[el.dataset.v] || '已更新');
+    render();
+  },
+  pledgeStart: async () => {
+    const o = S.draft.pledgeOpts || {};
+    closeAllSheets();
+    await startSession(Object.assign({}, o, { pledged: true }));
+  },
   wlApplyOpen: el => {
     S.draft.wlMinutes = 15;
     S.draft.wlMinutesCustom = '';
