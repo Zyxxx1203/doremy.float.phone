@@ -164,6 +164,29 @@ const PHONE_WIDGET_STATUS_PROMPT = [
     "status 是 2-5 字的简短状态标签，也必须符合角色当前情绪；不要默认使用「在想你」之类的亲密状态。",
 ].join("\n");
 
+/**
+ * 「角色陪伴专注」的角色行为预设（源：市场包 presets.json，内置化后收进宿主预设，
+ * 用户可在预设编辑器里直接关掉）。tags 留空 = 对所有聊天生效，与市场版行为 1:1；
+ * {{tools}} 由聊天引擎按当轮可用工具展开。
+ */
+const FOCUS_COMPANION_PROACTIVE_PROMPT = [
+    "你陪伴的用户在使用「角色陪伴专注」这个 APP 学习与作息。你可以在合适的时机主动帮他把事情推进下去。",
+    "",
+    "【你可以调用的工具】",
+    "{{tools}}",
+    "",
+    "【调用原则】",
+    "· 只在真有动机时调用，不要每轮都调，也不要为了显得关心而硬用。",
+    "· 用户明确说「你帮我记一下」「你约我」「陪我学」「我先睡会儿」时，就该用工具，而不是只用文字答应他。",
+    "· 约专注必须给出明确的时间（HH:MM）和事项；邀他睡要说明是哪种睡法。",
+    "· 调完工具后不要再把工具做过的事用文字复述一遍，正常说你的话就好。",
+    "",
+    "【你也可以直接发这两种卡】",
+    "· [陪睡:模式:分钟:想说的话] —— 你想主动邀他一起睡时用。模式填 小憩 / 午睡 / 长睡眠；分钟填 0 表示不定时。",
+    "· [约专注:时间:事项:分钟] —— 你想跟他约一个具体专注时间时用。时间填 HH:MM。",
+    "这两种标记一次回复最多写一个，写了他那边会看到一张卡。",
+].join("\n");
+
 const APP_PROMPT_DEFINITIONS: Array<{ identifier: string; name: string; content: string; tags: string[] }> = [
     { identifier: "life_scene_output_contract", name: "◇ 生活现场输出协议", content: LIFE_SCENE_OUTPUT_CONTRACT_PROMPT, tags: ["life", "turn"] },
     { identifier: "life_scene_behavior", name: "◇ 生活现场行为规则", content: LIFE_BEHAVIOR_PROMPT, tags: ["life", "turn"] },
@@ -179,6 +202,7 @@ const APP_PROMPT_DEFINITIONS: Array<{ identifier: string; name: string; content:
     { identifier: "watch_together_comment", name: "◇ 一起看陪看发言", content: WATCH_TOGETHER_COMMENT_PROMPT, tags: ["watch_together", "watch"] },
     { identifier: "reality_bridge_offline_library", name: "◇ 现实桥离线回复库", content: REALITY_BRIDGE_OFFLINE_LIBRARY_PROMPT, tags: ["reality_bridge", "offline_library"] },
     { identifier: "phone_widget_status", name: "◇ 桌面小组件状态", content: PHONE_WIDGET_STATUS_PROMPT, tags: ["phone_widget", "status"] },
+    { identifier: "focus_companion_proactive", name: "◇ 角色陪伴专注·TA主动约你（不需要可在预设里关掉）", content: FOCUS_COMPANION_PROACTIVE_PROMPT, tags: [] },
 ];
 
 export const BUILTIN_APP_PROMPT_IDENTIFIERS = APP_PROMPT_DEFINITIONS.map(item => item.identifier);

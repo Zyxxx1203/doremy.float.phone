@@ -41,6 +41,7 @@ import {
   mdiGlassCocktail,
   mdiStorefrontOutline,
   mdiPhone,
+  mdiTimerOutline,
 } from "@mdi/js";
 
 type IconGlyphProps = {
@@ -57,6 +58,7 @@ const MDI_PATHS: Record<IconId, string> = {
   watchtogether: mdiMovie,
   callstats: mdiPhone,
   heartcraft: mdiHeart,
+  focuscompanion: mdiTimerOutline,
   chat: mdiMessageProcessing,
   diary: mdiBookOpenPageVariant,
   music: mdiMusic,
