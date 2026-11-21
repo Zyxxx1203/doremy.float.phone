@@ -34,6 +34,7 @@ class FocusLockService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var polling = false
     private var lastBlockAt = 0L
+    private var blockedCount = 0
     private lateinit var prefs: SharedPreferences
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -79,7 +80,7 @@ class FocusLockService : Service() {
                 prefs.edit().putBoolean("running", false).apply()
                 polling = false
                 postNotify("🔒 看守锁已解除", "专注时段结束，手机应用恢复自由。")
-                FocusWidgetProvider.pushAll(this)
+                FocusWidgetProvider.pushAll(this@FocusLockService)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return

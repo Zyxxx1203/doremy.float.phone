@@ -1,6 +1,7 @@
 package app.floatphone.shell
 
 import android.app.AppOpsManager
+import org.json.JSONArray
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
@@ -340,9 +341,9 @@ class DeviceActionBridge(private val context: Context) {
             for ((_, pkg, label) in rows) {
                 arr.put(JSONObject().put("package", pkg).put("label", label))
             }
-            JSONObject().put("ok", true).put("apps", arr).put("count", arr.length())
+            JSONObject().put("ok", true).put("apps", arr).put("count", rows.size).toString()
         } catch (e: Throwable) {
-            JSONObject().put("ok", false).put("reason", e.message ?: "无法列出应用").put("apps", JSONArray())
+            JSONObject().put("ok", false).put("reason", e.message ?: "无法列出应用").put("apps", JSONArray()).toString()
         }
     }
 
