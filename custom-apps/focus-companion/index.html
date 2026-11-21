@@ -1767,7 +1767,7 @@ async function startSession(o) {
   if (s.assistLevel === 'L3') pushMsg(s, 'sys', '⚑ 承诺死锁生效：中途离开超宽限将自动开罚');
   /* L2/L3：启动壳侧看守锁（白名单外的手机应用被带回小手机） */
   if ((s.assistLevel === 'L2' || s.assistLevel === 'L3') && API && API.device && API.device.lockStart) {
-    const pkgs = lockedPackagesFor();
+    const pkgs = lockedAppsFor();
     const until = Date.now() + ((Number(s.focusMin) || 25) * 60 + (Number(s.cycles || 1) - 1) * (Number(s.breakMin) || 5) * 60 + 600) * 1000;
     if (pkgs.length) {
       sdk(() => API.device.lockStart({ packages: JSON.stringify(pkgs), until }), null).then((r) => {
