@@ -7,7 +7,9 @@
 <style>
 :root{--bg:#0c0f16;--card:rgba(255,255,255,.045);--card2:rgba(255,255,255,.07);--line:rgba(255,255,255,.09);
 --text:#e8ecf5;--dim:#8b97ad;--dim2:#5f6b80;--accent:#7c8cff;--accent-soft:rgba(124,140,255,.18);
---teal:#5eead4;--warn:#ff7b8a;--warn-soft:rgba(255,123,138,.14);--gold:#ffc978;--radius:16px}
+--teal:#5eead4;--warn:#ff7b8a;--warn-soft:rgba(255,123,138,.14);--gold:#ffc978;--radius:16px;
+--sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;
+--surface:var(--bg);--surface-2:var(--card);--on-surface:var(--text);--on-surface-2:var(--dim);--on-surface-3:var(--dim2);--primary:var(--accent);--primary-soft:var(--accent-soft)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;min-height:100%;margin:0}
 body{background:var(--bg);color:var(--text);overflow-x:hidden;
@@ -15,6 +17,7 @@ font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB",
 body.sleep-theme{background:#080a14;--accent:#a58bff;--accent-soft:rgba(165,139,255,.16);--teal:#8fd8e8}
 button,input,textarea,select{font:inherit;color:inherit}
 button{min-height:44px;cursor:pointer}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 ::-webkit-scrollbar{width:0;height:0}
 .app{min-height:100dvh;padding:0 15px var(--ai-phone-app-safe-bottom,26px);position:relative;z-index:1}
 .topbar{position:fixed;top:var(--ai-phone-app-bar-top,54px);left:15px;right:var(--ai-phone-app-bar-clear-right,96px);
@@ -36,15 +39,16 @@ padding:4px 0;font-size:10.5px;min-height:auto;border-radius:12px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:12px}
 .card.tight{padding:11px}
 .card.glow{border-color:var(--accent-soft);box-shadow:0 0 0 1px rgba(124,140,255,.08),0 8px 30px -18px var(--accent)}
-.card h3{margin:0 0 4px;font-size:14.5px}
+.card h3{margin:0 0 4px;font-size:14.5px;font-weight:700;letter-spacing:.2px}
 .card .sub{font-size:12px;color:var(--dim2);line-height:1.55}
 .row{display:flex;align-items:center;gap:10px}
 .row.between{justify-content:space-between}
 .row.wrap{flex-wrap:wrap}
 .grow{flex:1;min-width:0}
-.mt6{margin-top:6px}.mt8{margin-top:8px}.mt10{margin-top:10px}.mt12{margin-top:12px}.mt14{margin-top:14px}
+.mt6{margin-top:6px}.mt8{margin-top:var(--sp-2)}.mt10{margin-top:10px}.mt12{margin-top:var(--sp-3)}.mt14{margin-top:14px}
 .center{text-align:center}.ellip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tiny{font-size:11px;color:var(--dim2);line-height:1.65}
+.tiny b{font-weight:600;color:var(--dim)}
 .empty{text-align:center;color:var(--dim2);font-size:12.5px;padding:26px 10px;line-height:1.8}
 .hr{height:1px;background:var(--line);margin:12px 0}
 .kv{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;padding:6px 0}
@@ -219,6 +223,16 @@ animation:noteFold 1.6s cubic-bezier(.35,0,.2,1) forwards}
 @keyframes jarShake{0%,48%{transform:none}60%{transform:scale(1.18) rotate(-5deg)}
 72%{transform:scale(1.1) rotate(5deg)}84%{transform:scale(1.04) rotate(-2deg)}100%{transform:none}}
 @keyframes plusUp{0%,55%{opacity:0;transform:translateY(8px)}78%{opacity:1;transform:translateY(-8px)}100%{opacity:0;transform:translateY(-24px)}}
+/* ===== 帮助中心：折叠条目 ===== */
+details.card{padding:0;overflow:hidden}
+details.card>summary{list-style:none;cursor:pointer;padding:13px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px;
+font-size:15px;font-weight:700;letter-spacing:.2px;user-select:none}
+details.card>summary::-webkit-details-marker{display:none}
+details.card>summary::after{content:"▾";flex:0 0 auto;color:var(--dim2);font-size:12px;transition:transform .18s}
+details.card[open]>summary::after{transform:rotate(180deg)}
+details.card>summary:active{background:rgba(255,255,255,.04)}
+details.card>.tiny,.details-body{padding:0 14px 13px}
+details.card[open]>summary{border-bottom:1px solid var(--line);margin-bottom:2px}
 </style>
 <script>
 /* 兜底：万一主脚本出错，不要白屏，把原因直接显示出来 */
