@@ -88,10 +88,8 @@ custom-apps/focus-companion/index.html          ← 源码真身（改这里）
 
 ## 6. CI 记录
 
-| 阶段 | 工作流 | 结果 |
-|---|---|---|
-| PR 分支 | （待回填） | |
-| 合并 main | （待回填） | |
+- **PR #86**（feat/focus-companion-builtin → main）：仓库 5 个响应 PR 的 workflow（chat-message-chain / custom-app-media / life-engine / widget / diary validation）全部带 paths 过滤，本分支不涉及对应路径 → PR 阶段无 CI。真正的门禁是合并后的 `Validate global comp`（paths 命中 desktop-shell.tsx / lib/** / scripts/**），其完整 job 已在本地 1:1 复跑（§5）。
+- **合并 main 后**：（待回填）
 
 ## 7. 回滚
 
