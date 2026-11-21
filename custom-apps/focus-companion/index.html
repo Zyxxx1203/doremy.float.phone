@@ -4349,7 +4349,7 @@ VIEWS.setup = function () {
       : `<div class="empty" style="padding:8px">还没有角色可用</div>`}</div>
     ${sel.length ? `<div class="row wrap mt10" style="gap:8px">${sel.map(id => { const c = charById(id); return c ? charAvatar(c) : ''; }).join('')}</div>` : ''}
   </div>
-  <div class="card"><div class="row between"><h3>🔒 锁机助手</h3><span class="tiny">${cfg('focusAssist') ? '全局已开' : '全局未开'}</span></div>
+  <div class="card"><div class="row between"><h3>🔒 锁机助手</h3><span class="tiny">全局：${({off:'不开启',L1:'L1 提醒锁',L3:'L3 承诺死锁'})[cfg('focusLevel') || 'off']}</span></div>
     <div class="sub">本次专注要不要开启 L1 提醒锁（勿扰 + 离开系统通知）。不选就跟「我的 → 锁机」的全局开关走。</div>
     <div class="chips mt8">
       <button class="chip ${S.draft.assistForSession === true ? 'on' : ''}" data-act="assistSessionPick" data-v="1">🔓 本次开启</button>
