@@ -1470,6 +1470,17 @@ function tick() {
     S.settings.assistDndOn = false; saveSettings(true);
     sdk(() => API.device.dndSet({ on: false }), null).catch(() => { });
   }
+  /* 通行证查岗：到点弹层（页面活着时）；超时未交 → 视为被抓 */
+  (function () {
+    const c = S.settings.wlCheckin;
+    if (!c || c.done) return;
+    const nowTs = Date.now();
+    if (nowTs >= c.deadlineAt) { wlCheckinExpire(); return; }
+    if (nowTs >= c.at && !c.sheetShown && typeof document !== 'undefined' && !document.hidden) {
+      c.sheetShown = true; saveSettings(true);
+      openWlCheckinSheet();
+    }
+  })();
   const gap = now - (S.lastTick || now); S.lastTick = now;
   renderRunLight();                      // 先把秒数刷上去：即便这一拍要判离开，界面也不会停住
   /* 纸条换来的「松一口气」：时间到了自动接着走（暂停期间不计入专注时长） */
@@ -2269,6 +2280,7 @@ async function submitWlApply() {
   }), null);
   S.wlBusy = false;
   closeAllSheets();
+  if (rec.status === 'active') scheduleWlCheckin(rec);
   toast(({ approve: '🎟 已签发：' + app + ' · ' + granted + ' 分钟', counter: '⚖️ 有条件签发：' + granted + ' 分钟', reject: '❌ TA 没批这次申请' })[verdict.decision]);
   render();
 }
@@ -2280,7 +2292,7 @@ function openWlSheet() {
   openSheet(`<h3>🎟 应用通行证</h3>
     <div class="tiny mt6">通行证由 TA 审批签发，到期自动回收；生效中的通行证是中途离开豁免的依据。</div>
     ${act.length ? act.map(p => `<div class="item"><div class="ic">🎟</div><div class="grow"><div style="font-size:13px">${esc(p.app)} · ${p.minutes} 分钟 ${left(p)}</div>
-      <div class="tiny">${esc(p.reason || '')}${p.conditions ? ' · 条件：' + esc(p.conditions) : ''} · 已用 ${p.uses || 0} 次</div></div>
+      <div class="tiny">${esc(p.reason || '')}${p.conditions ? ' · 条件：' + esc(p.conditions) : ''} · 已用 ${p.uses || 0} 次${p.checkedAt ? ' · 已过查岗' : ''}</div></div>
       <button class="btn sm ghost" data-act="wlRevoke" data-id="${esc(p.id)}">作废</button></div>`).join('')
       : '<div class="tiny mt6">现在没有生效中的通行证。</div>'}
     <button class="btn primary block mt10" data-act="wlApplyOpen">🎟 向 TA 申请通行证</button>
@@ -2289,6 +2301,74 @@ function openWlSheet() {
       <button class="btn sm ghost" data-act="wlApplyOpen" data-app="${esc(x.name)}" data-reason="${esc(x.note || '')}">按此申请</button></div>`).join('')}` : ''}
     ${hist.length ? `<div class="hr"></div><div class="tiny">历史批复：</div>
       ${hist.map(p => `<div class="tiny mt6">${esc(p.app)} · ${({ approve: '已签发', counter: '有条件', reject: '没批', expired: '已到期' })[p.status] || p.status} · ${dkey(new Date(p.issuedAt))}</div>`).join('')}` : ''}`);
+}
+/* ---------- 通行证期随机查岗（§7.6 M2 版：自证拍照） ----------
+   通行证签发时在生效窗口内随机挑一个时刻排查岗（宿主任务发系统通知，
+   页面活着时弹「拍照自证」层，10 分钟内交一张照片发进聊天室由 TA 亲眼判）；
+   超时没交 = 视为违规：通行证作废 + 信任分 -10 + TA 记一笔。
+   （截图判卷与自动踢回前台属于 L2/壳侧能力，随 APK 升级开放。） */
+function scheduleWlCheckin(pass) {
+  if (!API || !API.tasks || !pass || pass.status !== 'active' || !pass.expireAt) return;
+  const winStart = Date.now() + 60000;
+  const winEnd = Math.max(winStart + 60000, pass.expireAt - 2 * 60000);
+  const fireAt = winStart + Math.random() * Math.max(60000, winEnd - winStart);
+  S.settings.wlCheckin = { passId: pass.id, passApp: pass.app, at: fireAt, deadlineAt: fireAt + 10 * 60000, done: '', charId: pass.charIds && pass.charIds[0] ? pass.charIds[0] : (anyCharId() || '') };
+  saveSettings(true);
+  sdk(() => API.tasks.schedule({
+    id: 'focus_wlchk_' + pass.id, delayMs: Math.max(60000, fireAt - Date.now()),
+    actions: [
+      { type: 'shell.notify', title: '📸 ' + charName(S.settings.wlCheckin.charId) + ' 查岗', body: '通行证（' + pass.app + '）抽查：10 分钟内拍一张你正在干嘛的照片。' }
+    ]
+  }), null);
+}
+function openWlCheckinSheet() {
+  const c = S.settings.wlCheckin;
+  const cid = c.charId || anyCharId();
+  openSheet(`<h3>📸 TA 查岗 · ${esc(c.passApp)}</h3>
+    <div class="sub">${esc(charName(cid))} 正在抽查这张通行证 —— 拍一张你正在干嘛的照片发进聊天室，他亲眼看过才算数。</div>
+    <div class="row mt10" style="gap:8px">
+      <button class="btn primary grow" data-act="wlCheckinPhoto">📷 拍照自证</button>
+      <button class="btn ghost grow" data-act="closeSheet">先收下</button></div>
+    <div class="tiny mt8">时限 10 分钟（到 ${hm(c.deadlineAt)}）；超时没交按「被抓」处理：通行证作废、信任分下降。</div>`);
+}
+async function wlCheckinPhoto() {
+  const c = S.settings.wlCheckin;
+  if (!c || c.done) return;
+  const cid = c.charId || anyCharId();
+  if (!cid) { toast('还没有角色'); return; }
+  toast('选一张你正在干嘛的照片…');
+  let dataUrl = '';
+  try { dataUrl = await sdk(() => API.media.pick({ accept: 'image/*' }), null).then(r => (r && r.file && r.file.dataUrl) ? String(r.file.dataUrl) : ''); } catch (e) { }
+  if (!dataUrl) { toast('没有选照片，查岗还挂着'); return; }
+  c.done = 'photo'; await saveSettings(true);
+  const ok1 = await sendImageCard(cid, dataUrl, '📸 查岗自证 · ' + c.passApp);
+  await sdk(() => API.chat.requestReply({ characterId: cid }), null);
+  const pass = (S.wlPasses || []).find(x => x.id === c.passId);
+  if (pass) { pass.checkedAt = Date.now(); if (pass.dbId) await DB.update(T.WLP, pass.dbId, JSON.parse(JSON.stringify(pass))); }
+  await wlTrustAdd(2, '查岗自证按时交了（' + c.passApp + '）');
+  closeAllSheets();
+  toast(ok1 === false ? '照片发进聊天室失败，但查岗已交' : '📸 已发进聊天室，TA 正在看');
+  render();
+}
+async function wlCheckinExpire() {
+  const c = S.settings && S.settings.wlCheckin;
+  if (!c || c.done) return;
+  const pass = (S.wlPasses || []).find(x => x.id === c.passId);
+  const cid = c.charId || anyCharId();
+  c.done = 'missed'; await saveSettings(true);
+  if (pass) {
+    pass.status = 'revoked'; pass.violatedAt = Date.now();
+    if (pass.dbId) await DB.update(T.WLP, pass.dbId, JSON.parse(JSON.stringify(pass)));
+  }
+  await wlTrustAdd(-10, '查岗超时没交自证（' + c.passApp + '）');
+  if (cid) {
+    const line = '查岗的时间到了，你什么都没交。' + (c.passApp ? '「' + c.passApp + '」的通行证我现在就收回来。' : '');
+    await sdk(() => API.chat.writeHistory({ characterId: cid, role: 'assistant', content: line }), null);
+    await syncTimeline(cid, '通行证（' + c.passApp + '）期间 TA 查岗，用户超时未交自证照片 —— 通行证作废，信任分下降。', 'wl_checkin_missed', {});
+  }
+  notify('🎟 通行证被收回', '查岗超时没交自证' + (c.passApp ? '：' + c.passApp : ''));
+  toast('⏰ 查岗超时：通行证被收回，信任分下降');
+  render();
 }
 /* ---------- 惩罚自动执行：钱包扣款 / 送礼，不用用户点确认 ---------- */
 async function walletAccount() {
@@ -11357,6 +11437,7 @@ Object.assign(ACTIONS, {
   wlReasonPick: el => { S.draft.wlReason = el.dataset.v; openWlApply({ app: S.draft.wlAppName, reason: S.draft.wlReason }); },
   wlMinPick: el => { S.draft.wlMinutes = Number(el.dataset.v) || 15; openWlApply({ app: S.draft.wlAppName, reason: S.draft.wlReason }); },
   wlSubmit: () => submitWlApply(),
+  wlCheckinPhoto: () => wlCheckinPhoto(),
   wlRevoke: async el => {
     const p = (S.wlPasses || []).find(x => x.id === el.dataset.id);
     if (!p) return;
