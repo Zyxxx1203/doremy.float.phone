@@ -722,6 +722,7 @@ export const FOCUS_COMPANION_MANIFEST: InstalledCustomApp["manifest"] =
 
 /** zip 包里声明了 icon.png 但没随包提供，桌面图标走 desktop-config 的内置图标。 */
 export function buildFocusCompanionApp(entryHtml: string): InstalledCustomApp {
+  try { console.warn("[buildFocus] entryHtml=" + typeof entryHtml + " len=" + (entryHtml ? entryHtml.length : -1) + " at=" + String(new Error().stack || "").replace(/\n/g, " <= ").slice(0, 420)); } catch (e) { }
   return {
     id: FOCUS_COMPANION_APP_ID,
     name: FOCUS_COMPANION_APP_NAME,

@@ -36,7 +36,7 @@ import { WatchTogetherApp } from "@/components/watch-together-app";
 import { CALL_STATS_ENTRY_HTML } from "@/lib/builtin-apps/call-stats-source";
 import { HEARTCRAFT_ENTRY_HTML } from "@/lib/builtin-apps/heartcraft-source";
 import { buildHeartcraftApp, HEARTCRAFT_APP_ID } from "@/lib/builtin-apps/heartcraft-meta";
-import { buildFocusCompanionApp } from "@/lib/builtin-apps/focus-companion-meta";
+import { buildFocusCompanionApp, FOCUS_COMPANION_APP_ID } from "@/lib/builtin-apps/focus-companion-meta";
 import { isHeartcraftInstalled, isFocusCompanionInstalled } from "@/lib/builtin-apps/registry";
 import { VnApp } from "@/components/vn/vn-app";
 import ReadingApp from "@/components/reading/reading-app";
@@ -2642,17 +2642,19 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       context: launchContext,
       returnTo: customAppReturnTargetFromLaunchContext(launchContext),
     });
+    console.log("[openFocus] focusCompanionApp=" + (focusCompanionApp ? "loaded" : "null"));
     if (!focusCompanionApp) {
       setNotice("正在打开「角色陪伴专注」…");
       loadFocusCompanionEntryHtml()
         .then(html => {
+          console.log("[openFocus] load ok " + (html ? html.length : -1));
           const app = buildFocusCompanionApp(html);
           focusCompanionAppRef.current = app;
           setFocusCompanionApp(app);
           setActiveApp("focuscompanion");
           setNotice(null);
         })
-        .catch(() => setNotice("「角色陪伴专注」加载失败，请重试。"));
+        .catch((er) => { console.log("[openFocus] load FAIL " + String(er).slice(0, 200)); setNotice("「角色陪伴专注」加载失败，请重试。"); });
       return;
     }
     setActiveApp("focuscompanion");
@@ -2781,6 +2783,19 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
         const launchContextRecord = rawLaunchContext && typeof rawLaunchContext === "object" && !Array.isArray(rawLaunchContext)
           ? rawLaunchContext as Record<string, unknown>
           : {};
+        /* 内置 HTML 应用（heartcraft / 角色陪伴专注）：走各自的内置打开链路 */
+        console.log("[open-app] id=" + nextAppId + " focus?=" + (nextAppId === FOCUS_COMPANION_APP_ID));
+        if (nextAppId === FOCUS_COMPANION_APP_ID) {
+          console.log("[open-app] -> openBuiltinFocusCompanion");
+          openBuiltinFocusCompanion(launchContextRecord);
+          if (detail.sessionId) setChatInitSessionId(detail.sessionId);
+          return;
+        }
+        if (nextAppId === HEARTCRAFT_APP_ID) {
+          openBuiltinHeartcraft(launchContextRecord);
+          if (detail.sessionId) setChatInitSessionId(detail.sessionId);
+          return;
+        }
         if (customAppId) {
           openCustomAppWithBackgroundUpdateCheck(toCustomAppIconId(customAppId), launchContextRecord);
           if (detail.sessionId) setChatInitSessionId(detail.sessionId);
@@ -4733,7 +4748,14 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       );
     }
 
-    if (activeApp === "focuscompanion" && focusCompanionApp) {
+    if (activeApp === "focuscompanion") {
+      if (!focusCompanionApp) {
+        return (
+          <div className="fixed inset-0 z-50 grid place-items-center bg-black text-sm text-white/80">
+            正在打开「角色陪伴专注」…
+          </div>
+        );
+      }
       return (
         <CustomAppForegroundBoundary
           key={focusCompanionApp.id}
