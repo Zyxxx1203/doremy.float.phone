@@ -97,6 +97,11 @@ custom-apps/focus-companion/index.html          ← 源码真身（改这里）
 - 用户数据无需迁移：id 未变，`ai_phone_custom_app_data_v1:doris.focus.companion/*` 原地保留。
 - `focus_companion_proactive` 提示词补齐是幂等追加，revert 后用户预设中残留一条可手动关掉，无副作用。
 
+## 8b. M2b 增量：数据兼容防御归并 + 白名单统一决策
+
+- **数据兼容**（回应「旧数据能不能自动合并」）：内置版与市场版 id 相同，数据 key 前缀一致，**本来就不需要合并**；仍按 heartcraft 模式加了 `ensureFocusCompanionBuiltinDataMigrated()` 防御性归并（从数据 key 前缀找回 id 漂移的旧包并按行归并，幂等、canonical 获胜），`CustomAppRunner` 的存储就绪门控泛化为两个内置 HTML 应用共用（挂载前迁移完成，避免读到半态数据）。
+- **白名单统一**（回应「白名单有重复」）：确认旧 `settings.whitelist` 是中途离开豁免申诉清单（askAwayExcuse:1544）；决策 = 通行证（`wl_passes`）成为唯一事实源并接管豁免申诉，旧手填条目只读兼容为「未签发档案」，UI 收进通行证档案卡。已写入迁移方案 §7.5。
+
 ## 8. M2a 增量：预约到点唤醒（同分支追加提交）
 
 ### 改动

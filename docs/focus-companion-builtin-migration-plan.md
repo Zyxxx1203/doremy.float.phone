@@ -36,7 +36,7 @@
 | 3. registry | `registry.ts` 过滤市场同 id 版 + `getBuiltinCustomApp` 分支。 |
 | 4. 桌面 | IconId `"focuscompanion"`，放 PAGE_1；desktop-shell 四处照抄 heartcraft。 |
 | 5. 后台事件 | `chat.message.created`（解析角色主动发的两张卡）——desktop-shell.tsx:1873 接入点同步。 |
-| 6. 数据迁移 | id 不变，**跳过**。 |
+| 6. 数据迁移 | id 不变 → 数据 key 前缀（`ai_phone_custom_app_data_v1:doris.focus.companion/*`）本来就是同一份，**无需合并、天然共享**。仍内置防御性归并 `ensureFocusCompanionBuiltinDataMigrated()`（heartcraft 同款）：兜住装过 id 漂移的旧包的极少数情况，按行归并进 canonical id，幂等不覆盖。 |
 | 7. preset 注入 | presets.json 的 `focus-companion-proactive`（1 条，角色主动约专注/陪睡的行为约束）改写进 `APP_PROMPT_DEFINITIONS`，tags 建议 `["focus_companion"]`，`appTags` 链路（llm-prompt-assembler.ts:616）保证只在本 app 调用时生效；同步 builtin-preset prompt_order + 升 `BUILTIN_PRESET_VERSION`（会重置用户预设副本，发版说明里要写）。应用内 90+ 提示词**保留应用内编辑器**（自成体系、和 UI 绑定深），不建议全量迁入宿主预设——预设页会爆炸。 |
 
 ## 4. 内置化后的深度接入优化（本次迁移的增值部分）
@@ -108,7 +108,7 @@
 ### 7.2 现有资源（零成本可复用）
 
 - **壳侧**：无障碍连接检测 `isAccessibilityConnected`:2301、悬浮窗 `requestOverlayPermission`/`CallOverlayService`:2287（全屏覆盖页现成架构）、使用统计 `readUsageStats`:1763、`openApp`:1905、勿扰 `setDnd`:1898、亮度 `setBrightness`:1894、原生闹钟 `setAlarm`:1910、截屏查岗 `captureScreenshot`:2330 + `scheduleBackgroundCheckIn`/`CheckInService`:2372、感知快照 `getPerceptionSnapshot`:1744（含前台应用）、后台保活 `setBackgroundEnhancementMode`:2359、前台通知 `notify`:2126。
-- **app 侧**：应用内惩罚锁 `S.lock`（quiz/pay/gift 三类，renderLock:4652）、惩罚库+补救机制、whitelist 允许清单（词典等:849）、wallet.pay 自动扣款、角色监督台词 punishTexts、连坐/心愿经济。
+- **app 侧**：应用内惩罚锁 `S.lock`（quiz/pay/gift 三类，renderLock:4652）、惩罚库+补救机制、**旧白名单 `settings.whitelist`**（手填名称，唯一用途是专注中途离开时的豁免申诉「我去的是白名单应用」，askAwayExcuse:1544）、wallet.pay 自动扣款、角色监督台词 punishTexts、连坐/心愿经济。
 - **沙盒边界**：app iframe 不能直调 AndroidShell（nonce 拒绝），全部经宿主代理（指南 §5 三件套）。
 
 ### 7.3 分级设计：L0→L3（强度递进，用户逐级解锁授权）
@@ -165,7 +165,12 @@ app iframe ── AiPhone(新 device.* actions，宿主代理) ──> 宿主 de
 
 ### 7.5 白名单申请制（角色审批签发通行证）
 
-**原则：白名单不再是静态设置清单，而是 TA 签发的临时通行证。** 设置页旧的 `whitelist`（index.html:849）降级为「通行证档案」（历史签发记录）；锁机期间要用任何白名单应用，都得向 TA 申请，TA 批了才生效。
+**原则：白名单不再是静态设置清单，而是 TA 签发的临时通行证。锁机期间要用任何白名单应用，都得向 TA 申请，TA 批了才生效。**
+
+**与旧白名单的关系（避免两套并存）**：应用里本来有一个手填的 `settings.whitelist`（唯一用途：专注中途离开时说「我去的是白名单应用」换一次豁免，`askAwayExcuse`:1544，每场限 3 次）。统一规则：
+- **通行证成为唯一事实源**：`wl_passes` 里 `status=active` 的条目 = 中途离开豁免的合法依据（有签发时间/时长/用途可查，TA 能对质）；`askAwayExcuse` 改读通行证列表，不再读手填清单。
+- **旧手填条目只读兼容**：老数据里的 `settings.whitelist` 保留在存储里并显示为「未签发的档案」，不丢但不再直接生效；要继续用就向 TA 申请一次（理由栏预填旧条目）。
+- **入口合并**：设置页旧的「白名单」编辑 UI 收进通行证档案卡，不再提供手填新增。
 
 **申请入口（三处）**
 1. L2 封锁覆盖页第四个按钮「向 TA 申请通行证」（被拦时当场申请）；
