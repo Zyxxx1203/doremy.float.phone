@@ -872,6 +872,7 @@ function defaults() {
     wallVary: true,           // 生成时随机加构图/光线变化，降低重复感
     sleepCharIds: [], sleepLullaby: true, sleepChat: true, genLogKeep: 200, sleepIdleMin: 5,
     apptAdvanceMin: 10, apptGapMin: 5, apptMaxNudge: 3, apptGraceMin: 0, apptChatNudge: true, apptPunish: true,
+    apptSysAlarm: true,      /* 预约时借系统时钟立闹钟（APK）：页面被杀也准时响；网页环境自动跳过 */
     goals: [], goalShow: true, focusPresets: [],
     wishes: [], wishNeedMin: 600, wishConnect: true, wishPenalty: 50, wishNotice: true, selfTaskConnect: true,
     coinRate: 1, coinBonus: 20, coinBalance: 0, coinLog: [], freePass: 0, pardonDate: '',
@@ -1630,7 +1631,10 @@ async function scheduleNotices(s) {
   for (let i = 0; i < 3; i++) {
     await sdk(() => API.tasks.schedule({
       id: 'focus_' + (s.id || 'x') + '_' + i, delayMs: Math.round(total * [0.5, 0.75, 1][i]),
-      actions: [{ type: 'notification', title: name + ' 在等你', body: lines[i] }]
+      actions: [
+        { type: 'notification', title: name + ' 在等你', body: lines[i] },
+        { type: 'shell.notify', title: name + ' 在等你', body: lines[i] }
+      ]
     }));
   }
 }
@@ -10672,11 +10676,27 @@ function apptCountdownText(a) {
   const over = (Date.now() - a.startAt) / 60000;
   return '已到开始时间 · 已催 ' + (a.nudgeCount || 0) + '/' + apptMaxNudge() + ' 次 · 过了 ' + fmtDur(over * 60);
 }
+/* 预约的系统闹钟兜底：借壳的 ACTION_SET_ALARM 在系统时钟里立一个开始时间的闹钟，
+   时钟 App 里确认一次后，就算小手机被杀掉也会准时响 —— 这是「到点提醒」唯一不依赖
+   页面存活的通道（自建 AlarmManager 全屏唤醒排在 M3，需要重打 APK）。
+   注意：取消/改期不会自动撤销旧闹钟，要到时钟 App 里删，文案里有说明。 */
+async function bookSystemAlarmForAppt(rec) {
+  try {
+    if (cfg('apptSysAlarm') === false) return;
+    if (!API || !API.device || !API.device.alarmSet || !rec || !rec.startAt) return;
+    const d = new Date(rec.startAt);
+    const msg = ('TA约你·' + (rec.task || '专注')).slice(0, 18);
+    const r = await sdk(() => API.device.alarmSet({ hour: d.getHours(), minute: d.getMinutes(), message: msg }), null);
+    if (r && r.ok) toast('⏰ 已在系统时钟立好 ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ' 的闹钟（去时钟 App 确认一次就准时响）');
+    else if (r && r.reason) toast('系统闹钟没设上：' + (r.reason || '当前环境不支持'));
+  } catch (e) { }
+}
 async function createAppt(rec) {
   const r = await DB.create(T.APPT, rec);
   if (r) rec.id = r.id;
   S.appts = (S.appts || []).filter(x => String(x.id) !== String(rec.id)).concat([rec])
     .sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+  await bookSystemAlarmForAppt(rec);
   return rec;
 }
 async function updateAppt(a) {
@@ -10708,6 +10728,8 @@ async function scheduleAppt(a) {
       title: '🗓 ' + name + ' 来催你了（第 ' + (i + 1) + '/' + n + ' 次）',
       body: body
     }];
+    /* 系统通知栏兜底：应用内通知在小手机页面冻结时看不见，壳渠道才真正弹出来（网页 no-op）。 */
+    actions.push({ type: 'shell.notify', title: '🗓 ' + name + ' 来催你了（第 ' + (i + 1) + '/' + n + ' 次）', body: body });
     if (cfg('apptChatNudge') !== false) {
       actions.push({
         type: 'chat.card', characterId: cid, role: 'system', historyRole: 'system',
@@ -10758,6 +10780,23 @@ async function punishMissedAppt(a) {
   if (!cfg('punishEnabled')) { toast('预约没开始：' + a.task + '（惩罚模式未开启，只记录）'); return; }
   await triggerPunish('预约专注没有开始', {});
 }
+/* 到点确认弹层：把「万事开头难」压成一次点击。后台隐藏 iframe（document.hidden）里不弹，
+   回到前台后由 20 秒一轮的补判接着催；一个预约同一轮只弹一次。 */
+function maybeApptStartSheet(a) {
+  try {
+    if (typeof document === 'undefined' || document.hidden) return;
+    if (S.lock || (S.session && S.session.status === 'running')) return;
+    if (S.draft && S.draft.apptSheetFor === a.id) return;
+    const cid = (a.charIds && a.charIds[0]) || anyCharId();
+    if (S.draft) S.draft.apptSheetFor = a.id;
+    openSheet(`<h3>⏰ ${esc(apptTimeText(a))} · 该开始了</h3>
+      <div class="sub">${esc(charName(cid))} 和你约好了 ${esc(a.minutes)} 分钟的「${esc(a.task || '专注')}」，到点了。</div>
+      <div class="row mt10" style="gap:8px">
+        <button class="btn primary grow" data-act="apptStart" data-id="${esc(a.id)}">▶️ 现在开始</button>
+        <button class="btn ghost grow" data-act="apptSnoozeSheet">💤 再赖会儿</button></div>
+      <div class="tiny mt8">再赖下去 TA 会接着催，${apptMaxNudge()} 次没开始就按约定开罚。</div>`);
+  } catch (e) { }
+}
 /* 判定：APP 打开时每 20 秒跑一次；APP 没开时靠宿主任务发通知，重开即补判 */
 async function checkAppointments() {
   if (!S.appts || !S.appts.length) return;
@@ -10768,7 +10807,10 @@ async function checkAppointments() {
     if (a.status === 'pending') {
       const times = apptTimesOf(a), n = times.length;
       const due = times.filter(t => now >= t).length;
-      if (due > (a.nudgeCount || 0)) { a.nudgeCount = due; changed = true; await updateAppt(a); }
+      if (due > (a.nudgeCount || 0)) {
+        a.nudgeCount = due; changed = true; await updateAppt(a);
+        maybeApptStartSheet(a);
+      }
       // 时间被改到过去之类：至少要走过一次催促点才判
       if ((a.nudgeCount || 0) >= n && now >= times[n - 1] + apptGrace() * 60000) {
         const busy = S.session && S.session.status === 'running';
@@ -10867,8 +10909,9 @@ VIEWS.appt = function () {
     <div class="chips mt10">
       <button class="chip ${cfg('apptChatNudge') !== false ? 'on' : ''}" data-act="toggleSetting" data-k="apptChatNudge">催促同时让 TA 在聊天室回你一句</button>
       <button class="chip ${cfg('apptPunish') !== false ? 'on' : ''}" data-act="toggleSetting" data-k="apptPunish">没开始就开罚</button>
+      <button class="chip ${cfg('apptSysAlarm') !== false ? 'on' : ''}" data-act="toggleSetting" data-k="apptSysAlarm">⏰ 系统闹钟兜底（APK）</button>
     </div>
-    <div class="tiny mt6">「让 TA 回你一句」会走小手机普通聊天链路，也就是每次催促都会真实消耗一次你自己的 API —— 想要安静的提醒可以关掉它。</div>
+    <div class="tiny mt6">「让 TA 回你一句」会走小手机普通聊天链路，也就是每次催促都会真实消耗一次你自己的 API —— 想要安静的提醒可以关掉它。<br>「系统闹钟兜底」：在 APK 里预约时会借系统时钟在开始时间立一个闹钟（首次要去时钟 App 确认一下）—— 小手机被杀掉它也准时响；取消/改期不会自动撤旧闹钟，要到时钟 App 里删。催促本身也会同时落到系统通知栏。网页/旧版壳没有闹钟通道，会自动跳过。</div>
     <div class="row mt10" style="gap:8px"><button class="btn sm ghost grow" data-act="apptTestNudge">试一次催促（立刻）</button>
       <button class="btn sm ghost grow" data-act="apptTestPunish">试一次「没开始」的惩罚</button></div></div>
   <div class="card"><h3>它怎么提醒你</h3>
@@ -11122,9 +11165,15 @@ Object.assign(ACTIONS, {
     if (a.status === 'started') { toast('正在专注中的预约不能删'); return; }
     await removeAppt(a); render();
   },
+  apptSnoozeSheet: () => {
+    if (S.draft) S.draft.apptSheetFor = '';
+    closeAllSheets();
+    toast('先记着你这一会儿 —— TA 马上还会来催');
+  },
   apptStart: async el => {
     const a = (S.appts || []).find(x => String(x.id) === String(el.dataset.id));
     if (!a) return;
+    closeAllSheets(); if (S.draft) S.draft.apptSheetFor = '';
     if (a.status !== 'pending') { toast('这个预约已经处理过了'); return; }
     if (pendingPunish().length) { toast('先把没完成的惩罚做完，再开始专注'); S.lock = { punish: pendingPunish()[0] }; render(); return; }
     a.status = 'started'; a.startedAt = Date.now(); a.note = '按时开始';

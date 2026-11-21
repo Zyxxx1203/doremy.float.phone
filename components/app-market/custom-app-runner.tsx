@@ -87,6 +87,7 @@ import {
   writeCustomAppHistoryMessage,
   writeCustomAppCharacterState,
   writeCustomAppWorld,
+  runCustomAppDeviceAlarmSet,
 } from "@/lib/custom-app-host-api";
 import { REALITY_BRIDGE_APP_EVENT_NAME, REALITY_BRIDGE_DATA_EVENT } from "@/lib/reality-bridge/types";
 import { OnlineRoomConnection, onlineCloudApi } from "@/lib/online-room-client";
@@ -533,6 +534,10 @@ html, body { min-height: 100%; }
     bridge: {
       send: function(payload){ return request('bridge.send', payload || {}); },
       readState: function(payload){ return request('bridge.readState', payload || {}); }
+    },
+    device: {
+      /* 借系统时钟设闹钟（APK：打开时钟 App 让用户确认一次；网页：返回 ok:false 降级）。 */
+      alarmSet: function(payload){ return request('device.alarm.set', payload || {}); }
     },
     room: {
       create: function(payload){ return request('room.create', payload || {}); },
@@ -1900,6 +1905,10 @@ export function CustomAppRunner({
     if (action === "notifications.create") {
       requirePermission("notifications.write");
       return createCustomAppNotification(app, record, onNotice);
+    }
+    if (action === "device.alarm.set") {
+      requirePermission("device.alarm.set");
+      return runCustomAppDeviceAlarmSet(app, record);
     }
     if (action === "notifications.list") {
       requirePermission("notifications.read");

@@ -11,6 +11,8 @@ import {
 import { loadAllCustomApps } from "./builtin-apps/registry";
 import { buildCustomAppChatTags } from "./custom-app-tags";
 import { hydrateKvDb } from "./kv-db";
+import { sendShellNotification } from "./shell-notify";
+import { setAlarm as shellSetAlarm } from "./device-action/bridge";
 import { loadCharacters } from "./character-storage";
 import {
   addChatContact,
@@ -178,6 +180,8 @@ const HOST_ACTION_PERMISSIONS: Record<string, CustomAppPermission[]> = {
   "world.write": ["world.write"],
   "world.activate": ["world.activate"],
   "bridge.send": ["bridge.send"],
+  "shell.notify": ["notifications.write"],
+  "device.alarm.set": ["device.alarm.set"],
 };
 
 function emitHostStateUpdated(): void {
@@ -2339,6 +2343,37 @@ export async function readCustomAppBridgeState(record: Record<string, unknown>):
   return readAllBridgeStateSnapshots(config, limit);
 }
 
+/**
+ * 借壳的设备动作设一个系统闹钟（ACTION_SET_ALARM，会打开系统时钟 App 让用户确认一次）。
+ * 这是当前唯一「小手机页面被冻结/杀掉也能响」的预约提醒通道；网页/无壳环境返回 ok:false 由调用方降级。
+ */
+export function runCustomAppDeviceAlarmSet(_app: InstalledCustomApp, record: Record<string, unknown>): Record<string, unknown> {
+  const hour = Number(record.hour);
+  const minute = Number(record.minute);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23 || !Number.isInteger(minute) || minute < 0 || minute > 59) {
+    throw new Error("device.alarm.set 需要 hour(0-23) 与 minute(0-59)。");
+  }
+  const message = cleanText(record.message, 60) || "专注开始";
+  const result = shellSetAlarm(hour, minute, message);
+  return result.ok
+    ? { ok: true }
+    : { ok: false, reason: result.reason || "当前环境无法设置系统闹钟", needPermission: result.needPermission };
+}
+
+/**
+ * 落一条真正的系统通知（APK 通知栏/锁屏可见）。与 notifications.create 的分工：
+ * 后者只进小手机应用内通知中心，页面冻结时用户根本看不到；本动作经壳原生渠道发出，
+ * 是「预约到点/催促」这类强提醒的可靠路径。网页/无壳环境静默 no-op（ok:false）。
+ */
+export function runCustomAppShellNotify(record: Record<string, unknown>): Record<string, unknown> {
+  const title = cleanText(record.title, 80) || "小手机";
+  const body = cleanText(record.body ?? record.message, 300);
+  const sessionId = cleanText(record.sessionId, 120) || undefined;
+  const avatar = typeof record.avatarUrl === "string" ? record.avatarUrl : undefined;
+  const sent = sendShellNotification(title, body, avatar, sessionId);
+  return { ok: sent, channel: "shell" };
+}
+
 export async function executeCustomAppHostAction(
   app: InstalledCustomApp,
   rawAction: CustomAppHostAction,
@@ -2359,6 +2394,10 @@ export async function executeCustomAppHostAction(
     case "notification":
     case "ui.notification":
       return createCustomAppNotification(app, payload, onNotice);
+    case "shell.notify":
+      return runCustomAppShellNotify(payload);
+    case "device.alarm.set":
+      return runCustomAppDeviceAlarmSet(app, payload);
     case "db.update":
     case "app.data.update":
       return updateCustomAppDataRecord(app, payload);

@@ -59,6 +59,7 @@ export type CustomAppPermission =
   | "wallet.pay"
   | "bridge.send"
   | "bridge.read"
+  | "device.alarm.set"
   | "online.play";
 
 export type CustomAppSdkVersion = "1.0" | string;

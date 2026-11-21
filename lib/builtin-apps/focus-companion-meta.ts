@@ -46,6 +46,7 @@ export const FOCUS_COMPANION_MANIFEST: InstalledCustomApp["manifest"] =
     "notifications.read",
     "notifications.write",
     "tasks.schedule",
+    "device.alarm.set",
     "wallet.read",
     "wallet.pay",
     "media.pick",

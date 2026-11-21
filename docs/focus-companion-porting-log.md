@@ -97,9 +97,22 @@ custom-apps/focus-companion/index.html          ← 源码真身（改这里）
 - 用户数据无需迁移：id 未变，`ai_phone_custom_app_data_v1:doris.focus.companion/*` 原地保留。
 - `focus_companion_proactive` 提示词补齐是幂等追加，revert 后用户预设中残留一条可手动关掉，无副作用。
 
+## 8. M2a 增量：预约到点唤醒（同分支追加提交）
+
+### 改动
+- **宿主**：`lib/custom-app-types.ts`（权限 `"device.alarm.set"`）、`lib/custom-app-storage.ts`（白名单）、`lib/custom-app-host-api.ts`（`HOST_ACTION_PERMISSIONS` 加 `shell.notify`/`device.alarm.set` + `runCustomAppDeviceAlarmSet`/`runCustomAppShellNotify` + 任务动作分发 case）、`components/app-market/custom-app-runner.tsx`（SDK `AiPhone.device.alarmSet()` + dispatch 分支）、`scripts/check-custom-app-sdk-consistency.mjs`（NAMESPACES 加 device）
+- **应用**（custom-apps/focus-companion/index.html，8 处补丁）：预约创建挂 `bookSystemAlarmForAppt`（系统时钟闹钟，`apptSysAlarm` 默认开）；预约催促与专注进度提醒的宿主任务追加 `shell.notify`（系统通知栏）；`checkAppointments` 到点弹「现在开始/再赖会儿」确认层（`document.hidden` 拦后台）；设置卡加「⏰ 系统闹钟兜底」；manifest 声明 `device.alarm.set`（29→30）
+- **设计**：全屏唤醒（自建 AlarmManager + USE_FULL_SCREEN_INTENT + BAL 豁免自动拉前台）定稿于迁移方案 §9.3，M3 随 APK 重打实现
+
+### 诊断结论（为什么之前老迟到）
+催促任务只在页面存活时执行 + 应用内通知页面冻结时看不见 + 壳 setAlarm 只是系统时钟 intent。M2a 把三层都补上：系统时钟闹钟（页面死了也响）、系统通知栏（页面活着但用户不在 app 里）、到点确认弹层（用户在 app 里）。
+
+### 验证
+check:sdk ✅（仍为既有 5 条提醒，无新增）· lint 688=基线 ✅ · tsc ✅ · build ✅ · 应用 JS 语法 ✅
+
 ## 8. 后续里程碑（未包含在本 PR）
 
-- M2：L1 提醒锁 + 申请制白名单（§7.5 审批卡）+ 查岗 M2 版（画像启发式 + 自证拍照）+ W4 原生闹钟代理
+- M2：L1 提醒锁 + 申请制白名单（§7.5 审批卡）+ 查岗 M2 版（画像启发式 + 自证拍照）+ ~~W4 原生闹钟代理~~（系统闹钟兜底已随 M2a 落地，见 §8）
 - M3：L2 看守锁（覆盖页）+ 壳侧随机查岗调度 / 截图判卷（需重打 APK）
 - M4：L3 死锁（Device Admin + 承诺书 + 防绕过）
 - M5：Widget + 健康睡眠报告叠加

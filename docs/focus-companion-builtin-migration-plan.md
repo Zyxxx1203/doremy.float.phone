@@ -272,7 +272,33 @@ if (!cfg('wallGenOff')) toast('已启用自定义壁纸。AI 壁纸生成仍开�
 ### 8.4 结论回答你的疑问
 **不是链路问题，是设计缺口 + 一处漏闸**：你上传自定义壁纸并不会关掉生图（真正的总开关是设置里那颗独立的「让 AI 生成壁纸」chip，藏得深、和壁纸上传不在一个心智位置）；同时奖励壁纸漏掉了这个总开关。迁移时按 8.3 统一闸门即可根治。
 
-## 9. 风险与回滚
+## 9. 到点唤醒设计（M2a 已落地 + M3 全屏唤醒规划）
+
+> 需求：角色预约的专注老是迟到 —— 要系统闹钟提醒，最好能自动唤醒拉起前台强制开始。
+
+### 9.1 链路诊断（为什么老迟到）
+
+| 层 | 现状 | 洞 |
+|---|---|---|
+| 催促调度 | `scheduleAppt` 已走 `tasks.schedule`（宿主任务，页面活着时由 desktop-shell 的 `runDueCustomAppTasks` 执行） | WebView 后台冻结/页面关闭 → 任务不跑 |
+| 通知落点 | `notifications.create` → `createCustomAppNotification` 只进**应用内通知中心**（kv 存储 + 站内横幅） | 就算任务跑了，APK 通知栏/锁屏什么都看不到 |
+| 壳 setAlarm | `ACTION_SET_ALARM`（打开系统时钟让用户确认），不是自建 AlarmManager | 不能直接当唤醒器用 |
+
+### 9.2 已落地（M2a，纯 web 层，随 PR #86）
+
+1. **系统闹钟兜底**：宿主新增 `device.alarm.set` action（三件套：权限 `"device.alarm.set"` + `HOST_ACTION_PERMISSIONS` + runner 分支 + `runCustomAppDeviceAlarmSet` 包装 `lib/device-action/bridge.ts` 的 `setAlarm`，SDK 暴露 `AiPhone.device.alarmSet()`）。预约创建（`createAppt`，覆盖邀约/工具/编辑/失约补救全部路径）时在开始时间立系统时钟闹钟（默认开，设置卡可关；取消/改期不撤旧闹钟，文案已说明）。
+2. **催促落系统通知栏**：宿主任务动作新增 `shell.notify`（`runCustomAppShellNotify` → `lib/shell-notify.ts sendShellNotification` → `window.AndroidShell.notify`，权限 `notifications.write`）。预约催促（scheduleAppt）与专注中进度提醒（scheduleNotices）都追加了这条动作 —— 页面活着但用户在别处时，通知栏/锁屏直接可见；网页/无壳 no-op。
+3. **到点确认弹层**：`checkAppointments` 检测到新催促点跨过时（页面前台、无锁、未在专注中）弹「⏰ 该开始了」sheet：[▶️ 现在开始]（复用 `apptStart`，自动 closeAllSheets）/ [💤 再赖会儿]；后台隐藏 iframe 由 `document.hidden` 拦截，回前台靠 20 秒补判接着催。
+
+### 9.3 M3 全屏唤醒（需重打 APK，Kotlin 设计已定稿）
+
+- **自建 AlarmManager**：`FocusWakeReceiver` + `AlarmManager.setAlarmClock`（`setExactAndAllowWhileIdle` 之上的系统级表达，通知栏显示闹钟图标、Doze 下必达）；锁会话态写 SharedPreferences + BootReceiver 还原。
+- **全屏意图通知**：通知渠道 `focus_wake` 声明 `USE_FULL_SCREEN_INTENT`（Android 14 需用户在设置里给「闹钟和提醒」特殊权限 —— app 设置页加引导卡 + `openSystemSettings('alarm')`）；锁屏时直接全屏显示「TA 等你开始」+ 响铃 + 震动，点击进小手机预约页。
+- **自动拉起前台**：壳持有 `SYSTEM_ALERT_WINDOW`（悬浮窗）→ 满足 Android 10+ 的 BAL（后台启动 Activity）豁免，Receiver 可直接 `startActivity` 拉起 WebView 到前台；无障碍服务（CallControlService）已激活时同样豁免，双保险。
+- **宿主接口**：新增 `device.wake.schedule({at, title, body})` / `device.wake.cancel({id})`（三件套 + 壳 FocusWakeBridge），替换 9.2-1 的系统时钟闹钟（系统时钟那条保留为降级路径）。
+- **强制开始闭环**：拉起后直达预约页 + 到点弹层 + 「3 次催促没开始就开罚」惩罚链（已有）→ 迟到从「提醒失败」变成「一定会被 TA 抓住」。
+
+## 10. 风险与回滚
 
 - bundle 体积：动态 import 后主包仅 +meta；若未来再超 2MB，考虑把 source 移到 `public/` 用 fetch+Cache-Control 加载（牺牲离线首开，暂不推荐）。
 - 市场版共存期：registry 过滤保证不双注册；回滚 = revert registry 两行 + 重新发布市场版。
