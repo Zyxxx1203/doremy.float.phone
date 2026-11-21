@@ -14,6 +14,10 @@ class BootReceiver : BroadcastReceiver() {
             // Keep the existing push behavior unchanged for compatibility.
             runCatching { NativeRealityBridge.capture(context, "设备启动", "手机已重新启动") }
             runCatching { PushService.start(context) }
+            // 锁机会话恢复（elapsed 基准重锚；改系统时间无法绕过剩余计算）
+            runCatching { FocusLockService.restore(context) }
+            // 专注倒计时桌面组件：重设 Chronometer 基准（重启后 elapsed 清零）
+            runCatching { FocusWidgetProvider.pushAll(context) }
         }
     }
 }

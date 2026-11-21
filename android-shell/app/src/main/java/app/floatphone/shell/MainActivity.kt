@@ -1920,6 +1920,49 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         @JavascriptInterface
         fun focusLockStatus(): String = FocusLockService.status(this@MainActivity).toString()
 
+        /** 专注倒计时桌面组件：网页推一份会话状态（Chronometer 原生倒计时，无需每秒推送）。 */
+        @JavascriptInterface
+        fun focusWidgetUpdate(json: String): String = FocusWidgetProvider.update(this@MainActivity, json).toString()
+
+        /** 专注倒计时桌面组件：拉起系统的「添加到桌面」引导。 */
+        @JavascriptInterface
+        fun focusWidgetPin(): String = FocusWidgetProvider.requestPin(this@MainActivity).toString()
+
+        @JavascriptInterface
+        fun focusWidgetRemove(): String = FocusWidgetProvider.remove(this@MainActivity).toString()
+
+        /** 看守锁覆盖页的 TA 提醒线（查岗/承诺文案由网页决定）。 */
+        @JavascriptInterface
+        fun focusLockTaLine(taLine: String, charName: String): String =
+            FocusLockService.setTaLine(this@MainActivity, taLine, charName).toString()
+
+        /** L3：设备管理员是否已激活（防绕过能力前置）。 */
+        @JavascriptInterface
+        fun isDeviceAdminActive(): Boolean = runCatching {
+            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+            dpm.isAdminActive(android.content.ComponentName(this@MainActivity, FocusDeviceAdminReceiver::class.java))
+        }.getOrDefault(false)
+
+        /** L3：引导用户激活设备管理员（跳系统确认页，用户自己点激活）。 */
+        @JavascriptInterface
+        fun requestDeviceAdmin(): Boolean = runCatching {
+            val intent = Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).putExtra(
+                android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN,
+                android.content.ComponentName(this@MainActivity, FocusDeviceAdminReceiver::class.java),
+            ).putExtra(
+                android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                "L3 承诺死锁的防绕过能力需要设备管理员：锁屏执行与卸载保护。可随时在系统设置里停用。",
+            )
+            startActivity(intent)
+            true
+        }.getOrDefault(false)
+
+        /** 查岗 v2：壳截当前屏（复用既有查岗授权链，结果经 checkIn 事件回推网页）。 */
+        @JavascriptInterface
+        fun requestFocusCheckIn(characterId: String, name: String, avatar: String) {
+            CheckInService.show(this@MainActivity, characterId, name, avatar)
+        }
+
         /** 设闹钟（会打开系统时钟 App 让用户确认）。 */
         @JavascriptInterface
         fun setAlarm(hour: Int, minute: Int, message: String): String =

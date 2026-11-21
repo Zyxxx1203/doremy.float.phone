@@ -29,6 +29,13 @@ type DeviceActionBridgeLike = {
   focusLockStart?: (packagesJson: string, untilEpochMs: number) => string;
   focusLockStop?: () => string;
   focusLockStatus?: () => string;
+  focusWidgetUpdate?: (json: string) => string;
+  focusWidgetPin?: () => string;
+  focusWidgetRemove?: () => string;
+  focusLockTaLine?: (taLine: string, charName: string) => string;
+  isDeviceAdminActive?: () => boolean;
+  requestDeviceAdmin?: () => boolean;
+  requestFocusCheckIn?: (characterId: string, name: string, avatar: string) => void;
   getDeviceActionCapabilities?: () => string;
   openSystemSettings?: (which: string) => boolean;
 };
@@ -165,6 +172,68 @@ export function focusLockStatus(): { ok: boolean; running: boolean; until: numbe
     return { ok: parsed?.ok === true, running: parsed?.running === true, until: parsed?.until || 0, packages: parsed?.packages || "[]" };
   } catch {
     return { ok: false, running: false, until: 0, packages: "[]", reason: "看守锁状态调用失败" };
+  }
+}
+
+/** 专注倒计时桌面组件：推一份会话状态（Chronometer 原生走表，无需每秒推送）。 */
+export function focusWidgetUpdate(json: string): DeviceActionResult {
+  try {
+    const raw = bridge()?.focusWidgetUpdate?.(json);
+    if (raw === undefined) return { ok: false, reason: "当前 App 版本不支持专注组件" };
+    return parseResult(raw, "专注组件更新失败");
+  } catch {
+    return { ok: false, reason: "专注组件调用失败" };
+  }
+}
+
+/** 专注倒计时桌面组件：拉起系统「添加到桌面」引导。 */
+export function focusWidgetPin(): DeviceActionResult {
+  try {
+    const raw = bridge()?.focusWidgetPin?.();
+    if (raw === undefined) return { ok: false, reason: "当前 App 版本不支持添加组件" };
+    return parseResult(raw, "添加组件未成功");
+  } catch {
+    return { ok: false, reason: "添加组件调用失败" };
+  }
+}
+
+/** 看守锁覆盖页：设置 TA 提醒线。 */
+export function focusLockTaLine(taLine: string, charName: string): DeviceActionResult {
+  try {
+    const raw = bridge()?.focusLockTaLine?.(taLine, charName);
+    if (raw === undefined) return { ok: false, reason: "当前 App 版本不支持" };
+    return parseResult(raw, "设置失败");
+  } catch {
+    return { ok: false, reason: "调用失败" };
+  }
+}
+
+/** L3：设备管理员是否已激活。 */
+export function isDeviceAdminActive(): boolean {
+  try {
+    return bridge()?.isDeviceAdminActive?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+/** L3：引导激活设备管理员（跳系统确认页）。 */
+export function requestDeviceAdmin(): DeviceActionResult {
+  try {
+    const ok = bridge()?.requestDeviceAdmin?.() === true;
+    return ok ? { ok: true } : { ok: false, reason: "无法跳转系统页" };
+  } catch {
+    return { ok: false, reason: "调用失败" };
+  }
+}
+
+/** 查岗 v2：壳侧截屏（复用既有查岗授权链，结果经 checkIn 事件回推）。 */
+export function requestFocusCheckIn(characterId: string, name: string, avatar: string): DeviceActionResult {
+  try {
+    bridge()?.requestFocusCheckIn?.(characterId, name, avatar);
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "调用失败" };
   }
 }
 

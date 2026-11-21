@@ -4,7 +4,6 @@ import type { CustomAppPermission, CustomAppPromptProfile, InstalledCustomApp } 
 import {
   appendCustomAppTimelineEntry,
   deleteCustomAppTimelineEntries,
-  loadInstalledCustomApps,
   readCustomAppCollection,
   writeCustomAppCollection,
 } from "./custom-app-storage";
@@ -13,7 +12,10 @@ import { buildCustomAppChatTags } from "./custom-app-tags";
 import { hydrateKvDb } from "./kv-db";
 import { sendShellNotification } from "./shell-notify";
 import { setAlarm as shellSetAlarm, setBrightness as shellSetBrightness, setDnd as shellSetDnd,
-  listInstalledApps, focusLockStart as shellFocusLockStart, focusLockStop as shellFocusLockStop, focusLockStatus as shellFocusLockStatus } from "./device-action/bridge";
+  listInstalledApps, focusLockStart as shellFocusLockStart, focusLockStop as shellFocusLockStop, focusLockStatus as shellFocusLockStatus,
+  focusWidgetUpdate as shellFocusWidgetUpdate, focusWidgetPin as shellFocusWidgetPin,
+  focusLockTaLine as shellFocusLockTaLine, isDeviceAdminActive as shellIsDeviceAdminActive,
+  requestDeviceAdmin as shellRequestDeviceAdmin, requestFocusCheckIn as shellRequestFocusCheckIn } from "./device-action/bridge";
 import { loadCharacters } from "./character-storage";
 import {
   addChatContact,
@@ -189,6 +191,12 @@ const HOST_ACTION_PERMISSIONS: Record<string, CustomAppPermission[]> = {
   "device.lock.start": ["device.assist"],
   "device.lock.stop": ["device.assist"],
   "device.lock.status": ["device.assist"],
+  "device.focusWidget.update": ["device.assist"],
+  "device.focusWidget.pin": ["device.assist"],
+  "device.lock.taLine": ["device.assist"],
+  "device.admin.status": ["device.assist"],
+  "device.admin.request": ["device.assist"],
+  "device.checkin.request": ["device.assist"],
 };
 
 function emitHostStateUpdated(): void {
@@ -2428,6 +2436,48 @@ export function runCustomAppDeviceLockStatus(_app: InstalledCustomApp, record: R
   return { ok: true, running: result.running, until: result.until, packages: result.packages };
 }
 
+/** 专注倒计时桌面组件：推会话状态。 */
+export function runCustomAppFocusWidgetUpdate(_app: InstalledCustomApp, record: Record<string, unknown>): Record<string, unknown> {
+  const result = shellFocusWidgetUpdate(cleanText(record.json, 4000) || "{}");
+  return result.ok ? { ok: true } : { ok: false, reason: result.reason || "当前环境不支持专注组件" };
+}
+
+/** 专注倒计时桌面组件：拉起「添加到桌面」引导。 */
+export function runCustomAppFocusWidgetPin(_app: InstalledCustomApp, _record?: Record<string, unknown>): Record<string, unknown> {
+  if (_app.id && _record && Object.keys(_record).length > 0) { /* 占位：签名与调用点对齐 */ }
+  const result = shellFocusWidgetPin();
+  return result.ok ? { ok: true } : { ok: false, reason: result.reason || "当前环境不支持添加组件" };
+}
+
+/** 看守锁覆盖页 TA 提醒线。 */
+export function runCustomAppDeviceLockTaLine(_app: InstalledCustomApp, record: Record<string, unknown>): Record<string, unknown> {
+  const result = shellFocusLockTaLine(cleanText(record.taLine, 200), cleanText(record.charName, 60));
+  return result.ok ? { ok: true } : { ok: false, reason: result.reason || "当前环境不支持" };
+}
+
+/** L3：设备管理员状态。 */
+export function runCustomAppDeviceAdminStatus(_app: InstalledCustomApp, _record?: Record<string, unknown>): Record<string, unknown> {
+  if (_app.id && _record && Object.keys(_record).length > 0) { /* 占位：签名与调用点对齐 */ }
+  return { ok: true, active: shellIsDeviceAdminActive() };
+}
+
+/** L3：引导激活设备管理员。 */
+export function runCustomAppDeviceAdminRequest(_app: InstalledCustomApp, _record?: Record<string, unknown>): Record<string, unknown> {
+  if (_app.id && _record && Object.keys(_record).length > 0) { /* 占位：签名与调用点对齐 */ }
+  const result = shellRequestDeviceAdmin();
+  return result.ok ? { ok: true } : { ok: false, reason: result.reason || "无法跳转系统页" };
+}
+
+/** 查岗 v2：壳侧截当前屏（复用查岗授权链，结果经 checkIn 事件回推）。 */
+export function runCustomAppDeviceCheckinRequest(_app: InstalledCustomApp, record: Record<string, unknown>): Record<string, unknown> {
+  const result = shellRequestFocusCheckIn(
+    cleanText(record.characterId, 120),
+    cleanText(record.name, 80) || "TA",
+    typeof record.avatar === "string" ? record.avatar : "",
+  );
+  return result.ok ? { ok: true } : { ok: false, reason: result.reason || "当前环境不支持壳侧查岗" };
+}
+
 export async function executeCustomAppHostAction(
   app: InstalledCustomApp,
   rawAction: CustomAppHostAction,
@@ -2464,6 +2514,18 @@ export async function executeCustomAppHostAction(
       return runCustomAppDeviceLockStop(app, payload);
     case "device.lock.status":
       return runCustomAppDeviceLockStatus(app, payload);
+    case "device.focusWidget.update":
+      return runCustomAppFocusWidgetUpdate(app, payload);
+    case "device.focusWidget.pin":
+      return runCustomAppFocusWidgetPin(app, payload);
+    case "device.lock.taLine":
+      return runCustomAppDeviceLockTaLine(app, payload);
+    case "device.admin.status":
+      return runCustomAppDeviceAdminStatus(app, payload);
+    case "device.admin.request":
+      return runCustomAppDeviceAdminRequest(app, payload);
+    case "device.checkin.request":
+      return runCustomAppDeviceCheckinRequest(app, payload);
     case "db.update":
     case "app.data.update":
       return updateCustomAppDataRecord(app, payload);

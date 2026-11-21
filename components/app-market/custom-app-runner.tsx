@@ -96,6 +96,12 @@ import {
   runCustomAppDeviceLockStart,
   runCustomAppDeviceLockStop,
   runCustomAppDeviceLockStatus,
+  runCustomAppFocusWidgetUpdate,
+  runCustomAppFocusWidgetPin,
+  runCustomAppDeviceLockTaLine,
+  runCustomAppDeviceAdminStatus,
+  runCustomAppDeviceAdminRequest,
+  runCustomAppDeviceCheckinRequest,
   runCustomAppShellNotify,
 } from "@/lib/custom-app-host-api";
 import { REALITY_BRIDGE_APP_EVENT_NAME, REALITY_BRIDGE_DATA_EVENT } from "@/lib/reality-bridge/types";
@@ -556,7 +562,13 @@ html, body { min-height: 100%; }
       appsList: function(){ return request('device.apps.list', {}); },
       lockStart: function(payload){ return request('device.lock.start', payload || {}); },
       lockStop: function(){ return request('device.lock.stop', {}); },
-      lockStatus: function(){ return request('device.lock.status', {}); }
+      lockStatus: function(){ return request('device.lock.status', {}); },
+      focusWidgetUpdate: function(json){ return request('device.focusWidget.update', { json: json || '{}' }); },
+      focusWidgetPin: function(){ return request('device.focusWidget.pin', {}); },
+      focusLockTaLine: function(taLine, charName){ return request('device.lock.taLine', { taLine: taLine || '', charName: charName || '' }); },
+      adminStatus: function(){ return request('device.admin.status', {}); },
+      adminRequest: function(){ return request('device.admin.request', {}); },
+      checkinRequest: function(characterId, name, avatar){ return request('device.checkin.request', { characterId: characterId || '', name: name || '', avatar: avatar || '' }); }
     },
     room: {
       create: function(payload){ return request('room.create', payload || {}); },
@@ -1960,6 +1972,30 @@ export function CustomAppRunner({
     if (action === "device.lock.status") {
       requirePermission("device.assist");
       return runCustomAppDeviceLockStatus(app, record);
+    }
+    if (action === "device.focusWidget.update") {
+      requirePermission("device.assist");
+      return runCustomAppFocusWidgetUpdate(app, record);
+    }
+    if (action === "device.focusWidget.pin") {
+      requirePermission("device.assist");
+      return runCustomAppFocusWidgetPin(app, record);
+    }
+    if (action === "device.lock.taLine") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceLockTaLine(app, record);
+    }
+    if (action === "device.admin.status") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceAdminStatus(app, record);
+    }
+    if (action === "device.admin.request") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceAdminRequest(app, record);
+    }
+    if (action === "device.checkin.request") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceCheckinRequest(app, record);
     }
     if (action === "notifications.list") {
       requirePermission("notifications.read");

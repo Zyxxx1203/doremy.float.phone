@@ -54,6 +54,10 @@ class FocusLockService : Service() {
                 prefs.edit()
                     .putString("packages", packages)
                     .putLong("until", until)
+                    // 时钟篡改免疫：elapsedRealtime 基准记录「开始时刻 + 总时长」，
+                    // 改系统墙钟不影响剩余计算；重启由 BootReceiver 调 restore 重锚。
+                    .putLong("startElapsed", android.os.SystemClock.elapsedRealtime())
+                    .putLong("durationMs", (until - System.currentTimeMillis()).coerceAtLeast(0))
                     .putBoolean("running", true)
                     .apply()
                 if (!polling) {
@@ -70,11 +74,12 @@ class FocusLockService : Service() {
         override fun run() {
             if (!polling) return
             val now = System.currentTimeMillis()
-            if (now > prefs.getLong("until", 0)) {
+            if (now > prefs.getLong("until", 0) || remainingMs() <= 0) {
                 // 到点自动收锁：通知 + 复位
                 prefs.edit().putBoolean("running", false).apply()
                 polling = false
                 postNotify("🔒 看守锁已解除", "专注时段结束，手机应用恢复自由。")
+                FocusWidgetProvider.pushAll(this)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return
@@ -88,6 +93,14 @@ class FocusLockService : Service() {
             }
             handler.postDelayed(this, 1500)
         }
+    }
+
+    /** 剩余毫秒（elapsed 基准，时钟篡改免疫）。 */
+    private fun remainingMs(): Long {
+        val duration = prefs.getLong("durationMs", 0)
+        if (duration <= 0) return 0
+        val left = duration - (android.os.SystemClock.elapsedRealtime() - prefs.getLong("startElapsed", android.os.SystemClock.elapsedRealtime()))
+        return if (left > 0) left else 0
     }
 
     private fun lockedPackages(): Set<String> {
@@ -116,7 +129,23 @@ class FocusLockService : Service() {
     }
 
     private fun blockNow(pkg: String) {
-        postNotify("👀 TA 看到你在用其他应用", "看守锁生效中 —— 回到小手机继续专注。")
+        val label = runCatching {
+            val pm = getPackageManager()
+            pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+        }.getOrDefault("白名单外的应用")
+        val taLine = prefs.getString("taLine", "") ?: ""
+        val charName = prefs.getString("charName", "") ?: ""
+        // v2：全屏封锁页盖上去（showWhenLocked），替代 v1 的纯通知
+        runCatching {
+            val intent = Intent(this, BlockingActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(BlockingActivity.EXTRA_APP_LABEL, label)
+                .putExtra(BlockingActivity.EXTRA_TA_LINE, taLine)
+                .putExtra(BlockingActivity.EXTRA_CHAR_NAME, charName)
+                .putExtra(BlockingActivity.EXTRA_REMAIN_MS, remainingMs())
+            startActivity(intent)
+        }
+        postNotify("👀 TA 看到你在用其他应用", "「$label」被看守锁拦下 —— 回到小手机继续专注。")
         bringSelfToFront()
     }
 
@@ -222,6 +251,25 @@ class FocusLockService : Service() {
             context.startService(intent)
             serviceRunning = false
             return JSONObject().put("ok", true).put("running", false)
+        }
+
+        /** 开机后由 BootReceiver 调：重锚 elapsed 基准（重启会清零）并重启轮询。 */
+        fun restore(context: Context): JSONObject {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            if (!prefs.getBoolean("running", false)) return JSONObject().put("ok", true).put("restored", false)
+            val until = prefs.getLong("until", 0)
+            if (System.currentTimeMillis() > until) {
+                prefs.edit().putBoolean("running", false).apply()
+                return JSONObject().put("ok", true).put("restored", false)
+            }
+            return start(context, prefs.getString("packages", "[]") ?: "[]", until)
+        }
+
+        /** 网页层设置看守锁覆盖页的 TA 提醒线。 */
+        fun setTaLine(context: Context, taLine: String, charName: String): JSONObject {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString("taLine", taLine).putString("charName", charName).apply()
+            return JSONObject().put("ok", true)
         }
 
         fun status(context: Context): JSONObject {
