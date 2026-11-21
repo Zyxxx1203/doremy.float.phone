@@ -97,6 +97,13 @@ custom-apps/focus-companion/index.html          ← 源码真身（改这里）
 - 用户数据无需迁移：id 未变，`ai_phone_custom_app_data_v1:doris.focus.companion/*` 原地保留。
 - `focus_companion_proactive` 提示词补齐是幂等追加，revert 后用户预设中残留一条可手动关掉，无副作用。
 
+## 8c. UI 精简与美化（方案见 focus-companion-ui-polish-plan.md，三批已落地）
+
+- 诊断修正：help 视图实际为 9592 字符源码 / 26 个机制小节（此前日志里的「12.8 万字符」是正则溢出捕获到后续代码的误报）。
+- **Batch A（CSS-only）**：间距 token（--sp-1..4 + 色彩语义角色变量）、卡片标题加重加字距、`.tiny b` 加粗降噪、键盘焦点可见性、帮助手风琴样式。
+- **Batch B+C**：help 改「帮助中心」（26 节全部 `<details>` 折叠 + 顶部快速上手）；入口收敛 album 8→4 / help 5→1 / prompts 5→4 / appt 5→4；me 页 🧰 卡长文压缩为一句。
+- 验证：details/summary 26 对齐 · node --check ✓ · lint 688=基线 ✓ · build ✓。
+
 ## 8b. M2b 增量：数据兼容防御归并 + 白名单统一决策
 
 - **数据兼容**（回应「旧数据能不能自动合并」）：内置版与市场版 id 相同，数据 key 前缀一致，**本来就不需要合并**；仍按 heartcraft 模式加了 `ensureFocusCompanionBuiltinDataMigrated()` 防御性归并（从数据 key 前缀找回 id 漂移的旧包并按行归并，幂等、canonical 获胜），`CustomAppRunner` 的存储就绪门控泛化为两个内置 HTML 应用共用（挂载前迁移完成，避免读到半态数据）。
