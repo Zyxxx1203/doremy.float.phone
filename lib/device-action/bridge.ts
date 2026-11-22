@@ -37,6 +37,7 @@ type DeviceActionBridgeLike = {
   requestDeviceAdmin?: () => boolean;
   requestFocusCheckIn?: (characterId: string, name: string, avatar: string) => void;
   canDrawOverlay?: () => boolean;
+  focusLockPendingApply?: () => string;
   requestOverlayPermission?: () => void;
   getDeviceActionCapabilities?: () => string;
   openSystemSettings?: (which: string) => boolean;
@@ -236,6 +237,20 @@ export function requestFocusCheckIn(characterId: string, name: string, avatar: s
     return { ok: true };
   } catch {
     return { ok: false, reason: "调用失败" };
+  }
+}
+
+/** 拦截页「申请用一会儿」留下的待处理申请（取一次即清）。 */
+export type FocusPendingApply = { pkg: string; label: string };
+export function focusLockPendingApply(): FocusPendingApply | null {
+  try {
+    const raw = bridge()?.focusLockPendingApply?.();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { pkg?: string; label?: string };
+    if (!parsed || !parsed.pkg) return null;
+    return { pkg: parsed.pkg, label: parsed.label || parsed.pkg };
+  } catch {
+    return null;
   }
 }
 

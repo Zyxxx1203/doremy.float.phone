@@ -2827,7 +2827,15 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       }
     };
     window.addEventListener("open-app", handler);
-    return () => window.removeEventListener("open-app", handler);
+    /* 拦截页点了「申请用一会儿」：壳唤起页面后打开专注 app，由它的 tick 取走预填单 */
+    const onFocusApply = () => {
+      openBuiltinFocusCompanion({});
+    };
+    window.addEventListener("floatphone-focus-apply", onFocusApply);
+    return () => {
+      window.removeEventListener("open-app", handler);
+      window.removeEventListener("floatphone-focus-apply", onFocusApply);
+    };
   }, []);
 
   // Mini chat window state

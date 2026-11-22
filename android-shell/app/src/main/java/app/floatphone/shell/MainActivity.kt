@@ -88,6 +88,7 @@ class MainActivity : AppCompatActivity() {
          */
         const val CH_MESSAGES = "shell_messages"
         @Volatile var isForeground: Boolean = false
+    private var lastSignaledPending = ""
             private set
         @Volatile private var nativeCrashRecorderInstalled = false
         private const val MAX_WEB_CONSOLE_LOGS = 200
@@ -1093,6 +1094,19 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
     override fun onResume() {
         super.onResume()
         isForeground = true
+        // 拦截页点了「申请用一会儿」：唤起专注 app 打开预填申请单
+        // 按内容去重（同一份申请只唤醒一次；下次拦截产生新申请会再次唤醒）
+        val pending = runCatching { FocusLockService.peekPendingApply(this) }.getOrDefault("")
+        if (pending.isNotEmpty() && pending != lastSignaledPending) {
+            lastSignaledPending = pending
+            webView?.post {
+                runCatching {
+                    webView?.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('open-app',{detail:{appId:'doris.focus.companion'}}))", null,
+                    )
+                }
+            }
+        }
     }
 
     override fun onPause() {
@@ -1930,6 +1944,10 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
 
         @JavascriptInterface
         fun focusWidgetRemove(): String = FocusWidgetProvider.remove(this@MainActivity).toString()
+
+        /** 拦截页「申请用一会儿」：取走待处理申请（一次性）。 */
+        @JavascriptInterface
+        fun focusLockPendingApply(): String = FocusLockService.takePendingApply(this@MainActivity)
 
         /** 看守锁覆盖页的 TA 提醒线（查岗/承诺文案由网页决定）。 */
         @JavascriptInterface

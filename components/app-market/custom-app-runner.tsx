@@ -102,6 +102,7 @@ import {
   runCustomAppDeviceAdminStatus,
   runCustomAppDeviceAdminRequest,
   runCustomAppDeviceCheckinRequest,
+  runCustomAppDeviceLockPendingApply,
   runCustomAppDeviceOverlayStatus,
   runCustomAppDeviceOverlayRequest,
   runCustomAppShellNotify,
@@ -572,6 +573,7 @@ html, body { min-height: 100%; }
       adminRequest: function(){ return request('device.admin.request', {}); },
       checkinRequest: function(characterId, name, avatar){ return request('device.checkin.request', { characterId: characterId || '', name: name || '', avatar: avatar || '' }); },
       overlayStatus: function(){ return request('device.overlay.status', {}); },
+      pendingApply: function(){ return request('device.lock.pendingApply', {}); },
       overlayRequest: function(){ return request('device.overlay.request', {}); }
     },
     room: {
@@ -2000,6 +2002,10 @@ export function CustomAppRunner({
     if (action === "device.checkin.request") {
       requirePermission("device.assist");
       return runCustomAppDeviceCheckinRequest(app, record);
+    }
+    if (action === "device.lock.pendingApply") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceLockPendingApply(app, record);
     }
     if (action === "device.overlay.status") {
       requirePermission("device.assist");

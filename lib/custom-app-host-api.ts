@@ -16,6 +16,7 @@ import { setAlarm as shellSetAlarm, setBrightness as shellSetBrightness, setDnd 
   focusWidgetUpdate as shellFocusWidgetUpdate, focusWidgetPin as shellFocusWidgetPin,
   focusLockTaLine as shellFocusLockTaLine, isDeviceAdminActive as shellIsDeviceAdminActive,
   requestDeviceAdmin as shellRequestDeviceAdmin, requestFocusCheckIn as shellRequestFocusCheckIn,
+  focusLockPendingApply as shellFocusLockPendingApply,
   canDrawOverlay as shellCanDrawOverlay, requestOverlayPermission as shellRequestOverlayPermission } from "./device-action/bridge";
 import { loadCharacters } from "./character-storage";
 import {
@@ -200,6 +201,7 @@ const HOST_ACTION_PERMISSIONS: Record<string, CustomAppPermission[]> = {
   "device.checkin.request": ["device.assist"],
   "device.overlay.status": ["device.assist"],
   "device.overlay.request": ["device.assist"],
+  "device.lock.pendingApply": ["device.assist"],
 };
 
 function emitHostStateUpdated(): void {
@@ -2481,6 +2483,13 @@ export function runCustomAppDeviceCheckinRequest(_app: InstalledCustomApp, recor
   return result.ok ? { ok: true } : { ok: false, reason: result.reason || "当前环境不支持壳侧查岗" };
 }
 
+/** 拦截页留下的待处理申请（页面轮询取走 → 打开申请单）。 */
+export function runCustomAppDeviceLockPendingApply(app: InstalledCustomApp, record?: Record<string, unknown>): Record<string, unknown> {
+  void app; void record;
+  const pending = shellFocusLockPendingApply();
+  return pending ? { ok: true, pkg: pending.pkg, label: pending.label } : { ok: false };
+}
+
 /** 悬浮窗权限状态（L2/L3 覆盖页前置）。 */
 export function runCustomAppDeviceOverlayStatus(app: InstalledCustomApp, record?: Record<string, unknown>): Record<string, unknown> {
   void app; void record;
@@ -2542,6 +2551,8 @@ export async function executeCustomAppHostAction(
       return runCustomAppDeviceAdminRequest(app, payload);
     case "device.checkin.request":
       return runCustomAppDeviceCheckinRequest(app, payload);
+    case "device.lock.pendingApply":
+      return runCustomAppDeviceLockPendingApply(app, payload);
     case "device.overlay.status":
       return runCustomAppDeviceOverlayStatus(app, payload);
     case "device.overlay.request":

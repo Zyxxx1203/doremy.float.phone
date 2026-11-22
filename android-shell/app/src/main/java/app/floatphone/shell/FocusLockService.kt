@@ -160,6 +160,7 @@ class FocusLockService : Service() {
             val intent = Intent(this, BlockingActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra(BlockingActivity.EXTRA_APP_LABEL, label)
+                .putExtra(BlockingActivity.EXTRA_APP_PKG, pkg)
                 .putExtra(BlockingActivity.EXTRA_TA_LINE, taLine)
                 .putExtra(BlockingActivity.EXTRA_CHAR_NAME, charName)
                 .putExtra(BlockingActivity.EXTRA_REMAIN_MS, remainingMs())
@@ -285,6 +286,25 @@ class FocusLockService : Service() {
                 return JSONObject().put("ok", true).put("restored", false)
             }
             return start(context, prefs.getString("packages", "[]") ?: "[]", until)
+        }
+
+        /** 拦截页「申请用一会儿」：记下待处理申请，页面下次轮询取走并弹申请单。 */
+        fun setPendingApply(context: Context, pkg: String, label: String) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString("pending_apply", org.json.JSONObject().put("pkg", pkg).put("label", label).toString())
+                .apply()
+        }
+
+        /** 只读待处理申请（不消费）。 */
+        fun peekPendingApply(context: Context): String =
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("pending_apply", "") ?: ""
+
+        /** 取走待处理申请（取完即清，避免重复弹）。 */
+        fun takePendingApply(context: Context): String {
+            val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val raw = p.getString("pending_apply", "") ?: ""
+            if (raw.isNotEmpty()) p.edit().putString("pending_apply", "").apply()
+            return raw
         }
 
         /** 网页层设置看守锁覆盖页的 TA 提醒线。 */

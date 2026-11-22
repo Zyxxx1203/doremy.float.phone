@@ -1465,7 +1465,11 @@ function stopTicking() {
 ['focus', 'pageshow', 'resume'].forEach(ev => {
   try { window.addEventListener(ev, () => { try { paintRingNow(); } catch (e) { } }); } catch (e) { }
 });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(paintRingNow, 30); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  setTimeout(paintRingNow, 30);
+  consumePendingApply();
+});
 function tick() {
   const s = S.session, now = Date.now();
   /* L1 提醒锁：会话结束后自动恢复勿扰（覆盖 done/passed/failed/stopped 全部出口） */
@@ -1477,6 +1481,29 @@ function tick() {
     S.settings.assistLockOn = false; saveSettings(true);
     sdk(() => API.device.lockStop(), null).catch(() => { });
   }
+  /* 通行证集合变化（新批/过期/作废）→ 重推看守锁，做到即时放行与即时收权 */
+  (function () {
+    try {
+      const sig = activeWlPasses().map(p => p.id + ':' + (p.expireAt || 0)).sort().join('|');
+      if (S._wlSig === undefined) { S._wlSig = sig; return; }
+      if (S._wlSig !== sig) { S._wlSig = sig; syncLockNow(); }
+    } catch (e) { }
+  })();
+  /* 拦截页「申请用一会儿」：取走待处理申请并打开预填单 */
+  (function () {
+    try {
+      if (typeof API === 'undefined' || !API || !API.device || !API.device.pendingApply) return;
+      if (Date.now() - (S._paAt || 0) < 2000) return;
+      S._paAt = Date.now();
+      sdk(() => API.device.pendingApply(), null).then((r) => {
+        if (r && r.ok && r.pkg) {
+          S.draft.wlMinutes = 15;
+          openWlApply({ app: r.label || '', pkg: r.pkg });
+          toast('已带入被拦的应用：' + (r.label || r.pkg));
+        }
+      }).catch(() => { });
+    } catch (e) { }
+  })();
   /* 桌面倒计时组件：状态签名（运行/阶段/15秒档）变化才推送 —— 启动恢复、
      阶段切换、暂停、结束都会造成签名变化，一处钩子全覆盖，无需逐点接线 */
   (function () {
@@ -1654,6 +1681,27 @@ function pushWidget(s) {
       task: task, charName: ch,
     }));
     if (r && typeof r.catch === 'function') r.catch(function () { });
+  } catch (e) { }
+}
+/* 通行证生效/过期时重推白名单：看守锁的黑名单在启动时冻结，必须重推才能即时放行或重新锁上。 */
+function syncLockNow() {
+  const s = S.session;
+  if (!s || s.status !== 'running' || !S.settings.assistLockOn) return;
+  if (typeof API === 'undefined' || !API || !API.device || !API.device.lockStart) return;
+  const until = Date.now() + Math.max(60000, ((s.phaseEndsAt || Date.now()) - Date.now()) + 600000);
+  sdk(() => API.device.lockStart({ packages: JSON.stringify(lockedAppsFor()), until }), null).catch(() => { });
+}
+/* 取走拦截页留下的申请（启动/回到前台时都查一次，不依赖 tick） */
+function consumePendingApply() {
+  try {
+    if (typeof API === 'undefined' || !API || !API.device || !API.device.pendingApply) return;
+    sdk(() => API.device.pendingApply(), null).then((r) => {
+      if (r && r.ok && r.pkg) {
+        S.draft.wlMinutes = 15;
+        openWlApply({ app: r.label || '', pkg: r.pkg });
+        toast('已带入被拦的应用：' + (r.label || r.pkg));
+      }
+    }).catch(() => { });
   } catch (e) { }
 }
 function pickFromAppList(target) {
@@ -2447,7 +2495,11 @@ async function submitWlApply() {
     try { verdict = wlParseVerdict(await pGen('wl.review', vars, [cid])); } catch (e) { }
   }
   if (!verdict || ['approve', 'counter', 'reject'].indexOf(verdict.decision) < 0) {
-    verdict = { decision: 'reject', grantedMinutes: 0, conditions: '', reply: '（这次没批。改改理由再申请一次。）' };
+    /* 没有可用 AI 时的离线裁决（按市面锁机规则）：短时且信任正常 → 批；中等 → 砍时；超长/低信任 → 拒 */
+    const t = wlTrust();
+    if (minutes <= 15 && t >= -10) verdict = { decision: 'approve', grantedMinutes: minutes, conditions: '只开这段时间，用完自己退回来', reply: '准了。你说几分钟就几分钟 —— 到点自己回来。' };
+    else if (minutes <= 30) verdict = { decision: 'counter', grantedMinutes: 10, conditions: '先给 10 分钟，不够再申请', reply: '先十分钟。够用就把事办完。' };
+    else verdict = { decision: 'reject', grantedMinutes: 0, conditions: '', reply: '要这么久，那就先把手头这件事做完再说。' };
   }
   const granted = Math.max(1, Math.min(30, Number(verdict.grantedMinutes) || (verdict.decision === 'approve' ? minutes : 0)));
   const rec = {
@@ -2470,7 +2522,7 @@ async function submitWlApply() {
   }), null);
   S.wlBusy = false;
   closeAllSheets();
-  if (rec.status === 'active') scheduleWlCheckin(rec);
+  if (rec.status === 'active') { scheduleWlCheckin(rec); syncLockNow(); }
   toast(({ approve: '🎟 已签发：' + app + ' · ' + granted + ' 分钟', counter: '⚖️ 有条件签发：' + granted + ' 分钟', reject: '❌ TA 没批这次申请' })[verdict.decision]);
   render();
 }
@@ -4254,7 +4306,8 @@ function heroHTML(running, s) {
     <div class="hero-t">${running ? '专注进行中 · ' + (s.phase === 'break' ? '休息中' : '第 ' + s.cycle + '/' + s.cycles + ' 轮') : '开始一段专注'}</div>
     <div class="tiny mt6">${running ? '剩余 ' + fmtClock(remainSec()) + ' · ' + (s.paused ? '已暂停' : '计时中') : '陪伴：' + who}</div>
     ${running
-      ? `<button class="btn primary block mt12" style="min-height:50px;font-size:15px" data-act="gotoView" data-view="running">回到专注</button>`
+      ? `<button class="btn primary block mt12" style="min-height:50px;font-size:15px" data-act="gotoView" data-view="running">回到专注</button>
+      <button class="btn block mt8" data-act="wlApplyOpen">🎟 临时要用别的应用（向 TA 申请）</button>`
       : `<button class="btn primary block mt12" style="min-height:52px;font-size:15.5px" data-act="gotoSetup">▶️ 开始一段专注</button>
       <div class="row mt8" style="gap:8px">
         <button class="btn grow" data-act="openInvite" data-k="focus">📨 专注邀约</button>
@@ -11677,7 +11730,11 @@ Object.assign(ACTIONS, {
     S.draft.wlMinutes = 15;
     S.draft.wlMinutesCustom = '';
     S.draft.wlPackage = el && el.dataset && el.dataset.pkg ? el.dataset.pkg : '';
-    openWlApply(el && el.dataset && el.dataset.app ? { app: el.dataset.app, reason: el.dataset.reason || '' } : null);
+    openWlApply({
+      app: (el && el.dataset && el.dataset.app) || '',
+      reason: (el && el.dataset && el.dataset.reason) || '',
+      pkg: (el && el.dataset && el.dataset.pkg) || S.draft.wlPackage || '',
+    });
   },
   wlSheetOpen: () => openWlSheet(),
   wlReasonPick: el => { S.draft.wlReason = el.dataset.v; openWlApply({ app: S.draft.wlAppName, reason: S.draft.wlReason }); },
@@ -16742,6 +16799,7 @@ async function loadAll() {
   await loadStories();
 }
 async function boot() {
+  setTimeout(() => { try { consumePendingApply(); } catch (e) { } }, 800);
   try {
     if (!API) {
       $('#view').innerHTML = `<div class="card"><h3>请在「小手机」里打开本 APP</h3>

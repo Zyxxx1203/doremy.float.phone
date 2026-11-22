@@ -27,6 +27,7 @@ class BlockingActivity : AppCompatActivity() {
         const val EXTRA_TA_LINE = "ta_line"
         const val EXTRA_REMAIN_MS = "remain_ms"
         const val EXTRA_CHAR_NAME = "char_name"
+        const val EXTRA_APP_PKG = "app_pkg"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,6 +45,7 @@ class BlockingActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val appLabel = intent.getStringExtra(EXTRA_APP_LABEL) ?: ""
+        val blockedPkg = intent.getStringExtra(EXTRA_APP_PKG) ?: ""
         val taLine = intent.getStringExtra(EXTRA_TA_LINE) ?: "刷别的 App 太久了 —— 回来，我陪着你。"
         val charName = intent.getStringExtra(EXTRA_CHAR_NAME) ?: "TA"
         val remainMs = intent.getLongExtra(EXTRA_REMAIN_MS, 0)
@@ -97,14 +99,15 @@ class BlockingActivity : AppCompatActivity() {
                 finish()
             }
         }
-        // 拦截页停留 3 秒自动回专注：看守锁拉回小手机后不该把用户困在覆盖页。
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            if (!isFinishing) {
-                startActivity(Intent(this, MainActivity::class.java)
+        val applyBtn = Button(this).apply {
+            text = "🎟 向 TA 申请用一会儿"
+            setOnClickListener {
+                FocusLockService.setPendingApply(this@BlockingActivity, blockedPkg, appLabel)
+                startActivity(Intent(this@BlockingActivity, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
                 finish()
             }
-        }, 3000)
+        }
         val dismiss = TextView(this).apply {
             text = "我知道了（还会再盯）"
             textSize = 13f
@@ -119,6 +122,7 @@ class BlockingActivity : AppCompatActivity() {
         root.addView(ta)
         root.addView(remain)
         root.addView(back)
+        root.addView(applyBtn)
         root.addView(dismiss)
         setContentView(root)
 
