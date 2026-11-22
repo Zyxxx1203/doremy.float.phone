@@ -911,18 +911,29 @@ type GridGeometry = {
   rowHeight: number;
 };
 
+function getShellCompatScale(): number {
+  if (typeof document === "undefined") return 1;
+  const raw = document.documentElement.style.getPropertyValue("--compat-layout-scale");
+  const z = Number.parseFloat(raw || "1");
+  return Number.isFinite(z) && z > 0 ? z : 1;
+}
+
 function getGridGeometry(gridEl: HTMLElement): GridGeometry {
+  /* 壳缩放（--compat-layout-scale，大屏触屏档 >1）：getBoundingClientRect 是
+     视觉值（已乘壳缩放），getComputedStyle 是布局值（390 设计稿等效）——
+     混算前布局值统一乘 k 换成视觉值，指针→格子换算才不会在缩放屏上错位。 */
+  const k = getShellCompatScale();
   const rect = gridEl.getBoundingClientRect();
   const computed = getComputedStyle(gridEl);
   const colWidths = computed.gridTemplateColumns.split(/\s+/).map(parseFloat);
-  const colWidth = colWidths[0] || 66;
-  const colGap = parseFloat(computed.columnGap) || 20;
-  const rowGap = parseFloat(computed.rowGap) || 0;
+  const colWidth = (colWidths[0] || 66) * k;
+  const colGap = (parseFloat(computed.columnGap) || 20) * k;
+  const rowGap = (parseFloat(computed.rowGap) || 0) * k;
   /* rect 高度是 border-box（含 padding），网格行轨道只占内容盒。 */
-  const padY = (parseFloat(computed.paddingTop) || 0) + (parseFloat(computed.paddingBottom) || 0);
+  const padY = ((parseFloat(computed.paddingTop) || 0) + (parseFloat(computed.paddingBottom) || 0)) * k;
   const contentWidth = colWidths.length * colWidth + (colWidths.length - 1) * colGap;
   const originX = rect.left + (rect.width - contentWidth) / 2;
-  const originY = rect.top + (parseFloat(computed.paddingTop) || 0);
+  const originY = rect.top + (parseFloat(computed.paddingTop) || 0) * k;
   const totalRowGap = (GRID_ROWS - 1) * rowGap;
   const rowHeight = (rect.height - padY - totalRowGap) / GRID_ROWS;
   return { originX, originY, colStep: colWidth + colGap, rowStep: rowHeight + rowGap, colWidth, rowHeight };

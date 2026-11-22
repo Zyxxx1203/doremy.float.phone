@@ -1477,6 +1477,20 @@ function tick() {
     S.settings.assistLockOn = false; saveSettings(true);
     sdk(() => API.device.lockStop(), null).catch(() => { });
   }
+  /* 桌面倒计时组件：状态签名（运行/阶段/15秒档）变化才推送 —— 启动恢复、
+     阶段切换、暂停、结束都会造成签名变化，一处钩子全覆盖，无需逐点接线 */
+  (function () {
+    try {
+      if (typeof API === 'undefined' || !API || !API.device || !API.device.focusWidgetUpdate) return;
+      const st = S.session;
+      const running = !!(st && st.status === 'running' && !st.paused);
+      const remain = running ? Math.max(0, (st.phaseEndsAt || 0) - now) : 0;
+      const sig = running ? [1, st.phase, Math.ceil(remain / 15000)].join('|') : '0';
+      if (S._widgetSig === sig) return;
+      S._widgetSig = sig;
+      pushWidget(st);
+    } catch (e) { }
+  })();
   /* 通行证查岗：到点弹层（页面活着时）；超时未交 → 视为被抓 */
   (function () {
     const c = S.settings.wlCheckin;
@@ -1622,6 +1636,25 @@ function lockedAppsFor() {
   for (const a of (cfg('lockedApps') || [])) { if (a.pkg) out.push(a.pkg); }
   for (const p of activeWlPasses()) { if (p.pkg) out.push(p.pkg); }
   return Array.from(new Set(out));
+}
+/* 桌面倒计时小组件：推一份会话状态（Chronometer 原生走表，只在状态变化时推）。
+   字段契约见壳侧 FocusWidgetProvider.update：{running,remainingMs,progress,task,charName} */
+function pushWidget(s) {
+  try {
+    if (typeof API === 'undefined' || !API || !API.device || !API.device.focusWidgetUpdate) return;
+    const now = Date.now();
+    const running = !!(s && s.status === 'running' && !s.paused);
+    const remain = running ? Math.max(0, (s.phaseEndsAt || now) - now) : 0;
+    const total = running ? Math.max(1, (s.phase === 'break' ? (Number(s.breakMin) || 5) : (Number(s.focusMin) || 25)) * 60000) : 1;
+    const task = running && s.phase === 'focus' ? (((s.plan || [])[s.curTaskIdx || 0] || {}).content || '') : '';
+    const ch = running && s && (s.charIds || [])[0] ? ((charById(s.charIds[0]) || {}).name || '') : '';
+    const r = API.device.focusWidgetUpdate(JSON.stringify({
+      running: running, remainingMs: remain,
+      progress: running ? Math.max(0, Math.min(100, Math.round(100 * (1 - remain / total)))) : 0,
+      task: task, charName: ch,
+    }));
+    if (r && typeof r.catch === 'function') r.catch(function () { });
+  } catch (e) { }
 }
 function pickFromAppList(target) {
   S.draft.appPickerTarget = target;
@@ -6774,7 +6807,8 @@ VIEWS.me = function () {
     <div class="row mt10" style="gap:8px">
       <button class="btn sm grow" data-act="lockedAppsSheet">🧱 白名单（${(cfg('lockedApps') || []).length}）</button>
       <button class="btn sm grow" data-act="wlSheetOpen">🎟 通行证（${activeWlPasses().length}）</button>
-      <button class="btn sm ghost grow" data-act="wlApplyOpen">申请</button></div>
+      <button class="btn sm ghost grow" data-act="wlApplyOpen">申请</button>
+      <button class="btn sm ghost grow" data-act="widgetPin">🧩 组件</button></div>
     <div class="tiny mt6">白名单两轨：<b>🧱 常驻白名单</b>（自己从手机应用列表里选，L2 看守锁放行 + 中途离开豁免的依据）与<b>🎟 限时通行证</b>（向 TA 申请，批了才生效，到期回收）。L2/L3 看守锁需要新版 APK。</div>
     <div class="tiny mt6">L2 看守锁（前台应用封锁 + 全屏覆盖页）与 L3 死锁（承诺书 + 防绕过）需要安卓壳新增服务，随下一次 APK 升级开放。</div></div>
   <div class="card"><div class="row between"><h3>监督与惩罚</h3>
@@ -11595,6 +11629,13 @@ Object.assign(ACTIONS, {
   },
   assistSessionPick: el => { S.draft.assistForSession = el.dataset.v === '' ? null : el.dataset.v; render(); },
   lockedAppsSheet: () => openLockedAppsSheet(),
+  widgetPin: () => {
+    if (typeof API === 'undefined' || !API || !API.device || !API.device.focusWidgetPin) { toast('当前环境不支持桌面组件'); return; }
+    sdk(() => API.device.focusWidgetPin(), null).then((r) => {
+      toast(r && r.ok ? '已拉起系统添加组件引导' : ((r && r.reason) || '添加未成功'));
+      render();
+    }).catch(() => { });
+  },
   lockedAppsPick: () => pickFromAppList('whitelist'),
   lockedAppsAdd: async () => {
     const name = (document.getElementById('laName') || {}).value || '';
