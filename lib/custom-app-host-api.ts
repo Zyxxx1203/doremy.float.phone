@@ -2482,12 +2482,14 @@ export function runCustomAppDeviceCheckinRequest(_app: InstalledCustomApp, recor
 }
 
 /** 悬浮窗权限状态（L2/L3 覆盖页前置）。 */
-export function runCustomAppDeviceOverlayStatus(_app: InstalledCustomApp, _record?: Record<string, unknown>): Record<string, unknown> {
+export function runCustomAppDeviceOverlayStatus(app: InstalledCustomApp, record?: Record<string, unknown>): Record<string, unknown> {
+  void app; void record;
   return { ok: true, granted: shellCanDrawOverlay() };
 }
 
 /** 拉起悬浮窗授权页。 */
-export function runCustomAppDeviceOverlayRequest(_app: InstalledCustomApp, _record?: Record<string, unknown>): Record<string, unknown> {
+export function runCustomAppDeviceOverlayRequest(app: InstalledCustomApp, record?: Record<string, unknown>): Record<string, unknown> {
+  void app; void record;
   shellRequestOverlayPermission();
   return { ok: true };
 }
