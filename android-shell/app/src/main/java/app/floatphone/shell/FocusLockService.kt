@@ -54,6 +54,9 @@ class FocusLockService : Service() {
                 val until = intent?.getLongExtra("until", 0L) ?: 0L
                 prefs.edit()
                     .putString("packages", packages)
+                    // 语义：传入的 packages 是「白名单」（放行清单）。真正要拦的是
+                    // 可启动应用 − 白名单 − 自身。在启动时算一次冻结，轮询只查集合。
+                    .putString("blocked", JSONArray(blockedFromWhitelist(this@FocusLockService, packages)).toString())
                     .putLong("until", until)
                     // 时钟篡改免疫：elapsedRealtime 基准记录「开始时刻 + 总时长」，
                     // 改系统墙钟不影响剩余计算；重启由 BootReceiver 调 restore 重锚。
@@ -86,7 +89,7 @@ class FocusLockService : Service() {
                 return
             }
             val fg = currentForegroundPackage()
-            if (fg.isNotEmpty() && fg != packageName && lockedPackages().contains(fg)
+            if (fg.isNotEmpty() && fg != packageName && blockedPackages().contains(fg)
                 && now - lastBlockAt > 4000) {
                 lastBlockAt = now
                 blockedCount++
@@ -104,13 +107,29 @@ class FocusLockService : Service() {
         return if (left > 0) left else 0
     }
 
-    private fun lockedPackages(): Set<String> {
+    private fun blockedPackages(): Set<String> {
         return try {
-            val arr = JSONArray(prefs.getString("packages", "[]") ?: "[]")
+            val arr = JSONArray(prefs.getString("blocked", "[]") ?: "[]")
             val set = HashSet<String>()
             for (i in 0 until arr.length()) set.add(arr.getString(i))
             set
         } catch (e: Throwable) { emptySet() }
+    }
+
+    /** 可启动应用 − 白名单 − 自身（− 桌面/输入法/系统 UI）= 本次要拦的集合。 */
+    private fun blockedFromWhitelist(context: Context, whitelistJson: String): List<String> {
+        val allowed = runCatching {
+            val arr = JSONArray(whitelistJson)
+            (0 until arr.length()).map { arr.getString(it) }.toSet()
+        }.getOrDefault(emptySet())
+        val exempt = setOf(context.packageName, "com.android.systemui")
+        val launchable = runCatching {
+            val pm = context.packageManager
+            val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            @Suppress("DEPRECATION")
+            pm.queryIntentActivities(intent, 0).mapNotNull { it.activityInfo?.packageName }.toSet()
+        }.getOrDefault(emptySet())
+        return launchable.filter { it !in allowed && it !in exempt }
     }
 
     /** 事件流里最近一次 ACTIVITY_RESUMED 的包名 = 当前前台应用。 */
@@ -147,7 +166,9 @@ class FocusLockService : Service() {
             startActivity(intent)
         }
         postNotify("👀 TA 看到你在用其他应用", "「$label」被看守锁拦下 —— 回到小手机继续专注。")
-        bringSelfToFront()
+        // 焦点交给 BlockingActivity（3 秒自动返回）；若覆盖页被系统拦截未能显示，
+        // 2.8 秒后兜底拉回小手机。
+        handler.postDelayed({ runCatching { bringSelfToFront() } }, 2800)
     }
 
     private fun bringSelfToFront() {

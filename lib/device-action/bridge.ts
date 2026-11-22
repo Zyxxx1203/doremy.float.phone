@@ -36,6 +36,8 @@ type DeviceActionBridgeLike = {
   isDeviceAdminActive?: () => boolean;
   requestDeviceAdmin?: () => boolean;
   requestFocusCheckIn?: (characterId: string, name: string, avatar: string) => void;
+  canDrawOverlay?: () => boolean;
+  requestOverlayPermission?: () => void;
   getDeviceActionCapabilities?: () => string;
   openSystemSettings?: (which: string) => boolean;
 };
@@ -234,6 +236,24 @@ export function requestFocusCheckIn(characterId: string, name: string, avatar: s
     return { ok: true };
   } catch {
     return { ok: false, reason: "调用失败" };
+  }
+}
+
+/** 悬浮窗权限是否已授予（L2/L3 全屏封锁页在 Android 14 需要它才能后台弹出）。 */
+export function canDrawOverlay(): boolean {
+  try {
+    return bridge()?.canDrawOverlay?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+/** 拉起系统「显示在其他应用上层」授权页。 */
+export function requestOverlayPermission(): void {
+  try {
+    bridge()?.requestOverlayPermission?.();
+  } catch {
+    /* 忽略 */
   }
 }
 

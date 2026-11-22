@@ -15,7 +15,8 @@ import { setAlarm as shellSetAlarm, setBrightness as shellSetBrightness, setDnd 
   listInstalledApps, focusLockStart as shellFocusLockStart, focusLockStop as shellFocusLockStop, focusLockStatus as shellFocusLockStatus,
   focusWidgetUpdate as shellFocusWidgetUpdate, focusWidgetPin as shellFocusWidgetPin,
   focusLockTaLine as shellFocusLockTaLine, isDeviceAdminActive as shellIsDeviceAdminActive,
-  requestDeviceAdmin as shellRequestDeviceAdmin, requestFocusCheckIn as shellRequestFocusCheckIn } from "./device-action/bridge";
+  requestDeviceAdmin as shellRequestDeviceAdmin, requestFocusCheckIn as shellRequestFocusCheckIn,
+  canDrawOverlay as shellCanDrawOverlay, requestOverlayPermission as shellRequestOverlayPermission } from "./device-action/bridge";
 import { loadCharacters } from "./character-storage";
 import {
   addChatContact,
@@ -197,6 +198,8 @@ const HOST_ACTION_PERMISSIONS: Record<string, CustomAppPermission[]> = {
   "device.admin.status": ["device.assist"],
   "device.admin.request": ["device.assist"],
   "device.checkin.request": ["device.assist"],
+  "device.overlay.status": ["device.assist"],
+  "device.overlay.request": ["device.assist"],
 };
 
 function emitHostStateUpdated(): void {
@@ -2478,6 +2481,17 @@ export function runCustomAppDeviceCheckinRequest(_app: InstalledCustomApp, recor
   return result.ok ? { ok: true } : { ok: false, reason: result.reason || "当前环境不支持壳侧查岗" };
 }
 
+/** 悬浮窗权限状态（L2/L3 覆盖页前置）。 */
+export function runCustomAppDeviceOverlayStatus(_app: InstalledCustomApp, _record?: Record<string, unknown>): Record<string, unknown> {
+  return { ok: true, granted: shellCanDrawOverlay() };
+}
+
+/** 拉起悬浮窗授权页。 */
+export function runCustomAppDeviceOverlayRequest(_app: InstalledCustomApp, _record?: Record<string, unknown>): Record<string, unknown> {
+  shellRequestOverlayPermission();
+  return { ok: true };
+}
+
 export async function executeCustomAppHostAction(
   app: InstalledCustomApp,
   rawAction: CustomAppHostAction,
@@ -2526,6 +2540,10 @@ export async function executeCustomAppHostAction(
       return runCustomAppDeviceAdminRequest(app, payload);
     case "device.checkin.request":
       return runCustomAppDeviceCheckinRequest(app, payload);
+    case "device.overlay.status":
+      return runCustomAppDeviceOverlayStatus(app, payload);
+    case "device.overlay.request":
+      return runCustomAppDeviceOverlayRequest(app, payload);
     case "db.update":
     case "app.data.update":
       return updateCustomAppDataRecord(app, payload);

@@ -1800,6 +1800,16 @@ async function startSession(o) {
   if (s.assistLevel === 'L3') pushMsg(s, 'sys', '⚑ 承诺死锁生效：中途离开超宽限将自动开罚');
   /* L2/L3：启动壳侧看守锁（白名单外的手机应用被带回小手机） */
   if ((s.assistLevel === 'L2' || s.assistLevel === 'L3') && API && API.device && API.device.lockStart) {
+    /* Android 14：后台弹全屏封锁页需要悬浮窗权限，缺失时覆盖页会被系统静默挡住 */
+    if (API.device.overlayStatus) {
+      sdk(() => API.device.overlayStatus(), null).then((ov) => {
+        if (ov && ov.ok && !ov.granted) {
+          pushMsg(s, 'sys', '⚠️ 看守锁覆盖页需要「显示在其他应用上层」权限 —— 点这里去开启，否则拦住时只会弹通知');
+          toast('看守锁需要悬浮窗权限才能弹拦截页');
+          try { API.device.overlayRequest(); } catch (e) { }
+        }
+      }).catch(() => { });
+    }
     const pkgs = lockedAppsFor();
     const until = Date.now() + ((Number(s.focusMin) || 25) * 60 + (Number(s.cycles || 1) - 1) * (Number(s.breakMin) || 5) * 60 + 600) * 1000;
     if (pkgs.length) {

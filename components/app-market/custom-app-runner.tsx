@@ -102,6 +102,8 @@ import {
   runCustomAppDeviceAdminStatus,
   runCustomAppDeviceAdminRequest,
   runCustomAppDeviceCheckinRequest,
+  runCustomAppDeviceOverlayStatus,
+  runCustomAppDeviceOverlayRequest,
   runCustomAppShellNotify,
 } from "@/lib/custom-app-host-api";
 import { REALITY_BRIDGE_APP_EVENT_NAME, REALITY_BRIDGE_DATA_EVENT } from "@/lib/reality-bridge/types";
@@ -568,7 +570,9 @@ html, body { min-height: 100%; }
       focusLockTaLine: function(taLine, charName){ return request('device.lock.taLine', { taLine: taLine || '', charName: charName || '' }); },
       adminStatus: function(){ return request('device.admin.status', {}); },
       adminRequest: function(){ return request('device.admin.request', {}); },
-      checkinRequest: function(characterId, name, avatar){ return request('device.checkin.request', { characterId: characterId || '', name: name || '', avatar: avatar || '' }); }
+      checkinRequest: function(characterId, name, avatar){ return request('device.checkin.request', { characterId: characterId || '', name: name || '', avatar: avatar || '' }); },
+      overlayStatus: function(){ return request('device.overlay.status', {}); },
+      overlayRequest: function(){ return request('device.overlay.request', {}); }
     },
     room: {
       create: function(payload){ return request('room.create', payload || {}); },
@@ -1996,6 +2000,14 @@ export function CustomAppRunner({
     if (action === "device.checkin.request") {
       requirePermission("device.assist");
       return runCustomAppDeviceCheckinRequest(app, record);
+    }
+    if (action === "device.overlay.status") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceOverlayStatus(app, record);
+    }
+    if (action === "device.overlay.request") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceOverlayRequest(app, record);
     }
     if (action === "notifications.list") {
       requirePermission("notifications.read");

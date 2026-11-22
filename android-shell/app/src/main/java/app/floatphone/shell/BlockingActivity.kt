@@ -97,6 +97,14 @@ class BlockingActivity : AppCompatActivity() {
                 finish()
             }
         }
+        // 拦截页停留 3 秒自动回专注：看守锁拉回小手机后不该把用户困在覆盖页。
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (!isFinishing) {
+                startActivity(Intent(this, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                finish()
+            }
+        }, 3000)
         val dismiss = TextView(this).apply {
             text = "我知道了（还会再盯）"
             textSize = 13f
