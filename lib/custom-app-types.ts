@@ -61,6 +61,9 @@ export type CustomAppPermission =
   | "bridge.read"
   | "device.alarm.set"
   | "device.assist"
+  | "device.dnd.set"
+  | "device.apps.list"
+  | "device.brightness.set"
   | "online.play";
 
 export type CustomAppSdkVersion = "1.0" | string;

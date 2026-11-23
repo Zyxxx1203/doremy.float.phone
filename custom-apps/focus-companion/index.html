@@ -1661,7 +1661,7 @@ function openLockCooldownSheet() {
 function lockedAppsFor() {
   const out = [];
   for (const a of (cfg('lockedApps') || [])) { if (a.pkg) out.push(a.pkg); }
-  for (const p of activeWlPasses()) { if (p.pkg) out.push(p.pkg); }
+  for (const p of activeWlPasses()) { const pk = p.package || p.pkg; if (pk) out.push(pk); }
   return Array.from(new Set(out));
 }
 /* 桌面倒计时小组件：推一份会话状态（Chronometer 原生走表，只在状态变化时推）。
@@ -2484,6 +2484,22 @@ async function submitWlApply() {
   const minutes = Math.max(1, Math.min(30, Number(S.draft.wlMinutesCustom) || Number(S.draft.wlMinutes) || 15));
   const cid = anyCharId();
   if (!cid) { toast('还没有角色'); return; }
+  /* 包名：先看手填/带入；为空则按应用名去已安装列表反查；仍无则要求去列表选或按格式填 */
+  let pkg = String(S.draft.wlPackage || '').trim();
+  if (!pkg && API && API.device && API.device.appsList) {
+    try {
+      const res = await API.device.appsList();
+      const list = (res && res.apps) || [];
+      const key = app.toLowerCase();
+      const hit = list.find(x => String(x.label || '').toLowerCase() === key)
+        || list.find(x => String(x.label || '').toLowerCase().indexOf(key) >= 0)
+        || list.find(x => String(x.package || '').toLowerCase().indexOf(key) >= 0);
+      if (hit && hit.package) { pkg = hit.package; S.draft.wlPackage = pkg; }
+    } catch (e) { }
+  }
+  if (!pkg) { toast('没匹配到包名：请点「从手机应用选择」，或按 com.xxx.yyy 格式填'); return; }
+  if (!/^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z0-9_]+)+$/.test(pkg)) { toast('包名格式不对：应为 com.公司.应用'); return; }
+  S.draft.wlPackage = pkg;
   S.wlBusy = true; render();
   const vars = {
     appName: app, reason: reason || '（没写）', minutes: minutes,
@@ -6861,19 +6877,21 @@ VIEWS.me = function () {
         <button class="hubcell" data-act="gotoView" data-view="${k}"><span class="hi">${ic}</span><span class="hn">${n}</span></button>`).join('')}
     </div>
   </div>
-  <div class="card"><div class="row between"><h3>🔒 锁机（分级）</h3>
-    <button class="chip ${assistLevelNow() === 'L3' ? 'on' : ''}" data-act="focusLevelPick" data-v="L3">⚑ L3 死锁</button>
-    <button class="chip ${assistLevelNow() === 'L2' ? 'on' : ''}" data-act="focusLevelPick" data-v="L2">🛰 L2 看守</button>
-    <button class="chip ${assistLevelNow() === 'L1' ? 'on' : ''}" data-act="focusLevelPick" data-v="L1">🛡 L1 提醒</button>
-    <button class="chip ${assistLevelNow() === 'off' ? 'on' : ''}" data-act="focusLevelPick" data-v="off">⛔ 关闭</button></div>
-    <div class="tiny mt6">L1：专注开始自动开勿扰、结束恢复；中途离开落系统通知。L3：签承诺书后开始 —— <b>中途离开超宽限自动开罚（无需确认）</b>，暂停要过冷静期。专注设置页可按次覆盖。L2 看守锁（按包名封锁手机应用）需要安卓壳，随 APK 升级开放。</div>
+  <div class="card"><h3>🔒 锁机（分级）</h3>
+    <div class="chips mt6">
+      <button class="chip ${assistLevelNow() === 'L3' ? 'on' : ''}" data-act="focusLevelPick" data-v="L3">⚑ L3 死锁</button>
+      <button class="chip ${assistLevelNow() === 'L2' ? 'on' : ''}" data-act="focusLevelPick" data-v="L2">🛰 L2 看守</button>
+      <button class="chip ${assistLevelNow() === 'L1' ? 'on' : ''}" data-act="focusLevelPick" data-v="L1">🛡 L1 提醒</button>
+      <button class="chip ${assistLevelNow() === 'off' ? 'on' : ''}" data-act="focusLevelPick" data-v="off">⛔ 关闭</button>
+    </div>
     <div class="row mt10" style="gap:8px">
-      <button class="btn sm grow" data-act="lockedAppsSheet">🧱 白名单（${(cfg('lockedApps') || []).length}）</button>
-      <button class="btn sm grow" data-act="wlSheetOpen">🎟 通行证（${activeWlPasses().length}）</button>
-      <button class="btn sm ghost grow" data-act="wlApplyOpen">申请</button>
-      <button class="btn sm ghost grow" data-act="widgetPin">🧩 组件</button></div>
-    <div class="tiny mt6">白名单两轨：<b>🧱 常驻白名单</b>（自己从手机应用列表里选，L2 看守锁放行 + 中途离开豁免的依据）与<b>🎟 限时通行证</b>（向 TA 申请，批了才生效，到期回收）。L2/L3 看守锁需要新版 APK。</div>
-    <div class="tiny mt6">L2 看守锁（前台应用封锁 + 全屏覆盖页）与 L3 死锁（承诺书 + 防绕过）需要安卓壳新增服务，随下一次 APK 升级开放。</div></div>
+      <button class="btn sm grow" data-act="lockedAppsSheet">🧱 白名单 ${(cfg('lockedApps') || []).length}</button>
+      <button class="btn sm grow" data-act="wlSheetOpen">🎟 通行证 ${activeWlPasses().length}</button>
+    </div>
+    <div class="row mt8" style="gap:8px">
+      <button class="btn sm ghost grow" data-act="wlApplyOpen">向 TA 申请</button>
+      <button class="btn sm ghost grow" data-act="widgetPin">🧩 桌面组件</button>
+    </div></div>
   <div class="card"><div class="row between"><h3>监督与惩罚</h3>
     <span class="pill ${cfg('punishEnabled') ? 'bad' : 'ok'}">${cfg('punishEnabled') ? '惩罚模式开启' : '仅记录不惩罚'}</span></div>
     <div class="chips mt6">
