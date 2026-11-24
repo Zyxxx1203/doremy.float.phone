@@ -1928,6 +1928,11 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         fun focusLockStart(packagesJson: String, untilEpochMs: Long): String =
             FocusLockService.start(this@MainActivity, packagesJson, untilEpochMs).toString()
 
+        /** 通行证/白名单变更：只换名单，不重置倒计时。 */
+        @JavascriptInterface
+        fun focusLockUpdate(packagesJson: String, untilEpochMs: Long): String =
+            FocusLockService.update(this@MainActivity, packagesJson, untilEpochMs).toString()
+
         @JavascriptInterface
         fun focusLockStop(): String = FocusLockService.stop(this@MainActivity).toString()
 

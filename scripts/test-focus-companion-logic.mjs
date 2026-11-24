@@ -34,7 +34,7 @@ function extractFn(name) {
 const FN = ['cfg', 'sdk', 'pad2', 'fmtDur', 'canGenWall', 'wallMode', 'wlParseVerdict',
   'activeWlPasses', 'wlTrust', 'wlTrustAdd', 'scheduleWlCheckin',
   'scheduleAlarm', 'scheduleMorning', 'bookSystemAlarm', 'bookSystemAlarmForAppt',
-  'apptTimesOf', 'apptAdvance', 'apptGap', 'apptMaxNudge'];
+  'apptTimesOf', 'apptAdvance', 'apptGap', 'apptMaxNudge', 'sessionEndAt'];
 const src = FN.map(extractFn).join('\n\n');
 
 const TASKS = [], ALARMS = [], DBU = [], TL = [], TOASTS = [];
@@ -141,6 +141,12 @@ run(`scheduleAlarm({ time: '07:30', charId: 'c1' })`).then(() => {}).catch(() =>
   ALARMS.length = 0;
   await run(`bookSystemAlarmForAppt({ startAt: new Date('2026-11-21T07:30:00').getTime(), task: '背单词' })`);
   T('预约仍保留系统闹钟兜底（M2a 回归）', ALARMS.length === 1 && ALARMS[0].hour === 7 && /TA约你/.test(ALARMS[0].message), JSON.stringify(ALARMS[0]));
+
+  console.log('== 8. 看守锁截止时间 ==');
+  const lockEnd = run(`sessionEndAt({ startAt: 1000000, cycles: 2, focusMin: 25, breakMin: 5, phaseEndsAt: 1000000 + 25 * 60000, cycle: 1 })`);
+  T('2 轮专注的截止 = 开始 + 2×25 分钟 + 1×5 分钟休息', lockEnd === 1000000 + 55 * 60000, String(lockEnd));
+  const pausedEnd = run(`sessionEndAt({ startAt: 1000000, cycles: 2, focusMin: 25, breakMin: 5, phaseEndsAt: 1000000 + 40 * 60000, cycle: 2 })`);
+  T('暂停顺延后至少覆盖当前阶段', pausedEnd >= 1000000 + 40 * 60000, String(pausedEnd));
 
   console.log('\\n结果: PASS ' + pass + ' / FAIL ' + fail);
   process.exit(fail ? 1 : 0);

@@ -40,6 +40,7 @@
     "ui.notification",
     "device.assist",
     "device.dnd.set",
+    "device.screenshot",
     "device.apps.list"
   ],
   "resources": {
@@ -240,32 +241,48 @@
           "visibility": "shared",
           "handler": "makeAppt"
         },
-        {
-          "id": "invite-sleep",
-          "name": "邀我一起睡",
-          "description": "主动邀请用户一起睡（小憩/午睡/长睡眠）。会写进 APP 的邀请记录并给他发一条通知；他打开 APP 就能一键躺下，你会说一句哄他入睡的话。",
-          "parameterSchema": {
-            "type": "object",
-            "properties": {
-              "mode": {
-                "type": "string",
-                "description": "小憩 / 午睡 / 长睡眠，默认午睡"
-              },
-              "minutes": {
-                "type": "number",
-                "description": "计划睡多久（分钟），0 表示不定时"
-              },
-              "note": {
-                "type": "string",
-                "description": "你想对他说的一句话"
-              }
+      {
+        "id": "invite-sleep",
+        "name": "邀我一起睡",
+        "description": "主动邀请用户一起睡（小憩/午睡/长睡眠）。会写进 APP 的邀请记录并给他发一条通知；他打开 APP 就能一键躺下，你会说一句哄他入睡的话。",
+        "parameterSchema": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "description": "小憩 / 午睡 / 长睡眠，默认午睡"
+            },
+            "minutes": {
+              "type": "number",
+              "description": "计划睡多久（分钟），0 表示不定时"
+            },
+            "note": {
+              "type": "string",
+              "description": "你想对他说的一句话"
             }
-          },
-          "visibility": "shared",
-          "handler": "inviteSleep"
-        }
-      ]
-    },
+          }
+        },
+        "visibility": "shared",
+        "handler": "inviteSleep"
+      },
+      {
+        "id": "focus-unlock",
+        "name": "解除看守锁",
+        "description": "当用户明确要求关掉专注/看守锁、他被锁得没法用手机，或继续锁下去会伤害他时调用。会结束当前专注并立即解除看守锁、恢复勿扰，历史记录保留；不要因为用户只是抱怨累就擅自解锁。",
+        "parameterSchema": {
+          "type": "object",
+          "properties": {
+            "reason": {
+              "type": "string",
+              "description": "为什么现在要解除，例如身体不舒服、紧急用机"
+            }
+          }
+        },
+        "visibility": "shared",
+        "handler": "focusUnlock"
+      }
+    ]
+  },
     "tools": [
       {
         "id": "focus-stats",
@@ -381,6 +398,22 @@
         },
         "visibility": "shared",
         "handler": "inviteSleep"
+      },
+      {
+        "id": "focus-unlock",
+        "name": "解除看守锁",
+        "description": "当用户明确要求关掉专注/看守锁、他被锁得没法用手机，或继续锁下去会伤害他时调用。会结束当前专注并立即解除看守锁、恢复勿扰，历史记录保留；不要因为用户只是抱怨累就擅自解锁。",
+        "parameterSchema": {
+          "type": "object",
+          "properties": {
+            "reason": {
+              "type": "string",
+              "description": "为什么现在要解除，例如身体不舒服、紧急用机"
+            }
+          }
+        },
+        "visibility": "shared",
+        "handler": "focusUnlock"
       }
     ],
     "events": [

@@ -11,8 +11,9 @@ import { loadAllCustomApps } from "./builtin-apps/registry";
 import { buildCustomAppChatTags } from "./custom-app-tags";
 import { hydrateKvDb } from "./kv-db";
 import { sendShellNotification } from "./shell-notify";
+import { captureScreenshot } from "./screenshot/bridge";
 import { setAlarm as shellSetAlarm, setBrightness as shellSetBrightness, setDnd as shellSetDnd,
-  listInstalledApps, focusLockStart as shellFocusLockStart, focusLockStop as shellFocusLockStop, focusLockStatus as shellFocusLockStatus,
+  listInstalledApps, focusLockStart as shellFocusLockStart, focusLockUpdate as shellFocusLockUpdate, focusLockStop as shellFocusLockStop, focusLockStatus as shellFocusLockStatus,
   focusWidgetUpdate as shellFocusWidgetUpdate, focusWidgetPin as shellFocusWidgetPin,
   focusLockTaLine as shellFocusLockTaLine, isDeviceAdminActive as shellIsDeviceAdminActive,
   requestDeviceAdmin as shellRequestDeviceAdmin, requestFocusCheckIn as shellRequestFocusCheckIn,
@@ -191,6 +192,7 @@ const HOST_ACTION_PERMISSIONS: Record<string, CustomAppPermission[]> = {
   "device.brightness.set": ["device.assist"],
   "device.apps.list": ["device.assist"],
   "device.lock.start": ["device.assist"],
+  "device.lock.update": ["device.assist"],
   "device.lock.stop": ["device.assist"],
   "device.lock.status": ["device.assist"],
   "device.focusWidget.update": ["device.assist"],
@@ -202,6 +204,7 @@ const HOST_ACTION_PERMISSIONS: Record<string, CustomAppPermission[]> = {
   "device.overlay.status": ["device.assist"],
   "device.overlay.request": ["device.assist"],
   "device.lock.pendingApply": ["device.assist"],
+  "device.screenshot": ["device.screenshot"],
 };
 
 function emitHostStateUpdated(): void {
@@ -2427,11 +2430,37 @@ export function runCustomAppDeviceLockStart(_app: InstalledCustomApp, record: Re
   return result.ok ? { ok: true, until } : { ok: false, reason: result.reason || "当前环境不支持看守锁" };
 }
 
+/** L2 看守锁：更新白名单/截止时间，不重置本轮倒计时。 */
+export function runCustomAppDeviceLockUpdate(_app: InstalledCustomApp, record: Record<string, unknown>): Record<string, unknown> {
+  let packages: string[] = [];
+  try {
+    const raw = record.packages;
+    const arr = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (Array.isArray(arr)) packages = arr.map(item => cleanText(item, 160)).filter(Boolean);
+  } catch { }
+  const until = Number(record.until) || (Date.now() + 2 * 3600_000);
+  const result = shellFocusLockUpdate(packages, until);
+  return result.ok ? { ok: true, until } : { ok: false, reason: result.reason || "当前环境不支持即时更新看守锁" };
+}
+
 /** L2 看守锁：停止。 */
 export function runCustomAppDeviceLockStop(_app: InstalledCustomApp, record: Record<string, unknown> = {}): Record<string, unknown> {
   void record;
   const result = shellFocusLockStop();
   return result.ok ? { ok: true } : { ok: false, reason: result.reason || "当前环境不支持看守锁" };
+}
+
+/** 截屏：直接返回当前屏幕的 data URL，供查岗自证等场景使用。 */
+export async function runCustomAppDeviceScreenshot(): Promise<Record<string, unknown>> {
+  const captured = await captureScreenshot();
+  if (!captured.ok) return { ok: false, reason: captured.reason };
+  return {
+    ok: true,
+    dataUrl: `data:image/png;base64,${captured.base64}`,
+    width: captured.width,
+    height: captured.height,
+    bytes: captured.bytes,
+  };
 }
 
 /** L2 看守锁：状态。 */
@@ -2533,8 +2562,12 @@ export async function executeCustomAppHostAction(
       return runCustomAppDeviceBrightness(app, payload);
     case "device.apps.list":
       return runCustomAppDeviceAppsList(app, payload);
+    case "device.screenshot":
+      return runCustomAppDeviceScreenshot();
     case "device.lock.start":
       return runCustomAppDeviceLockStart(app, payload);
+    case "device.lock.update":
+      return runCustomAppDeviceLockUpdate(app, payload);
     case "device.lock.stop":
       return runCustomAppDeviceLockStop(app, payload);
     case "device.lock.status":

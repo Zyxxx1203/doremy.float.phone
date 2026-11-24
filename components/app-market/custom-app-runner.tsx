@@ -564,6 +564,7 @@ html, body { min-height: 100%; }
       /* L2 看守锁：应用清单 + 壳侧封锁启停/状态。 */
       appsList: function(){ return request('device.apps.list', {}); },
       lockStart: function(payload){ return request('device.lock.start', payload || {}); },
+      lockUpdate: function(payload){ return request('device.lock.update', payload || {}); },
       lockStop: function(){ return request('device.lock.stop', {}); },
       lockStatus: function(){ return request('device.lock.status', {}); },
       focusWidgetUpdate: function(json){ return request('device.focusWidget.update', { json: json || '{}' }); },
@@ -574,7 +575,8 @@ html, body { min-height: 100%; }
       checkinRequest: function(characterId, name, avatar){ return request('device.checkin.request', { characterId: characterId || '', name: name || '', avatar: avatar || '' }); },
       overlayStatus: function(){ return request('device.overlay.status', {}); },
       pendingApply: function(){ return request('device.lock.pendingApply', {}); },
-      overlayRequest: function(){ return request('device.overlay.request', {}); }
+      overlayRequest: function(){ return request('device.overlay.request', {}); },
+      screenshot: function(payload){ return request('device.screenshot', payload || {}); }
     },
     room: {
       create: function(payload){ return request('room.create', payload || {}); },

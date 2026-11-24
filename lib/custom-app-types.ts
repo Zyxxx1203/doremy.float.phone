@@ -64,6 +64,7 @@ export type CustomAppPermission =
   | "device.dnd.set"
   | "device.apps.list"
   | "device.brightness.set"
+  | "device.screenshot"
   | "online.play";
 
 export type CustomAppSdkVersion = "1.0" | string;

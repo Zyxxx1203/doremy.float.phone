@@ -41,37 +41,65 @@ class FocusLockService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        when (intent?.getStringExtra("action")) {
+        val action = intent?.getStringExtra("action")
+        when (action) {
             "stop" -> {
                 polling = false
                 prefs.edit().putBoolean("running", false).apply()
+                BlockingActivity.dismissCurrent()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
             }
-            else -> {
-                val packages = intent?.getStringExtra("packages") ?: "[]"
-                val until = intent?.getLongExtra("until", 0L) ?: 0L
-                prefs.edit()
-                    .putString("packages", packages)
-                    // 语义：传入的 packages 是「白名单」（放行清单）。真正要拦的是
-                    // 可启动应用 − 白名单 − 自身。在启动时算一次冻结，轮询只查集合。
-                    .putString("blocked", JSONArray(blockedFromWhitelist(this@FocusLockService, packages)).toString())
-                    .putLong("until", until)
-                    // 时钟篡改免疫：elapsedRealtime 基准记录「开始时刻 + 总时长」，
-                    // 改系统墙钟不影响剩余计算；重启由 BootReceiver 调 restore 重锚。
-                    .putLong("startElapsed", android.os.SystemClock.elapsedRealtime())
-                    .putLong("durationMs", (until - System.currentTimeMillis()).coerceAtLeast(0))
-                    .putBoolean("running", true)
-                    .apply()
-                if (!polling) {
-                    polling = true
-                    startForegroundInternal()
-                    handler.postDelayed(pollRunnable, 1200)
+            "update" -> {
+                val packages = intent.getStringExtra("packages") ?: "[]"
+                val until = intent.getLongExtra("until", 0L)
+                val nowWall = System.currentTimeMillis()
+                val oldUntil = prefs.getLong("until", 0L)
+                if (prefs.getBoolean("running", false) && oldUntil > nowWall) {
+                    // 通行证变更/加时：只更新白名单与截止时间，不重置 elapsed 基准，
+                    // 否则每次批一张通行证都会把倒计时重新拉长。
+                    val effectiveUntil = maxOf(until, oldUntil)
+                    val startedElapsed = prefs.getLong("startElapsed", android.os.SystemClock.elapsedRealtime())
+                    val elapsed = (android.os.SystemClock.elapsedRealtime() - startedElapsed).coerceAtLeast(0)
+                    prefs.edit()
+                        .putString("packages", packages)
+                        .putString("blocked", JSONArray(blockedFromWhitelist(this@FocusLockService, packages)).toString())
+                        .putLong("until", effectiveUntil)
+                        .putLong("durationMs", elapsed + (effectiveUntil - nowWall).coerceAtLeast(0))
+                        .apply()
+                    // 刚放行的应用如果正被覆盖页挡着，立即撤掉；仍被拦的应用下一轮会重新盖。
+                    BlockingActivity.dismissCurrent()
+                    if (!polling) {
+                        polling = true
+                        startForegroundInternal()
+                        handler.postDelayed(pollRunnable, 1200)
+                    }
+                    return START_STICKY
                 }
-                return START_STICKY
+                // 没有在运行就按全新会话启动，继续走下面的 start 分支。
             }
         }
+        val packages = intent?.getStringExtra("packages") ?: "[]"
+        val until = intent?.getLongExtra("until", 0L) ?: 0L
+        prefs.edit()
+            .putString("packages", packages)
+            // 语义：传入的 packages 是「白名单」（放行清单）。真正要拦的是
+            // 可启动应用 − 白名单 − 自身。在启动时算一次冻结，轮询只查集合。
+            .putString("blocked", JSONArray(blockedFromWhitelist(this@FocusLockService, packages)).toString())
+            .putLong("until", until)
+            // 时钟篡改免疫：elapsedRealtime 基准记录「开始时刻 + 总时长」，
+            // 改系统墙钟不影响剩余计算；重启由 BootReceiver 调 restore 重锚。
+            .putLong("startElapsed", android.os.SystemClock.elapsedRealtime())
+            .putLong("durationMs", (until - System.currentTimeMillis()).coerceAtLeast(0))
+            .putBoolean("running", true)
+            .apply()
+        if (!polling) {
+            polling = true
+            startForegroundInternal()
+            handler.postDelayed(pollRunnable, 1200)
+        }
+        return START_STICKY
     }
 
     private val pollRunnable = object : Runnable {
@@ -82,6 +110,7 @@ class FocusLockService : Service() {
                 // 到点自动收锁：通知 + 复位
                 prefs.edit().putBoolean("running", false).apply()
                 polling = false
+                BlockingActivity.dismissCurrent()
                 postNotify("🔒 看守锁已解除", "专注时段结束，手机应用恢复自由。")
                 FocusWidgetProvider.pushAll(this@FocusLockService)
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -262,6 +291,17 @@ class FocusLockService : Service() {
         fun start(context: Context, packagesJson: String, untilEpochMs: Long): JSONObject {
             val intent = Intent(context, FocusLockService::class.java)
                 .putExtra("action", "start")
+                .putExtra("packages", packagesJson)
+                .putExtra("until", untilEpochMs)
+            context.startForegroundService(intent)
+            serviceRunning = true
+            return JSONObject().put("ok", true).put("running", true).put("until", untilEpochMs)
+        }
+
+        /** 通行证/白名单变化：保留现有计时基准，只换白名单并（必要时）延长截止。 */
+        fun update(context: Context, packagesJson: String, untilEpochMs: Long): JSONObject {
+            val intent = Intent(context, FocusLockService::class.java)
+                .putExtra("action", "update")
                 .putExtra("packages", packagesJson)
                 .putExtra("until", untilEpochMs)
             context.startForegroundService(intent)

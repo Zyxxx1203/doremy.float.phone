@@ -27,6 +27,7 @@ type DeviceActionBridgeLike = {
   hasUsageStatsAccess?: () => boolean;
   listInstalledApps?: () => string;
   focusLockStart?: (packagesJson: string, untilEpochMs: number) => string;
+  focusLockUpdate?: (packagesJson: string, untilEpochMs: number) => string;
   focusLockStop?: () => string;
   focusLockStatus?: () => string;
   focusWidgetUpdate?: (json: string) => string;
@@ -152,6 +153,17 @@ export function focusLockStart(packages: string[], untilEpochMs: number): Device
     return parseResult(raw, "看守锁未能启动");
   } catch {
     return { ok: false, reason: "看守锁调用失败" };
+  }
+}
+
+/** L2 看守锁：仅更新白名单/截止时间，不重置计时基准。 */
+export function focusLockUpdate(packages: string[], untilEpochMs: number): DeviceActionResult {
+  try {
+    const raw = bridge()?.focusLockUpdate?.(JSON.stringify(packages), untilEpochMs);
+    if (raw === undefined) return { ok: false, reason: "当前 App 版本不支持即时更新看守锁" };
+    return parseResult(raw, "看守锁名单未能更新");
+  } catch {
+    return { ok: false, reason: "看守锁更新失败" };
   }
 }
 

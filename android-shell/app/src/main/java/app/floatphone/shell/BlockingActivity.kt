@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.WindowManager
@@ -28,10 +30,23 @@ class BlockingActivity : AppCompatActivity() {
         const val EXTRA_REMAIN_MS = "remain_ms"
         const val EXTRA_CHAR_NAME = "char_name"
         const val EXTRA_APP_PKG = "app_pkg"
+
+        @Volatile private var current: BlockingActivity? = null
+
+        /** 白名单更新/手动解锁时撤掉当前覆盖页；下一轮轮询会按新名单重新判断。 */
+        fun dismissCurrent() {
+            val activity = current ?: return
+            current = null
+            activity.runOnUiThread { runCatching { activity.finish() } }
+        }
     }
+
+    private val tickHandler = Handler(Looper.getMainLooper())
+    private var countdown: Runnable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        current = this
         if (Build.VERSION.SDK_INT >= 27) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
@@ -90,6 +105,16 @@ class BlockingActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, 56)
         }
+        // 覆盖页自己也走秒，不能一直停在创建时的「剩余 xx:xx」。
+        val startedElapsed = SystemClock.elapsedRealtime()
+        countdown = object : Runnable {
+            override fun run() {
+                val left = (remainMs - (SystemClock.elapsedRealtime() - startedElapsed)).coerceAtLeast(0)
+                remain.text = "剩余 ${fmt(left)}"
+                if (left > 0) tickHandler.postDelayed(this, 1000)
+            }
+        }
+        tickHandler.post(countdown!!)
         val back = Button(this).apply {
             text = "▶️ 回去继续专注"
             setOnClickListener {
@@ -131,6 +156,13 @@ class BlockingActivity : AppCompatActivity() {
         if (km.inKeyguardRestrictedInputMode()) {
             // 锁屏状态：只展示，不允许交互穿透（按钮自然被锁屏挡住）
         }
+    }
+
+    override fun onDestroy() {
+        if (current === this) current = null
+        countdown?.let { tickHandler.removeCallbacks(it) }
+        countdown = null
+        super.onDestroy()
     }
 
     private fun fmt(ms: Long): String {

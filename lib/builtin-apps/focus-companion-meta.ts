@@ -58,6 +58,7 @@ export const FOCUS_COMPANION_MANIFEST: InstalledCustomApp["manifest"] =
     "ui.notification",
     "device.assist",
     "device.dnd.set",
+    "device.screenshot",
     "device.apps.list"
   ],
   "resources": {
@@ -281,6 +282,22 @@ export const FOCUS_COMPANION_MANIFEST: InstalledCustomApp["manifest"] =
           },
           "visibility": "shared",
           "handler": "inviteSleep"
+        },
+        {
+          "id": "focus-unlock",
+          "name": "解除看守锁",
+          "description": "当用户明确要求关掉专注/看守锁、他被锁得没法用手机，或继续锁下去会伤害他时调用。会结束当前专注并立即解除看守锁、恢复勿扰，历史记录保留；不要因为用户只是抱怨累就擅自解锁。",
+          "parameterSchema": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string",
+                "description": "为什么现在要解除，例如身体不舒服、紧急用机"
+              }
+            }
+          },
+          "visibility": "shared",
+          "handler": "focusUnlock"
         }
       ]
     },
@@ -399,6 +416,22 @@ export const FOCUS_COMPANION_MANIFEST: InstalledCustomApp["manifest"] =
         },
         "visibility": "shared",
         "handler": "inviteSleep"
+      },
+      {
+        "id": "focus-unlock",
+        "name": "解除看守锁",
+        "description": "当用户明确要求关掉专注/看守锁、他被锁得没法用手机，或继续锁下去会伤害他时调用。会结束当前专注并立即解除看守锁、恢复勿扰，历史记录保留；不要因为用户只是抱怨累就擅自解锁。",
+        "parameterSchema": {
+          "type": "object",
+          "properties": {
+            "reason": {
+              "type": "string",
+              "description": "为什么现在要解除，例如身体不舒服、紧急用机"
+            }
+          }
+        },
+        "visibility": "shared",
+        "handler": "focusUnlock"
       }
     ],
     "events": [

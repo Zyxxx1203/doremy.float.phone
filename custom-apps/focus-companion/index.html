@@ -864,7 +864,7 @@ function defaults() {
     whitelist: [{ name: '词典', note: '查词' }],
     alarm: { time: '07:00', repeat: true, volume: 70, enabled: false, charId: '' },
     story: { style: '温柔治愈', minutes: 10, charId: '' },
-    notif: true, syncChat: true, voiceMode: 'cue', voiceGapMs: 700,
+    notif: true, syncChat: false, voiceMode: 'cue', voiceGapMs: 700,
     sleepChatVoice: true,
     quizFocus: '', quizFocusMode: 'focus',
     reviewQuestions: 3, passRatio: 80, quizSource: 'ai', reviewSource: 'ai', askedQ: [],
@@ -950,6 +950,12 @@ async function loadSettings() {
     };
   }
   if (!S.settings.prompts || typeof S.settings.prompts !== 'object' || Array.isArray(S.settings.prompts)) S.settings.prompts = {};
+  /* 2026-11 默认变更：专注陪伴的逐句消息不再写进线上聊天室，避免刷屏。
+     老存档默认是 true，这里一次性迁到 false；用户仍可在设置里手动打开。 */
+  if (S.settings.syncChatDefaultV2 !== true) {
+    if (S.settings.syncChat === true) S.settings.syncChat = false;
+    S.settings.syncChatDefaultV2 = true;
+  }
   if (S.settings.masteryNeed == null) S.settings.masteryNeed = 3;
   if (!Array.isArray(S.settings.bankCats)) S.settings.bankCats = [];
   if (S.settings.punishCat == null) S.settings.punishCat = '';
@@ -1682,13 +1688,60 @@ function pushWidget(s) {
     if (r && typeof r.catch === 'function') r.catch(function () { });
   } catch (e) { }
 }
-/* 通行证生效/过期时重推白名单：看守锁的黑名单在启动时冻结，必须重推才能即时放行或重新锁上。 */
+/* 本场专注的绝对结束时刻：cycles 段专注 + 中间的 (cycles-1) 段休息。
+   看守锁的 until 必须始终用它，不能每次同步都 now+剩余+10 分钟，
+   否则每批一次通行证/每加一次时间，锁都会被悄悄延长。 */
+function sessionEndAt(s) {
+  if (!s) return Date.now();
+  const cycles = Math.max(1, Number(s.cycles) || 1);
+  const focusMs = Math.max(60000, (Number(s.focusMin) || 25) * 60000);
+  const breakMs = Math.max(0, (Number(s.breakMin) || 5) * 60000);
+  const base = (Number(s.startAt) || Date.now()) + cycles * focusMs + Math.max(0, cycles - 1) * breakMs;
+  /* 暂停/加时会顺延 phaseEndsAt；旧会话也可能没有 lockUntil。
+     至少覆盖「当前阶段结束 + 剩余轮次」，不能比当前倒计时更早收锁。 */
+  const cycle = Math.max(1, Number(s.cycle) || 1);
+  const remainingCycles = Math.max(0, cycles - cycle);
+  const phaseEnd = Number(s.phaseEndsAt) || 0;
+  return Math.max(base, phaseEnd + remainingCycles * (focusMs + breakMs));
+}
+/* 通行证生效/过期时重推白名单：看守锁的黑名单在启动时冻结，必须重推才能即时放行或重新锁上。
+   update 只换白名单/延长截止，不重置计时基准；老 APK 没有 update 时才退回 lockStart。 */
 function syncLockNow() {
   const s = S.session;
-  if (!s || s.status !== 'running' || !S.settings.assistLockOn) return;
-  if (typeof API === 'undefined' || !API || !API.device || !API.device.lockStart) return;
-  const until = Date.now() + Math.max(60000, ((s.phaseEndsAt || Date.now()) - Date.now()) + 600000);
-  sdk(() => API.device.lockStart({ packages: JSON.stringify(lockedAppsFor()), until }), null).catch(() => { });
+  if (!s || s.status !== 'running') return;
+  if (typeof API === 'undefined' || !API || !API.device) return;
+  const until = sessionEndAt(s);
+  s.lockUntil = until;
+  const payload = { packages: JSON.stringify(lockedAppsFor()), until };
+  const fn = API.device.lockUpdate || API.device.lockStart;
+  if (!fn) return;
+  sdk(() => fn(payload), null).catch(() => { });
+}
+async function releaseAssistLock() {
+  S.settings.assistLockOn = false;
+  await saveSettings(true);
+  await sdk(() => API.device.lockStop(), null).catch(() => { });
+  if (S.settings.assistDndOn) {
+    S.settings.assistDndOn = false;
+    await saveSettings(true);
+    await sdk(() => API.device.dndSet({ on: false }), null).catch(() => { });
+  }
+}
+/* 紧急解除：会话结束流程走校验，可能在复核页停留；这里直接停看守锁并结束计时。
+   角色工具和首页/专注页的手动按钮共用。 */
+async function forceUnlock(reason, opts) {
+  const s = S.session;
+  if (s && s.status === 'running') {
+    s.status = 'stopped';
+    s.endAt = Date.now();
+    s.stoppedAt = Date.now();
+    s.summary = String(reason || '看守锁已解除').slice(0, 200);
+    await saveSession(true);
+  }
+  await releaseAssistLock();
+  if (!(opts && opts.silent)) toast('🔓 看守锁已解除');
+  render();
+  return true;
 }
 /* ── 应用分类与推荐（角色审批口径）────────────────────────────
    工作/学习类：常驻白名单可以批；娱乐类：只给限时通行证，避免「永久放行游戏」。 */
@@ -2063,7 +2116,8 @@ async function startSession(o) {
       }).catch(() => { });
     }
     const pkgs = lockedAppsFor();
-    const until = Date.now() + ((Number(s.focusMin) || 25) * 60 + (Number(s.cycles || 1) - 1) * (Number(s.breakMin) || 5) * 60 + 600) * 1000;
+    s.lockUntil = Number(s.lockUntil) || sessionEndAt(s);
+    const until = s.lockUntil;
     if (pkgs.length) {
       sdk(() => API.device.lockStart({ packages: JSON.stringify(pkgs), until }), null).then((r) => {
         if (r && r.ok) {
@@ -2094,7 +2148,7 @@ async function onPhaseEnd() {
       pushMsg(s, 'sys', `第 ${s.cycle}/${s.cycles} 轮结束，休息 ${s.breakMin} 分钟`);
       await saveSession(true); notify('休息一下', '角色也休息了，不催你'); render(); return;
     }
-    s.status = 'review'; stopTicking();
+    s.status = 'review'; await releaseAssistLock(); stopTicking();
     s.noteRestUntil = 0;                    // 纸条换来的休息：换阶段就结束
     S.draft.reviewErr = '';                 // 新一轮校验：清掉上一轮的失败提示
     pushMsg(s, 'sys', '本轮专注结束，进入校验流程');
@@ -2103,7 +2157,7 @@ async function onPhaseEnd() {
     go('review'); return;
   }
   s.cycle = (s.cycle || 1) + 1;
-  if (s.cycle > s.cycles) { s.status = 'done'; s.endAt = Date.now(); stopTicking(); await saveSession(true); render(); return; }
+  if (s.cycle > s.cycles) { s.status = 'done'; s.endAt = Date.now(); await releaseAssistLock(); stopTicking(); await saveSession(true); render(); return; }
   s.phase = 'focus'; s.phaseEndsAt = Date.now() + s.focusMin * 60000;
   pushMsg(s, 'sys', `休息结束 · 第 ${s.cycle}/${s.cycles} 轮专注开始`);
   await saveSession(true); render(); roleSay(s, 'start');
@@ -2766,7 +2820,7 @@ function openWlSheet() {
 }
 /* ---------- 通行证期随机查岗（§7.6 M2 版：自证拍照） ----------
    通行证签发时在生效窗口内随机挑一个时刻排查岗（宿主任务发系统通知，
-   页面活着时弹「拍照自证」层，10 分钟内交一张照片发进聊天室由 TA 亲眼判）；
+   页面活着时弹「截屏自证」层，10 分钟内截一张当前屏幕发进聊天室由 TA 亲眼判）；
    超时没交 = 视为违规：通行证作废 + 信任分 -10 + TA 记一笔。
    （截图判卷与自动踢回前台属于 L2/壳侧能力，随 APK 升级开放。） */
 function scheduleWlCheckin(pass) {
@@ -2779,7 +2833,7 @@ function scheduleWlCheckin(pass) {
   sdk(() => API.tasks.schedule({
     id: 'focus_wlchk_' + pass.id, delayMs: Math.max(60000, fireAt - Date.now()),
     actions: [
-      { type: 'shell.notify', title: '📸 ' + charName(S.settings.wlCheckin.charId) + ' 查岗', body: '通行证（' + pass.app + '）抽查：10 分钟内拍一张你正在干嘛的照片。' }
+      { type: 'shell.notify', title: '📸 ' + charName(S.settings.wlCheckin.charId) + ' 查岗', body: '通行证（' + pass.app + '）抽查：10 分钟内截一张当前屏幕作为自证。' }
     ]
   }), null);
 }
@@ -2787,9 +2841,9 @@ function openWlCheckinSheet() {
   const c = S.settings.wlCheckin;
   const cid = c.charId || anyCharId();
   openSheet(`<h3>📸 TA 查岗 · ${esc(c.passApp)}</h3>
-    <div class="sub">${esc(charName(cid))} 正在抽查这张通行证 —— 拍一张你正在干嘛的照片发进聊天室，他亲眼看过才算数。</div>
+    <div class="sub">${esc(charName(cid))} 正在抽查这张通行证 —— 截一张当前屏幕发进聊天室，他亲眼看过才算数。</div>
     <div class="row mt10" style="gap:8px">
-      <button class="btn primary grow" data-act="wlCheckinPhoto">📷 拍照自证</button>
+      <button class="btn primary grow" data-act="wlCheckinPhoto">📸 截屏自证</button>
       <button class="btn ghost grow" data-act="closeSheet">先收下</button></div>
     <div class="tiny mt8">时限 10 分钟（到 ${hm(c.deadlineAt)}）；超时没交按「被抓」处理：通行证作废、信任分下降。</div>`);
 }
@@ -2798,10 +2852,18 @@ async function wlCheckinPhoto() {
   if (!c || c.done) return;
   const cid = c.charId || anyCharId();
   if (!cid) { toast('还没有角色'); return; }
-  toast('选一张你正在干嘛的照片…');
+  if (!API || !API.device || typeof API.device.screenshot !== 'function') {
+    toast('当前壳版本不支持直接截屏，请更新安卓 APK');
+    return;
+  }
+  toast('正在截取当前屏幕…');
   let dataUrl = '';
-  try { dataUrl = await sdk(() => API.media.pick({ accept: 'image/*' }), null).then(r => (r && r.file && r.file.dataUrl) ? String(r.file.dataUrl) : ''); } catch (e) { }
-  if (!dataUrl) { toast('没有选照片，查岗还挂着'); return; }
+  try {
+    const shot = await sdk(() => API.device.screenshot(), null);
+    if (shot && shot.ok) dataUrl = String(shot.dataUrl || '');
+    else toast('截屏失败：' + ((shot && shot.reason) || '请确认无障碍截屏权限已开启'));
+  } catch (e) { toast('截屏失败，请确认无障碍权限'); }
+  if (!dataUrl) return;
   c.done = 'photo'; await saveSettings(true);
   const ok1 = await sendImageCard(cid, dataUrl, '📸 查岗自证 · ' + c.passApp);
   await sdk(() => API.chat.requestReply({ characterId: cid }), null);
@@ -4936,6 +4998,8 @@ async function askExtendFocus(s, minutes) {
     '延长 ' + minutes + ' 分钟');
   if (!ok) { toast('总时长不变，倒计时照原样走'); return; }
   s.focusMin = total + minutes;
+  s.lockUntil = sessionEndAt(s);
+  syncLockNow();
   s.phaseEndsAt = Number(s.phaseEndsAt || Date.now()) + minutes * 60000;
   pushMsg(s, 'sys', `本次专注总时长延长 ${minutes} 分钟（现 ${s.focusMin} 分钟，还剩约 ${Math.round(remainSec() / 60)} 分钟）`);
   S.lastTick = Date.now();
@@ -5141,6 +5205,9 @@ VIEWS.running = function () {
     ${isBreak ? `<button class="btn teal grow" data-act="skipBreak">跳过休息</button>`
       : `<button class="btn teal grow" data-act="openQA">❓ 答疑</button>`}
   </div>
+  ${(s.assistLevel === 'L1' || s.assistLevel === 'L2' || s.assistLevel === 'L3') ? `<div class="row" style="gap:9px;margin:-4px 0 12px">
+    <button class="btn sm ghost grow" data-act="wlApplyOpen">🎟 申请通行证</button>
+    <button class="btn sm ghost grow" data-act="forceUnlockAsk">🔓 解除看守锁</button></div>` : ''}
   ${(!isBreak && !s.paused) ? (function () {
       const used = noteOfSession(s).length, lim = noteLimit();
       const leftN = lim ? Math.max(0, lim - used) : 99;
@@ -6395,6 +6462,8 @@ Object.assign(ACTIONS, {
       if (endAt < Date.now() + 60000) endAt = Date.now() + 60000;   // 别把倒计时减到已经没时间
       s.phaseEndsAt = endAt;
       s.focusMin = Math.max(1, Number(s.focusMin || 25) + min);
+      s.lockUntil = sessionEndAt(s);
+  syncLockNow();
       pushMsg(s, 'sys', `⏱ 本次专注总时长${min > 0 ? '延长' : '缩短'} ${Math.abs(min)} 分钟（现 ${s.focusMin} 分钟，还剩约 ${Math.max(0, Math.round((endAt - Date.now()) / 60000))} 分钟）`);
       S.lastTick = Date.now();
       await saveSession(true);
@@ -6423,6 +6492,8 @@ async function askExtendFocus(s, minutes) {
     '延长 ' + minutes + ' 分钟');
   if (!ok) { toast('总时长不变，倒计时照原样走'); return; }
   s.focusMin = total + minutes;
+  s.lockUntil = sessionEndAt(s);
+  syncLockNow();
   s.phaseEndsAt = Number(s.phaseEndsAt || Date.now()) + minutes * 60000;
   pushMsg(s, 'sys', `⏱ 本次专注总时长延长 ${minutes} 分钟（现 ${s.focusMin} 分钟，还剩约 ${Math.round(remainSec() / 60)} 分钟）`);
   S.lastTick = Date.now();
@@ -7092,6 +7163,7 @@ VIEWS.me = function () {
       <button class="btn sm grow" data-act="lockedAppsSheet">🧱 白名单 ${(cfg('lockedApps') || []).length}</button>
       <button class="btn sm grow" data-act="wlSheetOpen">🎟 通行证 ${activeWlPasses().length}</button>
     </div>
+    <button class="btn sm ghost block mt8" data-act="forceUnlockAsk">🔓 解除当前看守锁</button>
     <div class="row mt8" style="gap:8px">
       <button class="btn sm ghost grow" data-act="widgetPin">🧩 桌面组件</button>
     </div></div>
@@ -7162,7 +7234,7 @@ VIEWS.me = function () {
   <div class="card"><h3>通知与同步</h3>
     <div class="chips mt6">
       <button class="chip ${cfg('notif') ? 'on' : ''}" data-act="toggleSetting" data-k="notif">角色后台提醒通知</button>
-      <button class="chip ${cfg('syncChat') ? 'on' : ''}" data-act="toggleSetting" data-k="syncChat">角色消息同步到聊天室</button>
+      <button class="chip ${cfg('syncChat') ? 'on' : ''}" data-act="toggleSetting" data-k="syncChat">角色消息同步到聊天室（默认关）</button>
     </div>
     <label class="fl">角色提醒的语音形式</label>
     <div class="chips">${VOICE_MODES.map(([k, n]) => `<button class="chip ${(cfg('voiceMode') || 'cue') === k ? 'on' : ''}" data-act="setVoiceMode" data-v="${k}">${n}</button>`).join('')}</div>
@@ -8319,6 +8391,10 @@ Object.assign(ACTIONS, {
       /* 只有专注阶段才动倒计时：休息阶段加任务不该把休息时间拉长 */
       if (s.phase === 'focus') {
         s.focusMin = Math.max(1, Number(s.focusMin || 25) + min);
+      s.lockUntil = sessionEndAt(s);
+  syncLockNow();
+        s.lockUntil = sessionEndAt(s);
+  syncLockNow();
         s.phaseEndsAt = Number(s.phaseEndsAt || Date.now()) + min * 60000;
         S.lastTick = Date.now();
         msg += ' · 专注总时长延长 ' + min + ' 分钟（现 ' + s.focusMin + ' 分钟）';
@@ -8354,6 +8430,11 @@ Object.assign(ACTIONS, {
     await saveSession(true); render();
   },
   skipBreak: async () => { const s = S.session; if (!s || s.phase !== 'break') return; s.phaseEndsAt = Date.now(); await onPhaseEnd(); },
+  forceUnlockAsk: async () => {
+    const ok = await confirmBox('解除看守锁？', '会立即结束当前专注并恢复手机应用，不再走结束校验。历史记录会保留。', '解除');
+    if (!ok) return;
+    await forceUnlock('用户手动解除看守锁');
+  },
   abortAsk: async () => {
     const s = S.session; if (!s) return;
     const ok = await confirmBox('结束当前阶段？', s.phase === 'break' ? '将跳过休息进入下一轮。' : '将立即进入结束校验流程（填写反馈 → 出题答题）。', '结束');
@@ -11983,6 +12064,7 @@ Object.assign(ACTIONS, {
     p.status = 'revoked';
     if (p.dbId) await DB.update(T.WLP, p.dbId, JSON.parse(JSON.stringify(p)));
     toast('通行证已作废：' + p.app);
+    syncLockNow();
     openWlSheet(); render();
   },
   apptStart: async el => {
@@ -17252,8 +17334,8 @@ ACTIONS.reload = () => location.reload();
 /* ==========================================================
    本版新增 · TA 主动来约你（工具 / 卡片指令 / 待办 / 邀请）
    ----------------------------------------------------------
-   ① 5 个角色工具：查专注情况 / 看昨晚睡得怎么样 / 帮我记一条待办 /
-      跟我约一段专注 / 邀我一起睡。角色在普通聊天里就能调用；
+   ① 6 个角色工具：查专注情况 / 看昨晚睡得怎么样 / 帮我记一条待办 /
+      跟我约一段专注 / 邀我一起睡 / 解除看守锁。角色在普通聊天里就能调用；
       APP 没打开时宿主会临时拉起这段脚本执行 handler。
    ② 两种卡片指令：[陪睡:模式:分钟:想说的话]、[约专注:时间:事项:分钟]
       —— 后台监听聊天新消息，收到就写进「TA 的邀请」并发通知。
@@ -18144,8 +18226,21 @@ function registerTools() {
       userNotice: '邀请已发给他：他打开专注 APP 就能一键躺下'
     };
   });
+  /* 6) 角色主动解除看守锁 */
+  API.tools.handle('focusUnlock', async (args, ctx) => {
+    await ensureBasics();
+    const cid = (ctx && ctx.characterId) || (args && args.characterId) || anyCharId();
+    const reason = String((args && args.reason) || '角色判断继续锁下去不合适').slice(0, 160);
+    const running = !!(S.session && S.session.status === 'running');
+    await forceUnlock(reason, { silent: true });
+    if (cid) await syncTimeline(cid, `角色解除了看守锁：${reason}`, 'focus_unlock', {});
+    return {
+      success: true,
+      data: { unlocked: true, wasRunning: running },
+      userNotice: running ? '专注已结束，看守锁和勿扰都解除了' : '看守锁已解除',
+    };
+  });
 }
-/* ---------- 后台监听：[陪睡:…] / [约专注:…] ---------- */
 function startInviteListener() {
   if (!API || !API.on || S.inviteListenerOn) return;
   S.inviteListenerOn = true;
