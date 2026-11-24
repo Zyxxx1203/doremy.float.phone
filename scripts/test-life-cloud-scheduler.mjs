@@ -59,6 +59,7 @@ assert.match(scheduler, /player_activity/);
 assert.match(snapshot, /const scheduleSlots = state\.schedules/);
 assert.match(snapshot, /actualLocationUntil/);
 assert.match(snapshot, /autonomyEnabled/);
+assert.match(snapshot, /proactiveEnabled: state\.settings\.enableProactiveSceneMessages !== false/);
 assert.match(snapshot, /proactiveIntervalMax/);
 assert.match(snapshot, /version: 5/);
 assert.doesNotMatch(snapshot, /if \(!state\.settings\.enabled\) return false/);

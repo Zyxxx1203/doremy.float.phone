@@ -87,7 +87,7 @@ export async function syncLifeScheduleSnapshot(force = false): Promise<boolean> 
     const scheduleSettings = {
       enabled: state.settings.enabled,
       autonomyEnabled: state.settings.enableCharacterAutonomy,
-      proactiveEnabled: false,
+      proactiveEnabled: state.settings.enableProactiveSceneMessages !== false,
       proactiveIntervalMin: state.settings.proactiveSceneIntervalMinutes ?? 5,
       proactiveIntervalMax: state.settings.proactiveSceneIntervalMaxMinutes ?? 15,
       scheduleVersion,
