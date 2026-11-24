@@ -67,7 +67,7 @@ assert.match(scheduler, /if \(timer\) return \(\) => undefined/);
 assert.doesNotMatch(app, /splitLifeReplySegments/);
 assert.match(app, /preserveLifeDialogueSegments\(parsed\.dialogues\)/);
 assert.match(builtinPrompts, /没有对白也没有动作时，仍输出严格 JSON 对象/);
-assert.match(builtinPrompts, /不得连续两轮纯行动/);
+assert.match(builtinPrompts, /禁止连续 2 轮 dialogue 都为空/);
 assert.match(builtinPrompts, /实际附带截图时，可以描述截图中确实可见的内容/);
 for (const appId of ["life", "photo_wall", "checkin", "watch_together", "phone_widget", "reality_bridge"]) {
   assert.match(debugPromptRegistry, new RegExp('id: "' + appId + '"'));
