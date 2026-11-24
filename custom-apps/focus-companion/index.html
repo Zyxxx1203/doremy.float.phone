@@ -181,6 +181,7 @@ background:linear-gradient(150deg,rgba(124,140,255,.22),rgba(94,234,212,.08))}
 .card .sub{line-height:1.6}
 .hubbar{position:sticky;top:calc(var(--ai-phone-app-bar-top,54px) + 40px);z-index:12;
 background:rgba(15,19,30,.88);backdrop-filter:blur(14px);border-color:rgba(255,255,255,.1);padding:9px 11px;margin-bottom:12px}
+.item.on{border-color:rgba(124,140,255,.55);background:rgba(124,140,255,.10)}
 .hubbar .chip{padding:6px 11px;font-size:12px}
 .card.hero{border-color:var(--line);background:var(--card)}
 .card.hero .hero-t{font-size:19.5px;font-weight:700;margin-top:3px;line-height:1.35}
@@ -1709,28 +1710,86 @@ function pickFromAppList(target) {
   sdk(() => API.device.appsList(), null).then((res) => {
     if (!res || !res.ok || !(res.apps || []).length) { toast((res && res.reason) || '拿不到应用列表，请手输名称'); return; }
     S.draft.appList = res.apps;
+    S.draft.pickerSel = [];
     renderAppPickerSheet('');
   }).catch(() => toast('拿不到应用列表，请手输名称'));
 }
 function renderAppPickerSheet(kw) {
-  const list = (S.draft.appList || []).filter(x => !kw || x.label.toLowerCase().indexOf(String(kw).toLowerCase()) >= 0 || x.package.toLowerCase().indexOf(String(kw).toLowerCase()) >= 0).slice(0, 80);
-  openSheet(`<h3>📱 选择手机应用</h3>
+  /* 白名单目标支持多选：勾选多个应用一次加入；其它目标仍是点一个即选 */
+  const multi = S.draft.appPickerTarget === 'whitelist';
+  if (multi && !Array.isArray(S.draft.pickerSel)) S.draft.pickerSel = [];
+  const sel = new Set(multi ? (S.draft.pickerSel || []) : []);
+  S.draft.pickerKw = kw || '';
+  const q = String(kw || '').toLowerCase();
+  const list = (S.draft.appList || []).filter(x => !q || x.label.toLowerCase().indexOf(q) >= 0 || x.package.toLowerCase().indexOf(q) >= 0).slice(0, 120);
+  openSheet(`<h3>📱 ${multi ? '选择应用（可多选）' : '选择手机应用'}</h3>
     <input class="input mt6" id="appSearch" placeholder="搜应用名 / 包名" value="${esc(kw || '')}">
-    <div style="max-height:46dvh;overflow:auto" class="mt8">
-      ${list.length ? list.map((x, i) => `<div class="item" data-pick="${i}"><div class="ic">📱</div><div class="grow"><div style="font-size:13px">${esc(x.label)}</div><div class="tiny">${esc(x.package)}</div></div></div>`).join('') : '<div class="empty">没有匹配的应用</div>'}
+    ${multi ? `<div class="row mt8" style="gap:8px">
+      <button class="btn sm ghost grow" data-pick-all>全选当前结果</button>
+      <button class="btn sm ghost grow" data-pick-none>清空选择</button></div>` : ''}
+    <div style="max-height:44dvh;overflow:auto" class="mt8">
+      ${list.length ? list.map((x, i) => `<div class="item${sel.has(x.package) ? ' on' : ''}" data-pick="${i}"><div class="ic">📱</div><div class="grow"><div style="font-size:13px">${esc(x.label)}</div><div class="tiny">${esc(x.package)}</div></div>${multi ? `<div class="tiny" style="min-width:18px;text-align:right">${sel.has(x.package) ? '✓' : ''}</div>` : ''}</div>`).join('') : '<div class="empty">没有匹配的应用</div>'}
     </div>
+    ${multi ? `<button class="btn primary block mt10" data-pick-add ${sel.size ? '' : 'disabled'}>加入白名单（${sel.size}）</button>` : ''}
     <button class="btn ghost block mt8" data-act="closeSheet">取消</button>`);
   const w = modalStack[modalStack.length - 1];
-  if (w) w.addEventListener('click', (e) => {
+  if (!w) return;
+  const addBtn = w.querySelector('[data-pick-add]');
+  const syncAdd = () => {
+    if (!addBtn) return;
+    const n = (S.draft.pickerSel || []).length;
+    addBtn.textContent = '加入白名单（' + n + '）';
+    addBtn.disabled = n === 0;
+  };
+  w.addEventListener('click', (e) => {
     const input = e.target.closest('#appSearch');
     const row = e.target.closest('[data-pick]');
     if (row && S.draft.appList) {
       const app = list[Number(row.dataset.pick)];
-      if (app) applyAppPick(app);
+      if (!app) return;
+      if (!multi) { applyAppPick(app); return; }
+      const cur = new Set(S.draft.pickerSel || []);
+      if (cur.has(app.package)) cur.delete(app.package); else cur.add(app.package);
+      S.draft.pickerSel = Array.from(cur);
+      row.classList.toggle('on', cur.has(app.package));
+      const mark = row.lastElementChild;
+      if (mark && mark !== row.firstElementChild) mark.textContent = cur.has(app.package) ? '✓' : '';
+      syncAdd();
       return;
     }
-    if (input) input.addEventListener('input', () => renderAppPickerSheet(input.value));
+    if (e.target.closest('[data-pick-all]')) {
+      const cur = new Set(S.draft.pickerSel || []);
+      list.forEach(x => cur.add(x.package));
+      S.draft.pickerSel = Array.from(cur);
+      renderAppPickerSheet(S.draft.pickerKw);
+      return;
+    }
+    if (e.target.closest('[data-pick-none]')) {
+      S.draft.pickerSel = [];
+      renderAppPickerSheet(S.draft.pickerKw);
+      return;
+    }
+    if (e.target.closest('[data-pick-add]')) {
+      const picked = (S.draft.pickerSel || []).map(pkg => (S.draft.appList || []).find(x => x.package === pkg)).filter(Boolean);
+      if (picked.length) applyAppPickMulti(picked);
+      return;
+    }
   });
+  const searchEl = w.querySelector('#appSearch');
+  if (searchEl) searchEl.addEventListener('input', () => renderAppPickerSheet(searchEl.value));
+  syncAdd();
+}
+/* 多选确认：合并进常驻白名单（同包名去重，新名覆盖旧名） */
+function applyAppPickMulti(items) {
+  const cur = cfg('lockedApps') || [];
+  const map = new Map(cur.filter(x => x.pkg).map(x => [x.pkg, x]));
+  for (const a of items) map.set(a.package, { name: a.label, pkg: a.package });
+  S.settings.lockedApps = Array.from(map.values());
+  saveSettings(true);
+  S.draft.pickerSel = [];
+  closeAllSheets();
+  toast('🧱 已加入 ' + items.length + ' 个应用到常驻白名单');
+  render();
 }
 function applyAppPick(app) {
   closeAllSheets();
