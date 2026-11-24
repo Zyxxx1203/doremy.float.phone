@@ -34,6 +34,11 @@ function isSameBuiltin(app: InstalledCustomApp, id: string, manifest: { id?: str
   const m = app.manifest || ({} as InstalledCustomApp["manifest"]);
   const candidates = [app.id, m.id, (m as unknown as { identifier?: string }).identifier].filter(Boolean);
   if (candidates.some((v) => String(v) === id)) return true;
+  /* 市场安装器会给 id 加前缀/后缀：app_<manifestId>_<hash>。按前缀也算同一个应用。 */
+  if (candidates.some((v) => {
+    const text = String(v);
+    return text.indexOf("app_" + id + "_") === 0 || text.replace(/^app_/, "").split("_").slice(0, String(id).split(".").length).join(".") === id;
+  })) return true;
   const name = String(m.name || "").trim();
   return Boolean(name) && name === String(manifest.name || "").trim();
 }
