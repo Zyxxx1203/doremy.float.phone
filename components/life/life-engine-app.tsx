@@ -57,7 +57,7 @@ type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; av
 type QuickPlanDraft = { id: string; ownerType: LifeOwnerType; ownerId: string; startAt: string; endAt: string; title: string; locationName: string; saveLocationToLibrary?: boolean; operation?: "add" | "move" | "update" | "cancel"; existingScheduleId?: string; reason?: string; guided?: boolean };
 type ManualLocationMode = "stay-30" | "stay-60" | "stay-120" | "pin" | "follow" | "manual";
 const PLAYER_ID = "player";
-const LIFE_PROACTIVE_MESSAGES_ENABLED = false; // Temporarily pause life-initiated messages; keep schedules/scenes.
+const LIFE_PROACTIVE_MESSAGES_ENABLED = true; // 用户明确要求恢复主动消息；日程与场景保持原逻辑。
 const DAY_MS = 24 * 60 * 60 * 1000;
 const INITIAL_LOCATIONS: LifeLocation[] = [
   { id: "home", name: "家", description: "熟悉而放松的私人空间。日常起居、休息、吃饭，也可以在这里安静地陪伴彼此。", atmosphere: "温暖、私密、放松；随着时间和在场角色的状态自然变化。", layout: "入户门通向客厅；客厅有沙发和茶几，窗边有一处可以坐下的位置；厨房与卧室分别位于内侧。", props: ["沙发", "茶几", "抱枕", "窗帘", "水杯"], visibility: "private" },
@@ -1240,7 +1240,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     });
     recordLifeDiagnostic({ source: "主动调度", event: result.ok ? "手动主动任务已挂载" : "手动主动任务挂载失败", status: result.ok ? "ok" : "error", detail: result.ok ? "手动主动消息预约已提交。" : result.reason, meta: { sceneId: scene.id, characterId: character.id, sessionId: session.id } });
     setNotice(result.ok
-      ? "已挂起一条主动消息；1 分钟后由服务端生成。"
+      ? "已挂起一条主动消息；1 分钟后由服务端生成。可在「主动消息排期」查看。"
       : "挂起失败：" + result.reason);
   }, [characters, lifeAppTags, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages]);
 

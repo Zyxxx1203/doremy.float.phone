@@ -220,6 +220,28 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
     // Life-scene notification/reply chain: reuse the production outbox consumer so
     // diagnostics exercise the same return path instead of maintaining a parallel parser.
     try {
+      const before = loadVirtualLifeState();
+      const activeScene = before.scenes.find(scene => scene.status === "active");
+      const sceneCharacters = activeScene?.participants.filter(participant =>
+        participant.ownerType === "character" && participant.activity !== "离开"
+      ) ?? [];
+      const sceneReady = Boolean(
+        before.settings.enabled
+        && before.settings.enableCharacterAutonomy
+        && before.settings.enableProactiveSceneMessages !== false
+        && activeScene?.participants.some(participant => participant.ownerType === "player" && participant.ownerId === "player")
+        && sceneCharacters.length > 0
+      );
+      result.push({
+        id: "life-scene-autonomy",
+        title: "生活现场主动消息条件",
+        status: sceneReady ? "ok" : "warn",
+        detail: sceneReady
+          ? `主动消息开关已启用；当前现场「${activeScene?.locationName || "未命名地点"}」有 ${sceneCharacters.length} 位在场角色。`
+          : "当前没有满足条件的活动现场，或生活系统/角色自主发言开关未启用。",
+        fix: sceneReady ? undefined : "进入生活现场，确认玩家与至少一位角色在场，并检查生活系统、角色自主行为和主动消息开关。"
+      });
+
       const shellReplyBridge = hasNotificationReplyBridge();
       result.push({
         id: "life-notification-reply-bridge",
@@ -242,14 +264,14 @@ export function RuntimeDiagnostics({ onNotice }: { onNotice?: (message: string) 
       const latestReply = [...after.sceneMessages].reverse().find(message => message.id.startsWith("notification-reply-"));
       result.push({
         id: "life-scene-outbox",
-        title: "生活现场回传箱",
+        title: "后台主动消息回写",
         status: !cloudReady ? "warn" : latestSceneMessage ? "ok" : "info",
         detail: !cloudReady
-          ? "当前环境没有可用的后台回传箱路径。"
+          ? "当前环境没有可用的后台回传箱路径，无法验证云端主动消息回写。"
           : latestSceneMessage
-            ? `已找到云端回写记录（${new Date(latestSceneMessage.createdAt).toLocaleString()}）；本次已通过正式回传箱消费链路检查待处理记录。离线主动消息当前已暂停。`
-            : "回传箱消费已尝试，但本地没有云端生活现场记录。离线主动消息当前已暂停；此项只验证回传箱消费链路。",
-        fix: !cloudReady ? "安卓壳应走站点任务/回传箱；浏览器需启用个人云推送并部署对应 Edge Functions。" : undefined
+            ? `已找到云端回写记录（${new Date(latestSceneMessage.createdAt).toLocaleString()}）；本次已通过正式回传箱消费链路检查待处理记录。`
+            : "回传箱消费已尝试，但本地没有云端生活现场记录。仅凭空回传箱不能证明后台调度持续运行。",
+        fix: !cloudReady ? "安卓壳应走站点任务/回传箱；浏览器需启用个人云推送并部署对应 Edge Functions。" : !latestSceneMessage ? "保持一个角色在活动生活现场，等待下一次后台主动触发后重跑检测；同时检查 push_jobs 与 push_outbox 服务端记录。" : undefined
       });
       result.push({
         id: "life-notification-reply-writeback",

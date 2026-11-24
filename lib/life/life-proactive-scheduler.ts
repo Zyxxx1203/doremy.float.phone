@@ -18,7 +18,7 @@ import { recordLifeDiagnostic } from "./life-diagnostics";
 import { LIFE_PRESENCE_LEASE_UPDATED_EVENT } from "./life-scheduler-coordinator";
 
 const PLAYER_ID = "player";
-const LIFE_PROACTIVE_MESSAGES_ENABLED = false; // Keep server-side life scheduling, disable message jobs.
+const LIFE_PROACTIVE_MESSAGES_ENABLED = true; // 用户明确要求恢复主动消息：日程与消息任务都保持启用。
 const ARM_META_PREFIX = "life-schedule-arm:";
 const STATUS_KEY = "life-proactive-last-status-v1";
 /** 角色未来七日日程不足 24 小时时，自动续排一次。 */
