@@ -183,7 +183,22 @@ function preserveCustomAppPresetPrompts(fresh: PresetConfig, previous: PresetCon
  */
 function mergeMissingBuiltinAppPrompts(existing: PresetConfig): PresetConfig {
     const freshPrompts = createBuiltinAppPrompts();
-    const existingIds = new Set((existing.prompts ?? []).map(prompt => prompt.identifier));
+    /* 先按 identifier / 名称去重：历史版本可能把同一条内置条目写了两份 */
+    const seenId = new Set<string>();
+    const seenName = new Set<string>();
+    const dedupedPrompts = (existing.prompts ?? []).filter((prompt) => {
+        const key = String(prompt.identifier || "");
+        const nameKey = String(prompt.name || "").trim();
+        if (key && seenId.has(key)) return false;
+        if (nameKey && seenName.has(nameKey)) return false;
+        if (key) seenId.add(key);
+        if (nameKey) seenName.add(nameKey);
+        return true;
+    });
+    if (dedupedPrompts.length !== (existing.prompts ?? []).length) {
+        existing = { ...existing, prompts: dedupedPrompts };
+    }
+    const existingIds = new Set(dedupedPrompts.map(prompt => prompt.identifier));
     const missing = freshPrompts.filter(prompt => !existingIds.has(prompt.identifier));
     if (missing.length === 0) return existing;
 

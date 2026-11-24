@@ -6,9 +6,10 @@
  *  · 新增条目追加到末尾，不重排已有条目
  *  · prompt_order 同步追加，默认启用
  */
-import { createBuiltinPreset } from "./builtin-preset";
+import { BUILTIN_PRESET_VERSION, createBuiltinPreset } from "./builtin-preset";
 import { loadPresets, savePresets } from "./settings-storage";
 import type { PresetConfig, Prompt } from "./settings-types";
+import { kvGet, kvSet } from "./kv-db";
 
 export type PresetSyncResult = {
     presetId: string;
@@ -52,4 +53,42 @@ export function syncBuiltinEntriesIntoAllPresets(): PresetSyncResult[] {
     });
     if (results.length) savePresets(next);
     return results;
+}
+
+/* ── 批量补全与版本提示 ───────────────────────────────────── */
+
+/** 所有预设的缺失情况（用于「全部补全」按钮和角标提示）。 */
+export type PresetSyncStatus = {
+    missing: number;
+    affected: Array<{ id: string; name: string; missing: number }>;
+    version: number;
+    dismissed: boolean;
+};
+
+const HINT_DISMISS_KEY = "ai_phone_preset_sync_hint_dismissed_v1";
+
+export function presetSyncStatus(): PresetSyncStatus {
+    const builtin = createBuiltinPreset();
+    const builtinIds = new Set((builtin.prompts || []).map((p) => p.identifier));
+    const affected: PresetSyncStatus["affected"] = [];
+    let missing = 0;
+    for (const preset of loadPresets()) {
+        const have = new Set((preset.prompts || []).map((p) => p.identifier));
+        const count = Array.from(builtinIds).filter((id) => !have.has(id)).length;
+        if (count > 0) {
+            affected.push({ id: preset.id, name: preset.name, missing: count });
+            missing += count;
+        }
+    }
+    let dismissed = false;
+    try {
+        dismissed = kvGet(HINT_DISMISS_KEY) === String(BUILTIN_PRESET_VERSION);
+    } catch { /* 读不到就当没忽略 */ }
+    return { missing, affected, version: BUILTIN_PRESET_VERSION, dismissed };
+}
+
+export function dismissPresetSyncHint(): void {
+    try {
+        kvSet(HINT_DISMISS_KEY, String(BUILTIN_PRESET_VERSION));
+    } catch { /* 忽略 */ }
 }
