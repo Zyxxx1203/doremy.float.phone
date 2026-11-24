@@ -274,12 +274,14 @@ export function LifeDiagnosticsPanel() {
 
   const resetLife = async () => {
     if (resetBusy) return;
-    if (!window.confirm("重置生活系统？将清除生活现场、日程、邀约、生活记录和生活通知；角色卡、普通聊天、照片墙及 API 配置会保留。此操作不可撤销。")) return;
+    if (!window.confirm("重置生活系统？将清空生活现场、七日日程、邀约活动、生活记录与通知、地点库及文件夹、外观与生活设置、观察生活记录（含图片）。角色卡、普通聊天、照片墙和 API 配置会保留。重置后生活引擎为关闭状态，需要时请到设置重新开启。此操作不可撤销。")) return;
     setResetBusy(true);
     setResetResult("");
     try {
-      await resetLifeSystemData();
-      setResetResult("已重置");
+      const result = await resetLifeSystemData();
+      setResetResult(result.cloudOk
+        ? "已重置本机生活数据（含观察生活记录），云端生活任务也已清理。生活引擎已关闭，可在设置中重新开启。"
+        : "已重置本机生活数据（含观察生活记录）。生活引擎已关闭，可在设置中重新开启。云端任务清理未确认：" + (result.cloudError || "服务端未配置") + "；不影响本机重置。");
       await refresh();
     } catch (error) {
       setResetResult("重置失败：" + (error instanceof Error ? error.message : String(error)));
@@ -451,6 +453,7 @@ export function LifeDiagnosticsPanel() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
             <b className="text-sm text-rose-900">完整重置生活系统</b>
+            <p className="mt-1 text-[11px] leading-relaxed text-rose-800/80">清理生活现场、七日日程、邀约、生活记录与通知、地点库及文件夹、外观与生活设置、观察生活记录（含图片）。重置后生活引擎为关闭状态。</p>
           </div>
           <button type="button" onClick={() => void resetLife()} disabled={resetBusy} className="min-h-10 rounded-xl border border-rose-300 bg-white px-3 text-xs font-semibold text-rose-800 disabled:opacity-50">{resetBusy ? "正在重置…" : "完整重置"}</button>
         </div>

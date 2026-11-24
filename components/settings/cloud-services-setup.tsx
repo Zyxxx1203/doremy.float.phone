@@ -26,7 +26,6 @@ import {
 import { connectPersonalPushCloud, deployPersonalPushCloud, isPersonalPushCloudActive } from "@/lib/personal-push-cloud";
 import { ensurePersonalPushSubscription, getOfflinePushState, markAccountPushSubscribed } from "@/lib/push-client";
 import { diagnoseScheduledBailouts } from "@/lib/push-bailout-diagnostics";
-import { PushSchedulePanel } from "@/components/settings/push-schedule-panel";
 import { formatSelfCheckReport, runOfflinePushSelfCheck } from "@/lib/push-selfcheck";
 import { getWeixinCloudDeployedAt, markWeixinCloudDeployed, savePushCloudScheduled, saveWeixinCloudScheduled } from "@/lib/cloud-deploy-status";
 import { Input, Select } from "@/components/ui/form";
@@ -614,11 +613,7 @@ export function CloudServicesSetup({ onConfigChanged }: { onConfigChanged?: () =
                 {statusCard(<Satellite size={17} strokeWidth={1.9} />, "离线推送", pushActive, "已部署到你的 Supabase")}
             </div>
 
-            {/* 排期管理：把服务端的主动消息摊开，按角色看清并逐条删。
-                刻意**不**用 pushActive 门控——原实现只在已部署时渲染，于是没部署的人
-                根本不知道有这个功能，用户报「找不到入口」时也无从判断是「没部署」
-                还是「这版还没上线」。面板自己会说明当前处于哪种状态。 */}
-            <PushSchedulePanel />
+            {/* 服务端主动消息管理面板已下线：生活现场主动消息当前为硬关闭，不再展示相关入口。 */}
 
             {/* 一键排查：逐段探测断点，输出可直接复制发人的报告 */}
             <button

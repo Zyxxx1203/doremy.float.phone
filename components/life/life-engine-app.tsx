@@ -28,14 +28,13 @@ import {
   type LifeScheduleSlot,
   type VirtualLifeState,
 } from "@/lib/life/life-types";
-import { applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, insertManualLifeScheduleSlot, MANUAL_LOCATION_TTL_MS, moveCharacterBySchedule, overlayScheduleSlotsOverFreeTime, syncScheduleLocationsToLibrary, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, synchronizeCharacterHomeSchedule, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
+import { applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, insertManualLifeScheduleSlot, moveCharacterBySchedule, overlayScheduleSlotsOverFreeTime, syncScheduleLocationsToLibrary, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, synchronizeCharacterHomeSchedule, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { describeLifeOutputIssues, parseLifeOutput, validateLifeOutput, type LifeOutputIssue } from "@/lib/life/life-output";
 import { buildLifeSceneResponderQueue, evaluateEncounterAwareness, findLifeSceneForLocation, mergeLifeSceneParticipants } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
 import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts } from "@/lib/push-bailout-client";
-import { readLifeProactiveStatus } from "@/lib/life/life-proactive-scheduler";
 import { setLifeSceneForegroundLease } from "@/lib/life/life-scheduler-coordinator";
 import { clearActiveLifeSceneTurn, recoverPendingLifeSceneTurns, savePendingLifeSceneTurns, setActiveLifeSceneTurn, type PendingLifeSceneTurn } from "@/lib/life/life-scene-turn-queue";
 
@@ -84,11 +83,188 @@ function createLifeChatSession(characterId: string, characterName: string): Chat
   return session.alias === characterName ? session : { ...session, alias: characterName };
 }
 
+export type LifeScheduleGenerationResult = { ok: boolean; skipped?: boolean; characterName: string; message: string };
+
+/** Prevents a manual batch and the background auto-renewal from generating the same state simultaneously. */
+let scheduleGenerationInFlight = false;
+
+/**
+ * 角色七日 AI 日程生成（无 React 依赖）。
+ *
+ * 这里复用生活现场原有的角色卡 / 世界书 / 短期共同记忆 / 近期生活记录提示词组装，
+ * 生成结果先完整校验、再原子写回；失败或并发冲突时不写入任何日程。
+ * 生活页的手动生成与生活调度 tick 的自动续排共用这一个入口。
+ */
+export async function regenerateCharacterWeeklyScheduleWithAI(
+  character: Character,
+  options: { worldBooks?: WorldBookConfig[]; bindingConfig?: BindingConfig; onProgress?: (message: string) => void } = {},
+): Promise<LifeScheduleGenerationResult> {
+  const notify = options.onProgress ?? (() => undefined);
+  if (scheduleGenerationInFlight) {
+    return { ok: false, skipped: true, characterName: character.name, message: "已有角色的日程正在生成，本次跳过。" };
+  }
+  scheduleGenerationInFlight = true;
+  notify("正在让 " + character.name + " 根据角色卡、短期共同记忆与生活记录规划未来七天……");
+  try {
+    let current = loadVirtualLifeState();
+    const sharesPlayerHome = current.locations.some(location => location.id === "home" && (location.residents ?? []).includes(character.id));
+    if (!current.locations.some(location => location.id === "home-" + character.id) && !sharesPlayerHome) {
+      const personalHome: LifeLocation = {
+        id: "home-" + character.id,
+        name: character.name + "的家",
+        description: "", atmosphere: "", layout: "", props: [], visibility: "private",
+      };
+      current = { ...current, locations: [...current.locations, personalHome] };
+    }
+    const realNow = resolveActorLifeNow(getActorClock(current, "character", character.id));
+    // 从角色自己的“今天”开始向后规划七天，而不是再生成本周已过去的时间。
+    const start = new Date(realNow.getTime()); start.setHours(0, 0, 0, 0);
+    const realNowMs = realNow.getTime();
+    const end = new Date(start.getTime()); end.setDate(end.getDate() + 7);
+    const locations = current.locations.filter(location => {
+      // The home-<characterId> ID is canonical even if older data has an empty residents list.
+      if (!location.id.startsWith("home-")) return true;
+      const ownerId = location.id.slice("home-".length);
+      return !current.locations.some(shared => shared.id !== location.id
+        && (shared.id === "home" || shared.id.startsWith("home-"))
+        && (shared.id === "home" || (shared.residents ?? []).length > 1)
+        && (shared.residents ?? []).includes(ownerId));
+    }).slice(0, 36).map(p => "- " + p.name + "（locationId=" + p.id + "）" + ((p.aliases?.length ?? 0) ? "；别名：" + p.aliases!.join("、") : "") + (p.description ? "；环境：" + p.description.slice(0, 140) : "") + (p.atmosphere ? "；氛围：" + p.atmosphere.slice(0, 70) : "") + (p.layout ? "；布局：" + p.layout.slice(0, 90) : "") + (p.props?.length ? "；道具：" + p.props.slice(0, 5).join("、") : "") + (p.characterHabits?.[character.id] ? "；角色习惯：" + p.characterHabits[character.id] : "")).join("\n");
+    // A character's residence is identity-bound. The player's home is shared only
+    // when the location explicitly lists this character as a resident.
+    const sharedResidence = current.locations.find(location =>
+      (location.id === "home" || location.id.startsWith("home-"))
+      && (location.residents ?? []).includes(character.id)
+      && (location.id === "home" || (location.residents ?? []).length > 1));
+    const livesWithPlayer = Boolean(sharedResidence);
+    const characterHome = sharedResidence
+      ?? current.locations.find(location => location.id === "home-" + character.id)
+      ?? null;
+    const memories = current.memories
+      .filter(m => m.participants.includes(character.id) && m.participants.includes(PLAYER_ID))
+      .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+      .slice(0, 12)
+      .reverse()
+      .map(m => "- " + m.fact).join("\n") || "暂无共同记忆";
+    const events = current.timeline
+      .filter(t => t.actorId === character.id || t.actorName === character.name || (t.actorId === PLAYER_ID && t.category === "social"))
+      .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+      .slice(0, 18)
+      .reverse()
+      .map(t => "- " + t.occurredAt + "｜" + t.title + (t.details ? "：" + t.details : "")).join("\n") || "暂无近期个人生活记录";
+    const worldBooks = options.worldBooks ?? loadWorldBooks();
+    const bindingConfig = options.bindingConfig ?? loadBindingConfig();
+    const characterWorldBook = (() => {
+      const chatBinding = resolveBinding(bindingConfig, character.id, "chat");
+      const dwellingBinding = resolveBinding(bindingConfig, character.id, "dwelling");
+      const ids = new Set([...(chatBinding.worldBookIds ?? []), ...(dwellingBinding.worldBookIds ?? [])]);
+      return worldBooks.filter(book => ids.has(book.id)).flatMap(book =>
+        book.entries.filter(entry => !entry.disable).map(entry => [entry.comment, entry.key, entry.content].filter(Boolean).join("："))
+      ).slice(0, 30).join("\n").slice(0, 8000);
+    })();
+    const protectedSlots = current.schedules.filter(slot => {
+      if (slot.ownerType !== "character" || slot.ownerId !== character.id || slot.startAt >= end.toISOString() || slot.endAt <= start.toISOString()) return false;
+      // Free-time is always replaceable whitespace, even when a manual edit created it.
+      if (slot.kind === "free-time") return false;
+      // Preserve hand-edited, character-tool, confirmed and currently-running blocks.
+      if (slot.source !== "weekly-generation") return true;
+      return new Date(slot.startAt).getTime() <= realNowMs && new Date(slot.endAt).getTime() > realNowMs;
+    });
+    const fixed = protectedSlots.map(slot => "- " + slot.startAt + "—" + slot.endAt + "：" + slot.title + "（必须保留且不可冲突）").join("\n") || "无固定安排";
+    const session = createLifeChatSession(character.id, character.name);
+    const prompt: ChatMessage = {
+      id: id("life-schedule-ai"), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
+      content: [
+        "角色：" + character.name,
+        "标签：" + (character.tags ?? []).join("、"),
+        "住所事实：角色住所「" + (characterHome?.name ?? character.name + "的家") + "」（locationId=" + (characterHome?.id ?? "home-" + character.id) + "）；与用户同居：" + (livesWithPlayer ? "是，共同住所为「" + sharedResidence!.name + "」（locationId=" + sharedResidence!.id + "）" : "否") + "。",
+
+        "世界书中与该角色相关的背景：\n" + (characterWorldBook || "暂无相关世界书条目"),
+        "近期共同记忆：\n" + memories, "近期个人记录：\n" + events, "允许地点：\n" + locations, "固定安排：\n" + fixed,
+        "规划日期范围：从 " + start.toLocaleDateString("sv-SE") + " 起连续七天；dayOffset 0 为第一天，6 为第七天。",
+      ].join("\n\n")
+    };
+    const scheduleHistory = loadChatMessages(session.id).filter(message => message.status !== "failed" && !message.isRetracted);
+    const result = await generateOfflineChatCompletion(session, [...scheduleHistory, prompt], { appId: "life", appTags: ["life", "schedule"], includeDirectChatEntries: false });
+    const raw = result.content.trim();
+    const first = raw.indexOf("["); const last = raw.lastIndexOf("]");
+    if (first < 0 || last <= first) throw new Error("模型没有返回有效 JSON 数组。");
+    const decoded: unknown = JSON.parse(raw.slice(first, last + 1));
+    if (!Array.isArray(decoded)) throw new Error("日程结果不是数组。");
+    const clean = (value: string) => value.toLocaleLowerCase().replace(/[\s\u3000·•\/\\|｜、，,。.!！?？:：;；()（）\[\]【】_-]+/g, "");
+    const kinds = new Set(["habit", "work", "study", "meal", "commute", "free-time", "appointment", "special"]);
+    // Never fall back to the player's home for a character who does not live there.
+    const home = sharedResidence
+      ?? current.locations.find(p => p.id === "home-" + character.id)
+      ?? current.locations.find(p => p.id === "home" && (p.residents ?? []).includes(character.id))
+      ?? current.locations.find(p => p.id.startsWith("home-") && (p.residents ?? []).includes(character.id))
+      ?? null;
+    const normalizeLocation = (value: string) => clean(value.replace(/^(回到|回|在|去|前往)/, ""));
+    const aiSlots: LifeScheduleSlot[] = [];
+    const days = new Set<number>();
+    for (const item of decoded as Array<Record<string, unknown>>) {
+      const d = Number(item.dayOffset), title = String(item.title ?? "").trim().slice(0, 100);
+      const sm = /^(\d{1,2}):(\d{2})$/.exec(String(item.start ?? "")), em = /^(\d{1,2}):(\d{2})$/.exec(String(item.end ?? ""));
+      if (!Number.isInteger(d) || d < 0 || d > 6 || !title || !sm || !em) continue;
+      const sh=Number(sm[1]), si=Number(sm[2]), eh=Number(em[1]), ei=Number(em[2]);
+      if (sh>23 || eh>23 || si>59 || ei>59) continue;
+      const a=new Date(start.getTime()); a.setDate(a.getDate()+d); a.setHours(sh,si,0,0);
+      const b=new Date(start.getTime()); b.setDate(b.getDate()+d); b.setHours(eh,ei,0,0);
+      if (b<=a || a<start || b>end || (d === 0 && a.getTime() < realNowMs)) continue;
+      const rawPlace = String(item.location ?? "").trim();
+      const placeKey = normalizeLocation(rawPlace);
+      const homeIntent = !placeKey || /^(家|家里|住所|自己的家|回家|在家|居家|宿舍|寝室)$/.test(placeKey);
+      // Match exact names/aliases only. Substring matching made “家” collide with
+      // “用户家/某角色的家” and silently assigned unrelated residences.
+      const exactPlace = current.locations.find(p =>
+        [p.name, ...(p.aliases ?? [])].some(name => normalizeLocation(name) === placeKey));
+      const place = homeIntent ? home : exactPlace ?? null;
+      days.add(d);
+      aiSlots.push({id:id("ai-slot"),ownerType:"character",ownerId:character.id,startAt:a.toISOString(),endAt:b.toISOString(),title,kind:kinds.has(String(item.kind))?String(item.kind) as LifeScheduleSlot["kind"]:"special",source:"weekly-generation",plannedLocationId:place?.id ?? null,plannedLocationName:place?.name ?? (homeIntent ? character.name + "的家" : rawPlace || "地点待定"),updatedAt:new Date().toISOString()});
+    }
+    if (aiSlots.length < 20 || days.size < 5) throw new Error("有效日程数量不足，无法覆盖整周；原日程未更改。");
+    const overlaps=(a:LifeScheduleSlot,b:LifeScheduleSlot)=>new Date(a.startAt).getTime()<new Date(b.endAt).getTime()&&new Date(a.endAt).getTime()>new Date(b.startAt).getTime();
+    const accepted:LifeScheduleSlot[]=[];
+    for (const slot of aiSlots.sort((a,b)=>a.startAt.localeCompare(b.startAt))) if (!protectedSlots.some(p=>overlaps(p,slot))&&!accepted.some(p=>overlaps(p,slot))) accepted.push(slot);
+    const generated:LifeScheduleSlot[]=[...protectedSlots.filter(slot => slot.source === "weekly-generation"), ...accepted];
+    for (let d=0;d<7;d++) {
+      const dayStart=new Date(start.getTime()); dayStart.setDate(dayStart.getDate()+d); dayStart.setHours(0,0,0,0);
+      const dayEnd=new Date(dayStart.getTime()); dayEnd.setDate(dayEnd.getDate()+1);
+      const daySlots=[...protectedSlots,...accepted].filter(p=>new Date(p.startAt)<dayEnd&&new Date(p.endAt)>dayStart).sort((a,b)=>a.startAt.localeCompare(b.startAt));
+      // Today begins at the character's current real time, not midnight. Never fill
+      // elapsed hours with retroactive "free time" after an AI regeneration.
+      let cursor=Math.max(dayStart.getTime(), d===0 ? realNowMs : dayStart.getTime());
+      const free=(a:number,b:number)=>{if(b-a<300000)return;generated.push({id:id("ai-free"),ownerType:"character",ownerId:character.id,startAt:new Date(a).toISOString(),endAt:new Date(b).toISOString(),title:"自由活动 / 休息（可按当天情况调整）",kind:"free-time",source:"weekly-generation",plannedLocationId:home?.id??null,plannedLocationName:home?.name??"家",updatedAt:new Date().toISOString()});};
+      for(const slot of daySlots){const a=Math.max(cursor,dayStart.getTime(),new Date(slot.startAt).getTime()),b=Math.min(dayEnd.getTime(),new Date(slot.endAt).getTime());if(a>cursor)free(cursor,a);cursor=Math.max(cursor,b);if(cursor>=dayEnd.getTime())break;}
+      if(cursor<dayEnd.getTime())free(cursor,dayEnd.getTime());
+    }
+    const latest=loadVirtualLifeState();
+    const retained=latest.schedules.filter(slot=>!(slot.ownerType==="character"&&slot.ownerId===character.id&&slot.source==="weekly-generation"&&slot.startAt<end.toISOString()&&slot.endAt>start.toISOString()));
+    const lateConflict = generated.find(candidate => candidate.kind !== "free-time" && retained.some(existing =>
+      existing.ownerType === candidate.ownerType
+      && existing.ownerId === candidate.ownerId
+      && existing.kind !== "free-time"
+      && new Date(existing.startAt) < new Date(candidate.endAt)
+      && new Date(existing.endAt) > new Date(candidate.startAt)
+    ));
+    if (lateConflict) {
+      const message = "生成期间该角色的手动日程或已确认安排发生了变化，已保留最新日程；请重新生成，避免覆盖新安排。";
+      notify(message);
+      recordLifeDiagnostic({ source: "AI 七日日程", event: "并发日程冲突", status: "warning", detail: "生成期间出现新安排：" + lateConflict.title, meta: { characterId: character.id } });
+      return { ok: false, characterName: character.name, message };
+    }
+    saveVirtualLifeState(overlayScheduleSlotsOverFreeTime({ ...latest, schedules: retained }, generated));
+    const message = "已根据"+character.name+"的角色卡、短期共同记忆和生活记录重生成 AI 日程；手动及已确认安排已保留。";
+    notify(message);
+    return { ok: true, characterName: character.name, message };
+  } catch(error) {
+    const message = "AI 日程生成失败："+(error instanceof Error?error.message:String(error))+"。原日程未被修改。";
+    notify(message);
+    return { ok: false, characterName: character.name, message };
+  } finally { scheduleGenerationInFlight = false; }
+}
+
 const fmt = (value: Date | string) => new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(typeof value === "string" ? new Date(value) : value);
-const fmtRemaining = (ms: number) => {
-  const totalMinutes = Math.max(0, Math.ceil(ms / 60_000));
-  return `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`;
-};
 const fmtClock = (value: Date | string) => new Date(value).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
 const toLocalDateTimeInput = (value: string) => { const d = new Date(value); if (!Number.isFinite(d.getTime())) return ""; const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000); return local.toISOString().slice(0, 16); };
 const fromLocalDateTimeInput = (value: string) => { const d = new Date(value); return Number.isFinite(d.getTime()) ? d.toISOString() : ""; };
@@ -216,10 +392,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const [timelineImageUrls, setTimelineImageUrls] = useState<Record<string, string>>({});
   const timelineImageObjectUrlsRef = useRef<Record<string, string>>({});
   const [selectedActorKey, setSelectedActorKey] = useState("player:player");
-  /** Forces a re-render every 30s so stay countdowns and switch reminders stay current. */
-  const [, setStatusTick] = useState(0);
-  const [manualLocationPickerOpen, setManualLocationPickerOpen] = useState(false);
-  const [manualLocationDraftId, setManualLocationDraftId] = useState("");
   const initialFocusAppliedRef = useRef<string | null>(null);
   const initialSceneLinkHandledRef = useRef(false);
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
@@ -273,7 +445,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const proactiveNextAtRef = useRef<Record<string, number>>({});
   const proactiveBusyRef = useRef(false);
   const proactiveLastSpeakerRef = useRef<Record<string, string>>({});
-  const [proactiveStatus, setProactiveStatus] = useState(() => readLifeProactiveStatus());
   const [inviteCharacterId, setInviteCharacterId] = useState("");
   const [inviteLocationId, setInviteLocationId] = useState("cafe");
   const [inviteActivity, setInviteActivity] = useState("一起喝杯咖啡");
@@ -637,10 +808,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     ...characters.map(char => ({ ownerType: "character" as const, ownerId: char.id, name: char.name, avatar: char.avatar, persona: [char.persona, char.personality, ...(char.tags ?? []), getCharacterWorldBookContext(char.id), ...state.locations.map(location => location.characterHabits?.[char.id] ? `${location.name}地点习惯：${location.characterHabits[char.id]}` : "")].filter(Boolean).join("\n") })),
   ], [characters, playerName, playerIdentity?.avatarUrl, worldBooks, bindingConfig, state.locations]);
   const selectedActor = actors.find(actor => `${actor.ownerType}:${actor.ownerId}` === selectedActorKey) ?? actors[0];
-  useEffect(() => {
-    const timer = window.setInterval(() => setStatusTick(value => value + 1), 30_000);
-    return () => window.clearInterval(timer);
-  }, []);
   useEffect(() => {
     if (!initialCharacterId || initialFocusAppliedRef.current === initialCharacterId) return;
     if (!characters.some(character => character.id === initialCharacterId)) return;
@@ -1073,7 +1240,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     });
     recordLifeDiagnostic({ source: "主动调度", event: result.ok ? "手动主动任务已挂载" : "手动主动任务挂载失败", status: result.ok ? "ok" : "error", detail: result.ok ? "手动主动消息预约已提交。" : result.reason, meta: { sceneId: scene.id, characterId: character.id, sessionId: session.id } });
     setNotice(result.ok
-      ? "已挂起一条主动消息；1 分钟后由服务端生成。可在「主动消息排期」查看。"
+      ? "已挂起一条主动消息；1 分钟后由服务端生成。"
       : "挂起失败：" + result.reason);
   }, [characters, lifeAppTags, settings.enabled, settings.enableCharacterAutonomy, settings.enableProactiveSceneMessages]);
 
@@ -1086,150 +1253,17 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const character = characters.find(item => item.id === actor.ownerId);
     if (!character) { setNotice("找不到角色档案，无法生成日程。"); return false; }
     setScheduleRegenerationOwnerId(actor.ownerId);
-    setNotice("正在让 " + character.name + " 根据角色卡、短期共同记忆与生活记录规划未来七天……");
     try {
-      let current = stateRef.current;
-      const sharesPlayerHome = current.locations.some(location => location.id === "home" && (location.residents ?? []).includes(character.id));
-      if (!current.locations.some(location => location.id === "home-" + character.id) && !sharesPlayerHome) {
-        const personalHome: LifeLocation = {
-          id: "home-" + character.id,
-          name: character.name + "的家",
-          description: "", atmosphere: "", layout: "", props: [], visibility: "private",
-        };
-        current = { ...current, locations: [...current.locations, personalHome] };
-      }
-      const realNow = resolveActorLifeNow(getActorClock(current, "character", character.id));
-      // 从角色自己的“今天”开始向后规划七天，而不是再生成本周已过去的时间。
-      const start = new Date(realNow.getTime()); start.setHours(0, 0, 0, 0);
-      const realNowMs = realNow.getTime();
-      const end = new Date(start.getTime()); end.setDate(end.getDate() + 7);
-      const locations = current.locations.filter(location => {
-        // The home-<characterId> ID is canonical even if older data has an empty residents list.
-        if (!location.id.startsWith("home-")) return true;
-        const ownerId = location.id.slice("home-".length);
-        return !current.locations.some(shared => shared.id !== location.id
-          && (shared.id === "home" || shared.id.startsWith("home-"))
-          && (shared.id === "home" || (shared.residents ?? []).length > 1)
-          && (shared.residents ?? []).includes(ownerId));
-      }).slice(0, 36).map(p => "- " + p.name + "（locationId=" + p.id + "）" + ((p.aliases?.length ?? 0) ? "；别名：" + p.aliases!.join("、") : "") + (p.description ? "；环境：" + p.description.slice(0, 140) : "") + (p.atmosphere ? "；氛围：" + p.atmosphere.slice(0, 70) : "") + (p.layout ? "；布局：" + p.layout.slice(0, 90) : "") + (p.props?.length ? "；道具：" + p.props.slice(0, 5).join("、") : "") + (p.characterHabits?.[character.id] ? "；角色习惯：" + p.characterHabits[character.id] : "")).join("\n");
-      // A character's residence is identity-bound. The player's home is shared only
-      // when the location explicitly lists this character as a resident.
-      const sharedResidence = current.locations.find(location =>
-        (location.id === "home" || location.id.startsWith("home-"))
-        && (location.residents ?? []).includes(character.id)
-        && (location.id === "home" || (location.residents ?? []).length > 1));
-      const livesWithPlayer = Boolean(sharedResidence);
-      const characterHome = sharedResidence
-        ?? current.locations.find(location => location.id === "home-" + character.id)
-        ?? null;
-      const memories = current.memories
-        .filter(m => m.participants.includes(character.id) && m.participants.includes(PLAYER_ID))
-        .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
-        .slice(0, 12)
-        .reverse()
-        .map(m => "- " + m.fact).join("\n") || "暂无共同记忆";
-      const events = current.timeline
-        .filter(t => t.actorId === character.id || t.actorName === character.name || (t.actorId === PLAYER_ID && t.category === "social"))
-        .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
-        .slice(0, 18)
-        .reverse()
-        .map(t => "- " + t.occurredAt + "｜" + t.title + (t.details ? "：" + t.details : "")).join("\n") || "暂无近期个人生活记录";
-      const characterWorldBook = getCharacterWorldBookContext(character.id);
-      const protectedSlots = current.schedules.filter(slot => {
-        if (slot.ownerType !== "character" || slot.ownerId !== character.id || slot.startAt >= end.toISOString() || slot.endAt <= start.toISOString()) return false;
-        // Free-time is always replaceable whitespace, even when a manual edit created it.
-        if (slot.kind === "free-time") return false;
-        // Preserve hand-edited, character-tool, confirmed and currently-running blocks.
-        if (slot.source !== "weekly-generation") return true;
-        return new Date(slot.startAt).getTime() <= realNowMs && new Date(slot.endAt).getTime() > realNowMs;
+      const result = await regenerateCharacterWeeklyScheduleWithAI(character, {
+        worldBooks,
+        bindingConfig,
+        onProgress: setNotice,
       });
-      const fixed = protectedSlots.map(slot => "- " + slot.startAt + "—" + slot.endAt + "：" + slot.title + "（必须保留且不可冲突）").join("\n") || "无固定安排";
-      const session = createLifeChatSession(character.id, character.name);
-      const prompt: ChatMessage = {
-        id: id("life-schedule-ai"), sessionId: session.id, role: "user", status: "sent", createdAt: new Date().toISOString(),
-        content: [
-          "角色：" + character.name, "角色卡：" + (character.persona || "未填写"), "性格：" + (character.personality || "未填写"), "标签：" + (character.tags ?? []).join("、"),
-          "住所事实：角色住所「" + (characterHome?.name ?? character.name + "的家") + "」（locationId=" + (characterHome?.id ?? "home-" + character.id) + "）；与用户同居：" + (livesWithPlayer ? "是，共同住所为「" + sharedResidence!.name + "」（locationId=" + sharedResidence!.id + "）" : "否") + "。",
-
-          "世界书中与该角色相关的背景：\n" + (characterWorldBook || "暂无相关世界书条目"),
-          "近期共同记忆：\n" + memories, "近期个人记录：\n" + events, "允许地点：\n" + locations, "固定安排：\n" + fixed,
-          "规划日期范围：从 " + start.toLocaleDateString("sv-SE") + " 起连续七天；dayOffset 0 为第一天，6 为第七天。",
-        ].join("\n\n")
-      };
-      const scheduleHistory = loadChatMessages(session.id).filter(message => message.status !== "failed" && !message.isRetracted);
-      const result = await generateOfflineChatCompletion(session, [...scheduleHistory, prompt], { appId: "life", appTags: lifeAppTags("schedule"), includeDirectChatEntries: false });
-      const raw = result.content.trim();
-      const first = raw.indexOf("["); const last = raw.lastIndexOf("]");
-      if (first < 0 || last <= first) throw new Error("模型没有返回有效 JSON 数组。");
-      const decoded: unknown = JSON.parse(raw.slice(first, last + 1));
-      if (!Array.isArray(decoded)) throw new Error("日程结果不是数组。");
-      const clean = (value: string) => value.toLocaleLowerCase().replace(/[\s\u3000·•\/\\|｜、，,。.!！?？:：;；()（）\[\]【】_-]+/g, "");
-      const kinds = new Set(["habit", "work", "study", "meal", "commute", "free-time", "appointment", "special"]);
-      // Never fall back to the player's home for a character who does not live there.
-      const home = sharedResidence
-        ?? current.locations.find(p => p.id === "home-" + character.id)
-        ?? current.locations.find(p => p.id === "home" && (p.residents ?? []).includes(character.id))
-        ?? current.locations.find(p => p.id.startsWith("home-") && (p.residents ?? []).includes(character.id))
-        ?? null;
-      const normalizeLocation = (value: string) => clean(value.replace(/^(回到|回|在|去|前往)/, ""));
-      const aiSlots: LifeScheduleSlot[] = [];
-      const days = new Set<number>();
-      for (const item of decoded as Array<Record<string, unknown>>) {
-        const d = Number(item.dayOffset), title = String(item.title ?? "").trim().slice(0, 100);
-        const sm = /^(\d{1,2}):(\d{2})$/.exec(String(item.start ?? "")), em = /^(\d{1,2}):(\d{2})$/.exec(String(item.end ?? ""));
-        if (!Number.isInteger(d) || d < 0 || d > 6 || !title || !sm || !em) continue;
-        const sh=Number(sm[1]), si=Number(sm[2]), eh=Number(em[1]), ei=Number(em[2]);
-        if (sh>23 || eh>23 || si>59 || ei>59) continue;
-        const a=new Date(start.getTime()); a.setDate(a.getDate()+d); a.setHours(sh,si,0,0);
-        const b=new Date(start.getTime()); b.setDate(b.getDate()+d); b.setHours(eh,ei,0,0);
-        if (b<=a || a<start || b>end || (d === 0 && a.getTime() < realNowMs)) continue;
-        const rawPlace = String(item.location ?? "").trim();
-        const placeKey = normalizeLocation(rawPlace);
-        const homeIntent = !placeKey || /^(家|家里|住所|自己的家|回家|在家|居家|宿舍|寝室)$/.test(placeKey);
-        // Match exact names/aliases only. Substring matching made “家” collide with
-        // “用户家/某角色的家” and silently assigned unrelated residences.
-        const exactPlace = current.locations.find(p =>
-          [p.name, ...(p.aliases ?? [])].some(name => normalizeLocation(name) === placeKey));
-        const place = homeIntent ? home : exactPlace ?? null;
-        days.add(d);
-        aiSlots.push({id:id("ai-slot"),ownerType:"character",ownerId:character.id,startAt:a.toISOString(),endAt:b.toISOString(),title,kind:kinds.has(String(item.kind))?String(item.kind) as LifeScheduleSlot["kind"]:"special",source:"weekly-generation",plannedLocationId:place?.id ?? null,plannedLocationName:place?.name ?? (homeIntent ? character.name + "的家" : rawPlace || "地点待定"),updatedAt:new Date().toISOString()});
-      }
-      if (aiSlots.length < 20 || days.size < 5) throw new Error("有效日程数量不足，无法覆盖整周；原日程未更改。");
-      const overlaps=(a:LifeScheduleSlot,b:LifeScheduleSlot)=>new Date(a.startAt).getTime()<new Date(b.endAt).getTime()&&new Date(a.endAt).getTime()>new Date(b.startAt).getTime();
-      const accepted:LifeScheduleSlot[]=[];
-      for (const slot of aiSlots.sort((a,b)=>a.startAt.localeCompare(b.startAt))) if (!protectedSlots.some(p=>overlaps(p,slot))&&!accepted.some(p=>overlaps(p,slot))) accepted.push(slot);
-      const generated:LifeScheduleSlot[]=[...protectedSlots.filter(slot => slot.source === "weekly-generation"), ...accepted];
-      for (let d=0;d<7;d++) {
-        const dayStart=new Date(start.getTime()); dayStart.setDate(dayStart.getDate()+d); dayStart.setHours(0,0,0,0);
-        const dayEnd=new Date(dayStart.getTime()); dayEnd.setDate(dayEnd.getDate()+1);
-        const daySlots=[...protectedSlots,...accepted].filter(p=>new Date(p.startAt)<dayEnd&&new Date(p.endAt)>dayStart).sort((a,b)=>a.startAt.localeCompare(b.startAt));
-        // Today begins at the character's current real time, not midnight. Never fill
-        // elapsed hours with retroactive "free time" after an AI regeneration.
-        let cursor=Math.max(dayStart.getTime(), d===0 ? realNowMs : dayStart.getTime());
-        const free=(a:number,b:number)=>{if(b-a<300000)return;generated.push({id:id("ai-free"),ownerType:"character",ownerId:character.id,startAt:new Date(a).toISOString(),endAt:new Date(b).toISOString(),title:"自由活动 / 休息（可按当天情况调整）",kind:"free-time",source:"weekly-generation",plannedLocationId:home?.id??null,plannedLocationName:home?.name??"家",updatedAt:new Date().toISOString()});};
-        for(const slot of daySlots){const a=Math.max(cursor,dayStart.getTime(),new Date(slot.startAt).getTime()),b=Math.min(dayEnd.getTime(),new Date(slot.endAt).getTime());if(a>cursor)free(cursor,a);cursor=Math.max(cursor,b);if(cursor>=dayEnd.getTime())break;}
-        if(cursor<dayEnd.getTime())free(cursor,dayEnd.getTime());
-      }
-      const latest=stateRef.current;
-      const retained=latest.schedules.filter(slot=>!(slot.ownerType==="character"&&slot.ownerId===character.id&&slot.source==="weekly-generation"&&slot.startAt<end.toISOString()&&slot.endAt>start.toISOString()));
-      const lateConflict = generated.find(candidate => candidate.kind !== "free-time" && retained.some(existing =>
-        existing.ownerType === candidate.ownerType
-        && existing.ownerId === candidate.ownerId
-        && existing.kind !== "free-time"
-        && new Date(existing.startAt) < new Date(candidate.endAt)
-        && new Date(existing.endAt) > new Date(candidate.startAt)
-      ));
-      if (lateConflict) {
-        setNotice("生成期间该角色的手动日程或已确认安排发生了变化，已保留最新日程；请重新生成，避免覆盖新安排。");
-        recordLifeDiagnostic({ source: "AI 七日日程", event: "并发日程冲突", status: "warning", detail: "生成期间出现新安排：" + lateConflict.title, meta: { characterId: character.id } });
-        return false;
-      }
-      commit(overlayScheduleSlotsOverFreeTime({ ...latest, schedules: retained }, generated));
-      setNotice("已根据"+character.name+"的角色卡、短期共同记忆和生活记录重生成 AI 日程；手动及已确认安排已保留。");
-      return true;
-    } catch(error) {
-      setNotice("AI 日程生成失败："+(error instanceof Error?error.message:String(error))+"。原日程未被修改。");
-      return false;
+      const latest = loadVirtualLifeState();
+      stateRef.current = latest;
+      setState(latest);
+      setNotice(result.message);
+      return result.ok;
     } finally { setScheduleRegenerationOwnerId(null); }
   };
 
@@ -3917,108 +3951,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   );
   const pendingCharacterInvitations = state.invitations.filter(invite => invite.status === "proposed" && invite.proposedBy !== "player");
 
-  // ── 当前地点状态区（停留徽章 / 跟随日程 / 切槽提示） ──────────────────────
-  const statusActor = selectedActor ?? playerActor;
-  // 每 30 秒由 statusTick 触发一次重渲染，这里每次渲染都重新取当前时间。
-  const statusNowMs = Date.now();
-  const statusActorState = actorState(statusActor);
-  const statusCurrentSlot = getCurrentActorSchedule(state, statusActor.ownerType, statusActor.ownerId, new Date(statusNowMs));
-  const statusOwnerSlots = state.schedules
-    .filter(slot => slot.ownerType === statusActor.ownerType && slot.ownerId === statusActor.ownerId)
-    .sort((a, b) => a.startAt.localeCompare(b.startAt));
-  const statusNextSlot = statusCurrentSlot
-    ? statusOwnerSlots.find(slot => slot.id !== statusCurrentSlot.id && new Date(slot.startAt).getTime() >= new Date(statusCurrentSlot.startAt).getTime())
-    : undefined;
-  const statusUntilMs = statusActorState?.actualLocationUntil ? Date.parse(statusActorState.actualLocationUntil) : Number.NaN;
-  const statusManualSetMs = statusActorState?.manualSetAt ? Date.parse(statusActorState.manualSetAt) : Number.NaN;
-  let statusStayBadge = "";
-  if (statusActorState?.actualLocationId) {
-    if (statusActorState.locationSource === "spontaneous" && Number.isFinite(statusUntilMs) && statusUntilMs > statusNowMs) {
-      statusStayBadge = "临时起意 · 还剩 " + fmtRemaining(statusUntilMs - statusNowMs);
-    } else if (statusActorState.locationSource === "stay" && Number.isFinite(statusUntilMs) && statusUntilMs > statusNowMs) {
-      statusStayBadge = "临时停留 · 还剩 " + fmtRemaining(statusUntilMs - statusNowMs);
-    } else if (statusActorState.locationSource === "manual" && statusActorState.manualPinned) {
-      statusStayBadge = "手动停留 · 一直";
-    } else if (statusActorState.locationSource === "manual" && Number.isFinite(statusManualSetMs)) {
-      const remaining = statusManualSetMs + MANUAL_LOCATION_TTL_MS - statusNowMs;
-      if (remaining > 0) statusStayBadge = "手动停留 · 还剩 " + fmtRemaining(remaining);
-    }
-  }
-  const statusSwitchMinutes = statusCurrentSlot ? (Date.parse(statusCurrentSlot.endAt) - statusNowMs) / 60_000 : Number.NaN;
-  const statusSwitchDue = !!statusCurrentSlot && Number.isFinite(statusSwitchMinutes) && statusSwitchMinutes > 0 && statusSwitchMinutes <= 10;
-  const statusSwitchTime = statusNextSlot ? fmtClock(statusNextSlot.startAt) : statusCurrentSlot ? fmtClock(statusCurrentSlot.endAt) : "";
-  const statusSwitchName = statusNextSlot?.plannedLocationName || statusCurrentSlot?.plannedLocationName || "下一地点";
-  const statusLocationName = statusActorState?.actualLocationName
-    || statusCurrentSlot?.plannedLocationName
-    || state.locations.find(location => location.id === statusActorState?.actualLocationId)?.name
-    || "尚未记录";
-
   const syncLifeSettle = (next: VirtualLifeState) => {
     commit(next);
     if (typeof window !== "undefined") window.dispatchEvent(new Event("life-force-sync"));
-  };
-
-  const handleScheduleSwitch = (action: "early" | "delay" | "skip") => {
-    const current = stateRef.current;
-    const nowDate = new Date();
-    const nowIso = nowDate.toISOString();
-    const slot = getCurrentActorSchedule(current, statusActor.ownerType, statusActor.ownerId, nowDate);
-    if (!slot) { setNotice("当前没有进行中的日程。"); return; }
-    if (slot.source === "event") { setNotice("约会的时段请在邀约页调整。"); return; }
-    const ownerSlots = current.schedules
-      .filter(item => item.ownerType === slot.ownerType && item.ownerId === slot.ownerId)
-      .sort((a, b) => a.startAt.localeCompare(b.startAt));
-    const nextSlot = ownerSlots.find(item => item.id !== slot.id && new Date(item.startAt).getTime() >= new Date(slot.startAt).getTime());
-    if (nextSlot?.source === "event") { setNotice("下一项是约会，请先在邀约页调整。"); return; }
-    const markManual = (item: LifeScheduleSlot): LifeScheduleSlot["source"] => item.source === "event" ? "event" : "manual";
-    if (action === "skip" && !nextSlot) { setNotice("今天没有后续安排。"); return; }
-    const nextActualId = statusActorState?.actualLocationId ?? slot.plannedLocationId ?? null;
-    const nextActualName = statusActorState?.actualLocationName ?? slot.plannedLocationName ?? null;
-    let message = "";
-    const schedules = current.schedules.map(item => {
-      if (item.id === slot.id) {
-        if (action === "early") {
-          message = "已提前前往下一地点。";
-          return { ...item, endAt: nowIso, source: markManual(item), updatedAt: nowIso };
-        }
-        if (action === "delay") {
-          message = "已延后 30 分钟。";
-          const end = Date.parse(item.endAt);
-          return { ...item, endAt: new Date((Number.isFinite(end) ? end : nowDate.getTime()) + 30 * 60_000).toISOString(), source: markManual(item), updatedAt: nowIso };
-        }
-        return item;
-      }
-      if (nextSlot && item.id === nextSlot.id) {
-        if (action === "early") {
-          const start = Date.parse(item.startAt);
-          const end = Date.parse(item.endAt);
-          const duration = Number.isFinite(start) && Number.isFinite(end) && end > start ? end - start : 60 * 60_000;
-          const nextStart = nowDate.getTime();
-          return { ...item, startAt: new Date(nextStart).toISOString(), endAt: new Date(nextStart + duration).toISOString(), source: markManual(item), updatedAt: nowIso };
-        }
-        if (action === "delay") {
-          const start = Date.parse(item.startAt) + 30 * 60_000;
-          const end = Math.max(Date.parse(item.endAt), start + 5 * 60_000);
-          return { ...item, startAt: new Date(start).toISOString(), endAt: new Date(end).toISOString(), source: markManual(item), updatedAt: nowIso };
-        }
-        if (action === "skip") {
-          message = "今日不去，下一安排改在原地。";
-          return { ...item, plannedLocationId: nextActualId, plannedLocationName: nextActualName, plannedLocationDeleted: false, source: markManual(item), updatedAt: nowIso };
-        }
-      }
-      return item;
-    });
-    let next: VirtualLifeState = { ...current, schedules };
-    next = appendLifeTimelineEntry(next, {
-      category: "schedule",
-      title: "调整切槽安排：" + slot.title,
-      details: message,
-      actorId: statusActor.ownerId, actorName: statusActor.name,
-      locationName: slot.plannedLocationName ?? undefined,
-      sourceId: slot.id,
-    });
-    syncLifeSettle(next);
-    setNotice(message);
   };
 
   const findScheduleConflict = (slot: LifeScheduleSlot, all: LifeScheduleSlot[]): LifeScheduleSlot | undefined => {
@@ -4274,6 +4209,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         <div className="flex items-center gap-3"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/75 text-[var(--life-accent)] shadow-sm"><Heart size={22}/></div><div><h1 className="text-2xl font-semibold tracking-tight">生活世界</h1><p className="mt-0.5 text-xs opacity-65">角色有自己的生活，你也可以随时加入</p></div></div>
         <div className="flex flex-wrap items-center gap-2"><button onClick={()=>tab==="home"?closeApp():setTab("home")} aria-label="返回生活现场" className="inline-flex items-center gap-1 rounded-full border border-white/80 bg-white/70 px-3 py-2 text-sm"><ArrowLeft size={15}/><span>返回</span></button><button onClick={closeApp} aria-label="退出生活 APP" className="inline-flex items-center gap-1 rounded-full border border-white/80 bg-white/70 px-3 py-2 text-sm"><X size={15}/><span>退出</span></button><span className="rounded-full border border-white/70 bg-white/60 px-3 py-1.5 text-xs">{actors.length} 位生活参与者</span></div>
       </header>
+      {!settings.enabled && !immersiveScene && <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-300/70 bg-amber-50/90 px-4 py-3 text-sm text-amber-900">
+        <span>生活引擎当前为关闭状态：不会自动生成日程，也无法进入生活现场。重置后默认关闭，需要时请重新开启。</span>
+        <button type="button" onClick={() => setTab("settings")} className="shrink-0 rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900">去设置开启</button>
+      </div>}
       {sceneToast && <div role="status" aria-live="polite" className="fixed left-1/2 top-[max(1rem,env(safe-area-inset-top))] z-[300] w-[min(92vw,26rem)] -translate-x-1/2 rounded-2xl border border-[var(--life-accent)]/30 bg-[#fffaf3]/97 px-4 py-3 shadow-xl backdrop-blur-md">
         <div className="flex items-start gap-2.5">
           {sceneToast.avatar ? <img src={sceneToast.avatar} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" /> : <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#efe1d2] text-xs text-stone-700">{sceneToast.characterName.slice(0, 1)}</span>}
@@ -4321,34 +4260,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           <div><p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--life-accent)]">Places & people</p><h2 className="mt-1 text-2xl font-semibold tracking-tight text-stone-800">此刻</h2></div>
           <div className="flex items-center gap-2"><button type="button" onClick={() => setSceneLocationSearchOpen(true)} aria-label="搜索和筛选地点" title="搜索和筛选地点" className="grid h-10 w-10 place-items-center rounded-xl border border-white/80 bg-white/75 text-stone-600"><Search size={17}/></button><button onClick={() => openDaily("plans")} className="shrink-0 rounded-xl border border-white/80 bg-white/75 px-3 py-2 text-xs text-stone-600">我的日程</button></div>
         </div>
-        {statusActor.ownerType === "character" && <div className="rounded-2xl border border-white/80 bg-white/75 p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] text-stone-500">{statusActor.name}</span>
-            <span className="text-sm font-semibold text-stone-800">{statusLocationName}</span>
-            {statusStayBadge && <span className="rounded-full bg-[var(--life-accent)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--life-accent)]">{statusStayBadge}</span>}
-            <span className="ml-auto flex items-center gap-1.5">
-              <button type="button" onClick={() => { setManualLocationDraftId(statusActorState?.actualLocationId ?? selectedLocationId); setManualLocationPickerOpen(true); }} className="rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[11px] text-stone-600">改地点</button>
-              <button type="button" onClick={() => applyActorLocationMode(statusActor, statusActorState?.actualLocationId ?? "", "follow")} className="rounded-lg border border-[#d9c2ae] bg-[#fbf5ee] px-2.5 py-1.5 text-[11px] text-stone-700">↩ 跟随日程</button>
-            </span>
-          </div>
-          {statusSwitchDue && <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50/80 p-2">
-            <p className="text-[11px] font-medium text-amber-800">{statusSwitchTime} 将前往 · {statusSwitchName}</p>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              <button type="button" onClick={() => handleScheduleSwitch("early")} className="rounded-lg bg-white px-2.5 py-1.5 text-[11px] text-stone-700 shadow-sm">提前过去</button>
-              <button type="button" onClick={() => handleScheduleSwitch("delay")} className="rounded-lg bg-white px-2.5 py-1.5 text-[11px] text-stone-700 shadow-sm">延后 30 分钟</button>
-              <button type="button" onClick={() => handleScheduleSwitch("skip")} className="rounded-lg bg-white px-2.5 py-1.5 text-[11px] text-stone-700 shadow-sm">今天不去</button>
-            </div>
-          </div>}
-        </div>}
-        {manualLocationPickerOpen && <div role="dialog" aria-modal="true" aria-label="手动选择地点" className="fixed inset-0 z-[150] flex items-end justify-center bg-black/35 p-2 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setManualLocationPickerOpen(false)}>
-          <section className="w-full max-w-md rounded-3xl border border-white/80 bg-[var(--life-overlay)] p-4 shadow-2xl" onClick={event => event.stopPropagation()}>
-            <header className="mb-3 flex items-center justify-between"><h2 className="text-lg font-semibold text-stone-800">手动选择地点</h2><button type="button" onClick={() => setManualLocationPickerOpen(false)} aria-label="关闭" className="grid h-9 w-9 place-items-center rounded-full bg-white/75"><X size={18}/></button></header>
-            <select value={manualLocationDraftId} onChange={event => setManualLocationDraftId(event.target.value)} className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">{visibleLocations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}</select>
-            <div className="mt-3 grid grid-cols-3 gap-2">{([["stay-30", "待 30 分钟"], ["stay-60", "待 1 小时"], ["stay-120", "待 2 小时"]] as Array<[ManualLocationMode, string]>).map(([mode, label]) => <button key={mode} type="button" onClick={() => { applyActorLocationMode(statusActor, manualLocationDraftId, mode); setManualLocationPickerOpen(false); }} className="rounded-xl border border-stone-200 bg-white px-2 py-2.5 text-xs text-stone-700">{label}</button>)}</div>
-            <button type="button" onClick={() => { applyActorLocationMode(statusActor, manualLocationDraftId, "pin"); setManualLocationPickerOpen(false); }} className="mt-2 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-xs text-stone-700">一直停留（会一直在这里，直到手动改回）</button>
-            <button type="button" onClick={() => { applyActorLocationMode(statusActor, manualLocationDraftId, "follow"); setManualLocationPickerOpen(false); }} className="mt-2 w-full rounded-xl bg-[var(--life-accent)] px-3 py-2.5 text-xs font-medium text-white">跟随日程（立即恢复）</button>
-          </section>
-        </div>}
         {filteredLocationCards.length === 0 && <p className="rounded-2xl border border-dashed border-stone-300 bg-white/50 p-6 text-center text-sm text-stone-500">没有找到符合条件的地点，试试清除筛选。</p>}
         {Array.from(locationCardGroups.entries()).map(([folderId, items]) => <section key={folderId} className="space-y-3">
           <button type="button" onClick={() => setCollapsedLocationFolders(current => ({ ...current, [folderId]: !current[folderId] }))} className="flex w-full items-center justify-between rounded-xl bg-white/55 px-3 py-2 text-left text-xs font-semibold text-stone-600">
@@ -4871,6 +4782,21 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             <Toggle checked={settings.generateSpecialEvents} onChange={v=>patchSettings({generateSpecialEvents:v})} label="允许偶发特殊事件"/>
             <Toggle checked={settings.enableCoincidences} onChange={v=>patchSettings({enableCoincidences:v})} label="启用偶遇与注意力判断" hint="关闭后场景仍可互动，但不做随机偶遇判断。"/>
             <Toggle checked={settings.enableCharacterAutonomy} onChange={v=>patchSettings({enableCharacterAutonomy:v})} label="允许角色自主行动"/>
+            <Toggle checked={settings.enableSpontaneousDeviation !== false} onChange={v=>patchSettings({enableSpontaneousDeviation:v})} label="角色会临时起意" hint="角色按日程移动时偶尔改去别处，只改实际位置，不改日程。"/>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-stone-200/70 bg-white/60 px-3 py-2 text-xs text-stone-700">
+              <span>每天最多几次</span>
+              <input
+                key={settings.deviationDailyLimit ?? 2}
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={5}
+                defaultValue={settings.deviationDailyLimit ?? 2}
+                onBlur={event => patchSettings({ deviationDailyLimit: Math.max(1, Math.min(5, Math.round(Number(event.currentTarget.value) || 2))) })}
+                aria-label="每天最多临时起意几次"
+                className="w-20 rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs"
+              />
+            </div>
             <p className="ml-3 rounded-xl bg-white/60 p-3 text-xs leading-relaxed text-stone-500">具体生活工具的独立开关已放入现场聊天工具箱；这里仅保留角色自主行动总开关。</p>
 
             <Toggle checked={settings.saveConfirmedEventsToMemory} onChange={v=>patchSettings({saveConfirmedEventsToMemory:v})} label="将已发生的事件写入生活记忆"/>
