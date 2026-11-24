@@ -13,6 +13,7 @@ import { isPersonalPushCloudActive, loadPersonalPushCloudState, personalPushFetc
 import { isShellEnvironment } from "@/lib/shell-detect";
 import { resetLifeSystemData } from "@/lib/life/life-reset";
 import { loadVirtualLifeState } from "@/lib/life/life-storage";
+import { CLOUD_BREAKER_CHANGED_EVENT, cloudBreakerState, resetCloudBreaker, type CloudBreakerState } from "@/lib/cloud-circuit-breaker";
 import { downloadFile } from "@/lib/download-utils";
 import { copyTextToClipboard } from "@/lib/clipboard-utils";
 import { loadCharacters } from "@/lib/character-storage";
@@ -46,7 +47,14 @@ export function LifeDiagnosticsPanel() {
   const [localSnapshot, setLocalSnapshot] = useState<Record<string, unknown> | null>(null);
   const [summaryText, setSummaryText] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
+  const [snapshotBreaker, setSnapshotBreaker] = useState<CloudBreakerState>(() => cloudBreakerState("life-snapshot"));
   const refreshInFlightRef = useRef(false);
+
+  useEffect(() => {
+    const sync = () => setSnapshotBreaker(cloudBreakerState("life-snapshot"));
+    window.addEventListener(CLOUD_BREAKER_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(CLOUD_BREAKER_CHANGED_EVENT, sync);
+  }, []);
 
   const refresh = async () => {
     if (refreshInFlightRef.current) return;
@@ -392,6 +400,23 @@ export function LifeDiagnosticsPanel() {
           </button>
         </div>
       </div>
+
+      {snapshotBreaker.paused ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          <span>
+            云端同步已暂停：连续失败 {snapshotBreaker.failures} 次
+            {snapshotBreaker.lastError ? "（" + snapshotBreaker.lastError + "）" : ""}。
+            自动重试已停止，避免继续消耗云端额度。
+          </span>
+          <button
+            type="button"
+            onClick={() => { resetCloudBreaker("life-snapshot"); setSnapshotBreaker(cloudBreakerState("life-snapshot")); void refresh(); }}
+            className="inline-flex min-h-9 items-center gap-1 rounded-xl border border-amber-300 bg-white px-3 text-xs"
+          >
+            重试云端同步
+          </button>
+        </div>
+      ) : null}
 
       <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50/80 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
