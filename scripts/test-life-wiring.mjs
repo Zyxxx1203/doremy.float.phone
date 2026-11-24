@@ -481,8 +481,11 @@ assert.match(realityActivity, /getPendingNativeRealityBridgeMessages/, "WebView 
 assert.match(realityActivity, /acknowledgeNativeRealityBridgeMessages/, "WebView must acknowledge messages after chat persistence");
 assert.match(realityUi, /characterId: rule\.actions\.chat\?\.characterId/, "native rules must retain the target character identity");
 assert.match(realityEngine, /export function normalizeBridgeSignal/, "reality bridge must normalize raw signal payloads before they reach chat");
+assert.match(realityEngine, /export function fillBridgeSignalTemplate/, "bridge reply templates must share one placeholder implementation");
+assert.match(realityEngine, /promptHasSignal \? prompt \+ contextBlock/, "AI processing must not append a duplicate payload after a placeholder");
 assert.match(realityEngine, /return normalizeBridgeSignal\(item\)/, "raw bridge rules must use normalized human-readable text");
 assert.match(realityNative, /private fun normalizeSignal/, "Android offline fallback must normalize signals before queuing chat");
+assert.match(realityNative, /private fun fillSignalTemplate/, "Android offline replies must use {signal}/{payload} consistently");
 assert.match(realityNative, /CHANNEL = "shell_messages"/, "native offline alerts must share the normal Android message notification channel");
 assert.match(realityNative, /RemoteInput\.Builder\(NotificationReplyReceiver\.KEY_REPLY_TEXT\)/, "native offline alerts must expose the same inline RemoteInput reply action");
 assert.match(realityNative, /putExtra\(NotificationReplyReceiver\.EXTRA_SESSION_ID, sid\)/, "native offline reply actions must target the canonical chat session");

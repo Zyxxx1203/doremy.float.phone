@@ -85,7 +85,8 @@ object NativeRealityBridge {
             }
             matched = true
             // 优先从预先写好的角色回复库抽取，确保断网时不临时请求模型。
-            // 回复允许使用 {payload}/{type} 占位；未配置回复库时再尝试模板/通用兜底。
+            // 占位符语义：{signal}=完整可读状态，{payload}=原始数据，{type}=事件类型。
+            // 未配置回复库时再尝试模板/通用兜底。
             val replies = rule.optJSONArray("offlineReplies") ?: JSONArray()
             val candidates = (0 until replies.length())
                 .mapNotNull { replies.optString(it).trim().takeIf(String::isNotBlank) }
@@ -93,7 +94,8 @@ object NativeRealityBridge {
             val configuredAction = rule.optJSONObject("deviceAction")
             val selected = if (candidates.isNotEmpty()) candidates[(System.currentTimeMillis() % candidates.size).toInt()]
                 else template
-            val replyMessage = selected.replace("{payload}", payload).replace("{type}", type).take(360)
+            val normalizedSignal = normalizeSignal(type, payload)
+            val replyMessage = fillSignalTemplate(selected, type, payload, normalizedSignal).take(360)
             val actionResult = configuredAction?.let { executeBackgroundDeviceAction(context, prefs, it) }.orEmpty()
             val visibleParts = listOf(actionResult, replyMessage).filter { it.isNotBlank() }
             val message = visibleParts.joinToString("\n").take(500)
@@ -147,11 +149,8 @@ object NativeRealityBridge {
             val candidates = (0 until replies.length()).mapNotNull { replies.optString(it).trim().takeIf(String::isNotBlank) }
             val template = rule.optJSONObject("process")?.optString("template", "").orEmpty()
             val normalizedPayload = normalizeSignal(type, payload)
-            val body = (pickOfflineReply(prefs, ruleId, candidates).ifBlank { template })
-                .replace("{payload}", normalizedPayload)
-                .replace("{type}", type)
-                .let { if (it == payload || it.isBlank()) normalizedPayload else it }
-                .take(360)
+            val selectedReply = pickOfflineReply(prefs, ruleId, candidates).ifBlank { template }
+            val body = fillSignalTemplate(selectedReply, type, payload, normalizedPayload).take(360)
             if (body.isBlank() || !rule.optBoolean("notificationEnabled", true)) continue
             val title = rule.optString("characterName").ifBlank { rule.optString("name", "现实桥") }
             val characterId = rule.optString("characterId").trim()
@@ -292,28 +291,70 @@ object NativeRealityBridge {
         }
     } catch (_: Throwable) { false }
 
+    /**
+     * 离线回复占位符：
+     *   {signal}  完整可读状态，例如「手机电量偏低，目前约 20%。」
+     *   {payload} 原始数据，例如「20%」「抖音 90 分钟」
+     * 没有占位符、或回复本身就是原始 payload 时回退到可读状态，避免裸 JSON/数字直接进聊天。
+     */
+    private fun fillSignalTemplate(template: String, type: String, payload: String, normalized: String): String {
+        val raw = payload.trim()
+        val text = template
+            .replace("{signal}", normalized)
+            .replace("{payload}", raw)
+            .replace("{type}", type.trim())
+        return if (text.isBlank() || text.trim() == raw) normalized else text
+    }
+
     /** Keep offline delivery semantically aligned with the web signal normalizer. */
     private fun normalizeSignal(type: String, payload: String): String {
-        val percent = Regex("(?:电量\\s*)?(\\d{1,3})\\s*%").find(payload)?.groupValues?.getOrNull(1)?.toIntOrNull()
-        if (type.contains("电量") && percent != null) {
+        val typeText = type.trim().ifBlank { "设备状态" }
+        val raw = payload.trim()
+        fun ensure(text: String): String = if (Regex("[。！？.!?]$").containsMatchIn(text)) text else text + "。"
+        val percent = Regex("(?:电量\\s*)?(\\d{1,3})\\s*%").find(raw)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        if (typeText.contains("电量") && percent != null) {
             val value = percent.coerceIn(0, 100)
             return when {
-                type.contains("偏低") -> "手机电量偏低，目前约 ${value}%。"
-                type.contains("变化") -> "手机电量现在是 ${value}%。"
+                typeText.contains("偏低") -> "手机电量偏低，目前约 ${value}%。"
+                typeText.contains("变化") -> "手机电量现在是 ${value}%。"
                 else -> "手机电量目前为 ${value}%。"
             }
         }
-        return when {
-            type == "电量偏低" -> "手机电量偏低，记得留意充电。"
-            type == "充电开始" -> "手机已经接上电源，开始充电了。"
-            type == "充电结束" -> "手机已经停止充电。"
-            type.contains("WiFi") || type.contains("Wi-Fi") -> "手机已连接 Wi-Fi。"
-            type.contains("移动网络") -> "手机切换到了移动网络。"
-            type.contains("长时间使用") || type.contains("应用用太久") ->
-                if (payload.isBlank()) "注意到你使用手机有一段时间了，记得适当休息。" else "注意到你使用手机有一段时间了（${payload.take(100)}），记得适当休息。"
-            payload.isBlank() -> "检测到：${type}。"
-            else -> "检测到${type}：${payload.take(240)}。"
+        if (typeText.contains("充电开始")) return "手机已经接上电源，开始充电了。"
+        if (typeText.contains("充电结束")) return "手机已经停止充电。"
+        if (typeText.contains("WiFi") || typeText.contains("Wi-Fi")) return "手机已连接 Wi-Fi。"
+        if (typeText.contains("移动网络")) return "手机切换到了移动网络。"
+        if (typeText.contains("回到手机")) {
+            val away = raw.replace(Regex("^离开了?\\s*"), "").trim()
+            return if (away.isNotBlank()) "你离开了 $away，现在回来了。" else "你回到了小手机。"
         }
+        if (typeText.contains("深夜还醒着")) {
+            return if (raw.isBlank()) "现在已经很晚了，早点休息吧。" else ensure(raw).replace(Regex("[。！？.!?]$"), "") + "，早点休息吧。"
+        }
+        if (typeText.contains("久坐不动")) {
+            return if (raw.isBlank()) "你坐得太久了，起来活动一下吧。" else ensure(raw).replace(Regex("[。！？.!?]$"), "") + "，起来活动一下吧。"
+        }
+        if (typeText.contains("睡醒了")) return if (raw.isBlank()) "你醒了。" else "你${raw.removePrefix("你")}，醒了。"
+        if (typeText.contains("到达新位置")) {
+            if (raw.isBlank()) return "你换了个地方。"
+            return if (Regex("^(从|到|离开)").containsMatchIn(raw)) "你" + ensure(raw) else "你到了" + ensure(raw)
+        }
+        if (typeText.contains("今天第一次打开")) return if (raw.isBlank()) "你今天第一次打开小手机。" else ensure(raw)
+        if (typeText.contains("很久没聊天")) return if (raw.isBlank()) "你们有一阵没聊天了。" else "你们" + ensure(raw)
+        if (typeText.contains("环境光线")) {
+            val lux = Regex("光照\\s*(\\d+)\\s*lux", RegexOption.IGNORE_CASE).find(raw)?.groupValues?.getOrNull(1)
+            if (Regex("很暗|较暗|有点暗|暗").containsMatchIn(raw)) {
+                return if (lux != null) "环境很暗（约 $lux lux）。" else "环境很暗。"
+            }
+            return if (lux != null) "环境亮度约 $lux lux。" else "环境光线发生了变化。"
+        }
+        if (typeText.contains("长时间使用") || typeText.contains("应用用太久")) {
+            return if (raw.isBlank()) "注意到你使用手机有一段时间了，记得适当休息。" else ensure(raw)
+        }
+        if (raw.isBlank()) return "检测到${typeText}。"
+        if (raw.startsWith("{") || raw.startsWith("[")) return "收到一条${typeText}信号。"
+        return if (Regex("[。！？.!?]$").containsMatchIn(raw) || raw.length > 12) ensure(raw)
+        else "${typeText}：${raw.take(120)}。"
     }
 
     private fun record(context: Context, event: JSONObject, rule: String?, result: String) {

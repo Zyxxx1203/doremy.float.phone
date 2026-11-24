@@ -59,6 +59,7 @@ function fillTemplate(template: string, item: BridgeItem): string {
 export function normalizeBridgeSignal(item: Pick<BridgeItem, "type" | "payload">): string {
   const type = item.type.trim() || "设备状态";
   const payload = item.payload.trim();
+  const ensureSentence = (text: string) => /[。！？.!?]$/.test(text) ? text : text + "。";
   const percent = payload.match(/(?:电量\s*)?(\d{1,3})\s*%/);
   if (type.includes("电量") && percent) {
     const value = Math.min(100, Number(percent[1]));
@@ -66,23 +67,65 @@ export function normalizeBridgeSignal(item: Pick<BridgeItem, "type" | "payload">
     if (type.includes("变化")) return `手机电量现在是 ${value}%。`;
     return `手机电量目前为 ${value}%。`;
   }
-  if (type === "电量偏低") return "手机电量偏低，记得留意充电。";
-  if (type === "充电开始") return "手机已经接上电源，开始充电了。";
-  if (type === "充电结束") return "手机已经停止充电。";
+  if (type.includes("充电开始")) return "手机已经接上电源，开始充电了。";
+  if (type.includes("充电结束")) return "手机已经停止充电。";
   if (type.includes("WiFi") || type.includes("Wi-Fi")) return "手机已连接 Wi-Fi。";
   if (type.includes("移动网络")) return "手机切换到了移动网络。";
-  if (type.includes("长时间使用") || type.includes("应用用太久")) {
-    return payload ? `注意到你使用手机有一段时间了（${payload}），记得适当休息。` : "注意到你使用手机有一段时间了，记得适当休息。";
+  if (type.includes("回到手机")) {
+    const away = payload.replace(/^离开了?\s*/, "").trim();
+    return away ? `你离开了 ${away}，现在回来了。` : "你回到了小手机。";
   }
-  if (!payload) return `检测到：${type}。`;
+  if (type.includes("深夜还醒着")) return payload ? `${ensureSentence(payload).replace(/[。！？.!?]$/, "")}，早点休息吧。` : "现在已经很晚了，早点休息吧。";
+  if (type.includes("久坐不动")) return payload ? `${ensureSentence(payload).replace(/[。！？.!?]$/, "")}，起来活动一下吧。` : "你坐得太久了，起来活动一下吧。";
+  if (type.includes("睡醒了")) return payload ? `你${payload.replace(/^你/, "")}，醒了。` : "你醒了。";
+  if (type.includes("到达新位置")) {
+    if (!payload) return "你换了个地方。";
+    return /^(从|到|离开)/.test(payload) ? `你${ensureSentence(payload)}` : `你到了${ensureSentence(payload)}`;
+  }
+  if (type.includes("今天第一次打开")) return payload ? ensureSentence(payload) : "你今天第一次打开小手机。";
+  if (type.includes("很久没聊天")) return payload ? `你们${ensureSentence(payload)}` : "你们有一阵没聊天了。";
+  if (type.includes("环境光线")) {
+    const lux = payload.match(/光照\s*(\d+)\s*lux/i);
+    if (/很暗|较暗|有点暗|暗/.test(payload)) return lux ? `环境很暗（约 ${lux[1]} lux）。` : "环境很暗。";
+    if (lux) return `环境亮度约 ${lux[1]} lux。`;
+    return "环境光线发生了变化。";
+  }
+  if (type.includes("长时间使用") || type.includes("应用用太久")) {
+    return payload ? ensureSentence(payload) : "注意到你使用手机有一段时间了，记得适当休息。";
+  }
+  if (!payload) return `检测到${type}。`;
   try {
     const parsed: unknown = JSON.parse(payload);
     if (parsed && typeof parsed === "object") {
-      const compact = JSON.stringify(parsed);
-      return `检测到${type}，相关信息：${compact.slice(0, 240)}。`;
+      const record = parsed as Record<string, unknown>;
+      const readable = ["title", "name", "label", "place", "status", "message", "text", "value"]
+        .map(key => record[key])
+        .find(value => typeof value === "string" && value.trim()) as string | undefined;
+      return readable ? `${type}：${readable.trim()}。` : `收到一条${type}信号。`;
     }
   } catch { /* 普通文本 */ }
-  return `检测到${type}：${payload.slice(0, 300)}。`;
+  if (/[。！？.!?]$/.test(payload) || payload.length > 12) return ensureSentence(payload);
+  return `${type}：${payload}。`;
+}
+
+/**
+ * 现实桥文本里的占位符语义必须固定，否则 AI 预写回复和模板会拼出重复句子：
+ *   {signal}  → 一句完整的人类可读状态（“手机电量偏低，目前约 20%。”）
+ *   {payload} → 原始数据（“20%”“抖音 90 分钟”），供“只剩 {payload}”这类句式使用
+ * 没有占位符、或模板本身就是原始 payload 时，直接返回可读状态，避免把裸 JSON 写进聊天。
+ */
+export function fillBridgeSignalTemplate(
+  template: string,
+  item: Pick<BridgeItem, "type" | "payload">,
+  signal = normalizeBridgeSignal(item),
+): string {
+  const rawPayload = item.payload.trim();
+  const text = template
+    .replace(/\{signal\}/g, signal)
+    .replace(/\{payload\}/g, rawPayload)
+    .replace(/\{type\}/g, item.type.trim());
+  if (!text.trim() || text.trim() === rawPayload) return signal;
+  return text;
 }
 
 /** 展开 {{user}}/{{char}} 等宏：现实桥消息属于模板性质，写入前先替换 */
@@ -112,7 +155,7 @@ function upgradeUsageReminderRule(rule: BridgeRule): BridgeRule {
     ...rule,
     process: {
       mode: "ai",
-      prompt: "你刚注意到{{user}}的使用情况：{payload}。不要复述分钟数，不要写“你今天使用 xx 分钟了”。先用角色自己的感受或关系开口，再轻轻提醒；一到两句，像你本人在说话。不要和最近几次提醒重复。",
+      prompt: "你刚注意到{{user}}的使用情况：{signal}。不要复述分钟数，不要写“你今天使用 xx 分钟了”。先用角色自己的感受或关系开口，再轻轻提醒；一到两句，像你本人在说话。不要和最近几次提醒重复。",
     },
     actions: {
       ...rule.actions,
@@ -136,13 +179,14 @@ function usageCharacterContext(characterId?: string): { charName: string; userNa
 async function processText(rule: BridgeRule, item: BridgeItem): Promise<string> {
   const mode = rule.process?.mode ?? "raw";
   if (mode === "template" && rule.process.template) {
-    const normalizedItem = { ...item, payload: normalizeBridgeSignal(item) };
-    return fillTemplate(rule.process.template, normalizedItem).slice(0, 4000);
+    return fillBridgeSignalTemplate(rule.process.template, item).slice(0, 4000);
   }
   if (mode === "ai" && rule.process.prompt) {
     const config = resolveAuxiliaryApiConfig("memorySummaryApiConfigId") ?? loadApiConfigs()[0];
     if (config) {
-      const prompt = fillTemplate(rule.process.prompt, item);
+      const signal = normalizeBridgeSignal(item);
+      const promptHasSignal = /\{payload\}|\{signal\}/.test(rule.process.prompt);
+      const prompt = fillBridgeSignalTemplate(rule.process.prompt, item, signal);
       const isUsage = USAGE_REMINDER_TYPES.has(rule.matchType);
       const context = isUsage ? usageCharacterContext(rule.actions.chat?.characterId) : null;
       const recent = isUsage
@@ -158,7 +202,9 @@ async function processText(rule: BridgeRule, item: BridgeItem): Promise<string> 
       try {
         const result = await simpleLLMCall(config, [
           { role: "system", content: systemContent },
-          { role: "user", content: prompt + "\n\n数据内容：" + item.payload + contextBlock },
+          // 提示词已经用占位符带入了事件时，不要再追加一份原始数据，
+          // 否则模型会看到两遍同样的信号并把它写进同一句。
+          { role: "user", content: promptHasSignal ? prompt + contextBlock : prompt + "\n\n数据内容：" + item.payload + contextBlock },
         ], { temperature: 0.8 });
         const text = (result.content ?? "").trim();
         if (text) return text.slice(0, 4000);
