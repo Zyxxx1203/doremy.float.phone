@@ -187,6 +187,11 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- 每 15 分钟自检一次：厂商清后台后把推送长连接拉回来。 -->
+        <receiver
+            android:name=".PushWatchdogReceiver"
+            android:exported="false" />
+
         <!-- Visible, user-enabled ambient-light automation; notification includes a stop action. -->
         <service
             android:name=".AmbientLightMonitorService"

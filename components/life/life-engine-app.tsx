@@ -4782,6 +4782,44 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             <Toggle checked={settings.generateSpecialEvents} onChange={v=>patchSettings({generateSpecialEvents:v})} label="允许偶发特殊事件"/>
             <Toggle checked={settings.enableCoincidences} onChange={v=>patchSettings({enableCoincidences:v})} label="启用偶遇与注意力判断" hint="关闭后场景仍可互动，但不做随机偶遇判断。"/>
             <Toggle checked={settings.enableCharacterAutonomy} onChange={v=>patchSettings({enableCharacterAutonomy:v})} label="允许角色自主行动"/>
+            <Toggle checked={settings.enableProactiveSceneMessages !== false} onChange={v=>patchSettings({enableProactiveSceneMessages:v})} label="后台主动消息" hint="App 在后台或被清后，仍按日程让角色主动发消息；需要部署离线推送。"/>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-stone-200/70 bg-white/60 px-3 py-2 text-xs text-stone-700">
+              <span>主动消息间隔</span>
+              <div className="flex items-center gap-1">
+                <input
+                  key={"proactive-min-" + (settings.proactiveSceneIntervalMinutes ?? 5)}
+                  type="number" inputMode="numeric" min={3} max={120}
+                  defaultValue={settings.proactiveSceneIntervalMinutes ?? 5}
+                  aria-label="主动消息最短间隔分钟"
+                  onBlur={event => patchSettings({ proactiveSceneIntervalMinutes: Math.max(3, Math.min(120, Math.round(Number(event.currentTarget.value) || 5))) })}
+                  className="w-16 rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs"
+                />
+                <span>至</span>
+                <input
+                  key={"proactive-max-" + (settings.proactiveSceneIntervalMaxMinutes ?? 15)}
+                  type="number" inputMode="numeric" min={3} max={180}
+                  defaultValue={settings.proactiveSceneIntervalMaxMinutes ?? 15}
+                  aria-label="主动消息最长间隔分钟"
+                  onBlur={event => patchSettings({ proactiveSceneIntervalMaxMinutes: Math.max(3, Math.min(180, Math.round(Number(event.currentTarget.value) || 15))) })}
+                  className="w-16 rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs"
+                />
+                <span>分钟</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-stone-200/70 bg-white/60 px-3 py-2 text-xs text-stone-700">
+              <span>现场安静多久后才主动</span>
+              <div className="flex items-center gap-1">
+                <input
+                  key={"proactive-silence-" + (settings.proactiveSceneSilenceMinutes ?? 10)}
+                  type="number" inputMode="numeric" min={1} max={120}
+                  defaultValue={settings.proactiveSceneSilenceMinutes ?? 10}
+                  aria-label="现场安静多少分钟后主动"
+                  onBlur={event => patchSettings({ proactiveSceneSilenceMinutes: Math.max(1, Math.min(120, Math.round(Number(event.currentTarget.value) || 10))) })}
+                  className="w-16 rounded-lg border border-stone-200 bg-white px-2 py-1 text-xs"
+                />
+                <span>分钟</span>
+              </div>
+            </div>
             <Toggle checked={settings.enableSpontaneousDeviation !== false} onChange={v=>patchSettings({enableSpontaneousDeviation:v})} label="角色会临时起意" hint="角色按日程移动时偶尔改去别处，只改实际位置，不改日程。"/>
             <div className="flex items-center justify-between gap-3 rounded-lg border border-stone-200/70 bg-white/60 px-3 py-2 text-xs text-stone-700">
               <span>每天最多几次</span>
