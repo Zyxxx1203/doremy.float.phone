@@ -199,7 +199,7 @@ const APP_PROMPT_DEFINITIONS: Array<{ identifier: string; name: string; content:
     { identifier: "watch_together_comment", name: "◇ 一起看陪看发言", content: WATCH_TOGETHER_COMMENT_PROMPT, tags: ["watch_together", "watch"] },
     { identifier: "reality_bridge_offline_library", name: "◇ 现实桥离线回复库", content: REALITY_BRIDGE_OFFLINE_LIBRARY_PROMPT, tags: ["reality_bridge", "offline_library"] },
     { identifier: "phone_widget_status", name: "◇ 桌面小组件状态", content: PHONE_WIDGET_STATUS_PROMPT, tags: ["phone_widget", "status"] },
-    { identifier: "focus_companion_proactive", name: "◇ 角色陪伴专注·TA主动约你（不需要可在预设里关掉）", content: FOCUS_COMPANION_PROACTIVE_PROMPT, tags: [] },
+    { identifier: "focus_companion_proactive", name: "◇ 专注陪伴·主动推进", content: FOCUS_COMPANION_PROACTIVE_PROMPT, tags: ["chat", "text"] },
 ];
 
 export const BUILTIN_APP_PROMPT_IDENTIFIERS = APP_PROMPT_DEFINITIONS.map(item => item.identifier);

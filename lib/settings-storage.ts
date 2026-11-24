@@ -261,6 +261,26 @@ export function loadPresets(): PresetConfig[] {
             }
         }
 
+        /* 归一化：清掉历史遗留的「专注陪伴」重复条目（旧名含「角色陪伴专注」），
+           并把保留的那条统一成新名称与线上聊天作用域。 */
+        let normalizedAny = false;
+        for (const preset of presets) {
+            const prompts = preset.prompts ?? [];
+            const focus = prompts.find(p => p.identifier === "focus_companion_proactive");
+            const legacy = prompts.find(p => p.identifier !== "focus_companion_proactive" && String(p.name || "").indexOf("角色陪伴专注") >= 0);
+            if (legacy) {
+                const legacyId = legacy.identifier;
+                preset.prompts = prompts.filter(p => p.identifier !== legacyId);
+                preset.prompt_order = (preset.prompt_order ?? []).filter(o => o.identifier !== legacyId);
+                normalizedAny = true;
+            }
+            if (focus) {
+                if ((focus.tags ?? []).length === 0) { focus.tags = ["chat", "text"]; normalizedAny = true; }
+                if (String(focus.name || "").indexOf("专注陪伴") < 0) { focus.name = "◇ 专注陪伴·主动推进"; normalizedAny = true; }
+            }
+        }
+        if (normalizedAny) savePresets(presets);
+
         // 内置 APP 的提示词条目按需补齐（只追加缺失项，保留用户已改内容）。
         const builtinPreset = presets.find(p => p.builtIn);
         if (builtinPreset) {
