@@ -11,6 +11,7 @@ import {
     UNSUPPORTED_IMPORT_FORMAT,
 } from "@/lib/settings-storage";
 import type { GenerationParameterKey, PresetConfig, Prompt, PromptOrderEntry } from "@/lib/settings-types";
+import { syncBuiltinEntriesIntoPreset } from "@/lib/preset-sync";
 import {
     GENERATION_PARAMETER_KEYS,
     resolveEnabledGenerationParameters,
@@ -286,6 +287,7 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
     const [viewMode, setViewMode] = useState<"list" | "detail">("list");
     const [editingPromptId, setEditingPromptId] = useState<string | null>(null);
     const [confirmExportId, setConfirmExportId] = useState<string | null>(null);
+    const [syncNote, setSyncNote] = useState("");
     const [confirmResetId, setConfirmResetId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [confirmDeleteEntry, setConfirmDeleteEntry] = useState<string | null>(null);
@@ -1149,6 +1151,23 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
                                         <Copy size={15} strokeWidth={1.8} />
                                         <span>复制预设</span>
                                     </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const { preset: merged, added } = syncBuiltinEntriesIntoPreset(preset);
+                                            if (!added.length) { setSyncNote("已是最新：没有缺失的内置条目"); return; }
+                                            const next = loadPresets().map((item) => (item.id === merged.id ? merged : item));
+                                            savePresets(next);
+                                            setPresets(next);
+                                            setSyncNote("已补入 " + added.length + " 条内置条目：" + added.slice(0, 4).join("、") + (added.length > 4 ? " 等" : ""));
+                                        }}
+                                        className="inline-flex h-10 items-center justify-center gap-1.5 rounded-[20px] border border-black/10 bg-white px-4 text-xs font-bold text-gray-800 shadow-sm transition-all hover:bg-gray-50 hover:shadow-md active:scale-95"
+                                        title="只补缺失的内置条目，不覆盖你改过的内容，也不重排顺序"
+                                    >
+                                        <Replace size={15} strokeWidth={1.8} />
+                                        <span>补全内置条目</span>
+                                    </button>
+                                    {syncNote ? <div className="text-[11px] leading-4 text-emerald-700">{syncNote}</div> : null}
                                     <button
                                         type="button"
                                         onClick={() => setConfirmExportId(preset.id)}
