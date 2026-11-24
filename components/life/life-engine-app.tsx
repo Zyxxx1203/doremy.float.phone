@@ -28,7 +28,7 @@ import {
   type LifeScheduleSlot,
   type VirtualLifeState,
 } from "@/lib/life/life-types";
-import { applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, insertManualLifeScheduleSlot, isManualLocationOverrideActive, overlayScheduleSlotsOverFreeTime, syncScheduleLocationsToLibrary, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, synchronizeCharacterHomeSchedule, reserveCharacterLocationStay, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
+import { applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, insertManualLifeScheduleSlot, isManualLocationOverrideActive, MANUAL_LOCATION_TTL_MS, overlayScheduleSlotsOverFreeTime, syncScheduleLocationsToLibrary, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, synchronizeCharacterHomeSchedule, reserveCharacterLocationStay, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { describeLifeOutputIssues, parseLifeOutput, validateLifeOutput, type LifeOutputIssue } from "@/lib/life/life-output";
@@ -56,6 +56,7 @@ import { acknowledgePendingLifeSceneReply, claimPendingLifeSceneReply, failPendi
 type Tab = "home" | "scene" | "daily" | "people" | "plans" | "invitations" | "experiences" | "locations" | "observe" | "settings";
 type ActorChoice = { ownerType: LifeOwnerType; ownerId: string; name: string; avatar?: string | null; persona?: string };
 type QuickPlanDraft = { id: string; ownerType: LifeOwnerType; ownerId: string; startAt: string; endAt: string; title: string; locationName: string; saveLocationToLibrary?: boolean; operation?: "add" | "move" | "update" | "cancel"; existingScheduleId?: string; reason?: string; guided?: boolean };
+type ManualLocationMode = "stay-30" | "stay-60" | "stay-120" | "pin" | "follow" | "manual";
 const PLAYER_ID = "player";
 const LIFE_PROACTIVE_MESSAGES_ENABLED = false; // Temporarily pause life-initiated messages; keep schedules/scenes.
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -84,6 +85,11 @@ function createLifeChatSession(characterId: string, characterName: string): Chat
 }
 
 const fmt = (value: Date | string) => new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(typeof value === "string" ? new Date(value) : value);
+const fmtRemaining = (ms: number) => {
+  const totalMinutes = Math.max(0, Math.ceil(ms / 60_000));
+  return `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`;
+};
+const fmtClock = (value: Date | string) => new Date(value).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
 const toLocalDateTimeInput = (value: string) => { const d = new Date(value); if (!Number.isFinite(d.getTime())) return ""; const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000); return local.toISOString().slice(0, 16); };
 const fromLocalDateTimeInput = (value: string) => { const d = new Date(value); return Number.isFinite(d.getTime()) ? d.toISOString() : ""; };
 const mondayStart = (date: Date) => { const d = new Date(date); d.setHours(0,0,0,0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; };
@@ -210,6 +216,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const [timelineImageUrls, setTimelineImageUrls] = useState<Record<string, string>>({});
   const timelineImageObjectUrlsRef = useRef<Record<string, string>>({});
   const [selectedActorKey, setSelectedActorKey] = useState("player:player");
+  /** Forces a re-render every 30s so stay countdowns and switch reminders stay current. */
+  const [, setStatusTick] = useState(0);
+  const [manualLocationPickerOpen, setManualLocationPickerOpen] = useState(false);
+  const [manualLocationDraftId, setManualLocationDraftId] = useState("");
   const initialFocusAppliedRef = useRef<string | null>(null);
   const initialSceneLinkHandledRef = useRef(false);
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
@@ -627,6 +637,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     ...characters.map(char => ({ ownerType: "character" as const, ownerId: char.id, name: char.name, avatar: char.avatar, persona: [char.persona, char.personality, ...(char.tags ?? []), getCharacterWorldBookContext(char.id), ...state.locations.map(location => location.characterHabits?.[char.id] ? `${location.name}地点习惯：${location.characterHabits[char.id]}` : "")].filter(Boolean).join("\n") })),
   ], [characters, playerName, playerIdentity?.avatarUrl, worldBooks, bindingConfig, state.locations]);
   const selectedActor = actors.find(actor => `${actor.ownerType}:${actor.ownerId}` === selectedActorKey) ?? actors[0];
+  useEffect(() => {
+    const timer = window.setInterval(() => setStatusTick(value => value + 1), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
   useEffect(() => {
     if (!initialCharacterId || initialFocusAppliedRef.current === initialCharacterId) return;
     if (!characters.some(character => character.id === initialCharacterId)) return;
@@ -1440,16 +1454,60 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     else { commit(next); setNotice("已按现实时间生成可编辑的七日日程。"); }
   };
 
-  const updateActorLocation = (actor: ActorChoice, locationId: string) => {
+  /** 手动改地点入口：stay-* 限时停留，pin 一直停留，follow 立即跟随日程。 */
+  const applyActorLocationMode = (actor: ActorChoice, locationId: string, mode: ManualLocationMode = "manual") => {
     // Read and update the latest persisted-in-memory snapshot so a rapid location
     // change cannot overwrite another life action committed since this render.
     const currentState = stateRef.current;
+    const nowDate = new Date();
+    const now = nowDate.toISOString();
+    if (mode === "follow") {
+      const current = currentState.actorStates.find(item => item.ownerType === actor.ownerType && item.ownerId === actor.ownerId);
+      const slot = getCurrentActorSchedule(currentState, actor.ownerType, actor.ownerId, nowDate);
+      const fallback = actor.ownerType === "player"
+        ? currentState.locations.find(item => item.id === "home") ?? currentState.locations.find(item => item.residents?.includes(actor.ownerId))
+        : currentState.locations.find(item => item.id === "home-" + actor.ownerId) ?? currentState.locations.find(item => item.residents?.includes(actor.ownerId));
+      const location = currentState.locations.find(item => item.id === slot?.plannedLocationId)
+        ?? fallback
+        ?? (current?.actualLocationId ? currentState.locations.find(item => item.id === current.actualLocationId) : undefined);
+      if (!location) { setNotice("找不到可恢复的日程地点。"); return; }
+      let next = upsertActorState(currentState, {
+        ownerType: actor.ownerType, ownerId: actor.ownerId,
+        activity: slot?.title || current?.activity || "自由活动",
+        scheduleSlotId: slot?.id ?? null,
+        actualLocationId: location.id, actualLocationName: location.name,
+        actualLocationUntil: null, locationSource: "schedule", manualSetAt: undefined, manualPinned: undefined,
+        updatedAt: now,
+      });
+      next = appendLifeTimelineEntry(next, { category: "location", title: "恢复跟随日程：" + location.name, details: "结束手动停留，重新按行程行动。", actorId: actor.ownerId, actorName: actor.name, locationName: location.name });
+      commit(next);
+      if (typeof window !== "undefined") window.dispatchEvent(new Event("life-force-sync"));
+      setNotice("已恢复跟随日程。");
+      return;
+    }
     const location = currentState.locations.find(item => item.id === locationId);
     if (!location) return;
     const current = currentState.actorStates.find(item => item.ownerType === actor.ownerType && item.ownerId === actor.ownerId);
-    const now = new Date().toISOString();
-    let next = upsertActorState(currentState, { ownerType: actor.ownerType, ownerId: actor.ownerId, activity: current?.activity || "正在这里活动", actualLocationId: location.id, actualLocationName: location.name, actualLocationUntil: null, locationSource: "manual", manualSetAt: now, updatedAt: now });
-    next = appendLifeTimelineEntry(next, { category: "location", title: actor.name + "来到了" + location.name, details: current?.actualLocationName ? "从" + current.actualLocationName + "前往" + location.name : "首次记录实际地点", actorId: actor.ownerId, actorName: actor.name, locationName: location.name });
+    const stayMinutes = mode === "stay-30" ? 30 : mode === "stay-60" ? 60 : mode === "stay-120" ? 120 : 0;
+    const pinned = mode === "pin";
+    const timedStay = stayMinutes > 0;
+    const until = timedStay ? new Date(nowDate.getTime() + stayMinutes * 60_000).toISOString() : null;
+    let next = upsertActorState(currentState, {
+      ownerType: actor.ownerType, ownerId: actor.ownerId,
+      activity: current?.activity || "正在这里活动",
+      actualLocationId: location.id, actualLocationName: location.name,
+      actualLocationUntil: until,
+      locationSource: pinned ? "manual" : timedStay ? "stay" : "manual",
+      manualSetAt: pinned || !timedStay ? now : undefined,
+      manualPinned: pinned ? true : undefined,
+      updatedAt: now,
+    });
+    next = appendLifeTimelineEntry(next, {
+      category: "location",
+      title: actor.name + "来到了" + location.name,
+      details: (current?.actualLocationName ? "从" + current.actualLocationName + "前往" + location.name : "首次记录实际地点") + " · " + (pinned ? "一直停留，直到手动改回" : timedStay ? "停留 " + stayMinutes + " 分钟后恢复日程" : "手动改地点"),
+      actorId: actor.ownerId, actorName: actor.name, locationName: location.name,
+    });
     if (actor.ownerType === "character") {
       const player = next.actorStates.find(item => item.ownerType === "player" && item.ownerId === PLAYER_ID);
       const sharedRoom = player?.actualLocationId
@@ -1471,6 +1529,11 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     }
     commit(next);
     setNotice(`${actor.name}的实际地点已更新为「${location.name}」。这与日程中的计划地点分开保存。`);
+  };
+
+  /** 兼容原有手动入口：不带停留方式时按 2 小时手动地点处理。 */
+  const updateActorLocation = (actor: ActorChoice, locationId: string) => {
+    applyActorLocationMode(actor, locationId, "manual");
   };
 
   const performCreateScene = () => {
@@ -3826,6 +3889,144 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   );
   const pendingCharacterInvitations = state.invitations.filter(invite => invite.status === "proposed" && invite.proposedBy !== "player");
 
+  // ── 当前地点状态区（停留徽章 / 跟随日程 / 切槽提示） ──────────────────────
+  const statusActor = selectedActor ?? playerActor;
+  // 每 30 秒由 statusTick 触发一次重渲染，这里每次渲染都重新取当前时间。
+  const statusNowMs = Date.now();
+  const statusActorState = actorState(statusActor);
+  const statusCurrentSlot = getCurrentActorSchedule(state, statusActor.ownerType, statusActor.ownerId, new Date(statusNowMs));
+  const statusOwnerSlots = state.schedules
+    .filter(slot => slot.ownerType === statusActor.ownerType && slot.ownerId === statusActor.ownerId)
+    .sort((a, b) => a.startAt.localeCompare(b.startAt));
+  const statusNextSlot = statusCurrentSlot
+    ? statusOwnerSlots.find(slot => slot.id !== statusCurrentSlot.id && new Date(slot.startAt).getTime() >= new Date(statusCurrentSlot.startAt).getTime())
+    : undefined;
+  const statusUntilMs = statusActorState?.actualLocationUntil ? Date.parse(statusActorState.actualLocationUntil) : Number.NaN;
+  const statusManualSetMs = statusActorState?.manualSetAt ? Date.parse(statusActorState.manualSetAt) : Number.NaN;
+  let statusStayBadge = "";
+  if (statusActorState?.actualLocationId) {
+    if (statusActorState.locationSource === "stay" && Number.isFinite(statusUntilMs) && statusUntilMs > statusNowMs) {
+      statusStayBadge = "临时停留 · 还剩 " + fmtRemaining(statusUntilMs - statusNowMs);
+    } else if (statusActorState.locationSource === "manual" && statusActorState.manualPinned) {
+      statusStayBadge = "手动停留 · 一直";
+    } else if (statusActorState.locationSource === "manual" && Number.isFinite(statusManualSetMs)) {
+      const remaining = statusManualSetMs + MANUAL_LOCATION_TTL_MS - statusNowMs;
+      if (remaining > 0) statusStayBadge = "手动停留 · 还剩 " + fmtRemaining(remaining);
+    }
+  }
+  const statusSwitchMinutes = statusCurrentSlot ? (Date.parse(statusCurrentSlot.endAt) - statusNowMs) / 60_000 : Number.NaN;
+  const statusSwitchDue = !!statusCurrentSlot && Number.isFinite(statusSwitchMinutes) && statusSwitchMinutes > 0 && statusSwitchMinutes <= 10;
+  const statusSwitchTime = statusNextSlot ? fmtClock(statusNextSlot.startAt) : statusCurrentSlot ? fmtClock(statusCurrentSlot.endAt) : "";
+  const statusSwitchName = statusNextSlot?.plannedLocationName || statusCurrentSlot?.plannedLocationName || "下一地点";
+  const statusLocationName = statusActorState?.actualLocationName
+    || statusCurrentSlot?.plannedLocationName
+    || state.locations.find(location => location.id === statusActorState?.actualLocationId)?.name
+    || "尚未记录";
+
+  const syncLifeSettle = (next: VirtualLifeState) => {
+    commit(next);
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("life-force-sync"));
+  };
+
+  const handleScheduleSwitch = (action: "early" | "delay" | "skip") => {
+    const current = stateRef.current;
+    const nowDate = new Date();
+    const nowIso = nowDate.toISOString();
+    const slot = getCurrentActorSchedule(current, statusActor.ownerType, statusActor.ownerId, nowDate);
+    if (!slot) { setNotice("当前没有进行中的日程。"); return; }
+    if (slot.source === "event") { setNotice("约会的时段请在邀约页调整。"); return; }
+    const ownerSlots = current.schedules
+      .filter(item => item.ownerType === slot.ownerType && item.ownerId === slot.ownerId)
+      .sort((a, b) => a.startAt.localeCompare(b.startAt));
+    const nextSlot = ownerSlots.find(item => item.id !== slot.id && new Date(item.startAt).getTime() >= new Date(slot.startAt).getTime());
+    if (nextSlot?.source === "event") { setNotice("下一项是约会，请先在邀约页调整。"); return; }
+    const markManual = (item: LifeScheduleSlot): LifeScheduleSlot["source"] => item.source === "event" ? "event" : "manual";
+    if (action === "skip" && !nextSlot) { setNotice("今天没有后续安排。"); return; }
+    const nextActualId = statusActorState?.actualLocationId ?? slot.plannedLocationId ?? null;
+    const nextActualName = statusActorState?.actualLocationName ?? slot.plannedLocationName ?? null;
+    let message = "";
+    const schedules = current.schedules.map(item => {
+      if (item.id === slot.id) {
+        if (action === "early") {
+          message = "已提前前往下一地点。";
+          return { ...item, endAt: nowIso, source: markManual(item), updatedAt: nowIso };
+        }
+        if (action === "delay") {
+          message = "已延后 30 分钟。";
+          const end = Date.parse(item.endAt);
+          return { ...item, endAt: new Date((Number.isFinite(end) ? end : nowDate.getTime()) + 30 * 60_000).toISOString(), source: markManual(item), updatedAt: nowIso };
+        }
+        return item;
+      }
+      if (nextSlot && item.id === nextSlot.id) {
+        if (action === "early") {
+          const start = Date.parse(item.startAt);
+          const end = Date.parse(item.endAt);
+          const duration = Number.isFinite(start) && Number.isFinite(end) && end > start ? end - start : 60 * 60_000;
+          const nextStart = nowDate.getTime();
+          return { ...item, startAt: new Date(nextStart).toISOString(), endAt: new Date(nextStart + duration).toISOString(), source: markManual(item), updatedAt: nowIso };
+        }
+        if (action === "delay") {
+          const start = Date.parse(item.startAt) + 30 * 60_000;
+          const end = Math.max(Date.parse(item.endAt), start + 5 * 60_000);
+          return { ...item, startAt: new Date(start).toISOString(), endAt: new Date(end).toISOString(), source: markManual(item), updatedAt: nowIso };
+        }
+        if (action === "skip") {
+          message = "今日不去，下一安排改在原地。";
+          return { ...item, plannedLocationId: nextActualId, plannedLocationName: nextActualName, plannedLocationDeleted: false, source: markManual(item), updatedAt: nowIso };
+        }
+      }
+      return item;
+    });
+    let next: VirtualLifeState = { ...current, schedules };
+    next = appendLifeTimelineEntry(next, {
+      category: "schedule",
+      title: "调整切槽安排：" + slot.title,
+      details: message,
+      actorId: statusActor.ownerId, actorName: statusActor.name,
+      locationName: slot.plannedLocationName ?? undefined,
+      sourceId: slot.id,
+    });
+    syncLifeSettle(next);
+    setNotice(message);
+  };
+
+  const findScheduleConflict = (slot: LifeScheduleSlot, all: LifeScheduleSlot[]): LifeScheduleSlot | undefined => {
+    const start = Date.parse(slot.startAt);
+    const end = Date.parse(slot.endAt);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= Date.now()) return undefined;
+    return all.find(other => other.id !== slot.id
+      && other.ownerType === slot.ownerType && other.ownerId === slot.ownerId
+      && Number.isFinite(Date.parse(other.startAt)) && Number.isFinite(Date.parse(other.endAt))
+      && Date.parse(other.endAt) > Date.now()
+      && start < Date.parse(other.endAt) && end > Date.parse(other.startAt));
+  };
+
+  const resolveScheduleConflict = (slot: LifeScheduleSlot, all: LifeScheduleSlot[]) => {
+    const other = findScheduleConflict(slot, all);
+    if (!other) return;
+    const [earlier, later] = Date.parse(slot.startAt) <= Date.parse(other.startAt) ? [slot, other] : [other, slot];
+    if (later.source === "event" || later.kind === "appointment") {
+      setNotice("约会日程需在邀约页调整时间。");
+      return;
+    }
+    const start = Date.parse(earlier.endAt);
+    const laterStart = Date.parse(later.startAt);
+    const laterEnd = Date.parse(later.endAt);
+    if (!Number.isFinite(start) || !Number.isFinite(laterStart) || !Number.isFinite(laterEnd) || laterEnd <= laterStart) return;
+    const duration = laterEnd - laterStart;
+    const nowIso = new Date().toISOString();
+    const current = stateRef.current;
+    syncLifeSettle({
+      ...current,
+      schedules: current.schedules.map(item => item.id === later.id
+        ? { ...item, startAt: new Date(start).toISOString(), endAt: new Date(start + duration).toISOString(), source: item.source === "event" ? "event" : "manual", updatedAt: nowIso }
+        : item),
+    });
+    setNotice("已把「" + later.title + "」顺延到 " + fmtClock(new Date(start)) + "。");
+  };
+
+
 
   if (!ready) return <main className="flex min-h-screen items-center justify-center bg-[#f7efe4] text-stone-500">正在打开生活档案…</main>;
 
@@ -4090,6 +4291,34 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           <div><p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--life-accent)]">Places & people</p><h2 className="mt-1 text-2xl font-semibold tracking-tight text-stone-800">此刻</h2></div>
           <div className="flex items-center gap-2"><button type="button" onClick={() => setSceneLocationSearchOpen(true)} aria-label="搜索和筛选地点" title="搜索和筛选地点" className="grid h-10 w-10 place-items-center rounded-xl border border-white/80 bg-white/75 text-stone-600"><Search size={17}/></button><button onClick={() => openDaily("plans")} className="shrink-0 rounded-xl border border-white/80 bg-white/75 px-3 py-2 text-xs text-stone-600">我的日程</button></div>
         </div>
+        <div className="rounded-2xl border border-white/80 bg-white/75 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] text-stone-500">{statusActor.name}</span>
+            <span className="text-sm font-semibold text-stone-800">{statusLocationName}</span>
+            {statusStayBadge && <span className="rounded-full bg-[var(--life-accent)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--life-accent)]">{statusStayBadge}</span>}
+            <span className="ml-auto flex items-center gap-1.5">
+              <button type="button" onClick={() => { setManualLocationDraftId(statusActorState?.actualLocationId ?? selectedLocationId); setManualLocationPickerOpen(true); }} className="rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[11px] text-stone-600">改地点</button>
+              <button type="button" onClick={() => applyActorLocationMode(statusActor, statusActorState?.actualLocationId ?? "", "follow")} className="rounded-lg border border-[#d9c2ae] bg-[#fbf5ee] px-2.5 py-1.5 text-[11px] text-stone-700">↩ 跟随日程</button>
+            </span>
+          </div>
+          {statusSwitchDue && <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50/80 p-2">
+            <p className="text-[11px] font-medium text-amber-800">{statusSwitchTime} 将前往 · {statusSwitchName}</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              <button type="button" onClick={() => handleScheduleSwitch("early")} className="rounded-lg bg-white px-2.5 py-1.5 text-[11px] text-stone-700 shadow-sm">提前过去</button>
+              <button type="button" onClick={() => handleScheduleSwitch("delay")} className="rounded-lg bg-white px-2.5 py-1.5 text-[11px] text-stone-700 shadow-sm">延后 30 分钟</button>
+              <button type="button" onClick={() => handleScheduleSwitch("skip")} className="rounded-lg bg-white px-2.5 py-1.5 text-[11px] text-stone-700 shadow-sm">今天不去</button>
+            </div>
+          </div>}
+        </div>
+        {manualLocationPickerOpen && <div role="dialog" aria-modal="true" aria-label="手动选择地点" className="fixed inset-0 z-[150] flex items-end justify-center bg-black/35 p-2 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setManualLocationPickerOpen(false)}>
+          <section className="w-full max-w-md rounded-3xl border border-white/80 bg-[var(--life-overlay)] p-4 shadow-2xl" onClick={event => event.stopPropagation()}>
+            <header className="mb-3 flex items-center justify-between"><h2 className="text-lg font-semibold text-stone-800">手动选择地点</h2><button type="button" onClick={() => setManualLocationPickerOpen(false)} aria-label="关闭" className="grid h-9 w-9 place-items-center rounded-full bg-white/75"><X size={18}/></button></header>
+            <select value={manualLocationDraftId} onChange={event => setManualLocationDraftId(event.target.value)} className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">{visibleLocations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}</select>
+            <div className="mt-3 grid grid-cols-3 gap-2">{([["stay-30", "待 30 分钟"], ["stay-60", "待 1 小时"], ["stay-120", "待 2 小时"]] as Array<[ManualLocationMode, string]>).map(([mode, label]) => <button key={mode} type="button" onClick={() => { applyActorLocationMode(statusActor, manualLocationDraftId, mode); setManualLocationPickerOpen(false); }} className="rounded-xl border border-stone-200 bg-white px-2 py-2.5 text-xs text-stone-700">{label}</button>)}</div>
+            <button type="button" onClick={() => { applyActorLocationMode(statusActor, manualLocationDraftId, "pin"); setManualLocationPickerOpen(false); }} className="mt-2 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-xs text-stone-700">一直停留（会一直在这里，直到手动改回）</button>
+            <button type="button" onClick={() => { applyActorLocationMode(statusActor, manualLocationDraftId, "follow"); setManualLocationPickerOpen(false); }} className="mt-2 w-full rounded-xl bg-[var(--life-accent)] px-3 py-2.5 text-xs font-medium text-white">跟随日程（立即恢复）</button>
+          </section>
+        </div>}
         {filteredLocationCards.length === 0 && <p className="rounded-2xl border border-dashed border-stone-300 bg-white/50 p-6 text-center text-sm text-stone-500">没有找到符合条件的地点，试试清除筛选。</p>}
         {Array.from(locationCardGroups.entries()).map(([folderId, items]) => <section key={folderId} className="space-y-3">
           <button type="button" onClick={() => setCollapsedLocationFolders(current => ({ ...current, [folderId]: !current[folderId] }))} className="flex w-full items-center justify-between rounded-xl bg-white/55 px-3 py-2 text-left text-xs font-semibold text-stone-600">
@@ -4518,11 +4747,11 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
               <div className="flex gap-2">{actor.ownerType === "character" && <button type="button" disabled={scheduleRegenerationOwnerId !== null || batchScheduleGenerating} onClick={() => void regenerateActorScheduleWithAI(actor)} className="rounded-lg border border-[var(--life-accent)]/30 bg-white px-3 py-2 text-[11px] text-[var(--life-accent)] disabled:opacity-50">{scheduleRegenerationOwnerId === actor.ownerId ? "AI 正在规划…" : "AI 重新生成"}</button>}<button type="button" onClick={() => addManualPlan(actor)} className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-[11px]">＋ 添加日程</button></div>
               {[...byDay.entries()].sort(([x],[y]) => x.localeCompare(y)).map(([dayKey,daySlots]) => <details key={dayKey} open={actor.ownerType === "player" && dayKey === today} className="rounded-xl border border-stone-200/70 bg-[#fcfaf6]">
                 <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-3 text-xs marker:hidden"><span className="flex-1 font-medium text-stone-700">{dayKey === "日期未知" ? dayKey : new Date(daySlots[0].startAt).toLocaleDateString("zh-CN",{month:"long",day:"numeric",weekday:"long"})}</span><span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] text-stone-500">{daySlots.length} 项</span><ChevronDown size={14} className="text-stone-400"/></summary>
-                <div className="space-y-2 border-t border-stone-100 p-2">{daySlots.map(slot => <div key={slot.id} className="rounded-xl border border-stone-200/70 bg-white p-3">
+                <div className="space-y-2 border-t border-stone-100 p-2">{daySlots.map(slot => { const conflict = findScheduleConflict(slot, slots); return <div key={slot.id} className="rounded-xl border border-stone-200/70 bg-white p-3">
                   {actor.ownerType === "character" && editingRoleScheduleId !== slot.id ? <div><div className="flex items-center justify-between gap-2"><span className="text-[10px] text-stone-400">行程线索</span><button type="button" onClick={() => setEditingRoleScheduleId(slot.id)} className="rounded-full border border-[#d9c2ae] bg-white px-3 py-1.5 text-[11px] text-[#8f6755]">微调</button></div><p className="mt-1.5 text-sm font-medium text-stone-700">{slot.title}</p><span className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#efe1d2] px-2.5 py-1 text-xs text-stone-700"><MapPin size={12}/><span className="break-words">{slot.plannedLocationName || "地点暂未确定"}</span></span></div>
                   : <div className="grid gap-2 sm:grid-cols-2"><label className="text-[11px] text-stone-500">开始<input type="datetime-local" value={toLocalDateTimeInput(slot.startAt)} onChange={e=>{const value=fromLocalDateTimeInput(e.target.value);if(value)updateManualPlan(slot,{startAt:value});}} onBlur={()=>recordManualPlanEdit(slot)} className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs"/></label><label className="text-[11px] text-stone-500">结束<input type="datetime-local" value={toLocalDateTimeInput(slot.endAt)} onChange={e=>{const value=fromLocalDateTimeInput(e.target.value);if(value)updateManualPlan(slot,{endAt:value});}} onBlur={()=>recordManualPlanEdit(slot)} className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-2 py-2 text-xs"/></label><label className="text-[11px] text-stone-500 sm:col-span-2">活动<input value={slot.title} onChange={e=>updateManualPlan(slot,{title:e.target.value})} onBlur={()=>recordManualPlanEdit(slot)} className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"/></label><label className="text-[11px] text-stone-500 sm:col-span-2">地点（可选择已有地点，也可输入自定义地点）<input list={"role-schedule-locations-" + slot.id} value={slot.plannedLocationName ?? ""} onChange={e=>updateManualPlan(slot,{plannedLocationName:e.target.value})} onBlur={()=>{recordManualPlanEdit(slot);const name=(slot.plannedLocationName ?? "").trim();const current=stateRef.current;if(name&&saveCustomScheduleLocations[slot.id]&&!current.locations.some(location=>location.name.trim().toLocaleLowerCase()===name.toLocaleLowerCase())){const location={id:id("location"),name,description:"从角色日程编辑添加的地点",visibility:"public" as const};commit({...current,locations:[...current.locations,location],schedules:current.schedules.map(item=>item.id===slot.id?{...item,plannedLocationId:location.id,plannedLocationName:name,updatedAt:new Date().toISOString()}:item)});setSaveCustomScheduleLocations(items=>({...items,[slot.id]:false}));setNotice("已将「"+name+"」保存到地点库并关联当前日程。");}}} className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"/><datalist id={"role-schedule-locations-" + slot.id}>{visibleLocations.map(location=><option key={location.id} value={location.name}/>)}</datalist></label>{(slot.plannedLocationName ?? "").trim()&&!state.locations.some(location=>location.name.trim().toLocaleLowerCase()===(slot.plannedLocationName ?? "").trim().toLocaleLowerCase())&&<label className="mt-1 flex items-center gap-2 text-[10px] text-stone-500 sm:col-span-2"><input type="checkbox" checked={Boolean(saveCustomScheduleLocations[slot.id])} onChange={e=>setSaveCustomScheduleLocations(items=>({...items,[slot.id]:e.target.checked}))} className="accent-[var(--life-accent)]"/>将自定义地点保存到地点库</label>}</div>}
-                  <div className="mt-2 flex items-center justify-between gap-2"><span className="text-[10px] text-stone-400">{actor.ownerType === "player" ? fmt(new Date(slot.startAt)) + " – " + fmt(new Date(slot.endAt)) + " · " : ""}{slot.source === "manual" ? "手动日程" : slot.source === "character-tool" ? "角色主动调整" : "可编辑计划"}</span><div className="flex gap-2">{actor.ownerType === "character" && editingRoleScheduleId === slot.id && <button type="button" onClick={() => setEditingRoleScheduleId(null)} className="rounded-lg border border-[#d9c2ae] px-2.5 py-1.5 text-[11px] text-[#8f6755]">完成</button>}<button type="button" onClick={() => deleteManualPlan(slot)} className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-500">删除</button></div></div>
-                </div>)}</div>
+                  <div className="mt-2 flex items-center justify-between gap-2"><span className="text-[10px] text-stone-400">{actor.ownerType === "player" ? fmt(new Date(slot.startAt)) + " – " + fmt(new Date(slot.endAt)) + " · " : ""}{slot.source === "manual" ? "手动日程" : slot.source === "character-tool" ? "角色主动调整" : "可编辑计划"}</span><div className="flex flex-wrap items-center gap-2">{slot.source === "manual" && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">已改</span>}{conflict && <><span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] text-rose-700"><span className="h-1.5 w-1.5 rounded-full bg-rose-500"/>时间冲突</span><button type="button" onClick={() => resolveScheduleConflict(slot, slots)} className="rounded-lg border border-rose-200 bg-white px-2 py-1 text-[10px] text-rose-700">自动顺延</button></>}{actor.ownerType === "character" && editingRoleScheduleId === slot.id && <button type="button" onClick={() => setEditingRoleScheduleId(null)} className="rounded-lg border border-[#d9c2ae] px-2.5 py-1.5 text-[11px] text-[#8f6755]">完成</button>}<button type="button" onClick={() => deleteManualPlan(slot)} className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-500">删除</button></div></div>
+                </div>; })}</div>
               </details>)}
               {slots.length === 0 && <p className="rounded-xl bg-white/60 p-3 text-xs text-stone-400">还没有日程，可以直接添加或补全缺失时段。</p>}
             </div>

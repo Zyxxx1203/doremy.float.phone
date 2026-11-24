@@ -230,6 +230,8 @@ export type LifeActorState = {
    * refreshes it, so the manual override 2-hour TTL can actually expire.
    */
   manualSetAt?: string;
+  /** User pinned the manual location: it never expires until manually changed again. */
+  manualPinned?: boolean;
   /** Online chat temporarily wakes a sleeping character for 20 minutes; schedule remains unchanged. */
   onlineChatAwakeUntil?: string | null;
   updatedAt: string;

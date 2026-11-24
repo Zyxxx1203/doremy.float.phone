@@ -45,6 +45,8 @@ export const MANUAL_LOCATION_TTL_MS = 2 * 60 * 60 * 1000;
  */
 export function isManualLocationOverrideActive(actor: LifeActorState | undefined, now = new Date()): boolean {
   if (!actor?.actualLocationId || actor.locationSource !== "manual" || !actor.manualSetAt || actor.actualLocationUntil != null) return false;
+  // 用户明确选择「一直停留」时不看时间，直到再次手动改动地点。
+  if (actor.manualPinned) return true;
   const setAt = Date.parse(actor.manualSetAt);
   return Number.isFinite(setAt) && now.getTime() - setAt < MANUAL_LOCATION_TTL_MS;
 }
@@ -52,6 +54,7 @@ export function isManualLocationOverrideActive(actor: LifeActorState | undefined
 /** The manual marker is present but its 2-hour TTL has elapsed; the schedule owns presence again. */
 export function isManualLocationOverrideExpired(actor: LifeActorState | undefined, now = new Date()): boolean {
   if (!actor?.actualLocationId || actor.locationSource !== "manual" || !actor.manualSetAt || actor.actualLocationUntil != null) return false;
+  if (actor.manualPinned) return false;
   const setAt = Date.parse(actor.manualSetAt);
   return Number.isFinite(setAt) && now.getTime() - setAt >= MANUAL_LOCATION_TTL_MS;
 }
@@ -852,14 +855,16 @@ export function settleActorTimelineToNow(
             : "stay"
           : previous?.locationSource;
   const nextManualSetAt = nextLocationSource === "manual" ? previous?.manualSetAt : undefined;
-  const actorChanged = !previous || previous.activity !== nextActivity || (previous.actualLocationId ?? null) !== nextLocationId || (previous.actualLocationName ?? null) !== nextLocationName || (previous.actualLocationUntil ?? null) !== nextLocationUntil || (previous.scheduleSlotId ?? null) !== nextSlotId || (previous.locationSource ?? null) !== (nextLocationSource ?? null) || (previous.manualSetAt ?? null) !== (nextManualSetAt ?? null);
+  // 固定停留只在手动地点生效；切到日程/约会/陪伴后立即失效，避免以后误判为永不过期。
+  const nextManualPinned = nextLocationSource === "manual" ? previous?.manualPinned : undefined;
+  const actorChanged = !previous || previous.activity !== nextActivity || (previous.actualLocationId ?? null) !== nextLocationId || (previous.actualLocationName ?? null) !== nextLocationName || (previous.actualLocationUntil ?? null) !== nextLocationUntil || (previous.scheduleSlotId ?? null) !== nextSlotId || (previous.locationSource ?? null) !== (nextLocationSource ?? null) || (previous.manualSetAt ?? null) !== (nextManualSetAt ?? null) || (previous.manualPinned ?? null) !== (nextManualPinned ?? null);
   const actorStates = actorChanged
     ? [...state.actorStates.filter(actor => !(actor.ownerType === ownerType && actor.ownerId === ownerId)), {
         ...(previous ?? {}),
         ownerType, ownerId, activity: nextActivity, scheduleSlotId: nextSlotId,
         actualLocationId: nextLocationId, actualLocationName: nextLocationName,
         actualLocationUntil: nextLocationUntil,
-        locationSource: nextLocationSource, manualSetAt: nextManualSetAt,
+        locationSource: nextLocationSource, manualSetAt: nextManualSetAt, manualPinned: nextManualPinned,
         updatedAt: nowIso,
       }]
     : state.actorStates;
