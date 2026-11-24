@@ -1934,6 +1934,11 @@ function applyAppPick(app) {
   render();
 }
 function openLockedAppsSheet() {
+  /* 防叠加：增删/推荐后重开时先关掉旧的白名单弹层。
+     否则点空白只关最上面一层，露出的是「加之前」的旧列表，看起来像被删了。 */
+  for (const m of modalStack.slice()) {
+    if (m && m.textContent && m.textContent.indexOf('常驻白名单') >= 0) closeSheet(m);
+  }
   /* 首次打开时后台拉一次应用列表，TA 推荐才有内容；到了就刷新这张弹层 */
   if (!S.draft.appList && API && API.device && API.device.appsList) {
     sdk(() => API.device.appsList(), null).then((res) => {
