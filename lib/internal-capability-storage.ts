@@ -1493,8 +1493,8 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
     },
     {
         id: LIFE_SCHEDULE_CAPABILITY_ID,
-        name: "生活系统 · 调整角色日程",
-        description: "允许角色调整自己当天尚未开始的普通日程；不得修改玩家日程、过去时段或覆盖已确认约会。",
+        name: "生活系统 · 调整角色日程与地点",
+        description: "允许角色调整自己尚未开始的普通日程，或临时动身去某个地点、直接来找你；不得修改玩家日程、过去时段或覆盖已确认约会。",
         enabled: true,
         mode: "auto",
         createdAt: 0,

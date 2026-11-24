@@ -32,6 +32,7 @@ import {
 } from "./idle-reconnect-storage";
 import { loadFollowUpConfig } from "./settings-storage";
 import { beginTurn, type TurnHandle } from "./turn-coordinator";
+import { readLifeSceneForegroundLease } from "./life/life-scheduler-coordinator";
 import { parseAIResponse } from "./rich-message-parser";
 import type { ParsedMessagePart } from "./rich-message-parser";
 import { getStatusRegionConfig, isCustomStatusRegionActive } from "./chat-status-region";
@@ -419,6 +420,9 @@ async function saveBackgroundCompletionRounds(
 
 function pollSchedules() {
     try {
+        // 用户正在看生活现场时，线上主动消息不抢当前回合；排期保留，
+        // 切到后台或离开现场后自动继续触发，不会被清掉。
+        if (readLifeSceneForegroundLease()) return;
         const schedules = loadAllFollowUpSchedules();
         const now = Date.now();
         for (const sched of schedules) {

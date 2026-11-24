@@ -503,7 +503,8 @@ export function getEnabledTools(appId?: string): EnabledTool[] {
                 const isScheduleRead = tool.name === "life_view_schedule";
                 const isScheduleWrite = tool.name === "life_create_schedule"
                     || tool.name === "life_change_schedule"
-                    || tool.name === "life_cancel_schedule";
+                    || tool.name === "life_cancel_schedule"
+                    || tool.name === "life_move_location";
                 const allowed = capability?.enabled && capability.mode !== "off"
                     && (isScheduleRead || lifeSettings.enableCharacterAutonomy)
                     && (tool.name === "life_propose_invitation"

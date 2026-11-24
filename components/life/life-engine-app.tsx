@@ -38,7 +38,6 @@ import { armLifeSceneProactiveBailout, cancelLifeSceneProactiveBailouts } from "
 import { setLifeSceneForegroundLease } from "@/lib/life/life-scheduler-coordinator";
 import { clearActiveLifeSceneTurn, recoverPendingLifeSceneTurns, savePendingLifeSceneTurns, setActiveLifeSceneTurn, type PendingLifeSceneTurn } from "@/lib/life/life-scene-turn-queue";
 
-import { cancelFollowUp } from "@/lib/follow-up-service";
 import { beginTurn } from "@/lib/turn-coordinator";
 import { loadBindingConfig, loadImageGenerationSettings, loadWorldBooks, resolveBinding, resolveUserIdentity, USER_IDENTITIES_UPDATED_EVENT } from "@/lib/settings-storage";
 import type { BindingConfig, WorldBookConfig } from "@/lib/settings-types";
@@ -2491,11 +2490,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       if (document.visibilityState === "visible") void tick();
     };
     // Clear any locally scheduled online-chat follow-up for characters currently in this scene.
-    for (const characterId of candidateIds) {
-      const contact = loadChatContacts().find(item => item.characterId === characterId);
-      const session = loadChatSessions().find(item => item.contactId === contact?.id && !item.isGroup);
-      if (session) cancelFollowUp(session.id);
-    }
+    // 进入生活现场只暂停线上主动消息的触发，不删除已经排好的追问。
+    // 之前这里直接 cancelFollowUp，导致用户切到后台后线上主动消息也永远不再来。
     const timer = window.setInterval(() => void tick(), LIFE_AUTONOMY_TICK_MS);
     // 首次进入生活现场就挂一条服务端预约，不能等第一个 5 分钟 tick：
     // 用户通常不会在生活页停留那么久，旧逻辑会导致 push_jobs 永远没有 life-scene 任务。

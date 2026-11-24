@@ -303,9 +303,10 @@ const [chatEngine, toolStorage, lifeTools, lifeRuntime, lifeMemoryBridge, guided
   read("../lib/life/life-guided-schedule.ts"),
 ]);
 assert.match(chatEngine, /if \(tool\.source === "life"\) return true;/);
-for (const name of ["life_view_schedule", "life_create_schedule", "life_change_schedule", "life_cancel_schedule"]) {
+for (const name of ["life_view_schedule", "life_create_schedule", "life_change_schedule", "life_cancel_schedule", "life_move_location"]) {
   assert.ok(lifeTools.includes('name: "' + name + '"'), name + " must be registered");
 }
+assert.match(lifeTools, /reserveCharacterLocationStay\(state, \{/, "move-location tool must reuse the schedule-preserving stay helper");
 assert.match(toolStorage, /isScheduleRead = tool\.name === "life_view_schedule"/);
 assert.match(toolStorage, /isScheduleWrite = tool\.name === "life_create_schedule"/);
 assert.match(toolStorage, /if \(lifeSettings\.enabled\) \{/, "schedule read tools remain registered when character autonomy is disabled");

@@ -157,7 +157,12 @@ export function synchronizeCharacterHomeSchedule(
  */
 export function reserveCharacterLocationStay(
   state: VirtualLifeState,
-  input: { characterId: string; locationId: string; locationName: string; startAt: Date; endAt: Date; title: string },
+  input: {
+    characterId: string; locationId: string; locationName: string; startAt: Date; endAt: Date; title: string;
+    /** 角色工具发起的移动用 character-tool，玩家手动改地点保持 manual。 */
+    slotSource?: LifeScheduleSlot["source"];
+    locationSource?: LifeActorState["locationSource"];
+  },
 ): VirtualLifeState {
   const { characterId, locationId, locationName, startAt, endAt, title } = input;
   const startMs = startAt.getTime();
@@ -205,7 +210,7 @@ export function reserveCharacterLocationStay(
     plannedLocationId: locationId,
     plannedLocationName: locationName,
     kind: "free-time",
-    source: "manual",
+    source: input.slotSource ?? "manual",
     updatedAt,
   });
   const existing = state.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === characterId);
@@ -215,7 +220,7 @@ export function reserveCharacterLocationStay(
     actualLocationId: locationId,
     actualLocationName: locationName,
     actualLocationUntil: endIso,
-    locationSource: "companion" as const,
+    locationSource: input.locationSource ?? ("companion" as const),
     manualSetAt: undefined,
     updatedAt,
   };

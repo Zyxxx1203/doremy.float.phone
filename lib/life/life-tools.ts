@@ -7,6 +7,7 @@ import {
   getActorClock,
   resolveActorLifeNow,
   makeLifeInvitation,
+  reserveCharacterLocationStay,
 } from "./life-runtime";
 
 export type LifeToolDefinition = {
@@ -18,7 +19,7 @@ export type LifeToolDefinition = {
 export const LIFE_TOOL_DEFINITIONS: LifeToolDefinition[] = [
   {
     name: "life_view_schedule",
-    description: "查询角色本人未来 1 至 7 天的日程。只读，不会修改安排；需要知道未来行程、空闲时段或已有约会时调用。",
+    description: "查询角色本人未来 1 至 7 天的日程。只读，不会修改安排；在答应邀约、调整计划、安排见面或判断自己有没有空闲之前，先调用它确认真实行程。",
     parameterSchema: JSON.stringify({
       type: "object",
       properties: { days: { type: "integer", minimum: 1, maximum: 7, description: "查询未来几天，1 到 7，默认 7" } },
@@ -26,7 +27,7 @@ export const LIFE_TOOL_DEFINITIONS: LifeToolDefinition[] = [
   },
   {
     name: "life_propose_invitation",
-    description: "角色主动向玩家发起邀约。只有角色本人有真实动机时调用；邀约会进入玩家的待处理列表，由玩家决定是否接受。",
+    description: "角色主动向玩家发起邀约。只要你有具体的时间、地点或想一起做的事，就主动调用，不要只口头问“要不要出来”；邀约会进入玩家的待处理列表，由玩家决定是否接受。",
     parameterSchema: JSON.stringify({
       type: "object",
       properties: {
@@ -40,7 +41,7 @@ export const LIFE_TOOL_DEFINITIONS: LifeToolDefinition[] = [
   },
   {
     name: "life_request_follow",
-    description: "角色主动申请陪伴并跟随玩家的实际行程。申请不会自动生效，玩家可以接受或拒绝。",
+    description: "角色主动申请陪伴并跟随玩家的实际行程。只要你想陪在对方身边、想跟对方一起走接下来的路，就主动调用；申请不会自动生效，玩家可以接受或拒绝。",
     parameterSchema: JSON.stringify({
       type: "object",
       properties: {
@@ -50,8 +51,21 @@ export const LIFE_TOOL_DEFINITIONS: LifeToolDefinition[] = [
     }),
   },
   {
+    name: "life_move_location",
+    description: "让角色立刻动身去某个地点，或直接去玩家当前所在地点找人。想见面、临时起意、想送东西、想当面说清楚时，优先直接调用它，不要只在台词里说“我来了”。会保留原有日程、只替换当前正在进行的时段；不覆盖已确认约会和玩家手动安排。省略 locationId 即前往玩家当前所在地点。",
+    parameterSchema: JSON.stringify({
+      type: "object",
+      properties: {
+        locationId: { type: "string", description: "目标地点 ID 或名称；想去找玩家时省略，或填 player" },
+        durationMinutes: { type: "number", description: "在该地点停留的分钟数，15 到 1440，默认 120；到下一个日程边界会自动截断" },
+        activity: { type: "string", description: "到达后的活动描述，例如“来找你”“一起吃饭”；省略时自动生成" },
+        reason: { type: "string", description: "为什么现在要过去，简短一句" },
+      },
+    }),
+  },
+  {
     name: "life_create_schedule",
-    description: "为角色本人创建未来 7 天内的新日程。先查询已有安排；不得覆盖手动安排、约会或特殊活动。",
+    description: "为角色本人创建未来 7 天内的新日程。当现有安排里没有你想做的事、或你需要为未来的约定留出时间时，主动创建。先查询已有安排；不得覆盖手动安排、约会或特殊活动。",
     parameterSchema: JSON.stringify({
       type: "object",
       properties: {
@@ -65,7 +79,7 @@ export const LIFE_TOOL_DEFINITIONS: LifeToolDefinition[] = [
   },
   {
     name: "life_change_schedule",
-    description: "修改角色本人尚未开始的自动生成日程或角色自主创建的未来日程；提供 scheduleId。兼容旧调用时不提供 scheduleId 会按创建新日程处理。不得覆盖用户手动安排、约会或特殊活动。",
+    description: "修改角色本人尚未开始的自动生成日程或角色自主创建的未来日程；当计划有变、玩家提出改时间地点、或你想把安排挪到对方所在地点时，主动调用并传入 scheduleId。不得覆盖用户手动安排、约会或特殊活动。",
     parameterSchema: JSON.stringify({
       type: "object",
       properties: {
@@ -80,7 +94,7 @@ export const LIFE_TOOL_DEFINITIONS: LifeToolDefinition[] = [
   },
   {
     name: "life_cancel_schedule",
-    description: "取消角色本人尚未开始的自动生成或角色自主创建的未来日程，并将该时段保留为自由时间，避免自动生成器重新填回。不能取消用户手动安排、约会、特殊活动或已经开始的日程。",
+    description: "取消角色本人尚未开始的自动生成或角色自主创建的未来日程，并将该时段保留为自由时间。当某项安排不再需要、或你想空出时间陪对方时主动调用。不能取消用户手动安排、约会、特殊活动或已经开始的日程。",
     parameterSchema: JSON.stringify({
       type: "object",
       properties: { scheduleId: { type: "string", description: "要取消的自动生成或角色自主创建日程 ID" } },
@@ -200,6 +214,79 @@ export async function executeLifeToolCall(
     const logged = appendLifeTimelineEntry(next, { category: "tool", title: "角色申请陪伴", details: (reason ? "原因：" + reason + "；" : "") + "申请时长：" + duration + " 分钟", actorId: characterId, actorName: loadCharacters().find(item => item.id === characterId)?.name ?? "角色", sourceId: next.invitations[0]?.id, occurredAt: characterNow.toISOString() });
     saveVirtualLifeState(logged);
     return result(name, true, JSON.stringify({ created: true, durationMinutes: duration, reason, status: "proposed", message: "陪伴申请已提交给玩家，等待玩家接受或拒绝。" }));
+  }
+
+  if (name === "life_move_location") {
+    if (!state.settings.enableScheduleChangeTool) return result(name, false, undefined, "角色自主调整日程已在自定义设置中关闭。");
+    const rawTarget = cleanText(args.locationId, 100);
+    const wantsPlayer = !rawTarget || /^(player|me|玩家|你|user)$/i.test(rawTarget);
+    const player = state.actorStates.find(actor => actor.ownerType === "player" && actor.ownerId === "player");
+    const location = wantsPlayer
+      ? state.locations.find(item => item.id === player?.actualLocationId)
+      : state.locations.find(item => item.id === rawTarget)
+        ?? state.locations.find(item => item.name === rawTarget)
+        ?? state.locations.find(item => (item.aliases ?? []).includes(rawTarget));
+    if (!location) {
+      return result(name, false, undefined, wantsPlayer
+        ? "找不到玩家当前所在地点；请改用具体地点 ID，或先用 life_view_schedule 确认可用地点。"
+        : "地点不存在。请使用地点库中的规范地点 ID 或准确名称。");
+    }
+    const now = resolveActorLifeNow(getActorClock(state, "character", characterId));
+    const duration = Math.max(15, Math.min(Number(args.durationMinutes) || 120, 24 * 60));
+    const until = new Date(now.getTime() + duration * 60_000);
+    const title = cleanText(args.activity, 120) || (wantsPlayer ? "来找你" : "前往" + location.name);
+    const reason = cleanText(args.reason, 180);
+    const actorName = loadCharacters().find(item => item.id === characterId)?.name ?? "角色";
+    let next = reserveCharacterLocationStay(state, {
+      characterId, locationId: location.id, locationName: location.name,
+      startAt: now, endAt: until, title,
+      slotSource: "character-tool", locationSource: "stay",
+    });
+    const nowIso = now.toISOString();
+    next = {
+      ...next,
+      scenes: next.scenes.map(scene => {
+        const hasCharacter = scene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === characterId);
+        if (scene.locationId !== location.id) {
+          if (!hasCharacter || scene.status !== "active") return scene;
+          return { ...scene, participants: scene.participants.filter(participant => !(participant.ownerType === "character" && participant.ownerId === characterId)), updatedAt: nowIso };
+        }
+        if (scene.status !== "active") return scene;
+        if (hasCharacter) {
+          return {
+            ...scene,
+            participants: scene.participants.map(participant => participant.ownerType === "character" && participant.ownerId === characterId
+              ? { ...participant, activity: title }
+              : participant),
+            updatedAt: nowIso,
+          };
+        }
+        return {
+          ...scene,
+          participants: [
+            ...scene.participants,
+            { ownerType: "character" as const, ownerId: characterId, activity: title, awarenessByActorId: { player: "aware" as const } },
+          ],
+          updatedAt: nowIso,
+        };
+      }),
+    };
+    const logged = appendLifeTimelineEntry(next, {
+      category: "location",
+      title: (wantsPlayer ? "角色来找你：" : "角色前往") + location.name,
+      details: "停留约 " + duration + " 分钟" + (reason ? "；原因：" + reason : ""),
+      actorId: characterId, actorName, locationName: location.name, occurredAt: nowIso,
+    });
+    saveVirtualLifeState(logged);
+    return result(name, true, JSON.stringify({
+      moved: true,
+      locationId: location.id,
+      locationName: location.name,
+      until: until.toISOString(),
+      message: wantsPlayer
+        ? "你已经来到玩家所在地点「" + location.name + "」。现在可以直接用一句自然的招呼或说明来意，不要只描述移动过程。"
+        : "你已经到达「" + location.name + "」。现在可以自然地做接下来想做的事。",
+    }));
   }
 
   if (name === "life_create_schedule" || name === "life_change_schedule") {
