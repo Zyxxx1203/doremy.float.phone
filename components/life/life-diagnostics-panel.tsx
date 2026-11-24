@@ -48,10 +48,14 @@ export function LifeDiagnosticsPanel() {
   const [summaryText, setSummaryText] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
   const [snapshotBreaker, setSnapshotBreaker] = useState<CloudBreakerState>(() => cloudBreakerState("life-snapshot"));
+  const [pushBreaker, setPushBreaker] = useState<CloudBreakerState>(() => cloudBreakerState("push"));
   const refreshInFlightRef = useRef(false);
 
   useEffect(() => {
-    const sync = () => setSnapshotBreaker(cloudBreakerState("life-snapshot"));
+    const sync = () => {
+      setSnapshotBreaker(cloudBreakerState("life-snapshot"));
+      setPushBreaker(cloudBreakerState("push"));
+    };
     window.addEventListener(CLOUD_BREAKER_CHANGED_EVENT, sync);
     return () => window.removeEventListener(CLOUD_BREAKER_CHANGED_EVENT, sync);
   }, []);
@@ -401,16 +405,22 @@ export function LifeDiagnosticsPanel() {
         </div>
       </div>
 
-      {snapshotBreaker.paused ? (
+      {snapshotBreaker.paused || pushBreaker.paused ? (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
           <span>
-            云端同步已暂停：连续失败 {snapshotBreaker.failures} 次
-            {snapshotBreaker.lastError ? "（" + snapshotBreaker.lastError + "）" : ""}。
+            {snapshotBreaker.paused ? ("日程快照已暂停（连续 " + snapshotBreaker.failures + " 次" + (snapshotBreaker.lastError ? "，" + snapshotBreaker.lastError : "") + "）。") : ""}
+            {pushBreaker.paused ? ("离线推送挂载已暂停（连续 " + pushBreaker.failures + " 次" + (pushBreaker.lastError ? "，" + pushBreaker.lastError : "") + "）。") : ""}
             自动重试已停止，避免继续消耗云端额度。
           </span>
           <button
             type="button"
-            onClick={() => { resetCloudBreaker("life-snapshot"); setSnapshotBreaker(cloudBreakerState("life-snapshot")); void refresh(); }}
+            onClick={() => {
+              resetCloudBreaker("life-snapshot");
+              resetCloudBreaker("push");
+              setSnapshotBreaker(cloudBreakerState("life-snapshot"));
+              setPushBreaker(cloudBreakerState("push"));
+              void refresh();
+            }}
             className="inline-flex min-h-9 items-center gap-1 rounded-xl border border-amber-300 bg-white px-3 text-xs"
           >
             重试云端同步

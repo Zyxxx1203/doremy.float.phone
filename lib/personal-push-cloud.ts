@@ -5,6 +5,7 @@ import {
 } from "./cloud-backup/config";
 import { kvGet, kvRemove, kvSet, registerKvMigration } from "./kv-db";
 import { isShellEnvironment } from "./shell-detect";
+import { cloudBreakerPaused, noteCloudFailure, noteCloudSuccess } from "@/lib/cloud-circuit-breaker";
 
 const PERSONAL_PUSH_STATE_KEY = "personal_push_cloud_state_v1";
 // 与 push-client 的账号订阅门控同一键；部署完成到独立订阅写入前必须保持关闭，
@@ -138,11 +139,26 @@ export function pushJobsFetch(init: RequestInit): Promise<Response> {
   // 站点接口用的是同一个账号 id，与壳订阅天然一致：任务落库 user_id=local_user，
   // 与壳订阅同库同键，push-generate 按 job.user_id 查订阅、发频道全都正确
   // （自部署下站点与个人云共用同一个 Supabase 项目，cron 会照常捞取）。
-  if (isShellEnvironment()) {
-    return fetch("/api/push/jobs", { ...init, credentials: "include" });
+  /* 熔断：连续 5 次失败后不再发请求，直接返回 503，调用方按失败处理 */
+  if (cloudBreakerPaused("push")) {
+    return Promise.resolve(new Response(JSON.stringify({ ok: false, error: "云端连续失败已暂停自动重试" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    }));
   }
-  if (isPersonalPushCloudActive()) return personalPushFetch("jobs", init);
-  return fetch("/api/push/jobs", { ...init, credentials: "include" });
+  const run = (): Promise<Response> => {
+    if (isShellEnvironment()) return fetch("/api/push/jobs", { ...init, credentials: "include" });
+    if (isPersonalPushCloudActive()) return personalPushFetch("jobs", init);
+    return fetch("/api/push/jobs", { ...init, credentials: "include" });
+  };
+  return run().then((res) => {
+    if (res.ok) noteCloudSuccess("push");
+    else noteCloudFailure("push", "HTTP " + res.status);
+    return res;
+  }, (err) => {
+    noteCloudFailure("push", err instanceof Error ? err.message : String(err));
+    throw err;
+  });
 }
 
 function wait(ms: number): Promise<void> {
