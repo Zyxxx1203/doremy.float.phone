@@ -1619,8 +1619,8 @@ async function onAway(sec) {
   s.violations.push(v);
   bumpSelfTasks(s, -12, '你中途离开了 ' + Math.round(sec) + ' 秒');
   await coinDeductFor('专注中离开', 'leave');
-  /* L1 提醒锁：离开落一条系统通知 —— 人不在小手机里也能收到 */
-  if (cfg('focusAssist') && API && API.device && API.device.notify) {
+  /* 提醒锁：任何开启的锁级离开都落一条系统通知 —— 人不在小手机里也能收到 */
+  if (assistLevelFor(s) !== 'off' && API && API.device && API.device.notify) {
     const leaveCid = pickOneChar(s.charIds);
     sdk(() => API.device.notify({ title: '👀 ' + charName(leaveCid) + ' 看到你离开了', body: '专注里离开了 ' + Math.round(sec) + ' 秒，回来继续吧。' }), null).catch(() => { });
   }
@@ -1990,11 +1990,14 @@ function askAwayExcuse(v, sec) {
 /* ---------- 开始 / 阶段流转 ---------- */
 /* ── 锁机分级 ──────────────────────────────────────────
    assistLevelFor：本場专注的生效等级。优先级：专注设置页的本次选择 >
-   全局 focusLevel。返回 'off' | 'L1' | 'L3'。 */
+   全局 focusLevel。返回 'off' | 'L1' | 'L2' | 'L3'。 */
 function assistLevelNow() { return cfg('focusLevel') || 'off'; }
 function assistLevelFor(session) {
-  if (session && session.assistLevel) return session.assistLevel;
-  if (S.draft.assistForSession != null) return S.draft.assistForSession;
+  const raw = (session && session.assistLevel) || S.draft.assistForSession;
+  /* 旧版本曾把 assistForSession 写成布尔 true；统一归一化为 L3，
+     否则后续与 'L3' 的比较全部失败，看守锁/自动开罚会被静默跳过。 */
+  if (raw === true) return 'L3';
+  if (raw) return raw;
   return assistLevelNow();
 }
 async function startSession(o) {
@@ -2018,7 +2021,7 @@ async function startSession(o) {
         <button class="btn primary grow" data-act="pledgeStart">✍️ 签承诺，开始</button></div>`);
     return S.session || null;
   }
-  if (pendingLevel === 'L3') S.draft.assistForSession = true;   // 已签：本场锁定等级
+  if (pendingLevel === 'L3') S.draft.assistForSession = pendingLevel;   // 已签：本场锁定等级
   const plan = (o.plan || []).filter(t => t.content && t.content.trim());
   const cycles = Math.max(1, Number(o.cycles) || 1);
   const s = {
@@ -2045,6 +2048,7 @@ async function startSession(o) {
   go('running');
   /* 锁机分级：L1/L3 专注期勿扰（结束后由 tick 自动恢复） */
   s.assistLevel = assistLevelFor(s);
+  S.draft.assistForSession = null;
   if (s.assistLevel === 'L3') pushMsg(s, 'sys', '⚑ 承诺死锁生效：中途离开超宽限将自动开罚');
   /* L2/L3：启动壳侧看守锁（白名单外的手机应用被带回小手机） */
   if ((s.assistLevel === 'L2' || s.assistLevel === 'L3') && API && API.device && API.device.lockStart) {
