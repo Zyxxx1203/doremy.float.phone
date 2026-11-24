@@ -481,17 +481,23 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     void hydrateKvDb().then(() => hydrateChatStorage()).catch(() => undefined).finally(() => {
       if (!alive) return;
       const loaded = loadVirtualLifeState();
+      const legacyBubbleStyle = (loaded.bubbleStyleVersion ?? 0) < 1;
+      const loadedBubblePadding = loaded.settings?.bubblePadding;
       let normalized: VirtualLifeState = {
         ...loaded,
+        bubbleStyleVersion: 1,
         settings: {
           ...DEFAULT_LIFE_ENGINE_SETTINGS,
           ...loaded.settings,
           dialogueFontSize: loaded.settings?.dialogueFontSize === 15 ? 13 : loaded.settings?.dialogueFontSize ?? 13,
-          bubblePadding: loaded.settings?.bubblePadding === 4 ? 3 : loaded.settings?.bubblePadding ?? 3,
+          bubblePadding: legacyBubbleStyle && (loadedBubblePadding === 3 || loadedBubblePadding === 4)
+            ? DEFAULT_LIFE_ENGINE_SETTINGS.bubblePadding
+            : loadedBubblePadding ?? DEFAULT_LIFE_ENGINE_SETTINGS.bubblePadding,
           sceneRecordBatchSize: Math.max(1, Math.min(100, Number(loaded.settings?.sceneRecordBatchSize) || 10)),
         },
         locations: [...INITIAL_LOCATIONS.filter(location => !loaded.locations.some(saved => saved.id === location.id)), ...loaded.locations.map(saved => { const defaults = INITIAL_LOCATIONS.find(location => location.id === saved.id); return defaults ? { ...defaults, ...saved, description: saved.description || defaults.description, atmosphere: saved.atmosphere || defaults.atmosphere, layout: saved.layout || defaults.layout, props: saved.props?.length ? saved.props : defaults.props } : saved; })],
       };
+      if (legacyBubbleStyle) saveVirtualLifeState(normalized);
       // Run legacy action/dialogue parsing exactly once. Re-parsing already-normalized
       // dialogue on every app entry can reinterpret ordinary prose differently as the
       // parser evolves, making the same history appear to change between visits.

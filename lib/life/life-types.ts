@@ -125,7 +125,7 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   narrationFontSize: 12,
   dialogueFontFamily: "",
   narrationFontFamily: "",
-  bubblePadding: 3,
+  bubblePadding: 6,
   messageGapPx: 4,
   narrationGapPx: 4,
   sceneRecordBatchSize: 10,
@@ -374,6 +374,8 @@ export type VirtualLifeState = {
   schemaVersion: 1;
   /** Version of role-card-aware weekly schedule templates already applied. */
   scheduleProfileVersion?: number;
+  /** 气泡间距默认值迁移版本：旧默认 3/4px 升到 6px。 */
+  bubbleStyleVersion?: number;
   /** One-time migration marker for legacy scene message action/dialogue parsing. */
   sceneMessageFormatVersion?: number;
   settings: LifeEngineSettings;
@@ -395,6 +397,7 @@ export function createEmptyVirtualLifeState(now = new Date().toISOString()): Vir
   return {
     schemaVersion: 1,
     scheduleProfileVersion: 3,
+    bubbleStyleVersion: 1,
     settings: { ...DEFAULT_LIFE_ENGINE_SETTINGS },
     locations: [],
     locationFolders: [],
