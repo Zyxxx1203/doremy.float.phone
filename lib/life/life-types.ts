@@ -219,6 +219,17 @@ export type LifeActorState = {
   actualLocationName?: string | null;
   /** Optional real-world time when a manually chosen location stay ends and the planned itinerary resumes. */
   actualLocationUntil?: string | null;
+  /**
+   * Where the current actual location came from. Schedule movement, timed stays,
+   * appointments and companion travel are not manual overrides even when the
+   * actual place temporarily differs from the planned one.
+   */
+  locationSource?: "schedule" | "manual" | "stay" | "appointment" | "companion";
+  /**
+   * Set only when the user explicitly picks a manual location. Settlement never
+   * refreshes it, so the manual override 2-hour TTL can actually expire.
+   */
+  manualSetAt?: string;
   /** Online chat temporarily wakes a sleeping character for 20 minutes; schedule remains unchanged. */
   onlineChatAwakeUntil?: string | null;
   updatedAt: string;

@@ -17,6 +17,7 @@ import { CLOUD_BREAKER_CHANGED_EVENT, cloudBreakerState, resetCloudBreaker, type
 import { downloadFile } from "@/lib/download-utils";
 import { copyTextToClipboard } from "@/lib/clipboard-utils";
 import { loadCharacters } from "@/lib/character-storage";
+import { isManualLocationOverrideActive } from "@/lib/life/life-runtime";
 
 const STATUS_LABEL: Record<LifeDiagnosticStatus, string> = {
   ok: "成功",
@@ -121,7 +122,8 @@ export function LifeDiagnosticsPanel() {
             const slot = activeSlots[0];
             const until = actor.actualLocationUntil ? Date.parse(actor.actualLocationUntil) : Number.NaN;
             const temporaryStay = Number.isFinite(until) && until > now;
-            const manualOverride = Boolean(actor.actualLocationId && actor.actualLocationUntil == null && actor.actualLocationId !== slot?.plannedLocationId);
+            // Same TTL rule as settlement/UI: expired manual choices are no longer overrides.
+            const manualOverride = isManualLocationOverrideActive(actor, new Date(now));
             return {
               ownerType: actor.ownerType,
               ownerId: actor.ownerId,

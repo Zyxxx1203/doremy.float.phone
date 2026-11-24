@@ -28,7 +28,7 @@ import {
   type LifeScheduleSlot,
   type VirtualLifeState,
 } from "@/lib/life/life-types";
-import { applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, insertManualLifeScheduleSlot, overlayScheduleSlotsOverFreeTime, syncScheduleLocationsToLibrary, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, synchronizeCharacterHomeSchedule, reserveCharacterLocationStay, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
+import { applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, insertManualLifeScheduleSlot, isManualLocationOverrideActive, overlayScheduleSlotsOverFreeTime, syncScheduleLocationsToLibrary, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, synchronizeCharacterHomeSchedule, reserveCharacterLocationStay, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { describeLifeOutputIssues, parseLifeOutput, validateLifeOutput, type LifeOutputIssue } from "@/lib/life/life-output";
@@ -433,6 +433,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             actualLocationId: playerLocation.id,
             actualLocationName: playerLocation.name,
             actualLocationUntil: restoredPlayer?.actualLocationUntil ?? null,
+            // Preserve the persisted source; legacy records without one keep their
+            // previous 2-hour manual grace period instead of being moved on load.
+            locationSource: restoredPlayer?.locationSource ?? (restoredPlayer?.actualLocationUntil ? "stay" : "manual"),
+            manualSetAt: restoredPlayer?.manualSetAt ?? (restoredPlayer?.actualLocationUntil ? undefined : now),
             updatedAt: now,
           });
         }
@@ -958,9 +962,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       if (!targetLocationId) continue;
       const nowMs = now.getTime();
       const temporaryStayActive = Boolean(before?.actualLocationUntil && Date.parse(before.actualLocationUntil) > nowMs);
-      const manualLocationOverride = Boolean(before?.actualLocationId
-        && before.actualLocationUntil == null
-        && before.actualLocationId !== slot?.plannedLocationId);
+      // 手动地点只在 2 小时 TTL 内阻挡日程搬迁；过期后这里也必须重新跟随日程，
+      // 否则角色会被永久卡在手动地点。
+      const manualLocationOverride = isManualLocationOverrideActive(before, now);
       if (temporaryStayActive || manualLocationOverride) continue;
       if (before?.actualLocationId === targetLocationId && before?.activity === targetActivity) continue;
       next = upsertActorState(next, {
@@ -971,6 +975,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         actualLocationId: targetLocationId,
         actualLocationName: targetLocationName,
         actualLocationUntil: null,
+        locationSource: "schedule",
+        manualSetAt: undefined,
         updatedAt: new Date().toISOString(),
       });
       next = appendLifeTimelineEntry(next, {
@@ -1441,7 +1447,8 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const location = currentState.locations.find(item => item.id === locationId);
     if (!location) return;
     const current = currentState.actorStates.find(item => item.ownerType === actor.ownerType && item.ownerId === actor.ownerId);
-    let next = upsertActorState(currentState, { ownerType: actor.ownerType, ownerId: actor.ownerId, activity: current?.activity || "正在这里活动", actualLocationId: location.id, actualLocationName: location.name, actualLocationUntil: null, updatedAt: new Date().toISOString() });
+    const now = new Date().toISOString();
+    let next = upsertActorState(currentState, { ownerType: actor.ownerType, ownerId: actor.ownerId, activity: current?.activity || "正在这里活动", actualLocationId: location.id, actualLocationName: location.name, actualLocationUntil: null, locationSource: "manual", manualSetAt: now, updatedAt: now });
     next = appendLifeTimelineEntry(next, { category: "location", title: actor.name + "来到了" + location.name, details: current?.actualLocationName ? "从" + current.actualLocationName + "前往" + location.name : "首次记录实际地点", actorId: actor.ownerId, actorName: actor.name, locationName: location.name });
     if (actor.ownerType === "character") {
       const player = next.actorStates.find(item => item.ownerType === "player" && item.ownerId === PLAYER_ID);
@@ -1492,7 +1499,18 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       : { id: id("scene"), locationId: selectedLocation.id, locationName: selectedLocation.name, startedAt: now, updatedAt: now, status: "active", participants: destinationParticipants, lastSettledEventIds: [] };
     next = upsertLifeScene(next, scene);
     for (const actor of [{ ownerType: "player" as const, ownerId: PLAYER_ID }, ...chosen.map(char => ({ ownerType: "character" as const, ownerId: char.id }))]) {
-      next = upsertActorState(next, { ...actor, activity: actor.ownerType === "player" ? (playerActivity || "刚来到这里") : "正在做自己的事", actualLocationId: selectedLocation.id, actualLocationName: selectedLocation.name, actualLocationUntil: actor.ownerType === "player" ? new Date(resolveActorLifeNow(getActorClock(stateRef.current, "player", PLAYER_ID)).getTime() + stayDurationMinutes * 60_000).toISOString() : null, updatedAt: now });
+      const isPlayer = actor.ownerType === "player";
+      next = upsertActorState(next, {
+        ...actor,
+        activity: isPlayer ? (playerActivity || "刚来到这里") : "正在做自己的事",
+        actualLocationId: selectedLocation.id,
+        actualLocationName: selectedLocation.name,
+        actualLocationUntil: isPlayer ? new Date(resolveActorLifeNow(getActorClock(stateRef.current, "player", PLAYER_ID)).getTime() + stayDurationMinutes * 60_000).toISOString() : null,
+        // 玩家带停留时长进入现场是限时停留；角色没有 until，按 2 小时手动地点处理。
+        locationSource: isPlayer ? "stay" : "manual",
+        manualSetAt: isPlayer ? undefined : now,
+        updatedAt: now,
+      });
     }
     if (shouldRecordSceneEntry) {
       const entryText = isFirstSceneEntry
@@ -1636,7 +1654,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       ? { ...existingScene, locationId: destination.id, locationName: destination.name, eventId: undefined, updatedAt: now, status: "active", participants: destinationParticipants }
       : { id: id("scene"), locationId: destination.id, locationName: destination.name, startedAt: now, updatedAt: now, status: "active", participants: destinationParticipants, lastSettledEventIds: [] };
     next = upsertLifeScene(next, scene);
-    next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "正在这里活动", actualLocationId: destination.id, actualLocationName: destination.name, actualLocationUntil: new Date(resolveActorLifeNow(getActorClock(stateRef.current, "player", PLAYER_ID)).getTime() + stayDurationMinutes * 60_000).toISOString(), updatedAt: now });
+    next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "正在这里活动", actualLocationId: destination.id, actualLocationName: destination.name, actualLocationUntil: new Date(resolveActorLifeNow(getActorClock(stateRef.current, "player", PLAYER_ID)).getTime() + stayDurationMinutes * 60_000).toISOString(), locationSource: "stay", manualSetAt: undefined, updatedAt: now });
     if (shouldRecordSceneEntry) {
       const entryText = isFirstSceneEntry
         ? "你来到了" + destination.name + "。场景从这里开始。"
@@ -3578,7 +3596,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       next = { ...next, locations: [...next.locations, location] };
     }
     const now = new Date().toISOString();
-    next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: "正在去找" + character.name, actualLocationId: location.id, actualLocationName: location.name, updatedAt: now });
+    next = upsertActorState(next, { ownerType: "player", ownerId: PLAYER_ID, activity: "正在去找" + character.name, actualLocationId: location.id, actualLocationName: location.name, actualLocationUntil: null, locationSource: "manual", manualSetAt: now, updatedAt: now });
     const existingRoom = findLifeSceneForLocation(next.scenes, location.id, location.name);
     const participants = [
       ...(existingRoom?.participants ?? []).filter(item =>
@@ -4118,7 +4136,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
               const current=getCurrentActorSchedule(stateRef.current,"player",PLAYER_ID,resolveActorLifeNow(getActorClock(stateRef.current,"player",PLAYER_ID)));
               const location=stateRef.current.locations.find(item=>item.id===current?.plannedLocationId) ?? stateRef.current.locations.find(item=>item.id==="home") ?? stateRef.current.locations[0];
               if(!location){setNotice("找不到原计划地点，请先检查日程。");return;}
-              let next=upsertActorState(stateRef.current,{ownerType:"player",ownerId:PLAYER_ID,activity:current?.title||playerPresence.activity,scheduleSlotId:current?.id??playerPresence.scheduleSlotId,actualLocationId:location.id,actualLocationName:location.name,actualLocationUntil:null,updatedAt:now});
+              let next=upsertActorState(stateRef.current,{ownerType:"player",ownerId:PLAYER_ID,activity:current?.title||playerPresence.activity,scheduleSlotId:current?.id??playerPresence.scheduleSlotId,actualLocationId:location.id,actualLocationName:location.name,actualLocationUntil:null,locationSource:"schedule",manualSetAt:undefined,updatedAt:now});
               const scene=next.scenes.find(item=>item.status==="active");
               if(scene) next=upsertLifeScene(next,{...scene,locationId:location.id,locationName:location.name,updatedAt:now});
               next=appendLifeTimelineEntry(next,{category:"schedule",title:"已恢复原计划",details:"结束临时停留，回到当前日程地点「"+location.name+"」。",actorId:PLAYER_ID,actorName:playerName,locationName:location.name,sceneId:scene?.id});

@@ -681,7 +681,7 @@ const locationState = {
     { id: "current-office", ownerType: "character", ownerId: "c-location", startAt: "2026-10-15T10:00:00.000Z", endAt: "2026-10-15T11:00:00.000Z", title: "工作", kind: "work", source: "weekly-generation", plannedLocationId: "office", plannedLocationName: "公司", updatedAt: "2026-10-15T10:00:00.000Z" },
   ]),
   locations: [{ id: "office", name: "公司" }, { id: "cafe", name: "咖啡店" }],
-  actorStates: [{ ownerType: "character", ownerId: "c-location", actualLocationId: "cafe", actualLocationName: "咖啡店", updatedAt: locationNow.toISOString() }],
+  actorStates: [{ ownerType: "character", ownerId: "c-location", actualLocationId: "cafe", actualLocationName: "咖啡店", locationSource: "manual", manualSetAt: "2026-10-15T10:00:00.000Z", updatedAt: locationNow.toISOString() }],
 };
 assert.equal(resolveActorLocation(locationState, "character", "c-location", locationNow).id, "cafe", "manual actual location should override a different planned location");
 const expiredLocationState = {
@@ -714,6 +714,7 @@ const manualTravelState = {
     ownerType: "character", ownerId: "c-travel", activity: "与玩家同行",
     scheduleSlotId: "previous-slot", actualLocationId: "bedroom",
     actualLocationName: "玩家所在卧室", actualLocationUntil: null,
+    locationSource: "manual", manualSetAt: "2026-10-15T10:20:00.000Z",
     updatedAt: "2026-10-15T10:20:00.000Z",
   }],
   events: [], memories: [], invitations: [], scenes: [], timeline: [],
@@ -726,6 +727,20 @@ assert.equal(manualTravelActor.actualLocationId, "bedroom",
   "an explicit manual location must survive a newly active home schedule");
 assert.equal(manualTravelActor.activity, "与玩家同行",
   "schedule settlement must not overwrite the activity during a manual location override");
+assert.equal(manualTravelActor.manualSetAt, "2026-10-15T10:20:00.000Z",
+  "settlement must never refresh the manual TTL marker");
+assert.equal(manualTravelActor.locationSource, "manual",
+  "an active manual override keeps its manual source marker");
+
+// The 2-hour TTL is measured from manualSetAt only; once it elapses the schedule
+// owns presence again even when no slot currently covers the moment.
+const manualExpiredAt = new Date("2026-10-15T12:21:00.000Z");
+const settledExpiredManual = settleActorTimelineToNow(manualTravelState, "character", "c-travel", manualExpiredAt);
+const expiredManualActor = settledExpiredManual.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === "c-travel");
+assert.equal(expiredManualActor.actualLocationId, "home-c-travel",
+  "an expired manual location must fall back to the character's residence when no slot is active");
+assert.equal(expiredManualActor.locationSource, "schedule",
+  "expired manual overrides must clear the manual source marker");
 
 const playerRoomState = {
   ...makeState([{

@@ -19,10 +19,41 @@ export function resolveActorLifeNow(_legacyClock: LifeActorClock, realNow = new 
 export function findActorState(state: VirtualLifeState, ownerType: LifeActorState["ownerType"], ownerId: string) {
   return state.actorStates.find(actor => actor.ownerType === ownerType && actor.ownerId === ownerId);
 }
-export function upsertActorState(state: VirtualLifeState, nextActor: LifeActorState): VirtualLifeState {
+export function upsertActorState(
+  state: VirtualLifeState,
+  nextActor: Pick<LifeActorState, "ownerType" | "ownerId" | "activity"> & Partial<Omit<LifeActorState, "ownerType" | "ownerId" | "activity">>,
+): VirtualLifeState {
+  const existing = state.actorStates.find(actor => actor.ownerType === nextActor.ownerType && actor.ownerId === nextActor.ownerId);
   const actorStates = state.actorStates.filter(actor => !(actor.ownerType === nextActor.ownerType && actor.ownerId === nextActor.ownerId));
-  actorStates.push({ ...nextActor, updatedAt: new Date().toISOString() });
+  // Merge instead of replacing the whole record: callers that only change one
+  // field must not silently drop scheduleSlotId, locationSource or manualSetAt.
+  actorStates.push({
+    ...existing,
+    ...nextActor,
+    updatedAt: nextActor.updatedAt ?? new Date().toISOString(),
+  });
   return { ...state, actorStates };
+}
+
+/** A user-picked location takes precedence over the schedule for two hours. */
+export const MANUAL_LOCATION_TTL_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * A manual location override is active only while the explicit manual marker is
+ * present and its TTL has not elapsed. `updatedAt` is deliberately ignored: it is
+ * refreshed by ordinary settlement and would renew the override forever.
+ */
+export function isManualLocationOverrideActive(actor: LifeActorState | undefined, now = new Date()): boolean {
+  if (!actor?.actualLocationId || actor.locationSource !== "manual" || !actor.manualSetAt || actor.actualLocationUntil != null) return false;
+  const setAt = Date.parse(actor.manualSetAt);
+  return Number.isFinite(setAt) && now.getTime() - setAt < MANUAL_LOCATION_TTL_MS;
+}
+
+/** The manual marker is present but its 2-hour TTL has elapsed; the schedule owns presence again. */
+export function isManualLocationOverrideExpired(actor: LifeActorState | undefined, now = new Date()): boolean {
+  if (!actor?.actualLocationId || actor.locationSource !== "manual" || !actor.manualSetAt || actor.actualLocationUntil != null) return false;
+  const setAt = Date.parse(actor.manualSetAt);
+  return Number.isFinite(setAt) && now.getTime() - setAt >= MANUAL_LOCATION_TTL_MS;
 }
 
 /**
@@ -33,14 +64,16 @@ export function resolveActorLocation(
   state: VirtualLifeState,
   ownerType: LifeOwnerType,
   ownerId: string,
-  now = resolveActorLifeNow(getActorClock(state, ownerType, ownerId)),
+  now = new Date(),
 ): { id: string; name: string } | null {
   const actor = state.actorStates.find(item => item.ownerType === ownerType && item.ownerId === ownerId);
   const slot = getCurrentActorSchedule(state, ownerType, ownerId, now);
   const until = actor?.actualLocationUntil ? Date.parse(actor.actualLocationUntil) : Number.NaN;
-  const temporaryOverride = Boolean(actor?.actualLocationId && Number.isFinite(until) && until > now.getTime());
-  const manualOverride = Boolean(actor?.actualLocationId && actor.actualLocationUntil == null && actor.actualLocationId !== slot?.plannedLocationId);
-  const useActual = temporaryOverride || manualOverride;
+  const temporaryStay = Boolean(actor?.actualLocationId && Number.isFinite(until) && until > now.getTime());
+  // Shared TTL rule: an expired manual choice is treated exactly like no override,
+  // so UI, snapshots and diagnostics all fall back to the current schedule.
+  const manualOverride = Boolean(actor?.actualLocationId && isManualLocationOverrideActive(actor, now));
+  const useActual = temporaryStay || manualOverride;
   const locationId = (useActual ? actor?.actualLocationId : slot?.plannedLocationId) || actor?.actualLocationId || "";
   if (!locationId) return null;
   const locationName = (useActual ? actor?.actualLocationName : slot?.plannedLocationName)
@@ -108,7 +141,7 @@ export function synchronizeCharacterHomeSchedule(
   if (activeSlot && isHomeSlot(activeSlot) && actualIsHome && currentActor
     && (currentActor.actualLocationId !== destinationHomeId || currentActor.actualLocationName !== destinationHomeName)) {
     actorStates = state.actorStates.map(actor => actor.ownerType === "character" && actor.ownerId === characterId
-      ? { ...actor, actualLocationId: destinationHomeId, actualLocationName: destinationHomeName, actualLocationUntil: undefined, updatedAt: now.toISOString() }
+      ? { ...actor, actualLocationId: destinationHomeId, actualLocationName: destinationHomeName, actualLocationUntil: undefined, locationSource: "schedule" as const, manualSetAt: undefined, updatedAt: now.toISOString() }
       : actor);
   }
   if (!schedulesChanged && actorStates === state.actorStates) return { state, synchronizedScheduleCount };
@@ -179,6 +212,8 @@ export function reserveCharacterLocationStay(
     actualLocationId: locationId,
     actualLocationName: locationName,
     actualLocationUntil: endIso,
+    locationSource: "companion" as const,
+    manualSetAt: undefined,
     updatedAt,
   };
   return {
@@ -757,51 +792,79 @@ export function settleActorTimelineToNow(
   // A missing current slot must clear the old slot reference. Otherwise deleting
   // or editing a schedule can leave an actor permanently attached to stale activity.
   const manualStayActive = !!previous?.actualLocationUntil && new Date(previous.actualLocationUntil).getTime() > realNow.getTime();
-  // 手动地点的有效期：明确选了地点（无 until）视为「临时优先」，默认 2 小时后
-  // 交还给日程，否则手动改一次就会永久停在那儿、角色再也不会按日程移动。
-  const MANUAL_OVERRIDE_TTL_MS = 2 * 60 * 60 * 1000;
-  const manualOverrideAgeMs = previous?.actualLocationId
-    ? Math.max(0, realNow.getTime() - new Date(previous.updatedAt ?? nowIso).getTime())
-    : 0;
-  // A manually selected actual location (no expiry) is an explicit presence override.
-  // A newly active schedule must not pull the actor back to its planned location.
-  const manualLocationOverride = Boolean(current && previous?.actualLocationId
-    && previous.actualLocationUntil == null
-    && previous.actualLocationId !== current.plannedLocationId
-    && manualOverrideAgeMs < MANUAL_OVERRIDE_TTL_MS);
+  // 手动地点的有效期：只看 locationSource/manualSetAt（仅手动写入时设置、结算永不刷新），
+  // 不再用 updatedAt 或 actual!=planned 推断——否则日程自己搬迁会被误判成手动覆盖，
+  // 而 settle 刷新 updatedAt 又会让覆盖无限续期。
+  const manualOverrideActive = isManualLocationOverrideActive(previous, realNow);
+  const manualOverrideExpired = !manualOverrideActive && isManualLocationOverrideExpired(previous, realNow);
+  // 到期后落到当前日程地点；没有 current slot 时回落到住处（玩家为默认家，角色为
+  // home-<id>），再退化为原地。这样即使日程刚被删除，过期的手动地点也会解除。
+  const residenceFallback = ownerType === "player"
+    ? state.locations.find(location => location.id === "home") ?? state.locations.find(location => location.residents?.includes(ownerId))
+    : state.locations.find(location => location.id === "home-" + ownerId) ?? state.locations.find(location => location.residents?.includes(ownerId));
+  const expiredOverrideLocationId = current
+    ? current.plannedLocationId ?? previous?.actualLocationId ?? null
+    : residenceFallback?.id ?? previous?.actualLocationId ?? null;
+  const expiredOverrideLocationName = current
+    ? current.plannedLocationName ?? previous?.actualLocationName ?? null
+    : residenceFallback?.name ?? previous?.actualLocationName ?? null;
+  const scheduleMovementDue = !manualStayActive && !manualOverrideActive
+    && (manualOverrideExpired || Boolean(current && (slotChanged || stayExpired || !previous?.actualLocationId)));
   const nextActivity = activeAppointment
     ? current.title
-    : manualStayActive || manualLocationOverride
+    : manualStayActive || manualOverrideActive
       ? previous?.activity ?? current?.title ?? "自由活动"
-      : stayExpired
-        ? current?.title ?? previous?.activity ?? "自由活动"
+      : scheduleMovementDue || stayExpired
+        ? current?.title ?? "自由活动"
         : current && slotChanged
           ? current.title
           : !current && previous?.scheduleSlotId
             ? "自由活动"
             : previous?.activity ?? current?.title ?? "自由活动";
-  const scheduleMovementDue = !!current && !manualStayActive && !manualLocationOverride
-    && (slotChanged || stayExpired || !previous?.actualLocationId);
-  const nextLocationId = activeAppointment || scheduleMovementDue
+  const nextLocationId = activeAppointment
     ? current?.plannedLocationId ?? previous?.actualLocationId ?? null
-    : previous?.actualLocationId ?? current?.plannedLocationId ?? null;
-  const nextLocationName = activeAppointment || scheduleMovementDue
+    : scheduleMovementDue
+      ? manualOverrideExpired
+        ? expiredOverrideLocationId
+        : current?.plannedLocationId ?? previous?.actualLocationId ?? null
+      : previous?.actualLocationId ?? current?.plannedLocationId ?? null;
+  const nextLocationName = activeAppointment
     ? current?.plannedLocationName ?? previous?.actualLocationName ?? null
-    : previous?.actualLocationName ?? current?.plannedLocationName ?? null;
+    : scheduleMovementDue
+      ? manualOverrideExpired
+        ? expiredOverrideLocationName
+        : current?.plannedLocationName ?? previous?.actualLocationName ?? null
+      : previous?.actualLocationName ?? current?.plannedLocationName ?? null;
   const nextLocationUntil = activeAppointment
     ? current?.endAt ?? previous?.actualLocationUntil ?? null
     : scheduleMovementDue ? null : previous?.actualLocationUntil ?? null;
   const nextSlotId = current?.id ?? null;
-  const actorChanged = !previous || previous.activity !== nextActivity || (previous.actualLocationId ?? null) !== nextLocationId || (previous.actualLocationName ?? null) !== nextLocationName || (previous.actualLocationUntil ?? null) !== nextLocationUntil || (previous.scheduleSlotId ?? null) !== nextSlotId;
+  // 写回时只保留既有 manualSetAt（绝不刷新），并按这次位置的来源打标。
+  const nextLocationSource: LifeActorState["locationSource"] = activeAppointment
+    ? "appointment"
+    : scheduleMovementDue
+      ? "schedule"
+      : manualOverrideActive
+        ? "manual"
+        : manualStayActive
+          ? previous?.locationSource === "stay" || previous?.locationSource === "companion" || previous?.locationSource === "appointment"
+            ? previous.locationSource
+            : "stay"
+          : previous?.locationSource;
+  const nextManualSetAt = nextLocationSource === "manual" ? previous?.manualSetAt : undefined;
+  const actorChanged = !previous || previous.activity !== nextActivity || (previous.actualLocationId ?? null) !== nextLocationId || (previous.actualLocationName ?? null) !== nextLocationName || (previous.actualLocationUntil ?? null) !== nextLocationUntil || (previous.scheduleSlotId ?? null) !== nextSlotId || (previous.locationSource ?? null) !== (nextLocationSource ?? null) || (previous.manualSetAt ?? null) !== (nextManualSetAt ?? null);
   const actorStates = actorChanged
     ? [...state.actorStates.filter(actor => !(actor.ownerType === ownerType && actor.ownerId === ownerId)), {
+        ...(previous ?? {}),
         ownerType, ownerId, activity: nextActivity, scheduleSlotId: nextSlotId,
         actualLocationId: nextLocationId, actualLocationName: nextLocationName,
-        actualLocationUntil: nextLocationUntil, updatedAt: nowIso,
+        actualLocationUntil: nextLocationUntil,
+        locationSource: nextLocationSource, manualSetAt: nextManualSetAt,
+        updatedAt: nowIso,
       }]
     : state.actorStates;
   let timeline = state.timeline;
-  if (stayExpired && ownerType === "player" && nextLocationId && nextLocationName && previous?.actualLocationId !== nextLocationId) {
+  if ((stayExpired || manualOverrideExpired) && ownerType === "player" && nextLocationId && nextLocationName && previous?.actualLocationId !== nextLocationId) {
     // Timeline/presence follows the schedule, but the location room is a separate
     // durable history and must never be renamed or moved by schedule settlement.
     timeline = [...timeline, {
@@ -825,7 +888,8 @@ export function settleActorTimelineToNow(
     if (!characterId || !playerState?.actualLocationId || !playerState.actualLocationName || !characterState) continue;
     if (characterState.actualLocationId === playerState.actualLocationId
       && characterState.activity === "正在陪伴玩家"
-      && characterState.actualLocationUntil === event.endsAt) continue;
+      && characterState.actualLocationUntil === event.endsAt
+      && characterState.locationSource === "companion") continue;
     finalActorStates = [
       ...finalActorStates.filter(actor => !(actor.ownerType === "character" && actor.ownerId === characterId)),
       {
@@ -834,6 +898,8 @@ export function settleActorTimelineToNow(
         actualLocationId: playerState.actualLocationId,
         actualLocationName: playerState.actualLocationName,
         actualLocationUntil: event.endsAt,
+        locationSource: "companion",
+        manualSetAt: undefined,
         updatedAt: nowIso,
       },
     ];
