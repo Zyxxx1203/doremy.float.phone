@@ -1715,7 +1715,8 @@ function openMultiApply(mode, apps) {
   const reasons = ['查单词', '查资料', '回个消息', '导航'];
   openSheet(`<h3>${perm ? '🧱 申请加入常驻白名单' : '🎟 申请通行证'}</h3>
     <div class="tiny mt6">${perm ? '常驻白名单由 TA 审批；学习/工具类通常直接批，娱乐类只会给限时通行证。' : '批了才生效，到期自动回收。'}</div>
-    <div class="chips mt8">${S.draft.applyApps.map((a, i) => `<button class="chip on" data-mapp-del="${i}">${esc(a.label)} ✕</button>`).join('')}</div>
+    <div class="chips mt8">${S.draft.applyApps.map((a, i) => `<span class="chip on">${esc(a.label)} <b data-mapp-del="${i}" style="cursor:pointer;margin-left:4px">✕</b></span>`).join('')}</div>
+    <button class="btn sm ghost block mt6" data-act="multiRepick">重新选择应用</button>
     <label class="fl">用途</label>
     <div class="chips">${reasons.map(r => `<button class="chip ${S.draft.wlReason === r ? 'on' : ''}" data-act="multiReasonPick" data-v="${r}">${r}</button>`).join('')}</div>
     <input class="input mt8" data-in="wlReason" value="${esc(S.draft.wlReason || '')}" placeholder="或者自己写一句">
@@ -1756,28 +1757,40 @@ async function submitMultiApply() {
   /* 离线/无 AI 裁决 */
   const fun = apps.filter(a => wlClassify(a) === 'fun');
   const ok = apps.filter(a => wlClassify(a) !== 'fun');
+  /* AI 裁决是否有效：有效就完全按 TA 的决定来；只有没有 AI 时才用本地分类规则 */
+  const decided = verdict && ['approve', 'counter', 'reject'].indexOf(verdict.decision) >= 0 ? verdict.decision : '';
+  const aiReply = verdict && verdict.reply ? String(verdict.reply) : '';
   let reply = '';
+  let permitWork = ok;
+  let permitFun = fun;
+  if (decided === 'approve') { permitWork = apps; permitFun = []; }
+  else if (decided === 'counter') { permitWork = ok; permitFun = fun; }
+  else if (decided === 'reject') { permitWork = []; permitFun = []; }
   if (perm) {
-    if (ok.length) {
-      S.settings.lockedApps = (cfg('lockedApps') || []).filter(x => x.pkg !== '').concat(
-        ok.map(a => ({ name: a.label, pkg: a.package })),
-      ).filter((x, i, arr) => arr.findIndex(y => y.pkg === x.pkg) === i);
+    if (permitWork.length) {
+      const cur = cfg('lockedApps') || [];
+      const map = new Map(cur.filter(x => x.pkg).map(x => [x.pkg, x]));
+      for (const a of permitWork) map.set(a.package, { name: a.label, pkg: a.package });
+      S.settings.lockedApps = Array.from(map.values());
       saveSettings(true);
     }
-    /* 娱乐类：只给 10 分钟通行证 */
-    for (const a of fun) {
+    /* 娱乐类（或 AI 只给条件批准）：只给 10 分钟通行证 */
+    for (const a of permitFun) {
       const rec = { id: 'wlp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), app: a.label, reason: reason || '娱乐类限时', minutes: 10, conditions: '娱乐类只给限时', reply: '', package: a.package, decision: 'counter', status: 'active', issuedAt: Date.now(), expireAt: Date.now() + 10 * 60000, uses: 0, trustAtIssue: wlTrust(), at: Date.now() };
       const r = await DB.create(T.WLP, JSON.parse(JSON.stringify(rec)));
       if (r) rec.dbId = r.id;
       S.wlPasses = [rec].concat(S.wlPasses || []);
     }
-    reply = ok.length
-      ? '工具/学习类加进常驻了（' + ok.length + ' 个）' + (fun.length ? '；娱乐类只给 10 分钟，别拿它当常驻。' : '。')
-      : '这几个都是娱乐类，常驻不行 —— 先给 10 分钟，用完再申请。';
+    reply = aiReply || (permitWork.length
+      ? '工具/学习类加进常驻了（' + permitWork.length + ' 个）' + (permitFun.length ? '；娱乐类只给 10 分钟，别拿它当常驻。' : '。')
+      : '这几个都是娱乐类，常驻不行 —— 先给 10 分钟，用完再申请。');
   } else {
+    if (decided === 'reject') {
+      reply = aiReply || '这次不行。';
+    }
     const grant = (verdict && Number(verdict.grantedMinutes)) || (minutes <= 15 && apps.length <= 5 ? minutes : 10);
-    reply = (verdict && verdict.reply) || (minutes <= 15 && apps.length <= 5 ? '准了，' + grant + ' 分钟。到点自己回来。' : '先给 ' + grant + ' 分钟，够用就办完。');
-    for (const a of apps) {
+    if (decided !== 'reject') reply = aiReply || (minutes <= 15 && apps.length <= 5 ? '准了，' + grant + ' 分钟。到点自己回来。' : '先给 ' + grant + ' 分钟，够用就办完。');
+    for (const a of (decided === 'reject' ? [] : apps)) {
       const rec = { id: 'wlp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), app: a.label, reason, minutes: grant, conditions: '只开这段时间', reply, package: a.package, decision: 'approve', status: 'active', issuedAt: Date.now(), expireAt: Date.now() + grant * 60000, uses: 0, trustAtIssue: wlTrust(), at: Date.now() };
       const r = await DB.create(T.WLP, JSON.parse(JSON.stringify(rec)));
       if (r) rec.dbId = r.id;
@@ -1939,7 +1952,7 @@ function openLockedAppsSheet() {
       <button class="btn sm ghost" data-act="lockedAppsDel" data-i="${i}">删</button></div>`).join('') : '<div class="empty">还没有应用 —— 从手机应用列表里选</div>'}
     <button class="btn primary block mt10" data-act="wlApplyOpen" data-perm="1">📱 选择应用并申请（多选）</button>
     ${(() => { const sug = wlSuggestApps(); return sug.length ? `<div class="hr"></div><div class="tiny">TA 觉得这些学习/工具类应用可以放行：</div>
-      <div class="chips mt6">${sug.map(a => `<button class="chip" data-act="wlApplyOpen" data-perm="1" data-app="${esc(a.label)}" data-pkg="${esc(a.package)}">${esc(a.label)}</button>`).join('')}</div>` : ''; })()}
+      <div class="chips mt6">${sug.map(a => `<button class="chip" data-act="recWhitelistAdd" data-app="${esc(a.label)}" data-pkg="${esc(a.package)}">＋ ${esc(a.label)}</button>`).join('')}</div>` : ''; })()}
     ${oldWl.length ? `<div class="hr"></div><div class="tiny">旧手填白名单档案（未签发）：${oldWl.map(x => esc(x.name)).join('、')}</div>` : ''}
     <button class="btn ghost block mt8" data-act="closeSheet">关闭</button>`);
 }
@@ -11940,6 +11953,20 @@ Object.assign(ACTIONS, {
   multiReasonPick: el => { S.draft.wlReason = el.dataset.v; openMultiApply(S.draft.applyMode, S.draft.applyApps); },
   multiMinPick: el => { S.draft.wlMinutes = Number(el.dataset.v) || 15; openMultiApply(S.draft.applyMode, S.draft.applyApps); },
   multiApplySubmit: () => { submitMultiApply(); },
+  multiRepick: () => { pickFromAppList(S.draft.applyMode === 'perm' ? 'permApply' : 'passApply'); },
+  recWhitelistAdd: el => {
+    const ds = (el && el.dataset) || {};
+    if (!ds.pkg) { toast('这个应用没有包名，无法放行'); return; }
+    const cur = cfg('lockedApps') || [];
+    const map = new Map(cur.filter(x => x.pkg).map(x => [x.pkg, x]));
+    map.set(ds.pkg, { name: ds.app || ds.pkg, pkg: ds.pkg });
+    S.settings.lockedApps = Array.from(map.values());
+    saveSettings(true);
+    syncLockNow();
+    toast('🧱 已按 TA 推荐放行：' + (ds.app || ds.pkg));
+    render();
+    if (typeof openLockedAppsSheet === 'function') openLockedAppsSheet();
+  },
   wlCheckinPhoto: () => wlCheckinPhoto(),
   wlRevoke: async el => {
     const p = (S.wlPasses || []).find(x => x.id === el.dataset.id);
