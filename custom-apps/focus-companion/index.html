@@ -1690,7 +1690,116 @@ function syncLockNow() {
   const until = Date.now() + Math.max(60000, ((s.phaseEndsAt || Date.now()) - Date.now()) + 600000);
   sdk(() => API.device.lockStart({ packages: JSON.stringify(lockedAppsFor()), until }), null).catch(() => { });
 }
-/* 取走拦截页留下的申请（启动/回到前台时都查一次，不依赖 tick） */
+/* ── 应用分类与推荐（角色审批口径）────────────────────────────
+   工作/学习类：常驻白名单可以批；娱乐类：只给限时通行证，避免「永久放行游戏」。 */
+const WL_WORK_RE = /(词典|翻译|单词|笔记|阅读|地图|导航|学习|课程|题库|扫描|文档|邮件|日历|待办|计算器|anki|notion|keep|dictionary|translate|note|map|reader|office|drive|docs|sheets)/i;
+const WL_FUN_RE = /(游戏|视频|抖音|快手|bilibili|哔哩|王者|原神|和平精英|微博|小红书|直播|music|netflix|youtube|game|steam|爱奇艺|腾讯视频|优酷)/i;
+function wlClassify(app) {
+  const str = String((app && app.label) || '') + ' ' + String((app && app.package) || '');
+  if (WL_FUN_RE.test(str)) return 'fun';
+  if (WL_WORK_RE.test(str)) return 'work';
+  return 'other';
+}
+function wlSuggestApps() {
+  const cur = new Set((cfg('lockedApps') || []).map(x => x.pkg));
+  return (S.draft.appList || []).filter(a => !cur.has(a.package) && wlClassify(a) === 'work').slice(0, 6);
+}
+/* ── 多选申请单（常驻白名单 / 限时通行证共用一套）────────────── */
+function openMultiApply(mode, apps) {
+  S.draft.applyMode = mode === 'perm' ? 'perm' : 'pass';
+  S.draft.applyApps = (apps || S.draft.applyApps || []).slice();
+  if (!S.draft.applyApps.length) { toast('先选应用'); return; }
+  S.draft.wlReason = S.draft.wlReason || '';
+  S.draft.wlMinutes = Number(S.draft.wlMinutes) || 15;
+  const perm = S.draft.applyMode === 'perm';
+  const reasons = ['查单词', '查资料', '回个消息', '导航'];
+  openSheet(`<h3>${perm ? '🧱 申请加入常驻白名单' : '🎟 申请通行证'}</h3>
+    <div class="tiny mt6">${perm ? '常驻白名单由 TA 审批；学习/工具类通常直接批，娱乐类只会给限时通行证。' : '批了才生效，到期自动回收。'}</div>
+    <div class="chips mt8">${S.draft.applyApps.map((a, i) => `<button class="chip on" data-mapp-del="${i}">${esc(a.label)} ✕</button>`).join('')}</div>
+    <label class="fl">用途</label>
+    <div class="chips">${reasons.map(r => `<button class="chip ${S.draft.wlReason === r ? 'on' : ''}" data-act="multiReasonPick" data-v="${r}">${r}</button>`).join('')}</div>
+    <input class="input mt8" data-in="wlReason" value="${esc(S.draft.wlReason || '')}" placeholder="或者自己写一句">
+    ${perm ? '' : `<label class="fl">时长</label>
+    <div class="chips">${[10, 15, 20, 30].map(m => `<button class="chip ${Number(S.draft.wlMinutes) === m ? 'on' : ''}" data-act="multiMinPick" data-v="${m}">${m} 分钟</button>`).join('')}</div>`}
+    <button class="btn primary block mt10" data-act="multiApplySubmit">提交给 TA 审批</button>
+    <button class="btn ghost block mt8" data-act="closeSheet">取消</button>`);
+  const w = modalStack[modalStack.length - 1];
+  if (!w) return;
+  w.addEventListener('click', (e) => {
+    const del = e.target.closest('[data-mapp-del]');
+    if (del) {
+      S.draft.applyApps.splice(Number(del.dataset.mappDel), 1);
+      if (!S.draft.applyApps.length) { closeAllSheets(); return; }
+      openMultiApply(S.draft.applyMode, S.draft.applyApps);
+    }
+  });
+}
+async function submitMultiApply() {
+  const apps = (S.draft.applyApps || []).slice();
+  if (!apps.length) { toast('先选应用'); return; }
+  const cid = anyCharId();
+  if (!cid) { toast('还没有角色'); return; }
+  const perm = S.draft.applyMode === 'perm';
+  const minutes = Math.max(1, Math.min(30, Number(S.draft.wlMinutes) || 15));
+  const reason = String(S.draft.wlReason || '').trim();
+  S.wlBusy = true;
+  const names = apps.map(a => a.label).join('、');
+  let verdict = null;
+  try {
+    verdict = wlParseVerdict(await pGen('wl.review', {
+      appName: names, reason: reason || '（没写）', minutes: perm ? 0 : minutes,
+      trust: wlTrust(), activeCount: activeWlPasses().length,
+      focusState: (S.session && S.session.status === 'running') ? '正在一段专注里' : '现在没有在专注',
+      permanent: perm ? '是（申请常驻白名单）' : '否（限时通行证）',
+    }, [cid]));
+  } catch (e) { }
+  /* 离线/无 AI 裁决 */
+  const fun = apps.filter(a => wlClassify(a) === 'fun');
+  const ok = apps.filter(a => wlClassify(a) !== 'fun');
+  let reply = '';
+  if (perm) {
+    if (ok.length) {
+      S.settings.lockedApps = (cfg('lockedApps') || []).filter(x => x.pkg !== '').concat(
+        ok.map(a => ({ name: a.label, pkg: a.package })),
+      ).filter((x, i, arr) => arr.findIndex(y => y.pkg === x.pkg) === i);
+      saveSettings(true);
+    }
+    /* 娱乐类：只给 10 分钟通行证 */
+    for (const a of fun) {
+      const rec = { id: 'wlp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), app: a.label, reason: reason || '娱乐类限时', minutes: 10, conditions: '娱乐类只给限时', reply: '', package: a.package, decision: 'counter', status: 'active', issuedAt: Date.now(), expireAt: Date.now() + 10 * 60000, uses: 0, trustAtIssue: wlTrust(), at: Date.now() };
+      const r = await DB.create(T.WLP, JSON.parse(JSON.stringify(rec)));
+      if (r) rec.dbId = r.id;
+      S.wlPasses = [rec].concat(S.wlPasses || []);
+    }
+    reply = ok.length
+      ? '工具/学习类加进常驻了（' + ok.length + ' 个）' + (fun.length ? '；娱乐类只给 10 分钟，别拿它当常驻。' : '。')
+      : '这几个都是娱乐类，常驻不行 —— 先给 10 分钟，用完再申请。';
+  } else {
+    const grant = (verdict && Number(verdict.grantedMinutes)) || (minutes <= 15 && apps.length <= 5 ? minutes : 10);
+    reply = (verdict && verdict.reply) || (minutes <= 15 && apps.length <= 5 ? '准了，' + grant + ' 分钟。到点自己回来。' : '先给 ' + grant + ' 分钟，够用就办完。');
+    for (const a of apps) {
+      const rec = { id: 'wlp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), app: a.label, reason, minutes: grant, conditions: '只开这段时间', reply, package: a.package, decision: 'approve', status: 'active', issuedAt: Date.now(), expireAt: Date.now() + grant * 60000, uses: 0, trustAtIssue: wlTrust(), at: Date.now() };
+      const r = await DB.create(T.WLP, JSON.parse(JSON.stringify(rec)));
+      if (r) rec.dbId = r.id;
+      S.wlPasses = [rec].concat(S.wlPasses || []);
+    }
+  }
+  await sdk(() => API.chat.sendCard({
+    characterId: cid, role: 'system', historyRole: 'system',
+    title: (perm ? '🧱 白名单申请 · ' : '🎟 通行证申请 · ') + names.slice(0, 40),
+    subtitle: perm ? (ok.length ? '已批准 ' + ok.length + ' 个' : '改为限时') : '已签发',
+    body: reply.slice(0, 140),
+    summary: charName(cid) + ' 审批了 ' + names + ' 的' + (perm ? '常驻白名单' : '通行证') + '申请',
+    historyText: '[应用申请] ' + names + '（' + (perm ? '常驻' : minutes + ' 分钟') + '，用途：' + (reason || '未写') + '）—— 批复：' + reply,
+  }), null).catch(() => { });
+  S.wlBusy = false;
+  S.draft.applyApps = [];
+  closeAllSheets();
+  syncLockNow();
+  toast(perm ? ('🧱 白名单：批准 ' + ok.length + ' 个' + (fun.length ? '，娱乐类改限时 ' + fun.length + ' 个' : '')) : ('🎟 已签发 ' + apps.length + ' 张通行证'));
+  render();
+}
+/* 拦截页留下的申请（启动/回到前台时都查一次，不依赖 tick） */
 function consumePendingApply() {
   try {
     if (typeof API === 'undefined' || !API || !API.device || !API.device.pendingApply) return;
@@ -1716,7 +1825,7 @@ function pickFromAppList(target) {
 }
 function renderAppPickerSheet(kw) {
   /* 白名单目标支持多选：勾选多个应用一次加入；其它目标仍是点一个即选 */
-  const multi = S.draft.appPickerTarget === 'whitelist';
+  const multi = ['whitelist', 'passApply', 'permApply'].indexOf(S.draft.appPickerTarget) >= 0;
   if (multi && !Array.isArray(S.draft.pickerSel)) S.draft.pickerSel = [];
   const sel = new Set(multi ? (S.draft.pickerSel || []) : []);
   S.draft.pickerKw = kw || '';
@@ -1781,6 +1890,13 @@ function renderAppPickerSheet(kw) {
 }
 /* 多选确认：合并进常驻白名单（同包名去重，新名覆盖旧名） */
 function applyAppPickMulti(items) {
+  const t = S.draft.appPickerTarget;
+  if (t === 'passApply' || t === 'permApply') {
+    S.draft.applyApps = items.map(a => ({ label: a.label, pkg: a.package }));
+    closeAllSheets();
+    openMultiApply(t === 'permApply' ? 'perm' : 'pass', S.draft.applyApps);
+    return;
+  }
   const cur = cfg('lockedApps') || [];
   const map = new Map(cur.filter(x => x.pkg).map(x => [x.pkg, x]));
   for (const a of items) map.set(a.package, { name: a.label, pkg: a.package });
@@ -11796,19 +11912,26 @@ Object.assign(ACTIONS, {
     await startSession(Object.assign({}, o, { pledged: true }));
   },
   wlApplyOpen: el => {
+    const ds = (el && el.dataset) || {};
+    const perm = ds.perm === '1';
     S.draft.wlMinutes = 15;
     S.draft.wlMinutesCustom = '';
-    S.draft.wlPackage = el && el.dataset && el.dataset.pkg ? el.dataset.pkg : '';
-    openWlApply({
-      app: (el && el.dataset && el.dataset.app) || '',
-      reason: (el && el.dataset && el.dataset.reason) || '',
-      pkg: (el && el.dataset && el.dataset.pkg) || S.draft.wlPackage || '',
-    });
+    if (ds.app) {
+      /* 推荐/旧档案直接带入单个应用，仍走审批 */
+      S.draft.applyApps = [{ label: ds.app, pkg: ds.pkg || '' }];
+      openMultiApply(perm ? 'perm' : 'pass', S.draft.applyApps);
+      return;
+    }
+    S.draft.applyApps = [];
+    pickFromAppList(perm ? 'permApply' : 'passApply');
   },
   wlSheetOpen: () => openWlSheet(),
   wlReasonPick: el => { S.draft.wlReason = el.dataset.v; openWlApply({ app: S.draft.wlAppName, reason: S.draft.wlReason }); },
   wlMinPick: el => { S.draft.wlMinutes = Number(el.dataset.v) || 15; openWlApply({ app: S.draft.wlAppName, reason: S.draft.wlReason }); },
   wlSubmit: () => submitWlApply(),
+  multiReasonPick: el => { S.draft.wlReason = el.dataset.v; openMultiApply(S.draft.applyMode, S.draft.applyApps); },
+  multiMinPick: el => { S.draft.wlMinutes = Number(el.dataset.v) || 15; openMultiApply(S.draft.applyMode, S.draft.applyApps); },
+  multiApplySubmit: () => { submitMultiApply(); },
   wlCheckinPhoto: () => wlCheckinPhoto(),
   wlRevoke: async el => {
     const p = (S.wlPasses || []).find(x => x.id === el.dataset.id);
