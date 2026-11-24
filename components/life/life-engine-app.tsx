@@ -28,7 +28,7 @@ import {
   type LifeScheduleSlot,
   type VirtualLifeState,
 } from "@/lib/life/life-types";
-import { applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, insertManualLifeScheduleSlot, isManualLocationOverrideActive, MANUAL_LOCATION_TTL_MS, overlayScheduleSlotsOverFreeTime, syncScheduleLocationsToLibrary, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, synchronizeCharacterHomeSchedule, reserveCharacterLocationStay, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
+import { applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, insertManualLifeScheduleSlot, MANUAL_LOCATION_TTL_MS, moveCharacterBySchedule, overlayScheduleSlotsOverFreeTime, syncScheduleLocationsToLibrary, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, synchronizeCharacterHomeSchedule, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
 import { describeLifeOutputIssues, parseLifeOutput, validateLifeOutput, type LifeOutputIssue } from "@/lib/life/life-output";
@@ -970,27 +970,43 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const now = resolveActorLifeNow(getActorClock(next, "character", character.id));
       const slot = getCurrentActorSchedule(next, "character", character.id, now);
       const before = next.actorStates.find(actor => actor.ownerType === "character" && actor.ownerId === character.id);
-      const targetLocationId = slot?.plannedLocationId ?? before?.actualLocationId ?? null;
-      const targetLocationName = slot?.plannedLocationName ?? before?.actualLocationName ?? null;
+      // 角色不再保留手动地点或临时停留覆盖：统一按当前日程同步。没有当前日程时
+      // 回落到角色住处（home-<id> 或 residents 含该角色的地点）。
+      const residence = next.locations.find(location => location.id === "home-" + character.id)
+        ?? next.locations.find(location => location.residents?.includes(character.id));
+      const slotLocation = slot?.plannedLocationId
+        ? {
+            id: slot.plannedLocationId,
+            name: slot.plannedLocationName
+              ?? next.locations.find(location => location.id === slot.plannedLocationId)?.name
+              ?? null,
+          }
+        : undefined;
+      const targetLocationId = slotLocation?.id ?? residence?.id ?? null;
+      const targetLocationName = slotLocation?.name ?? residence?.name ?? before?.actualLocationName ?? null;
       const targetActivity = slot?.title ?? before?.activity ?? "自由活动";
       if (!targetLocationId) continue;
-      const nowMs = now.getTime();
-      const temporaryStayActive = Boolean(before?.actualLocationUntil && Date.parse(before.actualLocationUntil) > nowMs);
-      // 手动地点只在 2 小时 TTL 内阻挡日程搬迁；过期后这里也必须重新跟随日程，
-      // 否则角色会被永久卡在手动地点。
-      const manualLocationOverride = isManualLocationOverrideActive(before, now);
-      if (temporaryStayActive || manualLocationOverride) continue;
-      if (before?.actualLocationId === targetLocationId && before?.activity === targetActivity) continue;
+      const targetSlotId = slot?.id ?? null;
+      const alreadySynced = before?.actualLocationId === targetLocationId
+        && (before?.actualLocationName ?? null) === (targetLocationName ?? null)
+        && before?.activity === targetActivity
+        && !before?.actualLocationUntil
+        && before?.locationSource === "schedule"
+        && !before?.manualSetAt
+        && !before?.manualPinned
+        && (before?.scheduleSlotId ?? null) === targetSlotId;
+      if (alreadySynced) continue;
       next = upsertActorState(next, {
         ownerType: "character",
         ownerId: character.id,
         activity: targetActivity,
-        scheduleSlotId: slot?.id ?? before?.scheduleSlotId ?? null,
+        scheduleSlotId: targetSlotId,
         actualLocationId: targetLocationId,
         actualLocationName: targetLocationName,
         actualLocationUntil: null,
         locationSource: "schedule",
         manualSetAt: undefined,
+        manualPinned: undefined,
         updatedAt: new Date().toISOString(),
       });
       next = appendLifeTimelineEntry(next, {
@@ -1461,12 +1477,64 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     const currentState = stateRef.current;
     const nowDate = new Date();
     const now = nowDate.toISOString();
+    const current = currentState.actorStates.find(item => item.ownerType === actor.ownerType && item.ownerId === actor.ownerId);
+    if (actor.ownerType === "character") {
+      // 角色不再写 manual 覆盖：停留 / 固定停留 / 跟随都改写日程，让计划地点与实际地点一致。
+      if (mode === "follow") {
+        const result = moveCharacterBySchedule(currentState, { characterId: actor.ownerId, locationId, locationName: "", mode: "follow", now: nowDate });
+        if (result.error) { setNotice(result.error); return; }
+        const restored = result.state.actorStates.find(item => item.ownerType === "character" && item.ownerId === actor.ownerId);
+        const restoredName = restored?.actualLocationName ?? "";
+        const next = appendLifeTimelineEntry(result.state, { category: "location", title: "恢复跟随日程：" + restoredName, details: "结束手动停留，重新按行程行动。", actorId: actor.ownerId, actorName: actor.name, locationName: restoredName });
+        commit(next);
+        if (typeof window !== "undefined") window.dispatchEvent(new Event("life-force-sync"));
+        setNotice("已恢复跟随日程。");
+        return;
+      }
+      const location = currentState.locations.find(item => item.id === locationId);
+      if (!location) return;
+      const stayMinutes = mode === "stay-30" ? 30 : mode === "stay-60" ? 60 : mode === "stay-120" ? 120 : 0;
+      const pinned = mode === "pin";
+      const timedStay = stayMinutes > 0;
+      const result = moveCharacterBySchedule(currentState, {
+        characterId: actor.ownerId,
+        locationId: location.id,
+        locationName: location.name,
+        // 「手动地点」在角色身上等价于 2 小时停留：位置只通过日程表达。
+        mode: mode === "manual" ? "stay-120" : mode,
+        now: nowDate,
+      });
+      if (result.error) { setNotice(result.error); return; }
+      let next = appendLifeTimelineEntry(result.state, {
+        category: "location",
+        title: actor.name + "来到了" + location.name,
+        details: (current?.actualLocationName ? "从" + current.actualLocationName + "前往" + location.name : "首次记录实际地点") + " · " + (pinned ? "一直停留，直到手动改回" : timedStay ? "停留 " + stayMinutes + " 分钟后恢复日程" : "手动改地点"),
+        actorId: actor.ownerId, actorName: actor.name, locationName: location.name,
+      });
+      const player = next.actorStates.find(item => item.ownerType === "player" && item.ownerId === PLAYER_ID);
+      const sharedRoom = player?.actualLocationId
+        ? findLifeSceneForLocation(next.scenes, player.actualLocationId, player.actualLocationName ?? undefined)
+        : undefined;
+      const scene = sharedRoom && (sharedRoom.status === "active" || sharedRoom.status === "paused") ? sharedRoom : undefined;
+      if (scene && current?.actualLocationId === player?.actualLocationId && location.id !== player?.actualLocationId
+        && scene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === actor.ownerId)) {
+        next = appendLifeTimelineEntry(next, { category: "scene", title: actor.name + "离开了你所在的场景", details: "TA 前往了" + location.name, actorId: actor.ownerId, actorName: actor.name, locationName: scene.locationName, sceneId: scene.id });
+        next = upsertLifeScene(next, { ...scene, participants: scene.participants.filter(participant => !(participant.ownerType === "character" && participant.ownerId === actor.ownerId)), updatedAt: new Date().toISOString() });
+      } else if (scene && location.id === player?.actualLocationId
+        && !scene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === actor.ownerId)) {
+        next = appendLifeTimelineEntry(next, { category: "scene", title: actor.name + "进入了你所在的场景", details: "TA 现在也在" + location.name, actorId: actor.ownerId, actorName: actor.name, locationName: location.name, sceneId: scene.id });
+        next = upsertLifeScene(next, { ...scene, participants: [
+          ...scene.participants.map(participant => participant.ownerType === "player" ? { ...participant, awarenessByActorId: { ...participant.awarenessByActorId, [actor.ownerId]: "aware" as const } } : participant),
+          { ownerType: "character", ownerId: actor.ownerId, activity: current?.activity || "正在这里活动", awarenessByActorId: { [PLAYER_ID]: "aware" } },
+        ], updatedAt: new Date().toISOString() });
+      }
+      commit(next);
+      setNotice(`${actor.name}的实际地点已更新为「${location.name}」。这与日程中的计划地点分开保存。`);
+      return;
+    }
     if (mode === "follow") {
-      const current = currentState.actorStates.find(item => item.ownerType === actor.ownerType && item.ownerId === actor.ownerId);
       const slot = getCurrentActorSchedule(currentState, actor.ownerType, actor.ownerId, nowDate);
-      const fallback = actor.ownerType === "player"
-        ? currentState.locations.find(item => item.id === "home") ?? currentState.locations.find(item => item.residents?.includes(actor.ownerId))
-        : currentState.locations.find(item => item.id === "home-" + actor.ownerId) ?? currentState.locations.find(item => item.residents?.includes(actor.ownerId));
+      const fallback = currentState.locations.find(item => item.id === "home") ?? currentState.locations.find(item => item.residents?.includes(actor.ownerId));
       const location = currentState.locations.find(item => item.id === slot?.plannedLocationId)
         ?? fallback
         ?? (current?.actualLocationId ? currentState.locations.find(item => item.id === current.actualLocationId) : undefined);
@@ -1487,7 +1555,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     }
     const location = currentState.locations.find(item => item.id === locationId);
     if (!location) return;
-    const current = currentState.actorStates.find(item => item.ownerType === actor.ownerType && item.ownerId === actor.ownerId);
     const stayMinutes = mode === "stay-30" ? 30 : mode === "stay-60" ? 60 : mode === "stay-120" ? 120 : 0;
     const pinned = mode === "pin";
     const timedStay = stayMinutes > 0;
@@ -1508,25 +1575,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       details: (current?.actualLocationName ? "从" + current.actualLocationName + "前往" + location.name : "首次记录实际地点") + " · " + (pinned ? "一直停留，直到手动改回" : timedStay ? "停留 " + stayMinutes + " 分钟后恢复日程" : "手动改地点"),
       actorId: actor.ownerId, actorName: actor.name, locationName: location.name,
     });
-    if (actor.ownerType === "character") {
-      const player = next.actorStates.find(item => item.ownerType === "player" && item.ownerId === PLAYER_ID);
-      const sharedRoom = player?.actualLocationId
-        ? findLifeSceneForLocation(next.scenes, player.actualLocationId, player.actualLocationName ?? undefined)
-        : undefined;
-      const scene = sharedRoom && (sharedRoom.status === "active" || sharedRoom.status === "paused") ? sharedRoom : undefined;
-      if (scene && current?.actualLocationId === player?.actualLocationId && location.id !== player?.actualLocationId
-        && scene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === actor.ownerId)) {
-        next = appendLifeTimelineEntry(next, { category: "scene", title: actor.name + "离开了你所在的场景", details: "TA 前往了" + location.name, actorId: actor.ownerId, actorName: actor.name, locationName: scene.locationName, sceneId: scene.id });
-        next = upsertLifeScene(next, { ...scene, participants: scene.participants.filter(participant => !(participant.ownerType === "character" && participant.ownerId === actor.ownerId)), updatedAt: new Date().toISOString() });
-      } else if (scene && location.id === player?.actualLocationId
-        && !scene.participants.some(participant => participant.ownerType === "character" && participant.ownerId === actor.ownerId)) {
-        next = appendLifeTimelineEntry(next, { category: "scene", title: actor.name + "进入了你所在的场景", details: "TA 现在也在" + location.name, actorId: actor.ownerId, actorName: actor.name, locationName: location.name, sceneId: scene.id });
-        next = upsertLifeScene(next, { ...scene, participants: [
-          ...scene.participants.map(participant => participant.ownerType === "player" ? { ...participant, awarenessByActorId: { ...participant.awarenessByActorId, [actor.ownerId]: "aware" as const } } : participant),
-          { ownerType: "character", ownerId: actor.ownerId, activity: current?.activity || "正在这里活动", awarenessByActorId: { [PLAYER_ID]: "aware" } },
-        ], updatedAt: new Date().toISOString() });
-      }
-    }
     commit(next);
     setNotice(`${actor.name}的实际地点已更新为「${location.name}」。这与日程中的计划地点分开保存。`);
   };
@@ -1534,60 +1582,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   /** 兼容原有手动入口：不带停留方式时按 2 小时手动地点处理。 */
   const updateActorLocation = (actor: ActorChoice, locationId: string) => {
     applyActorLocationMode(actor, locationId, "manual");
-  };
-
-  const performCreateScene = () => {
-    if (!settings.enabled) { setNotice("请先启用生活系统。"); return; }
-    if (!selectedLocation) { setNotice("请先创建或选择一个地点。"); return; }
-    const chosen = characters.filter(char => selectedCharacterIds.includes(char.id));
-    if (!chosen.length) { setNotice("请至少选择一位角色。"); return; }
-    const now = new Date().toISOString();
-    const ids = ["player", ...chosen.map(char => char.id)];
-    const participants: LifeSceneParticipant[] = [
-      { ownerType: "player", ownerId: PLAYER_ID, activity: playerActivity || "刚来到这里", awarenessByActorId: Object.fromEntries(ids.filter(other => other !== PLAYER_ID).map(other => [other, "aware" as const])) },
-      ...chosen.map(char => ({ ownerType: "character" as const, ownerId: char.id, activity: "正在做自己的事", awarenessByActorId: Object.fromEntries(ids.filter(other => other !== char.id).map(other => [other, "aware" as const])) })),
-    ];
-    const existingScene = findLifeSceneForLocation(stateRef.current.scenes, selectedLocation.id);
-    const shouldRecordSceneEntry = !existingScene || existingScene.status !== "active";
-    const isFirstSceneEntry = !existingScene;
-    let next: VirtualLifeState = { ...stateRef.current, scenes: stateRef.current.scenes.map(scene => (scene.status === "active" || scene.status === "paused") ? { ...scene, status: "paused" as const, updatedAt: now } : scene) };
-    const retainedDestinationParticipants = (existingScene?.participants ?? []).filter(participant => {
-      if (participant.ownerType !== "character") return false;
-      const actor = stateRef.current.actorStates.find(item => item.ownerType === "character" && item.ownerId === participant.ownerId);
-      return !actor || actor.actualLocationId === selectedLocation.id;
-    });
-    const destinationParticipants = mergeLifeSceneParticipants(retainedDestinationParticipants, participants);
-    const scene: LifeSceneState = existingScene
-      ? { ...existingScene, locationId: selectedLocation.id, locationName: selectedLocation.name, eventId: undefined, updatedAt: now, status: "active", participants: destinationParticipants }
-      : { id: id("scene"), locationId: selectedLocation.id, locationName: selectedLocation.name, startedAt: now, updatedAt: now, status: "active", participants: destinationParticipants, lastSettledEventIds: [] };
-    next = upsertLifeScene(next, scene);
-    for (const actor of [{ ownerType: "player" as const, ownerId: PLAYER_ID }, ...chosen.map(char => ({ ownerType: "character" as const, ownerId: char.id }))]) {
-      const isPlayer = actor.ownerType === "player";
-      next = upsertActorState(next, {
-        ...actor,
-        activity: isPlayer ? (playerActivity || "刚来到这里") : "正在做自己的事",
-        actualLocationId: selectedLocation.id,
-        actualLocationName: selectedLocation.name,
-        actualLocationUntil: isPlayer ? new Date(resolveActorLifeNow(getActorClock(stateRef.current, "player", PLAYER_ID)).getTime() + stayDurationMinutes * 60_000).toISOString() : null,
-        // 玩家带停留时长进入现场是限时停留；角色没有 until，按 2 小时手动地点处理。
-        locationSource: isPlayer ? "stay" : "manual",
-        manualSetAt: isPlayer ? undefined : now,
-        updatedAt: now,
-      });
-    }
-    if (shouldRecordSceneEntry) {
-      const entryText = isFirstSceneEntry
-        ? "你来到了" + selectedLocation.name + "。场景从这里开始。"
-        : "你回到了" + selectedLocation.name + "。先前的场景与互动仍在继续。";
-      next = appendLifeTimelineEntry(next, { category: "scene", title: isFirstSceneEntry ? "你和" + chosen.map(char=>char.name).join("、") + "进入了" + selectedLocation.name : "你回到了" + selectedLocation.name, details: entryText, actorName: "场景旁白", locationName: selectedLocation.name, sceneId: scene.id });
-      const entryNarration: LifeSceneMessage = { id: id("turn"), sceneId: scene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: "场景旁白", role: "system", action: entryText, dialogue: "", createdAt: now };
-      next = { ...next, sceneMessages: [...next.sceneMessages, entryNarration] };
-    }
-    commit(next);
-    setTab("home");
-    setSceneView(true);
-    setNotice("已进入现场。");
-
   };
 
   const transitionSceneAction = (action: () => void) => {
@@ -1615,37 +1609,77 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     }
   };
 
-  const createScene = () => transitionSceneAction(performCreateScene);
-
   /**
-   * 携带勾选角色前往新地点。每个地点保持唯一且稳定的聊天室身份，
-   * 原地点的聊天记录留在原地；目的地原有在场角色与本次同行角色合并。
-   * 玩家动向不写共同记忆：通过 actualLocation（presence）自然呈现——原地的角色会看到玩家离开，
-   * 新地点的角色会看到玩家到场；勾选的角色则直接跟随迁移。
+   * 地点卡片与「前往地点」按钮共用的唯一入口：前往目标地点并进入现场。
+   * 勾选的角色会与你同行，但同行不再写“手动覆盖实际地点”，而是改写 TA 的日程：
+   * 插入一条 companion-follow-* 的安排（计划地点 = 目的地），让计划地点
+   * 与实际地点一致；有约会或固定事件的角色留在原地。
+   * 每个地点保持唯一且稳定的聊天室身份，原地点的聊天记录留在原地；
+   * 目的地原有在场角色与本次同行角色合并。
    */
   const performTransferSceneWithCompanions = (targetLocationId = selectedLocationId) => {
     const destination = stateRef.current.locations.find(location => location.id === targetLocationId);
     if (!settings.enabled) { setNotice("请先启用生活系统。"); return; }
     if (!destination) return;
+    const nowDate = new Date();
+    const now = nowDate.toISOString();
+    const requestedEndMs = nowDate.getTime() + stayDurationMinutes * 60_000;
     const companions = characters.filter(char => selectedCharacterIds.includes(char.id));
     const oldLocationName = playerPresence?.actualLocationName;
+    const notTravelling: string[] = [];
     let next = stateRef.current;
-    const travelStartedAt = new Date().toISOString();
-    for (const char of companions) {
-      const companionNow = resolveActorLifeNow(getActorClock(next, "character", char.id));
-      const companionStayUntil = new Date(companionNow.getTime() + stayDurationMinutes * 60_000);
-      next = reserveCharacterLocationStay(next, {
-        characterId: char.id,
-        locationId: destination.id,
-        locationName: destination.name,
-        startAt: companionNow,
-        endAt: companionStayUntil,
-        title: "与" + playerName + "同行：前往" + destination.name,
+    for (const character of companions) {
+      const activeSlot = getCurrentActorSchedule(next, "character", character.id, nowDate);
+      // 约会/固定事件是角色的既有承诺，同行不能覆盖它。
+      if (activeSlot?.kind === "appointment" || activeSlot?.source === "event") {
+        notTravelling.push(character.name + "有约会，未同行。");
+        continue;
+      }
+      const activeEndMs = activeSlot ? new Date(activeSlot.endAt).getTime() : Number.NaN;
+      const endMs = Math.min(requestedEndMs, Number.isFinite(activeEndMs) ? activeEndMs : requestedEndMs);
+      const companionSlot: LifeScheduleSlot = {
+        id: id("companion-follow"),
+        ownerType: "character",
+        ownerId: character.id,
+        startAt: now,
+        endAt: new Date(endMs).toISOString(),
+        title: "与我同行：" + destination.name,
+        plannedLocationId: destination.id,
+        plannedLocationName: destination.name,
+        kind: "special",
+        source: "manual",
+        updatedAt: now,
+      };
+      // 上一次“与我同行”是系统自己写的安排：再次同行时先把它收束到此刻，
+      // 否则会被当成外来冲突而永远无法连续出行。真正的约会/手动日程仍会跳过。
+      const insertBase = activeSlot?.id.startsWith("companion-follow-")
+        ? {
+            ...next,
+            schedules: next.schedules.flatMap(slot => {
+              if (slot.id !== activeSlot.id) return [slot];
+              return new Date(slot.startAt).getTime() < nowDate.getTime() ? [{ ...slot, endAt: now, updatedAt: now }] : [];
+            }),
+          }
+        : next;
+      const inserted = insertManualLifeScheduleSlot(insertBase, companionSlot);
+      if (inserted.conflict) { notTravelling.push(character.name + "的日程与「" + inserted.conflict.title + "」冲突，未同行。"); continue; }
+      if (inserted.error) { notTravelling.push(character.name + "的日程无法调整（" + inserted.error + "），未同行。"); continue; }
+      // 日程即计划地点：合并写入实际地点，保留 scheduleSlotId；不再留下手动覆盖标记。
+      next = upsertActorState(inserted.state, {
+        ownerType: "character",
+        ownerId: character.id,
+        activity: companionSlot.title,
+        actualLocationId: destination.id,
+        actualLocationName: destination.name,
+        actualLocationUntil: companionSlot.endAt,
+        locationSource: "schedule",
+        manualSetAt: undefined,
+        manualPinned: undefined,
+        updatedAt: now,
       });
     }
-    // Important: persist companion presence before the solo arrival flow reloads the latest state.
-    // Without this commit the prepared companion states were discarded, so they never actually travelled.
-    commit(next);
+    // Important: persist companion schedules before the arrival flow reads the latest state.
+    if (next !== stateRef.current) commit(next);
     performEnterLocationSolo(targetLocationId);
     // solo 流程内部已 commit；这里只补一条展示用的时间线（离开/到达），不写角色记忆。
     const latest = stateRef.current;
@@ -1653,8 +1687,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const logged = appendLifeTimelineEntry(latest, { category: "location", title: playerName + (companions.length ? "带着" + companions.map(char => char.name).join("、") : "") + "从" + oldLocationName + "前往" + destination.name, details: "离开" + oldLocationName + "；到达" + destination.name, actorId: PLAYER_ID, actorName: playerName, locationName: destination.name });
       commit(logged);
     }
+    if (notTravelling.length) setNotice("已进入" + destination.name + "。" + notTravelling.join(""));
   };
-  const transferSceneWithCompanions = () => transitionSceneAction(() => performTransferSceneWithCompanions());
+  const transferSceneWithCompanions = (targetLocationId = selectedLocationId) => transitionSceneAction(() => performTransferSceneWithCompanions(targetLocationId));
 
   /** Arrival uses actual-location state only; planned locations never create encounters. */
   const performEnterLocationSolo = (targetLocationId = selectedLocationId) => {
@@ -1739,13 +1774,6 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     setSelectedCharacterIds(destinationParticipants.filter(participant => participant.ownerType === "character").map(participant => participant.ownerId));
     setTab("home");
     setSceneView(true);
-  };
-
-  const enterLocationSolo = (targetLocationId = selectedLocationId) => {
-    const destination = stateRef.current.locations.find(location => location.id === targetLocationId);
-    if (!settings.enabled) { setNotice("请先启用生活系统。"); return; }
-    if (!destination) return;
-    transitionSceneAction(() => performEnterLocationSolo(targetLocationId));
   };
 
   const autoImageFingerprint = activeScene
@@ -3905,7 +3933,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const statusManualSetMs = statusActorState?.manualSetAt ? Date.parse(statusActorState.manualSetAt) : Number.NaN;
   let statusStayBadge = "";
   if (statusActorState?.actualLocationId) {
-    if (statusActorState.locationSource === "stay" && Number.isFinite(statusUntilMs) && statusUntilMs > statusNowMs) {
+    if (statusActorState.locationSource === "spontaneous" && Number.isFinite(statusUntilMs) && statusUntilMs > statusNowMs) {
+      statusStayBadge = "临时起意 · 还剩 " + fmtRemaining(statusUntilMs - statusNowMs);
+    } else if (statusActorState.locationSource === "stay" && Number.isFinite(statusUntilMs) && statusUntilMs > statusNowMs) {
       statusStayBadge = "临时停留 · 还剩 " + fmtRemaining(statusUntilMs - statusNowMs);
     } else if (statusActorState.locationSource === "manual" && statusActorState.manualPinned) {
       statusStayBadge = "手动停留 · 一直";
@@ -4263,7 +4293,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       </nav>
 
       {(tab === "home" || tab === "scene") && <div className={immersiveScene ? "flex min-h-0 flex-1 flex-col" : "space-y-4"}>
-        {sceneLocationSearchOpen && <div role="dialog" aria-modal="true" aria-label="搜索生活现场地点" className="fixed inset-0 z-[150] flex items-end justify-center bg-black/35 p-2 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setSceneLocationSearchOpen(false)}><section className="max-h-[88dvh] w-full max-w-xl overflow-hidden rounded-3xl border border-white/80 bg-[var(--life-overlay)] shadow-2xl" onClick={event => event.stopPropagation()}><header className="flex items-center justify-between border-b border-stone-200/70 px-4 py-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--life-accent)]">Find a place</p><h2 className="text-lg font-semibold">前往地点</h2></div><button type="button" onClick={() => setSceneLocationSearchOpen(false)} aria-label="关闭" className="grid h-9 w-9 place-items-center rounded-full bg-white/75"><X size={18}/></button></header><div className="space-y-2 p-3"><input autoFocus value={sceneLocationSearch} onChange={event => setSceneLocationSearch(event.target.value)} placeholder="搜索地点名称、别名或描写" className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/><div className="grid grid-cols-1 gap-2"><select value={sceneLocationFolderFilter} onChange={event => setSceneLocationFolderFilter(event.target.value)} className="min-w-0 rounded-xl border border-stone-200 bg-white px-2 py-2 text-xs"><option value="all">全部文件夹</option><option value="unfiled">未整理</option>{locationFolders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></div></div><div className="max-h-[58dvh] space-y-1 overflow-y-auto px-3 pb-3">{filteredLocationCards.map(({location,people,isCurrent}) => <button type="button" key={location.id} onClick={() => { setSelectedLocationId(location.id); setSelectedCharacterIds(people.filter(person => person.isActuallyHere).map(person => person.character.id)); setSceneLocationSearchOpen(false); enterLocationSolo(location.id); }} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-stone-200/70 bg-white/75 p-3 text-left"><span className="min-w-0"><span className="block font-medium text-stone-800">{location.name}</span><span className="mt-1 block truncate text-xs text-stone-500">{location.description || "暂无地点描写"}</span></span><span className="shrink-0 text-xs text-[var(--life-accent)]">{isCurrent ? "进入现场" : "前往"} ›</span></button>)}{!filteredLocationCards.length && <p className="p-6 text-center text-sm text-stone-500">没有找到地点</p>}</div></section></div>}
+        {sceneLocationSearchOpen && <div role="dialog" aria-modal="true" aria-label="搜索生活现场地点" className="fixed inset-0 z-[150] flex items-end justify-center bg-black/35 p-2 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setSceneLocationSearchOpen(false)}><section className="max-h-[88dvh] w-full max-w-xl overflow-hidden rounded-3xl border border-white/80 bg-[var(--life-overlay)] shadow-2xl" onClick={event => event.stopPropagation()}><header className="flex items-center justify-between border-b border-stone-200/70 px-4 py-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--life-accent)]">Find a place</p><h2 className="text-lg font-semibold">前往地点</h2></div><button type="button" onClick={() => setSceneLocationSearchOpen(false)} aria-label="关闭" className="grid h-9 w-9 place-items-center rounded-full bg-white/75"><X size={18}/></button></header><div className="space-y-2 p-3"><input autoFocus value={sceneLocationSearch} onChange={event => setSceneLocationSearch(event.target.value)} placeholder="搜索地点名称、别名或描写" className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/><div className="grid grid-cols-1 gap-2"><select value={sceneLocationFolderFilter} onChange={event => setSceneLocationFolderFilter(event.target.value)} className="min-w-0 rounded-xl border border-stone-200 bg-white px-2 py-2 text-xs"><option value="all">全部文件夹</option><option value="unfiled">未整理</option>{locationFolders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></div></div><div className="max-h-[58dvh] space-y-1 overflow-y-auto px-3 pb-3">{filteredLocationCards.map(({location,isCurrent}) => <button type="button" key={location.id} onClick={() => { setSelectedLocationId(location.id); setSceneLocationSearchOpen(false); transferSceneWithCompanions(location.id); }} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-stone-200/70 bg-white/75 p-3 text-left"><span className="min-w-0"><span className="block font-medium text-stone-800">{location.name}</span><span className="mt-1 block truncate text-xs text-stone-500">{location.description || "暂无地点描写"}</span></span><span className="shrink-0 text-xs text-[var(--life-accent)]">{isCurrent ? "进入现场" : "前往"} ›</span></button>)}{!filteredLocationCards.length && <p className="p-6 text-center text-sm text-stone-500">没有找到地点</p>}</div></section></div>}
       {tab === "scene" && !immersiveScene && <details open className="rounded-2xl border border-white/80 bg-white/55 shadow-sm"><summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-stone-600">生活状态与时间线 · {playerNow.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})} · 展开查看</summary><section className="rounded-3xl border border-white/80 bg-white/70 p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <SectionTitle title={playerNow.toLocaleDateString("zh-CN",{month:"long",day:"numeric",weekday:"long"})+" · 我的时间线"} />
@@ -4325,7 +4355,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             <span>{locationFolderName(folderId === "unfiled" ? undefined : folderId)} · {items.length} 个地点</span><span>{collapsedLocationFolders[folderId] ? "展开 +" : "收起 −"}</span>
           </button>
           {!collapsedLocationFolders[folderId] && <div className="space-y-3">{items.map(({location, people, atmosphere, isCurrent}, index) => <article key={location.id} style={{ animationDelay: `${Math.min(index, 8) * 45}ms` }} className={`life-place-card overflow-hidden rounded-3xl border shadow-sm transition ${isCurrent ? "border-[var(--life-accent)]/45 bg-white/90 ring-1 ring-[var(--life-accent)]/10" : "border-white/80 bg-white/65"}`}>
-          <div role="button" tabIndex={0} onClick={() => { setSelectedLocationId(location.id); setSelectedCharacterIds(people.filter(person => person.isActuallyHere).map(person => person.character.id)); enterLocationSolo(location.id); }} onKeyDown={event => { if(event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedLocationId(location.id); setSelectedCharacterIds(people.filter(person => person.isActuallyHere).map(person => person.character.id)); enterLocationSolo(location.id); } }} className="cursor-pointer p-4 outline-none focus-visible:ring-2 focus-visible:ring-[var(--life-accent)] sm:p-5">
+          <div role="button" tabIndex={0} onClick={() => { setSelectedLocationId(location.id); transferSceneWithCompanions(location.id); }} onKeyDown={event => { if(event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedLocationId(location.id); transferSceneWithCompanions(location.id); } }} className="cursor-pointer p-4 outline-none focus-visible:ring-2 focus-visible:ring-[var(--life-accent)] sm:p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-semibold text-stone-800">{location.name}</h3>{isCurrent && <span className="rounded-full bg-[var(--life-accent)]/10 px-2 py-1 text-[10px] font-medium text-[var(--life-accent)]">你在这里</span>}{location.visibility === "private" && <span className="rounded-full bg-stone-100 px-2 py-1 text-[10px] text-stone-500">私人空间</span>}</div><p className="mt-1 text-sm leading-relaxed text-stone-600">{location.description || "这个地点还没有添加描写。"}</p></div>
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[#f3e8dc] text-[var(--life-accent)]"><MapPin size={19}/></span>
@@ -4339,7 +4369,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             <div className="mt-3 rounded-2xl bg-[#f8f2eb]/85 p-3"><p className="text-sm leading-relaxed text-stone-700">{atmosphere}</p></div>
             {(location.layout || location.props?.length) && <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-stone-500">{location.layout ? `空间：${location.layout} ` : ""}{location.props?.length ? `· 可用道具：${location.props.slice(0,5).join("、")}` : ""}</p>}
           </div>
-          <div className="flex items-center justify-between gap-3 border-t border-stone-200/50 bg-white/45 px-4 py-3 sm:px-5"><span className="text-[11px] text-stone-400">{isCurrent ? "你的当前位置" : people.some(person => person.isActuallyHere) ? "角色正在这里生活" : "可以前往探索"}</span><button type="button" onClick={() => { setSelectedLocationId(location.id); setSelectedCharacterIds(people.filter(person => person.isActuallyHere).map(person => person.character.id)); enterLocationSolo(location.id); }} className="inline-flex min-h-12 min-w-[92px] touch-manipulation shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-3 text-sm font-semibold text-white shadow-sm"><MapPin size={14}/>{isCurrent ? "进入现场" : "前往"}</button></div>
+          <div className="flex items-center justify-between gap-3 border-t border-stone-200/50 bg-white/45 px-4 py-3 sm:px-5"><span className="text-[11px] text-stone-400">{isCurrent ? "你的当前位置" : people.some(person => person.isActuallyHere) ? "角色正在这里生活" : "可以前往探索"}</span><button type="button" onClick={() => { setSelectedLocationId(location.id); transferSceneWithCompanions(location.id); }} className="inline-flex min-h-12 min-w-[92px] touch-manipulation shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--life-accent)] px-4 py-3 text-sm font-semibold text-white shadow-sm"><MapPin size={14}/>{isCurrent ? "进入现场" : "前往"}</button></div>
         </article>)}</div>}
         </section>)}
         <button type="button" onClick={() => { setSelectedLocationId(playerLocationId); setSceneView(false); setTab("locations"); }} className="w-full rounded-2xl border border-dashed border-stone-300 bg-white/40 px-4 py-3 text-sm text-stone-600">管理地点库 · 添加地点、布局、道具与角色习惯</button>
@@ -4352,7 +4382,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
            <label className="block text-sm font-medium">当前地点
               <select value={selectedLocationId} onChange={e=>setSelectedLocationId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm">{visibleLocations.map(loc=><option key={loc.id} value={loc.id}>{loc.name} · {loc.visibility==="public"?"公共":"私人"}</option>)}</select>
             </label>
-            <div className="flex items-end gap-2"><button type="button" onClick={transferSceneWithCompanions} disabled={!settings.enabled} title="前往新地点；上方勾选的角色会与你同行（各地点场景独立，聊天记录互不覆盖）" className="flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm disabled:opacity-40">前往地点</button><button type="button" onClick={createScene} disabled={!characters.length||!settings.enabled} className="flex-1 rounded-xl bg-[var(--life-accent)] px-3 py-2.5 text-sm text-white disabled:opacity-40">进入互动</button></div>
+            <div className="flex items-end gap-2"><button type="button" onClick={() => transferSceneWithCompanions()} disabled={!settings.enabled} title="前往上方选择的当前地点并进入现场；已勾选的角色会与你同行（系统会改写 TA 的日程，约会中的角色留在原地）" className="w-full rounded-xl bg-[var(--life-accent)] px-3 py-2.5 text-sm font-medium text-white disabled:opacity-40">前往地点并进入现场</button></div>
           </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
             <label className="block text-xs font-medium text-stone-600">预计停留时间
@@ -4375,7 +4405,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           {playerPresence?.actualLocationUntil && <p className="mt-2 text-[11px] text-stone-500">临时停留预计于 {new Date(playerPresence.actualLocationUntil).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})} 结束；届时会自动恢复当前行程地点。你也可以提前恢复原计划。</p>}
           <div className="mt-2 flex gap-2"><input value={newLocationName} onChange={e=>setNewLocationName(e.target.value)} placeholder="添加一个新地点…" className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm"/><button type="button" onClick={addLocation} className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm">添加地点</button></div>
           <label className="mt-3 block text-sm font-medium text-stone-700">你现在的行动（可选）<input value={playerActivity} onChange={e=>setPlayerActivity(e.target.value)} placeholder="例如：坐在窗边看书、慢慢散步……" className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm"/></label>
-          <div className="mt-3"><p className="mb-2 text-xs font-medium text-stone-600">选择一起互动的角色</p><div className="flex flex-wrap gap-2">{characters.map(char=><label key={char.id} className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs"><input type="checkbox" checked={selectedCharacterIds.includes(char.id)} onChange={e=>setSelectedCharacterIds(old=>e.target.checked?[...new Set([...old,char.id])]:old.filter(id=>id!==char.id))}/>{char.name}</label>)}</div></div>
+          <div className="mt-3"><p className="mb-2 text-xs font-medium text-stone-600">选择同行的角色（点地点卡片或上方按钮时一起前往）</p><div className="flex flex-wrap gap-2">{characters.map(char=><label key={char.id} className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs"><input type="checkbox" checked={selectedCharacterIds.includes(char.id)} onChange={e=>setSelectedCharacterIds(old=>e.target.checked?[...new Set([...old,char.id])]:old.filter(id=>id!==char.id))}/>{char.name}</label>)}</div></div>
           {!characters.length&&<p className="mt-2 text-xs text-stone-500">还没有角色档案；先在小手机里创建角色，之后就能在这里互动。</p>}
           {selectedLocation && <div className="mt-4 border-t border-stone-200/70 pt-4">
             <div className="mb-3"><p className="text-sm font-semibold text-stone-700">地点环境与细节</p></div>

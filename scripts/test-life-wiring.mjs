@@ -37,15 +37,17 @@ const [app, runtime, observation, cloud, coordinator, scheduler, bailout, reply,
 
 
 const updateActorLocationStart = app.indexOf("const updateActorLocation = (actor: ActorChoice, locationId: string) => {");
-const createSceneStart = app.indexOf("const performCreateScene = () => {", updateActorLocationStart);
-assert.ok(updateActorLocationStart >= 0 && createSceneStart > updateActorLocationStart, "player/character location update handler must remain identifiable");
-assert.doesNotMatch(app.slice(updateActorLocationStart, createSceneStart), /locationId:\s*location\.id/, "changing an actor actual location must not rewrite the room identity");
+const transferSceneStart = app.indexOf("const performTransferSceneWithCompanions = (targetLocationId = selectedLocationId) => {", updateActorLocationStart);
+assert.ok(updateActorLocationStart >= 0 && transferSceneStart > updateActorLocationStart, "player/character location update handler must remain identifiable");
+assert.doesNotMatch(app.slice(updateActorLocationStart, transferSceneStart), /locationId:\s*location\.id/, "changing an actor actual location must not rewrite the room identity");
 assert.match(app, /const destinationParticipants = mergeLifeSceneParticipants\(/, "destination room membership must merge existing occupants with arrivals");
 assert.match(app, /findLifeSceneForLocation\(stateRef\.current\.scenes, destination\.id\)/, "entering a location must resolve its canonical room");
 assert.match(app, /useMemo\(\(\) => findLifeSceneForLocation\(state\.scenes, selectedLocationId\)/, "foreground room must be selected by the currently displayed location");
 assert.doesNotMatch(app, /const continuingScene = next\.scenes\.find\(scene => scene\.status === "active"\)/, "timeline settlement must never migrate an arbitrary active room to the player location");
 assert.match(app, /const existingRoom = findLifeSceneForLocation\(next\.scenes, location\.id, location\.name\)/, "go-find-character must reuse or create the destination location room");
-assert.match(app, /findLifeSceneForLocation\(stateRef\.current\.scenes, selectedLocation\.id\)/, "creating/reopening a location must reuse its canonical room");
+assert.match(app, /performEnterLocationSolo\(targetLocationId\);/, "the single travel entry must reuse the canonical arrival flow");
+assert.match(app, /transferSceneWithCompanions\(location\.id\)/, "location cards must use the merged travel-and-enter entry");
+assert.doesNotMatch(app, /进入互动|performCreateScene/, "travel and interaction must stay a single entry, without a second scene-start button");
 assert.match(app, /const playerLocation = normalized\.locations\.find\(location => location\.id === restoredPlayer\?\.actualLocationId\)/, "startup must restore from the player actual location before considering a prior room");
 assert.match(app, /const roomNeedsUpdate = !playerRoom/, "a new actual location must get its own room instead of borrowing another location room");
 assert.doesNotMatch(runtime, /eventId: event\.id,\s*participants/, "scheduled invitations must not create event-owned chat rooms");
@@ -185,7 +187,13 @@ assert.doesNotMatch(app.slice(app.indexOf("const rawPlace = String(item.location
 assert.match(app, /plannedLocationName:place\?\.name \?\? \(homeIntent \? character\.name \+ "的家"/,
   "unresolved non-home places must not be silently reassigned to a home");
 assert.match(app, /synchronizeCharacterHomeSchedule/);
-assert.match(app, /reserveCharacterLocationStay/);
+assert.doesNotMatch(app, /reserveCharacterLocationStay/, "companion travel must rewrite schedules instead of writing a manual location override");
+assert.match(app, /id\("companion-follow"\)/, "companion travel must insert a protected companion-follow schedule slot");
+assert.match(app, /const inserted = insertManualLifeScheduleSlot\(insertBase, companionSlot\)/, "companion travel must go through the shared manual schedule insertion rule");
+assert.match(app, /title: "与我同行：" \+ destination\.name/, "companion schedule title must name the destination");
+assert.match(app, /activeSlot\?\.kind === "appointment" \|\| activeSlot\?\.source === "event"/, "characters with appointments or fixed events must not be moved by a companion trip");
+assert.match(app, /有约会，未同行/, "skipped companions must be reported to the player");
+assert.match(app, /locationSource: "schedule",\s*manualSetAt: undefined,\s*manualPinned: undefined/, "companion travel must merge a schedule-sourced actual location without leaving manual markers");
 assert.match(app, /前台后续兜底任务已挂载/);
 assert.match(app, /请先启用生活系统、角色自主行动和主动消息/);
 assert.match(runtime, /export function synchronizeCharacterHomeSchedule/);

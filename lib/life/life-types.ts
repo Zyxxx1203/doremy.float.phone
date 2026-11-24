@@ -38,6 +38,10 @@ export type LifeEngineSettings = {
   maxConsecutiveActionOnly?: 0 | 1 | 2;
   /** 生活输出格式异常时是否自动修复重试一次。 */
   enableLifeFormatRepair?: boolean;
+  /** 角色按日程移动时偶尔临时改去别处；只改变实际位置，不改日程。默认开启。 */
+  enableSpontaneousDeviation?: boolean;
+  /** 每个角色每天「临时起意」的次数上限（1~5）。默认 2。 */
+  deviationDailyLimit?: number;
   revealExactLocations: "ask-only" | "clues" | "open";
   sceneTheme: "warm-paper" | "night-sky" | "sage" | "rose" | "lavender" | "ocean" | "matcha" | "peach" | "midnight" | "custom";
   accentColor: string;
@@ -104,6 +108,8 @@ export const DEFAULT_LIFE_ENGINE_SETTINGS: LifeEngineSettings = {
   enableInvitations: true,
   saveConfirmedEventsToMemory: true,
   randomSceneResponses: true,
+  enableSpontaneousDeviation: true,
+  deviationDailyLimit: 2,
   showActionNarration: true,
   keepDialogueConcise: true,
   allowCharactersToStaySilent: true,
@@ -224,7 +230,13 @@ export type LifeActorState = {
    * appointments and companion travel are not manual overrides even when the
    * actual place temporarily differs from the planned one.
    */
-  locationSource?: "schedule" | "manual" | "stay" | "appointment" | "companion";
+  locationSource?: "schedule" | "manual" | "stay" | "appointment" | "companion" | "spontaneous";
+  /**
+   * 临时起意的持久化计数：记录最近一次触发日期与当天已触发次数，
+   * 跨多次 settle 累计，避免每次结算都重新掷骰。
+   */
+  deviationDayKey?: string;
+  deviationCount?: number;
   /**
    * Set only when the user explicitly picks a manual location. Settlement never
    * refreshes it, so the manual override 2-hour TTL can actually expire.
