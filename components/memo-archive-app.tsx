@@ -37,7 +37,18 @@ const date = (time: number) => new Date(time).toLocaleDateString("zh-CN", { mont
 const time = (stamp: number) => new Date(stamp).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 
 export function MemoArchiveApp({ onClose, onNotice }: Props) {
-  const [owner, setOwner] = useState<MemoOwner>(USER);
+  const [owner, setOwner] = useState<MemoOwner>(() => {
+    try {
+      const raw = localStorage.getItem("ai_phone_memo_owner_v1");
+      if (raw) {
+        const parsed = JSON.parse(raw) as { type?: string; id?: string };
+        if (parsed && (parsed.type === "user" || parsed.type === "character") && parsed.id) {
+          return { type: parsed.type, id: parsed.id } as MemoOwner;
+        }
+      }
+    } catch { /* 读不到就用默认 */ }
+    return USER;
+  });
   const [characters, setCharacters] = useState<ReturnType<typeof loadCharacters>>([]);
   const [folders, setFolders] = useState<MemoFolder[]>([]);
   const [notes, setNotes] = useState<MemoNote[]>([]);
@@ -139,6 +150,7 @@ export function MemoArchiveApp({ onClose, onNotice }: Props) {
   const changeOwner = (next: MemoOwner) => {
     setSelectedNoteIds([]);
     setOwner(next);
+    try { localStorage.setItem("ai_phone_memo_owner_v1", JSON.stringify(next)); } catch { /* 忽略 */ }
     setTab("home");
     setQuery("");
     setSpaceMenu(false);

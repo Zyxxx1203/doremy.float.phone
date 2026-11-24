@@ -986,7 +986,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         id: createPhotoWallId(), createdAt,
         authorType: newlyAddedPhotos.every(photo => photo.ownerType === "character") ? "character" : "user",
         authorId: newlyAddedPhotos.length === 1 ? newlyAddedPhotos[0].ownerId : undefined,
-        authorName: newlyAddedPhotos.length === 1 ? newlyAddedPhotos[0].ownerName : "共同创作参与者",
+        authorName: newlyAddedPhotos.length === 1
+          ? newlyAddedPhotos[0].ownerName
+          : (Array.from(new Set(newlyAddedPhotos.map(photo => photo.ownerName))).filter(Boolean).join("、") || "我"),
         narrative: "有 " + newlyAddedPhotos.length + " 张新照片加入公共照片墙：" + names.join("、"),
         photoIds: newlyAddedPhotos.map(photo => photo.id), layers: [], doodles: [],
       });
