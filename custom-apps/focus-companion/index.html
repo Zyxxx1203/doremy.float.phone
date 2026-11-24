@@ -1921,16 +1921,25 @@ function applyAppPick(app) {
   render();
 }
 function openLockedAppsSheet() {
+  /* 首次打开时后台拉一次应用列表，TA 推荐才有内容；到了就刷新这张弹层 */
+  if (!S.draft.appList && API && API.device && API.device.appsList) {
+    sdk(() => API.device.appsList(), null).then((res) => {
+      if (res && res.ok && (res.apps || []).length) {
+        S.draft.appList = res.apps;
+        const top = modalStack[modalStack.length - 1];
+        if (top && top.textContent && top.textContent.indexOf('常驻白名单') >= 0) openLockedAppsSheet();
+      }
+    }).catch(() => { });
+  }
   const list = cfg('lockedApps') || [];
   const oldWl = cfg('whitelist') || [];
   openSheet(`<h3>🧱 常驻白名单</h3>
     <div class="tiny mt6">L2 看守锁放行的手机应用清单（按包名匹配）；也是中途离开豁免的依据。改动立即生效。</div>
     ${list.length ? list.map((x, i) => `<div class="item"><div class="ic">📱</div><div class="grow"><div style="font-size:13px">${esc(x.name)}</div><div class="tiny">${esc(x.pkg || '未记录包名')}</div></div>
       <button class="btn sm ghost" data-act="lockedAppsDel" data-i="${i}">删</button></div>`).join('') : '<div class="empty">还没有应用 —— 从手机应用列表里选</div>'}
-    <button class="btn primary block mt10" data-act="lockedAppsPick">📱 从手机应用选择</button>
-    <div class="row mt8" style="gap:8px">
-      <input class="input grow" id="laName" placeholder="或手输名称（无 APK 兜底）">
-      <button class="btn sm" data-act="lockedAppsAdd">添加</button></div>
+    <button class="btn primary block mt10" data-act="wlApplyOpen" data-perm="1">📱 选择应用并申请（多选）</button>
+    ${(() => { const sug = wlSuggestApps(); return sug.length ? `<div class="hr"></div><div class="tiny">TA 觉得这些学习/工具类应用可以放行：</div>
+      <div class="chips mt6">${sug.map(a => `<button class="chip" data-act="wlApplyOpen" data-perm="1" data-app="${esc(a.label)}" data-pkg="${esc(a.package)}">${esc(a.label)}</button>`).join('')}</div>` : ''; })()}
     ${oldWl.length ? `<div class="hr"></div><div class="tiny">旧手填白名单档案（未签发）：${oldWl.map(x => esc(x.name)).join('、')}</div>` : ''}
     <button class="btn ghost block mt8" data-act="closeSheet">关闭</button>`);
 }
@@ -2726,7 +2735,7 @@ function openWlSheet() {
       <div class="tiny">${esc(p.reason || '')}${p.package ? ' · 包名 ' + esc(p.package) : ''}${p.conditions ? ' · 条件：' + esc(p.conditions) : ''} · 已用 ${p.uses || 0} 次${p.checkedAt ? ' · 已过查岗' : ''}</div></div>
       <button class="btn sm ghost" data-act="wlRevoke" data-id="${esc(p.id)}">作废</button></div>`).join('')
       : '<div class="tiny mt6">现在没有生效中的通行证。</div>'}
-    <button class="btn primary block mt10" data-act="wlApplyOpen">🎟 向 TA 申请通行证</button>
+    <button class="btn primary block mt10" data-act="wlApplyOpen" data-perm="">🎟 选择应用并申请通行证（多选）</button>
     ${oldWl.length ? `<div class="hr"></div><div class="tiny">旧白名单档案（未签发，不直接生效）：</div>
       ${oldWl.map(x => `<div class="item"><div class="grow"><div style="font-size:13px">${esc(x.name)}</div><div class="tiny">${esc(x.note || '')}</div></div>
       <button class="btn sm ghost" data-act="wlApplyOpen" data-app="${esc(x.name)}" data-reason="${esc(x.note || '')}" data-pkg="${esc(x.pkg || '')}">按此申请</button></div>`).join('')}` : ''}
@@ -7062,7 +7071,6 @@ VIEWS.me = function () {
       <button class="btn sm grow" data-act="wlSheetOpen">🎟 通行证 ${activeWlPasses().length}</button>
     </div>
     <div class="row mt8" style="gap:8px">
-      <button class="btn sm ghost grow" data-act="wlApplyOpen">向 TA 申请</button>
       <button class="btn sm ghost grow" data-act="widgetPin">🧩 桌面组件</button>
     </div></div>
   <div class="card"><div class="row between"><h3>监督与惩罚</h3>
@@ -13048,7 +13056,7 @@ VIEWS.rcbooks = function () {
       ${rcAiOn('plan') ? `<button class="btn sm grow" data-act="rcAiPlanBtn" ${S.loading === 'rcplan' ? 'disabled' : ''}>${S.loading === 'rcplan' ? '想想…' : '🤖 今日计划'}</button>` : ''}
       ${rcAiOn('pet') ? `<button class="btn sm grow" data-act="rcAiPetOpen">🎤 让 TA 抽背</button>` : ''}
       <button class="btn sm ghost" data-act="rcAiSheet">🤖 AI</button></div>
-    <div class="row mt8" style="gap:8px">
+    <div class="row mt10" style="gap:10px">
       <button class="btn sm ghost grow" data-act="rcSets">⚙️ 背书设置</button>
       <button class="btn sm ghost grow" data-act="rcRestoreOpen">📥 还原备份</button></div>
     ${S.draft.rcPlanAI ? `<div class="card tight mt10" style="background:var(--card2)">
@@ -13087,7 +13095,7 @@ VIEWS.rcbooks = function () {
         <span class="tiny">${tN ? '今天背了 ' + tN + ' 条' : '今天还没开背'}${rec && rec.byAI === false ? ' · 本地版' : ''}</span></div>
       ${line ? `<div style="font-size:13.2px;line-height:1.8;margin-top:6px;white-space:pre-wrap">${esc(line)}</div>
         <div class="tiny mt6" style="color:var(--dim2)">${rec && rec.at ? '更新于 ' + dkey(new Date(rec.at)) + ' ' + hm(rec.at) : ''}${(cfg('rcReviews') || {})[dkey()] ? ' · 已留档，历史可在统计页回看' : ''}</div>` : `<div class="tiny mt6">今天背完一轮之后，这里会留一段复盘 —— 你翻了哪些词本、对多少、漏在哪。</div>`}
-      <div class="row mt8" style="gap:8px">
+      <div class="row mt10" style="gap:10px">
         <button class="btn sm ${line ? 'ghost' : 'primary'} grow" data-act="rcAiReviewBtn" ${S.loading === 'rcreview' ? 'disabled' : ''}>${S.loading === 'rcreview' ? '正在写…' : (line ? '↺ 重新写一份' : '写今天的复盘')}</button>
         ${line ? `<button class="btn sm ghost grow" data-act="rcReviewFav">⭐ 收藏</button>` : ''}
         <button class="btn sm ghost grow" data-act="gotoView" data-view="rcstats">历史</button></div>

@@ -147,7 +147,7 @@ object NativeRealityBridge {
             val candidates = (0 until replies.length()).mapNotNull { replies.optString(it).trim().takeIf(String::isNotBlank) }
             val template = rule.optJSONObject("process")?.optString("template", "").orEmpty()
             val normalizedPayload = normalizeSignal(type, payload)
-            val body = (candidates.firstOrNull() ?: template)
+            val body = (pickOfflineReply(prefs, ruleId, candidates).ifBlank { template })
                 .replace("{payload}", normalizedPayload)
                 .replace("{type}", type)
                 .let { if (it == payload || it.isBlank()) normalizedPayload else it }
@@ -171,6 +171,18 @@ object NativeRealityBridge {
         }
         return matchedRule
     }
+    /** 离线回复随机取一条（避免连续重复：跳过上次用过的那条）。 */
+    private fun pickOfflineReply(prefs: android.content.SharedPreferences, ruleId: String, candidates: List<String>): String {
+        if (candidates.isEmpty()) return ""
+        if (candidates.size == 1) return candidates[0]
+        val key = "last_reply_" + ruleId
+        val last = prefs.getInt(key, -1)
+        val pool = candidates.indices.filter { it != last }.ifEmpty { candidates.indices.toList() }
+        val idx = pool.random()
+        prefs.edit().putInt(key, idx).apply()
+        return candidates[idx]
+    }
+
     private fun enqueueChatMessage(context: Context, message: JSONObject): Boolean {
         val id = message.optString("id")
         if (id.isBlank()) return false
