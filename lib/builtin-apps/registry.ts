@@ -28,12 +28,20 @@ export function getBuiltinCustomApp(appId: string): InstalledCustomApp | null {
 }
 
 /** 内置版始终优先；旧市场版记录保留在存储中供数据迁移/回滚，但不再注册运行。 */
+/** 市场版的记录可能与内置 id 不一致（历史版本/重命名/包内 id 变体），
+ *  按 id、manifest.id、manifest.identifier、显示名四路匹配，避免同一个应用出现两份。 */
+function isSameBuiltin(app: InstalledCustomApp, id: string, manifest: { id?: string; identifier?: string; name?: string }): boolean {
+  const m = app.manifest || ({} as InstalledCustomApp["manifest"]);
+  const candidates = [app.id, m.id, (m as unknown as { identifier?: string }).identifier].filter(Boolean);
+  if (candidates.some((v) => String(v) === id)) return true;
+  const name = String(m.name || "").trim();
+  return Boolean(name) && name === String(manifest.name || "").trim();
+}
+
 export function loadAllCustomApps(): InstalledCustomApp[] {
   const installed = loadInstalledCustomApps().filter((app) => (
-    app.id !== HEARTCRAFT_APP_ID
-    && (app.manifest?.id || app.id) !== HEARTCRAFT_MANIFEST.id
-    && app.id !== FOCUS_COMPANION_APP_ID
-    && (app.manifest?.id || app.id) !== FOCUS_COMPANION_MANIFEST.id
+    !isSameBuiltin(app, HEARTCRAFT_APP_ID, HEARTCRAFT_MANIFEST)
+    && !isSameBuiltin(app, FOCUS_COMPANION_APP_ID, FOCUS_COMPANION_MANIFEST)
   ));
   return [buildHeartcraftApp(""), buildFocusCompanionApp(""), ...installed];
 }
