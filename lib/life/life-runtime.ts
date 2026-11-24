@@ -757,11 +757,18 @@ export function settleActorTimelineToNow(
   // A missing current slot must clear the old slot reference. Otherwise deleting
   // or editing a schedule can leave an actor permanently attached to stale activity.
   const manualStayActive = !!previous?.actualLocationUntil && new Date(previous.actualLocationUntil).getTime() > realNow.getTime();
+  // 手动地点的有效期：明确选了地点（无 until）视为「临时优先」，默认 2 小时后
+  // 交还给日程，否则手动改一次就会永久停在那儿、角色再也不会按日程移动。
+  const MANUAL_OVERRIDE_TTL_MS = 2 * 60 * 60 * 1000;
+  const manualOverrideAgeMs = previous?.actualLocationId
+    ? Math.max(0, realNow.getTime() - new Date(previous.updatedAt ?? nowIso).getTime())
+    : 0;
   // A manually selected actual location (no expiry) is an explicit presence override.
   // A newly active schedule must not pull the actor back to its planned location.
   const manualLocationOverride = Boolean(current && previous?.actualLocationId
     && previous.actualLocationUntil == null
-    && previous.actualLocationId !== current.plannedLocationId);
+    && previous.actualLocationId !== current.plannedLocationId
+    && manualOverrideAgeMs < MANUAL_OVERRIDE_TTL_MS);
   const nextActivity = activeAppointment
     ? current.title
     : manualStayActive || manualLocationOverride

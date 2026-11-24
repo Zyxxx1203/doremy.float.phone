@@ -182,9 +182,7 @@ background:linear-gradient(150deg,rgba(124,140,255,.22),rgba(94,234,212,.08))}
 .hubbar{position:sticky;top:calc(var(--ai-phone-app-bar-top,54px) + 40px);z-index:12;
 background:rgba(15,19,30,.88);backdrop-filter:blur(14px);border-color:rgba(255,255,255,.1);padding:9px 11px;margin-bottom:12px}
 .hubbar .chip{padding:6px 11px;font-size:12px}
-.card.hero{border-color:rgba(124,140,255,.42);background:
-radial-gradient(130% 120% at 10% 0%,rgba(124,140,255,.32),rgba(124,140,255,0) 64%),
-linear-gradient(160deg,rgba(94,234,212,.12),rgba(255,255,255,.03))}
+.card.hero{border-color:var(--line);background:var(--card)}
 .card.hero .hero-t{font-size:19.5px;font-weight:700;margin-top:3px;line-height:1.35}
 .card.hero-soft{border-color:rgba(124,140,255,.28);background:linear-gradient(160deg,rgba(124,140,255,.12),rgba(255,255,255,.03))}
 .hubgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px}
@@ -1722,7 +1720,7 @@ function renderAppPickerSheet(kw) {
       ${list.length ? list.map((x, i) => `<div class="item" data-pick="${i}"><div class="ic">📱</div><div class="grow"><div style="font-size:13px">${esc(x.label)}</div><div class="tiny">${esc(x.package)}</div></div></div>`).join('') : '<div class="empty">没有匹配的应用</div>'}
     </div>
     <button class="btn ghost block mt8" data-act="closeSheet">取消</button>`);
-  const w = document.querySelector('.sheet');
+  const w = modalStack[modalStack.length - 1];
   if (w) w.addEventListener('click', (e) => {
     const input = e.target.closest('#appSearch');
     const row = e.target.closest('[data-pick]');
@@ -6914,12 +6912,6 @@ VIEWS.me = function () {
     <div class="sub">角色宣布惩罚时优先让 AI 生成，失败时用这些台词兜底。</div>
     ${texts.map((t, i) => `<div class="item"><div class="ic">💬</div><div class="grow" style="font-size:12.8px">${esc(t)}</div>
       <button class="btn sm ghost" data-act="delPunishText" data-i="${i}">删</button></div>`).join('')}</div>
-  <div class="card">
-    <div class="row between"><h3>白名单应用</h3><button class="btn sm" data-act="addWhite">＋ 添加</button></div>
-    <div class="sub">专注中离开去看白名单应用，回来可申诉豁免（每次专注最多 3 次）。</div>
-    ${wl.length ? wl.map((x, i) => `<div class="item"><div class="ic">📗</div>
-      <div class="grow"><div style="font-size:13px">${esc(x.name)}</div>${x.note ? `<div class="tiny">${esc(x.note)}</div>` : ''}</div>
-      <button class="btn sm ghost" data-act="delWhite" data-i="${i}">删</button></div>`).join('') : `<div class="tiny mt6">未设置白名单，离开一律按违规处理。</div>`}</div>
   <details class="card"><summary><span>⚙️ 考核 · 奖励 · 通知参数</span></summary>
   <div class="sec">考核参数</div>
   <div class="card"><h3>考核参数（数字都可自己填）</h3>
