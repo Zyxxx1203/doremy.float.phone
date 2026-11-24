@@ -1086,22 +1086,22 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
                 <>
                     <div className="flex items-center justify-between">
                         <h2 className="m-0 mx-2 ts-28 font-bold italic leading-none text-black">Presets</h2>
-                        {syncStatus.missing > 0 ? (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const results = syncBuiltinEntriesIntoAllPresets();
-                                    setPresets(loadPresets());
-                                    setSyncStatus(presetSyncStatus());
-                                    const total = results.reduce((sum, r) => sum + r.added, 0);
-                                    setSyncNote(total ? ("已补入 " + total + " 条内置条目") : "已是最新");
-                                }}
-                                className="inline-flex h-8 items-center gap-1 rounded-full border border-black/10 bg-white px-3 text-[11px] font-bold text-gray-800 shadow-sm"
-                            >
-                                <Replace size={13} />
-                                全部补全
-                            </button>
-                        ) : null}
+                        <button
+                            type="button"
+                            disabled={syncStatus.missing === 0}
+                            title={syncStatus.missing === 0 ? "所有预设都已包含最新内置条目" : "把缺失的内置条目补进所有预设"}
+                            onClick={() => {
+                                const results = syncBuiltinEntriesIntoAllPresets();
+                                setPresets(loadPresets());
+                                setSyncStatus(presetSyncStatus());
+                                const total = results.reduce((sum, r) => sum + r.added, 0);
+                                setSyncNote(total ? ("已补入 " + total + " 条内置条目") : "已是最新");
+                            }}
+                            className="inline-flex h-8 items-center gap-1 rounded-full border border-black/10 bg-white px-3 text-[11px] font-bold text-gray-800 shadow-sm disabled:opacity-50"
+                        >
+                            <Replace size={13} />
+                            {syncStatus.missing === 0 ? "已是最新" : "全部补全"}
+                        </button>
                     </div>
 
                     {syncStatus.missing > 0 && !syncStatus.dismissed ? (
