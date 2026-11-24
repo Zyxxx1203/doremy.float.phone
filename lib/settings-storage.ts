@@ -230,15 +230,35 @@ export function loadPresets(): PresetConfig[] {
             presets.unshift(builtin);
             savePresets(presets);
             shouldPersistCleanup = false;
-        } else if ((existingBuiltin.builtInVersion ?? 0) < BUILTIN_PRESET_VERSION) {
+        } else {
+            /* 内置副本的定向迁移：只修「专注陪伴」条目的作用域/名称/顺序，
+               不动用户改过的内容，也不需要升版本号（升版本会重写出厂内容）。 */
+            const focusEntry = (existingBuiltin.prompts ?? []).find(p => p.identifier === "focus_companion_proactive");
+            if (focusEntry && (focusEntry.tags ?? []).length === 0) {
+                focusEntry.tags = ["chat", "text"];
+                focusEntry.name = "◇ 专注陪伴·主动推进";
+                const order = [...(existingBuiltin.prompt_order ?? [])];
+                const idx = order.findIndex(o => o.identifier === "focus_companion_proactive");
+                const toolsIdx = order.findIndex(o => o.identifier === "chat_tools");
+                if (idx >= 0 && toolsIdx >= 0 && idx !== toolsIdx - 1) {
+                    const [entry] = order.splice(idx, 1);
+                    const newToolsIdx = order.findIndex(o => o.identifier === "chat_tools");
+                    order.splice(newToolsIdx >= 0 ? newToolsIdx : order.length, 0, entry);
+                    existingBuiltin.prompt_order = order;
+                }
+                savePresets(presets);
+                shouldPersistCleanup = false;
+            }
+            if ((existingBuiltin.builtInVersion ?? 0) < BUILTIN_PRESET_VERSION) {
             const fresh = preserveCustomAppPresetPrompts(createBuiltinPreset(), existingBuiltin);
             fresh.id = existingBuiltin.id;
             const idx = presets.indexOf(existingBuiltin);
             presets[idx] = fresh;
             savePresets(presets);
             shouldPersistCleanup = false;
-        } else if (shouldPersistCleanup) {
-            savePresets(presets);
+            } else if (shouldPersistCleanup) {
+                savePresets(presets);
+            }
         }
 
         // 内置 APP 的提示词条目按需补齐（只追加缺失项，保留用户已改内容）。
