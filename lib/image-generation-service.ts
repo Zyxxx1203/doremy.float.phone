@@ -820,6 +820,8 @@ async function generateImageFromConfiguredApiInternal(params: {
   /** Optional supplemental scene reference, retained for older callers. */
   referenceImageDataUrl?: string;
   settings?: ImageGenerationSettings;
+  /** 调用方会自己持久化图片时设为 false，避免媒体缓存里多出一份无引用副本。 */
+  storeInMediaCache?: boolean;
   signal?: AbortSignal;
 }): Promise<ImageGenerationResult | null> {
   const storedSettings = params.settings ?? loadImageGenerationSettings();
@@ -908,7 +910,7 @@ async function generateImageFromConfiguredApiInternal(params: {
     const mimeType = data.mimeType || "image/png";
     const blob = base64ToBlob(data.b64, mimeType);
     throwIfAborted(params.signal);
-    const mediaRef = await storeMediaBlob(blob, mimeType, "image");
+    const mediaRef = params.storeInMediaCache === false ? "" : await storeMediaBlob(blob, mimeType, "image");
     throwIfAborted(params.signal);
     return {
       mediaRef,

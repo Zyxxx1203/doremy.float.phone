@@ -3,12 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import JSZip from "jszip";
 import { Archive, ArrowLeft, AudioLines, Check, File, Image as ImageIcon, LoaderCircle, RefreshCw, Search, Trash2, Video, X, Copy, HardDrive, ShieldAlert, Star } from "lucide-react";
-import { deleteMediaRef, listMediaCacheSummaries, loadMediaBlob, loadMediaObjectUrl, type MediaCacheSummary } from "@/lib/media-cache-storage";
-import { loadChatSessions, loadChatMessages } from "@/lib/chat-storage";
-import { loadPhotoWallState } from "@/lib/photo-wall-storage";
+import { deleteEmptyMediaEntries, deleteMediaRef, listMediaCacheSummaries, loadMediaBlob, loadMediaObjectUrl, type MediaCacheSummary } from "@/lib/media-cache-storage";
+import { collectMediaReferenceUsage, findMediaGenerationOrigin, loadMediaGenerationOrigins } from "@/lib/media-reference-usage";
 import { downloadFile } from "@/lib/download-utils";
 
-type ArchiveItem = MediaCacheSummary & { ref: string; usedBy: string[]; objectUrl?: string };
+type ArchiveItem = MediaCacheSummary & { ref: string; usedBy: string[]; origin?: string; objectUrl?: string };
 type ArchiveMeta = { label?: string; note?: string; favorite?: boolean };
 const ARCHIVE_META_KEY = "ai_phone_archive_meta_v1";
 
@@ -85,6 +84,8 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
   const [visualDuplicateIds, setVisualDuplicateIds] = useState<Set<string>>(new Set());
   const [duplicateGroups, setDuplicateGroups] = useState<string[][]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmEmpty, setConfirmEmpty] = useState(false);
+  const [emptyCount, setEmptyCount] = useState(0);
   const [meta, setMeta] = useState<Record<string, ArchiveMeta>>(() => loadArchiveMeta());
   const [recommendedDeleteIds, setRecommendedDeleteIds] = useState<Set<string>>(new Set());
 
@@ -92,28 +93,25 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
     setLoading(true);
     try {
       const summaries = await listMediaCacheSummaries();
-      const sessions = loadChatSessions();
-      const used = new Map<string, Set<string>>();
-      for (const session of sessions) {
-        for (const msg of loadChatMessages(session.id)) {
-          const refs = [msg.mediaUrl, ...(Array.isArray(msg.mediaData?.imageRefs) ? msg.mediaData.imageRefs as string[] : [])];
-          for (const ref of refs) {
-            if (typeof ref !== "string" || !ref.startsWith("media-store://")) continue;
-            const id = ref.slice("media-store://".length);
-            if (!used.has(id)) used.set(id, new Set());
-            used.get(id)!.add(session.groupName || session.alias || session.contactId || session.id);
-          }
-        }
-      }
-      // Include photo wall references too: archive cleanup must not silently break a saved photo.
-      for (const photo of loadPhotoWallState().photos) {
-        if (!photo.mediaRef.startsWith("media-store://")) continue;
-        const id = photo.mediaRef.slice("media-store://".length);
-        if (!used.has(id)) used.set(id, new Set());
-        used.get(id)!.add(`照片墙：${photo.title || "未命名照片"}`);
-      }
-      setItems(summaries.map(item => ({ ...item, ref: refFor(item.id), usedBy: [...(used.get(item.id) || [])] })).sort((a, b) => b.createdAt - a.createdAt));
+      const usage = await collectMediaReferenceUsage();
+      const origins = loadMediaGenerationOrigins();
+      const actualItems = summaries.filter(item => item.bytes > 0);
+      setEmptyCount(summaries.length - actualItems.length);
+      setItems(actualItems.map(item => {
+        const usedBy = new Set(usage.get(item.id) || []);
+        for (const owner of item.retainedBy) usedBy.add(`保留标记：${owner}`);
+        const origin = findMediaGenerationOrigin(item.createdAt, origins);
+        return {
+          ...item,
+          ref: refFor(item.id),
+          usedBy: [...usedBy],
+          origin: origin
+            ? (origin.appId === "moments" ? "朋友圈（帖子配图已另存，这是缓存副本）" : `${origin.label} 生成图缓存`)
+            : undefined,
+        };
+      }).sort((a, b) => b.createdAt - a.createdAt));
       setSelected([]);
+      setConfirmEmpty(false);
     } catch (error) {
       onNotice?.("读取媒体库失败：" + (error instanceof Error ? error.message : String(error)));
     } finally { setLoading(false); }
@@ -302,15 +300,16 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
     const targets = items.filter(item => selected.includes(item.id));
     const favorited = targets.filter(item => meta[item.id]?.favorite === true);
     if (favorited.length) { onNotice?.(`所选项目中有 ${favorited.length} 个已收藏文件；为防止误删，已阻止本次删除。请取消收藏后再操作。`); setConfirmDelete(false); return; }
-    const photoWallProtected = targets.filter(item => item.usedBy.some(name => name.startsWith("照片墙：")));
-    if (photoWallProtected.length) {
-      onNotice?.(`所选项目中有 ${photoWallProtected.length} 个仍被照片墙使用。请先在照片墙中移除对应照片，再清理媒体文件，避免留下失效记录。`);
+    const referenced = targets.filter(item => item.usedBy.length > 0);
+    if (referenced.length) {
+      const sources = [...new Set(referenced.flatMap(item => item.usedBy))].slice(0, 4).join("、");
+      onNotice?.(`所选项目中有 ${referenced.length} 个仍被其他功能引用（${sources}${referenced.length > 1 ? "等" : ""}），已阻止删除。请先解除对应引用，避免照片墙、聊天或自定义 APP 留下失效记录。`);
+      setConfirmDelete(false);
       return;
     }
-    const referenced = targets.filter(item => item.usedBy.length > 0);
-    if ((referenced.length || targets.length > 1) && !confirmDelete) {
+    if (targets.length > 1 && !confirmDelete) {
       setConfirmDelete(true);
-      onNotice?.(`准备删除 ${targets.length} 个媒体文件${referenced.length ? `，其中 ${referenced.length} 个仍被聊天消息引用` : ""}。再次点击确认后才会执行；引用媒体可能无法显示。收藏项不会被删除。`);
+      onNotice?.(`准备删除 ${targets.length} 个未被引用的媒体文件。再次点击确认后才会执行。收藏项不会被删除。`);
       return;
     }
     try {
@@ -320,6 +319,22 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
       await refresh();
     } catch (error) {
       onNotice?.("删除失败：" + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+  const clearEmptyRecords = async () => {
+    if (emptyCount <= 0) return;
+    if (!confirmEmpty) {
+      setConfirmEmpty(true);
+      onNotice?.(`发现 ${emptyCount} 条 0 字节空记录。它们没有实际文件、不会释放空间，只会让媒体库看起来有很多“未引用”项目。再次点击确认后清理这些记录。`);
+      return;
+    }
+    try {
+      const removed = await deleteEmptyMediaEntries();
+      setConfirmEmpty(false);
+      onNotice?.(`已清理 ${removed} 条空记录，没有删除任何实际媒体文件。`);
+      await refresh();
+    } catch (error) {
+      onNotice?.("清理空记录失败：" + (error instanceof Error ? error.message : String(error)));
     }
   };
 
@@ -334,9 +349,17 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
     </header>
     <main className="min-h-0 flex-1 overflow-y-auto p-4">
       <section className="rounded-3xl bg-gradient-to-br from-[#e8e0d3] via-[#f4eee5] to-[#d9e3db] p-5 shadow-sm">
-        <div className="flex items-start justify-between gap-3"><div><div className="text-sm text-stone-600">已索引媒体</div><div className="mt-1 text-3xl font-semibold">{stats.count.toLocaleString()} <span className="text-sm font-normal text-stone-500">个文件</span></div><div className="mt-1 text-sm text-stone-600">索引媒体大小合计 {bytesLabel(stats.bytes)}</div></div><div className="rounded-2xl bg-white/65 p-3"><HardDrive size={26}/></div></div>
+        <div className="flex items-start justify-between gap-3"><div><div className="text-sm text-stone-600">实际媒体文件</div><div className="mt-1 text-3xl font-semibold">{stats.count.toLocaleString()} <span className="text-sm font-normal text-stone-500">个文件</span></div><div className="mt-1 text-sm text-stone-600">媒体大小合计 {bytesLabel(stats.bytes)}{emptyCount > 0 ? ` · 另有 ${emptyCount} 条空记录` : ""}</div></div><div className="rounded-2xl bg-white/65 p-3"><HardDrive size={26}/></div></div>
         <div className="mt-5 grid grid-cols-4 gap-2">{([{key:"image",label:"图片",Icon:ImageIcon},{key:"audio",label:"语音",Icon:AudioLines},{key:"video",label:"视频",Icon:Video},{key:"file",label:"文件",Icon:File}] as const).map(({key,label,Icon})=><button key={key} onClick={()=>{setFilter(key);setTab("all");}} className={`rounded-2xl border p-3 text-left ${filter===key?"border-stone-500 bg-white/80":"border-white/70 bg-white/40"}`}><Icon size={17}/><div className="mt-2 text-lg font-semibold">{stats[key]}</div><div className="text-xs text-stone-500">{label}</div></button>)}</div>
       </section>
+      {emptyCount > 0 && <div className="mt-3 flex items-start gap-3 rounded-2xl border border-stone-300 bg-white/80 p-3 text-xs leading-5 text-stone-600">
+        <ShieldAlert size={17} className="mt-0.5 shrink-0 text-stone-500" />
+        <div className="min-w-0 flex-1">
+          <div className="font-medium text-stone-800">有 {emptyCount} 条 0 字节空记录</div>
+          <div className="mt-1">这些是旧版本留下的元数据，没有实际图片或语音，也不会占用存储空间。清理它们只会让列表更干净，不会删除任何真实文件。</div>
+        </div>
+        <button type="button" onClick={() => void clearEmptyRecords()} className="shrink-0 rounded-lg border border-stone-300 bg-white px-2.5 py-2 font-medium text-stone-700">{confirmEmpty ? "确认清理" : "清理"}</button>
+      </div>}
       <div className="mt-4 grid grid-cols-2 gap-3">
         <button onClick={() => {setTab("all");setFilter("all");}} className={`rounded-2xl border p-4 text-left ${tab==="all"?"border-stone-400 bg-white":"border-stone-200 bg-white/60"}`}><Archive size={19}/><div className="mt-2 font-semibold">媒体库</div><div className="mt-1 text-xs text-stone-500">浏览、筛选与批量管理</div></button>
         <button onClick={() => void scanDuplicates()} disabled={scanningDuplicates || loading} className="rounded-2xl border border-stone-200 bg-white/60 p-4 text-left disabled:opacity-60">{scanningDuplicates?<LoaderCircle size={19} className="animate-spin"/>:<Copy size={19}/>}<div className="mt-2 font-semibold">重复文件扫描</div><div className="mt-1 text-xs text-stone-500">精确重复 + 视觉相似候选</div></button>
@@ -381,7 +404,8 @@ function MediaRow({ item, checked, onToggle, meta, onPatch, recommended, exactDu
       {duplicateGroup !== undefined && <div className="mt-1 text-[10px] font-medium text-stone-500">重复候选组 {duplicateGroup}</div>}
       <div className="mt-1 text-xs text-stone-500">{bytesLabel(item.bytes)} · {dateLabel(item.createdAt)} · {item.category==="audio"?"语音":item.category==="image"?"图片":item.category==="video"?"视频":"文件"}</div>
       {item.category === "audio" && url && <audio controls preload="none" src={url} className="mt-2 h-8 w-full max-w-[240px]"/>}
-      <div className={item.usedBy.length ? "mt-1 break-words text-xs text-emerald-700" : "mt-1 break-words text-xs text-amber-700"}>{item.usedBy.length ? "关联 " + item.usedBy.length + " 个会话 / 记录" : "未发现已知引用（不代表一定可删除）"}</div>
+      <div className={item.usedBy.length ? "mt-1 break-words text-xs text-emerald-700" : "mt-1 break-words text-xs text-amber-700"}>{item.usedBy.length ? "关联：" + item.usedBy.slice(0, 4).join("、") + (item.usedBy.length > 4 ? ` 等 ${item.usedBy.length} 处` : "") : "未发现已知引用（不代表一定可删除）"}</div>
+      {item.origin && <div className="mt-1 text-xs text-stone-500">来源：{item.origin}</div>}
       {meta.favorite && <div className="mt-1.5 flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-700"><Star size={10} fill="currentColor"/>已收藏</span><span className="text-[10px] text-amber-700">批量删除会自动保护</span></div>}
       {exactDuplicate && <div className="mt-1 text-[10px] font-medium text-emerald-700">文件内容完全相同（SHA-256）</div>}
       {visualSimilar && <div className="mt-1 text-[10px] font-medium text-amber-700">视觉相似候选 · 需人工核对，不自动推荐删除</div>}

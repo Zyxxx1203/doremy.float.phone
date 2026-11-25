@@ -204,7 +204,14 @@ export function formatCustomAppChatDirectivesForPrompt(options: { group?: boolea
 export function splitCustomAppDirectiveArgs(rawArgs: string): string[] {
   const text = cleanText(rawArgs, 1000).replace(/^[：:]/, "");
   if (!text) return [];
-  return text.split(/[：:]/).map(item => item.trim()).filter(Boolean).slice(0, 8);
+  // 时间参数自带冒号（[约专注:13:00:事项:45]）；先保护 HH:MM，
+  // 否则会被拆成 ["13","00","事项","45"]，卡片上时间/事项/分钟全部错位。
+  const protectedText = text.replace(/(\d{1,2})[:：](\d{1,2})(?!\d)/g, "$1@$2");
+  return protectedText
+    .split(/[：:]/)
+    .map(item => item.trim().replace(/@/g, ":"))
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 export function formatCustomAppDirectiveSummary(

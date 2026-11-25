@@ -11653,14 +11653,19 @@ async function scheduleAppt(a) {
     }];
     /* 系统通知栏兜底：应用内通知在小手机页面冻结时看不见，壳渠道才真正弹出来（网页 no-op）。 */
     actions.push({ type: 'shell.notify', title: '🗓 ' + name + ' 来催你了（第 ' + (i + 1) + '/' + n + ' 次）', body: body });
-    if (cfg('apptChatNudge') !== false) {
+    /* 聊天卡只挂在最后一次提醒上。
+       三个任务都带卡片时，APP 被冻结后恢复会把 T-10/T-5/T-0 的卡一起补发，
+       用户会在同一秒收到三张“第 1/3、2/3、3/3 次提醒”。通知仍然逐次补，
+       但聊天室只保留一张最终提醒卡，角色也只回一句。 */
+    const isFinalNudge = i === n - 1;
+    if (cfg('apptChatNudge') !== false && isFinalNudge) {
       actions.push({
         type: 'chat.card', characterId: cid, role: 'system', historyRole: 'system',
-        title: '预约专注 · 第 ' + (i + 1) + '/' + n + ' 次提醒',
+        title: '预约专注 · 最后提醒',
         subtitle: apptTimeText(a),
         body: body,
         summary: name + '应该在 ' + apptTimeText(a) + ' 提醒用户准备开始专注：' + a.task,
-        historyText: '[预约专注] ' + name + '第 ' + (i + 1) + ' 次提醒用户：' + body
+        historyText: '[预约专注] ' + name + '最后一次提醒用户：' + body
           + '（用户还没点开始；连着 ' + n + ' 次都没开始会被罚）'
       });
       actions.push({ type: 'chat.reply', characterId: cid });
@@ -11840,10 +11845,10 @@ VIEWS.appt = function () {
   <div class="card"><h3>它怎么提醒你</h3>
     <div class="tiny" style="line-height:1.8">
     ① <b>系统通知</b>：到时间点会弹一条「TA 来催你了（第 N/次）」的通知。<br>
-    ② <b>聊天室</b>：同时在你和 TA 的聊天里写一张「预约专注 · 第 N 次提醒」的卡，并请 TA 亲自回你一句（可在上面关掉）。<br>
+    ② <b>聊天室</b>：只会在最后一次提醒时写一张「预约专注 · 最后提醒」的卡，并请 TA 亲自回你一句（可在上面关掉）；前面几次只发系统通知，不会连续刷三张卡。<br>
     ③ <b>APP 内</b>：预约页显示倒计时与已催次数；没开始就开罚时，APP 会立刻进入全屏惩罚页。<br><br>
     <b>两条硬边界</b>（实测口径）：<br>
-    · 催促靠小手机的后台定时任务，小手机/浏览器完全关闭时不实时运行，重新打开后会<b>补跑已到期的任务</b> —— 所以可能一次收到好几条催促；<br>
+    · 催促靠小手机的后台定时任务，小手机/浏览器完全关闭时不实时运行，重新打开后会<b>补跑已到期的任务</b> —— 可能会一次收到多条系统通知，但聊天室只保留最后一次提醒卡；<br>
     · 已排好的任务宿主没有「撤回」接口：取消预约后到点仍可能响一次通知，忽略即可（APP 不会再拿它开罚）；<br>
     · 「开罚」只能在 APP 被打开时执行（APP 没法自己把界面弹出来）。APP 开着 → 到点即锁；APP 没开 → 下次打开时立刻锁。</div></div>
   ${past.length ? `<div class="card"><h3>历史预约（${past.length}）</h3>
@@ -18413,6 +18418,15 @@ function startInviteListener() {
         const dirs = parseInviteDirectives(text);
         for (const d of dirs) {
           if (d.kind === 'sleep') {
+            /* 同一角色、同一睡法/时长在 24 小时内已有邀请就不再重复建；
+               宿主会在生成聊天卡时先拦一次，这里是对旧卡/补录的兜底。 */
+            const sameSleep = (S.invites || []).find(x => x && x.kind === 'sleep'
+              && x.status !== 'replaced' && x.status !== 'dismissed'
+              && String(x.charId) === String(cid)
+              && String(x.mode || '') === String(d.mode || '')
+              && Number(x.minutes || 0) === Number(d.minutes || 0)
+              && Date.now() - Number(x.at || 0) < 24 * 60 * 60000);
+            if (sameSleep) continue;
             await pushInvite({ kind: 'sleep', mode: d.mode, minutes: d.minutes, note: d.note, charId: cid, at: Date.now(), status: 'new', from: 'directive' });
             if (cid) await syncTimeline(cid, `你写卡邀用户一起${d.mode}（${d.minutes || '不定时'} 分钟）：${d.note || '（没留言）'}`, 'sleep_invite', {});
             continue;
@@ -18423,9 +18437,21 @@ function startInviteListener() {
           const hh2 = clamp(ps[0] || 0, 0, 23), mi2 = clamp(ps[1] || 0, 0, 59);
           const dt2 = new Date(); dt2.setHours(hh2, mi2, 0, 0);
           if (dt2.getTime() - Date.now() < 60000) {
+            const sameNow = (S.invites || []).find(x => x && x.kind === 'focus'
+              && x.status !== 'replaced' && x.status !== 'dismissed'
+              && String(x.charId) === String(cid)
+              && String(x.time || '') === hmStr
+              && Date.now() - Number(x.at || 0) < 24 * 60 * 60000);
+            if (sameNow) continue;
             await pushInvite({ kind: 'focus', task: d.task, minutes: d.minutes, time: hmStr, note: '', charId: cid, apptId: '', at: Date.now(), status: 'new', from: 'directive' });
             if (cid) await syncTimeline(cid, `你写卡约用户现在就一起专注 ${d.minutes} 分钟：${d.task}。`, 'appt_invite', {});
           } else {
+            /* 同一角色、同一开始时间已经有待开始的预约时，不再建第二条；
+               否则后面每次聊到这件事都会多一条同时间预约和一张同时间卡。 */
+            const sameAppt = (S.appts || []).find(a => a && a.status === 'pending'
+              && Number(a.startAt) === dt2.getTime()
+              && (!cid || (Array.isArray(a.charIds) ? a.charIds : []).indexOf(cid) >= 0));
+            if (sameAppt) continue;
             const rec = {
               id: '', date: dkey(dt2), time: pad2(hh2) + ':' + pad2(mi2), startAt: dt2.getTime(),
               minutes: d.minutes, task: String(d.task || '').slice(0, 60), charIds: cid ? [cid] : [],

@@ -219,6 +219,24 @@ export async function deleteMediaRef(ref: string | undefined): Promise<void> {
     await table.delete(id);
 }
 
+/**
+ * Remove legacy/corrupt media rows that no longer contain any bytes.
+ *
+ * Older builds sometimes left metadata-only rows behind after a Blob could not
+ * be restored. They can never be displayed or downloaded and only make the
+ * archive look like it contains hundreds of unreferenced files. This is a
+ * metadata cleanup, not a media deletion; real files are never touched.
+ */
+export async function deleteEmptyMediaEntries(): Promise<number> {
+    const table = getDb().entries;
+    const ids: string[] = [];
+    await table.each((entry) => {
+        if (!entry.blob || entry.blob.size <= 0) ids.push(entry.id);
+    });
+    if (ids.length > 0) await table.bulkDelete(ids);
+    return ids.length;
+}
+
 export async function loadMediaObjectUrl(ref: string): Promise<string | null> {
     const result = await loadMediaBlob(ref);
     if (!result) return null;

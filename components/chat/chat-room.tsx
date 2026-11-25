@@ -12,6 +12,7 @@ import { cleanStreamText, splitStreamPreviewSegments, stripLiteralTexts, stripXm
 import type { StateValue } from "@/lib/chat-storage";
 import { parseStateValues, mergeStateValues } from "@/lib/state-value-parser";
 import { parseAIResponse, type ParsedMessagePart } from "@/lib/rich-message-parser";
+import { filterDuplicateFocusDirectiveParts } from "@/lib/focus-directive-dedupe";
 import { isKnownStickerLabel } from "@/lib/sticker-data";
 import { translateReasoningText } from "@/lib/reasoning-translate";
 import { MessageBubble, MediaDetailModal, prewarmStickerCache, BilingualTextBlock, isStandaloneHtmlPreviewContent, normalizeTextBubbleContent } from "./message-bubble";
@@ -2691,7 +2692,7 @@ export function ChatRoom({ session, onBack, onDeleted, isActive = true }: ChatRo
             if (isGroupMuted(session, r.characterId)) continue;
             const responseBatchId = createResponseBatchId();
             const { parts: rawParts, stateValues, freshStateValues, statusPanel, innerMonologue } = parseAIResponse(r.responseText, getCurrentStateForCharacter(r.characterId));
-            const parts = stripInvalidStickerParts(rawParts, r.characterId);
+            const parts = filterDuplicateFocusDirectiveParts(session.id, stripInvalidStickerParts(rawParts, r.characterId));
             let attachedState = false;
             let savedAnyPart = false;
             for (const part of parts) {
@@ -3116,7 +3117,7 @@ export function ChatRoom({ session, onBack, onDeleted, isActive = true }: ChatRo
                 }));
             }
         }
-        const parts = stripInvalidStickerParts(rawParts);
+        const parts = filterDuplicateFocusDirectiveParts(session.id, stripInvalidStickerParts(rawParts));
         throwIfGenerationStopped(options);
 
         // Detect call triggers and AI media actions, filter them out
@@ -4024,7 +4025,7 @@ export function ChatRoom({ session, onBack, onDeleted, isActive = true }: ChatRo
                         const editableResponseText = senderInfo.editableResponseText || `[${senderInfo.characterName}]: ${cleanedEditableText}`;
                         const previousState = getLatestCharacterStateValues(senderInfo.characterId);
                         const { parts: rawParts, stateValues, freshStateValues, statusPanel, innerMonologue } = parseAIResponse(text, previousState);
-                        const parts = stripInvalidStickerParts(rawParts, senderInfo.characterId);
+                        const parts = filterDuplicateFocusDirectiveParts(session.id, stripInvalidStickerParts(rawParts, senderInfo.characterId));
                         let attachedState = false;
                         let savedAnyPart = false;
                         for (const part of parts) {
