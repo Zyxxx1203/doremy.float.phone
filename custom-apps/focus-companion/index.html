@@ -10957,8 +10957,16 @@ Object.assign(ACTIONS, {
   clearAll: async () => {
     const ok = await confirmBox('清空全部数据？', '设置、记录、题库、账本都会被删除，不可恢复。', '清空');
     if (!ok) return;
-    for (const t of Object.values(T)) {
-      for (const r of await DB.list(t)) await DB.remove(t, r.id);
+    for (const p of (S.wlPasses || [])) cancelWlCheckinNative(p.id);
+    let cleared = false;
+    if (API && API.app && typeof API.app.clearData === 'function') {
+      const r = await sdk(() => API.app.clearData({}), null);
+      cleared = !!(r && r.ok);
+    }
+    if (!cleared) {
+      for (const t of Object.values(T)) {
+        for (const r of await DB.list(t)) await DB.remove(t, r.id);
+      }
     }
     S.settings = defaults();
     const r2 = await DB.create(T.SET, { data: S.settings });

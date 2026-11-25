@@ -89,6 +89,8 @@ import {
   writeCustomAppHistoryMessage,
   writeCustomAppCharacterState,
   writeCustomAppWorld,
+  runCustomAppHostClearData,
+  removeCustomAppHostResidue,
   runCustomAppDeviceAlarmSet,
   runCustomAppDeviceBrightness,
   runCustomAppDeviceDnd,
@@ -414,6 +416,7 @@ html, body { min-height: 100%; }
       getCapabilities: function(){ return request('app.getCapabilities'); },
       getLaunchContext: function(){ return Promise.resolve(launchContext); },
       getAssetUrl: function(path){ return request('app.getAssetUrl', { path: path }); },
+      clearData: function(){ return request('app.clearData', {}); },
       close: function(){ return request('app.close'); }
     },
     db: {
@@ -1044,6 +1047,7 @@ export function CustomAppRunner({
     const removal = await removeCustomAppRegistrationsAsync(app.id, { deleteResources: deleteData });
     const removalText = formatCustomAppRegistrationRemovalSummary(removal);
     await uninstallCustomAppAsync(app.id, { deleteData });
+    if (deleteData) removeCustomAppHostResidue(app.id);
     const base = deleteData ? `已卸载「${app.name}」并删除数据` : `已卸载「${app.name}」`;
     onNotice?.(removalText ? `${base}，${removalText}` : base);
     onClose();
@@ -1215,6 +1219,10 @@ export function CustomAppRunner({
     if (action === "app.close") {
       onClose();
       return true;
+    }
+    if (action === "app.clearData") {
+      requirePermission("app.data.write");
+      return runCustomAppHostClearData(app);
     }
     if (action === "app.getAssetUrl") {
       const path = normalizeAssetRef(String(record.path ?? ""));

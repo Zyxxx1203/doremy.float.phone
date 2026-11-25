@@ -3,6 +3,7 @@
 import type { CustomAppPermission, CustomAppPromptProfile, InstalledCustomApp } from "./custom-app-types";
 import {
   appendCustomAppTimelineEntry,
+  clearCustomAppData,
   deleteCustomAppTimelineEntries,
   readCustomAppCollection,
   writeCustomAppCollection,
@@ -186,6 +187,7 @@ const HOST_ACTION_PERMISSIONS: Record<string, CustomAppPermission[]> = {
   "notifications.badge": ["notifications.write"],
   "db.update": ["app.data.write"],
   "app.data.update": ["app.data.write"],
+  "app.clearData": ["app.data.write"],
   "chat.card": ["chat.sendCard"],
   "chat.history": ["chat.write", "chat.sendMessage"],
   "chat.message": ["chat.write", "chat.sendMessage"],
@@ -1611,6 +1613,54 @@ export function loadCustomAppTasks(appId?: string): CustomAppScheduledTask[] {
   return appId ? items.filter(item => item.appId === appId) : items;
 }
 
+function removeAppFromJsonArrayKey(key: string, appId: string): number {
+  try {
+    const items = JSON.parse(kvGet(key) || "[]") as unknown;
+    if (!Array.isArray(items)) return 0;
+    const next = items.filter(item => asRecord(item).appId !== appId);
+    if (next.length === items.length) return 0;
+    kvSet(key, JSON.stringify(next));
+    return items.length - next.length;
+  } catch {
+    return 0;
+  }
+}
+
+/** 卸载/清空 APP 时一起清掉宿主侧残留：通知、红点、定时任务、世界激活、建议。 */
+export function removeCustomAppHostResidue(appId: string): { removed: number } {
+  const id = cleanId(appId);
+  let removed = 0;
+  const notifications = loadCustomAppNotifications();
+  const nextNotifications = notifications.filter(item => item.appId !== id);
+  if (nextNotifications.length !== notifications.length) {
+    removed += notifications.length - nextNotifications.length;
+    saveNotifications(nextNotifications);
+  }
+  const tasks = loadCustomAppTasks();
+  const nextTasks = tasks.filter(item => item.appId !== id);
+  if (nextTasks.length !== tasks.length) {
+    removed += tasks.length - nextTasks.length;
+    saveTasks(nextTasks);
+  }
+  const badges = loadBadgeMap();
+  if (badges[id]) {
+    delete badges[id];
+    saveBadgeMap(badges);
+    removed += 1;
+  }
+  removed += removeAppFromJsonArrayKey(CUSTOM_APP_WORLD_ACTIVATIONS_KEY, id);
+  removed += removeAppFromJsonArrayKey(CUSTOM_APP_SUGGESTIONS_KEY, id);
+  emitHostStateUpdated();
+  return { removed };
+}
+
+/** 清空单个 APP 的私有数据（保留安装记录）：数据集合、时间线、独占媒体和宿主残留。 */
+export function runCustomAppHostClearData(app: InstalledCustomApp): Record<string, unknown> {
+  const data = clearCustomAppData(app.id);
+  const residue = removeCustomAppHostResidue(app.id);
+  return { ok: true, removedMedia: data.removedMedia, removedResidue: residue.removed };
+}
+
 function normalizeHostActions(value: unknown, fieldName: string, required: true): CustomAppHostAction | CustomAppHostAction[];
 function normalizeHostActions(value: unknown, fieldName: string, required?: false): CustomAppHostAction | CustomAppHostAction[] | undefined;
 function normalizeHostActions(value: unknown, fieldName: string, required = false): CustomAppHostAction | CustomAppHostAction[] | undefined {
@@ -2702,6 +2752,8 @@ export async function executeCustomAppHostAction(
     case "db.update":
     case "app.data.update":
       return updateCustomAppDataRecord(app, payload);
+    case "app.clearData":
+      return runCustomAppHostClearData(app);
     case "badge":
     case "notifications.badge":
       if (payload.delta !== undefined) return incrementCustomAppBadge(app.id, Number(payload.delta) || 0);

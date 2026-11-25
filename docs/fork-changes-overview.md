@@ -233,6 +233,8 @@
 - 新增 `FocusPassCheckInScheduler.kt` / `FocusPassCheckInAlarmReceiver.kt`；专注通行证查岗不再依赖网页定时器。
 - 新增 `lib/apk-app-creator-guide.ts` 与工坊 `type=apk`；`device.screenshot` 补进自定义 APP 权限白名单，避免 manifest 声明后被静默吞掉。
 - 专注 App `db.list` 兼容扁平/嵌套两种记录形状，修复通行证、会话、惩罚、奖励重载后变空对象。
+- APP 卸载/重置清理：新增 `clearCustomAppData` 与 `app.clearData`，一次清掉私有数据集合、时间线、独占媒体 Blob；卸载时同时清宿主侧通知、红点、定时任务、世界激活和建议，避免“卸载了还占空间”。
+- 存储空间新增「未安装 APP 残留」分类，扫描已卸载 APP 留下的 `ai_phone_custom_app_data_v1:*` / timeline key，可一键清理；专注 App 的「清空全部数据」改走 `app.clearData`，不再只删表而留下媒体引用。
 - 文档：角色 ID 契约、云端生活日程、隐私与权限、发布门禁、开发验证清单、专注迁移/移植日志、自定义 App 转内置指南、APK 开发指南。
 
 ## 12. 验证状态与结论

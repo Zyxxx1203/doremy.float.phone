@@ -839,6 +839,26 @@ export function setCustomAppIconStyle(appId: string, style: CustomAppIconStyle):
   emitUpdated();
 }
 
+/** 删除一个 APP 的全部私有数据、时间线和它独占的媒体 Blob；保留已装记录。 */
+export function clearCustomAppData(appId: string): { removedMedia: number } {
+  const id = cleanId(appId);
+  let removedMedia = 0;
+  // 先清媒体库 Blob(引用登记在 __media_refs 集合里),再删集合 key
+  try {
+    for (const row of readCustomAppCollection(id, "__media_refs")) {
+      const ref = String(row.id);
+      if (ref && !isCustomAppMediaRefReferenced(ref, id)) {
+        void deleteMediaRef(ref);
+        removedMedia += 1;
+      }
+    }
+  } catch { /* 媒体清理失败不阻断数据清理 */ }
+  kvRemove(`${CUSTOM_APP_DATA_PREFIX}${id}`);
+  for (const key of kvKeysWithPrefix(`${CUSTOM_APP_DATA_PREFIX}${id}/`)) kvRemove(key);
+  kvRemove(`${CUSTOM_APP_TIMELINE_PREFIX}${id}`);
+  return { removedMedia };
+}
+
 export function uninstallCustomApp(appId: string, options: { deleteData?: boolean } = {}): void {
   const id = cleanId(appId);
   saveInstalledCustomApps(loadInstalledCustomApps().filter(app => app.id !== id));
@@ -847,18 +867,7 @@ export function uninstallCustomApp(appId: string, options: { deleteData?: boolea
     delete iconStyles[id];
     kvSet(CUSTOM_APP_ICON_STYLE_KEY, JSON.stringify(iconStyles));
   }
-  if (options.deleteData) {
-    // 先清媒体库 Blob(引用登记在 __media_refs 集合里),再删集合 key
-    try {
-      for (const row of readCustomAppCollection(id, "__media_refs")) {
-        const ref = String(row.id);
-        if (ref && !isCustomAppMediaRefReferenced(ref, id)) void deleteMediaRef(ref);
-      }
-    } catch { /* 媒体清理失败不阻断卸载 */ }
-    kvRemove(`${CUSTOM_APP_DATA_PREFIX}${id}`);
-    for (const key of kvKeysWithPrefix(`${CUSTOM_APP_DATA_PREFIX}${id}/`)) kvRemove(key);
-    kvRemove(`${CUSTOM_APP_TIMELINE_PREFIX}${id}`);
-  }
+  if (options.deleteData) clearCustomAppData(id);
 }
 
 export async function uninstallCustomAppAsync(appId: string, options: { deleteData?: boolean } = {}): Promise<void> {
