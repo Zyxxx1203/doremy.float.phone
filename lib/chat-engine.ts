@@ -5,7 +5,7 @@ import { makeNativeToolName } from "./native-tool-name";
 import { maybeAppendShortcutCapability, maybeAppendPerceptionStatus } from "./offline-shortcut-capability";
 import { maybeBuildStatusInjection } from "./perception/describe";
 import { loadCharacters } from "./character-storage";
-import { buildLifeMemoryContext, buildLifePresenceContext } from "./life/life-memory-bridge";
+import { buildLifePresenceContext } from "./life/life-memory-bridge";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
 import { emitChatPluginEvent, runChatPluginTransform } from "./chat-plugin-hooks";
 import { buildChatPluginPromptFragments } from "./chat-plugin-storage";
@@ -1981,7 +1981,9 @@ export async function buildChatPromptMessages(
     const longTermMemories = [
         memResults ? formatLongTermMemories(memResults) : "",
         memoDigest,
-        buildLifeMemoryContext(character.id),
+        // 生活共同事实已经由短期时间线的 life 条目注入；旧 buildLifeMemoryContext
+        // 再把同一批事实拼进长期块，会让同一件事在提示词里出现两遍。
+        // 这里只保留“当前生活状态”，历史事实交给统一短期时间线。
         buildLifePresenceContext(character.id),
     ].filter(Boolean).join("\n\n");
     const coreMemories = coreResults ? formatCoreMemories(coreResults) : "";

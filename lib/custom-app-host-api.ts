@@ -2292,6 +2292,13 @@ export async function addCustomAppMemory(app: InstalledCustomApp, record: Record
   const characterId = cleanText(record.characterId, 160);
   const content = cleanText(record.content, 3000);
   if (!characterId || !content) throw new Error("memory.add 需要 characterId 和 content。");
+  // 心意手作把点评/制作流水写成长期记忆会污染角色关系记忆；它在自己的
+  // mem() 里已经写了短期时间线，这里直接忽略旧版市场包/缓存 HTML 的写入。
+  if (app.id === "heartcraft.doris"
+    || app.id.startsWith("app_heartcraft.doris_")
+    || app.name === "心意手作工坊") {
+    return true;
+  }
   const now = new Date().toISOString();
   const importance = Math.max(0, Math.min(1, Number(record.importance ?? 0.6) || 0.6));
   await saveMemoryEntry({

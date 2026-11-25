@@ -31,6 +31,7 @@ import {
 import { applyCharacterLifeScheduleChange, confirmLifeInvitation, generateWeeklyLifePlan, getActorClock, getCurrentActorSchedule, insertManualLifeScheduleSlot, moveCharacterBySchedule, overlayScheduleSlotsOverFreeTime, syncScheduleLocationsToLibrary, makeLifeInvitation, placeAppointmentInActorSchedule, resolveActorLifeNow, settleActorTimelineToNow, synchronizeCharacterHomeSchedule, upsertActorState, upsertLifeScene } from "@/lib/life/life-runtime";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { buildLifeScenePromptContext } from "@/lib/life/life-scene-prompt";
+import { withLifeSceneVisibility } from "@/lib/life/life-scene-visibility";
 import { describeLifeOutputIssues, parseLifeOutput, validateLifeOutput, type LifeOutputIssue } from "@/lib/life/life-output";
 import { buildLifeSceneResponderQueue, evaluateEncounterAwareness, findLifeSceneForLocation, mergeLifeSceneParticipants } from "@/lib/life/life-engine";
 import { evaluateLifeAutonomyWindow, chooseLifeAutonomyCharacter, notifyLifeSceneMessage, LIFE_AUTONOMY_TICK_MS } from "@/lib/life/life-autonomy";
@@ -515,7 +516,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const knownSceneImageIds = new Set(normalized.sceneMessages.map(message => message.imageId).filter((value): value is string => Boolean(value)));
       const legacySceneImageMessages = normalized.scenes.flatMap(scene => (scene.images ?? [])
         .filter(image => !knownSceneImageIds.has(image.id))
-        .map(image => ({
+        .map(image => withLifeSceneVisibility({
           id: "scene-image-message-" + image.id,
           sceneId: scene.id,
           speakerType: "player" as const,
@@ -526,7 +527,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           dialogue: "",
           imageId: image.id,
           createdAt: image.createdAt,
-        })));
+        }, scene)));
       if (legacySceneImageMessages.length) {
         normalized = {
           ...normalized,
@@ -1797,7 +1798,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         ? "你来到了" + destination.name + "。场景从这里开始。"
         : "你回到了" + destination.name + "。先前的场景与互动仍在继续。";
       next = appendLifeTimelineEntry(next, { category: "scene", title: isFirstSceneEntry ? "你进入了" + destination.name : "你回到了" + destination.name, details: entryText, actorId: PLAYER_ID, actorName: "场景旁白", locationName: destination.name, sceneId: scene.id });
-      const entryNarration: LifeSceneMessage = { id: id("turn"), sceneId: scene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: "场景旁白", role: "system", action: entryText, dialogue: "", createdAt: now };
+      const entryNarration: LifeSceneMessage = withLifeSceneVisibility({ id: id("turn"), sceneId: scene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: "场景旁白", role: "system", action: entryText, dialogue: "", createdAt: now }, scene);
       next = { ...next, sceneMessages: [...next.sceneMessages, entryNarration] };
       next = appendLifeTimelineEntry(next, { category: "location", title: "你来到了" + destination.name, details: [playerActivity || "开始探索这个地点", `预计停留 ${stayDurationMinutes} 分钟；到期后自动恢复当前日程地点。`].join(" · "), actorId: PLAYER_ID, actorName: playerName, locationName: destination.name, sceneId: scene.id });
       if (isFirstSceneEntry && actualCharacters.length) next = appendLifeTimelineEntry(next, { category: "scene", title: "在" + destination.name + "遇见了" + actualCharacters.map(char=>char.name).join("、"), actorName: playerName, locationName: destination.name, sceneId: scene.id });
@@ -1978,7 +1979,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const scene=latest.scenes.find(item=>item.id===activeScene.id);
       if(scene){
         const updated={...scene,images:[...(scene.images??[]).map(image=>({...image,status:"archived" as const})),...generated],lastAutoImageFingerprint:options?.autoFingerprint ?? scene.lastAutoImageFingerprint,updatedAt:new Date().toISOString()};
-        const imageMessages: LifeSceneMessage[] = generated.map(image => ({
+        const imageMessages: LifeSceneMessage[] = generated.map(image => withLifeSceneVisibility({
           id: "scene-image-message-" + image.id,
           sceneId: image.sceneId,
           speakerType: "player" as const,
@@ -1989,7 +1990,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           dialogue: "",
           imageId: image.id,
           createdAt: image.createdAt,
-        }));
+        }, scene));
         commit({
           ...latest,
           scenes: latest.scenes.map(item=>item.id===scene.id?updated:item),
@@ -2271,19 +2272,20 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
     if (!message.channel) message.channel = "life_scene";
     const latest = stateRef.current;
     const currentScene = latest.scenes.find(scene => scene.id === message.sceneId);
+    const visibleMessage = withLifeSceneVisibility(message, currentScene);
     const updatedScene = currentScene ? { ...currentScene, updatedAt: new Date().toISOString() } : null;
-    let next = { ...latest, sceneMessages: [...latest.sceneMessages, message] };
+    let next = { ...latest, sceneMessages: [...latest.sceneMessages, visibleMessage] };
     if (updatedScene) next = upsertLifeScene(next, updatedScene);
-    const actorName = message.speakerName || (message.role === "player" ? playerName : "生活记录");
-    if (message.role === "system") {
-      const sceneRecordText = message.action || message.dialogue;
-      next = appendLifeTimelineEntry(next, { category: "scene", title: sceneRecordText.slice(0, 100), details: sceneRecordText, actorName, locationName: currentScene?.locationName, sceneId: message.sceneId, sourceId: message.id });
+    const actorName = visibleMessage.speakerName || (visibleMessage.role === "player" ? playerName : "生活记录");
+    if (visibleMessage.role === "system") {
+      const sceneRecordText = visibleMessage.action || visibleMessage.dialogue;
+      next = appendLifeTimelineEntry(next, { category: "scene", title: sceneRecordText.slice(0, 100), details: sceneRecordText, actorName, locationName: currentScene?.locationName, sceneId: visibleMessage.sceneId, sourceId: visibleMessage.id });
     } else {
-      if (message.action) {
-        next = appendLifeTimelineEntry(next, { category: "action", title: actorName + (message.role === "player" ? "进行了行动" : "的行动"), details: message.action, actorId: message.speakerId, actorName, locationName: currentScene?.locationName, sceneId: message.sceneId, sourceId: message.id });
+      if (visibleMessage.action) {
+        next = appendLifeTimelineEntry(next, { category: "action", title: actorName + (visibleMessage.role === "player" ? "进行了行动" : "的行动"), details: visibleMessage.action, actorId: visibleMessage.speakerId, actorName, locationName: currentScene?.locationName, sceneId: visibleMessage.sceneId, sourceId: visibleMessage.id });
       }
-      if (message.dialogue.trim()) {
-        next = rebuildSceneDialogueTimeline(next, message.sceneId, latest.settings.sceneRecordBatchSize ?? 10);
+      if (visibleMessage.dialogue.trim()) {
+        next = rebuildSceneDialogueTimeline(next, visibleMessage.sceneId, latest.settings.sceneRecordBatchSize ?? 10);
       }
     }
     commit(next);
@@ -2293,7 +2295,10 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
   const pushSceneMessages = (messages: LifeSceneMessage[], baseState: VirtualLifeState = stateRef.current) => {
     if (!messages.length) return;
     const latest = baseState;
-    const normalized = messages.map(message => ({ ...message, channel: message.channel || "life_scene" }));
+    const normalized = messages.map(message => {
+      const scene = latest.scenes.find(item => item.id === message.sceneId);
+      return withLifeSceneVisibility({ ...message, channel: message.channel || "life_scene" }, scene);
+    });
     const touchedSceneIds = [...new Set(normalized.map(message => message.sceneId))];
     let next: VirtualLifeState = { ...latest, sceneMessages: [...latest.sceneMessages, ...normalized] };
     for (const sceneId of touchedSceneIds) {
@@ -4225,7 +4230,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           </div>
           <button type="button" onClick={() => { setSceneToast(null); setToastReplyMode("hidden"); }} aria-label="关闭主动消息提示" className="shrink-0 text-stone-400">×</button>
         </div>
-        {sceneToast.isTest ? null : toastReplyMode !== "hidden" ? <div className="mt-2.5 flex items-center gap-1.5"><input value={toastReplyDraft} onChange={e => setToastReplyDraft(e.target.value)} autoFocus placeholder={toastReplyMode === "action" ? "写下你的行动…" : "想对 TA 说的话…"} className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs outline-none" /><button type="button" onClick={() => { const text = toastReplyDraft.trim(); if (!text || !sceneToast) return; const scene = stateRef.current.scenes.find(item => item.id === sceneToast.sceneId); if (!scene) { setNotice("原场景已结束，这条回复没有可写入的现场。"); return; } const reply: LifeSceneMessage = { id: id("turn"), sceneId: scene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: playerName, role: "player", action: toastReplyMode === "action" ? text : "", dialogue: toastReplyMode === "dialogue" ? text : "", createdAt: new Date().toISOString() }; const next = { ...stateRef.current, sceneMessages: [...stateRef.current.sceneMessages, reply] }; commit(next); setToastReplyDraft(""); setToastReplyMode("hidden"); setSceneToast(null); setTab("scene"); setNotice(toastReplyMode === "action" ? "已作为你的行动写入生活现场。" : "已作为你的对白写入生活现场。"); }} className="shrink-0 rounded-lg bg-[var(--life-accent)] px-3 py-1.5 text-xs text-white">写入现场</button></div> : <div className="mt-2.5 flex items-center gap-2"><button type="button" onClick={() => { setToastReplyMode("action"); setToastReplyDraft(""); }} className="flex-1 rounded-lg border border-[var(--life-accent)]/40 bg-white px-2 py-1.5 text-[11px] text-[var(--life-accent)]">回复行动</button><button type="button" onClick={() => { setToastReplyMode("dialogue"); setToastReplyDraft(""); }} className="flex-1 rounded-lg border border-[var(--life-accent)]/40 bg-white px-2 py-1.5 text-[11px] text-[var(--life-accent)]">回复对话</button></div>}
+        {sceneToast.isTest ? null : toastReplyMode !== "hidden" ? <div className="mt-2.5 flex items-center gap-1.5"><input value={toastReplyDraft} onChange={e => setToastReplyDraft(e.target.value)} autoFocus placeholder={toastReplyMode === "action" ? "写下你的行动…" : "想对 TA 说的话…"} className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs outline-none" /><button type="button" onClick={() => { const text = toastReplyDraft.trim(); if (!text || !sceneToast) return; const scene = stateRef.current.scenes.find(item => item.id === sceneToast.sceneId); if (!scene) { setNotice("原场景已结束，这条回复没有可写入的现场。"); return; } const reply: LifeSceneMessage = withLifeSceneVisibility({ id: id("turn"), sceneId: scene.id, speakerType: "player", speakerId: PLAYER_ID, speakerName: playerName, role: "player", action: toastReplyMode === "action" ? text : "", dialogue: toastReplyMode === "dialogue" ? text : "", createdAt: new Date().toISOString() }, scene); const next = { ...stateRef.current, sceneMessages: [...stateRef.current.sceneMessages, reply] }; commit(next); setToastReplyDraft(""); setToastReplyMode("hidden"); setSceneToast(null); setTab("scene"); setNotice(toastReplyMode === "action" ? "已作为你的行动写入生活现场。" : "已作为你的对白写入生活现场。"); }} className="shrink-0 rounded-lg bg-[var(--life-accent)] px-3 py-1.5 text-xs text-white">写入现场</button></div> : <div className="mt-2.5 flex items-center gap-2"><button type="button" onClick={() => { setToastReplyMode("action"); setToastReplyDraft(""); }} className="flex-1 rounded-lg border border-[var(--life-accent)]/40 bg-white px-2 py-1.5 text-[11px] text-[var(--life-accent)]">回复行动</button><button type="button" onClick={() => { setToastReplyMode("dialogue"); setToastReplyDraft(""); }} className="flex-1 rounded-lg border border-[var(--life-accent)]/40 bg-white px-2 py-1.5 text-[11px] text-[var(--life-accent)]">回复对话</button></div>}
       </div>}
       {notice && !immersiveScene && <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-[var(--life-accent)]/20 bg-white/75 px-4 py-3 text-sm text-stone-700"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="关闭提示">×</button></div>}
       {notice && immersiveScene && <div role="status" aria-live="polite" className="fixed left-1/2 top-[max(4.5rem,calc(env(safe-area-inset-top)+4rem))] z-[130] w-[min(92vw,26rem)] -translate-x-1/2 rounded-2xl border border-[var(--life-accent)]/30 bg-[#fffaf3]/95 px-4 py-3 shadow-xl backdrop-blur-md"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-semibold text-[var(--life-accent)]">提示</p><p className="mt-1 text-sm leading-relaxed text-stone-700">{notice}</p></div><button type="button" onClick={() => setNotice("")} aria-label="关闭提示" className="shrink-0 text-stone-400">×</button></div></div>}
@@ -4288,7 +4293,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
         <button type="button" onClick={() => { setSelectedLocationId(playerLocationId); setSceneView(false); setTab("locations"); }} className="w-full rounded-2xl border border-dashed border-stone-300 bg-white/40 px-4 py-3 text-sm text-stone-600">管理地点库 · 添加地点、布局、道具与角色习惯</button>
       </section>}
       {((tab === "home" && sceneView) || tab === "scene") && <section className={`life-scene-panel flex min-w-0 flex-col rounded-2xl border border-white/70 bg-white/35 p-1.5 shadow-sm sm:p-2 ${immersiveScene ? "h-full max-h-full min-h-0 flex-1 overflow-hidden rounded-none border-0 bg-transparent" : ""}`}>
-        <div className="mb-1 flex shrink-0 items-center justify-between gap-2 border-b border-stone-200/60 px-1.5 py-1.5 sm:px-2 sm:py-2"><div className="min-w-0 flex-1"><p className="truncate text-base font-semibold text-stone-800">{activeScene ? activeScene.locationName : "还没有正在进行的场景"}</p><p className="truncate text-[11px] text-stone-500">{activeScene ? `${activeScene.participants.length} 位在场 · ${state.locations.find(location => location.id === activeScene.locationId)?.atmosphere || "生活现场"}` : "先从地点列表选择一个地点。"}</p></div><div className="flex shrink-0 items-center gap-2"><button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); transitionSceneAction(() => { setSceneView(false); setTab("home"); setLocationDossierOpen(false); }); }} className="relative z-[100] isolate pointer-events-auto inline-flex min-h-11 min-w-[112px] touch-manipulation select-none cursor-pointer items-center justify-center gap-1 rounded-xl border border-stone-300 bg-white px-2 py-2 text-xs font-semibold text-stone-700 shadow-sm active:scale-[0.98]"><ArrowLeft size={16} className="pointer-events-none" aria-hidden/><span>返回地点列表</span></button>{activeScene && <button type="button" onClick={(event)=>{event.preventDefault();event.stopPropagation();transitionSceneAction(() => {const now=new Date().toISOString();const wasPaused=activeScene.status==="paused";const returnNarrationId=wasPaused?id("turn"):undefined;let next={...stateRef.current,scenes:stateRef.current.scenes.map(scene=>scene.id===activeScene.id?{...scene,status:(wasPaused?"active":"paused") as "active"|"paused",updatedAt:now}:{...scene,status:scene.status==="active"?"paused" as const:scene.status})};next=appendLifeTimelineEntry(next,{category:"scene",title:(wasPaused?"你回到了":"你暂时离开了")+activeScene.locationName,details:wasPaused?"继续之前的场景，保留原有互动记录。":"场景已暂停；再次点击继续时才在现场添加返回旁白。",actorName:playerName,locationName:activeScene.locationName,sceneId:activeScene.id,sourceId:returnNarrationId});if(wasPaused){const narration:LifeSceneMessage={id:returnNarrationId??id("turn"),sceneId:activeScene.id,speakerType:"player",speakerId:PLAYER_ID,speakerName:"场景旁白",role:"system",action:"你回到了"+activeScene.locationName+"。先前的场景与互动仍在继续。",dialogue:"",createdAt:now};next={...next,sceneMessages:[...next.sceneMessages,narration]};}commit(next);setNotice(wasPaused?"已回到原场景；返回记录以旁白形式加入聊天。":"你暂时离开了场景；再次点继续时才会添加返回旁白。")})}} className="relative z-[100] isolate pointer-events-auto inline-flex min-h-11 min-w-[104px] touch-manipulation select-none items-center justify-center gap-1 rounded-xl border border-stone-300 bg-white px-2 py-2 text-xs font-semibold shadow-sm active:scale-[0.98]">{activeScene.status==="active"?<><Pause size={14} className="pointer-events-none" aria-hidden/><span>暂时离开</span></>:<><Play size={14} className="pointer-events-none" aria-hidden/><span>回到场景</span></>}</button>}</div></div>
+        <div className="mb-1 flex shrink-0 items-center justify-between gap-2 border-b border-stone-200/60 px-1.5 py-1.5 sm:px-2 sm:py-2"><div className="min-w-0 flex-1"><p className="truncate text-base font-semibold text-stone-800">{activeScene ? activeScene.locationName : "还没有正在进行的场景"}</p><p className="truncate text-[11px] text-stone-500">{activeScene ? `${activeScene.participants.length} 位在场 · ${state.locations.find(location => location.id === activeScene.locationId)?.atmosphere || "生活现场"}` : "先从地点列表选择一个地点。"}</p></div><div className="flex shrink-0 items-center gap-2"><button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); transitionSceneAction(() => { setSceneView(false); setTab("home"); setLocationDossierOpen(false); }); }} className="relative z-[100] isolate pointer-events-auto inline-flex min-h-11 min-w-[112px] touch-manipulation select-none cursor-pointer items-center justify-center gap-1 rounded-xl border border-stone-300 bg-white px-2 py-2 text-xs font-semibold text-stone-700 shadow-sm active:scale-[0.98]"><ArrowLeft size={16} className="pointer-events-none" aria-hidden/><span>返回地点列表</span></button>{activeScene && <button type="button" onClick={(event)=>{event.preventDefault();event.stopPropagation();transitionSceneAction(() => {const now=new Date().toISOString();const wasPaused=activeScene.status==="paused";const returnNarrationId=wasPaused?id("turn"):undefined;let next={...stateRef.current,scenes:stateRef.current.scenes.map(scene=>scene.id===activeScene.id?{...scene,status:(wasPaused?"active":"paused") as "active"|"paused",updatedAt:now}:{...scene,status:scene.status==="active"?"paused" as const:scene.status})};next=appendLifeTimelineEntry(next,{category:"scene",title:(wasPaused?"你回到了":"你暂时离开了")+activeScene.locationName,details:wasPaused?"继续之前的场景，保留原有互动记录。":"场景已暂停；再次点击继续时才在现场添加返回旁白。",actorName:playerName,locationName:activeScene.locationName,sceneId:activeScene.id,sourceId:returnNarrationId});if(wasPaused){const narration:LifeSceneMessage=withLifeSceneVisibility({id:returnNarrationId??id("turn"),sceneId:activeScene.id,speakerType:"player",speakerId:PLAYER_ID,speakerName:"场景旁白",role:"system",action:"你回到了"+activeScene.locationName+"。先前的场景与互动仍在继续。",dialogue:"",createdAt:now},activeScene);next={...next,sceneMessages:[...next.sceneMessages,narration]};}commit(next);setNotice(wasPaused?"已回到原场景；返回记录以旁白形式加入聊天。":"你暂时离开了场景；再次点继续时才会添加返回旁白。")})}} className="relative z-[100] isolate pointer-events-auto inline-flex min-h-11 min-w-[104px] touch-manipulation select-none items-center justify-center gap-1 rounded-xl border border-stone-300 bg-white px-2 py-2 text-xs font-semibold shadow-sm active:scale-[0.98]">{activeScene.status==="active"?<><Pause size={14} className="pointer-events-none" aria-hidden/><span>暂时离开</span></>:<><Play size={14} className="pointer-events-none" aria-hidden/><span>回到场景</span></>}</button>}</div></div>
         <details open={!activeScene} className="mb-1 shrink-0 rounded-xl border border-stone-200/70 bg-white/65"><summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-stone-600">场景设置 · {activeScene ? activeScene.locationName : "选择地点并开始互动"}</summary><div className="max-h-[45dvh] overflow-y-auto overscroll-contain touch-pan-y px-3 pb-3 sm:px-4" style={{ WebkitOverflowScrolling: "touch" }}>
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
             {activeScene && <div className="mt-3"><label className="block text-sm font-medium text-stone-700">当前现场描述（用于后续生图）<textarea value={activeScene.currentDescription ?? ""} onChange={event=>{const description=event.target.value;const latest=stateRef.current;const scene=latest.scenes.find(item=>item.id===activeScene.id);if(!scene)return;const next={...latest,scenes:latest.scenes.map(item=>item.id===scene.id?{...item,currentDescription:description,updatedAt:new Date().toISOString()}:item)};commit(next);}} rows={3} placeholder="AI 根据原始行动与对白整理当前现场；也可以在这里手动修正。" className="mt-1.5 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm font-normal"/></label><button type="button" disabled={sceneDescriptionBusy || busy} onClick={()=>void summarizeCurrentScene()} className="mt-2 w-full rounded-xl border border-[var(--life-accent)]/40 bg-white px-3 py-2 text-xs font-medium text-[var(--life-accent)] disabled:opacity-50">{sceneDescriptionBusy ? "正在整理现场描述…" : "根据原始记录更新现场描述"}</button></div>}
