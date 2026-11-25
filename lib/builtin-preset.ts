@@ -4121,11 +4121,11 @@ export function createBuiltinPreset(): PresetConfig {
                 identifier: "image_identity_naming",
                 name: "▸ 生图身份命名规则",
                 role: "system",
-                content: "【生图身份规则】当你生成图片/照片描述时：画面里出现任何本人以外的角色，必须写该角色的准确名字（写出角色的准确名字），不能只写“她/他/朋友/两个人/一个女孩/对方”。系统依靠名字匹配角色参考图；只写代词会导致其他人的参考图不被使用。若画面只有景物、食物或物品，可以不写角色名。",
+                content: "【生图身份规则】当你生成图片/照片描述时：画面里出现本人或任何其他角色，必须写准确名字（用户本人写“用户本人”或用户的名字），不能只写“她/他/朋友/两个人/一个女孩/对方”。系统依靠名字匹配角色参考图；只写代词会导致其他人的参考图不被使用。若画面只有景物、食物或物品，可以不写角色名。",
                 injection_position: 0,
                 injection_depth: 0,
                 enabled: true,
-                tags: ["chat", "text", "image"],
+                tags: [],
             },
             {
                 identifier: "chat_tools",

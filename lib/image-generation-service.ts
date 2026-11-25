@@ -840,15 +840,21 @@ async function generateImageFromConfiguredApiInternal(params: {
   const matchedIds = allCharacters
     .filter(character => character.id !== params.characterId && Boolean(character.name?.trim()) && description.includes(character.name.trim()))
     .map(character => character.id);
+  // 所有生图调用最终都归一化为一份明确的出镜名单。
+  // 即使调用方传了 participantIds，也要把描述里明确写出的其他角色并进来；
+  // 否则「主角色 + 描述里点名了配角」的请求只会加载主角色的参考图。
+  const explicitParticipantIds = params.participantIds;
   const inferredCharacterIds = Array.from(new Set([
     ...(params.characterId ? [params.characterId] : []),
     ...(params.characterIds ?? []),
     ...matchedIds,
   ])).filter(characterId => characterById.has(characterId)).slice(0, 16);
-  // 所有生图调用最终都归一化为一份明确的出镜名单；调用方名单优先，旧调用方才回退到描述识别。
-  const resolvedParticipantIds = params.participantIds
-    ? Array.from(new Set(params.participantIds)).filter(id => id === "__user__" || characterById.has(id))
-    : [...inferredCharacterIds, ...((params.includeUserAppearance ?? descriptionExplicitlyIncludesPlayer(description)) ? ["__user__"] : [])];
+  const includeUserByDescription = params.includeUserAppearance ?? descriptionExplicitlyIncludesPlayer(description);
+  const resolvedParticipantIds = Array.from(new Set([
+    ...(explicitParticipantIds ?? inferredCharacterIds),
+    ...(explicitParticipantIds ? [...(params.characterIds ?? []), ...matchedIds] : []),
+    ...(includeUserByDescription ? ["__user__"] : []),
+  ])).filter(id => id === "__user__" || characterById.has(id)).slice(0, 16);
   const involvedCharacterIds = resolvedParticipantIds.filter(id => id !== "__user__" && characterById.has(id)).slice(0, 16);
   const includeUserAppearance = resolvedParticipantIds.includes("__user__");
 
