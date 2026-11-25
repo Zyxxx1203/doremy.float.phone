@@ -280,6 +280,32 @@
         },
         "visibility": "shared",
         "handler": "focusUnlock"
+      },
+      {
+        "id": "pass-verdict",
+        "name": "判定通行证查岗",
+        "description": "当角色收到白名单通行证查岗的屏幕截图后调用：判断用户是在学习/查资料还是在玩。合规传 verdict=pass；违规、用户拒绝给看或超时未交传 verdict=violation。app 传通行证对应的应用名（如 DeepSeek）。会立即更新通行证状态和信任分：pass +2，violation 收回通行证并 -10。",
+        "parameterSchema": {
+          "type": "object",
+          "properties": {
+            "app": {
+              "type": "string",
+              "description": "通行证对应的应用名，例如 DeepSeek"
+            },
+            "verdict": {
+              "type": "string",
+              "enum": ["pass", "violation"],
+              "description": "pass=合规；violation=违规或没交自证"
+            },
+            "reason": {
+              "type": "string",
+              "description": "一句判断理由，会写进 timeline"
+            }
+          },
+          "required": ["verdict"]
+        },
+        "visibility": "shared",
+        "handler": "passVerdict"
       }
     ]
   },
@@ -414,6 +440,32 @@
         },
         "visibility": "shared",
         "handler": "focusUnlock"
+      },
+      {
+        "id": "pass-verdict",
+        "name": "判定通行证查岗",
+        "description": "当角色收到白名单通行证查岗的屏幕截图后调用：判断用户是在学习/查资料还是在玩。合规传 verdict=pass；违规、用户拒绝给看或超时未交传 verdict=violation。app 传通行证对应的应用名（如 DeepSeek）。会立即更新通行证状态和信任分：pass +2，violation 收回通行证并 -10。",
+        "parameterSchema": {
+          "type": "object",
+          "properties": {
+            "app": {
+              "type": "string",
+              "description": "通行证对应的应用名，例如 DeepSeek"
+            },
+            "verdict": {
+              "type": "string",
+              "enum": ["pass", "violation"],
+              "description": "pass=合规；violation=违规或没交自证"
+            },
+            "reason": {
+              "type": "string",
+              "description": "一句判断理由，会写进 timeline"
+            }
+          },
+          "required": ["verdict"]
+        },
+        "visibility": "shared",
+        "handler": "passVerdict"
       }
     ],
     "events": [

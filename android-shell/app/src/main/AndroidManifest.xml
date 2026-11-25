@@ -228,6 +228,12 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- 专注通行证查岗：精确闹钟到点直接拉起 CheckInService 浮层，不依赖网页进程。 -->
+        <receiver
+            android:name=".FocusPassCheckInAlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
         <!-- 通话浮窗服务：TYPE_APPLICATION_OVERLAY 浮在其他 App 上层。
              mediaPlayback 类型同时把进程钉在前台，网页语音才不会被系统掐断。 -->
         <service

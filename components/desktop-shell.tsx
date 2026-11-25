@@ -98,6 +98,8 @@ import {
 import type { CustomAppMarketItem } from "@/lib/custom-app-market-types";
 import {
   CUSTOM_APP_HOST_STATE_UPDATED_EVENT,
+  CUSTOM_APP_IMAGE_JOB_EVENT,
+  getCustomAppActiveImageJobs,
   loadCustomAppBadges,
   runDueCustomAppTasks,
 } from "@/lib/custom-app-host-api";
@@ -240,6 +242,13 @@ type CustomAppLaunchState = {
   appId: string;
   context: Record<string, unknown>;
   returnTo?: CustomAppReturnTarget | null;
+};
+
+/** 正在后台跑生图的自定义 APP：保持 iframe 挂载但隐藏，完成后再卸载。 */
+type BackgroundCustomApp = {
+  app: InstalledCustomApp;
+  iconId: DesktopIconId;
+  launchState: CustomAppLaunchState | null;
 };
 
 /** 内置「心意手作工坊」：1:1 复用 heartcraft.doris 1.3.1 的 HTML，由 CustomAppRunner 挂载。 */
@@ -1765,7 +1774,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
       const stored = readThemeProfile();
       setSavedTheme(stored);
       setDraftTheme(stored);
-      setCustomApps(loadInstalledCustomApps().filter(app => !isLegacyHeartcraftMarketApp(app)));
+      setCustomApps(loadInstalledCustomApps().filter(app => !isLegacyHeartcraftMarketApp(app) && !isFocusCompanionMarketOverride(app)));
 
       // Reload widgets + layout after hydration
       const hydratedWidgets = loadWidgets();
@@ -1816,7 +1825,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
 
   useEffect(() => {
     const refreshCustomApps = () => {
-      const installed = loadInstalledCustomApps().filter(app => !isLegacyHeartcraftMarketApp(app));
+      const installed = loadInstalledCustomApps().filter(app => !isLegacyHeartcraftMarketApp(app) && !isFocusCompanionMarketOverride(app));
       setCustomApps(installed);
       // Drop any dock icons whose custom app was uninstalled, then keep the
       // paged layout disjoint from whatever remains in the dock.
@@ -2720,7 +2729,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
   const handleInstallCustomAppToDesktop = useCallback((app: InstalledCustomApp) => {
     const iconId = toCustomAppIconId(app.id);
-    setCustomApps(loadInstalledCustomApps());
+    setCustomApps(loadInstalledCustomApps().filter(app => !isLegacyHeartcraftMarketApp(app) && !isFocusCompanionMarketOverride(app)));
     let placedPageNumber: number | null = null;
     setLayout(prev => {
       const widgets = widgetsRef.current;
@@ -2781,6 +2790,17 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     return () => window.removeEventListener("floatphone-native-back", handleNativeBack);
   }, [activeApp, openFolderId]);
   const [customAppLaunchContext, setCustomAppLaunchContext] = useState<CustomAppLaunchState | null>(null);
+  const [backgroundCustomApps, setBackgroundCustomApps] = useState<BackgroundCustomApp[]>([]);
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ appId?: string; count?: number }>).detail;
+      if (!detail?.appId || Number(detail.count) > 0) return;
+      // 生图完成：隐藏的后台 APP 可以卸载了；如果用户已经重新打开它，保留到用户自己关闭。
+      setBackgroundCustomApps(prev => prev.filter(entry => entry.app.id !== detail.appId || activeAppRef.current === entry.iconId));
+    };
+    window.addEventListener(CUSTOM_APP_IMAGE_JOB_EVENT, handler);
+    return () => window.removeEventListener(CUSTOM_APP_IMAGE_JOB_EVENT, handler);
+  }, []);
   const [appMarketLaunchContext, setAppMarketLaunchContext] = useState<Record<string, unknown> | null>(null);
   useEffect(() => {
     const handler = (e: Event) => {
@@ -4409,6 +4429,18 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
   function closeCustomAppRunner(app: InstalledCustomApp): void {
     const launchState = customAppLaunchContext?.appId === app.id ? customAppLaunchContext : null;
+    const iconId = activeApp;
+    // 生图还在跑时不要卸载 iframe：隐藏起来继续等结果，focused float 仍在前台。
+    if (iconId && getCustomAppActiveImageJobs(app.id) > 0) {
+      setBackgroundCustomApps(prev => {
+        const entry: BackgroundCustomApp = { app, iconId, launchState };
+        return prev.some(item => item.app.id === app.id)
+          ? prev.map(item => item.app.id === app.id ? entry : item)
+          : [...prev, entry];
+      });
+    } else {
+      setBackgroundCustomApps(prev => prev.filter(item => item.app.id !== app.id));
+    }
     setCustomAppLaunchContext(null);
     if (launchState?.returnTo?.appId === "chat") {
       const sessionId = launchState.returnTo.sessionId;
@@ -4526,7 +4558,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       const result = await updateInstalledCustomAppFromMarket(pending.app, {
         resolveMarketItem: async () => pending.item,
       });
-      setCustomApps(loadInstalledCustomApps());
+      setCustomApps(loadInstalledCustomApps().filter(app => !isLegacyHeartcraftMarketApp(app) && !isFocusCompanionMarketOverride(app)));
       setCustomAppUpdatePrompt(null);
       setNotice(result.previousVersion === result.installed.version
         ? `已同步「${result.installed.name}」`
@@ -4562,6 +4594,10 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
   function renderAppBody() {
     if (!activeApp || !activeIcon) {
+      return null;
+    }
+    // 后台保活的 APP 由下面的隐藏 section 渲染，这里不要再挂一份。
+    if (backgroundCustomApps.some(entry => entry.iconId === activeApp)) {
       return null;
     }
 
@@ -5478,6 +5514,24 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                     />
                   </section>
                 )}
+                {backgroundCustomApps.map(entry => (
+                  <section key={entry.app.id} className="phone-app-pane" style={activeApp !== entry.iconId ? { display: "none" } : undefined}>
+                    <CustomAppForegroundBoundary
+                      appName={entry.app.name}
+                      appId={entry.app.id}
+                      appVersion={entry.app.version}
+                      manifestId={entry.app.manifest?.id}
+                      onClose={() => closeCustomAppRunner(entry.app)}
+                    >
+                      <CustomAppRunner
+                        app={entry.app}
+                        launchContext={entry.launchState?.context ?? null}
+                        onClose={() => closeCustomAppRunner(entry.app)}
+                        onNotice={setNotice}
+                      />
+                    </CustomAppForegroundBoundary>
+                  </section>
+                ))}
               </div>
 
               {!activeApp ? (

@@ -1523,13 +1523,18 @@ function tick() {
       pushWidget(st);
     } catch (e) { }
   })();
-  /* 通行证查岗：到点弹层（页面活着时）；超时未交 → 视为被抓 */
+  /* 通行证查岗：APK 走原生查岗浮层（不要求专注 App 在前台）；网页/旧壳才弹 APP 内层 */
   (function () {
     const c = S.settings.wlCheckin;
     if (!c || c.done) return;
     const nowTs = Date.now();
+    const pass = (S.wlPasses || []).find(x => x.id === c.passId);
+    if (pass && pass.verdict) {
+      c.done = 'verdict'; saveSettings(true);
+      return;
+    }
     if (nowTs >= c.deadlineAt) { wlCheckinExpire(); return; }
-    if (nowTs >= c.at && !c.sheetShown && typeof document !== 'undefined' && !document.hidden) {
+    if (!c.native && nowTs >= c.at && !c.sheetShown && typeof document !== 'undefined' && !document.hidden) {
       c.sheetShown = true; saveSettings(true);
       openWlCheckinSheet();
     }
@@ -1669,6 +1674,37 @@ function lockedAppsFor() {
   for (const p of activeWlPasses()) { const pk = p.package || p.pkg; if (pk) out.push(pk); }
   return Array.from(new Set(out));
 }
+/* 申请单里的应用对象同时兼容 {package} / {pkg} 两种字段。 */
+function wlAppPackage(app) {
+  return String((app && (app.package || app.pkg)) || '').trim();
+}
+/* 旧版本多选申请写入的通行证可能只有 app 名、没有包名，导致 native 看守锁
+   永远放行不了。启动时按应用名回查包名并补写。 */
+async function repairWlPassPackages() {
+  const now = Date.now();
+  const missing = (S.wlPasses || []).filter(p => p.status === 'active' && (!p.expireAt || p.expireAt > now) && !wlAppPackage(p));
+  if (!missing.length) return;
+  if (typeof API === 'undefined' || !API || !API.device || !API.device.appsList) return;
+  let list = [];
+  try {
+    const res = await API.device.appsList();
+    list = (res && res.apps) || [];
+  } catch (e) { return; }
+  if (!list.length) return;
+  let changed = false;
+  for (const p of missing) {
+    const key = String(p.app || '').trim().toLowerCase();
+    if (!key) continue;
+    const hit = list.find(x => String(x.label || '').toLowerCase() === key)
+      || list.find(x => String(x.label || '').toLowerCase().indexOf(key) >= 0)
+      || list.find(x => String(x.package || '').toLowerCase().indexOf(key) >= 0);
+    if (!hit || !hit.package) continue;
+    p.package = hit.package;
+    if (p.dbId) await DB.update(T.WLP, p.dbId, JSON.parse(JSON.stringify(p)));
+    changed = true;
+  }
+  if (changed) syncLockNow();
+}
 /* 桌面倒计时小组件：推一份会话状态（Chronometer 原生走表，只在状态变化时推）。
    字段契约见壳侧 FocusWidgetProvider.update：{running,remainingMs,progress,task,charName} */
 function pushWidget(s) {
@@ -1727,19 +1763,7 @@ async function releaseAssistLock() {
     await sdk(() => API.device.dndSet({ on: false }), null).catch(() => { });
   }
 }
-async function requestCharacterUnlock() {
-  const s = S.session;
-  const cid = (s && s.charIds && s.charIds[0]) || anyCharId();
-  if (!cid) { toast('还没有可以请求的角色'); return false; }
-  const line = '我把看守锁解不开了，你能帮我解除吗？';
-  await sdk(() => API.chat.writeHistory({ characterId: cid, role: 'user', content: '[解除看守锁请求] ' + line }), null).catch(() => { });
-  await sdk(() => API.chat.requestReply({ characterId: cid }), null).catch(() => { });
-  await syncTimeline(cid, `用户请求角色解除看守锁：${line}`, 'focus_unlock_request', {});
-  closeAllSheets();
-  toast('已向 TA 发出解除请求，等 TA 决定');
-  return true;
-}
-/* 紧急解除：只给角色工具调用。用户侧没有直接解锁按钮，必须走「请求角色解除」。 */
+/* 紧急解除：只给角色工具调用。用户侧没有请求/直接解锁按钮。 */
 async function forceUnlock(reason, opts) {
   const s = S.session;
   if (s && s.status === 'running') {
@@ -1771,7 +1795,12 @@ function wlSuggestApps() {
 /* ── 多选申请单（常驻白名单 / 限时通行证共用一套）────────────── */
 function openMultiApply(mode, apps) {
   S.draft.applyMode = mode === 'perm' ? 'perm' : 'pass';
-  S.draft.applyApps = (apps || S.draft.applyApps || []).slice();
+  /* 应用选择器给的是 pkg 字段，旧调用方给的是 package；统一成 package，
+     否则通行证会丢包名，看守锁永远放行不了。 */
+  S.draft.applyApps = (apps || S.draft.applyApps || []).map(a => ({
+    label: a.label,
+    package: String(a.package || a.pkg || '').trim()
+  }));
   if (!S.draft.applyApps.length) { toast('先选应用'); return; }
   S.draft.wlReason = S.draft.wlReason || '';
   S.draft.wlMinutes = Number(S.draft.wlMinutes) || 15;
@@ -1834,13 +1863,16 @@ async function submitMultiApply() {
     if (permitWork.length) {
       const cur = cfg('lockedApps') || [];
       const map = new Map(cur.filter(x => x.pkg).map(x => [x.pkg, x]));
-      for (const a of permitWork) map.set(a.package, { name: a.label, pkg: a.package });
+      for (const a of permitWork) {
+        const pkg = wlAppPackage(a);
+        if (pkg) map.set(pkg, { name: a.label, pkg });
+      }
       S.settings.lockedApps = Array.from(map.values());
       saveSettings(true);
     }
     /* 娱乐类（或 AI 只给条件批准）：只给 10 分钟通行证 */
     for (const a of permitFun) {
-      const rec = { id: 'wlp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), app: a.label, reason: reason || '娱乐类限时', minutes: 10, conditions: '娱乐类只给限时', reply: '', package: a.package, decision: 'counter', status: 'active', issuedAt: Date.now(), expireAt: Date.now() + 10 * 60000, uses: 0, trustAtIssue: wlTrust(), at: Date.now() };
+      const rec = { id: 'wlp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), app: a.label, reason: reason || '娱乐类限时', minutes: 10, conditions: '娱乐类只给限时', reply: '', package: wlAppPackage(a), decision: 'counter', status: 'active', issuedAt: Date.now(), expireAt: Date.now() + 10 * 60000, uses: 0, trustAtIssue: wlTrust(), at: Date.now() };
       const r = await DB.create(T.WLP, JSON.parse(JSON.stringify(rec)));
       if (r) rec.dbId = r.id;
       S.wlPasses = [rec].concat(S.wlPasses || []);
@@ -1855,7 +1887,7 @@ async function submitMultiApply() {
     const grant = (verdict && Number(verdict.grantedMinutes)) || (minutes <= 15 && apps.length <= 5 ? minutes : 10);
     if (decided !== 'reject') reply = aiReply || (minutes <= 15 && apps.length <= 5 ? '准了，' + grant + ' 分钟。到点自己回来。' : '先给 ' + grant + ' 分钟，够用就办完。');
     for (const a of (decided === 'reject' ? [] : apps)) {
-      const rec = { id: 'wlp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), app: a.label, reason, minutes: grant, conditions: '只开这段时间', reply, package: a.package, decision: 'approve', status: 'active', issuedAt: Date.now(), expireAt: Date.now() + grant * 60000, uses: 0, trustAtIssue: wlTrust(), at: Date.now() };
+      const rec = { id: 'wlp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), app: a.label, reason, minutes: grant, conditions: '只开这段时间', reply, package: wlAppPackage(a), decision: 'approve', status: 'active', issuedAt: Date.now(), expireAt: Date.now() + grant * 60000, uses: 0, trustAtIssue: wlTrust(), at: Date.now() };
       const r = await DB.create(T.WLP, JSON.parse(JSON.stringify(rec)));
       if (r) rec.dbId = r.id;
       S.wlPasses = [rec].concat(S.wlPasses || []);
@@ -2129,15 +2161,16 @@ async function startSession(o) {
     const pkgs = lockedAppsFor();
     s.lockUntil = Number(s.lockUntil) || sessionEndAt(s);
     const until = s.lockUntil;
-    if (pkgs.length) {
-      sdk(() => API.device.lockStart({ packages: JSON.stringify(pkgs), until }), null).then((r) => {
-        if (r && r.ok) {
-          S.settings.assistLockOn = true; saveSettings(true);
-          pushMsg(s, 'sys', '🛰 看守锁已启动：白名单（' + pkgs.length + ' 个应用）外的手机应用会被带回');
-          render();
-        } else if (r && r.reason) pushMsg(s, 'sys', '🛰 看守锁没启动：' + r.reason);
-      }).catch(() => { });
-    } else pushMsg(s, 'sys', '🛰 看守锁未启动：白名单为空（我的 → 锁机 → 🧱 白名单里从手机应用选）');
+    // 白名单为空也必须启动：空名单表示拦截所有其他应用，不能因为没勾白名单就静默跳过。
+    sdk(() => API.device.lockStart({ packages: JSON.stringify(pkgs), until }), null).then((r) => {
+      if (r && r.ok) {
+        S.settings.assistLockOn = true; saveSettings(true);
+        pushMsg(s, 'sys', pkgs.length
+          ? '🛰 看守锁已启动：白名单（' + pkgs.length + ' 个应用）外的手机应用会被带回'
+          : '🛰 看守锁已启动：白名单为空，所有其他手机应用都会被拦截');
+        render();
+      } else if (r && r.reason) pushMsg(s, 'sys', '🛰 看守锁没启动：' + r.reason);
+    }).catch(() => { });
   }
   if (s.assistLevel !== 'off' && API && API.device && API.device.dndSet) {
     sdk(() => API.device.dndSet({ on: true }), null).then((r) => {
@@ -2705,6 +2738,7 @@ function activeWlPasses() {
     if (p.status === 'active' && p.expireAt && Date.now() > p.expireAt) {
       p.status = 'expired';
       if (p.dbId) DB.update(T.WLP, p.dbId, JSON.parse(JSON.stringify(p)));
+      cancelWlCheckinNative(p.id);
       wlTrustAdd(5, p.app + ' 通行证按时回收');
     }
   }
@@ -2712,7 +2746,12 @@ function activeWlPasses() {
 }
 function wlTrust() { return Number(S.settings.wlTrust) || 0; }
 async function wlTrustAdd(d, why) {
-  S.settings.wlTrust = Math.max(-100, Math.min(100, wlTrust() + d));
+  const before = wlTrust();
+  const after = Math.max(-100, Math.min(100, before + d));
+  S.settings.wlTrust = after;
+  const log = Array.isArray(S.settings.wlTrustLog) ? S.settings.wlTrustLog : [];
+  log.unshift({ d: d, why: String(why || '').slice(0, 120), at: Date.now(), total: after });
+  S.settings.wlTrustLog = log.slice(0, 20);
   await saveSettings(true);
   const cid = anyCharId();
   if (cid && why) await syncTimeline(cid, '应用白名单信任分 ' + (d > 0 ? '+' : '') + d + '：' + why, 'wl_trust', {});
@@ -2818,6 +2857,14 @@ function openWlSheet() {
   const left = p => p.expireAt ? '剩 ' + fmtDur(Math.max(0, (p.expireAt - Date.now()) / 1000)) : '';
   openSheet(`<h3>🎟 应用通行证</h3>
     <div class="tiny mt6">通行证由 TA 审批签发，到期自动回收；生效中的通行证是中途离开豁免的依据。</div>
+    ${(() => {
+      const log = (S.settings.wlTrustLog || []).slice(0, 6);
+      return `<div class="item" style="align-items:flex-start"><div class="ic">💗</div><div class="grow">
+        <div style="font-size:13px">当前信任分：<b>${wlTrust()}</b> <span class="tiny">（-100 ~ 100，正分更容易批）</span></div>
+        <div class="tiny mt6">查岗通过 +2 · 查岗违规/超时 -10 · 通行证按时回收 +5</div>
+        ${log.length ? log.map(r => `<div class="tiny mt6">${hm(r.at)} ${r.d > 0 ? '+' : ''}${r.d} → ${r.total} · ${esc(r.why || '')}</div>`).join('') : '<div class="tiny mt6">还没有加减记录。</div>'}
+      </div></div>`;
+    })()}
     ${act.length ? act.map(p => `<div class="item"><div class="ic">🎟</div><div class="grow"><div style="font-size:13px">${esc(p.app)} · ${p.minutes} 分钟 ${left(p)}</div>
       <div class="tiny">${esc(p.reason || '')}${p.package ? ' · 包名 ' + esc(p.package) : ''}${p.conditions ? ' · 条件：' + esc(p.conditions) : ''} · 已用 ${p.uses || 0} 次${p.checkedAt ? ' · 已过查岗' : ''}</div></div>
       <button class="btn sm ghost" data-act="wlRevoke" data-id="${esc(p.id)}">作废</button></div>`).join('')
@@ -2834,18 +2881,57 @@ function openWlSheet() {
    页面活着时弹「截屏自证」层，10 分钟内截一张当前屏幕发进聊天室由 TA 亲眼判）；
    超时没交 = 视为违规：通行证作废 + 信任分 -10 + TA 记一笔。
    （截图判卷与自动踢回前台属于 L2/壳侧能力，随 APK 升级开放。） */
-function scheduleWlCheckin(pass) {
-  if (!API || !API.tasks || !pass || pass.status !== 'active' || !pass.expireAt) return;
+function cancelWlCheckinNative(passId) {
+  if (!passId || !API || !API.device || typeof API.device.cancelPassCheckIn !== 'function') return;
+  sdk(() => API.device.cancelPassCheckIn(passId), null).catch(() => { });
+}
+async function scheduleWlCheckin(pass) {
+  if (!pass || pass.status !== 'active' || !pass.expireAt) return;
   const winStart = Date.now() + 60000;
   const winEnd = Math.max(winStart + 60000, pass.expireAt - 2 * 60000);
   const fireAt = winStart + Math.random() * Math.max(60000, winEnd - winStart);
-  S.settings.wlCheckin = { passId: pass.id, passApp: pass.app, at: fireAt, deadlineAt: fireAt + 10 * 60000, done: '', charId: pass.charIds && pass.charIds[0] ? pass.charIds[0] : (anyCharId() || '') };
-  saveSettings(true);
+  const cid = pass.charIds && pass.charIds[0] ? pass.charIds[0] : (anyCharId() || '');
+  const nativeSchedule = !!(API && API.device && typeof API.device.schedulePassCheckIn === 'function');
+  const c = { passId: pass.id, passApp: pass.app, at: fireAt, deadlineAt: fireAt + 10 * 60000, done: '', charId: cid, native: nativeSchedule };
+  S.settings.wlCheckin = c;
+  await saveSettings(true);
+  if (nativeSchedule) {
+    const r = await sdk(() => API.device.schedulePassCheckIn({
+      passId: pass.id,
+      app: pass.app,
+      characterId: cid,
+      name: charName(cid),
+      avatar: (charById(cid) || {}).avatar || '',
+      dueAt: fireAt
+    }), null);
+    if (r && r.ok) return;
+    c.native = false;
+    await saveSettings(true);
+  }
+  const instruction = '[白名单通行证查岗] 应用：' + pass.app + '。接下来你会收到用户当前屏幕的截图。'
+    + '请判断他是在学习/查资料还是在娱乐；看完后必须调用「判定通行证查岗」工具，app 填「' + pass.app + '」：'
+    + '合规传 verdict=pass；画面违规、用户拒绝给看或超时没交传 verdict=violation。不要只口头说。';
+  const actions = [
+    { type: 'chat.history', characterId: cid, role: 'system', content: instruction }
+  ];
+  if (API && API.device && typeof API.device.checkinRequest === 'function') {
+    actions.push({
+      type: 'device.checkin.request',
+      characterId: cid,
+      name: charName(cid),
+      avatar: (charById(cid) || {}).avatar || ''
+    });
+  } else {
+    actions.push({
+      type: 'shell.notify',
+      title: '📸 ' + charName(cid) + ' 查岗',
+      body: '通行证（' + pass.app + '）抽查：10 分钟内截一张当前屏幕作为自证。'
+    });
+  }
+  if (!API || !API.tasks) return;
   sdk(() => API.tasks.schedule({
     id: 'focus_wlchk_' + pass.id, delayMs: Math.max(60000, fireAt - Date.now()),
-    actions: [
-      { type: 'shell.notify', title: '📸 ' + charName(S.settings.wlCheckin.charId) + ' 查岗', body: '通行证（' + pass.app + '）抽查：10 分钟内截一张当前屏幕作为自证。' }
-    ]
+    actions: actions
   }), null);
 }
 function openWlCheckinSheet() {
@@ -2876,24 +2962,33 @@ async function wlCheckinPhoto() {
   } catch (e) { toast('截屏失败，请确认无障碍权限'); }
   if (!dataUrl) return;
   c.done = 'photo'; await saveSettings(true);
+  const instruction = '[白名单通行证查岗] 应用：' + c.passApp + '。接下来你会收到用户当前屏幕的截图。'
+    + '请判断他是在学习/查资料还是在娱乐；看完后必须调用「判定通行证查岗」工具，app 填「' + c.passApp + '」：'
+    + '合规传 verdict=pass；画面违规传 verdict=violation。不要只口头说。';
+  await sdk(() => API.chat.writeHistory({ characterId: cid, role: 'system', content: instruction }), null);
   const ok1 = await sendImageCard(cid, dataUrl, '📸 查岗自证 · ' + c.passApp);
   await sdk(() => API.chat.requestReply({ characterId: cid }), null);
   const pass = (S.wlPasses || []).find(x => x.id === c.passId);
   if (pass) { pass.checkedAt = Date.now(); if (pass.dbId) await DB.update(T.WLP, pass.dbId, JSON.parse(JSON.stringify(pass))); }
-  await wlTrustAdd(2, '查岗自证按时交了（' + c.passApp + '）');
   closeAllSheets();
-  toast(ok1 === false ? '照片发进聊天室失败，但查岗已交' : '📸 已发进聊天室，TA 正在看');
+  toast(ok1 === false ? '照片发进聊天室失败，但查岗已交' : '📸 已发进聊天室，等 TA 判定');
   render();
 }
 async function wlCheckinExpire() {
   const c = S.settings && S.settings.wlCheckin;
   if (!c || c.done) return;
   const pass = (S.wlPasses || []).find(x => x.id === c.passId);
+  if (pass && pass.verdict) {
+    c.done = 'verdict'; await saveSettings(true);
+    return;
+  }
+  cancelWlCheckinNative(c.passId);
   const cid = c.charId || anyCharId();
   c.done = 'missed'; await saveSettings(true);
   if (pass) {
     pass.status = 'revoked'; pass.violatedAt = Date.now();
     if (pass.dbId) await DB.update(T.WLP, pass.dbId, JSON.parse(JSON.stringify(pass)));
+    cancelWlCheckinNative(pass.id);
   }
   await wlTrustAdd(-10, '查岗超时没交自证（' + c.passApp + '）');
   if (cid) {
@@ -5217,8 +5312,7 @@ VIEWS.running = function () {
       : `<button class="btn teal grow" data-act="openQA">❓ 答疑</button>`}
   </div>
   ${(s.assistLevel === 'L1' || s.assistLevel === 'L2' || s.assistLevel === 'L3') ? `<div class="row" style="gap:9px;margin:-4px 0 12px">
-    <button class="btn sm ghost grow" data-act="wlApplyOpen">🎟 申请通行证</button>
-    <button class="btn sm ghost grow" data-act="requestUnlockAsk">🙏 请 TA 解除</button></div>` : ''}
+    <button class="btn sm ghost grow" data-act="wlApplyOpen">🎟 申请通行证</button></div>` : ''}
   ${(!isBreak && !s.paused) ? (function () {
       const used = noteOfSession(s).length, lim = noteLimit();
       const leftN = lim ? Math.max(0, lim - used) : 99;
@@ -7174,7 +7268,6 @@ VIEWS.me = function () {
       <button class="btn sm grow" data-act="lockedAppsSheet">🧱 白名单 ${(cfg('lockedApps') || []).length}</button>
       <button class="btn sm grow" data-act="wlSheetOpen">🎟 通行证 ${activeWlPasses().length}</button>
     </div>
-    <button class="btn sm ghost block mt8" data-act="requestUnlockAsk">🙏 请角色解除看守锁</button>
     <div class="row mt8" style="gap:8px">
       <button class="btn sm ghost grow" data-act="widgetPin">🧩 桌面组件</button>
     </div></div>
@@ -8441,11 +8534,6 @@ Object.assign(ACTIONS, {
     await saveSession(true); render();
   },
   skipBreak: async () => { const s = S.session; if (!s || s.phase !== 'break') return; s.phaseEndsAt = Date.now(); await onPhaseEnd(); },
-  requestUnlockAsk: async () => {
-    const ok = await confirmBox('请 TA 解除看守锁？', 'TA 会看到你的请求，并决定是否现在解除。只有 TA 同意后才会真正解锁。', '发送请求');
-    if (!ok) return;
-    await requestCharacterUnlock();
-  },
   abortAsk: async () => {
     const s = S.session; if (!s) return;
     const ok = await confirmBox('结束当前阶段？', s.phase === 'break' ? '将跳过休息进入下一轮。' : '将立即进入结束校验流程（填写反馈 → 出题答题）。', '结束');
@@ -12074,6 +12162,7 @@ Object.assign(ACTIONS, {
     if (!p) return;
     p.status = 'revoked';
     if (p.dbId) await DB.update(T.WLP, p.dbId, JSON.parse(JSON.stringify(p)));
+    cancelWlCheckinNative(p.id);
     toast('通行证已作废：' + p.app);
     syncLockNow();
     openWlSheet(); render();
@@ -17075,15 +17164,18 @@ TITLES.rcchat = ['抽背 · 聊天室', 'RECITE'];
    数据加载与启动
    ========================================================== */
 async function loadAll() {
+  /* 宿主 db.list 返回的是扁平记录；老版本有些表保存成了 { data: {...} }。
+     两种都兼容，否则通行证/会话重启后会变成空对象。 */
+  const dbRow = (r) => Object.assign({}, r && r.data && typeof r.data === 'object' ? r.data : (r || {}), { dbId: r && r.id });
   const [sess, priv, pub, puns, gifts, ledger, sleeps, qbank, alarms, album, rewards, wlp] = await Promise.all([
     DB.list(T.SESSION), DB.list(T.PRIV), DB.list(T.PUB), DB.list(T.PUN), DB.list(T.GIFT),
     DB.list(T.LEDGER), DB.list(T.SLEEP), DB.list(T.QBANK), DB.list(T.ALARM), DB.list(T.ALBUM), DB.list(T.REWARD), DB.list(T.WLP)
   ]);
   const cutoff = Date.now() - 90 * 24 * 3600 * 1000;
-  S.sessions = (sess || []).map(r => Object.assign({ dbId: r.id }, r.data || {})).filter(x => x.startAt && x.startAt > cutoff);
+  S.sessions = (sess || []).map(dbRow).filter(x => x.startAt && x.startAt > cutoff);
   S.priv = (priv || []).slice().sort((a, b) => b.at - a.at);
   S.pub = (pub || []).slice().sort((a, b) => b.at - a.at);
-  S.puns = (puns || []).map(r => Object.assign({ dbId: r.id }, r.data || {})).sort((a, b) => b.at - a.at);
+  S.puns = (puns || []).map(dbRow).sort((a, b) => b.at - a.at);
   S.gifts = (gifts || []).slice().sort((a, b) => b.at - a.at);
   S.ledger = (ledger || []).slice().sort((a, b) => b.at - a.at);
   S.sleeps = (sleeps || []).slice().sort((a, b) => b.startAt - a.startAt);
@@ -17116,9 +17208,10 @@ async function loadAll() {
   S.cards = ((await DB.list(T.CARD)) || []).filter(x => x && x.q).sort((a, b) => (a.order || 0) - (b.order || 0) || (a.at || 0) - (b.at || 0));
   S.rlogs = ((await DB.list(T.RLOG)) || []).filter(x => x && x.date).sort((a, b) => (b.at || 0) - (a.at || 0));
   S.alarms = (alarms || []).filter(x => x.enabled !== false);
-  S.wlPasses = (wlp || []).map(r => Object.assign({ dbId: r.id }, r.data || {}));
+  S.wlPasses = (wlp || []).map(dbRow);
+  await repairWlPassPackages();
   S.album = (album || []).slice().sort((a, b) => b.at - a.at);
-  S.rewards = (rewards || []).map(r => Object.assign({ dbId: r.id }, r.data || {})).sort((a, b) => b.at - a.at);
+  S.rewards = (rewards || []).map(dbRow).sort((a, b) => b.at - a.at);
   // 兼容旧版本：睡眠壁纸当年被默认上锁了，导致在壁纸库里存不下来 —— 这里统一解锁
   for (const it of (S.album || []).filter(x => x.kind === 'sleep' && x.locked)) {
     it.locked = false;
@@ -18250,6 +18343,49 @@ function registerTools() {
       data: { unlocked: true, wasRunning: running },
       userNotice: running ? '专注已结束，看守锁和勿扰都解除了' : '看守锁已解除',
     };
+  });
+  /* 7) 角色判定通行证查岗结果：pass +2；violation 收回通行证并 -10 */
+  API.tools.handle('passVerdict', async (args, ctx) => {
+    await ensureBasics();
+    const cid = (ctx && ctx.characterId) || (args && args.characterId) || anyCharId();
+    const verdict = String((args && args.verdict) || '').toLowerCase() === 'violation' ? 'violation' : 'pass';
+    const appName = String((args && args.app) || '').trim().toLowerCase();
+    const active = (S.wlPasses || []).filter(p => p.status === 'active');
+    const pass = (appName
+      ? active.find(p => {
+          const name = String(p.app || '').toLowerCase();
+          return name === appName || name.indexOf(appName) >= 0 || appName.indexOf(name) >= 0;
+        })
+      : null)
+      || active.slice().sort((a, b) => (Number(b.issuedAt) || 0) - (Number(a.issuedAt) || 0))[0];
+    if (!pass) {
+      return { success: false, error: '现在没有生效中的通行证，无法判定。', userNotice: '没有可判定的通行证' };
+    }
+    if (pass.verdict) {
+      return { success: true, data: { passId: pass.id, app: pass.app, verdict: pass.verdict, skipped: true }, userNotice: '这次查岗已经判定过了' };
+    }
+    const reason = String((args && args.reason) || '').slice(0, 200);
+    if (verdict === 'pass') {
+      pass.checkedAt = Date.now();
+      pass.verdict = 'pass';
+      pass.verdictAt = Date.now();
+      if (pass.dbId) await DB.update(T.WLP, pass.dbId, JSON.parse(JSON.stringify(pass)));
+      await wlTrustAdd(2, '查岗通过（' + pass.app + '）' + (reason ? '：' + reason : ''));
+      if (cid) await syncTimeline(cid, `通行证（${pass.app}）查岗通过：${reason || '画面合规'}`, 'wl_checkin_pass', {});
+      render();
+      return { success: true, data: { passId: pass.id, app: pass.app, verdict: 'pass' }, userNotice: '查岗通过，信任分 +2' };
+    }
+    pass.status = 'revoked';
+    pass.violatedAt = Date.now();
+    pass.verdict = 'violation';
+    pass.verdictAt = Date.now();
+    if (pass.dbId) await DB.update(T.WLP, pass.dbId, JSON.parse(JSON.stringify(pass)));
+    cancelWlCheckinNative(pass.id);
+    await wlTrustAdd(-10, '查岗违规（' + pass.app + '）' + (reason ? '：' + reason : ''));
+    if (cid) await syncTimeline(cid, `通行证（${pass.app}）查岗违规，已收回：${reason || '画面不合规'}`, 'wl_checkin_violation', {});
+    syncLockNow();
+    render();
+    return { success: true, data: { passId: pass.id, app: pass.app, verdict: 'violation' }, userNotice: '查岗违规：通行证已收回，信任分 -10' };
   });
 }
 function startInviteListener() {

@@ -30,6 +30,9 @@ type DeviceActionBridgeLike = {
   focusLockUpdate?: (packagesJson: string, untilEpochMs: number) => string;
   focusLockStop?: () => string;
   focusLockStatus?: () => string;
+  scheduleFocusPassCheckIn?: (json: string) => string;
+  cancelFocusPassCheckIn?: (passId: string) => boolean;
+  consumePendingFocusPassCheckIn?: () => string;
   focusWidgetUpdate?: (json: string) => string;
   focusWidgetPin?: () => string;
   focusWidgetRemove?: () => string;
@@ -187,6 +190,36 @@ export function focusLockStatus(): { ok: boolean; running: boolean; until: numbe
     return { ok: parsed?.ok === true, running: parsed?.running === true, until: parsed?.until || 0, packages: parsed?.packages || "[]" };
   } catch {
     return { ok: false, running: false, until: 0, packages: "[]", reason: "看守锁状态调用失败" };
+  }
+}
+
+/** 专注通行证查岗：排一个原生闹钟，到点直接拉起查岗浮层。 */
+export function scheduleFocusPassCheckIn(payload: Record<string, unknown>): DeviceActionResult {
+  try {
+    const raw = bridge()?.scheduleFocusPassCheckIn?.(JSON.stringify(payload));
+    if (raw === undefined) return { ok: false, reason: "当前 App 版本不支持原生定时查岗" };
+    return parseResult(raw, "原生查岗闹钟排程失败");
+  } catch {
+    return { ok: false, reason: "原生查岗闹钟排程失败" };
+  }
+}
+
+export function cancelFocusPassCheckIn(passId: string): DeviceActionResult {
+  try {
+    const raw = bridge()?.cancelFocusPassCheckIn?.(passId);
+    if (raw === undefined) return { ok: false, reason: "当前 App 版本不支持原生定时查岗" };
+    return raw ? { ok: true } : { ok: false, reason: "没有找到对应的查岗闹钟" };
+  } catch {
+    return { ok: false, reason: "取消原生查岗闹钟失败" };
+  }
+}
+
+/** 读取原生定时查岗结果（base64 截图）；空串 = 没有待取结果。 */
+export function consumePendingFocusPassCheckIn(): string {
+  try {
+    return bridge()?.consumePendingFocusPassCheckIn?.() ?? "";
+  } catch {
+    return "";
   }
 }
 

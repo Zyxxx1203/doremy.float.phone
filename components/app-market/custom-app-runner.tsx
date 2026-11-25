@@ -578,6 +578,8 @@ html, body { min-height: 100%; }
       overlayStatus: function(){ return request('device.overlay.status', {}); },
       pendingApply: function(){ return request('device.lock.pendingApply', {}); },
       overlayRequest: function(){ return request('device.overlay.request', {}); },
+      schedulePassCheckIn: function(payload){ return request('device.checkin.schedule', payload || {}); },
+      cancelPassCheckIn: function(passId){ return request('device.checkin.cancel', { passId: passId || '' }); },
       screenshot: function(payload){ return request('device.screenshot', payload || {}); }
     },
     room: {

@@ -1,5 +1,5 @@
 import type { ImageGenerationSettings, NovelAiPreset } from "./settings-types";
-import { loadBindingConfig, loadImageGenerationSettings, resolveBinding, resolveUserIdentity, DEFAULT_NOVELAI_PRESET } from "./settings-storage";
+import { loadBindingConfig, loadImageGenerationSettings, resolveBinding, DEFAULT_NOVELAI_PRESET } from "./settings-storage";
 import { applyImageGenerationBinding } from "./image-generation-binding";
 import JSZip from "jszip";
 import { getChatImageFromIndexedDB } from "./chat-asset-storage";
@@ -870,11 +870,10 @@ async function generateImageFromConfiguredApiInternal(params: {
     ? `玩家本人稳定外观（只用于识别本人；服装、姿势、表情和场景以本次提示词为准）：${userReference.featurePrompt.trim()}`
     : "";
   const identityPolicy = (involvedCharacterIds.length || includeUserAppearance)
-    ? "身份参考规则：只保持每个人可识别的身份特征，例如面部、五官、发色、发型及明显识别标记。不要照搬参考图的服装、姿势、表情、站位、镜头、构图、背景或光线；这些内容必须服从本次场景描述，可以每次变化。"
+    ? "身份与画风参考规则：每个人物的脸型、五官、发色发型、体型、年龄感和服饰风格，以及整体画风，都必须与各自的参考图保持一致。参考图是二次元/动漫/插画就保持二次元/动漫/插画，参考图是照片就保持照片质感；严禁把二次元角色改成三次元真人写实，也严禁擅自转换画风。只有姿势、表情、场景和构图可以按本次描述变化。"
     : "";
-  const userIdentity = resolveUserIdentity(params.characterId, params.appId);
   const participantNames = resolvedParticipantIds.map(id =>
-    id === "__user__" ? (userIdentity?.name?.trim() || "用户本人") : (characterById.get(id)?.name || id),
+    id === "__user__" ? "用户本人" : (characterById.get(id)?.name || id),
   );
   // 生图模型不会自动知道「女人/男孩/女孩」是谁。出镜名单超过一人时，必须把准确名字
   // 写进提示词，否则即使参考图传了多张，模型也只会把泛称角色画成无关的人。
@@ -999,9 +998,9 @@ async function generateImageFromConfiguredApiInternal(params: {
     ? [
         "【身份参考图对应关系】",
         ...(collageLegend
-          ? [`参考图1是多人身份参考拼图，编号对应：${collageLegend}。只按编号参考对应人物的脸，不要互换、复制或融合不同角色的身份。`]
-          : referenceLabels.map((label, index) => `参考图${index + 1}对应：${label}。只参考该人物的身份特征，不代表固定服装或固定构图。`)),
-        "每位出镜人物都必须对应自己的参考图，不要互换、复制或融合不同角色的脸。"
+          ? [`参考图1是多人身份参考拼图，编号对应：${collageLegend}。只按编号参考对应人物的形象与画风，不要互换、复制或融合不同角色的身份。`]
+          : referenceLabels.map((label, index) => `参考图${index + 1}对应：${label}。该人物的形象和画风以这张图为准；姿势、表情和场景按本次描述。`)),
+        "每位出镜人物都必须对应自己的参考图，不要互换、复制或融合不同角色的脸；二次元参考图必须保持二次元画风，不得转成三次元写实。"
       ].join("\n")
     : "";
   const prompt = mergePrompt(

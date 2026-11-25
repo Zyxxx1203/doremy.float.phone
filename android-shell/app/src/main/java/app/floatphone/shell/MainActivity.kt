@@ -14,6 +14,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.AudioManager
+import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -23,6 +24,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Base64
+import org.json.JSONObject
 import java.io.OutputStream
 import java.util.concurrent.ConcurrentHashMap
 import android.view.WindowManager
@@ -1939,6 +1941,31 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         @JavascriptInterface
         fun focusLockStatus(): String = FocusLockService.status(this@MainActivity).toString()
 
+        /** 专注通行证查岗：原生闹钟到点直接弹浮层（网页/进程不在也能弹）。 */
+        @JavascriptInterface
+        fun scheduleFocusPassCheckIn(json: String): String = runCatching {
+            val o = JSONObject(json)
+            val ok = FocusPassCheckInScheduler.schedule(
+                this@MainActivity,
+                o.optString("passId"),
+                o.optString("app"),
+                o.optString("characterId"),
+                o.optString("name"),
+                o.optString("avatar"),
+                o.optLong("dueAt", 0L),
+            )
+            JSONObject().put("ok", ok).toString()
+        }.getOrElse { JSONObject().put("ok", false).put("reason", it.message ?: "排程失败").toString() }
+
+        @JavascriptInterface
+        fun cancelFocusPassCheckIn(passId: String): Boolean =
+            FocusPassCheckInScheduler.cancel(this@MainActivity, passId)
+
+        /** 取走原生查岗结果（含截图 base64）；空串表示没有待取结果。 */
+        @JavascriptInterface
+        fun consumePendingFocusPassCheckIn(): String =
+            CheckInService.consumePendingFocusPassCheckIn(this@MainActivity)
+
         /** 专注倒计时桌面组件：网页推一份会话状态（Chronometer 原生倒计时，无需每秒推送）。 */
         @JavascriptInterface
         fun focusWidgetUpdate(json: String): String = FocusWidgetProvider.update(this@MainActivity, json).toString()
@@ -2648,6 +2675,71 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
             }.onFailure { error ->
                 synchronized(webConsoleLogs) {
                     webConsoleLogs.add("saveBase64File failed: " + (error.message ?: error.javaClass.simpleName))
+                }
+            }.getOrDefault(false)
+        }
+
+        /**
+         * 按媒体类型保存：图片进系统相册（Pictures/小手机），语音进音乐库（Music/小手机），
+         * 其他文件仍进下载目录。相册/音乐库使用对应的 MediaStore collection，避免只落在
+         * Downloads 里、图库和音乐 App 看不到。
+         */
+        @JavascriptInterface
+        fun saveBase64Media(fileName: String, base64: String, kind: String): Boolean {
+            return runCatching {
+                val safeName = fileName
+                    .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                    .trim()
+                    .ifBlank { "download" }
+                    .take(120)
+                val normalizedKind = when (kind) {
+                    "image", "audio" -> kind
+                    else -> "file"
+                }
+                val bytes = Base64.decode(base64, Base64.DEFAULT)
+                val mime = guessMimeType(safeName)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val collection = when (normalizedKind) {
+                        "image" -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                        "audio" -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+                        else -> MediaStore.Downloads.EXTERNAL_CONTENT_URI
+                    }
+                    val relativePath = when (normalizedKind) {
+                        "image" -> Environment.DIRECTORY_PICTURES + "/小手机"
+                        "audio" -> Environment.DIRECTORY_MUSIC + "/小手机"
+                        else -> Environment.DIRECTORY_DOWNLOADS
+                    }
+                    val values = ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, safeName)
+                        put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+                        put(MediaStore.MediaColumns.IS_PENDING, 1)
+                    }
+                    val uri = contentResolver.insert(collection, values) ?: return@runCatching false
+                    val stream = contentResolver.openOutputStream(uri) ?: run {
+                        contentResolver.delete(uri, null, null)
+                        return@runCatching false
+                    }
+                    stream.use { it.write(bytes) }
+                    values.clear()
+                    values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                    contentResolver.update(uri, values, null, null)
+                } else {
+                    @Suppress("DEPRECATION")
+                    val publicDir = when (normalizedKind) {
+                        "image" -> Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                        "audio" -> Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
+                        else -> Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    }
+                    val dir = File(publicDir, "小手机").apply { mkdirs() }
+                    val file = File(dir, safeName)
+                    FileOutputStream(file).use { it.write(bytes) }
+                    MediaScannerConnection.scanFile(this@MainActivity, arrayOf(file.absolutePath), arrayOf(mime), null)
+                }
+                true
+            }.onFailure { error ->
+                synchronized(webConsoleLogs) {
+                    webConsoleLogs.add("saveBase64Media failed: " + (error.message ?: error.javaClass.simpleName))
                 }
             }.getOrDefault(false)
         }

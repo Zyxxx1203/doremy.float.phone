@@ -12,12 +12,16 @@ import { buildCustomAppChatTags } from "./custom-app-tags";
 import { hydrateKvDb } from "./kv-db";
 import { sendShellNotification } from "./shell-notify";
 import { captureScreenshot } from "./screenshot/bridge";
+import { requestCheckIn } from "./screenshot/checkin";
+import { storeMediaBase64 } from "./media-cache-storage";
+import { requestBackgroundChatReply } from "./follow-up-service";
 import { setAlarm as shellSetAlarm, setBrightness as shellSetBrightness, setDnd as shellSetDnd,
   listInstalledApps, focusLockStart as shellFocusLockStart, focusLockUpdate as shellFocusLockUpdate, focusLockStop as shellFocusLockStop, focusLockStatus as shellFocusLockStatus,
   focusWidgetUpdate as shellFocusWidgetUpdate, focusWidgetPin as shellFocusWidgetPin,
   focusLockTaLine as shellFocusLockTaLine, isDeviceAdminActive as shellIsDeviceAdminActive,
-  requestDeviceAdmin as shellRequestDeviceAdmin, requestFocusCheckIn as shellRequestFocusCheckIn,
+  requestDeviceAdmin as shellRequestDeviceAdmin,
   focusLockPendingApply as shellFocusLockPendingApply,
+  scheduleFocusPassCheckIn as shellScheduleFocusPassCheckIn, cancelFocusPassCheckIn as shellCancelFocusPassCheckIn,
   canDrawOverlay as shellCanDrawOverlay, requestOverlayPermission as shellRequestOverlayPermission } from "./device-action/bridge";
 import { loadCharacters } from "./character-storage";
 import {
@@ -100,6 +104,20 @@ const CUSTOM_APP_WORLD_ACTIVATIONS_KEY = "ai_phone_custom_app_world_activations_
 const CUSTOM_APP_SUGGESTIONS_KEY = "ai_phone_custom_app_suggestions_v1";
 
 export const CUSTOM_APP_HOST_STATE_UPDATED_EVENT = "ai-phone-custom-app-host-state-updated";
+/** 自定义 APP 正在后台等待的生图任务数变化。桌面据此暂缓卸载 iframe。 */
+export const CUSTOM_APP_IMAGE_JOB_EVENT = "ai-phone-custom-app-image-job";
+const _customAppImageJobs = new Map<string, number>();
+export function getCustomAppActiveImageJobs(appId: string): number {
+  return _customAppImageJobs.get(appId) ?? 0;
+}
+function updateCustomAppImageJob(appId: string, delta: number): void {
+  const next = Math.max(0, (_customAppImageJobs.get(appId) ?? 0) + delta);
+  if (next > 0) _customAppImageJobs.set(appId, next);
+  else _customAppImageJobs.delete(appId);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(CUSTOM_APP_IMAGE_JOB_EVENT, { detail: { appId, count: next } }));
+  }
+}
 
 registerKvMigration(CUSTOM_APP_NOTIFICATIONS_KEY);
 registerKvMigration(CUSTOM_APP_BADGES_KEY);
@@ -201,6 +219,8 @@ const HOST_ACTION_PERMISSIONS: Record<string, CustomAppPermission[]> = {
   "device.admin.status": ["device.assist"],
   "device.admin.request": ["device.assist"],
   "device.checkin.request": ["device.assist"],
+  "device.checkin.schedule": ["device.assist"],
+  "device.checkin.cancel": ["device.assist"],
   "device.overlay.status": ["device.assist"],
   "device.overlay.request": ["device.assist"],
   "device.lock.pendingApply": ["device.assist"],
@@ -1401,24 +1421,30 @@ export async function generateCustomAppImage(app: InstalledCustomApp, record: Re
   const characterId = cleanText(record.characterId, 160) || undefined;
   const useReferenceImage = record.useReferenceImage === true;
   const timeoutMs = optionalCustomAppTimeoutMs(record.timeoutMs);
-  const result = await withOptionalCustomAppTimeout(timeoutMs, "ai.generateImage", signal => (
-    generateImageFromConfiguredApi({
-      description,
-      characterId,
-      appId: `custom_app:${app.id}`,
-      useReferenceImage,
-      signal,
-    })
-  ));
-  if (!result) throw new Error("生图功能未配置或未启用，请先在小手机设置里配置生图 API。");
-  return {
-    ok: true,
-    dataUrl: result.dataUrl,
-    mimeType: result.mimeType,
-    prompt: result.prompt,
-    revisedPrompt: result.revisedPrompt,
-    usedReferenceImage: result.usedReferenceImage,
-  };
+  updateCustomAppImageJob(app.id, 1);
+  try {
+    const result = await withOptionalCustomAppTimeout(timeoutMs, "ai.generateImage", signal => (
+      generateImageFromConfiguredApi({
+        description,
+        characterId,
+        appId: `custom_app:${app.id}`,
+        useReferenceImage,
+        signal,
+      })
+    ));
+    if (!result) throw new Error("生图功能未配置或未启用，请先在小手机设置里配置生图 API。");
+    return {
+      ok: true,
+      dataUrl: result.dataUrl,
+      mimeType: result.mimeType,
+      prompt: result.prompt,
+      revisedPrompt: result.revisedPrompt,
+      usedReferenceImage: result.usedReferenceImage,
+    };
+  } finally {
+    // 结果先交回 iframe；给它几秒把图片写进自己的数据库，再允许桌面卸载后台 APP。
+    window.setTimeout(() => updateCustomAppImageJob(app.id, -1), 5000);
+  }
 }
 
 export function readCustomAppCharacterState(record: Record<string, unknown>): Record<string, unknown> {
@@ -2502,14 +2528,93 @@ export function runCustomAppDeviceAdminRequest(_app: InstalledCustomApp, _record
   return result.ok ? { ok: true } : { ok: false, reason: result.reason || "无法跳转系统页" };
 }
 
-/** 查岗 v2：壳侧截当前屏（复用查岗授权链，结果经 checkIn 事件回推）。 */
-export function runCustomAppDeviceCheckinRequest(_app: InstalledCustomApp, record: Record<string, unknown>): Record<string, unknown> {
-  const result = shellRequestFocusCheckIn(
-    cleanText(record.characterId, 120),
-    cleanText(record.name, 80) || "TA",
-    typeof record.avatar === "string" ? record.avatar : "",
-  );
-  return result.ok ? { ok: true } : { ok: false, reason: result.reason || "当前环境不支持壳侧查岗" };
+/** 查岗 v2：壳侧截当前屏（复用查岗授权链，结果经 checkIn 事件回推）。
+ *  自定义 APP 发起的查岗也要把图送进聊天室，否则用户同意给看后没人接。
+ *  返回的 base64 不回传给 APP，避免 APP 自己保存/上传屏幕内容。 */
+export async function runCustomAppDeviceCheckinRequest(_app: InstalledCustomApp, record: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const characterId = cleanText(record.characterId, 120);
+  if (!characterId) return { ok: false, reason: "查岗缺少 characterId" };
+  const name = cleanText(record.name, 80) || "TA";
+  const avatar = typeof record.avatar === "string" ? record.avatar : "";
+  let outcome: Awaited<ReturnType<typeof requestCheckIn>>;
+  try {
+    outcome = await requestCheckIn(characterId, name, avatar);
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : "查岗请求失败" };
+  }
+  const sessionId = loadChatSessions()
+    .filter(session => !session.isGroup && session.contactId === characterId)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.id ?? "";
+  if (outcome.accepted && outcome.base64) {
+    try {
+      if (outcome.reply && sessionId) {
+        pushChatMessage({ sessionId, role: "user", content: outcome.reply, status: "sent" });
+      }
+      if (sessionId) {
+        pushChatMessage({
+          sessionId,
+          role: "system",
+          content: `[${name}想看看你现在在做什么，你把屏幕给它看了]`,
+          status: "sent",
+        });
+        const stored = await storeMediaBase64(outcome.base64, "image/png");
+        pushChatMessage({
+          sessionId,
+          role: "user",
+          content: "",
+          mediaType: "image",
+          mediaUrl: stored.ref,
+          mediaData: { label: "通行证查岗自证" },
+          status: "sent",
+        });
+        void requestBackgroundChatReply(sessionId, {
+          appId: "checkin",
+          appTags: ["checkin", "screenshot", "accepted"],
+        }).catch(() => undefined);
+      }
+      return { ok: true, accepted: true };
+    } catch {
+      return { ok: false, reason: "图片没能保存，这次没发出去" };
+    }
+  }
+  if (outcome.reply && sessionId) {
+    pushChatMessage({ sessionId, role: "user", content: outcome.reply, status: "sent" });
+  }
+  if (sessionId) {
+    const reason = "reason" in outcome ? outcome.reason : "unknown";
+    const declined = reason === "user_rejected";
+    const timedOut = reason === "timeout";
+    const note = declined
+      ? `[${name}想看看你现在在做什么，你没有给它看${outcome.reply ? "，但回了一句话" : ""}]`
+      : timedOut
+        ? `[${name}想看看你现在在做什么，你没有回应]`
+        : `[${name}想看看你现在的屏幕，但没能截到（${reason}）]`;
+    pushChatMessage({ sessionId, role: "system", content: note, status: "sent" });
+    const guidanceKind = declined ? "declined" : timedOut ? "timeout" : "failed";
+    void requestBackgroundChatReply(sessionId, {
+      appId: "checkin",
+      appTags: ["checkin", "screenshot", guidanceKind],
+    }).catch(() => undefined);
+  }
+  return { ok: true, accepted: false, reason: "reason" in outcome ? outcome.reason : "unknown" };
+}
+
+/** 原生定时查岗：排程（进程被杀也弹）。 */
+export function runCustomAppDeviceFocusPassCheckInSchedule(_app: InstalledCustomApp, record: Record<string, unknown>): Record<string, unknown> {
+  const result = shellScheduleFocusPassCheckIn({
+    passId: cleanText(record.passId, 120),
+    app: cleanText(record.app, 120),
+    characterId: cleanText(record.characterId, 120),
+    name: cleanText(record.name, 80) || "TA",
+    avatar: typeof record.avatar === "string" ? record.avatar : "",
+    dueAt: Number(record.dueAt) || 0,
+  });
+  return result.ok ? { ok: true } : { ok: false, reason: result.reason || "原生查岗闹钟排程失败" };
+}
+
+export function runCustomAppDeviceFocusPassCheckInCancel(_app: InstalledCustomApp, record: Record<string, unknown>): Record<string, unknown> {
+  const result = shellCancelFocusPassCheckIn(cleanText(record.passId, 120));
+  return result.ok ? { ok: true } : { ok: false, reason: result.reason || "取消原生查岗闹钟失败" };
 }
 
 /** 拦截页留下的待处理申请（页面轮询取走 → 打开申请单）。 */
@@ -2584,6 +2689,10 @@ export async function executeCustomAppHostAction(
       return runCustomAppDeviceAdminRequest(app, payload);
     case "device.checkin.request":
       return runCustomAppDeviceCheckinRequest(app, payload);
+    case "device.checkin.schedule":
+      return runCustomAppDeviceFocusPassCheckInSchedule(app, payload);
+    case "device.checkin.cancel":
+      return runCustomAppDeviceFocusPassCheckInCancel(app, payload);
     case "device.lock.pendingApply":
       return runCustomAppDeviceLockPendingApply(app, payload);
     case "device.overlay.status":
@@ -2641,7 +2750,8 @@ function customAppHostActionNeedsChatStorage(actionType: string): boolean {
     || actionType === "chat.message"
     || actionType === "chat.sendMessage"
     || actionType === "chat.reply"
-    || actionType === "chat.contact";
+    || actionType === "chat.contact"
+    || actionType === "device.checkin.request";
 }
 
 function customAppHostActionNeedsSettingsStorage(actionType: string): boolean {

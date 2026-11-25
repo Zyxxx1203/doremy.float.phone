@@ -6,6 +6,7 @@ import { Archive, ArrowLeft, AudioLines, Check, File, Image as ImageIcon, Loader
 import { deleteMediaRef, listMediaCacheSummaries, loadMediaBlob, loadMediaObjectUrl, type MediaCacheSummary } from "@/lib/media-cache-storage";
 import { loadChatSessions, loadChatMessages } from "@/lib/chat-storage";
 import { loadPhotoWallState } from "@/lib/photo-wall-storage";
+import { downloadFile } from "@/lib/download-utils";
 
 type ArchiveItem = MediaCacheSummary & { ref: string; usedBy: string[]; objectUrl?: string };
 type ArchiveMeta = { label?: string; note?: string; favorite?: boolean };
@@ -56,6 +57,20 @@ type Props = { onClose: () => void; onNotice?: (message: string) => void };
 const refFor = (id: string) => `media-store://${id}`;
 const bytesLabel = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : bytes < 1024 ** 3 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${(bytes / 1024 ** 3).toFixed(2)} GB`;
 const dateLabel = (value: number) => new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+function mediaExtension(mimeType: string): string {
+  const normalized = (mimeType || "").split(";")[0].trim().toLowerCase();
+  if (normalized === "audio/mpeg") return "mp3";
+  const subtype = normalized.split("/")[1] || "";
+  if (subtype === "jpeg") return "jpg";
+  if (subtype === "plain") return "txt";
+  return subtype || "bin";
+}
+function mediaDestination(mimeType: string): "image" | "audio" | "file" {
+  const normalized = (mimeType || "").toLowerCase();
+  if (normalized.startsWith("image/")) return "image";
+  if (normalized.startsWith("audio/")) return "audio";
+  return "file";
+}
 
 export function ArchiveRoomApp({ onClose, onNotice }: Props) {
   const [items, setItems] = useState<ArchiveItem[]>([]);
@@ -243,6 +258,26 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
     const next = { ...meta, [id]: { ...(meta[id] ?? {}), ...patch } };
     setMeta(next); saveArchiveMeta(next);
   };
+  const downloadSelected = async () => {
+    if (!selected.length) return;
+    const targets = items.filter(entry => selected.includes(entry.id));
+    let downloaded = 0;
+    try {
+      for (const item of targets) {
+        const stored = await loadMediaBlob(item.ref);
+        if (!stored) continue;
+        const extension = mediaExtension(stored.mimeType);
+        const destination = mediaDestination(stored.mimeType);
+        const safeName = (meta[item.id]?.label?.trim() || item.id).replace(/[\\/:*?"<>|]+/g, "-");
+        await downloadFile(stored.blob, `${safeName}.${extension}`, { destination });
+        downloaded += 1;
+        if (targets.length > 1) await new Promise(resolve => window.setTimeout(resolve, 300));
+      }
+      if (!downloaded) onNotice?.("所选项目没有可下载的文件。");
+    } catch (error) {
+      onNotice?.("下载失败：" + (error instanceof Error ? error.message : String(error)));
+    }
+  };
   const exportSelected = async () => {
     if (!selected.length) return;
     try {
@@ -251,18 +286,12 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
       for (const item of items.filter(entry => selected.includes(entry.id))) {
         const stored = await loadMediaBlob(item.ref);
         if (!stored) continue;
-        const extension = stored.mimeType.split("/")[1]?.split(";")[0]?.replace("jpeg", "jpg") || "bin";
-        zip.file(`${item.category}/${item.id}.${extension}`, stored.blob);
+        zip.file(`${item.category}/${item.id}.${mediaExtension(stored.mimeType)}`, stored.blob);
         exported += 1;
       }
       if (!exported) { onNotice?.("所选项目没有可导出的文件。"); return; }
       const blob = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `档案室导出-${new Date().toISOString().slice(0, 10)}.zip`;
-      anchor.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+      await downloadFile(blob, `档案室导出-${new Date().toISOString().slice(0, 10)}.zip`, { destination: "file" });
       onNotice?.(`已导出 ${exported} 个文件。`);
     } catch (error) {
       onNotice?.("导出失败：" + (error instanceof Error ? error.message : String(error)));
@@ -318,7 +347,17 @@ export function ArchiveRoomApp({ onClose, onNotice }: Props) {
       <div className="mt-3 flex items-center justify-between gap-2 text-xs text-stone-500"><span>{visibleItems.length} 个项目{selected.length? ` · 已选 ${selected.length}`:""}</span><div className="flex items-center gap-3"><button type="button" onClick={()=>{setSelected(visibleItems.filter(item=>meta[item.id]?.favorite!==true).map(item=>item.id));setConfirmDelete(false);}} className="font-medium text-stone-700">选中未收藏</button><button onClick={()=>{setSelected(selected.length===visibleItems.length?[]:visibleItems.map(x=>x.id));setConfirmDelete(false);}} className="font-medium text-stone-700">{selected.length===visibleItems.length&&visibleItems.length?"取消全选":"选择当前列表"}</button></div></div>
       <div className="mt-2 space-y-2 pb-24">{loading?<div className="py-12 text-center text-sm text-stone-500"><LoaderCircle className="mx-auto mb-2 animate-spin"/>正在扫描媒体索引…</div>:visibleItems.length===0?<div className="rounded-2xl border border-dashed border-stone-300 bg-white/50 px-4 py-12 text-center text-sm text-stone-500">{tab==="duplicates"?"没有重复项，或尚未完成扫描。":"当前范围没有找到媒体文件。"}</div>:visibleItems.map(item=><MediaRow key={item.id} item={item} checked={selected.includes(item.id)} onToggle={()=>toggle(item.id)} meta={meta[item.id] ?? {}} onPatch={patch=>patchMeta(item.id,patch)} recommended={recommendedDeleteIds.has(item.id)} exactDuplicate={exactDuplicateIds.has(item.id)} visualSimilar={visualDuplicateIds.has(item.id)} duplicateGroup={tab === "duplicates" ? duplicateGroupLabelById.get(item.id) : undefined}/>)}</div>
     </main>
-    {selected.length>0&&<footer className="flex shrink-0 items-center gap-3 border-t border-stone-200 bg-white/95 px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))]"><div className="min-w-0 flex-1 text-sm"><div className="font-semibold">已选择 {selected.length} 项</div><div className="text-xs text-stone-500">约 {bytesLabel(items.filter(x=>selected.includes(x.id)).reduce((n,x)=>n+x.bytes,0))}</div></div><button onClick={()=>void exportSelected()} className="flex items-center gap-2 rounded-xl border border-stone-300 px-3 py-2.5 text-sm font-medium text-stone-700">导出 ZIP</button><button onClick={()=>{setSelected([]);setConfirmDelete(false);}} className="rounded-xl px-3 py-2 text-sm text-stone-600">取消</button><button onClick={()=>void deleteSelected()} className="flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-medium text-white"><Trash2 size={16}/>{confirmDelete?"确认删除":"删除所选"}</button></footer>}
+    {selected.length>0&&<footer className="shrink-0 border-t border-stone-200 bg-white/95 px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 text-sm"><div className="font-semibold">已选择 {selected.length} 项</div><div className="text-xs text-stone-500">约 {bytesLabel(items.filter(x=>selected.includes(x.id)).reduce((n,x)=>n+x.bytes,0))}</div></div>
+        <button onClick={()=>{setSelected([]);setConfirmDelete(false);}} className="shrink-0 rounded-xl px-3 py-2 text-sm text-stone-600">取消</button>
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <button onClick={()=>void downloadSelected()} className="flex-1 rounded-xl border border-stone-300 px-3 py-2.5 text-sm font-medium text-stone-700">{selected.length===1?"下载这张":"逐张下载"}</button>
+        <button onClick={()=>void exportSelected()} className="flex-1 rounded-xl border border-stone-300 px-3 py-2.5 text-sm font-medium text-stone-700">导出 ZIP</button>
+        <button onClick={()=>void deleteSelected()} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-rose-600 px-3 py-2.5 text-sm font-medium text-white"><Trash2 size={16}/>{confirmDelete?"确认删除":"删除所选"}</button>
+      </div>
+    </footer>}
   </div>;
 }
 

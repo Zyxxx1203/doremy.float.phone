@@ -11,18 +11,18 @@
 | 领域 | 主要新增 | 关键入口 | 仍需外部条件 |
 |---|---|---|---|
 | 生活系统 | 独立运行时、地点库、场景/聊天室、七日日程、邀约/同行、观察、诊断、重置、主动消息、角色生活工具 | `components/life/*`、`lib/life/*`、`app/life/*`、`supabase/functions/life-scheduler` | 个人 Supabase、Cron、推送订阅、设备后台权限 |
-| 角色陪伴专注 | 内置专注 App、到点唤醒、系统闹钟、壁纸闸门、帮助中心 | `custom-apps/focus-companion/*`、`lib/builtin-apps/focus-companion-*` | 内置版与市场版共存、通知/闹钟权限 |
-| 看守锁 | L1 提醒锁、L2 看守锁、L3 承诺死锁、申请制白名单、角色审批、通行证多选、全屏覆盖页、随机查岗 | `FocusLockService.kt`、`BlockingActivity.kt`、`FocusDeviceAdminReceiver.kt`、`components/phone-*` | 使用情况访问、通知使用权、管理员激活、厂商后台策略 |
-| Android 后台 | 原生闹钟调度、开机恢复、推送服务看门狗、电池优化入口 | `BackgroundEnhancementManager.kt`、`PushWatchdogReceiver`、`PushService.kt` | 厂商自启动/电池白名单 |
+| 角色陪伴专注 | 内置专注 App、到点唤醒、系统闹钟、壁纸闸门、帮助中心、信任分/查岗判定 | `custom-apps/focus-companion/*`、`lib/builtin-apps/focus-companion-*` | 内置版与市场版共存、通知/闹钟/悬浮窗权限 |
+| 看守锁 | L1 提醒锁、L2 看守锁、L3 承诺死锁、申请制白名单、角色审批、通行证多选、原生定时查岗、全屏覆盖页 | `FocusLockService.kt`、`BlockingActivity.kt`、`FocusPassCheckInScheduler.kt`、`components/phone-*` | 使用情况访问、通知使用权、管理员激活、厂商后台策略 |
+| Android 后台 | 原生闹钟调度、通行证查岗定时、开机恢复、推送服务看门狗、电池优化入口 | `BackgroundEnhancementManager.kt`、`FocusPassCheckInScheduler.kt`、`PushWatchdogReceiver`、`PushService.kt` | 厂商自启动/电池白名单 |
 | 推送与云 | 推送任务校验、生活任务链、云端熔断、回传箱、通知栏回复、云端投递回执 | `supabase/functions/push-*`、`lib/push-*.ts`、`lib/cloud-circuit-breaker.ts` | 个人 Supabase Schema/Secrets/Cron |
-| 照片墙与媒体 | 无限画布、模板、贴纸/涂鸦、共同创作记录、PNG 导出、媒体档案室 | `components/photo-wall-app.tsx`、`lib/photo-wall-*.ts`、`components/archive-room-app.tsx` | 大图性能、WebView 手势/DPR |
+| 照片墙与媒体 | 无限画布、模板、贴纸/涂鸦、共同创作记录、PNG 导出、媒体档案室单文件下载 | `components/photo-wall-app.tsx`、`lib/photo-wall-*.ts`、`components/archive-room-app.tsx`、`lib/download-utils.ts` | 大图性能、WebView 手势/DPR、相册/音乐库 MediaStore |
 | 一起看与视频 | 陪看、时间点讨论、解析 API、同源缓存、关键帧/视频理解、本地解析/转写工具 | `components/watch-together-app.tsx`、`lib/watch-resolver.ts`、`tools/video-*` | 平台登录/风控/DRM、外部工具部署 |
-| 内置应用 | 备忘录档案室、心意手作、通话统计、角色陪伴专注 | `components/memo-archive-app.tsx`、`lib/builtin-apps/*` | 应用数据迁移、角色/API 配置 |
+| 内置应用与工坊 | 备忘录档案室、心意手作、通话统计、角色陪伴专注、工坊 APK 开发指南 | `components/memo-archive-app.tsx`、`lib/builtin-apps/*`、`lib/apk-app-creator-guide.ts`、`lib/qa-*.ts` | 应用数据迁移、角色/API 配置、工坊模型质量 |
 | 聊天与记忆 | 统一短期记忆、长期记忆来源开关、回合协调、群聊修复、离线回复、角色 ID 迁移 | `lib/turn-coordinator.ts`、`lib/short-term-assembler.ts`、`lib/character-id-*` | 模型质量、长上下文成本 |
 | 预设与工具 | 预设补全/同步、内置条目去重、生活工具、主动触发式工具描述 | `lib/builtin-preset.ts`、`lib/preset-sync.ts`、`lib/life/life-tools.ts` | 用户预设是否已补全、云函数是否重部署 |
 | 现实桥与诊断 | 原生现实桥、云端优先投递/回执、离线回复库、设备/运行/性能诊断 | `NativeRealityBridge.kt`、`lib/reality-bridge/*`、`components/settings/*diagnostics*` | 权限、APK 版本、个人云 |
 | 桌面与小组件 | 手机小组件多实例、专注倒计时组件、样式编辑、大屏铺满、主题 | `lib/widget/*`、`components/widgets/*`、`FocusWidgetProvider.kt` | 启动器差异、真机渲染 |
-| 工程与文档 | 9 个新工作流、24 个测试脚本、角色 ID 契约、部署/隐私/门禁文档 | `.github/workflows/*`、`scripts/test-*.mjs`、`docs/*` | 测试通过不等于端到端验收 |
+| 工程与文档 | 9 个新工作流、27 项专注逻辑断言、角色 ID 契约、APK 开发指南、部署/隐私/门禁文档 | `.github/workflows/*`、`scripts/test-*.mjs`、`docs/*`、`lib/apk-app-creator-guide.ts` | 测试通过不等于端到端验收 |
 
 ## 2. 生活系统
 
@@ -62,13 +62,16 @@
 
 ### 新增
 
-- 内置「角色陪伴专注」App：专注/睡眠计时、角色陪伴、预约、壁纸、帮助中心、数据迁移；内置版与市场版按 ID 去重共存。内置 manifest 声明 32 项权限、5 个角色工具、2 条富媒体指令（陪睡/约专注）和后台事件。
+- 内置「角色陪伴专注」App：专注/睡眠计时、角色陪伴、预约、壁纸、帮助中心、数据迁移；内置版与市场版按 ID 去重共存。内置 manifest 声明 34 项权限、7 个角色工具（含 `focus-unlock` / `pass-verdict`）、2 条富媒体指令（陪睡/约专注）和后台事件。
 - 专注 App 的系统闹钟兜底、到点唤醒、宿主任务通知、`device.alarm.set` 等新权限。
 - L1 提醒锁：开勿扰/调亮度/通知提醒，会话结束恢复。
 - L2 看守锁：UsageStats 轮询 + 覆盖页；L3 承诺死锁：管理员激活 + 更强的阻断。
 - 申请制白名单与通行证：多个应用一次申请、角色审批、批复卡、到期回收、信任分、随机查岗；查岗自证改为直接截取当前屏幕，不再让用户从相册选图。
+- 通行证信任分：`wlTrust` 范围 -100~100，查岗通过 +2、违规/超时 -10、正常到期 +5；通行证面板显示当前分数和最近 6 条加减记录（`wlTrustLog`）。
+- 通行证查岗改为原生定时：`FocusPassCheckInScheduler` + `FocusPassCheckInAlarmReceiver` 在到点直接拉起 `CheckInService` 查岗浮层，不要求专注 App 在前台；结果落盘后由 `flushPendingFocusPassCheckIn` 送进聊天室，网页被回收也能在下次启动补发。
+- 角色结构化判卷：新增 `pass-verdict` 工具，角色看完截图后传 `pass` 或 `violation`；违规立即收回通行证、扣信任分并重推看守锁白名单。
 - 全屏覆盖页、锁机三挡设置卡、专注倒计时桌面组件、时钟免疫（改系统时间不能绕过剩余时长）。
-- 专注倒计时页新增「申请通行证 / 请 TA 解除」；没有直接解锁按钮，用户解不开时只能向角色发请求，由角色用 `focus-unlock` 工具决定是否解除。锁机设置页也提供同样的请求入口。
+- 专注倒计时页和锁机设置页的「请 TA 解除 / 请角色解除看守锁」按钮已移除；用户侧不再发伪造的用户消息，只保留角色主动调用的 `focus-unlock` 工具。
 - 新增角色工具 `focus-unlock`：用户明确要求或被锁到无法用机时，角色可结束当前专注并解除看守锁/勿扰，历史记录保留。
 
 ### 修复
@@ -80,13 +83,18 @@
 - 修复 L3 承诺签完后 `assistForSession` 被写成布尔值、导致看守锁启动和离开自动开罚被跳过；已归一化为等级字符串并兼容旧数据。
 - 修复 L1 离开提醒读取旧 `focusAssist` 字段而不触发系统通知；现在按本场实际锁级判断。
 - 修复通行证 `package` / `pkg` 字段不一致导致“批了也不放行”，以及手动删除白名单后不即时重推的问题。
-- 修复白名单更新时重置看守锁计时、通行证批复后锁仍不收、覆盖页剩余时间不走的问题；现在 `lockUpdate` 只换名单/截止时间并撤掉已放行的覆盖页。
+- 修复通行证持久化：宿主 `db.list` 返回扁平记录，旧代码按 `{ data }` 读取，导致重载后通行证/会话/惩罚/奖励变成空对象；现在 `dbRow()` 同时兼容扁平与嵌套两种形状，并对缺包名的 active 通行证按应用名回查补写。
+- 修复 L3 空白名单时直接跳过 `lockStart`，导致“选了 L3 却没有锁机”；空名单现在按“拦截所有其他应用”启动看守锁，并写入对应系统消息。
+- 修复白名单更新时重置看守锁计时、通行证批复后锁仍不收、覆盖页剩余时间不走的问题；现在 `lockUpdate` 只换名单/截止时间并撤掉已放行的覆盖页；覆盖页增加每秒倒计时。
 - 修复专注结束进入 review/done 时先 `stopTicking`、导致 tick 里的 `lockStop` 永远不执行的问题；结束路径现在显式释放看守锁和勿扰。
+- 修复通行证查岗必须打开专注 App 才能截屏的问题：APK 改走原生定时查岗浮层；网页/旧壳保留应用内层。已验证 `kill -9` 进程后闹钟仍能重新拉起并弹出查岗。
 - 专注陪伴的逐句角色消息默认不再同步到线上聊天室，避免刷屏；用户仍可在设置里手动打开。
 
 ### 边界
 
 - 需要用户授予使用情况访问、通知、悬浮窗/覆盖、电池优化或设备管理员；不同 ROM 行为不同。L2 缺悬浮窗权限时只能弹通知；L3 的设备管理员策略仍需实际激活和真机确认。
+- 原生定时查岗需要无障碍截屏和悬浮窗权限；`force-stop` 会让 Android 清掉闹钟，不能作为“杀进程仍可查岗”的测试方式（应使用划掉/内存回收/`kill -9`）。
+- 信任分和通行证判定依赖角色实际调用 `pass-verdict`；角色未调用时不会自动加分，超时路径仍会按既有规则收回通行证并扣分。
 - 真机验收只覆盖已记录机型；不能据此宣称所有品牌都能稳定拦截。
 
 ## 4. Android 壳、后台与通知
@@ -97,6 +105,8 @@
 - `PushService`：Realtime 长连接、系统通知、通知栏回复、来电通知、头像大图标、生活现场专用通知。
 - `PushWatchdogReceiver`：每 15 分钟检查推送服务存活并尝试拉起；`PushService` 缓存 Supabase 连接参数，站点短暂不可达时续连。
 - `AmbientLightMonitorService`、`NativeRealityBridge`、`PhoneWidgetConfigActivity`、专注组件 Provider 等原生入口。
+- `FocusPassCheckInScheduler` + `FocusPassCheckInAlarmReceiver`：专注通行证查岗的原生精确/非精确闹钟；到点用 `startForegroundService` 拉起 `CheckInService`，结果落 `focus_pass_checkin_prefs` 等网页消费；开机恢复。
+- `CheckInService` 新增 `focusPass` 来源：截图/拒绝/超时结果携带 `passId/app`，进程被回收也能保留；网页通过 `consumePendingFocusPassCheckIn` 补收。
 - 大屏/平板铺满、壳环境全屏提示修复、PWA 显示模式与安全区适配。
 
 ### 修复
@@ -104,11 +114,12 @@
 - 修复 Android 14 后台启动前台服务/覆盖页限制、通知回执误报、离线兜底与云端重复通知。
 - 修复 WebView 在壳内反复请求 DOM 全屏导致的全屏失败提示。
 - 修复推送服务被清后台后只能依赖 `START_STICKY` 的问题（看门狗 + 配置缓存）。
+- 修复原生查岗只在网页发起时才能弹的问题；新增专注通行证原生闹钟，进程被 `kill -9` 后仍能重新拉起并弹浮层（真机已验证 pid 从 3101 变为 18886 后浮层出现）。
 
 ### 边界
 
-- 强制停止、关闭自启动、断网、关闭通知权限期间无法保证送达；看门狗不能保证永不回收。
-- `BackgroundEnhancementManager` 是一次性非精确闹钟 + 开机恢复，不是常驻服务；`smart` 模式不注册原生闹钟，只靠网页前后台调度。
+- 强制停止、关闭自启动、断网、关闭通知权限期间无法保证送达；看门狗不能保证永不回收。`force-stop` 会由 Android 清掉闹钟，这不是原生定时器能绕过的场景；验证“杀进程后仍弹”应使用划掉/内存回收/`kill -9`，而不是强制停止。
+- `BackgroundEnhancementManager` 是一次性非精确闹钟 + 开机恢复，不是常驻服务；`smart` 模式不注册原生闹钟，只靠网页前后台调度。专注通行证查岗使用独立的 `FocusPassCheckInScheduler`，优先精确闹钟，失败时退非精确。
 - Kotlin/Manifest 改动必须重新构建 APK，网页部署不会更新原生部分。
 
 ## 5. 推送、通知与云端
@@ -143,7 +154,9 @@
 - 「从聊天收藏照片」补上 AI 生成图字段 `imageGenerationMediaRef`、多图集合的 `imageRefs` 与 `asset://` 引用；多张照片同时发送时现在会逐张出现在选择列表，不再显示「没有找到可收藏的聊天图片」。
 - 生图链路会把本次出镜人物名单写进提示词，要求使用准确名字而不是“女人/男孩/女孩”等泛称；多人参考图按 `participantIds` 逐人加载，并在设置页显示已勾选人数与有参考图人数，支持一键全选。
 - 全局出镜名单合并：即使调用方只传了主角色，也会把描述里点名的其他角色、`characterIds` 和用户本人并进参考图名单，不再因为显式 `participantIds` 而漏掉其他角色；生图身份命名规则改为全局注入，要求用户和角色都写准确名字。
-- 媒体档案室：读取 `media-store://` 缓存，扫描聊天和照片墙引用，按图片/音频/视频/文件筛选，支持收藏、备注、ZIP 导出；重复扫描区分内容哈希完全一致与视觉相似，只对未收藏、未被引用的完全重复项给出删除建议。
+- 生图画风锁定参考图：照片墙默认提示词删除「真实相机拍摄」「不是插画」和 `{characterPersona}` 角色设定注入；全局身份规则要求人物形象与整体画风都跟随参考图，二次元参考图不得转成三次元写实。真机已用 6 张参考图生成二次元合照验证。
+- 媒体档案室：读取 `media-store://` 缓存，扫描聊天和照片墙引用，按图片/音频/视频/文件筛选，支持收藏、备注、单张/逐张下载和 ZIP 导出；重复扫描区分内容哈希完全一致与视觉相似，只对未收藏、未被引用的完全重复项给出删除建议。
+- 档案室单文件下载按媒体类型落盘：图片进系统相册（`Pictures/小手机`），语音统一为 `.mp3` 进音乐库（`Music/小手机`），其他文件和 ZIP 进系统下载目录；走 APK 原生 `saveBase64Media`/分块写入，不再依赖 WebView 的 blob 下载。
 - 一起看：竖屏陪看、时间点讨论、观看记录、角色观后感/纪念卡、同源缓存播放；缓存按最终 URL 的 sha1 命中，支持 Range、LRU 容量上限、续播与删除。
 - 视频解析 API 与短链展开；可选本地解析服务、转写服务、Cloudflare 转写 Worker；关键帧分析和 Gemini 视频理解。
 - 日记全文阅读/导出、阅读器 PDF、群聊历史搜索等 Web 应用改进。
@@ -151,6 +164,8 @@
 ### 修复
 
 - 修复照片墙缩放/旋转后的涂鸦落点、WebView 变换坐标、贴纸尺寸、记录层顺序、大画布导出。
+- 修复照片墙生图把角色 700 字人设塞进提示词、并用「真实相机/低饱和胶片」覆盖参考图画风的问题；旧默认提示词自动升级，用户自定义过的提示词保留。
+- 修复档案室单文件下载点「图片/ZIP」却没有落盘：网页 blob 下载在 WebView 不可靠，现已改走原生保存；空文件会明确提示「导出内容为空」。
 - 照片墙多图共创记录署名改为实际上传者，不再统一写成角色。
 - 修复一起看缓存被旧请求覆盖、观看计时/续播、平台解析回退。
 
@@ -167,6 +182,8 @@
 - **心意手作**：内置化、旧数据迁移、工具接管、内容生成提示词可编辑；内置 6 个工具（制作/进度/互动/授予/许愿/奖章查询）与聊天指令；奖章柜圆形头像改用真实用户/角色头像，替换 emoji。
 - **通话统计**：`call.stats` 2.1.0 内置 App 接入，数据来自本机聊天记录，提供时长图表、日历、逐通回看、语音复听与 AI 通话总结。
 - **角色陪伴专注**：见第 3 节。
+- **工坊（QA App）**：新增 APK 环境开发指南 `lib/apk-app-creator-guide.ts`，与通用 SDK 指南分离；「创作指南」新增 `type=apk`，工坊 system prompt 按 `FloatShell/` UA 注入「先读 app、再读 apk」的环境提示。真机已验证工坊读取两份指南后生成并安装「截屏自检」APP，manifest 只保留 `device.screenshot`，代码具备能力探测和网页版降级。
+- **工坊 UI**：聊天记录搜索面板改为定位在顶栏下方 8px，避免顶到状态栏；结果列表使用 `grid-auto-rows: max-content` + `min-height`，修复结果行被压成 14px、文字叠在一起。
 - **内置应用注册表**：按 `id`、`manifest.id`、`identifier`、名称和 `app_<id>_` 前缀去重，避免市场版和内置版重复；桌面壳新增照片墙、一起看、备忘录、档案室、通话统计、手作、专注七个前台分支。
 
 边界：内置应用的数据迁移、通知和工具调用需要实际 APK/浏览器环境验证；模型生成质量受预设和供应商影响。
@@ -213,11 +230,15 @@
 - 新增工作流：聊天消息链、生活系统、全局兼容、组件输出、日记、视频解析、自定义应用媒体、诊断 Web 检查、Android APK。
 - 新增测试脚本 24 个，覆盖生活运行时/地点导入/场景回合/通知队列/云调度、照片墙、角色 ID、备忘录、原生工具名、小组件和回合协调。
 - 删除/替换：旧的 `CheckInAlarmScheduler.kt` 被后台增强调度器替代；旧的 `web-check.yml` 被诊断/兼容工作流替代。
-- 文档：角色 ID 契约、云端生活日程、隐私与权限、发布门禁、开发验证清单、专注迁移/移植日志、自定义 App 转内置指南。
+- 新增 `FocusPassCheckInScheduler.kt` / `FocusPassCheckInAlarmReceiver.kt`；专注通行证查岗不再依赖网页定时器。
+- 新增 `lib/apk-app-creator-guide.ts` 与工坊 `type=apk`；`device.screenshot` 补进自定义 APP 权限白名单，避免 manifest 声明后被静默吞掉。
+- 专注 App `db.list` 兼容扁平/嵌套两种记录形状，修复通行证、会话、惩罚、奖励重载后变空对象。
+- 文档：角色 ID 契约、云端生活日程、隐私与权限、发布门禁、开发验证清单、专注迁移/移植日志、自定义 App 转内置指南、APK 开发指南。
 
 ## 12. 验证状态与结论
 
-- 当前仓库的 `npm run lint` 为 0 error / 684 warnings；`TZ=UTC npm run test:life` 14 套通过；`npm run build` 成功；`node scripts/test-focus-companion-logic.mjs` 为 PASS 25 / FAIL 0；Android debug APK 可构建。
-- 本次全量审计额外修复了两处会直接让功能“有入口但不生效”的问题：云端快照固定 `proactiveEnabled:false`，以及专注 L3 的 `assistForSession` 被写成布尔值。两处均补了代码变更；L3/锁机仍需真机回归。
+- 当前仓库的 `npm run lint` 为 0 error / 685 warnings；`npm run build` 成功；`node scripts/test-focus-companion-logic.mjs` 为 PASS 27 / FAIL 0；Android debug APK 可构建并安装。
+- 真机已验证：L3 空白名单启动看守锁并拦截其他应用；线上聊天室让角色调用 `focus-unlock`，native `running:false`；通行证缺包名回填为 `com.deepseek.chat` 并进入 `lockedAppsFor()`；`kill -9` 进程后原生查岗闹钟仍能拉起浮层、截图落进聊天室；档案室图片进相册、语音 `.mp3` 进音乐库、ZIP 进下载目录；工坊读 `type=app` + `type=apk` 后生成并安装「截屏自检」APP，截图成功。
+- 多人生图已用 6 张参考图生成二次元合照，提示词无「真实相机/角色设定」，画风跟随参考图；但模型/供应商仍可能改变画风，需要继续用真实角色参考图验收。
 - 这些结果只证明当前代码通过对应检查；个人云部署、真实模型、通知送达、后台保活、第三方视频解析和不同厂商 ROM 仍需单独验收。
 - 本台账是“相对基线”的功能索引，不是逐行 diff，也不是发布验收报告。新增路径数量会随对照仓库和本仓库后续提交变化。

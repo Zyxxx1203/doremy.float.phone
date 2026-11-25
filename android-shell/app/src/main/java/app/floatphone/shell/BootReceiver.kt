@@ -11,6 +11,8 @@ class BootReceiver : BroadcastReceiver() {
             // Restore one-shot reminders first. Background-only intervals restart from boot;
             // powered-off time is not counted as active background time.
             runCatching { BackgroundEnhancementManager.restore(context) }
+            // 专注通行证查岗：重启后把还没到点的原生查岗闹钟重新排上。
+            runCatching { FocusPassCheckInScheduler.restore(context) }
             // Keep the existing push behavior unchanged for compatibility.
             runCatching { NativeRealityBridge.capture(context, "设备启动", "手机已重新启动") }
             runCatching { PushService.start(context) }

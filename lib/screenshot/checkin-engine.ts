@@ -29,7 +29,7 @@ import {
   shouldFireCheckIn,
   type CheckInCharacterConfig,
 } from "./checkin-config";
-import { cancelNativeCheckIn, consumePendingUserShot, hasCheckInBridge, readCheckInAppState, readCheckInCapabilities, requestCheckIn, scheduleNativeCheckIn } from "./checkin";
+import { cancelNativeCheckIn, consumePendingUserShot, consumePendingFocusPassCheckIn, hasCheckInBridge, readCheckInAppState, readCheckInCapabilities, requestCheckIn, scheduleNativeCheckIn } from "./checkin";
 import { resolveCheckInGuidance } from "./checkin-guidance";
 import { ensureShellOverlayListener, subscribeShellOverlayEvents } from "../shell-call-overlay";
 import type { CheckInOutcome } from "./types";
@@ -290,6 +290,76 @@ export async function flushPendingUserShot(): Promise<boolean> {
 }
 
 /**
+ * 处理原生定时器送回的「专注通行证查岗」结果。
+ *
+ * 原生闹钟可能在 WebView 已被回收时弹浮层；结果先落 SharedPreferences，
+ * 网页下次挂载/收到 checkIn 事件时消费。这里负责把图送进聊天室并请求角色
+ * 调用 pass-verdict 工具，通行证和信任分仍由专注 App 的 handler 更新。
+ */
+export async function flushPendingFocusPassCheckIn(): Promise<boolean> {
+  const pending = consumePendingFocusPassCheckIn();
+  if (!pending) return false;
+  const characterId = pending.characterId || "";
+  const session = loadChatSessions()
+    .filter(item => !item.isGroup && (!characterId || item.contactId === characterId))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+  if (!session) return false;
+  const name = loadCharacters().find(item => item.id === characterId)?.name?.trim() || "TA";
+  const app = pending.app || "该应用";
+  const instruction = `[白名单通行证查岗] 应用：${app}。接下来你会收到用户当前屏幕的截图。`
+    + "请判断他是在学习/查资料还是在娱乐；看完后必须调用「判定通行证查岗」工具，app 填「" + app + "」："
+    + "合规传 verdict=pass；画面违规、用户拒绝给看或超时没交传 verdict=violation。不要只口头说。";
+  try {
+    pushChatMessage({ sessionId: session.id, role: "system", content: instruction, status: "sent" });
+    if (pending.accepted && pending.base64) {
+      if (pending.reply) {
+        pushChatMessage({ sessionId: session.id, role: "user", content: pending.reply, status: "sent" });
+      }
+      pushChatMessage({
+        sessionId: session.id,
+        role: "system",
+        content: `[${name}想看看你现在在做什么，你把屏幕给它看了]`,
+        status: "sent",
+      });
+      const stored = await storeMediaBase64(pending.base64, "image/png");
+      pushChatMessage({
+        sessionId: session.id,
+        role: "user",
+        content: "",
+        mediaType: "image",
+        mediaUrl: stored.ref,
+        mediaData: { label: "通行证查岗自证" },
+        status: "sent",
+      });
+      void requestBackgroundChatReply(session.id, {
+        appId: "checkin",
+        appTags: ["checkin", "screenshot", "focus_pass", "accepted"],
+      }).catch(() => undefined);
+      return true;
+    }
+    if (pending.reply) {
+      pushChatMessage({ sessionId: session.id, role: "user", content: pending.reply, status: "sent" });
+    }
+    const declined = pending.reason === "user_rejected";
+    const timedOut = pending.reason === "timeout";
+    const note = declined
+      ? `[${name}想看看你现在在做什么，你没有给它看${pending.reply ? "，但回了一句话" : ""}]`
+      : timedOut
+        ? `[${name}想看看你现在在做什么，你没有回应]`
+        : `[${name}想看看你现在的屏幕，但没能截到（${pending.reason || "未知原因"}）]`;
+    pushChatMessage({ sessionId: session.id, role: "system", content: note, status: "sent" });
+    const guidanceKind = declined ? "declined" : timedOut ? "timeout" : "failed";
+    void requestBackgroundChatReply(session.id, {
+      appId: "checkin",
+      appTags: ["checkin", "screenshot", "focus_pass", guidanceKind],
+    }).catch(() => undefined);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 启动「用户主动截屏」的接收端：页面挂载时补发一次，之后收到 checkIn 事件再拉一次。
  *
  * 必须挂在桌面壳这种「一直在跑」的地方，而不是设置页——用户点球时
@@ -303,13 +373,15 @@ export function startUserShotBridge(): () => void {
   if (typeof window === "undefined") return () => { /* noop */ };
   if (!hasCheckInBridge()) return () => { /* noop */ };
 
-  // 挂载时补发：点球那一刻页面若已被系统回收，事件是丢的，只能靠这里捞回来
+  // 挂载时补发：点球那一刻/原生查岗结果落盘时页面若已被系统回收，只能靠这里捞回来
   void flushPendingUserShot().catch(() => undefined);
+  void flushPendingFocusPassCheckIn().catch(() => undefined);
 
   ensureShellOverlayListener();
   return subscribeShellOverlayEvents((event) => {
     if (event.action !== "checkIn") return;
     void flushPendingUserShot().catch(() => undefined);
+    void flushPendingFocusPassCheckIn().catch(() => undefined);
   });
 }
 

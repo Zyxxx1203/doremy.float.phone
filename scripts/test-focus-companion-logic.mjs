@@ -32,7 +32,7 @@ function extractFn(name) {
 }
 
 const FN = ['cfg', 'sdk', 'pad2', 'fmtDur', 'canGenWall', 'wallMode', 'wlParseVerdict',
-  'activeWlPasses', 'wlTrust', 'wlTrustAdd', 'scheduleWlCheckin',
+  'activeWlPasses', 'wlTrust', 'wlTrustAdd', 'scheduleWlCheckin', 'cancelWlCheckinNative',
   'scheduleAlarm', 'scheduleMorning', 'bookSystemAlarm', 'bookSystemAlarmForAppt',
   'apptTimesOf', 'apptAdvance', 'apptGap', 'apptMaxNudge', 'sessionEndAt'];
 const src = FN.map(extractFn).join('\n\n');
@@ -99,7 +99,8 @@ T('回收留痕进时间线', TL.some(x => x[2] === 'wl_trust' && /欧路词典/
 
 console.log('== 4. 查岗随机调度 scheduleWlCheckin ==');
 TASKS.length = 0;
-run(`S.settings.wlCheckin = null; scheduleWlCheckin(S.wlPasses[1])`);
+await run(`S.settings.wlCheckin = null; scheduleWlCheckin(S.wlPasses[1])`);
+await new Promise(r => setTimeout(r, 40));
 const chk = sandbox.S.settings.wlCheckin;
 T('生成查岗计划（10 分钟时限）', chk && chk.passId === 'p2' && chk.deadlineAt - chk.at === 10 * 60000 && chk.deadlineAt - chk.at === 10 * 60000);
 T('宿主任务已排（focus_wlchk_*）', TASKS.some(t => String(t.id).startsWith('focus_wlchk_')));

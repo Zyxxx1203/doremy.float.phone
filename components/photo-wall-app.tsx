@@ -37,7 +37,7 @@ const PHOTO_WALL_ACTIVE_TEMPLATE_KEY = "ai_phone_photo_wall_active_template_v1";
 const PHOTO_WALL_CHARACTER_KEY = "ai_phone_photo_wall_selected_character_v1";
 const PHOTO_WALL_GROUP_REFERENCES_KEY = "ai_phone_photo_wall_group_reference_characters_v1";
 function readPhotoWallGroupReferences(): string[] { try { const value = typeof window !== "undefined" ? JSON.parse(window.localStorage.getItem(PHOTO_WALL_GROUP_REFERENCES_KEY) || "[]") : []; return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : []; } catch { return []; } }
-const DEFAULT_PHOTO_WALL_PROMPT = [
+const LEGACY_DEFAULT_PHOTO_WALL_PROMPT = [
   "请生成一张真实相机拍摄的私人生活照片，而不是插画、海报或拼贴。",
   "角色：{characterName}",
   "角色设定：{characterPersona}",
@@ -47,7 +47,25 @@ const DEFAULT_PHOTO_WALL_PROMPT = [
   "画面风格：温柔、文艺、自然光、低饱和胶片色彩、细微颗粒、构图克制、真实生活细节。",
   "不要出现文字、水印、拼接边框或不自然的手指。",
 ].join("\n");
-function readPhotoWallPrompt(): string { try { return typeof window !== "undefined" ? window.localStorage.getItem(PHOTO_WALL_PROMPT_KEY) || DEFAULT_PHOTO_WALL_PROMPT : DEFAULT_PHOTO_WALL_PROMPT; } catch { return DEFAULT_PHOTO_WALL_PROMPT; } }
+const DEFAULT_PHOTO_WALL_PROMPT = [
+  "请生成一张私人生活瞬间的画面。",
+  "角色：{characterName}",
+  "画面类型：{photoType}",
+  "近期生活片段：{lifeEvent}",
+  "参考图要求：{referenceText}",
+  "人物形象和整体画风必须完全参照人物参考图：参考图是二次元/动漫/插画就保持二次元/动漫/插画，参考图是照片就保持照片质感；不要把二次元角色改成三次元真人写实，也不要擅自转换成其他画风。",
+  "不要出现文字、水印、拼接边框或不自然的手指。",
+].join("\n");
+function readPhotoWallPrompt(): string {
+  try {
+    if (typeof window === "undefined") return DEFAULT_PHOTO_WALL_PROMPT;
+    const stored = window.localStorage.getItem(PHOTO_WALL_PROMPT_KEY);
+    // 旧版默认提示词会把角色设定和“真实相机/胶片”画风写进所有生图请求。
+    // 没改过提示词的用户自动升级；自定义过的提示词保持原样。
+    if (!stored || stored === LEGACY_DEFAULT_PHOTO_WALL_PROMPT) return DEFAULT_PHOTO_WALL_PROMPT;
+    return stored;
+  } catch { return DEFAULT_PHOTO_WALL_PROMPT; }
+}
 function readPhotoWallTemplate(): string { try { return typeof window !== "undefined" ? window.localStorage.getItem(PHOTO_WALL_ACTIVE_TEMPLATE_KEY) || "builtin-grid" : "builtin-grid"; } catch { return "builtin-grid"; } }
 function readPhotoWallCharacter(): string { try { return typeof window !== "undefined" ? window.localStorage.getItem(PHOTO_WALL_CHARACTER_KEY) || "" : ""; } catch { return ""; } }
 
@@ -1418,12 +1436,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         ? `优先把这段真实生活片段转化成值得珍藏的照片：${event.title}${event.locationName ? `，地点是${event.locationName}` : ""}${event.details ? `。细节：${event.details}` : ""}。如果它带有温暖、幸福、亲密、轻松或小小成就的情绪，请抓住这种感觉；不必把事件逐字画出来，也不要凭空制造重大剧情。`
         : "没有明确的近期事件，请描绘一个自然、温暖、安静、可信的小日常，优先呈现陪伴、轻松或小确幸，不要凭空制造重大剧情。";
       const kindPrompt: Record<PhotoWallPhoto["kind"], string> = {
-        favorite: "角色自己珍藏的一张照片，带有私人的情绪和生活痕迹。",
+        favorite: "角色自己珍藏的一个私人瞬间，带有私人的情绪和生活痕迹。",
         selfie: "角色自然随手拍下的自拍，不摆拍，像发给亲近之人的私密日常。",
-        candid: "从角色视角拍下用户不经意的生活瞬间，温柔、尊重、不带窥视或性化意味；没有用户参考图时，不要擅自编造清晰且具体的用户外貌。",
-        scenery: "角色很喜欢的一处风景，带有真实摄影质感与个人审美。",
+        candid: "从角色视角记下用户不经意的生活瞬间，温柔、尊重、不带窥视或性化意味；没有用户参考图时，不要擅自编造清晰且具体的用户外貌。",
+        scenery: "角色很喜欢的一处风景，带有个人审美。",
         object: "一件让角色想起用户的小物件、食物、书页或窗边光线。",
-        moment: "一张像共同回忆的生活照片，强调温暖细节而非戏剧性。",
+        moment: "一个像共同回忆的生活瞬间，强调温暖细节而非戏剧性。",
       };
       let referenceImageDataUrl: string | undefined;
       const refPhoto = referencePhotoId ? state.photos.find(photo => photo.id === referencePhotoId) : undefined;
@@ -1436,18 +1454,9 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         : "";
       const description = (generationPromptTemplate.trim() || DEFAULT_PHOTO_WALL_PROMPT)
         .split("{characterName}").join(owner.name)
-        .split("{characterPersona}").join((owner.persona || owner.personality || "").slice(0, 700))
         .split("{photoType}").join(kindPrompt[kind])
         .split("{lifeEvent}").join(eventText)
         .split("{referenceText}").join(referenceText);
-      const castNames = Array.from(new Set([
-        owner.name,
-        ...groupReferenceCharacterIds.map(id => characters.find(char => char.id === id)?.name || "").filter(Boolean),
-      ]));
-      const castLine = kind === "moment" && castNames.length > 1
-        ? `【出镜人物】${castNames.join("、")}。描写每个人时必须使用这些准确名字，不要用“女人/男人/男孩/女孩/孩子/对方”等泛称代替；需要提到用户时写“用户本人”。`
-        : "";
-      const finalDescription = [description, castLine].filter(Boolean).join("\n");
       const participantIds = kind === "selfie"
         ? [owner.id]
         : kind === "candid"
@@ -1456,7 +1465,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             ? Array.from(new Set([owner.id, ...groupReferenceCharacterIds, "__user__"]))
             : [];
       const result = await generateImageFromConfiguredApi({
-        description: finalDescription, characterId: owner.id, appId: "photo_wall",
+        description, characterId: owner.id, appId: "photo_wall",
         participantIds,
         useReferenceImage: true,
         referenceImageDataUrl,
@@ -1716,7 +1725,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             <label className="mt-4 block text-xs text-[#8b7569]">让谁生成照片<select value={selectedCharacterId} onChange={event => { const value = event.target.value; setSelectedCharacterId(value); try { window.localStorage.setItem(PHOTO_WALL_CHARACTER_KEY, value); } catch { /* explicit selection still applies for this session */ } }} className="mt-2 w-full border-b border-[#d7c2b1] bg-transparent px-2 py-2 text-sm text-[#5d4942]"><option value="">请选择角色</option>{characters.map(char => <option key={char.id} value={char.id}>{char.name}</option>)}</select></label>
             <div className="mt-4 border-t border-[#e5d6c7] pt-3">
               <p className="text-xs text-[#8b7569]">合照角色参考图（仅用于「想留住的瞬间」）</p>
-              <p className="mt-1 text-[10px] leading-5 text-[#9a8776]">先在系统设置 → 生图 → Character Identity 给每个角色上传参考图并启用；勾选后会把这些角色的脸部参考合并到一张带标签的参考板中。</p>
+              <p className="mt-1 text-[10px] leading-5 text-[#9a8776]">先在系统设置 → 生图 → Character Identity 给每个角色上传参考图并启用；勾选后会分别加载这些角色的形象参考图，人物形象和画风都以参考图为准。</p>
               <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 {characters.map(char => {
                   const reference = loadImageGenerationSettings().characterReferences?.[char.id];
@@ -1742,7 +1751,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
                 }} className="shrink-0 rounded-lg border border-[#d7c2b1] bg-white/70 px-2.5 py-1.5 text-[10px] text-[#79545a]">全选有参考图的角色</button>
               </div>
             </div>
-            <label className="mt-4 block text-xs text-[#8b7569]">角色照片生成提示词（可编辑；支持 {`{characterName}`}、{`{characterPersona}`}、{`{photoType}`}、{`{lifeEvent}`}、{`{referenceText}`} 变量）<textarea value={generationPromptTemplate} onChange={event => setGenerationPromptTemplate(event.target.value)} rows={7} placeholder={DEFAULT_PHOTO_WALL_PROMPT} className="mt-2 w-full resize-y rounded-xl border border-[#e6dccd] bg-[#fcf9f2] p-3 text-xs leading-6 text-[#655647]"/></label>
+            <label className="mt-4 block text-xs text-[#8b7569]">角色照片生成提示词（可编辑；支持 {`{characterName}`}、{`{photoType}`}、{`{lifeEvent}`}、{`{referenceText}`} 变量）<textarea value={generationPromptTemplate} onChange={event => setGenerationPromptTemplate(event.target.value)} rows={7} placeholder={DEFAULT_PHOTO_WALL_PROMPT} className="mt-2 w-full resize-y rounded-xl border border-[#e6dccd] bg-[#fcf9f2] p-3 text-xs leading-6 text-[#655647]"/></label>
             <div className="mt-2 flex gap-2"><button type="button" onClick={() => { try { window.localStorage.setItem(PHOTO_WALL_PROMPT_KEY, generationPromptTemplate); onNotice?.("角色照片生成提示词已保存，将用于下一次生成。"); } catch { onNotice?.("保存提示词失败，请检查本地存储空间。"); } }} className="rounded-xl bg-[#87565b] px-3 py-2 text-xs text-white">保存提示词</button><button type="button" onClick={() => setGenerationPromptTemplate(DEFAULT_PHOTO_WALL_PROMPT)} className="rounded-xl border border-[#d7c2b1] px-3 py-2 text-xs text-[#79545a]">恢复默认</button></div>
             <div className="flex flex-wrap items-center gap-2 border-b border-[#eadfd3] py-3 text-xs"><span className="text-[#8b7569]">生成参考图</span><select value={referencePhotoId} onChange={event => setReferencePhotoId(event.target.value)} className="min-w-0 flex-1 border-b border-[#d7c2b1] bg-transparent px-2 py-2"><option value="">使用角色外观参考设置</option>{photos.map(photo => <option key={photo.id} value={photo.id}>{photo.title}</option>)}</select></div>
             {state.settings.lastDailyGenerationAt && <p className="mt-3 text-[11px] leading-5 text-[#93836e]">上次显影：{formatDate(state.settings.lastDailyGenerationAt)}{state.settings.lastDailyGenerationError ? ` · 上次有错误：${state.settings.lastDailyGenerationError}` : ""}</p>}
