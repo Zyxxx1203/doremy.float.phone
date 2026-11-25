@@ -1,5 +1,5 @@
 import type { ImageGenerationSettings, NovelAiPreset } from "./settings-types";
-import { loadBindingConfig, loadImageGenerationSettings, resolveBinding, DEFAULT_NOVELAI_PRESET } from "./settings-storage";
+import { loadBindingConfig, loadImageGenerationSettings, resolveBinding, resolveUserIdentity, DEFAULT_NOVELAI_PRESET } from "./settings-storage";
 import { applyImageGenerationBinding } from "./image-generation-binding";
 import JSZip from "jszip";
 import { getChatImageFromIndexedDB } from "./chat-asset-storage";
@@ -866,7 +866,16 @@ async function generateImageFromConfiguredApiInternal(params: {
   const identityPolicy = (involvedCharacterIds.length || includeUserAppearance)
     ? "身份参考规则：只保持每个人可识别的身份特征，例如面部、五官、发色、发型及明显识别标记。不要照搬参考图的服装、姿势、表情、站位、镜头、构图、背景或光线；这些内容必须服从本次场景描述，可以每次变化。"
     : "";
-  const identityPrompt = [identityPolicy, ...characterIdentityPrompt, userAppearancePrompt].filter(Boolean).join("\n");
+  const userIdentity = resolveUserIdentity(params.characterId, params.appId);
+  const participantNames = resolvedParticipantIds.map(id =>
+    id === "__user__" ? (userIdentity?.name?.trim() || "用户本人") : (characterById.get(id)?.name || id),
+  );
+  // 生图模型不会自动知道「女人/男孩/女孩」是谁。出镜名单超过一人时，必须把准确名字
+  // 写进提示词，否则即使参考图传了多张，模型也只会把泛称角色画成无关的人。
+  const participantNamingLine = resolvedParticipantIds.length > 1
+    ? `【出镜人物】${participantNames.join("、")}。画面里提到每个人时必须使用以上准确名字；不要用“女人/男人/男孩/女孩/孩子/对方/她/他”等泛称代替人物身份。`
+    : "";
+  const identityPrompt = [participantNamingLine, identityPolicy, ...characterIdentityPrompt, userAppearancePrompt].filter(Boolean).join("\n");
 
   // NovelAI 当前生成接口不接收多张身份参考图。仍传入每位出镜角色的文字身份锚点，
   // 不把多张脸图混成一张参考图，避免模型将多位角色的身份融合。

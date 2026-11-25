@@ -1427,6 +1427,14 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
         .split("{photoType}").join(kindPrompt[kind])
         .split("{lifeEvent}").join(eventText)
         .split("{referenceText}").join(referenceText);
+      const castNames = Array.from(new Set([
+        owner.name,
+        ...groupReferenceCharacterIds.map(id => characters.find(char => char.id === id)?.name || "").filter(Boolean),
+      ]));
+      const castLine = kind === "moment" && castNames.length > 1
+        ? `【出镜人物】${castNames.join("、")}。描写每个人时必须使用这些准确名字，不要用“女人/男人/男孩/女孩/孩子/对方”等泛称代替；需要提到用户时写“用户本人”。`
+        : "";
+      const finalDescription = [description, castLine].filter(Boolean).join("\n");
       const participantIds = kind === "selfie"
         ? [owner.id]
         : kind === "candid"
@@ -1435,7 +1443,7 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
             ? Array.from(new Set([owner.id, ...groupReferenceCharacterIds, "__user__"]))
             : [];
       const result = await generateImageFromConfiguredApi({
-        description, characterId: owner.id, appId: "photo_wall",
+        description: finalDescription, characterId: owner.id, appId: "photo_wall",
         participantIds,
         useReferenceImage: true,
         referenceImageDataUrl,
@@ -1680,8 +1688,8 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={event => { if (event.target.files) void uploadFiles(event.target.files); event.currentTarget.value = ""; }}/>
     <input ref={wallBackgroundInputRef} type="file" accept="image/*" className="hidden" onChange={event => { const file = event.currentTarget.files?.[0]; if (file) void uploadCanvasBackground(file); event.currentTarget.value = ""; }}/>
 
-    <main className={wallView === "edit" || wallView === "panorama" ? "min-h-0 flex flex-1 flex-col overflow-hidden" : "min-h-0 flex-1 overflow-y-auto overscroll-contain"} style={{ paddingBottom: wallView === "edit" || wallView === "panorama" ? 0 : "calc(58px + env(safe-area-inset-bottom, 0px))" }}>
-      {wallView === "settings" ? <div className="min-h-full bg-[#f5ede3] px-4 pb-10 pt-5 sm:px-7" style={{backgroundImage:"repeating-linear-gradient(0deg,rgba(122,84,68,.025) 0,rgba(122,84,68,.025) 1px,transparent 1px,transparent 5px)"}}>
+    <main className={wallView === "edit" || wallView === "panorama" ? "min-h-0 flex flex-1 flex-col overflow-hidden" : "flex min-h-0 flex-1 flex-col overflow-hidden"} style={{ paddingBottom: wallView === "edit" || wallView === "panorama" ? 0 : "calc(58px + env(safe-area-inset-bottom, 0px))" }}>
+      {wallView === "settings" ? <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#f5ede3] px-4 pb-10 pt-5 sm:px-7" style={{WebkitOverflowScrolling:"touch",backgroundImage:"repeating-linear-gradient(0deg,rgba(122,84,68,.025) 0,rgba(122,84,68,.025) 1px,transparent 1px,transparent 5px)"}}>
         <div className="mx-auto max-w-3xl">
           <p className="text-[10px] tracking-[.24em] text-[#a18172]">A QUIET CORNER FOR YOUR WALL</p>
           <h1 className="mt-2 font-serif text-2xl font-normal text-[#503d38]">把墙面布置成你喜欢的样子</h1>
@@ -1711,6 +1719,14 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
                     <span className="shrink-0 text-[10px] text-[#a08c74]">{hasReference ? "参考图已启用" : "先上传参考图"}</span>
                   </label>;
                 })}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[10px] leading-5 text-[#9a8776]">已勾选 {groupReferenceCharacterIds.length} 人；当前有可用参考图 {characters.filter(char => { const ref = loadImageGenerationSettings().characterReferences?.[char.id]; return Boolean(ref?.assetId && ref.enabled !== false); }).length} 人。生成「想留住的瞬间」时会按这里加载角色参考图。</p>
+                <button type="button" onClick={() => {
+                  const next = characters.filter(char => { const ref = loadImageGenerationSettings().characterReferences?.[char.id]; return Boolean(ref?.assetId && ref.enabled !== false); }).map(char => char.id);
+                  setGroupReferenceCharacterIds(next);
+                  try { window.localStorage.setItem(PHOTO_WALL_GROUP_REFERENCES_KEY, JSON.stringify(next)); } catch { /* keep session selection */ }
+                }} className="shrink-0 rounded-lg border border-[#d7c2b1] bg-white/70 px-2.5 py-1.5 text-[10px] text-[#79545a]">全选有参考图的角色</button>
               </div>
             </div>
             <label className="mt-4 block text-xs text-[#8b7569]">角色照片生成提示词（可编辑；支持 {`{characterName}`}、{`{characterPersona}`}、{`{photoType}`}、{`{lifeEvent}`}、{`{referenceText}`} 变量）<textarea value={generationPromptTemplate} onChange={event => setGenerationPromptTemplate(event.target.value)} rows={7} placeholder={DEFAULT_PHOTO_WALL_PROMPT} className="mt-2 w-full resize-y rounded-xl border border-[#e6dccd] bg-[#fcf9f2] p-3 text-xs leading-6 text-[#655647]"/></label>
