@@ -103,6 +103,8 @@ import {
   runCustomAppDeviceAdminStatus,
   runCustomAppDeviceAdminRequest,
   runCustomAppDeviceCheckinRequest,
+  runCustomAppDeviceFocusPassCheckInSchedule,
+  runCustomAppDeviceFocusPassCheckInCancel,
   runCustomAppDeviceLockPendingApply,
   runCustomAppDeviceOverlayStatus,
   runCustomAppDeviceOverlayRequest,
@@ -2016,6 +2018,14 @@ export function CustomAppRunner({
     if (action === "device.checkin.request") {
       requirePermission("device.assist");
       return runCustomAppDeviceCheckinRequest(app, record);
+    }
+    if (action === "device.checkin.schedule") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceFocusPassCheckInSchedule(app, record);
+    }
+    if (action === "device.checkin.cancel") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceFocusPassCheckInCancel(app, record);
     }
     if (action === "device.lock.pendingApply") {
       requirePermission("device.assist");
