@@ -11,6 +11,7 @@ import { loadMediaBlob, loadMediaObjectUrl, storeMediaBlob, deleteMediaRef, reta
 import { loadVirtualLifeState, saveVirtualLifeState } from "@/lib/life/life-storage";
 import { generateChatCompletion, flattenCompletionResult, readCompressedImageDataUrl } from "@/lib/chat-engine";
 import { loadChatContacts, loadChatMessages, loadChatSessions, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
+import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import {
   createPhotoWallId, DEFAULT_PHOTO_WALL_SETTINGS, loadPhotoWallState, savePhotoWallState, normalizeWorld,
   type PhotoWallCreationRecord, type PhotoWallDoodle, type PhotoWallPhoto, type PhotoWallPlacement, type PhotoWallState, type PhotoWallTemplate, type PhotoWallWorld,
@@ -1241,10 +1242,16 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
       for (const session of loadChatSessions()) {
         for (const message of loadChatMessages(session.id)) {
           const imageMessage = message.mediaType === "image" || (message.mediaType === "media_file" && message.mediaData?.fileType === "image");
-          const refs = [message.mediaUrl, ...(Array.isArray(message.mediaData?.imageRefs) ? message.mediaData.imageRefs as string[] : [])];
-          if (!imageMessage && !refs.some(ref => typeof ref === "string" && (ref.startsWith("media-store://") || ref.startsWith("data:image/")))) continue;
+          const refs = [
+            message.mediaUrl,
+            // AI 生成的聊天图片不在 mediaUrl 里，实际引用在 imageGenerationMediaRef；
+            // 旧实现只扫 mediaUrl，所以「从聊天收藏照片」经常是空的。
+            message.mediaData?.imageGenerationMediaRef,
+            ...(Array.isArray(message.mediaData?.imageRefs) ? message.mediaData.imageRefs as string[] : []),
+          ].filter((ref): ref is string => typeof ref === "string" && ref.length > 0);
+          if (!imageMessage && !refs.some(ref => ref.startsWith("media-store://") || ref.startsWith("data:image/"))) continue;
           for (const [index, ref] of refs.entries()) {
-            if (typeof ref !== "string" || !(ref.startsWith("media-store://") || ref.startsWith("data:image/") || /^https?:\/\//i.test(ref))) continue;
+            if (!(ref.startsWith("media-store://") || ref.startsWith("data:image/") || ref.startsWith("asset://") || /^https?:\/\//i.test(ref))) continue;
             candidates.push({
               key: `${message.id}-${index}-${ref.slice(0, 32)}`, ref,
               title: message.content?.trim().slice(0, 48) || "聊天里的照片",
@@ -1266,6 +1273,12 @@ export function PhotoWallApp({ onClose, onNotice }: Props) {
     setBusy(true); setBusyLabel("正在把这张聊天照片收进照片墙…");
     try {
       let mediaRef = candidate.ref;
+      if (mediaRef.startsWith("asset://")) {
+        const assetId = mediaRef.slice("asset://".length).trim();
+        const dataUrl = assetId ? await getChatImageFromIndexedDB(assetId) : null;
+        if (!dataUrl) throw new Error("聊天图片已不在本机");
+        mediaRef = dataUrl;
+      }
       if (!mediaRef.startsWith("media-store://")) {
         const response = await fetch(mediaRef);
         if (!response.ok) throw new Error("图片读取失败");
@@ -2165,6 +2178,12 @@ function PhotoAlbumView({
 function ChatCandidateThumb({ refId }: { refId: string }) {
   const [src, setSrc] = useState("");
   useEffect(() => {
+    if (refId.startsWith("asset://")) {
+      let active = true;
+      const assetId = refId.slice("asset://".length).trim();
+      void getChatImageFromIndexedDB(assetId).then(value => { if (active && value) setSrc(value); });
+      return () => { active = false; };
+    }
     if (!refId.startsWith("media-store://")) { setSrc(refId); return; }
     let active = true; let url = "";
     void loadMediaObjectUrl(refId).then(value => { if (!active) { if (value) URL.revokeObjectURL(value); return; } if (value) { url = value; setSrc(value); } });

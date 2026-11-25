@@ -1727,8 +1727,19 @@ async function releaseAssistLock() {
     await sdk(() => API.device.dndSet({ on: false }), null).catch(() => { });
   }
 }
-/* 紧急解除：会话结束流程走校验，可能在复核页停留；这里直接停看守锁并结束计时。
-   角色工具和首页/专注页的手动按钮共用。 */
+async function requestCharacterUnlock() {
+  const s = S.session;
+  const cid = (s && s.charIds && s.charIds[0]) || anyCharId();
+  if (!cid) { toast('还没有可以请求的角色'); return false; }
+  const line = '我把看守锁解不开了，你能帮我解除吗？';
+  await sdk(() => API.chat.writeHistory({ characterId: cid, role: 'user', content: '[解除看守锁请求] ' + line }), null).catch(() => { });
+  await sdk(() => API.chat.requestReply({ characterId: cid }), null).catch(() => { });
+  await syncTimeline(cid, `用户请求角色解除看守锁：${line}`, 'focus_unlock_request', {});
+  closeAllSheets();
+  toast('已向 TA 发出解除请求，等 TA 决定');
+  return true;
+}
+/* 紧急解除：只给角色工具调用。用户侧没有直接解锁按钮，必须走「请求角色解除」。 */
 async function forceUnlock(reason, opts) {
   const s = S.session;
   if (s && s.status === 'running') {
@@ -5207,7 +5218,7 @@ VIEWS.running = function () {
   </div>
   ${(s.assistLevel === 'L1' || s.assistLevel === 'L2' || s.assistLevel === 'L3') ? `<div class="row" style="gap:9px;margin:-4px 0 12px">
     <button class="btn sm ghost grow" data-act="wlApplyOpen">🎟 申请通行证</button>
-    <button class="btn sm ghost grow" data-act="forceUnlockAsk">🔓 解除看守锁</button></div>` : ''}
+    <button class="btn sm ghost grow" data-act="requestUnlockAsk">🙏 请 TA 解除</button></div>` : ''}
   ${(!isBreak && !s.paused) ? (function () {
       const used = noteOfSession(s).length, lim = noteLimit();
       const leftN = lim ? Math.max(0, lim - used) : 99;
@@ -7163,7 +7174,7 @@ VIEWS.me = function () {
       <button class="btn sm grow" data-act="lockedAppsSheet">🧱 白名单 ${(cfg('lockedApps') || []).length}</button>
       <button class="btn sm grow" data-act="wlSheetOpen">🎟 通行证 ${activeWlPasses().length}</button>
     </div>
-    <button class="btn sm ghost block mt8" data-act="forceUnlockAsk">🔓 解除当前看守锁</button>
+    <button class="btn sm ghost block mt8" data-act="requestUnlockAsk">🙏 请角色解除看守锁</button>
     <div class="row mt8" style="gap:8px">
       <button class="btn sm ghost grow" data-act="widgetPin">🧩 桌面组件</button>
     </div></div>
@@ -8430,10 +8441,10 @@ Object.assign(ACTIONS, {
     await saveSession(true); render();
   },
   skipBreak: async () => { const s = S.session; if (!s || s.phase !== 'break') return; s.phaseEndsAt = Date.now(); await onPhaseEnd(); },
-  forceUnlockAsk: async () => {
-    const ok = await confirmBox('解除看守锁？', '会立即结束当前专注并恢复手机应用，不再走结束校验。历史记录会保留。', '解除');
+  requestUnlockAsk: async () => {
+    const ok = await confirmBox('请 TA 解除看守锁？', 'TA 会看到你的请求，并决定是否现在解除。只有 TA 同意后才会真正解锁。', '发送请求');
     if (!ok) return;
-    await forceUnlock('用户手动解除看守锁');
+    await requestCharacterUnlock();
   },
   abortAsk: async () => {
     const s = S.session; if (!s) return;
