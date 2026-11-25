@@ -94,6 +94,7 @@ import {
   runCustomAppDeviceDnd,
   runCustomAppDeviceAppsList,
   runCustomAppDeviceLockStart,
+  runCustomAppDeviceLockUpdate,
   runCustomAppDeviceLockStop,
   runCustomAppDeviceLockStatus,
   runCustomAppFocusWidgetUpdate,
@@ -105,6 +106,7 @@ import {
   runCustomAppDeviceLockPendingApply,
   runCustomAppDeviceOverlayStatus,
   runCustomAppDeviceOverlayRequest,
+  runCustomAppDeviceScreenshot,
   runCustomAppShellNotify,
 } from "@/lib/custom-app-host-api";
 import { REALITY_BRIDGE_APP_EVENT_NAME, REALITY_BRIDGE_DATA_EVENT } from "@/lib/reality-bridge/types";
@@ -1972,6 +1974,14 @@ export function CustomAppRunner({
     if (action === "device.lock.start") {
       requirePermission("device.assist");
       return runCustomAppDeviceLockStart(app, record);
+    }
+    if (action === "device.lock.update") {
+      requirePermission("device.assist");
+      return runCustomAppDeviceLockUpdate(app, record);
+    }
+    if (action === "device.screenshot") {
+      requirePermission("device.screenshot");
+      return runCustomAppDeviceScreenshot();
     }
     if (action === "device.lock.stop") {
       requirePermission("device.assist");
