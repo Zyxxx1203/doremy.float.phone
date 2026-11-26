@@ -347,7 +347,12 @@ function CharacterLedgerCard({ character }: { character: ReturnType<typeof loadC
         {profile?.initialAppliedAt ? " · 初始存款已入账" : ""}
         {profile?.enabled && profile.incomeAmount > 0 ? ` · 下次固定收入 ${time(profile.nextIncomeAt)}` : ""}
       </div>
-      {loadingProfile && <div className="mt-2 text-[11px] text-[var(--c-icon)]">正在根据角色卡分析经济档案…</div>}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-xl bg-[#e9eee5] p-3"><div className="text-[10px] text-[#6c8068]">本月收入</div><div className="mt-1 text-sm font-semibold text-[#3f6547]">{money(monthIncome)}</div></div>
+        <div className="rounded-xl bg-[#eee9e2] p-3"><div className="text-[10px] text-[#8d7165]">本月支出</div><div className="mt-1 text-sm font-semibold text-[#80594d]">{money(monthExpense)}</div></div>
+      </div>
+      {topExpense.length > 0 && <div className="mt-2 rounded-xl bg-[var(--c-input)] p-3"><div className="mb-2 text-[10px] text-[var(--c-icon)]">本月消费去向</div><div className="flex flex-wrap gap-2">{topExpense.map(([name,value])=><span key={name} className="rounded-full bg-white/70 px-2 py-1 text-[10px] text-[#777]">{name} {money(value)}</span>)}</div></div>}
+            {loadingProfile && <div className="mt-2 text-[11px] text-[var(--c-icon)]">正在根据角色卡分析经济档案…</div>}
       {!loadingProfile && profile?.basis && (
         <div className="mt-2 rounded-xl bg-[var(--c-input)] px-3 py-2 text-[10px] text-[var(--c-icon)]">
           {profile.source === "llm" ? "大模型按角色卡判断" : "人设关键词兜底"}：{profile.basis}
