@@ -73,7 +73,7 @@ export function askAnonymousQuestion(input: {
     save(rows);
     return row;
 }
-export function answerAnonymousQuestion(questionId: string, answer: string): AnonymousQaQuestion | null {
+export function answerAnonymousQuestion(questionId: string, answer: string, expectedTarget?: { targetType: "user" | "character"; targetId: string }): AnonymousQaQuestion | null {
     const rows = load();
     const row = rows.find(q => q.id === questionId);
     if (!row) return null;
@@ -86,7 +86,7 @@ export function answerAnonymousQuestion(questionId: string, answer: string): Ano
 export function questionsForTarget(targetType: "user" | "character", targetId: string): AnonymousQaQuestion[] {
     return loadAnonymousQa().filter(q => q.targetType === targetType && q.targetId === targetId);
 }
-/** 公共问答进共同记忆：公开待答和已答都注入，且永远不带 askerId；角色自己的待答/追问只给该角色看。 */
+/** 仅向目标角色注入寄给 TA 的信件与 TA 自己寄出的信件；不共享任何其他人的匿名互动。 */
 export function buildAnonymousQaContext(characterId?: string): string {
     if (!characterId) return "";
     const all = loadAnonymousQa();
