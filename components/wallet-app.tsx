@@ -6,6 +6,7 @@ import { loadCharacters } from "@/lib/character-storage";
 import { loadWalletState, formatWalletAmount, WALLET_UPDATED_EVENT, creditWalletBalance, payWithWalletBalance } from "@/lib/wallet-storage";
 import { runDueWalletBills } from "@/lib/wallet-planning";
 import { WalletPlanningTabs, type WalletPlanningTab } from "@/components/wallet-planning-tabs";
+import { WalletPanel } from "@/components/chat/wallet-panel";
 import { loadCharacterLedger } from "@/lib/economy/character-ledger";
 import {
   createFamilyCard, loadFamilyCardTransactions, loadFamilyCards, spendWithFamilyCard,
@@ -22,11 +23,11 @@ import {
   type CharacterEconomyProfile, type CharacterIncomeCadence,
 } from "@/lib/economy/character-income";
 
-type WalletTab = "home" | "family" | "joint" | "ledger" | WalletPlanningTab;
+type WalletTab = "home" | "accounts" | "family" | "joint" | "ledger" | WalletPlanningTab;
 type Props = { onClose: () => void; initialTab?: WalletTab };
 
 const TABS: Array<{ id: WalletTab; label: string }> = [
-  { id: "home", label: "总览" },
+  { id: "home", label: "总览" },\n  { id: "accounts", label: "银行卡" },
   { id: "family", label: "亲属卡" },
   { id: "joint", label: "小金库" },
   { id: "ledger", label: "角色账本" },
@@ -113,7 +114,7 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
             <div className="wallet-kicker" style={{color:"#c7b78e"}}>PRIVATE WALLET · AVAILABLE BALANCE</div><div className="mt-2 text-[10px] tracking-[.12em] opacity-65">我的可用余额</div>
             <div className="mt-1 text-3xl font-semibold text-[var(--c-text)]">{money(wallet.balance)}</div>
             <div className="mt-3 flex gap-4 text-xs text-[var(--c-icon)]">
-              <span>银行卡 {wallet.cards.length} 张</span>
+              <button type="button" onClick={() => setTab("accounts")} className="underline underline-offset-4">银行卡 {wallet.cards.length} 张 · 管理</button>
               <span>亲属卡 {familyCards.length} 张</span>
               <span>小金库 {jointFunds.length} 个</span>
             </div>
