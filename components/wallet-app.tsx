@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageShell } from "@/components/ui/page-shell";
 import { loadCharacters } from "@/lib/character-storage";
-import { loadWalletState, formatWalletAmount, WALLET_UPDATED_EVENT } from "@/lib/wallet-storage";
+import { loadWalletState, formatWalletAmount, WALLET_UPDATED_EVENT, creditWalletBalance, payWithWalletBalance } from "@/lib/wallet-storage";
 import { runDueWalletBills } from "@/lib/wallet-planning";
 import { WalletPlanningTabs, type WalletPlanningTab } from "@/components/wallet-planning-tabs";
 import { loadCharacterLedger } from "@/lib/economy/character-ledger";
@@ -53,7 +53,7 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
   const [characters, setCharacters] = useState(() => loadCharacters());
   const [familyCards, setFamilyCards] = useState<FamilyCard[]>(() => loadFamilyCards());
   const [jointFunds, setJointFunds] = useState<JointFund[]>(() => loadJointFunds());
-  const [tick, setTick] = useState(0);
+  const [tick, setTick] = useState(0);\n  const [quickEntry, setQuickEntry] = useState<"income" | "expense" | null>(null);\n  const [quickAmount, setQuickAmount] = useState("");\n  const [quickTitle, setQuickTitle] = useState("");\n  const [quickCategory, setQuickCategory] = useState("其他");
   const refresh = useCallback(() => {
     setWallet(loadWalletState());
     setCharacters(loadCharacters());
@@ -72,6 +72,17 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
     for (const name of events) window.addEventListener(name, refresh);
     return () => { for (const name of events) window.removeEventListener(name, refresh); };
   }, [refresh]);
+
+  const saveQuickEntry = () => {
+    const amount = Number(quickAmount);
+    if (!Number.isFinite(amount) || amount <= 0 || !quickTitle.trim()) { notify("请填写有效金额和用途。", "error"); return; }
+    const result = quickEntry === "income"
+      ? creditWalletBalance(amount, quickTitle.trim(), "钱包手动收入", quickCategory)
+      : payWithWalletBalance({ amount, title: quickTitle.trim(), detail: "钱包手动支出", category: quickCategory });
+    if (!result.ok) { notify(result.error || "记账失败", "error"); return; }
+    notify(quickEntry === "income" ? "收入已记账" : "支出已记账");
+    setQuickEntry(null); setQuickAmount(""); setQuickTitle(""); refresh();
+  };
 
   const totalLedger = useMemo(
     () => characters.reduce((sum, c) => sum + (loadCharacterLedger(c.id)?.balance || 0), 0),
