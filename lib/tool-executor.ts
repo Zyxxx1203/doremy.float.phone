@@ -2644,7 +2644,7 @@ async function executeAnonymousQaTool(call: ToolCall, context?: ToolExecutionCon
             const row = askAnonymousQuestion({
                 askerType: "character", askerId: characterId,
                 targetType, targetId, question,
-                audience: "target",
+                audience: "public",
             });
             return { name: call.name, success: true, data: `已匿名提问（${row.askerAlias}）：${question}`, userNotice: "匿名问了一个问题" };
         }
@@ -2657,13 +2657,9 @@ async function executeAnonymousQaTool(call: ToolCall, context?: ToolExecutionCon
             answerAnonymousQuestion(questionId, answer, { targetType: "character", targetId: characterId });
             return { name: call.name, success: true, data: `已匿名回答：${answer}`, userNotice: "回答了一个匿名提问" };
         }
-        const mine = loadAnonymousQa().filter(q => q.targetType === "character" && q.targetId === characterId && q.status === "pending");
-        const asked = loadAnonymousQa().filter(q => q.askerType === "character" && q.askerId === characterId).slice(0, 8);
-        const lines = [
-            ...mine.map(q => `待回答 ${q.id} · ${q.askerAlias}：${q.question}`),
-            ...asked.map(q => `你问的 · ${q.question} → ${q.status === "answered" ? (q.answer || "已回答") : "还在等回答"}`),
-        ];
-        return { name: call.name, success: true, data: lines.length ? lines.join("\n") : "你的私人收件箱还是空的", userNotice: "看了看匿名提问箱" };
+        const shared = loadAnonymousQa().filter(q => q.audience === "public").slice(0, 40);
+        const lines = shared.map(q => `[${q.status === "answered" ? "已回答" : "待回答"}] ${q.askerAlias} → ${q.targetType === "user" ? "用户" : "另一位角色"}：${q.question}${q.answer ? "；回答：" + q.answer : ""}${q.targetType === "character" && q.targetId === characterId && q.status === "pending" ? "；这是问你的，可回答，questionId=" + q.id : ""}`);
+        return { name: call.name, success: true, data: lines.length ? lines.join("\\n") : "共享匿名提问箱目前还没有问题", userNotice: "看了看匿名提问箱" };
     } catch (error) {
         return { name: call.name, success: false, error: error instanceof Error ? error.message : String(error), continueConversation: false, persistToHistory: false, userNotice: "匿名提问箱操作失败" };
     }
