@@ -87,7 +87,7 @@ export function answerAnonymousQuestion(questionId: string, answer: string, expe
 export function questionsForTarget(targetType: "user" | "character", targetId: string): AnonymousQaQuestion[] {
     return loadAnonymousQa().filter(q => q.targetType === targetType && q.targetId === targetId);
 }
-/** 仅向目标角色注入寄给 TA 的信件与 TA 自己寄出的信件；不共享任何其他人的匿名互动。 */
+/** 将共享匿名提问箱中的问题和回答注入每位角色上下文；提问者真实身份不进入提示词。 */
 export function buildAnonymousQaContext(characterId?: string): string {
     if (!characterId) return "";
     const all = loadPublicAnonymousQa().slice(0, 40);
