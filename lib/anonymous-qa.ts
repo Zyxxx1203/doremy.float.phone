@@ -105,15 +105,15 @@ export function buildAnonymousQaContext(characterId?: string): string {
         "【匿名来信·只寄给你】",
         ...pending.map(q => `- ${q.askerAlias} 留言：${q.question}（questionId=${q.id}；如愿意回答，使用「回答匿名提问」）`),
         "每封信的匿名身份仅对本次投递有效。不要猜测或追查提问者真实身份。不要把信件内容转述给其他角色。",
-    ].join("\\n"));
+    ].join("\n"));
     if (answered.length) parts.push([
         "【你已经回复的匿名来信】",
         ...answered.map(q => `- ${q.askerAlias}：${q.question}\\n  你的回答：${q.answer || ""}`),
-    ].join("\\n"));
+    ].join("\n"));
     if (asked.length) parts.push([
         "【你寄出的匿名信】",
         ...asked.map(q => `- 你曾匿名向 ${q.targetType === "user" ? "用户" : "另一位角色"} 提问：${q.question} → ${q.status === "answered" ? (q.answer || "（已回复）") : "（等待回复）"}`),
         "你寄出的信件不会向收件人暴露你的角色身份。",
-    ].join("\\n"));
+    ].join("\n"));
     return parts.join("\\n\\n");
 }
