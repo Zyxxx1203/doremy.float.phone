@@ -2659,13 +2659,11 @@ async function executeAnonymousQaTool(call: ToolCall, context?: ToolExecutionCon
         }
         const mine = loadAnonymousQa().filter(q => q.targetType === "character" && q.targetId === characterId && q.status === "pending");
         const asked = loadAnonymousQa().filter(q => q.askerType === "character" && q.askerId === characterId).slice(0, 8);
-        const publicRows = loadPublicAnonymousQa().slice(0, 8);
         const lines = [
             ...mine.map(q => `待回答 ${q.id} · ${q.askerAlias}：${q.question}`),
             ...asked.map(q => `你问的 · ${q.question} → ${q.status === "answered" ? (q.answer || "已回答") : "还在等回答"}`),
-            ...publicRows.map(q => `${q.status === "pending" ? "公开待答" : "公开"} · ${q.askerAlias} 问：${q.question} → ${q.answer || "等回答"}`),
         ];
-        return { name: call.name, success: true, data: lines.length ? lines.join("\n") : "提问箱还是空的", userNotice: "看了看匿名提问箱" };
+        return { name: call.name, success: true, data: lines.length ? lines.join("\n") : "你的私人收件箱还是空的", userNotice: "看了看匿名提问箱" };
     } catch (error) {
         return { name: call.name, success: false, error: error instanceof Error ? error.message : String(error), continueConversation: false, persistToHistory: false, userNotice: "匿名提问箱操作失败" };
     }
