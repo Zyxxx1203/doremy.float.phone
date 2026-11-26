@@ -25,7 +25,8 @@
     "test:anonymous": "node scripts/test-anonymous-qa.mjs",
     "test:files": "node scripts/test-file-text.mjs",
     "test:tool-names": "node scripts/test-native-tool-name-resolution.mjs",
-    "test:stickers": "node scripts/test-sticker-pack-png.mjs"
+    "test:stickers": "node scripts/test-sticker-pack-png.mjs",
+    "test:wallet-planning": "node scripts/test-wallet-planning.mjs"
   },
   "dependencies": {
     "@gltf-transform/functions": "^4.4.1",
