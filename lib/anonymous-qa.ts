@@ -77,6 +77,7 @@ export function answerAnonymousQuestion(questionId: string, answer: string, expe
     const rows = load();
     const row = rows.find(q => q.id === questionId);
     if (!row) return null;
+    if (expectedTarget && (row.targetType !== expectedTarget.targetType || row.targetId !== expectedTarget.targetId)) return null;
     row.answer = String(answer || "").trim().slice(0, 1000);
     row.status = row.answer ? "answered" : "pending";
     row.answeredAt = row.answer ? Date.now() : undefined;
