@@ -290,7 +290,7 @@ assert.match(shortTermAssembler, /CUSTOM_APP_TIMELINE_SOURCES = new Set<string>/
 for (const source of ["photo_wall", "watch", "phone_widget", "life"]) {
   assert.ok(shortTermAssembler.includes(`"${source}"`), `short-term timeline source ${source} must be included`);
 }
-assert.equal((shortTermAssembler.match(/timeline\.filter\(e => CUSTOM_APP_TIMELINE_SOURCES\.has\(e\.sourceApp\)\)/g) ?? []).length, 2,
+assert.equal((shortTermAssembler.match(/timeline\.filter\(e => CUSTOM_APP_TIMELINE_SOURCES\.has\(e\.sourceApp\)[^)]*\)/g) ?? []).length, 2,
   "both direct-chat and group-chat assemblers must inject special app timeline entries");
 assert.match(shortTermAssembler, /CUSTOM_APP_TIMELINE_SOURCES\.has\(entry\.sourceApp\) \? "recent_custom_app"/);
 
