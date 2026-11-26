@@ -95,6 +95,8 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
     [characters, tick],
   );
 
+  if (tab === "accounts") return <WalletPanel onBack={() => setTab("home")} />;
+
   return (
     <PageShell title="钱包" onBack={onClose} className="wallet-private-bank">
       <style>{`
@@ -325,6 +327,12 @@ function CharacterLedgerCard({ character }: { character: ReturnType<typeof loadC
 
   const ledger = loadCharacterLedger(character.id);
   const latest = ledger?.statements?.[0];
+  const monthPrefix = new Date().toISOString().slice(0, 7);
+  const monthRows = (ledger?.transactions || []).filter(tx => new Date(tx.at).toISOString().slice(0, 7) === monthPrefix);
+  const monthIncome = monthRows.filter(tx => tx.amount > 0).reduce((sum, tx) => sum + tx.amount, 0);
+  const monthExpense = monthRows.filter(tx => tx.amount < 0).reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+  const expenseCategories = monthRows.filter(tx => tx.amount < 0).reduce<Record<string, number>>((acc, tx) => { acc[tx.category] = (acc[tx.category] || 0) + Math.abs(tx.amount); return acc; }, {});
+  const topExpense = Object.entries(expenseCategories).sort((a,b) => b[1] - a[1]).slice(0,3);
   const save = () => {
     try {
       setCharacterInitialDeposit(character.id, Number(initial) || 0);
