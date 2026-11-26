@@ -329,6 +329,40 @@ export const FOCUS_COMPANION_MANIFEST: InstalledCustomApp["manifest"] =
           },
           "visibility": "shared",
           "handler": "passVerdict"
+        },
+        {
+          "id": "reveal-app-lock-password",
+          "name": "问应用锁密码",
+          "description": "当角色自己用「锁住一个应用」锁了用户的某个应用，而用户来求密码时调用。只有当前好感度达到设定阈值才会返回密码；没到阈值会返回「还不肯告诉你」，角色应继续逗他而不是编造密码。锁页、设置页和通知里都不会显示这个密码。",
+          "parameterSchema": {
+            "type": "object",
+            "properties": {}
+          },
+          "visibility": "shared",
+          "handler": "revealAppLockPassword"
+        },
+        {
+          "id": "start-app-lock",
+          "name": "锁住一个应用",
+          "description": "角色主动锁住用户手机上的单个应用。app 传应用显示名或包名；锁页只有密码框，没有聊天。密码由系统生成且不展示，用户来 Float 找角色求情；角色可在好感度达到阈值后用「问应用锁密码」决定是否告诉。不要锁桌面、设置、电话、短信或输入法。",
+          "parameterSchema": {
+            "type": "object",
+            "properties": {
+              "app": {
+                "type": "string",
+                "description": "要锁的应用显示名或包名，例如 抖音 / com.ss.android.ugc.aweme"
+              },
+              "threshold": {
+                "type": "number",
+                "description": "告诉密码所需的好感度阈值 0-100，不填用用户当前设置"
+              }
+            },
+            "required": [
+              "app"
+            ]
+          },
+          "visibility": "shared",
+          "handler": "startAppLock"
         }
       ]
     },
@@ -494,6 +528,40 @@ export const FOCUS_COMPANION_MANIFEST: InstalledCustomApp["manifest"] =
         },
         "visibility": "shared",
         "handler": "passVerdict"
+      },
+      {
+        "id": "reveal-app-lock-password",
+        "name": "问应用锁密码",
+        "description": "当角色自己用「锁住一个应用」锁了用户的某个应用，而用户来求密码时调用。只有当前好感度达到设定阈值才会返回密码；没到阈值会返回「还不肯告诉你」，角色应继续逗他而不是编造密码。锁页、设置页和通知里都不会显示这个密码。",
+        "parameterSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "visibility": "shared",
+        "handler": "revealAppLockPassword"
+      },
+      {
+        "id": "start-app-lock",
+        "name": "锁住一个应用",
+        "description": "角色主动锁住用户手机上的单个应用。app 传应用显示名或包名；锁页只有密码框，没有聊天。密码由系统生成且不展示，用户来 Float 找角色求情；角色可在好感度达到阈值后用「问应用锁密码」决定是否告诉。不要锁桌面、设置、电话、短信或输入法。",
+        "parameterSchema": {
+          "type": "object",
+          "properties": {
+            "app": {
+              "type": "string",
+              "description": "要锁的应用显示名或包名，例如 抖音 / com.ss.android.ugc.aweme"
+            },
+            "threshold": {
+              "type": "number",
+              "description": "告诉密码所需的好感度阈值 0-100，不填用用户当前设置"
+            }
+          },
+          "required": [
+            "app"
+          ]
+        },
+        "visibility": "shared",
+        "handler": "startAppLock"
       }
     ],
     "events": [

@@ -5,6 +5,8 @@ import { makeNativeToolName } from "./native-tool-name";
 import { maybeAppendShortcutCapability, maybeAppendPerceptionStatus } from "./offline-shortcut-capability";
 import { maybeBuildStatusInjection } from "./perception/describe";
 import { loadCharacters } from "./character-storage";
+import { buildAnonymousQaContext } from "./anonymous-qa";
+import { buildCharacterEconomyContext } from "./economy/character-income";
 import { buildLifePresenceContext } from "./life/life-memory-bridge";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
 import { emitChatPluginEvent, runChatPluginTransform } from "./chat-plugin-hooks";
@@ -1956,6 +1958,17 @@ export async function buildChatPromptMessages(
         excludeOfflineSessionId: options?.excludeOfflineSessionId,
         promptTimestampOptions,
     });
+    // 匿名提问箱只进共享短期记忆，不写长期记忆；这里作为一条短期事件参与本轮排序。
+    const anonymousQaShortTerm = buildAnonymousQaContext(character.id);
+    if (anonymousQaShortTerm) {
+        unifiedRecentItems.push({
+            kind: "event",
+            timestamp: new Date().toISOString(),
+            sourceApp: "custom_app",
+            sourceTag: "anonymous_qa",
+            text: anonymousQaShortTerm,
+        });
+    }
     const promptHistory = applyVisionImagePromptLimit(
         truncatedHistory.map(msg => ({ ...msg })),
         resolveVisionImagePromptLimit(session),
@@ -1985,6 +1998,7 @@ export async function buildChatPromptMessages(
         // 再把同一批事实拼进长期块，会让同一件事在提示词里出现两遍。
         // 这里只保留“当前生活状态”，历史事实交给统一短期时间线。
         buildLifePresenceContext(character.id),
+        buildCharacterEconomyContext(character.id),
     ].filter(Boolean).join("\n\n");
     const coreMemories = coreResults ? formatCoreMemories(coreResults) : "";
     const scheduleSummary = buildCalendarScheduleMarker("character", character.id, getWeekStartIso(now));
