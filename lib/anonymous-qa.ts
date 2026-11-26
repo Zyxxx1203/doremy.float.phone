@@ -42,7 +42,7 @@ export function loadAnonymousQa(): AnonymousQaQuestion[] {
     return load().slice().sort((a, b) => b.createdAt - a.createdAt);
 }
 export function loadPublicAnonymousQa(): AnonymousQaQuestion[] {
-    return loadAnonymousQa().filter(q => q.audience === "public");
+    return [];
 }
 export function askAnonymousQuestion(input: {
     askerType: "user" | "character";
@@ -64,9 +64,9 @@ export function askAnonymousQuestion(input: {
         targetType: input.targetType,
         targetId: input.targetId,
         question: question.slice(0, 500),
-        audience: input.audience || "target",
+        audience: "target",
         status: "pending",
-        revealIdentity: input.revealIdentity === true,
+        revealIdentity: false,
         createdAt: Date.now(),
     };
     rows.push(row);
