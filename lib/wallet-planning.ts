@@ -126,7 +126,9 @@ export function runDueWalletBills(now = new Date()): { paid: number; overdue: nu
       overdue += 1;
       continue;
     }
-    const next = nextDue(new Date(bill.nextDueAt), bill.cadence);
+    let next = nextDue(new Date(bill.nextDueAt), bill.cadence);
+    let catchUpGuard = 0;
+    while (next.getTime() <= nowMs && catchUpGuard < 240) { next = nextDue(next, bill.cadence); catchUpGuard += 1; }
     state = saveWalletPlanning({ ...state, bills: state.bills.map(v => v.id === bill.id ? { ...v, nextDueAt: next.toISOString(), lastPaidAt: now.toISOString(), lastError: undefined } : v) });
     paid += 1;
   }
