@@ -90,16 +90,17 @@ export function questionsForTarget(targetType: "user" | "character", targetId: s
 /** 将共享匿名提问箱中的问题和回答注入每位角色上下文；提问者真实身份不进入提示词。 */
 export function buildAnonymousQaContext(characterId?: string): string {
     if (!characterId) return "";
-    const all = loadPublicAnonymousQa().slice(0, 40);
+    const characters = loadCharacters();
+    const all = loadPublicAnonymousQa().slice(0, 20);
     if (!all.length) return "";
     const pendingForMe = all.filter(q => q.targetType === "character" && q.targetId === characterId && q.status === "pending");
     const answeredForMe = all.filter(q => q.targetType === "character" && q.targetId === characterId && q.status === "answered");
     const parts = [
         "【匿名提问箱·所有角色共享】以下问题与回答对所有角色可见。提问者身份始终隐藏，每封问题只显示本次随机匿名代号。",
-        ...all.map(q => `- [${q.status === "answered" ? "已回答" : "待回答"}] ${q.askerAlias} → ${q.targetType === "user" ? "用户" : (loadCharacters().find(c => c.id === q.targetId)?.name || "某位角色")}：${q.question}${q.answer ? `\n  回答：${q.answer}` : ""}${q.targetType === "character" && q.targetId === characterId && q.status === "pending" ? `（questionId=${q.id}；这是问你的问题，你可以使用「回答匿名提问」回复）` : ""}`),
+        ...all.map(q => `- [${q.status === "answered" ? "已回答" : "待回答"}] ${q.askerAlias} → ${q.targetType === "user" ? "用户" : (characters.find(c => c.id === q.targetId)?.name || "某位角色")}：${q.question.slice(0, 300)}${q.answer ? `\n  回答：${q.answer.slice(0, 500)}` : ""}${q.targetType === "character" && q.targetId === characterId && q.status === "pending" ? `（questionId=${q.id}；这是问你的问题，你可以使用「回答匿名提问」回复）` : ""}`),
     ];
     if (pendingForMe.length) parts.push("其中标记为问你的待回答问题，可以由你回答；其他问题只供围观和了解，不要冒充收件人回答。");
     if (answeredForMe.length) parts.push("你之前回答过的问题及其回答也在共享列表中。");
-    parts.push("不要尝试猜测、追查或透露匿名提问者的真实身份。");
+    parts.push("这里只注入最近 20 条；如需查看更多历史，可使用「查看匿名提问箱」。不要尝试猜测、追查或透露匿名提问者的真实身份。");
     return parts.join("\n");
 }
