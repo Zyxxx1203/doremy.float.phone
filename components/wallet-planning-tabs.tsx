@@ -39,7 +39,7 @@ export function WalletPlanningTabs({tab,onChange}:{tab:WalletPlanningTab;onChang
   const currentMonth=monthKey();
   const monthTransactions=wallet.transactions.filter(tx=>tx.createdAt.slice(0,7)===currentMonth);
   const expenses=monthTransactions.filter(tx=>tx.amount<0 && tx.kind==="payment");
-  const income=monthTransactions.filter(tx=>tx.amount>0 && tx.kind!=="transfer_in" ? true : tx.amount>0 && tx.kind==="refund");
+  const income=monthTransactions.filter(tx=>tx.amount>0);
   const expenseTotal=expenses.reduce((sum,tx)=>sum+Math.abs(tx.amount),0);
   const incomeTotal=income.reduce((sum,tx)=>sum+tx.amount,0);
   const categoryTotals=useMemo(()=>expenses.reduce<Record<string,number>>((acc,tx)=>{acc[tx.category||"其他"]=(acc[tx.category||"其他"]||0)+Math.abs(tx.amount);return acc;},{}),[wallet.transactions,revision]);
