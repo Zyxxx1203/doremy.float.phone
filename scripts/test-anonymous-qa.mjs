@@ -20,9 +20,9 @@ const qa=module.exports;
 let pass=0,fail=0;
 function T(name,ok){if(ok){pass++;console.log("  ✅ "+name);}else{fail++;console.log("  ❌ "+name);}}
 
-const userLetter=qa.askAnonymousQuestion({askerType:"user",askerId:"user",targetType:"character",targetId:"c1",question:"你最近是不是在躲我？"});
+const userLetter=qa.askAnonymousQuestion({askerType:"user",askerId:"user",targetType:"character",targetId:"c1",question:"你最近是不是在躲我？",audience:"public"});
 let c1=qa.buildAnonymousQaContext("c1"), c2=qa.buildAnonymousQaContext("c2");
-T("新问题默认仅目标可见",userLetter.audience==="target" && c1.includes(userLetter.question) && !c2.includes(userLetter.question));
+T("即使旧调用传 public，新问题也强制仅目标可见",userLetter.audience==="target" && c1.includes(userLetter.question) && !c2.includes(userLetter.question) && qa.loadPublicAnonymousQa().length===0);
 T("目标上下文不泄露发送者 ID",!c1.includes("askerId") && !c1.includes('"user"'));
 T("每次投递随机生成独立匿名标识",userLetter.askerAlias && userLetter.askerAlias!==qa.askAnonymousQuestion({askerType:"user",askerId:"user",targetType:"character",targetId:"c1",question:"另一个问题"}).askerAlias);
 T("非收件角色不能回答",qa.answerAnonymousQuestion(userLetter.id,"偷看回答",{targetType:"character",targetId:"c2"})===null);
