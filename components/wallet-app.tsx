@@ -87,8 +87,8 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
       </div>
 
       {tab === "home" && (
-        <div className="flex flex-col gap-3">
-          <div className="rounded-3xl bg-[var(--c-card)] p-5 shadow-sm">
+        <div className="wallet-private-bank flex flex-col gap-3">
+          <div className="wallet-hero rounded-3xl p-5 shadow-sm">
             <div className="wallet-kicker" style={{color:"#c7b78e"}}>PRIVATE WALLET · AVAILABLE BALANCE</div><div className="mt-2 text-[10px] tracking-[.12em] opacity-65">我的可用余额</div>
             <div className="mt-1 text-3xl font-semibold text-[var(--c-text)]">{money(wallet.balance)}</div>
             <div className="mt-3 flex gap-4 text-xs text-[var(--c-icon)]">
