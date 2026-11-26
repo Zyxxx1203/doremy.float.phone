@@ -57,7 +57,7 @@ function normalize(raw: unknown): WalletPlanningState {
       category: String(v.category || "固定支出").slice(0, 32),
       cadence: v.cadence === "weekly" ? "weekly" as const : "monthly" as const,
       nextDueAt: String(v.nextDueAt || new Date().toISOString()),
-      status: v.status === "paused" || v.status === "overdue" ? v.status : "active" as const,
+      status: (v.status === "paused" || v.status === "overdue" ? v.status : "active") as WalletRecurringBill["status"],
       lastPaidAt: v.lastPaidAt ? String(v.lastPaidAt) : undefined,
       lastError: v.lastError ? String(v.lastError).slice(0, 160) : undefined,
     };
