@@ -42,7 +42,7 @@ export function loadAnonymousQa(): AnonymousQaQuestion[] {
     return load().slice().sort((a, b) => b.createdAt - a.createdAt);
 }
 export function loadPublicAnonymousQa(): AnonymousQaQuestion[] {
-    return loadAnonymousQa().filter(q => q.audience === "public");
+    return loadAnonymousQa();
 }
 export function askAnonymousQuestion(input: {
     askerType: "user" | "character";
