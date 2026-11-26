@@ -42,7 +42,7 @@ export function loadAnonymousQa(): AnonymousQaQuestion[] {
     return load().slice().sort((a, b) => b.createdAt - a.createdAt);
 }
 export function loadPublicAnonymousQa(): AnonymousQaQuestion[] {
-    return [];
+    return loadAnonymousQa().filter(q => q.audience === "public");
 }
 export function askAnonymousQuestion(input: {
     askerType: "user" | "character";
@@ -64,7 +64,7 @@ export function askAnonymousQuestion(input: {
         targetType: input.targetType,
         targetId: input.targetId,
         question: question.slice(0, 500),
-        audience: "target",
+        audience: "public",
         status: "pending",
         revealIdentity: false,
         createdAt: Date.now(),
@@ -90,31 +90,16 @@ export function questionsForTarget(targetType: "user" | "character", targetId: s
 /** 仅向目标角色注入寄给 TA 的信件与 TA 自己寄出的信件；不共享任何其他人的匿名互动。 */
 export function buildAnonymousQaContext(characterId?: string): string {
     if (!characterId) return "";
-    const all = loadAnonymousQa();
-    const pending = all.filter(q =>
-        q.targetType === "character" && q.targetId === characterId && q.status === "pending"
-    ).slice(0, 8);
-    const answered = all.filter(q =>
-        q.targetType === "character" && q.targetId === characterId && q.status === "answered"
-    ).slice(0, 8);
-    const asked = all.filter(q =>
-        q.askerType === "character" && q.askerId === characterId
-    ).slice(0, 8);
-    if (!pending.length && !answered.length && !asked.length) return "";
-    const parts: string[] = [];
-    if (pending.length) parts.push([
-        "【匿名来信·只寄给你】",
-        ...pending.map(q => `- ${q.askerAlias} 留言：${q.question}（questionId=${q.id}；如愿意回答，使用「回答匿名提问」）`),
-        "每封信的匿名身份仅对本次投递有效。不要猜测或追查提问者真实身份。不要把信件内容转述给其他角色。",
-    ].join("\n"));
-    if (answered.length) parts.push([
-        "【你已经回复的匿名来信】",
-        ...answered.map(q => `- ${q.askerAlias}：${q.question}\n  你的回答：${q.answer || ""}`),
-    ].join("\n"));
-    if (asked.length) parts.push([
-        "【你寄出的匿名信】",
-        ...asked.map(q => `- 你曾匿名向 ${q.targetType === "user" ? "用户" : "另一位角色"} 提问：${q.question} → ${q.status === "answered" ? (q.answer || "（已回复）") : "（等待回复）"}`),
-        "你寄出的信件不会向收件人暴露你的角色身份。",
-    ].join("\n"));
-    return parts.join("\n\n");
+    const all = loadPublicAnonymousQa().slice(0, 40);
+    if (!all.length) return "";
+    const pendingForMe = all.filter(q => q.targetType === "character" && q.targetId === characterId && q.status === "pending");
+    const answeredForMe = all.filter(q => q.targetType === "character" && q.targetId === characterId && q.status === "answered");
+    const parts = [
+        "【匿名提问箱·所有角色共享】以下问题与回答对所有角色可见。提问者身份始终隐藏，每封问题只显示本次随机匿名代号。",
+        ...all.map(q => `- [${q.status === "answered" ? "已回答" : "待回答"}] ${q.askerAlias} → ${q.targetType === "user" ? "用户" : (loadCharacters().find(c => c.id === q.targetId)?.name || "某位角色")}：${q.question}${q.answer ? `\n  回答：${q.answer}` : ""}${q.targetType === "character" && q.targetId === characterId && q.status === "pending" ? `（questionId=${q.id}；这是问你的问题，你可以使用「回答匿名提问」回复）` : ""}`),
+    ];
+    if (pendingForMe.length) parts.push("其中标记为问你的待回答问题，可以由你回答；其他问题只供围观和了解，不要冒充收件人回答。");
+    if (answeredForMe.length) parts.push("你之前回答过的问题及其回答也在共享列表中。");
+    parts.push("不要尝试猜测、追查或透露匿名提问者的真实身份。");
+    return parts.join("\n");
 }
