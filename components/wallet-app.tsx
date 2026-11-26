@@ -91,7 +91,7 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
   };
 
   const totalLedger = useMemo(
-    () => characters.reduce((sum, c) => sum + (loadCharacterLedger(c.id)?.balance || 0), 0),
+    () => { void tick; return characters.reduce((sum, c) => sum + (loadCharacterLedger(c.id)?.balance || 0), 0); },
     [characters, tick],
   );
 
@@ -125,6 +125,16 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
               <span>亲属卡 {familyCards.length} 张</span>
               <span>小金库 {jointFunds.length} 个</span>
             </div>
+          </div>
+          <div className="wallet-section rounded-2xl p-4">
+            <div className="mb-3 flex items-center justify-between"><div><div className="wallet-kicker mb-1">QUICK ENTRY</div><div className="text-sm font-medium text-[var(--c-text)]">快速记账</div></div><div className="flex gap-2"><button type="button" onClick={() => setQuickEntry("income")} className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">＋ 收入</button><button type="button" onClick={() => setQuickEntry("expense")} className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700">－ 支出</button></div></div>
+            {quickEntry && <div className="grid grid-cols-2 gap-2">
+              <input value={quickTitle} onChange={event => setQuickTitle(event.target.value)} placeholder="用途 / 来源" className="ui-input col-span-2" />
+              <input value={quickAmount} onChange={event => setQuickAmount(event.target.value)} type="number" inputMode="decimal" min="0" step="0.01" placeholder="金额" className="ui-input" />
+              <select value={quickCategory} onChange={event => setQuickCategory(event.target.value)} className="ui-select">{["其他","餐饮","交通","购物","居住","娱乐","医疗","订阅","学习","工资","退款"].map(value => <option key={value}>{value}</option>)}</select>
+              <button type="button" onClick={() => { setQuickEntry(null); setQuickAmount(""); setQuickTitle(""); }} className="ui-btn ui-btn-ghost">取消</button>
+              <button type="button" onClick={saveQuickEntry} className="ui-btn ui-btn-primary">确认记账</button>
+            </div>}
           </div>
           <div className="wallet-section rounded-2xl p-4">
             <div className="wallet-kicker mb-1">CHARACTER ASSETS</div><div className="text-sm font-medium text-[var(--c-text)]">角色账本总余额</div>
@@ -317,7 +327,7 @@ function CharacterLedgerCard({ character }: { character: ReturnType<typeof loadC
     }).finally(() => {
       if (alive) setLoadingProfile(false);
     });
-    return () => { alive = false; };  }, [character.id]);
+    return () => { alive = false; };  }, [character]);
 
   useEffect(() => {
     const sync = () => setRevision(value => value + 1);
