@@ -2657,7 +2657,7 @@ async function executeAnonymousQaTool(call: ToolCall, context?: ToolExecutionCon
             answerAnonymousQuestion(questionId, answer, { targetType: "character", targetId: characterId });
             return { name: call.name, success: true, data: `已匿名回答：${answer}`, userNotice: "回答了一个匿名提问" };
         }
-        const shared = loadAnonymousQa().filter(q => q.audience === "public").slice(0, 40);
+        const shared = loadAnonymousQa().slice(0, 40);
         const lines = shared.map(q => `[${q.status === "answered" ? "已回答" : "待回答"}] ${q.askerAlias} → ${q.targetType === "user" ? "用户" : "另一位角色"}：${q.question}${q.answer ? "；回答：" + q.answer : ""}${q.targetType === "character" && q.targetId === characterId && q.status === "pending" ? "；这是问你的，可回答，questionId=" + q.id : ""}`);
         return { name: call.name, success: true, data: lines.length ? lines.join("\n") : "共享匿名提问箱目前还没有问题", userNotice: "看了看匿名提问箱" };
     } catch (error) {
