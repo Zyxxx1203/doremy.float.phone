@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { CalendarDays, CirclePlus, Repeat2, Target, Trash2 } from "lucide-react";
 import { loadWalletState, formatWalletAmount } from "@/lib/wallet-storage";
 import {
@@ -42,7 +42,7 @@ export function WalletPlanningTabs({tab,onChange}:{tab:WalletPlanningTab;onChang
   const income=monthTransactions.filter(tx=>tx.amount>0);
   const expenseTotal=expenses.reduce((sum,tx)=>sum+Math.abs(tx.amount),0);
   const incomeTotal=income.reduce((sum,tx)=>sum+tx.amount,0);
-  const categoryTotals=useMemo(()=>expenses.reduce<Record<string,number>>((acc,tx)=>{acc[tx.category||"其他"]=(acc[tx.category||"其他"]||0)+Math.abs(tx.amount);return acc;},{}),[wallet.transactions,revision]);
+  const categoryTotals=expenses.reduce<Record<string,number>>((acc,tx)=>{acc[tx.category||"其他"]=(acc[tx.category||"其他"]||0)+Math.abs(tx.amount);return acc;},{});
   const budgetRows=state.budgets.filter(v=>v.month===currentMonth);
   const budgetTotal=budgetRows.reduce((sum,v)=>sum+v.limit,0);
   const dueBills=state.bills.filter(v=>v.status==="active").sort((a,b)=>a.nextDueAt.localeCompare(b.nextDueAt));
