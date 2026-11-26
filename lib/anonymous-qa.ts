@@ -108,12 +108,12 @@ export function buildAnonymousQaContext(characterId?: string): string {
     ].join("\n"));
     if (answered.length) parts.push([
         "【你已经回复的匿名来信】",
-        ...answered.map(q => `- ${q.askerAlias}：${q.question}\\n  你的回答：${q.answer || ""}`),
+        ...answered.map(q => `- ${q.askerAlias}：${q.question}\n  你的回答：${q.answer || ""}`),
     ].join("\n"));
     if (asked.length) parts.push([
         "【你寄出的匿名信】",
         ...asked.map(q => `- 你曾匿名向 ${q.targetType === "user" ? "用户" : "另一位角色"} 提问：${q.question} → ${q.status === "answered" ? (q.answer || "（已回复）") : "（等待回复）"}`),
         "你寄出的信件不会向收件人暴露你的角色身份。",
     ].join("\n"));
-    return parts.join("\\n\\n");
+    return parts.join("\n\n");
 }
