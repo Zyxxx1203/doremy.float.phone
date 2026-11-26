@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageShell } from "@/components/ui/page-shell";
 import { loadCharacters } from "@/lib/character-storage";
 import { loadWalletState, formatWalletAmount, WALLET_UPDATED_EVENT } from "@/lib/wallet-storage";
+import { runDueWalletBills } from "@/lib/wallet-planning";
+import { WalletPlanningTabs, type WalletPlanningTab } from "@/components/wallet-planning-tabs";
 import { loadCharacterLedger } from "@/lib/economy/character-ledger";
 import {
   createFamilyCard, loadFamilyCardTransactions, loadFamilyCards, spendWithFamilyCard,
@@ -20,7 +22,7 @@ import {
   type CharacterEconomyProfile, type CharacterIncomeCadence,
 } from "@/lib/economy/character-income";
 
-type WalletTab = "home" | "family" | "joint" | "ledger";
+type WalletTab = "home" | "family" | "joint" | "ledger" | WalletPlanningTab;
 type Props = { onClose: () => void; initialTab?: WalletTab };
 
 const TABS: Array<{ id: WalletTab; label: string }> = [
@@ -28,6 +30,11 @@ const TABS: Array<{ id: WalletTab; label: string }> = [
   { id: "family", label: "亲属卡" },
   { id: "joint", label: "小金库" },
   { id: "ledger", label: "角色账本" },
+  { id: "budget", label: "预算" },
+  { id: "goals", label: "储蓄目标" },
+  { id: "bills", label: "周期账单" },
+  { id: "calendar", label: "财务日历" },
+  { id: "insights", label: "财务报告" },
 ];
 
 function money(value: number): string { return formatWalletAmount(value); }
@@ -57,6 +64,9 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
 
   useEffect(() => {
     runDueJointFundPlans();
+    const due = runDueWalletBills();
+    if (due.paid) notify(`已自动处理 ${due.paid} 笔周期账单`);
+    if (due.overdue) notify(`${due.overdue} 笔周期账单扣款失败，请检查余额`, "error");
     refresh();
     const events = [WALLET_UPDATED_EVENT, FAMILY_CARD_UPDATED_EVENT, JOINT_FUND_UPDATED_EVENT, CHARACTER_ECONOMY_UPDATED_EVENT, "characters-updated"];
     for (const name of events) window.addEventListener(name, refresh);
@@ -120,6 +130,7 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
       {tab === "family" && <FamilyTab characters={characters} cards={familyCards} onChange={refresh} />}
       {tab === "joint" && <JointTab characters={characters} funds={jointFunds} onChange={refresh} />}
       {tab === "ledger" && <LedgerTab characters={characters} />}
+      {(["budget","goals","bills","calendar","insights"] as WalletPlanningTab[]).includes(tab as WalletPlanningTab) && <WalletPlanningTabs tab={tab as WalletPlanningTab} onChange={refresh} />}
     </PageShell>
   );
 }
