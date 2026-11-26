@@ -70,16 +70,26 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
 
   return (
     <PageShell title="钱包" onBack={onClose}>
-      <div className="flex gap-2 overflow-x-auto px-1 pb-3">
+      <style>{`
+        .wallet-private-bank{color:#292b25}
+        .wallet-private-bank .wallet-hero{background:radial-gradient(circle at 88% 8%,rgba(224,202,148,.23),transparent 30%),linear-gradient(135deg,#252b25,#111712 64%,#34372d);color:#f5f0e4;border:1px solid rgba(193,171,119,.35);box-shadow:0 18px 38px rgba(28,31,25,.2)}
+        .wallet-private-bank .wallet-section{background:linear-gradient(145deg,#fffefa,#eeece4);border:1px solid rgba(153,137,100,.18);box-shadow:0 12px 28px rgba(43,39,28,.045)}
+        .wallet-private-bank .wallet-kicker{font:600 9px/1.4 ui-sans-serif,system-ui;letter-spacing:.22em;text-transform:uppercase;color:#968664}
+        .wallet-private-bank .wallet-tab{border:1px solid rgba(143,128,91,.22);background:rgba(255,255,255,.52);color:#69685f}
+        .wallet-private-bank .wallet-tab[aria-pressed=true]{background:#202820;color:#f6f0e2;border-color:#202820;box-shadow:0 5px 14px rgba(20,28,20,.16)}
+        .wallet-private-bank .wallet-metal-line{height:1px;background:linear-gradient(90deg,rgba(171,148,96,.5),transparent)}
+        .wallet-private-bank .wallet-tx{border-bottom:1px solid rgba(143,128,91,.14)}
+      `}</style>
+      <div className="wallet-private-bank flex gap-2 overflow-x-auto px-1 pb-3">
         {TABS.map(item => (
-          <button key={item.id} onClick={() => setTab(item.id)} className={`shrink-0 rounded-full px-4 py-2 text-sm ${tab === item.id ? "bg-[var(--c-primary)] text-white" : "bg-[var(--c-input)] text-[var(--c-text)]"}`}>{item.label}</button>
+          <button key={item.id} onClick={() => setTab(item.id)} aria-pressed={tab === item.id} className={`wallet-tab shrink-0 rounded-full px-4 py-2 text-sm transition-colors ${tab === item.id ? "" : ""}`}>{item.label}</button>
         ))}
       </div>
 
       {tab === "home" && (
         <div className="flex flex-col gap-3">
           <div className="rounded-3xl bg-[var(--c-card)] p-5 shadow-sm">
-            <div className="text-xs text-[var(--c-icon)]">我的余额</div>
+            <div className="wallet-kicker" style={{color:"#c7b78e"}}>PRIVATE WALLET · AVAILABLE BALANCE</div><div className="mt-2 text-[10px] tracking-[.12em] opacity-65">我的可用余额</div>
             <div className="mt-1 text-3xl font-semibold text-[var(--c-text)]">{money(wallet.balance)}</div>
             <div className="mt-3 flex gap-4 text-xs text-[var(--c-icon)]">
               <span>银行卡 {wallet.cards.length} 张</span>
@@ -87,12 +97,12 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
               <span>小金库 {jointFunds.length} 个</span>
             </div>
           </div>
-          <div className="rounded-2xl bg-[var(--c-card)] p-4">
-            <div className="text-sm font-medium text-[var(--c-text)]">角色账本总余额</div>
+          <div className="wallet-section rounded-2xl p-4">
+            <div className="wallet-kicker mb-1">CHARACTER ASSETS</div><div className="text-sm font-medium text-[var(--c-text)]">角色账本总余额</div>
             <div className="mt-1 text-xl font-semibold text-[var(--c-text)]">{money(totalLedger)}</div>
             <div className="mt-1 text-xs text-[var(--c-icon)]">每个角色的收入/支出在「角色账本」里查看</div>
           </div>
-          <div className="rounded-2xl bg-[var(--c-card)] p-4">
+          <div className="wallet-section rounded-2xl p-4">
             <div className="mb-2 flex items-center justify-between"><span className="text-sm font-medium text-[var(--c-text)]">最近流水</span><span className="text-xs text-[var(--c-icon)]">共 {wallet.transactions.length} 条</span></div>
             <div className="flex flex-col gap-2">
               {wallet.transactions.slice(0, 6).map(tx => (
