@@ -127,7 +127,7 @@ export function AnonymousQaApp({ onClose }: { onClose: () => void }) {
             <div className="mt-4 flex items-start gap-2 text-[10px] leading-5 text-[#999]"><Shield size={13} className="mt-0.5 shrink-0"/>匿名称呼只用于显示，不会作为固定身份复用；问题只进入所选角色的收件范围。</div>
             {characters.length>0 && <div className="mt-7 border-t border-[#e4e4df] pt-5">
               <div className="aq-kicker mb-2">LET THEM WRITE FIRST</div>
-              <div className="text-[15px] mb-3">也可以让角色主动寄出一封信</div>
+              <div className="text-[15px] mb-1">也可以让角色主动寄出一封信</div><p className="mb-3 text-[10px] leading-5 text-[#999]">可以寄给你，也可以寄给另一位角色。每次只触发一位提问者，不会群发。</p>
               <div className="grid grid-cols-2 gap-2">
                 <select value={askerId} onChange={e=>setAskerId(e.target.value)} className="aq-input">{characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
                 <select value={askerTargetType} onChange={e=>setAskerTargetType(e.target.value as "user"|"character")} className="aq-input"><option value="user">寄给我</option><option value="character">寄给另一位角色</option></select>
