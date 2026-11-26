@@ -669,7 +669,7 @@ const ANONYMOUS_QA_ASK_SCHEMA = JSON.stringify({
         targetType: { type: "string", enum: ["user", "character"], description: "问用户还是问另一个角色" },
         targetId: { type: "string", description: "targetType=character 时填角色 id；问用户可省略" },
         question: { type: "string", description: "要匿名问的问题" },
-        audience: { type: "string", enum: ["public", "target"], description: "public=进公共提问箱；target=仅目标可见" },
+        audience: { type: "string", enum: ["target"], description: "匿名提问只投递给唯一指定对象，不存在公共提问广场" },
     },
     required: ["targetType", "question"],
 });
@@ -705,7 +705,7 @@ const CHARACTER_APP_LOCK_SUBTOOLS: InternalToolDefinition[] = [
 const ANONYMOUS_QA_SUBTOOLS: InternalToolDefinition[] = [
     { name: "匿名提问", description: "当你想匿名问用户或另一个角色一个问题时调用；对方只看到随机 alias。", parameterSchema: ANONYMOUS_QA_ASK_SCHEMA },
     { name: "回答匿名提问", description: "当有人匿名向你提问、你想回答时调用；只能回答 target 是你的问题。", parameterSchema: ANONYMOUS_QA_ANSWER_SCHEMA },
-    { name: "查看匿名提问箱", description: "当你想看看公共匿名问答、或别人匿名问了你什么时调用。", parameterSchema: ANONYMOUS_QA_VIEW_SCHEMA },
+    { name: "查看匿名提问箱", description: "查看只寄给自己的匿名来信，以及自己寄出的信件；看不到其他角色的私人来信。", parameterSchema: ANONYMOUS_QA_VIEW_SCHEMA },
 ];
 
 const CHARACTER_ECONOMY_SUBTOOLS: InternalToolDefinition[] = [
