@@ -152,7 +152,7 @@ export function AnonymousQaApp({ onClose }: { onClose: () => void }) {
                     <span className="text-[10px] text-[#999]">{stamp(q.createdAt)}</span>
                   </div>
                   <div className="mt-3 flex items-center justify-between gap-3"><span className="text-[14px] leading-6 text-[#292929] line-clamp-2">{q.question}</span><ChevronRight size={15} className={`shrink-0 text-[#aaa] transition-transform ${isOpen?"rotate-90":""}`}/></div>
-                  <div className="mt-2 flex items-center justify-between text-[10px] text-[#999]"><span>{tab==="all"?"回答对象："+(q.targetType==="user"?"你":(target?.name||"角色")):"回答对象："+(q.targetType==="user"?"你":(target?.name||"角色"))}</span><span>{q.status==="answered"?"已回复":"等待回复"}</span></div>
+                  <div className="mt-2 flex items-center justify-between text-[10px] text-[#999]"><span>{"回答对象："+(q.targetType==="user"?"你":(target?.name||"角色"))}</span><span>{q.status==="answered"?"已回复":"等待回复"}</span></div>
                 </button>
                 {isOpen && <div className="mt-4 border-t border-dashed border-[#d8d8d2] pt-4">
                   <p className="whitespace-pre-wrap text-[14px] leading-7 text-[#292929]">{q.question}</p>
