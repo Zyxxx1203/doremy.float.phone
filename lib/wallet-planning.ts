@@ -25,24 +25,43 @@ const money = (value: unknown) => {
 };
 function normalize(raw: unknown): WalletPlanningState {
   const data = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
-  const budgets = Array.isArray(data.budgets) ? data.budgets.filter(Boolean).map((v: any) => ({
-    id: String(v.id || id("budget")), month: /^\d{4}-\d{2}$/.test(String(v.month)) ? String(v.month) : new Date().toISOString().slice(0,7),
-    category: String(v.category || "其他").slice(0,32), limit: money(v.limit), createdAt: String(v.createdAt || new Date().toISOString()),
-  })) : [];
-  const goals = Array.isArray(data.goals) ? data.goals.filter(Boolean).map((v: any) => ({
-    id: String(v.id || id("goal")), title: String(v.title || "储蓄目标").slice(0,60),
-    target: money(v.target), saved: money(v.saved), deadline: v.deadline ? String(v.deadline) : undefined,
-    createdAt: String(v.createdAt || new Date().toISOString()),
-  })) : [];
-  const bills = Array.isArray(data.bills) ? data.bills.filter(Boolean).map((v: any) => ({
-    id: String(v.id || id("bill")), title: String(v.title || "周期账单").slice(0,60),
-    amount: money(v.amount), category: String(v.category || "固定支出").slice(0,32),
-    cadence: v.cadence === "weekly" ? "weekly" as const : "monthly" as const,
-    nextDueAt: String(v.nextDueAt || new Date().toISOString()),
-    status: v.status === "paused" || v.status === "overdue" ? v.status : "active" as const,
-    lastPaidAt: v.lastPaidAt ? String(v.lastPaidAt) : undefined,
-    lastError: v.lastError ? String(v.lastError).slice(0,160) : undefined,
-  })) : [];
+  const asRecord = (value: unknown): Record<string, unknown> =>
+    value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const budgets = Array.isArray(data.budgets) ? data.budgets.filter(Boolean).map(entry => {
+    const v = asRecord(entry);
+    return {
+      id: String(v.id || id("budget")),
+      month: /^\\d{4}-\\d{2}$/.test(String(v.month)) ? String(v.month) : new Date().toISOString().slice(0, 7),
+      category: String(v.category || "其他").slice(0, 32),
+      limit: money(v.limit),
+      createdAt: String(v.createdAt || new Date().toISOString()),
+    };
+  }) : [];
+  const goals = Array.isArray(data.goals) ? data.goals.filter(Boolean).map(entry => {
+    const v = asRecord(entry);
+    return {
+      id: String(v.id || id("goal")),
+      title: String(v.title || "储蓄目标").slice(0, 60),
+      target: money(v.target),
+      saved: money(v.saved),
+      deadline: v.deadline ? String(v.deadline) : undefined,
+      createdAt: String(v.createdAt || new Date().toISOString()),
+    };
+  }) : [];
+  const bills = Array.isArray(data.bills) ? data.bills.filter(Boolean).map(entry => {
+    const v = asRecord(entry);
+    return {
+      id: String(v.id || id("bill")),
+      title: String(v.title || "周期账单").slice(0, 60),
+      amount: money(v.amount),
+      category: String(v.category || "固定支出").slice(0, 32),
+      cadence: v.cadence === "weekly" ? "weekly" as const : "monthly" as const,
+      nextDueAt: String(v.nextDueAt || new Date().toISOString()),
+      status: v.status === "paused" || v.status === "overdue" ? v.status : "active" as const,
+      lastPaidAt: v.lastPaidAt ? String(v.lastPaidAt) : undefined,
+      lastError: v.lastError ? String(v.lastError).slice(0, 160) : undefined,
+    };
+  }) : [];
   return { budgets, goals, bills, updatedAt: String(data.updatedAt || new Date().toISOString()) };
 }
 export function loadWalletPlanning(): WalletPlanningState {
