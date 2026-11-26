@@ -69,7 +69,7 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
   );
 
   return (
-    <PageShell title="钱包" onBack={onClose}>
+    <PageShell title="钱包" onBack={onClose} className="wallet-private-bank">
       <style>{`
         .wallet-private-bank{color:#292b25}
         .wallet-private-bank .wallet-hero{background:radial-gradient(circle at 88% 8%,rgba(224,202,148,.23),transparent 30%),linear-gradient(135deg,#252b25,#111712 64%,#34372d);color:#f5f0e4;border:1px solid rgba(193,171,119,.35);box-shadow:0 18px 38px rgba(28,31,25,.2)}
