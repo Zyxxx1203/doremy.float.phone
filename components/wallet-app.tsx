@@ -27,7 +27,8 @@ type WalletTab = "home" | "accounts" | "family" | "joint" | "ledger" | WalletPla
 type Props = { onClose: () => void; initialTab?: WalletTab };
 
 const TABS: Array<{ id: WalletTab; label: string }> = [
-  { id: "home", label: "总览" },\n  { id: "accounts", label: "银行卡" },
+  { id: "home", label: "总览" },
+  { id: "accounts", label: "银行卡" },
   { id: "family", label: "亲属卡" },
   { id: "joint", label: "小金库" },
   { id: "ledger", label: "角色账本" },
@@ -54,7 +55,11 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
   const [characters, setCharacters] = useState(() => loadCharacters());
   const [familyCards, setFamilyCards] = useState<FamilyCard[]>(() => loadFamilyCards());
   const [jointFunds, setJointFunds] = useState<JointFund[]>(() => loadJointFunds());
-  const [tick, setTick] = useState(0);\n  const [quickEntry, setQuickEntry] = useState<"income" | "expense" | null>(null);\n  const [quickAmount, setQuickAmount] = useState("");\n  const [quickTitle, setQuickTitle] = useState("");\n  const [quickCategory, setQuickCategory] = useState("其他");
+  const [tick, setTick] = useState(0);
+  const [quickEntry, setQuickEntry] = useState<"income" | "expense" | null>(null);
+  const [quickAmount, setQuickAmount] = useState("");
+  const [quickTitle, setQuickTitle] = useState("");
+  const [quickCategory, setQuickCategory] = useState("其他");
   const refresh = useCallback(() => {
     setWallet(loadWalletState());
     setCharacters(loadCharacters());
