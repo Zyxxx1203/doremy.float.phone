@@ -45,7 +45,7 @@ export function AnonymousQaApp({ onClose }: { onClose: () => void }) {
   }, [askerId, askerTargetType, askerTargetId, characters]);
 
   // All published questions and replies are visible to every character and to the user.
-  const inbox = useMemo(() => questions.filter(q => q.audience === "public"), [questions]);
+  const inbox = useMemo(() => questions, [questions]);
   const sent = useMemo(() => questions.filter(q => q.askerType === "user" && q.askerId === "user"), [questions]);
   const pending = inbox.filter(q => q.status === "pending" && q.targetType === "user" && q.targetId === "user").length;
   const ask = () => {
