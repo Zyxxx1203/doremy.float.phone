@@ -300,8 +300,18 @@ export function WalletPanel({ onBack }: WalletPanelProps) {
     <PageShell title="余额管理" onBack={onBack} className="wallet-page-root">
       <style>{`
         .wallet-page-root {
-          background: var(--c-page-body-bg) !important;
+          background: #f2f0e9 !important;
+          color: #22251f;
         }
+        .wallet-page-root .page-header { background: #f2f0e9 !important; border-bottom: 1px solid rgba(88,82,65,.14); }
+        .wallet-page-root .page-body { background: radial-gradient(ellipse at 85% 0%,rgba(190,169,119,.13),transparent 38%),#f2f0e9; }
+        .wallet-page-root h2 { font-family: Georgia,"Noto Serif SC",serif; letter-spacing:.035em; }
+        .wallet-page-root .cp-premium-bank-card { border-radius: 20px; border:1px solid rgba(255,255,255,.22); }
+        .wallet-page-root .wallet-card-stack .cp-premium-bank-card { transform:translateY(0); transition:transform .28s ease,box-shadow .28s ease; }
+        .wallet-page-root .wallet-card-stack .cp-premium-bank-card.is-active { transform:translateY(-3px); box-shadow:0 22px 42px rgba(32,29,22,.25),inset 0 1px 1px rgba(255,255,255,.16); }
+        .wallet-page-root .wallet-luxe-panel { background:linear-gradient(145deg,#fffefa,#eeece4); border:1px solid rgba(153,137,100,.2); box-shadow:0 12px 30px rgba(43,39,28,.055); }
+        .wallet-page-root .wallet-luxe-kicker { color:#8d8062; font:600 9px/1.4 ui-sans-serif,system-ui; letter-spacing:.22em; text-transform:uppercase; }
+        .wallet-page-root .wallet-luxe-divider { height:1px; background:linear-gradient(90deg,rgba(151,130,83,.45),rgba(151,130,83,.04)); }
         .wallet-page-root .page-body {
           overflow-y: auto;
         }
@@ -347,14 +357,14 @@ export function WalletPanel({ onBack }: WalletPanelProps) {
       `}</style>
 
       <div className="p-4 flex flex-col gap-4 pb-24">
-        <section className="rounded-2xl p-5 overflow-hidden relative min-h-[156px] flex flex-col justify-between" style={{ background: "#eaf5ff", boxShadow: "0 8px 24px rgba(0,0,0,0.025)", border: "1px solid rgba(255,255,255,0.72)", color: "#172033" }}>
+        <section className="rounded-2xl p-5 overflow-hidden relative min-h-[156px] flex flex-col justify-between" style={{ background: "radial-gradient(circle at 88% 12%,rgba(230,207,151,.24),transparent 30%),linear-gradient(135deg,#242a25 0%,#101612 58%,#34372d 100%)", boxShadow: "0 18px 38px rgba(24,29,24,.2)", border: "1px solid rgba(213,194,145,.32)", color: "#f4f0e5" }}>
           <div className="relative flex items-start justify-between gap-4">
             <div>
-              <div className="ts-11 font-semibold opacity-70 tracking-[0.18em] uppercase">Real Balance</div>
+              <div className="wallet-luxe-kicker" style={{color:"#c7b78e"}}>PRIVATE WALLET · REAL BALANCE</div>
               <div className="ts-34 font-semibold mt-2" style={{ fontFamily: "Georgia, serif" }}>{formatWalletAmount(walletBalance)}</div>
-              <div className="ts-12 opacity-70 mt-1">红包、转账与余额支付默认使用这里</div>
+              <div className="ts-12 opacity-70 mt-1">可用余额 · 红包、转账与付款默认账户</div>
             </div>
-            <span className="ts-11 font-semibold opacity-70 tracking-[0.18em] shrink-0">{wallet.cards.length}张银行卡</span>
+            <span className="ts-10 font-semibold opacity-75 tracking-[0.12em] shrink-0 text-right">{wallet.cards.length} ACCOUNTS<br/><span className="text-[9px] opacity-60">账户总额 ¥{(wallet.balance + wallet.cards.reduce((sum, card) => sum + card.balance, 0)).toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2})}</span></span>
           </div>
           <div className="relative flex items-end justify-between gap-3">
             <span className="ts-12 opacity-70">{wallet.transactions.length} 条流水</span>
@@ -373,7 +383,7 @@ export function WalletPanel({ onBack }: WalletPanelProps) {
 
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between px-1">
-            <h2 className="ts-15 font-bold text-[var(--c-text-title)]">银行卡</h2>
+            <div><div className="wallet-luxe-kicker">YOUR ACCOUNTS</div><h2 className="ts-17 font-semibold text-[#292b25] mt-1">账户与银行卡</h2></div>
             <button type="button" onClick={() => setAddOpen(true)} className="min-h-[36px] px-3 rounded-full flex items-center gap-1.5 ts-12 font-semibold" style={{ background: "var(--c-icon-active)", color: "#fff" }}>
               <Plus size={15} />
               新增卡
@@ -392,7 +402,7 @@ export function WalletPanel({ onBack }: WalletPanelProps) {
         </section>
 
         {activeCard ? (
-          <section className="rounded-2xl bg-[var(--c-card)] p-4 flex flex-col gap-4" style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.025)" }}>
+          <section className="wallet-luxe-panel rounded-2xl p-4 flex flex-col gap-4" style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.025)" }}>
             <div className="min-w-0">
               <div className="ts-11 text-[var(--c-text)] opacity-60">当前银行卡余额</div>
               <div className="ts-26 font-bold text-[var(--c-text-title)] mt-1">{formatWalletAmount(activeCard.balance)}</div>
@@ -433,7 +443,7 @@ export function WalletPanel({ onBack }: WalletPanelProps) {
           </section>
         ) : null}
 
-        <section className="rounded-2xl bg-[var(--c-card)] px-4 py-2 flex flex-col" style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.025)" }}>
+        <section className="wallet-luxe-panel rounded-2xl px-4 py-2 flex flex-col" style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.025)" }}>
           <div className="py-3 flex items-center justify-between">
             <h2 className="ts-15 font-bold text-[var(--c-text-title)]">流水</h2>
             <span className="ts-11 text-[var(--c-text)] opacity-55">余额、银行卡与购物付款实时同步</span>
