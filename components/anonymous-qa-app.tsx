@@ -44,9 +44,8 @@ export function AnonymousQaApp({ onClose }: { onClose: () => void }) {
     }
   }, [askerId, askerTargetType, askerTargetId, characters]);
 
-  // Only questions addressed to the user belong in this inbox. Character-to-character
-  // letters remain private to their intended recipient and never become a public feed.
-  const inbox = useMemo(() => questions.filter(q => q.targetType === "user" && q.targetId === "user"), [questions]);
+  // All published questions and replies are visible to every character and to the user.
+  const inbox = useMemo(() => questions.filter(q => q.audience === "public"), [questions]);
   const sent = useMemo(() => questions.filter(q => q.askerType === "user" && q.askerId === "user"), [questions]);
   const pending = inbox.filter(q => q.status === "pending" && q.targetType === "user" && q.targetId === "user").length;
   const ask = () => {
@@ -58,7 +57,8 @@ export function AnonymousQaApp({ onClose }: { onClose: () => void }) {
   const answer = (id: string) => {
     const value = (answers[id] || "").trim();
     if (!value) return;
-    answerAnonymousQuestion(id, value);
+    const result = answerAnonymousQuestion(id, value, { targetType: "user", targetId: "user" });
+    if (!result) { notify("这道问题不是指定给你的，不能代替收件人回答。", "error"); refresh(); return; }
     setAnswers(prev => ({ ...prev, [id]: "" })); setExpandedId(""); refresh(); notify("回答已寄回");
   };
   const askByCharacter = async () => {
