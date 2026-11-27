@@ -49,7 +49,9 @@ T("非指定对象不能代答", qa.answerAnonymousQuestion(userLetter.id, "越�
 T("指定收件人可以回答", qa.answerAnonymousQuestion(userLetter.id, "没有躲你，只是在忙", { targetType: "character", targetId: "c1" })?.status === "answered");
 const answerNotice = chatMessages.find(message => message.sessionId === "session-c1" && message.content.includes("没有躲你，只是在忙"));
 T("回答操作不会广播系统条目", !answerNotice);
+const recordsBeforeEdit = chatMessages.length;
 T("可以编辑问题、回答与回答对象", (() => { const changed = qa.updateAnonymousQuestion(userLetter.id, { question: "修改后的问题", answer: "修改后的回答", targetType: "character", targetId: "c2" }); return changed?.question === "修改后的问题" && changed.answer === "修改后的回答" && changed.targetId === "c2" && changed.status === "answered"; })());
+T("编辑不会新增任何系统条目或主动回复请求", chatMessages.length === recordsBeforeEdit && replyRequests.length === 4);
 T("编辑/变更回答对象不会通知新收件角色", !chatMessages.some(message => message.sessionId === "session-c2" && message.content.includes("修改后的问题")));
 T("编辑/变更回答对象不会通知旧收件角色", !chatMessages.some(message => message.sessionId === "session-c1" && message.content.includes("已失效")));
 T("清空回答会恢复待回答状态", (() => { const changed = qa.updateAnonymousQuestion(userLetter.id, { answer: "" }); return changed?.status === "pending" && !changed.answer; })());
@@ -60,7 +62,7 @@ T("角色提问时只有收件角色收到系统条目", chatMessages.some(messa
 T("角色名称可以兜底解析为唯一角色 ID", qa.askAnonymousQuestion({ askerType: "character", askerId: "c1", targetType: "character", targetId: "顾总", question: "名称解析测试" }).targetId === "c2");
 T("不存在的角色不能作为收件人", (() => { try { qa.askAnonymousQuestion({ askerType: "character", askerId: "c1", targetType: "character", targetId: "missing-role", question: "无效收件人" }); return false; } catch { return true; } })());
 T("角色不能向自己提问", (() => { try { qa.askAnonymousQuestion({ askerType: "character", askerId: "c1", targetType: "character", targetId: "c1", question: "问自己" }); return false; } catch { return true; } })());
-T("角色向用户提问时不会触发角色回复", qa.askAnonymousQuestion({ askerType: "character", askerId: "c2", targetType: "user", targetId: "user", question: "今晚想吃什么？" }).targetType === "user" && replyRequests.length === 3);
+T("角色向用户提问时不会触发角色回复", qa.askAnonymousQuestion({ askerType: "character", askerId: "c2", targetType: "user", targetId: "user", question: "今晚想吃什么？" }).targetType === "user" && replyRequests.length === 4);
 T("不再提供常驻匿名提问箱上下文构建器", typeof qa.buildAnonymousQaContext === "undefined");
 store.set("ai_phone_anonymous_qa_v1", JSON.stringify(Array.from({ length: 501 }, (_, index) => ({
   id: "legacy-" + index, askerType: "user", askerId: "user", askerAlias: "匿名", targetType: "user", targetId: "user",
