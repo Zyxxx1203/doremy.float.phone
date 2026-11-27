@@ -299,7 +299,10 @@ export function WalletPanel({ onBack }: WalletPanelProps) {
   return (
     <PageShell title="余额管理" onBack={onBack} className="wallet-page-root">
       <style>{`
-        .wallet-page-root.page-shell {\n          position: relative;\n          z-index: 40;\n          isolation: isolate;
+        .wallet-page-root.page-shell {
+          position: relative;
+          z-index: 40;
+          isolation: isolate;
           background: #f2f0e9 !important;
           color: #22251f;
         }
