@@ -61,7 +61,7 @@ import type { MemoryEntry } from "./memory-types";
 import { loadCharacters } from "./character-storage";
 import { characterEarn, characterSpend, ensureCharacterLedger, loadCharacterLedger } from "./economy/character-ledger";
 import { createFamilyCard, loadFamilyCards, spendWithFamilyCard } from "./economy/family-card";
-import { answerAnonymousQuestion, askAnonymousQuestion, loadAnonymousQa, loadPublicAnonymousQa } from "./anonymous-qa";
+import { answerAnonymousQuestion, askAnonymousQuestion, loadAnonymousQa } from "./anonymous-qa";
 import { depositToJointFund, loadJointFundTransactions, loadJointFunds } from "./economy/joint-fund";
 import { loadChatMessages, loadChatSessions } from "./chat-storage";
 import { readCustomAppCollection } from "./custom-app-storage";
@@ -2644,7 +2644,7 @@ async function executeAnonymousQaTool(call: ToolCall, context?: ToolExecutionCon
             const row = askAnonymousQuestion({
                 askerType: "character", askerId: characterId,
                 targetType, targetId, question,
-                audience: call.args?.audience === "target" ? "target" : "public",
+                audience: "public",
             });
             return { name: call.name, success: true, data: `已匿名提问（${row.askerAlias}）：${question}`, userNotice: "匿名问了一个问题" };
         }
@@ -2654,18 +2654,12 @@ async function executeAnonymousQaTool(call: ToolCall, context?: ToolExecutionCon
             if (!questionId || !answer) throw new Error("需要 questionId 和 answer");
             const target = loadAnonymousQa().find(q => q.id === questionId);
             if (!target || target.targetType !== "character" || target.targetId !== characterId) throw new Error("这个问题不是问你的");
-            answerAnonymousQuestion(questionId, answer);
+            answerAnonymousQuestion(questionId, answer, { targetType: "character", targetId: characterId });
             return { name: call.name, success: true, data: `已匿名回答：${answer}`, userNotice: "回答了一个匿名提问" };
         }
-        const mine = loadAnonymousQa().filter(q => q.targetType === "character" && q.targetId === characterId && q.status === "pending");
-        const asked = loadAnonymousQa().filter(q => q.askerType === "character" && q.askerId === characterId).slice(0, 8);
-        const publicRows = loadPublicAnonymousQa().slice(0, 8);
-        const lines = [
-            ...mine.map(q => `待回答 ${q.id} · ${q.askerAlias}：${q.question}`),
-            ...asked.map(q => `你问的 · ${q.question} → ${q.status === "answered" ? (q.answer || "已回答") : "还在等回答"}`),
-            ...publicRows.map(q => `${q.status === "pending" ? "公开待答" : "公开"} · ${q.askerAlias} 问：${q.question} → ${q.answer || "等回答"}`),
-        ];
-        return { name: call.name, success: true, data: lines.length ? lines.join("\n") : "提问箱还是空的", userNotice: "看了看匿名提问箱" };
+        const shared = loadAnonymousQa().slice(0, 40);
+        const lines = shared.map(q => `[${q.status === "answered" ? "已回答" : "待回答"}] ${q.askerAlias} → ${q.targetType === "user" ? "用户" : "另一位角色"}：${q.question}${q.answer ? "；回答：" + q.answer : ""}${q.targetType === "character" && q.targetId === characterId && q.status === "pending" ? "；这是问你的，可回答，questionId=" + q.id : ""}`);
+        return { name: call.name, success: true, data: lines.length ? lines.join("\n") : "共享匿名提问箱目前还没有问题", userNotice: "看了看匿名提问箱" };
     } catch (error) {
         return { name: call.name, success: false, error: error instanceof Error ? error.message : String(error), continueConversation: false, persistToHistory: false, userNotice: "匿名提问箱操作失败" };
     }

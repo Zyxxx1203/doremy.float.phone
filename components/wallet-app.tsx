@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageShell } from "@/components/ui/page-shell";
 import { loadCharacters } from "@/lib/character-storage";
-import { loadWalletState, formatWalletAmount, WALLET_UPDATED_EVENT } from "@/lib/wallet-storage";
+import { loadWalletState, formatWalletAmount, WALLET_UPDATED_EVENT, creditWalletBalance, payWithWalletBalance } from "@/lib/wallet-storage";
+import { runDueWalletBills } from "@/lib/wallet-planning";
+import { WalletPlanningTabs, type WalletPlanningTab } from "@/components/wallet-planning-tabs";
+import { WalletPanel } from "@/components/chat/wallet-panel";
 import { loadCharacterLedger } from "@/lib/economy/character-ledger";
 import {
   createFamilyCard, loadFamilyCardTransactions, loadFamilyCards, spendWithFamilyCard,
@@ -20,14 +23,20 @@ import {
   type CharacterEconomyProfile, type CharacterIncomeCadence,
 } from "@/lib/economy/character-income";
 
-type WalletTab = "home" | "family" | "joint" | "ledger";
+type WalletTab = "home" | "accounts" | "family" | "joint" | "ledger" | WalletPlanningTab;
 type Props = { onClose: () => void; initialTab?: WalletTab };
 
 const TABS: Array<{ id: WalletTab; label: string }> = [
   { id: "home", label: "总览" },
+  { id: "accounts", label: "银行卡" },
   { id: "family", label: "亲属卡" },
   { id: "joint", label: "小金库" },
   { id: "ledger", label: "角色账本" },
+  { id: "budget", label: "预算" },
+  { id: "goals", label: "储蓄目标" },
+  { id: "bills", label: "周期账单" },
+  { id: "calendar", label: "财务日历" },
+  { id: "insights", label: "财务报告" },
 ];
 
 function money(value: number): string { return formatWalletAmount(value); }
@@ -47,6 +56,10 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
   const [familyCards, setFamilyCards] = useState<FamilyCard[]>(() => loadFamilyCards());
   const [jointFunds, setJointFunds] = useState<JointFund[]>(() => loadJointFunds());
   const [tick, setTick] = useState(0);
+  const [quickEntry, setQuickEntry] = useState<"income" | "expense" | null>(null);
+  const [quickAmount, setQuickAmount] = useState("");
+  const [quickTitle, setQuickTitle] = useState("");
+  const [quickCategory, setQuickCategory] = useState("其他");
   const refresh = useCallback(() => {
     setWallet(loadWalletState());
     setCharacters(loadCharacters());
@@ -57,42 +70,78 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
 
   useEffect(() => {
     runDueJointFundPlans();
+    const due = runDueWalletBills();
+    if (due.paid) notify(`已自动处理 ${due.paid} 笔周期账单`);
+    if (due.overdue) notify(`${due.overdue} 笔周期账单扣款失败，请检查余额`, "error");
     refresh();
     const events = [WALLET_UPDATED_EVENT, FAMILY_CARD_UPDATED_EVENT, JOINT_FUND_UPDATED_EVENT, CHARACTER_ECONOMY_UPDATED_EVENT, "characters-updated"];
     for (const name of events) window.addEventListener(name, refresh);
     return () => { for (const name of events) window.removeEventListener(name, refresh); };
   }, [refresh]);
 
+  const saveQuickEntry = () => {
+    const amount = Number(quickAmount);
+    if (!Number.isFinite(amount) || amount <= 0 || !quickTitle.trim()) { notify("请填写有效金额和用途。", "error"); return; }
+    const result = quickEntry === "income"
+      ? creditWalletBalance(amount, quickTitle.trim(), "钱包手动收入", quickCategory)
+      : payWithWalletBalance({ amount, title: quickTitle.trim(), detail: "钱包手动支出", category: quickCategory });
+    if (!result.ok) { notify(result.error || "记账失败", "error"); return; }
+    notify(quickEntry === "income" ? "收入已记账" : "支出已记账");
+    setQuickEntry(null); setQuickAmount(""); setQuickTitle(""); refresh();
+  };
+
   const totalLedger = useMemo(
-    () => characters.reduce((sum, c) => sum + (loadCharacterLedger(c.id)?.balance || 0), 0),
+    () => { void tick; return characters.reduce((sum, c) => sum + (loadCharacterLedger(c.id)?.balance || 0), 0); },
     [characters, tick],
   );
 
+  if (tab === "accounts") return <WalletPanel onBack={() => setTab("home")} />;
+
   return (
-    <PageShell title="钱包" onBack={onClose}>
-      <div className="flex gap-2 overflow-x-auto px-1 pb-3">
+    <PageShell title="钱包" onBack={onClose} className="wallet-private-bank">
+      <style>{`
+        .wallet-private-bank{color:#292b25}
+        .wallet-private-bank .wallet-hero{background:radial-gradient(circle at 88% 8%,rgba(224,202,148,.23),transparent 30%),linear-gradient(135deg,#252b25,#111712 64%,#34372d);color:#f5f0e4;border:1px solid rgba(193,171,119,.35);box-shadow:0 18px 38px rgba(28,31,25,.2)}
+        .wallet-private-bank .wallet-section{background:linear-gradient(145deg,#fffefa,#eeece4);border:1px solid rgba(153,137,100,.18);box-shadow:0 12px 28px rgba(43,39,28,.045)}
+        .wallet-private-bank .wallet-kicker{font:600 9px/1.4 ui-sans-serif,system-ui;letter-spacing:.22em;text-transform:uppercase;color:#968664}
+        .wallet-private-bank .wallet-tab{border:1px solid rgba(143,128,91,.22);background:rgba(255,255,255,.52);color:#69685f}
+        .wallet-private-bank .wallet-tab[aria-pressed=true]{background:#202820;color:#f6f0e2;border-color:#202820;box-shadow:0 5px 14px rgba(20,28,20,.16)}
+        .wallet-private-bank .wallet-metal-line{height:1px;background:linear-gradient(90deg,rgba(171,148,96,.5),transparent)}
+        .wallet-private-bank .wallet-tx{border-bottom:1px solid rgba(143,128,91,.14)}
+      `}</style>
+      <div className="wallet-private-bank flex gap-2 overflow-x-auto px-1 pb-3">
         {TABS.map(item => (
-          <button key={item.id} onClick={() => setTab(item.id)} className={`shrink-0 rounded-full px-4 py-2 text-sm ${tab === item.id ? "bg-[var(--c-primary)] text-white" : "bg-[var(--c-input)] text-[var(--c-text)]"}`}>{item.label}</button>
+          <button key={item.id} onClick={() => setTab(item.id)} aria-pressed={tab === item.id} className={`wallet-tab shrink-0 rounded-full px-4 py-2 text-sm transition-colors ${tab === item.id ? "" : ""}`}>{item.label}</button>
         ))}
       </div>
 
       {tab === "home" && (
-        <div className="flex flex-col gap-3">
-          <div className="rounded-3xl bg-[var(--c-card)] p-5 shadow-sm">
-            <div className="text-xs text-[var(--c-icon)]">我的余额</div>
-            <div className="mt-1 text-3xl font-semibold text-[var(--c-text)]">{money(wallet.balance)}</div>
+        <div className="wallet-private-bank flex flex-col gap-3">
+          <div className="wallet-hero rounded-3xl p-5 shadow-sm">
+            <div className="wallet-kicker" style={{color:"#c7b78e"}}>PRIVATE WALLET · AVAILABLE BALANCE</div><div className="mt-2 text-[10px] tracking-[.12em] opacity-65">我的可用余额</div>
+            <div className="mt-1 text-3xl font-semibold" style={{color:"#f5f0e4",fontFamily:"Georgia,serif"}}>{money(wallet.balance)}</div>
             <div className="mt-3 flex gap-4 text-xs text-[var(--c-icon)]">
-              <span>银行卡 {wallet.cards.length} 张</span>
+              <button type="button" onClick={() => setTab("accounts")} className="underline underline-offset-4">银行卡 {wallet.cards.length} 张 · 管理</button>
               <span>亲属卡 {familyCards.length} 张</span>
               <span>小金库 {jointFunds.length} 个</span>
             </div>
           </div>
-          <div className="rounded-2xl bg-[var(--c-card)] p-4">
-            <div className="text-sm font-medium text-[var(--c-text)]">角色账本总余额</div>
+          <div className="wallet-section rounded-2xl p-4">
+            <div className="mb-3 flex items-center justify-between"><div><div className="wallet-kicker mb-1">QUICK ENTRY</div><div className="text-sm font-medium text-[var(--c-text)]">快速记账</div></div><div className="flex gap-2"><button type="button" onClick={() => setQuickEntry("income")} className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">＋ 收入</button><button type="button" onClick={() => setQuickEntry("expense")} className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700">－ 支出</button></div></div>
+            {quickEntry && <div className="grid grid-cols-2 gap-2">
+              <input value={quickTitle} onChange={event => setQuickTitle(event.target.value)} placeholder="用途 / 来源" className="ui-input col-span-2" />
+              <input value={quickAmount} onChange={event => setQuickAmount(event.target.value)} type="number" inputMode="decimal" min="0" step="0.01" placeholder="金额" className="ui-input" />
+              <select value={quickCategory} onChange={event => setQuickCategory(event.target.value)} className="ui-select">{["其他","餐饮","交通","购物","居住","娱乐","医疗","订阅","学习","工资","退款"].map(value => <option key={value}>{value}</option>)}</select>
+              <button type="button" onClick={() => { setQuickEntry(null); setQuickAmount(""); setQuickTitle(""); }} className="ui-btn ui-btn-ghost">取消</button>
+              <button type="button" onClick={saveQuickEntry} className="ui-btn ui-btn-primary">确认记账</button>
+            </div>}
+          </div>
+          <div className="wallet-section rounded-2xl p-4">
+            <div className="wallet-kicker mb-1">CHARACTER ASSETS</div><div className="text-sm font-medium text-[var(--c-text)]">角色账本总余额</div>
             <div className="mt-1 text-xl font-semibold text-[var(--c-text)]">{money(totalLedger)}</div>
             <div className="mt-1 text-xs text-[var(--c-icon)]">每个角色的收入/支出在「角色账本」里查看</div>
           </div>
-          <div className="rounded-2xl bg-[var(--c-card)] p-4">
+          <div className="wallet-section rounded-2xl p-4">
             <div className="mb-2 flex items-center justify-between"><span className="text-sm font-medium text-[var(--c-text)]">最近流水</span><span className="text-xs text-[var(--c-icon)]">共 {wallet.transactions.length} 条</span></div>
             <div className="flex flex-col gap-2">
               {wallet.transactions.slice(0, 6).map(tx => (
@@ -110,6 +159,7 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
       {tab === "family" && <FamilyTab characters={characters} cards={familyCards} onChange={refresh} />}
       {tab === "joint" && <JointTab characters={characters} funds={jointFunds} onChange={refresh} />}
       {tab === "ledger" && <LedgerTab characters={characters} />}
+      {(["budget","goals","bills","calendar","insights"] as WalletPlanningTab[]).includes(tab as WalletPlanningTab) && <WalletPlanningTabs tab={tab as WalletPlanningTab} onChange={refresh} />}
     </PageShell>
   );
 }
@@ -277,7 +327,7 @@ function CharacterLedgerCard({ character }: { character: ReturnType<typeof loadC
     }).finally(() => {
       if (alive) setLoadingProfile(false);
     });
-    return () => { alive = false; };  }, [character.id]);
+    return () => { alive = false; };  }, [character]);
 
   useEffect(() => {
     const sync = () => setRevision(value => value + 1);
@@ -287,6 +337,12 @@ function CharacterLedgerCard({ character }: { character: ReturnType<typeof loadC
 
   const ledger = loadCharacterLedger(character.id);
   const latest = ledger?.statements?.[0];
+  const monthPrefix = new Date().toISOString().slice(0, 7);
+  const monthRows = (ledger?.transactions || []).filter(tx => new Date(tx.at).toISOString().slice(0, 7) === monthPrefix);
+  const monthIncome = monthRows.filter(tx => tx.amount > 0).reduce((sum, tx) => sum + tx.amount, 0);
+  const monthExpense = monthRows.filter(tx => tx.amount < 0).reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+  const expenseCategories = monthRows.filter(tx => tx.amount < 0).reduce<Record<string, number>>((acc, tx) => { acc[tx.category] = (acc[tx.category] || 0) + Math.abs(tx.amount); return acc; }, {});
+  const topExpense = Object.entries(expenseCategories).sort((a,b) => b[1] - a[1]).slice(0,3);
   const save = () => {
     try {
       setCharacterInitialDeposit(character.id, Number(initial) || 0);
@@ -314,7 +370,12 @@ function CharacterLedgerCard({ character }: { character: ReturnType<typeof loadC
         {profile?.initialAppliedAt ? " · 初始存款已入账" : ""}
         {profile?.enabled && profile.incomeAmount > 0 ? ` · 下次固定收入 ${time(profile.nextIncomeAt)}` : ""}
       </div>
-      {loadingProfile && <div className="mt-2 text-[11px] text-[var(--c-icon)]">正在根据角色卡分析经济档案…</div>}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-xl bg-[#e9eee5] p-3"><div className="text-[10px] text-[#6c8068]">本月收入</div><div className="mt-1 text-sm font-semibold text-[#3f6547]">{money(monthIncome)}</div></div>
+        <div className="rounded-xl bg-[#eee9e2] p-3"><div className="text-[10px] text-[#8d7165]">本月支出</div><div className="mt-1 text-sm font-semibold text-[#80594d]">{money(monthExpense)}</div></div>
+      </div>
+      {topExpense.length > 0 && <div className="mt-2 rounded-xl bg-[var(--c-input)] p-3"><div className="mb-2 text-[10px] text-[var(--c-icon)]">本月消费去向</div><div className="flex flex-wrap gap-2">{topExpense.map(([name,value])=><span key={name} className="rounded-full bg-white/70 px-2 py-1 text-[10px] text-[#777]">{name} {money(value)}</span>)}</div></div>}
+            {loadingProfile && <div className="mt-2 text-[11px] text-[var(--c-icon)]">正在根据角色卡分析经济档案…</div>}
       {!loadingProfile && profile?.basis && (
         <div className="mt-2 rounded-xl bg-[var(--c-input)] px-3 py-2 text-[10px] text-[var(--c-icon)]">
           {profile.source === "llm" ? "大模型按角色卡判断" : "人设关键词兜底"}：{profile.basis}
