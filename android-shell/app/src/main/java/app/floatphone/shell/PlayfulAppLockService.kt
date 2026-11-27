@@ -218,6 +218,19 @@ class PlayfulAppLockService : Service() {
         private const val NOTIFICATION_ID = 4621
         private val random = SecureRandom()
 
+        private fun hasUsageStatsAccess(context: Context): Boolean = runCatching {
+            val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), context.packageName) == AppOpsManager.MODE_ALLOWED
+        }.getOrDefault(false)
+
+        private fun hasFreshAccessibilityHeartbeat(context: Context): Boolean {
+            val perception = context.getSharedPreferences("native_background_perception", Context.MODE_PRIVATE)
+            val updatedAt = perception.getLong("current_package_updated_at", 0L)
+            return updatedAt > 0L && System.currentTimeMillis() - updatedAt <= 30_000L
+                && !perception.getString("current_package", "").isNullOrBlank()
+        }
+
         private fun isProtectedTarget(context: Context, target: String): Boolean {
             val normalized = target.trim().lowercase()
             val hardBlocked = setOf(
@@ -263,6 +276,9 @@ class PlayfulAppLockService : Service() {
             }
             val installed = runCatching { context.packageManager.getApplicationInfo(target, 0) }.isSuccess
             if (!installed) return JSONObject().put("ok", false).put("reason", "目标应用已不存在或未安装")
+            if (!hasUsageStatsAccess(context) && !hasFreshAccessibilityHeartbeat(context)) {
+                return JSONObject().put("ok", false).put("reason", "缺少前台应用监测能力，请先开启使用情况访问或 Float 无障碍服务")
+            }
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             if (prefs.getBoolean("running", false) && prefs.getLong("expiresAt", 0L) > System.currentTimeMillis()) {
                 val existingCharId = prefs.getString("charId", "") ?: ""
@@ -317,11 +333,7 @@ class PlayfulAppLockService : Service() {
             val fallbackUpdatedAt = perception.getLong("current_package_updated_at", 0L)
             val fallbackPackage = if (fallbackUpdatedAt > 0L && System.currentTimeMillis() - fallbackUpdatedAt <= 30_000L)
                 perception.getString("current_package", "") ?: "" else ""
-            val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-            val usageAccess = runCatching {
-                @Suppress("DEPRECATION")
-                appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), context.packageName) == AppOpsManager.MODE_ALLOWED
-            }.getOrDefault(false)
+            val usageAccess = hasUsageStatsAccess(context)
             val running = p.getBoolean("running", false) && p.getLong("expiresAt", 0L) > System.currentTimeMillis()
             return JSONObject()
                 .put("ok", true)
