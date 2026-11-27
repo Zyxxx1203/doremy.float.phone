@@ -42,6 +42,7 @@ export type JointFundPlanRunResult = {
     amount: number;
     ok: boolean;
     goalReached?: boolean;
+    alreadyCompleted?: boolean;
     otherFunds?: Array<{ id: string; name: string }>;
     error?: string;
 };
@@ -116,6 +117,7 @@ export function depositToJointFund(fundId: string, memberType: JointFundMemberTy
     const fund = state.funds.find(f => f.id === fundId);
     if (!fund) return { ok: false, error: "找不到小金库" };
     if (fund.status === "paused") return { ok: false, error: "小金库已暂停" };
+    if (fund.status === "completed") return { ok: false, error: "这个小金库已经达成目标，不能继续存入" };
     const value = money(amount);
     if (value <= 0) return { ok: false, error: "金额无效" };
     if (memberType === "user") {
@@ -201,11 +203,20 @@ export function markJointFundPlanReminded(planId: string, runAt: number): void {
  */
 export function runDueJointFundPlans(now = Date.now()): JointFundPlanRunResult[] {
     const results: JointFundPlanRunResult[] = [];
-    const duePlans = load().plans.filter(plan => plan.enabled && plan.nextRunAt <= now);
+    const dueState = load();
+    const duePlans = dueState.plans.filter(plan => {
+        const fund = dueState.funds.find(item => item.id === plan.fundId);
+        return plan.enabled && (plan.nextRunAt <= now || fund?.status === "completed");
+    });
     for (const plan of duePlans) {
         const fundBefore = load().funds.find(f => f.id === plan.fundId);
         if (!fundBefore) continue;
-        const result = depositToJointFund(plan.fundId, plan.memberType, plan.memberId, plan.amount, "定时存入");
+        // 用户手动存款也可能先一步达成目标；下一次调度检查时应直接结束角色计划，
+        // 而不是再向已完成的小金库扣一次钱。
+        const alreadyCompleted = fundBefore.status === "completed";
+        const result = alreadyCompleted
+            ? { ok: true, fund: fundBefore }
+            : depositToJointFund(plan.fundId, plan.memberType, plan.memberId, plan.amount, "定时存入");
         // 失败（余额不足等）第二天重试，不要把整期直接跳过去。
         const state = load();
         const completedFund = state.funds.find(f => f.id === plan.fundId);
@@ -233,6 +244,7 @@ export function runDueJointFundPlans(now = Date.now()): JointFundPlanRunResult[]
             amount: plan.amount,
             ok: result.ok,
             goalReached,
+            alreadyCompleted,
             otherFunds,
             error: result.error,
         });
