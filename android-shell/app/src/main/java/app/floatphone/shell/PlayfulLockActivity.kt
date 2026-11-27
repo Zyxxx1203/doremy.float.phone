@@ -72,7 +72,7 @@ class PlayfulLockActivity : Activity() {
         val scroll = ScrollView(this).apply { isFillViewport = true; addView(root) }
 
         root.addView(TextView(this).apply {
-            text = "来自 ${charName} 的提醒"
+            text = "TA 的专属小手段"
             setTextColor(0xFFC9B9FF.toInt()); textSize = 12f; letterSpacing = 0.12f; gravity = Gravity.CENTER
         }, matchWrap().apply { bottomMargin = dp(18) })
 
@@ -141,7 +141,7 @@ class PlayfulLockActivity : Activity() {
         }
         root.addView(errorText, matchWrap())
 
-        root.addView(actionButton("回到与 ${charName} 的聊天", 0xFF8976D8.toInt(), Color.WHITE) {
+        root.addView(actionButton("去找 ${charName} 求情", 0xFF8976D8.toInt(), Color.WHITE) {
             val sessionId = prefs.getString("sessionId", "") ?: ""
             val chatUrl = if (sessionId.isNotBlank()) MainActivity.SITE_URL.trimEnd('/') + "/#open-chat=" + android.net.Uri.encode(sessionId) else ""
             startActivity(Intent(this@PlayfulLockActivity, MainActivity::class.java).apply {
