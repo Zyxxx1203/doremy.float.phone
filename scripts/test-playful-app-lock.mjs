@@ -36,8 +36,10 @@ assert.match(executor, /sessionId: context\?\.sessionId/, "the role tool must pa
 assert.match(executor, /durationMinutes: Math\.max\(1, Math\.min\(360/, "the role tool must clamp requested duration");
 assert.doesNotMatch(host, /device\.appLock\.reveal/, "custom-app host must not expose the password reveal action");
 assert.doesNotMatch(runner, /appLockReveal: function/, "custom-app SDK must not expose native password reveal");
+assert.doesNotMatch(host, /password: String\(record\.password/, "custom apps must not provide their own native lock password");
 assert.match(internal, /durationMinutes: \{ type: "number"/, "internal role tool schema must expose bounded duration");
 assert.match(builtin, /durationMinutes/, "built-in companion manifest must document bounded duration");
 assert.match(manifest, /durationMinutes/, "exported companion manifest must document bounded duration");
+assert.match(manifest, /角色锁屏主题与对白/, "companion tool schema must allow character-authored lock-screen copy");
 
 console.log("Playful app-lock interaction and safety contract tests passed.");
