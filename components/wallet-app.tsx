@@ -104,7 +104,6 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
   const activeCharacterId = characters.some(character => character.id === selectedCharacterId)
     ? selectedCharacterId
     : characters[0]?.id || "";
-  const selectedCharacter = characters.find(character => character.id === activeCharacterId);
   const selectedCharacterLedger = useMemo(() => {
     void tick;
     return activeCharacterId ? loadCharacterLedger(activeCharacterId) : null;
@@ -121,7 +120,7 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
     };
   }, [wallet.transactions]);
 
-  if (tab === "accounts") return <WalletPanel onBack={() => setTab("home")} />;
+  if (tab === "accounts") return <WalletPanel onBack={() => setTab("home")} onNavigateTab={nextTab => setTab(nextTab)} />;
 
   return (
     <PageShell title="钱包" onBack={onClose} className="wallet-private-bank wallet-private-bank-shell" headerClassName="wallet-app-header" headerStyle={{ background: "#f7f6f0", backgroundColor: "#f7f6f0", backgroundImage: "none", backdropFilter: "none", WebkitBackdropFilter: "none", zIndex: 50, isolation: "isolate" }}>
@@ -167,17 +166,12 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
             </div>}
           </div>
           <div className="wallet-section rounded-2xl p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="min-w-0"><div className="wallet-kicker mb-1">CHARACTER ASSETS</div><div className="text-sm font-medium text-[var(--c-text)]">{selectedCharacter ? `${selectedCharacter.name} 的账本余额` : "角色账本"}</div></div>
-              {characters.length > 0 && <select aria-label="选择角色账本" value={activeCharacterId} onChange={event => setSelectedCharacterId(event.target.value)} className="ui-select max-w-[46%] text-xs">{characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}</select>}
+            <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
+              <div className="min-w-0 flex-1"><div className="wallet-kicker mb-1">CHARACTER ASSETS</div><div className="whitespace-nowrap text-sm font-medium text-[var(--c-text)]">角色账本余额</div></div>
+              {characters.length > 0 && <select aria-label="切换角色账本" value={activeCharacterId} onChange={event => setSelectedCharacterId(event.target.value)} className="ui-select h-8 w-[108px] min-w-0 shrink-0 px-2 text-xs">{characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}</select>}
             </div>
             <div className="text-xl font-semibold text-[var(--c-text)]">{money(selectedCharacterLedger?.balance || 0)}</div>
-            <div className="mt-1 text-xs text-[var(--c-icon)]">{selectedCharacter ? `当前查看：${selectedCharacter.name} · 不包含其他角色余额` : "还没有角色账本"}</div>
-            <div className="mt-3 flex flex-col gap-2">
-              {(selectedCharacterLedger?.transactions || []).slice(-3).reverse().map(tx => <div key={tx.id} className="flex items-center justify-between gap-3 text-xs"><div className="min-w-0"><div className="truncate text-[var(--c-text)]">{tx.note || tx.category}</div><div className="text-[10px] text-[var(--c-icon)]">{time(tx.at)} · {tx.category}</div></div><span className={tx.amount < 0 ? "shrink-0 text-rose-500" : "shrink-0 text-emerald-600"}>{tx.amount < 0 ? "−" : "+"}{money(Math.abs(tx.amount))}</span></div>)}
-              {!selectedCharacterLedger?.transactions.length && <div className="text-xs text-[var(--c-icon)]">这位角色还没有收支记录</div>}
-            </div>
-            <button type="button" onClick={() => setTab("ledger")} className="mt-3 text-xs font-medium text-[var(--c-primary)]">查看完整账本与设置 →</button>
+            <button type="button" onClick={() => setTab("ledger")} className="mt-2 self-start text-xs font-medium text-[var(--c-primary)]">查看账本设置 →</button>
           </div>
           <div className="wallet-section rounded-2xl p-4">
             <div className="mb-2 flex items-center justify-between"><span className="text-sm font-medium text-[var(--c-text)]">最近流水</span><span className="text-xs text-[var(--c-icon)]">共 {wallet.transactions.length} 条</span></div>
@@ -243,14 +237,9 @@ function FamilyTab({ characters, cards, onChange }: { characters: ReturnType<typ
           <span className="wallet-form-mark">¥</span>
         </div>
 
-        <div className="wallet-form-field">
-          <span className="wallet-form-label">发卡方</span>
-          <div className="wallet-form-control flex items-center justify-between"><strong>我</strong><span className="text-xs text-[var(--c-icon)]">发放给下方选择的角色</span></div>
-        </div>
-
-        <label className="wallet-form-field">
-          <span className="wallet-form-label">关联角色</span>
-          <select value={characterId} onChange={event => setCharacterId(event.target.value)} disabled={!characters.length} className="wallet-form-control">
+        <label className="wallet-family-recipient-row flex items-center gap-3 rounded-2xl border border-[var(--c-card-border)] bg-[var(--c-card)] px-3 py-2.5">
+          <span className="shrink-0 text-xs font-medium text-[var(--c-icon)]">发给</span>
+          <select aria-label="选择亲属卡使用者" value={characterId} onChange={event => setCharacterId(event.target.value)} disabled={!characters.length} className="min-w-0 flex-1 border-0 bg-transparent text-sm font-semibold text-[var(--c-text)] outline-none">
             {characters.length ? characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>) : <option value="">暂无可选角色</option>}
           </select>
         </label>
@@ -416,7 +405,6 @@ function JointTab({ characters, funds, onChange }: { characters: ReturnType<type
             <div className="mt-1 flex justify-between text-[10px] text-[var(--c-icon)]"><span>{Math.min(100, Math.round(fund.balance / fund.goalAmount * 100))}% 已完成</span><span>{fund.balance >= fund.goalAmount ? "目标已达成" : `还差 ${money(fund.goalAmount - fund.balance)}`}</span></div>
 
             <div className="wallet-joint-deposit">
-              <div className="rounded-xl bg-[#f3f1e9] px-3 py-2 text-xs text-[#777365]">本次存款由你本人从钱包余额支付。角色想参与时，会由 TA 自己决定并通过角色工具存入。</div>
               <label className="wallet-form-field">
                 <span className="wallet-form-label">存入金额</span>
                 <span className="wallet-form-currency">

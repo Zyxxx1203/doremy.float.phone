@@ -116,7 +116,10 @@ assert.doesNotMatch(walletUi.slice(walletUi.indexOf("function FamilyTab"), walle
 assert.doesNotMatch(walletUi.slice(walletUi.indexOf("function JointTab"), walletUi.indexOf("function LedgerTab")), /TA 来存|memberType: "character"/);
 assert.match(walletUi, /可用亲属卡：/);
 assert.match(walletUi, /发放亲属卡：/);
-assert.match(walletUi, /当前查看：/);
+assert.match(walletUi, /角色账本余额/);
+assert.doesNotMatch(walletUi, /当前查看：/);
+const overviewLedgerCard = walletUi.slice(walletUi.indexOf("CHARACTER ASSETS"), walletUi.indexOf("wallet-section rounded-2xl p-4", walletUi.indexOf("CHARACTER ASSETS")));
+assert.doesNotMatch(overviewLedgerCard, /selectedCharacterLedger\?\.transactions|最近流水|这位角色还没有收支记录/);
 console.log("  ✅ 中文工具已接入；用户页面不再提供代角色发卡/存款入口");
 
 console.log("\n✅ 钱包改造回归测试全部通过");

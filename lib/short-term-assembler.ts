@@ -57,7 +57,7 @@ function formatPhotoDirectiveForPrompt(msg: ChatMessage): string {
 export type NativeTimelineEntry = {
     id: string;
     sourceApp: "chat" | "moments" | "story" | "vn" | "map" | "game" | "diary" | "xiaohongshu" | "interview_magazine" | "cocreate" | "checkphone" | "custom_app" | "photo_wall" | "memo" | "life" | "phone_widget" | "watch" | "global_watch";
-    sourceDetail?: "direct" | "group" | "system" | "story" | "chat_offline" | "game" | "diary_entry" | "notewall" | "xiaohongshu" | "black_market_theater" | "interview_issue" | "interview_shared_issue" | "cocreate_project" | "checkphone" | "custom_app_event" | "life_shared_event" | "life_scene_message" | "photo_wall_creation"; // chat sub-type: 1:1 vs group chat vs system note
+    sourceDetail?: "direct" | "group" | "system" | "story" | "chat_offline" | "game" | "diary_entry" | "notewall" | "xiaohongshu" | "black_market_theater" | "interview_issue" | "interview_shared_issue" | "cocreate_project" | "checkphone" | "custom_app_event" | "life_shared_event" | "life_scene_message" | "photo_wall_creation" | "anonymous_qa"; // chat sub-type: 1:1 vs group chat vs system note
     authorType?: "user" | "character" | "npc"; // who authored this entry
     postAuthorType?: "user" | "character"; // for moments: who owns the parent post
     sessionId?: string;
@@ -303,9 +303,9 @@ export function loadNativeTimeline(
                         sourceApp: "chat",
                         // 内部备注/头像等事件明确进入私聊短期记忆；普通手动系统指令
                         // 仍保留 system 分类，避免改变已有记忆行为。
-                        sourceDetail: msg.mediaData?.shortTermMemoryEvent ? "direct" : "system",
+                        sourceDetail: msg.mediaData?.shortTermMemorySource === "anonymous_qa" ? "anonymous_qa" : msg.mediaData?.shortTermMemoryEvent ? "direct" : "system",
                         timestamp: msg.createdAt,
-                        content: `${msgLabel} ${msg.mediaData?.shortTermMemoryEvent ? "[私聊事件]" : "[系统指令]"} ${instructionContent}`,
+                        content: `${msgLabel} ${msg.mediaData?.shortTermMemorySource === "anonymous_qa" ? "[匿名提问箱]" : msg.mediaData?.shortTermMemoryEvent ? "[私聊事件]" : "[系统指令]"} ${instructionContent}`,
                     });
                     continue;
                 }
@@ -955,7 +955,7 @@ export function loadNativeTimeline(
 }
 
 // Fixed order — lower = further from LLM output (appears higher in prompt)
-const FEATURE_ORDER: Record<string, number> = { map: 0, game: 0.5, moments: 1, xiaohongshu: 1.5, checkphone: 1.7, story: 2, vn: 2, theater: 2.2, interview: 2.35, cocreate: 2.4, diary_entry: 2.45, notewall: 2.5, life_scene: 2.55, custom_app: 2.6, group_chat: 3, chat: 4 };
+const FEATURE_ORDER: Record<string, number> = { map: 0, game: 0.5, moments: 1, xiaohongshu: 1.5, checkphone: 1.7, story: 2, vn: 2, theater: 2.2, interview: 2.35, cocreate: 2.4, diary_entry: 2.45, notewall: 2.5, life_scene: 2.55, custom_app: 2.6, group_chat: 3, anonymous_qa: 3.8, chat: 4 };
 // First-class app timelines share the custom-app prompt block and ordering.
 const CUSTOM_APP_TIMELINE_SOURCES = new Set<string>([
     "custom_app", "photo_wall", "watch", "phone_widget", "life",
@@ -1065,6 +1065,8 @@ export function filterTimelineByAllowedSources(
     return entries.filter(entry => {
         const source = entry.sourceApp;
         if (source === "chat") {
+            // 匿名提问箱是独立的短期事件来源，不跟随普通聊天记录开关一起隐藏。
+            if (entry.sourceDetail === "anonymous_qa") return true;
             if (entry.sourceDetail === "group") return rules.group_chat !== false;
             return rules.chat !== false;
         }
@@ -1250,6 +1252,12 @@ export function prepareShortTermContext(
     );
     if (groupChatEntries.length > 0) {
         raw.push({ tag: "recent_group_chat", order: FEATURE_ORDER.group_chat, entries: groupChatEntries });
+    }
+
+    // Anonymous Q&A events remain individual timeline records, but use their own source tag.
+    const anonymousQaEntries = timeline.filter(e => e.sourceApp === "chat" && e.sourceDetail === "anonymous_qa");
+    if (anonymousQaEntries.length > 0) {
+        raw.push({ tag: "recent_anonymous_qa", order: FEATURE_ORDER.anonymous_qa, entries: anonymousQaEntries });
     }
 
     // Direct chat from timeline — skipped only when the current history already comes from chat/group_chat.
@@ -1520,6 +1528,11 @@ export function prepareGroupShortTermContext(
         raw.push({ tag: "recent_group_chat", order: FEATURE_ORDER.group_chat, entries: groupChatEntries });
     }
 
+    const anonymousQaEntries = timeline.filter(e => e.sourceApp === "chat" && e.sourceDetail === "anonymous_qa");
+    if (anonymousQaEntries.length > 0) {
+        raw.push({ tag: "recent_anonymous_qa", order: FEATURE_ORDER.anonymous_qa, entries: anonymousQaEntries });
+    }
+
     const directChatEntries = timeline.filter(e => e.sourceApp === "chat" && e.sourceDetail === "direct");
     if (directChatEntries.length > 0) {
         raw.push({ tag: "recent_chat", order: FEATURE_ORDER.chat, entries: directChatEntries });
@@ -1612,6 +1625,7 @@ export function prepareGroupShortTermContext(
                                                         entry.sourceApp === "story" && entry.sourceDetail === "black_market_theater" ? "recent_theater" :
                                                             entry.sourceApp === "diary" && entry.sourceDetail === "diary_entry" ? "recent_diary" :
                                                                 entry.sourceApp === "diary" && entry.sourceDetail === "notewall" ? "recent_notewall" :
+                                                                    entry.sourceApp === "chat" && entry.sourceDetail === "anonymous_qa" ? "recent_anonymous_qa" :
                                                                     entry.sourceApp === "chat" ? "recent_chat" : "recent_events"
                 ),
                 text: entry.content,
