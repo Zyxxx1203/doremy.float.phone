@@ -428,7 +428,9 @@ function JointTab({ characters, funds, onChange }: { characters: ReturnType<type
 
             <div className="wallet-joint-plan-row">
               <button type="button" onClick={() => createPlan(fund)} className="wallet-form-secondary">为我设置每周自动存入</button>
-              {plans.map(plan => <button type="button" key={plan.id} onClick={() => { removeJointFundPlan(plan.id); onChange(); }} className="wallet-form-plan-chip">{plan.memberType === "user" ? "我" : "TA"} · {plan.cadence === "weekly" ? "每周" : plan.cadence === "daily" ? "每日" : "每月"} {money(plan.amount)} · 取消</button>)}
+              {plans.map(plan => plan.memberType === "user"
+                ? <button type="button" key={plan.id} onClick={() => { removeJointFundPlan(plan.id); onChange(); }} className="wallet-form-plan-chip">我 · {plan.cadence === "weekly" ? "每周" : plan.cadence === "daily" ? "每日" : "每月"} {money(plan.amount)} · 取消</button>
+                : <span key={plan.id} className="wallet-form-plan-chip" aria-label="角色自行设置的定期存款计划">TA · {plan.cadence === "weekly" ? "每周" : plan.cadence === "daily" ? "每日" : "每月"} {money(plan.amount)} · 角色设置</span>)}
             </div>
             {txs.slice(0, 3).map(tx => <div key={tx.id} className="mt-2 flex justify-between text-[11px] text-[var(--c-icon)]"><span>{time(tx.at)} · {tx.note}</span><span>{money(tx.amount)}</span></div>)}
           </div>
