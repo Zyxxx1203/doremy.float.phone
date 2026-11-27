@@ -115,6 +115,7 @@ function resolveTimedWakeElapsedMinutes(sched: TimedWakeSchedule, history: ChatM
 // ── Module state ───────────────────────────────────────────
 let stopInterval: (() => void) | null = null;
 let periodCareUpdateHandler: (() => void) | null = null;
+let anonymousQaReplyHandler: ((event: Event) => void) | null = null;
 const firingSet = new Set<string>(); // sessions currently mid-API-call
 const cancelledWhileFiring = new Set<string>(); // cancelled during in-flight API call
 const timedWakeFiringSet = new Set<string>();
@@ -168,6 +169,16 @@ export function startFollowUpService() {
             pollMenstrualPeriodCare(Date.now());
         };
         window.addEventListener("menstrual-period-care-updated", periodCareUpdateHandler);
+        anonymousQaReplyHandler = (event: Event) => {
+            const detail = (event as CustomEvent<{ sessionId?: string }>).detail;
+            if (!detail?.sessionId) return;
+            // A question is a targeted proactive turn, not a broadcast notification.
+            void requestBackgroundChatReply(detail.sessionId, {
+                appId: "chat",
+                appTags: ["chat", "text", "anonymous_qa"],
+            });
+        };
+        window.addEventListener("anonymous-qa-reply-requested", anonymousQaReplyHandler);
         scheduledOutboxVisibilityHandler = () => {
             if (!document.hidden) extendScheduledOutboxGrace();
         };
@@ -183,6 +194,10 @@ export function stopFollowUpService() {
     if (stopInterval) { stopInterval(); stopInterval = null; }
     if (typeof window !== "undefined" && periodCareUpdateHandler) {
         window.removeEventListener("menstrual-period-care-updated", periodCareUpdateHandler);
+        if (anonymousQaReplyHandler) {
+            window.removeEventListener("anonymous-qa-reply-requested", anonymousQaReplyHandler);
+            anonymousQaReplyHandler = null;
+        }
         periodCareUpdateHandler = null;
     }
     if (typeof window !== "undefined") {
