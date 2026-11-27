@@ -332,6 +332,10 @@
             "threshold": {
               "type": "number",
               "description": "告诉密码所需的好感度阈值 0-100，不填用用户当前设置"
+            },
+            "durationMinutes": {
+              "type": "number",
+              "description": "锁定时长（分钟），默认 180，最多 360，到期自动解除"
             }
           },
           "required": ["app"]
