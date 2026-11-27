@@ -29,6 +29,8 @@ export type JointFundPlan = {
     enabled: boolean;
     /** 最近一次已提醒的 nextRunAt；用于避免同一期重复弹提醒。 */
     remindedForRunAt?: number;
+    /** 创建来源：用户本人或角色通过工具设置。 */
+    createdBy?: "user" | "character_tool";
 };
 
 export type JointFundPlanRunResult = {
@@ -36,8 +38,11 @@ export type JointFundPlanRunResult = {
     fundId: string;
     fundName: string;
     memberType: JointFundMemberType;
+    memberId: string;
     amount: number;
     ok: boolean;
+    goalReached?: boolean;
+    otherFunds?: Array<{ id: string; name: string }>;
     error?: string;
 };
 
@@ -70,7 +75,10 @@ function load(): JointFundState {
             funds: Array.isArray(parsed.funds) ? parsed.funds : [],
             transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
             // 旧版界面允许用户代角色创建自动存款计划；迁移时清理这类计划，避免继续替角色扣款。
-            plans: Array.isArray(parsed.plans) ? parsed.plans.filter(plan => plan?.memberType === "user" && plan?.memberId === "user") : [],
+            plans: Array.isArray(parsed.plans) ? parsed.plans.filter(plan =>
+                (plan?.memberType === "user" && plan?.memberId === "user")
+                || (plan?.memberType === "character" && plan?.createdBy === "character_tool")
+            ) : [],
         };
     } catch { return { funds: [], transactions: [], plans: [] }; }
 }
@@ -137,22 +145,36 @@ export function withdrawFromJointFund(fundId: string, memberType: JointFundMembe
     save(state);
     return { ok: true, fund };
 }
-export function setJointFundPlan(input: { fundId: string; memberType: JointFundMemberType; memberId: string; cadence: "daily" | "weekly" | "monthly"; amount: number }): JointFundPlan | null {
-    // 自动存款计划目前只允许用户为自己设置；角色只能通过自己的工具主动存入。
-    if (input.memberType !== "user" || input.memberId !== "user") return null;
+function saveJointFundPlan(input: { fundId: string; memberType: JointFundMemberType; memberId: string; cadence: "daily" | "weekly" | "monthly"; amount: number; createdBy: "user" | "character_tool" }): JointFundPlan | null {
     const state = load();
-    const fund = state.funds.find(f => f.id === input.fundId);
+    const fund = state.funds.find(f => f.id === input.fundId && f.status === "active");
     if (!fund) return null;
+    if (input.memberType === "user" && (input.memberId !== "user" || input.createdBy !== "user")) return null;
+    if (input.memberType === "character" && (input.createdBy !== "character_tool" || input.memberId !== fund.characterId)) return null;
+    const amount = money(input.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
     const now = Date.now();
-    const nextRunAt = advanceJointFundRunAt(now, input.cadence);
     const plan: JointFundPlan = {
         id: uid("jfp"), fundId: input.fundId, memberType: input.memberType, memberId: input.memberId,
-        cadence: input.cadence, amount: Math.max(0.01, money(input.amount)), nextRunAt, enabled: true,
+        cadence: input.cadence, amount, nextRunAt: advanceJointFundRunAt(now, input.cadence), enabled: true,
+        createdBy: input.createdBy,
     };
     state.plans = state.plans.filter(p => !(p.fundId === input.fundId && p.memberType === input.memberType && p.memberId === input.memberId));
     state.plans.push(plan);
     save(state);
     return plan;
+}
+
+/** 用户侧只允许为自己设置计划；不能冒充角色设置。 */
+export function setJointFundPlan(input: { fundId: string; memberType: JointFundMemberType; memberId: string; cadence: "daily" | "weekly" | "monthly"; amount: number }): JointFundPlan | null {
+    if (input.memberType !== "user" || input.memberId !== "user") return null;
+    return saveJointFundPlan({ ...input, createdBy: "user" });
+}
+
+/** 角色只能通过自己的工具为自己设置计划，且目标小金库必须属于当前角色。 */
+export function setJointFundPlanForCharacter(characterId: string, input: { fundId: string; cadence: "daily" | "weekly" | "monthly"; amount: number }): JointFundPlan | null {
+    if (!characterId) return null;
+    return saveJointFundPlan({ ...input, memberType: "character", memberId: characterId, createdBy: "character_tool" });
 }
 export function removeJointFundPlan(planId: string): void {
     const state = load();
@@ -185,12 +207,21 @@ export function runDueJointFundPlans(now = Date.now()): JointFundPlanRunResult[]
         if (!fundBefore) continue;
         const result = depositToJointFund(plan.fundId, plan.memberType, plan.memberId, plan.amount, "定时存入");
         // 失败（余额不足等）第二天重试，不要把整期直接跳过去。
-        const nextRunAt = result.ok ? advanceJointFundRunAt(now, plan.cadence) : now + 86400000;
         const state = load();
+        const completedFund = state.funds.find(f => f.id === plan.fundId);
+        const goalReached = Boolean(result.ok && completedFund?.status === "completed");
+        const otherFunds = goalReached
+            ? state.funds.filter(f => f.characterId === plan.memberId && f.id !== plan.fundId && f.status === "active").map(f => ({ id: f.id, name: f.name }))
+            : [];
         const current = state.plans.find(p => p.id === plan.id);
         if (current) {
-            current.nextRunAt = nextRunAt;
-            current.remindedForRunAt = undefined;
+            if (goalReached) {
+                // 目标达成后绝不继续向已完成的小金库存款；有其他目标时交给角色决定是否切换。
+                state.plans = state.plans.filter(p => p.id !== plan.id);
+            } else {
+                current.nextRunAt = result.ok ? advanceJointFundRunAt(now, plan.cadence) : now + 86400000;
+                current.remindedForRunAt = undefined;
+            }
             save(state);
         }
         results.push({
@@ -198,8 +229,11 @@ export function runDueJointFundPlans(now = Date.now()): JointFundPlanRunResult[]
             fundId: plan.fundId,
             fundName: fundBefore.name,
             memberType: plan.memberType,
+            memberId: plan.memberId,
             amount: plan.amount,
             ok: result.ok,
+            goalReached,
+            otherFunds,
             error: result.error,
         });
     }
