@@ -134,11 +134,17 @@ class PlayfulAppLockService : Service() {
                 if (ev.eventType == UsageEvents.Event.ACTIVITY_RESUMED) last = ev.packageName ?: ""
             }
             if (last.isBlank()) {
-                last = getSharedPreferences("native_background_perception", Context.MODE_PRIVATE)
-                    .getString("current_package", "") ?: ""
+                last = accessibilityForegroundPackage()
             }
             last
         } catch (_: Throwable) { "" }
+    }
+
+    private fun accessibilityForegroundPackage(): String {
+        val perception = getSharedPreferences("native_background_perception", Context.MODE_PRIVATE)
+        val updatedAt = perception.getLong("current_package_updated_at", 0L)
+        if (updatedAt <= 0L || System.currentTimeMillis() - updatedAt > 30_000L) return ""
+        return perception.getString("current_package", "") ?: ""
     }
 
     private fun hasUsageStatsAccess(): Boolean {
@@ -293,8 +299,10 @@ class PlayfulAppLockService : Service() {
 
         fun status(context: Context): JSONObject {
             val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            val fallbackPackage = context.getSharedPreferences("native_background_perception", Context.MODE_PRIVATE)
-                .getString("current_package", "") ?: ""
+            val perception = context.getSharedPreferences("native_background_perception", Context.MODE_PRIVATE)
+            val fallbackUpdatedAt = perception.getLong("current_package_updated_at", 0L)
+            val fallbackPackage = if (fallbackUpdatedAt > 0L && System.currentTimeMillis() - fallbackUpdatedAt <= 30_000L)
+                perception.getString("current_package", "") ?: "" else ""
             val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
             val usageAccess = runCatching {
                 @Suppress("DEPRECATION")
