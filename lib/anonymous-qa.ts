@@ -38,33 +38,21 @@ function save(rows: AnonymousQaQuestion[]): void {
 }
 function alias(): string { return ALIASES[Math.floor(Math.random() * ALIASES.length)] + "·" + Math.random().toString(36).slice(2, 5); }
 
-function appendAnonymousQaTimelineEvent(
-    row: AnonymousQaQuestion,
-    kind: "question" | "answer" | "updated" | "deleted",
-): void {
-    const characters = loadCharacters();
-    const targetName = row.targetType === "user"
-        ? "用户"
-        : characters.find(character => character.id === row.targetId)?.name || "某位角色";
-    for (const character of characters) {
-        const isRecipient = row.targetType === "character" && row.targetId === character.id;
-        const content = kind === "question"
-            ? `匿名提问箱新增公开问题。\n问题编号：${row.id}\n${row.askerAlias} 向${targetName} 提问：${row.question}\n${isRecipient ? "这是问你的问题，你可以使用“回答匿名提问”工具作答。" : row.targetType === "character" ? `指定回答对象是${targetName}，你可以围观，但不要代替 TA 回答。` : "这是一条公开问题，你可以在匿名提问箱查看。"} 提问者身份对所有人保密，不要猜测或追查。`
-            : kind === "answer"
-                ? `匿名提问箱有一条新回答。\n问题：${row.question}\n回答对象：${targetName}\n回答：${row.answer || ""}`
-                : kind === "updated"
-                    ? `匿名提问箱中的问题已更新。\n问题编号：${row.id}\n${row.askerAlias} 向${targetName} 提问：${row.question}\n${isRecipient && row.status === "pending" ? "这是问你的问题，可以使用“回答匿名提问”工具作答。" : row.answer ? `当前回答：${row.answer}` : row.targetType === "character" ? `指定回答对象是${targetName}，请勿代答。` : "请在匿名提问箱查看更新内容。"}`
-                    : `匿名提问箱中的一条问题已被删除或撤回。\n原问题：${row.question}`;
-        const session = createOrGetSession(character.id);
-        pushChatMessage({
-            id: `anonymous_qa_${kind}_${row.id}_${character.id}_${Date.now()}`,
-            sessionId: session.id,
-            role: "system",
-            mediaType: "system_instruction",
-            content,
-            mediaData: { compactSystemInstruction: true, shortTermMemoryEvent: true, shortTermMemorySource: "anonymous_qa" },
-        });
-    }
+function appendAnonymousQaTimelineEvent(row: AnonymousQaQuestion): string | null {
+    if (row.targetType !== "character") return null;
+    const character = loadCharacters().find(item => item.id === row.targetId);
+    if (!character) return null;
+    const session = createOrGetSession(character.id);
+    pushChatMessage({
+        // Stable ID makes repeated delivery of the same question idempotent.
+        id: `anonymous_qa_question_${row.id}_${character.id}`,
+        sessionId: session.id,
+        role: "system",
+        mediaType: "system_instruction",
+        content: `你收到了一条新的匿名提问。\n问题编号：${row.id}\n${row.askerAlias} 向你提问：${row.question}\n请直接回应这条问题；你可以使用“回答匿名提问”工具提交答案。提问者身份对所有人保密，不要猜测或追查。`,
+        mediaData: { compactSystemInstruction: true, shortTermMemoryEvent: true, shortTermMemorySource: "anonymous_qa" },
+    });
+    return session.id;
 }
 
 export function loadAnonymousQa(): AnonymousQaQuestion[] {
@@ -131,7 +119,10 @@ export function askAnonymousQuestion(input: {
     };
     rows.push(row);
     save(rows);
-    appendAnonymousQaTimelineEvent(row, "question");
+    const recipientSessionId = appendAnonymousQaTimelineEvent(row);
+    if (recipientSessionId && typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("anonymous-qa-reply-requested", { detail: { sessionId: recipientSessionId, questionId: row.id } }));
+    }
     return row;
 }
 export function answerAnonymousQuestion(questionId: string, answer: string, expectedTarget?: { targetType: "user" | "character"; targetId: string }): AnonymousQaQuestion | null {
@@ -143,7 +134,6 @@ export function answerAnonymousQuestion(questionId: string, answer: string, expe
     row.status = row.answer ? "answered" : "pending";
     row.answeredAt = row.answer ? Date.now() : undefined;
     save(rows);
-    if (row.answer) appendAnonymousQaTimelineEvent(row, "answer");
     return row;
 }
 export function questionsForTarget(targetType: "user" | "character", targetId: string): AnonymousQaQuestion[] {
@@ -181,29 +171,13 @@ export function updateAnonymousQuestion(questionId: string, input: {
         row.answeredAt = row.answer ? Date.now() : undefined;
     }
     save(rows);
-    if (previousTargetType === "character" && (row.targetType !== previousTargetType || row.targetId !== previousTargetId)) {
-        const previousTarget = loadCharacters().find(character => character.id === previousTargetId);
-        if (previousTarget) {
-            const session = createOrGetSession(previousTarget.id);
-            pushChatMessage({
-                id: `anonymous_qa_retargeted_${row.id}_${previousTarget.id}_${Date.now()}`,
-                sessionId: session.id,
-                role: "system",
-                mediaType: "system_instruction",
-                content: "这条匿名问题已更改回答对象，原先给你的通知已失效，请忽略。",
-                mediaData: { compactSystemInstruction: true, shortTermMemoryEvent: true, shortTermMemorySource: "anonymous_qa" },
-            });
-        }
-    }
-    appendAnonymousQaTimelineEvent(row, "updated");
-    return row;
+    // Edits are administrative changes only: they must not notify or trigger any character.\n    return row;
 }
 
 export function deleteAnonymousQuestion(questionId: string): boolean {
     const rows = load();
     const row = rows.find(item => item.id === questionId);
     if (!row) return false;
-    appendAnonymousQaTimelineEvent(row, "deleted");
     save(rows.filter(item => item.id !== questionId));
     return true;
 }
