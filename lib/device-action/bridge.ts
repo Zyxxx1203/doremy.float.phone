@@ -207,11 +207,11 @@ export function appLockStop(): DeviceActionResult {
   }
 }
 
-export function appLockStatus(): { ok: boolean; running: boolean; target?: string; label?: string; charId?: string } {
+export function appLockStatus(): { ok: boolean; running: boolean; target?: string; label?: string; charId?: string; expiresAt?: number; usageStatsAccess?: boolean; accessibilityFallbackAvailable?: boolean; monitoringAvailable?: boolean } {
   try {
     const raw = bridge()?.appLockStatus?.();
     if (!raw) return { ok: false, running: false };
-    return JSON.parse(raw) as { ok: boolean; running: boolean; target?: string; label?: string; charId?: string };
+    return JSON.parse(raw) as { ok: boolean; running: boolean; target?: string; label?: string; charId?: string; expiresAt?: number; usageStatsAccess?: boolean; accessibilityFallbackAvailable?: boolean; monitoringAvailable?: boolean };
   } catch {
     return { ok: false, running: false };
   }
