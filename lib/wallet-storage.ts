@@ -489,6 +489,7 @@ export function recordWalletBookkeeping(input: {
   if (insertedBalance < 0) {
     return { ok: false, state: current, error: "对应时间点的钱包余额不足，无法记录这笔支出。" };
   }
+  transaction.balanceAfter = insertedBalance;
   const transactions = replayed
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 300);
