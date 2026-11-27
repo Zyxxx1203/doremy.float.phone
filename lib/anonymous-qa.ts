@@ -169,7 +169,8 @@ export function updateAnonymousQuestion(questionId: string, input: {
         row.answeredAt = row.answer ? Date.now() : undefined;
     }
     save(rows);
-    // Edits are administrative changes only: they must not notify or trigger any character.\n    return row;
+    // Edits are administrative changes only: they must not notify or trigger any character.
+    return row;
 }
 
 export function deleteAnonymousQuestion(questionId: string): boolean {
