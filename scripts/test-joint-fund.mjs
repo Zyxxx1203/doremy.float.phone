@@ -102,14 +102,41 @@ T("流水已写入", state.transactions.length === 1 && state.transactions[0].ki
 T("用户钱包扣款", wallet.balance === 900, `wallet=${wallet.balance}`);
 T("下一期已推进", state.plans[0].nextRunAt > Date.now() + 6 * 86400000, new Date(state.plans[0].nextRunAt).toISOString());
 
-console.log("== 2. 用户不能替角色设置自动存款计划 ==");
+console.log("== 2. 角色自己设置定期存款；用户不能代设 ==");
 const blockedCharacterPlan = jointFund.setJointFundPlan({ fundId: fund.id, memberType: "character", memberId: "c1", cadence: "weekly", amount: 50 });
-T("拒绝创建角色自动存款计划", blockedCharacterPlan === null);
+T("用户侧 API 拒绝冒充角色设置计划", blockedCharacterPlan === null);
+const rolePlan = jointFund.setJointFundPlanForCharacter("c1", { fundId: fund.id, cadence: "weekly", amount: 50 });
+T("角色工具可为自己设置计划", Boolean(rolePlan && rolePlan.createdBy === "character_tool"));
 const characterDeposit = jointFund.depositToJointFund(fund.id, "character", "c1", 50, "角色主动存入");
 state = JSON.parse(store.get("ai_phone_joint_funds_v1"));
 T("角色仍可通过自己的身份主动存入", characterDeposit.ok === true, characterDeposit.error || "");
 T("角色账本扣款", ledger.c1 === 950, `character=${ledger.c1}`);
 T("小金库余额累加", state.funds[0].balance === 150, `balance=${state.funds[0].balance}`);
+
+console.log("== 2.1 达成目标后停止并识别其他小金库 ==");
+const almostDone = jointFund.createJointFund({ name: "相机基金", goalLabel: "相机", goalAmount: 20, userId: "u1", characterId: "c1" });
+const completionPlan = jointFund.setJointFundPlanForCharacter("c1", { fundId: almostDone.id, cadence: "monthly", amount: 25 });
+raw = JSON.parse(store.get("ai_phone_joint_funds_v1"));
+raw.plans.find(plan => plan.id === completionPlan.id).nextRunAt = Date.now() - 1000;
+store.set("ai_phone_joint_funds_v1", JSON.stringify(raw));
+results = jointFund.runDueJointFundPlans();
+state = JSON.parse(store.get("ai_phone_joint_funds_v1"));
+const completion = results.find(item => item.planId === completionPlan.id);
+T("目标达成状态回传", completion?.goalReached === true);
+T("检测到其他进行中的小金库", completion?.otherFunds?.some(item => item.id === fund.id) === true);
+T("达成目标后自动存款计划已移除", !state.plans.some(plan => plan.id === completionPlan.id));
+
+console.log("== 2.2 没有其他小金库时结束计划 ==");
+const onlyFund = jointFund.createJointFund({ name: "独立目标", goalLabel: "礼物", goalAmount: 10, userId: "u2", characterId: "c2" });
+const onlyPlan = jointFund.setJointFundPlanForCharacter("c2", { fundId: onlyFund.id, cadence: "weekly", amount: 10 });
+raw = JSON.parse(store.get("ai_phone_joint_funds_v1"));
+raw.plans.find(plan => plan.id === onlyPlan.id).nextRunAt = Date.now() - 1000;
+store.set("ai_phone_joint_funds_v1", JSON.stringify(raw));
+results = jointFund.runDueJointFundPlans();
+state = JSON.parse(store.get("ai_phone_joint_funds_v1"));
+const onlyCompletion = results.find(item => item.planId === onlyPlan.id);
+T("无其他小金库时没有切换候选", onlyCompletion?.goalReached === true && onlyCompletion.otherFunds?.length === 0);
+T("无其他目标后计划彻底取消", !state.plans.some(plan => plan.id === onlyPlan.id));
 
 console.log("== 3. 扣款失败不吞计划 ==");
 wallet.balance = 0;
