@@ -2616,6 +2616,7 @@ async function executeAppLockTool(call: ToolCall, context?: ToolExecutionContext
             avatar: character?.avatar || "",
             style: call.args?.style && typeof call.args.style === "object" ? call.args.style : {},
             durationMinutes: Math.max(1, Math.min(360, Number(call.args?.durationMinutes) || 180)),
+            sessionId: context?.sessionId || "",
         });
         if (!result.ok) throw new Error(result.reason || "锁应用失败");
         return { name: call.name, success: true, data: `已锁住「${app.label}」，最长 ${Math.max(1, Math.min(360, Number(call.args?.durationMinutes) || 180))} 分钟后自动解除。密码由系统生成；用户可以回 Float 和你商量，也始终能紧急解除。`, userNotice: `把「${app.label}」暂时保管起来了` };
