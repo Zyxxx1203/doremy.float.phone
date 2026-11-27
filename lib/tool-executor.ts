@@ -62,7 +62,7 @@ import { loadCharacters } from "./character-storage";
 import { characterEarn, characterSpend, ensureCharacterLedger, loadCharacterLedger } from "./economy/character-ledger";
 import { createFamilyCardForCharacter, loadFamilyCards, spendWithFamilyCard } from "./economy/family-card";
 import { answerAnonymousQuestion, askAnonymousQuestion, loadAnonymousQa } from "./anonymous-qa";
-import { depositToJointFund, loadJointFundTransactions, loadJointFunds } from "./economy/joint-fund";
+import { depositToJointFund, loadJointFundTransactions, loadJointFunds, setJointFundPlanForCharacter } from "./economy/joint-fund";
 import { recordWalletBookkeeping } from "./wallet-storage";
 import { createOrGetSession, loadChatMessages, loadChatSessions } from "./chat-storage";
 import { readCustomAppCollection } from "./custom-app-storage";
@@ -2704,7 +2704,7 @@ async function executeAnonymousQaTool(call: ToolCall, context?: ToolExecutionCon
 function isCharacterEconomyToolName(name: string): boolean {
     return name === "记录角色收入" || name === "记录角色支出" || name === "查看角色账本"
         || name === "查看亲属卡" || name === "使用亲属卡" || name === "开亲属卡"
-        || name === "查看共同小金库" || name === "存入共同小金库" || name === "帮我记账";
+        || name === "查看共同小金库" || name === "存入共同小金库" || name === "设置小金库定期存款" || name === "帮我记账";
 }
 
 async function executeCharacterEconomyTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
@@ -2810,6 +2810,25 @@ async function executeCharacterEconomyTool(call: ToolCall, context?: ToolExecuti
             const result = depositToJointFund(fundId, "character", characterId, amount, String(call.args?.note || "角色存入"));
             if (!result.ok) throw new Error(result.error || "存入失败");
             return { name: call.name, success: true, data: `已存入 ¥${amount}，小金库余额 ¥${result.fund?.balance}`, userNotice: `往共同小金库存了 ¥${amount}` };
+        }
+        if (call.name === "设置小金库定期存款") {
+            const fundId = String(call.args?.fundId || "").trim();
+            const cadence = String(call.args?.cadence || "").trim();
+            const amount = Number(call.args?.amount);
+            if (!fundId || !["daily", "weekly", "monthly"].includes(cadence) || !Number.isFinite(amount) || amount <= 0) {
+                throw new Error("需要有效的小金库、定期频率和每次存入金额");
+            }
+            const fund = loadJointFunds().find(item => item.id === fundId && item.characterId === characterId && item.status === "active");
+            if (!fund) throw new Error("只能为你自己参与且仍在进行中的小金库设置定期存款");
+            const plan = setJointFundPlanForCharacter(characterId, { fundId, cadence: cadence as "daily" | "weekly" | "monthly", amount });
+            if (!plan) throw new Error("定期存款计划设置失败");
+            const cadenceLabel = cadence === "daily" ? "每天" : cadence === "weekly" ? "每周" : "每月";
+            return {
+                name: call.name,
+                success: true,
+                data: `已设置「${fund.name}」定期存款：${cadenceLabel}存入 ¥${amount}，从你的角色账本扣款。目标达成后计划会自动停止；如果还有其他进行中的小金库，会再问你是否要更换目标。`,
+                userNotice: `为「${fund.name}」设置了${cadenceLabel}定期存入 ¥${amount}`,
+            };
         }
         const limit = Math.max(1, Math.min(100, Number(call.args?.limit) || 20));
         const ledger = ensureCharacterLedger(characterId);
