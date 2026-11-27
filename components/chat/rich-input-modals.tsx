@@ -108,7 +108,7 @@ export function FileInputModal({ onSend, onClose }: FileInputModalProps) {
         if (next.size > maxBytes) { setError("文件不能超过 25MB"); return; }
         if (forbidden.test(next.name)) { setError("暂不支持发送可执行文件"); return; }
         if (!isSupportedReadableFile(next.name, next.type)) {
-            setError("只支持 txt / md / csv / json / xml / yaml / html / docx；PDF、压缩包、音视频请用对应入口发送");
+            setError("只支持 txt / md / csv / json / xml / yaml / html / docx / pdf；压缩包、音视频请用对应入口发送");
             return;
         }
         setReading(true);
@@ -137,7 +137,7 @@ export function FileInputModal({ onSend, onClose }: FileInputModalProps) {
         <div className="modal-overlay" onClick={onClose}>
             <div onClick={e => e.stopPropagation()} className="modal-dialog" style={{ maxWidth: 420, width: "min(92vw, 420px)" }}>
                 <div className="ts-16 font-semibold text-center text-[var(--c-text)]">发送文档</div>
-                <div className="mt-1 text-center ts-12 text-[var(--c-icon)]">支持 txt / md / csv / json / xml / yaml / html / docx，最大 25MB；会抽取文字给角色读，也能在对话里预览</div>
+                <div className="mt-1 text-center ts-12 text-[var(--c-icon)]">支持 txt / md / csv / json / xml / yaml / html / docx / pdf，最大 25MB；会抽取文字给角色读，也能在对话里预览。扫描版 PDF 没有文字层，暂时读不出内容</div>
                 <button type="button" disabled={reading} onClick={() => inputRef.current?.click()} className="mt-4 flex min-h-[116px] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[var(--c-icon)]/45 bg-[var(--c-input)]/35 px-4 py-5 text-[var(--c-icon)] transition-colors hover:bg-[var(--c-input)]/60 disabled:opacity-50">
                     <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                     <span className="text-sm font-medium">{reading ? "正在读取文档…" : file ? file.name : "选择文档"}</span>
