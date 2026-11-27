@@ -153,9 +153,6 @@
 .wallet-private-bank .page-body > div:first-child::-webkit-scrollbar {
   display: none;
 }
-.wallet-private-bank .wallet-section .rounded-xl.bg-\\[var\\(--c-input\\)\\] {
-  border: 1px solid rgba(143,128,91,.12);
-}
 .wallet-private-bank .page-body label {
   line-height: 1.6;
 }
