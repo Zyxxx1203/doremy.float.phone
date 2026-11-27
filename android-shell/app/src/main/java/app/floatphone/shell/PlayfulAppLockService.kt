@@ -53,7 +53,7 @@ class PlayfulAppLockService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        val expiresAt = intent?.getLongExtra("expiresAt", 0L) ?: 0L
+        val expiresAt = intent?.getLongExtra("expiresAt", 0L)?.takeIf { it > 0L } ?: prefs.getLong("expiresAt", 0L)
         if (expiresAt > 0L && expiresAt <= System.currentTimeMillis()) {
             stopLock()
             return START_NOT_STICKY
