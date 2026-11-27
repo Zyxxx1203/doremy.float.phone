@@ -677,6 +677,15 @@ const CHARACTER_JOINT_FUND_DEPOSIT_SCHEMA = JSON.stringify({
     },
     required: ["fundId", "amount"],
 });
+const CHARACTER_JOINT_FUND_PLAN_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {
+        fundId: { type: "string", description: "目标小金库 id；先查看共同小金库，必须选择属于你自己的、仍在进行中的小金库" },
+        cadence: { type: "string", enum: ["daily", "weekly", "monthly"], description: "定期频率：daily 每天、weekly 每周、monthly 每月" },
+        amount: { type: "number", description: "每次从你自己的角色账本存入的金额（正数，元）" },
+    },
+    required: ["fundId", "cadence", "amount"],
+});
 
 const ANONYMOUS_QA_ASK_SCHEMA = JSON.stringify({
     type: "object",
@@ -776,6 +785,11 @@ const CHARACTER_ECONOMY_SUBTOOLS: InternalToolDefinition[] = [
         name: "存入共同小金库",
         description: "当你想从自己的角色账本往共同小金库存钱时调用；余额不足会被拒绝。",
         parameterSchema: CHARACTER_JOINT_FUND_DEPOSIT_SCHEMA,
+    },
+    {
+        name: "设置小金库定期存款",
+        description: "当你决定定期从自己的角色账本为某个共同小金库存钱时调用。你只能为自己设置；先查看小金库并选择仍在进行中的目标。目标达成后该计划会自动停止；如果还有其他小金库，系统会回来问你是否想换一个目标，不会擅自替你切换。",
+        parameterSchema: CHARACTER_JOINT_FUND_PLAN_SCHEMA,
     },
 ];
 
@@ -1933,6 +1947,7 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
                 "- 查看亲属卡 / 使用亲属卡：先查看 cardId；只能使用用户给你开的、且你有持卡权的卡。",
                 "- 开亲属卡：给用户开一张每月额度卡，label 写卡名、monthlyLimit 写额度；用户刷这张卡从你的角色账本扣款，余额不足会失败。",
                 "- 查看共同小金库 / 存入共同小金库：先查看 fundId；存入从你的角色账本扣。",
+                "- 设置小金库定期存款：你可以主动决定从自己的角色账本按天/周/月定期存入指定小金库；只为你自己的小金库设置。目标达成后计划自动停止；若还有其他进行中的小金库，系统会主动回来问你是否想换目标，只有你明确选择后才设置新计划；没有其他小金库就结束计划。",
                 "- 金额要符合你的职业、项目和当前经济状况；不要为了显得大方反复大额转账。",
                 "- 系统会按你的人设自动发放初始存款和每周/每月固定收入；这些已经自动入账，不要再重复记一遍。额外收入（项目款、兼职、红包、退款）仍要用「记录角色收入」记账。",
             ].join("\n"),
