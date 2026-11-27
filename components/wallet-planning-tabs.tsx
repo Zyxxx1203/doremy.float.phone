@@ -54,9 +54,9 @@ export function WalletPlanningTabs({tab,onChange}:{tab:WalletPlanningTab;onChang
   const budgetTotal=budgetRows.reduce((sum,v)=>sum+v.limit,0);
   const budgetRemaining=budgetRows.reduce((sum,row)=>sum+Math.max(0,row.limit-(categoryTotals[row.category]||0)),0);
   const budgetOverrun=budgetRows.reduce((sum,row)=>sum+Math.max(0,(categoryTotals[row.category]||0)-row.limit),0);
-  const dueBills=state.bills.filter(v=>v.status==="active").sort((a,b)=>a.nextDueAt.localeCompare(b.nextDueAt));
+  const dueBills=state.bills.filter(v=>v.status==="active"||v.status==="overdue").sort((a,b)=>a.nextDueAt.localeCompare(b.nextDueAt));
   const calendarItems=[
-    ...dueBills.map(v=>({id:v.id,date:v.nextDueAt,title:v.title,detail:`周期账单 · ${money(v.amount)}`,kind:"bill" as const})),
+    ...dueBills.map(v=>({id:v.id,date:v.nextDueAt,title:v.title,detail:`${v.status==="overdue"?"待处理账单":"周期账单"} · ${money(v.amount)}`,kind:"bill" as const})),
     ...wallet.transactions.slice(0,100).map(v=>({id:v.id,date:v.createdAt,title:v.title,detail:`${v.amount<0?"支出":"收入"} · ${money(Math.abs(v.amount))}`,kind:"tx" as const})),
   ].sort((a,b)=>a.date.localeCompare(b.date));
   const calendarMonthKey=monthKey(calendarMonth);
