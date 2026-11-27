@@ -141,7 +141,7 @@ class PlayfulLockActivity : Activity() {
         }
         root.addView(errorText, matchWrap())
 
-        root.addView(actionButton("去找 ${charName} 求情", 0xFF8976D8.toInt(), Color.WHITE) {
+        root.addView(actionButton("去找TA求情", 0xFF8976D8.toInt(), Color.WHITE) {
             val sessionId = prefs.getString("sessionId", "") ?: ""
             val chatUrl = if (sessionId.isNotBlank()) MainActivity.SITE_URL.trimEnd('/') + "/#open-chat=" + android.net.Uri.encode(sessionId) else ""
             startActivity(Intent(this@PlayfulLockActivity, MainActivity::class.java).apply {
