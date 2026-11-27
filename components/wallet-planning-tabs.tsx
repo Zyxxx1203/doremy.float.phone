@@ -13,7 +13,7 @@ export type WalletPlanningTab = "budget" | "goals" | "bills" | "calendar" | "ins
 const money = formatWalletAmount;
 const monthKey = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}`;
 const dateLabel = (value: string) => new Date(value.length===10?`${value}T12:00:00`:value).toLocaleDateString("zh-CN",{month:"long",day:"numeric"});
-const localDayKey = (value: string) => { if (/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return value; const date=new Date(value); return Number.isNaN(date.getTime())?"":`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`; };
+const localDayKey = (value: string) => { if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value; const date=new Date(value); return Number.isNaN(date.getTime())?"":[date.getFullYear(),String(date.getMonth()+1).padStart(2,"0"),String(date.getDate()).padStart(2,"0")].join("-"); };
 const todayInput = () => new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
 function Panel({children}:{children:React.ReactNode}) { return <section className="wallet-section rounded-2xl p-4">{children}</section>; }
 function Label({children}:{children:React.ReactNode}) { return <div className="wallet-kicker mb-2">{children}</div>; }
