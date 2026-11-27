@@ -161,7 +161,7 @@ class PlayfulAppLockService : Service() {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(
-                NotificationChannel(CHANNEL, "角色小手段", NotificationManager.IMPORTANCE_LOW),
+                NotificationChannel(CHANNEL, "角色应用限制", NotificationManager.IMPORTANCE_LOW),
             )
         }
         val open = PendingIntent.getActivity(
@@ -169,18 +169,20 @@ class PlayfulAppLockService : Service() {
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val characterName = prefs.getString("charName", "角色") ?: "角色"
+        val appLabel = prefs.getString("label", "指定应用") ?: "指定应用"
         val notification: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL)
                 .setSmallIcon(android.R.drawable.ic_lock_lock)
-                .setContentTitle("TA 的小手段生效中")
-                .setContentText("仅拦截指定应用；可随时紧急解除")
+                .setContentTitle("${characterName}设置的应用限制")
+                .setContentText("正在限制使用「${appLabel}」")
                 .setContentIntent(open).setOngoing(true).build()
         } else {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
                 .setSmallIcon(android.R.drawable.ic_lock_lock)
-                .setContentTitle("TA 的小手段生效中")
-                .setContentText("仅拦截指定应用；可随时紧急解除")
+                .setContentTitle("${characterName}设置的应用限制")
+                .setContentText("正在限制使用「${appLabel}」")
                 .setContentIntent(open).setOngoing(true).build()
         }
         startForeground(NOTIFICATION_ID, notification)
