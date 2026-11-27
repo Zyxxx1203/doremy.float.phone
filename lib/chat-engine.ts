@@ -87,6 +87,7 @@ export { getApiLogs, clearApiLogs, type DebugInfo } from "./api-log-store";
 import { stripStateAndInnerForPrompt } from "./prompt-sanitizer";
 import { getInternalCapability, getInternalCapabilitySubToolDefinitions } from "./internal-capability-storage";
 import { isMediaStoreRef, loadMediaBlob } from "./media-cache-storage";
+import { buildMemoPromptDigest } from "./memo-archive-storage";
 import {
     DEFAULT_CHAT_BILINGUAL_PROMPT,
     DEFAULT_GROUP_CHAT_BILINGUAL_PROMPT,
@@ -1979,6 +1980,10 @@ export async function buildChatPromptMessages(
         buildMusicLocalMacro(),
         buildMusicCloudMacro(),
     ]);
+    // 备忘录摘要只用于判断是否需要执行维护流程，不作为常驻记忆内容注入。
+    const memoDigest = !session.isGroup && resolvedAppId === "chat" && memConfig.shortTermAllowedSources?.memo !== false && memoCapability?.enabled && memoCapability.mode !== "off"
+        && toolsEnabled ? await buildMemoPromptDigest(character.id).catch(() => "")
+        : "";
 
     // 记忆条目不再作为常驻的“长期记忆/核心记忆”提示词块；
     // 它们按原始发生时间进入统一短期时间线，与聊天和其他事件一起排序。
@@ -1986,7 +1991,7 @@ export async function buildChatPromptMessages(
         unifiedRecentItems.push({
             kind: "event",
             timestamp: entry.createdAt,
-            sourceApp: entry.sourceApp,
+            sourceApp: entry.sourceApp === "group_chat" ? "chat" : entry.sourceApp,
             sourceTag: entry.type === "core" ? "recent_core_memory" : "recent_long_term_memory",
             text: entry.content,
         });
