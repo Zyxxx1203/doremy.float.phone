@@ -353,6 +353,7 @@ function JointTab({ characters, funds, onChange }: { characters: ReturnType<type
   };
 
   const createPlan = (fund: JointFund) => {
+    if (fund.status !== "active") { notify("这个小金库已经达成目标，不能再设置定期存入。", "error"); return; }
     const value = Number(amount);
     if (!Number.isFinite(value) || value <= 0) { notify("请输入有效的自动存入金额。", "error"); return; }
     setJointFundPlan({ fundId: fund.id, memberType: "user", memberId: "user", cadence: "weekly", amount: value });
