@@ -298,66 +298,6 @@ export function WalletPanel({ onBack }: WalletPanelProps) {
 
   return (
     <PageShell title="余额管理" onBack={onBack} className="wallet-page-root">
-      <style>{`
-        .wallet-page-root.page-shell {
-          position: relative;
-          z-index: 40;
-          isolation: isolate;
-          background: #f2f0e9 !important;
-          color: #22251f;
-        }
-        .wallet-page-root .page-header { z-index: 20; background: #f2f0e9 !important; border-bottom: 1px solid rgba(88,82,65,.14); }
-        .wallet-page-root .page-body { padding-top: calc(var(--page-header-safe-top,48px) + var(--page-header-content-height,42px) + 12px); background: radial-gradient(ellipse at 85% 0%,rgba(190,169,119,.13),transparent 38%),#f2f0e9; }
-        .wallet-page-root h2 { font-family: Georgia,"Noto Serif SC",serif; letter-spacing:.035em; }
-        .wallet-page-root .cp-premium-bank-card { border-radius: 20px; border:1px solid rgba(255,255,255,.22); }
-        .wallet-page-root .wallet-card-stack .cp-premium-bank-card { transform:translateY(0); transition:transform .28s ease,box-shadow .28s ease; }
-        .wallet-page-root .wallet-card-stack .cp-premium-bank-card.is-active { transform:translateY(-3px); box-shadow:0 22px 42px rgba(32,29,22,.25),inset 0 1px 1px rgba(255,255,255,.16); }
-        .wallet-page-root .wallet-luxe-panel { background:linear-gradient(145deg,#fffefa,#eeece4); border:1px solid rgba(153,137,100,.2); box-shadow:0 12px 30px rgba(43,39,28,.055); }
-        .wallet-page-root .wallet-luxe-kicker { color:#8d8062; font:600 9px/1.4 ui-sans-serif,system-ui; letter-spacing:.22em; text-transform:uppercase; }
-        .wallet-page-root .wallet-luxe-divider { height:1px; background:linear-gradient(90deg,rgba(151,130,83,.45),rgba(151,130,83,.04)); }
-        .wallet-page-root .page-body {
-          overflow-y: auto;
-        }
-        .wallet-card-stack {
-          padding-inline: 7%;
-          scroll-padding-inline: 7%;
-        }
-        .wallet-card-stack .cp-premium-bank-card {
-          flex: 0 0 86%;
-          min-width: 0;
-          cursor: grab;
-          box-shadow: 0 16px 34px rgba(0, 0, 0, 0.26), inset 0 1px 1px rgba(255, 255, 255, 0.1);
-        }
-        .wallet-card-stack .cp-premium-bank-card:active {
-          cursor: grabbing;
-        }
-        .wallet-card-stack .cp-premium-bank-card.is-active {
-          opacity: 1;
-        }
-        .wallet-balance-action {
-          min-height: 34px;
-          padding: 0 12px;
-          border-radius: 999px;
-          background: rgba(255,255,255,0.72);
-          border: 1px solid rgba(255,255,255,0.82);
-          color: #246bfd;
-          display: inline-flex;
-          align-items: center;
-          gap: 5px;
-          font-size: calc(12px*var(--app-text-scale,1));
-          font-weight: 700;
-        }
-        .wallet-bank-action {
-          min-height: 42px;
-          border-radius: 16px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          font-size: calc(12px*var(--app-text-scale,1));
-          font-weight: 700;
-        }
-      `}</style>
 
       <div className="p-4 flex flex-col gap-4 pb-24">
         <section className="rounded-2xl p-5 overflow-hidden relative min-h-[156px] flex flex-col justify-between" style={{ background: "radial-gradient(circle at 88% 12%,rgba(230,207,151,.24),transparent 30%),linear-gradient(135deg,#242a25 0%,#101612 58%,#34372d 100%)", boxShadow: "0 18px 38px rgba(24,29,24,.2)", border: "1px solid rgba(213,194,145,.32)", color: "#f4f0e5" }}>
