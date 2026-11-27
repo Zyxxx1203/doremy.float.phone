@@ -134,7 +134,7 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
             <div className="mt-1 text-3xl font-semibold" style={{color:"#f5f0e4",fontFamily:"Georgia,serif"}}>{money(wallet.balance)}</div>
             <div className="mt-3 flex gap-4 text-xs text-[var(--c-icon)]">
               <button type="button" onClick={() => setTab("accounts")} className="underline underline-offset-4">银行卡 {wallet.cards.length} 张 · 管理</button>
-              <span>亲属卡 {familyCards.length} 张</span>
+              <span>我给角色 {familyCards.filter(card => card.issuerType === "user").length} 张 · 角色给我 {familyCards.filter(card => card.issuerType === "character").length} 张</span>
               <span>小金库 {jointFunds.length} 个</span>
             </div>
           </div>
@@ -270,11 +270,18 @@ function FamilyTab({ characters, cards, onChange }: { characters: ReturnType<typ
         {message && <div role="status" className="wallet-form-message">{message}</div>}
       </section>
 
-      {cards.map(card => {
+      {[...cards].sort((a, b) => Number(a.issuerType === "character") - Number(b.issuerType === "character")).map((card, index, orderedCards) => {
         const character = characters.find(c => c.id === (card.issuerType === "character" ? card.issuerId : card.beneficiaryId));
         const txs = loadFamilyCardTransactions(card.id);
         return (
-          <div key={card.id} className="wallet-section rounded-2xl p-4">
+          <div key={card.id} className="contents">
+            {(index === 0 || orderedCards[index - 1].issuerType !== card.issuerType) && (
+              <div className="px-1 pb-1 pt-2">
+                <div className="text-sm font-semibold text-[var(--c-text)]">{card.issuerType === "user" ? "我给角色的亲属卡" : "角色给我的亲属卡"}</div>
+                <div className="mt-0.5 text-[11px] text-[var(--c-icon)]">{card.issuerType === "user" ? "由我的钱包承担消费" : "由角色账本承担消费"} · {orderedCards.filter(item => item.issuerType === card.issuerType).length} 张</div>
+              </div>
+            )}
+          <div className="wallet-section rounded-2xl p-4">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm font-medium text-[var(--c-text)]">{card.label}</div>
@@ -304,6 +311,7 @@ function FamilyTab({ characters, cards, onChange }: { characters: ReturnType<typ
               </div>
             </div>
             {txs.slice(0, 3).map(tx => <div key={tx.id} className="mt-2 flex justify-between text-[11px] text-[var(--c-icon)]"><span>{time(tx.at)} · {tx.title}</span><span>{money(tx.amount)}</span></div>)}
+          </div>
           </div>
         );
       })}
