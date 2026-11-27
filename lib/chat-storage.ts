@@ -330,6 +330,8 @@ export type ChatMessage = {
         compactSystemInstruction?: boolean;
         /** 该内部系统事件需要作为私聊短期事件进入统一记忆时间线。 */
         shortTermMemoryEvent?: boolean;
+        /** 短期时间线事件的来源标识，用于区分匿名提问箱等独立事件。 */
+        shortTermMemorySource?: "anonymous_qa" | string;
     };
     isTyping?: boolean; // temporary flag for UI rendering
     statusPanel?: string; // AI display-only status content from [状态栏] tags
