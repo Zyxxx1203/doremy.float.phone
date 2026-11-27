@@ -73,8 +73,12 @@ export function AnonymousQaApp({ onClose }: { onClose: () => void }) {
 
   const rows = tab === "all" ? inbox : sent;
   return (
-    <PageShell title="匿名提问箱" onBack={onClose}>
+    <PageShell title="匿名提问箱" onBack={onClose} className="anonymous-qa-shell">
       <style>{`
+        .anonymous-qa-shell.page-shell{position:relative;z-index:40;isolation:isolate;background:#f4f4f2}
+        .anonymous-qa-shell.page-shell>.page-header{z-index:20;background:rgba(244,244,242,.97);border-bottom:1px solid #e3e3df}
+        .anonymous-qa-shell.page-shell>.page-body{padding-top:calc(var(--page-header-safe-top,48px) + var(--page-header-content-height,42px));background:#f4f4f2}
+
         .aq-page{min-height:100%;background:#f4f4f2;color:#171717;padding:18px 16px 104px;font-family:Georgia,"Noto Serif SC",serif}
         .aq-kicker{font:600 9px/1.4 ui-sans-serif,system-ui;letter-spacing:.28em;color:#777;text-transform:uppercase}
         .aq-title{font:500 27px/1.2 Georgia,"Noto Serif SC",serif;letter-spacing:.02em;color:#171717}
@@ -151,11 +155,10 @@ export function AnonymousQaApp({ onClose }: { onClose: () => void }) {
                     <div className="flex items-center gap-2"><span className="aq-kicker">{q.askerAlias}</span>{q.status==="pending"&&tab==="all"&&<span className="aq-dot"/>}</div>
                     <span className="text-[10px] text-[#999]">{stamp(q.createdAt)}</span>
                   </div>
-                  <div className="mt-3 flex items-center justify-between gap-3"><span className="text-[14px] leading-6 text-[#292929] line-clamp-2">{q.question}</span><ChevronRight size={15} className={`shrink-0 text-[#aaa] transition-transform ${isOpen?"rotate-90":""}`}/></div>
+                  <div className="mt-3 flex items-center justify-between gap-3"><span className={`text-[14px] leading-6 text-[#292929] whitespace-pre-wrap ${isOpen ? "" : "line-clamp-3"}`}>{q.question}</span><ChevronRight size={15} className={`shrink-0 text-[#aaa] transition-transform ${isOpen?"rotate-90":""}`}/></div>
                   <div className="mt-2 flex items-center justify-between text-[10px] text-[#999]"><span>{"回答对象："+(q.targetType==="user"?"你":(target?.name||"角色"))}</span><span>{q.status==="answered"?"已回复":"等待回复"}</span></div>
                 </button>
                 {isOpen && <div className="mt-4 border-t border-dashed border-[#d8d8d2] pt-4">
-                  <p className="whitespace-pre-wrap text-[14px] leading-7 text-[#292929]">{q.question}</p>
                   {q.answer ? <div className="mt-4 bg-[#f0f0ed] p-4"><div className="aq-kicker mb-2">REPLY</div><p className="whitespace-pre-wrap text-[13px] leading-6 text-[#555]">{q.answer}</p></div> : tab==="all" && q.targetType==="user" && q.targetId==="user" ? <div className="mt-4"><textarea value={answers[q.id]||""} onChange={e=>setAnswers(p=>({...p,[q.id]:e.target.value}))} rows={3} placeholder="写下你的回答…" className="aq-input resize-none"/><button type="button" onClick={()=>answer(q.id)} disabled={!(answers[q.id]||"").trim()} className="aq-button mt-2 w-full flex items-center justify-center gap-2"><Check size={14}/> 寄回回答</button></div> : <div className="mt-3 text-[11px] text-[#999]">等待收件人回复。</div>}
                 </div>}
               </article>;
