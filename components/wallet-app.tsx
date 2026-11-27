@@ -98,16 +98,32 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
   if (tab === "accounts") return <WalletPanel onBack={() => setTab("home")} />;
 
   return (
-    <PageShell title="钱包" onBack={onClose} className="wallet-private-bank">
+    <PageShell title="钱包" onBack={onClose} className="wallet-private-bank wallet-private-bank-shell">
       <style>{`
         .wallet-private-bank{color:#292b25}
+        .wallet-private-bank.page-shell{position:relative;z-index:40;isolation:isolate;background:#f1f0e9}
+        .wallet-private-bank.page-shell>.page-header{z-index:20;background:rgba(246,245,239,.96);border-bottom:1px solid rgba(143,128,91,.18);box-shadow:0 5px 18px rgba(38,39,30,.045)}
+        .wallet-private-bank.page-shell>.page-body{background:radial-gradient(ellipse at 88% 0%,rgba(192,174,126,.12),transparent 34%),#f1f0e9;padding:calc(var(--page-header-safe-top,48px) + var(--page-header-content-height,42px) + 12px) 15px 28px;gap:12px}
         .wallet-private-bank .wallet-hero{background:radial-gradient(circle at 88% 8%,rgba(224,202,148,.23),transparent 30%),linear-gradient(135deg,#252b25,#111712 64%,#34372d);color:#f5f0e4;border:1px solid rgba(193,171,119,.35);box-shadow:0 18px 38px rgba(28,31,25,.2)}
-        .wallet-private-bank .wallet-section{background:linear-gradient(145deg,#fffefa,#eeece4);border:1px solid rgba(153,137,100,.18);box-shadow:0 12px 28px rgba(43,39,28,.045)}
+        .wallet-private-bank .wallet-section{background:linear-gradient(145deg,#fffefa,#eeece4);border:1px solid rgba(153,137,100,.18);box-shadow:0 12px 28px rgba(43,39,28,.045);border-radius:19px}
         .wallet-private-bank .wallet-kicker{font:600 9px/1.4 ui-sans-serif,system-ui;letter-spacing:.22em;text-transform:uppercase;color:#968664}
-        .wallet-private-bank .wallet-tab{border:1px solid rgba(143,128,91,.22);background:rgba(255,255,255,.52);color:#69685f}
+        .wallet-private-bank .wallet-tab{border:1px solid rgba(143,128,91,.22);background:rgba(255,255,255,.68);color:#69685f;min-height:36px;font-size:12px;letter-spacing:.02em}
         .wallet-private-bank .wallet-tab[aria-pressed=true]{background:#202820;color:#f6f0e2;border-color:#202820;box-shadow:0 5px 14px rgba(20,28,20,.16)}
         .wallet-private-bank .wallet-metal-line{height:1px;background:linear-gradient(90deg,rgba(171,148,96,.5),transparent)}
         .wallet-private-bank .wallet-tx{border-bottom:1px solid rgba(143,128,91,.14)}
+        .wallet-private-bank .page-body>div:first-child{scrollbar-width:none}
+        .wallet-private-bank .page-body>div:first-child::-webkit-scrollbar{display:none}
+        .wallet-private-bank .page-body .rounded-2xl.bg-\\[var\\(--c-card\\)\\]{background:linear-gradient(145deg,#fffefa,#eeece4);border:1px solid rgba(153,137,100,.2);box-shadow:0 12px 28px rgba(43,39,28,.05);border-radius:19px}
+        .wallet-private-bank .ui-input,.wallet-private-bank .ui-select{min-height:42px;border:1px solid #ded9cb;border-radius:11px;background:#fffefa;color:#34362f;padding:10px 12px;font-size:13px;box-shadow:inset 0 1px 2px rgba(50,45,30,.025)}
+        .wallet-private-bank .ui-input:focus,.wallet-private-bank .ui-select:focus{outline:none;border-color:#a99569;box-shadow:0 0 0 3px rgba(169,149,105,.13)}
+        .wallet-private-bank .ui-btn{min-height:40px;border-radius:11px;font-size:12px;letter-spacing:.02em}
+        .wallet-private-bank .ui-btn-primary{background:#283128;color:#f7f1e5;box-shadow:0 5px 12px rgba(35,43,34,.13)}
+        .wallet-private-bank .ui-btn-ghost{background:#f0eee7;border:1px solid #dfdacd;color:#55564f}
+        .wallet-private-bank button{transition:filter .16s ease,transform .16s ease}
+        .wallet-private-bank button:active{transform:scale(.985)}
+        .wallet-private-bank .page-body label{line-height:1.6}
+        .wallet-private-bank .page-body .text-\\[var\\(--c-icon\\)\\]{color:#898579}
+        .wallet-private-bank .page-body .text-\\[var\\(--c-text\\)\\]{color:#34362f}
       `}</style>
       <div className="wallet-private-bank flex gap-2 overflow-x-auto px-1 pb-3">
         {TABS.map(item => (
@@ -188,7 +204,7 @@ function FamilyTab({ characters, cards, onChange }: { characters: ReturnType<typ
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="rounded-2xl bg-[var(--c-card)] p-4">
+      <div className="wallet-section rounded-2xl p-4">
         <div className="text-sm font-medium text-[var(--c-text)]">新建亲属卡</div>
         <div className="mt-2 flex gap-2">
           <select value={issuer} onChange={e => setIssuer(e.target.value as "user" | "character")} className="ui-select flex-1">
@@ -211,7 +227,7 @@ function FamilyTab({ characters, cards, onChange }: { characters: ReturnType<typ
         const character = characters.find(c => c.id === (card.issuerType === "character" ? card.issuerId : card.beneficiaryId));
         const txs = loadFamilyCardTransactions(card.id);
         return (
-          <div key={card.id} className="rounded-2xl bg-[var(--c-card)] p-4">
+          <div key={card.id} className="wallet-section rounded-2xl p-4">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm font-medium text-[var(--c-text)]">{card.label}</div>
@@ -253,7 +269,7 @@ function JointTab({ characters, funds, onChange }: { characters: ReturnType<type
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="rounded-2xl bg-[var(--c-card)] p-4">
+      <div className="wallet-section rounded-2xl p-4">
         <div className="text-sm font-medium text-[var(--c-text)]">新建共同小金库</div>
         <div className="mt-2 flex gap-2">
           <input value={name} onChange={e => setName(e.target.value)} placeholder="目标名" className="ui-input flex-1" />
@@ -271,7 +287,7 @@ function JointTab({ characters, funds, onChange }: { characters: ReturnType<type
         const plans = loadJointFundPlans(fund.id);
         const txs = loadJointFundTransactions(fund.id);
         return (
-          <div key={fund.id} className="rounded-2xl bg-[var(--c-card)] p-4">
+          <div key={fund.id} className="wallet-section rounded-2xl p-4">
             <div className="flex items-center justify-between">
               <div><div className="text-sm font-medium text-[var(--c-text)]">{fund.name}</div><div className="text-[11px] text-[var(--c-icon)]">和 {character?.name || "角色"} 一起 · 目标 {money(fund.goalAmount)}</div></div>
               <span className="text-sm font-semibold text-[var(--c-text)]">{money(fund.balance)}</span>
@@ -360,7 +376,7 @@ function CharacterLedgerCard({ character }: { character: ReturnType<typeof loadC
   };
 
   return (
-    <div className="rounded-2xl bg-[var(--c-card)] p-4" data-revision={revision}>
+    <div className="wallet-section rounded-2xl p-4" data-revision={revision}>
       <div className="flex items-center justify-between">
         <div className="text-sm font-medium text-[var(--c-text)]">{character.name} 的账本</div>
         <div className="text-lg font-semibold">{money(ledger?.balance || 0)}</div>
