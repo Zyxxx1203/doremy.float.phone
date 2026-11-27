@@ -61,6 +61,7 @@ export const RESERVED_INTERNAL_TOOL_NAMES: string[] = [
     "查看匿名提问箱",
     "查看可锁应用",
     "锁应用",
+    "给临时通行证",
     "解锁应用",
     "查看应用锁",
     "告诉应用锁密码",
