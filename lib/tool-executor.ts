@@ -2513,7 +2513,7 @@ function isAppLockToolName(name: string): boolean {
     return name === "查看可锁应用" || name === "锁应用" || name === "解锁应用" || name === "查看应用锁" || name === "告诉应用锁密码" || name === "给临时通行证";
 }
 
-/** 好感度阈值优先读专注 APP 的角色小手段设置；没装/没设置时用默认 60。 */
+/** 好感度阈值优先读专注 APP 的角色应用限制设置；没装/没设置时用默认 60。 */
 function focusAppLockThreshold(): number {
     try {
         const rows = readCustomAppCollection(FOCUS_COMPANION_APP_ID, "settings");
@@ -2648,7 +2648,7 @@ async function executeAppLockTool(call: ToolCall, context?: ToolExecutionContext
             sessionId: resolveAppLockChatSessionId(characterId),
         });
         if (!result.ok) throw new Error(result.reason || "锁应用失败");
-        return { name: call.name, success: true, data: `已锁住「${app.label}」，最长 ${Math.max(1, Math.min(360, Number(call.args?.durationMinutes) || 30))} 分钟后自动解除。密码由系统生成；用户可以回 Float 和你商量，也始终能紧急解除。`, userNotice: `把「${app.label}」暂时保管起来了` };
+        return { name: call.name, success: true, data: `已锁住「${app.label}」，最长 ${Math.max(1, Math.min(360, Number(call.args?.durationMinutes) || 30))} 分钟后自动解除。密码由系统生成；用户可以返回与你的私聊，申请临时通行或询问解锁密码。`, userNotice: `已为「${app.label}」开启使用限制` };
     } catch (error) {
         return { name: call.name, success: false, error: error instanceof Error ? error.message : String(error), continueConversation: false, persistToHistory: false, userNotice: "应用锁操作失败" };
     }
