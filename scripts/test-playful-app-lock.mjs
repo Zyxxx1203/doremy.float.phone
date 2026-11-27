@@ -18,6 +18,7 @@ const manifest = read("custom-apps/focus-companion/manifest.json");
 
 assert.match(service, /SecureRandom\(\)/, "app-lock password must use SecureRandom");
 assert.match(service, /durationMinutes\.coerceIn\(1, 360\)/, "lock duration must be capped at six hours");
+assert.match(service, /durationMinutes: Int = 30/, "character app lock should default to a 30-minute session");
 assert.match(service, /expiresAt/, "native lock must persist and enforce expiry");
 assert.match(service, /passUntil/, "temporary pass must be tracked natively");
 assert.match(internal, /给临时通行证/, "characters must have a dedicated temporary-pass tool");
