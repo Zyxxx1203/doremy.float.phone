@@ -62,6 +62,10 @@ export function runJointFundSchedulerTick(now = Date.now()): void {
                     sendNotice("目标已完成", `「${result.fundName}」已达成目标，目前没有其他进行中的共同小金库，${"角色"}的定期存款已自动结束。`, "success");
                 } else {
                     const session = loadChatSessions().find(item =>
+                        !item.isGroup
+                        && item.id === result.sessionId
+                        && resolveSessionCharacterId(item) === result.memberId
+                    ) || loadChatSessions().find(item =>
                         !item.isGroup && resolveSessionCharacterId(item) === result.memberId
                     );
                     if (session) {
