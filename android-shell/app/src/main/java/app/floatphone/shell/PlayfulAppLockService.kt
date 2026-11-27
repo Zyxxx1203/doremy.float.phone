@@ -20,9 +20,9 @@ import org.json.JSONObject
 import java.security.SecureRandom
 
 /**
- * 角色“小手段”：只锁一个指定应用。
+ * 角色应用限制：只限制一个指定应用。
  *
- * 这是轻量互动限制，不是设备安全锁。用户始终可以从锁页紧急解除；
+ * 这是轻量互动限制，不是设备安全锁；用户可返回与发起角色的私聊协商解除。
  * 锁定有最长时限，且不会覆盖另一个角色尚未结束的锁。
  */
 class PlayfulAppLockService : Service() {
@@ -102,7 +102,7 @@ class PlayfulAppLockService : Service() {
                 stopLock()
                 return
             }
-            // 专注锁优先：专注期间不弹“小手段”，避免两套锁页抢焦点。
+            // 专注锁优先：专注期间不弹应用限制页，避免两套锁页抢焦点。
             val focus = FocusLockService.status(this@PlayfulAppLockService)
             if (focus.optBoolean("running") && focus.optLong("until") > now) {
                 handler.postDelayed(this, 1500)
@@ -286,7 +286,7 @@ class PlayfulAppLockService : Service() {
                 val existingCharId = prefs.getString("charId", "") ?: ""
                 val existingTarget = prefs.getString("target", "") ?: ""
                 if (existingCharId != charId || existingTarget != target) {
-                    return JSONObject().put("ok", false).put("reason", "已有角色小手段正在生效，请先结束当前锁定，避免覆盖另一位角色的锁")
+                    return JSONObject().put("ok", false).put("reason", "已有角色应用限制正在生效，请先结束当前限制，避免覆盖另一位角色的设置")
                 }
             }
             val password = (100000 + random.nextInt(900000)).toString()
