@@ -12,7 +12,6 @@ import {
 export type WalletPlanningTab = "budget" | "goals" | "bills" | "calendar" | "insights";
 const money = formatWalletAmount;
 const monthKey = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}`;
-const dateLabel = (value: string) => new Date(value).toLocaleDateString("zh-CN",{month:"long",day:"numeric"});
 const todayInput = () => new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
 function Panel({children}:{children:React.ReactNode}) { return <section className="wallet-section rounded-2xl p-4">{children}</section>; }
 function Label({children}:{children:React.ReactNode}) { return <div className="wallet-kicker mb-2">{children}</div>; }
@@ -43,9 +42,7 @@ export function WalletPlanningTabs({tab,onChange}:{tab:WalletPlanningTab;onChang
   const reportMonthKey=monthKey(reportMonth);
   const monthTransactions=wallet.transactions.filter(tx=>tx.createdAt.slice(0,7)===currentMonth);
   const expenses=monthTransactions.filter(tx=>tx.amount<0 && tx.kind==="payment");
-  const income=monthTransactions.filter(tx=>tx.amount>0);
   const expenseTotal=expenses.reduce((sum,tx)=>sum+Math.abs(tx.amount),0);
-  const incomeTotal=income.reduce((sum,tx)=>sum+tx.amount,0);
   const categoryTotals=expenses.reduce<Record<string,number>>((acc,tx)=>{acc[tx.category||"其他"]=(acc[tx.category||"其他"]||0)+Math.abs(tx.amount);return acc;},{});
   const reportTransactions=wallet.transactions.filter(tx=>{const d=new Date(tx.createdAt);return !Number.isNaN(d.getTime())&&monthKey(d)===reportMonthKey;});
   const reportExpenses=reportTransactions.filter(tx=>tx.amount<0&&tx.kind==="payment");
@@ -71,7 +68,7 @@ export function WalletPlanningTabs({tab,onChange}:{tab:WalletPlanningTab;onChang
   const selectedDayItems=calendarItems.filter(item=>{const d=new Date(item.date);return !Number.isNaN(d.getTime())&&monthKey(d)+"-"+String(d.getDate()).padStart(2,"0")===selectedCalendarDay;});
   const submit=(fn:()=>unknown)=>{try{fn();refresh();}catch(error){window.dispatchEvent(new CustomEvent("app-global-notice",{detail:{kind:"error",message:error instanceof Error?error.message:"操作失败"}}));}};
   if(tab==="budget") return <div className="wallet-private-bank flex flex-col gap-3" data-revision={revision}>
-    <Panel><div className="flex items-start justify-between"><div><Label>MONTHLY CONTROL</Label><div className="text-xl font-semibold text-[#292b25]">本月预算</div><p className="mt-1 text-[11px] text-[#8a8579]">{currentMonth} · 根据钱包实际支出流水统计</p></div><div className="text-right"><div className="text-[10px] text-[#8a8579]">全钱包本月支出</div><div className="text-xl font-semibold">{money(expenseTotal)}</div></div></div><div className="wallet-metal-line my-4"/><div className="grid grid-cols-2 gap-3"><div><div className="text-[10px] text-[#8a8579]">已设置分类预算</div><div className="mt-1 text-lg font-semibold">{money(budgetTotal)}</div></div><div><div className="text-[10px] text-[#8a8579]">分类预算剩余</div><div className="mt-1 text-lg font-semibold">{money(budgetRemaining)}</div></div></div></Panel>
+    <Panel><div className="flex items-start justify-between"><div><Label>MONTHLY CONTROL</Label><div className="text-xl font-semibold text-[#292b25]">本月预算</div><p className="mt-1 text-[11px] text-[#8a8579]">{currentMonth} · 根据钱包实际支出流水统计</p></div><div className="text-right"><div className="text-[10px] text-[#8a8579]">全钱包本月支出</div><div className="text-xl font-semibold">{money(expenseTotal)}</div></div></div><div className="wallet-metal-line my-4"/><div className="grid grid-cols-2 gap-3"><div><div className="text-[10px] text-[#8a8579]">已设置分类预算</div><div className="mt-1 text-lg font-semibold">{money(budgetTotal)}</div></div><div><div className="text-[10px] text-[#8a8579]">分类预算剩余</div><div className="mt-1 text-lg font-semibold">{money(budgetRemaining)}</div></div></div>{budgetOverrun>0&&<div className="mt-3 rounded-xl bg-[#f5e9e4] px-3 py-2 text-[11px] text-[#9a554a]">已设置预算的分类累计超支 {money(budgetOverrun)}，请留意消费节奏。</div>}</Panel>
     <Panel><Label>ADD A LIMIT</Label><div className="grid grid-cols-2 gap-2"><label className="text-[11px] text-[#827d70]">支出分类<select value={category} onChange={e=>setCategory(e.target.value)} className="ui-select mt-1 w-full">{["餐饮","交通","购物","居住","娱乐","医疗","订阅","学习","其他"].map(v=><option key={v}>{v}</option>)}</select></label><Field label="月度限额" value={budget} onChange={e=>setBudget(e.target.value)} type="number"/></div><button onClick={()=>submit(()=>addWalletBudget({month:currentMonth,category,limit:Number(budget)}))} className="ui-btn ui-btn-primary mt-3 w-full"><CirclePlus size={14} className="mr-1 inline"/> 添加 / 更新分类预算</button></Panel>
     {budgetRows.map(row=>{const spent=categoryTotals[row.category]||0;const pct=Math.min(100,spent/row.limit*100);return <Panel key={row.id}><div className="flex justify-between"><div><div className="font-medium text-[#33352e]">{row.category}</div><div className="mt-1 text-[10px] text-[#8a8579]">限额 {money(row.limit)} · 已用 {money(spent)}</div></div><button aria-label="删除预算" onClick={()=>submit(()=>removeWalletBudget(row.id))} className="text-[#aaa]"><Trash2 size={15}/></button></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-[#e5e2d9]"><div className="h-full rounded-full" style={{width:pct+"%",background:pct>=100?"#9d554a":"linear-gradient(90deg,#a99569,#454b3e)"}}/></div><div className="mt-2 flex justify-between text-[10px] text-[#8a8579]"><span>{pct>=100?"已超出预算":`还可使用 ${money(row.limit-spent)}`}</span><span>{pct.toFixed(0)}%</span></div></Panel>})}
     {!budgetRows.length&&<Panel><div className="py-5 text-center text-sm text-[#999]">还没有分类预算，先为最常花钱的类别设个上限。</div></Panel>}
@@ -110,7 +107,6 @@ export function WalletPlanningTabs({tab,onChange}:{tab:WalletPlanningTab;onChang
     {selectedDayItems.length?selectedDayItems.map(item=><div key={item.kind+"-"+item.id} className="wallet-section flex items-center gap-3 rounded-xl p-3"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#e8e4d8] text-[#8a7955]">{item.kind==="bill"?<CalendarDays size={17}/>:<Repeat2 size={17}/>}</div><div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-[#34362f]">{item.title}</div><div className="mt-1 text-[10px] text-[#8a8579]">{item.detail}</div></div><div className="text-[10px] text-[#8a8579]">{new Date(item.date).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</div></div>):<Panel><div className="py-6 text-center"><CalendarDays size={22} className="mx-auto mb-2 text-[#b2a786]"/><div className="text-sm text-[#77766e]">这一天没有记录</div><div className="mt-1 text-[10px] text-[#aaa59a]">选择带有圆点的日期查看其他事件。</div></div></Panel>}
   </div>;
   const sorted=Object.entries(reportCategoryTotals).sort((a,b)=>b[1]-a[1]);
-  const max=sorted[0]?.[1]||1;
   return <div className="wallet-private-bank flex flex-col gap-3">
     <Panel>
       <div className="flex items-center justify-between gap-3">
