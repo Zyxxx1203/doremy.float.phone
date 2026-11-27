@@ -3015,8 +3015,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           "输入资料：\n\n" + sourceBlocks.join("\n\n").slice(0, 42000),
         ].join("\n\n"),
       };
-      const history = loadChatMessages(session.id).filter(message => message.status !== "failed" && !message.isRetracted).slice(-8);
-      const result = await generateOfflineChatCompletion(session, [...history, prompt], { appId: "life", appTags: lifeAppTags("schedule"), includeDirectChatEntries: false });
+      const result = await generateOfflineChatCompletion(session, [prompt], { appId: "life", appTags: lifeAppTags("schedule"), includeDirectChatEntries: false, worldBookIdsOverride: sourceType === "worldbook" && selectedBook ? [selectedBook.id] : [], worldBookActivationContext: "" });
       const raw = result.content.trim();
       const first = raw.indexOf("["), last = raw.lastIndexOf("]");
       if (first < 0 || last <= first) throw new Error("模型没有返回 JSON 数组。模型原始回复：" + raw.slice(0, 360));
@@ -4436,9 +4435,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
               <select value={locationImportWorldBookId} onChange={event => setLocationImportWorldBookId(event.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm">
                 <option value="">选择一本世界书</option>{worldBooks.map(book => <option key={book.id} value={book.id}>{book.name}</option>)}
               </select>
-              <p className="mt-1.5 text-[11px] text-stone-400">只读取这本世界书的启用条目，不受角色绑定配置影响。</p>
+              <p className="mt-1.5 text-[11px] text-stone-400">只读取这本世界书的启用条目；不会混入绑定世界书或历史聊天记录。</p>
               <button type="button" disabled={locationImportBusy || !locationImportWorldBookId || !characters.length} onClick={() => void importWorldbookLocations()} className="mt-2 w-full rounded-xl border border-[var(--life-accent)] px-3 py-2 text-xs font-medium text-[var(--life-accent)] disabled:opacity-50">{locationImportBusy ? "处理中…" : "仅从这本世界书导入地点"}</button>
-              {!characters.length && <p className="mt-1.5 text-[11px] text-amber-700">需要至少导入一张角色卡作为模型调用载体；角色卡内容不会参与本次世界书提取。</p>}
+              {!characters.length && <p className="mt-1.5 text-[11px] text-amber-700">需要至少导入一张角色卡来提供模型/API 配置；本次地点来源仅使用上方选中的世界书。</p>}
             </div>
           </div>
           <form onSubmit={event => { event.preventDefault(); addLocation(); }} className="flex gap-2">
