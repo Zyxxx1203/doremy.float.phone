@@ -60,6 +60,6 @@ assert.match(internal, /不要写成训话/, "lock-screen dialogue guidance must
 assert.match(internal, /表现好就奖励你/, "lock-screen dialogue guidance must discourage awkward reward bargaining");
 assert.match(builtin, /durationMinutes/, "built-in companion manifest must document bounded duration");
 assert.match(manifest, /durationMinutes/, "exported companion manifest must document bounded duration");
-assert.match(manifest, /角色锁屏主题与对白/, "companion tool schema must allow character-authored lock-screen copy");
+assert.match(manifest, /角色锁页主题与留言/, "companion tool schema must allow character-authored lock-screen copy");
 
 console.log("Playful app-lock interaction and safety contract tests passed.");
