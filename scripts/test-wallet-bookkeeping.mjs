@@ -109,6 +109,7 @@ assert.match(executor, /name === "帮我记账"/);
 assert.match(executor, /recordWalletBookkeeping\(/);
 assert.match(executor, /createFamilyCardForCharacter\(characterId/);
 assert.match(capability, /name: "设置小金库定期存款"/);
+assert.match(capability, /"设置小金库定期存款"/);
 assert.match(executor, /setJointFundPlanForCharacter\(characterId/);
 assert.match(executor, /name === "设置小金库定期存款"/);
 assert.doesNotMatch(walletUi.slice(walletUi.indexOf("function FamilyTab"), walletUi.indexOf("function JointTab")), /角色开给我/);
