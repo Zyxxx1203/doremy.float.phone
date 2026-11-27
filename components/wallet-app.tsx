@@ -120,7 +120,7 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
     };
   }, [wallet.transactions]);
 
-  if (tab === "accounts") return <WalletPanel onBack={() => setTab("home")} />;
+  if (tab === "accounts") return <WalletPanel onBack={() => setTab("home")} onNavigateTab={nextTab => setTab(nextTab)} />;
 
   return (
     <PageShell title="钱包" onBack={onClose} className="wallet-private-bank wallet-private-bank-shell" headerClassName="wallet-app-header" headerStyle={{ background: "#f7f6f0", backgroundColor: "#f7f6f0", backgroundImage: "none", backdropFilter: "none", WebkitBackdropFilter: "none", zIndex: 50, isolation: "isolate" }}>
