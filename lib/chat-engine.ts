@@ -65,7 +65,6 @@ import { extractFinishReason } from "./api-helpers";
 import { fetchLlmPayload } from "./llm-http";
 import { loadMemoryConfig, incrementEventCounter } from "./memory-storage";
 import { retrieveCoreMemoriesForPrompt, retrieveMemoriesForPrompt } from "./memory-service";
-import { formatCoreMemories, formatLongTermMemories } from "./memory-injector";
 import { maybeRunSummarization } from "./memory-summarizer";
 import { prepareShortTermContext } from "./short-term-assembler";
 import { parseActionTags, dispatchActions } from "./action-parser";
@@ -1982,22 +1981,22 @@ export async function buildChatPromptMessages(
         buildMusicCloudMacro(),
     ]);
 
-    const memoDigest = !session.isGroup && resolvedAppId === "chat" && memConfig.shortTermAllowedSources?.memo !== false && memoCapability?.enabled && memoCapability.mode !== "off"
-        && toolsEnabled ? await buildMemoPromptDigest(character.id).catch(() => "")
-        : "";
+    // 记忆条目不再作为常驻的“长期记忆/核心记忆”提示词块；
+    // 它们按原始发生时间进入统一短期时间线，与聊天和其他事件一起排序。
+    for (const entry of [...(memResults ?? []), ...(coreResults ?? [])]) {
+        unifiedRecentItems.push({
+            kind: "event",
+            timestamp: entry.createdAt,
+            sourceApp: entry.sourceApp,
+            sourceTag: entry.type === "core" ? "recent_core_memory" : "recent_long_term_memory",
+            text: entry.content,
+        });
+    }
 
-    const longTermMemories = [
-        memResults ? formatLongTermMemories(memResults) : "",
-        memoDigest,
-        // 生活共同事实已经由短期时间线的 life 条目注入；旧 buildLifeMemoryContext
-        // 再把同一批事实拼进长期块，会让同一件事在提示词里出现两遍。
-        // 这里只保留“当前生活状态”，历史事实交给统一短期时间线。
-        ...(options?.isolatedPromptContext === true ? [] : [
-            buildLifePresenceContext(character.id),
-            buildCharacterEconomyContext(character.id),
-        ]),
-    ].filter(Boolean).join("\n\n");
-    const coreMemories = options?.isolatedPromptContext === true ? "" : (coreResults ? formatCoreMemories(coreResults) : "");
+    const longTermMemories = options?.isolatedPromptContext === true
+        ? ""
+        : [buildLifePresenceContext(character.id), buildCharacterEconomyContext(character.id)].filter(Boolean).join("\n\n");
+    const coreMemories = "";
     const scheduleSummary = buildCalendarScheduleMarker("character", character.id, getWeekStartIso(now));
     const currentSchedule = getCurrentCalendarScheduleForPrompt("character", character.id, now);
     const musicOnlineHint = isNeteaseConfigured() ? "- 你可以推荐任何歌曲，系统会在线搜索并播放。不局限于用户本地音乐库。\n" : "\n";
