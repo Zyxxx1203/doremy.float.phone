@@ -427,7 +427,7 @@ export function recordWalletBookkeeping(input: {
   if (input.direction !== "income" && input.direction !== "expense") return { ok: false, state: current, error: "收支方向无效。" };
   if (amount <= 0) return { ok: false, state: current, error: "记账金额必须大于 0。" };
   if (!title) return { ok: false, state: current, error: "请说明这笔收支的用途或来源。" };
-  const reference = cleanText(input.reference, 120);
+  const reference = cleanText(input.reference, 100);
   if (reference && current.transactions.some(tx => tx.relatedOrderId === `role_bookkeeping:${reference}`)) {
     return { ok: false, state: current, error: "这笔交易已经记过账了，没有重复添加。" };
   }
