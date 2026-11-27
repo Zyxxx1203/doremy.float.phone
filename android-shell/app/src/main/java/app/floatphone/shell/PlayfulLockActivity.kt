@@ -140,8 +140,12 @@ class PlayfulLockActivity : Activity() {
         root.addView(errorText, matchWrap())
 
         root.addView(actionButton("回去找 ${charName} 讨价还价", 0xFF8976D8.toInt(), Color.WHITE) {
-            startActivity(Intent(this@PlayfulLockActivity, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+            val sessionId = prefs.getString("sessionId", "") ?: ""
+            val chatUrl = if (sessionId.isNotBlank()) MainActivity.SITE_URL.trimEnd('/') + "/#open-chat=" + android.net.Uri.encode(sessionId) else ""
+            startActivity(Intent(this@PlayfulLockActivity, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                if (chatUrl.isNotBlank()) putExtra(MainActivity.EXTRA_OPEN_URL, chatUrl)
+            })
             finish()
         }, matchWrap().apply { topMargin = dp(12) })
         root.addView(actionButton("输入密码，直接解锁", 0x332C3852, 0xFFE3E8F4.toInt(), true) { tryUnlock() },
