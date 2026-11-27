@@ -2631,7 +2631,7 @@ async function executeAppLockTool(call: ToolCall, context?: ToolExecutionContext
             charName: character?.name || "TA",
             avatar: character?.avatar || "",
             style: call.args?.style && typeof call.args.style === "object" ? call.args.style : {},
-            durationMinutes: Math.max(1, Math.min(360, Number(call.args?.durationMinutes) || 180)),
+            durationMinutes: Math.max(1, Math.min(360, Number(call.args?.durationMinutes) || 30)),
             sessionId: context?.sessionId || "",
         });
         if (!result.ok) throw new Error(result.reason || "锁应用失败");
