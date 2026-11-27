@@ -85,6 +85,7 @@ export function runJointFundSchedulerTick(now = Date.now()): void {
                             intent: `你刚刚定期存款的「${result.fundName}」已经达到目标，系统已自动停止这个目标的定期存款。你们还有其他正在进行的小金库：${choices}。请像平时聊天一样主动问用户：要不要把之后的定期存款改存到其中一个？不要替用户或自己擅自选择，也不要自动创建新计划；等用户明确同意并选定目标后，再调用「设置小金库定期存款」工具设置频率和金额。如果用户不想继续，就保持停止状态。`,
                             source: "tool",
                             retryIfSleeping: true,
+                            retryIfBusy: true,
                         });
                         sendNotice("目标已完成", `「${result.fundName}」已达成目标，原定期存款已停止；我会让角色问问是否要改存其他小金库。`, "success");
                     } else {
