@@ -112,7 +112,7 @@ export function askAnonymousQuestion(input: {
                 sessionId: session.id,
                 role: "system",
                 mediaType: "system_instruction",
-                content: `匿名提问箱有一条新问题。\n${row.askerAlias} 留给你的问题：${row.question}\n你是这条问题的指定回答对象，可以在匿名提问箱中作答。提问者身份对你保密，不要猜测或追查。`,
+                content: `匿名提问箱有一条新问题。\n问题编号：${row.id}\n${row.askerAlias} 留给你的问题：${row.question}\n你是这条问题的指定回答对象，可以使用“回答匿名提问”工具作答。提问者身份对你保密，不要猜测或追查。`,
                 mediaData: { compactSystemInstruction: true, shortTermMemoryEvent: true },
             });
         }
@@ -143,6 +143,9 @@ export function updateAnonymousQuestion(questionId: string, input: {
     const rows = load();
     const row = rows.find(item => item.id === questionId);
     if (!row) return null;
+    const previousTargetType = row.targetType;
+    const previousTargetId = row.targetId;
+    const previousQuestion = row.question;
     const nextQuestion = input.question === undefined ? row.question : String(input.question).trim();
     if (!nextQuestion) throw new Error("问题不能为空");
     if (input.targetType === "character") {
@@ -163,6 +166,36 @@ export function updateAnonymousQuestion(questionId: string, input: {
         row.answeredAt = row.answer ? Date.now() : undefined;
     }
     save(rows);
+    const targetChanged = previousTargetType !== row.targetType || previousTargetId !== row.targetId;
+    const questionChanged = previousQuestion !== row.question;
+    if (targetChanged && previousTargetType === "character") {
+        const previousTarget = loadCharacters().find(character => character.id === previousTargetId);
+        if (previousTarget) {
+            const session = createOrGetSession(previousTarget.id);
+            pushChatMessage({
+                id: `anonymous_qa_retargeted_${row.id}_${Date.now()}`,
+                sessionId: session.id,
+                role: "system",
+                mediaType: "system_instruction",
+                content: "匿名提问箱中的一条问题已更改回答对象，你之前收到的那条通知已失效，请忽略。",
+                mediaData: { compactSystemInstruction: true, shortTermMemoryEvent: true },
+            });
+        }
+    }
+    if (row.targetType === "character" && (targetChanged || (questionChanged && row.status === "pending"))) {
+        const target = loadCharacters().find(character => character.id === row.targetId);
+        if (target) {
+            const session = createOrGetSession(target.id);
+            pushChatMessage({
+                id: `anonymous_qa_updated_${row.id}_${Date.now()}`,
+                sessionId: session.id,
+                role: "system",
+                mediaType: "system_instruction",
+                content: `匿名提问箱中的问题已更新。\\n问题编号：${row.id}\\n${row.askerAlias} 留给你的问题：${row.question}\\n你是指定回答对象，可以使用“回答匿名提问”工具作答。提问者身份对你保密，不要猜测或追查。`,
+                mediaData: { compactSystemInstruction: true, shortTermMemoryEvent: true },
+            });
+        }
+    }
     return row;
 }
 
