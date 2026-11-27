@@ -51,6 +51,7 @@ import {
 import {
     loadTimedWakeSchedules,
     removeTimedWakeSchedule,
+    appendTimedWakeSchedule,
     type TimedWakeSchedule,
 } from "./timed-wake-storage";
 import {
@@ -804,7 +805,16 @@ async function fireTimedWake(sched: TimedWakeSchedule) {
         const session = sessions.find(s => s.id === sched.sessionId);
         if (!session || resolveSessionCharacterId(session) !== sched.characterId) return;
         if (isLifeCharacterSleeping(session.id)) {
-            void cancelBailoutKey(`timedwake:${sched.id}`);
+            if (sched.retryIfSleeping) {
+                const retryAt = Date.now() + 30 * 60_000;
+                appendTimedWakeSchedule({
+                    ...sched,
+                    fireAt: retryAt,
+                    delayMinutes: Math.max(1, Math.ceil((retryAt - sched.createdAt) / 60_000)),
+                });
+            } else {
+                void cancelBailoutKey(`timedwake:${sched.id}`);
+            }
             return;
         }
         turn = beginTurn({ kind: "timed_wake", characterId: sched.characterId, sessionId: session.id });
