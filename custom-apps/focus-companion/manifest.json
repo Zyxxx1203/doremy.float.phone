@@ -335,11 +335,11 @@
             },
             "durationMinutes": {
               "type": "number",
-              "description": "锁定时长（分钟），默认 180，最多 360，到期自动解除"
+              "description": "锁定时长（分钟），默认 30，最多 360，到期自动解除"
             },
             "style": {
               "type": "object",
-              "description": "可选角色锁屏主题与对白：title/subtitle/message/showAvatar/showTitle/showSubtitle/background/avatar"
+              "description": "可选角色锁页主题与留言：title/subtitle/message/showAvatar/showTitle/showSubtitle/background/avatar。留言应贴合角色个性与当下情境，避免统一台词和「表现好就奖励」等生硬奖惩话术"
             }
           },
           "required": ["app"]
