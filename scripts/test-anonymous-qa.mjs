@@ -34,6 +34,8 @@ T("旧 audience 参数不会改变公开可见属性", userLetter.audience === "
 T("指定角色收到系统条目", targetNotice?.sessionId === "session-c1" && targetNotice.role === "system" && targetNotice.mediaType === "system_instruction");
 T("系统条目进入自然短期时间线", targetNotice?.mediaData?.shortTermMemoryEvent === true && targetNotice.mediaData.compactSystemInstruction === true);
 T("通知包含问题编号和内容，角色可以调用回答工具", targetNotice?.content.includes(userLetter.id) && targetNotice.content.includes(userLetter.question) && targetNotice.content.includes("回答匿名提问"));
+const bystanderNotice = chatMessages.find(message => message.sessionId === "session-c2" && message.content.includes(userLetter.question));
+T("其他角色知道公开问题，但不会误以为是问自己的", bystanderNotice?.content.includes("指定回答对象是小林") && !bystanderNotice.content.includes("这是问你的问题"));
 T("通知不泄露提问者真实 ID", !targetNotice?.content.includes(userLetter.askerId));
 T("随机匿名代号独立生成", userLetter.askerAlias && userLetter.askerAlias !== qa.askAnonymousQuestion({ askerType: "user", askerId: "user", targetType: "character", targetId: "c1", question: "另一个问题" }).askerAlias);
 T("非指定对象不能代答", qa.answerAnonymousQuestion(userLetter.id, "越权回答", { targetType: "character", targetId: "c2" }) === null);
