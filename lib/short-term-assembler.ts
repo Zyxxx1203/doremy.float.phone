@@ -1065,6 +1065,8 @@ export function filterTimelineByAllowedSources(
     return entries.filter(entry => {
         const source = entry.sourceApp;
         if (source === "chat") {
+            // 匿名提问箱是独立的短期事件来源，不跟随普通聊天记录开关一起隐藏。
+            if (entry.sourceDetail === "anonymous_qa") return true;
             if (entry.sourceDetail === "group") return rules.group_chat !== false;
             return rules.chat !== false;
         }
