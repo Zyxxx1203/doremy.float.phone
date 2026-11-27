@@ -76,7 +76,10 @@ result = wallet.recordWalletBookkeeping({
   direction: "expense", amount: 999999, title: "超额支出", category: "其他",
 });
 assert.equal(result.ok, false);
-console.log("  ✅ 余额不足时拒绝写入");
+assert.equal(wallet.recordWalletBookkeeping({
+  direction: "transfer", amount: 1, title: "非法方向",
+}).ok, false);
+console.log("  ✅ 余额不足与无效收支方向均拒绝写入");
 
 console.log("== 2. 亲属卡只能由对应身份发放 ==");
 const family = loadTs("lib/economy/family-card.ts", {
