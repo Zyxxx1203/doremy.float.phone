@@ -461,10 +461,11 @@ export function recordWalletBookkeeping(input: {
     openingBalance,
   );
   const openingBalanceOffset = normalizeSignedMoney(current.balance - replayedExistingBalance);
-  const currentBalanceAfter = normalizeMoney(current.balance + signedAmount);
-  if (currentBalanceAfter < 0) {
+  const currentBalanceAfterRaw = normalizeSignedMoney(current.balance + signedAmount);
+  if (currentBalanceAfterRaw < 0) {
     return { ok: false, state: current, error: "钱包余额不足，无法记录这笔支出。" };
   }
+  const currentBalanceAfter = normalizeMoney(currentBalanceAfterRaw);
   const transaction = createTransaction({
     accountId: WALLET_BALANCE_ACCOUNT_ID,
     accountType: "balance",
@@ -482,14 +483,15 @@ export function recordWalletBookkeeping(input: {
   let runningBalance = openingBalance + openingBalanceOffset;
   let insertedBalance = 0;
   const replayed = timeline.map(tx => {
-    runningBalance = normalizeMoney(runningBalance + tx.amount);
+    // 先保留有符号结果用于余额不足校验，不能用 normalizeMoney 提前把负数截成 0。
+    runningBalance = normalizeSignedMoney(runningBalance + tx.amount);
     if (tx.id === transaction.id) insertedBalance = runningBalance;
-    return { ...tx, balanceAfter: runningBalance };
+    return { ...tx, balanceAfter: normalizeMoney(runningBalance) };
   });
   if (insertedBalance < 0) {
     return { ok: false, state: current, error: "对应时间点的钱包余额不足，无法记录这笔支出。" };
   }
-  transaction.balanceAfter = insertedBalance;
+  transaction.balanceAfter = normalizeMoney(insertedBalance);
   const transactions = replayed
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 300);
