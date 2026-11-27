@@ -47,7 +47,7 @@ function appendAnonymousQaTimelineEvent(
         ? "用户"
         : characters.find(character => character.id === row.targetId)?.name || "某位角色";
     const content = kind === "question"
-        ? `匿名提问箱新增公开问题。\n${row.askerAlias} 向${targetName} 提问：${row.question}\n${row.targetType === "character" ? "这是问你的问题，你可以使用“回答匿名提问”工具作答。" : "这是一条公开问题，你可以在匿名提问箱查看。"} 提问者身份对所有人保密，不要猜测或追查。`
+        ? `匿名提问箱新增公开问题。\n问题编号：${row.id}\n${row.askerAlias} 向${targetName} 提问：${row.question}\n${row.targetType === "character" ? "这是问你的问题，你可以使用“回答匿名提问”工具作答。" : "这是一条公开问题，你可以在匿名提问箱查看。"} 提问者身份对所有人保密，不要猜测或追查。`
         : kind === "answer"
             ? `匿名提问箱有一条新回答。\n问题：${row.question}\n回答对象：${targetName}\n回答：${row.answer || ""}`
             : kind === "updated"
