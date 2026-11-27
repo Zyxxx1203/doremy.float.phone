@@ -50,7 +50,8 @@ T("随机匿名代号独立生成", userLetter.askerAlias && userLetter.askerAli
 T("非指定对象不能代答", qa.answerAnonymousQuestion(userLetter.id, "越权回答", { targetType: "character", targetId: "c2" }) === null);
 T("指定收件人可以回答", qa.answerAnonymousQuestion(userLetter.id, "没有躲你，只是在忙", { targetType: "character", targetId: "c1" })?.status === "answered");
 const answerNotice = chatMessages.find(message => message.sessionId === "session-c1" && message.content.includes("没有躲你，只是在忙"));
-T("回答操作不会广播系统条目", !answerNotice);
+T("回答后提问者收到系统条目", answerNotice?.id === `anonymous_qa_answer_${userLetter.id}_c1` && answerNotice.sessionId === "session-c1" && answerNotice.content.includes(userLetter.question) && answerNotice.content.includes("没有躲你，只是在忙"));
+T("回答通知只发给提问者，不广播给其他角色", !chatMessages.some(message => message.sessionId === "session-c2" && message.content.includes("没有躲你，只是在忙")));
 const recordsBeforeEdit = chatMessages.length;
 T("可以编辑问题、回答与回答对象", (() => { const changed = qa.updateAnonymousQuestion(userLetter.id, { question: "修改后的问题", answer: "修改后的回答", targetType: "character", targetId: "c2" }); return changed?.question === "修改后的问题" && changed.answer === "修改后的回答" && changed.targetId === "c2" && changed.status === "answered"; })());
 T("编辑不会新增任何系统条目或主动回复请求", chatMessages.length === recordsBeforeEdit && replyRequests.length === 4);
@@ -61,6 +62,8 @@ T("可以删除匿名问题", qa.deleteAnonymousQuestion(userLetter.id) && !qa.l
 
 const roleLetter = qa.askAnonymousQuestion({ askerType: "character", askerId: "c1", targetType: "character", targetId: "c2", question: "你是不是也在意她？" });
 T("角色提问时只有收件角色收到系统条目", chatMessages.some(message => message.sessionId === "session-c2" && message.content.includes(roleLetter.question)) && !chatMessages.some(message => message.sessionId === "session-c1" && message.content.includes(roleLetter.question)));
+T("角色提问收到回答后，提问角色收到系统条目", qa.answerAnonymousQuestion(roleLetter.id, "当然在意", { targetType: "character", targetId: "c2" })?.status === "answered" && chatMessages.some(message => message.id === `anonymous_qa_answer_${roleLetter.id}_c1` && message.sessionId === "session-c1" && message.content.includes("当然在意")));
+T("回答通知使用稳定 ID，避免重复记录", chatMessages.filter(message => message.id === `anonymous_qa_answer_${roleLetter.id}_c1`).length === 1);
 T("角色名称可以兜底解析为唯一角色 ID", qa.askAnonymousQuestion({ askerType: "character", askerId: "c1", targetType: "character", targetId: "顾总", question: "名称解析测试" }).targetId === "c2");
 T("不存在的角色不能作为收件人", (() => { try { qa.askAnonymousQuestion({ askerType: "character", askerId: "c1", targetType: "character", targetId: "missing-role", question: "无效收件人" }); return false; } catch { return true; } })());
 T("角色不能向自己提问", (() => { try { qa.askAnonymousQuestion({ askerType: "character", askerId: "c1", targetType: "character", targetId: "c1", question: "问自己" }); return false; } catch { return true; } })());
