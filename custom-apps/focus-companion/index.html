@@ -8212,7 +8212,7 @@ VIEWS.help = function () {
     · <b>查我的专注情况</b> —— 问「我这两天学得怎么样」，他会去读你的真实记录（今日/本周分钟数、次数、通过率、最有效率的时段、违规、连续打卡、专注币）。<br>
     · <b>看昨晚睡得怎么样</b> —— 他知道你昨晚睡了多久、酝酿了多久、中途醒了几次。<br>
     · <b>帮我记一条待办</b> —— 你说「帮我记一下」，这条待办就进了「首页 → 📝 待办」，开始专注时能直接选。<br>
-    · <b>跟我约一段专注</b> —— 他约你的时间会变成一条真的预约：到点前提醒你准备，每 5 分钟催一次、共 3 次，连着催 3 次没开始就按惩罚库开罚。<br>
+    · <b>跟我约一段专注</b> —— 他约你的时间会先进「💌 TA 的邀请」；<b>你答应之后</b>才变成正式预约：到点前提醒你准备，每 5 分钟催一次、共 3 次，连着催 3 次没开始才按惩罚库开罚。没答应就不催、不罚。<br>
     · <b>邀我一起睡</b> —— 他邀请你一起睡，会写进「💌 TA 的邀请」并给你发一条通知，你打开就能一键躺下（他会说一句哄你入睡的话）。<br><br>
     他也可以直接在回复里写这两种卡：<b>[陪睡:小憩:20:早点睡]</b>、<b>[约专注:21:00:背单词:25]</b>。一次回复最多写一个，你那边会看到一张卡。<br><br>
     <b>觉得他太主动了？</b>「设置 → 聊天工具箱」里可以关掉本 APP 的工具；「设置 → 提示词预设」里可以关掉「角色陪伴专注 · TA 主动约你」这一条；APP 内「我的 → 待办 / TA 的邀请」里也能随时删掉他记的东西。</div></details>
@@ -17723,6 +17723,24 @@ TITLES.rcchat = ['抽背 · 聊天室', 'RECITE'];
 /* ==========================================================
    数据加载与启动
    ========================================================== */
+/* 旧版本在用户答应邀请前就建了预约和催促任务：清掉这些没有「已答应」邀请的预约，
+   避免用户明明没答应，却一直被催、最后还被按失约开罚。 */
+async function cleanupUnacceptedInviteAppts() {
+  const accepted = new Set((S.invites || [])
+    .filter(inv => inv && inv.status === 'accepted' && inv.apptId)
+    .map(inv => String(inv.apptId)));
+  const stale = (S.appts || []).filter(a => a && a.status === 'pending'
+    && a.note === '由角色在聊天里约的' && !accepted.has(String(a.id)));
+  if (!stale.length) return;
+  for (const appt of stale) {
+    for (let i = 0; i < 8; i++) {
+      try { await sdk(() => API.tasks.cancel('focus_appt_' + appt.id + '_n' + i), null); } catch (e) { /* 任务可能已经执行或不存在 */ }
+    }
+    try { await cancelNativeLockForAppt(appt); } catch (e) { /* 锁机可能没排过 */ }
+    await removeAppt(appt);
+  }
+}
+
 async function loadAll() {
   /* 宿主 db.list 返回的是扁平记录；老版本有些表保存成了 { data: {...} }。
      两种都兼容，否则通行证/会话重启后会变成空对象。 */
@@ -17745,6 +17763,7 @@ async function loadAll() {
   S.apptsLoaded = true;
   S.todos = ((await DB.list(T.TODO)) || []).filter(x => x && x.text).sort((a, b) => (b.at || 0) - (a.at || 0));
   S.invites = ((await DB.list(T.INVITE)) || []).filter(x => x && x.kind).sort((a, b) => (b.at || 0) - (a.at || 0));
+  await cleanupUnacceptedInviteAppts();
   S.qlogs = ((await DB.list(T.QA)) || []).filter(x => x && x.q).sort((a, b) => (b.at || 0) - (a.at || 0));
   S.qa = ((await DB.list(T.QA)) || []).sort((a, b) => (b.at || 0) - (a.at || 0));
   S.notes = ((await DB.list(T.NOTE)) || []).filter(x => x && x.text).sort((a, b) => (b.at || 0) - (a.at || 0));
@@ -18891,23 +18910,25 @@ function registerTools() {
       if (cid) await syncTimeline(cid, `你约用户现在就一起专注 ${minutes} 分钟：${task}。`, 'appt_invite', {});
       return { success: true, data: { mode: 'now', inviteId: saved ? saved.id : '' }, userNotice: '已把「现在就一起专注」的邀请发给用户了' };
     }
-    const rec = {
-      id: '', date: dateStr, time: pad2(hh) + ':' + pad2(mi), startAt: startAt,
-      minutes: minutes, task: task.slice(0, 60), charIds: cid ? [cid] : [],
-      status: 'pending', nudgeCount: 0, createdAt: Date.now(), note: '由角色在聊天里约的'
-    };
-    await createAppt(rec);
-    const n = await scheduleAppt(rec);
+    /* 未答应的邀请不能建预约：先只留邀请，用户答应后才 createAppt + scheduleAppt。
+       否则用户只是被问了一句，到点没答应也会被连催三次、最后按失约开罚。 */
+    const invTime = dateStr + ' ' + pad2(hh) + ':' + pad2(mi);
+    const sameInvite = (S.invites || []).find(x => x && x.kind === 'focus'
+      && x.status === 'new' && String(x.charId) === String(cid)
+      && String(x.time || '') === invTime);
+    if (sameInvite) {
+      return { success: true, data: { mode: 'scheduled', inviteId: sameInvite.id, accepted: false }, userNotice: '这个时间已经邀请过用户了，等 TA 答复。' };
+    }
     const inv = {
-      kind: 'focus', task: task, minutes: minutes, time: rec.date + ' ' + rec.time, note: '',
-      charId: cid, apptId: rec.id, at: Date.now(), status: 'new', from: 'tool'
+      kind: 'focus', task: task, minutes: minutes, time: invTime, note: '',
+      charId: cid, apptId: '', at: Date.now(), status: 'new', from: 'tool'
     };
     await pushInvite(inv);
-    if (cid) await syncTimeline(cid, `你和用户约好 ${rec.date} ${rec.time} 一起专注 ${minutes} 分钟：${task}。到点前你要来催他开始。`, 'appt_make', {});
+    if (cid) await syncTimeline(cid, `你邀请用户 ${invTime} 一起专注 ${minutes} 分钟：${task}。等 TA 答应后再到点催；TA 没答应就不要催，也不要按失约算。`, 'appt_invite', {});
     return {
       success: true,
-      data: { mode: 'scheduled', date: rec.date, time: rec.time, minutes: minutes, task: task, nudges: n },
-      userNotice: '已排好：' + rec.date + ' ' + rec.time + '（会提前 ' + apptAdvance() + ' 分钟开始催）'
+      data: { mode: 'scheduled', date: dateStr, time: pad2(hh) + ':' + pad2(mi), minutes: minutes, task: task, accepted: false },
+      userNotice: '邀请已发出：' + invTime + '（等用户答应后才会开始催）'
     };
   });
   /* 5) 邀我一起睡 */
@@ -19085,21 +19106,15 @@ function startInviteListener() {
             await pushInvite({ kind: 'focus', task: d.task, minutes: d.minutes, time: hmStr, note: '', charId: cid, apptId: '', at: Date.now(), status: 'new', from: 'directive' });
             if (cid) await syncTimeline(cid, `你写卡约用户现在就一起专注 ${d.minutes} 分钟：${d.task}。`, 'appt_invite', {});
           } else {
-            /* 同一角色、同一开始时间已经有待开始的预约时，不再建第二条；
-               否则后面每次聊到这件事都会多一条同时间预约和一张同时间卡。 */
-            const sameAppt = (S.appts || []).find(a => a && a.status === 'pending'
-              && Number(a.startAt) === dt2.getTime()
-              && (!cid || (Array.isArray(a.charIds) ? a.charIds : []).indexOf(cid) >= 0));
-            if (sameAppt) continue;
-            const rec = {
-              id: '', date: dkey(dt2), time: pad2(hh2) + ':' + pad2(mi2), startAt: dt2.getTime(),
-              minutes: d.minutes, task: String(d.task || '').slice(0, 60), charIds: cid ? [cid] : [],
-              status: 'pending', nudgeCount: 0, createdAt: Date.now(), note: '由角色在聊天里约的'
-            };
-            await createAppt(rec);
-            await scheduleAppt(rec);
-            await pushInvite({ kind: 'focus', task: d.task, minutes: d.minutes, time: rec.date + ' ' + rec.time, note: '', charId: cid, apptId: rec.id, at: Date.now(), status: 'new', from: 'directive' });
-            if (cid) await syncTimeline(cid, `你和用户约好 ${rec.date} ${rec.time} 一起专注 ${d.minutes} 分钟：${d.task}。到点前你要来催他开始。`, 'appt_make', {});
+            /* 未答应的邀请不建预约：只留邀请，用户答应后才创建预约和催促任务。
+               以前在这里提前排了任务，用户没答应也会被连催、最后按失约开罚。 */
+            const invTime = dkey(dt2) + ' ' + pad2(hh2) + ':' + pad2(mi2);
+            const sameInvite = (S.invites || []).find(x => x && x.kind === 'focus'
+              && x.status === 'new' && String(x.charId) === String(cid)
+              && String(x.time || '') === invTime);
+            if (sameInvite) continue;
+            await pushInvite({ kind: 'focus', task: d.task, minutes: d.minutes, time: invTime, note: '', charId: cid, apptId: '', at: Date.now(), status: 'new', from: 'directive' });
+            if (cid) await syncTimeline(cid, `你写卡邀请用户 ${invTime} 一起专注 ${d.minutes} 分钟：${d.task}。等 TA 答应后再到点催；TA 没答应不要催，也不算失约。`, 'appt_invite', {});
           }
         }
       } catch (e) { console.warn('directive listener', e); }
