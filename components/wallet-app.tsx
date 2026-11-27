@@ -132,7 +132,7 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
           <div className="wallet-hero rounded-3xl p-5 shadow-sm">
             <div className="wallet-kicker" style={{color:"#c7b78e"}}>PRIVATE WALLET · AVAILABLE BALANCE</div><div className="mt-2 text-[10px] tracking-[.12em] opacity-65">我的可用余额</div>
             <div className="mt-1 text-3xl font-semibold" style={{color:"#f5f0e4",fontFamily:"Georgia,serif"}}>{money(wallet.balance)}</div>
-            <div className="mt-3 flex gap-4 text-xs text-[var(--c-icon)]">
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-[var(--c-icon)]">
               <button type="button" onClick={() => setTab("accounts")} className="underline underline-offset-4">银行卡 {wallet.cards.length} 张 · 管理</button>
               <span>我给角色 {familyCards.filter(card => card.issuerType === "user").length} 张 · 角色给我 {familyCards.filter(card => card.issuerType === "character").length} 张</span>
               <span>小金库 {jointFunds.length} 个</span>
