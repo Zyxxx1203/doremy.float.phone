@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, Check, ChevronRight, Inbox, Send, Shield, Sparkles } from "lucide-react";
+import { ArrowUpRight, Check, ChevronRight, Inbox, Send, Shield, Sparkles, Pencil, Trash2, X, Save } from "lucide-react";
 import { PageShell } from "@/components/ui/page-shell";
 import { loadCharacters } from "@/lib/character-storage";
 import {
-  answerAnonymousQuestion, askAnonymousQuestion, loadAnonymousQa,
+  answerAnonymousQuestion, askAnonymousQuestion, loadAnonymousQa, updateAnonymousQuestion, deleteAnonymousQuestion,
   type AnonymousQaQuestion,
 } from "@/lib/anonymous-qa";
 import { requestAnonymousQuestionFromCharacter } from "@/lib/anonymous-qa-proactive";
@@ -31,6 +31,10 @@ export function AnonymousQaApp({ onClose }: { onClose: () => void }) {
   const [askerTargetId, setAskerTargetId] = useState(characters.find(c => c.id !== characters[0]?.id)?.id || "");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [editingId, setEditingId] = useState("");
+  const [editQuestion, setEditQuestion] = useState("");
+  const [editAnswer, setEditAnswer] = useState("");
+  const [editTarget, setEditTarget] = useState("user");
   const refresh = () => { setCharacters(loadCharacters()); setQuestions(loadAnonymousQa()); };
   useEffect(() => {
     const handler = () => refresh();
@@ -60,6 +64,36 @@ export function AnonymousQaApp({ onClose }: { onClose: () => void }) {
     const result = answerAnonymousQuestion(id, value, { targetType: "user", targetId: "user" });
     if (!result) { notify("这道问题不是指定给你的，不能代替收件人回答。", "error"); refresh(); return; }
     setAnswers(prev => ({ ...prev, [id]: "" })); setExpandedId(""); refresh(); notify("回答已寄回");
+  };
+  const beginEdit = (q: AnonymousQaQuestion) => {
+    setEditingId(q.id);
+    setEditQuestion(q.question);
+    setEditAnswer(q.answer || "");
+    setEditTarget(q.targetType === "user" ? "user" : q.targetId);
+  };
+  const saveEdit = () => {
+    if (!editingId) return;
+    try {
+      const targetType = editTarget === "user" ? "user" : "character";
+      const updated = updateAnonymousQuestion(editingId, {
+        question: editQuestion,
+        answer: editAnswer,
+        targetType,
+        targetId: targetType === "user" ? "user" : editTarget,
+      });
+      if (!updated) { notify("这条问题已不存在。", "error"); }
+      else notify("问题内容、回答和回答对象已更新。");
+      setEditingId("");
+      refresh();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "保存失败", "error");
+    }
+  };
+  const removeQuestion = (id: string) => {
+    if (!window.confirm("确定删除这条匿名问题及其回答吗？删除后所有角色都将无法再看到。")) return;
+    if (deleteAnonymousQuestion(id)) notify("匿名问题已删除。");
+    setEditingId(current => current === id ? "" : current);
+    refresh();
   };
   const askByCharacter = async () => {
     if (!askerId) { setMessage("请先选择提问角色。"); return; }
@@ -166,7 +200,22 @@ export function AnonymousQaApp({ onClose }: { onClose: () => void }) {
                   <div className="mt-2 flex items-center justify-between text-[10px] text-[#999]"><span>{"回答对象："+(q.targetType==="user"?"你":(target?.name||"角色"))}</span><span>{q.status==="answered"?"已回复":"等待回复"}</span></div>
                 </button>
                 {isOpen && <div className="mt-4 border-t border-dashed border-[#d8d8d2] pt-4">
-                  {q.answer ? <div className="mt-4 bg-[#f0f0ed] p-4"><div className="aq-kicker mb-2">REPLY</div><p className="whitespace-pre-wrap text-[13px] leading-6 text-[#555]">{q.answer}</p></div> : tab==="all" && q.targetType==="user" && q.targetId==="user" ? <div className="mt-4"><textarea value={answers[q.id]||""} onChange={e=>setAnswers(p=>({...p,[q.id]:e.target.value}))} rows={3} placeholder="写下你的回答…" className="aq-input resize-none"/><button type="button" onClick={()=>answer(q.id)} disabled={!(answers[q.id]||"").trim()} className="aq-button mt-2 w-full flex items-center justify-center gap-2"><Check size={14}/> 寄回回答</button></div> : <div className="mt-3 text-[11px] text-[#999]">等待收件人回复。</div>}
+                  {editingId === q.id ? (
+                    <div className="space-y-3">
+                      <label className="block"><span className="aq-kicker mb-2 block">QUESTION / 问题</span><textarea value={editQuestion} onChange={e=>setEditQuestion(e.target.value)} rows={3} maxLength={500} className="aq-input resize-none"/></label>
+                      <label className="block"><span className="aq-kicker mb-2 block">ANSWER / 回答</span><textarea value={editAnswer} onChange={e=>setEditAnswer(e.target.value)} rows={4} maxLength={1000} placeholder="留空表示尚未回答" className="aq-input resize-none"/></label>
+                      <label className="block"><span className="aq-kicker mb-2 block">RECIPIENT / 回答对象</span><select value={editTarget} onChange={e=>setEditTarget(e.target.value)} className="aq-input"><option value="user">我</option>{characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+                      <div className="grid grid-cols-2 gap-2"><button type="button" onClick={()=>setEditingId("")} className="flex items-center justify-center gap-2 border border-[#ccc] py-3 text-[11px]"><X size={14}/>取消</button><button type="button" onClick={saveEdit} className="aq-button flex items-center justify-center gap-2"><Save size={14}/>保存修改</button></div>
+                    </div>
+                  ) : (
+                    <>
+                      {q.answer ? <div className="mt-4 bg-[#f0f0ed] p-4"><div className="aq-kicker mb-2">REPLY</div><p className="whitespace-pre-wrap text-[13px] leading-6 text-[#555]">{q.answer}</p></div> : tab==="all" && q.targetType==="user" && q.targetId==="user" ? <div className="mt-4"><textarea value={answers[q.id]||""} onChange={e=>setAnswers(p=>({...p,[q.id]:e.target.value}))} rows={3} placeholder="写下你的回答…" className="aq-input resize-none"/><button type="button" onClick={()=>answer(q.id)} disabled={!(answers[q.id]||"").trim()} className="aq-button mt-2 w-full flex items-center justify-center gap-2"><Check size={14}/> 寄回回答</button></div> : <div className="mt-3 text-[11px] text-[#999]">等待收件人回复。</div>}
+                      <div className="mt-4 flex items-center justify-end gap-2 border-t border-[#e8e8e4] pt-3">
+                        <button type="button" onClick={()=>beginEdit(q)} className="flex items-center gap-1.5 rounded-full border border-[#ddd] px-3 py-2 text-[10px] text-[#555]"><Pencil size={12}/>编辑</button>
+                        <button type="button" onClick={()=>removeQuestion(q.id)} className="flex items-center gap-1.5 rounded-full border border-[#e7d4d0] px-3 py-2 text-[10px] text-[#9b5146]"><Trash2 size={12}/>删除</button>
+                      </div>
+                    </>
+                  )}
                 </div>}
               </article>;
             })}
