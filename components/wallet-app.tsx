@@ -204,6 +204,7 @@ function FamilyTab({ characters, cards, onChange }: { characters: ReturnType<typ
 
   return (
     <div className="flex flex-col gap-3">
+      <div className="px-1 pb-1"><div className="wallet-kicker mb-1">FAMILY BANKING</div><div className="text-xl font-semibold text-[#292b25]">亲属卡</div><p className="mt-1 text-[11px] text-[#898579]">为彼此开一张卡，把日常额度和消费记录管理清楚。</p></div>
       <div className="wallet-section rounded-2xl p-4">
         <div className="text-sm font-medium text-[var(--c-text)]">新建亲属卡</div>
         <div className="mt-2 flex gap-2">
@@ -269,6 +270,7 @@ function JointTab({ characters, funds, onChange }: { characters: ReturnType<type
 
   return (
     <div className="flex flex-col gap-3">
+      <div className="px-1 pb-1"><div className="wallet-kicker mb-1">SHARED SAVINGS</div><div className="text-xl font-semibold text-[#292b25]">共同小金库</div><p className="mt-1 text-[11px] text-[#898579]">一起为旅行、礼物和共同计划慢慢攒下一笔钱。</p></div>
       <div className="wallet-section rounded-2xl p-4">
         <div className="text-sm font-medium text-[var(--c-text)]">新建共同小金库</div>
         <div className="mt-2 flex gap-2">
@@ -313,6 +315,7 @@ function JointTab({ characters, funds, onChange }: { characters: ReturnType<type
 function LedgerTab({ characters }: { characters: ReturnType<typeof loadCharacters> }) {
   return (
     <div className="flex flex-col gap-3">
+      <div className="px-1 pb-1"><div className="wallet-kicker mb-1">CHARACTER FINANCE</div><div className="text-xl font-semibold text-[#292b25]">角色账本</div><p className="mt-1 text-[11px] text-[#898579]">查看每位角色的资产、固定收入和近期收支。</p></div>
       {characters.map(character => <CharacterLedgerCard key={character.id} character={character} />)}
       {characters.length === 0 && <div className="rounded-2xl bg-[var(--c-card)] p-6 text-center text-sm text-[var(--c-icon)]">还没有角色</div>}
     </div>
