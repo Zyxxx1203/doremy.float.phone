@@ -212,6 +212,8 @@ const scheduler = loadTs("lib/economy/joint-fund-scheduler.ts", {
   "@/lib/browser-notification": { sendBrowserNotification: () => {} },
   "@/lib/shell-notify": { sendShellNotification: () => true },
   "@/lib/wallet-storage": walletMock,
+  "@/lib/chat-storage": { loadChatSessions: () => [], resolveSessionCharacterId: () => "" },
+  "@/lib/timed-wake-storage": { makeTimedWakeId: () => "unused", loadTimedWakeSchedules: () => [], appendTimedWakeSchedule: () => {} },
   "./joint-fund": jointFund,
 }, { window: windowMock, document: { hidden: true }, CustomEvent: CustomEventMock });
 // 重置提醒状态，让本测试从干净的“未提醒”开始。
