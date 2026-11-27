@@ -233,3 +233,29 @@
     animation-duration: .01ms !important;
   }
 }
+
+.wallet-private-bank .wallet-empty-state {
+  border: 1px dashed rgba(135,123,91,.28);
+  background: rgba(255,254,250,.72);
+}
+.wallet-private-bank .wallet-empty-state p {
+  max-width: 260px;
+  margin-inline: auto;
+  line-height: 1.65;
+}
+.wallet-private-bank button.wallet-section {
+  text-align: left;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.wallet-private-bank button.wallet-section:hover {
+  border-color: rgba(169,149,105,.42);
+  box-shadow: 0 13px 28px rgba(43,39,28,.075);
+}
+.wallet-private-bank button.wallet-section:focus-visible {
+  outline: 2px solid var(--wallet-gold);
+  outline-offset: 3px;
+}
+.wallet-private-bank .wallet-section button:disabled {
+  cursor: not-allowed;
+  filter: grayscale(.25);
+}
