@@ -155,7 +155,6 @@ export function AnonymousQaApp({ onClose }: { onClose: () => void }) {
                   <div className="mt-2 flex items-center justify-between text-[10px] text-[#999]"><span>{"回答对象："+(q.targetType==="user"?"你":(target?.name||"角色"))}</span><span>{q.status==="answered"?"已回复":"等待回复"}</span></div>
                 </button>
                 {isOpen && <div className="mt-4 border-t border-dashed border-[#d8d8d2] pt-4">
-                  <p className="whitespace-pre-wrap text-[14px] leading-7 text-[#292929]">{q.question}</p>
                   {q.answer ? <div className="mt-4 bg-[#f0f0ed] p-4"><div className="aq-kicker mb-2">REPLY</div><p className="whitespace-pre-wrap text-[13px] leading-6 text-[#555]">{q.answer}</p></div> : tab==="all" && q.targetType==="user" && q.targetId==="user" ? <div className="mt-4"><textarea value={answers[q.id]||""} onChange={e=>setAnswers(p=>({...p,[q.id]:e.target.value}))} rows={3} placeholder="写下你的回答…" className="aq-input resize-none"/><button type="button" onClick={()=>answer(q.id)} disabled={!(answers[q.id]||"").trim()} className="aq-button mt-2 w-full flex items-center justify-center gap-2"><Check size={14}/> 寄回回答</button></div> : <div className="mt-3 text-[11px] text-[#999]">等待收件人回复。</div>}
                 </div>}
               </article>;
