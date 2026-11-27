@@ -298,7 +298,8 @@ export function WalletPanel({ onBack }: WalletPanelProps) {
     : balanceTransferMode === "withdraw" ? walletBalance : selectedTransferCard?.balance;
 
   return (
-    <PageShell title="余额管理" onBack={onBack} className="wallet-page-root">
+    <PageShell title="余额管理" onBack={onBack} className="wallet-page-root" headerClassName="wallet-app-header" headerStyle={{ background: "#f7f6f0", backgroundColor: "#f7f6f0", backgroundImage: "none", backdropFilter: "none", WebkitBackdropFilter: "none", zIndex: 50, isolation: "isolate" }}>
+      <WalletHeaderIsolationStyle />
 
       <div className="p-4 flex flex-col gap-4 pb-24">
         <section className="wallet-balance-hero rounded-2xl p-5 overflow-hidden relative min-h-[156px] flex flex-col justify-between">
