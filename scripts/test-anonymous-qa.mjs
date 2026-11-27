@@ -35,7 +35,7 @@ const targetNotice = chatMessages.find(message => message.sessionId === "session
 T("旧 audience 参数不会改变公开可见属性", userLetter.audience === "public" && qa.loadPublicAnonymousQa().some(q => q.id === userLetter.id));
 T("指定角色收到系统条目", targetNotice?.sessionId === "session-c1" && targetNotice.role === "system" && targetNotice.mediaType === "system_instruction");
 T("系统条目进入自然短期时间线并保留来源标记", targetNotice?.mediaData?.shortTermMemoryEvent === true && targetNotice.mediaData.compactSystemInstruction === true && targetNotice.mediaData.shortTermMemorySource === "anonymous_qa");
-T("匿名提问事件以独立来源进入短期时间线", shortTermAssemblerSource.includes('sourceDetail: msg.mediaData?.shortTermMemorySource === "anonymous_qa" ? "anonymous_qa"') && shortTermAssemblerSource.includes('tag: "recent_anonymous_qa"'));
+T("匿名提问事件以独立来源进入短期时间线且不受普通聊天来源开关影响", shortTermAssemblerSource.includes('sourceDetail: msg.mediaData?.shortTermMemorySource === "anonymous_qa" ? "anonymous_qa"') && shortTermAssemblerSource.includes('tag: "recent_anonymous_qa"') && shortTermAssemblerSource.includes('if (entry.sourceDetail === "anonymous_qa") return true;'));
 T("聊天提示词不再聚合注入匿名提问箱上下文", !chatEngineSource.includes("buildAnonymousQaContext") && !chatEngineSource.includes("anonymousQaShortTerm"));
 T("通知包含问题编号和内容，角色可以调用回答工具", targetNotice?.content.includes(userLetter.id) && targetNotice.content.includes(userLetter.question) && targetNotice.content.includes("回答匿名提问"));
 const bystanderNotice = chatMessages.find(message => message.sessionId === "session-c2" && message.content.includes(userLetter.question));
