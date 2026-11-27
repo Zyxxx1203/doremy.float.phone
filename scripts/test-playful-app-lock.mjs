@@ -23,6 +23,8 @@ assert.match(service, /passUntil/, "temporary pass must be tracked natively");
 assert.match(service, /isProtectedTarget\(context, target\)/, "protected targets must be rejected in native code");
 assert.match(service, /com\.android\.settings/, "Android Settings must be protected");
 assert.match(service, /monitoringAvailable/, "status must report whether foreground monitoring has a source");
+assert.match(service, /current_package_updated_at/, "accessibility fallback must reject stale foreground state");
+assert.match(read("android-shell/app/src/main/java/app/floatphone/shell/CallControlService.kt"), /current_package_updated_at/, "accessibility service must publish a foreground heartbeat");
 assert.match(service, /now - lastShowAt > 2500L/, "returning to a blocked app must be re-intercepted promptly");
 assert.match(activity, /EXTRA_OPEN_URL/, "the lock screen must deep-link back to the originating chat");
 assert.match(activity, /#open-chat=/, "the lock screen must route to the original chat session");
