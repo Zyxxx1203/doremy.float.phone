@@ -31,6 +31,8 @@ export type JointFundPlan = {
     remindedForRunAt?: number;
     /** 创建来源：用户本人或角色通过工具设置。 */
     createdBy?: "user" | "character_tool";
+    /** 角色设置计划时的私聊会话，用于目标完成后回到正确的聊天室询问。 */
+    sessionId?: string;
 };
 
 export type JointFundPlanRunResult = {
@@ -39,6 +41,7 @@ export type JointFundPlanRunResult = {
     fundName: string;
     memberType: JointFundMemberType;
     memberId: string;
+    sessionId?: string;
     amount: number;
     ok: boolean;
     goalReached?: boolean;
@@ -147,7 +150,7 @@ export function withdrawFromJointFund(fundId: string, memberType: JointFundMembe
     save(state);
     return { ok: true, fund };
 }
-function saveJointFundPlan(input: { fundId: string; memberType: JointFundMemberType; memberId: string; cadence: "daily" | "weekly" | "monthly"; amount: number; createdBy: "user" | "character_tool" }): JointFundPlan | null {
+function saveJointFundPlan(input: { fundId: string; memberType: JointFundMemberType; memberId: string; cadence: "daily" | "weekly" | "monthly"; amount: number; createdBy: "user" | "character_tool"; sessionId?: string }): JointFundPlan | null {
     const state = load();
     const fund = state.funds.find(f => f.id === input.fundId && f.status === "active");
     if (!fund) return null;
@@ -160,6 +163,7 @@ function saveJointFundPlan(input: { fundId: string; memberType: JointFundMemberT
         id: uid("jfp"), fundId: input.fundId, memberType: input.memberType, memberId: input.memberId,
         cadence: input.cadence, amount, nextRunAt: advanceJointFundRunAt(now, input.cadence), enabled: true,
         createdBy: input.createdBy,
+        sessionId: input.sessionId,
     };
     state.plans = state.plans.filter(p => !(p.fundId === input.fundId && p.memberType === input.memberType && p.memberId === input.memberId));
     state.plans.push(plan);
@@ -174,7 +178,7 @@ export function setJointFundPlan(input: { fundId: string; memberType: JointFundM
 }
 
 /** 角色只能通过自己的工具为自己设置计划，且目标小金库必须属于当前角色。 */
-export function setJointFundPlanForCharacter(characterId: string, input: { fundId: string; cadence: "daily" | "weekly" | "monthly"; amount: number }): JointFundPlan | null {
+export function setJointFundPlanForCharacter(characterId: string, input: { fundId: string; cadence: "daily" | "weekly" | "monthly"; amount: number; sessionId?: string }): JointFundPlan | null {
     if (!characterId) return null;
     return saveJointFundPlan({ ...input, memberType: "character", memberId: characterId, createdBy: "character_tool" });
 }
@@ -241,6 +245,7 @@ export function runDueJointFundPlans(now = Date.now()): JointFundPlanRunResult[]
             fundName: fundBefore.name,
             memberType: plan.memberType,
             memberId: plan.memberId,
+            sessionId: plan.sessionId,
             amount: plan.amount,
             ok: result.ok,
             goalReached,
