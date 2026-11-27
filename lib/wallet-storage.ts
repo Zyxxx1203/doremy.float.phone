@@ -444,8 +444,19 @@ export function recordWalletBookkeeping(input: {
   );
   if (duplicate) return { ok: false, state: current, error: "发现一笔金额、用途和时间都相同的记录，已阻止重复记账。" };
   const signedAmount = input.direction === "income" ? amount : -amount;
-  const balanceAfter = normalizeMoney(current.balance + signedAmount);
-  if (balanceAfter < 0) return { ok: false, state: current, error: "钱包余额不足，无法记录这笔支出。" };
+  const occurredAt = occurred.getTime();
+  const laterTransactions = current.transactions
+    .filter(tx => new Date(tx.createdAt).getTime() >= occurredAt)
+    .slice()
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  const historicalBalanceBefore = laterTransactions.length
+    ? normalizeMoney(laterTransactions[0].balanceAfter - laterTransactions[0].amount)
+    : current.balance;
+  const historicalBalanceAfter = normalizeMoney(historicalBalanceBefore + signedAmount);
+  const currentBalanceAfter = normalizeMoney(current.balance + signedAmount);
+  if (historicalBalanceAfter < 0 || currentBalanceAfter < 0) {
+    return { ok: false, state: current, error: "对应时间点的钱包余额不足，无法记录这笔支出。" };
+  }
   const transaction = createTransaction({
     accountId: WALLET_BALANCE_ACCOUNT_ID,
     accountType: "balance",
@@ -454,14 +465,17 @@ export function recordWalletBookkeeping(input: {
     kind: input.direction === "income" ? "transfer_in" : "payment",
     category,
     detail: note || (input.direction === "income" ? "角色协助记录收入" : "角色协助记录支出"),
-    balanceAfter,
+    balanceAfter: historicalBalanceAfter,
     relatedOrderId: reference ? `role_bookkeeping:${reference}` : undefined,
   });
   transaction.createdAt = occurred.toISOString();
-  const transactions = [transaction, ...current.transactions]
+  const transactions = [transaction, ...current.transactions.map(tx => {
+    if (new Date(tx.createdAt).getTime() < occurredAt) return tx;
+    return { ...tx, balanceAfter: normalizeMoney(tx.balanceAfter + signedAmount) };
+  })]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 300);
-  const next = saveWalletState({ ...current, balance: balanceAfter, transactions });
+  const next = saveWalletState({ ...current, balance: currentBalanceAfter, transactions });
   return { ok: true, state: next, transaction };
 }
 
