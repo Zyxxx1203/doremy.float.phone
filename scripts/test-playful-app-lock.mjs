@@ -38,7 +38,8 @@ assert.match(activity, /EXTRA_OPEN_URL/, "the lock screen must deep-link back to
 assert.match(activity, /#open-chat=/, "the lock screen must route to the original chat session");
 assert.doesNotMatch(activity, /temporaryPass\(this@PlayfulLockActivity, 1\)/, "temporary passes must be granted by the character, not self-served from the lock page");
 assert.doesNotMatch(activity, /紧急解除/, "the app-lock screen must not expose an emergency unlock button");
-assert.match(activity, /回到与 \$\{charName\} 的聊天/, "the user must be able to return to the locking character's private chat");
+assert.match(activity, /去找 \$\{charName\} 求情/, "the lock page must offer a natural plea-for-mercy route back to the character");
+assert.match(activity, /TA 的专属小手段/, "the lock page keeps the character-flavored label");
 assert.match(activity, /actionButton\("确认解锁"/, "password unlock remains available when the character shares the password");
 assert.doesNotMatch(service, /紧急解除/, "native app-lock notifications must not advertise an emergency exit");
 assert.match(internal, /name: "锁应用"/, "the character-facing lock tool must retain its clear Chinese display name");
@@ -54,6 +55,8 @@ assert.doesNotMatch(host, /device\.appLock\.reveal/, "custom-app host must not e
 assert.doesNotMatch(runner, /appLockReveal: function/, "custom-app SDK must not expose native password reveal");
 assert.doesNotMatch(host, /password: String\(record\.password/, "custom apps must not provide their own native lock password");
 assert.match(internal, /durationMinutes: \{ type: "number"/, "internal role tool schema must expose bounded duration");
+assert.match(internal, /不要写成训话/, "lock-screen dialogue guidance must discourage canned scolding");
+assert.match(internal, /表现好就奖励你/, "lock-screen dialogue guidance must discourage awkward reward bargaining");
 assert.match(builtin, /durationMinutes/, "built-in companion manifest must document bounded duration");
 assert.match(manifest, /durationMinutes/, "exported companion manifest must document bounded duration");
 assert.match(manifest, /角色锁屏主题与对白/, "companion tool schema must allow character-authored lock-screen copy");
