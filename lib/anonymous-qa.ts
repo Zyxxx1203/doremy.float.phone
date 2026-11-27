@@ -149,8 +149,6 @@ export function updateAnonymousQuestion(questionId: string, input: {
     const rows = load();
     const row = rows.find(item => item.id === questionId);
     if (!row) return null;
-    const previousTargetType = row.targetType;
-    const previousTargetId = row.targetId;
     const nextQuestion = input.question === undefined ? row.question : String(input.question).trim();
     if (!nextQuestion) throw new Error("问题不能为空");
     if (input.targetType === "character") {
