@@ -22,6 +22,7 @@ assert.match(service, /durationMinutes: Int = 30/, "character app lock should de
 assert.match(service, /expiresAt/, "native lock must persist and enforce expiry");
 assert.match(service, /passUntil/, "temporary pass must be tracked natively");
 assert.match(internal, /给临时通行证/, "characters must have a dedicated temporary-pass tool");
+assert.match(internal, /"给临时通行证"/, "temporary-pass tool name must be reserved in the internal tool registry");
 assert.match(executor, /这不是你发起的应用锁/, "a character must not grant a pass for another character's lock");
 assert.match(executor, /这不是你发起的应用锁，不能替别人解除/, "a character must not unlock another character's lock");
 assert.match(executor, /appLockTemporaryPass\(minutes\)/, "the role tool must grant the native temporary pass");
