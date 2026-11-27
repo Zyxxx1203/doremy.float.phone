@@ -156,7 +156,8 @@ const completionScheduler = loadTs("lib/economy/joint-fund-scheduler.ts", {
   },
   "@/lib/timed-wake-storage": {
     makeTimedWakeId: () => "timed-wake-test",
-    saveTimedWakeSchedule: schedule => scheduledPrompts.push(schedule),
+    loadTimedWakeSchedules: () => [],
+    appendTimedWakeSchedule: schedule => scheduledPrompts.push(schedule),
   },
   "./joint-fund": jointFund,
 }, { window: windowMock, document: documentMock, CustomEvent: CustomEventMock });
