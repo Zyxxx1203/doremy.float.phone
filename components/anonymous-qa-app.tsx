@@ -73,10 +73,11 @@ export function AnonymousQaApp({ onClose }: { onClose: () => void }) {
 
   const rows = tab === "all" ? inbox : sent;
   return (
-    <PageShell title="匿名提问箱" onBack={onClose} className="anonymous-qa-shell">
+    <PageShell title="匿名提问箱" onBack={onClose} className="anonymous-qa-shell" headerClassName="anonymous-qa-header" headerStyle={{ background: "#f4f4f2", backgroundColor: "#f4f4f2", backgroundImage: "none", backdropFilter: "none", WebkitBackdropFilter: "none", zIndex: 50, isolation: "isolate" }}>
       <style>{`
         .anonymous-qa-shell.page-shell{position:relative;z-index:40;isolation:isolate;background:#f4f4f2}
-        .anonymous-qa-shell.page-shell>.page-header{z-index:20;background:rgba(244,244,242,.97);border-bottom:1px solid #e3e3df}
+        .anonymous-qa-shell.page-shell>.page-header.anonymous-qa-header{z-index:50!important;background:#f4f4f2!important;background-color:#f4f4f2!important;background-image:none!important;border-bottom:1px solid #e3e3df!important;box-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;isolation:isolate!important}
+        .anonymous-qa-shell.page-shell>.page-header.anonymous-qa-header::before,.anonymous-qa-shell.page-shell>.page-header.anonymous-qa-header::after{content:none!important;display:none!important;background:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
         .anonymous-qa-shell.page-shell>.page-body{padding-top:calc(var(--page-header-safe-top,48px) + var(--page-header-content-height,42px));background:#f4f4f2}
 
         .aq-page{min-height:100%;background:#f4f4f2;color:#171717;padding:18px 16px 104px;font-family:Georgia,"Noto Serif SC",serif}
