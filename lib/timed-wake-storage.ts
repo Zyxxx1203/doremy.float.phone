@@ -18,6 +18,8 @@ export type TimedWakeSchedule = {
     source?: "tool" | "user";
     /** 角色休息时保留任务，醒来后再询问。 */
     retryIfSleeping?: boolean;
+    /** 会话正在进行其他回合时延后执行，避免丢掉必须完成的系统询问。 */
+    retryIfBusy?: boolean;
 };
 
 export function makeTimedWakeId(sessionId: string): string {
