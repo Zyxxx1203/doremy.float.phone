@@ -62,7 +62,7 @@ function appendAnonymousQaTimelineEvent(
             role: "system",
             mediaType: "system_instruction",
             content,
-            mediaData: { compactSystemInstruction: true, shortTermMemoryEvent: true },
+            mediaData: { compactSystemInstruction: true, shortTermMemoryEvent: true, shortTermMemorySource: "anonymous_qa" },
         });
     }
 }
