@@ -5,6 +5,7 @@ import { makeNativeToolName } from "./native-tool-name";
 import { maybeAppendShortcutCapability, maybeAppendPerceptionStatus } from "./offline-shortcut-capability";
 import { maybeBuildStatusInjection } from "./perception/describe";
 import { loadCharacters } from "./character-storage";
+import { buildAnonymousQaContext } from "./anonymous-qa";
 import { buildCharacterEconomyContext } from "./economy/character-income";
 import { buildLifePresenceContext } from "./life/life-memory-bridge";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
@@ -65,6 +66,7 @@ import { extractFinishReason } from "./api-helpers";
 import { fetchLlmPayload } from "./llm-http";
 import { loadMemoryConfig, incrementEventCounter } from "./memory-storage";
 import { retrieveCoreMemoriesForPrompt, retrieveMemoriesForPrompt } from "./memory-service";
+import { formatCoreMemories, formatLongTermMemories } from "./memory-injector";
 import { maybeRunSummarization } from "./memory-summarizer";
 import { prepareShortTermContext } from "./short-term-assembler";
 import { parseActionTags, dispatchActions } from "./action-parser";
@@ -86,8 +88,8 @@ import { pushApiLog } from "./api-log-store";
 export { getApiLogs, clearApiLogs, type DebugInfo } from "./api-log-store";
 import { stripStateAndInnerForPrompt } from "./prompt-sanitizer";
 import { getInternalCapability, getInternalCapabilitySubToolDefinitions } from "./internal-capability-storage";
-import { isMediaStoreRef, loadMediaBlob } from "./media-cache-storage";
 import { buildMemoPromptDigest } from "./memo-archive-storage";
+import { isMediaStoreRef, loadMediaBlob } from "./media-cache-storage";
 import {
     DEFAULT_CHAT_BILINGUAL_PROMPT,
     DEFAULT_GROUP_CHAT_BILINGUAL_PROMPT,
@@ -1963,6 +1965,17 @@ export async function buildChatPromptMessages(
         excludeOfflineSessionId: options?.excludeOfflineSessionId,
         promptTimestampOptions,
     });
+    // 匿名提问箱只进共享短期记忆，不写长期记忆；这里作为一条短期事件参与本轮排序。
+    const anonymousQaShortTerm = options?.isolatedPromptContext === true ? "" : buildAnonymousQaContext(character.id);
+    if (anonymousQaShortTerm) {
+        unifiedRecentItems.push({
+            kind: "event",
+            timestamp: new Date().toISOString(),
+            sourceApp: "custom_app",
+            sourceTag: "anonymous_qa",
+            text: anonymousQaShortTerm,
+        });
+    }
     const promptHistory = applyVisionImagePromptLimit(
         truncatedHistory.map(msg => ({ ...msg })),
         resolveVisionImagePromptLimit(session),
@@ -1980,28 +1993,23 @@ export async function buildChatPromptMessages(
         buildMusicLocalMacro(),
         buildMusicCloudMacro(),
     ]);
-    // 备忘录摘要只用于判断是否需要执行维护流程，不作为常驻记忆内容注入。
+
     const memoDigest = !session.isGroup && resolvedAppId === "chat" && memConfig.shortTermAllowedSources?.memo !== false && memoCapability?.enabled && memoCapability.mode !== "off"
         && toolsEnabled ? await buildMemoPromptDigest(character.id).catch(() => "")
         : "";
 
-    // 记忆条目不再作为常驻的“长期记忆/核心记忆”提示词块；
-    // 它们按原始发生时间进入统一短期时间线，与聊天和其他事件一起排序。
-    for (const entry of [...(memResults ?? []), ...(coreResults ?? [])]) {
-        unifiedRecentItems.push({
-            kind: "event",
-            timestamp: entry.createdAt,
-            sourceApp: "chat",
-            sourceTag: entry.type === "core" ? "recent_core_memory" : "recent_long_term_memory",
-            text: entry.content,
-        });
-    }
-    unifiedRecentItems.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-
-    const longTermMemories = options?.isolatedPromptContext === true
-        ? ""
-        : [buildLifePresenceContext(character.id), buildCharacterEconomyContext(character.id)].filter(Boolean).join("\n\n");
-    const coreMemories = "";
+    const longTermMemories = [
+        memResults ? formatLongTermMemories(memResults) : "",
+        memoDigest,
+        // 生活共同事实已经由短期时间线的 life 条目注入；旧 buildLifeMemoryContext
+        // 再把同一批事实拼进长期块，会让同一件事在提示词里出现两遍。
+        // 这里只保留“当前生活状态”，历史事实交给统一短期时间线。
+        ...(options?.isolatedPromptContext === true ? [] : [
+            buildLifePresenceContext(character.id),
+            buildCharacterEconomyContext(character.id),
+        ]),
+    ].filter(Boolean).join("\n\n");
+    const coreMemories = options?.isolatedPromptContext === true ? "" : (coreResults ? formatCoreMemories(coreResults) : "");
     const scheduleSummary = buildCalendarScheduleMarker("character", character.id, getWeekStartIso(now));
     const currentSchedule = getCurrentCalendarScheduleForPrompt("character", character.id, now);
     const musicOnlineHint = isNeteaseConfigured() ? "- 你可以推荐任何歌曲，系统会在线搜索并播放。不局限于用户本地音乐库。\n" : "\n";
