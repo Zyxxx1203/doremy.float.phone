@@ -7,6 +7,8 @@ import ts from "typescript";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const source = fs.readFileSync(path.join(ROOT, "lib/anonymous-qa.ts"), "utf8");
+const chatEngineSource = fs.readFileSync(path.join(ROOT, "lib/chat-engine.ts"), "utf8");
+const shortTermAssemblerSource = fs.readFileSync(path.join(ROOT, "lib/short-term-assembler.ts"), "utf8");
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true } }).outputText;
 const store = new Map();
 const kv = { kvGet: key => store.has(key) ? store.get(key) : null, kvSet: (key, value) => store.set(key, value), registerKvMigration: () => {} };
@@ -32,7 +34,9 @@ const userLetter = qa.askAnonymousQuestion({ askerType: "user", askerId: "user",
 const targetNotice = chatMessages.find(message => message.sessionId === "session-c1" && message.content.includes(userLetter.question));
 T("旧 audience 参数不会改变公开可见属性", userLetter.audience === "public" && qa.loadPublicAnonymousQa().some(q => q.id === userLetter.id));
 T("指定角色收到系统条目", targetNotice?.sessionId === "session-c1" && targetNotice.role === "system" && targetNotice.mediaType === "system_instruction");
-T("系统条目进入自然短期时间线", targetNotice?.mediaData?.shortTermMemoryEvent === true && targetNotice.mediaData.compactSystemInstruction === true);
+T("系统条目进入自然短期时间线并保留来源标记", targetNotice?.mediaData?.shortTermMemoryEvent === true && targetNotice.mediaData.compactSystemInstruction === true && targetNotice.mediaData.shortTermMemorySource === "anonymous_qa");
+T("匿名提问事件以独立来源进入短期时间线", shortTermAssemblerSource.includes('sourceDetail: msg.mediaData?.shortTermMemorySource === "anonymous_qa" ? "anonymous_qa"') && shortTermAssemblerSource.includes('tag: "recent_anonymous_qa"'));
+T("聊天提示词不再聚合注入匿名提问箱上下文", !chatEngineSource.includes("buildAnonymousQaContext") && !chatEngineSource.includes("anonymousQaShortTerm"));
 T("通知包含问题编号和内容，角色可以调用回答工具", targetNotice?.content.includes(userLetter.id) && targetNotice.content.includes(userLetter.question) && targetNotice.content.includes("回答匿名提问"));
 const bystanderNotice = chatMessages.find(message => message.sessionId === "session-c2" && message.content.includes(userLetter.question));
 T("其他角色知道公开问题，但不会误以为是问自己的", bystanderNotice?.content.includes("指定回答对象是小林") && !bystanderNotice.content.includes("这是问你的问题"));
@@ -40,6 +44,8 @@ T("通知不泄露提问者真实 ID", !targetNotice?.content.includes(userLette
 T("随机匿名代号独立生成", userLetter.askerAlias && userLetter.askerAlias !== qa.askAnonymousQuestion({ askerType: "user", askerId: "user", targetType: "character", targetId: "c1", question: "另一个问题" }).askerAlias);
 T("非指定对象不能代答", qa.answerAnonymousQuestion(userLetter.id, "越权回答", { targetType: "character", targetId: "c2" }) === null);
 T("指定收件人可以回答", qa.answerAnonymousQuestion(userLetter.id, "没有躲你，只是在忙", { targetType: "character", targetId: "c1" })?.status === "answered");
+const answerNotice = chatMessages.find(message => message.sessionId === "session-c1" && message.content.includes("没有躲你，只是在忙"));
+T("回答作为另一条独立时间线事件写入", Boolean(answerNotice && answerNotice.id !== targetNotice?.id && answerNotice.createdAt !== targetNotice?.createdAt && answerNotice.mediaData?.shortTermMemorySource === "anonymous_qa"));
 T("可以编辑问题、回答与回答对象", (() => { const changed = qa.updateAnonymousQuestion(userLetter.id, { question: "修改后的问题", answer: "修改后的回答", targetType: "character", targetId: "c2" }); return changed?.question === "修改后的问题" && changed.answer === "修改后的回答" && changed.targetId === "c2" && changed.status === "answered"; })());
 T("变更回答对象会通知新收件角色", chatMessages.some(message => message.sessionId === "session-c2" && message.content.includes("修改后的问题")));
 T("变更回答对象会通知旧收件角色忽略旧通知", chatMessages.some(message => message.sessionId === "session-c1" && message.content.includes("已失效")));
