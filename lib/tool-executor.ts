@@ -2540,7 +2540,7 @@ function resolveAppLockChatSessionId(characterId: string): string {
     }
 }
 
-/** 从该角色最近的私聊消息里读 [好感度:N]；专注 APP 的小手段用同一套判定。 */
+/** 从该角色最近的私聊消息里读 [好感度:N]；专注 APP 的应用限制使用同一套判定。 */
 function latestCharacterAffinity(characterId: string): number {
     try {
         const sessions = loadChatSessions()
