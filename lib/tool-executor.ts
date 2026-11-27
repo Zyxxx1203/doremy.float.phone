@@ -38,7 +38,7 @@ import {
     loadPerceptionStatus,
     markQueryPerformed,
 } from "./perception";
-import { notifyDeviceAction, runDeviceAction, listInstalledApps, appLockStart, appLockStop, appLockStatus, appLockReveal } from "./device-action";
+import { notifyDeviceAction, runDeviceAction, listInstalledApps, appLockStart, appLockStop, appLockTemporaryPass, appLockStatus, appLockReveal } from "./device-action";
 import { renderWidgetHtml, injectWidgetCss } from "./widget/template";
 import { canGenerateAvatar, generateWidgetAvatar } from "./widget/avatar";
 import { loadWidgetConfig, saveWidgetData, loadWidgetData, loadWidgetProfiles, loadWidgetProfileData, saveWidgetProfileData } from "./widget/storage";
@@ -63,7 +63,7 @@ import { characterEarn, characterSpend, ensureCharacterLedger, loadCharacterLedg
 import { createFamilyCard, loadFamilyCards, spendWithFamilyCard } from "./economy/family-card";
 import { answerAnonymousQuestion, askAnonymousQuestion, loadAnonymousQa } from "./anonymous-qa";
 import { depositToJointFund, loadJointFundTransactions, loadJointFunds } from "./economy/joint-fund";
-import { loadChatMessages, loadChatSessions } from "./chat-storage";
+import { createOrGetSession, loadChatMessages, loadChatSessions } from "./chat-storage";
 import { readCustomAppCollection } from "./custom-app-storage";
 import { FOCUS_COMPANION_APP_ID } from "./builtin-apps/focus-companion-meta";
 import { makeNativeToolName } from "./native-tool-name";
@@ -2510,7 +2510,7 @@ async function executeToolboxManagementTool(call: ToolCall): Promise<ToolResult>
 }
 
 function isAppLockToolName(name: string): boolean {
-    return name === "查看可锁应用" || name === "锁应用" || name === "解锁应用" || name === "查看应用锁" || name === "告诉应用锁密码";
+    return name === "查看可锁应用" || name === "锁应用" || name === "解锁应用" || name === "查看应用锁" || name === "告诉应用锁密码" || name === "给临时通行证";
 }
 
 /** 好感度阈值优先读专注 APP 的角色小手段设置；没装/没设置时用默认 60。 */
@@ -2524,6 +2524,19 @@ function focusAppLockThreshold(): number {
         return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 60;
     } catch {
         return 60;
+    }
+}
+
+/** 锁屏返回时始终定位到发起角色的私聊，不把群聊当作角色的求情入口。 */
+function resolveAppLockChatSessionId(characterId: string): string {
+    try {
+        const existing = loadChatSessions()
+            .filter(session => !session.isGroup && (session.characterId === characterId || session.contactId === characterId))
+            .slice()
+            .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))[0];
+        return existing?.id || createOrGetSession(characterId).id;
+    } catch {
+        return "";
     }
 }
 
@@ -2565,7 +2578,19 @@ async function executeAppLockTool(call: ToolCall, context?: ToolExecutionContext
             if (!result.ok) throw new Error(result.reason || "读不到应用列表");
             return { name: call.name, success: true, data: result.apps.slice(0, 100).map(a => `${a.label} (${a.package})`).join("\n"), userNotice: "看了看可以锁的应用" };
         }
+        if (call.name === "给临时通行证") {
+            const status = appLockStatus();
+            if (!status.ok || !status.running) throw new Error("现在没有应用锁在生效");
+            if (status.charId !== characterId) throw new Error("这不是你发起的应用锁，不能替别人发通行证");
+            const minutes = Math.max(1, Math.min(5, Number(call.args?.minutes) || 1));
+            const result = appLockTemporaryPass(minutes);
+            if (!result.ok) throw new Error(result.reason || "临时通行证发放失败");
+            return { name: call.name, success: true, data: `已给用户 ${minutes} 分钟临时通行时间，到期后会自动恢复拦截。`, userNotice: `${character?.name || "TA"} 给了你 ${minutes} 分钟通行时间` };
+        }
         if (call.name === "解锁应用") {
+            const status = appLockStatus();
+            if (!status.ok || !status.running) throw new Error("现在没有应用锁在生效");
+            if (status.charId !== characterId) throw new Error("这不是你发起的应用锁，不能替别人解除");
             const result = appLockStop();
             if (!result.ok) throw new Error(result.reason || "解锁失败");
             return { name: call.name, success: true, data: "已解除当前应用锁", userNotice: "把应用锁解除了" };
@@ -2573,12 +2598,16 @@ async function executeAppLockTool(call: ToolCall, context?: ToolExecutionContext
         if (call.name === "查看应用锁") {
             const status = appLockStatus();
             if (!status.ok) return { name: call.name, success: true, data: "当前没有应用锁", userNotice: "没有应用锁" };
-            return { name: call.name, success: true, data: status.running ? `正在锁：${status.label || status.target}` : "当前没有应用锁", userNotice: status.running ? "看了一眼应用锁" : "没有应用锁" };
+            if (!status.running) return { name: call.name, success: true, data: "当前没有应用锁", userNotice: "没有应用锁" };
+            const monitorNote = status.monitoringAvailable === false
+                ? "；但前台应用监测权限不可用，自动拦截可能失效，请检查使用情况访问或无障碍服务"
+                : "";
+            return { name: call.name, success: true, data: `正在锁：${status.label || status.target}${monitorNote}`, userNotice: "看了一眼应用锁" };
         }
         if (call.name === "告诉应用锁密码") {
             const status = appLockStatus();
             if (!status.ok || !status.running) throw new Error("现在没有应用锁在生效");
-            if (status.charId && status.charId !== characterId) throw new Error("这个应用锁不是你下的");
+            if (status.charId !== characterId) throw new Error("这个应用锁不是你下的");
             const threshold = focusAppLockThreshold();
             const score = latestCharacterAffinity(characterId);
             if (score < threshold) {
@@ -2615,9 +2644,11 @@ async function executeAppLockTool(call: ToolCall, context?: ToolExecutionContext
             charName: character?.name || "TA",
             avatar: character?.avatar || "",
             style: call.args?.style && typeof call.args.style === "object" ? call.args.style : {},
+            durationMinutes: Math.max(1, Math.min(360, Number(call.args?.durationMinutes) || 30)),
+            sessionId: resolveAppLockChatSessionId(characterId),
         });
         if (!result.ok) throw new Error(result.reason || "锁应用失败");
-        return { name: call.name, success: true, data: `已锁住「${app.label}」。密码由系统生成，锁页不会显示；用户要回 Float 跟你聊。`, userNotice: `把「${app.label}」锁上了` };
+        return { name: call.name, success: true, data: `已锁住「${app.label}」，最长 ${Math.max(1, Math.min(360, Number(call.args?.durationMinutes) || 180))} 分钟后自动解除。密码由系统生成；用户可以回 Float 和你商量，也始终能紧急解除。`, userNotice: `把「${app.label}」暂时保管起来了` };
     } catch (error) {
         return { name: call.name, success: false, error: error instanceof Error ? error.message : String(error), continueConversation: false, persistToHistory: false, userNotice: "应用锁操作失败" };
     }

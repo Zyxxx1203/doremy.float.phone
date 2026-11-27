@@ -61,6 +61,7 @@ export const RESERVED_INTERNAL_TOOL_NAMES: string[] = [
     "查看匿名提问箱",
     "查看可锁应用",
     "锁应用",
+    "给临时通行证",
     "解锁应用",
     "查看应用锁",
     "告诉应用锁密码",
@@ -688,15 +689,23 @@ const CHARACTER_APP_LOCK_START_SCHEMA = JSON.stringify({
     type: "object",
     properties: {
         app: { type: "string", description: "应用显示名或包名，例如「抖音」" },
-        style: { type: "object", description: "可选锁页样式：title/subtitle/showAvatar/showTitle/showSubtitle/showFloatButton/background/avatar" },
+        style: { type: "object", description: "可选锁页样式：title/subtitle/message/showAvatar/showTitle/showSubtitle/background/avatar" },
+        durationMinutes: { type: "number", description: "锁定时长（分钟），默认 30，最多 360；到期自动解除" },
     },
     required: ["app"],
 });
 const CHARACTER_APP_LOCK_STOP_SCHEMA = JSON.stringify({ type: "object", properties: {} });
+const CHARACTER_APP_LOCK_PASS_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {
+        minutes: { type: "number", description: "临时通行时长，1-5 分钟，默认 1 分钟" },
+    },
+});
 
 const CHARACTER_APP_LOCK_SUBTOOLS: InternalToolDefinition[] = [
     { name: "查看可锁应用", description: "当你想知道用户手机里有哪些应用可以锁时调用。", parameterSchema: CHARACTER_APP_LOCK_VIEW_SCHEMA },
-    { name: "锁应用", description: "当你想单独锁住某个应用时调用；先确认应用名。锁页只有密码框，聊天去 Float。", parameterSchema: CHARACTER_APP_LOCK_START_SCHEMA },
+    { name: "锁应用", description: "当你想单独锁住某个应用时调用；先确认应用名。锁页会展示你的对白，并提供回 Float 讨价还价、临时通行和紧急解除；默认 30 分钟，最多 360 分钟自动解除。", parameterSchema: CHARACTER_APP_LOCK_START_SCHEMA },
+    { name: "给临时通行证", description: "当你愿意暂时放用户去使用被锁应用时调用；只给 1-5 分钟，到期会自动恢复拦截。只能给自己发起的当前应用锁发放。", parameterSchema: CHARACTER_APP_LOCK_PASS_SCHEMA },
     { name: "解锁应用", description: "当你决定放过用户、解除当前应用锁时调用。", parameterSchema: CHARACTER_APP_LOCK_STOP_SCHEMA },
     { name: "查看应用锁", description: "当你想知道当前是否锁着应用、锁的是哪个时调用。", parameterSchema: CHARACTER_APP_LOCK_VIEW_SCHEMA },
     { name: "告诉应用锁密码", description: "当用户来求你给应用锁密码时调用；只有好感度达到用户设定阈值才会返回密码，不到阈值不要编造。", parameterSchema: CHARACTER_APP_LOCK_VIEW_SCHEMA },

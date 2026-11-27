@@ -2142,13 +2142,18 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
                 o.optString("charId"),
                 o.optString("charName"),
                 o.optString("avatar"),
-                o.optString("password"),
                 o.optJSONObject("style")?.toString() ?: "{}",
+                o.optInt("durationMinutes", 30),
+                o.optString("sessionId"),
             ).toString()
         }.getOrElse { JSONObject().put("ok", false).put("reason", it.message ?: "小手段启动失败").toString() }
 
         @JavascriptInterface
         fun appLockStop(): String = PlayfulAppLockService.stop(this@MainActivity).toString()
+
+        @JavascriptInterface
+        fun appLockTemporaryPass(minutes: Int): String =
+            PlayfulAppLockService.temporaryPass(this@MainActivity, minutes).toString()
 
         @JavascriptInterface
         fun appLockStatus(): String = PlayfulAppLockService.status(this@MainActivity).toString()

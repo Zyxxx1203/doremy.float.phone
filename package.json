@@ -26,7 +26,8 @@
     "test:files": "node scripts/test-file-text.mjs",
     "test:tool-names": "node scripts/test-native-tool-name-resolution.mjs",
     "test:stickers": "node scripts/test-sticker-pack-png.mjs",
-    "test:wallet-planning": "node scripts/test-wallet-planning.mjs"
+    "test:wallet-planning": "node scripts/test-wallet-planning.mjs",
+    "test:playful-app-lock": "node scripts/test-playful-app-lock.mjs"
   },
   "dependencies": {
     "@gltf-transform/functions": "^4.4.1",

@@ -37,6 +37,7 @@ type DeviceActionBridgeLike = {
   consumeScheduledFocus?: () => string;
   appLockStart?: (json: string) => string;
   appLockStop?: () => string;
+  appLockTemporaryPass?: (minutes: number) => string;
   appLockStatus?: () => string;
   appLockReveal?: () => string;
   scheduleFocusPassCheckIn?: (json: string) => string;
@@ -207,11 +208,21 @@ export function appLockStop(): DeviceActionResult {
   }
 }
 
-export function appLockStatus(): { ok: boolean; running: boolean; target?: string; label?: string; charId?: string } {
+export function appLockTemporaryPass(minutes: number): DeviceActionResult {
+  try {
+    const raw = bridge()?.appLockTemporaryPass?.(Math.max(1, Math.min(5, Math.round(minutes))));
+    if (raw === undefined) return { ok: false, reason: "当前 App 版本不支持临时通行证" };
+    return parseResult(raw, "临时通行证发放失败");
+  } catch {
+    return { ok: false, reason: "临时通行证发放失败" };
+  }
+}
+
+export function appLockStatus(): { ok: boolean; running: boolean; target?: string; label?: string; charId?: string; expiresAt?: number; usageStatsAccess?: boolean; accessibilityFallbackAvailable?: boolean; monitoringAvailable?: boolean } {
   try {
     const raw = bridge()?.appLockStatus?.();
     if (!raw) return { ok: false, running: false };
-    return JSON.parse(raw) as { ok: boolean; running: boolean; target?: string; label?: string; charId?: string };
+    return JSON.parse(raw) as { ok: boolean; running: boolean; target?: string; label?: string; charId?: string; expiresAt?: number; usageStatsAccess?: boolean; accessibilityFallbackAvailable?: boolean; monitoringAvailable?: boolean };
   } catch {
     return { ok: false, running: false };
   }
