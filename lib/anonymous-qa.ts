@@ -55,14 +55,45 @@ export function askAnonymousQuestion(input: {
 }): AnonymousQaQuestion {
     const question = String(input.question || "").trim();
     if (!question) throw new Error("问题不能为空");
+
+    const characters = loadCharacters();
+    const askerId = String(input.askerId || "").trim();
+    if (input.askerType === "character" && !characters.some(character => character.id === askerId)) {
+        throw new Error("无法识别提问角色，请使用有效的角色 ID");
+    }
+    if (input.askerType === "user" && askerId !== "user") {
+        throw new Error("用户提问者 ID 无效");
+    }
+
+    let targetId = String(input.targetId || "").trim();
+    if (input.targetType === "user") {
+        targetId = "user";
+    } else {
+        if (!targetId) throw new Error("问角色时必须提供收件角色 ID");
+        let target = characters.find(character => character.id === targetId);
+        if (!target) {
+            const matches = characters.filter(character => character.name.trim() === targetId);
+            if (matches.length === 1) {
+                target = matches[0];
+                targetId = target.id;
+            } else if (matches.length > 1) {
+                throw new Error("收件角色名称重复，请改用唯一角色 ID");
+            }
+        }
+        if (!target) throw new Error("无法识别收件角色，请检查角色 ID 或名称");
+        if (input.askerType === "character" && targetId === askerId) {
+            throw new Error("角色不能向自己提问，请选择另一位角色");
+        }
+    }
+
     const rows = load();
     const row: AnonymousQaQuestion = {
         id: uid(),
         askerType: input.askerType,
-        askerId: input.askerId,
+        askerId,
         askerAlias: alias(),
         targetType: input.targetType,
-        targetId: input.targetId,
+        targetId,
         question: question.slice(0, 500),
         audience: "public",
         status: "pending",

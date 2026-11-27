@@ -2667,9 +2667,13 @@ async function executeAnonymousQaTool(call: ToolCall, context?: ToolExecutionCon
     if (!characterId) return { name: call.name, success: false, error: "缺少角色上下文", continueConversation: false, persistToHistory: false };
     try {
         if (call.name === "匿名提问") {
-            const targetType = call.args?.targetType === "character" ? "character" : "user";
-            const targetId = targetType === "character" ? String(call.args?.targetId || "") : "user";
-            if (targetType === "character" && !targetId) throw new Error("问角色时必须给 targetId");
+            const rawTargetType = String(call.args?.targetType || "").trim();
+            if (rawTargetType !== "character" && rawTargetType !== "user") {
+                throw new Error("targetType 必须明确填写 character 或 user");
+            }
+            const targetType = rawTargetType as "character" | "user";
+            const targetId = String(call.args?.targetId || "").trim();
+            if (!targetId) throw new Error("targetId 是必填项：问角色填写角色 ID，问用户填写 user");
             const question = String(call.args?.question || "").trim();
             if (!question) throw new Error("问题不能为空");
             const row = askAnonymousQuestion({
