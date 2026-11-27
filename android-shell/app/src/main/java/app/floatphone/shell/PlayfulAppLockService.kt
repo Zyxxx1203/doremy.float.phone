@@ -44,7 +44,7 @@ class PlayfulAppLockService : Service() {
                 val minutes = (intent.getIntExtra("minutes", 1)).coerceIn(1, 5)
                 prefs.edit().putLong("passUntil", System.currentTimeMillis() + minutes * 60_000L).apply()
                 PlayfulLockActivity.dismissCurrent()
-                return START_NOT_STICKY
+                return START_STICKY
             }
         }
 
@@ -218,17 +218,15 @@ class PlayfulAppLockService : Service() {
             if (normalized in hardBlocked || normalized.startsWith("com.android.inputmethod")) return true
             return try {
                 val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-                val homePackages = context.packageManager.queryIntentActivities(home, PackageManager.MATCH_DEFAULT_ONLY)
-                    .map { it.activityInfo.packageName }
-                val dial = Intent(Intent.ACTION_DIAL)
-                val dialPackages = context.packageManager.queryIntentActivities(dial, PackageManager.MATCH_DEFAULT_ONLY)
-                    .map { it.activityInfo.packageName }
-                val sms = Intent(Intent.ACTION_SENDTO, android.net.Uri.parse("smsto:"))
-                val smsPackages = context.packageManager.queryIntentActivities(sms, PackageManager.MATCH_DEFAULT_ONLY)
-                    .map { it.activityInfo.packageName }
+                val homePackage = context.packageManager.resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+                val dialPackage = context.packageManager.resolveActivity(Intent(Intent.ACTION_DIAL), PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+                val smsPackage = context.packageManager.resolveActivity(
+                    Intent(Intent.ACTION_SENDTO, android.net.Uri.parse("smsto:")),
+                    PackageManager.MATCH_DEFAULT_ONLY,
+                )?.activityInfo?.packageName
                 val imePackages = (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
                     .enabledInputMethodList.map { it.packageName }
-                target in homePackages || target in dialPackages || target in smsPackages || target in imePackages
+                target == homePackage || target == dialPackage || target == smsPackage || target in imePackages
             } catch (_: Throwable) { false }
         }
 
