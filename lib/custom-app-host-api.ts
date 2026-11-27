@@ -2568,7 +2568,7 @@ export function runCustomAppAppLockStart(_app: InstalledCustomApp, record: Recor
     charName: cleanText(record.charName, 80),
     avatar: typeof record.avatar === "string" ? record.avatar : "",
     style: record.style && typeof record.style === "object" ? record.style as Record<string, unknown> : {},
-    durationMinutes: Math.max(1, Math.min(360, Number(record.durationMinutes) || 180)),
+    durationMinutes: Math.max(1, Math.min(360, Number(record.durationMinutes) || 30)),
     sessionId: cleanText(record.sessionId, 120),
   });
   return result.ok ? { ok: true } : { ok: false, reason: result.reason || "小手段启动失败" };
