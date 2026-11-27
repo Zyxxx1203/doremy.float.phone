@@ -15,6 +15,13 @@ const monthKey = (date = new Date()) => `${date.getFullYear()}-${String(date.get
 const dateLabel = (value: string) => new Date(value.length===10?`${value}T12:00:00`:value).toLocaleDateString("zh-CN",{month:"long",day:"numeric"});
 const localDayKey = (value: string) => { if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value; const date=new Date(value); return Number.isNaN(date.getTime())?"":[date.getFullYear(),String(date.getMonth()+1).padStart(2,"0"),String(date.getDate()).padStart(2,"0")].join("-"); };
 const todayInput = () => new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+/** 银行卡↔余额、卡内转入转出属于账户互转，不算收入/支出。 */
+function isInternalWalletTransfer(tx: { category?: string; detail?: string }): boolean {
+  const category = String(tx.category || "");
+  const detail = String(tx.detail || "");
+  if (["转入", "提现", "银行卡账户"].includes(category)) return true;
+  return /转入余额|提现到银行卡|转入账户|转出账户/.test(detail);
+}
 function Panel({children}:{children:React.ReactNode}) { return <section className="wallet-section rounded-2xl p-4">{children}</section>; }
 function Label({children}:{children:React.ReactNode}) { return <div className="wallet-kicker mb-2">{children}</div>; }
 function Field({label,...props}:{label:string;value:string;onChange:(e:React.ChangeEvent<HTMLInputElement>)=>void;placeholder?:string;type?:string;step?:string}) {
@@ -48,7 +55,7 @@ export function WalletPlanningTabs({tab,onChange}:{tab:WalletPlanningTab;onChang
   const categoryTotals=expenses.reduce<Record<string,number>>((acc,tx)=>{acc[tx.category||"其他"]=(acc[tx.category||"其他"]||0)+Math.abs(tx.amount);return acc;},{});
   const reportTransactions=wallet.transactions.filter(tx=>{const d=new Date(tx.createdAt);return !Number.isNaN(d.getTime())&&monthKey(d)===reportMonthKey;});
   const reportExpenses=reportTransactions.filter(tx=>tx.amount<0&&tx.kind==="payment");
-  const reportIncome=reportTransactions.filter(tx=>tx.amount>0&&tx.kind!=="transfer_in");
+  const reportIncome=reportTransactions.filter(tx=>tx.amount>0&&!isInternalWalletTransfer(tx));
   const reportExpenseTotal=reportExpenses.reduce((sum,tx)=>sum+Math.abs(tx.amount),0);
   const reportIncomeTotal=reportIncome.reduce((sum,tx)=>sum+tx.amount,0);
   const reportCategoryTotals=reportExpenses.reduce<Record<string,number>>((acc,tx)=>{acc[tx.category||"其他"]=(acc[tx.category||"其他"]||0)+Math.abs(tx.amount);return acc;},{});

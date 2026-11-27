@@ -44,6 +44,14 @@ function money(value: number): string { return formatWalletAmount(value); }
 function notify(message: string, kind: "success" | "error" | "info" = "success") {
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("app-global-notice", { detail: { kind, message } }));
 }
+/** 账户互转不是收入/支出：银行卡↔余额、卡内转入转出都要从报表里剔除。 */
+function isInternalWalletTransfer(tx: { category?: string; detail?: string }): boolean {
+  const category = String(tx.category || "");
+  const detail = String(tx.detail || "");
+  if (["转入", "提现", "银行卡账户"].includes(category)) return true;
+  return /转入余额|提现到银行卡|转入账户|转出账户/.test(detail);
+}
+
 function time(value: number | string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -102,7 +110,7 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
       return !Number.isNaN(date.getTime()) && date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
     });
     return {
-      income: rows.filter(tx => tx.amount > 0 && tx.kind !== "transfer_in").reduce((sum, tx) => sum + tx.amount, 0),
+      income: rows.filter(tx => tx.amount > 0 && !isInternalWalletTransfer(tx)).reduce((sum, tx) => sum + tx.amount, 0),
       expense: rows.filter(tx => tx.amount < 0 && tx.kind === "payment").reduce((sum, tx) => sum + Math.abs(tx.amount), 0),
     };
   }, [wallet.transactions]);

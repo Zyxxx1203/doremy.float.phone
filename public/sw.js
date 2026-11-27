@@ -1,5 +1,5 @@
-// v16：升版清缓存（PR90/91/92 钱包与角色锁应用改版、钱包布局修复）。
-const CACHE_VERSION = "ai-phone-pwa-v16";
+// v18：清缓存（钱包页宽度/收入统计/表单布局/顶栏隔离修复）。
+const CACHE_VERSION = "ai-phone-pwa-v18";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
