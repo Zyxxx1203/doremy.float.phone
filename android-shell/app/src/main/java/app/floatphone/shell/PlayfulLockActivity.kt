@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
+import android.text.InputFilter
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
@@ -126,9 +127,10 @@ class PlayfulLockActivity : Activity() {
         root.addView(appCard, matchWrap().apply { bottomMargin = dp(18) })
 
         input = EditText(this).apply {
-            hint = "TA 悄悄设下的密码"; setTextColor(Color.WHITE); setHintTextColor(0xFF9BA6BA.toInt())
+            hint = "输入 TA 的六位密码"; setTextColor(Color.WHITE); setHintTextColor(0xFF9BA6BA.toInt())
             textSize = 17f; gravity = Gravity.CENTER
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            filters = arrayOf(InputFilter.LengthFilter(6))
             setSingleLine(true); background = rounded(0xCC20283A, 0x66FFFFFF, 14)
             setPadding(dp(16), dp(13), dp(16), dp(13))
         }
