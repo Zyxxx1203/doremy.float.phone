@@ -24,7 +24,7 @@ import { setAlarm as shellSetAlarm, setBrightness as shellSetBrightness, setDnd 
   focusOverlayUpdate as shellFocusOverlayUpdate, focusOverlayStop as shellFocusOverlayStop,
   focusOverlayConsumeEvents as shellFocusOverlayConsumeEvents,
   consumeScheduledFocus as shellConsumeScheduledFocus,
-  appLockStart as shellAppLockStart, appLockStop as shellAppLockStop, appLockStatus as shellAppLockStatus, appLockReveal as shellAppLockReveal,
+  appLockStart as shellAppLockStart, appLockStop as shellAppLockStop, appLockStatus as shellAppLockStatus,
   focusLockTaLine as shellFocusLockTaLine, isDeviceAdminActive as shellIsDeviceAdminActive,
   requestDeviceAdmin as shellRequestDeviceAdmin,
   focusLockPendingApply as shellFocusLockPendingApply,
@@ -229,7 +229,6 @@ const HOST_ACTION_PERMISSIONS: Record<string, CustomAppPermission[]> = {
   "device.appLock.start": ["device.assist"],
   "device.appLock.stop": ["device.assist"],
   "device.appLock.status": ["device.assist"],
-  "device.appLock.reveal": ["device.assist"],
   "device.focusWidget.update": ["device.assist"],
   "device.focusOverlay.update": ["device.assist"],
   "device.focusOverlay.stop": ["device.assist"],
@@ -2585,11 +2584,6 @@ export function runCustomAppAppLockStatus(_app: InstalledCustomApp, record: Reco
   return shellAppLockStatus() as unknown as Record<string, unknown>;
 }
 
-export function runCustomAppAppLockReveal(_app: InstalledCustomApp, record: Record<string, unknown> = {}): Record<string, unknown> {
-  void record;
-  return shellAppLockReveal() as unknown as Record<string, unknown>;
-}
-
 export function runCustomAppScheduledFocusConsume(_app: InstalledCustomApp, record: Record<string, unknown> = {}): Record<string, unknown> {
   void record;
   const result = shellConsumeScheduledFocus();
@@ -2873,8 +2867,6 @@ export async function executeCustomAppHostAction(
       return runCustomAppAppLockStop(app, payload);
     case "device.appLock.status":
       return runCustomAppAppLockStatus(app, payload);
-    case "device.appLock.reveal":
-      return runCustomAppAppLockReveal(app, payload);
     case "device.focusWidget.update":
       return runCustomAppFocusWidgetUpdate(app, payload);
     case "device.focusOverlay.update":
