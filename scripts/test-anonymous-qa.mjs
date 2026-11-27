@@ -53,8 +53,9 @@ const answerNotice = chatMessages.find(message => message.sessionId === "session
 T("回答后提问者收到系统条目", answerNotice?.id === `anonymous_qa_answer_${userLetter.id}_c1` && answerNotice.sessionId === "session-c1" && answerNotice.content.includes(userLetter.question) && answerNotice.content.includes("没有躲你，只是在忙"));
 T("回答通知只发给提问者，不广播给其他角色", !chatMessages.some(message => message.sessionId === "session-c2" && message.content.includes("没有躲你，只是在忙")));
 const recordsBeforeEdit = chatMessages.length;
+const replyRequestsBeforeEdit = replyRequests.length;
 T("可以编辑问题、回答与回答对象", (() => { const changed = qa.updateAnonymousQuestion(userLetter.id, { question: "修改后的问题", answer: "修改后的回答", targetType: "character", targetId: "c2" }); return changed?.question === "修改后的问题" && changed.answer === "修改后的回答" && changed.targetId === "c2" && changed.status === "answered"; })());
-T("编辑不会新增任何系统条目或主动回复请求", chatMessages.length === recordsBeforeEdit && replyRequests.length === 4);
+T("编辑不会新增任何系统条目或主动回复请求", chatMessages.length === recordsBeforeEdit && replyRequests.length === replyRequestsBeforeEdit);
 T("编辑/变更回答对象不会通知新收件角色", !chatMessages.some(message => message.sessionId === "session-c2" && message.content.includes("修改后的问题")));
 T("编辑/变更回答对象不会通知旧收件角色", !chatMessages.some(message => message.sessionId === "session-c1" && message.content.includes("已失效")));
 T("清空回答会恢复待回答状态", (() => { const changed = qa.updateAnonymousQuestion(userLetter.id, { answer: "" }); return changed?.status === "pending" && !changed.answer; })());
