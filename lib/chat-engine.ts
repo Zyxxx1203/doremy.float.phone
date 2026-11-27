@@ -436,6 +436,8 @@ type ChatPromptBuildOptions = {
     /** 是否把当前角色的线上私聊作为 recent_chat 注入短期时间线。
      *  默认按 offline 判断；生活场景/日程等显式传 false，避免线上话题串味。 */
     includeDirectChatEntries?: boolean;
+    /** Prevent cross-app timeline and memory context from entering one-off source extraction. */
+    isolatedPromptContext?: boolean;
 };
 
 function matchesPromptProfileRef(prompt: { identifier: string; name?: string }, refs: Set<string>): boolean {
@@ -1958,12 +1960,13 @@ export async function buildChatPromptMessages(
     const { recentBlocks, truncatedHistory, wbActivationContext, unifiedRecentItems } = prepareShortTermContext(character.id, resolvedAppId, {
         history: historyForPromptExpanded,
         includeDirectChatEntries: options?.includeDirectChatEntries ?? isOfflineMode,
+        includeTimeline: options?.isolatedPromptContext !== true,
         includeNativeToolHistory: usesNativeActions,
         excludeOfflineSessionId: options?.excludeOfflineSessionId,
         promptTimestampOptions,
     });
     // 匿名提问箱只进共享短期记忆，不写长期记忆；这里作为一条短期事件参与本轮排序。
-    const anonymousQaShortTerm = buildAnonymousQaContext(character.id);
+    const anonymousQaShortTerm = options?.isolatedPromptContext === true ? "" : buildAnonymousQaContext(character.id);
     if (anonymousQaShortTerm) {
         unifiedRecentItems.push({
             kind: "event",
@@ -1985,8 +1988,8 @@ export async function buildChatPromptMessages(
     }
 
     const [memResults, coreResults, musicLocal, musicCloud] = await Promise.all([
-        retrieveMemoriesForPrompt(character.id, wbActivationContext, memConfig).catch(() => null),
-        retrieveCoreMemoriesForPrompt(character.id, memConfig).catch(() => null),
+        options?.isolatedPromptContext === true ? Promise.resolve(null) : retrieveMemoriesForPrompt(character.id, wbActivationContext, memConfig).catch(() => null),
+        options?.isolatedPromptContext === true ? Promise.resolve(null) : retrieveCoreMemoriesForPrompt(character.id, memConfig).catch(() => null),
         buildMusicLocalMacro(),
         buildMusicCloudMacro(),
     ]);
@@ -2001,10 +2004,12 @@ export async function buildChatPromptMessages(
         // 生活共同事实已经由短期时间线的 life 条目注入；旧 buildLifeMemoryContext
         // 再把同一批事实拼进长期块，会让同一件事在提示词里出现两遍。
         // 这里只保留“当前生活状态”，历史事实交给统一短期时间线。
-        buildLifePresenceContext(character.id),
-        buildCharacterEconomyContext(character.id),
+        ...(options?.isolatedPromptContext === true ? [] : [
+            buildLifePresenceContext(character.id),
+            buildCharacterEconomyContext(character.id),
+        ]),
     ].filter(Boolean).join("\n\n");
-    const coreMemories = coreResults ? formatCoreMemories(coreResults) : "";
+    const coreMemories = options?.isolatedPromptContext === true ? "" : (coreResults ? formatCoreMemories(coreResults) : "");
     const scheduleSummary = buildCalendarScheduleMarker("character", character.id, getWeekStartIso(now));
     const currentSchedule = getCurrentCalendarScheduleForPrompt("character", character.id, now);
     const musicOnlineHint = isNeteaseConfigured() ? "- 你可以推荐任何歌曲，系统会在线搜索并播放。不局限于用户本地音乐库。\n" : "\n";
@@ -2217,7 +2222,7 @@ export type OfflineChatCompletionResult = ParsedOfflineResponse & {
 export async function generateOfflineChatCompletion(
     session: ChatSession,
     history: ChatMessage[],
-    options?: { signal?: AbortSignal; onStreamDelta?: (delta: string) => void; includeDirectChatEntries?: boolean; appId?: string; appTags?: string[]; worldBookIdsOverride?: string[]; worldBookActivationContext?: string },
+    options?: { signal?: AbortSignal; onStreamDelta?: (delta: string) => void; includeDirectChatEntries?: boolean; appId?: string; appTags?: string[]; worldBookIdsOverride?: string[]; worldBookActivationContext?: string; promptProfile?: CustomAppPromptProfile; isolatedPromptContext?: boolean; toolsAllowed?: boolean },
 ): Promise<OfflineChatCompletionResult> {
     const appId = options?.appId ?? "chat";
     const appTags = options?.appTags ?? ["chat", "offline"];
@@ -2231,6 +2236,9 @@ export async function generateOfflineChatCompletion(
             includeDirectChatEntries: options?.includeDirectChatEntries,
             worldBookIdsOverride: options?.worldBookIdsOverride,
             worldBookActivationContext: options?.worldBookActivationContext,
+            promptProfile: options?.promptProfile,
+            isolatedPromptContext: options?.isolatedPromptContext,
+            toolsAllowed: options?.toolsAllowed,
         },
     );
     const summaryTag = preset?.story_summary_tag?.trim() || "summary";
