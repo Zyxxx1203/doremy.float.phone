@@ -88,8 +88,16 @@ class PlayfulAppLockService : Service() {
     private val poll = object : Runnable {
         override fun run() {
             if (!polling) return
+            if (!prefs.getBoolean("running", false)) {
+                stopLock()
+                return
+            }
             val now = System.currentTimeMillis()
-            val expiresAt = prefs.getLong("expiresAt", 0L)
+            var expiresAt = prefs.getLong("expiresAt", 0L)
+            if (expiresAt <= 0L) {
+                expiresAt = now + 180 * 60_000L
+                prefs.edit().putLong("expiresAt", expiresAt).apply()
+            }
             if (expiresAt > 0L && now >= expiresAt) {
                 stopLock()
                 return
@@ -127,7 +135,7 @@ class PlayfulAppLockService : Service() {
     }
 
     private fun currentForegroundPackage(): String {
-        return try {
+        val usagePackage = try {
             val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
             val now = System.currentTimeMillis()
             val events = usm.queryEvents(now - 12_000L, now)
@@ -137,11 +145,9 @@ class PlayfulAppLockService : Service() {
                 events.getNextEvent(ev)
                 if (ev.eventType == UsageEvents.Event.ACTIVITY_RESUMED) last = ev.packageName ?: ""
             }
-            if (last.isBlank()) {
-                last = accessibilityForegroundPackage()
-            }
             last
         } catch (_: Throwable) { "" }
+        return usagePackage.ifBlank { accessibilityForegroundPackage() }
     }
 
     private fun accessibilityForegroundPackage(): String {
@@ -286,7 +292,12 @@ class PlayfulAppLockService : Service() {
 
         fun stop(context: Context): JSONObject {
             context.startService(Intent(context, PlayfulAppLockService::class.java).putExtra("action", "stop"))
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("running", false).apply()
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putBoolean("running", false)
+                .putLong("expiresAt", 0L)
+                .putLong("passUntil", 0L)
+                .remove("password")
+                .apply()
             return JSONObject().put("ok", true)
         }
 
@@ -311,7 +322,7 @@ class PlayfulAppLockService : Service() {
                 @Suppress("DEPRECATION")
                 appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), context.packageName) == AppOpsManager.MODE_ALLOWED
             }.getOrDefault(false)
-            val running = p.getBoolean("running", false) && (p.getLong("expiresAt", 0L) == 0L || p.getLong("expiresAt", 0L) > System.currentTimeMillis())
+            val running = p.getBoolean("running", false) && p.getLong("expiresAt", 0L) > System.currentTimeMillis()
             return JSONObject()
                 .put("ok", true)
                 .put("running", running)
