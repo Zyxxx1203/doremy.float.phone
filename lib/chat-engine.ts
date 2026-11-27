@@ -424,6 +424,8 @@ type ChatPromptBuildOptions = {
     excludeOfflineSessionId?: string;
     promptProfile?: CustomAppPromptProfile;
     extraWorldBookIds?: string[];
+    /** Replace bound world books for one isolated generation request. */
+    worldBookIdsOverride?: string[];
     worldBookActivationContext?: string;
     activateAllWorldBooks?: boolean;
     toolsAllowed?: boolean;
@@ -1878,7 +1880,9 @@ export async function buildChatPromptMessages(
 
     const allWorldBooks = loadWorldBooks();
     const extraWorldBookIds = options?.extraWorldBookIds ?? [];
-    const worldBookIds = [...new Set([...(activeSlot.worldBookIds || []), ...extraWorldBookIds])];
+    const worldBookIds = options?.worldBookIdsOverride
+        ? [...new Set(options.worldBookIdsOverride)]
+        : [...new Set([...(activeSlot.worldBookIds || []), ...extraWorldBookIds])];
     const worldBooks = promptProfile?.enableWorldBooks === false
         ? []
         : worldBookIds.map(id => allWorldBooks.find(w => w.id === id)).filter(Boolean) as typeof allWorldBooks;
@@ -2045,7 +2049,7 @@ export async function buildChatPromptMessages(
         currentSchedule,
         coreMemories,
         longTermMemories,
-        worldBookActivationContext: options?.worldBookActivationContext || wbActivationContext,
+        worldBookActivationContext: options?.worldBookActivationContext ?? wbActivationContext,
         activateAllWorldBooks: options?.activateAllWorldBooks,
         recentBlocks,
         unifiedRecentItems,
@@ -2213,7 +2217,7 @@ export type OfflineChatCompletionResult = ParsedOfflineResponse & {
 export async function generateOfflineChatCompletion(
     session: ChatSession,
     history: ChatMessage[],
-    options?: { signal?: AbortSignal; onStreamDelta?: (delta: string) => void; includeDirectChatEntries?: boolean; appId?: string; appTags?: string[] },
+    options?: { signal?: AbortSignal; onStreamDelta?: (delta: string) => void; includeDirectChatEntries?: boolean; appId?: string; appTags?: string[]; worldBookIdsOverride?: string[]; worldBookActivationContext?: string },
 ): Promise<OfflineChatCompletionResult> {
     const appId = options?.appId ?? "chat";
     const appTags = options?.appTags ?? ["chat", "offline"];
@@ -2225,6 +2229,8 @@ export async function generateOfflineChatCompletion(
             appTags,
             excludeOfflineSessionId: session.id,
             includeDirectChatEntries: options?.includeDirectChatEntries,
+            worldBookIdsOverride: options?.worldBookIdsOverride,
+            worldBookActivationContext: options?.worldBookActivationContext,
         },
     );
     const summaryTag = preset?.story_summary_tag?.trim() || "summary";
