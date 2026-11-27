@@ -55,6 +55,27 @@ function appendAnonymousQaTimelineEvent(row: AnonymousQaQuestion): string | null
     return session.id;
 }
 
+function appendAnonymousQaAnswerTimelineEvent(row: AnonymousQaQuestion): void {
+    // The asker receives the answer in their own character chat. For a user asker,
+    // that is the conversation with the character they originally asked.
+    const askerCharacterId = row.askerType === "character"
+        ? row.askerId
+        : row.targetType === "character" ? row.targetId : null;
+    if (!askerCharacterId) return;
+    const character = loadCharacters().find(item => item.id === askerCharacterId);
+    if (!character) return;
+    const session = createOrGetSession(character.id);
+    pushChatMessage({
+        // Stable ID prevents duplicate answer notices if the same answer is delivered twice.
+        id: `anonymous_qa_answer_${row.id}_${character.id}`,
+        sessionId: session.id,
+        role: "system",
+        mediaType: "system_instruction",
+        content: `你发起的匿名提问已收到回答。\n问题编号：${row.id}\n问题：${row.question}\n回答：${row.answer || ""}\n请在匿名提问箱查看完整记录。提问者与回答者的真实身份均应保密。`,
+        mediaData: { compactSystemInstruction: true, shortTermMemoryEvent: true, shortTermMemorySource: "anonymous_qa" },
+    });
+}
+
 export function loadAnonymousQa(): AnonymousQaQuestion[] {
     return load().slice().sort((a, b) => b.createdAt - a.createdAt);
 }
@@ -134,6 +155,7 @@ export function answerAnonymousQuestion(questionId: string, answer: string, expe
     row.status = row.answer ? "answered" : "pending";
     row.answeredAt = row.answer ? Date.now() : undefined;
     save(rows);
+    if (row.answer) appendAnonymousQaAnswerTimelineEvent(row);
     return row;
 }
 export function questionsForTarget(targetType: "user" | "character", targetId: string): AnonymousQaQuestion[] {
