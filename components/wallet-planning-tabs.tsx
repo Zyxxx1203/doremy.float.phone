@@ -47,7 +47,7 @@ export function WalletPlanningTabs({tab,onChange}:{tab:WalletPlanningTab;onChang
   const categoryTotals=expenses.reduce<Record<string,number>>((acc,tx)=>{acc[tx.category||"其他"]=(acc[tx.category||"其他"]||0)+Math.abs(tx.amount);return acc;},{});
   const reportTransactions=wallet.transactions.filter(tx=>{const d=new Date(tx.createdAt);return !Number.isNaN(d.getTime())&&monthKey(d)===reportMonthKey;});
   const reportExpenses=reportTransactions.filter(tx=>tx.amount<0&&tx.kind==="payment");
-  const reportIncome=reportTransactions.filter(tx=>tx.amount>0);
+  const reportIncome=reportTransactions.filter(tx=>tx.amount>0&&tx.kind!=="transfer_in");
   const reportExpenseTotal=reportExpenses.reduce((sum,tx)=>sum+Math.abs(tx.amount),0);
   const reportIncomeTotal=reportIncome.reduce((sum,tx)=>sum+tx.amount,0);
   const reportCategoryTotals=reportExpenses.reduce<Record<string,number>>((acc,tx)=>{acc[tx.category||"其他"]=(acc[tx.category||"其他"]||0)+Math.abs(tx.amount);return acc;},{});
@@ -123,7 +123,7 @@ export function WalletPlanningTabs({tab,onChange}:{tab:WalletPlanningTab;onChang
         <div className="rounded-xl bg-[#eee9e2] p-3"><div className="text-[10px] text-[#8d7165]">支出</div><div className="mt-1 text-xl font-semibold text-[#80594d]">{money(reportExpenseTotal)}</div></div>
       </div>
       <div className="mt-4 flex items-center justify-between border-t border-[#e5e1d8] pt-3"><span className="text-[11px] text-[#8a8579]">本月净结余</span><strong className={reportIncomeTotal-reportExpenseTotal>=0?"text-[#476c4e]":"text-[#9a554a]"}>{money(reportIncomeTotal-reportExpenseTotal)}</strong></div>
-      <div className="mt-1 text-[10px] text-[#aaa]">不包含角色账本和账户间转账。</div>
+      <div className="mt-1 text-[10px] text-[#aaa]">不包含角色账本、银行卡转入及账户间转账。</div>
     </Panel>
     <Panel><Label>SPENDING BREAKDOWN</Label><div className="mb-3 text-[15px] font-medium">支出分类</div>{sorted.length?sorted.map(([name,value])=><div key={name} className="mb-4 last:mb-0"><div className="mb-1 flex justify-between text-[11px]"><span className="text-[#55564f]">{name}</span><span className="text-[#777]">{money(value)} · {(value/reportExpenseTotal*100).toFixed(0)}%</span></div><div className="h-2 overflow-hidden rounded-full bg-[#e5e2d9]"><div className="h-full rounded-full bg-gradient-to-r from-[#a99569] to-[#454b3e]" style={{width:value/(sorted[0]?.[1]||1)*100+"%"}}/></div></div>):<div className="py-6 text-center text-sm text-[#999]">所选月份还没有支出记录。</div>}</Panel>
     <Panel><Label>ACCOUNT ACTIVITY</Label><div className="text-[15px] font-medium">流水明细</div>{reportTransactions.slice(0,12).map(tx=><div key={tx.id} className="wallet-tx flex items-center justify-between gap-2 py-3"><div className="min-w-0"><div className="truncate text-[12px] text-[#44453e]">{tx.title}</div><div className="mt-1 text-[10px] text-[#999]">{new Date(tx.createdAt).toLocaleDateString("zh-CN")} · {tx.category}</div></div><div className={"shrink-0 text-[12px] font-semibold "+(tx.amount<0?"text-[#986455]":"text-[#52765a]")}>{tx.amount>0?"+":"−"}{money(Math.abs(tx.amount))}</div></div>)}{!reportTransactions.length&&<div className="py-5 text-center text-sm text-[#999]">所选月份还没有流水。</div>}</Panel>
