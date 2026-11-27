@@ -4436,7 +4436,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
               <select value={locationImportWorldBookId} onChange={event => setLocationImportWorldBookId(event.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm">
                 <option value="">选择一本世界书</option>{worldBooks.map(book => <option key={book.id} value={book.id}>{book.name}</option>)}
               </select>
-              <p className="mt-1.5 text-[11px] text-stone-400">{selectedBookHelpText}</p>
+              <p className="mt-1.5 text-[11px] text-stone-400">只读取这本世界书的启用条目，不受角色绑定配置影响。</p>
               <button type="button" disabled={locationImportBusy || !locationImportWorldBookId || !characters.length} onClick={() => void importWorldbookLocations()} className="mt-2 w-full rounded-xl border border-[var(--life-accent)] px-3 py-2 text-xs font-medium text-[var(--life-accent)] disabled:opacity-50">{locationImportBusy ? "处理中…" : "仅从这本世界书导入地点"}</button>
               {!characters.length && <p className="mt-1.5 text-[11px] text-amber-700">需要至少导入一张角色卡作为模型调用载体；角色卡内容不会参与本次世界书提取。</p>}
             </div>
