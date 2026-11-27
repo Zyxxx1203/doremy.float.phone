@@ -2573,7 +2573,11 @@ async function executeAppLockTool(call: ToolCall, context?: ToolExecutionContext
         if (call.name === "查看应用锁") {
             const status = appLockStatus();
             if (!status.ok) return { name: call.name, success: true, data: "当前没有应用锁", userNotice: "没有应用锁" };
-            return { name: call.name, success: true, data: status.running ? `正在锁：${status.label || status.target}` : "当前没有应用锁", userNotice: status.running ? "看了一眼应用锁" : "没有应用锁" };
+            if (!status.running) return { name: call.name, success: true, data: "当前没有应用锁", userNotice: "没有应用锁" };
+            const monitorNote = status.monitoringAvailable === false
+                ? "；但前台应用监测权限不可用，自动拦截可能失效，请检查使用情况访问或无障碍服务"
+                : "";
+            return { name: call.name, success: true, data: `正在锁：${status.label || status.target}${monitorNote}`, userNotice: "看了一眼应用锁" };
         }
         if (call.name === "告诉应用锁密码") {
             const status = appLockStatus();
