@@ -57,7 +57,7 @@ function formatPhotoDirectiveForPrompt(msg: ChatMessage): string {
 export type NativeTimelineEntry = {
     id: string;
     sourceApp: "chat" | "moments" | "story" | "vn" | "map" | "game" | "diary" | "xiaohongshu" | "interview_magazine" | "cocreate" | "checkphone" | "custom_app" | "photo_wall" | "memo" | "life" | "phone_widget" | "watch" | "global_watch";
-    sourceDetail?: "direct" | "group" | "system" | "story" | "chat_offline" | "game" | "diary_entry" | "notewall" | "xiaohongshu" | "black_market_theater" | "interview_issue" | "interview_shared_issue" | "cocreate_project" | "checkphone" | "custom_app_event" | "life_shared_event" | "life_scene_message" | "photo_wall_creation"; // chat sub-type: 1:1 vs group chat vs system note
+    sourceDetail?: "direct" | "group" | "system" | "story" | "chat_offline" | "game" | "diary_entry" | "notewall" | "xiaohongshu" | "black_market_theater" | "interview_issue" | "interview_shared_issue" | "cocreate_project" | "checkphone" | "custom_app_event" | "life_shared_event" | "life_scene_message" | "photo_wall_creation" | "anonymous_qa"; // chat sub-type: 1:1 vs group chat vs system note
     authorType?: "user" | "character" | "npc"; // who authored this entry
     postAuthorType?: "user" | "character"; // for moments: who owns the parent post
     sessionId?: string;
@@ -303,9 +303,9 @@ export function loadNativeTimeline(
                         sourceApp: "chat",
                         // 内部备注/头像等事件明确进入私聊短期记忆；普通手动系统指令
                         // 仍保留 system 分类，避免改变已有记忆行为。
-                        sourceDetail: msg.mediaData?.shortTermMemoryEvent ? "direct" : "system",
+                        sourceDetail: msg.mediaData?.shortTermMemorySource === "anonymous_qa" ? "anonymous_qa" : msg.mediaData?.shortTermMemoryEvent ? "direct" : "system",
                         timestamp: msg.createdAt,
-                        content: `${msgLabel} ${msg.mediaData?.shortTermMemoryEvent ? "[私聊事件]" : "[系统指令]"} ${instructionContent}`,
+                        content: `${msgLabel} ${msg.mediaData?.shortTermMemorySource === "anonymous_qa" ? "[匿名提问箱]" : msg.mediaData?.shortTermMemoryEvent ? "[私聊事件]" : "[系统指令]"} ${instructionContent}`,
                     });
                     continue;
                 }
@@ -1612,6 +1612,7 @@ export function prepareGroupShortTermContext(
                                                         entry.sourceApp === "story" && entry.sourceDetail === "black_market_theater" ? "recent_theater" :
                                                             entry.sourceApp === "diary" && entry.sourceDetail === "diary_entry" ? "recent_diary" :
                                                                 entry.sourceApp === "diary" && entry.sourceDetail === "notewall" ? "recent_notewall" :
+                                                                    entry.sourceApp === "chat" && entry.sourceDetail === "anonymous_qa" ? "recent_anonymous_qa" :
                                                                     entry.sourceApp === "chat" ? "recent_chat" : "recent_events"
                 ),
                 text: entry.content,
