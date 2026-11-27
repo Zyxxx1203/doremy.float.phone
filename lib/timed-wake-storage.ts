@@ -49,6 +49,13 @@ export function saveTimedWakeSchedule(schedule: TimedWakeSchedule): void {
     saveTimedWakeSchedules(next);
 }
 
+/** 追加一条后台主动联系，不覆盖用户或角色已经预约的其他定时唤醒。 */
+export function appendTimedWakeSchedule(schedule: TimedWakeSchedule): void {
+    const all = loadTimedWakeSchedules();
+    if (all.some(item => item.id === schedule.id)) return;
+    saveTimedWakeSchedules([...all, schedule]);
+}
+
 export function clearTimedWakeSchedule(sessionId: string): void {
     // 先取出被清掉的条目，逐个撤销服务端预约——只改本地会让那条已经挂上去的
     // 任务照常在原定时刻触发，用户看到「已经取消了，通知还是弹了」。
