@@ -138,6 +138,42 @@ const onlyCompletion = results.find(item => item.planId === onlyPlan.id);
 T("无其他小金库时没有切换候选", onlyCompletion?.goalReached === true && onlyCompletion.otherFunds?.length === 0);
 T("无其他目标后计划彻底取消", !state.plans.some(plan => plan.id === onlyPlan.id));
 
+console.log("== 2.3 目标完成后让角色决定是否更换小金库 ==");
+const followUpFund = jointFund.createJointFund({ name: "旅行基金", goalLabel: "旅行", goalAmount: 5, userId: "u1", characterId: "c1" });
+const followUpPlan = jointFund.setJointFundPlanForCharacter("c1", { fundId: followUpFund.id, cadence: "weekly", amount: 5 });
+raw = JSON.parse(store.get("ai_phone_joint_funds_v1"));
+raw.plans.find(plan => plan.id === followUpPlan.id).nextRunAt = Date.now() - 1000;
+store.set("ai_phone_joint_funds_v1", JSON.stringify(raw));
+const scheduledPrompts = [];
+const completionScheduler = loadTs("lib/economy/joint-fund-scheduler.ts", {
+  "@/lib/bg-timer": { bgSetInterval: () => () => {} },
+  "@/lib/browser-notification": { sendBrowserNotification: () => {} },
+  "@/lib/shell-notify": { sendShellNotification: () => true },
+  "@/lib/wallet-storage": walletMock,
+  "@/lib/chat-storage": {
+    loadChatSessions: () => [{ id: "session-c1", isGroup: false }],
+    resolveSessionCharacterId: () => "c1",
+  },
+  "@/lib/timed-wake-storage": {
+    makeTimedWakeId: () => "timed-wake-test",
+    saveTimedWakeSchedule: schedule => scheduledPrompts.push(schedule),
+  },
+  "./joint-fund": jointFund,
+}, { window: windowMock, document: documentMock, CustomEvent: CustomEventMock });
+completionScheduler.runJointFundSchedulerTick();
+T("有其他小金库时创建角色主动询问", scheduledPrompts.length === 1);
+T("询问任务由角色本人触发", scheduledPrompts[0]?.source === "tool" && scheduledPrompts[0]?.characterId === "c1");
+T("询问明确要求先征求同意，不擅自切换", scheduledPrompts[0]?.intent.includes("不要替用户或自己擅自选择") === true);
+
+const noOtherFund = jointFund.createJointFund({ name: "单独目标", goalLabel: "单独", goalAmount: 5, userId: "u3", characterId: "c3" });
+const noOtherPlan = jointFund.setJointFundPlanForCharacter("c3", { fundId: noOtherFund.id, cadence: "weekly", amount: 5 });
+raw = JSON.parse(store.get("ai_phone_joint_funds_v1"));
+raw.plans.find(plan => plan.id === noOtherPlan.id).nextRunAt = Date.now() - 1000;
+store.set("ai_phone_joint_funds_v1", JSON.stringify(raw));
+completionScheduler.runJointFundSchedulerTick();
+T("没有其他小金库时不创建切换询问", scheduledPrompts.length === 1);
+T("没有其他目标时定期计划已取消", !jointFund.loadJointFundPlans().some(plan => plan.id === noOtherPlan.id));
+
 console.log("== 3. 扣款失败不吞计划 ==");
 wallet.balance = 0;
 jointFund.setJointFundPlan({ fundId: fund.id, memberType: "user", memberId: "user", cadence: "monthly", amount: 80 });
