@@ -300,7 +300,7 @@ export function WalletPanel({ onBack }: WalletPanelProps) {
     <PageShell title="余额管理" onBack={onBack} className="wallet-page-root">
 
       <div className="p-4 flex flex-col gap-4 pb-24">
-        <section className="rounded-2xl p-5 overflow-hidden relative min-h-[156px] flex flex-col justify-between" style={{ background: "radial-gradient(circle at 88% 12%,rgba(230,207,151,.24),transparent 30%),linear-gradient(135deg,#242a25 0%,#101612 58%,#34372d 100%)", boxShadow: "0 18px 38px rgba(24,29,24,.2)", border: "1px solid rgba(213,194,145,.32)", color: "#f4f0e5" }}>
+        <section className="wallet-balance-hero rounded-2xl p-5 overflow-hidden relative min-h-[156px] flex flex-col justify-between">
           <div className="relative flex items-start justify-between gap-4">
             <div>
               <div className="wallet-luxe-kicker" style={{color:"#c7b78e"}}>PRIVATE WALLET · REAL BALANCE</div>
