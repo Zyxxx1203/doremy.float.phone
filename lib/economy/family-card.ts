@@ -73,7 +73,7 @@ export function loadFamilyCardTransactions(cardId?: string): FamilyCardTransacti
     const rows = load().transactions;
     return (cardId ? rows.filter(t => t.cardId === cardId) : rows).slice().sort((a, b) => b.at - a.at);
 }
-export function createFamilyCard(input: {
+function createFamilyCardRecord(input: {
     issuerType: FamilyCardMemberType; issuerId: string;
     beneficiaryType: FamilyCardMemberType; beneficiaryId: string;
     label: string; monthlyLimit: number; resetDay?: number; color?: string;
@@ -93,6 +93,42 @@ export function createFamilyCard(input: {
     state.cards.push(card);
     save(state);
     return card;
+}
+
+/** 用户只能给角色发卡；角色给用户发卡必须由角色工具在角色身份上下文中创建。 */
+export function createFamilyCard(input: {
+    beneficiaryId: string;
+    label: string;
+    monthlyLimit: number;
+    resetDay?: number;
+    color?: string;
+}): FamilyCard {
+    if (!input.beneficiaryId || input.beneficiaryId === "user") {
+        throw new Error("亲属卡必须由用户发放给指定角色");
+    }
+    return createFamilyCardRecord({
+        ...input,
+        issuerType: "user",
+        issuerId: "user",
+        beneficiaryType: "character",
+    });
+}
+
+/** 仅供当前角色的工具执行器调用，不能由用户界面代替角色发卡。 */
+export function createFamilyCardForCharacter(characterId: string, input: {
+    label: string;
+    monthlyLimit: number;
+    resetDay?: number;
+    color?: string;
+}): FamilyCard {
+    if (!characterId || characterId === "user") throw new Error("缺少有效的角色身份");
+    return createFamilyCardRecord({
+        ...input,
+        issuerType: "character",
+        issuerId: characterId,
+        beneficiaryType: "user",
+        beneficiaryId: "user",
+    });
 }
 export function updateFamilyCard(cardId: string, patch: Partial<Pick<FamilyCard, "label" | "monthlyLimit" | "status" | "color">>): FamilyCard | null {
     const state = load();

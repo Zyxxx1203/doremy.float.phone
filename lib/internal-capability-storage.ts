@@ -56,6 +56,8 @@ export const RESERVED_INTERNAL_TOOL_NAMES: string[] = [
     "开亲属卡",
     "查看共同小金库",
     "存入共同小金库",
+    "设置小金库定期存款",
+    "帮我记账",
     "匿名提问",
     "回答匿名提问",
     "查看匿名提问箱",
@@ -632,6 +634,19 @@ const CHARACTER_ECONOMY_LEDGER_SCHEMA = JSON.stringify({
         limit: { type: "number", description: "最近多少笔，默认 20，最大 100" },
     },
 });
+const USER_BOOKKEEPING_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {
+        direction: { type: "string", enum: ["income", "expense"], description: "收入或支出；必须根据用户明确表达判断" },
+        amount: { type: "number", description: "金额，正数，单位元" },
+        title: { type: "string", description: "简短用途或收入来源，例如「午餐」「工资到账」" },
+        category: { type: "string", description: "分类，例如餐饮、交通、购物、居住、娱乐、医疗、订阅、学习、工资、退款、其他" },
+        note: { type: "string", description: "补充说明，可选" },
+        occurredAt: { type: "string", description: "交易实际发生时间；可用 ISO 时间或明确日期时间，不确定时省略" },
+        reference: { type: "string", description: "可选的订单号或交易唯一标识，用于防止重复记账" },
+    },
+    required: ["direction", "amount", "title"],
+});
 
 const CHARACTER_FAMILY_CARD_VIEW_SCHEMA = JSON.stringify({ type: "object", properties: {} });
 const CHARACTER_FAMILY_CARD_SPEND_SCHEMA = JSON.stringify({
@@ -662,6 +677,15 @@ const CHARACTER_JOINT_FUND_DEPOSIT_SCHEMA = JSON.stringify({
         note: { type: "string", description: "存入备注" },
     },
     required: ["fundId", "amount"],
+});
+const CHARACTER_JOINT_FUND_PLAN_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {
+        fundId: { type: "string", description: "目标小金库 id；先查看共同小金库，必须选择属于你自己的、仍在进行中的小金库" },
+        cadence: { type: "string", enum: ["daily", "weekly", "monthly"], description: "定期频率：daily 每天、weekly 每周、monthly 每月" },
+        amount: { type: "number", description: "每次从你自己的角色账本存入的金额（正数，元）" },
+    },
+    required: ["fundId", "cadence", "amount"],
 });
 
 const ANONYMOUS_QA_ASK_SCHEMA = JSON.stringify({
@@ -719,6 +743,11 @@ const ANONYMOUS_QA_SUBTOOLS: InternalToolDefinition[] = [
 
 const CHARACTER_ECONOMY_SUBTOOLS: InternalToolDefinition[] = [
     {
+        name: "帮我记账",
+        description: "当用户明确告诉你一笔已经发生的收入或支出，并且金额与方向清楚时，替用户记录到用户自己的钱包流水；不要把你自己的收入/支出记到用户钱包，也不要猜测金额或交易方向。若用户只是讨论计划、询问价格或表达想买但尚未发生，不要记账。若同一笔已经记过，不要重复调用。",
+        parameterSchema: USER_BOOKKEEPING_SCHEMA,
+    },
+    {
         name: "记录角色收入",
         description: "当你的收入到账、项目结款、兼职发钱、投资回款、捡到钱或收到红包时，主动记入自己的账本；金额和来源必须真实合理，不要凭空印钱。",
         parameterSchema: CHARACTER_ECONOMY_EARN_SCHEMA,
@@ -757,6 +786,11 @@ const CHARACTER_ECONOMY_SUBTOOLS: InternalToolDefinition[] = [
         name: "存入共同小金库",
         description: "当你想从自己的角色账本往共同小金库存钱时调用；余额不足会被拒绝。",
         parameterSchema: CHARACTER_JOINT_FUND_DEPOSIT_SCHEMA,
+    },
+    {
+        name: "设置小金库定期存款",
+        description: "当你决定定期从自己的角色账本为某个共同小金库存钱时调用。你只能为自己设置；先查看小金库并选择仍在进行中的目标。目标达成后该计划会自动停止；如果还有其他小金库，系统会回来问你是否想换一个目标，不会擅自替你切换。",
+        parameterSchema: CHARACTER_JOINT_FUND_PLAN_SCHEMA,
     },
 ];
 
@@ -1906,13 +1940,15 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
             description: capability.description,
             parameterSchema: "{}",
             usageGuide: [
-                "以下是你的角色收支工具组。你有自己的真实账本，收入和支出必须记账。",
+                "以下是你的角色收支工具组。你有自己的真实账本，收入和支出必须记账；你也可以在用户明确要求或清楚表达真实交易时，帮用户记录用户自己的钱包流水。",
+                "- 帮我记账：用户明确告知一笔已经发生的收入或支出，且金额、方向清楚时，记入用户自己的钱包；不要把角色自己的收支记到用户账本，不要记录计划、报价或尚未发生的交易。若用户提供了交易时间、分类、订单号，也一并填写；同一笔不要重复记。", 
                 "- 记录角色收入：工资、项目款、兼职、投资回款、捡到钱、红包、退款；note 写清来源，不要凭空印钱。",
                 "- 记录角色支出：请客、购物、交通、送礼、生活、娱乐、投资；余额不足会被拒绝。",
                 "- 查看角色账本：余额、最近流水、本周账单。",
                 "- 查看亲属卡 / 使用亲属卡：先查看 cardId；只能使用用户给你开的、且你有持卡权的卡。",
                 "- 开亲属卡：给用户开一张每月额度卡，label 写卡名、monthlyLimit 写额度；用户刷这张卡从你的角色账本扣款，余额不足会失败。",
                 "- 查看共同小金库 / 存入共同小金库：先查看 fundId；存入从你的角色账本扣。",
+                "- 设置小金库定期存款：你可以主动决定从自己的角色账本按天/周/月定期存入指定小金库；只为你自己的小金库设置。目标达成后计划自动停止；若还有其他进行中的小金库，系统会主动回来问你是否想换目标，只有你明确选择后才设置新计划；没有其他小金库就结束计划。",
                 "- 金额要符合你的职业、项目和当前经济状况；不要为了显得大方反复大额转账。",
                 "- 系统会按你的人设自动发放初始存款和每周/每月固定收入；这些已经自动入账，不要再重复记一遍。额外收入（项目款、兼职、红包、退款）仍要用「记录角色收入」记账。",
             ].join("\n"),

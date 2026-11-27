@@ -45,6 +45,7 @@ export type CharacterLedger = {
 
 const KEY = "ai_phone_character_ledgers_v1";
 registerKvMigration(KEY);
+export const CHARACTER_LEDGER_UPDATED_EVENT = "character-ledger-updated";
 const MAX_TRANSACTIONS = 500;
 const MAX_STATEMENTS = 26;
 
@@ -67,6 +68,7 @@ function loadMap(): Record<string, CharacterLedger> {
 
 function saveMap(map: Record<string, CharacterLedger>): void {
     kvSet(KEY, JSON.stringify(map));
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CHARACTER_LEDGER_UPDATED_EVENT));
 }
 
 export function loadCharacterLedger(characterId: string): CharacterLedger | null {

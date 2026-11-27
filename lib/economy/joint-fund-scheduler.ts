@@ -4,6 +4,8 @@ import { bgSetInterval } from "@/lib/bg-timer";
 import { sendBrowserNotification } from "@/lib/browser-notification";
 import { sendShellNotification } from "@/lib/shell-notify";
 import { formatWalletAmount } from "@/lib/wallet-storage";
+import { loadChatSessions, resolveSessionCharacterId } from "@/lib/chat-storage";
+import { appendTimedWakeSchedule, loadTimedWakeSchedules, makeTimedWakeId } from "@/lib/timed-wake-storage";
 import {
     loadJointFundPlans,
     loadJointFunds,
@@ -45,11 +47,52 @@ export function runJointFundSchedulerTick(now = Date.now()): void {
     const results = runDueJointFundPlans(now);
     for (const result of results) {
         if (result.ok) {
-            sendNotice(
-                "自动存入",
-                `「${result.fundName}」已自动存入 ${formatWalletAmount(result.amount)}（${result.memberType === "user" ? "你" : "TA"}）。`,
-                "success",
-            );
+            if (result.alreadyCompleted) {
+                sendNotice("目标已完成", `「${result.fundName}」已被提前存满，原定期存款已停止。`, "success");
+            } else {
+                sendNotice(
+                    "自动存入",
+                    `「${result.fundName}」已自动存入 ${formatWalletAmount(result.amount)}（${result.memberType === "user" ? "你" : "TA"}）。`,
+                    "success",
+                );
+            }
+            if (result.goalReached && result.memberType === "character") {
+                const alternatives = result.otherFunds || [];
+                if (alternatives.length === 0) {
+                    sendNotice("目标已完成", `「${result.fundName}」已达成目标，目前没有其他进行中的共同小金库，${"角色"}的定期存款已自动结束。`, "success");
+                } else {
+                    const session = loadChatSessions().find(item =>
+                        !item.isGroup
+                        && item.id === result.sessionId
+                        && resolveSessionCharacterId(item) === result.memberId
+                    ) || loadChatSessions().find(item =>
+                        !item.isGroup && resolveSessionCharacterId(item) === result.memberId
+                    );
+                    if (session) {
+                        const choices = alternatives.map(fund => `「${fund.name}」（小金库 ID：${fund.id}）`).join("、");
+                        const createdAt = Date.now();
+                        const nearExistingWake = loadTimedWakeSchedules()
+                            .filter(item => item.sessionId === session.id && item.fireAt <= createdAt + 60_000)
+                            .reduce((latest, item) => Math.max(latest, item.fireAt), 0);
+                        const fireAt = Math.max(createdAt + 60_000, nearExistingWake + 60_000);
+                        appendTimedWakeSchedule({
+                            id: makeTimedWakeId(session.id),
+                            sessionId: session.id,
+                            characterId: result.memberId,
+                            fireAt,
+                            createdAt,
+                            delayMinutes: Math.max(1, Math.ceil((fireAt - createdAt) / 60_000)),
+                            intent: `你刚刚定期存款的「${result.fundName}」已经达到目标，系统已自动停止这个目标的定期存款。你们还有其他正在进行的小金库：${choices}。请像平时聊天一样主动问用户：要不要把之后的定期存款改存到其中一个？不要替用户或自己擅自选择，也不要自动创建新计划；等用户明确同意并选定目标后，再调用「设置小金库定期存款」工具设置频率和金额。如果用户不想继续，就保持停止状态。`,
+                            source: "tool",
+                            retryIfSleeping: true,
+                            retryIfBusy: true,
+                        });
+                        sendNotice("目标已完成", `「${result.fundName}」已达成目标，原定期存款已停止；我会让角色问问是否要改存其他小金库。`, "success");
+                    } else {
+                        sendNotice("目标已完成", `「${result.fundName}」已达成目标，但找不到这位角色的私聊会话，定期存款已停止。`, "info");
+                    }
+                }
+            }
         } else {
             sendNotice(
                 "自动存入失败",

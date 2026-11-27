@@ -21,7 +21,7 @@
     "push:build-dist": "node scripts/build-personal-push-dist.mjs",
     "build:glass-icons": "node scripts/build-glass-icons.mjs",
     "test:memo": "node scripts/test-memo-archive-contract.mjs",
-    "test:economy": "node scripts/test-joint-fund.mjs && node scripts/test-character-income.mjs",
+    "test:economy": "node scripts/test-joint-fund.mjs && node scripts/test-character-income.mjs && node scripts/test-wallet-bookkeeping.mjs",
     "test:anonymous": "node scripts/test-anonymous-qa.mjs",
     "test:files": "node scripts/test-file-text.mjs",
     "test:tool-names": "node scripts/test-native-tool-name-resolution.mjs",
