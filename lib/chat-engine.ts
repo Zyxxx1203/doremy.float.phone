@@ -5,7 +5,6 @@ import { makeNativeToolName } from "./native-tool-name";
 import { maybeAppendShortcutCapability, maybeAppendPerceptionStatus } from "./offline-shortcut-capability";
 import { maybeBuildStatusInjection } from "./perception/describe";
 import { loadCharacters } from "./character-storage";
-import { buildAnonymousQaContext } from "./anonymous-qa";
 import { buildCharacterEconomyContext } from "./economy/character-income";
 import { buildLifePresenceContext } from "./life/life-memory-bridge";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
@@ -1965,17 +1964,6 @@ export async function buildChatPromptMessages(
         excludeOfflineSessionId: options?.excludeOfflineSessionId,
         promptTimestampOptions,
     });
-    // 匿名提问箱只进共享短期记忆，不写长期记忆；这里作为一条短期事件参与本轮排序。
-    const anonymousQaShortTerm = options?.isolatedPromptContext === true ? "" : buildAnonymousQaContext(character.id);
-    if (anonymousQaShortTerm) {
-        unifiedRecentItems.push({
-            kind: "event",
-            timestamp: new Date().toISOString(),
-            sourceApp: "custom_app",
-            sourceTag: "anonymous_qa",
-            text: anonymousQaShortTerm,
-        });
-    }
     const promptHistory = applyVisionImagePromptLimit(
         truncatedHistory.map(msg => ({ ...msg })),
         resolveVisionImagePromptLimit(session),
