@@ -5,6 +5,7 @@ import { ArrowDownToLine, ArrowUpFromLine, CreditCard, Plus, Trash2, WalletCards
 
 import { ConfirmDialog } from "@/components/ui";
 import { PageShell } from "@/components/ui/page-shell";
+import { WalletHeaderIsolationStyle } from "@/components/wallet-header-isolation-style";
 import {
   adjustWalletCardAccount,
   createWalletCard,
