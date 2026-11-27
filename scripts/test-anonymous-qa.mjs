@@ -53,10 +53,10 @@ T("不存在的角色不能作为收件人", (() => { try { qa.askAnonymousQuest
 T("角色不能向自己提问", (() => { try { qa.askAnonymousQuestion({ askerType: "character", askerId: "c1", targetType: "character", targetId: "c1", question: "问自己" }); return false; } catch { return true; } })());
 T("角色可以向用户匿名提问", qa.askAnonymousQuestion({ askerType: "character", askerId: "c2", targetType: "user", targetId: "user", question: "今晚想吃什么？" }).targetType === "user");
 T("不再提供常驻匿名提问箱上下文构建器", typeof qa.buildAnonymousQaContext === "undefined");
-store.set("ai_phone_anonymous_qa_v1", Array.from({ length: 501 }, (_, index) => ({
+store.set("ai_phone_anonymous_qa_v1", JSON.stringify(Array.from({ length: 501 }, (_, index) => ({
   id: "legacy-" + index, askerType: "user", askerId: "user", askerAlias: "匿名", targetType: "user", targetId: "user",
   question: "历史问题 " + index, audience: "public", status: "pending", revealIdentity: false, createdAt: index,
-})));
+}))));
 qa.askAnonymousQuestion({ askerType: "user", askerId: "user", targetType: "user", targetId: "user", question: "第 502 条问题" });
 T("历史记录不再被固定 500 条上限截断", qa.loadAnonymousQa().length === 502);
 
