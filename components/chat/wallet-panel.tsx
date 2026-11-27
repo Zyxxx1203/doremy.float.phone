@@ -19,9 +19,24 @@ import {
 } from "@/lib/wallet-storage";
 import type { WalletCard, WalletCardStyle, WalletState } from "@/lib/wallet-types";
 
+type WalletPanelTab = "home" | "accounts" | "family" | "joint" | "ledger" | "budget" | "goals" | "bills" | "calendar" | "insights";
 type WalletPanelProps = {
   onBack: () => void;
+  onNavigateTab: (tab: WalletPanelTab) => void;
 };
+
+const WALLET_NAV_TABS: Array<{ id: WalletPanelTab; label: string }> = [
+  { id: "home", label: "总览" },
+  { id: "accounts", label: "银行卡" },
+  { id: "family", label: "亲属卡" },
+  { id: "joint", label: "小金库" },
+  { id: "ledger", label: "角色账本" },
+  { id: "budget", label: "预算" },
+  { id: "goals", label: "储蓄目标" },
+  { id: "bills", label: "周期账单" },
+  { id: "calendar", label: "财务日历" },
+  { id: "insights", label: "财务报告" },
+];
 
 const WALLET_STYLE_OPTIONS: Array<{ id: WalletCardStyle; label: string }> = [
   { id: "obsidian", label: "黑金" },
@@ -113,7 +128,7 @@ function WalletBankCard({
   );
 }
 
-export function WalletPanel({ onBack }: WalletPanelProps) {
+export function WalletPanel({ onBack, onNavigateTab }: WalletPanelProps) {
   const [wallet, setWallet] = useState<WalletState>(() => loadWalletState());
   const [activeCardId, setActiveCardId] = useState(() => wallet.defaultCardId || wallet.cards[0]?.id || "");
   const [balanceTransferMode, setBalanceTransferMode] = useState<"deposit" | "withdraw" | null>(null);
@@ -301,6 +316,20 @@ export function WalletPanel({ onBack }: WalletPanelProps) {
     <PageShell title="余额管理" onBack={onBack} className="wallet-page-root" headerClassName="wallet-app-header" headerStyle={{ background: "#f7f6f0", backgroundColor: "#f7f6f0", backgroundImage: "none", backdropFilter: "none", WebkitBackdropFilter: "none", zIndex: 50, isolation: "isolate" }}>
       <WalletHeaderIsolationStyle />
 
+      <div className="wallet-private-bank wallet-tab-row flex shrink-0 gap-2 overflow-x-auto px-4 pb-3 pt-1" aria-label="钱包页面导航">
+        {WALLET_NAV_TABS.map(item => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onNavigateTab(item.id)}
+            aria-current={item.id === "accounts" ? "page" : undefined}
+            className={`wallet-tab shrink-0 rounded-full px-4 py-2 text-sm transition-colors`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
       <div className="p-4 flex flex-col gap-4 pb-24">
         <section className="wallet-balance-hero rounded-2xl p-5 overflow-hidden relative min-h-[156px] flex flex-col justify-between">
           <div className="relative flex items-start justify-between gap-4">
@@ -344,25 +373,7 @@ export function WalletPanel({ onBack }: WalletPanelProps) {
               />
             ))}
           </div>
-          {wallet.cards.length > 1 && (
-            <div className="flex flex-wrap items-center justify-center gap-2 px-1" aria-label="切换银行卡">
-              {wallet.cards.map((card, index) => (
-                <button
-                  key={card.id}
-                  type="button"
-                  aria-pressed={activeCard?.id === card.id}
-                  onClick={() => {
-                    setActiveCardId(card.id);
-                    cardStackRef.current?.querySelector<HTMLElement>(`[data-account-id="${card.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-                  }}
-                  className="rounded-full px-3 py-1.5 text-[11px] font-medium transition-colors"
-                  style={{ background: activeCard?.id === card.id ? "var(--c-icon-active)" : "var(--c-card)", color: activeCard?.id === card.id ? "#fff" : "var(--c-text)", border: activeCard?.id === card.id ? "1px solid transparent" : "1px solid var(--c-card-border)" }}
-                >
-                  {card.title || `银行卡 ${index + 1}`}
-                </button>
-              ))}
-            </div>
-          )}
+
         </section>
 
         {activeCard ? (
