@@ -32,6 +32,9 @@ c1=qa.buildAnonymousQaContext("c1");
 T("回答对所有角色共享可见",c1.includes("没有躲你") && qa.buildAnonymousQaContext("c2").includes("没有躲你"));
 
 const roleLetter=qa.askAnonymousQuestion({askerType:"character",askerId:"c1",targetType:"character",targetId:"c2",question:"你是不是也在意她？"});
+T("角色名称可兜底解析为唯一角色 ID",qa.askAnonymousQuestion({askerType:"character",askerId:"c1",targetType:"character",targetId:"顾总",question:"名称解析测试"}).targetId==="c2");
+T("不存在的角色不会创建无收件人 ID 的问题",(()=>{try{qa.askAnonymousQuestion({askerType:"character",askerId:"c1",targetType:"character",targetId:"missing-role",question:"无效收件人"});return false;}catch{return true;}})());
+T("角色不能向自己提问",(()=>{try{qa.askAnonymousQuestion({askerType:"character",askerId:"c1",targetType:"character",targetId:"c1",question:"问自己"});return false;}catch{return true;}})());
 T("角色 A 向角色 B 提问后所有角色可见",qa.buildAnonymousQaContext("c2").includes(roleLetter.question) && qa.buildAnonymousQaContext("c1").includes(roleLetter.question));
 qa.answerAnonymousQuestion(roleLetter.id,"我当然在意",{targetType:"character",targetId:"c2"});
 T("回答公开同步给所有角色",qa.buildAnonymousQaContext("c1").includes("我当然在意") && qa.buildAnonymousQaContext("c2").includes("我当然在意"));
