@@ -2152,6 +2152,10 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
         fun appLockStop(): String = PlayfulAppLockService.stop(this@MainActivity).toString()
 
         @JavascriptInterface
+        fun appLockTemporaryPass(minutes: Int): String =
+            PlayfulAppLockService.temporaryPass(this@MainActivity, minutes).toString()
+
+        @JavascriptInterface
         fun appLockStatus(): String = PlayfulAppLockService.status(this@MainActivity).toString()
 
         @JavascriptInterface
