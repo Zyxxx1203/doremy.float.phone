@@ -53,7 +53,9 @@ class PlayfulAppLockService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        val expiresAt = intent?.getLongExtra("expiresAt", 0L)?.takeIf { it > 0L } ?: prefs.getLong("expiresAt", 0L)
+        val expiresAt = intent?.getLongExtra("expiresAt", 0L)?.takeIf { it > 0L }
+            ?: prefs.getLong("expiresAt", 0L).takeIf { it > 0L }
+            ?: (System.currentTimeMillis() + 180 * 60_000L)
         if (expiresAt > 0L && expiresAt <= System.currentTimeMillis()) {
             stopLock()
             return START_NOT_STICKY
@@ -237,7 +239,6 @@ class PlayfulAppLockService : Service() {
             charId: String,
             charName: String,
             avatar: String,
-            requestedPassword: String,
             styleJson: String = "{}",
             durationMinutes: Int = 180,
             sessionId: String = "",
@@ -249,15 +250,14 @@ class PlayfulAppLockService : Service() {
             val installed = runCatching { context.packageManager.getApplicationInfo(target, 0) }.isSuccess
             if (!installed) return JSONObject().put("ok", false).put("reason", "目标应用已不存在或未安装")
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            if (prefs.getBoolean("running", false) && (prefs.getLong("expiresAt", 0L) == 0L || prefs.getLong("expiresAt", 0L) > System.currentTimeMillis())) {
+            if (prefs.getBoolean("running", false) && prefs.getLong("expiresAt", 0L) > System.currentTimeMillis()) {
                 val existingCharId = prefs.getString("charId", "") ?: ""
                 val existingTarget = prefs.getString("target", "") ?: ""
                 if (existingCharId != charId || existingTarget != target) {
                     return JSONObject().put("ok", false).put("reason", "已有角色小手段正在生效，请先结束当前锁定，避免覆盖另一位角色的锁")
                 }
             }
-            val password = requestedPassword.takeIf { it.trim().length >= 4 }
-                ?: (100000 + random.nextInt(900000)).toString()
+            val password = (100000 + random.nextInt(900000)).toString()
             val boundedMinutes = durationMinutes.coerceIn(1, 360)
             val expiresAt = System.currentTimeMillis() + boundedMinutes * 60_000L
             val intent = Intent(context, PlayfulAppLockService::class.java)
