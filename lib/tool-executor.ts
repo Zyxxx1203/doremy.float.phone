@@ -2614,7 +2614,7 @@ async function executeAppLockTool(call: ToolCall, context?: ToolExecutionContext
                 return {
                     name: call.name,
                     success: true,
-                    data: `当前好感度 ${score}，低于告诉密码需要的 ${threshold}。还不能把密码告诉用户，可以继续逗他。`,
+                    data: `当前好感度 ${score}，低于告诉密码需要的 ${threshold}，暂时不能告知密码。`,
                     userNotice: "TA 现在还不肯告诉你密码",
                 };
             }
