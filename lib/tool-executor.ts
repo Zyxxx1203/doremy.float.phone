@@ -63,7 +63,7 @@ import { characterEarn, characterSpend, ensureCharacterLedger, loadCharacterLedg
 import { createFamilyCard, loadFamilyCards, spendWithFamilyCard } from "./economy/family-card";
 import { answerAnonymousQuestion, askAnonymousQuestion, loadAnonymousQa } from "./anonymous-qa";
 import { depositToJointFund, loadJointFundTransactions, loadJointFunds } from "./economy/joint-fund";
-import { loadChatMessages, loadChatSessions } from "./chat-storage";
+import { createOrGetSession, loadChatMessages, loadChatSessions } from "./chat-storage";
 import { readCustomAppCollection } from "./custom-app-storage";
 import { FOCUS_COMPANION_APP_ID } from "./builtin-apps/focus-companion-meta";
 import { makeNativeToolName } from "./native-tool-name";
@@ -2527,6 +2527,19 @@ function focusAppLockThreshold(): number {
     }
 }
 
+/** 锁屏返回时始终定位到发起角色的私聊，不把群聊当作角色的求情入口。 */
+function resolveAppLockChatSessionId(characterId: string): string {
+    try {
+        const existing = loadChatSessions()
+            .filter(session => !session.isGroup && (session.characterId === characterId || session.contactId === characterId))
+            .slice()
+            .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))[0];
+        return existing?.id || createOrGetSession(characterId).id;
+    } catch {
+        return "";
+    }
+}
+
 /** 从该角色最近的私聊消息里读 [好感度:N]；专注 APP 的小手段用同一套判定。 */
 function latestCharacterAffinity(characterId: string): number {
     try {
@@ -2632,7 +2645,7 @@ async function executeAppLockTool(call: ToolCall, context?: ToolExecutionContext
             avatar: character?.avatar || "",
             style: call.args?.style && typeof call.args.style === "object" ? call.args.style : {},
             durationMinutes: Math.max(1, Math.min(360, Number(call.args?.durationMinutes) || 30)),
-            sessionId: context?.sessionId || "",
+            sessionId: resolveAppLockChatSessionId(characterId),
         });
         if (!result.ok) throw new Error(result.reason || "锁应用失败");
         return { name: call.name, success: true, data: `已锁住「${app.label}」，最长 ${Math.max(1, Math.min(360, Number(call.args?.durationMinutes) || 180))} 分钟后自动解除。密码由系统生成；用户可以回 Float 和你商量，也始终能紧急解除。`, userNotice: `把「${app.label}」暂时保管起来了` };
