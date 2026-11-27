@@ -38,7 +38,7 @@ assert.match(activity, /EXTRA_OPEN_URL/, "the lock screen must deep-link back to
 assert.match(activity, /#open-chat=/, "the lock screen must route to the original chat session");
 assert.doesNotMatch(activity, /temporaryPass\(this@PlayfulLockActivity, 1\)/, "temporary passes must be granted by the character, not self-served from the lock page");
 assert.doesNotMatch(activity, /紧急解除/, "the app-lock screen must not expose an emergency unlock button");
-assert.match(activity, /去找 \$\{charName\} 求情/, "the lock page must offer a natural plea-for-mercy route back to the character");
+assert.match(activity, /去找TA求情/, "the lock page must offer a natural plea-for-mercy route back to the character");
 assert.match(activity, /TA 的专属小手段/, "the lock page keeps the character-flavored label");
 assert.match(activity, /actionButton\("确认解锁"/, "password unlock remains available when the character shares the password");
 assert.doesNotMatch(service, /紧急解除/, "native app-lock notifications must not advertise an emergency exit");
