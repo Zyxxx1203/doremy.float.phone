@@ -1102,6 +1102,8 @@ export function prepareShortTermContext(
         excludeOfflineSessionId?: string;
         includeNativeToolHistory?: boolean;
         includeDirectChatEntries?: boolean;
+        /** false 时不读取任何 APP 时间线，仅保留本次显式传入的会话消息。 */
+        includeTimeline?: boolean;
         /** 只读取该时间之后的跨应用最近事件；剧情分线用它隔离创建前的短期记忆。 */
         afterTimestamp?: string;
         /** false 时仅保留剧情 APP 时间线，不读取其他 APP 的相关事件。 */
@@ -1119,7 +1121,7 @@ export function prepareShortTermContext(
     unifiedRecentItems: UnifiedRecentItem[];
 } {
     const timeAware = resolvePromptTimeAware(options?.timeAware);
-    let timeline = loadNativeTimeline(characterId, {
+    let timeline: NativeTimelineEntry[] = options?.includeTimeline === false ? [] : loadNativeTimeline(characterId, {
         userName: options?.userName,
         appId: appId as import("./settings-types").ContentAppId,
         excludeOfflineSessionId: options?.excludeOfflineSessionId,
