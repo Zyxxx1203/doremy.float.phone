@@ -424,6 +424,7 @@ export function recordWalletBookkeeping(input: {
   const title = cleanText(input.title, 120);
   const category = cleanText(input.category, 80) || "其他";
   const note = cleanText(input.note, 300);
+  if (input.direction !== "income" && input.direction !== "expense") return { ok: false, state: current, error: "收支方向无效。" };
   if (amount <= 0) return { ok: false, state: current, error: "记账金额必须大于 0。" };
   if (!title) return { ok: false, state: current, error: "请说明这笔收支的用途或来源。" };
   const reference = cleanText(input.reference, 120);
