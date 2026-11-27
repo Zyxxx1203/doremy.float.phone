@@ -344,6 +344,25 @@ export function WalletPanel({ onBack }: WalletPanelProps) {
               />
             ))}
           </div>
+          {wallet.cards.length > 1 && (
+            <div className="flex flex-wrap items-center justify-center gap-2 px-1" aria-label="切换银行卡">
+              {wallet.cards.map((card, index) => (
+                <button
+                  key={card.id}
+                  type="button"
+                  aria-pressed={activeCard?.id === card.id}
+                  onClick={() => {
+                    setActiveCardId(card.id);
+                    cardStackRef.current?.querySelector<HTMLElement>(`[data-account-id="${card.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+                  }}
+                  className="rounded-full px-3 py-1.5 text-[11px] font-medium transition-colors"
+                  style={{ background: activeCard?.id === card.id ? "var(--c-icon-active)" : "var(--c-card)", color: activeCard?.id === card.id ? "#fff" : "var(--c-text)", border: activeCard?.id === card.id ? "1px solid transparent" : "1px solid var(--c-card-border)" }}
+                >
+                  {card.title || `银行卡 ${index + 1}`}
+                </button>
+              ))}
+            </div>
+          )}
         </section>
 
         {activeCard ? (
