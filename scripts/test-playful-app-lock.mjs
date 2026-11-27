@@ -20,6 +20,9 @@ assert.match(service, /SecureRandom\(\)/, "app-lock password must use SecureRand
 assert.match(service, /durationMinutes\.coerceIn\(1, 360\)/, "lock duration must be capped at six hours");
 assert.match(service, /expiresAt/, "native lock must persist and enforce expiry");
 assert.match(service, /passUntil/, "temporary pass must be tracked natively");
+assert.match(internal, /给临时通行证/, "characters must have a dedicated temporary-pass tool");
+assert.match(executor, /这不是你发起的应用锁/, "a character must not grant a pass for another character's lock");
+assert.match(executor, /appLockTemporaryPass\(minutes\)/, "the role tool must grant the native temporary pass");
 assert.match(service, /isProtectedTarget\(context, target\)/, "protected targets must be rejected in native code");
 assert.match(service, /com\.android\.settings/, "Android Settings must be protected");
 assert.match(service, /monitoringAvailable/, "status must report whether foreground monitoring has a source");
@@ -29,7 +32,7 @@ assert.match(read("android-shell/app/src/main/java/app/floatphone/shell/CallCont
 assert.match(service, /now - lastShowAt > 2500L/, "returning to a blocked app must be re-intercepted promptly");
 assert.match(activity, /EXTRA_OPEN_URL/, "the lock screen must deep-link back to the originating chat");
 assert.match(activity, /#open-chat=/, "the lock screen must route to the original chat session");
-assert.match(activity, /temporaryPass\(this@PlayfulLockActivity, 1\)/, "the user must have a short temporary pass");
+assert.doesNotMatch(activity, /temporaryPass\(this@PlayfulLockActivity, 1\)/, "temporary passes must be granted by the character, not self-served from the lock page");
 assert.match(activity, /紧急解除这次锁定/, "the user must always have an explicit emergency exit");
 assert.match(activity, /updateCountdown\(\)/, "the lock screen must show remaining lock time");
 assert.match(activity, /TYPE_CLASS_NUMBER or InputType\.TYPE_NUMBER_VARIATION_PASSWORD/, "six-digit native password should use a numeric keypad");
