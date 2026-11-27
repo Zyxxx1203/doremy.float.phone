@@ -90,7 +90,7 @@ const jointFund = loadTs("lib/economy/joint-fund.ts", {
 
 console.log("== 1. 用户计划到期：余额 + 流水都要落库 ==");
 const fund = jointFund.createJointFund({ name: "旅行基金", goalLabel: "机票", goalAmount: 2000, userId: "u1", characterId: "c1" });
-jointFund.setJointFundPlan({ fundId: fund.id, memberType: "user", memberId: "u1", cadence: "weekly", amount: 100 });
+jointFund.setJointFundPlan({ fundId: fund.id, memberType: "user", memberId: "user", cadence: "weekly", amount: 100 });
 let raw = JSON.parse(store.get("ai_phone_joint_funds_v1"));
 raw.plans[0].nextRunAt = Date.now() - 1000;
 store.set("ai_phone_joint_funds_v1", JSON.stringify(raw));
@@ -102,20 +102,18 @@ T("流水已写入", state.transactions.length === 1 && state.transactions[0].ki
 T("用户钱包扣款", wallet.balance === 900, `wallet=${wallet.balance}`);
 T("下一期已推进", state.plans[0].nextRunAt > Date.now() + 6 * 86400000, new Date(state.plans[0].nextRunAt).toISOString());
 
-console.log("== 2. 角色计划扣角色账本 ==");
-jointFund.setJointFundPlan({ fundId: fund.id, memberType: "character", memberId: "c1", cadence: "weekly", amount: 50 });
-raw = JSON.parse(store.get("ai_phone_joint_funds_v1"));
-raw.plans.find((plan) => plan.memberType === "character").nextRunAt = Date.now() - 1000;
-store.set("ai_phone_joint_funds_v1", JSON.stringify(raw));
-results = jointFund.runDueJointFundPlans();
+console.log("== 2. 用户不能替角色设置自动存款计划 ==");
+const blockedCharacterPlan = jointFund.setJointFundPlan({ fundId: fund.id, memberType: "character", memberId: "c1", cadence: "weekly", amount: 50 });
+T("拒绝创建角色自动存款计划", blockedCharacterPlan === null);
+const characterDeposit = jointFund.depositToJointFund(fund.id, "character", "c1", 50, "角色主动存入");
 state = JSON.parse(store.get("ai_phone_joint_funds_v1"));
-T("角色计划执行成功", results.length === 1 && results[0].ok === true, JSON.stringify(results[0]));
-T("小金库余额累加", state.funds[0].balance === 150, `balance=${state.funds[0].balance}`);
+T("角色仍可通过自己的身份主动存入", characterDeposit.ok === true, characterDeposit.error || "");
 T("角色账本扣款", ledger.c1 === 950, `character=${ledger.c1}`);
+T("小金库余额累加", state.funds[0].balance === 150, `balance=${state.funds[0].balance}`);
 
 console.log("== 3. 扣款失败不吞计划 ==");
 wallet.balance = 0;
-jointFund.setJointFundPlan({ fundId: fund.id, memberType: "user", memberId: "u1", cadence: "monthly", amount: 80 });
+jointFund.setJointFundPlan({ fundId: fund.id, memberType: "user", memberId: "user", cadence: "monthly", amount: 80 });
 raw = JSON.parse(store.get("ai_phone_joint_funds_v1"));
 const failedPlan = raw.plans.find((plan) => plan.memberType === "user");
 failedPlan.nextRunAt = Date.now() - 1000;
@@ -129,7 +127,7 @@ T("失败计划改为次日重试", retryPlan.nextRunAt > Date.now() + 23 * 3600
 
 console.log("== 4. 到期提醒只发一次 ==");
 wallet.balance = 1000;
-jointFund.setJointFundPlan({ fundId: fund.id, memberType: "user", memberId: "u1", cadence: "monthly", amount: 20 });
+jointFund.setJointFundPlan({ fundId: fund.id, memberType: "user", memberId: "user", cadence: "monthly", amount: 20 });
 raw = JSON.parse(store.get("ai_phone_joint_funds_v1"));
 raw.plans.forEach((plan) => { if (plan.memberType === "user") plan.nextRunAt = Date.now() + 3600000; });
 store.set("ai_phone_joint_funds_v1", JSON.stringify(raw));
