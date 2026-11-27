@@ -138,6 +138,17 @@ const onlyCompletion = results.find(item => item.planId === onlyPlan.id);
 T("无其他小金库时没有切换候选", onlyCompletion?.goalReached === true && onlyCompletion.otherFunds?.length === 0);
 T("无其他目标后计划彻底取消", !state.plans.some(plan => plan.id === onlyPlan.id));
 
+console.log("== 2.2.1 用户提前存满时也清理角色计划 ==");
+const userCompletedFund = jointFund.createJointFund({ name: "提前完成目标", goalLabel: "提前", goalAmount: 10, userId: "u4", characterId: "c4" });
+const userCompletedPlan = jointFund.setJointFundPlanForCharacter("c4", { fundId: userCompletedFund.id, cadence: "monthly", amount: 5 });
+const userFill = jointFund.depositToJointFund(userCompletedFund.id, "user", "user", 10, "用户提前存满");
+T("用户存款可以提前达成目标", userFill.ok === true && userFill.fund.status === "completed");
+const earlyCompletion = jointFund.runDueJointFundPlans().find(item => item.planId === userCompletedPlan.id);
+state = JSON.parse(store.get("ai_phone_joint_funds_v1"));
+T("未到计划时间也能识别目标已完成", earlyCompletion?.alreadyCompleted === true);
+T("提前达成后角色计划立即清理", !state.plans.some(plan => plan.id === userCompletedPlan.id));
+T("已完成的小金库拒绝继续存入", jointFund.depositToJointFund(userCompletedFund.id, "character", "c4", 1, "不应继续存").ok === false);
+
 console.log("== 2.3 目标完成后让角色决定是否更换小金库 ==");
 const followUpFund = jointFund.createJointFund({ name: "旅行基金", goalLabel: "旅行", goalAmount: 5, userId: "u1", characterId: "c1" });
 const followUpPlan = jointFund.setJointFundPlanForCharacter("c1", { fundId: followUpFund.id, cadence: "weekly", amount: 5 });
