@@ -75,6 +75,10 @@ export function AnonymousQaApp({ onClose }: { onClose: () => void }) {
   return (
     <PageShell title="匿名提问箱" onBack={onClose} className="anonymous-qa-shell">
       <style>{`
+        .anonymous-qa-shell.page-shell{position:relative;z-index:40;isolation:isolate;background:#f4f4f2}
+        .anonymous-qa-shell.page-shell>.page-header{z-index:20;background:rgba(244,244,242,.97);border-bottom:1px solid #e3e3df}
+        .anonymous-qa-shell.page-shell>.page-body{padding-top:calc(var(--page-header-safe-top,48px) + var(--page-header-content-height,42px));background:#f4f4f2}
+
         .aq-page{min-height:100%;background:#f4f4f2;color:#171717;padding:18px 16px 104px;font-family:Georgia,"Noto Serif SC",serif}
         .aq-kicker{font:600 9px/1.4 ui-sans-serif,system-ui;letter-spacing:.28em;color:#777;text-transform:uppercase}
         .aq-title{font:500 27px/1.2 Georgia,"Noto Serif SC",serif;letter-spacing:.02em;color:#171717}
