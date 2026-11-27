@@ -2568,13 +2568,16 @@ async function executeAppLockTool(call: ToolCall, context?: ToolExecutionContext
         if (call.name === "给临时通行证") {
             const status = appLockStatus();
             if (!status.ok || !status.running) throw new Error("现在没有应用锁在生效");
-            if (status.charId && status.charId !== characterId) throw new Error("这不是你发起的应用锁，不能替别人发通行证");
+            if (status.charId !== characterId) throw new Error("这不是你发起的应用锁，不能替别人发通行证");
             const minutes = Math.max(1, Math.min(5, Number(call.args?.minutes) || 1));
             const result = appLockTemporaryPass(minutes);
             if (!result.ok) throw new Error(result.reason || "临时通行证发放失败");
             return { name: call.name, success: true, data: `已给用户 ${minutes} 分钟临时通行时间，到期后会自动恢复拦截。`, userNotice: `${character?.name || "TA"} 给了你 ${minutes} 分钟通行时间` };
         }
         if (call.name === "解锁应用") {
+            const status = appLockStatus();
+            if (!status.ok || !status.running) throw new Error("现在没有应用锁在生效");
+            if (status.charId !== characterId) throw new Error("这不是你发起的应用锁，不能替别人解除");
             const result = appLockStop();
             if (!result.ok) throw new Error(result.reason || "解锁失败");
             return { name: call.name, success: true, data: "已解除当前应用锁", userNotice: "把应用锁解除了" };
@@ -2591,7 +2594,7 @@ async function executeAppLockTool(call: ToolCall, context?: ToolExecutionContext
         if (call.name === "告诉应用锁密码") {
             const status = appLockStatus();
             if (!status.ok || !status.running) throw new Error("现在没有应用锁在生效");
-            if (status.charId && status.charId !== characterId) throw new Error("这个应用锁不是你下的");
+            if (status.charId !== characterId) throw new Error("这个应用锁不是你下的");
             const threshold = focusAppLockThreshold();
             const score = latestCharacterAffinity(characterId);
             if (score < threshold) {
