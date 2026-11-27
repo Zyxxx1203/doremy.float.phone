@@ -56,6 +56,7 @@ export const RESERVED_INTERNAL_TOOL_NAMES: string[] = [
     "开亲属卡",
     "查看共同小金库",
     "存入共同小金库",
+    "设置小金库定期存款",
     "帮我记账",
     "匿名提问",
     "回答匿名提问",
