@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - "components/wallet-app.tsx"
+      - "components/anonymous-qa-app.tsx"
+      - "lib/anonymous-qa.ts"
+      - "lib/chat-engine.ts"
+      - "scripts/test-anonymous-qa.mjs"
       - "lib/wallet-storage.ts"
       - "lib/economy/**"
       - "lib/internal-capability-storage.ts"
@@ -35,5 +39,7 @@ jobs:
         run: npm ci
       - name: Wallet and economy regression tests
         run: npm run test:economy
+      - name: Anonymous Q&A timeline and management regression tests
+        run: npm run test:anonymous
       - name: TypeScript type check
         run: npx tsc --noEmit
