@@ -104,7 +104,6 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
   const activeCharacterId = characters.some(character => character.id === selectedCharacterId)
     ? selectedCharacterId
     : characters[0]?.id || "";
-  const selectedCharacter = characters.find(character => character.id === activeCharacterId);
   const selectedCharacterLedger = useMemo(() => {
     void tick;
     return activeCharacterId ? loadCharacterLedger(activeCharacterId) : null;
