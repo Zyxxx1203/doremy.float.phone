@@ -191,7 +191,7 @@ export function updateAnonymousQuestion(questionId: string, input: {
                 role: "system",
                 mediaType: "system_instruction",
                 content: "这条匿名问题已更改回答对象，原先给你的通知已失效，请忽略。",
-                mediaData: { compactSystemInstruction: true, shortTermMemoryEvent: true },
+                mediaData: { compactSystemInstruction: true, shortTermMemoryEvent: true, shortTermMemorySource: "anonymous_qa" },
             });
         }
     }
