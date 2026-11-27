@@ -56,6 +56,7 @@ export const RESERVED_INTERNAL_TOOL_NAMES: string[] = [
     "开亲属卡",
     "查看共同小金库",
     "存入共同小金库",
+    "帮我记账",
     "匿名提问",
     "回答匿名提问",
     "查看匿名提问箱",
@@ -632,6 +633,19 @@ const CHARACTER_ECONOMY_LEDGER_SCHEMA = JSON.stringify({
         limit: { type: "number", description: "最近多少笔，默认 20，最大 100" },
     },
 });
+const USER_BOOKKEEPING_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {
+        direction: { type: "string", enum: ["income", "expense"], description: "收入或支出；必须根据用户明确表达判断" },
+        amount: { type: "number", description: "金额，正数，单位元" },
+        title: { type: "string", description: "简短用途或收入来源，例如「午餐」「工资到账」" },
+        category: { type: "string", description: "分类，例如餐饮、交通、购物、居住、娱乐、医疗、订阅、学习、工资、退款、其他" },
+        note: { type: "string", description: "补充说明，可选" },
+        occurredAt: { type: "string", description: "交易实际发生时间；可用 ISO 时间或明确日期时间，不确定时省略" },
+        reference: { type: "string", description: "可选的订单号或交易唯一标识，用于防止重复记账" },
+    },
+    required: ["direction", "amount", "title"],
+});
 
 const CHARACTER_FAMILY_CARD_VIEW_SCHEMA = JSON.stringify({ type: "object", properties: {} });
 const CHARACTER_FAMILY_CARD_SPEND_SCHEMA = JSON.stringify({
@@ -718,6 +732,11 @@ const ANONYMOUS_QA_SUBTOOLS: InternalToolDefinition[] = [
 ];
 
 const CHARACTER_ECONOMY_SUBTOOLS: InternalToolDefinition[] = [
+    {
+        name: "帮我记账",
+        description: "当用户明确告诉你一笔已经发生的收入或支出，并且金额与方向清楚时，替用户记录到用户自己的钱包流水；不要把你自己的收入/支出记到用户钱包，也不要猜测金额或交易方向。若用户只是讨论计划、询问价格或表达想买但尚未发生，不要记账。若同一笔已经记过，不要重复调用。",
+        parameterSchema: USER_BOOKKEEPING_SCHEMA,
+    },
     {
         name: "记录角色收入",
         description: "当你的收入到账、项目结款、兼职发钱、投资回款、捡到钱或收到红包时，主动记入自己的账本；金额和来源必须真实合理，不要凭空印钱。",
