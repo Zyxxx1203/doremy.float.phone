@@ -111,7 +111,7 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
 
   return (
     <PageShell title="钱包" onBack={onClose} className="wallet-private-bank wallet-private-bank-shell">
-      <div className="wallet-private-bank flex gap-2 overflow-x-auto px-1 pb-3">
+      <div className="wallet-private-bank wallet-tab-row flex shrink-0 gap-2 overflow-x-auto px-1 pb-3">
         {TABS.map(item => (
           <button key={item.id} onClick={() => setTab(item.id)} aria-pressed={tab === item.id} className={`wallet-tab shrink-0 rounded-full px-4 py-2 text-sm transition-colors ${tab === item.id ? "" : ""}`}>{item.label}</button>
         ))}

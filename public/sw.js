@@ -1,6 +1,5 @@
-// v15：升版强制作废旧缓存（角色收入/匿名提问箱/定时锁机/亲属卡与好感度链路）。
-// 旧版 /_next/static/ 走 cache-first，旧包会被一直留在 RUNTIME_CACHE 里。
-const CACHE_VERSION = "ai-phone-pwa-v15";
+// v16：升版清缓存（PR90/91/92 钱包与角色锁应用改版、钱包布局修复）。
+const CACHE_VERSION = "ai-phone-pwa-v16";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
