@@ -38,7 +38,7 @@ import {
     loadPerceptionStatus,
     markQueryPerformed,
 } from "./perception";
-import { notifyDeviceAction, runDeviceAction, listInstalledApps, appLockStart, appLockStop, appLockStatus, appLockReveal } from "./device-action";
+import { notifyDeviceAction, runDeviceAction, listInstalledApps, appLockStart, appLockStop, appLockTemporaryPass, appLockStatus, appLockReveal } from "./device-action";
 import { renderWidgetHtml, injectWidgetCss } from "./widget/template";
 import { canGenerateAvatar, generateWidgetAvatar } from "./widget/avatar";
 import { loadWidgetConfig, saveWidgetData, loadWidgetData, loadWidgetProfiles, loadWidgetProfileData, saveWidgetProfileData } from "./widget/storage";
@@ -2510,7 +2510,7 @@ async function executeToolboxManagementTool(call: ToolCall): Promise<ToolResult>
 }
 
 function isAppLockToolName(name: string): boolean {
-    return name === "查看可锁应用" || name === "锁应用" || name === "解锁应用" || name === "查看应用锁" || name === "告诉应用锁密码";
+    return name === "查看可锁应用" || name === "锁应用" || name === "解锁应用" || name === "查看应用锁" || name === "告诉应用锁密码" || name === "给临时通行证";
 }
 
 /** 好感度阈值优先读专注 APP 的角色小手段设置；没装/没设置时用默认 60。 */
@@ -2564,6 +2564,15 @@ async function executeAppLockTool(call: ToolCall, context?: ToolExecutionContext
             const result = listInstalledApps();
             if (!result.ok) throw new Error(result.reason || "读不到应用列表");
             return { name: call.name, success: true, data: result.apps.slice(0, 100).map(a => `${a.label} (${a.package})`).join("\n"), userNotice: "看了看可以锁的应用" };
+        }
+        if (call.name === "给临时通行证") {
+            const status = appLockStatus();
+            if (!status.ok || !status.running) throw new Error("现在没有应用锁在生效");
+            if (status.charId && status.charId !== characterId) throw new Error("这不是你发起的应用锁，不能替别人发通行证");
+            const minutes = Math.max(1, Math.min(5, Number(call.args?.minutes) || 1));
+            const result = appLockTemporaryPass(minutes);
+            if (!result.ok) throw new Error(result.reason || "临时通行证发放失败");
+            return { name: call.name, success: true, data: `已给用户 ${minutes} 分钟临时通行时间，到期后会自动恢复拦截。`, userNotice: `${character?.name || "TA"} 给了你 ${minutes} 分钟通行时间` };
         }
         if (call.name === "解锁应用") {
             const result = appLockStop();
