@@ -9,6 +9,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const source = fs.readFileSync(path.join(ROOT, "lib/anonymous-qa.ts"), "utf8");
 const chatEngineSource = fs.readFileSync(path.join(ROOT, "lib/chat-engine.ts"), "utf8");
 const shortTermAssemblerSource = fs.readFileSync(path.join(ROOT, "lib/short-term-assembler.ts"), "utf8");
+const followUpSource = fs.readFileSync(path.join(ROOT, "lib/follow-up-service.ts"), "utf8");
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true } }).outputText;
 const store = new Map();
 const kv = { kvGet: key => store.has(key) ? store.get(key) : null, kvSet: (key, value) => store.set(key, value), registerKvMigration: () => {} };
@@ -37,6 +38,7 @@ const targetNotice = chatMessages.find(message => message.sessionId === "session
 T("旧 audience 参数不会改变公开可见属性", userLetter.audience === "public" && qa.loadPublicAnonymousQa().some(q => q.id === userLetter.id));
 T("指定角色收到系统条目", targetNotice?.sessionId === "session-c1" && targetNotice.role === "system" && targetNotice.mediaType === "system_instruction");
 T("新增问题只请求指定收件会话主动回复", replyRequests[0]?.sessionId === "session-c1" && replyRequests[0]?.questionId === userLetter.id);
+T("后台回复服务接收定向事件并调用统一主动回复链路", followUpSource.includes('window.addEventListener("anonymous-qa-reply-requested", anonymousQaReplyHandler)') && followUpSource.includes("requestBackgroundChatReply(detail.sessionId") && followUpSource.includes('window.removeEventListener("anonymous-qa-reply-requested", anonymousQaReplyHandler)'));
 T("系统条目进入自然短期时间线并保留来源标记", targetNotice?.mediaData?.shortTermMemoryEvent === true && targetNotice.mediaData.compactSystemInstruction === true && targetNotice.mediaData.shortTermMemorySource === "anonymous_qa");
 T("匿名提问事件以独立来源进入短期时间线且不受普通聊天来源开关影响", shortTermAssemblerSource.includes('sourceDetail: msg.mediaData?.shortTermMemorySource === "anonymous_qa" ? "anonymous_qa"') && shortTermAssemblerSource.includes('tag: "recent_anonymous_qa"') && shortTermAssemblerSource.includes('if (entry.sourceDetail === "anonymous_qa") return true;'));
 T("聊天提示词不再聚合注入匿名提问箱上下文", !chatEngineSource.includes("buildAnonymousQaContext") && !chatEngineSource.includes("anonymousQaShortTerm"));
