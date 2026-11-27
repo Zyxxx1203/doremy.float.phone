@@ -818,7 +818,17 @@ async function fireTimedWake(sched: TimedWakeSchedule) {
             return;
         }
         turn = beginTurn({ kind: "timed_wake", characterId: sched.characterId, sessionId: session.id });
-        if (!turn) return;
+        if (!turn) {
+            if (sched.retryIfBusy) {
+                const retryAt = Date.now() + 60_000;
+                appendTimedWakeSchedule({
+                    ...sched,
+                    fireAt: retryAt,
+                    delayMinutes: Math.max(1, Math.ceil((retryAt - sched.createdAt) / 60_000)),
+                });
+            }
+            return;
+        }
 
         const latestMessages = loadChatMessages(session.id);
         const elapsedMinutes = resolveTimedWakeElapsedMinutes(sched, latestMessages, Date.now());
