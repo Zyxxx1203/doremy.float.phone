@@ -2037,10 +2037,6 @@ export function CustomAppRunner({
       requirePermission("device.assist");
       return runCustomAppAppLockStatus(app, record);
     }
-    if (action === "device.appLock.reveal") {
-      requirePermission("device.assist");
-      return runCustomAppAppLockReveal(app, record);
-    }
     if (action === "device.focusOverlay.update") {
       requirePermission("device.assist");
       return runCustomAppFocusOverlayUpdate(app, record);
