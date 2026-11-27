@@ -77,8 +77,27 @@ export function WalletPlanningTabs({tab,onChange}:{tab:WalletPlanningTab;onChang
     {!state.bills.length&&<Panel><div className="py-5 text-center text-sm text-[#999]">把固定订阅、房租等周期支出集中管理。</div></Panel>}
   </div>;
   if(tab==="calendar") return <div className="wallet-private-bank flex flex-col gap-3">
-    <Panel><Label>FINANCIAL CALENDAR</Label><div className="text-xl font-semibold">财务日历</div><p className="mt-1 text-[11px] text-[#8a8579]">账单到期日与最近的实际收支流水。</p></Panel>
-    {calendarItems.length?calendarItems.map(item=><div key={item.id} className="wallet-section flex items-center gap-3 rounded-xl p-3"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#e8e4d8] text-[#8a7955]">{item.kind==="bill"?<CalendarDays size={17}/>:<Repeat2 size={17}/>}</div><div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-[#34362f]">{item.title}</div><div className="mt-1 text-[10px] text-[#8a8579]">{item.detail}</div></div><div className="text-[10px] text-[#8a8579]">{dateLabel(item.date)}</div></div>):<Panel><div className="py-8 text-center text-sm text-[#999]">暂时没有账单或流水事件。</div></Panel>}
+    <Panel>
+      <Label>FINANCIAL CALENDAR</Label>
+      <div className="flex items-center justify-between gap-3">
+        <div><div className="text-xl font-semibold">财务日历</div><p className="mt-1 text-[11px] text-[#8a8579]">按日期查看账单与实际收支，不再混在一条长列表里。</p></div>
+        <div className="shrink-0 rounded-xl bg-[#e9eee5] px-3 py-2 text-right"><div className="text-[10px] text-[#71806b]">本月事件</div><div className="text-lg font-semibold text-[#3f6547]">{calendarItems.filter(item=>{const d=new Date(item.date);return !Number.isNaN(d.getTime())&&monthKey(d)===calendarMonthKey;}).length}</div></div>
+      </div>
+    </Panel>
+    <Panel>
+      <div className="mb-4 flex items-center justify-between">
+        <button type="button" aria-label="上个月" onClick={()=>{const next=new Date(calendarMonth.getFullYear(),calendarMonth.getMonth()-1,1);setCalendarMonth(next);setSelectedCalendarDay(monthKey(next)+"-01");}} className="grid h-9 w-9 place-items-center rounded-full bg-[#f0eee7] text-[#62665a]"><ChevronLeft size={17}/></button>
+        <div className="text-sm font-semibold tracking-wide text-[#34362f]">{calendarMonth.getFullYear()}年{calendarMonth.getMonth()+1}月</div>
+        <button type="button" aria-label="下个月" onClick={()=>{const next=new Date(calendarMonth.getFullYear(),calendarMonth.getMonth()+1,1);setCalendarMonth(next);setSelectedCalendarDay(monthKey(next)+"-01");}} className="grid h-9 w-9 place-items-center rounded-full bg-[#f0eee7] text-[#62665a]"><ChevronRight size={17}/></button>
+      </div>
+      <div className="mb-2 grid grid-cols-7 text-center text-[10px] font-medium text-[#999386]">{["一","二","三","四","五","六","日"].map(day=><div key={day} className="py-2">{day}</div>)}</div>
+      <div className="grid grid-cols-7 gap-y-1">
+        {calendarCells.map((day,index)=>day?<button key={day} type="button" onClick={()=>setSelectedCalendarDay(day)} aria-pressed={selectedCalendarDay===day} className={"relative mx-auto flex h-10 w-10 flex-col items-center justify-center rounded-xl text-xs transition-colors "+(selectedCalendarDay===day?"bg-[#29352b] font-semibold text-white shadow-sm":day===todayInput()?"bg-[#eee9dc] font-semibold text-[#5f543d]":"text-[#4e5048] hover:bg-[#f0eee7]")}><span>{Number(day.slice(-2))}</span>{calendarEventCounts[day]?<span className={"mt-0.5 h-1 w-1 rounded-full "+(selectedCalendarDay===day?"bg-[#d9c99f]":"bg-[#a99569]")}/>:null}</button>:<span key={"empty-"+index}/>)}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-3 border-t border-[#e9e5dc] pt-3 text-[10px] text-[#8a8579]"><span className="inline-flex items-center gap-1.5"><i className="h-1.5 w-1.5 rounded-full bg-[#a99569]"/>有事件</span><span>点击日期查看当天详情</span></div>
+    </Panel>
+    <div className="flex items-center justify-between px-1"><div><div className="text-sm font-semibold text-[#34362f]">{selectedCalendarDay}</div><div className="mt-0.5 text-[10px] text-[#999386]">{selectedDayItems.length} 项日程与流水</div></div><button type="button" onClick={()=>{setCalendarMonth(new Date(new Date().getFullYear(),new Date().getMonth(),1));setSelectedCalendarDay(todayInput());}} className="rounded-full border border-[#dfdacd] px-3 py-1.5 text-[10px] text-[#68685f]">回到今天</button></div>
+    {selectedDayItems.length?selectedDayItems.map(item=><div key={item.kind+"-"+item.id} className="wallet-section flex items-center gap-3 rounded-xl p-3"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#e8e4d8] text-[#8a7955]">{item.kind==="bill"?<CalendarDays size={17}/>:<Repeat2 size={17}/>}</div><div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-[#34362f]">{item.title}</div><div className="mt-1 text-[10px] text-[#8a8579]">{item.detail}</div></div><div className="text-[10px] text-[#8a8579]">{new Date(item.date).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</div></div>):<Panel><div className="py-6 text-center"><CalendarDays size={22} className="mx-auto mb-2 text-[#b2a786]"/><div className="text-sm text-[#77766e]">这一天没有记录</div><div className="mt-1 text-[10px] text-[#aaa59a]">选择带有圆点的日期查看其他事件。</div></div></Panel>}
   </div>;
   const sorted=Object.entries(categoryTotals).sort((a,b)=>b[1]-a[1]);
   const max=sorted[0]?.[1]||1;
