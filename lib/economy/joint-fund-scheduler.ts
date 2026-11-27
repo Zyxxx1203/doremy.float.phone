@@ -47,11 +47,15 @@ export function runJointFundSchedulerTick(now = Date.now()): void {
     const results = runDueJointFundPlans(now);
     for (const result of results) {
         if (result.ok) {
-            sendNotice(
-                "自动存入",
-                `「${result.fundName}」已自动存入 ${formatWalletAmount(result.amount)}（${result.memberType === "user" ? "你" : "TA"}）。`,
-                "success",
-            );
+            if (result.alreadyCompleted) {
+                sendNotice("目标已完成", `「${result.fundName}」已被提前存满，原定期存款已停止。`, "success");
+            } else {
+                sendNotice(
+                    "自动存入",
+                    `「${result.fundName}」已自动存入 ${formatWalletAmount(result.amount)}（${result.memberType === "user" ? "你" : "TA"}）。`,
+                    "success",
+                );
+            }
             if (result.goalReached && result.memberType === "character") {
                 const alternatives = result.otherFunds || [];
                 if (alternatives.length === 0) {
