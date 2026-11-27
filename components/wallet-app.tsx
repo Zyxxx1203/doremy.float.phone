@@ -94,6 +94,17 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
     () => { void tick; return characters.reduce((sum, c) => sum + (loadCharacterLedger(c.id)?.balance || 0), 0); },
     [characters, tick],
   );
+  const currentMonthFlow = useMemo(() => {
+    const now = new Date();
+    const rows = wallet.transactions.filter(tx => {
+      const date = new Date(tx.createdAt);
+      return !Number.isNaN(date.getTime()) && date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+    });
+    return {
+      income: rows.filter(tx => tx.amount > 0 && tx.kind !== "transfer_in").reduce((sum, tx) => sum + tx.amount, 0),
+      expense: rows.filter(tx => tx.amount < 0 && tx.kind === "payment").reduce((sum, tx) => sum + Math.abs(tx.amount), 0),
+    };
+  }, [wallet.transactions]);
 
   if (tab === "accounts") return <WalletPanel onBack={() => setTab("home")} />;
 
@@ -115,6 +126,18 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
               <span>亲属卡 {familyCards.length} 张</span>
               <span>小金库 {jointFunds.length} 个</span>
             </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button type="button" onClick={() => setTab("insights")} className="wallet-section rounded-2xl p-3 text-left">
+              <div className="wallet-kicker">THIS MONTH · INCOME</div>
+              <div className="mt-1 text-base font-semibold text-[#426b4a]">+{money(currentMonthFlow.income)}</div>
+              <div className="mt-1 text-[10px] text-[#8a8579]">查看月度报告 →</div>
+            </button>
+            <button type="button" onClick={() => setTab("insights")} className="wallet-section rounded-2xl p-3 text-left">
+              <div className="wallet-kicker">THIS MONTH · SPENDING</div>
+              <div className="mt-1 text-base font-semibold text-[#986455]">−{money(currentMonthFlow.expense)}</div>
+              <div className="mt-1 text-[10px] text-[#8a8579]">查看支出分类 →</div>
+            </button>
           </div>
           <div className="wallet-section rounded-2xl p-4">
             <div className="mb-3 flex items-center justify-between"><div><div className="wallet-kicker mb-1">QUICK ENTRY</div><div className="text-sm font-medium text-[var(--c-text)]">快速记账</div></div><div className="flex gap-2"><button type="button" onClick={() => setQuickEntry("income")} className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">＋ 收入</button><button type="button" onClick={() => setQuickEntry("expense")} className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700">－ 支出</button></div></div>
@@ -330,8 +353,8 @@ function CharacterLedgerCard({ character }: { character: ReturnType<typeof loadC
 
   const ledger = loadCharacterLedger(character.id);
   const latest = ledger?.statements?.[0];
-  const monthPrefix = new Date().toISOString().slice(0, 7);
-  const monthRows = (ledger?.transactions || []).filter(tx => new Date(tx.at).toISOString().slice(0, 7) === monthPrefix);
+  const now = new Date();
+  const monthRows = (ledger?.transactions || []).filter(tx => { const date = new Date(tx.at); return !Number.isNaN(date.getTime()) && date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth(); });
   const monthIncome = monthRows.filter(tx => tx.amount > 0).reduce((sum, tx) => sum + tx.amount, 0);
   const monthExpense = monthRows.filter(tx => tx.amount < 0).reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
   const expenseCategories = monthRows.filter(tx => tx.amount < 0).reduce<Record<string, number>>((acc, tx) => { acc[tx.category] = (acc[tx.category] || 0) + Math.abs(tx.amount); return acc; }, {});
