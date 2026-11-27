@@ -22,7 +22,9 @@ assert.match(service, /expiresAt/, "native lock must persist and enforce expiry"
 assert.match(service, /passUntil/, "temporary pass must be tracked natively");
 assert.match(internal, /给临时通行证/, "characters must have a dedicated temporary-pass tool");
 assert.match(executor, /这不是你发起的应用锁/, "a character must not grant a pass for another character's lock");
+assert.match(executor, /这不是你发起的应用锁，不能替别人解除/, "a character must not unlock another character's lock");
 assert.match(executor, /appLockTemporaryPass\(minutes\)/, "the role tool must grant the native temporary pass");
+assert.match(read("lib/device-action/bridge.ts"), /export function appLockTemporaryPass\(minutes: number\)/, "the trusted device bridge must expose the temporary-pass action");
 assert.match(service, /isProtectedTarget\(context, target\)/, "protected targets must be rejected in native code");
 assert.match(service, /com\.android\.settings/, "Android Settings must be protected");
 assert.match(service, /monitoringAvailable/, "status must report whether foreground monitoring has a source");
@@ -37,6 +39,7 @@ assert.match(activity, /紧急解除这次锁定/, "the user must always have an
 assert.match(activity, /updateCountdown\(\)/, "the lock screen must show remaining lock time");
 assert.match(activity, /TYPE_CLASS_NUMBER or InputType\.TYPE_NUMBER_VARIATION_PASSWORD/, "six-digit native password should use a numeric keypad");
 assert.match(main, /o\.optString\("sessionId"\)/, "the native bridge must receive the originating session id");
+assert.match(main, /fun appLockTemporaryPass\(minutes: Int\)/, "the native bridge must expose temporary passes to the role tool");
 assert.match(executor, /sessionId: context\?\.sessionId/, "the role tool must pass its chat session to native");
 assert.match(executor, /durationMinutes: Math\.max\(1, Math\.min\(360/, "the role tool must clamp requested duration");
 assert.doesNotMatch(host, /device\.appLock\.reveal/, "custom-app host must not expose the password reveal action");
