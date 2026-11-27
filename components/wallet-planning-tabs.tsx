@@ -12,6 +12,7 @@ import {
 export type WalletPlanningTab = "budget" | "goals" | "bills" | "calendar" | "insights";
 const money = formatWalletAmount;
 const monthKey = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}`;
+const dateLabel = (value: string) => new Date(value).toLocaleDateString("zh-CN",{month:"long",day:"numeric"});
 const todayInput = () => new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
 function Panel({children}:{children:React.ReactNode}) { return <section className="wallet-section rounded-2xl p-4">{children}</section>; }
 function Label({children}:{children:React.ReactNode}) { return <div className="wallet-kicker mb-2">{children}</div>; }
