@@ -1991,6 +1991,7 @@ export async function buildChatPromptMessages(
             text: entry.content,
         });
     }
+    unifiedRecentItems.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
     const longTermMemories = options?.isolatedPromptContext === true
         ? ""
