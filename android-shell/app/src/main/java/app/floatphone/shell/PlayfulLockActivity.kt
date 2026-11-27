@@ -102,7 +102,7 @@ class PlayfulLockActivity : Activity() {
         }
         val message = styleObj.optString("message", "").trim()
             .ifBlank { styleObj.optString("subtitle", "").trim() }
-            .ifBlank { "「${label}」先放一放嘛。回来陪我说两句话，我再考虑要不要放你进去。" }
+            .ifBlank { "「${label}」先放一放嘛。回来陪我说两句话；表现好一点，我也许会给你一张临时通行证。" }
         if (styleObj.optBoolean("showSubtitle", true)) {
             root.addView(TextView(this).apply {
                 text = "“${message}”"; setTextColor(0xFFE1E5F0.toInt()); textSize = 15f
@@ -152,13 +152,6 @@ class PlayfulLockActivity : Activity() {
         }, matchWrap().apply { topMargin = dp(12) })
         root.addView(actionButton("输入密码，直接解锁", 0x332C3852, 0xFFE3E8F4.toInt(), true) { tryUnlock() },
             matchWrap().apply { topMargin = dp(9) })
-        root.addView(actionButton("给我一分钟，我马上回来", 0x222C3852, 0xFFC9B9FF.toInt(), true) {
-            val result = PlayfulAppLockService.temporaryPass(this@PlayfulLockActivity, 1)
-            if (result.optBoolean("ok")) {
-                Toast.makeText(this@PlayfulLockActivity, "给你一分钟，记得回来。", Toast.LENGTH_SHORT).show()
-                finish()
-            }
-        }, matchWrap().apply { topMargin = dp(9) })
         root.addView(actionButton("紧急解除这次锁定", 0x22FFFFFF, 0xFFFFC3C9.toInt(), true) {
             PlayfulAppLockService.stop(this@PlayfulLockActivity)
             Toast.makeText(this@PlayfulLockActivity, "已紧急解除应用锁。", Toast.LENGTH_SHORT).show()
