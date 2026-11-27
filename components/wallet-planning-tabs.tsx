@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarDays, CirclePlus, Repeat2, Target, Trash2 } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, CirclePlus, Repeat2, Target, Trash2 } from "lucide-react";
 import { loadWalletState, formatWalletAmount } from "@/lib/wallet-storage";
 import {
   addWalletBudget, addWalletRecurringBill, addWalletSavingsGoal, contributeToWalletGoal,
@@ -22,6 +22,8 @@ function Field({label,...props}:{label:string;value:string;onChange:(e:React.Cha
 export function WalletPlanningTabs({tab,onChange}:{tab:WalletPlanningTab;onChange:()=>void}) {
   const [state,setState]=useState<WalletPlanningState>(()=>loadWalletPlanning());
   const [revision,setRevision]=useState(0);
+  const [calendarMonth,setCalendarMonth]=useState(()=>new Date(new Date().getFullYear(),new Date().getMonth(),1));
+  const [selectedCalendarDay,setSelectedCalendarDay]=useState(()=>todayInput());
   const [category,setCategory]=useState("餐饮");
   const [budget,setBudget]=useState("2000");
   const [goalName,setGoalName]=useState("");
@@ -47,9 +49,16 @@ export function WalletPlanningTabs({tab,onChange}:{tab:WalletPlanningTab;onChang
   const budgetTotal=budgetRows.reduce((sum,v)=>sum+v.limit,0);
   const dueBills=state.bills.filter(v=>v.status==="active").sort((a,b)=>a.nextDueAt.localeCompare(b.nextDueAt));
   const calendarItems=[
-    ...dueBills.map(v=>({id:v.id,date:v.nextDueAt,title:v.title,detail:`周期账单 · ${money(v.amount)}`,kind:"bill"})),
-    ...wallet.transactions.slice(0,100).map(v=>({id:v.id,date:v.createdAt,title:v.title,detail:`${v.amount<0?"支出":"收入"} · ${money(Math.abs(v.amount))}`,kind:"tx"})),
+    ...dueBills.map(v=>({id:v.id,date:v.nextDueAt,title:v.title,detail:`周期账单 · ${money(v.amount)}`,kind:"bill" as const})),
+    ...wallet.transactions.slice(0,100).map(v=>({id:v.id,date:v.createdAt,title:v.title,detail:`${v.amount<0?"支出":"收入"} · ${money(Math.abs(v.amount))}`,kind:"tx" as const})),
   ].sort((a,b)=>a.date.localeCompare(b.date));
+  const calendarMonthKey=monthKey(calendarMonth);
+  const calendarDaysInMonth=new Date(calendarMonth.getFullYear(),calendarMonth.getMonth()+1,0).getDate();
+  const calendarOffset=(new Date(calendarMonth.getFullYear(),calendarMonth.getMonth(),1).getDay()+6)%7;
+  const calendarCellCount=Math.ceil((calendarOffset+calendarDaysInMonth)/7)*7;
+  const calendarCells=Array.from({length:calendarCellCount},(_,index)=>{const day=index-calendarOffset+1;return day>0&&day<=calendarDaysInMonth?`${calendarMonthKey}-${String(day).padStart(2,"0")}`:"";});
+  const calendarEventCounts=calendarItems.reduce<Record<string,number>>((acc,item)=>{const d=new Date(item.date);if(!Number.isNaN(d.getTime())){const key=monthKey(d)+"-"+String(d.getDate()).padStart(2,"0");if(key.startsWith(calendarMonthKey))acc[key]=(acc[key]||0)+1;}return acc;},{});
+  const selectedDayItems=calendarItems.filter(item=>{const d=new Date(item.date);return !Number.isNaN(d.getTime())&&monthKey(d)+"-"+String(d.getDate()).padStart(2,"0")===selectedCalendarDay;});
   const submit=(fn:()=>unknown)=>{try{fn();refresh();}catch(error){window.dispatchEvent(new CustomEvent("app-global-notice",{detail:{kind:"error",message:error instanceof Error?error.message:"操作失败"}}));}};
   if(tab==="budget") return <div className="wallet-private-bank flex flex-col gap-3" data-revision={revision}>
     <Panel><div className="flex items-start justify-between"><div><Label>MONTHLY CONTROL</Label><div className="text-xl font-semibold text-[#292b25]">本月预算</div><p className="mt-1 text-[11px] text-[#8a8579]">{currentMonth} · 根据钱包实际支出流水统计</p></div><div className="text-right"><div className="text-[10px] text-[#8a8579]">本月已支出</div><div className="text-xl font-semibold">{money(expenseTotal)}</div></div></div><div className="wallet-metal-line my-4"/><div className="grid grid-cols-2 gap-3"><div><div className="text-[10px] text-[#8a8579]">已设置分类预算</div><div className="mt-1 text-lg font-semibold">{money(budgetTotal)}</div></div><div><div className="text-[10px] text-[#8a8579]">预算剩余</div><div className="mt-1 text-lg font-semibold">{money(Math.max(0,budgetTotal-expenseTotal))}</div></div></div></Panel>
