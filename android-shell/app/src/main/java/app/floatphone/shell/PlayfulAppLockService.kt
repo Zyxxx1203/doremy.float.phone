@@ -44,7 +44,12 @@ class PlayfulAppLockService : Service() {
                 val minutes = (intent.getIntExtra("minutes", 1)).coerceIn(1, 5)
                 prefs.edit().putLong("passUntil", System.currentTimeMillis() + minutes * 60_000L).apply()
                 PlayfulLockActivity.dismissCurrent()
-                return START_STICKY
+                if (!polling && (prefs.getString("target", "") ?: "").isNotBlank()) {
+                    polling = true
+                    startForegroundInternal()
+                    handler.postDelayed(poll, 1200)
+                }
+                return if (prefs.getBoolean("running", false)) START_STICKY else START_NOT_STICKY
             }
         }
 
@@ -71,7 +76,6 @@ class PlayfulAppLockService : Service() {
             .putString("avatar", intent?.getStringExtra("avatar") ?: prefs.getString("avatar", "") ?: "")
             .putString("style", intent?.getStringExtra("style") ?: prefs.getString("style", "{}") ?: "{}")
             .putLong("expiresAt", expiresAt)
-            .putLong("passUntil", 0L)
             .apply()
         if (!polling) {
             polling = true
@@ -265,6 +269,7 @@ class PlayfulAppLockService : Service() {
             }
             val password = (100000 + random.nextInt(900000)).toString()
             val boundedMinutes = durationMinutes.coerceIn(1, 360)
+            prefs.edit().putLong("passUntil", 0L).apply()
             val expiresAt = System.currentTimeMillis() + boundedMinutes * 60_000L
             val intent = Intent(context, PlayfulAppLockService::class.java)
                 .putExtra("target", target)
