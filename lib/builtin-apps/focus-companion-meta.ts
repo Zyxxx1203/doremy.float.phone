@@ -359,6 +359,10 @@ export const FOCUS_COMPANION_MANIFEST: InstalledCustomApp["manifest"] =
               "durationMinutes": {
                 "type": "number",
                 "description": "锁定时长（分钟），默认 180，最多 360，到期自动解除"
+              },
+              "style": {
+                "type": "object",
+                "description": "可选角色锁屏主题与对白：title/subtitle/message/showAvatar/showTitle/showSubtitle/background/avatar"
               }
             },
             "required": [
