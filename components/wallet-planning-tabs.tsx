@@ -24,6 +24,7 @@ export function WalletPlanningTabs({tab,onChange}:{tab:WalletPlanningTab;onChang
   const [revision,setRevision]=useState(0);
   const [calendarMonth,setCalendarMonth]=useState(()=>new Date(new Date().getFullYear(),new Date().getMonth(),1));
   const [selectedCalendarDay,setSelectedCalendarDay]=useState(()=>todayInput());
+  const [reportMonth,setReportMonth]=useState(()=>new Date(new Date().getFullYear(),new Date().getMonth(),1));
   const [category,setCategory]=useState("餐饮");
   const [budget,setBudget]=useState("2000");
   const [goalName,setGoalName]=useState("");
@@ -39,12 +40,19 @@ export function WalletPlanningTabs({tab,onChange}:{tab:WalletPlanningTab;onChang
   const refresh=()=>{setState(loadWalletPlanning());setRevision(v=>v+1);onChange();};
   useEffect(()=>{const sync=()=>setState(loadWalletPlanning());window.addEventListener("wallet-planning-updated",sync);return()=>window.removeEventListener("wallet-planning-updated",sync);},[]);
   const currentMonth=monthKey();
+  const reportMonthKey=monthKey(reportMonth);
   const monthTransactions=wallet.transactions.filter(tx=>tx.createdAt.slice(0,7)===currentMonth);
   const expenses=monthTransactions.filter(tx=>tx.amount<0 && tx.kind==="payment");
   const income=monthTransactions.filter(tx=>tx.amount>0);
   const expenseTotal=expenses.reduce((sum,tx)=>sum+Math.abs(tx.amount),0);
   const incomeTotal=income.reduce((sum,tx)=>sum+tx.amount,0);
   const categoryTotals=expenses.reduce<Record<string,number>>((acc,tx)=>{acc[tx.category||"其他"]=(acc[tx.category||"其他"]||0)+Math.abs(tx.amount);return acc;},{});
+  const reportTransactions=wallet.transactions.filter(tx=>{const d=new Date(tx.createdAt);return !Number.isNaN(d.getTime())&&monthKey(d)===reportMonthKey;});
+  const reportExpenses=reportTransactions.filter(tx=>tx.amount<0&&tx.kind==="payment");
+  const reportIncome=reportTransactions.filter(tx=>tx.amount>0);
+  const reportExpenseTotal=reportExpenses.reduce((sum,tx)=>sum+Math.abs(tx.amount),0);
+  const reportIncomeTotal=reportIncome.reduce((sum,tx)=>sum+tx.amount,0);
+  const reportCategoryTotals=reportExpenses.reduce<Record<string,number>>((acc,tx)=>{acc[tx.category||"其他"]=(acc[tx.category||"其他"]||0)+Math.abs(tx.amount);return acc;},{});
   const budgetRows=state.budgets.filter(v=>v.month===currentMonth);
   const budgetTotal=budgetRows.reduce((sum,v)=>sum+v.limit,0);
   const budgetRemaining=budgetRows.reduce((sum,row)=>sum+Math.max(0,row.limit-(categoryTotals[row.category]||0)),0);
@@ -101,11 +109,26 @@ export function WalletPlanningTabs({tab,onChange}:{tab:WalletPlanningTab;onChang
     <div className="flex items-center justify-between px-1"><div><div className="text-sm font-semibold text-[#34362f]">{selectedCalendarDay}</div><div className="mt-0.5 text-[10px] text-[#999386]">{selectedDayItems.length} 项日程与流水</div></div><button type="button" onClick={()=>{setCalendarMonth(new Date(new Date().getFullYear(),new Date().getMonth(),1));setSelectedCalendarDay(todayInput());}} className="rounded-full border border-[#dfdacd] px-3 py-1.5 text-[10px] text-[#68685f]">回到今天</button></div>
     {selectedDayItems.length?selectedDayItems.map(item=><div key={item.kind+"-"+item.id} className="wallet-section flex items-center gap-3 rounded-xl p-3"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#e8e4d8] text-[#8a7955]">{item.kind==="bill"?<CalendarDays size={17}/>:<Repeat2 size={17}/>}</div><div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-[#34362f]">{item.title}</div><div className="mt-1 text-[10px] text-[#8a8579]">{item.detail}</div></div><div className="text-[10px] text-[#8a8579]">{new Date(item.date).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</div></div>):<Panel><div className="py-6 text-center"><CalendarDays size={22} className="mx-auto mb-2 text-[#b2a786]"/><div className="text-sm text-[#77766e]">这一天没有记录</div><div className="mt-1 text-[10px] text-[#aaa59a]">选择带有圆点的日期查看其他事件。</div></div></Panel>}
   </div>;
-  const sorted=Object.entries(categoryTotals).sort((a,b)=>b[1]-a[1]);
+  const sorted=Object.entries(reportCategoryTotals).sort((a,b)=>b[1]-a[1]);
   const max=sorted[0]?.[1]||1;
   return <div className="wallet-private-bank flex flex-col gap-3">
-    <Panel><Label>MONTHLY STATEMENT · {currentMonth}</Label><div className="text-xl font-semibold">月度财务报告</div><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-[#e9eee5] p-3"><div className="text-[10px] text-[#6c8068]">收入</div><div className="mt-1 text-xl font-semibold text-[#3f6547]">{money(incomeTotal)}</div></div><div className="rounded-xl bg-[#eee9e2] p-3"><div className="text-[10px] text-[#8d7165]">支出</div><div className="mt-1 text-xl font-semibold text-[#80594d]">{money(expenseTotal)}</div></div></div><div className="mt-4 flex items-center justify-between border-t border-[#e5e1d8] pt-3"><span className="text-[11px] text-[#8a8579]">本月净结余</span><strong className={incomeTotal-expenseTotal>=0?"text-[#476c4e]":"text-[#9a554a]"}>{money(incomeTotal-expenseTotal)}</strong></div><div className="mt-1 text-[10px] text-[#aaa]">仅统计当前钱包账户中已记录的收支，不包含角色账本和账户间转账。</div></Panel>
-    <Panel><Label>SPENDING BREAKDOWN</Label><div className="mb-3 text-[15px] font-medium">支出分类</div>{sorted.length?sorted.map(([name,value])=><div key={name} className="mb-4 last:mb-0"><div className="mb-1 flex justify-between text-[11px]"><span className="text-[#55564f]">{name}</span><span className="text-[#777]">{money(value)} · {(value/expenseTotal*100).toFixed(0)}%</span></div><div className="h-2 overflow-hidden rounded-full bg-[#e5e2d9]"><div className="h-full rounded-full bg-gradient-to-r from-[#a99569] to-[#454b3e]" style={{width:value/max*100+"%"}}/></div></div>):<div className="py-6 text-center text-sm text-[#999]">本月还没有支出记录。</div>}</Panel>
-    <Panel><Label>ACCOUNT ACTIVITY</Label><div className="text-[15px] font-medium">本月流水</div>{monthTransactions.slice(0,12).map(tx=><div key={tx.id} className="wallet-tx flex items-center justify-between gap-2 py-3"><div className="min-w-0"><div className="truncate text-[12px] text-[#44453e]">{tx.title}</div><div className="mt-1 text-[10px] text-[#999]">{new Date(tx.createdAt).toLocaleDateString("zh-CN")} · {tx.category}</div></div><div className={`shrink-0 text-[12px] font-semibold ${tx.amount<0?"text-[#986455]":"text-[#52765a]"}`}>{tx.amount>0?"+":"−"}{money(Math.abs(tx.amount))}</div></div>)}{!monthTransactions.length&&<div className="py-5 text-center text-sm text-[#999]">还没有本月流水。</div>}</Panel>
+    <Panel>
+      <div className="flex items-center justify-between gap-3">
+        <div><Label>MONTHLY STATEMENT</Label><div className="text-xl font-semibold">月度财务报告</div><div className="mt-1 text-[11px] text-[#8a8579]">仅统计所选月份的钱包实际流水。</div></div>
+        <div className="flex items-center gap-1">
+          <button type="button" aria-label="上个月" onClick={()=>setReportMonth(new Date(reportMonth.getFullYear(),reportMonth.getMonth()-1,1))} className="grid h-9 w-9 place-items-center rounded-full bg-[#f0eee7]"><ChevronLeft size={16}/></button>
+          <span className="min-w-[78px] text-center text-xs font-semibold">{reportMonth.getFullYear()}年{reportMonth.getMonth()+1}月</span>
+          <button type="button" aria-label="下个月" onClick={()=>setReportMonth(new Date(reportMonth.getFullYear(),reportMonth.getMonth()+1,1))} className="grid h-9 w-9 place-items-center rounded-full bg-[#f0eee7]"><ChevronRight size={16}/></button>
+        </div>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className="rounded-xl bg-[#e9eee5] p-3"><div className="text-[10px] text-[#6c8068]">收入</div><div className="mt-1 text-xl font-semibold text-[#3f6547]">{money(reportIncomeTotal)}</div></div>
+        <div className="rounded-xl bg-[#eee9e2] p-3"><div className="text-[10px] text-[#8d7165]">支出</div><div className="mt-1 text-xl font-semibold text-[#80594d]">{money(reportExpenseTotal)}</div></div>
+      </div>
+      <div className="mt-4 flex items-center justify-between border-t border-[#e5e1d8] pt-3"><span className="text-[11px] text-[#8a8579]">本月净结余</span><strong className={reportIncomeTotal-reportExpenseTotal>=0?"text-[#476c4e]":"text-[#9a554a]"}>{money(reportIncomeTotal-reportExpenseTotal)}</strong></div>
+      <div className="mt-1 text-[10px] text-[#aaa]">不包含角色账本和账户间转账。</div>
+    </Panel>
+    <Panel><Label>SPENDING BREAKDOWN</Label><div className="mb-3 text-[15px] font-medium">支出分类</div>{sorted.length?sorted.map(([name,value])=><div key={name} className="mb-4 last:mb-0"><div className="mb-1 flex justify-between text-[11px]"><span className="text-[#55564f]">{name}</span><span className="text-[#777]">{money(value)} · {(value/reportExpenseTotal*100).toFixed(0)}%</span></div><div className="h-2 overflow-hidden rounded-full bg-[#e5e2d9]"><div className="h-full rounded-full bg-gradient-to-r from-[#a99569] to-[#454b3e]" style={{width:value/(sorted[0]?.[1]||1)*100+"%"}}/></div></div>):<div className="py-6 text-center text-sm text-[#999]">所选月份还没有支出记录。</div>}</Panel>
+    <Panel><Label>ACCOUNT ACTIVITY</Label><div className="text-[15px] font-medium">流水明细</div>{reportTransactions.slice(0,12).map(tx=><div key={tx.id} className="wallet-tx flex items-center justify-between gap-2 py-3"><div className="min-w-0"><div className="truncate text-[12px] text-[#44453e]">{tx.title}</div><div className="mt-1 text-[10px] text-[#999]">{new Date(tx.createdAt).toLocaleDateString("zh-CN")} · {tx.category}</div></div><div className={"shrink-0 text-[12px] font-semibold "+(tx.amount<0?"text-[#986455]":"text-[#52765a]")}>{tx.amount>0?"+":"−"}{money(Math.abs(tx.amount))}</div></div>)}{!reportTransactions.length&&<div className="py-5 text-center text-sm text-[#999]">所选月份还没有流水。</div>}</Panel>
   </div>;
 }
