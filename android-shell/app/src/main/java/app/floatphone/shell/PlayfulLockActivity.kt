@@ -131,7 +131,7 @@ class PlayfulLockActivity : Activity() {
             textSize = 17f; gravity = Gravity.CENTER
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
             filters = arrayOf(InputFilter.LengthFilter(6))
-            setSingleLine(true); background = rounded(0xCC20283A, 0x66FFFFFF, 14)
+            setSingleLine(true); background = rounded(0xCC20283A.toInt(), 0x66FFFFFF, 14)
             setPadding(dp(16), dp(13), dp(16), dp(13))
         }
         root.addView(input, matchWrap())
