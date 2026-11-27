@@ -9,7 +9,7 @@ import { runDueWalletBills } from "@/lib/wallet-planning";
 import { WalletPlanningTabs, type WalletPlanningTab } from "@/components/wallet-planning-tabs";
 import { WalletPanel } from "@/components/chat/wallet-panel";
 import { WalletHeaderIsolationStyle } from "@/components/wallet-header-isolation-style";
-import { loadCharacterLedger } from "@/lib/economy/character-ledger";
+import { CHARACTER_LEDGER_UPDATED_EVENT, loadCharacterLedger } from "@/lib/economy/character-ledger";
 import {
   createFamilyCard, loadFamilyCardTransactions, loadFamilyCards, spendWithFamilyCard,
   updateFamilyCard, FAMILY_CARD_UPDATED_EVENT, type FamilyCard,
@@ -85,7 +85,7 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
     if (due.paid) notify(`已自动处理 ${due.paid} 笔周期账单`);
     if (due.overdue) notify(`${due.overdue} 笔周期账单扣款失败，请检查余额`, "error");
     refresh();
-    const events = [WALLET_UPDATED_EVENT, FAMILY_CARD_UPDATED_EVENT, JOINT_FUND_UPDATED_EVENT, CHARACTER_ECONOMY_UPDATED_EVENT, "characters-updated"];
+    const events = [WALLET_UPDATED_EVENT, FAMILY_CARD_UPDATED_EVENT, JOINT_FUND_UPDATED_EVENT, CHARACTER_ECONOMY_UPDATED_EVENT, CHARACTER_LEDGER_UPDATED_EVENT, "characters-updated"];
     for (const name of events) window.addEventListener(name, refresh);
     return () => { for (const name of events) window.removeEventListener(name, refresh); };
   }, [refresh]);
