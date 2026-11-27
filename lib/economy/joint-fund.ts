@@ -215,7 +215,7 @@ export function runDueJointFundPlans(now = Date.now()): JointFundPlanRunResult[]
         // 而不是再向已完成的小金库扣一次钱。
         const alreadyCompleted = fundBefore.status === "completed";
         const result = alreadyCompleted
-            ? { ok: true, fund: fundBefore }
+            ? { ok: true, fund: fundBefore, error: undefined as string | undefined }
             : depositToJointFund(plan.fundId, plan.memberType, plan.memberId, plan.amount, "定时存入");
         // 失败（余额不足等）第二天重试，不要把整期直接跳过去。
         const state = load();
