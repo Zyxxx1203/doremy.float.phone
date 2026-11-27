@@ -46,14 +46,15 @@ function appendAnonymousQaTimelineEvent(
     const targetName = row.targetType === "user"
         ? "用户"
         : characters.find(character => character.id === row.targetId)?.name || "某位角色";
-    const content = kind === "question"
-        ? `匿名提问箱新增公开问题。\n问题编号：${row.id}\n${row.askerAlias} 向${targetName} 提问：${row.question}\n${row.targetType === "character" ? "这是问你的问题，你可以使用“回答匿名提问”工具作答。" : "这是一条公开问题，你可以在匿名提问箱查看。"} 提问者身份对所有人保密，不要猜测或追查。`
-        : kind === "answer"
-            ? `匿名提问箱有一条新回答。\n问题：${row.question}\n回答对象：${targetName}\n回答：${row.answer || ""}`
-            : kind === "updated"
-                ? `匿名提问箱中的问题已更新。\n问题编号：${row.id}\n${row.askerAlias} 向${targetName} 提问：${row.question}\n${row.targetType === "character" ? "这是问你的问题，可以使用“回答匿名提问”工具作答。" : "请在匿名提问箱查看更新内容。"}`
-                : `匿名提问箱中的一条问题已被删除或撤回。\n原问题：${row.question}`;
     for (const character of characters) {
+        const isRecipient = row.targetType === "character" && row.targetId === character.id;
+        const content = kind === "question"
+            ? `匿名提问箱新增公开问题。\n问题编号：${row.id}\n${row.askerAlias} 向${targetName} 提问：${row.question}\n${isRecipient ? "这是问你的问题，你可以使用“回答匿名提问”工具作答。" : row.targetType === "character" ? `指定回答对象是${targetName}，你可以围观，但不要代替 TA 回答。` : "这是一条公开问题，你可以在匿名提问箱查看。"} 提问者身份对所有人保密，不要猜测或追查。`
+            : kind === "answer"
+                ? `匿名提问箱有一条新回答。\n问题：${row.question}\n回答对象：${targetName}\n回答：${row.answer || ""}`
+                : kind === "updated"
+                    ? `匿名提问箱中的问题已更新。\n问题编号：${row.id}\n${row.askerAlias} 向${targetName} 提问：${row.question}\n${isRecipient && row.status === "pending" ? "这是问你的问题，可以使用“回答匿名提问”工具作答。" : row.answer ? `当前回答：${row.answer}` : row.targetType === "character" ? `指定回答对象是${targetName}，请勿代答。` : "请在匿名提问箱查看更新内容。"}`
+                    : `匿名提问箱中的一条问题已被删除或撤回。\n原问题：${row.question}`;
         const session = createOrGetSession(character.id);
         pushChatMessage({
             id: `anonymous_qa_${kind}_${row.id}_${character.id}_${Date.now()}`,
