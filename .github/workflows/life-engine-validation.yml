@@ -84,6 +84,8 @@ jobs:
         run: npx tsc --noEmit
       - name: Native background and life-system wiring assertions
         run: node scripts/test-life-wiring.mjs
+      - name: Playful app-lock safety and interaction contract tests
+        run: npm run test:playful-app-lock
       - name: Life schedule regression tests (UTC)
         run: TZ=UTC npm run test:life
       - name: Life schedule regression tests (daylight-saving timezone)

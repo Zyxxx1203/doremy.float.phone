@@ -24,7 +24,7 @@ import { setAlarm as shellSetAlarm, setBrightness as shellSetBrightness, setDnd 
   focusOverlayUpdate as shellFocusOverlayUpdate, focusOverlayStop as shellFocusOverlayStop,
   focusOverlayConsumeEvents as shellFocusOverlayConsumeEvents,
   consumeScheduledFocus as shellConsumeScheduledFocus,
-  appLockStart as shellAppLockStart, appLockStop as shellAppLockStop, appLockStatus as shellAppLockStatus, appLockReveal as shellAppLockReveal,
+  appLockStart as shellAppLockStart, appLockStop as shellAppLockStop, appLockStatus as shellAppLockStatus,
   focusLockTaLine as shellFocusLockTaLine, isDeviceAdminActive as shellIsDeviceAdminActive,
   requestDeviceAdmin as shellRequestDeviceAdmin,
   focusLockPendingApply as shellFocusLockPendingApply,
@@ -229,7 +229,6 @@ const HOST_ACTION_PERMISSIONS: Record<string, CustomAppPermission[]> = {
   "device.appLock.start": ["device.assist"],
   "device.appLock.stop": ["device.assist"],
   "device.appLock.status": ["device.assist"],
-  "device.appLock.reveal": ["device.assist"],
   "device.focusWidget.update": ["device.assist"],
   "device.focusOverlay.update": ["device.assist"],
   "device.focusOverlay.stop": ["device.assist"],
@@ -2568,8 +2567,9 @@ export function runCustomAppAppLockStart(_app: InstalledCustomApp, record: Recor
     charId: cleanText(record.charId, 120),
     charName: cleanText(record.charName, 80),
     avatar: typeof record.avatar === "string" ? record.avatar : "",
-    password: String(record.password || "").slice(0, 64),
     style: record.style && typeof record.style === "object" ? record.style as Record<string, unknown> : {},
+    durationMinutes: Math.max(1, Math.min(360, Number(record.durationMinutes) || 30)),
+    sessionId: cleanText(record.sessionId, 120),
   });
   return result.ok ? { ok: true } : { ok: false, reason: result.reason || "小手段启动失败" };
 }
@@ -2583,11 +2583,6 @@ export function runCustomAppAppLockStop(_app: InstalledCustomApp, record: Record
 export function runCustomAppAppLockStatus(_app: InstalledCustomApp, record: Record<string, unknown> = {}): Record<string, unknown> {
   void record;
   return shellAppLockStatus() as unknown as Record<string, unknown>;
-}
-
-export function runCustomAppAppLockReveal(_app: InstalledCustomApp, record: Record<string, unknown> = {}): Record<string, unknown> {
-  void record;
-  return shellAppLockReveal() as unknown as Record<string, unknown>;
 }
 
 export function runCustomAppScheduledFocusConsume(_app: InstalledCustomApp, record: Record<string, unknown> = {}): Record<string, unknown> {
@@ -2873,8 +2868,6 @@ export async function executeCustomAppHostAction(
       return runCustomAppAppLockStop(app, payload);
     case "device.appLock.status":
       return runCustomAppAppLockStatus(app, payload);
-    case "device.appLock.reveal":
-      return runCustomAppAppLockReveal(app, payload);
     case "device.focusWidget.update":
       return runCustomAppFocusWidgetUpdate(app, payload);
     case "device.focusOverlay.update":
