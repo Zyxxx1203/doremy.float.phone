@@ -151,15 +151,6 @@ class PlayfulAppLockService : Service() {
         return perception.getString("current_package", "") ?: ""
     }
 
-    private fun hasUsageStatsAccess(): Boolean {
-        return try {
-            val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-            @Suppress("DEPRECATION")
-            val mode = appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
-            mode == AppOpsManager.MODE_ALLOWED
-        } catch (_: Throwable) { false }
-    }
-
     private fun startForegroundInternal() {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -196,6 +187,13 @@ class PlayfulAppLockService : Service() {
             .putLong("passUntil", 0L)
             .putLong("expiresAt", 0L)
             .remove("password")
+            .remove("sessionId")
+            .remove("charId")
+            .remove("charName")
+            .remove("target")
+            .remove("label")
+            .remove("avatar")
+            .remove("style")
             .apply()
         PlayfulLockActivity.dismissCurrent()
         stopForeground(STOP_FOREGROUND_REMOVE)
