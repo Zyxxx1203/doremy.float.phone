@@ -45,6 +45,7 @@ assert.equal(result.ok, true);
 assert.equal(result.state.balance, 10200);
 assert.equal(result.transaction.amount, 200);
 assert.equal(result.transaction.category, "工资");
+await new Promise(resolve => setTimeout(resolve, 10));
 assert.equal(wallet.recordWalletBookkeeping({
   direction: "income", amount: 200, title: "工资到账", category: "工资",
   note: "本月工资", reference: "salary-2026-11",
@@ -59,7 +60,8 @@ assert.equal(result.state.balance, 10164.5);
 assert.equal(result.transaction.amount, -35.5);
 console.log("  ✅ 支出扣减余额并生成负数流水");
 
-const oldDate = "2026-11-20T12:00:00.000Z";
+await new Promise(resolve => setTimeout(resolve, 10));
+const oldDate = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 result = wallet.recordWalletBookkeeping({
   direction: "income", amount: 50, title: "旧项目尾款", category: "项目", occurredAt: oldDate,
 });
