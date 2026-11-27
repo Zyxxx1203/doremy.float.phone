@@ -1,5 +1,5 @@
-// v18：清缓存（钱包页宽度/收入统计/表单布局/顶栏隔离修复）。
-const CACHE_VERSION = "ai-phone-pwa-v18";
+// v21：清缓存（账本卡片角色选择宽度、小金库存入表单重排）。
+const CACHE_VERSION = "ai-phone-pwa-v21";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 

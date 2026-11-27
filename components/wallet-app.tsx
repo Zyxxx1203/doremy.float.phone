@@ -166,9 +166,9 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
             </div>}
           </div>
           <div className="wallet-section rounded-2xl p-4">
-            <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
-              <div className="min-w-0 flex-1"><div className="wallet-kicker mb-1">CHARACTER ASSETS</div><div className="whitespace-nowrap text-sm font-medium text-[var(--c-text)]">角色账本余额</div></div>
-              {characters.length > 0 && <select aria-label="切换角色账本" value={activeCharacterId} onChange={event => setSelectedCharacterId(event.target.value)} className="ui-select h-8 w-[108px] min-w-0 shrink-0 px-2 text-xs">{characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}</select>}
+            <div className="wallet-character-ledger-head mb-3">
+              <div className="min-w-0 flex-1"><div className="wallet-kicker mb-1">CHARACTER ASSETS</div><div className="wallet-character-ledger-title text-sm font-medium text-[var(--c-text)]">角色账本余额</div></div>
+              {characters.length > 0 && <select aria-label="切换角色账本" value={activeCharacterId} onChange={event => setSelectedCharacterId(event.target.value)} className="ui-select wallet-character-picker">{characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}</select>}
             </div>
             <div className="text-xl font-semibold text-[var(--c-text)]">{money(selectedCharacterLedger?.balance || 0)}</div>
             <button type="button" onClick={() => setTab("ledger")} className="mt-2 self-start text-xs font-medium text-[var(--c-primary)]">查看账本设置 →</button>
@@ -405,14 +405,14 @@ function JointTab({ characters, funds, onChange }: { characters: ReturnType<type
             <div className="mt-1 flex justify-between text-[10px] text-[var(--c-icon)]"><span>{Math.min(100, Math.round(fund.balance / fund.goalAmount * 100))}% 已完成</span><span>{fund.balance >= fund.goalAmount ? "目标已达成" : `还差 ${money(fund.goalAmount - fund.balance)}`}</span></div>
 
             <div className="wallet-joint-deposit">
-              <label className="wallet-form-field">
-                <span className="wallet-form-label">存入金额</span>
+              <label className="wallet-joint-deposit-label" htmlFor={`joint-deposit-${fund.id}`}>存入金额</label>
+              <div className="wallet-joint-deposit-row">
                 <span className="wallet-form-currency">
                   <span>¥</span>
-                  <input type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={event => setAmount(event.target.value)} />
+                  <input id={`joint-deposit-${fund.id}`} type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={event => setAmount(event.target.value)} placeholder="0.00" />
                 </span>
-              </label>
-              <button type="button" onClick={() => deposit(fund)} className="wallet-form-primary wallet-form-primary-full">存入小金库</button>
+                <button type="button" onClick={() => deposit(fund)} className="wallet-form-primary wallet-joint-deposit-submit">存入</button>
+              </div>
             </div>
 
             <div className="wallet-joint-plan-row">

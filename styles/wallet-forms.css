@@ -258,19 +258,34 @@
   white-space: nowrap;
 }
 .wallet-private-bank .wallet-joint-deposit {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, .9fr);
-  align-items: end;
-  gap: 11px;
   margin-top: 17px;
-  padding: 14px;
+  padding: 13px 14px 14px;
   border: 1px solid rgba(135,123,91,.15);
   border-radius: 16px;
   background: linear-gradient(145deg, #fbfaf5, #f0eee6);
 }
-.wallet-private-bank .wallet-joint-deposit > .wallet-form-primary-full {
-  grid-column: 1 / -1;
-  margin-top: 0;
+.wallet-private-bank .wallet-joint-deposit-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #807b6d;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: .04em;
+}
+.wallet-private-bank .wallet-joint-deposit-row {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  gap: 9px;
+}
+.wallet-private-bank .wallet-joint-deposit-row .wallet-form-currency {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.wallet-private-bank .wallet-joint-deposit-submit {
+  flex: 0 0 auto;
+  min-width: 92px;
+  padding-inline: 18px;
 }
 .wallet-private-bank .wallet-joint-plan-row {
   display: flex;

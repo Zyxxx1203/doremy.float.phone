@@ -104,6 +104,30 @@
   background: linear-gradient(145deg, #fffefa, #eeece4);
   box-shadow: 0 10px 26px rgba(43,39,28,.045);
 }
+.wallet-private-bank .wallet-character-ledger-head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.wallet-private-bank .wallet-character-ledger-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wallet-private-bank .wallet-character-picker.ui-select {
+  flex: 0 0 108px;
+  width: 108px;
+  min-width: 108px;
+  max-width: 108px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
 .wallet-private-bank .wallet-kicker,
 .wallet-page-root .wallet-luxe-kicker {
   color: #968664;
