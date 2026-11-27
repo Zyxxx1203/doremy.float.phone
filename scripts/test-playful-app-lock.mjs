@@ -25,6 +25,7 @@ assert.match(internal, /给临时通行证/, "characters must have a dedicated t
 assert.match(internal, /"给临时通行证"/, "temporary-pass tool name must be reserved in the internal tool registry");
 assert.match(executor, /这不是你发起的应用锁/, "a character must not grant a pass for another character's lock");
 assert.match(executor, /这不是你发起的应用锁，不能替别人解除/, "a character must not unlock another character's lock");
+assert.doesNotMatch(executor, /可以继续逗他/, "the password-threshold response must not nudge characters into awkward teasing");
 assert.match(executor, /appLockTemporaryPass\(minutes\)/, "the role tool must grant the native temporary pass");
 assert.match(read("lib/device-action/bridge.ts"), /export function appLockTemporaryPass\(minutes: number\)/, "the trusted device bridge must expose the temporary-pass action");
 assert.match(service, /isProtectedTarget\(context, target\)/, "protected targets must be rejected in native code");
