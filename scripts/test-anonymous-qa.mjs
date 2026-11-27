@@ -40,7 +40,7 @@ T("非指定对象不能代答", qa.answerAnonymousQuestion(userLetter.id, "越�
 T("指定收件人可以回答", qa.answerAnonymousQuestion(userLetter.id, "没有躲你，只是在忙", { targetType: "character", targetId: "c1" })?.status === "answered");
 T("可以编辑问题、回答与回答对象", (() => { const changed = qa.updateAnonymousQuestion(userLetter.id, { question: "修改后的问题", answer: "修改后的回答", targetType: "character", targetId: "c2" }); return changed?.question === "修改后的问题" && changed.answer === "修改后的回答" && changed.targetId === "c2" && changed.status === "answered"; })());
 T("变更回答对象会通知新收件角色", chatMessages.some(message => message.sessionId === "session-c2" && message.content.includes("修改后的问题")));
-T("变更回答对象会通知旧收件角色忽略旧通知", chatMessages.some(message => message.sessionId === "session-c1" && message.content.includes("匿名提问箱中的问题已更新")));
+T("变更回答对象会通知旧收件角色忽略旧通知", chatMessages.some(message => message.sessionId === "session-c1" && message.content.includes("已失效")));
 T("清空回答会恢复待回答状态", (() => { const changed = qa.updateAnonymousQuestion(userLetter.id, { answer: "" }); return changed?.status === "pending" && !changed.answer; })());
 T("可以删除匿名问题", qa.deleteAnonymousQuestion(userLetter.id) && !qa.loadAnonymousQa().some(q => q.id === userLetter.id));
 
