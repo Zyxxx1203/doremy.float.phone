@@ -97,14 +97,13 @@ function createFamilyCardRecord(input: {
 
 /** 用户只能给角色发卡；角色给用户发卡必须由角色工具在角色身份上下文中创建。 */
 export function createFamilyCard(input: {
-    issuerId: string;
     beneficiaryId: string;
     label: string;
     monthlyLimit: number;
     resetDay?: number;
     color?: string;
 }): FamilyCard {
-    if (!input.issuerId || input.issuerId === "user" || !input.beneficiaryId || input.beneficiaryId === "user") {
+    if (!input.beneficiaryId || input.beneficiaryId === "user") {
         throw new Error("亲属卡必须由用户发放给指定角色");
     }
     return createFamilyCardRecord({
