@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "components/wallet-app.tsx"
+      - "components/chat/wallet-panel.tsx"
       - "components/anonymous-qa-app.tsx"
       - "lib/anonymous-qa.ts"
       - "lib/chat-engine.ts"
