@@ -2144,6 +2144,7 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
                 o.optString("avatar"),
                 o.optString("password"),
                 o.optJSONObject("style")?.toString() ?: "{}",
+                o.optInt("durationMinutes", 180),
             ).toString()
         }.getOrElse { JSONObject().put("ok", false).put("reason", it.message ?: "小手段启动失败").toString() }
 
