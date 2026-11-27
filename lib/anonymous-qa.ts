@@ -158,6 +158,8 @@ export function updateAnonymousQuestion(questionId: string, input: {
     const rows = load();
     const row = rows.find(item => item.id === questionId);
     if (!row) return null;
+    const previousTargetType = row.targetType;
+    const previousTargetId = row.targetId;
     const nextQuestion = input.question === undefined ? row.question : String(input.question).trim();
     if (!nextQuestion) throw new Error("问题不能为空");
     if (input.targetType === "character") {
@@ -178,6 +180,20 @@ export function updateAnonymousQuestion(questionId: string, input: {
         row.answeredAt = row.answer ? Date.now() : undefined;
     }
     save(rows);
+    if (previousTargetType === "character" && (row.targetType !== previousTargetType || row.targetId !== previousTargetId)) {
+        const previousTarget = loadCharacters().find(character => character.id === previousTargetId);
+        if (previousTarget) {
+            const session = createOrGetSession(previousTarget.id);
+            pushChatMessage({
+                id: `anonymous_qa_retargeted_${row.id}_${previousTarget.id}_${Date.now()}`,
+                sessionId: session.id,
+                role: "system",
+                mediaType: "system_instruction",
+                content: "这条匿名问题已更改回答对象，原先给你的通知已失效，请忽略。",
+                mediaData: { compactSystemInstruction: true, shortTermMemoryEvent: true },
+            });
+        }
+    }
     appendAnonymousQaTimelineEvent(row, "updated");
     return row;
 }
