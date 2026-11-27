@@ -15,6 +15,7 @@
 .wallet-page-root.page-shell {
   isolation: isolate;
   position: relative;
+  z-index: 40;
   background: var(--wallet-wash);
 }
 .wallet-private-bank.page-shell > .page-header,
@@ -31,7 +32,8 @@
   background:
     radial-gradient(ellipse at 88% 0%, rgba(192, 174, 126, .12), transparent 34%),
     var(--wallet-wash);
-  padding-top: calc(var(--page-header-safe-top,48px) + var(--page-header-content-height,42px) + 12px);
+  padding: calc(var(--page-header-safe-top,48px) + var(--page-header-content-height,42px) + 12px) 15px max(32px, env(safe-area-inset-bottom));
+  gap: 12px;
   padding-bottom: max(32px, env(safe-area-inset-bottom));
 }
 .wallet-private-bank .wallet-tab {
