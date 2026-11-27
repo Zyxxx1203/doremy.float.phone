@@ -1991,7 +1991,7 @@ export async function buildChatPromptMessages(
         unifiedRecentItems.push({
             kind: "event",
             timestamp: entry.createdAt,
-            sourceApp: entry.sourceApp === "group_chat" ? "chat" : entry.sourceApp,
+            sourceApp: "chat",
             sourceTag: entry.type === "core" ? "recent_core_memory" : "recent_long_term_memory",
             text: entry.content,
         });
