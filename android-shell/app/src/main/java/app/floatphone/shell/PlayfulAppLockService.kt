@@ -60,7 +60,7 @@ class PlayfulAppLockService : Service() {
         }
         val expiresAt = intent?.getLongExtra("expiresAt", 0L)?.takeIf { it > 0L }
             ?: prefs.getLong("expiresAt", 0L).takeIf { it > 0L }
-            ?: (System.currentTimeMillis() + 180 * 60_000L)
+            ?: (System.currentTimeMillis() + 30 * 60_000L)
         if (expiresAt > 0L && expiresAt <= System.currentTimeMillis()) {
             stopLock()
             return START_NOT_STICKY
@@ -95,7 +95,7 @@ class PlayfulAppLockService : Service() {
             val now = System.currentTimeMillis()
             var expiresAt = prefs.getLong("expiresAt", 0L)
             if (expiresAt <= 0L) {
-                expiresAt = now + 180 * 60_000L
+                expiresAt = now + 30 * 60_000L
                 prefs.edit().putLong("expiresAt", expiresAt).apply()
             }
             if (expiresAt > 0L && now >= expiresAt) {
@@ -267,7 +267,7 @@ class PlayfulAppLockService : Service() {
             charName: String,
             avatar: String,
             styleJson: String = "{}",
-            durationMinutes: Int = 180,
+            durationMinutes: Int = 30,
             sessionId: String = "",
         ): JSONObject {
             if (target.isBlank()) return JSONObject().put("ok", false).put("reason", "没有选择应用")
