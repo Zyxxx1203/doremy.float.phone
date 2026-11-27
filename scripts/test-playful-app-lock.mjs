@@ -32,6 +32,7 @@ assert.match(activity, /#open-chat=/, "the lock screen must route to the origina
 assert.match(activity, /temporaryPass\(this@PlayfulLockActivity, 1\)/, "the user must have a short temporary pass");
 assert.match(activity, /紧急解除这次锁定/, "the user must always have an explicit emergency exit");
 assert.match(activity, /updateCountdown\(\)/, "the lock screen must show remaining lock time");
+assert.match(activity, /TYPE_CLASS_NUMBER or InputType\.TYPE_NUMBER_VARIATION_PASSWORD/, "six-digit native password should use a numeric keypad");
 assert.match(main, /o\.optString\("sessionId"\)/, "the native bridge must receive the originating session id");
 assert.match(executor, /sessionId: context\?\.sessionId/, "the role tool must pass its chat session to native");
 assert.match(executor, /durationMinutes: Math\.max\(1, Math\.min\(360/, "the role tool must clamp requested duration");
