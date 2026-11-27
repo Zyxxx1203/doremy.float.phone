@@ -69,7 +69,8 @@ function load(): JointFundState {
         return {
             funds: Array.isArray(parsed.funds) ? parsed.funds : [],
             transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
-            plans: Array.isArray(parsed.plans) ? parsed.plans : [],
+            // 旧版界面允许用户代角色创建自动存款计划；迁移时清理这类计划，避免继续替角色扣款。
+            plans: Array.isArray(parsed.plans) ? parsed.plans.filter(plan => plan?.memberType === "user" && plan?.memberId === "user") : [],
         };
     } catch { return { funds: [], transactions: [], plans: [] }; }
 }
@@ -137,9 +138,8 @@ export function withdrawFromJointFund(fundId: string, memberType: JointFundMembe
     return { ok: true, fund };
 }
 export function setJointFundPlan(input: { fundId: string; memberType: JointFundMemberType; memberId: string; cadence: "daily" | "weekly" | "monthly"; amount: number }): JointFundPlan | null {
-    // 用户界面只能为自己建立自动存款计划；角色身份的存款只能由角色自己的动作触发。
-    if (input.memberType === "user" && input.memberId !== "user") return null;
-    if (input.memberType === "character" && !input.memberId) return null;
+    // 自动存款计划目前只允许用户为自己设置；角色只能通过自己的工具主动存入。
+    if (input.memberType !== "user" || input.memberId !== "user") return null;
     const state = load();
     const fund = state.funds.find(f => f.id === input.fundId);
     if (!fund) return null;
