@@ -893,6 +893,9 @@ export function loadNativeTimeline(
             lifeState.scenes
                 .filter(scene => scene.participants.some(participant =>
                     participant.ownerType === "character" && participant.ownerId === characterId
+                    // 只有“此刻仍在这个房间”的角色才能读场景级时间线；
+                    // 曾经参与过的旧场景不能变成持续监听玩家行踪的通道。
+                    && participant.activity !== "离开"
                 ))
                 .map(scene => scene.id)
         );

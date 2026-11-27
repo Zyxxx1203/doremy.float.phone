@@ -23,7 +23,7 @@ import {
     toolNameMatches,
 } from "./tool-storage";
 import { executeCustomAppToolCall } from "./custom-app-tool-runtime";
-import { executeLifeToolCall } from "./life/life-tools";
+import { executeLifeToolCall, isLifeToolName } from "./life/life-tools";
 import { appendLifeTimelineEntry, loadVirtualLifeState, saveVirtualLifeState } from "./life/life-storage";
 import { characterWorkspace, agentComputerRequest, isAgentComputerConfigured } from "./agent-computer";
 import { CHARACTER_ECONOMY_CAPABILITY_ID, ANONYMOUS_QA_CAPABILITY_ID, CHARACTER_APP_LOCK_CAPABILITY_ID, MEMO_CAPABILITY_ID, AGENT_COMPUTER_CAPABILITY_ID, CHECK_IN_REQUEST_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, DEVICE_ACTION_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, PHOTO_WALL_CAPABILITY_ID, PERCEPTION_READ_CAPABILITY_ID, PHONE_WIDGET_CAPABILITY_ID, REALITY_BRIDGE_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, SYSTEM_CALENDAR_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability, getInternalCapabilitySubToolDefinitions } from "./internal-capability-storage";
@@ -515,14 +515,14 @@ export async function executeToolCalls(toolCalls: ToolCall[], context?: ToolExec
     const results = new Array<ToolResult>(toolCalls.length);
     const independentCalls = toolCalls
         .map((call, index) => ({ call, index }))
-        .filter(item => !item.call.name.startsWith("life_"));
+        .filter(item => !isLifeToolName(item.call.name));
     await Promise.all(independentCalls.map(async ({ call, index }) => {
         throwIfAborted(context?.signal);
         results[index] = await executeSingleToolCall(call, context, { depth: 0 });
     }));
     for (let index = 0; index < toolCalls.length; index++) {
         const call = toolCalls[index];
-        if (!call.name.startsWith("life_")) continue;
+        if (!isLifeToolName(call.name)) continue;
         throwIfAborted(context?.signal);
         results[index] = await executeSingleToolCall(call, context, { depth: 0 });
     }
@@ -534,7 +534,7 @@ export async function executeToolCalls(toolCalls: ToolCall[], context?: ToolExec
                 let changed = false;
                 for (let index = 0; index < toolCalls.length; index++) {
                     const call = toolCalls[index];
-                    if (call.name.startsWith("life_")) continue; // Life tools record their own richer event.
+                    if (isLifeToolName(call.name)) continue; // Life tools record their own richer event.
                     const result = results[index];
                     const detail = result?.success === false
                         ? "调用未成功：" + (result.error || "工具返回失败")
@@ -658,6 +658,16 @@ function resolveNativeToolCall(call: ToolCall, context?: ToolExecutionContext): 
     return uniqueMatches.length === 1 ? { ...call, name: uniqueMatches[0] } : call;
 }
 
+/**
+ * 把模型泄漏到文本协议里的原生名（action_xxxx）解析回中文显示名。
+ * 仅用于「正在…」这类状态文案；解析不到时原样返回，不改变执行链。
+ */
+export function resolveToolCallDisplayName(name: string, context?: ToolExecutionContext): string {
+    const requested = String(name || "").trim();
+    if (!requested) return name;
+    return resolveNativeToolCall({ name: requested, args: {} }, context).name || requested;
+}
+
 async function executeSingleToolCall(
     call: ToolCall,
     context: ToolExecutionContext | undefined,
@@ -717,10 +727,10 @@ async function executeSingleToolCall(
     const tryCustomApp = () => executeCustomAppToolCall(call, context, nameMacroContext);
     const tryLife = () => executeLifeToolCall(call, context);
 
-    if (call.name.startsWith("life_")) {
-        const lifeResult = await tryLife();
-        if (lifeResult) return lifeResult;
-    }
+    // 生活工具现在对外用中文名（内部 ID 仍是 life_*），不能再靠前缀判断。
+    // executeLifeToolCall 对非生活工具会立即返回 null，所以这里可以安全地先试。
+    const lifeResult = await tryLife();
+    if (lifeResult) return lifeResult;
 
     if (preferredType === "internal") {
         const result = await tryInternal();

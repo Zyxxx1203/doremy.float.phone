@@ -12,6 +12,8 @@ import { loadCharacters } from "@/lib/character-storage";
 import { hydrateKvDb } from "@/lib/kv-db";
 import { addChatContact, createOrGetSession, hydrateChatStorage, loadChatContacts, loadChatMessages, loadChatSessions, resolveSessionCharacterId, type ChatMessage, type ChatSession } from "@/lib/chat-storage";
 import { generateOfflineChatCompletion } from "@/lib/chat-engine";
+import { extractDsmlToolCalls } from "@/lib/dsml-tool-calls";
+import { executeToolCalls, formatToolResults } from "@/lib/tool-executor";
 import { mergeImportedLifeLocations, parseImportedLifeLocations } from "@/lib/life/life-location-import";
 import {
   createEmptyVirtualLifeState,
@@ -753,7 +755,34 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       const onlineHistory = loadChatMessages(input.session.id).filter(message => message.status !== "failed" && !message.isRetracted);
       const requestHistory = [...onlineHistory, input.promptMessage];
       let result = await generateOfflineChatCompletion(input.session, requestHistory, requestOptions);
-      raw = result.content;
+      // DeepSeek 有时把工具调用写成 DSML 标记塞进正文。这里把调用取出来真正执行，
+      // 再把结果交给模型续写本轮 JSON；否则标记会被生活解析器拆成一串对白气泡。
+      const firstPass = extractDsmlToolCalls(result.content);
+      if (firstPass.toolCalls.length > 0) {
+        const characterId = resolveSessionCharacterId(input.session) || "";
+        let toolSummary = "";
+        try {
+          const toolResults = await executeToolCalls(
+            firstPass.toolCalls.map(call => ({ name: call.name, args: call.args })),
+            { appId: "life", sessionId: input.session.id, characterId, sourceEngine: "chat" },
+          );
+          toolSummary = formatToolResults(toolResults);
+        } catch (error) {
+          toolSummary = "工具执行失败：" + (error instanceof Error ? error.message : String(error));
+        }
+        const toolFollowUp: ChatMessage = {
+          ...input.promptMessage,
+          id: id("life-tool-followup"),
+          content: [
+            input.promptMessage.content,
+            "【工具执行结果】",
+            toolSummary || "（没有返回可见结果）",
+            "工具已经由系统执行完毕。请基于结果输出本轮生活现场 JSON；不要再输出任何工具调用标记（DSML、action_xxx、function_calls）。",
+          ].join("\n\n"),
+        };
+        result = await generateOfflineChatCompletion(input.session, [...onlineHistory, toolFollowUp], requestOptions);
+      }
+      raw = extractDsmlToolCalls(result.content).text;
       parsed = parseLifeOutput(raw);
       issues = validateLifeOutput(parsed, {
         previousActionOnly: input.previousActionOnly,
@@ -776,7 +805,7 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           ].join("\n\n"),
         };
         result = await generateOfflineChatCompletion(input.session, [...onlineHistory, repairPrompt], requestOptions);
-        raw = result.content;
+        raw = extractDsmlToolCalls(result.content).text;
         parsed = parseLifeOutput(raw);
         issues = validateLifeOutput(parsed, {
           previousActionOnly: input.previousActionOnly,
@@ -1805,7 +1834,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       setNotice(noticed ? "你来到了" + destination.name + "，有角色注意到了你。" : "你来到了" + destination.name + "；有人在场，但暂时没人明确注意到你。");
     }
     setSelectedLocationId(destination.id);
-    setSelectedCharacterIds(destinationParticipants.filter(participant => participant.ownerType === "character").map(participant => participant.ownerId));
+    // 进入地点只决定「谁在场」，不能把在场者自动勾成下一程的同行名单。
+    // 否则每次到达都会把人写进 selectedCharacterIds，下一站再改写他们的日程带上路，
+    // 角色会像尾巴一样永远跟着玩家走，自己的原有行程被覆盖。
     setTab("home");
     setSceneView(true);
   };
@@ -3017,7 +3048,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
       };
       const result = await generateOfflineChatCompletion(session, [prompt], {
         appId: "life",
-        appTags: lifeAppTags("schedule"),
+        // 不能复用 "schedule" 标签：预设里七日日程那条会一起注入，模型会改答日程 JSON。
+        // 地点导入是独立任务，用专属标签把生活/日程类预设条目全部隔离掉。
+        appTags: ["life-location-import"],
         includeDirectChatEntries: false,
         worldBookIdsOverride: [],
         worldBookActivationContext: "",
@@ -4942,9 +4975,9 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
             <p className="text-sm font-semibold">角色可调用的生活工具</p>
             
             <div className="mt-3 space-y-2 text-xs">
-              <div className="flex items-start justify-between gap-3 rounded-xl bg-white/80 p-3"><div><code>life_propose_invitation</code><p className="mt-1 text-stone-500">角色主动邀约你一起做某件事</p></div><span className={settings.enableCharacterAutonomy&&settings.enableInvitations?"text-emerald-700":"text-stone-400"}>{settings.enableCharacterAutonomy&&settings.enableInvitations?"已启用":"已关闭"}</span></div>
-              <div className="flex items-start justify-between gap-3 rounded-xl bg-white/80 p-3"><div><code>life_request_follow</code><p className="mt-1 text-stone-500">角色主动申请陪伴，并跟随你的实际行程</p></div><span className={settings.enableCharacterAutonomy&&settings.enableFollowRequestTool?"text-emerald-700":"text-stone-400"}>{settings.enableCharacterAutonomy&&settings.enableFollowRequestTool?"已启用":"已关闭"}</span></div>
-              <div className="flex items-start justify-between gap-3 rounded-xl bg-white/80 p-3"><div><code>life_change_schedule</code><p className="mt-1 text-stone-500">角色调整自己当天未开始的普通日程</p></div><span className={settings.enableCharacterAutonomy&&settings.enableScheduleChangeTool?"text-emerald-700":"text-stone-400"}>{settings.enableCharacterAutonomy&&settings.enableScheduleChangeTool?"已启用":"已关闭"}</span></div>
+              <div className="flex items-start justify-between gap-3 rounded-xl bg-white/80 p-3"><div><code>发起生活邀约</code><p className="mt-1 text-stone-500">角色主动邀约你一起做某件事</p></div><span className={settings.enableCharacterAutonomy&&settings.enableInvitations?"text-emerald-700":"text-stone-400"}>{settings.enableCharacterAutonomy&&settings.enableInvitations?"已启用":"已关闭"}</span></div>
+              <div className="flex items-start justify-between gap-3 rounded-xl bg-white/80 p-3"><div><code>申请跟随行程</code><p className="mt-1 text-stone-500">角色主动申请陪伴，并跟随你的实际行程</p></div><span className={settings.enableCharacterAutonomy&&settings.enableFollowRequestTool?"text-emerald-700":"text-stone-400"}>{settings.enableCharacterAutonomy&&settings.enableFollowRequestTool?"已启用":"已关闭"}</span></div>
+              <div className="flex items-start justify-between gap-3 rounded-xl bg-white/80 p-3"><div><code>调整角色日程</code><p className="mt-1 text-stone-500">角色调整自己当天未开始的普通日程</p></div><span className={settings.enableCharacterAutonomy&&settings.enableScheduleChangeTool?"text-emerald-700":"text-stone-400"}>{settings.enableCharacterAutonomy&&settings.enableScheduleChangeTool?"已启用":"已关闭"}</span></div>
             </div>
           </div>
           <label className="mt-4 block text-sm">位置情报权限<select value={settings.revealExactLocations} onChange={e=>patchSettings({revealExactLocations:e.target.value as LifeEngineSettings["revealExactLocations"]})} className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5"><option value="ask-only">只有询问或可靠渠道才能得知精确位置</option><option value="clues">默认只显示习惯与模糊线索</option><option value="open">允许公开查看实际位置</option></select></label>
