@@ -955,7 +955,7 @@ export function loadNativeTimeline(
 }
 
 // Fixed order — lower = further from LLM output (appears higher in prompt)
-const FEATURE_ORDER: Record<string, number> = { map: 0, game: 0.5, moments: 1, xiaohongshu: 1.5, checkphone: 1.7, story: 2, vn: 2, theater: 2.2, interview: 2.35, cocreate: 2.4, diary_entry: 2.45, notewall: 2.5, life_scene: 2.55, custom_app: 2.6, group_chat: 3, chat: 4 };
+const FEATURE_ORDER: Record<string, number> = { map: 0, game: 0.5, moments: 1, xiaohongshu: 1.5, checkphone: 1.7, story: 2, vn: 2, theater: 2.2, interview: 2.35, cocreate: 2.4, diary_entry: 2.45, notewall: 2.5, life_scene: 2.55, custom_app: 2.6, group_chat: 3, anonymous_qa: 3.8, chat: 4 };
 // First-class app timelines share the custom-app prompt block and ordering.
 const CUSTOM_APP_TIMELINE_SOURCES = new Set<string>([
     "custom_app", "photo_wall", "watch", "phone_widget", "life",
@@ -1252,6 +1252,12 @@ export function prepareShortTermContext(
         raw.push({ tag: "recent_group_chat", order: FEATURE_ORDER.group_chat, entries: groupChatEntries });
     }
 
+    // Anonymous Q&A events remain individual timeline records, but use their own source tag.
+    const anonymousQaEntries = timeline.filter(e => e.sourceApp === "chat" && e.sourceDetail === "anonymous_qa");
+    if (anonymousQaEntries.length > 0) {
+        raw.push({ tag: "recent_anonymous_qa", order: FEATURE_ORDER.anonymous_qa, entries: anonymousQaEntries });
+    }
+
     // Direct chat from timeline — skipped only when the current history already comes from chat/group_chat.
     // Also skip rows already present in `history` (offline/life callers pass online chat as history).
     if (!skipDirectChatEntries) {
@@ -1518,6 +1524,11 @@ export function prepareGroupShortTermContext(
     const groupChatEntries = timeline.filter(e => e.sourceApp === "chat" && e.sourceDetail === "group");
     if (groupChatEntries.length > 0) {
         raw.push({ tag: "recent_group_chat", order: FEATURE_ORDER.group_chat, entries: groupChatEntries });
+    }
+
+    const anonymousQaEntries = timeline.filter(e => e.sourceApp === "chat" && e.sourceDetail === "anonymous_qa");
+    if (anonymousQaEntries.length > 0) {
+        raw.push({ tag: "recent_anonymous_qa", order: FEATURE_ORDER.anonymous_qa, entries: anonymousQaEntries });
     }
 
     const directChatEntries = timeline.filter(e => e.sourceApp === "chat" && e.sourceDetail === "direct");
