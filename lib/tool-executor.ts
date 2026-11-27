@@ -64,7 +64,7 @@ import { createFamilyCardForCharacter, loadFamilyCards, spendWithFamilyCard } fr
 import { answerAnonymousQuestion, askAnonymousQuestion, loadAnonymousQa } from "./anonymous-qa";
 import { depositToJointFund, loadJointFundTransactions, loadJointFunds, setJointFundPlanForCharacter } from "./economy/joint-fund";
 import { recordWalletBookkeeping } from "./wallet-storage";
-import { createOrGetSession, loadChatMessages, loadChatSessions } from "./chat-storage";
+import { createOrGetSession, loadChatMessages, loadChatSessions, resolveSessionCharacterId } from "./chat-storage";
 import { readCustomAppCollection } from "./custom-app-storage";
 import { FOCUS_COMPANION_APP_ID } from "./builtin-apps/focus-companion-meta";
 import { makeNativeToolName } from "./native-tool-name";
@@ -2812,6 +2812,10 @@ async function executeCharacterEconomyTool(call: ToolCall, context?: ToolExecuti
             return { name: call.name, success: true, data: `已存入 ¥${amount}，小金库余额 ¥${result.fund?.balance}`, userNotice: `往共同小金库存了 ¥${amount}` };
         }
         if (call.name === "设置小金库定期存款") {
+            const session = context?.sessionId ? loadChatSessions().find(item => item.id === context.sessionId) : undefined;
+            if (context?.appId !== "chat" || context.sourceEngine !== "chat" || !session || session.isGroup || resolveSessionCharacterId(session) !== characterId) {
+                throw new Error("请在与自己的私聊中设置定期存款，方便目标完成后回来询问你。");
+            }
             const fundId = String(call.args?.fundId || "").trim();
             const cadence = String(call.args?.cadence || "").trim();
             const amount = Number(call.args?.amount);
@@ -2820,7 +2824,7 @@ async function executeCharacterEconomyTool(call: ToolCall, context?: ToolExecuti
             }
             const fund = loadJointFunds().find(item => item.id === fundId && item.characterId === characterId && item.status === "active");
             if (!fund) throw new Error("只能为你自己参与且仍在进行中的小金库设置定期存款");
-            const plan = setJointFundPlanForCharacter(characterId, { fundId, cadence: cadence as "daily" | "weekly" | "monthly", amount });
+            const plan = setJointFundPlanForCharacter(characterId, { fundId, cadence: cadence as "daily" | "weekly" | "monthly", amount, sessionId: session.id });
             if (!plan) throw new Error("定期存款计划设置失败");
             const cadenceLabel = cadence === "daily" ? "每天" : cadence === "weekly" ? "每周" : "每月";
             return {
